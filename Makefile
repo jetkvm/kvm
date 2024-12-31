@@ -9,7 +9,7 @@ build_dev: hash_resource
 	GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w -X kvm.builtAppVersion=$(VERSION_DEV)" -o bin/jetkvm_app cmd/main.go
 
 frontend:
-	cd ui && npm run build:device
+	cd ui && npm ci && npm run build:device
 
 dev_release: build_dev
 	@echo "Uploading release..."

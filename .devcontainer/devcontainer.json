@@ -1,0 +1,10 @@
+{
+	"name": "JetKVM",
+	"image": "mcr.microsoft.com/devcontainers/go:1-1.23-bookworm",
+	"features": {
+		"ghcr.io/devcontainers/features/node:1": {
+			// Should match what is defined in ui/package.json
+			"version": "21.1.0"
+		}
+	}
+}
