@@ -124,7 +124,7 @@ func runWebsocketClient() error {
 	if err != nil {
 		return err
 	}
-	defer c.CloseNow()
+	defer c.CloseNow() //nolint:errcheck
 	logger.Infof("WS connected to %v", wsURL.String())
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer cancelRun()

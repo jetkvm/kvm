@@ -215,7 +215,7 @@ func writeGadgetConfig() error {
 	return nil
 }
 
-func rebindUsb() error {
+func rebindUsb() error { //nolint:unused
 	err := os.WriteFile("/sys/bus/platform/drivers/dwc3/unbind", []byte(udc), 0644)
 	if err != nil {
 		return err

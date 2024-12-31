@@ -28,7 +28,7 @@ type LocalIpInfo struct {
 func checkNetworkState() {
 	iface, err := netlink.LinkByName("eth0")
 	if err != nil {
-		fmt.Printf("failed to get eth0 interface: %v\n", err)
+		fmt.Printf("failed to get eth0 interface: %s\n", err)
 		return
 	}
 
@@ -44,7 +44,7 @@ func checkNetworkState() {
 
 	addrs, err := netlink.AddrList(iface, nl.FAMILY_ALL)
 	if err != nil {
-		fmt.Printf("failed to get addresses for eth0: %v\n", err)
+		fmt.Printf("failed to get addresses for eth0: %s\n", err)
 	}
 
 	for _, addr := range addrs {
@@ -98,7 +98,7 @@ func init() {
 	done := make(chan struct{})
 
 	if err := netlink.LinkSubscribe(updates, done); err != nil {
-		fmt.Println("failed to subscribe to link updates: %v", err)
+		fmt.Printf("failed to subscribe to link updates: %v\n", err)
 		return
 	}
 
@@ -125,6 +125,6 @@ func init() {
 	fmt.Println("Starting mDNS server")
 	err := startMDNS()
 	if err != nil {
-		fmt.Println("failed to run mDNS: %v", err)
+		fmt.Printf("failed to run mDNS: %v\n", err)
 	}
 }
