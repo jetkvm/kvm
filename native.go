@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"kvm/resource"
 	"log"
 	"net"
 	"os"
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/jetkvm/kvm/resource"
 
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -90,8 +91,8 @@ func WriteCtrlMessage(message []byte) error {
 	return err
 }
 
-var nativeCtrlSocketListener net.Listener
-var nativeVideoSocketListener net.Listener
+var nativeCtrlSocketListener net.Listener  //nolint:unused
+var nativeVideoSocketListener net.Listener //nolint:unused
 
 var ctrlClientConnected = make(chan struct{})
 
@@ -191,7 +192,7 @@ func handleVideoClient(conn net.Conn) {
 	for {
 		n, err := conn.Read(inboundPacket)
 		if err != nil {
-			log.Println("error during read: %s", err)
+			log.Printf("error during read: %s\n", err)
 			return
 		}
 		now := time.Now()

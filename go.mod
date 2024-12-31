@@ -1,4 +1,4 @@
-module kvm
+module github.com/jetkvm/kvm
 
 go 1.21.0
 
