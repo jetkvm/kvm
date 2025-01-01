@@ -10,6 +10,7 @@
     "dev": "vite dev --mode=development",
     "build": "npm run build:prod",
     "build:device": "tsc && vite build --mode=device --emptyOutDir",
+    "dev:device": "vite dev --mode=device",
     "build:prod": "tsc && vite build --mode=production",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
