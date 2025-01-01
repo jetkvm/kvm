@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"kvm/internal/storage"
 	"kvm/resource"
 	"log"
 	"net/http"
@@ -252,7 +253,7 @@ func rpcMountWithWebRTC(filename string, size int64, mode VirtualMediaMode) erro
 }
 
 func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
-	filename, err := sanitizeFilename(filename)
+	filename, err := storage.SanitizeFilename(filename)
 	if err != nil {
 		return err
 	}
@@ -341,20 +342,8 @@ func rpcListStorageFiles() (*StorageFiles, error) {
 	return &StorageFiles{Files: storageFiles}, nil
 }
 
-func sanitizeFilename(filename string) (string, error) {
-	cleanPath := filepath.Clean(filename)
-	if filepath.IsAbs(cleanPath) || strings.Contains(cleanPath, "..") {
-		return "", errors.New("invalid filename")
-	}
-	sanitized := filepath.Base(cleanPath)
-	if sanitized == "." || sanitized == string(filepath.Separator) {
-		return "", errors.New("invalid filename")
-	}
-	return sanitized, nil
-}
-
 func rpcDeleteStorageFile(filename string) error {
-	sanitizedFilename, err := sanitizeFilename(filename)
+	sanitizedFilename, err := storage.SanitizeFilename(filename)
 	if err != nil {
 		return err
 	}
@@ -373,15 +362,10 @@ func rpcDeleteStorageFile(filename string) error {
 	return nil
 }
 
-type StorageFileUpload struct {
-	AlreadyUploadedBytes int64  `json:"alreadyUploadedBytes"`
-	DataChannel          string `json:"dataChannel"`
-}
-
 const uploadIdPrefix = "upload_"
 
-func rpcStartStorageFileUpload(filename string, size int64) (*StorageFileUpload, error) {
-	sanitizedFilename, err := sanitizeFilename(filename)
+func rpcStartStorageFileUpload(filename string, size int64) (*storage.StorageFileUpload, error) {
+	sanitizedFilename, err := storage.SanitizeFilename(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -403,27 +387,18 @@ func rpcStartStorageFileUpload(filename string, size int64) (*StorageFileUpload,
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file for upload: %v", err)
 	}
-	pendingUploadsMutex.Lock()
-	pendingUploads[uploadId] = pendingUpload{
+
+	storage.AddPendingUpload(uploadId, storage.PendingUpload{
 		File:                 file,
 		Size:                 size,
 		AlreadyUploadedBytes: alreadyUploadedBytes,
-	}
-	pendingUploadsMutex.Unlock()
-	return &StorageFileUpload{
+	})
+
+	return &storage.StorageFileUpload{
 		AlreadyUploadedBytes: alreadyUploadedBytes,
 		DataChannel:          uploadId,
 	}, nil
 }
-
-type pendingUpload struct {
-	File                 *os.File
-	Size                 int64
-	AlreadyUploadedBytes int64
-}
-
-var pendingUploads = make(map[string]pendingUpload)
-var pendingUploadsMutex sync.Mutex
 
 type UploadProgress struct {
 	Size                 int64
@@ -433,9 +408,7 @@ type UploadProgress struct {
 func handleUploadChannel(d *webrtc.DataChannel) {
 	defer d.Close()
 	uploadId := d.Label()
-	pendingUploadsMutex.Lock()
-	pendingUpload, ok := pendingUploads[uploadId]
-	pendingUploadsMutex.Unlock()
+	pendingUpload, ok := storage.GetPendingUpload(uploadId)
 	if !ok {
 		logger.Warnf("upload channel opened for unknown upload: %s", uploadId)
 		return
@@ -454,9 +427,7 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 		} else {
 			logger.Warnf("uploaded ended before the complete file received")
 		}
-		pendingUploadsMutex.Lock()
-		delete(pendingUploads, uploadId)
-		pendingUploadsMutex.Unlock()
+		storage.DeletePendingUpload(uploadId)
 	}()
 	uploadComplete := make(chan struct{})
 	lastProgressTime := time.Now()
@@ -502,9 +473,7 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 
 func handleUploadHttp(c *gin.Context) {
 	uploadId := c.Query("uploadId")
-	pendingUploadsMutex.Lock()
-	pendingUpload, ok := pendingUploads[uploadId]
-	pendingUploadsMutex.Unlock()
+	pendingUpload, ok := storage.GetPendingUpload(uploadId)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Upload not found"})
 		return
@@ -524,9 +493,7 @@ func handleUploadHttp(c *gin.Context) {
 		} else {
 			logger.Warnf("uploaded ended before the complete file received")
 		}
-		pendingUploadsMutex.Lock()
-		delete(pendingUploads, uploadId)
-		pendingUploadsMutex.Unlock()
+		storage.DeletePendingUpload(uploadId)
 	}()
 
 	reader := c.Request.Body
