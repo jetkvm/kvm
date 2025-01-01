@@ -5,6 +5,8 @@ import LogoBlueIcon from "@/assets/logo-blue.svg";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
 import Modal from "@components/Modal";
 import {
+  PluginManifest,
+  usePluginStore,
   useRTCStore,
 } from "../hooks/stores";
 import { cx } from "../cva.config";
@@ -16,6 +18,7 @@ import { formatters } from "@/utils";
 import { PlusCircleIcon } from "@heroicons/react/20/solid";
 import AutoHeight from "./AutoHeight";
 import { useJsonRpc } from "../hooks/useJsonRpc";
+import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import notifications from "../notifications";
 import { isOnDevice } from "../main";
 import { ViewHeader } from "./MountMediaDialog";
@@ -35,6 +38,28 @@ export default function UploadPluginModal({
 }
 
 function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
+  const {
+    pluginUploadModalView,
+    setPluginUploadModalView,
+    pluginUploadFilename,
+    setPluginUploadFilename,
+    pluginUploadManifest,
+    setPluginUploadManifest,
+  } = usePluginStore();
+  const [send] = useJsonRpc();
+  const [extractError, setExtractError] = useState<string | null>(null);
+
+  function extractPlugin(filename: string) {
+    send("pluginExtract", { filename }, resp => {
+      if ("error" in resp) {
+        setExtractError(resp.error.data || resp.error.message);
+        return
+      }
+
+      setPluginUploadManifest(resp.result as PluginManifest);
+    });
+  }
+
   return (
     <AutoHeight>
       <div
@@ -54,14 +79,46 @@ function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
                 className="h-[24px] dark:block hidden dark:!mt-0"
               />
 
-              <UploadFileView
+              {!extractError && pluginUploadModalView === "upload" && <UploadFileView
                 onBack={() => {
                   setOpen(false)
                 }}
-                onCancelUpload={() => {
-                  setOpen(false)
+                onUploadCompleted={(filename) => {
+                  setPluginUploadFilename(filename)
+                  setPluginUploadModalView("install")
+                  extractPlugin(filename)
                 }}
-              />
+              />}
+
+              {extractError && (
+                <ErrorView
+                  errorMessage={extractError}
+                  onClose={() => {
+                    setOpen(false)
+                    setPluginUploadFilename(null)
+                    setExtractError(null)
+                  }}
+                  onRetry={() => {
+                    setExtractError(null)
+                    setPluginUploadFilename(null)
+                    setPluginUploadModalView("upload")
+                  }}
+                />
+              )}
+
+              {!extractError && pluginUploadModalView === "install" && <InstallPluginView
+                filename={pluginUploadFilename!}
+                manifest={pluginUploadManifest}
+                onInstall={() => {
+                  setOpen(false)
+                  setPluginUploadFilename(null)
+                  // TODO: Open plugin settings dialog
+                }}
+                onBack={() => {
+                  setPluginUploadModalView("upload")
+                  setPluginUploadFilename(null)
+                }}
+              />}
             </div>
           </div>
         </GridCard>
@@ -74,10 +131,10 @@ function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
 // TODO: refactor to a shared component
 function UploadFileView({
   onBack,
-  onCancelUpload,
+  onUploadCompleted,
 }: {
   onBack: () => void;
-  onCancelUpload: () => void;
+  onUploadCompleted: (filename: string) => void;
 }) {
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "success">(
     "idle",
@@ -177,6 +234,7 @@ function UploadFileView({
         if (offset >= file.size) {
           rtcDataChannel.close();
           setUploadState("success");
+          onUploadCompleted(file.name);
           return;
         }
 
@@ -260,6 +318,7 @@ function UploadFileView({
     xhr.onload = () => {
       if (xhr.status === 200) {
         setUploadState("success");
+        onUploadCompleted(file.name);
       } else {
         console.error("Upload error:", xhr.statusText);
         setUploadError(xhr.statusText);
@@ -459,7 +518,7 @@ function UploadFileView({
               theme="light"
               text="Cancel Upload"
               onClick={() => {
-                onCancelUpload();
+                onBack();
                 setUploadState("idle");
                 setUploadProgress(0);
                 setUploadedFileName(null);
@@ -470,12 +529,142 @@ function UploadFileView({
           ) : (
             <Button
               size="MD"
-              theme={uploadState === "success" ? "primary" : "light"}
+              theme="light"
               text="Back"
               onClick={onBack}
             />
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function InstallPluginView({
+  filename,
+  manifest,
+  onInstall,
+  onBack,
+}: {
+  filename: string;
+  manifest: PluginManifest | null;
+  onInstall: () => void;
+  onBack: () => void;
+}) {
+  const [send] = useJsonRpc();
+  const [error, setError] = useState<string | null>(null);
+  const [installing, setInstalling] = useState(false);
+
+  function handleInstall() {
+    if (installing) return;
+    setInstalling(true);
+    send("pluginInstall", { name: manifest!.name, version: manifest!.version }, resp => {
+      if ("error" in resp) {
+        setError(resp.error.message);
+        return
+      }
+
+      setInstalling(false);
+      onInstall();
+    });
+  }
+
+  return (
+    <div className="w-full space-y-4">
+      <ViewHeader
+        title="Install Plugin"
+        description={
+          !manifest ?
+            `Extracting plugin from ${filename}...` :
+            `Do you want to install the plugin?`
+        }
+      />
+      {manifest && (
+        <div className="space-y-2">
+          <div className="text-sm text-slate-700 dark:text-slate-300">
+            <h3 className="text-lg font-semibold">{manifest.name}</h3>
+            <p className="text-xs">{manifest.description}</p>
+            <p className="text-xs">
+              Version: {manifest.version}
+            </p>
+            <p className="text-xs">
+              <a
+                href={manifest.homepage}
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-500 dark:text-blue-400"
+              >
+                {manifest.homepage}
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
+      {error && (
+        <div
+          className="mt-2 text-sm text-red-600 truncate opacity-0 dark:text-red-400 animate-fadeIn"
+          style={{ animationDuration: "0.7s" }}
+        >
+          Error: {error}
+        </div>
+      )}
+      <div
+        className="space-y-2 opacity-0 animate-fadeIn"
+        style={{
+          animationDuration: "0.7s",
+        }}
+      >
+        <div className="flex justify-end w-full space-x-2">
+          <Button
+            size="MD"
+            theme="light"
+            text="Cancel"
+            onClick={() => {
+              // TODO: Delete the orphaned extraction
+              setError(null);
+              onBack();
+            }}
+          />
+          <Button
+            size="MD"
+            theme="primary"
+            text="Install"
+            onClick={handleInstall}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ErrorView({
+  errorMessage,
+  onClose,
+  onRetry,
+}: {
+  errorMessage: string | null;
+  onClose: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="w-full space-y-4">
+      <div className="space-y-2">
+        <div className="flex items-center space-x-2 text-red-600">
+          <ExclamationTriangleIcon className="w-6 h-6" />
+          <h2 className="text-lg font-bold leading-tight">Plugin Extract Error</h2>
+        </div>
+        <p className="text-sm leading-snug text-slate-600">
+          An error occurred while attempting to extract the plugin. Please ensure the plugin is valid and try again.
+        </p>
+      </div>
+      {errorMessage && (
+        <Card className="p-4 border border-red-200 bg-red-50">
+          <p className="text-sm font-medium text-red-800">{errorMessage}</p>
+        </Card>
+      )}
+      <div className="flex justify-end space-x-2">
+        <Button size="SM" theme="light" text="Close" onClick={onClose} />
+        <Button size="SM" theme="primary" text="Back to Upload" onClick={onRetry} />
       </div>
     </div>
   );

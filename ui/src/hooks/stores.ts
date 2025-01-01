@@ -530,12 +530,37 @@ export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
 }));
 
 
+export interface PluginManifest {
+  name: string;
+  version: string;
+  description?: string;
+  homepage: string;
+}
+
 interface PluginState {
   isPluginUploadModalOpen: boolean;
   setIsPluginUploadModalOpen: (isOpen: boolean) => void;
+  
+  pluginUploadFilename: string | null;
+  setPluginUploadFilename: (filename: string | null) => void;
+
+  pluginUploadManifest: PluginManifest | null;
+  setPluginUploadManifest: (manifest: PluginManifest | null) => void;
+
+  pluginUploadModalView: "upload" | "install";
+  setPluginUploadModalView: (view: PluginState["pluginUploadModalView"]) => void;
 }
 
 export const usePluginStore = create<PluginState>(set => ({
   isPluginUploadModalOpen: false,
   setIsPluginUploadModalOpen: isOpen => set({ isPluginUploadModalOpen: isOpen }),
+
+  pluginUploadFilename: null,
+  setPluginUploadFilename: filename => set({ pluginUploadFilename: filename }),
+  
+  pluginUploadManifest: null,
+  setPluginUploadManifest: manifest => set({ pluginUploadManifest: manifest }),
+
+  pluginUploadModalView: "upload",
+  setPluginUploadModalView: view => set({ pluginUploadModalView: view }),
 }));

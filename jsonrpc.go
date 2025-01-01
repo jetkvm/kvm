@@ -556,4 +556,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"setWakeOnLanDevices":    {Func: rpcSetWakeOnLanDevices, Params: []string{"params"}},
 	"resetConfig":            {Func: rpcResetConfig},
 	"pluginStartUpload":      {Func: plugin.RpcPluginStartUpload, Params: []string{"filename", "size"}},
+	"pluginExtract":          {Func: plugin.RpcPluginExtract, Params: []string{"filename"}},
+	"pluginInstall":          {Func: plugin.RpcPluginInstall, Params: []string{"name", "version"}},
 }
