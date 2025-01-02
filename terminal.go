@@ -55,11 +55,13 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 			var size TerminalSize
 			err := json.Unmarshal([]byte(msg.Data), &size)
 			if err == nil {
-				pty.Setsize(ptmx, &pty.Winsize{
+				err = pty.Setsize(ptmx, &pty.Winsize{
 					Rows: uint16(size.Rows),
 					Cols: uint16(size.Cols),
 				})
-				return
+				if err == nil {
+					return
+				}
 			}
 			logger.Errorf("Failed to parse terminal size: %v", err)
 		}
@@ -74,7 +76,7 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 			ptmx.Close()
 		}
 		if cmd != nil && cmd.Process != nil {
-			cmd.Process.Kill()
+			_ = cmd.Process.Kill()
 		}
 	})
 }

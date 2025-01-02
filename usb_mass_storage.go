@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"kvm/resource"
 	"log"
 	"net/http"
 	"os"
@@ -16,12 +15,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jetkvm/kvm/resource"
+
 	"github.com/gin-gonic/gin"
-
-	"github.com/psanford/httpreadat"
-
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
+	"github.com/psanford/httpreadat"
 )
 
 const massStorageName = "mass_storage.usb0"
@@ -60,11 +59,11 @@ func onDiskMessage(msg webrtc.DataChannelMessage) {
 func mountImage(imagePath string) error {
 	err := setMassStorageImage("")
 	if err != nil {
-		return fmt.Errorf("Remove Mass Storage Image Error", err)
+		return fmt.Errorf("Remove Mass Storage Image Error: %w", err)
 	}
 	err = setMassStorageImage(imagePath)
 	if err != nil {
-		return fmt.Errorf("Set Mass Storage Image Error", err)
+		return fmt.Errorf("Set Mass Storage Image Error: %w", err)
 	}
 	return nil
 }
