@@ -1516,7 +1516,7 @@ function PreUploadedImageItem({
   );
 }
 
-function ViewHeader({ title, description }: { title: string; description: string }) {
+export function ViewHeader({ title, description }: { title: string; description: string }) {
   return (
     <div className="space-y-0">
       <h2 className="text-lg font-bold leading-tight text-black dark:text-white">
