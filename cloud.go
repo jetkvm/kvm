@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"nhooyr.io/websocket/wsjson"
+	"github.com/coder/websocket/wsjson"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
 	"github.com/gin-gonic/gin"
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 type CloudRegisterRequest struct {
