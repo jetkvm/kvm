@@ -1,12 +1,17 @@
 package kvm
 
 import (
+	"errors"
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"time"
 )
 
 var currentScreen = "ui_Boot_Screen"
+var lastWakeTime = time.Now()
+var backlightState = 0 // 0 - NORMAL, 1 - DIMMED, 2 - OFF
 
 func switchToScreen(screen string) {
 	_, err := CallCtrlAction("lv_scr_load", map[string]interface{}{"obj": screen})
@@ -65,6 +70,7 @@ func requestDisplayUpdate() {
 		return
 	}
 	go func() {
+		wakeDisplay()
 		fmt.Println("display updating........................")
 		//TODO: only run once regardless how many pending updates
 		updateDisplay()
@@ -83,6 +89,77 @@ func updateStaticContents() {
 	updateLabelIfChanged("ui_Status_Content_Device_Id_Content_Label", GetDeviceID())
 }
 
+// setDisplayBrightness sets /sys/class/backlight/backlight/brightness to alter
+// the backlight brightness of the JetKVM hardware's display.
+func setDisplayBrightness(brightness int) error {
+	if brightness > 100 || brightness < 0 {
+		return errors.New("brightness value out of bounds, must be between 0 and 100")
+	}
+
+	// Check the display backlight class is available
+	if _, err := os.Stat("/sys/class/backlight/backlight/brightness"); errors.Is(err, os.ErrNotExist) {
+		return errors.New("brightness value cannot be set, possibly not running on JetKVM hardware.")
+	}
+
+	// Set the value
+	bs := []byte(strconv.Itoa(brightness))
+	err := os.WriteFile("/sys/class/backlight/backlight/brightness", bs, 0644)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("display: set brightness to %v", brightness)
+	return nil
+}
+
+// displayTimeoutTick checks the time the display was last woken, and compares that to the
+// config's displayTimeout values to decide whether or not to dim/switch off the display.
+func displayTimeoutTick() {
+	tn := time.Now()
+	td := tn.Sub(lastWakeTime).Milliseconds()
+
+	// fmt.Printf("display: tick: time since wake: %vms, dim after: %v, off after: %v\n", td, config.DisplayDimAfterMs, config.DisplayOffAfterMs)
+
+	if td > config.DisplayOffAfterMs && config.DisplayOffAfterMs != 0 && (backlightState == 1 || backlightState == 0) {
+		// Display fully off
+
+		backlightState = 2
+		err := setDisplayBrightness(0)
+		if err != nil {
+			fmt.Printf("display: timeout: Failed to switch off backlight: %s\n", err)
+		}
+
+	} else if td > config.DisplayDimAfterMs && config.DisplayDimAfterMs != 0 && backlightState == 0 {
+		// Display dimming
+
+		// Get 50% of max brightness, rounded up.
+		dimBright := config.DisplayMaxBrightness / 2
+		fmt.Printf("display: timeout: target dim brightness: %v\n", dimBright)
+
+		backlightState = 1
+		err := setDisplayBrightness(dimBright)
+		if err != nil {
+			fmt.Printf("display: timeout: Failed to dim backlight: %s\n", err)
+		}
+	}
+}
+
+// wakeDisplay sets the display brightness back to config.DisplayMaxBrightness and stores the time the display
+// last woke, ready for displayTimeoutTick to put the display back in the dim/off states.
+func wakeDisplay() {
+	if config.DisplayMaxBrightness == 0 {
+		config.DisplayMaxBrightness = 100
+	}
+
+	err := setDisplayBrightness(config.DisplayMaxBrightness)
+	if err != nil {
+		fmt.Printf("display wake failed, %s\n", err)
+	}
+
+	lastWakeTime = time.Now()
+	backlightState = 0
+}
+
 func init() {
 	go func() {
 		waitCtrlClientConnected()
@@ -92,5 +169,18 @@ func init() {
 		displayInited = true
 		fmt.Println("display inited")
 		requestDisplayUpdate()
+	}()
+
+	go func() {
+		// Start display auto-sleeping ticker
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				displayTimeoutTick()
+			}
+		}
 	}()
 }

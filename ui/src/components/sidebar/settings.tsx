@@ -1,5 +1,6 @@
 import SidebarHeader from "@components/SidebarHeader";
 import {
+  BacklightSettings,
   useLocalAuthModalStore,
   useSettingsStore,
   useUiStore,
@@ -95,6 +96,7 @@ export default function SettingsSidebar() {
   const hideCursor = useSettingsStore(state => state.isCursorHidden);
   const setHideCursor = useSettingsStore(state => state.setCursorVisibility);
   const setDeveloperMode = useSettingsStore(state => state.setDeveloperMode);
+  const setBacklightSettings = useSettingsStore(state => state.setBacklightSettings);
 
   const [currentVersions, setCurrentVersions] = useState<{
     appVersion: string;
@@ -228,6 +230,18 @@ export default function SettingsSidebar() {
     [send, setDeveloperMode],
   );
 
+  const handleBacklightSettingChange = useCallback((settings: BacklightSettings) => {
+    send("setBacklightSettings", { settings }, resp => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to set backlight settings: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      notifications.success("Backlight settings updated successfully");
+    });
+  }, [send]);
+
   const handleUpdateSSHKey = useCallback(() => {
     send("setSSHKeyState", { sshKey }, resp => {
       if ("error" in resp) {
@@ -301,6 +315,17 @@ export default function SettingsSidebar() {
         setCustomEdidValue(receivedEdid);
       }
     });
+
+    send("getBacklightSettings", {}, resp => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to get backlight settings: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      const result = resp.result as BacklightSettings;
+      setBacklightSettings(result);
+    })
 
     send("getDevModeState", {}, resp => {
       if ("error" in resp) return;
@@ -793,6 +818,34 @@ export default function SettingsSidebar() {
             onChange={e => {
               setCurrentTheme(e.target.value);
               handleThemeChange(e.target.value);
+            }}
+          />
+        </SettingsItem>
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+        <div className="pb-2 space-y-4">
+          <SectionHeader
+            title="Hardware"
+            description="Configure the JetKVM Hardware"
+          />
+        </div>
+        <SettingsItem title="Display Brightness" description="Set the brightness of the display">
+          {/* TODO: Allow the user to pick any value between 0 and 100 */}
+          <SelectMenuBasic
+            size="SM"
+            label=""
+            value={settings.backlightSettings.max_brightness.toString()}
+            options={[
+              { value: "0", label: "Off" },
+              { value: "10", label: "Low" },
+              { value: "50", label: "Medium" },
+              { value: "100", label: "High" },
+            ]}
+            onChange={e => {
+              handleBacklightSettingChange({ 
+                max_brightness: parseInt(e.target.value),
+                dim_after: settings.backlightSettings.dim_after,
+                off_after: settings.backlightSettings.off_after,
+              });
             }}
           />
         </SettingsItem>

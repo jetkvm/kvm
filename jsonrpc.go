@@ -34,6 +34,12 @@ type JSONRPCEvent struct {
 	Params  interface{} `json:"params,omitempty"`
 }
 
+type BacklightSettings struct {
+	MaxBrightness int `json:"max_brightness"`
+	DimAfter      int `json:"dim_after"`
+	OffAfter      int `json:"off_after"`
+}
+
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
@@ -217,6 +223,43 @@ func rpcTryUpdate() error {
 		}
 	}()
 	return nil
+}
+
+func rpcSetBacklightSettings(data *BacklightSettings) error {
+	LoadConfig()
+
+	blConfig := *data
+
+	if blConfig.MaxBrightness > 100 || blConfig.MaxBrightness < 0 {
+		return fmt.Errorf("maxBrightness must be between 0 and 100")
+	}
+
+	if blConfig.DimAfter < 0 {
+		return fmt.Errorf("dimAfter must be a positive integer")
+	}
+
+	if blConfig.OffAfter < 0 {
+		return fmt.Errorf("offAfter must be a positive integer")
+	}
+
+	config.DisplayMaxBrightness = blConfig.MaxBrightness
+	config.DisplayDimAfterMs = int64(blConfig.DimAfter)
+	config.DisplayOffAfterMs = int64(blConfig.OffAfter)
+
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
+func rpcGetBacklightSettings() (*BacklightSettings, error) {
+	LoadConfig()
+
+	return &BacklightSettings{
+		MaxBrightness: config.DisplayMaxBrightness,
+		DimAfter:      int(config.DisplayDimAfterMs),
+		OffAfter:      int(config.DisplayOffAfterMs),
+	}, nil
 }
 
 const (
@@ -554,4 +597,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"getWakeOnLanDevices":    {Func: rpcGetWakeOnLanDevices},
 	"setWakeOnLanDevices":    {Func: rpcSetWakeOnLanDevices, Params: []string{"params"}},
 	"resetConfig":            {Func: rpcResetConfig},
+	"setBacklightSettings":   {Func: rpcSetBacklightSettings, Params: []string{"settings"}},
+	"getBacklightSettings":   {Func: rpcGetBacklightSettings},
 }

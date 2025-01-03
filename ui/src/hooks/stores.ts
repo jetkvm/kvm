@@ -229,6 +229,12 @@ export interface VideoState {
   }) => void;
 }
 
+export interface BacklightSettings {
+  max_brightness: number;
+  dim_after: number;
+  off_after: number;
+}
+
 export const useVideoStore = create<VideoState>(set => ({
   width: 0,
   height: 0,
@@ -270,6 +276,9 @@ interface SettingsState {
   // Add new developer mode state
   developerMode: boolean;
   setDeveloperMode: (enabled: boolean) => void;
+
+  backlightSettings: BacklightSettings;
+  setBacklightSettings: (settings: BacklightSettings) => void;
 }
 
 export const useSettingsStore = create(
@@ -287,6 +296,13 @@ export const useSettingsStore = create(
       // Add developer mode with default value
       developerMode: false,
       setDeveloperMode: enabled => set({ developerMode: enabled }),
+
+      backlightSettings: {
+        max_brightness: 100,
+        dim_after: 10000,
+        off_after: 50000,
+      },
+      setBacklightSettings: (settings: BacklightSettings) => set({ backlightSettings: settings }),
     }),
     {
       name: "settings",
