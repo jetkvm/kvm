@@ -10,6 +10,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	versioncollector "github.com/prometheus/client_golang/prometheus/collectors/version"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/version"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -77,6 +81,11 @@ func setupRouter() *gin.Engine {
 
 	// We use this to setup the device in the welcome page
 	r.POST("/device/setup", handleSetup)
+
+	// A Prometheus metrics endpoint.
+	version.Version = builtAppVersion
+	prometheus.MustRegister(versioncollector.NewCollector("jetkvm"))
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Protected routes (allows both password and noPassword modes)
 	protected := r.Group("/")
