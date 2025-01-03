@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"log"
 	"time"
+	"os"
+	"errors"
+	"strconv"
 )
 
 var currentScreen = "ui_Boot_Screen"
@@ -81,6 +84,29 @@ func updateStaticContents() {
 	}
 
 	updateLabelIfChanged("ui_Status_Content_Device_Id_Content_Label", GetDeviceID())
+}
+
+// setDisplayBrightness sets /sys/class/backlight/backlight/brightness to alter
+// the backlight brightness of the JetKVM hardware's display.
+func setDisplayBrightness(brightness int) (error) {
+	if brightness > 100 || brightness < 0 {
+		return errors.New("brightness value out of bounds, must be between 0 and 100")
+	}
+
+	// Check the display backlight class is available
+	if _, err := os.Stat("/sys/class/backlight/backlight/brightness"); errors.Is(err, os.ErrNotExist) {
+		return errors.New("brightness value cannot be set, possibly not running on JetKVM hardware.")
+	}
+
+	// Set the value
+	bs := []byte(strconv.Itoa(brightness))
+	err := os.WriteFile("/sys/class/backlight/backlight/brightness", bs, 0644)
+	if err != nil {
+		return err
+	}
+
+	fmt.Print("display: set brightness to %v", brightness)
+	return nil
 }
 
 func init() {
