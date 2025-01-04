@@ -10,12 +10,14 @@ import Container from "@components/Container";
 import { LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
 import { cx } from "@/cva.config";
 import PasteModal from "@/components/popovers/PasteModal";
-import { FaKeyboard } from "react-icons/fa6";
+import { FaKeyboard, FaLock } from "react-icons/fa6";
 import WakeOnLanModal from "@/components/popovers/WakeOnLan/Index";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import MountPopopover from "./popovers/MountPopover";
 import { Fragment, useCallback, useRef } from "react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
+import useKeyboard from "@/hooks/useKeyboard";
+import { keys, modifiers } from "@/keyboardMappings";
 
 export default function Actionbar({
   requestFullscreen,
@@ -51,6 +53,8 @@ export default function Actionbar({
     },
     [setDisableFocusTrap],
   );
+
+  const { sendKeyboardEvent, resetKeyboardState } = useKeyboard();
 
   return (
     <Container className="bg-white border-b border-b-slate-800/20 dark:bg-slate-900 dark:border-b-slate-300/20">
@@ -201,6 +205,22 @@ export default function Actionbar({
               text="Virtual Keyboard"
               LeadingIcon={FaKeyboard}
               onClick={() => setVirtualKeyboard(!virtualKeyboard)}
+            />
+          </div>
+          <div className="hidden lg:block">
+            <Button
+              size="XS"
+              theme="light"
+              text="Ctrl + Alt + Del"
+              LeadingIcon={FaLock}
+              onClick={() => {
+                sendKeyboardEvent(
+                  [keys["Delete"]],
+                  [modifiers["ControlLeft"], modifiers["AltLeft"]],
+                )
+                setTimeout(resetKeyboardState, 100);
+              }
+              }
             />
           </div>
         </div>
