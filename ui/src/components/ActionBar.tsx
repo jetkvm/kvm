@@ -207,22 +207,23 @@ export default function Actionbar({
               onClick={() => setVirtualKeyboard(!virtualKeyboard)}
             />
           </div>
-          <div className="hidden lg:block">
-            <Button
+            {useSettingsStore().actionBarCtrlAltDel && (
+            <div className="hidden lg:block">
+              <Button
               size="XS"
               theme="light"
               text="Ctrl + Alt + Del"
               LeadingIcon={FaLock}
               onClick={() => {
                 sendKeyboardEvent(
-                  [keys["Delete"]],
-                  [modifiers["ControlLeft"], modifiers["AltLeft"]],
-                )
+                [keys["Delete"]],
+                [modifiers["ControlLeft"], modifiers["AltLeft"]],
+                );
                 setTimeout(resetKeyboardState, 100);
-              }
-              }
-            />
-          </div>
+              }}
+              />
+            </div>
+            )}
         </div>
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
