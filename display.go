@@ -184,8 +184,8 @@ func watchTsEvents() {
 	defer ts.Close()
 
 	// Watch for events
+	buf := make([]byte, 24)
 	for {
-		buf := make([]byte, 24)
 		_, err := ts.Read(buf)
 		if err != nil {
 			fmt.Printf("display: failed to read from touchscreen device: %s\n", err)
