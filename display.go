@@ -13,6 +13,10 @@ var currentScreen = "ui_Boot_Screen"
 var lastWakeTime = time.Now()
 var backlightState = 0 // 0 - NORMAL, 1 - DIMMED, 2 - OFF
 
+const (
+	BACKLIGHT_CONTROL_CLASS string = "/sys/class/backlight/backlight/brightness"
+)
+
 func switchToScreen(screen string) {
 	_, err := CallCtrlAction("lv_scr_load", map[string]interface{}{"obj": screen})
 	if err != nil {
@@ -97,13 +101,13 @@ func setDisplayBrightness(brightness int) error {
 	}
 
 	// Check the display backlight class is available
-	if _, err := os.Stat("/sys/class/backlight/backlight/brightness"); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(BACKLIGHT_CONTROL_CLASS); errors.Is(err, os.ErrNotExist) {
 		return errors.New("brightness value cannot be set, possibly not running on JetKVM hardware.")
 	}
 
 	// Set the value
 	bs := []byte(strconv.Itoa(brightness))
-	err := os.WriteFile("/sys/class/backlight/backlight/brightness", bs, 0644)
+	err := os.WriteFile(BACKLIGHT_CONTROL_CLASS, bs, 0644)
 	if err != nil {
 		return err
 	}
