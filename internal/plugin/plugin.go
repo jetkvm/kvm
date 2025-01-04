@@ -132,6 +132,28 @@ func RpcPluginInstall(name string, version string) error {
 	return nil
 }
 
+func RpcPluginList() ([]PluginStatus, error) {
+	plugins := make([]PluginStatus, 0, len(pluginDatabase.Plugins))
+	for pluginName, plugin := range pluginDatabase.Plugins {
+		manifest, err := plugin.GetManifest()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get plugin manifest for %s: %v", pluginName, err)
+		}
+
+		status := "stopped"
+		if plugin.Enabled {
+			status = "running"
+		}
+
+		plugins = append(plugins, PluginStatus{
+			PluginManifest: *manifest,
+			Enabled:        plugin.Enabled,
+			Status:         status,
+		})
+	}
+	return plugins, nil
+}
+
 func readManifest(extractFolder string) (*PluginManifest, error) {
 	manifestPath := path.Join(extractFolder, "manifest.json")
 	manifestFile, err := os.Open(manifestPath)

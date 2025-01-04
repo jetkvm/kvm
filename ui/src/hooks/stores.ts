@@ -537,6 +537,11 @@ export interface PluginManifest {
   homepage: string;
 }
 
+export interface PluginStatus extends PluginManifest {
+  enabled: boolean;
+  status: "stopped" | "running";
+}
+
 interface PluginState {
   isPluginUploadModalOpen: boolean;
   setIsPluginUploadModalOpen: (isOpen: boolean) => void;
@@ -549,6 +554,9 @@ interface PluginState {
 
   pluginUploadModalView: "upload" | "install";
   setPluginUploadModalView: (view: PluginState["pluginUploadModalView"]) => void;
+
+  plugins: PluginStatus[];
+  setPlugins: (plugins: PluginStatus[]) => void;
 }
 
 export const usePluginStore = create<PluginState>(set => ({
@@ -563,4 +571,7 @@ export const usePluginStore = create<PluginState>(set => ({
 
   pluginUploadModalView: "upload",
   setPluginUploadModalView: view => set({ pluginUploadModalView: view }),
+
+  plugins: [],
+  setPlugins: plugins => set({ plugins }),
 }));

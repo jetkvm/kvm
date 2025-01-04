@@ -4,7 +4,6 @@ import {
   useSettingsStore,
   useUiStore,
   useUpdateStore,
-  usePluginStore,
 } from "@/hooks/stores";
 import { Checkbox } from "@components/Checkbox";
 import { Button, LinkButton } from "@components/Button";
@@ -26,7 +25,7 @@ import LocalAuthPasswordDialog from "@/components/LocalAuthPasswordDialog";
 import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
-import UploadPluginModal from "@components/UploadPluginDialog";
+import PluginList from "@components/PluginList";
 
 export function SettingsItem({
   title,
@@ -252,8 +251,6 @@ export default function SettingsSidebar() {
       setIsUpdateDialogOpen(true);
     }
   };
-
-  const {isPluginUploadModalOpen, setIsPluginUploadModalOpen, setPluginUploadModalView} = usePluginStore();
 
   useEffect(() => {
     getCloudState();
@@ -752,40 +749,7 @@ export default function SettingsSidebar() {
             title="Plugins"
             description="Manage installed plugins and their settings"
           />
-          <ul role="list" className="divide-y divide-gray-200 dark:divide-gray-700 w-full">
-            <li className="flex items-center justify-between pa-2 gap-x-2">
-              <div className="flex items-center px-2">
-                <div className="h-2 w-2 rounded-full border transition bg-green-500 border-green-600" />
-              </div>
-              <div className="overflow-hidden flex grow flex-col space-y-1">
-                <p className="text-base font-semibold text-black dark:text-white">Tailscale</p>
-                <p className="text-xs text-slate-700 dark:text-slate-300 line-clamp-1">https://github.com/tutman96/jetkvm-plugin-tailscale</p>
-              </div>
-              <div className="flex items-center w-20">
-                <Button
-                  size="SM"
-                  theme="light"
-                  text="Settings"
-                  onClick={() => console.log("Settings clicked")}
-                />
-              </div>
-            </li>
-          </ul>
-          <div className="flex items-center gap-x-2">
-            <Button
-              size="SM"
-              theme="primary"
-              text="Upload Plugin"
-              onClick={() => {
-                setPluginUploadModalView("upload");
-                setIsPluginUploadModalOpen(true)
-              }}
-            />
-            <UploadPluginModal
-              open={isPluginUploadModalOpen}
-              setOpen={setIsPluginUploadModalOpen}
-            />
-          </div>
+          <PluginList />
         </div>
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
         <div className="pb-2 space-y-4">

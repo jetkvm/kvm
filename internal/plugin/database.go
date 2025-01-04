@@ -4,9 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 )
 
 const databaseFile = pluginsFolder + "/plugins.json"
+
+type PluginDatabase struct {
+	// Map with the plugin name as the key
+	Plugins map[string]PluginInstall `json:"plugins"`
+
+	saveMutex sync.Mutex
+}
 
 var pluginDatabase = PluginDatabase{}
 
