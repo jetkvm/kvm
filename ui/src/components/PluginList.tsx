@@ -4,6 +4,7 @@ import { PluginStatus, usePluginStore, useUiStore } from "@/hooks/stores";
 import { useCallback, useEffect, useState } from "react";
 import { cx } from "@/cva.config";
 import UploadPluginModal from "@components/UploadPluginDialog";
+import PluginConfigureModal from "./PluginConfigureDialog";
 
 function PluginListStatusIcon({ plugin }: { plugin: PluginStatus }) {
   let classNames = "bg-slate-500 border-slate-600";
@@ -29,7 +30,11 @@ export default function PluginList() {
     setIsPluginUploadModalOpen,
     setPluginUploadModalView,
     plugins,
-    setPlugins
+    setPlugins,
+    pluginConfigureModalOpen,
+    setPluginConfigureModalOpen,
+    configuringPlugin,
+    setConfiguringPlugin,
   } = usePluginStore();
   const sidebarView = useUiStore(state => state.sidebarView);
 
@@ -74,13 +79,27 @@ export default function PluginList() {
                   size="SM"
                   theme="light"
                   text="Settings"
-                  onClick={() => console.log("Settings clicked")}
+                  onClick={() => {
+                    setConfiguringPlugin(plugin);
+                    setPluginConfigureModalOpen(true);
+                  }}
                 />
               </div>
             </li>
           ))}
         </ul>
       </div>
+
+      <PluginConfigureModal
+        open={pluginConfigureModalOpen}
+        setOpen={(open) => {
+          setPluginConfigureModalOpen(open);
+          if (!open) {
+            updatePlugins();
+          }
+        }}
+        plugin={configuringPlugin}
+      />
 
       <div className="flex items-center gap-x-2">
         <Button

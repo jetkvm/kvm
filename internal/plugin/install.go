@@ -1,5 +1,7 @@
 package plugin
 
+import "fmt"
+
 type PluginInstall struct {
 	Enabled bool `json:"enabled"`
 
@@ -28,4 +30,22 @@ func (p *PluginInstall) GetManifest() (*PluginManifest, error) {
 
 func (p *PluginInstall) GetExtractedFolder() string {
 	return p.ExtractedVersions[p.Version]
+}
+
+func (p *PluginInstall) GetStatus() (*PluginStatus, error) {
+	manifest, err := p.GetManifest()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get plugin manifest: %v", err)
+	}
+
+	status := "stopped"
+	if p.Enabled {
+		status = "running"
+	}
+
+	return &PluginStatus{
+		PluginManifest: *manifest,
+		Enabled:        p.Enabled,
+		Status:         status,
+	}, nil
 }

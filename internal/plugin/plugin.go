@@ -135,23 +135,33 @@ func RpcPluginInstall(name string, version string) error {
 func RpcPluginList() ([]PluginStatus, error) {
 	plugins := make([]PluginStatus, 0, len(pluginDatabase.Plugins))
 	for pluginName, plugin := range pluginDatabase.Plugins {
-		manifest, err := plugin.GetManifest()
+		status, err := plugin.GetStatus()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get plugin manifest for %s: %v", pluginName, err)
+			return nil, fmt.Errorf("failed to get plugin status for %s: %v", pluginName, err)
 		}
-
-		status := "stopped"
-		if plugin.Enabled {
-			status = "running"
-		}
-
-		plugins = append(plugins, PluginStatus{
-			PluginManifest: *manifest,
-			Enabled:        plugin.Enabled,
-			Status:         status,
-		})
+		plugins = append(plugins, *status)
 	}
 	return plugins, nil
+}
+
+func RpcUpdateConfig(name string, enabled bool) (*PluginStatus, error) {
+	pluginInstall, ok := pluginDatabase.Plugins[name]
+	if !ok {
+		return nil, fmt.Errorf("plugin not found: %s", name)
+	}
+
+	pluginInstall.Enabled = enabled
+	pluginDatabase.Plugins[name] = pluginInstall
+
+	if err := pluginDatabase.Save(); err != nil {
+		return nil, fmt.Errorf("failed to save plugin database: %v", err)
+	}
+
+	status, err := pluginInstall.GetStatus()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get plugin status for %s: %v", name, err)
+	}
+	return status, nil
 }
 
 func readManifest(extractFolder string) (*PluginManifest, error) {
