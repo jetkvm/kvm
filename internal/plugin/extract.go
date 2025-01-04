@@ -19,10 +19,10 @@ func init() {
 	_ = os.MkdirAll(pluginsExtractsFolder, 0755)
 }
 
-func extractPlugin(filePath string) (*string, error) {
+func extractPlugin(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file for extraction: %v", err)
+		return "", fmt.Errorf("failed to open file for extraction: %v", err)
 	}
 	defer file.Close()
 
@@ -31,7 +31,7 @@ func extractPlugin(filePath string) (*string, error) {
 	if strings.HasSuffix(filePath, ".gz") {
 		gzipReader, err := gzip.NewReader(file)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create gzip reader: %v", err)
+			return "", fmt.Errorf("failed to create gzip reader: %v", err)
 		}
 		defer gzipReader.Close()
 		reader = gzipReader
@@ -39,9 +39,21 @@ func extractPlugin(filePath string) (*string, error) {
 
 	destinationFolder := path.Join(pluginsExtractsFolder, uuid.New().String())
 	if err := os.MkdirAll(destinationFolder, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create extracts folder: %v", err)
+		return "", fmt.Errorf("failed to create extracts folder: %v", err)
 	}
 
+	if err := extractTarball(reader, destinationFolder); err != nil {
+		if err := os.RemoveAll(destinationFolder); err != nil {
+			return "", fmt.Errorf("failed to remove failed extraction folder: %v", err)
+		}
+
+		return "", fmt.Errorf("failed to extract tarball: %v", err)
+	}
+
+	return destinationFolder, nil
+}
+
+func extractTarball(reader io.Reader, destinationFolder string) error {
 	tarReader := tar.NewReader(reader)
 
 	for {
@@ -50,34 +62,34 @@ func extractPlugin(filePath string) (*string, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to read tar header: %v", err)
+			return fmt.Errorf("failed to read tar header: %v", err)
 		}
 
 		// Prevent path traversal attacks
 		targetPath := filepath.Join(destinationFolder, header.Name)
 		if !strings.HasPrefix(targetPath, filepath.Clean(destinationFolder)+string(os.PathSeparator)) {
-			return nil, fmt.Errorf("tar file contains illegal path: %s", header.Name)
+			return fmt.Errorf("tar file contains illegal path: %s", header.Name)
 		}
 
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
-				return nil, fmt.Errorf("failed to create directory: %v", err)
+				return fmt.Errorf("failed to create directory: %v", err)
 			}
 		case tar.TypeReg:
 			file, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY, os.FileMode(header.Mode))
 			if err != nil {
-				return nil, fmt.Errorf("failed to create file: %v", err)
+				return fmt.Errorf("failed to create file: %v", err)
 			}
 			defer file.Close()
 
 			if _, err := io.Copy(file, tarReader); err != nil {
-				return nil, fmt.Errorf("failed to extract file: %v", err)
+				return fmt.Errorf("failed to extract file: %v", err)
 			}
 		default:
-			return nil, fmt.Errorf("unsupported tar entry type: %v", header.Typeflag)
+			return fmt.Errorf("unsupported tar entry type: %v", header.Typeflag)
 		}
 	}
 
-	return &destinationFolder, nil
+	return nil
 }

@@ -89,7 +89,7 @@ func RpcPluginExtract(filename string) (*PluginManifest, error) {
 		return nil, fmt.Errorf("failed to delete uploaded file: %v", err)
 	}
 
-	manifest, err := readManifest(*extractFolder)
+	manifest, err := readManifest(extractFolder)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func RpcPluginExtract(filename string) (*PluginManifest, error) {
 		return nil, fmt.Errorf("this version has already been uploaded: %s", manifest.Version)
 	}
 
-	install.ExtractedVersions[manifest.Version] = *extractFolder
+	install.ExtractedVersions[manifest.Version] = extractFolder
 	pluginDatabase.Plugins[manifest.Name] = install
 
 	if err := pluginDatabase.Save(); err != nil {
