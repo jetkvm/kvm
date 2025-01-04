@@ -10,7 +10,7 @@ function PluginListStatusIcon({ plugin }: { plugin: PluginStatus }) {
   let classNames = "bg-slate-500 border-slate-600";
   if (plugin.enabled && plugin.status === "running") {
     classNames = "bg-green-500 border-green-600";
-  } else if (plugin.enabled && plugin.status === "stopped") {
+  } else if (plugin.enabled && plugin.status === "errored") {
     classNames = "bg-red-500 border-red-600";
   }
 
