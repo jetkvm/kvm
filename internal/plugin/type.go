@@ -14,4 +14,5 @@ type PluginStatus struct {
 	PluginManifest
 	Enabled bool   `json:"enabled"`
 	Status  string `json:"status"`
+	Error   string `json:"error,omitempty"`
 }

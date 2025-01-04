@@ -11,23 +11,17 @@ const databaseFile = pluginsFolder + "/plugins.json"
 
 type PluginDatabase struct {
 	// Map with the plugin name as the key
-	Plugins map[string]PluginInstall `json:"plugins"`
+	Plugins map[string]*PluginInstall `json:"plugins"`
 
 	saveMutex sync.Mutex
 }
 
 var pluginDatabase = PluginDatabase{}
 
-func init() {
-	if err := pluginDatabase.Load(); err != nil {
-		fmt.Printf("failed to load plugin database: %v\n", err)
-	}
-}
-
 func (d *PluginDatabase) Load() error {
 	file, err := os.Open(databaseFile)
 	if os.IsNotExist(err) {
-		d.Plugins = make(map[string]PluginInstall)
+		d.Plugins = make(map[string]*PluginInstall)
 		return nil
 	}
 	if err != nil {

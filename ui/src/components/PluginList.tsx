@@ -39,6 +39,7 @@ export default function PluginList() {
   const sidebarView = useUiStore(state => state.sidebarView);
 
   const updatePlugins = useCallback(() => {
+    setError(null);
     send("pluginList", {}, resp => {
       if ("error" in resp) {
         setError(resp.error.message);

@@ -15,6 +15,26 @@ const pluginsUploadFolder = pluginsFolder + "/uploads"
 
 func init() {
 	_ = os.MkdirAll(pluginsUploadFolder, 0755)
+
+	if err := pluginDatabase.Load(); err != nil {
+		fmt.Printf("failed to load plugin database: %v\n", err)
+	}
+}
+
+// Starts all plugins that need to be started
+func ReconcilePlugins() {
+	for _, install := range pluginDatabase.Plugins {
+		err := install.ReconcileSubprocess()
+		if err != nil {
+			fmt.Printf("failed to reconcile subprocess for plugin: %v\n", err)
+		}
+	}
+}
+
+func GracefullyShutdownPlugins() {
+	for _, install := range pluginDatabase.Plugins {
+		install.Shutdown()
+	}
 }
 
 func RpcPluginStartUpload(filename string, size int64) (*storage.StorageFileUpload, error) {
@@ -77,7 +97,7 @@ func RpcPluginExtract(filename string) (*PluginManifest, error) {
 	// Get existing PluginInstall
 	install, ok := pluginDatabase.Plugins[manifest.Name]
 	if !ok {
-		install = PluginInstall{
+		install = &PluginInstall{
 			Enabled:           false,
 			Version:           manifest.Version,
 			ExtractedVersions: make(map[string]string),
@@ -125,7 +145,11 @@ func RpcPluginInstall(name string, version string) error {
 	if err := pluginDatabase.Save(); err != nil {
 		return fmt.Errorf("failed to save plugin database: %v", err)
 	}
-	// TODO: start the plugin
+
+	err := pluginInstall.ReconcileSubprocess()
+	if err != nil {
+		return fmt.Errorf("failed to start plugin %s: %v", name, err)
+	}
 
 	// TODO: Determine if the old version should be removed
 
@@ -155,6 +179,11 @@ func RpcUpdateConfig(name string, enabled bool) (*PluginStatus, error) {
 
 	if err := pluginDatabase.Save(); err != nil {
 		return nil, fmt.Errorf("failed to save plugin database: %v", err)
+	}
+
+	err := pluginInstall.ReconcileSubprocess()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stop plugin %s: %v", name, err)
 	}
 
 	status, err := pluginInstall.GetStatus()
