@@ -14,6 +14,7 @@ var lastWakeTime = time.Now()
 var backlightState = 0 // 0 - NORMAL, 1 - DIMMED, 2 - OFF
 
 const (
+	TOUCHSCREEN_DEVICE      string = "/dev/input/event1"
 	BACKLIGHT_CONTROL_CLASS string = "/sys/class/backlight/backlight/brightness"
 )
 
@@ -168,6 +169,34 @@ func wakeDisplay() {
 	backlightState = 0
 }
 
+// watchTsEvents monitors the touchscreen for events and simply calls wakeDisplay() to ensure the
+// touchscreen interface still works even with LCD dimming/off.
+// TODO: This is quite a hack, really we should be getting an event from jetkvm_native, or the whole display backlight
+// control should be hoisted up to jetkvm_native.
+func watchTsEvents() {
+	// Open touchscreen device
+	ts, err := os.OpenFile(TOUCHSCREEN_DEVICE, os.O_RDONLY, 0666)
+	if err != nil {
+		fmt.Printf("display: failed to open touchscreen device: %s\n", err)
+		return
+	}
+
+	defer ts.Close()
+
+	// Watch for events
+	for {
+		buf := make([]byte, 24)
+		_, err := ts.Read(buf)
+		if err != nil {
+			fmt.Printf("display: failed to read from touchscreen device: %s\n", err)
+			return
+		}
+
+		// Touchscreen event, wake the display
+		wakeDisplay()
+	}
+}
+
 func init() {
 	go func() {
 		waitCtrlClientConnected()
@@ -191,4 +220,6 @@ func init() {
 			}
 		}
 	}()
+
+	go watchTsEvents()
 }
