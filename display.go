@@ -205,6 +205,7 @@ func init() {
 		updateStaticContents()
 		displayInited = true
 		fmt.Println("display inited")
+		wakeDisplay()
 		requestDisplayUpdate()
 	}()
 
