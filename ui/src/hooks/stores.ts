@@ -270,6 +270,9 @@ interface SettingsState {
   // Add new developer mode state
   developerMode: boolean;
   setDeveloperMode: (enabled: boolean) => void;
+
+  actionBarCtrlAltDel: boolean;
+  setActionBarCtrlAltDel: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create(
@@ -287,6 +290,9 @@ export const useSettingsStore = create(
       // Add developer mode with default value
       developerMode: false,
       setDeveloperMode: enabled => set({ developerMode: enabled }),
+
+      actionBarCtrlAltDel: false,
+      setActionBarCtrlAltDel: enabled => set({ actionBarCtrlAltDel: enabled }),
     }),
     {
       name: "settings",

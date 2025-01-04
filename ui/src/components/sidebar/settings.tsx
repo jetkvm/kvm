@@ -796,6 +796,15 @@ export default function SettingsSidebar() {
             }}
           />
         </SettingsItem>
+        <SettingsItem
+          title="Ctrl + Alt + Del Button"
+          description="Display Ctrl + Alt + Del button on the Action Bar"
+        >
+          <Checkbox
+            checked={settings.actionBarCtrlAltDel}
+            onChange={e => settings.setActionBarCtrlAltDel(e.target.checked)}
+          />
+        </SettingsItem>
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
         <div className="pb-2 space-y-4">
           <SectionHeader
