@@ -38,9 +38,9 @@ func (d *PluginDatabase) Save() error {
 	d.saveMutex.Lock()
 	defer d.saveMutex.Unlock()
 
-	file, err := os.Create(databaseFile)
+	file, err := os.Create(databaseFile + ".tmp")
 	if err != nil {
-		return fmt.Errorf("failed to create plugin database: %v", err)
+		return fmt.Errorf("failed to create plugin database tmp: %v", err)
 	}
 	defer file.Close()
 
@@ -48,6 +48,10 @@ func (d *PluginDatabase) Save() error {
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(d); err != nil {
 		return fmt.Errorf("failed to encode plugin database: %v", err)
+	}
+
+	if err := os.Rename(databaseFile+".tmp", databaseFile); err != nil {
+		return fmt.Errorf("failed to move plugin database to active file: %v", err)
 	}
 
 	return nil

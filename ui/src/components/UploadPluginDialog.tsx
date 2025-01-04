@@ -576,7 +576,7 @@ function InstallPluginView({
         description={
           !manifest ?
             `Extracting plugin from ${filename}...` :
-            `Do you want to install the plugin?`
+            `Do you want to install this plugin?`
         }
       />
       {manifest && (
