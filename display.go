@@ -151,6 +151,10 @@ func displayTimeoutTick() {
 // wakeDisplay sets the display brightness back to config.DisplayMaxBrightness and stores the time the display
 // last woke, ready for displayTimeoutTick to put the display back in the dim/off states.
 func wakeDisplay() {
+	if backlightState == 0 {
+		return
+	}
+
 	if config.DisplayMaxBrightness == 0 {
 		config.DisplayMaxBrightness = 100
 	}
