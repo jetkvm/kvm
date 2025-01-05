@@ -94,7 +94,7 @@ func (p *PluginInstall) ReconcileSubprocess() error {
 		p.processManager.Disable()
 		p.processManager = nil
 		p.runningVersion = nil
-		(*p.rpcListener).Close()
+		p.rpcListener.Close()
 		p.rpcListener = nil
 	}
 
