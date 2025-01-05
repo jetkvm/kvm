@@ -5,31 +5,152 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"reflect"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 type JSONRPCServer struct {
 	writer io.Writer
 
 	handlers map[string]*RPCHandler
+	nextId   atomic.Int64
+
+	responseChannelsMutex sync.Mutex
+	responseChannels      map[int64]chan JSONRPCResponse
 }
 
 func NewJSONRPCServer(writer io.Writer, handlers map[string]*RPCHandler) *JSONRPCServer {
 	return &JSONRPCServer{
-		writer:   writer,
-		handlers: handlers,
+		writer:           writer,
+		handlers:         handlers,
+		responseChannels: make(map[int64]chan JSONRPCResponse),
+		nextId:           atomic.Int64{},
 	}
 }
 
+func (s *JSONRPCServer) Request(method string, params map[string]interface{}, result interface{}) *JSONRPCResponseError {
+	id := s.nextId.Add(1)
+	request := JSONRPCRequest{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  params,
+		ID:      id,
+	}
+	requestBytes, err := json.Marshal(request)
+	if err != nil {
+		return &JSONRPCResponseError{
+			Code:    -32700,
+			Message: "Parse error",
+			Data:    err,
+		}
+	}
+
+	// log.Printf("Sending RPC request: Method=%s, Params=%v, ID=%d", method, params, id)
+
+	responseChan := make(chan JSONRPCResponse, 1)
+	s.responseChannelsMutex.Lock()
+	s.responseChannels[id] = responseChan
+	s.responseChannelsMutex.Unlock()
+	defer func() {
+		s.responseChannelsMutex.Lock()
+		delete(s.responseChannels, id)
+		s.responseChannelsMutex.Unlock()
+	}()
+
+	_, err = s.writer.Write(requestBytes)
+	if err != nil {
+		return &JSONRPCResponseError{
+			Code:    -32603,
+			Message: "Internal error",
+			Data:    err,
+		}
+	}
+
+	timeout := time.After(5 * time.Second)
+	select {
+	case response := <-responseChan:
+		if response.Error != nil {
+			return response.Error
+		}
+
+		rawResult, err := json.Marshal(response.Result)
+		if err != nil {
+			return &JSONRPCResponseError{
+				Code:    -32603,
+				Message: "Internal error",
+				Data:    err,
+			}
+		}
+
+		if err := json.Unmarshal(rawResult, result); err != nil {
+			return &JSONRPCResponseError{
+				Code:    -32603,
+				Message: "Internal error",
+				Data:    err,
+			}
+		}
+
+		return nil
+	case <-timeout:
+		return &JSONRPCResponseError{
+			Code:    -32603,
+			Message: "Internal error",
+			Data:    "timeout waiting for response",
+		}
+	}
+}
+
+type JSONRPCMessage struct {
+	Method *string `json:"method,omitempty"`
+	ID     *int64  `json:"id,omitempty"`
+}
+
 func (s *JSONRPCServer) HandleMessage(data []byte) error {
-	var request JSONRPCRequest
-	err := json.Unmarshal(data, &request)
+	// Data will either be a JSONRPCRequest or JSONRPCResponse object
+	// We need to determine which one it is
+	var raw JSONRPCMessage
+	err := json.Unmarshal(data, &raw)
 	if err != nil {
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
-			Error: map[string]interface{}{
-				"code":    -32700,
-				"message": "Parse error",
+			Error: &JSONRPCResponseError{
+				Code:    -32700,
+				Message: "Parse error",
+			},
+			ID: 0,
+		}
+		return s.writeResponse(errorResponse)
+	}
+
+	if raw.Method == nil && raw.ID != nil {
+		var resp JSONRPCResponse
+		if err := json.Unmarshal(data, &resp); err != nil {
+			fmt.Println("error unmarshalling response", err)
+			return err
+		}
+
+		s.responseChannelsMutex.Lock()
+		responseChan, ok := s.responseChannels[*raw.ID]
+		s.responseChannelsMutex.Unlock()
+		if ok {
+			responseChan <- resp
+		} else {
+			log.Println("No response channel found for ID", resp.ID)
+		}
+		return nil
+	}
+
+	var request JSONRPCRequest
+	err = json.Unmarshal(data, &request)
+	if err != nil {
+		errorResponse := JSONRPCResponse{
+			JSONRPC: "2.0",
+			Error: &JSONRPCResponseError{
+				Code:    -32700,
+				Message: "Parse error",
 			},
 			ID: 0,
 		}
@@ -41,9 +162,9 @@ func (s *JSONRPCServer) HandleMessage(data []byte) error {
 	if !ok {
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
-			Error: map[string]interface{}{
-				"code":    -32601,
-				"message": "Method not found",
+			Error: &JSONRPCResponseError{
+				Code:    -32601,
+				Message: "Method not found",
 			},
 			ID: request.ID,
 		}
@@ -54,10 +175,10 @@ func (s *JSONRPCServer) HandleMessage(data []byte) error {
 	if err != nil {
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
-			Error: map[string]interface{}{
-				"code":    -32603,
-				"message": "Internal error",
-				"data":    err.Error(),
+			Error: &JSONRPCResponseError{
+				Code:    -32603,
+				Message: "Internal error",
+				Data:    err.Error(),
 			},
 			ID: request.ID,
 		}

@@ -1,13 +1,15 @@
 import { PluginStatus } from "@/hooks/stores";
 import Modal from "@components/Modal";
 import AutoHeight from "@components/AutoHeight";
-import { GridCard } from "@components/Card";
+import Card, { GridCard } from "@components/Card";
 import LogoBlueIcon from "@/assets/logo-blue.svg";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
 import { ViewHeader } from "./MountMediaDialog";
 import { Button } from "./Button";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useCallback, useEffect, useState } from "react";
+import { PluginStatusIcon } from "./PluginStatusIcon";
+import { cx } from "@/cva.config";
 
 export default function PluginConfigureModal({
   plugin,
@@ -42,7 +44,7 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
         return;
       }
     }
-    
+
     setLoading(true);
     send("pluginUpdateConfig", { name: plugin.name, enabled }, resp => {
       if ("error" in resp) {
@@ -77,16 +79,28 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
         <GridCard cardClassName="relative w-full text-left pointer-events-auto">
           <div className="p-4">
             <div className="flex flex-col items-start justify-start space-y-4 text-left">
-              <img
-                src={LogoBlueIcon}
-                alt="JetKVM Logo"
-                className="h-[24px] dark:hidden block"
-              />
-              <img
-                src={LogoWhiteIcon}
-                alt="JetKVM Logo"
-                className="h-[24px] dark:block hidden dark:!mt-0"
-              />
+              <div className="flex justify-between w-full">
+                <div>
+                  <img
+                    src={LogoBlueIcon}
+                    alt="JetKVM Logo"
+                    className="h-[24px] dark:hidden block"
+                  />
+                  <img
+                    src={LogoWhiteIcon}
+                    alt="JetKVM Logo"
+                    className="h-[24px] dark:block hidden dark:!mt-0"
+                  />
+                </div>
+                <div className="flex items-center">
+                  {plugin && <>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 inline-block">
+                      {plugin.status}
+                    </p>
+                    <PluginStatusIcon plugin={plugin} />
+                  </>}
+                </div>
+              </div>
               <div className="w-full space-y-4">
                 <div className="flex items-center justify-between w-full">
                   <ViewHeader title="Plugin Configuration" description={`Configure the ${plugin?.name} plugin`} />
@@ -104,6 +118,8 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
                   </div>
                 </div>
 
+                <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+
                 <div
                   className="space-y-2 opacity-0 animate-fadeIn"
                   style={{
@@ -111,9 +127,24 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
                   }}
                 >
                   {error && <p className="text-red-500 dark:text-red-400">{error}</p>}
+                  {plugin?.message && (
+                    <>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Plugin message:
+                    </p>
+                    <Card className={cx(
+                      "text-gray-500 dark:text-gray-400 p-4 border",
+                      plugin.status === "errored" && "border-red-200 bg-red-50 text-red-800 dark:text-red-400",
+                    )}>
+                      {plugin.message}
+                    </Card>
+                    </>
+                  )}
                   <p className="text-sm text-gray-500 dark:text-gray-400 py-10">
                     TODO: Plugin configuration goes here
                   </p>
+
+                  <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
 
                   <div
                     className="flex items-end w-full opacity-0 animate-fadeIn"
@@ -148,7 +179,7 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
             </div>
           </div>
         </GridCard>
-      </div>
-    </AutoHeight>
+      </div >
+    </AutoHeight >
   )
 }

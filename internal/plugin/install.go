@@ -3,7 +3,6 @@ package plugin
 import (
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"os/exec"
 	"path"
@@ -22,7 +21,7 @@ type PluginInstall struct {
 	manifest       *PluginManifest
 	runningVersion *string
 	processManager *ProcessManager
-	rpcListener    net.Listener
+	rpcServer      *PluginRpcServer
 }
 
 func (p *PluginInstall) GetManifest() (*PluginManifest, error) {
@@ -54,13 +53,24 @@ func (p *PluginInstall) GetStatus() (*PluginStatus, error) {
 		Enabled:        p.Enabled,
 	}
 
-	status.Status = "stopped"
-	if p.processManager != nil {
-		status.Status = "running"
-		if p.processManager.LastError != nil {
-			status.Status = "errored"
-			status.Error = p.processManager.LastError.Error()
+	if p.rpcServer != nil && p.rpcServer.status.Status != "disconnected" {
+		log.Printf("Status from RPC: %v", p.rpcServer.status)
+		status.Status = p.rpcServer.status.Status
+		status.Message = p.rpcServer.status.Message
+
+		if status.Status == "error" {
+			status.Message = p.rpcServer.status.Message
 		}
+	} else {
+		status.Status = "stopped"
+		if p.processManager != nil {
+			status.Status = "running"
+			if p.processManager.LastError != nil {
+				status.Status = "errored"
+				status.Message = p.processManager.LastError.Error()
+			}
+		}
+		log.Printf("Status from process manager: %v", status.Status)
 	}
 
 	return &status, nil
@@ -94,8 +104,10 @@ func (p *PluginInstall) ReconcileSubprocess() error {
 		p.processManager.Disable()
 		p.processManager = nil
 		p.runningVersion = nil
-		p.rpcListener.Close()
-		p.rpcListener = nil
+		err = p.rpcServer.Stop()
+		if err != nil {
+			return fmt.Errorf("failed to stop rpc server: %v", err)
+		}
 	}
 
 	if versionShouldBeRunning == "" {
@@ -103,25 +115,22 @@ func (p *PluginInstall) ReconcileSubprocess() error {
 	}
 
 	workingDir := path.Join(pluginsFolder, "working_dirs", p.manifest.Name)
-	socketPath := path.Join(workingDir, "plugin.sock")
-
-	os.Remove(socketPath)
 	err = os.MkdirAll(workingDir, 0755)
 	if err != nil {
 		return fmt.Errorf("failed to create working directory: %v", err)
 	}
 
-	listener, err := net.Listen("unix", socketPath)
+	p.rpcServer = NewPluginRpcServer(p, workingDir)
+	err = p.rpcServer.Start()
 	if err != nil {
-		return fmt.Errorf("failed to listen on socket: %v", err)
+		return fmt.Errorf("failed to start rpc server: %v", err)
 	}
-	p.rpcListener = listener
 
 	p.processManager = NewProcessManager(func() *exec.Cmd {
 		cmd := exec.Command(manifest.BinaryPath)
 		cmd.Dir = p.GetExtractedFolder()
 		cmd.Env = append(cmd.Env,
-			"JETKVM_PLUGIN_SOCK="+socketPath,
+			"JETKVM_PLUGIN_SOCK="+p.rpcServer.SocketPath(),
 			"JETKVM_PLUGIN_WORKING_DIR="+workingDir,
 		)
 		cmd.Stdout = os.Stdout
@@ -147,8 +156,7 @@ func (p *PluginInstall) Shutdown() {
 		p.runningVersion = nil
 	}
 
-	if p.rpcListener != nil {
-		p.rpcListener.Close()
-		p.rpcListener = nil
+	if p.rpcServer != nil {
+		p.rpcServer.Stop()
 	}
 }

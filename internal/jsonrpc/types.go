@@ -8,10 +8,16 @@ type JSONRPCRequest struct {
 }
 
 type JSONRPCResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   interface{} `json:"error,omitempty"`
-	ID      interface{} `json:"id"`
+	JSONRPC string                `json:"jsonrpc"`
+	Result  interface{}           `json:"result,omitempty"`
+	Error   *JSONRPCResponseError `json:"error,omitempty"`
+	ID      interface{}           `json:"id"`
+}
+
+type JSONRPCResponseError struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
 type JSONRPCEvent struct {
