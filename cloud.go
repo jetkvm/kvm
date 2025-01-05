@@ -68,6 +68,11 @@ func handleCloudRegister(c *gin.Context) {
 		return
 	}
 
+	if config.CloudToken == "" {
+		logger.Info("Starting websocket client due to adoption")
+		go RunWebsocketClient()
+	}
+
 	config.CloudToken = tokenResp.SecretToken
 	config.CloudURL = req.CloudAPI
 
