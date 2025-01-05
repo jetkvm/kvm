@@ -559,5 +559,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"pluginExtract":          {Func: plugin.RpcPluginExtract, Params: []string{"filename"}},
 	"pluginInstall":          {Func: plugin.RpcPluginInstall, Params: []string{"name", "version"}},
 	"pluginList":             {Func: plugin.RpcPluginList},
-	"pluginUpdateConfig":     {Func: plugin.RpcUpdateConfig, Params: []string{"name", "enabled"}},
+	"pluginUpdateConfig":     {Func: plugin.RpcPluginUpdateConfig, Params: []string{"name", "enabled"}},
+	"pluginUninstall":        {Func: plugin.RpcPluginUninstall, Params: []string{"name"}},
 }

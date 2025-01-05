@@ -46,6 +46,24 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
     setLoading(true);
     send("pluginUpdateConfig", { name: plugin.name, enabled }, resp => {
       if ("error" in resp) {
+        setLoading(false);
+        setError(resp.error.message);
+        return
+      }
+      setOpen(false);
+    });
+  }, [send, plugin, setOpen])
+
+  const uninstallPlugin = useCallback(() => {
+    if (!plugin) return;
+    if (!window.confirm("Are you sure you want to uninstall this plugin? This will not delete any data.")) {
+      return;
+    }
+
+    setLoading(true);
+    send("pluginUninstall", { name: plugin.name }, resp => {
+      if ("error" in resp) {
+        setLoading(false);
         setError(resp.error.message);
         return
       }
@@ -104,6 +122,15 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
                       animationDelay: "0.1s",
                     }}
                   >
+                    <div className="flex items-center w-full space-x-2">
+                      <Button
+                        size="MD"
+                        theme="blank"
+                        text="Uninstall Plugin"
+                        disabled={loading}
+                        onClick={uninstallPlugin}
+                      />
+                    </div>
                     <div className="flex justify-end w-full space-x-2">
                       <Button
                         size="MD"

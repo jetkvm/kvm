@@ -629,6 +629,7 @@ function InstallPluginView({
             size="MD"
             theme="primary"
             text="Install"
+            disabled={!manifest || installing}
             onClick={handleInstall}
           />
         </div>

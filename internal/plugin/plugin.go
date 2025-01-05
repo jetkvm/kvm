@@ -168,7 +168,7 @@ func RpcPluginList() ([]PluginStatus, error) {
 	return plugins, nil
 }
 
-func RpcUpdateConfig(name string, enabled bool) (*PluginStatus, error) {
+func RpcPluginUpdateConfig(name string, enabled bool) (*PluginStatus, error) {
 	pluginInstall, ok := pluginDatabase.Plugins[name]
 	if !ok {
 		return nil, fmt.Errorf("plugin not found: %s", name)
@@ -191,6 +191,32 @@ func RpcUpdateConfig(name string, enabled bool) (*PluginStatus, error) {
 		return nil, fmt.Errorf("failed to get plugin status for %s: %v", name, err)
 	}
 	return status, nil
+}
+
+func RpcPluginUninstall(name string) error {
+	pluginInstall, ok := pluginDatabase.Plugins[name]
+	if !ok {
+		return fmt.Errorf("plugin not found: %s", name)
+	}
+
+	pluginInstall.Enabled = false
+
+	err := pluginInstall.ReconcileSubprocess()
+	if err != nil {
+		return fmt.Errorf("failed to stop plugin %s: %v", name, err)
+	}
+
+	delete(pluginDatabase.Plugins, name)
+	if err := pluginDatabase.Save(); err != nil {
+		return fmt.Errorf("failed to save plugin database: %v", err)
+	}
+
+	err = pluginDatabase.CleanupExtractDirectories()
+	if err != nil {
+		return fmt.Errorf("failed to cleanup extract directories: %v", err)
+	}
+
+	return nil
 }
 
 func readManifest(extractFolder string) (*PluginManifest, error) {

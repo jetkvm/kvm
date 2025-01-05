@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"sync"
 )
 
@@ -54,6 +55,37 @@ func (d *PluginDatabase) Save() error {
 
 	if err := os.Rename(databaseFile+".tmp", databaseFile); err != nil {
 		return fmt.Errorf("failed to move plugin database to active file: %v", err)
+	}
+
+	return nil
+}
+
+// Find all extract directories that are not referenced in the Plugins map and remove them
+func (d *PluginDatabase) CleanupExtractDirectories() error {
+	extractDirectories, err := os.ReadDir(pluginsExtractsFolder)
+	if err != nil {
+		return fmt.Errorf("failed to read extract directories: %v", err)
+	}
+
+	for _, extractDir := range extractDirectories {
+		found := false
+		for _, pluginInstall := range d.Plugins {
+			for _, extractedFolder := range pluginInstall.ExtractedVersions {
+				if extractDir.Name() == extractedFolder {
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+
+		if !found {
+			if err := os.RemoveAll(path.Join(pluginsExtractsFolder, extractDir.Name())); err != nil {
+				return fmt.Errorf("failed to remove extract directory: %v", err)
+			}
+		}
 	}
 
 	return nil
