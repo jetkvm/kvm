@@ -115,7 +115,7 @@ func setDisplayBrightness(brightness int) error {
 		return err
 	}
 
-	fmt.Printf("display: set brightness to %v", brightness)
+	fmt.Printf("display: set brightness to %v\n", brightness)
 	return nil
 }
 
