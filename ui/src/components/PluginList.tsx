@@ -4,7 +4,7 @@ import { PluginStatus, usePluginStore, useUiStore } from "@/hooks/stores";
 import { useCallback, useEffect, useState } from "react";
 import { cx } from "@/cva.config";
 import UploadPluginModal from "@components/UploadPluginDialog";
-import PluginConfigureModal from "./PluginConfigureDialog";
+import PluginConfigureModal from "@components/PluginConfigureDialog";
 
 function PluginListStatusIcon({ plugin }: { plugin: PluginStatus }) {
   let classNames = "bg-slate-500 border-slate-600";
