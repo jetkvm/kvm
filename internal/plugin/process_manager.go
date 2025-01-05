@@ -9,8 +9,10 @@ import (
 )
 
 // TODO: this can probably be defaulted to this, but overwritten on a per-plugin basis
-const GRACEFUL_SHUTDOWN_DELAY = 30 * time.Second
-const MAX_RESTART_BACKOFF = 30 * time.Second
+const (
+	gracefulShutdownDelay = 30 * time.Second
+	maxRestartBackoff     = 30 * time.Second
+)
 
 type ProcessManager struct {
 	cmdGen    func() *exec.Cmd
@@ -75,8 +77,8 @@ func (pm *ProcessManager) scheduleRestart() {
 		log.Printf("Restarting process in %v...", pm.backoff)
 		time.Sleep(pm.backoff)
 		pm.backoff *= 2 // Exponential backoff
-		if pm.backoff > MAX_RESTART_BACKOFF {
-			pm.backoff = MAX_RESTART_BACKOFF
+		if pm.backoff > maxRestartBackoff {
+			pm.backoff = maxRestartBackoff
 		}
 		pm.restartCh <- struct{}{}
 	}
@@ -87,7 +89,7 @@ func (pm *ProcessManager) terminate() {
 		log.Printf("Sending SIGTERM...")
 		pm.cmd.Process.Signal(syscall.SIGTERM)
 		select {
-		case <-time.After(GRACEFUL_SHUTDOWN_DELAY):
+		case <-time.After(gracefulShutdownDelay):
 			log.Printf("Forcing process termination...")
 			pm.cmd.Process.Kill()
 		case <-pm.waitForExit():
