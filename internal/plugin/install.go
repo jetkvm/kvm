@@ -22,7 +22,7 @@ type PluginInstall struct {
 	manifest       *PluginManifest
 	runningVersion *string
 	processManager *ProcessManager
-	rpcListener    *net.Listener
+	rpcListener    net.Listener
 }
 
 func (p *PluginInstall) GetManifest() (*PluginManifest, error) {
@@ -115,7 +115,7 @@ func (p *PluginInstall) ReconcileSubprocess() error {
 	if err != nil {
 		return fmt.Errorf("failed to listen on socket: %v", err)
 	}
-	p.rpcListener = &listener
+	p.rpcListener = listener
 
 	p.processManager = NewProcessManager(func() *exec.Cmd {
 		cmd := exec.Command(manifest.BinaryPath)
@@ -148,7 +148,7 @@ func (p *PluginInstall) Shutdown() {
 	}
 
 	if p.rpcListener != nil {
-		(*p.rpcListener).Close()
+		p.rpcListener.Close()
 		p.rpcListener = nil
 	}
 }
