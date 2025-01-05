@@ -97,13 +97,15 @@ func updateStaticContents() {
 // setDisplayBrightness sets /sys/class/backlight/backlight/brightness to alter
 // the backlight brightness of the JetKVM hardware's display.
 func setDisplayBrightness(brightness int) error {
+	// NOTE: The actual maximum value for this is 255, but out-of-the-box, the value is set to 64.
+	// The maximum set here is set to 100 to reduce the risk of drawing too much power (and besides, 255 is very bright!).
 	if brightness > 100 || brightness < 0 {
 		return errors.New("brightness value out of bounds, must be between 0 and 100")
 	}
 
 	// Check the display backlight class is available
 	if _, err := os.Stat(BACKLIGHT_CONTROL_CLASS); errors.Is(err, os.ErrNotExist) {
-		return errors.New("brightness value cannot be set, possibly not running on JetKVM hardware.")
+		return errors.New("brightness value cannot be set, possibly not running on JetKVM hardware")
 	}
 
 	// Set the value
@@ -122,8 +124,6 @@ func setDisplayBrightness(brightness int) error {
 func displayTimeoutTick() {
 	tn := time.Now()
 	td := tn.Sub(lastWakeTime).Milliseconds()
-
-	// fmt.Printf("display: tick: time since wake: %vms, dim after: %v, off after: %v\n", td, config.DisplayDimAfterMs, config.DisplayOffAfterMs)
 
 	if td > config.DisplayOffAfterMs && config.DisplayOffAfterMs != 0 && (backlightState == 1 || backlightState == 0) {
 		// Display fully off
@@ -174,7 +174,6 @@ func wakeDisplay() {
 // TODO: This is quite a hack, really we should be getting an event from jetkvm_native, or the whole display backlight
 // control should be hoisted up to jetkvm_native.
 func watchTsEvents() {
-	// Open touchscreen device
 	ts, err := os.OpenFile(TOUCHSCREEN_DEVICE, os.O_RDONLY, 0666)
 	if err != nil {
 		fmt.Printf("display: failed to open touchscreen device: %s\n", err)
@@ -183,7 +182,9 @@ func watchTsEvents() {
 
 	defer ts.Close()
 
-	// Watch for events
+	// This buffer is set to 24 bytes as that's the normal size of events on /dev/input
+	// Reference: https://www.kernel.org/doc/Documentation/input/input.txt
+	// This could potentially be set higher, to require multiple events to wake the display.
 	buf := make([]byte, 24)
 	for {
 		_, err := ts.Read(buf)
@@ -192,7 +193,6 @@ func watchTsEvents() {
 			return
 		}
 
-		// Touchscreen event, wake the display
 		wakeDisplay()
 	}
 }
