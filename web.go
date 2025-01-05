@@ -192,7 +192,7 @@ func protectedMiddleware() gin.HandlerFunc {
 		}
 
 		authToken, err := c.Cookie("authToken")
-		if err != nil || authToken != config.LocalAuthToken {
+		if err != nil || authToken != config.LocalAuthToken || authToken == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return

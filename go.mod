@@ -7,7 +7,9 @@ toolchain go1.21.1
 require (
 	github.com/Masterminds/semver/v3 v3.3.0
 	github.com/beevik/ntp v1.3.1
+	github.com/coder/websocket v1.8.12
 	github.com/coreos/go-oidc/v3 v3.11.0
+	github.com/creack/pty v1.1.23
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/uuid v1.6.0
 	github.com/gwatts/rootcerts v0.0.0-20240401182218-3ab9db955caf
@@ -17,10 +19,10 @@ require (
 	github.com/pion/mdns/v2 v2.0.7
 	github.com/pion/webrtc/v4 v4.0.0
 	github.com/pojntfx/go-nbd v0.3.2
+	github.com/psanford/httpreadat v0.1.0
 	github.com/vishvananda/netlink v1.3.0
 	golang.org/x/crypto v0.28.0
 	golang.org/x/net v0.30.0
-	nhooyr.io/websocket v1.8.11
 )
 
 replace github.com/pojntfx/go-nbd v0.3.2 => github.com/chemhack/go-nbd v0.0.0-20241006125820-59e45f5b1e7b
@@ -30,7 +32,6 @@ require (
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
-	github.com/creack/pty v1.1.23 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.2 // indirect
@@ -60,7 +61,6 @@ require (
 	github.com/pion/stun/v3 v3.0.0 // indirect
 	github.com/pion/transport/v3 v3.0.7 // indirect
 	github.com/pion/turn/v4 v4.0.0 // indirect
-	github.com/psanford/httpreadat v0.1.0 // indirect
 	github.com/rogpeppe/go-internal v1.8.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
