@@ -141,7 +141,7 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
                     </>
                   )}
                   <p className="text-sm text-gray-500 dark:text-gray-400 py-10">
-                    TODO: Plugin configuration goes here
+                    Plugin configuration coming soon
                   </p>
 
                   <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
