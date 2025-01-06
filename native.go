@@ -151,6 +151,9 @@ func handleCtrlClient(conn net.Conn) {
 
 	ctrlSocketConn = conn
 
+	// Restore HDMI EDID if applicable
+	go restoreHdmiEdid()
+
 	readBuf := make([]byte, 4096)
 	for {
 		n, err := conn.Read(readBuf)
@@ -296,4 +299,17 @@ func ensureBinaryUpdated(destPath string) error {
 	}
 
 	return nil
+}
+
+// Restore the HDMI EDID value from the config.
+// Called after successful connection to jetkvm_native.
+func restoreHdmiEdid() {
+	LoadConfig()
+	if config.EdidString != "" {
+		logger.Infof("Restoring HDMI EDID to %v", config.EdidString)
+		_, err := CallCtrlAction("set_edid", map[string]interface{}{"edid": config.EdidString})
+		if err != nil {
+			logger.Errorf("Failed to restore HDMI EDID: %v", err)
+		}
+	}
 }

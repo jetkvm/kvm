@@ -22,6 +22,7 @@ type Config struct {
 	LocalAuthToken    string            `json:"local_auth_token"`
 	LocalAuthMode     string            `json:"localAuthMode"` //TODO: fix it with migration
 	WakeOnLanDevices  []WakeOnLanDevice `json:"wake_on_lan_devices"`
+	EdidString        string            `json:"hdmi_edid_string"`
 }
 
 const configPath = "/userdata/kvm_config.json"

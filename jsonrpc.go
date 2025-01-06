@@ -183,6 +183,12 @@ func rpcSetEDID(edid string) error {
 	if err != nil {
 		return err
 	}
+
+	// Save EDID to config, allowing it to be restored on reboot.
+	LoadConfig()
+	config.EdidString = edid
+	SaveConfig()
+
 	return nil
 }
 
