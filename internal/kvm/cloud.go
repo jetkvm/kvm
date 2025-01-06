@@ -1,4 +1,4 @@
-package server
+package kvm
 
 import (
 	"bytes"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/coder/websocket/wsjson"
 	"github.com/jetkvm/kvm/internal/config"
-	"github.com/jetkvm/kvm/internal/hardware"
 	"github.com/jetkvm/kvm/internal/logging"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -121,7 +120,7 @@ func runWebsocketClient() error {
 		wsURL.Scheme = "wss"
 	}
 	header := http.Header{}
-	header.Set("X-Device-ID", hardware.GetDeviceID())
+	header.Set("X-Device-ID", GetDeviceID())
 	header.Set("Authorization", "Bearer "+cfg.CloudToken)
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelDial()
@@ -248,7 +247,7 @@ func RPCDeregisterDevice() error {
 		return fmt.Errorf("cloud token or URL is not set")
 	}
 
-	req, err := http.NewRequest(http.MethodDelete, cfg.CloudURL+"/devices/"+hardware.GetDeviceID(), nil)
+	req, err := http.NewRequest(http.MethodDelete, cfg.CloudURL+"/devices/"+GetDeviceID(), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create deregister request: %w", err)
 	}

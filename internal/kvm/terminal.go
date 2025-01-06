@@ -1,4 +1,4 @@
-package server
+package kvm
 
 import (
 	"encoding/json"

@@ -1,32 +1,34 @@
-package server
+package kvm
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
 type RemoteImageReader interface {
 	Read(ctx context.Context, offset int64, size int64) ([]byte, error)
 }
 
-type WebRTCDiskReader struct {
+type WebRTCDiskReaderStruct struct {
 }
 
-var webRTCDiskReader WebRTCDiskReader
+var WebRTCDiskReader WebRTCDiskReaderStruct
 
-func (w *WebRTCDiskReader) Read(ctx context.Context, offset int64, size int64) ([]byte, error) {
-	virtualMediaStateMutex.RLock()
-	if currentVirtualMediaState == nil {
-		virtualMediaStateMutex.RUnlock()
+func (w *WebRTCDiskReaderStruct) Read(ctx context.Context, offset int64, size int64) ([]byte, error) {
+	VirtualMediaStateMutex.RLock()
+	if CurrentVirtualMediaState == nil {
+		VirtualMediaStateMutex.RUnlock()
 		return nil, errors.New("image not mounted")
 	}
-	if currentVirtualMediaState.Source != WebRTC {
-		virtualMediaStateMutex.RUnlock()
+	if CurrentVirtualMediaState.Source != WebRTC {
+		VirtualMediaStateMutex.RUnlock()
 		return nil, errors.New("image not mounted from webrtc")
 	}
-	mountedImageSize := currentVirtualMediaState.Size
-	virtualMediaStateMutex.RUnlock()
+	mountedImageSize := CurrentVirtualMediaState.Size
+	VirtualMediaStateMutex.RUnlock()
 	end := offset + size
 	if end > mountedImageSize {
 		end = mountedImageSize
@@ -44,7 +46,7 @@ func (w *WebRTCDiskReader) Read(ctx context.Context, offset int64, size int64) (
 		return nil, errors.New("not active session")
 	}
 
-	logger.Debugf("reading from webrtc %v", string(jsonBytes))
+	logging.Logger.Debugf("reading from webrtc %v", string(jsonBytes))
 	err = CurrentSession.DiskChannel.SendText(string(jsonBytes))
 	if err != nil {
 		return nil, err
@@ -52,7 +54,7 @@ func (w *WebRTCDiskReader) Read(ctx context.Context, offset int64, size int64) (
 	buf := make([]byte, 0)
 	for {
 		select {
-		case data := <-diskReadChan:
+		case data := <-DiskReadChan:
 			buf = data[16:]
 		case <-ctx.Done():
 			return nil, context.Canceled

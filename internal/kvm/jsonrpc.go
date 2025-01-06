@@ -1,4 +1,4 @@
-package server
+package kvm
 
 import (
 	"context"
@@ -12,10 +12,7 @@ import (
 	"reflect"
 
 	"github.com/jetkvm/kvm/internal/config"
-	"github.com/jetkvm/kvm/internal/hardware"
-	"github.com/jetkvm/kvm/internal/jiggler"
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/jetkvm/kvm/internal/network"
 	"github.com/jetkvm/kvm/internal/wol"
 	"github.com/pion/webrtc/v4"
 )
@@ -134,7 +131,7 @@ func rpcPing() (string, error) {
 }
 
 func rpcGetDeviceID() (string, error) {
-	return hardware.GetDeviceID(), nil
+	return GetDeviceID(), nil
 }
 
 var streamFactor = 1.0
@@ -145,7 +142,7 @@ func rpcGetStreamQualityFactor() (float64, error) {
 
 func rpcSetStreamQualityFactor(factor float64) error {
 	log.Printf("Setting stream quality factor to: %f", factor)
-	var _, err = hardware.CallCtrlAction("set_video_quality_factor", map[string]interface{}{"quality_factor": factor})
+	var _, err = CallCtrlAction("set_video_quality_factor", map[string]interface{}{"quality_factor": factor})
 	if err != nil {
 		return err
 	}
@@ -169,7 +166,7 @@ func rpcSetAutoUpdateState(enabled bool) (bool, error) {
 }
 
 func rpcGetEDID() (string, error) {
-	resp, err := hardware.CallCtrlAction("get_edid", nil)
+	resp, err := CallCtrlAction("get_edid", nil)
 	if err != nil {
 		return "", err
 	}
@@ -187,7 +184,7 @@ func rpcSetEDID(edid string) error {
 	} else {
 		log.Printf("Setting EDID to: %s", edid)
 	}
-	_, err := hardware.CallCtrlAction("set_edid", map[string]interface{}{"edid": edid})
+	_, err := CallCtrlAction("set_edid", map[string]interface{}{"edid": edid})
 	if err != nil {
 		return err
 	}
@@ -208,10 +205,10 @@ func rpcSetDevChannelState(enabled bool) error {
 	return nil
 }
 
-func rpcGetUpdateStatus() (*network.UpdateStatus, error) {
+func rpcGetUpdateStatus() (*UpdateStatus, error) {
 	cfg := config.LoadConfig()
 	includePreRelease := cfg.IncludePreRelease
-	updateStatus, err := network.GetUpdateStatus(context.Background(), hardware.GetDeviceID(), includePreRelease)
+	updateStatus, err := GetUpdateStatus(context.Background(), GetDeviceID(), includePreRelease)
 	if err != nil {
 		return nil, fmt.Errorf("error checking for updates: %w", err)
 	}
@@ -223,7 +220,7 @@ func rpcTryUpdate() error {
 	cfg := config.LoadConfig()
 	includePreRelease := cfg.IncludePreRelease
 	go func() {
-		err := network.TryUpdate(context.Background(), hardware.GetDeviceID(), includePreRelease)
+		err := TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
 		if err != nil {
 			logging.Logger.Warnf("failed to try update: %v", err)
 		}
@@ -441,7 +438,7 @@ func rpcSetMassStorageMode(mode string) (string, error) {
 
 	log.Printf("[jsonrpc.go:rpcSetMassStorageMode] Setting mass storage mode to: %s", mode)
 
-	err := hardware.SetMassStorageMode(cdrom)
+	err := SetMassStorageMode(cdrom)
 	if err != nil {
 		return "", fmt.Errorf("failed to set mass storage mode: %w", err)
 	}
@@ -453,7 +450,7 @@ func rpcSetMassStorageMode(mode string) (string, error) {
 }
 
 func rpcGetMassStorageMode() (string, error) {
-	cdrom, err := hardware.GetMassStorageMode()
+	cdrom, err := GetMassStorageMode()
 	if err != nil {
 		return "", fmt.Errorf("failed to get mass storage mode: %w", err)
 	}
@@ -466,10 +463,10 @@ func rpcGetMassStorageMode() (string, error) {
 }
 
 func rpcIsUpdatePending() (bool, error) {
-	return network.IsUpdatePending(), nil
+	return IsUpdatePending(), nil
 }
 
-var udcFilePath = filepath.Join("/sys/bus/platform/drivers/dwc3", udc)
+var udcFilePath = filepath.Join("/sys/bus/platform/drivers/dwc3", Udc)
 
 func rpcGetUsbEmulationState() (bool, error) {
 	_, err := os.Stat(udcFilePath)
@@ -484,9 +481,9 @@ func rpcGetUsbEmulationState() (bool, error) {
 
 func rpcSetUsbEmulationState(enabled bool) error {
 	if enabled {
-		return os.WriteFile("/sys/bus/platform/drivers/dwc3/bind", []byte(udc), 0644)
+		return os.WriteFile("/sys/bus/platform/drivers/dwc3/bind", []byte(Udc), 0644)
 	} else {
-		return os.WriteFile("/sys/bus/platform/drivers/dwc3/unbind", []byte(udc), 0644)
+		return os.WriteFile("/sys/bus/platform/drivers/dwc3/unbind", []byte(Udc), 0644)
 	}
 }
 
@@ -523,15 +520,15 @@ var rpcHandlers = map[string]RPCHandler{
 	"getDeviceID":            {Func: rpcGetDeviceID},
 	"deregisterDevice":       {Func: RPCDeregisterDevice},
 	"getCloudState":          {Func: RPCGetCloudState},
-	"keyboardReport":         {Func: hardware.RPCKeyboardReport, Params: []string{"modifier", "keys"}},
-	"absMouseReport":         {Func: hardware.RPCAbsMouseReport, Params: []string{"x", "y", "buttons"}},
-	"wheelReport":            {Func: hardware.RPCWheelReport, Params: []string{"wheelY"}},
+	"keyboardReport":         {Func: RPCKeyboardReport, Params: []string{"modifier", "keys"}},
+	"absMouseReport":         {Func: RPCAbsMouseReport, Params: []string{"x", "y", "buttons"}},
+	"wheelReport":            {Func: RPCWheelReport, Params: []string{"wheelY"}},
 	"getVideoState":          {Func: rpcGetVideoState},
-	"getUSBState":            {Func: hardware.RPCGetUSBState},
-	"unmountImage":           {Func: hardware.RPCUnmountImage},
-	"rpcMountBuiltInImage":   {Func: hardware.RPCMountBuiltInImage, Params: []string{"filename"}},
-	"setJigglerState":        {Func: jiggler.RPCSetJigglerState, Params: []string{"enabled"}},
-	"getJigglerState":        {Func: jiggler.RPCGetJigglerState},
+	"getUSBState":            {Func: RPCGetUSBState},
+	"unmountImage":           {Func: RPCUnmountImage},
+	"rpcMountBuiltInImage":   {Func: RPCMountBuiltInImage, Params: []string{"filename"}},
+	"setJigglerState":        {Func: RPCSetJigglerState, Params: []string{"enabled"}},
+	"getJigglerState":        {Func: RPCGetJigglerState},
 	"sendWOLMagicPacket":     {Func: wol.RPCSendWolMagicPacket, Params: []string{"macAddress"}},
 	"getStreamQualityFactor": {Func: rpcGetStreamQualityFactor},
 	"setStreamQualityFactor": {Func: rpcSetStreamQualityFactor, Params: []string{"factor"}},
@@ -552,15 +549,15 @@ var rpcHandlers = map[string]RPCHandler{
 	"isUpdatePending":        {Func: rpcIsUpdatePending},
 	"getUsbEmulationState":   {Func: rpcGetUsbEmulationState},
 	"setUsbEmulationState":   {Func: rpcSetUsbEmulationState, Params: []string{"enabled"}},
-	"checkMountUrl":          {Func: hardware.RPCCheckMountUrl, Params: []string{"url"}},
-	"getVirtualMediaState":   {Func: hardware.RPCGetVirtualMediaState},
-	"getStorageSpace":        {Func: hardware.RPCGetStorageSpace},
-	"mountWithHTTP":          {Func: hardware.RPCMountWithHTTP, Params: []string{"url", "mode"}},
-	"mountWithWebRTC":        {Func: hardware.RPCMountWithWebRTC, Params: []string{"filename", "size", "mode"}},
-	"mountWithStorage":       {Func: hardware.RPCMountWithStorage, Params: []string{"filename", "mode"}},
-	"listStorageFiles":       {Func: hardware.RPCListStorageFiles},
-	"deleteStorageFile":      {Func: hardware.RPCDeleteStorageFile, Params: []string{"filename"}},
-	"startStorageFileUpload": {Func: hardware.RPCStartStorageFileUpload, Params: []string{"filename", "size"}},
+	"checkMountUrl":          {Func: RPCCheckMountUrl, Params: []string{"url"}},
+	"getVirtualMediaState":   {Func: RPCGetVirtualMediaState},
+	"getStorageSpace":        {Func: RPCGetStorageSpace},
+	"mountWithHTTP":          {Func: RPCMountWithHTTP, Params: []string{"url", "mode"}},
+	"mountWithWebRTC":        {Func: RPCMountWithWebRTC, Params: []string{"filename", "size", "mode"}},
+	"mountWithStorage":       {Func: RPCMountWithStorage, Params: []string{"filename", "mode"}},
+	"listStorageFiles":       {Func: RPCListStorageFiles},
+	"deleteStorageFile":      {Func: RPCDeleteStorageFile, Params: []string{"filename"}},
+	"startStorageFileUpload": {Func: RPCStartStorageFileUpload, Params: []string{"filename", "size"}},
 	"getWakeOnLanDevices":    {Func: rpcGetWakeOnLanDevices},
 	"setWakeOnLanDevices":    {Func: rpcSetWakeOnLanDevices, Params: []string{"params"}},
 	"resetConfig":            {Func: rpcResetConfig},

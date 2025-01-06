@@ -1,20 +1,18 @@
-package network
+package kvm
 
 import (
 	"fmt"
 	"net"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/hardware"
 	"github.com/pion/mdns/v2"
-	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
-
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
-var networkState struct {
+var NetworkState struct {
 	Up   bool
 	IPv4 string
 	IPv6 string
@@ -57,10 +55,10 @@ func checkNetworkState() {
 		}
 	}
 
-	if newState != networkState {
-		networkState = newState
+	if newState != NetworkState {
+		NetworkState = newState
 		fmt.Println("network state changed")
-		hardware.RequestDisplayUpdate()
+		RequestDisplayUpdate()
 	}
 }
 
@@ -105,7 +103,7 @@ func init() {
 	}
 
 	go func() {
-		waitCtrlClientConnected()
+		WaitCtrlClientConnected()
 		checkNetworkState()
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()

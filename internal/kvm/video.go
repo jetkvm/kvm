@@ -1,14 +1,12 @@
-package server
+package kvm
 
 import (
 	"encoding/json"
 	"log"
-
-	"github.com/jetkvm/kvm/internal/hardware"
 )
 
 // max frame size for 1080p video, specified in mpp venc setting
-const maxFrameSize = 1920 * 1080 / 2
+const MaxFrameSize = 1920 * 1080 / 2
 
 func writeCtrlAction(action string) error {
 	actionMessage := map[string]string{
@@ -18,7 +16,7 @@ func writeCtrlAction(action string) error {
 	if err != nil {
 		return err
 	}
-	err = hardware.WriteCtrlMessage(jsonMessage)
+	err = WriteCtrlMessage(jsonMessage)
 	return err
 }
 
@@ -30,25 +28,25 @@ type VideoInputState struct {
 	FramePerSecond float64 `json:"fps"`
 }
 
-var lastVideoState VideoInputState
+var LastVideoState VideoInputState
 
 func TriggerVideoStateUpdate() {
 	go func() {
-		WriteJSONRPCEvent("videoInputState", lastVideoState, CurrentSession)
+		WriteJSONRPCEvent("videoInputState", LastVideoState, CurrentSession)
 	}()
 }
-func HandleVideoStateMessage(event hardware.CtrlResponse) {
+func HandleVideoStateMessage(event CtrlResponse) {
 	videoState := VideoInputState{}
 	err := json.Unmarshal(event.Data, &videoState)
 	if err != nil {
 		log.Println("Error parsing video state json:", err)
 		return
 	}
-	lastVideoState = videoState
+	LastVideoState = videoState
 	TriggerVideoStateUpdate()
-	hardware.RequestDisplayUpdate()
+	RequestDisplayUpdate()
 }
 
 func rpcGetVideoState() (VideoInputState, error) {
-	return lastVideoState, nil
+	return LastVideoState, nil
 }

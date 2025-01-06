@@ -1,4 +1,4 @@
-package network
+package kvm
 
 import (
 	"bytes"
@@ -13,10 +13,10 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
 type UpdateMetadata struct {
@@ -42,27 +42,6 @@ type UpdateStatus struct {
 }
 
 const UpdateMetadataUrl = "https://api.jetkvm.com/releases"
-
-var builtAppVersion = "0.1.0+dev"
-
-func GetLocalVersion() (systemVersion *semver.Version, appVersion *semver.Version, err error) {
-	appVersion, err = semver.NewVersion(builtAppVersion)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid built-in app version: %w", err)
-	}
-
-	systemVersionBytes, err := os.ReadFile("/version")
-	if err != nil {
-		return nil, appVersion, fmt.Errorf("error reading system version: %w", err)
-	}
-
-	systemVersion, err = semver.NewVersion(strings.TrimSpace(string(systemVersionBytes)))
-	if err != nil {
-		return nil, appVersion, fmt.Errorf("invalid system version: %w", err)
-	}
-
-	return systemVersion, appVersion, nil
-}
 
 func fetchUpdateMetadata(ctx context.Context, deviceId string, includePreRelease bool) (*UpdateMetadata, error) {
 	metadata := &UpdateMetadata{}
@@ -498,6 +477,6 @@ func IsUpdatePending() bool {
 func ConfirmCurrentSystem() {
 	output, err := exec.Command("rk_ota", "--misc=now").CombinedOutput()
 	if err != nil {
-		logger.Warnf("failed to set current partition in A/B setup: %s", string(output))
+		logging.Logger.Warnf("failed to set current partition in A/B setup: %s", string(output))
 	}
 }

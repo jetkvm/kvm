@@ -1,11 +1,10 @@
-package hardware
+package kvm
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"kvm/resource"
 	"log"
 	"net/http"
 	"os"
@@ -15,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/jetkvm/kvm/resource"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jetkvm/kvm/internal/logging"
@@ -55,7 +56,7 @@ func SetMassStorageMode(cdrom bool) error {
 
 func OnDiskMessage(msg webrtc.DataChannelMessage) {
 	fmt.Println("Disk Message, len:", len(msg.Data))
-	diskReadChan <- msg.Data
+	DiskReadChan <- msg.Data
 }
 
 func mountImage(imagePath string) error {
@@ -153,18 +154,18 @@ type VirtualMediaState struct {
 	Size     int64              `json:"size"`
 }
 
-var currentVirtualMediaState *VirtualMediaState
-var virtualMediaStateMutex sync.RWMutex
+var CurrentVirtualMediaState *VirtualMediaState
+var VirtualMediaStateMutex sync.RWMutex
 
 func RPCGetVirtualMediaState() (*VirtualMediaState, error) {
-	virtualMediaStateMutex.RLock()
-	defer virtualMediaStateMutex.RUnlock()
-	return currentVirtualMediaState, nil
+	VirtualMediaStateMutex.RLock()
+	defer VirtualMediaStateMutex.RUnlock()
+	return CurrentVirtualMediaState, nil
 }
 
 func RPCUnmountImage() error {
-	virtualMediaStateMutex.Lock()
-	defer virtualMediaStateMutex.Unlock()
+	VirtualMediaStateMutex.Lock()
+	defer VirtualMediaStateMutex.Unlock()
 	err := setMassStorageImage("\n")
 	if err != nil {
 		fmt.Println("Remove Mass Storage Image Error", err)
@@ -175,32 +176,32 @@ func RPCUnmountImage() error {
 		nbdDevice.Close()
 		nbdDevice = nil
 	}
-	currentVirtualMediaState = nil
+	CurrentVirtualMediaState = nil
 	return nil
 }
 
-var httpRangeReader *httpreadat.RangeReader
+var HttpRangeReader *httpreadat.RangeReader
 
 func RPCMountWithHTTP(url string, mode VirtualMediaMode) error {
-	virtualMediaStateMutex.Lock()
-	if currentVirtualMediaState != nil {
-		virtualMediaStateMutex.Unlock()
+	VirtualMediaStateMutex.Lock()
+	if CurrentVirtualMediaState != nil {
+		VirtualMediaStateMutex.Unlock()
 		return fmt.Errorf("another virtual media is already mounted")
 	}
-	httpRangeReader = httpreadat.New(url)
-	n, err := httpRangeReader.Size()
+	HttpRangeReader = httpreadat.New(url)
+	n, err := HttpRangeReader.Size()
 	if err != nil {
-		virtualMediaStateMutex.Unlock()
+		VirtualMediaStateMutex.Unlock()
 		return fmt.Errorf("failed to use http url: %w", err)
 	}
 	logging.Logger.Infof("using remote url %s with size %d", url, n)
-	currentVirtualMediaState = &VirtualMediaState{
+	CurrentVirtualMediaState = &VirtualMediaState{
 		Source: HTTP,
 		Mode:   mode,
 		URL:    url,
 		Size:   n,
 	}
-	virtualMediaStateMutex.Unlock()
+	VirtualMediaStateMutex.Unlock()
 
 	logging.Logger.Debug("Starting nbd device")
 	nbdDevice = NewNBDDevice()
@@ -221,19 +222,19 @@ func RPCMountWithHTTP(url string, mode VirtualMediaMode) error {
 }
 
 func RPCMountWithWebRTC(filename string, size int64, mode VirtualMediaMode) error {
-	virtualMediaStateMutex.Lock()
-	if currentVirtualMediaState != nil {
-		virtualMediaStateMutex.Unlock()
+	VirtualMediaStateMutex.Lock()
+	if CurrentVirtualMediaState != nil {
+		VirtualMediaStateMutex.Unlock()
 		return fmt.Errorf("another virtual media is already mounted")
 	}
-	currentVirtualMediaState = &VirtualMediaState{
+	CurrentVirtualMediaState = &VirtualMediaState{
 		Source:   WebRTC,
 		Mode:     mode,
 		Filename: filename,
 		Size:     size,
 	}
-	virtualMediaStateMutex.Unlock()
-	logging.Logger.Debugf("currentVirtualMediaState is %v", currentVirtualMediaState)
+	VirtualMediaStateMutex.Unlock()
+	logging.Logger.Debugf("currentVirtualMediaState is %v", CurrentVirtualMediaState)
 	logging.Logger.Debug("Starting nbd device")
 	nbdDevice = NewNBDDevice()
 	err := nbdDevice.Start()
@@ -258,9 +259,9 @@ func RPCMountWithStorage(filename string, mode VirtualMediaMode) error {
 		return err
 	}
 
-	virtualMediaStateMutex.Lock()
-	defer virtualMediaStateMutex.Unlock()
-	if currentVirtualMediaState != nil {
+	VirtualMediaStateMutex.Lock()
+	defer VirtualMediaStateMutex.Unlock()
+	if CurrentVirtualMediaState != nil {
 		return fmt.Errorf("another virtual media is already mounted")
 	}
 
@@ -274,7 +275,7 @@ func RPCMountWithStorage(filename string, mode VirtualMediaMode) error {
 	if err != nil {
 		return fmt.Errorf("failed to set mass storage image: %w", err)
 	}
-	currentVirtualMediaState = &VirtualMediaState{
+	CurrentVirtualMediaState = &VirtualMediaState{
 		Source:   Storage,
 		Mode:     mode,
 		Filename: filename,

@@ -1,4 +1,4 @@
-package server
+package kvm
 
 import (
 	"encoding/base64"
@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jetkvm/kvm/internal/hardware"
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/jetkvm/kvm/internal/server"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -79,19 +77,19 @@ func NewSession() (*Session, error) {
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				go server.OnRPCMessage(msg, session)
+				go OnRPCMessage(msg, session)
 			})
-			server.TriggerOTAStateUpdate()
-			server.TriggerVideoStateUpdate()
-			hardware.TriggerUSBStateUpdate()
+			TriggerOTAStateUpdate()
+			TriggerVideoStateUpdate()
+			TriggerUSBStateUpdate()
 		case "disk":
 			session.DiskChannel = d
-			d.OnMessage(hardware.OnDiskMessage)
+			d.OnMessage(OnDiskMessage)
 		case "terminal":
-			server.HandleTerminalChannel(d)
+			HandleTerminalChannel(d)
 		default:
-			if strings.HasPrefix(d.Label(), hardware.UploadIdPrefix) {
-				go hardware.HandleUploadChannel(d)
+			if strings.HasPrefix(d.Label(), UploadIdPrefix) {
+				go HandleUploadChannel(d)
 			}
 		}
 	})
@@ -124,9 +122,9 @@ func NewSession() (*Session, error) {
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			if !isConnected {
 				isConnected = true
-				actionSessions++
+				ActionSessions++
 				onActiveSessionsChanged()
-				if actionSessions == 1 {
+				if ActionSessions == 1 {
 					onFirstSessionConnected()
 				}
 			}
@@ -140,14 +138,14 @@ func NewSession() (*Session, error) {
 				CurrentSession = nil
 			}
 			if session.shouldUmountVirtualMedia {
-				err := hardware.RPCUnmountImage()
+				err := RPCUnmountImage()
 				logging.Logger.Debugf("unmount image failed on connection close %v", err)
 			}
 			if isConnected {
 				isConnected = false
-				actionSessions--
+				ActionSessions--
 				onActiveSessionsChanged()
-				if actionSessions == 0 {
+				if ActionSessions == 0 {
 					onLastSessionDisconnected()
 				}
 			}
@@ -156,10 +154,10 @@ func NewSession() (*Session, error) {
 	return session, nil
 }
 
-var actionSessions = 0
+var ActionSessions = 0
 
 func onActiveSessionsChanged() {
-	hardware.RequestDisplayUpdate()
+	RequestDisplayUpdate()
 }
 
 func onFirstSessionConnected() {

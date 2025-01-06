@@ -1,4 +1,4 @@
-package hardware
+package kvm
 
 import (
 	"context"
@@ -17,15 +17,15 @@ type remoteImageBackend struct {
 }
 
 func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
-	virtualMediaStateMutex.RLock()
-	logging.Logger.Debugf("currentVirtualMediaState is %v", currentVirtualMediaState)
+	VirtualMediaStateMutex.RLock()
+	logging.Logger.Debugf("currentVirtualMediaState is %v", CurrentVirtualMediaState)
 	logging.Logger.Debugf("read size: %d, off: %d", len(p), off)
-	if currentVirtualMediaState == nil {
+	if CurrentVirtualMediaState == nil {
 		return 0, errors.New("image not mounted")
 	}
-	source := currentVirtualMediaState.Source
-	mountedImageSize := currentVirtualMediaState.Size
-	virtualMediaStateMutex.RUnlock()
+	source := CurrentVirtualMediaState.Source
+	mountedImageSize := CurrentVirtualMediaState.Size
+	VirtualMediaStateMutex.RUnlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -36,14 +36,14 @@ func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 	var data []byte
 	if source == WebRTC {
-		data, err = webRTCDiskReader.Read(ctx, off, readLen)
+		data, err = WebRTCDiskReader.Read(ctx, off, readLen)
 		if err != nil {
 			return 0, err
 		}
 		n = copy(p, data)
 		return n, nil
 	} else if source == HTTP {
-		return httpRangeReader.ReadAt(p, off)
+		return HttpRangeReader.ReadAt(p, off)
 	} else {
 		return 0, errors.New("unknown image source")
 	}
@@ -54,12 +54,12 @@ func (r remoteImageBackend) WriteAt(p []byte, off int64) (n int, err error) {
 }
 
 func (r remoteImageBackend) Size() (int64, error) {
-	virtualMediaStateMutex.Lock()
-	defer virtualMediaStateMutex.Unlock()
-	if currentVirtualMediaState == nil {
+	VirtualMediaStateMutex.Lock()
+	defer VirtualMediaStateMutex.Unlock()
+	if CurrentVirtualMediaState == nil {
 		return 0, errors.New("no virtual media state")
 	}
-	return currentVirtualMediaState.Size, nil
+	return CurrentVirtualMediaState.Size, nil
 }
 
 func (r remoteImageBackend) Sync() error {

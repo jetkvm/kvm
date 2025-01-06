@@ -1,4 +1,4 @@
-package server
+package kvm
 
 import (
 	"embed"
@@ -11,13 +11,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jetkvm/kvm/internal/config"
-	"github.com/jetkvm/kvm/internal/hardware"
-	"github.com/jetkvm/kvm/internal/server"
 	"golang.org/x/crypto/bcrypt"
 )
 
-//go:embed all:static
-var staticFiles embed.FS
+//go:embed static
+var StaticFiles embed.FS
 
 type WebRTCSessionRequest struct {
 	Sd         string `json:"sd"`
@@ -56,7 +54,7 @@ func setupRouter() *gin.Engine {
 	gin.DisableConsoleColor()
 	r := gin.Default()
 
-	staticFS, _ := fs.Sub(staticFiles, "static")
+	staticFS, _ := fs.Sub(StaticFiles, "static")
 
 	// Add a custom middleware to set cache headers for images
 	// This is crucial for optimizing the initial welcome screen load time
@@ -86,14 +84,14 @@ func setupRouter() *gin.Engine {
 	protected.Use(protectedMiddleware())
 	{
 		protected.POST("/webrtc/session", handleWebRTCSession)
-		protected.POST("/cloud/register", server.HandleCloudRegister)
+		protected.POST("/cloud/register", HandleCloudRegister)
 		protected.GET("/device", handleDevice)
 		protected.POST("/auth/logout", handleLogout)
 
 		protected.POST("/auth/password-local", handleCreatePassword)
 		protected.PUT("/auth/password-local", handleUpdatePassword)
 		protected.DELETE("/auth/local-password", handleDeletePassword)
-		protected.POST("/storage/upload", hardware.HandleUploadHttp)
+		protected.POST("/storage/upload", HandleUploadHttp)
 	}
 
 	// Catch-all route for SPA
@@ -119,7 +117,7 @@ func handleWebRTCSession(c *gin.Context) {
 		return
 	}
 
-	session, err := server.NewSession()
+	session, err := NewSession()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
@@ -220,7 +218,7 @@ func handleDevice(c *gin.Context) {
 
 	response := LocalDevice{
 		AuthMode: &cfg.LocalAuthMode,
-		DeviceID: hardware.GetDeviceID(),
+		DeviceID: GetDeviceID(),
 	}
 
 	c.JSON(http.StatusOK, response)
