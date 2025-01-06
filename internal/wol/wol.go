@@ -1,4 +1,4 @@
-package kvm
+package wol
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 )
 
 // SendWOLMagicPacket sends a Wake-on-LAN magic packet to the specified MAC address
-func rpcSendWOLMagicPacket(macAddress string) error {
+func RPCSendWolMagicPacket(macAddress string) error {
 	// Parse the MAC address
 	mac, err := net.ParseMAC(macAddress)
 	if err != nil {
@@ -16,7 +16,7 @@ func rpcSendWOLMagicPacket(macAddress string) error {
 	}
 
 	// Create the magic packet
-	packet := createMagicPacket(mac)
+	packet := CreateMagicPacket(mac)
 
 	// Set up UDP connection
 	conn, err := net.Dial("udp", "255.255.255.255:9")
@@ -34,8 +34,8 @@ func rpcSendWOLMagicPacket(macAddress string) error {
 	return nil
 }
 
-// createMagicPacket creates a Wake-on-LAN magic packet
-func createMagicPacket(mac net.HardwareAddr) []byte {
+// CreateMagicPacket creates a Wake-on-LAN magic packet
+func CreateMagicPacket(mac net.HardwareAddr) []byte {
 	var buf bytes.Buffer
 
 	// Write 6 bytes of 0xFF

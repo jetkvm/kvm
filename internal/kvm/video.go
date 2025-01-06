@@ -6,7 +6,7 @@ import (
 )
 
 // max frame size for 1080p video, specified in mpp venc setting
-const maxFrameSize = 1920 * 1080 / 2
+const MaxFrameSize = 1920 * 1080 / 2
 
 func writeCtrlAction(action string) error {
 	actionMessage := map[string]string{
@@ -28,11 +28,11 @@ type VideoInputState struct {
 	FramePerSecond float64 `json:"fps"`
 }
 
-var lastVideoState VideoInputState
+var LastVideoState VideoInputState
 
-func triggerVideoStateUpdate() {
+func TriggerVideoStateUpdate() {
 	go func() {
-		writeJSONRPCEvent("videoInputState", lastVideoState, currentSession)
+		WriteJSONRPCEvent("videoInputState", LastVideoState, CurrentSession)
 	}()
 }
 func HandleVideoStateMessage(event CtrlResponse) {
@@ -42,11 +42,11 @@ func HandleVideoStateMessage(event CtrlResponse) {
 		log.Println("Error parsing video state json:", err)
 		return
 	}
-	lastVideoState = videoState
-	triggerVideoStateUpdate()
-	requestDisplayUpdate()
+	LastVideoState = videoState
+	TriggerVideoStateUpdate()
+	RequestDisplayUpdate()
 }
 
 func rpcGetVideoState() (VideoInputState, error) {
-	return lastVideoState, nil
+	return LastVideoState, nil
 }

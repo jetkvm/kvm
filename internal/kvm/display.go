@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"time"
+
 )
 
 var currentScreen = "ui_Boot_Screen"
@@ -34,23 +35,23 @@ func switchToScreenIfDifferent(screenName string) {
 }
 
 func updateDisplay() {
-	updateLabelIfChanged("ui_Home_Content_Ip", networkState.IPv4)
-	if usbState == "configured" {
+	updateLabelIfChanged("ui_Home_Content_Ip", NetworkState.IPv4)
+	if UsbState == "configured" {
 		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Connected")
 		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Usb_Status_Label", "state": "LV_STATE_DEFAULT"})
 	} else {
 		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Disconnected")
 		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Usb_Status_Label", "state": "LV_STATE_USER_2"})
 	}
-	if lastVideoState.Ready {
+	if LastVideoState.Ready {
 		updateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Connected")
 		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Hdmi_Status_Label", "state": "LV_STATE_DEFAULT"})
 	} else {
 		updateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Disconnected")
 		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Hdmi_Status_Label", "state": "LV_STATE_USER_2"})
 	}
-	updateLabelIfChanged("ui_Home_Header_Cloud_Status_Label", fmt.Sprintf("%d active", actionSessions))
-	if networkState.Up {
+	updateLabelIfChanged("ui_Home_Header_Cloud_Status_Label", fmt.Sprintf("%d active", ActionSessions))
+	if NetworkState.Up {
 		switchToScreenIfDifferent("ui_Home_Screen")
 	} else {
 		switchToScreenIfDifferent("ui_No_Network_Screen")
@@ -59,7 +60,7 @@ func updateDisplay() {
 
 var displayInited = false
 
-func requestDisplayUpdate() {
+func RequestDisplayUpdate() {
 	if !displayInited {
 		fmt.Println("display not inited, skipping updates")
 		return
@@ -73,7 +74,7 @@ func requestDisplayUpdate() {
 
 func updateStaticContents() {
 	//contents that never change
-	updateLabelIfChanged("ui_Home_Content_Mac", networkState.MAC)
+	updateLabelIfChanged("ui_Home_Content_Mac", NetworkState.MAC)
 	systemVersion, appVersion, err := GetLocalVersion()
 	if err == nil {
 		updateLabelIfChanged("ui_About_Content_Operating_System_Version_ContentLabel", systemVersion.String())
@@ -85,12 +86,12 @@ func updateStaticContents() {
 
 func init() {
 	go func() {
-		waitCtrlClientConnected()
+		WaitCtrlClientConnected()
 		fmt.Println("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
 		updateStaticContents()
 		displayInited = true
 		fmt.Println("display inited")
-		requestDisplayUpdate()
+		RequestDisplayUpdate()
 	}()
 }

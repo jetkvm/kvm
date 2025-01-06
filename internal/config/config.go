@@ -1,9 +1,11 @@
-package kvm
+package config
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
 type WakeOnLanDevice struct {
@@ -33,30 +35,31 @@ var defaultConfig = &Config{
 
 var config *Config
 
-func LoadConfig() {
+func LoadConfig() *Config {
 	if config != nil {
-		return
+		return config
 	}
 
 	file, err := os.Open(configPath)
 	if err != nil {
-		logger.Debug("default config file doesn't exist, using default")
+		logging.Logger.Debug("default config file doesn't exist, using default")
 		config = defaultConfig
-		return
+		return config
 	}
 	defer file.Close()
 
 	var loadedConfig Config
 	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
-		logger.Errorf("config file JSON parsing failed, %v", err)
+		logging.Logger.Errorf("config file JSON parsing failed, %v", err)
 		config = defaultConfig
-		return
+		return config
 	}
 
 	config = &loadedConfig
+	return config
 }
 
-func SaveConfig() error {
+func SaveConfig(cfg *Config) error {
 	file, err := os.Create(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
@@ -65,7 +68,7 @@ func SaveConfig() error {
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(config); err != nil {
+	if err := encoder.Encode(cfg); err != nil {
 		return fmt.Errorf("failed to encode config: %w", err)
 	}
 

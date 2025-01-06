@@ -10,11 +10,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jetkvm/kvm/internal/config"
 	"golang.org/x/crypto/bcrypt"
 )
 
-//go:embed all:static
-var staticFiles embed.FS
+//go:embed static
+var StaticFiles embed.FS
 
 type WebRTCSessionRequest struct {
 	Sd         string `json:"sd"`
@@ -53,7 +54,7 @@ func setupRouter() *gin.Engine {
 	gin.DisableConsoleColor()
 	r := gin.Default()
 
-	staticFS, _ := fs.Sub(staticFiles, "static")
+	staticFS, _ := fs.Sub(StaticFiles, "static")
 
 	// Add a custom middleware to set cache headers for images
 	// This is crucial for optimizing the initial welcome screen load time
@@ -83,14 +84,14 @@ func setupRouter() *gin.Engine {
 	protected.Use(protectedMiddleware())
 	{
 		protected.POST("/webrtc/session", handleWebRTCSession)
-		protected.POST("/cloud/register", handleCloudRegister)
+		protected.POST("/cloud/register", HandleCloudRegister)
 		protected.GET("/device", handleDevice)
 		protected.POST("/auth/logout", handleLogout)
 
 		protected.POST("/auth/password-local", handleCreatePassword)
 		protected.PUT("/auth/password-local", handleUpdatePassword)
 		protected.DELETE("/auth/local-password", handleDeletePassword)
-		protected.POST("/storage/upload", handleUploadHttp)
+		protected.POST("/storage/upload", HandleUploadHttp)
 	}
 
 	// Catch-all route for SPA
@@ -106,7 +107,7 @@ func setupRouter() *gin.Engine {
 }
 
 // TODO: support multiple sessions?
-var currentSession *Session
+var CurrentSession *Session
 
 func handleWebRTCSession(c *gin.Context) {
 	var req WebRTCSessionRequest
@@ -116,7 +117,7 @@ func handleWebRTCSession(c *gin.Context) {
 		return
 	}
 
-	session, err := newSession()
+	session, err := NewSession()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
@@ -127,22 +128,22 @@ func handleWebRTCSession(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
 	}
-	if currentSession != nil {
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		peerConn := currentSession.peerConnection
+	if CurrentSession != nil {
+		WriteJSONRPCEvent("otherSessionConnected", nil, CurrentSession)
+		peerConn := CurrentSession.PeerConnection
 		go func() {
 			time.Sleep(1 * time.Second)
 			_ = peerConn.Close()
 		}()
 	}
-	currentSession = session
+	CurrentSession = session
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }
 
 func handleLogin(c *gin.Context) {
-	LoadConfig()
+	cfg := config.LoadConfig()
 
-	if config.LocalAuthMode == "noPassword" {
+	if cfg.LocalAuthMode == "noPassword" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Login is disabled in noPassword mode"})
 		return
 	}
@@ -154,25 +155,24 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	LoadConfig()
-	err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password))
+	err := bcrypt.CompareHashAndPassword([]byte(cfg.HashedPassword), []byte(req.Password))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid password"})
 		return
 	}
 
-	config.LocalAuthToken = uuid.New().String()
+	cfg.LocalAuthToken = uuid.New().String()
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", cfg.LocalAuthToken, 7*24*60*60, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Login successful"})
 }
 
 func handleLogout(c *gin.Context) {
-	LoadConfig()
-	config.LocalAuthToken = ""
-	if err := SaveConfig(); err != nil {
+	cfg := config.LoadConfig()
+	cfg.LocalAuthToken = ""
+	if err := config.SaveConfig(cfg); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
@@ -184,15 +184,15 @@ func handleLogout(c *gin.Context) {
 
 func protectedMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		LoadConfig()
+		cfg := config.LoadConfig()
 
-		if config.LocalAuthMode == "noPassword" {
+		if cfg.LocalAuthMode == "noPassword" {
 			c.Next()
 			return
 		}
 
 		authToken, err := c.Cookie("authToken")
-		if err != nil || authToken != config.LocalAuthToken || authToken == "" {
+		if err != nil || authToken != cfg.LocalAuthToken || authToken == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
@@ -214,10 +214,10 @@ func RunWebServer() {
 }
 
 func handleDevice(c *gin.Context) {
-	LoadConfig()
+	cfg := config.LoadConfig()
 
 	response := LocalDevice{
-		AuthMode: &config.LocalAuthMode,
+		AuthMode: &cfg.LocalAuthMode,
 		DeviceID: GetDeviceID(),
 	}
 
@@ -225,9 +225,9 @@ func handleDevice(c *gin.Context) {
 }
 
 func handleCreatePassword(c *gin.Context) {
-	LoadConfig()
+	cfg := config.LoadConfig()
 
-	if config.HashedPassword != "" {
+	if cfg.HashedPassword != "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password already set"})
 		return
 	}
@@ -235,7 +235,7 @@ func handleCreatePassword(c *gin.Context) {
 	// We only allow users with noPassword mode to set a new password
 	// Users with password mode are not allowed to set a new password without providing the old password
 	// We have a PUT endpoint for changing the password, use that instead
-	if config.LocalAuthMode != "noPassword" {
+	if cfg.LocalAuthMode != "noPassword" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password mode is not enabled"})
 		return
 	}
@@ -252,31 +252,31 @@ func handleCreatePassword(c *gin.Context) {
 		return
 	}
 
-	config.HashedPassword = string(hashedPassword)
-	config.LocalAuthToken = uuid.New().String()
-	config.LocalAuthMode = "password"
-	if err := SaveConfig(); err != nil {
+	cfg.HashedPassword = string(hashedPassword)
+	cfg.LocalAuthToken = uuid.New().String()
+	cfg.LocalAuthMode = "password"
+	if err := config.SaveConfig(cfg); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", cfg.LocalAuthToken, 7*24*60*60, "/", "", false, true)
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Password set successfully"})
 }
 
 func handleUpdatePassword(c *gin.Context) {
-	LoadConfig()
+	cfg := config.LoadConfig()
 
-	if config.HashedPassword == "" {
+	if cfg.HashedPassword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password is not set"})
 		return
 	}
 
 	// We only allow users with password mode to change their password
 	// Users with noPassword mode are not allowed to change their password
-	if config.LocalAuthMode != "password" {
+	if cfg.LocalAuthMode != "password" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password mode is not enabled"})
 		return
 	}
@@ -287,7 +287,7 @@ func handleUpdatePassword(c *gin.Context) {
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.OldPassword)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(cfg.HashedPassword), []byte(req.OldPassword)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect old password"})
 		return
 	}
@@ -298,28 +298,28 @@ func handleUpdatePassword(c *gin.Context) {
 		return
 	}
 
-	config.HashedPassword = string(hashedPassword)
-	config.LocalAuthToken = uuid.New().String()
-	if err := SaveConfig(); err != nil {
+	cfg.HashedPassword = string(hashedPassword)
+	cfg.LocalAuthToken = uuid.New().String()
+	if err := config.SaveConfig(cfg); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
 
 	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+	c.SetCookie("authToken", cfg.LocalAuthToken, 7*24*60*60, "/", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
 
 func handleDeletePassword(c *gin.Context) {
-	LoadConfig()
+	cfg := config.LoadConfig()
 
-	if config.HashedPassword == "" {
+	if cfg.HashedPassword == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password is not set"})
 		return
 	}
 
-	if config.LocalAuthMode != "password" {
+	if cfg.LocalAuthMode != "password" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password mode is not enabled"})
 		return
 	}
@@ -330,16 +330,16 @@ func handleDeletePassword(c *gin.Context) {
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(config.HashedPassword), []byte(req.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(cfg.HashedPassword), []byte(req.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect password"})
 		return
 	}
 
 	// Disable password
-	config.HashedPassword = ""
-	config.LocalAuthToken = ""
-	config.LocalAuthMode = "noPassword"
-	if err := SaveConfig(); err != nil {
+	cfg.HashedPassword = ""
+	cfg.LocalAuthToken = ""
+	cfg.LocalAuthMode = "noPassword"
+	if err := config.SaveConfig(cfg); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
 		return
 	}
@@ -350,20 +350,20 @@ func handleDeletePassword(c *gin.Context) {
 }
 
 func handleDeviceStatus(c *gin.Context) {
-	LoadConfig()
+	cfg := config.LoadConfig()
 
 	response := DeviceStatus{
-		IsSetup: config.LocalAuthMode != "",
+		IsSetup: cfg.LocalAuthMode != "",
 	}
 
 	c.JSON(http.StatusOK, response)
 }
 
 func handleSetup(c *gin.Context) {
-	LoadConfig()
+	cfg := config.LoadConfig()
 
 	// Check if the device is already set up
-	if config.LocalAuthMode != "" || config.HashedPassword != "" {
+	if cfg.LocalAuthMode != "" || cfg.HashedPassword != "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Device is already set up"})
 		return
 	}
@@ -380,7 +380,7 @@ func handleSetup(c *gin.Context) {
 		return
 	}
 
-	config.LocalAuthMode = req.LocalAuthMode
+	cfg.LocalAuthMode = req.LocalAuthMode
 
 	if req.LocalAuthMode == "password" {
 		if req.Password == "" {
@@ -395,19 +395,19 @@ func handleSetup(c *gin.Context) {
 			return
 		}
 
-		config.HashedPassword = string(hashedPassword)
-		config.LocalAuthToken = uuid.New().String()
+		cfg.HashedPassword = string(hashedPassword)
+		cfg.LocalAuthToken = uuid.New().String()
 
 		// Set the cookie
-		c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+		c.SetCookie("authToken", cfg.LocalAuthToken, 7*24*60*60, "/", "", false, true)
 
 	} else {
 		// For noPassword mode, ensure the password field is empty
-		config.HashedPassword = ""
-		config.LocalAuthToken = ""
+		cfg.HashedPassword = ""
+		cfg.LocalAuthToken = ""
 	}
 
-	err := SaveConfig()
+	err := config.SaveConfig(cfg)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save config"})
 		return

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	gadget "github.com/openstadia/go-usb-gadget"
 )
 
@@ -37,22 +38,22 @@ func init() {
 	_ = os.MkdirAll(imagesFolder, 0755)
 	udcs := gadget.GetUdcs()
 	if len(udcs) < 1 {
-		usbLogger.Error("no udc found, skipping USB stack init")
+		logging.UsbLogger.Error("no udc found, skipping USB stack init")
 		return
 	}
-	udc = udcs[0]
+	Udc = udcs[0]
 	_, err := os.Stat(kvmGadgetPath)
 	if err == nil {
-		logger.Info("usb gadget already exists, skipping usb gadget initialization")
+		logging.Logger.Info("usb gadget already exists, skipping usb gadget initialization")
 		return
 	}
 	err = mountConfigFS()
 	if err != nil {
-		logger.Errorf("failed to mount configfs: %v, usb stack might not function properly", err)
+		logging.Logger.Errorf("failed to mount configfs: %v, usb stack might not function properly", err)
 	}
 	err = writeGadgetConfig()
 	if err != nil {
-		logger.Errorf("failed to start gadget: %v", err)
+		logging.Logger.Errorf("failed to start gadget: %v", err)
 	}
 
 	//TODO: read hid reports(capslock, numlock, etc) from keyboardHidFile
@@ -207,7 +208,7 @@ func writeGadgetConfig() error {
 		return err
 	}
 
-	err = os.WriteFile(path.Join(kvmGadgetPath, "UDC"), []byte(udc), 0644)
+	err = os.WriteFile(path.Join(kvmGadgetPath, "UDC"), []byte(Udc), 0644)
 	if err != nil {
 		return err
 	}
@@ -216,11 +217,11 @@ func writeGadgetConfig() error {
 }
 
 func rebindUsb() error {
-	err := os.WriteFile("/sys/bus/platform/drivers/dwc3/unbind", []byte(udc), 0644)
+	err := os.WriteFile("/sys/bus/platform/drivers/dwc3/unbind", []byte(Udc), 0644)
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile("/sys/bus/platform/drivers/dwc3/bind", []byte(udc), 0644)
+	err = os.WriteFile("/sys/bus/platform/drivers/dwc3/bind", []byte(Udc), 0644)
 	if err != nil {
 		return err
 	}
@@ -232,7 +233,7 @@ var keyboardLock = sync.Mutex{}
 var mouseHidFile *os.File
 var mouseLock = sync.Mutex{}
 
-func rpcKeyboardReport(modifier uint8, keys []uint8) error {
+func RPCKeyboardReport(modifier uint8, keys []uint8) error {
 	keyboardLock.Lock()
 	defer keyboardLock.Unlock()
 	if keyboardHidFile == nil {
@@ -254,11 +255,11 @@ func rpcKeyboardReport(modifier uint8, keys []uint8) error {
 		keyboardHidFile = nil
 		return err
 	}
-	resetUserInputTime()
+	ResetUserInputTime()
 	return err
 }
 
-func rpcAbsMouseReport(x, y int, buttons uint8) error {
+func RPCAbsMouseReport(x, y int, buttons uint8) error {
 	mouseLock.Lock()
 	defer mouseLock.Unlock()
 	if mouseHidFile == nil {
@@ -268,7 +269,7 @@ func rpcAbsMouseReport(x, y int, buttons uint8) error {
 			return fmt.Errorf("failed to open hidg1: %w", err)
 		}
 	}
-	resetUserInputTime()
+	ResetUserInputTime()
 	_, err := mouseHidFile.Write([]byte{
 		1,             // Report ID 1
 		buttons,       // Buttons
@@ -287,7 +288,7 @@ func rpcAbsMouseReport(x, y int, buttons uint8) error {
 
 var accumulatedWheelY float64 = 0
 
-func rpcWheelReport(wheelY int8) error {
+func RPCWheelReport(wheelY int8) error {
 	if mouseHidFile == nil {
 		return errors.New("hid not initialized")
 	}
@@ -307,7 +308,7 @@ func rpcWheelReport(wheelY int8) error {
 		// Reset the accumulator, keeping any remainder
 		accumulatedWheelY -= float64(scaledWheelY)
 
-		resetUserInputTime()
+		ResetUserInputTime()
 		return err
 	}
 
@@ -322,9 +323,9 @@ func abs(x float64) float64 {
 	return x
 }
 
-var usbState = "unknown"
+var UsbState = "unknown"
 
-func rpcGetUSBState() (state string) {
+func RPCGetUSBState() (state string) {
 	stateBytes, err := os.ReadFile("/sys/class/udc/ffb00000.usb/state")
 	if err != nil {
 		return "unknown"
@@ -332,27 +333,27 @@ func rpcGetUSBState() (state string) {
 	return strings.TrimSpace(string(stateBytes))
 }
 
-func triggerUSBStateUpdate() {
+func TriggerUSBStateUpdate() {
 	go func() {
-		if currentSession == nil {
+		if CurrentSession == nil {
 			log.Println("No active RPC session, skipping update state update")
 			return
 		}
-		writeJSONRPCEvent("usbState", usbState, currentSession)
+		WriteJSONRPCEvent("usbState", UsbState, CurrentSession)
 	}()
 }
 
-var udc string
+var Udc string
 
 func init() {
 	go func() {
 		for {
-			newState := rpcGetUSBState()
-			if newState != usbState {
-				log.Printf("USB state changed from %s to %s", usbState, newState)
-				usbState = newState
-				requestDisplayUpdate()
-				triggerUSBStateUpdate()
+			newState := RPCGetUSBState()
+			if newState != UsbState {
+				log.Printf("USB state changed from %s to %s", UsbState, newState)
+				UsbState = newState
+				RequestDisplayUpdate()
+				TriggerUSBStateUpdate()
 			}
 			time.Sleep(500 * time.Millisecond)
 		}

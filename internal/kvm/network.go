@@ -2,17 +2,17 @@ package kvm
 
 import (
 	"fmt"
-	"github.com/pion/mdns/v2"
-	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
 	"net"
 	"time"
 
+	"github.com/pion/mdns/v2"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
-var networkState struct {
+var NetworkState struct {
 	Up   bool
 	IPv4 string
 	IPv6 string
@@ -55,10 +55,10 @@ func checkNetworkState() {
 		}
 	}
 
-	if newState != networkState {
-		networkState = newState
+	if newState != NetworkState {
+		NetworkState = newState
 		fmt.Println("network state changed")
-		requestDisplayUpdate()
+		RequestDisplayUpdate()
 	}
 }
 
@@ -103,7 +103,7 @@ func init() {
 	}
 
 	go func() {
-		waitCtrlClientConnected()
+		WaitCtrlClientConnected()
 		checkNetworkState()
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
