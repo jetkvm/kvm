@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"slices"
 	"time"
 )
 
@@ -19,11 +20,16 @@ type PluginRpcStatus struct {
 
 var (
 	PluginRpcStatusDisconnected         = PluginRpcStatus{"disconnected", ""}
+	PluginRpcStatusUnknown              = PluginRpcStatus{"unknown", ""}
 	PluginRpcStatusLoading              = PluginRpcStatus{"loading", ""}
 	PluginRpcStatusPendingConfiguration = PluginRpcStatus{"pending-configuration", ""}
 	PluginRpcStatusRunning              = PluginRpcStatus{"running", ""}
 	PluginRpcStatusError                = PluginRpcStatus{"error", ""}
 )
+
+type PluginRpcSupportedMethods struct {
+	SupportedRpcMethods []string `json:"supported_rpc_methods"`
+}
 
 type PluginRpcServer struct {
 	install    *PluginInstall
@@ -103,10 +109,10 @@ func (s *PluginRpcServer) handleConnection(conn net.Conn) {
 		// TODO: if read 65k bytes, then likey there is more data to read... figure out how to handle this
 		n, err := conn.Read(buf)
 		if err != nil {
-			log.Printf("Failed to read message: %v", err)
 			if errors.Is(err, net.ErrClosed) {
 				s.status = PluginRpcStatusDisconnected
 			} else {
+				log.Printf("Failed to read message: %v", err)
 				s.status = PluginRpcStatusError
 				s.status.Message = fmt.Errorf("failed to read message: %v", err).Error()
 			}
@@ -124,21 +130,23 @@ func (s *PluginRpcServer) handleConnection(conn net.Conn) {
 }
 
 func (s *PluginRpcServer) handleRpcStatus(ctx context.Context, rpcserver *jsonrpc.JSONRPCServer) {
-	// log.Printf("Plugin rpc server started. Getting supported methods...")
-	// supportedMethodsResponse, err := rpcserver.Request("getPluginSupportedMethods", map[string]interface{}{})
-	// if err != nil {
-	// 	log.Printf("Failed to get supported methods: %v", err)
-	// 	s.status = PluginRpcStatusError
-	// 	s.status.Message = fmt.Errorf("error getting supported methods: %v", err).Error()
-	// }
+	s.status = PluginRpcStatusUnknown
 
-	// if supportedMethodsResponse.Error != nil {
-	// 	log.Printf("Failed to get supported methods: %v", supportedMethodsResponse.Error)
-	// 	s.status = PluginRpcStatusError
-	// 	s.status.Message = fmt.Errorf("error getting supported methods: %v", supportedMethodsResponse.Error).Error()
-	// }
+	log.Printf("Plugin rpc server started. Getting supported methods...")
+	var supportedMethodsResponse PluginRpcSupportedMethods
+	err := rpcserver.Request("getPluginSupportedMethods", nil, &supportedMethodsResponse)
+	if err != nil {
+		log.Printf("Failed to get supported methods: %v", err)
+		s.status = PluginRpcStatusError
+		s.status.Message = fmt.Errorf("error getting supported methods: %v", err.Message).Error()
+	}
 
-	// log.Printf("Plugin has supported methods: %v", supportedMethodsResponse.Result)
+	log.Printf("Plugin has supported methods: %v", supportedMethodsResponse.SupportedRpcMethods)
+
+	if !slices.Contains(supportedMethodsResponse.SupportedRpcMethods, "getPluginStatus") {
+		log.Printf("Plugin does not support getPluginStatus method")
+		return
+	}
 
 	ticker := time.NewTicker(1 * time.Second)
 	for {
@@ -147,7 +155,7 @@ func (s *PluginRpcServer) handleRpcStatus(ctx context.Context, rpcserver *jsonrp
 			return
 		case <-ticker.C:
 			var statusResponse PluginRpcStatus
-			err := rpcserver.Request("getPluginStatus", map[string]interface{}{}, &statusResponse)
+			err := rpcserver.Request("getPluginStatus", nil, &statusResponse)
 			if err != nil {
 				log.Printf("Failed to get status: %v", err)
 				if err, ok := err.Data.(error); ok && errors.Is(err, net.ErrClosed) {

@@ -134,7 +134,7 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
                     </p>
                     <Card className={cx(
                       "text-gray-500 dark:text-gray-400 p-4 border",
-                      plugin.status === "errored" && "border-red-200 bg-red-50 text-red-800 dark:text-red-400",
+                      plugin.status === "error" && "border-red-200 bg-red-50 text-red-800 dark:text-red-400",
                     )}>
                       {plugin.message}
                     </Card>

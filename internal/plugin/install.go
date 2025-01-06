@@ -53,8 +53,10 @@ func (p *PluginInstall) GetStatus() (*PluginStatus, error) {
 		Enabled:        p.Enabled,
 	}
 
-	if p.rpcServer != nil && p.rpcServer.status.Status != "disconnected" {
-		log.Printf("Status from RPC: %v", p.rpcServer.status)
+	// If the rpc server is connected and the plugin is reporting status, use that
+	if p.rpcServer != nil &&
+		p.rpcServer.status.Status != "disconnected" &&
+		p.rpcServer.status.Status != "unknown" {
 		status.Status = p.rpcServer.status.Status
 		status.Message = p.rpcServer.status.Message
 
@@ -66,7 +68,7 @@ func (p *PluginInstall) GetStatus() (*PluginStatus, error) {
 		if p.processManager != nil {
 			status.Status = "running"
 			if p.processManager.LastError != nil {
-				status.Status = "errored"
+				status.Status = "error"
 				status.Message = p.processManager.LastError.Error()
 			}
 		}

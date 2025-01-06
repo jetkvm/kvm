@@ -7,7 +7,7 @@ export function PluginStatusIcon({ plugin }: { plugin: PluginStatus; }) {
     classNames = "bg-green-500 border-green-600";
   } else if (plugin.enabled && plugin.status === "pending-configuration") {
     classNames = "bg-yellow-500 border-yellow-600";
-  } else if (plugin.enabled && plugin.status === "errored") {
+  } else if (plugin.enabled && plugin.status === "error") {
     classNames = "bg-red-500 border-red-600";
   }
 
