@@ -1,12 +1,14 @@
-package kvm
+package network
 
 import (
 	"fmt"
+	"net"
+	"time"
+
+	"github.com/jetkvm/kvm/internal/hardware"
 	"github.com/pion/mdns/v2"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
-	"net"
-	"time"
 
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
@@ -58,7 +60,7 @@ func checkNetworkState() {
 	if newState != networkState {
 		networkState = newState
 		fmt.Println("network state changed")
-		requestDisplayUpdate()
+		hardware.RequestDisplayUpdate()
 	}
 }
 

@@ -1,4 +1,4 @@
-package kvm
+package server
 
 import (
 	"encoding/base64"
@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jetkvm/kvm/internal/hardware"
+	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/server"
 	"github.com/pion/webrtc/v4"
 )
 
 type Session struct {
-	peerConnection           *webrtc.PeerConnection
+	PeerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
 	ControlChannel           *webrtc.DataChannel
 	RPCChannel               *webrtc.DataChannel
@@ -30,21 +33,21 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 		return "", err
 	}
 	// Set the remote SessionDescription
-	if err = s.peerConnection.SetRemoteDescription(offer); err != nil {
+	if err = s.PeerConnection.SetRemoteDescription(offer); err != nil {
 		return "", err
 	}
 
 	// Create answer
-	answer, err := s.peerConnection.CreateAnswer(nil)
+	answer, err := s.PeerConnection.CreateAnswer(nil)
 	if err != nil {
 		return "", err
 	}
 
 	// Create channel that is blocked until ICE Gathering is complete
-	gatherComplete := webrtc.GatheringCompletePromise(s.peerConnection)
+	gatherComplete := webrtc.GatheringCompletePromise(s.PeerConnection)
 
 	// Sets the LocalDescription, and starts our UDP listeners
-	if err = s.peerConnection.SetLocalDescription(answer); err != nil {
+	if err = s.PeerConnection.SetLocalDescription(answer); err != nil {
 		return "", err
 	}
 
@@ -53,7 +56,7 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 	// in a production application you should exchange ICE Candidates via OnICECandidate
 	<-gatherComplete
 
-	localDescription, err := json.Marshal(s.peerConnection.LocalDescription())
+	localDescription, err := json.Marshal(s.PeerConnection.LocalDescription())
 	if err != nil {
 		return "", err
 	}
@@ -61,14 +64,14 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 	return base64.StdEncoding.EncodeToString(localDescription), nil
 }
 
-func newSession() (*Session, error) {
+func NewSession() (*Session, error) {
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{{}},
 	})
 	if err != nil {
 		return nil, err
 	}
-	session := &Session{peerConnection: peerConnection}
+	session := &Session{PeerConnection: peerConnection}
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		fmt.Printf("New DataChannel %s %d\n", d.Label(), d.ID())
@@ -76,19 +79,19 @@ func newSession() (*Session, error) {
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				go onRPCMessage(msg, session)
+				go server.OnRPCMessage(msg, session)
 			})
-			triggerOTAStateUpdate()
-			triggerVideoStateUpdate()
-			triggerUSBStateUpdate()
+			server.TriggerOTAStateUpdate()
+			server.TriggerVideoStateUpdate()
+			hardware.TriggerUSBStateUpdate()
 		case "disk":
 			session.DiskChannel = d
-			d.OnMessage(onDiskMessage)
+			d.OnMessage(hardware.OnDiskMessage)
 		case "terminal":
-			handleTerminalChannel(d)
+			server.HandleTerminalChannel(d)
 		default:
-			if strings.HasPrefix(d.Label(), uploadIdPrefix) {
-				go handleUploadChannel(d)
+			if strings.HasPrefix(d.Label(), hardware.UploadIdPrefix) {
+				go hardware.HandleUploadChannel(d)
 			}
 		}
 	})
@@ -133,12 +136,12 @@ func newSession() (*Session, error) {
 			_ = peerConnection.Close()
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
-			if session == currentSession {
-				currentSession = nil
+			if session == CurrentSession {
+				CurrentSession = nil
 			}
 			if session.shouldUmountVirtualMedia {
-				err := rpcUnmountImage()
-				logger.Debugf("unmount image failed on connection close %v", err)
+				err := hardware.RPCUnmountImage()
+				logging.Logger.Debugf("unmount image failed on connection close %v", err)
 			}
 			if isConnected {
 				isConnected = false
@@ -156,7 +159,7 @@ func newSession() (*Session, error) {
 var actionSessions = 0
 
 func onActiveSessionsChanged() {
-	requestDisplayUpdate()
+	hardware.RequestDisplayUpdate()
 }
 
 func onFirstSessionConnected() {

@@ -1,4 +1,4 @@
-package kvm
+package hardware
 
 import (
 	"fmt"
@@ -51,7 +51,7 @@ func GetDeviceID() string {
 	return deviceID
 }
 
-func runWatchdog() {
+func RunWatchdog() {
 	file, err := os.OpenFile("/dev/watchdog", os.O_WRONLY, 0)
 	if err != nil {
 		logger.Warnf("unable to open /dev/watchdog: %v, skipping watchdog reset", err)

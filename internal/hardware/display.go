@@ -1,4 +1,4 @@
-package kvm
+package hardware
 
 import (
 	"fmt"
@@ -59,7 +59,7 @@ func updateDisplay() {
 
 var displayInited = false
 
-func requestDisplayUpdate() {
+func RequestDisplayUpdate() {
 	if !displayInited {
 		fmt.Println("display not inited, skipping updates")
 		return
@@ -91,6 +91,6 @@ func init() {
 		updateStaticContents()
 		displayInited = true
 		fmt.Println("display inited")
-		requestDisplayUpdate()
+		RequestDisplayUpdate()
 	}()
 }

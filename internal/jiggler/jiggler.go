@@ -1,21 +1,24 @@
-package kvm
+package jiggler
 
 import (
 	"time"
+
+	"github.com/jetkvm/kvm/internal/hardware"
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
 var lastUserInput = time.Now()
 
-func resetUserInputTime() {
+func ResetUserInputTime() {
 	lastUserInput = time.Now()
 }
 
 var jigglerEnabled = false
 
-func rpcSetJigglerState(enabled bool) {
+func RPCSetJigglerState(enabled bool) {
 	jigglerEnabled = enabled
 }
-func rpcGetJigglerState() bool {
+func RPCGetJigglerState() bool {
 	return jigglerEnabled
 }
 
@@ -28,13 +31,13 @@ func runJiggler() {
 		if jigglerEnabled {
 			if time.Since(lastUserInput) > 20*time.Second {
 				//TODO: change to rel mouse
-				err := rpcAbsMouseReport(1, 1, 0)
+				err := hardware.RPCAbsMouseReport(1, 1, 0)
 				if err != nil {
-					logger.Warnf("Failed to jiggle mouse: %v", err)
+					logging.Logger.Warnf("Failed to jiggle mouse: %v", err)
 				}
-				err = rpcAbsMouseReport(0, 0, 0)
+				err = hardware.RPCAbsMouseReport(0, 0, 0)
 				if err != nil {
-					logger.Warnf("Failed to reset mouse position: %v", err)
+					logging.Logger.Warnf("Failed to reset mouse position: %v", err)
 				}
 			}
 		}

@@ -1,4 +1,4 @@
-package kvm
+package network
 
 import (
 	"bytes"
@@ -158,7 +158,7 @@ func downloadFile(ctx context.Context, path string, url string, downloadProgress
 			progress := float32(written) / float32(totalSize)
 			if progress-*downloadProgress >= 0.01 {
 				*downloadProgress = progress
-				triggerOTAStateUpdate()
+				TriggerOTAStateUpdate()
 			}
 		}
 		if er != nil {
@@ -218,7 +218,7 @@ func verifyFile(path string, expectedHash string, verifyProgress *float32) error
 			progress := float32(verified) / float32(totalSize)
 			if progress-*verifyProgress >= 0.01 {
 				*verifyProgress = progress
-				triggerOTAStateUpdate()
+				TriggerOTAStateUpdate()
 			}
 		}
 		if er != nil {
@@ -269,13 +269,13 @@ type OTAState struct {
 
 var otaState = OTAState{}
 
-func triggerOTAStateUpdate() {
+func TriggerOTAStateUpdate() {
 	go func() {
-		if currentSession == nil {
+		if CurrentSession == nil {
 			log.Println("No active RPC session, skipping update state update")
 			return
 		}
-		writeJSONRPCEvent("otaState", otaState, currentSession)
+		WriteJSONRPCEvent("otaState", otaState, CurrentSession)
 	}()
 }
 
@@ -288,11 +288,11 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 	otaState = OTAState{
 		Updating: true,
 	}
-	triggerOTAStateUpdate()
+	TriggerOTAStateUpdate()
 
 	defer func() {
 		otaState.Updating = false
-		triggerOTAStateUpdate()
+		TriggerOTAStateUpdate()
 	}()
 
 	updateStatus, err := GetUpdateStatus(ctx, deviceId, includePreRelease)
@@ -305,7 +305,7 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 	otaState.MetadataFetchedAt = &now
 	otaState.AppUpdatePending = updateStatus.AppUpdateAvailable
 	otaState.SystemUpdatePending = updateStatus.SystemUpdateAvailable
-	triggerOTAStateUpdate()
+	TriggerOTAStateUpdate()
 
 	local := updateStatus.Local
 	remote := updateStatus.Remote
@@ -320,18 +320,18 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		err := downloadFile(ctx, "/userdata/jetkvm/jetkvm_app.update", remote.AppUrl, &otaState.AppDownloadProgress)
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error downloading app update: %v", err)
-			triggerOTAStateUpdate()
+			TriggerOTAStateUpdate()
 			return err
 		}
 		downloadFinished := time.Now()
 		otaState.AppDownloadFinishedAt = &downloadFinished
 		otaState.AppDownloadProgress = 1
-		triggerOTAStateUpdate()
+		TriggerOTAStateUpdate()
 
 		err = verifyFile("/userdata/jetkvm/jetkvm_app.update", remote.AppHash, &otaState.AppVerificationProgress)
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error verifying app update hash: %v", err)
-			triggerOTAStateUpdate()
+			TriggerOTAStateUpdate()
 			return err
 		}
 		verifyFinished := time.Now()
@@ -339,7 +339,7 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		otaState.AppVerificationProgress = 1
 		otaState.AppUpdatedAt = &verifyFinished
 		otaState.AppUpdateProgress = 1
-		triggerOTAStateUpdate()
+		TriggerOTAStateUpdate()
 
 		fmt.Println("App update downloaded")
 		rebootNeeded = true
@@ -352,25 +352,25 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		err := downloadFile(ctx, "/userdata/jetkvm/update_system.tar", remote.SystemUrl, &otaState.SystemDownloadProgress)
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error downloading system update: %v", err)
-			triggerOTAStateUpdate()
+			TriggerOTAStateUpdate()
 			return err
 		}
 		downloadFinished := time.Now()
 		otaState.SystemDownloadFinishedAt = &downloadFinished
 		otaState.SystemDownloadProgress = 1
-		triggerOTAStateUpdate()
+		TriggerOTAStateUpdate()
 
 		err = verifyFile("/userdata/jetkvm/update_system.tar", remote.SystemHash, &otaState.SystemVerificationProgress)
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error verifying system update hash: %v", err)
-			triggerOTAStateUpdate()
+			TriggerOTAStateUpdate()
 			return err
 		}
 		fmt.Println("System update downloaded")
 		verifyFinished := time.Now()
 		otaState.SystemVerifiedAt = &verifyFinished
 		otaState.SystemVerificationProgress = 1
-		triggerOTAStateUpdate()
+		TriggerOTAStateUpdate()
 
 		cmd := exec.Command("rk_ota", "--misc=update", "--tar_path=/userdata/jetkvm/update_system.tar", "--save_dir=/userdata/jetkvm/ota_save", "--partition=all")
 		var b bytes.Buffer
@@ -398,7 +398,7 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 					if otaState.SystemUpdateProgress > 0.99 {
 						otaState.SystemUpdateProgress = 0.99
 					}
-					triggerOTAStateUpdate()
+					TriggerOTAStateUpdate()
 				case <-ctx.Done():
 					return
 				}
@@ -416,7 +416,7 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		fmt.Printf("rk_ota success, output: %s\n", output)
 		otaState.SystemUpdateProgress = 1
 		otaState.SystemUpdatedAt = &verifyFinished
-		triggerOTAStateUpdate()
+		TriggerOTAStateUpdate()
 		rebootNeeded = true
 	} else {
 		fmt.Println("System is up to date")
@@ -495,7 +495,7 @@ func IsUpdatePending() bool {
 }
 
 // make sure our current a/b partition is set as default
-func confirmCurrentSystem() {
+func ConfirmCurrentSystem() {
 	output, err := exec.Command("rk_ota", "--misc=now").CombinedOutput()
 	if err != nil {
 		logger.Warnf("failed to set current partition in A/B setup: %s", string(output))

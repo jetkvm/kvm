@@ -1,4 +1,4 @@
-package kvm
+package server
 
 import (
 	"context"
@@ -11,6 +11,12 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"github.com/jetkvm/kvm/internal/config"
+	"github.com/jetkvm/kvm/internal/hardware"
+	"github.com/jetkvm/kvm/internal/jiggler"
+	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/network"
+	"github.com/jetkvm/kvm/internal/wol"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -34,7 +40,7 @@ type JSONRPCEvent struct {
 	Params  interface{} `json:"params,omitempty"`
 }
 
-func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
+func WriteJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		log.Println("Error marshalling JSONRPC response:", err)
@@ -47,7 +53,7 @@ func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	}
 }
 
-func writeJSONRPCEvent(event string, params interface{}, session *Session) {
+func WriteJSONRPCEvent(event string, params interface{}, session *Session) {
 	request := JSONRPCEvent{
 		JSONRPC: "2.0",
 		Method:  event,
@@ -69,7 +75,7 @@ func writeJSONRPCEvent(event string, params interface{}, session *Session) {
 	}
 }
 
-func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
+func OnRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
 	if err != nil {
@@ -81,7 +87,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 			},
 			ID: 0,
 		}
-		writeJSONRPCResponse(errorResponse, session)
+		WriteJSONRPCResponse(errorResponse, session)
 		return
 	}
 
@@ -96,7 +102,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 			},
 			ID: request.ID,
 		}
-		writeJSONRPCResponse(errorResponse, session)
+		WriteJSONRPCResponse(errorResponse, session)
 		return
 	}
 
@@ -111,7 +117,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 			},
 			ID: request.ID,
 		}
-		writeJSONRPCResponse(errorResponse, session)
+		WriteJSONRPCResponse(errorResponse, session)
 		return
 	}
 
@@ -120,7 +126,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		Result:  result,
 		ID:      request.ID,
 	}
-	writeJSONRPCResponse(response, session)
+	WriteJSONRPCResponse(response, session)
 }
 
 func rpcPing() (string, error) {
@@ -128,7 +134,7 @@ func rpcPing() (string, error) {
 }
 
 func rpcGetDeviceID() (string, error) {
-	return GetDeviceID(), nil
+	return hardware.GetDeviceID(), nil
 }
 
 var streamFactor = 1.0
@@ -139,7 +145,7 @@ func rpcGetStreamQualityFactor() (float64, error) {
 
 func rpcSetStreamQualityFactor(factor float64) error {
 	log.Printf("Setting stream quality factor to: %f", factor)
-	var _, err = CallCtrlAction("set_video_quality_factor", map[string]interface{}{"quality_factor": factor})
+	var _, err = hardware.CallCtrlAction("set_video_quality_factor", map[string]interface{}{"quality_factor": factor})
 	if err != nil {
 		return err
 	}
@@ -149,19 +155,21 @@ func rpcSetStreamQualityFactor(factor float64) error {
 }
 
 func rpcGetAutoUpdateState() (bool, error) {
-	return config.AutoUpdateEnabled, nil
+	cfg := config.LoadConfig()
+	return cfg.AutoUpdateEnabled, nil
 }
 
 func rpcSetAutoUpdateState(enabled bool) (bool, error) {
-	config.AutoUpdateEnabled = enabled
-	if err := SaveConfig(); err != nil {
-		return config.AutoUpdateEnabled, fmt.Errorf("failed to save config: %w", err)
+	cfg := config.LoadConfig()
+	cfg.AutoUpdateEnabled = enabled
+	if err := config.SaveConfig(cfg); err != nil {
+		return cfg.AutoUpdateEnabled, fmt.Errorf("failed to save config: %w", err)
 	}
 	return enabled, nil
 }
 
 func rpcGetEDID() (string, error) {
-	resp, err := CallCtrlAction("get_edid", nil)
+	resp, err := hardware.CallCtrlAction("get_edid", nil)
 	if err != nil {
 		return "", err
 	}
@@ -179,7 +187,7 @@ func rpcSetEDID(edid string) error {
 	} else {
 		log.Printf("Setting EDID to: %s", edid)
 	}
-	_, err := CallCtrlAction("set_edid", map[string]interface{}{"edid": edid})
+	_, err := hardware.CallCtrlAction("set_edid", map[string]interface{}{"edid": edid})
 	if err != nil {
 		return err
 	}
@@ -187,20 +195,23 @@ func rpcSetEDID(edid string) error {
 }
 
 func rpcGetDevChannelState() (bool, error) {
-	return config.IncludePreRelease, nil
+	cfg := config.LoadConfig()
+	return cfg.IncludePreRelease, nil
 }
 
 func rpcSetDevChannelState(enabled bool) error {
-	config.IncludePreRelease = enabled
-	if err := SaveConfig(); err != nil {
+	cfg := config.LoadConfig()
+	cfg.IncludePreRelease = enabled
+	if err := config.SaveConfig(cfg); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	return nil
 }
 
-func rpcGetUpdateStatus() (*UpdateStatus, error) {
-	includePreRelease := config.IncludePreRelease
-	updateStatus, err := GetUpdateStatus(context.Background(), GetDeviceID(), includePreRelease)
+func rpcGetUpdateStatus() (*network.UpdateStatus, error) {
+	cfg := config.LoadConfig()
+	includePreRelease := cfg.IncludePreRelease
+	updateStatus, err := network.GetUpdateStatus(context.Background(), hardware.GetDeviceID(), includePreRelease)
 	if err != nil {
 		return nil, fmt.Errorf("error checking for updates: %w", err)
 	}
@@ -209,11 +220,12 @@ func rpcGetUpdateStatus() (*UpdateStatus, error) {
 }
 
 func rpcTryUpdate() error {
-	includePreRelease := config.IncludePreRelease
+	cfg := config.LoadConfig()
+	includePreRelease := cfg.IncludePreRelease
 	go func() {
-		err := TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
+		err := network.TryUpdate(context.Background(), hardware.GetDeviceID(), includePreRelease)
 		if err != nil {
-			logger.Warnf("failed to try update: %v", err)
+			logging.Logger.Warnf("failed to try update: %v", err)
 		}
 	}()
 	return nil
@@ -258,7 +270,7 @@ func rpcSetDevModeState(enabled bool) error {
 				return fmt.Errorf("failed to create devmode file: %w", err)
 			}
 		} else {
-			logger.Debug("dev mode already enabled")
+			logging.Logger.Debug("dev mode already enabled")
 			return nil
 		}
 	} else {
@@ -267,7 +279,7 @@ func rpcSetDevModeState(enabled bool) error {
 				return fmt.Errorf("failed to remove devmode file: %w", err)
 			}
 		} else if os.IsNotExist(err) {
-			logger.Debug("dev mode already disabled")
+			logging.Logger.Debug("dev mode already disabled")
 			return nil
 		} else {
 			return fmt.Errorf("error checking dev mode file: %w", err)
@@ -277,7 +289,7 @@ func rpcSetDevModeState(enabled bool) error {
 	cmd := exec.Command("dropbear.sh")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Warnf("Failed to start/stop SSH: %v, %v", err, output)
+		logging.Logger.Warnf("Failed to start/stop SSH: %v, %v", err, output)
 		return fmt.Errorf("failed to start/stop SSH, you may need to reboot for changes to take effect")
 	}
 
@@ -429,7 +441,7 @@ func rpcSetMassStorageMode(mode string) (string, error) {
 
 	log.Printf("[jsonrpc.go:rpcSetMassStorageMode] Setting mass storage mode to: %s", mode)
 
-	err := setMassStorageMode(cdrom)
+	err := hardware.SetMassStorageMode(cdrom)
 	if err != nil {
 		return "", fmt.Errorf("failed to set mass storage mode: %w", err)
 	}
@@ -441,7 +453,7 @@ func rpcSetMassStorageMode(mode string) (string, error) {
 }
 
 func rpcGetMassStorageMode() (string, error) {
-	cdrom, err := getMassStorageMode()
+	cdrom, err := hardware.GetMassStorageMode()
 	if err != nil {
 		return "", fmt.Errorf("failed to get mass storage mode: %w", err)
 	}
@@ -454,7 +466,7 @@ func rpcGetMassStorageMode() (string, error) {
 }
 
 func rpcIsUpdatePending() (bool, error) {
-	return IsUpdatePending(), nil
+	return network.IsUpdatePending(), nil
 }
 
 var udcFilePath = filepath.Join("/sys/bus/platform/drivers/dwc3", udc)
@@ -478,28 +490,26 @@ func rpcSetUsbEmulationState(enabled bool) error {
 	}
 }
 
-func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
-	LoadConfig()
-	if config.WakeOnLanDevices == nil {
-		return []WakeOnLanDevice{}, nil
+func rpcGetWakeOnLanDevices() ([]config.WakeOnLanDevice, error) {
+	cfg := config.LoadConfig()
+	if cfg.WakeOnLanDevices == nil {
+		return []config.WakeOnLanDevice{}, nil
 	}
-	return config.WakeOnLanDevices, nil
+	return cfg.WakeOnLanDevices, nil
 }
 
 type SetWakeOnLanDevicesParams struct {
-	Devices []WakeOnLanDevice `json:"devices"`
+	Devices []config.WakeOnLanDevice `json:"devices"`
 }
 
 func rpcSetWakeOnLanDevices(params SetWakeOnLanDevicesParams) error {
-	LoadConfig()
-	config.WakeOnLanDevices = params.Devices
-	return SaveConfig()
+	cfg := config.LoadConfig()
+	cfg.WakeOnLanDevices = params.Devices
+	return config.SaveConfig(cfg)
 }
 
 func rpcResetConfig() error {
-	LoadConfig()
-	config = defaultConfig
-	if err := SaveConfig(); err != nil {
+	if err := config.SaveConfig(&config.Config{}); err != nil {
 		return fmt.Errorf("failed to reset config: %w", err)
 	}
 
@@ -511,18 +521,18 @@ func rpcResetConfig() error {
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"getDeviceID":            {Func: rpcGetDeviceID},
-	"deregisterDevice":       {Func: rpcDeregisterDevice},
-	"getCloudState":          {Func: rpcGetCloudState},
-	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
-	"absMouseReport":         {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
-	"wheelReport":            {Func: rpcWheelReport, Params: []string{"wheelY"}},
+	"deregisterDevice":       {Func: RPCDeregisterDevice},
+	"getCloudState":          {Func: RPCGetCloudState},
+	"keyboardReport":         {Func: hardware.RPCKeyboardReport, Params: []string{"modifier", "keys"}},
+	"absMouseReport":         {Func: hardware.RPCAbsMouseReport, Params: []string{"x", "y", "buttons"}},
+	"wheelReport":            {Func: hardware.RPCWheelReport, Params: []string{"wheelY"}},
 	"getVideoState":          {Func: rpcGetVideoState},
-	"getUSBState":            {Func: rpcGetUSBState},
-	"unmountImage":           {Func: rpcUnmountImage},
-	"rpcMountBuiltInImage":   {Func: rpcMountBuiltInImage, Params: []string{"filename"}},
-	"setJigglerState":        {Func: rpcSetJigglerState, Params: []string{"enabled"}},
-	"getJigglerState":        {Func: rpcGetJigglerState},
-	"sendWOLMagicPacket":     {Func: rpcSendWOLMagicPacket, Params: []string{"macAddress"}},
+	"getUSBState":            {Func: hardware.RPCGetUSBState},
+	"unmountImage":           {Func: hardware.RPCUnmountImage},
+	"rpcMountBuiltInImage":   {Func: hardware.RPCMountBuiltInImage, Params: []string{"filename"}},
+	"setJigglerState":        {Func: jiggler.RPCSetJigglerState, Params: []string{"enabled"}},
+	"getJigglerState":        {Func: jiggler.RPCGetJigglerState},
+	"sendWOLMagicPacket":     {Func: wol.RPCSendWolMagicPacket, Params: []string{"macAddress"}},
 	"getStreamQualityFactor": {Func: rpcGetStreamQualityFactor},
 	"setStreamQualityFactor": {Func: rpcSetStreamQualityFactor, Params: []string{"factor"}},
 	"getAutoUpdateState":     {Func: rpcGetAutoUpdateState},
@@ -542,15 +552,15 @@ var rpcHandlers = map[string]RPCHandler{
 	"isUpdatePending":        {Func: rpcIsUpdatePending},
 	"getUsbEmulationState":   {Func: rpcGetUsbEmulationState},
 	"setUsbEmulationState":   {Func: rpcSetUsbEmulationState, Params: []string{"enabled"}},
-	"checkMountUrl":          {Func: rpcCheckMountUrl, Params: []string{"url"}},
-	"getVirtualMediaState":   {Func: rpcGetVirtualMediaState},
-	"getStorageSpace":        {Func: rpcGetStorageSpace},
-	"mountWithHTTP":          {Func: rpcMountWithHTTP, Params: []string{"url", "mode"}},
-	"mountWithWebRTC":        {Func: rpcMountWithWebRTC, Params: []string{"filename", "size", "mode"}},
-	"mountWithStorage":       {Func: rpcMountWithStorage, Params: []string{"filename", "mode"}},
-	"listStorageFiles":       {Func: rpcListStorageFiles},
-	"deleteStorageFile":      {Func: rpcDeleteStorageFile, Params: []string{"filename"}},
-	"startStorageFileUpload": {Func: rpcStartStorageFileUpload, Params: []string{"filename", "size"}},
+	"checkMountUrl":          {Func: hardware.RPCCheckMountUrl, Params: []string{"url"}},
+	"getVirtualMediaState":   {Func: hardware.RPCGetVirtualMediaState},
+	"getStorageSpace":        {Func: hardware.RPCGetStorageSpace},
+	"mountWithHTTP":          {Func: hardware.RPCMountWithHTTP, Params: []string{"url", "mode"}},
+	"mountWithWebRTC":        {Func: hardware.RPCMountWithWebRTC, Params: []string{"filename", "size", "mode"}},
+	"mountWithStorage":       {Func: hardware.RPCMountWithStorage, Params: []string{"filename", "mode"}},
+	"listStorageFiles":       {Func: hardware.RPCListStorageFiles},
+	"deleteStorageFile":      {Func: hardware.RPCDeleteStorageFile, Params: []string{"filename"}},
+	"startStorageFileUpload": {Func: hardware.RPCStartStorageFileUpload, Params: []string{"filename", "size"}},
 	"getWakeOnLanDevices":    {Func: rpcGetWakeOnLanDevices},
 	"setWakeOnLanDevices":    {Func: rpcSetWakeOnLanDevices, Params: []string{"params"}},
 	"resetConfig":            {Func: rpcResetConfig},

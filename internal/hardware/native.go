@@ -1,4 +1,4 @@
-package kvm
+package hardware
 
 import (
 	"bytes"
@@ -198,8 +198,8 @@ func handleVideoClient(conn net.Conn) {
 		sinceLastFrame := now.Sub(lastFrame)
 		lastFrame = now
 		//fmt.Println("Video packet received", n, sinceLastFrame)
-		if currentSession != nil {
-			err := currentSession.VideoTrack.WriteSample(media.Sample{Data: inboundPacket[:n], Duration: sinceLastFrame})
+		if CurrentSession != nil {
+			err := CurrentSession.VideoTrack.WriteSample(media.Sample{Data: inboundPacket[:n], Duration: sinceLastFrame})
 			if err != nil {
 				log.Println("Error writing sample", err)
 			}

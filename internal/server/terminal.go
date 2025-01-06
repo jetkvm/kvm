@@ -1,4 +1,4 @@
-package kvm
+package server
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/creack/pty"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -15,7 +16,7 @@ type TerminalSize struct {
 	Cols int `json:"cols"`
 }
 
-func handleTerminalChannel(d *webrtc.DataChannel) {
+func HandleTerminalChannel(d *webrtc.DataChannel) {
 	var ptmx *os.File
 	var cmd *exec.Cmd
 	d.OnOpen(func() {
@@ -23,7 +24,7 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 		var err error
 		ptmx, err = pty.Start(cmd)
 		if err != nil {
-			logger.Errorf("Failed to start pty: %v", err)
+			logging.Logger.Errorf("Failed to start pty: %v", err)
 			d.Close()
 			return
 		}
@@ -34,13 +35,13 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 				n, err := ptmx.Read(buf)
 				if err != nil {
 					if err != io.EOF {
-						logger.Errorf("Failed to read from pty: %v", err)
+						logging.Logger.Errorf("Failed to read from pty: %v", err)
 					}
 					break
 				}
 				err = d.Send(buf[:n])
 				if err != nil {
-					logger.Errorf("Failed to send pty output: %v", err)
+					logging.Logger.Errorf("Failed to send pty output: %v", err)
 					break
 				}
 			}
@@ -61,11 +62,11 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 				})
 				return
 			}
-			logger.Errorf("Failed to parse terminal size: %v", err)
+			logging.Logger.Errorf("Failed to parse terminal size: %v", err)
 		}
 		_, err := ptmx.Write(msg.Data)
 		if err != nil {
-			logger.Errorf("Failed to write to pty: %v", err)
+			logging.Logger.Errorf("Failed to write to pty: %v", err)
 		}
 	})
 

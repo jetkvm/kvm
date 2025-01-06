@@ -1,4 +1,4 @@
-package kvm
+package network
 
 import (
 	"errors"

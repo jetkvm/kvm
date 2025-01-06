@@ -1,4 +1,4 @@
-package kvm
+package server
 
 import (
 	"context"
@@ -40,12 +40,12 @@ func (w *WebRTCDiskReader) Read(ctx context.Context, offset int64, size int64) (
 		return nil, err
 	}
 
-	if currentSession == nil || currentSession.DiskChannel == nil {
+	if CurrentSession == nil || CurrentSession.DiskChannel == nil {
 		return nil, errors.New("not active session")
 	}
 
 	logger.Debugf("reading from webrtc %v", string(jsonBytes))
-	err = currentSession.DiskChannel.SendText(string(jsonBytes))
+	err = CurrentSession.DiskChannel.SendText(string(jsonBytes))
 	if err != nil {
 		return nil, err
 	}

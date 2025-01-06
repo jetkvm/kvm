@@ -1,4 +1,4 @@
-package kvm
+package hardware
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pojntfx/go-nbd/pkg/client"
 	"github.com/pojntfx/go-nbd/pkg/server"
 )
@@ -17,8 +18,8 @@ type remoteImageBackend struct {
 
 func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 	virtualMediaStateMutex.RLock()
-	logger.Debugf("currentVirtualMediaState is %v", currentVirtualMediaState)
-	logger.Debugf("read size: %d, off: %d", len(p), off)
+	logging.Logger.Debugf("currentVirtualMediaState is %v", currentVirtualMediaState)
+	logging.Logger.Debugf("read size: %d, off: %d", len(p), off)
 	if currentVirtualMediaState == nil {
 		return 0, errors.New("image not mounted")
 	}
