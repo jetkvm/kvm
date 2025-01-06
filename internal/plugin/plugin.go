@@ -120,7 +120,6 @@ func RpcPluginExtract(filename string) (*PluginManifest, error) {
 }
 
 func RpcPluginInstall(name string, version string) error {
-	// TODO: find the plugin version in the plugins.json file
 	pluginInstall, ok := pluginDatabase.Plugins[name]
 	if !ok {
 		return fmt.Errorf("plugin not found: %s", name)
@@ -136,8 +135,6 @@ func RpcPluginInstall(name string, version string) error {
 		return fmt.Errorf("plugin version not found: %s", version)
 	}
 
-	// TODO: If there is a running plugin with the same name, stop it and start the new version
-
 	pluginInstall.Version = version
 	pluginInstall.Enabled = true
 	pluginDatabase.Plugins[name] = pluginInstall
@@ -151,7 +148,7 @@ func RpcPluginInstall(name string, version string) error {
 		return fmt.Errorf("failed to start plugin %s: %v", name, err)
 	}
 
-	// TODO: Determine if the old version should be removed
+	// TODO: Determine if the old extract should be removed
 
 	return nil
 }

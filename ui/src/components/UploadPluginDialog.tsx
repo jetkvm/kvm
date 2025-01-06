@@ -45,6 +45,8 @@ function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
     setPluginUploadFilename,
     pluginUploadManifest,
     setPluginUploadManifest,
+    setConfiguringPlugin,
+    setPluginConfigureModalOpen,
   } = usePluginStore();
   const [send] = useJsonRpc();
   const [extractError, setExtractError] = useState<string | null>(null);
@@ -112,7 +114,12 @@ function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
                 onInstall={() => {
                   setOpen(false)
                   setPluginUploadFilename(null)
-                  // TODO: Open plugin settings dialog
+                  if (pluginUploadManifest) {
+                    setConfiguringPlugin(pluginUploadManifest.name)
+                    setPluginConfigureModalOpen(true)
+                  }
+                  setPluginUploadManifest(null)
+                  setPluginUploadModalView("upload")
                 }}
                 onBack={() => {
                   setPluginUploadModalView("upload")

@@ -19,7 +19,7 @@ type PluginInstall struct {
 	ExtractedVersions map[string]string `json:"extracted_versions"`
 
 	manifest       *PluginManifest
-	runningVersion *string
+	runningVersion string
 	processManager *ProcessManager
 	rpcServer      *PluginRpcServer
 }
@@ -84,10 +84,7 @@ func (p *PluginInstall) ReconcileSubprocess() error {
 		return fmt.Errorf("failed to get plugin manifest: %v", err)
 	}
 
-	versionRunning := ""
-	if p.runningVersion != nil {
-		versionRunning = *p.runningVersion
-	}
+	versionRunning := p.runningVersion
 
 	versionShouldBeRunning := p.Version
 	if !p.Enabled {
@@ -105,7 +102,7 @@ func (p *PluginInstall) ReconcileSubprocess() error {
 		log.Printf("Stopping plugin %s running version %s", manifest.Name, versionRunning)
 		p.processManager.Disable()
 		p.processManager = nil
-		p.runningVersion = nil
+		p.runningVersion = ""
 		err = p.rpcServer.Stop()
 		if err != nil {
 			return fmt.Errorf("failed to stop rpc server: %v", err)
@@ -146,7 +143,11 @@ func (p *PluginInstall) ReconcileSubprocess() error {
 	})
 	p.processManager.StartMonitor()
 	p.processManager.Enable()
-	p.runningVersion = &p.Version
+	p.runningVersion = p.Version
+
+	// Clear out manifest so the new version gets pulled next time
+	p.manifest = nil
+
 	log.Printf("Started plugin %s version %s", manifest.Name, p.Version)
 	return nil
 }
@@ -155,7 +156,7 @@ func (p *PluginInstall) Shutdown() {
 	if p.processManager != nil {
 		p.processManager.Disable()
 		p.processManager = nil
-		p.runningVersion = nil
+		p.runningVersion = ""
 	}
 
 	if p.rpcServer != nil {

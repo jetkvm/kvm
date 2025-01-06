@@ -1,4 +1,4 @@
-import { PluginStatus } from "@/hooks/stores";
+import { PluginStatus, usePluginStore } from "@/hooks/stores";
 import Modal from "@components/Modal";
 import AutoHeight from "@components/AutoHeight";
 import Card, { GridCard } from "@components/Card";
@@ -32,6 +32,8 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const {setIsPluginUploadModalOpen} = usePluginStore();
 
   useEffect(() => {
     setLoading(false);
@@ -72,6 +74,11 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
       setOpen(false);
     });
   }, [send, plugin, setOpen])
+
+  const uploadPlugin = useCallback(() => {
+    setOpen(false);
+    setIsPluginUploadModalOpen(true);
+  }, [setIsPluginUploadModalOpen, setOpen])
 
   return (
     <AutoHeight>
@@ -118,6 +125,30 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
                   </div>
                 </div>
 
+                <div className="grid grid-cols-[auto,1fr] gap-x-4 text-sm text-black dark:text-white">
+                  <span className="font-semibold">
+                    Name
+                  </span>
+                  <span>{plugin?.name}</span>
+
+                  <span className="font-semibold">
+                    Active Version
+                  </span>
+                  <span>{plugin?.version}</span>
+
+                  <span className="font-semibold">
+                    Description
+                  </span>
+                  <span>{plugin?.description}</span>
+
+                  <span className="font-semibold">
+                    Homepage
+                  </span>
+                  <a href={plugin?.homepage} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 dark:text-blue-500 dark:hover:text-blue-400">
+                    {plugin?.homepage}
+                  </a>
+                </div>
+
                 <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
 
                 <div
@@ -129,15 +160,15 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
                   {error && <p className="text-red-500 dark:text-red-400">{error}</p>}
                   {plugin?.message && (
                     <>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Plugin message:
-                    </p>
-                    <Card className={cx(
-                      "text-gray-500 dark:text-gray-400 p-4 border",
-                      plugin.status === "error" && "border-red-200 bg-red-50 text-red-800 dark:text-red-400",
-                    )}>
-                      {plugin.message}
-                    </Card>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Plugin message:
+                      </p>
+                      <Card className={cx(
+                        "text-gray-500 dark:text-gray-400 p-4 border",
+                        plugin.status === "error" && "border-red-200 bg-red-50 text-red-800 dark:text-red-400",
+                      )}>
+                        {plugin.message}
+                      </Card>
                     </>
                   )}
                   <p className="text-sm text-gray-500 dark:text-gray-400 py-10">
@@ -154,6 +185,13 @@ function Dialog({ plugin, setOpen }: { plugin: PluginStatus | null, setOpen: (op
                     }}
                   >
                     <div className="flex items-center w-full space-x-2">
+                      <Button
+                        size="MD"
+                        theme="primary"
+                        text="Upload New Version"
+                        disabled={loading}
+                        onClick={uploadPlugin}
+                      />
                       <Button
                         size="MD"
                         theme="blank"

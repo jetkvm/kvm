@@ -67,7 +67,7 @@ export default function PluginList() {
                   theme="light"
                   text="Settings"
                   onClick={() => {
-                    setConfiguringPlugin(plugin);
+                    setConfiguringPlugin(plugin.name);
                     setPluginConfigureModalOpen(true);
                   }}
                 />
@@ -85,7 +85,7 @@ export default function PluginList() {
             updatePlugins();
           }
         }}
-        plugin={plugins.find(p => p.name == configuringPlugin?.name) ?? null}
+        plugin={plugins.find(p => p.name == configuringPlugin) ?? null}
       />
 
       <div className="flex items-center gap-x-2">
