@@ -10,7 +10,7 @@ jobs:
     name: Release
     runs-on: ubuntu-22.04
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
