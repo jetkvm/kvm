@@ -90,6 +90,7 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             TITLE="${{ github.event.pull_request.title }}"
+            PR_NUMBER=${{ github.event.pull_request.number }}
           else
             TITLE="main branch"
           fi
@@ -105,4 +106,21 @@ jobs:
           )
 
           # Post Comment
-          gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # Look for an existing comment
+            COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+              --jq '.[] | select(.body | contains("✅ **Build successfully for")) | .id')
+
+            if [ -z "$COMMENT_ID" ]; then
+              # Create a new comment if none exists
+              gh pr comment $PR_NUMBER --body "$COMMENT"
+            else
+              # Update the existing comment
+              gh api repos/${{ github.repository }}/issues/comments/$COMMENT_ID \
+                --method PATCH \
+                -f body="$COMMENT"
+            fi
+          else
+            # Log the comment for main branch
+            echo "$COMMENT"
+          fi
