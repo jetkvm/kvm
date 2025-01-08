@@ -68,6 +68,7 @@ jobs:
           path: bin/jetkvm_app
 
   comment:
+    name: Comment
     runs-on: ubuntu-latest
     needs: build
     steps:
@@ -80,19 +81,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[0].id')
-          echo "ARTIFACT_URL=https://github.com/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip" >> $GITHUB_ENV
-          echo "LATEST_COMMIT=${GIT_COMMIT:0:7}" >> $GITHUB_ENV
+          echo "ARTIFACT_URL=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID" >> $GITHUB_ENV
+          echo "LATEST_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Comment on PR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Markdown Table for Comment
-          COMMENT="✅ **Build succesfully for ${{ github.event.pull_request.title }}!**\n\n"
+          COMMENT="✅ **Build successfully for ${{ github.event.pull_request.title }}!**\n\n"
           COMMENT+="| Name | Link |\n"
           COMMENT+="|------|------|\n"
           COMMENT+="| 🔗 Debug Binary | [Download](${{ env.ARTIFACT_URL }}) |\n"
-          COMMENT+="| 🔗 Latest commit | [${{ env.LATEST_COMMIT }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}) |\n"
+          COMMENT+="| 🔗 Latest commit | [${{ env.LATEST_COMMIT }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}) |"
 
           # Post Comment
           gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT"
