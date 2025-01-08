@@ -61,7 +61,7 @@ jobs:
           chmod 755 bin/jetkvm_app
 
       - name: Upload Debug Artifact
-        uses: actions/attest-build-provenance@v2
+        uses: actions/upload-artifact@v4
         if: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'pull_request') && matrix.go == '1.21' }}
         with:
           name: jetkvm_app_debug
