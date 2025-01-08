@@ -88,12 +88,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Markdown Table for Comment
-          COMMENT="✅ **Build successfully for ${{ github.event.pull_request.title }}!**\n\n"
-          COMMENT+="| Name | Link |\n"
-          COMMENT+="|------|------|\n"
-          COMMENT+="| 🔗 Debug Binary | [Download](${{ env.ARTIFACT_URL }}) |\n"
-          COMMENT+="| 🔗 Latest commit | [${{ env.LATEST_COMMIT }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}) |"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            TITLE="${{ github.event.pull_request.title }}"
+          else
+            TITLE="main branch"
+          fi
+
+          COMMENT=$(cat << EOF
+          ✅ **Build successfully for $TITLE!**
+
+          | Name             | Link                                                                 |
+          |------------------|----------------------------------------------------------------------|
+          | 🔗 Debug Binary  | [Download](${{ env.ARTIFACT_URL }})                                   |
+          | 🔗 Latest commit | [${{ env.LATEST_COMMIT }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}) |
+          EOF
+          )
 
           # Post Comment
           gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT"
