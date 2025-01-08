@@ -1,0 +1,99 @@
+name: Push
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04]
+        go: [1.21]
+        node: [21]
+        goos: [linux]
+        goarch: [arm]
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install Dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Build UI
+        working-directory: ui
+        run: npm run build:device
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Install Go Dependencies
+        run: |
+          go mod download
+
+      - name: Build Binaries
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w -X kvm.builtAppVersion=dev-${GIT_COMMIT:0:7}" -o bin/jetkvm_app cmd/main.go
+          chmod 755 bin/jetkvm_app
+
+      - name: Upload Debug Artifact
+        uses: actions/attest-build-provenance@v2
+        if: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'pull_request') && matrix.go == '1.21' }}
+        with:
+          name: jetkvm_app_debug
+          path: bin/jetkvm_app
+
+  comment:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate Links
+        id: linksa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[0].id')
+          echo "ARTIFACT_URL=https://github.com/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip" >> $GITHUB_ENV
+          echo "LATEST_COMMIT=${GIT_COMMIT:0:7}" >> $GITHUB_ENV
+
+      - name: Comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Markdown Table for Comment
+          COMMENT="✅ **Build succesfully for ${{ github.event.pull_request.title }}!**\n\n"
+          COMMENT+="| Name | Link |\n"
+          COMMENT+="|------|------|\n"
+          COMMENT+="| 🔗 Debug Binary | [Download](${{ env.ARTIFACT_URL }}) |\n"
+          COMMENT+="| 🔗 Latest commit | [${{ env.LATEST_COMMIT }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}) |\n"
+
+          # Post Comment
+          gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT"
