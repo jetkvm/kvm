@@ -8,20 +8,20 @@ import (
 	"reflect"
 )
 
-type JSONRPCServer struct {
+type JSONRPCRouter struct {
 	writer io.Writer
 
 	handlers map[string]*RPCHandler
 }
 
-func NewJSONRPCServer(writer io.Writer, handlers map[string]*RPCHandler) *JSONRPCServer {
-	return &JSONRPCServer{
+func NewJSONRPCRouter(writer io.Writer, handlers map[string]*RPCHandler) *JSONRPCRouter {
+	return &JSONRPCRouter{
 		writer:   writer,
 		handlers: handlers,
 	}
 }
 
-func (s *JSONRPCServer) HandleMessage(data []byte) error {
+func (s *JSONRPCRouter) HandleMessage(data []byte) error {
 	var request JSONRPCRequest
 	err := json.Unmarshal(data, &request)
 	if err != nil {
@@ -72,7 +72,7 @@ func (s *JSONRPCServer) HandleMessage(data []byte) error {
 	return s.writeResponse(response)
 }
 
-func (s *JSONRPCServer) writeResponse(response JSONRPCResponse) error {
+func (s *JSONRPCRouter) writeResponse(response JSONRPCResponse) error {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		return err
