@@ -10,8 +10,10 @@ import (
 )
 
 var currentScreen = "ui_Boot_Screen"
-var lastWakeTime = time.Now()
 var backlightState = 0 // 0 - NORMAL, 1 - DIMMED, 2 - OFF
+
+var dim_ticker *time.Ticker
+var off_ticker *time.Ticker
 
 const (
 	TOUCHSCREEN_DEVICE      string = "/dev/input/event1"
@@ -119,34 +121,30 @@ func setDisplayBrightness(brightness int) error {
 	return nil
 }
 
-// displayTimeoutTick checks the time the display was last woken, and compares that to the
-// config's displayTimeout values to decide whether or not to dim/switch off the display.
-func displayTimeoutTick() {
-	tn := time.Now()
-	td := tn.Sub(lastWakeTime).Milliseconds()
-
-	if td > config.DisplayOffAfterMs && config.DisplayOffAfterMs != 0 && (backlightState == 1 || backlightState == 0) {
-		// Display fully off
-
-		backlightState = 2
-		err := setDisplayBrightness(0)
-		if err != nil {
-			fmt.Printf("display: timeout: Failed to switch off backlight: %s\n", err)
-		}
-
-	} else if td > config.DisplayDimAfterMs && config.DisplayDimAfterMs != 0 && backlightState == 0 {
-		// Display dimming
-
-		// Get 50% of max brightness, rounded up.
-		dimBright := config.DisplayMaxBrightness / 2
-		fmt.Printf("display: timeout: target dim brightness: %v\n", dimBright)
-
-		backlightState = 1
-		err := setDisplayBrightness(dimBright)
-		if err != nil {
-			fmt.Printf("display: timeout: Failed to dim backlight: %s\n", err)
-		}
+// tick_displayDim() is called when when dim ticker expires, it simply reduces the brightness
+// of the display by half of the max brightness.
+func tick_displayDim() {
+	err := setDisplayBrightness(config.DisplayMaxBrightness / 2)
+	if err != nil {
+		fmt.Printf("display: failed to dim display: %s\n", err)
 	}
+
+	dim_ticker.Stop()
+
+	backlightState = 1
+}
+
+// tick_displayOff() is called when the off ticker expires, it turns off the display
+// by setting the brightness to zero.
+func tick_displayOff() {
+	err := setDisplayBrightness(0)
+	if err != nil {
+		fmt.Printf("display: failed to turn off display: %s\n", err)
+	}
+
+	off_ticker.Stop()
+
+	backlightState = 2
 }
 
 // wakeDisplay sets the display brightness back to config.DisplayMaxBrightness and stores the time the display
@@ -165,7 +163,8 @@ func wakeDisplay() {
 		fmt.Printf("display wake failed, %s\n", err)
 	}
 
-	lastWakeTime = time.Now()
+	dim_ticker.Reset(time.Duration(config.DisplayDimAfterMs) * time.Millisecond)
+	off_ticker.Reset(time.Duration(config.DisplayOffAfterMs) * time.Millisecond)
 	backlightState = 0
 }
 
@@ -210,14 +209,20 @@ func init() {
 	}()
 
 	go func() {
-		// Start display auto-sleeping ticker
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
+		LoadConfig()
+		// Start display auto-sleeping tickers
+		dim_ticker = time.NewTicker(time.Duration(config.DisplayDimAfterMs) * time.Millisecond)
+		defer dim_ticker.Stop()
+
+		off_ticker = time.NewTicker(time.Duration(config.DisplayOffAfterMs) * time.Millisecond)
+		defer off_ticker.Stop()
 
 		for {
 			select {
-			case <-ticker.C:
-				displayTimeoutTick()
+			case <-dim_ticker.C:
+				tick_displayDim()
+			case <-off_ticker.C:
+				tick_displayOff()
 			}
 		}
 	}()
