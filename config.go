@@ -32,9 +32,9 @@ const configPath = "/userdata/kvm_config.json"
 var defaultConfig = &Config{
 	CloudURL:             "https://api.jetkvm.com",
 	AutoUpdateEnabled:    true, // Set a default value
-	DisplayMaxBrightness: 100,
-	DisplayDimAfterMs:    0,
-	DisplayOffAfterMs:    0,
+	DisplayMaxBrightness: 64,
+	DisplayDimAfterMs:    120000,  // 2 minutes
+	DisplayOffAfterMs:    1800000, // 30 minutes
 }
 
 var config *Config
