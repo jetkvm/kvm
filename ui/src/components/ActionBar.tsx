@@ -4,6 +4,7 @@ import {
   useMountMediaStore,
   useUiStore,
   useSettingsStore,
+  useVideoStore,
 } from "@/hooks/stores";
 import { MdOutlineContentPasteGo } from "react-icons/md";
 import Container from "@components/Container";
@@ -33,6 +34,7 @@ export default function Actionbar({
     state => state.remoteVirtualMediaState,
   );
   const developerMode = useSettingsStore(state => state.developerMode);
+  const hdmiState = useVideoStore(state => state.hdmiState);
 
   // This is the only way to get a reliable state change for the popover
   // at time of writing this there is no mount, or unmount event for the popover
@@ -247,6 +249,7 @@ export default function Actionbar({
               size="XS"
               theme="light"
               text="Fullscreen"
+              disabled={hdmiState !== 'ready'}
               LeadingIcon={LuMaximize}
               onClick={() => requestFullscreen()}
             />

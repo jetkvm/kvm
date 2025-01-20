@@ -30,6 +30,8 @@ export default function WebRTCVideo() {
   const {
     setClientSize: setVideoClientSize,
     setSize: setVideoSize,
+    width: videoWidth,
+    height: videoHeight,
     clientWidth: videoClientWidth,
     clientHeight: videoClientHeight,
   } = useVideoStore();
@@ -102,20 +104,43 @@ export default function WebRTCVideo() {
   const mouseMoveHandler = useCallback(
     (e: MouseEvent) => {
       if (!videoClientWidth || !videoClientHeight) return;
-      const { buttons } = e;
+      // Get the aspect ratios of the video element and the video stream
+      const videoElementAspectRatio = videoClientWidth / videoClientHeight;
+      const videoStreamAspectRatio = videoWidth / videoHeight;
 
-      // Clamp mouse position within the video boundaries
-      const currMouseX = Math.min(Math.max(1, e.offsetX), videoClientWidth);
-      const currMouseY = Math.min(Math.max(1, e.offsetY), videoClientHeight);
+      // Calculate the effective video display area
+      let effectiveWidth = videoClientWidth;
+      let effectiveHeight = videoClientHeight;
+      let offsetX = 0;
+      let offsetY = 0;
 
-      // Normalize mouse position to 0-32767 range (HID absolute coordinate system)
-      const x = Math.round((currMouseX / videoClientWidth) * 32767);
-      const y = Math.round((currMouseY / videoClientHeight) * 32767);
+      if (videoElementAspectRatio > videoStreamAspectRatio) {
+        // Pillarboxing: black bars on the left and right
+        effectiveWidth = videoClientHeight * videoStreamAspectRatio;
+        offsetX = (videoClientWidth - effectiveWidth) / 2;
+      } else if (videoElementAspectRatio < videoStreamAspectRatio) {
+        // Letterboxing: black bars on the top and bottom
+        effectiveHeight = videoClientWidth / videoStreamAspectRatio;
+        offsetY = (videoClientHeight - effectiveHeight) / 2;
+      }
+
+      // Clamp mouse position within the effective video boundaries
+      const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
+      const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
+
+      // Map clamped mouse position to the video stream's coordinate system
+      const relativeX = (clampedX - offsetX) / effectiveWidth;
+      const relativeY = (clampedY - offsetY) / effectiveHeight;
+
+      // Convert to HID absolute coordinate system (0-32767 range)
+      const x = Math.round(relativeX * 32767);
+      const y = Math.round(relativeY * 32767);
 
       // Send mouse movement
+      const { buttons } = e;
       sendMouseMovement(x, y, buttons);
     },
-    [sendMouseMovement, videoClientHeight, videoClientWidth],
+    [sendMouseMovement, videoClientHeight, videoClientWidth, videoWidth, videoHeight],
   );
 
   const mouseWheelHandler = useCallback(
