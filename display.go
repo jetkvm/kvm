@@ -36,17 +36,17 @@ func switchToScreenIfDifferent(screenName string) {
 func updateDisplay() {
 	updateLabelIfChanged("ui_Home_Content_Ip", networkState.IPv4)
 	if usbState == "configured" {
-		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Connected")
+		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Connected*")
 		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Usb_Status_Label", "state": "LV_STATE_DEFAULT"})
 	} else {
-		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Disconnected")
+		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Disconnected*")
 		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Usb_Status_Label", "state": "LV_STATE_USER_2"})
 	}
 	if lastVideoState.Ready {
-		updateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Connected")
+		updateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Connected*")
 		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Hdmi_Status_Label", "state": "LV_STATE_DEFAULT"})
 	} else {
-		updateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Disconnected")
+		updateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Disconnected*")
 		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Hdmi_Status_Label", "state": "LV_STATE_USER_2"})
 	}
 	updateLabelIfChanged("ui_Home_Header_Cloud_Status_Label", fmt.Sprintf("%d active", actionSessions))

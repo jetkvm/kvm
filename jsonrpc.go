@@ -478,6 +478,26 @@ func rpcSetUsbEmulationState(enabled bool) error {
 	}
 }
 
+func rpcSetUsbConfig(usbConfig UsbConfig) error {
+	log.Printf("[jsonrpc.go:rpcSetUsbConfig] called")
+
+	LoadConfig()
+	config.UsbConfig = usbConfig
+
+	err2 := UpdateGadgetConfig()
+	if err2 != nil {
+		return fmt.Errorf("failed to write gadget config: %w", err2)
+	}
+
+	err := SaveConfig()
+	if err != nil {
+		return fmt.Errorf("failed to save usb config: %w", err)
+	}
+
+	log.Printf("[jsonrpc.go:rpcSetUsbConfig] usb config set to %s", usbConfig)
+	return nil
+}
+
 func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
 	LoadConfig()
 	if config.WakeOnLanDevices == nil {
@@ -542,6 +562,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"isUpdatePending":        {Func: rpcIsUpdatePending},
 	"getUsbEmulationState":   {Func: rpcGetUsbEmulationState},
 	"setUsbEmulationState":   {Func: rpcSetUsbEmulationState, Params: []string{"enabled"}},
+	"setUsbConfig":           {Func: rpcSetUsbConfig, Params: []string{"usbConfig"}},
 	"checkMountUrl":          {Func: rpcCheckMountUrl, Params: []string{"url"}},
 	"getVirtualMediaState":   {Func: rpcGetVirtualMediaState},
 	"getStorageSpace":        {Func: rpcGetStorageSpace},

@@ -11,6 +11,14 @@ type WakeOnLanDevice struct {
 	MacAddress string `json:"macAddress"`
 }
 
+type UsbConfig struct {
+	UsbVendorId     string `json:"usb_vendor_id"`
+	UsbProductId    string `json:"usb_product_id"`
+	UsbSerialNumber string `json:"usb_serial_number"`
+	UsbName         string `json:"usb_name"`
+	UsbManufacturer string `json:"usb_manufacturer"`
+}
+
 type Config struct {
 	CloudURL          string            `json:"cloud_url"`
 	CloudToken        string            `json:"cloud_token"`
@@ -22,6 +30,7 @@ type Config struct {
 	LocalAuthToken    string            `json:"local_auth_token"`
 	LocalAuthMode     string            `json:"localAuthMode"` //TODO: fix it with migration
 	WakeOnLanDevices  []WakeOnLanDevice `json:"wake_on_lan_devices"`
+	UsbConfig         UsbConfig         `json:"usb_config"`
 }
 
 const configPath = "/userdata/kvm_config.json"

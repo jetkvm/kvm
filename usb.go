@@ -3,6 +3,7 @@ package kvm
 import (
 	"errors"
 	"fmt"
+	gadget "github.com/openstadia/go-usb-gadget"
 	"log"
 	"os"
 	"os/exec"
@@ -11,27 +12,12 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	gadget "github.com/openstadia/go-usb-gadget"
 )
 
 const configFSPath = "/sys/kernel/config"
 const gadgetPath = "/sys/kernel/config/usb_gadget"
 const kvmGadgetPath = "/sys/kernel/config/usb_gadget/jetkvm"
 const configC1Path = "/sys/kernel/config/usb_gadget/jetkvm/configs/c.1"
-
-func mountConfigFS() error {
-	_, err := os.Stat(gadgetPath)
-	if os.IsNotExist(err) {
-		err = exec.Command("mount", "-t", "configfs", "none", configFSPath).Run()
-		if err != nil {
-			return fmt.Errorf("failed to mount configfs: %w", err)
-		}
-	} else {
-		return fmt.Errorf("unable to access usb gadget path: %w", err)
-	}
-	return nil
-}
 
 func init() {
 	_ = os.MkdirAll(imagesFolder, 0755)
@@ -58,6 +44,60 @@ func init() {
 	//TODO: read hid reports(capslock, numlock, etc) from keyboardHidFile
 }
 
+func UpdateGadgetConfig() error {
+	LoadConfig()
+	gadgetAttrs := [][]string{
+		{"idVendor", config.UsbConfig.UsbVendorId},
+		{"idProduct", config.UsbConfig.UsbProductId},
+	}
+	err := writeGadgetAttrs(kvmGadgetPath, gadgetAttrs)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Successfully updated usb gadget attributes: %v", gadgetAttrs)
+
+	strAttrs := [][]string{
+		{"serialnumber", config.UsbConfig.UsbSerialNumber},
+		{"manufacturer", config.UsbConfig.UsbManufacturer},
+		{"product", config.UsbConfig.UsbName},
+	}
+	gadgetStringsPath := filepath.Join(kvmGadgetPath, "strings", "0x409")
+	err = os.MkdirAll(gadgetStringsPath, 0755)
+	if err != nil {
+		return err
+	}
+	err = writeGadgetAttrs(gadgetStringsPath, strAttrs)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Successfully updated string attributes: %s", strAttrs)
+
+	err = rebindUsb()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func mountConfigFS() error {
+	logger.Infof("Checking for gadgetPath: %s ...", gadgetPath)
+	_, err := os.Stat(gadgetPath)
+	if os.IsNotExist(err) {
+		logger.Infof("running mount command...")
+		err = exec.Command("mount", "-t", "configfs", "none", configFSPath).Run()
+		if err != nil {
+			return fmt.Errorf("failed to mount configfs: %w", err)
+		}
+	} else {
+		return fmt.Errorf("unable to access usb gadget path: %w", err)
+	}
+	logger.Infof("Successfully mounted usb gadget at %s", gadgetPath)
+	return nil
+}
+
 func writeGadgetAttrs(basePath string, attrs [][]string) error {
 	for _, item := range attrs {
 		filePath := filepath.Join(basePath, item[0])
@@ -79,30 +119,35 @@ func writeGadgetConfig() error {
 		return err
 	}
 
-	err = writeGadgetAttrs(kvmGadgetPath, [][]string{
-		{"bcdUSB", "0x0200"},   //USB 2.0
-		{"idVendor", "0x1d6b"}, //The Linux Foundation
-		{"idProduct", "0104"},  //Multifunction Composite Gadget¬
+	LoadConfig()
+	gadgetAttrs := [][]string{
+		{"bcdUSB", "0x0200"}, //USB 2.0
+		{"idVendor", config.UsbConfig.UsbVendorId},
+		{"idProduct", config.UsbConfig.UsbProductId},
 		{"bcdDevice", "0100"},
-	})
+	}
+	err = writeGadgetAttrs(kvmGadgetPath, gadgetAttrs)
 	if err != nil {
 		return err
 	}
 
+	logger.Infof("Successfully wrote gadget attributes: %s", gadgetAttrs)
 	gadgetStringsPath := filepath.Join(kvmGadgetPath, "strings", "0x409")
 	err = os.MkdirAll(gadgetStringsPath, 0755)
 	if err != nil {
 		return err
 	}
 
-	err = writeGadgetAttrs(gadgetStringsPath, [][]string{
-		{"serialnumber", GetDeviceID()},
-		{"manufacturer", "JetKVM"},
-		{"product", "JetKVM USB Emulation Device"},
-	})
+	strAttrs := [][]string{
+		{"serialnumber", config.UsbConfig.UsbSerialNumber},
+		{"manufacturer", config.UsbConfig.UsbManufacturer},
+		{"product", config.UsbConfig.UsbName},
+	}
+	err = writeGadgetAttrs(gadgetStringsPath, strAttrs)
 	if err != nil {
 		return err
 	}
+	logger.Infof("Successfully wrote string attributes: %s", strAttrs)
 
 	configC1StringsPath := path.Join(configC1Path, "strings", "0x409")
 	err = os.MkdirAll(configC1StringsPath, 0755)
@@ -216,11 +261,27 @@ func writeGadgetConfig() error {
 }
 
 func rebindUsb() error {
+	unbindErr := unbindUsb()
+	if unbindErr != nil {
+		return unbindErr
+	}
+	bindErr := bindUsb()
+	if bindErr != nil {
+		return bindErr
+	}
+	return nil
+}
+
+func unbindUsb() error {
 	err := os.WriteFile("/sys/bus/platform/drivers/dwc3/unbind", []byte(udc), 0644)
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile("/sys/bus/platform/drivers/dwc3/bind", []byte(udc), 0644)
+	return nil
+}
+
+func bindUsb() error {
+	err := os.WriteFile("/sys/bus/platform/drivers/dwc3/bind", []byte(udc), 0644)
 	if err != nil {
 		return err
 	}
