@@ -253,7 +253,7 @@ export default function SettingsSidebar() {
     send("setSSHKeyState", { sshKey }, resp => {
       if ("error" in resp) {
         notifications.error(
-            `Failed to update SSH key: ${resp.error.data || "Unknown error"}`,
+          `Failed to update SSH key: ${resp.error.data || "Unknown error"}`,
         );
         return;
       }
@@ -329,7 +329,7 @@ export default function SettingsSidebar() {
       const receivedEdid = resp.result as string;
 
       const matchingEdid = edids.find(
-          x => x.value.toLowerCase() === receivedEdid.toLowerCase(),
+        x => x.value.toLowerCase() === receivedEdid.toLowerCase(),
       );
 
       if (matchingEdid) {
@@ -372,8 +372,8 @@ export default function SettingsSidebar() {
   const getDevice = useCallback(async () => {
     try {
       const status = await api
-          .GET(`${import.meta.env.VITE_SIGNAL_API}/device`)
-          .then(res => res.json() as Promise<LocalDevice>);
+        .GET(`${import.meta.env.VITE_SIGNAL_API}/device`)
+        .then(res => res.json() as Promise<LocalDevice>);
       setLocalDevice(status);
     } catch (error) {
       notifications.error("Failed to get authentication status");
@@ -408,8 +408,8 @@ export default function SettingsSidebar() {
       localStorage.removeItem("theme");
       // Check system preference
       const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
+        ? "dark"
+        : "light";
       root.classList.remove("light", "dark");
       root.classList.add(systemTheme);
     } else {
@@ -423,7 +423,7 @@ export default function SettingsSidebar() {
     send("resetConfig", {}, resp => {
       if ("error" in resp) {
         notifications.error(
-            `Failed to reset configuration: ${resp.error.data || "Unknown error"}`,
+          `Failed to reset configuration: ${resp.error.data || "Unknown error"}`,
         );
         return;
       }
