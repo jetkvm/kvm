@@ -143,35 +143,35 @@ function UpdateUsbConfigModal({
           required
           label="Vendor ID"
           placeholder="Enter Vendor ID"
-          value={usbConfigState?.vendor_id}
+          defaultValue={usbConfigState?.vendor_id}
           onChange={e => handleUsbVendorIdChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Product ID"
           placeholder="Enter Product ID"
-          value={usbConfigState?.product_id}
+          defaultValue={usbConfigState?.product_id}
           onChange={e => handleUsbProductIdChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Serial Number"
           placeholder="Enter Serial Number"
-          value={usbConfigState?.serial_number}
+          defaultValue={usbConfigState?.serial_number}
           onChange={e => handleUsbSerialChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Manufacturer"
           placeholder="Enter Manufacturer"
-          value={usbConfigState?.manufacturer}
+          defaultValue={usbConfigState?.manufacturer}
           onChange={e => handleUsbManufacturer(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Product Name"
           placeholder="Enter Product Name"
-          value={usbConfigState?.product_name}
+          defaultValue={usbConfigState?.product_name}
           onChange={e => handleUsbProduct(e.target.value)}
         />
         <div className="flex gap-x-2">
