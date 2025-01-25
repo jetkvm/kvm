@@ -25,7 +25,7 @@ import LocalAuthPasswordDialog from "@/components/LocalAuthPasswordDialog";
 import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
-import UsbConfigDialog from "@components/UsbConfigDialog";
+import USBConfigDialog from "@components/USBConfigDialog";
 
 export function SettingsItem({
   title,
@@ -921,7 +921,7 @@ export default function SettingsSidebar() {
               setIsLocalAuthDialogOpen(x);
             }}
         />
-        <UsbConfigDialog
+        <USBConfigDialog
           open={isUsbConfigDialogOpen}
           setOpen={x => {
             // Revalidate the current route to refresh the local device status and dependent UI components

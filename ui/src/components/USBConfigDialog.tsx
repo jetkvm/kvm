@@ -8,7 +8,7 @@ import { InputFieldWithLabel } from "./InputField";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useUsbConfigModalStore } from "@/hooks/stores";
 
-export default function UsbConfigDialog({
+export default function USBConfigDialog({
   open,
   setOpen,
 }: {
