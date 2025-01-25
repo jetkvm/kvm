@@ -28,10 +28,10 @@ import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 
 export function SettingsItem({
- title,
- description,
- children,
- className,
+  title,
+  description,
+  children,
+  className,
 }: {
   title: string;
   description: string | React.ReactNode;
