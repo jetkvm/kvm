@@ -858,7 +858,7 @@ export default function SettingsSidebar() {
                     }}
                 />
               </SettingsItem>
-              {settings.debugMode && (
+              {settings.developerMode && (
                   <SettingsItem
                       title="USB Configuration"
                       description="Set the USB Descriptors for the JetKVM"
