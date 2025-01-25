@@ -19,6 +19,22 @@ const gadgetPath = "/sys/kernel/config/usb_gadget"
 const kvmGadgetPath = "/sys/kernel/config/usb_gadget/jetkvm"
 const configC1Path = "/sys/kernel/config/usb_gadget/jetkvm/configs/c.1"
 
+func mountConfigFS() error {
+	logger.Infof("Checking for gadgetPath: %s ...", gadgetPath)
+	_, err := os.Stat(gadgetPath)
+	if os.IsNotExist(err) {
+		logger.Infof("running mount command...")
+		err = exec.Command("mount", "-t", "configfs", "none", configFSPath).Run()
+		if err != nil {
+			return fmt.Errorf("failed to mount configfs: %w", err)
+		}
+	} else {
+		return fmt.Errorf("unable to access usb gadget path: %w", err)
+	}
+	logger.Infof("Successfully mounted usb gadget at %s", gadgetPath)
+	return nil
+}
+
 func init() {
 	_ = os.MkdirAll(imagesFolder, 0755)
 	udcs := gadget.GetUdcs()
@@ -82,22 +98,6 @@ func UpdateGadgetConfig() error {
 	return nil
 }
 
-func mountConfigFS() error {
-	logger.Infof("Checking for gadgetPath: %s ...", gadgetPath)
-	_, err := os.Stat(gadgetPath)
-	if os.IsNotExist(err) {
-		logger.Infof("running mount command...")
-		err = exec.Command("mount", "-t", "configfs", "none", configFSPath).Run()
-		if err != nil {
-			return fmt.Errorf("failed to mount configfs: %w", err)
-		}
-	} else {
-		return fmt.Errorf("unable to access usb gadget path: %w", err)
-	}
-	logger.Infof("Successfully mounted usb gadget at %s", gadgetPath)
-	return nil
-}
-
 func writeGadgetAttrs(basePath string, attrs [][]string) error {
 	for _, item := range attrs {
 		filePath := filepath.Join(basePath, item[0])
@@ -122,8 +122,8 @@ func writeGadgetConfig() error {
 	LoadConfig()
 	gadgetAttrs := [][]string{
 		{"bcdUSB", "0x0200"}, //USB 2.0
-		{"idVendor", config.UsbConfig.UsbVendorId},
-		{"idProduct", config.UsbConfig.UsbProductId},
+		{"idVendor", "0x1d6b"},
+		{"idProduct", "0104"},
 		{"bcdDevice", "0100"},
 	}
 	err = writeGadgetAttrs(kvmGadgetPath, gadgetAttrs)
@@ -139,9 +139,9 @@ func writeGadgetConfig() error {
 	}
 
 	strAttrs := [][]string{
-		{"serialnumber", config.UsbConfig.UsbSerialNumber},
-		{"manufacturer", config.UsbConfig.UsbManufacturer},
-		{"product", config.UsbConfig.UsbName},
+		{"serialnumber", GetDeviceID()},
+		{"manufacturer", "JetKVM"},
+		{"product", "JetKVM USB Emulation Device"},
 	}
 	err = writeGadgetAttrs(gadgetStringsPath, strAttrs)
 	if err != nil {
