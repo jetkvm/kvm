@@ -89,7 +89,7 @@ func UpdateGadgetConfig() error {
 		return err
 	}
 
-	log.Printf("Successfully updated string attributes: %s", strAttrs)
+	log.Printf("Successfully updated usb string attributes: %s", strAttrs)
 
 	err = rebindUsb()
 	if err != nil {
@@ -120,35 +120,30 @@ func writeGadgetConfig() error {
 		return err
 	}
 
-	LoadConfig()
-	gadgetAttrs := [][]string{
-		{"bcdUSB", "0x0200"}, //USB 2.0
-		{"idVendor", "0x1d6b"},
-		{"idProduct", "0104"},
+	err = writeGadgetAttrs(kvmGadgetPath, [][]string{
+		{"bcdUSB", "0x0200"},   //USB 2.0
+		{"idVendor", "0x1d6b"}, //The Linux Foundation
+		{"idProduct", "0104"},  //Multifunction Composite Gadget¬
 		{"bcdDevice", "0100"},
-	}
-	err = writeGadgetAttrs(kvmGadgetPath, gadgetAttrs)
+	})
 	if err != nil {
 		return err
 	}
 
-	logger.Infof("Successfully wrote gadget attributes: %s", gadgetAttrs)
 	gadgetStringsPath := filepath.Join(kvmGadgetPath, "strings", "0x409")
 	err = os.MkdirAll(gadgetStringsPath, 0755)
 	if err != nil {
 		return err
 	}
 
-	strAttrs := [][]string{
+	err = writeGadgetAttrs(gadgetStringsPath, [][]string{
 		{"serialnumber", GetDeviceID()},
 		{"manufacturer", "JetKVM"},
 		{"product", "JetKVM USB Emulation Device"},
-	}
-	err = writeGadgetAttrs(gadgetStringsPath, strAttrs)
+	})
 	if err != nil {
 		return err
 	}
-	logger.Infof("Successfully wrote string attributes: %s", strAttrs)
 
 	configC1StringsPath := path.Join(configC1Path, "strings", "0x409")
 	err = os.MkdirAll(configC1StringsPath, 0755)
