@@ -478,6 +478,11 @@ func rpcSetUsbEmulationState(enabled bool) error {
 	}
 }
 
+func rpcGetUsbConfig() (UsbConfig, error) {
+	LoadConfig()
+	return config.UsbConfig, nil
+}
+
 func rpcSetUsbConfig(usbConfig UsbConfig) error {
 	LoadConfig()
 	config.UsbConfig = usbConfig
@@ -560,6 +565,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"isUpdatePending":        {Func: rpcIsUpdatePending},
 	"getUsbEmulationState":   {Func: rpcGetUsbEmulationState},
 	"setUsbEmulationState":   {Func: rpcSetUsbEmulationState, Params: []string{"enabled"}},
+	"getUsbConfig":           {Func: rpcGetUsbConfig},
 	"setUsbConfig":           {Func: rpcSetUsbConfig, Params: []string{"usbConfig"}},
 	"checkMountUrl":          {Func: rpcCheckMountUrl, Params: []string{"url"}},
 	"getVirtualMediaState":   {Func: rpcGetVirtualMediaState},

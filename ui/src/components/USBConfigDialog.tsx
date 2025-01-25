@@ -1,5 +1,5 @@
 import { GridCard } from "@/components/Card";
-import {useCallback, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import { Button } from "@components/Button";
 import LogoBlueIcon from "@/assets/logo-blue.svg";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
@@ -7,6 +7,14 @@ import Modal from "@components/Modal";
 import { InputFieldWithLabel } from "./InputField";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useUsbConfigModalStore } from "@/hooks/stores";
+
+export interface UsbConfigState {
+  vendor_id: string;
+  product_id: string;
+  serial_number: string;
+  manufacturer: string;
+  product_name: string;
+}
 
 export default function USBConfigDialog({
   open,
@@ -77,6 +85,25 @@ function UpdateUsbConfigModal({
     usb_manufacturer: '',
     usb_product: '',
   })
+
+  const [usbConfigState, setUsbConfigState] = useState<UsbConfigState>();
+  const [send] = useJsonRpc();
+
+  const syncUsbConfig = useCallback(() => {
+    send("getUsbConfig", {}, resp => {
+      if ("result" in resp) {
+        setUsbConfigState(resp.result as UsbConfigState);
+      } else {
+        console.error("Failed to load USB Config:", resp.error);
+      }
+    });
+  }, [send, setUsbConfigState]);
+
+  // Load stored usb config from the backend
+  useEffect(() => {
+    syncUsbConfig();
+  }, [syncUsbConfig]);
+
   const handleUsbVendorIdChange = (vendorId: string) => {
     setUsbConfig({... usbConfig, usb_vendor_id: vendorId})
   };
@@ -115,35 +142,35 @@ function UpdateUsbConfigModal({
           required
           label="Vendor ID"
           placeholder="Enter Vendor ID"
-          value={usbConfig.usb_vendor_id || ""}
+          value={usbConfigState?.vendor_id}
           onChange={e => handleUsbVendorIdChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Product ID"
           placeholder="Enter Product ID"
-          value={usbConfig.usb_product_id || ""}
+          value={usbConfigState?.product_id}
           onChange={e => handleUsbProductIdChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Serial Number"
           placeholder="Enter Serial Number"
-          value={usbConfig.usb_serial_number || ""}
+          value={usbConfigState?.serial_number}
           onChange={e => handleUsbSerialChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Manufacturer"
           placeholder="Enter Manufacturer"
-          value={usbConfig.usb_manufacturer || ""}
+          value={usbConfigState?.manufacturer}
           onChange={e => handleUsbManufacturer(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Product Name"
           placeholder="Enter Product Name"
-          value={usbConfig.usb_product || ""}
+          value={usbConfigState?.product_name}
           onChange={e => handleUsbProduct(e.target.value)}
         />
         <div className="flex gap-x-2">
