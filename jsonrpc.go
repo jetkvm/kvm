@@ -484,12 +484,12 @@ func rpcSetUsbConfig(usbConfig UsbConfig) error {
 	LoadConfig()
 	config.UsbConfig = usbConfig
 
-	err2 := UpdateGadgetConfig()
-	if err2 != nil {
-		return fmt.Errorf("failed to write gadget config: %w", err2)
+	err := UpdateGadgetConfig()
+	if err != nil {
+		return fmt.Errorf("failed to write gadget config: %w", err)
 	}
 
-	err := SaveConfig()
+	err = SaveConfig()
 	if err != nil {
 		return fmt.Errorf("failed to save usb config: %w", err)
 	}
