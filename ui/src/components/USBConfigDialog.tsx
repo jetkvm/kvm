@@ -92,6 +92,7 @@ function UpdateUsbConfigModal({
   const syncUsbConfig = useCallback(() => {
     send("getUsbConfig", {}, resp => {
       if ("result" in resp) {
+        console.info("Successfully synced USB Config: ", resp.result);
         setUsbConfigState(resp.result as UsbConfigState);
       } else {
         console.error("Failed to load USB Config:", resp.error);
