@@ -107,41 +107,42 @@ function UpdateUsbConfigModal({
         <div>
           <h2 className="text-lg font-semibold dark:text-white">USB Emulation Configuration</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Set custom USB parameters to control the device USB emulation. The device will rebind once the parameters are updated.
+            Set custom USB parameters to control how the USB device is emulated.
+            The device will rebind once the parameters are updated.
           </p>
         </div>
         <InputFieldWithLabel
           required
           label="Vendor ID"
-          placeholder="Enter USB Vendor ID"
+          placeholder="Enter Vendor ID"
           value={usbConfig.usb_vendor_id || ""}
           onChange={e => handleUsbVendorIdChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Product ID"
-          placeholder="Enter USB Product ID"
+          placeholder="Enter Product ID"
           value={usbConfig.usb_product_id || ""}
           onChange={e => handleUsbProductIdChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Serial Number"
-          placeholder="Enter USB Serial Number"
+          placeholder="Enter Serial Number"
           value={usbConfig.usb_serial_number || ""}
           onChange={e => handleUsbSerialChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Manufacturer"
-          placeholder="Enter USB Manufacturer"
+          placeholder="Enter Manufacturer"
           value={usbConfig.usb_manufacturer || ""}
           onChange={e => handleUsbManufacturer(e.target.value)}
         />
         <InputFieldWithLabel
           required
           label="Name"
-          placeholder="Enter USB Name"
+          placeholder="Enter Name"
           value={usbConfig.usb_name || ""}
           onChange={e => handleUsbName(e.target.value)}
         />
