@@ -147,7 +147,7 @@ export default function SettingsSidebar() {
     send("deregisterDevice", {}, resp => {
       if ("error" in resp) {
         notifications.error(
-            `Failed to de-register device: ${resp.error.data || "Unknown error"}`,
+          `Failed to de-register device: ${resp.error.data || "Unknown error"}`,
         );
         return;
       }
@@ -160,7 +160,7 @@ export default function SettingsSidebar() {
     send("setStreamQualityFactor", { factor: Number(factor) }, resp => {
       if ("error" in resp) {
         notifications.error(
-            `Failed to set stream quality: ${resp.error.data || "Unknown error"}`,
+          `Failed to set stream quality: ${resp.error.data || "Unknown error"}`,
         );
         return;
       }
@@ -172,7 +172,7 @@ export default function SettingsSidebar() {
     send("setAutoUpdateState", { enabled }, resp => {
       if ("error" in resp) {
         notifications.error(
-            `Failed to set auto-update: ${resp.error.data || "Unknown error"}`,
+          `Failed to set auto-update: ${resp.error.data || "Unknown error"}`,
         );
         return;
       }
@@ -184,7 +184,7 @@ export default function SettingsSidebar() {
     send("setDevChannelState", { enabled }, resp => {
       if ("error" in resp) {
         notifications.error(
-            `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
+          `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
         );
         return;
       }
@@ -196,7 +196,7 @@ export default function SettingsSidebar() {
     send("setJigglerState", { enabled }, resp => {
       if ("error" in resp) {
         notifications.error(
-            `Failed to set jiggler state: ${resp.error.data || "Unknown error"}`,
+          `Failed to set jiggler state: ${resp.error.data || "Unknown error"}`,
         );
         return;
       }
@@ -232,21 +232,21 @@ export default function SettingsSidebar() {
   };
 
   const handleDevModeChange = useCallback(
-      (developerMode: boolean) => {
-        send("setDevModeState", { enabled: developerMode }, resp => {
-          if ("error" in resp) {
-            notifications.error(
-                `Failed to set dev mode: ${resp.error.data || "Unknown error"}`,
-            );
-            return;
-          }
-          setDeveloperMode(developerMode);
-          setTimeout(() => {
-            sidebarRef.current?.scrollTo({ top: 5000, behavior: "smooth" });
-          }, 0);
-        });
-      },
-      [send, setDeveloperMode],
+    (developerMode: boolean) => {
+      send("setDevModeState", { enabled: developerMode }, resp => {
+        if ("error" in resp) {
+          notifications.error(
+            `Failed to set dev mode: ${resp.error.data || "Unknown error"}`,
+          );
+          return;
+        }
+        setDeveloperMode(developerMode);
+        setTimeout(() => {
+          sidebarRef.current?.scrollTo({ top: 5000, behavior: "smooth" });
+        }, 0);
+      });
+    },
+    [send, setDeveloperMode],
   );
 
   const handleUpdateSSHKey = useCallback(() => {
