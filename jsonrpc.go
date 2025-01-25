@@ -479,8 +479,6 @@ func rpcSetUsbEmulationState(enabled bool) error {
 }
 
 func rpcSetUsbConfig(usbConfig UsbConfig) error {
-	log.Printf("[jsonrpc.go:rpcSetUsbConfig] called")
-
 	LoadConfig()
 	config.UsbConfig = usbConfig
 
