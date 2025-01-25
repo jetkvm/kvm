@@ -21,10 +21,8 @@ const kvmGadgetPath = "/sys/kernel/config/usb_gadget/jetkvm"
 const configC1Path = "/sys/kernel/config/usb_gadget/jetkvm/configs/c.1"
 
 func mountConfigFS() error {
-	logger.Infof("Checking for gadgetPath: %s ...", gadgetPath)
 	_, err := os.Stat(gadgetPath)
 	if os.IsNotExist(err) {
-		logger.Infof("running mount command...")
 		err = exec.Command("mount", "-t", "configfs", "none", configFSPath).Run()
 		if err != nil {
 			return fmt.Errorf("failed to mount configfs: %w", err)
@@ -32,7 +30,6 @@ func mountConfigFS() error {
 	} else {
 		return fmt.Errorf("unable to access usb gadget path: %w", err)
 	}
-	logger.Infof("Successfully mounted usb gadget at %s", gadgetPath)
 	return nil
 }
 
