@@ -13,7 +13,7 @@ export interface UsbConfigState {
   product_id: string;
   serial_number: string;
   manufacturer: string;
-  product_name: string;
+  product: string;
 }
 
 export default function USBConfigDialog({
@@ -171,7 +171,7 @@ function UpdateUsbConfigModal({
           required
           label="Product Name"
           placeholder="Enter Product Name"
-          defaultValue={usbConfigState?.product_name}
+          defaultValue={usbConfigState?.product}
           onChange={e => handleUsbProduct(e.target.value)}
         />
         <div className="flex gap-x-2">
