@@ -15,8 +15,8 @@ type UsbConfig struct {
 	UsbVendorId     string `json:"usb_vendor_id"`
 	UsbProductId    string `json:"usb_product_id"`
 	UsbSerialNumber string `json:"usb_serial_number"`
-	UsbName         string `json:"usb_name"`
 	UsbManufacturer string `json:"usb_manufacturer"`
+	UsbProduct      string `json:"usb_product"`
 }
 
 type Config struct {
@@ -38,6 +38,13 @@ const configPath = "/userdata/kvm_config.json"
 var defaultConfig = &Config{
 	CloudURL:          "https://api.jetkvm.com",
 	AutoUpdateEnabled: true, // Set a default value
+	UsbConfig: UsbConfig{
+		UsbVendorId:     "0x1d6b",
+		UsbProductId:    "0104",
+		UsbSerialNumber: "",
+		UsbManufacturer: "JetKVM",
+		UsbProduct:      "JetKVM USB Emulation Device",
+	},
 }
 
 var config *Config

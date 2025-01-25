@@ -74,7 +74,7 @@ func UpdateGadgetConfig() error {
 	strAttrs := [][]string{
 		{"serialnumber", config.UsbConfig.UsbSerialNumber},
 		{"manufacturer", config.UsbConfig.UsbManufacturer},
-		{"product", config.UsbConfig.UsbName},
+		{"product", config.UsbConfig.UsbProduct},
 	}
 	gadgetStringsPath := filepath.Join(kvmGadgetPath, "strings", "0x409")
 	err = os.MkdirAll(gadgetStringsPath, 0755)

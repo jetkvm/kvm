@@ -75,7 +75,7 @@ function UpdateUsbConfigModal({
     usb_product_id: '',
     usb_serial_number: '',
     usb_manufacturer: '',
-    usb_name: '',
+    usb_product: '',
   })
   const handleUsbVendorIdChange = (vendorId: string) => {
     setUsbConfig({... usbConfig, usb_vendor_id: vendorId})
@@ -93,8 +93,8 @@ function UpdateUsbConfigModal({
     setUsbConfig({... usbConfig, usb_manufacturer: manufacturer})
   };
 
-  const handleUsbName = (name: string) => {
-    setUsbConfig({... usbConfig, usb_name: name})
+  const handleUsbProduct = (name: string) => {
+    setUsbConfig({... usbConfig, usb_product: name})
   };
 
   return (
@@ -141,10 +141,10 @@ function UpdateUsbConfigModal({
         />
         <InputFieldWithLabel
           required
-          label="Name"
-          placeholder="Enter Name"
-          value={usbConfig.usb_name || ""}
-          onChange={e => handleUsbName(e.target.value)}
+          label="Product Name"
+          placeholder="Enter Product Name"
+          value={usbConfig.usb_product || ""}
+          onChange={e => handleUsbProduct(e.target.value)}
         />
         <div className="flex gap-x-2">
           <Button
