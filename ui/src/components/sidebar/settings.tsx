@@ -847,22 +847,6 @@ export default function SettingsSidebar() {
                     </div>
                   </div>
               )}
-              {settings.developerMode && (
-                <SettingsItem
-                  title="USB Configuration"
-                  description="Set the USB Descriptors for the JetKVM"
-                >
-                  <Button
-                    size="SM"
-                    theme="light"
-                    text="Update USB Config"
-                    onClick={() => {
-                      setUsbConfigModalView("updateUsbConfig")
-                      setIsUsbConfigDialogOpen(true);
-                    }}
-                  />
-                </SettingsItem>
-              )}
               <SettingsItem
                   title="Troubleshooting Mode"
                   description="Diagnostic tools and additional controls for troubleshooting and development purposes"
@@ -874,7 +858,22 @@ export default function SettingsSidebar() {
                     }}
                 />
               </SettingsItem>
-
+              {settings.debugMode && (
+                  <SettingsItem
+                      title="USB Configuration"
+                      description="Set the USB Descriptors for the JetKVM"
+                  >
+                    <Button
+                        size="SM"
+                        theme="light"
+                        text="Update USB Config"
+                        onClick={() => {
+                          setUsbConfigModalView("updateUsbConfig")
+                          setIsUsbConfigDialogOpen(true);
+                        }}
+                    />
+                  </SettingsItem>
+              )}
               {settings.debugMode && (
                   <>
                     <SettingsItem
