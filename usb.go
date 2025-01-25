@@ -261,27 +261,11 @@ func writeGadgetConfig() error {
 }
 
 func rebindUsb() error {
-	unbindErr := unbindUsb()
-	if unbindErr != nil {
-		return unbindErr
-	}
-	bindErr := bindUsb()
-	if bindErr != nil {
-		return bindErr
-	}
-	return nil
-}
-
-func unbindUsb() error {
 	err := os.WriteFile("/sys/bus/platform/drivers/dwc3/unbind", []byte(udc), 0644)
 	if err != nil {
 		return err
 	}
-	return nil
-}
-
-func bindUsb() error {
-	err := os.WriteFile("/sys/bus/platform/drivers/dwc3/bind", []byte(udc), 0644)
+	err = os.WriteFile("/sys/bus/platform/drivers/dwc3/bind", []byte(udc), 0644)
 	if err != nil {
 		return err
 	}
