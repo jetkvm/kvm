@@ -3,7 +3,6 @@ package kvm
 import (
 	"errors"
 	"fmt"
-	gadget "github.com/openstadia/go-usb-gadget"
 	"log"
 	"os"
 	"os/exec"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	gadget "github.com/openstadia/go-usb-gadget"
 )
 
 const configFSPath = "/sys/kernel/config"
