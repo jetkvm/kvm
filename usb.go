@@ -117,10 +117,11 @@ func writeGadgetConfig() error {
 		return err
 	}
 
+	LoadConfig()
 	err = writeGadgetAttrs(kvmGadgetPath, [][]string{
-		{"bcdUSB", "0x0200"},   //USB 2.0
-		{"idVendor", "0x1d6b"}, //The Linux Foundation
-		{"idProduct", "0104"},  //Multifunction Composite Gadget¬
+		{"bcdUSB", "0x0200"}, //USB 2.0
+		{"idVendor", config.UsbConfig.UsbVendorId},
+		{"idProduct", config.UsbConfig.UsbProductId},
 		{"bcdDevice", "0100"},
 	})
 	if err != nil {
@@ -135,8 +136,8 @@ func writeGadgetConfig() error {
 
 	err = writeGadgetAttrs(gadgetStringsPath, [][]string{
 		{"serialnumber", GetDeviceID()},
-		{"manufacturer", "JetKVM"},
-		{"product", "JetKVM USB Emulation Device"},
+		{"manufacturer", config.UsbConfig.UsbManufacturer},
+		{"product", config.UsbConfig.UsbProduct},
 	})
 	if err != nil {
 		return err

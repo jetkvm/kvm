@@ -39,8 +39,8 @@ var defaultConfig = &Config{
 	CloudURL:          "https://api.jetkvm.com",
 	AutoUpdateEnabled: true, // Set a default value
 	UsbConfig: UsbConfig{
-		UsbVendorId:     "0x1d6b",
-		UsbProductId:    "0104",
+		UsbVendorId:     "0x1d6b", //The Linux Foundation
+		UsbProductId:    "0x0104", //Multifunction Composite Gadget¬
 		UsbSerialNumber: "",
 		UsbManufacturer: "JetKVM",
 		UsbProduct:      "JetKVM USB Emulation Device",
