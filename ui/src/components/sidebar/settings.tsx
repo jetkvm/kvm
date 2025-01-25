@@ -28,11 +28,11 @@ import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 
 export function SettingsItem({
-                               title,
-                               description,
-                               children,
-                               className,
-                             }: {
+ title,
+ description,
+ children,
+ className,
+}: {
   title: string;
   description: string | React.ReactNode;
   children?: React.ReactNode;
@@ -40,18 +40,18 @@ export function SettingsItem({
   name?: string;
 }) {
   return (
-      <label className={cx("flex items-center justify-between gap-x-4 rounded", className)}>
-        <div className="space-y-0.5">
-          <h3 className="text-base font-semibold text-black dark:text-white">{title}</h3>
-          <p className="text-sm text-slate-700 dark:text-slate-300">{description}</p>
-        </div>
-        {children ? <div>{children}</div> : null}
-      </label>
+    <label className={cx("flex items-center justify-between gap-x-4 rounded", className)}>
+      <div className="space-y-0.5">
+        <h3 className="text-base font-semibold text-black dark:text-white">{title}</h3>
+        <p className="text-sm text-slate-700 dark:text-slate-300">{description}</p>
+      </div>
+      {children ? <div>{children}</div> : null}
+    </label>
   );
 }
 
 const defaultEdid =
-    "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b";
+  "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b";
 const edids = [
   {
     value: defaultEdid,
