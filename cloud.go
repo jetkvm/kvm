@@ -5,15 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/coder/websocket/wsjson"
 	"net/http"
 	"net/url"
-	"github.com/coder/websocket/wsjson"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
-	"github.com/gin-gonic/gin"
 	"github.com/coder/websocket"
+	"github.com/gin-gonic/gin"
 )
 
 type CloudRegisterRequest struct {

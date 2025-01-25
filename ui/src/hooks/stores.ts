@@ -528,3 +528,19 @@ export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
   setModalView: view => set({ modalView: view }),
   setErrorMessage: message => set({ errorMessage: message }),
 }));
+
+interface UsbConfigModalState {
+  modalView:
+      | "updateUsbConfig"
+      | "updateUsbConfigSuccess";
+  errorMessage: string | null;
+  setModalView: (view: UsbConfigModalState["modalView"]) => void;
+  setErrorMessage: (message: string | null) => void;
+}
+
+export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
+  modalView: "updateUsbConfig",
+  errorMessage: null,
+  setModalView: view => set({ modalView: view }),
+  setErrorMessage: message => set({ errorMessage: message }),
+}));

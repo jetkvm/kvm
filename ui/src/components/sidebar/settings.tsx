@@ -3,14 +3,13 @@ import {
   useLocalAuthModalStore,
   useSettingsStore,
   useUiStore,
-  useUpdateStore,
+  useUpdateStore, useUsbConfigModalStore,
 } from "@/hooks/stores";
 import { Checkbox } from "@components/Checkbox";
 import { Button, LinkButton } from "@components/Button";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { SectionHeader } from "@components/SectionHeader";
 import { GridCard } from "@components/Card";
-import { InputFieldWithLabel } from "@components/InputField";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { cx } from "@/cva.config";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -26,6 +25,7 @@ import LocalAuthPasswordDialog from "@/components/LocalAuthPasswordDialog";
 import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import UsbConfigDialog from "@components/UsbConfigDialog";
 
 export function SettingsItem({
   title,
@@ -109,14 +109,6 @@ export default function SettingsSidebar() {
       setUsbEmulationEnabled(resp.result as boolean);
     });
   }, [send]);
-
-  const [usbConfig, setUsbConfig] = useState({
-    usb_product_id: '',
-    usb_vendor_id: '',
-    usb_serial_number: '',
-    usb_manufacturer: '',
-    usb_name: '',
-  })
 
   const handleUsbEmulationToggle = useCallback(
       (enabled: boolean) => {
@@ -215,17 +207,6 @@ export default function SettingsSidebar() {
     });
   };
 
-  const handleUsbConfigChange = useCallback((usbConfig: object) => {
-    send("setUsbConfig", { usbConfig }, resp => {
-      if ("error" in resp) {
-        notifications.error(
-            `Failed to update USB Config: ${resp.error.data || "Unknown error"}`,
-        );
-        return;
-      }
-    });
-  }, [send]);
-
   const handleSSHKeyChange = (newKey: string) => {
     setSSHKey(newKey);
   };
@@ -259,26 +240,6 @@ export default function SettingsSidebar() {
       notifications.success("SSH key updated successfully");
     });
   }, [send, sshKey]);
-
-  const handleUsbProductIdChange = (productId: string) => {
-    setUsbConfig({... usbConfig, usb_product_id: productId})
-  };
-
-  const handleUsbVendorIdChange = (vendorId: string) => {
-    setUsbConfig({... usbConfig, usb_vendor_id: vendorId})
-  };
-
-  const handleUsbSerialChange = (serialNumber: string) => {
-    setUsbConfig({... usbConfig, usb_serial_number: serialNumber})
-  };
-
-  const handleUsbName = (name: string) => {
-    setUsbConfig({... usbConfig, usb_name: name})
-  };
-
-  const handleUsbManufacturer = (manufacturer: string) => {
-    setUsbConfig({... usbConfig, usb_manufacturer: manufacturer})
-  };
 
   const { setIsUpdateDialogOpen, setModalView, otaState } = useUpdateStore();
   const handleCheckForUpdates = () => {
@@ -380,7 +341,9 @@ export default function SettingsSidebar() {
   }, []);
 
   const { setModalView: setLocalAuthModalView } = useLocalAuthModalStore();
+  const { setModalView: setUsbConfigModalView } = useUsbConfigModalStore();
   const [isLocalAuthDialogOpen, setIsLocalAuthDialogOpen] = useState(false);
+  const [isUsbConfigDialogOpen, setIsUsbConfigDialogOpen] = useState(false);
 
   useEffect(() => {
     if (isOnDevice) getDevice();
@@ -393,6 +356,14 @@ export default function SettingsSidebar() {
       getDevice();
     }
   }, [getDevice, isLocalAuthDialogOpen]);
+
+  useEffect(() => {
+    if (!isOnDevice) return;
+    // Refresh device status when the local usb config dialog is closed
+    if (!isUsbConfigDialogOpen) {
+      getDevice();
+    }
+  }, [getDevice, isUsbConfigDialogOpen]);
 
   const revalidator = useRevalidator();
 
@@ -877,53 +848,20 @@ export default function SettingsSidebar() {
                   </div>
               )}
               {settings.developerMode && (
-                  <div className="space-y-4">
-                    <InputFieldWithLabel
-                        label="USB Vendor Id"
-                        value={usbConfig.usb_vendor_id || ""}
-                        onChange={e => handleUsbVendorIdChange(e.target.value)}
-                        placeholder="Enter USB Vendor Id"
-                    />
-                    <InputFieldWithLabel
-                        label="USB Product Id"
-                        value={usbConfig.usb_product_id || ""}
-                        onChange={e => handleUsbProductIdChange(e.target.value)}
-                        placeholder="Enter USB Product Id"
-                    />
-                    <InputFieldWithLabel
-                        label="USB Serial Number"
-                        value={usbConfig.usb_serial_number || ""}
-                        onChange={e => handleUsbSerialChange(e.target.value)}
-                        placeholder="Enter USB Serial Number"
-                    />
-                    <InputFieldWithLabel
-                        label="USB Name"
-                        value={usbConfig.usb_name || ""}
-                        onChange={e => handleUsbName(e.target.value)}
-                        placeholder="Enter USB Name"
-                    />
-                    <InputFieldWithLabel
-                        label="USB Manufacturer"
-                        value={usbConfig.usb_manufacturer || ""}
-                        onChange={e => handleUsbManufacturer(e.target.value)}
-                        placeholder="Enter USB Manufacturer"
-                    />
-                    <div className="flex items-center gap-x-2">
-                      <Button
-                          size="SM"
-                          theme="primary"
-                          text="Update USB Config"
-                          onClick={() => {
-                            if (Object.values(usbConfig).every(function(i) { return Boolean(i); })) {
-                              handleUsbConfigChange(usbConfig);
-                              notifications.success("Successfully updated USB Config")
-                            } else {
-                              notifications.error("Failed to update USB config");
-                            }
-                          }}
-                      />
-                    </div>
-                  </div>
+                <SettingsItem
+                  title="USB Configuration"
+                  description="Set the USB Descriptors for the JetKVM"
+                >
+                  <Button
+                    size="SM"
+                    theme="light"
+                    text="Update USB Config"
+                    onClick={() => {
+                      setUsbConfigModalView("updateUsbConfig")
+                      setIsUsbConfigDialogOpen(true);
+                    }}
+                  />
+                </SettingsItem>
               )}
               <SettingsItem
                   title="Troubleshooting Mode"
@@ -982,6 +920,14 @@ export default function SettingsSidebar() {
               revalidator.revalidate();
               setIsLocalAuthDialogOpen(x);
             }}
+        />
+        <UsbConfigDialog
+          open={isUsbConfigDialogOpen}
+          setOpen={x => {
+            // Revalidate the current route to refresh the local device status and dependent UI components
+            revalidator.revalidate();
+            setIsUsbConfigDialogOpen(x);
+          }}
         />
       </div>
   );
