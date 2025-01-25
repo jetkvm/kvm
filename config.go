@@ -12,11 +12,11 @@ type WakeOnLanDevice struct {
 }
 
 type UsbConfig struct {
-	UsbVendorId     string `json:"usb_vendor_id"`
-	UsbProductId    string `json:"usb_product_id"`
-	UsbSerialNumber string `json:"usb_serial_number"`
-	UsbManufacturer string `json:"usb_manufacturer"`
-	UsbProduct      string `json:"usb_product"`
+	VendorId     string `json:"vendor_id"`
+	ProductId    string `json:"product_id"`
+	SerialNumber string `json:"serial_number"`
+	Manufacturer string `json:"manufacturer"`
+	Product      string `json:"product"`
 }
 
 type Config struct {
@@ -39,11 +39,11 @@ var defaultConfig = &Config{
 	CloudURL:          "https://api.jetkvm.com",
 	AutoUpdateEnabled: true, // Set a default value
 	UsbConfig: UsbConfig{
-		UsbVendorId:     "0x1d6b", //The Linux Foundation
-		UsbProductId:    "0x0104", //Multifunction Composite Gadget¬
-		UsbSerialNumber: "",
-		UsbManufacturer: "JetKVM",
-		UsbProduct:      "JetKVM USB Emulation Device",
+		VendorId:     "0x1d6b", //The Linux Foundation
+		ProductId:    "0x0104", //Multifunction Composite Gadget¬
+		SerialNumber: "",
+		Manufacturer: "JetKVM",
+		Product:      "JetKVM USB Emulation Device",
 	},
 }
 

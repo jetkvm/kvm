@@ -79,11 +79,11 @@ function UpdateUsbConfigModal({
   error: string | null;
 }) {
   const [usbConfig, setUsbConfig] = useState({
-    usb_vendor_id: '',
-    usb_product_id: '',
-    usb_serial_number: '',
-    usb_manufacturer: '',
-    usb_product: '',
+    vendor_id: '',
+    product_id: '',
+    serial_number: '',
+    manufacturer: '',
+    product: '',
   })
 
   const [usbConfigState, setUsbConfigState] = useState<UsbConfigState>();
@@ -91,11 +91,11 @@ function UpdateUsbConfigModal({
 
   const syncUsbConfig = useCallback(() => {
     send("getUsbConfig", {}, resp => {
-      if ("result" in resp) {
+      if ("error" in resp) {
+        console.error("Failed to load USB Config:", resp.error);
+      } else {
         console.info("Successfully synced USB Config: ", resp.result);
         setUsbConfigState(resp.result as UsbConfigState);
-      } else {
-        console.error("Failed to load USB Config:", resp.error);
       }
     });
   }, [send, setUsbConfigState]);
@@ -106,23 +106,23 @@ function UpdateUsbConfigModal({
   }, [syncUsbConfig]);
 
   const handleUsbVendorIdChange = (vendorId: string) => {
-    setUsbConfig({... usbConfig, usb_vendor_id: vendorId})
+    setUsbConfig({... usbConfig, vendor_id: vendorId})
   };
 
   const handleUsbProductIdChange = (productId: string) => {
-    setUsbConfig({... usbConfig, usb_product_id: productId})
+    setUsbConfig({... usbConfig, product_id: productId})
   };
 
   const handleUsbSerialChange = (serialNumber: string) => {
-    setUsbConfig({... usbConfig, usb_serial_number: serialNumber})
+    setUsbConfig({... usbConfig, serial_number: serialNumber})
   };
 
   const handleUsbManufacturer = (manufacturer: string) => {
-    setUsbConfig({... usbConfig, usb_manufacturer: manufacturer})
+    setUsbConfig({... usbConfig, manufacturer: manufacturer})
   };
 
   const handleUsbProduct = (name: string) => {
-    setUsbConfig({... usbConfig, usb_product: name})
+    setUsbConfig({... usbConfig, product: name})
   };
 
   return (

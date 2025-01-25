@@ -61,8 +61,8 @@ func init() {
 func UpdateGadgetConfig() error {
 	LoadConfig()
 	gadgetAttrs := [][]string{
-		{"idVendor", config.UsbConfig.UsbVendorId},
-		{"idProduct", config.UsbConfig.UsbProductId},
+		{"idVendor", config.UsbConfig.VendorId},
+		{"idProduct", config.UsbConfig.ProductId},
 	}
 	err := writeGadgetAttrs(kvmGadgetPath, gadgetAttrs)
 	if err != nil {
@@ -72,9 +72,9 @@ func UpdateGadgetConfig() error {
 	log.Printf("Successfully updated usb gadget attributes: %v", gadgetAttrs)
 
 	strAttrs := [][]string{
-		{"serialnumber", config.UsbConfig.UsbSerialNumber},
-		{"manufacturer", config.UsbConfig.UsbManufacturer},
-		{"product", config.UsbConfig.UsbProduct},
+		{"serialnumber", config.UsbConfig.SerialNumber},
+		{"manufacturer", config.UsbConfig.Manufacturer},
+		{"product", config.UsbConfig.Product},
 	}
 	gadgetStringsPath := filepath.Join(kvmGadgetPath, "strings", "0x409")
 	err = os.MkdirAll(gadgetStringsPath, 0755)
@@ -120,8 +120,8 @@ func writeGadgetConfig() error {
 	LoadConfig()
 	err = writeGadgetAttrs(kvmGadgetPath, [][]string{
 		{"bcdUSB", "0x0200"}, //USB 2.0
-		{"idVendor", config.UsbConfig.UsbVendorId},
-		{"idProduct", config.UsbConfig.UsbProductId},
+		{"idVendor", config.UsbConfig.VendorId},
+		{"idProduct", config.UsbConfig.ProductId},
 		{"bcdDevice", "0100"},
 	})
 	if err != nil {
@@ -136,8 +136,8 @@ func writeGadgetConfig() error {
 
 	err = writeGadgetAttrs(gadgetStringsPath, [][]string{
 		{"serialnumber", GetDeviceID()},
-		{"manufacturer", config.UsbConfig.UsbManufacturer},
-		{"product", config.UsbConfig.UsbProduct},
+		{"manufacturer", config.UsbConfig.Manufacturer},
+		{"product", config.UsbConfig.Product},
 	})
 	if err != nil {
 		return err
