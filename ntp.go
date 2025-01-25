@@ -20,6 +20,8 @@ func TimeSyncLoop() {
 		err := SyncSystemTime()
 		if err != nil {
 			log.Printf("Failed to sync system time: %v", err)
+			// Sync failed for all 4 endpoints, likely network issue, wait for 1 hour before retrying
+			time.Sleep(1 * time.Hour)
 			continue
 		}
 		log.Printf("Time sync successful, now is: %v, time taken: %v", time.Now(), time.Since(start))
