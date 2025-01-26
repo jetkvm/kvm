@@ -94,7 +94,6 @@ function UpdateUsbConfigModal({
       if ("error" in resp) {
         console.error("Failed to load USB Config:", resp.error);
       } else {
-        console.info("Successfully synced USB Config: ", resp.result);
         setUsbConfigState(resp.result as UsbConfigState);
       }
     });
@@ -119,7 +118,6 @@ function UpdateUsbConfigModal({
 
   const handleUsbManufacturer = (value: string) => {
     setUsbConfig({... usbConfig, manufacturer: value})
-    console.log(`usbConfig: ${usbConfig}`)
   };
 
   const handleUsbProduct = (value: string) => {
