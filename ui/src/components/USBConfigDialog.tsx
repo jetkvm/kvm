@@ -142,6 +142,7 @@ function UpdateUsbConfigModal({
           required
           label="Vendor ID"
           placeholder="Enter Vendor ID"
+          pattern="^0[xX][\da-fA-F]{4}$"
           defaultValue={usbConfigState?.vendor_id}
           onChange={e => handleUsbVendorIdChange(e.target.value)}
         />
@@ -149,6 +150,7 @@ function UpdateUsbConfigModal({
           required
           label="Product ID"
           placeholder="Enter Product ID"
+          pattern="^0[xX][\da-fA-F]{4}$"
           defaultValue={usbConfigState?.product_id}
           onChange={e => handleUsbProductIdChange(e.target.value)}
         />
