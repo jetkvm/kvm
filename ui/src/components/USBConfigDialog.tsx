@@ -105,24 +105,25 @@ function UpdateUsbConfigModal({
     syncUsbConfig();
   }, [syncUsbConfig]);
 
-  const handleUsbVendorIdChange = (vendorId: string) => {
-    setUsbConfig({... usbConfig, vendor_id: vendorId})
+  const handleUsbVendorIdChange = (value: string) => {
+    setUsbConfig({... usbConfig, vendor_id: value})
   };
 
-  const handleUsbProductIdChange = (productId: string) => {
-    setUsbConfig({... usbConfig, product_id: productId})
+  const handleUsbProductIdChange = (value: string) => {
+    setUsbConfig({... usbConfig, product_id: value})
   };
 
-  const handleUsbSerialChange = (serialNumber: string) => {
-    setUsbConfig({... usbConfig, serial_number: serialNumber})
+  const handleUsbSerialChange = (value: string) => {
+    setUsbConfig({... usbConfig, serial_number: value})
   };
 
-  const handleUsbManufacturer = (manufacturer: string) => {
-    setUsbConfig({... usbConfig, manufacturer: manufacturer})
+  const handleUsbManufacturer = (value: string) => {
+    setUsbConfig({... usbConfig, manufacturer: value})
+    console.log(`usbConfig: ${usbConfig}`)
   };
 
-  const handleUsbProduct = (name: string) => {
-    setUsbConfig({... usbConfig, product: name})
+  const handleUsbProduct = (value: string) => {
+    setUsbConfig({... usbConfig, product: value})
   };
 
   return (
