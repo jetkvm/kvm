@@ -20,24 +20,26 @@ type UsbConfig struct {
 }
 
 type Config struct {
-	CloudURL          string            `json:"cloud_url"`
-	CloudToken        string            `json:"cloud_token"`
-	GoogleIdentity    string            `json:"google_identity"`
-	JigglerEnabled    bool              `json:"jiggler_enabled"`
-	AutoUpdateEnabled bool              `json:"auto_update_enabled"`
-	IncludePreRelease bool              `json:"include_pre_release"`
-	HashedPassword    string            `json:"hashed_password"`
-	LocalAuthToken    string            `json:"local_auth_token"`
-	LocalAuthMode     string            `json:"localAuthMode"` //TODO: fix it with migration
-	WakeOnLanDevices  []WakeOnLanDevice `json:"wake_on_lan_devices"`
-	UsbConfig         UsbConfig         `json:"usb_config"`
+	CloudURL            string            `json:"cloud_url"`
+	CloudToken          string            `json:"cloud_token"`
+	GoogleIdentity      string            `json:"google_identity"`
+	JigglerEnabled      bool              `json:"jiggler_enabled"`
+	AutoUpdateEnabled   bool              `json:"auto_update_enabled"`
+	IncludePreRelease   bool              `json:"include_pre_release"`
+	HashedPassword      string            `json:"hashed_password"`
+	LocalAuthToken      string            `json:"local_auth_token"`
+	LocalAuthMode       string            `json:"localAuthMode"` //TODO: fix it with migration
+	WakeOnLanDevices    []WakeOnLanDevice `json:"wake_on_lan_devices"`
+	UsbConfig           UsbConfig         `json:"usb_config"`
+	VirtualMediaEnabled bool              `json:"virtual_media_enabled"`
 }
 
 const configPath = "/userdata/kvm_config.json"
 
 var defaultConfig = &Config{
-	CloudURL:          "https://api.jetkvm.com",
-	AutoUpdateEnabled: true, // Set a default value
+	CloudURL:            "https://api.jetkvm.com",
+	AutoUpdateEnabled:   true, // Set a default value
+	VirtualMediaEnabled: true,
 	UsbConfig: UsbConfig{
 		VendorId:     "0x1d6b", //The Linux Foundation
 		ProductId:    "0x0104", //Multifunction Composite Gadget¬
