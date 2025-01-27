@@ -23,8 +23,8 @@ type Config struct {
 	LocalAuthMode        string            `json:"localAuthMode"` //TODO: fix it with migration
 	WakeOnLanDevices     []WakeOnLanDevice `json:"wake_on_lan_devices"`
 	DisplayMaxBrightness int               `json:"display_max_brightness"`
-	DisplayDimAfterMs    int64             `json:"display_dim_after_ms"`
-	DisplayOffAfterMs    int64             `json:"display_off_after_ms"`
+	DisplayDimAfterSec   int               `json:"display_dim_after_sec"`
+	DisplayOffAfterSec   int               `json:"display_off_after_sec"`
 }
 
 const configPath = "/userdata/kvm_config.json"
@@ -33,8 +33,8 @@ var defaultConfig = &Config{
 	CloudURL:             "https://api.jetkvm.com",
 	AutoUpdateEnabled:    true, // Set a default value
 	DisplayMaxBrightness: 64,
-	DisplayDimAfterMs:    120000,  // 2 minutes
-	DisplayOffAfterMs:    1800000, // 30 minutes
+	DisplayDimAfterSec:   120,  // 2 minutes
+	DisplayOffAfterSec:   1800, // 30 minutes
 }
 
 var config *Config
