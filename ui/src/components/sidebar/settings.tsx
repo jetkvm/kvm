@@ -230,8 +230,18 @@ export default function SettingsSidebar() {
     [send, setDeveloperMode],
   );
 
-  const handleBacklightSettingChange = useCallback((settings: BacklightSettings) => {
-    send("setBacklightSettings", { settings }, resp => {
+  const handleBacklightSettingsChange = (settings: BacklightSettings) => {
+    // If the user has set the display to dim after it turns off, set the dim_after
+    // value to never.
+    if (settings.dim_after > settings.off_after && settings.off_after != 0) {
+      settings.dim_after = 0;
+    }
+
+    setBacklightSettings(settings);
+  }
+
+  const handleBacklightSettingsSave = () => {
+    send("setBacklightSettings", { params: settings.backlightSettings }, resp => {
       if ("error" in resp) {
         notifications.error(
           `Failed to set backlight settings: ${resp.error.data || "Unknown error"}`,
@@ -240,7 +250,7 @@ export default function SettingsSidebar() {
       }
       notifications.success("Backlight settings updated successfully");
     });
-  }, [send]);
+  };
 
   const handleUpdateSSHKey = useCallback(() => {
     send("setSSHKeyState", { sshKey }, resp => {
@@ -829,7 +839,6 @@ export default function SettingsSidebar() {
           />
         </div>
         <SettingsItem title="Display Brightness" description="Set the brightness of the display">
-          {/* TODO: Allow the user to pick any value between 0 and 100 */}
           <SelectMenuBasic
             size="SM"
             label=""
@@ -837,18 +846,65 @@ export default function SettingsSidebar() {
             options={[
               { value: "0", label: "Off" },
               { value: "10", label: "Low" },
-              { value: "50", label: "Medium" },
-              { value: "100", label: "High" },
+              { value: "35", label: "Medium" },
+              { value: "64", label: "High" },
             ]}
             onChange={e => {
-              handleBacklightSettingChange({ 
-                max_brightness: parseInt(e.target.value),
-                dim_after: settings.backlightSettings.dim_after,
-                off_after: settings.backlightSettings.off_after,
-              });
+              settings.backlightSettings.max_brightness = parseInt(e.target.value)
+              handleBacklightSettingsChange(settings.backlightSettings);
             }}
           />
         </SettingsItem>
+        {settings.backlightSettings.max_brightness != 0 && (
+          <>
+          <SettingsItem title="Dim Display After" description="Set how long to wait before dimming the display">
+            <SelectMenuBasic
+              size="SM"
+              label=""
+              value={settings.backlightSettings.dim_after.toString()}
+              options={[
+                { value: "0", label: "Never" },
+                { value: "60", label: "1 Minute" },
+                { value: "300", label: "5 Minutes" },
+                { value: "600", label: "10 Minutes" },
+                { value: "1800", label: "30 Minutes" },
+                { value: "3600", label: "1 Hour" },
+              ]}
+              onChange={e => {
+                settings.backlightSettings.dim_after = parseInt(e.target.value)
+                handleBacklightSettingsChange(settings.backlightSettings);
+              }}
+            />
+          </SettingsItem>
+          <SettingsItem title="Turn off Display After" description="Set how long to wait before turning off the display">
+            <SelectMenuBasic
+              size="SM"
+              label=""
+              value={settings.backlightSettings.off_after.toString()}
+              options={[
+                { value: "0", label: "Never" },
+                { value: "300", label: "5 Minutes" },
+                { value: "600", label: "10 Minutes" },
+                { value: "1800", label: "30 Minutes" },
+                { value: "3600", label: "1 Hour" },
+              ]}
+              onChange={e => {
+                settings.backlightSettings.off_after = parseInt(e.target.value)
+                handleBacklightSettingsChange(settings.backlightSettings);
+              }}
+            />
+          </SettingsItem>
+          </>
+        )}
+        <p className="text-xs text-slate-600 dark:text-slate-400">
+          The display will wake up when the connection state changes, or when touched.
+        </p>
+        <Button
+          size="SM"
+          theme="primary"
+          text="Save Display Settings"
+          onClick={handleBacklightSettingsSave}
+        />
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
         <div className="pb-2 space-y-4">
           <SectionHeader
