@@ -77,7 +77,7 @@ func requestDisplayUpdate() {
 		return
 	}
 	go func() {
-		wakeDisplay()
+		wakeDisplay(false)
 		fmt.Println("display updating........................")
 		//TODO: only run once regardless how many pending updates
 		updateDisplay()
@@ -149,13 +149,10 @@ func tick_displayOff() {
 
 // wakeDisplay sets the display brightness back to config.DisplayMaxBrightness and stores the time the display
 // last woke, ready for displayTimeoutTick to put the display back in the dim/off states.
-func wakeDisplay() {
-	if backlightState == 0 {
+// Set force to true to skip the backlight state check, this should be done if altering the tickers.
+func wakeDisplay(force bool) {
+	if backlightState == 0 && !force {
 		return
-	}
-
-	if config.DisplayMaxBrightness == 0 {
-		config.DisplayMaxBrightness = 100
 	}
 
 	err := setDisplayBrightness(config.DisplayMaxBrightness)
@@ -192,7 +189,7 @@ func watchTsEvents() {
 			return
 		}
 
-		wakeDisplay()
+		wakeDisplay(false)
 	}
 }
 
@@ -204,7 +201,7 @@ func init() {
 		updateStaticContents()
 		displayInited = true
 		fmt.Println("display inited")
-		wakeDisplay()
+		wakeDisplay(false)
 		requestDisplayUpdate()
 	}()
 
