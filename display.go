@@ -193,6 +193,42 @@ func watchTsEvents() {
 	}
 }
 
+// startBacklightTickers starts the two tickers for dimming and switching off the display
+// if they're not already set. This is done separately to the init routine as the "never dim"
+// option has the value set to zero, but time.NewTicker only accept positive values.
+func startBacklightTickers() {
+	LoadConfig()
+	if dim_ticker == nil && config.DisplayDimAfterSec != 0 {
+		fmt.Printf("display: dim_ticker has started.")
+		dim_ticker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
+		defer dim_ticker.Stop()
+
+		go func() {
+			for {
+				select {
+				case <-dim_ticker.C:
+					tick_displayDim()
+				}
+			}
+		}()
+	}
+
+	if off_ticker == nil && config.DisplayOffAfterSec != 0 {
+		fmt.Printf("display: off_ticker has started.")
+		off_ticker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
+		defer off_ticker.Stop()
+
+		go func() {
+			for {
+				select {
+				case <-off_ticker.C:
+					tick_displayOff()
+				}
+			}
+		}()
+	}
+}
+
 func init() {
 	go func() {
 		waitCtrlClientConnected()
@@ -205,24 +241,7 @@ func init() {
 		requestDisplayUpdate()
 	}()
 
-	go func() {
-		LoadConfig()
-		// Start display auto-sleeping tickers
-		dim_ticker = time.NewTicker(time.Duration(config.DisplayDimAfterMs) * time.Millisecond)
-		defer dim_ticker.Stop()
-
-		off_ticker = time.NewTicker(time.Duration(config.DisplayOffAfterMs) * time.Millisecond)
-		defer off_ticker.Stop()
-
-		for {
-			select {
-			case <-dim_ticker.C:
-				tick_displayDim()
-			case <-off_ticker.C:
-				tick_displayOff()
-			}
-		}
-	}()
+	startBacklightTickers()
 
 	go watchTsEvents()
 }
