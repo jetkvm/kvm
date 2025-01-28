@@ -162,15 +162,11 @@ func wakeDisplay(force bool) {
 		fmt.Printf("display wake failed, %s\n", err)
 	}
 
-	if config.DisplayDimAfterSec == 0 {
-		dimTicker.Stop()
-	} else {
+	if config.DisplayDimAfterSec != 0 {
 		dimTicker.Reset(time.Duration(config.DisplayDimAfterSec) * time.Second)
 	}
 
-	if config.DisplayOffAfterSec == 0 {
-		offTicker.Stop()
-	} else {
+	if config.DisplayOffAfterSec != 0 {
 		offTicker.Reset(time.Duration(config.DisplayOffAfterSec) * time.Second)
 	}
 	backlightState = 0
