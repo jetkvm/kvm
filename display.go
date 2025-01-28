@@ -12,12 +12,14 @@ import (
 var currentScreen = "ui_Boot_Screen"
 var backlightState = 0 // 0 - NORMAL, 1 - DIMMED, 2 - OFF
 
-var dim_ticker *time.Ticker
-var off_ticker *time.Ticker
+var (
+	dimTicker *time.Ticker
+	offTicker *time.Ticker
+)
 
 const (
-	TOUCHSCREEN_DEVICE      string = "/dev/input/event1"
-	BACKLIGHT_CONTROL_CLASS string = "/sys/class/backlight/backlight/brightness"
+	touchscreenDevice     string = "/dev/input/event1"
+	backlightControlClass string = "/sys/class/backlight/backlight/brightness"
 )
 
 func switchToScreen(screen string) {
@@ -106,13 +108,13 @@ func setDisplayBrightness(brightness int) error {
 	}
 
 	// Check the display backlight class is available
-	if _, err := os.Stat(BACKLIGHT_CONTROL_CLASS); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(backlightControlClass); errors.Is(err, os.ErrNotExist) {
 		return errors.New("brightness value cannot be set, possibly not running on JetKVM hardware")
 	}
 
 	// Set the value
 	bs := []byte(strconv.Itoa(brightness))
-	err := os.WriteFile(BACKLIGHT_CONTROL_CLASS, bs, 0644)
+	err := os.WriteFile(backlightControlClass, bs, 0644)
 	if err != nil {
 		return err
 	}
@@ -129,7 +131,7 @@ func tick_displayDim() {
 		fmt.Printf("display: failed to dim display: %s\n", err)
 	}
 
-	dim_ticker.Stop()
+	dimTicker.Stop()
 
 	backlightState = 1
 }
@@ -142,7 +144,7 @@ func tick_displayOff() {
 		fmt.Printf("display: failed to turn off display: %s\n", err)
 	}
 
-	off_ticker.Stop()
+	offTicker.Stop()
 
 	backlightState = 2
 }
@@ -161,15 +163,15 @@ func wakeDisplay(force bool) {
 	}
 
 	if config.DisplayDimAfterSec == 0 {
-		dim_ticker.Stop()
+		dimTicker.Stop()
 	} else {
-		dim_ticker.Reset(time.Duration(config.DisplayDimAfterSec) * time.Second)
+		dimTicker.Reset(time.Duration(config.DisplayDimAfterSec) * time.Second)
 	}
 
 	if config.DisplayOffAfterSec == 0 {
-		off_ticker.Stop()
+		offTicker.Stop()
 	} else {
-		off_ticker.Reset(time.Duration(config.DisplayOffAfterSec) * time.Second)
+		offTicker.Reset(time.Duration(config.DisplayOffAfterSec) * time.Second)
 	}
 	backlightState = 0
 }
@@ -179,7 +181,7 @@ func wakeDisplay(force bool) {
 // TODO: This is quite a hack, really we should be getting an event from jetkvm_native, or the whole display backlight
 // control should be hoisted up to jetkvm_native.
 func watchTsEvents() {
-	ts, err := os.OpenFile(TOUCHSCREEN_DEVICE, os.O_RDONLY, 0666)
+	ts, err := os.OpenFile(touchscreenDevice, os.O_RDONLY, 0666)
 	if err != nil {
 		fmt.Printf("display: failed to open touchscreen device: %s\n", err)
 		return
@@ -207,30 +209,30 @@ func watchTsEvents() {
 // option has the value set to zero, but time.NewTicker only accept positive values.
 func startBacklightTickers() {
 	LoadConfig()
-	if dim_ticker == nil && config.DisplayDimAfterSec != 0 {
+	if dimTicker == nil && config.DisplayDimAfterSec != 0 {
 		fmt.Printf("display: dim_ticker has started.")
-		dim_ticker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
-		defer dim_ticker.Stop()
+		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
+		defer dimTicker.Stop()
 
 		go func() {
 			for {
 				select {
-				case <-dim_ticker.C:
+				case <-dimTicker.C:
 					tick_displayDim()
 				}
 			}
 		}()
 	}
 
-	if off_ticker == nil && config.DisplayOffAfterSec != 0 {
+	if offTicker == nil && config.DisplayOffAfterSec != 0 {
 		fmt.Printf("display: off_ticker has started.")
-		off_ticker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
-		defer off_ticker.Stop()
+		offTicker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
+		defer offTicker.Stop()
 
 		go func() {
 			for {
 				select {
-				case <-off_ticker.C:
+				case <-offTicker.C:
 					tick_displayOff()
 				}
 			}
