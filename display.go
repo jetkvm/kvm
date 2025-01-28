@@ -208,6 +208,11 @@ func watchTsEvents() {
 // if they're not already set. This is done separately to the init routine as the "never dim"
 // option has the value set to zero, but time.NewTicker only accept positive values.
 func startBacklightTickers() {
+	// Don't start the tickers if the display is switched off.
+	if config.DisplayMaxBrightness == 0 {
+		return
+	}
+
 	LoadConfig()
 	if dimTicker == nil && config.DisplayDimAfterSec != 0 {
 		fmt.Printf("display: dim_ticker has started\n")
