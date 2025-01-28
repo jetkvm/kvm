@@ -250,9 +250,8 @@ func init() {
 		fmt.Println("display inited")
 		wakeDisplay(false)
 		requestDisplayUpdate()
+		startBacklightTickers()
 	}()
-
-	startBacklightTickers()
 
 	go watchTsEvents()
 }
