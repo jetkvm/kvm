@@ -157,6 +157,11 @@ func wakeDisplay(force bool) {
 		return
 	}
 
+	// Don't try to wake up if the display is turned off.
+	if config.DisplayMaxBrightness == 0 {
+		return
+	}
+
 	err := setDisplayBrightness(config.DisplayMaxBrightness)
 	if err != nil {
 		fmt.Printf("display wake failed, %s\n", err)
@@ -204,12 +209,14 @@ func watchTsEvents() {
 // if they're not already set. This is done separately to the init routine as the "never dim"
 // option has the value set to zero, but time.NewTicker only accept positive values.
 func startBacklightTickers() {
+	LoadConfig()
 	// Don't start the tickers if the display is switched off.
+	// Set the display to off if that's the case.
 	if config.DisplayMaxBrightness == 0 {
+		setDisplayBrightness(0)
 		return
 	}
 
-	LoadConfig()
 	if dimTicker == nil && config.DisplayDimAfterSec != 0 {
 		fmt.Printf("display: dim_ticker has started\n")
 		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
@@ -244,12 +251,12 @@ func startBacklightTickers() {
 func init() {
 	go func() {
 		waitCtrlClientConnected()
-		startBacklightTickers()
 		fmt.Println("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
 		updateStaticContents()
 		displayInited = true
 		fmt.Println("display inited")
+		startBacklightTickers()
 		wakeDisplay(true)
 		requestDisplayUpdate()
 	}()
