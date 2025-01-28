@@ -210,7 +210,7 @@ func watchTsEvents() {
 func startBacklightTickers() {
 	LoadConfig()
 	if dimTicker == nil && config.DisplayDimAfterSec != 0 {
-		fmt.Printf("display: dim_ticker has started.")
+		fmt.Printf("display: dim_ticker has started\n")
 		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
 		defer dimTicker.Stop()
 
@@ -225,7 +225,7 @@ func startBacklightTickers() {
 	}
 
 	if offTicker == nil && config.DisplayOffAfterSec != 0 {
-		fmt.Printf("display: off_ticker has started.")
+		fmt.Printf("display: off_ticker has started\n")
 		offTicker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
 		defer offTicker.Stop()
 
@@ -243,14 +243,14 @@ func startBacklightTickers() {
 func init() {
 	go func() {
 		waitCtrlClientConnected()
+		startBacklightTickers()
 		fmt.Println("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
 		updateStaticContents()
 		displayInited = true
 		fmt.Println("display inited")
-		wakeDisplay(false)
+		wakeDisplay(true)
 		requestDisplayUpdate()
-		startBacklightTickers()
 	}()
 
 	go watchTsEvents()
