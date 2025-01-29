@@ -42,7 +42,7 @@ var defaultConfig = &Config{
 	VirtualMediaEnabled: true,
 	UsbConfig: UsbConfig{
 		VendorId:     "0x1d6b", //The Linux Foundation
-		ProductId:    "0x0104", //Multifunction Composite Gadget¬
+		ProductId:    "0x0104", //Multifunction Composite Gadget
 		SerialNumber: "",
 		Manufacturer: "JetKVM",
 		Product:      "JetKVM USB Emulation Device",

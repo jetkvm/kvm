@@ -39,7 +39,7 @@ export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
   const handleUsbConfigChange = useCallback((usbConfig: object) => {
     send("setUsbConfig", { usbConfig }, resp => {
       if ("error" in resp) {
-        setError(`Failed to update USB Config: ${resp.error.data || "Unknown error"}`,);
+        setError(`Failed to update USB Config: ${resp.error.data || "Unknown error"}`);
         return;
       }
       setModalView("updateUsbConfigSuccess");
