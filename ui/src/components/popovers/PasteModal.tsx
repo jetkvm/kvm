@@ -9,13 +9,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LuCornerDownLeft } from "react-icons/lu";
 import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
 import { useClose } from "@headlessui/react";
-import { chars, keys, modifiers } from "@/keyboardMappings";
+import { keyboardMappingsStore } from "@/keyboardMappings/KeyboardMappingStore";
 
 const hidKeyboardPayload = (keys: number[], modifier: number) => {
   return { keys, modifier };
 };
 
 export default function PasteModal() {
+  const [keys, setKeys] = useState(keyboardMappingsStore.keys);
+  const [chars, setChars] = useState(keyboardMappingsStore.chars);
+  const [modifiers, setModifiers] = useState(keyboardMappingsStore.modifiers);
+
+  useEffect(() => {
+    const unsubscribeKeyboardStore = keyboardMappingsStore.subscribe(() => {
+      setKeys(keyboardMappingsStore.keys); 
+      setChars(keyboardMappingsStore.chars);
+      setModifiers(keyboardMappingsStore.modifiers);
+    });
+    return unsubscribeKeyboardStore; // Cleanup on unmount
+  }, []); 
+
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
   const setPasteMode = useHidStore(state => state.setPasteModeEnabled);
   const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
@@ -41,13 +54,18 @@ export default function PasteModal() {
 
     try {
       for (const char of text) {
-        const { key, shift } = chars[char] ?? {};
+        const { key, shift, alt } = chars[char] ?? {};
         if (!key) continue;
+
+        // Build the modifier bitmask
+        const modifier =
+        (shift ? modifiers["ShiftLeft"] : 0) |
+        (alt ? modifiers["AltLeft"] : 0);
 
         await new Promise<void>((resolve, reject) => {
           send(
             "keyboardReport",
-            hidKeyboardPayload([keys[key]], shift ? modifiers["ShiftLeft"] : 0),
+            hidKeyboardPayload([keys[key]], modifier),
             params => {
               if ("error" in params) return reject(params.error);
               send("keyboardReport", hidKeyboardPayload([], 0), params => {

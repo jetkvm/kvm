@@ -6,10 +6,21 @@ import {
   useSettingsStore,
   useVideoStore,
 } from "@/hooks/stores";
-import { useEffect } from "react";
-import { keys, modifiers } from "@/keyboardMappings";
+import { useEffect, useState } from "react";
+import { keyboardMappingsStore } from "@/keyboardMappings/KeyboardMappingStore";
 
 export default function InfoBar() {
+  const [keys, setKeys] = useState(keyboardMappingsStore.keys);
+  const [modifiers, setModifiers] = useState(keyboardMappingsStore.modifiers);
+
+  useEffect(() => {
+    const unsubscribeKeyboardStore = keyboardMappingsStore.subscribe(() => {
+      setKeys(keyboardMappingsStore.keys); 
+      setModifiers(keyboardMappingsStore.modifiers);
+    });
+    return unsubscribeKeyboardStore; // Cleanup on unmount
+  }, []); 
+
   const activeKeys = useHidStore(state => state.activeKeys);
   const activeModifiers = useHidStore(state => state.activeModifiers);
   const mouseX = useMouseStore(state => state.mouseX);

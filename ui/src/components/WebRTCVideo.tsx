@@ -7,7 +7,7 @@ import {
   useUiStore,
   useVideoStore,
 } from "@/hooks/stores";
-import { keys, modifiers } from "@/keyboardMappings";
+import { keyboardMappingsStore } from "@/keyboardMappings/KeyboardMappingStore";
 import { useResizeObserver } from "@/hooks/useResizeObserver";
 import { cx } from "@/cva.config";
 import VirtualKeyboard from "@components/VirtualKeyboard";
@@ -18,6 +18,17 @@ import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { ConnectionErrorOverlay, HDMIErrorOverlay, LoadingOverlay } from "./VideoOverlay";
 
 export default function WebRTCVideo() {
+  const [keys, setKeys] = useState(keyboardMappingsStore.keys);
+  const [modifiers, setModifiers] = useState(keyboardMappingsStore.modifiers);
+
+  useEffect(() => {
+    const unsubscribeKeyboardStore = keyboardMappingsStore.subscribe(() => {
+      setKeys(keyboardMappingsStore.keys); 
+      setModifiers(keyboardMappingsStore.modifiers);
+    });
+    return unsubscribeKeyboardStore; // Cleanup on unmount
+  }, []); 
+
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
   const mediaStream = useRTCStore(state => state.mediaStream);

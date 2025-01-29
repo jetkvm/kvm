@@ -131,6 +131,18 @@ func rpcGetDeviceID() (string, error) {
 	return GetDeviceID(), nil
 }
 
+func rpcGetKeyboardLayout() (string, error) {
+	return config.KeyboardLayout, nil
+}
+
+func rpcSetKeyboardLayout(KeyboardLayout string) (string, error) {
+	config.KeyboardLayout = KeyboardLayout
+	if err := SaveConfig(); err != nil {
+		return config.KeyboardLayout, fmt.Errorf("failed to save config: %w", err)
+	}
+	return KeyboardLayout, nil
+}
+
 var streamFactor = 1.0
 
 func rpcGetStreamQualityFactor() (float64, error) {
@@ -523,6 +535,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setJigglerState":        {Func: rpcSetJigglerState, Params: []string{"enabled"}},
 	"getJigglerState":        {Func: rpcGetJigglerState},
 	"sendWOLMagicPacket":     {Func: rpcSendWOLMagicPacket, Params: []string{"macAddress"}},
+	"getKeyboardLayout": 	  {Func: rpcGetKeyboardLayout},
+	"setKeyboardLayout":      {Func: rpcSetKeyboardLayout, Params: []string{"kbLayout"}},
 	"getStreamQualityFactor": {Func: rpcGetStreamQualityFactor},
 	"setStreamQualityFactor": {Func: rpcSetStreamQualityFactor, Params: []string{"factor"}},
 	"getAutoUpdateState":     {Func: rpcGetAutoUpdateState},
