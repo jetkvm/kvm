@@ -132,7 +132,7 @@ func writeGadgetConfig() error {
 	}
 	err = writeGadgetAttrs(hid0Path, [][]string{
 		{"protocol", "1"},
-		{"subclass", "0"},
+		{"subclass", "1"},
 		{"report_length", "8"},
 	})
 	if err != nil {
@@ -152,7 +152,7 @@ func writeGadgetConfig() error {
 	}
 	err = writeGadgetAttrs(hid1Path, [][]string{
 		{"protocol", "2"},
-		{"subclass", "0"},
+		{"subclass", "1"},
 		{"report_length", "6"},
 	})
 	if err != nil {
