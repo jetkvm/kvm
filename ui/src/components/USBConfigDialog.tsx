@@ -78,15 +78,13 @@ function UpdateUsbConfigModal({
   onCancel: () => void;
   error: string | null;
 }) {
-  const [usbConfig, setUsbConfig] = useState({
+  const [usbConfigState, setUsbConfigState] = useState<UsbConfigState>({
     vendor_id: '',
     product_id: '',
     serial_number: '',
     manufacturer: '',
-    product: '',
-  })
-
-  const [usbConfigState, setUsbConfigState] = useState<UsbConfigState>();
+    product: ''
+  });
   const [send] = useJsonRpc();
 
   const syncUsbConfig = useCallback(() => {
@@ -105,23 +103,23 @@ function UpdateUsbConfigModal({
   }, [syncUsbConfig]);
 
   const handleUsbVendorIdChange = (value: string) => {
-    setUsbConfig({... usbConfig, vendor_id: value})
+    setUsbConfigState({... usbConfigState, vendor_id: value})
   };
 
   const handleUsbProductIdChange = (value: string) => {
-    setUsbConfig({... usbConfig, product_id: value})
+    setUsbConfigState({... usbConfigState, product_id: value})
   };
 
   const handleUsbSerialChange = (value: string) => {
-    setUsbConfig({... usbConfig, serial_number: value})
+    setUsbConfigState({... usbConfigState, serial_number: value})
   };
 
   const handleUsbManufacturer = (value: string) => {
-    setUsbConfig({... usbConfig, manufacturer: value})
+    setUsbConfigState({... usbConfigState, manufacturer: value})
   };
 
   const handleUsbProduct = (value: string) => {
-    setUsbConfig({... usbConfig, product: value})
+    setUsbConfigState({... usbConfigState, product: value})
   };
 
   return (
@@ -180,7 +178,7 @@ function UpdateUsbConfigModal({
             size="SM"
             theme="primary"
             text="Update USB Config"
-            onClick={() => onSetUsbConfig(usbConfig)}
+            onClick={() => onSetUsbConfig(usbConfigState)}
           />
           <Button size="SM" theme="light" text="Not Now" onClick={onCancel} />
         </div>
