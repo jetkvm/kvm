@@ -96,7 +96,7 @@ func (s *PluginRpcServer) SocketPath() string {
 }
 
 func (s *PluginRpcServer) handleConnection(conn net.Conn) {
-	rpcserver := jsonrpc.NewJSONRPCServer(conn, map[string]*jsonrpc.RPCHandler{})
+	rpcserver := jsonrpc.NewJSONRPCRouter(conn, map[string]*jsonrpc.RPCHandler{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -129,7 +129,7 @@ func (s *PluginRpcServer) handleConnection(conn net.Conn) {
 	}
 }
 
-func (s *PluginRpcServer) handleRpcStatus(ctx context.Context, rpcserver *jsonrpc.JSONRPCServer) {
+func (s *PluginRpcServer) handleRpcStatus(ctx context.Context, rpcserver *jsonrpc.JSONRPCRouter) {
 	s.status = PluginRpcStatusUnknown
 
 	log.Printf("Plugin rpc server started. Getting supported methods...")

@@ -26,6 +26,8 @@ func NewJSONRPCRouter(writer io.Writer, handlers map[string]*RPCHandler) *JSONRP
 	return &JSONRPCRouter{
 		writer:   writer,
 		handlers: handlers,
+
+		responseChannels: make(map[int64]chan JSONRPCResponse),
 	}
 }
 
