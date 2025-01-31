@@ -466,7 +466,7 @@ export default function SettingsSidebar() {
                   <GridCard>
                     <div className="flex items-center px-4 py-3 group gap-x-4">
                       <img
-                        className="w-6 shrink-0 dark:filter-invert"
+                        className="w-6 shrink-0 dark:invert"
                         src={PointingFinger}
                         alt="Finger touching a screen"
                       />
@@ -490,7 +490,7 @@ export default function SettingsSidebar() {
                 >
                   <GridCard>
                     <div className="flex items-center px-4 py-3 gap-x-4">
-                      <img className="w-6 shrink-0 dark:filter-invert" src={MouseIcon} alt="Mouse icon" />
+                      <img className="w-6 shrink-0 dark:invert" src={MouseIcon} alt="Mouse icon" />
                       <div className="flex items-center justify-between grow">
                         <div className="text-left">
                           <h3 className="text-sm font-semibold text-black dark:text-white">
