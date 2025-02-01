@@ -4,11 +4,9 @@ import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
 import "react-simple-keyboard/build/css/index.css";
-import { useHidStore, useUiStore } from "@/hooks/stores";
+import { useHidStore, useUiStore, useKeyboardMappingsStore } from "@/hooks/stores";
 import { Transition } from "@headlessui/react";
 import { cx } from "@/cva.config";
-//import { keys, modifiers } from "@/keyboardMappings/KeyboardMappingStore";
-import { keyboardMappingsStore } from "@/keyboardMappings/KeyboardMappingStore";
 import useKeyboard from "@/hooks/useKeyboard";
 import DetachIconRaw from "@/assets/detach-icon.svg";
 import AttachIconRaw from "@/assets/attach-icon.svg";
@@ -22,13 +20,13 @@ const AttachIcon = ({ className }: { className?: string }) => {
 };
 
 function KeyboardWrapper() {
-  const [keys, setKeys] = useState(keyboardMappingsStore.keys);
-  const [modifiers, setModifiers] = useState(keyboardMappingsStore.modifiers);
+  const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+  const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
 
   useEffect(() => {
-    const unsubscribeKeyboardStore = keyboardMappingsStore.subscribe(() => {
-      setKeys(keyboardMappingsStore.keys); 
-      setModifiers(keyboardMappingsStore.modifiers);
+    const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
+      setKeys(useKeyboardMappingsStore.keys); 
+      setModifiers(useKeyboardMappingsStore.modifiers);
     });
     return unsubscribeKeyboardStore; // Cleanup on unmount
   }, []); 

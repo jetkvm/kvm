@@ -6,8 +6,8 @@ import {
   useSettingsStore,
   useUiStore,
   useVideoStore,
+  useKeyboardMappingsStore,
 } from "@/hooks/stores";
-import { keyboardMappingsStore } from "@/keyboardMappings/KeyboardMappingStore";
 import { useResizeObserver } from "@/hooks/useResizeObserver";
 import { cx } from "@/cva.config";
 import VirtualKeyboard from "@components/VirtualKeyboard";
@@ -18,13 +18,13 @@ import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { ConnectionErrorOverlay, HDMIErrorOverlay, LoadingOverlay } from "./VideoOverlay";
 
 export default function WebRTCVideo() {
-  const [keys, setKeys] = useState(keyboardMappingsStore.keys);
-  const [modifiers, setModifiers] = useState(keyboardMappingsStore.modifiers);
+  const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+  const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
 
   useEffect(() => {
-    const unsubscribeKeyboardStore = keyboardMappingsStore.subscribe(() => {
-      setKeys(keyboardMappingsStore.keys); 
-      setModifiers(keyboardMappingsStore.modifiers);
+    const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
+      setKeys(useKeyboardMappingsStore.keys); 
+      setModifiers(useKeyboardMappingsStore.modifiers);
     });
     return unsubscribeKeyboardStore; // Cleanup on unmount
   }, []); 
@@ -218,12 +218,15 @@ export default function WebRTCVideo() {
       const prev = useHidStore.getState();
       let code = e.code;
       const key = e.key;
+      console.log(e);
+      console.log(key);
 
-      // if (document.activeElement?.id !== "videoFocusTrap") {
+      // if (document.activeElement?.id !== "videoFocusTrap") {hH
       //   console.log("KEYUP: Not focusing on the video", document.activeElement);
       //   return;
       // }
-      console.log(document.activeElement);
+      //
+      // console.log(document.activeElement);
 
       setIsNumLockActive(e.getModifierState("NumLock"));
       setIsCapsLockActive(e.getModifierState("CapsLock"));
@@ -289,6 +292,7 @@ export default function WebRTCVideo() {
         prev.activeModifiers.filter(k => k !== modifiers[e.code]),
       );
 
+      console.log(e.key);
       sendKeyboardEvent([...new Set(newKeys)], [...new Set(newModifiers)]);
     },
     [

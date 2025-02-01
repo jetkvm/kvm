@@ -12,11 +12,11 @@ export const charsUKApple = {
     "~": { key: "Backquote", shift: true },
     "\\" : { key: "Backslash", shift: false },
     "|": { key: "Backslash", shift: true },
-    "#": { key: "Digit3", shift: false, alt: true },
+    "#": { key: "Digit3", shift: false, altLeft: true },
     "£": { key: "Digit3", shift: true },
     "@": { key: "Digit2", shift: true },
     "\"": { key: "Quote", shift: true },
-} as Record<string, { key: string | number; shift: boolean; alt?: boolean; }>;
+} as Record<string, { key: string | number; shift: boolean; altLeft?: boolean; altRight?: boolean; }>;
   
 // Modifiers are typically the same between UK and US layouts
 export const modifiersUKApple = {

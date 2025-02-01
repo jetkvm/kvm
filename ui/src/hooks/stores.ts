@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { getKeyboardMappings } from "@/keyboardMappings/KeyboardLayouts";
 
 // Utility function to append stats to a Map
 const appendStatToMap = <T extends { timestamp: number }>(
@@ -528,3 +529,39 @@ export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
   setModalView: view => set({ modalView: view }),
   setErrorMessage: message => set({ errorMessage: message }),
 }));
+
+class KeyboardMappingsStore {
+  private _layout: string = 'us';
+  private _subscribers: (() => void)[] = [];
+
+  public keys = getKeyboardMappings(this._layout).keys;
+  public chars = getKeyboardMappings(this._layout).chars;
+  public modifiers = getKeyboardMappings(this._layout).modifiers;
+
+  setLayout(newLayout: string) {
+    if (this._layout === newLayout) return;
+    this._layout = newLayout;
+    const updatedMappings = getKeyboardMappings(newLayout);
+    this.keys = updatedMappings.keys;
+    this.chars = updatedMappings.chars;
+    this.modifiers = updatedMappings.modifiers;
+    this._notifySubscribers(); 
+  }
+
+  getLayout() {
+    return this._layout;
+  }
+
+  subscribe(callback: () => void) {
+    this._subscribers.push(callback);
+    return () => {
+      this._subscribers = this._subscribers.filter(sub => sub !== callback); // Cleanup
+    };
+  }
+
+  private _notifySubscribers() {
+    this._subscribers.forEach(callback => callback());
+  }
+}
+
+export const useKeyboardMappingsStore = new KeyboardMappingsStore();

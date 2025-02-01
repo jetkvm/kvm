@@ -5,18 +5,18 @@ import {
   useRTCStore,
   useSettingsStore,
   useVideoStore,
+  useKeyboardMappingsStore,
 } from "@/hooks/stores";
 import { useEffect, useState } from "react";
-import { keyboardMappingsStore } from "@/keyboardMappings/KeyboardMappingStore";
 
 export default function InfoBar() {
-  const [keys, setKeys] = useState(keyboardMappingsStore.keys);
-  const [modifiers, setModifiers] = useState(keyboardMappingsStore.modifiers);
+  const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+  const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
 
   useEffect(() => {
-    const unsubscribeKeyboardStore = keyboardMappingsStore.subscribe(() => {
-      setKeys(keyboardMappingsStore.keys); 
-      setModifiers(keyboardMappingsStore.modifiers);
+    const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
+      setKeys(useKeyboardMappingsStore.keys); 
+      setModifiers(useKeyboardMappingsStore.modifiers);
     });
     return unsubscribeKeyboardStore; // Cleanup on unmount
   }, []); 

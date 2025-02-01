@@ -4,6 +4,7 @@ import {
   useSettingsStore,
   useUiStore,
   useUpdateStore,
+  useKeyboardMappingsStore,
 } from "@/hooks/stores";
 import { Checkbox } from "@components/Checkbox";
 import { Button, LinkButton } from "@components/Button";
@@ -25,8 +26,6 @@ import LocalAuthPasswordDialog from "@/components/LocalAuthPasswordDialog";
 import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
-import { keyboardMappingsStore } from "@/keyboardMappings/KeyboardMappingStore";
-import { KeyboardLayout } from "@/keyboardMappings/KeyboardLayouts";
 
 export function SettingsItem({
   title,
@@ -157,8 +156,7 @@ export default function SettingsSidebar() {
         );
         return;
       }
-      // TODO set this to update to the actual layout chosen
-      keyboardMappingsStore.setLayout(KeyboardLayout.UKApple)
+      useKeyboardMappingsStore.setLayout(keyboardLayout)
       setKeyboardLayout(keyboardLayout);
     });
   };
@@ -294,6 +292,7 @@ export default function SettingsSidebar() {
     send("getKeyboardLayout", {}, resp => {
       if ("error" in resp) return;
       setKeyboardLayout(String(resp.result));
+      useKeyboardMappingsStore.setLayout(String(resp.result))
     });
 
     send("getStreamQualityFactor", {}, resp => {
@@ -545,7 +544,7 @@ export default function SettingsSidebar() {
                 size="SM"
                 label=""
                 // TODO figure out how to make this selector wider like the EDID one?
-                //fullWidth
+                //fullWidthƒ
                 value={keyboardLayout}
                 options={[
                   { value: "uk", label: "GB" },
