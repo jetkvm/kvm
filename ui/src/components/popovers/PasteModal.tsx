@@ -141,7 +141,7 @@ export default function PasteModal() {
                       <div className="flex items-center mt-2 gap-x-2">
                         <ExclamationCircleIcon className="w-4 h-4 text-red-500 dark:text-red-400" />
                         <span className="text-xs text-red-500 dark:text-red-400">
-                          The following characters won&apos;t be pasted:{" "}
+                          The following characters won&apos;t be pasted as the current keyboard layout does not contain a valid mapping:{" "}
                           {invalidChars.join(", ")}
                         </span>
                       </div>

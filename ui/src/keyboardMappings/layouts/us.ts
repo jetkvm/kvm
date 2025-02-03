@@ -200,7 +200,7 @@ export const charsUS = {
     "\n": { key: "Enter", shift: false },
     Enter: { key: "Enter", shift: false },
     Tab: { key: "Tab", shift: false },
-} as Record<string, { key: string | number; shift: boolean; altLeft?: boolean; altRight?: boolean; }>;
+} as Record<string, { key: string; shift: boolean; altLeft?: boolean; altRight?: boolean; }>;
 
 export const modifiersUS = {
     ControlLeft: 0x01,

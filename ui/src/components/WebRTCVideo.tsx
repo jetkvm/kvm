@@ -19,11 +19,17 @@ import { ConnectionErrorOverlay, HDMIErrorOverlay, LoadingOverlay } from "./Vide
 
 export default function WebRTCVideo() {
   const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+  const [chars, setChars] = useState(useKeyboardMappingsStore.chars);
   const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
+
+  // TODO move this into stores as well as I think this will need to be used in InfoBar
+  // This map is used to maintain consistency between localised key mappings
+  const activeKeyState = useRef<Map<string, { mappedKey: string; modifiers: number }>>(new Map());
 
   useEffect(() => {
     const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
-      setKeys(useKeyboardMappingsStore.keys); 
+      setKeys(useKeyboardMappingsStore.keys);
+      setChars(useKeyboardMappingsStore.chars);
       setModifiers(useKeyboardMappingsStore.modifiers);
     });
     return unsubscribeKeyboardStore; // Cleanup on unmount
@@ -217,9 +223,9 @@ export default function WebRTCVideo() {
       e.preventDefault();
       const prev = useHidStore.getState();
       let code = e.code;
-      const key = e.key;
+      const localisedKey = e.key;
       console.log(e);
-      console.log(key);
+      console.log("Localised Key: " + localisedKey);
 
       // if (document.activeElement?.id !== "videoFocusTrap") {hH
       //   console.log("KEYUP: Not focusing on the video", document.activeElement);
@@ -232,25 +238,42 @@ export default function WebRTCVideo() {
       setIsCapsLockActive(e.getModifierState("CapsLock"));
       setIsScrollLockActive(e.getModifierState("ScrollLock"));
 
-      if (code == "IntlBackslash" && ["`", "~"].includes(key)) {
+      /*if (code == "IntlBackslash" && ["`", "~"].includes(key)) {
         code = "Backquote";
       } else if (code == "Backquote" && ["§", "±"].includes(key)) {
         code = "IntlBackslash";
-      }
+      }*/
+
+      const { key: mappedKey, shift, altLeft, altRight } = chars[localisedKey] ?? { key: e.code };
+      //if (!key) continue; 
+      console.log("Mapped Key: " + mappedKey)
+      console.log("Current KB Layout:" + useKeyboardMappingsStore.getLayout());
+
+      // Build the modifier bitmask
+      const modifier =
+      (shift ? modifiers["ShiftLeft"] : 0) |
+      (altLeft ? modifiers["AltLeft"] : 0) |
+      (altRight ? modifiers["AltRight"] : 0); // This is important for a lot of keyboard layouts, right and left alt have different functions
+
+      // Add the mapped key to keyState
+      activeKeyState.current.set(e.code, { mappedKey, modifiers: modifier });
+      console.log(activeKeyState)
 
       // Add the key to the active keys
-      const newKeys = [...prev.activeKeys, keys[code]].filter(Boolean);
+      const newKeys = [...prev.activeKeys, keys[mappedKey]].filter(Boolean);
 
       // Add the modifier to the active modifiers
       const newModifiers = handleModifierKeys(e, [
         ...prev.activeModifiers,
         modifiers[code],
+        modifier, //Is this bad, will we have duplicate modifiers?
       ]);
 
       // When pressing the meta key + another key, the key will never trigger a keyup
       // event, so we need to clear the keys after a short delay
       // https://bugs.chromium.org/p/chromium/issues/detail?id=28089
       // https://bugzilla.mozilla.org/show_bug.cgi?id=1299553
+      // TODO add this to the activekey state
       if (e.metaKey) {
         setTimeout(() => {
           const prev = useHidStore.getState();
@@ -283,14 +306,44 @@ export default function WebRTCVideo() {
       setIsCapsLockActive(e.getModifierState("CapsLock"));
       setIsScrollLockActive(e.getModifierState("ScrollLock"));
 
+      // Retrieve the mapped key and modifiers from keyState
+      const keyInfo = activeKeyState.current.get(e.code);
+      if (!keyInfo) return; // Ignore if no record exists
+
+      const { mappedKey, modifiers: modifier } = keyInfo;
+
+      // Remove the key from keyState
+      activeKeyState.current.delete(e.code);
+
+      // Filter out the key that was just released
+      const newKeys = prev.activeKeys.filter(k => k !== keys[mappedKey]).filter(Boolean);
+      console.log(activeKeyState)
+
+      // Filter out the associated modifier
+      //const newModifiers = prev.activeModifiers.filter(k => k !== modifier).filter(Boolean);
+      const newModifiers = handleModifierKeys(
+        e,
+        prev.activeModifiers.filter(k => k !== modifier),
+      );
+    /*
+      const { key: mappedKey/*, shift, altLeft, altRight*//* } = chars[e.key] ?? { key: e.code };
+      //if (!key) continue;
+      console.log("Mapped Key: " + mappedKey)
+      // Build the modifier bitmask
+      /*const modifier =
+      (shift ? modifiers["ShiftLeft"] : 0) |
+      (altLeft ? modifiers["AltLeft"] : 0) |
+      (altRight ? modifiers["AltRight"] : 0); // This is important for a lot of keyboard layouts, right and left alt have different functions*//*
+
       // Filtering out the key that was just released (keys[e.code])
-      const newKeys = prev.activeKeys.filter(k => k !== keys[e.code]).filter(Boolean);
+      const newKeys = prev.activeKeys.filter(k => k !== keys[mappedKey]).filter(Boolean);
 
       // Filter out the modifier that was just released
       const newModifiers = handleModifierKeys(
         e,
         prev.activeModifiers.filter(k => k !== modifiers[e.code]),
       );
+      */
 
       console.log(e.key);
       sendKeyboardEvent([...new Set(newKeys)], [...new Set(newModifiers)]);
@@ -321,6 +374,7 @@ export default function WebRTCVideo() {
 
       return () => {
         abortController.abort();
+        activeKeyState.current.clear();
       };
     },
     [keyDownHandler, keyUpHandler, resetKeyboardState, sendKeyboardEvent],
