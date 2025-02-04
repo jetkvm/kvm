@@ -21,4 +21,4 @@ export const charsUKApple = {
 // Modifiers are typically the same between UK and US layouts
 export const modifiersUKApple = {
     ...modifiersUS,
-};
+} as Record<string, number>;

@@ -20,12 +20,15 @@ const AttachIcon = ({ className }: { className?: string }) => {
 };
 
 function KeyboardWrapper() {
+  // TODO implement virtual keyboard mapping
   const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+  //const [chars, setChars] = useState(useKeyboardMappingsStore.chars);
   const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
 
   useEffect(() => {
     const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
-      setKeys(useKeyboardMappingsStore.keys); 
+      setKeys(useKeyboardMappingsStore.keys);
+      //setChars(useKeyboardMappingsStore.chars);
       setModifiers(useKeyboardMappingsStore.modifiers);
     });
     return unsubscribeKeyboardStore; // Cleanup on unmount
