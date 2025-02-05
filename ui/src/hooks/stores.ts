@@ -387,6 +387,8 @@ export const useHidStore = create<HidState>(set => ({
   activeKeys: [],
   activeModifiers: [],
   updateActiveKeysAndModifiers: ({ keys, modifiers }) => {
+    // TODO remove debug logs
+    console.log("keys: " + keys + "modifiers: " + modifiers)
     return set({ activeKeys: keys, activeModifiers: modifiers });
   },
 
