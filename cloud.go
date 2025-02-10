@@ -188,7 +188,11 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 		return fmt.Errorf("google identity mismatch")
 	}
 
-	session, err := newSession(req.ICEServers, req.IP)
+	session, err := newSession(SessionConfig{
+		ICEServers: req.ICEServers,
+		LocalIP:    req.IP,
+		IsCloud:    true,
+	})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
 		return err
