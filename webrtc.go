@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/pion/webrtc/v4"
@@ -61,9 +62,23 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 	return base64.StdEncoding.EncodeToString(localDescription), nil
 }
 
-func newSession() (*Session, error) {
-	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{{}},
+func newSession(iceServers []string, localIP string) (*Session, error) {
+	if iceServers == nil {
+		iceServers = config.FallbackICEServers
+		fmt.Printf("ICE Servers not provided, using fallback %v\n", iceServers)
+	}
+
+	webrtcSettingEngine := webrtc.SettingEngine{}
+	if localIP != "" || net.ParseIP(localIP) == nil {
+		fmt.Printf("Local IP address not provided or invalid, won't set NAT1To1IPs\n")
+	} else {
+		webrtcSettingEngine.SetNAT1To1IPs([]string{localIP}, webrtc.ICECandidateTypeSrflx)
+	}
+
+	// create
+	api := webrtc.NewAPI(webrtc.WithSettingEngine(webrtcSettingEngine))
+	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{{URLs: iceServers}},
 	})
 	if err != nil {
 		return nil, err

@@ -7,13 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"github.com/coder/websocket/wsjson"
 	"time"
+
+	"github.com/coder/websocket/wsjson"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
-	"github.com/gin-gonic/gin"
 	"github.com/coder/websocket"
+	"github.com/gin-gonic/gin"
 )
 
 type CloudRegisterRequest struct {
@@ -187,7 +188,7 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 		return fmt.Errorf("google identity mismatch")
 	}
 
-	session, err := newSession()
+	session, err := newSession(req.ICEServers, req.IP)
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
 		return err
