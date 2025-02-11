@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/pion/webrtc/v4"
@@ -17,6 +18,12 @@ type Session struct {
 	HidChannel               *webrtc.DataChannel
 	DiskChannel              *webrtc.DataChannel
 	shouldUmountVirtualMedia bool
+}
+
+type SessionConfig struct {
+	ICEServers []string
+	LocalIP    string
+	IsCloud    bool
 }
 
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
@@ -61,9 +68,29 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 	return base64.StdEncoding.EncodeToString(localDescription), nil
 }
 
-func newSession() (*Session, error) {
-	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{{}},
+func newSession(config SessionConfig) (*Session, error) {
+	webrtcSettingEngine := webrtc.SettingEngine{}
+	iceServer := webrtc.ICEServer{}
+
+	if config.IsCloud {
+		if config.ICEServers == nil {
+			fmt.Printf("ICE Servers not provided by cloud")
+		} else {
+			iceServer.URLs = config.ICEServers
+			fmt.Printf("Using ICE Servers provided by cloud: %v\n", iceServer.URLs)
+		}
+
+		if config.LocalIP == "" || net.ParseIP(config.LocalIP) == nil {
+			fmt.Printf("Local IP address %v not provided or invalid, won't set NAT1To1IPs\n", config.LocalIP)
+		} else {
+			webrtcSettingEngine.SetNAT1To1IPs([]string{config.LocalIP}, webrtc.ICECandidateTypeSrflx)
+			fmt.Printf("Setting NAT1To1IPs to %s\n", config.LocalIP)
+		}
+	}
+
+	api := webrtc.NewAPI(webrtc.WithSettingEngine(webrtcSettingEngine))
+	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{iceServer},
 	})
 	if err != nil {
 		return nil, err

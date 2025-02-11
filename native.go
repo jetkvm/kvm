@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/pion/webrtc/v4/pkg/media"
@@ -223,6 +224,12 @@ func ExtractAndRunNativeBin() error {
 	// Redirect stdout and stderr to the current process
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
+	// Set the process group ID so we can kill the process and its children when this process exits
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid:   true,
+		Pdeathsig: syscall.SIGKILL,
+	}
 
 	// Start the command
 	if err := cmd.Start(); err != nil {

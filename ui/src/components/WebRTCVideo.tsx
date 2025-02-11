@@ -425,7 +425,7 @@ export default function WebRTCVideo() {
                         disablePictureInPicture
                         controlsList="nofullscreen"
                         className={cx(
-                          "outline-50 max-h-full max-w-full rounded-md object-contain transition-all duration-1000",
+                          "outline-50 max-h-full max-w-full object-contain transition-all duration-1000",
                           {
                             "cursor-none": settings.isCursorHidden,
                             "opacity-0": isLoading || isConnectionError || hdmiError,

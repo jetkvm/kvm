@@ -7,13 +7,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"github.com/coder/websocket/wsjson"
 	"time"
+
+	"github.com/coder/websocket/wsjson"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
-	"github.com/gin-gonic/gin"
 	"github.com/coder/websocket"
+	"github.com/gin-gonic/gin"
 )
 
 type CloudRegisterRequest struct {
@@ -66,6 +67,11 @@ func handleCloudRegister(c *gin.Context) {
 	if tokenResp.SecretToken == "" {
 		c.JSON(500, gin.H{"error": "Received empty secret token"})
 		return
+	}
+
+	if config.CloudToken == "" {
+		logger.Info("Starting websocket client due to adoption")
+		go RunWebsocketClient()
 	}
 
 	config.CloudToken = tokenResp.SecretToken
@@ -187,7 +193,11 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 		return fmt.Errorf("google identity mismatch")
 	}
 
-	session, err := newSession()
+	session, err := newSession(SessionConfig{
+		ICEServers: req.ICEServers,
+		LocalIP:    req.IP,
+		IsCloud:    true,
+	})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
 		return err
