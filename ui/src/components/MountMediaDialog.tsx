@@ -26,6 +26,7 @@ import { InputFieldWithLabel } from "./InputField";
 import DebianIcon from "@/assets/debian-icon.png";
 import UbuntuIcon from "@/assets/ubuntu-icon.png";
 import FedoraIcon from "@/assets/fedora-icon.png";
+import OpenSUSEIcon from "@/assets/opensuse-icon.png";
 import ArchIcon from "@/assets/arch-icon.png";
 import NetBootIcon from "@/assets/netboot-icon.svg";
 import { TrashIcon } from "@heroicons/react/16/solid";
@@ -541,6 +542,16 @@ function UrlView({
       name: "Fedora 41",
       url: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso",
       icon: FedoraIcon,
+    },
+    {
+      name: "openSUSE Leap 15.6",
+      url: "https://download.opensuse.org/distribution/leap/15.6/iso/openSUSE-Leap-15.6-NET-x86_64-Media.iso",
+      icon: OpenSUSEIcon,
+    },
+    {
+      name: "openSUSE Tumbleweed",
+      url: "https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-NET-x86_64-Current.iso",
+      icon: OpenSUSEIcon,
     },
     {
       name: "Arch Linux",
