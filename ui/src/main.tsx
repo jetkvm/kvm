@@ -27,12 +27,13 @@ import LoginLocalRoute from "./routes/login-local";
 import WelcomeLocalModeRoute from "./routes/welcome-local.mode";
 import WelcomeRoute from "./routes/welcome-local";
 import WelcomeLocalPasswordRoute from "./routes/welcome-local.password";
+import { CLOUD_API } from "./ui.config";
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
 
 export async function checkAuth() {
-  const res = await fetch(`${import.meta.env.VITE_CLOUD_API}/me`, {
+  const res = await fetch(`${CLOUD_API}/me`, {
     mode: "cors",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

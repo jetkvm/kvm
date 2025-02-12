@@ -16,6 +16,7 @@ import { User } from "@/hooks/stores";
 import { checkAuth } from "@/main";
 import Fieldset from "@components/Fieldset";
 import api from "../api";
+import { CLOUD_API } from "@/ui.config";
 
 interface LoaderData {
   device: { id: string; name: string; user: { googleId: string } };
@@ -31,7 +32,7 @@ const action = async ({ params, request }: ActionFunctionArgs) => {
   }
 
   try {
-    const res = await api.PUT(`${import.meta.env.VITE_CLOUD_API}/devices/${id}`, {
+    const res = await api.PUT(`${CLOUD_API}/devices/${id}`, {
       name,
     });
     if (!res.ok) {
@@ -49,7 +50,7 @@ const loader = async ({ params }: LoaderFunctionArgs) => {
   const { id } = params;
 
   try {
-    const res = await fetch(`${import.meta.env.VITE_CLOUD_API}/devices/${id}`, {
+    const res = await fetch(`${CLOUD_API}/devices/${id}`, {
       method: "GET",
       credentials: "include",
       mode: "cors",

@@ -6,6 +6,7 @@ import { useLocation, useNavigation, useSearchParams } from "react-router-dom";
 import Fieldset from "@components/Fieldset";
 import GridBackground from "@components/GridBackground";
 import StepCounter from "@components/StepCounter";
+import { CLOUD_API } from "@/ui.config";
 
 type AuthLayoutProps = {
   title: string;
@@ -62,7 +63,7 @@ export default function AuthLayout({
               <Fieldset className="space-y-12">
                 <div className="max-w-sm mx-auto space-y-4">
                   <form
-                    action={`${import.meta.env.VITE_CLOUD_API}/oidc/google`}
+                    action={`${CLOUD_API}/oidc/google`}
                     method="POST"
                   >
                     {/*This could be the KVM ID*/}

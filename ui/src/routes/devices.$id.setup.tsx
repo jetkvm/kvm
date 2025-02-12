@@ -16,10 +16,11 @@ import { InputFieldWithLabel } from "@components/InputField";
 import { Button } from "@components/Button";
 import { checkAuth } from "@/main";
 import api from "../api";
+import { CLOUD_API } from "@/ui.config";
 
 const loader = async ({ params }: LoaderFunctionArgs) => {
   await checkAuth();
-  const res = await fetch(`${import.meta.env.VITE_CLOUD_API}/devices/${params.id}`, {
+  const res = await fetch(`${CLOUD_API}/devices/${params.id}`, {
     method: "GET",
     mode: "cors",
     credentials: "include",
@@ -35,7 +36,7 @@ const loader = async ({ params }: LoaderFunctionArgs) => {
 const action = async ({ request }: ActionFunctionArgs) => {
   // Handle form submission
   const { name, id, returnTo } = Object.fromEntries(await request.formData());
-  const res = await api.PUT(`${import.meta.env.VITE_CLOUD_API}/devices/${id}`, { name });
+  const res = await api.PUT(`${CLOUD_API}/devices/${id}`, { name });
 
   if (res.ok) {
     return redirect(returnTo?.toString() ?? `/devices/${id}`);

@@ -34,6 +34,7 @@ import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import notifications from "../notifications";
 import Fieldset from "./Fieldset";
 import { isOnDevice } from "../main";
+import { SIGNAL_API } from "@/ui.config";
 
 export default function MountMediaModal({
   open,
@@ -1108,7 +1109,7 @@ function UploadFileView({
     alreadyUploadedBytes: number,
     dataChannel: string,
   ) {
-    const uploadUrl = `${import.meta.env.VITE_SIGNAL_API}/storage/upload?uploadId=${dataChannel}`;
+    const uploadUrl = `${SIGNAL_API}/storage/upload?uploadId=${dataChannel}`;
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", uploadUrl, true);

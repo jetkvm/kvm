@@ -9,6 +9,7 @@ import { User } from "@/hooks/stores";
 import EmptyCard from "@components/EmptyCard";
 import { LuMonitorSmartphone } from "react-icons/lu";
 import { ArrowRightIcon } from "@heroicons/react/16/solid";
+import { CLOUD_API } from "@/ui.config";
 
 interface LoaderData {
   devices: { id: string; name: string; online: boolean; lastSeen: string }[];
@@ -19,7 +20,7 @@ export const loader = async () => {
   const user = await checkAuth();
 
   try {
-    const res = await fetch(`${import.meta.env.VITE_CLOUD_API}/devices`, {
+    const res = await fetch(`${CLOUD_API}/devices`, {
       method: "GET",
       credentials: "include",
       mode: "cors",

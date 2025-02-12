@@ -36,6 +36,7 @@ import { DeviceStatus } from "./welcome-local";
 import FocusTrap from "focus-trap-react";
 import OtherSessionConnectedModal from "@/components/OtherSessionConnectedModal";
 import TerminalWrapper from "../components/Terminal";
+import { CLOUD_API, SIGNAL_API } from "@/ui.config";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -56,12 +57,12 @@ export interface LocalDevice {
 
 const deviceLoader = async () => {
   const res = await api
-    .GET(`${import.meta.env.VITE_SIGNAL_API}/device/status`)
+    .GET(`${SIGNAL_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);
 
   if (!res.isSetup) return redirect("/welcome");
 
-  const deviceRes = await api.GET(`${import.meta.env.VITE_SIGNAL_API}/device`);
+  const deviceRes = await api.GET(`${SIGNAL_API}/device`);
   if (deviceRes.status === 401) return redirect("/login-local");
   if (deviceRes.ok) {
     const device = (await deviceRes.json()) as LocalDevice;
@@ -74,11 +75,11 @@ const deviceLoader = async () => {
 const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => {
   const user = await checkAuth();
 
-  const iceResp = await api.POST(`${import.meta.env.VITE_CLOUD_API}/webrtc/ice_config`);
+  const iceResp = await api.POST(`${CLOUD_API}/webrtc/ice_config`);
   const iceConfig = await iceResp.json();
 
   const deviceResp = await api.GET(
-    `${import.meta.env.VITE_CLOUD_API}/devices/${params.id}`,
+    `${CLOUD_API}/devices/${params.id}`,
   );
 
   if (!deviceResp.ok) {
@@ -142,7 +143,7 @@ export default function KvmIdRoute() {
 
       try {
         const sd = btoa(JSON.stringify(pc.localDescription));
-        const res = await api.POST(`${import.meta.env.VITE_SIGNAL_API}/webrtc/session`, {
+        const res = await api.POST(`${SIGNAL_API}/webrtc/session`, {
           sd,
           // When on device, we don't need to specify the device id, as it's already known
           ...(isOnDevice ? {} : { id: params.id }),
@@ -317,7 +318,7 @@ export default function KvmIdRoute() {
     }
 
     // Fire and forget
-    api.POST(`${import.meta.env.VITE_CLOUD_API}/webrtc/turn_activity`, {
+    api.POST(`${CLOUD_API}/webrtc/turn_activity`, {
       bytesReceived: bytesReceivedDelta,
       bytesSent: bytesSentDelta,
     });

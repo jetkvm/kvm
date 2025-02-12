@@ -1,5 +1,6 @@
 import { LoaderFunctionArgs, redirect } from "react-router-dom";
 import api from "../api";
+import { CLOUD_API, CLOUD_APP, SIGNAL_API } from "@/ui.config";
 
 const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -11,17 +12,17 @@ const loader = async ({ request }: LoaderFunctionArgs) => {
   const clientId = searchParams.get("clientId");
 
   const res = await api.POST(
-    `${import.meta.env.VITE_SIGNAL_API}/cloud/register`,
+    `${SIGNAL_API}/cloud/register`,
     {
       token: tempToken,
-      cloudApi: import.meta.env.VITE_CLOUD_API,
+      cloudApi: CLOUD_API,
       oidcGoogle,
       clientId,
     },
   );
 
   if (!res.ok) throw new Error("Failed to register device");
-  return redirect(import.meta.env.VITE_CLOUD_APP + `/devices/${deviceId}/setup`);
+  return redirect(CLOUD_APP + `/devices/${deviceId}/setup`);
 };
 
 export default function AdoptRoute() {
