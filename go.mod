@@ -20,6 +20,7 @@ require (
 	github.com/pion/webrtc/v4 v4.0.0
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/psanford/httpreadat v0.1.0
+	github.com/ulikunitz/xz v0.5.12
 	github.com/vishvananda/netlink v1.3.0
 	golang.org/x/crypto v0.28.0
 	golang.org/x/net v0.30.0
