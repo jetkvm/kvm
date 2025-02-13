@@ -25,6 +25,23 @@ type LocalIpInfo struct {
 	MAC  string
 }
 
+func checkLoopback() {
+	iface, err := netlink.LinkByName("lo")	
+	if err != nil {
+		fmt.Printf("failed to get lo interface: %v\n", err)
+		return
+	}
+
+	if iface.Attrs().OperState != netlink.OperUp {
+		fmt.Printf("lo is not up, bringing it up\n")
+		err = netlink.LinkSetUp(iface)
+		if err != nil {
+			fmt.Printf("failed to bring lo up: %v\n", err)
+			return
+		}
+	}
+}
+
 func checkNetworkState() {
 	iface, err := netlink.LinkByName("eth0")
 	if err != nil {
@@ -101,6 +118,9 @@ func init() {
 		fmt.Println("failed to subscribe to link updates: %v", err)
 		return
 	}
+
+	//Start loopback before launching network task
+	checkLoopback()
 
 	go func() {
 		waitCtrlClientConnected()
