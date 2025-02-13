@@ -25,6 +25,7 @@ import LocalAuthPasswordDialog from "@/components/LocalAuthPasswordDialog";
 import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import PluginList from "@components/PluginList";
 
 export function SettingsItem({
   title,
@@ -743,6 +744,14 @@ export default function SettingsSidebar() {
             <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
           </>
         ) : null}
+        <div className="pb-2 space-y-4">
+          <SectionHeader
+            title="Plugins"
+            description="Manage installed plugins and their settings"
+          />
+          <PluginList />
+        </div>
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
         <div className="pb-2 space-y-4">
           <SectionHeader
             title="Updates"

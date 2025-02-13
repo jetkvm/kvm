@@ -102,8 +102,9 @@ func newSession(config SessionConfig) (*Session, error) {
 		switch d.Label() {
 		case "rpc":
 			session.RPCChannel = d
+			rpcServer := NewDataChannelJsonRpcRouter(d)
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				go onRPCMessage(msg, session)
+				go rpcServer.HandleMessage(msg.Data)
 			})
 			triggerOTAStateUpdate()
 			triggerVideoStateUpdate()

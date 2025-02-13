@@ -1,5 +1,5 @@
-VERSION_DEV := 0.3.5-dev$(shell date +%Y%m%d%H%M)
-VERSION := 0.3.4
+VERSION_DEV := 0.3.6-dev$(shell date +%Y%m%d%H%M)
+VERSION := 0.3.5
 
 hash_resource:
 	@shasum -a 256 resource/jetkvm_native | cut -d ' ' -f 1 > resource/jetkvm_native.sha256
