@@ -11,7 +11,7 @@ import (
 	"github.com/beevik/ntp"
 )
 
-var timeSynced = false
+var timeSynced = false //nolint:unused
 
 func TimeSyncLoop() {
 	for {

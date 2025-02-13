@@ -48,7 +48,7 @@ func Main() {
 		time.Sleep(15 * time.Minute)
 		for {
 			logger.Debugf("UPDATING - Auto update enabled: %v", config.AutoUpdateEnabled)
-			if config.AutoUpdateEnabled == false {
+			if !config.AutoUpdateEnabled {
 				return
 			}
 			if currentSession != nil {
