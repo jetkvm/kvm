@@ -4,10 +4,9 @@ import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
 import "react-simple-keyboard/build/css/index.css";
-import { useHidStore, useUiStore } from "@/hooks/stores";
+import { useHidStore, useUiStore, useKeyboardMappingsStore } from "@/hooks/stores";
 import { Transition } from "@headlessui/react";
 import { cx } from "@/cva.config";
-import { keys, modifiers } from "@/keyboardMappings";
 import useKeyboard from "@/hooks/useKeyboard";
 import DetachIconRaw from "@/assets/detach-icon.svg";
 import AttachIconRaw from "@/assets/attach-icon.svg";
@@ -21,6 +20,20 @@ const AttachIcon = ({ className }: { className?: string }) => {
 };
 
 function KeyboardWrapper() {
+  // TODO implement virtual keyboard mapping
+  const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+  //const [chars, setChars] = useState(useKeyboardMappingsStore.chars);
+  const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
+
+  useEffect(() => {
+    const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
+      setKeys(useKeyboardMappingsStore.keys);
+      //setChars(useKeyboardMappingsStore.chars);
+      setModifiers(useKeyboardMappingsStore.modifiers);
+    });
+    return unsubscribeKeyboardStore; // Cleanup on unmount
+  }, []); 
+
   const [layoutName, setLayoutName] = useState("default");
 
   const keyboardRef = useRef<HTMLDivElement>(null);

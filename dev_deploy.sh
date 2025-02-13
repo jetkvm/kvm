@@ -71,6 +71,7 @@ export LD_LIBRARY_PATH=/oem/usr/lib:\$LD_LIBRARY_PATH
 # Kill any existing instances of the application
 killall jetkvm_app || true
 killall jetkvm_app_debug || true
+killall jetkvm_native || true
 
 # Navigate to the directory where the binary will be stored
 cd "$REMOTE_PATH"

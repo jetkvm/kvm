@@ -4,6 +4,7 @@ import {
   useSettingsStore,
   useUiStore,
   useUpdateStore,
+  useKeyboardMappingsStore,
 } from "@/hooks/stores";
 import { Checkbox } from "@components/Checkbox";
 import { Button, LinkButton } from "@components/Button";
@@ -77,6 +78,7 @@ export default function SettingsSidebar() {
   const setSidebarView = useUiStore(state => state.setSidebarView);
   const settings = useSettingsStore();
   const [send] = useJsonRpc();
+  const [keyboardLayout, setKeyboardLayout] = useState("us");
   const [streamQuality, setStreamQuality] = useState("1");
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [devChannel, setDevChannel] = useState(false);
@@ -143,6 +145,19 @@ export default function SettingsSidebar() {
       }
       getCloudState();
       return;
+    });
+  };
+
+  const handleKeyboardLayoutChange = (keyboardLayout: string) => {
+    send("setKeyboardLayout", { kbLayout: keyboardLayout }, resp => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to set keyboard layout: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      useKeyboardMappingsStore.setLayout(keyboardLayout)
+      setKeyboardLayout(keyboardLayout);
     });
   };
 
@@ -272,6 +287,12 @@ export default function SettingsSidebar() {
     send("getDevChannelState", {}, resp => {
       if ("error" in resp) return;
       setDevChannel(resp.result as boolean);
+    });
+
+    send("getKeyboardLayout", {}, resp => {
+      if ("error" in resp) return;
+      setKeyboardLayout(String(resp.result));
+      useKeyboardMappingsStore.setLayout(String(resp.result))
     });
 
     send("getStreamQualityFactor", {}, resp => {
@@ -506,6 +527,33 @@ export default function SettingsSidebar() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+        <div className="pb-2 space-y-4">
+          <SectionHeader
+            title="Keyboard"
+            description="Customize keyboard behaviour"
+          />
+          <div className="space-y-4">
+            <SettingsItem
+              title="Keyboard Layout"
+              description="Set keyboard layout (this should match the target machine)"
+            >
+              <SelectMenuBasic
+                size="SM"
+                label=""
+                // TODO figure out how to make this selector wider like the EDID one?
+                //fullWidthƒ
+                value={keyboardLayout}
+                options={[
+                  { value: "uk", label: "GB" },
+                  { value: "uk_apple", label: "GB Apple" },
+                  { value: "us", label: "US" },
+                ]}
+                onChange={e => handleKeyboardLayoutChange(e.target.value)}
+              />
+            </SettingsItem>
           </div>
         </div>
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />

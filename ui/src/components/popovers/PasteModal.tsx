@@ -3,19 +3,31 @@ import { GridCard } from "@components/Card";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { SectionHeader } from "@components/SectionHeader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useHidStore, useRTCStore, useUiStore } from "@/hooks/stores";
+import { useHidStore, useRTCStore, useUiStore, useKeyboardMappingsStore } from "@/hooks/stores";
 import notifications from "../../notifications";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LuCornerDownLeft } from "react-icons/lu";
 import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
 import { useClose } from "@headlessui/react";
-import { chars, keys, modifiers } from "@/keyboardMappings";
 
 const hidKeyboardPayload = (keys: number[], modifier: number) => {
   return { keys, modifier };
 };
 
 export default function PasteModal() {
+  const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+  const [chars, setChars] = useState(useKeyboardMappingsStore.chars);
+  const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
+
+  useEffect(() => {
+    const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
+      setKeys(useKeyboardMappingsStore.keys); 
+      setChars(useKeyboardMappingsStore.chars);
+      setModifiers(useKeyboardMappingsStore.modifiers);
+    });
+    return unsubscribeKeyboardStore; // Cleanup on unmount
+  }, []); 
+
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
   const setPasteMode = useHidStore(state => state.setPasteModeEnabled);
   const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
@@ -41,13 +53,19 @@ export default function PasteModal() {
 
     try {
       for (const char of text) {
-        const { key, shift } = chars[char] ?? {};
+        const { key, shift, altLeft, altRight } = chars[char] ?? {};
         if (!key) continue;
+
+        // Build the modifier bitmask
+        const modifier =
+        (shift ? modifiers["ShiftLeft"] : 0) |
+        (altLeft ? modifiers["AltLeft"] : 0) |
+        (altRight ? modifiers["AltRight"] : 0); // This is important for a lot of keyboard layouts, right and left alt have different functions
 
         await new Promise<void>((resolve, reject) => {
           send(
             "keyboardReport",
-            hidKeyboardPayload([keys[key]], shift ? modifiers["ShiftLeft"] : 0),
+            hidKeyboardPayload([keys[key]], modifier),
             params => {
               if ("error" in params) return reject(params.error);
               send("keyboardReport", hidKeyboardPayload([], 0), params => {
@@ -123,7 +141,7 @@ export default function PasteModal() {
                       <div className="flex items-center mt-2 gap-x-2">
                         <ExclamationCircleIcon className="w-4 h-4 text-red-500 dark:text-red-400" />
                         <span className="text-xs text-red-500 dark:text-red-400">
-                          The following characters won&apos;t be pasted:{" "}
+                          The following characters won&apos;t be pasted as the current keyboard layout does not contain a valid mapping:{" "}
                           {invalidChars.join(", ")}
                         </span>
                       </div>
