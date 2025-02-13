@@ -12,6 +12,8 @@ import (
 	"github.com/vishvananda/netlink/nl"
 )
 
+var mDNSConn *mdns.Conn
+
 var networkState struct {
 	Up   bool
 	IPv4 string
@@ -56,13 +58,26 @@ func checkNetworkState() {
 	}
 
 	if newState != networkState {
-		networkState = newState
 		fmt.Println("network state changed")
+		//restart MDNS
+		startMDNS()
+		networkState = newState
 		requestDisplayUpdate()
 	}
 }
 
 func startMDNS() error {
+	//If server was previously running, stop it
+	if mDNSConn != nil {
+		fmt.Printf("Stopping mDNS server\n")
+		err := mDNSConn.Close()
+		if err != nil {
+			fmt.Printf("failed to stop mDNS server: %v\n", err)
+		}
+	}
+
+	//Start a new server
+	fmt.Printf("Starting mDNS server on jetkvm.local\n")
 	addr4, err := net.ResolveUDPAddr("udp4", mdns.DefaultAddressIPv4)
 	if err != nil {
 		return err
@@ -83,10 +98,11 @@ func startMDNS() error {
 		return err
 	}
 
-	_, err = mdns.Server(ipv4.NewPacketConn(l4), ipv6.NewPacketConn(l6), &mdns.Config{
+	mDNSConn, err = mdns.Server(ipv4.NewPacketConn(l4), ipv6.NewPacketConn(l6), &mdns.Config{
 		LocalNames: []string{"jetkvm.local"}, //TODO: make it configurable
 	})
 	if err != nil {
+		mDNSConn = nil
 		return err
 	}
 	//defer server.Close()
@@ -122,7 +138,6 @@ func init() {
 			}
 		}
 	}()
-	fmt.Println("Starting mDNS server")
 	err := startMDNS()
 	if err != nil {
 		fmt.Println("failed to run mDNS: %v", err)
