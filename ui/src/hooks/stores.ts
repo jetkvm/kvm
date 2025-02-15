@@ -22,6 +22,7 @@ const appendStatToMap = <T extends { timestamp: number }>(
 // Constants and types
 export type AvailableSidebarViews = "system" | "connection-stats";
 export type AvailableModalViews = "connection-stats" | "settings";
+export type AvailableTerminalTypes = "kvm" | "serial" | "none";
 
 export interface User {
   sub: string;
@@ -52,13 +53,13 @@ interface UIState {
   isAttachedVirtualKeyboardVisible: boolean;
   setAttachedVirtualKeyboardVisibility: (enabled: boolean) => void;
 
-  enableTerminal: boolean;
-  setEnableTerminal: (enabled: UIState["enableTerminal"]) => void;
+  terminalType: AvailableTerminalTypes;
+  setTerminalType: (enabled: UIState["terminalType"]) => void;
 }
 
 export const useUiStore = create<UIState>(set => ({
-  enableTerminal: false,
-  setEnableTerminal: enabled => set({ enableTerminal: enabled }),
+  terminalType: "none",
+  setTerminalType: type => set({ terminalType: type }),
 
   sidebarView: null,
   setSidebarView: view => set({ sidebarView: view }),

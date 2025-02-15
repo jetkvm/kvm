@@ -113,6 +113,8 @@ func newSession(config SessionConfig) (*Session, error) {
 			d.OnMessage(onDiskMessage)
 		case "terminal":
 			handleTerminalChannel(d)
+		case "serial":
+			handleSerialChannel(d)
 		default:
 			if strings.HasPrefix(d.Label(), uploadIdPrefix) {
 				go handleUploadChannel(d)

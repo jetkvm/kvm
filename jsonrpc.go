@@ -10,8 +10,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"time"
 
 	"github.com/pion/webrtc/v4"
+	"go.bug.st/serial"
 )
 
 type JSONRPCRequest struct {
@@ -569,7 +572,172 @@ func rpcResetConfig() error {
 	return nil
 }
 
-// TODO: replace this crap with code generator
+type DCPowerState struct {
+	IsOn    bool    `json:"isOn"`
+	Voltage float64 `json:"voltage"`
+	Current float64 `json:"current"`
+	Power   float64 `json:"power"`
+}
+
+func rpcGetDCPowerState() (DCPowerState, error) {
+	return dcState, nil
+}
+
+func rpcSetDCPowerState(enabled bool) error {
+	log.Printf("[jsonrpc.go:rpcSetDCPowerState] Setting DC power state to: %v", enabled)
+	err := setDCPowerState(enabled)
+	if err != nil {
+		return fmt.Errorf("failed to set DC power state: %w", err)
+	}
+	return nil
+}
+
+func rpcGetActiveExtension() (string, error) {
+	return config.ActiveExtension, nil
+}
+
+func rpcSetActiveExtension(extensionId string) error {
+	if config.ActiveExtension == extensionId {
+		return nil
+	}
+	if config.ActiveExtension == "atx-power" {
+		unmountATXControl()
+	} else if config.ActiveExtension == "dc-power" {
+		unmountDCControl()
+	}
+	config.ActiveExtension = extensionId
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	if extensionId == "atx-power" {
+		mountATXControl()
+	} else if extensionId == "dc-power" {
+		mountDCControl()
+	}
+	return nil
+}
+
+func rpcSetATXPowerAction(action string) error {
+	logger.Debugf("[jsonrpc.go:rpcSetATXPowerAction] Executing ATX power action: %s", action)
+	switch action {
+	case "power-short":
+		logger.Debug("[jsonrpc.go:rpcSetATXPowerAction] Simulating short power button press")
+		return pressATXPowerButton(200 * time.Millisecond)
+	case "power-long":
+		logger.Debug("[jsonrpc.go:rpcSetATXPowerAction] Simulating long power button press")
+		return pressATXPowerButton(5 * time.Second)
+	case "reset":
+		logger.Debug("[jsonrpc.go:rpcSetATXPowerAction] Simulating reset button press")
+		return pressATXResetButton(200 * time.Millisecond)
+	default:
+		return fmt.Errorf("invalid action: %s", action)
+	}
+}
+
+type ATXState struct {
+	Power bool `json:"power"`
+	HDD   bool `json:"hdd"`
+}
+
+func rpcGetATXState() (ATXState, error) {
+	state := ATXState{
+		Power: ledPWRState,
+		HDD:   ledHDDState,
+	}
+	return state, nil
+}
+
+type SerialSettings struct {
+	BaudRate string `json:"baudRate"`
+	DataBits string `json:"dataBits"`
+	StopBits string `json:"stopBits"`
+	Parity   string `json:"parity"`
+}
+
+func rpcGetSerialSettings() (SerialSettings, error) {
+	settings := SerialSettings{
+		BaudRate: strconv.Itoa(serialPortMode.BaudRate),
+		DataBits: strconv.Itoa(serialPortMode.DataBits),
+		StopBits: "1",
+		Parity:   "none",
+	}
+
+	switch serialPortMode.StopBits {
+	case serial.OneStopBit:
+		settings.StopBits = "1"
+	case serial.OnePointFiveStopBits:
+		settings.StopBits = "1.5"
+	case serial.TwoStopBits:
+		settings.StopBits = "2"
+	}
+
+	switch serialPortMode.Parity {
+	case serial.NoParity:
+		settings.Parity = "none"
+	case serial.OddParity:
+		settings.Parity = "odd"
+	case serial.EvenParity:
+		settings.Parity = "even"
+	case serial.MarkParity:
+		settings.Parity = "mark"
+	case serial.SpaceParity:
+		settings.Parity = "space"
+	}
+
+	return settings, nil
+}
+
+var serialPortMode = defaultMode
+
+func rpcSetSerialSettings(settings SerialSettings) error {
+	baudRate, err := strconv.Atoi(settings.BaudRate)
+	if err != nil {
+		return fmt.Errorf("invalid baud rate: %v", err)
+	}
+	dataBits, err := strconv.Atoi(settings.DataBits)
+	if err != nil {
+		return fmt.Errorf("invalid data bits: %v", err)
+	}
+
+	var stopBits serial.StopBits
+	switch settings.StopBits {
+	case "1":
+		stopBits = serial.OneStopBit
+	case "1.5":
+		stopBits = serial.OnePointFiveStopBits
+	case "2":
+		stopBits = serial.TwoStopBits
+	default:
+		return fmt.Errorf("invalid stop bits: %s", settings.StopBits)
+	}
+
+	var parity serial.Parity
+	switch settings.Parity {
+	case "none":
+		parity = serial.NoParity
+	case "odd":
+		parity = serial.OddParity
+	case "even":
+		parity = serial.EvenParity
+	case "mark":
+		parity = serial.MarkParity
+	case "space":
+		parity = serial.SpaceParity
+	default:
+		return fmt.Errorf("invalid parity: %s", settings.Parity)
+	}
+	serialPortMode = &serial.Mode{
+		BaudRate: baudRate,
+		DataBits: dataBits,
+		StopBits: stopBits,
+		Parity:   parity,
+	}
+
+	port.SetMode(serialPortMode)
+
+	return nil
+}
+
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"getDeviceID":            {Func: rpcGetDeviceID},
@@ -618,4 +786,12 @@ var rpcHandlers = map[string]RPCHandler{
 	"resetConfig":            {Func: rpcResetConfig},
 	"setBacklightSettings":   {Func: rpcSetBacklightSettings, Params: []string{"params"}},
 	"getBacklightSettings":   {Func: rpcGetBacklightSettings},
+	"getDCPowerState":        {Func: rpcGetDCPowerState},
+	"setDCPowerState":        {Func: rpcSetDCPowerState, Params: []string{"enabled"}},
+	"getActiveExtension":     {Func: rpcGetActiveExtension},
+	"setActiveExtension":     {Func: rpcSetActiveExtension, Params: []string{"extensionId"}},
+	"getATXState":            {Func: rpcGetATXState},
+	"setATXPowerAction":      {Func: rpcSetATXPowerAction, Params: []string{"action"}},
+	"getSerialSettings":      {Func: rpcGetSerialSettings},
+	"setSerialSettings":      {Func: rpcSetSerialSettings, Params: []string{"settings"}},
 }

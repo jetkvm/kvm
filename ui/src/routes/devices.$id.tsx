@@ -5,12 +5,12 @@ import {
   HidState,
   UpdateState,
   useHidStore,
+  useMountMediaStore,
   User,
   useRTCStore,
   useUiStore,
   useUpdateStore,
   useVideoStore,
-  useMountMediaStore,
   VideoState,
 } from "@/hooks/stores";
 import WebRTCVideo from "@components/WebRTCVideo";
@@ -35,7 +35,7 @@ import api from "../api";
 import { DeviceStatus } from "./welcome-local";
 import FocusTrap from "focus-trap-react";
 import OtherSessionConnectedModal from "@/components/OtherSessionConnectedModal";
-import TerminalWrapper from "../components/Terminal";
+import Terminal from "@components/Terminal";
 import { CLOUD_API, SIGNAL_API } from "@/ui.config";
 
 interface LocalLoaderResp {
@@ -328,6 +328,7 @@ export default function KvmIdRoute() {
   const setHdmiState = useVideoStore(state => state.setHdmiState);
 
   const [hasUpdated, setHasUpdated] = useState(false);
+
   function onJsonRpcRequest(resp: JsonRpcRequest) {
     if (resp.method === "otherSessionConnected") {
       console.log("otherSessionConnected", resp.params);
@@ -413,10 +414,39 @@ export default function KvmIdRoute() {
 
   // System update
   const disableKeyboardFocusTrap = useUiStore(state => state.disableVideoFocusTrap);
+
+  const [kvmTerminal, setKvmTerminal] = useState<RTCDataChannel | null>(null);
+  const [serialConsole, setSerialConsole] = useState<RTCDataChannel | null>(null);
+
+  useEffect(() => {
+    if (!peerConnection) return;
+    if (!kvmTerminal) {
+      console.log('Creating data channel "terminal"');
+      setKvmTerminal(peerConnection.createDataChannel("terminal"));
+    }
+
+    if (!serialConsole) {
+      console.log('Creating data channel "serial"');
+      setSerialConsole(peerConnection.createDataChannel("serial"));
+    }
+  }, [kvmTerminal, peerConnection, serialConsole]);
+
+  useEffect(() => {
+    kvmTerminal?.addEventListener("message", e => {
+      console.log(e.data);
+    });
+
+    return () => {
+      kvmTerminal?.removeEventListener("message", e => {
+        console.log(e.data);
+      });
+    };
+  }, [kvmTerminal]);
+
   return (
     <>
       <Transition show={!isUpdateDialogOpen && otaState.updating}>
-        <div className="fixed inset-0 z-10 flex items-start justify-center w-full h-full max-w-xl mx-auto translate-y-8 pointer-events-none">
+        <div className="pointer-events-none fixed inset-0 z-10 mx-auto flex h-full w-full max-w-xl translate-y-8 items-start justify-center">
           <div className="transition duration-1000 ease-in data-[closed]:opacity-0">
             <UpdateInProgressStatusCard
               setIsUpdateDialogOpen={setIsUpdateDialogOpen}
@@ -425,7 +455,6 @@ export default function KvmIdRoute() {
           </div>
         </div>
       </Transition>
-
       <div className="relative h-full">
         <FocusTrap
           paused={disableKeyboardFocusTrap}
@@ -459,9 +488,7 @@ export default function KvmIdRoute() {
       <OtherSessionConnectedModal
         open={isOtherSessionConnectedModalOpen}
         setOpen={state => {
-          if (state === false) {
-            connectWebRTC();
-          }
+          if (!state) connectWebRTC().then(r => r);
 
           // It takes some time for the WebRTC connection to be established, so we wait a bit before closing the modal
           setTimeout(() => {
@@ -469,7 +496,12 @@ export default function KvmIdRoute() {
           }, 1000);
         }}
       />
-      <TerminalWrapper />
+      {kvmTerminal && (
+        <Terminal type="kvm" dataChannel={kvmTerminal} title="KVM Terminal" />
+      )}
+      {serialConsole && (
+        <Terminal type="serial" dataChannel={serialConsole} title="Serial Console" />
+      )}
     </>
   );
 }

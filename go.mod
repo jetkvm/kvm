@@ -22,6 +22,7 @@ require (
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/psanford/httpreadat v0.1.0
 	github.com/vishvananda/netlink v1.3.0
+	go.bug.st/serial v1.6.2
 	golang.org/x/crypto v0.28.0
 	golang.org/x/net v0.30.0
 )
@@ -33,6 +34,7 @@ require (
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
+	github.com/creack/goselect v0.1.2 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.2 // indirect
@@ -69,7 +71,7 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/oauth2 v0.21.0 // indirect
-	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.19.0 // indirect
 	google.golang.org/protobuf v1.34.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect

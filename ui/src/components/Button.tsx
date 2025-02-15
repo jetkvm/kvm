@@ -156,7 +156,16 @@ function ButtonContent(props: ButtonContentPropsType) {
 
 type ButtonPropsType = Pick<
   JSX.IntrinsicElements["button"],
-  "type" | "disabled" | "onClick" | "name" | "value" | "formNoValidate" | "onMouseLeave"
+  | "type"
+  | "disabled"
+  | "onClick"
+  | "name"
+  | "value"
+  | "formNoValidate"
+  | "onMouseLeave"
+  | "onMouseDown"
+  | "onMouseUp"
+  | "onMouseLeave"
 > &
   React.ComponentProps<typeof ButtonContent> & {
     fetcher?: FetcherWithComponents<unknown>;
@@ -179,6 +188,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
         type={type}
         disabled={disabled}
         onClick={onClick}
+        onMouseDown={props?.onMouseDown}
+        onMouseUp={props?.onMouseUp}
+        onMouseLeave={props?.onMouseLeave}
         name={props.name}
         value={props.value}
       >
