@@ -113,7 +113,7 @@ func checkNetworkState() {
 
 	if newState != networkState {
 		fmt.Println("network state changed")
-		//restart MDNS
+		// restart MDNS
 		startMDNS()
 		networkState = newState
 		requestDisplayUpdate()
@@ -121,7 +121,7 @@ func checkNetworkState() {
 }
 
 func startMDNS() error {
-	//If server was previously running, stop it
+	// If server was previously running, stop it
 	if mDNSConn != nil {
 		fmt.Printf("Stopping mDNS server\n")
 		err := mDNSConn.Close()
@@ -130,7 +130,7 @@ func startMDNS() error {
 		}
 	}
 
-	//Start a new server
+	// Start a new server
 	fmt.Printf("Starting mDNS server on jetkvm.local\n")
 	addr4, err := net.ResolveUDPAddr("udp4", mdns.DefaultAddressIPv4)
 	if err != nil {
