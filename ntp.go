@@ -12,9 +12,19 @@ import (
 )
 
 var timeSynced = false
+var defaultNTPServers = []string{
+	"time.cloudflare.com",
+	"time.apple.com",
+}
 
 func TimeSyncLoop() {
 	for {
+		if !networkState.Up {
+			fmt.Printf("Waiting for network to come up\n")
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
 		fmt.Println("Syncing system time")
 		start := time.Now()
 		err := SyncSystemTime()
@@ -41,10 +51,15 @@ func SyncSystemTime() (err error) {
 }
 
 func queryNetworkTime() (*time.Time, error) {
-	ntpServers := []string{
-		"time.cloudflare.com",
-		"time.apple.com",
+	ntpServers, err := getNTPServersFromDHCPInfo()
+	if err != nil {
+		fmt.Printf("failed to get NTP servers from DHCP info: %v\n", err)
 	}
+
+	if ntpServers == nil {
+		ntpServers = defaultNTPServers
+	}
+
 	for _, server := range ntpServers {
 		now, err := queryNtpServer(server, 2*time.Second)
 		if err == nil {

@@ -1,13 +1,21 @@
 package kvm
 
 import (
+	"bytes"
 	"fmt"
-	"github.com/pion/mdns/v2"
-	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
+	"net"
+	"os"
+	"strings"
+	"time"
+
 	"net"
 	"os/exec"
 	"time"
+
+	"github.com/hashicorp/go-envparse"
+	"github.com/pion/mdns/v2"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
@@ -28,27 +36,32 @@ type LocalIpInfo struct {
 	MAC  string
 }
 
+const (
+	NetIfName     = "eth0"
+	DHCPLeaseFile = "/run/udhcpc.%s.info"
+)
+
 // setDhcpClientState sends signals to udhcpc to change it's current mode
 // of operation. Setting active to true will force udhcpc to renew the DHCP lease.
 // Setting active to false will put udhcpc into idle mode.
 func setDhcpClientState(active bool) {
-	var signal string;
+	var signal string
 	if active {
 		signal = "-SIGUSR1"
 	} else {
 		signal = "-SIGUSR2"
 	}
 
-	cmd := exec.Command("/usr/bin/killall", signal, "udhcpc");
+	cmd := exec.Command("/usr/bin/killall", signal, "udhcpc")
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("network: setDhcpClientState: failed to change udhcpc state: %s\n", err)
 	}
 }
 
 func checkNetworkState() {
-	iface, err := netlink.LinkByName("eth0")
+	iface, err := netlink.LinkByName(NetIfName)
 	if err != nil {
-		fmt.Printf("failed to get eth0 interface: %v\n", err)
+		fmt.Printf("failed to get [%s] interface: %v\n", NetIfName, err)
 		return
 	}
 
@@ -64,7 +77,13 @@ func checkNetworkState() {
 
 	addrs, err := netlink.AddrList(iface, nl.FAMILY_ALL)
 	if err != nil {
-		fmt.Printf("failed to get addresses for eth0: %v\n", err)
+		fmt.Printf("failed to get addresses for [%s]: %v\n", NetIfName, err)
+	}
+
+	// If the link is going down, put udhcpc into idle mode.
+	// If the link is coming back up, activate udhcpc and force it to renew the lease.
+	if newState.Up != networkState.Up {
+		setDhcpClientState(newState.Up)
 	}
 
 	// If the link is going down, put udhcpc into idle mode.
@@ -144,6 +163,39 @@ func startMDNS() error {
 	return nil
 }
 
+func getNTPServersFromDHCPInfo() ([]string, error) {
+	buf, err := os.ReadFile(fmt.Sprintf(DHCPLeaseFile, NetIfName))
+	if err != nil {
+		// do not return error if file does not exist
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to load udhcpc info: %w", err)
+	}
+
+	// parse udhcpc info
+	env, err := envparse.Parse(bytes.NewReader(buf))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse udhcpc info: %w", err)
+	}
+
+	val, ok := env["ntpsrv"]
+	if !ok {
+		return nil, nil
+	}
+
+	var servers []string
+
+	for _, server := range strings.Fields(val) {
+		if net.ParseIP(server) == nil {
+			fmt.Printf("invalid NTP server IP: %s, ignoring ... \n", server)
+		}
+		servers = append(servers, server)
+	}
+
+	return servers, nil
+}
+
 func init() {
 	updates := make(chan netlink.LinkUpdate)
 	done := make(chan struct{})
@@ -162,7 +214,7 @@ func init() {
 		for {
 			select {
 			case update := <-updates:
-				if update.Link.Attrs().Name == "eth0" {
+				if update.Link.Attrs().Name == NetIfName {
 					fmt.Printf("link update: %+v\n", update)
 					checkNetworkState()
 				}
