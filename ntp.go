@@ -11,11 +11,19 @@ import (
 	"github.com/beevik/ntp"
 )
 
-var timeSynced = false
-var defaultNTPServers = []string{
-	"time.cloudflare.com",
-	"time.apple.com",
-}
+const (
+	timeSyncRetryStep   = 5 * time.Second
+	timeSyncRetryMaxInt = 1 * time.Minute
+)
+
+var (
+	timeSynced            = false
+	timeSyncRetryInterval = 0 * time.Second
+	defaultNTPServers     = []string{
+		"time.cloudflare.com",
+		"time.apple.com",
+	}
+)
 
 func TimeSyncLoop() {
 	for {
@@ -30,6 +38,15 @@ func TimeSyncLoop() {
 		err := SyncSystemTime()
 		if err != nil {
 			log.Printf("Failed to sync system time: %v", err)
+
+			// retry after a delay
+			timeSyncRetryInterval += timeSyncRetryStep
+			time.Sleep(timeSyncRetryInterval)
+			// reset the retry interval if it exceeds the max interval
+			if timeSyncRetryInterval > timeSyncRetryMaxInt {
+				timeSyncRetryInterval = 0
+			}
+
 			continue
 		}
 		log.Printf("Time sync successful, now is: %v, time taken: %v", time.Now(), time.Since(start))
