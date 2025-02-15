@@ -12,8 +12,12 @@ import (
 )
 
 const (
-	timeSyncRetryStep   = 5 * time.Second
-	timeSyncRetryMaxInt = 1 * time.Minute
+	timeSyncRetryStep     = 5 * time.Second
+	timeSyncRetryMaxInt   = 1 * time.Minute
+	timeSyncWaitNetChkInt = 100 * time.Millisecond
+	timeSyncWaitNetUpInt  = 3 * time.Second
+	timeSyncInterval      = 1 * time.Hour
+	timeSyncTimeout       = 2 * time.Second
 )
 
 var (
@@ -27,13 +31,18 @@ var (
 
 func TimeSyncLoop() {
 	for {
-		if !networkState.Up {
-			fmt.Printf("Waiting for network to come up\n")
-			time.Sleep(3 * time.Second)
+		if !networkState.checked {
+			time.Sleep(timeSyncWaitNetChkInt)
 			continue
 		}
 
-		fmt.Println("Syncing system time")
+		if !networkState.Up {
+			log.Printf("Waiting for network to come up")
+			time.Sleep(timeSyncWaitNetUpInt)
+			continue
+		}
+
+		log.Printf("Syncing system time")
 		start := time.Now()
 		err := SyncSystemTime()
 		if err != nil {
@@ -51,7 +60,7 @@ func TimeSyncLoop() {
 		}
 		log.Printf("Time sync successful, now is: %v, time taken: %v", time.Now(), time.Since(start))
 		timeSynced = true
-		time.Sleep(1 * time.Hour) //once the first sync is done, sync every hour
+		time.Sleep(timeSyncInterval) // after the first sync is done
 	}
 }
 
@@ -70,16 +79,20 @@ func SyncSystemTime() (err error) {
 func queryNetworkTime() (*time.Time, error) {
 	ntpServers, err := getNTPServersFromDHCPInfo()
 	if err != nil {
-		fmt.Printf("failed to get NTP servers from DHCP info: %v\n", err)
+		log.Printf("failed to get NTP servers from DHCP info: %v\n", err)
 	}
 
 	if ntpServers == nil {
 		ntpServers = defaultNTPServers
+		log.Printf("Using default NTP servers: %v\n", ntpServers)
+	} else {
+		log.Printf("Using NTP servers from DHCP: %v\n", ntpServers)
 	}
 
 	for _, server := range ntpServers {
-		now, err := queryNtpServer(server, 2*time.Second)
+		now, err := queryNtpServer(server, timeSyncTimeout)
 		if err == nil {
+			log.Printf("NTP server [%s] returned time: %v\n", server, now)
 			return now, nil
 		}
 	}
@@ -88,7 +101,7 @@ func queryNetworkTime() (*time.Time, error) {
 		"http://cloudflare.com",
 	}
 	for _, url := range httpUrls {
-		now, err := queryHttpTime(url, 2*time.Second)
+		now, err := queryHttpTime(url, timeSyncTimeout)
 		if err == nil {
 			return now, nil
 		}

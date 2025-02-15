@@ -8,9 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"net"
 	"os/exec"
-	"time"
 
 	"github.com/hashicorp/go-envparse"
 	"github.com/pion/mdns/v2"
@@ -23,11 +21,15 @@ import (
 
 var mDNSConn *mdns.Conn
 
-var networkState struct {
+var networkState NetworkState
+
+type NetworkState struct {
 	Up   bool
 	IPv4 string
 	IPv6 string
 	MAC  string
+
+	checked bool
 }
 
 type LocalIpInfo struct {
@@ -65,25 +67,16 @@ func checkNetworkState() {
 		return
 	}
 
-	newState := struct {
-		Up   bool
-		IPv4 string
-		IPv6 string
-		MAC  string
-	}{
+	newState := NetworkState{
 		Up:  iface.Attrs().OperState == netlink.OperUp,
 		MAC: iface.Attrs().HardwareAddr.String(),
+
+		checked: true,
 	}
 
 	addrs, err := netlink.AddrList(iface, nl.FAMILY_ALL)
 	if err != nil {
 		fmt.Printf("failed to get addresses for [%s]: %v\n", NetIfName, err)
-	}
-
-	// If the link is going down, put udhcpc into idle mode.
-	// If the link is coming back up, activate udhcpc and force it to renew the lease.
-	if newState.Up != networkState.Up {
-		setDhcpClientState(newState.Up)
 	}
 
 	// If the link is going down, put udhcpc into idle mode.
