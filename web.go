@@ -232,45 +232,50 @@ func handleDevice(c *gin.Context) {
 }
 
 func handleCreatePassword(c *gin.Context) {
-	LoadConfig()
+    LoadConfig()
 
-	if config.HashedPassword != "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Password already set"})
-		return
-	}
+    if config.HashedPassword != "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Password already set"})
+        return
+    }
 
 	// We only allow users with noPassword mode to set a new password
 	// Users with password mode are not allowed to set a new password without providing the old password
 	// We have a PUT endpoint for changing the password, use that instead
-	if config.LocalAuthMode != "noPassword" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Password mode is not enabled"})
-		return
-	}
 
-	var req SetPasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.Password == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-		return
-	}
+    if config.LocalAuthMode != "noPassword" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Password mode is not enabled"})
+        return
+    }
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-		return
-	}
+    var req SetPasswordRequest
+    if err := c.ShouldBindJSON(&req); err != nil || req.Password == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+        return
+    }
 
-	config.HashedPassword = string(hashedPassword)
-	config.LocalAuthToken = uuid.New().String()
-	config.LocalAuthMode = "password"
-	if err := SaveConfig(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
-		return
-	}
+    truncatedPassword := req.Password
+    if len(truncatedPassword) > 70 {
+        truncatedPassword = truncatedPassword[:70]
+    }
 
-	// Set the cookie
-	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(truncatedPassword), bcrypt.DefaultCost)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+        return
+    }
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Password set successfully"})
+    config.HashedPassword = string(hashedPassword)
+    config.LocalAuthToken = uuid.New().String()
+    config.LocalAuthMode = "password"
+    if err := SaveConfig(); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
+        return
+    }
+
+    c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
+
+    c.JSON(http.StatusCreated, gin.H{"message": "Password set successfully"})
 }
 
 func handleUpdatePassword(c *gin.Context) {
