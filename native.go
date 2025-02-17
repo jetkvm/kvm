@@ -311,7 +311,6 @@ func ensureBinaryUpdated(destPath string) error {
 // Restore the HDMI EDID value from the config.
 // Called after successful connection to jetkvm_native.
 func restoreHdmiEdid() {
-	LoadConfig()
 	if config.EdidString != "" {
 		logger.Infof("Restoring HDMI EDID to %v", config.EdidString)
 		_, err := CallCtrlAction("set_edid", map[string]interface{}{"edid": config.EdidString})

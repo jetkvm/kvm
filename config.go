@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 )
 
 type WakeOnLanDevice struct {
@@ -40,9 +41,15 @@ var defaultConfig = &Config{
 	DisplayOffAfterSec:   1800, // 30 minutes
 }
 
-var config *Config
+var (
+	config     *Config
+	configLock = &sync.Mutex{}
+)
 
 func LoadConfig() {
+	configLock.Lock()
+	defer configLock.Unlock()
+
 	if config != nil {
 		return
 	}
@@ -50,15 +57,14 @@ func LoadConfig() {
 	file, err := os.Open(configPath)
 	if err != nil {
 		logger.Debug("default config file doesn't exist, using default")
-		config = defaultConfig
 		return
 	}
 	defer file.Close()
 
-	var loadedConfig Config
+	// load and merge the default config with the user config
+	loadedConfig := *defaultConfig
 	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
 		logger.Errorf("config file JSON parsing failed, %v", err)
-		config = defaultConfig
 		return
 	}
 
@@ -66,6 +72,9 @@ func LoadConfig() {
 }
 
 func SaveConfig() error {
+	configLock.Lock()
+	defer configLock.Unlock()
+
 	file, err := os.Create(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)

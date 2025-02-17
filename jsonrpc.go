@@ -194,7 +194,6 @@ func rpcSetEDID(edid string) error {
 	}
 
 	// Save EDID to config, allowing it to be restored on reboot.
-	LoadConfig()
 	config.EdidString = edid
 	SaveConfig()
 
@@ -235,8 +234,6 @@ func rpcTryUpdate() error {
 }
 
 func rpcSetBacklightSettings(params BacklightSettings) error {
-	LoadConfig()
-
 	blConfig := params
 
 	// NOTE: by default, the frontend limits the brightness to 64, as that's what the device originally shipped with.
@@ -275,8 +272,6 @@ func rpcSetBacklightSettings(params BacklightSettings) error {
 }
 
 func rpcGetBacklightSettings() (*BacklightSettings, error) {
-	LoadConfig()
-
 	return &BacklightSettings{
 		MaxBrightness: config.DisplayMaxBrightness,
 		DimAfter:      int(config.DisplayDimAfterSec),
@@ -544,7 +539,6 @@ func rpcSetUsbEmulationState(enabled bool) error {
 }
 
 func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
-	LoadConfig()
 	if config.WakeOnLanDevices == nil {
 		return []WakeOnLanDevice{}, nil
 	}
@@ -556,13 +550,11 @@ type SetWakeOnLanDevicesParams struct {
 }
 
 func rpcSetWakeOnLanDevices(params SetWakeOnLanDevicesParams) error {
-	LoadConfig()
 	config.WakeOnLanDevices = params.Devices
 	return SaveConfig()
 }
 
 func rpcResetConfig() error {
-	LoadConfig()
 	config = defaultConfig
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to reset config: %w", err)
