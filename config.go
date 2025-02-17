@@ -47,10 +47,8 @@ var (
 )
 
 func LoadConfig() {
-	configLock.Lock()
-	defer configLock.Unlock()
-
 	if config != nil {
+		logger.Info("config already loaded, skipping")
 		return
 	}
 
