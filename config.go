@@ -22,7 +22,8 @@ type Config struct {
 	LocalAuthToken       string            `json:"local_auth_token"`
 	LocalAuthMode        string            `json:"localAuthMode"` //TODO: fix it with migration
 	WakeOnLanDevices     []WakeOnLanDevice `json:"wake_on_lan_devices"`
-	DisplayMaxBrightness int               `json:"display_max_brightness"`
+	EdidString        string            `json:"hdmi_edid_string"`
+  DisplayMaxBrightness int               `json:"display_max_brightness"`
 	DisplayDimAfterSec   int               `json:"display_dim_after_sec"`
 	DisplayOffAfterSec   int               `json:"display_off_after_sec"`
 }

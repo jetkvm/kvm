@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/pion/webrtc/v4/pkg/media"
@@ -151,6 +152,9 @@ func handleCtrlClient(conn net.Conn) {
 
 	ctrlSocketConn = conn
 
+	// Restore HDMI EDID if applicable
+	go restoreHdmiEdid()
+
 	readBuf := make([]byte, 4096)
 	for {
 		n, err := conn.Read(readBuf)
@@ -224,6 +228,12 @@ func ExtractAndRunNativeBin() error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	// Set the process group ID so we can kill the process and its children when this process exits
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid:   true,
+		Pdeathsig: syscall.SIGKILL,
+	}
+
 	// Start the command
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start binary: %w", err)
@@ -296,4 +306,17 @@ func ensureBinaryUpdated(destPath string) error {
 	}
 
 	return nil
+}
+
+// Restore the HDMI EDID value from the config.
+// Called after successful connection to jetkvm_native.
+func restoreHdmiEdid() {
+	LoadConfig()
+	if config.EdidString != "" {
+		logger.Infof("Restoring HDMI EDID to %v", config.EdidString)
+		_, err := CallCtrlAction("set_edid", map[string]interface{}{"edid": config.EdidString})
+		if err != nil {
+			logger.Errorf("Failed to restore HDMI EDID: %v", err)
+		}
+	}
 }

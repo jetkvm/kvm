@@ -26,6 +26,7 @@ import { InputFieldWithLabel } from "./InputField";
 import DebianIcon from "@/assets/debian-icon.png";
 import UbuntuIcon from "@/assets/ubuntu-icon.png";
 import FedoraIcon from "@/assets/fedora-icon.png";
+import OpenSUSEIcon from "@/assets/opensuse-icon.png";
 import ArchIcon from "@/assets/arch-icon.png";
 import NetBootIcon from "@/assets/netboot-icon.svg";
 import { TrashIcon } from "@heroicons/react/16/solid";
@@ -534,17 +535,27 @@ function UrlView({
     },
     {
       name: "Debian 12",
-      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.7.0-amd64-netinst.iso",
+      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.9.0-amd64-netinst.iso",
       icon: DebianIcon,
     },
     {
-      name: "Fedora 38",
-      url: "https://mirror.ihost.md/fedora/releases/38/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-38-1.6.iso",
+      name: "Fedora 41",
+      url: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso",
       icon: FedoraIcon,
     },
     {
+      name: "openSUSE Leap 15.6",
+      url: "https://download.opensuse.org/distribution/leap/15.6/iso/openSUSE-Leap-15.6-NET-x86_64-Media.iso",
+      icon: OpenSUSEIcon,
+    },
+    {
+      name: "openSUSE Tumbleweed",
+      url: "https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-NET-x86_64-Current.iso",
+      icon: OpenSUSEIcon,
+    },
+    {
       name: "Arch Linux",
-      url: "https://archlinux.doridian.net/iso/2024.10.01/archlinux-2024.10.01-x86_64.iso",
+      url: "https://archlinux.doridian.net/iso/2025.02.01/archlinux-2025.02.01-x86_64.iso",
       icon: ArchIcon,
     },
     {
