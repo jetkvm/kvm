@@ -7,6 +7,7 @@ import Modal from "@components/Modal";
 import { InputFieldWithLabel } from "./InputField";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useUsbConfigModalStore } from "@/hooks/stores";
+import ExtLink from "@components/ExtLink";
 
 export interface UsbConfigState {
   vendor_id: string;
@@ -135,18 +136,26 @@ function UpdateUsbConfigModal({
             Set custom USB parameters to control how the USB device is emulated.
             The device will rebind once the parameters are updated.
           </p>
+          <div className="flex justify-start mt-4 text-xs text-slate-500 dark:text-slate-400">
+            <ExtLink
+                href={`https://the-sz.com/products/usbid/index.php?v=${usbConfigState.vendor_id}&p=${usbConfigState.product_id}`}
+                className="hover:underline"
+            >
+              Look up USB Device IDs
+            </ExtLink>
+          </div>
         </div>
         <InputFieldWithLabel
-          required
-          label="Vendor ID"
-          placeholder="Enter Vendor ID"
-          pattern="^0[xX][\da-fA-F]{4}$"
-          defaultValue={usbConfigState?.vendor_id}
-          onChange={e => handleUsbVendorIdChange(e.target.value)}
+            required
+            label="Vendor ID"
+            placeholder="Enter Vendor ID"
+            pattern="^0[xX][\da-fA-F]{4}$"
+            defaultValue={usbConfigState?.vendor_id}
+            onChange={e => handleUsbVendorIdChange(e.target.value)}
         />
         <InputFieldWithLabel
-          required
-          label="Product ID"
+            required
+            label="Product ID"
           placeholder="Enter Product ID"
           pattern="^0[xX][\da-fA-F]{4}$"
           defaultValue={usbConfigState?.product_id}

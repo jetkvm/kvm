@@ -250,9 +250,9 @@ export default function SettingsSidebar() {
         );
         return;
       }
+      setUsbConfigJson(jsonString);
       notifications.success(`USB Config set to ${usbConfig.product}`);
       console.info(`usbConfigJson set to: ${usbConfigJson}`)
-      setUsbConfigJson(jsonString);
     });
   };
 
