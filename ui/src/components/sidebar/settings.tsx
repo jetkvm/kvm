@@ -74,6 +74,63 @@ const edids = [
   },
 ];
 
+const defaultUsbConfig =
+    JSON.stringify({
+      vendor_id: "0x1d6b",
+      product_id: "0x0104",
+      serial_number: "",
+      manufacturer: "JetKVM",
+      product: "JetKVM USB Emulation Device",
+    })
+
+const usbConfigs = [
+  {
+    value: defaultUsbConfig,
+    label: "JetKVM Default",
+  },
+  {
+    value: JSON.stringify({
+      vendor_id: "0x046d",
+      product_id: "0xc52b",
+      serial_number: [generateNumber(1,9), generateHex(7,7), 0, 1].join("&"),
+      manufacturer: "Logitech (x64)",
+      product: "Logitech USB Input Device",
+    }),
+    label: "Logitech Universal Adapter",
+  },
+  {
+    value: JSON.stringify({
+      vendor_id: "0x045e",
+      product_id: "0x005f",
+      serial_number: [generateNumber(1,9), generateHex(7,7), 0, 1].join("&"),
+      manufacturer: "Microsoft",
+      product: "Wireless MultiMedia Keyboard",
+    }),
+    label: "Microsoft Wireless MultiMedia Keyboard",
+  },
+  {
+    value: JSON.stringify({
+      vendor_id: "0x413c",
+      product_id: "0x2011",
+      serial_number: [generateNumber(1,9), generateHex(7,7), 0, 1].join("&"),
+      manufacturer: "Dell Inc.",
+      product: "Multimedia Pro Keyboard",
+    }),
+    label: "Dell Multimedia Pro Keyboard",
+  }
+];
+
+function generateNumber(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1) + min);
+}
+
+function generateHex(min: number, max: number) {
+  const len =  generateNumber(min, max);
+  const n = (Math.random() * 0xfffff * 1000000).toString(16);
+  return n.slice(0, len);
+}
+
+
 export default function SettingsSidebar() {
   const setSidebarView = useUiStore(state => state.setSidebarView);
   const settings = useSettingsStore();
@@ -84,6 +141,7 @@ export default function SettingsSidebar() {
   const [jiggler, setJiggler] = useState(false);
   const [edid, setEdid] = useState<string | null>(null);
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
+  const [usbConfigJson, setUsbConfigJson] = useState("");
 
   const [isAdopted, setAdopted] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -180,6 +238,21 @@ export default function SettingsSidebar() {
         return;
       }
       setDevChannel(enabled);
+    });
+  };
+
+  const handleUsbConfigChange = (jsonString: string) => {
+    const usbConfig = JSON.parse(jsonString);
+    send("setUsbConfig", { usbConfig }, resp => {
+      if ("error" in resp) {
+        notifications.error(
+            `Failed to set usb config: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      notifications.success(`USB Config set to ${usbConfig.product}`);
+      console.info(`usbConfigJson set to: ${usbConfigJson}`)
+      setUsbConfigJson(jsonString);
     });
   };
 
@@ -860,8 +933,30 @@ export default function SettingsSidebar() {
               </SettingsItem>
               {settings.developerMode && (
                   <SettingsItem
-                      title="USB Configuration"
-                      description="Set the USB Descriptors for the JetKVM"
+                      title="Set USB Device Emulation"
+                      description="Select a Preconfigured USB Device"
+                  >
+                    <SelectMenuBasic
+                        size="SM"
+                        label=""
+                        fullWidth
+                        value={usbConfigJson}
+                        onChange={e => {
+                          if (e.target.value === "custom") {
+                            setUsbConfigJson("custom")
+                            // If set to custom, show the USB Config button
+                          } else {
+                            handleUsbConfigChange(e.target.value as string);
+                          }
+                        }}
+                        options={[...usbConfigs, { value: "custom", label: "Custom" }]}
+                    />
+                  </SettingsItem>
+              )}
+              {usbConfigJson == "custom" && (
+                  <SettingsItem
+                      title="USB Config"
+                      description="Set Custom USB Descriptors"
                   >
                     <Button
                         size="SM"
