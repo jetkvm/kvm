@@ -24,6 +24,18 @@ type CloudRegisterRequest struct {
 	ClientId   string `json:"clientId"`
 }
 
+const (
+	// CloudWebSocketConnectTimeout is the timeout for the websocket connection to the cloud
+	CloudWebSocketConnectTimeout = 1 * time.Minute
+	// CloudAPIRequestTimeout is the timeout for cloud API requests
+	CloudAPIRequestTimeout = 10 * time.Second
+	// CloudOidcRequestTimeout is the timeout for OIDC token verification requests
+	// should be lower than the websocket response timeout set in cloud-api
+	CloudOidcRequestTimeout = 10 * time.Second
+	// CloudWebSocketPingInterval is the interval at which the websocket client sends ping messages to the cloud
+	CloudWebSocketPingInterval = 15 * time.Second
+)
+
 func handleCloudRegister(c *gin.Context) {
 	var req CloudRegisterRequest
 
@@ -44,22 +56,31 @@ func handleCloudRegister(c *gin.Context) {
 		return
 	}
 
-	resp, err := http.Post(req.CloudAPI+"/devices/token", "application/json", bytes.NewBuffer(jsonPayload))
+	client := &http.Client{Timeout: CloudAPIRequestTimeout}
+
+	apiReq, err := http.NewRequest(http.MethodPost, config.CloudURL+"/devices/token", bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to create register request: " + err.Error()})
+		return
+	}
+	apiReq.Header.Set("Content-Type", "application/json")
+
+	apiResp, err := client.Do(apiReq)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to exchange token: " + err.Error()})
 		return
 	}
-	defer resp.Body.Close()
+	defer apiResp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		c.JSON(resp.StatusCode, gin.H{"error": "Failed to exchange token: " + resp.Status})
+	if apiResp.StatusCode != http.StatusOK {
+		c.JSON(apiResp.StatusCode, gin.H{"error": "Failed to exchange token: " + apiResp.Status})
 		return
 	}
 
 	var tokenResp struct {
 		SecretToken string `json:"secretToken"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := json.NewDecoder(apiResp.Body).Decode(&tokenResp); err != nil {
 		c.JSON(500, gin.H{"error": "Failed to parse token response: " + err.Error()})
 		return
 	}
@@ -70,7 +91,7 @@ func handleCloudRegister(c *gin.Context) {
 	}
 
 	if config.CloudToken == "" {
-		logger.Info("Starting websocket client due to adoption")
+		cloudLogger.Info("Starting websocket client due to adoption")
 		go RunWebsocketClient()
 	}
 
@@ -122,7 +143,7 @@ func runWebsocketClient() error {
 	header := http.Header{}
 	header.Set("X-Device-ID", GetDeviceID())
 	header.Set("Authorization", "Bearer "+config.CloudToken)
-	dialCtx, cancelDial := context.WithTimeout(context.Background(), time.Minute)
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
 	defer cancelDial()
 	c, _, err := websocket.Dial(dialCtx, wsURL.String(), &websocket.DialOptions{
 		HTTPHeader: header,
@@ -131,15 +152,15 @@ func runWebsocketClient() error {
 		return err
 	}
 	defer c.CloseNow()
-	logger.Infof("WS connected to %v", wsURL.String())
+	cloudLogger.Infof("websocket connected to %s", wsURL.String())
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer cancelRun()
 	go func() {
 		for {
-			time.Sleep(15 * time.Second)
+			time.Sleep(CloudWebSocketPingInterval)
 			err := c.Ping(runCtx)
 			if err != nil {
-				logger.Warnf("websocket ping error: %v", err)
+				cloudLogger.Warnf("websocket ping error: %v", err)
 				cancelRun()
 				return
 			}
@@ -157,24 +178,30 @@ func runWebsocketClient() error {
 		var req WebRTCSessionRequest
 		err = json.Unmarshal(msg, &req)
 		if err != nil {
-			logger.Warnf("unable to parse ws message: %v", string(msg))
+			cloudLogger.Warnf("unable to parse ws message: %v", string(msg))
 			continue
 		}
 
+		cloudLogger.Infof("new session request: %v", req.OidcGoogle)
+		cloudLogger.Tracef("session request info: %v", req)
+
 		err = handleSessionRequest(runCtx, c, req)
 		if err != nil {
-			logger.Infof("error starting new session: %v", err)
+			cloudLogger.Infof("error starting new session: %v", err)
 			continue
 		}
 	}
 }
 
 func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
-	oidcCtx, cancelOIDC := context.WithTimeout(ctx, time.Minute)
+	oidcCtx, cancelOIDC := context.WithTimeout(ctx, CloudOidcRequestTimeout)
 	defer cancelOIDC()
 	provider, err := oidc.NewProvider(oidcCtx, "https://accounts.google.com")
 	if err != nil {
-		fmt.Println("Failed to initialize OIDC provider:", err)
+		_ = wsjson.Write(context.Background(), c, gin.H{
+			"error": fmt.Sprintf("failed to initialize OIDC provider: %v", err),
+		})
+		cloudLogger.Errorf("failed to initialize OIDC provider: %v", err)
 		return err
 	}
 
@@ -190,6 +217,7 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 
 	googleIdentity := idToken.Audience[0] + ":" + idToken.Subject
 	if config.GoogleIdentity != googleIdentity {
+		_ = wsjson.Write(context.Background(), c, gin.H{"error": "google identity mismatch"})
 		return fmt.Errorf("google identity mismatch")
 	}
 
@@ -216,6 +244,9 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 			_ = peerConn.Close()
 		}()
 	}
+
+	cloudLogger.Info("new session accepted")
+	cloudLogger.Tracef("new session accepted: %v", session)
 	currentSession = session
 	_ = wsjson.Write(context.Background(), c, gin.H{"sd": sd})
 	return nil
@@ -225,7 +256,7 @@ func RunWebsocketClient() {
 	for {
 		err := runWebsocketClient()
 		if err != nil {
-			fmt.Println("Websocket client error:", err)
+			cloudLogger.Errorf("websocket client error: %v", err)
 			time.Sleep(5 * time.Second)
 		}
 	}
@@ -254,7 +285,7 @@ func rpcDeregisterDevice() error {
 	}
 
 	req.Header.Set("Authorization", "Bearer "+config.CloudToken)
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: CloudAPIRequestTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send deregister request: %w", err)

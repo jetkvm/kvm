@@ -58,6 +58,9 @@ make build_dev
 # Change directory to the binary output directory
 cd bin
 
+# Kill any existing instances of the application
+ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
+
 # Copy the binary to the remote host
 cat jetkvm_app | ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > $REMOTE_PATH/jetkvm_app_debug"
 
@@ -79,8 +82,7 @@ cd "$REMOTE_PATH"
 chmod +x jetkvm_app_debug
 
 # Run the application in the background
-./jetkvm_app_debug
-
+PION_LOG_TRACE=jetkvm,cloud ./jetkvm_app_debug
 EOF
 
 echo "Deployment complete."
