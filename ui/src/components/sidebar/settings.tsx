@@ -50,6 +50,18 @@ export function SettingsItem({
   );
 }
 
+const generatedSerialNumber = [generateNumber(1,9), generateHex(7,7), 0, 1].join("&");
+
+function generateNumber(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1) + min);
+}
+
+function generateHex(min: number, max: number) {
+  const len =  generateNumber(min, max);
+  const n = (Math.random() * 0xfffff * 1000000).toString(16);
+  return n.slice(0, len);
+}
+
 const defaultEdid =
     "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b";
 const edids = [
@@ -73,62 +85,6 @@ const edids = [
     label: "DELL D2721H, 1920x1080",
   },
 ];
-
-const defaultUsbConfig =
-    JSON.stringify({
-      vendor_id: "0x1d6b",
-      product_id: "0x0104",
-      serial_number: "",
-      manufacturer: "JetKVM",
-      product: "JetKVM USB Emulation Device",
-    })
-
-const usbConfigs = [
-  {
-    value: defaultUsbConfig,
-    label: "JetKVM Default",
-  },
-  {
-    value: JSON.stringify({
-      vendor_id: "0x046d",
-      product_id: "0xc52b",
-      serial_number: [generateNumber(1,9), generateHex(7,7), 0, 1].join("&"),
-      manufacturer: "Logitech (x64)",
-      product: "Logitech USB Input Device",
-    }),
-    label: "Logitech Universal Adapter",
-  },
-  {
-    value: JSON.stringify({
-      vendor_id: "0x045e",
-      product_id: "0x005f",
-      serial_number: [generateNumber(1,9), generateHex(7,7), 0, 1].join("&"),
-      manufacturer: "Microsoft",
-      product: "Wireless MultiMedia Keyboard",
-    }),
-    label: "Microsoft Wireless MultiMedia Keyboard",
-  },
-  {
-    value: JSON.stringify({
-      vendor_id: "0x413c",
-      product_id: "0x2011",
-      serial_number: [generateNumber(1,9), generateHex(7,7), 0, 1].join("&"),
-      manufacturer: "Dell Inc.",
-      product: "Multimedia Pro Keyboard",
-    }),
-    label: "Dell Multimedia Pro Keyboard",
-  }
-];
-
-function generateNumber(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1) + min);
-}
-
-function generateHex(min: number, max: number) {
-  const len =  generateNumber(min, max);
-  const n = (Math.random() * 0xfffff * 1000000).toString(16);
-  return n.slice(0, len);
-}
 
 
 export default function SettingsSidebar() {
@@ -167,6 +123,49 @@ export default function SettingsSidebar() {
       setUsbEmulationEnabled(resp.result as boolean);
     });
   }, [send]);
+
+  const usbConfigs = [
+    {
+      value: JSON.stringify({
+        vendor_id: "0x1d6b",
+        product_id: "0x0104",
+        serial_number: deviceId,
+        manufacturer: "JetKVM",
+        product: "JetKVM USB Emulation Device",
+      }),
+      label: "JetKVM Default",
+    },
+    {
+      value: JSON.stringify({
+        vendor_id: "0x046d",
+        product_id: "0xc52b",
+        serial_number: generatedSerialNumber,
+        manufacturer: "Logitech (x64)",
+        product: "Logitech USB Input Device",
+      }),
+      label: "Logitech Universal Adapter",
+    },
+    {
+      value: JSON.stringify({
+        vendor_id: "0x045e",
+        product_id: "0x005f",
+        serial_number: generatedSerialNumber,
+        manufacturer: "Microsoft",
+        product: "Wireless MultiMedia Keyboard",
+      }),
+      label: "Microsoft Wireless MultiMedia Keyboard",
+    },
+    {
+      value: JSON.stringify({
+        vendor_id: "0x413c",
+        product_id: "0x2011",
+        serial_number: generatedSerialNumber,
+        manufacturer: "Dell Inc.",
+        product: "Multimedia Pro Keyboard",
+      }),
+      label: "Dell Multimedia Pro Keyboard",
+    }
+  ];
 
   const handleUsbEmulationToggle = useCallback(
       (enabled: boolean) => {
@@ -252,7 +251,6 @@ export default function SettingsSidebar() {
       }
       setUsbConfigJson(jsonString);
       notifications.success(`USB Config set to ${usbConfig.product}`);
-      console.info(`usbConfigJson set to: ${usbConfigJson}`)
     });
   };
 
@@ -943,8 +941,7 @@ export default function SettingsSidebar() {
                         value={usbConfigJson}
                         onChange={e => {
                           if (e.target.value === "custom") {
-                            setUsbConfigJson("custom")
-                            // If set to custom, show the USB Config button
+                            setUsbConfigJson(e.target.value);
                           } else {
                             handleUsbConfigChange(e.target.value as string);
                           }

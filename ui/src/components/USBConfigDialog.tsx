@@ -141,7 +141,7 @@ function UpdateUsbConfigModal({
                 href={`https://the-sz.com/products/usbid/index.php?v=${usbConfigState.vendor_id}&p=${usbConfigState.product_id}`}
                 className="hover:underline"
             >
-              Look up USB Device IDs
+              Look up USB Device IDs here
             </ExtLink>
           </div>
         </div>
