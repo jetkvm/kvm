@@ -139,7 +139,6 @@ export default function SettingsSidebar() {
       value: JSON.stringify({
         vendor_id: "0x046d",
         product_id: "0xc52b",
-        serial_number: generatedSerialNumber,
         manufacturer: "Logitech (x64)",
         product: "Logitech USB Input Device",
       }),
@@ -149,7 +148,6 @@ export default function SettingsSidebar() {
       value: JSON.stringify({
         vendor_id: "0x045e",
         product_id: "0x005f",
-        serial_number: generatedSerialNumber,
         manufacturer: "Microsoft",
         product: "Wireless MultiMedia Keyboard",
       }),
@@ -159,7 +157,6 @@ export default function SettingsSidebar() {
       value: JSON.stringify({
         vendor_id: "0x413c",
         product_id: "0x2011",
-        serial_number: generatedSerialNumber,
         manufacturer: "Dell Inc.",
         product: "Multimedia Pro Keyboard",
       }),
@@ -242,6 +239,10 @@ export default function SettingsSidebar() {
 
   const handleUsbConfigChange = (jsonString: string) => {
     const usbConfig = JSON.parse(jsonString);
+    if (!usbConfig?.serial_number) {
+      usbConfig['serial_number'] = generatedSerialNumber
+    }
+    console.info(`Current USB serial number: ${usbConfig?.serial_number}`)
     send("setUsbConfig", { usbConfig }, resp => {
       if ("error" in resp) {
         notifications.error(
