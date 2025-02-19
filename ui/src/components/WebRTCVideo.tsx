@@ -331,7 +331,7 @@ export default function WebRTCVideo() {
     [keyDownHandler, keyUpHandler, resetKeyboardState, sendKeyboardEvent],
   );
 
-  const videoKeyDownHandler = useCallback((e: KeyboardEvent) => {
+  const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
     // In fullscreen mode in chrome & safari, the space key is used to pause/play the video
     // there is no way to prevent this, so we need to simply force play the video when it's paused.
     // Fix only works in chrome based browsers.
@@ -354,7 +354,7 @@ export default function WebRTCVideo() {
       videoElmRefValue.addEventListener("mousemove", mouseMoveHandler, { signal });
       videoElmRefValue.addEventListener("pointerdown", mouseMoveHandler, { signal });
       videoElmRefValue.addEventListener("pointerup", mouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("keyup", videoKeyDownHandler, { signal });
+      videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
       videoElmRefValue.addEventListener("wheel", mouseWheelHandler, { signal });
       videoElmRefValue.addEventListener(
         "contextmenu",
@@ -376,7 +376,7 @@ export default function WebRTCVideo() {
       resetMousePosition,
       onVideoPlaying,
       mouseWheelHandler,
-      videoKeyDownHandler,
+      videoKeyUpHandler,
     ],
   );
 
