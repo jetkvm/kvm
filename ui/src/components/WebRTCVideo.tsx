@@ -285,11 +285,6 @@ export default function WebRTCVideo() {
       e.preventDefault();
       const prev = useHidStore.getState();
 
-      // if (document.activeElement?.id !== "videoFocusTrap") {
-      //   console.log("KEYUP: Not focusing on the video", document.activeElement);
-      //   return;
-      // }
-
       setIsNumLockActive(e.getModifierState("NumLock"));
       setIsCapsLockActive(e.getModifierState("CapsLock"));
       setIsScrollLockActive(e.getModifierState("ScrollLock"));
@@ -336,6 +331,18 @@ export default function WebRTCVideo() {
     [keyDownHandler, keyUpHandler, resetKeyboardState, sendKeyboardEvent],
   );
 
+  const videoKeyDownHandler = useCallback((e: KeyboardEvent) => {
+    // In fullscreen mode in chrome & safari, the space key is used to pause/play the video
+    // there is no way to prevent this, so we need to simply force play the video when it's paused.
+    // Fix only works in chrome based browsers.
+    if (e.code === "Space") {
+      if (videoElm.current?.paused == true) {
+        console.log("Force playing video");
+        videoElm.current?.play();
+      }
+    }
+  }, []);
+
   useEffect(
     function setupVideoEventListeners() {
       let videoElmRefValue = null;
@@ -347,7 +354,7 @@ export default function WebRTCVideo() {
       videoElmRefValue.addEventListener("mousemove", mouseMoveHandler, { signal });
       videoElmRefValue.addEventListener("pointerdown", mouseMoveHandler, { signal });
       videoElmRefValue.addEventListener("pointerup", mouseMoveHandler, { signal });
-
+      videoElmRefValue.addEventListener("keyup", videoKeyDownHandler, { signal });
       videoElmRefValue.addEventListener("wheel", mouseWheelHandler, { signal });
       videoElmRefValue.addEventListener(
         "contextmenu",
@@ -364,7 +371,13 @@ export default function WebRTCVideo() {
         if (videoElmRefValue) abortController.abort();
       };
     },
-    [mouseMoveHandler, resetMousePosition, onVideoPlaying, mouseWheelHandler],
+    [
+      mouseMoveHandler,
+      resetMousePosition,
+      onVideoPlaying,
+      mouseWheelHandler,
+      videoKeyDownHandler,
+    ],
   );
 
   useEffect(
@@ -410,7 +423,7 @@ export default function WebRTCVideo() {
   }, [sendKeyboardEvent, setDisableVideoFocusTrap, sidebarView]);
 
   return (
-    <div className="grid w-full h-full grid-rows-layout">
+    <div className="grid h-full w-full grid-rows-layout">
       <div className="min-h-[39.5px]">
         <fieldset disabled={peerConnectionState !== "connected"}>
           <Actionbar
@@ -427,18 +440,18 @@ export default function WebRTCVideo() {
         <div className="relative h-full">
           <div
             className={cx(
-              "absolute inset-0 bg-blue-50/40 dark:bg-slate-800/40 opacity-80",
+              "absolute inset-0 bg-blue-50/40 opacity-80 dark:bg-slate-800/40",
               "[background-image:radial-gradient(theme(colors.blue.300)_0.5px,transparent_0.5px),radial-gradient(theme(colors.blue.300)_0.5px,transparent_0.5px)] dark:[background-image:radial-gradient(theme(colors.slate.700)_0.5px,transparent_0.5px),radial-gradient(theme(colors.slate.700)_0.5px,transparent_0.5px)]",
               "[background-position:0_0,10px_10px]",
               "[background-size:20px_20px]",
             )}
           />
-          <div className="flex flex-col h-full">
+          <div className="flex h-full flex-col">
             <div className="relative flex-grow overflow-hidden">
-              <div className="flex flex-col h-full">
-                <div className="grid flex-grow overflow-hidden grid-rows-bodyFooter">
-                  <div className="relative flex items-center justify-center mx-4 my-2 overflow-hidden">
-                    <div className="relative flex items-center justify-center w-full h-full">
+              <div className="flex h-full flex-col">
+                <div className="grid flex-grow grid-rows-bodyFooter overflow-hidden">
+                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
+                    <div className="relative flex h-full w-full items-center justify-center">
                       <video
                         ref={videoElm}
                         autoPlay={true}
@@ -454,14 +467,14 @@ export default function WebRTCVideo() {
                           {
                             "cursor-none": settings.isCursorHidden,
                             "opacity-0": isLoading || isConnectionError || hdmiError,
-                            "animate-slideUpFade border border-slate-800/30 dark:border-slate-300/20 opacity-0 shadow":
+                            "animate-slideUpFade border border-slate-800/30 opacity-0 shadow dark:border-slate-300/20":
                               isPlaying,
                           },
                         )}
                       />
                       <div
                         style={{ animationDuration: "500ms" }}
-                        className="absolute inset-0 flex items-center justify-center opacity-0 pointer-events-none animate-slideUpFade"
+                        className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center opacity-0"
                       >
                         <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
                           <LoadingOverlay show={isLoading} />
