@@ -239,6 +239,7 @@ export default function SettingsSidebar() {
     }
 
     setBacklightSettings(settings);
+    handleBacklightSettingsSave();
   }
 
   const handleBacklightSettingsSave = () => {
@@ -362,7 +363,7 @@ export default function SettingsSidebar() {
       if ("error" in resp) return;
       setUsbEmulationEnabled(resp.result as boolean);
     });
-  }, [getCloudState, send, setDeveloperMode, setHideCursor, setJiggler]);
+  }, [getCloudState, send, setBacklightSettings, setDeveloperMode, setHideCursor, setJiggler]);
 
   const getDevice = useCallback(async () => {
     try {
@@ -900,12 +901,6 @@ export default function SettingsSidebar() {
         <p className="text-xs text-slate-600 dark:text-slate-400">
           The display will wake up when the connection state changes, or when touched.
         </p>
-        <Button
-          size="SM"
-          theme="primary"
-          text="Save Display Settings"
-          onClick={handleBacklightSettingsSave}
-        />
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
         <div className="pb-2 space-y-4">
           <SectionHeader
