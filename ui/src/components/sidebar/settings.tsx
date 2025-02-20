@@ -26,6 +26,7 @@ import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import USBConfigDialog from "@components/USBConfigDialog";
+import { UsbConfigState } from "@/utils"
 
 export function SettingsItem({
   title,
@@ -86,7 +87,6 @@ const edids = [
   },
 ];
 
-
 export default function SettingsSidebar() {
   const setSidebarView = useUiStore(state => state.setSidebarView);
   const settings = useSettingsStore();
@@ -97,7 +97,7 @@ export default function SettingsSidebar() {
   const [jiggler, setJiggler] = useState(false);
   const [edid, setEdid] = useState<string | null>(null);
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
-  const [usbConfigJson, setUsbConfigJson] = useState("");
+  const [usbConfigProduct, setUsbConfigProduct] = useState("");
 
   const [isAdopted, setAdopted] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -124,45 +124,84 @@ export default function SettingsSidebar() {
     });
   }, [send]);
 
+  const syncUsbConfigProduct = useCallback(() => {
+    send("getUsbConfig", {}, resp => {
+      if ("error" in resp) {
+        console.error("Failed to load USB Config:", resp.error);
+      } else {
+        console.error("syncUsbConfigProduct#getUsbConfig result:", resp.result);
+        const usbConfigState = resp.result as UsbConfigState
+        setUsbConfigProduct(usbConfigState.product);
+      }
+    });
+  }, [send, setUsbConfigProduct]);
+
+  // Load stored usb config product from the backend
+  useEffect(() => {
+    syncUsbConfigProduct();
+  }, [syncUsbConfigProduct]);
+
   const usbConfigs = [
     {
-      value: JSON.stringify({
+      label: "JetKVM Default",
+      value: "JetKVM USB Emulation Device"
+    },
+    {
+      label: "Logitech Universal Adapter",
+      value: "Logitech USB Input Device"
+    },
+    {
+      label: "Microsoft Wireless MultiMedia Keyboard",
+      value: "Wireless MultiMedia Keyboard"
+    },
+    {
+      label: "Dell Multimedia Pro Keyboard",
+      value: "Multimedia Pro Keyboard"
+    }
+  ];
+
+  interface USBConfig {
+    vendor_id: string;
+    product_id: string;
+    serial_number: string | null;
+    manufacturer: string;
+    product: string;
+  }
+
+  type UsbConfigMap = Record<string, USBConfig>;
+
+
+  const usbConfigData: UsbConfigMap = {
+      "JetKVM USB Emulation Device": {
         vendor_id: "0x1d6b",
         product_id: "0x0104",
         serial_number: deviceId,
         manufacturer: "JetKVM",
         product: "JetKVM USB Emulation Device",
-      }),
-      label: "JetKVM Default",
-    },
-    {
-      value: JSON.stringify({
+      },
+      "Logitech USB Input Device": {
         vendor_id: "0x046d",
         product_id: "0xc52b",
+        serial_number: generatedSerialNumber,
         manufacturer: "Logitech (x64)",
         product: "Logitech USB Input Device",
-      }),
-      label: "Logitech Universal Adapter",
-    },
-    {
-      value: JSON.stringify({
+      },
+      "Wireless MultiMedia Keyboard": {
         vendor_id: "0x045e",
         product_id: "0x005f",
+        serial_number: generatedSerialNumber,
         manufacturer: "Microsoft",
         product: "Wireless MultiMedia Keyboard",
-      }),
-      label: "Microsoft Wireless MultiMedia Keyboard",
-    },
-    {
-      value: JSON.stringify({
+      },
+      "Multimedia Pro Keyboard": {
         vendor_id: "0x413c",
         product_id: "0x2011",
+        serial_number: generatedSerialNumber,
         manufacturer: "Dell Inc.",
         product: "Multimedia Pro Keyboard",
-      }),
-      label: "Dell Multimedia Pro Keyboard",
-    }
-  ];
+      }
+  }
+
 
   const handleUsbEmulationToggle = useCallback(
       (enabled: boolean) => {
@@ -237,12 +276,9 @@ export default function SettingsSidebar() {
     });
   };
 
-  const handleUsbConfigChange = (jsonString: string) => {
-    const usbConfig = JSON.parse(jsonString);
-    if (!usbConfig?.serial_number) {
-      usbConfig['serial_number'] = generatedSerialNumber
-    }
-    console.info(`Current USB serial number: ${usbConfig?.serial_number}`)
+  const handleUsbConfigChange = (product: string) => {
+    const usbConfig = usbConfigData[product];
+    console.info(`USB config: ${JSON.stringify(usbConfig)}`)
     send("setUsbConfig", { usbConfig }, resp => {
       if ("error" in resp) {
         notifications.error(
@@ -250,8 +286,8 @@ export default function SettingsSidebar() {
         );
         return;
       }
-      setUsbConfigJson(jsonString);
-      notifications.success(`USB Config set to ${usbConfig.product}`);
+      setUsbConfigProduct(usbConfig.product);
+      notifications.success(`USB Config set to ${usbConfig.manufacturer} ${usbConfig.product}`);
     });
   };
 
@@ -939,10 +975,10 @@ export default function SettingsSidebar() {
                         size="SM"
                         label=""
                         fullWidth
-                        value={usbConfigJson}
+                        value={usbConfigProduct}
                         onChange={e => {
                           if (e.target.value === "custom") {
-                            setUsbConfigJson(e.target.value);
+                            setUsbConfigProduct(e.target.value);
                           } else {
                             handleUsbConfigChange(e.target.value as string);
                           }
@@ -951,7 +987,7 @@ export default function SettingsSidebar() {
                     />
                   </SettingsItem>
               )}
-              {usbConfigJson == "custom" && (
+              {usbConfigProduct === "custom" && (
                   <SettingsItem
                       title="USB Config"
                       description="Set Custom USB Descriptors"

@@ -8,14 +8,7 @@ import { InputFieldWithLabel } from "./InputField";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useUsbConfigModalStore } from "@/hooks/stores";
 import ExtLink from "@components/ExtLink";
-
-export interface UsbConfigState {
-  vendor_id: string;
-  product_id: string;
-  serial_number: string;
-  manufacturer: string;
-  product: string;
-}
+import { UsbConfigState } from "@/utils"
 
 export default function USBConfigDialog({
   open,

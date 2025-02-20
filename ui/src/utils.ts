@@ -232,3 +232,11 @@ export function isChromeOS() {
   /* ChromeOS sets navigator.platform to Linux :/ */
   return !!navigator.userAgent.match(" CrOS ");
 }
+
+export interface UsbConfigState {
+  vendor_id: string;
+  product_id: string;
+  serial_number: string;
+  manufacturer: string;
+  product: string;
+}
