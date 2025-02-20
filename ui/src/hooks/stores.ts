@@ -538,6 +538,14 @@ interface UsbConfigModalState {
   setErrorMessage: (message: string | null) => void;
 }
 
+export interface UsbConfigState {
+  vendor_id: string;
+  product_id: string;
+  serial_number: string;
+  manufacturer: string;
+  product: string;
+}
+
 export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
   modalView: "updateUsbConfig",
   errorMessage: null,

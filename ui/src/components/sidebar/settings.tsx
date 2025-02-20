@@ -26,7 +26,7 @@ import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import USBConfigDialog from "@components/USBConfigDialog";
-import { UsbConfigState } from "@/utils"
+import { UsbConfigState } from "@/hooks/stores"
 
 export function SettingsItem({
   title,
