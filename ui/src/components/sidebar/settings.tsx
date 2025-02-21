@@ -26,7 +26,7 @@ import LocalAuthPasswordDialog from "@/components/LocalAuthPasswordDialog";
 import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
-import { CLOUD_APP, SIGNAL_API } from "@/ui.config";
+import { CLOUD_APP, DEVICE_API } from "@/ui.config";
 import { InputFieldWithLabel } from "../InputField";
 
 export function SettingsItem({
@@ -421,7 +421,7 @@ export default function SettingsSidebar() {
   const getDevice = useCallback(async () => {
     try {
       const status = await api
-        .GET(`${SIGNAL_API}/device`)
+        .GET(`${DEVICE_API}/device`)
         .then(res => res.json() as Promise<LocalDevice>);
       setLocalDevice(status);
     } catch (error) {

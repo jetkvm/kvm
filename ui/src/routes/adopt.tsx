@@ -1,6 +1,6 @@
 import { LoaderFunctionArgs, redirect } from "react-router-dom";
 import api from "../api";
-import { CLOUD_APP, SIGNAL_API } from "@/ui.config";
+import { CLOUD_APP, DEVICE_API } from "@/ui.config";
 
 const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -11,7 +11,7 @@ const loader = async ({ request }: LoaderFunctionArgs) => {
   const oidcGoogle = searchParams.get("oidcGoogle");
   const clientId = searchParams.get("clientId");
 
-  const res = await api.POST(`${SIGNAL_API}/cloud/register`, {
+  const res = await api.POST(`${DEVICE_API}/cloud/register`, {
     token: tempToken,
     oidcGoogle,
     clientId,
