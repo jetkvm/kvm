@@ -994,35 +994,37 @@ export default function SettingsSidebar() {
                     />
                   </div>
                 </div>
-                <div className="mt-4 space-y-4">
-                  <SettingsItem
-                    title="Cloud API URL"
-                    description="Connect to a custom JetKVM Cloud API"
-                  />
-
-                  <InputFieldWithLabel
-                    size="SM"
-                    label="Cloud URL"
-                    value={cloudUrl}
-                    onChange={e => setCloudUrl(e.target.value)}
-                    placeholder="https://api.jetkvm.com"
-                  />
-
-                  <div className="flex items-center gap-x-2">
-                    <Button
-                      size="SM"
-                      theme="primary"
-                      text="Save Cloud URL"
-                      onClick={() => handleCloudUrlChange(cloudUrl)}
+                {isOnDevice && (
+                  <div className="mt-4 space-y-4">
+                    <SettingsItem
+                      title="Cloud API URL"
+                      description="Connect to a custom JetKVM Cloud API"
                     />
-                    <Button
+
+                    <InputFieldWithLabel
                       size="SM"
-                      theme="light"
-                      text="Restore to default"
-                      onClick={handleResetCloudUrl}
+                      label="Cloud URL"
+                      value={cloudUrl}
+                      onChange={e => setCloudUrl(e.target.value)}
+                      placeholder="https://api.jetkvm.com"
                     />
+
+                    <div className="flex items-center gap-x-2">
+                      <Button
+                        size="SM"
+                        theme="primary"
+                        text="Save Cloud URL"
+                        onClick={() => handleCloudUrlChange(cloudUrl)}
+                      />
+                      <Button
+                        size="SM"
+                        theme="light"
+                        text="Restore to default"
+                        onClick={handleResetCloudUrl}
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
             <SettingsItem
