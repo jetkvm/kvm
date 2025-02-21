@@ -96,7 +96,6 @@ func handleCloudRegister(c *gin.Context) {
 	}
 
 	config.CloudToken = tokenResp.SecretToken
-	config.CloudURL = req.CloudAPI
 
 	provider, err := oidc.NewProvider(c, "https://accounts.google.com")
 	if err != nil {

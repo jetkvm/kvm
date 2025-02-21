@@ -730,6 +730,33 @@ func rpcSetSerialSettings(settings SerialSettings) error {
 	return nil
 }
 
+func rpcSetCloudUrl(url string) error {
+	if url == "" {
+		// Reset to default by removing from config
+		config.CloudURL = defaultConfig.CloudURL
+	} else {
+		config.CloudURL = url
+	}
+
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
+func rpcGetCloudUrl() (string, error) {
+	return config.CloudURL, nil
+}
+
+func rpcResetCloudUrl() error {
+	// Reset to default by removing from config
+	config.CloudURL = defaultConfig.CloudURL
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to reset cloud URL: %w", err)
+	}
+	return nil
+}
+
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"getDeviceID":            {Func: rpcGetDeviceID},
@@ -786,4 +813,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setATXPowerAction":      {Func: rpcSetATXPowerAction, Params: []string{"action"}},
 	"getSerialSettings":      {Func: rpcGetSerialSettings},
 	"setSerialSettings":      {Func: rpcSetSerialSettings, Params: []string{"settings"}},
+	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"url"}},
+	"getCloudUrl":            {Func: rpcGetCloudUrl},
+	"resetCloudUrl":          {Func: rpcResetCloudUrl},
 }
