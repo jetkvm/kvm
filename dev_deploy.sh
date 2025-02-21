@@ -10,6 +10,7 @@ show_help() {
     echo
     echo "Optional:"
     echo "  -u, --user <remote_user>   Remote username (default: root)"
+    echo "      --skip-ui-build        Skip frontend/UI build"
     echo "      --help                 Display this help message"
     echo
     echo "Example:"
@@ -21,6 +22,7 @@ show_help() {
 # Default values
 REMOTE_USER="root"
 REMOTE_PATH="/userdata/jetkvm/bin"
+SKIP_UI_BUILD=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -32,6 +34,10 @@ while [[ $# -gt 0 ]]; do
         -u|--user)
             REMOTE_USER="$2"
             shift 2
+            ;;
+        --skip-ui-build)
+            SKIP_UI_BUILD=true
+            shift
             ;;
         --help)
             show_help
@@ -52,7 +58,9 @@ if [ -z "$REMOTE_HOST" ]; then
 fi
 
 # Build the development version on the host
-make frontend
+if [ "$SKIP_UI_BUILD" = false ]; then
+    make frontend
+fi
 make build_dev
 
 # Change directory to the binary output directory
