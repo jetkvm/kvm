@@ -26,7 +26,8 @@ import LocalAuthPasswordDialog from "@/components/LocalAuthPasswordDialog";
 import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
-import { CLOUD_APP, SIGNAL_API } from "@/ui.config";
+import { CLOUD_APP, DEVICE_API } from "@/ui.config";
+import { InputFieldWithLabel } from "../InputField";
 
 export function SettingsItem({
   title,
@@ -277,6 +278,51 @@ export default function SettingsSidebar() {
     }
   };
 
+  const [cloudUrl, setCloudUrl] = useState("");
+
+  useEffect(() => {
+    send("getCloudUrl", {}, resp => {
+      if ("error" in resp) return;
+      setCloudUrl(resp.result as string);
+    });
+  }, [send]);
+
+  const getCloudUrl = useCallback(() => {
+    send("getCloudUrl", {}, resp => {
+      if ("error" in resp) return;
+      setCloudUrl(resp.result as string);
+    });
+  }, [send]);
+
+  const handleCloudUrlChange = useCallback(
+    (url: string) => {
+      send("setCloudUrl", { url }, resp => {
+        if ("error" in resp) {
+          notifications.error(
+            `Failed to update cloud URL: ${resp.error.data || "Unknown error"}`,
+          );
+          return;
+        }
+        getCloudUrl();
+        notifications.success("Cloud URL updated successfully");
+      });
+    },
+    [send, getCloudUrl],
+  );
+
+  const handleResetCloudUrl = useCallback(() => {
+    send("resetCloudUrl", {}, resp => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to reset cloud URL: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      getCloudUrl();
+      notifications.success("Cloud URL reset to default successfully");
+    });
+  }, [send, getCloudUrl]);
+
   useEffect(() => {
     getCloudState();
 
@@ -363,12 +409,19 @@ export default function SettingsSidebar() {
       if ("error" in resp) return;
       setUsbEmulationEnabled(resp.result as boolean);
     });
-  }, [getCloudState, send, setBacklightSettings, setDeveloperMode, setHideCursor, setJiggler]);
+  }, [
+    getCloudState,
+    send,
+    setBacklightSettings,
+    setDeveloperMode,
+    setHideCursor,
+    setJiggler,
+  ]);
 
   const getDevice = useCallback(async () => {
     try {
       const status = await api
-        .GET(`${SIGNAL_API}/device`)
+        .GET(`${DEVICE_API}/device`)
         .then(res => res.json() as Promise<LocalDevice>);
       setLocalDevice(status);
     } catch (error) {
@@ -920,25 +973,58 @@ export default function SettingsSidebar() {
             </SettingsItem>
 
             {settings.developerMode && (
-              <div className="space-y-4">
-                <TextAreaWithLabel
-                  label="SSH Public Key"
-                  value={sshKey || ""}
-                  rows={3}
-                  onChange={e => handleSSHKeyChange(e.target.value)}
-                  placeholder="Enter your SSH public key"
-                />
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  The default SSH user is <strong>root</strong>.
-                </p>
-                <div className="flex items-center gap-x-2">
-                  <Button
-                    size="SM"
-                    theme="primary"
-                    text="Update SSH Key"
-                    onClick={handleUpdateSSHKey}
+              <div>
+                <div className="space-y-4">
+                  <TextAreaWithLabel
+                    label="SSH Public Key"
+                    value={sshKey || ""}
+                    rows={3}
+                    onChange={e => handleSSHKeyChange(e.target.value)}
+                    placeholder="Enter your SSH public key"
                   />
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    The default SSH user is <strong>root</strong>.
+                  </p>
+                  <div className="flex items-center gap-x-2">
+                    <Button
+                      size="SM"
+                      theme="primary"
+                      text="Update SSH Key"
+                      onClick={handleUpdateSSHKey}
+                    />
+                  </div>
                 </div>
+                {isOnDevice && (
+                  <div className="mt-4 space-y-4">
+                    <SettingsItem
+                      title="Cloud API URL"
+                      description="Connect to a custom JetKVM Cloud API"
+                    />
+
+                    <InputFieldWithLabel
+                      size="SM"
+                      label="Cloud URL"
+                      value={cloudUrl}
+                      onChange={e => setCloudUrl(e.target.value)}
+                      placeholder="https://api.jetkvm.com"
+                    />
+
+                    <div className="flex items-center gap-x-2">
+                      <Button
+                        size="SM"
+                        theme="primary"
+                        text="Save Cloud URL"
+                        onClick={() => handleCloudUrlChange(cloudUrl)}
+                      />
+                      <Button
+                        size="SM"
+                        theme="light"
+                        text="Restore to default"
+                        onClick={handleResetCloudUrl}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <SettingsItem

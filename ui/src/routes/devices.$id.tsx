@@ -36,7 +36,7 @@ import { DeviceStatus } from "./welcome-local";
 import FocusTrap from "focus-trap-react";
 import OtherSessionConnectedModal from "@/components/OtherSessionConnectedModal";
 import Terminal from "@components/Terminal";
-import { CLOUD_API, SIGNAL_API } from "@/ui.config";
+import { CLOUD_API, DEVICE_API } from "@/ui.config";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -57,12 +57,12 @@ export interface LocalDevice {
 
 const deviceLoader = async () => {
   const res = await api
-    .GET(`${SIGNAL_API}/device/status`)
+    .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);
 
   if (!res.isSetup) return redirect("/welcome");
 
-  const deviceRes = await api.GET(`${SIGNAL_API}/device`);
+  const deviceRes = await api.GET(`${DEVICE_API}/device`);
   if (deviceRes.status === 401) return redirect("/login-local");
   if (deviceRes.ok) {
     const device = (await deviceRes.json()) as LocalDevice;
@@ -78,9 +78,7 @@ const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => 
   const iceResp = await api.POST(`${CLOUD_API}/webrtc/ice_config`);
   const iceConfig = await iceResp.json();
 
-  const deviceResp = await api.GET(
-    `${CLOUD_API}/devices/${params.id}`,
-  );
+  const deviceResp = await api.GET(`${CLOUD_API}/devices/${params.id}`);
 
   if (!deviceResp.ok) {
     if (deviceResp.status === 404) {
@@ -143,7 +141,11 @@ export default function KvmIdRoute() {
 
       try {
         const sd = btoa(JSON.stringify(pc.localDescription));
-        const res = await api.POST(`${SIGNAL_API}/webrtc/session`, {
+
+        const sessionUrl = isOnDevice
+          ? `${DEVICE_API}/webrtc/session`
+          : `${CLOUD_API}/webrtc/session`;
+        const res = await api.POST(sessionUrl, {
           sd,
           // When on device, we don't need to specify the device id, as it's already known
           ...(isOnDevice ? {} : { id: params.id }),

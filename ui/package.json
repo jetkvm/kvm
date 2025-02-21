@@ -8,11 +8,11 @@
   },
   "scripts": {
     "dev": "./dev_device.sh",
-    "dev:cloud": "vite dev --mode=development",
+    "dev:cloud": "vite dev --mode=cloud-development",
     "build": "npm run build:prod",
     "build:device": "tsc && vite build --mode=device --emptyOutDir",
-    "build:staging": "tsc && vite build --mode=staging",
-    "build:prod": "tsc && vite build --mode=production",
+    "build:staging": "tsc && vite build --mode=cloud-staging",
+    "build:prod": "tsc && vite build --mode=cloud-production",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },

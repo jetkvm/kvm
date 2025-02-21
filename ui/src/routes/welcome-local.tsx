@@ -9,7 +9,7 @@ import LogoMark from "@/assets/logo-mark.png";
 import { cx } from "cva";
 import api from "../api";
 import { redirect } from "react-router-dom";
-import { SIGNAL_API } from "@/ui.config";
+import { DEVICE_API } from "@/ui.config";
 
 export interface DeviceStatus {
   isSetup: boolean;
@@ -17,7 +17,7 @@ export interface DeviceStatus {
 
 const loader = async () => {
   const res = await api
-    .GET(`${SIGNAL_API}/device/status`)
+    .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);
 
   if (res.isSetup) return redirect("/login-local");

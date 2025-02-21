@@ -10,11 +10,11 @@ import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
 import api from "../api";
 import { DeviceStatus } from "./welcome-local";
-import { SIGNAL_API } from "@/ui.config";
+import { DEVICE_API } from "@/ui.config";
 
 const loader = async () => {
   const res = await api
-    .GET(`${SIGNAL_API}/device/status`)
+    .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);
 
   if (res.isSetup) return redirect("/login-local");
@@ -31,7 +31,7 @@ const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   try {
-    const response = await api.POST(`${SIGNAL_API}/device/setup`, {
+    const response = await api.POST(`${DEVICE_API}/device/setup`, {
       localAuthMode: "password",
       password,
     });

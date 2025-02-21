@@ -14,7 +14,7 @@ import PeerConnectionStatusCard from "@components/PeerConnectionStatusCard";
 import api from "../api";
 import { isOnDevice } from "../main";
 import { Button, LinkButton } from "./Button";
-import { CLOUD_API, SIGNAL_API } from "@/ui.config";
+import { CLOUD_API, DEVICE_API } from "@/ui.config";
 
 interface NavbarProps {
   isLoggedIn: boolean;
@@ -38,7 +38,7 @@ export default function DashboardNavbar({
   const navigate = useNavigate();
   const onLogout = useCallback(async () => {
     const logoutUrl = isOnDevice
-      ? `${SIGNAL_API}/auth/logout`
+      ? `${DEVICE_API}/auth/logout`
       : `${CLOUD_API}/logout`;
     const res = await api.POST(logoutUrl);
     if (!res.ok) return;
