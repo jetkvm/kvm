@@ -526,6 +526,30 @@ export const useUpdateStore = create<UpdateState>(set => ({
   setUpdateErrorMessage: errorMessage => set({ updateErrorMessage: errorMessage }),
 }));
 
+interface UsbConfigModalState {
+  modalView:
+      | "updateUsbConfig"
+      | "updateUsbConfigSuccess";
+  errorMessage: string | null;
+  setModalView: (view: UsbConfigModalState["modalView"]) => void;
+  setErrorMessage: (message: string | null) => void;
+}
+
+export interface UsbConfigState {
+  vendor_id: string;
+  product_id: string;
+  serial_number: string;
+  manufacturer: string;
+  product: string;
+}
+
+export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
+  modalView: "updateUsbConfig",
+  errorMessage: null,
+  setModalView: view => set({ modalView: view }),
+  setErrorMessage: message => set({ errorMessage: message }),
+}));
+
 interface LocalAuthModalState {
   modalView:
     | "createPassword"

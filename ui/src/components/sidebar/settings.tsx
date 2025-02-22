@@ -5,6 +5,7 @@ import {
   useSettingsStore,
   useUiStore,
   useUpdateStore,
+  useUsbConfigModalStore
 } from "@/hooks/stores";
 import { Checkbox } from "@components/Checkbox";
 import { Button, LinkButton } from "@components/Button";
@@ -27,6 +28,8 @@ import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { CLOUD_APP, SIGNAL_API } from "@/ui.config";
+import USBConfigDialog from "@components/USBConfigDialog";
+import { UsbConfigState } from "@/hooks/stores"
 
 export function SettingsItem({
   title,
@@ -49,6 +52,19 @@ export function SettingsItem({
       {children ? <div>{children}</div> : null}
     </label>
   );
+}
+
+
+const generatedSerialNumber = [generateNumber(1,9), generateHex(7,7), 0, 1].join("&");
+
+function generateNumber(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1) + min);
+}
+
+function generateHex(min: number, max: number) {
+  const len =  generateNumber(min, max);
+  const n = (Math.random() * 0xfffff * 1000000).toString(16);
+  return n.slice(0, len);
 }
 
 const defaultEdid =
@@ -85,6 +101,7 @@ export default function SettingsSidebar() {
   const [jiggler, setJiggler] = useState(false);
   const [edid, setEdid] = useState<string | null>(null);
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
+  const [usbConfigProduct, setUsbConfigProduct] = useState("");
 
   const [isAdopted, setAdopted] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -112,12 +129,90 @@ export default function SettingsSidebar() {
     });
   }, [send]);
 
+  const syncUsbConfigProduct = useCallback(() => {
+    send("getUsbConfig", {}, resp => {
+      if ("error" in resp) {
+        console.error("Failed to load USB Config:", resp.error);
+      } else {
+        console.error("syncUsbConfigProduct#getUsbConfig result:", resp.result);
+        const usbConfigState = resp.result as UsbConfigState
+        setUsbConfigProduct(usbConfigState.product);
+      }
+    });
+  }, [send, setUsbConfigProduct]);
+
+  // Load stored usb config product from the backend
+  useEffect(() => {
+    syncUsbConfigProduct();
+  }, [syncUsbConfigProduct]);
+
+  const usbConfigs = [
+    {
+      label: "JetKVM Default",
+      value: "JetKVM USB Emulation Device"
+    },
+    {
+      label: "Logitech Universal Adapter",
+      value: "Logitech USB Input Device"
+    },
+    {
+      label: "Microsoft Wireless MultiMedia Keyboard",
+      value: "Wireless MultiMedia Keyboard"
+    },
+    {
+      label: "Dell Multimedia Pro Keyboard",
+      value: "Multimedia Pro Keyboard"
+    }
+  ];
+
+  interface USBConfig {
+    vendor_id: string;
+    product_id: string;
+    serial_number: string | null;
+    manufacturer: string;
+    product: string;
+  }
+
+  type UsbConfigMap = Record<string, USBConfig>;
+
+
+  const usbConfigData: UsbConfigMap = {
+    "JetKVM USB Emulation Device": {
+      vendor_id: "0x1d6b",
+      product_id: "0x0104",
+      serial_number: deviceId,
+      manufacturer: "JetKVM",
+      product: "JetKVM USB Emulation Device",
+    },
+    "Logitech USB Input Device": {
+      vendor_id: "0x046d",
+      product_id: "0xc52b",
+      serial_number: generatedSerialNumber,
+      manufacturer: "Logitech (x64)",
+      product: "Logitech USB Input Device",
+    },
+    "Wireless MultiMedia Keyboard": {
+      vendor_id: "0x045e",
+      product_id: "0x005f",
+      serial_number: generatedSerialNumber,
+      manufacturer: "Microsoft",
+      product: "Wireless MultiMedia Keyboard",
+    },
+    "Multimedia Pro Keyboard": {
+      vendor_id: "0x413c",
+      product_id: "0x2011",
+      serial_number: generatedSerialNumber,
+      manufacturer: "Dell Inc.",
+      product: "Multimedia Pro Keyboard",
+    }
+  }
+
   const handleUsbEmulationToggle = useCallback(
     (enabled: boolean) => {
       send("setUsbEmulationState", { enabled: enabled }, resp => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to ${enabled ? "enable" : "disable"} USB emulation: ${resp.error.data || "Unknown error"}`,
+              `Failed to ${enabled ? "enable" : "disable"} USB emulation: ${resp.error.data || "Unknown error"}`,
           );
           return;
         }
@@ -182,6 +277,21 @@ export default function SettingsSidebar() {
         return;
       }
       setDevChannel(enabled);
+    });
+  };
+
+  const handleUsbConfigChange = (product: string) => {
+    const usbConfig = usbConfigData[product];
+    console.info(`USB config: ${JSON.stringify(usbConfig)}`)
+    send("setUsbConfig", { usbConfig }, resp => {
+      if ("error" in resp) {
+        notifications.error(
+            `Failed to set usb config: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      setUsbConfigProduct(usbConfig.product);
+      notifications.success(`USB Config set to ${usbConfig.manufacturer} ${usbConfig.product}`);
     });
   };
 
@@ -377,7 +487,9 @@ export default function SettingsSidebar() {
   }, []);
 
   const { setModalView: setLocalAuthModalView } = useLocalAuthModalStore();
+  const { setModalView: setUsbConfigModalView } = useUsbConfigModalStore();
   const [isLocalAuthDialogOpen, setIsLocalAuthDialogOpen] = useState(false);
+  const [isUsbConfigDialogOpen, setIsUsbConfigDialogOpen] = useState(false);
 
   useEffect(() => {
     if (isOnDevice) getDevice();
@@ -390,6 +502,14 @@ export default function SettingsSidebar() {
       getDevice();
     }
   }, [getDevice, isLocalAuthDialogOpen]);
+
+  useEffect(() => {
+    if (!isOnDevice) return;
+    // Refresh device status when the local usb config dialog is closed
+    if (!isUsbConfigDialogOpen) {
+      getDevice();
+    }
+  }, [getDevice, isUsbConfigDialogOpen]);
 
   const revalidator = useRevalidator();
 
@@ -952,7 +1072,43 @@ export default function SettingsSidebar() {
                 }}
               />
             </SettingsItem>
-
+            {settings.developerMode && (
+              <SettingsItem
+                title="Set USB Device Emulation"
+                description="Select a Preconfigured USB Device"
+              >
+                <SelectMenuBasic
+                  size="SM"
+                  label=""
+                  fullWidth
+                  value={usbConfigProduct}
+                  onChange={e => {
+                    if (e.target.value === "custom") {
+                      setUsbConfigProduct(e.target.value);
+                    } else {
+                      handleUsbConfigChange(e.target.value as string);
+                    }
+                  }}
+                  options={[...usbConfigs, { value: "custom", label: "Custom" }]}
+                />
+              </SettingsItem>
+            )}
+            {usbConfigProduct === "custom" && (
+              <SettingsItem
+                title="USB Config"
+                description="Set Custom USB Descriptors"
+              >
+                <Button
+                  size="SM"
+                  theme="light"
+                  text="Update USB Config"
+                  onClick={() => {
+                    setUsbConfigModalView("updateUsbConfig")
+                    setIsUsbConfigDialogOpen(true);
+                  }}
+                />
+              </SettingsItem>
+            )}
             {settings.debugMode && (
               <>
                 <SettingsItem
@@ -991,6 +1147,14 @@ export default function SettingsSidebar() {
           </div>
         </div>
       </div>
+      <USBConfigDialog
+        open={isUsbConfigDialogOpen}
+        setOpen={x => {
+          // Revalidate the current route to refresh the local device status and dependent UI components
+          revalidator.revalidate();
+          setIsUsbConfigDialogOpen(x);
+        }}
+      />
       <LocalAuthPasswordDialog
         open={isLocalAuthDialogOpen}
         setOpen={x => {
