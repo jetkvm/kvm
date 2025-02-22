@@ -12,6 +12,14 @@ type WakeOnLanDevice struct {
 	MacAddress string `json:"macAddress"`
 }
 
+type UsbConfig struct {
+	VendorId     string `json:"vendor_id"`
+	ProductId    string `json:"product_id"`
+	SerialNumber string `json:"serial_number"`
+	Manufacturer string `json:"manufacturer"`
+	Product      string `json:"product"`
+}
+
 type Config struct {
 	CloudURL             string            `json:"cloud_url"`
 	CloudToken           string            `json:"cloud_token"`
@@ -28,6 +36,7 @@ type Config struct {
 	DisplayMaxBrightness int               `json:"display_max_brightness"`
 	DisplayDimAfterSec   int               `json:"display_dim_after_sec"`
 	DisplayOffAfterSec   int               `json:"display_off_after_sec"`
+	UsbConfig            UsbConfig         `json:"usb_config"`
 }
 
 const configPath = "/userdata/kvm_config.json"
@@ -39,6 +48,13 @@ var defaultConfig = &Config{
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes
+	UsbConfig: UsbConfig{
+		VendorId:     "0x1d6b", //The Linux Foundation
+		ProductId:    "0x0104", //Multifunction Composite Gadget
+		SerialNumber: "",
+		Manufacturer: "JetKVM",
+		Product:      "JetKVM USB Emulation Device",
+	},
 }
 
 var (

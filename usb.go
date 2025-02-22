@@ -58,6 +58,44 @@ func init() {
 	//TODO: read hid reports(capslock, numlock, etc) from keyboardHidFile
 }
 
+func UpdateGadgetConfig() error {
+	LoadConfig()
+	gadgetAttrs := [][]string{
+		{"idVendor", config.UsbConfig.VendorId},
+		{"idProduct", config.UsbConfig.ProductId},
+	}
+	err := writeGadgetAttrs(kvmGadgetPath, gadgetAttrs)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Successfully updated usb gadget attributes: %v", gadgetAttrs)
+
+	strAttrs := [][]string{
+		{"serialnumber", config.UsbConfig.SerialNumber},
+		{"manufacturer", config.UsbConfig.Manufacturer},
+		{"product", config.UsbConfig.Product},
+	}
+	gadgetStringsPath := filepath.Join(kvmGadgetPath, "strings", "0x409")
+	err = os.MkdirAll(gadgetStringsPath, 0755)
+	if err != nil {
+		return err
+	}
+	err = writeGadgetAttrs(gadgetStringsPath, strAttrs)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Successfully updated usb string attributes: %s", strAttrs)
+
+	err = rebindUsb()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func writeGadgetAttrs(basePath string, attrs [][]string) error {
 	for _, item := range attrs {
 		filePath := filepath.Join(basePath, item[0])
@@ -80,9 +118,9 @@ func writeGadgetConfig() error {
 	}
 
 	err = writeGadgetAttrs(kvmGadgetPath, [][]string{
-		{"bcdUSB", "0x0200"},   //USB 2.0
-		{"idVendor", "0x1d6b"}, //The Linux Foundation
-		{"idProduct", "0104"},  //Multifunction Composite Gadget¬
+		{"bcdUSB", "0x0200"},                      //USB 2.0
+		{"idVendor", config.UsbConfig.VendorId},   //The Linux Foundation
+		{"idProduct", config.UsbConfig.ProductId}, //Multifunction Composite Gadget¬
 		{"bcdDevice", "0100"},
 	})
 	if err != nil {
@@ -97,8 +135,8 @@ func writeGadgetConfig() error {
 
 	err = writeGadgetAttrs(gadgetStringsPath, [][]string{
 		{"serialnumber", GetDeviceID()},
-		{"manufacturer", "JetKVM"},
-		{"product", "JetKVM USB Emulation Device"},
+		{"manufacturer", config.UsbConfig.Manufacturer},
+		{"product", config.UsbConfig.Product},
 	})
 	if err != nil {
 		return err

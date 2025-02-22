@@ -3,9 +3,9 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 // Utility function to append stats to a Map
 const appendStatToMap = <T extends { timestamp: number }>(
-  stat: T,
-  prevMap: Map<number, T>,
-  maxEntries = 130,
+    stat: T,
+    prevMap: Map<number, T>,
+    maxEntries = 130,
 ): Map<number, T> => {
   if (prevMap.size > maxEntries) {
     const firstKey = prevMap.keys().next().value;
@@ -71,20 +71,20 @@ export const useUiStore = create<UIState>(set => ({
   setWakeOnLanModalVisibility: enabled => set({ isWakeOnLanModalVisible: enabled }),
 
   toggleSidebarView: view =>
-    set(state => {
-      if (state.sidebarView === view) {
-        return { sidebarView: null };
-      } else {
-        return { sidebarView: view };
-      }
-    }),
+      set(state => {
+        if (state.sidebarView === view) {
+          return { sidebarView: null };
+        } else {
+          return { sidebarView: view };
+        }
+      }),
 
   modalView: null,
   setModalView: view => set({ modalView: view }),
 
   isAttachedVirtualKeyboardVisible: true,
   setAttachedVirtualKeyboardVisibility: enabled =>
-    set({ isAttachedVirtualKeyboardVisible: enabled }),
+      set({ isAttachedVirtualKeyboardVisible: enabled }),
 }));
 
 interface RTCState {
@@ -283,33 +283,33 @@ interface SettingsState {
 }
 
 export const useSettingsStore = create(
-  persist<SettingsState>(
-    set => ({
-      isCursorHidden: false,
-      setCursorVisibility: enabled => set({ isCursorHidden: enabled }),
+    persist<SettingsState>(
+        set => ({
+          isCursorHidden: false,
+          setCursorVisibility: enabled => set({ isCursorHidden: enabled }),
 
-      mouseMode: "absolute",
-      setMouseMode: mode => set({ mouseMode: mode }),
+          mouseMode: "absolute",
+          setMouseMode: mode => set({ mouseMode: mode }),
 
-      debugMode: import.meta.env.DEV,
-      setDebugMode: enabled => set({ debugMode: enabled }),
+          debugMode: import.meta.env.DEV,
+          setDebugMode: enabled => set({ debugMode: enabled }),
 
-      // Add developer mode with default value
-      developerMode: false,
-      setDeveloperMode: enabled => set({ developerMode: enabled }),
+          // Add developer mode with default value
+          developerMode: false,
+          setDeveloperMode: enabled => set({ developerMode: enabled }),
 
-      backlightSettings: {
-        max_brightness: 100,
-        dim_after: 10000,
-        off_after: 50000,
-      },
-      setBacklightSettings: (settings: BacklightSettings) => set({ backlightSettings: settings }),
-    }),
-    {
-      name: "settings",
-      storage: createJSONStorage(() => localStorage),
-    },
-  ),
+          backlightSettings: {
+            max_brightness: 100,
+            dim_after: 10000,
+            off_after: 50000,
+          },
+          setBacklightSettings: (settings: BacklightSettings) => set({ backlightSettings: settings }),
+        }),
+        {
+          name: "settings",
+          storage: createJSONStorage(() => localStorage),
+        },
+    ),
 );
 
 export interface RemoteVirtualMediaState {
@@ -356,7 +356,7 @@ export const useMountMediaStore = create<MountMediaState>(set => ({
 
   uploadedFiles: [],
   addUploadedFile: file =>
-    set(state => ({ uploadedFiles: [...state.uploadedFiles, file] })),
+      set(state => ({ uploadedFiles: [...state.uploadedFiles, file] })),
 
   errorMessage: null,
   setErrorMessage: message => set({ errorMessage: message }),
@@ -477,12 +477,12 @@ export interface UpdateState {
   setOtaState: (state: UpdateState["otaState"]) => void;
   setUpdateDialogHasBeenMinimized: (hasBeenMinimized: boolean) => void;
   modalView:
-    | "loading"
-    | "updating"
-    | "upToDate"
-    | "updateAvailable"
-    | "updateCompleted"
-    | "error";
+      | "loading"
+      | "updating"
+      | "upToDate"
+      | "updateAvailable"
+      | "updateCompleted"
+      | "error";
   setModalView: (view: UpdateState["modalView"]) => void;
   isUpdateDialogOpen: boolean;
   setIsUpdateDialogOpen: (isOpen: boolean) => void;
@@ -517,7 +517,7 @@ export const useUpdateStore = create<UpdateState>(set => ({
 
   updateDialogHasBeenMinimized: false,
   setUpdateDialogHasBeenMinimized: hasBeenMinimized =>
-    set({ updateDialogHasBeenMinimized: hasBeenMinimized }),
+      set({ updateDialogHasBeenMinimized: hasBeenMinimized }),
   modalView: "loading",
   setModalView: view => set({ modalView: view }),
   isUpdateDialogOpen: false,
@@ -526,14 +526,38 @@ export const useUpdateStore = create<UpdateState>(set => ({
   setUpdateErrorMessage: errorMessage => set({ updateErrorMessage: errorMessage }),
 }));
 
+interface UsbConfigModalState {
+  modalView:
+      | "updateUsbConfig"
+      | "updateUsbConfigSuccess";
+  errorMessage: string | null;
+  setModalView: (view: UsbConfigModalState["modalView"]) => void;
+  setErrorMessage: (message: string | null) => void;
+}
+
+export interface UsbConfigState {
+  vendor_id: string;
+  product_id: string;
+  serial_number: string;
+  manufacturer: string;
+  product: string;
+}
+
+export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
+  modalView: "updateUsbConfig",
+  errorMessage: null,
+  setModalView: view => set({ modalView: view }),
+  setErrorMessage: message => set({ errorMessage: message }),
+}));
+
 interface LocalAuthModalState {
   modalView:
-    | "createPassword"
-    | "deletePassword"
-    | "updatePassword"
-    | "creationSuccess"
-    | "deleteSuccess"
-    | "updateSuccess";
+      | "createPassword"
+      | "deletePassword"
+      | "updatePassword"
+      | "creationSuccess"
+      | "deleteSuccess"
+      | "updateSuccess";
   errorMessage: string | null;
   setModalView: (view: LocalAuthModalState["modalView"]) => void;
   setErrorMessage: (message: string | null) => void;
