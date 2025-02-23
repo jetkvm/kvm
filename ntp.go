@@ -21,7 +21,6 @@ const (
 )
 
 var (
-	timeSynced            = false
 	timeSyncRetryInterval = 0 * time.Second
 	defaultNTPServers     = []string{
 		"time.cloudflare.com",
@@ -59,7 +58,6 @@ func TimeSyncLoop() {
 			continue
 		}
 		log.Printf("Time sync successful, now is: %v, time taken: %v", time.Now(), time.Since(start))
-		timeSynced = true
 		time.Sleep(timeSyncInterval) // after the first sync is done
 	}
 }

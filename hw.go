@@ -14,7 +14,7 @@ func extractSerialNumber() (string, error) {
 		return "", err
 	}
 
-	r, err := regexp.Compile("Serial\\s*:\\s*(\\S+)")
+	r, err := regexp.Compile(`Serial\s*:\s*(\S+)`)
 	if err != nil {
 		return "", fmt.Errorf("failed to compile regex: %w", err)
 	}
@@ -27,7 +27,7 @@ func extractSerialNumber() (string, error) {
 	return matches[1], nil
 }
 
-func readOtpEntropy() ([]byte, error) {
+func readOtpEntropy() ([]byte, error) { //nolint:unused
 	content, err := os.ReadFile("/sys/bus/nvmem/devices/rockchip-otp0/nvmem")
 	if err != nil {
 		return nil, err

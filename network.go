@@ -107,7 +107,7 @@ func checkNetworkState() {
 	if newState != networkState {
 		fmt.Println("network state changed")
 		// restart MDNS
-		startMDNS()
+		_ = startMDNS()
 		networkState = newState
 		requestDisplayUpdate()
 	}
@@ -194,7 +194,7 @@ func init() {
 	done := make(chan struct{})
 
 	if err := netlink.LinkSubscribe(updates, done); err != nil {
-		fmt.Println("failed to subscribe to link updates: %v", err)
+		fmt.Printf("failed to subscribe to link updates: %v\n", err)
 		return
 	}
 
@@ -220,6 +220,6 @@ func init() {
 	}()
 	err := startMDNS()
 	if err != nil {
-		fmt.Println("failed to run mDNS: %v", err)
+		fmt.Printf("failed to run mDNS: %v\n", err)
 	}
 }

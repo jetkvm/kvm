@@ -212,7 +212,7 @@ func startBacklightTickers() {
 	// Don't start the tickers if the display is switched off.
 	// Set the display to off if that's the case.
 	if config.DisplayMaxBrightness == 0 {
-		setDisplayBrightness(0)
+		_ = setDisplayBrightness(0)
 		return
 	}
 
@@ -222,7 +222,7 @@ func startBacklightTickers() {
 		defer dimTicker.Stop()
 
 		go func() {
-			for {
+			for { //nolint:gosimple
 				select {
 				case <-dimTicker.C:
 					tick_displayDim()
@@ -237,7 +237,7 @@ func startBacklightTickers() {
 		defer offTicker.Stop()
 
 		go func() {
-			for {
+			for { //nolint:gosimple
 				select {
 				case <-offTicker.C:
 					tick_displayOff()
