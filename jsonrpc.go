@@ -293,6 +293,24 @@ type SSHKeyState struct {
 	SSHKey string `json:"sshKey"`
 }
 
+func rpcGetDeviceName() (string, error) {
+	LoadConfig()
+	return config.DeviceName, nil
+}
+
+func rpcSetDeviceName(deviceName string) error {
+	LoadConfig()
+	config.DeviceName = deviceName
+
+	err := SaveConfig()
+	if err != nil {
+		return fmt.Errorf("failed to save device name: %w", err)
+	}
+
+	log.Printf("[jsonrpc.go:rpcSetDeviceName] device name set to %s", deviceName)
+	return nil
+}
+
 func rpcGetDevModeState() (DevModeState, error) {
 	devModeEnabled := false
 	if _, err := os.Stat(devModeFile); err != nil {
@@ -755,6 +773,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setDevChannelState":     {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getUpdateStatus":        {Func: rpcGetUpdateStatus},
 	"tryUpdate":              {Func: rpcTryUpdate},
+	"getDeviceName":          {Func: rpcGetDeviceName},
+	"setDeviceName":          {Func: rpcSetDeviceName, Params: []string{"deviceName"}},
 	"getDevModeState":        {Func: rpcGetDevModeState},
 	"setDevModeState":        {Func: rpcSetDevModeState, Params: []string{"enabled"}},
 	"getSSHKeyState":         {Func: rpcGetSSHKeyState},

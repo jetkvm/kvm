@@ -25,6 +25,7 @@ type Config struct {
 	WakeOnLanDevices     []WakeOnLanDevice `json:"wake_on_lan_devices"`
 	EdidString           string            `json:"hdmi_edid_string"`
 	ActiveExtension      string            `json:"active_extension"`
+	DeviceName           string            `json:"device_name"`
 	DisplayMaxBrightness int               `json:"display_max_brightness"`
 	DisplayDimAfterSec   int               `json:"display_dim_after_sec"`
 	DisplayOffAfterSec   int               `json:"display_off_after_sec"`
@@ -36,9 +37,11 @@ var defaultConfig = &Config{
 	CloudURL:             "https://api.jetkvm.com",
 	AutoUpdateEnabled:    true, // Set a default value
 	ActiveExtension:      "",
+	DeviceName:           "JetKVM",
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes
+
 }
 
 var (

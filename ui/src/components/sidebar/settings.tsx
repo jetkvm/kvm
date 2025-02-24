@@ -19,6 +19,7 @@ import PointingFinger from "@/assets/pointing-finger.svg";
 import MouseIcon from "@/assets/mouse-icon.svg";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { SelectMenuBasic } from "../SelectMenuBasic";
+import { InputFieldWithLabel } from "@components/InputField";
 import { SystemVersionInfo } from "@components/UpdateDialog";
 import notifications from "@/notifications";
 import api from "../../api";
@@ -27,6 +28,7 @@ import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { CLOUD_APP, SIGNAL_API } from "@/ui.config";
+
 
 export function SettingsItem({
   title,
@@ -97,6 +99,7 @@ export default function SettingsSidebar() {
   const hideCursor = useSettingsStore(state => state.isCursorHidden);
   const setHideCursor = useSettingsStore(state => state.setCursorVisibility);
   const setDeveloperMode = useSettingsStore(state => state.setDeveloperMode);
+  const setDeviceName = useSettingsStore(state => state.setDeviceName);
   const setBacklightSettings = useSettingsStore(state => state.setBacklightSettings);
 
   const [currentVersions, setCurrentVersions] = useState<{
@@ -170,6 +173,18 @@ export default function SettingsSidebar() {
         return;
       }
       setAutoUpdate(enabled);
+    });
+  };
+
+  const handleDeviceNameChange = (deviceName: string) => {
+    send("setDeviceName", { deviceName }, resp => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to set device name: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      setDeviceName(deviceName);
     });
   };
 
@@ -338,6 +353,12 @@ export default function SettingsSidebar() {
       const result = resp.result as BacklightSettings;
       setBacklightSettings(result);
     })
+
+    send("getDeviceName", {}, resp => {
+      if ("error" in resp) return;
+      const result = resp.result as { deviceName: string };
+      setDeviceName(result.deviceName);
+    });
 
     send("getDevModeState", {}, resp => {
       if ("error" in resp) return;
@@ -831,6 +852,15 @@ export default function SettingsSidebar() {
               setCurrentTheme(e.target.value);
               handleThemeChange(e.target.value);
             }}
+          />
+        </SettingsItem>
+        <SettingsItem title="Device Name" description="Set your device name">
+          <InputFieldWithLabel
+            required
+            label="Device Name"
+            placeholder="Enter Device Name"
+            defaultValue={settings.deviceName}
+            onChange={e => handleDeviceNameChange(e.target.value)}
           />
         </SettingsItem>
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
