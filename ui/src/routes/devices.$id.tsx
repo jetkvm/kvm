@@ -31,7 +31,6 @@ import { useInterval } from "usehooks-ts";
 import SettingsSidebar from "@/components/sidebar/settings";
 import ConnectionStatsSidebar from "@/components/sidebar/connectionStats";
 import { JsonRpcRequest, useJsonRpc } from "@/hooks/useJsonRpc";
-import UpdateDialog from "@components/UpdateDialog";
 import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard";
 import api from "../api";
 import { DeviceStatus } from "./welcome-local";
@@ -478,16 +477,31 @@ export default function KvmIdRoute() {
         </div>
       </div>
 
-      <Modal
-        open={outlet !== null}
-        onClose={() => location.pathname !== "/other-session" && navigate("..")}
+      <div
+        onKeyUp={e => {
+          e.stopPropagation();
+        }}
+        onKeyDown={e => {
+          e.stopPropagation();
+          if (e.key === "Escape") {
+            if (location.pathname !== "/other-session") {
+              navigate("..");
+            }
+          }
+        }}
       >
-        <Outlet context={{ connectWebRTC }} />
-      </Modal>
+        <Modal
+          open={outlet !== null}
+          onClose={() => location.pathname !== "/other-session" && navigate("..")}
+        >
+          <Outlet context={{ connectWebRTC }} />
+        </Modal>
+      </div>
 
       {kvmTerminal && (
         <Terminal type="kvm" dataChannel={kvmTerminal} title="KVM Terminal" />
       )}
+
       {serialConsole && (
         <Terminal type="serial" dataChannel={serialConsole} title="Serial Console" />
       )}

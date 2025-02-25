@@ -18,16 +18,15 @@ import { isOnDevice } from "@/main";
 import PointingFinger from "@/assets/pointing-finger.svg";
 import MouseIcon from "@/assets/mouse-icon.svg";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { SelectMenuBasic } from "../SelectMenuBasic";
-import { SystemVersionInfo } from "@components/UpdateDialog";
+import { SelectMenuBasic } from "@/components/SelectMenuBasic";
+import { SystemVersionInfo } from "@/routes/devices.$id.update";
 import notifications from "@/notifications";
 import api from "../../api";
-import LocalAuthPasswordDialog from "@/components/LocalAuthPasswordDialog";
 import { LocalDevice } from "@routes/devices.$id";
 import { useRevalidator, useNavigate } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { CLOUD_APP, DEVICE_API } from "@/ui.config";
-import { InputFieldWithLabel } from "../InputField";
+import { InputFieldWithLabel } from "@/components/InputField";
 
 export function SettingsItem({
   title,
@@ -241,7 +240,7 @@ export default function SettingsSidebar() {
 
     setBacklightSettings(settings);
     handleBacklightSettingsSave();
-  }
+  };
 
   const handleBacklightSettingsSave = () => {
     send("setBacklightSettings", { params: settings.backlightSettings }, resp => {
@@ -385,7 +384,7 @@ export default function SettingsSidebar() {
       }
       const result = resp.result as BacklightSettings;
       setBacklightSettings(result);
-    })
+    });
 
     send("getDevModeState", {}, resp => {
       if ("error" in resp) return;
@@ -431,8 +430,9 @@ export default function SettingsSidebar() {
     }
   }, []);
 
-  const { setModalView: setLocalAuthModalView } = useLocalAuthModalStore();
-  const [isLocalAuthDialogOpen, setIsLocalAuthDialogOpen] = useState(false);
+  const { setModalView: setLocalAuthModalView, modalView: localAuthModalView } =
+    useLocalAuthModalStore();
+  const [isLocalAuthDialogOpen] = useState(false);
 
   useEffect(() => {
     if (isOnDevice) getDevice();
@@ -440,13 +440,13 @@ export default function SettingsSidebar() {
 
   useEffect(() => {
     if (!isOnDevice) return;
-    // Refresh device status when the local auth dialog is closed
-    if (!isLocalAuthDialogOpen) {
+    // Refresh device status when the local auth dialog succeeds
+    if (
+      ["creationSuccess", "deleteSuccess", "updateSuccess"].includes(localAuthModalView)
+    ) {
       getDevice();
     }
-  }, [getDevice, isLocalAuthDialogOpen]);
-
-  const revalidator = useRevalidator();
+  }, [getDevice, isLocalAuthDialogOpen, localAuthModalView]);
 
   const [currentTheme, setCurrentTheme] = useState(() => {
     return localStorage.theme || "system";
@@ -484,18 +484,18 @@ export default function SettingsSidebar() {
 
   return (
     <div
-      className="grid h-full shadow-sm grid-rows-headerBody"
+      className="grid h-full grid-rows-headerBody shadow-sm"
       // Prevent the keyboard entries from propagating to the document where they are listened for and sent to the KVM
       onKeyDown={e => e.stopPropagation()}
       onKeyUp={e => e.stopPropagation()}
     >
       <SidebarHeader title="Settings" setSidebarView={setSidebarView} />
       <div
-        className="h-full px-4 py-2 space-y-4 overflow-y-scroll bg-white dark:bg-slate-900"
+        className="h-full space-y-4 overflow-y-scroll bg-white px-4 py-2 dark:bg-slate-900"
         ref={sidebarRef}
       >
         <div className="space-y-4">
-          <div className="flex items-center justify-between mt-2 gap-x-2">
+          <div className="mt-2 flex items-center justify-between gap-x-2">
             <SettingsItem
               title="Check for Updates"
               description={
@@ -552,17 +552,17 @@ export default function SettingsSidebar() {
               <SettingsItem title="Modes" description="Choose the mouse input mode" />
               <div className="flex items-center gap-4">
                 <button
-                  className="block group grow"
+                  className="group block grow"
                   onClick={() => console.log("Absolute mouse mode clicked")}
                 >
                   <GridCard>
-                    <div className="flex items-center px-4 py-3 group gap-x-4">
+                    <div className="group flex items-center gap-x-4 px-4 py-3">
                       <img
                         className="w-6 shrink-0 dark:invert"
                         src={PointingFinger}
                         alt="Finger touching a screen"
                       />
-                      <div className="flex items-center justify-between grow">
+                      <div className="flex grow items-center justify-between">
                         <div className="text-left">
                           <h3 className="text-sm font-semibold text-black dark:text-white">
                             Absolute
@@ -571,19 +571,23 @@ export default function SettingsSidebar() {
                             Most convenient
                           </p>
                         </div>
-                        <CheckCircleIcon className="w-4 h-4 text-blue-700 dark:text-blue-500" />
+                        <CheckCircleIcon className="h-4 w-4 text-blue-700 dark:text-blue-500" />
                       </div>
                     </div>
                   </GridCard>
                 </button>
                 <button
-                  className="block opacity-50 cursor-not-allowed group grow"
+                  className="group block grow cursor-not-allowed opacity-50"
                   disabled
                 >
                   <GridCard>
-                    <div className="flex items-center px-4 py-3 gap-x-4">
-                      <img className="w-6 shrink-0 dark:invert" src={MouseIcon} alt="Mouse icon" />
-                      <div className="flex items-center justify-between grow">
+                    <div className="flex items-center gap-x-4 px-4 py-3">
+                      <img
+                        className="w-6 shrink-0 dark:invert"
+                        src={MouseIcon}
+                        alt="Mouse icon"
+                      />
+                      <div className="flex grow items-center justify-between">
                         <div className="text-left">
                           <h3 className="text-sm font-semibold text-black dark:text-white">
                             Relative
@@ -601,7 +605,7 @@ export default function SettingsSidebar() {
           </div>
         </div>
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
-        <div className="pb-2 space-y-4">
+        <div className="space-y-4 pb-2">
           <SectionHeader
             title="Video"
             description="Configure display settings and EDID for optimal compatibility"
@@ -680,15 +684,15 @@ export default function SettingsSidebar() {
         {isOnDevice && (
           <>
             <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
-            <div className="pb-4 space-y-4">
+            <div className="space-y-4 pb-4">
               <SectionHeader
                 title="JetKVM Cloud"
                 description="Connect your device to the cloud for secure remote access and management"
               />
 
               <GridCard>
-                <div className="flex items-start p-4 gap-x-4">
-                  <ShieldCheckIcon className="w-8 h-8 mt-1 text-blue-600 shrink-0 dark:text-blue-500" />
+                <div className="flex items-start gap-x-4 p-4">
+                  <ShieldCheckIcon className="mt-1 h-8 w-8 shrink-0 text-blue-600 dark:text-blue-500" />
                   <div className="space-y-3">
                     <div className="space-y-2">
                       <h3 className="text-base font-bold text-slate-900 dark:text-white">
@@ -780,7 +784,7 @@ export default function SettingsSidebar() {
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
         {isOnDevice ? (
           <>
-            <div className="pb-2 space-y-4">
+            <div className="space-y-4 pb-2">
               <SectionHeader
                 title="Local Access"
                 description="Manage the mode of local access to the device"
@@ -798,7 +802,7 @@ export default function SettingsSidebar() {
                       text="Disable Protection"
                       onClick={() => {
                         setLocalAuthModalView("deletePassword");
-                        setIsLocalAuthDialogOpen(true);
+                        navigate("local-auth");
                       }}
                     />
                   ) : (
@@ -808,7 +812,7 @@ export default function SettingsSidebar() {
                       text="Enable Password"
                       onClick={() => {
                         setLocalAuthModalView("createPassword");
-                        setIsLocalAuthDialogOpen(true);
+                        navigate("local-auth");
                       }}
                     />
                   )}
@@ -825,7 +829,7 @@ export default function SettingsSidebar() {
                       text="Change Password"
                       onClick={() => {
                         setLocalAuthModalView("updatePassword");
-                        setIsLocalAuthDialogOpen(true);
+                        navigate("local-auth");
                       }}
                     />
                   </SettingsItem>
@@ -835,7 +839,7 @@ export default function SettingsSidebar() {
             <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
           </>
         ) : null}
-        <div className="pb-2 space-y-4">
+        <div className="space-y-4 pb-2">
           <SectionHeader
             title="Updates"
             description="Manage software updates and version information"
@@ -889,13 +893,13 @@ export default function SettingsSidebar() {
           />
         </SettingsItem>
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
-        <div className="pb-2 space-y-4">
-          <SectionHeader
-            title="Hardware"
-            description="Configure the JetKVM Hardware"
-          />
+        <div className="space-y-4 pb-2">
+          <SectionHeader title="Hardware" description="Configure the JetKVM Hardware" />
         </div>
-        <SettingsItem title="Display Brightness" description="Set the brightness of the display">
+        <SettingsItem
+          title="Display Brightness"
+          description="Set the brightness of the display"
+        >
           <SelectMenuBasic
             size="SM"
             label=""
@@ -907,63 +911,69 @@ export default function SettingsSidebar() {
               { value: "64", label: "High" },
             ]}
             onChange={e => {
-              settings.backlightSettings.max_brightness = parseInt(e.target.value)
+              settings.backlightSettings.max_brightness = parseInt(e.target.value);
               handleBacklightSettingsChange(settings.backlightSettings);
             }}
           />
         </SettingsItem>
         {settings.backlightSettings.max_brightness != 0 && (
           <>
-          <SettingsItem title="Dim Display After" description="Set how long to wait before dimming the display">
-            <SelectMenuBasic
-              size="SM"
-              label=""
-              value={settings.backlightSettings.dim_after.toString()}
-              options={[
-                { value: "0", label: "Never" },
-                { value: "60", label: "1 Minute" },
-                { value: "300", label: "5 Minutes" },
-                { value: "600", label: "10 Minutes" },
-                { value: "1800", label: "30 Minutes" },
-                { value: "3600", label: "1 Hour" },
-              ]}
-              onChange={e => {
-                settings.backlightSettings.dim_after = parseInt(e.target.value)
-                handleBacklightSettingsChange(settings.backlightSettings);
-              }}
-            />
-          </SettingsItem>
-          <SettingsItem title="Turn off Display After" description="Set how long to wait before turning off the display">
-            <SelectMenuBasic
-              size="SM"
-              label=""
-              value={settings.backlightSettings.off_after.toString()}
-              options={[
-                { value: "0", label: "Never" },
-                { value: "300", label: "5 Minutes" },
-                { value: "600", label: "10 Minutes" },
-                { value: "1800", label: "30 Minutes" },
-                { value: "3600", label: "1 Hour" },
-              ]}
-              onChange={e => {
-                settings.backlightSettings.off_after = parseInt(e.target.value)
-                handleBacklightSettingsChange(settings.backlightSettings);
-              }}
-            />
-          </SettingsItem>
+            <SettingsItem
+              title="Dim Display After"
+              description="Set how long to wait before dimming the display"
+            >
+              <SelectMenuBasic
+                size="SM"
+                label=""
+                value={settings.backlightSettings.dim_after.toString()}
+                options={[
+                  { value: "0", label: "Never" },
+                  { value: "60", label: "1 Minute" },
+                  { value: "300", label: "5 Minutes" },
+                  { value: "600", label: "10 Minutes" },
+                  { value: "1800", label: "30 Minutes" },
+                  { value: "3600", label: "1 Hour" },
+                ]}
+                onChange={e => {
+                  settings.backlightSettings.dim_after = parseInt(e.target.value);
+                  handleBacklightSettingsChange(settings.backlightSettings);
+                }}
+              />
+            </SettingsItem>
+            <SettingsItem
+              title="Turn off Display After"
+              description="Set how long to wait before turning off the display"
+            >
+              <SelectMenuBasic
+                size="SM"
+                label=""
+                value={settings.backlightSettings.off_after.toString()}
+                options={[
+                  { value: "0", label: "Never" },
+                  { value: "300", label: "5 Minutes" },
+                  { value: "600", label: "10 Minutes" },
+                  { value: "1800", label: "30 Minutes" },
+                  { value: "3600", label: "1 Hour" },
+                ]}
+                onChange={e => {
+                  settings.backlightSettings.off_after = parseInt(e.target.value);
+                  handleBacklightSettingsChange(settings.backlightSettings);
+                }}
+              />
+            </SettingsItem>
           </>
         )}
         <p className="text-xs text-slate-600 dark:text-slate-400">
           The display will wake up when the connection state changes, or when touched.
         </p>
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
-        <div className="pb-2 space-y-4">
+        <div className="space-y-4 pb-2">
           <SectionHeader
             title="Advanced"
             description="Access additional settings for troubleshooting and customization"
           />
 
-          <div className="pb-4 space-y-4">
+          <div className="space-y-4 pb-4">
             <SettingsItem
               title="Developer Mode"
               description="Enable advanced features for developers"
@@ -1079,14 +1089,6 @@ export default function SettingsSidebar() {
           </div>
         </div>
       </div>
-      <LocalAuthPasswordDialog
-        open={isLocalAuthDialogOpen}
-        setOpen={x => {
-          // Revalidate the current route to refresh the local device status and dependent UI components
-          revalidator.revalidate();
-          setIsLocalAuthDialogOpen(x);
-        }}
-      />
     </div>
   );
 }
