@@ -185,6 +185,7 @@ export default function SettingsSidebar() {
         return;
       }
       setDeviceName(deviceName);
+      document.title = deviceName;
     });
   };
 
@@ -356,8 +357,9 @@ export default function SettingsSidebar() {
 
     send("getDeviceName", {}, resp => {
       if ("error" in resp) return;
-      const result = resp.result as { deviceName: string };
-      setDeviceName(result.deviceName);
+      const deviceName = resp.result as string;
+      setDeviceName(deviceName);
+      document.title = deviceName;
     });
 
     send("getDevModeState", {}, resp => {
@@ -857,7 +859,7 @@ export default function SettingsSidebar() {
         <SettingsItem title="Device Name" description="Set your device name">
           <InputFieldWithLabel
             required
-            label="Device Name"
+            label=""
             placeholder="Enter Device Name"
             defaultValue={settings.deviceName}
             onChange={e => handleDeviceNameChange(e.target.value)}
