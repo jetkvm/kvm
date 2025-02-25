@@ -31,6 +31,7 @@ import { CLOUD_API } from "./ui.config";
 import OtherSessionRoute from "./routes/devices.$id.other-session";
 import UpdateRoute from "./routes/devices.$id.update";
 import LocalAuthRoute from "./routes/devices.$id.local-auth";
+import MountRoute from "./routes/devices.$id.mount";
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
@@ -91,6 +92,10 @@ if (isOnDevice) {
           path: "local-auth",
           element: <LocalAuthRoute />,
         },
+        {
+          path: "mount",
+          element: <MountRoute />,
+        },
       ],
     },
 
@@ -146,6 +151,10 @@ if (isOnDevice) {
                 {
                   path: "local-auth",
                   element: <LocalAuthRoute />,
+                },
+                {
+                  path: "mount",
+                  element: <MountRoute />,
                 },
               ],
             },
