@@ -478,16 +478,10 @@ export default function KvmIdRoute() {
       </div>
 
       <div
-        onKeyUp={e => {
-          e.stopPropagation();
-        }}
+        onKeyUp={e => e.stopPropagation()}
         onKeyDown={e => {
           e.stopPropagation();
-          if (e.key === "Escape") {
-            if (location.pathname !== "/other-session") {
-              navigate("..");
-            }
-          }
+          if (e.key === "Escape") navigate("..");
         }}
       >
         <Modal
