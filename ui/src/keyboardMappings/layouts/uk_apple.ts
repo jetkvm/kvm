@@ -16,6 +16,7 @@ export const charsUKApple = {
     "£": { key: "Digit3", shift: true },
     "@": { key: "Digit2", shift: true },
     "\"": { key: "Quote", shift: true },
+    "¬": { key: "KeyL", shift: false, altLeft: true},
 } as Record<string, { key: string; shift: boolean; altLeft?: boolean; altRight?: boolean; }>;
   
 // Modifiers are typically the same between UK and US layouts

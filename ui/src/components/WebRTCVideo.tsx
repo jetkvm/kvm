@@ -17,6 +17,10 @@ import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { ConnectionErrorOverlay, HDMIErrorOverlay, LoadingOverlay } from "./VideoOverlay";
 
+// TODO Implement keyboard lock API to resolve #127
+// https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock
+// An appropriate error message will need to be displayed in order to alert users to browser compatibility issues.
+
 export default function WebRTCVideo() {
   const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
   const [chars, setChars] = useState(useKeyboardMappingsStore.chars);
@@ -155,8 +159,6 @@ export default function WebRTCVideo() {
       // Invert the scroll value to match expected behavior
       const invertedScroll = -roundedScroll;
 
-      // TODO remove debug logs
-      console.log("wheelReport", { wheelY: invertedScroll });
       send("wheelReport", { wheelY: invertedScroll });
 
       // TODO this is making scrolling feel slow and sluggish, also throwing a violation in chrome
@@ -179,7 +181,7 @@ export default function WebRTCVideo() {
       // TODO remove debug logging
       console.log(shiftKey + " " +ctrlKey + " " +altKey + " " +metaKey + " " +mappedKeyModifers.shift + " "+mappedKeyModifers.altLeft + " "+mappedKeyModifers.altRight + " ")
 
-      const filteredModifiers = activeModifiers.filter(Boolean);3
+      const filteredModifiers = activeModifiers.filter(Boolean);
       // Example: activeModifiers = [0x01, 0x02, 0x04, 0x08]
       // Assuming 0x01 = ControlLeft, 0x02 = ShiftLeft, 0x04 = AltLeft, 0x08 = MetaLeft
       return (
@@ -210,8 +212,13 @@ export default function WebRTCVideo() {
             modifier =>
               altKey ||
               mappedKeyModifers.altLeft ||
+              (modifier !== modifiers["AltLeft"]),
+          )
+          .filter(
+            modifier =>
+              altKey ||
               mappedKeyModifers.altRight ||
-              (modifier !== modifiers["AltLeft"] && modifier !== modifiers["AltRight"]),
+              (modifier !== modifiers["AltRight"])
           )
           // Meta: Keep if Meta is pressed or if the key isn't a Meta key
           // Example: If metaKey is true, keep all modifiers
@@ -230,8 +237,9 @@ export default function WebRTCVideo() {
     async (e: KeyboardEvent) => {
       e.preventDefault();
       const prev = useHidStore.getState();
-      let code = e.code;
-      const localisedKey = e.key;
+      const code = e.code;
+      console.log("MAPPING ENABLED: " + settings.keyboardMappingEnabled)
+      var localisedKey = settings.keyboardMappingEnabled ? e.key : code;
       console.log(e);
       console.log("Localised Key: " + localisedKey);
 
@@ -282,12 +290,12 @@ export default function WebRTCVideo() {
       // event, so we need to clear the keys after a short delay
       // https://bugs.chromium.org/p/chromium/issues/detail?id=28089
       // https://bugzilla.mozilla.org/show_bug.cgi?id=1299553
-      // TODO add this to the activekey state
-      // TODO set this to remove from activekeystate as well
       if (e.metaKey) {
         setTimeout(() => {
           const prev = useHidStore.getState();
           sendKeyboardEvent([], newModifiers || prev.activeModifiers);
+          activeKeyState.current.delete("MetaLeft");
+          activeKeyState.current.delete("MetaRight");
         }, 10);
       }
 
@@ -302,6 +310,7 @@ export default function WebRTCVideo() {
       chars,
       keys,
       modifiers,
+      settings,
     ],
   );
 

@@ -79,6 +79,7 @@ export default function SettingsSidebar() {
   const settings = useSettingsStore();
   const [send] = useJsonRpc();
   const [keyboardLayout, setKeyboardLayout] = useState("us");
+  const [kbMappingEnabled, setKeyboardMapping] = useState(false);
   const [streamQuality, setStreamQuality] = useState("1");
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [devChannel, setDevChannel] = useState(false);
@@ -158,6 +159,20 @@ export default function SettingsSidebar() {
       }
       useKeyboardMappingsStore.setLayout(keyboardLayout)
       setKeyboardLayout(keyboardLayout);
+    });
+  };
+
+  const handleKeyboardMappingChange = (enabled: boolean) => {
+    send("setKeyboardMappingState", { enabled }, resp => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to set keyboard maping state state: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      settings.setkeyboardMappingEnabled(enabled);
+      useKeyboardMappingsStore.setMappingsState(enabled);
+      setKeyboardMapping(enabled);
     });
   };
 
@@ -293,6 +308,13 @@ export default function SettingsSidebar() {
       if ("error" in resp) return;
       setKeyboardLayout(String(resp.result));
       useKeyboardMappingsStore.setLayout(String(resp.result))
+    });
+
+    send("getKeyboardMappingState", {}, resp => {
+      if ("error" in resp) return;
+      setKeyboardMapping(resp.result as boolean);
+      settings.setkeyboardMappingEnabled(resp.result as boolean);
+      useKeyboardMappingsStore.setMappingsState(resp.result as boolean);
     });
 
     send("getStreamQualityFactor", {}, resp => {
@@ -536,20 +558,32 @@ export default function SettingsSidebar() {
             description="Customize keyboard behaviour"
           />
           <div className="space-y-4">
+          <SettingsItem
+              title="Enable Keyboard Mapping"
+              description="Enables mapping of keys from your native layout to the layout of the target device"
+            >
+              <Checkbox
+                checked={kbMappingEnabled}
+                onChange={e => {
+                  handleKeyboardMappingChange(e.target.checked);
+                }}
+              />
+            </SettingsItem>
             <SettingsItem
               title="Keyboard Layout"
               description="Set keyboard layout (this should match the target machine)"
             >
               <SelectMenuBasic
-                size="SM"
+                size="SM_Wide"
                 label=""
-                // TODO figure out how to make this selector wider like the EDID one?
-                //fullWidthƒ
+                // TODO figure out how to make this selector wider like the EDID one?, (done but not sure if in desired way.)
+                //fullWidth
                 value={keyboardLayout}
                 options={[
-                  { value: "uk", label: "GB" },
-                  { value: "uk_apple", label: "GB Apple" },
                   { value: "us", label: "US" },
+                  { value: "uk", label: "UK" },
+                  { value: "uk_apple", label: "UK (Apple)" },
+                  { value: "de_t1", label: "German (T1)" },
                 ]}
                 onChange={e => handleKeyboardLayoutChange(e.target.value)}
               />

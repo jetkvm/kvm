@@ -12,25 +12,27 @@ type WakeOnLanDevice struct {
 }
 
 type Config struct {
-	CloudURL          string            `json:"cloud_url"`
-	CloudToken        string            `json:"cloud_token"`
-	GoogleIdentity    string            `json:"google_identity"`
-	JigglerEnabled    bool              `json:"jiggler_enabled"`
-	AutoUpdateEnabled bool              `json:"auto_update_enabled"`
-	KeyboardLayout    string            `json:"keyboard_layout"`
-	IncludePreRelease bool              `json:"include_pre_release"`
-	HashedPassword    string            `json:"hashed_password"`
-	LocalAuthToken    string            `json:"local_auth_token"`
-	LocalAuthMode     string            `json:"localAuthMode"` //TODO: fix it with migration
-	WakeOnLanDevices  []WakeOnLanDevice `json:"wake_on_lan_devices"`
+	CloudURL               string            `json:"cloud_url"`
+	CloudToken             string            `json:"cloud_token"`
+	GoogleIdentity         string            `json:"google_identity"`
+	JigglerEnabled         bool              `json:"jiggler_enabled"`
+	AutoUpdateEnabled      bool              `json:"auto_update_enabled"`
+	KeyboardLayout         string            `json:"keyboard_layout"`
+	KeyboardMappingEnabled bool              `json:"keyboard_mapping_enabled"`
+	IncludePreRelease      bool              `json:"include_pre_release"`
+	HashedPassword         string            `json:"hashed_password"`
+	LocalAuthToken         string            `json:"local_auth_token"`
+	LocalAuthMode          string            `json:"localAuthMode"` //TODO: fix it with migration
+	WakeOnLanDevices       []WakeOnLanDevice `json:"wake_on_lan_devices"`
 }
 
 const configPath = "/userdata/kvm_config.json"
 
 var defaultConfig = &Config{
-	CloudURL:          "https://api.jetkvm.com",
-	AutoUpdateEnabled: true, // Set a default value
-	KeyboardLayout: "us",
+	CloudURL:               "https://api.jetkvm.com",
+	AutoUpdateEnabled:      true, // Set a default value
+	KeyboardLayout:         "us",
+	KeyboardMappingEnabled: false,
 }
 
 var config *Config

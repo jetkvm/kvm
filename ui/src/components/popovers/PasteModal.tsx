@@ -79,7 +79,7 @@ export default function PasteModal() {
     } catch (error) {
       notifications.error("Failed to paste text");
     }
-  }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode]);
+  }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode, chars, keys, modifiers]);
 
   useEffect(() => {
     if (TextAreaRef.current) {
@@ -143,6 +143,9 @@ export default function PasteModal() {
                         <span className="text-xs text-red-500 dark:text-red-400">
                           The following characters won&apos;t be pasted as the current keyboard layout does not contain a valid mapping:{" "}
                           {invalidChars.join(", ")}
+                        </span>
+                        <span className="text-xs text-red-500 dark:text-red-400">
+                          Tip: You can set your desired keyboard layout in settings, and remember to enable keyboard mapping.
                         </span>
                       </div>
                     )}
