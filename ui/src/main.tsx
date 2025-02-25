@@ -28,6 +28,7 @@ import WelcomeLocalModeRoute from "./routes/welcome-local.mode";
 import WelcomeRoute from "./routes/welcome-local";
 import WelcomeLocalPasswordRoute from "./routes/welcome-local.password";
 import { CLOUD_API } from "./ui.config";
+import OtherSessionRoute from "./routes/devices.$id.other-session";
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
@@ -75,7 +76,14 @@ if (isOnDevice) {
       errorElement: <ErrorBoundary />,
       element: <DeviceRoute />,
       loader: DeviceRoute.loader,
+      children: [
+        {
+          path: "other-session",
+          element: <OtherSessionRoute />,
+        },
+      ],
     },
+
     {
       path: "/adopt",
       element: <AdoptRoute />,
@@ -116,6 +124,12 @@ if (isOnDevice) {
               path: "devices/:id",
               element: <DeviceRoute />,
               loader: DeviceRoute.loader,
+              children: [
+                {
+                  path: "other-session",
+                  element: <OtherSessionRoute />,
+                },
+              ],
             },
             {
               path: "devices/:id/deregister",
@@ -164,8 +178,8 @@ function ErrorBoundary() {
   }
 
   return (
-    <div className="w-full h-full">
-      <div className="flex items-center justify-center h-full">
+    <div className="h-full w-full">
+      <div className="flex h-full items-center justify-center">
         <div className="w-full max-w-2xl">
           <EmptyCard
             IconElm={ExclamationTriangleIcon}

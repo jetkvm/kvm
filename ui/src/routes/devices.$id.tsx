@@ -16,10 +16,12 @@ import {
 import WebRTCVideo from "@components/WebRTCVideo";
 import {
   LoaderFunctionArgs,
+  Outlet,
   Params,
   redirect,
   useLoaderData,
   useNavigate,
+  useOutlet,
   useParams,
   useSearchParams,
 } from "react-router-dom";
@@ -34,9 +36,9 @@ import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard
 import api from "../api";
 import { DeviceStatus } from "./welcome-local";
 import FocusTrap from "focus-trap-react";
-import OtherSessionConnectedModal from "@/components/OtherSessionConnectedModal";
 import Terminal from "@components/Terminal";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import Modal from "../components/Modal";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -130,9 +132,6 @@ export default function KvmIdRoute() {
     setIsUpdateDialogOpen,
     setModalView,
   } = useUpdateStore();
-
-  const [isOtherSessionConnectedModalOpen, setIsOtherSessionConnectedModalOpen] =
-    useState(false);
 
   const sdp = useCallback(
     async (event: RTCPeerConnectionIceEvent, pc: RTCPeerConnection) => {
@@ -243,8 +242,7 @@ export default function KvmIdRoute() {
     ) {
       return;
     }
-    // We don't want to connect if another session is connected
-    if (isOtherSessionConnectedModalOpen) return;
+    if (location.pathname.includes("other-session")) return;
     connectWebRTC();
   }, 3000);
 
@@ -334,7 +332,7 @@ export default function KvmIdRoute() {
   function onJsonRpcRequest(resp: JsonRpcRequest) {
     if (resp.method === "otherSessionConnected") {
       console.log("otherSessionConnected", resp.params);
-      setIsOtherSessionConnectedModalOpen(true);
+      navigate("other-session");
     }
 
     if (resp.method === "usbState") {
@@ -445,6 +443,8 @@ export default function KvmIdRoute() {
     };
   }, [kvmTerminal]);
 
+  const outlet = useOutlet();
+
   return (
     <>
       <Transition show={!isUpdateDialogOpen && otaState.updating}>
@@ -486,18 +486,16 @@ export default function KvmIdRoute() {
           </div>
         </div>
       </div>
-      <UpdateDialog open={isUpdateDialogOpen} setOpen={setIsUpdateDialogOpen} />
-      <OtherSessionConnectedModal
-        open={isOtherSessionConnectedModalOpen}
-        setOpen={state => {
-          if (!state) connectWebRTC().then(r => r);
 
-          // It takes some time for the WebRTC connection to be established, so we wait a bit before closing the modal
-          setTimeout(() => {
-            setIsOtherSessionConnectedModalOpen(state);
-          }, 1000);
-        }}
-      />
+      <Modal
+        open={outlet !== null}
+        onClose={() => location.pathname !== "/other-session" && navigate("..")}
+      >
+        <Outlet context={{ connectWebRTC }} />
+      </Modal>
+
+      <UpdateDialog open={isUpdateDialogOpen} setOpen={setIsUpdateDialogOpen} />
+
       {kvmTerminal && (
         <Terminal type="kvm" dataChannel={kvmTerminal} title="KVM Terminal" />
       )}
