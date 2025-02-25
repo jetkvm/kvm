@@ -23,7 +23,7 @@ import { SystemVersionInfo } from "@/routes/devices.$id.update";
 import notifications from "@/notifications";
 import api from "../../api";
 import { LocalDevice } from "@routes/devices.$id";
-import { useRevalidator, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { CLOUD_APP, DEVICE_API } from "@/ui.config";
 import { InputFieldWithLabel } from "@/components/InputField";
@@ -432,7 +432,6 @@ export default function SettingsSidebar() {
 
   const { setModalView: setLocalAuthModalView, modalView: localAuthModalView } =
     useLocalAuthModalStore();
-  const [isLocalAuthDialogOpen] = useState(false);
 
   useEffect(() => {
     if (isOnDevice) getDevice();
@@ -446,7 +445,7 @@ export default function SettingsSidebar() {
     ) {
       getDevice();
     }
-  }, [getDevice, isLocalAuthDialogOpen, localAuthModalView]);
+  }, [getDevice, localAuthModalView]);
 
   const [currentTheme, setCurrentTheme] = useState(() => {
     return localStorage.theme || "system";
