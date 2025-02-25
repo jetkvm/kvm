@@ -303,7 +303,8 @@ export const useSettingsStore = create(
         dim_after: 10000,
         off_after: 50000,
       },
-      setBacklightSettings: (settings: BacklightSettings) => set({ backlightSettings: settings }),
+      setBacklightSettings: (settings: BacklightSettings) =>
+        set({ backlightSettings: settings }),
     }),
     {
       name: "settings",
@@ -484,8 +485,6 @@ export interface UpdateState {
     | "updateCompleted"
     | "error";
   setModalView: (view: UpdateState["modalView"]) => void;
-  isUpdateDialogOpen: boolean;
-  setIsUpdateDialogOpen: (isOpen: boolean) => void;
   setUpdateErrorMessage: (errorMessage: string) => void;
   updateErrorMessage: string | null;
 }
@@ -520,8 +519,6 @@ export const useUpdateStore = create<UpdateState>(set => ({
     set({ updateDialogHasBeenMinimized: hasBeenMinimized }),
   modalView: "loading",
   setModalView: view => set({ modalView: view }),
-  isUpdateDialogOpen: false,
-  setIsUpdateDialogOpen: isOpen => set({ isUpdateDialogOpen: isOpen }),
   updateErrorMessage: null,
   setUpdateErrorMessage: errorMessage => set({ updateErrorMessage: errorMessage }),
 }));

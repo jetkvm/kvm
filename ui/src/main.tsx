@@ -29,6 +29,7 @@ import WelcomeRoute from "./routes/welcome-local";
 import WelcomeLocalPasswordRoute from "./routes/welcome-local.password";
 import { CLOUD_API } from "./ui.config";
 import OtherSessionRoute from "./routes/devices.$id.other-session";
+import UpdateRoute from "./routes/devices.$id.update";
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
@@ -81,6 +82,10 @@ if (isOnDevice) {
           path: "other-session",
           element: <OtherSessionRoute />,
         },
+        {
+          path: "update",
+          element: <UpdateRoute />,
+        },
       ],
     },
 
@@ -128,6 +133,10 @@ if (isOnDevice) {
                 {
                   path: "other-session",
                   element: <OtherSessionRoute />,
+                },
+                {
+                  path: "update",
+                  element: <UpdateRoute />,
                 },
               ],
             },

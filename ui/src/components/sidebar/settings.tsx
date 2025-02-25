@@ -24,7 +24,7 @@ import notifications from "@/notifications";
 import api from "../../api";
 import LocalAuthPasswordDialog from "@/components/LocalAuthPasswordDialog";
 import { LocalDevice } from "@routes/devices.$id";
-import { useRevalidator } from "react-router-dom";
+import { useRevalidator, useNavigate } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { CLOUD_APP, DEVICE_API } from "@/ui.config";
 import { InputFieldWithLabel } from "../InputField";
@@ -267,14 +267,16 @@ export default function SettingsSidebar() {
     });
   }, [send, sshKey]);
 
-  const { setIsUpdateDialogOpen, setModalView, otaState } = useUpdateStore();
+  const { setModalView, otaState } = useUpdateStore();
+  const navigate = useNavigate();
+
   const handleCheckForUpdates = () => {
     if (otaState.updating) {
       setModalView("updating");
-      setIsUpdateDialogOpen(true);
+      navigate("update");
     } else {
       setModalView("loading");
-      setIsUpdateDialogOpen(true);
+      navigate("update");
     }
   };
 

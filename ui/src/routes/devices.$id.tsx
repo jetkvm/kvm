@@ -125,13 +125,7 @@ export default function KvmIdRoute() {
   const setTransceiver = useRTCStore(state => state.setTransceiver);
 
   const navigate = useNavigate();
-  const {
-    otaState,
-    setOtaState,
-    isUpdateDialogOpen,
-    setIsUpdateDialogOpen,
-    setModalView,
-  } = useUpdateStore();
+  const { otaState, setOtaState, setModalView } = useUpdateStore();
 
   const sdp = useCallback(
     async (event: RTCPeerConnectionIceEvent, pc: RTCPeerConnection) => {
@@ -356,7 +350,7 @@ export default function KvmIdRoute() {
 
         if (otaState.error) {
           setModalView("error");
-          setIsUpdateDialogOpen(true);
+          navigate("update");
           return;
         }
 
@@ -387,10 +381,10 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (queryParams.get("updateSuccess")) {
       setModalView("updateCompleted");
-      setIsUpdateDialogOpen(true);
+      navigate("update");
       setQueryParams({});
     }
-  }, [queryParams, setIsUpdateDialogOpen, setModalView, setQueryParams]);
+  }, [navigate, queryParams, setModalView, setQueryParams]);
 
   const diskChannel = useRTCStore(state => state.diskChannel)!;
   const file = useMountMediaStore(state => state.localFile)!;
@@ -444,16 +438,13 @@ export default function KvmIdRoute() {
   }, [kvmTerminal]);
 
   const outlet = useOutlet();
-
+  const isUpdateDialogOpen = location.pathname.includes("/update");
   return (
     <>
       <Transition show={!isUpdateDialogOpen && otaState.updating}>
         <div className="pointer-events-none fixed inset-0 z-10 mx-auto flex h-full w-full max-w-xl translate-y-8 items-start justify-center">
           <div className="transition duration-1000 ease-in data-[closed]:opacity-0">
-            <UpdateInProgressStatusCard
-              setIsUpdateDialogOpen={setIsUpdateDialogOpen}
-              setModalView={setModalView}
-            />
+            <UpdateInProgressStatusCard />
           </div>
         </div>
       </Transition>
@@ -493,8 +484,6 @@ export default function KvmIdRoute() {
       >
         <Outlet context={{ connectWebRTC }} />
       </Modal>
-
-      <UpdateDialog open={isUpdateDialogOpen} setOpen={setIsUpdateDialogOpen} />
 
       {kvmTerminal && (
         <Terminal type="kvm" dataChannel={kvmTerminal} title="KVM Terminal" />
