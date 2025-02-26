@@ -1,6 +1,7 @@
 import { LoaderFunctionArgs, redirect } from "react-router-dom";
-import api from "../api";
+
 import { CLOUD_APP, DEVICE_API } from "@/ui.config";
+import api from "@/api";
 
 const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);

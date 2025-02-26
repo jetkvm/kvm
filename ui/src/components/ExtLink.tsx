@@ -1,4 +1,5 @@
 import React from "react";
+
 import { cx } from "@/cva.config";
 
 export default function ExtLink({

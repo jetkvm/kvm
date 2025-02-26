@@ -1,9 +1,11 @@
+import { useEffect } from "react";
+import { useInterval } from "usehooks-ts";
+
 import SidebarHeader from "@components/SidebarHeader";
 import { GridCard } from "@components/Card";
-import { useEffect } from "react";
 import { useRTCStore, useUiStore } from "@/hooks/stores";
 import StatChart from "@components/StatChart";
-import { useInterval } from "usehooks-ts";
+
 
 function createChartArray<T, K extends keyof T>(
   stream: Map<number, T>,

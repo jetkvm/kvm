@@ -1,9 +1,10 @@
-import { Button, LinkButton } from "@components/Button";
-import Card from "@components/Card";
 import { MdConnectWithoutContact } from "react-icons/md";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { Link } from "react-router-dom";
 import { LuEllipsisVertical } from "react-icons/lu";
+
+import Card from "@components/Card";
+import { Button, LinkButton } from "@components/Button";
 
 function getRelativeTimeString(date: Date | number, lang = navigator.language): string {
   // Allow dates or times to be passed

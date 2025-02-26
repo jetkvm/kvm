@@ -1,19 +1,21 @@
 import { useEffect, useState } from "react";
+import { LuPower, LuTerminal, LuPlugZap } from "react-icons/lu";
+
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import Card, { GridCard } from "@components/Card";
 import { SectionHeader } from "@components/SectionHeader";
-import { Button } from "../Button";
-import { LuPower, LuTerminal, LuPlugZap } from "react-icons/lu";
 import { ATXPowerControl } from "@components/extensions/ATXPowerControl";
 import { DCPowerControl } from "@components/extensions/DCPowerControl";
 import { SerialConsole } from "@components/extensions/SerialConsole";
+
+import { Button } from "../Button";
 import notifications from "../../notifications";
 
 interface Extension {
   id: string;
   name: string;
   description: string;
-  icon: any;
+  icon: React.ElementType;
 }
 
 const AVAILABLE_EXTENSIONS: Extension[] = [

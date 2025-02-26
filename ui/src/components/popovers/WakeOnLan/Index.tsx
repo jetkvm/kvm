@@ -1,10 +1,12 @@
+import { useCallback, useEffect, useState } from "react";
+import { useClose } from "@headlessui/react";
+
 import { GridCard } from "@components/Card";
 import { SectionHeader } from "@components/SectionHeader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useRTCStore, useUiStore } from "@/hooks/stores";
 import notifications from "@/notifications";
-import { useCallback, useEffect, useState } from "react";
-import { useClose } from "@headlessui/react";
+
 import EmptyStateCard from "./EmptyStateCard";
 import DeviceList, { StoredDevice } from "./DeviceList";
 import AddDeviceForm from "./AddDeviceForm";

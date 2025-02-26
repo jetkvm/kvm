@@ -1,12 +1,14 @@
-import { Button } from "@components/Button";
 import { LuTerminal } from "react-icons/lu";
+import { useEffect, useState } from "react";
+
+import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { SectionHeader } from "@components/SectionHeader";
-import { SelectMenuBasic } from "../SelectMenuBasic";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useEffect, useState } from "react";
 import notifications from "@/notifications";
 import { useUiStore } from "@/hooks/stores";
+
+import { SelectMenuBasic } from "../SelectMenuBasic";
 
 interface SerialSettings {
   baudRate: string;

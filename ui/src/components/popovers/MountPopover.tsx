@@ -1,11 +1,6 @@
-import { Button } from "@components/Button";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import Card, { GridCard } from "@components/Card";
 import { PlusCircleIcon } from "@heroicons/react/20/solid";
 import { useMemo, forwardRef, useEffect, useCallback } from "react";
-import { formatters } from "@/utils";
-import { RemoteVirtualMediaState, useMountMediaStore, useRTCStore } from "@/hooks/stores";
-import { SectionHeader } from "@components/SectionHeader";
 import {
   LuArrowUpFromLine,
   LuCheckCheck,
@@ -13,10 +8,18 @@ import {
   LuPlus,
   LuRadioReceiver,
 } from "react-icons/lu";
+import { useClose } from "@headlessui/react";
+
+import { Button } from "@components/Button";
+import Card, { GridCard } from "@components/Card";
+import { formatters } from "@/utils";
+import { RemoteVirtualMediaState, useMountMediaStore, useRTCStore } from "@/hooks/stores";
+import { SectionHeader } from "@components/SectionHeader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
+
 import notifications from "../../notifications";
 import MountMediaModal from "../MountMediaDialog";
-import { useClose } from "@headlessui/react";
+
 
 const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
   const diskDataChannelStats = useRTCStore(state => state.diskDataChannelStats);

@@ -1,15 +1,18 @@
+import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
+import { useState } from "react";
+
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
-import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
 import { Button } from "@components/Button";
-import { useState } from "react";
-import { GridCard } from "../components/Card";
 import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
+import { DEVICE_API } from "@/ui.config";
+
+import { GridCard } from "../components/Card";
 import { cx } from "../cva.config";
 import api from "../api";
+
 import { DeviceStatus } from "./welcome-local";
-import { DEVICE_API } from "@/ui.config";
 
 const loader = async () => {
   const res = await api
@@ -55,18 +58,24 @@ export default function WelcomeLocalModeRoute() {
       <GridBackground />
       <div className="grid min-h-screen">
         <Container>
-          <div className="flex items-center justify-center w-full h-full isolate">
+          <div className="isolate flex h-full w-full items-center justify-center">
             <div className="max-w-xl space-y-8">
-              <div className="flex items-center justify-center opacity-0 animate-fadeIn">
-                <img src={LogoWhiteIcon} alt="" className="-ml-4 h-[32px] hidden dark:block" />
+              <div className="flex animate-fadeIn items-center justify-center opacity-0">
+                <img
+                  src={LogoWhiteIcon}
+                  alt=""
+                  className="-ml-4 hidden h-[32px] dark:block"
+                />
                 <img src={LogoBlueIcon} alt="" className="-ml-4 h-[32px] dark:hidden" />
               </div>
 
               <div
-                className="space-y-2 text-center opacity-0 animate-fadeIn"
+                className="animate-fadeIn space-y-2 text-center opacity-0"
                 style={{ animationDelay: "200ms" }}
               >
-                <h1 className="text-4xl font-semibold text-black dark:text-white">Local Authentication Method</h1>
+                <h1 className="text-4xl font-semibold text-black dark:text-white">
+                  Local Authentication Method
+                </h1>
                 <p className="font-medium text-slate-600 dark:text-slate-400">
                   Select how you{"'"}d like to secure your JetKVM device locally.
                 </p>
@@ -74,7 +83,7 @@ export default function WelcomeLocalModeRoute() {
 
               <Form method="POST" className="space-y-8">
                 <div
-                  className="grid grid-cols-1 gap-6 opacity-0 animate-fadeIn sm:grid-cols-2"
+                  className="grid animate-fadeIn grid-cols-1 gap-6 opacity-0 sm:grid-cols-2"
                   style={{ animationDelay: "400ms" }}
                 >
                   {["password", "noPassword"].map(mode => (
@@ -86,14 +95,14 @@ export default function WelcomeLocalModeRoute() {
                       })}
                     >
                       <div
-                        className="relative flex flex-col items-center p-6 cursor-pointer select-none"
+                        className="relative flex cursor-pointer select-none flex-col items-center p-6"
                         onClick={() => setSelectedMode(mode as "password" | "noPassword")}
                       >
                         <div className="space-y-0 text-center">
                           <h3 className="text-base font-bold text-black dark:text-white">
                             {mode === "password" ? "Password protected" : "No Password"}
                           </h3>
-                          <p className="mt-2 text-sm text-center text-gray-600 dark:text-gray-400">
+                          <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
                             {mode === "password"
                               ? "Secure your device with a password for added protection."
                               : "Quick access without password authentication."}
@@ -107,7 +116,7 @@ export default function WelcomeLocalModeRoute() {
                           onChange={() => {
                             setSelectedMode(mode as "password" | "noPassword");
                           }}
-                          className="absolute w-4 h-4 text-blue-600 right-2 top-2"
+                          className="absolute right-2 top-2 h-4 w-4 text-blue-600"
                         />
                       </div>
                     </GridCard>
@@ -116,7 +125,7 @@ export default function WelcomeLocalModeRoute() {
 
                 {actionData?.error && (
                   <p
-                    className="text-sm text-center text-red-600 opacity-0 dark:text-red-400 animate-fadeIn"
+                    className="animate-fadeIn text-center text-sm text-red-600 opacity-0 dark:text-red-400"
                     style={{ animationDelay: "500ms" }}
                   >
                     {actionData.error}
@@ -124,7 +133,7 @@ export default function WelcomeLocalModeRoute() {
                 )}
 
                 <div
-                  className="max-w-sm mx-auto opacity-0 animate-fadeIn"
+                  className="mx-auto max-w-sm animate-fadeIn opacity-0"
                   style={{ animationDelay: "500ms" }}
                 >
                   <Button
@@ -140,7 +149,7 @@ export default function WelcomeLocalModeRoute() {
               </Form>
 
               <p
-                className="max-w-md mx-auto text-xs text-center opacity-0 animate-fadeIn text-slate-500 dark:text-slate-400"
+                className="mx-auto max-w-md animate-fadeIn text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
                 style={{ animationDelay: "600ms" }}
               >
                 You can always change your authentication method later in the settings.

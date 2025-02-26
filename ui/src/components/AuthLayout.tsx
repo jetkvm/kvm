@@ -1,21 +1,22 @@
+import { useLocation, useNavigation, useSearchParams } from "react-router-dom";
+
 import { Button, LinkButton } from "@components/Button";
 import { GoogleIcon } from "@components/Icons";
 import SimpleNavbar from "@components/SimpleNavbar";
 import Container from "@components/Container";
-import { useLocation, useNavigation, useSearchParams } from "react-router-dom";
 import Fieldset from "@components/Fieldset";
 import GridBackground from "@components/GridBackground";
 import StepCounter from "@components/StepCounter";
 import { CLOUD_API } from "@/ui.config";
 
-type AuthLayoutProps = {
+interface AuthLayoutProps {
   title: string;
   description: string;
   action: string;
   cta: string;
   ctaHref: string;
   showCounter?: boolean;
-};
+}
 
 export default function AuthLayout({
   title,

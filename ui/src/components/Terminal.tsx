@@ -1,8 +1,5 @@
 import "react-simple-keyboard/build/css/index.css";
-import { AvailableTerminalTypes, useUiStore } from "@/hooks/stores";
-import { Button } from "./Button";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
-import { cx } from "@/cva.config";
 import { useEffect } from "react";
 import { useXTerm } from "react-xtermjs";
 import { FitAddon } from "@xterm/addon-fit";
@@ -10,6 +7,11 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
+
+import { cx } from "@/cva.config";
+import { AvailableTerminalTypes, useUiStore } from "@/hooks/stores";
+
+import { Button } from "./Button";
 
 const isWebGl2Supported = !!document.createElement("canvas").getContext("webgl2");
 

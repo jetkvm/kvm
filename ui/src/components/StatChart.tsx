@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+
 import CustomTooltip, { CustomTooltipProps } from "@components/CustomTooltip";
 
 export default function StatChart({

@@ -1,8 +1,9 @@
 import toast, { Toast, Toaster, useToasterStore } from "react-hot-toast";
 import React, { useEffect } from "react";
+import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/20/solid";
+
 import Card from "@/components/Card";
 
-import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/20/solid";
 
 interface NotificationOptions {
   duration?: number;

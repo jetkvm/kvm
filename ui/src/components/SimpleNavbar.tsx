@@ -1,10 +1,11 @@
-import Container from "@/components/Container";
 import { Link } from "react-router-dom";
 import React from "react";
+
+import Container from "@/components/Container";
 import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
 
-type Props = { logoHref?: string; actionElement?: React.ReactNode };
+interface Props { logoHref?: string; actionElement?: React.ReactNode }
 
 export default function SimpleNavbar({ logoHref, actionElement }: Props) {
   return (

@@ -5,11 +5,7 @@
   "useTabs": false,
   "arrowParens": "avoid",
   "singleQuote": false,
-  "plugins": [
-    "prettier-plugin-tailwindcss"
-  ],
-  "tailwindFunctions": [
-    "clsx"
-  ],
+  "plugins": ["prettier-plugin-tailwindcss"],
+  "tailwindFunctions": ["clsx"],
   "printWidth": 90
 }

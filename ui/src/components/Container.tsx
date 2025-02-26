@@ -1,4 +1,6 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { ReactNode } from "react";
+
 import { cx } from "@/cva.config";
 
 function Container({ children, className }: { children: ReactNode; className?: string }) {
@@ -15,6 +17,4 @@ function Article({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default Object.assign(Container, {
-  Article,
-});
+export default Object.assign(Container, { Article });

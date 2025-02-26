@@ -1,6 +1,8 @@
-import Card from "@components/Card";
 import { PlusCircleIcon } from "@heroicons/react/16/solid";
 import { LuPlus } from "react-icons/lu";
+
+import Card from "@components/Card";
+
 import { Button } from "../../Button";
 
 export default function EmptyStateCard({

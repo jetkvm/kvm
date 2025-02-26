@@ -1,6 +1,5 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import Root from "./root";
 import "./index.css";
 import {
   createBrowserRouter,
@@ -9,6 +8,8 @@ import {
   RouterProvider,
   useRouteError,
 } from "react-router-dom";
+import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
+
 import DeviceRoute from "@routes/devices.$id";
 import DevicesRoute, { loader as DeviceListLoader } from "@routes/devices";
 import SetupRoute from "@routes/devices.$id.setup";
@@ -19,9 +20,10 @@ import DeviceIdRename from "@routes/devices.$id.rename";
 import DevicesIdDeregister from "@routes/devices.$id.deregister";
 import NotFoundPage from "@components/NotFoundPage";
 import EmptyCard from "@components/EmptyCard";
-import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
 import Card from "@components/Card";
 import DevicesAlreadyAdopted from "@routes/devices.already-adopted";
+
+import Root from "./root";
 import Notifications from "./notifications";
 import LoginLocalRoute from "./routes/login-local";
 import WelcomeLocalModeRoute from "./routes/welcome-local.mode";
@@ -164,8 +166,8 @@ function ErrorBoundary() {
   }
 
   return (
-    <div className="w-full h-full">
-      <div className="flex items-center justify-center h-full">
+    <div className="h-full w-full">
+      <div className="flex h-full items-center justify-center">
         <div className="w-full max-w-2xl">
           <EmptyCard
             IconElm={ExclamationTriangleIcon}
