@@ -22,8 +22,12 @@ const (
 var (
 	timeSyncRetryInterval = 0 * time.Second
 	defaultNTPServers     = []string{
+		"pool.ntp.org",
 		"time.cloudflare.com",
+		"time.google.com",
+		"time.aws.com",
 		"time.apple.com",
+		"time.windows.com",
 	}
 )
 
