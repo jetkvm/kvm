@@ -531,7 +531,7 @@ function UrlView({
   const popularImages = [
     {
       name: "Ubuntu 24.04 LTS",
-      url: "https://releases.ubuntu.com/noble/ubuntu-24.04.1-desktop-amd64.iso",
+      url: "https://releases.ubuntu.com/24.04.2/ubuntu-24.04.2-desktop-amd64.iso",
       icon: UbuntuIcon,
     },
     {
