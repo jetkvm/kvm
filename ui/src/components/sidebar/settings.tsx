@@ -1021,6 +1021,41 @@ export default function SettingsSidebar() {
         <p className="text-xs text-slate-600 dark:text-slate-400">
           The display will wake up when the connection state changes, or when touched.
         </p>
+        <SettingsItem
+          title="Set USB Device Emulation"
+          description="Select a Preconfigured USB Device"
+        >
+          <SelectMenuBasic
+            size="SM"
+            label=""
+            fullWidth
+            value={usbConfigProduct}
+            onChange={e => {
+              if (e.target.value === "custom") {
+                setUsbConfigProduct(e.target.value);
+              } else {
+                handleUsbConfigChange(e.target.value as string);
+              }
+            }}
+            options={[...usbConfigs, { value: "custom", label: "Custom" }]}
+          />
+        </SettingsItem>
+        {usbConfigProduct === "custom" && (
+          <SettingsItem
+            title="USB Config"
+            description="Set Custom USB Descriptors"
+          >
+            <Button
+              size="SM"
+              theme="light"
+              text="Update USB Config"
+              onClick={() => {
+                setUsbConfigModalView("updateUsbConfig")
+                setIsUsbConfigDialogOpen(true);
+              }}
+            />
+          </SettingsItem>
+        )}
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
         <div className="pb-2 space-y-4">
           <SectionHeader
@@ -1072,43 +1107,6 @@ export default function SettingsSidebar() {
                 }}
               />
             </SettingsItem>
-            {settings.developerMode && (
-              <SettingsItem
-                title="Set USB Device Emulation"
-                description="Select a Preconfigured USB Device"
-              >
-                <SelectMenuBasic
-                  size="SM"
-                  label=""
-                  fullWidth
-                  value={usbConfigProduct}
-                  onChange={e => {
-                    if (e.target.value === "custom") {
-                      setUsbConfigProduct(e.target.value);
-                    } else {
-                      handleUsbConfigChange(e.target.value as string);
-                    }
-                  }}
-                  options={[...usbConfigs, { value: "custom", label: "Custom" }]}
-                />
-              </SettingsItem>
-            )}
-            {usbConfigProduct === "custom" && (
-              <SettingsItem
-                title="USB Config"
-                description="Set Custom USB Descriptors"
-              >
-                <Button
-                  size="SM"
-                  theme="light"
-                  text="Update USB Config"
-                  onClick={() => {
-                    setUsbConfigModalView("updateUsbConfig")
-                    setIsUsbConfigDialogOpen(true);
-                  }}
-                />
-              </SettingsItem>
-            )}
             {settings.debugMode && (
               <>
                 <SettingsItem
