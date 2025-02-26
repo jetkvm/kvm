@@ -135,7 +135,7 @@ export default function SettingsSidebar() {
       if ("error" in resp) {
         console.error("Failed to load USB Config:", resp.error);
       } else {
-        console.error("syncUsbConfigProduct#getUsbConfig result:", resp.result);
+        console.log("syncUsbConfigProduct#getUsbConfig result:", resp.result);
         const usbConfigState = resp.result as UsbConfigState
         setUsbConfigProduct(usbConfigState.product);
       }
