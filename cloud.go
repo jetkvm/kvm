@@ -96,7 +96,6 @@ func handleCloudRegister(c *gin.Context) {
 	}
 
 	config.CloudToken = tokenResp.SecretToken
-	config.CloudURL = req.CloudAPI
 
 	provider, err := oidc.NewProvider(c, "https://accounts.google.com")
 	if err != nil {
@@ -298,8 +297,8 @@ func rpcDeregisterDevice() error {
 	// (e.g., wrong cloud token, already deregistered). Regardless of the reason, we can safely remove it.
 	if resp.StatusCode == http.StatusNotFound || (resp.StatusCode >= 200 && resp.StatusCode < 300) {
 		config.CloudToken = ""
-		config.CloudURL = ""
 		config.GoogleIdentity = ""
+
 		if err := SaveConfig(); err != nil {
 			return fmt.Errorf("failed to save configuration after deregistering: %w", err)
 		}

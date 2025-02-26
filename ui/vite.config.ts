@@ -9,7 +9,7 @@ declare const process: {
 };
 
 export default defineConfig(({ mode, command }) => {
-  const isCloud = mode === "production";
+  const isCloud = mode.indexOf("cloud") !== -1;
   const onDevice = mode === "device";
   const { JETKVM_PROXY_URL } = process.env;
 
@@ -18,15 +18,17 @@ export default defineConfig(({ mode, command }) => {
     build: { outDir: isCloud ? "dist" : "../static" },
     server: {
       host: "0.0.0.0",
-      proxy: JETKVM_PROXY_URL ? {
-        '/me': JETKVM_PROXY_URL,
-        '/device': JETKVM_PROXY_URL,
-        '/webrtc': JETKVM_PROXY_URL,
-        '/auth': JETKVM_PROXY_URL,
-        '/storage': JETKVM_PROXY_URL,
-        '/cloud': JETKVM_PROXY_URL,
-      } : undefined
+      proxy: JETKVM_PROXY_URL
+        ? {
+            "/me": JETKVM_PROXY_URL,
+            "/device": JETKVM_PROXY_URL,
+            "/webrtc": JETKVM_PROXY_URL,
+            "/auth": JETKVM_PROXY_URL,
+            "/storage": JETKVM_PROXY_URL,
+            "/cloud": JETKVM_PROXY_URL,
+          }
+        : undefined,
     },
-    base: onDevice && command === 'build' ? "/static" : "/",
+    base: onDevice && command === "build" ? "/static" : "/",
   };
 });
