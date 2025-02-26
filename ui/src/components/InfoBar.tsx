@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import { cx } from "@/cva.config";
 import {
   useHidStore,
@@ -6,7 +8,6 @@ import {
   useSettingsStore,
   useVideoStore,
 } from "@/hooks/stores";
-import { useEffect } from "react";
 import { keys, modifiers } from "@/keyboardMappings";
 
 export default function InfoBar() {

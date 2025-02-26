@@ -1,5 +1,7 @@
-import Card, { GridCard } from "@/components/Card";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircleIcon } from "@heroicons/react/20/solid";
+
+import Card, { GridCard } from "@/components/Card";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
 import LogoBlueIcon from "@/assets/logo-blue.svg";
@@ -7,7 +9,8 @@ import LogoWhiteIcon from "@/assets/logo-white.svg";
 import Modal from "@components/Modal";
 import { UpdateState, useUpdateStore } from "@/hooks/stores";
 import notifications from "@/notifications";
-import { CheckCircleIcon } from "@heroicons/react/20/solid";
+
+
 import LoadingSpinner from "./LoadingSpinner";
 
 export interface SystemVersionInfo {

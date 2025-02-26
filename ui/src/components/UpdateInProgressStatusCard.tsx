@@ -1,8 +1,9 @@
 import { cx } from "@/cva.config";
+import { UpdateState } from "@/hooks/stores";
+
 import { Button } from "./Button";
 import { GridCard } from "./Card";
 import LoadingSpinner from "./LoadingSpinner";
-import { UpdateState } from "@/hooks/stores";
 
 interface UpdateInProgressStatusCardProps {
   setIsUpdateDialogOpen: (isOpen: boolean) => void;

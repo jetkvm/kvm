@@ -1,7 +1,8 @@
+import { LuPlus, LuSend, LuTrash2 } from "react-icons/lu";
+
 import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { FieldError } from "@components/InputField";
-import { LuPlus, LuSend, LuTrash2 } from "react-icons/lu";
 
 export interface StoredDevice {
   name: string;

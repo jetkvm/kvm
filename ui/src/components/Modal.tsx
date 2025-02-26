@@ -1,5 +1,6 @@
 import React from "react";
 import { Dialog, DialogBackdrop, DialogPanel } from "@headlessui/react";
+
 import { cx } from "@/cva.config";
 
 export default function Modal({

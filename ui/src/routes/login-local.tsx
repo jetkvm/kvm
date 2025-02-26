@@ -1,18 +1,21 @@
+import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
+import { useState } from "react";
+import { LuEye, LuEyeOff } from "react-icons/lu";
+
 import SimpleNavbar from "@components/SimpleNavbar";
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
 import Fieldset from "@components/Fieldset";
-import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
 import { InputFieldWithLabel } from "@components/InputField";
 import { Button } from "@components/Button";
-import { useState } from "react";
-import { LuEye, LuEyeOff } from "react-icons/lu";
 import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
-import api from "../api";
-import { DeviceStatus } from "./welcome-local";
-import ExtLink from "../components/ExtLink";
 import { DEVICE_API } from "@/ui.config";
+
+import api from "../api";
+import ExtLink from "../components/ExtLink";
+
+import { DeviceStatus } from "./welcome-local";
 
 const loader = async () => {
   const res = await api
@@ -31,12 +34,9 @@ const action = async ({ request }: ActionFunctionArgs) => {
   const password = formData.get("password");
 
   try {
-    const response = await api.POST(
-      `${DEVICE_API}/auth/login-local`,
-      {
-        password,
-      },
-    );
+    const response = await api.POST(`${DEVICE_API}/auth/login-local`, {
+      password,
+    });
 
     if (response.ok) {
       return redirect("/");
@@ -44,6 +44,7 @@ const action = async ({ request }: ActionFunctionArgs) => {
       return { error: "Invalid password" };
     }
   } catch (error) {
+    console.error(error);
     return { error: "An error occurred while logging in" };
   }
 };
@@ -58,22 +59,28 @@ export default function LoginLocalRoute() {
       <div className="grid min-h-screen grid-rows-layout">
         <SimpleNavbar />
         <Container>
-          <div className="flex items-center justify-center w-full h-full isolate">
-            <div className="max-w-2xl -mt-32 space-y-8">
+          <div className="isolate flex h-full w-full items-center justify-center">
+            <div className="-mt-32 max-w-2xl space-y-8">
               <div className="flex items-center justify-center">
-                <img src={LogoWhiteIcon} alt="" className="-ml-4 h-[32px] hidden dark:block" />
+                <img
+                  src={LogoWhiteIcon}
+                  alt=""
+                  className="-ml-4 hidden h-[32px] dark:block"
+                />
                 <img src={LogoBlueIcon} alt="" className="-ml-4 h-[32px] dark:hidden" />
               </div>
 
               <div className="space-y-2 text-center">
-                <h1 className="text-4xl font-semibold text-black dark:text-white">Welcome back to JetKVM</h1>
+                <h1 className="text-4xl font-semibold text-black dark:text-white">
+                  Welcome back to JetKVM
+                </h1>
                 <p className="font-medium text-slate-600 dark:text-slate-400">
                   Enter your password to access your JetKVM.
                 </p>
               </div>
 
               <Fieldset className="space-y-12">
-                <Form method="POST" className="max-w-sm mx-auto space-y-4">
+                <Form method="POST" className="mx-auto max-w-sm space-y-4">
                   <div className="space-y-4">
                     <InputFieldWithLabel
                       label="Password"
@@ -88,14 +95,14 @@ export default function LoginLocalRoute() {
                             onClick={() => setShowPassword(false)}
                             className="pointer-events-auto"
                           >
-                            <LuEye className="w-4 h-4 cursor-pointer text-slate-500 dark:text-slate-400" />
+                            <LuEye className="h-4 w-4 cursor-pointer text-slate-500 dark:text-slate-400" />
                           </div>
                         ) : (
                           <div
                             onClick={() => setShowPassword(true)}
                             className="pointer-events-auto"
                           >
-                            <LuEyeOff className="w-4 h-4 cursor-pointer text-slate-500 dark:text-slate-400" />
+                            <LuEyeOff className="h-4 w-4 cursor-pointer text-slate-500 dark:text-slate-400" />
                           </div>
                         )
                       }
@@ -111,7 +118,7 @@ export default function LoginLocalRoute() {
                     textAlign="center"
                   />
 
-                  <div className="flex justify-start mt-4 text-xs text-slate-500 dark:text-slate-400">
+                  <div className="mt-4 flex justify-start text-xs text-slate-500 dark:text-slate-400">
                     <ExtLink
                       href="https://jetkvm.com/docs/networking/local-access#reset-password"
                       className="hover:underline"

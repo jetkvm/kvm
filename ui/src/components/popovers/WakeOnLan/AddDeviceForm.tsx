@@ -1,8 +1,9 @@
-import { InputFieldWithLabel } from "@components/InputField";
 import { useState, useRef } from "react";
-import { LuPlus } from "react-icons/lu";
+import { LuPlus , LuArrowLeft } from "react-icons/lu";
+
+import { InputFieldWithLabel } from "@components/InputField";
+
 import { Button } from "../../Button";
-import { LuArrowLeft } from "react-icons/lu";
 
 interface AddDeviceFormProps {
   onAddDevice: (name: string, macAddress: string) => void;

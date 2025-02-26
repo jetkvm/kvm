@@ -1,9 +1,11 @@
-import { Button } from "@components/Button";
 import { LuHardDrive, LuPower, LuRotateCcw } from "react-icons/lu";
+import { useEffect, useState } from "react";
+
+import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { SectionHeader } from "@components/SectionHeader";
-import { useEffect, useState } from "react";
 import notifications from "@/notifications";
+
 import { useJsonRpc } from "../../hooks/useJsonRpc";
 import LoadingSpinner from "../LoadingSpinner";
 

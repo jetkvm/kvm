@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Keyboard from "react-simple-keyboard";
+import { ChevronDownIcon } from "@heroicons/react/16/solid";
+import { Transition } from "@headlessui/react";
+
 import { Button } from "@components/Button";
 import Card from "@components/Card";
-import { ChevronDownIcon } from "@heroicons/react/16/solid";
 import "react-simple-keyboard/build/css/index.css";
 import { useHidStore, useUiStore } from "@/hooks/stores";
-import { Transition } from "@headlessui/react";
 import { cx } from "@/cva.config";
 import { keys, modifiers } from "@/keyboardMappings";
 import useKeyboard from "@/hooks/useKeyboard";
@@ -211,8 +212,8 @@ function KeyboardWrapper() {
                 "rounded-none": showAttachedVirtualKeyboard,
               })}
             >
-              <div className="flex items-center justify-center px-2 py-1 bg-white border-b dark:bg-slate-800 border-b-slate-800/30 dark:border-b-slate-300/20">
-                <div className="absolute flex items-center left-2 gap-x-2">
+              <div className="flex items-center justify-center border-b border-b-slate-800/30 bg-white px-2 py-1 dark:border-b-slate-300/20 dark:bg-slate-800">
+                <div className="absolute left-2 flex items-center gap-x-2">
                   {showAttachedVirtualKeyboard ? (
                     <Button
                       size="XS"
@@ -245,7 +246,7 @@ function KeyboardWrapper() {
               </div>
 
               <div>
-                <div className="flex flex-col dark:bg-slate-700 bg-blue-50/80 md:flex-row">
+                <div className="flex flex-col bg-blue-50/80 md:flex-row dark:bg-slate-700">
                   <Keyboard
                     baseClass="simple-keyboard-main"
                     layoutName={layoutName}

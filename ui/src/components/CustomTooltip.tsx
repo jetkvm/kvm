@@ -1,8 +1,8 @@
 import Card from "@components/Card";
 
-export type CustomTooltipProps = {
+export interface CustomTooltipProps {
   payload: { payload: { date: number; stat: number }; unit: string }[];
-};
+}
 
 export default function CustomTooltip({ payload }: CustomTooltipProps) {
   if (payload?.length) {

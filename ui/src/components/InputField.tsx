@@ -1,7 +1,8 @@
 import type { Ref } from "react";
 import React, { forwardRef } from "react";
-import FieldLabel from "@/components/FieldLabel";
 import clsx from "clsx";
+
+import FieldLabel from "@/components/FieldLabel";
 import Card from "@/components/Card";
 import { cva } from "@/cva.config";
 
@@ -43,14 +44,18 @@ const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function InputF
           "[&:has(:user-invalid)]:ring-2 [&:has(:user-invalid)]:ring-red-600 [&:has(:user-invalid)]:ring-offset-2",
 
           // Focus Within
-          "focus-within:border-slate-300 dark:focus-within:border-slate-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-700 focus-within:ring-offset-2",
+          "focus-within:border-slate-300 focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-700 focus-within:ring-offset-2 dark:focus-within:border-slate-600",
 
           // Disabled Within
-          "disabled-within:pointer-events-none disabled-within:select-none disabled-within:bg-slate-50 dark:disabled-within:bg-slate-800 disabled-within:text-slate-500/80",
+          "disabled-within:pointer-events-none disabled-within:select-none disabled-within:bg-slate-50 disabled-within:text-slate-500/80 dark:disabled-within:bg-slate-800",
         )}
       >
         {LeadingElm && (
-          <div className={clsx("pointer-events-none border-r border-r-slate-300 dark:border-r-slate-600")}>
+          <div
+            className={clsx(
+              "pointer-events-none border-r border-r-slate-300 dark:border-r-slate-600",
+            )}
+          >
             {LeadingElm}
           </div>
         )}
@@ -60,12 +65,12 @@ const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function InputF
             sizeClasses,
             TrailingElm ? "pr-2" : "",
             className,
-            "block flex-1 border-0 bg-transparent leading-none placeholder:text-sm placeholder:text-slate-300 dark:placeholder:text-slate-500 focus:ring-0 text-black dark:text-white",
+            "block flex-1 border-0 bg-transparent leading-none text-black placeholder:text-sm placeholder:text-slate-300 focus:ring-0 dark:text-white dark:placeholder:text-slate-500",
           )}
           {...props}
         />
         {TrailingElm && (
-          <div className="flex items-center pr-3 pointer-events-none">{TrailingElm}</div>
+          <div className="pointer-events-none flex items-center pr-3">{TrailingElm}</div>
         )}
       </Card>
       {error && <FieldError error={error} />}
@@ -84,7 +89,7 @@ const InputFieldWithLabel = forwardRef<HTMLInputElement, InputFieldWithLabelProp
         {(label || description) && (
           <FieldLabel label={label} id={id} description={description} />
         )}
-        <InputField ref={ref as any} id={id} {...props} />
+        <InputField ref={ref} id={id} {...props} />
       </div>
     );
   },

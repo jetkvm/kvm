@@ -13,11 +13,9 @@ const PeerConnectionStatusMap = {
 
 export type PeerConnections = keyof typeof PeerConnectionStatusMap;
 
-type StatusProps = {
-  [key in PeerConnections]: {
+type StatusProps = Record<PeerConnections, {
     statusIndicatorClassName: string;
-  };
-};
+  }>;
 
 export default function PeerConnectionStatusCard({
   state,

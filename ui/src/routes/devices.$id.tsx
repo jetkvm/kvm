@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cx } from "@/cva.config";
 import { Transition } from "@headlessui/react";
+import {
+  LoaderFunctionArgs,
+  Params,
+  redirect,
+  useLoaderData,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import { useInterval } from "usehooks-ts";
+import FocusTrap from "focus-trap-react";
+
+import { cx } from "@/cva.config";
 import {
   HidState,
   UpdateState,
@@ -14,29 +26,20 @@ import {
   VideoState,
 } from "@/hooks/stores";
 import WebRTCVideo from "@components/WebRTCVideo";
-import {
-  LoaderFunctionArgs,
-  Params,
-  redirect,
-  useLoaderData,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import DashboardNavbar from "@components/Header";
-import { useInterval } from "usehooks-ts";
 import SettingsSidebar from "@/components/sidebar/settings";
 import ConnectionStatsSidebar from "@/components/sidebar/connectionStats";
 import { JsonRpcRequest, useJsonRpc } from "@/hooks/useJsonRpc";
 import UpdateDialog from "@components/UpdateDialog";
-import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard";
-import api from "../api";
-import { DeviceStatus } from "./welcome-local";
-import FocusTrap from "focus-trap-react";
 import OtherSessionConnectedModal from "@/components/OtherSessionConnectedModal";
 import Terminal from "@components/Terminal";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
+
+import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard";
+import api from "../api";
+
+import { DeviceStatus } from "./welcome-local";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;

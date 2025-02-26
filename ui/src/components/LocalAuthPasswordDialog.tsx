@@ -1,12 +1,14 @@
-import { GridCard } from "@/components/Card";
 import { useState } from "react";
+
+import { GridCard } from "@/components/Card";
 import { Button } from "@components/Button";
 import LogoBlueIcon from "@/assets/logo-blue.svg";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
 import Modal from "@components/Modal";
-import { InputFieldWithLabel } from "./InputField";
 import api from "@/api";
 import { useLocalAuthModalStore } from "@/hooks/stores";
+
+import { InputFieldWithLabel } from "./InputField";
 
 export default function LocalAuthPasswordDialog({
   open,
@@ -46,6 +48,7 @@ export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
         setError(data.error || "An error occurred while setting the password");
       }
     } catch (error) {
+      console.error(error);
       setError("An error occurred while setting the password");
     }
   };
@@ -83,6 +86,7 @@ export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
         setError(data.error || "An error occurred while changing the password");
       }
     } catch (error) {
+      console.error(error);
       setError("An error occurred while changing the password");
     }
   };
@@ -102,6 +106,7 @@ export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
         setError(data.error || "An error occurred while disabling the password");
       }
     } catch (error) {
+      console.error(error);
       setError("An error occurred while disabling the password");
     }
   };

@@ -1,11 +1,13 @@
-import { Button } from "@components/Button";
 import { LuPower } from "react-icons/lu";
+import { useCallback, useEffect, useState } from "react";
+
+import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { SectionHeader } from "@components/SectionHeader";
-import FieldLabel from "../FieldLabel";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useCallback, useEffect, useState } from "react";
 import notifications from "@/notifications";
+
+import FieldLabel from "../FieldLabel";
 import LoadingSpinner from "../LoadingSpinner";
 
 interface DCPowerState {

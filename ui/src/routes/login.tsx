@@ -1,5 +1,6 @@
-import AuthLayout from "@components/AuthLayout";
 import { useLocation, useSearchParams } from "react-router-dom";
+
+import AuthLayout from "@components/AuthLayout";
 
 export default function LoginRoute() {
   const [sq] = useSearchParams();

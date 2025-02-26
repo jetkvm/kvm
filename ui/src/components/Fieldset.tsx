@@ -9,6 +9,7 @@ export default function Fieldset({
   disabled,
 }: {
   children: React.ReactNode;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fetcher?: FetcherWithComponents<any>;
   className?: string;
   disabled?: boolean;

@@ -1,15 +1,18 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LuCornerDownLeft } from "react-icons/lu";
+import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
+import { useClose } from "@headlessui/react";
+
 import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { SectionHeader } from "@components/SectionHeader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidStore, useRTCStore, useUiStore } from "@/hooks/stores";
-import notifications from "../../notifications";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { LuCornerDownLeft } from "react-icons/lu";
-import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
-import { useClose } from "@headlessui/react";
 import { chars, keys, modifiers } from "@/keyboardMappings";
+
+import notifications from "../../notifications";
+
 
 const hidKeyboardPayload = (keys: number[], modifier: number) => {
   return { keys, modifier };
@@ -59,6 +62,7 @@ export default function PasteModal() {
         });
       }
     } catch (error) {
+      console.error(error);
       notifications.error("Failed to paste text");
     }
   }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode]);

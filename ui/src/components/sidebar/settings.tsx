@@ -1,3 +1,7 @@
+import { CheckCircleIcon , ShieldCheckIcon } from "@heroicons/react/20/solid";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useRevalidator } from "react-router-dom";
+
 import SidebarHeader from "@components/SidebarHeader";
 import {
   BacklightSettings,
@@ -11,22 +15,19 @@ import { Button, LinkButton } from "@components/Button";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { SectionHeader } from "@components/SectionHeader";
 import { GridCard } from "@components/Card";
-import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { cx } from "@/cva.config";
-import React, { useCallback, useEffect, useRef, useState } from "react";
 import { isOnDevice } from "@/main";
 import PointingFinger from "@/assets/pointing-finger.svg";
 import MouseIcon from "@/assets/mouse-icon.svg";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { SelectMenuBasic } from "../SelectMenuBasic";
 import { SystemVersionInfo } from "@components/UpdateDialog";
 import notifications from "@/notifications";
-import api from "../../api";
 import LocalAuthPasswordDialog from "@/components/LocalAuthPasswordDialog";
 import { LocalDevice } from "@routes/devices.$id";
-import { useRevalidator } from "react-router-dom";
-import { ShieldCheckIcon } from "@heroicons/react/20/solid";
 import { CLOUD_APP, DEVICE_API } from "@/ui.config";
+
+import api from "../../api";
+import { SelectMenuBasic } from "../SelectMenuBasic";
 import { InputFieldWithLabel } from "../InputField";
 
 export function SettingsItem({
@@ -425,6 +426,7 @@ export default function SettingsSidebar() {
         .then(res => res.json() as Promise<LocalDevice>);
       setLocalDevice(status);
     } catch (error) {
+      console.error(error);
       notifications.error("Failed to get authentication status");
     }
   }, []);

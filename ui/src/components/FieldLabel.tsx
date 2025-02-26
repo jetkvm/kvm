@@ -1,13 +1,14 @@
 import React from "react";
+
 import { cx } from "@/cva.config";
 
-type Props = {
+interface Props {
   label: string | React.ReactNode;
   id?: string;
   as?: "label" | "span";
   description?: string | React.ReactNode | null;
   disabled?: boolean;
-};
+}
 export default function FieldLabel({
   label,
   id,
