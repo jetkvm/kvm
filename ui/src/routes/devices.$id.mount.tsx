@@ -39,6 +39,9 @@ import { useNavigate } from "react-router-dom";
 
 export default function MountRoute() {
   const navigate = useNavigate();
+  {
+    /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
+  }
   return <Dialog onClose={() => navigate("..")} />;
 }
 

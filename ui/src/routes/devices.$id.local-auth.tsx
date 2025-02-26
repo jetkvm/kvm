@@ -15,7 +15,6 @@ export default function LocalAuthRoute() {
     <GridCard cardClassName="relative mx-auto max-w-md text-left pointer-events-auto">
       {/* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */}
       <Dialog
-        // Effectively fetch the loaders from devices.$id.tsx to get new settings
         onClose={open => {
           if (!open) navigate("..");
         }}

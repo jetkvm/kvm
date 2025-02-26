@@ -25,9 +25,7 @@ export default function UpdateRoute() {
       {/* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */}
       <Dialog
         setOpen={open => {
-          if (!open) {
-            navigate("..");
-          }
+          if (!open) navigate("..");
         }}
         onConfirmUpdate={onConfirmUpdate}
       />

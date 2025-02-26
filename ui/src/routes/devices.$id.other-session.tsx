@@ -7,6 +7,7 @@ import LogoWhite from "@/assets/logo-white.svg";
 interface ContextType {
   connectWebRTC: () => Promise<void>;
 }
+/* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
 
 export default function OtherSessionRoute() {
   const outletContext = useOutletContext<ContextType>();
