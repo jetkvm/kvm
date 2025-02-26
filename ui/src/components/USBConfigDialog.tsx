@@ -130,7 +130,7 @@ function UpdateUsbConfigModal({
           </p>
           <div className="flex justify-start mt-4 text-xs text-slate-500 dark:text-slate-400">
             <ExtLink
-              href={`https://the-sz.com/products/usbid/index.php?v=${usbConfigState.vendor_id}&p=${usbConfigState.product_id}`}
+              href={`https://the-sz.com/products/usbid/index.php`}
               className="hover:underline"
             >
               Look up USB Device IDs here
