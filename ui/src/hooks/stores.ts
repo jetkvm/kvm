@@ -580,6 +580,10 @@ class KeyboardMappingsStore {
     this._notifySubscribers(); 
   }
 
+  getMappingState() {
+    return this._mappingsEnabled;
+  }
+
   getLayout() {
     return this._layout;
   }

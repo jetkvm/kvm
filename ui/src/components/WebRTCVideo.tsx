@@ -20,6 +20,7 @@ import { ConnectionErrorOverlay, HDMIErrorOverlay, LoadingOverlay } from "./Vide
 // TODO Implement keyboard lock API to resolve #127
 // https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock
 // An appropriate error message will need to be displayed in order to alert users to browser compatibility issues.
+// This requires TLS, waiting on TLS support.
 
 export default function WebRTCVideo() {
   const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
