@@ -299,7 +299,7 @@ export default function SettingsAccessIndexRoute() {
                     </p>
                     <div>
                       <Button
-                        size="MD"
+                        size="SM"
                         theme="light"
                         text="De-register from Cloud"
                         className="text-red-600"
