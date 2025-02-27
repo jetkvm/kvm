@@ -5,7 +5,6 @@ import { useCallback, useState } from "react";
 import { useEffect } from "react";
 import { SystemVersionInfo } from "./devices.$id.settings.general.update";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useNavigate } from "react-router-dom";
 import { Button, LinkButton } from "../components/Button";
 import { GridCard } from "../components/Card";
 import { ShieldCheckIcon } from "@heroicons/react/24/outline";
