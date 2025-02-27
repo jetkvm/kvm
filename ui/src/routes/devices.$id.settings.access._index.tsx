@@ -1,6 +1,6 @@
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsItem } from "./devices.$id.settings";
-import { useLoaderData } from "react-router-dom";
+import { useLoaderData, useNavigate } from "react-router-dom";
 import { Button, LinkButton } from "../components/Button";
 import { CLOUD_APP, DEVICE_API } from "../ui.config";
 import api from "../api";
@@ -30,6 +30,7 @@ export default function SettingsAccessIndexRoute() {
   const loaderData = useLoaderData() as LocalDevice | null;
 
   const { navigateTo } = useDeviceUiNavigation();
+  const navigate = useNavigate();
 
   const [send] = useJsonRpc();
 
@@ -78,7 +79,10 @@ export default function SettingsAccessIndexRoute() {
         );
         return;
       }
+
       getCloudState();
+      // In cloud mode, we need to navigate to the device overview page, as we don't a connection anymore
+      if (!isOnDevice) navigate("/");
       return;
     });
   };
