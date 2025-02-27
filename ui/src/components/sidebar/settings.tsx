@@ -215,7 +215,7 @@ export default function SettingsSidebar() {
       send("setUsbEmulationState", { enabled: enabled }, resp => {
         if ("error" in resp) {
           notifications.error(
-              `Failed to ${enabled ? "enable" : "disable"} USB emulation: ${resp.error.data || "Unknown error"}`,
+            `Failed to ${enabled ? "enable" : "disable"} USB emulation: ${resp.error.data || "Unknown error"}`,
           );
           return;
         }
