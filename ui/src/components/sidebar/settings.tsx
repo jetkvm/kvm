@@ -14,7 +14,7 @@ import { SectionHeader } from "@components/SectionHeader";
 import { GridCard } from "@components/Card";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { cx } from "@/cva.config";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import { isOnDevice } from "@/main";
 import PointingFinger from "@/assets/pointing-finger.svg";
 import MouseIcon from "@/assets/mouse-icon.svg";
@@ -130,24 +130,7 @@ export default function SettingsSidebar() {
     });
   }, [send]);
 
-  const syncUsbConfigProduct = useCallback(() => {
-    send("getUsbConfig", {}, resp => {
-      if ("error" in resp) {
-        console.error("Failed to load USB Config:", resp.error);
-      } else {
-        console.log("syncUsbConfigProduct#getUsbConfig result:", resp.result);
-        const usbConfigState = resp.result as UsbConfigState
-        setUsbConfigProduct(usbConfigState.product);
-      }
-    });
-  }, [send, setUsbConfigProduct]);
-
-  // Load stored usb config product from the backend
-  useEffect(() => {
-    syncUsbConfigProduct();
-  }, [syncUsbConfigProduct]);
-
-  const usbConfigs = [
+  const usbConfigs = useMemo(() => [
     {
       label: "JetKVM Default",
       value: "JetKVM USB Emulation Device"
@@ -164,7 +147,8 @@ export default function SettingsSidebar() {
       label: "Dell Multimedia Pro Keyboard",
       value: "Multimedia Pro Keyboard"
     }
-  ];
+  ], []);
+
 
   interface USBConfig {
     vendor_id: string;
@@ -207,6 +191,24 @@ export default function SettingsSidebar() {
       product: "Multimedia Pro Keyboard",
     }
   }
+
+  const syncUsbConfigProduct = useCallback(() => {
+    send("getUsbConfig", {}, resp => {
+      if ("error" in resp) {
+        console.error("Failed to load USB Config:", resp.error);
+      } else {
+        console.log("syncUsbConfigProduct#getUsbConfig result:", resp.result);
+        const usbConfigState = resp.result as UsbConfigState
+        const product = usbConfigs.map(u => u.value).includes(usbConfigState.product) ? usbConfigState.product : "custom"
+        setUsbConfigProduct(product);
+      }
+    });
+  }, [send, usbConfigs]);
+
+  // Load stored usb config product from the backend
+  useEffect(() => {
+    syncUsbConfigProduct();
+  }, [syncUsbConfigProduct]);
 
   const handleUsbEmulationToggle = useCallback(
     (enabled: boolean) => {
@@ -1093,7 +1095,7 @@ export default function SettingsSidebar() {
             options={[...usbConfigs, { value: "custom", label: "Custom" }]}
           />
         </SettingsItem>
-        {usbConfigProduct === "custom" && (
+        {(usbConfigProduct === "custom") && (
           <SettingsItem
             title="USB Config"
             description="Set Custom USB Descriptors"
