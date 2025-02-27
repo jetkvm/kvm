@@ -4,7 +4,6 @@ import {
   useMouseStore,
   useRTCStore,
   useSettingsStore,
-  useUiStore,
   useVideoStore,
 } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
@@ -15,7 +14,9 @@ import Actionbar from "@components/ActionBar";
 import InfoBar from "@components/InfoBar";
 import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { ConnectionErrorOverlay, HDMIErrorOverlay, LoadingOverlay } from "./VideoOverlay";
+import { HDMIErrorOverlay } from "./VideoOverlay";
+import { ConnectionErrorOverlay } from "./VideoOverlay";
+import { LoadingOverlay } from "./VideoOverlay";
 
 export default function WebRTCVideo() {
   // Video and stream related refs and states
@@ -401,26 +402,6 @@ export default function WebRTCVideo() {
       peerConnection?.iceConnectionState,
     ],
   );
-
-  // Focus trap management
-  const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
-  const sidebarView = useUiStore(state => state.sidebarView);
-  useEffect(() => {
-    setTimeout(function () {
-      if (["connection-stats", "system"].includes(sidebarView ?? "")) {
-        // Reset keyboard state. Incase the user is pressing a key while enabling the sidebar
-        sendKeyboardEvent([], []);
-        setDisableVideoFocusTrap(true);
-
-        // For some reason, the focus trap is not disabled immediately
-        // so we need to blur the active element
-        // (document.activeElement as HTMLElement)?.blur();
-        console.log("Just disabled focus trap");
-      } else {
-        setDisableVideoFocusTrap(false);
-      }
-    }, 300);
-  }, [sendKeyboardEvent, setDisableVideoFocusTrap, sidebarView]);
 
   return (
     <div className="grid h-full w-full grid-rows-layout">

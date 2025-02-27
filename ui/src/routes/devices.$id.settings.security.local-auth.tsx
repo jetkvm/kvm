@@ -1,29 +1,32 @@
-import { GridCard } from "@/components/Card";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@components/Button";
-import LogoBlueIcon from "@/assets/logo-blue.svg";
-import LogoWhiteIcon from "@/assets/logo-white.svg";
 import { InputFieldWithLabel } from "@/components/InputField";
 import api from "@/api";
 import { useLocalAuthModalStore } from "@/hooks/stores";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 export default function LocalAuthRoute() {
   const navigate = useNavigate();
+  const { setModalView } = useLocalAuthModalStore();
 
-  return (
-    <GridCard cardClassName="relative mx-auto max-w-md text-left pointer-events-auto">
-      {/* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */}
-      <Dialog
-        onClose={open => {
-          if (!open) navigate("..");
-        }}
-      />
-    </GridCard>
-  );
+  const location = useLocation();
+  const init = location.state?.init;
+
+  useEffect(() => {
+    if (!init) {
+      navigate("..");
+    } else {
+      setModalView(init);
+    }
+  }, [init, navigate, setModalView]);
+
+  {
+    /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
+  }
+  return <Dialog onClose={() => navigate("..")} />;
 }
 
-export function Dialog({ onClose }: { onClose: (open: boolean) => void }) {
+export function Dialog({ onClose }: { onClose: () => void }) {
   const { modalView, setModalView } = useLocalAuthModalStore();
   const [error, setError] = useState<string | null>(null);
 
@@ -108,12 +111,12 @@ export function Dialog({ onClose }: { onClose: (open: boolean) => void }) {
   };
 
   return (
-    <GridCard cardClassName="relative max-w-lg mx-auto text-left pointer-events-auto dark:bg-slate-800">
-      <div className="p-10">
+    <div>
+      <div>
         {modalView === "createPassword" && (
           <CreatePasswordModal
             onSetPassword={handleCreatePassword}
-            onCancel={() => onClose(false)}
+            onCancel={onClose}
             error={error}
           />
         )}
@@ -121,7 +124,7 @@ export function Dialog({ onClose }: { onClose: (open: boolean) => void }) {
         {modalView === "deletePassword" && (
           <DeletePasswordModal
             onDeletePassword={handleDeletePassword}
-            onCancel={() => onClose(false)}
+            onCancel={onClose}
             error={error}
           />
         )}
@@ -129,7 +132,7 @@ export function Dialog({ onClose }: { onClose: (open: boolean) => void }) {
         {modalView === "updatePassword" && (
           <UpdatePasswordModal
             onUpdatePassword={handleUpdatePassword}
-            onCancel={() => onClose(false)}
+            onCancel={onClose}
             error={error}
           />
         )}
@@ -138,7 +141,7 @@ export function Dialog({ onClose }: { onClose: (open: boolean) => void }) {
           <SuccessModal
             headline="Password Set Successfully"
             description="You've successfully set up local device protection. Your device is now secure against unauthorized local access."
-            onClose={() => onClose(false)}
+            onClose={onClose}
           />
         )}
 
@@ -146,7 +149,7 @@ export function Dialog({ onClose }: { onClose: (open: boolean) => void }) {
           <SuccessModal
             headline="Password Protection Disabled"
             description="You've successfully disabled the password protection for local access. Remember, your device is now less secure."
-            onClose={() => onClose(false)}
+            onClose={onClose}
           />
         )}
 
@@ -154,11 +157,11 @@ export function Dialog({ onClose }: { onClose: (open: boolean) => void }) {
           <SuccessModal
             headline="Password Updated Successfully"
             description="You've successfully changed your local device protection password. Make sure to remember your new password for future access."
-            onClose={() => onClose(false)}
+            onClose={onClose}
           />
         )}
       </div>
-    </GridCard>
+    </div>
   );
 }
 
@@ -176,11 +179,12 @@ function CreatePasswordModal({
 
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
-      <div>
-        <img src={LogoWhiteIcon} alt="" className="hidden h-[24px] dark:block" />
-        <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-      </div>
-      <div className="space-y-4">
+      <form
+        className="space-y-4"
+        onSubmit={e => {
+          e.preventDefault();
+        }}
+      >
         <div>
           <h2 className="text-lg font-semibold dark:text-white">
             Local Device Protection
@@ -215,7 +219,7 @@ function CreatePasswordModal({
           <Button size="SM" theme="light" text="Not Now" onClick={onCancel} />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
-      </div>
+      </form>
     </div>
   );
 }
@@ -233,10 +237,6 @@ function DeletePasswordModal({
 
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
-      <div>
-        <img src={LogoWhiteIcon} alt="" className="hidden h-[24px] dark:block" />
-        <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-      </div>
       <div className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold dark:text-white">
@@ -287,11 +287,12 @@ function UpdatePasswordModal({
 
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
-      <div>
-        <img src={LogoWhiteIcon} alt="" className="hidden h-[24px] dark:block" />
-        <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-      </div>
-      <div className="space-y-4">
+      <form
+        className="space-y-4"
+        onSubmit={e => {
+          e.preventDefault();
+        }}
+      >
         <div>
           <h2 className="text-lg font-semibold dark:text-white">
             Change Local Device Password
@@ -332,7 +333,7 @@ function UpdatePasswordModal({
           <Button size="SM" theme="light" text="Cancel" onClick={onCancel} />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
-      </div>
+      </form>
     </div>
   );
 }
@@ -348,10 +349,6 @@ function SuccessModal({
 }) {
   return (
     <div className="flex w-full max-w-lg flex-col items-start justify-start space-y-4 text-left">
-      <div>
-        <img src={LogoWhiteIcon} alt="" className="hidden h-[24px] dark:block" />
-        <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-      </div>
       <div className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold dark:text-white">{headline}</h2>

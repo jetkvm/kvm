@@ -31,6 +31,7 @@
     "framer-motion": "^11.15.0",
     "lodash.throttle": "^4.1.1",
     "mini-svg-data-uri": "^1.4.4",
+    "motion": "^12.4.7",
     "react": "^18.2.0",
     "react-animate-height": "^3.2.3",
     "react-dom": "^18.2.0",

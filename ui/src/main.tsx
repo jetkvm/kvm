@@ -1,4 +1,3 @@
-import React from "react";
 import ReactDOM from "react-dom/client";
 import Root from "./root";
 import "./index.css";
@@ -9,7 +8,7 @@ import {
   RouterProvider,
   useRouteError,
 } from "react-router-dom";
-import DeviceRoute from "@routes/devices.$id";
+import DeviceRoute, { LocalDevice } from "@routes/devices.$id";
 import DevicesRoute, { loader as DeviceListLoader } from "@routes/devices";
 import SetupRoute from "@routes/devices.$id.setup";
 import LoginRoute from "@routes/login";
@@ -25,18 +24,28 @@ import DevicesAlreadyAdopted from "@routes/devices.already-adopted";
 import Notifications from "./notifications";
 import LoginLocalRoute from "./routes/login-local";
 import WelcomeLocalModeRoute from "./routes/welcome-local.mode";
-import WelcomeRoute from "./routes/welcome-local";
+import WelcomeRoute, { DeviceStatus } from "./routes/welcome-local";
 import WelcomeLocalPasswordRoute from "./routes/welcome-local.password";
-import { CLOUD_API } from "./ui.config";
+import { CLOUD_API, DEVICE_API } from "./ui.config";
 import OtherSessionRoute from "./routes/devices.$id.other-session";
-import UpdateRoute from "./routes/devices.$id.update";
-import LocalAuthRoute from "./routes/devices.$id.local-auth";
+import LocalAuthRoute from "./routes/devices.$id.settings.security.local-auth";
 import MountRoute from "./routes/devices.$id.mount";
+import * as SettingsRoute from "./routes/devices.$id.settings";
+import SettingsKeyboardMouseRoute from "./routes/devices.$id.settings.mouse";
+import api from "./api";
+import * as SettingsIndexRoute from "./routes/devices.$id.settings._index";
+import SettingsAdvancedRoute from "./routes/devices.$id.settings.advanced";
+import * as SettingsSecurityIndexRoute from "./routes/devices.$id.settings.security._index";
+import SettingsHardwareRoute from "./routes/devices.$id.settings.hardware";
+import SettingsVideoRoute from "./routes/devices.$id.settings.video";
+import SettingsAppearanceRoute from "./routes/devices.$id.settings.appearance";
+import * as SettingsGeneralIndexRoute from "./routes/devices.$id.settings.general._index";
+import SettingsGeneralUpdateRoute from "./routes/devices.$id.settings.general.update";
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
 
-export async function checkAuth() {
+export async function checkCloudAuth() {
   const res = await fetch(`${CLOUD_API}/me`, {
     mode: "cors",
     credentials: "include",
@@ -48,6 +57,27 @@ export async function checkAuth() {
   }
 
   return await res.json();
+}
+
+export async function checkDeviceAuth() {
+  const res = await api
+    .GET(`${DEVICE_API}/device/status`)
+    .then(res => res.json() as Promise<DeviceStatus>);
+
+  if (!res.isSetup) return redirect("/welcome");
+
+  const deviceRes = await api.GET(`${DEVICE_API}/device`);
+  if (deviceRes.status === 401) return redirect("/login-local");
+  if (deviceRes.ok) {
+    const device = (await deviceRes.json()) as LocalDevice;
+    return { authMode: device.authMode };
+  }
+
+  throw new Error("Error fetching device");
+}
+
+export async function checkAuth() {
+  return import.meta.env.MODE === "device" ? checkDeviceAuth() : checkCloudAuth();
 }
 
 let router;
@@ -84,10 +114,7 @@ if (isOnDevice) {
           path: "other-session",
           element: <OtherSessionRoute />,
         },
-        {
-          path: "update",
-          element: <UpdateRoute />,
-        },
+
         {
           path: "local-auth",
           element: <LocalAuthRoute />,
@@ -95,6 +122,63 @@ if (isOnDevice) {
         {
           path: "mount",
           element: <MountRoute />,
+        },
+        {
+          path: "settings",
+          element: <SettingsRoute.default />,
+          children: [
+            {
+              index: true,
+              loader: SettingsIndexRoute.loader,
+            },
+            {
+              path: "general",
+              children: [
+                {
+                  index: true,
+                  element: <SettingsGeneralIndexRoute.default />,
+                },
+                {
+                  path: "update",
+                  element: <SettingsGeneralUpdateRoute />,
+                },
+              ],
+            },
+            {
+              path: "mouse",
+              element: <SettingsKeyboardMouseRoute />,
+            },
+            {
+              path: "advanced",
+              element: <SettingsAdvancedRoute />,
+            },
+            {
+              path: "hardware",
+              element: <SettingsHardwareRoute />,
+            },
+            {
+              path: "security",
+              children: [
+                {
+                  index: true,
+                  element: <SettingsSecurityIndexRoute.default />,
+                  loader: SettingsSecurityIndexRoute.loader,
+                },
+                {
+                  path: "local-auth",
+                  element: <LocalAuthRoute />,
+                },
+              ],
+            },
+            {
+              path: "video",
+              element: <SettingsVideoRoute />,
+            },
+            {
+              path: "appearance",
+              element: <SettingsAppearanceRoute />,
+            },
+          ],
         },
       ],
     },
@@ -145,16 +229,65 @@ if (isOnDevice) {
                   element: <OtherSessionRoute />,
                 },
                 {
-                  path: "update",
-                  element: <UpdateRoute />,
-                },
-                {
-                  path: "local-auth",
-                  element: <LocalAuthRoute />,
-                },
-                {
                   path: "mount",
                   element: <MountRoute />,
+                },
+                {
+                  path: "settings",
+                  element: <SettingsRoute.default />,
+                  children: [
+                    {
+                      index: true,
+                      loader: SettingsIndexRoute.loader,
+                    },
+                    {
+                      path: "general",
+                      children: [
+                        {
+                          index: true,
+                          element: <SettingsGeneralIndexRoute.default />,
+                        },
+                        {
+                          path: "update",
+                          element: <SettingsGeneralUpdateRoute />,
+                        },
+                      ],
+                    },
+                    {
+                      path: "mouse",
+                      element: <SettingsKeyboardMouseRoute />,
+                    },
+                    {
+                      path: "advanced",
+                      element: <SettingsAdvancedRoute />,
+                    },
+                    {
+                      path: "hardware",
+                      element: <SettingsHardwareRoute />,
+                    },
+                    {
+                      path: "security",
+                      children: [
+                        {
+                          index: true,
+                          element: <SettingsSecurityIndexRoute.default />,
+                          loader: SettingsSecurityIndexRoute.loader,
+                        },
+                        {
+                          path: "local-auth",
+                          element: <LocalAuthRoute />,
+                        },
+                      ],
+                    },
+                    {
+                      path: "video",
+                      element: <SettingsVideoRoute />,
+                    },
+                    {
+                      path: "appearance",
+                      element: <SettingsAppearanceRoute />,
+                    },
+                  ],
                 },
               ],
             },
@@ -180,7 +313,7 @@ if (isOnDevice) {
 
 document.addEventListener("DOMContentLoaded", () => {
   ReactDOM.createRoot(document.getElementById("root")!).render(
-    <React.StrictMode>
+    <>
       <RouterProvider router={router} />
       <Notifications
         toastOptions={{
@@ -189,7 +322,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }}
         max={2}
       />
-    </React.StrictMode>,
+    </>,
   );
 });
 

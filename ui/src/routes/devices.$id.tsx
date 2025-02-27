@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/cva.config";
-import { Transition } from "@headlessui/react";
 import {
   HidState,
   UpdateState,
@@ -20,6 +19,7 @@ import {
   Params,
   redirect,
   useLoaderData,
+  useLocation,
   useNavigate,
   useOutlet,
   useParams,
@@ -28,7 +28,6 @@ import {
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import DashboardNavbar from "@components/Header";
 import { useInterval } from "usehooks-ts";
-import SettingsSidebar from "@/components/sidebar/settings";
 import ConnectionStatsSidebar from "@/components/sidebar/connectionStats";
 import { JsonRpcRequest, useJsonRpc } from "@/hooks/useJsonRpc";
 import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard";
@@ -38,6 +37,7 @@ import FocusTrap from "focus-trap-react";
 import Terminal from "@components/Terminal";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import Modal from "../components/Modal";
+import { motion, AnimatePresence } from "motion/react";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -51,8 +51,9 @@ interface CloudLoaderResp {
   } | null;
 }
 
+export type AuthMode = "password" | "noPassword" | null;
 export interface LocalDevice {
-  authMode: "password" | "noPassword" | null;
+  authMode: AuthMode;
   deviceId: string;
 }
 
@@ -349,6 +350,7 @@ export default function KvmIdRoute() {
 
         if (otaState.error) {
           setModalView("error");
+          // TODO: this wont work in cloud mode
           navigate("update");
           return;
         }
@@ -379,9 +381,10 @@ export default function KvmIdRoute() {
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {
     if (queryParams.get("updateSuccess")) {
-      setModalView("updateCompleted");
-      navigate("update");
-      setQueryParams({});
+      // TODO: this wont work in cloud mode
+      navigate("./settings/general/update", {
+        state: { updateSuccess: true },
+      });
     }
   }, [navigate, queryParams, setModalView, setQueryParams]);
 
@@ -437,16 +440,28 @@ export default function KvmIdRoute() {
   }, [kvmTerminal]);
 
   const outlet = useOutlet();
-  const isUpdateDialogOpen = location.pathname.includes("/update");
+  const location = useLocation();
+  const onModalClose = useCallback(() => {
+    if (location.pathname !== "/other-session") {
+      navigate("..");
+    }
+  }, [navigate, location.pathname]);
+
   return (
     <>
-      <Transition show={!isUpdateDialogOpen && otaState.updating}>
-        <div className="pointer-events-none fixed inset-0 z-10 mx-auto flex h-full w-full max-w-xl translate-y-8 items-start justify-center">
-          <div className="transition duration-1000 ease-in data-[closed]:opacity-0">
+      {!outlet && otaState.updating && (
+        <AnimatePresence>
+          <motion.div
+            className="pointer-events-none fixed inset-0 top-16 z-10 mx-auto flex h-full w-full max-w-xl translate-y-8 items-start justify-center"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+          >
             <UpdateInProgressStatusCard />
-          </div>
-        </div>
-      </Transition>
+          </motion.div>
+        </AnimatePresence>
+      )}
       <div className="relative h-full">
         <FocusTrap
           paused={disableKeyboardFocusTrap}
@@ -478,16 +493,14 @@ export default function KvmIdRoute() {
       </div>
 
       <div
+        className="isolate"
         onKeyUp={e => e.stopPropagation()}
         onKeyDown={e => {
           e.stopPropagation();
-          if (e.key === "Escape") navigate("..");
+          if (e.key === "Escape") navigate("./");
         }}
       >
-        <Modal
-          open={outlet !== null}
-          onClose={() => location.pathname !== "/other-session" && navigate("..")}
-        >
+        <Modal open={outlet !== null} onClose={onModalClose}>
           <Outlet context={{ connectWebRTC }} />
         </Modal>
       </div>
@@ -513,16 +526,22 @@ function SidebarContainer({ sidebarView }: { sidebarView: string | null }) {
       style={{ width: sidebarView ? "493px" : 0 }}
     >
       <div className="relative w-[493px] shrink-0">
-        <Transition show={sidebarView === "system"} unmount={false}>
-          <div className="absolute inset-0">
-            <SettingsSidebar />
-          </div>
-        </Transition>
-        <Transition show={sidebarView === "connection-stats"} unmount={false}>
-          <div className="absolute inset-0">
-            <ConnectionStatsSidebar />
-          </div>
-        </Transition>
+        <AnimatePresence>
+          {sidebarView === "connection-stats" && (
+            <motion.div
+              className="absolute inset-0"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{
+                duration: 0.5,
+                ease: "easeInOut",
+              }}
+            >
+              <ConnectionStatsSidebar />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

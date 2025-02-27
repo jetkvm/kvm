@@ -20,8 +20,7 @@ const appendStatToMap = <T extends { timestamp: number }>(
 };
 
 // Constants and types
-export type AvailableSidebarViews = "system" | "connection-stats";
-export type AvailableModalViews = "connection-stats" | "settings";
+export type AvailableSidebarViews = "connection-stats";
 export type AvailableTerminalTypes = "kvm" | "serial" | "none";
 
 export interface User {
@@ -46,9 +45,6 @@ interface UIState {
   setWakeOnLanModalVisibility: (enabled: boolean) => void;
 
   toggleSidebarView: (view: AvailableSidebarViews) => void;
-
-  modalView: AvailableModalViews | null;
-  setModalView: (view: AvailableModalViews | null) => void;
 
   isAttachedVirtualKeyboardVisible: boolean;
   setAttachedVirtualKeyboardVisibility: (enabled: boolean) => void;
@@ -78,9 +74,6 @@ export const useUiStore = create<UIState>(set => ({
         return { sidebarView: view };
       }
     }),
-
-  modalView: null,
-  setModalView: view => set({ modalView: view }),
 
   isAttachedVirtualKeyboardVisible: true,
   setAttachedVirtualKeyboardVisibility: enabled =>

@@ -17,6 +17,7 @@ import MountPopopover from "./popovers/MountPopover";
 import { Fragment, useCallback, useRef } from "react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 import ExtensionPopover from "./popovers/ExtensionPopover";
+import { useNavigate } from "react-router-dom";
 
 export default function Actionbar({
   requestFullscreen,
@@ -52,6 +53,8 @@ export default function Actionbar({
     },
     [setDisableFocusTrap],
   );
+
+  const navigate = useNavigate();
 
   return (
     <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">
@@ -266,9 +269,10 @@ export default function Actionbar({
               theme="light"
               text="Settings"
               LeadingIcon={LuSettings}
-              onClick={() => toggleSidebarView("system")}
+              onClick={() => navigate("settings")}
             />
           </div>
+
           <div className="hidden items-center gap-x-2 lg:flex">
             <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-600" />
             <Button

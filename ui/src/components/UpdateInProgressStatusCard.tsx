@@ -3,11 +3,9 @@ import { Button } from "./Button";
 import { GridCard } from "./Card";
 import LoadingSpinner from "./LoadingSpinner";
 import { useNavigate } from "react-router-dom";
-import { useUpdateStore } from "@/hooks/stores";
 
 export default function UpdateInProgressStatusCard() {
   const navigate = useNavigate();
-  const { setModalView } = useUpdateStore();
 
   return (
     <div className="w-full select-none opacity-100 transition-all duration-300 ease-in-out">
@@ -34,8 +32,8 @@ export default function UpdateInProgressStatusCard() {
             theme="light"
             text="View Details"
             onClick={() => {
-              setModalView("updating");
-              navigate("update");
+              // TODO: this wont work in cloud mode
+              navigate("/settings/general/update");
             }}
           />
         </div>
