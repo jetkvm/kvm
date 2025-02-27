@@ -16,7 +16,8 @@ import {
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "../../notifications";
 import { useClose } from "@headlessui/react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
+import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 
 const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
   const diskDataChannelStats = useRTCStore(state => state.diskDataChannelStats);
@@ -187,7 +188,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
     syncRemoteVirtualMediaState();
   }, [syncRemoteVirtualMediaState, location.pathname]);
 
-  const navigate = useNavigate();
+  const { navigateTo } = useDeviceUiNavigation();
 
   return (
     <GridCard>
@@ -307,7 +308,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
               text="Add New Media"
               onClick={() => {
                 setModalView("mode");
-                navigate("mount");
+                navigateTo("/mount");
               }}
               LeadingIcon={LuPlus}
             />

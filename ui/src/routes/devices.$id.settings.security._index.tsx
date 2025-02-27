@@ -1,10 +1,11 @@
 import { SectionHeader } from "@/components/SectionHeader";
 import { SettingsItem } from "./devices.$id.settings";
-import { useNavigate, useLoaderData } from "react-router-dom";
+import { useLoaderData } from "react-router-dom";
 import { Button } from "../components/Button";
 import { DEVICE_API } from "../ui.config";
 import api from "../api";
 import { LocalDevice } from "./devices.$id";
+import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 
 export const loader = async () => {
   const status = await api
@@ -15,7 +16,7 @@ export const loader = async () => {
 
 export default function SettingsSecurityIndexRoute() {
   const { authMode } = useLoaderData() as LocalDevice;
-  const navigate = useNavigate();
+  const { navigateTo } = useDeviceUiNavigation();
 
   return (
     <div className="space-y-4">
@@ -35,7 +36,7 @@ export default function SettingsSecurityIndexRoute() {
               theme="light"
               text="Disable Protection"
               onClick={() => {
-                navigate("local-auth", { state: { init: "deletePassword" } });
+                navigateTo("./local-auth", { state: { init: "deletePassword" } });
               }}
             />
           ) : (
@@ -44,7 +45,7 @@ export default function SettingsSecurityIndexRoute() {
               theme="light"
               text="Enable Password"
               onClick={() => {
-                navigate("local-auth", { state: { init: "createPassword" } });
+                navigateTo("./local-auth", { state: { init: "createPassword" } });
               }}
             />
           )}
@@ -60,7 +61,7 @@ export default function SettingsSecurityIndexRoute() {
               theme="light"
               text="Change Password"
               onClick={() => {
-                navigate("local-auth", { state: { init: "updatePassword" } });
+                navigateTo("./local-auth", { state: { init: "updatePassword" } });
               }}
             />
           </SettingsItem>

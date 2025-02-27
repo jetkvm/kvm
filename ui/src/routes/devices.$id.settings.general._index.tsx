@@ -13,10 +13,11 @@ import { CLOUD_APP } from "../ui.config";
 import notifications from "../notifications";
 import { isOnDevice } from "../main";
 import Checkbox from "../components/Checkbox";
+import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 
 export default function SettingsGeneralRoute() {
   const [send] = useJsonRpc();
-  const navigate = useNavigate();
+  const { navigateTo } = useDeviceUiNavigation();
 
   const [devChannel, setDevChannel] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(true);
@@ -135,10 +136,7 @@ export default function SettingsGeneralRoute() {
                 size="SM"
                 theme="light"
                 text="Check for Updates"
-                onClick={() => {
-                  // TODO: this wont work in cloud mode
-                  navigate("./update");
-                }}
+                onClick={() => navigateTo("./update")}
               />
             </div>
           </div>

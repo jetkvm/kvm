@@ -7,6 +7,7 @@ import { UpdateState, useUpdateStore } from "@/hooks/stores";
 import notifications from "@/notifications";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 
 export default function SettingsGeneralUpdateRoute() {
   const navigate = useNavigate();
@@ -36,15 +37,7 @@ export default function SettingsGeneralUpdateRoute() {
   {
     /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
   }
-  return (
-    <Dialog
-      onClose={() => {
-        // TODO: This wont work in cloud mode
-        navigate("..");
-      }}
-      onConfirmUpdate={onConfirmUpdate}
-    />
-  );
+  return <Dialog onClose={() => navigate("..")} onConfirmUpdate={onConfirmUpdate} />;
 }
 
 export interface SystemVersionInfo {
@@ -61,7 +54,7 @@ export function Dialog({
   onClose: () => void;
   onConfirmUpdate: () => void;
 }) {
-  const navigate = useNavigate();
+  const { navigateTo } = useDeviceUiNavigation();
 
   const [versionInfo, setVersionInfo] = useState<null | SystemVersionInfo>(null);
   const { modalView, setModalView, otaState } = useUpdateStore();
@@ -113,10 +106,7 @@ export function Dialog({
         {modalView === "updating" && (
           <UpdatingDeviceState
             otaState={otaState}
-            onMinimizeUpgradeDialog={() => {
-              // TODO: This wont work in cloud mode
-              navigate("/");
-            }}
+            onMinimizeUpgradeDialog={() => navigateTo("/")}
           />
         )}
 

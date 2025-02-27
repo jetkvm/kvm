@@ -38,6 +38,7 @@ import Terminal from "@components/Terminal";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import Modal from "../components/Modal";
 import { motion, AnimatePresence } from "motion/react";
+import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -322,11 +323,11 @@ export default function KvmIdRoute() {
   const setHdmiState = useVideoStore(state => state.setHdmiState);
 
   const [hasUpdated, setHasUpdated] = useState(false);
+  const { navigateTo } = useDeviceUiNavigation();
 
   function onJsonRpcRequest(resp: JsonRpcRequest) {
     if (resp.method === "otherSessionConnected") {
-      console.log("otherSessionConnected", resp.params);
-      navigate("other-session");
+      navigateTo("/other-session");
     }
 
     if (resp.method === "usbState") {
@@ -350,8 +351,7 @@ export default function KvmIdRoute() {
 
         if (otaState.error) {
           setModalView("error");
-          // TODO: this wont work in cloud mode
-          navigate("update");
+          navigateTo("/settings/general/update");
           return;
         }
 
@@ -381,12 +381,9 @@ export default function KvmIdRoute() {
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {
     if (queryParams.get("updateSuccess")) {
-      // TODO: this wont work in cloud mode
-      navigate("./settings/general/update", {
-        state: { updateSuccess: true },
-      });
+      navigateTo("/settings/general/update", { state: { updateSuccess: true } });
     }
-  }, [navigate, queryParams, setModalView, setQueryParams]);
+  }, [navigate, navigateTo, queryParams, setModalView, setQueryParams]);
 
   const diskChannel = useRTCStore(state => state.diskChannel)!;
   const file = useMountMediaStore(state => state.localFile)!;
@@ -442,10 +439,8 @@ export default function KvmIdRoute() {
   const outlet = useOutlet();
   const location = useLocation();
   const onModalClose = useCallback(() => {
-    if (location.pathname !== "/other-session") {
-      navigate("..");
-    }
-  }, [navigate, location.pathname]);
+    if (location.pathname !== "/other-session") navigateTo("..");
+  }, [navigateTo, location.pathname]);
 
   return (
     <>
@@ -497,7 +492,7 @@ export default function KvmIdRoute() {
         onKeyUp={e => e.stopPropagation()}
         onKeyDown={e => {
           e.stopPropagation();
-          if (e.key === "Escape") navigate("./");
+          if (e.key === "Escape") navigateTo("/");
         }}
       >
         <Modal open={outlet !== null} onClose={onModalClose}>

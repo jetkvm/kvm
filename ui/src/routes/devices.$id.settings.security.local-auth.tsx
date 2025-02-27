@@ -3,32 +3,33 @@ import { Button } from "@components/Button";
 import { InputFieldWithLabel } from "@/components/InputField";
 import api from "@/api";
 import { useLocalAuthModalStore } from "@/hooks/stores";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useRevalidator } from "react-router-dom";
+import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 
 export default function LocalAuthRoute() {
-  const navigate = useNavigate();
   const { setModalView } = useLocalAuthModalStore();
-
+  const { navigateTo } = useDeviceUiNavigation();
   const location = useLocation();
   const init = location.state?.init;
 
   useEffect(() => {
     if (!init) {
-      navigate("..");
+      navigateTo("..");
     } else {
       setModalView(init);
     }
-  }, [init, navigate, setModalView]);
+  }, [init, navigateTo, setModalView]);
 
   {
     /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
   }
-  return <Dialog onClose={() => navigate("..")} />;
+  return <Dialog onClose={() => navigateTo("..")} />;
 }
 
 export function Dialog({ onClose }: { onClose: () => void }) {
   const { modalView, setModalView } = useLocalAuthModalStore();
   const [error, setError] = useState<string | null>(null);
+  const revalidator = useRevalidator();
 
   const handleCreatePassword = async (password: string, confirmPassword: string) => {
     if (password === "") {
@@ -45,6 +46,8 @@ export function Dialog({ onClose }: { onClose: () => void }) {
       const res = await api.POST("/auth/password-local", { password });
       if (res.ok) {
         setModalView("creationSuccess");
+        // The rest of the app needs to revalidate the device authMode
+        revalidator.revalidate();
       } else {
         const data = await res.json();
         setError(data.error || "An error occurred while setting the password");
@@ -82,6 +85,8 @@ export function Dialog({ onClose }: { onClose: () => void }) {
 
       if (res.ok) {
         setModalView("updateSuccess");
+        // The rest of the app needs to revalidate the device authMode
+        revalidator.revalidate();
       } else {
         const data = await res.json();
         setError(data.error || "An error occurred while changing the password");
@@ -101,6 +106,8 @@ export function Dialog({ onClose }: { onClose: () => void }) {
       const res = await api.DELETE("/auth/local-password", { password });
       if (res.ok) {
         setModalView("deleteSuccess");
+        // The rest of the app needs to revalidate the device authMode
+        revalidator.revalidate();
       } else {
         const data = await res.json();
         setError(data.error || "An error occurred while disabling the password");

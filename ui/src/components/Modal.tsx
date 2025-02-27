@@ -13,7 +13,6 @@ const Modal = React.memo(function Modal({
   open: boolean;
   onClose: () => void;
 }) {
-  console.log("Modal", open);
   return (
     <Dialog open={open} onClose={onClose} className="relative z-10">
       <DialogBackdrop

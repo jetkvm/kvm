@@ -2,10 +2,10 @@ import { cx } from "@/cva.config";
 import { Button } from "./Button";
 import { GridCard } from "./Card";
 import LoadingSpinner from "./LoadingSpinner";
-import { useNavigate } from "react-router-dom";
+import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 
 export default function UpdateInProgressStatusCard() {
-  const navigate = useNavigate();
+  const { navigateTo } = useDeviceUiNavigation();
 
   return (
     <div className="w-full select-none opacity-100 transition-all duration-300 ease-in-out">
@@ -31,10 +31,7 @@ export default function UpdateInProgressStatusCard() {
             className="pointer-events-auto"
             theme="light"
             text="View Details"
-            onClick={() => {
-              // TODO: this wont work in cloud mode
-              navigate("/settings/general/update");
-            }}
+            onClick={() => navigateTo("/settings/general/update")}
           />
         </div>
       </GridCard>

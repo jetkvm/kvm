@@ -93,9 +93,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
 
       clearMountMediaState();
       syncRemoteVirtualMediaState()
-        .then(() => {
-          navigate("..");
-        })
+        .then(() => navigate(".."))
         .catch(err => {
           triggerError(err instanceof Error ? err.message : String(err));
         })

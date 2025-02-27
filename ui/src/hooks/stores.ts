@@ -517,9 +517,7 @@ export const useUpdateStore = create<UpdateState>(set => ({
 }));
 
 interface UsbConfigModalState {
-  modalView:
-      | "updateUsbConfig"
-      | "updateUsbConfigSuccess";
+  modalView: "updateUsbConfig" | "updateUsbConfigSuccess";
   errorMessage: string | null;
   setModalView: (view: UsbConfigModalState["modalView"]) => void;
   setErrorMessage: (message: string | null) => void;
@@ -548,14 +546,10 @@ interface LocalAuthModalState {
     | "creationSuccess"
     | "deleteSuccess"
     | "updateSuccess";
-  errorMessage: string | null;
   setModalView: (view: LocalAuthModalState["modalView"]) => void;
-  setErrorMessage: (message: string | null) => void;
 }
 
 export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
   modalView: "createPassword",
-  errorMessage: null,
   setModalView: view => set({ modalView: view }),
-  setErrorMessage: message => set({ errorMessage: message }),
 }));
