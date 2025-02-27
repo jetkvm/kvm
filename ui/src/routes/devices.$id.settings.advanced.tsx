@@ -11,7 +11,7 @@ import { isOnDevice } from "../main";
 import { InputFieldWithLabel } from "../components/InputField";
 import { Button } from "../components/Button";
 import { useSettingsStore } from "../hooks/stores";
-import { GridCard } from "@/components/Card";
+import { GridCard } from "@components/Card";
 
 export default function SettingsAdvancedRoute() {
   const [send] = useJsonRpc();
@@ -153,6 +153,52 @@ export default function SettingsAdvancedRoute() {
 
       <div className="space-y-4">
         <SettingsItem
+          title="Troubleshooting Mode"
+          description="Diagnostic tools and additional controls for troubleshooting and development purposes"
+        >
+          <Checkbox
+            defaultChecked={settings.debugMode}
+            onChange={e => {
+              settings.setDebugMode(e.target.checked);
+            }}
+          />
+        </SettingsItem>
+
+        {settings.debugMode && (
+          <>
+            <SettingsItem
+              title="USB Emulation"
+              description="Control the USB emulation state"
+            >
+              <Button
+                size="SM"
+                theme="light"
+                text={
+                  usbEmulationEnabled ? "Disable USB Emulation" : "Enable USB Emulation"
+                }
+                onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
+              />
+            </SettingsItem>
+
+            <SettingsItem
+              title="Reset Configuration"
+              description="Reset configuration to default. This will log you out."
+            >
+              <Button
+                size="SM"
+                theme="light"
+                text="Reset Config"
+                onClick={() => {
+                  handleResetConfig();
+                  window.location.reload();
+                }}
+              />
+            </SettingsItem>
+            <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+          </>
+        )}
+
+        <SettingsItem
           title="Developer Mode"
           description="Enable advanced features for developers"
         >
@@ -198,8 +244,43 @@ export default function SettingsAdvancedRoute() {
           </GridCard>
         )}
 
-        {settings.developerMode && (
-          <div>
+        {isOnDevice && settings.developerMode && (
+          <div className="mt-4 space-y-4">
+            <SettingsItem
+              title="Cloud API URL"
+              description="Connect to a custom JetKVM Cloud API"
+            />
+
+            <InputFieldWithLabel
+              size="SM"
+              label="Cloud URL"
+              value={cloudUrl}
+              onChange={e => setCloudUrl(e.target.value)}
+              placeholder="https://api.jetkvm.com"
+            />
+
+            <div className="flex items-center gap-x-2">
+              <Button
+                size="SM"
+                theme="primary"
+                text="Save Cloud URL"
+                onClick={() => handleCloudUrlChange(cloudUrl)}
+              />
+              <Button
+                size="SM"
+                theme="light"
+                text="Restore to default"
+                onClick={handleResetCloudUrl}
+              />
+            </div>
+          </div>
+        )}
+        {isOnDevice && settings.developerMode && (
+          <div className="space-y-4">
+            <SettingsItem
+              title="SSH Access"
+              description="Add your SSH public key to enable secure remote access to the device"
+            />
             <div className="space-y-4">
               <TextAreaWithLabel
                 label="SSH Public Key"
@@ -220,83 +301,7 @@ export default function SettingsAdvancedRoute() {
                 />
               </div>
             </div>
-            {isOnDevice && (
-              <div className="mt-4 space-y-4">
-                <SettingsItem
-                  title="Cloud API URL"
-                  description="Connect to a custom JetKVM Cloud API"
-                />
-
-                <InputFieldWithLabel
-                  size="SM"
-                  label="Cloud URL"
-                  value={cloudUrl}
-                  onChange={e => setCloudUrl(e.target.value)}
-                  placeholder="https://api.jetkvm.com"
-                />
-
-                <div className="flex items-center gap-x-2">
-                  <Button
-                    size="SM"
-                    theme="primary"
-                    text="Save Cloud URL"
-                    onClick={() => handleCloudUrlChange(cloudUrl)}
-                  />
-                  <Button
-                    size="SM"
-                    theme="light"
-                    text="Restore to default"
-                    onClick={handleResetCloudUrl}
-                  />
-                </div>
-              </div>
-            )}
           </div>
-        )}
-        <SettingsItem
-          title="Troubleshooting Mode"
-          description="Diagnostic tools and additional controls for troubleshooting and development purposes"
-        >
-          <Checkbox
-            defaultChecked={settings.debugMode}
-            onChange={e => {
-              settings.setDebugMode(e.target.checked);
-            }}
-          />
-        </SettingsItem>
-
-        {settings.debugMode && (
-          <>
-            <SettingsItem
-              title="USB Emulation"
-              description="Control the USB emulation state"
-            >
-              <Button
-                size="SM"
-                theme="light"
-                text={
-                  usbEmulationEnabled ? "Disable USB Emulation" : "Enable USB Emulation"
-                }
-                onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
-              />
-            </SettingsItem>
-          </>
-        )}
-        {settings.debugMode && (
-          <SettingsItem
-            title="Reset Configuration"
-            description="Reset the configuration file to its default state. This will log you out of the device."
-          >
-            <Button
-              size="SM"
-              theme="light"
-              text="Reset Config"
-              onClick={() => {
-                handleResetConfig();
-                window.location.reload();
-              }}
-            />
-          </SettingsItem>
         )}
       </div>
     </div>

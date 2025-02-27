@@ -160,13 +160,13 @@ export default function SettingsVideoRoute() {
                 />
                 <div className="flex justify-start gap-x-2">
                   <Button
-                    size="MD"
+                    size="SM"
                     theme="primary"
                     text="Set Custom EDID"
                     onClick={() => handleEDIDChange(customEdidValue)}
                   />
                   <Button
-                    size="MD"
+                    size="SM"
                     theme="light"
                     text="Restore to default"
                     onClick={() => {

@@ -8,17 +8,25 @@ export interface JsonRpcRequest {
   id: number | string;
 }
 
-type JsonRpcResponse =
-  | {
-      jsonrpc: string;
-      result: boolean | number | object | string | [];
-      id: string | number;
-    }
-  | {
-      jsonrpc: string;
-      error: { code: number; data?: string; message: string };
-      id: string | number;
-    };
+export interface JsonRpcError {
+  code: number;
+  data?: string;
+  message: string;
+}
+
+export interface JsonRpcSuccessResponse {
+  jsonrpc: string;
+  result: boolean | number | object | string | [];
+  id: string | number;
+}
+
+export interface JsonRpcErrorResponse {
+  jsonrpc: string;
+  error: JsonRpcError;
+  id: string | number;
+}
+
+export type JsonRpcResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse;
 
 const callbackStore = new Map<number | string, (resp: JsonRpcResponse) => void>();
 let requestCounter = 0;

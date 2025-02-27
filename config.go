@@ -53,7 +53,7 @@ var defaultConfig = &Config{
 		ProductId:    "0x0104", //Multifunction Composite Gadget
 		SerialNumber: "",
 		Manufacturer: "JetKVM",
-		Product:      "JetKVM USB Emulation Device",
+		Product:      "USB Emulation Device",
 	},
 }
 
