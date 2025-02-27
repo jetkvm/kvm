@@ -17,10 +17,12 @@ export default function SettingsAdvancedRoute() {
 
   const [sshKey, setSSHKey] = useState<string>("");
   const setDeveloperMode = useSettingsStore(state => state.setDeveloperMode);
+  const [devChannel, setDevChannel] = useState(false);
+  const [usbEmulationEnabled, setUsbEmulationEnabled] = useState(false);
+
   const settings = useSettingsStore();
 
   useEffect(() => {
-
     send("getDevModeState", {}, resp => {
       if ("error" in resp) return;
       const result = resp.result as { enabled: boolean };
@@ -36,6 +38,11 @@ export default function SettingsAdvancedRoute() {
       if ("error" in resp) return;
       setUsbEmulationEnabled(resp.result as boolean);
     });
+
+    send("getDevChannelState", {}, resp => {
+      if ("error" in resp) return;
+      setDevChannel(resp.result as boolean);
+    });
   }, [send, setDeveloperMode]);
 
   const getUsbEmulationState = useCallback(() => {
@@ -44,7 +51,6 @@ export default function SettingsAdvancedRoute() {
       setUsbEmulationEnabled(resp.result as boolean);
     });
   }, [send]);
-
 
   const handleUsbEmulationToggle = useCallback(
     (enabled: boolean) => {
@@ -101,7 +107,17 @@ export default function SettingsAdvancedRoute() {
     [send, setDeveloperMode],
   );
 
-  const [usbEmulationEnabled, setUsbEmulationEnabled] = useState(false);
+  const handleDevChannelChange = (enabled: boolean) => {
+    send("setDevChannelState", { enabled }, resp => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      setDevChannel(enabled);
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -112,51 +128,16 @@ export default function SettingsAdvancedRoute() {
 
       <div className="space-y-4">
         <SettingsItem
-          title="Troubleshooting Mode"
-          description="Diagnostic tools and additional controls for troubleshooting and development purposes"
+          title="Dev Channel Updates"
+          description="Receive early updates from the development channel"
         >
           <Checkbox
-            defaultChecked={settings.debugMode}
+            checked={devChannel}
             onChange={e => {
-              settings.setDebugMode(e.target.checked);
+              handleDevChannelChange(e.target.checked);
             }}
           />
         </SettingsItem>
-
-        {settings.debugMode && (
-          <>
-            <SettingsItem
-              title="USB Emulation"
-              description="Control the USB emulation state"
-            >
-              <Button
-                size="SM"
-                theme="light"
-                text={
-                  usbEmulationEnabled ? "Disable USB Emulation" : "Enable USB Emulation"
-                }
-                onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
-              />
-            </SettingsItem>
-
-            <SettingsItem
-              title="Reset Configuration"
-              description="Reset configuration to default. This will log you out."
-            >
-              <Button
-                size="SM"
-                theme="light"
-                text="Reset Config"
-                onClick={() => {
-                  handleResetConfig();
-                  window.location.reload();
-                }}
-              />
-            </SettingsItem>
-            <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
-          </>
-        )}
-
         <SettingsItem
           title="Developer Mode"
           description="Enable advanced features for developers"
@@ -230,6 +211,51 @@ export default function SettingsAdvancedRoute() {
               </div>
             </div>
           </div>
+        )}
+
+        <SettingsItem
+          title="Troubleshooting Mode"
+          description="Diagnostic tools and additional controls for troubleshooting and development purposes"
+        >
+          <Checkbox
+            defaultChecked={settings.debugMode}
+            onChange={e => {
+              settings.setDebugMode(e.target.checked);
+            }}
+          />
+        </SettingsItem>
+
+        {settings.debugMode && (
+          <>
+            <SettingsItem
+              title="USB Emulation"
+              description="Control the USB emulation state"
+            >
+              <Button
+                size="SM"
+                theme="light"
+                text={
+                  usbEmulationEnabled ? "Disable USB Emulation" : "Enable USB Emulation"
+                }
+                onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
+              />
+            </SettingsItem>
+
+            <SettingsItem
+              title="Reset Configuration"
+              description="Reset configuration to default. This will log you out."
+            >
+              <Button
+                size="SM"
+                theme="light"
+                text="Reset Config"
+                onClick={() => {
+                  handleResetConfig();
+                  window.location.reload();
+                }}
+              />
+            </SettingsItem>
+          </>
         )}
       </div>
     </div>

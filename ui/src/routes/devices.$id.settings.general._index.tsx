@@ -14,7 +14,6 @@ export default function SettingsGeneralRoute() {
   const [send] = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
 
-  const [devChannel, setDevChannel] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [currentVersions, setCurrentVersions] = useState<{
     appVersion: string;
@@ -38,11 +37,6 @@ export default function SettingsGeneralRoute() {
       if ("error" in resp) return;
       setAutoUpdate(resp.result as boolean);
     });
-
-    send("getDevChannelState", {}, resp => {
-      if ("error" in resp) return;
-      setDevChannel(resp.result as boolean);
-    });
   }, [getCurrentVersions, send]);
 
   const handleAutoUpdateChange = (enabled: boolean) => {
@@ -54,18 +48,6 @@ export default function SettingsGeneralRoute() {
         return;
       }
       setAutoUpdate(enabled);
-    });
-  };
-
-  const handleDevChannelChange = (enabled: boolean) => {
-    send("setDevChannelState", { enabled }, resp => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
-        );
-        return;
-      }
-      setDevChannel(enabled);
     });
   };
 
@@ -115,17 +97,6 @@ export default function SettingsGeneralRoute() {
                 checked={autoUpdate}
                 onChange={e => {
                   handleAutoUpdateChange(e.target.checked);
-                }}
-              />
-            </SettingsItem>
-            <SettingsItem
-              title="Dev Channel Updates"
-              description="Receive early updates from the development channel"
-            >
-              <Checkbox
-                checked={devChannel}
-                onChange={e => {
-                  handleDevChannelChange(e.target.checked);
                 }}
               />
             </SettingsItem>
