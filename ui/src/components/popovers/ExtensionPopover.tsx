@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import Card, { GridCard } from "@components/Card";
-import { SectionHeader } from "@components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { Button } from "../Button";
 import { LuPower, LuTerminal, LuPlugZap } from "react-icons/lu";
 import { ATXPowerControl } from "@components/extensions/ATXPowerControl";
@@ -106,7 +106,7 @@ export default function ExtensionPopover() {
             ) : (
               // Extensions List View
               <div className="space-y-4">
-                <SectionHeader
+                <SettingsPageHeader
                   title="Extensions"
                   description="Load and manage your extensions"
                 />

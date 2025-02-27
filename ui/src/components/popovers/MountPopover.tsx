@@ -5,7 +5,7 @@ import { PlusCircleIcon } from "@heroicons/react/20/solid";
 import { useMemo, forwardRef, useEffect, useCallback } from "react";
 import { formatters } from "@/utils";
 import { RemoteVirtualMediaState, useMountMediaStore, useRTCStore } from "@/hooks/stores";
-import { SectionHeader } from "@components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import {
   LuArrowUpFromLine,
   LuCheckCheck,
@@ -196,7 +196,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
         <div ref={ref} className="grid h-full grid-rows-headerBody">
           <div className="h-full space-y-4 ">
             <div className="space-y-4">
-              <SectionHeader
+              <SettingsPageHeader
                 title="Virtual Media"
                 description="Mount an image to boot from or install an operating system."
               />

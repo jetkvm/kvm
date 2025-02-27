@@ -1,7 +1,7 @@
 import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
 import { TextAreaWithLabel } from "@components/TextArea";
-import { SectionHeader } from "@components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidStore, useRTCStore, useUiStore } from "@/hooks/stores";
 import notifications from "../../notifications";
@@ -75,7 +75,7 @@ export default function PasteModal() {
         <div className="grid h-full grid-rows-headerBody">
           <div className="h-full space-y-4">
             <div className="space-y-4">
-              <SectionHeader
+              <SettingsPageHeader
                 title="Paste text"
                 description="Paste text from your client to the remote host"
               />

@@ -1,4 +1,4 @@
-import { SectionHeader } from "@components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsItem } from "@routes/devices.$id.settings";
 import { BacklightSettings, UsbConfigState, useSettingsStore } from "@/hooks/stores";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -176,7 +176,7 @@ export default function SettingsHardwareRoute() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader
+      <SettingsPageHeader
         title="Hardware"
         description="Configure display settings and hardware options for your JetKVM device"
       />

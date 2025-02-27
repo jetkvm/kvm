@@ -1,4 +1,4 @@
-import { SectionHeader } from "@/components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsItem } from "./devices.$id.settings";
 import { useLoaderData } from "react-router-dom";
 import { Button, LinkButton } from "../components/Button";
@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useJsonRpc } from "../hooks/useJsonRpc";
 import { InputFieldWithLabel } from "../components/InputField";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
+import { SettingsSectionHeader } from "../components/SettingsSectionHeader";
 
 export const loader = async () => {
   const status = await api
@@ -140,13 +141,13 @@ export default function SettingsAccessIndexRoute() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader
+      <SettingsPageHeader
         title="Access"
         description="Manage the Access Control of the device"
       />
 
       <div className="space-y-4">
-        <SectionHeader
+        <SettingsSectionHeader
           title="Local"
           description="Manage the mode of local access to the device"
         />
@@ -193,9 +194,9 @@ export default function SettingsAccessIndexRoute() {
       </div>
       <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
       <div className="space-y-4">
-        <SectionHeader
+        <SettingsSectionHeader
           title="Remote"
-          description="Manage the mode of remote access to the device"
+          description="Manage the mode of Remote access to the device"
         />
 
         {isOnDevice && (

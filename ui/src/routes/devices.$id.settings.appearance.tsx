@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { SectionHeader } from "../components/SectionHeader";
+import { SettingsPageHeader } from "../components/SettingsPageheader";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { SettingsItem } from "./devices.$id.settings";
 
@@ -28,7 +28,7 @@ export default function SettingsAppearanceRoute() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader
+      <SettingsPageHeader
         title="Appearance"
         description="Customize the look and feel of your JetKVM interface"
       />

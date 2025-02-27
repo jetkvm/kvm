@@ -1,7 +1,7 @@
 import { Button } from "@components/Button";
 import { LuHardDrive, LuPower, LuRotateCcw } from "react-icons/lu";
 import Card from "@components/Card";
-import { SectionHeader } from "@components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useEffect, useState } from "react";
 import notifications from "@/notifications";
 import { useJsonRpc } from "../../hooks/useJsonRpc";
@@ -95,7 +95,7 @@ export function ATXPowerControl() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader
+      <SettingsPageHeader
         title="ATX Power Control"
         description="Control your ATX power settings"
       />

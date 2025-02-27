@@ -1,7 +1,7 @@
 import { Button } from "@components/Button";
 import { LuPower } from "react-icons/lu";
 import Card from "@components/Card";
-import { SectionHeader } from "@components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import FieldLabel from "../FieldLabel";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useCallback, useEffect, useState } from "react";
@@ -52,7 +52,7 @@ export function DCPowerControl() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader
+      <SettingsPageHeader
         title="DC Power Control"
         description="Control your DC power settings"
       />

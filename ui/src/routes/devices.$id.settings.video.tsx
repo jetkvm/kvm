@@ -1,4 +1,4 @@
-import { SectionHeader } from "@/components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsItem } from "./devices.$id.settings";
 import { Button } from "@/components/Button";
 import { TextAreaWithLabel } from "@/components/TextArea";
@@ -105,7 +105,7 @@ export default function SettingsVideoRoute() {
   return (
     <div className="space-y-3">
       <div className="space-y-4">
-        <SectionHeader
+        <SettingsPageHeader
           title="Video"
           description="Configure display settings and EDID for optimal compatibility"
         />

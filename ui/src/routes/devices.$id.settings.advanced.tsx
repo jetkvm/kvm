@@ -1,6 +1,6 @@
 import { SettingsItem } from "./devices.$id.settings";
 
-import { SectionHeader } from "../components/SectionHeader";
+import { SettingsPageHeader } from "../components/SettingsPageheader";
 import Checkbox from "../components/Checkbox";
 
 import { useJsonRpc } from "../hooks/useJsonRpc";
@@ -105,7 +105,7 @@ export default function SettingsAdvancedRoute() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader
+      <SettingsPageHeader
         title="Advanced"
         description="Access additional settings for troubleshooting and customization"
       />

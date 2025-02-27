@@ -1,5 +1,5 @@
 import { GridCard } from "@components/Card";
-import { SectionHeader } from "@components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useRTCStore, useUiStore } from "@/hooks/stores";
 import notifications from "@/notifications";
@@ -102,7 +102,7 @@ export default function WakeOnLanModal() {
       <div className="p-4 py-3 space-y-4">
         <div className="grid h-full grid-rows-headerBody">
           <div className="space-y-4">
-            <SectionHeader
+            <SettingsPageHeader
               title="Wake On LAN"
               description="Send a Magic Packet to wake up a remote device."
             />

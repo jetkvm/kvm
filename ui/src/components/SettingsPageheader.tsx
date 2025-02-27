@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 
-export function SectionHeader({
+export function SettingsPageHeader({
   title,
   description,
 }: {
@@ -9,7 +9,7 @@ export function SectionHeader({
 }) {
   return (
     <div className="select-none">
-      <h2 className=" text-xl font-bold text-black dark:text-white">{title}</h2>
+      <h2 className=" text-xl font-extrabold text-black dark:text-white">{title}</h2>
       <div className="text-sm text-black dark:text-slate-300">{description}</div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { SectionHeader } from "../components/SectionHeader";
+import { SettingsPageHeader } from "../components/SettingsPageheader";
 
 import { SettingsItem } from "./devices.$id.settings";
 import { useCallback, useState } from "react";
@@ -71,7 +71,7 @@ export default function SettingsGeneralRoute() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader
+      <SettingsPageHeader
         title="General"
         description="Configure device settings and update preferences"
       />

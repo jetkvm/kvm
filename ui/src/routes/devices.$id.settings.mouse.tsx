@@ -1,4 +1,4 @@
-import { SectionHeader } from "@/components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsItem } from "./devices.$id.settings";
 import { Checkbox } from "@/components/Checkbox";
 import { GridCard } from "@/components/Card";
@@ -39,7 +39,7 @@ export default function SettingsKeyboardMouseRoute() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader
+      <SettingsPageHeader
         title="Mouse"
         description="Configure cursor behavior and interaction settings for your device"
       />
