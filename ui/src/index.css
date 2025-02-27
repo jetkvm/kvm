@@ -105,7 +105,7 @@ video::-webkit-media-controls {
 }
 
 .controlArrows {
-  @apply flex items-center justify-between w-full md:w-1/5;
+  @apply flex w-full items-center justify-between md:w-1/5;
   flex-flow: column;
 }
 
@@ -190,4 +190,14 @@ video::-webkit-media-controls {
 .xterm .xterm-viewport {
   scrollbar-color: theme("colors.gray.900") #002b36;
   scrollbar-width: thin;
+}
+
+.hide-scrollbar {
+  overflow-y: scroll;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
 }

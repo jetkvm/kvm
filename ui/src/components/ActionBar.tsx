@@ -262,7 +262,7 @@ export default function Actionbar({
             />
           </div>
 
-          <div className="hidden xs:block ">
+          <div>
             <Button
               size="XS"
               theme="light"

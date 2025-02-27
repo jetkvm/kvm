@@ -1,4 +1,4 @@
-import React from "react";
+import React, { forwardRef } from "react";
 import { cx } from "@/cva.config";
 
 type CardPropsType = {
@@ -24,9 +24,10 @@ export const GridCard = ({
   );
 };
 
-export default function Card({ children, className }: CardPropsType) {
+const Card = forwardRef<HTMLDivElement, CardPropsType>(({ children, className }, ref) => {
   return (
     <div
+      ref={ref}
       className={cx(
         "w-full rounded border-none bg-white shadow outline outline-1 outline-slate-800/30 dark:bg-slate-800 dark:outline-slate-300/20",
         className,
@@ -35,4 +36,8 @@ export default function Card({ children, className }: CardPropsType) {
       {children}
     </div>
   );
-}
+});
+
+Card.displayName = "Card";
+
+export default Card;

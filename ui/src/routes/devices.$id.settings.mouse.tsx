@@ -65,9 +65,9 @@ export default function SettingsKeyboardMouseRoute() {
         </SettingsItem>
         <div className="space-y-4">
           <SettingsItem title="Modes" description="Choose the mouse input mode" />
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col items-center gap-4 md:flex-row">
             <button
-              className="group block grow"
+              className="group block w-full grow"
               onClick={() => console.log("Absolute mouse mode clicked")}
             >
               <GridCard>
@@ -95,7 +95,10 @@ export default function SettingsKeyboardMouseRoute() {
                 </div>
               </GridCard>
             </button>
-            <button className="group block grow cursor-not-allowed opacity-50" disabled>
+            <button
+              className="group block w-full grow cursor-not-allowed opacity-50"
+              disabled
+            >
               <GridCard>
                 <div className="group flex items-center gap-x-4 px-4 py-3">
                   <img
@@ -114,6 +117,7 @@ export default function SettingsKeyboardMouseRoute() {
                     </div>
                     <CheckCircleIcon
                       className={cx(
+                        "hidden",
                         "h-4 w-4 text-blue-700 transition-opacity duration-300 dark:text-blue-500",
                       )}
                     />
