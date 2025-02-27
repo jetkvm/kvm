@@ -29,8 +29,8 @@ export default function SettingsAppearanceRoute() {
   return (
     <div className="space-y-4">
       <SectionHeader
-        title="Hardware"
-        description="Configure display settings and hardware options for your JetKVM device"
+        title="Appearance"
+        description="Customize the look and feel of your JetKVM interface"
       />
       <SettingsItem title="Theme" description="Choose your preferred color theme">
         <SelectMenuBasic
