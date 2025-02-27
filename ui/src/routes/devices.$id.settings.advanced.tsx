@@ -8,7 +8,6 @@ import { useCallback, useState, useEffect } from "react";
 import notifications from "../notifications";
 import { TextAreaWithLabel } from "../components/TextArea";
 import { isOnDevice } from "../main";
-import { InputFieldWithLabel } from "../components/InputField";
 import { Button } from "../components/Button";
 import { useSettingsStore } from "../hooks/stores";
 import { GridCard } from "@components/Card";
@@ -16,16 +15,11 @@ import { GridCard } from "@components/Card";
 export default function SettingsAdvancedRoute() {
   const [send] = useJsonRpc();
 
-  const [cloudUrl, setCloudUrl] = useState("");
   const [sshKey, setSSHKey] = useState<string>("");
   const setDeveloperMode = useSettingsStore(state => state.setDeveloperMode);
   const settings = useSettingsStore();
 
   useEffect(() => {
-    send("getCloudUrl", {}, resp => {
-      if ("error" in resp) return;
-      setCloudUrl(resp.result as string);
-    });
 
     send("getDevModeState", {}, resp => {
       if ("error" in resp) return;
@@ -51,12 +45,6 @@ export default function SettingsAdvancedRoute() {
     });
   }, [send]);
 
-  const getCloudUrl = useCallback(() => {
-    send("getCloudUrl", {}, resp => {
-      if ("error" in resp) return;
-      setCloudUrl(resp.result as string);
-    });
-  }, [send]);
 
   const handleUsbEmulationToggle = useCallback(
     (enabled: boolean) => {
@@ -73,35 +61,6 @@ export default function SettingsAdvancedRoute() {
     },
     [getUsbEmulationState, send],
   );
-
-  const handleCloudUrlChange = useCallback(
-    (url: string) => {
-      send("setCloudUrl", { url }, resp => {
-        if ("error" in resp) {
-          notifications.error(
-            `Failed to update cloud URL: ${resp.error.data || "Unknown error"}`,
-          );
-          return;
-        }
-        getCloudUrl();
-        notifications.success("Cloud URL updated successfully");
-      });
-    },
-    [send, getCloudUrl],
-  );
-
-  const handleResetCloudUrl = useCallback(() => {
-    send("resetCloudUrl", {}, resp => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to reset cloud URL: ${resp.error.data || "Unknown error"}`,
-        );
-        return;
-      }
-      getCloudUrl();
-      notifications.success("Cloud URL reset to default successfully");
-    });
-  }, [send, getCloudUrl]);
 
   const handleResetConfig = useCallback(() => {
     send("resetConfig", {}, resp => {
@@ -244,37 +203,6 @@ export default function SettingsAdvancedRoute() {
           </GridCard>
         )}
 
-        {isOnDevice && settings.developerMode && (
-          <div className="mt-4 space-y-4">
-            <SettingsItem
-              title="Cloud API URL"
-              description="Connect to a custom JetKVM Cloud API"
-            />
-
-            <InputFieldWithLabel
-              size="SM"
-              label="Cloud URL"
-              value={cloudUrl}
-              onChange={e => setCloudUrl(e.target.value)}
-              placeholder="https://api.jetkvm.com"
-            />
-
-            <div className="flex items-center gap-x-2">
-              <Button
-                size="SM"
-                theme="primary"
-                text="Save Cloud URL"
-                onClick={() => handleCloudUrlChange(cloudUrl)}
-              />
-              <Button
-                size="SM"
-                theme="light"
-                text="Restore to default"
-                onClick={handleResetCloudUrl}
-              />
-            </div>
-          </div>
-        )}
         {isOnDevice && settings.developerMode && (
           <div className="space-y-4">
             <SettingsItem

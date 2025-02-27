@@ -19,7 +19,7 @@ type SelectMenuProps = Pick<
   direction?: "vertical" | "horizontal";
   error?: string;
   fullWidth?: boolean;
-} & React.ComponentProps<typeof FieldLabel>;
+} & Partial<React.ComponentProps<typeof FieldLabel>>;
 
 const sizes = {
   XS: "h-[24.5px] pl-3 pr-8 text-xs",
@@ -69,7 +69,7 @@ export const SelectMenuBasic = React.forwardRef<HTMLSelectElement, SelectMenuPro
               classes,
 
               // General styling
-              "block w-full cursor-pointer transition duration-300 rounded border-none py-0 font-medium shadow-none outline-0",
+              "block w-full cursor-pointer rounded border-none py-0 font-medium shadow-none outline-0 transition duration-300",
 
               // Hover
               "hover:bg-blue-50/80 active:bg-blue-100/60 disabled:hover:bg-white",

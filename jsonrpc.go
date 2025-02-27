@@ -780,6 +780,10 @@ func rpcResetCloudUrl() error {
 	return nil
 }
 
+func rpcGetDefaultCloudUrl() (string, error) {
+	return defaultConfig.CloudURL, nil
+}
+
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"getDeviceID":            {Func: rpcGetDeviceID},
@@ -841,4 +845,5 @@ var rpcHandlers = map[string]RPCHandler{
 	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"url"}},
 	"getCloudUrl":            {Func: rpcGetCloudUrl},
 	"resetCloudUrl":          {Func: rpcResetCloudUrl},
+	"getDefaultCloudUrl":     {Func: rpcGetDefaultCloudUrl},
 }

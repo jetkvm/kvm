@@ -79,15 +79,27 @@ export default function SettingsRoute() {
         <div className="w-full gap-x-8 gap-y-4 space-y-4 md:grid md:grid-cols-8 md:space-y-0">
           <div className="w-full select-none space-y-4 md:col-span-2">
             <Card className="flex w-full gap-x-4 overflow-hidden p-2 md:flex-col dark:bg-slate-800">
-              <LinkButton
-                to=".."
-                size="SM"
-                theme="blank"
-                text="Back to KVM"
-                LeadingIcon={LuArrowLeft}
-                textAlign="left"
-                fullWidth
-              />
+              <div className="md:hidden">
+                <LinkButton
+                  to=".."
+                  size="SM"
+                  theme="blank"
+                  text="Back to KVM"
+                  LeadingIcon={LuArrowLeft}
+                  textAlign="left"
+                />
+              </div>
+              <div className="hidden md:block">
+                <LinkButton
+                  to=".."
+                  size="SM"
+                  theme="blank"
+                  text="Back to KVM"
+                  LeadingIcon={LuArrowLeft}
+                  textAlign="left"
+                  fullWidth
+                />
+              </div>
             </Card>
             <Card className="relative overflow-hidden">
               {/* Gradient overlay for left side - only visible on mobile when scrolled */}
@@ -160,12 +172,12 @@ export default function SettingsRoute() {
                 </div>
                 <div className="shrink-0">
                   <NavLink
-                    to="security"
+                    to="access"
                     className={({ isActive }) => (isActive ? "active" : "")}
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 [.active_&]:bg-blue-50 [.active_&]:!text-blue-700 md:[.active_&]:bg-transparent dark:[.active_&]:bg-blue-900 dark:[.active_&]:!text-blue-200 dark:md:[.active_&]:bg-transparent">
                       <LuShieldCheck className="h-4 w-4 shrink-0" />
-                      <h1>Security</h1>
+                      <h1>Access</h1>
                     </div>
                   </NavLink>
                 </div>

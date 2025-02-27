@@ -6,7 +6,7 @@ import { useLocalAuthModalStore } from "@/hooks/stores";
 import { useLocation, useRevalidator } from "react-router-dom";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 
-export default function LocalAuthRoute() {
+export default function SecurityAccessLocalAuthRoute() {
   const { setModalView } = useLocalAuthModalStore();
   const { navigateTo } = useDeviceUiNavigation();
   const location = useLocation();

@@ -28,19 +28,19 @@ import WelcomeRoute, { DeviceStatus } from "./routes/welcome-local";
 import WelcomeLocalPasswordRoute from "./routes/welcome-local.password";
 import { CLOUD_API, DEVICE_API } from "./ui.config";
 import OtherSessionRoute from "./routes/devices.$id.other-session";
-import LocalAuthRoute from "./routes/devices.$id.settings.security.local-auth";
 import MountRoute from "./routes/devices.$id.mount";
 import * as SettingsRoute from "./routes/devices.$id.settings";
 import SettingsKeyboardMouseRoute from "./routes/devices.$id.settings.mouse";
 import api from "./api";
 import * as SettingsIndexRoute from "./routes/devices.$id.settings._index";
 import SettingsAdvancedRoute from "./routes/devices.$id.settings.advanced";
-import * as SettingsSecurityIndexRoute from "./routes/devices.$id.settings.security._index";
+import * as SettingsAccessIndexRoute from "./routes/devices.$id.settings.access._index";
 import SettingsHardwareRoute from "./routes/devices.$id.settings.hardware";
 import SettingsVideoRoute from "./routes/devices.$id.settings.video";
 import SettingsAppearanceRoute from "./routes/devices.$id.settings.appearance";
 import * as SettingsGeneralIndexRoute from "./routes/devices.$id.settings.general._index";
 import SettingsGeneralUpdateRoute from "./routes/devices.$id.settings.general.update";
+import SecurityAccessLocalAuthRoute from "./routes/devices.$id.settings.access.local-auth";
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
@@ -114,11 +114,6 @@ if (isOnDevice) {
           path: "other-session",
           element: <OtherSessionRoute />,
         },
-
-        {
-          path: "local-auth",
-          element: <LocalAuthRoute />,
-        },
         {
           path: "mount",
           element: <MountRoute />,
@@ -157,16 +152,16 @@ if (isOnDevice) {
               element: <SettingsHardwareRoute />,
             },
             {
-              path: "security",
+              path: "access",
               children: [
                 {
                   index: true,
-                  element: <SettingsSecurityIndexRoute.default />,
-                  loader: SettingsSecurityIndexRoute.loader,
+                  element: <SettingsAccessIndexRoute.default />,
+                  loader: SettingsAccessIndexRoute.loader,
                 },
                 {
                   path: "local-auth",
-                  element: <LocalAuthRoute />,
+                  element: <SecurityAccessLocalAuthRoute />,
                 },
               ],
             },
@@ -266,16 +261,16 @@ if (isOnDevice) {
                       element: <SettingsHardwareRoute />,
                     },
                     {
-                      path: "security",
+                      path: "access",
                       children: [
                         {
                           index: true,
-                          element: <SettingsSecurityIndexRoute.default />,
-                          loader: SettingsSecurityIndexRoute.loader,
+                          element: <SettingsAccessIndexRoute.default />,
+                          loader: SettingsAccessIndexRoute.loader,
                         },
                         {
                           path: "local-auth",
-                          element: <LocalAuthRoute />,
+                          element: <SecurityAccessLocalAuthRoute />,
                         },
                       ],
                     },
