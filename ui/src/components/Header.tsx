@@ -141,7 +141,7 @@ export default function DashboardNavbar({
                             <Menu.Item>
                               <div onClick={onLogout}>
                                 <button className="block w-full">
-                                  <div className="flex items-center gap-x-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-slate-600 dark:hover:bg-slate-700">
+                                  <div className="flex items-center gap-x-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">
                                     <ArrowLeftEndOnRectangleIcon className="h-4 w-4" />
                                     <div className="font-display">Log out</div>
                                   </div>
