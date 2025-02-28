@@ -3,6 +3,7 @@ import { cx } from "@/cva.config";
 import {
   HidState,
   UpdateState,
+  useDeviceStore,
   useHidStore,
   useMountMediaStore,
   User,
@@ -39,6 +40,9 @@ import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import Modal from "../components/Modal";
 import { motion, AnimatePresence } from "motion/react";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
+import { FeatureFlagProvider } from "../providers/FeatureFlagProvider";
+import { SystemVersionInfo } from "./devices.$id.settings.general.update";
+import notifications from "../notifications";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -442,8 +446,26 @@ export default function KvmIdRoute() {
     if (location.pathname !== "/other-session") navigateTo("/");
   }, [navigateTo, location.pathname]);
 
+  const appVersion = useDeviceStore(state => state.appVersion);
+  const setAppVersion = useDeviceStore(state => state.setAppVersion);
+  const setSystemVersion = useDeviceStore(state => state.setSystemVersion);
+
+  useEffect(() => {
+    if (appVersion) return;
+
+    send("getUpdateStatus", {}, async resp => {
+      if ("error" in resp) {
+        notifications.error("Failed to get device version");
+      } else {
+        const result = resp.result as SystemVersionInfo;
+        setAppVersion(result.local.appVersion);
+        setSystemVersion(result.local.systemVersion);
+      }
+    });
+  }, [appVersion, send, setAppVersion, setSystemVersion]);
+
   return (
-    <>
+    <FeatureFlagProvider appVersion={appVersion}>
       {!outlet && otaState.updating && (
         <AnimatePresence>
           <motion.div
@@ -507,7 +529,7 @@ export default function KvmIdRoute() {
       {serialConsole && (
         <Terminal type="serial" dataChannel={serialConsole} title="Serial Console" />
       )}
-    </>
+    </FeatureFlagProvider>
   );
 }
 

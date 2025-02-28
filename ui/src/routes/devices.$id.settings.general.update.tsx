@@ -3,7 +3,7 @@ import Card from "@/components/Card";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
-import { UpdateState, useUpdateStore } from "@/hooks/stores";
+import { UpdateState, useDeviceStore, useUpdateStore } from "@/hooks/stores";
 import notifications from "@/notifications";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -134,6 +134,9 @@ function LoadingState({
   const abortControllerRef = useRef<AbortController | null>(null);
   const [send] = useJsonRpc();
 
+  const setAppVersion = useDeviceStore(state => state.setAppVersion);
+  const setSystemVersion = useDeviceStore(state => state.setSystemVersion);
+
   const getVersionInfo = useCallback(() => {
     return new Promise<SystemVersionInfo>((resolve, reject) => {
       send("getUpdateStatus", {}, async resp => {
@@ -142,11 +145,13 @@ function LoadingState({
           reject(new Error("Failed to check for updates"));
         } else {
           const result = resp.result as SystemVersionInfo;
+          setAppVersion(result.local.appVersion);
+          setSystemVersion(result.local.systemVersion);
           resolve(result);
         }
       });
     });
-  }, [send]);
+  }, [send, setAppVersion, setSystemVersion]);
 
   const progressBarRef = useRef<HTMLDivElement>(null);
   useEffect(() => {

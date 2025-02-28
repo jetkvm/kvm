@@ -553,3 +553,19 @@ export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
   modalView: "createPassword",
   setModalView: view => set({ modalView: view }),
 }));
+
+export interface DeviceState {
+  appVersion: string | null;
+  systemVersion: string | null;
+
+  setAppVersion: (version: string) => void;
+  setSystemVersion: (version: string) => void;
+}
+
+export const useDeviceStore = create<DeviceState>(set => ({
+  appVersion: null,
+  systemVersion: null,
+
+  setAppVersion: version => set({ appVersion: version }),
+  setSystemVersion: version => set({ systemVersion: version }),
+}));

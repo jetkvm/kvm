@@ -1,43 +1,32 @@
 import { SettingsPageHeader } from "../components/SettingsPageheader";
 
 import { SettingsItem } from "./devices.$id.settings";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useEffect } from "react";
-import { SystemVersionInfo } from "./devices.$id.settings.general.update";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "../components/Button";
 import notifications from "../notifications";
 import Checkbox from "../components/Checkbox";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
+import { useDeviceStore } from "../hooks/stores";
 
 export default function SettingsGeneralRoute() {
   const [send] = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
-
   const [autoUpdate, setAutoUpdate] = useState(true);
-  const [currentVersions, setCurrentVersions] = useState<{
-    appVersion: string;
-    systemVersion: string;
-  } | null>(null);
 
-  const getCurrentVersions = useCallback(() => {
-    send("getUpdateStatus", {}, resp => {
-      if ("error" in resp) return;
-      const result = resp.result as SystemVersionInfo;
-      setCurrentVersions({
-        appVersion: result.local.appVersion,
-        systemVersion: result.local.systemVersion,
-      });
-    });
-  }, [send]);
+  const currentVersions = useDeviceStore(state => {
+    const { appVersion, systemVersion } = state;
+    if (!appVersion || !systemVersion) return null;
+    return { appVersion, systemVersion };
+  });
 
   useEffect(() => {
-    getCurrentVersions();
     send("getAutoUpdateState", {}, resp => {
       if ("error" in resp) return;
       setAutoUpdate(resp.result as boolean);
     });
-  }, [getCurrentVersions, send]);
+  }, [send]);
 
   const handleAutoUpdateChange = (enabled: boolean) => {
     send("setAutoUpdateState", { enabled }, resp => {
