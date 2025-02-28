@@ -27,22 +27,6 @@ export const loader = async () => {
   return null;
 };
 
-// Define hardcoded cloud providers with both API and app URLs
-const CLOUD_PROVIDERS = [
-  {
-    value: "jetkvm",
-    apiUrl: "https://api.jetkvm.com",
-    appUrl: "https://app.jetkvm.com",
-    label: "JetKVM Cloud",
-  },
-  {
-    value: "custom",
-    apiUrl: "",
-    appUrl: "",
-    label: "Custom",
-  },
-];
-
 export default function SettingsAccessIndexRoute() {
   const loaderData = useLoaderData() as LocalDevice | null;
 
@@ -63,16 +47,17 @@ export default function SettingsAccessIndexRoute() {
     send("getCloudState", {}, resp => {
       if ("error" in resp) return console.error(resp.error);
       const cloudState = resp.result as CloudState;
-
       setAdopted(cloudState.connected);
       setCloudApiUrl(cloudState.url);
 
       if (cloudState.appUrl) setCloudAppUrl(cloudState.appUrl);
 
       // Find if the API URL matches any of our predefined providers
-      const matchingProvider = CLOUD_PROVIDERS.find(p => p.apiUrl === cloudState.url);
-      if (matchingProvider && matchingProvider.value !== "custom") {
-        setSelectedProvider(matchingProvider.value);
+      const isAPIJetKVMProd = cloudState.url === "https://api.jetkvm.com";
+      const isAppJetKVMProd = cloudState.appUrl === "https://app.jetkvm.com";
+
+      if (isAPIJetKVMProd && isAppJetKVMProd) {
+        setSelectedProvider("jetkvm");
       } else {
         setSelectedProvider("custom");
       }
@@ -129,10 +114,13 @@ export default function SettingsAccessIndexRoute() {
     setSelectedProvider(value);
 
     // If selecting a predefined provider, update both URLs
-    const provider = CLOUD_PROVIDERS.find(p => p.value === value);
-    if (provider && value !== "custom") {
-      setCloudApiUrl(provider.apiUrl);
-      setCloudAppUrl(provider.appUrl);
+    if (value === "jetkvm") {
+      setCloudApiUrl("https://api.jetkvm.com");
+      setCloudAppUrl("https://app.jetkvm.com");
+    } else {
+      if (cloudApiUrl || cloudAppUrl) return;
+      setCloudApiUrl("");
+      setCloudAppUrl("");
     }
   };
 
@@ -222,7 +210,10 @@ export default function SettingsAccessIndexRoute() {
                   size="SM"
                   value={selectedProvider}
                   onChange={e => handleProviderChange(e.target.value)}
-                  options={CLOUD_PROVIDERS.map(p => ({ value: p.value, label: p.label }))}
+                  options={[
+                    { value: "jetkvm", label: "JetKVM Cloud" },
+                    { value: "custom", label: "Custom" },
+                  ]}
                 />
               </SettingsItem>
 
@@ -311,7 +302,7 @@ export default function SettingsAccessIndexRoute() {
             <div>
               <div className="space-y-2">
                 <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Your device is adopted to JetKVM Cloud
+                  Your device is adopted to the Cloud
                 </p>
                 <div>
                   <Button

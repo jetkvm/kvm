@@ -3,7 +3,7 @@ import { InputFieldWithLabel } from "./InputField";
 import { UsbConfigState } from "@/hooks/stores";
 import { useEffect, useCallback, useState } from "react";
 import { useJsonRpc } from "../hooks/useJsonRpc";
-import { USBConfig } from "../routes/devices.$id.settings.hardware";
+import { USBConfig } from "./UsbConfigSetting";
 
 export default function UpdateUsbConfigModal({
   onSetUsbConfig,
