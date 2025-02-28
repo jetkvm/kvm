@@ -100,6 +100,7 @@ func setupRouter() *gin.Engine {
 	{
 		protected.POST("/webrtc/session", handleWebRTCSession)
 		protected.POST("/cloud/register", handleCloudRegister)
+		protected.GET("/cloud/state", handleCloudState)
 		protected.GET("/device", handleDevice)
 		protected.POST("/auth/logout", handleLogout)
 
@@ -354,6 +355,16 @@ func handleDeletePassword(c *gin.Context) {
 func handleDeviceStatus(c *gin.Context) {
 	response := DeviceStatus{
 		IsSetup: config.LocalAuthMode != "",
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+func handleCloudState(c *gin.Context) {
+	response := CloudState{
+		Connected: config.CloudToken != "",
+		URL:       config.CloudURL,
+		AppURL:    config.CloudAppURL,
 	}
 
 	c.JSON(http.StatusOK, response)

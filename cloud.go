@@ -264,12 +264,14 @@ func RunWebsocketClient() {
 type CloudState struct {
 	Connected bool   `json:"connected"`
 	URL       string `json:"url,omitempty"`
+	AppURL    string `json:"appUrl,omitempty"`
 }
 
 func rpcGetCloudState() CloudState {
 	return CloudState{
 		Connected: config.CloudToken != "" && config.CloudURL != "",
 		URL:       config.CloudURL,
+		AppURL:    config.CloudAppURL,
 	}
 }
 

@@ -1,6 +1,12 @@
 import { LoaderFunctionArgs, redirect } from "react-router-dom";
 import api from "../api";
-import { CLOUD_APP, DEVICE_API } from "@/ui.config";
+import { DEVICE_API } from "@/ui.config";
+
+export interface CloudState {
+  connected: boolean;
+  url: string;
+  appUrl: string;
+}
 
 const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -11,14 +17,21 @@ const loader = async ({ request }: LoaderFunctionArgs) => {
   const oidcGoogle = searchParams.get("oidcGoogle");
   const clientId = searchParams.get("clientId");
 
-  const res = await api.POST(`${DEVICE_API}/cloud/register`, {
-    token: tempToken,
-    oidcGoogle,
-    clientId,
-  });
+  const [cloudStateResponse, registerResponse] = await Promise.all([
+    api.GET(`${DEVICE_API}/cloud/state`),
+    api.POST(`${DEVICE_API}/cloud/register`, {
+      token: tempToken,
+      oidcGoogle,
+      clientId,
+    }),
+  ]);
 
-  if (!res.ok) throw new Error("Failed to register device");
-  return redirect(CLOUD_APP + `/devices/${deviceId}/setup`);
+  if (!cloudStateResponse.ok) throw new Error("Failed to get cloud state");
+  const cloudState = (await cloudStateResponse.json()) as CloudState;
+
+  if (!registerResponse.ok) throw new Error("Failed to register device");
+
+  return redirect(cloudState.appUrl + `/devices/${deviceId}/setup`);
 };
 
 export default function AdoptRoute() {

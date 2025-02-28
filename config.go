@@ -22,6 +22,7 @@ type UsbConfig struct {
 
 type Config struct {
 	CloudURL             string            `json:"cloud_url"`
+	CloudAppURL          string            `json:"cloud_app_url"`
 	CloudToken           string            `json:"cloud_token"`
 	GoogleIdentity       string            `json:"google_identity"`
 	JigglerEnabled       bool              `json:"jiggler_enabled"`
@@ -43,6 +44,7 @@ const configPath = "/userdata/kvm_config.json"
 
 var defaultConfig = &Config{
 	CloudURL:             "https://api.jetkvm.com",
+	CloudAppURL:          "https://app.jetkvm.com",
 	AutoUpdateEnabled:    true, // Set a default value
 	ActiveExtension:      "",
 	DisplayMaxBrightness: 64,

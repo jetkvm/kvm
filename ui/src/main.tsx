@@ -177,12 +177,11 @@ if (isOnDevice) {
         },
       ],
     },
-
     {
       path: "/adopt",
       element: <AdoptRoute />,
-      loader: AdoptRoute.loader,
       errorElement: <ErrorBoundary />,
+      loader: AdoptRoute.loader,
     },
   ]);
 } else {
