@@ -758,7 +758,7 @@ func rpcSetCloudUrl(apiUrl string, appUrl string) (bool, error) {
 	config.CloudAppURL = appUrl
 
 	if err := SaveConfig(); err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to save config: %w", err)
 	}
 
 	return true, nil

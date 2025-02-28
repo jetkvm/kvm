@@ -53,8 +53,8 @@ export default function SettingsAccessIndexRoute() {
 
   const [isAdopted, setAdopted] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
-  const [cloudApiUrl, setCloudApiUrl] = useState("https://api.jetkvm.com");
-  const [cloudAppUrl, setCloudAppUrl] = useState("https://app.jetkvm.com");
+  const [cloudApiUrl, setCloudApiUrl] = useState("");
+  const [cloudAppUrl, setCloudAppUrl] = useState("");
 
   // Use a simple string identifier for the selected provider
   const [selectedProvider, setSelectedProvider] = useState<string>("jetkvm");
@@ -95,30 +95,34 @@ export default function SettingsAccessIndexRoute() {
     });
   };
 
-  const onCloudAdoptClick = useCallback(() => {
-    if (!deviceId) {
-      notifications.error("No device ID available");
-      return;
-    }
-
-    send("setCloudUrl", { apiUrl: cloudApiUrl, appUrl: cloudAppUrl }, resp => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to update cloud URL: ${resp.error.data || "Unknown error"}`,
-        );
+  const onCloudAdoptClick = useCallback(
+    (cloudApiUrl: string, cloudAppUrl: string) => {
+      if (!deviceId) {
+        notifications.error("No device ID available");
         return;
       }
 
-      getCloudState();
+      send("setCloudUrl", { apiUrl: cloudApiUrl, appUrl: cloudAppUrl }, resp => {
+        if ("error" in resp) {
+          notifications.error(
+            `Failed to update cloud URL: ${resp.error.data || "Unknown error"}`,
+          );
+          return;
+        }
 
-      const returnTo = new URL(window.location.href);
-      returnTo.pathname = "/adopt";
-      returnTo.search = "";
-      returnTo.hash = "";
-      window.location.href =
-        cloudAppUrl + "/signup?deviceId=" + deviceId + `&returnTo=${returnTo.toString()}`;
-    });
-  }, [deviceId, getCloudState, send, cloudApiUrl, cloudAppUrl]);
+        const returnTo = new URL(window.location.href);
+        returnTo.pathname = "/adopt";
+        returnTo.search = "";
+        returnTo.hash = "";
+        window.location.href =
+          cloudAppUrl +
+          "/signup?deviceId=" +
+          deviceId +
+          `&returnTo=${returnTo.toString()}`;
+      });
+    },
+    [deviceId, send],
+  );
 
   // Handle provider selection change
   const handleProviderChange = (value: string) => {
@@ -297,7 +301,7 @@ export default function SettingsAccessIndexRoute() {
           {!isAdopted ? (
             <div className="flex items-end gap-x-2">
               <Button
-                onClick={onCloudAdoptClick}
+                onClick={() => onCloudAdoptClick(cloudApiUrl, cloudAppUrl)}
                 size="SM"
                 theme="primary"
                 text="Adopt KVM to Cloud"

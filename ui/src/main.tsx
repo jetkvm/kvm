@@ -180,8 +180,8 @@ if (isOnDevice) {
     {
       path: "/adopt",
       element: <AdoptRoute />,
-      errorElement: <ErrorBoundary />,
       loader: AdoptRoute.loader,
+      errorElement: <ErrorBoundary />,
     },
   ]);
 } else {
