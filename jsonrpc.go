@@ -753,15 +753,15 @@ func rpcSetSerialSettings(settings SerialSettings) error {
 	return nil
 }
 
-func rpcSetCloudUrl(apiUrl string, appUrl string) (bool, error) {
+func rpcSetCloudUrl(apiUrl string, appUrl string) error {
 	config.CloudURL = apiUrl
 	config.CloudAppURL = appUrl
 
 	if err := SaveConfig(); err != nil {
-		return false, fmt.Errorf("failed to save config: %w", err)
+		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	return true, nil
+	return nil
 }
 
 var rpcHandlers = map[string]RPCHandler{
