@@ -1,5 +1,5 @@
 BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD)
-BUILDDATE ?= $(shell date --iso-8601=seconds)
+BUILDDATE ?= $(shell date -u +%FT%T%z)
 REVISION  ?= $(shell git rev-parse HEAD)
 VERSION_DEV := 0.3.8-dev$(shell date +%Y%m%d%H%M)
 VERSION := 0.3.7
