@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gosimple/slug"
 	"github.com/pion/webrtc/v4"
 	"go.bug.st/serial"
 )
@@ -301,13 +302,14 @@ func rpcGetDeviceName() (string, error) {
 func rpcSetDeviceName(deviceName string) error {
 	LoadConfig()
 	config.DeviceName = deviceName
+	config.DNSName = slug.Make(deviceName)
 
 	err := SaveConfig()
 	if err != nil {
 		return fmt.Errorf("failed to save device name: %w", err)
 	}
 
-	log.Printf("[jsonrpc.go:rpcSetDeviceName] device name set to %s", deviceName)
+	log.Printf("[jsonrpc.go:rpcSetDeviceName] device name set to %s, dns name set to %s", config.DeviceName, config.DNSName)
 	return nil
 }
 

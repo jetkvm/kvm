@@ -26,6 +26,7 @@ type Config struct {
 	EdidString           string            `json:"hdmi_edid_string"`
 	ActiveExtension      string            `json:"active_extension"`
 	DeviceName           string            `json:"device_name"`
+	DNSName              string            `json:"dns_name"`
 	DisplayMaxBrightness int               `json:"display_max_brightness"`
 	DisplayDimAfterSec   int               `json:"display_dim_after_sec"`
 	DisplayOffAfterSec   int               `json:"display_off_after_sec"`
@@ -38,6 +39,7 @@ var defaultConfig = &Config{
 	AutoUpdateEnabled:    true, // Set a default value
 	ActiveExtension:      "",
 	DeviceName:           "JetKVM",
+	DNSName:              "jetkvm.local",
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes
