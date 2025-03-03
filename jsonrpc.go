@@ -313,6 +313,11 @@ func rpcSetDeviceName(deviceName string) error {
 	return nil
 }
 
+func rpcGetDNSName() (string, error) {
+	LoadConfig()
+	return config.DNSName, nil
+}
+
 func rpcGetDevModeState() (DevModeState, error) {
 	devModeEnabled := false
 	if _, err := os.Stat(devModeFile); err != nil {
@@ -777,6 +782,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"tryUpdate":              {Func: rpcTryUpdate},
 	"getDeviceName":          {Func: rpcGetDeviceName},
 	"setDeviceName":          {Func: rpcSetDeviceName, Params: []string{"deviceName"}},
+	"getDNSName":             {Func: rpcGetDNSName},
 	"getDevModeState":        {Func: rpcGetDevModeState},
 	"setDevModeState":        {Func: rpcSetDevModeState, Params: []string{"enabled"}},
 	"getSSHKeyState":         {Func: rpcGetSSHKeyState},

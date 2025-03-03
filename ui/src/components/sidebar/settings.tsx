@@ -362,6 +362,8 @@ export default function SettingsSidebar() {
       document.title = deviceName;
     });
 
+
+
     send("getDevModeState", {}, resp => {
       if ("error" in resp) return;
       const result = resp.result as { enabled: boolean };
@@ -459,76 +461,76 @@ export default function SettingsSidebar() {
     >
       <SidebarHeader title="Settings" setSidebarView={setSidebarView} />
       <div
-        className="h-full px-4 py-2 space-y-4 overflow-y-scroll bg-white dark:bg-slate-900"
-        ref={sidebarRef}
+          className="h-full px-4 py-2 space-y-4 overflow-y-scroll bg-white dark:bg-slate-900"
+          ref={sidebarRef}
       >
         <div className="space-y-4">
           <div className="flex items-center justify-between mt-2 gap-x-2">
             <SettingsItem
-              title="Check for Updates"
-              description={
-                currentVersions ? (
-                  <>
-                    App: {currentVersions.appVersion}
-                    <br />
-                    System: {currentVersions.systemVersion}
-                  </>
-                ) : (
-                  "Loading current versions..."
-                )
-              }
+                title="Check for Updates"
+                description={
+                  currentVersions ? (
+                      <>
+                        App: {currentVersions.appVersion}
+                        <br/>
+                        System: {currentVersions.systemVersion}
+                      </>
+                  ) : (
+                      "Loading current versions..."
+                  )
+                }
             />
             <div>
               <Button
-                size="SM"
-                theme="light"
-                text="Check for Updates"
-                onClick={handleCheckForUpdates}
+                  size="SM"
+                  theme="light"
+                  text="Check for Updates"
+                  onClick={handleCheckForUpdates}
               />
             </div>
           </div>
-          <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+          <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
           <SectionHeader
-            title="Mouse"
-            description="Customize mouse behavior and interaction settings"
+              title="Mouse"
+              description="Customize mouse behavior and interaction settings"
           />
 
           <div className="space-y-4">
             <SettingsItem
-              title="Hide Cursor"
-              description="Hide the cursor when sending mouse movements"
+                title="Hide Cursor"
+                description="Hide the cursor when sending mouse movements"
             >
               <Checkbox
-                checked={hideCursor}
-                onChange={e => {
-                  setHideCursor(e.target.checked);
-                }}
+                  checked={hideCursor}
+                  onChange={e => {
+                    setHideCursor(e.target.checked);
+                  }}
               />
             </SettingsItem>
             <SettingsItem
-              title="Jiggler"
-              description="Simulate movement of a computer mouse. Prevents sleep mode, standby mode or the screensaver from activating"
+                title="Jiggler"
+                description="Simulate movement of a computer mouse. Prevents sleep mode, standby mode or the screensaver from activating"
             >
               <Checkbox
-                checked={jiggler}
-                onChange={e => {
-                  handleJigglerChange(e.target.checked);
-                }}
+                  checked={jiggler}
+                  onChange={e => {
+                    handleJigglerChange(e.target.checked);
+                  }}
               />
             </SettingsItem>
             <div className="space-y-4">
-              <SettingsItem title="Modes" description="Choose the mouse input mode" />
+              <SettingsItem title="Modes" description="Choose the mouse input mode"/>
               <div className="flex items-center gap-4">
                 <button
-                  className="block group grow"
-                  onClick={() => console.log("Absolute mouse mode clicked")}
+                    className="block group grow"
+                    onClick={() => console.log("Absolute mouse mode clicked")}
                 >
                   <GridCard>
                     <div className="flex items-center px-4 py-3 group gap-x-4">
                       <img
-                        className="w-6 shrink-0 dark:invert"
-                        src={PointingFinger}
-                        alt="Finger touching a screen"
+                          className="w-6 shrink-0 dark:invert"
+                          src={PointingFinger}
+                          alt="Finger touching a screen"
                       />
                       <div className="flex items-center justify-between grow">
                         <div className="text-left">
@@ -539,18 +541,18 @@ export default function SettingsSidebar() {
                             Most convenient
                           </p>
                         </div>
-                        <CheckCircleIcon className="w-4 h-4 text-blue-700 dark:text-blue-500" />
+                        <CheckCircleIcon className="w-4 h-4 text-blue-700 dark:text-blue-500"/>
                       </div>
                     </div>
                   </GridCard>
                 </button>
                 <button
-                  className="block opacity-50 cursor-not-allowed group grow"
-                  disabled
+                    className="block opacity-50 cursor-not-allowed group grow"
+                    disabled
                 >
                   <GridCard>
                     <div className="flex items-center px-4 py-3 gap-x-4">
-                      <img className="w-6 shrink-0 dark:invert" src={MouseIcon} alt="Mouse icon" />
+                      <img className="w-6 shrink-0 dark:invert" src={MouseIcon} alt="Mouse icon"/>
                       <div className="flex items-center justify-between grow">
                         <div className="text-left">
                           <h3 className="text-sm font-semibold text-black dark:text-white">
@@ -568,467 +570,476 @@ export default function SettingsSidebar() {
             </div>
           </div>
         </div>
-        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
         <div className="pb-2 space-y-4">
           <SectionHeader
-            title="Video"
-            description="Configure display settings and EDID for optimal compatibility"
+              title="Video"
+              description="Configure display settings and EDID for optimal compatibility"
           />
           <div className="space-y-4">
             <SettingsItem
-              title="Stream Quality"
-              description="Adjust the quality of the video stream"
+                title="Stream Quality"
+                description="Adjust the quality of the video stream"
             >
               <SelectMenuBasic
-                size="SM"
-                label=""
-                value={streamQuality}
-                options={[
-                  { value: "1", label: "High" },
-                  { value: "0.5", label: "Medium" },
-                  { value: "0.1", label: "Low" },
-                ]}
-                onChange={e => handleStreamQualityChange(e.target.value)}
+                  size="SM"
+                  label=""
+                  value={streamQuality}
+                  options={[
+                    {value: "1", label: "High"},
+                    {value: "0.5", label: "Medium"},
+                    {value: "0.1", label: "Low"},
+                  ]}
+                  onChange={e => handleStreamQualityChange(e.target.value)}
               />
             </SettingsItem>
             <SettingsItem
-              title="EDID"
-              description="Adjust the EDID settings for the display"
+                title="EDID"
+                description="Adjust the EDID settings for the display"
             >
               <SelectMenuBasic
-                size="SM"
-                label=""
-                fullWidth
-                value={customEdidValue ? "custom" : edid || "asd"}
-                onChange={e => {
-                  if (e.target.value === "custom") {
-                    setEdid("custom");
-                    setCustomEdidValue("");
-                  } else {
-                    handleEDIDChange(e.target.value as string);
-                  }
-                }}
-                options={[...edids, { value: "custom", label: "Custom" }]}
+                  size="SM"
+                  label=""
+                  fullWidth
+                  value={customEdidValue ? "custom" : edid || "asd"}
+                  onChange={e => {
+                    if (e.target.value === "custom") {
+                      setEdid("custom");
+                      setCustomEdidValue("");
+                    } else {
+                      handleEDIDChange(e.target.value as string);
+                    }
+                  }}
+                  options={[...edids, {value: "custom", label: "Custom"}]}
               />
             </SettingsItem>
             {customEdidValue !== null && (
-              <>
-                <SettingsItem
-                  title="Custom EDID"
-                  description="EDID details video mode compatibility. Default settings works in most cases, but unique UEFI/BIOS might need adjustments."
-                />
-                <TextAreaWithLabel
-                  label="EDID File"
-                  placeholder="00F..."
-                  rows={3}
-                  value={customEdidValue}
-                  onChange={e => setCustomEdidValue(e.target.value)}
-                />
-                <div className="flex justify-start gap-x-2">
-                  <Button
-                    size="MD"
-                    theme="primary"
-                    text="Set Custom EDID"
-                    onClick={() => handleEDIDChange(customEdidValue)}
+                <>
+                  <SettingsItem
+                      title="Custom EDID"
+                      description="EDID details video mode compatibility. Default settings works in most cases, but unique UEFI/BIOS might need adjustments."
                   />
-                  <Button
-                    size="MD"
-                    theme="light"
-                    text="Restore to default"
-                    onClick={() => {
-                      setCustomEdidValue(null);
-                      handleEDIDChange(defaultEdid);
-                    }}
+                  <TextAreaWithLabel
+                      label="EDID File"
+                      placeholder="00F..."
+                      rows={3}
+                      value={customEdidValue}
+                      onChange={e => setCustomEdidValue(e.target.value)}
                   />
-                </div>
-              </>
+                  <div className="flex justify-start gap-x-2">
+                    <Button
+                        size="MD"
+                        theme="primary"
+                        text="Set Custom EDID"
+                        onClick={() => handleEDIDChange(customEdidValue)}
+                    />
+                    <Button
+                        size="MD"
+                        theme="light"
+                        text="Restore to default"
+                        onClick={() => {
+                          setCustomEdidValue(null);
+                          handleEDIDChange(defaultEdid);
+                        }}
+                    />
+                  </div>
+                </>
             )}
           </div>
         </div>
         {isOnDevice && (
-          <>
-            <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
-            <div className="pb-4 space-y-4">
-              <SectionHeader
-                title="JetKVM Cloud"
-                description="Connect your device to the cloud for secure remote access and management"
-              />
+            <>
+              <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+              <div className="pb-4 space-y-4">
+                <SectionHeader
+                    title="JetKVM Cloud"
+                    description="Connect your device to the cloud for secure remote access and management"
+                />
 
-              <GridCard>
-                <div className="flex items-start p-4 gap-x-4">
-                  <ShieldCheckIcon className="w-8 h-8 mt-1 text-blue-600 shrink-0 dark:text-blue-500" />
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                        Cloud Security
-                      </h3>
-                      <div>
-                        <ul className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
-                          <li>• End-to-end encryption using WebRTC (DTLS and SRTP)</li>
-                          <li>• Zero Trust security model</li>
-                          <li>• OIDC (OpenID Connect) authentication</li>
-                          <li>• All streams encrypted in transit</li>
-                        </ul>
+                <GridCard>
+                  <div className="flex items-start p-4 gap-x-4">
+                    <ShieldCheckIcon className="w-8 h-8 mt-1 text-blue-600 shrink-0 dark:text-blue-500"/>
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                          Cloud Security
+                        </h3>
+                        <div>
+                          <ul className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                            <li>• End-to-end encryption using WebRTC (DTLS and SRTP)</li>
+                            <li>• Zero Trust security model</li>
+                            <li>• OIDC (OpenID Connect) authentication</li>
+                            <li>• All streams encrypted in transit</li>
+                          </ul>
+                        </div>
+
+                        <div className="text-xs text-slate-700 dark:text-slate-300">
+                          All cloud components are open-source and available on{" "}
+                          <a
+                              href="https://github.com/jetkvm"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-blue-600 hover:text-blue-800 dark:text-blue-500 dark:hover:text-blue-400"
+                          >
+                            GitHub
+                          </a>
+                          .
+                        </div>
                       </div>
+                      <hr className="block w-full dark:border-slate-600"/>
 
-                      <div className="text-xs text-slate-700 dark:text-slate-300">
-                        All cloud components are open-source and available on{" "}
-                        <a
-                          href="https://github.com/jetkvm"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-medium text-blue-600 hover:text-blue-800 dark:text-blue-500 dark:hover:text-blue-400"
-                        >
-                          GitHub
-                        </a>
-                        .
+                      <div>
+                        <LinkButton
+                            to="https://jetkvm.com/docs/networking/remote-access"
+                            size="SM"
+                            theme="light"
+                            text="Learn about our cloud security"
+                        />
                       </div>
                     </div>
-                    <hr className="block w-full dark:border-slate-600" />
+                  </div>
+                </GridCard>
 
+                {!isAdopted ? (
                     <div>
                       <LinkButton
-                        to="https://jetkvm.com/docs/networking/remote-access"
-                        size="SM"
-                        theme="light"
-                        text="Learn about our cloud security"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </GridCard>
-
-              {!isAdopted ? (
-                <div>
-                  <LinkButton
-                    to={
-                      CLOUD_APP +
-                      "/signup?deviceId=" +
-                      deviceId +
-                      `&returnTo=${location.href}adopt`
-                    }
-                    size="MD"
-                    theme="primary"
-                    text="Adopt KVM to Cloud account"
-                  />
-                </div>
-              ) : (
-                <div>
-                  <div className="space-y-2">
-                    <p className="text-sm text-slate-600 dark:text-slate-300">
-                      Your device is adopted to JetKVM Cloud
-                    </p>
-                    <div>
-                      <Button
-                        size="MD"
-                        theme="light"
-                        text="De-register from Cloud"
-                        className="text-red-600"
-                        onClick={() => {
-                          if (deviceId) {
-                            if (
-                              window.confirm(
-                                "Are you sure you want to de-register this device?",
-                              )
-                            ) {
-                              deregisterDevice();
-                            }
-                          } else {
-                            notifications.error("No device ID available");
+                          to={
+                              CLOUD_APP +
+                              "/signup?deviceId=" +
+                              deviceId +
+                              `&returnTo=${location.href}adopt`
                           }
-                        }}
+                          size="MD"
+                          theme="primary"
+                          text="Adopt KVM to Cloud account"
                       />
                     </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
-        {isOnDevice ? (
-          <>
-            <div className="pb-2 space-y-4">
-              <SectionHeader
-                title="Local Access"
-                description="Manage the mode of local access to the device"
-              />
-
-              <div className="space-y-4">
-                <SettingsItem
-                  title="Authentication Mode"
-                  description={`Current mode: ${localDevice?.authMode === "password" ? "Password protected" : "No password"}`}
-                >
-                  {localDevice?.authMode === "password" ? (
-                    <Button
-                      size="SM"
-                      theme="light"
-                      text="Disable Protection"
-                      onClick={() => {
-                        setLocalAuthModalView("deletePassword");
-                        setIsLocalAuthDialogOpen(true);
-                      }}
-                    />
-                  ) : (
-                    <Button
-                      size="SM"
-                      theme="light"
-                      text="Enable Password"
-                      onClick={() => {
-                        setLocalAuthModalView("createPassword");
-                        setIsLocalAuthDialogOpen(true);
-                      }}
-                    />
-                  )}
-                </SettingsItem>
-
-                {localDevice?.authMode === "password" && (
-                  <SettingsItem
-                    title="Change Password"
-                    description="Update your device access password"
-                  >
-                    <Button
-                      size="SM"
-                      theme="light"
-                      text="Change Password"
-                      onClick={() => {
-                        setLocalAuthModalView("updatePassword");
-                        setIsLocalAuthDialogOpen(true);
-                      }}
-                    />
-                  </SettingsItem>
+                ) : (
+                    <div>
+                      <div className="space-y-2">
+                        <p className="text-sm text-slate-600 dark:text-slate-300">
+                          Your device is adopted to JetKVM Cloud
+                        </p>
+                        <div>
+                          <Button
+                              size="MD"
+                              theme="light"
+                              text="De-register from Cloud"
+                              className="text-red-600"
+                              onClick={() => {
+                                if (deviceId) {
+                                  if (
+                                      window.confirm(
+                                          "Are you sure you want to de-register this device?",
+                                      )
+                                  ) {
+                                    deregisterDevice();
+                                  }
+                                } else {
+                                  notifications.error("No device ID available");
+                                }
+                              }}
+                          />
+                        </div>
+                      </div>
+                    </div>
                 )}
               </div>
-            </div>
-            <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
-          </>
+            </>
+        )}
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+        {isOnDevice ? (
+            <>
+              <div className="pb-2 space-y-4">
+                <SectionHeader
+                    title="Local Access"
+                    description="Manage the mode of local access to the device"
+                />
+
+                <div className="space-y-4">
+                  <SettingsItem
+                      title="Authentication Mode"
+                      description={`Current mode: ${localDevice?.authMode === "password" ? "Password protected" : "No password"}`}
+                  >
+                    {localDevice?.authMode === "password" ? (
+                        <Button
+                            size="SM"
+                            theme="light"
+                            text="Disable Protection"
+                            onClick={() => {
+                              setLocalAuthModalView("deletePassword");
+                              setIsLocalAuthDialogOpen(true);
+                            }}
+                        />
+                    ) : (
+                        <Button
+                            size="SM"
+                            theme="light"
+                            text="Enable Password"
+                            onClick={() => {
+                              setLocalAuthModalView("createPassword");
+                              setIsLocalAuthDialogOpen(true);
+                            }}
+                        />
+                    )}
+                  </SettingsItem>
+
+                  {localDevice?.authMode === "password" && (
+                      <SettingsItem
+                          title="Change Password"
+                          description="Update your device access password"
+                      >
+                        <Button
+                            size="SM"
+                            theme="light"
+                            text="Change Password"
+                            onClick={() => {
+                              setLocalAuthModalView("updatePassword");
+                              setIsLocalAuthDialogOpen(true);
+                            }}
+                        />
+                      </SettingsItem>
+                  )}
+                </div>
+              </div>
+              <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+            </>
         ) : null}
         <div className="pb-2 space-y-4">
           <SectionHeader
-            title="Updates"
-            description="Manage software updates and version information"
+              title="Updates"
+              description="Manage software updates and version information"
           />
 
           <div className="space-y-4">
             <SettingsItem
-              title="Auto Update"
-              description="Automatically update the device to the latest version"
+                title="Auto Update"
+                description="Automatically update the device to the latest version"
             >
               <Checkbox
-                checked={autoUpdate}
-                onChange={e => {
-                  handleAutoUpdateChange(e.target.checked);
-                }}
+                  checked={autoUpdate}
+                  onChange={e => {
+                    handleAutoUpdateChange(e.target.checked);
+                  }}
               />
             </SettingsItem>
             <SettingsItem
-              title="Dev Channel Updates"
-              description="Receive early updates from the development channel"
+                title="Dev Channel Updates"
+                description="Receive early updates from the development channel"
             >
               <Checkbox
-                checked={devChannel}
-                onChange={e => {
-                  handleDevChannelChange(e.target.checked);
-                }}
+                  checked={devChannel}
+                  onChange={e => {
+                    handleDevChannelChange(e.target.checked);
+                  }}
               />
             </SettingsItem>
           </div>
         </div>
-        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
 
         <SectionHeader
-          title="Appearance"
-          description="Customize the look and feel of the application"
+            title="Appearance"
+            description="Customize the look and feel of the application"
         />
         <SettingsItem title="Theme" description="Choose your preferred color theme">
           <SelectMenuBasic
-            size="SM"
-            label=""
-            value={currentTheme}
-            options={[
-              { value: "system", label: "System" },
-              { value: "light", label: "Light" },
-              { value: "dark", label: "Dark" },
-            ]}
-            onChange={e => {
-              setCurrentTheme(e.target.value);
-              handleThemeChange(e.target.value);
-            }}
+              size="SM"
+              label=""
+              value={currentTheme}
+              options={[
+                {value: "system", label: "System"},
+                {value: "light", label: "Light"},
+                {value: "dark", label: "Dark"},
+              ]}
+              onChange={e => {
+                setCurrentTheme(e.target.value);
+                handleThemeChange(e.target.value);
+              }}
           />
         </SettingsItem>
         <SettingsItem title="Device Name" description="Set your device name">
           <InputFieldWithLabel
-            required
-            label=""
-            placeholder="Enter Device Name"
-            defaultValue={settings.deviceName}
-            onChange={e => handleDeviceNameChange(e.target.value)}
+              required
+              label=""
+              placeholder="Enter Device Name"
+              defaultValue={settings.deviceName}
+              onChange={e => handleDeviceNameChange(e.target.value)}
           />
         </SettingsItem>
-        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+        <div className="flex items-center gap-x-2">
+          <Button
+            size="SM"
+            theme="primary"
+            text="Update Device Name"
+            onClick={handleDeviceNameChange}
+          />
+        </div>
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
         <div className="pb-2 space-y-4">
           <SectionHeader
-            title="Hardware"
-            description="Configure the JetKVM Hardware"
+              title="Hardware"
+              description="Configure the JetKVM Hardware"
           />
         </div>
         <SettingsItem title="Display Brightness" description="Set the brightness of the display">
           <SelectMenuBasic
-            size="SM"
-            label=""
-            value={settings.backlightSettings.max_brightness.toString()}
-            options={[
-              { value: "0", label: "Off" },
-              { value: "10", label: "Low" },
-              { value: "35", label: "Medium" },
-              { value: "64", label: "High" },
-            ]}
-            onChange={e => {
-              settings.backlightSettings.max_brightness = parseInt(e.target.value)
-              handleBacklightSettingsChange(settings.backlightSettings);
-            }}
+              size="SM"
+              label=""
+              value={settings.backlightSettings.max_brightness.toString()}
+              options={[
+                {value: "0", label: "Off"},
+                {value: "10", label: "Low"},
+                {value: "35", label: "Medium"},
+                {value: "64", label: "High"},
+              ]}
+              onChange={e => {
+                settings.backlightSettings.max_brightness = parseInt(e.target.value)
+                handleBacklightSettingsChange(settings.backlightSettings);
+              }}
           />
         </SettingsItem>
         {settings.backlightSettings.max_brightness != 0 && (
-          <>
-          <SettingsItem title="Dim Display After" description="Set how long to wait before dimming the display">
-            <SelectMenuBasic
-              size="SM"
-              label=""
-              value={settings.backlightSettings.dim_after.toString()}
-              options={[
-                { value: "0", label: "Never" },
-                { value: "60", label: "1 Minute" },
-                { value: "300", label: "5 Minutes" },
-                { value: "600", label: "10 Minutes" },
-                { value: "1800", label: "30 Minutes" },
-                { value: "3600", label: "1 Hour" },
-              ]}
-              onChange={e => {
-                settings.backlightSettings.dim_after = parseInt(e.target.value)
-                handleBacklightSettingsChange(settings.backlightSettings);
-              }}
-            />
-          </SettingsItem>
-          <SettingsItem title="Turn off Display After" description="Set how long to wait before turning off the display">
-            <SelectMenuBasic
-              size="SM"
-              label=""
-              value={settings.backlightSettings.off_after.toString()}
-              options={[
-                { value: "0", label: "Never" },
-                { value: "300", label: "5 Minutes" },
-                { value: "600", label: "10 Minutes" },
-                { value: "1800", label: "30 Minutes" },
-                { value: "3600", label: "1 Hour" },
-              ]}
-              onChange={e => {
-                settings.backlightSettings.off_after = parseInt(e.target.value)
-                handleBacklightSettingsChange(settings.backlightSettings);
-              }}
-            />
-          </SettingsItem>
-          </>
+            <>
+              <SettingsItem title="Dim Display After" description="Set how long to wait before dimming the display">
+                <SelectMenuBasic
+                    size="SM"
+                    label=""
+                    value={settings.backlightSettings.dim_after.toString()}
+                    options={[
+                      {value: "0", label: "Never"},
+                      {value: "60", label: "1 Minute"},
+                      {value: "300", label: "5 Minutes"},
+                      {value: "600", label: "10 Minutes"},
+                      {value: "1800", label: "30 Minutes"},
+                      {value: "3600", label: "1 Hour"},
+                    ]}
+                    onChange={e => {
+                      settings.backlightSettings.dim_after = parseInt(e.target.value)
+                      handleBacklightSettingsChange(settings.backlightSettings);
+                    }}
+                />
+              </SettingsItem>
+              <SettingsItem title="Turn off Display After"
+                            description="Set how long to wait before turning off the display">
+                <SelectMenuBasic
+                    size="SM"
+                    label=""
+                    value={settings.backlightSettings.off_after.toString()}
+                    options={[
+                      {value: "0", label: "Never"},
+                      {value: "300", label: "5 Minutes"},
+                      {value: "600", label: "10 Minutes"},
+                      {value: "1800", label: "30 Minutes"},
+                      {value: "3600", label: "1 Hour"},
+                    ]}
+                    onChange={e => {
+                      settings.backlightSettings.off_after = parseInt(e.target.value)
+                      handleBacklightSettingsChange(settings.backlightSettings);
+                    }}
+                />
+              </SettingsItem>
+            </>
         )}
         <p className="text-xs text-slate-600 dark:text-slate-400">
           The display will wake up when the connection state changes, or when touched.
         </p>
-        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
         <div className="pb-2 space-y-4">
           <SectionHeader
-            title="Advanced"
-            description="Access additional settings for troubleshooting and customization"
+              title="Advanced"
+              description="Access additional settings for troubleshooting and customization"
           />
 
           <div className="pb-4 space-y-4">
             <SettingsItem
-              title="Developer Mode"
-              description="Enable advanced features for developers"
+                title="Developer Mode"
+                description="Enable advanced features for developers"
             >
               <Checkbox
-                checked={settings.developerMode}
-                onChange={e => handleDevModeChange(e.target.checked)}
+                  checked={settings.developerMode}
+                  onChange={e => handleDevModeChange(e.target.checked)}
               />
             </SettingsItem>
 
             {settings.developerMode && (
-              <div className="space-y-4">
-                <TextAreaWithLabel
-                  label="SSH Public Key"
-                  value={sshKey || ""}
-                  rows={3}
-                  onChange={e => handleSSHKeyChange(e.target.value)}
-                  placeholder="Enter your SSH public key"
-                />
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  The default SSH user is <strong>root</strong>.
-                </p>
-                <div className="flex items-center gap-x-2">
-                  <Button
-                    size="SM"
-                    theme="primary"
-                    text="Update SSH Key"
-                    onClick={handleUpdateSSHKey}
+                <div className="space-y-4">
+                  <TextAreaWithLabel
+                      label="SSH Public Key"
+                      value={sshKey || ""}
+                      rows={3}
+                      onChange={e => handleSSHKeyChange(e.target.value)}
+                      placeholder="Enter your SSH public key"
                   />
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    The default SSH user is <strong>root</strong>.
+                  </p>
+                  <div className="flex items-center gap-x-2">
+                    <Button
+                        size="SM"
+                        theme="primary"
+                        text="Update SSH Key"
+                        onClick={handleUpdateSSHKey}
+                    />
+                  </div>
                 </div>
-              </div>
             )}
             <SettingsItem
-              title="Troubleshooting Mode"
-              description="Diagnostic tools and additional controls for troubleshooting and development purposes"
+                title="Troubleshooting Mode"
+                description="Diagnostic tools and additional controls for troubleshooting and development purposes"
             >
               <Checkbox
-                defaultChecked={settings.debugMode}
-                onChange={e => {
-                  settings.setDebugMode(e.target.checked);
-                }}
+                  defaultChecked={settings.debugMode}
+                  onChange={e => {
+                    settings.setDebugMode(e.target.checked);
+                  }}
               />
             </SettingsItem>
 
             {settings.debugMode && (
-              <>
-                <SettingsItem
-                  title="USB Emulation"
-                  description="Control the USB emulation state"
-                >
-                  <Button
-                    size="SM"
-                    theme="light"
-                    text={
-                      usbEmulationEnabled
-                        ? "Disable USB Emulation"
-                        : "Enable USB Emulation"
-                    }
-                    onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
-                  />
-                </SettingsItem>
-              </>
+                <>
+                  <SettingsItem
+                      title="USB Emulation"
+                      description="Control the USB emulation state"
+                  >
+                    <Button
+                        size="SM"
+                        theme="light"
+                        text={
+                          usbEmulationEnabled
+                              ? "Disable USB Emulation"
+                              : "Enable USB Emulation"
+                        }
+                        onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
+                    />
+                  </SettingsItem>
+                </>
             )}
             {settings.debugMode && (
-              <SettingsItem
-                title="Reset Configuration"
-                description="Reset the configuration file to its default state. This will log you out of the device."
-              >
-                <Button
-                  size="SM"
-                  theme="light"
-                  text="Reset Config"
-                  onClick={() => {
-                    handleResetConfig();
-                    window.location.reload();
-                  }}
-                />
-              </SettingsItem>
+                <SettingsItem
+                    title="Reset Configuration"
+                    description="Reset the configuration file to its default state. This will log you out of the device."
+                >
+                  <Button
+                      size="SM"
+                      theme="light"
+                      text="Reset Config"
+                      onClick={() => {
+                        handleResetConfig();
+                        window.location.reload();
+                      }}
+                  />
+                </SettingsItem>
             )}
           </div>
         </div>
       </div>
       <LocalAuthPasswordDialog
-        open={isLocalAuthDialogOpen}
-        setOpen={x => {
-          // Revalidate the current route to refresh the local device status and dependent UI components
-          revalidator.revalidate();
-          setIsLocalAuthDialogOpen(x);
+          open={isLocalAuthDialogOpen}
+          setOpen={x => {
+            // Revalidate the current route to refresh the local device status and dependent UI components
+            revalidator.revalidate();
+            setIsLocalAuthDialogOpen(x);
         }}
       />
     </div>
