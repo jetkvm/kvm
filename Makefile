@@ -20,7 +20,7 @@ build_dev: hash_resource
 frontend:
 	cd ui && npm ci && npm run build:device
 
-dev_release: build_dev
+dev_release: frontend build_dev
 	@echo "Uploading release..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
