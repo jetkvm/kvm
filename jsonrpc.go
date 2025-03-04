@@ -44,6 +44,11 @@ type BacklightSettings struct {
 	OffAfter      int `json:"off_after"`
 }
 
+type NameSettings struct {
+	Name string `json:"name"`
+	DNS  string `json:"dns"`
+}
+
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
@@ -294,28 +299,28 @@ type SSHKeyState struct {
 	SSHKey string `json:"sshKey"`
 }
 
-func rpcGetDeviceName() (string, error) {
+func rpcGetNameConfig() (NameConfig, error) {
 	LoadConfig()
-	return config.DeviceName, nil
+	return config.NameConfig, nil
 }
 
-func rpcSetDeviceName(deviceName string) error {
+func rpcSetNameConfig(deviceName string) (NameConfig, error) {
 	LoadConfig()
-	config.DeviceName = deviceName
-	config.DNSName = slug.Make(deviceName)
+	config.NameConfig = NameConfig{
+		Name: deviceName,
+		DNS:  slug.Make(deviceName),
+	}
+
+	RestartMDNS()
 
 	err := SaveConfig()
 	if err != nil {
-		return fmt.Errorf("failed to save device name: %w", err)
+		return NameConfig{}, fmt.Errorf("failed to save device name: %w", err)
 	}
 
-	log.Printf("[jsonrpc.go:rpcSetDeviceName] device name set to %s, dns name set to %s", config.DeviceName, config.DNSName)
-	return nil
-}
-
-func rpcGetDNSName() (string, error) {
-	LoadConfig()
-	return config.DNSName, nil
+	nameConfig := config.NameConfig
+	log.Printf("[jsonrpc.go:rpcSetNameConfig] device name set to %s, dns name set to %s", nameConfig.Name, nameConfig.DNS)
+	return nameConfig, nil
 }
 
 func rpcGetDevModeState() (DevModeState, error) {
@@ -780,9 +785,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setDevChannelState":     {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getUpdateStatus":        {Func: rpcGetUpdateStatus},
 	"tryUpdate":              {Func: rpcTryUpdate},
-	"getDeviceName":          {Func: rpcGetDeviceName},
-	"setDeviceName":          {Func: rpcSetDeviceName, Params: []string{"deviceName"}},
-	"getDNSName":             {Func: rpcGetDNSName},
+	"setNameConfig":          {Func: rpcSetNameConfig, Params: []string{"deviceName"}},
+	"getNameConfig":          {Func: rpcGetNameConfig},
 	"getDevModeState":        {Func: rpcGetDevModeState},
 	"setDevModeState":        {Func: rpcSetDevModeState, Params: []string{"enabled"}},
 	"getSSHKeyState":         {Func: rpcGetSSHKeyState},

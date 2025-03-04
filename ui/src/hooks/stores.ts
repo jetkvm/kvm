@@ -24,6 +24,11 @@ export type AvailableSidebarViews = "system" | "connection-stats";
 export type AvailableModalViews = "connection-stats" | "settings";
 export type AvailableTerminalTypes = "kvm" | "serial" | "none";
 
+export interface NameConfig {
+  name: string;
+  dns:  string;
+}
+
 export interface User {
   sub: string;
   email?: string;
@@ -278,9 +283,6 @@ interface SettingsState {
   developerMode: boolean;
   setDeveloperMode: (enabled: boolean) => void;
 
-  deviceName: string;
-  setDeviceName: (deviceName: string) => void;
-
   backlightSettings: BacklightSettings;
   setBacklightSettings: (settings: BacklightSettings) => void;
 }
@@ -300,9 +302,6 @@ export const useSettingsStore = create(
       // Add developer mode with default value
       developerMode: false,
       setDeveloperMode: enabled => set({ developerMode: enabled }),
-
-      deviceName: "JetKVM",
-      setDeviceName: deviceName => set({ deviceName: deviceName }),
 
       backlightSettings: {
         max_brightness: 100,

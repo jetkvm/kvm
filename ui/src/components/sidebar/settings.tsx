@@ -1,6 +1,6 @@
 import SidebarHeader from "@components/SidebarHeader";
 import {
-  BacklightSettings,
+  BacklightSettings, NameConfig,
   useLocalAuthModalStore,
   useSettingsStore,
   useUiStore,
@@ -90,6 +90,10 @@ export default function SettingsSidebar() {
 
   const [isAdopted, setAdopted] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [nameConfig, setNameConfig] = useState<NameConfig>({
+    name: '',
+    dns:  '',
+  });
 
   const [sshKey, setSSHKey] = useState<string>("");
   const [localDevice, setLocalDevice] = useState<LocalDevice | null>(null);
@@ -99,7 +103,6 @@ export default function SettingsSidebar() {
   const hideCursor = useSettingsStore(state => state.isCursorHidden);
   const setHideCursor = useSettingsStore(state => state.setCursorVisibility);
   const setDeveloperMode = useSettingsStore(state => state.setDeveloperMode);
-  const setDeviceName = useSettingsStore(state => state.setDeviceName);
   const setBacklightSettings = useSettingsStore(state => state.setBacklightSettings);
 
   const [currentVersions, setCurrentVersions] = useState<{
@@ -177,17 +180,23 @@ export default function SettingsSidebar() {
   };
 
   const handleDeviceNameChange = (deviceName: string) => {
-    send("setDeviceName", { deviceName }, resp => {
+    setNameConfig({... nameConfig, name: deviceName})
+  };
+
+  const handleUpdateNameConfig = useCallback(() => {
+    send("setNameConfig", { deviceName: nameConfig.name }, resp => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to set device name: ${resp.error.data || "Unknown error"}`,
+            `Failed to set name config: ${resp.error.data || "Unknown error"}`,
         );
         return;
       }
-      setDeviceName(deviceName);
-      document.title = deviceName;
+      const rNameConfig = resp.result as NameConfig;
+      setNameConfig(rNameConfig)
+      document.title = rNameConfig.name;
+      notifications.success(`Device name set to "${rNameConfig.name}" successfully.\nDNS Name set to "${rNameConfig.dns}"`);
     });
-  };
+  }, [send, nameConfig]);
 
   const handleDevChannelChange = (enabled: boolean) => {
     send("setDevChannelState", { enabled }, resp => {
@@ -355,14 +364,12 @@ export default function SettingsSidebar() {
       setBacklightSettings(result);
     })
 
-    send("getDeviceName", {}, resp => {
+    send("getNameConfig", {}, resp => {
       if ("error" in resp) return;
-      const deviceName = resp.result as string;
-      setDeviceName(deviceName);
-      document.title = deviceName;
+      const results = resp.result as NameConfig;
+      setNameConfig(results);
+      document.title = results.name;
     });
-
-
 
     send("getDevModeState", {}, resp => {
       if ("error" in resp) return;
@@ -863,7 +870,8 @@ export default function SettingsSidebar() {
               required
               label=""
               placeholder="Enter Device Name"
-              defaultValue={settings.deviceName}
+              description={`DNS Name: ${nameConfig.dns}`}
+              defaultValue={nameConfig.name}
               onChange={e => handleDeviceNameChange(e.target.value)}
           />
         </SettingsItem>
@@ -872,7 +880,7 @@ export default function SettingsSidebar() {
             size="SM"
             theme="primary"
             text="Update Device Name"
-            onClick={handleDeviceNameChange}
+            onClick={handleUpdateNameConfig}
           />
         </div>
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
