@@ -1014,8 +1014,8 @@ export default function SettingsSidebar() {
                     theme="light"
                     text={
                       usbEmulationEnabled
-                          ? "Disable USB Emulation"
-                          : "Enable USB Emulation"
+                        ? "Disable USB Emulation"
+                        : "Enable USB Emulation"
                     }
                     onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
                   />
