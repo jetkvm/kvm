@@ -656,7 +656,7 @@ export default function SettingsSidebar() {
         </div>
         {isOnDevice && (
           <>
-            <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+            <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
             <div className="pb-4 space-y-4">
               <SectionHeader
                 title="JetKVM Cloud"
@@ -754,7 +754,7 @@ export default function SettingsSidebar() {
             </div>
           </>
         )}
-        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
         {isOnDevice ? (
           <>
             <div className="pb-2 space-y-4">
@@ -809,7 +809,7 @@ export default function SettingsSidebar() {
                 )}
               </div>
             </div>
-            <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+            <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
           </>
         ) : null}
         <div className="pb-2 space-y-4">
@@ -883,7 +883,7 @@ export default function SettingsSidebar() {
             onClick={handleUpdateNameConfig}
           />
         </div>
-        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
         <div className="pb-2 space-y-4">
           <SectionHeader
             title="Hardware"
@@ -928,18 +928,17 @@ export default function SettingsSidebar() {
               }}
             />
           </SettingsItem>
-          <SettingsItem title="Turn off Display After"
-                        description="Set how long to wait before turning off the display">
+          <SettingsItem title="Turn off Display After" description="Set how long to wait before turning off the display">
             <SelectMenuBasic
               size="SM"
               label=""
               value={settings.backlightSettings.off_after.toString()}
               options={[
-                {value: "0", label: "Never"},
-                {value: "300", label: "5 Minutes"},
-                {value: "600", label: "10 Minutes"},
-                {value: "1800", label: "30 Minutes"},
-                {value: "3600", label: "1 Hour"},
+                { value: "0", label: "Never" },
+                { value: "300", label: "5 Minutes" },
+                { value: "600", label: "10 Minutes" },
+                { value: "1800", label: "30 Minutes" },
+                { value: "3600", label: "1 Hour" },
               ]}
               onChange={e => {
                 settings.backlightSettings.off_after = parseInt(e.target.value)
@@ -952,7 +951,7 @@ export default function SettingsSidebar() {
         <p className="text-xs text-slate-600 dark:text-slate-400">
           The display will wake up when the connection state changes, or when touched.
         </p>
-        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
         <div className="pb-2 space-y-4">
           <SectionHeader
             title="Advanced"
@@ -971,26 +970,26 @@ export default function SettingsSidebar() {
             </SettingsItem>
 
             {settings.developerMode && (
-                <div className="space-y-4">
-                  <TextAreaWithLabel
-                    label="SSH Public Key"
-                    value={sshKey || ""}
-                    rows={3}
-                    onChange={e => handleSSHKeyChange(e.target.value)}
-                    placeholder="Enter your SSH public key"
+              <div className="space-y-4">
+                <TextAreaWithLabel
+                  label="SSH Public Key"
+                  value={sshKey || ""}
+                  rows={3}
+                  onChange={e => handleSSHKeyChange(e.target.value)}
+                  placeholder="Enter your SSH public key"
+                />
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  The default SSH user is <strong>root</strong>.
+                </p>
+                <div className="flex items-center gap-x-2">
+                  <Button
+                    size="SM"
+                    theme="primary"
+                    text="Update SSH Key"
+                    onClick={handleUpdateSSHKey}
                   />
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    The default SSH user is <strong>root</strong>.
-                  </p>
-                  <div className="flex items-center gap-x-2">
-                    <Button
-                      size="SM"
-                      theme="primary"
-                      text="Update SSH Key"
-                      onClick={handleUpdateSSHKey}
-                    />
-                  </div>
                 </div>
+              </div>
             )}
             <SettingsItem
               title="Troubleshooting Mode"
@@ -1024,20 +1023,20 @@ export default function SettingsSidebar() {
                 </>
             )}
             {settings.debugMode && (
-                <SettingsItem
-                  title="Reset Configuration"
-                  description="Reset the configuration file to its default state. This will log you out of the device."
-                >
-                  <Button
-                    size="SM"
-                    theme="light"
-                    text="Reset Config"
-                    onClick={() => {
-                      handleResetConfig();
-                      window.location.reload();
-                    }}
-                  />
-                </SettingsItem>
+              <SettingsItem
+                title="Reset Configuration"
+                description="Reset the configuration file to its default state. This will log you out of the device."
+              >
+                <Button
+                  size="SM"
+                  theme="light"
+                  text="Reset Config"
+                  onClick={() => {
+                    handleResetConfig();
+                    window.location.reload();
+                  }}
+                />
+              </SettingsItem>
             )}
           </div>
         </div>
