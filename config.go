@@ -39,17 +39,16 @@ type Config struct {
 const configPath = "/userdata/kvm_config.json"
 
 var defaultConfig = &Config{
-	CloudURL:          "https://api.jetkvm.com",
-	AutoUpdateEnabled: true, // Set a default value
-	ActiveExtension:   "",
+	CloudURL:             "https://api.jetkvm.com",
+	AutoUpdateEnabled:    true, // Set a default value
+	ActiveExtension:      "",
+	DisplayMaxBrightness: 64,
+	DisplayDimAfterSec:   120,  // 2 minutes
+	DisplayOffAfterSec:   1800, // 30 minutes
 	NameConfig: NameConfig{
 		Name: "JetKVM",
 		DNS:  "jetkvm.local",
 	},
-	DisplayMaxBrightness: 64,
-	DisplayDimAfterSec:   120,  // 2 minutes
-	DisplayOffAfterSec:   1800, // 30 minutes
-
 }
 
 var (
