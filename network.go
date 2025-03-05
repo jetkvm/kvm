@@ -131,7 +131,6 @@ func startMDNS() error {
 	}
 
 	// Start a new server
-	//fmt.Printf("Starting mDNS server on jetkvm.local\n")
 	LoadConfig()
 	fmt.Printf("Starting mDNS server on %v\n", config.NameConfig.DNS)
 	addr4, err := net.ResolveUDPAddr("udp4", mdns.DefaultAddressIPv4)
@@ -156,7 +155,6 @@ func startMDNS() error {
 
 	mDNSConn, err = mdns.Server(ipv4.NewPacketConn(l4), ipv6.NewPacketConn(l6), &mdns.Config{
 		LocalNames: []string{config.NameConfig.DNS},
-		//LocalNames: []string{"jetkvm.local"}, //TODO: make it configurable
 	})
 	if err != nil {
 		mDNSConn = nil

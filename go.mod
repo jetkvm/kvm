@@ -12,6 +12,7 @@ require (
 	github.com/creack/pty v1.1.23
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/uuid v1.6.0
+	github.com/gosimple/slug v1.15.0
 	github.com/gwatts/rootcerts v0.0.0-20240401182218-3ab9db955caf
 	github.com/hanwen/go-fuse/v2 v2.5.1
 	github.com/hashicorp/go-envparse v0.1.0
@@ -42,7 +43,6 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.20.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
-	github.com/gosimple/slug v1.15.0 // indirect
 	github.com/gosimple/unidecode v1.0.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
