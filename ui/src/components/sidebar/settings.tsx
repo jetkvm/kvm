@@ -468,76 +468,76 @@ export default function SettingsSidebar() {
     >
       <SidebarHeader title="Settings" setSidebarView={setSidebarView} />
       <div
-          className="h-full px-4 py-2 space-y-4 overflow-y-scroll bg-white dark:bg-slate-900"
-          ref={sidebarRef}
+        className="h-full px-4 py-2 space-y-4 overflow-y-scroll bg-white dark:bg-slate-900"
+        ref={sidebarRef}
       >
         <div className="space-y-4">
           <div className="flex items-center justify-between mt-2 gap-x-2">
             <SettingsItem
-                title="Check for Updates"
-                description={
-                  currentVersions ? (
-                      <>
-                        App: {currentVersions.appVersion}
-                        <br/>
-                        System: {currentVersions.systemVersion}
-                      </>
-                  ) : (
-                      "Loading current versions..."
-                  )
-                }
+              title="Check for Updates"
+              description={
+                currentVersions ? (
+                  <>
+                    App: {currentVersions.appVersion}
+                    <br/>
+                    System: {currentVersions.systemVersion}
+                  </>
+                ) : (
+                  "Loading current versions..."
+                )
+              }
             />
             <div>
               <Button
-                  size="SM"
-                  theme="light"
-                  text="Check for Updates"
-                  onClick={handleCheckForUpdates}
+                size="SM"
+                theme="light"
+                text="Check for Updates"
+                onClick={handleCheckForUpdates}
               />
             </div>
           </div>
           <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
           <SectionHeader
-              title="Mouse"
-              description="Customize mouse behavior and interaction settings"
+            title="Mouse"
+            description="Customize mouse behavior and interaction settings"
           />
 
           <div className="space-y-4">
             <SettingsItem
-                title="Hide Cursor"
-                description="Hide the cursor when sending mouse movements"
+              title="Hide Cursor"
+              description="Hide the cursor when sending mouse movements"
             >
               <Checkbox
-                  checked={hideCursor}
-                  onChange={e => {
-                    setHideCursor(e.target.checked);
-                  }}
+                checked={hideCursor}
+                onChange={e => {
+                  setHideCursor(e.target.checked);
+                }}
               />
             </SettingsItem>
             <SettingsItem
-                title="Jiggler"
-                description="Simulate movement of a computer mouse. Prevents sleep mode, standby mode or the screensaver from activating"
+              title="Jiggler"
+              description="Simulate movement of a computer mouse. Prevents sleep mode, standby mode or the screensaver from activating"
             >
               <Checkbox
-                  checked={jiggler}
-                  onChange={e => {
-                    handleJigglerChange(e.target.checked);
-                  }}
+                checked={jiggler}
+                onChange={e => {
+                  handleJigglerChange(e.target.checked);
+                }}
               />
             </SettingsItem>
             <div className="space-y-4">
               <SettingsItem title="Modes" description="Choose the mouse input mode"/>
               <div className="flex items-center gap-4">
                 <button
-                    className="block group grow"
-                    onClick={() => console.log("Absolute mouse mode clicked")}
+                  className="block group grow"
+                  onClick={() => console.log("Absolute mouse mode clicked")}
                 >
                   <GridCard>
                     <div className="flex items-center px-4 py-3 group gap-x-4">
                       <img
-                          className="w-6 shrink-0 dark:invert"
-                          src={PointingFinger}
-                          alt="Finger touching a screen"
+                        className="w-6 shrink-0 dark:invert"
+                        src={PointingFinger}
+                        alt="Finger touching a screen"
                       />
                       <div className="flex items-center justify-between grow">
                         <div className="text-left">
@@ -554,8 +554,8 @@ export default function SettingsSidebar() {
                   </GridCard>
                 </button>
                 <button
-                    className="block opacity-50 cursor-not-allowed group grow"
-                    disabled
+                  className="block opacity-50 cursor-not-allowed group grow"
+                  disabled
                 >
                   <GridCard>
                     <div className="flex items-center px-4 py-3 gap-x-4">
@@ -580,74 +580,74 @@ export default function SettingsSidebar() {
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
         <div className="pb-2 space-y-4">
           <SectionHeader
-              title="Video"
-              description="Configure display settings and EDID for optimal compatibility"
+            title="Video"
+            description="Configure display settings and EDID for optimal compatibility"
           />
           <div className="space-y-4">
             <SettingsItem
-                title="Stream Quality"
-                description="Adjust the quality of the video stream"
+              title="Stream Quality"
+              description="Adjust the quality of the video stream"
             >
               <SelectMenuBasic
-                  size="SM"
-                  label=""
-                  value={streamQuality}
-                  options={[
-                    {value: "1", label: "High"},
-                    {value: "0.5", label: "Medium"},
-                    {value: "0.1", label: "Low"},
-                  ]}
-                  onChange={e => handleStreamQualityChange(e.target.value)}
+                size="SM"
+                label=""
+                value={streamQuality}
+                options={[
+                  {value: "1", label: "High"},
+                  {value: "0.5", label: "Medium"},
+                  {value: "0.1", label: "Low"},
+                ]}
+                onChange={e => handleStreamQualityChange(e.target.value)}
               />
             </SettingsItem>
             <SettingsItem
-                title="EDID"
-                description="Adjust the EDID settings for the display"
+              title="EDID"
+              description="Adjust the EDID settings for the display"
             >
               <SelectMenuBasic
-                  size="SM"
-                  label=""
-                  fullWidth
-                  value={customEdidValue ? "custom" : edid || "asd"}
-                  onChange={e => {
-                    if (e.target.value === "custom") {
-                      setEdid("custom");
-                      setCustomEdidValue("");
-                    } else {
-                      handleEDIDChange(e.target.value as string);
-                    }
-                  }}
-                  options={[...edids, {value: "custom", label: "Custom"}]}
+                size="SM"
+                label=""
+                fullWidth
+                value={customEdidValue ? "custom" : edid || "asd"}
+                onChange={e => {
+                  if (e.target.value === "custom") {
+                    setEdid("custom");
+                    setCustomEdidValue("");
+                  } else {
+                    handleEDIDChange(e.target.value as string);
+                  }
+                }}
+                options={[...edids, {value: "custom", label: "Custom"}]}
               />
             </SettingsItem>
             {customEdidValue !== null && (
                 <>
                   <SettingsItem
-                      title="Custom EDID"
-                      description="EDID details video mode compatibility. Default settings works in most cases, but unique UEFI/BIOS might need adjustments."
+                    title="Custom EDID"
+                    description="EDID details video mode compatibility. Default settings works in most cases, but unique UEFI/BIOS might need adjustments."
                   />
                   <TextAreaWithLabel
-                      label="EDID File"
-                      placeholder="00F..."
-                      rows={3}
-                      value={customEdidValue}
-                      onChange={e => setCustomEdidValue(e.target.value)}
+                    label="EDID File"
+                    placeholder="00F..."
+                    rows={3}
+                    value={customEdidValue}
+                    onChange={e => setCustomEdidValue(e.target.value)}
                   />
                   <div className="flex justify-start gap-x-2">
                     <Button
-                        size="MD"
-                        theme="primary"
-                        text="Set Custom EDID"
-                        onClick={() => handleEDIDChange(customEdidValue)}
+                      size="MD"
+                      theme="primary"
+                      text="Set Custom EDID"
+                      onClick={() => handleEDIDChange(customEdidValue)}
                     />
                     <Button
-                        size="MD"
-                        theme="light"
-                        text="Restore to default"
-                        onClick={() => {
-                          setCustomEdidValue(null);
-                          handleEDIDChange(defaultEdid);
-                        }}
+                      size="MD"
+                      theme="light"
+                      text="Restore to default"
+                      onClick={() => {
+                        setCustomEdidValue(null);
+                        handleEDIDChange(defaultEdid);
+                      }}
                     />
                   </div>
                 </>
@@ -659,8 +659,8 @@ export default function SettingsSidebar() {
               <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
               <div className="pb-4 space-y-4">
                 <SectionHeader
-                    title="JetKVM Cloud"
-                    description="Connect your device to the cloud for secure remote access and management"
+                  title="JetKVM Cloud"
+                  description="Connect your device to the cloud for secure remote access and management"
                 />
 
                 <GridCard>
@@ -683,10 +683,10 @@ export default function SettingsSidebar() {
                         <div className="text-xs text-slate-700 dark:text-slate-300">
                           All cloud components are open-source and available on{" "}
                           <a
-                              href="https://github.com/jetkvm"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-medium text-blue-600 hover:text-blue-800 dark:text-blue-500 dark:hover:text-blue-400"
+                            href="https://github.com/jetkvm"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-blue-600 hover:text-blue-800 dark:text-blue-500 dark:hover:text-blue-400"
                           >
                             GitHub
                           </a>
@@ -697,10 +697,10 @@ export default function SettingsSidebar() {
 
                       <div>
                         <LinkButton
-                            to="https://jetkvm.com/docs/networking/remote-access"
-                            size="SM"
-                            theme="light"
-                            text="Learn about our cloud security"
+                          to="https://jetkvm.com/docs/networking/remote-access"
+                          size="SM"
+                          theme="light"
+                          text="Learn about our cloud security"
                         />
                       </div>
                     </div>
@@ -710,15 +710,15 @@ export default function SettingsSidebar() {
                 {!isAdopted ? (
                     <div>
                       <LinkButton
-                          to={
-                              CLOUD_APP +
-                              "/signup?deviceId=" +
-                              deviceId +
-                              `&returnTo=${location.href}adopt`
-                          }
-                          size="MD"
-                          theme="primary"
-                          text="Adopt KVM to Cloud account"
+                        to={
+                            CLOUD_APP +
+                            "/signup?deviceId=" +
+                            deviceId +
+                            `&returnTo=${location.href}adopt`
+                        }
+                        size="MD"
+                        theme="primary"
+                        text="Adopt KVM to Cloud account"
                       />
                     </div>
                 ) : (
@@ -765,18 +765,18 @@ export default function SettingsSidebar() {
 
                 <div className="space-y-4">
                   <SettingsItem
-                      title="Authentication Mode"
-                      description={`Current mode: ${localDevice?.authMode === "password" ? "Password protected" : "No password"}`}
+                    title="Authentication Mode"
+                    description={`Current mode: ${localDevice?.authMode === "password" ? "Password protected" : "No password"}`}
                   >
                     {localDevice?.authMode === "password" ? (
                         <Button
-                            size="SM"
-                            theme="light"
-                            text="Disable Protection"
-                            onClick={() => {
-                              setLocalAuthModalView("deletePassword");
-                              setIsLocalAuthDialogOpen(true);
-                            }}
+                          size="SM"
+                          theme="light"
+                          text="Disable Protection"
+                          onClick={() => {
+                            setLocalAuthModalView("deletePassword");
+                            setIsLocalAuthDialogOpen(true);
+                          }}
                         />
                     ) : (
                         <Button
@@ -993,14 +993,14 @@ export default function SettingsSidebar() {
                 </div>
             )}
             <SettingsItem
-                title="Troubleshooting Mode"
-                description="Diagnostic tools and additional controls for troubleshooting and development purposes"
+              title="Troubleshooting Mode"
+              description="Diagnostic tools and additional controls for troubleshooting and development purposes"
             >
               <Checkbox
-                  defaultChecked={settings.debugMode}
-                  onChange={e => {
-                    settings.setDebugMode(e.target.checked);
-                  }}
+                defaultChecked={settings.debugMode}
+                onChange={e => {
+                  settings.setDebugMode(e.target.checked);
+                }}
               />
             </SettingsItem>
 
@@ -1025,8 +1025,8 @@ export default function SettingsSidebar() {
             )}
             {settings.debugMode && (
                 <SettingsItem
-                    title="Reset Configuration"
-                    description="Reset the configuration file to its default state. This will log you out of the device."
+                  title="Reset Configuration"
+                  description="Reset the configuration file to its default state. This will log you out of the device."
                 >
                   <Button
                     size="SM"
