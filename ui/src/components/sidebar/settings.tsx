@@ -665,7 +665,7 @@ export default function SettingsSidebar() {
 
               <GridCard>
                 <div className="flex items-start p-4 gap-x-4">
-                  <ShieldCheckIcon className="w-8 h-8 mt-1 text-blue-600 shrink-0 dark:text-blue-500"/>
+                  <ShieldCheckIcon className="w-8 h-8 mt-1 text-blue-600 shrink-0 dark:text-blue-500" />
                   <div className="space-y-3">
                     <div className="space-y-2">
                       <h3 className="text-base font-bold text-slate-900 dark:text-white">
@@ -693,7 +693,7 @@ export default function SettingsSidebar() {
                         .
                       </div>
                     </div>
-                    <hr className="block w-full dark:border-slate-600"/>
+                    <hr className="block w-full dark:border-slate-600" />
 
                     <div>
                       <LinkButton
