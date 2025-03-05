@@ -479,7 +479,7 @@ export default function SettingsSidebar() {
                 currentVersions ? (
                   <>
                     App: {currentVersions.appVersion}
-                    <br/>
+                    <br />
                     System: {currentVersions.systemVersion}
                   </>
                 ) : (
@@ -496,7 +496,7 @@ export default function SettingsSidebar() {
               />
             </div>
           </div>
-          <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+          <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
           <SectionHeader
             title="Mouse"
             description="Customize mouse behavior and interaction settings"
@@ -526,7 +526,7 @@ export default function SettingsSidebar() {
               />
             </SettingsItem>
             <div className="space-y-4">
-              <SettingsItem title="Modes" description="Choose the mouse input mode"/>
+              <SettingsItem title="Modes" description="Choose the mouse input mode" />
               <div className="flex items-center gap-4">
                 <button
                   className="block group grow"
@@ -548,7 +548,7 @@ export default function SettingsSidebar() {
                             Most convenient
                           </p>
                         </div>
-                        <CheckCircleIcon className="w-4 h-4 text-blue-700 dark:text-blue-500"/>
+                        <CheckCircleIcon className="w-4 h-4 text-blue-700 dark:text-blue-500" />
                       </div>
                     </div>
                   </GridCard>
@@ -559,7 +559,7 @@ export default function SettingsSidebar() {
                 >
                   <GridCard>
                     <div className="flex items-center px-4 py-3 gap-x-4">
-                      <img className="w-6 shrink-0 dark:invert" src={MouseIcon} alt="Mouse icon"/>
+                      <img className="w-6 shrink-0 dark:invert" src={MouseIcon} alt="Mouse icon" />
                       <div className="flex items-center justify-between grow">
                         <div className="text-left">
                           <h3 className="text-sm font-semibold text-black dark:text-white">
@@ -577,7 +577,7 @@ export default function SettingsSidebar() {
             </div>
           </div>
         </div>
-        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
         <div className="pb-2 space-y-4">
           <SectionHeader
             title="Video"
@@ -593,9 +593,9 @@ export default function SettingsSidebar() {
                 label=""
                 value={streamQuality}
                 options={[
-                  {value: "1", label: "High"},
-                  {value: "0.5", label: "Medium"},
-                  {value: "0.1", label: "Low"},
+                  { value: "1", label: "High" },
+                  { value: "0.5", label: "Medium" },
+                  { value: "0.1", label: "Low" },
                 ]}
                 onChange={e => handleStreamQualityChange(e.target.value)}
               />
@@ -617,7 +617,7 @@ export default function SettingsSidebar() {
                     handleEDIDChange(e.target.value as string);
                   }
                 }}
-                options={[...edids, {value: "custom", label: "Custom"}]}
+                options={[...edids, { value: "custom", label: "Custom" }]}
               />
             </SettingsItem>
             {customEdidValue !== null && (
