@@ -655,104 +655,104 @@ export default function SettingsSidebar() {
           </div>
         </div>
         {isOnDevice && (
-            <>
-              <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
-              <div className="pb-4 space-y-4">
-                <SectionHeader
-                  title="JetKVM Cloud"
-                  description="Connect your device to the cloud for secure remote access and management"
-                />
+          <>
+            <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+            <div className="pb-4 space-y-4">
+              <SectionHeader
+                title="JetKVM Cloud"
+                description="Connect your device to the cloud for secure remote access and management"
+              />
 
-                <GridCard>
-                  <div className="flex items-start p-4 gap-x-4">
-                    <ShieldCheckIcon className="w-8 h-8 mt-1 text-blue-600 shrink-0 dark:text-blue-500"/>
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                          Cloud Security
-                        </h3>
-                        <div>
-                          <ul className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
-                            <li>• End-to-end encryption using WebRTC (DTLS and SRTP)</li>
-                            <li>• Zero Trust security model</li>
-                            <li>• OIDC (OpenID Connect) authentication</li>
-                            <li>• All streams encrypted in transit</li>
-                          </ul>
-                        </div>
-
-                        <div className="text-xs text-slate-700 dark:text-slate-300">
-                          All cloud components are open-source and available on{" "}
-                          <a
-                            href="https://github.com/jetkvm"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium text-blue-600 hover:text-blue-800 dark:text-blue-500 dark:hover:text-blue-400"
-                          >
-                            GitHub
-                          </a>
-                          .
-                        </div>
-                      </div>
-                      <hr className="block w-full dark:border-slate-600"/>
-
-                      <div>
-                        <LinkButton
-                          to="https://jetkvm.com/docs/networking/remote-access"
-                          size="SM"
-                          theme="light"
-                          text="Learn about our cloud security"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </GridCard>
-
-                {!isAdopted ? (
-                  <div>
-                    <LinkButton
-                      to={
-                        CLOUD_APP +
-                        "/signup?deviceId=" +
-                        deviceId +
-                        `&returnTo=${location.href}adopt`
-                      }
-                      size="MD"
-                      theme="primary"
-                      text="Adopt KVM to Cloud account"
-                    />
-                  </div>
-                ) : (
-                  <div>
+              <GridCard>
+                <div className="flex items-start p-4 gap-x-4">
+                  <ShieldCheckIcon className="w-8 h-8 mt-1 text-blue-600 shrink-0 dark:text-blue-500"/>
+                  <div className="space-y-3">
                     <div className="space-y-2">
-                      <p className="text-sm text-slate-600 dark:text-slate-300">
-                        Your device is adopted to JetKVM Cloud
-                      </p>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                        Cloud Security
+                      </h3>
                       <div>
-                        <Button
-                          size="MD"
-                          theme="light"
-                          text="De-register from Cloud"
-                          className="text-red-600"
-                          onClick={() => {
-                            if (deviceId) {
-                              if (
-                                window.confirm(
-                                  "Are you sure you want to de-register this device?",
-                                )
-                              ) {
-                                deregisterDevice();
-                              }
-                            } else {
-                              notifications.error("No device ID available");
-                            }
-                          }}
-                        />
+                        <ul className="space-y-1 text-xs text-slate-700 dark:text-slate-300">
+                          <li>• End-to-end encryption using WebRTC (DTLS and SRTP)</li>
+                          <li>• Zero Trust security model</li>
+                          <li>• OIDC (OpenID Connect) authentication</li>
+                          <li>• All streams encrypted in transit</li>
+                        </ul>
+                      </div>
+
+                      <div className="text-xs text-slate-700 dark:text-slate-300">
+                        All cloud components are open-source and available on{" "}
+                        <a
+                          href="https://github.com/jetkvm"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-blue-600 hover:text-blue-800 dark:text-blue-500 dark:hover:text-blue-400"
+                        >
+                          GitHub
+                        </a>
+                        .
                       </div>
                     </div>
+                    <hr className="block w-full dark:border-slate-600"/>
+
+                    <div>
+                      <LinkButton
+                        to="https://jetkvm.com/docs/networking/remote-access"
+                        size="SM"
+                        theme="light"
+                        text="Learn about our cloud security"
+                      />
+                    </div>
                   </div>
-                )}
-              </div>
-            </>
+                </div>
+              </GridCard>
+
+              {!isAdopted ? (
+                <div>
+                  <LinkButton
+                    to={
+                      CLOUD_APP +
+                      "/signup?deviceId=" +
+                      deviceId +
+                      `&returnTo=${location.href}adopt`
+                    }
+                    size="MD"
+                    theme="primary"
+                    text="Adopt KVM to Cloud account"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <div className="space-y-2">
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                      Your device is adopted to JetKVM Cloud
+                    </p>
+                    <div>
+                      <Button
+                        size="MD"
+                        theme="light"
+                        text="De-register from Cloud"
+                        className="text-red-600"
+                        onClick={() => {
+                          if (deviceId) {
+                            if (
+                              window.confirm(
+                                "Are you sure you want to de-register this device?",
+                              )
+                            ) {
+                              deregisterDevice();
+                            }
+                          } else {
+                            notifications.error("No device ID available");
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
         {isOnDevice ? (
