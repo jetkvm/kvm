@@ -729,23 +729,23 @@ export default function SettingsSidebar() {
                         </p>
                         <div>
                           <Button
-                              size="MD"
-                              theme="light"
-                              text="De-register from Cloud"
-                              className="text-red-600"
-                              onClick={() => {
-                                if (deviceId) {
-                                  if (
-                                      window.confirm(
-                                          "Are you sure you want to de-register this device?",
-                                      )
-                                  ) {
-                                    deregisterDevice();
-                                  }
-                                } else {
-                                  notifications.error("No device ID available");
+                            size="MD"
+                            theme="light"
+                            text="De-register from Cloud"
+                            className="text-red-600"
+                            onClick={() => {
+                              if (deviceId) {
+                                if (
+                                    window.confirm(
+                                        "Are you sure you want to de-register this device?",
+                                    )
+                                ) {
+                                  deregisterDevice();
                                 }
-                              }}
+                              } else {
+                                notifications.error("No device ID available");
+                              }
+                            }}
                           />
                         </div>
                       </div>
@@ -759,8 +759,8 @@ export default function SettingsSidebar() {
             <>
               <div className="pb-2 space-y-4">
                 <SectionHeader
-                    title="Local Access"
-                    description="Manage the mode of local access to the device"
+                  title="Local Access"
+                  description="Manage the mode of local access to the device"
                 />
 
                 <div className="space-y-4">
@@ -780,30 +780,30 @@ export default function SettingsSidebar() {
                         />
                     ) : (
                         <Button
-                            size="SM"
-                            theme="light"
-                            text="Enable Password"
-                            onClick={() => {
-                              setLocalAuthModalView("createPassword");
-                              setIsLocalAuthDialogOpen(true);
-                            }}
+                          size="SM"
+                          theme="light"
+                          text="Enable Password"
+                          onClick={() => {
+                            setLocalAuthModalView("createPassword");
+                            setIsLocalAuthDialogOpen(true);
+                          }}
                         />
                     )}
                   </SettingsItem>
 
                   {localDevice?.authMode === "password" && (
                       <SettingsItem
-                          title="Change Password"
-                          description="Update your device access password"
+                        title="Change Password"
+                        description="Update your device access password"
                       >
                         <Button
-                            size="SM"
-                            theme="light"
-                            text="Change Password"
-                            onClick={() => {
-                              setLocalAuthModalView("updatePassword");
-                              setIsLocalAuthDialogOpen(true);
-                            }}
+                          size="SM"
+                          theme="light"
+                          text="Change Password"
+                          onClick={() => {
+                            setLocalAuthModalView("updatePassword");
+                            setIsLocalAuthDialogOpen(true);
+                          }}
                         />
                       </SettingsItem>
                   )}
@@ -814,31 +814,31 @@ export default function SettingsSidebar() {
         ) : null}
         <div className="pb-2 space-y-4">
           <SectionHeader
-              title="Updates"
-              description="Manage software updates and version information"
+            title="Updates"
+            description="Manage software updates and version information"
           />
 
           <div className="space-y-4">
             <SettingsItem
-                title="Auto Update"
-                description="Automatically update the device to the latest version"
+              title="Auto Update"
+              description="Automatically update the device to the latest version"
             >
               <Checkbox
-                  checked={autoUpdate}
-                  onChange={e => {
-                    handleAutoUpdateChange(e.target.checked);
-                  }}
+                checked={autoUpdate}
+                onChange={e => {
+                  handleAutoUpdateChange(e.target.checked);
+                }}
               />
             </SettingsItem>
             <SettingsItem
-                title="Dev Channel Updates"
-                description="Receive early updates from the development channel"
+              title="Dev Channel Updates"
+              description="Receive early updates from the development channel"
             >
               <Checkbox
-                  checked={devChannel}
-                  onChange={e => {
-                    handleDevChannelChange(e.target.checked);
-                  }}
+                checked={devChannel}
+                onChange={e => {
+                  handleDevChannelChange(e.target.checked);
+                }}
               />
             </SettingsItem>
           </div>
@@ -846,33 +846,33 @@ export default function SettingsSidebar() {
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
 
         <SectionHeader
-            title="Appearance"
-            description="Customize the look and feel of the application"
+          title="Appearance"
+          description="Customize the look and feel of the application"
         />
         <SettingsItem title="Theme" description="Choose your preferred color theme">
           <SelectMenuBasic
-              size="SM"
-              label=""
-              value={currentTheme}
-              options={[
-                {value: "system", label: "System"},
-                {value: "light", label: "Light"},
-                {value: "dark", label: "Dark"},
-              ]}
-              onChange={e => {
-                setCurrentTheme(e.target.value);
-                handleThemeChange(e.target.value);
-              }}
+            size="SM"
+            label=""
+            value={currentTheme}
+            options={[
+              {value: "system", label: "System"},
+              {value: "light", label: "Light"},
+              {value: "dark", label: "Dark"},
+            ]}
+            onChange={e => {
+              setCurrentTheme(e.target.value);
+              handleThemeChange(e.target.value);
+            }}
           />
         </SettingsItem>
         <SettingsItem title="Device Name" description="Set your device name">
           <InputFieldWithLabel
-              required
-              label=""
-              placeholder="Enter Device Name"
-              description={`DNS Name: ${nameConfig.dns}`}
-              defaultValue={nameConfig.name}
-              onChange={e => handleDeviceNameChange(e.target.value)}
+            required
+            label=""
+            placeholder="Enter Device Name"
+            description={`DNS Name: ${nameConfig.dns}`}
+            defaultValue={nameConfig.name}
+            onChange={e => handleDeviceNameChange(e.target.value)}
           />
         </SettingsItem>
         <div className="flex items-center gap-x-2">
@@ -892,40 +892,40 @@ export default function SettingsSidebar() {
         </div>
         <SettingsItem title="Display Brightness" description="Set the brightness of the display">
           <SelectMenuBasic
-              size="SM"
-              label=""
-              value={settings.backlightSettings.max_brightness.toString()}
-              options={[
-                {value: "0", label: "Off"},
-                {value: "10", label: "Low"},
-                {value: "35", label: "Medium"},
-                {value: "64", label: "High"},
-              ]}
-              onChange={e => {
-                settings.backlightSettings.max_brightness = parseInt(e.target.value)
-                handleBacklightSettingsChange(settings.backlightSettings);
-              }}
+            size="SM"
+            label=""
+            value={settings.backlightSettings.max_brightness.toString()}
+            options={[
+              {value: "0", label: "Off"},
+              {value: "10", label: "Low"},
+              {value: "35", label: "Medium"},
+              {value: "64", label: "High"},
+            ]}
+            onChange={e => {
+              settings.backlightSettings.max_brightness = parseInt(e.target.value)
+              handleBacklightSettingsChange(settings.backlightSettings);
+            }}
           />
         </SettingsItem>
         {settings.backlightSettings.max_brightness != 0 && (
             <>
               <SettingsItem title="Dim Display After" description="Set how long to wait before dimming the display">
                 <SelectMenuBasic
-                    size="SM"
-                    label=""
-                    value={settings.backlightSettings.dim_after.toString()}
-                    options={[
-                      {value: "0", label: "Never"},
-                      {value: "60", label: "1 Minute"},
-                      {value: "300", label: "5 Minutes"},
-                      {value: "600", label: "10 Minutes"},
-                      {value: "1800", label: "30 Minutes"},
-                      {value: "3600", label: "1 Hour"},
-                    ]}
-                    onChange={e => {
-                      settings.backlightSettings.dim_after = parseInt(e.target.value)
-                      handleBacklightSettingsChange(settings.backlightSettings);
-                    }}
+                  size="SM"
+                  label=""
+                  value={settings.backlightSettings.dim_after.toString()}
+                  options={[
+                    {value: "0", label: "Never"},
+                    {value: "60", label: "1 Minute"},
+                    {value: "300", label: "5 Minutes"},
+                    {value: "600", label: "10 Minutes"},
+                    {value: "1800", label: "30 Minutes"},
+                    {value: "3600", label: "1 Hour"},
+                  ]}
+                  onChange={e => {
+                    settings.backlightSettings.dim_after = parseInt(e.target.value)
+                    handleBacklightSettingsChange(settings.backlightSettings);
+                  }}
                 />
               </SettingsItem>
               <SettingsItem title="Turn off Display After"
@@ -955,39 +955,39 @@ export default function SettingsSidebar() {
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
         <div className="pb-2 space-y-4">
           <SectionHeader
-              title="Advanced"
-              description="Access additional settings for troubleshooting and customization"
+            title="Advanced"
+            description="Access additional settings for troubleshooting and customization"
           />
 
           <div className="pb-4 space-y-4">
             <SettingsItem
-                title="Developer Mode"
-                description="Enable advanced features for developers"
+              title="Developer Mode"
+              description="Enable advanced features for developers"
             >
               <Checkbox
-                  checked={settings.developerMode}
-                  onChange={e => handleDevModeChange(e.target.checked)}
+                checked={settings.developerMode}
+                onChange={e => handleDevModeChange(e.target.checked)}
               />
             </SettingsItem>
 
             {settings.developerMode && (
                 <div className="space-y-4">
                   <TextAreaWithLabel
-                      label="SSH Public Key"
-                      value={sshKey || ""}
-                      rows={3}
-                      onChange={e => handleSSHKeyChange(e.target.value)}
-                      placeholder="Enter your SSH public key"
+                    label="SSH Public Key"
+                    value={sshKey || ""}
+                    rows={3}
+                    onChange={e => handleSSHKeyChange(e.target.value)}
+                    placeholder="Enter your SSH public key"
                   />
                   <p className="text-xs text-slate-600 dark:text-slate-400">
                     The default SSH user is <strong>root</strong>.
                   </p>
                   <div className="flex items-center gap-x-2">
                     <Button
-                        size="SM"
-                        theme="primary"
-                        text="Update SSH Key"
-                        onClick={handleUpdateSSHKey}
+                      size="SM"
+                      theme="primary"
+                      text="Update SSH Key"
+                      onClick={handleUpdateSSHKey}
                     />
                   </div>
                 </div>
@@ -1007,18 +1007,18 @@ export default function SettingsSidebar() {
             {settings.debugMode && (
                 <>
                   <SettingsItem
-                      title="USB Emulation"
-                      description="Control the USB emulation state"
+                    title="USB Emulation"
+                    description="Control the USB emulation state"
                   >
                     <Button
-                        size="SM"
-                        theme="light"
-                        text={
-                          usbEmulationEnabled
-                              ? "Disable USB Emulation"
-                              : "Enable USB Emulation"
-                        }
-                        onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
+                      size="SM"
+                      theme="light"
+                      text={
+                        usbEmulationEnabled
+                            ? "Disable USB Emulation"
+                            : "Enable USB Emulation"
+                      }
+                      onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
                     />
                   </SettingsItem>
                 </>
@@ -1029,13 +1029,13 @@ export default function SettingsSidebar() {
                     description="Reset the configuration file to its default state. This will log you out of the device."
                 >
                   <Button
-                      size="SM"
-                      theme="light"
-                      text="Reset Config"
-                      onClick={() => {
-                        handleResetConfig();
-                        window.location.reload();
-                      }}
+                    size="SM"
+                    theme="light"
+                    text="Reset Config"
+                    onClick={() => {
+                      handleResetConfig();
+                      window.location.reload();
+                    }}
                   />
                 </SettingsItem>
             )}
@@ -1043,11 +1043,11 @@ export default function SettingsSidebar() {
         </div>
       </div>
       <LocalAuthPasswordDialog
-          open={isLocalAuthDialogOpen}
-          setOpen={x => {
-            // Revalidate the current route to refresh the local device status and dependent UI components
-            revalidator.revalidate();
-            setIsLocalAuthDialogOpen(x);
+        open={isLocalAuthDialogOpen}
+        setOpen={x => {
+          // Revalidate the current route to refresh the local device status and dependent UI components
+          revalidator.revalidate();
+          setIsLocalAuthDialogOpen(x);
         }}
       />
     </div>
