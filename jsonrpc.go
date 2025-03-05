@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gosimple/slug"
 	"log"
 	"os"
 	"os/exec"
@@ -13,7 +14,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gosimple/slug"
 	"github.com/pion/webrtc/v4"
 	"go.bug.st/serial"
 )
@@ -308,7 +308,7 @@ func rpcSetNameConfig(deviceName string) (NameConfig, error) {
 	LoadConfig()
 	config.NameConfig = NameConfig{
 		Name: deviceName,
-		DNS:  slug.Make(deviceName),
+		DNS:  slug.Make(deviceName) + ".local",
 	}
 
 	RestartMDNS()
