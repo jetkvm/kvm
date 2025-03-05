@@ -909,44 +909,44 @@ export default function SettingsSidebar() {
         </SettingsItem>
         {settings.backlightSettings.max_brightness != 0 && (
           <>
-            <SettingsItem title="Dim Display After" description="Set how long to wait before dimming the display">
-              <SelectMenuBasic
-                size="SM"
-                label=""
-                value={settings.backlightSettings.dim_after.toString()}
-                options={[
-                  {value: "0", label: "Never"},
-                  {value: "60", label: "1 Minute"},
-                  {value: "300", label: "5 Minutes"},
-                  {value: "600", label: "10 Minutes"},
-                  {value: "1800", label: "30 Minutes"},
-                  {value: "3600", label: "1 Hour"},
-                ]}
-                onChange={e => {
-                  settings.backlightSettings.dim_after = parseInt(e.target.value)
-                  handleBacklightSettingsChange(settings.backlightSettings);
-                }}
-              />
-            </SettingsItem>
-            <SettingsItem title="Turn off Display After"
-                          description="Set how long to wait before turning off the display">
-              <SelectMenuBasic
-                size="SM"
-                label=""
-                value={settings.backlightSettings.off_after.toString()}
-                options={[
-                  {value: "0", label: "Never"},
-                  {value: "300", label: "5 Minutes"},
-                  {value: "600", label: "10 Minutes"},
-                  {value: "1800", label: "30 Minutes"},
-                  {value: "3600", label: "1 Hour"},
-                ]}
-                onChange={e => {
-                  settings.backlightSettings.off_after = parseInt(e.target.value)
-                  handleBacklightSettingsChange(settings.backlightSettings);
-                }}
-              />
-            </SettingsItem>
+          <SettingsItem title="Dim Display After" description="Set how long to wait before dimming the display">
+            <SelectMenuBasic
+              size="SM"
+              label=""
+              value={settings.backlightSettings.dim_after.toString()}
+              options={[
+                {value: "0", label: "Never"},
+                {value: "60", label: "1 Minute"},
+                {value: "300", label: "5 Minutes"},
+                {value: "600", label: "10 Minutes"},
+                {value: "1800", label: "30 Minutes"},
+                {value: "3600", label: "1 Hour"},
+              ]}
+              onChange={e => {
+                settings.backlightSettings.dim_after = parseInt(e.target.value)
+                handleBacklightSettingsChange(settings.backlightSettings);
+              }}
+            />
+          </SettingsItem>
+          <SettingsItem title="Turn off Display After"
+                        description="Set how long to wait before turning off the display">
+            <SelectMenuBasic
+              size="SM"
+              label=""
+              value={settings.backlightSettings.off_after.toString()}
+              options={[
+                {value: "0", label: "Never"},
+                {value: "300", label: "5 Minutes"},
+                {value: "600", label: "10 Minutes"},
+                {value: "1800", label: "30 Minutes"},
+                {value: "3600", label: "1 Hour"},
+              ]}
+              onChange={e => {
+                settings.backlightSettings.off_after = parseInt(e.target.value)
+                handleBacklightSettingsChange(settings.backlightSettings);
+              }}
+            />
+          </SettingsItem>
           </>
         )}
         <p className="text-xs text-slate-600 dark:text-slate-400">
