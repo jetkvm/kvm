@@ -621,36 +621,36 @@ export default function SettingsSidebar() {
               />
             </SettingsItem>
             {customEdidValue !== null && (
-                <>
-                  <SettingsItem
-                    title="Custom EDID"
-                    description="EDID details video mode compatibility. Default settings works in most cases, but unique UEFI/BIOS might need adjustments."
+              <>
+                <SettingsItem
+                  title="Custom EDID"
+                  description="EDID details video mode compatibility. Default settings works in most cases, but unique UEFI/BIOS might need adjustments."
+                />
+                <TextAreaWithLabel
+                  label="EDID File"
+                  placeholder="00F..."
+                  rows={3}
+                  value={customEdidValue}
+                  onChange={e => setCustomEdidValue(e.target.value)}
+                />
+                <div className="flex justify-start gap-x-2">
+                  <Button
+                    size="MD"
+                    theme="primary"
+                    text="Set Custom EDID"
+                    onClick={() => handleEDIDChange(customEdidValue)}
                   />
-                  <TextAreaWithLabel
-                    label="EDID File"
-                    placeholder="00F..."
-                    rows={3}
-                    value={customEdidValue}
-                    onChange={e => setCustomEdidValue(e.target.value)}
+                  <Button
+                    size="MD"
+                    theme="light"
+                    text="Restore to default"
+                    onClick={() => {
+                      setCustomEdidValue(null);
+                      handleEDIDChange(defaultEdid);
+                    }}
                   />
-                  <div className="flex justify-start gap-x-2">
-                    <Button
-                      size="MD"
-                      theme="primary"
-                      text="Set Custom EDID"
-                      onClick={() => handleEDIDChange(customEdidValue)}
-                    />
-                    <Button
-                      size="MD"
-                      theme="light"
-                      text="Restore to default"
-                      onClick={() => {
-                        setCustomEdidValue(null);
-                        handleEDIDChange(defaultEdid);
-                      }}
-                    />
-                  </div>
-                </>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -708,109 +708,109 @@ export default function SettingsSidebar() {
                 </GridCard>
 
                 {!isAdopted ? (
-                    <div>
-                      <LinkButton
-                        to={
-                            CLOUD_APP +
-                            "/signup?deviceId=" +
-                            deviceId +
-                            `&returnTo=${location.href}adopt`
-                        }
-                        size="MD"
-                        theme="primary"
-                        text="Adopt KVM to Cloud account"
-                      />
-                    </div>
+                  <div>
+                    <LinkButton
+                      to={
+                        CLOUD_APP +
+                        "/signup?deviceId=" +
+                        deviceId +
+                        `&returnTo=${location.href}adopt`
+                      }
+                      size="MD"
+                      theme="primary"
+                      text="Adopt KVM to Cloud account"
+                    />
+                  </div>
                 ) : (
-                    <div>
-                      <div className="space-y-2">
-                        <p className="text-sm text-slate-600 dark:text-slate-300">
-                          Your device is adopted to JetKVM Cloud
-                        </p>
-                        <div>
-                          <Button
-                            size="MD"
-                            theme="light"
-                            text="De-register from Cloud"
-                            className="text-red-600"
-                            onClick={() => {
-                              if (deviceId) {
-                                if (
-                                    window.confirm(
-                                        "Are you sure you want to de-register this device?",
-                                    )
-                                ) {
-                                  deregisterDevice();
-                                }
-                              } else {
-                                notifications.error("No device ID available");
+                  <div>
+                    <div className="space-y-2">
+                      <p className="text-sm text-slate-600 dark:text-slate-300">
+                        Your device is adopted to JetKVM Cloud
+                      </p>
+                      <div>
+                        <Button
+                          size="MD"
+                          theme="light"
+                          text="De-register from Cloud"
+                          className="text-red-600"
+                          onClick={() => {
+                            if (deviceId) {
+                              if (
+                                window.confirm(
+                                  "Are you sure you want to de-register this device?",
+                                )
+                              ) {
+                                deregisterDevice();
                               }
-                            }}
-                          />
-                        </div>
+                            } else {
+                              notifications.error("No device ID available");
+                            }
+                          }}
+                        />
                       </div>
                     </div>
+                  </div>
                 )}
               </div>
             </>
         )}
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
         {isOnDevice ? (
-            <>
-              <div className="pb-2 space-y-4">
-                <SectionHeader
-                  title="Local Access"
-                  description="Manage the mode of local access to the device"
-                />
+          <>
+            <div className="pb-2 space-y-4">
+              <SectionHeader
+                title="Local Access"
+                description="Manage the mode of local access to the device"
+              />
 
-                <div className="space-y-4">
-                  <SettingsItem
-                    title="Authentication Mode"
-                    description={`Current mode: ${localDevice?.authMode === "password" ? "Password protected" : "No password"}`}
-                  >
-                    {localDevice?.authMode === "password" ? (
-                        <Button
-                          size="SM"
-                          theme="light"
-                          text="Disable Protection"
-                          onClick={() => {
-                            setLocalAuthModalView("deletePassword");
-                            setIsLocalAuthDialogOpen(true);
-                          }}
-                        />
-                    ) : (
-                        <Button
-                          size="SM"
-                          theme="light"
-                          text="Enable Password"
-                          onClick={() => {
-                            setLocalAuthModalView("createPassword");
-                            setIsLocalAuthDialogOpen(true);
-                          }}
-                        />
-                    )}
-                  </SettingsItem>
-
-                  {localDevice?.authMode === "password" && (
-                      <SettingsItem
-                        title="Change Password"
-                        description="Update your device access password"
-                      >
-                        <Button
-                          size="SM"
-                          theme="light"
-                          text="Change Password"
-                          onClick={() => {
-                            setLocalAuthModalView("updatePassword");
-                            setIsLocalAuthDialogOpen(true);
-                          }}
-                        />
-                      </SettingsItem>
+              <div className="space-y-4">
+                <SettingsItem
+                  title="Authentication Mode"
+                  description={`Current mode: ${localDevice?.authMode === "password" ? "Password protected" : "No password"}`}
+                >
+                  {localDevice?.authMode === "password" ? (
+                    <Button
+                      size="SM"
+                      theme="light"
+                      text="Disable Protection"
+                      onClick={() => {
+                        setLocalAuthModalView("deletePassword");
+                        setIsLocalAuthDialogOpen(true);
+                      }}
+                    />
+                  ) : (
+                    <Button
+                      size="SM"
+                      theme="light"
+                      text="Enable Password"
+                      onClick={() => {
+                        setLocalAuthModalView("createPassword");
+                        setIsLocalAuthDialogOpen(true);
+                      }}
+                    />
                   )}
-                </div>
+                </SettingsItem>
+
+                {localDevice?.authMode === "password" && (
+                  <SettingsItem
+                    title="Change Password"
+                    description="Update your device access password"
+                  >
+                    <Button
+                      size="SM"
+                      theme="light"
+                      text="Change Password"
+                      onClick={() => {
+                        setLocalAuthModalView("updatePassword");
+                        setIsLocalAuthDialogOpen(true);
+                      }}
+                    />
+                  </SettingsItem>
+                )}
               </div>
-              <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
-            </>
+            </div>
+            <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+          </>
         ) : null}
         <div className="pb-2 space-y-4">
           <SectionHeader
