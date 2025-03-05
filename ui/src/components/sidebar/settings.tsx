@@ -855,9 +855,9 @@ export default function SettingsSidebar() {
             label=""
             value={currentTheme}
             options={[
-              {value: "system", label: "System"},
-              {value: "light", label: "Light"},
-              {value: "dark", label: "Dark"},
+              { value: "system", label: "System" },
+              { value: "light", label: "Light" },
+              { value: "dark", label: "Dark" },
             ]}
             onChange={e => {
               setCurrentTheme(e.target.value);
@@ -886,8 +886,8 @@ export default function SettingsSidebar() {
         <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
         <div className="pb-2 space-y-4">
           <SectionHeader
-              title="Hardware"
-              description="Configure the JetKVM Hardware"
+            title="Hardware"
+            description="Configure the JetKVM Hardware"
           />
         </div>
         <SettingsItem title="Display Brightness" description="Set the brightness of the display">
@@ -896,10 +896,10 @@ export default function SettingsSidebar() {
             label=""
             value={settings.backlightSettings.max_brightness.toString()}
             options={[
-              {value: "0", label: "Off"},
-              {value: "10", label: "Low"},
-              {value: "35", label: "Medium"},
-              {value: "64", label: "High"},
+              { value: "0", label: "Off" },
+              { value: "10", label: "Low" },
+              { value: "35", label: "Medium" },
+              { value: "64", label: "High" },
             ]}
             onChange={e => {
               settings.backlightSettings.max_brightness = parseInt(e.target.value)
@@ -908,46 +908,46 @@ export default function SettingsSidebar() {
           />
         </SettingsItem>
         {settings.backlightSettings.max_brightness != 0 && (
-            <>
-              <SettingsItem title="Dim Display After" description="Set how long to wait before dimming the display">
-                <SelectMenuBasic
-                  size="SM"
-                  label=""
-                  value={settings.backlightSettings.dim_after.toString()}
-                  options={[
-                    {value: "0", label: "Never"},
-                    {value: "60", label: "1 Minute"},
-                    {value: "300", label: "5 Minutes"},
-                    {value: "600", label: "10 Minutes"},
-                    {value: "1800", label: "30 Minutes"},
-                    {value: "3600", label: "1 Hour"},
-                  ]}
-                  onChange={e => {
-                    settings.backlightSettings.dim_after = parseInt(e.target.value)
-                    handleBacklightSettingsChange(settings.backlightSettings);
-                  }}
-                />
-              </SettingsItem>
-              <SettingsItem title="Turn off Display After"
-                            description="Set how long to wait before turning off the display">
-                <SelectMenuBasic
-                    size="SM"
-                    label=""
-                    value={settings.backlightSettings.off_after.toString()}
-                    options={[
-                      {value: "0", label: "Never"},
-                      {value: "300", label: "5 Minutes"},
-                      {value: "600", label: "10 Minutes"},
-                      {value: "1800", label: "30 Minutes"},
-                      {value: "3600", label: "1 Hour"},
-                    ]}
-                    onChange={e => {
-                      settings.backlightSettings.off_after = parseInt(e.target.value)
-                      handleBacklightSettingsChange(settings.backlightSettings);
-                    }}
-                />
-              </SettingsItem>
-            </>
+          <>
+            <SettingsItem title="Dim Display After" description="Set how long to wait before dimming the display">
+              <SelectMenuBasic
+                size="SM"
+                label=""
+                value={settings.backlightSettings.dim_after.toString()}
+                options={[
+                  {value: "0", label: "Never"},
+                  {value: "60", label: "1 Minute"},
+                  {value: "300", label: "5 Minutes"},
+                  {value: "600", label: "10 Minutes"},
+                  {value: "1800", label: "30 Minutes"},
+                  {value: "3600", label: "1 Hour"},
+                ]}
+                onChange={e => {
+                  settings.backlightSettings.dim_after = parseInt(e.target.value)
+                  handleBacklightSettingsChange(settings.backlightSettings);
+                }}
+              />
+            </SettingsItem>
+            <SettingsItem title="Turn off Display After"
+                          description="Set how long to wait before turning off the display">
+              <SelectMenuBasic
+                size="SM"
+                label=""
+                value={settings.backlightSettings.off_after.toString()}
+                options={[
+                  {value: "0", label: "Never"},
+                  {value: "300", label: "5 Minutes"},
+                  {value: "600", label: "10 Minutes"},
+                  {value: "1800", label: "30 Minutes"},
+                  {value: "3600", label: "1 Hour"},
+                ]}
+                onChange={e => {
+                  settings.backlightSettings.off_after = parseInt(e.target.value)
+                  handleBacklightSettingsChange(settings.backlightSettings);
+                }}
+              />
+            </SettingsItem>
+          </>
         )}
         <p className="text-xs text-slate-600 dark:text-slate-400">
           The display will wake up when the connection state changes, or when touched.
