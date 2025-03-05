@@ -843,7 +843,7 @@ export default function SettingsSidebar() {
             </SettingsItem>
           </div>
         </div>
-        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20"/>
+        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
 
         <SectionHeader
           title="Appearance"
@@ -915,12 +915,12 @@ export default function SettingsSidebar() {
               label=""
               value={settings.backlightSettings.dim_after.toString()}
               options={[
-                {value: "0", label: "Never"},
-                {value: "60", label: "1 Minute"},
-                {value: "300", label: "5 Minutes"},
-                {value: "600", label: "10 Minutes"},
-                {value: "1800", label: "30 Minutes"},
-                {value: "3600", label: "1 Hour"},
+                { value: "0", label: "Never" },
+                { value: "60", label: "1 Minute" },
+                { value: "300", label: "5 Minutes" },
+                { value: "600", label: "10 Minutes" },
+                { value: "1800", label: "30 Minutes" },
+                { value: "3600", label: "1 Hour" },
               ]}
               onChange={e => {
                 settings.backlightSettings.dim_after = parseInt(e.target.value)
@@ -1004,23 +1004,23 @@ export default function SettingsSidebar() {
             </SettingsItem>
 
             {settings.debugMode && (
-                <>
-                  <SettingsItem
-                    title="USB Emulation"
-                    description="Control the USB emulation state"
-                  >
-                    <Button
-                      size="SM"
-                      theme="light"
-                      text={
-                        usbEmulationEnabled
-                            ? "Disable USB Emulation"
-                            : "Enable USB Emulation"
-                      }
-                      onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
-                    />
-                  </SettingsItem>
-                </>
+              <>
+                <SettingsItem
+                  title="USB Emulation"
+                  description="Control the USB emulation state"
+                >
+                  <Button
+                    size="SM"
+                    theme="light"
+                    text={
+                      usbEmulationEnabled
+                          ? "Disable USB Emulation"
+                          : "Enable USB Emulation"
+                    }
+                    onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
+                  />
+                </SettingsItem>
+              </>
             )}
             {settings.debugMode && (
               <SettingsItem
