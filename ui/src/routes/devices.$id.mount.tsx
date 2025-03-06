@@ -121,7 +121,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
           triggerError(err instanceof Error ? err.message : String(err));
         })
         .finally(() => {
-          // We do this beacues the mounting is too fast and the UI gets choppy
+          // We do this because the mounting is too fast and the UI gets choppy
           // and the modal exit animation for like 500ms
           setTimeout(() => {
             setMountInProgress(false);

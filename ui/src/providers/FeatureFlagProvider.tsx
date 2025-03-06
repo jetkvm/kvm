@@ -22,7 +22,7 @@ export const FeatureFlagProvider = ({
 }) => {
   const isFeatureEnabled = (minAppVersion: string) => {
     // If no version is set, feature is disabled.
-    // The feature flag component can deside what to display as a fallback - either omit the component or like a "please upgrade to enable".
+    // The feature flag component can decide what to display as a fallback - either omit the component or like a "please upgrade to enable".
     if (!appVersion) return false;
 
     // Extract the base versions without prerelease identifier

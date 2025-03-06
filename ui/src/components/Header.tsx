@@ -42,7 +42,7 @@ export default function DashboardNavbar({
     if (!res.ok) return;
 
     setUser(null);
-    // The root route will redirect to appropiate login page, be it the local one or the cloud one
+    // The root route will redirect to appropriate login page, be it the local one or the cloud one
     navigate("/");
   }, [navigate, setUser]);
 
