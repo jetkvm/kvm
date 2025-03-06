@@ -151,7 +151,7 @@ export default function Actionbar({
                 <Button
                   size="XS"
                   theme="light"
-                  text="Wake on Lan"
+                  text="Wake on LAN"
                   onClick={() => {
                     setDisableFocusTrap(true);
                   }}
