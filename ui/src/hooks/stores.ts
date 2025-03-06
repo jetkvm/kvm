@@ -23,6 +23,11 @@ const appendStatToMap = <T extends { timestamp: number }>(
 export type AvailableSidebarViews = "connection-stats";
 export type AvailableTerminalTypes = "kvm" | "serial" | "none";
 
+export interface NameConfig {
+  name: string;
+  dns:  string;
+}
+
 export interface User {
   sub: string;
   email?: string;

@@ -1,12 +1,22 @@
 import { useCallback, useState } from "react";
+import { Button } from "@components/Button";
+import { InputFieldWithLabel } from "@components/InputField";
 import { SettingsPageHeader } from "../components/SettingsPageheader";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { SettingsItem } from "./devices.$id.settings";
+import { NameConfig } from "@/hooks/stores";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
+import notifications from "@/notifications";
 
 export default function SettingsAppearanceRoute() {
   const [currentTheme, setCurrentTheme] = useState(() => {
     return localStorage.theme || "system";
   });
+  const [nameConfig, setNameConfig] = useState<NameConfig>({
+    name: '',
+    dns:  '',
+  });
+  const [send] = useJsonRpc();
 
   const handleThemeChange = useCallback((value: string) => {
     const root = document.documentElement;
@@ -26,7 +36,26 @@ export default function SettingsAppearanceRoute() {
     }
   }, []);
 
-  return (
+    const handleDeviceNameChange = (deviceName: string) => {
+      setNameConfig({... nameConfig, name: deviceName})
+    };
+
+    const handleUpdateNameConfig = useCallback(() => {
+      send("setNameConfig", { deviceName: nameConfig.name }, resp => {
+        if ("error" in resp) {
+          notifications.error(
+            `Failed to set name config: ${resp.error.data || "Unknown error"}`,
+          );
+          return;
+        }
+        const rNameConfig = resp.result as NameConfig;
+        setNameConfig(rNameConfig);
+        document.title = rNameConfig.name;
+        notifications.success(`Device name set to "${rNameConfig.name}" successfully.\nDNS Name set to "${rNameConfig.dns}"`);
+      });
+    }, [send, nameConfig]);
+
+    return (
     <div className="space-y-4">
       <SettingsPageHeader
         title="Appearance"
@@ -48,6 +77,24 @@ export default function SettingsAppearanceRoute() {
           }}
         />
       </SettingsItem>
+      <SettingsItem title="Device Name" description="Set your device name">
+        <InputFieldWithLabel
+          required
+          label=""
+          placeholder="Enter Device Name"
+          description={`DNS Name: ${nameConfig.dns}`}
+          defaultValue={nameConfig.name}
+          onChange={e => handleDeviceNameChange(e.target.value)}
+        />
+      </SettingsItem>
+      <div className="flex items-center gap-x-2">
+        <Button
+          size="SM"
+          theme="primary"
+          text="Update Device Name"
+          onClick={handleUpdateNameConfig}
+        />
+      </div>
     </div>
   );
 }

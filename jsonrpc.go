@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gosimple/slug"
 	"github.com/pion/webrtc/v4"
 	"go.bug.st/serial"
 )
@@ -41,6 +42,11 @@ type BacklightSettings struct {
 	MaxBrightness int `json:"max_brightness"`
 	DimAfter      int `json:"dim_after"`
 	OffAfter      int `json:"off_after"`
+}
+
+type NameSettings struct {
+	Name string `json:"name"`
+	DNS  string `json:"dns"`
 }
 
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
@@ -291,6 +297,30 @@ type DevModeState struct {
 
 type SSHKeyState struct {
 	SSHKey string `json:"sshKey"`
+}
+
+func rpcGetNameConfig() (NameConfig, error) {
+	LoadConfig()
+	return config.NameConfig, nil
+}
+
+func rpcSetNameConfig(deviceName string) (NameConfig, error) {
+	LoadConfig()
+	config.NameConfig = NameConfig{
+		Name: deviceName,
+		DNS:  slug.Make(deviceName) + ".local",
+	}
+
+	RestartMDNS()
+
+	err := SaveConfig()
+	if err != nil {
+		return NameConfig{}, fmt.Errorf("failed to save device name: %w", err)
+	}
+
+	nameConfig := config.NameConfig
+	log.Printf("[jsonrpc.go:rpcSetNameConfig] device name set to %s, dns name set to %s", nameConfig.Name, nameConfig.DNS)
+	return nameConfig, nil
 }
 
 func rpcGetDevModeState() (DevModeState, error) {
@@ -789,6 +819,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setDevChannelState":     {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getUpdateStatus":        {Func: rpcGetUpdateStatus},
 	"tryUpdate":              {Func: rpcTryUpdate},
+	"setNameConfig":          {Func: rpcSetNameConfig, Params: []string{"deviceName"}},
+	"getNameConfig":          {Func: rpcGetNameConfig},
 	"getDevModeState":        {Func: rpcGetDevModeState},
 	"setDevModeState":        {Func: rpcSetDevModeState, Params: []string{"enabled"}},
 	"getSSHKeyState":         {Func: rpcGetSSHKeyState},
