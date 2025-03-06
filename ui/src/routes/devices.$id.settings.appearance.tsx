@@ -18,6 +18,13 @@ export default function SettingsAppearanceRoute() {
   });
   const [send] = useJsonRpc();
 
+  send("getNameConfig", {}, resp => {
+    if ("error" in resp) return;
+    const results = resp.result as NameConfig;
+    setNameConfig(results);
+    document.title = results.name;
+  });
+
   const handleThemeChange = useCallback((value: string) => {
     const root = document.documentElement;
 

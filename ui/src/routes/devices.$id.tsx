@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/cva.config";
 import {
-  HidState,
+  HidState, NameConfig,
   UpdateState,
   useDeviceStore,
   useHidStore,
@@ -377,6 +377,15 @@ export default function KvmIdRoute() {
       setHdmiState(resp.result as Parameters<VideoState["setHdmiState"]>[0]);
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
+
+  useEffect(() => {
+    send("getNameConfig", {}, resp => {
+      if ("error" in resp) return;
+      const results = resp.result as NameConfig;
+      document.title = results.name;
+    });
+  }, [send]);
+
 
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-expect-error
