@@ -52,7 +52,7 @@ export default function KvmCard({
   return (
     <Card>
       <div className="px-5 py-5 space-y-3">
-        <div className="flex justify-between items-cente">
+        <div className="flex justify-between items-center">
           <div className="space-y-1.5">
             <div className="text-lg font-bold leading-none text-black dark:text-white">
               {title}

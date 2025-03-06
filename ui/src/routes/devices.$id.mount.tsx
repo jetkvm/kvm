@@ -283,7 +283,7 @@ function ModeSelectionView({
 
   return (
     <div className="w-full space-y-4">
-      <div className="asnimate-fadeIn space-y-0">
+      <div className="animate-fadeIn space-y-0">
         <h2 className="text-lg font-bold leading-tight dark:text-white">
           Virtual Media Source
         </h2>
