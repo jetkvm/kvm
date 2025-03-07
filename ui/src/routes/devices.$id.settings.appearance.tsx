@@ -89,7 +89,7 @@ export default function SettingsAppearanceRoute() {
           required
           label=""
           placeholder="Enter Device Name"
-          description={`DNS Name: ${nameConfig.dns}`}
+          description={`DNS: ${nameConfig.dns}`}
           defaultValue={nameConfig.name}
           onChange={e => handleDeviceNameChange(e.target.value)}
         />
