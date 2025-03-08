@@ -387,7 +387,6 @@ export default function KvmIdRoute() {
     send("getNameConfig", {}, resp => {
       if ("error" in resp) return;
       const results = resp.result as NameConfig;
-      console.log(`getNameConfig# name: ${results.name}, dns: ${results.dns}`);
       setNameConfig(results)
       document.title = results.name;
     });
