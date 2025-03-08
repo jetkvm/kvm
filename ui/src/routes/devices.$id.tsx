@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/cva.config";
 import {
-  HidState, NameConfig,
+  HidState,
+  NameConfig,
   UpdateState,
   useDeviceStore,
   useHidStore,
