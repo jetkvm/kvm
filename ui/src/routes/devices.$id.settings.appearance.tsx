@@ -4,7 +4,7 @@ import { InputFieldWithLabel } from "@components/InputField";
 import { SettingsPageHeader } from "../components/SettingsPageheader";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { SettingsItem } from "./devices.$id.settings";
-import { NameConfig } from "@/hooks/stores";
+import {NameConfig, useSettingsStore} from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 
@@ -12,18 +12,11 @@ export default function SettingsAppearanceRoute() {
   const [currentTheme, setCurrentTheme] = useState(() => {
     return localStorage.theme || "system";
   });
-  const [nameConfig, setNameConfig] = useState<NameConfig>({
-    name: '',
-    dns:  '',
-  });
   const [send] = useJsonRpc();
+  const [name, setName] = useState("");
 
-  send("getNameConfig", {}, resp => {
-    if ("error" in resp) return;
-    const results = resp.result as NameConfig;
-    setNameConfig(results);
-    document.title = results.name;
-  });
+  const nameConfigSettings = useSettingsStore(state => state.nameConfig);
+  const setNameConfigSettings = useSettingsStore(state => state.setNameConfig);
 
   const handleThemeChange = useCallback((value: string) => {
     const root = document.documentElement;
@@ -43,24 +36,24 @@ export default function SettingsAppearanceRoute() {
     }
   }, []);
 
-    const handleDeviceNameChange = (deviceName: string) => {
-      setNameConfig({... nameConfig, name: deviceName})
+    const handleNameChange = (value: string) => {
+      setName(value);
     };
 
-    const handleUpdateNameConfig = useCallback(() => {
-      send("setNameConfig", { deviceName: nameConfig.name }, resp => {
+    const handleNameSave = useCallback(() => {
+      send("setNameConfig", { deviceName: name }, resp => {
         if ("error" in resp) {
-          notifications.error(
-            `Failed to set name config: ${resp.error.data || "Unknown error"}`,
-          );
+          notifications.error(`Failed to set name config: ${resp.error.data || "Unknown error"}`);
           return;
         }
-        const rNameConfig = resp.result as NameConfig;
-        setNameConfig(rNameConfig);
-        document.title = rNameConfig.name;
-        notifications.success(`Device name set to "${rNameConfig.name}" successfully.\nDNS Name set to "${rNameConfig.dns}"`);
+        const nameConfig = resp.result as NameConfig;
+        setNameConfigSettings(nameConfig);
+        document.title = nameConfig.name;
+        notifications.success(
+            `Device name set to "${nameConfig.name}" successfully.\nDNS Name set to "${nameConfig.dns}"`
+        );
       });
-    }, [send, nameConfig]);
+    }, [send, name, setNameConfigSettings]);
 
     return (
     <div className="space-y-4">
@@ -89,9 +82,9 @@ export default function SettingsAppearanceRoute() {
           required
           label=""
           placeholder="Enter Device Name"
-          description={`DNS: ${nameConfig.dns}`}
-          defaultValue={nameConfig.name}
-          onChange={e => handleDeviceNameChange(e.target.value)}
+          description={`DNS: ${nameConfigSettings.dns}`}
+          defaultValue={nameConfigSettings.name}
+          onChange={e => handleNameChange(e.target.value)}
         />
       </SettingsItem>
       <div className="flex items-center gap-x-2">
@@ -99,7 +92,7 @@ export default function SettingsAppearanceRoute() {
           size="SM"
           theme="primary"
           text="Update Device Name"
-          onClick={handleUpdateNameConfig}
+          onClick={() => {handleNameSave()}}
         />
       </div>
     </div>

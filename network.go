@@ -131,7 +131,6 @@ func startMDNS() error {
 	}
 
 	// Start a new server
-	LoadConfig()
 	fmt.Printf("Starting mDNS server on %v\n", config.NameConfig.DNS)
 	addr4, err := net.ResolveUDPAddr("udp4", mdns.DefaultAddressIPv4)
 	if err != nil {

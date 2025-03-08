@@ -278,6 +278,9 @@ interface SettingsState {
 
   backlightSettings: BacklightSettings;
   setBacklightSettings: (settings: BacklightSettings) => void;
+
+  nameConfig: NameConfig;
+  setNameConfig: (config: NameConfig) => void;
 }
 
 export const useSettingsStore = create(
@@ -303,6 +306,12 @@ export const useSettingsStore = create(
       },
       setBacklightSettings: (settings: BacklightSettings) =>
         set({ backlightSettings: settings }),
+
+      nameConfig: {
+        name: "JetKVM",
+        dns: "jetkvm.local"
+      },
+      setNameConfig: (config: NameConfig) => set({ nameConfig: config }),
     }),
     {
       name: "settings",

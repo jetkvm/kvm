@@ -8,6 +8,7 @@ import {
   useMountMediaStore,
   User,
   useRTCStore,
+  useSettingsStore,
   useUiStore,
   useUpdateStore,
   useVideoStore,
@@ -128,6 +129,7 @@ export default function KvmIdRoute() {
   const setDiskChannel = useRTCStore(state => state.setDiskChannel);
   const setRpcDataChannel = useRTCStore(state => state.setRpcDataChannel);
   const setTransceiver = useRTCStore(state => state.setTransceiver);
+
 
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
@@ -378,14 +380,17 @@ export default function KvmIdRoute() {
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
 
+  const setNameConfig = useSettingsStore(state => state.setNameConfig);
+
   useEffect(() => {
     send("getNameConfig", {}, resp => {
       if ("error" in resp) return;
       const results = resp.result as NameConfig;
+      console.log(`getNameConfig# name: ${results.name}, dns: ${results.dns}`);
+      setNameConfig(results)
       document.title = results.name;
     });
-  }, [send]);
-
+  }, [send, setNameConfig])
 
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-expect-error

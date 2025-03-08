@@ -300,12 +300,10 @@ type SSHKeyState struct {
 }
 
 func rpcGetNameConfig() (NameConfig, error) {
-	LoadConfig()
 	return config.NameConfig, nil
 }
 
 func rpcSetNameConfig(deviceName string) (NameConfig, error) {
-	LoadConfig()
 	config.NameConfig = NameConfig{
 		Name: deviceName,
 		DNS:  slug.Make(deviceName) + ".local",
