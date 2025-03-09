@@ -517,10 +517,8 @@ func rpcIsUpdatePending() (bool, error) {
 	return IsUpdatePending(), nil
 }
 
-var udcFilePath = filepath.Join("/sys/bus/platform/drivers/dwc3", udc)
-
 func rpcGetUsbEmulationState() (bool, error) {
-	_, err := os.Stat(udcFilePath)
+	_, err := os.Stat(filepath.Join("/sys/bus/platform/drivers/dwc3", udc))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
