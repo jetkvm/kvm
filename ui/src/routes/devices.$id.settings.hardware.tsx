@@ -7,6 +7,7 @@ import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "../notifications";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { UsbConfigSetting } from "../components/UsbConfigSetting";
+import { UsbDeviceSetting } from "@components/UsbDeviceSetting";
 import { FeatureFlag } from "../components/FeatureFlag";
 
 export default function SettingsHardwareRoute() {
@@ -131,6 +132,10 @@ export default function SettingsHardwareRoute() {
 
       <FeatureFlag minAppVersion="0.3.8">
         <UsbConfigSetting />
+      </FeatureFlag>
+
+      <FeatureFlag minAppVersion="0.3.8">
+        <UsbDeviceSetting />
       </FeatureFlag>
     </div>
   );

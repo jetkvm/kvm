@@ -21,7 +21,25 @@ const gadgetPath = "/sys/kernel/config/usb_gadget"
 const kvmGadgetPath = "/sys/kernel/config/usb_gadget/jetkvm"
 const configC1Path = "/sys/kernel/config/usb_gadget/jetkvm/configs/c.1"
 
+func (u *UsbDevicesConfig) isGadgetConfigItemEnabled(itemKey string) bool {
+	switch itemKey {
+	case "absolute_mouse":
+		return u.AbsoluteMouse
+	case "relative_mouse":
+		return u.RelativeMouse
+	case "keyboard":
+		return u.Keyboard
+	case "mass_storage_base":
+		return u.MassStorage
+	case "mass_storage_usb0":
+		return u.MassStorage
+	default:
+		return true
+	}
+}
+
 type gadgetConfigItem struct {
+	device      string
 	path        []string
 	attrs       gadgetAttributes
 	configAttrs gadgetAttributes
@@ -56,6 +74,7 @@ var gadgetConfig = map[string]gadgetConfigItem{
 	},
 	// keyboard HID
 	"keyboard": {
+		device:     "hid.usb0",
 		path:       []string{"functions", "hid.usb0"},
 		configPath: path.Join(configC1Path, "hid.usb0"),
 		attrs: gadgetAttributes{
@@ -67,6 +86,7 @@ var gadgetConfig = map[string]gadgetConfigItem{
 	},
 	// mouse HID
 	"absolute_mouse": {
+		device:     "hid.usb1",
 		path:       []string{"functions", "hid.usb1"},
 		configPath: path.Join(configC1Path, "hid.usb1"),
 		attrs: gadgetAttributes{
@@ -78,6 +98,7 @@ var gadgetConfig = map[string]gadgetConfigItem{
 	},
 	// relative mouse HID
 	"relative_mouse": {
+		device:     "hid.usb2",
 		path:       []string{"functions", "hid.usb2"},
 		configPath: path.Join(configC1Path, "hid.usb2"),
 		attrs: gadgetAttributes{
@@ -89,13 +110,13 @@ var gadgetConfig = map[string]gadgetConfigItem{
 	},
 	// mass storage
 	"mass_storage_base": {
+		device:     "mass_storage.usb0",
 		path:       []string{"functions", "mass_storage.usb0"},
 		configPath: path.Join(configC1Path, "mass_storage.usb0"),
 		attrs: gadgetAttributes{
 			"stall": "1",
 		},
 	},
-
 	"mass_storage_usb0": {
 		path: []string{"functions", "mass_storage.usb0", "lun.0"},
 		attrs: gadgetAttributes{
@@ -146,6 +167,22 @@ func writeIfDifferent(filePath string, content []byte, permMode os.FileMode) err
 		}
 	}
 	return os.WriteFile(filePath, content, permMode)
+}
+
+func disableGadgetItemConfig(item gadgetConfigItem) error {
+	// remove symlink if exists
+	if item.configPath != "" {
+		if _, err := os.Lstat(item.configPath); os.IsNotExist(err) {
+			logger.Tracef("symlink %s does not exist", item.configPath)
+		} else {
+			err := os.Remove(item.configPath)
+			if err != nil {
+				return fmt.Errorf("failed to remove symlink %s: %w", item.configPath, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func writeGadgetItemConfig(item gadgetConfigItem) error {
@@ -289,6 +326,15 @@ func writeGadgetConfig() error {
 
 	logger.Tracef("writing gadget config")
 	for key, item := range gadgetConfig {
+		// check if the item is enabled in the config
+		if !config.UsbDevices.isGadgetConfigItemEnabled(key) {
+			logger.Tracef("disabling gadget config: %s", key)
+			err = disableGadgetItemConfig(item)
+			if err != nil {
+				return err
+			}
+			continue
+		}
 		logger.Tracef("writing gadget config: %s", key)
 		err = writeGadgetItemConfig(item)
 		if err != nil {

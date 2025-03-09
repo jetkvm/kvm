@@ -546,19 +546,7 @@ func rpcGetUsbConfig() (UsbConfig, error) {
 func rpcSetUsbConfig(usbConfig UsbConfig) error {
 	LoadConfig()
 	config.UsbConfig = &usbConfig
-
-	err := UpdateGadgetConfig()
-	if err != nil {
-		return fmt.Errorf("failed to write gadget config: %w", err)
-	}
-
-	err = SaveConfig()
-	if err != nil {
-		return fmt.Errorf("failed to save usb config: %w", err)
-	}
-
-	log.Printf("[jsonrpc.go:rpcSetUsbConfig] usb config set to %s", usbConfig)
-	return nil
+	return updateUsbRelatedConfig()
 }
 
 func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
@@ -753,6 +741,41 @@ func rpcSetSerialSettings(settings SerialSettings) error {
 	return nil
 }
 
+func rpcGetUsbDevices() (UsbDevicesConfig, error) {
+	return *config.UsbDevices, nil
+}
+
+func updateUsbRelatedConfig() error {
+	if err := UpdateGadgetConfig(); err != nil {
+		return fmt.Errorf("failed to write gadget config: %w", err)
+	}
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
+func rpcSetUsbDevices(usbDevices UsbDevicesConfig) error {
+	config.UsbDevices = &usbDevices
+	return updateUsbRelatedConfig()
+}
+
+func rpcSetUsbDeviceState(device string, enabled bool) error {
+	switch device {
+	case "absoluteMouse":
+		config.UsbDevices.AbsoluteMouse = enabled
+	case "relativeMouse":
+		config.UsbDevices.RelativeMouse = enabled
+	case "keyboard":
+		config.UsbDevices.Keyboard = enabled
+	case "massStorage":
+		config.UsbDevices.MassStorage = enabled
+	default:
+		return fmt.Errorf("invalid device: %s", device)
+	}
+	return updateUsbRelatedConfig()
+}
+
 func rpcSetCloudUrl(apiUrl string, appUrl string) error {
 	config.CloudURL = apiUrl
 	config.CloudAppURL = appUrl
@@ -823,5 +846,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setATXPowerAction":      {Func: rpcSetATXPowerAction, Params: []string{"action"}},
 	"getSerialSettings":      {Func: rpcGetSerialSettings},
 	"setSerialSettings":      {Func: rpcSetSerialSettings, Params: []string{"settings"}},
+	"getUsbDevices":          {Func: rpcGetUsbDevices},
+	"setUsbDevices":          {Func: rpcSetUsbDevices, Params: []string{"devices"}},
+	"setUsbDeviceState":      {Func: rpcSetUsbDeviceState, Params: []string{"device", "enabled"}},
 	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
 }
