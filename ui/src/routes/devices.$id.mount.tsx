@@ -839,7 +839,9 @@ function DeviceFileView({
                   onDelete={() => {
                     const selectedFile = onStorageFiles.find(f => f.name === file.name);
                     if (!selectedFile) return;
-                    handleDeleteFile(selectedFile);
+                    if (window.confirm("Are you sure you want to delete " + selectedFile.name + "?")) {
+                      handleDeleteFile(selectedFile);
+                    }
                   }}
                   onSelect={() => handleOnSelectFile(file)}
                   onContinueUpload={() => onNewImageClick(file.name)}
