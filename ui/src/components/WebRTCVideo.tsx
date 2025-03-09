@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  useDeviceSettingsStore,
   useHidStore,
   useMouseStore,
   useRTCStore,
@@ -144,19 +145,28 @@ export default function WebRTCVideo() {
     [sendMouseMovement, videoClientHeight, videoClientWidth, videoWidth, videoHeight],
   );
 
+  const trackpadSensitivity = useDeviceSettingsStore(state => state.trackpadSensitivity);
+  const mouseSensitivity = useDeviceSettingsStore(state => state.mouseSensitivity);
+  const clampMin = useDeviceSettingsStore(state => state.clampMin);
+  const clampMax = useDeviceSettingsStore(state => state.clampMax);
+  const blockDelay = useDeviceSettingsStore(state => state.blockDelay);
+  const trackpadThreshold = useDeviceSettingsStore(state => state.trackpadThreshold);
+
   const mouseWheelHandler = useCallback(
     (e: WheelEvent) => {
       if (blockWheelEvent) return;
-      e.preventDefault();
 
-      // Define a scaling factor to adjust scrolling sensitivity
-      const scrollSensitivity = 0.8; // Adjust this value to change scroll speed
+      // Determine if the wheel event is from a trackpad or a mouse wheel
+      const isTrackpad = Math.abs(e.deltaY) < trackpadThreshold;
+
+      // Apply appropriate sensitivity based on input device
+      const scrollSensitivity = isTrackpad ? trackpadSensitivity : mouseSensitivity;
 
       // Calculate the scroll value
       const scroll = e.deltaY * scrollSensitivity;
 
-      // Clamp the scroll value to a reasonable range (e.g., -15 to 15)
-      const clampedScroll = Math.max(-4, Math.min(4, scroll));
+      // Apply clamping
+      const clampedScroll = Math.max(clampMin, Math.min(clampMax, scroll));
 
       // Round to the nearest integer
       const roundedScroll = Math.round(clampedScroll);
@@ -164,13 +174,22 @@ export default function WebRTCVideo() {
       // Invert the scroll value to match expected behavior
       const invertedScroll = -roundedScroll;
 
-      console.log("wheelReport", { wheelY: invertedScroll });
       send("wheelReport", { wheelY: invertedScroll });
 
+      // Apply blocking delay
       setBlockWheelEvent(true);
-      setTimeout(() => setBlockWheelEvent(false), 50);
+      setTimeout(() => setBlockWheelEvent(false), blockDelay);
     },
-    [blockWheelEvent, send],
+    [
+      blockDelay,
+      blockWheelEvent,
+      clampMax,
+      clampMin,
+      mouseSensitivity,
+      send,
+      trackpadSensitivity,
+      trackpadThreshold,
+    ],
   );
 
   const resetMousePosition = useCallback(() => {
@@ -356,7 +375,10 @@ export default function WebRTCVideo() {
       videoElmRefValue.addEventListener("pointerdown", mouseMoveHandler, { signal });
       videoElmRefValue.addEventListener("pointerup", mouseMoveHandler, { signal });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
-      videoElmRefValue.addEventListener("wheel", mouseWheelHandler, { signal });
+      videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
+        signal,
+        passive: true,
+      });
       videoElmRefValue.addEventListener(
         "contextmenu",
         (e: MouseEvent) => e.preventDefault(),

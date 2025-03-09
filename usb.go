@@ -332,12 +332,15 @@ func rpcWheelReport(wheelY int8) error {
 		return errors.New("hid not initialized")
 	}
 
-	// Accumulate the wheelY value
-	accumulatedWheelY += float64(wheelY) / 8.0
+	// Accumulate the wheelY value with finer granularity
+	// Reduce divisor from 8.0 to a smaller value (e.g., 2.0 or 4.0)
+	accumulatedWheelY += float64(wheelY) / 4.0
 
-	// Only send a report if the accumulated value is significant
-	if abs(accumulatedWheelY) >= 1.0 {
-		scaledWheelY := int8(accumulatedWheelY)
+	// Lower the threshold for sending a report (0.25 instead of 1.0)
+	if abs(accumulatedWheelY) >= 0.25 {
+		// Scale the wheel value appropriately for the HID report
+		// The descriptor uses an 8-bit signed value (-127 to 127)
+		scaledWheelY := int8(accumulatedWheelY * 0.5) // Scale down to prevent too much scrolling
 
 		_, err := mouseHidFile.Write([]byte{
 			2,                  // Report ID 2
@@ -345,7 +348,7 @@ func rpcWheelReport(wheelY int8) error {
 		})
 
 		// Reset the accumulator, keeping any remainder
-		accumulatedWheelY -= float64(scaledWheelY)
+		accumulatedWheelY -= float64(scaledWheelY) / 0.5 // Adjust based on the scaling factor
 
 		resetUserInputTime()
 		return err

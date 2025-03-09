@@ -4,15 +4,22 @@ import { Checkbox } from "@/components/Checkbox";
 import { GridCard } from "@/components/Card";
 import PointingFinger from "@/assets/pointing-finger.svg";
 import { CheckCircleIcon } from "@heroicons/react/16/solid";
-import { useSettingsStore } from "@/hooks/stores";
+import { useDeviceSettingsStore, useSettingsStore } from "@/hooks/stores";
 import notifications from "@/notifications";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { cx } from "../cva.config";
+import { SelectMenuBasic } from "../components/SelectMenuBasic";
+
+type ScrollSensitivity = "low" | "default" | "high";
 
 export default function SettingsKeyboardMouseRoute() {
   const hideCursor = useSettingsStore(state => state.isCursorHidden);
   const setHideCursor = useSettingsStore(state => state.setCursorVisibility);
+  const scrollSensitivity = useDeviceSettingsStore(state => state.scrollSensitivity);
+  const setScrollSensitivity = useDeviceSettingsStore(
+    state => state.setScrollSensitivity,
+  );
 
   const [jiggler, setJiggler] = useState(false);
 
@@ -23,7 +30,12 @@ export default function SettingsKeyboardMouseRoute() {
       if ("error" in resp) return;
       setJiggler(resp.result as boolean);
     });
-  }, [send]);
+
+    send("getScrollSensitivity", {}, resp => {
+      if ("error" in resp) return;
+      setScrollSensitivity(resp.result as ScrollSensitivity);
+    });
+  }, [send, setScrollSensitivity]);
 
   const handleJigglerChange = (enabled: boolean) => {
     send("setJigglerState", { enabled }, resp => {
@@ -36,6 +48,22 @@ export default function SettingsKeyboardMouseRoute() {
       setJiggler(enabled);
     });
   };
+
+  const onScrollSensitivityChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const sensitivity = e.target.value as ScrollSensitivity;
+      send("setScrollSensitivity", { sensitivity }, resp => {
+        if ("error" in resp) {
+          notifications.error(
+            `Failed to set scroll sensitivity: ${resp.error.data || "Unknown error"}`,
+          );
+        }
+        notifications.success("Scroll sensitivity set successfully");
+        setScrollSensitivity(sensitivity);
+      });
+    },
+    [send, setScrollSensitivity],
+  );
 
   return (
     <div className="space-y-4">
@@ -54,6 +82,26 @@ export default function SettingsKeyboardMouseRoute() {
             onChange={e => setHideCursor(e.target.checked)}
           />
         </SettingsItem>
+        <SettingsItem
+          title="Scroll Sensitivity"
+          description="Adjust the scroll sensitivity"
+        >
+          <SelectMenuBasic
+            size="SM"
+            label=""
+            fullWidth
+            value={scrollSensitivity}
+            onChange={onScrollSensitivityChange}
+            options={
+              [
+                { label: "Low", value: "low" },
+                { label: "Default", value: "default" },
+                { label: "High", value: "high" },
+              ] as { label: string; value: ScrollSensitivity }[]
+            }
+          />
+        </SettingsItem>
+
         <SettingsItem
           title="Jiggler"
           description="Simulate movement of a computer mouse. Prevents sleep mode, standby mode or the screensaver from activating"
