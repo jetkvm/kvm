@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"kvm/internal/usbgadget"
 	"log"
 	"os"
 	"os/exec"
@@ -517,35 +518,27 @@ func rpcIsUpdatePending() (bool, error) {
 	return IsUpdatePending(), nil
 }
 
-var udcFilePath = filepath.Join("/sys/bus/platform/drivers/dwc3", udc)
-
 func rpcGetUsbEmulationState() (bool, error) {
-	_, err := os.Stat(udcFilePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("error checking USB emulation state: %w", err)
-	}
-	return true, nil
+	return gadget.IsUDCBound()
 }
 
 func rpcSetUsbEmulationState(enabled bool) error {
 	if enabled {
-		return os.WriteFile("/sys/bus/platform/drivers/dwc3/bind", []byte(udc), 0644)
+		return gadget.BindUDC()
 	} else {
-		return os.WriteFile("/sys/bus/platform/drivers/dwc3/unbind", []byte(udc), 0644)
+		return gadget.UnbindUDC()
 	}
 }
 
-func rpcGetUsbConfig() (UsbConfig, error) {
+func rpcGetUsbConfig() (usbgadget.Config, error) {
 	LoadConfig()
 	return *config.UsbConfig, nil
 }
 
-func rpcSetUsbConfig(usbConfig UsbConfig) error {
+func rpcSetUsbConfig(usbConfig usbgadget.Config) error {
 	LoadConfig()
 	config.UsbConfig = &usbConfig
+	gadget.SetGadgetConfig(config.UsbConfig)
 	return updateUsbRelatedConfig()
 }
 
@@ -741,12 +734,12 @@ func rpcSetSerialSettings(settings SerialSettings) error {
 	return nil
 }
 
-func rpcGetUsbDevices() (UsbDevicesConfig, error) {
+func rpcGetUsbDevices() (usbgadget.Devices, error) {
 	return *config.UsbDevices, nil
 }
 
 func updateUsbRelatedConfig() error {
-	if err := UpdateGadgetConfig(); err != nil {
+	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to write gadget config: %w", err)
 	}
 	if err := SaveConfig(); err != nil {
@@ -755,8 +748,9 @@ func updateUsbRelatedConfig() error {
 	return nil
 }
 
-func rpcSetUsbDevices(usbDevices UsbDevicesConfig) error {
+func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 	config.UsbDevices = &usbDevices
+	gadget.SetGadgetDevices(config.UsbDevices)
 	return updateUsbRelatedConfig()
 }
 
@@ -773,6 +767,7 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 	default:
 		return fmt.Errorf("invalid device: %s", device)
 	}
+	gadget.SetGadgetDevices(config.UsbDevices)
 	return updateUsbRelatedConfig()
 }
 

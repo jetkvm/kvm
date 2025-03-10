@@ -213,6 +213,7 @@ interface MouseState {
 export const useMouseStore = create<MouseState>(set => ({
   mouseX: 0,
   mouseY: 0,
+  
   setMouseMove: (move?: MouseMove) => set({ mouseMove: move }),
   setMousePosition: (x, y) => set({ mouseX: x, mouseY: y }),
 }));
@@ -272,6 +273,12 @@ interface SettingsState {
   mouseMode: string;
   setMouseMode: (mode: string) => void;
 
+  relativeMouseSensitive: number;
+  setRelativeMouseSensitive: (sensitive: number) => void;
+
+  relativeMousePollingRate: number;
+  setRelativeMousePollingRate: (rate: number) => void;
+
   debugMode: boolean;
   setDebugMode: (enabled: boolean) => void;
 
@@ -291,6 +298,12 @@ export const useSettingsStore = create(
 
       mouseMode: "absolute",
       setMouseMode: mode => set({ mouseMode: mode }),
+
+      relativeMouseSensitive: 1.0,
+      setRelativeMouseSensitive: sensitive => set({ relativeMouseSensitive: sensitive }),
+
+      relativeMousePollingRate: 0,
+      setRelativeMousePollingRate: rate => set({ relativeMousePollingRate: rate }),
 
       debugMode: import.meta.env.DEV,
       setDebugMode: enabled => set({ debugMode: enabled }),

@@ -56,7 +56,6 @@ export function UsbDeviceSetting() {
           );
           return;
         }
-        // setUsbConfigProduct(usbConfig.product);
         notifications.success(
           `USB Devices updated`
         );

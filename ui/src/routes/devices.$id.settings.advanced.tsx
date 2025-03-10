@@ -47,6 +47,7 @@ export default function SettingsAdvancedRoute() {
 
   const getUsbEmulationState = useCallback(() => {
     send("getUsbEmulationState", {}, resp => {
+      console.log("getUsbEmulationState", resp);
       if ("error" in resp) return;
       setUsbEmulationEnabled(resp.result as boolean);
     });

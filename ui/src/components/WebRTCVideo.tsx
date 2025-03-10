@@ -93,22 +93,69 @@ export default function WebRTCVideo() {
   );
 
   // Mouse-related
-  const calcDelta = (pos: number) => Math.abs(pos) < 10 ? pos * 2 : pos;
+  const calcPos = useCallback((pos: number) => {
+    const r = Math.floor(pos * settings.relativeMouseSensitive);
+    if (r > 127) return 127;
+    if (r < -127) return -127;
+    return r;
+  }, [settings.relativeMouseSensitive]);
 
-  const sendMouseMovement = useCallback(
+  const doSendRelativeMouseMovement = useCallback(
     (x: number, y: number, buttons: number) => {
-      if (settings.mouseMode === "relative") {
-        // if we ignore the event, double-click will not work
-        // if (x === 0 && y === 0 && buttons === 0) return;
-        send("relMouseReport", { mx: calcDelta(x), my: calcDelta(y), buttons });
-        setMouseMove({ x, y, buttons });
-      } else if (settings.mouseMode === "absolute") {
-        send("absMouseReport", { x, y, buttons });
-        // We set that for the debug info bar
-        setMousePosition(x, y);
+      const mx = calcPos(x), my = calcPos(y);
+      console.log("relMouseReport", { mx, my, buttons });
+      send("relMouseReport", { mx, my, buttons });
+    },
+    [send, calcPos],
+  );
+
+  // Polling for relative mouse movement
+  const [mouseDelta, setMouseDelta] = useState<{ x: number, y: number }[]>([]);
+  const pushMouseDelta = useCallback((x: number, y: number) => {
+    setMouseDelta(prev => [...prev, { x, y }]);
+  }, []);
+  const sendPlannedMouseMovement = useCallback(() => {
+    if (mouseDelta.length == 0) return;
+    const { x, y } = mouseDelta.reduce((acc, curr) => {
+      return { x: acc.x + curr.x, y: acc.y + curr.y };
+    }, { x: 0, y: 0 });
+    doSendRelativeMouseMovement(x, y, 0);
+    setMouseDelta([]);
+  }, [doSendRelativeMouseMovement, mouseDelta]);
+
+  // set up polling for relative mouse movement
+  useEffect(() => {
+    if (settings.relativeMousePollingRate == 0 || settings.mouseMode !== 'relative') return;
+    const interval = setInterval(() => {
+      sendPlannedMouseMovement();
+    }, settings.relativeMousePollingRate);
+    return () => clearInterval(interval);
+  }, [sendPlannedMouseMovement, settings.relativeMousePollingRate, settings.mouseMode]);
+
+  const sendRelativeMouseMovement = useCallback(
+    (x: number, y: number, buttons: number) => {
+      setMouseMove({ x, y, buttons });
+
+      if (settings.relativeMousePollingRate == 0) {
+        doSendRelativeMouseMovement(x, y, buttons);
+        return;
+      } else {
+        doSendRelativeMouseMovement(0, 0, buttons);
+        pushMouseDelta(x, y);
       }
     },
-    [send, setMousePosition, setMouseMove, settings.mouseMode],
+    [doSendRelativeMouseMovement, pushMouseDelta, setMouseMove, settings.relativeMousePollingRate],
+  );
+
+  // Absolute mouse movement
+  const sendMouseMovement = useCallback(
+    (x: number, y: number, buttons: number) => {
+      send("absMouseReport", { x, y, buttons });
+      console.log("absMouseReport", { x, y, buttons });
+      // We set that for the debug info bar
+      setMousePosition(x, y);
+    },
+    [send, setMousePosition],
   );
 
   const mouseMoveHandler = useCallback(
@@ -121,8 +168,8 @@ export default function WebRTCVideo() {
       const { buttons } = e;
       // Send mouse movement events to the server
       if (settings.mouseMode == "relative") {
-          sendMouseMovement(e.movementX, e.movementY, buttons);
-          return;
+        sendRelativeMouseMovement(e.movementX, e.movementY, buttons);
+        return;
       }
 
       // Calculate the effective video display area
@@ -155,7 +202,7 @@ export default function WebRTCVideo() {
 
       sendMouseMovement(x, y, buttons);
     },
-    [sendMouseMovement, videoClientHeight, videoClientWidth, videoWidth, videoHeight, settings.mouseMode],
+    [sendMouseMovement, sendRelativeMouseMovement, videoClientHeight, videoClientWidth, videoWidth, videoHeight, settings.mouseMode],
   );
 
   const mouseWheelHandler = useCallback(

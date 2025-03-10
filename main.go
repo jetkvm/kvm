@@ -46,6 +46,8 @@ func Main() {
 		}
 	}()
 
+	initUsbGadget()
+
 	go func() {
 		time.Sleep(15 * time.Minute)
 		for {

@@ -26,27 +26,33 @@ import (
 
 const massStorageName = "mass_storage.usb0"
 
-var massStorageFunctionPath = path.Join(gadgetPath, "jetkvm", "functions", massStorageName)
-
 func writeFile(path string, data string) error {
 	return os.WriteFile(path, []byte(data), 0644)
 }
 
 func setMassStorageImage(imagePath string) error {
-	err := writeFile(path.Join(massStorageFunctionPath, "lun.0", "file"), imagePath)
+	massStorageFunctionPath, err := gadget.GetConfigPath("mass_storage_lun0")
 	if err != nil {
+		return fmt.Errorf("failed to get mass storage path: %w", err)
+	}
+
+	if err := writeFile(path.Join(massStorageFunctionPath, "file"), imagePath); err != nil {
 		return fmt.Errorf("failed to set image path: %w", err)
 	}
 	return nil
 }
 
 func setMassStorageMode(cdrom bool) error {
+	massStorageFunctionPath, err := gadget.GetConfigPath("mass_storage_lun0")
+	if err != nil {
+		return fmt.Errorf("failed to get mass storage path: %w", err)
+	}
+
 	mode := "0"
 	if cdrom {
 		mode = "1"
 	}
-	err := writeFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"), mode)
-	if err != nil {
+	if err := writeFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"), mode); err != nil {
 		return fmt.Errorf("failed to set cdrom mode: %w", err)
 	}
 	return nil
@@ -108,6 +114,11 @@ func rpcMountBuiltInImage(filename string) error {
 }
 
 func getMassStorageMode() (bool, error) {
+	massStorageFunctionPath, err := gadget.GetConfigPath("mass_storage_lun0")
+	if err != nil {
+		return false, fmt.Errorf("failed to get mass storage path: %w", err)
+	}
+
 	data, err := os.ReadFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"))
 	if err != nil {
 		return false, fmt.Errorf("failed to read cdrom mode: %w", err)
