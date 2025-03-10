@@ -3,6 +3,7 @@ import { cx } from "@/cva.config";
 import {
   DeviceSettingsState,
   HidState,
+  NameConfig,
   UpdateState,
   useDeviceSettingsStore,
   useDeviceStore,
@@ -10,6 +11,7 @@ import {
   useMountMediaStore,
   User,
   useRTCStore,
+  useSettingsStore,
   useUiStore,
   useUpdateStore,
   useVideoStore,
@@ -130,6 +132,7 @@ export default function KvmIdRoute() {
   const setDiskChannel = useRTCStore(state => state.setDiskChannel);
   const setRpcDataChannel = useRTCStore(state => state.setRpcDataChannel);
   const setTransceiver = useRTCStore(state => state.setTransceiver);
+
 
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
@@ -379,6 +382,17 @@ export default function KvmIdRoute() {
       setHdmiState(resp.result as Parameters<VideoState["setHdmiState"]>[0]);
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
+
+  const setNameConfig = useSettingsStore(state => state.setNameConfig);
+
+  useEffect(() => {
+    send("getNameConfig", {}, resp => {
+      if ("error" in resp) return;
+      const results = resp.result as NameConfig;
+      setNameConfig(results)
+      document.title = results.name;
+    });
+  }, [send, setNameConfig])
 
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-expect-error

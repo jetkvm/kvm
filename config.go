@@ -12,6 +12,11 @@ type WakeOnLanDevice struct {
 	MacAddress string `json:"macAddress"`
 }
 
+type NameConfig struct {
+	Name string `json:"name"`
+	DNS  string `json:"dns"`
+}
+
 type UsbConfig struct {
 	VendorId     string `json:"vendor_id"`
 	ProductId    string `json:"product_id"`
@@ -34,6 +39,7 @@ type Config struct {
 	WakeOnLanDevices     []WakeOnLanDevice `json:"wake_on_lan_devices"`
 	EdidString           string            `json:"hdmi_edid_string"`
 	ActiveExtension      string            `json:"active_extension"`
+	NameConfig           NameConfig        `json:"name_config"`
 	DisplayMaxBrightness int               `json:"display_max_brightness"`
 	DisplayDimAfterSec   int               `json:"display_dim_after_sec"`
 	DisplayOffAfterSec   int               `json:"display_off_after_sec"`
@@ -56,6 +62,10 @@ var defaultConfig = &Config{
 		SerialNumber: "",
 		Manufacturer: "JetKVM",
 		Product:      "USB Emulation Device",
+	},
+	NameConfig: NameConfig{
+		Name: "JetKVM",
+		DNS:  "jetkvm.local",
 	},
 }
 
