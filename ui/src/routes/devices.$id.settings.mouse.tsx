@@ -10,6 +10,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { cx } from "../cva.config";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
+import { useFeatureFlag } from "../hooks/useFeatureFlag";
+import { FeatureFlag } from "../components/FeatureFlag";
 
 type ScrollSensitivity = "low" | "default" | "high";
 
@@ -21,6 +23,8 @@ export default function SettingsKeyboardMouseRoute() {
     state => state.setScrollSensitivity,
   );
 
+  const { isEnabled: isScrollSensitivityEnabled } = useFeatureFlag("0.3.8");
+
   const [jiggler, setJiggler] = useState(false);
 
   const [send] = useJsonRpc();
@@ -31,11 +35,13 @@ export default function SettingsKeyboardMouseRoute() {
       setJiggler(resp.result as boolean);
     });
 
-    send("getScrollSensitivity", {}, resp => {
-      if ("error" in resp) return;
-      setScrollSensitivity(resp.result as ScrollSensitivity);
-    });
-  }, [send, setScrollSensitivity]);
+    if (isScrollSensitivityEnabled) {
+      send("getScrollSensitivity", {}, resp => {
+        if ("error" in resp) return;
+        setScrollSensitivity(resp.result as ScrollSensitivity);
+      });
+    }
+  }, [isScrollSensitivityEnabled, send, setScrollSensitivity]);
 
   const handleJigglerChange = (enabled: boolean) => {
     send("setJigglerState", { enabled }, resp => {
@@ -82,25 +88,28 @@ export default function SettingsKeyboardMouseRoute() {
             onChange={e => setHideCursor(e.target.checked)}
           />
         </SettingsItem>
-        <SettingsItem
-          title="Scroll Sensitivity"
-          description="Adjust the scroll sensitivity"
-        >
-          <SelectMenuBasic
-            size="SM"
-            label=""
-            fullWidth
-            value={scrollSensitivity}
-            onChange={onScrollSensitivityChange}
-            options={
-              [
-                { label: "Low", value: "low" },
-                { label: "Default", value: "default" },
-                { label: "High", value: "high" },
-              ] as { label: string; value: ScrollSensitivity }[]
-            }
-          />
-        </SettingsItem>
+
+        <FeatureFlag minAppVersion="0.3.8" name="Scroll Sensitivity">
+          <SettingsItem
+            title="Scroll Sensitivity"
+            description="Adjust the scroll sensitivity"
+          >
+            <SelectMenuBasic
+              size="SM"
+              label=""
+              fullWidth
+              value={scrollSensitivity}
+              onChange={onScrollSensitivityChange}
+              options={
+                [
+                  { label: "Low", value: "low" },
+                  { label: "Default", value: "default" },
+                  { label: "High", value: "high" },
+                ] as { label: string; value: ScrollSensitivity }[]
+              }
+            />
+          </SettingsItem>
+        </FeatureFlag>
 
         <SettingsItem
           title="Jiggler"
