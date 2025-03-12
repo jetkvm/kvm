@@ -98,9 +98,8 @@ func checkUSBState() {
 	if newState == usbState {
 		return
 	}
-	usbLogger.Info().Str("from", usbState).Str("to", newState).Msg("USB state changed")
 	usbState = newState
-
-	requestDisplayUpdate(true)
+	usbLogger.Info().Str("from", usbState).Str("to", newState).Msg("USB state changed")
+	requestDisplayUpdate(true, "usb_state_changed")
 	triggerUSBStateUpdate()
 }

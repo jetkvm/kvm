@@ -15,8 +15,8 @@ JetKVM Application, version {{.version}} (branch: {{.branch}}, revision: {{.revi
   go version:       {{.goVersion}}
   platform:         {{.platform}}
 
-{{if .nativeVersion}}
-JetKVM Native, version {{.nativeVersion}}
+{{if .lvglVersion}}
+LVGL version {{.lvglVersion}}
 {{end}}
 `
 
@@ -32,9 +32,11 @@ func GetVersionData(isJson bool) ([]byte, error) {
 		"platform":  runtime.GOOS + "/" + runtime.GOARCH,
 	}
 
-	nativeVersion, err := GetNativeVersion()
-	if err == nil {
-		m["nativeVersion"] = nativeVersion
+	if nativeInstance != nil {
+		lvglVersion, err := nativeInstance.GetLVGLVersion()
+		if err == nil {
+			m["lvglVersion"] = lvglVersion
+		}
 	}
 
 	if isJson {

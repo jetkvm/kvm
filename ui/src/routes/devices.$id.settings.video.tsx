@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/Button";
 import { TextAreaWithLabel } from "@/components/TextArea";
@@ -52,7 +52,7 @@ export default function SettingsVideoRoute() {
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
   const [edidLoading, setEdidLoading] = useState(false);
-
+  const { debugMode } = useSettingsStore();
   // Video enhancement settings from store
   const {
     videoSaturation,
@@ -131,6 +131,26 @@ export default function SettingsVideoRoute() {
       setEdid(newEdid);
     });
   };
+
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
+  const [debugInfoLoading, setDebugInfoLoading] = useState(false);
+  const getDebugInfo = useCallback(() => {
+    setDebugInfoLoading(true);
+    send("getVideoLogStatus", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(`Failed to get debug info: ${resp.error.data || "Unknown error"}`);
+        setDebugInfoLoading(false);
+        return;
+      }
+      const data = resp.result as string;
+      setDebugInfo(data
+        .split("\n")
+        .map(line => line.trim().replace(/^\[\s*\d+\.\d+\]\s*/, ""))
+        .join("\n")
+      );
+      setDebugInfoLoading(false);
+    });
+  }, [send]);
 
   return (
     <div className="space-y-3">
@@ -279,6 +299,30 @@ export default function SettingsVideoRoute() {
               )}
             </Fieldset>
           </div>
+
+
+          {debugMode && (
+            <div className="space-y-4">
+              <SettingsItem
+                title="Debugging Info"
+                description="Debugging information for video"
+              >
+                <Button size="SM" theme="primary" text="Get Debugging Info"
+                  loading={debugInfoLoading}
+                  disabled={debugInfoLoading}
+                  onClick={() => {
+                    getDebugInfo();
+                  }} />
+              </SettingsItem>
+              {debugInfo && (
+                <div className="font-mono bg-gray-100 dark:bg-gray-800 p-2 rounded-md text-xs max-h-64 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap">
+                    {debugInfo}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
