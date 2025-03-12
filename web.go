@@ -1,7 +1,6 @@
 package kvm
 
 import (
-	"embed"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -18,9 +17,6 @@ import (
 	"github.com/prometheus/common/version"
 	"golang.org/x/crypto/bcrypt"
 )
-
-//go:embed all:static
-var staticFiles embed.FS
 
 type WebRTCSessionRequest struct {
 	Sd         string   `json:"sd"`

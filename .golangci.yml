@@ -10,3 +10,7 @@ issues:
     - path: _test.go
       linters:
         - errcheck
+    # embedded files haven't been generated yet when linting, so ignore them for now
+    - path: web_embed.go
+      linters:
+        - staticcheck
