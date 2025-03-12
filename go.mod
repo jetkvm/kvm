@@ -23,6 +23,7 @@ require (
 	github.com/prometheus/client_golang v1.21.0
 	github.com/prometheus/common v0.62.0
 	github.com/psanford/httpreadat v0.1.0
+	github.com/ulikunitz/xz v0.5.12
 	github.com/vishvananda/netlink v1.3.0
 	go.bug.st/serial v1.6.2
 	golang.org/x/crypto v0.31.0

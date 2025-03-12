@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
+	"github.com/ulikunitz/xz"
 )
 
 const massStorageName = "mass_storage.usb0"
@@ -279,16 +280,48 @@ func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
 		return fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	err = setMassStorageImage(fullPath)
+	// Handle XZ compressed images
+	if strings.HasSuffix(filename, ".img.xz") {
+		logger.Info("Mounting compressed XZ image")
+
+		// Create temporary file for decompressed image
+		decompressedPath := filepath.Join(imagesFolder, strings.TrimSuffix(filename, ".xz")+".temp")
+		defer os.Remove(decompressedPath) // Clean up temp file after mounting
+
+		err = decompressXZImage(fullPath, decompressedPath)
+		if err != nil {
+			return fmt.Errorf("failed to decompress XZ image: %w", err)
+		}
+
+		// Mount the decompressed image
+		err = mountImage(decompressedPath)
+		if err != nil {
+			return fmt.Errorf("failed to mount decompressed image: %w", err)
+		}
+
+		currentVirtualMediaState = &VirtualMediaState{
+			Source:   Storage,
+			Mode:     mode,
+			Filename: filename,
+			Size:     fileInfo.Size(),
+		}
+
+		return nil
+	}
+
+	// Handle regular images
+	err = mountImage(fullPath)
 	if err != nil {
 		return fmt.Errorf("failed to set mass storage image: %w", err)
 	}
+
 	currentVirtualMediaState = &VirtualMediaState{
 		Source:   Storage,
 		Mode:     mode,
 		Filename: filename,
 		Size:     fileInfo.Size(),
 	}
+
 	return nil
 }
 
@@ -565,4 +598,31 @@ func handleUploadHttp(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Upload completed"})
+}
+
+// Add this helper function to handle XZ decompression
+func decompressXZImage(sourcePath, destPath string) error {
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer sourceFile.Close()
+
+	reader, err := xz.NewReader(sourceFile)
+	if err != nil {
+		return fmt.Errorf("failed to create XZ reader: %w", err)
+	}
+
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, reader)
+	if err != nil {
+		return fmt.Errorf("failed to decompress file: %w", err)
+	}
+
+	return nil
 }
