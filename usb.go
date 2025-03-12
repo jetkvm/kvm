@@ -1,8 +1,9 @@
 package kvm
 
 import (
-	"github.com/jetkvm/kvm/internal/usbgadget"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
 var gadget *usbgadget.UsbGadget
