@@ -29,6 +29,7 @@ export default function WebRTCVideo() {
   const settings = useSettingsStore();
   const { sendKeyboardEvent, resetKeyboardState } = useKeyboard();
   const setMousePosition = useMouseStore(state => state.setMousePosition);
+  const setMouseMove = useMouseStore(state => state.setMouseMove);
   const {
     setClientSize: setVideoClientSize,
     setSize: setVideoSize,
@@ -93,19 +94,44 @@ export default function WebRTCVideo() {
   );
 
   // Mouse-related
-  const sendMouseMovement = useCallback(
+  const calcDelta = (pos: number) => Math.abs(pos) < 10 ? pos * 2 : pos;
+  const sendRelMouseMovement = useCallback(
     (x: number, y: number, buttons: number) => {
-      send("absMouseReport", { x, y, buttons });
+      if (settings.mouseMode !== "relative") return;
+      // if we ignore the event, double-click will not work
+      // if (x === 0 && y === 0 && buttons === 0) return;
+      send("relMouseReport", { dx: calcDelta(x), dy: calcDelta(y), buttons });
+      setMouseMove({ x, y, buttons });
+    },
+    [send, setMouseMove, settings.mouseMode],
+  );
 
+  const relMouseMoveHandler = useCallback(
+    (e: MouseEvent) => {
+      if (settings.mouseMode !== "relative") return;
+
+      // Send mouse movement
+      const { buttons } = e;
+      sendRelMouseMovement(e.movementX, e.movementY, buttons);
+    },
+    [sendRelMouseMovement, settings.mouseMode],
+  );
+
+  const sendAbsMouseMovement = useCallback(
+    (x: number, y: number, buttons: number) => {
+      if (settings.mouseMode !== "absolute") return;
+      send("absMouseReport", { x, y, buttons });
       // We set that for the debug info bar
       setMousePosition(x, y);
     },
-    [send, setMousePosition],
+    [send, setMousePosition, settings.mouseMode],
   );
 
-  const mouseMoveHandler = useCallback(
+  const absMouseMoveHandler = useCallback(
     (e: MouseEvent) => {
       if (!videoClientWidth || !videoClientHeight) return;
+      if (settings.mouseMode !== "absolute") return;
+
       // Get the aspect ratios of the video element and the video stream
       const videoElementAspectRatio = videoClientWidth / videoClientHeight;
       const videoStreamAspectRatio = videoWidth / videoHeight;
@@ -140,9 +166,9 @@ export default function WebRTCVideo() {
 
       // Send mouse movement
       const { buttons } = e;
-      sendMouseMovement(x, y, buttons);
+      sendAbsMouseMovement(x, y, buttons);
     },
-    [sendMouseMovement, videoClientHeight, videoClientWidth, videoWidth, videoHeight],
+    [sendAbsMouseMovement, videoClientHeight, videoClientWidth, videoWidth, videoHeight, settings.mouseMode],
   );
 
   const trackpadSensitivity = useDeviceSettingsStore(state => state.trackpadSensitivity);
@@ -193,8 +219,8 @@ export default function WebRTCVideo() {
   );
 
   const resetMousePosition = useCallback(() => {
-    sendMouseMovement(0, 0, 0);
-  }, [sendMouseMovement]);
+    sendAbsMouseMovement(0, 0, 0);
+  }, [sendAbsMouseMovement]);
 
   // Keyboard-related
   const handleModifierKeys = useCallback(
@@ -371,9 +397,9 @@ export default function WebRTCVideo() {
       const abortController = new AbortController();
       const signal = abortController.signal;
 
-      videoElmRefValue.addEventListener("mousemove", mouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("pointerdown", mouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("pointerup", mouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("mousemove", absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("pointerdown", absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("pointerup", absMouseMoveHandler, { signal });
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
       videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
         signal,
@@ -395,13 +421,38 @@ export default function WebRTCVideo() {
       };
     },
     [
-      mouseMoveHandler,
+      absMouseMoveHandler,
       resetMousePosition,
       onVideoPlaying,
       mouseWheelHandler,
       videoKeyUpHandler,
     ],
   );
+
+  useEffect(
+    function setupRelativeMouseEventListeners() {
+      if (settings.mouseMode !== "relative") return;
+
+      const abortController = new AbortController();
+      const signal = abortController.signal;
+
+      // bind to body to capture all mouse events
+      const body = document.querySelector("body");
+      if (!body) return;
+
+      body.addEventListener("mousemove", relMouseMoveHandler, { signal });
+      body.addEventListener("pointerdown", relMouseMoveHandler, { signal });
+      body.addEventListener("pointerup", relMouseMoveHandler, { signal });
+
+      return () => {
+        abortController.abort();
+
+        body.removeEventListener("mousemove", relMouseMoveHandler);
+        body.removeEventListener("pointerdown", relMouseMoveHandler);
+        body.removeEventListener("pointerup", relMouseMoveHandler);
+      };
+    }, [settings.mouseMode, relMouseMoveHandler],
+  )
 
   useEffect(
     function updateVideoStream() {
