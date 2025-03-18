@@ -70,6 +70,7 @@ func Main() {
 	//go RunFuseServer()
 	go RunWebServer()
 	if config.TLSMode != "" {
+		initCertStore()
 		go RunWebSecureServer()
 	}
 	// If the cloud token isn't set, the client won't be started by default.
