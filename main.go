@@ -70,6 +70,7 @@ func Main() {
 	//go RunFuseServer()
 	go RunWebServer()
 	if config.TLSMode != "" {
+		initCertStore()
 		go RunWebSecureServer()
 	}
 	// As websocket client already checks if the cloud token is set, we can start it here.
