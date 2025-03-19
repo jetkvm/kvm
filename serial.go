@@ -66,7 +66,6 @@ func runATXControl() {
 			newLedPWRState != ledPWRState ||
 			newBtnRSTState != btnRSTState ||
 			newBtnPWRState != btnPWRState {
-
 			logger.Debugf("Status changed: HDD LED: %v, PWR LED: %v, RST BTN: %v, PWR BTN: %v",
 				newLedHDDState, newLedPWRState, newBtnRSTState, newBtnPWRState)
 
