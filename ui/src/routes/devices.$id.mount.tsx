@@ -99,7 +99,6 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         })
         .finally(() => {
           setMountInProgress(false);
-          navigate("..");
         });
     });
   }
@@ -114,7 +113,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
       clearMountMediaState();
       syncRemoteVirtualMediaState()
         .then(() => {
-          false;
+          navigate("..");
         })
         .catch(err => {
           triggerError(err instanceof Error ? err.message : String(err));
@@ -124,7 +123,6 @@ export function Dialog({ onClose }: { onClose: () => void }) {
           // and the modal exit animation for like 500ms
           setTimeout(() => {
             setMountInProgress(false);
-            navigate("..");
           }, 500);
         });
     });
@@ -155,7 +153,6 @@ export function Dialog({ onClose }: { onClose: () => void }) {
           })
           .finally(() => {
             setMountInProgress(false);
-            navigate("..");
           });
       },
     );
