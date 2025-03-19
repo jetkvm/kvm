@@ -1,24 +1,23 @@
+import { useNavigate, useOutletContext } from "react-router-dom";
 import { GridCard } from "@/components/Card";
 import { Button } from "@components/Button";
 import LogoBlue from "@/assets/logo-blue.svg";
 import LogoWhite from "@/assets/logo-white.svg";
-import Modal from "@components/Modal";
 
-export default function OtherSessionConnectedModal({
-  open,
-  setOpen,
-}: {
-  open: boolean;
-  setOpen: (open: boolean) => void;
-}) {
-  return (
-    <Modal open={open} onClose={() => setOpen(false)}>
-      <Dialog setOpen={setOpen} />
-    </Modal>
-  );
+interface ContextType {
+  connectWebRTC: () => Promise<void>;
 }
+/* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
 
-export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
+export default function OtherSessionRoute() {
+  const outletContext = useOutletContext<ContextType>();
+  const navigate = useNavigate();
+
+  // Function to handle closing the modal
+  const handleClose = () => {
+    outletContext?.connectWebRTC().then(() => navigate(".."));
+  };
+
   return (
     <GridCard cardClassName="relative mx-auto max-w-md text-left pointer-events-auto">
       <div className="p-10">
@@ -37,12 +36,7 @@ export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
               this session?
             </p>
             <div className="flex items-center justify-start space-x-4">
-              <Button
-                size="SM"
-                theme="primary"
-                text="Use Here"
-                onClick={() => setOpen(false)}
-              />
+              <Button size="SM" theme="primary" text="Use Here" onClick={handleClose} />
             </div>
           </div>
         </div>

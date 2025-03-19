@@ -19,7 +19,7 @@ type SelectMenuProps = Pick<
   direction?: "vertical" | "horizontal";
   error?: string;
   fullWidth?: boolean;
-} & React.ComponentProps<typeof FieldLabel>;
+} & Partial<React.ComponentProps<typeof FieldLabel>>;
 
 const sizes = {
   XS: "h-[24.5px] pl-3 pr-8 text-xs",
@@ -60,7 +60,7 @@ export const SelectMenuBasic = React.forwardRef<HTMLSelectElement, SelectMenuPro
         )}
       >
         {label && <FieldLabel label={label} id={id} as="span" />}
-        <Card className="w-auto !border border-solid !border-slate-800/30 dark:!border-slate-300/30 shadow outline-0">
+        <Card className="w-auto !border border-solid !border-slate-800/30 shadow outline-0 dark:!border-slate-300/30">
           <select
             ref={ref}
             name={name}
@@ -69,10 +69,13 @@ export const SelectMenuBasic = React.forwardRef<HTMLSelectElement, SelectMenuPro
               classes,
 
               // General styling
-              "block w-full cursor-pointer rounded border-none py-0 font-medium shadow-none outline-0",
+              "block w-full cursor-pointer rounded border-none py-0 font-medium shadow-none outline-0 transition duration-300",
 
               // Hover
-              "hover:bg-blue-50/80 active:bg-blue-100/60 disabled:hover:bg-white dark:hover:bg-slate-800/80 dark:active:bg-slate-800/60 dark:disabled:hover:bg-slate-900",
+              "hover:bg-blue-50/80 active:bg-blue-100/60 disabled:hover:bg-white",
+
+              // Dark mode
+              "dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700 dark:active:bg-slate-800/60 dark:disabled:hover:bg-slate-800",
 
               // Invalid
               "invalid:ring-2 invalid:ring-red-600 invalid:ring-offset-2",
@@ -82,9 +85,6 @@ export const SelectMenuBasic = React.forwardRef<HTMLSelectElement, SelectMenuPro
 
               // Disabled
               "disabled:pointer-events-none disabled:select-none disabled:bg-slate-50 disabled:text-slate-500/80 dark:disabled:bg-slate-800 dark:disabled:text-slate-400/80",
-
-              // Dark mode text
-              "dark:bg-slate-900 dark:text-white"
             )}
             value={value}
             id={id}

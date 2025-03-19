@@ -3,7 +3,6 @@ package kvm
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os/exec"
 	"time"
@@ -21,7 +20,6 @@ const (
 )
 
 var (
-	timeSynced            = false
 	timeSyncRetryInterval = 0 * time.Second
 	defaultNTPServers     = []string{
 		"time.cloudflare.com",
@@ -37,16 +35,16 @@ func TimeSyncLoop() {
 		}
 
 		if !networkState.Up {
-			log.Printf("Waiting for network to come up")
+			logger.Infof("Waiting for network to come up")
 			time.Sleep(timeSyncWaitNetUpInt)
 			continue
 		}
 
-		log.Printf("Syncing system time")
+		logger.Infof("Syncing system time")
 		start := time.Now()
 		err := SyncSystemTime()
 		if err != nil {
-			log.Printf("Failed to sync system time: %v", err)
+			logger.Warnf("Failed to sync system time: %v", err)
 
 			// retry after a delay
 			timeSyncRetryInterval += timeSyncRetryStep
@@ -58,8 +56,7 @@ func TimeSyncLoop() {
 
 			continue
 		}
-		log.Printf("Time sync successful, now is: %v, time taken: %v", time.Now(), time.Since(start))
-		timeSynced = true
+		logger.Infof("Time sync successful, now is: %v, time taken: %v", time.Now(), time.Since(start))
 		time.Sleep(timeSyncInterval) // after the first sync is done
 	}
 }
@@ -79,20 +76,20 @@ func SyncSystemTime() (err error) {
 func queryNetworkTime() (*time.Time, error) {
 	ntpServers, err := getNTPServersFromDHCPInfo()
 	if err != nil {
-		log.Printf("failed to get NTP servers from DHCP info: %v\n", err)
+		logger.Warnf("failed to get NTP servers from DHCP info: %v\n", err)
 	}
 
 	if ntpServers == nil {
 		ntpServers = defaultNTPServers
-		log.Printf("Using default NTP servers: %v\n", ntpServers)
+		logger.Infof("Using default NTP servers: %v\n", ntpServers)
 	} else {
-		log.Printf("Using NTP servers from DHCP: %v\n", ntpServers)
+		logger.Infof("Using NTP servers from DHCP: %v\n", ntpServers)
 	}
 
 	for _, server := range ntpServers {
 		now, err := queryNtpServer(server, timeSyncTimeout)
 		if err == nil {
-			log.Printf("NTP server [%s] returned time: %v\n", server, now)
+			logger.Infof("NTP server [%s] returned time: %v\n", server, now)
 			return now, nil
 		}
 	}

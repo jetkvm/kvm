@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  useDeviceSettingsStore,
   useHidStore,
   useMouseStore,
   useRTCStore,
   useSettingsStore,
-  useUiStore,
   useVideoStore,
 } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
@@ -15,7 +15,9 @@ import Actionbar from "@components/ActionBar";
 import InfoBar from "@components/InfoBar";
 import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { ConnectionErrorOverlay, HDMIErrorOverlay, LoadingOverlay } from "./VideoOverlay";
+import { HDMIErrorOverlay } from "./VideoOverlay";
+import { ConnectionErrorOverlay } from "./VideoOverlay";
+import { LoadingOverlay } from "./VideoOverlay";
 
 export default function WebRTCVideo() {
   // Video and stream related refs and states
@@ -27,6 +29,7 @@ export default function WebRTCVideo() {
   const settings = useSettingsStore();
   const { sendKeyboardEvent, resetKeyboardState } = useKeyboard();
   const setMousePosition = useMouseStore(state => state.setMousePosition);
+  const setMouseMove = useMouseStore(state => state.setMouseMove);
   const {
     setClientSize: setVideoClientSize,
     setSize: setVideoSize,
@@ -91,19 +94,44 @@ export default function WebRTCVideo() {
   );
 
   // Mouse-related
-  const sendMouseMovement = useCallback(
+  const calcDelta = (pos: number) => Math.abs(pos) < 10 ? pos * 2 : pos;
+  const sendRelMouseMovement = useCallback(
     (x: number, y: number, buttons: number) => {
-      send("absMouseReport", { x, y, buttons });
+      if (settings.mouseMode !== "relative") return;
+      // if we ignore the event, double-click will not work
+      // if (x === 0 && y === 0 && buttons === 0) return;
+      send("relMouseReport", { dx: calcDelta(x), dy: calcDelta(y), buttons });
+      setMouseMove({ x, y, buttons });
+    },
+    [send, setMouseMove, settings.mouseMode],
+  );
 
+  const relMouseMoveHandler = useCallback(
+    (e: MouseEvent) => {
+      if (settings.mouseMode !== "relative") return;
+
+      // Send mouse movement
+      const { buttons } = e;
+      sendRelMouseMovement(e.movementX, e.movementY, buttons);
+    },
+    [sendRelMouseMovement, settings.mouseMode],
+  );
+
+  const sendAbsMouseMovement = useCallback(
+    (x: number, y: number, buttons: number) => {
+      if (settings.mouseMode !== "absolute") return;
+      send("absMouseReport", { x, y, buttons });
       // We set that for the debug info bar
       setMousePosition(x, y);
     },
-    [send, setMousePosition],
+    [send, setMousePosition, settings.mouseMode],
   );
 
-  const mouseMoveHandler = useCallback(
+  const absMouseMoveHandler = useCallback(
     (e: MouseEvent) => {
       if (!videoClientWidth || !videoClientHeight) return;
+      if (settings.mouseMode !== "absolute") return;
+
       // Get the aspect ratios of the video element and the video stream
       const videoElementAspectRatio = videoClientWidth / videoClientHeight;
       const videoStreamAspectRatio = videoWidth / videoHeight;
@@ -138,24 +166,33 @@ export default function WebRTCVideo() {
 
       // Send mouse movement
       const { buttons } = e;
-      sendMouseMovement(x, y, buttons);
+      sendAbsMouseMovement(x, y, buttons);
     },
-    [sendMouseMovement, videoClientHeight, videoClientWidth, videoWidth, videoHeight],
+    [sendAbsMouseMovement, videoClientHeight, videoClientWidth, videoWidth, videoHeight, settings.mouseMode],
   );
+
+  const trackpadSensitivity = useDeviceSettingsStore(state => state.trackpadSensitivity);
+  const mouseSensitivity = useDeviceSettingsStore(state => state.mouseSensitivity);
+  const clampMin = useDeviceSettingsStore(state => state.clampMin);
+  const clampMax = useDeviceSettingsStore(state => state.clampMax);
+  const blockDelay = useDeviceSettingsStore(state => state.blockDelay);
+  const trackpadThreshold = useDeviceSettingsStore(state => state.trackpadThreshold);
 
   const mouseWheelHandler = useCallback(
     (e: WheelEvent) => {
       if (blockWheelEvent) return;
-      e.preventDefault();
 
-      // Define a scaling factor to adjust scrolling sensitivity
-      const scrollSensitivity = 0.8; // Adjust this value to change scroll speed
+      // Determine if the wheel event is from a trackpad or a mouse wheel
+      const isTrackpad = Math.abs(e.deltaY) < trackpadThreshold;
+
+      // Apply appropriate sensitivity based on input device
+      const scrollSensitivity = isTrackpad ? trackpadSensitivity : mouseSensitivity;
 
       // Calculate the scroll value
       const scroll = e.deltaY * scrollSensitivity;
 
-      // Clamp the scroll value to a reasonable range (e.g., -15 to 15)
-      const clampedScroll = Math.max(-4, Math.min(4, scroll));
+      // Apply clamping
+      const clampedScroll = Math.max(clampMin, Math.min(clampMax, scroll));
 
       // Round to the nearest integer
       const roundedScroll = Math.round(clampedScroll);
@@ -163,18 +200,27 @@ export default function WebRTCVideo() {
       // Invert the scroll value to match expected behavior
       const invertedScroll = -roundedScroll;
 
-      console.log("wheelReport", { wheelY: invertedScroll });
       send("wheelReport", { wheelY: invertedScroll });
 
+      // Apply blocking delay
       setBlockWheelEvent(true);
-      setTimeout(() => setBlockWheelEvent(false), 50);
+      setTimeout(() => setBlockWheelEvent(false), blockDelay);
     },
-    [blockWheelEvent, send],
+    [
+      blockDelay,
+      blockWheelEvent,
+      clampMax,
+      clampMin,
+      mouseSensitivity,
+      send,
+      trackpadSensitivity,
+      trackpadThreshold,
+    ],
   );
 
   const resetMousePosition = useCallback(() => {
-    sendMouseMovement(0, 0, 0);
-  }, [sendMouseMovement]);
+    sendAbsMouseMovement(0, 0, 0);
+  }, [sendAbsMouseMovement]);
 
   // Keyboard-related
   const handleModifierKeys = useCallback(
@@ -285,11 +331,6 @@ export default function WebRTCVideo() {
       e.preventDefault();
       const prev = useHidStore.getState();
 
-      // if (document.activeElement?.id !== "videoFocusTrap") {
-      //   console.log("KEYUP: Not focusing on the video", document.activeElement);
-      //   return;
-      // }
-
       setIsNumLockActive(e.getModifierState("NumLock"));
       setIsCapsLockActive(e.getModifierState("CapsLock"));
       setIsScrollLockActive(e.getModifierState("ScrollLock"));
@@ -336,6 +377,18 @@ export default function WebRTCVideo() {
     [keyDownHandler, keyUpHandler, resetKeyboardState, sendKeyboardEvent],
   );
 
+  const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
+    // In fullscreen mode in chrome & safari, the space key is used to pause/play the video
+    // there is no way to prevent this, so we need to simply force play the video when it's paused.
+    // Fix only works in chrome based browsers.
+    if (e.code === "Space") {
+      if (videoElm.current?.paused == true) {
+        console.log("Force playing video");
+        videoElm.current?.play();
+      }
+    }
+  }, []);
+
   useEffect(
     function setupVideoEventListeners() {
       let videoElmRefValue = null;
@@ -344,11 +397,14 @@ export default function WebRTCVideo() {
       const abortController = new AbortController();
       const signal = abortController.signal;
 
-      videoElmRefValue.addEventListener("mousemove", mouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("pointerdown", mouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("pointerup", mouseMoveHandler, { signal });
-
-      videoElmRefValue.addEventListener("wheel", mouseWheelHandler, { signal });
+      videoElmRefValue.addEventListener("mousemove", absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("pointerdown", absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("pointerup", absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
+      videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
+        signal,
+        passive: true,
+      });
       videoElmRefValue.addEventListener(
         "contextmenu",
         (e: MouseEvent) => e.preventDefault(),
@@ -364,8 +420,39 @@ export default function WebRTCVideo() {
         if (videoElmRefValue) abortController.abort();
       };
     },
-    [mouseMoveHandler, resetMousePosition, onVideoPlaying, mouseWheelHandler],
+    [
+      absMouseMoveHandler,
+      resetMousePosition,
+      onVideoPlaying,
+      mouseWheelHandler,
+      videoKeyUpHandler,
+    ],
   );
+
+  useEffect(
+    function setupRelativeMouseEventListeners() {
+      if (settings.mouseMode !== "relative") return;
+
+      const abortController = new AbortController();
+      const signal = abortController.signal;
+
+      // bind to body to capture all mouse events
+      const body = document.querySelector("body");
+      if (!body) return;
+
+      body.addEventListener("mousemove", relMouseMoveHandler, { signal });
+      body.addEventListener("pointerdown", relMouseMoveHandler, { signal });
+      body.addEventListener("pointerup", relMouseMoveHandler, { signal });
+
+      return () => {
+        abortController.abort();
+
+        body.removeEventListener("mousemove", relMouseMoveHandler);
+        body.removeEventListener("pointerdown", relMouseMoveHandler);
+        body.removeEventListener("pointerup", relMouseMoveHandler);
+      };
+    }, [settings.mouseMode, relMouseMoveHandler],
+  )
 
   useEffect(
     function updateVideoStream() {
@@ -389,28 +476,8 @@ export default function WebRTCVideo() {
     ],
   );
 
-  // Focus trap management
-  const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
-  const sidebarView = useUiStore(state => state.sidebarView);
-  useEffect(() => {
-    setTimeout(function () {
-      if (["connection-stats", "system"].includes(sidebarView ?? "")) {
-        // Reset keyboard state. Incase the user is pressing a key while enabling the sidebar
-        sendKeyboardEvent([], []);
-        setDisableVideoFocusTrap(true);
-
-        // For some reason, the focus trap is not disabled immediately
-        // so we need to blur the active element
-        // (document.activeElement as HTMLElement)?.blur();
-        console.log("Just disabled focus trap");
-      } else {
-        setDisableVideoFocusTrap(false);
-      }
-    }, 300);
-  }, [sendKeyboardEvent, setDisableVideoFocusTrap, sidebarView]);
-
   return (
-    <div className="grid w-full h-full grid-rows-layout">
+    <div className="grid h-full w-full grid-rows-layout">
       <div className="min-h-[39.5px]">
         <fieldset disabled={peerConnectionState !== "connected"}>
           <Actionbar
@@ -427,18 +494,18 @@ export default function WebRTCVideo() {
         <div className="relative h-full">
           <div
             className={cx(
-              "absolute inset-0 bg-blue-50/40 dark:bg-slate-800/40 opacity-80",
+              "absolute inset-0 bg-blue-50/40 opacity-80 dark:bg-slate-800/40",
               "[background-image:radial-gradient(theme(colors.blue.300)_0.5px,transparent_0.5px),radial-gradient(theme(colors.blue.300)_0.5px,transparent_0.5px)] dark:[background-image:radial-gradient(theme(colors.slate.700)_0.5px,transparent_0.5px),radial-gradient(theme(colors.slate.700)_0.5px,transparent_0.5px)]",
               "[background-position:0_0,10px_10px]",
               "[background-size:20px_20px]",
             )}
           />
-          <div className="flex flex-col h-full">
+          <div className="flex h-full flex-col">
             <div className="relative flex-grow overflow-hidden">
-              <div className="flex flex-col h-full">
-                <div className="grid flex-grow overflow-hidden grid-rows-bodyFooter">
-                  <div className="relative flex items-center justify-center mx-4 my-2 overflow-hidden">
-                    <div className="relative flex items-center justify-center w-full h-full">
+              <div className="flex h-full flex-col">
+                <div className="grid flex-grow grid-rows-bodyFooter overflow-hidden">
+                  <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
+                    <div className="relative flex h-full w-full items-center justify-center">
                       <video
                         ref={videoElm}
                         autoPlay={true}
@@ -454,14 +521,14 @@ export default function WebRTCVideo() {
                           {
                             "cursor-none": settings.isCursorHidden,
                             "opacity-0": isLoading || isConnectionError || hdmiError,
-                            "animate-slideUpFade border border-slate-800/30 dark:border-slate-300/20 opacity-0 shadow":
+                            "animate-slideUpFade border border-slate-800/30 opacity-0 shadow dark:border-slate-300/20":
                               isPlaying,
                           },
                         )}
                       />
                       <div
                         style={{ animationDuration: "500ms" }}
-                        className="absolute inset-0 flex items-center justify-center opacity-0 pointer-events-none animate-slideUpFade"
+                        className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center opacity-0"
                       >
                         <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
                           <LoadingOverlay show={isLoading} />

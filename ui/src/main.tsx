@@ -1,4 +1,3 @@
-import React from "react";
 import ReactDOM from "react-dom/client";
 import Root from "./root";
 import "./index.css";
@@ -9,7 +8,7 @@ import {
   RouterProvider,
   useRouteError,
 } from "react-router-dom";
-import DeviceRoute from "@routes/devices.$id";
+import DeviceRoute, { LocalDevice } from "@routes/devices.$id";
 import DevicesRoute, { loader as DeviceListLoader } from "@routes/devices";
 import SetupRoute from "@routes/devices.$id.setup";
 import LoginRoute from "@routes/login";
@@ -25,14 +24,28 @@ import DevicesAlreadyAdopted from "@routes/devices.already-adopted";
 import Notifications from "./notifications";
 import LoginLocalRoute from "./routes/login-local";
 import WelcomeLocalModeRoute from "./routes/welcome-local.mode";
-import WelcomeRoute from "./routes/welcome-local";
+import WelcomeRoute, { DeviceStatus } from "./routes/welcome-local";
 import WelcomeLocalPasswordRoute from "./routes/welcome-local.password";
-import { CLOUD_API } from "./ui.config";
+import { CLOUD_API, DEVICE_API } from "./ui.config";
+import OtherSessionRoute from "./routes/devices.$id.other-session";
+import MountRoute from "./routes/devices.$id.mount";
+import * as SettingsRoute from "./routes/devices.$id.settings";
+import SettingsKeyboardMouseRoute from "./routes/devices.$id.settings.mouse";
+import api from "./api";
+import * as SettingsIndexRoute from "./routes/devices.$id.settings._index";
+import SettingsAdvancedRoute from "./routes/devices.$id.settings.advanced";
+import * as SettingsAccessIndexRoute from "./routes/devices.$id.settings.access._index";
+import SettingsHardwareRoute from "./routes/devices.$id.settings.hardware";
+import SettingsVideoRoute from "./routes/devices.$id.settings.video";
+import SettingsAppearanceRoute from "./routes/devices.$id.settings.appearance";
+import * as SettingsGeneralIndexRoute from "./routes/devices.$id.settings.general._index";
+import SettingsGeneralUpdateRoute from "./routes/devices.$id.settings.general.update";
+import SecurityAccessLocalAuthRoute from "./routes/devices.$id.settings.access.local-auth";
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
 
-export async function checkAuth() {
+export async function checkCloudAuth() {
   const res = await fetch(`${CLOUD_API}/me`, {
     mode: "cors",
     credentials: "include",
@@ -44,6 +57,27 @@ export async function checkAuth() {
   }
 
   return await res.json();
+}
+
+export async function checkDeviceAuth() {
+  const res = await api
+    .GET(`${DEVICE_API}/device/status`)
+    .then(res => res.json() as Promise<DeviceStatus>);
+
+  if (!res.isSetup) return redirect("/welcome");
+
+  const deviceRes = await api.GET(`${DEVICE_API}/device`);
+  if (deviceRes.status === 401) return redirect("/login-local");
+  if (deviceRes.ok) {
+    const device = (await deviceRes.json()) as LocalDevice;
+    return { authMode: device.authMode };
+  }
+
+  throw new Error("Error fetching device");
+}
+
+export async function checkAuth() {
+  return import.meta.env.MODE === "device" ? checkDeviceAuth() : checkCloudAuth();
 }
 
 let router;
@@ -75,6 +109,73 @@ if (isOnDevice) {
       errorElement: <ErrorBoundary />,
       element: <DeviceRoute />,
       loader: DeviceRoute.loader,
+      children: [
+        {
+          path: "other-session",
+          element: <OtherSessionRoute />,
+        },
+        {
+          path: "mount",
+          element: <MountRoute />,
+        },
+        {
+          path: "settings",
+          element: <SettingsRoute.default />,
+          children: [
+            {
+              index: true,
+              loader: SettingsIndexRoute.loader,
+            },
+            {
+              path: "general",
+              children: [
+                {
+                  index: true,
+                  element: <SettingsGeneralIndexRoute.default />,
+                },
+                {
+                  path: "update",
+                  element: <SettingsGeneralUpdateRoute />,
+                },
+              ],
+            },
+            {
+              path: "mouse",
+              element: <SettingsKeyboardMouseRoute />,
+            },
+            {
+              path: "advanced",
+              element: <SettingsAdvancedRoute />,
+            },
+            {
+              path: "hardware",
+              element: <SettingsHardwareRoute />,
+            },
+            {
+              path: "access",
+              children: [
+                {
+                  index: true,
+                  element: <SettingsAccessIndexRoute.default />,
+                  loader: SettingsAccessIndexRoute.loader,
+                },
+                {
+                  path: "local-auth",
+                  element: <SecurityAccessLocalAuthRoute />,
+                },
+              ],
+            },
+            {
+              path: "video",
+              element: <SettingsVideoRoute />,
+            },
+            {
+              path: "appearance",
+              element: <SettingsAppearanceRoute />,
+            },
+          ],
+        },
+      ],
     },
     {
       path: "/adopt",
@@ -116,6 +217,73 @@ if (isOnDevice) {
               path: "devices/:id",
               element: <DeviceRoute />,
               loader: DeviceRoute.loader,
+              children: [
+                {
+                  path: "other-session",
+                  element: <OtherSessionRoute />,
+                },
+                {
+                  path: "mount",
+                  element: <MountRoute />,
+                },
+                {
+                  path: "settings",
+                  element: <SettingsRoute.default />,
+                  children: [
+                    {
+                      index: true,
+                      loader: SettingsIndexRoute.loader,
+                    },
+                    {
+                      path: "general",
+                      children: [
+                        {
+                          index: true,
+                          element: <SettingsGeneralIndexRoute.default />,
+                        },
+                        {
+                          path: "update",
+                          element: <SettingsGeneralUpdateRoute />,
+                        },
+                      ],
+                    },
+                    {
+                      path: "mouse",
+                      element: <SettingsKeyboardMouseRoute />,
+                    },
+                    {
+                      path: "advanced",
+                      element: <SettingsAdvancedRoute />,
+                    },
+                    {
+                      path: "hardware",
+                      element: <SettingsHardwareRoute />,
+                    },
+                    {
+                      path: "access",
+                      children: [
+                        {
+                          index: true,
+                          element: <SettingsAccessIndexRoute.default />,
+                          loader: SettingsAccessIndexRoute.loader,
+                        },
+                        {
+                          path: "local-auth",
+                          element: <SecurityAccessLocalAuthRoute />,
+                        },
+                      ],
+                    },
+                    {
+                      path: "video",
+                      element: <SettingsVideoRoute />,
+                    },
+                    {
+                      path: "appearance",
+                      element: <SettingsAppearanceRoute />,
+                    },
+                  ],
+                },
+              ],
             },
             {
               path: "devices/:id/deregister",
@@ -139,7 +307,7 @@ if (isOnDevice) {
 
 document.addEventListener("DOMContentLoaded", () => {
   ReactDOM.createRoot(document.getElementById("root")!).render(
-    <React.StrictMode>
+    <>
       <RouterProvider router={router} />
       <Notifications
         toastOptions={{
@@ -148,7 +316,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }}
         max={2}
       />
-    </React.StrictMode>,
+    </>,
   );
 });
 
@@ -164,8 +332,8 @@ function ErrorBoundary() {
   }
 
   return (
-    <div className="w-full h-full">
-      <div className="flex items-center justify-center h-full">
+    <div className="h-full w-full">
+      <div className="flex h-full items-center justify-center">
         <div className="w-full max-w-2xl">
           <EmptyCard
             IconElm={ExclamationTriangleIcon}

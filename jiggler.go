@@ -6,10 +6,6 @@ import (
 
 var lastUserInput = time.Now()
 
-func resetUserInputTime() {
-	lastUserInput = time.Now()
-}
-
 var jigglerEnabled = false
 
 func rpcSetJigglerState(enabled bool) {
@@ -20,6 +16,8 @@ func rpcGetJigglerState() bool {
 }
 
 func init() {
+	ensureConfigLoaded()
+
 	go runJiggler()
 }
 

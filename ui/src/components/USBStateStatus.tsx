@@ -68,7 +68,7 @@ export default function USBStateStatus({
   };
   const props = StatusCardProps[state];
   if (!props) {
-    console.log("Unsupport USB state: ", state);
+    console.log("Unsupported USB state: ", state);
     return;
   }
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -85,12 +86,16 @@ func setupRouter() *gin.Engine {
 	// We use this to setup the device in the welcome page
 	r.POST("/device/setup", handleSetup)
 
+	// A Prometheus metrics endpoint.
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
 	// Protected routes (allows both password and noPassword modes)
 	protected := r.Group("/")
 	protected.Use(protectedMiddleware())
 	{
 		protected.POST("/webrtc/session", handleWebRTCSession)
 		protected.POST("/cloud/register", handleCloudRegister)
+		protected.GET("/cloud/state", handleCloudState)
 		protected.GET("/device", handleDevice)
 		protected.POST("/auth/logout", handleLogout)
 
@@ -345,6 +350,16 @@ func handleDeletePassword(c *gin.Context) {
 func handleDeviceStatus(c *gin.Context) {
 	response := DeviceStatus{
 		IsSetup: config.LocalAuthMode != "",
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+func handleCloudState(c *gin.Context) {
+	response := CloudState{
+		Connected: config.CloudToken != "",
+		URL:       config.CloudURL,
+		AppURL:    config.CloudAppURL,
 	}
 
 	c.JSON(http.StatusOK, response)

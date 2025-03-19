@@ -1,7 +1,7 @@
 import { Button } from "@components/Button";
 import { LuTerminal } from "react-icons/lu";
 import Card from "@components/Card";
-import { SectionHeader } from "@components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SelectMenuBasic } from "../SelectMenuBasic";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useEffect, useState } from "react";
@@ -52,7 +52,7 @@ export function SerialConsole() {
 
   return (
     <div className="space-y-4">
-      <SectionHeader
+      <SettingsPageHeader
         title="Serial Console"
         description="Configure your serial console settings"
       />

@@ -49,7 +49,7 @@ func (w *WebRTCDiskReader) Read(ctx context.Context, offset int64, size int64) (
 	if err != nil {
 		return nil, err
 	}
-	buf := make([]byte, 0)
+	var buf []byte
 	for {
 		select {
 		case data := <-diskReadChan:

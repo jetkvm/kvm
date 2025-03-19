@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"kvm/resource"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -17,54 +15,58 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/psanford/httpreadat"
-
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
+	"github.com/psanford/httpreadat"
+
+	"github.com/jetkvm/kvm/resource"
 )
-
-const massStorageName = "mass_storage.usb0"
-
-var massStorageFunctionPath = path.Join(gadgetPath, "jetkvm", "functions", massStorageName)
 
 func writeFile(path string, data string) error {
 	return os.WriteFile(path, []byte(data), 0644)
 }
 
 func setMassStorageImage(imagePath string) error {
-	err := writeFile(path.Join(massStorageFunctionPath, "lun.0", "file"), imagePath)
+	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
 	if err != nil {
+		return fmt.Errorf("failed to get mass storage path: %w", err)
+	}
+
+	if err := writeFile(path.Join(massStorageFunctionPath, "file"), imagePath); err != nil {
 		return fmt.Errorf("failed to set image path: %w", err)
 	}
 	return nil
 }
 
 func setMassStorageMode(cdrom bool) error {
+	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
+	if err != nil {
+		return fmt.Errorf("failed to get mass storage path: %w", err)
+	}
+
 	mode := "0"
 	if cdrom {
 		mode = "1"
 	}
-	err := writeFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"), mode)
-	if err != nil {
+	if err := writeFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"), mode); err != nil {
 		return fmt.Errorf("failed to set cdrom mode: %w", err)
 	}
 	return nil
 }
 
 func onDiskMessage(msg webrtc.DataChannelMessage) {
-	fmt.Println("Disk Message, len:", len(msg.Data))
+	logger.Infof("Disk Message, len: %d", len(msg.Data))
 	diskReadChan <- msg.Data
 }
 
 func mountImage(imagePath string) error {
 	err := setMassStorageImage("")
 	if err != nil {
-		return fmt.Errorf("Remove Mass Storage Image Error", err)
+		return fmt.Errorf("Remove Mass Storage Image Error: %w", err)
 	}
 	err = setMassStorageImage(imagePath)
 	if err != nil {
-		return fmt.Errorf("Set Mass Storage Image Error", err)
+		return fmt.Errorf("Set Mass Storage Image Error: %w", err)
 	}
 	return nil
 }
@@ -74,7 +76,7 @@ var nbdDevice *NBDDevice
 const imagesFolder = "/userdata/jetkvm/images"
 
 func rpcMountBuiltInImage(filename string) error {
-	log.Println("Mount Built-In Image", filename)
+	logger.Infof("Mount Built-In Image: %s", filename)
 	_ = os.MkdirAll(imagesFolder, 0755)
 	imagePath := filepath.Join(imagesFolder, filename)
 
@@ -108,6 +110,11 @@ func rpcMountBuiltInImage(filename string) error {
 }
 
 func getMassStorageMode() (bool, error) {
+	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
+	if err != nil {
+		return false, fmt.Errorf("failed to get mass storage path: %w", err)
+	}
+
 	data, err := os.ReadFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"))
 	if err != nil {
 		return false, fmt.Errorf("failed to read cdrom mode: %w", err)
@@ -166,7 +173,7 @@ func rpcUnmountImage() error {
 	defer virtualMediaStateMutex.Unlock()
 	err := setMassStorageImage("\n")
 	if err != nil {
-		fmt.Println("Remove Mass Storage Image Error", err)
+		logger.Warnf("Remove Mass Storage Image Error: %v", err)
 	}
 	//TODO: check if we still need it
 	time.Sleep(500 * time.Millisecond)

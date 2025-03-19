@@ -20,8 +20,7 @@ const appendStatToMap = <T extends { timestamp: number }>(
 };
 
 // Constants and types
-export type AvailableSidebarViews = "system" | "connection-stats";
-export type AvailableModalViews = "connection-stats" | "settings";
+export type AvailableSidebarViews = "connection-stats";
 export type AvailableTerminalTypes = "kvm" | "serial" | "none";
 
 export interface User {
@@ -46,9 +45,6 @@ interface UIState {
   setWakeOnLanModalVisibility: (enabled: boolean) => void;
 
   toggleSidebarView: (view: AvailableSidebarViews) => void;
-
-  modalView: AvailableModalViews | null;
-  setModalView: (view: AvailableModalViews | null) => void;
 
   isAttachedVirtualKeyboardVisible: boolean;
   setAttachedVirtualKeyboardVisibility: (enabled: boolean) => void;
@@ -78,9 +74,6 @@ export const useUiStore = create<UIState>(set => ({
         return { sidebarView: view };
       }
     }),
-
-  modalView: null,
-  setModalView: view => set({ modalView: view }),
 
   isAttachedVirtualKeyboardVisible: true,
   setAttachedVirtualKeyboardVisibility: enabled =>
@@ -204,15 +197,23 @@ export const useRTCStore = create<RTCState>(set => ({
   setTerminalChannel: channel => set({ terminalChannel: channel }),
 }));
 
+interface MouseMove {
+  x: number;
+  y: number;
+  buttons: number;
+}
 interface MouseState {
   mouseX: number;
   mouseY: number;
+  mouseMove?: MouseMove;
+  setMouseMove: (move?: MouseMove) => void;
   setMousePosition: (x: number, y: number) => void;
 }
 
 export const useMouseStore = create<MouseState>(set => ({
   mouseX: 0,
   mouseY: 0,
+  setMouseMove: (move?: MouseMove) => set({ mouseMove: move }),
   setMousePosition: (x, y) => set({ mouseX: x, mouseY: y }),
 }));
 
@@ -303,7 +304,8 @@ export const useSettingsStore = create(
         dim_after: 10000,
         off_after: 50000,
       },
-      setBacklightSettings: (settings: BacklightSettings) => set({ backlightSettings: settings }),
+      setBacklightSettings: (settings: BacklightSettings) =>
+        set({ backlightSettings: settings }),
     }),
     {
       name: "settings",
@@ -311,6 +313,78 @@ export const useSettingsStore = create(
     },
   ),
 );
+
+export interface DeviceSettingsState {
+  trackpadSensitivity: number;
+  mouseSensitivity: number;
+  clampMin: number;
+  clampMax: number;
+  blockDelay: number;
+  trackpadThreshold: number;
+  scrollSensitivity: "low" | "default" | "high";
+  setScrollSensitivity: (sensitivity: DeviceSettingsState["scrollSensitivity"]) => void;
+}
+
+export const useDeviceSettingsStore = create<DeviceSettingsState>(set => ({
+  trackpadSensitivity: 3.0,
+  mouseSensitivity: 5.0,
+  clampMin: -8,
+  clampMax: 8,
+  blockDelay: 25,
+  trackpadThreshold: 10,
+
+  scrollSensitivity: "default",
+  setScrollSensitivity: sensitivity => {
+    const wheelSettings: Record<
+      DeviceSettingsState["scrollSensitivity"],
+      {
+        trackpadSensitivity: DeviceSettingsState["trackpadSensitivity"];
+        mouseSensitivity: DeviceSettingsState["mouseSensitivity"];
+        clampMin: DeviceSettingsState["clampMin"];
+        clampMax: DeviceSettingsState["clampMax"];
+        blockDelay: DeviceSettingsState["blockDelay"];
+        trackpadThreshold: DeviceSettingsState["trackpadThreshold"];
+      }
+    > = {
+      low: {
+        trackpadSensitivity: 2.0,
+        mouseSensitivity: 3.0,
+        clampMin: -6,
+        clampMax: 6,
+        blockDelay: 30,
+        trackpadThreshold: 10,
+      },
+      default: {
+        trackpadSensitivity: 3.0,
+        mouseSensitivity: 5.0,
+        clampMin: -8,
+        clampMax: 8,
+        blockDelay: 25,
+        trackpadThreshold: 10,
+      },
+      high: {
+        trackpadSensitivity: 4.0,
+        mouseSensitivity: 6.0,
+        clampMin: -9,
+        clampMax: 9,
+        blockDelay: 20,
+        trackpadThreshold: 10,
+      },
+    };
+
+    const settings = wheelSettings[sensitivity];
+
+    return set({
+      trackpadSensitivity: settings.trackpadSensitivity,
+      trackpadThreshold: settings.trackpadThreshold,
+      mouseSensitivity: settings.mouseSensitivity,
+      clampMin: settings.clampMin,
+      clampMax: settings.clampMax,
+      blockDelay: settings.blockDelay,
+      scrollSensitivity: sensitivity,
+    });
+  },
+}));
 
 export interface RemoteVirtualMediaState {
   source: "WebRTC" | "HTTP" | "Storage" | null;
@@ -477,15 +551,13 @@ export interface UpdateState {
   setOtaState: (state: UpdateState["otaState"]) => void;
   setUpdateDialogHasBeenMinimized: (hasBeenMinimized: boolean) => void;
   modalView:
-    | "loading"
-    | "updating"
-    | "upToDate"
-    | "updateAvailable"
-    | "updateCompleted"
-    | "error";
+  | "loading"
+  | "updating"
+  | "upToDate"
+  | "updateAvailable"
+  | "updateCompleted"
+  | "error";
   setModalView: (view: UpdateState["modalView"]) => void;
-  isUpdateDialogOpen: boolean;
-  setIsUpdateDialogOpen: (isOpen: boolean) => void;
   setUpdateErrorMessage: (errorMessage: string) => void;
   updateErrorMessage: string | null;
 }
@@ -520,28 +592,60 @@ export const useUpdateStore = create<UpdateState>(set => ({
     set({ updateDialogHasBeenMinimized: hasBeenMinimized }),
   modalView: "loading",
   setModalView: view => set({ modalView: view }),
-  isUpdateDialogOpen: false,
-  setIsUpdateDialogOpen: isOpen => set({ isUpdateDialogOpen: isOpen }),
   updateErrorMessage: null,
   setUpdateErrorMessage: errorMessage => set({ updateErrorMessage: errorMessage }),
 }));
 
+interface UsbConfigModalState {
+  modalView: "updateUsbConfig" | "updateUsbConfigSuccess";
+  errorMessage: string | null;
+  setModalView: (view: UsbConfigModalState["modalView"]) => void;
+  setErrorMessage: (message: string | null) => void;
+}
+
+export interface UsbConfigState {
+  vendor_id: string;
+  product_id: string;
+  serial_number: string;
+  manufacturer: string;
+  product: string;
+}
+
+export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
+  modalView: "updateUsbConfig",
+  errorMessage: null,
+  setModalView: view => set({ modalView: view }),
+  setErrorMessage: message => set({ errorMessage: message }),
+}));
+
 interface LocalAuthModalState {
   modalView:
-    | "createPassword"
-    | "deletePassword"
-    | "updatePassword"
-    | "creationSuccess"
-    | "deleteSuccess"
-    | "updateSuccess";
-  errorMessage: string | null;
+  | "createPassword"
+  | "deletePassword"
+  | "updatePassword"
+  | "creationSuccess"
+  | "deleteSuccess"
+  | "updateSuccess";
   setModalView: (view: LocalAuthModalState["modalView"]) => void;
-  setErrorMessage: (message: string | null) => void;
 }
 
 export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
   modalView: "createPassword",
-  errorMessage: null,
   setModalView: view => set({ modalView: view }),
-  setErrorMessage: message => set({ errorMessage: message }),
+}));
+
+export interface DeviceState {
+  appVersion: string | null;
+  systemVersion: string | null;
+
+  setAppVersion: (version: string) => void;
+  setSystemVersion: (version: string) => void;
+}
+
+export const useDeviceStore = create<DeviceState>(set => ({
+  appVersion: null,
+  systemVersion: null,
+
+  setAppVersion: version => set({ appVersion: version }),
+  setSystemVersion: version => set({ systemVersion: version }),
 }));

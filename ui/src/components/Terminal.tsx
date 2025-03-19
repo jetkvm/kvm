@@ -84,10 +84,23 @@ function Terminal({
     if (readyState !== "open") return;
 
     const abortController = new AbortController();
+    const binaryType = dataChannel.binaryType;
     dataChannel.addEventListener(
       "message",
       e => {
-        instance?.write(new Uint8Array(e.data));
+        // Handle binary data differently based on browser implementation
+        // Firefox sends data as blobs, chrome sends data as arraybuffer
+        if (binaryType === "arraybuffer") {
+          instance?.write(new Uint8Array(e.data));
+        } else if (binaryType === "blob") {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (!instance) return;
+            if (!reader.result) return;
+            instance.write(new Uint8Array(reader.result as ArrayBuffer));
+          };
+          reader.readAsArrayBuffer(e.data);
+        }
       },
       { signal: abortController.signal },
     );
@@ -105,6 +118,11 @@ function Terminal({
         domEvent.preventDefault();
       }
     });
+
+    // Send initial terminal size
+    if (dataChannel.readyState === "open") {
+      dataChannel.send(JSON.stringify({ rows: instance?.rows, cols: instance?.cols }));
+    }
 
     return () => {
       abortController.abort();

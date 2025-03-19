@@ -3,7 +3,6 @@ package kvm
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net"
 	"strings"
 
@@ -74,17 +73,17 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	if config.IsCloud {
 		if config.ICEServers == nil {
-			fmt.Printf("ICE Servers not provided by cloud")
+			logger.Info("ICE Servers not provided by cloud")
 		} else {
 			iceServer.URLs = config.ICEServers
-			fmt.Printf("Using ICE Servers provided by cloud: %v\n", iceServer.URLs)
+			logger.Infof("Using ICE Servers provided by cloud: %v", iceServer.URLs)
 		}
 
 		if config.LocalIP == "" || net.ParseIP(config.LocalIP) == nil {
-			fmt.Printf("Local IP address %v not provided or invalid, won't set NAT1To1IPs\n", config.LocalIP)
+			logger.Infof("Local IP address %v not provided or invalid, won't set NAT1To1IPs", config.LocalIP)
 		} else {
 			webrtcSettingEngine.SetNAT1To1IPs([]string{config.LocalIP}, webrtc.ICECandidateTypeSrflx)
-			fmt.Printf("Setting NAT1To1IPs to %s\n", config.LocalIP)
+			logger.Infof("Setting NAT1To1IPs to %s", config.LocalIP)
 		}
 	}
 
@@ -98,7 +97,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	session := &Session{peerConnection: peerConnection}
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		fmt.Printf("New DataChannel %s %d\n", d.Label(), d.ID())
+		logger.Infof("New DataChannel %s %d", d.Label(), d.ID())
 		switch d.Label() {
 		case "rpc":
 			session.RPCChannel = d
@@ -146,7 +145,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	var isConnected bool
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		fmt.Printf("Connection State has changed %s \n", connectionState.String())
+		logger.Infof("Connection State has changed %s", connectionState)
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			if !isConnected {
 				isConnected = true

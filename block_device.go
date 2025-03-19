@@ -3,7 +3,6 @@ package kvm
 import (
 	"context"
 	"errors"
-	"log"
 	"net"
 	"os"
 	"time"
@@ -94,7 +93,8 @@ func (d *NBDDevice) Start() error {
 	// Remove the socket file if it already exists
 	if _, err := os.Stat(nbdSocketPath); err == nil {
 		if err := os.Remove(nbdSocketPath); err != nil {
-			log.Fatalf("Failed to remove existing socket file %s: %v", nbdSocketPath, err)
+			logger.Errorf("Failed to remove existing socket file %s: %v", nbdSocketPath, err)
+			os.Exit(1)
 		}
 	}
 
@@ -134,7 +134,7 @@ func (d *NBDDevice) runServerConn() {
 			MaximumBlockSize:   uint32(16 * 1024),
 			SupportsMultiConn:  false,
 		})
-	log.Println("nbd server exited:", err)
+	logger.Infof("nbd server exited: %v", err)
 }
 
 func (d *NBDDevice) runClientConn() {
@@ -142,14 +142,14 @@ func (d *NBDDevice) runClientConn() {
 		ExportName: "jetkvm",
 		BlockSize:  uint32(4 * 1024),
 	})
-	log.Println("nbd client exited:", err)
+	logger.Infof("nbd client exited: %v", err)
 }
 
 func (d *NBDDevice) Close() {
 	if d.dev != nil {
 		err := client.Disconnect(d.dev)
 		if err != nil {
-			log.Println("error disconnecting nbd client:", err)
+			logger.Warnf("error disconnecting nbd client: %v", err)
 		}
 		_ = d.dev.Close()
 	}

@@ -1,14 +1,44 @@
-import Card, { GridCard } from "@/components/Card";
+import { useLocation, useNavigate } from "react-router-dom";
+import Card from "@/components/Card";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
-import LogoBlueIcon from "@/assets/logo-blue.svg";
-import LogoWhiteIcon from "@/assets/logo-white.svg";
-import Modal from "@components/Modal";
-import { UpdateState, useUpdateStore } from "@/hooks/stores";
+import { UpdateState, useDeviceStore, useUpdateStore } from "@/hooks/stores";
 import notifications from "@/notifications";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
-import LoadingSpinner from "./LoadingSpinner";
+import LoadingSpinner from "@/components/LoadingSpinner";
+import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+
+export default function SettingsGeneralUpdateRoute() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { updateSuccess } = location.state || {};
+
+  const { setModalView, otaState } = useUpdateStore();
+  const [send] = useJsonRpc();
+
+  const onConfirmUpdate = useCallback(() => {
+    send("tryUpdate", {});
+    setModalView("updating");
+  }, [send, setModalView]);
+
+  useEffect(() => {
+    if (otaState.updating) {
+      setModalView("updating");
+    } else if (otaState.error) {
+      setModalView("error");
+    } else if (updateSuccess) {
+      setModalView("updateCompleted");
+    } else {
+      setModalView("loading");
+    }
+  }, [otaState.updating, otaState.error, setModalView, updateSuccess]);
+
+  {
+    /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
+  }
+  return <Dialog onClose={() => navigate("..")} onConfirmUpdate={onConfirmUpdate} />;
+}
 
 export interface SystemVersionInfo {
   local: { appVersion: string; systemVersion: string };
@@ -17,37 +47,15 @@ export interface SystemVersionInfo {
   appUpdateAvailable: boolean;
 }
 
-export default function UpdateDialog({
-  open,
-  setOpen,
-}: {
-  open: boolean;
-  setOpen: (open: boolean) => void;
-}) {
-  // We need to keep track of the update state in the dialog even if the dialog is minimized
-  const { setModalView } = useUpdateStore();
-
-  const [send] = useJsonRpc();
-
-  const onConfirmUpdate = useCallback(() => {
-    send("tryUpdate", {});
-    setModalView("updating");
-  }, [send, setModalView]);
-
-  return (
-    <Modal open={open} onClose={() => setOpen(false)}>
-      <Dialog setOpen={setOpen} onConfirmUpdate={onConfirmUpdate} />
-    </Modal>
-  );
-}
-
 export function Dialog({
-  setOpen,
+  onClose,
   onConfirmUpdate,
 }: {
-  setOpen: (open: boolean) => void;
+  onClose: () => void;
   onConfirmUpdate: () => void;
 }) {
+  const { navigateTo } = useDeviceUiNavigation();
+
   const [versionInfo, setVersionInfo] = useState<null | SystemVersionInfo>(null);
   const { modalView, setModalView, otaState } = useUpdateStore();
 
@@ -73,27 +81,24 @@ export function Dialog({
   }, [setModalView]);
 
   return (
-    <GridCard cardClassName="mx-auto relative max-w-md text-left pointer-events-auto">
-      <div className="p-10">
+    <div className="pointer-events-auto relative mx-auto text-left">
+      <div>
         {modalView === "error" && (
           <UpdateErrorState
             errorMessage={otaState.error}
-            onClose={() => setOpen(false)}
+            onClose={onClose}
             onRetryUpdate={() => setModalView("loading")}
           />
         )}
 
         {modalView === "loading" && (
-          <LoadingState
-            onFinished={onFinishedLoading}
-            onCancelCheck={() => setOpen(false)}
-          />
+          <LoadingState onFinished={onFinishedLoading} onCancelCheck={onClose} />
         )}
 
         {modalView === "updateAvailable" && (
           <UpdateAvailableState
             onConfirmUpdate={onConfirmUpdate}
-            onClose={() => setOpen(false)}
+            onClose={onClose}
             versionInfo={versionInfo!}
           />
         )}
@@ -101,24 +106,20 @@ export function Dialog({
         {modalView === "updating" && (
           <UpdatingDeviceState
             otaState={otaState}
-            onMinimizeUpgradeDialog={() => {
-              setOpen(false);
-            }}
+            onMinimizeUpgradeDialog={() => navigateTo("/")}
           />
         )}
 
         {modalView === "upToDate" && (
           <SystemUpToDateState
             checkUpdate={() => setModalView("loading")}
-            onClose={() => setOpen(false)}
+            onClose={onClose}
           />
         )}
 
-        {modalView === "updateCompleted" && (
-          <UpdateCompletedState onClose={() => setOpen(false)} />
-        )}
+        {modalView === "updateCompleted" && <UpdateCompletedState onClose={onClose} />}
       </div>
-    </GridCard>
+    </div>
   );
 }
 
@@ -133,6 +134,9 @@ function LoadingState({
   const abortControllerRef = useRef<AbortController | null>(null);
   const [send] = useJsonRpc();
 
+  const setAppVersion = useDeviceStore(state => state.setAppVersion);
+  const setSystemVersion = useDeviceStore(state => state.setSystemVersion);
+
   const getVersionInfo = useCallback(() => {
     return new Promise<SystemVersionInfo>((resolve, reject) => {
       send("getUpdateStatus", {}, async resp => {
@@ -141,11 +145,13 @@ function LoadingState({
           reject(new Error("Failed to check for updates"));
         } else {
           const result = resp.result as SystemVersionInfo;
+          setAppVersion(result.local.appVersion);
+          setSystemVersion(result.local.systemVersion);
           resolve(result);
         }
       });
     });
-  }, [send]);
+  }, [send, setAppVersion, setSystemVersion]);
 
   const progressBarRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -156,14 +162,12 @@ function LoadingState({
 
     const animationTimer = setTimeout(() => {
       setProgressWidth("100%");
-    }, 500);
+    }, 0);
 
     getVersionInfo()
       .then(versionInfo => {
-        if (progressBarRef.current) {
-          progressBarRef.current?.classList.add("!duration-1000");
-        }
-        return new Promise(resolve => setTimeout(() => resolve(versionInfo), 1000));
+        // Add a small delay to ensure it's not just flickering
+        return new Promise(resolve => setTimeout(() => resolve(versionInfo), 600));
       })
       .then(versionInfo => {
         if (!signal.aborted) {
@@ -183,12 +187,8 @@ function LoadingState({
   }, [getVersionInfo, onFinished]);
 
   return (
-    <div className="flex min-h-[140px] flex-col items-start justify-start space-y-4 text-left">
-      <div>
-        <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-        <img src={LogoWhiteIcon} alt="" className="mt-0 hidden h-[24px] dark:block" />
-      </div>
-      <div className="max-w-sm space-y-4">
+    <div className="flex flex-col items-start justify-start space-y-4 text-left">
+      <div className="space-y-4">
         <div className="space-y-0">
           <p className="text-base font-semibold text-black dark:text-white">
             Checking for updates...
@@ -201,18 +201,11 @@ function LoadingState({
           <div
             ref={progressBarRef}
             style={{ width: progressWidth }}
-            className="h-2.5 bg-blue-700 transition-all duration-[4s] ease-in-out"
+            className="h-2.5 bg-blue-700 transition-all duration-1000 ease-in-out"
           ></div>
         </div>
         <div className="mt-4">
-          <Button
-            size="SM"
-            theme="light"
-            text="Cancel"
-            onClick={() => {
-              onCancelCheck();
-            }}
-          />
+          <Button size="SM" theme="light" text="Cancel" onClick={onCancelCheck} />
         </div>
       </div>
     </div>
@@ -294,11 +287,7 @@ function UpdatingDeviceState({
   };
 
   return (
-    <div className="flex min-h-[140px] flex-col items-start justify-start space-y-4 text-left">
-      <div>
-        <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-        <img src={LogoWhiteIcon} alt="" className="mt-0 hidden h-[24px] dark:block" />
-      </div>
+    <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="w-full max-w-sm space-y-4">
         <div className="space-y-0">
           <p className="text-base font-semibold text-black dark:text-white">
@@ -308,10 +297,10 @@ function UpdatingDeviceState({
             Please don{"'"}t turn off your device. This process may take a few minutes.
           </p>
         </div>
-        <Card className="p-4 space-y-4">
+        <Card className="space-y-4 p-4">
           {areAllUpdatesComplete() ? (
-            <div className="flex flex-col items-center my-2 space-y-2 text-center">
-              <LoadingSpinner className="w-6 h-6 text-blue-700 dark:text-blue-500" />
+            <div className="my-2 flex flex-col items-center space-y-2 text-center">
+              <LoadingSpinner className="h-6 w-6 text-blue-700 dark:text-blue-500" />
               <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
                 <span className="font-medium text-black dark:text-white">
                   Rebooting to complete the update...
@@ -321,8 +310,8 @@ function UpdatingDeviceState({
           ) : (
             <>
               {!(otaState.systemUpdatePending || otaState.appUpdatePending) && (
-                <div className="flex flex-col items-center my-2 space-y-2 text-center">
-                  <LoadingSpinner className="w-6 h-6 text-blue-700 dark:text-blue-500" />
+                <div className="my-2 flex flex-col items-center space-y-2 text-center">
+                  <LoadingSpinner className="h-6 w-6 text-blue-700 dark:text-blue-500" />
                 </div>
               )}
 
@@ -333,9 +322,9 @@ function UpdatingDeviceState({
                       Linux System Update
                     </p>
                     {calculateOverallProgress("system") < 100 ? (
-                      <LoadingSpinner className="w-4 h-4 text-blue-700 dark:text-blue-500" />
+                      <LoadingSpinner className="h-4 w-4 text-blue-700 dark:text-blue-500" />
                     ) : (
-                      <CheckCircleIcon className="w-4 h-4 text-blue-700 dark:text-blue-500" />
+                      <CheckCircleIcon className="h-4 w-4 text-blue-700 dark:text-blue-500" />
                     )}
                   </div>
                   <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-300 dark:bg-slate-600">
@@ -365,9 +354,9 @@ function UpdatingDeviceState({
                         App Update
                       </p>
                       {calculateOverallProgress("app") < 100 ? (
-                        <LoadingSpinner className="w-4 h-4 text-blue-700 dark:text-blue-500" />
+                        <LoadingSpinner className="h-4 w-4 text-blue-700 dark:text-blue-500" />
                       ) : (
-                        <CheckCircleIcon className="w-4 h-4 text-blue-700 dark:text-blue-500" />
+                        <CheckCircleIcon className="h-4 w-4 text-blue-700 dark:text-blue-500" />
                       )}
                     </div>
                     <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-300 dark:bg-slate-600">
@@ -390,7 +379,7 @@ function UpdatingDeviceState({
             </>
           )}
         </Card>
-        <div className="flex justify-start mt-4 text-white gap-x-2">
+        <div className="mt-4 flex justify-start gap-x-2 text-white">
           <Button
             size="XS"
             theme="light"
@@ -411,11 +400,7 @@ function SystemUpToDateState({
   onClose: () => void;
 }) {
   return (
-    <div className="flex min-h-[140px] flex-col items-start justify-start space-y-4 text-left">
-      <div>
-        <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-        <img src={LogoWhiteIcon} alt="" className="mt-0 hidden h-[24px] dark:block" />
-      </div>
+    <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
         <p className="text-base font-semibold text-black dark:text-white">
           System is up to date
@@ -424,23 +409,9 @@ function SystemUpToDateState({
           Your system is running the latest version. No updates are currently available.
         </p>
 
-        <div className="flex mt-4 gap-x-2">
-          <Button
-            size="SM"
-            theme="light"
-            text="Check Again"
-            onClick={() => {
-              checkUpdate();
-            }}
-          />
-          <Button
-            size="SM"
-            theme="blank"
-            text="Close"
-            onClick={() => {
-              onClose();
-            }}
-          />
+        <div className="mt-4 flex gap-x-2">
+          <Button size="SM" theme="light" text="Check Again" onClick={checkUpdate} />
+          <Button size="SM" theme="blank" text="Back" onClick={onClose} />
         </div>
       </div>
     </div>
@@ -457,11 +428,7 @@ function UpdateAvailableState({
   onClose: () => void;
 }) {
   return (
-    <div className="flex min-h-[140px] flex-col items-start justify-start space-y-4 text-left">
-      <div>
-        <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-        <img src={LogoWhiteIcon} alt="" className="mt-0 hidden h-[24px] dark:block" />
-      </div>
+    <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
         <p className="text-base font-semibold text-black dark:text-white">
           Update available
@@ -495,11 +462,7 @@ function UpdateAvailableState({
 
 function UpdateCompletedState({ onClose }: { onClose: () => void }) {
   return (
-    <div className="flex min-h-[140px] flex-col items-start justify-start space-y-4 text-left">
-      <div>
-        <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-        <img src={LogoWhiteIcon} alt="" className="mt-0 hidden h-[24px] dark:block" />
-      </div>
+    <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
         <p className="text-base font-semibold dark:text-white">
           Update Completed Successfully
@@ -509,7 +472,7 @@ function UpdateCompletedState({ onClose }: { onClose: () => void }) {
           features and improvements!
         </p>
         <div className="flex items-center justify-start">
-          <Button size="SM" theme="primary" text="Close" onClick={onClose} />
+          <Button size="SM" theme="primary" text="Back" onClick={onClose} />
         </div>
       </div>
     </div>
@@ -526,11 +489,7 @@ function UpdateErrorState({
   onRetryUpdate: () => void;
 }) {
   return (
-    <div className="flex min-h-[140px] flex-col items-start justify-start space-y-4 text-left">
-      <div>
-        <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-        <img src={LogoWhiteIcon} alt="" className="mt-0 hidden h-[24px] dark:block" />
-      </div>
+    <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
         <p className="text-base font-semibold dark:text-white">Update Error</p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
@@ -542,8 +501,8 @@ function UpdateErrorState({
           </p>
         )}
         <div className="flex items-center justify-start gap-x-2">
-          <Button size="SM" theme="primary" text="Close" onClick={onClose} />
-          <Button size="SM" theme="primary" text="Retry" onClick={onRetryUpdate} />
+          <Button size="SM" theme="light" text="Back" onClick={onClose} />
+          <Button size="SM" theme="blank" text="Retry" onClick={onRetryUpdate} />
         </div>
       </div>
     </div>

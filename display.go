@@ -3,7 +3,6 @@ package kvm
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"time"
@@ -25,7 +24,7 @@ const (
 func switchToScreen(screen string) {
 	_, err := CallCtrlAction("lv_scr_load", map[string]interface{}{"obj": screen})
 	if err != nil {
-		log.Printf("failed to switch to screen %s: %v", screen, err)
+		logger.Warnf("failed to switch to screen %s: %v", screen, err)
 		return
 	}
 	currentScreen = screen
@@ -41,7 +40,7 @@ func updateLabelIfChanged(objName string, newText string) {
 }
 
 func switchToScreenIfDifferent(screenName string) {
-	fmt.Println("switching screen from", currentScreen, screenName)
+	logger.Infof("switching screen from %s to %s", currentScreen, screenName)
 	if currentScreen != screenName {
 		switchToScreen(screenName)
 	}
@@ -75,12 +74,12 @@ var displayInited = false
 
 func requestDisplayUpdate() {
 	if !displayInited {
-		fmt.Println("display not inited, skipping updates")
+		logger.Info("display not inited, skipping updates")
 		return
 	}
 	go func() {
 		wakeDisplay(false)
-		fmt.Println("display updating........................")
+		logger.Info("display updating")
 		//TODO: only run once regardless how many pending updates
 		updateDisplay()
 	}()
@@ -119,7 +118,7 @@ func setDisplayBrightness(brightness int) error {
 		return err
 	}
 
-	fmt.Printf("display: set brightness to %v\n", brightness)
+	logger.Infof("display: set brightness to %v", brightness)
 	return nil
 }
 
@@ -128,7 +127,7 @@ func setDisplayBrightness(brightness int) error {
 func tick_displayDim() {
 	err := setDisplayBrightness(config.DisplayMaxBrightness / 2)
 	if err != nil {
-		fmt.Printf("display: failed to dim display: %s\n", err)
+		logger.Warnf("display: failed to dim display: %s", err)
 	}
 
 	dimTicker.Stop()
@@ -141,7 +140,7 @@ func tick_displayDim() {
 func tick_displayOff() {
 	err := setDisplayBrightness(0)
 	if err != nil {
-		fmt.Printf("display: failed to turn off display: %s\n", err)
+		logger.Warnf("display: failed to turn off display: %s", err)
 	}
 
 	offTicker.Stop()
@@ -164,7 +163,7 @@ func wakeDisplay(force bool) {
 
 	err := setDisplayBrightness(config.DisplayMaxBrightness)
 	if err != nil {
-		fmt.Printf("display wake failed, %s\n", err)
+		logger.Warnf("display wake failed, %s", err)
 	}
 
 	if config.DisplayDimAfterSec != 0 {
@@ -184,7 +183,7 @@ func wakeDisplay(force bool) {
 func watchTsEvents() {
 	ts, err := os.OpenFile(touchscreenDevice, os.O_RDONLY, 0666)
 	if err != nil {
-		fmt.Printf("display: failed to open touchscreen device: %s\n", err)
+		logger.Warnf("display: failed to open touchscreen device: %s", err)
 		return
 	}
 
@@ -197,7 +196,7 @@ func watchTsEvents() {
 	for {
 		_, err := ts.Read(buf)
 		if err != nil {
-			fmt.Printf("display: failed to read from touchscreen device: %s\n", err)
+			logger.Warnf("display: failed to read from touchscreen device: %s", err)
 			return
 		}
 
@@ -212,17 +211,17 @@ func startBacklightTickers() {
 	// Don't start the tickers if the display is switched off.
 	// Set the display to off if that's the case.
 	if config.DisplayMaxBrightness == 0 {
-		setDisplayBrightness(0)
+		_ = setDisplayBrightness(0)
 		return
 	}
 
 	if dimTicker == nil && config.DisplayDimAfterSec != 0 {
-		fmt.Printf("display: dim_ticker has started\n")
+		logger.Info("display: dim_ticker has started")
 		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
 		defer dimTicker.Stop()
 
 		go func() {
-			for {
+			for { //nolint:gosimple
 				select {
 				case <-dimTicker.C:
 					tick_displayDim()
@@ -232,12 +231,12 @@ func startBacklightTickers() {
 	}
 
 	if offTicker == nil && config.DisplayOffAfterSec != 0 {
-		fmt.Printf("display: off_ticker has started\n")
+		logger.Info("display: off_ticker has started")
 		offTicker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
 		defer offTicker.Stop()
 
 		go func() {
-			for {
+			for { //nolint:gosimple
 				select {
 				case <-offTicker.C:
 					tick_displayOff()
@@ -248,13 +247,15 @@ func startBacklightTickers() {
 }
 
 func init() {
+	ensureConfigLoaded()
+
 	go func() {
 		waitCtrlClientConnected()
-		fmt.Println("setting initial display contents")
+		logger.Info("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
 		updateStaticContents()
 		displayInited = true
-		fmt.Println("display inited")
+		logger.Info("display inited")
 		startBacklightTickers()
 		wakeDisplay(true)
 		requestDisplayUpdate()

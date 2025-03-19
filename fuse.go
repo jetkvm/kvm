@@ -2,7 +2,6 @@ package kvm
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"sync"
 	"syscall"
@@ -104,7 +103,7 @@ func RunFuseServer() {
 	var err error
 	fuseServer, err = fs.Mount(fuseMountPoint, &FuseRoot{}, opts)
 	if err != nil {
-		fmt.Println("failed to mount fuse: %w", err)
+		logger.Warnf("failed to mount fuse: %v", err)
 	}
 	fuseServer.Wait()
 }

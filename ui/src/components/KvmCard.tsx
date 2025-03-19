@@ -12,7 +12,7 @@ function getRelativeTimeString(date: Date | number, lang = navigator.language): 
   // Get the amount of seconds between the given date and now
   const deltaSeconds = Math.round((timeMs - Date.now()) / 1000);
 
-  // Array reprsenting one minute, hour, day, week, month, etc in seconds
+  // Array representing one minute, hour, day, week, month, etc in seconds
   const cutoffs = [60, 3600, 86400, 86400 * 7, 86400 * 30, 86400 * 365, Infinity];
 
   // Array equivalent to the above but in the string representation of the units
@@ -52,7 +52,7 @@ export default function KvmCard({
   return (
     <Card>
       <div className="px-5 py-5 space-y-3">
-        <div className="flex justify-between items-cente">
+        <div className="flex justify-between items-center">
           <div className="space-y-1.5">
             <div className="text-lg font-bold leading-none text-black dark:text-white">
               {title}

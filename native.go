@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"kvm/resource"
-	"log"
 	"net"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/jetkvm/kvm/resource"
 
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -61,7 +61,7 @@ func CallCtrlAction(action string, params map[string]interface{}) (*CtrlResponse
 		return nil, fmt.Errorf("error marshaling ctrl action: %w", err)
 	}
 
-	fmt.Println("sending ctrl action", string(jsonData))
+	logger.Infof("sending ctrl action: %s", string(jsonData))
 
 	err = WriteCtrlMessage(jsonData)
 	if err != nil {
@@ -91,8 +91,8 @@ func WriteCtrlMessage(message []byte) error {
 	return err
 }
 
-var nativeCtrlSocketListener net.Listener
-var nativeVideoSocketListener net.Listener
+var nativeCtrlSocketListener net.Listener  //nolint:unused
+var nativeVideoSocketListener net.Listener //nolint:unused
 
 var ctrlClientConnected = make(chan struct{})
 
@@ -104,16 +104,18 @@ func StartNativeSocketServer(socketPath string, handleClient func(net.Conn), isC
 	// Remove the socket file if it already exists
 	if _, err := os.Stat(socketPath); err == nil {
 		if err := os.Remove(socketPath); err != nil {
-			log.Fatalf("Failed to remove existing socket file %s: %v", socketPath, err)
+			logger.Errorf("Failed to remove existing socket file %s: %v", socketPath, err)
+			os.Exit(1)
 		}
 	}
 
 	listener, err := net.Listen("unixpacket", socketPath)
 	if err != nil {
-		log.Fatalf("Failed to start server on %s: %v", socketPath, err)
+		logger.Errorf("Failed to start server on %s: %v", socketPath, err)
+		os.Exit(1)
 	}
 
-	log.Printf("Server listening on %s", socketPath)
+	logger.Infof("Server listening on %s", socketPath)
 
 	go func() {
 		conn, err := listener.Accept()
@@ -188,24 +190,23 @@ func handleCtrlClient(conn net.Conn) {
 func handleVideoClient(conn net.Conn) {
 	defer conn.Close()
 
-	log.Printf("Native video socket client connected: %v", conn.RemoteAddr())
+	logger.Infof("Native video socket client connected: %v", conn.RemoteAddr())
 
 	inboundPacket := make([]byte, maxFrameSize)
 	lastFrame := time.Now()
 	for {
 		n, err := conn.Read(inboundPacket)
 		if err != nil {
-			log.Println("error during read: %s", err)
+			logger.Warnf("error during read: %v", err)
 			return
 		}
 		now := time.Now()
 		sinceLastFrame := now.Sub(lastFrame)
 		lastFrame = now
-		//fmt.Println("Video packet received", n, sinceLastFrame)
 		if currentSession != nil {
 			err := currentSession.VideoTrack.WriteSample(media.Sample{Data: inboundPacket[:n], Duration: sinceLastFrame})
 			if err != nil {
-				log.Println("Error writing sample", err)
+				logger.Warnf("error writing sample: %v", err)
 			}
 		}
 	}
@@ -250,7 +251,7 @@ func ExtractAndRunNativeBin() error {
 		}
 	}()
 
-	fmt.Printf("Binary started with PID: %d\n", cmd.Process.Pid)
+	logger.Infof("Binary started with PID: %d", cmd.Process.Pid)
 
 	return nil
 }

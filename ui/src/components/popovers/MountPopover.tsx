@@ -5,7 +5,7 @@ import { PlusCircleIcon } from "@heroicons/react/20/solid";
 import { useMemo, forwardRef, useEffect, useCallback } from "react";
 import { formatters } from "@/utils";
 import { RemoteVirtualMediaState, useMountMediaStore, useRTCStore } from "@/hooks/stores";
-import { SectionHeader } from "@components/SectionHeader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import {
   LuArrowUpFromLine,
   LuCheckCheck,
@@ -15,19 +15,15 @@ import {
 } from "react-icons/lu";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "../../notifications";
-import MountMediaModal from "../MountMediaDialog";
 import { useClose } from "@headlessui/react";
+import { useLocation } from "react-router-dom";
+import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 
 const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
   const diskDataChannelStats = useRTCStore(state => state.diskDataChannelStats);
   const [send] = useJsonRpc();
-  const {
-    remoteVirtualMediaState,
-    isMountMediaDialogOpen,
-    setModalView,
-    setIsMountMediaDialogOpen,
-    setRemoteVirtualMediaState,
-  } = useMountMediaStore();
+  const { remoteVirtualMediaState, setModalView, setRemoteVirtualMediaState } =
+    useMountMediaStore();
 
   const bytesSentPerSecond = useMemo(() => {
     if (diskDataChannelStats.size < 2) return null;
@@ -78,7 +74,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
           <div className="inline-block">
             <Card>
               <div className="p-1">
-                <PlusCircleIcon className="w-4 h-4 text-blue-700 shrink-0 dark:text-white" />
+                <PlusCircleIcon className="h-4 w-4 shrink-0 text-blue-700 dark:text-white" />
               </div>
             </Card>
           </div>
@@ -103,20 +99,25 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
             <div className="space-y-1">
               <div className="flex items-center gap-x-2">
                 <LuCheckCheck className="h-5 text-green-500" />
-                <h3 className="text-base font-semibold text-black dark:text-white">Streaming from Browser</h3>
+                <h3 className="text-base font-semibold text-black dark:text-white">
+                  Streaming from Browser
+                </h3>
               </div>
               <Card className="w-auto px-2 py-1">
-                <div className="w-full text-sm text-black truncate dark:text-white">
+                <div className="w-full truncate text-sm text-black dark:text-white">
                   {formatters.truncateMiddle(filename, 50)}
                 </div>
               </Card>
             </div>
-            <div className="flex flex-col items-center my-2 gap-y-2">
+            <div className="my-2 flex flex-col items-center gap-y-2">
               <div className="w-full text-sm text-slate-900 dark:text-slate-100">
                 <div className="flex items-center justify-between">
                   <span>{formatters.bytes(size ?? 0)}</span>
                   <div className="flex items-center gap-x-1">
-                    <LuArrowUpFromLine className="h-4 text-blue-700 dark:text-blue-500" strokeWidth={2} />
+                    <LuArrowUpFromLine
+                      className="h-4 text-blue-700 dark:text-blue-500"
+                      strokeWidth={2}
+                    />
                     <span>
                       {bytesSentPerSecond !== null
                         ? `${formatters.bytes(bytesSentPerSecond)}/s`
@@ -131,33 +132,49 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
       case "HTTP":
         return (
           <div className="">
-            <div className="inline-block mb-0">
+            <div className="mb-0 inline-block">
               <Card>
                 <div className="p-1">
-                  <LuLink className="w-4 h-4 text-blue-700 dark:text-blue-500 shrink-0" />
+                  <LuLink className="h-4 w-4 shrink-0 text-blue-700 dark:text-blue-500" />
                 </div>
               </Card>
             </div>
-            <h3 className="text-base font-semibold text-black dark:text-white">Streaming from URL</h3>
-            <p className="text-sm truncate text-slate-900 dark:text-slate-100">{formatters.truncateMiddle(url, 55)}</p>
-            <p className="text-sm text-slate-900 dark:text-slate-100">{formatters.truncateMiddle(filename, 30)}</p>
-            <p className="text-sm text-slate-900 dark:text-slate-100">{formatters.bytes(size ?? 0)}</p>
+            <h3 className="text-base font-semibold text-black dark:text-white">
+              Streaming from URL
+            </h3>
+            <p className="truncate text-sm text-slate-900 dark:text-slate-100">
+              {formatters.truncateMiddle(url, 55)}
+            </p>
+            <p className="text-sm text-slate-900 dark:text-slate-100">
+              {formatters.truncateMiddle(filename, 30)}
+            </p>
+            <p className="text-sm text-slate-900 dark:text-slate-100">
+              {formatters.bytes(size ?? 0)}
+            </p>
           </div>
         );
       case "Storage":
         return (
           <div className="">
-            <div className="inline-block mb-0">
+            <div className="mb-0 inline-block">
               <Card>
                 <div className="p-1">
-                  <LuRadioReceiver className="w-4 h-4 text-blue-700 dark:text-blue-500 shrink-0" />
+                  <LuRadioReceiver className="h-4 w-4 shrink-0 text-blue-700 dark:text-blue-500" />
                 </div>
               </Card>
             </div>
-            <h3 className="text-base font-semibold text-black dark:text-white">Mounted from JetKVM Storage</h3>
-            <p className="text-sm text-slate-900 dark:text-slate-100">{formatters.truncateMiddle(path, 50)}</p>
-            <p className="text-sm text-slate-900 dark:text-slate-100">{formatters.truncateMiddle(filename, 30)}</p>
-            <p className="text-sm text-slate-900 dark:text-slate-100">{formatters.bytes(size ?? 0)}</p>
+            <h3 className="text-base font-semibold text-black dark:text-white">
+              Mounted from JetKVM Storage
+            </h3>
+            <p className="text-sm text-slate-900 dark:text-slate-100">
+              {formatters.truncateMiddle(path, 50)}
+            </p>
+            <p className="text-sm text-slate-900 dark:text-slate-100">
+              {formatters.truncateMiddle(filename, 30)}
+            </p>
+            <p className="text-sm text-slate-900 dark:text-slate-100">
+              {formatters.bytes(size ?? 0)}
+            </p>
           </div>
         );
       default:
@@ -165,18 +182,21 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
     }
   };
   const close = useClose();
+  const location = useLocation();
 
   useEffect(() => {
     syncRemoteVirtualMediaState();
-  }, [syncRemoteVirtualMediaState, isMountMediaDialogOpen]);
+  }, [syncRemoteVirtualMediaState, location.pathname]);
+
+  const { navigateTo } = useDeviceUiNavigation();
 
   return (
     <GridCard>
-      <div className="p-4 py-3 space-y-4">
+      <div className="space-y-4 p-4 py-3">
         <div ref={ref} className="grid h-full grid-rows-headerBody">
           <div className="h-full space-y-4 ">
             <div className="space-y-4">
-              <SectionHeader
+              <SettingsPageHeader
                 title="Virtual Media"
                 description="Mount an image to boot from or install an operating system."
               />
@@ -185,7 +205,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
                 <Card>
                   <div className="flex items-center gap-x-1.5 px-2.5 py-2 text-sm">
                     <ExclamationTriangleIcon className="h-4 text-yellow-500" />
-                    <div className="flex items-center w-full text-black">
+                    <div className="flex w-full items-center text-black">
                       <div>Closing this tab will unmount the image</div>
                     </div>
                   </div>
@@ -193,7 +213,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
               ) : null}
 
               <div
-                className="space-y-2 opacity-0 animate-fadeIn"
+                className="animate-fadeIn space-y-2 opacity-0"
                 style={{
                   animationDuration: "0.7s",
                   animationDelay: "0.1s",
@@ -203,7 +223,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
                   <div className="group">
                     <Card>
                       <div className="w-full px-4 py-8">
-                        <div className="flex flex-col items-center justify-center h-full text-center">
+                        <div className="flex h-full flex-col items-center justify-center text-center">
                           {renderGridCardContent()}
                         </div>
                       </div>
@@ -211,8 +231,8 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
                   </div>
                 </div>
                 {remoteVirtualMediaState ? (
-                  <div className="flex items-center justify-between text-xs select-none">
-                    <div className="text-white select-none dark:text-slate-300">
+                  <div className="flex select-none items-center justify-between text-xs">
+                    <div className="select-none text-white dark:text-slate-300">
                       <span>Mounted as</span>{" "}
                       <span className="font-semibold">
                         {remoteVirtualMediaState.mode === "Disk" ? "Disk" : "CD-ROM"}
@@ -244,7 +264,10 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
                                 d="M4.99933 0.775635L0 5.77546H10L4.99933 0.775635Z"
                                 fill="currentColor"
                               />
-                              <path d="M10 7.49976H0V9.22453H10V7.49976Z" fill="currentColor" />
+                              <path
+                                d="M10 7.49976H0V9.22453H10V7.49976Z"
+                                fill="currentColor"
+                              />
                             </g>
                             <defs>
                               <clipPath id="clip0_3137_1186">
@@ -261,16 +284,11 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
               </div>
             </div>
           </div>
-
-          <MountMediaModal
-            open={isMountMediaDialogOpen}
-            setOpen={setIsMountMediaDialogOpen}
-          />
         </div>
 
         {!remoteVirtualMediaState && (
           <div
-            className="flex items-center justify-end space-x-2 opacity-0 animate-fadeIn"
+            className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
             style={{
               animationDuration: "0.7s",
               animationDelay: "0.2s",
@@ -290,7 +308,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
               text="Add New Media"
               onClick={() => {
                 setModalView("mode");
-                setIsMountMediaDialogOpen(true);
+                navigateTo("/mount");
               }}
               LeadingIcon={LuPlus}
             />

@@ -2,7 +2,6 @@ package kvm
 
 import (
 	"encoding/json"
-	"log"
 )
 
 // max frame size for 1080p video, specified in mpp venc setting
@@ -39,7 +38,7 @@ func HandleVideoStateMessage(event CtrlResponse) {
 	videoState := VideoInputState{}
 	err := json.Unmarshal(event.Data, &videoState)
 	if err != nil {
-		log.Println("Error parsing video state json:", err)
+		logger.Warnf("Error parsing video state json: %v", err)
 		return
 	}
 	lastVideoState = videoState

@@ -17,12 +17,14 @@ import MountPopopover from "./popovers/MountPopover";
 import { Fragment, useCallback, useRef } from "react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 import ExtensionPopover from "./popovers/ExtensionPopover";
+import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 
 export default function Actionbar({
   requestFullscreen,
 }: {
   requestFullscreen: () => Promise<void>;
 }) {
+  const { navigateTo } = useDeviceUiNavigation();
   const virtualKeyboard = useHidStore(state => state.isVirtualKeyboardEnabled);
 
   const setVirtualKeyboard = useHidStore(state => state.setVirtualKeyboardEnabled);
@@ -149,7 +151,7 @@ export default function Actionbar({
                 <Button
                   size="XS"
                   theme="light"
-                  text="Wake on Lan"
+                  text="Wake on LAN"
                   onClick={() => {
                     setDisableFocusTrap(true);
                   }}
@@ -260,15 +262,16 @@ export default function Actionbar({
             />
           </div>
 
-          <div className="hidden xs:block ">
+          <div>
             <Button
               size="XS"
               theme="light"
               text="Settings"
               LeadingIcon={LuSettings}
-              onClick={() => toggleSidebarView("system")}
+              onClick={() => navigateTo("/settings")}
             />
           </div>
+
           <div className="hidden items-center gap-x-2 lg:flex">
             <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-600" />
             <Button

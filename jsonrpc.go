@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +14,8 @@ import (
 
 	"github.com/pion/webrtc/v4"
 	"go.bug.st/serial"
+
+	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
 type JSONRPCRequest struct {
@@ -46,12 +47,12 @@ type BacklightSettings struct {
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
-		log.Println("Error marshalling JSONRPC response:", err)
+		logger.Warnf("Error marshalling JSONRPC response: %v", err)
 		return
 	}
 	err = session.RPCChannel.SendText(string(responseBytes))
 	if err != nil {
-		log.Println("Error sending JSONRPC response:", err)
+		logger.Warnf("Error sending JSONRPC response: %v", err)
 		return
 	}
 }
@@ -64,16 +65,16 @@ func writeJSONRPCEvent(event string, params interface{}, session *Session) {
 	}
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
-		log.Println("Error marshalling JSONRPC event:", err)
+		logger.Warnf("Error marshalling JSONRPC event: %v", err)
 		return
 	}
 	if session == nil || session.RPCChannel == nil {
-		log.Println("RPC channel not available")
+		logger.Info("RPC channel not available")
 		return
 	}
 	err = session.RPCChannel.SendText(string(requestBytes))
 	if err != nil {
-		log.Println("Error sending JSONRPC event:", err)
+		logger.Warnf("Error sending JSONRPC event: %v", err)
 		return
 	}
 }
@@ -94,7 +95,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	//log.Printf("Received RPC request: Method=%s, Params=%v, ID=%d", request.Method, request.Params, request.ID)
+	//logger.Infof("Received RPC request: Method=%s, Params=%v, ID=%d", request.Method, request.Params, request.ID)
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
 		errorResponse := JSONRPCResponse{
@@ -147,7 +148,7 @@ func rpcGetStreamQualityFactor() (float64, error) {
 }
 
 func rpcSetStreamQualityFactor(factor float64) error {
-	log.Printf("Setting stream quality factor to: %f", factor)
+	logger.Infof("Setting stream quality factor to: %f", factor)
 	var _, err = CallCtrlAction("set_video_quality_factor", map[string]interface{}{"quality_factor": factor})
 	if err != nil {
 		return err
@@ -183,10 +184,10 @@ func rpcGetEDID() (string, error) {
 
 func rpcSetEDID(edid string) error {
 	if edid == "" {
-		log.Println("Restoring EDID to default")
+		logger.Info("Restoring EDID to default")
 		edid = "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b"
 	} else {
-		log.Printf("Setting EDID to: %s", edid)
+		logger.Infof("Setting EDID to: %s", edid)
 	}
 	_, err := CallCtrlAction("set_edid", map[string]interface{}{"edid": edid})
 	if err != nil {
@@ -195,8 +196,7 @@ func rpcSetEDID(edid string) error {
 
 	// Save EDID to config, allowing it to be restored on reboot.
 	config.EdidString = edid
-	SaveConfig()
-
+	_ = SaveConfig()
 	return nil
 }
 
@@ -257,7 +257,7 @@ func rpcSetBacklightSettings(params BacklightSettings) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	log.Printf("rpc: display: settings applied, max_brightness: %d, dim after: %ds, off after: %ds", config.DisplayMaxBrightness, config.DisplayDimAfterSec, config.DisplayOffAfterSec)
+	logger.Infof("rpc: display: settings applied, max_brightness: %d, dim after: %ds, off after: %ds", config.DisplayMaxBrightness, config.DisplayDimAfterSec, config.DisplayOffAfterSec)
 
 	// If the device started up with auto-dim and/or auto-off set to zero, the display init
 	// method will not have started the tickers. So in case that has changed, attempt to start the tickers now.
@@ -478,23 +478,23 @@ type RPCHandler struct {
 }
 
 func rpcSetMassStorageMode(mode string) (string, error) {
-	log.Printf("[jsonrpc.go:rpcSetMassStorageMode] Setting mass storage mode to: %s", mode)
+	logger.Infof("[jsonrpc.go:rpcSetMassStorageMode] Setting mass storage mode to: %s", mode)
 	var cdrom bool
 	if mode == "cdrom" {
 		cdrom = true
 	} else if mode != "file" {
-		log.Printf("[jsonrpc.go:rpcSetMassStorageMode] Invalid mode provided: %s", mode)
+		logger.Infof("[jsonrpc.go:rpcSetMassStorageMode] Invalid mode provided: %s", mode)
 		return "", fmt.Errorf("invalid mode: %s", mode)
 	}
 
-	log.Printf("[jsonrpc.go:rpcSetMassStorageMode] Setting mass storage mode to: %s", mode)
+	logger.Infof("[jsonrpc.go:rpcSetMassStorageMode] Setting mass storage mode to: %s", mode)
 
 	err := setMassStorageMode(cdrom)
 	if err != nil {
 		return "", fmt.Errorf("failed to set mass storage mode: %w", err)
 	}
 
-	log.Printf("[jsonrpc.go:rpcSetMassStorageMode] Mass storage mode set to %s", mode)
+	logger.Infof("[jsonrpc.go:rpcSetMassStorageMode] Mass storage mode set to %s", mode)
 
 	// Get the updated mode after setting
 	return rpcGetMassStorageMode()
@@ -517,25 +517,28 @@ func rpcIsUpdatePending() (bool, error) {
 	return IsUpdatePending(), nil
 }
 
-var udcFilePath = filepath.Join("/sys/bus/platform/drivers/dwc3", udc)
-
 func rpcGetUsbEmulationState() (bool, error) {
-	_, err := os.Stat(udcFilePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("error checking USB emulation state: %w", err)
-	}
-	return true, nil
+	return gadget.IsUDCBound()
 }
 
 func rpcSetUsbEmulationState(enabled bool) error {
 	if enabled {
-		return os.WriteFile("/sys/bus/platform/drivers/dwc3/bind", []byte(udc), 0644)
+		return gadget.BindUDC()
 	} else {
-		return os.WriteFile("/sys/bus/platform/drivers/dwc3/unbind", []byte(udc), 0644)
+		return gadget.UnbindUDC()
 	}
+}
+
+func rpcGetUsbConfig() (usbgadget.Config, error) {
+	LoadConfig()
+	return *config.UsbConfig, nil
+}
+
+func rpcSetUsbConfig(usbConfig usbgadget.Config) error {
+	LoadConfig()
+	config.UsbConfig = &usbConfig
+	gadget.SetGadgetConfig(config.UsbConfig)
+	return updateUsbRelatedConfig()
 }
 
 func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
@@ -560,7 +563,7 @@ func rpcResetConfig() error {
 		return fmt.Errorf("failed to reset config: %w", err)
 	}
 
-	log.Println("Configuration reset to default")
+	logger.Info("Configuration reset to default")
 	return nil
 }
 
@@ -576,7 +579,7 @@ func rpcGetDCPowerState() (DCPowerState, error) {
 }
 
 func rpcSetDCPowerState(enabled bool) error {
-	log.Printf("[jsonrpc.go:rpcSetDCPowerState] Setting DC power state to: %v", enabled)
+	logger.Infof("[jsonrpc.go:rpcSetDCPowerState] Setting DC power state to: %v", enabled)
 	err := setDCPowerState(enabled)
 	if err != nil {
 		return fmt.Errorf("failed to set DC power state: %w", err)
@@ -593,18 +596,18 @@ func rpcSetActiveExtension(extensionId string) error {
 		return nil
 	}
 	if config.ActiveExtension == "atx-power" {
-		unmountATXControl()
+		_ = unmountATXControl()
 	} else if config.ActiveExtension == "dc-power" {
-		unmountDCControl()
+		_ = unmountDCControl()
 	}
 	config.ActiveExtension = extensionId
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 	if extensionId == "atx-power" {
-		mountATXControl()
+		_ = mountATXControl()
 	} else if extensionId == "dc-power" {
-		mountDCControl()
+		_ = mountDCControl()
 	}
 	return nil
 }
@@ -725,8 +728,67 @@ func rpcSetSerialSettings(settings SerialSettings) error {
 		Parity:   parity,
 	}
 
-	port.SetMode(serialPortMode)
+	_ = port.SetMode(serialPortMode)
 
+	return nil
+}
+
+func rpcGetUsbDevices() (usbgadget.Devices, error) {
+	return *config.UsbDevices, nil
+}
+
+func updateUsbRelatedConfig() error {
+	if err := gadget.UpdateGadgetConfig(); err != nil {
+		return fmt.Errorf("failed to write gadget config: %w", err)
+	}
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
+func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
+	config.UsbDevices = &usbDevices
+	gadget.SetGadgetDevices(config.UsbDevices)
+	return updateUsbRelatedConfig()
+}
+
+func rpcSetUsbDeviceState(device string, enabled bool) error {
+	switch device {
+	case "absoluteMouse":
+		config.UsbDevices.AbsoluteMouse = enabled
+	case "relativeMouse":
+		config.UsbDevices.RelativeMouse = enabled
+	case "keyboard":
+		config.UsbDevices.Keyboard = enabled
+	case "massStorage":
+		config.UsbDevices.MassStorage = enabled
+	default:
+		return fmt.Errorf("invalid device: %s", device)
+	}
+	gadget.SetGadgetDevices(config.UsbDevices)
+	return updateUsbRelatedConfig()
+}
+
+func rpcSetCloudUrl(apiUrl string, appUrl string) error {
+	config.CloudURL = apiUrl
+	config.CloudAppURL = appUrl
+
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+var currentScrollSensitivity string = "default"
+
+func rpcGetScrollSensitivity() (string, error) {
+	return currentScrollSensitivity, nil
+}
+
+func rpcSetScrollSensitivity(sensitivity string) error {
+	currentScrollSensitivity = sensitivity
 	return nil
 }
 
@@ -737,6 +799,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getCloudState":          {Func: rpcGetCloudState},
 	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
 	"absMouseReport":         {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
+	"relMouseReport":         {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
 	"wheelReport":            {Func: rpcWheelReport, Params: []string{"wheelY"}},
 	"getVideoState":          {Func: rpcGetVideoState},
 	"getUSBState":            {Func: rpcGetUSBState},
@@ -764,6 +827,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"isUpdatePending":        {Func: rpcIsUpdatePending},
 	"getUsbEmulationState":   {Func: rpcGetUsbEmulationState},
 	"setUsbEmulationState":   {Func: rpcSetUsbEmulationState, Params: []string{"enabled"}},
+	"getUsbConfig":           {Func: rpcGetUsbConfig},
+	"setUsbConfig":           {Func: rpcSetUsbConfig, Params: []string{"usbConfig"}},
 	"checkMountUrl":          {Func: rpcCheckMountUrl, Params: []string{"url"}},
 	"getVirtualMediaState":   {Func: rpcGetVirtualMediaState},
 	"getStorageSpace":        {Func: rpcGetStorageSpace},
@@ -786,4 +851,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"setATXPowerAction":      {Func: rpcSetATXPowerAction, Params: []string{"action"}},
 	"getSerialSettings":      {Func: rpcGetSerialSettings},
 	"setSerialSettings":      {Func: rpcSetSerialSettings, Params: []string{"settings"}},
+	"getUsbDevices":          {Func: rpcGetUsbDevices},
+	"setUsbDevices":          {Func: rpcSetUsbDevices, Params: []string{"devices"}},
+	"setUsbDeviceState":      {Func: rpcSetUsbDeviceState, Params: []string{"device", "enabled"}},
+	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
+	"getScrollSensitivity":   {Func: rpcGetScrollSensitivity},
+	"setScrollSensitivity":   {Func: rpcSetScrollSensitivity, Params: []string{"sensitivity"}},
 }

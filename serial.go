@@ -16,14 +16,14 @@ const serialPortPath = "/dev/ttyS3"
 var port serial.Port
 
 func mountATXControl() error {
-	port.SetMode(defaultMode)
+	_ = port.SetMode(defaultMode)
 	go runATXControl()
 
 	return nil
 }
 
 func unmountATXControl() error {
-	reopenSerialPort()
+	_ = reopenSerialPort()
 	return nil
 }
 
@@ -122,13 +122,13 @@ func pressATXResetButton(duration time.Duration) error {
 }
 
 func mountDCControl() error {
-	port.SetMode(defaultMode)
+	_ = port.SetMode(defaultMode)
 	go runDCControl()
 	return nil
 }
 
 func unmountDCControl() error {
-	reopenSerialPort()
+	_ = reopenSerialPort()
 	return nil
 }
 
@@ -212,11 +212,11 @@ var defaultMode = &serial.Mode{
 }
 
 func initSerialPort() {
-	reopenSerialPort()
+	_ = reopenSerialPort()
 	if config.ActiveExtension == "atx-power" {
-		mountATXControl()
+		_ = mountATXControl()
 	} else if config.ActiveExtension == "dc-power" {
-		mountDCControl()
+		_ = mountDCControl()
 	}
 }
 
