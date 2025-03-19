@@ -99,9 +99,8 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         })
         .finally(() => {
           setMountInProgress(false);
+          navigate("..");
         });
-
-      navigate("..");
     });
   }
 
@@ -125,6 +124,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
           // and the modal exit animation for like 500ms
           setTimeout(() => {
             setMountInProgress(false);
+            navigate("..");
           }, 500);
         });
     });
@@ -155,6 +155,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
           })
           .finally(() => {
             setMountInProgress(false);
+            navigate("..");
           });
       },
     );
@@ -839,7 +840,11 @@ function DeviceFileView({
                   onDelete={() => {
                     const selectedFile = onStorageFiles.find(f => f.name === file.name);
                     if (!selectedFile) return;
-                    if (window.confirm("Are you sure you want to delete " + selectedFile.name + "?")) {
+                    if (
+                      window.confirm(
+                        "Are you sure you want to delete " + selectedFile.name + "?",
+                      )
+                    ) {
                       handleDeleteFile(selectedFile);
                     }
                   }}
