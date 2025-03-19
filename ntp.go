@@ -22,8 +22,8 @@ const (
 var (
 	timeSyncRetryInterval = 0 * time.Second
 	defaultNTPServers     = []string{
+		"pool.ntp.org",
 		"time.cloudflare.com",
-		"time.apple.com",
 	}
 )
 
@@ -94,8 +94,9 @@ func queryNetworkTime() (*time.Time, error) {
 		}
 	}
 	httpUrls := []string{
+		"http://pool.ntp.org",
 		"http://apple.com",
-		"http://cloudflare.com",
+		"http://microsoft.com",
 	}
 	for _, url := range httpUrls {
 		now, err := queryHttpTime(url, timeSyncTimeout)
