@@ -182,7 +182,7 @@ export default function KvmIdRoute() {
       );
 
       // Fail connection if it's been over X seconds since we started connecting
-      if (elapsedTime > 1 * 1000) {
+      if (elapsedTime > 60 * 1000) {
         console.error(`Connection failed after ${elapsedTime} ms.`);
         setConnectionFailed(true);
         closePeerConnection();
