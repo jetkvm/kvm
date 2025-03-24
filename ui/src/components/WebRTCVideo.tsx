@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useDeviceSettingsStore,
   useHidStore,
@@ -15,7 +15,7 @@ import Actionbar from "@components/ActionBar";
 import InfoBar from "@components/InfoBar";
 import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { HDMIErrorOverlay } from "./VideoOverlay";
+import { HDMIErrorOverlay, NoAutoplayPermissionsOverlay } from "./VideoOverlay";
 import { ConnectionErrorOverlay } from "./VideoOverlay";
 import { LoadingOverlay } from "./VideoOverlay";
 
@@ -418,6 +418,7 @@ export default function WebRTCVideo() {
     [keyDownHandler, keyUpHandler, resetKeyboardState, sendKeyboardEvent],
   );
 
+  // Setup Video Event Listeners
   useEffect(
     function setupVideoEventListeners() {
       const videoElmRefValue = videoElm.current;
@@ -510,6 +511,14 @@ export default function WebRTCVideo() {
     [settings.mouseMode, relMouseMoveHandler, mouseWheelHandler],
   );
 
+  const hasNoAutoPlayPermissions = useMemo(() => {
+    if (peerConnectionState !== "connected") return false;
+    if (isPlaying) return false;
+    if (hdmiError) return false;
+    if (videoHeight === 0 || videoWidth === 0) return false;
+    return true;
+  }, [peerConnectionState, isPlaying, hdmiError, videoHeight, videoWidth]);
+
   return (
     <div className="grid h-full w-full grid-rows-layout">
       <div className="min-h-[39.5px]">
@@ -575,6 +584,12 @@ export default function WebRTCVideo() {
                           <LoadingOverlay show={isLoading} />
                           <ConnectionErrorOverlay show={isConnectionError} />
                           <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
+                          <NoAutoplayPermissionsOverlay
+                            show={hasNoAutoPlayPermissions}
+                            onPlayClick={() => {
+                              videoElm.current?.play();
+                            }}
+                          />
                         </div>
                       </div>
                     </div>

@@ -1,7 +1,7 @@
 import React from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
-import { ArrowRightIcon } from "@heroicons/react/16/solid";
-import { LinkButton } from "@components/Button";
+import { ArrowRightIcon, PlayIcon } from "@heroicons/react/16/solid";
+import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import { GridCard } from "@components/Card";
 import { motion, AnimatePresence } from "motion/react";
@@ -34,7 +34,7 @@ export function LoadingOverlay({ show }: LoadingOverlayProps) {
           exit={{ opacity: 0 }}
           transition={{
             duration: show ? 0.3 : 0.1,
-            ease: "easeInOut"
+            ease: "easeInOut",
           }}
         >
           <OverlayContent>
@@ -68,7 +68,7 @@ export function ConnectionErrorOverlay({ show }: ConnectionErrorOverlayProps) {
           exit={{ opacity: 0 }}
           transition={{
             duration: 0.3,
-            ease: "easeInOut"
+            ease: "easeInOut",
           }}
         >
           <OverlayContent>
@@ -118,25 +118,27 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
       <AnimatePresence>
         {show && isNoSignal && (
           <motion.div
-            className="absolute inset-0 w-full h-full aspect-video"
+            className="absolute inset-0 aspect-video h-full w-full"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{
               duration: 0.3,
-              ease: "easeInOut"
+              ease: "easeInOut",
             }}
           >
             <OverlayContent>
               <div className="flex flex-col items-start gap-y-1">
-                <ExclamationTriangleIcon className="w-12 h-12 text-yellow-500" />
-                <div className="text-sm text-left text-slate-700 dark:text-slate-300">
+                <ExclamationTriangleIcon className="h-12 w-12 text-yellow-500" />
+                <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                   <div className="space-y-4">
                     <div className="space-y-2 text-black dark:text-white">
                       <h2 className="text-xl font-bold">No HDMI signal detected.</h2>
                       <ul className="list-disc space-y-2 pl-4 text-left">
                         <li>Ensure the HDMI cable securely connected at both ends</li>
-                        <li>Ensure source device is powered on and outputting a signal</li>
+                        <li>
+                          Ensure source device is powered on and outputting a signal
+                        </li>
                         <li>
                           If using an adapter, it&apos;s compatible and functioning
                           correctly
@@ -169,7 +171,7 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
             exit={{ opacity: 0 }}
             transition={{
               duration: 0.3,
-              ease: "easeInOut"
+              ease: "easeInOut",
             }}
           >
             <OverlayContent>
@@ -187,7 +189,7 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                     </div>
                     <div>
                       <LinkButton
-                        to={"/help/hdmi-error"}
+                        to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
                         theme="light"
                         text="Learn more"
                         TrailingIcon={ArrowRightIcon}
@@ -202,5 +204,60 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+interface NoAutoplayPermissionsOverlayProps {
+  show: boolean;
+  onPlayClick: () => void;
+}
+
+export function NoAutoplayPermissionsOverlay({
+  show,
+  onPlayClick,
+}: NoAutoplayPermissionsOverlayProps) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="absolute inset-0 z-10 aspect-video h-full w-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{
+            duration: 0.3,
+            ease: "easeInOut",
+          }}
+        >
+          <OverlayContent>
+            <div className="flex flex-col items-start gap-y-1">
+              <ExclamationTriangleIcon className="h-12 w-12 text-yellow-500" />
+              <div className="text-left text-sm text-slate-700 dark:text-slate-300">
+                <div className="space-y-4">
+                  <div className="space-y-2 text-black dark:text-white">
+                    <h2 className="text-xl font-bold">Autoplay Permissions Required</h2>
+                    <ul className="list-disc space-y-2 pl-4 text-left">
+                      <li>Your browser is blocking automatic video playback</li>
+                      <li>Click anywhere on the video area to start the stream</li>
+                      <li>To avoid this in the future, allow autoplay for this site</li>
+                    </ul>
+                  </div>
+                  <div className="flex items-center justify-center gap-x-2">
+                    <Button
+                      size="MD"
+                      theme="light"
+                      fullWidth
+                      LeadingIcon={PlayIcon}
+                      text="Manually start stream"
+                      onClick={onPlayClick}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </OverlayContent>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
