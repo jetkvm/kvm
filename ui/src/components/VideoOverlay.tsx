@@ -5,6 +5,7 @@ import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import { GridCard } from "@components/Card";
 import { motion, AnimatePresence } from "motion/react";
+import { LuPlay } from "react-icons/lu";
 
 interface OverlayContentProps {
   children: React.ReactNode;
@@ -230,28 +231,24 @@ export function NoAutoplayPermissionsOverlay({
           }}
         >
           <OverlayContent>
-            <div className="flex flex-col items-start gap-y-1">
-              <ExclamationTriangleIcon className="h-12 w-12 text-yellow-500" />
-              <div className="text-left text-sm text-slate-700 dark:text-slate-300">
-                <div className="space-y-4">
-                  <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">Autoplay Permissions Required</h2>
-                    <ul className="list-disc space-y-2 pl-4 text-left">
-                      <li>Your browser is blocking automatic video playback</li>
-                      <li>Click anywhere on the video area to start the stream</li>
-                      <li>To avoid this in the future, allow autoplay for this site</li>
-                    </ul>
-                  </div>
-                  <div className="flex items-center justify-center gap-x-2">
-                    <Button
-                      size="MD"
-                      theme="light"
-                      fullWidth
-                      LeadingIcon={PlayIcon}
-                      text="Manually start stream"
-                      onClick={onPlayClick}
-                    />
-                  </div>
+            <div className="space-y-4">
+              <h2 className="text-2xl font-extrabold text-black dark:text-white">
+                Autoplay permissions required
+              </h2>
+
+              <div className="space-y-2 text-center">
+                <div>
+                  <Button
+                    size="MD"
+                    theme="primary"
+                    LeadingIcon={LuPlay}
+                    text="Manually start stream"
+                    onClick={onPlayClick}
+                  />
+                </div>
+
+                <div className="text-xs text-slate-600 dark:text-slate-400">
+                  Please adjust browser settings to enable autoplay
                 </div>
               </div>
             </div>
