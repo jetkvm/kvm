@@ -142,13 +142,27 @@ export default function KvmIdRoute() {
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
 
+  const closePeerConnection = useCallback(
+    function closePeerConnection() {
+      peerConnection?.close();
+      // "closed" is a valid RTCPeerConnection state according to the WebRTC spec
+      // https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/connectionState#closed
+      // However, the onconnectionstatechange event doesn't fire when close() is called manually
+      // So we need to explicitly update our state to maintain consistency
+      // I don't know why this is happening, but this is the best way I can think of to handle it
+      setPeerConnectionState("closed");
+    },
+    [peerConnection, setPeerConnectionState],
+  );
+
   useEffect(() => {
     const connectionAttemptsThreshold = 30;
     if (connectionAttempts > connectionAttemptsThreshold) {
       console.log(`Connection failed after ${connectionAttempts} attempts.`);
       setConnectionFailed(true);
+      closePeerConnection();
     }
-  }, [connectionAttempts]);
+  }, [connectionAttempts, closePeerConnection]);
 
   useEffect(() => {
     // Skip if already connected
@@ -168,21 +182,15 @@ export default function KvmIdRoute() {
       );
 
       // Fail connection if it's been over X seconds since we started connecting
-      if (elapsedTime > 30 * 1000) {
+      if (elapsedTime > 1 * 1000) {
         console.error(`Connection failed after ${elapsedTime} ms.`);
         setConnectionFailed(true);
+        closePeerConnection();
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [connectedAt, connectionFailed, startedConnectingAt]);
-
-  useEffect(() => {
-    if (connectionFailed) {
-      console.log("Closing peer connection");
-      peerConnection?.close();
-    }
-  }, [connectionFailed, peerConnection]);
+  }, [closePeerConnection, connectedAt, connectionFailed, startedConnectingAt]);
 
   const sdp = useCallback(
     async (event: RTCPeerConnectionIceEvent, pc: RTCPeerConnection) => {
@@ -219,7 +227,7 @@ export default function KvmIdRoute() {
           // - In device mode, the device api would timeout, the fetch would throw an error, therefore the catch block would be hit
           // Regardless, we should close the peer connection and let the useInterval handle reconnecting
           if (!res.ok) {
-            pc?.close();
+            closePeerConnection();
             console.error(`Error setting SDP - Status: ${res.status}}`, json);
             return;
           }
@@ -230,10 +238,10 @@ export default function KvmIdRoute() {
         ).catch(e => console.log(`Error setting remote description: ${e}`));
       } catch (error) {
         console.error(`Error setting SDP: ${error}`);
-        pc?.close();
+        closePeerConnection();
       }
     },
-    [navigate, params.id],
+    [closePeerConnection, navigate, params.id],
   );
 
   const connectWebRTC = useCallback(async () => {
@@ -310,9 +318,9 @@ export default function KvmIdRoute() {
       return;
     }
 
-    // This is final and we declare connection failure
+    // In certain cases, we want to never connect again. This happens when we've tried for a long time and failed
     if (connectionFailed) {
-      console.log("Connection failed. We're unable to establish a connection");
+      console.log("Connection failed. We won't attempt to connect again.");
       return;
     }
 
@@ -587,7 +595,7 @@ export default function KvmIdRoute() {
           />
 
           <div className="flex h-full overflow-hidden">
-            <WebRTCVideo connectionFailed={connectionFailed} />
+            <WebRTCVideo />
             <SidebarContainer sidebarView={sidebarView} />
           </div>
         </div>
