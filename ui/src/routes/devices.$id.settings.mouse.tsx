@@ -12,8 +12,16 @@ import { FeatureFlag } from "../components/FeatureFlag";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { useFeatureFlag } from "../hooks/useFeatureFlag";
 import { SettingsItem } from "./devices.$id.settings";
+import {InputFieldWithLabel} from "@components/InputField";
 
 type ScrollSensitivity = "low" | "default" | "high";
+
+export interface JigglerConfig {
+  active_after_seconds: number;
+  jitter_enabled: boolean;
+  jitter_percentage: number;
+  schedule_cron_tab: string;
+}
 
 export default function SettingsKeyboardMouseRoute() {
   const hideCursor = useSettingsStore(state => state.isCursorHidden);
@@ -30,6 +38,12 @@ export default function SettingsKeyboardMouseRoute() {
   const { isEnabled: isScrollSensitivityEnabled } = useFeatureFlag("0.3.8");
 
   const [jiggler, setJiggler] = useState(false);
+  const [jigglerConfig, setJigglerConfig] = useState<JigglerConfig>({
+    active_after_seconds: 0,
+    jitter_enabled: false,
+    jitter_percentage: 0.0,
+    schedule_cron_tab: "*/20 * * * * *"
+  });
 
   const [send] = useJsonRpc();
 
@@ -45,6 +59,11 @@ export default function SettingsKeyboardMouseRoute() {
         setScrollSensitivity(resp.result as ScrollSensitivity);
       });
     }
+
+    send("getJigglerConfig", {}, resp => {
+      if ("error" in resp) return;
+      setJiggler(resp.result as boolean);
+    });
   }, [isScrollSensitivityEnabled, send, setScrollSensitivity]);
 
   const handleJigglerChange = (enabled: boolean) => {
@@ -58,6 +77,23 @@ export default function SettingsKeyboardMouseRoute() {
       setJiggler(enabled);
     });
   };
+
+  // const handleJigglerActiveAfterSecondsChange = (value: number) => {
+  //   setJigglerConfig({ ...jigglerConfig, active_after_seconds: value });
+  // };
+  //
+  // const handleJigglerJitterEnabledChange = (value: boolean) => {
+  //   setJigglerConfig({ ...jigglerConfig, jitter_enabled: value });
+  // };
+  //
+  // const handleJigglerJitterPercentageChange = (value: number) => {
+  //   setJigglerConfig({ ...jigglerConfig, jitter_percentage: value });
+  // };
+
+  const handleJigglerScheduleCronTabChange = (value: string) => {
+    setJigglerConfig({ ...jigglerConfig, schedule_cron_tab: value });
+  };
+
 
   const onScrollSensitivityChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -122,6 +158,18 @@ export default function SettingsKeyboardMouseRoute() {
           <Checkbox
             checked={jiggler}
             onChange={e => handleJigglerChange(e.target.checked)}
+          />
+        </SettingsItem>
+        <SettingsItem
+          title="Jiggler Schedule"
+          description="Schedule for jiggler being triggered. Uses standard crontab format."
+        >
+          <InputFieldWithLabel
+            required
+            label="Jiggler Schedule"
+            placeholder="Enter Crontab"
+            defaultValue={jigglerConfig?.schedule_cron_tab}
+            onChange={e => handleJigglerScheduleCronTabChange(e.target.value)}
           />
         </SettingsItem>
         <div className="space-y-4">
