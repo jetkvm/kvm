@@ -516,6 +516,10 @@ export default function KvmIdRoute() {
 
       <div
         className="isolate"
+        // onMouseMove={e => e.stopPropagation()}
+        // onMouseDown={e => e.stopPropagation()}
+        // onMouseUp={e => e.stopPropagation()}
+        // onPointerMove={e => e.stopPropagation()}
         onKeyUp={e => e.stopPropagation()}
         onKeyDown={e => {
           e.stopPropagation();
