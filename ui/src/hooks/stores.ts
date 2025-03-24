@@ -197,15 +197,23 @@ export const useRTCStore = create<RTCState>(set => ({
   setTerminalChannel: channel => set({ terminalChannel: channel }),
 }));
 
+interface MouseMove {
+  x: number;
+  y: number;
+  buttons: number;
+}
 interface MouseState {
   mouseX: number;
   mouseY: number;
+  mouseMove?: MouseMove;
+  setMouseMove: (move?: MouseMove) => void;
   setMousePosition: (x: number, y: number) => void;
 }
 
 export const useMouseStore = create<MouseState>(set => ({
   mouseX: 0,
   mouseY: 0,
+  setMouseMove: (move?: MouseMove) => set({ mouseMove: move }),
   setMousePosition: (x, y) => set({ mouseX: x, mouseY: y }),
 }));
 
@@ -543,12 +551,12 @@ export interface UpdateState {
   setOtaState: (state: UpdateState["otaState"]) => void;
   setUpdateDialogHasBeenMinimized: (hasBeenMinimized: boolean) => void;
   modalView:
-    | "loading"
-    | "updating"
-    | "upToDate"
-    | "updateAvailable"
-    | "updateCompleted"
-    | "error";
+  | "loading"
+  | "updating"
+  | "upToDate"
+  | "updateAvailable"
+  | "updateCompleted"
+  | "error";
   setModalView: (view: UpdateState["modalView"]) => void;
   setUpdateErrorMessage: (errorMessage: string) => void;
   updateErrorMessage: string | null;
@@ -612,12 +620,12 @@ export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
 
 interface LocalAuthModalState {
   modalView:
-    | "createPassword"
-    | "deletePassword"
-    | "updatePassword"
-    | "creationSuccess"
-    | "deleteSuccess"
-    | "updateSuccess";
+  | "createPassword"
+  | "deletePassword"
+  | "updatePassword"
+  | "creationSuccess"
+  | "deleteSuccess"
+  | "updateSuccess";
   setModalView: (view: LocalAuthModalState["modalView"]) => void;
 }
 

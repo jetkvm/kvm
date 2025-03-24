@@ -1,23 +1,27 @@
-import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { SettingsItem } from "./devices.$id.settings";
-import { Checkbox } from "@/components/Checkbox";
-import { GridCard } from "@/components/Card";
+import MouseIcon from "@/assets/mouse-icon.svg";
 import PointingFinger from "@/assets/pointing-finger.svg";
-import { CheckCircleIcon } from "@heroicons/react/16/solid";
+import { GridCard } from "@/components/Card";
+import { Checkbox } from "@/components/Checkbox";
 import { useDeviceSettingsStore, useSettingsStore } from "@/hooks/stores";
-import notifications from "@/notifications";
-import { useCallback, useEffect, useState } from "react";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { cx } from "../cva.config";
+import notifications from "@/notifications";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { CheckCircleIcon } from "@heroicons/react/16/solid";
+import { useCallback, useEffect, useState } from "react";
+import { FeatureFlag } from "../components/FeatureFlag";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { useFeatureFlag } from "../hooks/useFeatureFlag";
-import { FeatureFlag } from "../components/FeatureFlag";
+import { SettingsItem } from "./devices.$id.settings";
 
 type ScrollSensitivity = "low" | "default" | "high";
 
 export default function SettingsKeyboardMouseRoute() {
   const hideCursor = useSettingsStore(state => state.isCursorHidden);
   const setHideCursor = useSettingsStore(state => state.setCursorVisibility);
+
+  const mouseMode = useSettingsStore(state => state.mouseMode);
+  const setMouseMode = useSettingsStore(state => state.setMouseMode);
+
   const scrollSensitivity = useDeviceSettingsStore(state => state.scrollSensitivity);
   const setScrollSensitivity = useDeviceSettingsStore(
     state => state.setScrollSensitivity,
@@ -122,19 +126,19 @@ export default function SettingsKeyboardMouseRoute() {
         </SettingsItem>
         <div className="space-y-4">
           <SettingsItem title="Modes" description="Choose the mouse input mode" />
-          <div className="flex flex-col items-center gap-4 md:flex-row">
+          <div className="flex items-center gap-4">
             <button
-              className="group block w-full grow"
-              onClick={() => console.log("Absolute mouse mode clicked")}
+              className="block group grow"
+              onClick={() => { setMouseMode("absolute"); }}
             >
               <GridCard>
-                <div className="group flex items-center gap-x-4 px-4 py-3">
+                <div className="flex items-center px-4 py-3 group gap-x-4">
                   <img
                     className="w-6 shrink-0 dark:invert"
                     src={PointingFinger}
                     alt="Finger touching a screen"
                   />
-                  <div className="flex grow items-center justify-between">
+                  <div className="flex items-center justify-between grow">
                     <div className="text-left">
                       <h3 className="text-sm font-semibold text-black dark:text-white">
                         Absolute
@@ -143,41 +147,32 @@ export default function SettingsKeyboardMouseRoute() {
                         Most convenient
                       </p>
                     </div>
-                    <CheckCircleIcon
-                      className={cx(
-                        "h-4 w-4 text-blue-700 transition-opacity duration-300 dark:text-blue-500",
-                      )}
-                    />
+                    {mouseMode === "absolute" && (
+                      <CheckCircleIcon className="w-4 h-4 text-blue-700 dark:text-blue-500" />
+                    )}
                   </div>
                 </div>
               </GridCard>
             </button>
             <button
-              className="group block w-full grow cursor-not-allowed opacity-50"
-              disabled
+              className="block group grow"
+              onClick={() => { setMouseMode("relative"); }}
             >
               <GridCard>
-                <div className="group flex items-center gap-x-4 px-4 py-3">
-                  <img
-                    className="w-6 shrink-0 dark:invert"
-                    src={PointingFinger}
-                    alt="Finger touching a screen"
-                  />
-                  <div className="flex grow items-center justify-between">
+                <div className="flex items-center px-4 py-3 gap-x-4">
+                  <img className="w-6 shrink-0 dark:invert" src={MouseIcon} alt="Mouse icon" />
+                  <div className="flex items-center justify-between grow">
                     <div className="text-left">
                       <h3 className="text-sm font-semibold text-black dark:text-white">
                         Relative
                       </h3>
                       <p className="text-xs leading-none text-slate-800 dark:text-slate-300">
-                        Most Compatible
+                        Most Compatible (Beta)
                       </p>
                     </div>
-                    <CheckCircleIcon
-                      className={cx(
-                        "hidden",
-                        "h-4 w-4 text-blue-700 transition-opacity duration-300 dark:text-blue-500",
-                      )}
-                    />
+                    {mouseMode === "relative" && (
+                      <CheckCircleIcon className="w-4 h-4 text-blue-700 dark:text-blue-500" />
+                    )}
                   </div>
                 </div>
               </GridCard>

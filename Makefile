@@ -1,21 +1,26 @@
 BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE ?= $(shell date -u +%FT%T%z)
+BUILDTS   ?= $(shell date -u +%s)
 REVISION  ?= $(shell git rev-parse HEAD)
-VERSION_DEV := 0.3.8-dev$(shell date +%Y%m%d%H%M)
-VERSION := 0.3.7
+VERSION_DEV := 0.3.9-dev$(shell date +%Y%m%d%H%M)
+VERSION := 0.3.8
+
+PROMETHEUS_TAG := github.com/prometheus/common/version
+KVM_PKG_NAME := github.com/jetkvm/kvm
 
 GO_LDFLAGS := \
   -s -w \
-  -X github.com/prometheus/common/version.Branch=$(BRANCH) \
-  -X github.com/prometheus/common/version.BuildDate=$(BUILDDATE) \
-  -X github.com/prometheus/common/version.Revision=$(REVISION)
+  -X $(PROMETHEUS_TAG).Branch=$(BRANCH) \
+  -X $(PROMETHEUS_TAG).BuildDate=$(BUILDDATE) \
+  -X $(PROMETHEUS_TAG).Revision=$(REVISION) \
+  -X $(KVM_PKG_NAME).builtTimestamp=$(BUILDTS)
 
 hash_resource:
 	@shasum -a 256 resource/jetkvm_native | cut -d ' ' -f 1 > resource/jetkvm_native.sha256
 
 build_dev: hash_resource
 	@echo "Building..."
-	GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="$(GO_LDFLAGS) -X kvm.builtAppVersion=$(VERSION_DEV)" -o bin/jetkvm_app cmd/main.go
+	GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" -o bin/jetkvm_app cmd/main.go
 
 frontend:
 	cd ui && npm ci && npm run build:device
@@ -28,7 +33,7 @@ dev_release: frontend build_dev
 
 build_release: frontend hash_resource
 	@echo "Building release..."
-	GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="$(GO_LDFLAGS) -X kvm.builtAppVersion=$(VERSION)" -o bin/jetkvm_app cmd/main.go
+	GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION)" -o bin/jetkvm_app cmd/main.go
 
 release:
 	@if rclone lsf r2://jetkvm-update/app/$(VERSION)/ | grep -q "jetkvm_app"; then \

@@ -100,8 +100,6 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         .finally(() => {
           setMountInProgress(false);
         });
-
-      navigate("..");
     });
   }
 
@@ -115,7 +113,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
       clearMountMediaState();
       syncRemoteVirtualMediaState()
         .then(() => {
-          false;
+          navigate("..");
         })
         .catch(err => {
           triggerError(err instanceof Error ? err.message : String(err));
@@ -839,7 +837,11 @@ function DeviceFileView({
                   onDelete={() => {
                     const selectedFile = onStorageFiles.find(f => f.name === file.name);
                     if (!selectedFile) return;
-                    if (window.confirm("Are you sure you want to delete " + selectedFile.name + "?")) {
+                    if (
+                      window.confirm(
+                        "Are you sure you want to delete " + selectedFile.name + "?",
+                      )
+                    ) {
                       handleDeleteFile(selectedFile);
                     }
                   }}

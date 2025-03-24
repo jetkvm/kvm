@@ -16,6 +16,7 @@ import { cx } from "../cva.config";
 import { useUiStore } from "../hooks/stores";
 import useKeyboard from "../hooks/useKeyboard";
 import { useResizeObserver } from "../hooks/useResizeObserver";
+import LoadingSpinner from "../components/LoadingSpinner";
 
 /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
 export default function SettingsRoute() {
@@ -206,7 +207,7 @@ export default function SettingsRoute() {
               </div>
             </Card>
           </div>
-          <div className="w-full md:col-span-5">
+          <div className="w-full md:col-span-6">
             {/* <AutoHeight> */}
             <Card className="dark:bg-slate-800">
               <div
@@ -230,12 +231,14 @@ export function SettingsItem({
   description,
   children,
   className,
+  loading,
 }: {
   title: string;
   description: string | React.ReactNode;
   children?: React.ReactNode;
   className?: string;
   name?: string;
+  loading?: boolean;
 }) {
   return (
     <label
@@ -245,7 +248,10 @@ export function SettingsItem({
       )}
     >
       <div className="space-y-0.5">
-        <h3 className="text-base font-semibold text-black dark:text-white">{title}</h3>
+        <div className="flex items-center gap-x-2">
+          <h3 className="text-base font-semibold text-black dark:text-white">{title}</h3>
+          {loading && <LoadingSpinner className="h-4 w-4 text-blue-500" />}
+        </div>
         <p className="text-sm text-slate-700 dark:text-slate-300">{description}</p>
       </div>
       {children ? <div>{children}</div> : null}

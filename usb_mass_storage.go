@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/psanford/httpreadat"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
+	"github.com/psanford/httpreadat"
 
 	"github.com/jetkvm/kvm/resource"
 )
@@ -27,7 +27,7 @@ func writeFile(path string, data string) error {
 }
 
 func setMassStorageImage(imagePath string) error {
-	massStorageFunctionPath, err := gadget.GetConfigPath("mass_storage_lun0")
+	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
 	if err != nil {
 		return fmt.Errorf("failed to get mass storage path: %w", err)
 	}
@@ -39,7 +39,7 @@ func setMassStorageImage(imagePath string) error {
 }
 
 func setMassStorageMode(cdrom bool) error {
-	massStorageFunctionPath, err := gadget.GetConfigPath("mass_storage_lun0")
+	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
 	if err != nil {
 		return fmt.Errorf("failed to get mass storage path: %w", err)
 	}
@@ -110,7 +110,7 @@ func rpcMountBuiltInImage(filename string) error {
 }
 
 func getMassStorageMode() (bool, error) {
-	massStorageFunctionPath, err := gadget.GetConfigPath("mass_storage_lun0")
+	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
 	if err != nil {
 		return false, fmt.Errorf("failed to get mass storage path: %w", err)
 	}

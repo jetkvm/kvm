@@ -128,6 +128,15 @@ func (u *UsbGadget) GetConfigPath(itemKey string) (string, error) {
 	return joinPath(u.kvmGadgetPath, item.configPath), nil
 }
 
+// GetPath returns the path to the item.
+func (u *UsbGadget) GetPath(itemKey string) (string, error) {
+	item, ok := u.configMap[itemKey]
+	if !ok {
+		return "", fmt.Errorf("config item %s not found", itemKey)
+	}
+	return joinPath(u.kvmGadgetPath, item.path), nil
+}
+
 func mountConfigFS() error {
 	_, err := os.Stat(gadgetPath)
 	// TODO: check if it's mounted properly

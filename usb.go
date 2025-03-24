@@ -1,8 +1,9 @@
 package kvm
 
 import (
-	"github.com/jetkvm/kvm/internal/usbgadget"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
 var gadget *usbgadget.UsbGadget
@@ -31,6 +32,10 @@ func rpcKeyboardReport(modifier uint8, keys []uint8) error {
 
 func rpcAbsMouseReport(x, y int, buttons uint8) error {
 	return gadget.AbsMouseReport(x, y, buttons)
+}
+
+func rpcRelMouseReport(dx, dy int8, buttons uint8) error {
+	return gadget.RelMouseReport(dx, dy, buttons)
 }
 
 func rpcWheelReport(wheelY int8) error {

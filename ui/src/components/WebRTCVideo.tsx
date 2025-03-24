@@ -29,6 +29,7 @@ export default function WebRTCVideo() {
   const settings = useSettingsStore();
   const { sendKeyboardEvent, resetKeyboardState } = useKeyboard();
   const setMousePosition = useMouseStore(state => state.setMousePosition);
+  const setMouseMove = useMouseStore(state => state.setMouseMove);
   const {
     setClientSize: setVideoClientSize,
     setSize: setVideoSize,
@@ -93,19 +94,44 @@ export default function WebRTCVideo() {
   );
 
   // Mouse-related
-  const sendMouseMovement = useCallback(
+  const calcDelta = (pos: number) => (Math.abs(pos) < 10 ? pos * 2 : pos);
+  const sendRelMouseMovement = useCallback(
     (x: number, y: number, buttons: number) => {
-      send("absMouseReport", { x, y, buttons });
+      if (settings.mouseMode !== "relative") return;
+      // if we ignore the event, double-click will not work
+      // if (x === 0 && y === 0 && buttons === 0) return;
+      send("relMouseReport", { dx: calcDelta(x), dy: calcDelta(y), buttons });
+      setMouseMove({ x, y, buttons });
+    },
+    [send, setMouseMove, settings.mouseMode],
+  );
 
+  const relMouseMoveHandler = useCallback(
+    (e: MouseEvent) => {
+      if (settings.mouseMode !== "relative") return;
+
+      // Send mouse movement
+      const { buttons } = e;
+      sendRelMouseMovement(e.movementX, e.movementY, buttons);
+    },
+    [sendRelMouseMovement, settings.mouseMode],
+  );
+
+  const sendAbsMouseMovement = useCallback(
+    (x: number, y: number, buttons: number) => {
+      if (settings.mouseMode !== "absolute") return;
+      send("absMouseReport", { x, y, buttons });
       // We set that for the debug info bar
       setMousePosition(x, y);
     },
-    [send, setMousePosition],
+    [send, setMousePosition, settings.mouseMode],
   );
 
-  const mouseMoveHandler = useCallback(
+  const absMouseMoveHandler = useCallback(
     (e: MouseEvent) => {
       if (!videoClientWidth || !videoClientHeight) return;
+      if (settings.mouseMode !== "absolute") return;
+
       // Get the aspect ratios of the video element and the video stream
       const videoElementAspectRatio = videoClientWidth / videoClientHeight;
       const videoStreamAspectRatio = videoWidth / videoHeight;
@@ -140,9 +166,16 @@ export default function WebRTCVideo() {
 
       // Send mouse movement
       const { buttons } = e;
-      sendMouseMovement(x, y, buttons);
+      sendAbsMouseMovement(x, y, buttons);
     },
-    [sendMouseMovement, videoClientHeight, videoClientWidth, videoWidth, videoHeight],
+    [
+      sendAbsMouseMovement,
+      videoClientHeight,
+      videoClientWidth,
+      videoWidth,
+      videoHeight,
+      settings.mouseMode,
+    ],
   );
 
   const trackpadSensitivity = useDeviceSettingsStore(state => state.trackpadSensitivity);
@@ -193,8 +226,8 @@ export default function WebRTCVideo() {
   );
 
   const resetMousePosition = useCallback(() => {
-    sendMouseMovement(0, 0, 0);
-  }, [sendMouseMovement]);
+    sendAbsMouseMovement(0, 0, 0);
+  }, [sendAbsMouseMovement]);
 
   // Keyboard-related
   const handleModifierKeys = useCallback(
@@ -329,28 +362,6 @@ export default function WebRTCVideo() {
     ],
   );
 
-  // Effect hooks
-  useEffect(
-    function setupKeyboardEvents() {
-      const abortController = new AbortController();
-      const signal = abortController.signal;
-
-      document.addEventListener("keydown", keyDownHandler, { signal });
-      document.addEventListener("keyup", keyUpHandler, { signal });
-
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-expect-error
-      window.clearKeys = () => sendKeyboardEvent([], []);
-      window.addEventListener("blur", resetKeyboardState, { signal });
-      document.addEventListener("visibilitychange", resetKeyboardState, { signal });
-
-      return () => {
-        abortController.abort();
-      };
-    },
-    [keyDownHandler, keyUpHandler, resetKeyboardState, sendKeyboardEvent],
-  );
-
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
     // In fullscreen mode in chrome & safari, the space key is used to pause/play the video
     // there is no way to prevent this, so we need to simply force play the video when it's paused.
@@ -362,46 +373,6 @@ export default function WebRTCVideo() {
       }
     }
   }, []);
-
-  useEffect(
-    function setupVideoEventListeners() {
-      let videoElmRefValue = null;
-      if (!videoElm.current) return;
-      videoElmRefValue = videoElm.current;
-      const abortController = new AbortController();
-      const signal = abortController.signal;
-
-      videoElmRefValue.addEventListener("mousemove", mouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("pointerdown", mouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("pointerup", mouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
-      videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
-        signal,
-        passive: true,
-      });
-      videoElmRefValue.addEventListener(
-        "contextmenu",
-        (e: MouseEvent) => e.preventDefault(),
-        { signal },
-      );
-      videoElmRefValue.addEventListener("playing", onVideoPlaying, { signal });
-
-      const local = resetMousePosition;
-      window.addEventListener("blur", local, { signal });
-      document.addEventListener("visibilitychange", local, { signal });
-
-      return () => {
-        if (videoElmRefValue) abortController.abort();
-      };
-    },
-    [
-      mouseMoveHandler,
-      resetMousePosition,
-      onVideoPlaying,
-      mouseWheelHandler,
-      videoKeyUpHandler,
-    ],
-  );
 
   useEffect(
     function updateVideoStream() {
@@ -425,6 +396,120 @@ export default function WebRTCVideo() {
     ],
   );
 
+  // Setup Keyboard Events
+  useEffect(
+    function setupKeyboardEvents() {
+      const abortController = new AbortController();
+      const signal = abortController.signal;
+
+      document.addEventListener("keydown", keyDownHandler, { signal });
+      document.addEventListener("keyup", keyUpHandler, { signal });
+
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-expect-error
+      window.clearKeys = () => sendKeyboardEvent([], []);
+      window.addEventListener("blur", resetKeyboardState, { signal });
+      document.addEventListener("visibilitychange", resetKeyboardState, { signal });
+
+      return () => {
+        abortController.abort();
+      };
+    },
+    [keyDownHandler, keyUpHandler, resetKeyboardState, sendKeyboardEvent],
+  );
+
+  useEffect(
+    function setupVideoEventListeners() {
+      const videoElmRefValue = videoElm.current;
+      if (!videoElmRefValue) return;
+
+      const abortController = new AbortController();
+      const signal = abortController.signal;
+
+      // To prevent the video from being paused when the user presses a space in fullscreen mode
+      videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
+
+      // We need to know when the video is playing to update state and video size
+      videoElmRefValue.addEventListener("playing", onVideoPlaying, { signal });
+
+      return () => {
+        abortController.abort();
+      };
+    },
+    [
+      absMouseMoveHandler,
+      resetMousePosition,
+      onVideoPlaying,
+      mouseWheelHandler,
+      videoKeyUpHandler,
+    ],
+  );
+
+  // Setup Absolute Mouse Events
+  useEffect(
+    function setAbsoluteMouseModeEventListeners() {
+      const videoElmRefValue = videoElm.current;
+      if (!videoElmRefValue) return;
+
+      if (settings.mouseMode !== "absolute") return;
+
+      const abortController = new AbortController();
+      const signal = abortController.signal;
+
+      videoElmRefValue.addEventListener("mousemove", absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("pointerdown", absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("pointerup", absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
+        signal,
+        passive: true,
+      });
+
+      // Reset the mouse position when the window is blurred or the document is hidden
+      const local = resetMousePosition;
+      window.addEventListener("blur", local, { signal });
+      document.addEventListener("visibilitychange", local, { signal });
+
+      return () => {
+        abortController.abort();
+      };
+    },
+    [absMouseMoveHandler, mouseWheelHandler, resetMousePosition, settings.mouseMode],
+  );
+
+  // Setup Relative Mouse Events
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(
+    function setupRelativeMouseEventListeners() {
+      if (settings.mouseMode !== "relative") return;
+
+      const abortController = new AbortController();
+      const signal = abortController.signal;
+
+      // We bind to the larger container in relative mode because of delta between the acceleration of the local
+      // mouse and the mouse movement of the remote mouse. This simply makes it a bit less painful to use.
+      // When we get Pointer Lock support, we can remove this.
+      const containerElm = containerRef.current;
+      if (!containerElm) return;
+
+      containerElm.addEventListener("mousemove", relMouseMoveHandler, { signal });
+      containerElm.addEventListener("pointerdown", relMouseMoveHandler, { signal });
+      containerElm.addEventListener("pointerup", relMouseMoveHandler, { signal });
+
+      containerElm.addEventListener("wheel", mouseWheelHandler, {
+        signal,
+        passive: true,
+      });
+
+      const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+      containerElm.addEventListener("contextmenu", preventContextMenu, { signal });
+
+      return () => {
+        abortController.abort();
+      };
+    },
+    [settings.mouseMode, relMouseMoveHandler, mouseWheelHandler],
+  );
+
   return (
     <div className="grid h-full w-full grid-rows-layout">
       <div className="min-h-[39.5px]">
@@ -439,7 +524,12 @@ export default function WebRTCVideo() {
         </fieldset>
       </div>
 
-      <div className="h-full overflow-hidden">
+      <div
+        ref={containerRef}
+        className={cx("h-full overflow-hidden", {
+          "cursor-none": settings.mouseMode === "relative" && settings.isCursorHidden,
+        })}
+      >
         <div className="relative h-full">
           <div
             className={cx(
@@ -468,7 +558,9 @@ export default function WebRTCVideo() {
                         className={cx(
                           "outline-50 max-h-full max-w-full object-contain transition-all duration-1000",
                           {
-                            "cursor-none": settings.isCursorHidden,
+                            "cursor-none":
+                              settings.mouseMode === "absolute" &&
+                              settings.isCursorHidden,
                             "opacity-0": isLoading || isConnectionError || hdmiError,
                             "animate-slideUpFade border border-slate-800/30 opacity-0 shadow dark:border-slate-300/20":
                               isPlaying,
