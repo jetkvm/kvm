@@ -1,6 +1,6 @@
 import React from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
-import { ArrowRightIcon, PlayIcon } from "@heroicons/react/16/solid";
+import { ArrowRightIcon } from "@heroicons/react/16/solid";
 import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import { GridCard } from "@components/Card";
