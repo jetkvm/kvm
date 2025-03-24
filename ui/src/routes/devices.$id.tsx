@@ -130,9 +130,59 @@ export default function KvmIdRoute() {
   const setDiskChannel = useRTCStore(state => state.setDiskChannel);
   const setRpcDataChannel = useRTCStore(state => state.setRpcDataChannel);
   const setTransceiver = useRTCStore(state => state.setTransceiver);
+  const location = useLocation();
+
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
+
+  const [startedConnectingAt, setStartedConnectingAt] = useState<Date | null>(null);
+  const [connectedAt, setConnectedAt] = useState<Date | null>(null);
+
+  const [connectionFailed, setConnectionFailed] = useState(false);
 
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
+
+  useEffect(() => {
+    const connectionAttemptsThreshold = 30;
+    if (connectionAttempts > connectionAttemptsThreshold) {
+      console.log(`Connection failed after ${connectionAttempts} attempts.`);
+      setConnectionFailed(true);
+    }
+  }, [connectionAttempts]);
+
+  useEffect(() => {
+    // Skip if already connected
+    if (connectedAt) return;
+
+    // Skip if connection is declared as failed
+    if (connectionFailed) return;
+
+    const interval = setInterval(() => {
+      console.log("Checking connection status");
+
+      // Skip if connection hasn't started
+      if (!startedConnectingAt) return;
+
+      const elapsedTime = Math.floor(
+        new Date().getTime() - startedConnectingAt.getTime(),
+      );
+
+      // Fail connection if it's been over X seconds since we started connecting
+      if (elapsedTime > 30 * 1000) {
+        console.error(`Connection failed after ${elapsedTime} ms.`);
+        setConnectionFailed(true);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [connectedAt, connectionFailed, startedConnectingAt]);
+
+  useEffect(() => {
+    if (connectionFailed) {
+      console.log("Closing peer connection");
+      peerConnection?.close();
+    }
+  }, [connectionFailed, peerConnection]);
 
   const sdp = useCallback(
     async (event: RTCPeerConnectionIceEvent, pc: RTCPeerConnection) => {
@@ -188,6 +238,12 @@ export default function KvmIdRoute() {
 
   const connectWebRTC = useCallback(async () => {
     console.log("Attempting to connect WebRTC");
+
+    // Track connection status to detect failures and show error overlay
+    setConnectionAttempts(x => x + 1);
+    setStartedConnectingAt(new Date());
+    setConnectedAt(null);
+
     const pc = new RTCPeerConnection({
       // We only use STUN or TURN servers if we're in the cloud
       ...(isInCloud && iceConfig?.iceServers
@@ -197,6 +253,11 @@ export default function KvmIdRoute() {
 
     // Set up event listeners and data channels
     pc.onconnectionstatechange = () => {
+      // If the connection state is connected, we reset the connection attempts.
+      if (pc.connectionState === "connected") {
+        setConnectionAttempts(0);
+        setConnectedAt(new Date());
+      }
       setPeerConnectionState(pc.connectionState);
     };
 
@@ -236,16 +297,35 @@ export default function KvmIdRoute() {
     setTransceiver,
   ]);
 
-  // WebRTC connection management
-  useInterval(() => {
+  useEffect(() => {
+    console.log("Attempting to connect WebRTC");
+
+    // If we're in an other session, we don't need to connect
+    if (location.pathname.includes("other-session")) return;
+
+    // If we're already connected or connecting, we don't need to connect
     if (
       ["connected", "connecting", "new"].includes(peerConnection?.connectionState ?? "")
     ) {
       return;
     }
-    if (location.pathname.includes("other-session")) return;
-    connectWebRTC();
-  }, 3000);
+
+    // This is final and we declare connection failure
+    if (connectionFailed) {
+      console.log("Connection failed. We're unable to establish a connection");
+      return;
+    }
+
+    const interval = setInterval(() => {
+      connectWebRTC();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [
+    connectWebRTC,
+    connectionFailed,
+    location.pathname,
+    peerConnection?.connectionState,
+  ]);
 
   // On boot, if the connection state is undefined, we connect to the WebRTC
   useEffect(() => {
@@ -431,7 +511,6 @@ export default function KvmIdRoute() {
   }, [kvmTerminal, peerConnection, serialConsole]);
 
   const outlet = useOutlet();
-  const location = useLocation();
   const onModalClose = useCallback(() => {
     if (location.pathname !== "/other-session") navigateTo("/");
   }, [navigateTo, location.pathname]);
@@ -508,7 +587,7 @@ export default function KvmIdRoute() {
           />
 
           <div className="flex h-full overflow-hidden">
-            <WebRTCVideo />
+            <WebRTCVideo connectionFailed={connectionFailed} />
             <SidebarContainer sidebarView={sidebarView} />
           </div>
         </div>
@@ -516,10 +595,6 @@ export default function KvmIdRoute() {
 
       <div
         className="isolate"
-        // onMouseMove={e => e.stopPropagation()}
-        // onMouseDown={e => e.stopPropagation()}
-        // onMouseUp={e => e.stopPropagation()}
-        // onPointerMove={e => e.stopPropagation()}
         onKeyUp={e => e.stopPropagation()}
         onKeyDown={e => {
           e.stopPropagation();
@@ -527,6 +602,7 @@ export default function KvmIdRoute() {
         }}
       >
         <Modal open={outlet !== null} onClose={onModalClose}>
+          {/* The 'used by other session' modal needs to have access to the connectWebRTC function */}
           <Outlet context={{ connectWebRTC }} />
         </Modal>
       </div>

@@ -19,7 +19,7 @@ import { HDMIErrorOverlay } from "./VideoOverlay";
 import { ConnectionErrorOverlay } from "./VideoOverlay";
 import { LoadingOverlay } from "./VideoOverlay";
 
-export default function WebRTCVideo() {
+export default function WebRTCVideo({ connectionFailed }: { connectionFailed: boolean }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
   const mediaStream = useRTCStore(state => state.mediaStream);
@@ -47,9 +47,10 @@ export default function WebRTCVideo() {
   const hdmiState = useVideoStore(state => state.hdmiState);
   const hdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const isLoading = !hdmiError && !isPlaying;
-  const isConnectionError = ["error", "failed", "disconnected"].includes(
-    peerConnectionState || "",
-  );
+  const isConnectionError =
+    ["error", "failed", "disconnected"].includes(peerConnectionState || "") ||
+    // Connection failed is passed from the parent component and becomes true after multiple failed connection attempts, indicating we should stop trying
+    connectionFailed;
 
   // Keyboard related states
   const { setIsNumLockActive, setIsCapsLockActive, setIsScrollLockActive } =
