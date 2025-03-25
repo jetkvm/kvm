@@ -1,7 +1,8 @@
-import Card from "@components/Card";
 import { PlusCircleIcon } from "@heroicons/react/16/solid";
 import { LuPlus } from "react-icons/lu";
-import { Button } from "../../Button";
+
+import Card from "@/components/Card";
+import { Button } from "@/components/Button";
 
 export default function EmptyStateCard({
   onCancelWakeOnLanModal,
@@ -11,15 +12,15 @@ export default function EmptyStateCard({
   setShowAddForm: (show: boolean) => void;
 }) {
   return (
-    <div className="space-y-4 select-none">
-      <Card className="opacity-0 animate-fadeIn">
+    <div className="select-none space-y-4">
+      <Card className="animate-fadeIn opacity-0">
         <div className="flex items-center justify-center py-8 text-center">
           <div className="space-y-3">
             <div className="space-y-1">
               <div className="inline-block">
                 <Card>
                   <div className="p-1">
-                    <PlusCircleIcon className="w-4 h-4 text-blue-700 shrink-0 dark:text-white" />
+                    <PlusCircleIcon className="h-4 w-4 shrink-0 text-blue-700 dark:text-white" />
                   </div>
                 </Card>
               </div>
@@ -34,7 +35,7 @@ export default function EmptyStateCard({
         </div>
       </Card>
       <div
-        className="flex items-center justify-end space-x-2 opacity-0 animate-fadeIn"
+        className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",

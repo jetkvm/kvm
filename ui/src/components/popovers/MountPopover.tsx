@@ -1,11 +1,6 @@
-import { Button } from "@components/Button";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-import Card, { GridCard } from "@components/Card";
 import { PlusCircleIcon } from "@heroicons/react/20/solid";
 import { useMemo, forwardRef, useEffect, useCallback } from "react";
-import { formatters } from "@/utils";
-import { RemoteVirtualMediaState, useMountMediaStore, useRTCStore } from "@/hooks/stores";
-import { SettingsPageHeader } from "@components/SettingsPageheader";
 import {
   LuArrowUpFromLine,
   LuCheckCheck,
@@ -13,11 +8,17 @@ import {
   LuPlus,
   LuRadioReceiver,
 } from "react-icons/lu";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
-import notifications from "../../notifications";
 import { useClose } from "@headlessui/react";
 import { useLocation } from "react-router-dom";
+
+import { Button } from "@components/Button";
+import Card, { GridCard } from "@components/Card";
+import { formatters } from "@/utils";
+import { RemoteVirtualMediaState, useMountMediaStore, useRTCStore } from "@/hooks/stores";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import notifications from "@/notifications";
 
 const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
   const diskDataChannelStats = useRTCStore(state => state.diskDataChannelStats);
@@ -194,7 +195,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
     <GridCard>
       <div className="space-y-4 p-4 py-3">
         <div ref={ref} className="grid h-full grid-rows-headerBody">
-          <div className="h-full space-y-4 ">
+          <div className="h-full space-y-4">
             <div className="space-y-4">
               <SettingsPageHeader
                 title="Virtual Media"

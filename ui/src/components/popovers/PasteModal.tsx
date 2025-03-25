@@ -1,15 +1,16 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LuCornerDownLeft } from "react-icons/lu";
+import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
+import { useClose } from "@headlessui/react";
+
 import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidStore, useRTCStore, useUiStore } from "@/hooks/stores";
-import notifications from "../../notifications";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { LuCornerDownLeft } from "react-icons/lu";
-import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
-import { useClose } from "@headlessui/react";
 import { chars, keys, modifiers } from "@/keyboardMappings";
+import notifications from "@/notifications";
 
 const hidKeyboardPayload = (keys: number[], modifier: number) => {
   return { keys, modifier };
@@ -59,6 +60,7 @@ export default function PasteModal() {
         });
       }
     } catch (error) {
+      console.error(error);
       notifications.error("Failed to paste text");
     }
   }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode]);
@@ -71,7 +73,7 @@ export default function PasteModal() {
 
   return (
     <GridCard>
-      <div className="p-4 py-3 space-y-4">
+      <div className="space-y-4 p-4 py-3">
         <div className="grid h-full grid-rows-headerBody">
           <div className="h-full space-y-4">
             <div className="space-y-4">
@@ -81,7 +83,7 @@ export default function PasteModal() {
               />
 
               <div
-                className="space-y-2 opacity-0 animate-fadeIn"
+                className="animate-fadeIn space-y-2 opacity-0"
                 style={{
                   animationDuration: "0.7s",
                   animationDelay: "0.1s",
@@ -120,8 +122,8 @@ export default function PasteModal() {
                     />
 
                     {invalidChars.length > 0 && (
-                      <div className="flex items-center mt-2 gap-x-2">
-                        <ExclamationCircleIcon className="w-4 h-4 text-red-500 dark:text-red-400" />
+                      <div className="mt-2 flex items-center gap-x-2">
+                        <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
                         <span className="text-xs text-red-500 dark:text-red-400">
                           The following characters won&apos;t be pasted:{" "}
                           {invalidChars.join(", ")}
@@ -135,7 +137,7 @@ export default function PasteModal() {
           </div>
         </div>
         <div
-          className="flex items-center justify-end opacity-0 animate-fadeIn gap-x-2"
+          className="flex animate-fadeIn items-center justify-end gap-x-2 opacity-0"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.2s",

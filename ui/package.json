@@ -13,8 +13,8 @@
     "build:device": "tsc && vite build --mode=device --emptyOutDir",
     "build:staging": "tsc && vite build --mode=cloud-staging",
     "build:prod": "tsc && vite build --mode=cloud-production",
-    "lint": "eslint ./src/**/*.{ts,tsx} --no-error-on-unmatched-pattern",
-    "lint:fix": "eslint ./src/**/*.{ts,tsx} --no-error-on-unmatched-pattern --fix",
+    "lint": "eslint './src/**/*.{ts,tsx}'",
+    "lint:fix": "eslint './src/**/*.{ts,tsx}' --fix",
     "preview": "vite preview"
   },
   "dependencies": {

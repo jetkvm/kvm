@@ -1,12 +1,13 @@
-import { Button } from "@components/Button";
 import { LuPower } from "react-icons/lu";
+import { useCallback, useEffect, useState } from "react";
+
+import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import FieldLabel from "../FieldLabel";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useCallback, useEffect, useState } from "react";
 import notifications from "@/notifications";
-import LoadingSpinner from "../LoadingSpinner";
+import FieldLabel from "@components/FieldLabel";
+import LoadingSpinner from "@components/LoadingSpinner";
 
 interface DCPowerState {
   isOn: boolean;
@@ -59,11 +60,11 @@ export function DCPowerControl() {
 
       {powerState === null ? (
         <Card className="flex h-[160px] justify-center p-3">
-          <LoadingSpinner className="w-6 h-6 text-blue-500 dark:text-blue-400" />
+          <LoadingSpinner className="h-6 w-6 text-blue-500 dark:text-blue-400" />
         </Card>
       ) : (
         <Card className="h-[160px] animate-fadeIn opacity-0">
-          <div className="p-3 space-y-4">
+          <div className="space-y-4 p-3">
             {/* Power Controls */}
             <div className="flex items-center space-x-2">
               <Button

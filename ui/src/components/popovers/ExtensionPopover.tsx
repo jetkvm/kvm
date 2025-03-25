@@ -1,19 +1,20 @@
 import { useEffect, useState } from "react";
+import { LuPower, LuTerminal, LuPlugZap } from "react-icons/lu";
+
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import Card, { GridCard } from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { Button } from "../Button";
-import { LuPower, LuTerminal, LuPlugZap } from "react-icons/lu";
 import { ATXPowerControl } from "@components/extensions/ATXPowerControl";
 import { DCPowerControl } from "@components/extensions/DCPowerControl";
 import { SerialConsole } from "@components/extensions/SerialConsole";
-import notifications from "../../notifications";
+import { Button } from "@components/Button";
+import notifications from "@/notifications";
 
 interface Extension {
   id: string;
   name: string;
   description: string;
-  icon: any;
+  icon: React.ElementType;
 }
 
 const AVAILABLE_EXTENSIONS: Extension[] = [
@@ -58,7 +59,9 @@ export default function ExtensionPopover() {
   const handleSetActiveExtension = (extension: Extension | null) => {
     send("setActiveExtension", { extensionId: extension?.id || "" }, resp => {
       if ("error" in resp) {
-        notifications.error(`Failed to set active extension: ${resp.error.data || "Unknown error"}`);
+        notifications.error(
+          `Failed to set active extension: ${resp.error.data || "Unknown error"}`,
+        );
         return;
       }
       setActiveExtension(extension);
@@ -80,7 +83,7 @@ export default function ExtensionPopover() {
 
   return (
     <GridCard>
-      <div className="p-4 py-3 space-y-4">
+      <div className="space-y-4 p-4 py-3">
         <div className="grid h-full grid-rows-headerBody">
           <div className="space-y-4">
             {activeExtension ? (
@@ -89,7 +92,7 @@ export default function ExtensionPopover() {
                 {renderActiveExtension()}
 
                 <div
-                  className="flex items-center justify-end space-x-2 opacity-0 animate-fadeIn"
+                  className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
                   style={{
                     animationDuration: "0.7s",
                     animationDelay: "0.2s",
@@ -110,7 +113,7 @@ export default function ExtensionPopover() {
                   title="Extensions"
                   description="Load and manage your extensions"
                 />
-                <Card className="opacity-0 animate-fadeIn">
+                <Card className="animate-fadeIn opacity-0">
                   <div className="w-full divide-y divide-slate-700/30 dark:divide-slate-600/30">
                     {AVAILABLE_EXTENSIONS.map(extension => (
                       <div

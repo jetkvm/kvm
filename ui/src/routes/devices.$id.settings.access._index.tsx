@@ -2,19 +2,18 @@ import { useLoaderData, useNavigate } from "react-router-dom";
 import { ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useState } from "react";
 
+import api from "@/api";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-
-import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
-import { GridCard } from "../components/Card";
-import notifications from "../notifications";
-import api from "../api";
-import { DEVICE_API } from "../ui.config";
-import { Button, LinkButton } from "../components/Button";
-import { useJsonRpc } from "../hooks/useJsonRpc";
-import { InputFieldWithLabel } from "../components/InputField";
-import { SelectMenuBasic } from "../components/SelectMenuBasic";
-import { SettingsSectionHeader } from "../components/SettingsSectionHeader";
-import { isOnDevice } from "../main";
+import { GridCard } from "@/components/Card";
+import { Button, LinkButton } from "@/components/Button";
+import { InputFieldWithLabel } from "@/components/InputField";
+import { SelectMenuBasic } from "@/components/SelectMenuBasic";
+import { SettingsSectionHeader } from "@/components/SettingsSectionHeader";
+import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import notifications from "@/notifications";
+import { DEVICE_API } from "@/ui.config";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { isOnDevice } from "@/main";
 
 import { LocalDevice } from "./devices.$id";
 import { SettingsItem } from "./devices.$id.settings";

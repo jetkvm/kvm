@@ -47,8 +47,8 @@ export default function AuthLayout({
           }
         />
         <Container>
-          <div className="flex items-center justify-center w-full h-full isolate">
-            <div className="max-w-2xl -mt-16 space-y-8">
+          <div className="isolate flex h-full w-full items-center justify-center">
+            <div className="-mt-16 max-w-2xl space-y-8">
               {showCounter ? (
                 <div className="text-center">
                   <StepCounter currStepIdx={0} nSteps={2} />
@@ -62,11 +62,8 @@ export default function AuthLayout({
               </div>
 
               <Fieldset className="space-y-12">
-                <div className="max-w-sm mx-auto space-y-4">
-                  <form
-                    action={`${CLOUD_API}/oidc/google`}
-                    method="POST"
-                  >
+                <div className="mx-auto max-w-sm space-y-4">
+                  <form action={`${CLOUD_API}/oidc/google`} method="POST">
                     {/*This could be the KVM ID*/}
                     {deviceId ? (
                       <input type="hidden" name="deviceId" value={deviceId} />
