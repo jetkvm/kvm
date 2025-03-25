@@ -8,7 +8,6 @@ on:
       - "package-lock.json"
       - ".github/workflows/frontend-lint.yml"
       - ".eslintrc*"
-  pull_request:
 
 permissions:
   contents: read
