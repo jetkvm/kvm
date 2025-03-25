@@ -153,6 +153,7 @@ export default function KvmIdRoute() {
       // However, the onconnectionstatechange event doesn't fire when close() is called manually
       // So we need to explicitly update our state to maintain consistency
       // I don't know why this is happening, but this is the best way I can think of to handle it
+      // ALSO, this will render the connection error overlay linking to docs
       setPeerConnectionState("closed");
     },
     [peerConnection, setPeerConnectionState],
@@ -255,12 +256,19 @@ export default function KvmIdRoute() {
     setStartedConnectingAt(new Date());
     setConnectedAt(null);
 
-    const pc = new RTCPeerConnection({
-      // We only use STUN or TURN servers if we're in the cloud
-      ...(isInCloud && iceConfig?.iceServers
-        ? { iceServers: [iceConfig?.iceServers] }
-        : {}),
-    });
+    let pc: RTCPeerConnection;
+    try {
+      pc = new RTCPeerConnection({
+        // We only use STUN or TURN servers if we're in the cloud
+        ...(isInCloud && iceConfig?.iceServers
+          ? { iceServers: [iceConfig?.iceServers] }
+          : {}),
+      });
+    } catch (error) {
+      console.error(`Error creating peer connection: ${error}`);
+      closePeerConnection();
+      return;
+    }
 
     // Set up event listeners and data channels
     pc.onconnectionstatechange = () => {
@@ -296,8 +304,10 @@ export default function KvmIdRoute() {
       setPeerConnection(pc);
     } catch (e) {
       console.error(`Error creating offer: ${e}`);
+      closePeerConnection();
     }
   }, [
+    closePeerConnection,
     iceConfig?.iceServers,
     sdp,
     setDiskChannel,
