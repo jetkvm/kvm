@@ -1,5 +1,4 @@
 import ReactDOM from "react-dom/client";
-import Root from "./root";
 import "./index.css";
 import {
   createBrowserRouter,
@@ -8,19 +7,22 @@ import {
   RouterProvider,
   useRouteError,
 } from "react-router-dom";
-import DeviceRoute, { LocalDevice } from "@routes/devices.$id";
-import DevicesRoute, { loader as DeviceListLoader } from "@routes/devices";
-import SetupRoute from "@routes/devices.$id.setup";
-import LoginRoute from "@routes/login";
-import SignupRoute from "@routes/signup";
-import AdoptRoute from "@routes/adopt";
-import DeviceIdRename from "@routes/devices.$id.rename";
-import DevicesIdDeregister from "@routes/devices.$id.deregister";
-import NotFoundPage from "@components/NotFoundPage";
-import EmptyCard from "@components/EmptyCard";
 import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
+
+import EmptyCard from "@components/EmptyCard";
+import NotFoundPage from "@components/NotFoundPage";
+import DevicesIdDeregister from "@routes/devices.$id.deregister";
+import DeviceIdRename from "@routes/devices.$id.rename";
+import AdoptRoute from "@routes/adopt";
+import SignupRoute from "@routes/signup";
+import LoginRoute from "@routes/login";
+import SetupRoute from "@routes/devices.$id.setup";
+import DevicesRoute, { loader as DeviceListLoader } from "@routes/devices";
+import DeviceRoute, { LocalDevice } from "@routes/devices.$id";
 import Card from "@components/Card";
 import DevicesAlreadyAdopted from "@routes/devices.already-adopted";
+
+import Root from "./root";
 import Notifications from "./notifications";
 import LoginLocalRoute from "./routes/login-local";
 import WelcomeLocalModeRoute from "./routes/welcome-local.mode";

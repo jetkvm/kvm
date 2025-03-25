@@ -1,7 +1,8 @@
 import type { Ref } from "react";
 import React, { forwardRef } from "react";
-import FieldLabel from "@/components/FieldLabel";
 import clsx from "clsx";
+
+import FieldLabel from "@/components/FieldLabel";
 import { cva, cx } from "@/cva.config";
 
 const sizes = {
@@ -52,7 +53,7 @@ type CheckboxWithLabelProps = React.ComponentProps<typeof FieldLabel> &
 
 const CheckboxWithLabel = forwardRef<HTMLInputElement, CheckboxWithLabelProps>(
   function CheckboxWithLabel(
-    { label, id, description, as, fullWidth, readOnly, ...props },
+    { label, id, description, fullWidth, readOnly, ...props },
     ref: Ref<HTMLInputElement>,
   ) {
     return (

@@ -1,4 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  LoaderFunctionArgs,
+  Outlet,
+  Params,
+  redirect,
+  useLoaderData,
+  useLocation,
+  useNavigate,
+  useOutlet,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import { useInterval } from "usehooks-ts";
+import FocusTrap from "focus-trap-react";
+import { motion, AnimatePresence } from "framer-motion";
+
 import { cx } from "@/cva.config";
 import {
   DeviceSettingsState,
@@ -16,35 +32,22 @@ import {
   VideoState,
 } from "@/hooks/stores";
 import WebRTCVideo from "@components/WebRTCVideo";
-import {
-  LoaderFunctionArgs,
-  Outlet,
-  Params,
-  redirect,
-  useLoaderData,
-  useLocation,
-  useNavigate,
-  useOutlet,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import DashboardNavbar from "@components/Header";
-import { useInterval } from "usehooks-ts";
 import ConnectionStatsSidebar from "@/components/sidebar/connectionStats";
 import { JsonRpcRequest, useJsonRpc } from "@/hooks/useJsonRpc";
-import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard";
-import api from "../api";
-import { DeviceStatus } from "./welcome-local";
-import FocusTrap from "focus-trap-react";
 import Terminal from "@components/Terminal";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
+
+import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard";
+import api from "../api";
 import Modal from "../components/Modal";
-import { motion, AnimatePresence } from "motion/react";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 import { FeatureFlagProvider } from "../providers/FeatureFlagProvider";
-import { SystemVersionInfo } from "./devices.$id.settings.general.update";
 import notifications from "../notifications";
+
+import { SystemVersionInfo } from "./devices.$id.settings.general.update";
+import { DeviceStatus } from "./welcome-local";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;

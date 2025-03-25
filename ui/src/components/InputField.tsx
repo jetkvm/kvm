@@ -1,7 +1,8 @@
 import type { Ref } from "react";
 import React, { forwardRef } from "react";
-import FieldLabel from "@/components/FieldLabel";
 import clsx from "clsx";
+
+import FieldLabel from "@/components/FieldLabel";
 import Card from "@/components/Card";
 import { cva } from "@/cva.config";
 
@@ -84,7 +85,7 @@ const InputFieldWithLabel = forwardRef<HTMLInputElement, InputFieldWithLabelProp
         {(label || description) && (
           <FieldLabel label={label} id={id} description={description} />
         )}
-        <InputField ref={ref as any} id={id} {...props} />
+        <InputField ref={ref as never} id={id} {...props} />
       </div>
     );
   },

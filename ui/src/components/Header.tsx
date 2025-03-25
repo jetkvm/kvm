@@ -2,19 +2,22 @@ import { Fragment, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeftEndOnRectangleIcon, ChevronDownIcon } from "@heroicons/react/16/solid";
 import { Menu, MenuButton } from "@headlessui/react";
+import { LuMonitorSmartphone } from "react-icons/lu";
+
 import Container from "@/components/Container";
 import Card from "@/components/Card";
-import { LuMonitorSmartphone } from "react-icons/lu";
 import { cx } from "@/cva.config";
 import { useHidStore, useRTCStore, useUserStore } from "@/hooks/stores";
 import LogoBlueIcon from "@/assets/logo-blue.svg";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
 import USBStateStatus from "@components/USBStateStatus";
 import PeerConnectionStatusCard from "@components/PeerConnectionStatusCard";
+import { CLOUD_API, DEVICE_API } from "@/ui.config";
+
 import api from "../api";
 import { isOnDevice } from "../main";
+
 import { Button, LinkButton } from "./Button";
-import { CLOUD_API, DEVICE_API } from "@/ui.config";
 
 interface NavbarProps {
   isLoggedIn: boolean;

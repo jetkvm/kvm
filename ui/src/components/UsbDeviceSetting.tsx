@@ -1,9 +1,9 @@
-import { useCallback } from "react";
+import { useCallback , useEffect, useState } from "react";
 
-import { useEffect, useState } from "react";
 import { useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
 import { SettingsItem } from "../routes/devices.$id.settings";
+
 import Checkbox from "./Checkbox";
 import { Button } from "./Button";
 import { SelectMenuBasic } from "./SelectMenuBasic";

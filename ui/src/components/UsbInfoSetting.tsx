@@ -1,14 +1,14 @@
-import { useMemo } from "react";
+import { useMemo , useCallback , useEffect, useState } from "react";
 
-import { useCallback } from "react";
 import { Button } from "@components/Button";
-import { InputFieldWithLabel } from "./InputField";
 
-import { useEffect, useState } from "react";
+
 import { UsbConfigState } from "../hooks/stores";
 import { useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
 import { SettingsItem } from "../routes/devices.$id.settings";
+
+import { InputFieldWithLabel } from "./InputField";
 import { SelectMenuBasic } from "./SelectMenuBasic";
 import Fieldset from "./Fieldset";
 

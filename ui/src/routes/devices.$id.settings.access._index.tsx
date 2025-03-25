@@ -1,20 +1,23 @@
-import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { SettingsItem } from "./devices.$id.settings";
 import { useLoaderData, useNavigate } from "react-router-dom";
-import { Button, LinkButton } from "../components/Button";
-import { DEVICE_API } from "../ui.config";
-import api from "../api";
-import { LocalDevice } from "./devices.$id";
+import { ShieldCheckIcon } from "@heroicons/react/24/outline";
+import { useCallback, useEffect, useState } from "react";
+
+import { SettingsPageHeader } from "@components/SettingsPageheader";
+
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 import { GridCard } from "../components/Card";
-import { ShieldCheckIcon } from "@heroicons/react/24/outline";
 import notifications from "../notifications";
-import { useCallback, useEffect, useState } from "react";
+import api from "../api";
+import { DEVICE_API } from "../ui.config";
+import { Button, LinkButton } from "../components/Button";
 import { useJsonRpc } from "../hooks/useJsonRpc";
 import { InputFieldWithLabel } from "../components/InputField";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { SettingsSectionHeader } from "../components/SettingsSectionHeader";
 import { isOnDevice } from "../main";
+
+import { LocalDevice } from "./devices.$id";
+import { SettingsItem } from "./devices.$id.settings";
 import { CloudState } from "./adopt";
 
 export const loader = async () => {

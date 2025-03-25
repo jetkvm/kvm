@@ -1,16 +1,19 @@
-import { SettingsItem } from "./devices.$id.settings";
+
+import { useCallback, useState, useEffect } from "react";
+
+import { GridCard } from "@components/Card";
 
 import { SettingsPageHeader } from "../components/SettingsPageheader";
 import Checkbox from "../components/Checkbox";
-
 import { useJsonRpc } from "../hooks/useJsonRpc";
-import { useCallback, useState, useEffect } from "react";
 import notifications from "../notifications";
 import { TextAreaWithLabel } from "../components/TextArea";
 import { isOnDevice } from "../main";
 import { Button } from "../components/Button";
 import { useSettingsStore } from "../hooks/stores";
-import { GridCard } from "@components/Card";
+
+
+import { SettingsItem } from "./devices.$id.settings";
 
 export default function SettingsAdvancedRoute() {
   const [send] = useJsonRpc();

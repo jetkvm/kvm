@@ -1,5 +1,6 @@
 import { useContext } from "react";
-import { FeatureFlagContext } from "../providers/FeatureFlagProvider";
+
+import { FeatureFlagContext } from "@/providers/FeatureFlagContext";
 
 export const useFeatureFlag = (minAppVersion: string) => {
   const context = useContext(FeatureFlagContext);

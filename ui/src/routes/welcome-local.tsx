@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { cx } from "cva";
+import { redirect } from "react-router-dom";
+
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
 import { LinkButton } from "@components/Button";
@@ -6,10 +9,11 @@ import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
 import DeviceImage from "@/assets/jetkvm-device-still.png";
 import LogoMark from "@/assets/logo-mark.png";
-import { cx } from "cva";
-import api from "../api";
-import { redirect } from "react-router-dom";
 import { DEVICE_API } from "@/ui.config";
+
+import api from "../api";
+
+
 
 export interface DeviceStatus {
   isSetup: boolean;

@@ -1,6 +1,7 @@
 import { useNavigate, useParams, NavigateOptions } from "react-router-dom";
-import { isOnDevice } from "../main";
 import { useCallback, useMemo } from "react";
+
+import { isOnDevice } from "../main";
 
 /**
  * Generates the correct path based on whether the app is running on device or in cloud mode

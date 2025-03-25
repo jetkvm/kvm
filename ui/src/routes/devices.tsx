@@ -1,4 +1,6 @@
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { LuMonitorSmartphone } from "react-icons/lu";
+import { ArrowRightIcon } from "@heroicons/react/16/solid";
 
 import DashboardNavbar from "@components/Header";
 import { LinkButton } from "@components/Button";
@@ -7,8 +9,6 @@ import useInterval from "@/hooks/useInterval";
 import { checkAuth } from "@/main";
 import { User } from "@/hooks/stores";
 import EmptyCard from "@components/EmptyCard";
-import { LuMonitorSmartphone } from "react-icons/lu";
-import { ArrowRightIcon } from "@heroicons/react/16/solid";
 import { CLOUD_API } from "@/ui.config";
 
 interface LoaderData {
@@ -49,8 +49,8 @@ export default function DevicesRoute() {
         />
 
         <div className="flex h-full overflow-hidden">
-          <div className="w-full h-full px-4 mx-auto space-y-6 sm:max-w-6xl sm:px-8 md:max-w-7xl md:px-12 lg:max-w-8xl">
-            <div className="flex items-center justify-between pb-4 mt-8 border-b border-b-slate-800/20 dark:border-b-slate-300/20">
+          <div className="mx-auto h-full w-full space-y-6 px-4 sm:max-w-6xl sm:px-8 md:max-w-7xl md:px-12 lg:max-w-8xl">
+            <div className="mt-8 flex items-center justify-between border-b border-b-slate-800/20 pb-4 dark:border-b-slate-300/20">
               <div>
                 <h1 className="text-xl font-bold text-black dark:text-white">
                   Cloud KVMs

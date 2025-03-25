@@ -1,16 +1,11 @@
-import { createContext } from "react";
 import semver from "semver";
 
-interface FeatureFlagContextType {
+import { FeatureFlagContext } from "./FeatureFlagContext";
+
+export interface FeatureFlagContextType {
   appVersion: string | null;
   isFeatureEnabled: (minVersion: string) => boolean;
 }
-
-// Create the context
-export const FeatureFlagContext = createContext<FeatureFlagContextType>({
-  appVersion: null,
-  isFeatureEnabled: () => false,
-});
 
 // Provider component that fetches version and provides context
 export const FeatureFlagProvider = ({

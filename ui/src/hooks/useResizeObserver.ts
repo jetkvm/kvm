@@ -1,19 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-
 import type { RefObject } from "react";
 
 import { useIsMounted } from "./useIsMounted";
 
 /** The size of the observed element. */
-type Size = {
+interface Size {
   /** The width of the observed element. */
   width: number | undefined;
   /** The height of the observed element. */
   height: number | undefined;
-};
+}
 
 /** The options for the ResizeObserver. */
-type UseResizeObserverOptions<T extends HTMLElement = HTMLElement> = {
+interface UseResizeObserverOptions<T extends HTMLElement = HTMLElement> {
   /** The ref of the element to observe. */
   ref: RefObject<T>;
   /**
@@ -26,7 +25,7 @@ type UseResizeObserverOptions<T extends HTMLElement = HTMLElement> = {
    * @default 'content-box'
    */
   box?: "border-box" | "content-box" | "device-pixel-content-box";
-};
+}
 
 const initialSize: Size = {
   width: undefined,
@@ -102,7 +101,7 @@ export function useResizeObserver<T extends HTMLElement = HTMLElement>(
     return () => {
       observer.disconnect();
     };
-  }, [box, ref.current, isMounted]);
+  }, [box, isMounted, ref]);
 
   return { width, height };
 }
@@ -127,6 +126,6 @@ function extractSize(
 
   return Array.isArray(entry[box])
     ? entry[box][0][sizeType]
-    : // @ts-ignore Support Firefox's non-standard behavior
+    : // @ts-expect-error Support Firefox's non-standard behavior
       (entry[box][sizeType] as number);
 }

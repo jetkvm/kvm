@@ -1,11 +1,12 @@
 import React from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { ArrowRightIcon } from "@heroicons/react/16/solid";
+import { motion, AnimatePresence } from "framer-motion";
+import { LuPlay } from "react-icons/lu";
+
 import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import { GridCard } from "@components/Card";
-import { motion, AnimatePresence } from "motion/react";
-import { LuPlay } from "react-icons/lu";
 
 interface OverlayContentProps {
   children: React.ReactNode;
