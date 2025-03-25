@@ -1,5 +1,5 @@
 ---
-name: frontend-lint
+name: ui-lint
 on:
   push:
     paths:
