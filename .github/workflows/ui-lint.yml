@@ -6,8 +6,7 @@ on:
       - "ui/**"
       - "package.json"
       - "package-lock.json"
-      - ".github/workflows/frontend-lint.yml"
-      - ".eslintrc*"
+      - ".github/workflows/ui-lint.yml"
 
 permissions:
   contents: read
