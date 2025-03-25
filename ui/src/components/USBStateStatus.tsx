@@ -8,11 +8,14 @@ import { HidState } from "@/hooks/stores";
 
 type USBStates = HidState["usbState"];
 
-type StatusProps = Record<USBStates, {
+type StatusProps = Record<
+  USBStates,
+  {
     icon: React.FC<{ className: string | undefined }>;
     iconClassName: string;
     statusIndicatorClassName: string;
-  }>;
+  }
+>;
 
 const USBStateMap: Record<USBStates, string> = {
   configured: "Connected",
@@ -27,9 +30,8 @@ export default function USBStateStatus({
   peerConnectionState,
 }: {
   state: USBStates;
-  peerConnectionState?: RTCPeerConnectionState;
+  peerConnectionState: RTCPeerConnectionState | null;
 }) {
-
   const StatusCardProps: StatusProps = {
     configured: {
       icon: ({ className }) => (

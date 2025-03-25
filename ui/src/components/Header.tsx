@@ -36,7 +36,7 @@ export default function DashboardNavbar({
   picture,
   kvmName,
 }: NavbarProps) {
-  const peerConnectionState = useRTCStore(state => state.peerConnection?.connectionState);
+  const peerConnectionState = useRTCStore(state => state.peerConnectionState);
   const setUser = useUserStore(state => state.setUser);
   const navigate = useNavigate();
   const onLogout = useCallback(async () => {

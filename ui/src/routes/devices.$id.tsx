@@ -126,7 +126,7 @@ export default function KvmIdRoute() {
 
   const setIsTurnServerInUse = useRTCStore(state => state.setTurnServerInUse);
   const peerConnection = useRTCStore(state => state.peerConnection);
-
+  const peerConnectionState = useRTCStore(state => state.peerConnectionState);
   const setPeerConnectionState = useRTCStore(state => state.setPeerConnectionState);
   const setMediaMediaStream = useRTCStore(state => state.setMediaStream);
   const setPeerConnection = useRTCStore(state => state.setPeerConnection);
@@ -264,8 +264,8 @@ export default function KvmIdRoute() {
           ? { iceServers: [iceConfig?.iceServers] }
           : {}),
       });
-    } catch (error) {
-      console.error(`Error creating peer connection: ${error}`);
+    } catch (e) {
+      console.error(`Error creating peer connection: ${e}`);
       closePeerConnection();
       return;
     }
@@ -325,9 +325,8 @@ export default function KvmIdRoute() {
     if (location.pathname.includes("other-session")) return;
 
     // If we're already connected or connecting, we don't need to connect
-    if (
-      ["connected", "connecting", "new"].includes(peerConnection?.connectionState ?? "")
-    ) {
+    // We have to use the state from the store, because the peerConnection.connectionState doesnt trigger a value change, if called manually from .close()
+    if (["connected", "connecting", "new"].includes(peerConnectionState ?? "")) {
       return;
     }
 
@@ -341,12 +340,7 @@ export default function KvmIdRoute() {
       connectWebRTC();
     }, 3000);
     return () => clearInterval(interval);
-  }, [
-    connectWebRTC,
-    connectionFailed,
-    location.pathname,
-    peerConnection?.connectionState,
-  ]);
+  }, [connectWebRTC, connectionFailed, location.pathname, peerConnectionState]);
 
   // On boot, if the connection state is undefined, we connect to the WebRTC
   useEffect(() => {
