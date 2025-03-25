@@ -9,7 +9,6 @@ import { Button } from "./Button";
 import { SelectMenuBasic } from "./SelectMenuBasic";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import Fieldset from "./Fieldset";
-
 export interface USBConfig {
   vendor_id: string;
   product_id: string;
@@ -119,13 +118,12 @@ export function UsbDeviceSetting() {
 
   const onUsbConfigItemChange = useCallback(
     (key: keyof UsbDeviceConfig) => (e: React.ChangeEvent<HTMLInputElement>) => {
-      setUsbDeviceConfig(val => {
-        val[key] = e.target.checked;
-        handleUsbConfigChange(val);
-        return val;
-      });
+      setUsbDeviceConfig(prev => ({
+        ...prev,
+        [key]: e.target.checked,
+      }));
     },
-    [handleUsbConfigChange],
+    [],
   );
 
   const handlePresetChange = useCallback(

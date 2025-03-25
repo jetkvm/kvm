@@ -130,9 +130,67 @@ export default function KvmIdRoute() {
   const setDiskChannel = useRTCStore(state => state.setDiskChannel);
   const setRpcDataChannel = useRTCStore(state => state.setRpcDataChannel);
   const setTransceiver = useRTCStore(state => state.setTransceiver);
+  const location = useLocation();
+
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
+
+  const [startedConnectingAt, setStartedConnectingAt] = useState<Date | null>(null);
+  const [connectedAt, setConnectedAt] = useState<Date | null>(null);
+
+  const [connectionFailed, setConnectionFailed] = useState(false);
 
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
+
+  const closePeerConnection = useCallback(
+    function closePeerConnection() {
+      peerConnection?.close();
+      // "closed" is a valid RTCPeerConnection state according to the WebRTC spec
+      // https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/connectionState#closed
+      // However, the onconnectionstatechange event doesn't fire when close() is called manually
+      // So we need to explicitly update our state to maintain consistency
+      // I don't know why this is happening, but this is the best way I can think of to handle it
+      setPeerConnectionState("closed");
+    },
+    [peerConnection, setPeerConnectionState],
+  );
+
+  useEffect(() => {
+    const connectionAttemptsThreshold = 30;
+    if (connectionAttempts > connectionAttemptsThreshold) {
+      console.log(`Connection failed after ${connectionAttempts} attempts.`);
+      setConnectionFailed(true);
+      closePeerConnection();
+    }
+  }, [connectionAttempts, closePeerConnection]);
+
+  useEffect(() => {
+    // Skip if already connected
+    if (connectedAt) return;
+
+    // Skip if connection is declared as failed
+    if (connectionFailed) return;
+
+    const interval = setInterval(() => {
+      console.log("Checking connection status");
+
+      // Skip if connection hasn't started
+      if (!startedConnectingAt) return;
+
+      const elapsedTime = Math.floor(
+        new Date().getTime() - startedConnectingAt.getTime(),
+      );
+
+      // Fail connection if it's been over X seconds since we started connecting
+      if (elapsedTime > 60 * 1000) {
+        console.error(`Connection failed after ${elapsedTime} ms.`);
+        setConnectionFailed(true);
+        closePeerConnection();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [closePeerConnection, connectedAt, connectionFailed, startedConnectingAt]);
 
   const sdp = useCallback(
     async (event: RTCPeerConnectionIceEvent, pc: RTCPeerConnection) => {
@@ -169,7 +227,7 @@ export default function KvmIdRoute() {
           // - In device mode, the device api would timeout, the fetch would throw an error, therefore the catch block would be hit
           // Regardless, we should close the peer connection and let the useInterval handle reconnecting
           if (!res.ok) {
-            pc?.close();
+            closePeerConnection();
             console.error(`Error setting SDP - Status: ${res.status}}`, json);
             return;
           }
@@ -180,14 +238,20 @@ export default function KvmIdRoute() {
         ).catch(e => console.log(`Error setting remote description: ${e}`));
       } catch (error) {
         console.error(`Error setting SDP: ${error}`);
-        pc?.close();
+        closePeerConnection();
       }
     },
-    [navigate, params.id],
+    [closePeerConnection, navigate, params.id],
   );
 
   const connectWebRTC = useCallback(async () => {
     console.log("Attempting to connect WebRTC");
+
+    // Track connection status to detect failures and show error overlay
+    setConnectionAttempts(x => x + 1);
+    setStartedConnectingAt(new Date());
+    setConnectedAt(null);
+
     const pc = new RTCPeerConnection({
       // We only use STUN or TURN servers if we're in the cloud
       ...(isInCloud && iceConfig?.iceServers
@@ -197,6 +261,11 @@ export default function KvmIdRoute() {
 
     // Set up event listeners and data channels
     pc.onconnectionstatechange = () => {
+      // If the connection state is connected, we reset the connection attempts.
+      if (pc.connectionState === "connected") {
+        setConnectionAttempts(0);
+        setConnectedAt(new Date());
+      }
       setPeerConnectionState(pc.connectionState);
     };
 
@@ -236,16 +305,35 @@ export default function KvmIdRoute() {
     setTransceiver,
   ]);
 
-  // WebRTC connection management
-  useInterval(() => {
+  useEffect(() => {
+    console.log("Attempting to connect WebRTC");
+
+    // If we're in an other session, we don't need to connect
+    if (location.pathname.includes("other-session")) return;
+
+    // If we're already connected or connecting, we don't need to connect
     if (
       ["connected", "connecting", "new"].includes(peerConnection?.connectionState ?? "")
     ) {
       return;
     }
-    if (location.pathname.includes("other-session")) return;
-    connectWebRTC();
-  }, 3000);
+
+    // In certain cases, we want to never connect again. This happens when we've tried for a long time and failed
+    if (connectionFailed) {
+      console.log("Connection failed. We won't attempt to connect again.");
+      return;
+    }
+
+    const interval = setInterval(() => {
+      connectWebRTC();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [
+    connectWebRTC,
+    connectionFailed,
+    location.pathname,
+    peerConnection?.connectionState,
+  ]);
 
   // On boot, if the connection state is undefined, we connect to the WebRTC
   useEffect(() => {
@@ -431,7 +519,6 @@ export default function KvmIdRoute() {
   }, [kvmTerminal, peerConnection, serialConsole]);
 
   const outlet = useOutlet();
-  const location = useLocation();
   const onModalClose = useCallback(() => {
     if (location.pathname !== "/other-session") navigateTo("/");
   }, [navigateTo, location.pathname]);
@@ -523,6 +610,7 @@ export default function KvmIdRoute() {
         }}
       >
         <Modal open={outlet !== null} onClose={onModalClose}>
+          {/* The 'used by other session' modal needs to have access to the connectWebRTC function */}
           <Outlet context={{ connectWebRTC }} />
         </Modal>
       </div>
