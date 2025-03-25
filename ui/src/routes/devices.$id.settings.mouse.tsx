@@ -12,7 +12,8 @@ import { FeatureFlag } from "../components/FeatureFlag";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { useFeatureFlag } from "../hooks/useFeatureFlag";
 import { SettingsItem } from "./devices.$id.settings";
-import {JigglerSetting} from "@components/JigglerSetting";
+import { JigglerSetting } from "@components/JigglerSetting";
+import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
 
 type ScrollSensitivity = "low" | "default" | "high";
 
@@ -130,12 +131,16 @@ export default function SettingsKeyboardMouseRoute() {
             onChange={e => handleJigglerChange(e.target.checked)}
           />
         </SettingsItem>
-        <SettingsItem
-          title="Jiggler Settings"
-          description="Configure jiggler for advanced functionality"
-        >
-          <JigglerSetting />
-        </SettingsItem>
+
+        {jiggler && (
+          <>
+            <SettingsSectionHeader
+              title="Jiggler Config"
+              description="Control the jiggler schedule"
+            />
+            <JigglerSetting />
+          </>
+        )}
         <div className="space-y-4">
           <SettingsItem title="Modes" description="Choose the mouse input mode" />
           <div className="flex items-center gap-4">

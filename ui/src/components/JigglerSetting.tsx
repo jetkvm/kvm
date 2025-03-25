@@ -7,8 +7,7 @@ import { useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
 
 export interface JigglerConfig {
-  active_after_seconds: number;
-  jitter_enabled: boolean;
+  inactivity_limit_seconds: number;
   jitter_percentage: number;
   schedule_cron_tab: string;
 }
@@ -18,26 +17,25 @@ export function JigglerSetting() {
   const [loading, setLoading] = useState(false);
 
   const [jigglerConfigState, setJigglerConfigState] = useState<JigglerConfig>({
-    active_after_seconds: 0,
-    jitter_enabled: false,
-    jitter_percentage: 0.0,
-    schedule_cron_tab: "*/20 * * * * *"
+    inactivity_limit_seconds: 20.0,
+    jitter_percentage:        0.0,
+    schedule_cron_tab:        "*/20 * * * * *"
   });
 
-  useEffect(() => {
+  const syncJigglerConfig = useCallback(() => {
     send("getJigglerConfig", {}, resp => {
       if ("error" in resp) return;
       setJigglerConfigState(resp.result as JigglerConfig);
     });
   }, [send]);
 
-  // const handleJigglerActiveAfterSecondsChange = (value: number) => {
-  //   setJigglerConfig({ ...jigglerConfig, active_after_seconds: value });
-  // };
-  //
-  // const handleJigglerJitterEnabledChange = (value: boolean) => {
-  //   setJigglerConfig({ ...jigglerConfig, jitter_enabled: value });
-  // };
+  useEffect(() => {
+    syncJigglerConfig()
+  }, [send, syncJigglerConfig]);
+
+  const handleJigglerInactivityLimitSecondsChange = (value: string) => {
+    setJigglerConfigState({ ...jigglerConfigState, inactivity_limit_seconds: Number(value) });
+  };
   //
   // const handleJigglerJitterPercentageChange = (value: number) => {
   //   setJigglerConfig({ ...jigglerConfig, jitter_percentage: value });
@@ -48,24 +46,24 @@ export function JigglerSetting() {
   };
 
   const handleJigglerConfigChange = useCallback(
-      (jigglerConfig: JigglerConfig) => {
-        setLoading(true);
-        send("setJigglerConfig", { jigglerConfig }, async resp => {
-          if ("error" in resp) {
-            notifications.error(
-                `Failed to set jiggler config: ${resp.error.data || "Unknown error"}`,
-            );
-            setLoading(false);
-            return;
-          }
-
-          setLoading(false);
-          notifications.success(
-              `Jiggler Config successfully updated`,
+    (jigglerConfig: JigglerConfig) => {
+      setLoading(true);
+      send("setJigglerConfig", { jigglerConfig }, async resp => {
+        if ("error" in resp) {
+          notifications.error(
+              `Failed to set jiggler config: ${resp.error.data || "Unknown error"}`,
           );
-        });
-      },
-      [send],
+          setLoading(false);
+          return;
+        }
+        setLoading(false);
+        notifications.success(
+          `Jiggler Config successfully updated`,
+        );
+        syncJigglerConfig();
+      });
+    },
+    [send, syncJigglerConfig],
   );
 
   return (
@@ -74,9 +72,16 @@ export function JigglerSetting() {
         <InputFieldWithLabel
           required
           label="Jiggler Schedule"
-          placeholder="Enter Crontab"
-          defaultValue={jigglerConfigState?.schedule_cron_tab}
+          placeholder="*/20 * * * * * (Every 20 seconds)"
+          value={jigglerConfigState?.schedule_cron_tab}
           onChange={e => handleJigglerScheduleCronTabChange(e.target.value)}
+        />
+        <InputFieldWithLabel
+          required
+          label="Inactivity Limit (Seconds)"
+          placeholder="20"
+          value={jigglerConfigState?.inactivity_limit_seconds}
+          onChange={e => handleJigglerInactivityLimitSecondsChange(e.target.value)}
         />
       </div>
       <div className="mt-6 flex gap-x-2">

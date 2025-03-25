@@ -48,10 +48,9 @@ var defaultConfig = &Config{
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes
 	JigglerConfig: &JigglerConfig{
-		ActiveAfterSeconds: 20,
-		JitterEnabled:      false,
-		JitterPercentage:   .25,
-		ScheduleCronTab:    "*/5 * * * * *",
+		InactivityLimitSeconds: 20,
+		JitterPercentage:       0.0,
+		ScheduleCronTab:        "*/5 * * * * *",
 	},
 	TLSMode: "",
 	UsbConfig: &usbgadget.Config{

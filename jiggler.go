@@ -7,10 +7,9 @@ import (
 )
 
 type JigglerConfig struct {
-	ActiveAfterSeconds int     `json:"active_after_seconds"`
-	JitterEnabled      bool    `json:"jitter_enabled"`
-	JitterPercentage   float64 `json:"jitter_percentage"`
-	ScheduleCronTab    string  `json:"schedule_cron_tab"`
+	InactivityLimitSeconds float64 `json:"inactivity_limit_seconds"`
+	JitterPercentage       float64 `json:"jitter_percentage"`
+	ScheduleCronTab        string  `json:"schedule_cron_tab"`
 }
 
 var lastUserInput = time.Now()
@@ -94,13 +93,13 @@ func runJigglerCronTab() error {
 
 func runJiggler() {
 	if jigglerEnabled {
-		if config.JigglerConfig.JitterEnabled {
+		if config.JigglerConfig.JitterPercentage != 0 {
 			jitter := calculateJitterDuration(jobDelta)
 			logger.Infof("Jitter enabled, Sleeping for %v", jitter)
 			time.Sleep(jitter)
 		}
-		activeAfterSeconds := config.JigglerConfig.ActiveAfterSeconds
-		if time.Since(lastUserInput) > time.Duration(activeAfterSeconds)*time.Second {
+		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
+		if time.Since(lastUserInput) > time.Duration(inactivitySeconds)*time.Second {
 			//TODO: change to rel mouse
 			err := rpcAbsMouseReport(1, 1, 0)
 			if err != nil {
