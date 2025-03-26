@@ -1,11 +1,13 @@
-import { useCallback } from "react";
-import { Button } from "@components/Button";
-import { InputFieldWithLabel } from "./InputField";
+import { useCallback, useEffect, useState } from "react";
 
-import { useEffect, useState } from "react";
+import { Button } from "@components/Button";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
+
 import { useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
-import { SelectMenuBasic } from "@components/SelectMenuBasic";
+
+import { InputFieldWithLabel } from "./InputField";
+
 
 export interface JigglerConfig {
   inactivity_limit_seconds: number;
