@@ -28,6 +28,7 @@ type Config struct {
 	WakeOnLanDevices     []WakeOnLanDevice  `json:"wake_on_lan_devices"`
 	EdidString           string             `json:"hdmi_edid_string"`
 	ActiveExtension      string             `json:"active_extension"`
+	MetricsEnabled       bool               `json:"enable_metrics"`
 	DisplayMaxBrightness int                `json:"display_max_brightness"`
 	DisplayDimAfterSec   int                `json:"display_dim_after_sec"`
 	DisplayOffAfterSec   int                `json:"display_off_after_sec"`

@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -87,7 +86,7 @@ func setupRouter() *gin.Engine {
 	r.POST("/device/setup", handleSetup)
 
 	// A Prometheus metrics endpoint.
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	r.GET("/metrics", prometheusCheckAuthMiddleware(), gin.WrapH(promHandler))
 
 	// Protected routes (allows both password and noPassword modes)
 	protected := r.Group("/")
