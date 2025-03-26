@@ -85,6 +85,7 @@ func runJigglerCronTab() error {
 	s.Start()
 	delta, err := calculateJobDelta(s)
 	jobDelta = delta
+	logger.Infof("Time between jiggler runs: %v", jobDelta)
 	if err != nil {
 		return err
 	}
@@ -95,7 +96,7 @@ func runJiggler() {
 	if jigglerEnabled {
 		if config.JigglerConfig.JitterPercentage != 0 {
 			jitter := calculateJitterDuration(jobDelta)
-			logger.Infof("Jitter enabled, Sleeping for %v", jitter)
+			logger.Debugf("Jitter enabled, Sleeping for %v", jitter)
 			time.Sleep(jitter)
 		}
 		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
