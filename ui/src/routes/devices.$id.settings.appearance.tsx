@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
+
 import { SettingsPageHeader } from "../components/SettingsPageheader";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
+
 import { SettingsItem } from "./devices.$id.settings";
 
 export default function SettingsAppearanceRoute() {

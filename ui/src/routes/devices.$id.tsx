@@ -1,4 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  LoaderFunctionArgs,
+  Outlet,
+  Params,
+  redirect,
+  useLoaderData,
+  useLocation,
+  useNavigate,
+  useOutlet,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import { useInterval } from "usehooks-ts";
+import FocusTrap from "focus-trap-react";
+import { motion, AnimatePresence } from "framer-motion";
+
 import { cx } from "@/cva.config";
 import {
   DeviceSettingsState,
@@ -16,35 +32,22 @@ import {
   VideoState,
 } from "@/hooks/stores";
 import WebRTCVideo from "@components/WebRTCVideo";
-import {
-  LoaderFunctionArgs,
-  Outlet,
-  Params,
-  redirect,
-  useLoaderData,
-  useLocation,
-  useNavigate,
-  useOutlet,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import DashboardNavbar from "@components/Header";
-import { useInterval } from "usehooks-ts";
 import ConnectionStatsSidebar from "@/components/sidebar/connectionStats";
 import { JsonRpcRequest, useJsonRpc } from "@/hooks/useJsonRpc";
-import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard";
-import api from "../api";
-import { DeviceStatus } from "./welcome-local";
-import FocusTrap from "focus-trap-react";
 import Terminal from "@components/Terminal";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
+
+import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard";
+import api from "../api";
 import Modal from "../components/Modal";
-import { motion, AnimatePresence } from "motion/react";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 import { FeatureFlagProvider } from "../providers/FeatureFlagProvider";
-import { SystemVersionInfo } from "./devices.$id.settings.general.update";
 import notifications from "../notifications";
+
+import { SystemVersionInfo } from "./devices.$id.settings.general.update";
+import { DeviceStatus } from "./welcome-local";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -123,7 +126,7 @@ export default function KvmIdRoute() {
 
   const setIsTurnServerInUse = useRTCStore(state => state.setTurnServerInUse);
   const peerConnection = useRTCStore(state => state.peerConnection);
-
+  const peerConnectionState = useRTCStore(state => state.peerConnectionState);
   const setPeerConnectionState = useRTCStore(state => state.setPeerConnectionState);
   const setMediaMediaStream = useRTCStore(state => state.setMediaStream);
   const setPeerConnection = useRTCStore(state => state.setPeerConnection);
@@ -150,6 +153,7 @@ export default function KvmIdRoute() {
       // However, the onconnectionstatechange event doesn't fire when close() is called manually
       // So we need to explicitly update our state to maintain consistency
       // I don't know why this is happening, but this is the best way I can think of to handle it
+      // ALSO, this will render the connection error overlay linking to docs
       setPeerConnectionState("closed");
     },
     [peerConnection, setPeerConnectionState],
@@ -252,12 +256,19 @@ export default function KvmIdRoute() {
     setStartedConnectingAt(new Date());
     setConnectedAt(null);
 
-    const pc = new RTCPeerConnection({
-      // We only use STUN or TURN servers if we're in the cloud
-      ...(isInCloud && iceConfig?.iceServers
-        ? { iceServers: [iceConfig?.iceServers] }
-        : {}),
-    });
+    let pc: RTCPeerConnection;
+    try {
+      pc = new RTCPeerConnection({
+        // We only use STUN or TURN servers if we're in the cloud
+        ...(isInCloud && iceConfig?.iceServers
+          ? { iceServers: [iceConfig?.iceServers] }
+          : {}),
+      });
+    } catch (e) {
+      console.error(`Error creating peer connection: ${e}`);
+      closePeerConnection();
+      return;
+    }
 
     // Set up event listeners and data channels
     pc.onconnectionstatechange = () => {
@@ -293,8 +304,10 @@ export default function KvmIdRoute() {
       setPeerConnection(pc);
     } catch (e) {
       console.error(`Error creating offer: ${e}`);
+      closePeerConnection();
     }
   }, [
+    closePeerConnection,
     iceConfig?.iceServers,
     sdp,
     setDiskChannel,
@@ -312,9 +325,8 @@ export default function KvmIdRoute() {
     if (location.pathname.includes("other-session")) return;
 
     // If we're already connected or connecting, we don't need to connect
-    if (
-      ["connected", "connecting", "new"].includes(peerConnection?.connectionState ?? "")
-    ) {
+    // We have to use the state from the store, because the peerConnection.connectionState doesnt trigger a value change, if called manually from .close()
+    if (["connected", "connecting", "new"].includes(peerConnectionState ?? "")) {
       return;
     }
 
@@ -328,12 +340,7 @@ export default function KvmIdRoute() {
       connectWebRTC();
     }, 3000);
     return () => clearInterval(interval);
-  }, [
-    connectWebRTC,
-    connectionFailed,
-    location.pathname,
-    peerConnection?.connectionState,
-  ]);
+  }, [connectWebRTC, connectionFailed, location.pathname, peerConnectionState]);
 
   // On boot, if the connection state is undefined, we connect to the WebRTC
   useEffect(() => {

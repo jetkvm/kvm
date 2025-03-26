@@ -1,8 +1,9 @@
 import React from "react";
+import { FetcherWithComponents, Link, LinkProps, useNavigation } from "react-router-dom";
+
 import ExtLink from "@/components/ExtLink";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { cva, cx } from "@/cva.config";
-import { FetcherWithComponents, Link, LinkProps, useNavigation } from "react-router-dom";
 
 const sizes = {
   XS: "h-[28px] px-2 text-xs",
@@ -101,7 +102,7 @@ const iconVariants = cva({
   },
 });
 
-type ButtonContentPropsType = {
+interface ButtonContentPropsType {
   text?: string | React.ReactNode;
   LeadingIcon?: React.FC<{ className: string | undefined }> | null;
   TrailingIcon?: React.FC<{ className: string | undefined }> | null;
@@ -111,7 +112,7 @@ type ButtonContentPropsType = {
   size: keyof typeof sizes;
   theme: keyof typeof themes;
   loading?: boolean;
-};
+}
 
 function ButtonContent(props: ButtonContentPropsType) {
   const { text, LeadingIcon, TrailingIcon, fullWidth, className, textAlign, loading } =

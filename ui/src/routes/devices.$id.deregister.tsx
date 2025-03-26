@@ -6,6 +6,8 @@ import {
   useActionData,
   useLoaderData,
 } from "react-router-dom";
+import { ChevronLeftIcon } from "@heroicons/react/16/solid";
+
 import { Button, LinkButton } from "@components/Button";
 import Card from "@components/Card";
 import { CardHeader } from "@components/CardHeader";
@@ -13,7 +15,6 @@ import DashboardNavbar from "@components/Header";
 import { User } from "@/hooks/stores";
 import { checkAuth } from "@/main";
 import Fieldset from "@components/Fieldset";
-import { ChevronLeftIcon } from "@heroicons/react/16/solid";
 import { CLOUD_API } from "@/ui.config";
 
 interface LoaderData {
@@ -36,6 +37,7 @@ const action = async ({ request }: ActionFunctionArgs) => {
       return { message: "There was an error renaming your device. Please try again." };
     }
   } catch (e) {
+    console.error(e);
     return { message: "There was an error renaming your device. Please try again." };
   }
 

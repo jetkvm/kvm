@@ -1,14 +1,16 @@
-import { SettingsPageHeader } from "../components/SettingsPageheader";
 
-import { SettingsItem } from "./devices.$id.settings";
-import { useState } from "react";
-import { useEffect } from "react";
+import { useState , useEffect } from "react";
+
 import { useJsonRpc } from "@/hooks/useJsonRpc";
+
+import { SettingsPageHeader } from "../components/SettingsPageheader";
 import { Button } from "../components/Button";
 import notifications from "../notifications";
 import Checkbox from "../components/Checkbox";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 import { useDeviceStore } from "../hooks/stores";
+
+import { SettingsItem } from "./devices.$id.settings";
 
 export default function SettingsGeneralRoute() {
   const [send] = useJsonRpc();

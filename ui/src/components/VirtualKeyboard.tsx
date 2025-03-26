@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Keyboard from "react-simple-keyboard";
-import { Button } from "@components/Button";
-import Card from "@components/Card";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
+import { motion, AnimatePresence } from "framer-motion";
+
+import Card from "@components/Card";
+// eslint-disable-next-line import/order
+import { Button } from "@components/Button";
+
 import "react-simple-keyboard/build/css/index.css";
+
 import { useHidStore, useUiStore } from "@/hooks/stores";
-import { motion, AnimatePresence } from "motion/react";
 import { cx } from "@/cva.config";
 import { keys, modifiers } from "@/keyboardMappings";
 import useKeyboard from "@/hooks/useKeyboard";

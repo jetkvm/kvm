@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import {
   useDeviceSettingsStore,
   useHidStore,
@@ -15,9 +16,13 @@ import Actionbar from "@components/ActionBar";
 import InfoBar from "@components/InfoBar";
 import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { HDMIErrorOverlay, NoAutoplayPermissionsOverlay } from "./VideoOverlay";
-import { ConnectionErrorOverlay } from "./VideoOverlay";
-import { LoadingOverlay } from "./VideoOverlay";
+
+import {
+  HDMIErrorOverlay,
+  NoAutoplayPermissionsOverlay,
+  ConnectionErrorOverlay,
+  LoadingOverlay,
+} from "./VideoOverlay";
 
 export default function WebRTCVideo() {
   // Video and stream related refs and states
@@ -82,13 +87,13 @@ export default function WebRTCVideo() {
 
   const onVideoPlaying = useCallback(() => {
     setIsPlaying(true);
-    videoElm.current && updateVideoSizeStore(videoElm.current);
+    if (videoElm.current) updateVideoSizeStore(videoElm.current);
   }, [updateVideoSizeStore]);
 
   // On mount, get the video size
   useEffect(
     function updateVideoSizeOnMount() {
-      videoElm.current && updateVideoSizeStore(videoElm.current);
+      if (videoElm.current) updateVideoSizeStore(videoElm.current);
     },
     [setVideoClientSize, updateVideoSizeStore, setVideoSize],
   );

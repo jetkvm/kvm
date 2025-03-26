@@ -1,12 +1,13 @@
 import { CheckIcon } from "@heroicons/react/16/solid";
+
 import { cva, cx } from "@/cva.config";
 import Card from "@/components/Card";
 
-type Props = {
+interface Props {
   nSteps: number;
   currStepIdx: number;
   size?: keyof typeof sizes;
-};
+}
 
 const sizes = {
   SM: "text-xs leading-[12px]",

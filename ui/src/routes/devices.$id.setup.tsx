@@ -1,8 +1,3 @@
-import SimpleNavbar from "@components/SimpleNavbar";
-import GridBackground from "@components/GridBackground";
-import Container from "@components/Container";
-import StepCounter from "@components/StepCounter";
-import Fieldset from "@components/Fieldset";
 import {
   ActionFunctionArgs,
   Form,
@@ -12,11 +7,18 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
+
+import SimpleNavbar from "@components/SimpleNavbar";
+import GridBackground from "@components/GridBackground";
+import Container from "@components/Container";
+import StepCounter from "@components/StepCounter";
+import Fieldset from "@components/Fieldset";
 import { InputFieldWithLabel } from "@components/InputField";
 import { Button } from "@components/Button";
 import { checkAuth } from "@/main";
-import api from "../api";
 import { CLOUD_API } from "@/ui.config";
+
+import api from "../api";
 
 const loader = async ({ params }: LoaderFunctionArgs) => {
   await checkAuth();
