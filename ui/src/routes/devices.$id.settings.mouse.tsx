@@ -9,14 +9,15 @@ import { useDeviceSettingsStore, useSettingsStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { JigglerSetting } from "@components/JigglerSetting";
+import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
 
 import { FeatureFlag } from "../components/FeatureFlag";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { useFeatureFlag } from "../hooks/useFeatureFlag";
 
 import { SettingsItem } from "./devices.$id.settings";
-import { JigglerSetting } from "@components/JigglerSetting";
-import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
+
 
 type ScrollSensitivity = "low" | "default" | "high";
 

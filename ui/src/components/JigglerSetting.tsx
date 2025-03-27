@@ -37,19 +37,19 @@ const jigglerCrontabConfigs = [
 const jigglerJitterConfigs = [
   {
     label: "No Jitter",
-    value: "0.0",
+    value: "0",
   },
   {
     label: "10%",
-    value: ".1",
+    value: "20",
   },
   {
     label: "25%",
-    value: ".25",
+    value: "25",
   },
   {
     label: "50%",
-    value: ".5",
+    value: "50",
   },
 ];
 
@@ -75,13 +75,12 @@ const jigglerInactivityConfigs = [
 export function JigglerSetting() {
   const [send] = useJsonRpc();
   const [loading, setLoading] = useState(false);
-  const [inactivityLimitSeconds, setInactivityLimitSeconds] = useState("");
   const [jitterPercentage, setJitterPercentage] = useState("");
   const [scheduleCronTab, setScheduleCronTab] = useState("");
 
   const [jigglerConfigState, setJigglerConfigState] = useState<JigglerConfig>({
-    inactivity_limit_seconds: 20.0,
-    jitter_percentage:        0.0,
+    inactivity_limit_seconds: 20,
+    jitter_percentage:        0,
     schedule_cron_tab:        "*/20 * * * * *"
   });
 
@@ -90,28 +89,32 @@ export function JigglerSetting() {
       if ("error" in resp) return;
       const result = resp.result as JigglerConfig;
       setJigglerConfigState(result);
-      setInactivityLimitSeconds(String(result.inactivity_limit_seconds))
-      setJitterPercentage(String(result.jitter_percentage))
-      setScheduleCronTab(result.schedule_cron_tab)
+
+      const jitterPercentage = jigglerJitterConfigs.map(u => u.value).includes(result.jitter_percentage.toString())
+        ? result.jitter_percentage.toString()
+        : "custom";
+      setJitterPercentage(jitterPercentage)
+
+      const scheduleCronTab = jigglerCrontabConfigs.map(u => u.value).includes(result.schedule_cron_tab)
+        ? result.schedule_cron_tab
+        : "custom";
+      setScheduleCronTab(scheduleCronTab)
     });
-  }, [send, setInactivityLimitSeconds]);
+  }, [send]);
 
   useEffect(() => {
     syncJigglerConfig()
   }, [send, syncJigglerConfig]);
 
   const handleJigglerInactivityLimitSecondsChange = (value: string) => {
-    setInactivityLimitSeconds(value)
     setJigglerConfigState({ ...jigglerConfigState, inactivity_limit_seconds: Number(value) });
   };
 
   const handleJigglerJitterPercentageChange = (value: string) => {
-    setJitterPercentage(value)
     setJigglerConfigState({ ...jigglerConfigState, jitter_percentage: Number(value) });
   };
 
   const handleJigglerScheduleCronTabChange = (value: string) => {
-    setScheduleCronTab(value)
     setJigglerConfigState({ ...jigglerConfigState, schedule_cron_tab: value });
   };
 
@@ -121,7 +124,7 @@ export function JigglerSetting() {
       send("setJigglerConfig", { jigglerConfig }, async resp => {
         if ("error" in resp) {
           notifications.error(
-              `Failed to set jiggler config: ${resp.error.data || "Unknown error"}`,
+            `Failed to set jiggler config: ${resp.error.data || "Unknown error"}`,
           );
           setLoading(false);
           return;
@@ -146,23 +149,23 @@ export function JigglerSetting() {
           value={scheduleCronTab}
           fullWidth
           onChange={e => {
-            if (e.target.value === "custom") {
-              setScheduleCronTab(e.target.value);
-            } else {
-              handleJigglerScheduleCronTabChange(e.target.value)
+            setScheduleCronTab(e.target.value);
+            if (e.target.value != "custom") {
+              handleJigglerScheduleCronTabChange(e.target.value);
             }
           }}
-          options={[...jigglerCrontabConfigs, { value: "custom", label: "Custom" }]}
+          options={[...jigglerCrontabConfigs, {value: "custom", label: "Custom"}]}
         />
-        {jitterPercentage === "custom" && (
+        {scheduleCronTab === "custom" && (
           <InputFieldWithLabel
             required
             label="Jiggler Crontab"
-            placeholder="Enter Cron Tab"
-            value={scheduleCronTab}
+            placeholder="*/20 * * * * *"
             onChange={e => handleJigglerScheduleCronTabChange(e.target.value)}
           />
         )}
+      </div>
+      <div className="grid grid-cols-2 gap-4">
         <SelectMenuBasic
           size="SM"
           label="Jitter Percentage"
@@ -170,27 +173,31 @@ export function JigglerSetting() {
           value={jitterPercentage}
           fullWidth
           onChange={e => {
-            if (e.target.value === "custom") {
-              setJitterPercentage(e.target.value);
-            } else {
+            setJitterPercentage(e.target.value);
+            if (e.target.value != "custom") {
               handleJigglerJitterPercentageChange(e.target.value)
             }
           }}
-          options={[...jigglerJitterConfigs, { value: "custom", label: "Custom" }]}
+          options={[...jigglerJitterConfigs, {value: "custom", label: "Custom"}]}
         />
         {jitterPercentage === "custom" && (
           <InputFieldWithLabel
             required
             label="Jitter Percentage"
-            placeholder="0.0"
+            placeholder="30"
+            type="number"
+            min="1"
+            max="100"
             onChange={e => handleJigglerJitterPercentageChange(e.target.value)}
           />
         )}
+      </div>
+      <div className="grid grid-cols-2 gap-4">
         <SelectMenuBasic
           size="SM"
           label="Inactivity Limit Seconds"
           className="max-w-[192px]"
-          value={inactivityLimitSeconds}
+          value={jigglerConfigState.inactivity_limit_seconds}
           fullWidth
           onChange={e => {
             handleJigglerInactivityLimitSecondsChange(e.target.value);

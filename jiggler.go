@@ -1,18 +1,18 @@
 package kvm
 
 import (
+	"fmt"
 	"github.com/go-co-op/gocron/v2"
 	"math/rand"
 	"time"
 )
 
 type JigglerConfig struct {
-	InactivityLimitSeconds float64 `json:"inactivity_limit_seconds"`
-	JitterPercentage       float64 `json:"jitter_percentage"`
-	ScheduleCronTab        string  `json:"schedule_cron_tab"`
+	InactivityLimitSeconds int    `json:"inactivity_limit_seconds"`
+	JitterPercentage       int    `json:"jitter_percentage"`
+	ScheduleCronTab        string `json:"schedule_cron_tab"`
 }
 
-var lastUserInput = time.Now()
 var jigglerEnabled = false
 var jobDelta time.Duration = 0
 var scheduler gocron.Scheduler = nil
@@ -28,18 +28,22 @@ func rpcGetJigglerConfig() (JigglerConfig, error) {
 	return *config.JigglerConfig, nil
 }
 
-func rpcSetJigglerConfig(jigglerConfig JigglerConfig) {
+func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
+	logger.Infof("[jsonrpc.go:rpcSetJigglerConfig] jigglerConfig: %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab)
 	config.JigglerConfig = &jigglerConfig
 	err := removeExistingCrobJobs(scheduler)
 	if err != nil {
-		logger.Errorf("Error removing cron jobs from scheduler %v", err)
-		return
+		return fmt.Errorf("error removing cron jobs from scheduler %v", err)
 	}
 	err = runJigglerCronTab()
 	if err != nil {
-		logger.Errorf("Error scheduling jiggler crontab: %v", err)
-		return
+		return fmt.Errorf("error scheduling jiggler crontab: %v", err)
 	}
+	err = SaveConfig()
+	if err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
 }
 
 func removeExistingCrobJobs(s gocron.Scheduler) error {
@@ -100,7 +104,7 @@ func runJiggler() {
 			time.Sleep(jitter)
 		}
 		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
-		if time.Since(lastUserInput) > time.Duration(inactivitySeconds)*time.Second {
+		if time.Since(gadget.GetLastUserInputTime()) > time.Duration(inactivitySeconds)*time.Second {
 			//TODO: change to rel mouse
 			err := rpcAbsMouseReport(1, 1, 0)
 			if err != nil {
@@ -124,6 +128,6 @@ func calculateJobDelta(s gocron.Scheduler) (time.Duration, error) {
 }
 
 func calculateJitterDuration(delta time.Duration) time.Duration {
-	jitter := rand.Float64() * config.JigglerConfig.JitterPercentage * delta.Seconds()
+	jitter := rand.Float64() * float64(config.JigglerConfig.JitterPercentage) / 100 * delta.Seconds()
 	return time.Duration(jitter * float64(time.Second))
 }
