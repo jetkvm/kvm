@@ -201,3 +201,132 @@ video::-webkit-media-controls {
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Macro Component Styles */
+@keyframes macroFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes macroScaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.macro-animate-fadeIn { animation: macroFadeIn 0.2s ease-out; }
+.macro-animate-scaleIn { animation: macroScaleIn 0.2s ease-out; }
+
+/* Base Macro Element Styles */
+.macro-sortable, .macro-step, [data-macro-item] {
+  transition: box-shadow 0.15s ease-out, background-color 0.2s ease-out, transform 0.1s, border-color 0.2s;
+  position: relative;
+  touch-action: none;
+}
+
+.macro-sortable.dragging, .macro-step.dragging, [data-macro-item].dragging {
+  z-index: 10;
+  opacity: 0.8;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  @apply bg-blue-500/10;
+}
+
+.macro-sortable.drop-target, .macro-step.drop-target, [data-macro-item].drop-target {
+  @apply border-2 border-dashed border-blue-500 bg-blue-500/5;
+}
+
+.macro-sortable.ghost {
+  position: static;
+  opacity: 0.3;
+  pointer-events: none;
+  background-color: transparent;
+  border: 2px dashed rgb(148 163 184);
+  transform: none;
+}
+
+/* Drag Handle Styles */
+.drag-handle, .macro-sortable-handle {
+  cursor: grab;
+  touch-action: none;
+  @apply flex items-center p-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300;
+}
+
+.drag-handle:active, .macro-sortable-handle:active {
+  cursor: grabbing;
+}
+
+@media (hover: none) {
+  .macro-sortable, .macro-step, [data-macro-item] {
+    user-select: none;
+  }
+}
+
+/* Macro Form Elements */
+.macro-input {
+  @apply w-full rounded-md border border-slate-300 bg-white p-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white;
+}
+
+.macro-input-error {
+  @apply border-red-500 dark:border-red-500;
+}
+
+.macro-select, .macro-delay-select {
+  @apply w-full rounded-md border border-slate-300 bg-slate-50 p-2 text-sm shadow-sm 
+         focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 
+         dark:border-slate-600 dark:bg-slate-800 dark:text-white;
+}
+
+/* Macro Card Elements */
+.macro-card, .macro-step-card {
+  @apply rounded-md border border-slate-300 bg-white p-4 shadow-sm 
+         dark:border-slate-600 dark:bg-slate-800
+         transition-colors duration-200;
+}
+
+.macro-step-card:hover {
+  @apply border-blue-300 dark:border-blue-700;
+}
+
+/* Badge & Step Number Styles */
+.macro-key-badge, .macro-step-number {
+  @apply inline-flex items-center rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-200;
+}
+
+/* Section Styling Utilities */
+.macro-section {
+  @apply space-y-4 mt-2;
+}
+
+.macro-section-header {
+  @apply flex items-center justify-between;
+}
+
+.macro-section-title {
+  @apply text-sm font-medium text-slate-700 dark:text-slate-300;
+}
+
+.macro-section-subtitle {
+  @apply text-xs text-slate-500 dark:text-slate-400;
+}
+
+/* Error Styles */
+.macro-error {
+  @apply mb-4 rounded-md bg-red-50 p-3 dark:bg-red-900/30;
+}
+
+.macro-error-icon {
+  @apply h-5 w-5 text-red-400 dark:text-red-300;
+}
+
+.macro-error-text {
+  @apply text-sm font-medium text-red-800 dark:text-red-200;
+}
+
+/* Container Styles */
+.macro-modifiers-container {
+  @apply flex flex-wrap gap-2;
+}
+
+.macro-modifier-group {
+  @apply inline-flex flex-col rounded-md border border-slate-200 p-2 dark:border-slate-700;
+  min-width: fit-content;
+}

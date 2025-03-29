@@ -8,6 +8,7 @@ import {
   LuWrench,
   LuArrowLeft,
   LuPalette,
+  LuCommand,
 } from "react-icons/lu";
 import React, { useEffect, useRef, useState } from "react";
 
@@ -192,6 +193,17 @@ export default function SettingsRoute() {
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 [.active_&]:bg-blue-50 [.active_&]:!text-blue-700 md:[.active_&]:bg-transparent dark:[.active_&]:bg-blue-900 dark:[.active_&]:!text-blue-200 dark:md:[.active_&]:bg-transparent">
                       <LuPalette className="h-4 w-4 shrink-0" />
                       <h1>Appearance</h1>
+                    </div>
+                  </NavLink>
+                </div>
+                <div className="shrink-0">
+                  <NavLink
+                    to="macros"
+                    className={({ isActive }) => (isActive ? "active" : "")}
+                  >
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 [.active_&]:bg-blue-50 [.active_&]:!text-blue-700 md:[.active_&]:bg-transparent dark:[.active_&]:bg-blue-900 dark:[.active_&]:!text-blue-200 dark:md:[.active_&]:bg-transparent">
+                      <LuCommand className="h-4 w-4 shrink-0" />
+                      <h1>Keyboard Macros</h1>
                     </div>
                   </NavLink>
                 </div>

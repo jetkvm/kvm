@@ -40,6 +40,7 @@ import * as SettingsAccessIndexRoute from "./routes/devices.$id.settings.access.
 import SettingsHardwareRoute from "./routes/devices.$id.settings.hardware";
 import SettingsVideoRoute from "./routes/devices.$id.settings.video";
 import SettingsAppearanceRoute from "./routes/devices.$id.settings.appearance";
+import SettingsMacrosRoute from "./routes/devices.$id.settings.macros";
 import * as SettingsGeneralIndexRoute from "./routes/devices.$id.settings.general._index";
 import SettingsGeneralUpdateRoute from "./routes/devices.$id.settings.general.update";
 import SecurityAccessLocalAuthRoute from "./routes/devices.$id.settings.access.local-auth";
@@ -175,6 +176,10 @@ if (isOnDevice) {
               path: "appearance",
               element: <SettingsAppearanceRoute />,
             },
+            {
+              path: "macros",
+              element: <SettingsMacrosRoute />,
+            },
           ],
         },
       ],
@@ -282,6 +287,10 @@ if (isOnDevice) {
                     {
                       path: "appearance",
                       element: <SettingsAppearanceRoute />,
+                    },
+                    {
+                      path: "macros",
+                      element: <SettingsMacrosRoute />,
                     },
                   ],
                 },
