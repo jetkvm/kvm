@@ -750,7 +750,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
     const { sendFn } = get();
     if (!sendFn) {
       console.warn("JSON-RPC send function not available.");
-      return;
+      throw new Error("JSON-RPC send function not available");
     }
 
     if (macros.length > MAX_TOTAL_MACROS) {
@@ -781,22 +781,25 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
         sortOrder: macro.sortOrder !== undefined ? macro.sortOrder : index
       }));
 
-      set({ macros: macrosWithSortOrder });
-
-      await new Promise<void>((resolve, reject) => {
+      const response = await new Promise<JsonRpcResponse>((resolve) => {
         sendFn("setKeyboardMacros", { params: { macros: macrosWithSortOrder } }, (response) => {
-          if (response.error) {
-            console.error("Error saving macros:", response.error);
-            reject(new Error(response.error.message));
-            return;
-          }
-
-          resolve();
+          resolve(response);
         });
       });
+
+      if (response.error) {
+        console.error("Error saving macros:", response.error);
+        const errorMessage = typeof response.error.data === 'string'
+          ? response.error.data
+          : response.error.message || "Failed to save macros";
+        throw new Error(errorMessage);
+      }
+
+      // Only update the store if the request was successful
+      set({ macros: macrosWithSortOrder });
     } catch (error) {
       console.error("Failed to save macros:", error);
-      get().loadMacros();
+      throw error;
     } finally {
       set({ loading: false });
     }

@@ -7,6 +7,7 @@ import { SettingsPageHeader } from "../components/SettingsPageheader";
 import { Button } from "../components/Button";
 import { keys, modifiers } from "../keyboardMappings";
 import { useJsonRpc } from "../hooks/useJsonRpc";
+import notifications from "../notifications";
 
 const DEFAULT_DELAY = 50;
 
@@ -660,10 +661,13 @@ export default function SettingsMacrosRoute() {
       await saveMacros(normalizeSortOrders([...macros, macro]));
       resetNewMacro();
       setShowAddMacro(false);
+      notifications.success(`Macro "${macro.name}" created successfully`);
     } catch (error) {
       if (error instanceof Error) {
+        notifications.error(`Failed to create macro: ${error.message}`);
         showTemporaryError(error.message);
       } else {
+        notifications.error("Failed to create macro");
         showTemporaryError("Failed to save macro");
       }
     } finally {
@@ -703,7 +707,19 @@ export default function SettingsMacrosRoute() {
     const draggedItem = macroCopy.splice(dragItem.current, 1)[0];
     macroCopy.splice(dragOverItem.current, 0, draggedItem);
     const updatedMacros = normalizeSortOrders(macroCopy);
-    await saveMacros(updatedMacros);
+
+    try {
+      await saveMacros(updatedMacros);
+      notifications.success("Macro order updated successfully");
+    } catch (error) {
+      if (error instanceof Error) {
+        notifications.error(`Failed to reorder macros: ${error.message}`);
+        showTemporaryError(error.message);
+      } else {
+        notifications.error("Failed to reorder macros");
+        showTemporaryError("Failed to save reordered macros");
+      }
+    }
     
     const allItems = document.querySelectorAll('[data-macro-item]');
     allItems.forEach(el => {
@@ -738,10 +754,13 @@ export default function SettingsMacrosRoute() {
       await saveMacros(normalizeSortOrders(newMacros));
       setEditingMacro(null);
       clearErrors();
+      notifications.success(`Macro "${editingMacro.name}" updated successfully`);
     } catch (error) {
       if (error instanceof Error) {
+        notifications.error(`Failed to update macro: ${error.message}`);
         showTemporaryError(error.message);
       } else {
+        notifications.error("Failed to update macro");
         showTemporaryError("Failed to update macro");
       }
     } finally {
@@ -765,6 +784,9 @@ export default function SettingsMacrosRoute() {
   };
 
   const handleDeleteMacro = async (id: string) => {
+    const macroToBeDeleted = macros.find(m => m.id === id);
+    if (!macroToBeDeleted) return;
+
     setIsDeleting(true);
     try {
       const updatedMacros = normalizeSortOrders(macros.filter(macro => macro.id !== id));
@@ -772,10 +794,14 @@ export default function SettingsMacrosRoute() {
       if (editingMacro?.id === id) {
         setEditingMacro(null);
       }
+      setMacroToDelete(null);
+      notifications.success(`Macro "${macroToBeDeleted.name}" deleted successfully`);
     } catch (error) {
       if (error instanceof Error) {
+        notifications.error(`Failed to delete macro: ${error.message}`);
         showTemporaryError(error.message);
       } else {
+        notifications.error("Failed to delete macro");
         showTemporaryError("Failed to delete macro");
       }
     } finally {
@@ -783,7 +809,7 @@ export default function SettingsMacrosRoute() {
     }
   };
 
-  const handleDuplicateMacro = (macro: KeySequence) => {
+  const handleDuplicateMacro = async (macro: KeySequence) => {
     if (isMaxMacrosReached) {
       showTemporaryError(`Maximum of ${MAX_TOTAL_MACROS} macros allowed`);
       return;
@@ -804,11 +830,14 @@ export default function SettingsMacrosRoute() {
     }));
 
     try {
-      saveMacros(normalizeSortOrders([...macros, newMacroCopy]));
+      await saveMacros(normalizeSortOrders([...macros, newMacroCopy]));
+      notifications.success(`Macro "${newMacroCopy.name}" duplicated successfully`);
     } catch (error) {
       if (error instanceof Error) {
+        notifications.error(`Failed to duplicate macro: ${error.message}`);
         showTemporaryError(error.message);
       } else {
+        notifications.error("Failed to duplicate macro");
         showTemporaryError("Failed to duplicate macro");
       }
     }
@@ -834,7 +863,18 @@ export default function SettingsMacrosRoute() {
     macros,
     async (newMacros) => {
       const updatedMacros = normalizeSortOrders(newMacros);
-      await saveMacros(updatedMacros);
+      try {
+        await saveMacros(updatedMacros);
+        notifications.success("Macro order updated successfully");
+      } catch (error) {
+        if (error instanceof Error) {
+          notifications.error(`Failed to reorder macros: ${error.message}`);
+          showTemporaryError(error.message);
+        } else {
+          notifications.error("Failed to reorder macros");
+          showTemporaryError("Failed to save reordered macros");
+        }
+      }
     }
   );
 
