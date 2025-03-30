@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { LuPlus, LuTrash, LuSave, LuX, LuPenLine, LuLoader, LuGripVertical, LuInfo } from "react-icons/lu";
+import { LuPlus, LuTrash, LuX, LuPenLine, LuLoader, LuGripVertical, LuInfo } from "react-icons/lu";
 import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from "@headlessui/react";
 
 import { KeySequence, useMacrosStore } from "../hooks/stores";
@@ -8,6 +8,7 @@ import { Button } from "../components/Button";
 import { keys, modifiers } from "../keyboardMappings";
 import { useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
+import { SettingsItem } from "../routes/devices.$id.settings";
 
 const DEFAULT_DELAY = 50;
 
@@ -956,26 +957,22 @@ export default function SettingsMacrosRoute() {
       )}
 
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-slate-600 dark:text-slate-400">
-            <span className={macros.length >= MAX_TOTAL_MACROS ? "font-semibold text-amber-600 dark:text-amber-400" : ""}>
-              Macros: {macros.length}/{MAX_TOTAL_MACROS}
-            </span>
-            {macros.length >= MAX_TOTAL_MACROS && (
-              <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(maximum reached)</span>
+        <SettingsItem 
+          title="Macros"
+          description={`${macros.length}/${MAX_TOTAL_MACROS}`}
+        >
+          <div className="flex items-center gap-2">
+            {!showAddMacro && (
+              <Button
+                size="SM"
+                theme="primary"
+                text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
+                onClick={() => setShowAddMacro(true)}
+                disabled={isMaxMacrosReached}
+              />
             )}
           </div>
-          {!showAddMacro && (
-            <Button
-              size="XS"
-              theme="primary"
-              text={isMaxMacrosReached ? `Max (${MAX_TOTAL_MACROS})` : "Add New"}
-              LeadingIcon={LuPlus}
-              onClick={() => setShowAddMacro(true)}
-              disabled={isMaxMacrosReached}
-            />
-          )}
-        </div>
+        </SettingsItem>
       </div>
 
       {loading && (
@@ -1127,29 +1124,30 @@ export default function SettingsMacrosRoute() {
                       />
                     </div>
                   ) : (
-                    <Button
-                      size="SM"
-                      theme="light"
-                      text="Cancel"
-                      LeadingIcon={LuX}
-                      onClick={() => {
-                        if (newMacro.name || newMacro.description || newMacro.steps?.some(s => s.keys?.length || s.modifiers?.length)) {
-                          setShowClearConfirm(true);
-                        } else {
-                          resetNewMacro();
-                          setShowAddMacro(false);
-                        }
-                      }}
-                    />
+                    <div className="flex gap-x-2">
+                      <Button
+                        size="SM"
+                        theme="primary"
+                        text={isSaving ? "Saving..." : "Save Macro"}
+                        onClick={handleAddMacro}
+                        disabled={isSaving}
+                      />
+                      <Button
+                        size="SM"
+                        theme="light"
+                        text="Cancel"
+                        LeadingIcon={LuX}
+                        onClick={() => {
+                          if (newMacro.name || newMacro.description || newMacro.steps?.some(s => s.keys?.length || s.modifiers?.length)) {
+                            setShowClearConfirm(true);
+                          } else {
+                            resetNewMacro();
+                            setShowAddMacro(false);
+                          }
+                        }}
+                      />
+                    </div>
                   )}
-                  <Button
-                    size="SM"
-                    theme="primary"
-                    text={isSaving ? "Saving..." : "Save Macro"}
-                    LeadingIcon={isSaving ? LuLoader : LuSave}
-                    onClick={handleAddMacro}
-                    disabled={isSaving}
-                  />
                 </div>
               </div>
             </div>
@@ -1157,7 +1155,6 @@ export default function SettingsMacrosRoute() {
         )}
         {macros.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-slate-900 dark:text-white">Saved Macros</h3>
             
             {macros.length === 0 ? (
               <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-4">
@@ -1284,24 +1281,25 @@ export default function SettingsMacrosRoute() {
                         </div>
                         
                         <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
-                          <Button
-                            size="SM"
-                            theme="light"
-                            text="Cancel"
-                            LeadingIcon={LuX}
-                            onClick={() => {
-                              setEditingMacro(null);
-                              setErrors({});
-                            }}
-                          />
-                          <Button
-                            size="SM"
-                            theme="primary"
-                            text={isUpdating ? "Saving..." : "Save Changes"}
-                            LeadingIcon={isUpdating ? LuLoader : LuSave}
-                            onClick={handleUpdateMacro}
-                            disabled={isUpdating}
-                          />
+                          <div className="flex gap-x-2">
+                            <Button
+                              size="SM"
+                              theme="primary"
+                              text={isUpdating ? "Saving..." : "Save Changes"}
+                              onClick={handleUpdateMacro}
+                              disabled={isUpdating}
+                            />
+                            <Button
+                              size="SM"
+                              theme="light"
+                              text="Cancel"
+                              LeadingIcon={LuX}
+                              onClick={() => {
+                                setEditingMacro(null);
+                                setErrors({});
+                              }}
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
