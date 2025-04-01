@@ -61,7 +61,7 @@ func (m *KeyboardMacro) Validate() error {
 	}
 
 	if len(m.Steps) > MaxStepsPerMacro {
-		m.Steps = m.Steps[:MaxStepsPerMacro]
+		return fmt.Errorf("too many steps in macro (max %d)", MaxStepsPerMacro)
 	}
 
 	for i := range m.Steps {
