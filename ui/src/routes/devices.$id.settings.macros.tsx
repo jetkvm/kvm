@@ -1,19 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { LuPlus, LuTrash, LuX, LuPenLine, LuLoader, LuGripVertical, LuInfo, LuCopy, LuArrowUp, LuArrowDown } from "react-icons/lu";
-import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from "@headlessui/react";
 
-import { KeySequence, useMacrosStore } from "../hooks/stores";
+import { KeySequence, useMacrosStore } from "@/hooks/stores";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
 import { Button } from "@/components/Button";
 import Checkbox from "@/components/Checkbox";
-import { keys, modifiers } from "../keyboardMappings";
-import { useJsonRpc } from "../hooks/useJsonRpc";
-import notifications from "../notifications";
-import { SettingsItem } from "../routes/devices.$id.settings";
+import { keys, modifiers, keyDisplayMap, modifierDisplayMap } from "@/keyboardMappings";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
+import notifications from "@/notifications";
+import { SettingsItem } from "@/routes/devices.$id.settings";
 import { InputFieldWithLabel, FieldError } from "@/components/InputField";
 import Fieldset from "@/components/Fieldset";
 import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import EmptyCard from "@/components/EmptyCard";
+import { Combobox } from "@/components/Combobox";
 
 const DEFAULT_DELAY = 50;
 
@@ -38,10 +38,15 @@ const generateId = () => {
   return `macro-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 };
 
-const keyOptions = Object.keys(keys).map(key => ({
-  value: key,
-  label: key,
-}));
+// Filter out modifier keys since they're handled in the modifiers section
+const modifierKeyPrefixes = ['Alt', 'Control', 'Shift', 'Meta'];
+
+const keyOptions = Object.keys(keys)
+  .filter(key => !modifierKeyPrefixes.some(prefix => key.startsWith(prefix)))
+  .map(key => ({
+    value: key,
+    label: keyDisplayMap[key] || key,
+  }));
 
 const modifierOptions = Object.keys(modifiers).map(modifier => ({
   value: modifier,
@@ -55,63 +60,6 @@ const groupedModifiers = {
   Meta: modifierOptions.filter(mod => mod.value.startsWith('Meta')),
 };
 
-interface KeyComboboxProps {
-  stepIndex: number;
-  step: MacroStep;
-  onSelect: (option: KeyOptionData) => void;
-  query: string;
-  onQueryChange: (query: string) => void;
-  getFilteredOptions: () => KeyOption[];
-  disabled?: boolean;
-}
-
-function KeyCombobox({
-  onSelect,
-  query,
-  onQueryChange,
-  getFilteredOptions,
-  disabled = false,
-}: KeyComboboxProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  return (
-    <div className="relative w-full">
-      <Combobox immediate onChange={onSelect} disabled={disabled}>
-        {() => (
-          <>
-            <div className="relative">
-              <ComboboxInput
-                ref={inputRef}
-                className={`macro-input ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
-                placeholder={disabled ? "Max keys reached" : "Search for key..."}
-                displayValue={() => query}
-                onChange={(event) => onQueryChange(event.target.value)}
-                disabled={disabled}
-              />
-            </div>
-            
-            <ComboboxOptions className="absolute left-0 z-50 mt-1 w-full max-h-60 overflow-auto rounded-md bg-white dark:bg-slate-800 py-1 text-sm shadow-lg">
-              {getFilteredOptions().map((option) => (
-                <ComboboxOption 
-                  key={option.value} 
-                  value={option}
-                  className="cursor-default select-none py-1.5 px-3 ui-active:bg-blue-100 ui-active:text-blue-900 dark:text-slate-300 dark:ui-active:bg-blue-900/40 dark:ui-active:text-blue-200"
-                >
-                  {option.label}
-                </ComboboxOption>
-              ))}
-              {getFilteredOptions().length === 0 && (
-                <div className="py-2 px-3 text-sm text-slate-500 dark:text-slate-400">
-                  No matching keys found
-                </div>
-              )}
-            </ComboboxOptions>
-          </>
-        )}
-      </Combobox>
-    </div>
-  );
-}
 
 const PRESET_DELAYS = [
   { value: "50", label: "50ms" },
@@ -256,17 +204,18 @@ function MacroStepCard({
             Keys:
           </label>
           
-          <div className="macro-key-group flex flex-wrap gap-1 mb-2">
+          <div className="macro-key-group flex flex-wrap gap-1 pb-2">
             {ensureArray(step.keys).map((key, keyIndex) => (
               <span
                 key={keyIndex}
-                className="inline-flex items-center rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
+                className="inline-flex items-center rounded-md bg-blue-100 px-1 text-xs font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
               >
                 <span className="px-1">
-                  {key}
+                  {keyDisplayMap[key] || key}
                 </span>
                 <Button
                   size="XS"
+                  className=""
                   theme="blank"
                   onClick={() => {
                     const newKeys = ensureArray(step.keys).filter((_, i) => i !== keyIndex);
@@ -277,22 +226,19 @@ function MacroStepCard({
               </span>
             ))}
           </div>
-
-          <KeyCombobox
-            stepIndex={stepIndex}
-            step={step}
-            onSelect={onKeySelect}
-            query={keyQuery}
-            onQueryChange={onKeyQueryChange}
-            getFilteredOptions={getFilteredKeys}
-            disabled={ensureArray(step.keys).length >= MAX_KEYS_PER_STEP}
-          />
-          
-          {ensureArray(step.keys).length >= MAX_KEYS_PER_STEP && (
-            <span className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-              (max keys reached)
-            </span>
-          )}
+          <div className="relative w-full">
+            <Combobox<KeyOption>
+              onChange={(value: KeyOption) => onKeySelect(value)}
+              displayValue={() => keyQuery}
+              onInputChange={onKeyQueryChange}
+              options={getFilteredKeys}
+              disabledMessage="Max keys reached"
+              size="SM"
+              disabled={ensureArray(step.keys).length >= MAX_KEYS_PER_STEP}
+              placeholder={ensureArray(step.keys).length >= MAX_KEYS_PER_STEP ? "Max keys reached" : "Search for key..."}
+              emptyMessage="No matching keys found"
+            />
+          </div>
         </div>
         
         <div className="w-full flex flex-col gap-1">
@@ -330,9 +276,17 @@ const updateStepKeys = (
   showTemporaryError: (msg: string) => void
 ) => {
   const newSteps = [...steps];
+  
+  // Check if the step at stepIndex exists
+  if (!newSteps[stepIndex]) {
+    console.error(`Step at index ${stepIndex} does not exist`);
+    return steps; // Return original steps to avoid mutation
+  }
+  
   if (keyOption.keys) {
     newSteps[stepIndex].keys = keyOption.keys;
   } else if (keyOption.value) {
+    // Initialize keys array if it doesn't exist
     if (!newSteps[stepIndex].keys) {
       newSteps[stepIndex].keys = [];
     }
@@ -536,10 +490,18 @@ export default function SettingsMacrosRoute() {
       ? (editKeyQueries[stepIndex] || '')
       : (keyQueries[stepIndex] || '');
     
+    const currentStep = isEditing 
+      ? editingMacro?.steps[stepIndex] 
+      : newMacro.steps?.[stepIndex];
+    
+    const selectedKeys = ensureArray(currentStep?.keys);
+    
+    const availableKeys = keyOptions.filter(option => !selectedKeys.includes(option.value));
+    
     if (query === '') {
-      return keyOptions;
+      return availableKeys;
     } else {
-      return keyOptions.filter(option => option.label.toLowerCase().includes(query.toLowerCase()));
+      return availableKeys.filter(option => option.label.toLowerCase().includes(query.toLowerCase()));
     }
   };
   
@@ -1318,15 +1280,15 @@ export default function SettingsMacrosRoute() {
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 overflow-hidden">
                       <span className="flex flex-wrap items-center">
                         {macro.steps.slice(0, 3).map((step, stepIndex) => {
-                          const modifiersText = ensureArray(step.modifiers).length > 0 
-                            ? ensureArray(step.modifiers).map(m => m.replace(/^(Control|Alt|Shift|Meta)(Left|Right)$/, "$1")).join(' + ')
+                          const keysText = ensureArray(step.keys).length > 0 
+                            ? ensureArray(step.keys).map(key => keyDisplayMap[key] || key).join(' + ') 
                             : '';
-                          
-                          const keysText = ensureArray(step.keys).length > 0 ? ensureArray(step.keys).join(' + ') : '';
-                          const combinedText = (modifiersText || keysText) 
-                            ? [modifiersText, keysText].filter(Boolean).join(' + ')
+                          const modifiersDisplayText = ensureArray(step.modifiers).length > 0
+                            ? ensureArray(step.modifiers).map(m => modifierDisplayMap[m] || m).join(' + ')
+                            : '';
+                          const combinedText = (modifiersDisplayText || keysText) 
+                            ? [modifiersDisplayText, keysText].filter(Boolean).join(' + ')
                             : 'Delay only';
-                          
                           return (
                             <span key={stepIndex} className="inline-flex items-center my-0.5">
                               {stepIndex > 0 && <span className="mx-1 text-blue-400 dark:text-blue-500">→</span>}
