@@ -161,7 +161,7 @@ export function JigglerSetting() {
             required
             label="Jiggler Crontab"
             placeholder="*/20 * * * * *"
-            value={scheduleCronTab}
+            defaultValue={jigglerConfigState.schedule_cron_tab}
             onChange={e => handleJigglerScheduleCronTabChange(e.target.value)}
           />
         )}
@@ -186,7 +186,7 @@ export function JigglerSetting() {
             required
             label="Jitter Percentage"
             placeholder="25"
-            value={jitterPercentage}
+            defaultValue={jigglerConfigState.jitter_percentage}
             type="number"
             min="1"
             max="100"
