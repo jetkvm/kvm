@@ -1,14 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { LuPlus, LuTrash, LuX, LuPenLine, LuLoader, LuGripVertical, LuInfo } from "react-icons/lu";
+import { LuPlus, LuTrash, LuX, LuPenLine, LuLoader, LuGripVertical, LuInfo, LuCopy, LuArrowUp, LuArrowDown } from "react-icons/lu";
 import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from "@headlessui/react";
 
 import { KeySequence, useMacrosStore } from "../hooks/stores";
-import { SettingsPageHeader } from "../components/SettingsPageheader";
-import { Button } from "../components/Button";
+import { SettingsPageHeader } from "@/components/SettingsPageheader";
+import { Button } from "@/components/Button";
+import Checkbox from "@/components/Checkbox";
 import { keys, modifiers } from "../keyboardMappings";
 import { useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
 import { SettingsItem } from "../routes/devices.$id.settings";
+import { InputFieldWithLabel, FieldError } from "@/components/InputField";
+import Fieldset from "@/components/Fieldset";
+import { SelectMenuBasic } from "@/components/SelectMenuBasic";
+import EmptyCard from "@/components/EmptyCard";
 
 const DEFAULT_DELAY = 50;
 
@@ -109,15 +114,15 @@ function KeyCombobox({
 }
 
 const PRESET_DELAYS = [
-  { value: 50, label: "50ms" },
-  { value: 100, label: "100ms" },
-  { value: 200, label: "200ms" },
-  { value: 300, label: "300ms" },
-  { value: 500, label: "500ms" },
-  { value: 750, label: "750ms" },
-  { value: 1000, label: "1000ms" },
-  { value: 1500, label: "1500ms" },
-  { value: 2000, label: "2000ms" },
+  { value: "50", label: "50ms" },
+  { value: "100", label: "100ms" },
+  { value: "200", label: "200ms" },
+  { value: "300", label: "300ms" },
+  { value: "500", label: "500ms" },
+  { value: "750", label: "750ms" },
+  { value: "1000", label: "1000ms" },
+  { value: "1500", label: "1500ms" },
+  { value: "2000", label: "2000ms" },
 ];
 
 const MAX_STEPS_PER_MACRO = 10;
@@ -171,26 +176,20 @@ function MacroStepCard({
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="p-1 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-400 disabled:opacity-50"
+            <Button
+              size="XS"
+              theme="light"
               onClick={onMoveUp}
               disabled={stepIndex === 0}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="m18 15-6-6-6 6"/>
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="p-1 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-400 disabled:opacity-50"
+              LeadingIcon={LuArrowUp}
+            />
+            <Button
+              size="XS"
+              theme="light"
               onClick={onMoveDown}
               disabled={isLastStep}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="m6 9 6 6 6-6"/>
-              </svg>
-            </button>
+              LeadingIcon={LuArrowDown}
+            />
           </div>
           <span className="macro-step-number flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
             {stepIndex + 1}
@@ -199,18 +198,13 @@ function MacroStepCard({
         
         <div className="flex items-center space-x-2">
           {onDelete && (
-            <button
-              type="button"
-              className="flex items-center text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            <Button
+              size="XS"
+              theme="danger"
+              text="Delete"
               onClick={onDelete}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18"></path>
-                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-              </svg>
-              <span className="ml-1">Delete</span>
-            </button>
+              LeadingIcon={LuTrash}
+              />
           )}
         </div>
       </div>
@@ -236,9 +230,9 @@ function MacroStepCard({
                           : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700'
                       }`}
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         className="sr-only"
+                        size="SM"
                         checked={ensureArray(step.modifiers).includes(option.value)}
                         onChange={e => {
                           const modifiersArray = ensureArray(step.modifiers);
@@ -266,19 +260,20 @@ function MacroStepCard({
             {ensureArray(step.keys).map((key, keyIndex) => (
               <span
                 key={keyIndex}
-                className="macro-key-badge inline-flex items-center rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
+                className="inline-flex items-center rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
               >
-                {key}
-                <button
-                  type="button"
-                  className="ml-1 text-xs text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                <span className="px-1">
+                  {key}
+                </span>
+                <Button
+                  size="XS"
+                  theme="blank"
                   onClick={() => {
                     const newKeys = ensureArray(step.keys).filter((_, i) => i !== keyIndex);
                     onKeySelect({ value: null, keys: newKeys });
                   }}
-                >
-                  ×
-                </button>
+                  LeadingIcon={LuX}
+                />
               </span>
             ))}
           </div>
@@ -313,17 +308,13 @@ function MacroStepCard({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <select
-              className="w-full rounded-md border border-slate-300 bg-slate-50 p-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-              value={step.delay}
+            <SelectMenuBasic
+              size="SM"
+              fullWidth
+              value={step.delay.toString()}
               onChange={(e) => onDelayChange(parseInt(e.target.value, 10))}
-            >
-              {PRESET_DELAYS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              options={PRESET_DELAYS}
+            />
           </div>
         </div>
       </div>
@@ -928,52 +919,38 @@ export default function SettingsMacrosRoute() {
   const ErrorMessage = ({ error }: { error?: string }) => {
     if (!error) return null;
     return (
-      <p className="mt-1 text-xs text-red-500 dark:text-red-400">
-        {error}
-      </p>
+      <FieldError error={error} />
     );
   };
 
   return (
     <div className="space-y-4">
-      <SettingsPageHeader
-        title="Keyboard Macros"
-        description="Create and manage keyboard macros for quick actions"
-      />
-
-      {errorMessage && (
-        <div className="macro-error">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="macro-error-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.414 1.414L10 11.414l1.72 1.72a.75.75 0 101.414-1.414L11.414 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.586 8.28 7.22z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="macro-error-text">{errorMessage}</h3>
-            </div>
+          <SettingsPageHeader
+            title="Keyboard Macros"
+            description="Create and manage keyboard macros for quick actions"
+        />
+        {macros.length > 0 && (
+          <div className="flex items-center justify-between mb-4">
+            <SettingsItem 
+              title="Macros"
+              description={`${macros.length}/${MAX_TOTAL_MACROS}`}
+            >
+              <div className="flex items-center gap-2">
+                {!showAddMacro && (
+                  <Button
+                    size="SM"
+                    theme="primary"
+                    text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
+                    onClick={() => setShowAddMacro(true)}
+                    disabled={isMaxMacrosReached}
+                  />
+                )}
+              </div>
+            </SettingsItem>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="flex items-center justify-between mb-4">
-        <SettingsItem 
-          title="Macros"
-          description={`${macros.length}/${MAX_TOTAL_MACROS}`}
-        >
-          <div className="flex items-center gap-2">
-            {!showAddMacro && (
-              <Button
-                size="SM"
-                theme="primary"
-                text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
-                onClick={() => setShowAddMacro(true)}
-                disabled={isMaxMacrosReached}
-              />
-            )}
-          </div>
-        </SettingsItem>
-      </div>
+      {errorMessage && (<FieldError error={errorMessage} />)}
 
       {loading && (
         <div className="flex items-center justify-center p-8">
@@ -986,12 +963,14 @@ export default function SettingsMacrosRoute() {
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-semibold text-black dark:text-white">Add New Macro</h3>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <div className="flex flex-col">
-                <input
+            <Fieldset>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <InputFieldWithLabel
                   type="text"
-                  className={`macro-input ${errors.name ? 'border-red-500 dark:border-red-500' : ''}`}
+                  label="Macro Name"
+                  placeholder="Macro Name"
                   value={newMacro.name}
+                  error={errors.name}
                   onChange={e => {
                     setNewMacro(prev => ({ ...prev, name: e.target.value }));
                     if (errors.name) {
@@ -1000,15 +979,13 @@ export default function SettingsMacrosRoute() {
                       setErrors(newErrors);
                     }
                   }}
-                  placeholder="Macro Name"
                 />
-                <ErrorMessage error={errors.name} />
-              </div>
-              <div className="flex flex-col">
-                <input
+                <InputFieldWithLabel
                   type="text"
-                  className={`macro-input ${errors.description ? 'border-red-500 dark:border-red-500' : ''}`}
+                  label="Description"
+                  placeholder="Description (optional)"
                   value={newMacro.description}
+                  error={errors.description}
                   onChange={e => {
                     setNewMacro(prev => ({ ...prev, description: e.target.value }));
                     if (errors.description) {
@@ -1017,11 +994,9 @@ export default function SettingsMacrosRoute() {
                       setErrors(newErrors);
                     }
                   }}
-                  placeholder="Description (optional)"
                 />
-                <ErrorMessage error={errors.description} />
               </div>
-            </div>
+            </Fieldset>
             
             <div className="mt-4">
               <div className="macro-section-header">
@@ -1040,396 +1015,387 @@ export default function SettingsMacrosRoute() {
               <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 You can add up to {MAX_STEPS_PER_MACRO} steps per macro
               </div>
-              <div className="mt-2 space-y-4">
-                {(newMacro.steps || []).map((step, stepIndex) => (
-                  <MacroStepCard
-                    key={stepIndex}
-                    step={step}
-                    stepIndex={stepIndex}
-                    onDelete={newMacro.steps && newMacro.steps.length > 1 ? () => {
-                      const newSteps = [...(newMacro.steps || [])];
-                      newSteps.splice(stepIndex, 1);
-                      setNewMacro(prev => ({ ...prev, steps: newSteps }));
-                    } : undefined}
-                    onMoveUp={() => {
-                      const newSteps = handleStepMove(stepIndex, 'up', newMacro.steps || []);
-                      setNewMacro(prev => ({ ...prev, steps: newSteps }));
-                    }}
-                    onMoveDown={() => {
-                      const newSteps = handleStepMove(stepIndex, 'down', newMacro.steps || []);
-                      setNewMacro(prev => ({ ...prev, steps: newSteps }));
-                    }}
-                    isDesktop={isDesktop}
-                    onKeySelect={(option) => handleKeySelect(stepIndex, option)}
-                    onKeyQueryChange={(query) => handleKeyQueryChange(stepIndex, query)}
-                    keyQuery={keyQueries[stepIndex] || ''}
-                    getFilteredKeys={() => getFilteredKeys(stepIndex)}
-                    onModifierChange={(modifiers) => handleModifierChange(stepIndex, modifiers)}
-                    onDelayChange={(delay) => handleDelayChange(stepIndex, delay)}
-                    isLastStep={stepIndex === (newMacro.steps?.length || 0) - 1}
-                  />
-                ))}
-
-                <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
-                  <button
-                    type="button"
-                    className={`w-full flex items-center justify-center gap-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                      isMaxStepsReachedForNewMacro
-                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
-                    }`}
-                    onClick={() => {
-                      if (isMaxStepsReachedForNewMacro) {
-                        showTemporaryError(`You can only add a maximum of ${MAX_STEPS_PER_MACRO} steps per macro.`);
-                        return;
-                      }
-                      
-                      setNewMacro(prev => ({
-                        ...prev,
-                        steps: [
-                          ...(prev.steps || []), 
-                          { keys: [], modifiers: [], delay: DEFAULT_DELAY }
-                        ],
-                      }));
-                      clearErrors();
-                    }}
-                    disabled={isMaxStepsReachedForNewMacro}
-                  >
-                    <LuPlus className="h-4 w-4" />
-                    <span>Add Step {isMaxStepsReachedForNewMacro && `(${MAX_STEPS_PER_MACRO} max)`}</span>
-                  </button>
+              <Fieldset>
+                <div className="mt-2 space-y-4">
+                  {(newMacro.steps || []).map((step, stepIndex) => (
+                    <MacroStepCard
+                      key={stepIndex}
+                      step={step}
+                      stepIndex={stepIndex}
+                      onDelete={newMacro.steps && newMacro.steps.length > 1 ? () => {
+                        const newSteps = [...(newMacro.steps || [])];
+                        newSteps.splice(stepIndex, 1);
+                        setNewMacro(prev => ({ ...prev, steps: newSteps }));
+                      } : undefined}
+                      onMoveUp={() => {
+                        const newSteps = handleStepMove(stepIndex, 'up', newMacro.steps || []);
+                        setNewMacro(prev => ({ ...prev, steps: newSteps }));
+                      }}
+                      onMoveDown={() => {
+                        const newSteps = handleStepMove(stepIndex, 'down', newMacro.steps || []);
+                        setNewMacro(prev => ({ ...prev, steps: newSteps }));
+                      }}
+                      isDesktop={isDesktop}
+                      onKeySelect={(option) => handleKeySelect(stepIndex, option)}
+                      onKeyQueryChange={(query) => handleKeyQueryChange(stepIndex, query)}
+                      keyQuery={keyQueries[stepIndex] || ''}
+                      getFilteredKeys={() => getFilteredKeys(stepIndex)}
+                      onModifierChange={(modifiers) => handleModifierChange(stepIndex, modifiers)}
+                      onDelayChange={(delay) => handleDelayChange(stepIndex, delay)}
+                      isLastStep={stepIndex === (newMacro.steps?.length || 0) - 1}
+                    />
+                  ))}
                 </div>
+              </Fieldset>
 
-                <div className="mt-6 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
-                  {showClearConfirm ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-600 dark:text-slate-400">
-                        Cancel changes?
-                      </span>
-                      <Button
-                        size="SM"
-                        theme="danger"
-                        text="Yes"
-                        onClick={() => {
+              <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+                <Button
+                  size="MD"
+                  theme="light"
+                  fullWidth
+                  LeadingIcon={LuPlus}
+                  text={`Add Step ${isMaxStepsReachedForNewMacro ? `(${MAX_STEPS_PER_MACRO} max)` : ''}`}
+                  onClick={() => {
+                    if (isMaxStepsReachedForNewMacro) {
+                      showTemporaryError(`You can only add a maximum of ${MAX_STEPS_PER_MACRO} steps per macro.`);
+                      return;
+                    }
+                    
+                    setNewMacro(prev => ({
+                      ...prev,
+                      steps: [
+                        ...(prev.steps || []), 
+                        { keys: [], modifiers: [], delay: DEFAULT_DELAY }
+                      ],
+                    }));
+                    clearErrors();
+                  }}
+                  disabled={isMaxStepsReachedForNewMacro}
+                />
+              </div>
+
+              <div className="mt-6 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
+                {showClearConfirm ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-600 dark:text-slate-400">
+                      Cancel changes?
+                    </span>
+                    <Button
+                      size="SM"
+                      theme="danger"
+                      text="Yes"
+                      onClick={() => {
+                        resetNewMacro();
+                        setShowAddMacro(false);
+                        setShowClearConfirm(false);
+                      }}
+                    />
+                    <Button
+                      size="SM"
+                      theme="light"
+                      text="No"
+                      onClick={() => setShowClearConfirm(false)}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex gap-x-2">
+                    <Button
+                      size="SM"
+                      theme="primary"
+                      text={isSaving ? "Saving..." : "Save Macro"}
+                      onClick={handleAddMacro}
+                      disabled={isSaving}
+                    />
+                    <Button
+                      size="SM"
+                      theme="light"
+                      text="Cancel"
+                      onClick={() => {
+                        if (newMacro.name || newMacro.description || newMacro.steps?.some(s => s.keys?.length || s.modifiers?.length)) {
+                          setShowClearConfirm(true);
+                        } else {
                           resetNewMacro();
                           setShowAddMacro(false);
-                          setShowClearConfirm(false);
-                        }}
-                      />
-                      <Button
-                        size="SM"
-                        theme="light"
-                        text="No"
-                        onClick={() => setShowClearConfirm(false)}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex gap-x-2">
-                      <Button
-                        size="SM"
-                        theme="primary"
-                        text={isSaving ? "Saving..." : "Save Macro"}
-                        onClick={handleAddMacro}
-                        disabled={isSaving}
-                      />
-                      <Button
-                        size="SM"
-                        theme="light"
-                        text="Cancel"
-                        LeadingIcon={LuX}
-                        onClick={() => {
-                          if (newMacro.name || newMacro.description || newMacro.steps?.some(s => s.keys?.length || s.modifiers?.length)) {
-                            setShowClearConfirm(true);
-                          } else {
-                            resetNewMacro();
-                            setShowAddMacro(false);
-                          }
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
+                        }
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )}
+        {macros.length === 0 && !showAddMacro && (
+          <EmptyCard
+            headline="No macros created yet"
+            BtnElm={
+              <Button
+                size="SM"
+                theme="primary"
+                text="Add New Macro"
+                onClick={() => setShowAddMacro(true)}
+                disabled={isMaxMacrosReached}
+              />
+            }
+          />
+        )}
         {macros.length > 0 && (
-          <div className="space-y-2">
-            
-            {macros.length === 0 ? (
-              <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-4">
-                No macros created yet. Add your first macro above.
-              </p>
-            ) : (
-              <div className="space-y-1">
-                {macros.map((macro, index) => 
-                  editingMacro && editingMacro.id === macro.id ? (
-                    <div key={macro.id} className="rounded-md border border-blue-300 bg-blue-50 p-3 dark:border-blue-700 dark:bg-blue-900/20">
-                      <div className="mb-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <div className="flex flex-col">
-                          <input
-                            type="text"
-                            className={`macro-input ${errors.name ? 'border-red-500 dark:border-red-500' : ''}`}
-                            value={editingMacro.name}
-                            onChange={e => {
-                              setEditingMacro({ ...editingMacro, name: e.target.value });
-                              if (errors.name) {
-                                const newErrors = { ...errors };
-                                delete newErrors.name;
-                                setErrors(newErrors);
-                              }
-                            }}
-                            placeholder="Macro Name"
-                          />
-                          <ErrorMessage error={errors.name} />
-                        </div>
-                        <div className="flex flex-col">
-                          <input
-                            type="text"
-                            className={`macro-input ${errors.description ? 'border-red-500 dark:border-red-500' : ''}`}
-                            value={editingMacro.description}
-                            onChange={e => {
-                              setEditingMacro({ ...editingMacro, description: e.target.value });
-                              if (errors.description) {
-                                const newErrors = { ...errors };
-                                delete newErrors.description;
-                                setErrors(newErrors);
-                              }
-                            }}
-                            placeholder="Description (optional)"
-                          />
-                          <ErrorMessage error={errors.description} />
-                        </div>
+          <div className="space-y-1">
+            {macros.map((macro, index) => 
+              editingMacro && editingMacro.id === macro.id ? (
+                <div key={macro.id} className="rounded-md border border-blue-300 bg-blue-50 p-3 dark:border-blue-700 dark:bg-blue-900/20">
+                  <Fieldset>
+                    <div className="mb-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <InputFieldWithLabel
+                        type="text"
+                        label="Macro Name"
+                        placeholder="Macro Name"
+                        value={editingMacro.name}
+                        error={errors.name}
+                        onChange={e => {
+                          setEditingMacro({ ...editingMacro, name: e.target.value });
+                          if (errors.name) {
+                            const newErrors = { ...errors };
+                            delete newErrors.name;
+                            setErrors(newErrors);
+                          }
+                        }}
+                      />
+                      <InputFieldWithLabel
+                        type="text"
+                        label="Description"
+                        placeholder="Description (optional)"
+                        value={editingMacro.description}
+                        error={errors.description}
+                        onChange={e => {
+                          setEditingMacro({ ...editingMacro, description: e.target.value });
+                          if (errors.description) {
+                            const newErrors = { ...errors };
+                            delete newErrors.description;
+                            setErrors(newErrors);
+                          }
+                        }}
+                      />
+                    </div>
+                  </Fieldset>
+                  
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Steps:
+                      </label>
+                      <span className="text-sm text-slate-500 dark:text-slate-400">
+                        {editingMacro.steps.length}/{MAX_STEPS_PER_MACRO} steps
+                      </span>
+                    </div>
+                    {errors.steps && errors.steps[0]?.keys && (
+                      <div className="mt-2">
+                        <ErrorMessage error={errors.steps[0].keys} />
                       </div>
-                      
-                      <div className="mt-4">
-                        <div className="flex items-center justify-between">
-                          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                            Steps:
-                          </label>
-                          <span className="text-sm text-slate-500 dark:text-slate-400">
-                            {editingMacro.steps.length}/{MAX_STEPS_PER_MACRO} steps
-                          </span>
-                        </div>
-                        {errors.steps && errors.steps[0]?.keys && (
-                          <div className="mt-2">
-                            <ErrorMessage error={errors.steps[0].keys} />
-                          </div>
-                        )}
-                        <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                          You can add up to {MAX_STEPS_PER_MACRO} steps per macro
-                        </div>
-                        <div className="mt-2 space-y-4">
-                          {editingMacro.steps.map((step, stepIndex) => (
-                            <MacroStepCard
-                              key={stepIndex}
-                              step={step}
-                              stepIndex={stepIndex}
-                              onDelete={editingMacro.steps.length > 1 ? () => {
-                                const newSteps = [...editingMacro.steps];
-                                newSteps.splice(stepIndex, 1);
-                                setEditingMacro({ ...editingMacro, steps: newSteps });
-                              } : undefined}
-                              onMoveUp={() => {
-                                const newSteps = handleStepMove(stepIndex, 'up', editingMacro.steps);
-                                setEditingMacro({ ...editingMacro, steps: newSteps });
-                              }}
-                              onMoveDown={() => {
-                                const newSteps = handleStepMove(stepIndex, 'down', editingMacro.steps);
-                                setEditingMacro({ ...editingMacro, steps: newSteps });
-                              }}
-                              isDesktop={isDesktop}
-                              onKeySelect={(option) => handleEditKeySelect(stepIndex, option)}
-                              onKeyQueryChange={(query) => handleEditKeyQueryChange(stepIndex, query)}
-                              keyQuery={editKeyQueries[stepIndex] || ''}
-                              getFilteredKeys={() => getFilteredKeys(stepIndex, true)}
-                              onModifierChange={(modifiers) => handleModifierChange(stepIndex, modifiers)}
-                              onDelayChange={(delay) => handleDelayChange(stepIndex, delay)}
-                              isLastStep={stepIndex === editingMacro.steps.length - 1}
-                            />
-                          ))}
+                    )}
+                    <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      You can add up to {MAX_STEPS_PER_MACRO} steps per macro
+                    </div>
+                    <Fieldset>
+                      <div className="mt-2 space-y-4">
+                        {editingMacro.steps.map((step, stepIndex) => (
+                          <MacroStepCard
+                            key={stepIndex}
+                            step={step}
+                            stepIndex={stepIndex}
+                            onDelete={editingMacro.steps.length > 1 ? () => {
+                              const newSteps = [...editingMacro.steps];
+                              newSteps.splice(stepIndex, 1);
+                              setEditingMacro({ ...editingMacro, steps: newSteps });
+                            } : undefined}
+                            onMoveUp={() => {
+                              const newSteps = handleStepMove(stepIndex, 'up', editingMacro.steps);
+                              setEditingMacro({ ...editingMacro, steps: newSteps });
+                            }}
+                            onMoveDown={() => {
+                              const newSteps = handleStepMove(stepIndex, 'down', editingMacro.steps);
+                              setEditingMacro({ ...editingMacro, steps: newSteps });
+                            }}
+                            isDesktop={isDesktop}
+                            onKeySelect={(option) => handleEditKeySelect(stepIndex, option)}
+                            onKeyQueryChange={(query) => handleEditKeyQueryChange(stepIndex, query)}
+                            keyQuery={editKeyQueries[stepIndex] || ''}
+                            getFilteredKeys={() => getFilteredKeys(stepIndex, true)}
+                            onModifierChange={(modifiers) => handleModifierChange(stepIndex, modifiers)}
+                            onDelayChange={(delay) => handleDelayChange(stepIndex, delay)}
+                            isLastStep={stepIndex === editingMacro.steps.length - 1}
+                          />
+                        ))}
+                      </div>
+                    </Fieldset>
+                    
+                    <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+                      <Button
+                        size="MD"
+                        theme="light"
+                        fullWidth
+                        LeadingIcon={LuPlus}
+                        text={`Add Step ${editingMacro.steps.length >= MAX_STEPS_PER_MACRO ? `(${MAX_STEPS_PER_MACRO} max)` : ''}`}
+                        onClick={() => {
+                          if (editingMacro.steps.length >= MAX_STEPS_PER_MACRO) {
+                            showTemporaryError(`You can only add a maximum of ${MAX_STEPS_PER_MACRO} steps per macro.`);
+                            return;
+                          }
                           
-                          <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
-                            <button
-                              type="button"
-                              className={`w-full flex items-center justify-center gap-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                                editingMacro.steps.length >= MAX_STEPS_PER_MACRO
-                                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500'
-                                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
-                              }`}
-                              onClick={() => {
-                                if (editingMacro.steps.length >= MAX_STEPS_PER_MACRO) {
-                                  showTemporaryError(`You can only add a maximum of ${MAX_STEPS_PER_MACRO} steps per macro.`);
-                                  return;
-                                }
-                                
-                                setEditingMacro({
-                                  ...editingMacro,
-                                  steps: [
-                                    ...editingMacro.steps, 
-                                    { keys: [], modifiers: [], delay: DEFAULT_DELAY }
-                                  ],
-                                });
-                                clearErrors();
-                              }}
-                              disabled={editingMacro.steps.length >= MAX_STEPS_PER_MACRO}
-                            >
-                              <LuPlus className="h-4 w-4" />
-                              <span>Add Step {editingMacro.steps.length >= MAX_STEPS_PER_MACRO && `(${MAX_STEPS_PER_MACRO} max)`}</span>
-                            </button>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
-                          <div className="flex gap-x-2">
-                            <Button
-                              size="SM"
-                              theme="primary"
-                              text={isUpdating ? "Saving..." : "Save Changes"}
-                              onClick={handleUpdateMacro}
-                              disabled={isUpdating}
-                            />
-                            <Button
-                              size="SM"
-                              theme="light"
-                              text="Cancel"
-                              LeadingIcon={LuX}
-                              onClick={() => {
-                                setEditingMacro(null);
-                                setErrors({});
-                              }}
-                            />
-                          </div>
-                        </div>
+                          setEditingMacro({
+                            ...editingMacro,
+                            steps: [
+                              ...editingMacro.steps, 
+                              { keys: [], modifiers: [], delay: DEFAULT_DELAY }
+                            ],
+                          });
+                          clearErrors();
+                        }}
+                        disabled={editingMacro.steps.length >= MAX_STEPS_PER_MACRO}
+                      />
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4 dark:border-slate-700">
+                      <div className="flex gap-x-2">
+                        <Button
+                          size="SM"
+                          theme="primary"
+                          text={isUpdating ? "Saving..." : "Save Changes"}
+                          onClick={handleUpdateMacro}
+                          disabled={isUpdating}
+                        />
+                        <Button
+                          size="SM"
+                          theme="light"
+                          text="Cancel"
+                          onClick={() => {
+                            setEditingMacro(null);
+                            setErrors({});
+                          }}
+                        />
                       </div>
                     </div>
-                  ) : (
-                    <div
-                      key={macro.id}
-                      data-macro-item={index}
-                      draggable={!editingMacro}
-                      onDragStart={() => handleDragStart(index)}
-                      onDragOver={e => handleDragOver(e, index)}
-                      onDragEnd={() => {
-                        const allItems = document.querySelectorAll('[data-macro-item]');
-                        allItems.forEach(el => {
-                          el.classList.remove('drop-target');
-                          el.classList.remove('dragging');
-                        });
-                        setIsDragging(false);
-                      }}
-                      onDrop={handleDrop}
-                      onTouchStart={(e) => handleTouchStart(e, index)}
-                      onTouchMove={handleTouchMove}
-                      onTouchEnd={handleTouchEnd}
-                      className={`macro-sortable flex items-center justify-between rounded-md border border-slate-200 p-2 dark:border-slate-700 ${
-                        isDragging && dragItem.current === index
-                          ? "bg-blue-50 dark:bg-blue-900/20"
-                          : "bg-white dark:bg-slate-800"
-                      }`}
-                    >
-                      <div className="macro-sortable-handle">
-                        <LuGripVertical className="h-4 w-4" />
-                      </div>
-                      
-                      <div className="flex-1 overflow-hidden">
-                        <h4 className="truncate text-sm font-medium text-black dark:text-white">
-                          {macro.name}
-                        </h4>
-                        {macro.description && (
-                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                            {macro.description}
-                          </p>
-                        )}
-                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 overflow-hidden">
-                          <span className="flex flex-wrap items-center">
-                            {macro.steps.slice(0, 3).map((step, stepIndex) => {
-                              const modifiersText = ensureArray(step.modifiers).length > 0 
-                                ? ensureArray(step.modifiers).map(m => m.replace(/^(Control|Alt|Shift|Meta)(Left|Right)$/, "$1")).join(' + ')
-                                : '';
-                              
-                              const keysText = ensureArray(step.keys).length > 0 ? ensureArray(step.keys).join(' + ') : '';
-                              const combinedText = (modifiersText || keysText) 
-                                ? [modifiersText, keysText].filter(Boolean).join(' + ')
-                                : 'Delay only';
-                              
-                              return (
-                                <span key={stepIndex} className="inline-flex items-center my-0.5">
-                                  {stepIndex > 0 && <span className="mx-1 text-blue-400 dark:text-blue-500">→</span>}
-                                  <span className="whitespace-nowrap">
-                                    <span className="font-medium text-slate-600 dark:text-slate-300">{combinedText}</span>
-                                    <span className="ml-1 text-slate-400 dark:text-slate-500">({step.delay}ms)</span>
-                                  </span>
-                                </span>
-                              );
-                            })}
-                            {macro.steps.length > 3 && (
-                              <span className="ml-1 text-slate-400 dark:text-slate-500">
-                                + {macro.steps.length - 3} more steps
+                  </div>
+                </div>
+              ) : (
+                <div
+                  key={macro.id}
+                  data-macro-item={index}
+                  draggable={!editingMacro}
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={e => handleDragOver(e, index)}
+                  onDragEnd={() => {
+                    const allItems = document.querySelectorAll('[data-macro-item]');
+                    allItems.forEach(el => {
+                      el.classList.remove('drop-target');
+                      el.classList.remove('dragging');
+                    });
+                    setIsDragging(false);
+                  }}
+                  onDrop={handleDrop}
+                  onTouchStart={(e) => handleTouchStart(e, index)}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                  className={`macro-sortable flex items-center justify-between rounded-md border border-slate-200 p-2 dark:border-slate-700 ${
+                    isDragging && dragItem.current === index
+                      ? "bg-blue-50 dark:bg-blue-900/20"
+                      : "bg-white dark:bg-slate-800"
+                  }`}
+                >
+                  <div className="macro-sortable-handle">
+                    <LuGripVertical className="h-4 w-4" />
+                  </div>
+                  
+                  <div className="flex-1 overflow-hidden">
+                    <h4 className="truncate text-sm font-medium text-black dark:text-white">
+                      {macro.name}
+                    </h4>
+                    {macro.description && (
+                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                        {macro.description}
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 overflow-hidden">
+                      <span className="flex flex-wrap items-center">
+                        {macro.steps.slice(0, 3).map((step, stepIndex) => {
+                          const modifiersText = ensureArray(step.modifiers).length > 0 
+                            ? ensureArray(step.modifiers).map(m => m.replace(/^(Control|Alt|Shift|Meta)(Left|Right)$/, "$1")).join(' + ')
+                            : '';
+                          
+                          const keysText = ensureArray(step.keys).length > 0 ? ensureArray(step.keys).join(' + ') : '';
+                          const combinedText = (modifiersText || keysText) 
+                            ? [modifiersText, keysText].filter(Boolean).join(' + ')
+                            : 'Delay only';
+                          
+                          return (
+                            <span key={stepIndex} className="inline-flex items-center my-0.5">
+                              {stepIndex > 0 && <span className="mx-1 text-blue-400 dark:text-blue-500">→</span>}
+                              <span className="whitespace-nowrap">
+                                <span className="font-medium text-slate-600 dark:text-slate-300">{combinedText}</span>
+                                <span className="ml-1 text-slate-400 dark:text-slate-500">({step.delay}ms)</span>
                               </span>
-                            )}
-                          </span>
-                        </p>
-                      </div>
-                      
-                      <div className="flex gap-1 ml-2 flex-shrink-0">
-                        {macroToDelete === macro.id ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-slate-600 dark:text-slate-400">
-                              Delete macro?
                             </span>
-                            <Button
-                              size="XS"
-                              theme="danger"
-                              text={isDeleting ? "Deleting..." : "Yes"}
-                              disabled={isDeleting}
-                              onClick={() => {
-                                handleDeleteMacro(macro.id);
-                              }}
-                            />
-                            <Button
-                              size="XS"
-                              theme="light"
-                              text="No"
-                              onClick={() => setMacroToDelete(null)}
-                            />
-                          </div>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-green-500 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-green-400"
-                              onClick={() => handleEditMacro(macro)}
-                              title="Edit"
-                            >
-                              <LuPenLine className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-red-500 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-red-400"
-                              onClick={() => handleDuplicateMacro(macro)}
-                              title="Duplicate"
-                            >
-                              <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="8" y="8" width="12" height="12" rx="2" />
-                                <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-red-500 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-red-400"
-                              onClick={() => setMacroToDelete(macro.id)}
-                              title="Delete"
-                            >
-                              <LuTrash className="h-4 w-4" />
-                            </button>
-                          </>
+                          );
+                        })}
+                        {macro.steps.length > 3 && (
+                          <span className="ml-1 text-slate-400 dark:text-slate-500">
+                            + {macro.steps.length - 3} more steps
+                          </span>
                         )}
+                      </span>
+                    </p>
+                  </div>
+                  
+                  <div className="flex gap-1 ml-2 flex-shrink-0">
+                    {macroToDelete === macro.id ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          Delete macro?
+                        </span>
+                        <div className="flex items-center gap-x-2">
+                          <Button
+                            size="XS"
+                            theme="danger"
+                            text="Yes"
+                            onClick={() => {
+                              handleDeleteMacro(macro.id);
+                            }}
+                            disabled={isDeleting}
+                          />
+                          <Button
+                            size="XS"
+                            theme="light"
+                            text="No"
+                            onClick={() => setMacroToDelete(null)}
+                          />
+                        </div>
                       </div>
-                    </div>
-                  )
-                )}
-              </div>
+                    ) : (
+                      <>
+                        <Button
+                          size="XS"
+                          theme="light"
+                          LeadingIcon={LuPenLine}
+                          onClick={() => handleEditMacro(macro)}
+                        />
+                        <Button
+                          size="XS"
+                          theme="light"
+                          LeadingIcon={LuCopy}
+                          onClick={() => handleDuplicateMacro(macro)}
+                        />
+                        <Button
+                          size="XS"
+                          theme="light"
+                          LeadingIcon={LuTrash}
+                          onClick={() => setMacroToDelete(macro.id)}
+                          className="text-red-500 dark:text-red-400"
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
+              )
             )}
           </div>
         )}
