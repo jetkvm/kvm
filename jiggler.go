@@ -29,7 +29,7 @@ func rpcGetJigglerConfig() (JigglerConfig, error) {
 }
 
 func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
-	logger.Infof("[jsonrpc.go:rpcSetJigglerConfig] jigglerConfig: %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab)
+	logger.Infof("jigglerConfig: %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab)
 	config.JigglerConfig = &jigglerConfig
 	err := removeExistingCrobJobs(scheduler)
 	if err != nil {
@@ -100,14 +100,14 @@ func runJiggler() {
 	if jigglerEnabled {
 		if config.JigglerConfig.JitterPercentage != 0 {
 			jitter := calculateJitterDuration(jobDelta)
-			logger.Debugf("[jsonrpc.go:runJiggler] Jitter enabled, Sleeping for %v", jitter)
+			logger.Debugf("Jitter enabled, Sleeping for %v", jitter)
 			time.Sleep(jitter)
 		}
 		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
 		timeSinceLastInput := time.Since(gadget.GetLastUserInputTime())
-		logger.Debugf("[jsonrpc.go:runJiggler] Time since last user input %v", timeSinceLastInput)
+		logger.Debugf("Time since last user input %v", timeSinceLastInput)
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
-			logger.Debugf("[jsonrpc.go:runJiggler] Jiggling mouse...")
+			logger.Debug("Jiggling mouse...")
 			//TODO: change to rel mouse
 			err := rpcAbsMouseReport(1, 1, 0)
 			if err != nil {
