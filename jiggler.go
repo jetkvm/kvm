@@ -100,11 +100,14 @@ func runJiggler() {
 	if jigglerEnabled {
 		if config.JigglerConfig.JitterPercentage != 0 {
 			jitter := calculateJitterDuration(jobDelta)
-			logger.Debugf("Jitter enabled, Sleeping for %v", jitter)
+			logger.Debugf("[jsonrpc.go:runJiggler] Jitter enabled, Sleeping for %v", jitter)
 			time.Sleep(jitter)
 		}
 		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
-		if time.Since(gadget.GetLastUserInputTime()) > time.Duration(inactivitySeconds)*time.Second {
+		timeSinceLastInput := time.Since(gadget.GetLastUserInputTime())
+		logger.Debugf("[jsonrpc.go:runJiggler] Time since last user input %v", timeSinceLastInput)
+		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
+			logger.Debugf("[jsonrpc.go:runJiggler] Jiggling mouse...")
 			//TODO: change to rel mouse
 			err := rpcAbsMouseReport(1, 1, 0)
 			if err != nil {

@@ -161,6 +161,7 @@ export function JigglerSetting() {
             required
             label="Jiggler Crontab"
             placeholder="*/20 * * * * *"
+            value={scheduleCronTab}
             onChange={e => handleJigglerScheduleCronTabChange(e.target.value)}
           />
         )}
@@ -184,7 +185,8 @@ export function JigglerSetting() {
           <InputFieldWithLabel
             required
             label="Jitter Percentage"
-            placeholder="30"
+            placeholder="25"
+            value={jitterPercentage}
             type="number"
             min="1"
             max="100"
