@@ -202,7 +202,6 @@ export default function KvmIdRoute() {
         console.log("Successfully got Remote Session Description. Setting.");
         setLoadingMessage("Setting remote session description...");
 
-        // When vivaldi has disabled "Broadcast IP for Best WebRTC Performance" this goes on forever
         const decodedSd = atob(json.sd);
         const parsedSd = JSON.parse(decodedSd);
         pc.setRemoteDescription(new RTCSessionDescription(parsedSd));
@@ -215,6 +214,7 @@ export default function KvmIdRoute() {
 
           const checkInterval = setInterval(() => {
             attempts++;
+            // When vivaldi has disabled "Broadcast IP for Best WebRTC Performance", this never connects
             if (pc.sctp?.state === "connected") {
               console.log("Remote description set");
               clearInterval(checkInterval);
