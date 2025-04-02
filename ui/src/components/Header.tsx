@@ -36,7 +36,7 @@ export default function DashboardNavbar({
   picture,
   kvmName,
 }: NavbarProps) {
-  const peerConnectionState = useRTCStore(state => state.peerConnectionState);
+  const peerConnection = useRTCStore(state => state.peerConnection);
   const setUser = useUserStore(state => state.setUser);
   const navigate = useNavigate();
   const onLogout = useCallback(async () => {
@@ -82,14 +82,14 @@ export default function DashboardNavbar({
                 <div className="hidden items-center gap-x-2 md:flex">
                   <div className="w-[159px]">
                     <PeerConnectionStatusCard
-                      state={peerConnectionState}
+                      state={peerConnection?.connectionState}
                       title={kvmName}
                     />
                   </div>
                   <div className="hidden w-[159px] md:block">
                     <USBStateStatus
                       state={usbState}
-                      peerConnectionState={peerConnectionState}
+                      peerConnectionState={peerConnection?.connectionState}
                     />
                   </div>
                 </div>
