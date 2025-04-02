@@ -14,6 +14,8 @@ import Fieldset from "@/components/Fieldset";
 import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import EmptyCard from "@/components/EmptyCard";
 import { Combobox } from "@/components/Combobox";
+import { CardHeader } from "@/components/CardHeader";
+import Card from "@/components/Card";
 
 const DEFAULT_DELAY = 50;
 
@@ -921,43 +923,26 @@ export default function SettingsMacrosRoute() {
       )}
       <div className={`space-y-4 ${loading ? 'hidden' : ''}`}>
         {showAddMacro && (
-          <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-black dark:text-white">Add New Macro</h3>
-            </div>
-            <Fieldset>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <InputFieldWithLabel
-                  type="text"
-                  label="Macro Name"
-                  placeholder="Macro Name"
-                  value={newMacro.name}
-                  error={errors.name}
-                  onChange={e => {
-                    setNewMacro(prev => ({ ...prev, name: e.target.value }));
-                    if (errors.name) {
-                      const newErrors = { ...errors };
-                      delete newErrors.name;
-                      setErrors(newErrors);
-                    }
-                  }}
-                />
-                <InputFieldWithLabel
-                  type="text"
-                  label="Description"
-                  placeholder="Description (optional)"
-                  value={newMacro.description}
-                  error={errors.description}
-                  onChange={e => {
-                    setNewMacro(prev => ({ ...prev, description: e.target.value }));
-                    if (errors.description) {
-                      const newErrors = { ...errors };
-                      delete newErrors.description;
-                      setErrors(newErrors);
-                    }
-                  }}
-                />
-              </div>
+          <Card className="p-3">
+            <CardHeader
+              headline="Add New Macro"
+            />
+            <Fieldset className="mt-4">
+              <InputFieldWithLabel
+                type="text"
+                label="Macro Name"
+                placeholder="Macro Name"
+                value={newMacro.name}
+                error={errors.name}
+                onChange={e => {
+                  setNewMacro(prev => ({ ...prev, name: e.target.value }));
+                  if (errors.name) {
+                    const newErrors = { ...errors };
+                    delete newErrors.name;
+                    setErrors(newErrors);
+                  }
+                }}
+              />
             </Fieldset>
             
             <div className="mt-4">
@@ -1085,7 +1070,7 @@ export default function SettingsMacrosRoute() {
                 )}
               </div>
             </div>
-          </div>
+          </Card>
         )}
         {macros.length === 0 && !showAddMacro && (
           <EmptyCard
@@ -1105,40 +1090,26 @@ export default function SettingsMacrosRoute() {
           <div className="space-y-1">
             {macros.map((macro, index) => 
               editingMacro && editingMacro.id === macro.id ? (
-                <div key={macro.id} className="rounded-md border border-blue-300 bg-blue-50 p-3 dark:border-blue-700 dark:bg-blue-900/20">
-                  <Fieldset>
-                    <div className="mb-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                      <InputFieldWithLabel
-                        type="text"
-                        label="Macro Name"
-                        placeholder="Macro Name"
-                        value={editingMacro.name}
-                        error={errors.name}
-                        onChange={e => {
-                          setEditingMacro({ ...editingMacro, name: e.target.value });
-                          if (errors.name) {
-                            const newErrors = { ...errors };
-                            delete newErrors.name;
-                            setErrors(newErrors);
-                          }
-                        }}
-                      />
-                      <InputFieldWithLabel
-                        type="text"
-                        label="Description"
-                        placeholder="Description (optional)"
-                        value={editingMacro.description}
-                        error={errors.description}
-                        onChange={e => {
-                          setEditingMacro({ ...editingMacro, description: e.target.value });
-                          if (errors.description) {
-                            const newErrors = { ...errors };
-                            delete newErrors.description;
-                            setErrors(newErrors);
-                          }
-                        }}
-                      />
-                    </div>
+                <Card key={macro.id} className="border-blue-300 bg-blue-50 p-3 dark:border-blue-700 dark:bg-blue-900/20">
+                  <CardHeader
+                    headline="Edit Macro"
+                  />
+                  <Fieldset className="mt-4">
+                    <InputFieldWithLabel
+                      type="text"
+                      label="Macro Name"
+                      placeholder="Macro Name"
+                      value={editingMacro.name}
+                      error={errors.name}
+                      onChange={e => {
+                        setEditingMacro({ ...editingMacro, name: e.target.value });
+                        if (errors.name) {
+                          const newErrors = { ...errors };
+                          delete newErrors.name;
+                          setErrors(newErrors);
+                        }
+                      }}
+                    />
                   </Fieldset>
                   
                   <div className="mt-4">
@@ -1238,7 +1209,7 @@ export default function SettingsMacrosRoute() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </Card>
               ) : (
                 <div
                   key={macro.id}
@@ -1272,11 +1243,6 @@ export default function SettingsMacrosRoute() {
                     <h4 className="truncate text-sm font-medium text-black dark:text-white">
                       {macro.name}
                     </h4>
-                    {macro.description && (
-                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                        {macro.description}
-                      </p>
-                    )}
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 overflow-hidden">
                       <span className="flex flex-wrap items-center">
                         {macro.steps.slice(0, 3).map((step, stepIndex) => {

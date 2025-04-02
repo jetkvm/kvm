@@ -822,7 +822,6 @@ func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
 		}
 
 		name, _ := macroMap["name"].(string)
-		description, _ := macroMap["description"].(string)
 
 		sortOrder := i + 1
 		if sortOrderFloat, ok := macroMap["sortOrder"].(float64); ok {
@@ -864,11 +863,10 @@ func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
 		}
 
 		macro := KeyboardMacro{
-			ID:          id,
-			Name:        name,
-			Description: description,
-			Steps:       steps,
-			SortOrder:   sortOrder,
+			ID:        id,
+			Name:      name,
+			Steps:     steps,
+			SortOrder: sortOrder,
 		}
 
 		if err := macro.Validate(); err != nil {

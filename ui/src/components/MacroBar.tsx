@@ -33,7 +33,7 @@ export default function MacroBar() {
           {macros.map(macro => (
             <Button
               key={macro.id}
-              aria-label={macro.description || macro.name}
+              aria-label={macro.name}
               size="XS"
               theme="light"
               text={macro.name}

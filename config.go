@@ -44,11 +44,10 @@ func (s *KeyboardMacroStep) Validate() error {
 }
 
 type KeyboardMacro struct {
-	ID          string              `json:"id"`
-	Name        string              `json:"name"`
-	Description string              `json:"description,omitempty"`
-	Steps       []KeyboardMacroStep `json:"steps"`
-	SortOrder   int                 `json:"sortOrder,omitempty"`
+	ID        string              `json:"id"`
+	Name      string              `json:"name"`
+	Steps     []KeyboardMacroStep `json:"steps"`
+	SortOrder int                 `json:"sortOrder,omitempty"`
 }
 
 func (m *KeyboardMacro) Validate() error {
