@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { LuPlus, LuTrash, LuX, LuPenLine, LuLoader, LuGripVertical, LuInfo, LuCopy, LuArrowUp, LuArrowDown } from "react-icons/lu";
+import { useState, useEffect, useRef, useCallback, Fragment } from "react";
+import { LuPlus, LuTrash, LuX, LuPenLine, LuLoader, LuGripVertical, LuInfo, LuCopy, LuArrowUp, LuArrowDown, LuMoveRight, LuCornerDownRight } from "react-icons/lu";
 
 import { KeySequence, useMacrosStore } from "@/hooks/stores";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
@@ -1239,37 +1239,55 @@ export default function SettingsMacrosRoute() {
                     <LuGripVertical className="h-4 w-4" />
                   </div>
                   
-                  <div className="flex-1 overflow-hidden">
-                    <h4 className="truncate text-sm font-medium text-black dark:text-white">
+                  <div className="pl-4 flex-1 overflow-hidden">
+                    <h3 className="truncate text-sm font-semibold text-black dark:text-white">
                       {macro.name}
-                    </h4>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 overflow-hidden">
-                      <span className="flex flex-wrap items-center">
-                        {macro.steps.slice(0, 3).map((step, stepIndex) => {
-                          const keysText = ensureArray(step.keys).length > 0 
-                            ? ensureArray(step.keys).map(key => keyDisplayMap[key] || key).join(' + ') 
-                            : '';
-                          const modifiersDisplayText = ensureArray(step.modifiers).length > 0
-                            ? ensureArray(step.modifiers).map(m => modifierDisplayMap[m] || m).join(' + ')
-                            : '';
-                          const combinedText = (modifiersDisplayText || keysText) 
-                            ? [modifiersDisplayText, keysText].filter(Boolean).join(' + ')
-                            : 'Delay only';
+                    </h3>
+                    <p className="mt-1 ml-2 text-xs text-slate-500 dark:text-slate-400 overflow-hidden">
+                      <span className="flex flex-col items-start gap-1">
+                        {macro.steps.map((step, stepIndex) => {
+                          const StepIcon = stepIndex === 0 ? LuMoveRight : LuCornerDownRight;
+
                           return (
-                            <span key={stepIndex} className="inline-flex items-center my-0.5">
-                              {stepIndex > 0 && <span className="mx-1 text-blue-400 dark:text-blue-500">→</span>}
-                              <span className="whitespace-nowrap">
-                                <span className="font-medium text-slate-600 dark:text-slate-300">{combinedText}</span>
+                            <span key={stepIndex} className="inline-flex items-center">
+                              <StepIcon className="mr-1 text-slate-400 dark:text-slate-500 h-3 w-3 flex-shrink-0" />
+                              <span className="bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/50 dark:border-slate-700/50">
+                                {(ensureArray(step.modifiers).length > 0 || ensureArray(step.keys).length > 0) ? (
+                                  <>
+                                    {ensureArray(step.modifiers).map((modifier, idx) => (
+                                      <Fragment key={`mod-${idx}`}>
+                                        <span className="font-medium text-slate-600 dark:text-slate-200">
+                                          {modifierDisplayMap[modifier] || modifier}
+                                        </span>
+                                        {idx < ensureArray(step.modifiers).length - 1 && (
+                                          <span className="text-slate-400 dark:text-slate-600"> + </span>
+                                        )}
+                                      </Fragment>
+                                    ))}
+                                    
+                                    {ensureArray(step.modifiers).length > 0 && ensureArray(step.keys).length > 0 && (
+                                      <span className="text-slate-400 dark:text-slate-600"> + </span>
+                                    )}
+                                    
+                                    {ensureArray(step.keys).map((key, idx) => (
+                                      <Fragment key={`key-${idx}`}>
+                                        <span className="font-medium text-blue-600 dark:text-blue-200">
+                                          {keyDisplayMap[key] || key}
+                                        </span>
+                                        {idx < ensureArray(step.keys).length - 1 && (
+                                          <span className="text-slate-400 dark:text-slate-600"> + </span>
+                                        )}
+                                      </Fragment>
+                                    ))}
+                                  </>
+                                ) : (
+                                  <span className="font-medium text-slate-500 dark:text-slate-400">Delay only</span>
+                                )}
                                 <span className="ml-1 text-slate-400 dark:text-slate-500">({step.delay}ms)</span>
                               </span>
                             </span>
                           );
                         })}
-                        {macro.steps.length > 3 && (
-                          <span className="ml-1 text-slate-400 dark:text-slate-500">
-                            + {macro.steps.length - 3} more steps
-                          </span>
-                        )}
                       </span>
                     </p>
                   </div>
