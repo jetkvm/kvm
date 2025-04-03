@@ -1,15 +1,15 @@
 import { useState } from "react";
 
-import { LuPlus, LuInfo } from "react-icons/lu";
+import { LuPlus } from "react-icons/lu";
 
 import { KeySequence } from "@/hooks/stores";
 import { Button } from "@/components/Button";
 import { InputFieldWithLabel, FieldError } from "@/components/InputField";
 import Fieldset from "@/components/Fieldset";
 import { MacroStepCard } from "@/components/MacroStepCard";
-import Modal from "@/components/Modal";
 import { DEFAULT_DELAY, MAX_STEPS_PER_MACRO, MAX_KEYS_PER_STEP } from "@/constants/macros";
 import FieldLabel from "@/components/FieldLabel";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 interface ValidationErrors {
   name?: string;
@@ -312,44 +312,19 @@ export function MacroForm({
         </div>
       </div>
 
-      <Modal
+      <ConfirmDialog
         open={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
-      >
-        <div className="mx-auto max-w-xl px-4 transition-all duration-300 ease-in-out">
-          <div className="relative w-full overflow-hidden rounded-lg bg-white p-6 text-left align-middle shadow-xl transition-all dark:bg-slate-800 pointer-events-auto">
-            <div className="space-y-4">
-              <div className="space-y-0">
-                <h2 className="text-lg font-bold leading-tight text-black dark:text-white">
-                  Delete Macro
-                </h2>
-                <div className="text-sm leading-snug text-slate-600 dark:text-slate-400">
-                  Are you sure you want to delete this macro? This action cannot be undone.
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-x-2">
-                <Button
-                  size="SM"
-                  theme="blank"
-                  text="Cancel"
-                  onClick={() => setShowDeleteConfirm(false)}
-                />
-                <Button
-                  size="SM"
-                  theme="danger"
-                  text={isDeleting ? "Deleting..." : "Delete"}
-                  onClick={() => {
-                    onDelete?.();
-                    setShowDeleteConfirm(false);
-                  }}
-                  disabled={isDeleting}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </Modal>
+        title="Delete Macro"
+        description="Are you sure you want to delete this macro? This action cannot be undone."
+        variant="danger"
+        confirmText={isDeleting ? "Deleting" : "Delete"}
+        onConfirm={() => {
+          onDelete?.();
+          setShowDeleteConfirm(false);
+        }}
+        isConfirming={isDeleting}
+      />
     </>
   );
 } 

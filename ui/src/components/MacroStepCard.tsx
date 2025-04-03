@@ -1,4 +1,4 @@
-import { LuArrowUp, LuArrowDown, LuX, LuInfo } from "react-icons/lu";
+import { LuArrowUp, LuArrowDown, LuX } from "react-icons/lu";
 
 import { Button } from "@/components/Button";
 import { Combobox } from "@/components/Combobox";
