@@ -1,4 +1,4 @@
-import { LuArrowUp, LuArrowDown, LuX } from "react-icons/lu";
+import { LuArrowUp, LuArrowDown, LuX, LuTrash } from "react-icons/lu";
 
 import { Button } from "@/components/Button";
 import { Combobox } from "@/components/Combobox";
@@ -6,7 +6,7 @@ import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import Card from "@/components/Card";
 import { keys, modifiers, keyDisplayMap } from "@/keyboardMappings";
 import { MAX_KEYS_PER_STEP } from "@/constants/macros";
-import FieldLabel from "@/components/FieldLabel";1
+import FieldLabel from "@/components/FieldLabel";
 
 // Filter out modifier keys since they're handled in the modifiers section
 const modifierKeyPrefixes = ['Alt', 'Control', 'Shift', 'Meta'];
@@ -121,6 +121,7 @@ export function MacroStepCard({
               size="XS"
               theme="danger"
               text="Delete"
+              LeadingIcon={LuTrash}
               onClick={onDelete}
             />
           )}
@@ -138,28 +139,20 @@ export function MacroStepCard({
                 </span>
                 <div className="flex flex-wrap gap-1">
                   {mods.map(option => (
-                    <span
-                      key={option.value} 
-                      className={`flex items-center px-2 py-1 rounded border cursor-pointer text-xs font-medium transition-colors ${
-                        ensureArray(step.modifiers).includes(option.value) 
-                          ? 'bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-900/40 dark:border-blue-600 dark:text-blue-200' 
-                          : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="sr-only"
-                        checked={ensureArray(step.modifiers).includes(option.value)}
-                        onChange={e => {
-                          const modifiersArray = ensureArray(step.modifiers);
-                          const newModifiers = e.target.checked
-                            ? [...modifiersArray, option.value]
-                            : modifiersArray.filter(m => m !== option.value);
-                          onModifierChange(newModifiers);
-                        }}
-                      />
-                      {option.label.split(' ')[1] || option.label}
-                    </span>
+                    <Button
+                      key={option.value}
+                      size="XS"
+                      theme={ensureArray(step.modifiers).includes(option.value) ? "primary" : "light"}
+                      text={option.label.split(' ')[1] || option.label}
+                      onClick={() => {
+                        const modifiersArray = ensureArray(step.modifiers);
+                        const isSelected = modifiersArray.includes(option.value);
+                        const newModifiers = isSelected
+                          ? modifiersArray.filter(m => m !== option.value)
+                          : [...modifiersArray, option.value];
+                        onModifierChange(newModifiers);
+                      }}
+                    />
                   ))}
                 </div>
               </div>
@@ -169,7 +162,7 @@ export function MacroStepCard({
         
         <div className="w-full flex flex-col gap-1">
           <div className="flex items-center gap-1">
-            <FieldLabel label="Keys" info={`You can add up to a maximum of ${MAX_KEYS_PER_STEP} keys to press per step.`} />
+            <FieldLabel label="Keys" description={`Maximum ${MAX_KEYS_PER_STEP} keys per step.`} />
           </div>
           <div className="flex flex-wrap gap-1 pb-2">
             {ensureArray(step.keys).map((key, keyIndex) => (

@@ -1,6 +1,6 @@
 import { useEffect, Fragment, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { LuPenLine, LuLoader, LuCopy, LuMoveRight, LuCornerDownRight, LuArrowUp, LuArrowDown } from "react-icons/lu";
+import { LuPenLine, LuLoader, LuCopy, LuMoveRight, LuCornerDownRight, LuArrowUp, LuArrowDown, LuTrash } from "react-icons/lu";
 
 import { KeySequence, useMacrosStore, generateMacroId } from "@/hooks/stores";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
@@ -10,7 +10,7 @@ import Card from "@/components/Card";
 import { MAX_TOTAL_MACROS, COPY_SUFFIX } from "@/constants/macros";
 import { keyDisplayMap, modifierDisplayMap } from "@/keyboardMappings";
 import notifications from "@/notifications";
-import { SettingsItem } from "@/routes/devices.$id.settings";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 const normalizeSortOrders = (macros: KeySequence[]): KeySequence[] => {
   return macros.map((macro, index) => ({
@@ -23,6 +23,8 @@ export default function SettingsMacrosRoute() {
   const { macros, loading, initialized, loadMacros, saveMacros } = useMacrosStore();
   const navigate = useNavigate();
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [macroToDelete, setMacroToDelete] = useState<KeySequence | null>(null);
   
   const isMaxMacrosReached = useMemo(() => 
     macros.length >= MAX_TOTAL_MACROS, 
@@ -97,6 +99,27 @@ export default function SettingsMacrosRoute() {
       setActionLoadingId(null);
     }
   }, [macros, saveMacros, setActionLoadingId]);
+
+  const handleDeleteMacro = useCallback(async () => {
+    if (!macroToDelete?.id) return;
+
+    setActionLoadingId(macroToDelete.id);
+    try {
+      const updatedMacros = normalizeSortOrders(macros.filter(m => m.id !== macroToDelete.id));
+      await saveMacros(updatedMacros);
+      notifications.success(`Macro "${macroToDelete.name}" deleted successfully`);
+      setShowDeleteConfirm(false);
+      setMacroToDelete(null);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        notifications.error(`Failed to delete macro: ${error.message}`);
+      } else {
+        notifications.error("Failed to delete macro");
+      }
+    } finally {
+      setActionLoadingId(null);
+    }
+  }, [macroToDelete, macros, saveMacros]);
 
   const MacroList = useMemo(() => (
     <div className="space-y-2">
@@ -178,9 +201,19 @@ export default function SettingsMacrosRoute() {
             <div className="flex items-center gap-1 ml-4">
               <Button
                 size="XS"
+                theme="danger"
+                LeadingIcon={LuTrash}
+                onClick={() => {
+                  setMacroToDelete(macro);
+                  setShowDeleteConfirm(true);
+                }}
+                disabled={actionLoadingId === macro.id}
+                aria-label={`Delete macro ${macro.name}`}
+              />
+              <Button
+                size="XS"
                 theme="light"
                 LeadingIcon={LuCopy}
-                text="Duplicate"
                 onClick={() => handleDuplicateMacro(macro)}
                 disabled={actionLoadingId === macro.id}
                 aria-label={`Duplicate macro ${macro.name}`}
@@ -198,37 +231,44 @@ export default function SettingsMacrosRoute() {
           </div>
         </Card>
       ))}
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setMacroToDelete(null);
+        }}
+        title="Delete Macro"
+        description={`Are you sure you want to delete "${macroToDelete?.name}"? This action cannot be undone.`}
+        variant="danger"
+        confirmText={actionLoadingId === macroToDelete?.id ? "Deleting..." : "Delete"}
+        onConfirm={handleDeleteMacro}
+        isConfirming={actionLoadingId === macroToDelete?.id}
+      />
     </div>
-  ), [macros, actionLoadingId]);
+  ), [macros, actionLoadingId, showDeleteConfirm, macroToDelete, handleDeleteMacro]);
 
   return (
     <div className="space-y-4">
       {macros.length > 0 && (
-        <>
+        <div className="flex items-center justify-between">
           <SettingsPageHeader
             title="Keyboard Macros"
-            description="Create and manage keyboard macros for quick actions"
+            description={`Create and manage keyboard macros for quick actions. Currently ${macros.length}/${MAX_TOTAL_MACROS} macros are active.`}
           />
-          <div className="flex items-center justify-between mb-4">
-            <SettingsItem 
-              title="Macros"
-              description={`${loading ? '?' : macros.length}/${MAX_TOTAL_MACROS}`}
-            >
-              { macros.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="SM"
-                    theme="primary"
-                    text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
-                    onClick={() => navigate("add")}
-                    disabled={isMaxMacrosReached}
-                    aria-label="Add new macro"
-                  />
-                </div>
-              )}
-            </SettingsItem>
-          </div>
-        </>
+          { macros.length > 0 && (
+            <div className="flex items-center pl-2">
+              <Button
+                size="SM"
+                theme="primary"
+                text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
+                onClick={() => navigate("add")}
+                disabled={isMaxMacrosReached}
+                aria-label="Add new macro"
+              />
+            </div>
+          )}
+        </div>
       )}
 
       <div className="space-y-4">

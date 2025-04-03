@@ -9,7 +9,6 @@ import Fieldset from "@/components/Fieldset";
 import { MacroStepCard } from "@/components/MacroStepCard";
 import { DEFAULT_DELAY, MAX_STEPS_PER_MACRO, MAX_KEYS_PER_STEP } from "@/constants/macros";
 import FieldLabel from "@/components/FieldLabel";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 interface ValidationErrors {
   name?: string;
@@ -26,11 +25,6 @@ interface MacroFormProps {
   onCancel: () => void;
   isSubmitting?: boolean;
   submitText?: string;
-  showCancelConfirm?: boolean;
-  onCancelConfirm?: () => void;
-  showDelete?: boolean;
-  onDelete?: () => void;
-  isDeleting?: boolean;
 }
 
 export function MacroForm({
@@ -39,17 +33,11 @@ export function MacroForm({
   onCancel,
   isSubmitting = false,
   submitText = "Save Macro",
-  showCancelConfirm = false,
-  onCancelConfirm,
-  showDelete = false,
-  onDelete,
-  isDeleting = false
 }: MacroFormProps) {
   const [macro, setMacro] = useState<Partial<KeySequence>>(initialData);
   const [keyQueries, setKeyQueries] = useState<Record<number, string>>({});
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const showTemporaryError = (message: string) => {
     setErrorMessage(message);
@@ -261,70 +249,23 @@ export function MacroForm({
             </div>
           )}
 
-          <div className="mt-6 flex items-center justify-between">
-            {showCancelConfirm ? (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-600 dark:text-slate-400">
-                  Cancel changes?
-                </span>
-                <Button
-                  size="SM"
-                  theme="danger"
-                  text="Yes"
-                  onClick={onCancelConfirm}
-                />
-                <Button
-                  size="SM"
-                  theme="light"
-                  text="No"
-                  onClick={() => onCancel()}
-                />
-              </div>
-            ) : (
-              <>
-                <div className="flex gap-x-2">
-                  <Button
-                    size="SM"
-                    theme="primary"
-                    text={isSubmitting ? "Saving..." : submitText}
-                    onClick={handleSubmit}
-                    disabled={isSubmitting}
-                  />
-                  <Button
-                    size="SM"
-                    theme="light"
-                    text="Cancel"
-                    onClick={onCancel}
-                  />
-                </div>
-                {showDelete && (
-                  <Button
-                    size="SM"
-                    theme="danger"
-                    text={isDeleting ? "Deleting..." : "Delete Macro"}
-                    onClick={() => setShowDeleteConfirm(true)}
-                    disabled={isDeleting}
-                  />
-                )}
-              </>
-            )}
+          <div className="mt-6 flex items-center gap-x-2">
+            <Button
+              size="SM"
+              theme="primary"
+              text={isSubmitting ? "Saving..." : submitText}
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+            />
+            <Button
+              size="SM"
+              theme="light"
+              text="Cancel"
+              onClick={onCancel}
+            />
           </div>
         </div>
       </div>
-
-      <ConfirmDialog
-        open={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
-        title="Delete Macro"
-        description="Are you sure you want to delete this macro? This action cannot be undone."
-        variant="danger"
-        confirmText={isDeleting ? "Deleting" : "Delete"}
-        onConfirm={() => {
-          onDelete?.();
-          setShowDeleteConfirm(false);
-        }}
-        isConfirming={isDeleting}
-      />
     </>
   );
-} 
+}

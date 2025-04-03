@@ -1,10 +1,13 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { LuTrash } from "react-icons/lu";
 
 import { KeySequence, useMacrosStore } from "@/hooks/stores";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
 import { MacroForm } from "@/components/MacroForm";
 import notifications from "@/notifications";
+import { Button } from "@/components/Button";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 const normalizeSortOrders = (macros: KeySequence[]): KeySequence[] => {
   return macros.map((macro, index) => ({
@@ -20,6 +23,7 @@ export default function SettingsMacrosEditRoute() {
   const navigate = useNavigate();
   const { macroId } = useParams<{ macroId: string }>();
   const [macro, setMacro] = useState<KeySequence | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     const foundMacro = macros.find(m => m.id === macroId);
@@ -89,19 +93,40 @@ export default function SettingsMacrosEditRoute() {
 
   return (
     <div className="space-y-4">
-      <SettingsPageHeader
-        title="Edit Macro"
-        description="Modify your keyboard macro"
-      />
+      <div className="flex items-center justify-between">
+        <SettingsPageHeader
+          title="Edit Macro"
+          description="Modify your keyboard macro"
+        />
+        <Button
+          size="SM"
+          theme="danger"
+          text="Delete Macro"
+          LeadingIcon={LuTrash}
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={isDeleting}
+        />
+      </div>
       <MacroForm
         initialData={macro}
         onSubmit={handleUpdateMacro}
         onCancel={() => navigate("../")}
         isSubmitting={isUpdating}
         submitText="Save Changes"
-        showDelete
-        onDelete={handleDeleteMacro}
-        isDeleting={isDeleting}
+      />
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        title="Delete Macro"
+        description="Are you sure you want to delete this macro? This action cannot be undone."
+        variant="danger"
+        confirmText={isDeleting ? "Deleting" : "Delete"}
+        onConfirm={() => {
+          handleDeleteMacro();
+          setShowDeleteConfirm(false);
+        }}
+        isConfirming={isDeleting}
       />
     </div>
   );
