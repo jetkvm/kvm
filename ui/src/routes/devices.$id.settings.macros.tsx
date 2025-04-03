@@ -1,4 +1,4 @@
-import { useEffect, Fragment, useMemo, useState } from "react";
+import { useEffect, Fragment, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { LuPenLine, LuLoader, LuCopy, LuMoveRight, LuCornerDownRight, LuArrowUp, LuArrowDown } from "react-icons/lu";
 
@@ -35,7 +35,7 @@ export default function SettingsMacrosRoute() {
     }
   }, [initialized, loadMacros]);
 
-  const handleDuplicateMacro = async (macro: KeySequence) => {
+  const handleDuplicateMacro = useCallback(async (macro: KeySequence) => {
     if (!macro?.id || !macro?.name) {
       notifications.error("Invalid macro data");
       return;
@@ -67,9 +67,9 @@ export default function SettingsMacrosRoute() {
     } finally {
       setActionLoadingId(null);
     }
-  };
+  }, [isMaxMacrosReached, macros, saveMacros, setActionLoadingId]);
 
-  const handleMoveMacro = async (index: number, direction: 'up' | 'down', macroId: string) => {
+  const handleMoveMacro = useCallback(async (index: number, direction: 'up' | 'down', macroId: string) => {
     if (!Array.isArray(macros) || macros.length === 0) {
       notifications.error("No macros available");
       return;
@@ -96,7 +96,7 @@ export default function SettingsMacrosRoute() {
     } finally {
       setActionLoadingId(null);
     }
-  };
+  }, [macros, saveMacros, setActionLoadingId]);
 
   const MacroList = useMemo(() => (
     <div className="space-y-2">
@@ -203,29 +203,33 @@ export default function SettingsMacrosRoute() {
 
   return (
     <div className="space-y-4">
-      <SettingsPageHeader
-        title="Keyboard Macros"
-        description="Create and manage keyboard macros for quick actions"
-      />
-      <div className="flex items-center justify-between mb-4">
-        <SettingsItem 
-          title="Macros"
-          description={`${loading ? '?' : macros.length}/${MAX_TOTAL_MACROS}`}
-        >
-          { macros.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Button
-                size="SM"
-                theme="primary"
-                text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
-                onClick={() => navigate("add")}
-                disabled={isMaxMacrosReached}
-                aria-label="Add new macro"
-              />
-            </div>
-          )}
-        </SettingsItem>
-      </div>
+      {macros.length > 0 && (
+        <>
+          <SettingsPageHeader
+            title="Keyboard Macros"
+            description="Create and manage keyboard macros for quick actions"
+          />
+          <div className="flex items-center justify-between mb-4">
+            <SettingsItem 
+              title="Macros"
+              description={`${loading ? '?' : macros.length}/${MAX_TOTAL_MACROS}`}
+            >
+              { macros.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="SM"
+                    theme="primary"
+                    text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
+                    onClick={() => navigate("add")}
+                    disabled={isMaxMacrosReached}
+                    aria-label="Add new macro"
+                  />
+                </div>
+              )}
+            </SettingsItem>
+          </div>
+        </>
+      )}
 
       <div className="space-y-4">
         {loading && macros.length === 0 ? (
@@ -238,7 +242,8 @@ export default function SettingsMacrosRoute() {
           />
         ) : macros.length === 0 ? (
           <EmptyCard
-            headline="No macros created yet"
+            headline="No macros yet"
+            description="Create keyboard macros for quick actions"
             BtnElm={
               <Button
                 size="SM"
