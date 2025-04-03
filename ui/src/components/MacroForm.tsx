@@ -9,6 +9,7 @@ import Fieldset from "@/components/Fieldset";
 import { MacroStepCard } from "@/components/MacroStepCard";
 import Modal from "@/components/Modal";
 import { DEFAULT_DELAY, MAX_STEPS_PER_MACRO, MAX_KEYS_PER_STEP } from "@/constants/macros";
+import FieldLabel from "@/components/FieldLabel";
 
 interface ValidationErrors {
   name?: string;
@@ -192,15 +193,7 @@ export function MacroForm({
         <div>
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-1">
-              <label className="font-medium text-slate-700 dark:text-slate-200">
-                Steps
-              </label>
-              <div className="group relative cursor-pointer">
-                <LuInfo className="h-4 w-4 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-400" />
-                <div className="absolute left-1/2 top-full z-10 mt-1 hidden w-64 -translate-x-1/2 rounded-md bg-slate-800 px-3 py-2 text-xs text-white shadow-lg group-hover:block dark:bg-slate-700">
-                  <p>Each step is a collection of keys and/or modifiers that will be executed in order. You can add up to a maximum of {MAX_STEPS_PER_MACRO} steps per macro.</p>
-                </div>
-              </div>
+              <FieldLabel label="Steps" info={`Each step is a collection of keys and/or modifiers that will be executed in order. You can add up to a maximum of ${MAX_STEPS_PER_MACRO} steps per macro.`} />
             </div>
             <span className="text-slate-500 dark:text-slate-400">
               {macro.steps?.length || 0}/{MAX_STEPS_PER_MACRO} steps

@@ -6,6 +6,7 @@ import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import Card from "@/components/Card";
 import { keys, modifiers, keyDisplayMap } from "@/keyboardMappings";
 import { MAX_KEYS_PER_STEP } from "@/constants/macros";
+import FieldLabel from "@/components/FieldLabel";1
 
 // Filter out modifier keys since they're handled in the modifiers section
 const modifierKeyPrefixes = ['Alt', 'Control', 'Shift', 'Meta'];
@@ -128,9 +129,7 @@ export function MacroStepCard({
       
       <div className="space-y-4 mt-2">
         <div className="w-full flex flex-col gap-2">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-            Modifiers
-          </label>
+          <FieldLabel label="Modifiers" />
           <div className="inline-flex flex-wrap gap-3">
             {Object.entries(groupedModifiers).map(([group, mods]) => (
               <div key={group} className="relative min-w-[120px] rounded-md border border-slate-200 dark:border-slate-700 p-2">
@@ -139,7 +138,7 @@ export function MacroStepCard({
                 </span>
                 <div className="flex flex-wrap gap-1">
                   {mods.map(option => (
-                    <label 
+                    <span
                       key={option.value} 
                       className={`flex items-center px-2 py-1 rounded border cursor-pointer text-xs font-medium transition-colors ${
                         ensureArray(step.modifiers).includes(option.value) 
@@ -160,7 +159,7 @@ export function MacroStepCard({
                         }}
                       />
                       {option.label.split(' ')[1] || option.label}
-                    </label>
+                    </span>
                   ))}
                 </div>
               </div>
@@ -170,15 +169,7 @@ export function MacroStepCard({
         
         <div className="w-full flex flex-col gap-1">
           <div className="flex items-center gap-1">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              Keys
-            </label>
-            <div className="group relative cursor-pointer">
-              <LuInfo className="h-4 w-4 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-400" />
-              <div className="absolute left-1/2 top-full z-10 mt-1 hidden w-64 -translate-x-1/2 rounded-md bg-slate-800 px-3 py-2 text-xs text-white shadow-lg group-hover:block dark:bg-slate-700">
-                <p>You can add up to a maximum of {MAX_KEYS_PER_STEP} keys to press per step.</p>
-              </div>
-            </div>
+            <FieldLabel label="Keys" info={`You can add up to a maximum of ${MAX_KEYS_PER_STEP} keys to press per step.`} />
           </div>
           <div className="flex flex-wrap gap-1 pb-2">
             {ensureArray(step.keys).map((key, keyIndex) => (
@@ -220,15 +211,7 @@ export function MacroStepCard({
         
         <div className="w-full flex flex-col gap-1">
           <div className="flex items-center gap-1">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              Step Duration
-            </label>
-            <div className="group relative cursor-pointer">
-              <LuInfo className="h-4 w-4 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-400" />
-              <div className="absolute left-1/2 top-full z-10 mt-1 hidden w-64 -translate-x-1/2 rounded-md bg-slate-800 px-3 py-2 text-xs text-white shadow-lg group-hover:block dark:bg-slate-700">
-                <p>The time to wait after pressing the keys in this step before moving to the next step. This helps ensure reliable key presses when automating keyboard input.</p>
-              </div>
-            </div>
+            <FieldLabel label="Step Duration" info="The time to wait after pressing the keys in this step before moving to the next step. This helps ensure reliable key presses when automating keyboard input." />
           </div>
           <div className="flex items-center gap-3">
             <SelectMenuBasic

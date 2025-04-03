@@ -180,6 +180,7 @@ export default function SettingsMacrosRoute() {
                 size="XS"
                 theme="light"
                 LeadingIcon={LuCopy}
+                text="Duplicate"
                 onClick={() => handleDuplicateMacro(macro)}
                 disabled={actionLoadingId === macro.id}
                 aria-label={`Duplicate macro ${macro.name}`}
@@ -188,6 +189,7 @@ export default function SettingsMacrosRoute() {
                 size="XS"
                 theme="light"
                 LeadingIcon={LuPenLine}
+                text="Edit"
                 onClick={() => navigate(`${macro.id}/edit`)}
                 disabled={actionLoadingId === macro.id}
                 aria-label={`Edit macro ${macro.name}`}
