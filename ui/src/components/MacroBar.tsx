@@ -12,7 +12,6 @@ export default function MacroBar() {
   const { executeMacro } = useKeyboard();
   const [send] = useJsonRpc();
 
-  // Set up sendFn and initialize macros if needed
   useEffect(() => {
     setSendFn(send);
     

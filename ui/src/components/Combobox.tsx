@@ -1,9 +1,7 @@
 import { useRef } from "react";
 import clsx from "clsx";
-
-import { Combobox as HeadlessCombobox, ComboboxProps as HeadlessComboboxProps, ComboboxInput, ComboboxOption, ComboboxOptions } from "@headlessui/react";
+import { Combobox as HeadlessCombobox, ComboboxInput, ComboboxOption, ComboboxOptions } from "@headlessui/react";
 import { cva } from "@/cva.config";
-
 import Card from "./Card";
 
 export interface ComboboxOption {
@@ -16,15 +14,15 @@ const sizes = {
   SM: "h-[32px] pl-3 pr-8 text-[13px]",
   MD: "h-[40px] pl-4 pr-10 text-sm",
   LG: "h-[48px] pl-4 pr-10 px-5 text-base",
-};
+} as const;
 
 const comboboxVariants = cva({
   variants: { size: sizes },
 });
 
-interface ComboboxProps<T> extends HeadlessComboboxProps<T, boolean, React.ExoticComponent<{
-    children?: React.ReactNode;
-}>> {
+type BaseProps = React.ComponentProps<typeof HeadlessCombobox>;
+
+interface ComboboxProps extends Omit<BaseProps, 'displayValue'> {
   displayValue: (option: ComboboxOption) => string;
   onInputChange: (option: string) => void;
   options: () => ComboboxOption[];
@@ -34,7 +32,7 @@ interface ComboboxProps<T> extends HeadlessComboboxProps<T, boolean, React.Exoti
   disabledMessage?: string;
 }
 
-export function Combobox<T>({
+export function Combobox({
   onInputChange,
   displayValue,
   options,
@@ -45,11 +43,11 @@ export function Combobox<T>({
   onChange,
   disabledMessage = "Input disabled",
   ...otherProps
-}: ComboboxProps<T>) {
+}: ComboboxProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const classes = comboboxVariants({ size });
 
-  const handleChange = (value: T) => {
+  const handleChange = (value: unknown) => {
     if (onChange) {
       onChange(value);
       inputRef.current?.blur();
@@ -57,14 +55,13 @@ export function Combobox<T>({
   };
 
   return (
-    <HeadlessCombobox<T, boolean, React.ExoticComponent<{ children?: React.ReactNode;}>> 
-      immediate 
+    <HeadlessCombobox 
       onChange={handleChange}
       {...otherProps}
     >
-    {() => (
+      {() => (
         <>
-        <Card className="w-auto !border border-solid !border-slate-800/30 shadow outline-0 dark:!border-slate-300/30">
+          <Card className="w-auto !border border-solid !border-slate-800/30 shadow outline-0 dark:!border-slate-300/30">
             <ComboboxInput
             ref={inputRef}
             className={clsx(
@@ -90,11 +87,11 @@ export function Combobox<T>({
             onChange={(event) => onInputChange(event.target.value)}
             disabled={disabled}
             />
-        </Card>
-        
-        {options().length > 0 && (
+          </Card>
+          
+          {options().length > 0 && (
             <ComboboxOptions className="absolute left-0 z-[100] mt-1 w-full max-h-60 overflow-auto rounded-md bg-white py-1 text-sm shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:ring-slate-700 hide-scrollbar">
-            {options().map((option) => (
+              {options().map((option) => (
                 <ComboboxOption 
                 key={option.value} 
                 value={option}
@@ -109,21 +106,21 @@ export function Combobox<T>({
                   "dark:text-slate-300 dark:hover:bg-slate-700 dark:ui-active:bg-slate-700 dark:ui-active:text-blue-200"
                 )}
                 >
-                {option.label}
+                  {option.label}
                 </ComboboxOption>
-            ))}
+              ))}
             </ComboboxOptions>
-        )}
-        
-        {options().length === 0 && inputRef.current?.value && (
+          )}
+          
+          {options().length === 0 && inputRef.current?.value && (
             <div className="absolute left-0 z-[100] mt-1 w-full rounded-md bg-white dark:bg-slate-800 py-2 px-4 text-sm shadow-lg ring-1 ring-black/5 dark:ring-slate-700">
               <div className="text-slate-500 dark:text-slate-400">
                 {emptyMessage}
               </div>
             </div>
-        )}
+          )}
         </>
-    )}
+      )}
     </HeadlessCombobox>
   );
 }

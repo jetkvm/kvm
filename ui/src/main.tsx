@@ -40,10 +40,12 @@ import * as SettingsAccessIndexRoute from "./routes/devices.$id.settings.access.
 import SettingsHardwareRoute from "./routes/devices.$id.settings.hardware";
 import SettingsVideoRoute from "./routes/devices.$id.settings.video";
 import SettingsAppearanceRoute from "./routes/devices.$id.settings.appearance";
-import SettingsMacrosRoute from "./routes/devices.$id.settings.macros";
 import * as SettingsGeneralIndexRoute from "./routes/devices.$id.settings.general._index";
 import SettingsGeneralUpdateRoute from "./routes/devices.$id.settings.general.update";
 import SecurityAccessLocalAuthRoute from "./routes/devices.$id.settings.access.local-auth";
+import SettingsMacrosRoute from "./routes/devices.$id.settings.macros";
+import SettingsMacrosAddRoute from "./routes/devices.$id.settings.macros.add";
+import SettingsMacrosEditRoute from "./routes/devices.$id.settings.macros.edit";
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
@@ -178,7 +180,20 @@ if (isOnDevice) {
             },
             {
               path: "macros",
-              element: <SettingsMacrosRoute />,
+              children: [
+                {
+                  index: true,
+                  element: <SettingsMacrosRoute />,
+                },
+                {
+                  path: "add",
+                  element: <SettingsMacrosAddRoute />,
+                },
+                {
+                  path: ":macroId/edit",
+                  element: <SettingsMacrosEditRoute />,
+                },
+              ],
             },
           ],
         },
@@ -290,7 +305,20 @@ if (isOnDevice) {
                     },
                     {
                       path: "macros",
-                      element: <SettingsMacrosRoute />,
+                      children: [
+                        {
+                          index: true,
+                          element: <SettingsMacrosRoute />,
+                        },
+                        {
+                          path: "add",
+                          element: <SettingsMacrosAddRoute />,
+                        },
+                        {
+                          path: ":macroId/edit",
+                          element: <SettingsMacrosEditRoute />,
+                        },
+                      ],
                     },
                   ],
                 },

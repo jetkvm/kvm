@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { MAX_STEPS_PER_MACRO, MAX_TOTAL_MACROS, MAX_KEYS_PER_STEP } from "@/constants/macros";
 
 // Define the JsonRpc types for better type checking
 interface JsonRpcResponse {
@@ -671,7 +672,6 @@ export interface KeySequenceStep {
 export interface KeySequence {
   id: string;
   name: string;
-  description?: string;
   steps: KeySequenceStep[];
   sortOrder?: number;
 }
@@ -686,9 +686,9 @@ export interface MacrosState {
   setSendFn: (sendFn: ((method: string, params: unknown, callback?: ((resp: JsonRpcResponse) => void) | undefined) => void)) => void;
 }
 
-const MAX_STEPS_PER_MACRO = 10;
-const MAX_TOTAL_MACROS = 25;
-const MAX_KEYS_PER_STEP = 10;
+export const generateMacroId = () => {
+  return Math.random().toString(36).substring(2, 9);
+};
 
 export const useMacrosStore = create<MacrosState>((set, get) => ({
   macros: [],
