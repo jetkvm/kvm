@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback, Fragment } from "react";
-import { LuPlus, LuTrash, LuX, LuPenLine, LuLoader, LuGripVertical, LuInfo, LuCopy, LuArrowUp, LuArrowDown, LuMoveRight, LuCornerDownRight } from "react-icons/lu";
+import { useState, useEffect, useCallback, Fragment } from "react";
+import { LuPlus, LuTrash, LuX, LuPenLine, LuLoader, LuInfo, LuCopy, LuArrowUp, LuArrowDown, LuMoveRight, LuCornerDownRight } from "react-icons/lu";
 
 import { KeySequence, useMacrosStore } from "@/hooks/stores";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
@@ -16,6 +16,7 @@ import EmptyCard from "@/components/EmptyCard";
 import { Combobox } from "@/components/Combobox";
 import { CardHeader } from "@/components/CardHeader";
 import Card from "@/components/Card";
+import { SortableList } from "@/components/SortableList";
 
 const DEFAULT_DELAY = 50;
 
@@ -302,122 +303,6 @@ const updateStepKeys = (
   return newSteps;
 };
 
-const useTouchSort = (items: KeySequence[], onSort: (newItems: KeySequence[]) => void) => {
-  const [touchStartY, setTouchStartY] = useState<number | null>(null);
-  const [touchedIndex, setTouchedIndex] = useState<number | null>(null);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent, index: number) => {
-    const touch = e.touches[0];
-    setTouchStartY(touch.clientY);
-    setTouchedIndex(index);
-    
-    const element = e.currentTarget as HTMLElement;
-    const rect = element.getBoundingClientRect();
-    
-    // Create ghost element
-    const ghost = element.cloneNode(true) as HTMLElement;
-    ghost.id = 'ghost-macro';
-    ghost.className = 'macro-sortable ghost';
-    ghost.style.height = `${rect.height}px`;
-    element.parentNode?.insertBefore(ghost, element);
-    
-    // Set up dragged element
-    element.style.position = 'fixed';
-    element.style.left = `${rect.left}px`;
-    element.style.top = `${rect.top}px`;
-    element.style.width = `${rect.width}px`;
-    element.style.zIndex = '50';
-  }, []);
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (touchStartY === null || touchedIndex === null) return;
-    
-    const touch = e.touches[0];
-    const deltaY = touch.clientY - touchStartY;
-    const element = e.currentTarget as HTMLElement;
-    
-    // Smooth movement of dragged element
-    element.style.transform = `translateY(${deltaY}px)`;
-    
-    const macroElements = document.querySelectorAll('[data-macro-item]');
-    const draggedRect = element.getBoundingClientRect();
-    const draggedMiddle = draggedRect.top + draggedRect.height / 2;
-    
-    macroElements.forEach((el, i) => {
-      if (i === touchedIndex) return;
-      
-      const rect = el.getBoundingClientRect();
-      const elementMiddle = rect.top + rect.height / 2;
-      const distance = Math.abs(draggedMiddle - elementMiddle);
-      
-      if (distance < rect.height) {
-        const direction = draggedMiddle > elementMiddle ? -1 : 1;
-        (el as HTMLElement).style.transform = `translateY(${direction * rect.height}px)`;
-        (el as HTMLElement).style.transition = 'transform 0.15s ease-out';
-      } else {
-        (el as HTMLElement).style.transform = '';
-        (el as HTMLElement).style.transition = 'transform 0.15s ease-out';
-      }
-    });
-  }, [touchStartY, touchedIndex]);
-
-  const handleTouchEnd = useCallback(async (e: React.TouchEvent) => {
-    if (touchedIndex === null) return;
-    
-    const element = e.currentTarget as HTMLElement;
-    const touch = e.changedTouches[0];
-    
-    // Remove ghost element
-    const ghost = document.getElementById('ghost-macro');
-    ghost?.parentNode?.removeChild(ghost);
-    
-    // Reset dragged element styles
-    element.style.position = '';
-    element.style.left = '';
-    element.style.top = '';
-    element.style.width = '';
-    element.style.zIndex = '';
-    element.style.transform = '';
-    element.style.boxShadow = '';
-    element.style.transition = '';
-    
-    const macroElements = document.querySelectorAll('[data-macro-item]');
-    let targetIndex = touchedIndex;
-    
-    // Find the closest element to the final touch position
-    const finalY = touch.clientY;
-    let closestDistance = Infinity;
-    
-    macroElements.forEach((el, i) => {
-      if (i === touchedIndex) return;
-      
-      const rect = el.getBoundingClientRect();
-      const distance = Math.abs(finalY - (rect.top + rect.height / 2));
-      
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        targetIndex = i;
-      }
-      
-      // Reset other elements
-      (el as HTMLElement).style.transform = '';
-      (el as HTMLElement).style.transition = '';
-    });
-    
-    if (targetIndex !== touchedIndex && closestDistance < 50) {
-      const itemsCopy = [...items];
-      const [draggedItem] = itemsCopy.splice(touchedIndex, 1);
-      itemsCopy.splice(targetIndex, 0, draggedItem);
-      onSort(itemsCopy);
-    }
-    
-    setTouchStartY(null);
-    setTouchedIndex(null);
-  }, [touchedIndex, items, onSort]);
-
-  return { handleTouchStart, handleTouchMove, handleTouchEnd };
-};
-
 interface StepError {
   keys?: string;
   modifiers?: string;
@@ -438,10 +323,6 @@ export default function SettingsMacrosRoute() {
     description: "",
     steps: [{ keys: [], modifiers: [], delay: DEFAULT_DELAY }],
   });
-  const [isDragging, setIsDragging] = useState(false);
-  const dragItem = useRef<number | null>(null);
-  const dragOverItem = useRef<number | null>(null);
-  
   const [macroToDelete, setMacroToDelete] = useState<string | null>(null);
   
   const [keyQueries, setKeyQueries] = useState<Record<number, string>>({});
@@ -631,99 +512,6 @@ export default function SettingsMacrosRoute() {
     }
   }, [isMaxMacrosReached, newMacro, macros, saveMacros, showTemporaryError]);
 
-  const handleDragStart = (index: number) => {
-    dragItem.current = index;
-    setIsDragging(true);
-    
-    const allItems = document.querySelectorAll('[data-macro-item]');
-    const draggedElement = allItems[index];
-    if (draggedElement) {
-      draggedElement.classList.add('dragging');
-    }
-  };
-  
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    dragOverItem.current = index;
-    
-    const allItems = document.querySelectorAll('[data-macro-item]');
-    allItems.forEach(el => el.classList.remove('drop-target'));
-    
-    const targetElement = allItems[index];
-    if (targetElement) {
-      targetElement.classList.add('drop-target');
-    }
-  };
-  
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    if (dragItem.current === null || dragOverItem.current === null) return;
-    
-    const macroCopy = [...macros];
-    const draggedItem = macroCopy.splice(dragItem.current, 1)[0];
-    macroCopy.splice(dragOverItem.current, 0, draggedItem);
-    const updatedMacros = normalizeSortOrders(macroCopy);
-
-    try {
-      await saveMacros(updatedMacros);
-      notifications.success("Macro order updated successfully");
-    } catch (error) {
-      if (error instanceof Error) {
-        notifications.error(`Failed to reorder macros: ${error.message}`);
-        showTemporaryError(error.message);
-      } else {
-        notifications.error("Failed to reorder macros");
-        showTemporaryError("Failed to save reordered macros");
-      }
-    }
-    
-    const allItems = document.querySelectorAll('[data-macro-item]');
-    allItems.forEach(el => {
-      el.classList.remove('drop-target');
-      el.classList.remove('dragging');
-    });
-    
-    dragItem.current = null;
-    dragOverItem.current = null;
-    setIsDragging(false);
-  };
-
-  const handleUpdateMacro = useCallback(async () => {
-    if (!editingMacro) return;
-
-    const validationErrors = validateMacro(editingMacro);
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      return;
-    }
-
-    setIsUpdating(true);
-    try {
-      const newMacros = macros.map(m => 
-        m.id === editingMacro.id ? {
-          ...editingMacro,
-          name: editingMacro.name.trim(),
-          description: editingMacro.description?.trim() || "",
-        } : m
-      );
-
-      await saveMacros(normalizeSortOrders(newMacros));
-      setEditingMacro(null);
-      clearErrors();
-      notifications.success(`Macro "${editingMacro.name}" updated successfully`);
-    } catch (error) {
-      if (error instanceof Error) {
-        notifications.error(`Failed to update macro: ${error.message}`);
-        showTemporaryError(error.message);
-      } else {
-        notifications.error("Failed to update macro");
-        showTemporaryError("Failed to update macro");
-      }
-    } finally {
-      setIsUpdating(false);
-    }
-  }, [editingMacro, macros, saveMacros, showTemporaryError, clearErrors]);
-
   const handleEditMacro = (macro: KeySequence) => {
     setEditingMacro({
       ...macro,
@@ -815,27 +603,44 @@ export default function SettingsMacrosRoute() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const { handleTouchStart, handleTouchMove, handleTouchEnd } = useTouchSort(
-    macros,
-    async (newMacros) => {
-      const updatedMacros = normalizeSortOrders(newMacros);
-      try {
-        await saveMacros(updatedMacros);
-        notifications.success("Macro order updated successfully");
-      } catch (error) {
-        if (error instanceof Error) {
-          notifications.error(`Failed to reorder macros: ${error.message}`);
-          showTemporaryError(error.message);
-        } else {
-          notifications.error("Failed to reorder macros");
-          showTemporaryError("Failed to save reordered macros");
-        }
-      }
-    }
-  );
-
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showAddMacro, setShowAddMacro] = useState(false);
+
+  const handleUpdateMacro = useCallback(async () => {
+    if (!editingMacro) return;
+
+    const validationErrors = validateMacro(editingMacro);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      const newMacros = macros.map(m => 
+        m.id === editingMacro.id ? {
+          ...editingMacro,
+          name: editingMacro.name.trim(),
+          description: editingMacro.description?.trim() || "",
+        } : m
+      );
+
+      await saveMacros(normalizeSortOrders(newMacros));
+      setEditingMacro(null);
+      clearErrors();
+      notifications.success(`Macro "${editingMacro.name}" updated successfully`);
+    } catch (error) {
+      if (error instanceof Error) {
+        notifications.error(`Failed to update macro: ${error.message}`);
+        showTemporaryError(error.message);
+      } else {
+        notifications.error("Failed to update macro");
+        showTemporaryError("Failed to update macro");
+      }
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [editingMacro, macros, saveMacros, showTemporaryError, clearErrors]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -886,7 +691,6 @@ export default function SettingsMacrosRoute() {
       <FieldError error={error} />
     );
   };
-
   return (
     <div className="space-y-4">
           <SettingsPageHeader
@@ -1087,10 +891,33 @@ export default function SettingsMacrosRoute() {
           />
         )}
         {macros.length > 0 && (
-          <div className="space-y-1">
-            {macros.map((macro, index) => 
+          <SortableList<KeySequence>
+            keyFn={(macro) => macro.id}
+            items={macros}
+            itemClassName="rounded-md border border-slate-200 p-2 dark:border-slate-700 bg-white dark:bg-slate-800"
+            onSort={async (newMacros) => {
+              const updatedMacros = normalizeSortOrders(newMacros);
+              try {
+                await saveMacros(updatedMacros);
+                notifications.success("Macro order updated successfully");
+              } catch (error) {
+                if (error instanceof Error) {
+                  notifications.error(`Failed to reorder macros: ${error.message}`);
+                  showTemporaryError(error.message);
+                } else {
+                  notifications.error("Failed to reorder macros");
+                  showTemporaryError("Failed to save reordered macros");
+                }
+              }
+            }}
+            disabled={!!editingMacro}
+            variant="list"
+            size="XS"
+            handlePosition="left"
+          >
+            {(macro) => (
               editingMacro && editingMacro.id === macro.id ? (
-                <Card key={macro.id} className="border-blue-300 bg-blue-50 p-3 dark:border-blue-700 dark:bg-blue-900/20">
+                <Card className="border-blue-300 bg-blue-50 p-3 dark:border-blue-700 dark:bg-blue-900/20">
                   <CardHeader
                     headline="Edit Macro"
                   />
@@ -1211,35 +1038,8 @@ export default function SettingsMacrosRoute() {
                   </div>
                 </Card>
               ) : (
-                <div
-                  key={macro.id}
-                  data-macro-item={index}
-                  draggable={!editingMacro}
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={e => handleDragOver(e, index)}
-                  onDragEnd={() => {
-                    const allItems = document.querySelectorAll('[data-macro-item]');
-                    allItems.forEach(el => {
-                      el.classList.remove('drop-target');
-                      el.classList.remove('dragging');
-                    });
-                    setIsDragging(false);
-                  }}
-                  onDrop={handleDrop}
-                  onTouchStart={(e) => handleTouchStart(e, index)}
-                  onTouchMove={handleTouchMove}
-                  onTouchEnd={handleTouchEnd}
-                  className={`macro-sortable flex items-center justify-between rounded-md border border-slate-200 p-2 dark:border-slate-700 ${
-                    isDragging && dragItem.current === index
-                      ? "bg-blue-50 dark:bg-blue-900/20"
-                      : "bg-white dark:bg-slate-800"
-                  }`}
-                >
-                  <div className="macro-sortable-handle">
-                    <LuGripVertical className="h-4 w-4" />
-                  </div>
-                  
-                  <div className="pl-4 flex-1 overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0 flex flex-col justify-center">
                     <h3 className="truncate text-sm font-semibold text-black dark:text-white">
                       {macro.name}
                     </h3>
@@ -1292,7 +1092,7 @@ export default function SettingsMacrosRoute() {
                     </p>
                   </div>
                   
-                  <div className="flex gap-1 ml-2 flex-shrink-0">
+                  <div className="flex items-center gap-1 ml-4">
                     {macroToDelete === macro.id ? (
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-slate-600 dark:text-slate-400">
@@ -1343,7 +1143,7 @@ export default function SettingsMacrosRoute() {
                 </div>
               )
             )}
-          </div>
+          </SortableList>
         )}
       </div>
     </div>
