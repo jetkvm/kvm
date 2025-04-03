@@ -338,6 +338,12 @@ export function MacroForm({
               <div className="flex justify-end gap-x-2">
                 <Button
                   size="SM"
+                  theme="blank"
+                  text="Cancel"
+                  onClick={() => setShowDeleteConfirm(false)}
+                />
+                <Button
+                  size="SM"
                   theme="danger"
                   text={isDeleting ? "Deleting..." : "Delete"}
                   onClick={() => {
@@ -345,12 +351,6 @@ export function MacroForm({
                     setShowDeleteConfirm(false);
                   }}
                   disabled={isDeleting}
-                />
-                <Button
-                  size="SM"
-                  theme="light"
-                  text="Cancel"
-                  onClick={() => setShowDeleteConfirm(false)}
                 />
               </div>
             </div>

@@ -528,16 +528,18 @@ export default function WebRTCVideo() {
   return (
     <div className="grid h-full w-full grid-rows-layout">
       <div className="min-h-[39.5px] flex flex-col">
-        <fieldset disabled={peerConnectionState !== "connected"}>
-          <Actionbar
-            requestFullscreen={async () =>
-              videoElm.current?.requestFullscreen({
-                navigationUI: "show",
-              })
-            }
-          />
-          <MacroBar />
-        </fieldset>
+        <div className="flex flex-col">
+          <fieldset disabled={peerConnectionState !== "connected"} className="contents">
+            <Actionbar
+              requestFullscreen={async () =>
+                videoElm.current?.requestFullscreen({
+                  navigationUI: "show",
+                })
+              }
+            />
+            <MacroBar />
+          </fieldset>
+        </div>
       </div>
 
       <div

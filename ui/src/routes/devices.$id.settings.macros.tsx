@@ -126,7 +126,7 @@ export default function SettingsMacrosRoute() {
               <h3 className="truncate text-sm font-semibold text-black dark:text-white">
                 {macro.name}
               </h3>
-              <p className="mt-1 ml-2 text-xs text-slate-500 dark:text-slate-400 overflow-hidden">
+              <p className="mt-1 ml-4 text-xs text-slate-500 dark:text-slate-400 overflow-hidden">
                 <span className="flex flex-col items-start gap-1">
                   {macro.steps.map((step, stepIndex) => {
                     const StepIcon = stepIndex === 0 ? LuMoveRight : LuCornerDownRight;
@@ -154,7 +154,7 @@ export default function SettingsMacrosRoute() {
 
                               {Array.isArray(step.keys) && step.keys.map((key, idx) => (
                                 <Fragment key={`key-${idx}`}>
-                                  <span className="font-medium text-blue-600 dark:text-blue-200">
+                                  <span className="font-medium text-blue-600 dark:text-blue-400">
                                     {keyDisplayMap[key] || key}
                                   </span>
                                   {idx < step.keys.length - 1 && (
@@ -210,16 +210,18 @@ export default function SettingsMacrosRoute() {
           title="Macros"
           description={`${loading ? '?' : macros.length}/${MAX_TOTAL_MACROS}`}
         >
-          <div className="flex items-center gap-2">
-            <Button
-              size="SM"
-              theme="primary"
-              text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
-              onClick={() => navigate("add")}
-              disabled={isMaxMacrosReached}
-              aria-label="Add new macro"
-            />
-          </div>
+          { macros.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Button
+                size="SM"
+                theme="primary"
+                text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
+                onClick={() => navigate("add")}
+                disabled={isMaxMacrosReached}
+                aria-label="Add new macro"
+              />
+            </div>
+          )}
         </SettingsItem>
       </div>
 
@@ -235,7 +237,6 @@ export default function SettingsMacrosRoute() {
         ) : macros.length === 0 ? (
           <EmptyCard
             headline="No macros created yet"
-            description="Create keyboard macros to automate repetitive tasks"
             BtnElm={
               <Button
                 size="SM"
