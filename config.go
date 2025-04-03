@@ -34,6 +34,10 @@ type Config struct {
 	TLSMode              string             `json:"tls_mode"`
 	UsbConfig            *usbgadget.Config  `json:"usb_config"`
 	UsbDevices           *usbgadget.Devices `json:"usb_devices"`
+	// Remote KVM
+	RemoteKvmEnabled         bool            `json:"remote_kvm_enabled"`
+	RemoteKvmSelectedChannel string          `json:"remote_kvm_selected_channel"`
+	RemoteKvmChannels        []SwitchChannel `json:"remote_kvm_channels"`
 }
 
 const configPath = "/userdata/kvm_config.json"

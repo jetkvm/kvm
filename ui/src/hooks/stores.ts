@@ -34,6 +34,11 @@ interface UserState {
   setUser: (user: User | null) => void;
 }
 
+export interface RemoteKVMSwitchSelectedChannel {
+  id: string;
+  name: string;
+}
+
 interface UIState {
   sidebarView: AvailableSidebarViews | null;
   setSidebarView: (view: AvailableSidebarViews | null) => void;
@@ -51,6 +56,14 @@ interface UIState {
 
   terminalType: AvailableTerminalTypes;
   setTerminalType: (enabled: UIState["terminalType"]) => void;
+
+  remoteKvmEnabled: boolean;
+  setRemoteKvmEnabled: (enabled: boolean) => void;
+
+  remoteKvmSelectedChannel: RemoteKVMSwitchSelectedChannel | null;
+  setRemoteKvmSelectedChannel: (
+    channel: RemoteKVMSwitchSelectedChannel | null,
+  ) => void;
 }
 
 export const useUiStore = create<UIState>(set => ({
@@ -78,6 +91,12 @@ export const useUiStore = create<UIState>(set => ({
   isAttachedVirtualKeyboardVisible: true,
   setAttachedVirtualKeyboardVisibility: enabled =>
     set({ isAttachedVirtualKeyboardVisible: enabled }),
+
+  remoteKvmEnabled: false,
+  setRemoteKvmEnabled: enabled => set({ remoteKvmEnabled: enabled }),
+
+  remoteKvmSelectedChannel: null,
+  setRemoteKvmSelectedChannel: channel => set({ remoteKvmSelectedChannel: channel }),
 }));
 
 interface RTCState {
