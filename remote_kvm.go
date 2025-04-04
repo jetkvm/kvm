@@ -61,8 +61,9 @@ func remoteKvmSwitchChannelRawIP(channel *SwitchChannel, idx int, command *Switc
 	case SwitchChannelCommandFormatHEX:
 		// Split by comma and parse as HEX
 		for _, cmd := range strings.Split(command.Commands, ",") {
-			// Parse HEX
-			b, err := hex.DecodeString(strings.TrimSpace(cmd))
+			// Trim spaces, remove 0x prefix and parse as HEX
+			commandText := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(cmd), "0x"))
+			b, err := hex.DecodeString(commandText)
 			if err != nil {
 				return fmt.Errorf("invalid command provided for command #%d: %w", idx, err)
 			}
