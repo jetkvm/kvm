@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket/wsjson"
+	"github.com/pion/webrtc/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -325,22 +326,63 @@ func runWebsocketClient() error {
 			// ignore non-text messages
 			continue
 		}
-		var req WebRTCSessionRequest
-		err = json.Unmarshal(msg, &req)
+
+		var message struct {
+			Type string          `json:"type"`
+			Data json.RawMessage `json:"data"`
+		}
+
+		err = json.Unmarshal(msg, &message)
 		if err != nil {
 			cloudLogger.Warnf("unable to parse ws message: %v", string(msg))
 			continue
 		}
 
-		cloudLogger.Infof("new session request: %v", req.OidcGoogle)
-		cloudLogger.Tracef("session request info: %v", req)
+		if message.Type == "offer" {
+			cloudLogger.Infof("new session request received")
+			var req WebRTCSessionRequest
+			err = json.Unmarshal(message.Data, &req)
+			if err != nil {
+				cloudLogger.Warnf("unable to parse session request data: %v", string(message.Data))
+				continue
+			}
 
-		metricCloudConnectionSessionRequestCount.Inc()
-		metricCloudConnectionLastSessionRequestTimestamp.SetToCurrentTime()
-		err = handleSessionRequest(runCtx, c, req)
-		if err != nil {
-			cloudLogger.Infof("error starting new session: %v", err)
-			continue
+			cloudLogger.Infof("new session request: %v", req.OidcGoogle)
+			cloudLogger.Tracef("session request info: %v", req)
+
+			metricCloudConnectionSessionRequestCount.Inc()
+			metricCloudConnectionLastSessionRequestTimestamp.SetToCurrentTime()
+			err = handleSessionRequest(runCtx, c, req)
+			if err != nil {
+				cloudLogger.Infof("error starting new session: %v", err)
+				continue
+			}
+		} else if message.Type == "new-ice-candidate" {
+			cloudLogger.Infof("client has sent us a new ICE candidate: %v", string(message.Data))
+			var candidate webrtc.ICECandidateInit
+
+			// Attempt to unmarshal as a ICECandidateInit
+			if err := json.Unmarshal(message.Data, &candidate); err != nil {
+				cloudLogger.Warnf("unable to parse ICE candidate data: %v", string(message.Data))
+				continue
+			}
+
+			if candidate.Candidate == "" {
+				cloudLogger.Warnf("empty ICE candidate, skipping")
+				continue
+			}
+
+			cloudLogger.Infof("unmarshalled ICE candidate: %v", candidate)
+
+			if currentSession == nil {
+				cloudLogger.Infof("no current session, skipping ICE candidate")
+				continue
+			}
+
+			cloudLogger.Infof("adding ICE candidate to current session: %v", candidate)
+			if err = currentSession.peerConnection.AddICECandidate(candidate); err != nil {
+				cloudLogger.Warnf("failed to add ICE candidate: %v", err)
+			}
 		}
 	}
 }
@@ -383,6 +425,7 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 		ICEServers: req.ICEServers,
 		LocalIP:    req.IP,
 		IsCloud:    true,
+		ws:         c,
 	})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
@@ -406,7 +449,7 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 	cloudLogger.Info("new session accepted")
 	cloudLogger.Tracef("new session accepted: %v", session)
 	currentSession = session
-	_ = wsjson.Write(context.Background(), c, gin.H{"sd": sd})
+	_ = wsjson.Write(context.Background(), c, gin.H{"type": "answer", "data": sd})
 	return nil
 }
 

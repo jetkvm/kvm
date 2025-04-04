@@ -14,6 +14,7 @@ import {
 import { useInterval } from "usehooks-ts";
 import FocusTrap from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
+import useWebSocket, { ReadyState } from "react-use-websocket";
 
 import { cx } from "@/cva.config";
 import {
@@ -117,7 +118,6 @@ const loader = async ({ params }: LoaderFunctionArgs) => {
 
 export default function KvmIdRoute() {
   const loaderResp = useLoaderData() as LocalLoaderResp | CloudLoaderResp;
-
   // Depending on the mode, we set the appropriate variables
   const user = "user" in loaderResp ? loaderResp.user : null;
   const deviceName = "deviceName" in loaderResp ? loaderResp.deviceName : null;
@@ -169,87 +169,70 @@ export default function KvmIdRoute() {
   useEffect(() => {
     connectionFailedRef.current = connectionFailed;
   }, [connectionFailed]);
-
   const signalingAttempts = useRef(0);
-  const syncRemoteSessionDescription = useCallback(
-    async function syncRemoteSessionDescription(pc: RTCPeerConnection) {
-      try {
-        if (!pc) return;
+  const setRemoteSessionDescription = useCallback(
+    async function setRemoteSessionDescription(
+      pc: RTCPeerConnection,
+      remoteDescription: RTCSessionDescriptionInit,
+    ) {
+      setLoadingMessage("Setting remote description");
+      pc.setRemoteDescription(new RTCSessionDescription(remoteDescription));
+      console.log("Waiting for remote description to be set");
+      let attempts = 0;
 
-        const sd = btoa(JSON.stringify(pc.localDescription));
+      setLoadingMessage("Establishing secure connection...");
+      const checkInterval = setInterval(() => {
+        attempts++;
 
-        const sessionUrl = isOnDevice
-          ? `${DEVICE_API}/webrtc/session`
-          : `${CLOUD_API}/webrtc/session`;
-
-        console.log("Trying to get remote session description");
-        setLoadingMessage(
-          `Getting remote session description...  ${signalingAttempts.current > 0 ? `(attempt ${signalingAttempts.current + 1})` : ""}`,
-        );
-        const res = await api.POST(sessionUrl, {
-          sd,
-          // When on device, we don't need to specify the device id, as it's already known
-          ...(isOnDevice ? {} : { id: params.id }),
-        });
-
-        const json = await res.json();
-        if (res.status === 401) return navigate(isOnDevice ? "/login-local" : "/login");
-        if (!res.ok) {
-          console.error("Error getting SDP", { status: res.status, json });
-          throw new Error("Error getting SDP");
-        }
-
-        console.log("Successfully got Remote Session Description. Setting.");
-        setLoadingMessage("Setting remote session description...");
-
-        const decodedSd = atob(json.sd);
-        const parsedSd = JSON.parse(decodedSd);
-        pc.setRemoteDescription(new RTCSessionDescription(parsedSd));
-
-        await new Promise((resolve, reject) => {
-          console.log("Waiting for remote description to be set");
-          const maxAttempts = 10;
-          const interval = 1000;
-          let attempts = 0;
-
-          const checkInterval = setInterval(() => {
-            attempts++;
-            // When vivaldi has disabled "Broadcast IP for Best WebRTC Performance", this never connects
-            if (pc.sctp?.state === "connected") {
-              console.log("Remote description set");
-              clearInterval(checkInterval);
-              resolve(true);
-            } else if (attempts >= maxAttempts) {
-              console.log(
-                `Failed to get remote description after ${maxAttempts} attempts`,
-              );
-              closePeerConnection();
-              clearInterval(checkInterval);
-              reject(
-                new Error(
-                  `Failed to get remote description after ${maxAttempts} attempts`,
-                ),
-              );
-            } else {
-              console.log("Waiting for remote description to be set");
-            }
-          }, interval);
-        });
-      } catch (error) {
-        console.error("Error getting SDP", { error });
-        console.log("Connection failed", connectionFailedRef.current);
-        if (connectionFailedRef.current) return;
-        if (signalingAttempts.current < 5) {
-          signalingAttempts.current++;
-          await new Promise(resolve => setTimeout(resolve, 500));
-          console.log("Attempting to get SDP again", signalingAttempts.current);
-          syncRemoteSessionDescription(pc);
-        } else {
+        // When vivaldi has disabled "Broadcast IP for Best WebRTC Performance", this never connects
+        if (pc.sctp?.state === "connected") {
+          console.log("Remote description set");
+          clearInterval(checkInterval);
+        } else if (attempts >= 10) {
+          console.log("Failed to get remote description after 10 attempts");
           closePeerConnection();
+          clearInterval(checkInterval);
+        } else {
+          console.log("Waiting for remote description to be set");
         }
-      }
+      }, 1000);
     },
-    [closePeerConnection, navigate, params.id],
+    [closePeerConnection],
+  );
+
+  // TODO: Handle auth!!! The old signaling http request could get a 401 on local and on cloud
+  const { sendMessage, readyState } = useWebSocket(
+    isOnDevice ? `${DEVICE_API}/client` : `${CLOUD_API}/client?id=${params.id}`,
+    {
+      heartbeat: true,
+      onMessage: message => {
+        if (message.data === "pong") return;
+        if (!peerConnection) return;
+
+        const parsedMessage = JSON.parse(message.data);
+        if (parsedMessage.type === "answer") {
+          console.log("Setting remote description", parsedMessage.data);
+          const sd = atob(parsedMessage.data);
+          const remoteSessionDescription = JSON.parse(sd);
+
+          setRemoteSessionDescription(
+            peerConnection,
+            new RTCSessionDescription(remoteSessionDescription),
+          );
+        } else if (parsedMessage.type === "new-ice-candidate") {
+          console.log("Received new ICE candidate", parsedMessage.data);
+          const candidate = parsedMessage.data;
+          peerConnection.addIceCandidate(candidate);
+        }
+      },
+    },
+  );
+
+  const sendWebRTCSignal = useCallback(
+    (type: string, data: string | RTCIceCandidate) => {
+      sendMessage(JSON.stringify({ type, data }));
+    },
+    [sendMessage],
   );
 
   const setupPeerConnection = useCallback(async () => {
@@ -267,6 +250,7 @@ export default function KvmIdRoute() {
           ? { iceServers: [iceConfig?.iceServers] }
           : {}),
       });
+
       console.log("Peer connection created", pc);
       setLoadingMessage("Peer connection created");
     } catch (e) {
@@ -282,19 +266,22 @@ export default function KvmIdRoute() {
       console.log("Connection state changed", pc.connectionState);
     };
 
-    pc.onicegatheringstatechange = event => {
-      const pc = event.currentTarget as RTCPeerConnection;
-      console.log("ICE Gathering State Changed", pc.iceGatheringState);
-      if (pc.iceGatheringState === "complete") {
-        console.log("ICE Gathering completed");
-        setLoadingMessage("ICE Gathering completed");
-
-        // We can now start the https/ws connection to get the remote session description from the KVM device
-        syncRemoteSessionDescription(pc);
-      } else if (pc.iceGatheringState === "gathering") {
-        console.log("ICE Gathering Started");
-        setLoadingMessage("Gathering ICE candidates...");
+    pc.onnegotiationneeded = async () => {
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        const sd = btoa(JSON.stringify(pc.localDescription));
+        sendWebRTCSignal("offer", sd);
+      } catch (e) {
+        console.error(`Error creating offer: ${e}`, new Date().toISOString());
+        closePeerConnection();
       }
+    };
+
+    pc.onicecandidate = async ({ candidate }) => {
+      if (!candidate) return;
+      if (candidate.candidate === "") return;
+      sendWebRTCSignal("new-ice-candidate", candidate);
     };
 
     pc.ontrack = function (event) {
@@ -314,31 +301,24 @@ export default function KvmIdRoute() {
     };
 
     setPeerConnection(pc);
-
-    try {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-    } catch (e) {
-      console.error(`Error creating offer: ${e}`, new Date().toISOString());
-      closePeerConnection();
-    }
   }, [
     closePeerConnection,
     iceConfig?.iceServers,
+    sendWebRTCSignal,
     setDiskChannel,
     setMediaMediaStream,
     setPeerConnection,
     setRpcDataChannel,
     setTransceiver,
-    syncRemoteSessionDescription,
   ]);
 
   // On boot, if the connection state is undefined, we connect to the WebRTC
   useEffect(() => {
+    if (readyState !== ReadyState.OPEN) return;
     if (peerConnection?.connectionState === undefined) {
       setupPeerConnection();
     }
-  }, [setupPeerConnection, peerConnection?.connectionState]);
+  }, [readyState, setupPeerConnection, peerConnection?.connectionState]);
 
   // Cleanup effect
   const clearInboundRtpStats = useRTCStore(state => state.clearInboundRtpStats);
@@ -593,7 +573,7 @@ export default function KvmIdRoute() {
           />
 
           <div className="flex h-full w-full overflow-hidden">
-            <div className="pointer-events-none fixed inset-0 isolate z-50 flex h-full w-full items-center justify-center">
+            <div className="pointer-events-none fixed inset-0 isolate z-20 flex h-full w-full items-center justify-center">
               <div className="my-2 h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
                 <LoadingConnectionOverlay
                   show={
