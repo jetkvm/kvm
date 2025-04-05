@@ -47,16 +47,9 @@ export function Combobox({
   const inputRef = useRef<HTMLInputElement>(null);
   const classes = comboboxVariants({ size });
 
-  const handleChange = (value: unknown) => {
-    if (onChange) {
-      onChange(value);
-      inputRef.current?.blur();
-    }
-  };
-
   return (
     <HeadlessCombobox 
-      onChange={handleChange}
+      onChange={onChange}
       {...otherProps}
     >
       {() => (
