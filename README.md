@@ -23,7 +23,7 @@ We welcome contributions from the community! Whether it's improving the firmware
 
 ## I need help
 
-The best place to search for answers is our [Documentation](https://jetkvm.com/docs). If you can't find the answer there, check our [Discord Server](https://discord.gg/8MaAhua7NW).
+The best place to search for answers is our [Documentation](https://jetkvm.com/docs). If you can't find the answer there, check our [Discord Server](https://jetkvm.com/discord).
 
 ## I want to report an issue
 

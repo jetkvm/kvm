@@ -45,6 +45,10 @@ import Modal from "../components/Modal";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 import { FeatureFlagProvider } from "../providers/FeatureFlagProvider";
 import notifications from "../notifications";
+import {
+  ConnectionErrorOverlay,
+  LoadingConnectionOverlay,
+} from "../components/VideoOverlay";
 
 import { SystemVersionInfo } from "./devices.$id.settings.general.update";
 import { DeviceStatus } from "./welcome-local";
@@ -126,8 +130,6 @@ export default function KvmIdRoute() {
 
   const setIsTurnServerInUse = useRTCStore(state => state.setTurnServerInUse);
   const peerConnection = useRTCStore(state => state.peerConnection);
-  const peerConnectionState = useRTCStore(state => state.peerConnectionState);
-  const setPeerConnectionState = useRTCStore(state => state.setPeerConnectionState);
   const setMediaMediaStream = useRTCStore(state => state.setMediaStream);
   const setPeerConnection = useRTCStore(state => state.setPeerConnection);
   const setDiskChannel = useRTCStore(state => state.setDiskChannel);
@@ -135,78 +137,55 @@ export default function KvmIdRoute() {
   const setTransceiver = useRTCStore(state => state.setTransceiver);
   const location = useLocation();
 
-  const [connectionAttempts, setConnectionAttempts] = useState(0);
-
-  const [startedConnectingAt, setStartedConnectingAt] = useState<Date | null>(null);
-  const [connectedAt, setConnectedAt] = useState<Date | null>(null);
-
   const [connectionFailed, setConnectionFailed] = useState(false);
 
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
 
+  const [loadingMessage, setLoadingMessage] = useState("Connecting to device...");
   const closePeerConnection = useCallback(
     function closePeerConnection() {
+      console.log("Closing peer connection");
+
+      setConnectionFailed(true);
+      connectionFailedRef.current = true;
+
       peerConnection?.close();
-      // "closed" is a valid RTCPeerConnection state according to the WebRTC spec
-      // https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/connectionState#closed
-      // However, the onconnectionstatechange event doesn't fire when close() is called manually
-      // So we need to explicitly update our state to maintain consistency
-      // I don't know why this is happening, but this is the best way I can think of to handle it
-      // ALSO, this will render the connection error overlay linking to docs
-      setPeerConnectionState("closed");
+      signalingAttempts.current = 0;
     },
-    [peerConnection, setPeerConnectionState],
+    [peerConnection],
   );
 
+  // We need to track connectionFailed in a ref to avoid stale closure issues
+  // This is necessary because syncRemoteSessionDescription is a callback that captures
+  // the connectionFailed value at creation time, but we need the latest value
+  // when the function is actually called. Without this ref, the function would use
+  // a stale value of connectionFailed in some conditions.
+  //
+  // We still need the state variable for UI rendering, so we sync the ref with the state.
+  // This pattern is a workaround for what useEvent hook would solve more elegantly
+  // (which would give us a callback that always has access to latest state without re-creation).
+  const connectionFailedRef = useRef(false);
   useEffect(() => {
-    const connectionAttemptsThreshold = 30;
-    if (connectionAttempts > connectionAttemptsThreshold) {
-      console.log(`Connection failed after ${connectionAttempts} attempts.`);
-      setConnectionFailed(true);
-      closePeerConnection();
-    }
-  }, [connectionAttempts, closePeerConnection]);
+    connectionFailedRef.current = connectionFailed;
+  }, [connectionFailed]);
 
-  useEffect(() => {
-    // Skip if already connected
-    if (connectedAt) return;
-
-    // Skip if connection is declared as failed
-    if (connectionFailed) return;
-
-    const interval = setInterval(() => {
-      console.log("Checking connection status");
-
-      // Skip if connection hasn't started
-      if (!startedConnectingAt) return;
-
-      const elapsedTime = Math.floor(
-        new Date().getTime() - startedConnectingAt.getTime(),
-      );
-
-      // Fail connection if it's been over X seconds since we started connecting
-      if (elapsedTime > 60 * 1000) {
-        console.error(`Connection failed after ${elapsedTime} ms.`);
-        setConnectionFailed(true);
-        closePeerConnection();
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [closePeerConnection, connectedAt, connectionFailed, startedConnectingAt]);
-
-  const sdp = useCallback(
-    async (event: RTCPeerConnectionIceEvent, pc: RTCPeerConnection) => {
-      if (!pc) return;
-      if (event.candidate !== null) return;
-
+  const signalingAttempts = useRef(0);
+  const syncRemoteSessionDescription = useCallback(
+    async function syncRemoteSessionDescription(pc: RTCPeerConnection) {
       try {
+        if (!pc) return;
+
         const sd = btoa(JSON.stringify(pc.localDescription));
 
         const sessionUrl = isOnDevice
           ? `${DEVICE_API}/webrtc/session`
           : `${CLOUD_API}/webrtc/session`;
+
+        console.log("Trying to get remote session description");
+        setLoadingMessage(
+          `Getting remote session description...  ${signalingAttempts.current > 0 ? `(attempt ${signalingAttempts.current + 1})` : ""}`,
+        );
         const res = await api.POST(sessionUrl, {
           sd,
           // When on device, we don't need to specify the device id, as it's already known
@@ -214,73 +193,109 @@ export default function KvmIdRoute() {
         });
 
         const json = await res.json();
-
-        if (isOnDevice) {
-          if (res.status === 401) {
-            return navigate("/login-local");
-          }
+        if (res.status === 401) return navigate(isOnDevice ? "/login-local" : "/login");
+        if (!res.ok) {
+          console.error("Error getting SDP", { status: res.status, json });
+          throw new Error("Error getting SDP");
         }
 
-        if (isInCloud) {
-          // The cloud API returns a 401 if the user is not logged in
-          // Most likely the session has expired
-          if (res.status === 401) return navigate("/login");
+        console.log("Successfully got Remote Session Description. Setting.");
+        setLoadingMessage("Setting remote session description...");
 
-          // If can be a few things
-          // - In cloud mode, the cloud api would return a 404, if the device hasn't contacted the cloud yet
-          // - In device mode, the device api would timeout, the fetch would throw an error, therefore the catch block would be hit
-          // Regardless, we should close the peer connection and let the useInterval handle reconnecting
-          if (!res.ok) {
-            closePeerConnection();
-            console.error(`Error setting SDP - Status: ${res.status}}`, json);
-            return;
-          }
-        }
+        const decodedSd = atob(json.sd);
+        const parsedSd = JSON.parse(decodedSd);
+        pc.setRemoteDescription(new RTCSessionDescription(parsedSd));
 
-        pc.setRemoteDescription(
-          new RTCSessionDescription(JSON.parse(atob(json.sd))),
-        ).catch(e => console.log(`Error setting remote description: ${e}`));
+        await new Promise((resolve, reject) => {
+          console.log("Waiting for remote description to be set");
+          const maxAttempts = 10;
+          const interval = 1000;
+          let attempts = 0;
+
+          const checkInterval = setInterval(() => {
+            attempts++;
+            // When vivaldi has disabled "Broadcast IP for Best WebRTC Performance", this never connects
+            if (pc.sctp?.state === "connected") {
+              console.log("Remote description set");
+              clearInterval(checkInterval);
+              resolve(true);
+            } else if (attempts >= maxAttempts) {
+              console.log(
+                `Failed to get remote description after ${maxAttempts} attempts`,
+              );
+              closePeerConnection();
+              clearInterval(checkInterval);
+              reject(
+                new Error(
+                  `Failed to get remote description after ${maxAttempts} attempts`,
+                ),
+              );
+            } else {
+              console.log("Waiting for remote description to be set");
+            }
+          }, interval);
+        });
       } catch (error) {
-        console.error(`Error setting SDP: ${error}`);
-        closePeerConnection();
+        console.error("Error getting SDP", { error });
+        console.log("Connection failed", connectionFailedRef.current);
+        if (connectionFailedRef.current) return;
+        if (signalingAttempts.current < 5) {
+          signalingAttempts.current++;
+          await new Promise(resolve => setTimeout(resolve, 500));
+          console.log("Attempting to get SDP again", signalingAttempts.current);
+          syncRemoteSessionDescription(pc);
+        } else {
+          closePeerConnection();
+        }
       }
     },
     [closePeerConnection, navigate, params.id],
   );
 
-  const connectWebRTC = useCallback(async () => {
-    console.log("Attempting to connect WebRTC");
-
-    // Track connection status to detect failures and show error overlay
-    setConnectionAttempts(x => x + 1);
-    setStartedConnectingAt(new Date());
-    setConnectedAt(null);
+  const setupPeerConnection = useCallback(async () => {
+    console.log("Setting up peer connection");
+    setConnectionFailed(false);
+    setLoadingMessage("Connecting to device...");
 
     let pc: RTCPeerConnection;
     try {
+      console.log("Creating peer connection");
+      setLoadingMessage("Creating peer connection...");
       pc = new RTCPeerConnection({
         // We only use STUN or TURN servers if we're in the cloud
         ...(isInCloud && iceConfig?.iceServers
           ? { iceServers: [iceConfig?.iceServers] }
           : {}),
       });
+      console.log("Peer connection created", pc);
+      setLoadingMessage("Peer connection created");
     } catch (e) {
       console.error(`Error creating peer connection: ${e}`);
-      closePeerConnection();
+      setTimeout(() => {
+        closePeerConnection();
+      }, 1000);
       return;
     }
 
     // Set up event listeners and data channels
     pc.onconnectionstatechange = () => {
-      // If the connection state is connected, we reset the connection attempts.
-      if (pc.connectionState === "connected") {
-        setConnectionAttempts(0);
-        setConnectedAt(new Date());
-      }
-      setPeerConnectionState(pc.connectionState);
+      console.log("Connection state changed", pc.connectionState);
     };
 
-    pc.onicecandidate = event => sdp(event, pc);
+    pc.onicegatheringstatechange = event => {
+      const pc = event.currentTarget as RTCPeerConnection;
+      console.log("ICE Gathering State Changed", pc.iceGatheringState);
+      if (pc.iceGatheringState === "complete") {
+        console.log("ICE Gathering completed");
+        setLoadingMessage("ICE Gathering completed");
+
+        // We can now start the https/ws connection to get the remote session description from the KVM device
+        syncRemoteSessionDescription(pc);
+      } else if (pc.iceGatheringState === "gathering") {
+        console.log("ICE Gathering Started");
+        setLoadingMessage("Gathering ICE candidates...");
+      }
+    };
 
     pc.ontrack = function (event) {
       setMediaMediaStream(event.streams[0]);
@@ -298,56 +313,32 @@ export default function KvmIdRoute() {
       setDiskChannel(diskDataChannel);
     };
 
+    setPeerConnection(pc);
+
     try {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      setPeerConnection(pc);
     } catch (e) {
-      console.error(`Error creating offer: ${e}`);
+      console.error(`Error creating offer: ${e}`, new Date().toISOString());
       closePeerConnection();
     }
   }, [
     closePeerConnection,
     iceConfig?.iceServers,
-    sdp,
     setDiskChannel,
     setMediaMediaStream,
     setPeerConnection,
-    setPeerConnectionState,
     setRpcDataChannel,
     setTransceiver,
+    syncRemoteSessionDescription,
   ]);
-
-  useEffect(() => {
-    console.log("Attempting to connect WebRTC");
-
-    // If we're in an other session, we don't need to connect
-    if (location.pathname.includes("other-session")) return;
-
-    // If we're already connected or connecting, we don't need to connect
-    // We have to use the state from the store, because the peerConnection.connectionState doesnt trigger a value change, if called manually from .close()
-    if (["connected", "connecting", "new"].includes(peerConnectionState ?? "")) {
-      return;
-    }
-
-    // In certain cases, we want to never connect again. This happens when we've tried for a long time and failed
-    if (connectionFailed) {
-      console.log("Connection failed. We won't attempt to connect again.");
-      return;
-    }
-
-    const interval = setInterval(() => {
-      connectWebRTC();
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [connectWebRTC, connectionFailed, location.pathname, peerConnectionState]);
 
   // On boot, if the connection state is undefined, we connect to the WebRTC
   useEffect(() => {
     if (peerConnection?.connectionState === undefined) {
-      connectWebRTC();
+      setupPeerConnection();
     }
-  }, [connectWebRTC, peerConnection?.connectionState]);
+  }, [setupPeerConnection, peerConnection?.connectionState]);
 
   // Cleanup effect
   const clearInboundRtpStats = useRTCStore(state => state.clearInboundRtpStats);
@@ -601,7 +592,27 @@ export default function KvmIdRoute() {
             kvmName={deviceName || "JetKVM Device"}
           />
 
-          <div className="flex h-full overflow-hidden">
+          <div className="flex h-full w-full overflow-hidden">
+            <div className="pointer-events-none fixed inset-0 isolate z-50 flex h-full w-full items-center justify-center">
+              <div className="my-2 h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
+                <LoadingConnectionOverlay
+                  show={
+                    !connectionFailed &&
+                    (["connecting", "new"].includes(
+                      peerConnection?.connectionState || "",
+                    ) ||
+                      peerConnection === null) &&
+                    !location.pathname.includes("other-session")
+                  }
+                  text={loadingMessage}
+                />
+                <ConnectionErrorOverlay
+                  show={connectionFailed && !location.pathname.includes("other-session")}
+                  setupPeerConnection={setupPeerConnection}
+                />
+              </div>
+            </div>
+
             <WebRTCVideo />
             <SidebarContainer sidebarView={sidebarView} />
           </div>
@@ -618,7 +629,7 @@ export default function KvmIdRoute() {
       >
         <Modal open={outlet !== null} onClose={onModalClose}>
           {/* The 'used by other session' modal needs to have access to the connectWebRTC function */}
-          <Outlet context={{ connectWebRTC }} />
+          <Outlet context={{ setupPeerConnection }} />
         </Modal>
       </div>
 
