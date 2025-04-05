@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { LuTrash } from "react-icons/lu";
+import { LuTrash2 } from "react-icons/lu";
 
 import { KeySequence, useMacrosStore } from "@/hooks/stores";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
@@ -102,7 +102,7 @@ export default function SettingsMacrosEditRoute() {
           size="SM"
           theme="danger"
           text="Delete Macro"
-          LeadingIcon={LuTrash}
+          LeadingIcon={LuTrash2}
           onClick={() => setShowDeleteConfirm(true)}
           disabled={isDeleting}
         />

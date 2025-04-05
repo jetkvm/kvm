@@ -181,7 +181,7 @@ export function MacroForm({
         <div>
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-1">
-              <FieldLabel label="Steps" info={`Each step is a collection of keys and/or modifiers that will be executed in order. You can add up to a maximum of ${MAX_STEPS_PER_MACRO} steps per macro.`} />
+              <FieldLabel label="Steps" description={`Keys/modifiers executed in sequence with a delay between each step.`} />
             </div>
             <span className="text-slate-500 dark:text-slate-400">
               {macro.steps?.length || 0}/{MAX_STEPS_PER_MACRO} steps

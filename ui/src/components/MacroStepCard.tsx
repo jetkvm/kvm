@@ -1,4 +1,4 @@
-import { LuArrowUp, LuArrowDown, LuX, LuTrash } from "react-icons/lu";
+import { LuArrowUp, LuArrowDown, LuX, LuTrash2 } from "react-icons/lu";
 
 import { Button } from "@/components/Button";
 import { Combobox } from "@/components/Combobox";
@@ -94,6 +94,12 @@ export function MacroStepCard({
     <Card className="p-4">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
+          <span className="flex h-6 w-5 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
+            {stepIndex + 1}
+          </span>
+        </div>
+
+        <div className="flex items-center space-x-2">
           <div className="flex items-center gap-1">
             <Button
               size="XS"
@@ -110,24 +116,19 @@ export function MacroStepCard({
               LeadingIcon={LuArrowDown}
             />
           </div>
-          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
-            {stepIndex + 1}
-          </span>
-        </div>
-        
-        <div className="flex items-center space-x-2">
           {onDelete && (
             <Button
               size="XS"
-              theme="danger"
+              theme="light"
+              className="text-red-500 dark:text-red-400"
               text="Delete"
-              LeadingIcon={LuTrash}
+              LeadingIcon={LuTrash2}
               onClick={onDelete}
             />
           )}
         </div>
       </div>
-      
+
       <div className="space-y-4 mt-2">
         <div className="w-full flex flex-col gap-2">
           <FieldLabel label="Modifiers" />
@@ -137,7 +138,7 @@ export function MacroStepCard({
                 <span className="absolute -top-2.5 left-2 px-1 text-xs font-medium bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400">
                   {group}
                 </span>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-4 pt-1">
                   {mods.map(option => (
                     <Button
                       key={option.value}
@@ -164,31 +165,36 @@ export function MacroStepCard({
           <div className="flex items-center gap-1">
             <FieldLabel label="Keys" description={`Maximum ${MAX_KEYS_PER_STEP} keys per step.`} />
           </div>
-          <div className="flex flex-wrap gap-1 pb-2">
-            {ensureArray(step.keys).map((key, keyIndex) => (
-              <span
-                key={keyIndex}
-                className="inline-flex items-center rounded-md bg-blue-100 px-1 text-xs font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
-              >
-                <span className="px-1">
-                  {keyDisplayMap[key] || key}
+          {ensureArray(step.keys) && step.keys.length > 0 && (
+            <div className="flex flex-wrap gap-1 pb-2">
+              {step.keys.map((key, keyIndex) => (
+                <span
+                  key={keyIndex}
+                  className="inline-flex items-center py-0.5 rounded-md bg-blue-100 px-1 text-xs font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
+                >
+                  <span className="px-1">
+                    {keyDisplayMap[key] || key}
+                  </span>
+                  <Button
+                    size="XS"
+                    className=""
+                    theme="blank"
+                    onClick={() => {
+                      const newKeys = ensureArray(step.keys).filter((_, i) => i !== keyIndex);
+                      onKeySelect({ value: null, keys: newKeys });
+                    }}
+                    LeadingIcon={LuX}
+                  />
                 </span>
-                <Button
-                  size="XS"
-                  className=""
-                  theme="blank"
-                  onClick={() => {
-                    const newKeys = ensureArray(step.keys).filter((_, i) => i !== keyIndex);
-                    onKeySelect({ value: null, keys: newKeys });
-                  }}
-                  LeadingIcon={LuX}
-                />
-              </span>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
           <div className="relative w-full">
             <Combobox
-              onChange={(value: { value: string; label: string }) => onKeySelect(value)}
+              onChange={(value: { value: string; label: string }) => {
+                onKeySelect(value);
+                onKeyQueryChange('');
+              }}
               displayValue={() => keyQuery}
               onInputChange={onKeyQueryChange}
               options={getFilteredKeys}
@@ -204,7 +210,7 @@ export function MacroStepCard({
         
         <div className="w-full flex flex-col gap-1">
           <div className="flex items-center gap-1">
-            <FieldLabel label="Step Duration" info="The time to wait after pressing the keys in this step before moving to the next step. This helps ensure reliable key presses when automating keyboard input." />
+            <FieldLabel label="Step Duration" description="Time to wait before executing the next step." />
           </div>
           <div className="flex items-center gap-3">
             <SelectMenuBasic

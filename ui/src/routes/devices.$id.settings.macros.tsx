@@ -1,6 +1,6 @@
 import { useEffect, Fragment, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { LuPenLine, LuLoader, LuCopy, LuMoveRight, LuCornerDownRight, LuArrowUp, LuArrowDown, LuTrash } from "react-icons/lu";
+import { LuPenLine, LuCopy, LuMoveRight, LuCornerDownRight, LuArrowUp, LuArrowDown, LuTrash2, LuCommand } from "react-icons/lu";
 
 import { KeySequence, useMacrosStore, generateMacroId } from "@/hooks/stores";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
@@ -11,6 +11,7 @@ import { MAX_TOTAL_MACROS, COPY_SUFFIX } from "@/constants/macros";
 import { keyDisplayMap, modifierDisplayMap } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
 const normalizeSortOrders = (macros: KeySequence[]): KeySequence[] => {
   return macros.map((macro, index) => ({
@@ -201,8 +202,9 @@ export default function SettingsMacrosRoute() {
             <div className="flex items-center gap-1 ml-4">
               <Button
                 size="XS"
-                theme="danger"
-                LeadingIcon={LuTrash}
+                className="text-red-500 dark:text-red-400"
+                theme="light"
+                LeadingIcon={LuTrash2}
                 onClick={() => {
                   setMacroToDelete(macro);
                   setShowDeleteConfirm(true);
@@ -254,7 +256,7 @@ export default function SettingsMacrosRoute() {
         <div className="flex items-center justify-between">
           <SettingsPageHeader
             title="Keyboard Macros"
-            description={`Create and manage keyboard macros for quick actions. Currently ${macros.length}/${MAX_TOTAL_MACROS} macros are active.`}
+            description={`Combine keystrokes into a single action for faster workflows.`}
           />
           { macros.length > 0 && (
             <div className="flex items-center pl-2">
@@ -274,16 +276,19 @@ export default function SettingsMacrosRoute() {
       <div className="space-y-4">
         {loading && macros.length === 0 ? (
           <EmptyCard
+            IconElm={LuCommand}
             headline="Loading macros..."
-            description="Please wait while we fetch your macros"
             BtnElm={
-              <LuLoader className="h-6 w-6 animate-spin text-blue-500" />
+              <div className="my-2 flex flex-col items-center space-y-2 text-center">
+                <LoadingSpinner className="h-6 w-6 text-blue-700 dark:text-blue-500" />
+              </div>
             }
           />
         ) : macros.length === 0 ? (
           <EmptyCard
-            headline="No macros yet"
-            description="Create keyboard macros for quick actions"
+            IconElm={LuCommand}
+            headline="Create Your First Macro"
+            description="Combine keystrokes into a single action for faster workflows."
             BtnElm={
               <Button
                 size="SM"
