@@ -142,7 +142,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	var isConnected bool
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		cloudLogger.Infof("we got a new ICE candidate: %v", candidate)
+		cloudLogger.Infof("AAAAAAA got a new ICE candidate: %v", candidate)
 		if candidate != nil {
 			wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
 		}

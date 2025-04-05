@@ -1,6 +1,8 @@
 package kvm
 
 import (
+	"context"
+	"crypto/sha256"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -8,10 +10,14 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/pion/webrtc/v4"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -89,6 +95,7 @@ func setupRouter() *gin.Engine {
 
 	// A Prometheus metrics endpoint.
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	r.GET("/webrtc/signaling", handleWebRTCSignal)
 
 	// Protected routes (allows both password and noPassword modes)
 	protected := r.Group("/")
@@ -120,6 +127,155 @@ func setupRouter() *gin.Engine {
 
 // TODO: support multiple sessions?
 var currentSession *Session
+
+func handleWebRTCSignal(c *gin.Context) {
+	cloudLogger.Infof("new websocket connection established")
+	// Create WebSocket options with InsecureSkipVerify to bypass origin check
+	wsOptions := &websocket.AcceptOptions{
+		InsecureSkipVerify: true, // Allow connections from any origin
+	}
+
+	wsCon, err := websocket.Accept(c.Writer, c.Request, wsOptions)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Now use conn for websocket operations
+	defer wsCon.Close(websocket.StatusNormalClosure, "")
+	err = handleWebRTCSignalWsConnection(wsCon, false)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+}
+
+func handleWebRTCSignalWsConnection(wsCon *websocket.Conn, isCloudConnection bool) error {
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+
+	// Add connection tracking to detect reconnections
+	connectionID := uuid.New().String()
+	cloudLogger.Infof("new websocket connection established with ID: %s", connectionID)
+
+	// Add a mutex to protect against concurrent access to session state
+	sessionMutex := &sync.Mutex{}
+
+	// Track processed offers to avoid duplicates
+	processedOffers := make(map[string]bool)
+
+	go func() {
+		for {
+			time.Sleep(CloudWebSocketPingInterval)
+
+			// set the timer for the ping duration
+			timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
+				metricCloudConnectionLastPingDuration.Set(v)
+				metricCloudConnectionPingDuration.Observe(v)
+			}))
+
+			cloudLogger.Infof("pinging websocket")
+			err := wsCon.Ping(runCtx)
+
+			if err != nil {
+				cloudLogger.Warnf("websocket ping error: %v", err)
+				cancelRun()
+				return
+			}
+
+			// dont use `defer` here because we want to observe the duration of the ping
+			timer.ObserveDuration()
+
+			metricCloudConnectionTotalPingCount.Inc()
+			metricCloudConnectionLastPingTimestamp.SetToCurrentTime()
+		}
+	}()
+
+	for {
+		typ, msg, err := wsCon.Read(runCtx)
+		if err != nil {
+			cloudLogger.Warnf("websocket read error: %v", err)
+			return err
+		}
+		if typ != websocket.MessageText {
+			// ignore non-text messages
+			continue
+		}
+
+		var message struct {
+			Type string          `json:"type"`
+			Data json.RawMessage `json:"data"`
+		}
+
+		err = json.Unmarshal(msg, &message)
+		if err != nil {
+			cloudLogger.Warnf("unable to parse ws message: %v", string(msg))
+			continue
+		}
+
+		if message.Type == "offer" {
+			cloudLogger.Infof("new session request received")
+			var req WebRTCSessionRequest
+			err = json.Unmarshal(message.Data, &req)
+			if err != nil {
+				cloudLogger.Warnf("unable to parse session request data: %v", string(message.Data))
+				continue
+			}
+
+			// Create a hash of the offer to deduplicate
+			offerHash := fmt.Sprintf("%x", sha256.Sum256(message.Data))
+
+			sessionMutex.Lock()
+			isDuplicate := processedOffers[offerHash]
+			if !isDuplicate {
+				processedOffers[offerHash] = true
+			}
+			sessionMutex.Unlock()
+
+			if isDuplicate {
+				cloudLogger.Infof("duplicate offer detected, ignoring: %s", offerHash[:8])
+				continue
+			}
+
+			cloudLogger.Infof("new session request: %v", req.OidcGoogle)
+			cloudLogger.Tracef("session request info: %v", req)
+
+			metricCloudConnectionSessionRequestCount.Inc()
+			metricCloudConnectionLastSessionRequestTimestamp.SetToCurrentTime()
+			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection)
+			if err != nil {
+				cloudLogger.Infof("error starting new session: %v", err)
+				continue
+			}
+		} else if message.Type == "new-ice-candidate" {
+			cloudLogger.Infof("client has sent us a new ICE candidate: %v", string(message.Data))
+			var candidate webrtc.ICECandidateInit
+
+			// Attempt to unmarshal as a ICECandidateInit
+			if err := json.Unmarshal(message.Data, &candidate); err != nil {
+				cloudLogger.Warnf("unable to parse ICE candidate data: %v", string(message.Data))
+				continue
+			}
+
+			if candidate.Candidate == "" {
+				cloudLogger.Warnf("empty ICE candidate, skipping")
+				continue
+			}
+
+			cloudLogger.Infof("unmarshalled ICE candidate: %v", candidate)
+
+			if currentSession == nil {
+				cloudLogger.Infof("no current session, skipping ICE candidate")
+				continue
+			}
+
+			cloudLogger.Infof("adding ICE candidate to current session: %v", candidate)
+			if err = currentSession.peerConnection.AddICECandidate(candidate); err != nil {
+				cloudLogger.Warnf("failed to add ICE candidate: %v", err)
+			}
+		}
+	}
+}
 
 func handleWebRTCSession(c *gin.Context) {
 	var req WebRTCSessionRequest

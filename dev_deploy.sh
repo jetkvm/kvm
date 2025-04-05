@@ -67,10 +67,10 @@ make build_dev
 cd bin
 
 # Kill any existing instances of the application
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
+ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app || true"
 
 # Copy the binary to the remote host
-cat jetkvm_app | ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > $REMOTE_PATH/jetkvm_app_debug"
+cat jetkvm_app | ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > $REMOTE_PATH/jetkvm_app"
 
 # Deploy and run the application on the remote host
 ssh "${REMOTE_USER}@${REMOTE_HOST}" ash <<EOF
@@ -81,16 +81,16 @@ export LD_LIBRARY_PATH=/oem/usr/lib:\$LD_LIBRARY_PATH
 
 # Kill any existing instances of the application
 killall jetkvm_app || true
-killall jetkvm_app_debug || true
+killall jetkvm_app || true
 
 # Navigate to the directory where the binary will be stored
 cd "$REMOTE_PATH"
 
 # Make the new binary executable
-chmod +x jetkvm_app_debug
+chmod +x jetkvm_app
 
 # Run the application in the background
-PION_LOG_TRACE=jetkvm,cloud ./jetkvm_app_debug
+PION_LOG_TRACE=jetkvm,cloud ./jetkvm_app
 EOF
 
 echo "Deployment complete."

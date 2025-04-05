@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/coder/websocket/wsjson"
-	"github.com/pion/webrtc/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -273,121 +272,10 @@ func runWebsocketClient() error {
 	// set the metrics when we successfully connect to the cloud.
 	cloudResetMetrics(true)
 
-	runCtx, cancelRun := context.WithCancel(context.Background())
-	defer cancelRun()
-	go func() {
-		for {
-			time.Sleep(CloudWebSocketPingInterval)
-
-			// set the timer for the ping duration
-			timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
-				metricCloudConnectionLastPingDuration.Set(v)
-				metricCloudConnectionPingDuration.Observe(v)
-			}))
-
-			err := c.Ping(runCtx)
-
-			if err != nil {
-				cloudLogger.Warnf("websocket ping error: %v", err)
-				cancelRun()
-				return
-			}
-
-			// dont use `defer` here because we want to observe the duration of the ping
-			timer.ObserveDuration()
-
-			metricCloudConnectionTotalPingCount.Inc()
-			metricCloudConnectionLastPingTimestamp.SetToCurrentTime()
-		}
-	}()
-
-	// create a channel to receive the disconnect event, once received, we cancelRun
-	cloudDisconnectChan = make(chan error)
-	defer func() {
-		close(cloudDisconnectChan)
-		cloudDisconnectChan = nil
-	}()
-	go func() {
-		for err := range cloudDisconnectChan {
-			if err == nil {
-				continue
-			}
-			cloudLogger.Infof("disconnecting from cloud due to: %v", err)
-			cancelRun()
-		}
-	}()
-
-	for {
-		typ, msg, err := c.Read(runCtx)
-		if err != nil {
-			return err
-		}
-		if typ != websocket.MessageText {
-			// ignore non-text messages
-			continue
-		}
-
-		var message struct {
-			Type string          `json:"type"`
-			Data json.RawMessage `json:"data"`
-		}
-
-		err = json.Unmarshal(msg, &message)
-		if err != nil {
-			cloudLogger.Warnf("unable to parse ws message: %v", string(msg))
-			continue
-		}
-
-		if message.Type == "offer" {
-			cloudLogger.Infof("new session request received")
-			var req WebRTCSessionRequest
-			err = json.Unmarshal(message.Data, &req)
-			if err != nil {
-				cloudLogger.Warnf("unable to parse session request data: %v", string(message.Data))
-				continue
-			}
-
-			cloudLogger.Infof("new session request: %v", req.OidcGoogle)
-			cloudLogger.Tracef("session request info: %v", req)
-
-			metricCloudConnectionSessionRequestCount.Inc()
-			metricCloudConnectionLastSessionRequestTimestamp.SetToCurrentTime()
-			err = handleSessionRequest(runCtx, c, req)
-			if err != nil {
-				cloudLogger.Infof("error starting new session: %v", err)
-				continue
-			}
-		} else if message.Type == "new-ice-candidate" {
-			cloudLogger.Infof("client has sent us a new ICE candidate: %v", string(message.Data))
-			var candidate webrtc.ICECandidateInit
-
-			// Attempt to unmarshal as a ICECandidateInit
-			if err := json.Unmarshal(message.Data, &candidate); err != nil {
-				cloudLogger.Warnf("unable to parse ICE candidate data: %v", string(message.Data))
-				continue
-			}
-
-			if candidate.Candidate == "" {
-				cloudLogger.Warnf("empty ICE candidate, skipping")
-				continue
-			}
-
-			cloudLogger.Infof("unmarshalled ICE candidate: %v", candidate)
-
-			if currentSession == nil {
-				cloudLogger.Infof("no current session, skipping ICE candidate")
-				continue
-			}
-
-			cloudLogger.Infof("adding ICE candidate to current session: %v", candidate)
-			if err = currentSession.peerConnection.AddICECandidate(candidate); err != nil {
-				cloudLogger.Warnf("failed to add ICE candidate: %v", err)
-			}
-		}
-	}
+	return handleWebRTCSignalWsConnection(c, true)
 }
 
-func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
+func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
 	timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
 		metricCloudConnectionLastSessionRequestDuration.Set(v)
 		metricCloudConnectionSessionRequestDuration.Observe(v)
@@ -421,12 +309,18 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 		return fmt.Errorf("google identity mismatch")
 	}
 
-	session, err := newSession(SessionConfig{
-		ICEServers: req.ICEServers,
-		LocalIP:    req.IP,
-		IsCloud:    true,
-		ws:         c,
-	})
+	return nil
+}
+
+func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest, isCloudConnection bool) error {
+	// If the message is from the cloud, we need to authenticate the session.
+	if isCloudConnection {
+		if err := authenticateSession(ctx, c, req); err != nil {
+			return err
+		}
+	}
+
+	session, err := newSession(SessionConfig{ws: c})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
 		return err

@@ -380,7 +380,7 @@ export default function WebRTCVideo() {
     (mediaStream: MediaStream) => {
       if (!videoElm.current) return;
       const videoElmRefValue = videoElm.current;
-      console.log("Adding stream to video element", videoElmRefValue);
+      // console.log("Adding stream to video element", videoElmRefValue);
       videoElmRefValue.srcObject = mediaStream;
       updateVideoSizeStore(videoElmRefValue);
     },
@@ -396,7 +396,7 @@ export default function WebRTCVideo() {
       peerConnection.addEventListener(
         "track",
         (e: RTCTrackEvent) => {
-          console.log("Adding stream to video element");
+          // console.log("Adding stream to video element");
           addStreamToVideoElm(e.streams[0]);
         },
         { signal },

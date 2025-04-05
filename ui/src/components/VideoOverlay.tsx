@@ -94,7 +94,7 @@ interface ConnectionErrorOverlayProps {
   setupPeerConnection: () => Promise<void>;
 }
 
-export function ConnectionErrorOverlay({
+export function ConnectionFailedOverlay({
   show,
   setupPeerConnection,
 }: ConnectionErrorOverlayProps) {
@@ -140,6 +140,57 @@ export function ConnectionErrorOverlay({
                       size="SM"
                       theme="light"
                     />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </OverlayContent>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+interface PeerConnectionDisconnectedOverlay {
+  show: boolean;
+  setupPeerConnection: () => Promise<void>;
+}
+
+export function PeerConnectionDisconnectedOverlay({ show }: ConnectionErrorOverlayProps) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="aspect-video h-full w-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0 } }}
+          transition={{
+            duration: 0.4,
+            ease: "easeInOut",
+          }}
+        >
+          <OverlayContent>
+            <div className="flex flex-col items-start gap-y-1">
+              <ExclamationTriangleIcon className="h-12 w-12 text-yellow-500" />
+              <div className="text-left text-sm text-slate-700 dark:text-slate-300">
+                <div className="space-y-4">
+                  <div className="space-y-2 text-black dark:text-white">
+                    <h2 className="text-xl font-bold">Connection Issue Detected</h2>
+                    <ul className="list-disc space-y-2 pl-4 text-left">
+                      <li>Verify that the device is powered on and properly connected</li>
+                      <li>Check all cable connections for any loose or damaged wires</li>
+                      <li>Ensure your network connection is stable and active</li>
+                      <li>Try restarting both the device and your computer</li>
+                    </ul>
+                  </div>
+                  <div className="flex items-center gap-x-2">
+                    <div className="flex flex-col items-center gap-y-2">
+                      <LoadingSpinner className="h-4 w-4 text-blue-800 dark:text-blue-200" />
+                      <p className="text-sm text-slate-700 dark:text-slate-300">
+                        Retrying connection...
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
