@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+#
 # Exit immediately if a command exits with a non-zero status
 set -e
 
@@ -16,7 +18,6 @@ show_help() {
     echo "Example:"
     echo "  $0 -r 192.168.0.17"
     echo "  $0 -r 192.168.0.17 -u admin"
-    exit 0
 }
 
 # Default values
@@ -70,10 +71,10 @@ cd bin
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
 
 # Copy the binary to the remote host
-cat jetkvm_app | ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > $REMOTE_PATH/jetkvm_app_debug"
+ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < jetkvm_app
 
 # Deploy and run the application on the remote host
-ssh "${REMOTE_USER}@${REMOTE_HOST}" ash <<EOF
+ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << EOF
 set -e
 
 # Set the library path to include the directory where librockit.so is located
@@ -84,7 +85,7 @@ killall jetkvm_app || true
 killall jetkvm_app_debug || true
 
 # Navigate to the directory where the binary will be stored
-cd "$REMOTE_PATH"
+cd "${REMOTE_PATH}"
 
 # Make the new binary executable
 chmod +x jetkvm_app_debug
