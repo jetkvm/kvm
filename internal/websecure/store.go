@@ -56,7 +56,7 @@ func (s *CertStore) ensureStorePath() error {
 func (s *CertStore) LoadCertificates() {
 	err := s.ensureStorePath()
 	if err != nil {
-		s.log.Errorf(err.Error())
+		s.log.Errorf(err.Error()) //nolint:errcheck
 		return
 	}
 
@@ -150,19 +150,19 @@ func (s *CertStore) saveCertificate(hostname string) {
 
 	err := s.ensureStorePath()
 	if err != nil {
-		s.log.Errorf(err.Error())
+		s.log.Errorf(err.Error()) //nolint:errcheck
 		return
 	}
 
 	keyFile := path.Join(s.storePath, hostname+".key")
 	crtFile := path.Join(s.storePath, hostname+".crt")
 
-	if keyToFile(tlsCert, keyFile); err != nil {
+	if err := keyToFile(tlsCert, keyFile); err != nil {
 		s.log.Errorf(err.Error())
 		return
 	}
 
-	if certToFile(tlsCert, crtFile); err != nil {
+	if err := certToFile(tlsCert, crtFile); err != nil {
 		s.log.Errorf(err.Error())
 		return
 	}
