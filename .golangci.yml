@@ -1,12 +1,22 @@
 ---
 linters:
   enable:
-  # - goimports
-  # - misspell
+  - forbidigo
+  - goimports
+  - misspell
   # - revive
+  - whitespace
 
 issues:
   exclude-rules:
     - path: _test.go
       linters:
         - errcheck
+
+linters-settings:
+  forbidigo:
+    forbid:
+      - p: ^fmt\.Print.*$
+        msg: Do not commit print statements. Use logger package.
+      - p: ^log\.(Fatal|Panic|Print)(f|ln)?.*$
+        msg: Do not commit log statements. Use logger package.

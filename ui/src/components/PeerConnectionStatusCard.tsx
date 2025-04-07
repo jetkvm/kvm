@@ -9,19 +9,22 @@ const PeerConnectionStatusMap = {
   failed: "Connection failed",
   closed: "Closed",
   new: "Connecting",
-};
+} as Record<RTCPeerConnectionState | "error" | "closing", string>;
 
 export type PeerConnections = keyof typeof PeerConnectionStatusMap;
 
-type StatusProps = Record<PeerConnections, {
+type StatusProps = Record<
+  PeerConnections,
+  {
     statusIndicatorClassName: string;
-  }>;
+  }
+>;
 
 export default function PeerConnectionStatusCard({
   state,
   title,
 }: {
-  state?: PeerConnections;
+  state?: RTCPeerConnectionState | null;
   title?: string;
 }) {
   if (!state) return null;

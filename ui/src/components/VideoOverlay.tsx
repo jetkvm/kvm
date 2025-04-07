@@ -1,6 +1,6 @@
 import React from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
-import { ArrowRightIcon } from "@heroicons/react/16/solid";
+import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
 import { LuPlay } from "react-icons/lu";
 
@@ -25,12 +25,12 @@ interface LoadingOverlayProps {
   show: boolean;
 }
 
-export function LoadingOverlay({ show }: LoadingOverlayProps) {
+export function LoadingVideoOverlay({ show }: LoadingOverlayProps) {
   return (
     <AnimatePresence>
       {show && (
         <motion.div
-          className="absolute inset-0 aspect-video h-full w-full"
+          className="aspect-video h-full w-full"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -55,21 +55,59 @@ export function LoadingOverlay({ show }: LoadingOverlayProps) {
   );
 }
 
-interface ConnectionErrorOverlayProps {
+interface LoadingConnectionOverlayProps {
   show: boolean;
+  text: string;
 }
-
-export function ConnectionErrorOverlay({ show }: ConnectionErrorOverlayProps) {
+export function LoadingConnectionOverlay({ show, text }: LoadingConnectionOverlayProps) {
   return (
     <AnimatePresence>
       {show && (
         <motion.div
-          className="absolute inset-0 z-10 aspect-video h-full w-full"
+          className="aspect-video h-full w-full"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          exit={{ opacity: 0, transition: { duration: 0 } }}
           transition={{
-            duration: 0.3,
+            duration: 0.4,
+            ease: "easeInOut",
+          }}
+        >
+          <OverlayContent>
+            <div className="flex flex-col items-center justify-center gap-y-1">
+              <div className="animate flex h-12 w-12 items-center justify-center">
+                <LoadingSpinner className="h-8 w-8 text-blue-800 dark:text-blue-200" />
+              </div>
+              <p className="text-center text-sm text-slate-700 dark:text-slate-300">
+                {text}
+              </p>
+            </div>
+          </OverlayContent>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+interface ConnectionErrorOverlayProps {
+  show: boolean;
+  setupPeerConnection: () => Promise<void>;
+}
+
+export function ConnectionErrorOverlay({
+  show,
+  setupPeerConnection,
+}: ConnectionErrorOverlayProps) {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="aspect-video h-full w-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0 } }}
+          transition={{
+            duration: 0.4,
             ease: "easeInOut",
           }}
         >
@@ -87,13 +125,20 @@ export function ConnectionErrorOverlay({ show }: ConnectionErrorOverlayProps) {
                       <li>Try restarting both the device and your computer</li>
                     </ul>
                   </div>
-                  <div>
+                  <div className="flex items-center gap-x-2">
                     <LinkButton
                       to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
-                      theme="light"
+                      theme="primary"
                       text="Troubleshooting Guide"
                       TrailingIcon={ArrowRightIcon}
                       size="SM"
+                    />
+                    <Button
+                      onClick={() => setupPeerConnection()}
+                      LeadingIcon={ArrowPathIcon}
+                      text="Try again"
+                      size="SM"
+                      theme="light"
                     />
                   </div>
                 </div>

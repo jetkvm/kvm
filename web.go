@@ -16,6 +16,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+//nolint:typecheck
 //go:embed all:static
 var staticFiles embed.FS
 
@@ -419,7 +420,6 @@ func handleSetup(c *gin.Context) {
 
 		// Set the cookie
 		c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
-
 	} else {
 		// For noPassword mode, ensure the password field is empty
 		config.HashedPassword = ""

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket/wsjson"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
@@ -35,6 +37,97 @@ const (
 	// CloudWebSocketPingInterval is the interval at which the websocket client sends ping messages to the cloud
 	CloudWebSocketPingInterval = 15 * time.Second
 )
+
+var (
+	metricCloudConnectionStatus = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_cloud_connection_status",
+			Help: "The status of the cloud connection",
+		},
+	)
+	metricCloudConnectionEstablishedTimestamp = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_cloud_connection_established_timestamp",
+			Help: "The timestamp when the cloud connection was established",
+		},
+	)
+	metricCloudConnectionLastPingTimestamp = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_cloud_connection_last_ping_timestamp",
+			Help: "The timestamp when the last ping response was received",
+		},
+	)
+	metricCloudConnectionLastPingDuration = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_cloud_connection_last_ping_duration",
+			Help: "The duration of the last ping response",
+		},
+	)
+	metricCloudConnectionPingDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name: "jetkvm_cloud_connection_ping_duration",
+			Help: "The duration of the ping response",
+			Buckets: []float64{
+				0.1, 0.5, 1, 10,
+			},
+		},
+	)
+	metricCloudConnectionTotalPingCount = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "jetkvm_cloud_connection_total_ping_count",
+			Help: "The total number of pings sent to the cloud",
+		},
+	)
+	metricCloudConnectionSessionRequestCount = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "jetkvm_cloud_connection_session_total_request_count",
+			Help: "The total number of session requests received from the cloud",
+		},
+	)
+	metricCloudConnectionSessionRequestDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name: "jetkvm_cloud_connection_session_request_duration",
+			Help: "The duration of session requests",
+			Buckets: []float64{
+				0.1, 0.5, 1, 10,
+			},
+		},
+	)
+	metricCloudConnectionLastSessionRequestTimestamp = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_cloud_connection_last_session_request_timestamp",
+			Help: "The timestamp of the last session request",
+		},
+	)
+	metricCloudConnectionLastSessionRequestDuration = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_cloud_connection_last_session_request_duration",
+			Help: "The duration of the last session request",
+		},
+	)
+	metricCloudConnectionFailureCount = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "jetkvm_cloud_connection_failure_count",
+			Help: "The number of times the cloud connection has failed",
+		},
+	)
+)
+
+func cloudResetMetrics(established bool) {
+	metricCloudConnectionLastPingTimestamp.Set(-1)
+	metricCloudConnectionLastPingDuration.Set(-1)
+
+	metricCloudConnectionLastSessionRequestTimestamp.Set(-1)
+	metricCloudConnectionLastSessionRequestDuration.Set(-1)
+
+	if established {
+		metricCloudConnectionEstablishedTimestamp.SetToCurrentTime()
+		metricCloudConnectionStatus.Set(1)
+	} else {
+		metricCloudConnectionEstablishedTimestamp.Set(-1)
+		metricCloudConnectionStatus.Set(-1)
+	}
+}
 
 func handleCloudRegister(c *gin.Context) {
 	var req CloudRegisterRequest
@@ -90,11 +183,6 @@ func handleCloudRegister(c *gin.Context) {
 		return
 	}
 
-	if config.CloudToken == "" {
-		cloudLogger.Info("Starting websocket client due to adoption")
-		go RunWebsocketClient()
-	}
-
 	config.CloudToken = tokenResp.SecretToken
 
 	provider, err := oidc.NewProvider(c, "https://accounts.google.com")
@@ -130,19 +218,23 @@ func runWebsocketClient() error {
 		time.Sleep(5 * time.Second)
 		return fmt.Errorf("cloud token is not set")
 	}
+
 	wsURL, err := url.Parse(config.CloudURL)
 	if err != nil {
 		return fmt.Errorf("failed to parse config.CloudURL: %w", err)
 	}
+
 	if wsURL.Scheme == "http" {
 		wsURL.Scheme = "ws"
 	} else {
 		wsURL.Scheme = "wss"
 	}
+
 	header := http.Header{}
 	header.Set("X-Device-ID", GetDeviceID())
 	header.Set("Authorization", "Bearer "+config.CloudToken)
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
+
 	defer cancelDial()
 	c, _, err := websocket.Dial(dialCtx, wsURL.String(), &websocket.DialOptions{
 		HTTPHeader: header,
@@ -152,17 +244,35 @@ func runWebsocketClient() error {
 	}
 	defer c.CloseNow() //nolint:errcheck
 	cloudLogger.Infof("websocket connected to %s", wsURL)
+
+	// set the metrics when we successfully connect to the cloud.
+	cloudResetMetrics(true)
+
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer cancelRun()
 	go func() {
 		for {
 			time.Sleep(CloudWebSocketPingInterval)
+
+			// set the timer for the ping duration
+			timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
+				metricCloudConnectionLastPingDuration.Set(v)
+				metricCloudConnectionPingDuration.Observe(v)
+			}))
+
 			err := c.Ping(runCtx)
+
 			if err != nil {
 				cloudLogger.Warnf("websocket ping error: %v", err)
 				cancelRun()
 				return
 			}
+
+			// dont use `defer` here because we want to observe the duration of the ping
+			timer.ObserveDuration()
+
+			metricCloudConnectionTotalPingCount.Inc()
+			metricCloudConnectionLastPingTimestamp.SetToCurrentTime()
 		}
 	}()
 	for {
@@ -184,6 +294,8 @@ func runWebsocketClient() error {
 		cloudLogger.Infof("new session request: %v", req.OidcGoogle)
 		cloudLogger.Tracef("session request info: %v", req)
 
+		metricCloudConnectionSessionRequestCount.Inc()
+		metricCloudConnectionLastSessionRequestTimestamp.SetToCurrentTime()
 		err = handleSessionRequest(runCtx, c, req)
 		if err != nil {
 			cloudLogger.Infof("error starting new session: %v", err)
@@ -193,6 +305,12 @@ func runWebsocketClient() error {
 }
 
 func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
+	timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
+		metricCloudConnectionLastSessionRequestDuration.Set(v)
+		metricCloudConnectionSessionRequestDuration.Observe(v)
+	}))
+	defer timer.ObserveDuration()
+
 	oidcCtx, cancelOIDC := context.WithTimeout(ctx, CloudOidcRequestTimeout)
 	defer cancelOIDC()
 	provider, err := oidc.NewProvider(oidcCtx, "https://accounts.google.com")
@@ -253,9 +371,34 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 
 func RunWebsocketClient() {
 	for {
+		// reset the metrics when we start the websocket client.
+		cloudResetMetrics(false)
+
+		// If the cloud token is not set, we don't need to run the websocket client.
+		if config.CloudToken == "" {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		// If the network is not up, well, we can't connect to the cloud.
+		if !networkState.Up {
+			cloudLogger.Warn("waiting for network to be up, will retry in 3 seconds")
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
+		// If the system time is not synchronized, the API request will fail anyway because the TLS handshake will fail.
+		if isTimeSyncNeeded() && !timeSyncSuccess {
+			cloudLogger.Warn("system time is not synced, will retry in 3 seconds")
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
 		err := runWebsocketClient()
 		if err != nil {
 			cloudLogger.Errorf("websocket client error: %v", err)
+			metricCloudConnectionStatus.Set(0)
+			metricCloudConnectionFailureCount.Inc()
 			time.Sleep(5 * time.Second)
 		}
 	}

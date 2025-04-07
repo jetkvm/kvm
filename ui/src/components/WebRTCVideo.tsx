@@ -19,9 +19,8 @@ import { useJsonRpc } from "@/hooks/useJsonRpc";
 
 import {
   HDMIErrorOverlay,
+  LoadingVideoOverlay,
   NoAutoplayPermissionsOverlay,
-  ConnectionErrorOverlay,
-  LoadingOverlay,
 } from "./VideoOverlay";
 
 export default function WebRTCVideo() {
@@ -46,15 +45,13 @@ export default function WebRTCVideo() {
 
   // RTC related states
   const peerConnection = useRTCStore(state => state.peerConnection);
-  const peerConnectionState = useRTCStore(state => state.peerConnectionState);
 
   // HDMI and UI states
   const hdmiState = useVideoStore(state => state.hdmiState);
   const hdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
-  const isLoading = !hdmiError && !isPlaying;
-  const isConnectionError = ["error", "failed", "disconnected", "closed"].includes(
-    peerConnectionState || "",
-  );
+  const isVideoLoading = !isPlaying;
+
+  // console.log("peerConnection?.connectionState", peerConnection?.connectionState);
 
   // Keyboard related states
   const { setIsNumLockActive, setIsCapsLockActive, setIsScrollLockActive } =
@@ -379,25 +376,52 @@ export default function WebRTCVideo() {
     }
   }, []);
 
+  const addStreamToVideoElm = useCallback(
+    (mediaStream: MediaStream) => {
+      if (!videoElm.current) return;
+      const videoElmRefValue = videoElm.current;
+      console.log("Adding stream to video element", videoElmRefValue);
+      videoElmRefValue.srcObject = mediaStream;
+      updateVideoSizeStore(videoElmRefValue);
+    },
+    [updateVideoSizeStore],
+  );
+
+  useEffect(
+    function updateVideoStreamOnNewTrack() {
+      if (!peerConnection) return;
+      const abortController = new AbortController();
+      const signal = abortController.signal;
+
+      peerConnection.addEventListener(
+        "track",
+        (e: RTCTrackEvent) => {
+          console.log("Adding stream to video element");
+          addStreamToVideoElm(e.streams[0]);
+        },
+        { signal },
+      );
+
+      return () => {
+        abortController.abort();
+      };
+    },
+    [addStreamToVideoElm, peerConnection],
+  );
+
   useEffect(
     function updateVideoStream() {
       if (!mediaStream) return;
-      if (!videoElm.current) return;
-      if (peerConnection?.iceConnectionState !== "connected") return;
-
-      setTimeout(() => {
-        if (videoElm?.current) {
-          videoElm.current.srcObject = mediaStream;
-        }
-      }, 0);
-      updateVideoSizeStore(videoElm.current);
+      console.log("Updating video stream from mediaStream");
+      // We set the as early as possible
+      addStreamToVideoElm(mediaStream);
     },
     [
       setVideoClientSize,
-      setVideoSize,
       mediaStream,
       updateVideoSizeStore,
-      peerConnection?.iceConnectionState,
+      peerConnection,
+      addStreamToVideoElm,
     ],
   );
 
@@ -474,6 +498,8 @@ export default function WebRTCVideo() {
       const local = resetMousePosition;
       window.addEventListener("blur", local, { signal });
       document.addEventListener("visibilitychange", local, { signal });
+      const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+      videoElmRefValue.addEventListener("contextmenu", preventContextMenu, { signal });
 
       return () => {
         abortController.abort();
@@ -517,17 +543,17 @@ export default function WebRTCVideo() {
   );
 
   const hasNoAutoPlayPermissions = useMemo(() => {
-    if (peerConnectionState !== "connected") return false;
+    if (peerConnection?.connectionState !== "connected") return false;
     if (isPlaying) return false;
     if (hdmiError) return false;
     if (videoHeight === 0 || videoWidth === 0) return false;
     return true;
-  }, [peerConnectionState, isPlaying, hdmiError, videoHeight, videoWidth]);
+  }, [peerConnection?.connectionState, isPlaying, hdmiError, videoHeight, videoWidth]);
 
   return (
     <div className="grid h-full w-full grid-rows-layout">
       <div className="min-h-[39.5px]">
-        <fieldset disabled={peerConnectionState !== "connected"}>
+        <fieldset disabled={peerConnection?.connectionState !== "connected"}>
           <Actionbar
             requestFullscreen={async () =>
               videoElm.current?.requestFullscreen({
@@ -575,28 +601,29 @@ export default function WebRTCVideo() {
                             "cursor-none":
                               settings.mouseMode === "absolute" &&
                               settings.isCursorHidden,
-                            "opacity-0": isLoading || isConnectionError || hdmiError,
+                            "opacity-0": isVideoLoading || hdmiError,
                             "animate-slideUpFade border border-slate-800/30 opacity-0 shadow dark:border-slate-300/20":
                               isPlaying,
                           },
                         )}
                       />
-                      <div
-                        style={{ animationDuration: "500ms" }}
-                        className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center opacity-0"
-                      >
-                        <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
-                          <LoadingOverlay show={isLoading} />
-                          <ConnectionErrorOverlay show={isConnectionError} />
-                          <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
-                          <NoAutoplayPermissionsOverlay
-                            show={hasNoAutoPlayPermissions}
-                            onPlayClick={() => {
-                              videoElm.current?.play();
-                            }}
-                          />
+                      {peerConnection?.connectionState == "connected" && (
+                        <div
+                          style={{ animationDuration: "500ms" }}
+                          className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center opacity-0"
+                        >
+                          <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
+                            <LoadingVideoOverlay show={isVideoLoading} />
+                            <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
+                            <NoAutoplayPermissionsOverlay
+                              show={hasNoAutoPlayPermissions}
+                              onPlayClick={() => {
+                                videoElm.current?.play();
+                              }}
+                            />
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                   <VirtualKeyboard />
