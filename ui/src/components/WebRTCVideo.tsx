@@ -6,6 +6,7 @@ import {
   useMouseStore,
   useRTCStore,
   useSettingsStore,
+  useUiStore,
   useVideoStore,
 } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
@@ -17,6 +18,7 @@ import MacroBar from "@/components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
+import notifications from "../notifications";
 
 import {
   HDMIErrorOverlay,
@@ -61,6 +63,7 @@ export default function WebRTCVideo() {
 
   // Misc states and hooks
   const [blockWheelEvent, setBlockWheelEvent] = useState(false);
+  const disableVideoFocusTrap = useUiStore(state => state.disableVideoFocusTrap);
   const [send] = useJsonRpc();
 
   // Video-related
@@ -96,6 +99,40 @@ export default function WebRTCVideo() {
     },
     [setVideoClientSize, updateVideoSizeStore, setVideoSize],
   );
+
+  const checkNavigatorPermissions = async (permissionName: string) => {
+    const name = permissionName as PermissionName;
+    const { state } = await navigator.permissions.query({ name });
+    return state === "granted";
+  }
+
+  const requestPointerLock = useCallback(async () => {
+    if (document.pointerLockElement) return;
+
+    const isPointerLockGranted = await checkNavigatorPermissions("pointer-lock");
+    if (isPointerLockGranted && settings.mouseMode === "relative") {
+      notifications.success("Pointer lock enabled, to exit it, press the escape key for a few seconds");
+      videoElm.current?.requestPointerLock();
+    }
+  }, [settings.mouseMode]);
+
+  const requestFullscreen = useCallback(async () => {
+    videoElm.current?.requestFullscreen({
+      navigationUI: "show",
+    });
+
+    // we do not care about pointer lock if it's for fullscreen
+    await requestPointerLock();
+
+    const isKeyboardLockGranted = await checkNavigatorPermissions("keyboard-lock");
+    if (isKeyboardLockGranted) {
+      if ('keyboard' in navigator) {
+        // @ts-ignore 
+        await navigator.keyboard.lock();
+      }
+    }
+
+  }, [disableVideoFocusTrap]);
 
   // Mouse-related
   const calcDelta = (pos: number) => (Math.abs(pos) < 10 ? pos * 2 : pos);
@@ -525,6 +562,13 @@ export default function WebRTCVideo() {
       const containerElm = containerRef.current;
       if (!containerElm) return;
 
+
+      const videoElmRefValue = videoElm.current;
+      if (videoElmRefValue) containerElm.addEventListener("click", () => {
+        if (disableVideoFocusTrap) return;
+        requestPointerLock();
+      }, { signal });
+
       containerElm.addEventListener("mousemove", relMouseMoveHandler, { signal });
       containerElm.addEventListener("pointerdown", relMouseMoveHandler, { signal });
       containerElm.addEventListener("pointerup", relMouseMoveHandler, { signal });
@@ -541,7 +585,7 @@ export default function WebRTCVideo() {
         abortController.abort();
       };
     },
-    [settings.mouseMode, relMouseMoveHandler, mouseWheelHandler],
+    [settings.mouseMode, relMouseMoveHandler, mouseWheelHandler, requestPointerLock, disableVideoFocusTrap]
   );
 
   const hasNoAutoPlayPermissions = useMemo(() => {
@@ -554,19 +598,12 @@ export default function WebRTCVideo() {
 
   return (
     <div className="grid h-full w-full grid-rows-layout">
-      <div className="min-h-[39.5px] flex flex-col">
-        <div className="flex flex-col">
-          <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
-            <Actionbar
-              requestFullscreen={async () =>
-                videoElm.current?.requestFullscreen({
-                  navigationUI: "show",
-                })
-              }
-            />
-            <MacroBar />
-          </fieldset>
-        </div>
+      <div className="min-h-[39.5px]">
+        <fieldset disabled={peerConnection?.connectionState !== "connected"}>
+          <Actionbar
+            requestFullscreen={requestFullscreen}
+          />
+        </fieldset>
       </div>
 
       <div
