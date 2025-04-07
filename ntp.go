@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"github.com/beevik/ntp"
@@ -20,12 +21,40 @@ const (
 )
 
 var (
+	builtTimestamp        string
 	timeSyncRetryInterval = 0 * time.Second
+	timeSyncSuccess       = false
 	defaultNTPServers     = []string{
 		"time.cloudflare.com",
 		"time.apple.com",
 	}
 )
+
+func isTimeSyncNeeded() bool {
+	if builtTimestamp == "" {
+		logger.Warnf("Built timestamp is not set, time sync is needed")
+		return true
+	}
+
+	ts, err := strconv.Atoi(builtTimestamp)
+	if err != nil {
+		logger.Warnf("Failed to parse built timestamp: %v", err)
+		return true
+	}
+
+	// builtTimestamp is UNIX timestamp in seconds
+	builtTime := time.Unix(int64(ts), 0)
+	now := time.Now()
+
+	logger.Tracef("Built time: %v, now: %v", builtTime, now)
+
+	if now.Sub(builtTime) < 0 {
+		logger.Warnf("System time is behind the built time, time sync is needed")
+		return true
+	}
+
+	return false
+}
 
 func TimeSyncLoop() {
 	for {
@@ -39,6 +68,9 @@ func TimeSyncLoop() {
 			time.Sleep(timeSyncWaitNetUpInt)
 			continue
 		}
+
+		// check if time sync is needed, but do nothing for now
+		isTimeSyncNeeded()
 
 		logger.Infof("Syncing system time")
 		start := time.Now()
@@ -56,6 +88,7 @@ func TimeSyncLoop() {
 
 			continue
 		}
+		timeSyncSuccess = true
 		logger.Infof("Time sync successful, now is: %v, time taken: %v", time.Now(), time.Since(start))
 		time.Sleep(timeSyncInterval) // after the first sync is done
 	}
