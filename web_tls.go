@@ -122,5 +122,4 @@ func RunWebSecureServer() {
 	if err != nil {
 		panic(err)
 	}
-	return
 }
