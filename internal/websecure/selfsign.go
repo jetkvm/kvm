@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"log"
 	"net"
 	"strings"
 	"time"
@@ -78,7 +77,8 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		log.Fatalf("Failed to generate private key: %v", err)
+		s.log.Errorf("Failed to generate private key: %v", err)
+		return nil
 	}
 
 	notBefore := time.Now()
@@ -87,6 +87,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 	serialNumber, err := generateSerialNumber()
 	if err != nil {
 		s.log.Errorf("Failed to generate serial number: %v", err)
+		return nil
 	}
 
 	dnsName := hostname
@@ -164,8 +165,10 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 	return tlsCert
 }
 
+// GetCertificate returns the certificate for the given hostname
+// returns nil if the certificate is not found
 func (s *SelfSigner) GetCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	hostname := s.DefaultDomain
+	var hostname string
 	if info.ServerName != "" && info.ServerName != selfSignerCAMagicName {
 		hostname = info.ServerName
 	} else {

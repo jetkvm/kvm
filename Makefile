@@ -8,9 +8,6 @@ VERSION := 0.3.8
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
 
-PROMETHEUS_TAG := github.com/prometheus/common/version
-KVM_PKG_NAME := github.com/jetkvm/kvm
-
 GO_LDFLAGS := \
   -s -w \
   -X $(PROMETHEUS_TAG).Branch=$(BRANCH) \
