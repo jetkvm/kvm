@@ -18,6 +18,13 @@ import { isOnDevice } from "@/main";
 import { LocalDevice } from "./devices.$id";
 import { SettingsItem } from "./devices.$id.settings";
 import { CloudState } from "./adopt";
+import { TextAreaWithLabel } from "@components/TextArea";
+
+export interface TLSState {
+  mode: "selfsigned" | "custom" | "disabled";
+  certificate?: string;
+  privateKey?: string;
+};
 
 export const loader = async () => {
   if (isOnDevice) {
@@ -44,6 +51,9 @@ export default function SettingsAccessIndexRoute() {
 
   // Use a simple string identifier for the selected provider
   const [selectedProvider, setSelectedProvider] = useState<string>("jetkvm");
+  const [tlsMode, setTlsMode] = useState<string>("self-signed");
+  const [tlsCert, setTlsCert] = useState<string>("");
+  const [tlsKey, setTlsKey] = useState<string>("");
 
   const getCloudState = useCallback(() => {
     send("getCloudState", {}, resp => {
@@ -63,6 +73,17 @@ export default function SettingsAccessIndexRoute() {
       } else {
         setSelectedProvider("custom");
       }
+    });
+  }, [send]);
+
+  const getTLSState = useCallback(() => {
+    send("getTLSState", {}, resp => {
+      if ("error" in resp) return console.error(resp.error);
+      const tlsState = resp.result as TLSState;
+
+      setTlsMode(tlsState.mode);
+      if (tlsState.certificate) setTlsCert(tlsState.certificate);
+      if (tlsState.privateKey) setTlsKey(tlsState.privateKey);
     });
   }, [send]);
 
@@ -126,15 +147,51 @@ export default function SettingsAccessIndexRoute() {
     }
   };
 
+  // Handle TLS mode change
+  const handleTlsModeChange = (value: string) => {
+    setTlsMode(value);
+  };
+
+  const handleTlsCertChange = (value: string) => {
+    setTlsCert(value);
+  };
+
+  const handleTlsKeyChange = (value: string) => {
+    setTlsKey(value);
+  };
+
+  const handleTlsUpdate = useCallback(() => {
+    send("setTLSState", { state: { mode: tlsMode, certificate: tlsCert, privateKey: tlsKey } as TLSState }, resp => {
+      if ("error" in resp) {
+        notifications.error(`Failed to update TLS settings: ${resp.error.data || "Unknown error"}`);
+        return;
+      }
+
+      notifications.success("TLS settings updated successfully");
+    });
+  }, [send, tlsMode, tlsCert, tlsKey]);
+
+  const handleReboot = useCallback(() => {
+    send("reboot", { force: false }, resp => {
+      if ("error" in resp) {
+        notifications.error(`Failed to reboot: ${resp.error.data || "Unknown error"}`);
+        return;
+      }
+
+      notifications.success("Device will restart shortly, it might take a few seconds to boot up again.");
+    });
+  }, [send]);
+
   // Fetch device ID and cloud state on component mount
   useEffect(() => {
     getCloudState();
+    getTLSState();
 
     send("getDeviceID", {}, async resp => {
       if ("error" in resp) return console.error(resp.error);
       setDeviceId(resp.result as string);
     });
-  }, [send, getCloudState]);
+  }, [send, getCloudState, getTLSState]);
 
   return (
     <div className="space-y-4">
@@ -150,30 +207,106 @@ export default function SettingsAccessIndexRoute() {
               title="Local"
               description="Manage the mode of local access to the device"
             />
-            <SettingsItem
-              title="Authentication Mode"
-              description={`Current mode: ${loaderData.authMode === "password" ? "Password protected" : "No password"}`}
-            >
-              {loaderData.authMode === "password" ? (
-                <Button
+            <>
+              <SettingsItem
+                title="HTTPS/TLS Mode"
+                description={<>
+                  Select the TLS mode for your device (beta)<br />
+                  <small>changing this setting might restart the device</small>
+                </>}
+              >
+                <SelectMenuBasic
                   size="SM"
-                  theme="light"
-                  text="Disable Protection"
-                  onClick={() => {
-                    navigateTo("./local-auth", { state: { init: "deletePassword" } });
-                  }}
+                  value={tlsMode}
+                  onChange={e => handleTlsModeChange(e.target.value)}
+                  options={[
+                    { value: "selfsigned", label: "Self-signed" },
+                    { value: "custom", label: "Custom" },
+                    { value: "disabled", label: "Disabled" },
+                  ]}
                 />
-              ) : (
-                <Button
-                  size="SM"
-                  theme="light"
-                  text="Enable Password"
-                  onClick={() => {
-                    navigateTo("./local-auth", { state: { init: "createPassword" } });
-                  }}
-                />
+              </SettingsItem>
+
+              <div className="space-y-4">
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  If TLS wasn't enabled before, you'll need to <strong>reboot</strong> the device to apply the changes.<br />
+                </p>
+
+                <div className="flex items-center gap-x-2">
+                  <Button
+                    size="SM"
+                    theme="primary"
+                    text="Update TLS Settings"
+                    onClick={handleTlsUpdate}
+                  />
+                  <Button
+                    size="SM"
+                    theme="danger"
+                    text="Reboot"
+                    onClick={handleReboot}
+                  />
+                </div>
+              </div>
+
+              {tlsMode === "custom" && (
+                <div className="mt-4 space-y-4">
+                  <div className="space-y-4">
+                    <SettingsItem
+                      title="TLS Certificate"
+                      description="Enter your TLS certificate here, if intermediate or root CA is used, you can paste the entire chain here too"
+                    />
+                    <div className="space-y-4">
+                      <TextAreaWithLabel
+                        label="Certificate"
+                        rows={3}
+                        placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
+                        value={tlsCert}
+                        onChange={e => handleTlsCertChange(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="space-y-4">
+                        <TextAreaWithLabel
+                          label="Private Key"
+                          rows={3}
+                          placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
+                          value={tlsKey}
+                          onChange={e => handleTlsKeyChange(e.target.value)}
+                        />
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                          Private key won't be shown again after saving.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
-            </SettingsItem>
+              <SettingsItem
+                title="Authentication Mode"
+                description={`Current mode: ${loaderData.authMode === "password" ? "Password protected" : "No password"}`}
+              >
+                {loaderData.authMode === "password" ? (
+                  <Button
+                    size="SM"
+                    theme="light"
+                    text="Disable Protection"
+                    onClick={() => {
+                      navigateTo("./local-auth", { state: { init: "deletePassword" } });
+                    }}
+                  />
+                ) : (
+                  <Button
+                    size="SM"
+                    theme="light"
+                    text="Enable Password"
+                    onClick={() => {
+                      navigateTo("./local-auth", { state: { init: "createPassword" } });
+                    }}
+                  />
+                )}
+              </SettingsItem>
+            </>
 
             {loaderData.authMode === "password" && (
               <SettingsItem

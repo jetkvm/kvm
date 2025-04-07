@@ -29,7 +29,14 @@ type SelfSigner struct {
 	DefaultOU     string
 }
 
-func NewSelfSigner(store *CertStore, log logging.LeveledLogger, defaultDomain, defaultOrg, defaultOU, caName string) *SelfSigner {
+func NewSelfSigner(
+	store *CertStore,
+	log logging.LeveledLogger,
+	defaultDomain,
+	defaultOrg,
+	defaultOU,
+	caName string,
+) *SelfSigner {
 	return &SelfSigner{
 		store:         store,
 		log:           log,
@@ -177,6 +184,5 @@ func (s *SelfSigner) GetCertificate(info *tls.ClientHelloInfo) (*tls.Certificate
 	}
 
 	cert := s.createSelfSignedCert(hostname)
-
 	return cert, nil
 }

@@ -95,7 +95,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	//logger.Infof("Received RPC request: Method=%s, Params=%v, ID=%d", request.Method, request.Params, request.ID)
+	logger.Tracef("Received RPC request: Method=%s, Params=%v, ID=%w", request.Method, request.Params, request.ID)
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
 		errorResponse := JSONRPCResponse{
@@ -110,6 +110,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
+	logger.Tracef("Calling RPC handler: %s, ID=%w", request.Method, request.ID)
 	result, err := callRPCHandler(handler, request.Params)
 	if err != nil {
 		errorResponse := JSONRPCResponse{
@@ -125,6 +126,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
+	logger.Tracef("RPC handler returned: %v, ID=%w", result, request.ID)
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
 		Result:  result,
@@ -139,6 +141,30 @@ func rpcPing() (string, error) {
 
 func rpcGetDeviceID() (string, error) {
 	return GetDeviceID(), nil
+}
+
+func rpcReboot(force bool) error {
+	logger.Info("Got reboot request from JSONRPC, rebooting...")
+
+	args := []string{}
+	if force {
+		args = append(args, "-f")
+	}
+
+	cmd := exec.Command("reboot", args...)
+	err := cmd.Start()
+	if err != nil {
+		logger.Errorf("failed to reboot: %v", err)
+		return fmt.Errorf("failed to reboot: %w", err)
+	}
+
+	// If the reboot command is successful, exit the program after 5 seconds
+	go func() {
+		time.Sleep(5 * time.Second)
+		os.Exit(0)
+	}()
+
+	return nil
 }
 
 var streamFactor = 1.0
@@ -373,6 +399,14 @@ func rpcSetSSHKeyState(sshKey string) error {
 	}
 
 	return nil
+}
+
+func rpcGetTLSState() TLSState {
+	return getTLSState()
+}
+
+func rpcSetTLSState(tlsState TLSState) error {
+	return setTLSState(tlsState)
 }
 
 func callRPCHandler(handler RPCHandler, params map[string]interface{}) (interface{}, error) {
@@ -892,6 +926,7 @@ func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
 
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
+	"reboot":                 {Func: rpcReboot, Params: []string{"force"}},
 	"getDeviceID":            {Func: rpcGetDeviceID},
 	"deregisterDevice":       {Func: rpcDeregisterDevice},
 	"getCloudState":          {Func: rpcGetCloudState},
@@ -920,6 +955,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setDevModeState":        {Func: rpcSetDevModeState, Params: []string{"enabled"}},
 	"getSSHKeyState":         {Func: rpcGetSSHKeyState},
 	"setSSHKeyState":         {Func: rpcSetSSHKeyState, Params: []string{"sshKey"}},
+	"getTLSState":            {Func: rpcGetTLSState},
+	"setTLSState":            {Func: rpcSetTLSState, Params: []string{"state"}},
 	"setMassStorageMode":     {Func: rpcSetMassStorageMode, Params: []string{"mode"}},
 	"getMassStorageMode":     {Func: rpcGetMassStorageMode},
 	"isUpdatePending":        {Func: rpcIsUpdatePending},

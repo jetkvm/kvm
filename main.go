@@ -69,6 +69,7 @@ func Main() {
 	}()
 	//go RunFuseServer()
 	go RunWebServer()
+
 	if config.TLSMode != "" {
 		initCertStore()
 		go RunWebSecureServer()
