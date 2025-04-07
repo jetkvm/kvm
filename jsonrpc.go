@@ -406,7 +406,16 @@ func rpcGetTLSState() TLSState {
 }
 
 func rpcSetTLSState(tlsState TLSState) error {
-	return setTLSState(tlsState)
+	err := setTLSState(tlsState)
+	if err != nil {
+		return fmt.Errorf("failed to set TLS state: %w", err)
+	}
+
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
 }
 
 func callRPCHandler(handler RPCHandler, params map[string]interface{}) (interface{}, error) {

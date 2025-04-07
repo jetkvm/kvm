@@ -101,7 +101,6 @@ func setTLSState(s TLSState) error {
 	case "self-signed":
 		config.TLSMode = "self-signed"
 	}
-	SaveConfig()
 	return nil
 }
 
