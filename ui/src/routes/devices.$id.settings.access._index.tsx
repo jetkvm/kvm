@@ -21,7 +21,7 @@ import { CloudState } from "./adopt";
 import { TextAreaWithLabel } from "@components/TextArea";
 
 export interface TLSState {
-  mode: "selfsigned" | "custom" | "disabled";
+  mode: "self-signed" | "custom" | "disabled";
   certificate?: string;
   privateKey?: string;
 };
@@ -220,7 +220,7 @@ export default function SettingsAccessIndexRoute() {
                   value={tlsMode}
                   onChange={e => handleTlsModeChange(e.target.value)}
                   options={[
-                    { value: "selfsigned", label: "Self-signed" },
+                    { value: "self-signed", label: "Self-signed" },
                     { value: "custom", label: "Custom" },
                     { value: "disabled", label: "Disabled" },
                   ]}

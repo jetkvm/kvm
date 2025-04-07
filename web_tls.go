@@ -100,6 +100,8 @@ func setTLSState(s TLSState) error {
 		config.TLSMode = "custom"
 	case "self-signed":
 		config.TLSMode = "self-signed"
+	default:
+		return fmt.Errorf("invalid TLS mode: %s", s.Mode)
 	}
 	return nil
 }
