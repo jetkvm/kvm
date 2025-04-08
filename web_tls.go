@@ -1,10 +1,13 @@
 package kvm
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/jetkvm/kvm/internal/websecure"
 )
@@ -31,6 +34,10 @@ type TLSState struct {
 }
 
 func initCertStore() {
+	if certStore != nil {
+		logger.Warnf("TLS store already initialized, it should not be initialized again")
+		return
+	}
 	certStore = websecure.NewCertStore(tlsStorePath)
 	certStore.LoadCertificates()
 
@@ -87,10 +94,18 @@ func getTLSState() TLSState {
 }
 
 func setTLSState(s TLSState) error {
+	var isChanged = false
+
 	switch s.Mode {
 	case "disabled":
+		if config.TLSMode != "" {
+			isChanged = true
+		}
 		config.TLSMode = ""
 	case "custom":
+		if config.TLSMode == "" {
+			isChanged = true
+		}
 		// parse pem to cert and key
 		err, _ := certStore.ValidateAndSaveCertificate(webSecureCustomCertificateName, s.Certificate, s.PrivateKey, true)
 		// warn doesn't matter as ... we don't know the hostname yet
@@ -99,15 +114,47 @@ func setTLSState(s TLSState) error {
 		}
 		config.TLSMode = "custom"
 	case "self-signed":
+		if config.TLSMode == "" {
+			isChanged = true
+		}
 		config.TLSMode = "self-signed"
 	default:
 		return fmt.Errorf("invalid TLS mode: %s", s.Mode)
 	}
+
+	if !isChanged {
+		logger.Tracef("TLS enabled state is not changed, not starting/stopping websecure server")
+		return nil
+	}
+
+	if config.TLSMode == "" {
+		logger.Tracef("Stopping websecure server, as TLS mode is disabled")
+		stopWebSecureServer()
+	} else {
+		logger.Tracef("Starting websecure server, as TLS mode is enabled")
+		startWebSecureServer()
+	}
+
 	return nil
 }
 
+var (
+	startTLS       = make(chan struct{})
+	stopTLS        = make(chan struct{})
+	tlsServiceLock = sync.Mutex{}
+	tlsStarted     = false
+)
+
 // RunWebSecureServer runs a web server with TLS.
-func RunWebSecureServer() {
+func runWebSecureServer() {
+	tlsServiceLock.Lock()
+	defer tlsServiceLock.Unlock()
+
+	tlsStarted = true
+	defer func() {
+		tlsStarted = false
+	}()
+
 	r := setupRouter()
 
 	server := &http.Server{
@@ -119,9 +166,43 @@ func RunWebSecureServer() {
 			GetCertificate:   getCertificate,
 		},
 	}
-	logger.Info().Str("listen", WebSecureListen).Msg("Starting websecure server")
+	logger.Infof("Starting websecure server on %s", webSecureListen)
+
+	go func() {
+		for _ = range stopTLS {
+			logger.Infof("Shutting down websecure server")
+			server.Shutdown(context.Background())
+		}
+	}()
+
 	err := server.ListenAndServeTLS("", "")
-	if err != nil {
+	if !errors.Is(err, http.ErrServerClosed) {
 		panic(err)
+	}
+}
+
+func stopWebSecureServer() {
+	if !tlsStarted {
+		logger.Warnf("Websecure server is not running, not stopping it")
+		return
+	}
+	stopTLS <- struct{}{}
+}
+
+func startWebSecureServer() {
+	if tlsStarted {
+		logger.Warnf("Websecure server is already running, not starting it again")
+		return
+	}
+	startTLS <- struct{}{}
+}
+
+func RunWebSecureServer() {
+	for _ = range startTLS {
+		logger.Tracef("Starting websecure server, as we have received a start signal")
+		if certStore == nil {
+			initCertStore()
+		}
+		go runWebSecureServer()
 	}
 }
