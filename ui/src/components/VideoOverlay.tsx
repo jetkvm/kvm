@@ -6,7 +6,7 @@ import { LuPlay } from "react-icons/lu";
 
 import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
-import { GridCard } from "@components/Card";
+import Card, { GridCard } from "@components/Card";
 
 interface OverlayContentProps {
   children: React.ReactNode;
@@ -153,10 +153,11 @@ export function ConnectionFailedOverlay({
 
 interface PeerConnectionDisconnectedOverlay {
   show: boolean;
-  setupPeerConnection: () => Promise<void>;
 }
 
-export function PeerConnectionDisconnectedOverlay({ show }: ConnectionErrorOverlayProps) {
+export function PeerConnectionDisconnectedOverlay({
+  show,
+}: PeerConnectionDisconnectedOverlay) {
   return (
     <AnimatePresence>
       {show && (
@@ -185,12 +186,14 @@ export function PeerConnectionDisconnectedOverlay({ show }: ConnectionErrorOverl
                     </ul>
                   </div>
                   <div className="flex items-center gap-x-2">
-                    <div className="flex flex-col items-center gap-y-2">
-                      <LoadingSpinner className="h-4 w-4 text-blue-800 dark:text-blue-200" />
-                      <p className="text-sm text-slate-700 dark:text-slate-300">
-                        Retrying connection...
-                      </p>
-                    </div>
+                    <Card>
+                      <div className="flex items-center gap-x-2 p-4">
+                        <LoadingSpinner className="h-4 w-4 text-blue-800 dark:text-blue-200" />
+                        <p className="text-sm text-slate-700 dark:text-slate-300">
+                          Retrying connection...
+                        </p>
+                      </div>
+                    </Card>
                   </div>
                 </div>
               </div>
