@@ -161,7 +161,12 @@ export default function SettingsAccessIndexRoute() {
   };
 
   const handleTlsUpdate = useCallback(() => {
-    send("setTLSState", { state: { mode: tlsMode, certificate: tlsCert, privateKey: tlsKey } as TLSState }, resp => {
+    const state = { mode: tlsMode } as TLSState;
+    if (tlsMode !== "disabled") {
+      state.certificate = tlsCert;
+      state.privateKey = tlsKey;
+    }
+    send("setTLSState", { state }, resp => {
       if ("error" in resp) {
         notifications.error(`Failed to update TLS settings: ${resp.error.data || "Unknown error"}`);
         return;
@@ -170,17 +175,6 @@ export default function SettingsAccessIndexRoute() {
       notifications.success("TLS settings updated successfully");
     });
   }, [send, tlsMode, tlsCert, tlsKey]);
-
-  const handleReboot = useCallback(() => {
-    send("reboot", { force: false }, resp => {
-      if ("error" in resp) {
-        notifications.error(`Failed to reboot: ${resp.error.data || "Unknown error"}`);
-        return;
-      }
-
-      notifications.success("Device will restart shortly, it might take a few seconds to boot up again.");
-    });
-  }, [send]);
 
   // Fetch device ID and cloud state on component mount
   useEffect(() => {
@@ -211,8 +205,8 @@ export default function SettingsAccessIndexRoute() {
               <SettingsItem
                 title="HTTPS/TLS Mode"
                 description={<>
-                  Select the TLS mode for your device (beta)<br />
-                  <small>changing this setting might restart the device</small>
+                  Select the TLS mode for your device <sup>experimental</sup><br />
+                  <small>The feature might not work as expected, please report any issues if you encounter any.</small>
                 </>}
               >
                 <SelectMenuBasic
@@ -226,27 +220,6 @@ export default function SettingsAccessIndexRoute() {
                   ]}
                 />
               </SettingsItem>
-
-              <div className="space-y-4">
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  If TLS wasn't enabled before, you'll need to <strong>reboot</strong> the device to apply the changes.<br />
-                </p>
-
-                <div className="flex items-center gap-x-2">
-                  <Button
-                    size="SM"
-                    theme="primary"
-                    text="Update TLS Settings"
-                    onClick={handleTlsUpdate}
-                  />
-                  <Button
-                    size="SM"
-                    theme="danger"
-                    text="Reboot"
-                    onClick={handleReboot}
-                  />
-                </div>
-              </div>
 
               {tlsMode === "custom" && (
                 <div className="mt-4 space-y-4">
@@ -282,6 +255,19 @@ export default function SettingsAccessIndexRoute() {
                   </div>
                 </div>
               )}
+
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-x-2">
+                  <Button
+                    size="SM"
+                    theme="primary"
+                    text="Update TLS Settings"
+                    onClick={handleTlsUpdate}
+                  />
+                </div>
+              </div>
+
               <SettingsItem
                 title="Authentication Mode"
                 description={`Current mode: ${loaderData.authMode === "password" ? "Password protected" : "No password"}`}

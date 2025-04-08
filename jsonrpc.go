@@ -405,8 +405,8 @@ func rpcGetTLSState() TLSState {
 	return getTLSState()
 }
 
-func rpcSetTLSState(tlsState TLSState) error {
-	err := setTLSState(tlsState)
+func rpcSetTLSState(state TLSState) error {
+	err := setTLSState(state)
 	if err != nil {
 		return fmt.Errorf("failed to set TLS state: %w", err)
 	}

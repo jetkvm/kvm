@@ -109,6 +109,8 @@ func SaveConfig() error {
 	configLock.Lock()
 	defer configLock.Unlock()
 
+	logger.Tracef("Saving config to %s", configPath)
+
 	file, err := os.Create(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
