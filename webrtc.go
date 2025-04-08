@@ -144,7 +144,10 @@ func newSession(config SessionConfig) (*Session, error) {
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		logger.Infof("Our WebRTC peerConnection has a new ICE candidate: %v", candidate)
 		if candidate != nil {
-			wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
+			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
+			if err != nil {
+				logger.Errorf("failed to write new-ice-candidate to WebRTC signaling channel: %v", err)
+			}
 		}
 	})
 
