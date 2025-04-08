@@ -44,16 +44,16 @@ import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard
 import api from "../api";
 import Modal from "../components/Modal";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
-import { FeatureFlagProvider } from "../providers/FeatureFlagProvider";
-import notifications from "../notifications";
 import {
   ConnectionFailedOverlay,
   LoadingConnectionOverlay,
   PeerConnectionDisconnectedOverlay,
 } from "../components/VideoOverlay";
+import { FeatureFlagProvider } from "../providers/FeatureFlagProvider";
+import notifications from "../notifications";
 
-import { SystemVersionInfo } from "./devices.$id.settings.general.update";
 import { DeviceStatus } from "./welcome-local";
+import { SystemVersionInfo } from "./devices.$id.settings.general.update";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -139,6 +139,8 @@ export default function KvmIdRoute() {
   const setRpcDataChannel = useRTCStore(state => state.setRpcDataChannel);
   const setTransceiver = useRTCStore(state => state.setTransceiver);
   const location = useLocation();
+
+  const isLegacySignalingEnabled = useRef(false);
 
   const [connectionFailed, setConnectionFailed] = useState(false);
 
@@ -234,11 +236,10 @@ export default function KvmIdRoute() {
 
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
-  console.log("isondevice", isOnDevice);
-  const { sendMessage } = useWebSocket(
+  const { sendMessage, getWebSocket } = useWebSocket(
     isOnDevice
-      ? `${wsProtocol}//${window.location.host}/webrtc/signaling`
-      : `${CLOUD_API.replace("http", "ws")}/webrtc/signaling?id=${params.id}`,
+      ? `${wsProtocol}//${window.location.host}/webrtc/signaling/client`
+      : `${CLOUD_API.replace("http", "ws")}/webrtc/signaling/client?id=${params.id}`,
     {
       heartbeat: true,
       retryOnError: true,
@@ -266,15 +267,45 @@ export default function KvmIdRoute() {
       },
       onOpen() {
         console.log("[Websocket] onOpen");
-        setupPeerConnection();
       },
 
       onMessage: message => {
         if (message.data === "pong") return;
-        if (!peerConnection) return;
+
+        /*
+          Currently the signaling process is as follows:
+            After open, the other side will send a `device-metadata` message with the device version
+            If the device version is not set, we can assume the device is using the legacy signaling
+            Otherwise, we can assume the device is using the new signaling
+
+            If the device is using the legacy signaling, we close the websocket connection
+            and use the legacy HTTPSignaling function to get the remote session description
+
+            If the device is using the new signaling, we don't need to do anything special, but continue to use the websocket connection
+            to chat with the other peer about the connection
+        */
 
         const parsedMessage = JSON.parse(message.data);
+        if (parsedMessage.type === "device-metadata") {
+          const { deviceVersion } = parsedMessage.data;
+          console.log("[Websocket] Received device-metadata message");
+          console.log("[Websocket] Device version", deviceVersion);
+          // If the device version is not set, we can assume the device is using the legacy signaling
+          if (!deviceVersion) {
+            console.log("[Websocket] Device is using legacy signaling");
 
+            // Now we don't need the websocket connection anymore, as we've established that we need to use the legacy signaling
+            // which does everything over HTTP(at least from the perspective of the client)
+            isLegacySignalingEnabled.current = true;
+            getWebSocket()?.close();
+          } else {
+            console.log("[Websocket] Device is using new signaling");
+            isLegacySignalingEnabled.current = false;
+          }
+          setupPeerConnection();
+        }
+
+        if (!peerConnection) return;
         if (parsedMessage.type === "answer") {
           console.log("[Websocket] Received answer");
           const readyForOffer =
@@ -314,7 +345,7 @@ export default function KvmIdRoute() {
     },
 
     // Don't even retry once we declare failure
-    !connectionFailed,
+    !connectionFailed && isLegacySignalingEnabled.current === false,
   );
 
   const sendWebRTCSignal = useCallback(
@@ -324,6 +355,42 @@ export default function KvmIdRoute() {
       sendMessage(JSON.stringify({ type, data }), false);
     },
     [sendMessage],
+  );
+
+  const legacyHTTPSignaling = useCallback(
+    async (pc: RTCPeerConnection) => {
+      const sd = btoa(JSON.stringify(pc.localDescription));
+
+      // Legacy mode == UI in cloud with updated code connecting to older device version.
+      // In device mode, old devices wont server this JS, and on newer devices legacy mode wont be enabled
+      const sessionUrl = `${CLOUD_API}/webrtc/session`;
+
+      console.log("Trying to get remote session description");
+      setLoadingMessage(
+        `Getting remote session description...  ${signalingAttempts.current > 0 ? `(attempt ${signalingAttempts.current + 1})` : ""}`,
+      );
+      const res = await api.POST(sessionUrl, {
+        sd,
+        // When on device, we don't need to specify the device id, as it's already known
+        ...(isOnDevice ? {} : { id: params.id }),
+      });
+
+      const json = await res.json();
+      if (res.status === 401) return navigate(isOnDevice ? "/login-local" : "/login");
+      if (!res.ok) {
+        console.error("Error getting SDP", { status: res.status, json });
+        cleanupAndStopReconnecting();
+        return;
+      }
+
+      console.log("Successfully got Remote Session Description. Setting.");
+      setLoadingMessage("Setting remote session description...");
+
+      const decodedSd = atob(json.sd);
+      const parsedSd = JSON.parse(decodedSd);
+      setRemoteSessionDescription(pc, new RTCSessionDescription(parsedSd));
+    },
+    [cleanupAndStopReconnecting, navigate, params.id, setRemoteSessionDescription],
   );
 
   const setupPeerConnection = useCallback(async () => {
@@ -346,6 +413,7 @@ export default function KvmIdRoute() {
           ? { iceServers: [iceConfig?.iceServers] }
           : {}),
       });
+
       setPeerConnectionState(pc.connectionState);
       console.log("[setupPeerConnection] Peer connection created", pc);
       setLoadingMessage("Setting up connection to device...");
@@ -371,7 +439,12 @@ export default function KvmIdRoute() {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         const sd = btoa(JSON.stringify(pc.localDescription));
-        sendWebRTCSignal("offer", { sd: sd });
+        const isNewSignalingEnabled = isLegacySignalingEnabled.current === false;
+        if (isNewSignalingEnabled) {
+          sendWebRTCSignal("offer", { sd: sd });
+        } else {
+          console.log("Legacy signanling. Waiting for ICE Gathering to complete...");
+        }
       } catch (e) {
         console.error(
           `[setupPeerConnection] Error creating offer: ${e}`,
@@ -387,6 +460,22 @@ export default function KvmIdRoute() {
       if (!candidate) return;
       if (candidate.candidate === "") return;
       sendWebRTCSignal("new-ice-candidate", candidate);
+    };
+
+    pc.onicegatheringstatechange = event => {
+      const pc = event.currentTarget as RTCPeerConnection;
+      if (pc.iceGatheringState === "complete") {
+        console.log("ICE Gathering completed");
+        setLoadingMessage("ICE Gathering completed");
+
+        if (isLegacySignalingEnabled.current) {
+          // We can now start the https/ws connection to get the remote session description from the KVM device
+          legacyHTTPSignaling(pc);
+        }
+      } else if (pc.iceGatheringState === "gathering") {
+        console.log("ICE Gathering Started");
+        setLoadingMessage("Gathering ICE candidates...");
+      }
     };
 
     pc.ontrack = function (event) {
@@ -409,6 +498,7 @@ export default function KvmIdRoute() {
   }, [
     cleanupAndStopReconnecting,
     iceConfig?.iceServers,
+    legacyHTTPSignaling,
     peerConnection?.signalingState,
     sendWebRTCSignal,
     setDiskChannel,
@@ -552,10 +642,6 @@ export default function KvmIdRoute() {
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
 
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-expect-error
-  window.send = send;
-
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {
     if (queryParams.get("updateSuccess")) {
@@ -654,8 +740,6 @@ export default function KvmIdRoute() {
 
     if (isOtherSession) return null;
     if (peerConnectionState === "connected") return null;
-
-    console.log("isDisconnected", isDisconnected);
     if (isDisconnected) {
       return <PeerConnectionDisconnectedOverlay show={true} />;
     }
