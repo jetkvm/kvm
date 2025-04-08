@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LoaderFunctionArgs,
   Outlet,
@@ -146,17 +146,20 @@ export default function KvmIdRoute() {
   const { otaState, setOtaState, setModalView } = useUpdateStore();
 
   const [loadingMessage, setLoadingMessage] = useState("Connecting to device...");
-  const closePeerConnection = useCallback(
-    function closePeerConnection() {
+  const cleanupAndStopReconnecting = useCallback(
+    function cleanupAndStopReconnecting() {
       console.log("Closing peer connection");
 
       setConnectionFailed(true);
+      if (peerConnection) {
+        setPeerConnectionState(peerConnection.connectionState);
+      }
       connectionFailedRef.current = true;
 
       peerConnection?.close();
       signalingAttempts.current = 0;
     },
-    [peerConnection],
+    [peerConnection, setPeerConnectionState],
   );
 
   // We need to track connectionFailed in a ref to avoid stale closure issues
@@ -172,6 +175,7 @@ export default function KvmIdRoute() {
   useEffect(() => {
     connectionFailedRef.current = connectionFailed;
   }, [connectionFailed]);
+
   const signalingAttempts = useRef(0);
   const setRemoteSessionDescription = useCallback(
     async function setRemoteSessionDescription(
@@ -182,11 +186,14 @@ export default function KvmIdRoute() {
 
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(remoteDescription));
-        console.log("Remote description set successfully");
+        console.log("[setRemoteSessionDescription] Remote description set successfully");
         setLoadingMessage("Establishing secure connection...");
       } catch (error) {
-        console.error("Failed to set remote description:", error);
-        closePeerConnection();
+        console.error(
+          "[setRemoteSessionDescription] Failed to set remote description:",
+          error,
+        );
+        cleanupAndStopReconnecting();
         return;
       }
 
@@ -197,26 +204,33 @@ export default function KvmIdRoute() {
 
         // When vivaldi has disabled "Broadcast IP for Best WebRTC Performance", this never connects
         if (pc.sctp?.state === "connected") {
-          console.log("Remote description set");
+          console.log("[setRemoteSessionDescription] Remote description set");
           clearInterval(checkInterval);
+          setLoadingMessage("Connection established");
         } else if (attempts >= 10) {
-          console.log("Failed to establish connection after 10 attempts");
-          closePeerConnection();
+          console.log(
+            "[setRemoteSessionDescription] Failed to establish connection after 10 attempts",
+            {
+              connectionState: pc.connectionState,
+              iceConnectionState: pc.iceConnectionState,
+            },
+          );
+          cleanupAndStopReconnecting();
           clearInterval(checkInterval);
         } else {
-          console.log(
-            "Waiting for connection, state:",
-            pc.connectionState,
-            pc.iceConnectionState,
-          );
+          console.log("[setRemoteSessionDescription] Waiting for connection, state:", {
+            connectionState: pc.connectionState,
+            iceConnectionState: pc.iceConnectionState,
+          });
         }
       }, 1000);
     },
-    [closePeerConnection],
+    [cleanupAndStopReconnecting],
   );
 
   const ignoreOffer = useRef(false);
   const isSettingRemoteAnswerPending = useRef(false);
+  const makingOffer = useRef(false);
 
   const { sendMessage } = useWebSocket(
     isOnDevice
@@ -229,41 +243,54 @@ export default function KvmIdRoute() {
       reconnectInterval: 1000,
       onReconnectStop: () => {
         console.log("Reconnect stopped");
-        closePeerConnection();
+        cleanupAndStopReconnecting();
       },
+
       shouldReconnect(event) {
-        console.log("shouldReconnect", event);
+        console.log("[Websocket] shouldReconnect", event);
+        // TODO: Why true?
         return true;
       },
+
       onClose(event) {
-        console.log("onClose", event);
+        console.log("[Websocket] onClose", event);
+        // We don't want to close everything down, we wait for the reconnect to stop instead
       },
+
       onError(event) {
-        console.log("onError", event);
+        console.log("[Websocket] onError", event);
+        // We don't want to close everything down, we wait for the reconnect to stop instead
       },
-      onOpen(event) {
-        console.log("onOpen", event);
-        console.log("signalingState", peerConnection?.signalingState);
+      onOpen() {
+        console.log("[Websocket] onOpen");
         setupPeerConnection();
       },
 
       onMessage: message => {
         if (message.data === "pong") return;
         if (!peerConnection) return;
-        console.log("Received WebSocket message:", message.data);
+
         const parsedMessage = JSON.parse(message.data);
+
         if (parsedMessage.type === "answer") {
-          const polite = false;
+          console.log("[Websocket] Received answer");
           const readyForOffer =
+            // If we're making an offer, we don't want to accept an answer
             !makingOffer &&
+            // If the peer connection is stable or we're setting the remote answer pending, we're ready for an offer
             (peerConnection?.signalingState === "stable" ||
               isSettingRemoteAnswerPending.current);
-          const offerCollision = parsedMessage.type === "offer" && !readyForOffer;
 
-          ignoreOffer.current = !polite && offerCollision;
+          // If we're not ready for an offer, we don't want to accept an offer
+          ignoreOffer.current = parsedMessage.type === "offer" && !readyForOffer;
           if (ignoreOffer.current) return;
 
+          // Set so we don't accept an answer while we're setting the remote description
           isSettingRemoteAnswerPending.current = parsedMessage.type == "answer";
+          console.log(
+            "[Websocket] Setting remote answer pending",
+            isSettingRemoteAnswerPending.current,
+          );
 
           const sd = atob(parsedMessage.data);
           const remoteSessionDescription = JSON.parse(sd);
@@ -273,37 +300,42 @@ export default function KvmIdRoute() {
             new RTCSessionDescription(remoteSessionDescription),
           );
 
+          // Reset the remote answer pending flag
           isSettingRemoteAnswerPending.current = false;
         } else if (parsedMessage.type === "new-ice-candidate") {
+          console.log("[Websocket] Received new-ice-candidate");
           const candidate = parsedMessage.data;
           peerConnection.addIceCandidate(candidate);
         }
       },
     },
 
-    connectionFailed ? false : true,
+    // Don't even retry once we declare failure
+    !connectionFailed,
   );
 
   const sendWebRTCSignal = useCallback(
-    (type: string, data: any) => {
-      sendMessage(JSON.stringify({ type, data }));
+    (type: string, data: unknown) => {
+      // Second argument tells the library not to queue the message, and send it once the connection is established again.
+      // We have event handlers that handle the connection set up, so we don't need to queue the message.
+      sendMessage(JSON.stringify({ type, data }), false);
     },
     [sendMessage],
   );
-  const makingOffer = useRef(false);
+
   const setupPeerConnection = useCallback(async () => {
-    console.log("Setting up peer connection");
+    console.log("[setupPeerConnection] Setting up peer connection");
     setConnectionFailed(false);
     setLoadingMessage("Connecting to device...");
 
     if (peerConnection?.signalingState === "stable") {
-      console.log("Peer connection already established");
+      console.log("[setupPeerConnection] Peer connection already established");
       return;
     }
 
     let pc: RTCPeerConnection;
     try {
-      console.log("Creating peer connection");
+      console.log("[setupPeerConnection] Creating peer connection");
       setLoadingMessage("Creating peer connection...");
       pc = new RTCPeerConnection({
         // We only use STUN or TURN servers if we're in the cloud
@@ -311,26 +343,26 @@ export default function KvmIdRoute() {
           ? { iceServers: [iceConfig?.iceServers] }
           : {}),
       });
-
-      console.log("Peer connection created", pc);
-      setLoadingMessage("Peer connection created");
+      setPeerConnectionState(pc.connectionState);
+      console.log("[setupPeerConnection] Peer connection created", pc);
+      setLoadingMessage("Setting up connection to device...");
     } catch (e) {
-      console.error(`Error creating peer connection: ${e}`);
+      console.error(`[setupPeerConnection] Error creating peer connection: ${e}`);
       setTimeout(() => {
-        closePeerConnection();
+        cleanupAndStopReconnecting();
       }, 1000);
       return;
     }
 
     // Set up event listeners and data channels
     pc.onconnectionstatechange = () => {
-      console.log("Connection state changed", pc.connectionState);
+      console.log("[setupPeerConnection] Connection state changed", pc.connectionState);
       setPeerConnectionState(pc.connectionState);
     };
 
     pc.onnegotiationneeded = async () => {
       try {
-        console.log("Creating offer");
+        console.log("[setupPeerConnection] Creating offer");
         makingOffer.current = true;
 
         const offer = await pc.createOffer();
@@ -338,8 +370,11 @@ export default function KvmIdRoute() {
         const sd = btoa(JSON.stringify(pc.localDescription));
         sendWebRTCSignal("offer", { sd: sd });
       } catch (e) {
-        console.error(`Error creating offer: ${e}`, new Date().toISOString());
-        closePeerConnection();
+        console.error(
+          `[setupPeerConnection] Error creating offer: ${e}`,
+          new Date().toISOString(),
+        );
+        cleanupAndStopReconnecting();
       } finally {
         makingOffer.current = false;
       }
@@ -369,8 +404,9 @@ export default function KvmIdRoute() {
 
     setPeerConnection(pc);
   }, [
-    closePeerConnection,
+    cleanupAndStopReconnecting,
     iceConfig?.iceServers,
+    peerConnection?.signalingState,
     sendWebRTCSignal,
     setDiskChannel,
     setMediaMediaStream,
@@ -383,9 +419,9 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (peerConnectionState === "failed") {
       console.log("Connection failed, closing peer connection");
-      closePeerConnection();
+      cleanupAndStopReconnecting();
     }
-  }, [peerConnectionState, closePeerConnection]);
+  }, [peerConnectionState, cleanupAndStopReconnecting]);
 
   // Cleanup effect
   const clearInboundRtpStats = useRTCStore(state => state.clearInboundRtpStats);
@@ -601,6 +637,45 @@ export default function KvmIdRoute() {
     [send, setScrollSensitivity],
   );
 
+  const ConnectionStatusElement = useMemo(() => {
+    const hasConnectionFailed =
+      connectionFailed || ["failed", "closed"].includes(peerConnectionState || "");
+
+    const isPeerConnectionLoading =
+      ["connecting", "new"].includes(peerConnectionState || "") ||
+      peerConnection === null;
+
+    const isDisconnected = peerConnectionState === "disconnected";
+
+    const isOtherSession = location.pathname.includes("other-session");
+
+    if (isOtherSession) return null;
+    if (peerConnectionState === "connected") return null;
+
+    console.log("isDisconnected", isDisconnected);
+    if (isDisconnected) {
+      return <PeerConnectionDisconnectedOverlay show={true} />;
+    }
+
+    if (hasConnectionFailed)
+      return (
+        <ConnectionFailedOverlay show={true} setupPeerConnection={setupPeerConnection} />
+      );
+
+    if (isPeerConnectionLoading) {
+      return <LoadingConnectionOverlay show={true} text={loadingMessage} />;
+    }
+
+    return null;
+  }, [
+    connectionFailed,
+    loadingMessage,
+    location.pathname,
+    peerConnection,
+    peerConnectionState,
+    setupPeerConnection,
+  ]);
+
   return (
     <FeatureFlagProvider appVersion={appVersion}>
       {!outlet && otaState.updating && (
@@ -642,31 +717,7 @@ export default function KvmIdRoute() {
           <div className="flex h-full w-full overflow-hidden">
             <div className="pointer-events-none fixed inset-0 isolate z-20 flex h-full w-full items-center justify-center">
               <div className="my-2 h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
-                <LoadingConnectionOverlay
-                  show={
-                    !connectionFailed &&
-                    peerConnectionState !== "disconnected" &&
-                    (["connecting", "new"].includes(peerConnectionState || "") ||
-                      peerConnection === null) &&
-                    !location.pathname.includes("other-session")
-                  }
-                  text={loadingMessage}
-                />
-                <ConnectionFailedOverlay
-                  show={
-                    (connectionFailed || peerConnectionState === "failed") &&
-                    !location.pathname.includes("other-session")
-                  }
-                  setupPeerConnection={setupPeerConnection}
-                />
-
-                <PeerConnectionDisconnectedOverlay
-                  show={
-                    peerConnectionState === "disconnected" &&
-                    !location.pathname.includes("other-session")
-                  }
-                  setupPeerConnection={setupPeerConnection}
-                />
+                {!!ConnectionStatusElement && ConnectionStatusElement}
               </div>
             </div>
 
