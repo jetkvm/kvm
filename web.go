@@ -207,6 +207,24 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 		}
 	}()
 
+	if isCloudConnection {
+		// create a channel to receive the disconnect event, once received, we cancelRun
+		cloudDisconnectChan = make(chan error)
+		defer func() {
+			close(cloudDisconnectChan)
+			cloudDisconnectChan = nil
+		}()
+		go func() {
+			for err := range cloudDisconnectChan {
+				if err == nil {
+					continue
+				}
+				cloudLogger.Infof("disconnecting from cloud due to: %v", err)
+				cancelRun()
+			}
+		}()
+	}
+
 	for {
 		typ, msg, err := wsCon.Read(runCtx)
 		if err != nil {

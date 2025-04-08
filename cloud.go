@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket/wsjson"
@@ -119,6 +120,11 @@ var (
 			Help: "The number of times the cloud connection has failed",
 		},
 	)
+)
+
+var (
+	cloudDisconnectChan chan error
+	cloudDisconnectLock = &sync.Mutex{}
 )
 
 func wsResetMetrics(established bool, sourceType string, source string) {
