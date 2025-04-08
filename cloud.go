@@ -76,7 +76,7 @@ var (
 	metricConnectionTotalPingCount = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "jetkvm_connection_total_ping_count",
-			Help: "The total number of pings sent to the",
+			Help: "The total number of pings sent to the connection",
 		},
 	)
 	metricConnectionSessionRequestCount = promauto.NewCounter(

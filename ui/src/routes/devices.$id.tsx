@@ -287,7 +287,7 @@ export default function KvmIdRoute() {
           if (ignoreOffer.current) return;
 
           // Set so we don't accept an answer while we're setting the remote description
-          isSettingRemoteAnswerPending.current = parsedMessage.type == "answer";
+          isSettingRemoteAnswerPending.current = parsedMessage.type === "answer";
           console.log(
             "[Websocket] Setting remote answer pending",
             isSettingRemoteAnswerPending.current,
