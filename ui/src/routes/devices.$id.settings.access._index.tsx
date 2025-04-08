@@ -51,7 +51,7 @@ export default function SettingsAccessIndexRoute() {
 
   // Use a simple string identifier for the selected provider
   const [selectedProvider, setSelectedProvider] = useState<string>("jetkvm");
-  const [tlsMode, setTlsMode] = useState<string>("self-signed");
+  const [tlsMode, setTlsMode] = useState<string>("unknown");
   const [tlsCert, setTlsCert] = useState<string>("");
   const [tlsKey, setTlsKey] = useState<string>("");
 
@@ -213,10 +213,11 @@ export default function SettingsAccessIndexRoute() {
                   size="SM"
                   value={tlsMode}
                   onChange={e => handleTlsModeChange(e.target.value)}
+                  disabled={tlsMode === "unknown"}
                   options={[
+                    { value: "disabled", label: "Disabled" },
                     { value: "self-signed", label: "Self-signed" },
                     { value: "custom", label: "Custom" },
-                    { value: "disabled", label: "Disabled" },
                   ]}
                 />
               </SettingsItem>
@@ -261,7 +262,7 @@ export default function SettingsAccessIndexRoute() {
                 <div className="flex items-center gap-x-2">
                   <Button
                     size="SM"
-                    theme="primary"
+                    theme="light"
                     text="Update TLS Settings"
                     onClick={handleTlsUpdate}
                   />
