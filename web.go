@@ -99,7 +99,6 @@ func setupRouter() *gin.Engine {
 	protected.Use(protectedMiddleware())
 	{
 		protected.GET("/webrtc/signaling", handleLocalWebRTCSignal)
-		protected.POST("/webrtc/session", handleWebRTCSession)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
 		protected.GET("/device", handleDevice)
@@ -252,37 +251,6 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool)
 			}
 		}
 	}
-}
-
-func handleWebRTCSession(c *gin.Context) {
-	var req WebRTCSessionRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	session, err := newSession(SessionConfig{})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
-	}
-
-	sd, err := session.ExchangeOffer(req.Sd)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
-	}
-	if currentSession != nil {
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		peerConn := currentSession.peerConnection
-		go func() {
-			time.Sleep(1 * time.Second)
-			_ = peerConn.Close()
-		}()
-	}
-	currentSession = session
-	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }
 
 func handleLogin(c *gin.Context) {
