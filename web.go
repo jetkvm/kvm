@@ -138,16 +138,19 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 		return
 	}
 
+	// get the source from the request
+	source := c.ClientIP()
+
 	// Now use conn for websocket operations
 	defer wsCon.Close(websocket.StatusNormalClosure, "")
-	err = handleWebRTCSignalWsMessages(wsCon, false)
+	err = handleWebRTCSignalWsMessages(wsCon, false, source)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 }
 
-func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool) error {
+func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool, source string) error {
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer cancelRun()
 
@@ -155,21 +158,43 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool)
 	connectionID := uuid.New().String()
 	cloudLogger.Infof("new websocket connection established with ID: %s", connectionID)
 
+	// connection type
+	var sourceType string
+	if isCloudConnection {
+		sourceType = "cloud"
+	} else {
+		sourceType = "local"
+	}
+
+	// probably we can use a better logging framework here
+	logInfof := func(format string, args ...interface{}) {
+		args = append(args, source, sourceType)
+		websocketLogger.Infof(format+", source: %s, sourceType: %s", args...)
+	}
+	logWarnf := func(format string, args ...interface{}) {
+		args = append(args, source, sourceType)
+		websocketLogger.Warnf(format+", source: %s, sourceType: %s", args...)
+	}
+	logTracef := func(format string, args ...interface{}) {
+		args = append(args, source, sourceType)
+		websocketLogger.Tracef(format+", source: %s, sourceType: %s", args...)
+	}
+
 	go func() {
 		for {
 			time.Sleep(WebsocketPingInterval)
 
 			// set the timer for the ping duration
 			timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
-				metricConnectionLastPingDuration.Set(v)
-				metricConnectionPingDuration.Observe(v)
+				metricConnectionLastPingDuration.WithLabelValues(sourceType, source).Set(v)
+				metricConnectionPingDuration.WithLabelValues(sourceType, source).Observe(v)
 			}))
 
-			cloudLogger.Infof("pinging websocket")
+			logInfof("pinging websocket")
 			err := wsCon.Ping(runCtx)
 
 			if err != nil {
-				cloudLogger.Warnf("websocket ping error: %v", err)
+				logWarnf("websocket ping error: %v", err)
 				cancelRun()
 				return
 			}
@@ -177,15 +202,15 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool)
 			// dont use `defer` here because we want to observe the duration of the ping
 			timer.ObserveDuration()
 
-			metricConnectionTotalPingCount.Inc()
-			metricConnectionLastPingTimestamp.SetToCurrentTime()
+			metricConnectionTotalPingCount.WithLabelValues(sourceType, source).Inc()
+			metricConnectionLastPingTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
 		}
 	}()
 
 	for {
 		typ, msg, err := wsCon.Read(runCtx)
 		if err != nil {
-			websocketLogger.Warnf("websocket read error: %v", err)
+			logWarnf("websocket read error: %v", err)
 			return err
 		}
 		if typ != websocket.MessageText {
@@ -200,54 +225,54 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool)
 
 		err = json.Unmarshal(msg, &message)
 		if err != nil {
-			websocketLogger.Warnf("unable to parse ws message: %v", string(msg))
+			logWarnf("unable to parse ws message: %v", err)
 			continue
 		}
 
 		if message.Type == "offer" {
-			websocketLogger.Infof("new session request received")
+			logInfof("new session request received")
 			var req WebRTCSessionRequest
 			err = json.Unmarshal(message.Data, &req)
 			if err != nil {
-				websocketLogger.Warnf("unable to parse session request data: %v", string(message.Data))
+				logWarnf("unable to parse session request data: %v", err)
 				continue
 			}
 
-			websocketLogger.Infof("new session request: %v", req.OidcGoogle)
-			websocketLogger.Tracef("session request info: %v", req)
+			logInfof("new session request: %v", req.OidcGoogle)
+			logTracef("session request info: %v", req)
 
-			metricConnectionSessionRequestCount.Inc()
-			metricConnectionLastSessionRequestTimestamp.SetToCurrentTime()
-			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection)
+			metricConnectionSessionRequestCount.WithLabelValues(sourceType, source).Inc()
+			metricConnectionLastSessionRequestTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
+			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source)
 			if err != nil {
-				websocketLogger.Infof("error starting new session: %v", err)
+				logWarnf("error starting new session: %v", err)
 				continue
 			}
 		} else if message.Type == "new-ice-candidate" {
-			websocketLogger.Infof("The client sent us a new ICE candidate: %v", string(message.Data))
+			logInfof("The client sent us a new ICE candidate: %v", string(message.Data))
 			var candidate webrtc.ICECandidateInit
 
 			// Attempt to unmarshal as a ICECandidateInit
 			if err := json.Unmarshal(message.Data, &candidate); err != nil {
-				websocketLogger.Warnf("unable to parse incoming ICE candidate data: %v", string(message.Data))
+				logWarnf("unable to parse incoming ICE candidate data: %v", string(message.Data))
 				continue
 			}
 
 			if candidate.Candidate == "" {
-				websocketLogger.Warnf("empty incoming ICE candidate, skipping")
+				logWarnf("empty incoming ICE candidate, skipping")
 				continue
 			}
 
-			websocketLogger.Infof("unmarshalled incoming ICE candidate: %v", candidate)
+			logInfof("unmarshalled incoming ICE candidate: %v", candidate)
 
 			if currentSession == nil {
-				websocketLogger.Infof("no current session, skipping incoming ICE candidate")
+				logInfof("no current session, skipping incoming ICE candidate")
 				continue
 			}
 
-			websocketLogger.Infof("adding incoming ICE candidate to current session: %v", candidate)
+			logInfof("adding incoming ICE candidate to current session: %v", candidate)
 			if err = currentSession.peerConnection.AddICECandidate(candidate); err != nil {
-				websocketLogger.Warnf("failed to add incoming ICE candidate to our peer connection: %v", err)
+				logWarnf("failed to add incoming ICE candidate to our peer connection: %v", err)
 			}
 		}
 	}
