@@ -35,8 +35,8 @@ const (
 	// CloudOidcRequestTimeout is the timeout for OIDC token verification requests
 	// should be lower than the websocket response timeout set in cloud-api
 	CloudOidcRequestTimeout = 10 * time.Second
-	// CloudWebSocketPingInterval is the interval at which the websocket client sends ping messages to the cloud
-	CloudWebSocketPingInterval = 15 * time.Second
+	// WebsocketPingInterval is the interval at which the websocket client sends ping messages to the cloud
+	WebsocketPingInterval = 15 * time.Second
 )
 
 var (
@@ -52,57 +52,57 @@ var (
 			Help: "The timestamp when the cloud connection was established",
 		},
 	)
-	metricCloudConnectionLastPingTimestamp = promauto.NewGauge(
+	metricConnectionLastPingTimestamp = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "jetkvm_cloud_connection_last_ping_timestamp",
+			Name: "jetkvm_connection_last_ping_timestamp",
 			Help: "The timestamp when the last ping response was received",
 		},
 	)
-	metricCloudConnectionLastPingDuration = promauto.NewGauge(
+	metricConnectionLastPingDuration = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "jetkvm_cloud_connection_last_ping_duration",
+			Name: "jetkvm_connection_last_ping_duration",
 			Help: "The duration of the last ping response",
 		},
 	)
-	metricCloudConnectionPingDuration = promauto.NewHistogram(
+	metricConnectionPingDuration = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Name: "jetkvm_cloud_connection_ping_duration",
+			Name: "jetkvm_connection_ping_duration",
 			Help: "The duration of the ping response",
 			Buckets: []float64{
 				0.1, 0.5, 1, 10,
 			},
 		},
 	)
-	metricCloudConnectionTotalPingCount = promauto.NewCounter(
+	metricConnectionTotalPingCount = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "jetkvm_cloud_connection_total_ping_count",
-			Help: "The total number of pings sent to the cloud",
+			Name: "jetkvm_connection_total_ping_count",
+			Help: "The total number of pings sent to the",
 		},
 	)
-	metricCloudConnectionSessionRequestCount = promauto.NewCounter(
+	metricConnectionSessionRequestCount = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "jetkvm_cloud_connection_session_total_request_count",
-			Help: "The total number of session requests received from the cloud",
+			Name: "jetkvm_connection_session_total_request_count",
+			Help: "The total number of session requests received from the",
 		},
 	)
-	metricCloudConnectionSessionRequestDuration = promauto.NewHistogram(
+	metricConnectionSessionRequestDuration = promauto.NewHistogram(
 		prometheus.HistogramOpts{
-			Name: "jetkvm_cloud_connection_session_request_duration",
+			Name: "jetkvm_connection_session_request_duration",
 			Help: "The duration of session requests",
 			Buckets: []float64{
 				0.1, 0.5, 1, 10,
 			},
 		},
 	)
-	metricCloudConnectionLastSessionRequestTimestamp = promauto.NewGauge(
+	metricConnectionLastSessionRequestTimestamp = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "jetkvm_cloud_connection_last_session_request_timestamp",
+			Name: "jetkvm_connection_last_session_request_timestamp",
 			Help: "The timestamp of the last session request",
 		},
 	)
-	metricCloudConnectionLastSessionRequestDuration = promauto.NewGauge(
+	metricConnectionLastSessionRequestDuration = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "jetkvm_cloud_connection_last_session_request_duration",
+			Name: "jetkvm_connection_last_session_request_duration",
 			Help: "The duration of the last session request",
 		},
 	)
@@ -120,11 +120,11 @@ var (
 )
 
 func cloudResetMetrics(established bool) {
-	metricCloudConnectionLastPingTimestamp.Set(-1)
-	metricCloudConnectionLastPingDuration.Set(-1)
+	metricConnectionLastPingTimestamp.Set(-1)
+	metricConnectionLastPingDuration.Set(-1)
 
-	metricCloudConnectionLastSessionRequestTimestamp.Set(-1)
-	metricCloudConnectionLastSessionRequestDuration.Set(-1)
+	metricConnectionLastSessionRequestTimestamp.Set(-1)
+	metricConnectionLastSessionRequestDuration.Set(-1)
 
 	if established {
 		metricCloudConnectionEstablishedTimestamp.SetToCurrentTime()
@@ -276,12 +276,6 @@ func runWebsocketClient() error {
 }
 
 func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
-	timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
-		metricCloudConnectionLastSessionRequestDuration.Set(v)
-		metricCloudConnectionSessionRequestDuration.Observe(v)
-	}))
-	defer timer.ObserveDuration()
-
 	oidcCtx, cancelOIDC := context.WithTimeout(ctx, CloudOidcRequestTimeout)
 	defer cancelOIDC()
 	provider, err := oidc.NewProvider(oidcCtx, "https://accounts.google.com")
@@ -313,6 +307,12 @@ func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessi
 }
 
 func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest, isCloudConnection bool) error {
+	timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
+		metricConnectionLastSessionRequestDuration.Set(v)
+		metricConnectionSessionRequestDuration.Observe(v)
+	}))
+	defer timer.ObserveDuration()
+
 	// If the message is from the cloud, we need to authenticate the session.
 	if isCloudConnection {
 		if err := authenticateSession(ctx, c, req); err != nil {
@@ -320,7 +320,12 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 		}
 	}
 
-	session, err := newSession(SessionConfig{ws: c})
+	session, err := newSession(SessionConfig{
+		ws:         c,
+		IsCloud:    isCloudConnection,
+		LocalIP:    req.IP,
+		ICEServers: req.ICEServers,
+	})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
 		return err

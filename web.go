@@ -2,7 +2,6 @@ package kvm
 
 import (
 	"context"
-	"crypto/sha256"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -158,20 +156,14 @@ func handleWebRTCSignalWsConnection(wsCon *websocket.Conn, isCloudConnection boo
 	connectionID := uuid.New().String()
 	cloudLogger.Infof("new websocket connection established with ID: %s", connectionID)
 
-	// Add a mutex to protect against concurrent access to session state
-	sessionMutex := &sync.Mutex{}
-
-	// Track processed offers to avoid duplicates
-	processedOffers := make(map[string]bool)
-
 	go func() {
 		for {
-			time.Sleep(CloudWebSocketPingInterval)
+			time.Sleep(WebsocketPingInterval)
 
 			// set the timer for the ping duration
 			timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
-				metricCloudConnectionLastPingDuration.Set(v)
-				metricCloudConnectionPingDuration.Observe(v)
+				metricConnectionLastPingDuration.Set(v)
+				metricConnectionPingDuration.Observe(v)
 			}))
 
 			cloudLogger.Infof("pinging websocket")
@@ -186,15 +178,15 @@ func handleWebRTCSignalWsConnection(wsCon *websocket.Conn, isCloudConnection boo
 			// dont use `defer` here because we want to observe the duration of the ping
 			timer.ObserveDuration()
 
-			metricCloudConnectionTotalPingCount.Inc()
-			metricCloudConnectionLastPingTimestamp.SetToCurrentTime()
+			metricConnectionTotalPingCount.Inc()
+			metricConnectionLastPingTimestamp.SetToCurrentTime()
 		}
 	}()
 
 	for {
 		typ, msg, err := wsCon.Read(runCtx)
 		if err != nil {
-			cloudLogger.Warnf("websocket read error: %v", err)
+			websocketLogger.Warnf("websocket read error: %v", err)
 			return err
 		}
 		if typ != websocket.MessageText {
@@ -209,69 +201,54 @@ func handleWebRTCSignalWsConnection(wsCon *websocket.Conn, isCloudConnection boo
 
 		err = json.Unmarshal(msg, &message)
 		if err != nil {
-			cloudLogger.Warnf("unable to parse ws message: %v", string(msg))
+			websocketLogger.Warnf("unable to parse ws message: %v", string(msg))
 			continue
 		}
 
 		if message.Type == "offer" {
-			cloudLogger.Infof("new session request received")
+			websocketLogger.Infof("new session request received")
 			var req WebRTCSessionRequest
 			err = json.Unmarshal(message.Data, &req)
 			if err != nil {
-				cloudLogger.Warnf("unable to parse session request data: %v", string(message.Data))
+				websocketLogger.Warnf("unable to parse session request data: %v", string(message.Data))
 				continue
 			}
 
-			// Create a hash of the offer to deduplicate
-			offerHash := fmt.Sprintf("%x", sha256.Sum256(message.Data))
+			websocketLogger.Infof("new session request: %v", req.OidcGoogle)
+			websocketLogger.Tracef("session request info: %v", req)
 
-			sessionMutex.Lock()
-			isDuplicate := processedOffers[offerHash]
-			if !isDuplicate {
-				processedOffers[offerHash] = true
-			}
-			sessionMutex.Unlock()
-
-			if isDuplicate {
-				cloudLogger.Infof("duplicate offer detected, ignoring: %s", offerHash[:8])
-				continue
-			}
-
-			cloudLogger.Infof("new session request: %v", req.OidcGoogle)
-			cloudLogger.Tracef("session request info: %v", req)
-
-			metricCloudConnectionSessionRequestCount.Inc()
-			metricCloudConnectionLastSessionRequestTimestamp.SetToCurrentTime()
+			metricConnectionSessionRequestCount.Inc()
+			metricConnectionLastSessionRequestTimestamp.SetToCurrentTime()
 			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection)
 			if err != nil {
-				cloudLogger.Infof("error starting new session: %v", err)
+				websocketLogger.Infof("error starting new session: %v", err)
 				continue
 			}
 		} else if message.Type == "new-ice-candidate" {
-			cloudLogger.Infof("client has sent us a new ICE candidate: %v", string(message.Data))
+			websocketLogger.Infof("The client sent us a new ICE candidate: %v", string(message.Data))
 			var candidate webrtc.ICECandidateInit
 
 			// Attempt to unmarshal as a ICECandidateInit
 			if err := json.Unmarshal(message.Data, &candidate); err != nil {
-				cloudLogger.Warnf("unable to parse ICE candidate data: %v", string(message.Data))
+				websocketLogger.Warnf("unable to parse incoming ICE candidate data: %v", string(message.Data))
 				continue
 			}
 
 			if candidate.Candidate == "" {
-				cloudLogger.Warnf("empty ICE candidate, skipping")
+				websocketLogger.Warnf("empty incoming ICE candidate, skipping")
 				continue
 			}
 
-			cloudLogger.Infof("unmarshalled ICE candidate: %v", candidate)
+			websocketLogger.Infof("unmarshalled incoming ICE candidate: %v", candidate)
 
 			if currentSession == nil {
-				cloudLogger.Infof("no current session, skipping ICE candidate")
+				websocketLogger.Infof("no current session, skipping incoming ICE candidate")
 				continue
 			}
 
-			cloudLogger.Infof("adding ICE candidate to current session: %v", candidate)
+			websocketLogger.Infof("adding incoming ICE candidate to current session: %v", candidate)
 			if err = currentSession.peerConnection.AddICECandidate(candidate); err != nil {
-				cloudLogger.Warnf("failed to add ICE candidate: %v", err)
+				websocketLogger.Warnf("failed to add incoming ICE candidate to our peer connection: %v", err)
 			}
 		}
 	}
