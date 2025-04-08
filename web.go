@@ -98,7 +98,7 @@ func setupRouter() *gin.Engine {
 	protected := r.Group("/")
 	protected.Use(protectedMiddleware())
 	{
-		protected.GET("/webrtc/signaling", handLocalWebRTCSignal)
+		protected.GET("/webrtc/signaling", handleLocalWebRTCSignal)
 		protected.POST("/webrtc/session", handleWebRTCSession)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
@@ -126,7 +126,7 @@ func setupRouter() *gin.Engine {
 // TODO: support multiple sessions?
 var currentSession *Session
 
-func handLocalWebRTCSignal(c *gin.Context) {
+func handleLocalWebRTCSignal(c *gin.Context) {
 	cloudLogger.Infof("new websocket connection established")
 	// Create WebSocket options with InsecureSkipVerify to bypass origin check
 	wsOptions := &websocket.AcceptOptions{
