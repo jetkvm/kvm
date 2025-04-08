@@ -272,7 +272,7 @@ func runWebsocketClient() error {
 	// set the metrics when we successfully connect to the cloud.
 	cloudResetMetrics(true)
 
-	return handleWebRTCSignalWsConnection(c, true)
+	return handleWebRTCSignalWsMessages(c, true)
 }
 
 func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {

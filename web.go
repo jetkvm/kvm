@@ -93,12 +93,12 @@ func setupRouter() *gin.Engine {
 
 	// A Prometheus metrics endpoint.
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
-	r.GET("/webrtc/signaling", handleWebRTCSignal)
 
 	// Protected routes (allows both password and noPassword modes)
 	protected := r.Group("/")
 	protected.Use(protectedMiddleware())
 	{
+		protected.GET("/webrtc/signaling", handLocalWebRTCSignal)
 		protected.POST("/webrtc/session", handleWebRTCSession)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
@@ -126,7 +126,7 @@ func setupRouter() *gin.Engine {
 // TODO: support multiple sessions?
 var currentSession *Session
 
-func handleWebRTCSignal(c *gin.Context) {
+func handLocalWebRTCSignal(c *gin.Context) {
 	cloudLogger.Infof("new websocket connection established")
 	// Create WebSocket options with InsecureSkipVerify to bypass origin check
 	wsOptions := &websocket.AcceptOptions{
@@ -141,14 +141,14 @@ func handleWebRTCSignal(c *gin.Context) {
 
 	// Now use conn for websocket operations
 	defer wsCon.Close(websocket.StatusNormalClosure, "")
-	err = handleWebRTCSignalWsConnection(wsCon, false)
+	err = handleWebRTCSignalWsMessages(wsCon, false)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 }
 
-func handleWebRTCSignalWsConnection(wsCon *websocket.Conn, isCloudConnection bool) error {
+func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool) error {
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer cancelRun()
 

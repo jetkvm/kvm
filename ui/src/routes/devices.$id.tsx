@@ -232,9 +232,10 @@ export default function KvmIdRoute() {
   const isSettingRemoteAnswerPending = useRef(false);
   const makingOffer = useRef(false);
 
+  console.log("isondevice", isOnDevice);
   const { sendMessage } = useWebSocket(
     isOnDevice
-      ? `ws://192.168.1.77/webrtc/signaling`
+      ? `ws://${window.location.host}/webrtc/signaling`
       : `${CLOUD_API.replace("http", "ws")}/webrtc/signaling?id=${params.id}`,
     {
       heartbeat: true,
