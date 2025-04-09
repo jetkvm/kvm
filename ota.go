@@ -126,12 +126,10 @@ func downloadFile(ctx context.Context, path string, url string, downloadProgress
 		return fmt.Errorf("error creating request: %w", err)
 	}
 
+	// TODO: set a separate timeout for the download but keep the TLS handshake short
+	// use Transport here will cause CA certificate validation failure so we temporarily removed it
 	client := http.Client{
-		// allow a longer timeout for the download but keep the TLS handshake short
 		Timeout: 10 * time.Minute,
-		Transport: &http.Transport{
-			TLSHandshakeTimeout: 1 * time.Minute,
-		},
 	}
 
 	resp, err := client.Do(req)
