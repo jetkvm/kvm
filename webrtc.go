@@ -1,11 +1,15 @@
 package kvm
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net"
 	"strings"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
+	"github.com/gin-gonic/gin"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -23,6 +27,7 @@ type SessionConfig struct {
 	ICEServers []string
 	LocalIP    string
 	IsCloud    bool
+	ws         *websocket.Conn
 }
 
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
@@ -46,18 +51,10 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 		return "", err
 	}
 
-	// Create channel that is blocked until ICE Gathering is complete
-	gatherComplete := webrtc.GatheringCompletePromise(s.peerConnection)
-
 	// Sets the LocalDescription, and starts our UDP listeners
 	if err = s.peerConnection.SetLocalDescription(answer); err != nil {
 		return "", err
 	}
-
-	// Block until ICE Gathering is complete, disabling trickle ICE
-	// we do this because we only can exchange one signaling message
-	// in a production application you should exchange ICE Candidates via OnICECandidate
-	<-gatherComplete
 
 	localDescription, err := json.Marshal(s.peerConnection.LocalDescription())
 	if err != nil {
@@ -143,6 +140,16 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	}()
 	var isConnected bool
+
+	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		logger.Infof("Our WebRTC peerConnection has a new ICE candidate: %v", candidate)
+		if candidate != nil {
+			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
+			if err != nil {
+				logger.Errorf("failed to write new-ice-candidate to WebRTC signaling channel: %v", err)
+			}
+		}
+	})
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
 		logger.Infof("Connection State has changed %s", connectionState)
