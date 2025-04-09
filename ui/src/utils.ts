@@ -51,8 +51,8 @@ export const formatters = {
     ];
 
     let duration = (date.valueOf() - new Date().valueOf()) / 1000;
-    for (let i = 0; i < DIVISIONS.length; i++) {
-      const division = DIVISIONS[i];
+
+    for (const division of DIVISIONS) {
       if (Math.abs(duration) < division.amount) {
         return relativeTimeFormat.format(Math.round(duration), division.name);
       }
@@ -61,7 +61,7 @@ export const formatters = {
   },
 
   price: (price: number | bigint | string, options?: Intl.NumberFormatOptions) => {
-    let opts: Intl.NumberFormatOptions = {
+    const opts: Intl.NumberFormatOptions = {
       style: "currency",
       currency: "USD",
       ...(options || {}),

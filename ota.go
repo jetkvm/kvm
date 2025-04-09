@@ -126,7 +126,15 @@ func downloadFile(ctx context.Context, path string, url string, downloadProgress
 		return fmt.Errorf("error creating request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := http.Client{
+		// allow a longer timeout for the download but keep the TLS handshake short
+		Timeout: 10 * time.Minute,
+		Transport: &http.Transport{
+			TLSHandshakeTimeout: 1 * time.Minute,
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("error downloading file: %w", err)
 	}

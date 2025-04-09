@@ -1,13 +1,14 @@
+import { useEffect } from "react";
+
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsItem } from "@routes/devices.$id.settings";
 import { BacklightSettings, useSettingsStore } from "@/hooks/stores";
-import { useEffect } from "react";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
+import { UsbDeviceSetting } from "@components/UsbDeviceSetting";
 
 import notifications from "../notifications";
-import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { UsbInfoSetting } from "../components/UsbInfoSetting";
-import { UsbDeviceSetting } from "@components/UsbDeviceSetting";
 import { FeatureFlag } from "../components/FeatureFlag";
 
 export default function SettingsHardwareRoute() {

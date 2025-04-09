@@ -1,6 +1,8 @@
 import { LoaderFunctionArgs, redirect } from "react-router-dom";
-import api from "../api";
+
 import { DEVICE_API } from "@/ui.config";
+
+import api from "../api";
 
 export interface CloudState {
   connected: boolean;

@@ -1,11 +1,13 @@
-import { Button } from "@components/Button";
 import { LuHardDrive, LuPower, LuRotateCcw } from "react-icons/lu";
+import { useEffect, useState } from "react";
+
+import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { useEffect, useState } from "react";
 import notifications from "@/notifications";
+import LoadingSpinner from "@/components/LoadingSpinner";
+
 import { useJsonRpc } from "../../hooks/useJsonRpc";
-import LoadingSpinner from "../LoadingSpinner";
 
 const LONG_PRESS_DURATION = 3000; // 3 seconds for long press
 
@@ -102,11 +104,11 @@ export function ATXPowerControl() {
 
       {atxState === null ? (
         <Card className="flex h-[120px] items-center justify-center p-3">
-          <LoadingSpinner className="w-6 h-6 text-blue-500 dark:text-blue-400" />
+          <LoadingSpinner className="h-6 w-6 text-blue-500 dark:text-blue-400" />
         </Card>
       ) : (
         <Card className="h-[120px] animate-fadeIn opacity-0">
-          <div className="p-3 space-y-4">
+          <div className="space-y-4 p-3">
             {/* Control Buttons */}
             <div className="flex items-center space-x-2">
               <Button

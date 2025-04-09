@@ -1,3 +1,10 @@
+import { MdOutlineContentPasteGo } from "react-icons/md";
+import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
+import { FaKeyboard } from "react-icons/fa6";
+import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
+import { Fragment, useCallback, useRef } from "react";
+import { CommandLineIcon } from "@heroicons/react/20/solid";
+
 import { Button } from "@components/Button";
 import {
   useHidStore,
@@ -5,19 +12,13 @@ import {
   useSettingsStore,
   useUiStore,
 } from "@/hooks/stores";
-import { MdOutlineContentPasteGo } from "react-icons/md";
 import Container from "@components/Container";
-import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
 import { cx } from "@/cva.config";
 import PasteModal from "@/components/popovers/PasteModal";
-import { FaKeyboard } from "react-icons/fa6";
 import WakeOnLanModal from "@/components/popovers/WakeOnLan/Index";
-import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
-import MountPopopover from "./popovers/MountPopover";
-import { Fragment, useCallback, useRef } from "react";
-import { CommandLineIcon } from "@heroicons/react/20/solid";
-import ExtensionPopover from "./popovers/ExtensionPopover";
-import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
+import MountPopopover from "@/components/popovers/MountPopover";
+import ExtensionPopover from "@/components/popovers/ExtensionPopover";
+import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 
 export default function Actionbar({
   requestFullscreen,

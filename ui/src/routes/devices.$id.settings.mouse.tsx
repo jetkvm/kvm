@@ -1,3 +1,6 @@
+import { CheckCircleIcon } from "@heroicons/react/16/solid";
+import { useCallback, useEffect, useState } from "react";
+
 import MouseIcon from "@/assets/mouse-icon.svg";
 import PointingFinger from "@/assets/pointing-finger.svg";
 import { GridCard } from "@/components/Card";
@@ -6,11 +9,11 @@ import { useDeviceSettingsStore, useSettingsStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { CheckCircleIcon } from "@heroicons/react/16/solid";
-import { useCallback, useEffect, useState } from "react";
+
 import { FeatureFlag } from "../components/FeatureFlag";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { useFeatureFlag } from "../hooks/useFeatureFlag";
+
 import { SettingsItem } from "./devices.$id.settings";
 
 type ScrollSensitivity = "low" | "default" | "high";

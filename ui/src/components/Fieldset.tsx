@@ -9,7 +9,7 @@ export default function Fieldset({
   disabled,
 }: {
   children: React.ReactNode;
-  fetcher?: FetcherWithComponents<any>;
+  fetcher?: FetcherWithComponents<unknown>;
   className?: string;
   disabled?: boolean;
 }) {

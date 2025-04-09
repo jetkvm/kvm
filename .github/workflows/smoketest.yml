@@ -1,0 +1,122 @@
+name: smoketest
+on:
+  repository_dispatch:
+    types: [smoketest]
+
+jobs:
+  ghbot_payload:
+    name: Ghbot payload
+    runs-on: ubuntu-latest
+    steps:
+      - name: "GH_CHECK_RUN_ID=${{ github.event.client_payload.check_run_id }}"
+        run: |
+          echo "== START GHBOT_PAYLOAD =="
+          cat <<'GHPAYLOAD_EOF' | base64
+          ${{ toJson(github.event.client_payload) }}
+          GHPAYLOAD_EOF
+          echo "== END GHBOT_PAYLOAD =="
+  deploy_and_test:
+    runs-on: buildjet-4vcpu-ubuntu-2204
+    name: Smoke test
+    concurrency:
+      group: smoketest-jk
+    steps:
+      - name: Download artifact
+        run: |
+          wget -O /tmp/jk.zip "${{ github.event.client_payload.artifact_download_url }}"
+          unzip /tmp/jk.zip
+      - name: Configure WireGuard and check connectivity
+        run: |
+          WG_KEY_FILE=$(mktemp)
+          echo -n "$CI_WG_PRIVATE" > $WG_KEY_FILE && \
+          sudo apt-get update && sudo apt-get install -y wireguard-tools && \
+          sudo ip link add dev wg-ci type wireguard && \
+          sudo ip addr add $CI_WG_IPS dev wg-ci && \
+          sudo wg set wg-ci listen-port 51820 \
+            private-key $WG_KEY_FILE \
+            peer $CI_WG_PUBLIC \
+            allowed-ips $CI_WG_ALLOWED_IPS \
+            endpoint $CI_WG_ENDPOINT \
+            persistent-keepalive 15 && \
+          sudo ip link set up dev wg-ci && \
+          sudo ip r r $CI_HOST via $CI_WG_GATEWAY dev wg-ci
+          ping -c1 $CI_HOST || (echo "Failed to ping $CI_HOST" && sudo wg show wg-ci && ip r && exit 1)
+        env:
+          CI_HOST: ${{ vars.JETKVM_CI_HOST }}
+          CI_WG_IPS: ${{ vars.JETKVM_CI_WG_IPS }}
+          CI_WG_GATEWAY: ${{ vars.JETKVM_CI_GATEWAY }}
+          CI_WG_ALLOWED_IPS: ${{ vars.JETKVM_CI_WG_ALLOWED_IPS }}
+          CI_WG_PUBLIC: ${{ secrets.JETKVM_CI_WG_PUBLIC }}
+          CI_WG_PRIVATE: ${{ secrets.JETKVM_CI_WG_PRIVATE }}
+          CI_WG_ENDPOINT: ${{ secrets.JETKVM_CI_WG_ENDPOINT }}
+      - name: Configure SSH
+        run: |
+          # Write SSH private key to a file
+          SSH_PRIVATE_KEY=$(mktemp)
+          echo "$CI_SSH_PRIVATE" > $SSH_PRIVATE_KEY
+          chmod 0600 $SSH_PRIVATE_KEY
+          # Configure SSH
+          mkdir -p ~/.ssh
+          cat <<EOF >> ~/.ssh/config
+          Host jkci
+            HostName $CI_HOST
+            User $CI_USER
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            IdentityFile $SSH_PRIVATE_KEY
+          EOF
+        env:
+          CI_USER: ${{ vars.JETKVM_CI_USER }}
+          CI_HOST: ${{ vars.JETKVM_CI_HOST }}
+          CI_SSH_PRIVATE: ${{ secrets.JETKVM_CI_SSH_PRIVATE }}
+      - name: Deploy application
+        run: |
+          set -e
+          # Copy the binary to the remote host
+          echo "+ Copying the application to the remote host"
+          cat jetkvm_app | gzip | ssh jkci "cat > /userdata/jetkvm/jetkvm_app.update.gz"
+          # Deploy and run the application on the remote host
+          echo "+ Deploying the application on the remote host"
+          ssh jkci ash <<EOF
+          # Extract the binary
+          gzip -d /userdata/jetkvm/jetkvm_app.update.gz
+          # Flush filesystem buffers to ensure all data is written to disk
+          sync
+          # Clear the filesystem caches to force a read from disk
+          echo 1 > /proc/sys/vm/drop_caches
+          # Reboot the application
+          reboot -d 5 -f &
+          EOF
+          sleep 10
+          echo "Deployment complete, waiting for JetKVM to come back online "
+          function check_online() {
+            for i in {1..60}; do
+                if ping -c1 -w1 -W1 -q $CI_HOST >/dev/null; then
+                    echo "JetKVM is back online"
+                    return 0
+                fi
+                echo -n "."
+                sleep 1
+            done
+            echo "JetKVM did not come back online within 60 seconds"
+            return 1
+          }
+          check_online
+        env:
+          CI_HOST: ${{ vars.JETKVM_CI_HOST }}
+      - name: Run smoke tests
+        run: |
+          echo "+ Checking the status of the device"
+          curl -v http://$CI_HOST/device/status && echo
+          echo "+ Waiting for 10 seconds to allow all services to start"
+          sleep 10
+          echo "+ Collecting logs"
+          ssh jkci "cat /userdata/jetkvm/last.log" > last.log
+          cat last.log
+        env:
+          CI_HOST: ${{ vars.JETKVM_CI_HOST }}
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-logs
+          path: last.log

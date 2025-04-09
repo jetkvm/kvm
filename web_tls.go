@@ -8,10 +8,10 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"log"
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -38,7 +38,7 @@ func RunWebSecureServer() {
 		TLSConfig: &tls.Config{
 			// TODO: cache certificate in persistent storage
 			GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-				hostname := WebSecureSelfSignedDefaultDomain
+				var hostname string
 				if info.ServerName != "" {
 					hostname = info.ServerName
 				} else {
@@ -58,7 +58,6 @@ func RunWebSecureServer() {
 	if err != nil {
 		panic(err)
 	}
-	return
 }
 
 func createSelfSignedCert(hostname string) *tls.Certificate {
@@ -72,7 +71,8 @@ func createSelfSignedCert(hostname string) *tls.Certificate {
 
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		log.Fatalf("Failed to generate private key: %v", err)
+		logger.Errorf("Failed to generate private key: %v", err)
+		os.Exit(1)
 	}
 	keyUsage := x509.KeyUsageDigitalSignature
 

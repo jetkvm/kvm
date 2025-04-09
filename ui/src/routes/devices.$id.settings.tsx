@@ -1,5 +1,4 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import Card from "@/components/Card";
 import {
   LuSettings,
   LuKeyboard,
@@ -10,8 +9,11 @@ import {
   LuArrowLeft,
   LuPalette,
 } from "react-icons/lu";
-import { LinkButton } from "../components/Button";
 import React, { useEffect, useRef, useState } from "react";
+
+import Card from "@/components/Card";
+
+import { LinkButton } from "../components/Button";
 import { cx } from "../cva.config";
 import { useUiStore } from "../hooks/stores";
 import useKeyboard from "../hooks/useKeyboard";

@@ -1,10 +1,11 @@
 import React, { forwardRef } from "react";
+
 import { cx } from "@/cva.config";
 
-type CardPropsType = {
+interface CardPropsType {
   children: React.ReactNode;
   className?: string;
-};
+}
 
 export const GridCard = ({
   children,

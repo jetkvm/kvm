@@ -1,12 +1,14 @@
-import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { SettingsItem } from "./devices.$id.settings";
+import { useState, useEffect } from "react";
+
 import { Button } from "@/components/Button";
 import { TextAreaWithLabel } from "@/components/TextArea";
-
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useState, useEffect } from "react";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
+
 import notifications from "../notifications";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
+
+import { SettingsItem } from "./devices.$id.settings";
 const defaultEdid =
   "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b";
 const edids = [

@@ -1,8 +1,9 @@
-import SidebarHeader from "@components/SidebarHeader";
-import { GridCard } from "@components/Card";
-import { useRTCStore, useUiStore } from "@/hooks/stores";
-import StatChart from "@components/StatChart";
 import { useInterval } from "usehooks-ts";
+
+import SidebarHeader from "@/components/SidebarHeader";
+import { GridCard } from "@/components/Card";
+import { useRTCStore, useUiStore } from "@/hooks/stores";
+import StatChart from "@/components/StatChart";
 
 function createChartArray<T, K extends keyof T>(
   stream: Map<number, T>,
@@ -120,7 +121,7 @@ export default function ConnectionStatsSidebar() {
                 <GridCard>
                   <div className="flex h-[127px] w-full items-center justify-center text-sm text-slate-500">
                     {inboundRtpStats.size === 0 ? (
-                      <div className="flex flex-col items-center space-y-1 ">
+                      <div className="flex flex-col items-center space-y-1">
                         <p className="text-slate-700">Waiting for data...</p>
                       </div>
                     ) : isMetricSupported(inboundRtpStats, "packetsLost") ? (
@@ -130,7 +131,7 @@ export default function ConnectionStatsSidebar() {
                         unit=" packets"
                       />
                     ) : (
-                      <div className="flex flex-col items-center space-y-1 ">
+                      <div className="flex flex-col items-center space-y-1">
                         <p className="text-black">Metric not supported</p>
                       </div>
                     )}
@@ -149,7 +150,7 @@ export default function ConnectionStatsSidebar() {
                 <GridCard>
                   <div className="flex h-[127px] w-full items-center justify-center text-sm text-slate-500">
                     {inboundRtpStats.size === 0 ? (
-                      <div className="flex flex-col items-center space-y-1 ">
+                      <div className="flex flex-col items-center space-y-1">
                         <p className="text-slate-700">Waiting for data...</p>
                       </div>
                     ) : isMetricSupported(candidatePairStats, "currentRoundTripTime") ? (
@@ -167,7 +168,7 @@ export default function ConnectionStatsSidebar() {
                         unit=" ms"
                       />
                     ) : (
-                      <div className="flex flex-col items-center space-y-1 ">
+                      <div className="flex flex-col items-center space-y-1">
                         <p className="text-black">Metric not supported</p>
                       </div>
                     )}
@@ -186,7 +187,7 @@ export default function ConnectionStatsSidebar() {
                 <GridCard>
                   <div className="flex h-[127px] w-full items-center justify-center text-sm text-slate-500">
                     {inboundRtpStats.size === 0 ? (
-                      <div className="flex flex-col items-center space-y-1 ">
+                      <div className="flex flex-col items-center space-y-1">
                         <p className="text-slate-700">Waiting for data...</p>
                       </div>
                     ) : (
@@ -216,7 +217,7 @@ export default function ConnectionStatsSidebar() {
                 <GridCard>
                   <div className="flex h-[127px] w-full items-center justify-center text-sm text-slate-500">
                     {inboundRtpStats.size === 0 ? (
-                      <div className="flex flex-col items-center space-y-1 ">
+                      <div className="flex flex-col items-center space-y-1">
                         <p className="text-slate-700">Waiting for data...</p>
                       </div>
                     ) : (

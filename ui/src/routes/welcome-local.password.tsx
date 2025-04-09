@@ -1,16 +1,19 @@
+import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
+import { useState, useRef, useEffect } from "react";
+import { LuEye, LuEyeOff } from "react-icons/lu";
+
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
 import Fieldset from "@components/Fieldset";
-import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
 import { InputFieldWithLabel } from "@components/InputField";
 import { Button } from "@components/Button";
-import { useState, useRef, useEffect } from "react";
-import { LuEye, LuEyeOff } from "react-icons/lu";
 import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
-import api from "../api";
-import { DeviceStatus } from "./welcome-local";
 import { DEVICE_API } from "@/ui.config";
+
+import api from "../api";
+
+import { DeviceStatus } from "./welcome-local";
 
 const loader = async () => {
   const res = await api

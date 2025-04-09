@@ -1,10 +1,10 @@
 import React from "react";
 
-type Props = {
+interface Props {
   headline: string;
   description?: string | React.ReactNode;
   Button?: React.ReactNode;
-};
+}
 
 export const CardHeader = ({ headline, description, Button }: Props) => {
   return (

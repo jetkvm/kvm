@@ -72,11 +72,9 @@ func Main() {
 	if config.TLSMode != "" {
 		go RunWebSecureServer()
 	}
-	// If the cloud token isn't set, the client won't be started by default.
-	// However, if the user adopts the device via the web interface, handleCloudRegister will start the client.
-	if config.CloudToken != "" {
-		go RunWebsocketClient()
-	}
+	// As websocket client already checks if the cloud token is set, we can start it here.
+	go RunWebsocketClient()
+
 	initSerialPort()
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)

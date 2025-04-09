@@ -1,11 +1,12 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import Card from "@/components/Card";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircleIcon } from "@heroicons/react/20/solid";
+
+import Card from "@/components/Card";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
 import { UpdateState, useDeviceStore, useUpdateStore } from "@/hooks/stores";
 import notifications from "@/notifications";
-import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 

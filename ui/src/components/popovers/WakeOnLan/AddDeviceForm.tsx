@@ -1,8 +1,8 @@
-import { InputFieldWithLabel } from "@components/InputField";
 import { useState, useRef } from "react";
-import { LuPlus } from "react-icons/lu";
-import { Button } from "../../Button";
-import { LuArrowLeft } from "react-icons/lu";
+import { LuPlus, LuArrowLeft } from "react-icons/lu";
+
+import { InputFieldWithLabel } from "@/components/InputField";
+import { Button } from "@/components/Button";
 
 interface AddDeviceFormProps {
   onAddDevice: (name: string, macAddress: string) => void;
@@ -26,7 +26,7 @@ export default function AddDeviceForm({
   return (
     <div className="space-y-4">
       <div
-        className="space-y-4 opacity-0 animate-fadeIn"
+        className="animate-fadeIn space-y-4 opacity-0"
         style={{
           animationDuration: "0.5s",
           animationFillMode: "forwards",
@@ -73,7 +73,7 @@ export default function AddDeviceForm({
         />
       </div>
       <div
-        className="flex items-center justify-end space-x-2 opacity-0 animate-fadeIn"
+        className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",

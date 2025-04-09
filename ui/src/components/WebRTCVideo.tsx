@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import {
   useDeviceSettingsStore,
   useHidStore,
@@ -15,9 +16,12 @@ import Actionbar from "@components/ActionBar";
 import InfoBar from "@components/InfoBar";
 import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { HDMIErrorOverlay } from "./VideoOverlay";
-import { ConnectionErrorOverlay } from "./VideoOverlay";
-import { LoadingOverlay } from "./VideoOverlay";
+
+import {
+  HDMIErrorOverlay,
+  LoadingVideoOverlay,
+  NoAutoplayPermissionsOverlay,
+} from "./VideoOverlay";
 
 export default function WebRTCVideo() {
   // Video and stream related refs and states
@@ -41,15 +45,13 @@ export default function WebRTCVideo() {
 
   // RTC related states
   const peerConnection = useRTCStore(state => state.peerConnection);
-  const peerConnectionState = useRTCStore(state => state.peerConnectionState);
 
   // HDMI and UI states
   const hdmiState = useVideoStore(state => state.hdmiState);
   const hdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
-  const isLoading = !hdmiError && !isPlaying;
-  const isConnectionError = ["error", "failed", "disconnected"].includes(
-    peerConnectionState || "",
-  );
+  const isVideoLoading = !isPlaying;
+
+  // console.log("peerConnection?.connectionState", peerConnection?.connectionState);
 
   // Keyboard related states
   const { setIsNumLockActive, setIsCapsLockActive, setIsScrollLockActive } =
@@ -82,19 +84,19 @@ export default function WebRTCVideo() {
 
   const onVideoPlaying = useCallback(() => {
     setIsPlaying(true);
-    videoElm.current && updateVideoSizeStore(videoElm.current);
+    if (videoElm.current) updateVideoSizeStore(videoElm.current);
   }, [updateVideoSizeStore]);
 
   // On mount, get the video size
   useEffect(
     function updateVideoSizeOnMount() {
-      videoElm.current && updateVideoSizeStore(videoElm.current);
+      if (videoElm.current) updateVideoSizeStore(videoElm.current);
     },
     [setVideoClientSize, updateVideoSizeStore, setVideoSize],
   );
 
   // Mouse-related
-  const calcDelta = (pos: number) => Math.abs(pos) < 10 ? pos * 2 : pos;
+  const calcDelta = (pos: number) => (Math.abs(pos) < 10 ? pos * 2 : pos);
   const sendRelMouseMovement = useCallback(
     (x: number, y: number, buttons: number) => {
       if (settings.mouseMode !== "relative") return;
@@ -168,7 +170,14 @@ export default function WebRTCVideo() {
       const { buttons } = e;
       sendAbsMouseMovement(x, y, buttons);
     },
-    [sendAbsMouseMovement, videoClientHeight, videoClientWidth, videoWidth, videoHeight, settings.mouseMode],
+    [
+      sendAbsMouseMovement,
+      videoClientHeight,
+      videoClientWidth,
+      videoWidth,
+      videoHeight,
+      settings.mouseMode,
+    ],
   );
 
   const trackpadSensitivity = useDeviceSettingsStore(state => state.trackpadSensitivity);
@@ -355,7 +364,68 @@ export default function WebRTCVideo() {
     ],
   );
 
-  // Effect hooks
+  const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
+    // In fullscreen mode in chrome & safari, the space key is used to pause/play the video
+    // there is no way to prevent this, so we need to simply force play the video when it's paused.
+    // Fix only works in chrome based browsers.
+    if (e.code === "Space") {
+      if (videoElm.current?.paused == true) {
+        console.log("Force playing video");
+        videoElm.current?.play();
+      }
+    }
+  }, []);
+
+  const addStreamToVideoElm = useCallback(
+    (mediaStream: MediaStream) => {
+      if (!videoElm.current) return;
+      const videoElmRefValue = videoElm.current;
+      // console.log("Adding stream to video element", videoElmRefValue);
+      videoElmRefValue.srcObject = mediaStream;
+      updateVideoSizeStore(videoElmRefValue);
+    },
+    [updateVideoSizeStore],
+  );
+
+  useEffect(
+    function updateVideoStreamOnNewTrack() {
+      if (!peerConnection) return;
+      const abortController = new AbortController();
+      const signal = abortController.signal;
+
+      peerConnection.addEventListener(
+        "track",
+        (e: RTCTrackEvent) => {
+          // console.log("Adding stream to video element");
+          addStreamToVideoElm(e.streams[0]);
+        },
+        { signal },
+      );
+
+      return () => {
+        abortController.abort();
+      };
+    },
+    [addStreamToVideoElm, peerConnection],
+  );
+
+  useEffect(
+    function updateVideoStream() {
+      if (!mediaStream) return;
+      console.log("Updating video stream from mediaStream");
+      // We set the as early as possible
+      addStreamToVideoElm(mediaStream);
+    },
+    [
+      setVideoClientSize,
+      mediaStream,
+      updateVideoSizeStore,
+      peerConnection,
+      addStreamToVideoElm,
+    ],
+  );
+
+  // Setup Keyboard Events
   useEffect(
     function setupKeyboardEvents() {
       const abortController = new AbortController();
@@ -377,47 +447,23 @@ export default function WebRTCVideo() {
     [keyDownHandler, keyUpHandler, resetKeyboardState, sendKeyboardEvent],
   );
 
-  const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
-    // In fullscreen mode in chrome & safari, the space key is used to pause/play the video
-    // there is no way to prevent this, so we need to simply force play the video when it's paused.
-    // Fix only works in chrome based browsers.
-    if (e.code === "Space") {
-      if (videoElm.current?.paused == true) {
-        console.log("Force playing video");
-        videoElm.current?.play();
-      }
-    }
-  }, []);
-
+  // Setup Video Event Listeners
   useEffect(
     function setupVideoEventListeners() {
-      let videoElmRefValue = null;
-      if (!videoElm.current) return;
-      videoElmRefValue = videoElm.current;
+      const videoElmRefValue = videoElm.current;
+      if (!videoElmRefValue) return;
+
       const abortController = new AbortController();
       const signal = abortController.signal;
 
-      videoElmRefValue.addEventListener("mousemove", absMouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("pointerdown", absMouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("pointerup", absMouseMoveHandler, { signal });
+      // To prevent the video from being paused when the user presses a space in fullscreen mode
       videoElmRefValue.addEventListener("keyup", videoKeyUpHandler, { signal });
-      videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
-        signal,
-        passive: true,
-      });
-      videoElmRefValue.addEventListener(
-        "contextmenu",
-        (e: MouseEvent) => e.preventDefault(),
-        { signal },
-      );
+
+      // We need to know when the video is playing to update state and video size
       videoElmRefValue.addEventListener("playing", onVideoPlaying, { signal });
 
-      const local = resetMousePosition;
-      window.addEventListener("blur", local, { signal });
-      document.addEventListener("visibilitychange", local, { signal });
-
       return () => {
-        if (videoElmRefValue) abortController.abort();
+        abortController.abort();
       };
     },
     [
@@ -429,6 +475,41 @@ export default function WebRTCVideo() {
     ],
   );
 
+  // Setup Absolute Mouse Events
+  useEffect(
+    function setAbsoluteMouseModeEventListeners() {
+      const videoElmRefValue = videoElm.current;
+      if (!videoElmRefValue) return;
+
+      if (settings.mouseMode !== "absolute") return;
+
+      const abortController = new AbortController();
+      const signal = abortController.signal;
+
+      videoElmRefValue.addEventListener("mousemove", absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("pointerdown", absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("pointerup", absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
+        signal,
+        passive: true,
+      });
+
+      // Reset the mouse position when the window is blurred or the document is hidden
+      const local = resetMousePosition;
+      window.addEventListener("blur", local, { signal });
+      document.addEventListener("visibilitychange", local, { signal });
+      const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+      videoElmRefValue.addEventListener("contextmenu", preventContextMenu, { signal });
+
+      return () => {
+        abortController.abort();
+      };
+    },
+    [absMouseMoveHandler, mouseWheelHandler, resetMousePosition, settings.mouseMode],
+  );
+
+  // Setup Relative Mouse Events
+  const containerRef = useRef<HTMLDivElement>(null);
   useEffect(
     function setupRelativeMouseEventListeners() {
       if (settings.mouseMode !== "relative") return;
@@ -436,50 +517,43 @@ export default function WebRTCVideo() {
       const abortController = new AbortController();
       const signal = abortController.signal;
 
-      // bind to body to capture all mouse events
-      const body = document.querySelector("body");
-      if (!body) return;
+      // We bind to the larger container in relative mode because of delta between the acceleration of the local
+      // mouse and the mouse movement of the remote mouse. This simply makes it a bit less painful to use.
+      // When we get Pointer Lock support, we can remove this.
+      const containerElm = containerRef.current;
+      if (!containerElm) return;
 
-      body.addEventListener("mousemove", relMouseMoveHandler, { signal });
-      body.addEventListener("pointerdown", relMouseMoveHandler, { signal });
-      body.addEventListener("pointerup", relMouseMoveHandler, { signal });
+      containerElm.addEventListener("mousemove", relMouseMoveHandler, { signal });
+      containerElm.addEventListener("pointerdown", relMouseMoveHandler, { signal });
+      containerElm.addEventListener("pointerup", relMouseMoveHandler, { signal });
+
+      containerElm.addEventListener("wheel", mouseWheelHandler, {
+        signal,
+        passive: true,
+      });
+
+      const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+      containerElm.addEventListener("contextmenu", preventContextMenu, { signal });
 
       return () => {
         abortController.abort();
-
-        body.removeEventListener("mousemove", relMouseMoveHandler);
-        body.removeEventListener("pointerdown", relMouseMoveHandler);
-        body.removeEventListener("pointerup", relMouseMoveHandler);
       };
-    }, [settings.mouseMode, relMouseMoveHandler],
-  )
-
-  useEffect(
-    function updateVideoStream() {
-      if (!mediaStream) return;
-      if (!videoElm.current) return;
-      if (peerConnection?.iceConnectionState !== "connected") return;
-
-      setTimeout(() => {
-        if (videoElm?.current) {
-          videoElm.current.srcObject = mediaStream;
-        }
-      }, 0);
-      updateVideoSizeStore(videoElm.current);
     },
-    [
-      setVideoClientSize,
-      setVideoSize,
-      mediaStream,
-      updateVideoSizeStore,
-      peerConnection?.iceConnectionState,
-    ],
+    [settings.mouseMode, relMouseMoveHandler, mouseWheelHandler],
   );
+
+  const hasNoAutoPlayPermissions = useMemo(() => {
+    if (peerConnection?.connectionState !== "connected") return false;
+    if (isPlaying) return false;
+    if (hdmiError) return false;
+    if (videoHeight === 0 || videoWidth === 0) return false;
+    return true;
+  }, [peerConnection?.connectionState, isPlaying, hdmiError, videoHeight, videoWidth]);
 
   return (
     <div className="grid h-full w-full grid-rows-layout">
       <div className="min-h-[39.5px]">
-        <fieldset disabled={peerConnectionState !== "connected"}>
+        <fieldset disabled={peerConnection?.connectionState !== "connected"}>
           <Actionbar
             requestFullscreen={async () =>
               videoElm.current?.requestFullscreen({
@@ -490,7 +564,12 @@ export default function WebRTCVideo() {
         </fieldset>
       </div>
 
-      <div className="h-full overflow-hidden">
+      <div
+        ref={containerRef}
+        className={cx("h-full overflow-hidden", {
+          "cursor-none": settings.mouseMode === "relative" && settings.isCursorHidden,
+        })}
+      >
         <div className="relative h-full">
           <div
             className={cx(
@@ -519,23 +598,32 @@ export default function WebRTCVideo() {
                         className={cx(
                           "outline-50 max-h-full max-w-full object-contain transition-all duration-1000",
                           {
-                            "cursor-none": settings.isCursorHidden,
-                            "opacity-0": isLoading || isConnectionError || hdmiError,
+                            "cursor-none":
+                              settings.mouseMode === "absolute" &&
+                              settings.isCursorHidden,
+                            "opacity-0": isVideoLoading || hdmiError,
                             "animate-slideUpFade border border-slate-800/30 opacity-0 shadow dark:border-slate-300/20":
                               isPlaying,
                           },
                         )}
                       />
-                      <div
-                        style={{ animationDuration: "500ms" }}
-                        className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center opacity-0"
-                      >
-                        <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
-                          <LoadingOverlay show={isLoading} />
-                          <ConnectionErrorOverlay show={isConnectionError} />
-                          <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
+                      {peerConnection?.connectionState == "connected" && (
+                        <div
+                          style={{ animationDuration: "500ms" }}
+                          className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center opacity-0"
+                        >
+                          <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
+                            <LoadingVideoOverlay show={isVideoLoading} />
+                            <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
+                            <NoAutoplayPermissionsOverlay
+                              show={hasNoAutoPlayPermissions}
+                              onPlayClick={() => {
+                                videoElm.current?.play();
+                              }}
+                            />
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                   <VirtualKeyboard />

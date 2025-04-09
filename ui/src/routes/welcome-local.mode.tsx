@@ -1,15 +1,19 @@
+import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
+import { useState } from "react";
+
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
-import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
 import { Button } from "@components/Button";
-import { useState } from "react";
-import { GridCard } from "../components/Card";
 import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
+import { DEVICE_API } from "@/ui.config";
+
+import { GridCard } from "../components/Card";
 import { cx } from "../cva.config";
 import api from "../api";
+
 import { DeviceStatus } from "./welcome-local";
-import { DEVICE_API } from "@/ui.config";
+
 
 const loader = async () => {
   const res = await api

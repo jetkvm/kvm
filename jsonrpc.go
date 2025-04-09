@@ -771,8 +771,13 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 }
 
 func rpcSetCloudUrl(apiUrl string, appUrl string) error {
+	currentCloudURL := config.CloudURL
 	config.CloudURL = apiUrl
 	config.CloudAppURL = appUrl
+
+	if currentCloudURL != apiUrl {
+		disconnectCloud(fmt.Errorf("cloud url changed from %s to %s", currentCloudURL, apiUrl))
+	}
 
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
