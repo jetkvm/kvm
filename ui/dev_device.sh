@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Check if an IP address was provided as an argument
 if [ -z "$1" ]; then
