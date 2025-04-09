@@ -100,8 +100,9 @@ export default function SettingsMacrosEditRoute() {
         />
         <Button
           size="SM"
-          theme="danger"
+          theme="light"
           text="Delete Macro"
+          className="text-red-500 dark:text-red-400"
           LeadingIcon={LuTrash2}
           onClick={() => setShowDeleteConfirm(true)}
           disabled={isDeleting}

@@ -5,7 +5,7 @@ import { Combobox } from "@/components/Combobox";
 import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import Card from "@/components/Card";
 import { keys, modifiers, keyDisplayMap } from "@/keyboardMappings";
-import { MAX_KEYS_PER_STEP } from "@/constants/macros";
+import { MAX_KEYS_PER_STEP, DEFAULT_DELAY } from "@/constants/macros";
 import FieldLabel from "@/components/FieldLabel";
 
 // Filter out modifier keys since they're handled in the modifiers section
@@ -30,7 +30,7 @@ const groupedModifiers: Record<string, typeof modifierOptions> = {
   Meta: modifierOptions.filter(mod => mod.value.startsWith('Meta')),
 };
 
-const PRESET_DELAYS = [
+const basePresetDelays = [
   { value: "50", label: "50ms" },
   { value: "100", label: "100ms" },
   { value: "200", label: "200ms" },
@@ -41,6 +41,13 @@ const PRESET_DELAYS = [
   { value: "1500", label: "1500ms" },
   { value: "2000", label: "2000ms" },
 ];
+
+const PRESET_DELAYS = basePresetDelays.map(delay => {
+  if (parseInt(delay.value, 10) === DEFAULT_DELAY) {
+    return { ...delay, label: "Default" };
+  }
+  return delay;
+});
 
 interface MacroStep {
   keys: string[];

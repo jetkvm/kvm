@@ -7,7 +7,7 @@ import { SettingsPageHeader } from "@/components/SettingsPageheader";
 import { Button } from "@/components/Button";
 import EmptyCard from "@/components/EmptyCard";
 import Card from "@/components/Card";
-import { MAX_TOTAL_MACROS, COPY_SUFFIX } from "@/constants/macros";
+import { MAX_TOTAL_MACROS, COPY_SUFFIX, DEFAULT_DELAY } from "@/constants/macros";
 import { keyDisplayMap, modifierDisplayMap } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -190,7 +190,9 @@ export default function SettingsMacrosRoute() {
                           ) : (
                             <span className="font-medium text-slate-500 dark:text-slate-400">Delay only</span>
                           )}
-                          <span className="ml-1 text-slate-400 dark:text-slate-500">({step.delay}ms)</span>
+                          {step.delay !== DEFAULT_DELAY && (
+                             <span className="ml-1 text-slate-400 dark:text-slate-500">({step.delay}ms)</span>
+                          )}
                         </span>
                       </span>
                     );
@@ -252,26 +254,24 @@ export default function SettingsMacrosRoute() {
 
   return (
     <div className="space-y-4">
-      {macros.length > 0 && (
-        <div className="flex items-center justify-between">
-          <SettingsPageHeader
-            title="Keyboard Macros"
-            description={`Combine keystrokes into a single action for faster workflows.`}
-          />
-          { macros.length > 0 && (
-            <div className="flex items-center pl-2">
-              <Button
-                size="SM"
-                theme="primary"
-                text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
-                onClick={() => navigate("add")}
-                disabled={isMaxMacrosReached}
-                aria-label="Add new macro"
-              />
-            </div>
-          )}
-        </div>
-      )}
+      <div className="flex items-center justify-between">
+        <SettingsPageHeader
+          title="Keyboard Macros"
+          description={`Combine keystrokes into a single action for faster workflows.`}
+        />
+        { macros.length > 0 && (
+          <div className="flex items-center pl-2">
+            <Button
+              size="SM"
+              theme="primary"
+              text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
+              onClick={() => navigate("add")}
+              disabled={isMaxMacrosReached}
+              aria-label="Add new macro"
+            />
+          </div>
+        )}
+      </div>
 
       <div className="space-y-4">
         {loading && macros.length === 0 ? (
@@ -288,7 +288,6 @@ export default function SettingsMacrosRoute() {
           <EmptyCard
             IconElm={LuCommand}
             headline="Create Your First Macro"
-            description="Combine keystrokes into a single action for faster workflows."
             BtnElm={
               <Button
                 size="SM"
