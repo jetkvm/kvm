@@ -99,7 +99,6 @@ func setupRouter() *gin.Engine {
 	protected := r.Group("/")
 	protected.Use(protectedMiddleware())
 	{
-
 		/*
 		 * Legacy WebRTC session endpoint
 		 *
