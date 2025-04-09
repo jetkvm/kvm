@@ -243,7 +243,7 @@ export default function KvmIdRoute() {
     {
       heartbeat: true,
       retryOnError: true,
-      reconnectAttempts: 5,
+      reconnectAttempts: 15,
       reconnectInterval: 1000,
       onReconnectStop: () => {
         console.log("Reconnect stopped");
@@ -398,11 +398,6 @@ export default function KvmIdRoute() {
     setConnectionFailed(false);
     setLoadingMessage("Connecting to device...");
 
-    if (peerConnection?.signalingState === "stable") {
-      console.log("[setupPeerConnection] Peer connection already established");
-      return;
-    }
-
     let pc: RTCPeerConnection;
     try {
       console.log("[setupPeerConnection] Creating peer connection");
@@ -499,7 +494,6 @@ export default function KvmIdRoute() {
     cleanupAndStopReconnecting,
     iceConfig?.iceServers,
     legacyHTTPSignaling,
-    peerConnection?.signalingState,
     sendWebRTCSignal,
     setDiskChannel,
     setMediaMediaStream,
