@@ -99,6 +99,23 @@ func setupRouter() *gin.Engine {
 	protected := r.Group("/")
 	protected.Use(protectedMiddleware())
 	{
+
+		/*
+		 * Legacy WebRTC session endpoint
+		 *
+		 * This endpoint is maintained for backward compatibility when users upgrade from a version
+		 * using the legacy HTTP-based signaling method to the new WebSocket-based signaling method.
+		 *
+		 * During the upgrade process, when the "Rebooting device after update..." message appears,
+		 * the browser still runs the previous JavaScript code which polls this endpoint to establish
+		 * a new WebRTC session. Once the session is established, the page will automatically reload
+		 * with the updated code.
+		 *
+		 * Without this endpoint, the stale JavaScript would fail to establish a connection,
+		 * causing users to see the "Rebooting device after update..." message indefinitely
+		 * until they manually refresh the page, leading to a confusing user experience.
+		 */
+		protected.POST("/webrtc/session", handleWebRTCSession)
 		protected.GET("/webrtc/signaling/client", handleLocalWebRTCSignal)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
@@ -125,6 +142,37 @@ func setupRouter() *gin.Engine {
 
 // TODO: support multiple sessions?
 var currentSession *Session
+
+func handleWebRTCSession(c *gin.Context) {
+	var req WebRTCSessionRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	session, err := newSession(SessionConfig{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+	sd, err := session.ExchangeOffer(req.Sd)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+	if currentSession != nil {
+		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
+		peerConn := currentSession.peerConnection
+		go func() {
+			time.Sleep(1 * time.Second)
+			_ = peerConn.Close()
+		}()
+	}
+	currentSession = session
+	c.JSON(http.StatusOK, gin.H{"sd": sd})
+}
 
 func handleLocalWebRTCSignal(c *gin.Context) {
 	cloudLogger.Infof("new websocket connection established")
