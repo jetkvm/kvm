@@ -14,6 +14,64 @@ type WakeOnLanDevice struct {
 	MacAddress string `json:"macAddress"`
 }
 
+// Constants for keyboard macro limits
+const (
+	MaxMacrosPerDevice = 25
+	MaxStepsPerMacro   = 10
+	MaxKeysPerStep     = 10
+	MinStepDelay       = 50
+	MaxStepDelay       = 2000
+)
+
+type KeyboardMacroStep struct {
+	Keys      []string `json:"keys"`
+	Modifiers []string `json:"modifiers"`
+	Delay     int      `json:"delay"`
+}
+
+func (s *KeyboardMacroStep) Validate() error {
+	if len(s.Keys) > MaxKeysPerStep {
+		return fmt.Errorf("too many keys in step (max %d)", MaxKeysPerStep)
+	}
+
+	if s.Delay < MinStepDelay {
+		s.Delay = MinStepDelay
+	} else if s.Delay > MaxStepDelay {
+		s.Delay = MaxStepDelay
+	}
+
+	return nil
+}
+
+type KeyboardMacro struct {
+	ID        string              `json:"id"`
+	Name      string              `json:"name"`
+	Steps     []KeyboardMacroStep `json:"steps"`
+	SortOrder int                 `json:"sortOrder,omitempty"`
+}
+
+func (m *KeyboardMacro) Validate() error {
+	if m.Name == "" {
+		return fmt.Errorf("macro name cannot be empty")
+	}
+
+	if len(m.Steps) == 0 {
+		return fmt.Errorf("macro must have at least one step")
+	}
+
+	if len(m.Steps) > MaxStepsPerMacro {
+		return fmt.Errorf("too many steps in macro (max %d)", MaxStepsPerMacro)
+	}
+
+	for i := range m.Steps {
+		if err := m.Steps[i].Validate(); err != nil {
+			return fmt.Errorf("invalid step %d: %w", i+1, err)
+		}
+	}
+
+	return nil
+}
+
 type Config struct {
 	CloudURL             string             `json:"cloud_url"`
 	CloudAppURL          string             `json:"cloud_app_url"`
@@ -26,6 +84,7 @@ type Config struct {
 	LocalAuthToken       string             `json:"local_auth_token"`
 	LocalAuthMode        string             `json:"localAuthMode"` //TODO: fix it with migration
 	WakeOnLanDevices     []WakeOnLanDevice  `json:"wake_on_lan_devices"`
+	KeyboardMacros       []KeyboardMacro    `json:"keyboard_macros"`
 	EdidString           string             `json:"hdmi_edid_string"`
 	ActiveExtension      string             `json:"active_extension"`
 	DisplayMaxBrightness int                `json:"display_max_brightness"`
@@ -43,6 +102,7 @@ var defaultConfig = &Config{
 	CloudAppURL:          "https://app.jetkvm.com",
 	AutoUpdateEnabled:    true, // Set a default value
 	ActiveExtension:      "",
+	KeyboardMacros:       []KeyboardMacro{},
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes

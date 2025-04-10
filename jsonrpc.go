@@ -797,6 +797,99 @@ func rpcSetScrollSensitivity(sensitivity string) error {
 	return nil
 }
 
+func getKeyboardMacros() (interface{}, error) {
+	macros := make([]KeyboardMacro, len(config.KeyboardMacros))
+	copy(macros, config.KeyboardMacros)
+
+	return macros, nil
+}
+
+type KeyboardMacrosParams struct {
+	Macros []interface{} `json:"macros"`
+}
+
+func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
+	if params.Macros == nil {
+		return nil, fmt.Errorf("missing or invalid macros parameter")
+	}
+
+	newMacros := make([]KeyboardMacro, 0, len(params.Macros))
+
+	for i, item := range params.Macros {
+		macroMap, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid macro at index %d", i)
+		}
+
+		id, _ := macroMap["id"].(string)
+		if id == "" {
+			id = fmt.Sprintf("macro-%d", time.Now().UnixNano())
+		}
+
+		name, _ := macroMap["name"].(string)
+
+		sortOrder := i + 1
+		if sortOrderFloat, ok := macroMap["sortOrder"].(float64); ok {
+			sortOrder = int(sortOrderFloat)
+		}
+
+		steps := []KeyboardMacroStep{}
+		if stepsArray, ok := macroMap["steps"].([]interface{}); ok {
+			for _, stepItem := range stepsArray {
+				stepMap, ok := stepItem.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				step := KeyboardMacroStep{}
+
+				if keysArray, ok := stepMap["keys"].([]interface{}); ok {
+					for _, k := range keysArray {
+						if keyStr, ok := k.(string); ok {
+							step.Keys = append(step.Keys, keyStr)
+						}
+					}
+				}
+
+				if modsArray, ok := stepMap["modifiers"].([]interface{}); ok {
+					for _, m := range modsArray {
+						if modStr, ok := m.(string); ok {
+							step.Modifiers = append(step.Modifiers, modStr)
+						}
+					}
+				}
+
+				if delay, ok := stepMap["delay"].(float64); ok {
+					step.Delay = int(delay)
+				}
+
+				steps = append(steps, step)
+			}
+		}
+
+		macro := KeyboardMacro{
+			ID:        id,
+			Name:      name,
+			Steps:     steps,
+			SortOrder: sortOrder,
+		}
+
+		if err := macro.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid macro at index %d: %w", i, err)
+		}
+
+		newMacros = append(newMacros, macro)
+	}
+
+	config.KeyboardMacros = newMacros
+
+	if err := SaveConfig(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"getDeviceID":            {Func: rpcGetDeviceID},
@@ -862,4 +955,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
 	"getScrollSensitivity":   {Func: rpcGetScrollSensitivity},
 	"setScrollSensitivity":   {Func: rpcSetScrollSensitivity, Params: []string{"sensitivity"}},
+	"getKeyboardMacros":      {Func: getKeyboardMacros},
+	"setKeyboardMacros":      {Func: setKeyboardMacros, Params: []string{"params"}},
 }

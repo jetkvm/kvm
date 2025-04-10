@@ -43,6 +43,9 @@ import SettingsAppearanceRoute from "./routes/devices.$id.settings.appearance";
 import * as SettingsGeneralIndexRoute from "./routes/devices.$id.settings.general._index";
 import SettingsGeneralUpdateRoute from "./routes/devices.$id.settings.general.update";
 import SecurityAccessLocalAuthRoute from "./routes/devices.$id.settings.access.local-auth";
+import SettingsMacrosRoute from "./routes/devices.$id.settings.macros";
+import SettingsMacrosAddRoute from "./routes/devices.$id.settings.macros.add";
+import SettingsMacrosEditRoute from "./routes/devices.$id.settings.macros.edit";
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
@@ -175,6 +178,23 @@ if (isOnDevice) {
               path: "appearance",
               element: <SettingsAppearanceRoute />,
             },
+            {
+              path: "macros",
+              children: [
+                {
+                  index: true,
+                  element: <SettingsMacrosRoute />,
+                },
+                {
+                  path: "add",
+                  element: <SettingsMacrosAddRoute />,
+                },
+                {
+                  path: ":macroId/edit",
+                  element: <SettingsMacrosEditRoute />,
+                },
+              ],
+            },
           ],
         },
       ],
@@ -282,6 +302,23 @@ if (isOnDevice) {
                     {
                       path: "appearance",
                       element: <SettingsAppearanceRoute />,
+                    },
+                    {
+                      path: "macros",
+                      children: [
+                        {
+                          index: true,
+                          element: <SettingsMacrosRoute />,
+                        },
+                        {
+                          path: "add",
+                          element: <SettingsMacrosAddRoute />,
+                        },
+                        {
+                          path: ":macroId/edit",
+                          element: <SettingsMacrosEditRoute />,
+                        },
+                      ],
                     },
                   ],
                 },

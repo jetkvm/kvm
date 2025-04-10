@@ -37,11 +37,11 @@ type CheckBoxProps = {
 } & Omit<JSX.IntrinsicElements["input"], "size" | "type">;
 
 const Checkbox = forwardRef<HTMLInputElement, CheckBoxProps>(function Checkbox(
-  { size = "MD", ...props },
+  { size = "MD", className, ...props },
   ref,
 ) {
   const classes = checkboxVariants({ size });
-  return <input ref={ref} {...props} type="checkbox" className={classes} />;
+  return <input ref={ref} {...props} type="checkbox" className={clsx(classes, className)} />;
 });
 Checkbox.displayName = "Checkbox";
 

@@ -1,5 +1,18 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { MAX_STEPS_PER_MACRO, MAX_TOTAL_MACROS, MAX_KEYS_PER_STEP } from "@/constants/macros";
+
+// Define the JsonRpc types for better type checking
+interface JsonRpcResponse {
+  jsonrpc: string;
+  result?: unknown;
+  error?: {
+    code: number;
+    message: string;
+    data?: unknown;
+  };
+  id: number | string | null;
+}
 
 // Utility function to append stats to a Map
 const appendStatToMap = <T extends { timestamp: number }>(
@@ -648,4 +661,147 @@ export const useDeviceStore = create<DeviceState>(set => ({
 
   setAppVersion: version => set({ appVersion: version }),
   setSystemVersion: version => set({ systemVersion: version }),
+}));
+
+export interface KeySequenceStep {
+  keys: string[];
+  modifiers: string[];
+  delay: number;
+}
+
+export interface KeySequence {
+  id: string;
+  name: string;
+  steps: KeySequenceStep[];
+  sortOrder?: number;
+}
+
+export interface MacrosState {
+  macros: KeySequence[];
+  loading: boolean;
+  initialized: boolean;
+  loadMacros: () => Promise<void>;
+  saveMacros: (macros: KeySequence[]) => Promise<void>;
+  sendFn: ((method: string, params: unknown, callback?: ((resp: JsonRpcResponse) => void) | undefined) => void) | null;
+  setSendFn: (sendFn: ((method: string, params: unknown, callback?: ((resp: JsonRpcResponse) => void) | undefined) => void)) => void;
+}
+
+export const generateMacroId = () => {
+  return Math.random().toString(36).substring(2, 9);
+};
+
+export const useMacrosStore = create<MacrosState>((set, get) => ({
+  macros: [],
+  loading: false,
+  initialized: false,
+  sendFn: null,
+
+  setSendFn: (sendFn) => {
+    set({ sendFn });
+  },
+
+  loadMacros: async () => {
+    if (get().initialized) return;
+
+    const { sendFn } = get();
+    if (!sendFn) {
+      console.warn("JSON-RPC send function not available.");
+      return;
+    }
+
+    set({ loading: true });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        sendFn("getKeyboardMacros", {}, (response) => {
+          if (response.error) {
+            console.error("Error loading macros:", response.error);
+            reject(new Error(response.error.message));
+            return;
+          }
+
+          const macros = (response.result as KeySequence[]) || [];
+
+          const sortedMacros = [...macros].sort((a, b) => {
+            if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+              return a.sortOrder - b.sortOrder;
+            }
+            if (a.sortOrder !== undefined) return -1;
+            if (b.sortOrder !== undefined) return 1;
+            return 0;
+          });
+
+          set({
+            macros: sortedMacros,
+            initialized: true
+          });
+
+          resolve();
+        });
+      });
+    } catch (error) {
+      console.error("Failed to load macros:", error);
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  saveMacros: async (macros: KeySequence[]) => {
+    const { sendFn } = get();
+    if (!sendFn) {
+      console.warn("JSON-RPC send function not available.");
+      throw new Error("JSON-RPC send function not available");
+    }
+
+    if (macros.length > MAX_TOTAL_MACROS) {
+      console.error(`Cannot save: exceeded maximum of ${MAX_TOTAL_MACROS} macros`);
+      throw new Error(`Cannot save: exceeded maximum of ${MAX_TOTAL_MACROS} macros`);
+    }
+
+    for (const macro of macros) {
+      if (macro.steps.length > MAX_STEPS_PER_MACRO) {
+        console.error(`Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`);
+        throw new Error(`Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`);
+      }
+
+      for (let i = 0; i < macro.steps.length; i++) {
+        const step = macro.steps[i];
+        if (step.keys && step.keys.length > MAX_KEYS_PER_STEP) {
+          console.error(`Cannot save: macro "${macro.name}" step ${i+1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`);
+          throw new Error(`Cannot save: macro "${macro.name}" step ${i+1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`);
+        }
+      }
+    }
+
+    set({ loading: true });
+
+    try {
+      const macrosWithSortOrder = macros.map((macro, index) => ({
+        ...macro,
+        sortOrder: macro.sortOrder !== undefined ? macro.sortOrder : index
+      }));
+
+      const response = await new Promise<JsonRpcResponse>((resolve) => {
+        sendFn("setKeyboardMacros", { params: { macros: macrosWithSortOrder } }, (response) => {
+          resolve(response);
+        });
+      });
+
+      if (response.error) {
+        console.error("Error saving macros:", response.error);
+        const errorMessage = typeof response.error.data === 'string'
+          ? response.error.data
+          : response.error.message || "Failed to save macros";
+        throw new Error(errorMessage);
+      }
+
+      // Only update the store if the request was successful
+      set({ macros: macrosWithSortOrder });
+    } catch (error) {
+      console.error("Failed to save macros:", error);
+      throw error;
+    } finally {
+      set({ loading: false });
+    }
+  }
 }));

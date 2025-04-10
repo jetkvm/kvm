@@ -13,6 +13,7 @@ import { useResizeObserver } from "@/hooks/useResizeObserver";
 import { cx } from "@/cva.config";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
+import MacroBar from "@/components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
@@ -553,16 +554,19 @@ export default function WebRTCVideo() {
 
   return (
     <div className="grid h-full w-full grid-rows-layout">
-      <div className="min-h-[39.5px]">
-        <fieldset disabled={peerConnection?.connectionState !== "connected"}>
-          <Actionbar
-            requestFullscreen={async () =>
-              videoElm.current?.requestFullscreen({
-                navigationUI: "show",
-              })
-            }
-          />
-        </fieldset>
+      <div className="min-h-[39.5px] flex flex-col">
+        <div className="flex flex-col">
+          <fieldset disabled={peerConnection?.connectionState !== "connected"} className="contents">
+            <Actionbar
+              requestFullscreen={async () =>
+                videoElm.current?.requestFullscreen({
+                  navigationUI: "show",
+                })
+              }
+            />
+            <MacroBar />
+          </fieldset>
+        </div>
       </div>
 
       <div
