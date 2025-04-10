@@ -14,17 +14,17 @@ import notifications from "@/notifications";
 import { DEVICE_API } from "@/ui.config";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { isOnDevice } from "@/main";
+import { TextAreaWithLabel } from "@components/TextArea";
 
 import { LocalDevice } from "./devices.$id";
 import { SettingsItem } from "./devices.$id.settings";
 import { CloudState } from "./adopt";
-import { TextAreaWithLabel } from "@components/TextArea";
 
 export interface TLSState {
   mode: "self-signed" | "custom" | "disabled";
   certificate?: string;
   privateKey?: string;
-};
+}
 
 export const loader = async () => {
   if (isOnDevice) {
@@ -147,9 +147,37 @@ export default function SettingsAccessIndexRoute() {
     }
   };
 
+  // Function to update TLS state - accepts a mode parameter
+  const updateTlsState = useCallback(
+    (mode: string, cert?: string, key?: string) => {
+      const state = { mode } as TLSState;
+      if (cert && key) {
+        state.certificate = cert;
+        state.privateKey = key;
+      }
+
+      send("setTLSState", { state }, resp => {
+        if ("error" in resp) {
+          notifications.error(
+            `Failed to update TLS settings: ${resp.error.data || "Unknown error"}`,
+          );
+          return;
+        }
+
+        notifications.success("TLS settings updated successfully");
+      });
+    },
+    [send],
+  );
+
   // Handle TLS mode change
   const handleTlsModeChange = (value: string) => {
     setTlsMode(value);
+
+    // For "disabled" and "self-signed" modes, immediately apply the settings
+    if (value !== "custom") {
+      updateTlsState(value);
+    }
   };
 
   const handleTlsCertChange = (value: string) => {
@@ -160,21 +188,10 @@ export default function SettingsAccessIndexRoute() {
     setTlsKey(value);
   };
 
-  const handleTlsUpdate = useCallback(() => {
-    const state = { mode: tlsMode } as TLSState;
-    if (tlsMode !== "disabled") {
-      state.certificate = tlsCert;
-      state.privateKey = tlsKey;
-    }
-    send("setTLSState", { state }, resp => {
-      if ("error" in resp) {
-        notifications.error(`Failed to update TLS settings: ${resp.error.data || "Unknown error"}`);
-        return;
-      }
-
-      notifications.success("TLS settings updated successfully");
-    });
-  }, [send, tlsMode, tlsCert, tlsKey]);
+  // Update the custom TLS settings button click handler
+  const handleCustomTlsUpdate = () => {
+    updateTlsState(tlsMode, tlsCert, tlsKey);
+  };
 
   // Fetch device ID and cloud state on component mount
   useEffect(() => {
@@ -203,11 +220,9 @@ export default function SettingsAccessIndexRoute() {
             />
             <>
               <SettingsItem
-                title="HTTPS/TLS Mode"
-                description={<>
-                  Select the TLS mode for your device <sup>experimental</sup><br />
-                  <small>The feature might not work as expected, please report any issues if you encounter any.</small>
-                </>}
+                title="HTTPS Mode"
+                badge="Experimental"
+                description="Configure secure HTTPS access to your device"
               >
                 <SelectMenuBasic
                   size="SM"
@@ -227,13 +242,15 @@ export default function SettingsAccessIndexRoute() {
                   <div className="space-y-4">
                     <SettingsItem
                       title="TLS Certificate"
-                      description="Enter your TLS certificate here, if intermediate or root CA is used, you can paste the entire chain here too"
+                      description="Paste your TLS certificate below. For certificate chains, include the entire chain (leaf, intermediate, and root certificates)."
                     />
                     <div className="space-y-4">
                       <TextAreaWithLabel
                         label="Certificate"
                         rows={3}
-                        placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
+                        placeholder={
+                          "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+                        }
                         value={tlsCert}
                         onChange={e => handleTlsCertChange(e.target.value)}
                       />
@@ -243,31 +260,27 @@ export default function SettingsAccessIndexRoute() {
                       <div className="space-y-4">
                         <TextAreaWithLabel
                           label="Private Key"
+                          description="For security reasons, it will not be displayed after saving."
                           rows={3}
-                          placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
+                          placeholder={
+                            "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+                          }
                           value={tlsKey}
                           onChange={e => handleTlsKeyChange(e.target.value)}
                         />
-                        <p className="text-xs text-slate-600 dark:text-slate-400">
-                          Private key won't be shown again after saving.
-                        </p>
                       </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-x-2">
+                    <Button
+                      size="SM"
+                      theme="primary"
+                      text="Update TLS Settings"
+                      onClick={handleCustomTlsUpdate}
+                    />
+                  </div>
                 </div>
               )}
-
-
-              <div className="space-y-4">
-                <div className="flex items-center gap-x-2">
-                  <Button
-                    size="SM"
-                    theme="light"
-                    text="Update TLS Settings"
-                    onClick={handleTlsUpdate}
-                  />
-                </div>
-              </div>
 
               <SettingsItem
                 title="Authentication Mode"

@@ -246,6 +246,7 @@ export function SettingsItem({
   children,
   className,
   loading,
+  badge,
 }: {
   title: string;
   description: string | React.ReactNode;
@@ -253,6 +254,7 @@ export function SettingsItem({
   className?: string;
   name?: string;
   loading?: boolean;
+  badge?: string;
 }) {
   return (
     <label
@@ -263,10 +265,17 @@ export function SettingsItem({
     >
       <div className="space-y-0.5">
         <div className="flex items-center gap-x-2">
-          <h3 className="text-base font-semibold text-black dark:text-white">{title}</h3>
+          <div className="flex items-center text-base font-semibold text-black dark:text-white">
+            {title}
+            {badge && (
+              <span className="ml-2 rounded-full bg-red-500 px-2 py-1 text-[10px] font-medium leading-none text-white dark:border dark:border-red-700 dark:bg-red-800 dark:text-red-50">
+                {badge}
+              </span>
+            )}
+          </div>
           {loading && <LoadingSpinner className="h-4 w-4 text-blue-500" />}
         </div>
-        <p className="text-sm text-slate-700 dark:text-slate-300">{description}</p>
+        <div className="text-sm text-slate-700 dark:text-slate-300">{description}</div>
       </div>
       {children ? <div>{children}</div> : null}
     </label>
