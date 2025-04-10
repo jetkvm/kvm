@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pion/logging"
 	"github.com/rs/zerolog"
 )
 
@@ -70,12 +69,12 @@ type UsbGadget struct {
 const configFSPath = "/sys/kernel/config"
 const gadgetPath = "/sys/kernel/config/usb_gadget"
 
-var defaultLogger = logging.NewDefaultLoggerFactory().NewLogger("usbgadget").GetLogger()
+var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
 
 // NewUsbGadget creates a new UsbGadget.
 func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
 	if logger == nil {
-		logger = defaultLogger
+		logger = &defaultLogger
 	}
 
 	if enabledDevices == nil {

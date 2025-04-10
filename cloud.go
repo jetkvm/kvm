@@ -290,7 +290,7 @@ func runWebsocketClient() error {
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
 
 	scopedLogger := websocketLogger.With().
-		Str("source", wsURL.String()).
+		Str("source", wsURL.Host).
 		Str("sourceType", "cloud").
 		Logger()
 

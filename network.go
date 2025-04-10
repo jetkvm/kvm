@@ -146,7 +146,8 @@ func startMDNS() error {
 	}
 
 	mDNSConn, err = mdns.Server(ipv4.NewPacketConn(l4), ipv6.NewPacketConn(l6), &mdns.Config{
-		LocalNames: []string{"jetkvm.local"}, //TODO: make it configurable
+		LocalNames:    []string{"jetkvm.local"}, //TODO: make it configurable
+		LoggerFactory: defaultLoggerFactory,
 	})
 	if err != nil {
 		mDNSConn = nil

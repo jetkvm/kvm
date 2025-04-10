@@ -65,7 +65,9 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 }
 
 func newSession(config SessionConfig) (*Session, error) {
-	webrtcSettingEngine := webrtc.SettingEngine{}
+	webrtcSettingEngine := webrtc.SettingEngine{
+		LoggerFactory: defaultLoggerFactory,
+	}
 	iceServer := webrtc.ICEServer{}
 
 	if config.IsCloud {

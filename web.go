@@ -15,6 +15,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	gin_logger "github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
@@ -66,7 +67,11 @@ func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 	r := gin.Default()
-
+	r.Use(gin_logger.SetLogger(
+		gin_logger.WithLogger(func(*gin.Context, zerolog.Logger) zerolog.Logger {
+			return ginLogger
+		}),
+	))
 	staticFS, _ := fs.Sub(staticFiles, "static")
 
 	// Add a custom middleware to set cache headers for images
