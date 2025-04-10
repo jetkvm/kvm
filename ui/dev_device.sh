@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Check if an IP address was provided as an argument
 if [ -z "$1" ]; then
@@ -16,4 +16,4 @@ echo "└───────────────────────�
 # Set the environment variable and run Vite
 echo "Starting development server with JetKVM device at: $ip_address"
 sleep 1
-JETKVM_PROXY_URL="http://$ip_address" npx vite dev --mode=device
+JETKVM_PROXY_URL="ws://$ip_address" npx vite dev --mode=device

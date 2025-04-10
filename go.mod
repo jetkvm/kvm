@@ -7,7 +7,7 @@ toolchain go1.21.1
 require (
 	github.com/Masterminds/semver/v3 v3.3.0
 	github.com/beevik/ntp v1.3.1
-	github.com/coder/websocket v1.8.12
+	github.com/coder/websocket v1.8.13
 	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/creack/pty v1.1.23
 	github.com/gin-gonic/gin v1.9.1

@@ -243,7 +243,7 @@ export default function KvmIdRoute() {
     {
       heartbeat: true,
       retryOnError: true,
-      reconnectAttempts: 5,
+      reconnectAttempts: 15,
       reconnectInterval: 1000,
       onReconnectStop: () => {
         console.log("Reconnect stopped");
@@ -398,11 +398,6 @@ export default function KvmIdRoute() {
     setConnectionFailed(false);
     setLoadingMessage("Connecting to device...");
 
-    if (peerConnection?.signalingState === "stable") {
-      console.log("[setupPeerConnection] Peer connection already established");
-      return;
-    }
-
     let pc: RTCPeerConnection;
     try {
       console.log("[setupPeerConnection] Creating peer connection");
@@ -499,7 +494,6 @@ export default function KvmIdRoute() {
     cleanupAndStopReconnecting,
     iceConfig?.iceServers,
     legacyHTTPSignaling,
-    peerConnection?.signalingState,
     sendWebRTCSignal,
     setDiskChannel,
     setMediaMediaStream,
@@ -791,6 +785,7 @@ export default function KvmIdRoute() {
             <button className="absolute top-0" tabIndex={-1} id="videoFocusTrap" />
           </div>
         </FocusTrap>
+
         <div className="grid h-full select-none grid-rows-headerBody">
           <DashboardNavbar
             primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
@@ -801,21 +796,23 @@ export default function KvmIdRoute() {
             kvmName={deviceName || "JetKVM Device"}
           />
 
-          <div className="flex h-full w-full overflow-hidden">
-            <div className="pointer-events-none fixed inset-0 isolate z-20 flex h-full w-full items-center justify-center">
-              <div className="my-2 h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
+          <div className="relative flex h-full w-full overflow-hidden">
+            <WebRTCVideo />
+            <div
+              style={{ animationDuration: "500ms" }}
+              className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center p-4 opacity-0"
+            >
+              <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
                 {!!ConnectionStatusElement && ConnectionStatusElement}
               </div>
             </div>
-
-            {peerConnectionState === "connected" && <WebRTCVideo />}
             <SidebarContainer sidebarView={sidebarView} />
           </div>
         </div>
       </div>
 
       <div
-        className="isolate"
+        className="z-50"
         onKeyUp={e => e.stopPropagation()}
         onKeyDown={e => {
           e.stopPropagation();
