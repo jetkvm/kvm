@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -250,6 +251,15 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 	go func() {
 		for {
 			time.Sleep(WebsocketPingInterval)
+
+			if ctxErr := runCtx.Err(); ctxErr != nil {
+				if !errors.Is(ctxErr, context.Canceled) {
+					logWarnf("websocket connection closed: %v", ctxErr)
+				} else {
+					logTracef("websocket connection closed as the context was canceled: %v")
+				}
+				return
+			}
 
 			// set the timer for the ping duration
 			timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {

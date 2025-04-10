@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -280,17 +281,22 @@ func runWebsocketClient() error {
 			return true
 		},
 	})
+	// if the context is canceled, we don't want to return an error
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			cloudLogger.Infof("websocket connection canceled")
+			return nil
+		}
 		return err
 	}
 	defer c.CloseNow() //nolint:errcheck
 	cloudLogger.Infof("websocket connected to %s", wsURL)
 
 	// set the metrics when we successfully connect to the cloud.
-	wsResetMetrics(true, "cloud", "")
+	wsResetMetrics(true, "cloud", wsURL.Host)
 
 	// we don't have a source for the cloud connection
-	return handleWebRTCSignalWsMessages(c, true, "")
+	return handleWebRTCSignalWsMessages(c, true, wsURL.Host)
 }
 
 func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
