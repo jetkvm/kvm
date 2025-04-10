@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -190,6 +191,10 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 		InsecureSkipVerify: true, // Allow connections from any origin
 		OnPingReceived: func(ctx context.Context, payload []byte) bool {
 			websocketLogger.Infof("ping frame received: %v, source: %s, sourceType: local", payload, source)
+
+			metricConnectionTotalPingReceivedCount.WithLabelValues("local", source).Inc()
+			metricConnectionLastPingReceivedTimestamp.WithLabelValues("local", source).SetToCurrentTime()
+
 			return true
 		},
 	}
@@ -251,6 +256,15 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 		for {
 			time.Sleep(WebsocketPingInterval)
 
+			if ctxErr := runCtx.Err(); ctxErr != nil {
+				if !errors.Is(ctxErr, context.Canceled) {
+					logWarnf("websocket connection closed: %v", ctxErr)
+				} else {
+					logTracef("websocket connection closed as the context was canceled: %v")
+				}
+				return
+			}
+
 			// set the timer for the ping duration
 			timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
 				metricConnectionLastPingDuration.WithLabelValues(sourceType, source).Set(v)
@@ -269,7 +283,7 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 			// dont use `defer` here because we want to observe the duration of the ping
 			duration := timer.ObserveDuration()
 
-			metricConnectionTotalPingCount.WithLabelValues(sourceType, source).Inc()
+			metricConnectionTotalPingSentCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastPingTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
 
 			logTracef("received pong frame, duration: %v", duration)
@@ -317,6 +331,10 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 				logWarnf("unable to write pong message: %v", err)
 				return err
 			}
+
+			metricConnectionTotalPingReceivedCount.WithLabelValues(sourceType, source).Inc()
+			metricConnectionLastPingReceivedTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
+
 			continue
 		}
 
