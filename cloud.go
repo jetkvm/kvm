@@ -60,6 +60,13 @@ var (
 		},
 		[]string{"type", "source"},
 	)
+	metricConnectionLastPingReceivedTimestamp = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_connection_last_ping_received_timestamp",
+			Help: "The timestamp when the last ping request was received",
+		},
+		[]string{"type", "source"},
+	)
 	metricConnectionLastPingDuration = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "jetkvm_connection_last_ping_duration",
@@ -77,16 +84,23 @@ var (
 		},
 		[]string{"type", "source"},
 	)
-	metricConnectionTotalPingCount = promauto.NewCounterVec(
+	metricConnectionTotalPingSentCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "jetkvm_connection_total_ping_count",
+			Name: "jetkvm_connection_total_ping_sent",
 			Help: "The total number of pings sent to the connection",
+		},
+		[]string{"type", "source"},
+	)
+	metricConnectionTotalPingReceivedCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "jetkvm_connection_total_ping_received",
+			Help: "The total number of pings received from the connection",
 		},
 		[]string{"type", "source"},
 	)
 	metricConnectionSessionRequestCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "jetkvm_connection_session_total_request_count",
+			Name: "jetkvm_connection_session_total_requests",
 			Help: "The total number of session requests received",
 		},
 		[]string{"type", "source"},
@@ -131,6 +145,8 @@ var (
 func wsResetMetrics(established bool, sourceType string, source string) {
 	metricConnectionLastPingTimestamp.WithLabelValues(sourceType, source).Set(-1)
 	metricConnectionLastPingDuration.WithLabelValues(sourceType, source).Set(-1)
+
+	metricConnectionLastPingReceivedTimestamp.WithLabelValues(sourceType, source).Set(-1)
 
 	metricConnectionLastSessionRequestTimestamp.WithLabelValues(sourceType, source).Set(-1)
 	metricConnectionLastSessionRequestDuration.WithLabelValues(sourceType, source).Set(-1)
@@ -278,6 +294,10 @@ func runWebsocketClient() error {
 		HTTPHeader: header,
 		OnPingReceived: func(ctx context.Context, payload []byte) bool {
 			websocketLogger.Infof("ping frame received: %v, source: %s, sourceType: cloud", payload, wsURL.Host)
+
+			metricConnectionTotalPingReceivedCount.WithLabelValues("cloud", wsURL.Host).Inc()
+			metricConnectionLastPingReceivedTimestamp.WithLabelValues("cloud", wsURL.Host).SetToCurrentTime()
+
 			return true
 		},
 	})
@@ -385,9 +405,6 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 
 func RunWebsocketClient() {
 	for {
-		// reset the metrics when we start the websocket client.
-		wsResetMetrics(false, "cloud", "")
-
 		// If the cloud token is not set, we don't need to run the websocket client.
 		if config.CloudToken == "" {
 			time.Sleep(5 * time.Second)

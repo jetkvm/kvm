@@ -191,6 +191,10 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 		InsecureSkipVerify: true, // Allow connections from any origin
 		OnPingReceived: func(ctx context.Context, payload []byte) bool {
 			websocketLogger.Infof("ping frame received: %v, source: %s, sourceType: local", payload, source)
+
+			metricConnectionTotalPingReceivedCount.WithLabelValues("local", source).Inc()
+			metricConnectionLastPingReceivedTimestamp.WithLabelValues("local", source).SetToCurrentTime()
+
 			return true
 		},
 	}
@@ -279,7 +283,7 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 			// dont use `defer` here because we want to observe the duration of the ping
 			duration := timer.ObserveDuration()
 
-			metricConnectionTotalPingCount.WithLabelValues(sourceType, source).Inc()
+			metricConnectionTotalPingSentCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastPingTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
 
 			logTracef("received pong frame, duration: %v", duration)
@@ -327,6 +331,10 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 				logWarnf("unable to write pong message: %v", err)
 				return err
 			}
+
+			metricConnectionTotalPingReceivedCount.WithLabelValues(sourceType, source).Inc()
+			metricConnectionLastPingReceivedTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
+
 			continue
 		}
 
