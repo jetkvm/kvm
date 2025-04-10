@@ -275,6 +275,10 @@ func runWebsocketClient() error {
 	defer cancelDial()
 	c, _, err := websocket.Dial(dialCtx, wsURL.String(), &websocket.DialOptions{
 		HTTPHeader: header,
+		OnPingReceived: func(ctx context.Context, payload []byte) bool {
+			websocketLogger.Infof("ping frame received: %v, source: %s, sourceType: cloud", payload, wsURL.Host)
+			return true
+		},
 	})
 	if err != nil {
 		return err
