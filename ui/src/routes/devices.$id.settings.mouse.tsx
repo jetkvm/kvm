@@ -9,12 +9,15 @@ import { useDeviceSettingsStore, useSettingsStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { JigglerSetting } from "@components/JigglerSetting";
+import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
 
 import { FeatureFlag } from "../components/FeatureFlag";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { useFeatureFlag } from "../hooks/useFeatureFlag";
 
 import { SettingsItem } from "./devices.$id.settings";
+
 
 type ScrollSensitivity = "low" | "default" | "high";
 
@@ -48,6 +51,11 @@ export default function SettingsKeyboardMouseRoute() {
         setScrollSensitivity(resp.result as ScrollSensitivity);
       });
     }
+
+    send("getJigglerConfig", {}, resp => {
+      if ("error" in resp) return;
+      setJiggler(resp.result as boolean);
+    });
   }, [isScrollSensitivityEnabled, send, setScrollSensitivity]);
 
   const handleJigglerChange = (enabled: boolean) => {
@@ -127,6 +135,16 @@ export default function SettingsKeyboardMouseRoute() {
             onChange={e => handleJigglerChange(e.target.checked)}
           />
         </SettingsItem>
+
+        {jiggler && (
+          <>
+            <SettingsSectionHeader
+              title="Jiggler Config"
+              description="Control the jiggler schedule"
+            />
+            <JigglerSetting />
+          </>
+        )}
         <div className="space-y-4">
           <SettingsItem title="Modes" description="Choose the mouse input mode" />
           <div className="flex items-center gap-4">
