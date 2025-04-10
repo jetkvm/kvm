@@ -50,6 +50,7 @@ var (
 	displayLogger   = getLogger("display")
 	usbLogger       = getLogger("usb")
 	ginLogger       = getLogger("gin")
+	websecureLogger = getLogger("websecure")
 )
 
 func updateLogLevel() {

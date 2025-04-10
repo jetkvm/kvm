@@ -95,7 +95,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	//logger.Infof("Received RPC request: Method=%s, Params=%v, ID=%d", request.Method, request.Params, request.ID)
+	logger.Trace().Str("method", request.Method).Interface("params", request.Params).Interface("id", request.ID).Msg("Received RPC request")
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
 		errorResponse := JSONRPCResponse{
@@ -110,6 +110,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
+	logger.Trace().Str("method", request.Method).Interface("id", request.ID).Msg("Calling RPC handler")
 	result, err := callRPCHandler(handler, request.Params)
 	if err != nil {
 		errorResponse := JSONRPCResponse{
@@ -125,6 +126,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
+	logger.Trace().Interface("result", result).Interface("id", request.ID).Msg("RPC handler returned")
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
 		Result:  result,
@@ -139,6 +141,30 @@ func rpcPing() (string, error) {
 
 func rpcGetDeviceID() (string, error) {
 	return GetDeviceID(), nil
+}
+
+func rpcReboot(force bool) error {
+	logger.Info().Msg("Got reboot request from JSONRPC, rebooting...")
+
+	args := []string{}
+	if force {
+		args = append(args, "-f")
+	}
+
+	cmd := exec.Command("reboot", args...)
+	err := cmd.Start()
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to reboot")
+		return fmt.Errorf("failed to reboot: %w", err)
+	}
+
+	// If the reboot command is successful, exit the program after 5 seconds
+	go func() {
+		time.Sleep(5 * time.Second)
+		os.Exit(0)
+	}()
+
+	return nil
 }
 
 var streamFactor = 1.0
@@ -370,6 +396,23 @@ func rpcSetSSHKeyState(sshKey string) error {
 		if err := os.Remove(sshKeyFile); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove SSH key file: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func rpcGetTLSState() TLSState {
+	return getTLSState()
+}
+
+func rpcSetTLSState(state TLSState) error {
+	err := setTLSState(state)
+	if err != nil {
+		return fmt.Errorf("failed to set TLS state: %w", err)
+	}
+
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
 	}
 
 	return nil
@@ -892,6 +935,7 @@ func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
 
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
+	"reboot":                 {Func: rpcReboot, Params: []string{"force"}},
 	"getDeviceID":            {Func: rpcGetDeviceID},
 	"deregisterDevice":       {Func: rpcDeregisterDevice},
 	"getCloudState":          {Func: rpcGetCloudState},
@@ -920,6 +964,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setDevModeState":        {Func: rpcSetDevModeState, Params: []string{"enabled"}},
 	"getSSHKeyState":         {Func: rpcGetSSHKeyState},
 	"setSSHKeyState":         {Func: rpcSetSSHKeyState, Params: []string{"sshKey"}},
+	"getTLSState":            {Func: rpcGetTLSState},
+	"setTLSState":            {Func: rpcSetTLSState, Params: []string{"state"}},
 	"setMassStorageMode":     {Func: rpcSetMassStorageMode, Params: []string{"mode"}},
 	"getMassStorageMode":     {Func: rpcGetMassStorageMode},
 	"isUpdatePending":        {Func: rpcIsUpdatePending},

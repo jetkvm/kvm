@@ -90,7 +90,7 @@ type Config struct {
 	DisplayMaxBrightness int                `json:"display_max_brightness"`
 	DisplayDimAfterSec   int                `json:"display_dim_after_sec"`
 	DisplayOffAfterSec   int                `json:"display_off_after_sec"`
-	TLSMode              string             `json:"tls_mode"`
+	TLSMode              string             `json:"tls_mode"` // options: "self-signed", "user-defined", ""
 	UsbConfig            *usbgadget.Config  `json:"usb_config"`
 	UsbDevices           *usbgadget.Devices `json:"usb_devices"`
 }
@@ -168,6 +168,8 @@ func LoadConfig() {
 func SaveConfig() error {
 	configLock.Lock()
 	defer configLock.Unlock()
+
+	logger.Trace().Str("path", configPath).Msg("Saving config")
 
 	file, err := os.Create(configPath)
 	if err != nil {
