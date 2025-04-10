@@ -24,7 +24,7 @@ const (
 func switchToScreen(screen string) {
 	_, err := CallCtrlAction("lv_scr_load", map[string]interface{}{"obj": screen})
 	if err != nil {
-		logger.Warnf("failed to switch to screen %s: %v", screen, err)
+		displayLogger.Warn().Err(err).Str("screen", screen).Msg("failed to switch to screen")
 		return
 	}
 	currentScreen = screen
@@ -40,7 +40,7 @@ func updateLabelIfChanged(objName string, newText string) {
 }
 
 func switchToScreenIfDifferent(screenName string) {
-	logger.Infof("switching screen from %s to %s", currentScreen, screenName)
+	displayLogger.Info().Str("from", currentScreen).Str("to", screenName).Msg("switching screen")
 	if currentScreen != screenName {
 		switchToScreen(screenName)
 	}
@@ -74,12 +74,12 @@ var displayInited = false
 
 func requestDisplayUpdate() {
 	if !displayInited {
-		logger.Info("display not inited, skipping updates")
+		displayLogger.Info().Msg("display not inited, skipping updates")
 		return
 	}
 	go func() {
 		wakeDisplay(false)
-		logger.Info("display updating")
+		displayLogger.Info().Msg("display updating")
 		//TODO: only run once regardless how many pending updates
 		updateDisplay()
 	}()
@@ -118,7 +118,7 @@ func setDisplayBrightness(brightness int) error {
 		return err
 	}
 
-	logger.Infof("display: set brightness to %v", brightness)
+	displayLogger.Info().Int("brightness", brightness).Msg("set brightness")
 	return nil
 }
 
@@ -127,7 +127,7 @@ func setDisplayBrightness(brightness int) error {
 func tick_displayDim() {
 	err := setDisplayBrightness(config.DisplayMaxBrightness / 2)
 	if err != nil {
-		logger.Warnf("display: failed to dim display: %s", err)
+		displayLogger.Warn().Err(err).Msg("failed to dim display")
 	}
 
 	dimTicker.Stop()
@@ -140,7 +140,7 @@ func tick_displayDim() {
 func tick_displayOff() {
 	err := setDisplayBrightness(0)
 	if err != nil {
-		logger.Warnf("display: failed to turn off display: %s", err)
+		displayLogger.Warn().Err(err).Msg("failed to turn off display")
 	}
 
 	offTicker.Stop()
@@ -163,7 +163,7 @@ func wakeDisplay(force bool) {
 
 	err := setDisplayBrightness(config.DisplayMaxBrightness)
 	if err != nil {
-		logger.Warnf("display wake failed, %s", err)
+		displayLogger.Warn().Err(err).Msg("failed to wake display")
 	}
 
 	if config.DisplayDimAfterSec != 0 {
@@ -183,7 +183,7 @@ func wakeDisplay(force bool) {
 func watchTsEvents() {
 	ts, err := os.OpenFile(touchscreenDevice, os.O_RDONLY, 0666)
 	if err != nil {
-		logger.Warnf("display: failed to open touchscreen device: %s", err)
+		displayLogger.Warn().Err(err).Msg("failed to open touchscreen device")
 		return
 	}
 
@@ -196,7 +196,7 @@ func watchTsEvents() {
 	for {
 		_, err := ts.Read(buf)
 		if err != nil {
-			logger.Warnf("display: failed to read from touchscreen device: %s", err)
+			displayLogger.Warn().Err(err).Msg("failed to read from touchscreen device")
 			return
 		}
 
@@ -216,7 +216,7 @@ func startBacklightTickers() {
 	}
 
 	if dimTicker == nil && config.DisplayDimAfterSec != 0 {
-		logger.Info("display: dim_ticker has started")
+		displayLogger.Info().Msg("dim_ticker has started")
 		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
 		defer dimTicker.Stop()
 
@@ -231,7 +231,7 @@ func startBacklightTickers() {
 	}
 
 	if offTicker == nil && config.DisplayOffAfterSec != 0 {
-		logger.Info("display: off_ticker has started")
+		displayLogger.Info().Msg("off_ticker has started")
 		offTicker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
 		defer offTicker.Stop()
 
@@ -251,11 +251,11 @@ func init() {
 
 	go func() {
 		waitCtrlClientConnected()
-		logger.Info("setting initial display contents")
+		displayLogger.Info().Msg("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
 		updateStaticContents()
 		displayInited = true
-		logger.Info("display inited")
+		displayLogger.Info().Msg("display inited")
 		startBacklightTickers()
 		wakeDisplay(true)
 		requestDisplayUpdate()

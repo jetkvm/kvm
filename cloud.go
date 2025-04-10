@@ -253,14 +253,14 @@ func disconnectCloud(reason error) {
 	defer cloudDisconnectLock.Unlock()
 
 	if cloudDisconnectChan == nil {
-		cloudLogger.Tracef("cloud disconnect channel is not set, no need to disconnect")
+		cloudLogger.Trace().Msg("cloud disconnect channel is not set, no need to disconnect")
 		return
 	}
 
 	// just in case the channel is closed, we don't want to panic
 	defer func() {
 		if r := recover(); r != nil {
-			cloudLogger.Infof("cloud disconnect channel is closed, no need to disconnect: %v", r)
+			cloudLogger.Warn().Interface("reason", r).Msg("cloud disconnect channel is closed, no need to disconnect")
 		}
 	}()
 	cloudDisconnectChan <- reason
@@ -289,11 +289,16 @@ func runWebsocketClient() error {
 	header.Set("Authorization", "Bearer "+config.CloudToken)
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
 
+	scopedLogger := websocketLogger.With().
+		Str("source", wsURL.Host).
+		Str("sourceType", "cloud").
+		Logger()
+
 	defer cancelDial()
 	c, _, err := websocket.Dial(dialCtx, wsURL.String(), &websocket.DialOptions{
 		HTTPHeader: header,
 		OnPingReceived: func(ctx context.Context, payload []byte) bool {
-			websocketLogger.Infof("ping frame received: %v, source: %s, sourceType: cloud", payload, wsURL.Host)
+			scopedLogger.Info().Bytes("payload", payload).Int("length", len(payload)).Msg("ping frame received")
 
 			metricConnectionTotalPingReceivedCount.WithLabelValues("cloud", wsURL.Host).Inc()
 			metricConnectionLastPingReceivedTimestamp.WithLabelValues("cloud", wsURL.Host).SetToCurrentTime()
@@ -304,19 +309,19 @@ func runWebsocketClient() error {
 	// if the context is canceled, we don't want to return an error
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			cloudLogger.Infof("websocket connection canceled")
+			cloudLogger.Info().Msg("websocket connection canceled")
 			return nil
 		}
 		return err
 	}
 	defer c.CloseNow() //nolint:errcheck
-	cloudLogger.Infof("websocket connected to %s", wsURL)
+	cloudLogger.Info().Str("url", wsURL.String()).Msg("websocket connected")
 
 	// set the metrics when we successfully connect to the cloud.
 	wsResetMetrics(true, "cloud", wsURL.Host)
 
 	// we don't have a source for the cloud connection
-	return handleWebRTCSignalWsMessages(c, true, wsURL.Host)
+	return handleWebRTCSignalWsMessages(c, true, wsURL.Host, &scopedLogger)
 }
 
 func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
@@ -327,7 +332,7 @@ func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessi
 		_ = wsjson.Write(context.Background(), c, gin.H{
 			"error": fmt.Sprintf("failed to initialize OIDC provider: %v", err),
 		})
-		cloudLogger.Errorf("failed to initialize OIDC provider: %v", err)
+		cloudLogger.Warn().Err(err).Msg("failed to initialize OIDC provider")
 		return err
 	}
 
@@ -396,8 +401,8 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 		}()
 	}
 
-	cloudLogger.Info("new session accepted")
-	cloudLogger.Tracef("new session accepted: %v", session)
+	cloudLogger.Info().Interface("session", session).Msg("new session accepted")
+	cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
 	currentSession = session
 	_ = wsjson.Write(context.Background(), c, gin.H{"type": "answer", "data": sd})
 	return nil
@@ -413,21 +418,21 @@ func RunWebsocketClient() {
 
 		// If the network is not up, well, we can't connect to the cloud.
 		if !networkState.Up {
-			cloudLogger.Warn("waiting for network to be up, will retry in 3 seconds")
+			cloudLogger.Warn().Msg("waiting for network to be up, will retry in 3 seconds")
 			time.Sleep(3 * time.Second)
 			continue
 		}
 
 		// If the system time is not synchronized, the API request will fail anyway because the TLS handshake will fail.
 		if isTimeSyncNeeded() && !timeSyncSuccess {
-			cloudLogger.Warn("system time is not synced, will retry in 3 seconds")
+			cloudLogger.Warn().Msg("system time is not synced, will retry in 3 seconds")
 			time.Sleep(3 * time.Second)
 			continue
 		}
 
 		err := runWebsocketClient()
 		if err != nil {
-			cloudLogger.Errorf("websocket client error: %v", err)
+			cloudLogger.Warn().Err(err).Msg("websocket client error")
 			metricCloudConnectionStatus.Set(0)
 			metricCloudConnectionFailureCount.Inc()
 			time.Sleep(5 * time.Second)
@@ -479,7 +484,7 @@ func rpcDeregisterDevice() error {
 			return fmt.Errorf("failed to save configuration after deregistering: %w", err)
 		}
 
-		cloudLogger.Infof("device deregistered, disconnecting from cloud")
+		cloudLogger.Info().Msg("device deregistered, disconnecting from cloud")
 		disconnectCloud(fmt.Errorf("device deregistered"))
 
 		return nil

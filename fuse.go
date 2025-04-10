@@ -103,7 +103,7 @@ func RunFuseServer() {
 	var err error
 	fuseServer, err = fs.Mount(fuseMountPoint, &FuseRoot{}, opts)
 	if err != nil {
-		logger.Warnf("failed to mount fuse: %v", err)
+		logger.Warn().Err(err).Msg("failed to mount fuse")
 	}
 	fuseServer.Wait()
 }

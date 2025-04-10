@@ -84,7 +84,7 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 
 func (u *UsbGadget) loadGadgetConfig() {
 	if u.customConfig.isEmpty {
-		u.log.Trace("using default gadget config")
+		u.log.Trace().Msg("using default gadget config")
 		return
 	}
 
@@ -163,26 +163,26 @@ func (u *UsbGadget) Init() error {
 
 	udcs := getUdcs()
 	if len(udcs) < 1 {
-		u.log.Error("no udc found, skipping USB stack init")
+		u.log.Error().Msg("no udc found, skipping USB stack init")
 		return nil
 	}
 
 	u.udc = udcs[0]
 	_, err := os.Stat(u.kvmGadgetPath)
 	if err == nil {
-		u.log.Info("usb gadget already exists")
+		u.log.Info().Msg("usb gadget already exists")
 	}
 
 	if err := mountConfigFS(); err != nil {
-		u.log.Errorf("failed to mount configfs: %v, usb stack might not function properly", err)
+		u.log.Error().Err(err).Msg("failed to mount configfs, usb stack might not function properly")
 	}
 
 	if err := os.MkdirAll(u.configC1Path, 0755); err != nil {
-		u.log.Errorf("failed to create config path: %v", err)
+		u.log.Error().Err(err).Msg("failed to create config path")
 	}
 
 	if err := u.writeGadgetConfig(); err != nil {
-		u.log.Errorf("failed to start gadget: %v", err)
+		u.log.Error().Err(err).Msg("failed to start gadget")
 	}
 
 	return nil
@@ -195,7 +195,7 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 	u.loadGadgetConfig()
 
 	if err := u.writeGadgetConfig(); err != nil {
-		u.log.Errorf("failed to update gadget: %v", err)
+		u.log.Error().Err(err).Msg("failed to update gadget")
 	}
 
 	return nil
@@ -221,21 +221,21 @@ func (u *UsbGadget) writeGadgetConfig() error {
 		return err
 	}
 
-	u.log.Tracef("writing gadget config")
+	u.log.Trace().Msg("writing gadget config")
 	for _, val := range u.getOrderedConfigItems() {
 		key := val.key
 		item := val.item
 
 		// check if the item is enabled in the config
 		if !u.isGadgetConfigItemEnabled(key) {
-			u.log.Tracef("disabling gadget config: %s", key)
+			u.log.Trace().Str("key", key).Msg("disabling gadget config")
 			err = u.disableGadgetItemConfig(item)
 			if err != nil {
 				return err
 			}
 			continue
 		}
-		u.log.Tracef("writing gadget config: %s", key)
+		u.log.Trace().Str("key", key).Msg("writing gadget config")
 		err = u.writeGadgetItemConfig(item)
 		if err != nil {
 			return err
@@ -243,12 +243,12 @@ func (u *UsbGadget) writeGadgetConfig() error {
 	}
 
 	if err = u.writeUDC(); err != nil {
-		u.log.Errorf("failed to write UDC: %v", err)
+		u.log.Error().Err(err).Msg("failed to write UDC")
 		return err
 	}
 
 	if err = u.rebindUsb(true); err != nil {
-		u.log.Infof("failed to rebind usb: %v", err)
+		u.log.Info().Err(err).Msg("failed to rebind usb")
 	}
 
 	return nil
@@ -263,7 +263,7 @@ func (u *UsbGadget) disableGadgetItemConfig(item gadgetConfigItem) error {
 	configPath := joinPath(u.configC1Path, item.configPath)
 
 	if _, err := os.Lstat(configPath); os.IsNotExist(err) {
-		u.log.Tracef("symlink %s does not exist", item.configPath)
+		u.log.Trace().Str("path", configPath).Msg("symlink does not exist")
 		return nil
 	}
 
@@ -315,7 +315,7 @@ func (u *UsbGadget) writeGadgetItemConfig(item gadgetConfigItem) error {
 	// create symlink if configPath is set
 	if item.configPath != nil && item.configAttrs == nil {
 		configPath := joinPath(u.configC1Path, item.configPath)
-		u.log.Tracef("Creating symlink from %s to %s", configPath, gadgetItemPath)
+		u.log.Trace().Str("source", configPath).Str("target", gadgetItemPath).Msg("creating symlink")
 		if err := ensureSymlink(configPath, gadgetItemPath); err != nil {
 			return err
 		}

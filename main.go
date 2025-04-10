@@ -17,17 +17,17 @@ func Main() {
 	var cancel context.CancelFunc
 	appCtx, cancel = context.WithCancel(context.Background())
 	defer cancel()
-	logger.Info("Starting JetKvm")
+	logger.Info().Msg("Starting JetKvm")
 	go runWatchdog()
 	go confirmCurrentSystem()
 
 	http.DefaultClient.Timeout = 1 * time.Minute
 	LoadConfig()
-	logger.Debug("config loaded")
+	logger.Debug().Msg("config loaded")
 
 	err := rootcerts.UpdateDefaultTransport()
 	if err != nil {
-		logger.Errorf("failed to load CA certs: %v", err)
+		logger.Warn().Err(err).Msg("failed to load CA certs")
 	}
 
 	go TimeSyncLoop()
@@ -40,7 +40,7 @@ func Main() {
 	go func() {
 		err = ExtractAndRunNativeBin()
 		if err != nil {
-			logger.Errorf("failed to extract and run native bin: %v", err)
+			logger.Warn().Err(err).Msg("failed to extract and run native bin")
 			//TODO: prepare an error message screen buffer to show on kvm screen
 		}
 	}()
@@ -50,19 +50,19 @@ func Main() {
 	go func() {
 		time.Sleep(15 * time.Minute)
 		for {
-			logger.Debugf("UPDATING - Auto update enabled: %v", config.AutoUpdateEnabled)
+			logger.Debug().Bool("auto_update_enabled", config.AutoUpdateEnabled).Msg("UPDATING")
 			if !config.AutoUpdateEnabled {
 				return
 			}
 			if currentSession != nil {
-				logger.Debugf("skipping update since a session is active")
+				logger.Debug().Msg("skipping update since a session is active")
 				time.Sleep(1 * time.Minute)
 				continue
 			}
 			includePreRelease := config.IncludePreRelease
 			err = TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
 			if err != nil {
-				logger.Errorf("failed to auto update: %v", err)
+				logger.Warn().Err(err).Msg("failed to auto update")
 			}
 			time.Sleep(1 * time.Hour)
 		}
@@ -79,7 +79,7 @@ func Main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
-	logger.Info("JetKVM Shutting Down")
+	logger.Info().Msg("JetKVM Shutting Down")
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")
 	//	if err != nil {

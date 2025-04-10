@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pion/logging"
+	"github.com/rs/zerolog"
 )
 
 // Devices is a struct that represents the USB devices that can be enabled on a USB gadget.
@@ -63,16 +63,16 @@ type UsbGadget struct {
 
 	lastUserInput time.Time
 
-	log logging.LeveledLogger
+	log *zerolog.Logger
 }
 
 const configFSPath = "/sys/kernel/config"
 const gadgetPath = "/sys/kernel/config/usb_gadget"
 
-var defaultLogger = logging.NewDefaultLoggerFactory().NewLogger("usbgadget")
+var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
 
 // NewUsbGadget creates a new UsbGadget.
-func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *logging.LeveledLogger) *UsbGadget {
+func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
 	if logger == nil {
 		logger = &defaultLogger
 	}
@@ -97,12 +97,12 @@ func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *
 		relMouseLock:   sync.Mutex{},
 		enabledDevices: *enabledDevices,
 		lastUserInput:  time.Now(),
-		log:            *logger,
+		log:            logger,
 
 		absMouseAccumulatedWheelY: 0,
 	}
 	if err := g.Init(); err != nil {
-		g.log.Errorf("failed to init USB gadget: %v", err)
+		logger.Error().Err(err).Msg("failed to init USB gadget")
 		return nil
 	}
 

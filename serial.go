@@ -39,13 +39,13 @@ func runATXControl() {
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			logger.Errorf("Error reading from serial port: %v", err)
+			logger.Warn().Err(err).Msg("Error reading from serial port")
 			return
 		}
 
 		// Each line should be 4 binary digits + newline
 		if len(line) != 5 {
-			logger.Warnf("Invalid line length: %d", len(line))
+			logger.Warn().Int("length", len(line)).Msg("Invalid line length")
 			continue
 		}
 
@@ -66,8 +66,7 @@ func runATXControl() {
 			newLedPWRState != ledPWRState ||
 			newBtnRSTState != btnRSTState ||
 			newBtnPWRState != btnPWRState {
-			logger.Debugf("Status changed: HDD LED: %v, PWR LED: %v, RST BTN: %v, PWR BTN: %v",
-				newLedHDDState, newLedPWRState, newBtnRSTState, newBtnPWRState)
+			logger.Debug().Bool("hdd", newLedHDDState).Bool("pwr", newLedPWRState).Bool("rst", newBtnRSTState).Bool("pwr", newBtnPWRState).Msg("Status changed")
 
 			// Update states
 			ledHDDState = newLedHDDState
@@ -138,41 +137,41 @@ func runDCControl() {
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			logger.Errorf("Error reading from serial port: %v", err)
+			logger.Warn().Err(err).Msg("Error reading from serial port")
 			return
 		}
 
 		// Split the line by semicolon
 		parts := strings.Split(strings.TrimSpace(line), ";")
 		if len(parts) != 4 {
-			logger.Warnf("Invalid line: %s", line)
+			logger.Warn().Str("line", line).Msg("Invalid line")
 			continue
 		}
 
 		// Parse new states
 		powerState, err := strconv.Atoi(parts[0])
 		if err != nil {
-			logger.Warnf("Invalid power state: %v", err)
+			logger.Warn().Err(err).Msg("Invalid power state")
 			continue
 		}
 		dcState.IsOn = powerState == 1
 		milliVolts, err := strconv.ParseFloat(parts[1], 64)
 		if err != nil {
-			logger.Warnf("Invalid voltage: %v", err)
+			logger.Warn().Err(err).Msg("Invalid voltage")
 			continue
 		}
 		volts := milliVolts / 1000 // Convert mV to V
 
 		milliAmps, err := strconv.ParseFloat(parts[2], 64)
 		if err != nil {
-			logger.Warnf("Invalid current: %v", err)
+			logger.Warn().Err(err).Msg("Invalid current")
 			continue
 		}
 		amps := milliAmps / 1000 // Convert mA to A
 
 		milliWatts, err := strconv.ParseFloat(parts[3], 64)
 		if err != nil {
-			logger.Warnf("Invalid power: %v", err)
+			logger.Warn().Err(err).Msg("Invalid power")
 			continue
 		}
 		watts := milliWatts / 1000 // Convert mW to W
@@ -226,7 +225,7 @@ func reopenSerialPort() error {
 	var err error
 	port, err = serial.Open(serialPortPath, defaultMode)
 	if err != nil {
-		logger.Errorf("Error opening serial port: %v", err)
+		logger.Warn().Err(err).Msg("Error opening serial port")
 	}
 	return nil
 }
@@ -239,13 +238,13 @@ func handleSerialChannel(d *webrtc.DataChannel) {
 				n, err := port.Read(buf)
 				if err != nil {
 					if err != io.EOF {
-						logger.Errorf("Failed to read from serial port: %v", err)
+						logger.Warn().Err(err).Msg("Failed to read from serial port")
 					}
 					break
 				}
 				err = d.Send(buf[:n])
 				if err != nil {
-					logger.Errorf("Failed to send serial output: %v", err)
+					logger.Warn().Err(err).Msg("Failed to send serial output")
 					break
 				}
 			}
@@ -258,7 +257,7 @@ func handleSerialChannel(d *webrtc.DataChannel) {
 		}
 		_, err := port.Write(msg.Data)
 		if err != nil {
-			logger.Errorf("Failed to write to serial: %v", err)
+			logger.Warn().Err(err).Msg("Failed to write to serial")
 		}
 	})
 

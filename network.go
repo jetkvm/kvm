@@ -56,14 +56,14 @@ func setDhcpClientState(active bool) {
 
 	cmd := exec.Command("/usr/bin/killall", signal, "udhcpc")
 	if err := cmd.Run(); err != nil {
-		logger.Warnf("network: setDhcpClientState: failed to change udhcpc state: %s", err)
+		logger.Warn().Err(err).Msg("network: setDhcpClientState: failed to change udhcpc state")
 	}
 }
 
 func checkNetworkState() {
 	iface, err := netlink.LinkByName(NetIfName)
 	if err != nil {
-		logger.Warnf("failed to get [%s] interface: %v", NetIfName, err)
+		logger.Warn().Err(err).Str("interface", NetIfName).Msg("failed to get interface")
 		return
 	}
 
@@ -76,7 +76,7 @@ func checkNetworkState() {
 
 	addrs, err := netlink.AddrList(iface, nl.FAMILY_ALL)
 	if err != nil {
-		logger.Warnf("failed to get addresses for [%s]: %v", NetIfName, err)
+		logger.Warn().Err(err).Str("interface", NetIfName).Msg("failed to get addresses")
 	}
 
 	// If the link is going down, put udhcpc into idle mode.
@@ -89,10 +89,10 @@ func checkNetworkState() {
 		if addr.IP.To4() != nil {
 			if !newState.Up && networkState.Up {
 				// If the network is going down, remove all IPv4 addresses from the interface.
-				logger.Infof("network: state transitioned to down, removing IPv4 address %s", addr.IP.String())
+				logger.Info().Str("address", addr.IP.String()).Msg("network: state transitioned to down, removing IPv4 address")
 				err := netlink.AddrDel(iface, &addr)
 				if err != nil {
-					logger.Warnf("network: failed to delete %s", addr.IP.String())
+					logger.Warn().Err(err).Str("address", addr.IP.String()).Msg("network: failed to delete address")
 				}
 
 				newState.IPv4 = "..."
@@ -105,7 +105,7 @@ func checkNetworkState() {
 	}
 
 	if newState != networkState {
-		logger.Info("network state changed")
+		logger.Info().Msg("network state changed")
 		// restart MDNS
 		_ = startMDNS()
 		networkState = newState
@@ -116,15 +116,15 @@ func checkNetworkState() {
 func startMDNS() error {
 	// If server was previously running, stop it
 	if mDNSConn != nil {
-		logger.Info("Stopping mDNS server")
+		logger.Info().Msg("Stopping mDNS server")
 		err := mDNSConn.Close()
 		if err != nil {
-			logger.Warnf("failed to stop mDNS server: %v", err)
+			logger.Warn().Err(err).Msg("failed to stop mDNS server")
 		}
 	}
 
 	// Start a new server
-	logger.Info("Starting mDNS server on jetkvm.local")
+	logger.Info().Msg("Starting mDNS server on jetkvm.local")
 	addr4, err := net.ResolveUDPAddr("udp4", mdns.DefaultAddressIPv4)
 	if err != nil {
 		return err
@@ -146,7 +146,8 @@ func startMDNS() error {
 	}
 
 	mDNSConn, err = mdns.Server(ipv4.NewPacketConn(l4), ipv6.NewPacketConn(l6), &mdns.Config{
-		LocalNames: []string{"jetkvm.local"}, //TODO: make it configurable
+		LocalNames:    []string{"jetkvm.local"}, //TODO: make it configurable
+		LoggerFactory: defaultLoggerFactory,
 	})
 	if err != nil {
 		mDNSConn = nil
@@ -181,7 +182,7 @@ func getNTPServersFromDHCPInfo() ([]string, error) {
 
 	for _, server := range strings.Fields(val) {
 		if net.ParseIP(server) == nil {
-			logger.Infof("invalid NTP server IP: %s, ignoring", server)
+			logger.Info().Str("server", server).Msg("invalid NTP server IP, ignoring")
 		}
 		servers = append(servers, server)
 	}
@@ -196,7 +197,7 @@ func init() {
 	done := make(chan struct{})
 
 	if err := netlink.LinkSubscribe(updates, done); err != nil {
-		logger.Warnf("failed to subscribe to link updates: %v", err)
+		logger.Warn().Err(err).Msg("failed to subscribe to link updates")
 		return
 	}
 
@@ -210,7 +211,7 @@ func init() {
 			select {
 			case update := <-updates:
 				if update.Link.Attrs().Name == NetIfName {
-					logger.Infof("link update: %+v", update)
+					logger.Info().Interface("update", update).Msg("link update")
 					checkNetworkState()
 				}
 			case <-ticker.C:
@@ -222,6 +223,6 @@ func init() {
 	}()
 	err := startMDNS()
 	if err != nil {
-		logger.Warnf("failed to run mDNS: %v", err)
+		logger.Warn().Err(err).Msg("failed to run mDNS")
 	}
 }

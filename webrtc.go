@@ -65,22 +65,24 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 }
 
 func newSession(config SessionConfig) (*Session, error) {
-	webrtcSettingEngine := webrtc.SettingEngine{}
+	webrtcSettingEngine := webrtc.SettingEngine{
+		LoggerFactory: defaultLoggerFactory,
+	}
 	iceServer := webrtc.ICEServer{}
 
 	if config.IsCloud {
 		if config.ICEServers == nil {
-			logger.Info("ICE Servers not provided by cloud")
+			logger.Info().Msg("ICE Servers not provided by cloud")
 		} else {
 			iceServer.URLs = config.ICEServers
-			logger.Infof("Using ICE Servers provided by cloud: %v", iceServer.URLs)
+			logger.Info().Interface("iceServers", iceServer.URLs).Msg("Using ICE Servers provided by cloud")
 		}
 
 		if config.LocalIP == "" || net.ParseIP(config.LocalIP) == nil {
-			logger.Infof("Local IP address %v not provided or invalid, won't set NAT1To1IPs", config.LocalIP)
+			logger.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set NAT1To1IPs")
 		} else {
 			webrtcSettingEngine.SetNAT1To1IPs([]string{config.LocalIP}, webrtc.ICECandidateTypeSrflx)
-			logger.Infof("Setting NAT1To1IPs to %s", config.LocalIP)
+			logger.Info().Str("localIP", config.LocalIP).Msg("Setting NAT1To1IPs")
 		}
 	}
 
@@ -94,7 +96,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	session := &Session{peerConnection: peerConnection}
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		logger.Infof("New DataChannel %s %d", d.Label(), d.ID())
+		logger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
 		switch d.Label() {
 		case "rpc":
 			session.RPCChannel = d
@@ -142,17 +144,17 @@ func newSession(config SessionConfig) (*Session, error) {
 	var isConnected bool
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		logger.Infof("Our WebRTC peerConnection has a new ICE candidate: %v", candidate)
+		logger.Info().Interface("candidate", candidate).Msg("Our WebRTC peerConnection has a new ICE candidate")
 		if candidate != nil {
 			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
 			if err != nil {
-				logger.Errorf("failed to write new-ice-candidate to WebRTC signaling channel: %v", err)
+				logger.Warn().Err(err).Msg("failed to write new-ice-candidate to WebRTC signaling channel")
 			}
 		}
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		logger.Infof("Connection State has changed %s", connectionState)
+		logger.Info().Str("connectionState", connectionState.String()).Msg("Connection State has changed")
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			if !isConnected {
 				isConnected = true
@@ -173,7 +175,7 @@ func newSession(config SessionConfig) (*Session, error) {
 			}
 			if session.shouldUmountVirtualMedia {
 				err := rpcUnmountImage()
-				logger.Debugf("unmount image failed on connection close %v", err)
+				logger.Debug().Err(err).Msg("unmount image failed on connection close")
 			}
 			if isConnected {
 				isConnected = false

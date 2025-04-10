@@ -15,7 +15,7 @@ func initUsbGadget() {
 		"jetkvm",
 		config.UsbDevices,
 		config.UsbConfig,
-		&logger,
+		&usbLogger,
 	)
 
 	go func() {
@@ -51,7 +51,7 @@ func rpcGetUSBState() (state string) {
 func triggerUSBStateUpdate() {
 	go func() {
 		if currentSession == nil {
-			logger.Info("No active RPC session, skipping update state update")
+			usbLogger.Info().Msg("No active RPC session, skipping update state update")
 			return
 		}
 		writeJSONRPCEvent("usbState", usbState, currentSession)
@@ -65,7 +65,7 @@ func checkUSBState() {
 	}
 	usbState = newState
 
-	logger.Infof("USB state changed from %s to %s", usbState, newState)
+	usbLogger.Info().Str("from", usbState).Str("to", newState).Msg("USB state changed")
 	requestDisplayUpdate()
 	triggerUSBStateUpdate()
 }
