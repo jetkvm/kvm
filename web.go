@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -173,11 +174,24 @@ func handleWebRTCSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }
 
+var (
+	pingMessage = []byte("ping")
+	pongMessage = []byte("pong")
+)
+
 func handleLocalWebRTCSignal(c *gin.Context) {
 	cloudLogger.Infof("new websocket connection established")
+
+	// get the source from the request
+	source := c.ClientIP()
+
 	// Create WebSocket options with InsecureSkipVerify to bypass origin check
 	wsOptions := &websocket.AcceptOptions{
 		InsecureSkipVerify: true, // Allow connections from any origin
+		OnPingReceived: func(ctx context.Context, payload []byte) bool {
+			websocketLogger.Infof("ping frame received: %v, source: %s, sourceType: local", payload, source)
+			return true
+		},
 	}
 
 	wsCon, err := websocket.Accept(c.Writer, c.Request, wsOptions)
@@ -185,9 +199,6 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	// get the source from the request
-	source := c.ClientIP()
 
 	// Now use conn for websocket operations
 	defer wsCon.Close(websocket.StatusNormalClosure, "")
@@ -211,7 +222,6 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 
 	// Add connection tracking to detect reconnections
 	connectionID := uuid.New().String()
-	cloudLogger.Infof("new websocket connection established with ID: %s", connectionID)
 
 	// connection type
 	var sourceType string
@@ -223,17 +233,19 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 
 	// probably we can use a better logging framework here
 	logInfof := func(format string, args ...interface{}) {
-		args = append(args, source, sourceType)
-		websocketLogger.Infof(format+", source: %s, sourceType: %s", args...)
+		args = append(args, source, sourceType, connectionID)
+		websocketLogger.Infof(format+", source: %s, sourceType: %s, id: %s", args...)
 	}
 	logWarnf := func(format string, args ...interface{}) {
-		args = append(args, source, sourceType)
-		websocketLogger.Warnf(format+", source: %s, sourceType: %s", args...)
+		args = append(args, source, sourceType, connectionID)
+		websocketLogger.Warnf(format+", source: %s, sourceType: %s, id: %s", args...)
 	}
 	logTracef := func(format string, args ...interface{}) {
-		args = append(args, source, sourceType)
-		websocketLogger.Tracef(format+", source: %s, sourceType: %s", args...)
+		args = append(args, source, sourceType, connectionID)
+		websocketLogger.Tracef(format+", source: %s, sourceType: %s, id: %s", args...)
 	}
+
+	logInfof("new websocket connection established")
 
 	go func() {
 		for {
@@ -245,7 +257,7 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 				metricConnectionPingDuration.WithLabelValues(sourceType, source).Observe(v)
 			}))
 
-			logInfof("pinging websocket")
+			logTracef("sending ping frame")
 			err := wsCon.Ping(runCtx)
 
 			if err != nil {
@@ -255,10 +267,12 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 			}
 
 			// dont use `defer` here because we want to observe the duration of the ping
-			timer.ObserveDuration()
+			duration := timer.ObserveDuration()
 
 			metricConnectionTotalPingCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastPingTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
+
+			logTracef("received pong frame, duration: %v", duration)
 		}
 	}()
 
@@ -296,6 +310,16 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 			Data json.RawMessage `json:"data"`
 		}
 
+		if bytes.Equal(msg, pingMessage) {
+			logInfof("ping message received: %s", string(msg))
+			err = wsCon.Write(context.Background(), websocket.MessageText, pongMessage)
+			if err != nil {
+				logWarnf("unable to write pong message: %v", err)
+				return err
+			}
+			continue
+		}
+
 		err = json.Unmarshal(msg, &message)
 		if err != nil {
 			logWarnf("unable to parse ws message: %v", err)
@@ -311,8 +335,9 @@ func handleWebRTCSignalWsMessages(wsCon *websocket.Conn, isCloudConnection bool,
 				continue
 			}
 
-			logInfof("new session request: %v", req.OidcGoogle)
-			logTracef("session request info: %v", req)
+			if req.OidcGoogle != "" {
+				logInfof("new session request with OIDC Google: %v", req.OidcGoogle)
+			}
 
 			metricConnectionSessionRequestCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastSessionRequestTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
