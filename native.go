@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/resource"
+	"github.com/rs/zerolog"
 
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -32,6 +33,19 @@ type CtrlResponse struct {
 	Result map[string]interface{} `json:"result,omitempty"`
 	Event  string                 `json:"event,omitempty"`
 	Data   json.RawMessage        `json:"data,omitempty"`
+}
+
+type nativeOutput struct {
+	mu     *sync.Mutex
+	logger *zerolog.Event
+}
+
+func (w *nativeOutput) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.logger.Msg(string(p))
+	return len(p), nil
 }
 
 type EventHandler func(event CtrlResponse)
@@ -225,9 +239,19 @@ func ExtractAndRunNativeBin() error {
 	// Run the binary in the background
 	cmd := exec.Command(binaryPath)
 
+	nativeOutputLock := sync.Mutex{}
+	nativeStdout := &nativeOutput{
+		mu:     &nativeOutputLock,
+		logger: nativeLogger.GetLogger().Info().Str("pipe", "stdout"),
+	}
+	nativeStderr := &nativeOutput{
+		mu:     &nativeOutputLock,
+		logger: nativeLogger.GetLogger().Info().Str("pipe", "stderr"),
+	}
+
 	// Redirect stdout and stderr to the current process
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = nativeStdout
+	cmd.Stderr = nativeStderr
 
 	// Set the process group ID so we can kill the process and its children when this process exits
 	cmd.SysProcAttr = &syscall.SysProcAttr{
