@@ -33,6 +33,7 @@ import OtherSessionRoute from "./routes/devices.$id.other-session";
 import MountRoute from "./routes/devices.$id.mount";
 import * as SettingsRoute from "./routes/devices.$id.settings";
 import SettingsKeyboardMouseRoute from "./routes/devices.$id.settings.mouse";
+import SettingsSwitchRoute from "./routes/devices.$id.settings.switch";
 import api from "./api";
 import * as SettingsIndexRoute from "./routes/devices.$id.settings._index";
 import SettingsAdvancedRoute from "./routes/devices.$id.settings.advanced";
@@ -146,6 +147,10 @@ if (isOnDevice) {
               element: <SettingsKeyboardMouseRoute />,
             },
             {
+              path: "switch",
+              element: <SettingsSwitchRoute />,
+            },
+            {
               path: "advanced",
               element: <SettingsAdvancedRoute />,
             },
@@ -252,6 +257,10 @@ if (isOnDevice) {
                     {
                       path: "mouse",
                       element: <SettingsKeyboardMouseRoute />,
+                    },
+                    {
+                      path: "switch",
+                      element: <SettingsSwitchRoute />,
                     },
                     {
                       path: "advanced",

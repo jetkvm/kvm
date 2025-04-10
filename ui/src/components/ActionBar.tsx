@@ -1,8 +1,8 @@
 import { MdOutlineContentPasteGo } from "react-icons/md";
-import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
+import { LuCable, LuHardDrive, LuMaximize, LuMerge, LuSettings, LuSignal } from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
-import { Fragment, useCallback, useRef } from "react";
+import { Fragment, useCallback, useEffect, useRef } from "react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 
 import { Button } from "@components/Button";
@@ -18,13 +18,16 @@ import PasteModal from "@/components/popovers/PasteModal";
 import WakeOnLanModal from "@/components/popovers/WakeOnLan/Index";
 import MountPopopover from "@/components/popovers/MountPopover";
 import ExtensionPopover from "@/components/popovers/ExtensionPopover";
+import SelectChannelPopover from "@/components/popovers/SelectChannelPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
 
 export default function Actionbar({
   requestFullscreen,
 }: {
   requestFullscreen: () => Promise<void>;
 }) {
+  const [send] = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
   const virtualKeyboard = useHidStore(state => state.isVirtualKeyboardEnabled);
 
@@ -33,6 +36,10 @@ export default function Actionbar({
   const setDisableFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
   const terminalType = useUiStore(state => state.terminalType);
   const setTerminalType = useUiStore(state => state.setTerminalType);
+  const remoteKvmEnabled = useUiStore(state => state.remoteKvmEnabled);
+  const setRemoteKvmEnabled = useUiStore(state => state.setRemoteKvmEnabled);
+  const remoteKvmSelectedChannel = useUiStore(state => state.remoteKvmSelectedChannel);
+  const setRemoteKvmSelectedChannel = useUiStore(state => state.setRemoteKvmSelectedChannel);
   const remoteVirtualMediaState = useMountMediaStore(
     state => state.remoteVirtualMediaState,
   );
@@ -55,6 +62,28 @@ export default function Actionbar({
     },
     [setDisableFocusTrap],
   );
+
+  useEffect(() => {
+    send("getKvmSwitchEnabled", {}, resp => {
+      if ("error" in resp) {
+        return
+      }
+
+      setRemoteKvmEnabled(Boolean(resp.result));
+
+      send("getKvmSwitchSelectedChannel", {}, resp => {
+        if ("error" in resp) {
+          return
+        }
+        const data = resp.result as any;
+        setRemoteKvmSelectedChannel({
+          name: data.name,
+          id: data.id
+        });
+      })
+    });
+  }, [send]);
+
 
   return (
     <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">
@@ -207,6 +236,44 @@ export default function Actionbar({
               onClick={() => setVirtualKeyboard(!virtualKeyboard)}
             />
           </div>
+          {remoteKvmEnabled && (
+            <div>
+              <Popover>
+                <PopoverButton as={Fragment}>
+                  <Button
+                    size="XS"
+                    theme="light"
+                    text={!!remoteKvmSelectedChannel ? `Channel: ${remoteKvmSelectedChannel.name}` : "Select channel"}
+                    LeadingIcon={LuMerge}
+                    onClick={() => {
+                      setDisableFocusTrap(true);
+                    }}
+                  />
+                </PopoverButton>
+                <PopoverPanel
+                  anchor="bottom start"
+                  transition
+                  style={{
+                    transitionProperty: "opacity",
+                  }}
+                  className={cx(
+                    "z-10 flex w-[420px] origin-top flex-col !overflow-visible",
+                    "flex origin-top flex-col transition duration-300 ease-out data-[closed]:translate-y-8 data-[closed]:opacity-0",
+                  )}
+                >
+                  {({ open }) => {
+                    checkIfStateChanged(open);
+                    return (
+                      <div className="mx-auto w-full max-w-xl">
+                        <SelectChannelPopover />
+                      </div>
+                    );
+                  }}
+                </PopoverPanel>
+              </Popover>
+            </div>
+          )}
+
         </div>
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">

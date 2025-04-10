@@ -737,6 +737,65 @@ func rpcGetUsbDevices() (usbgadget.Devices, error) {
 	return *config.UsbDevices, nil
 }
 
+func rpcGetKvmSwitchEnabled() (bool, error) {
+	return config.RemoteKvmEnabled, nil
+}
+
+func rpcSetKvmSwitchEnabled(enabled bool) error {
+	config.RemoteKvmEnabled = enabled
+	config.RemoteKvmSelectedChannel = ""
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
+func rpcGetKvmSwitchSelectedChannel() (*SwitchChannel, error) {
+	if !config.RemoteKvmEnabled {
+		return nil, fmt.Errorf("KVM switch is disabled")
+	}
+	if config.RemoteKvmSelectedChannel == "" {
+		return nil, fmt.Errorf("no channel selected")
+	}
+
+	for _, c := range config.RemoteKvmChannels {
+		if c.Id == config.RemoteKvmSelectedChannel {
+			return &c, nil
+		}
+	}
+
+	return nil, fmt.Errorf("channel not found")
+}
+
+func rpcSetKvmSwitchSelectedChannel(id string) error {
+	// Check that the channel is known (exists in the config)
+	err := RemoteKvmSwitchChannel(id)
+	if err != nil {
+		return fmt.Errorf("unable to select channel by ID %s: %w", id, err)
+	}
+
+	config.RemoteKvmSelectedChannel = id
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
+func rpcGetKvmSwitchChannels() ([]SwitchChannel, error) {
+	if !config.RemoteKvmEnabled {
+		return nil, fmt.Errorf("KVM switch is disabled")
+	}
+	return config.RemoteKvmChannels, nil
+}
+
+func rpcSetKvmSwitchChannels(newConfig SwitchChannelConfig) error {
+	config.RemoteKvmChannels = newConfig.Channels
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
 func updateUsbRelatedConfig() error {
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to write gadget config: %w", err)
@@ -862,4 +921,11 @@ var rpcHandlers = map[string]RPCHandler{
 	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
 	"getScrollSensitivity":   {Func: rpcGetScrollSensitivity},
 	"setScrollSensitivity":   {Func: rpcSetScrollSensitivity, Params: []string{"sensitivity"}},
+	// remote KVM
+	"getKvmSwitchEnabled":         {Func: rpcGetKvmSwitchEnabled},
+	"setKvmSwitchEnabled":         {Func: rpcSetKvmSwitchEnabled, Params: []string{"enabled"}},
+	"getKvmSwitchChannels":        {Func: rpcGetKvmSwitchChannels},
+	"setKvmSwitchChannels":        {Func: rpcSetKvmSwitchChannels, Params: []string{"config"}},
+	"getKvmSwitchSelectedChannel": {Func: rpcGetKvmSwitchSelectedChannel},
+	"setKvmSwitchSelectedChannel": {Func: rpcSetKvmSwitchSelectedChannel, Params: []string{"id"}},
 }
