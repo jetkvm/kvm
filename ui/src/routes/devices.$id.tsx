@@ -785,6 +785,7 @@ export default function KvmIdRoute() {
             <button className="absolute top-0" tabIndex={-1} id="videoFocusTrap" />
           </div>
         </FocusTrap>
+
         <div className="grid h-full select-none grid-rows-headerBody">
           <DashboardNavbar
             primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
@@ -795,7 +796,7 @@ export default function KvmIdRoute() {
             kvmName={deviceName || "JetKVM Device"}
           />
 
-          <div className="relative z-50 flex h-full w-full overflow-hidden">
+          <div className="relative flex h-full w-full overflow-hidden">
             <WebRTCVideo />
             <div
               style={{ animationDuration: "500ms" }}
@@ -811,7 +812,7 @@ export default function KvmIdRoute() {
       </div>
 
       <div
-        className="isolate"
+        className="z-50"
         onKeyUp={e => e.stopPropagation()}
         onKeyDown={e => {
           e.stopPropagation();
