@@ -39,18 +39,29 @@ func setMassStorageImage(imagePath string) error {
 }
 
 func setMassStorageMode(cdrom bool) error {
-	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
-	if err != nil {
-		return fmt.Errorf("failed to get mass storage path: %w", err)
+	if gadget == nil {
+		return fmt.Errorf("gadget is not initialized")
 	}
 
 	mode := "0"
 	if cdrom {
 		mode = "1"
 	}
-	if err := writeFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"), mode); err != nil {
-		return fmt.Errorf("failed to set cdrom mode: %w", err)
+
+	// override the config
+	err, changed := gadget.OverrideGadgetConfig("mass_storage_lun0", "cdrom", mode)
+	if err != nil {
+		return fmt.Errorf("failed to override gadget config: %w", err)
 	}
+	if !changed {
+		return nil
+	}
+
+	// apply the changes
+	if err := gadget.UpdateGadgetConfig(); err != nil {
+		return fmt.Errorf("failed to write gadget config: %w", err)
+	}
+
 	return nil
 }
 
@@ -109,7 +120,7 @@ func rpcMountBuiltInImage(filename string) error {
 	return mountImage(imagePath)
 }
 
-func getMassStorageMode() (bool, error) {
+func getMassStorageCDROMEnabled() (bool, error) {
 	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
 	if err != nil {
 		return false, fmt.Errorf("failed to get mass storage path: %w", err)
@@ -193,6 +204,7 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 		virtualMediaStateMutex.Unlock()
 		return fmt.Errorf("another virtual media is already mounted")
 	}
+	setMassStorageMode(mode == CDROM)
 	httpRangeReader = httpreadat.New(url)
 	n, err := httpRangeReader.Size()
 	if err != nil {
@@ -239,6 +251,7 @@ func rpcMountWithWebRTC(filename string, size int64, mode VirtualMediaMode) erro
 		Size:     size,
 	}
 	virtualMediaStateMutex.Unlock()
+	setMassStorageMode(mode == CDROM)
 	logger.Debug().Interface("currentVirtualMediaState", currentVirtualMediaState).Msg("currentVirtualMediaState")
 	logger.Debug().Msg("Starting nbd device")
 	nbdDevice = NewNBDDevice()
@@ -269,6 +282,8 @@ func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
 	if currentVirtualMediaState != nil {
 		return fmt.Errorf("another virtual media is already mounted")
 	}
+
+	setMassStorageMode(mode == CDROM)
 
 	fullPath := filepath.Join(imagesFolder, filename)
 	fileInfo, err := os.Stat(fullPath)

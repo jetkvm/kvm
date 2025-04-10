@@ -414,7 +414,7 @@ function BrowserFileView({
     if (file?.name.endsWith(".iso")) {
       setUsbMode("CDROM");
     } else if (file?.name.endsWith(".img")) {
-      setUsbMode("CDROM");
+      setUsbMode("Disk");
     }
   };
 
@@ -566,7 +566,7 @@ function UrlView({
     if (url.endsWith(".iso")) {
       setUsbMode("CDROM");
     } else if (url.endsWith(".img")) {
-      setUsbMode("CDROM");
+      setUsbMode("Disk");
     }
   }
 
@@ -773,7 +773,7 @@ function DeviceFileView({
     if (file.name.endsWith(".iso")) {
       setUsbMode("CDROM");
     } else if (file.name.endsWith(".img")) {
-      setUsbMode("CDROM");
+      setUsbMode("Disk");
     }
   }
 
@@ -1579,7 +1579,6 @@ function UsbModeSelector({
             type="radio"
             id="disk"
             name="mountType"
-            disabled
             checked={usbMode === "Disk"}
             onChange={() => setUsbMode("Disk")}
             className="h-3 w-3 border-slate-800/30 bg-white text-blue-700 transition-opacity focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
@@ -1588,9 +1587,6 @@ function UsbModeSelector({
             <span className="text-sm font-medium leading-none text-slate-900 opacity-50 dark:text-white">
               Disk
             </span>
-            <div className="text-[10px] text-slate-500 dark:text-slate-400">
-              Coming soon
-            </div>
           </div>
         </label>
       </div>

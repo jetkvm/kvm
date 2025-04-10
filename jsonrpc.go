@@ -523,10 +523,12 @@ type RPCHandler struct {
 func rpcSetMassStorageMode(mode string) (string, error) {
 	logger.Info().Str("mode", mode).Msg("Setting mass storage mode")
 	var cdrom bool
-	if mode == "cdrom" {
+	switch mode {
+	case "cdrom":
 		cdrom = true
-	} else if mode != "file" {
-		logger.Info().Str("mode", mode).Msg("Invalid mode provided")
+	case "disk":
+		cdrom = false
+	default:
 		return "", fmt.Errorf("invalid mode: %s", mode)
 	}
 
@@ -544,12 +546,12 @@ func rpcSetMassStorageMode(mode string) (string, error) {
 }
 
 func rpcGetMassStorageMode() (string, error) {
-	cdrom, err := getMassStorageMode()
+	cdrom, err := getMassStorageCDROMEnabled()
 	if err != nil {
 		return "", fmt.Errorf("failed to get mass storage mode: %w", err)
 	}
 
-	mode := "file"
+	mode := "disk"
 	if cdrom {
 		mode = "cdrom"
 	}
