@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pion/logging"
+	"github.com/rs/zerolog"
 	"golang.org/x/net/idna"
 )
 
@@ -19,7 +19,7 @@ const selfSignerCAMagicName = "__ca__"
 
 type SelfSigner struct {
 	store *CertStore
-	log   logging.LeveledLogger
+	log   *zerolog.Logger
 
 	caInfo pkix.Name
 
@@ -30,7 +30,7 @@ type SelfSigner struct {
 
 func NewSelfSigner(
 	store *CertStore,
-	log logging.LeveledLogger,
+	log *zerolog.Logger,
 	defaultDomain,
 	defaultOrg,
 	defaultOU,
@@ -64,12 +64,12 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 	if hostname != selfSignerCAMagicName {
 		ca = s.getCA()
 		if ca == nil {
-			s.log.Errorf("Failed to get CA certificate")
+			s.log.Error().Msg("Failed to get CA certificate")
 			return nil
 		}
 	}
 
-	s.log.Infof("Creating self-signed certificate for %s", hostname)
+	s.log.Info().Str("hostname", hostname).Msg("Creating self-signed certificate")
 
 	// lock the store while creating the certificate (do not move upwards)
 	s.store.certLock.Lock()
@@ -77,7 +77,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		s.log.Errorf("Failed to generate private key: %v", err)
+		s.log.Error().Err(err).Msg("Failed to generate private key")
 		return nil
 	}
 
@@ -86,7 +86,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 
 	serialNumber, err := generateSerialNumber()
 	if err != nil {
-		s.log.Errorf("Failed to generate serial number: %v", err)
+		s.log.Error().Err(err).Msg("Failed to generate serial number")
 		return nil
 	}
 
@@ -139,7 +139,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 	if ca != nil {
 		parent, err = x509.ParseCertificate(ca.Certificate[0])
 		if err != nil {
-			s.log.Errorf("Failed to parse parent certificate: %v", err)
+			s.log.Error().Err(err).Msg("Failed to parse parent certificate")
 			return nil
 		}
 		parentPriv = ca.PrivateKey.(*ecdsa.PrivateKey)
@@ -147,7 +147,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 
 	certBytes, err := x509.CreateCertificate(rand.Reader, &cert, parent, &priv.PublicKey, parentPriv)
 	if err != nil {
-		s.log.Errorf("Failed to create certificate: %v", err)
+		s.log.Error().Err(err).Msg("Failed to create certificate")
 		return nil
 	}
 
@@ -175,12 +175,12 @@ func (s *SelfSigner) GetCertificate(info *tls.ClientHelloInfo) (*tls.Certificate
 		hostname = strings.Split(info.Conn.LocalAddr().String(), ":")[0]
 	}
 
-	s.log.Infof("TLS handshake for %s, SupportedProtos: %v", hostname, info.SupportedProtos)
+	s.log.Info().Str("hostname", hostname).Strs("supported_protos", info.SupportedProtos).Msg("TLS handshake")
 
 	// convert hostname to punycode
 	h, err := idna.Lookup.ToASCII(hostname)
 	if err != nil {
-		s.log.Warnf("Hostname %s is not valid: %w, from %s", hostname, err, info.Conn.RemoteAddr())
+		s.log.Warn().Str("hostname", hostname).Err(err).Str("remote_addr", info.Conn.RemoteAddr().String()).Msg("Hostname is not valid")
 		hostname = s.DefaultDomain
 	} else {
 		hostname = h

@@ -1,5 +1,9 @@
 package websecure
 
-import "github.com/pion/logging"
+import (
+	"os"
 
-var defaultLogger = logging.NewDefaultLoggerFactory().NewLogger("websecure")
+	"github.com/rs/zerolog"
+)
+
+var defaultLogger = zerolog.New(os.Stdout).With().Str("component", "websecure").Logger()

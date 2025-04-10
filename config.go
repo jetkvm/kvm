@@ -169,7 +169,7 @@ func SaveConfig() error {
 	configLock.Lock()
 	defer configLock.Unlock()
 
-	logger.Tracef("Saving config to %s", configPath)
+	logger.Trace().Str("path", configPath).Msg("Saving config")
 
 	file, err := os.Create(configPath)
 	if err != nil {

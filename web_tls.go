@@ -35,15 +35,15 @@ type TLSState struct {
 
 func initCertStore() {
 	if certStore != nil {
-		logger.Warnf("TLS store already initialized, it should not be initialized again")
+		websecureLogger.Warn().Msg("TLS store already initialized, it should not be initialized again")
 		return
 	}
-	certStore = websecure.NewCertStore(tlsStorePath)
+	certStore = websecure.NewCertStore(tlsStorePath, &websecureLogger)
 	certStore.LoadCertificates()
 
 	certSigner = websecure.NewSelfSigner(
 		certStore,
-		logger,
+		&websecureLogger,
 		webSecureSelfSignedDefaultDomain,
 		webSecureSelfSignedOrganization,
 		webSecureSelfSignedOU,
@@ -61,7 +61,7 @@ func getCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		return certStore.GetCertificate(webSecureCustomCertificateName), nil
 	}
 
-	logger.Infof("TLS mode is disabled but WebSecure is running, returning nil")
+	websecureLogger.Info().Msg("TLS mode is disabled but WebSecure is running, returning nil")
 	return nil, nil
 }
 
@@ -123,15 +123,15 @@ func setTLSState(s TLSState) error {
 	}
 
 	if !isChanged {
-		logger.Tracef("TLS enabled state is not changed, not starting/stopping websecure server")
+		websecureLogger.Info().Msg("TLS enabled state is not changed, not starting/stopping websecure server")
 		return nil
 	}
 
 	if config.TLSMode == "" {
-		logger.Tracef("Stopping websecure server, as TLS mode is disabled")
+		websecureLogger.Info().Msg("Stopping websecure server, as TLS mode is disabled")
 		stopWebSecureServer()
 	} else {
-		logger.Tracef("Starting websecure server, as TLS mode is enabled")
+		websecureLogger.Info().Msg("Starting websecure server, as TLS mode is enabled")
 		startWebSecureServer()
 	}
 
@@ -166,12 +166,15 @@ func runWebSecureServer() {
 			GetCertificate:   getCertificate,
 		},
 	}
-	logger.Infof("Starting websecure server on %s", webSecureListen)
+	websecureLogger.Info().Str("listen", webSecureListen).Msg("Starting websecure server")
 
 	go func() {
 		for _ = range stopTLS {
-			logger.Infof("Shutting down websecure server")
-			server.Shutdown(context.Background())
+			websecureLogger.Info().Msg("Shutting down websecure server")
+			err := server.Shutdown(context.Background())
+			if err != nil {
+				websecureLogger.Error().Err(err).Msg("Failed to shutdown websecure server")
+			}
 		}
 	}()
 
@@ -183,7 +186,7 @@ func runWebSecureServer() {
 
 func stopWebSecureServer() {
 	if !tlsStarted {
-		logger.Warnf("Websecure server is not running, not stopping it")
+		websecureLogger.Info().Msg("Websecure server is not running, not stopping it")
 		return
 	}
 	stopTLS <- struct{}{}
@@ -191,7 +194,7 @@ func stopWebSecureServer() {
 
 func startWebSecureServer() {
 	if tlsStarted {
-		logger.Warnf("Websecure server is already running, not starting it again")
+		websecureLogger.Info().Msg("Websecure server is already running, not starting it again")
 		return
 	}
 	startTLS <- struct{}{}
@@ -199,7 +202,7 @@ func startWebSecureServer() {
 
 func RunWebSecureServer() {
 	for _ = range startTLS {
-		logger.Tracef("Starting websecure server, as we have received a start signal")
+		websecureLogger.Info().Msg("Starting websecure server, as we have received a start signal")
 		if certStore == nil {
 			initCertStore()
 		}

@@ -95,7 +95,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	logger.Tracef("Received RPC request: Method=%s, Params=%v, ID=%w", request.Method, request.Params, request.ID)
+	logger.Trace().Str("method", request.Method).Interface("params", request.Params).Interface("id", request.ID).Msg("Received RPC request")
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
 		errorResponse := JSONRPCResponse{
@@ -110,7 +110,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	logger.Tracef("Calling RPC handler: %s, ID=%w", request.Method, request.ID)
+	logger.Trace().Str("method", request.Method).Interface("id", request.ID).Msg("Calling RPC handler")
 	result, err := callRPCHandler(handler, request.Params)
 	if err != nil {
 		errorResponse := JSONRPCResponse{
@@ -126,7 +126,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	logger.Tracef("RPC handler returned: %v, ID=%w", result, request.ID)
+	logger.Trace().Interface("result", result).Interface("id", request.ID).Msg("RPC handler returned")
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
 		Result:  result,
@@ -144,7 +144,7 @@ func rpcGetDeviceID() (string, error) {
 }
 
 func rpcReboot(force bool) error {
-	logger.Info("Got reboot request from JSONRPC, rebooting...")
+	logger.Info().Msg("Got reboot request from JSONRPC, rebooting...")
 
 	args := []string{}
 	if force {
@@ -154,7 +154,7 @@ func rpcReboot(force bool) error {
 	cmd := exec.Command("reboot", args...)
 	err := cmd.Start()
 	if err != nil {
-		logger.Errorf("failed to reboot: %v", err)
+		logger.Error().Err(err).Msg("failed to reboot")
 		return fmt.Errorf("failed to reboot: %w", err)
 	}
 

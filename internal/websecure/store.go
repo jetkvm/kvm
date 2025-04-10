@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pion/logging"
+	"github.com/rs/zerolog"
 )
 
 type CertStore struct {
@@ -17,16 +17,20 @@ type CertStore struct {
 
 	storePath string
 
-	log logging.LeveledLogger
+	log *zerolog.Logger
 }
 
-func NewCertStore(storePath string) *CertStore {
+func NewCertStore(storePath string, log *zerolog.Logger) *CertStore {
+	if log == nil {
+		log = &defaultLogger
+	}
+
 	return &CertStore{
 		certificates: make(map[string]*tls.Certificate),
 		certLock:     &sync.Mutex{},
 
 		storePath: storePath,
-		log:       defaultLogger,
+		log:       log,
 	}
 }
 
@@ -42,7 +46,7 @@ func (s *CertStore) ensureStorePath() error {
 	}
 
 	if os.IsNotExist(err) {
-		s.log.Tracef("TLS store directory does not exist, creating directory")
+		s.log.Trace().Str("path", s.storePath).Msg("TLS store directory does not exist, creating directory")
 		err = os.MkdirAll(s.storePath, 0755)
 		if err != nil {
 			return fmt.Errorf("Failed to create TLS store path: %w", err)
@@ -56,13 +60,13 @@ func (s *CertStore) ensureStorePath() error {
 func (s *CertStore) LoadCertificates() {
 	err := s.ensureStorePath()
 	if err != nil {
-		s.log.Errorf(err.Error()) //nolint:errcheck
+		s.log.Error().Err(err).Msg("Failed to ensure store path")
 		return
 	}
 
 	files, err := os.ReadDir(s.storePath)
 	if err != nil {
-		s.log.Errorf("Failed to read TLS directory: %v", err)
+		s.log.Error().Err(err).Msg("Failed to read TLS directory")
 		return
 	}
 
@@ -86,13 +90,13 @@ func (s *CertStore) loadCertificate(hostname string) {
 
 	cert, err := tls.LoadX509KeyPair(crtFile, keyFile)
 	if err != nil {
-		s.log.Errorf("Failed to load certificate for %s: %w", hostname, err)
+		s.log.Error().Err(err).Str("hostname", hostname).Msg("Failed to load certificate")
 		return
 	}
 
 	s.certificates[hostname] = &cert
 
-	s.log.Infof("Loaded certificate for %s", hostname)
+	s.log.Info().Str("hostname", hostname).Msg("Loaded certificate")
 }
 
 // GetCertificate returns the certificate for the given hostname
@@ -119,7 +123,7 @@ func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key
 		// add recover to avoid panic
 		defer func() {
 			if r := recover(); r != nil {
-				s.log.Errorf("Failed to verify hostname: %v", r)
+				s.log.Error().Interface("recovered", r).Msg("Failed to verify hostname")
 			}
 		}()
 
@@ -127,7 +131,7 @@ func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key
 			if !ignoreWarning {
 				return nil, fmt.Errorf("Certificate does not match hostname: %w", err)
 			}
-			s.log.Warnf("Certificate does not match hostname: %v", err)
+			s.log.Warn().Err(err).Msg("Certificate does not match hostname")
 		}
 	}
 
@@ -144,13 +148,13 @@ func (s *CertStore) saveCertificate(hostname string) {
 	// check if certificate already exists
 	tlsCert := s.certificates[hostname]
 	if tlsCert == nil {
-		s.log.Errorf("Certificate for %s does not exist, skipping saving certificate", hostname)
+		s.log.Error().Str("hostname", hostname).Msg("Certificate for hostname does not exist, skipping saving certificate")
 		return
 	}
 
 	err := s.ensureStorePath()
 	if err != nil {
-		s.log.Errorf(err.Error()) //nolint:errcheck
+		s.log.Error().Err(err).Msg("Failed to ensure store path")
 		return
 	}
 
@@ -158,14 +162,14 @@ func (s *CertStore) saveCertificate(hostname string) {
 	crtFile := path.Join(s.storePath, hostname+".crt")
 
 	if err := keyToFile(tlsCert, keyFile); err != nil {
-		s.log.Errorf(err.Error())
+		s.log.Error().Err(err).Msg("Failed to save key file")
 		return
 	}
 
 	if err := certToFile(tlsCert, crtFile); err != nil {
-		s.log.Errorf(err.Error())
+		s.log.Error().Err(err).Msg("Failed to save certificate")
 		return
 	}
 
-	s.log.Infof("Saved certificate for %s", hostname)
+	s.log.Info().Str("hostname", hostname).Msg("Saved certificate")
 }
