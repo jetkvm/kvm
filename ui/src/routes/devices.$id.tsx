@@ -795,14 +795,16 @@ export default function KvmIdRoute() {
             kvmName={deviceName || "JetKVM Device"}
           />
 
-          <div className="flex h-full w-full overflow-hidden">
-            <div className="pointer-events-none fixed inset-0 isolate z-20 flex h-full w-full items-center justify-center">
-              <div className="my-2 h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
+          <div className="relative z-50 flex h-full w-full overflow-hidden">
+            <WebRTCVideo />
+            <div
+              style={{ animationDuration: "500ms" }}
+              className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center p-4 opacity-0"
+            >
+              <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
                 {!!ConnectionStatusElement && ConnectionStatusElement}
               </div>
             </div>
-
-            {peerConnectionState === "connected" && <WebRTCVideo />}
             <SidebarContainer sidebarView={sidebarView} />
           </div>
         </div>

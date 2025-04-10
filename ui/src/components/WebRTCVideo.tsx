@@ -28,6 +28,7 @@ export default function WebRTCVideo() {
   const videoElm = useRef<HTMLVideoElement>(null);
   const mediaStream = useRTCStore(state => state.mediaStream);
   const [isPlaying, setIsPlaying] = useState(false);
+  const peerConnectionState = useRTCStore(state => state.peerConnectionState);
 
   // Store hooks
   const settings = useSettingsStore();
@@ -601,7 +602,10 @@ export default function WebRTCVideo() {
                             "cursor-none":
                               settings.mouseMode === "absolute" &&
                               settings.isCursorHidden,
-                            "opacity-0": isVideoLoading || hdmiError,
+                            "opacity-0":
+                              isVideoLoading ||
+                              hdmiError ||
+                              peerConnectionState !== "connected",
                             "animate-slideUpFade border border-slate-800/30 opacity-0 shadow dark:border-slate-300/20":
                               isPlaying,
                           },
