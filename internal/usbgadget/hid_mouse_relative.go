@@ -65,7 +65,7 @@ func (u *UsbGadget) relMouseWriteHidFile(data []byte) error {
 
 	_, err := u.relMouseHidFile.Write(data)
 	if err != nil {
-		u.log.Errorf("failed to write to hidg2: %w", err)
+		u.log.Error().Err(err).Msg("failed to write to hidg2")
 		u.relMouseHidFile.Close()
 		u.relMouseHidFile = nil
 		return err

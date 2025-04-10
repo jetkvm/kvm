@@ -57,6 +57,25 @@ const (
 	LogLevelTrace
 )
 
+func toZerologLevel(level LogLevel) zerolog.Level {
+	switch level {
+	case LogLevelDisabled:
+		return zerolog.Disabled
+	case LogLevelError:
+		return zerolog.ErrorLevel
+	case LogLevelWarn:
+		return zerolog.WarnLevel
+	case LogLevelInfo:
+		return zerolog.InfoLevel
+	case LogLevelDebug:
+		return zerolog.DebugLevel
+	case LogLevelTrace:
+		return zerolog.TraceLevel
+	default:
+		return zerolog.NoLevel
+	}
+}
+
 // LeveledLogger is the basic pion Logger interface.
 type LeveledLogger interface {
 	Trace(msg string)

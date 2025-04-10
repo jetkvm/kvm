@@ -132,7 +132,7 @@ func LoadConfig() {
 	defer configLock.Unlock()
 
 	if config != nil {
-		logger.Info("config already loaded, skipping")
+		logger.Info().Msg("config already loaded, skipping")
 		return
 	}
 
@@ -141,7 +141,7 @@ func LoadConfig() {
 
 	file, err := os.Open(configPath)
 	if err != nil {
-		logger.Debug("default config file doesn't exist, using default")
+		logger.Debug().Msg("default config file doesn't exist, using default")
 		return
 	}
 	defer file.Close()
@@ -149,7 +149,7 @@ func LoadConfig() {
 	// load and merge the default config with the user config
 	loadedConfig := *defaultConfig
 	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
-		logger.Errorf("config file JSON parsing failed, %v", err)
+		logger.Warn().Err(err).Msg("config file JSON parsing failed")
 		return
 	}
 

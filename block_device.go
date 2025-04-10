@@ -16,8 +16,8 @@ type remoteImageBackend struct {
 
 func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 	virtualMediaStateMutex.RLock()
-	logger.Debugf("currentVirtualMediaState is %v", currentVirtualMediaState)
-	logger.Debugf("read size: %d, off: %d", len(p), off)
+	logger.Debug().Interface("currentVirtualMediaState", currentVirtualMediaState).Msg("currentVirtualMediaState")
+	logger.Debug().Int64("read size", int64(len(p))).Int64("off", off).Msg("read size and off")
 	if currentVirtualMediaState == nil {
 		return 0, errors.New("image not mounted")
 	}
@@ -93,7 +93,7 @@ func (d *NBDDevice) Start() error {
 	// Remove the socket file if it already exists
 	if _, err := os.Stat(nbdSocketPath); err == nil {
 		if err := os.Remove(nbdSocketPath); err != nil {
-			logger.Errorf("Failed to remove existing socket file %s: %v", nbdSocketPath, err)
+			nativeLogger.Warn().Err(err).Str("socket_path", nbdSocketPath).Msg("Failed to remove existing socket file")
 			os.Exit(1)
 		}
 	}
@@ -134,7 +134,7 @@ func (d *NBDDevice) runServerConn() {
 			MaximumBlockSize:   uint32(16 * 1024),
 			SupportsMultiConn:  false,
 		})
-	logger.Infof("nbd server exited: %v", err)
+	nativeLogger.Info().Err(err).Msg("nbd server exited")
 }
 
 func (d *NBDDevice) runClientConn() {
@@ -142,14 +142,14 @@ func (d *NBDDevice) runClientConn() {
 		ExportName: "jetkvm",
 		BlockSize:  uint32(4 * 1024),
 	})
-	logger.Infof("nbd client exited: %v", err)
+	nativeLogger.Info().Err(err).Msg("nbd client exited")
 }
 
 func (d *NBDDevice) Close() {
 	if d.dev != nil {
 		err := client.Disconnect(d.dev)
 		if err != nil {
-			logger.Warnf("error disconnecting nbd client: %v", err)
+			nativeLogger.Warn().Err(err).Msg("error disconnecting nbd client")
 		}
 		_ = d.dev.Close()
 	}

@@ -47,12 +47,12 @@ type BacklightSettings struct {
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
-		logger.Warnf("Error marshalling JSONRPC response: %v", err)
+		logger.Warn().Err(err).Msg("Error marshalling JSONRPC response")
 		return
 	}
 	err = session.RPCChannel.SendText(string(responseBytes))
 	if err != nil {
-		logger.Warnf("Error sending JSONRPC response: %v", err)
+		logger.Warn().Err(err).Msg("Error sending JSONRPC response")
 		return
 	}
 }
@@ -65,16 +65,16 @@ func writeJSONRPCEvent(event string, params interface{}, session *Session) {
 	}
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
-		logger.Warnf("Error marshalling JSONRPC event: %v", err)
+		logger.Warn().Err(err).Msg("Error marshalling JSONRPC event")
 		return
 	}
 	if session == nil || session.RPCChannel == nil {
-		logger.Info("RPC channel not available")
+		logger.Info().Msg("RPC channel not available")
 		return
 	}
 	err = session.RPCChannel.SendText(string(requestBytes))
 	if err != nil {
-		logger.Warnf("Error sending JSONRPC event: %v", err)
+		logger.Warn().Err(err).Msg("Error sending JSONRPC event")
 		return
 	}
 }
@@ -148,7 +148,7 @@ func rpcGetStreamQualityFactor() (float64, error) {
 }
 
 func rpcSetStreamQualityFactor(factor float64) error {
-	logger.Infof("Setting stream quality factor to: %f", factor)
+	logger.Info().Float64("factor", factor).Msg("Setting stream quality factor")
 	var _, err = CallCtrlAction("set_video_quality_factor", map[string]interface{}{"quality_factor": factor})
 	if err != nil {
 		return err
@@ -184,10 +184,10 @@ func rpcGetEDID() (string, error) {
 
 func rpcSetEDID(edid string) error {
 	if edid == "" {
-		logger.Info("Restoring EDID to default")
+		logger.Info().Msg("Restoring EDID to default")
 		edid = "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b"
 	} else {
-		logger.Infof("Setting EDID to: %s", edid)
+		logger.Info().Str("edid", edid).Msg("Setting EDID")
 	}
 	_, err := CallCtrlAction("set_edid", map[string]interface{}{"edid": edid})
 	if err != nil {
@@ -227,7 +227,7 @@ func rpcTryUpdate() error {
 	go func() {
 		err := TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
 		if err != nil {
-			logger.Warnf("failed to try update: %v", err)
+			logger.Warn().Err(err).Msg("failed to try update")
 		}
 	}()
 	return nil
@@ -257,7 +257,7 @@ func rpcSetBacklightSettings(params BacklightSettings) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	logger.Infof("rpc: display: settings applied, max_brightness: %d, dim after: %ds, off after: %ds", config.DisplayMaxBrightness, config.DisplayDimAfterSec, config.DisplayOffAfterSec)
+	logger.Info().Int("max_brightness", config.DisplayMaxBrightness).Int("dim_after", config.DisplayDimAfterSec).Int("off_after", config.DisplayOffAfterSec).Msg("rpc: display: settings applied")
 
 	// If the device started up with auto-dim and/or auto-off set to zero, the display init
 	// method will not have started the tickers. So in case that has changed, attempt to start the tickers now.
@@ -318,7 +318,7 @@ func rpcSetDevModeState(enabled bool) error {
 				return fmt.Errorf("failed to create devmode file: %w", err)
 			}
 		} else {
-			logger.Debug("dev mode already enabled")
+			logger.Debug().Msg("dev mode already enabled")
 			return nil
 		}
 	} else {
@@ -327,7 +327,7 @@ func rpcSetDevModeState(enabled bool) error {
 				return fmt.Errorf("failed to remove devmode file: %w", err)
 			}
 		} else if os.IsNotExist(err) {
-			logger.Debug("dev mode already disabled")
+			logger.Debug().Msg("dev mode already disabled")
 			return nil
 		} else {
 			return fmt.Errorf("error checking dev mode file: %w", err)
@@ -337,7 +337,7 @@ func rpcSetDevModeState(enabled bool) error {
 	cmd := exec.Command("dropbear.sh")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Warnf("Failed to start/stop SSH: %v, %v", err, output)
+		logger.Warn().Err(err).Bytes("output", output).Msg("Failed to start/stop SSH")
 		return fmt.Errorf("failed to start/stop SSH, you may need to reboot for changes to take effect")
 	}
 
@@ -478,23 +478,23 @@ type RPCHandler struct {
 }
 
 func rpcSetMassStorageMode(mode string) (string, error) {
-	logger.Infof("[jsonrpc.go:rpcSetMassStorageMode] Setting mass storage mode to: %s", mode)
+	logger.Info().Str("mode", mode).Msg("Setting mass storage mode")
 	var cdrom bool
 	if mode == "cdrom" {
 		cdrom = true
 	} else if mode != "file" {
-		logger.Infof("[jsonrpc.go:rpcSetMassStorageMode] Invalid mode provided: %s", mode)
+		logger.Info().Str("mode", mode).Msg("Invalid mode provided")
 		return "", fmt.Errorf("invalid mode: %s", mode)
 	}
 
-	logger.Infof("[jsonrpc.go:rpcSetMassStorageMode] Setting mass storage mode to: %s", mode)
+	logger.Info().Str("mode", mode).Msg("Setting mass storage mode")
 
 	err := setMassStorageMode(cdrom)
 	if err != nil {
 		return "", fmt.Errorf("failed to set mass storage mode: %w", err)
 	}
 
-	logger.Infof("[jsonrpc.go:rpcSetMassStorageMode] Mass storage mode set to %s", mode)
+	logger.Info().Str("mode", mode).Msg("Mass storage mode set")
 
 	// Get the updated mode after setting
 	return rpcGetMassStorageMode()
@@ -563,7 +563,7 @@ func rpcResetConfig() error {
 		return fmt.Errorf("failed to reset config: %w", err)
 	}
 
-	logger.Info("Configuration reset to default")
+	logger.Info().Msg("Configuration reset to default")
 	return nil
 }
 
@@ -579,7 +579,7 @@ func rpcGetDCPowerState() (DCPowerState, error) {
 }
 
 func rpcSetDCPowerState(enabled bool) error {
-	logger.Infof("[jsonrpc.go:rpcSetDCPowerState] Setting DC power state to: %v", enabled)
+	logger.Info().Bool("enabled", enabled).Msg("Setting DC power state")
 	err := setDCPowerState(enabled)
 	if err != nil {
 		return fmt.Errorf("failed to set DC power state: %w", err)
@@ -613,16 +613,16 @@ func rpcSetActiveExtension(extensionId string) error {
 }
 
 func rpcSetATXPowerAction(action string) error {
-	logger.Debugf("[jsonrpc.go:rpcSetATXPowerAction] Executing ATX power action: %s", action)
+	logger.Debug().Str("action", action).Msg("Executing ATX power action")
 	switch action {
 	case "power-short":
-		logger.Debug("[jsonrpc.go:rpcSetATXPowerAction] Simulating short power button press")
+		logger.Debug().Msg("Simulating short power button press")
 		return pressATXPowerButton(200 * time.Millisecond)
 	case "power-long":
-		logger.Debug("[jsonrpc.go:rpcSetATXPowerAction] Simulating long power button press")
+		logger.Debug().Msg("Simulating long power button press")
 		return pressATXPowerButton(5 * time.Second)
 	case "reset":
-		logger.Debug("[jsonrpc.go:rpcSetATXPowerAction] Simulating reset button press")
+		logger.Debug().Msg("Simulating reset button press")
 		return pressATXResetButton(200 * time.Millisecond)
 	default:
 		return fmt.Errorf("invalid action: %s", action)

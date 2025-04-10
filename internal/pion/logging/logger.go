@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -16,16 +17,13 @@ import (
 var defaultOutput io.Writer = zerolog.ConsoleWriter{
 	Out:           os.Stdout,
 	TimeFormat:    time.RFC3339,
-	PartsOrder:    []string{"time", "level", "scope", "message"},
-	FieldsExclude: []string{"scope"},
+	PartsOrder:    []string{"time", "level", "scope", "component", "message"},
+	FieldsExclude: []string{"scope", "component"},
 	FormatPartValueByName: func(value interface{}, name string) string {
 		val := fmt.Sprintf("%s", value)
-		if name == "scope" {
-			if strings.HasPrefix(val, "jetkvm/") {
-				return val[7:]
-			} else {
-				// scope without prefix, we assume it's from the pion library
-				return fmt.Sprintf("pion/%s", val)
+		if name == "component" {
+			if value == nil {
+				return "-"
 			}
 		}
 		return val
@@ -182,7 +180,19 @@ func NewDefaultLeveledLoggerForScope(scope string, level LogLevel, writer io.Wri
 	if writer == nil {
 		writer = defaultOutput
 	}
-	zerologWriter := zerolog.New(writer).With().Timestamp().Str("scope", scope).Logger()
+
+	z := zerolog.New(writer).Level(toZerologLevel(level)).With().Timestamp()
+
+	// scope will be changed to the component name if it's from the pion library
+	_, file, _, _ := runtime.Caller(2)
+	if strings.Contains(file, "github.com/pion/") {
+		z = z.Str("scope", "pion").Str("component", scope)
+	} else {
+		z = z.Str("scope", scope)
+	}
+
+	zerologWriter := z.Logger()
+
 	logger := &DefaultLeveledLogger{
 		writer: &zerologWriter,
 		level:  level,

@@ -76,7 +76,7 @@ func fetchUpdateMetadata(ctx context.Context, deviceId string, includePreRelease
 	query.Set("prerelease", fmt.Sprintf("%v", includePreRelease))
 	updateUrl.RawQuery = query.Encode()
 
-	logger.Infof("Checking for updates at: %s", updateUrl)
+	logger.Info().Str("url", updateUrl.String()).Msg("Checking for updates")
 
 	req, err := http.NewRequestWithContext(ctx, "GET", updateUrl.String(), nil)
 	if err != nil {
@@ -235,7 +235,7 @@ func verifyFile(path string, expectedHash string, verifyProgress *float32) error
 	}
 
 	hashSum := hash.Sum(nil)
-	logger.Infof("SHA256 hash of %s: %x", path, hashSum)
+	logger.Info().Str("path", path).Str("hash", hex.EncodeToString(hashSum)).Msg("SHA256 hash of")
 
 	if hex.EncodeToString(hashSum) != expectedHash {
 		return fmt.Errorf("hash mismatch: %x != %s", hashSum, expectedHash)
@@ -277,7 +277,7 @@ var otaState = OTAState{}
 func triggerOTAStateUpdate() {
 	go func() {
 		if currentSession == nil {
-			logger.Info("No active RPC session, skipping update state update")
+			logger.Info().Msg("No active RPC session, skipping update state update")
 			return
 		}
 		writeJSONRPCEvent("otaState", otaState, currentSession)
@@ -285,7 +285,7 @@ func triggerOTAStateUpdate() {
 }
 
 func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) error {
-	logger.Info("Trying to update...")
+	logger.Info().Msg("Trying to update...")
 	if otaState.Updating {
 		return fmt.Errorf("update already in progress")
 	}
@@ -320,7 +320,7 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 	rebootNeeded := false
 
 	if appUpdateAvailable {
-		logger.Infof("App update available: %s -> %s", local.AppVersion, remote.AppVersion)
+		logger.Info().Str("local", local.AppVersion).Str("remote", remote.AppVersion).Msg("App update available")
 
 		err := downloadFile(ctx, "/userdata/jetkvm/jetkvm_app.update", remote.AppUrl, &otaState.AppDownloadProgress)
 		if err != nil {
@@ -346,14 +346,15 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		otaState.AppUpdateProgress = 1
 		triggerOTAStateUpdate()
 
-		logger.Info("App update downloaded")
+		logger.Info().Msg("App update downloaded")
 		rebootNeeded = true
 	} else {
-		logger.Info("App is up to date")
+		logger.Info().Msg("App is up to date")
 	}
 
 	if systemUpdateAvailable {
-		logger.Infof("System update available: %s -> %s", local.SystemVersion, remote.SystemVersion)
+		logger.Info().Str("local", local.SystemVersion).Str("remote", remote.SystemVersion).Msg("System update available")
+
 		err := downloadFile(ctx, "/userdata/jetkvm/update_system.tar", remote.SystemUrl, &otaState.SystemDownloadProgress)
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error downloading system update: %v", err)
@@ -371,7 +372,7 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 			triggerOTAStateUpdate()
 			return err
 		}
-		logger.Info("System update downloaded")
+		logger.Info().Msg("System update downloaded")
 		verifyFinished := time.Now()
 		otaState.SystemVerifiedAt = &verifyFinished
 		otaState.SystemVerificationProgress = 1
@@ -418,17 +419,17 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 			return fmt.Errorf("error executing rk_ota command: %w\nOutput: %s", err, output)
 		}
 
-		logger.Infof("rk_ota success, output: %s", output)
+		logger.Info().Str("output", output).Msg("rk_ota success")
 		otaState.SystemUpdateProgress = 1
 		otaState.SystemUpdatedAt = &verifyFinished
 		triggerOTAStateUpdate()
 		rebootNeeded = true
 	} else {
-		logger.Info("System is up to date")
+		logger.Info().Msg("System is up to date")
 	}
 
 	if rebootNeeded {
-		logger.Info("System Rebooting in 10s")
+		logger.Info().Msg("System Rebooting in 10s")
 		time.Sleep(10 * time.Second)
 		cmd := exec.Command("reboot")
 		err := cmd.Start()
@@ -503,6 +504,6 @@ func IsUpdatePending() bool {
 func confirmCurrentSystem() {
 	output, err := exec.Command("rk_ota", "--misc=now").CombinedOutput()
 	if err != nil {
-		logger.Warnf("failed to set current partition in A/B setup: %s", string(output))
+		logger.Warn().Str("output", string(output)).Msg("failed to set current partition in A/B setup")
 	}
 }

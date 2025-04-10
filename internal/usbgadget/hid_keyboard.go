@@ -65,7 +65,7 @@ func (u *UsbGadget) keyboardWriteHidFile(data []byte) error {
 
 	_, err := u.keyboardHidFile.Write(data)
 	if err != nil {
-		u.log.Errorf("failed to write to hidg0: %w", err)
+		u.log.Error().Err(err).Msg("failed to write to hidg0")
 		u.keyboardHidFile.Close()
 		u.keyboardHidFile = nil
 		return err

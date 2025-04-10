@@ -42,7 +42,7 @@ func GetDeviceID() string {
 	deviceIDOnce.Do(func() {
 		serial, err := extractSerialNumber()
 		if err != nil {
-			logger.Warn("unknown serial number, the program likely not running on RV1106")
+			logger.Warn().Msg("unknown serial number, the program likely not running on RV1106")
 			deviceID = "unknown_device_id"
 		} else {
 			deviceID = serial
@@ -54,7 +54,7 @@ func GetDeviceID() string {
 func runWatchdog() {
 	file, err := os.OpenFile("/dev/watchdog", os.O_WRONLY, 0)
 	if err != nil {
-		logger.Warnf("unable to open /dev/watchdog: %v, skipping watchdog reset", err)
+		logger.Warn().Err(err).Msg("unable to open /dev/watchdog, skipping watchdog reset")
 		return
 	}
 	defer file.Close()
@@ -65,13 +65,13 @@ func runWatchdog() {
 		case <-ticker.C:
 			_, err = file.Write([]byte{0})
 			if err != nil {
-				logger.Errorf("error writing to /dev/watchdog, system may reboot: %v", err)
+				logger.Warn().Err(err).Msg("error writing to /dev/watchdog, system may reboot")
 			}
 		case <-appCtx.Done():
 			//disarm watchdog with magic value
 			_, err := file.Write([]byte("V"))
 			if err != nil {
-				logger.Errorf("failed to disarm watchdog, system may reboot: %v", err)
+				logger.Warn().Err(err).Msg("failed to disarm watchdog, system may reboot")
 			}
 			return
 		}

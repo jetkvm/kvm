@@ -23,7 +23,7 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 		var err error
 		ptmx, err = pty.Start(cmd)
 		if err != nil {
-			logger.Errorf("Failed to start pty: %v", err)
+			logger.Warn().Err(err).Msg("Failed to start pty")
 			d.Close()
 			return
 		}
@@ -34,13 +34,13 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 				n, err := ptmx.Read(buf)
 				if err != nil {
 					if err != io.EOF {
-						logger.Errorf("Failed to read from pty: %v", err)
+						logger.Warn().Err(err).Msg("Failed to read from pty")
 					}
 					break
 				}
 				err = d.Send(buf[:n])
 				if err != nil {
-					logger.Errorf("Failed to send pty output: %v", err)
+					logger.Warn().Err(err).Msg("Failed to send pty output")
 					break
 				}
 			}
@@ -63,11 +63,11 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 					return
 				}
 			}
-			logger.Errorf("Failed to parse terminal size: %v", err)
+			logger.Warn().Err(err).Msg("Failed to parse terminal size")
 		}
 		_, err := ptmx.Write(msg.Data)
 		if err != nil {
-			logger.Errorf("Failed to write to pty: %v", err)
+			logger.Warn().Err(err).Msg("Failed to write to pty")
 		}
 	})
 

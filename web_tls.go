@@ -45,7 +45,7 @@ func RunWebSecureServer() {
 					hostname = strings.Split(info.Conn.LocalAddr().String(), ":")[0]
 				}
 
-				logger.Infof("TLS handshake for %s, SupportedProtos: %v", hostname, info.SupportedProtos)
+				logger.Info().Str("hostname", hostname).Interface("SupportedProtos", info.SupportedProtos).Msg("TLS handshake")
 
 				cert := createSelfSignedCert(hostname)
 
@@ -53,7 +53,7 @@ func RunWebSecureServer() {
 			},
 		},
 	}
-	logger.Infof("Starting websecure server on %s", RunWebSecureServer)
+	logger.Info().Str("listen", WebSecureListen).Msg("Starting websecure server")
 	err := server.ListenAndServeTLS("", "")
 	if err != nil {
 		panic(err)
@@ -67,11 +67,11 @@ func createSelfSignedCert(hostname string) *tls.Certificate {
 	tlsCertLock.Lock()
 	defer tlsCertLock.Unlock()
 
-	logger.Infof("Creating self-signed certificate for %s", hostname)
+	logger.Info().Str("hostname", hostname).Msg("Creating self-signed certificate")
 
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		logger.Errorf("Failed to generate private key: %v", err)
+		logger.Warn().Err(err).Msg("Failed to generate private key")
 		os.Exit(1)
 	}
 	keyUsage := x509.KeyUsageDigitalSignature
@@ -82,7 +82,7 @@ func createSelfSignedCert(hostname string) *tls.Certificate {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		logger.Errorf("Failed to generate serial number: %v", err)
+		logger.Warn().Err(err).Msg("Failed to generate serial number")
 	}
 
 	dnsName := hostname
@@ -114,12 +114,12 @@ func createSelfSignedCert(hostname string) *tls.Certificate {
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
 	if err != nil {
-		logger.Errorf("Failed to create certificate: %v", err)
+		logger.Warn().Err(err).Msg("Failed to create certificate")
 	}
 
 	cert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 	if cert == nil {
-		logger.Errorf("Failed to encode certificate")
+		logger.Warn().Msg("Failed to encode certificate")
 	}
 
 	tlsCert := &tls.Certificate{

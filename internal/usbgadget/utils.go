@@ -45,18 +45,18 @@ func (u *UsbGadget) writeIfDifferent(filePath string, content []byte, permMode o
 		oldContent, err := os.ReadFile(filePath)
 		if err == nil {
 			if bytes.Equal(oldContent, content) {
-				u.log.Tracef("skipping writing to %s as it already has the correct content", filePath)
+				u.log.Trace().Str("path", filePath).Msg("skipping writing to as it already has the correct content")
 				return nil
 			}
 
 			if len(oldContent) == len(content)+1 &&
 				bytes.Equal(oldContent[:len(content)], content) &&
 				oldContent[len(content)] == 10 {
-				u.log.Tracef("skipping writing to %s as it already has the correct content", filePath)
+				u.log.Trace().Str("path", filePath).Msg("skipping writing to as it already has the correct content")
 				return nil
 			}
 
-			u.log.Tracef("writing to %s as it has different content old%v new%v", filePath, oldContent, content)
+			u.log.Trace().Str("path", filePath).Bytes("old", oldContent).Bytes("new", content).Msg("writing to as it has different content")
 		}
 	}
 	return os.WriteFile(filePath, content, permMode)

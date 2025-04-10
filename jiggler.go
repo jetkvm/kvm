@@ -28,11 +28,11 @@ func runJiggler() {
 				//TODO: change to rel mouse
 				err := rpcAbsMouseReport(1, 1, 0)
 				if err != nil {
-					logger.Warnf("Failed to jiggle mouse: %v", err)
+					logger.Warn().Err(err).Msg("Failed to jiggle mouse")
 				}
 				err = rpcAbsMouseReport(0, 0, 0)
 				if err != nil {
-					logger.Warnf("Failed to reset mouse position: %v", err)
+					logger.Warn().Err(err).Msg("Failed to reset mouse position")
 				}
 			}
 		}
