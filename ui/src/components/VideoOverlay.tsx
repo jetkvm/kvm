@@ -241,8 +241,8 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                           Ensure source device is powered on and outputting a signal
                         </li>
                         <li>
-                          If using an adapter, it&apos;s compatible and functioning
-                          correctly
+                          If using an adapter, ensure it&apos;s compatible and
+                          functioning correctly
                         </li>
                       </ul>
                     </div>
