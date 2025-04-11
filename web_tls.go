@@ -52,12 +52,13 @@ func initCertStore() {
 }
 
 func getCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	if config.TLSMode == "self-signed" {
+	switch config.TLSMode {
+	case "self-signed":
 		if isTimeSyncNeeded() || !timeSyncSuccess {
 			return nil, fmt.Errorf("time is not synced")
 		}
 		return certSigner.GetCertificate(info)
-	} else if config.TLSMode == "custom" {
+	case "custom":
 		return certStore.GetCertificate(webSecureCustomCertificateName), nil
 	}
 
@@ -110,7 +111,7 @@ func setTLSState(s TLSState) error {
 		err, _ := certStore.ValidateAndSaveCertificate(webSecureCustomCertificateName, s.Certificate, s.PrivateKey, true)
 		// warn doesn't matter as ... we don't know the hostname yet
 		if err != nil {
-			return fmt.Errorf("Failed to save certificate: %w", err)
+			return fmt.Errorf("failed to save certificate: %w", err)
 		}
 		config.TLSMode = "custom"
 	case "self-signed":
@@ -169,7 +170,7 @@ func runWebSecureServer() {
 	websecureLogger.Info().Str("listen", webSecureListen).Msg("Starting websecure server")
 
 	go func() {
-		for _ = range stopTLS {
+		for range stopTLS {
 			websecureLogger.Info().Msg("Shutting down websecure server")
 			err := server.Shutdown(context.Background())
 			if err != nil {
@@ -201,7 +202,7 @@ func startWebSecureServer() {
 }
 
 func RunWebSecureServer() {
-	for _ = range startTLS {
+	for range startTLS {
 		websecureLogger.Info().Msg("Starting websecure server, as we have received a start signal")
 		if certStore == nil {
 			initCertStore()

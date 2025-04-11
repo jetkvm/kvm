@@ -33,16 +33,17 @@ func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 		readLen = mountedImageSize - off
 	}
 	var data []byte
-	if source == WebRTC {
+	switch source {
+	case WebRTC:
 		data, err = webRTCDiskReader.Read(ctx, off, readLen)
 		if err != nil {
 			return 0, err
 		}
 		n = copy(p, data)
 		return n, nil
-	} else if source == HTTP {
+	case HTTP:
 		return httpRangeReader.ReadAt(p, off)
-	} else {
+	default:
 		return 0, errors.New("unknown image source")
 	}
 }
