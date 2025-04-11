@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 21
+
+      - name: Install Dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Build UI
+        working-directory: ui
+        run: npm run build:device
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.21
+
+      - name: Build Release Binaries
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w -X kvm.builtAppVersion=${REF:11}" -o bin/jetkvm_app cmd/main.go
+          chmod 755 bin/jetkvm_app
+
+      - name: Create checksum
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          SUM=$(shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1)
+          echo -e "\n#### SHA256 Checksum\n\`\`\`\n$SUM  bin/jetkvm_app\n\`\`\`\n" >> ./RELEASE_CHANGELOG
+          echo -e "$SUM bin/jetkvm_app\n" > checksums.txt
+
+      - name: Create Release Branch
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          BRANCH=release/${REF:10}
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git checkout -b ${BRANCH}
+          git push -u origin ${BRANCH}
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          draft: true
+          prerelease: ${{ contains(github.ref, 'rc') || contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
+          body_path: ./RELEASE_CHANGELOG
+
+      - name: Upload JetKVM binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: bin/jetkvm_app
+          asset_name: jetkvm_app
+          asset_content_type: application/octet-stream
+
+      - name: Upload checksum
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./checksums.txt
+          asset_name: checksums.txt
+          asset_content_type: text/plain
