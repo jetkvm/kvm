@@ -31,7 +31,7 @@ const configPath = "/userdata/kvm_config.json"
 var defaultConfig = &Config{
 	CloudURL:               "https://api.jetkvm.com",
 	AutoUpdateEnabled:      true, // Set a default value
-	KeyboardLayout:         "us",
+	KeyboardLayout:         "en-US",
 	KeyboardMappingEnabled: false,
 }
 

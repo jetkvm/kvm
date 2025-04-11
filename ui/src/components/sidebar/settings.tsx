@@ -78,7 +78,7 @@ export default function SettingsSidebar() {
   const setSidebarView = useUiStore(state => state.setSidebarView);
   const settings = useSettingsStore();
   const [send] = useJsonRpc();
-  const [keyboardLayout, setKeyboardLayout] = useState("us");
+  const [keyboardLayout, setKeyboardLayout] = useState("en-US");
   const [kbMappingEnabled, setKeyboardMapping] = useState(false);
   const [streamQuality, setStreamQuality] = useState("1");
   const [autoUpdate, setAutoUpdate] = useState(true);
@@ -580,10 +580,11 @@ export default function SettingsSidebar() {
                 //fullWidth
                 value={keyboardLayout}
                 options={[
-                  { value: "us", label: "US" },
-                  { value: "uk", label: "UK" },
-                  { value: "uk_apple", label: "UK (Apple)" },
-                  { value: "de_t1", label: "German (T1)" },
+                  { value: "en-US", label: "US" },
+                  { value: "en-GB", label: "UK" },
+                  { value: "en-GB_apple", label: "UK (Apple)" },
+                  { value: "de_DE", label: "German (T1)" },
+                  { value: "es-ES", label: "Spanish (Spain)"},
                 ]}
                 onChange={e => handleKeyboardLayoutChange(e.target.value)}
               />

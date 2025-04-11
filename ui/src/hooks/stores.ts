@@ -539,7 +539,7 @@ export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
 }));
 
 class KeyboardMappingsStore {
-  private _layout: string = 'us';
+  private _layout: string = 'en-US';
   private _subscribers: (() => void)[] = [];
   private _mappingsEnabled: boolean = false;
 
