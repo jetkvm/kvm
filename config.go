@@ -93,6 +93,7 @@ type Config struct {
 	TLSMode              string             `json:"tls_mode"` // options: "self-signed", "user-defined", ""
 	UsbConfig            *usbgadget.Config  `json:"usb_config"`
 	UsbDevices           *usbgadget.Devices `json:"usb_devices"`
+	DefaultLogLevel      string             `json:"default_log_level"`
 }
 
 const configPath = "/userdata/kvm_config.json"
@@ -120,6 +121,7 @@ var defaultConfig = &Config{
 		Keyboard:      true,
 		MassStorage:   true,
 	},
+	DefaultLogLevel: "INFO",
 }
 
 var (
@@ -163,6 +165,8 @@ func LoadConfig() {
 	}
 
 	config = &loadedConfig
+
+	rootLogger.UpdateLogLevel()
 }
 
 func SaveConfig() error {

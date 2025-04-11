@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket/wsjson"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -19,6 +20,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 )
 
 type CloudRegisterRequest struct {
@@ -289,13 +291,15 @@ func runWebsocketClient() error {
 	header.Set("Authorization", "Bearer "+config.CloudToken)
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
 
-	scopedLogger := websocketLogger.With().
+	l := websocketLogger.With().
 		Str("source", wsURL.Host).
 		Str("sourceType", "cloud").
 		Logger()
 
+	scopedLogger := &l
+
 	defer cancelDial()
-	c, _, err := websocket.Dial(dialCtx, wsURL.String(), &websocket.DialOptions{
+	c, resp, err := websocket.Dial(dialCtx, wsURL.String(), &websocket.DialOptions{
 		HTTPHeader: header,
 		OnPingReceived: func(ctx context.Context, payload []byte) bool {
 			scopedLogger.Info().Bytes("payload", payload).Int("length", len(payload)).Msg("ping frame received")
@@ -306,6 +310,24 @@ func runWebsocketClient() error {
 			return true
 		},
 	})
+
+	// get the request id from the response header
+	connectionId := resp.Header.Get("X-Request-ID")
+	if connectionId == "" {
+		connectionId = resp.Header.Get("Cf-Ray")
+	}
+	if connectionId == "" {
+		connectionId = uuid.New().String()
+		scopedLogger.Warn().
+			Str("connectionId", connectionId).
+			Msg("no connection id received from the server, generating a new one")
+	}
+
+	lWithConnectionId := scopedLogger.With().
+		Str("connectionID", connectionId).
+		Logger()
+	scopedLogger = &lWithConnectionId
+
 	// if the context is canceled, we don't want to return an error
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -315,13 +337,16 @@ func runWebsocketClient() error {
 		return err
 	}
 	defer c.CloseNow() //nolint:errcheck
-	cloudLogger.Info().Str("url", wsURL.String()).Msg("websocket connected")
+	cloudLogger.Info().
+		Str("url", wsURL.String()).
+		Str("connectionID", connectionId).
+		Msg("websocket connected")
 
 	// set the metrics when we successfully connect to the cloud.
 	wsResetMetrics(true, "cloud", wsURL.Host)
 
 	// we don't have a source for the cloud connection
-	return handleWebRTCSignalWsMessages(c, true, wsURL.Host, &scopedLogger)
+	return handleWebRTCSignalWsMessages(c, true, wsURL.Host, connectionId, scopedLogger)
 }
 
 func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
@@ -355,7 +380,14 @@ func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessi
 	return nil
 }
 
-func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest, isCloudConnection bool, source string) error {
+func handleSessionRequest(
+	ctx context.Context,
+	c *websocket.Conn,
+	req WebRTCSessionRequest,
+	isCloudConnection bool,
+	source string,
+	scopedLogger *zerolog.Logger,
+) error {
 	var sourceType string
 	if isCloudConnection {
 		sourceType = "cloud"
@@ -381,6 +413,7 @@ func handleSessionRequest(ctx context.Context, c *websocket.Conn, req WebRTCSess
 		IsCloud:    isCloudConnection,
 		LocalIP:    req.IP,
 		ICEServers: req.ICEServers,
+		Logger:     scopedLogger,
 	})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})

@@ -105,7 +105,11 @@ func checkNetworkState() {
 	}
 
 	if newState != networkState {
-		logger.Info().Msg("network state changed")
+		logger.Info().
+			Interface("newState", newState).
+			Interface("oldState", networkState).
+			Msg("network state changed")
+
 		// restart MDNS
 		_ = startMDNS()
 		networkState = newState
@@ -116,7 +120,7 @@ func checkNetworkState() {
 func startMDNS() error {
 	// If server was previously running, stop it
 	if mDNSConn != nil {
-		logger.Info().Msg("Stopping mDNS server")
+		logger.Info().Msg("stopping mDNS server")
 		err := mDNSConn.Close()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to stop mDNS server")
@@ -124,7 +128,11 @@ func startMDNS() error {
 	}
 
 	// Start a new server
-	logger.Info().Msg("Starting mDNS server on jetkvm.local")
+	hostname := "jetkvm.local"
+
+	scopedLogger := logger.With().Str("hostname", hostname).Logger()
+	scopedLogger.Info().Msg("starting mDNS server")
+
 	addr4, err := net.ResolveUDPAddr("udp4", mdns.DefaultAddressIPv4)
 	if err != nil {
 		return err
@@ -146,10 +154,11 @@ func startMDNS() error {
 	}
 
 	mDNSConn, err = mdns.Server(ipv4.NewPacketConn(l4), ipv6.NewPacketConn(l6), &mdns.Config{
-		LocalNames:    []string{"jetkvm.local"}, //TODO: make it configurable
+		LocalNames:    []string{hostname}, //TODO: make it configurable
 		LoggerFactory: defaultLoggerFactory,
 	})
 	if err != nil {
+		scopedLogger.Warn().Err(err).Msg("failed to start mDNS server")
 		mDNSConn = nil
 		return err
 	}
@@ -190,7 +199,7 @@ func getNTPServersFromDHCPInfo() ([]string, error) {
 	return servers, nil
 }
 
-func init() {
+func initNetwork() {
 	ensureConfigLoaded()
 
 	updates := make(chan netlink.LinkUpdate)

@@ -1,7 +1,6 @@
 package kvm
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -111,20 +110,27 @@ func SyncSystemTime() (err error) {
 func queryNetworkTime() (*time.Time, error) {
 	ntpServers, err := getNTPServersFromDHCPInfo()
 	if err != nil {
-		ntpLogger.Error().Str("error", err.Error()).Msg("failed to get NTP servers from DHCP info")
+		ntpLogger.Info().Err(err).Msg("failed to get NTP servers from DHCP info")
 	}
 
 	if ntpServers == nil {
 		ntpServers = defaultNTPServers
-		ntpLogger.Info().Str("ntp_servers", fmt.Sprintf("%v", ntpServers)).Msg("Using default NTP servers")
+		ntpLogger.Info().
+			Interface("ntp_servers", ntpServers).
+			Msg("Using default NTP servers")
 	} else {
-		ntpLogger.Info().Str("ntp_servers", fmt.Sprintf("%v", ntpServers)).Msg("Using NTP servers from DHCP")
+		ntpLogger.Info().
+			Interface("ntp_servers", ntpServers).
+			Msg("Using NTP servers from DHCP")
 	}
 
 	for _, server := range ntpServers {
 		now, err := queryNtpServer(server, timeSyncTimeout)
 		if err == nil {
-			ntpLogger.Info().Str("ntp_server", server).Str("time", now.Format(time.RFC3339)).Msg("NTP server returned time")
+			ntpLogger.Info().
+				Str("ntp_server", server).
+				Str("time", now.Format(time.RFC3339)).
+				Msg("NTP server returned time")
 			return now, nil
 		}
 	}
@@ -135,12 +141,15 @@ func queryNetworkTime() (*time.Time, error) {
 	for _, url := range httpUrls {
 		now, err := queryHttpTime(url, timeSyncTimeout)
 		if err == nil {
-			ntpLogger.Info().Str("http_url", url).Str("time", now.Format(time.RFC3339)).Msg("HTTP server returned time")
+			ntpLogger.Info().
+				Str("http_url", url).
+				Str("time", now.Format(time.RFC3339)).
+				Msg("HTTP server returned time")
 			return now, nil
 		}
 	}
-	ntpLogger.Error().Msg("failed to query network time")
-	return nil, errors.New("failed to query network time")
+
+	return nil, ErrorfL(ntpLogger, "failed to query network time", nil)
 }
 
 func queryNtpServer(server string, timeout time.Duration) (now *time.Time, err error) {

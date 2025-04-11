@@ -12,8 +12,36 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type Logger struct {
+	l               *zerolog.Logger
+	scopeLoggers    map[string]*zerolog.Logger
+	scopeLevels     map[string]zerolog.Level
+	scopeLevelMutex sync.Mutex
+
+	defaultLogLevelFromEnv    zerolog.Level
+	defaultLogLevelFromConfig zerolog.Level
+	defaultLogLevel           zerolog.Level
+}
+
+const (
+	defaultLogLevel = zerolog.ErrorLevel
+)
+
+type logOutput struct {
+	mu *sync.Mutex
+}
+
+func (w *logOutput) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// TODO: write to file or syslog
+
+	return len(p), nil
+}
+
 var (
-	defaultLogOutput io.Writer = zerolog.ConsoleWriter{
+	consoleLogOutput io.Writer = zerolog.ConsoleWriter{
 		Out:           os.Stdout,
 		TimeFormat:    time.RFC3339,
 		PartsOrder:    []string{"time", "level", "scope", "component", "message"},
@@ -28,36 +56,10 @@ var (
 			return val
 		},
 	}
-	defaultLogLevel = zerolog.ErrorLevel
-	rootLogger      = zerolog.New(defaultLogOutput).With().
-			Str("scope", "jetkvm").
-			Timestamp().
-			Stack().
-			Logger()
-)
+	fileLogOutput    io.Writer = &logOutput{mu: &sync.Mutex{}}
+	defaultLogOutput           = zerolog.MultiLevelWriter(consoleLogOutput, fileLogOutput)
 
-var (
-	scopeLevels     map[string]zerolog.Level
-	scopeLevelMutex = sync.Mutex{}
-)
-
-var (
-	logger          = getLogger("jetkvm")
-	cloudLogger     = getLogger("cloud")
-	websocketLogger = getLogger("websocket")
-	nativeLogger    = getLogger("native")
-	ntpLogger       = getLogger("ntp")
-	displayLogger   = getLogger("display")
-	usbLogger       = getLogger("usb")
-	ginLogger       = getLogger("gin")
-	websecureLogger = getLogger("websecure")
-)
-
-func updateLogLevel() {
-	scopeLevelMutex.Lock()
-	defer scopeLevelMutex.Unlock()
-
-	logLevels := map[string]zerolog.Level{
+	zerologLevels = map[string]zerolog.Level{
 		"DISABLE": zerolog.Disabled,
 		"NOLEVEL": zerolog.NoLevel,
 		"PANIC":   zerolog.PanicLevel,
@@ -69,9 +71,35 @@ func updateLogLevel() {
 		"TRACE":   zerolog.TraceLevel,
 	}
 
-	scopeLevels = make(map[string]zerolog.Level)
+	rootZerologLogger = zerolog.New(defaultLogOutput).With().
+				Str("scope", "jetkvm").
+				Timestamp().
+				Stack().
+				Logger()
+	rootLogger = NewLogger(rootZerologLogger)
+)
 
-	for name, level := range logLevels {
+func NewLogger(zerologLogger zerolog.Logger) *Logger {
+	return &Logger{
+		l:                         &zerologLogger,
+		scopeLoggers:              make(map[string]*zerolog.Logger),
+		scopeLevels:               make(map[string]zerolog.Level),
+		scopeLevelMutex:           sync.Mutex{},
+		defaultLogLevelFromEnv:    -2,
+		defaultLogLevelFromConfig: -2,
+		defaultLogLevel:           defaultLogLevel,
+	}
+}
+
+func (l *Logger) updateLogLevel() {
+	l.scopeLevelMutex.Lock()
+	defer l.scopeLevelMutex.Unlock()
+
+	l.scopeLevels = make(map[string]zerolog.Level)
+
+	finalDefaultLogLevel := l.defaultLogLevel
+
+	for name, level := range zerologLevels {
 		env := os.Getenv(fmt.Sprintf("JETKVM_LOG_%s", name))
 
 		if env == "" {
@@ -87,8 +115,10 @@ func updateLogLevel() {
 		}
 
 		if strings.ToLower(env) == "all" {
-			if defaultLogLevel > level {
-				defaultLogLevel = level
+			l.defaultLogLevelFromEnv = level
+
+			if finalDefaultLogLevel > level {
+				finalDefaultLogLevel = level
 			}
 
 			continue
@@ -96,25 +126,112 @@ func updateLogLevel() {
 
 		scopes := strings.Split(strings.ToLower(env), ",")
 		for _, scope := range scopes {
-			scopeLevels[scope] = level
+			l.scopeLevels[scope] = level
+		}
+	}
+
+	l.defaultLogLevel = finalDefaultLogLevel
+}
+
+func (l *Logger) getScopeLoggerLevel(scope string) zerolog.Level {
+	if l.scopeLevels == nil {
+		l.updateLogLevel()
+	}
+
+	var scopeLevel zerolog.Level
+	if l.defaultLogLevelFromConfig != -2 {
+		scopeLevel = l.defaultLogLevelFromConfig
+	}
+	if l.defaultLogLevelFromEnv != -2 {
+		scopeLevel = l.defaultLogLevelFromEnv
+	}
+
+	// if the scope is not in the map, use the default level from the root logger
+	if level, ok := l.scopeLevels[scope]; ok {
+		scopeLevel = level
+	}
+
+	return scopeLevel
+}
+
+func (l *Logger) newScopeLogger(scope string) zerolog.Logger {
+	scopeLevel := l.getScopeLoggerLevel(scope)
+	logger := l.l.Level(scopeLevel).With().Str("component", scope).Logger()
+
+	return logger
+}
+
+func (l *Logger) getLogger(scope string) *zerolog.Logger {
+	logger, ok := l.scopeLoggers[scope]
+	if !ok || logger == nil {
+		scopeLogger := l.newScopeLogger(scope)
+		l.scopeLoggers[scope] = &scopeLogger
+	}
+
+	return l.scopeLoggers[scope]
+}
+
+func (l *Logger) UpdateLogLevel() {
+	needUpdate := false
+
+	if config != nil && config.DefaultLogLevel != "" {
+		if logLevel, ok := zerologLevels[config.DefaultLogLevel]; ok {
+			l.defaultLogLevelFromConfig = logLevel
+		} else {
+			l.l.Warn().Str("logLevel", config.DefaultLogLevel).Msg("invalid defaultLogLevel from config, using ERROR")
+		}
+
+		if l.defaultLogLevelFromConfig != l.defaultLogLevel {
+			needUpdate = true
+		}
+	}
+
+	l.updateLogLevel()
+
+	if needUpdate {
+		for scope, logger := range l.scopeLoggers {
+			currentLevel := logger.GetLevel()
+			targetLevel := l.getScopeLoggerLevel(scope)
+			if currentLevel != targetLevel {
+				*logger = l.newScopeLogger(scope)
+			}
 		}
 	}
 }
 
-func getLogger(scope string) zerolog.Logger {
-	if scopeLevels == nil {
-		updateLogLevel()
+func ErrorfL(l *zerolog.Logger, format string, err error, args ...interface{}) error {
+	if l == nil {
+		l = rootLogger.getLogger("jetkvm")
 	}
 
-	l := rootLogger.With().Str("component", scope).Logger()
+	l.Error().Err(err).Msgf(format, args...)
 
-	// if the scope is not in the map, use the default level from the root logger
-	if level, ok := scopeLevels[scope]; ok {
-		return l.Level(level)
-	}
+	err_msg := err.Error() + ": %v"
+	err_args := append(args, err)
 
-	return l.Level(defaultLogLevel)
+	return fmt.Errorf(err_msg, err_args...)
 }
+
+var (
+	logger          = rootLogger.getLogger("jetkvm")
+	cloudLogger     = rootLogger.getLogger("cloud")
+	websocketLogger = rootLogger.getLogger("websocket")
+	webrtcLogger    = rootLogger.getLogger("webrtc")
+	nativeLogger    = rootLogger.getLogger("native")
+	nbdLogger       = rootLogger.getLogger("nbd")
+	ntpLogger       = rootLogger.getLogger("ntp")
+	jsonRpcLogger   = rootLogger.getLogger("jsonrpc")
+	watchdogLogger  = rootLogger.getLogger("watchdog")
+	websecureLogger = rootLogger.getLogger("websecure")
+	otaLogger       = rootLogger.getLogger("ota")
+	serialLogger    = rootLogger.getLogger("serial")
+	terminalLogger  = rootLogger.getLogger("terminal")
+	displayLogger   = rootLogger.getLogger("display")
+	wolLogger       = rootLogger.getLogger("wol")
+	usbLogger       = rootLogger.getLogger("usb")
+	// external components
+	ginLogger = rootLogger.getLogger("gin")
+)
 
 type pionLogger struct {
 	logger *zerolog.Logger
@@ -159,7 +276,7 @@ func (c pionLogger) Errorf(format string, args ...interface{}) {
 type pionLoggerFactory struct{}
 
 func (c pionLoggerFactory) NewLogger(subsystem string) logging.LeveledLogger {
-	logger := getLogger(subsystem).With().
+	logger := rootLogger.getLogger(subsystem).With().
 		Str("scope", "pion").
 		Str("component", subsystem).
 		Logger()

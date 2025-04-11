@@ -11,6 +11,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
 	"github.com/pion/webrtc/v4"
+	"github.com/rs/zerolog"
 )
 
 type Session struct {
@@ -28,6 +29,7 @@ type SessionConfig struct {
 	LocalIP    string
 	IsCloud    bool
 	ws         *websocket.Conn
+	Logger     *zerolog.Logger
 }
 
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
@@ -70,19 +72,27 @@ func newSession(config SessionConfig) (*Session, error) {
 	}
 	iceServer := webrtc.ICEServer{}
 
+	var scopedLogger *zerolog.Logger
+	if config.Logger != nil {
+		l := config.Logger.With().Str("component", "webrtc").Logger()
+		scopedLogger = &l
+	} else {
+		scopedLogger = webrtcLogger
+	}
+
 	if config.IsCloud {
 		if config.ICEServers == nil {
-			logger.Info().Msg("ICE Servers not provided by cloud")
+			scopedLogger.Info().Msg("ICE Servers not provided by cloud")
 		} else {
 			iceServer.URLs = config.ICEServers
-			logger.Info().Interface("iceServers", iceServer.URLs).Msg("Using ICE Servers provided by cloud")
+			scopedLogger.Info().Interface("iceServers", iceServer.URLs).Msg("Using ICE Servers provided by cloud")
 		}
 
 		if config.LocalIP == "" || net.ParseIP(config.LocalIP) == nil {
-			logger.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set NAT1To1IPs")
+			scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set NAT1To1IPs")
 		} else {
 			webrtcSettingEngine.SetNAT1To1IPs([]string{config.LocalIP}, webrtc.ICECandidateTypeSrflx)
-			logger.Info().Str("localIP", config.LocalIP).Msg("Setting NAT1To1IPs")
+			scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Setting NAT1To1IPs")
 		}
 	}
 
@@ -96,7 +106,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	session := &Session{peerConnection: peerConnection}
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		logger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
+		scopedLogger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
 		switch d.Label() {
 		case "rpc":
 			session.RPCChannel = d
@@ -144,17 +154,17 @@ func newSession(config SessionConfig) (*Session, error) {
 	var isConnected bool
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		logger.Info().Interface("candidate", candidate).Msg("Our WebRTC peerConnection has a new ICE candidate")
+		scopedLogger.Info().Interface("candidate", candidate).Msg("WebRTC peerConnection has a new ICE candidate")
 		if candidate != nil {
 			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
 			if err != nil {
-				logger.Warn().Err(err).Msg("failed to write new-ice-candidate to WebRTC signaling channel")
+				scopedLogger.Warn().Err(err).Msg("failed to write new-ice-candidate to WebRTC signaling channel")
 			}
 		}
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		logger.Info().Str("connectionState", connectionState.String()).Msg("Connection State has changed")
+		scopedLogger.Info().Str("connectionState", connectionState.String()).Msg("ICE Connection State has changed")
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			if !isConnected {
 				isConnected = true
@@ -167,15 +177,17 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 		//state changes on closing browser tab disconnected->failed, we need to manually close it
 		if connectionState == webrtc.ICEConnectionStateFailed {
+			scopedLogger.Debug().Msg("ICE Connection State is failed, closing peerConnection")
 			_ = peerConnection.Close()
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
+			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
 			if session == currentSession {
 				currentSession = nil
 			}
 			if session.shouldUmountVirtualMedia {
 				err := rpcUnmountImage()
-				logger.Debug().Err(err).Msg("unmount image failed on connection close")
+				scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")
 			}
 			if isConnected {
 				isConnected = false

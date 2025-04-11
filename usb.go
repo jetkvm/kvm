@@ -15,7 +15,7 @@ func initUsbGadget() {
 		"jetkvm",
 		config.UsbDevices,
 		config.UsbConfig,
-		&usbLogger,
+		usbLogger,
 	)
 
 	go func() {
