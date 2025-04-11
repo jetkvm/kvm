@@ -49,12 +49,12 @@ func (s *CertStore) ensureStorePath() error {
 		s.log.Trace().Str("path", s.storePath).Msg("TLS store directory does not exist, creating directory")
 		err = os.MkdirAll(s.storePath, 0755)
 		if err != nil {
-			return fmt.Errorf("Failed to create TLS store path: %w", err)
+			return fmt.Errorf("failed to create TLS store path: %w", err)
 		}
 		return nil
 	}
 
-	return fmt.Errorf("Failed to check TLS store path: %w", err)
+	return fmt.Errorf("failed to check TLS store path: %w", err)
 }
 
 func (s *CertStore) LoadCertificates() {
@@ -115,7 +115,7 @@ func (s *CertStore) GetCertificate(hostname string) *tls.Certificate {
 func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key string, ignoreWarning bool) (error, error) {
 	tlsCert, err := tls.X509KeyPair([]byte(cert), []byte(key))
 	if err != nil {
-		return fmt.Errorf("Failed to parse certificate: %w", err), nil
+		return fmt.Errorf("failed to parse certificate: %w", err), nil
 	}
 
 	// this can be skipped as current implementation supports one custom certificate only
@@ -129,7 +129,7 @@ func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key
 
 		if err = tlsCert.Leaf.VerifyHostname(hostname); err != nil {
 			if !ignoreWarning {
-				return nil, fmt.Errorf("Certificate does not match hostname: %w", err)
+				return nil, fmt.Errorf("certificate does not match hostname: %w", err)
 			}
 			s.log.Warn().Err(err).Msg("Certificate does not match hostname")
 		}
