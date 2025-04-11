@@ -31,13 +31,13 @@ var (
 
 func isTimeSyncNeeded() bool {
 	if builtTimestamp == "" {
-		ntpLogger.Warn().Msg("Built timestamp is not set, time sync is needed")
+		ntpLogger.Warn().Msg("built timestamp is not set, time sync is needed")
 		return true
 	}
 
 	ts, err := strconv.Atoi(builtTimestamp)
 	if err != nil {
-		ntpLogger.Warn().Str("error", err.Error()).Msg("Failed to parse built timestamp")
+		ntpLogger.Warn().Str("error", err.Error()).Msg("failed to parse built timestamp")
 		return true
 	}
 
@@ -45,10 +45,11 @@ func isTimeSyncNeeded() bool {
 	builtTime := time.Unix(int64(ts), 0)
 	now := time.Now()
 
-	ntpLogger.Debug().Str("built_time", builtTime.Format(time.RFC3339)).Str("now", now.Format(time.RFC3339)).Msg("Built time and now")
-
 	if now.Sub(builtTime) < 0 {
-		ntpLogger.Warn().Msg("System time is behind the built time, time sync is needed")
+		ntpLogger.Warn().
+			Str("built_time", builtTime.Format(time.RFC3339)).
+			Str("now", now.Format(time.RFC3339)).
+			Msg("system time is behind the built time, time sync is needed")
 		return true
 	}
 
@@ -62,8 +63,8 @@ func TimeSyncLoop() {
 			continue
 		}
 
-		if !networkState.Up {
-			ntpLogger.Info().Msg("Waiting for network to come up")
+		if !networkState.IsOnline() {
+			ntpLogger.Info().Msg("waiting for network to be online")
 			time.Sleep(timeSyncWaitNetUpInt)
 			continue
 		}
@@ -71,11 +72,11 @@ func TimeSyncLoop() {
 		// check if time sync is needed, but do nothing for now
 		isTimeSyncNeeded()
 
-		ntpLogger.Info().Msg("Syncing system time")
+		ntpLogger.Info().Msg("syncing system time")
 		start := time.Now()
 		err := SyncSystemTime()
 		if err != nil {
-			ntpLogger.Error().Str("error", err.Error()).Msg("Failed to sync system time")
+			ntpLogger.Error().Str("error", err.Error()).Msg("failed to sync system time")
 
 			// retry after a delay
 			timeSyncRetryInterval += timeSyncRetryStep
@@ -90,7 +91,7 @@ func TimeSyncLoop() {
 		timeSyncSuccess = true
 		ntpLogger.Info().Str("now", time.Now().Format(time.RFC3339)).
 			Str("time_taken", time.Since(start).String()).
-			Msg("Time sync successful")
+			Msg("time sync successful")
 		time.Sleep(timeSyncInterval) // after the first sync is done
 	}
 }
@@ -117,24 +118,31 @@ func queryNetworkTime() (*time.Time, error) {
 		ntpServers = defaultNTPServers
 		ntpLogger.Info().
 			Interface("ntp_servers", ntpServers).
-			Msg("Using default NTP servers")
+			Msg("using default NTP servers")
 	} else {
 		ntpLogger.Info().
 			Interface("ntp_servers", ntpServers).
-			Msg("Using NTP servers from DHCP")
+			Msg("using NTP servers from DHCP")
 	}
 
 	for _, server := range ntpServers {
-		now, err := queryNtpServer(server, timeSyncTimeout)
+		now, err, response := queryNtpServer(server, timeSyncTimeout)
+
+		scopedLogger := ntpLogger.With().
+			Str("server", server).
+			Logger()
+
 		if err == nil {
-			ntpLogger.Info().
-				Str("ntp_server", server).
+			scopedLogger.Info().
 				Str("time", now.Format(time.RFC3339)).
+				Str("reference", response.ReferenceString()).
+				Str("rtt", response.RTT.String()).
+				Str("clockOffset", response.ClockOffset.String()).
+				Uint8("stratum", response.Stratum).
 				Msg("NTP server returned time")
 			return now, nil
 		} else {
-			ntpLogger.Error().
-				Str("ntp_server", server).
+			scopedLogger.Error().
 				Str("error", err.Error()).
 				Msg("failed to query NTP server")
 		}
@@ -145,16 +153,25 @@ func queryNetworkTime() (*time.Time, error) {
 		"http://cloudflare.com",
 	}
 	for _, url := range httpUrls {
-		now, err := queryHttpTime(url, timeSyncTimeout)
+		now, err, response := queryHttpTime(url, timeSyncTimeout)
+
+		var status string
+		if response != nil {
+			status = response.Status
+		}
+
+		scopedLogger := ntpLogger.With().
+			Str("http_url", url).
+			Str("status", status).
+			Logger()
+
 		if err == nil {
-			ntpLogger.Info().
-				Str("http_url", url).
+			scopedLogger.Info().
 				Str("time", now.Format(time.RFC3339)).
 				Msg("HTTP server returned time")
 			return now, nil
 		} else {
-			ntpLogger.Error().
-				Str("http_url", url).
+			scopedLogger.Error().
 				Str("error", err.Error()).
 				Msg("failed to query HTTP server")
 		}
@@ -163,28 +180,28 @@ func queryNetworkTime() (*time.Time, error) {
 	return nil, ErrorfL(ntpLogger, "failed to query network time, all NTP servers and HTTP servers failed", nil)
 }
 
-func queryNtpServer(server string, timeout time.Duration) (now *time.Time, err error) {
+func queryNtpServer(server string, timeout time.Duration) (now *time.Time, err error, response *ntp.Response) {
 	resp, err := ntp.QueryWithOptions(server, ntp.QueryOptions{Timeout: timeout})
 	if err != nil {
-		return nil, err
+		return nil, err, nil
 	}
-	return &resp.Time, nil
+	return &resp.Time, nil, resp
 }
 
-func queryHttpTime(url string, timeout time.Duration) (*time.Time, error) {
+func queryHttpTime(url string, timeout time.Duration) (now *time.Time, err error, response *http.Response) {
 	client := http.Client{
 		Timeout: timeout,
 	}
 	resp, err := client.Head(url)
 	if err != nil {
-		return nil, err
+		return nil, err, nil
 	}
 	dateStr := resp.Header.Get("Date")
-	now, err := time.Parse(time.RFC1123, dateStr)
+	parsedTime, err := time.Parse(time.RFC1123, dateStr)
 	if err != nil {
-		return nil, err
+		return nil, err, resp
 	}
-	return &now, nil
+	return &parsedTime, nil, resp
 }
 
 func setSystemTime(now time.Time) error {

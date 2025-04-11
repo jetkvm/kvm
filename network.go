@@ -32,6 +32,18 @@ type NetworkState struct {
 	checked bool
 }
 
+func (s *NetworkState) IsUp() bool {
+	return s.Up && s.IPv4 != "" && s.IPv6 != ""
+}
+
+func (s *NetworkState) HasIPAssigned() bool {
+	return s.IPv4 != "" || s.IPv6 != ""
+}
+
+func (s *NetworkState) IsOnline() bool {
+	return s.Up && s.HasIPAssigned()
+}
+
 type LocalIpInfo struct {
 	IPv4 string
 	IPv6 string
