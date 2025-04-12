@@ -5,7 +5,7 @@ import MouseIcon from "@/assets/mouse-icon.svg";
 import PointingFinger from "@/assets/pointing-finger.svg";
 import { GridCard } from "@/components/Card";
 import { Checkbox } from "@/components/Checkbox";
-import { useDeviceSettingsStore, useSettingsStore } from "@/hooks/stores";
+import { useDeviceSettingsStore, useSettingsStore, useKeyboardMappingsStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
@@ -36,6 +36,39 @@ export default function SettingsKeyboardMouseRoute() {
 
   const [send] = useJsonRpc();
 
+  const [keyboardLayout, setKeyboardLayout] = useState("en-US");
+  const [kbMappingEnabled, setKeyboardMapping] = useState(false);
+
+  const keyboardMappingEnabled = useSettingsStore(state => state.keyboardMappingEnabled);
+  const setkeyboardMappingEnabled = useSettingsStore(state => state.setkeyboardMappingEnabled);
+
+  const handleKeyboardLayoutChange = (keyboardLayout: string) => {
+    send("setKeyboardLayout", { kbLayout: keyboardLayout }, resp => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to set keyboard layout: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      useKeyboardMappingsStore.setLayout(keyboardLayout)
+      setKeyboardLayout(keyboardLayout);
+    });
+  };
+  
+  const handleKeyboardMappingChange = (enabled: boolean) => {
+    send("setKeyboardMappingState", { enabled }, resp => {
+      if ("error" in resp) {
+        notifications.error(
+        `Failed to set keyboard maping state state: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      setkeyboardMappingEnabled(enabled);
+      useKeyboardMappingsStore.setMappingsState(enabled);
+      setKeyboardMapping(enabled);
+    });
+  };
+
   useEffect(() => {
     send("getJigglerState", {}, resp => {
       if ("error" in resp) return;
@@ -48,7 +81,21 @@ export default function SettingsKeyboardMouseRoute() {
         setScrollSensitivity(resp.result as ScrollSensitivity);
       });
     }
-  }, [isScrollSensitivityEnabled, send, setScrollSensitivity]);
+
+    send("getKeyboardLayout", {}, resp => {
+      if ("error" in resp) return;
+      setKeyboardLayout(String(resp.result));
+      useKeyboardMappingsStore.setLayout(String(resp.result))
+    });
+    
+    send("getKeyboardMappingState", {}, resp => {
+      if ("error" in resp) return;
+      setKeyboardMapping(resp.result as boolean);
+      setkeyboardMappingEnabled(resp.result as boolean);
+      useKeyboardMappingsStore.setMappingsState(resp.result as boolean);
+    });
+
+  }, [isScrollSensitivityEnabled, send, setScrollSensitivity, setkeyboardMappingEnabled, keyboardMappingEnabled, keyboardLayout, setKeyboardLayout]);
 
   const handleJigglerChange = (enabled: boolean) => {
     send("setJigglerState", { enabled }, resp => {
@@ -77,6 +124,7 @@ export default function SettingsKeyboardMouseRoute() {
     },
     [send, setScrollSensitivity],
   );
+
 
   return (
     <div className="space-y-4">
@@ -181,6 +229,44 @@ export default function SettingsKeyboardMouseRoute() {
               </GridCard>
             </button>
           </div>
+        </div>
+      </div>
+      <div className="space-y-4">
+        <SettingsPageHeader
+          title="Keyboard"
+          description="Customize keyboard behaviour"
+        />
+        <div className="space-y-4">
+          <SettingsItem
+            title="Enable Keyboard Mapping"
+            description="Enables mapping of keys from your native layout to the layout of the target device"
+          >
+            <Checkbox
+              checked={kbMappingEnabled}
+              onChange={e => {
+                handleKeyboardMappingChange(e.target.checked);
+              }}
+            />
+          </SettingsItem>
+          <SettingsItem
+            title="Keyboard Layout"
+            description="Set keyboard layout (this should match the target machine)"
+          >
+            <SelectMenuBasic
+              size="SM_Wide"
+              label=""
+              // TODO figure out how to make this selector wider like the EDID one?, (done but not sure if in desired way.)
+              //fullWidth
+              value={keyboardLayout}
+              options={[
+                { value: "en-US", label: "US" },
+                { value: "en-GB", label: "UK" },
+                { value: "en-GB_apple", label: "UK (Apple)" },
+                { value: "de_DE", label: "German (T1)" },
+              ]}
+              onChange={e => handleKeyboardLayoutChange(e.target.value)}
+              />
+            </SettingsItem>
         </div>
       </div>
     </div>

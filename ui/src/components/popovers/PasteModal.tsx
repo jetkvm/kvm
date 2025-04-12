@@ -9,7 +9,6 @@ import { TextAreaWithLabel } from "@components/TextArea";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidStore, useRTCStore, useUiStore, useKeyboardMappingsStore } from "@/hooks/stores";
-import { chars, keys, modifiers } from "@/keyboardMappings";
 import notifications from "@/notifications";
 
 const hidKeyboardPayload = (keys: number[], modifier: number) => {

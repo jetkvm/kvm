@@ -157,9 +157,6 @@ function KeyboardWrapper() {
       const isKeyCaps = key === "CapsLock";
       const keyHasShiftModifier = (key.includes("(") && key !== "(") || shift;
 
-      //TODO remove debug logs
-      console.log(layoutName)
-
       // Handle toggle of layout for shift or caps lock
       const toggleLayout = () => {
         if (mappingsEnabled) {
@@ -211,12 +208,6 @@ function KeyboardWrapper() {
         setIsCapsLockActive(!isCapsLockActive);
       }
 
-      //TODO remove debug logs
-      console.log(cleanKey)
-      console.log(chars[cleanKey])
-
-      console.log(mappedKey)
-
       // Collect new active keys and modifiers
       const newKeys = keys[mappedKey ?? cleanKey] ? [keys[mappedKey ?? cleanKey]] : [];
       const newModifiers =
@@ -225,8 +216,6 @@ function KeyboardWrapper() {
         (altLeft? modifiers['AltLeft'] : 0),
         (altRight? modifiers['AltRight'] : 0),
       ].filter(Boolean);
-
-      console.log(newModifiers);
 
       // Update current keys and modifiers
       sendKeyboardEvent(newKeys, [...new Set(newModifiers)]);

@@ -262,9 +262,6 @@ export default function WebRTCVideo() {
     (e: KeyboardEvent, activeModifiers: number[], mappedKeyModifers: { shift: boolean; altLeft: boolean; altRight: boolean; }) => {
       const { shiftKey, ctrlKey, altKey, metaKey } = e;
 
-      // TODO remove debug logging
-      console.log(shiftKey + " " +ctrlKey + " " +altKey + " " +metaKey + " " +mappedKeyModifers.shift + " "+mappedKeyModifers.altLeft + " "+mappedKeyModifers.altRight + " ")
-
       const filteredModifiers = activeModifiers.filter(Boolean);
       // Example: activeModifiers = [0x01, 0x02, 0x04, 0x08]
       // Assuming 0x01 = ControlLeft, 0x02 = ShiftLeft, 0x04 = AltLeft, 0x08 = MetaLeft
@@ -322,10 +319,7 @@ export default function WebRTCVideo() {
       e.preventDefault();
       const prev = useHidStore.getState();
       const code = e.code;
-      console.log("MAPPING ENABLED: " + settings.keyboardMappingEnabled)
       var localisedKey = settings.keyboardMappingEnabled ? e.key : code;
-      console.log(e);
-      console.log("Localised Key: " + localisedKey);
 
       // if (document.activeElement?.id !== "videoFocusTrap") {hH
       //   console.log("KEYUP: Not focusing on the video", document.activeElement);
@@ -346,15 +340,9 @@ export default function WebRTCVideo() {
 
       const { key: mappedKey, shift, altLeft, altRight } = chars[localisedKey] ?? { key: code };
       //if (!key) continue; 
-      console.log("Mapped Key: " + mappedKey)
-      console.log("Current KB Layout:" + useKeyboardMappingsStore.getLayout());
-      console.log(chars[localisedKey]);
-
-      console.log("Shift: " + shift + ", altLeft: " + altLeft + ", altRight: " + altRight)
       
       // Add the mapped key to keyState
       activeKeyState.current.set(e.code, { mappedKey, modifiers: {shift, altLeft, altRight}});
-      console.log(activeKeyState)
 
       // Add the key to the active keys
       const newKeys = [...prev.activeKeys, keys[mappedKey]].filter(Boolean);
@@ -401,7 +389,6 @@ export default function WebRTCVideo() {
   const keyUpHandler = useCallback(
     (e: KeyboardEvent) => {
       e.preventDefault();
-      console.log(e)
       const prev = useHidStore.getState();
 
       setIsNumLockActive(e.getModifierState("NumLock"));
@@ -421,7 +408,6 @@ export default function WebRTCVideo() {
 
       // Handle modifier release
       if (isModifierKey) {
-        console.log("ITS A MODIFER")
         // Update all affected keys when this modifier is released
         activeKeyState.current.forEach((value, code) => {
           const { mappedKey, modifiers: mappedModifiers} = value;
@@ -457,14 +443,11 @@ export default function WebRTCVideo() {
             .filter(Boolean);
           };
         });
-        console.log("prev.activemodifers: " + prev.activeModifiers)
-        console.log("prev.activemodifers.filtered: " + prev.activeModifiers.filter(k => k !== modifiers[e.code]))
         const newModifiers = handleModifierKeys(
           e,
           prev.activeModifiers.filter(k => k !== modifiers[e.code]),
           {shift: false, altLeft: false, altRight: false}
         );
-          console.log("New modifiers in keyup: " + newModifiers)
 
           // Update the keyState
           /*activeKeyState.current.delete(code);/*.set(code, {
@@ -499,7 +482,6 @@ export default function WebRTCVideo() {
 
       // Filter out the key that was just released
       newKeys = newKeys.filter(k => k !== keys[mappedKey]).filter(Boolean);
-      console.log(activeKeyState)
 
       // Filter out the associated modifier
       //const newModifiers = prev.activeModifiers.filter(k => k !== modifier).filter(Boolean);
@@ -533,7 +515,6 @@ export default function WebRTCVideo() {
       );
       */
 
-      console.log(e.key);
       sendKeyboardEvent([...new Set(newKeys)], [...new Set(newModifiers)]);
     },
     [
