@@ -139,19 +139,33 @@ var (
 	)
 )
 
+type CloudConnectionState uint8
+
+const (
+	CloudConnectionStateNotConfigured CloudConnectionState = iota
+	CloudConnectionStateDisconnected
+	CloudConnectionStateConnecting
+	CloudConnectionStateConnected
+)
+
 var (
-	cloudConnectionAlive     bool
-	cloudConnectionAliveLock = &sync.Mutex{}
+	cloudConnectionState     CloudConnectionState = CloudConnectionStateNotConfigured
+	cloudConnectionStateLock                      = &sync.Mutex{}
 
 	cloudDisconnectChan chan error
 	cloudDisconnectLock = &sync.Mutex{}
 )
 
-func setCloudConnectionAlive(alive bool) {
-	cloudConnectionAliveLock.Lock()
-	defer cloudConnectionAliveLock.Unlock()
+func setCloudConnectionState(state CloudConnectionState) {
+	cloudConnectionStateLock.Lock()
+	defer cloudConnectionStateLock.Unlock()
 
-	cloudConnectionAlive = alive
+	if cloudConnectionState == CloudConnectionStateDisconnected &&
+		(config.CloudToken == "" || config.CloudURL == "") {
+		state = CloudConnectionStateNotConfigured
+	}
+
+	cloudConnectionState = state
 
 	go waitCtrlAndRequestDisplayUpdate()
 }
@@ -297,6 +311,8 @@ func runWebsocketClient() error {
 		wsURL.Scheme = "wss"
 	}
 
+	setCloudConnectionState(CloudConnectionStateConnecting)
+
 	header := http.Header{}
 	header.Set("X-Device-ID", GetDeviceID())
 	header.Set("X-App-Version", builtAppVersion)
@@ -314,12 +330,12 @@ func runWebsocketClient() error {
 	c, resp, err := websocket.Dial(dialCtx, wsURL.String(), &websocket.DialOptions{
 		HTTPHeader: header,
 		OnPingReceived: func(ctx context.Context, payload []byte) bool {
-			scopedLogger.Info().Bytes("payload", payload).Int("length", len(payload)).Msg("ping frame received")
+			scopedLogger.Debug().Bytes("payload", payload).Int("length", len(payload)).Msg("ping frame received")
 
 			metricConnectionTotalPingReceivedCount.WithLabelValues("cloud", wsURL.Host).Inc()
 			metricConnectionLastPingReceivedTimestamp.WithLabelValues("cloud", wsURL.Host).SetToCurrentTime()
 
-			setCloudConnectionAlive(true)
+			setCloudConnectionState(CloudConnectionStateConnected)
 
 			return true
 		},
@@ -350,7 +366,7 @@ func runWebsocketClient() error {
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			cloudLogger.Info().Msg("websocket connection canceled")
-			setCloudConnectionAlive(false)
+			setCloudConnectionState(CloudConnectionStateDisconnected)
 
 			return nil
 		}
@@ -539,6 +555,8 @@ func rpcDeregisterDevice() error {
 
 		cloudLogger.Info().Msg("device deregistered, disconnecting from cloud")
 		disconnectCloud(fmt.Errorf("device deregistered"))
+
+		setCloudConnectionState(CloudConnectionStateNotConfigured)
 
 		return nil
 	}

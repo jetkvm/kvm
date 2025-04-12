@@ -203,7 +203,7 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 	wsOptions := &websocket.AcceptOptions{
 		InsecureSkipVerify: true, // Allow connections from any origin
 		OnPingReceived: func(ctx context.Context, payload []byte) bool {
-			scopedLogger.Info().Bytes("payload", payload).Msg("ping frame received")
+			scopedLogger.Debug().Bytes("payload", payload).Msg("ping frame received")
 
 			metricConnectionTotalPingReceivedCount.WithLabelValues("local", source).Inc()
 			metricConnectionLastPingReceivedTimestamp.WithLabelValues("local", source).SetToCurrentTime()
@@ -244,7 +244,7 @@ func handleWebRTCSignalWsMessages(
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer func() {
 		if isCloudConnection {
-			setCloudConnectionAlive(false)
+			setCloudConnectionState(CloudConnectionStateDisconnected)
 		}
 		cancelRun()
 	}()

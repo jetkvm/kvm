@@ -335,7 +335,10 @@ func ensureBinaryUpdated(destPath string) error {
 
 	_, err = os.Stat(destPath)
 	if shouldOverwrite(destPath, srcHash) || err != nil {
-		nativeLogger.Info().Msg("writing jetkvm_native")
+		nativeLogger.Info().
+			Interface("hash", srcHash).
+			Msg("writing jetkvm_native")
+
 		_ = os.Remove(destPath)
 		destFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_RDWR, 0755)
 		if err != nil {

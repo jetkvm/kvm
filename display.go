@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -53,6 +54,18 @@ func lvObjShow(objName string) (*CtrlResponse, error) {
 	return lvObjClearFlag(objName, "LV_OBJ_FLAG_HIDDEN")
 }
 
+func lvObjSetOpacity(objName string, opacity int) (*CtrlResponse, error) {
+	return CallCtrlAction("lv_obj_set_style_opa_layered", map[string]interface{}{"obj": objName, "opa": opacity})
+}
+
+func lvObjFadeIn(objName string, duration uint32) (*CtrlResponse, error) {
+	return CallCtrlAction("lv_obj_fade_in", map[string]interface{}{"obj": objName, "time": duration})
+}
+
+func lvObjFadeOut(objName string, duration uint32) (*CtrlResponse, error) {
+	return CallCtrlAction("lv_obj_fade_out", map[string]interface{}{"obj": objName, "time": duration})
+}
+
 func lvLabelSetText(objName string, text string) (*CtrlResponse, error) {
 	return CallCtrlAction("lv_label_set_text", map[string]interface{}{"obj": objName, "text": text})
 }
@@ -69,13 +82,20 @@ func updateLabelIfChanged(objName string, newText string) {
 }
 
 func switchToScreenIfDifferent(screenName string) {
-	displayLogger.Info().Str("from", currentScreen).Str("to", screenName).Msg("switching screen")
 	if currentScreen != screenName {
+		displayLogger.Info().Str("from", currentScreen).Str("to", screenName).Msg("switching screen")
 		switchToScreen(screenName)
 	}
 }
 
+var (
+	cloudBlinkCtx    context.Context
+	cloudBlinkCancel context.CancelFunc
+	cloudBlinkTicker *time.Ticker
+)
+
 func updateDisplay() {
+
 	updateLabelIfChanged("ui_Home_Content_Ip", networkState.IPv4String())
 	if usbState == "configured" {
 		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Connected")
@@ -99,16 +119,67 @@ func updateDisplay() {
 		switchToScreenIfDifferent("ui_No_Network_Screen")
 	}
 
-	if config.CloudToken == "" || config.CloudURL == "" {
+	if cloudConnectionState == CloudConnectionStateNotConfigured {
 		lvObjHide("ui_Home_Header_Cloud_Status_Icon")
 	} else {
 		lvObjShow("ui_Home_Header_Cloud_Status_Icon")
-		// TODO: blink the icon if establishing connection
-		if cloudConnectionAlive {
-			_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
-		} else {
-			_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud_disconnected.png")
+	}
+
+	switch cloudConnectionState {
+	case CloudConnectionStateDisconnected:
+		lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud_disconnected.png")
+		stopCloudBlink()
+	case CloudConnectionStateConnecting:
+		lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
+		startCloudBlink()
+	case CloudConnectionStateConnected:
+		lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
+		stopCloudBlink()
+	}
+}
+
+func startCloudBlink() {
+	if cloudBlinkTicker == nil {
+		cloudBlinkTicker = time.NewTicker(2 * time.Second)
+	}
+
+	if cloudBlinkCtx != nil {
+		cloudBlinkCancel()
+	}
+
+	cloudBlinkCtx, cloudBlinkCancel = context.WithCancel(appCtx)
+	cloudBlinkTicker.Reset(2 * time.Second)
+
+	go func() {
+		defer cloudBlinkTicker.Stop()
+		for {
+			select {
+			case <-cloudBlinkTicker.C:
+				if cloudConnectionState != CloudConnectionStateConnecting {
+					return
+				}
+				_, _ = lvObjFadeIn("ui_Home_Header_Cloud_Status_Icon", 1000)
+				time.Sleep(1000 * time.Millisecond)
+				_, _ = lvObjFadeOut("ui_Home_Header_Cloud_Status_Icon", 1000)
+				time.Sleep(1000 * time.Millisecond)
+			case <-cloudBlinkCtx.Done():
+				time.Sleep(1000 * time.Millisecond)
+				_, _ = lvObjFadeIn("ui_Home_Header_Cloud_Status_Icon", 1000)
+				time.Sleep(1000 * time.Millisecond)
+				_, _ = lvObjSetOpacity("ui_Home_Header_Cloud_Status_Icon", 255)
+				return
+			}
 		}
+	}()
+}
+
+func stopCloudBlink() {
+	if cloudBlinkTicker != nil {
+		cloudBlinkTicker.Stop()
+	}
+
+	if cloudBlinkCtx != nil {
+		cloudBlinkCancel()
 	}
 }
 
@@ -128,7 +199,7 @@ func requestDisplayUpdate() {
 	}
 	go func() {
 		wakeDisplay(false)
-		displayLogger.Info().Msg("display updating")
+		displayLogger.Debug().Msg("display updating")
 		//TODO: only run once regardless how many pending updates
 		updateDisplay()
 	}()
