@@ -8,6 +8,7 @@ require (
 	github.com/coder/websocket v1.8.13
 	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/creack/pty v1.1.23
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-contrib/logger v1.2.5
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.6.0

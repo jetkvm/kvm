@@ -134,7 +134,7 @@ func LoadConfig() {
 	defer configLock.Unlock()
 
 	if config != nil {
-		logger.Info().Msg("config already loaded, skipping")
+		logger.Debug().Msg("config already loaded, skipping")
 		return
 	}
 
@@ -167,6 +167,8 @@ func LoadConfig() {
 	config = &loadedConfig
 
 	rootLogger.UpdateLogLevel()
+
+	logger.Info().Str("path", configPath).Msg("config loaded")
 }
 
 func SaveConfig() error {

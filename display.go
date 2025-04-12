@@ -48,7 +48,7 @@ func switchToScreenIfDifferent(screenName string) {
 }
 
 func updateDisplay() {
-	updateLabelIfChanged("ui_Home_Content_Ip", networkState.IPv4)
+	updateLabelIfChanged("ui_Home_Content_Ip", networkState.IPv4String())
 	if usbState == "configured" {
 		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Connected")
 		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Usb_Status_Label", "state": "LV_STATE_DEFAULT"})
@@ -64,7 +64,7 @@ func updateDisplay() {
 		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Hdmi_Status_Label", "state": "LV_STATE_USER_2"})
 	}
 	updateLabelIfChanged("ui_Home_Header_Cloud_Status_Label", fmt.Sprintf("%d active", actionSessions))
-	if networkState.Up {
+	if networkState.IsUp() {
 		switchToScreenIfDifferent("ui_Home_Screen")
 	} else {
 		switchToScreenIfDifferent("ui_No_Network_Screen")
@@ -94,7 +94,7 @@ func requestDisplayUpdate() {
 
 func updateStaticContents() {
 	//contents that never change
-	updateLabelIfChanged("ui_Home_Content_Mac", networkState.MAC)
+	updateLabelIfChanged("ui_Home_Content_Mac", networkState.MACString())
 	systemVersion, appVersion, err := GetLocalVersion()
 	if err == nil {
 		updateLabelIfChanged("ui_About_Content_Operating_System_Version_ContentLabel", systemVersion.String())

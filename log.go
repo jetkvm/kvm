@@ -218,12 +218,13 @@ func ErrorfL(l *zerolog.Logger, format string, err error, args ...interface{}) e
 
 var (
 	logger          = rootLogger.getLogger("jetkvm")
+	networkLogger   = rootLogger.getLogger("network")
 	cloudLogger     = rootLogger.getLogger("cloud")
 	websocketLogger = rootLogger.getLogger("websocket")
 	webrtcLogger    = rootLogger.getLogger("webrtc")
 	nativeLogger    = rootLogger.getLogger("native")
 	nbdLogger       = rootLogger.getLogger("nbd")
-	ntpLogger       = rootLogger.getLogger("ntp")
+	timesyncLogger  = rootLogger.getLogger("timesync")
 	jsonRpcLogger   = rootLogger.getLogger("jsonrpc")
 	watchdogLogger  = rootLogger.getLogger("watchdog")
 	websecureLogger = rootLogger.getLogger("websecure")

@@ -311,11 +311,15 @@ func runWebsocketClient() error {
 		},
 	})
 
-	// get the request id from the response header
-	connectionId := resp.Header.Get("X-Request-ID")
-	if connectionId == "" {
-		connectionId = resp.Header.Get("Cf-Ray")
+	var connectionId string
+	if resp != nil {
+		// get the request id from the response header
+		connectionId = resp.Header.Get("X-Request-ID")
+		if connectionId == "" {
+			connectionId = resp.Header.Get("Cf-Ray")
+		}
 	}
+
 	if connectionId == "" {
 		connectionId = uuid.New().String()
 		scopedLogger.Warn().
@@ -457,7 +461,7 @@ func RunWebsocketClient() {
 		}
 
 		// If the system time is not synchronized, the API request will fail anyway because the TLS handshake will fail.
-		if isTimeSyncNeeded() && !timeSyncSuccess {
+		if isTimeSyncNeeded() && !timeSync.IsSyncSuccess() {
 			cloudLogger.Warn().Msg("system time is not synced, will retry in 3 seconds")
 			time.Sleep(3 * time.Second)
 			continue

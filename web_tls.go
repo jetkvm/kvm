@@ -53,7 +53,7 @@ func initCertStore() {
 
 func getCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if config.TLSMode == "self-signed" {
-		if isTimeSyncNeeded() || !timeSyncSuccess {
+		if isTimeSyncNeeded() || !timeSync.IsSyncSuccess() {
 			return nil, fmt.Errorf("time is not synced")
 		}
 		return certSigner.GetCertificate(info)
