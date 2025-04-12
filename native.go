@@ -3,6 +3,7 @@ package kvm
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -75,25 +76,33 @@ func CallCtrlAction(action string, params map[string]interface{}) (*CtrlResponse
 		return nil, fmt.Errorf("error marshaling ctrl action: %w", err)
 	}
 
-	nativeLogger.Info().Str("action", ctrlAction.Action).Msg("sending ctrl action")
+	scopedLogger := nativeLogger.With().
+		Str("action", ctrlAction.Action).
+		Interface("params", ctrlAction.Params).Logger()
+
+	scopedLogger.Debug().Msg("sending ctrl action")
 
 	err = WriteCtrlMessage(jsonData)
 	if err != nil {
 		delete(ongoingRequests, ctrlAction.Seq)
-		return nil, fmt.Errorf("error writing ctrl message: %w", err)
+		return nil, ErrorfL(&scopedLogger, "error writing ctrl message", err)
 	}
 
 	select {
 	case response := <-responseChan:
 		delete(ongoingRequests, seq)
 		if response.Error != "" {
-			return nil, fmt.Errorf("error native response: %s", response.Error)
+			return nil, ErrorfL(
+				&scopedLogger,
+				"error native response: %s",
+				errors.New(response.Error),
+			)
 		}
 		return response, nil
 	case <-time.After(5 * time.Second):
 		close(responseChan)
 		delete(ongoingRequests, seq)
-		return nil, fmt.Errorf("timeout waiting for response")
+		return nil, ErrorfL(&scopedLogger, "timeout waiting for response", nil)
 	}
 }
 
@@ -115,31 +124,35 @@ func waitCtrlClientConnected() {
 }
 
 func StartNativeSocketServer(socketPath string, handleClient func(net.Conn), isCtrl bool) net.Listener {
+	scopedLogger := nativeLogger.With().
+		Str("socket_path", socketPath).
+		Logger()
+
 	// Remove the socket file if it already exists
 	if _, err := os.Stat(socketPath); err == nil {
 		if err := os.Remove(socketPath); err != nil {
-			nativeLogger.Warn().Err(err).Str("socket_path", socketPath).Msg("Failed to remove existing socket file")
+			scopedLogger.Warn().Err(err).Msg("failed to remove existing socket file")
 			os.Exit(1)
 		}
 	}
 
 	listener, err := net.Listen("unixpacket", socketPath)
 	if err != nil {
-		nativeLogger.Warn().Err(err).Str("socket_path", socketPath).Msg("Failed to start server")
+		scopedLogger.Warn().Err(err).Msg("failed to start server")
 		os.Exit(1)
 	}
 
-	nativeLogger.Info().Str("socket_path", socketPath).Msg("Server listening")
+	scopedLogger.Info().Msg("server listening")
 
 	go func() {
 		conn, err := listener.Accept()
 		listener.Close()
 		if err != nil {
-			nativeLogger.Warn().Err(err).Str("socket_path", socketPath).Msg("failed to accept sock")
+			scopedLogger.Warn().Err(err).Msg("failed to accept socket")
 		}
 		if isCtrl {
 			close(ctrlClientConnected)
-			nativeLogger.Debug().Msg("first native ctrl socket client connected")
+			scopedLogger.Debug().Msg("first native ctrl socket client connected")
 		}
 		handleClient(conn)
 	}()
@@ -160,9 +173,14 @@ func StartNativeVideoSocketServer() {
 func handleCtrlClient(conn net.Conn) {
 	defer conn.Close()
 
-	nativeLogger.Debug().Msg("native socket client connected")
+	scopedLogger := nativeLogger.With().
+		Str("addr", conn.RemoteAddr().String()).
+		Str("type", "ctrl").
+		Logger()
+
+	scopedLogger.Info().Msg("native ctrl socket client connected")
 	if ctrlSocketConn != nil {
-		nativeLogger.Debug().Msg("closing existing native socket connection")
+		scopedLogger.Debug().Msg("closing existing native socket connection")
 		ctrlSocketConn.Close()
 	}
 
@@ -175,7 +193,7 @@ func handleCtrlClient(conn net.Conn) {
 	for {
 		n, err := conn.Read(readBuf)
 		if err != nil {
-			nativeLogger.Warn().Err(err).Msg("error reading from ctrl sock")
+			scopedLogger.Warn().Err(err).Msg("error reading from ctrl sock")
 			break
 		}
 		readMsg := string(readBuf[:n])
@@ -183,10 +201,10 @@ func handleCtrlClient(conn net.Conn) {
 		ctrlResp := CtrlResponse{}
 		err = json.Unmarshal([]byte(readMsg), &ctrlResp)
 		if err != nil {
-			nativeLogger.Warn().Err(err).Str("data", readMsg).Msg("error parsing ctrl sock msg")
+			scopedLogger.Warn().Err(err).Str("data", readMsg).Msg("error parsing ctrl sock msg")
 			continue
 		}
-		nativeLogger.Trace().Interface("data", ctrlResp).Msg("ctrl sock msg")
+		scopedLogger.Trace().Interface("data", ctrlResp).Msg("ctrl sock msg")
 
 		if ctrlResp.Seq != 0 {
 			responseChan, ok := ongoingRequests[ctrlResp.Seq]
@@ -200,20 +218,25 @@ func handleCtrlClient(conn net.Conn) {
 		}
 	}
 
-	nativeLogger.Debug().Msg("ctrl sock disconnected")
+	scopedLogger.Debug().Msg("ctrl sock disconnected")
 }
 
 func handleVideoClient(conn net.Conn) {
 	defer conn.Close()
 
-	nativeLogger.Info().Str("addr", conn.RemoteAddr().String()).Msg("Native video socket client connected")
+	scopedLogger := nativeLogger.With().
+		Str("addr", conn.RemoteAddr().String()).
+		Str("type", "video").
+		Logger()
+
+	scopedLogger.Info().Msg("native video socket client connected")
 
 	inboundPacket := make([]byte, maxFrameSize)
 	lastFrame := time.Now()
 	for {
 		n, err := conn.Read(inboundPacket)
 		if err != nil {
-			nativeLogger.Warn().Err(err).Msg("error during read")
+			scopedLogger.Warn().Err(err).Msg("error during read")
 			return
 		}
 		now := time.Now()
@@ -222,7 +245,7 @@ func handleVideoClient(conn net.Conn) {
 		if currentSession != nil {
 			err := currentSession.VideoTrack.WriteSample(media.Sample{Data: inboundPacket[:n], Duration: sinceLastFrame})
 			if err != nil {
-				nativeLogger.Warn().Err(err).Msg("error writing sample")
+				scopedLogger.Warn().Err(err).Msg("error writing sample")
 			}
 		}
 	}
@@ -277,7 +300,7 @@ func ExtractAndRunNativeBin() error {
 		}
 	}()
 
-	nativeLogger.Info().Int("pid", cmd.Process.Pid).Msg("Binary started")
+	nativeLogger.Info().Int("pid", cmd.Process.Pid).Msg("jetkvm_native binary started")
 
 	return nil
 }

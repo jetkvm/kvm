@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -70,9 +71,15 @@ func updateDisplay() {
 	}
 }
 
-var displayInited = false
+var (
+	displayInited     = false
+	displayUpdateLock = sync.Mutex{}
+)
 
 func requestDisplayUpdate() {
+	displayUpdateLock.Lock()
+	defer displayUpdateLock.Unlock()
+
 	if !displayInited {
 		displayLogger.Info().Msg("display not inited, skipping updates")
 		return

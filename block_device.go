@@ -9,6 +9,7 @@ import (
 
 	"github.com/pojntfx/go-nbd/pkg/client"
 	"github.com/pojntfx/go-nbd/pkg/server"
+	"github.com/rs/zerolog"
 )
 
 type remoteImageBackend struct {
@@ -72,6 +73,8 @@ type NBDDevice struct {
 	serverConn net.Conn
 	clientConn net.Conn
 	dev        *os.File
+
+	l *zerolog.Logger
 }
 
 func NewNBDDevice() *NBDDevice {
@@ -90,10 +93,18 @@ func (d *NBDDevice) Start() error {
 		return err
 	}
 
+	if d.l == nil {
+		scopedLogger := nbdLogger.With().
+			Str("socket_path", nbdSocketPath).
+			Str("device_path", nbdDevicePath).
+			Logger()
+		d.l = &scopedLogger
+	}
+
 	// Remove the socket file if it already exists
 	if _, err := os.Stat(nbdSocketPath); err == nil {
 		if err := os.Remove(nbdSocketPath); err != nil {
-			nativeLogger.Warn().Err(err).Str("socket_path", nbdSocketPath).Msg("Failed to remove existing socket file")
+			d.l.Error().Err(err).Msg("failed to remove existing socket file")
 			os.Exit(1)
 		}
 	}
@@ -134,7 +145,8 @@ func (d *NBDDevice) runServerConn() {
 			MaximumBlockSize:   uint32(16 * 1024),
 			SupportsMultiConn:  false,
 		})
-	nativeLogger.Info().Err(err).Msg("nbd server exited")
+
+	d.l.Info().Err(err).Msg("nbd server exited")
 }
 
 func (d *NBDDevice) runClientConn() {
@@ -142,14 +154,14 @@ func (d *NBDDevice) runClientConn() {
 		ExportName: "jetkvm",
 		BlockSize:  uint32(4 * 1024),
 	})
-	nativeLogger.Info().Err(err).Msg("nbd client exited")
+	d.l.Info().Err(err).Msg("nbd client exited")
 }
 
 func (d *NBDDevice) Close() {
 	if d.dev != nil {
 		err := client.Disconnect(d.dev)
 		if err != nil {
-			nativeLogger.Warn().Err(err).Msg("error disconnecting nbd client")
+			d.l.Warn().Err(err).Msg("error disconnecting nbd client")
 		}
 		_ = d.dev.Close()
 	}

@@ -35,17 +35,19 @@ var (
 )
 
 func runATXControl() {
+	scopedLogger := serialLogger.With().Str("service", "atx_control").Logger()
+
 	reader := bufio.NewReader(port)
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			logger.Warn().Err(err).Msg("Error reading from serial port")
+			scopedLogger.Warn().Err(err).Msg("Error reading from serial port")
 			return
 		}
 
 		// Each line should be 4 binary digits + newline
 		if len(line) != 5 {
-			logger.Warn().Int("length", len(line)).Msg("Invalid line length")
+			scopedLogger.Warn().Int("length", len(line)).Msg("Invalid line length")
 			continue
 		}
 
@@ -66,7 +68,12 @@ func runATXControl() {
 			newLedPWRState != ledPWRState ||
 			newBtnRSTState != btnRSTState ||
 			newBtnPWRState != btnPWRState {
-			logger.Debug().Bool("hdd", newLedHDDState).Bool("pwr", newLedPWRState).Bool("rst", newBtnRSTState).Bool("pwr", newBtnPWRState).Msg("Status changed")
+			scopedLogger.Debug().
+				Bool("hdd", newLedHDDState).
+				Bool("pwr", newLedPWRState).
+				Bool("rst", newBtnRSTState).
+				Bool("pwr", newBtnPWRState).
+				Msg("Status changed")
 
 			// Update states
 			ledHDDState = newLedHDDState
@@ -133,45 +140,46 @@ func unmountDCControl() error {
 var dcState DCPowerState
 
 func runDCControl() {
+	scopedLogger := serialLogger.With().Str("service", "dc_control").Logger()
 	reader := bufio.NewReader(port)
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			logger.Warn().Err(err).Msg("Error reading from serial port")
+			scopedLogger.Warn().Err(err).Msg("Error reading from serial port")
 			return
 		}
 
 		// Split the line by semicolon
 		parts := strings.Split(strings.TrimSpace(line), ";")
 		if len(parts) != 4 {
-			logger.Warn().Str("line", line).Msg("Invalid line")
+			scopedLogger.Warn().Str("line", line).Msg("Invalid line")
 			continue
 		}
 
 		// Parse new states
 		powerState, err := strconv.Atoi(parts[0])
 		if err != nil {
-			logger.Warn().Err(err).Msg("Invalid power state")
+			scopedLogger.Warn().Err(err).Msg("Invalid power state")
 			continue
 		}
 		dcState.IsOn = powerState == 1
 		milliVolts, err := strconv.ParseFloat(parts[1], 64)
 		if err != nil {
-			logger.Warn().Err(err).Msg("Invalid voltage")
+			scopedLogger.Warn().Err(err).Msg("Invalid voltage")
 			continue
 		}
 		volts := milliVolts / 1000 // Convert mV to V
 
 		milliAmps, err := strconv.ParseFloat(parts[2], 64)
 		if err != nil {
-			logger.Warn().Err(err).Msg("Invalid current")
+			scopedLogger.Warn().Err(err).Msg("Invalid current")
 			continue
 		}
 		amps := milliAmps / 1000 // Convert mA to A
 
 		milliWatts, err := strconv.ParseFloat(parts[3], 64)
 		if err != nil {
-			logger.Warn().Err(err).Msg("Invalid power")
+			scopedLogger.Warn().Err(err).Msg("Invalid power")
 			continue
 		}
 		watts := milliWatts / 1000 // Convert mW to W
@@ -225,12 +233,19 @@ func reopenSerialPort() error {
 	var err error
 	port, err = serial.Open(serialPortPath, defaultMode)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Error opening serial port")
+		serialLogger.Error().
+			Err(err).
+			Str("path", serialPortPath).
+			Interface("mode", defaultMode).
+			Msg("Error opening serial port")
 	}
 	return nil
 }
 
 func handleSerialChannel(d *webrtc.DataChannel) {
+	scopedLogger := serialLogger.With().
+		Uint16("data_channel_id", *d.ID()).Logger()
+
 	d.OnOpen(func() {
 		go func() {
 			buf := make([]byte, 1024)
@@ -238,13 +253,13 @@ func handleSerialChannel(d *webrtc.DataChannel) {
 				n, err := port.Read(buf)
 				if err != nil {
 					if err != io.EOF {
-						logger.Warn().Err(err).Msg("Failed to read from serial port")
+						scopedLogger.Warn().Err(err).Msg("Failed to read from serial port")
 					}
 					break
 				}
 				err = d.Send(buf[:n])
 				if err != nil {
-					logger.Warn().Err(err).Msg("Failed to send serial output")
+					scopedLogger.Warn().Err(err).Msg("Failed to send serial output")
 					break
 				}
 			}
@@ -257,11 +272,15 @@ func handleSerialChannel(d *webrtc.DataChannel) {
 		}
 		_, err := port.Write(msg.Data)
 		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to write to serial")
+			scopedLogger.Warn().Err(err).Msg("Failed to write to serial")
 		}
 	})
 
-	d.OnClose(func() {
+	d.OnError(func(err error) {
+		scopedLogger.Warn().Err(err).Msg("Serial channel error")
+	})
 
+	d.OnClose(func() {
+		scopedLogger.Info().Msg("Serial channel closed")
 	})
 }

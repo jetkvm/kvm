@@ -38,12 +38,12 @@ func initCertStore() {
 		websecureLogger.Warn().Msg("TLS store already initialized, it should not be initialized again")
 		return
 	}
-	certStore = websecure.NewCertStore(tlsStorePath, &websecureLogger)
+	certStore = websecure.NewCertStore(tlsStorePath, websecureLogger)
 	certStore.LoadCertificates()
 
 	certSigner = websecure.NewSelfSigner(
 		certStore,
-		&websecureLogger,
+		websecureLogger,
 		webSecureSelfSignedDefaultDomain,
 		webSecureSelfSignedOrganization,
 		webSecureSelfSignedOU,

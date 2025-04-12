@@ -47,12 +47,12 @@ type BacklightSettings struct {
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Error marshalling JSONRPC response")
+		jsonRpcLogger.Warn().Err(err).Msg("Error marshalling JSONRPC response")
 		return
 	}
 	err = session.RPCChannel.SendText(string(responseBytes))
 	if err != nil {
-		logger.Warn().Err(err).Msg("Error sending JSONRPC response")
+		jsonRpcLogger.Warn().Err(err).Msg("Error sending JSONRPC response")
 		return
 	}
 }
@@ -65,16 +65,24 @@ func writeJSONRPCEvent(event string, params interface{}, session *Session) {
 	}
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Error marshalling JSONRPC event")
+		jsonRpcLogger.Warn().Err(err).Msg("Error marshalling JSONRPC event")
 		return
 	}
 	if session == nil || session.RPCChannel == nil {
-		logger.Info().Msg("RPC channel not available")
+		jsonRpcLogger.Info().Msg("RPC channel not available")
 		return
 	}
-	err = session.RPCChannel.SendText(string(requestBytes))
+
+	requestString := string(requestBytes)
+	scopedLogger := jsonRpcLogger.With().
+		Str("data", requestString).
+		Logger()
+
+	scopedLogger.Info().Msg("sending JSONRPC event")
+
+	err = session.RPCChannel.SendText(requestString)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Error sending JSONRPC event")
+		scopedLogger.Warn().Err(err).Msg("error sending JSONRPC event")
 		return
 	}
 }
@@ -83,6 +91,11 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
 	if err != nil {
+		jsonRpcLogger.Warn().
+			Str("data", string(message.Data)).
+			Err(err).
+			Msg("Error unmarshalling JSONRPC request")
+
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
 			Error: map[string]interface{}{
@@ -95,7 +108,13 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	logger.Trace().Str("method", request.Method).Interface("params", request.Params).Interface("id", request.ID).Msg("Received RPC request")
+	scopedLogger := jsonRpcLogger.With().
+		Str("method", request.Method).
+		Interface("params", request.Params).
+		Interface("id", request.ID).Logger()
+
+	scopedLogger.Trace().Msg("Received RPC request")
+
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
 		errorResponse := JSONRPCResponse{
@@ -110,9 +129,10 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	logger.Trace().Str("method", request.Method).Interface("id", request.ID).Msg("Calling RPC handler")
+	scopedLogger.Trace().Msg("Calling RPC handler")
 	result, err := callRPCHandler(handler, request.Params)
 	if err != nil {
+		scopedLogger.Error().Err(err).Msg("Error calling RPC handler")
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
 			Error: map[string]interface{}{
@@ -126,7 +146,8 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	logger.Trace().Interface("result", result).Interface("id", request.ID).Msg("RPC handler returned")
+	scopedLogger.Trace().Interface("result", result).Msg("RPC handler returned")
+
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
 		Result:  result,

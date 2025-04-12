@@ -14,21 +14,25 @@ import (
 var appCtx context.Context
 
 func Main() {
+	LoadConfig()
+	logger.Debug().Msg("config loaded")
+
 	var cancel context.CancelFunc
 	appCtx, cancel = context.WithCancel(context.Background())
 	defer cancel()
-	logger.Info().Msg("Starting JetKvm")
+	logger.Info().Msg("starting JetKvm")
+
 	go runWatchdog()
 	go confirmCurrentSystem()
 
 	http.DefaultClient.Timeout = 1 * time.Minute
-	LoadConfig()
-	logger.Debug().Msg("config loaded")
 
 	err := rootcerts.UpdateDefaultTransport()
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to load CA certs")
 	}
+
+	initNetwork()
 
 	go TimeSyncLoop()
 

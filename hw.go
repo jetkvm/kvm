@@ -54,7 +54,7 @@ func GetDeviceID() string {
 func runWatchdog() {
 	file, err := os.OpenFile("/dev/watchdog", os.O_WRONLY, 0)
 	if err != nil {
-		logger.Warn().Err(err).Msg("unable to open /dev/watchdog, skipping watchdog reset")
+		watchdogLogger.Warn().Err(err).Msg("unable to open /dev/watchdog, skipping watchdog reset")
 		return
 	}
 	defer file.Close()
@@ -65,13 +65,13 @@ func runWatchdog() {
 		case <-ticker.C:
 			_, err = file.Write([]byte{0})
 			if err != nil {
-				logger.Warn().Err(err).Msg("error writing to /dev/watchdog, system may reboot")
+				watchdogLogger.Warn().Err(err).Msg("error writing to /dev/watchdog, system may reboot")
 			}
 		case <-appCtx.Done():
 			//disarm watchdog with magic value
 			_, err := file.Write([]byte("V"))
 			if err != nil {
-				logger.Warn().Err(err).Msg("failed to disarm watchdog, system may reboot")
+				watchdogLogger.Warn().Err(err).Msg("failed to disarm watchdog, system may reboot")
 			}
 			return
 		}

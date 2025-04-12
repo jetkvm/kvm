@@ -3,7 +3,6 @@ package kvm
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"net"
 )
 
@@ -12,7 +11,7 @@ func rpcSendWOLMagicPacket(macAddress string) error {
 	// Parse the MAC address
 	mac, err := net.ParseMAC(macAddress)
 	if err != nil {
-		return fmt.Errorf("invalid MAC address: %v", err)
+		return ErrorfL(wolLogger, "invalid MAC address", err)
 	}
 
 	// Create the magic packet
@@ -21,15 +20,17 @@ func rpcSendWOLMagicPacket(macAddress string) error {
 	// Set up UDP connection
 	conn, err := net.Dial("udp", "255.255.255.255:9")
 	if err != nil {
-		return fmt.Errorf("failed to establish UDP connection: %v", err)
+		return ErrorfL(wolLogger, "failed to establish UDP connection", err)
 	}
 	defer conn.Close()
 
 	// Send the packet
 	_, err = conn.Write(packet)
 	if err != nil {
-		return fmt.Errorf("failed to send WOL packet: %v", err)
+		return ErrorfL(wolLogger, "failed to send WOL packet", err)
 	}
+
+	wolLogger.Info().Str("mac", macAddress).Msg("WOL packet sent")
 
 	return nil
 }

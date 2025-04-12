@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/rs/zerolog"
 )
 
 type UpdateMetadata struct {
@@ -191,7 +192,11 @@ func downloadFile(ctx context.Context, path string, url string, downloadProgress
 	return nil
 }
 
-func verifyFile(path string, expectedHash string, verifyProgress *float32) error {
+func verifyFile(path string, expectedHash string, verifyProgress *float32, scopedLogger *zerolog.Logger) error {
+	if scopedLogger == nil {
+		scopedLogger = otaLogger
+	}
+
 	unverifiedPath := path + ".unverified"
 	fileToHash, err := os.Open(unverifiedPath)
 	if err != nil {
@@ -235,7 +240,7 @@ func verifyFile(path string, expectedHash string, verifyProgress *float32) error
 	}
 
 	hashSum := hash.Sum(nil)
-	logger.Info().Str("path", path).Str("hash", hex.EncodeToString(hashSum)).Msg("SHA256 hash of")
+	scopedLogger.Info().Str("path", path).Str("hash", hex.EncodeToString(hashSum)).Msg("SHA256 hash of")
 
 	if hex.EncodeToString(hashSum) != expectedHash {
 		return fmt.Errorf("hash mismatch: %x != %s", hashSum, expectedHash)
@@ -285,7 +290,12 @@ func triggerOTAStateUpdate() {
 }
 
 func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) error {
-	logger.Info().Msg("Trying to update...")
+	scopedLogger := otaLogger.With().
+		Str("deviceId", deviceId).
+		Str("includePreRelease", fmt.Sprintf("%v", includePreRelease)).
+		Logger()
+
+	scopedLogger.Info().Msg("Trying to update...")
 	if otaState.Updating {
 		return fmt.Errorf("update already in progress")
 	}
@@ -303,6 +313,7 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 	updateStatus, err := GetUpdateStatus(ctx, deviceId, includePreRelease)
 	if err != nil {
 		otaState.Error = fmt.Sprintf("Error checking for updates: %v", err)
+		scopedLogger.Error().Err(err).Msg("Error checking for updates")
 		return fmt.Errorf("error checking for updates: %w", err)
 	}
 
@@ -320,11 +331,15 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 	rebootNeeded := false
 
 	if appUpdateAvailable {
-		logger.Info().Str("local", local.AppVersion).Str("remote", remote.AppVersion).Msg("App update available")
+		scopedLogger.Info().
+			Str("local", local.AppVersion).
+			Str("remote", remote.AppVersion).
+			Msg("App update available")
 
 		err := downloadFile(ctx, "/userdata/jetkvm/jetkvm_app.update", remote.AppUrl, &otaState.AppDownloadProgress)
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error downloading app update: %v", err)
+			scopedLogger.Error().Err(err).Msg("Error downloading app update")
 			triggerOTAStateUpdate()
 			return err
 		}
@@ -333,9 +348,15 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		otaState.AppDownloadProgress = 1
 		triggerOTAStateUpdate()
 
-		err = verifyFile("/userdata/jetkvm/jetkvm_app.update", remote.AppHash, &otaState.AppVerificationProgress)
+		err = verifyFile(
+			"/userdata/jetkvm/jetkvm_app.update",
+			remote.AppHash,
+			&otaState.AppVerificationProgress,
+			&scopedLogger,
+		)
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error verifying app update hash: %v", err)
+			scopedLogger.Error().Err(err).Msg("Error verifying app update hash")
 			triggerOTAStateUpdate()
 			return err
 		}
@@ -346,18 +367,22 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		otaState.AppUpdateProgress = 1
 		triggerOTAStateUpdate()
 
-		logger.Info().Msg("App update downloaded")
+		scopedLogger.Info().Msg("App update downloaded")
 		rebootNeeded = true
 	} else {
-		logger.Info().Msg("App is up to date")
+		scopedLogger.Info().Msg("App is up to date")
 	}
 
 	if systemUpdateAvailable {
-		logger.Info().Str("local", local.SystemVersion).Str("remote", remote.SystemVersion).Msg("System update available")
+		scopedLogger.Info().
+			Str("local", local.SystemVersion).
+			Str("remote", remote.SystemVersion).
+			Msg("System update available")
 
 		err := downloadFile(ctx, "/userdata/jetkvm/update_system.tar", remote.SystemUrl, &otaState.SystemDownloadProgress)
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error downloading system update: %v", err)
+			scopedLogger.Error().Err(err).Msg("Error downloading system update")
 			triggerOTAStateUpdate()
 			return err
 		}
@@ -366,18 +391,25 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		otaState.SystemDownloadProgress = 1
 		triggerOTAStateUpdate()
 
-		err = verifyFile("/userdata/jetkvm/update_system.tar", remote.SystemHash, &otaState.SystemVerificationProgress)
+		err = verifyFile(
+			"/userdata/jetkvm/update_system.tar",
+			remote.SystemHash,
+			&otaState.SystemVerificationProgress,
+			&scopedLogger,
+		)
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error verifying system update hash: %v", err)
+			scopedLogger.Error().Err(err).Msg("Error verifying system update hash")
 			triggerOTAStateUpdate()
 			return err
 		}
-		logger.Info().Msg("System update downloaded")
+		scopedLogger.Info().Msg("System update downloaded")
 		verifyFinished := time.Now()
 		otaState.SystemVerifiedAt = &verifyFinished
 		otaState.SystemVerificationProgress = 1
 		triggerOTAStateUpdate()
 
+		scopedLogger.Info().Msg("Starting rk_ota command")
 		cmd := exec.Command("rk_ota", "--misc=update", "--tar_path=/userdata/jetkvm/update_system.tar", "--save_dir=/userdata/jetkvm/ota_save", "--partition=all")
 		var b bytes.Buffer
 		cmd.Stdout = &b
@@ -385,6 +417,7 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		err = cmd.Start()
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error starting rk_ota command: %v", err)
+			scopedLogger.Error().Err(err).Msg("Error starting rk_ota command")
 			return fmt.Errorf("error starting rk_ota command: %w", err)
 		}
 		ctx, cancel := context.WithCancel(context.Background())
@@ -416,25 +449,30 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		output := b.String()
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error executing rk_ota command: %v\nOutput: %s", err, output)
+			scopedLogger.Error().
+				Err(err).
+				Str("output", output).
+				Int("exitCode", cmd.ProcessState.ExitCode()).
+				Msg("Error executing rk_ota command")
 			return fmt.Errorf("error executing rk_ota command: %w\nOutput: %s", err, output)
 		}
-
-		logger.Info().Str("output", output).Msg("rk_ota success")
+		scopedLogger.Info().Str("output", output).Msg("rk_ota success")
 		otaState.SystemUpdateProgress = 1
 		otaState.SystemUpdatedAt = &verifyFinished
 		triggerOTAStateUpdate()
 		rebootNeeded = true
 	} else {
-		logger.Info().Msg("System is up to date")
+		scopedLogger.Info().Msg("System is up to date")
 	}
 
 	if rebootNeeded {
-		logger.Info().Msg("System Rebooting in 10s")
+		scopedLogger.Info().Msg("System Rebooting in 10s")
 		time.Sleep(10 * time.Second)
 		cmd := exec.Command("reboot")
 		err := cmd.Start()
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Failed to start reboot: %v", err)
+			scopedLogger.Error().Err(err).Msg("Failed to start reboot")
 			return fmt.Errorf("failed to start reboot: %w", err)
 		} else {
 			os.Exit(0)
