@@ -2,7 +2,6 @@ package kvm
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,17 +17,17 @@ func Main() {
 	var cancel context.CancelFunc
 	appCtx, cancel = context.WithCancel(context.Background())
 	defer cancel()
-	logger.Info("Starting JetKvm")
+	logger.Info().Msg("Starting JetKvm")
 	go runWatchdog()
 	go confirmCurrentSystem()
 
 	http.DefaultClient.Timeout = 1 * time.Minute
 	LoadConfig()
-	logger.Debug("config loaded")
+	logger.Debug().Msg("config loaded")
 
 	err := rootcerts.UpdateDefaultTransport()
 	if err != nil {
-		logger.Errorf("failed to load CA certs: %v", err)
+		logger.Warn().Err(err).Msg("failed to load CA certs")
 	}
 
 	go TimeSyncLoop()
@@ -36,49 +35,63 @@ func Main() {
 	StartNativeCtrlSocketServer()
 	StartNativeVideoSocketServer()
 
+	initPrometheus()
+
 	go func() {
 		err = ExtractAndRunNativeBin()
 		if err != nil {
-			logger.Errorf("failed to extract and run native bin: %v", err)
+			logger.Warn().Err(err).Msg("failed to extract and run native bin")
 			//TODO: prepare an error message screen buffer to show on kvm screen
 		}
 	}()
 
+	initUsbGadget()
+
 	go func() {
 		time.Sleep(15 * time.Minute)
 		for {
-			logger.Debugf("UPDATING - Auto update enabled: %v", config.AutoUpdateEnabled)
-			if config.AutoUpdateEnabled == false {
+			logger.Debug().Bool("auto_update_enabled", config.AutoUpdateEnabled).Msg("UPDATING")
+			if !config.AutoUpdateEnabled {
 				return
 			}
 			if currentSession != nil {
-				logger.Debugf("skipping update since a session is active")
+				logger.Debug().Msg("skipping update since a session is active")
 				time.Sleep(1 * time.Minute)
 				continue
 			}
 			includePreRelease := config.IncludePreRelease
 			err = TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
 			if err != nil {
-				logger.Errorf("failed to auto update: %v", err)
+				logger.Warn().Err(err).Msg("failed to auto update")
 			}
 			time.Sleep(1 * time.Hour)
 		}
 	}()
 	//go RunFuseServer()
 	go RunWebServer()
+
+	go RunWebSecureServer()
+	// Web secure server is started only if TLS mode is enabled
+	if config.TLSMode != "" {
+		startWebSecureServer()
+	}
+
+	// As websocket client already checks if the cloud token is set, we can start it here.
 	go RunWebsocketClient()
+
+	initSerialPort()
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
-	log.Println("JetKVM Shutting Down")
+	logger.Info().Msg("JetKVM Shutting Down")
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")
 	//	if err != nil {
-	//		log.Printf("Failed to unmount mass storage image: %v", err)
+	//		logger.Infof("Failed to unmount mass storage image: %v", err)
 	//	}
 	//	err = fuseServer.Unmount()
 	//	if err != nil {
-	//		log.Printf("Failed to unmount fuse: %v", err)
+	//		logger.Infof("Failed to unmount fuse: %v", err)
 	//	}
 
 	// os.Exit(0)

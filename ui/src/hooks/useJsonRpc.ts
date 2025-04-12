@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from "react";
+
 import { useRTCStore } from "@/hooks/stores";
 
 export interface JsonRpcRequest {
@@ -8,17 +9,25 @@ export interface JsonRpcRequest {
   id: number | string;
 }
 
-type JsonRpcResponse =
-  | {
-      jsonrpc: string;
-      result: boolean | number | object | string | [];
-      id: string | number;
-    }
-  | {
-      jsonrpc: string;
-      error: { code: number; data?: string; message: string };
-      id: string | number;
-    };
+export interface JsonRpcError {
+  code: number;
+  data?: string;
+  message: string;
+}
+
+export interface JsonRpcSuccessResponse {
+  jsonrpc: string;
+  result: boolean | number | object | string | [];
+  id: string | number;
+}
+
+export interface JsonRpcErrorResponse {
+  jsonrpc: string;
+  error: JsonRpcError;
+  id: string | number;
+}
+
+export type JsonRpcResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse;
 
 const callbackStore = new Map<number | string, (resp: JsonRpcResponse) => void>();
 let requestCounter = 0;
@@ -48,7 +57,7 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
       // The "API" can also "request" data from the client
       // If the payload has a method, it's a request
       if ("method" in payload) {
-        onRequest && onRequest(payload);
+        if (onRequest) onRequest(payload);
         return;
       }
 

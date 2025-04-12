@@ -1,5 +1,14 @@
 import { LoaderFunctionArgs, redirect } from "react-router-dom";
+
+import { DEVICE_API } from "@/ui.config";
+
 import api from "../api";
+
+export interface CloudState {
+  connected: boolean;
+  url: string;
+  appUrl: string;
+}
 
 const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -10,18 +19,21 @@ const loader = async ({ request }: LoaderFunctionArgs) => {
   const oidcGoogle = searchParams.get("oidcGoogle");
   const clientId = searchParams.get("clientId");
 
-  const res = await api.POST(
-    `${import.meta.env.VITE_SIGNAL_API}/cloud/register`,
-    {
+  const [cloudStateResponse, registerResponse] = await Promise.all([
+    api.GET(`${DEVICE_API}/cloud/state`),
+    api.POST(`${DEVICE_API}/cloud/register`, {
       token: tempToken,
-      cloudApi: import.meta.env.VITE_CLOUD_API,
       oidcGoogle,
       clientId,
-    },
-  );
+    }),
+  ]);
 
-  if (!res.ok) throw new Error("Failed to register device");
-  return redirect(import.meta.env.VITE_CLOUD_APP + `/devices/${deviceId}/setup`);
+  if (!cloudStateResponse.ok) throw new Error("Failed to get cloud state");
+  const cloudState = (await cloudStateResponse.json()) as CloudState;
+
+  if (!registerResponse.ok) throw new Error("Failed to register device");
+
+  return redirect(cloudState.appUrl + `/devices/${deviceId}/setup`);
 };
 
 export default function AdoptRoute() {

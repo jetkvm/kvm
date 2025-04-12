@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { cx } from "cva";
+import { redirect } from "react-router-dom";
+
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
 import { LinkButton } from "@components/Button";
@@ -6,9 +9,11 @@ import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
 import DeviceImage from "@/assets/jetkvm-device-still.png";
 import LogoMark from "@/assets/logo-mark.png";
-import { cx } from "cva";
+import { DEVICE_API } from "@/ui.config";
+
 import api from "../api";
-import { redirect } from "react-router-dom";
+
+
 
 export interface DeviceStatus {
   isSetup: boolean;
@@ -16,7 +21,7 @@ export interface DeviceStatus {
 
 const loader = async () => {
   const res = await api
-    .GET(`${import.meta.env.VITE_SIGNAL_API}/device/status`)
+    .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);
 
   if (res.isSetup) return redirect("/login-local");

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"kvm"
+	"github.com/jetkvm/kvm"
 )
 
 func main() {

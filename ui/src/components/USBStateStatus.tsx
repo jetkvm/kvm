@@ -1,23 +1,23 @@
+import React from "react";
+
 import { cx } from "@/cva.config";
 import KeyboardAndMouseConnectedIcon from "@/assets/keyboard-and-mouse-connected.png";
-import React from "react";
 import LoadingSpinner from "@components/LoadingSpinner";
 import StatusCard from "@components/StatusCards";
 import { HidState } from "@/hooks/stores";
 
 type USBStates = HidState["usbState"];
 
-type StatusProps = {
-  [key in USBStates]: {
+type StatusProps = Record<
+  USBStates,
+  {
     icon: React.FC<{ className: string | undefined }>;
     iconClassName: string;
     statusIndicatorClassName: string;
-  };
-};
+  }
+>;
 
-const USBStateMap: {
-  [key in USBStates]: string;
-} = {
+const USBStateMap: Record<USBStates, string> = {
   configured: "Connected",
   attached: "Connecting",
   addressed: "Connecting",
@@ -30,9 +30,8 @@ export default function USBStateStatus({
   peerConnectionState,
 }: {
   state: USBStates;
-  peerConnectionState?: RTCPeerConnectionState;
+  peerConnectionState?: RTCPeerConnectionState | null;
 }) {
-
   const StatusCardProps: StatusProps = {
     configured: {
       icon: ({ className }) => (
@@ -68,7 +67,7 @@ export default function USBStateStatus({
   };
   const props = StatusCardProps[state];
   if (!props) {
-    console.log("Unsupport USB state: ", state);
+    console.log("Unsupported USB state: ", state);
     return;
   }
 

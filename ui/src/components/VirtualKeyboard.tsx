@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Keyboard from "react-simple-keyboard";
-import { Button } from "@components/Button";
-import Card from "@components/Card";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
+import { motion, AnimatePresence } from "framer-motion";
+
+import Card from "@components/Card";
+// eslint-disable-next-line import/order
+import { Button } from "@components/Button";
+
 import "react-simple-keyboard/build/css/index.css";
+
 import { useHidStore, useUiStore, useKeyboardMappingsStore } from "@/hooks/stores";
-import { Transition } from "@headlessui/react";
 import { cx } from "@/cva.config";
+import { keyDisplayMap } from "@/keyboardMappings/KeyboardLayouts";
 import useKeyboard from "@/hooks/useKeyboard";
 import DetachIconRaw from "@/assets/detach-icon.svg";
 import AttachIconRaw from "@/assets/attach-icon.svg";
@@ -20,40 +25,40 @@ const AttachIcon = ({ className }: { className?: string }) => {
 };
 
 function KeyboardWrapper() {
-  const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
-  const [chars, setChars] = useState(useKeyboardMappingsStore.chars);
-  const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
-
-  useEffect(() => {
-    const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
-      setKeys(useKeyboardMappingsStore.keys);
-      setChars(useKeyboardMappingsStore.chars);
-      setModifiers(useKeyboardMappingsStore.modifiers);
-      setMappingsEnabled(useKeyboardMappingsStore.getMappingState());
-    });
-    return unsubscribeKeyboardStore; // Cleanup on unmount
-  }, []); 
-
-  const [layoutName, setLayoutName] = useState("default");
-  const [mappingsEnabled, setMappingsEnabled] = useState(useKeyboardMappingsStore.getMappingState());
-
-  useEffect(() => {
-    if (mappingsEnabled) {
-      if (layoutName == "default" ) {
-        setLayoutName("mappedLower")
+    const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+    const [chars, setChars] = useState(useKeyboardMappingsStore.chars);
+    const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
+  
+    useEffect(() => {
+      const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
+        setKeys(useKeyboardMappingsStore.keys);
+        setChars(useKeyboardMappingsStore.chars);
+        setModifiers(useKeyboardMappingsStore.modifiers);
+        setMappingsEnabled(useKeyboardMappingsStore.getMappingState());
+      });
+      return unsubscribeKeyboardStore; // Cleanup on unmount
+    }, []); 
+  
+    const [layoutName, setLayoutName] = useState("default");
+    const [mappingsEnabled, setMappingsEnabled] = useState(useKeyboardMappingsStore.getMappingState());
+  
+    useEffect(() => {
+      if (mappingsEnabled) {
+        if (layoutName == "default" ) {
+          setLayoutName("mappedLower")
+        }
+        if (layoutName == "shift") {
+          setLayoutName("mappedUpper")
+        }
+      } else {
+        if (layoutName == "mappedLower") {
+          setLayoutName("default")
+        }
+        if (layoutName == "mappedUpper") {
+          setLayoutName("shift")
+        }
       }
-      if (layoutName == "shift") {
-        setLayoutName("mappedUpper")
-      }
-    } else {
-      if (layoutName == "mappedLower") {
-        setLayoutName("default")
-      }
-      if (layoutName == "mappedUpper") {
-        setLayoutName("shift")
-      }
-    }
-  }, [mappingsEnabled, layoutName]);
+    }, [mappingsEnabled, layoutName]);
 
   const keyboardRef = useRef<HTMLDivElement>(null);
   const showAttachedVirtualKeyboard = useUiStore(
@@ -246,404 +251,167 @@ function KeyboardWrapper() {
         marginBottom: virtualKeyboard ? "0px" : `-${350}px`,
       }}
     >
-      <Transition
-        show={virtualKeyboard}
-        unmount={false}
-        enter="transition-all transform-gpu duration-500 ease-in-out"
-        enterFrom="opacity-0 translate-y-[100%]"
-        enterTo="opacity-100 translate-y-[0%]"
-        leave="transition-all duration-500 ease-in-out"
-        leaveFrom="opacity-100 translate-y-[0%]"
-        leaveTo="opacity-0 translate-y-[100%]"
-      >
-        <div>
-          <div
-            className={cx(
-              !showAttachedVirtualKeyboard
-                ? "fixed left-0 top-0 z-50 select-none"
-                : "relative",
-            )}
-            ref={keyboardRef}
-            style={{
-              ...(!showAttachedVirtualKeyboard
-                ? { transform: `translate(${newPosition.x}px, ${newPosition.y}px)` }
-                : {}),
+      <AnimatePresence>
+        {virtualKeyboard && (
+          <motion.div
+            initial={{ opacity: 0, y: "100%" }}
+            animate={{ opacity: 1, y: "0%" }}
+            exit={{ opacity: 0, y: "100%" }}
+            transition={{
+              duration: 0.5,
+              ease: "easeInOut",
             }}
           >
-            <Card
-              className={cx("overflow-hidden", {
-                "rounded-none": showAttachedVirtualKeyboard,
-              })}
+            <div
+              className={cx(
+                !showAttachedVirtualKeyboard
+                  ? "fixed left-0 top-0 z-50 select-none"
+                  : "relative",
+              )}
+              ref={keyboardRef}
+              style={{
+                ...(!showAttachedVirtualKeyboard
+                  ? { transform: `translate(${newPosition.x}px, ${newPosition.y}px)` }
+                  : {}),
+              }}
             >
-              <div className="flex items-center justify-center px-2 py-1 bg-white border-b dark:bg-slate-800 border-b-slate-800/30 dark:border-b-slate-300/20">
-                <div className="absolute flex items-center left-2 gap-x-2">
-                  {showAttachedVirtualKeyboard ? (
+              <Card
+                className={cx("overflow-hidden", {
+                  "rounded-none": showAttachedVirtualKeyboard,
+                })}
+              >
+                <div className="flex items-center justify-center border-b border-b-slate-800/30 bg-white px-2 py-1 dark:border-b-slate-300/20 dark:bg-slate-800">
+                  <div className="absolute left-2 flex items-center gap-x-2">
+                    {showAttachedVirtualKeyboard ? (
+                      <Button
+                        size="XS"
+                        theme="light"
+                        text="Detach"
+                        onClick={() => setShowAttachedVirtualKeyboard(false)}
+                      />
+                    ) : (
+                      <Button
+                        size="XS"
+                        theme="light"
+                        text="Attach"
+                        LeadingIcon={AttachIcon}
+                        onClick={() => setShowAttachedVirtualKeyboard(true)}
+                      />
+                    )}
+                  </div>
+                  <h2 className="select-none self-center font-sans text-[12px] text-slate-700 dark:text-slate-300">
+                    Virtual Keyboard
+                  </h2>
+                  <div className="absolute right-2">
                     <Button
                       size="XS"
                       theme="light"
-                      text="Detach"
-                      onClick={() => setShowAttachedVirtualKeyboard(false)}
-                    />
-                  ) : (
-                    <Button
-                      size="XS"
-                      theme="light"
-                      text="Attach"
-                      LeadingIcon={AttachIcon}
-                      onClick={() => setShowAttachedVirtualKeyboard(true)}
-                    />
-                  )}
-                </div>
-                <h2 className="select-none self-center font-sans text-[12px] text-slate-700 dark:text-slate-300">
-                  Virtual Keyboard
-                </h2>
-                <div className="absolute right-2">
-                  <Button
-                    size="XS"
-                    theme="light"
-                    text="Hide"
-                    LeadingIcon={ChevronDownIcon}
-                    onClick={() => setVirtualKeyboard(false)}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex flex-col dark:bg-slate-700 bg-blue-50/80 md:flex-row">
-                  <Keyboard
-                    baseClass="simple-keyboard-main"
-                    layoutName={layoutName}
-                    onKeyPress={onKeyDown}
-                    buttonTheme={[
-                      {
-                        class: "combination-key",
-                        buttons: "CtrlAltDelete AltMetaEscape",
-                      },
-                    ]}
-                    display={{
-                      CtrlAltDelete: "Ctrl + Alt + Delete",
-                      AltMetaEscape: "Alt + Meta + Escape",
-                      Escape: "esc",
-                      Tab: "tab",
-                      Backspace: "backspace",
-                      "(Backspace)": "backspace",
-                      Enter: "enter",
-                      CapsLock: "caps lock",
-                      ShiftLeft: "shift",
-                      ShiftRight: "shift",
-                      ControlLeft: "ctrl",
-                      AltLeft: "alt",
-                      AltRight: "alt",
-                      MetaLeft: "meta",
-                      MetaRight: "meta",
-                      KeyQ: "q",
-                      KeyW: "w",
-                      KeyE: "e",
-                      KeyR: "r",
-                      KeyT: "t",
-                      KeyY: "y",
-                      KeyU: "u",
-                      KeyI: "i",
-                      KeyO: "o",
-                      KeyP: "p",
-                      KeyA: "a",
-                      KeyS: "s",
-                      KeyD: "d",
-                      KeyF: "f",
-                      KeyG: "g",
-                      KeyH: "h",
-                      KeyJ: "j",
-                      KeyK: "k",
-                      KeyL: "l",
-                      KeyZ: "z",
-                      KeyX: "x",
-                      KeyC: "c",
-                      KeyV: "v",
-                      KeyB: "b",
-                      KeyN: "n",
-                      KeyM: "m",
-
-                      "(KeyQ)": "Q",
-                      "(KeyW)": "W",
-                      "(KeyE)": "E",
-                      "(KeyR)": "R",
-                      "(KeyT)": "T",
-                      "(KeyY)": "Y",
-                      "(KeyU)": "U",
-                      "(KeyI)": "I",
-                      "(KeyO)": "O",
-                      "(KeyP)": "P",
-                      "(KeyA)": "A",
-                      "(KeyS)": "S",
-                      "(KeyD)": "D",
-                      "(KeyF)": "F",
-                      "(KeyG)": "G",
-                      "(KeyH)": "H",
-                      "(KeyJ)": "J",
-                      "(KeyK)": "K",
-                      "(KeyL)": "L",
-                      "(KeyZ)": "Z",
-                      "(KeyX)": "X",
-                      "(KeyC)": "C",
-                      "(KeyV)": "V",
-                      "(KeyB)": "B",
-                      "(KeyN)": "N",
-                      "(KeyM)": "M",
-                      Digit1: "1",
-                      Digit2: "2",
-                      Digit3: "3",
-                      Digit4: "4",
-                      Digit5: "5",
-                      Digit6: "6",
-                      Digit7: "7",
-                      Digit8: "8",
-                      Digit9: "9",
-                      Digit0: "0",
-
-                      "(Digit1)": "!",
-                      "(Digit2)": "@",
-                      "(Digit3)": "#",
-                      "(Digit4)": "$",
-                      "(Digit5)": "%",
-                      "(Digit6)": "^",
-                      "(Digit7)": "&",
-                      "(Digit8)": "*",
-                      "(Digit9)": "(",
-                      "(Digit0)": ")",
-                      Minus: "-",
-                      "(Minus)": "_",
-
-                      Equal: "=",
-                      "(Equal)": "+",
-                      BracketLeft: "[",
-                      BracketRight: "]",
-                      "(BracketLeft)": "{",
-                      "(BracketRight)": "}",
-                      Backslash: "\\",
-                      "(Backslash)": "|",
-
-                      Semicolon: ";",
-                      "(Semicolon)": ":",
-                      Quote: "'",
-                      "(Quote)": '"',
-                      Comma: ",",
-                      "(Comma)": "<",
-                      Period: ".",
-                      "(Period)": ">",
-                      Slash: "/",
-                      "(Slash)": "?",
-                      Space: " ",
-                      Backquote: "`",
-                      "(Backquote)": "~",
-                      IntlBackslash: "\\",
-
-                      F1: "F1",
-                      F2: "F2",
-                      F3: "F3",
-                      F4: "F4",
-                      F5: "F5",
-                      F6: "F6",
-                      F7: "F7",
-                      F8: "F8",
-                      F9: "F9",
-                      F10: "F10",
-                      F11: "F11",
-                      F12: "F12",
-
-                      "q": "q",
-                      "w": "w",
-                      "e": "e",
-                      "r": "r",
-                      "t": "t",
-                      "y": "y",
-                      "u": "u",
-                      "i": "i",
-                      "o": "o",
-                      "p": "p",
-                      "a": "a",
-                      "s": "s",
-                      "d": "d",
-                      "f": "f",
-                      "g": "g",
-                      "h": "h",
-                      "j": "j",
-                      "k": "k",
-                      "l": "l",
-                      "z": "z",
-                      "x": "x",
-                      "c": "c",
-                      "v": "v",
-                      "b": "b",
-                      "n": "n",
-                      "m": "m",
-                      
-                      "Q": "Q",
-                      "W": "W",
-                      "E": "E",
-                      "R": "R",
-                      "T": "T",
-                      "Y": "Y",
-                      "U": "U",
-                      "I": "I",
-                      "O": "O",
-                      "P": "P",
-                      "A": "A",
-                      "S": "S",
-                      "D": "D",
-                      "F": "F",
-                      "G": "G",
-                      "H": "H",
-                      "J": "J",
-                      "K": "K",
-                      "L": "L",
-                      "Z": "Z",
-                      "X": "X",
-                      "C": "C",
-                      "V": "V",
-                      "B": "B",
-                      "N": "N",
-                      "M": "M",
-                      
-                      "1": "1",
-                      "2": "2",
-                      "3": "3",
-                      "4": "4",
-                      "5": "5",
-                      "6": "6",
-                      "7": "7",
-                      "8": "8",
-                      "9": "9",
-                      "0": "0",
-                      
-                      "!": "!",
-                      "@": "@",
-                      "#": "#",
-                      "$": "$",
-                      "%": "%",
-                      "^": "^",
-                      "&": "&",
-                      "*": "*",
-                      "(": "(",
-                      ")": ")",
-                      
-                      "-": "-",
-                      "_": "_",
-                      
-                      "=": "=",
-                      "+": "+",
-                      
-                      "[": "[",
-                      "]": "]",
-                      "{": "{",
-                      "}": "}",
-                      
-                      "|": "|",
-                      
-                      ";": ";",
-                      ":": ":",
-                      
-                      "'": "'",
-                      "\"": "\"",
-                      
-                      ",": ",",
-                      "<": "<",
-                      
-                      ".": ".",
-                      ">": ">",
-                      
-                      "/": "/",
-                      "?": "?",
-                      
-                      "`": "`",
-                      "~": "~",
-                      
-                      "\\": "\\"
-                    }}
-                    layout={{
-                      default: [
-                        "CtrlAltDelete AltMetaEscape",
-                        "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
-                        "Backquote Digit1 Digit2 Digit3 Digit4 Digit5 Digit6 Digit7 Digit8 Digit9 Digit0 Minus Equal Backspace",
-                        "Tab KeyQ KeyW KeyE KeyR KeyT KeyY KeyU KeyI KeyO KeyP BracketLeft BracketRight Backslash",
-                        "CapsLock KeyA KeyS KeyD KeyF KeyG KeyH KeyJ KeyK KeyL Semicolon Quote Enter",
-                        "ShiftLeft KeyZ KeyX KeyC KeyV KeyB KeyN KeyM Comma Period Slash ShiftRight",
-                        "ControlLeft AltLeft MetaLeft Space MetaRight AltRight",
-                      ],
-                      shift: [
-                        "CtrlAltDelete AltMetaEscape",
-                        "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
-                        "(Backquote) (Digit1) (Digit2) (Digit3) (Digit4) (Digit5) (Digit6) (Digit7) (Digit8) (Digit9) (Digit0) (Minus) (Equal) (Backspace)",
-                        "Tab (KeyQ) (KeyW) (KeyE) (KeyR) (KeyT) (KeyY) (KeyU) (KeyI) (KeyO) (KeyP) (BracketLeft) (BracketRight) (Backslash)",
-                        "CapsLock (KeyA) (KeyS) (KeyD) (KeyF) (KeyG) (KeyH) (KeyJ) (KeyK) (KeyL) (Semicolon) (Quote) Enter",
-                        "ShiftLeft (KeyZ) (KeyX) (KeyC) (KeyV) (KeyB) (KeyN) (KeyM) (Comma) (Period) (Slash) ShiftRight",
-                        "ControlLeft AltLeft MetaLeft Space MetaRight AltRight",
-                      ],
-                      mappedLower: [
-                        "CtrlAltDelete AltMetaEscape",
-                        "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
-                        "` 1 2 3 4 5 6 7 8 9 0 - = Backspace",
-                        "Tab q w e r t y u i o p [ ] \\",
-                        "CapsLock a s d f g h j k l ; ' Enter",
-                        "ShiftLeft z x c v b n m , . / ShiftRight",
-                        "ControlLeft AltLeft MetaLeft Space MetaRight AltRight"
-                      ],
-
-                      mappedUpper: [
-                        "CtrlAltDelete AltMetaEscape",
-                        "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
-                        "~ ! @ # $ % ^ & * ( ) _ + Backspace",
-                        "Tab Q W E R T Y U I O P { } |",
-                        "CapsLock A S D F G H J K L : \" Enter",
-                        "ShiftLeft Z X C V B N M < > ? ShiftRight",
-                        "ControlLeft AltLeft MetaLeft Space MetaRight AltRight"
-                      ],
-                    }}
-                    disableButtonHold={true}
-                    mergeDisplay={true}
-                    debug={false}
-                  />
-
-                  <div className="controlArrows">
-                    <Keyboard
-                      baseClass="simple-keyboard-control"
-                      theme="simple-keyboard hg-theme-default hg-layout-default"
-                      layout={{
-                        default: ["Home Pageup", "Delete End Pagedown"],
-                      }}
-                      display={{
-                        Home: "home",
-                        Pageup: "pageup",
-                        Delete: "delete",
-                        End: "end",
-                        Pagedown: "pagedown",
-                      }}
-                      syncInstanceInputs={true}
-                      onKeyPress={onKeyDown}
-                      mergeDisplay={true}
-                      debug={false}
-                    />
-                    <Keyboard
-                      baseClass="simple-keyboard-arrows"
-                      theme="simple-keyboard hg-theme-default hg-layout-default"
-                      display={{
-                        ArrowLeft: "←",
-                        ArrowRight: "→",
-                        ArrowUp: "↑",
-                        ArrowDown: "↓",
-                      }}
-                      layout={{
-                        default: ["ArrowUp", "ArrowLeft ArrowDown ArrowRight"],
-                      }}
-                      onKeyPress={onKeyDown}
-                      debug={false}
+                      text="Hide"
+                      LeadingIcon={ChevronDownIcon}
+                      onClick={() => setVirtualKeyboard(false)}
                     />
                   </div>
                 </div>
-              </div>
-            </Card>
-          </div>
-        </div>
-      </Transition>
+
+                <div>
+                  <div className="flex flex-col bg-blue-50/80 md:flex-row dark:bg-slate-700">
+                    <Keyboard
+                      baseClass="simple-keyboard-main"
+                      layoutName={layoutName}
+                      onKeyPress={onKeyDown}
+                      buttonTheme={[
+                        {
+                          class: "combination-key",
+                          buttons: "CtrlAltDelete AltMetaEscape",
+                        },
+                      ]}
+                      display={keyDisplayMap}
+                      layout={{
+                        default: [
+                          "CtrlAltDelete AltMetaEscape",
+                          "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
+                          "Backquote Digit1 Digit2 Digit3 Digit4 Digit5 Digit6 Digit7 Digit8 Digit9 Digit0 Minus Equal Backspace",
+                          "Tab KeyQ KeyW KeyE KeyR KeyT KeyY KeyU KeyI KeyO KeyP BracketLeft BracketRight Backslash",
+                          "CapsLock KeyA KeyS KeyD KeyF KeyG KeyH KeyJ KeyK KeyL Semicolon Quote Enter",
+                          "ShiftLeft KeyZ KeyX KeyC KeyV KeyB KeyN KeyM Comma Period Slash ShiftRight",
+                          "ControlLeft AltLeft MetaLeft Space MetaRight AltRight",
+                        ],
+                        shift: [
+                          "CtrlAltDelete AltMetaEscape",
+                          "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
+                          "(Backquote) (Digit1) (Digit2) (Digit3) (Digit4) (Digit5) (Digit6) (Digit7) (Digit8) (Digit9) (Digit0) (Minus) (Equal) (Backspace)",
+                          "Tab (KeyQ) (KeyW) (KeyE) (KeyR) (KeyT) (KeyY) (KeyU) (KeyI) (KeyO) (KeyP) (BracketLeft) (BracketRight) (Backslash)",
+                          "CapsLock (KeyA) (KeyS) (KeyD) (KeyF) (KeyG) (KeyH) (KeyJ) (KeyK) (KeyL) (Semicolon) (Quote) Enter",
+                          "ShiftLeft (KeyZ) (KeyX) (KeyC) (KeyV) (KeyB) (KeyN) (KeyM) (Comma) (Period) (Slash) ShiftRight",
+                          "ControlLeft AltLeft MetaLeft Space MetaRight AltRight",
+                        ],
+                        mappedLower: [
+                          "CtrlAltDelete AltMetaEscape",
+                          "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
+                          "` 1 2 3 4 5 6 7 8 9 0 - = Backspace",
+                          "Tab q w e r t y u i o p [ ] \\",
+                          "CapsLock a s d f g h j k l ; ' Enter",
+                          "ShiftLeft z x c v b n m , . / ShiftRight",
+                          "ControlLeft AltLeft MetaLeft Space MetaRight AltRight"
+                        ],
+  
+                        mappedUpper: [
+                          "CtrlAltDelete AltMetaEscape",
+                          "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
+                          "~ ! @ # $ % ^ & * ( ) _ + Backspace",
+                          "Tab Q W E R T Y U I O P { } |",
+                          "CapsLock A S D F G H J K L : \" Enter",
+                          "ShiftLeft Z X C V B N M < > ? ShiftRight",
+                          "ControlLeft AltLeft MetaLeft Space MetaRight AltRight"
+                        ],
+                      }}
+                      disableButtonHold={true}
+                      mergeDisplay={true}
+                      debug={false}
+                    />
+
+                    <div className="controlArrows">
+                      <Keyboard
+                        baseClass="simple-keyboard-control"
+                        theme="simple-keyboard hg-theme-default hg-layout-default"
+                        layout={{
+                          default: ["Home Pageup", "Delete End Pagedown"],
+                        }}
+                        display={{
+                          Home: "home",
+                          Pageup: "pageup",
+                          Delete: "delete",
+                          End: "end",
+                          Pagedown: "pagedown",
+                        }}
+                        syncInstanceInputs={true}
+                        onKeyPress={onKeyDown}
+                        mergeDisplay={true}
+                        debug={false}
+                      />
+                      <Keyboard
+                        baseClass="simple-keyboard-arrows"
+                        theme="simple-keyboard hg-theme-default hg-layout-default"
+                        display={{
+                          ArrowLeft: "←",
+                          ArrowRight: "→",
+                          ArrowUp: "↑",
+                          ArrowDown: "↓",
+                        }}
+                        layout={{
+                          default: ["ArrowUp", "ArrowLeft ArrowDown ArrowRight"],
+                        }}
+                        onKeyPress={onKeyDown}
+                        debug={false}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

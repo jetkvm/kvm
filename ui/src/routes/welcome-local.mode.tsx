@@ -1,18 +1,23 @@
+import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
+import { useState } from "react";
+
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
-import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
 import { Button } from "@components/Button";
-import { useState } from "react";
-import { GridCard } from "../components/Card";
 import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
+import { DEVICE_API } from "@/ui.config";
+
+import { GridCard } from "../components/Card";
 import { cx } from "../cva.config";
 import api from "../api";
+
 import { DeviceStatus } from "./welcome-local";
+
 
 const loader = async () => {
   const res = await api
-    .GET(`${import.meta.env.VITE_SIGNAL_API}/device/status`)
+    .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);
 
   if (res.isSetup) return redirect("/login-local");
@@ -30,7 +35,7 @@ const action = async ({ request }: ActionFunctionArgs) => {
 
   if (localAuthMode === "noPassword") {
     try {
-      await api.POST(`${import.meta.env.VITE_SIGNAL_API}/device/setup`, {
+      await api.POST(`${DEVICE_API}/device/setup`, {
         localAuthMode,
       });
       return redirect("/");

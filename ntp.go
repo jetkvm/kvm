@@ -3,28 +3,96 @@ package kvm
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"github.com/beevik/ntp"
 )
 
-var timeSynced = false
+const (
+	timeSyncRetryStep     = 5 * time.Second
+	timeSyncRetryMaxInt   = 1 * time.Minute
+	timeSyncWaitNetChkInt = 100 * time.Millisecond
+	timeSyncWaitNetUpInt  = 3 * time.Second
+	timeSyncInterval      = 1 * time.Hour
+	timeSyncTimeout       = 2 * time.Second
+)
+
+var (
+	builtTimestamp        string
+	timeSyncRetryInterval = 0 * time.Second
+	timeSyncSuccess       = false
+	defaultNTPServers     = []string{
+		"time.cloudflare.com",
+		"time.apple.com",
+	}
+)
+
+func isTimeSyncNeeded() bool {
+	if builtTimestamp == "" {
+		ntpLogger.Warn().Msg("Built timestamp is not set, time sync is needed")
+		return true
+	}
+
+	ts, err := strconv.Atoi(builtTimestamp)
+	if err != nil {
+		ntpLogger.Warn().Str("error", err.Error()).Msg("Failed to parse built timestamp")
+		return true
+	}
+
+	// builtTimestamp is UNIX timestamp in seconds
+	builtTime := time.Unix(int64(ts), 0)
+	now := time.Now()
+
+	ntpLogger.Debug().Str("built_time", builtTime.Format(time.RFC3339)).Str("now", now.Format(time.RFC3339)).Msg("Built time and now")
+
+	if now.Sub(builtTime) < 0 {
+		ntpLogger.Warn().Msg("System time is behind the built time, time sync is needed")
+		return true
+	}
+
+	return false
+}
 
 func TimeSyncLoop() {
 	for {
-		fmt.Println("Syncing system time")
+		if !networkState.checked {
+			time.Sleep(timeSyncWaitNetChkInt)
+			continue
+		}
+
+		if !networkState.Up {
+			ntpLogger.Info().Msg("Waiting for network to come up")
+			time.Sleep(timeSyncWaitNetUpInt)
+			continue
+		}
+
+		// check if time sync is needed, but do nothing for now
+		isTimeSyncNeeded()
+
+		ntpLogger.Info().Msg("Syncing system time")
 		start := time.Now()
 		err := SyncSystemTime()
 		if err != nil {
-			log.Printf("Failed to sync system time: %v", err)
+			ntpLogger.Error().Str("error", err.Error()).Msg("Failed to sync system time")
+
+			// retry after a delay
+			timeSyncRetryInterval += timeSyncRetryStep
+			time.Sleep(timeSyncRetryInterval)
+			// reset the retry interval if it exceeds the max interval
+			if timeSyncRetryInterval > timeSyncRetryMaxInt {
+				timeSyncRetryInterval = 0
+			}
+
 			continue
 		}
-		log.Printf("Time sync successful, now is: %v, time taken: %v", time.Now(), time.Since(start))
-		timeSynced = true
-		time.Sleep(1 * time.Hour) //once the first sync is done, sync every hour
+		timeSyncSuccess = true
+		ntpLogger.Info().Str("now", time.Now().Format(time.RFC3339)).
+			Str("time_taken", time.Since(start).String()).
+			Msg("Time sync successful")
+		time.Sleep(timeSyncInterval) // after the first sync is done
 	}
 }
 
@@ -41,13 +109,22 @@ func SyncSystemTime() (err error) {
 }
 
 func queryNetworkTime() (*time.Time, error) {
-	ntpServers := []string{
-		"time.cloudflare.com",
-		"time.apple.com",
+	ntpServers, err := getNTPServersFromDHCPInfo()
+	if err != nil {
+		ntpLogger.Error().Str("error", err.Error()).Msg("failed to get NTP servers from DHCP info")
 	}
+
+	if ntpServers == nil {
+		ntpServers = defaultNTPServers
+		ntpLogger.Info().Str("ntp_servers", fmt.Sprintf("%v", ntpServers)).Msg("Using default NTP servers")
+	} else {
+		ntpLogger.Info().Str("ntp_servers", fmt.Sprintf("%v", ntpServers)).Msg("Using NTP servers from DHCP")
+	}
+
 	for _, server := range ntpServers {
-		now, err := queryNtpServer(server, 2*time.Second)
+		now, err := queryNtpServer(server, timeSyncTimeout)
 		if err == nil {
+			ntpLogger.Info().Str("ntp_server", server).Str("time", now.Format(time.RFC3339)).Msg("NTP server returned time")
 			return now, nil
 		}
 	}
@@ -56,11 +133,13 @@ func queryNetworkTime() (*time.Time, error) {
 		"http://cloudflare.com",
 	}
 	for _, url := range httpUrls {
-		now, err := queryHttpTime(url, 2*time.Second)
+		now, err := queryHttpTime(url, timeSyncTimeout)
 		if err == nil {
+			ntpLogger.Info().Str("http_url", url).Str("time", now.Format(time.RFC3339)).Msg("HTTP server returned time")
 			return now, nil
 		}
 	}
+	ntpLogger.Error().Msg("failed to query network time")
 	return nil, errors.New("failed to query network time")
 }
 

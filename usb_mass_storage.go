@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"kvm/resource"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -17,54 +15,58 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/psanford/httpreadat"
-
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
+	"github.com/psanford/httpreadat"
+
+	"github.com/jetkvm/kvm/resource"
 )
-
-const massStorageName = "mass_storage.usb0"
-
-var massStorageFunctionPath = path.Join(gadgetPath, "jetkvm", "functions", massStorageName)
 
 func writeFile(path string, data string) error {
 	return os.WriteFile(path, []byte(data), 0644)
 }
 
 func setMassStorageImage(imagePath string) error {
-	err := writeFile(path.Join(massStorageFunctionPath, "lun.0", "file"), imagePath)
+	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
 	if err != nil {
+		return fmt.Errorf("failed to get mass storage path: %w", err)
+	}
+
+	if err := writeFile(path.Join(massStorageFunctionPath, "file"), imagePath); err != nil {
 		return fmt.Errorf("failed to set image path: %w", err)
 	}
 	return nil
 }
 
 func setMassStorageMode(cdrom bool) error {
+	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
+	if err != nil {
+		return fmt.Errorf("failed to get mass storage path: %w", err)
+	}
+
 	mode := "0"
 	if cdrom {
 		mode = "1"
 	}
-	err := writeFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"), mode)
-	if err != nil {
+	if err := writeFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"), mode); err != nil {
 		return fmt.Errorf("failed to set cdrom mode: %w", err)
 	}
 	return nil
 }
 
 func onDiskMessage(msg webrtc.DataChannelMessage) {
-	fmt.Println("Disk Message, len:", len(msg.Data))
+	logger.Info().Int("len", len(msg.Data)).Msg("Disk Message")
 	diskReadChan <- msg.Data
 }
 
 func mountImage(imagePath string) error {
 	err := setMassStorageImage("")
 	if err != nil {
-		return fmt.Errorf("Remove Mass Storage Image Error", err)
+		return fmt.Errorf("Remove Mass Storage Image Error: %w", err)
 	}
 	err = setMassStorageImage(imagePath)
 	if err != nil {
-		return fmt.Errorf("Set Mass Storage Image Error", err)
+		return fmt.Errorf("Set Mass Storage Image Error: %w", err)
 	}
 	return nil
 }
@@ -74,7 +76,7 @@ var nbdDevice *NBDDevice
 const imagesFolder = "/userdata/jetkvm/images"
 
 func rpcMountBuiltInImage(filename string) error {
-	log.Println("Mount Built-In Image", filename)
+	logger.Info().Str("filename", filename).Msg("Mount Built-In Image")
 	_ = os.MkdirAll(imagesFolder, 0755)
 	imagePath := filepath.Join(imagesFolder, filename)
 
@@ -108,6 +110,11 @@ func rpcMountBuiltInImage(filename string) error {
 }
 
 func getMassStorageMode() (bool, error) {
+	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
+	if err != nil {
+		return false, fmt.Errorf("failed to get mass storage path: %w", err)
+	}
+
 	data, err := os.ReadFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"))
 	if err != nil {
 		return false, fmt.Errorf("failed to read cdrom mode: %w", err)
@@ -166,7 +173,7 @@ func rpcUnmountImage() error {
 	defer virtualMediaStateMutex.Unlock()
 	err := setMassStorageImage("\n")
 	if err != nil {
-		fmt.Println("Remove Mass Storage Image Error", err)
+		logger.Warn().Err(err).Msg("Remove Mass Storage Image Error")
 	}
 	//TODO: check if we still need it
 	time.Sleep(500 * time.Millisecond)
@@ -192,7 +199,7 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 		virtualMediaStateMutex.Unlock()
 		return fmt.Errorf("failed to use http url: %w", err)
 	}
-	logger.Infof("using remote url %s with size %d", url, n)
+	logger.Info().Str("url", url).Int64("size", n).Msg("using remote url")
 	currentVirtualMediaState = &VirtualMediaState{
 		Source: HTTP,
 		Mode:   mode,
@@ -201,21 +208,21 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 	}
 	virtualMediaStateMutex.Unlock()
 
-	logger.Debug("Starting nbd device")
+	logger.Debug().Msg("Starting nbd device")
 	nbdDevice = NewNBDDevice()
 	err = nbdDevice.Start()
 	if err != nil {
-		logger.Errorf("failed to start nbd device: %v", err)
+		logger.Warn().Err(err).Msg("failed to start nbd device")
 		return err
 	}
-	logger.Debug("nbd device started")
+	logger.Debug().Msg("nbd device started")
 	//TODO: replace by polling on block device having right size
 	time.Sleep(1 * time.Second)
 	err = setMassStorageImage("/dev/nbd0")
 	if err != nil {
 		return err
 	}
-	logger.Info("usb mass storage mounted")
+	logger.Info().Msg("usb mass storage mounted")
 	return nil
 }
 
@@ -232,22 +239,22 @@ func rpcMountWithWebRTC(filename string, size int64, mode VirtualMediaMode) erro
 		Size:     size,
 	}
 	virtualMediaStateMutex.Unlock()
-	logger.Debugf("currentVirtualMediaState is %v", currentVirtualMediaState)
-	logger.Debug("Starting nbd device")
+	logger.Debug().Interface("currentVirtualMediaState", currentVirtualMediaState).Msg("currentVirtualMediaState")
+	logger.Debug().Msg("Starting nbd device")
 	nbdDevice = NewNBDDevice()
 	err := nbdDevice.Start()
 	if err != nil {
-		logger.Errorf("failed to start nbd device: %v", err)
+		logger.Warn().Err(err).Msg("failed to start nbd device")
 		return err
 	}
-	logger.Debug("nbd device started")
+	logger.Debug().Msg("nbd device started")
 	//TODO: replace by polling on block device having right size
 	time.Sleep(1 * time.Second)
 	err = setMassStorageImage("/dev/nbd0")
 	if err != nil {
 		return err
 	}
-	logger.Info("usb mass storage mounted")
+	logger.Info().Msg("usb mass storage mounted")
 	return nil
 }
 
@@ -437,7 +444,7 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 	pendingUpload, ok := pendingUploads[uploadId]
 	pendingUploadsMutex.Unlock()
 	if !ok {
-		logger.Warnf("upload channel opened for unknown upload: %s", uploadId)
+		logger.Warn().Str("uploadId", uploadId).Msg("upload channel opened for unknown upload")
 		return
 	}
 	totalBytesWritten := pendingUpload.AlreadyUploadedBytes
@@ -447,12 +454,12 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 			newName := strings.TrimSuffix(pendingUpload.File.Name(), ".incomplete")
 			err := os.Rename(pendingUpload.File.Name(), newName)
 			if err != nil {
-				logger.Errorf("failed to rename uploaded file: %v", err)
+				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to rename uploaded file")
 			} else {
-				logger.Debugf("successfully renamed uploaded file to: %s", newName)
+				logger.Debug().Str("uploadId", uploadId).Str("newName", newName).Msg("successfully renamed uploaded file")
 			}
 		} else {
-			logger.Warnf("uploaded ended before the complete file received")
+			logger.Warn().Str("uploadId", uploadId).Msg("uploaded ended before the complete file received")
 		}
 		pendingUploadsMutex.Lock()
 		delete(pendingUploads, uploadId)
@@ -463,7 +470,7 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 	d.OnMessage(func(msg webrtc.DataChannelMessage) {
 		bytesWritten, err := pendingUpload.File.Write(msg.Data)
 		if err != nil {
-			logger.Errorf("failed to write to file: %v", err)
+			logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to write to file")
 			close(uploadComplete)
 			return
 		}
@@ -485,11 +492,11 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 			}
 			progressJSON, err := json.Marshal(progress)
 			if err != nil {
-				logger.Errorf("failed to marshal upload progress: %v", err)
+				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to marshal upload progress")
 			} else {
 				err = d.SendText(string(progressJSON))
 				if err != nil {
-					logger.Errorf("failed to send upload progress: %v", err)
+					logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to send upload progress")
 				}
 			}
 			lastProgressTime = time.Now()
@@ -517,12 +524,12 @@ func handleUploadHttp(c *gin.Context) {
 			newName := strings.TrimSuffix(pendingUpload.File.Name(), ".incomplete")
 			err := os.Rename(pendingUpload.File.Name(), newName)
 			if err != nil {
-				logger.Errorf("failed to rename uploaded file: %v", err)
+				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to rename uploaded file")
 			} else {
-				logger.Debugf("successfully renamed uploaded file to: %s", newName)
+				logger.Debug().Str("uploadId", uploadId).Str("newName", newName).Msg("successfully renamed uploaded file")
 			}
 		} else {
-			logger.Warnf("uploaded ended before the complete file received")
+			logger.Warn().Str("uploadId", uploadId).Msg("uploaded ended before the complete file received")
 		}
 		pendingUploadsMutex.Lock()
 		delete(pendingUploads, uploadId)
@@ -534,7 +541,7 @@ func handleUploadHttp(c *gin.Context) {
 	for {
 		n, err := reader.Read(buffer)
 		if err != nil && err != io.EOF {
-			logger.Errorf("failed to read from request body: %v", err)
+			logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to read from request body")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read upload data"})
 			return
 		}
@@ -542,7 +549,7 @@ func handleUploadHttp(c *gin.Context) {
 		if n > 0 {
 			bytesWritten, err := pendingUpload.File.Write(buffer[:n])
 			if err != nil {
-				logger.Errorf("failed to write to file: %v", err)
+				logger.Warn().Err(err).Str("uploadId", uploadId).Msg("failed to write to file")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write upload data"})
 				return
 			}

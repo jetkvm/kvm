@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 import { cx } from "@/cva.config";
 import {
   useHidStore,
@@ -7,7 +9,6 @@ import {
   useVideoStore,
   useKeyboardMappingsStore,
 } from "@/hooks/stores";
-import { useEffect, useState } from "react";
 
 export default function InfoBar() {
   const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
@@ -25,6 +26,7 @@ export default function InfoBar() {
   const activeModifiers = useHidStore(state => state.activeModifiers);
   const mouseX = useMouseStore(state => state.mouseX);
   const mouseY = useMouseStore(state => state.mouseY);
+  const mouseMove = useMouseStore(state => state.mouseMove);
 
   const videoClientSize = useVideoStore(
     state => `${Math.round(state.clientWidth)}x${Math.round(state.clientHeight)}`,
@@ -73,11 +75,22 @@ export default function InfoBar() {
               </div>
             ) : null}
 
-            {settings.debugMode ? (
+            {(settings.debugMode && settings.mouseMode == "absolute") ? (
               <div className="flex w-[118px] items-center gap-x-1">
                 <span className="text-xs font-semibold">Pointer:</span>
                 <span className="text-xs">
                   {mouseX},{mouseY}
+                </span>
+              </div>
+            ) : null}
+
+            {(settings.debugMode && settings.mouseMode == "relative") ? (
+              <div className="flex w-[118px] items-center gap-x-1">
+                <span className="text-xs font-semibold">Last Move:</span>
+                <span className="text-xs">
+                  {mouseMove ?
+                    `${mouseMove.x},${mouseMove.y} ${mouseMove.buttons ? `(${mouseMove.buttons})` : ""}` :
+                    "N/A"}
                 </span>
               </div>
             ) : null}

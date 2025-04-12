@@ -1,7 +1,8 @@
 import type { Ref } from "react";
 import React, { forwardRef } from "react";
-import FieldLabel from "@/components/FieldLabel";
 import clsx from "clsx";
+
+import FieldLabel from "@/components/FieldLabel";
 import { cva, cx } from "@/cva.config";
 
 const sizes = {
@@ -36,11 +37,11 @@ type CheckBoxProps = {
 } & Omit<JSX.IntrinsicElements["input"], "size" | "type">;
 
 const Checkbox = forwardRef<HTMLInputElement, CheckBoxProps>(function Checkbox(
-  { size = "MD", ...props },
+  { size = "MD", className, ...props },
   ref,
 ) {
   const classes = checkboxVariants({ size });
-  return <input ref={ref} {...props} type="checkbox" className={classes} />;
+  return <input ref={ref} {...props} type="checkbox" className={clsx(classes, className)} />;
 });
 Checkbox.displayName = "Checkbox";
 
@@ -52,7 +53,7 @@ type CheckboxWithLabelProps = React.ComponentProps<typeof FieldLabel> &
 
 const CheckboxWithLabel = forwardRef<HTMLInputElement, CheckboxWithLabelProps>(
   function CheckboxWithLabel(
-    { label, id, description, as, fullWidth, readOnly, ...props },
+    { label, id, description, fullWidth, readOnly, ...props },
     ref: Ref<HTMLInputElement>,
   ) {
     return (

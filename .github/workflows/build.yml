@@ -1,0 +1,39 @@
+name: build image
+on:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  build:
+    runs-on: buildjet-4vcpu-ubuntu-2204
+    name: Build
+    if: "github.event.review.state == 'approved' || github.event.event_type != 'pull_request_review'"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: v21.1.0
+          cache: "npm"
+          cache-dependency-path: "**/package-lock.json"
+      - name: Set up Golang
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.24.0"
+      - name: Build frontend
+        run: |
+          make frontend
+      - name: Build application
+        run: |
+          make build_dev
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jetkvm-app
+          path: bin/jetkvm_app

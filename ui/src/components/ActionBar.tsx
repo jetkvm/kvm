@@ -1,34 +1,38 @@
+import { MdOutlineContentPasteGo } from "react-icons/md";
+import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
+import { FaKeyboard } from "react-icons/fa6";
+import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
+import { Fragment, useCallback, useRef } from "react";
+import { CommandLineIcon } from "@heroicons/react/20/solid";
+
 import { Button } from "@components/Button";
 import {
   useHidStore,
   useMountMediaStore,
-  useUiStore,
   useSettingsStore,
+  useUiStore,
 } from "@/hooks/stores";
-import { MdOutlineContentPasteGo } from "react-icons/md";
 import Container from "@components/Container";
-import { LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
 import { cx } from "@/cva.config";
 import PasteModal from "@/components/popovers/PasteModal";
-import { FaKeyboard } from "react-icons/fa6";
 import WakeOnLanModal from "@/components/popovers/WakeOnLan/Index";
-import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
-import MountPopopover from "./popovers/MountPopover";
-import { Fragment, useCallback, useRef } from "react";
-import { CommandLineIcon } from "@heroicons/react/20/solid";
+import MountPopopover from "@/components/popovers/MountPopover";
+import ExtensionPopover from "@/components/popovers/ExtensionPopover";
+import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 
 export default function Actionbar({
   requestFullscreen,
 }: {
   requestFullscreen: () => Promise<void>;
 }) {
+  const { navigateTo } = useDeviceUiNavigation();
   const virtualKeyboard = useHidStore(state => state.isVirtualKeyboardEnabled);
 
   const setVirtualKeyboard = useHidStore(state => state.setVirtualKeyboardEnabled);
   const toggleSidebarView = useUiStore(state => state.toggleSidebarView);
   const setDisableFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
-  const enableTerminal = useUiStore(state => state.enableTerminal);
-  const setEnableTerminal = useUiStore(state => state.setEnableTerminal);
+  const terminalType = useUiStore(state => state.terminalType);
+  const setTerminalType = useUiStore(state => state.setTerminalType);
   const remoteVirtualMediaState = useMountMediaStore(
     state => state.remoteVirtualMediaState,
   );
@@ -53,7 +57,7 @@ export default function Actionbar({
   );
 
   return (
-    <Container className="bg-white border-b border-b-slate-800/20 dark:bg-slate-900 dark:border-b-slate-300/20">
+    <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">
       <div
         onKeyUp={e => e.stopPropagation()}
         onKeyDown={e => e.stopPropagation()}
@@ -66,7 +70,7 @@ export default function Actionbar({
               theme="light"
               text="Web Terminal"
               LeadingIcon={({ className }) => <CommandLineIcon className={className} />}
-              onClick={() => setEnableTerminal(!enableTerminal)}
+              onClick={() => setTerminalType(terminalType === "kvm" ? "none" : "kvm")}
             />
           )}
           <Popover>
@@ -92,7 +96,7 @@ export default function Actionbar({
               {({ open }) => {
                 checkIfStateChanged(open);
                 return (
-                  <div className="w-full max-w-xl mx-auto">
+                  <div className="mx-auto w-full max-w-xl">
                     <PasteModal />
                   </div>
                 );
@@ -134,7 +138,7 @@ export default function Actionbar({
                 {({ open }) => {
                   checkIfStateChanged(open);
                   return (
-                    <div className="w-full max-w-xl mx-auto">
+                    <div className="mx-auto w-full max-w-xl">
                       <MountPopopover />
                     </div>
                   );
@@ -148,7 +152,7 @@ export default function Actionbar({
                 <Button
                   size="XS"
                   theme="light"
-                  text="Wake on Lan"
+                  text="Wake on LAN"
                   onClick={() => {
                     setDisableFocusTrap(true);
                   }}
@@ -186,7 +190,7 @@ export default function Actionbar({
                 {({ open }) => {
                   checkIfStateChanged(open);
                   return (
-                    <div className="w-full max-w-xl mx-auto">
+                    <div className="mx-auto w-full max-w-xl">
                       <WakeOnLanModal />
                     </div>
                   );
@@ -206,6 +210,33 @@ export default function Actionbar({
         </div>
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+          <Popover>
+            <PopoverButton as={Fragment}>
+              <Button
+                size="XS"
+                theme="light"
+                text="Extension"
+                LeadingIcon={LuCable}
+                onClick={() => {
+                  setDisableFocusTrap(true);
+                }}
+              />
+            </PopoverButton>
+            <PopoverPanel
+              anchor="bottom start"
+              transition
+              className={cx(
+                "z-10 flex w-[420px] flex-col !overflow-visible",
+                "flex origin-top flex-col transition duration-300 ease-out data-[closed]:translate-y-8 data-[closed]:opacity-0",
+              )}
+            >
+              {({ open }) => {
+                checkIfStateChanged(open);
+                return <ExtensionPopover />;
+              }}
+            </PopoverPanel>
+          </Popover>
+
           <div className="block lg:hidden">
             <Button
               size="XS"
@@ -232,16 +263,17 @@ export default function Actionbar({
             />
           </div>
 
-          <div className="hidden xs:block ">
+          <div>
             <Button
               size="XS"
               theme="light"
               text="Settings"
               LeadingIcon={LuSettings}
-              onClick={() => toggleSidebarView("system")}
+              onClick={() => navigateTo("/settings")}
             />
           </div>
-          <div className="items-center hidden gap-x-2 lg:flex">
+
+          <div className="hidden items-center gap-x-2 lg:flex">
             <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-600" />
             <Button
               size="XS"

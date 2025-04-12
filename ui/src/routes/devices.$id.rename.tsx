@@ -6,8 +6,9 @@ import {
   useActionData,
   useLoaderData,
 } from "react-router-dom";
-import { Button, LinkButton } from "@components/Button";
 import { ChevronLeftIcon } from "@heroicons/react/16/solid";
+
+import { Button, LinkButton } from "@components/Button";
 import Card from "@components/Card";
 import { CardHeader } from "@components/CardHeader";
 import { InputFieldWithLabel } from "@components/InputField";
@@ -15,6 +16,8 @@ import DashboardNavbar from "@components/Header";
 import { User } from "@/hooks/stores";
 import { checkAuth } from "@/main";
 import Fieldset from "@components/Fieldset";
+import { CLOUD_API } from "@/ui.config";
+
 import api from "../api";
 
 interface LoaderData {
@@ -31,13 +34,14 @@ const action = async ({ params, request }: ActionFunctionArgs) => {
   }
 
   try {
-    const res = await api.PUT(`${import.meta.env.VITE_CLOUD_API}/devices/${id}`, {
+    const res = await api.PUT(`${CLOUD_API}/devices/${id}`, {
       name,
     });
     if (!res.ok) {
       return { message: "There was an error renaming your device. Please try again." };
     }
   } catch (e) {
+    console.error(e);
     return { message: "There was an error renaming your device. Please try again." };
   }
 
@@ -49,7 +53,7 @@ const loader = async ({ params }: LoaderFunctionArgs) => {
   const { id } = params;
 
   try {
-    const res = await fetch(`${import.meta.env.VITE_CLOUD_API}/devices/${id}`, {
+    const res = await fetch(`${CLOUD_API}/devices/${id}`, {
       method: "GET",
       credentials: "include",
       mode: "cors",
@@ -79,9 +83,9 @@ export default function DeviceIdRename() {
         picture={user?.picture}
       />
 
-      <div className="w-full h-full">
+      <div className="h-full w-full">
         <div className="mt-4">
-          <div className="w-full h-full px-4 mx-auto space-y-6 sm:max-w-6xl sm:px-8 md:max-w-7xl md:px-12 lg:max-w-8xl">
+          <div className="mx-auto h-full w-full space-y-6 px-4 sm:max-w-6xl sm:px-8 md:max-w-7xl md:px-12 lg:max-w-8xl">
             <div className="space-y-4">
               <LinkButton
                 size="SM"
@@ -99,7 +103,7 @@ export default function DeviceIdRename() {
 
                   <Fieldset>
                     <Form method="POST" className="max-w-sm space-y-4">
-                      <div className="relative group">
+                      <div className="group relative">
                         <InputFieldWithLabel
                           label="New device name"
                           type="text"

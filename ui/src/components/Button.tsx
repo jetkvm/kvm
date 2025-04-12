@@ -1,8 +1,9 @@
 import React from "react";
+import { FetcherWithComponents, Link, LinkProps, useNavigation } from "react-router-dom";
+
 import ExtLink from "@/components/ExtLink";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { cva, cx } from "@/cva.config";
-import { FetcherWithComponents, Link, LinkProps, useNavigation } from "react-router-dom";
 
 const sizes = {
   XS: "h-[28px] px-2 text-xs",
@@ -101,7 +102,7 @@ const iconVariants = cva({
   },
 });
 
-type ButtonContentPropsType = {
+interface ButtonContentPropsType {
   text?: string | React.ReactNode;
   LeadingIcon?: React.FC<{ className: string | undefined }> | null;
   TrailingIcon?: React.FC<{ className: string | undefined }> | null;
@@ -111,7 +112,7 @@ type ButtonContentPropsType = {
   size: keyof typeof sizes;
   theme: keyof typeof themes;
   loading?: boolean;
-};
+}
 
 function ButtonContent(props: ButtonContentPropsType) {
   const { text, LeadingIcon, TrailingIcon, fullWidth, className, textAlign, loading } =
@@ -156,7 +157,16 @@ function ButtonContent(props: ButtonContentPropsType) {
 
 type ButtonPropsType = Pick<
   JSX.IntrinsicElements["button"],
-  "type" | "disabled" | "onClick" | "name" | "value" | "formNoValidate" | "onMouseLeave"
+  | "type"
+  | "disabled"
+  | "onClick"
+  | "name"
+  | "value"
+  | "formNoValidate"
+  | "onMouseLeave"
+  | "onMouseDown"
+  | "onMouseUp"
+  | "onMouseLeave"
 > &
   React.ComponentProps<typeof ButtonContent> & {
     fetcher?: FetcherWithComponents<unknown>;
@@ -179,6 +189,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
         type={type}
         disabled={disabled}
         onClick={onClick}
+        onMouseDown={props?.onMouseDown}
+        onMouseUp={props?.onMouseUp}
+        onMouseLeave={props?.onMouseLeave}
         name={props.name}
         value={props.value}
       >

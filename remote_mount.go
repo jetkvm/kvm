@@ -44,12 +44,12 @@ func (w *WebRTCDiskReader) Read(ctx context.Context, offset int64, size int64) (
 		return nil, errors.New("not active session")
 	}
 
-	logger.Debugf("reading from webrtc %v", string(jsonBytes))
+	logger.Debug().Str("request", string(jsonBytes)).Msg("reading from webrtc")
 	err = currentSession.DiskChannel.SendText(string(jsonBytes))
 	if err != nil {
 		return nil, err
 	}
-	buf := make([]byte, 0)
+	var buf []byte
 	for {
 		select {
 		case data := <-diskReadChan:

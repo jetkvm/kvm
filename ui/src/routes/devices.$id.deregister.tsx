@@ -6,6 +6,8 @@ import {
   useActionData,
   useLoaderData,
 } from "react-router-dom";
+import { ChevronLeftIcon } from "@heroicons/react/16/solid";
+
 import { Button, LinkButton } from "@components/Button";
 import Card from "@components/Card";
 import { CardHeader } from "@components/CardHeader";
@@ -13,7 +15,7 @@ import DashboardNavbar from "@components/Header";
 import { User } from "@/hooks/stores";
 import { checkAuth } from "@/main";
 import Fieldset from "@components/Fieldset";
-import { ChevronLeftIcon } from "@heroicons/react/16/solid";
+import { CLOUD_API } from "@/ui.config";
 
 interface LoaderData {
   device: { id: string; name: string; user: { googleId: string } };
@@ -24,7 +26,7 @@ const action = async ({ request }: ActionFunctionArgs) => {
   const { deviceId } = Object.fromEntries(await request.formData());
 
   try {
-    const res = await fetch(`${import.meta.env.VITE_CLOUD_API}/devices/${deviceId}`, {
+    const res = await fetch(`${CLOUD_API}/devices/${deviceId}`, {
       method: "DELETE",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -35,6 +37,7 @@ const action = async ({ request }: ActionFunctionArgs) => {
       return { message: "There was an error renaming your device. Please try again." };
     }
   } catch (e) {
+    console.error(e);
     return { message: "There was an error renaming your device. Please try again." };
   }
 
@@ -46,7 +49,7 @@ const loader = async ({ params }: LoaderFunctionArgs) => {
   const { id } = params;
 
   try {
-    const res = await fetch(`${import.meta.env.VITE_CLOUD_API}/devices/${id}`, {
+    const res = await fetch(`${CLOUD_API}/devices/${id}`, {
       method: "GET",
       credentials: "include",
       mode: "cors",

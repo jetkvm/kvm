@@ -43,7 +43,7 @@ func createMagicPacket(mac net.HardwareAddr) []byte {
 
 	// Write the target MAC address 16 times
 	for i := 0; i < 16; i++ {
-		binary.Write(&buf, binary.BigEndian, mac)
+		_ = binary.Write(&buf, binary.BigEndian, mac)
 	}
 
 	return buf.Bytes()

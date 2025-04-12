@@ -1,19 +1,23 @@
+import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
+import { useState, useRef, useEffect } from "react";
+import { LuEye, LuEyeOff } from "react-icons/lu";
+
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
 import Fieldset from "@components/Fieldset";
-import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
 import { InputFieldWithLabel } from "@components/InputField";
 import { Button } from "@components/Button";
-import { useState, useRef, useEffect } from "react";
-import { LuEye, LuEyeOff } from "react-icons/lu";
 import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
+import { DEVICE_API } from "@/ui.config";
+
 import api from "../api";
+
 import { DeviceStatus } from "./welcome-local";
 
 const loader = async () => {
   const res = await api
-    .GET(`${import.meta.env.VITE_SIGNAL_API}/device/status`)
+    .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);
 
   if (res.isSetup) return redirect("/login-local");
@@ -30,7 +34,7 @@ const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   try {
-    const response = await api.POST(`${import.meta.env.VITE_SIGNAL_API}/device/setup`, {
+    const response = await api.POST(`${DEVICE_API}/device/setup`, {
       localAuthMode: "password",
       password,
     });

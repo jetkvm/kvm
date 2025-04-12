@@ -1,7 +1,8 @@
-import { Button } from "@components/Button";
-import Card from "@components/Card";
-import { FieldError } from "@components/InputField";
 import { LuPlus, LuSend, LuTrash2 } from "react-icons/lu";
+
+import { Button } from "@/components/Button";
+import Card from "@/components/Card";
+import { FieldError } from "@/components/InputField";
 
 export interface StoredDevice {
   name: string;
@@ -27,12 +28,14 @@ export default function DeviceList({
 }: DeviceListProps) {
   return (
     <div className="space-y-4">
-      <Card className="opacity-0 animate-fadeIn">
+      <Card className="animate-fadeIn opacity-0">
         <div className="w-full divide-y divide-slate-700/30 dark:divide-slate-600/30">
           {storedDevices.map((device, index) => (
-            <div key={index} className="flex items-center justify-between p-3 gap-x-2">
+            <div key={index} className="flex items-center justify-between gap-x-2 p-3">
               <div className="space-y-0.5">
-                <p className="text-sm font-semibold leading-none text-slate-900 dark:text-slate-100">{device?.name}</p>
+                <p className="text-sm font-semibold leading-none text-slate-900 dark:text-slate-100">
+                  {device?.name}
+                </p>
                 <p className="text-sm text-slate-600 dark:text-slate-400">
                   {device.macAddress?.toLowerCase()}
                 </p>
@@ -60,18 +63,13 @@ export default function DeviceList({
         </div>
       </Card>
       <div
-        className="flex items-center justify-end space-x-2 opacity-0 animate-fadeIn"
+        className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",
         }}
       >
-        <Button
-          size="SM"
-          theme="blank"
-          text="Close"
-          onClick={onCancelWakeOnLanModal}
-        />
+        <Button size="SM" theme="blank" text="Close" onClick={onCancelWakeOnLanModal} />
         <Button
           size="SM"
           theme="primary"

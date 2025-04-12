@@ -5,13 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"time"
 
 	"github.com/pion/webrtc/v4"
+	"go.bug.st/serial"
+
+	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
 type JSONRPCRequest struct {
@@ -34,15 +38,21 @@ type JSONRPCEvent struct {
 	Params  interface{} `json:"params,omitempty"`
 }
 
+type BacklightSettings struct {
+	MaxBrightness int `json:"max_brightness"`
+	DimAfter      int `json:"dim_after"`
+	OffAfter      int `json:"off_after"`
+}
+
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
-		log.Println("Error marshalling JSONRPC response:", err)
+		logger.Warn().Err(err).Msg("Error marshalling JSONRPC response")
 		return
 	}
 	err = session.RPCChannel.SendText(string(responseBytes))
 	if err != nil {
-		log.Println("Error sending JSONRPC response:", err)
+		logger.Warn().Err(err).Msg("Error sending JSONRPC response")
 		return
 	}
 }
@@ -55,16 +65,16 @@ func writeJSONRPCEvent(event string, params interface{}, session *Session) {
 	}
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
-		log.Println("Error marshalling JSONRPC event:", err)
+		logger.Warn().Err(err).Msg("Error marshalling JSONRPC event")
 		return
 	}
 	if session == nil || session.RPCChannel == nil {
-		log.Println("RPC channel not available")
+		logger.Info().Msg("RPC channel not available")
 		return
 	}
 	err = session.RPCChannel.SendText(string(requestBytes))
 	if err != nil {
-		log.Println("Error sending JSONRPC event:", err)
+		logger.Warn().Err(err).Msg("Error sending JSONRPC event")
 		return
 	}
 }
@@ -85,7 +95,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	//log.Printf("Received RPC request: Method=%s, Params=%v, ID=%d", request.Method, request.Params, request.ID)
+	logger.Trace().Str("method", request.Method).Interface("params", request.Params).Interface("id", request.ID).Msg("Received RPC request")
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
 		errorResponse := JSONRPCResponse{
@@ -100,6 +110,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
+	logger.Trace().Str("method", request.Method).Interface("id", request.ID).Msg("Calling RPC handler")
 	result, err := callRPCHandler(handler, request.Params)
 	if err != nil {
 		errorResponse := JSONRPCResponse{
@@ -115,6 +126,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
+	logger.Trace().Interface("result", result).Interface("id", request.ID).Msg("RPC handler returned")
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
 		Result:  result,
@@ -155,6 +167,30 @@ func rpcSetKeyboardMappingState(enabled bool) (bool, error) {
 	return enabled, nil
 }
 
+func rpcReboot(force bool) error {
+	logger.Info().Msg("Got reboot request from JSONRPC, rebooting...")
+
+	args := []string{}
+	if force {
+		args = append(args, "-f")
+	}
+
+	cmd := exec.Command("reboot", args...)
+	err := cmd.Start()
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to reboot")
+		return fmt.Errorf("failed to reboot: %w", err)
+	}
+
+	// If the reboot command is successful, exit the program after 5 seconds
+	go func() {
+		time.Sleep(5 * time.Second)
+		os.Exit(0)
+	}()
+
+	return nil
+}
+
 var streamFactor = 1.0
 
 func rpcGetStreamQualityFactor() (float64, error) {
@@ -162,7 +198,7 @@ func rpcGetStreamQualityFactor() (float64, error) {
 }
 
 func rpcSetStreamQualityFactor(factor float64) error {
-	log.Printf("Setting stream quality factor to: %f", factor)
+	logger.Info().Float64("factor", factor).Msg("Setting stream quality factor")
 	var _, err = CallCtrlAction("set_video_quality_factor", map[string]interface{}{"quality_factor": factor})
 	if err != nil {
 		return err
@@ -198,15 +234,19 @@ func rpcGetEDID() (string, error) {
 
 func rpcSetEDID(edid string) error {
 	if edid == "" {
-		log.Println("Restoring EDID to default")
+		logger.Info().Msg("Restoring EDID to default")
 		edid = "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b"
 	} else {
-		log.Printf("Setting EDID to: %s", edid)
+		logger.Info().Str("edid", edid).Msg("Setting EDID")
 	}
 	_, err := CallCtrlAction("set_edid", map[string]interface{}{"edid": edid})
 	if err != nil {
 		return err
 	}
+
+	// Save EDID to config, allowing it to be restored on reboot.
+	config.EdidString = edid
+	_ = SaveConfig()
 	return nil
 }
 
@@ -237,10 +277,56 @@ func rpcTryUpdate() error {
 	go func() {
 		err := TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
 		if err != nil {
-			logger.Warnf("failed to try update: %v", err)
+			logger.Warn().Err(err).Msg("failed to try update")
 		}
 	}()
 	return nil
+}
+
+func rpcSetBacklightSettings(params BacklightSettings) error {
+	blConfig := params
+
+	// NOTE: by default, the frontend limits the brightness to 64, as that's what the device originally shipped with.
+	if blConfig.MaxBrightness > 255 || blConfig.MaxBrightness < 0 {
+		return fmt.Errorf("maxBrightness must be between 0 and 255")
+	}
+
+	if blConfig.DimAfter < 0 {
+		return fmt.Errorf("dimAfter must be a positive integer")
+	}
+
+	if blConfig.OffAfter < 0 {
+		return fmt.Errorf("offAfter must be a positive integer")
+	}
+
+	config.DisplayMaxBrightness = blConfig.MaxBrightness
+	config.DisplayDimAfterSec = blConfig.DimAfter
+	config.DisplayOffAfterSec = blConfig.OffAfter
+
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	logger.Info().Int("max_brightness", config.DisplayMaxBrightness).Int("dim_after", config.DisplayDimAfterSec).Int("off_after", config.DisplayOffAfterSec).Msg("rpc: display: settings applied")
+
+	// If the device started up with auto-dim and/or auto-off set to zero, the display init
+	// method will not have started the tickers. So in case that has changed, attempt to start the tickers now.
+	startBacklightTickers()
+
+	// Wake the display after the settings are altered, this ensures the tickers
+	// are reset to the new settings, and will bring the display up to maxBrightness.
+	// Calling with force set to true, to ignore the current state of the display, and force
+	// it to reset the tickers.
+	wakeDisplay(true)
+	return nil
+}
+
+func rpcGetBacklightSettings() (*BacklightSettings, error) {
+	return &BacklightSettings{
+		MaxBrightness: config.DisplayMaxBrightness,
+		DimAfter:      int(config.DisplayDimAfterSec),
+		OffAfter:      int(config.DisplayOffAfterSec),
+	}, nil
 }
 
 const (
@@ -282,7 +368,7 @@ func rpcSetDevModeState(enabled bool) error {
 				return fmt.Errorf("failed to create devmode file: %w", err)
 			}
 		} else {
-			logger.Debug("dev mode already enabled")
+			logger.Debug().Msg("dev mode already enabled")
 			return nil
 		}
 	} else {
@@ -291,7 +377,7 @@ func rpcSetDevModeState(enabled bool) error {
 				return fmt.Errorf("failed to remove devmode file: %w", err)
 			}
 		} else if os.IsNotExist(err) {
-			logger.Debug("dev mode already disabled")
+			logger.Debug().Msg("dev mode already disabled")
 			return nil
 		} else {
 			return fmt.Errorf("error checking dev mode file: %w", err)
@@ -301,7 +387,7 @@ func rpcSetDevModeState(enabled bool) error {
 	cmd := exec.Command("dropbear.sh")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Warnf("Failed to start/stop SSH: %v, %v", err, output)
+		logger.Warn().Err(err).Bytes("output", output).Msg("Failed to start/stop SSH")
 		return fmt.Errorf("failed to start/stop SSH, you may need to reboot for changes to take effect")
 	}
 
@@ -334,6 +420,23 @@ func rpcSetSSHKeyState(sshKey string) error {
 		if err := os.Remove(sshKeyFile); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove SSH key file: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func rpcGetTLSState() TLSState {
+	return getTLSState()
+}
+
+func rpcSetTLSState(state TLSState) error {
+	err := setTLSState(state)
+	if err != nil {
+		return fmt.Errorf("failed to set TLS state: %w", err)
+	}
+
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
 	}
 
 	return nil
@@ -403,7 +506,7 @@ func callRPCHandler(handler RPCHandler, params map[string]interface{}) (interfac
 				}
 				args[i] = reflect.ValueOf(newStruct).Elem()
 			} else {
-				return nil, fmt.Errorf("invalid parameter type for: %s", paramName)
+				return nil, fmt.Errorf("invalid parameter type for: %s, type: %s", paramName, paramType.Kind())
 			}
 		} else {
 			args[i] = convertedValue.Convert(paramType)
@@ -442,23 +545,23 @@ type RPCHandler struct {
 }
 
 func rpcSetMassStorageMode(mode string) (string, error) {
-	log.Printf("[jsonrpc.go:rpcSetMassStorageMode] Setting mass storage mode to: %s", mode)
+	logger.Info().Str("mode", mode).Msg("Setting mass storage mode")
 	var cdrom bool
 	if mode == "cdrom" {
 		cdrom = true
 	} else if mode != "file" {
-		log.Printf("[jsonrpc.go:rpcSetMassStorageMode] Invalid mode provided: %s", mode)
+		logger.Info().Str("mode", mode).Msg("Invalid mode provided")
 		return "", fmt.Errorf("invalid mode: %s", mode)
 	}
 
-	log.Printf("[jsonrpc.go:rpcSetMassStorageMode] Setting mass storage mode to: %s", mode)
+	logger.Info().Str("mode", mode).Msg("Setting mass storage mode")
 
 	err := setMassStorageMode(cdrom)
 	if err != nil {
 		return "", fmt.Errorf("failed to set mass storage mode: %w", err)
 	}
 
-	log.Printf("[jsonrpc.go:rpcSetMassStorageMode] Mass storage mode set to %s", mode)
+	logger.Info().Str("mode", mode).Msg("Mass storage mode set")
 
 	// Get the updated mode after setting
 	return rpcGetMassStorageMode()
@@ -481,29 +584,31 @@ func rpcIsUpdatePending() (bool, error) {
 	return IsUpdatePending(), nil
 }
 
-var udcFilePath = filepath.Join("/sys/bus/platform/drivers/dwc3", udc)
-
 func rpcGetUsbEmulationState() (bool, error) {
-	_, err := os.Stat(udcFilePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("error checking USB emulation state: %w", err)
-	}
-	return true, nil
+	return gadget.IsUDCBound()
 }
 
 func rpcSetUsbEmulationState(enabled bool) error {
 	if enabled {
-		return os.WriteFile("/sys/bus/platform/drivers/dwc3/bind", []byte(udc), 0644)
+		return gadget.BindUDC()
 	} else {
-		return os.WriteFile("/sys/bus/platform/drivers/dwc3/unbind", []byte(udc), 0644)
+		return gadget.UnbindUDC()
 	}
 }
 
-func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
+func rpcGetUsbConfig() (usbgadget.Config, error) {
 	LoadConfig()
+	return *config.UsbConfig, nil
+}
+
+func rpcSetUsbConfig(usbConfig usbgadget.Config) error {
+	LoadConfig()
+	config.UsbConfig = &usbConfig
+	gadget.SetGadgetConfig(config.UsbConfig)
+	return updateUsbRelatedConfig()
+}
+
+func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
 	if config.WakeOnLanDevices == nil {
 		return []WakeOnLanDevice{}, nil
 	}
@@ -515,30 +620,352 @@ type SetWakeOnLanDevicesParams struct {
 }
 
 func rpcSetWakeOnLanDevices(params SetWakeOnLanDevicesParams) error {
-	LoadConfig()
 	config.WakeOnLanDevices = params.Devices
 	return SaveConfig()
 }
 
 func rpcResetConfig() error {
-	LoadConfig()
 	config = defaultConfig
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to reset config: %w", err)
 	}
 
-	log.Println("Configuration reset to default")
+	logger.Info().Msg("Configuration reset to default")
 	return nil
 }
 
-// TODO: replace this crap with code generator
+type DCPowerState struct {
+	IsOn    bool    `json:"isOn"`
+	Voltage float64 `json:"voltage"`
+	Current float64 `json:"current"`
+	Power   float64 `json:"power"`
+}
+
+func rpcGetDCPowerState() (DCPowerState, error) {
+	return dcState, nil
+}
+
+func rpcSetDCPowerState(enabled bool) error {
+	logger.Info().Bool("enabled", enabled).Msg("Setting DC power state")
+	err := setDCPowerState(enabled)
+	if err != nil {
+		return fmt.Errorf("failed to set DC power state: %w", err)
+	}
+	return nil
+}
+
+func rpcGetActiveExtension() (string, error) {
+	return config.ActiveExtension, nil
+}
+
+func rpcSetActiveExtension(extensionId string) error {
+	if config.ActiveExtension == extensionId {
+		return nil
+	}
+	if config.ActiveExtension == "atx-power" {
+		_ = unmountATXControl()
+	} else if config.ActiveExtension == "dc-power" {
+		_ = unmountDCControl()
+	}
+	config.ActiveExtension = extensionId
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	if extensionId == "atx-power" {
+		_ = mountATXControl()
+	} else if extensionId == "dc-power" {
+		_ = mountDCControl()
+	}
+	return nil
+}
+
+func rpcSetATXPowerAction(action string) error {
+	logger.Debug().Str("action", action).Msg("Executing ATX power action")
+	switch action {
+	case "power-short":
+		logger.Debug().Msg("Simulating short power button press")
+		return pressATXPowerButton(200 * time.Millisecond)
+	case "power-long":
+		logger.Debug().Msg("Simulating long power button press")
+		return pressATXPowerButton(5 * time.Second)
+	case "reset":
+		logger.Debug().Msg("Simulating reset button press")
+		return pressATXResetButton(200 * time.Millisecond)
+	default:
+		return fmt.Errorf("invalid action: %s", action)
+	}
+}
+
+type ATXState struct {
+	Power bool `json:"power"`
+	HDD   bool `json:"hdd"`
+}
+
+func rpcGetATXState() (ATXState, error) {
+	state := ATXState{
+		Power: ledPWRState,
+		HDD:   ledHDDState,
+	}
+	return state, nil
+}
+
+type SerialSettings struct {
+	BaudRate string `json:"baudRate"`
+	DataBits string `json:"dataBits"`
+	StopBits string `json:"stopBits"`
+	Parity   string `json:"parity"`
+}
+
+func rpcGetSerialSettings() (SerialSettings, error) {
+	settings := SerialSettings{
+		BaudRate: strconv.Itoa(serialPortMode.BaudRate),
+		DataBits: strconv.Itoa(serialPortMode.DataBits),
+		StopBits: "1",
+		Parity:   "none",
+	}
+
+	switch serialPortMode.StopBits {
+	case serial.OneStopBit:
+		settings.StopBits = "1"
+	case serial.OnePointFiveStopBits:
+		settings.StopBits = "1.5"
+	case serial.TwoStopBits:
+		settings.StopBits = "2"
+	}
+
+	switch serialPortMode.Parity {
+	case serial.NoParity:
+		settings.Parity = "none"
+	case serial.OddParity:
+		settings.Parity = "odd"
+	case serial.EvenParity:
+		settings.Parity = "even"
+	case serial.MarkParity:
+		settings.Parity = "mark"
+	case serial.SpaceParity:
+		settings.Parity = "space"
+	}
+
+	return settings, nil
+}
+
+var serialPortMode = defaultMode
+
+func rpcSetSerialSettings(settings SerialSettings) error {
+	baudRate, err := strconv.Atoi(settings.BaudRate)
+	if err != nil {
+		return fmt.Errorf("invalid baud rate: %v", err)
+	}
+	dataBits, err := strconv.Atoi(settings.DataBits)
+	if err != nil {
+		return fmt.Errorf("invalid data bits: %v", err)
+	}
+
+	var stopBits serial.StopBits
+	switch settings.StopBits {
+	case "1":
+		stopBits = serial.OneStopBit
+	case "1.5":
+		stopBits = serial.OnePointFiveStopBits
+	case "2":
+		stopBits = serial.TwoStopBits
+	default:
+		return fmt.Errorf("invalid stop bits: %s", settings.StopBits)
+	}
+
+	var parity serial.Parity
+	switch settings.Parity {
+	case "none":
+		parity = serial.NoParity
+	case "odd":
+		parity = serial.OddParity
+	case "even":
+		parity = serial.EvenParity
+	case "mark":
+		parity = serial.MarkParity
+	case "space":
+		parity = serial.SpaceParity
+	default:
+		return fmt.Errorf("invalid parity: %s", settings.Parity)
+	}
+	serialPortMode = &serial.Mode{
+		BaudRate: baudRate,
+		DataBits: dataBits,
+		StopBits: stopBits,
+		Parity:   parity,
+	}
+
+	_ = port.SetMode(serialPortMode)
+
+	return nil
+}
+
+func rpcGetUsbDevices() (usbgadget.Devices, error) {
+	return *config.UsbDevices, nil
+}
+
+func updateUsbRelatedConfig() error {
+	if err := gadget.UpdateGadgetConfig(); err != nil {
+		return fmt.Errorf("failed to write gadget config: %w", err)
+	}
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
+func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
+	config.UsbDevices = &usbDevices
+	gadget.SetGadgetDevices(config.UsbDevices)
+	return updateUsbRelatedConfig()
+}
+
+func rpcSetUsbDeviceState(device string, enabled bool) error {
+	switch device {
+	case "absoluteMouse":
+		config.UsbDevices.AbsoluteMouse = enabled
+	case "relativeMouse":
+		config.UsbDevices.RelativeMouse = enabled
+	case "keyboard":
+		config.UsbDevices.Keyboard = enabled
+	case "massStorage":
+		config.UsbDevices.MassStorage = enabled
+	default:
+		return fmt.Errorf("invalid device: %s", device)
+	}
+	gadget.SetGadgetDevices(config.UsbDevices)
+	return updateUsbRelatedConfig()
+}
+
+func rpcSetCloudUrl(apiUrl string, appUrl string) error {
+	currentCloudURL := config.CloudURL
+	config.CloudURL = apiUrl
+	config.CloudAppURL = appUrl
+
+	if currentCloudURL != apiUrl {
+		disconnectCloud(fmt.Errorf("cloud url changed from %s to %s", currentCloudURL, apiUrl))
+	}
+
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+var currentScrollSensitivity string = "default"
+
+func rpcGetScrollSensitivity() (string, error) {
+	return currentScrollSensitivity, nil
+}
+
+func rpcSetScrollSensitivity(sensitivity string) error {
+	currentScrollSensitivity = sensitivity
+	return nil
+}
+
+func getKeyboardMacros() (interface{}, error) {
+	macros := make([]KeyboardMacro, len(config.KeyboardMacros))
+	copy(macros, config.KeyboardMacros)
+
+	return macros, nil
+}
+
+type KeyboardMacrosParams struct {
+	Macros []interface{} `json:"macros"`
+}
+
+func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
+	if params.Macros == nil {
+		return nil, fmt.Errorf("missing or invalid macros parameter")
+	}
+
+	newMacros := make([]KeyboardMacro, 0, len(params.Macros))
+
+	for i, item := range params.Macros {
+		macroMap, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid macro at index %d", i)
+		}
+
+		id, _ := macroMap["id"].(string)
+		if id == "" {
+			id = fmt.Sprintf("macro-%d", time.Now().UnixNano())
+		}
+
+		name, _ := macroMap["name"].(string)
+
+		sortOrder := i + 1
+		if sortOrderFloat, ok := macroMap["sortOrder"].(float64); ok {
+			sortOrder = int(sortOrderFloat)
+		}
+
+		steps := []KeyboardMacroStep{}
+		if stepsArray, ok := macroMap["steps"].([]interface{}); ok {
+			for _, stepItem := range stepsArray {
+				stepMap, ok := stepItem.(map[string]interface{})
+				if !ok {
+					continue
+				}
+
+				step := KeyboardMacroStep{}
+
+				if keysArray, ok := stepMap["keys"].([]interface{}); ok {
+					for _, k := range keysArray {
+						if keyStr, ok := k.(string); ok {
+							step.Keys = append(step.Keys, keyStr)
+						}
+					}
+				}
+
+				if modsArray, ok := stepMap["modifiers"].([]interface{}); ok {
+					for _, m := range modsArray {
+						if modStr, ok := m.(string); ok {
+							step.Modifiers = append(step.Modifiers, modStr)
+						}
+					}
+				}
+
+				if delay, ok := stepMap["delay"].(float64); ok {
+					step.Delay = int(delay)
+				}
+
+				steps = append(steps, step)
+			}
+		}
+
+		macro := KeyboardMacro{
+			ID:        id,
+			Name:      name,
+			Steps:     steps,
+			SortOrder: sortOrder,
+		}
+
+		if err := macro.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid macro at index %d: %w", i, err)
+		}
+
+		newMacros = append(newMacros, macro)
+	}
+
+	config.KeyboardMacros = newMacros
+
+	if err := SaveConfig(); err != nil {
+		return nil, err
+	}
+
+	return nil, nil
+}
+
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                    {Func: rpcPing},
+	"reboot":                  {Func: rpcReboot, Params: []string{"force"}},
 	"getDeviceID":             {Func: rpcGetDeviceID},
 	"deregisterDevice":        {Func: rpcDeregisterDevice},
 	"getCloudState":           {Func: rpcGetCloudState},
 	"keyboardReport":          {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
 	"absMouseReport":          {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
+	"relMouseReport":          {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
 	"wheelReport":             {Func: rpcWheelReport, Params: []string{"wheelY"}},
 	"getVideoState":           {Func: rpcGetVideoState},
 	"getUSBState":             {Func: rpcGetUSBState},
@@ -565,11 +992,15 @@ var rpcHandlers = map[string]RPCHandler{
 	"setDevModeState":         {Func: rpcSetDevModeState, Params: []string{"enabled"}},
 	"getSSHKeyState":          {Func: rpcGetSSHKeyState},
 	"setSSHKeyState":          {Func: rpcSetSSHKeyState, Params: []string{"sshKey"}},
+	"getTLSState":             {Func: rpcGetTLSState},
+	"setTLSState":             {Func: rpcSetTLSState, Params: []string{"state"}},
 	"setMassStorageMode":      {Func: rpcSetMassStorageMode, Params: []string{"mode"}},
 	"getMassStorageMode":      {Func: rpcGetMassStorageMode},
 	"isUpdatePending":         {Func: rpcIsUpdatePending},
 	"getUsbEmulationState":    {Func: rpcGetUsbEmulationState},
 	"setUsbEmulationState":    {Func: rpcSetUsbEmulationState, Params: []string{"enabled"}},
+	"getUsbConfig":            {Func: rpcGetUsbConfig},
+	"setUsbConfig":            {Func: rpcSetUsbConfig, Params: []string{"usbConfig"}},
 	"checkMountUrl":           {Func: rpcCheckMountUrl, Params: []string{"url"}},
 	"getVirtualMediaState":    {Func: rpcGetVirtualMediaState},
 	"getStorageSpace":         {Func: rpcGetStorageSpace},
@@ -582,4 +1013,22 @@ var rpcHandlers = map[string]RPCHandler{
 	"getWakeOnLanDevices":     {Func: rpcGetWakeOnLanDevices},
 	"setWakeOnLanDevices":     {Func: rpcSetWakeOnLanDevices, Params: []string{"params"}},
 	"resetConfig":             {Func: rpcResetConfig},
+	"setBacklightSettings":    {Func: rpcSetBacklightSettings, Params: []string{"params"}},
+	"getBacklightSettings":    {Func: rpcGetBacklightSettings},
+	"getDCPowerState":         {Func: rpcGetDCPowerState},
+	"setDCPowerState":         {Func: rpcSetDCPowerState, Params: []string{"enabled"}},
+	"getActiveExtension":      {Func: rpcGetActiveExtension},
+	"setActiveExtension":      {Func: rpcSetActiveExtension, Params: []string{"extensionId"}},
+	"getATXState":             {Func: rpcGetATXState},
+	"setATXPowerAction":       {Func: rpcSetATXPowerAction, Params: []string{"action"}},
+	"getSerialSettings":       {Func: rpcGetSerialSettings},
+	"setSerialSettings":       {Func: rpcSetSerialSettings, Params: []string{"settings"}},
+	"getUsbDevices":           {Func: rpcGetUsbDevices},
+	"setUsbDevices":           {Func: rpcSetUsbDevices, Params: []string{"devices"}},
+	"setUsbDeviceState":       {Func: rpcSetUsbDeviceState, Params: []string{"device", "enabled"}},
+	"setCloudUrl":             {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
+	"getScrollSensitivity":    {Func: rpcGetScrollSensitivity},
+	"setScrollSensitivity":    {Func: rpcSetScrollSensitivity, Params: []string{"sensitivity"}},
+	"getKeyboardMacros":       {Func: getKeyboardMacros},
+	"setKeyboardMacros":       {Func: setKeyboardMacros, Params: []string{"params"}},
 }

@@ -1,16 +1,4 @@
-import Card, { GridCard } from "@/components/Card";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@components/Button";
-import LogoBlueIcon from "@/assets/logo-blue.svg";
-import LogoWhiteIcon from "@/assets/logo-white.svg";
-import Modal from "@components/Modal";
-import {
-  MountMediaState,
-  RemoteVirtualMediaState,
-  useMountMediaStore,
-  useRTCStore,
-} from "../hooks/stores";
-import { cx } from "../cva.config";
 import {
   LuGlobe,
   LuLink,
@@ -19,46 +7,56 @@ import {
   LuCheck,
   LuUpload,
 } from "react-icons/lu";
+import { PlusCircleIcon , ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { TrashIcon } from "@heroicons/react/16/solid";
+import { useNavigate } from "react-router-dom";
+
+import Card, { GridCard } from "@/components/Card";
+import { Button } from "@components/Button";
+import LogoBlueIcon from "@/assets/logo-blue.svg";
+import LogoWhiteIcon from "@/assets/logo-white.svg";
 import { formatters } from "@/utils";
-import { PlusCircleIcon } from "@heroicons/react/20/solid";
-import AutoHeight from "./AutoHeight";
-import { InputFieldWithLabel } from "./InputField";
+import AutoHeight from "@components/AutoHeight";
+import { InputFieldWithLabel } from "@/components/InputField";
 import DebianIcon from "@/assets/debian-icon.png";
 import UbuntuIcon from "@/assets/ubuntu-icon.png";
 import FedoraIcon from "@/assets/fedora-icon.png";
+import OpenSUSEIcon from "@/assets/opensuse-icon.png";
 import ArchIcon from "@/assets/arch-icon.png";
 import NetBootIcon from "@/assets/netboot-icon.svg";
-import { TrashIcon } from "@heroicons/react/16/solid";
-import { useJsonRpc } from "../hooks/useJsonRpc";
-import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
-import notifications from "../notifications";
-import Fieldset from "./Fieldset";
-import { isOnDevice } from "../main";
+import Fieldset from "@/components/Fieldset";
+import { DEVICE_API } from "@/ui.config";
 
-export default function MountMediaModal({
-  open,
-  setOpen,
-}: {
-  open: boolean;
-  setOpen: (open: boolean) => void;
-}) {
-  return (
-    <Modal open={open} onClose={() => setOpen(false)}>
-      <Dialog setOpen={setOpen} />
-    </Modal>
-  );
+import { useJsonRpc } from "../hooks/useJsonRpc";
+import notifications from "../notifications";
+import { isOnDevice } from "../main";
+import { cx } from "../cva.config";
+import {
+  MountMediaState,
+  RemoteVirtualMediaState,
+  useMountMediaStore,
+  useRTCStore,
+} from "../hooks/stores";
+
+
+export default function MountRoute() {
+  const navigate = useNavigate();
+  {
+    /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
+  }
+  return <Dialog onClose={() => navigate("..")} />;
 }
 
-export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
+export function Dialog({ onClose }: { onClose: () => void }) {
   const {
     modalView,
     setModalView,
     setLocalFile,
-    setIsMountMediaDialogOpen,
     setRemoteVirtualMediaState,
     errorMessage,
     setErrorMessage,
   } = useMountMediaStore();
+  const navigate = useNavigate();
 
   const [incompleteFileName, setIncompleteFileName] = useState<string | null>(null);
   const [mountInProgress, setMountInProgress] = useState(false);
@@ -97,17 +95,13 @@ export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
 
       clearMountMediaState();
       syncRemoteVirtualMediaState()
-        .then(() => {
-          setIsMountMediaDialogOpen(false);
-        })
+        .then(() => navigate(".."))
         .catch(err => {
           triggerError(err instanceof Error ? err.message : String(err));
         })
         .finally(() => {
           setMountInProgress(false);
         });
-
-      setIsMountMediaDialogOpen(false);
     });
   }
 
@@ -121,13 +115,13 @@ export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
       clearMountMediaState();
       syncRemoteVirtualMediaState()
         .then(() => {
-          setIsMountMediaDialogOpen(false);
+          navigate("..");
         })
         .catch(err => {
           triggerError(err instanceof Error ? err.message : String(err));
         })
         .finally(() => {
-          // We do this beacues the mounting is too fast and the UI gets choppy
+          // We do this because the mounting is too fast and the UI gets choppy
           // and the modal exit animation for like 500ms
           setTimeout(() => {
             setMountInProgress(false);
@@ -154,7 +148,7 @@ export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
             // We need to keep the local file in the store so that the browser can
             // continue to stream the file to the device
             setLocalFile(file);
-            setIsMountMediaDialogOpen(false);
+            navigate("..");
           })
           .catch(err => {
             triggerError(err instanceof Error ? err.message : String(err));
@@ -186,16 +180,16 @@ export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
               <img
                 src={LogoBlueIcon}
                 alt="JetKVM Logo"
-                className="h-[24px] dark:hidden block"
+                className="block h-[24px] dark:hidden"
               />
               <img
                 src={LogoWhiteIcon}
                 alt="JetKVM Logo"
-                className="h-[24px] dark:block hidden dark:!mt-0"
+                className="hidden h-[24px] dark:!mt-0 dark:block"
               />
               {modalView === "mode" && (
                 <ModeSelectionView
-                  onClose={() => setOpen(false)}
+                  onClose={() => onClose()}
                   selectedMode={selectedMode}
                   setSelectedMode={setSelectedMode}
                 />
@@ -259,7 +253,7 @@ export function Dialog({ setOpen }: { setOpen: (open: boolean) => void }) {
                 <ErrorView
                   errorMessage={errorMessage}
                   onClose={() => {
-                    setOpen(false);
+                    onClose();
                     setErrorMessage(null);
                   }}
                   onRetry={() => {
@@ -289,7 +283,7 @@ function ModeSelectionView({
 
   return (
     <div className="w-full space-y-4">
-      <div className="space-y-0 asnimate-fadeIn">
+      <div className="animate-fadeIn space-y-0">
         <h2 className="text-lg font-bold leading-tight dark:text-white">
           Virtual Media Source
         </h2>
@@ -343,7 +337,7 @@ function ModeSelectionView({
               )}
             >
               <div
-                className="relative z-50 flex flex-col items-start p-4 select-none"
+                className="relative z-50 flex select-none flex-col items-start p-4"
                 onClick={() =>
                   disabled ? null : setSelectedMode(mode as "browser" | "url" | "device")
                 }
@@ -351,7 +345,7 @@ function ModeSelectionView({
                 <div>
                   <Card>
                     <div className="p-1">
-                      <Icon className="w-4 h-4 text-blue-700 shrink-0 dark:text-blue-400" />
+                      <Icon className="h-4 w-4 shrink-0 text-blue-700 dark:text-blue-400" />
                     </div>
                   </Card>
                 </div>
@@ -371,7 +365,7 @@ function ModeSelectionView({
                   value={mode}
                   disabled={disabled}
                   checked={selectedMode === mode}
-                  className="absolute w-4 h-4 text-blue-700 right-4 top-4"
+                  className="absolute right-4 top-4 h-4 w-4 text-blue-700"
                 />
               </div>
             </Card>
@@ -379,13 +373,13 @@ function ModeSelectionView({
         ))}
       </div>
       <div
-        className="flex justify-end opacity-0 animate-fadeIn"
+        className="flex animate-fadeIn justify-end opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",
         }}
       >
-        <div className="flex pt-2 gap-x-2">
+        <div className="flex gap-x-2 pt-2">
           <Button size="MD" theme="blank" onClick={onClose} text="Cancel" />
           <Button
             size="MD"
@@ -443,18 +437,18 @@ function BrowserFileView({
           className="block cursor-pointer select-none"
         >
           <div
-            className="opacity-0 group animate-fadeIn"
+            className="group animate-fadeIn opacity-0"
             style={{
               animationDuration: "0.7s",
             }}
           >
-            <Card className="transition-all duration-300 outline-dashed hover:bg-blue-50/50">
+            <Card className="outline-dashed transition-all duration-300 hover:bg-blue-50/50">
               <div className="w-full px-4 py-12">
-                <div className="flex flex-col items-center justify-center h-full text-center">
+                <div className="flex h-full flex-col items-center justify-center text-center">
                   {selectedFile ? (
                     <>
                       <div className="space-y-1">
-                        <LuHardDrive className="w-6 h-6 mx-auto text-blue-700" />
+                        <LuHardDrive className="mx-auto h-6 w-6 text-blue-700" />
                         <h3 className="text-sm font-semibold leading-none">
                           {formatters.truncateMiddle(selectedFile.name, 40)}
                         </h3>
@@ -465,7 +459,7 @@ function BrowserFileView({
                     </>
                   ) : (
                     <div className="space-y-1">
-                      <PlusCircleIcon className="w-6 h-6 mx-auto text-blue-700" />
+                      <PlusCircleIcon className="mx-auto h-6 w-6 text-blue-700" />
                       <h3 className="text-sm font-semibold leading-none">
                         Click to select a file
                       </h3>
@@ -489,7 +483,7 @@ function BrowserFileView({
       </div>
 
       <div
-        className="flex items-end justify-between w-full opacity-0 animate-fadeIn"
+        className="flex w-full animate-fadeIn items-end justify-between opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",
@@ -529,22 +523,32 @@ function UrlView({
   const popularImages = [
     {
       name: "Ubuntu 24.04 LTS",
-      url: "https://releases.ubuntu.com/noble/ubuntu-24.04.1-desktop-amd64.iso",
+      url: "https://releases.ubuntu.com/24.04.2/ubuntu-24.04.2-desktop-amd64.iso",
       icon: UbuntuIcon,
     },
     {
       name: "Debian 12",
-      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.7.0-amd64-netinst.iso",
+      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.9.0-amd64-netinst.iso",
       icon: DebianIcon,
     },
     {
-      name: "Fedora 38",
-      url: "https://mirror.ihost.md/fedora/releases/38/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-38-1.6.iso",
+      name: "Fedora 41",
+      url: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso",
       icon: FedoraIcon,
     },
     {
+      name: "openSUSE Leap 15.6",
+      url: "https://download.opensuse.org/distribution/leap/15.6/iso/openSUSE-Leap-15.6-NET-x86_64-Media.iso",
+      icon: OpenSUSEIcon,
+    },
+    {
+      name: "openSUSE Tumbleweed",
+      url: "https://download.opensuse.org/tumbleweed/iso/openSUSE-Tumbleweed-NET-x86_64-Current.iso",
+      icon: OpenSUSEIcon,
+    },
+    {
       name: "Arch Linux",
-      url: "https://archlinux.doridian.net/iso/2024.10.01/archlinux-2024.10.01-x86_64.iso",
+      url: "https://archlinux.doridian.net/iso/2025.02.01/archlinux-2025.02.01-x86_64.iso",
       icon: ArchIcon,
     },
     {
@@ -574,7 +578,7 @@ function UrlView({
       />
 
       <div
-        className="opacity-0 animate-fadeIn"
+        className="animate-fadeIn opacity-0"
         style={{
           animationDuration: "0.7s",
         }}
@@ -589,7 +593,7 @@ function UrlView({
         />
       </div>
       <div
-        className="flex items-end justify-between w-full opacity-0 animate-fadeIn"
+        className="flex w-full animate-fadeIn items-end justify-between opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",
@@ -615,7 +619,7 @@ function UrlView({
 
       <hr className="border-slate-800/30 dark:border-slate-300/20" />
       <div
-        className="opacity-0 animate-fadeIn"
+        className="animate-fadeIn opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",
@@ -624,7 +628,7 @@ function UrlView({
         <h2 className="mb-2 text-sm font-semibold text-black dark:text-white">
           Popular images
         </h2>
-        <Card className="w-full divide-y divide-y-slate-800/30 dark:divide-slate-300/20">
+        <Card className="divide-y-slate-800/30 w-full divide-y dark:divide-slate-300/20">
           {popularImages.map((image, index) => (
             <div key={index} className="flex items-center justify-between gap-x-4 p-3.5">
               <div className="flex items-center gap-x-4">
@@ -793,7 +797,7 @@ function DeviceFileView({
         description="Select an image to mount from the JetKVM storage"
       />
       <div
-        className="w-full opacity-0 animate-fadeIn"
+        className="w-full animate-fadeIn opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",
@@ -804,7 +808,7 @@ function DeviceFileView({
             <div className="flex items-center justify-center py-8 text-center">
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <PlusCircleIcon className="w-6 h-6 mx-auto text-blue-700 dark:text-blue-500" />
+                  <PlusCircleIcon className="mx-auto h-6 w-6 text-blue-700 dark:text-blue-500" />
                   <h3 className="text-sm font-semibold leading-none text-black dark:text-white">
                     No images available
                   </h3>
@@ -823,7 +827,7 @@ function DeviceFileView({
               </div>
             </div>
           ) : (
-            <div className="w-full divide-y divide-y-slate-800/30 dark:divide-slate-300/20">
+            <div className="divide-y-slate-800/30 w-full divide-y dark:divide-slate-300/20">
               {currentFiles.map((file, index) => (
                 <PreUploadedImageItem
                   key={index}
@@ -835,7 +839,13 @@ function DeviceFileView({
                   onDelete={() => {
                     const selectedFile = onStorageFiles.find(f => f.name === file.name);
                     if (!selectedFile) return;
-                    handleDeleteFile(selectedFile);
+                    if (
+                      window.confirm(
+                        "Are you sure you want to delete " + selectedFile.name + "?",
+                      )
+                    ) {
+                      handleDeleteFile(selectedFile);
+                    }
                   }}
                   onSelect={() => handleOnSelectFile(file)}
                   onContinueUpload={() => onNewImageClick(file.name)}
@@ -876,7 +886,7 @@ function DeviceFileView({
 
       {onStorageFiles.length > 0 ? (
         <div
-          className="flex items-end justify-between opacity-0 animate-fadeIn"
+          className="flex animate-fadeIn items-end justify-between opacity-0"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.15s",
@@ -904,7 +914,7 @@ function DeviceFileView({
         </div>
       ) : (
         <div
-          className="flex items-end justify-end opacity-0 animate-fadeIn"
+          className="flex animate-fadeIn items-end justify-end opacity-0"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.15s",
@@ -917,31 +927,39 @@ function DeviceFileView({
       )}
       <hr className="border-slate-800/20 dark:border-slate-300/20" />
       <div
-        className="space-y-2 opacity-0 animate-fadeIn"
+        className="animate-fadeIn space-y-2 opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.20s",
         }}
       >
         <div className="flex justify-between text-sm">
-          <span className="font-medium text-black dark:text-white">Available Storage</span>
-          <span className="text-slate-700 dark:text-slate-300">{percentageUsed}% used</span>
+          <span className="font-medium text-black dark:text-white">
+            Available Storage
+          </span>
+          <span className="text-slate-700 dark:text-slate-300">
+            {percentageUsed}% used
+          </span>
         </div>
         <div className="h-3.5 w-full overflow-hidden rounded-sm bg-slate-200 dark:bg-slate-700">
           <div
-            className="h-full transition-all duration-300 ease-in-out bg-blue-700 rounded-sm dark:bg-blue-500"
+            className="h-full rounded-sm bg-blue-700 transition-all duration-300 ease-in-out dark:bg-blue-500"
             style={{ width: `${percentageUsed}%` }}
           ></div>
         </div>
         <div className="flex justify-between text-sm text-slate-600">
-          <span className="text-slate-700 dark:text-slate-300">{formatters.bytes(bytesUsed)} used</span>
-          <span className="text-slate-700 dark:text-slate-300">{formatters.bytes(bytesFree)} free</span>
+          <span className="text-slate-700 dark:text-slate-300">
+            {formatters.bytes(bytesUsed)} used
+          </span>
+          <span className="text-slate-700 dark:text-slate-300">
+            {formatters.bytes(bytesFree)} free
+          </span>
         </div>
       </div>
 
       {onStorageFiles.length > 0 && (
         <div
-          className="w-full opacity-0 animate-fadeIn"
+          className="w-full animate-fadeIn opacity-0"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.25s",
@@ -1108,7 +1126,7 @@ function UploadFileView({
     alreadyUploadedBytes: number,
     dataChannel: string,
   ) {
-    const uploadUrl = `${import.meta.env.VITE_SIGNAL_API}/storage/upload?uploadId=${dataChannel}`;
+    const uploadUrl = `${DEVICE_API}/storage/upload?uploadId=${dataChannel}`;
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", uploadUrl, true);
@@ -1233,7 +1251,7 @@ function UploadFileView({
         }
       />
       <div
-        className="space-y-2 opacity-0 animate-fadeIn"
+        className="animate-fadeIn space-y-2 opacity-0"
         style={{
           animationDuration: "0.7s",
         }}
@@ -1249,17 +1267,18 @@ function UploadFileView({
           <div className="group">
             <Card
               className={cx("transition-all duration-300", {
-                "cursor-pointer hover:bg-blue-900/50 dark:hover:bg-blue-900/50": uploadState === "idle",
+                "cursor-pointer hover:bg-blue-900/50 dark:hover:bg-blue-900/50":
+                  uploadState === "idle",
               })}
             >
               <div className="h-[186px] w-full px-4">
-                <div className="flex flex-col items-center justify-center h-full text-center">
+                <div className="flex h-full flex-col items-center justify-center text-center">
                   {uploadState === "idle" && (
                     <div className="space-y-1">
                       <div className="inline-block">
                         <Card>
                           <div className="p-1">
-                            <PlusCircleIcon className="w-4 h-4 text-blue-500 dark:text-blue-400 shrink-0" />
+                            <PlusCircleIcon className="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
                           </div>
                         </Card>
                       </div>
@@ -1279,11 +1298,11 @@ function UploadFileView({
                       <div className="inline-block">
                         <Card>
                           <div className="p-1">
-                            <LuUpload className="w-4 h-4 text-blue-500 dark:text-blue-400 shrink-0" />
+                            <LuUpload className="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
                           </div>
                         </Card>
                       </div>
-                      <h3 className="text-lg font-semibold text-black leading-non dark:text-white">
+                      <h3 className="leading-non text-lg font-semibold text-black dark:text-white">
                         Uploading {formatters.truncateMiddle(uploadedFileName, 30)}
                       </h3>
                       <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
@@ -1292,7 +1311,7 @@ function UploadFileView({
                       <div className="w-full space-y-2">
                         <div className="h-3.5 w-full overflow-hidden rounded-full bg-slate-300 dark:bg-slate-700">
                           <div
-                            className="h-3.5 rounded-full bg-blue-700 dark:bg-blue-500 transition-all duration-500 ease-linear"
+                            className="h-3.5 rounded-full bg-blue-700 transition-all duration-500 ease-linear dark:bg-blue-500"
                             style={{ width: `${uploadProgress}%` }}
                           ></div>
                         </div>
@@ -1313,7 +1332,7 @@ function UploadFileView({
                       <div className="inline-block">
                         <Card>
                           <div className="p-1">
-                            <LuCheck className="w-4 h-4 text-blue-500 dark:text-blue-400 shrink-0" />
+                            <LuCheck className="h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
                           </div>
                         </Card>
                       </div>
@@ -1338,13 +1357,15 @@ function UploadFileView({
           className="hidden"
           accept=".iso, .img"
         />
-        {fileError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{fileError}</p>}
+        {fileError && (
+          <p className="mt-2 text-sm text-red-600 dark:text-red-400">{fileError}</p>
+        )}
       </div>
 
       {/* Display upload error if present */}
       {uploadError && (
         <div
-          className="mt-2 text-sm text-red-600 truncate opacity-0 dark:text-red-400 animate-fadeIn"
+          className="mt-2 animate-fadeIn truncate text-sm text-red-600 opacity-0 dark:text-red-400"
           style={{ animationDuration: "0.7s" }}
         >
           Error: {uploadError}
@@ -1352,13 +1373,13 @@ function UploadFileView({
       )}
 
       <div
-        className="flex items-end w-full opacity-0 animate-fadeIn"
+        className="flex w-full animate-fadeIn items-end opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",
         }}
       >
-        <div className="flex justify-end w-full space-x-2">
+        <div className="flex w-full justify-end space-x-2">
           {uploadState === "uploading" ? (
             <Button
               size="MD"
@@ -1400,7 +1421,7 @@ function ErrorView({
     <div className="w-full space-y-4">
       <div className="space-y-2">
         <div className="flex items-center space-x-2 text-red-600">
-          <ExclamationTriangleIcon className="w-6 h-6" />
+          <ExclamationTriangleIcon className="h-6 w-6" />
           <h2 className="text-lg font-bold leading-tight">Mount Error</h2>
         </div>
         <p className="text-sm leading-snug text-slate-600">
@@ -1408,7 +1429,7 @@ function ErrorView({
         </p>
       </div>
       {errorMessage && (
-        <Card className="p-4 border border-red-200 bg-red-50">
+        <Card className="border border-red-200 bg-red-50 p-4">
           <p className="text-sm font-medium text-red-800">{errorMessage}</p>
         </Card>
       )}
@@ -1468,12 +1489,12 @@ function PreUploadedImageItem({
             <div className="flex items-center gap-x-1 text-slate-600 dark:text-slate-400">
               {formatters.date(new Date(uploadedAt), { month: "short" })}
             </div>
-            <div className="mx-1 h-[10px] w-[1px] bg-slate-300 dark:bg-slate-600 text-slate-300"></div>
+            <div className="mx-1 h-[10px] w-[1px] bg-slate-300 text-slate-300 dark:bg-slate-600"></div>
             <div className="text-gray-600 dark:text-slate-400">{size}</div>
           </div>
         </div>
       </div>
-      <div className="relative flex items-center select-none gap-x-3">
+      <div className="relative flex select-none items-center gap-x-3">
         <div
           className={cx("opacity-0  transition-opacity duration-200", {
             "w-auto opacity-100": isHovering,
@@ -1497,7 +1518,7 @@ function PreUploadedImageItem({
             checked={isSelected}
             onChange={onSelect}
             name={name}
-            className="w-3 h-3 text-blue-700 bg-white dark:bg-slate-800 border-slate-800/30 dark:border-slate-300/20 focus:ring-blue-500 disabled:opacity-30"
+            className="h-3 w-3 border-slate-800/30 bg-white text-blue-700 focus:ring-blue-500 disabled:opacity-30 dark:border-slate-300/20 dark:bg-slate-800"
             onClick={e => e.stopPropagation()} // Prevent double-firing of onSelect
           />
         ) : (
@@ -1537,7 +1558,7 @@ function UsbModeSelector({
   setUsbMode: (mode: RemoteVirtualMediaState["mode"]) => void;
 }) {
   return (
-    <div className="flex flex-col items-start space-y-1 select-none">
+    <div className="flex select-none flex-col items-start space-y-1">
       <label className="text-sm font-semibold text-black dark:text-white">Mount as</label>
       <div className="flex space-x-4">
         <label htmlFor="cdrom" className="flex items-center">
@@ -1547,7 +1568,7 @@ function UsbModeSelector({
             name="mountType"
             onChange={() => setUsbMode("CDROM")}
             checked={usbMode === "CDROM"}
-            className="w-3 h-3 text-blue-700 transition-opacity bg-white border-slate-800/30 focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
+            className="h-3 w-3 border-slate-800/30 bg-white text-blue-700 transition-opacity focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
           />
           <span className="ml-2 text-sm font-medium text-slate-900 dark:text-white">
             CD/DVD
@@ -1561,10 +1582,10 @@ function UsbModeSelector({
             disabled
             checked={usbMode === "Disk"}
             onChange={() => setUsbMode("Disk")}
-            className="w-3 h-3 text-blue-700 transition-opacity bg-white border-slate-800/30 focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
+            className="h-3 w-3 border-slate-800/30 bg-white text-blue-700 transition-opacity focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
           />
-          <div className="flex flex-col ml-2 gap-y-0">
-            <span className="text-sm font-medium leading-none opacity-50 text-slate-900 dark:text-white">
+          <div className="ml-2 flex flex-col gap-y-0">
+            <span className="text-sm font-medium leading-none text-slate-900 opacity-50 dark:text-white">
               Disk
             </span>
             <div className="text-[10px] text-slate-500 dark:text-slate-400">

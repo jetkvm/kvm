@@ -6,5 +6,9 @@
 			// Should match what is defined in ui/package.json
 			"version": "21.1.0"
 		}
-	}
+	},
+	"mounts": [
+    	"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+	]
 }
+

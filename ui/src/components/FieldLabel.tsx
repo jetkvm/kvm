@@ -1,13 +1,14 @@
 import React from "react";
+
 import { cx } from "@/cva.config";
 
-type Props = {
+interface Props {
   label: string | React.ReactNode;
   id?: string;
   as?: "label" | "span";
   description?: string | React.ReactNode | null;
   disabled?: boolean;
-};
+}
 export default function FieldLabel({
   label,
   id,
@@ -26,7 +27,7 @@ export default function FieldLabel({
       >
         {label}
         {description && (
-          <span className="my-0.5 text-[13px] font-normal text-slate-600">
+          <span className="my-0.5 text-[13px] font-normal text-slate-600 dark:text-slate-400">
             {description}
           </span>
         )}
@@ -34,12 +35,12 @@ export default function FieldLabel({
     );
   } else if (as === "span") {
     return (
-      <div className="flex flex-col select-none">
-        <span className="font-display text-[13px] font-medium leading-snug text-black">
+      <div className="flex select-none flex-col">
+        <span className="font-display text-[13px] font-medium leading-snug text-black dark:text-white">
           {label}
         </span>
         {description && (
-          <span className="my-0.5 text-[13px] font-normal text-slate-600">
+          <span className="my-0.5 text-[13px] font-normal text-slate-600 dark:text-slate-400">
             {description}
           </span>
         )}

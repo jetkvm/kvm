@@ -1,17 +1,30 @@
 package kvm
 
 import (
+	"errors"
 	"fmt"
-	"log"
+	"os"
+	"strconv"
 	"time"
 )
 
 var currentScreen = "ui_Boot_Screen"
+var backlightState = 0 // 0 - NORMAL, 1 - DIMMED, 2 - OFF
+
+var (
+	dimTicker *time.Ticker
+	offTicker *time.Ticker
+)
+
+const (
+	touchscreenDevice     string = "/dev/input/event1"
+	backlightControlClass string = "/sys/class/backlight/backlight/brightness"
+)
 
 func switchToScreen(screen string) {
 	_, err := CallCtrlAction("lv_scr_load", map[string]interface{}{"obj": screen})
 	if err != nil {
-		log.Printf("failed to switch to screen %s: %v", screen, err)
+		displayLogger.Warn().Err(err).Str("screen", screen).Msg("failed to switch to screen")
 		return
 	}
 	currentScreen = screen
@@ -27,7 +40,7 @@ func updateLabelIfChanged(objName string, newText string) {
 }
 
 func switchToScreenIfDifferent(screenName string) {
-	fmt.Println("switching screen from", currentScreen, screenName)
+	displayLogger.Info().Str("from", currentScreen).Str("to", screenName).Msg("switching screen")
 	if currentScreen != screenName {
 		switchToScreen(screenName)
 	}
@@ -61,11 +74,12 @@ var displayInited = false
 
 func requestDisplayUpdate() {
 	if !displayInited {
-		fmt.Println("display not inited, skipping updates")
+		displayLogger.Info().Msg("display not inited, skipping updates")
 		return
 	}
 	go func() {
-		fmt.Println("display updating........................")
+		wakeDisplay(false)
+		displayLogger.Info().Msg("display updating")
 		//TODO: only run once regardless how many pending updates
 		updateDisplay()
 	}()
@@ -83,14 +97,169 @@ func updateStaticContents() {
 	updateLabelIfChanged("ui_Status_Content_Device_Id_Content_Label", GetDeviceID())
 }
 
+// setDisplayBrightness sets /sys/class/backlight/backlight/brightness to alter
+// the backlight brightness of the JetKVM hardware's display.
+func setDisplayBrightness(brightness int) error {
+	// NOTE: The actual maximum value for this is 255, but out-of-the-box, the value is set to 64.
+	// The maximum set here is set to 100 to reduce the risk of drawing too much power (and besides, 255 is very bright!).
+	if brightness > 100 || brightness < 0 {
+		return errors.New("brightness value out of bounds, must be between 0 and 100")
+	}
+
+	// Check the display backlight class is available
+	if _, err := os.Stat(backlightControlClass); errors.Is(err, os.ErrNotExist) {
+		return errors.New("brightness value cannot be set, possibly not running on JetKVM hardware")
+	}
+
+	// Set the value
+	bs := []byte(strconv.Itoa(brightness))
+	err := os.WriteFile(backlightControlClass, bs, 0644)
+	if err != nil {
+		return err
+	}
+
+	displayLogger.Info().Int("brightness", brightness).Msg("set brightness")
+	return nil
+}
+
+// tick_displayDim() is called when when dim ticker expires, it simply reduces the brightness
+// of the display by half of the max brightness.
+func tick_displayDim() {
+	err := setDisplayBrightness(config.DisplayMaxBrightness / 2)
+	if err != nil {
+		displayLogger.Warn().Err(err).Msg("failed to dim display")
+	}
+
+	dimTicker.Stop()
+
+	backlightState = 1
+}
+
+// tick_displayOff() is called when the off ticker expires, it turns off the display
+// by setting the brightness to zero.
+func tick_displayOff() {
+	err := setDisplayBrightness(0)
+	if err != nil {
+		displayLogger.Warn().Err(err).Msg("failed to turn off display")
+	}
+
+	offTicker.Stop()
+
+	backlightState = 2
+}
+
+// wakeDisplay sets the display brightness back to config.DisplayMaxBrightness and stores the time the display
+// last woke, ready for displayTimeoutTick to put the display back in the dim/off states.
+// Set force to true to skip the backlight state check, this should be done if altering the tickers.
+func wakeDisplay(force bool) {
+	if backlightState == 0 && !force {
+		return
+	}
+
+	// Don't try to wake up if the display is turned off.
+	if config.DisplayMaxBrightness == 0 {
+		return
+	}
+
+	err := setDisplayBrightness(config.DisplayMaxBrightness)
+	if err != nil {
+		displayLogger.Warn().Err(err).Msg("failed to wake display")
+	}
+
+	if config.DisplayDimAfterSec != 0 {
+		dimTicker.Reset(time.Duration(config.DisplayDimAfterSec) * time.Second)
+	}
+
+	if config.DisplayOffAfterSec != 0 {
+		offTicker.Reset(time.Duration(config.DisplayOffAfterSec) * time.Second)
+	}
+	backlightState = 0
+}
+
+// watchTsEvents monitors the touchscreen for events and simply calls wakeDisplay() to ensure the
+// touchscreen interface still works even with LCD dimming/off.
+// TODO: This is quite a hack, really we should be getting an event from jetkvm_native, or the whole display backlight
+// control should be hoisted up to jetkvm_native.
+func watchTsEvents() {
+	ts, err := os.OpenFile(touchscreenDevice, os.O_RDONLY, 0666)
+	if err != nil {
+		displayLogger.Warn().Err(err).Msg("failed to open touchscreen device")
+		return
+	}
+
+	defer ts.Close()
+
+	// This buffer is set to 24 bytes as that's the normal size of events on /dev/input
+	// Reference: https://www.kernel.org/doc/Documentation/input/input.txt
+	// This could potentially be set higher, to require multiple events to wake the display.
+	buf := make([]byte, 24)
+	for {
+		_, err := ts.Read(buf)
+		if err != nil {
+			displayLogger.Warn().Err(err).Msg("failed to read from touchscreen device")
+			return
+		}
+
+		wakeDisplay(false)
+	}
+}
+
+// startBacklightTickers starts the two tickers for dimming and switching off the display
+// if they're not already set. This is done separately to the init routine as the "never dim"
+// option has the value set to zero, but time.NewTicker only accept positive values.
+func startBacklightTickers() {
+	// Don't start the tickers if the display is switched off.
+	// Set the display to off if that's the case.
+	if config.DisplayMaxBrightness == 0 {
+		_ = setDisplayBrightness(0)
+		return
+	}
+
+	if dimTicker == nil && config.DisplayDimAfterSec != 0 {
+		displayLogger.Info().Msg("dim_ticker has started")
+		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
+		defer dimTicker.Stop()
+
+		go func() {
+			for { //nolint:gosimple
+				select {
+				case <-dimTicker.C:
+					tick_displayDim()
+				}
+			}
+		}()
+	}
+
+	if offTicker == nil && config.DisplayOffAfterSec != 0 {
+		displayLogger.Info().Msg("off_ticker has started")
+		offTicker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
+		defer offTicker.Stop()
+
+		go func() {
+			for { //nolint:gosimple
+				select {
+				case <-offTicker.C:
+					tick_displayOff()
+				}
+			}
+		}()
+	}
+}
+
 func init() {
+	ensureConfigLoaded()
+
 	go func() {
 		waitCtrlClientConnected()
-		fmt.Println("setting initial display contents")
+		displayLogger.Info().Msg("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
 		updateStaticContents()
 		displayInited = true
-		fmt.Println("display inited")
+		displayLogger.Info().Msg("display inited")
+		startBacklightTickers()
+		wakeDisplay(true)
 		requestDisplayUpdate()
 	}()
+
+	go watchTsEvents()
 }
