@@ -325,7 +325,6 @@ func initNetwork() {
 	}
 
 	go func() {
-		waitCtrlClientConnected()
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 
@@ -340,8 +339,4 @@ func initNetwork() {
 			}
 		}
 	}()
-	err := startMDNS()
-	if err != nil {
-		logger.Warn().Err(err).Msg("failed to run mDNS")
-	}
 }

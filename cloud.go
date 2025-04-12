@@ -140,9 +140,21 @@ var (
 )
 
 var (
+	cloudConnectionAlive     bool
+	cloudConnectionAliveLock = &sync.Mutex{}
+
 	cloudDisconnectChan chan error
 	cloudDisconnectLock = &sync.Mutex{}
 )
+
+func setCloudConnectionAlive(alive bool) {
+	cloudConnectionAliveLock.Lock()
+	defer cloudConnectionAliveLock.Unlock()
+
+	cloudConnectionAlive = alive
+
+	go waitCtrlAndRequestDisplayUpdate()
+}
 
 func wsResetMetrics(established bool, sourceType string, source string) {
 	metricConnectionLastPingTimestamp.WithLabelValues(sourceType, source).Set(-1)
@@ -307,6 +319,8 @@ func runWebsocketClient() error {
 			metricConnectionTotalPingReceivedCount.WithLabelValues("cloud", wsURL.Host).Inc()
 			metricConnectionLastPingReceivedTimestamp.WithLabelValues("cloud", wsURL.Host).SetToCurrentTime()
 
+			setCloudConnectionAlive(true)
+
 			return true
 		},
 	})
@@ -336,6 +350,8 @@ func runWebsocketClient() error {
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			cloudLogger.Info().Msg("websocket connection canceled")
+			setCloudConnectionAlive(false)
+
 			return nil
 		}
 		return err

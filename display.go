@@ -33,9 +33,37 @@ func switchToScreen(screen string) {
 
 var displayedTexts = make(map[string]string)
 
+func lvObjSetState(objName string, state string) (*CtrlResponse, error) {
+	return CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": objName, "state": state})
+}
+
+func lvObjAddFlag(objName string, flag string) (*CtrlResponse, error) {
+	return CallCtrlAction("lv_obj_add_flag", map[string]interface{}{"obj": objName, "flag": flag})
+}
+
+func lvObjClearFlag(objName string, flag string) (*CtrlResponse, error) {
+	return CallCtrlAction("lv_obj_clear_flag", map[string]interface{}{"obj": objName, "flag": flag})
+}
+
+func lvObjHide(objName string) (*CtrlResponse, error) {
+	return lvObjAddFlag(objName, "LV_OBJ_FLAG_HIDDEN")
+}
+
+func lvObjShow(objName string) (*CtrlResponse, error) {
+	return lvObjClearFlag(objName, "LV_OBJ_FLAG_HIDDEN")
+}
+
+func lvLabelSetText(objName string, text string) (*CtrlResponse, error) {
+	return CallCtrlAction("lv_label_set_text", map[string]interface{}{"obj": objName, "text": text})
+}
+
+func lvImgSetSrc(objName string, src string) (*CtrlResponse, error) {
+	return CallCtrlAction("lv_img_set_src", map[string]interface{}{"obj": objName, "src": src})
+}
+
 func updateLabelIfChanged(objName string, newText string) {
 	if newText != "" && newText != displayedTexts[objName] {
-		_, _ = CallCtrlAction("lv_label_set_text", map[string]interface{}{"obj": objName, "text": newText})
+		_, _ = lvLabelSetText(objName, newText)
 		displayedTexts[objName] = newText
 	}
 }
@@ -51,29 +79,43 @@ func updateDisplay() {
 	updateLabelIfChanged("ui_Home_Content_Ip", networkState.IPv4String())
 	if usbState == "configured" {
 		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Connected")
-		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Usb_Status_Label", "state": "LV_STATE_DEFAULT"})
+		_, _ = lvObjSetState("ui_Home_Footer_Usb_Status_Label", "LV_STATE_DEFAULT")
 	} else {
 		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Disconnected")
-		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Usb_Status_Label", "state": "LV_STATE_USER_2"})
+		_, _ = lvObjSetState("ui_Home_Footer_Usb_Status_Label", "LV_STATE_USER_2")
 	}
 	if lastVideoState.Ready {
 		updateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Connected")
-		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Hdmi_Status_Label", "state": "LV_STATE_DEFAULT"})
+		_, _ = lvObjSetState("ui_Home_Footer_Hdmi_Status_Label", "LV_STATE_DEFAULT")
 	} else {
 		updateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Disconnected")
-		_, _ = CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": "ui_Home_Footer_Hdmi_Status_Label", "state": "LV_STATE_USER_2"})
+		_, _ = lvObjSetState("ui_Home_Footer_Hdmi_Status_Label", "LV_STATE_USER_2")
 	}
 	updateLabelIfChanged("ui_Home_Header_Cloud_Status_Label", fmt.Sprintf("%d active", actionSessions))
+
 	if networkState.IsUp() {
 		switchToScreenIfDifferent("ui_Home_Screen")
 	} else {
 		switchToScreenIfDifferent("ui_No_Network_Screen")
+	}
+
+	if config.CloudToken == "" || config.CloudURL == "" {
+		lvObjHide("ui_Home_Header_Cloud_Status_Icon")
+	} else {
+		lvObjShow("ui_Home_Header_Cloud_Status_Icon")
+		// TODO: blink the icon if establishing connection
+		if cloudConnectionAlive {
+			_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
+		} else {
+			_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud_disconnected.png")
+		}
 	}
 }
 
 var (
 	displayInited     = false
 	displayUpdateLock = sync.Mutex{}
+	waitDisplayUpdate = sync.Mutex{}
 )
 
 func requestDisplayUpdate() {
@@ -90,6 +132,14 @@ func requestDisplayUpdate() {
 		//TODO: only run once regardless how many pending updates
 		updateDisplay()
 	}()
+}
+
+func waitCtrlAndRequestDisplayUpdate() {
+	waitDisplayUpdate.Lock()
+	defer waitDisplayUpdate.Unlock()
+
+	waitCtrlClientConnected()
+	requestDisplayUpdate()
 }
 
 func updateStaticContents() {

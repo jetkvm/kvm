@@ -242,7 +242,12 @@ func handleWebRTCSignalWsMessages(
 	scopedLogger *zerolog.Logger,
 ) error {
 	runCtx, cancelRun := context.WithCancel(context.Background())
-	defer cancelRun()
+	defer func() {
+		if isCloudConnection {
+			setCloudConnectionAlive(false)
+		}
+		cancelRun()
+	}()
 
 	// connection type
 	var sourceType string
