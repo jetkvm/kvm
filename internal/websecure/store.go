@@ -96,7 +96,11 @@ func (s *CertStore) loadCertificate(hostname string) {
 
 	s.certificates[hostname] = &cert
 
-	s.log.Info().Str("hostname", hostname).Msg("Loaded certificate")
+	if hostname == selfSignerCAMagicName {
+		s.log.Info().Msg("loaded CA certificate")
+	} else {
+		s.log.Info().Str("hostname", hostname).Msg("loaded certificate")
+	}
 }
 
 // GetCertificate returns the certificate for the given hostname
