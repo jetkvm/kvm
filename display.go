@@ -1,7 +1,6 @@
 package kvm
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -89,9 +88,9 @@ func switchToScreenIfDifferent(screenName string) {
 }
 
 var (
-	cloudBlinkCtx    context.Context
-	cloudBlinkCancel context.CancelFunc
-	cloudBlinkTicker *time.Ticker
+	cloudBlinkLock    sync.Mutex = sync.Mutex{}
+	cloudBlinkStopped bool
+	cloudBlinkTicker  *time.Ticker
 )
 
 func updateDisplay() {
@@ -141,33 +140,28 @@ func updateDisplay() {
 func startCloudBlink() {
 	if cloudBlinkTicker == nil {
 		cloudBlinkTicker = time.NewTicker(2 * time.Second)
-	}
+	} else {
+		// do nothing if the blink isn't stopped
+		if cloudBlinkStopped {
+			cloudBlinkLock.Lock()
+			defer cloudBlinkLock.Unlock()
 
-	if cloudBlinkCtx != nil {
-		cloudBlinkCancel()
+			cloudBlinkStopped = false
+			cloudBlinkTicker.Reset(2 * time.Second)
+		}
 	}
-
-	cloudBlinkCtx, cloudBlinkCancel = context.WithCancel(appCtx)
-	cloudBlinkTicker.Reset(2 * time.Second)
 
 	go func() {
-		defer cloudBlinkTicker.Stop()
 		for {
 			select {
 			case <-cloudBlinkTicker.C:
 				if cloudConnectionState != CloudConnectionStateConnecting {
-					return
+					continue
 				}
-				_, _ = lvObjFadeIn("ui_Home_Header_Cloud_Status_Icon", 1000)
-				time.Sleep(1000 * time.Millisecond)
 				_, _ = lvObjFadeOut("ui_Home_Header_Cloud_Status_Icon", 1000)
 				time.Sleep(1000 * time.Millisecond)
-			case <-cloudBlinkCtx.Done():
-				time.Sleep(1000 * time.Millisecond)
 				_, _ = lvObjFadeIn("ui_Home_Header_Cloud_Status_Icon", 1000)
 				time.Sleep(1000 * time.Millisecond)
-				_, _ = lvObjSetOpacity("ui_Home_Header_Cloud_Status_Icon", 255)
-				return
 			}
 		}
 	}()
@@ -178,9 +172,9 @@ func stopCloudBlink() {
 		cloudBlinkTicker.Stop()
 	}
 
-	if cloudBlinkCtx != nil {
-		cloudBlinkCancel()
-	}
+	cloudBlinkLock.Lock()
+	defer cloudBlinkLock.Unlock()
+	cloudBlinkStopped = true
 }
 
 var (
