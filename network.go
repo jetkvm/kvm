@@ -140,7 +140,7 @@ func NewNetworkInterfaceState(ifname string) *NetworkInterfaceState {
 		PidFile:       dhcpPidFile,
 		Logger:        &logger,
 		OnLeaseChange: func(lease *udhcpc.Lease) {
-			s.update()
+			_, _ = s.update()
 		},
 	})
 
@@ -168,8 +168,8 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 	newInterfaceUp := state == netlink.OperUp
 
 	// check if the interface is coming up
-	interfaceGoingUp := s.interfaceUp == false && newInterfaceUp == true
-	interfaceGoingDown := s.interfaceUp == true && newInterfaceUp == false
+	interfaceGoingUp := !s.interfaceUp && newInterfaceUp
+	interfaceGoingDown := s.interfaceUp && !newInterfaceUp
 
 	if s.interfaceUp != newInterfaceUp {
 		s.interfaceUp = newInterfaceUp
@@ -243,7 +243,6 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 				scopedLogger.Info().
 					Str("old_ipv4", s.ipv4Addr.String()).
 					Msg("IPv4 address changed")
-				changed = true
 			} else {
 				scopedLogger.Info().Msg("IPv4 address found")
 			}
@@ -293,10 +292,10 @@ func (s *NetworkInterfaceState) CheckAndUpdateDhcp() error {
 	switch dhcpTargetState {
 	case DhcpTargetStateRenew:
 		s.l.Info().Msg("renewing DHCP lease")
-		s.dhcpClient.Renew()
+		_ = s.dhcpClient.Renew()
 	case DhcpTargetStateRelease:
 		s.l.Info().Msg("releasing DHCP lease")
-		s.dhcpClient.Release()
+		_ = s.dhcpClient.Release()
 	case DhcpTargetStateStart:
 		s.l.Warn().Msg("dhcpTargetStateStart not implemented")
 	case DhcpTargetStateStop:
@@ -309,7 +308,7 @@ func (s *NetworkInterfaceState) CheckAndUpdateDhcp() error {
 func (s *NetworkInterfaceState) HandleLinkUpdate(update netlink.LinkUpdate) {
 	if update.Link.Attrs().Name == s.interfaceName {
 		s.l.Info().Interface("update", update).Msg("interface link update received")
-		s.CheckAndUpdateDhcp()
+		_ = s.CheckAndUpdateDhcp()
 	}
 }
 
@@ -347,7 +346,7 @@ func initNetwork() {
 
 	// TODO: support multiple interfaces
 	networkState = NewNetworkInterfaceState(NetIfName)
-	go networkState.dhcpClient.Run()
+	go networkState.dhcpClient.Run() // nolint:errcheck
 
 	if err := networkState.CheckAndUpdateDhcp(); err != nil {
 		os.Exit(1)

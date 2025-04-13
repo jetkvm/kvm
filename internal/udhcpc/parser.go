@@ -3,7 +3,6 @@ package udhcpc
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"reflect"
 	"strconv"
@@ -73,7 +72,6 @@ func UnmarshalDHCPCLease(lease *Lease, str string) error {
 
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
-			log.Printf("invalid line: %s", line)
 			continue
 		}
 

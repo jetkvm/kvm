@@ -21,10 +21,6 @@ const (
 
 var (
 	timeSyncRetryInterval = 0 * time.Second
-	defaultNTPServers     = []string{
-		"time.cloudflare.com",
-		"time.apple.com",
-	}
 )
 
 type TimeSync struct {

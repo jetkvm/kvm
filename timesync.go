@@ -7,13 +7,6 @@ import (
 	"github.com/jetkvm/kvm/internal/timesync"
 )
 
-const (
-	timeSyncRetryStep     = 5 * time.Second
-	timeSyncRetryMaxInt   = 1 * time.Minute
-	timeSyncWaitNetChkInt = 100 * time.Millisecond
-	timeSyncWaitNetUpInt  = 3 * time.Second
-)
-
 var (
 	timeSync          *timesync.TimeSync
 	defaultNTPServers = []string{

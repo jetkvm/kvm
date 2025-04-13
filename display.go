@@ -53,7 +53,7 @@ func lvObjShow(objName string) (*CtrlResponse, error) {
 	return lvObjClearFlag(objName, "LV_OBJ_FLAG_HIDDEN")
 }
 
-func lvObjSetOpacity(objName string, opacity int) (*CtrlResponse, error) {
+func lvObjSetOpacity(objName string, opacity int) (*CtrlResponse, error) { // nolint:unused
 	return CallCtrlAction("lv_obj_set_style_opa_layered", map[string]interface{}{"obj": objName, "opa": opacity})
 }
 
@@ -94,7 +94,6 @@ var (
 )
 
 func updateDisplay() {
-
 	updateLabelIfChanged("ui_Home_Content_Ip", networkState.IPv4String())
 	if usbState == "configured" {
 		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Connected")
@@ -119,20 +118,20 @@ func updateDisplay() {
 	}
 
 	if cloudConnectionState == CloudConnectionStateNotConfigured {
-		lvObjHide("ui_Home_Header_Cloud_Status_Icon")
+		_, _ = lvObjHide("ui_Home_Header_Cloud_Status_Icon")
 	} else {
-		lvObjShow("ui_Home_Header_Cloud_Status_Icon")
+		_, _ = lvObjShow("ui_Home_Header_Cloud_Status_Icon")
 	}
 
 	switch cloudConnectionState {
 	case CloudConnectionStateDisconnected:
-		lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud_disconnected.png")
+		_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud_disconnected.png")
 		stopCloudBlink()
 	case CloudConnectionStateConnecting:
-		lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
+		_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
 		startCloudBlink()
 	case CloudConnectionStateConnected:
-		lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
+		_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
 		stopCloudBlink()
 	}
 }
@@ -152,17 +151,14 @@ func startCloudBlink() {
 	}
 
 	go func() {
-		for {
-			select {
-			case <-cloudBlinkTicker.C:
-				if cloudConnectionState != CloudConnectionStateConnecting {
-					continue
-				}
-				_, _ = lvObjFadeOut("ui_Home_Header_Cloud_Status_Icon", 1000)
-				time.Sleep(1000 * time.Millisecond)
-				_, _ = lvObjFadeIn("ui_Home_Header_Cloud_Status_Icon", 1000)
-				time.Sleep(1000 * time.Millisecond)
+		for range cloudBlinkTicker.C {
+			if cloudConnectionState != CloudConnectionStateConnecting {
+				continue
 			}
+			_, _ = lvObjFadeOut("ui_Home_Header_Cloud_Status_Icon", 1000)
+			time.Sleep(1000 * time.Millisecond)
+			_, _ = lvObjFadeIn("ui_Home_Header_Cloud_Status_Icon", 1000)
+			time.Sleep(1000 * time.Millisecond)
 		}
 	}()
 }

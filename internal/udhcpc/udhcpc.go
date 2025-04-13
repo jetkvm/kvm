@@ -73,7 +73,7 @@ func (c *DHCPClient) Run() error {
 					c.logger.Debug().
 						Str("event", event.Name).
 						Msg("udhcpc lease file updated, reloading lease")
-					c.loadLeaseFile()
+					_ = c.loadLeaseFile()
 				}
 			case err, ok := <-watcher.Errors:
 				if !ok {
@@ -84,7 +84,14 @@ func (c *DHCPClient) Run() error {
 		}
 	}()
 
-	watcher.Add(c.leaseFile)
+	err = watcher.Add(c.leaseFile)
+	if err != nil {
+		c.logger.Error().
+			Err(err).
+			Str("path", c.leaseFile).
+			Msg("failed to watch lease file")
+		return err
+	}
 
 	// TODO: update udhcpc pid file
 	// we'll comment this out for now because the pid might change
