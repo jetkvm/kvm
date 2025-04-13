@@ -8,8 +8,7 @@ import { GridCard } from "@components/Card";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useHidStore, useRTCStore, useUiStore } from "@/hooks/stores";
-import { chars, keys, modifiers } from "@/keyboardMappings";
+import { useHidStore, useRTCStore, useUiStore, useKeyboardMappingsStore } from "@/hooks/stores";
 import notifications from "@/notifications";
 
 const hidKeyboardPayload = (keys: number[], modifier: number) => {
@@ -17,6 +16,19 @@ const hidKeyboardPayload = (keys: number[], modifier: number) => {
 };
 
 export default function PasteModal() {
+  const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+  const [chars, setChars] = useState(useKeyboardMappingsStore.chars);
+  const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
+
+  useEffect(() => {
+    const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
+      setKeys(useKeyboardMappingsStore.keys); 
+      setChars(useKeyboardMappingsStore.chars);
+      setModifiers(useKeyboardMappingsStore.modifiers);
+    });
+    return unsubscribeKeyboardStore; // Cleanup on unmount
+  }, []); 
+
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
   const setPasteMode = useHidStore(state => state.setPasteModeEnabled);
   const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
@@ -42,13 +54,19 @@ export default function PasteModal() {
 
     try {
       for (const char of text) {
-        const { key, shift } = chars[char] ?? {};
+        const { key, shift, altLeft, altRight } = chars[char] ?? {};
         if (!key) continue;
+
+        // Build the modifier bitmask
+        const modifier =
+        (shift ? modifiers["ShiftLeft"] : 0) |
+        (altLeft ? modifiers["AltLeft"] : 0) |
+        (altRight ? modifiers["AltRight"] : 0); // This is important for a lot of keyboard layouts, right and left alt have different functions
 
         await new Promise<void>((resolve, reject) => {
           send(
             "keyboardReport",
-            hidKeyboardPayload([keys[key]], shift ? modifiers["ShiftLeft"] : 0),
+            hidKeyboardPayload([keys[key]], modifier),
             params => {
               if ("error" in params) return reject(params.error);
               send("keyboardReport", hidKeyboardPayload([], 0), params => {
@@ -63,7 +81,7 @@ export default function PasteModal() {
       console.error(error);
       notifications.error("Failed to paste text");
     }
-  }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode]);
+  }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode, chars, keys, modifiers]);
 
   useEffect(() => {
     if (TextAreaRef.current) {
@@ -125,8 +143,11 @@ export default function PasteModal() {
                       <div className="mt-2 flex items-center gap-x-2">
                         <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
                         <span className="text-xs text-red-500 dark:text-red-400">
-                          The following characters won&apos;t be pasted:{" "}
+                          The following characters won&apos;t be pasted as the current keyboard layout does not contain a valid mapping:{" "}
                           {invalidChars.join(", ")}
+                        </span>
+                        <span className="text-xs text-red-500 dark:text-red-400">
+                          Tip: You can set your desired keyboard layout in settings, and remember to enable keyboard mapping.
                         </span>
                       </div>
                     )}

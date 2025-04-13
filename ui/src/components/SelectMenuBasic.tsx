@@ -27,6 +27,7 @@ type SelectMenuProps = Pick<
 const sizes = {
   XS: "h-[24.5px] pl-3 pr-8 text-xs",
   SM: "h-[32px] pl-3 pr-8 text-[13px]",
+  SM_Wide: "h-[32px] pl-3 pr-8 mr-5 text-[13px]",
   MD: "h-[40px] pl-4 pr-10 text-sm",
   LG: "h-[48px] pl-4 pr-10 px-5 text-base",
 };

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { getKeyboardMappings } from "@/keyboardMappings/KeyboardLayouts";
 import { MAX_STEPS_PER_MACRO, MAX_TOTAL_MACROS, MAX_KEYS_PER_STEP } from "@/constants/macros";
 
 // Define the JsonRpc types for better type checking
@@ -285,6 +286,9 @@ interface SettingsState {
   mouseMode: string;
   setMouseMode: (mode: string) => void;
 
+  keyboardMappingEnabled: boolean;
+  setkeyboardMappingEnabled: (enabled: boolean) => void;
+
   debugMode: boolean;
   setDebugMode: (enabled: boolean) => void;
 
@@ -299,6 +303,9 @@ interface SettingsState {
 export const useSettingsStore = create(
   persist<SettingsState>(
     set => ({
+      keyboardMappingEnabled: false,
+      setkeyboardMappingEnabled: enabled => set({keyboardMappingEnabled: enabled}),
+
       isCursorHidden: false,
       setCursorVisibility: enabled => set({ isCursorHidden: enabled }),
 
@@ -631,6 +638,69 @@ export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
   setErrorMessage: message => set({ errorMessage: message }),
 }));
 
+class KeyboardMappingsStore {
+  private _layout: string = 'en-US';
+  private _subscribers: (() => void)[] = [];
+  private _mappingsEnabled: boolean = false;
+
+  public keys = getKeyboardMappings(this._layout).keys;
+  public chars = getKeyboardMappings(this._layout).chars;
+  public modifiers = getKeyboardMappings(this._layout).modifiers;
+
+  private mappedKeys = getKeyboardMappings(this._layout).keys;
+  private mappedChars = getKeyboardMappings(this._layout).chars;
+  private mappedModifiers = getKeyboardMappings(this._layout).modifiers;
+
+  setLayout(newLayout: string) {
+    if (this._layout === newLayout) return;
+    this._layout = newLayout;
+    const updatedMappings = getKeyboardMappings(newLayout);
+    this.mappedKeys = updatedMappings.keys;
+    this.mappedChars = updatedMappings.chars;
+    this.mappedModifiers = updatedMappings.modifiers;
+    if (this._mappingsEnabled) {
+      this.keys = this.mappedKeys;
+      this.chars = this.mappedChars;
+      this.modifiers = this.mappedModifiers;
+      this._notifySubscribers(); 
+    }
+  }
+
+  setMappingsState(enabled: boolean) {
+    this._mappingsEnabled = enabled;
+    if (this._mappingsEnabled) {
+      this.keys = this.mappedKeys;
+      this.chars = this.mappedChars;
+      this.modifiers = this.mappedModifiers;
+    } else {
+      this.keys = getKeyboardMappings('us').keys;
+      this.chars = getKeyboardMappings('us').chars;
+      this.modifiers = getKeyboardMappings('us').modifiers;
+    }
+    this._notifySubscribers(); 
+  }
+
+  getMappingState() {
+    return this._mappingsEnabled;
+  }
+
+  getLayout() {
+    return this._layout;
+  }
+
+  subscribe(callback: () => void) {
+    this._subscribers.push(callback);
+    return () => {
+      this._subscribers = this._subscribers.filter(sub => sub !== callback); // Cleanup
+    };
+  }
+
+  private _notifySubscribers() {
+    this._subscribers.forEach(callback => callback());
+  }
+}
+
+export const useKeyboardMappingsStore = new KeyboardMappingsStore();
 interface LocalAuthModalState {
   modalView:
   | "createPassword"

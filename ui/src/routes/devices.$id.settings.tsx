@@ -148,7 +148,7 @@ export default function SettingsRoute() {
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 [.active_&]:bg-blue-50 [.active_&]:!text-blue-700 md:[.active_&]:bg-transparent dark:[.active_&]:bg-blue-900 dark:[.active_&]:!text-blue-200 dark:md:[.active_&]:bg-transparent">
                       <LuKeyboard className="h-4 w-4 shrink-0" />
-                      <h1>Mouse</h1>
+                      <h1>Mouse & Keyboard</h1>
                     </div>
                   </NavLink>
                 </div>

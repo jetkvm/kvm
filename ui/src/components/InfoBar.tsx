@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { cx } from "@/cva.config";
 import {
@@ -7,10 +7,21 @@ import {
   useRTCStore,
   useSettingsStore,
   useVideoStore,
+  useKeyboardMappingsStore,
 } from "@/hooks/stores";
-import { keys, modifiers } from "@/keyboardMappings";
 
 export default function InfoBar() {
+  const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+  const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
+
+  useEffect(() => {
+    const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
+      setKeys(useKeyboardMappingsStore.keys); 
+      setModifiers(useKeyboardMappingsStore.modifiers);
+    });
+    return unsubscribeKeyboardStore; // Cleanup on unmount
+  }, []); 
+
   const activeKeys = useHidStore(state => state.activeKeys);
   const activeModifiers = useHidStore(state => state.activeModifiers);
   const mouseX = useMouseStore(state => state.mouseX);

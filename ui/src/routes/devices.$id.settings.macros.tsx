@@ -8,7 +8,7 @@ import { Button } from "@/components/Button";
 import EmptyCard from "@/components/EmptyCard";
 import Card from "@/components/Card";
 import { MAX_TOTAL_MACROS, COPY_SUFFIX, DEFAULT_DELAY } from "@/constants/macros";
-import { keyDisplayMap, modifierDisplayMap } from "@/keyboardMappings";
+import { keyDisplayMap, modifierDisplayMap } from "@/keyboardMappings/KeyboardLayouts";
 import notifications from "@/notifications";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -26,6 +26,7 @@ export default function SettingsMacrosRoute() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [macroToDelete, setMacroToDelete] = useState<KeySequence | null>(null);
+  
   
   const isMaxMacrosReached = useMemo(() => 
     macros.length >= MAX_TOTAL_MACROS, 

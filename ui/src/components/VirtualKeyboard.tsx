@@ -9,9 +9,9 @@ import { Button } from "@components/Button";
 
 import "react-simple-keyboard/build/css/index.css";
 
-import { useHidStore, useUiStore } from "@/hooks/stores";
+import { useHidStore, useUiStore, useKeyboardMappingsStore } from "@/hooks/stores";
 import { cx } from "@/cva.config";
-import { keys, modifiers, keyDisplayMap } from "@/keyboardMappings";
+import { keyDisplayMap } from "@/keyboardMappings/KeyboardLayouts";
 import useKeyboard from "@/hooks/useKeyboard";
 import DetachIconRaw from "@/assets/detach-icon.svg";
 import AttachIconRaw from "@/assets/attach-icon.svg";
@@ -25,7 +25,40 @@ const AttachIcon = ({ className }: { className?: string }) => {
 };
 
 function KeyboardWrapper() {
-  const [layoutName, setLayoutName] = useState("default");
+    const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+    const [chars, setChars] = useState(useKeyboardMappingsStore.chars);
+    const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
+  
+    useEffect(() => {
+      const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
+        setKeys(useKeyboardMappingsStore.keys);
+        setChars(useKeyboardMappingsStore.chars);
+        setModifiers(useKeyboardMappingsStore.modifiers);
+        setMappingsEnabled(useKeyboardMappingsStore.getMappingState());
+      });
+      return unsubscribeKeyboardStore; // Cleanup on unmount
+    }, []); 
+  
+    const [layoutName, setLayoutName] = useState("default");
+    const [mappingsEnabled, setMappingsEnabled] = useState(useKeyboardMappingsStore.getMappingState());
+  
+    useEffect(() => {
+      if (mappingsEnabled) {
+        if (layoutName == "default" ) {
+          setLayoutName("mappedLower")
+        }
+        if (layoutName == "shift") {
+          setLayoutName("mappedUpper")
+        }
+      } else {
+        if (layoutName == "mappedLower") {
+          setLayoutName("default")
+        }
+        if (layoutName == "mappedUpper") {
+          setLayoutName("shift")
+        }
+      }
+    }, [mappingsEnabled, layoutName]);
 
   const keyboardRef = useRef<HTMLDivElement>(null);
   const showAttachedVirtualKeyboard = useUiStore(
@@ -112,16 +145,25 @@ function KeyboardWrapper() {
     };
   }, [endDrag, onDrag, startDrag]);
 
+  // TODO implement meta key and meta key modifer
+  // TODO implement hold functionality for key combos. (add a hold button, add all keys to an array, when released send as one)
   const onKeyDown = useCallback(
     (key: string) => {
+      const cleanKey = key.replace(/[()]/g, "");
+      // Mappings
+      const { key: mappedKey, shift, altLeft, altRight } = chars[cleanKey] ?? {};
+
       const isKeyShift = key === "{shift}" || key === "ShiftLeft" || key === "ShiftRight";
       const isKeyCaps = key === "CapsLock";
-      const cleanKey = key.replace(/[()]/g, "");
-      const keyHasShiftModifier = key.includes("(");
+      const keyHasShiftModifier = (key.includes("(") && key !== "(") || shift;
 
       // Handle toggle of layout for shift or caps lock
       const toggleLayout = () => {
-        setLayoutName(prevLayout => (prevLayout === "default" ? "shift" : "default"));
+        if (mappingsEnabled) {
+          setLayoutName(prevLayout => (prevLayout === "mappedLower" ? "mappedUpper" : "mappedLower"));
+        } else {
+          setLayoutName(prevLayout => (prevLayout === "default" ? "shift" : "default"));
+        }
       };
 
       if (key === "CtrlAltDelete") {
@@ -143,10 +185,17 @@ function KeyboardWrapper() {
         return;
       }
 
-      if (isKeyShift || isKeyCaps) {
+      if (isKeyShift || (!(layoutName == "shift" || layoutName == "mappedUpper") && isCapsLockActive)) {
         toggleLayout();
+      }
 
-        if (isCapsLockActive) {
+      if (layoutName == "shift" || layoutName == "mappedUpper") {
+        if (!isCapsLockActive) {
+          toggleLayout();
+        }
+
+        if (isKeyCaps && isCapsLockActive) {
+          toggleLayout();
           setIsCapsLockActive(false);
           sendKeyboardEvent([keys["CapsLock"]], []);
           return;
@@ -155,25 +204,30 @@ function KeyboardWrapper() {
 
       // Handle caps lock state change
       if (isKeyCaps) {
+        toggleLayout();
         setIsCapsLockActive(!isCapsLockActive);
       }
 
       // Collect new active keys and modifiers
-      const newKeys = keys[cleanKey] ? [keys[cleanKey]] : [];
+      const newKeys = keys[mappedKey ?? cleanKey] ? [keys[mappedKey ?? cleanKey]] : [];
       const newModifiers =
-        keyHasShiftModifier && !isCapsLockActive ? [modifiers["ShiftLeft"]] : [];
+      [
+        ((shift || isKeyShift)? modifiers['ShiftLeft'] : 0),
+        (altLeft? modifiers['AltLeft'] : 0),
+        (altRight? modifiers['AltRight'] : 0),
+      ].filter(Boolean);
 
       // Update current keys and modifiers
-      sendKeyboardEvent(newKeys, newModifiers);
+      sendKeyboardEvent(newKeys, [...new Set(newModifiers)]);
 
       // If shift was used as a modifier and caps lock is not active, revert to default layout
       if (keyHasShiftModifier && !isCapsLockActive) {
-        setLayoutName("default");
+        setLayoutName(mappingsEnabled ? "mappedLower" : "default");
       }
 
       setTimeout(resetKeyboardState, 100);
     },
-    [isCapsLockActive, sendKeyboardEvent, resetKeyboardState, setIsCapsLockActive],
+    [isCapsLockActive, sendKeyboardEvent, resetKeyboardState, setIsCapsLockActive, mappingsEnabled, chars, keys, modifiers, layoutName],
   );
 
   const virtualKeyboard = useHidStore(state => state.isVirtualKeyboardEnabled);
@@ -279,6 +333,25 @@ function KeyboardWrapper() {
                           "CapsLock (KeyA) (KeyS) (KeyD) (KeyF) (KeyG) (KeyH) (KeyJ) (KeyK) (KeyL) (Semicolon) (Quote) Enter",
                           "ShiftLeft (KeyZ) (KeyX) (KeyC) (KeyV) (KeyB) (KeyN) (KeyM) (Comma) (Period) (Slash) ShiftRight",
                           "ControlLeft AltLeft MetaLeft Space MetaRight AltRight",
+                        ],
+                        mappedLower: [
+                          "CtrlAltDelete AltMetaEscape",
+                          "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
+                          "` 1 2 3 4 5 6 7 8 9 0 - = Backspace",
+                          "Tab q w e r t y u i o p [ ] \\",
+                          "CapsLock a s d f g h j k l ; ' Enter",
+                          "ShiftLeft z x c v b n m , . / ShiftRight",
+                          "ControlLeft AltLeft MetaLeft Space MetaRight AltRight"
+                        ],
+  
+                        mappedUpper: [
+                          "CtrlAltDelete AltMetaEscape",
+                          "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
+                          "~ ! @ # $ % ^ & * ( ) _ + Backspace",
+                          "Tab Q W E R T Y U I O P { } |",
+                          "CapsLock A S D F G H J K L : \" Enter",
+                          "ShiftLeft Z X C V B N M < > ? ShiftRight",
+                          "ControlLeft AltLeft MetaLeft Space MetaRight AltRight"
                         ],
                       }}
                       disableButtonHold={true}

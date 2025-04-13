@@ -1,8 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useState, useEffect } from "react";
 
 import { useHidStore, useRTCStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { keys, modifiers } from "@/keyboardMappings";
+import { useKeyboardMappingsStore } from "@/hooks/stores";
 
 export default function useKeyboard() {
   const [send] = useJsonRpc();
@@ -11,6 +11,17 @@ export default function useKeyboard() {
   const updateActiveKeysAndModifiers = useHidStore(
     state => state.updateActiveKeysAndModifiers,
   );
+
+  const [keys, setKeys] = useState(useKeyboardMappingsStore.keys);
+  const [modifiers, setModifiers] = useState(useKeyboardMappingsStore.modifiers);
+  
+  useEffect(() => {
+    const unsubscribeKeyboardStore = useKeyboardMappingsStore.subscribe(() => {
+      setKeys(useKeyboardMappingsStore.keys); 
+      setModifiers(useKeyboardMappingsStore.modifiers);
+    });
+    return unsubscribeKeyboardStore; // Cleanup on unmount
+  }, []); 
 
   const sendKeyboardEvent = useCallback(
     (keys: number[], modifiers: number[]) => {

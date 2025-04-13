@@ -4,21 +4,22 @@ import { Button } from "@/components/Button";
 import { Combobox } from "@/components/Combobox";
 import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import Card from "@/components/Card";
-import { keys, modifiers, keyDisplayMap } from "@/keyboardMappings";
+import { keyDisplayMap } from "@/keyboardMappings/KeyboardLayouts";
+import { keysUS, modifiersUS } from '../keyboardMappings/layouts/us';
 import { MAX_KEYS_PER_STEP, DEFAULT_DELAY } from "@/constants/macros";
 import FieldLabel from "@/components/FieldLabel";
 
 // Filter out modifier keys since they're handled in the modifiers section
 const modifierKeyPrefixes = ['Alt', 'Control', 'Shift', 'Meta'];
 
-const keyOptions = Object.keys(keys)
+const keyOptions = Object.keys(keysUS)
   .filter(key => !modifierKeyPrefixes.some(prefix => key.startsWith(prefix)))
   .map(key => ({
     value: key,
     label: keyDisplayMap[key] || key,
   }));
 
-const modifierOptions = Object.keys(modifiers).map(modifier => ({
+const modifierOptions = Object.keys(modifiersUS).map(modifier => ({
   value: modifier,
   label: modifier.replace(/^(Control|Alt|Shift|Meta)(Left|Right)$/, "$1 $2"),
 }));
