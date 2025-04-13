@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/gwatts/rootcerts"
 	"github.com/rs/zerolog"
 )
 
@@ -127,10 +129,14 @@ func downloadFile(ctx context.Context, path string, url string, downloadProgress
 		return fmt.Errorf("error creating request: %w", err)
 	}
 
-	// TODO: set a separate timeout for the download but keep the TLS handshake short
-	// use Transport here will cause CA certificate validation failure so we temporarily removed it
 	client := http.Client{
 		Timeout: 10 * time.Minute,
+		Transport: &http.Transport{
+			TLSHandshakeTimeout: 30 * time.Second,
+			TLSClientConfig: &tls.Config{
+				RootCAs: rootcerts.ServerCertPool(),
+			},
+		},
 	}
 
 	resp, err := client.Do(req)
