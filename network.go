@@ -47,6 +47,14 @@ type NetworkInterfaceState struct {
 	checked bool
 }
 
+type RpcNetworkState struct {
+	InterfaceName string        `json:"interface_name"`
+	MacAddress    string        `json:"mac_address"`
+	IPv4          string        `json:"ipv4,omitempty"`
+	IPv6          string        `json:"ipv6,omitempty"`
+	DHCPLease     *udhcpc.Lease `json:"dhcp_lease,omitempty"`
+}
+
 func (s *NetworkInterfaceState) IsUp() bool {
 	return s.interfaceUp
 }
@@ -303,6 +311,27 @@ func (s *NetworkInterfaceState) HandleLinkUpdate(update netlink.LinkUpdate) {
 		s.l.Info().Interface("update", update).Msg("interface link update received")
 		s.CheckAndUpdateDhcp()
 	}
+}
+
+func rpcGetNetworkState() RpcNetworkState {
+	return RpcNetworkState{
+		InterfaceName: networkState.interfaceName,
+		MacAddress:    networkState.macAddr.String(),
+		IPv4:          networkState.ipv4Addr.String(),
+		IPv6:          networkState.ipv6Addr.String(),
+		DHCPLease:     networkState.dhcpClient.GetLease(),
+	}
+}
+
+func rpcRenewDHCPLease() error {
+	if networkState == nil {
+		return fmt.Errorf("network state not initialized")
+	}
+	if networkState.dhcpClient == nil {
+		return fmt.Errorf("dhcp client not initialized")
+	}
+
+	return networkState.dhcpClient.Renew()
 }
 
 func initNetwork() {

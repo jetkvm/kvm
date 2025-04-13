@@ -143,3 +143,7 @@ func (c *DHCPClient) loadLeaseFile() error {
 
 	return nil
 }
+
+func (c *DHCPClient) GetLease() *Lease {
+	return c.lease
+}

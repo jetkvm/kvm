@@ -960,6 +960,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"getDeviceID":            {Func: rpcGetDeviceID},
 	"deregisterDevice":       {Func: rpcDeregisterDevice},
 	"getCloudState":          {Func: rpcGetCloudState},
+	"getNetworkState":        {Func: rpcGetNetworkState},
+	"renewDHCPLease":         {Func: rpcRenewDHCPLease},
 	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
 	"absMouseReport":         {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
 	"relMouseReport":         {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
