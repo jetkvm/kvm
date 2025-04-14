@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/network"
 	"github.com/rs/zerolog"
 )
 
@@ -27,8 +28,9 @@ type TimeSync struct {
 	syncLock *sync.Mutex
 	l        *zerolog.Logger
 
-	ntpServers []string
-	httpUrls   []string
+	ntpServers    []string
+	httpUrls      []string
+	networkConfig *network.NetworkConfig
 
 	rtcDevicePath string
 	rtcDevice     *os.File
@@ -39,27 +41,37 @@ type TimeSync struct {
 	preCheckFunc func() (bool, error)
 }
 
-func NewTimeSync(
-	precheckFunc func() (bool, error),
-	ntpServers []string,
-	httpUrls []string,
-	logger *zerolog.Logger,
-) *TimeSync {
+type TimeSyncOptions struct {
+	PreCheckFunc  func() (bool, error)
+	Logger        *zerolog.Logger
+	NetworkConfig *network.NetworkConfig
+}
+
+type SyncMode struct {
+	Ntp             bool
+	Http            bool
+	Ordering        []string
+	NtpUseFallback  bool
+	HttpUseFallback bool
+}
+
+func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 	rtcDevice, err := getRtcDevicePath()
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to get RTC device path")
+		opts.Logger.Error().Err(err).Msg("failed to get RTC device path")
 	} else {
-		logger.Info().Str("path", rtcDevice).Msg("RTC device found")
+		opts.Logger.Info().Str("path", rtcDevice).Msg("RTC device found")
 	}
 
 	t := &TimeSync{
 		syncLock:      &sync.Mutex{},
-		l:             logger,
+		l:             opts.Logger,
 		rtcDevicePath: rtcDevice,
 		rtcLock:       &sync.Mutex{},
-		preCheckFunc:  precheckFunc,
-		ntpServers:    ntpServers,
-		httpUrls:      httpUrls,
+		preCheckFunc:  opts.PreCheckFunc,
+		ntpServers:    defaultNTPServers,
+		httpUrls:      defaultHTTPUrls,
+		networkConfig: opts.NetworkConfig,
 	}
 
 	if t.rtcDevicePath != "" {
@@ -70,7 +82,36 @@ func NewTimeSync(
 	return t
 }
 
+func (t *TimeSync) getSyncMode() SyncMode {
+	syncMode := SyncMode{
+		NtpUseFallback:  true,
+		HttpUseFallback: true,
+	}
+	var syncModeString string
+
+	if t.networkConfig != nil {
+		syncModeString = t.networkConfig.TimeSyncMode
+		if t.networkConfig.TimeSyncDisableFallback {
+			syncMode.NtpUseFallback = false
+			syncMode.HttpUseFallback = false
+		}
+	}
+
+	switch syncModeString {
+	case "ntp_only":
+		syncMode.Ntp = true
+	case "http_only":
+		syncMode.Http = true
+	default:
+		syncMode.Ntp = true
+		syncMode.Http = true
+	}
+
+	return syncMode
+}
+
 func (t *TimeSync) doTimeSync() {
+	metricTimeSyncStatus.Set(0)
 	for {
 		if ok, err := t.preCheckFunc(); !ok {
 			if err != nil {
@@ -101,14 +142,27 @@ func (t *TimeSync) doTimeSync() {
 			Str("time_taken", time.Since(start).String()).
 			Msg("time sync successful")
 
+		metricTimeSyncStatus.Set(1)
+
 		time.Sleep(timeSyncInterval) // after the first sync is done
 	}
 }
 
 func (t *TimeSync) Sync() error {
-	var now *time.Time
-	now = t.queryNetworkTime()
-	if now == nil {
+	var (
+		now    *time.Time
+		offset *time.Duration
+	)
+
+	syncMode := t.getSyncMode()
+
+	metricTimeSyncCount.Inc()
+
+	if syncMode.Ntp {
+		now, offset = t.queryNetworkTime()
+	}
+
+	if syncMode.Http && now == nil {
 		now = t.queryAllHttpTime()
 	}
 
@@ -116,10 +170,17 @@ func (t *TimeSync) Sync() error {
 		return fmt.Errorf("failed to get time from any source")
 	}
 
+	if offset != nil {
+		newNow := time.Now().Add(*offset)
+		now = &newNow
+	}
+
 	err := t.setSystemTime(*now)
 	if err != nil {
 		return fmt.Errorf("failed to set system time: %w", err)
 	}
+
+	metricTimeSyncSuccessCount.Inc()
 
 	return nil
 }

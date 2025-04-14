@@ -2,12 +2,25 @@ package timesync
 
 import (
 	"math/rand/v2"
+	"strconv"
 	"time"
 
 	"github.com/beevik/ntp"
 )
 
-func (t *TimeSync) queryNetworkTime() (now *time.Time) {
+var defaultNTPServers = []string{
+	"time.apple.com",
+	"time.aws.com",
+	"time.windows.com",
+	"time.google.com",
+	"162.159.200.123", // time.cloudflare.com
+	"0.pool.ntp.org",
+	"1.pool.ntp.org",
+	"2.pool.ntp.org",
+	"3.pool.ntp.org",
+}
+
+func (t *TimeSync) queryNetworkTime() (now *time.Time, offset *time.Duration) {
 	chunkSize := 4
 	ntpServers := t.ntpServers
 
@@ -16,27 +29,58 @@ func (t *TimeSync) queryNetworkTime() (now *time.Time) {
 
 	for i := 0; i < len(ntpServers); i += chunkSize {
 		chunk := ntpServers[i:min(i+chunkSize, len(ntpServers))]
-		results := t.queryMultipleNTP(chunk, timeSyncTimeout)
-		if results != nil {
-			return results
+		now, offset := t.queryMultipleNTP(chunk, timeSyncTimeout)
+		if now != nil {
+			return now, offset
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (now *time.Time) {
-	results := make(chan *time.Time, len(servers))
+type ntpResult struct {
+	now    *time.Time
+	offset *time.Duration
+}
 
+func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (now *time.Time, offset *time.Duration) {
+	results := make(chan *ntpResult, len(servers))
 	for _, server := range servers {
 		go func(server string) {
 			scopedLogger := t.l.With().
 				Str("server", server).
 				Logger()
 
+			// increase request count
+			metricNtpTotalRequestCount.Inc()
+			metricNtpRequestCount.WithLabelValues(server).Inc()
+
+			// query the server
 			now, err, response := queryNtpServer(server, timeout)
 
+			// set the last RTT
+			metricNtpServerLastRTT.WithLabelValues(
+				server,
+			).Set(float64(response.RTT.Milliseconds()))
+
+			// set the RTT histogram
+			metricNtpServerRttHistogram.WithLabelValues(
+				server,
+			).Observe(float64(response.RTT.Milliseconds()))
+
+			// set the server info
+			metricNtpServerInfo.WithLabelValues(
+				server,
+				response.ReferenceString(),
+				strconv.Itoa(int(response.Stratum)),
+				strconv.Itoa(int(response.Precision)),
+			).Set(1)
+
 			if err == nil {
+				// increase success count
+				metricNtpTotalSuccessCount.Inc()
+				metricNtpSuccessCount.WithLabelValues(server).Inc()
+
 				scopedLogger.Info().
 					Str("time", now.Format(time.RFC3339)).
 					Str("reference", response.ReferenceString()).
@@ -44,7 +88,10 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 					Str("clockOffset", response.ClockOffset.String()).
 					Uint8("stratum", response.Stratum).
 					Msg("NTP server returned time")
-				results <- now
+				results <- &ntpResult{
+					now:    now,
+					offset: &response.ClockOffset,
+				}
 			} else {
 				scopedLogger.Warn().
 					Str("error", err.Error()).
@@ -53,7 +100,8 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 		}(server)
 	}
 
-	return <-results
+	result := <-results
+	return result.now, result.offset
 }
 
 func queryNtpServer(server string, timeout time.Duration) (now *time.Time, err error, response *ntp.Response) {

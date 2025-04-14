@@ -5,8 +5,19 @@ import (
 	"errors"
 	"math/rand"
 	"net/http"
+	"strconv"
 	"time"
 )
+
+var defaultHTTPUrls = []string{
+	"http://www.gstatic.com/generate_204",
+	"http://cp.cloudflare.com/",
+	"http://edge-http.microsoft.com/captiveportal/generate_204",
+	// Firefox, Apple, and Microsoft have inconsistent results, so we don't use it
+	// "http://detectportal.firefox.com/",
+	// "http://www.apple.com/library/test/success.html",
+	// "http://www.msftconnecttest.com/connecttest.txt",
+}
 
 func (t *TimeSync) queryAllHttpTime() (now *time.Time) {
 	chunkSize := 4
@@ -38,6 +49,9 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 				Str("http_url", url).
 				Logger()
 
+			metricHttpRequestCount.WithLabelValues(url).Inc()
+			metricHttpTotalRequestCount.Inc()
+
 			startTime := time.Now()
 			now, err, response := queryHttpTime(
 				ctx,
@@ -46,12 +60,22 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 			)
 			duration := time.Since(startTime)
 
-			var status int
+			metricHttpServerLastRTT.WithLabelValues(url).Set(float64(duration.Milliseconds()))
+			metricHttpServerRttHistogram.WithLabelValues(url).Observe(float64(duration.Milliseconds()))
+
+			status := 0
 			if response != nil {
 				status = response.StatusCode
 			}
+			metricHttpServerInfo.WithLabelValues(
+				url,
+				strconv.Itoa(status),
+			).Set(1)
 
 			if err == nil {
+				metricHttpTotalSuccessCount.Inc()
+				metricHttpSuccessCount.WithLabelValues(url).Inc()
+
 				requestId := response.Header.Get("X-Request-Id")
 				if requestId != "" {
 					requestId = response.Header.Get("X-Msedge-Ref")
@@ -68,7 +92,10 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 
 				cancel()
 				results <- now
-			} else if !errors.Is(err, context.Canceled) {
+			} else if errors.Is(err, context.Canceled) {
+				metricHttpCancelCount.WithLabelValues(url).Inc()
+				metricHttpTotalCancelCount.Inc()
+			} else {
 				scopedLogger.Warn().
 					Str("error", err.Error()).
 					Int("status", status).

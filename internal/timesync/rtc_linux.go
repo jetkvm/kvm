@@ -99,5 +99,7 @@ func (t *TimeSync) setRtcTime(tu time.Time) error {
 		return fmt.Errorf("failed to set RTC time: %w", err)
 	}
 
+	metricRTCUpdateCount.Inc()
+
 	return nil
 }
