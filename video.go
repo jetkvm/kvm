@@ -43,7 +43,7 @@ func HandleVideoStateMessage(event CtrlResponse) {
 	}
 	lastVideoState = videoState
 	triggerVideoStateUpdate()
-	requestDisplayUpdate()
+	requestDisplayUpdate(true)
 }
 
 func rpcGetVideoState() (VideoInputState, error) {

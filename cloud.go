@@ -165,9 +165,12 @@ func setCloudConnectionState(state CloudConnectionState) {
 		state = CloudConnectionStateNotConfigured
 	}
 
+	previousState := cloudConnectionState
 	cloudConnectionState = state
 
-	go waitCtrlAndRequestDisplayUpdate()
+	go waitCtrlAndRequestDisplayUpdate(
+		previousState != state,
+	)
 }
 
 func wsResetMetrics(established bool, sourceType string, source string) {

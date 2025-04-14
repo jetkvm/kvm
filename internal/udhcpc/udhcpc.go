@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog"
@@ -138,6 +139,17 @@ func (c *DHCPClient) loadLeaseFile() error {
 	msg := "udhcpc lease updated"
 	if isFirstLoad {
 		msg = "udhcpc lease loaded"
+	}
+
+	leaseExpiry, err := lease.SetLeaseExpiry()
+	if err != nil {
+		c.logger.Error().Err(err).Msg("failed to get dhcp lease expiry")
+	} else {
+		expiresIn := leaseExpiry.Sub(time.Now())
+		c.logger.Info().
+			Interface("expiry", leaseExpiry).
+			Str("expiresIn", expiresIn.String()).
+			Msg("current dhcp lease expiry time calculated")
 	}
 
 	c.onLeaseChange(lease)

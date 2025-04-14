@@ -179,7 +179,7 @@ var (
 	waitDisplayUpdate = sync.Mutex{}
 )
 
-func requestDisplayUpdate() {
+func requestDisplayUpdate(shouldWakeDisplay bool) {
 	displayUpdateLock.Lock()
 	defer displayUpdateLock.Unlock()
 
@@ -188,19 +188,21 @@ func requestDisplayUpdate() {
 		return
 	}
 	go func() {
-		wakeDisplay(false)
+		if shouldWakeDisplay {
+			wakeDisplay(false)
+		}
 		displayLogger.Debug().Msg("display updating")
 		//TODO: only run once regardless how many pending updates
 		updateDisplay()
 	}()
 }
 
-func waitCtrlAndRequestDisplayUpdate() {
+func waitCtrlAndRequestDisplayUpdate(shouldWakeDisplay bool) {
 	waitDisplayUpdate.Lock()
 	defer waitDisplayUpdate.Unlock()
 
 	waitCtrlClientConnected()
-	requestDisplayUpdate()
+	requestDisplayUpdate(shouldWakeDisplay)
 }
 
 func updateStaticContents() {
@@ -376,7 +378,7 @@ func init() {
 		displayLogger.Info().Msg("display inited")
 		startBacklightTickers()
 		wakeDisplay(true)
-		requestDisplayUpdate()
+		requestDisplayUpdate(true)
 	}()
 
 	go watchTsEvents()

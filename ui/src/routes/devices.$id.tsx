@@ -20,11 +20,13 @@ import { cx } from "@/cva.config";
 import {
   DeviceSettingsState,
   HidState,
+  NetworkState,
   UpdateState,
   useDeviceSettingsStore,
   useDeviceStore,
   useHidStore,
   useMountMediaStore,
+  useNetworkStateStore,
   User,
   useRTCStore,
   useUiStore,
@@ -581,6 +583,8 @@ export default function KvmIdRoute() {
     });
   }, 10000);
 
+  const setNetworkState = useNetworkStateStore(state => state.setNetworkState);
+
   const setUsbState = useHidStore(state => state.setUsbState);
   const setHdmiState = useVideoStore(state => state.setHdmiState);
 
@@ -598,6 +602,11 @@ export default function KvmIdRoute() {
 
     if (resp.method === "videoInputState") {
       setHdmiState(resp.params as Parameters<VideoState["setHdmiState"]>[0]);
+    }
+
+    if (resp.method === "networkState") {
+      console.log("Setting network state", resp.params);
+      setNetworkState(resp.params as NetworkState);
     }
 
     if (resp.method === "otaState") {

@@ -205,7 +205,7 @@ func newSession(config SessionConfig) (*Session, error) {
 var actionSessions = 0
 
 func onActiveSessionsChanged() {
-	requestDisplayUpdate()
+	requestDisplayUpdate(true)
 }
 
 func onFirstSessionConnected() {

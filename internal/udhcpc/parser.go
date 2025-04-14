@@ -1,9 +1,11 @@
 package udhcpc
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -41,6 +43,8 @@ type Lease struct {
 	Message           string        `env:"message" json:"reason,omitempty"`            // Reason for a DHCPNAK
 	TFTPServerName    string        `env:"tftp" json:"tftp,omitempty"`                 // The TFTP server name
 	BootFileName      string        `env:"bootfile" json:"bootfile,omitempty"`         // The boot file name
+	Uptime            time.Duration `env:"uptime" json:"uptime,omitempty"`             // The uptime of the device when the lease was obtained, in seconds
+	LeaseExpiry       *time.Time    `json:"lease_expiry,omitempty"`                    // The expiry time of the lease
 	isEmpty           map[string]bool
 }
 
@@ -58,6 +62,40 @@ func (l *Lease) ToJSON() string {
 		return ""
 	}
 	return string(json)
+}
+
+func (l *Lease) SetLeaseExpiry() (time.Time, error) {
+	if l.Uptime == 0 || l.LeaseTime == 0 {
+		return time.Time{}, fmt.Errorf("uptime or lease time isn't set")
+	}
+
+	// get the uptime of the device
+
+	file, err := os.Open("/proc/uptime")
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to open uptime file: %w", err)
+	}
+	defer file.Close()
+
+	var uptime time.Duration
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		text := scanner.Text()
+		parts := strings.Split(text, " ")
+		uptime, err = time.ParseDuration(parts[0] + "s")
+
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to parse uptime: %w", err)
+		}
+	}
+
+	relativeLeaseRemaining := (l.Uptime + l.LeaseTime) - uptime
+	leaseExpiry := time.Now().Add(relativeLeaseRemaining)
+
+	l.LeaseExpiry = &leaseExpiry
+
+	return leaseExpiry, nil
 }
 
 func UnmarshalDHCPCLease(lease *Lease, str string) error {

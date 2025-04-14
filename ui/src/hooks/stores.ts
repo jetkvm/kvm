@@ -663,6 +663,93 @@ export const useDeviceStore = create<DeviceState>(set => ({
   setSystemVersion: version => set({ systemVersion: version }),
 }));
 
+export interface DhcpLease {
+  ip?: string;
+  netmask?: string;
+  broadcast?: string;
+  ttl?: string;
+  mtu?: string;
+  hostname?: string;
+  domain?: string;
+  bootp_next_server?: string;
+  bootp_server_name?: string;
+  bootp_file?: string;
+  timezone?: string;
+  routers?: string[];
+  dns?: string[];
+  ntp_servers?: string[];
+  lpr_servers?: string[];
+  _time_servers?: string[];
+  _name_servers?: string[];
+  _log_servers?: string[];
+  _cookie_servers?: string[];
+  _wins_servers?: string[];
+  _swap_server?: string;
+  boot_size?: string;
+  root_path?: string;
+  lease?: string;
+  lease_expiry?: Date;
+  dhcp_type?: string;
+  server_id?: string;
+  message?: string;
+  tftp?: string;
+  bootfile?: string;
+}
+
+export interface IPv6Address {
+  address: string;
+  prefix: string;
+  valid_lifetime: string;
+  preferred_lifetime: string;
+  scope: string;
+}
+
+export interface NetworkState {
+  interface_name?: string;
+  mac_address?: string;
+  ipv4?: string;
+  ipv4_addresses?: string[];
+  ipv6?: string;
+  ipv6_addresses?: IPv6Address[];
+  ipv6_link_local?: string;
+  dhcp_lease?: DhcpLease;
+
+  setNetworkState: (state: NetworkState) => void;
+  setDhcpLease: (lease: NetworkState["dhcp_lease"]) => void;
+  setDhcpLeaseExpiry: (expiry: Date) => void;
+}
+
+
+export type IPv6Mode = "disabled" | "slaac" | "dhcpv6" | "slaac_and_dhcpv6" | "static" | "link_local" | "unknown";
+export type IPv4Mode = "disabled" | "static" | "dhcp" | "unknown";
+export type LLDPMode = "disabled" | "basic" | "all" | "unknown";
+export type mDNSMode = "disabled" | "auto" | "ipv4_only" | "ipv6_only" | "unknown";
+export type TimeSyncMode = "ntp_only" | "ntp_and_http" | "http_only" | "custom" | "unknown";
+
+export interface NetworkSettings {
+  ipv4_mode: IPv4Mode;
+  ipv6_mode: IPv6Mode;
+  lldp_mode: LLDPMode;
+  lldp_tx_tlvs: string[];
+  mdns_mode: mDNSMode;
+  time_sync_mode: TimeSyncMode;
+}
+
+export const useNetworkStateStore = create<NetworkState>((set, get) => ({
+  setNetworkState: (state: NetworkState) => set(state),
+  setDhcpLease: (lease: NetworkState["dhcp_lease"]) => set({ dhcp_lease: lease }),
+  setDhcpLeaseExpiry: (expiry: Date) => {
+    const lease = get().dhcp_lease;
+    if (!lease) {
+      console.warn("No lease found");
+      return;
+    }
+
+    lease.lease_expiry = expiry.toISOString();
+    set({ dhcp_lease: lease });
+  }
+}));
+
 export interface KeySequenceStep {
   keys: string[];
   modifiers: string[];
@@ -767,8 +854,8 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
       for (let i = 0; i < macro.steps.length; i++) {
         const step = macro.steps[i];
         if (step.keys && step.keys.length > MAX_KEYS_PER_STEP) {
-          console.error(`Cannot save: macro "${macro.name}" step ${i+1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`);
-          throw new Error(`Cannot save: macro "${macro.name}" step ${i+1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`);
+          console.error(`Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`);
+          throw new Error(`Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`);
         }
       }
     }

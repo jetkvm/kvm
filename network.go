@@ -29,11 +29,22 @@ const (
 	DhcpTargetStateRelease
 )
 
+type IPv6Address struct {
+	Address           net.IP     `json:"address"`
+	Prefix            net.IPNet  `json:"prefix"`
+	ValidLifetime     *time.Time `json:"valid_lifetime"`
+	PreferredLifetime *time.Time `json:"preferred_lifetime"`
+	Scope             int        `json:"scope"`
+}
+
 type NetworkInterfaceState struct {
 	interfaceName string
 	interfaceUp   bool
 	ipv4Addr      *net.IP
+	ipv4Addresses []string
 	ipv6Addr      *net.IP
+	ipv6Addresses []IPv6Address
+	ipv6LinkLocal *net.IP
 	macAddr       *net.HardwareAddr
 
 	l         *zerolog.Logger
@@ -47,12 +58,65 @@ type NetworkInterfaceState struct {
 	checked bool
 }
 
+type NetworkConfig struct {
+	Hostname string `json:"hostname,omitempty"`
+	Domain   string `json:"domain,omitempty"`
+
+	IPv4Mode   string `json:"ipv4_mode" one_of:"dhcp,static,disabled" default:"dhcp"`
+	IPv4Static struct {
+		Address string   `json:"address" validate_type:"ipv4"`
+		Netmask string   `json:"netmask" validate_type:"ipv4"`
+		Gateway string   `json:"gateway" validate_type:"ipv4"`
+		DNS     []string `json:"dns" validate_type:"ipv4"`
+	} `json:"ipv4_static,omitempty" required_if:"ipv4_mode,static"`
+
+	IPv6Mode   string `json:"ipv6_mode" one_of:"slaac,dhcpv6,slaac_and_dhcpv6,static,link_local,disabled" default:"slaac"`
+	IPv6Static struct {
+		Address string   `json:"address" validate_type:"ipv6"`
+		Netmask string   `json:"netmask" validate_type:"ipv6"`
+		Gateway string   `json:"gateway" validate_type:"ipv6"`
+		DNS     []string `json:"dns" validate_type:"ipv6"`
+	} `json:"ipv6_static,omitempty" required_if:"ipv6_mode,static"`
+
+	LLDPMode     string   `json:"lldp_mode,omitempty" one_of:"disabled,basic,all" default:"basic"`
+	LLDPTxTLVs   []string `json:"lldp_tx_tlvs,omitempty" one_of:"chassis,port,system,vlan" default:"chassis,port,system,vlan"`
+	MDNSMode     string   `json:"mdns_mode,omitempty" one_of:"disabled,auto,ipv4_only,ipv6_only" default:"auto"`
+	TimeSyncMode string   `json:"time_sync_mode,omitempty" one_of:"ntp_only,ntp_and_http,http_only,custom" default:"ntp_and_http"`
+}
+
+type RpcIPv6Address struct {
+	Address           string     `json:"address"`
+	ValidLifetime     *time.Time `json:"valid_lifetime,omitempty"`
+	PreferredLifetime *time.Time `json:"preferred_lifetime,omitempty"`
+	Scope             int        `json:"scope"`
+}
+
 type RpcNetworkState struct {
-	InterfaceName string        `json:"interface_name"`
-	MacAddress    string        `json:"mac_address"`
-	IPv4          string        `json:"ipv4,omitempty"`
-	IPv6          string        `json:"ipv6,omitempty"`
-	DHCPLease     *udhcpc.Lease `json:"dhcp_lease,omitempty"`
+	InterfaceName string           `json:"interface_name"`
+	MacAddress    string           `json:"mac_address"`
+	IPv4          string           `json:"ipv4,omitempty"`
+	IPv6          string           `json:"ipv6,omitempty"`
+	IPv6LinkLocal string           `json:"ipv6_link_local,omitempty"`
+	IPv4Addresses []string         `json:"ipv4_addresses,omitempty"`
+	IPv6Addresses []RpcIPv6Address `json:"ipv6_addresses,omitempty"`
+	DHCPLease     *udhcpc.Lease    `json:"dhcp_lease,omitempty"`
+}
+
+type RpcNetworkSettings struct {
+	IPv4Mode     string   `json:"ipv4_mode,omitempty"`
+	IPv6Mode     string   `json:"ipv6_mode,omitempty"`
+	LLDPMode     string   `json:"lldp_mode,omitempty"`
+	LLDPTxTLVs   []string `json:"lldp_tx_tlvs,omitempty"`
+	MDNSMode     string   `json:"mdns_mode,omitempty"`
+	TimeSyncMode string   `json:"time_sync_mode,omitempty"`
+}
+
+func lifetimeToTime(lifetime int) *time.Time {
+	if lifetime == 0 {
+		return nil
+	}
+	t := time.Now().Add(time.Duration(lifetime) * time.Second)
+	return &t
 }
 
 func (s *NetworkInterfaceState) IsUp() bool {
@@ -115,13 +179,13 @@ func NewNetworkInterfaceState(ifname string) *NetworkInterfaceState {
 		onStateChange: func(state *NetworkInterfaceState) {
 			go func() {
 				waitCtrlClientConnected()
-				requestDisplayUpdate()
+				requestDisplayUpdate(true)
 			}()
 		},
 		onInitialCheck: func(state *NetworkInterfaceState) {
 			go func() {
 				waitCtrlClientConnected()
-				requestDisplayUpdate()
+				requestDisplayUpdate(true)
 			}()
 		},
 	}
@@ -140,7 +204,18 @@ func NewNetworkInterfaceState(ifname string) *NetworkInterfaceState {
 		PidFile:       dhcpPidFile,
 		Logger:        &logger,
 		OnLeaseChange: func(lease *udhcpc.Lease) {
-			_, _ = s.update()
+			_, err := s.update()
+			if err != nil {
+				logger.Error().Err(err).Msg("failed to update network state")
+				return
+			}
+
+			if currentSession == nil {
+				logger.Info().Msg("No active RPC session, skipping network state update")
+				return
+			}
+
+			writeJSONRPCEvent("networkState", rpcGetNetworkState(), currentSession)
 		},
 	})
 
@@ -196,8 +271,11 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 	}
 
 	var (
-		ipv4Addresses = make([]net.IP, 0)
-		ipv6Addresses = make([]net.IP, 0)
+		ipv4Addresses       = make([]net.IP, 0)
+		ipv4AddressesString = make([]string, 0)
+		ipv6Addresses       = make([]IPv6Address, 0)
+		ipv6AddressesString = make([]string, 0)
+		ipv6LinkLocal       *net.IP
 	)
 
 	for _, addr := range addrs {
@@ -215,9 +293,15 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 				continue
 			}
 			ipv4Addresses = append(ipv4Addresses, addr.IP)
+			ipv4AddressesString = append(ipv4AddressesString, addr.IPNet.String())
 		} else if addr.IP.To16() != nil {
 			scopedLogger := s.l.With().Str("ipv6", addr.IP.String()).Logger()
 			// check if it's a link local address
+			if addr.IP.IsLinkLocalUnicast() {
+				ipv6LinkLocal = &addr.IP
+				continue
+			}
+
 			if !addr.IP.IsGlobalUnicast() {
 				scopedLogger.Trace().Msg("not a global unicast address, skipping")
 				continue
@@ -231,7 +315,14 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 				}
 				continue
 			}
-			ipv6Addresses = append(ipv6Addresses, addr.IP)
+			ipv6Addresses = append(ipv6Addresses, IPv6Address{
+				Address:           addr.IP,
+				Prefix:            *addr.IPNet,
+				ValidLifetime:     lifetimeToTime(addr.ValidLft),
+				PreferredLifetime: lifetimeToTime(addr.PreferedLft),
+				Scope:             addr.Scope,
+			})
+			ipv6AddressesString = append(ipv6AddressesString, addr.IPNet.String())
 		}
 	}
 
@@ -250,11 +341,28 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 			changed = true
 		}
 	}
+	s.ipv4Addresses = ipv4AddressesString
+
+	if ipv6LinkLocal != nil {
+		if s.ipv6LinkLocal == nil || s.ipv6LinkLocal.String() != ipv6LinkLocal.String() {
+			scopedLogger := s.l.With().Str("ipv6", ipv6LinkLocal.String()).Logger()
+			if s.ipv6LinkLocal != nil {
+				scopedLogger.Info().
+					Str("old_ipv6", s.ipv6LinkLocal.String()).
+					Msg("IPv6 link local address changed")
+			} else {
+				scopedLogger.Info().Msg("IPv6 link local address found")
+			}
+			s.ipv6LinkLocal = ipv6LinkLocal
+			changed = true
+		}
+	}
+	s.ipv6Addresses = ipv6Addresses
 
 	if len(ipv6Addresses) > 0 {
 		// compare the addresses to see if there's a change
-		if s.ipv6Addr == nil || s.ipv6Addr.String() != ipv6Addresses[0].String() {
-			scopedLogger := s.l.With().Str("ipv6", ipv6Addresses[0].String()).Logger()
+		if s.ipv6Addr == nil || s.ipv6Addr.String() != ipv6Addresses[0].Address.String() {
+			scopedLogger := s.l.With().Str("ipv6", ipv6Addresses[0].Address.String()).Logger()
 			if s.ipv6Addr != nil {
 				scopedLogger.Info().
 					Str("old_ipv6", s.ipv6Addr.String()).
@@ -262,7 +370,7 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 			} else {
 				scopedLogger.Info().Msg("IPv6 address found")
 			}
-			s.ipv6Addr = &ipv6Addresses[0]
+			s.ipv6Addr = &ipv6Addresses[0].Address
 			changed = true
 		}
 	}
@@ -313,12 +421,35 @@ func (s *NetworkInterfaceState) HandleLinkUpdate(update netlink.LinkUpdate) {
 }
 
 func rpcGetNetworkState() RpcNetworkState {
+	ipv6Addresses := make([]RpcIPv6Address, 0)
+	for _, addr := range networkState.ipv6Addresses {
+		ipv6Addresses = append(ipv6Addresses, RpcIPv6Address{
+			Address:           addr.Prefix.String(),
+			ValidLifetime:     addr.ValidLifetime,
+			PreferredLifetime: addr.PreferredLifetime,
+			Scope:             addr.Scope,
+		})
+	}
 	return RpcNetworkState{
 		InterfaceName: networkState.interfaceName,
 		MacAddress:    networkState.macAddr.String(),
 		IPv4:          networkState.ipv4Addr.String(),
 		IPv6:          networkState.ipv6Addr.String(),
+		IPv6LinkLocal: networkState.ipv6LinkLocal.String(),
+		IPv4Addresses: networkState.ipv4Addresses,
+		IPv6Addresses: ipv6Addresses,
 		DHCPLease:     networkState.dhcpClient.GetLease(),
+	}
+}
+
+func rpcGetNetworkSettings() RpcNetworkSettings {
+	return RpcNetworkSettings{
+		IPv4Mode:     "dhcp",
+		IPv6Mode:     "slaac",
+		LLDPMode:     "basic",
+		LLDPTxTLVs:   []string{"chassis", "port", "system", "vlan"},
+		MDNSMode:     "auto",
+		TimeSyncMode: "ntp_and_http",
 	}
 }
 
