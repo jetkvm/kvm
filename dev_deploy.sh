@@ -91,7 +91,7 @@ cd "${REMOTE_PATH}"
 chmod +x jetkvm_app_debug
 
 # Run the application in the background
-PION_LOG_TRACE=jetkvm,cloud,websocket,native ./jetkvm_app_debug
+PION_LOG_TRACE=jetkvm,cloud,websocket,native,jsonrpc ./jetkvm_app_debug
 EOF
 
 echo "Deployment complete."

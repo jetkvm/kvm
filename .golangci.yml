@@ -1,22 +1,37 @@
----
+version: "2"
 linters:
   enable:
-  - forbidigo
-  - goimports
-  - misspell
-  # - revive
-  - whitespace
-
-issues:
-  exclude-rules:
-    - path: _test.go
-      linters:
-        - errcheck
-
-linters-settings:
-  forbidigo:
-    forbid:
-      - p: ^fmt\.Print.*$
-        msg: Do not commit print statements. Use logger package.
-      - p: ^log\.(Fatal|Panic|Print)(f|ln)?.*$
-        msg: Do not commit log statements. Use logger package.
+    - forbidigo
+    - misspell
+    - whitespace
+  settings:
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print.*$
+          msg: Do not commit print statements. Use logger package.
+        - pattern: ^log\.(Fatal|Panic|Print)(f|ln)?.*$
+          msg: Do not commit log statements. Use logger package.
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+        path: _test.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

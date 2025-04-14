@@ -10,12 +10,24 @@ import (
 var (
 	timeSync          *timesync.TimeSync
 	defaultNTPServers = []string{
-		"time.cloudflare.com",
 		"time.apple.com",
+		"time.aws.com",
+		"time.windows.com",
+		"time.google.com",
+		"162.159.200.123", // time.cloudflare.com
+		"0.pool.ntp.org",
+		"1.pool.ntp.org",
+		"2.pool.ntp.org",
+		"3.pool.ntp.org",
 	}
 	defaultHTTPUrls = []string{
-		"http://apple.com",
-		"http://cloudflare.com",
+		"http://www.gstatic.com/generate_204",
+		"http://cp.cloudflare.com/",
+		"http://edge-http.microsoft.com/captiveportal/generate_204",
+		// Firefox, Apple, and Microsoft have inconsistent results, so we don't use it
+		// "http://detectportal.firefox.com/",
+		// "http://www.apple.com/library/test/success.html",
+		// "http://www.msftconnecttest.com/connecttest.txt",
 	}
 	builtTimestamp string
 )

@@ -84,10 +84,9 @@ export default function SettingsNetworkRoute() {
         notifications.error("Failed to renew lease: " + resp.error.message);
       } else {
         notifications.success("DHCP lease renewed");
-        getNetworkState();
       }
     });
-  }, [send, getNetworkState]);
+  }, [send]);
 
   useEffect(() => {
     getNetworkState();
@@ -320,7 +319,7 @@ export default function SettingsNetworkRoute() {
           </GridCard>
         )}
       </div>
-      <div className="space-y-4">
+      <div className="space-y-4 hidden">
         <SettingsItem
           title="LLDP"
           description="Control which TLVs will be sent over Link Layer Discovery Protocol"
