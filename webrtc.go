@@ -10,6 +10,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
@@ -68,7 +69,7 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 
 func newSession(config SessionConfig) (*Session, error) {
 	webrtcSettingEngine := webrtc.SettingEngine{
-		LoggerFactory: defaultLoggerFactory,
+		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
 	}
 	iceServer := webrtc.ICEServer{}
 

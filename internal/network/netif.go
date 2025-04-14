@@ -1,6 +1,7 @@
 package network
 
 import (
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -29,6 +30,10 @@ type NetworkInterfaceState struct {
 	config     *NetworkConfig
 	dhcpClient *udhcpc.DHCPClient
 
+	defaultHostname string
+	currentHostname string
+	currentFqdn     string
+
 	onStateChange  func(state *NetworkInterfaceState)
 	onInitialCheck func(state *NetworkInterfaceState)
 
@@ -39,21 +44,31 @@ type NetworkInterfaceOptions struct {
 	InterfaceName     string
 	DhcpPidFile       string
 	Logger            *zerolog.Logger
+	DefaultHostname   string
 	OnStateChange     func(state *NetworkInterfaceState)
 	OnInitialCheck    func(state *NetworkInterfaceState)
 	OnDhcpLeaseChange func(lease *udhcpc.Lease)
 	NetworkConfig     *NetworkConfig
 }
 
-func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) *NetworkInterfaceState {
+func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceState, error) {
+	if opts.NetworkConfig == nil {
+		return nil, fmt.Errorf("NetworkConfig can not be nil")
+	}
+
+	if opts.DefaultHostname == "" {
+		opts.DefaultHostname = "jetkvm"
+	}
+
 	l := opts.Logger
 	s := &NetworkInterfaceState{
-		interfaceName:  opts.InterfaceName,
-		stateLock:      sync.Mutex{},
-		l:              l,
-		onStateChange:  opts.OnStateChange,
-		onInitialCheck: opts.OnInitialCheck,
-		config:         opts.NetworkConfig,
+		interfaceName:   opts.InterfaceName,
+		defaultHostname: opts.DefaultHostname,
+		stateLock:       sync.Mutex{},
+		l:               l,
+		onStateChange:   opts.OnStateChange,
+		onInitialCheck:  opts.OnInitialCheck,
+		config:          opts.NetworkConfig,
 	}
 
 	// create the dhcp client
@@ -68,13 +83,15 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) *NetworkInterfaceSt
 				return
 			}
 
+			s.setHostnameIfNotSame()
+
 			opts.OnDhcpLeaseChange(lease)
 		},
 	})
 
 	s.dhcpClient = dhcpClient
 
-	return s
+	return s, nil
 }
 
 func (s *NetworkInterfaceState) IsUp() bool {
@@ -277,6 +294,12 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 	if initialCheck {
 		s.checked = true
 		changed = false
+		if dhcpTargetState == DhcpTargetStateRenew {
+			// it's the initial check, we'll start the DHCP client
+			// dhcpTargetState = DhcpTargetStateStart
+			// TODO: manage DHCP client start/stop
+			dhcpTargetState = DhcpTargetStateDoNothing
+		}
 	}
 
 	if initialCheck {
@@ -325,6 +348,8 @@ func (s *NetworkInterfaceState) Run() error {
 		s.l.Warn().Err(err).Msg("failed to subscribe to link updates")
 		return err
 	}
+
+	_ = s.setHostnameIfNotSame()
 
 	// run the dhcp client
 	go s.dhcpClient.Run() // nolint:errcheck

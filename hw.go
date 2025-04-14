@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -49,6 +50,15 @@ func GetDeviceID() string {
 		}
 	})
 	return deviceID
+}
+
+func GetDefaultHostname() string {
+	deviceId := GetDeviceID()
+	if deviceId == "unknown_device_id" {
+		return "jetkvm"
+	}
+
+	return fmt.Sprintf("jetkvm-%s", strings.ToLower(deviceId))
 }
 
 func runWatchdog() {

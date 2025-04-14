@@ -1,7 +1,7 @@
 package kvm
 
 import (
-	"os"
+	"fmt"
 
 	"github.com/jetkvm/kvm/internal/network"
 	"github.com/jetkvm/kvm/internal/udhcpc"
@@ -15,27 +15,72 @@ var (
 	networkState *network.NetworkInterfaceState
 )
 
-func initNetwork() {
+func networkStateChanged() {
+	// do not block the main thread
+	go waitCtrlAndRequestDisplayUpdate(true)
+
+	// always restart mDNS when the network state changes
+	if mDNS != nil {
+		mDNS.SetLocalNames([]string{
+			networkState.GetHostname(),
+			networkState.GetFQDN(),
+		}, true)
+	}
+}
+
+func initNetwork() error {
 	ensureConfigLoaded()
 
-	networkState = network.NewNetworkInterfaceState(&network.NetworkInterfaceOptions{
-		InterfaceName: NetIfName,
-		NetworkConfig: config.NetworkConfig,
-		Logger:        networkLogger,
+	state, err := network.NewNetworkInterfaceState(&network.NetworkInterfaceOptions{
+		DefaultHostname: GetDefaultHostname(),
+		InterfaceName:   NetIfName,
+		NetworkConfig:   config.NetworkConfig,
+		Logger:          networkLogger,
 		OnStateChange: func(state *network.NetworkInterfaceState) {
-			waitCtrlAndRequestDisplayUpdate(true)
+			networkStateChanged()
 		},
 		OnInitialCheck: func(state *network.NetworkInterfaceState) {
-			waitCtrlAndRequestDisplayUpdate(true)
+			networkStateChanged()
 		},
 		OnDhcpLeaseChange: func(lease *udhcpc.Lease) {
-			waitCtrlAndRequestDisplayUpdate(true)
+			networkStateChanged()
+
+			if currentSession == nil {
+				return
+			}
+
+			writeJSONRPCEvent("networkState", networkState.RpcGetNetworkState(), currentSession)
 		},
 	})
 
-	err := networkState.Run()
-	if err != nil {
-		networkLogger.Error().Err(err).Msg("failed to run network state")
-		os.Exit(1)
+	if state == nil {
+		if err == nil {
+			return fmt.Errorf("failed to create NetworkInterfaceState")
+		}
+		return err
 	}
+
+	if err := state.Run(); err != nil {
+		return err
+	}
+
+	networkState = state
+
+	return nil
+}
+
+func rpcGetNetworkState() network.RpcNetworkState {
+	return networkState.RpcGetNetworkState()
+}
+
+func rpcGetNetworkSettings() network.RpcNetworkSettings {
+	return networkState.RpcGetNetworkSettings()
+}
+
+func rpcSetNetworkSettings(settings network.RpcNetworkSettings) error {
+	return networkState.RpcSetNetworkSettings(settings)
+}
+
+func rpcRenewDHCPLease() error {
+	return networkState.RpcRenewDHCPLease()
 }

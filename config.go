@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 )
@@ -123,6 +124,7 @@ var defaultConfig = &Config{
 		Keyboard:      true,
 		MassStorage:   true,
 	},
+	NetworkConfig:   &network.NetworkConfig{},
 	DefaultLogLevel: "INFO",
 }
 
@@ -172,7 +174,7 @@ func LoadConfig() {
 
 	config = &loadedConfig
 
-	rootLogger.UpdateLogLevel()
+	logging.GetRootLogger().UpdateLogLevel(config.DefaultLogLevel)
 
 	logger.Info().Str("path", configPath).Msg("config loaded")
 }

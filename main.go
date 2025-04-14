@@ -43,12 +43,26 @@ func Main() {
 		Int("ca_certs_loaded", len(rootcerts.Certs())).
 		Msg("loaded Root CA certificates")
 
-	initNetwork()
-	initTimeSync()
+	// Initialize network
+	if err := initNetwork(); err != nil {
+		logger.Error().Err(err).Msg("failed to initialize network")
+		os.Exit(1)
+	}
 
+	// Initialize time sync
+	initTimeSync()
 	timeSync.Start()
 
+	// Initialize mDNS
+	if err := initMdns(); err != nil {
+		logger.Error().Err(err).Msg("failed to initialize mDNS")
+		os.Exit(1)
+	}
+
+	// Initialize native ctrl socket server
 	StartNativeCtrlSocketServer()
+
+	// Initialize native video socket server
 	StartNativeVideoSocketServer()
 
 	initPrometheus()

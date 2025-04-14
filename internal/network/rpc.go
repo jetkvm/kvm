@@ -39,14 +39,18 @@ type RpcNetworkSettings struct {
 
 func (s *NetworkInterfaceState) RpcGetNetworkState() RpcNetworkState {
 	ipv6Addresses := make([]RpcIPv6Address, 0)
-	for _, addr := range s.ipv6Addresses {
-		ipv6Addresses = append(ipv6Addresses, RpcIPv6Address{
-			Address:           addr.Prefix.String(),
-			ValidLifetime:     addr.ValidLifetime,
-			PreferredLifetime: addr.PreferredLifetime,
-			Scope:             addr.Scope,
-		})
+
+	if s.ipv6Addresses != nil {
+		for _, addr := range s.ipv6Addresses {
+			ipv6Addresses = append(ipv6Addresses, RpcIPv6Address{
+				Address:           addr.Prefix.String(),
+				ValidLifetime:     addr.ValidLifetime,
+				PreferredLifetime: addr.PreferredLifetime,
+				Scope:             addr.Scope,
+			})
+		}
 	}
+
 	return RpcNetworkState{
 		InterfaceName: s.interfaceName,
 		MacAddress:    s.macAddr.String(),
@@ -60,6 +64,10 @@ func (s *NetworkInterfaceState) RpcGetNetworkState() RpcNetworkState {
 }
 
 func (s *NetworkInterfaceState) RpcGetNetworkSettings() RpcNetworkSettings {
+	if s.config == nil {
+		return RpcNetworkSettings{}
+	}
+
 	return RpcNetworkSettings{
 		Hostname:     null.StringFrom(s.config.Hostname),
 		Domain:       null.StringFrom(s.config.Domain),
