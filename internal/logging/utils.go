@@ -9,6 +9,10 @@ import (
 
 var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
 
+func GetDefaultLogger() *zerolog.Logger {
+	return &defaultLogger
+}
+
 func ErrorfL(l *zerolog.Logger, format string, err error, args ...interface{}) error {
 	// TODO: move rootLogger to logging package
 	if l == nil {
