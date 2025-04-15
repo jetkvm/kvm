@@ -4,14 +4,13 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"time"
 
+	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/udhcpc"
 	"github.com/rs/zerolog"
 
 	"github.com/vishvananda/netlink"
-	"github.com/vishvananda/netlink/nl"
 )
 
 type NetworkInterfaceState struct {
@@ -36,6 +35,7 @@ type NetworkInterfaceState struct {
 
 	onStateChange  func(state *NetworkInterfaceState)
 	onInitialCheck func(state *NetworkInterfaceState)
+	cbConfigChange func(config *NetworkConfig)
 
 	checked bool
 }
@@ -48,6 +48,7 @@ type NetworkInterfaceOptions struct {
 	OnStateChange     func(state *NetworkInterfaceState)
 	OnInitialCheck    func(state *NetworkInterfaceState)
 	OnDhcpLeaseChange func(lease *udhcpc.Lease)
+	OnConfigChange    func(config *NetworkConfig)
 	NetworkConfig     *NetworkConfig
 }
 
@@ -60,6 +61,11 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 		opts.DefaultHostname = "jetkvm"
 	}
 
+	err := confparser.SetDefaultsAndValidate(opts.NetworkConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	l := opts.Logger
 	s := &NetworkInterfaceState{
 		interfaceName:   opts.InterfaceName,
@@ -68,6 +74,7 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 		l:               l,
 		onStateChange:   opts.OnStateChange,
 		onInitialCheck:  opts.OnInitialCheck,
+		cbConfigChange:  opts.OnConfigChange,
 		config:          opts.NetworkConfig,
 	}
 
@@ -179,7 +186,7 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 	s.macAddr = &attrs.HardwareAddr
 
 	// get the ip addresses
-	addrs, err := netlink.AddrList(iface, nl.FAMILY_ALL)
+	addrs, err := netlinkAddrs(iface)
 	if err != nil {
 		return dhcpTargetState, logging.ErrorfL(s.l, "failed to get ip addresses", err)
 	}
@@ -333,46 +340,7 @@ func (s *NetworkInterfaceState) CheckAndUpdateDhcp() error {
 	return nil
 }
 
-func (s *NetworkInterfaceState) HandleLinkUpdate(update netlink.LinkUpdate) {
-	if update.Link.Attrs().Name == s.interfaceName {
-		s.l.Info().Interface("update", update).Msg("interface link update received")
-		_ = s.CheckAndUpdateDhcp()
-	}
-}
-
-func (s *NetworkInterfaceState) Run() error {
-	updates := make(chan netlink.LinkUpdate)
-	done := make(chan struct{})
-
-	if err := netlink.LinkSubscribe(updates, done); err != nil {
-		s.l.Warn().Err(err).Msg("failed to subscribe to link updates")
-		return err
-	}
-
-	_ = s.setHostnameIfNotSame()
-
-	// run the dhcp client
-	go s.dhcpClient.Run() // nolint:errcheck
-
-	if err := s.CheckAndUpdateDhcp(); err != nil {
-		return err
-	}
-
-	go func() {
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case update := <-updates:
-				s.HandleLinkUpdate(update)
-			case <-ticker.C:
-				_ = s.CheckAndUpdateDhcp()
-			case <-done:
-				return
-			}
-		}
-	}()
-
-	return nil
+func (s *NetworkInterfaceState) onConfigChange(config *NetworkConfig) {
+	s.setHostnameIfNotSame()
+	s.cbConfigChange(config)
 }

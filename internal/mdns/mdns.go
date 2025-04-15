@@ -44,6 +44,13 @@ func NewMDNS(opts *MDNSOptions) (*MDNS, error) {
 		opts.Logger = logging.GetDefaultLogger()
 	}
 
+	if opts.ListenOptions == nil {
+		opts.ListenOptions = &MDNSListenOptions{
+			IPv4: true,
+			IPv6: true,
+		}
+	}
+
 	return &MDNS{
 		l:             opts.Logger,
 		lock:          sync.Mutex{},
@@ -64,27 +71,56 @@ func (m *MDNS) start(allowRestart bool) error {
 		m.conn.Close()
 	}
 
-	addr4, err := net.ResolveUDPAddr("udp4", DefaultAddressIPv4)
-	if err != nil {
-		return err
+	if m.listenOptions == nil {
+		return fmt.Errorf("listen options not set")
 	}
 
-	addr6, err := net.ResolveUDPAddr("udp6", DefaultAddressIPv6)
-	if err != nil {
-		return err
+	if !m.listenOptions.IPv4 && !m.listenOptions.IPv6 {
+		m.l.Info().Msg("mDNS server disabled")
+		return nil
 	}
 
-	l4, err := net.ListenUDP("udp4", addr4)
-	if err != nil {
-		return err
+	var (
+		addr4, addr6 *net.UDPAddr
+		l4, l6       *net.UDPConn
+		p4           *ipv4.PacketConn
+		p6           *ipv6.PacketConn
+		err          error
+	)
+
+	if m.listenOptions.IPv4 {
+		addr4, err = net.ResolveUDPAddr("udp4", DefaultAddressIPv4)
+		if err != nil {
+			return err
+		}
+
+		l4, err = net.ListenUDP("udp4", addr4)
+		if err != nil {
+			return err
+		}
+
+		p4 = ipv4.NewPacketConn(l4)
 	}
 
-	l6, err := net.ListenUDP("udp6", addr6)
-	if err != nil {
-		return err
+	if m.listenOptions.IPv6 {
+		addr6, err = net.ResolveUDPAddr("udp6", DefaultAddressIPv6)
+		if err != nil {
+			return err
+		}
+
+		l6, err = net.ListenUDP("udp6", addr6)
+		if err != nil {
+			return err
+		}
+
+		p6 = ipv6.NewPacketConn(l6)
 	}
 
-	scopeLogger := m.l.With().Interface("local_names", m.localNames).Logger()
+	scopeLogger := m.l.With().
+		Interface("local_names", m.localNames).
+		Interface("ipv4", p4.LocalAddr()).
+		Interface("ipv6", p6.LocalAddr()).
+		Logger()
 
 	newLocalNames := make([]string, len(m.localNames))
 	for i, name := range m.localNames {
@@ -94,7 +130,7 @@ func (m *MDNS) start(allowRestart bool) error {
 		}
 	}
 
-	mDNSConn, err := pion_mdns.Server(ipv4.NewPacketConn(l4), ipv6.NewPacketConn(l6), &pion_mdns.Config{
+	mDNSConn, err := pion_mdns.Server(p4, p6, &pion_mdns.Config{
 		LocalNames:    newLocalNames,
 		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
 	})

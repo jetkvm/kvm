@@ -1,6 +1,9 @@
 package network
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 func lifetimeToTime(lifetime int) *time.Time {
 	if lifetime == 0 {
@@ -8,4 +11,13 @@ func lifetimeToTime(lifetime int) *time.Time {
 	}
 	t := time.Now().Add(time.Duration(lifetime) * time.Second)
 	return &t
+}
+
+func IsSame(a, b interface{}) bool {
+	aJSON, err := json.Marshal(a)
+	if err != nil {
+		return false
+	}
+	bJSON, err := json.Marshal(b)
+	return string(aJSON) == string(bJSON)
 }

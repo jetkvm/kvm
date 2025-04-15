@@ -51,6 +51,18 @@ func initNetwork() error {
 
 			writeJSONRPCEvent("networkState", networkState.RpcGetNetworkState(), currentSession)
 		},
+		OnConfigChange: func(networkConfig *network.NetworkConfig) {
+			config.NetworkConfig = networkConfig
+			networkStateChanged()
+
+			if mDNS != nil {
+				mDNS.SetListenOptions(networkConfig.GetMDNSMode())
+				mDNS.SetLocalNames([]string{
+					networkState.GetHostname(),
+					networkState.GetFQDN(),
+				}, true)
+			}
+		},
 	})
 
 	if state == nil {
@@ -77,8 +89,17 @@ func rpcGetNetworkSettings() network.RpcNetworkSettings {
 	return networkState.RpcGetNetworkSettings()
 }
 
-func rpcSetNetworkSettings(settings network.RpcNetworkSettings) error {
-	return networkState.RpcSetNetworkSettings(settings)
+func rpcSetNetworkSettings(settings network.RpcNetworkSettings) (*network.RpcNetworkSettings, error) {
+	s := networkState.RpcSetNetworkSettings(settings)
+	if s != nil {
+		return nil, s
+	}
+
+	if err := SaveConfig(); err != nil {
+		return nil, err
+	}
+
+	return &network.RpcNetworkSettings{NetworkConfig: *config.NetworkConfig}, nil
 }
 
 func rpcRenewDHCPLease() error {

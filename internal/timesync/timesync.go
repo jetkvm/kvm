@@ -90,8 +90,8 @@ func (t *TimeSync) getSyncMode() SyncMode {
 	var syncModeString string
 
 	if t.networkConfig != nil {
-		syncModeString = t.networkConfig.TimeSyncMode
-		if t.networkConfig.TimeSyncDisableFallback {
+		syncModeString = t.networkConfig.TimeSyncMode.String
+		if t.networkConfig.TimeSyncDisableFallback.Bool {
 			syncMode.NtpUseFallback = false
 			syncMode.HttpUseFallback = false
 		}

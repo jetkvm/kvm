@@ -17,6 +17,8 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 dayjs.extend(relativeTime);
 
 const defaultNetworkSettings: NetworkSettings = {
+  hostname: "",
+  domain: "",
   ipv4_mode: "unknown",
   ipv6_mode: "unknown",
   lldp_mode: "unknown",
@@ -58,15 +60,27 @@ export default function SettingsNetworkRoute() {
   const [networkSettings, setNetworkSettings] = useState<NetworkSettings>(defaultNetworkSettings);
   const [networkSettingsLoaded, setNetworkSettingsLoaded] = useState(false);
 
-  const [dhcpLeaseExpiry, setDhcpLeaseExpiry] = useState<Date | null>(null);
-  const [dhcpLeaseExpiryRemaining, setDhcpLeaseExpiryRemaining] = useState<string | null>(null);
-
   const getNetworkSettings = useCallback(() => {
     setNetworkSettingsLoaded(false);
     send("getNetworkSettings", {}, resp => {
       if ("error" in resp) return;
+      console.log(resp.result);
       setNetworkSettings(resp.result as NetworkSettings);
       setNetworkSettingsLoaded(true);
+    });
+  }, [send]);
+
+  const setNetworkSettingsRemote = useCallback((settings: NetworkSettings) => {
+    setNetworkSettingsLoaded(false);
+    send("setNetworkSettings", { settings }, resp => {
+      if ("error" in resp) {
+        notifications.error("Failed to save network settings: " + (resp.error.data ? resp.error.data : resp.error.message));
+        setNetworkSettingsLoaded(true);
+        return;
+      }
+      setNetworkSettings(resp.result as NetworkSettings);
+      setNetworkSettingsLoaded(true);
+      notifications.success("Network settings saved");
     });
   }, [send]);
 
@@ -105,9 +119,9 @@ export default function SettingsNetworkRoute() {
     setNetworkSettings({ ...networkSettings, lldp_mode: value as LLDPMode });
   };
 
-  const handleLldpTxTlvsChange = (value: string[]) => {
-    setNetworkSettings({ ...networkSettings, lldp_tx_tlvs: value });
-  };
+  // const handleLldpTxTlvsChange = (value: string[]) => {
+  //   setNetworkSettings({ ...networkSettings, lldp_tx_tlvs: value });
+  // };
 
   const handleMdnsModeChange = (value: mDNSMode | string) => {
     setNetworkSettings({ ...networkSettings, mdns_mode: value as mDNSMode });
@@ -154,11 +168,12 @@ export default function SettingsNetworkRoute() {
           <InputField
             type="text"
             placeholder="jetkvm"
-            value={""}
+            value={networkSettings.hostname}
             error={""}
             onChange={e => {
-              console.log(e.target.value);
+              setNetworkSettings({ ...networkSettings, hostname: e.target.value });
             }}
+            disabled={!networkSettingsLoaded}
           />
         </SettingsItem>
       </div>
@@ -178,11 +193,12 @@ export default function SettingsNetworkRoute() {
           <InputField
             type="text"
             placeholder="local"
-            value={""}
+            value={networkSettings.domain}
             error={""}
             onChange={e => {
-              console.log(e.target.value);
+              setNetworkSettings({ ...networkSettings, domain: e.target.value });
             }}
+            disabled={!networkSettingsLoaded}
           />
         </SettingsItem>
       </div>
@@ -368,11 +384,11 @@ export default function SettingsNetworkRoute() {
             disabled={!networkSettingsLoaded}
             options={filterUnknown([
               { value: "unknown", label: "..." },
-              { value: "auto", label: "Auto" },
+              // { value: "auto", label: "Auto" },
               { value: "ntp_only", label: "NTP only" },
               { value: "ntp_and_http", label: "NTP and HTTP" },
               { value: "http_only", label: "HTTP only" },
-              { value: "custom", label: "Custom" },
+              // { value: "custom", label: "Custom" },
             ])}
           />
         </SettingsItem>
@@ -380,7 +396,7 @@ export default function SettingsNetworkRoute() {
       <div className="flex items-end gap-x-2">
         <Button
           onClick={() => {
-            console.log("save settings");
+            setNetworkSettingsRemote(networkSettings);
           }}
           size="SM"
           theme="light"

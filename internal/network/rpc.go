@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/guregu/null/v6"
+	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/udhcpc"
 )
 
@@ -27,14 +27,7 @@ type RpcNetworkState struct {
 }
 
 type RpcNetworkSettings struct {
-	Hostname     null.String `json:"hostname,omitempty"`
-	Domain       null.String `json:"domain,omitempty"`
-	IPv4Mode     null.String `json:"ipv4_mode,omitempty"`
-	IPv6Mode     null.String `json:"ipv6_mode,omitempty"`
-	LLDPMode     null.String `json:"lldp_mode,omitempty"`
-	LLDPTxTLVs   []string    `json:"lldp_tx_tlvs,omitempty"`
-	MDNSMode     null.String `json:"mdns_mode,omitempty"`
-	TimeSyncMode null.String `json:"time_sync_mode,omitempty"`
+	NetworkConfig
 }
 
 func (s *NetworkInterfaceState) RpcGetNetworkState() RpcNetworkState {
@@ -69,59 +62,25 @@ func (s *NetworkInterfaceState) RpcGetNetworkSettings() RpcNetworkSettings {
 	}
 
 	return RpcNetworkSettings{
-		Hostname:     null.StringFrom(s.config.Hostname),
-		Domain:       null.StringFrom(s.config.Domain),
-		IPv4Mode:     null.StringFrom(s.config.IPv4Mode),
-		IPv6Mode:     null.StringFrom(s.config.IPv6Mode),
-		LLDPMode:     null.StringFrom(s.config.LLDPMode),
-		LLDPTxTLVs:   s.config.LLDPTxTLVs,
-		MDNSMode:     null.StringFrom(s.config.MDNSMode),
-		TimeSyncMode: null.StringFrom(s.config.TimeSyncMode),
+		NetworkConfig: *s.config,
 	}
 }
 
 func (s *NetworkInterfaceState) RpcSetNetworkSettings(settings RpcNetworkSettings) error {
-	changeset := make(map[string]string)
 	currentSettings := s.config
 
-	if !settings.Hostname.IsZero() {
-		changeset["hostname"] = settings.Hostname.String
-		currentSettings.Hostname = settings.Hostname.String
+	err := confparser.SetDefaultsAndValidate(&settings.NetworkConfig)
+	if err != nil {
+		return err
 	}
 
-	if !settings.Domain.IsZero() {
-		changeset["domain"] = settings.Domain.String
-		currentSettings.Domain = settings.Domain.String
+	if IsSame(currentSettings, settings.NetworkConfig) {
+		// no changes, do nothing
+		return nil
 	}
 
-	if !settings.IPv4Mode.IsZero() {
-		changeset["ipv4_mode"] = settings.IPv4Mode.String
-		currentSettings.IPv4Mode = settings.IPv4Mode.String
-	}
-
-	if !settings.IPv6Mode.IsZero() {
-		changeset["ipv6_mode"] = settings.IPv6Mode.String
-		currentSettings.IPv6Mode = settings.IPv6Mode.String
-	}
-
-	if !settings.LLDPMode.IsZero() {
-		changeset["lldp_mode"] = settings.LLDPMode.String
-		currentSettings.LLDPMode = settings.LLDPMode.String
-	}
-
-	if !settings.MDNSMode.IsZero() {
-		changeset["mdns_mode"] = settings.MDNSMode.String
-		currentSettings.MDNSMode = settings.MDNSMode.String
-	}
-
-	if !settings.TimeSyncMode.IsZero() {
-		changeset["time_sync_mode"] = settings.TimeSyncMode.String
-		currentSettings.TimeSyncMode = settings.TimeSyncMode.String
-	}
-
-	if len(changeset) > 0 {
-		s.config = currentSettings
-	}
+	s.config = &settings.NetworkConfig
+	s.onConfigChange(s.config)
 
 	return nil
 }

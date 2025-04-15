@@ -727,6 +727,8 @@ export type mDNSMode = "disabled" | "auto" | "ipv4_only" | "ipv6_only" | "unknow
 export type TimeSyncMode = "ntp_only" | "ntp_and_http" | "http_only" | "custom" | "unknown";
 
 export interface NetworkSettings {
+  hostname: string;
+  domain: string;
   ipv4_mode: IPv4Mode;
   ipv6_mode: IPv6Mode;
   lldp_mode: LLDPMode;
@@ -745,7 +747,7 @@ export const useNetworkStateStore = create<NetworkState>((set, get) => ({
       return;
     }
 
-    lease.lease_expiry = expiry.toISOString();
+    lease.lease_expiry = expiry;
     set({ dhcp_lease: lease });
   }
 }));
