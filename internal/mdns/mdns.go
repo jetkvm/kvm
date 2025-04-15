@@ -118,8 +118,8 @@ func (m *MDNS) start(allowRestart bool) error {
 
 	scopeLogger := m.l.With().
 		Interface("local_names", m.localNames).
-		Interface("ipv4", p4.LocalAddr()).
-		Interface("ipv6", p6.LocalAddr()).
+		Bool("ipv4", m.listenOptions.IPv4).
+		Bool("ipv6", m.listenOptions.IPv6).
 		Logger()
 
 	newLocalNames := make([]string, len(m.localNames))
