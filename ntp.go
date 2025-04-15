@@ -193,5 +193,9 @@ func setSystemTime(now time.Time) error {
 	if err != nil {
 		return fmt.Errorf("failed to run date -s: %w, %s", err, string(output))
 	}
+	output, err = exec.Command("hwclock", "-w").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to run hwclock -w: %w, %s", err, string(output))
+	}
 	return nil
 }
