@@ -5,16 +5,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const (
-	defaultLogLevel = zerolog.ErrorLevel
-)
-
 func ErrorfL(l *zerolog.Logger, format string, err error, args ...interface{}) error {
 	return logging.ErrorfL(l, format, err, args...)
 }
 
 var (
-	rootLogger      = logging.GetRootLogger()
 	logger          = logging.GetSubsystemLogger("jetkvm")
 	networkLogger   = logging.GetSubsystemLogger("network")
 	cloudLogger     = logging.GetSubsystemLogger("cloud")

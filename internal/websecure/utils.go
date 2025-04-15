@@ -35,7 +35,7 @@ func keyToFile(cert *tls.Certificate, filename string) error {
 	case *ecdsa.PrivateKey:
 		b, e := x509.MarshalECPrivateKey(k)
 		if e != nil {
-			return fmt.Errorf("Failed to marshal EC private key: %v", e)
+			return fmt.Errorf("failed to marshal EC private key: %v", e)
 		}
 
 		keyBlock = pem.Block{
@@ -43,7 +43,7 @@ func keyToFile(cert *tls.Certificate, filename string) error {
 			Bytes: b,
 		}
 	default:
-		return fmt.Errorf("Unknown private key type: %T", k)
+		return fmt.Errorf("unknown private key type: %T", k)
 	}
 
 	err := withSecretFile(filename, func(file *os.File) error {
@@ -51,7 +51,7 @@ func keyToFile(cert *tls.Certificate, filename string) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("Failed to save private key: %w", err)
+		return fmt.Errorf("failed to save private key: %w", err)
 	}
 
 	return nil
@@ -67,7 +67,7 @@ func certToFile(cert *tls.Certificate, filename string) error {
 
 			err := pem.Encode(file, &block)
 			if err != nil {
-				return fmt.Errorf("Failed to save certificate: %w", err)
+				return fmt.Errorf("failed to save certificate: %w", err)
 			}
 		}
 

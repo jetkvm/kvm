@@ -53,7 +53,7 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 			metricHttpTotalRequestCount.Inc()
 
 			startTime := time.Now()
-			now, err, response := queryHttpTime(
+			now, response, err := queryHttpTime(
 				ctx,
 				url,
 				timeout,
@@ -111,22 +111,22 @@ func queryHttpTime(
 	ctx context.Context,
 	url string,
 	timeout time.Duration,
-) (now *time.Time, err error, response *http.Response) {
+) (now *time.Time, response *http.Response, err error) {
 	client := http.Client{
 		Timeout: timeout,
 	}
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, err, nil
+		return nil, nil, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err, nil
+		return nil, nil, err
 	}
 	dateStr := resp.Header.Get("Date")
 	parsedTime, err := time.Parse(time.RFC1123, dateStr)
 	if err != nil {
-		return nil, err, resp
+		return nil, nil, err
 	}
-	return &parsedTime, nil, resp
+	return &parsedTime, resp, nil
 }

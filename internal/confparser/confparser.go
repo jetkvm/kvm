@@ -2,7 +2,6 @@ package confparser
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"reflect"
 	"slices"
@@ -247,7 +246,6 @@ func (f *FieldConfig) checkIfFieldNeedsUpdate() error {
 		}
 
 		f.shouldUpdateValue = true
-		log.Printf("field `%s` updated to default value: %v", f.Name, f.CurrentValue)
 	}
 
 	return nil

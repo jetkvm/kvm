@@ -33,7 +33,7 @@ type TimeSync struct {
 	networkConfig *network.NetworkConfig
 
 	rtcDevicePath string
-	rtcDevice     *os.File
+	rtcDevice     *os.File //nolint:unused
 	rtcLock       *sync.Mutex
 
 	syncSuccess bool

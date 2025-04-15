@@ -90,7 +90,7 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 				return
 			}
 
-			s.setHostnameIfNotSame()
+			_ = s.setHostnameIfNotSame()
 
 			opts.OnDhcpLeaseChange(lease)
 		},
@@ -195,8 +195,8 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 		ipv4Addresses       = make([]net.IP, 0)
 		ipv4AddressesString = make([]string, 0)
 		ipv6Addresses       = make([]IPv6Address, 0)
-		ipv6AddressesString = make([]string, 0)
-		ipv6LinkLocal       *net.IP
+		// ipv6AddressesString = make([]string, 0)
+		ipv6LinkLocal *net.IP
 	)
 
 	for _, addr := range addrs {
@@ -243,7 +243,7 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 				PreferredLifetime: lifetimeToTime(addr.PreferedLft),
 				Scope:             addr.Scope,
 			})
-			ipv6AddressesString = append(ipv6AddressesString, addr.IPNet.String())
+			// ipv6AddressesString = append(ipv6AddressesString, addr.IPNet.String())
 		}
 	}
 
@@ -341,6 +341,6 @@ func (s *NetworkInterfaceState) CheckAndUpdateDhcp() error {
 }
 
 func (s *NetworkInterfaceState) onConfigChange(config *NetworkConfig) {
-	s.setHostnameIfNotSame()
+	_ = s.setHostnameIfNotSame()
 	s.cbConfigChange(config)
 }

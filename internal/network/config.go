@@ -57,11 +57,12 @@ func (c *NetworkConfig) GetMDNSMode() *mdns.MDNSListenOptions {
 		IPv6: true,
 	}
 
-	if mode == "ipv4_only" {
+	switch mode {
+	case "ipv4_only":
 		listenOptions.IPv6 = false
-	} else if mode == "ipv6_only" {
+	case "ipv6_only":
 		listenOptions.IPv4 = false
-	} else if mode == "disabled" {
+	case "disabled":
 		listenOptions.IPv4 = false
 		listenOptions.IPv6 = false
 	}

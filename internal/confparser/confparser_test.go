@@ -8,7 +8,7 @@ import (
 	"github.com/guregu/null/v6"
 )
 
-type testIPv6Address struct {
+type testIPv6Address struct { //nolint:unused
 	Address           net.IP     `json:"address"`
 	Prefix            net.IPNet  `json:"prefix"`
 	ValidLifetime     *time.Time `json:"valid_lifetime"`

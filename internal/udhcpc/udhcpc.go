@@ -83,7 +83,10 @@ func (c *DHCPClient) Run() error {
 		for {
 			select {
 			case event, ok := <-watcher.Events:
-				if !ok || !(event.Has(fsnotify.Write) || event.Has(fsnotify.Create)) {
+				if !ok {
+					continue
+				}
+				if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) {
 					continue
 				}
 
@@ -165,7 +168,7 @@ func (c *DHCPClient) loadLeaseFile() error {
 	if err != nil {
 		c.logger.Error().Err(err).Msg("failed to get dhcp lease expiry")
 	} else {
-		expiresIn := leaseExpiry.Sub(time.Now())
+		expiresIn := time.Until(leaseExpiry)
 		c.logger.Info().
 			Interface("expiry", leaseExpiry).
 			Str("expiresIn", expiresIn.String()).

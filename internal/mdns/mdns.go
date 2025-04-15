@@ -171,7 +171,7 @@ func (m *MDNS) SetLocalNames(localNames []string, always bool) error {
 	}
 
 	m.localNames = localNames
-	m.Restart()
+	_ = m.Restart()
 
 	return nil
 }
@@ -184,7 +184,7 @@ func (m *MDNS) SetListenOptions(listenOptions *MDNSListenOptions) error {
 	}
 
 	m.listenOptions = listenOptions
-	m.Restart()
+	_ = m.Restart()
 
 	return nil
 }

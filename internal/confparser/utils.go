@@ -17,11 +17,11 @@ func splitString(s string) []string {
 }
 
 func toString(v interface{}) (string, error) {
-	switch v.(type) {
+	switch v := v.(type) {
 	case string:
-		return v.(string), nil
+		return v, nil
 	case null.String:
-		return v.(null.String).String, nil
+		return v.String, nil
 	}
 
 	return "", fmt.Errorf("unsupported type: %s", reflect.TypeOf(v))

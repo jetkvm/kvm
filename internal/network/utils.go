@@ -19,5 +19,8 @@ func IsSame(a, b interface{}) bool {
 		return false
 	}
 	bJSON, err := json.Marshal(b)
+	if err != nil {
+		return false
+	}
 	return string(aJSON) == string(bJSON)
 }

@@ -116,7 +116,6 @@ func sseHeadersMiddleware() gin.HandlerFunc {
 }
 
 func AttachSSEHandler(router *gin.RouterGroup) {
-
 	router.StaticFS("/log-stream", http.FS(sseHTML))
 	router.GET("/log-stream", sseHeadersMiddleware(), sseServer.serveHTTP(), func(c *gin.Context) {
 		v, ok := c.Get("clientChan")

@@ -29,7 +29,10 @@ func updateEtcHosts(hostname string, fqdn string) error {
 	defer hostsFile.Close()
 
 	// read all lines
-	hostsFile.Seek(0, io.SeekStart)
+	if _, err := hostsFile.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to seek %s: %w", hostsPath, err)
+	}
+
 	lines, err := io.ReadAll(hostsFile)
 	if err != nil {
 		return fmt.Errorf("failed to read %s: %w", hostsPath, err)
@@ -51,9 +54,17 @@ func updateEtcHosts(hostname string, fqdn string) error {
 		newLines = append(newLines, hostLine)
 	}
 
-	hostsFile.Truncate(0)
-	hostsFile.Seek(0, io.SeekStart)
-	hostsFile.Write([]byte(strings.Join(newLines, "\n")))
+	if err := hostsFile.Truncate(0); err != nil {
+		return fmt.Errorf("failed to truncate %s: %w", hostsPath, err)
+	}
+
+	if _, err := hostsFile.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to seek %s: %w", hostsPath, err)
+	}
+
+	if _, err := hostsFile.Write([]byte(strings.Join(newLines, "\n"))); err != nil {
+		return fmt.Errorf("failed to write %s: %w", hostsPath, err)
+	}
 
 	return nil
 }
@@ -82,7 +93,9 @@ func SetHostname(hostname string, fqdn string) error {
 	}
 
 	// update /etc/hostname
-	os.WriteFile(hostnamePath, []byte(hostname), 0644)
+	if err := os.WriteFile(hostnamePath, []byte(hostname), 0644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", hostnamePath, err)
+	}
 
 	// update /etc/hosts
 	if err := updateEtcHosts(hostname, fqdn); err != nil {

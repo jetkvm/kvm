@@ -24,7 +24,7 @@ var (
 			Help: "The number of times the timesync has been successful",
 		},
 	)
-	metricRTCUpdateCount = promauto.NewCounter(
+	metricRTCUpdateCount = promauto.NewCounter( //nolint:unused
 		prometheus.CounterOpts{
 			Name: "jetkvm_timesync_rtc_update_count",
 			Help: "The number of times the RTC has been updated",

@@ -56,7 +56,7 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 			metricNtpRequestCount.WithLabelValues(server).Inc()
 
 			// query the server
-			now, err, response := queryNtpServer(server, timeout)
+			now, response, err := queryNtpServer(server, timeout)
 
 			// set the last RTT
 			metricNtpServerLastRTT.WithLabelValues(
@@ -104,10 +104,10 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 	return result.now, result.offset
 }
 
-func queryNtpServer(server string, timeout time.Duration) (now *time.Time, err error, response *ntp.Response) {
+func queryNtpServer(server string, timeout time.Duration) (now *time.Time, response *ntp.Response, err error) {
 	resp, err := ntp.QueryWithOptions(server, ntp.QueryOptions{Timeout: timeout})
 	if err != nil {
-		return nil, err, nil
+		return nil, nil, err
 	}
-	return &resp.Time, nil, resp
+	return &resp.Time, resp, nil
 }

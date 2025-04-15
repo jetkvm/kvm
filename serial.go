@@ -219,9 +219,10 @@ var defaultMode = &serial.Mode{
 
 func initSerialPort() {
 	_ = reopenSerialPort()
-	if config.ActiveExtension == "atx-power" {
+	switch config.ActiveExtension {
+	case "atx-power":
 		_ = mountATXControl()
-	} else if config.ActiveExtension == "dc-power" {
+	case "dc-power":
 		_ = mountDCControl()
 	}
 }

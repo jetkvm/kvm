@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/resource"
-	"github.com/rs/zerolog"
 
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -32,19 +31,6 @@ type CtrlResponse struct {
 	Result map[string]interface{} `json:"result,omitempty"`
 	Event  string                 `json:"event,omitempty"`
 	Data   json.RawMessage        `json:"data,omitempty"`
-}
-
-type nativeOutput struct {
-	mu     *sync.Mutex
-	logger *zerolog.Event
-}
-
-func (w *nativeOutput) Write(p []byte) (n int, err error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	w.logger.Msg(string(p))
-	return len(p), nil
 }
 
 type EventHandler func(event CtrlResponse)
