@@ -22,11 +22,7 @@ func initMdns() error {
 		return err
 	}
 
-	err = m.Start()
-	if err != nil {
-		return err
-	}
-
+	// do not start the server yet, as we need to wait for the network state to be set
 	mDNS = m
 
 	return nil
