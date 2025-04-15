@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "./dev_device.sh",
+    "dev:ssl": "USE_SSL=true ./dev_device.sh",
     "dev:cloud": "vite dev --mode=cloud-development",
     "build": "npm run build:prod",
     "build:device": "tsc && vite build --mode=device --emptyOutDir",
@@ -21,6 +22,7 @@
     "@headlessui/react": "^2.2.0",
     "@headlessui/tailwindcss": "^0.2.1",
     "@heroicons/react": "^2.2.0",
+    "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@xterm/addon-clipboard": "^0.1.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-unicode11": "^0.8.0",

@@ -7,6 +7,7 @@ import { LuPlay } from "react-icons/lu";
 import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import Card, { GridCard } from "@components/Card";
+import { BsMouseFill } from "react-icons/bs";
 
 interface OverlayContentProps {
   children: React.ReactNode;
@@ -355,6 +356,39 @@ export function NoAutoplayPermissionsOverlay({
           </OverlayContent>
         </motion.div>
       )}
+    </AnimatePresence>
+  );
+}
+
+interface PointerLockBarProps {
+  show: boolean;
+}
+
+export function PointerLockBar({ show }: PointerLockBarProps) {
+  return (
+    <AnimatePresence mode="wait">
+      {show ? (
+        <motion.div
+          className="absolute -top-[36px] left-0 right-0 z-20 bg-white"
+          initial={{ y: 20, opacity: 0, zIndex: 0 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ y: 43, zIndex: 0 }}
+          transition={{ duration: 0.5, ease: "easeInOut", delay: 0.5 }}
+        >
+          <div>
+            <Card className="rounded-b-none shadow-none !outline-0">
+              <div className="flex items-center justify-between border border-slate-800/50 px-4 py-2 outline-0 backdrop-blur-sm dark:border-slate-300/20 dark:bg-slate-800">
+                <div className="flex items-center space-x-2">
+                  <BsMouseFill className="h-4 w-4 text-blue-700 dark:text-blue-500" />
+                  <span className="text-sm text-black dark:text-white">
+                    Click on the video to enable mouse control
+                  </span>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </motion.div>
+      ) : null}
     </AnimatePresence>
   );
 }
