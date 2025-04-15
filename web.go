@@ -19,6 +19,7 @@ import (
 	gin_logger "github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pion/webrtc/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -121,6 +122,8 @@ func setupRouter() *gin.Engine {
 		developerModeRouter.GET("/pprof/heap", gin.WrapH(pprof.Handler("heap")))
 		developerModeRouter.GET("/pprof/mutex", gin.WrapH(pprof.Handler("mutex")))
 		developerModeRouter.GET("/pprof/threadcreate", gin.WrapH(pprof.Handler("threadcreate")))
+
+		logging.AttachSSEHandler(developerModeRouter)
 	}
 
 	// Protected routes (allows both password and noPassword modes)
