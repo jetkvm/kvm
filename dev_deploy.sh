@@ -24,6 +24,7 @@ show_help() {
 REMOTE_USER="root"
 REMOTE_PATH="/userdata/jetkvm/bin"
 SKIP_UI_BUILD=false
+LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -91,7 +92,7 @@ cd "${REMOTE_PATH}"
 chmod +x jetkvm_app_debug
 
 # Run the application in the background
-PION_LOG_TRACE=jetkvm,cloud,websocket,native,jsonrpc ./jetkvm_app_debug
+PION_LOG_TRACE=${LOG_TRACE_SCOPES} ./jetkvm_app_debug
 EOF
 
 echo "Deployment complete."
