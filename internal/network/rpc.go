@@ -30,6 +30,38 @@ type RpcNetworkSettings struct {
 	NetworkConfig
 }
 
+func (s *NetworkInterfaceState) MacAddress() string {
+	if s.macAddr == nil {
+		return ""
+	}
+
+	return s.macAddr.String()
+}
+
+func (s *NetworkInterfaceState) IPv4Address() string {
+	if s.ipv4Addr == nil {
+		return ""
+	}
+
+	return s.ipv4Addr.String()
+}
+
+func (s *NetworkInterfaceState) IPv6Address() string {
+	if s.ipv6Addr == nil {
+		return ""
+	}
+
+	return s.ipv6Addr.String()
+}
+
+func (s *NetworkInterfaceState) IPv6LinkLocalAddress() string {
+	if s.ipv6LinkLocal == nil {
+		return ""
+	}
+
+	return s.ipv6LinkLocal.String()
+}
+
 func (s *NetworkInterfaceState) RpcGetNetworkState() RpcNetworkState {
 	ipv6Addresses := make([]RpcIPv6Address, 0)
 
@@ -46,10 +78,10 @@ func (s *NetworkInterfaceState) RpcGetNetworkState() RpcNetworkState {
 
 	return RpcNetworkState{
 		InterfaceName: s.interfaceName,
-		MacAddress:    s.macAddr.String(),
-		IPv4:          s.ipv4Addr.String(),
-		IPv6:          s.ipv6Addr.String(),
-		IPv6LinkLocal: s.ipv6LinkLocal.String(),
+		MacAddress:    s.MacAddress(),
+		IPv4:          s.IPv4Address(),
+		IPv6:          s.IPv6Address(),
+		IPv6LinkLocal: s.IPv6LinkLocalAddress(),
 		IPv4Addresses: s.ipv4Addresses,
 		IPv6Addresses: ipv6Addresses,
 		DHCPLease:     s.dhcpClient.GetLease(),
