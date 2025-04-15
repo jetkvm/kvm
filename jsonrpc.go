@@ -659,7 +659,7 @@ func rpcSetActiveExtension(extensionId string) error {
 	if config.ActiveExtension == extensionId {
 		return nil
 	}
-	switch extensionId {
+	switch config.ActiveExtension {
 	case "atx-power":
 		_ = unmountATXControl()
 	case "dc-power":

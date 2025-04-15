@@ -171,7 +171,7 @@ func runWebSecureServer() {
 
 	go func() {
 		for range stopTLS {
-			websecureLogger.Info().Msg("shutting down websecure server")
+			websecureLogger.Info().Msg("Shutting down websecure server")
 			err := server.Shutdown(context.Background())
 			if err != nil {
 				websecureLogger.Error().Err(err).Msg("failed to shutdown websecure server")
@@ -203,7 +203,7 @@ func startWebSecureServer() {
 
 func RunWebSecureServer() {
 	for range startTLS {
-		websecureLogger.Info().Msg("starting websecure server, as we have received a start signal")
+		websecureLogger.Info().Msg("Starting websecure server, as we have received a start signal")
 		if certStore == nil {
 			initCertStore()
 		}
