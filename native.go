@@ -8,9 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/exec"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/jetkvm/kvm/resource"
@@ -262,30 +260,8 @@ func ExtractAndRunNativeBin() error {
 		return fmt.Errorf("failed to make binary executable: %w", err)
 	}
 	// Run the binary in the background
-	cmd := exec.Command(binaryPath)
-
-	nativeOutputLock := sync.Mutex{}
-	nativeStdout := &nativeOutput{
-		mu:     &nativeOutputLock,
-		logger: nativeLogger.Info().Str("pipe", "stdout"),
-	}
-	nativeStderr := &nativeOutput{
-		mu:     &nativeOutputLock,
-		logger: nativeLogger.Info().Str("pipe", "stderr"),
-	}
-
-	// Redirect stdout and stderr to the current process
-	cmd.Stdout = nativeStdout
-	cmd.Stderr = nativeStderr
-
-	// Set the process group ID so we can kill the process and its children when this process exits
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid:   true,
-		Pdeathsig: syscall.SIGKILL,
-	}
-
-	// Start the command
-	if err := cmd.Start(); err != nil {
+	cmd, err := startNativeBinary(binaryPath)
+	if err != nil {
 		return fmt.Errorf("failed to start binary: %w", err)
 	}
 
