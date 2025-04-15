@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -49,6 +50,21 @@ func NewDHCPClient(options *DHCPClientOptions) *DHCPClient {
 	}
 }
 
+func (c *DHCPClient) getWatchPaths() []string {
+	watchPaths := make(map[string]interface{})
+	watchPaths[filepath.Dir(c.leaseFile)] = nil
+
+	if c.pidFile != "" {
+		watchPaths[filepath.Dir(c.pidFile)] = nil
+	}
+
+	paths := make([]string, 0)
+	for path := range watchPaths {
+		paths = append(paths, path)
+	}
+	return paths
+}
+
 // Run starts the DHCP client and watches the lease file for changes.
 // this isn't a blocking call, and the lease file is reloaded when a change is detected.
 func (c *DHCPClient) Run() error {
@@ -67,12 +83,14 @@ func (c *DHCPClient) Run() error {
 		for {
 			select {
 			case event, ok := <-watcher.Events:
-				if !ok {
-					return
+				if !ok || !(event.Has(fsnotify.Write) || event.Has(fsnotify.Create)) {
+					continue
 				}
-				if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+
+				if event.Name == c.leaseFile {
 					c.logger.Debug().
-						Str("event", event.Name).
+						Str("event", event.Op.String()).
+						Str("path", event.Name).
 						Msg("udhcpc lease file updated, reloading lease")
 					_ = c.loadLeaseFile()
 				}
@@ -85,13 +103,15 @@ func (c *DHCPClient) Run() error {
 		}
 	}()
 
-	err = watcher.Add(c.leaseFile)
-	if err != nil {
-		c.logger.Error().
-			Err(err).
-			Str("path", c.leaseFile).
-			Msg("failed to watch lease file")
-		return err
+	for _, path := range c.getWatchPaths() {
+		err = watcher.Add(path)
+		if err != nil {
+			c.logger.Error().
+				Err(err).
+				Str("path", path).
+				Msg("failed to watch directory")
+			return err
+		}
 	}
 
 	// TODO: update udhcpc pid file
