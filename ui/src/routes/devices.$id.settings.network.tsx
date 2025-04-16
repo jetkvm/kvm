@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 
@@ -73,6 +73,10 @@ export default function SettingsNetworkRoute() {
 
   const [networkSettings, setNetworkSettings] =
     useState<NetworkSettings>(defaultNetworkSettings);
+
+  // We use this to determine whether the settings have changed
+  const firstNetworkSettings = useRef<NetworkSettings>();
+
   const [networkSettingsLoaded, setNetworkSettingsLoaded] = useState(false);
 
   const [customDomain, setCustomDomain] = useState<string>("");
@@ -97,6 +101,10 @@ export default function SettingsNetworkRoute() {
       if ("error" in resp) return;
       console.log(resp.result);
       setNetworkSettings(resp.result as NetworkSettings);
+
+      if (!firstNetworkSettings.current) {
+        firstNetworkSettings.current = resp.result as NetworkSettings;
+      }
       setNetworkSettingsLoaded(true);
     });
   }, [send]);
@@ -113,6 +121,8 @@ export default function SettingsNetworkRoute() {
           setNetworkSettingsLoaded(true);
           return;
         }
+        // We need to update the firstNetworkSettings ref to the new settings so we can use it to determine if the settings have changed
+        firstNetworkSettings.current = resp.result as NetworkSettings;
         setNetworkSettings(resp.result as NetworkSettings);
         setNetworkSettingsLoaded(true);
         notifications.success("Network settings saved");
@@ -153,9 +163,7 @@ export default function SettingsNetworkRoute() {
   };
 
   const handleLldpModeChange = (value: LLDPMode | string) => {
-    const newSettings = { ...networkSettings, lldp_mode: value as LLDPMode };
-    setNetworkSettings(newSettings);
-    setNetworkSettingsRemote(newSettings);
+    setNetworkSettings({ ...networkSettings, lldp_mode: value as LLDPMode });
   };
 
   // const handleLldpTxTlvsChange = (value: string[]) => {
@@ -163,29 +171,19 @@ export default function SettingsNetworkRoute() {
   // };
 
   const handleMdnsModeChange = (value: mDNSMode | string) => {
-    const newSettings = { ...networkSettings, mdns_mode: value as mDNSMode };
-    setNetworkSettings(newSettings);
-    setNetworkSettingsRemote(newSettings);
+    setNetworkSettings({ ...networkSettings, mdns_mode: value as mDNSMode });
   };
 
   const handleTimeSyncModeChange = (value: TimeSyncMode | string) => {
-    const newSettings = { ...networkSettings, time_sync_mode: value as TimeSyncMode };
-    setNetworkSettings(newSettings);
-    setNetworkSettingsRemote(newSettings);
+    setNetworkSettings({ ...networkSettings, time_sync_mode: value as TimeSyncMode });
   };
 
   const handleHostnameChange = (value: string) => {
-    if (value === networkSettings.hostname) return;
-    const newSettings = { ...networkSettings, hostname: value };
-    setNetworkSettings(newSettings);
-    setNetworkSettingsRemote(newSettings);
+    setNetworkSettings({ ...networkSettings, hostname: value });
   };
 
   const handleDomainChange = (value: string) => {
-    if (value === networkSettings.domain) return;
-    const newSettings = { ...networkSettings, domain: value };
-    setNetworkSettings(newSettings);
-    setNetworkSettingsRemote(newSettings);
+    setNetworkSettings({ ...networkSettings, domain: value });
   };
 
   const handleDomainOptionChange = (value: string) => {
@@ -207,6 +205,9 @@ export default function SettingsNetworkRoute() {
     },
     [networkSettingsLoaded],
   );
+
+  console.log("firstNetworkSettings", firstNetworkSettings.current);
+  console.log("networkSettings", networkSettings);
 
   return (
     <Fieldset disabled={!networkSettingsLoaded} className="space-y-4">
@@ -239,7 +240,7 @@ export default function SettingsNetworkRoute() {
                 type="text"
                 placeholder="jetkvm"
                 defaultValue={networkSettings.hostname}
-                onBlur={e => {
+                onChange={e => {
                   handleHostnameChange(e.target.value);
                 }}
               />
@@ -300,6 +301,7 @@ export default function SettingsNetworkRoute() {
             />
           </SettingsItem>
         </div>
+
         <div className="space-y-4">
           <SettingsItem
             title="Time synchronization"
@@ -322,6 +324,14 @@ export default function SettingsNetworkRoute() {
             />
           </SettingsItem>
         </div>
+
+        <Button
+          size="SM"
+          theme="primary"
+          disabled={firstNetworkSettings.current === networkSettings}
+          text="Save Settings"
+          onClick={() => setNetworkSettingsRemote(networkSettings)}
+        />
       </div>
 
       <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
@@ -582,10 +592,7 @@ export default function SettingsNetworkRoute() {
                     networkState?.ipv6_addresses.length > 0 && (
                       <div className="space-y-3">
                         <h4 className="text-sm font-semibold">IPv6 Addresses</h4>
-                        {[
-                          ...networkState.ipv6_addresses,
-                          ...networkState.ipv6_addresses,
-                        ].map(addr => (
+                        {networkState.ipv6_addresses.map(addr => (
                           <div
                             key={addr.address}
                             className="rounded-md rounded-l-none border border-slate-500/10 border-l-blue-700/50 bg-slate-100/40 p-4 pl-4 dark:border-blue-500 dark:bg-slate-900"
