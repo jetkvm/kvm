@@ -1,0 +1,75 @@
+name: 'Pull Request'
+on:
+  pull_request:
+    branches:
+      - dev
+    paths-ignore:
+      - .gitignore
+      - README.md
+      - LICENSE
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: v21.1.0
+        cache: 'npm'
+        cache-dependency-path: '**/package-lock.json'
+
+    - name: Cache NPM dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.npm
+        key: npm-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          npm-cache-${{ runner.os }}-
+
+    - name: Install Dependencies and Build
+      run: |
+        cd ui
+        npm ci
+        # npm run lint # need to clean lint before enabling this
+        npm run build:prod
+      env:
+        CI: true
+
+    - name: Cache Prisma Binary
+      uses: actions/cache@v4
+      with:
+        path: ~/.npm/_npx
+        key: prisma-binary-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: prisma-binary-${{ runner.os }}-
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24.0'
+
+    - name: Cache Go modules
+      id: cache-go-mod
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Build Go application
+      env:
+        GOOS: linux
+        GOARCH: arm
+        GOARM: 7
+        VERSION_DEV: ci-build
+      run: |
+        make frontend
+        make build_dev
