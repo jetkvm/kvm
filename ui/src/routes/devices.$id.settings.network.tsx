@@ -15,16 +15,16 @@ import {
 } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
-import { Button, LinkButton } from "@components/Button";
+import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
 import InputField from "@components/InputField";
 
 import { SettingsPageHeader } from "../components/SettingsPageheader";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
-
-import { SettingsItem } from "./devices.$id.settings";
 import Fieldset from "../components/Fieldset";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+
+import { SettingsItem } from "./devices.$id.settings";
 
 dayjs.extend(relativeTime);
 
