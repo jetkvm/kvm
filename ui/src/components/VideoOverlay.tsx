@@ -3,11 +3,11 @@ import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
 import { LuPlay } from "react-icons/lu";
+import { BsMouseFill } from "react-icons/bs";
 
 import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import Card, { GridCard } from "@components/Card";
-import { BsMouseFill } from "react-icons/bs";
 
 interface OverlayContentProps {
   children: React.ReactNode;
@@ -242,8 +242,8 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                           Ensure source device is powered on and outputting a signal
                         </li>
                         <li>
-                          If using an adapter, ensure it&apos;s compatible and
-                          functioning correctly
+                          If using an adapter, ensure it&apos;s compatible and functioning
+                          correctly
                         </li>
                       </ul>
                     </div>

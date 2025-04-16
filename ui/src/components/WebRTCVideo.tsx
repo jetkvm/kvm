@@ -151,7 +151,7 @@ export default function WebRTCVideo() {
     const isKeyboardLockGranted = await checkNavigatorPermissions("keyboard-lock");
     if (isKeyboardLockGranted) {
       if ("keyboard" in navigator) {
-        // @ts-ignore
+        // @ts-expect-error - keyboard lock is not supported in all browsers
         await navigator.keyboard.lock();
       }
     }

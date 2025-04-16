@@ -1,5 +1,4 @@
 import { useState } from "react";
-
 import { LuPlus } from "react-icons/lu";
 
 import { KeySequence } from "@/hooks/stores";
@@ -7,16 +6,23 @@ import { Button } from "@/components/Button";
 import { InputFieldWithLabel, FieldError } from "@/components/InputField";
 import Fieldset from "@/components/Fieldset";
 import { MacroStepCard } from "@/components/MacroStepCard";
-import { DEFAULT_DELAY, MAX_STEPS_PER_MACRO, MAX_KEYS_PER_STEP } from "@/constants/macros";
+import {
+  DEFAULT_DELAY,
+  MAX_STEPS_PER_MACRO,
+  MAX_KEYS_PER_STEP,
+} from "@/constants/macros";
 import FieldLabel from "@/components/FieldLabel";
 
 interface ValidationErrors {
   name?: string;
-  steps?: Record<number, {
-    keys?: string;
-    modifiers?: string;
-    delay?: string;
-  }>;
+  steps?: Record<
+    number,
+    {
+      keys?: string;
+      modifiers?: string;
+      delay?: string;
+    }
+  >;
 }
 
 interface MacroFormProps {
@@ -53,16 +59,18 @@ export function MacroForm({
     } else if (macro.name.trim().length > 50) {
       newErrors.name = "Name must be less than 50 characters";
     }
-  
+
     if (!macro.steps?.length) {
       newErrors.steps = { 0: { keys: "At least one step is required" } };
     } else {
-      const hasKeyOrModifier = macro.steps.some(step => 
-        (step.keys?.length || 0) > 0 || (step.modifiers?.length || 0) > 0
+      const hasKeyOrModifier = macro.steps.some(
+        step => (step.keys?.length || 0) > 0 || (step.modifiers?.length || 0) > 0,
       );
 
       if (!hasKeyOrModifier) {
-        newErrors.steps = { 0: { keys: "At least one step must have keys or modifiers" } };
+        newErrors.steps = {
+          0: { keys: "At least one step must have keys or modifiers" },
+        };
       }
     }
 
@@ -87,7 +95,10 @@ export function MacroForm({
     }
   };
 
-  const handleKeySelect = (stepIndex: number, option: { value: string | null; keys?: string[] }) => {
+  const handleKeySelect = (
+    stepIndex: number,
+    option: { value: string | null; keys?: string[] },
+  ) => {
     const newSteps = [...(macro.steps || [])];
     if (!newSteps[stepIndex]) return;
 
@@ -97,7 +108,9 @@ export function MacroForm({
       if (!newSteps[stepIndex].keys) {
         newSteps[stepIndex].keys = [];
       }
-      const keysArray = Array.isArray(newSteps[stepIndex].keys) ? newSteps[stepIndex].keys : [];
+      const keysArray = Array.isArray(newSteps[stepIndex].keys)
+        ? newSteps[stepIndex].keys
+        : [];
       if (keysArray.length >= MAX_KEYS_PER_STEP) {
         showTemporaryError(`Maximum of ${MAX_KEYS_PER_STEP} keys per step allowed`);
         return;
@@ -105,7 +118,7 @@ export function MacroForm({
       newSteps[stepIndex].keys = [...keysArray, option.value];
     }
     setMacro({ ...macro, steps: newSteps });
-    
+
     if (errors.steps?.[stepIndex]?.keys) {
       const newErrors = { ...errors };
       delete newErrors.steps?.[stepIndex].keys;
@@ -127,7 +140,7 @@ export function MacroForm({
     const newSteps = [...(macro.steps || [])];
     newSteps[stepIndex].modifiers = modifiers;
     setMacro({ ...macro, steps: newSteps });
-    
+
     // Clear step errors when modifiers are added
     if (errors.steps?.[stepIndex]?.keys && modifiers.length > 0) {
       const newErrors = { ...errors };
@@ -148,9 +161,9 @@ export function MacroForm({
     setMacro({ ...macro, steps: newSteps });
   };
 
-  const handleStepMove = (stepIndex: number, direction: 'up' | 'down') => {
+  const handleStepMove = (stepIndex: number, direction: "up" | "down") => {
     const newSteps = [...(macro.steps || [])];
-    const newIndex = direction === 'up' ? stepIndex - 1 : stepIndex + 1;
+    const newIndex = direction === "up" ? stepIndex - 1 : stepIndex + 1;
     [newSteps[stepIndex], newSteps[newIndex]] = [newSteps[newIndex], newSteps[stepIndex]];
     setMacro({ ...macro, steps: newSteps });
   };
@@ -181,7 +194,10 @@ export function MacroForm({
         <div>
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-1">
-              <FieldLabel label="Steps" description={`Keys/modifiers executed in sequence with a delay between each step.`} />
+              <FieldLabel
+                label="Steps"
+                description={`Keys/modifiers executed in sequence with a delay between each step.`}
+              />
             </div>
             <span className="text-slate-500 dark:text-slate-400">
               {macro.steps?.length || 0}/{MAX_STEPS_PER_MACRO} steps
@@ -199,18 +215,24 @@ export function MacroForm({
                   key={stepIndex}
                   step={step}
                   stepIndex={stepIndex}
-                  onDelete={macro.steps && macro.steps.length > 1 ? () => {
-                    const newSteps = [...(macro.steps || [])];
-                    newSteps.splice(stepIndex, 1);
-                    setMacro(prev => ({ ...prev, steps: newSteps }));
-                  } : undefined}
-                  onMoveUp={() => handleStepMove(stepIndex, 'up')}
-                  onMoveDown={() => handleStepMove(stepIndex, 'down')}
-                  onKeySelect={(option) => handleKeySelect(stepIndex, option)}
-                  onKeyQueryChange={(query) => handleKeyQueryChange(stepIndex, query)}
-                  keyQuery={keyQueries[stepIndex] || ''}
-                  onModifierChange={(modifiers) => handleModifierChange(stepIndex, modifiers)}
-                  onDelayChange={(delay) => handleDelayChange(stepIndex, delay)}
+                  onDelete={
+                    macro.steps && macro.steps.length > 1
+                      ? () => {
+                          const newSteps = [...(macro.steps || [])];
+                          newSteps.splice(stepIndex, 1);
+                          setMacro(prev => ({ ...prev, steps: newSteps }));
+                        }
+                      : undefined
+                  }
+                  onMoveUp={() => handleStepMove(stepIndex, "up")}
+                  onMoveDown={() => handleStepMove(stepIndex, "down")}
+                  onKeySelect={option => handleKeySelect(stepIndex, option)}
+                  onKeyQueryChange={query => handleKeyQueryChange(stepIndex, query)}
+                  keyQuery={keyQueries[stepIndex] || ""}
+                  onModifierChange={modifiers =>
+                    handleModifierChange(stepIndex, modifiers)
+                  }
+                  onDelayChange={delay => handleDelayChange(stepIndex, delay)}
                   isLastStep={stepIndex === (macro.steps?.length || 0) - 1}
                 />
               ))}
@@ -223,18 +245,20 @@ export function MacroForm({
               theme="light"
               fullWidth
               LeadingIcon={LuPlus}
-              text={`Add Step ${isMaxStepsReached ? `(${MAX_STEPS_PER_MACRO} max)` : ''}`}
+              text={`Add Step ${isMaxStepsReached ? `(${MAX_STEPS_PER_MACRO} max)` : ""}`}
               onClick={() => {
                 if (isMaxStepsReached) {
-                  showTemporaryError(`You can only add a maximum of ${MAX_STEPS_PER_MACRO} steps per macro.`);
+                  showTemporaryError(
+                    `You can only add a maximum of ${MAX_STEPS_PER_MACRO} steps per macro.`,
+                  );
                   return;
                 }
-                
+
                 setMacro(prev => ({
                   ...prev,
                   steps: [
-                    ...(prev.steps || []), 
-                    { keys: [], modifiers: [], delay: DEFAULT_DELAY }
+                    ...(prev.steps || []),
+                    { keys: [], modifiers: [], delay: DEFAULT_DELAY },
                   ],
                 }));
                 setErrors({});
@@ -257,12 +281,7 @@ export function MacroForm({
               onClick={handleSubmit}
               disabled={isSubmitting}
             />
-            <Button
-              size="SM"
-              theme="light"
-              text="Cancel"
-              onClick={onCancel}
-            />
+            <Button size="SM" theme="light" text="Cancel" onClick={onCancel} />
           </div>
         </div>
       </div>
