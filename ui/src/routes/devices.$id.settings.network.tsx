@@ -1,18 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
 
-import { SelectMenuBasic } from "../components/SelectMenuBasic";
-import { SettingsPageHeader } from "../components/SettingsPageheader";
-
-import { IPv4Mode, IPv6Mode, LLDPMode, mDNSMode, NetworkSettings, NetworkState, TimeSyncMode, useNetworkStateStore } from "@/hooks/stores";
+import {
+  IPv4Mode,
+  IPv6Mode,
+  LLDPMode,
+  mDNSMode,
+  NetworkSettings,
+  NetworkState,
+  TimeSyncMode,
+  useNetworkStateStore,
+} from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
-import { Button } from "@components/Button";
+import { Button, LinkButton } from "@components/Button";
 import { GridCard } from "@components/Card";
 import InputField from "@components/InputField";
-import { SettingsItem } from "./devices.$id.settings";
 
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
+import { SettingsPageHeader } from "../components/SettingsPageheader";
+import { SelectMenuBasic } from "../components/SelectMenuBasic";
+
+import { SettingsItem } from "./devices.$id.settings";
+import Fieldset from "../components/Fieldset";
 
 dayjs.extend(relativeTime);
 
@@ -25,13 +35,9 @@ const defaultNetworkSettings: NetworkSettings = {
   lldp_tx_tlvs: [],
   mdns_mode: "unknown",
   time_sync_mode: "unknown",
-}
+};
 
 export function LifeTimeLabel({ lifetime }: { lifetime: string }) {
-  if (lifetime == "") {
-    return <strong>N/A</strong>;
-  }
-
   const [remaining, setRemaining] = useState<string | null>(null);
 
   useEffect(() => {
@@ -43,22 +49,47 @@ export function LifeTimeLabel({ lifetime }: { lifetime: string }) {
     return () => clearInterval(interval);
   }, [lifetime]);
 
-  return <>
-    <strong>{dayjs(lifetime).format()}</strong>
-    {remaining && <>
-      {" "}<span className="text-xs text-slate-700 dark:text-slate-300">
-        ({remaining})
-      </span>
-    </>}
-  </>
+  return (
+    <>
+      <span>{dayjs(lifetime).format("YYYY-MM-DD HH:mm")}</span>
+      {remaining && (
+        <>
+          {" "}
+          <span className="text-xs text-slate-700 dark:text-slate-300">
+            ({remaining})
+          </span>
+        </>
+      )}
+    </>
+  );
 }
 
 export default function SettingsNetworkRoute() {
   const [send] = useJsonRpc();
-  const [networkState, setNetworkState] = useNetworkStateStore(state => [state, state.setNetworkState]);
+  const [networkState, setNetworkState] = useNetworkStateStore(state => [
+    state,
+    state.setNetworkState,
+  ]);
 
-  const [networkSettings, setNetworkSettings] = useState<NetworkSettings>(defaultNetworkSettings);
+  const [networkSettings, setNetworkSettings] =
+    useState<NetworkSettings>(defaultNetworkSettings);
   const [networkSettingsLoaded, setNetworkSettingsLoaded] = useState(false);
+
+  const [customDomain, setCustomDomain] = useState<string>("");
+  const [selectedDomainOption, setSelectedDomainOption] = useState<string>("dhcp");
+
+  useEffect(() => {
+    if (networkSettings.domain && networkSettingsLoaded) {
+      // Check if the domain is one of the predefined options
+      const predefinedOptions = ["dhcp", "local"];
+      if (predefinedOptions.includes(networkSettings.domain)) {
+        setSelectedDomainOption(networkSettings.domain);
+      } else {
+        setSelectedDomainOption("custom");
+        setCustomDomain(networkSettings.domain);
+      }
+    }
+  }, [networkSettings.domain, networkSettingsLoaded]);
 
   const getNetworkSettings = useCallback(() => {
     setNetworkSettingsLoaded(false);
@@ -70,19 +101,25 @@ export default function SettingsNetworkRoute() {
     });
   }, [send]);
 
-  const setNetworkSettingsRemote = useCallback((settings: NetworkSettings) => {
-    setNetworkSettingsLoaded(false);
-    send("setNetworkSettings", { settings }, resp => {
-      if ("error" in resp) {
-        notifications.error("Failed to save network settings: " + (resp.error.data ? resp.error.data : resp.error.message));
+  const setNetworkSettingsRemote = useCallback(
+    (settings: NetworkSettings) => {
+      setNetworkSettingsLoaded(false);
+      send("setNetworkSettings", { settings }, resp => {
+        if ("error" in resp) {
+          notifications.error(
+            "Failed to save network settings: " +
+              (resp.error.data ? resp.error.data : resp.error.message),
+          );
+          setNetworkSettingsLoaded(true);
+          return;
+        }
+        setNetworkSettings(resp.result as NetworkSettings);
         setNetworkSettingsLoaded(true);
-        return;
-      }
-      setNetworkSettings(resp.result as NetworkSettings);
-      setNetworkSettingsLoaded(true);
-      notifications.success("Network settings saved");
-    });
-  }, [send]);
+        notifications.success("Network settings saved");
+      });
+    },
+    [send],
+  );
 
   const getNetworkState = useCallback(() => {
     send("getNetworkState", {}, resp => {
@@ -90,7 +127,7 @@ export default function SettingsNetworkRoute() {
       console.log(resp.result);
       setNetworkState(resp.result as NetworkState);
     });
-  }, [send]);
+  }, [send, setNetworkState]);
 
   const handleRenewLease = useCallback(() => {
     send("renewDHCPLease", {}, resp => {
@@ -116,7 +153,9 @@ export default function SettingsNetworkRoute() {
   };
 
   const handleLldpModeChange = (value: LLDPMode | string) => {
-    setNetworkSettings({ ...networkSettings, lldp_mode: value as LLDPMode });
+    const newSettings = { ...networkSettings, lldp_mode: value as LLDPMode };
+    setNetworkSettings(newSettings);
+    setNetworkSettingsRemote(newSettings);
   };
 
   // const handleLldpTxTlvsChange = (value: string[]) => {
@@ -124,94 +163,175 @@ export default function SettingsNetworkRoute() {
   // };
 
   const handleMdnsModeChange = (value: mDNSMode | string) => {
-    setNetworkSettings({ ...networkSettings, mdns_mode: value as mDNSMode });
+    const newSettings = { ...networkSettings, mdns_mode: value as mDNSMode };
+    setNetworkSettings(newSettings);
+    setNetworkSettingsRemote(newSettings);
   };
 
   const handleTimeSyncModeChange = (value: TimeSyncMode | string) => {
-    setNetworkSettings({ ...networkSettings, time_sync_mode: value as TimeSyncMode });
+    const newSettings = { ...networkSettings, time_sync_mode: value as TimeSyncMode };
+    setNetworkSettings(newSettings);
+    setNetworkSettingsRemote(newSettings);
   };
 
-  const filterUnknown = useCallback((options: { value: string; label: string; }[]) => {
-    if (!networkSettingsLoaded) return options;
-    return options.filter(option => option.value !== "unknown");
-  }, [networkSettingsLoaded]);
+  const handleHostnameChange = (value: string) => {
+    if (value === networkSettings.hostname) return;
+    const newSettings = { ...networkSettings, hostname: value };
+    setNetworkSettings(newSettings);
+    setNetworkSettingsRemote(newSettings);
+  };
+
+  const handleDomainChange = (value: string) => {
+    if (value === networkSettings.domain) return;
+    const newSettings = { ...networkSettings, domain: value };
+    setNetworkSettings(newSettings);
+    setNetworkSettingsRemote(newSettings);
+  };
+
+  const handleDomainOptionChange = (value: string) => {
+    setSelectedDomainOption(value);
+    if (value !== "custom") {
+      handleDomainChange(value);
+    }
+  };
+
+  const handleCustomDomainChange = (value: string) => {
+    setCustomDomain(value);
+    handleDomainChange(value);
+  };
+
+  const filterUnknown = useCallback(
+    (options: { value: string; label: string }[]) => {
+      if (!networkSettingsLoaded) return options;
+      return options.filter(option => option.value !== "unknown");
+    },
+    [networkSettingsLoaded],
+  );
 
   return (
-    <div className="space-y-4">
-      <SettingsPageHeader
-        title="Network"
-        description="Configure your network settings"
-      />
+    <Fieldset disabled={!networkSettingsLoaded} className="space-y-4">
+      <SettingsPageHeader title="Network" description="Configure your network settings" />
       <div className="space-y-4">
         <SettingsItem
           title="MAC Address"
-          description={<></>}
+          description="Hardware identifier for the network interface"
         >
-          <span className="select-auto font-mono text-xs text-slate-700 dark:text-slate-300">
-            {networkState?.mac_address}
-          </span>
+          <InputField
+            type="text"
+            size="SM"
+            value={networkState?.mac_address}
+            error={""}
+            disabled={true}
+            readOnly={true}
+            className="dark:!text-opacity-60"
+          />
         </SettingsItem>
       </div>
       <div className="space-y-4">
         <SettingsItem
           title="Hostname"
-          description={
-            <>
-              Hostname for the device
-              <br />
-              <span className="text-xs text-slate-700 dark:text-slate-300">
-                Leave blank for default
-              </span>
-            </>
-          }
+          description="Device identifier on the network. Blank for system default"
         >
-          <InputField
-            type="text"
-            placeholder="jetkvm"
-            value={networkSettings.hostname}
-            error={""}
-            onChange={e => {
-              setNetworkSettings({ ...networkSettings, hostname: e.target.value });
-            }}
-            disabled={!networkSettingsLoaded}
-          />
+          <div className="relative">
+            <div>
+              <InputField
+                size="SM"
+                type="text"
+                placeholder="jetkvm"
+                defaultValue={networkSettings.hostname}
+                onBlur={e => {
+                  handleHostnameChange(e.target.value);
+                }}
+              />
+            </div>
+          </div>
         </SettingsItem>
       </div>
+
       <div className="space-y-4">
-        <SettingsItem
-          title="Domain"
-          description={
-            <>
-              Domain for the device
-              <br />
-              <span className="text-xs text-slate-700 dark:text-slate-300">
-                Leave blank to use DHCP provided domain, if there is no domain, use <span className="font-mono">local</span>
-              </span>
-            </>
-          }
-        >
-          <InputField
-            type="text"
-            placeholder="local"
-            value={networkSettings.domain}
-            error={""}
-            onChange={e => {
-              setNetworkSettings({ ...networkSettings, domain: e.target.value });
-            }}
-            disabled={!networkSettingsLoaded}
-          />
-        </SettingsItem>
+        <div className="space-y-4">
+          <SettingsItem title="Domain" description="Network domain suffix for the device">
+            <div className="space-y-2">
+              <SelectMenuBasic
+                size="SM"
+                value={selectedDomainOption}
+                onChange={e => handleDomainOptionChange(e.target.value)}
+                options={[
+                  { value: "dhcp", label: "DHCP provided" },
+                  { value: "local", label: ".local" },
+                  { value: "custom", label: "Custom" },
+                ]}
+              />
+            </div>
+          </SettingsItem>
+          {selectedDomainOption === "custom" && (
+            <div className="flex items-center justify-between gap-x-2">
+              <InputField
+                size="SM"
+                type="text"
+                placeholder="home"
+                value={customDomain}
+                onChange={e => setCustomDomain(e.target.value)}
+              />
+              <Button
+                size="SM"
+                theme="primary"
+                text="Save Domain"
+                onClick={() => handleCustomDomainChange(customDomain)}
+              />
+            </div>
+          )}
+        </div>
+        <div className="space-y-4">
+          <SettingsItem
+            title="mDNS"
+            description="Control mDNS (multicast DNS) operational mode"
+          >
+            <SelectMenuBasic
+              size="SM"
+              value={networkSettings.mdns_mode}
+              onChange={e => handleMdnsModeChange(e.target.value)}
+              options={filterUnknown([
+                { value: "disabled", label: "Disabled" },
+                { value: "auto", label: "Auto" },
+                { value: "ipv4_only", label: "IPv4 only" },
+                { value: "ipv6_only", label: "IPv6 only" },
+              ])}
+            />
+          </SettingsItem>
+        </div>
+        <div className="space-y-4">
+          <SettingsItem
+            title="Time synchronization"
+            description="Configure time synchronization settings"
+          >
+            <SelectMenuBasic
+              size="SM"
+              value={networkSettings.time_sync_mode}
+              onChange={e => {
+                handleTimeSyncModeChange(e.target.value);
+              }}
+              options={filterUnknown([
+                { value: "unknown", label: "..." },
+                // { value: "auto", label: "Auto" },
+                { value: "ntp_only", label: "NTP only" },
+                { value: "ntp_and_http", label: "NTP and HTTP" },
+                { value: "http_only", label: "HTTP only" },
+                // { value: "custom", label: "Custom" },
+              ])}
+            />
+          </SettingsItem>
+        </div>
       </div>
+
+      <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+
       <div className="space-y-4">
-        <SettingsItem
-          title="IPv4 Mode"
-          description="Configure the IPv4 mode"
-        >
+        <SettingsItem title="IPv4 Mode" description="Configure the IPv4 mode">
           <SelectMenuBasic
             size="SM"
             value={networkSettings.ipv4_mode}
             onChange={e => handleIpv4ModeChange(e.target.value)}
-            disabled={!networkSettingsLoaded}
             options={filterUnknown([
               { value: "dhcp", label: "DHCP" },
               // { value: "static", label: "Static" },
@@ -220,44 +340,199 @@ export default function SettingsNetworkRoute() {
         </SettingsItem>
         {networkState?.dhcp_lease && (
           <GridCard>
-            <div className="flex items-start gap-x-4 p-4">
-              <div className="space-y-3 w-full">
-                <div className="space-y-2">
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    Current DHCP Lease
-                  </h3>
-                  <div>
-                    <ul className="list-none space-y-1 text-xs text-slate-700 dark:text-slate-300">
-                      {networkState?.dhcp_lease?.ip && <li>IP: <strong>{networkState?.dhcp_lease?.ip}</strong></li>}
-                      {networkState?.dhcp_lease?.netmask && <li>Subnet: <strong>{networkState?.dhcp_lease?.netmask}</strong></li>}
-                      {networkState?.dhcp_lease?.broadcast && <li>Broadcast: <strong>{networkState?.dhcp_lease?.broadcast}</strong></li>}
-                      {networkState?.dhcp_lease?.ttl && <li>TTL: <strong>{networkState?.dhcp_lease?.ttl}</strong></li>}
-                      {networkState?.dhcp_lease?.mtu && <li>MTU: <strong>{networkState?.dhcp_lease?.mtu}</strong></li>}
-                      {networkState?.dhcp_lease?.hostname && <li>Hostname: <strong>{networkState?.dhcp_lease?.hostname}</strong></li>}
-                      {networkState?.dhcp_lease?.domain && <li>Domain: <strong>{networkState?.dhcp_lease?.domain}</strong></li>}
-                      {networkState?.dhcp_lease?.routers && <li>Gateway: <strong>{networkState?.dhcp_lease?.routers.join(", ")}</strong></li>}
-                      {networkState?.dhcp_lease?.dns && <li>DNS: <strong>{networkState?.dhcp_lease?.dns.join(", ")}</strong></li>}
-                      {networkState?.dhcp_lease?.ntp_servers && <li>NTP Servers: <strong>{networkState?.dhcp_lease?.ntp_servers.join(", ")}</strong></li>}
-                      {networkState?.dhcp_lease?.server_id && <li>Server ID: <strong>{networkState?.dhcp_lease?.server_id}</strong></li>}
-                      {networkState?.dhcp_lease?.bootp_next_server && <li>BootP Next Server: <strong>{networkState?.dhcp_lease?.bootp_next_server}</strong></li>}
-                      {networkState?.dhcp_lease?.bootp_server_name && <li>BootP Server Name: <strong>{networkState?.dhcp_lease?.bootp_server_name}</strong></li>}
-                      {networkState?.dhcp_lease?.bootp_file && <li>Boot File: <strong>{networkState?.dhcp_lease?.bootp_file}</strong></li>}
-                      {networkState?.dhcp_lease?.lease_expiry && <li>
-                        Lease Expiry: <LifeTimeLabel lifetime={`${networkState?.dhcp_lease?.lease_expiry}`} />
-                      </li>}
-                      {/* {JSON.stringify(networkState?.dhcp_lease)} */}
-                    </ul>
+            <div className="p-4">
+              <div className="space-y-4">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  Current DHCP Lease
+                </h3>
+
+                <div className="flex gap-x-6 gap-y-2">
+                  <div className="flex-1 space-y-2">
+                    {networkState?.dhcp_lease?.ip && (
+                      <div className="flex justify-between border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          IP Address
+                        </span>
+                        <span className="text-sm font-medium">
+                          {networkState?.dhcp_lease?.ip}
+                        </span>
+                      </div>
+                    )}
+
+                    {networkState?.dhcp_lease?.netmask && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          Subnet Mask
+                        </span>
+                        <span className="text-sm font-medium">
+                          {networkState?.dhcp_lease?.netmask}
+                        </span>
+                      </div>
+                    )}
+
+                    {networkState?.dhcp_lease?.dns && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          DNS Servers
+                        </span>
+                        <span className="text-right text-sm font-medium">
+                          {networkState?.dhcp_lease?.dns.map(dns => (
+                            <div key={dns}>{dns}</div>
+                          ))}
+                        </span>
+                      </div>
+                    )}
+
+                    {networkState?.dhcp_lease?.broadcast && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          Broadcast
+                        </span>
+                        <span className="text-sm font-medium">
+                          {networkState?.dhcp_lease?.broadcast}
+                        </span>
+                      </div>
+                    )}
+
+                    {networkState?.dhcp_lease?.domain && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          Domain
+                        </span>
+                        <span className="text-sm font-medium">
+                          {networkState?.dhcp_lease?.domain}
+                        </span>
+                      </div>
+                    )}
+
+                    {networkState?.dhcp_lease?.ntp_servers &&
+                      networkState?.dhcp_lease?.ntp_servers.length > 0 && (
+                        <div className="flex justify-between gap-x-8 border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                          <div className="w-full grow text-sm text-slate-600 dark:text-slate-400">
+                            NTP Servers
+                          </div>
+                          <div className="shrink text-right text-sm font-medium">
+                            {networkState?.dhcp_lease?.ntp_servers.map(server => (
+                              <div key={server}>{server}</div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                    {networkState?.dhcp_lease?.hostname && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          Hostname
+                        </span>
+                        <span className="text-sm font-medium">
+                          {networkState?.dhcp_lease?.hostname}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-2">
+                    {networkState?.dhcp_lease?.routers &&
+                      networkState?.dhcp_lease?.routers.length > 0 && (
+                        <div className="flex justify-between pt-2">
+                          <span className="text-sm text-slate-600 dark:text-slate-400">
+                            Gateway
+                          </span>
+                          <span className="text-right text-sm font-medium">
+                            {networkState?.dhcp_lease?.routers.map(router => (
+                              <div key={router}>{router}</div>
+                            ))}
+                          </span>
+                        </div>
+                      )}
+
+                    {networkState?.dhcp_lease?.server_id && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          DHCP Server
+                        </span>
+                        <span className="text-sm font-medium">
+                          {networkState?.dhcp_lease?.server_id}
+                        </span>
+                      </div>
+                    )}
+
+                    {networkState?.dhcp_lease?.lease_expiry && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          Lease Expires
+                        </span>
+                        <span className="text-sm font-medium">
+                          <LifeTimeLabel
+                            lifetime={`${networkState?.dhcp_lease?.lease_expiry}`}
+                          />
+                        </span>
+                      </div>
+                    )}
+
+                    {networkState?.dhcp_lease?.mtu && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          MTU
+                        </span>
+                        <span className="text-sm font-medium">
+                          {networkState?.dhcp_lease?.mtu}
+                        </span>
+                      </div>
+                    )}
+
+                    {networkState?.dhcp_lease?.ttl && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          TTL
+                        </span>
+                        <span className="text-sm font-medium">
+                          {networkState?.dhcp_lease?.ttl}
+                        </span>
+                      </div>
+                    )}
+
+                    {networkState?.dhcp_lease?.bootp_next_server && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          Boot Next Server
+                        </span>
+                        <span className="text-sm font-medium">
+                          {networkState?.dhcp_lease?.bootp_next_server}
+                        </span>
+                      </div>
+                    )}
+
+                    {networkState?.dhcp_lease?.bootp_server_name && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          Boot Server Name
+                        </span>
+                        <span className="text-sm font-medium">
+                          {networkState?.dhcp_lease?.bootp_server_name}
+                        </span>
+                      </div>
+                    )}
+
+                    {networkState?.dhcp_lease?.bootp_file && (
+                      <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          Boot File
+                        </span>
+                        <span className="text-sm font-medium">
+                          {networkState?.dhcp_lease?.bootp_file}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
-                <hr className="block w-full dark:border-slate-600" />
+
                 <div>
                   <Button
                     size="SM"
-                    theme="danger"
+                    theme="primary"
                     text="Renew lease"
-                    onClick={() => {
-                      handleRenewLease();
-                    }}
+                    onClick={handleRenewLease}
                   />
                 </div>
               </div>
@@ -266,15 +541,11 @@ export default function SettingsNetworkRoute() {
         )}
       </div>
       <div className="space-y-4">
-        <SettingsItem
-          title="IPv6 Mode"
-          description="Configure the IPv6 mode"
-        >
+        <SettingsItem title="IPv6 Mode" description="Configure the IPv6 mode">
           <SelectMenuBasic
             size="SM"
             value={networkSettings.ipv6_mode}
             onChange={e => handleIpv6ModeChange(e.target.value)}
-            disabled={!networkSettingsLoaded}
             options={filterUnknown([
               // { value: "disabled", label: "Disabled" },
               { value: "slaac", label: "SLAAC" },
@@ -287,55 +558,96 @@ export default function SettingsNetworkRoute() {
         </SettingsItem>
         {networkState?.ipv6_addresses && (
           <GridCard>
-            <div className="flex items-start gap-x-4 p-4">
-              <div className="space-y-3 w-full">
-                <div className="space-y-2">
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    IPv6 Information
-                  </h3>
-                  <div className="space-y-2">
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                        IPv6 Link-local
-                      </h4>
-                      <p className="text-xs text-slate-700 dark:text-slate-300">
+            <div className="p-4">
+              <div className="space-y-4">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  IPv6 Information
+                </h3>
+
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  {networkState?.dhcp_lease?.ip && (
+                    <div className="flex flex-col justify-between">
+                      <span className="text-sm text-slate-600 dark:text-slate-400">
+                        Link-local
+                      </span>
+                      <span className="text-sm font-medium">
                         {networkState?.ipv6_link_local}
-                      </p>
+                      </span>
                     </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                        IPv6 Addresses
-                      </h4>
-                      <ul className="list-none space-y-1 text-xs text-slate-700 dark:text-slate-300">
-                        {networkState?.ipv6_addresses && networkState?.ipv6_addresses.map(addr => (
-                          <li key={addr.address}>
-                            {addr.address}
-                            {addr.valid_lifetime && <>
-                              <br />
-                              - valid_lft: {" "}
-                              <span className="text-xs text-slate-700 dark:text-slate-300">
-                                <LifeTimeLabel lifetime={`${addr.valid_lifetime}`} />
-                              </span>
-                            </>}
-                            {addr.preferred_lifetime && <>
-                              <br />
-                              - pref_lft: {" "}
-                              <span className="text-xs text-slate-700 dark:text-slate-300">
-                                <LifeTimeLabel lifetime={`${addr.preferred_lifetime}`} />
-                              </span>
-                            </>}
-                          </li>
+                  )}
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  {networkState?.ipv6_addresses &&
+                    networkState?.ipv6_addresses.length > 0 && (
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-semibold">IPv6 Addresses</h4>
+                        {[
+                          ...networkState.ipv6_addresses,
+                          ...networkState.ipv6_addresses,
+                        ].map(addr => (
+                          <div
+                            key={addr.address}
+                            className="rounded-md rounded-l-none border border-slate-500/10 border-l-blue-700/50 bg-slate-100/40 p-4 pl-4 dark:border-blue-500 dark:bg-slate-900"
+                          >
+                            <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                              <div className="col-span-2 flex flex-col justify-between">
+                                <span className="text-sm text-slate-600 dark:text-slate-400">
+                                  Address
+                                </span>
+                                <span className="text-sm font-medium">
+                                  {addr.address}
+                                </span>
+                              </div>
+
+                              {addr.valid_lifetime && (
+                                <div className="flex flex-col justify-between">
+                                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                                    Valid Lifetime
+                                  </span>
+                                  <span className="text-sm font-medium">
+                                    {addr.valid_lifetime === "" ? (
+                                      <span className="text-slate-400 dark:text-slate-600">
+                                        N/A
+                                      </span>
+                                    ) : (
+                                      <LifeTimeLabel
+                                        lifetime={`${addr.valid_lifetime}`}
+                                      />
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+                              {addr.preferred_lifetime && (
+                                <div className="flex flex-col justify-between">
+                                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                                    Preferred Lifetime
+                                  </span>
+                                  <span className="text-sm font-medium">
+                                    {addr.preferred_lifetime === "" ? (
+                                      <span className="text-slate-400 dark:text-slate-600">
+                                        N/A
+                                      </span>
+                                    ) : (
+                                      <LifeTimeLabel
+                                        lifetime={`${addr.preferred_lifetime}`}
+                                      />
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         ))}
-                      </ul>
-                    </div>
-                  </div>
+                      </div>
+                    )}
                 </div>
               </div>
             </div>
           </GridCard>
         )}
       </div>
-      <div className="space-y-4 hidden">
+      <div className="hidden space-y-4">
         <SettingsItem
           title="LLDP"
           description="Control which TLVs will be sent over Link Layer Discovery Protocol"
@@ -344,7 +656,6 @@ export default function SettingsNetworkRoute() {
             size="SM"
             value={networkSettings.lldp_mode}
             onChange={e => handleLldpModeChange(e.target.value)}
-            disabled={!networkSettingsLoaded}
             options={filterUnknown([
               { value: "disabled", label: "Disabled" },
               { value: "basic", label: "Basic" },
@@ -353,56 +664,6 @@ export default function SettingsNetworkRoute() {
           />
         </SettingsItem>
       </div>
-      <div className="space-y-4">
-        <SettingsItem
-          title="mDNS"
-          description="Control mDNS (multicast DNS) operational mode"
-        >
-          <SelectMenuBasic
-            size="SM"
-            value={networkSettings.mdns_mode}
-            onChange={e => handleMdnsModeChange(e.target.value)}
-            disabled={!networkSettingsLoaded}
-            options={filterUnknown([
-              { value: "disabled", label: "Disabled" },
-              { value: "auto", label: "Auto" },
-              { value: "ipv4_only", label: "IPv4 only" },
-              { value: "ipv6_only", label: "IPv6 only" },
-            ])}
-          />
-        </SettingsItem>
-      </div>
-      <div className="space-y-4">
-        <SettingsItem
-          title="Time synchronization"
-          description="Configure time synchronization settings"
-        >
-          <SelectMenuBasic
-            size="SM"
-            value={networkSettings.time_sync_mode}
-            onChange={e => handleTimeSyncModeChange(e.target.value)}
-            disabled={!networkSettingsLoaded}
-            options={filterUnknown([
-              { value: "unknown", label: "..." },
-              // { value: "auto", label: "Auto" },
-              { value: "ntp_only", label: "NTP only" },
-              { value: "ntp_and_http", label: "NTP and HTTP" },
-              { value: "http_only", label: "HTTP only" },
-              // { value: "custom", label: "Custom" },
-            ])}
-          />
-        </SettingsItem>
-      </div>
-      <div className="flex items-end gap-x-2">
-        <Button
-          onClick={() => {
-            setNetworkSettingsRemote(networkSettings);
-          }}
-          size="SM"
-          theme="light"
-          text="Save Settings"
-        />
-      </div>
-    </div>
+    </Fieldset>
   );
 }
