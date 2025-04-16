@@ -1,0 +1,126 @@
+name: Push
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04]
+        go: [1.21, 1.23.4]
+        node: [21]
+        goos: [linux]
+        goarch: [arm]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install Dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Build UI
+        working-directory: ui
+        run: npm run build:device
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Install Go Dependencies
+        run: |
+          go mod download
+
+      - name: Build Binaries
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w -X kvm.builtAppVersion=dev-${GIT_COMMIT:0:7}" -o bin/jetkvm_app cmd/main.go
+          chmod 755 bin/jetkvm_app
+
+      - name: Upload Debug Artifact
+        uses: actions/upload-artifact@v4
+        if: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'pull_request') && matrix.go == '1.21' }}
+        with:
+          name: jetkvm_app_debug
+          path: bin/jetkvm_app
+
+  comment:
+    name: Comment
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate Links
+        id: linksa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts --jq '.artifacts[0].id')
+          echo "ARTIFACT_URL=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/$ARTIFACT_ID" >> $GITHUB_ENV
+          echo "LATEST_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Comment on PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            TITLE="${{ github.event.pull_request.title }}"
+            PR_NUMBER=${{ github.event.pull_request.number }}
+          else
+            TITLE="main branch"
+          fi
+
+          COMMENT=$(cat << EOF
+          ✅ **Build successfully for $TITLE!**
+
+          | Name             | Link                                                                 |
+          |------------------|----------------------------------------------------------------------|
+          | 🔗 Debug Binary  | [Download](${{ env.ARTIFACT_URL }})                                   |
+          | 🔗 Latest commit | [${{ env.LATEST_COMMIT }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}) |
+          EOF
+          )
+
+          # Post Comment
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # Look for an existing comment
+            COMMENT_ID=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+              --jq '.[] | select(.body | contains("✅ **Build successfully for")) | .id')
+
+            if [ -z "$COMMENT_ID" ]; then
+              # Create a new comment if none exists
+              gh pr comment $PR_NUMBER --body "$COMMENT"
+            else
+              # Update the existing comment
+              gh api repos/${{ github.repository }}/issues/comments/$COMMENT_ID \
+                --method PATCH \
+                -f body="$COMMENT"
+            fi
+          else
+            # Log the comment for main branch
+            echo "$COMMENT"
+          fi
