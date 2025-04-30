@@ -330,11 +330,11 @@ export default function WebRTCVideo() {
           )
           // Alt: Keep if Alt is pressed or if the key isn't an Alt key
           // Example: If altKey is true, keep all modifiers
-          // If altKey is false, filter out 0x04 (AltLeft) and 0x40 (AltRight)
+          // If altKey is false, filter out 0x04 (AltLeft) and 0x40 (AltGraph)
           .filter(
             modifier =>
               altKey ||
-              (modifier !== modifiers["AltLeft"] && modifier !== modifiers["AltRight"]),
+              (modifier !== modifiers["AltLeft"] && modifier !== modifiers["AltGraph"]),
           )
           // Meta: Keep if Meta is pressed or if the key isn't a Meta key
           // Example: If metaKey is true, keep all modifiers

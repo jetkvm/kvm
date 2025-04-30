@@ -1,6 +1,4 @@
 export const keys = {
-  AltLeft: 0xe2,
-  AltRight: 0xe6,
   ArrowDown: 0x51,
   ArrowLeft: 0x50,
   ArrowRight: 0x4f,
