@@ -292,6 +292,9 @@ interface SettingsState {
   developerMode: boolean;
   setDeveloperMode: (enabled: boolean) => void;
 
+  displayRotation: string;
+  setDisplayRotation: (rotation: string) => void;
+
   backlightSettings: BacklightSettings;
   setBacklightSettings: (settings: BacklightSettings) => void;
 }
@@ -311,6 +314,10 @@ export const useSettingsStore = create(
       // Add developer mode with default value
       developerMode: false,
       setDeveloperMode: enabled => set({ developerMode: enabled }),
+
+      displayRotation: "270",
+      setDisplayRotation: (rotation: string) =>
+        set({ displayRotation: rotation }),
 
       backlightSettings: {
         max_brightness: 100,

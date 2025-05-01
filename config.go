@@ -89,6 +89,7 @@ type Config struct {
 	KeyboardMacros       []KeyboardMacro        `json:"keyboard_macros"`
 	EdidString           string                 `json:"hdmi_edid_string"`
 	ActiveExtension      string                 `json:"active_extension"`
+	DisplayRotation      string                 `json:"display_rotation"`
 	DisplayMaxBrightness int                    `json:"display_max_brightness"`
 	DisplayDimAfterSec   int                    `json:"display_dim_after_sec"`
 	DisplayOffAfterSec   int                    `json:"display_off_after_sec"`
@@ -107,6 +108,7 @@ var defaultConfig = &Config{
 	AutoUpdateEnabled:    true, // Set a default value
 	ActiveExtension:      "",
 	KeyboardMacros:       []KeyboardMacro{},
+	DisplayRotation:      "270",
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes

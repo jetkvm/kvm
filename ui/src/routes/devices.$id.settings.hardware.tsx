@@ -15,6 +15,25 @@ export default function SettingsHardwareRoute() {
   const [send] = useJsonRpc();
   const settings = useSettingsStore();
 
+  const setDisplayRotation = useSettingsStore(state => state.setDisplayRotation);
+
+  const handleDisplayRotationChange = (rotation: string) => {
+    setDisplayRotation(rotation);
+    handleDisplayRotationSave();
+  };
+
+  const handleDisplayRotationSave = () => {
+    send("setDisplayRotation", { params: { rotation: settings.displayRotation } }, resp => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to set display orientation: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      notifications.success("Display orientation updated successfully");
+    });
+  };
+
   const setBacklightSettings = useSettingsStore(state => state.setBacklightSettings);
 
   const handleBacklightSettingsChange = (settings: BacklightSettings) => {
@@ -59,6 +78,24 @@ export default function SettingsHardwareRoute() {
         description="Configure display settings and hardware options for your JetKVM device"
       />
       <div className="space-y-4">
+        <SettingsItem
+          title="Display Orientation"
+          description="Set the orientation of the display"
+        >
+          <SelectMenuBasic
+            size="SM"
+            label=""
+            value={settings.displayRotation.toString()}
+            options={[
+              { value: "270", label: "Normal" },
+              { value: "90", label: "Inverted" },
+            ]}
+            onChange={e => {
+              settings.displayRotation = e.target.value;
+              handleDisplayRotationChange(settings.displayRotation);
+            }}
+          />
+        </SettingsItem>
         <SettingsItem
           title="Display Brightness"
           description="Set the brightness of the display"
