@@ -32,7 +32,8 @@ import { CLOUD_API, DEVICE_API } from "./ui.config";
 import OtherSessionRoute from "./routes/devices.$id.other-session";
 import MountRoute from "./routes/devices.$id.mount";
 import * as SettingsRoute from "./routes/devices.$id.settings";
-import SettingsKeyboardMouseRoute from "./routes/devices.$id.settings.mouse";
+import SettingsMouseRoute from "./routes/devices.$id.settings.mouse";
+import SettingsKeyboardRoute from "./routes/devices.$id.settings.keyboard";
 import api from "./api";
 import * as SettingsIndexRoute from "./routes/devices.$id.settings._index";
 import SettingsAdvancedRoute from "./routes/devices.$id.settings.advanced";
@@ -147,7 +148,11 @@ if (isOnDevice) {
             },
             {
               path: "mouse",
-              element: <SettingsKeyboardMouseRoute />,
+              element: <SettingsMouseRoute />,
+            },
+            {
+              path: "keyboard",
+              element: <SettingsKeyboardRoute />,
             },
             {
               path: "advanced",
@@ -276,7 +281,11 @@ if (isOnDevice) {
                     },
                     {
                       path: "mouse",
-                      element: <SettingsKeyboardMouseRoute />,
+                      element: <SettingsMouseRoute />,
+                    },
+                    {
+                      path: "keyboard",
+                      element: <SettingsKeyboardRoute />,
                     },
                     {
                       path: "advanced",

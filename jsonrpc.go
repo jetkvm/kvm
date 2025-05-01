@@ -1042,6 +1042,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setUsbDevices":          {Func: rpcSetUsbDevices, Params: []string{"devices"}},
 	"setUsbDeviceState":      {Func: rpcSetUsbDeviceState, Params: []string{"device", "enabled"}},
 	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
+	"getKeyboardLayout":      {Func: rpcGetKeyboardLayout},
+	"setKeyboardLayout":      {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
 	"getKeyboardMacros":      {Func: getKeyboardMacros},
 	"setKeyboardMacros":      {Func: setKeyboardMacros, Params: []string{"params"}},
 }

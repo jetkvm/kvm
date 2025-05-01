@@ -347,6 +347,8 @@ export interface DeviceSettingsState {
   trackpadThreshold: number;
   scrollSensitivity: "low" | "default" | "high";
   setScrollSensitivity: (sensitivity: DeviceSettingsState["scrollSensitivity"]) => void;
+  keyboardLayout: string;
+  setKeyboardLayout: (layout: string) => void;
 }
 
 export interface RemoteVirtualMediaState {
@@ -879,4 +881,5 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
       set({ loading: false });
     }
   },
+  }
 }));
