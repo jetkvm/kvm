@@ -330,11 +330,18 @@ export default function WebRTCVideo() {
           )
           // Alt: Keep if Alt is pressed or if the key isn't an Alt key
           // Example: If altKey is true, keep all modifiers
-          // If altKey is false, filter out 0x04 (AltLeft) and 0x40 (AltGraph)
+          // If altKey is false, filter out 0x04 (AltLeft)
+          //
+          // Special case: Despite the Alt-Gr key being pressed, `altKey' on
+          // the event `e' is set to `false'. This means we cannot detect if Alt-Gr
+          // is being pressed while the user e.g. presses the `2' key. Instead, we
+          // we need to rely on keyUpHandler/keyDownHandler to toggle the state
+          // for 0x40 (AltRight) and avoid filtering for this code here, so that we
+          // can remember the state of the Alt-Gr modifier on subsequent key presses.
           .filter(
             modifier =>
               altKey ||
-              (modifier !== modifiers["AltLeft"] && modifier !== modifiers["AltGraph"]),
+              (modifier !== modifiers["AltLeft"]),
           )
           // Meta: Keep if Meta is pressed or if the key isn't a Meta key
           // Example: If metaKey is true, keep all modifiers
