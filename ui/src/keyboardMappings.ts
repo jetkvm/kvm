@@ -99,7 +99,6 @@ export const keys = {
   Tab: 0x2b,
 } as Record<string, number>;
 
-// Mapping from characters entered into "Paste text" box to key codes and modifiers
 export const chars = {
   A: { key: "KeyA", shift: true },
   B: { key: "KeyB", shift: true },
