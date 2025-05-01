@@ -8,8 +8,9 @@ import { GridCard } from "@components/Card";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useHidStore, useRTCStore, useUiStore } from "@/hooks/stores";
-import { chars, keys, modifiers } from "@/keyboardMappings";
+import { useHidStore, useRTCStore, useUiStore, useDeviceSettingsStore } from "@/hooks/stores";
+import { keys, modifiers } from "@/keyboardMappings";
+import { layouts, chars } from "@/keyboardLayouts";
 import notifications from "@/notifications";
 
 const hidKeyboardPayload = (keys: number[], modifier: number) => {
@@ -27,6 +28,11 @@ export default function PasteModal() {
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
   const close = useClose();
 
+  const keyboardLayout = useDeviceSettingsStore(state => state.keyboardLayout);
+  const setKeyboardLayout = useDeviceSettingsStore(
+    state => state.setKeyboardLayout,
+  );
+
   const onCancelPasteMode = useCallback(() => {
     setPasteMode(false);
     setDisableVideoFocusTrap(false);
@@ -42,13 +48,25 @@ export default function PasteModal() {
 
     try {
       for (const char of text) {
-        const { key, shift } = chars[char] ?? {};
+        const { key, shift, altRight, space, capsLock } = chars[keyboardLayout][char] ?? {};
         if (!key) continue;
+
+	const keyz = [keys[key]];
+	if (space) {
+            keyz.push(keys["Space"]);
+	}
+	if (capsLock) {
+            keyz.unshift(keys["CapsLock"]);
+	    keyz.push(keys["CapsLock"]);
+	}
+
+	const modz = shift ? modifiers["ShiftLeft"] : 0
+                   | (altRight ? modifiers["AltRight"] : 0);
 
         await new Promise<void>((resolve, reject) => {
           send(
             "keyboardReport",
-            hidKeyboardPayload([keys[key]], shift ? modifiers["ShiftLeft"] : 0),
+            hidKeyboardPayload(keyz, modz),
             params => {
               if ("error" in params) return reject(params.error);
               send("keyboardReport", hidKeyboardPayload([], 0), params => {
@@ -69,6 +87,11 @@ export default function PasteModal() {
     if (TextAreaRef.current) {
       TextAreaRef.current.focus();
     }
+
+    send("getKeyboardLayout", {}, resp => {
+      if ("error" in resp) return;
+      setKeyboardLayout(resp.result as string);
+    });
   }, []);
 
   return (
@@ -113,7 +136,7 @@ export default function PasteModal() {
                             // @ts-expect-error TS doesn't recognize Intl.Segmenter in some environments
                             [...new Intl.Segmenter().segment(value)]
                               .map(x => x.segment)
-                              .filter(char => !chars[char]),
+                              .filter(char => !chars[keyboardLayout][char]),
                           ),
                         ];
 
@@ -132,6 +155,11 @@ export default function PasteModal() {
                     )}
                   </div>
                 </div>
+		<div className="space-y-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Sending key codes for keyboard layout {layouts[keyboardLayout]}
+                  </p>
+		</div>
               </div>
             </div>
           </div>

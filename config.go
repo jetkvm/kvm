@@ -87,6 +87,7 @@ type Config struct {
 	LocalAuthMode        string                 `json:"localAuthMode"` //TODO: fix it with migration
 	WakeOnLanDevices     []WakeOnLanDevice      `json:"wake_on_lan_devices"`
 	KeyboardMacros       []KeyboardMacro        `json:"keyboard_macros"`
+	KeyboardLayout       string                 `json:"keyboard_layout"`
 	EdidString           string                 `json:"hdmi_edid_string"`
 	ActiveExtension      string                 `json:"active_extension"`
 	DisplayMaxBrightness int                    `json:"display_max_brightness"`
@@ -107,6 +108,7 @@ var defaultConfig = &Config{
 	AutoUpdateEnabled:    true, // Set a default value
 	ActiveExtension:      "",
 	KeyboardMacros:       []KeyboardMacro{},
+	KeyboardLayout:       "en-US",
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes
