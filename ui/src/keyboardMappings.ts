@@ -1,3 +1,5 @@
+// Key codes and modifiers correspond to definitions in the
+// [Linux USB HID gadget driver](https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt)
 export const keys = {
   ArrowDown: 0x51,
   ArrowLeft: 0x50,
