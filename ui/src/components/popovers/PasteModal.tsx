@@ -48,34 +48,44 @@ export default function PasteModal() {
 
     try {
       for (const char of text) {
-        const { key, shift, altRight, space, capsLock } = chars[keyboardLayout][char] ?? {};
+        const { key, shift, altRight, space, capsLock, trema } = chars[keyboardLayout][char] ?? {};
         if (!key) continue;
 
-	const keyz = [keys[key]];
+	const keyz = [ keys[key] ];
+	const modz = [ shift ? modifiers["ShiftLeft"] : 0
+                       | (altRight ? modifiers["AltRight"] : 0) ];
+
 	if (space) {
             keyz.push(keys["Space"]);
+	    modz.push(0);
 	}
 	if (capsLock) {
             keyz.unshift(keys["CapsLock"]);
+	    modz.unshift(0);
+
 	    keyz.push(keys["CapsLock"]);
+            modz.push(0);
+	}
+	if (trema) {
+            keyz.unshift(keys["BracketRight"]); // trema ¨
+	    modz.unshift(0)
 	}
 
-	const modz = shift ? modifiers["ShiftLeft"] : 0
-                   | (altRight ? modifiers["AltRight"] : 0);
-
-        await new Promise<void>((resolve, reject) => {
-          send(
-            "keyboardReport",
-            hidKeyboardPayload(keyz, modz),
-            params => {
-              if ("error" in params) return reject(params.error);
-              send("keyboardReport", hidKeyboardPayload([], 0), params => {
+	for (const [index, keyy] of keyz.entries()) {
+          await new Promise<void>((resolve, reject) => {
+            send(
+              "keyboardReport",
+              hidKeyboardPayload([keyy], modz[index]),
+              params => {
                 if ("error" in params) return reject(params.error);
-                resolve();
-              });
-            },
-          );
-        });
+                send("keyboardReport", hidKeyboardPayload([], 0), params => {
+                  if ("error" in params) return reject(params.error);
+                  resolve();
+                });
+              },
+            );
+          });
+	}
       }
     } catch (error) {
       console.error(error);

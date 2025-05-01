@@ -9,4 +9,4 @@ export const layouts = {
 export const chars = {
   "en_US": chars_en_US,
   "de_CH": chars_de_CH,
-} as Record<string, Record<string, { key: string | number; shift?: boolean, altRight?: boolean, space?: boolean, capsLock?: boolean }>>;
+} as Record<string, Record<string, { key: string | number; shift?: boolean, altRight?: boolean, space?: boolean, capsLock?: boolean, trema?: boolean }>>;
