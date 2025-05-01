@@ -33,6 +33,13 @@ export default function PasteModal() {
     state => state.setKeyboardLayout,
   );
 
+  useEffect(() => {
+    send("getKeyboardLayout", {}, resp => {
+      if ("error" in resp) return;
+      setKeyboardLayout(resp.result as string);
+    });
+  }, []);
+
   const onCancelPasteMode = useCallback(() => {
     setPasteMode(false);
     setDisableVideoFocusTrap(false);
@@ -48,6 +55,9 @@ export default function PasteModal() {
 
     try {
       for (const char of text) {
+        if (!keyboardLayout) continue;
+        if (!chars[keyboardLayout]) continue;
+
         const { key, shift, altRight, space, capsLock, trema } = chars[keyboardLayout][char] ?? {};
         if (!key) continue;
 
@@ -97,11 +107,6 @@ export default function PasteModal() {
     if (TextAreaRef.current) {
       TextAreaRef.current.focus();
     }
-
-    send("getKeyboardLayout", {}, resp => {
-      if ("error" in resp) return;
-      setKeyboardLayout(resp.result as string);
-    });
   }, []);
 
   return (
