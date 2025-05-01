@@ -18,7 +18,7 @@ import { SettingsItem } from "./devices.$id.settings";
 
 type ScrollSensitivity = "low" | "default" | "high";
 
-export default function SettingsKeyboardMouseRoute() {
+export default function SettingsMouseRoute() {
   const hideCursor = useSettingsStore(state => state.isCursorHidden);
   const setHideCursor = useSettingsStore(state => state.setCursorVisibility);
 
