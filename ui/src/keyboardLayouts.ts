@@ -1,3 +1,4 @@
+import { chars as chars_en_UK } from "@/keyboardLayouts/en_UK"
 import { chars as chars_en_US } from "@/keyboardLayouts/en_US"
 import { chars as chars_fr_FR } from "@/keyboardLayouts/fr_FR"
 import { chars as chars_de_DE } from "@/keyboardLayouts/de_DE"
@@ -8,6 +9,7 @@ type KeyInfo = { key: string | number; shift?: boolean, altRight?: boolean }
 export type KeyCombo = KeyInfo & { deadKey?: boolean, accentKey?: KeyInfo }
 
 export const layouts = {
+  "en_UK": "English (UK)",
   "en_US": "English (US)",
   "fr_FR": "French",
   "de_DE": "German",
@@ -16,6 +18,7 @@ export const layouts = {
 } as Record<string, string>;
 
 export const chars = {
+  "en_UK": chars_en_UK,
   "en_US": chars_en_US,
   "fr_FR": chars_fr_FR,
   "de_DE": chars_de_DE,
