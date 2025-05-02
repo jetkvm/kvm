@@ -5,8 +5,8 @@ const keyHat = { key: "BracketLeft" } // accent circonflexe (accent hat), mark ^
 
 export const chars = {
   A: { key: "KeyQ", shift: true },
-  "Ä": { key: "KeyA", shift: true, accentKey: keyTrema },
-  "Â": { key: "KeyA", shift: true, accentKey: keyHat },
+  "Ä": { key: "KeyQ", shift: true, accentKey: keyTrema },
+  "Â": { key: "KeyQ", shift: true, accentKey: keyHat },
   B: { key: "KeyB", shift: true },
   C: { key: "KeyC", shift: true },
   D: { key: "KeyD", shift: true },
@@ -41,8 +41,8 @@ export const chars = {
   Y: { key: "KeyY", shift: true },
   Z: { key: "KeyW", shift: true },
   a: { key: "KeyQ" },
-  "ä": { key: "KeyA", accentKey: keyTrema },
-  "â": { key: "KeyA", accentKey: keyHat },
+  "ä": { key: "KeyQ", accentKey: keyTrema },
+  "â": { key: "KeyQ", accentKey: keyHat },
   b: { key: "KeyB" },
   c: { key: "KeyC" },
   d: { key: "KeyD" },
