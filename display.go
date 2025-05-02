@@ -377,7 +377,7 @@ func init() {
 		waitCtrlClientConnected()
 		displayLogger.Info().Msg("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
-		lvDispSetRotation(config.DisplayRotation)
+		_, _ = lvDispSetRotation(config.DisplayRotation)
 		updateStaticContents()
 		displayInited = true
 		displayLogger.Info().Msg("display inited")
