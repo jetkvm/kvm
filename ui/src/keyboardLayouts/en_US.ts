@@ -1,3 +1,5 @@
+import { KeyCombo } from "../keyboardLayouts"
+
 export const chars = {
   A: { key: "KeyA", shift: true },
   B: { key: "KeyB", shift: true },
@@ -99,4 +101,4 @@ export const chars = {
   "\n": { key: "Enter", shift: false },
   Enter: { key: "Enter", shift: false },
   Tab: { key: "Tab", shift: false },
-} as Record<string, { key: string | number; shift: boolean }>
+} as Record<string, KeyCombo>
