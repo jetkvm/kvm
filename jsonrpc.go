@@ -38,6 +38,10 @@ type JSONRPCEvent struct {
 	Params  interface{} `json:"params,omitempty"`
 }
 
+type DisplayRotationSettings struct {
+	Rotation string `json:"rotation"`
+}
+
 type BacklightSettings struct {
 	MaxBrightness int `json:"max_brightness"`
 	DimAfter      int `json:"dim_after"`
@@ -278,6 +282,24 @@ func rpcTryUpdate() error {
 		}
 	}()
 	return nil
+}
+
+func rpcSetDisplayRotation(params DisplayRotationSettings) error {
+	var err error
+	_, err = lvDispSetRotation(params.Rotation)
+	if err == nil {
+		config.DisplayRotation = params.Rotation
+		if err := SaveConfig(); err != nil {
+			return fmt.Errorf("failed to save config: %w", err)
+		}
+	}
+	return err
+}
+
+func rpcGetDisplayRotation() (*DisplayRotationSettings, error) {
+	return &DisplayRotationSettings{
+		Rotation: config.DisplayRotation,
+	}, nil
 }
 
 func rpcSetBacklightSettings(params BacklightSettings) error {
@@ -1012,6 +1034,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"getWakeOnLanDevices":    {Func: rpcGetWakeOnLanDevices},
 	"setWakeOnLanDevices":    {Func: rpcSetWakeOnLanDevices, Params: []string{"params"}},
 	"resetConfig":            {Func: rpcResetConfig},
+	"setDisplayRotation":     {Func: rpcSetDisplayRotation, Params: []string{"params"}},
+	"getDisplayRotation":     {Func: rpcGetDisplayRotation},
 	"setBacklightSettings":   {Func: rpcSetBacklightSettings, Params: []string{"params"}},
 	"getBacklightSettings":   {Func: rpcGetBacklightSettings},
 	"getDCPowerState":        {Func: rpcGetDCPowerState},

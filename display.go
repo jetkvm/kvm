@@ -73,6 +73,10 @@ func lvImgSetSrc(objName string, src string) (*CtrlResponse, error) {
 	return CallCtrlAction("lv_img_set_src", map[string]interface{}{"obj": objName, "src": src})
 }
 
+func lvDispSetRotation(rotation string) (*CtrlResponse, error) {
+	return CallCtrlAction("lv_disp_set_rotation", map[string]interface{}{"rotation": rotation})
+}
+
 func updateLabelIfChanged(objName string, newText string) {
 	if newText != "" && newText != displayedTexts[objName] {
 		_, _ = lvLabelSetText(objName, newText)
@@ -373,6 +377,7 @@ func init() {
 		waitCtrlClientConnected()
 		displayLogger.Info().Msg("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
+		_, _ = lvDispSetRotation(config.DisplayRotation)
 		updateStaticContents()
 		displayInited = true
 		displayLogger.Info().Msg("display inited")
