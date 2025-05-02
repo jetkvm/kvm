@@ -108,7 +108,7 @@ var defaultConfig = &Config{
 	AutoUpdateEnabled:    true, // Set a default value
 	ActiveExtension:      "",
 	KeyboardMacros:       []KeyboardMacro{},
-	KeyboardLayout:       "en-US",
+	KeyboardLayout:       "en_US",
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes

@@ -400,7 +400,7 @@ export const useDeviceSettingsStore = create<DeviceSettingsState>(set => ({
     });
   },
 
-  keyboardLayout: "en-US",
+  keyboardLayout: "en_US",
   setKeyboardLayout: layout => set({ keyboardLayout: layout }),
 }));
 
