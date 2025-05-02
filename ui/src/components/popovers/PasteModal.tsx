@@ -17,6 +17,12 @@ const hidKeyboardPayload = (keys: number[], modifier: number) => {
   return { keys, modifier };
 };
 
+const modifierCode = (shift?: boolean, altRight?: boolean) => {
+  return shift ? modifiers["ShiftLeft"] : 0
+       | (altRight ? modifiers["AltRight"] : 0)
+}
+const noModifier = 0
+
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
   const setPasteMode = useHidStore(state => state.setPasteModeEnabled);
@@ -58,34 +64,26 @@ export default function PasteModal() {
         if (!keyboardLayout) continue;
         if (!chars[keyboardLayout]) continue;
 
-        const { key, shift, altRight, space, capsLock, trema } = chars[keyboardLayout][char] ?? {};
+        const { key, shift, altRight, deadKey, accentKey } = chars[keyboardLayout][char]
         if (!key) continue;
 
 	const keyz = [ keys[key] ];
-	const modz = [ shift ? modifiers["ShiftLeft"] : 0
-                       | (altRight ? modifiers["AltRight"] : 0) ];
+	const modz = [ modifierCode(shift, altRight) ];
 
-	if (space) {
+	if (deadKey) {
             keyz.push(keys["Space"]);
-	    modz.push(0);
+            modz.push(noModifier);
 	}
-	if (capsLock) {
-            keyz.unshift(keys["CapsLock"]);
-	    modz.unshift(0);
-
-	    keyz.push(keys["CapsLock"]);
-            modz.push(0);
-	}
-	if (trema) {
-            keyz.unshift(keys["BracketRight"]); // trema ¨
-	    modz.unshift(0)
+	if (accentKey) {
+            keyz.unshift(keys[accentKey.key])
+            modz.unshift(modifierCode(accentKey.shift, accentKey.altRight))
 	}
 
-	for (const [index, keyy] of keyz.entries()) {
+	for (const [index, kei] of keyz.entries()) {
           await new Promise<void>((resolve, reject) => {
             send(
               "keyboardReport",
-              hidKeyboardPayload([keyy], modz[index]),
+              hidKeyboardPayload([kei], modz[index]),
               params => {
                 if ("error" in params) return reject(params.error);
                 send("keyboardReport", hidKeyboardPayload([], 0), params => {
@@ -172,7 +170,7 @@ export default function PasteModal() {
                 </div>
 		<div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Sending key codes for keyboard layout {layouts[keyboardLayout]}
+                    Sending key codes using keyboard layout {layouts[keyboardLayout]}
                   </p>
 		</div>
               </div>
