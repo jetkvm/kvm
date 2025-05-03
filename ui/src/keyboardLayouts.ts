@@ -2,6 +2,7 @@ import { chars as chars_en_UK } from "@/keyboardLayouts/en_UK"
 import { chars as chars_en_US } from "@/keyboardLayouts/en_US"
 import { chars as chars_fr_FR } from "@/keyboardLayouts/fr_FR"
 import { chars as chars_de_DE } from "@/keyboardLayouts/de_DE"
+import { chars as chars_it_IT } from "@/keyboardLayouts/it_IT"
 import { chars as chars_nb_NO } from "@/keyboardLayouts/nb_NO"
 import { chars as chars_es_ES } from "@/keyboardLayouts/es_ES"
 import { chars as chars_sv_SE } from "@/keyboardLayouts/sv_SE"
@@ -16,6 +17,7 @@ export const layouts = {
   "en_US": "English (US)",
   "fr_FR": "French",
   "de_DE": "German",
+  "it_IT": "Italian",
   "nb_NO": "Norwegian",
   "es_ES": "Spanish",
   "sv_SE": "Swedish",
@@ -28,6 +30,7 @@ export const chars = {
   "en_US": chars_en_US,
   "fr_FR": chars_fr_FR,
   "de_DE": chars_de_DE,
+  "it_IT": chars_it_IT,
   "nb_NO": chars_nb_NO,
   "es_ES": chars_es_ES,
   "sv_SE": chars_sv_SE,
