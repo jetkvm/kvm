@@ -18,7 +18,7 @@ const hidKeyboardPayload = (keys: number[], modifier: number) => {
 };
 
 const modifierCode = (shift?: boolean, altRight?: boolean) => {
-  return shift ? modifiers["ShiftLeft"] : 0
+  return (shift ? modifiers["ShiftLeft"] : 0)
        | (altRight ? modifiers["AltRight"] : 0)
 }
 const noModifier = 0
