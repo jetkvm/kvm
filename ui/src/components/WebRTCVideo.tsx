@@ -332,12 +332,18 @@ export default function WebRTCVideo() {
           // Example: If altKey is true, keep all modifiers
           // If altKey is false, filter out 0x04 (AltLeft)
           //
-          // Special case: Despite the Alt-Gr key being pressed, `altKey' on
-          // the event `e' is set to `false'. This means we cannot detect if Alt-Gr
-          // is being pressed while the user e.g. presses the `2' key. Instead, we
-          // we need to rely on keyUpHandler/keyDownHandler to toggle the state
-          // for 0x40 (AltRight) and avoid filtering for this code here, so that we
-          // can remember the state of the Alt-Gr modifier on subsequent key presses.
+          // But intentionally do not filter out 0x40 (AltRight) to enable Alt Gr (Alt Graph)
+          // as a modifier. The altKey attribute is not set on key combinations involving the
+          // Alt Gr key, which means the modifier would otherwise unintentionally disappear
+          // from the filteredModifiers list.
+          //
+          // For example, the KeyboardEvent for Alt Gr + 2 has the following structure:
+          // - altKey: false
+          // - code:   "Digit2"
+          // - type:   ["keydown" | "keyup"]
+          //
+          // Adding and removing 0x40 (AltRight) from and to the list of active modifiers is
+          // taken care of by the respective logic in the keyUpHandler an keyDownHandler.
           .filter(
             modifier =>
               altKey ||
