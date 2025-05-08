@@ -1,5 +1,7 @@
 import { KeyCombo } from "../keyboardLayouts"
 
+export const name = "French";
+
 const keyTrema = { key: "BracketLeft", shift: true } // tréma (umlaut), two dots placed above a vowel
 const keyHat = { key: "BracketLeft" } // accent circonflexe (accent hat), mark ^ placed above the letter
 

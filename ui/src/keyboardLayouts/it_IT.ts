@@ -1,5 +1,7 @@
 import { KeyCombo } from "../keyboardLayouts"
 
+export const name = "Italian";
+
 export const chars = {
   A: { key: "KeyA", shift: true },
   B: { key: "KeyB", shift: true },

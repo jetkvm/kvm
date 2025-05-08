@@ -1,5 +1,7 @@
 import { KeyCombo } from "../keyboardLayouts"
 
+export const name = "Swiss German";
+
 const keyTrema = { key: "BracketRight" } // tréma (umlaut), two dots placed above a vowel
 const keyAcute = { key: "Minus", altRight: true } // accent aigu (acute accent), mark ´ placed above the letter
 const keyHat = { key: "Equal" } // accent circonflexe (accent hat), mark ^ placed above the letter
