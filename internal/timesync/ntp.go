@@ -13,7 +13,8 @@ var defaultNTPServers = []string{
 	"time.aws.com",
 	"time.windows.com",
 	"time.google.com",
-	"162.159.200.123", // time.cloudflare.com
+	"162.159.200.123",   // time.cloudflare.com IPv4
+	"2606:4700:f1::123", // time.cloudflare.com IPv6
 	"0.pool.ntp.org",
 	"1.pool.ntp.org",
 	"2.pool.ntp.org",
@@ -57,6 +58,13 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 
 			// query the server
 			now, response, err := queryNtpServer(server, timeout)
+			if err != nil {
+				scopedLogger.Warn().
+					Str("error", err.Error()).
+					Msg("failed to query NTP server")
+				results <- nil
+				return
+			}
 
 			// set the last RTT
 			metricNtpServerLastRTT.WithLabelValues(
@@ -76,32 +84,33 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 				strconv.Itoa(int(response.Precision)),
 			).Set(1)
 
-			if err == nil {
-				// increase success count
-				metricNtpTotalSuccessCount.Inc()
-				metricNtpSuccessCount.WithLabelValues(server).Inc()
+			// increase success count
+			metricNtpTotalSuccessCount.Inc()
+			metricNtpSuccessCount.WithLabelValues(server).Inc()
 
-				scopedLogger.Info().
-					Str("time", now.Format(time.RFC3339)).
-					Str("reference", response.ReferenceString()).
-					Str("rtt", response.RTT.String()).
-					Str("clockOffset", response.ClockOffset.String()).
-					Uint8("stratum", response.Stratum).
-					Msg("NTP server returned time")
-				results <- &ntpResult{
-					now:    now,
-					offset: &response.ClockOffset,
-				}
-			} else {
-				scopedLogger.Warn().
-					Str("error", err.Error()).
-					Msg("failed to query NTP server")
+			scopedLogger.Info().
+				Str("time", now.Format(time.RFC3339)).
+				Str("reference", response.ReferenceString()).
+				Str("rtt", response.RTT.String()).
+				Str("clockOffset", response.ClockOffset.String()).
+				Uint8("stratum", response.Stratum).
+				Msg("NTP server returned time")
+			results <- &ntpResult{
+				now:    now,
+				offset: &response.ClockOffset,
 			}
 		}(server)
 	}
 
-	result := <-results
-	return result.now, result.offset
+	for range servers {
+		result := <-results
+		if result == nil {
+			continue
+		}
+		now, offset = result.now, result.offset
+		return
+	}
+	return
 }
 
 func queryNtpServer(server string, timeout time.Duration) (now *time.Time, response *ntp.Response, err error) {
