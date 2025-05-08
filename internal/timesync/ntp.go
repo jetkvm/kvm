@@ -62,6 +62,7 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 				scopedLogger.Warn().
 					Str("error", err.Error()).
 					Msg("failed to query NTP server")
+				results <- nil
 				return
 			}
 
@@ -101,8 +102,15 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 		}(server)
 	}
 
-	result := <-results
-	return result.now, result.offset
+	for range servers {
+		result := <-results
+		if result == nil {
+			continue
+		}
+		now, offset = result.now, result.offset
+		return
+	}
+	return
 }
 
 func queryNtpServer(server string, timeout time.Duration) (now *time.Time, response *ntp.Response, err error) {
