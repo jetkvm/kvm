@@ -330,11 +330,31 @@ export default function WebRTCVideo() {
           )
           // Alt: Keep if Alt is pressed or if the key isn't an Alt key
           // Example: If altKey is true, keep all modifiers
-          // If altKey is false, filter out 0x04 (AltLeft) and 0x40 (AltRight)
+          // If altKey is false, filter out 0x04 (AltLeft)
+          //
+          // But intentionally do not filter out 0x40 (AltRight) to accomodate
+          // Alt Gr (Alt Graph) as a modifier. Oddly, Alt Gr does not declare
+          // itself to be an altKey. For example, the KeyboardEvent for
+          // Alt Gr + 2 has the following structure:
+          // - altKey: false
+          // - code:   "Digit2"
+          // - type:   [ "keydown" | "keyup" ]
+          //
+          // For context, filteredModifiers aims to keep track which modifiers
+          // are being pressed on the physical keyboard at any point in time.
+          // There is logic in the keyUpHandler and keyDownHandler to add and
+          // remove 0x40 (AltRight) from the list of new modifiers.
+          //
+          // But relying on the two handlers alone to track the state of the
+          // modifier bears the risk that the key up event for Alt Gr could
+          // get lost while the browser window is temporarily out of focus,
+          // which means the Alt Gr key state would then be "stuck". At this
+          // point, we would need to rely on the user to press Alt Gr again
+          // to properly release the state of that modifier.
           .filter(
             modifier =>
               altKey ||
-              (modifier !== modifiers["AltLeft"] && modifier !== modifiers["AltRight"]),
+              (modifier !== modifiers["AltLeft"]),
           )
           // Meta: Keep if Meta is pressed or if the key isn't a Meta key
           // Example: If metaKey is true, keep all modifiers
