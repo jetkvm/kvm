@@ -1,5 +1,7 @@
 import { KeyCombo } from "../keyboardLayouts"
 
+export const name = "Spanish";
+
 const keyTrema = { key: "Quote", shift: true } // tréma (umlaut), two dots placed above a vowel
 const keyAcute = { key: "Quote" } // accent aigu (acute accent), mark ´ placed above the letter
 const keyHat = { key: "BracketRight", shift: true } // accent circonflexe (accent hat), mark ^ placed above the letter
