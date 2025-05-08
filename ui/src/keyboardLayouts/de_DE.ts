@@ -1,6 +1,6 @@
 import { KeyCombo } from "../keyboardLayouts"
 
-export const name = "German";
+export const name = "Deutsch";
 
 const keyAcute = { key: "Equal" } // accent aigu (acute accent), mark ´ placed above the letter
 const keyHat = { key: "Backquote" } // accent circonflexe (accent hat), mark ^ placed above the letter

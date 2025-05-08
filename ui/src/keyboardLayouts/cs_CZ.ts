@@ -1,6 +1,6 @@
 import { KeyCombo } from "../keyboardLayouts"
 
-export const name = "Czech";
+export const name = "Čeština";
 
 const keyTrema = { key: "Backslash" } // tréma (umlaut), two dots placed above a vowel
 const keyAcute = { key: "Equal" } // accent aigu (acute accent), mark ´ placed above the letter

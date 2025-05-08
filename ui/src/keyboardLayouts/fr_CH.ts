@@ -1,7 +1,7 @@
 import { KeyCombo } from "../keyboardLayouts"
 import { chars as chars_de_CH } from "./de_CH"
 
-export const name = "Swiss French";
+export const name = "Français de Suisse";
 
 export const chars = {
   ...chars_de_CH,
