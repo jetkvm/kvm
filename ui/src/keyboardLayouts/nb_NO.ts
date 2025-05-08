@@ -1,6 +1,6 @@
 import { KeyCombo } from "../keyboardLayouts"
 
-export const name = "Norwegian";
+export const name = "Norsk bokmål";
 
 const keyTrema = { key: "BracketRight" } // tréma (umlaut), two dots placed above a vowel
 const keyAcute = { key: "Equal", altRight: true } // accent aigu (acute accent), mark ´ placed above the letter
