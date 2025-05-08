@@ -56,14 +56,13 @@ export default function PasteModal() {
     setPasteMode(false);
     setDisableVideoFocusTrap(false);
     if (rpcDataChannel?.readyState !== "open" || !TextAreaRef.current) return;
+    if (!keyboardLayout) return;
+    if (!chars[keyboardLayout]) return;
 
     const text = TextAreaRef.current.value;
 
     try {
       for (const char of text) {
-        if (!keyboardLayout) continue;
-        if (!chars[keyboardLayout]) continue;
-
         const { key, shift, altRight, deadKey, accentKey } = chars[keyboardLayout][char]
         if (!key) continue;
 
