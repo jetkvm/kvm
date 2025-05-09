@@ -10,7 +10,7 @@ import {
   useVideoStore,
 } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
-import { useResizeObserver } from "@/hooks/useResizeObserver";
+import { useResizeObserver } from "usehooks-ts";
 import { cx } from "@/cva.config";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
@@ -67,7 +67,7 @@ export default function WebRTCVideo() {
 
   // Video-related
   useResizeObserver({
-    ref: videoElm,
+    ref: videoElm as React.RefObject<HTMLElement>,
     onResize: ({ width, height }) => {
       // This is actually client size, not videoSize
       if (width && height) {

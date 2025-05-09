@@ -19,7 +19,7 @@ import { LinkButton } from "../components/Button";
 import { cx } from "../cva.config";
 import { useUiStore } from "../hooks/stores";
 import useKeyboard from "../hooks/useKeyboard";
-import { useResizeObserver } from "../hooks/useResizeObserver";
+import { useResizeObserver } from "usehooks-ts";
 import LoadingSpinner from "../components/LoadingSpinner";
 
 /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
@@ -30,7 +30,7 @@ export default function SettingsRoute() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(false);
-  const { width } = useResizeObserver({ ref: scrollContainerRef });
+  const { width = 0 } = useResizeObserver({ ref: scrollContainerRef as React.RefObject<HTMLDivElement> });
 
   // Handle scroll position to show/hide gradients
   const handleScroll = () => {
