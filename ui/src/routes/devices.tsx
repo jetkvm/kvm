@@ -5,7 +5,7 @@ import { ArrowRightIcon } from "@heroicons/react/16/solid";
 import DashboardNavbar from "@components/Header";
 import { LinkButton } from "@components/Button";
 import KvmCard from "@components/KvmCard";
-import useInterval from "@/hooks/useInterval";
+import { useInterval } from "usehooks-ts";
 import { checkAuth } from "@/main";
 import { User } from "@/hooks/stores";
 import EmptyCard from "@components/EmptyCard";

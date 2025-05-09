@@ -1,5 +1,5 @@
 import type { Ref } from "react";
-import React, { forwardRef } from "react";
+import React, { forwardRef, JSX } from "react";
 import clsx from "clsx";
 
 import FieldLabel from "@/components/FieldLabel";

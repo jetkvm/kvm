@@ -1,4 +1,4 @@
-import React from "react";
+import React, { JSX } from "react";
 import { FetcherWithComponents, Link, LinkProps, useNavigation } from "react-router-dom";
 
 import ExtLink from "@/components/ExtLink";
