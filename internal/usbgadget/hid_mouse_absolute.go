@@ -55,6 +55,8 @@ var absoluteMouseCombinedReportDesc = []byte{
 	0x09, 0x38, //     Usage (Wheel)
 	0x15, 0x81, //     Logical Minimum (-127)
 	0x25, 0x7F, //     Logical Maximum (127)
+	0x35, 0x00, //     Physical Minimum (0) = Reset Physical Minimum
+	0x45, 0x00, //     Physical Maximum (0) = Reset Physical Maximum
 	0x75, 0x08, //     Report Size (8)
 	0x95, 0x01, //     Report Count (1)
 	0x81, 0x06, //     Input (Data, Var, Rel)
