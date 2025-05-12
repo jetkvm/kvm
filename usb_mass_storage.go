@@ -26,6 +26,19 @@ func writeFile(path string, data string) error {
 	return os.WriteFile(path, []byte(data), 0644)
 }
 
+func getMassStorageImage() (string, error) {
+	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
+	if err != nil {
+		return "", fmt.Errorf("failed to get mass storage path: %w", err)
+	}
+
+	imagePath, err := os.ReadFile(path.Join(massStorageFunctionPath, "file"))
+	if err != nil {
+		return "", fmt.Errorf("failed to get mass storage image path: %w", err)
+	}
+	return strings.TrimSpace(string(imagePath)), nil
+}
+
 func setMassStorageImage(imagePath string) error {
 	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
 	if err != nil {
@@ -39,19 +52,21 @@ func setMassStorageImage(imagePath string) error {
 }
 
 func setMassStorageMode(cdrom bool) error {
-	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
-	if err != nil {
-		return fmt.Errorf("failed to get mass storage path: %w", err)
-	}
-
 	mode := "0"
 	if cdrom {
 		mode = "1"
 	}
-	if err := writeFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"), mode); err != nil {
+
+	err, changed := gadget.OverrideGadgetConfig("mass_storage_lun0", "cdrom", mode)
+	if err != nil {
 		return fmt.Errorf("failed to set cdrom mode: %w", err)
 	}
-	return nil
+
+	if !changed {
+		return nil
+	}
+
+	return gadget.UpdateGadgetConfig()
 }
 
 func onDiskMessage(msg webrtc.DataChannelMessage) {
@@ -113,20 +128,17 @@ func rpcMountBuiltInImage(filename string) error {
 	return mountImage(imagePath)
 }
 
-func getMassStorageMode() (bool, error) {
+func getMassStorageCDROMEnabled() (bool, error) {
 	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
 	if err != nil {
 		return false, fmt.Errorf("failed to get mass storage path: %w", err)
 	}
-
 	data, err := os.ReadFile(path.Join(massStorageFunctionPath, "lun.0", "cdrom"))
 	if err != nil {
 		return false, fmt.Errorf("failed to read cdrom mode: %w", err)
 	}
-
 	// Trim any whitespace characters. It has a newline at the end
 	trimmedData := strings.TrimSpace(string(data))
-
 	return trimmedData == "1", nil
 }
 
@@ -191,6 +203,36 @@ func rpcUnmountImage() error {
 
 var httpRangeReader *httpreadat.RangeReader
 
+func getInitialVirtualMediaState() (*VirtualMediaState, error) {
+	cdromEnabled, err := getMassStorageCDROMEnabled()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mass storage cdrom enabled: %w", err)
+	}
+
+	diskPath, err := getMassStorageImage()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mass storage image: %w", err)
+	}
+
+	source := Storage
+	// TODO: check if it's WebRTC or HTTP
+	if diskPath == "/dev/nbd0" {
+		source = HTTP
+	}
+
+	mode := Disk
+	if cdromEnabled {
+		mode = CDROM
+	}
+
+	return &VirtualMediaState{
+		Source: source,
+		Mode:   mode,
+		URL:    "",
+		Size:   0,
+	}, nil
+}
+
 func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 	virtualMediaStateMutex.Lock()
 	if currentVirtualMediaState != nil {
@@ -204,6 +246,11 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 		return fmt.Errorf("failed to use http url: %w", err)
 	}
 	logger.Info().Str("url", url).Int64("size", n).Msg("using remote url")
+
+	if err := setMassStorageMode(mode == CDROM); err != nil {
+		return fmt.Errorf("failed to set mass storage mode: %w", err)
+	}
+
 	currentVirtualMediaState = &VirtualMediaState{
 		Source: HTTP,
 		Mode:   mode,
@@ -243,6 +290,11 @@ func rpcMountWithWebRTC(filename string, size int64, mode VirtualMediaMode) erro
 		Size:     size,
 	}
 	virtualMediaStateMutex.Unlock()
+
+	if err := setMassStorageMode(mode == CDROM); err != nil {
+		return fmt.Errorf("failed to set mass storage mode: %w", err)
+	}
+
 	logger.Debug().Interface("currentVirtualMediaState", currentVirtualMediaState).Msg("currentVirtualMediaState")
 	logger.Debug().Msg("Starting nbd device")
 	nbdDevice = NewNBDDevice()
@@ -278,6 +330,10 @@ func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
 	fileInfo, err := os.Stat(fullPath)
 	if err != nil {
 		return fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	if err := setMassStorageMode(mode == CDROM); err != nil {
+		return fmt.Errorf("failed to set mass storage mode: %w", err)
 	}
 
 	err = setMassStorageImage(fullPath)

@@ -137,6 +137,29 @@ func (u *UsbGadget) GetPath(itemKey string) (string, error) {
 	return joinPath(u.kvmGadgetPath, item.path), nil
 }
 
+// OverrideGadgetConfig overrides the gadget config for the given item and attribute.
+// It returns an error if the item is not found or the attribute is not found.
+// It returns true if the attribute is overridden, false otherwise.
+func (u *UsbGadget) OverrideGadgetConfig(itemKey string, itemAttr string, value string) (error, bool) {
+	u.configLock.Lock()
+	defer u.configLock.Unlock()
+
+	// get it as a pointer
+	_, ok := u.configMap[itemKey]
+	if !ok {
+		return fmt.Errorf("config item %s not found", itemKey), false
+	}
+
+	if u.configMap[itemKey].attrs[itemAttr] == value {
+		return nil, false
+	}
+
+	u.configMap[itemKey].attrs[itemAttr] = value
+	u.log.Info().Str("itemKey", itemKey).Str("itemAttr", itemAttr).Str("value", value).Msg("overriding gadget config")
+
+	return nil, true
+}
+
 func mountConfigFS() error {
 	_, err := os.Stat(gadgetPath)
 	// TODO: check if it's mounted properly
