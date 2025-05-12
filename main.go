@@ -77,9 +77,12 @@ func Main() {
 
 	initUsbGadget()
 
-	err = setInitialVirtualMediaState()
-	if err != nil {
+	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
+	}
+
+	if err := initImagesFolder(); err != nil {
+		logger.Warn().Err(err).Msg("failed to init images folder")
 	}
 
 	go func() {

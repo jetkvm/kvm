@@ -94,9 +94,20 @@ var nbdDevice *NBDDevice
 
 const imagesFolder = "/userdata/jetkvm/images"
 
+func initImagesFolder() error {
+	err := os.MkdirAll(imagesFolder, 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create images folder: %w", err)
+	}
+	return nil
+}
+
 func rpcMountBuiltInImage(filename string) error {
 	logger.Info().Str("filename", filename).Msg("Mount Built-In Image")
-	_ = os.MkdirAll(imagesFolder, 0755)
+	if err := initImagesFolder(); err != nil {
+		return err
+	}
+
 	imagePath := filepath.Join(imagesFolder, filename)
 
 	// Check if the file exists in the imagesFolder
