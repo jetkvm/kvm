@@ -77,6 +77,11 @@ func Main() {
 
 	initUsbGadget()
 
+	err = setInitialVirtualMediaState()
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
+	}
+
 	go func() {
 		time.Sleep(15 * time.Minute)
 		for {
