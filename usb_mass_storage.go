@@ -235,13 +235,14 @@ func getInitialVirtualMediaState() (*VirtualMediaState, error) {
 	}
 
 	// TODO: check if it's WebRTC or HTTP
-	if diskPath == "" {
+	switch diskPath {
+	case "":
 		return nil, nil
-	} else if diskPath == "/dev/nbd0" {
+	case "/dev/nbd0":
 		initialState.Source = HTTP
 		initialState.URL = "/"
 		initialState.Size = 1
-	} else {
+	default:
 		initialState.Filename = filepath.Base(diskPath)
 		// get size from file
 		logger.Info().Str("diskPath", diskPath).Msg("getting file size")
