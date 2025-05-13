@@ -17,6 +17,10 @@ type Devices struct {
 	RelativeMouse bool `json:"relative_mouse"`
 	Keyboard      bool `json:"keyboard"`
 	MassStorage   bool `json:"mass_storage"`
+	EthernetEcm   bool `json:"ethernet_ecm"`
+	EthernetEem   bool `json:"ethernet_eem"`
+	EthernetNcm   bool `json:"ethernet_ncm"`
+	EthernetRndis bool `json:"ethernet_rndis"`
 }
 
 // Config is a struct that represents the customizations for a USB gadget.
@@ -36,6 +40,10 @@ var defaultUsbGadgetDevices = Devices{
 	RelativeMouse: true,
 	Keyboard:      true,
 	MassStorage:   true,
+	EthernetEcm:   false,
+	EthernetEem:   false,
+	EthernetNcm:   false,
+	EthernetRndis: false,
 }
 
 // UsbGadget is a struct that represents a USB gadget.

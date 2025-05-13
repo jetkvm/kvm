@@ -63,6 +63,11 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	// mass storage
 	"mass_storage_base": massStorageBaseConfig,
 	"mass_storage_lun0": massStorageLun0Config,
+	// ethernet
+	"ethernet_ecm":   ethernetEcmConfig,
+	"ethernet_eem":   ethernetEemConfig,
+	"ethernet_ncm":   ethernetNcmConfig,
+	"ethernet_rndis": ethernetRndisConfig,
 }
 
 func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
@@ -77,6 +82,14 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 		return u.enabledDevices.MassStorage
 	case "mass_storage_lun0":
 		return u.enabledDevices.MassStorage
+	case "ethernet_ecm":
+		return u.enabledDevices.EthernetEcm
+	case "ethernet_eem":
+		return u.enabledDevices.EthernetEem
+	case "ethernet_ncm":
+		return u.enabledDevices.EthernetNcm
+	case "ethernet_rndis":
+		return u.enabledDevices.EthernetRndis
 	default:
 		return true
 	}
@@ -313,7 +326,9 @@ func (u *UsbGadget) writeGadgetItemConfig(item gadgetConfigItem) error {
 	}
 
 	// create symlink if configPath is set
+	fmt.Println("******", item.configPath, "*****")
 	if item.configPath != nil && item.configAttrs == nil {
+		fmt.Println("YES")
 		configPath := joinPath(u.configC1Path, item.configPath)
 		u.log.Trace().Str("source", configPath).Str("target", gadgetItemPath).Msg("creating symlink")
 		if err := ensureSymlink(configPath, gadgetItemPath); err != nil {
