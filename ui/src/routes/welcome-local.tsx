@@ -53,7 +53,7 @@ export default function WelcomeRoute() {
                     </div>
 
                     <div
-                      className="space-y-1 opacity-0 animate-fadeIn"
+                      className="space-y-1 animate-fadeIn"
                       style={{ animationDelay: "1500ms" }}
                     >
                       <h1 className="text-4xl font-semibold text-black dark:text-white">

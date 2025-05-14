@@ -24,6 +24,7 @@ show_help() {
 REMOTE_USER="root"
 REMOTE_PATH="/userdata/jetkvm/bin"
 SKIP_UI_BUILD=false
+RESET_USB_HID_DEVICE=false
 LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
 
 # Parse command line arguments
@@ -39,6 +40,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-ui-build)
             SKIP_UI_BUILD=true
+            shift
+            ;;
+        --reset-usb-hid)
+            RESET_USB_HID_DEVICE=true
             shift
             ;;
         --help)
@@ -73,6 +78,12 @@ ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
 
 # Copy the binary to the remote host
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < jetkvm_app
+
+if [ "$RESET_USB_HID_DEVICE" = true ]; then
+    # Remove the old USB gadget configuration
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -rf /sys/kernel/config/usb_gadget/jetkvm/configs/c.1/hid.usb*"
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" "ls /sys/class/udc > /sys/kernel/config/usb_gadget/jetkvm/UDC"
+fi
 
 # Deploy and run the application on the remote host
 ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << EOF

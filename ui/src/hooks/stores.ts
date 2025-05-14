@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { MAX_STEPS_PER_MACRO, MAX_TOTAL_MACROS, MAX_KEYS_PER_STEP } from "@/constants/macros";
+import {
+  MAX_STEPS_PER_MACRO,
+  MAX_TOTAL_MACROS,
+  MAX_KEYS_PER_STEP,
+} from "@/constants/macros";
 
 // Define the JsonRpc types for better type checking
 interface JsonRpcResponse {
@@ -572,12 +576,12 @@ export interface UpdateState {
   setOtaState: (state: UpdateState["otaState"]) => void;
   setUpdateDialogHasBeenMinimized: (hasBeenMinimized: boolean) => void;
   modalView:
-  | "loading"
-  | "updating"
-  | "upToDate"
-  | "updateAvailable"
-  | "updateCompleted"
-  | "error";
+    | "loading"
+    | "updating"
+    | "upToDate"
+    | "updateAvailable"
+    | "updateCompleted"
+    | "error";
   setModalView: (view: UpdateState["modalView"]) => void;
   setUpdateErrorMessage: (errorMessage: string) => void;
   updateErrorMessage: string | null;
@@ -641,12 +645,12 @@ export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
 
 interface LocalAuthModalState {
   modalView:
-  | "createPassword"
-  | "deletePassword"
-  | "updatePassword"
-  | "creationSuccess"
-  | "deleteSuccess"
-  | "updateSuccess";
+    | "createPassword"
+    | "deletePassword"
+    | "updatePassword"
+    | "creationSuccess"
+    | "deleteSuccess"
+    | "updateSuccess";
   setModalView: (view: LocalAuthModalState["modalView"]) => void;
 }
 
@@ -727,12 +731,23 @@ export interface NetworkState {
   setDhcpLeaseExpiry: (expiry: Date) => void;
 }
 
-
-export type IPv6Mode = "disabled" | "slaac" | "dhcpv6" | "slaac_and_dhcpv6" | "static" | "link_local" | "unknown";
+export type IPv6Mode =
+  | "disabled"
+  | "slaac"
+  | "dhcpv6"
+  | "slaac_and_dhcpv6"
+  | "static"
+  | "link_local"
+  | "unknown";
 export type IPv4Mode = "disabled" | "static" | "dhcp" | "unknown";
 export type LLDPMode = "disabled" | "basic" | "all" | "unknown";
 export type mDNSMode = "disabled" | "auto" | "ipv4_only" | "ipv6_only" | "unknown";
-export type TimeSyncMode = "ntp_only" | "ntp_and_http" | "http_only" | "custom" | "unknown";
+export type TimeSyncMode =
+  | "ntp_only"
+  | "ntp_and_http"
+  | "http_only"
+  | "custom"
+  | "unknown";
 
 export interface NetworkSettings {
   hostname: string;
@@ -757,7 +772,7 @@ export const useNetworkStateStore = create<NetworkState>((set, get) => ({
 
     lease.lease_expiry = expiry;
     set({ dhcp_lease: lease });
-  }
+  },
 }));
 
 export interface KeySequenceStep {
@@ -779,8 +794,20 @@ export interface MacrosState {
   initialized: boolean;
   loadMacros: () => Promise<void>;
   saveMacros: (macros: KeySequence[]) => Promise<void>;
-  sendFn: ((method: string, params: unknown, callback?: ((resp: JsonRpcResponse) => void) | undefined) => void) | null;
-  setSendFn: (sendFn: ((method: string, params: unknown, callback?: ((resp: JsonRpcResponse) => void) | undefined) => void)) => void;
+  sendFn:
+    | ((
+        method: string,
+        params: unknown,
+        callback?: ((resp: JsonRpcResponse) => void) | undefined,
+      ) => void)
+    | null;
+  setSendFn: (
+    sendFn: (
+      method: string,
+      params: unknown,
+      callback?: ((resp: JsonRpcResponse) => void) | undefined,
+    ) => void,
+  ) => void;
 }
 
 export const generateMacroId = () => {
@@ -793,7 +820,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
   initialized: false,
   sendFn: null,
 
-  setSendFn: (sendFn) => {
+  setSendFn: sendFn => {
     set({ sendFn });
   },
 
@@ -810,7 +837,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
 
     try {
       await new Promise<void>((resolve, reject) => {
-        sendFn("getKeyboardMacros", {}, (response) => {
+        sendFn("getKeyboardMacros", {}, response => {
           if (response.error) {
             console.error("Error loading macros:", response.error);
             reject(new Error(response.error.message));
@@ -830,7 +857,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
 
           set({
             macros: sortedMacros,
-            initialized: true
+            initialized: true,
           });
 
           resolve();
@@ -857,15 +884,23 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
 
     for (const macro of macros) {
       if (macro.steps.length > MAX_STEPS_PER_MACRO) {
-        console.error(`Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`);
-        throw new Error(`Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`);
+        console.error(
+          `Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`,
+        );
+        throw new Error(
+          `Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`,
+        );
       }
 
       for (let i = 0; i < macro.steps.length; i++) {
         const step = macro.steps[i];
         if (step.keys && step.keys.length > MAX_KEYS_PER_STEP) {
-          console.error(`Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`);
-          throw new Error(`Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`);
+          console.error(
+            `Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`,
+          );
+          throw new Error(
+            `Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`,
+          );
         }
       }
     }
@@ -875,20 +910,25 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
     try {
       const macrosWithSortOrder = macros.map((macro, index) => ({
         ...macro,
-        sortOrder: macro.sortOrder !== undefined ? macro.sortOrder : index
+        sortOrder: macro.sortOrder !== undefined ? macro.sortOrder : index,
       }));
 
-      const response = await new Promise<JsonRpcResponse>((resolve) => {
-        sendFn("setKeyboardMacros", { params: { macros: macrosWithSortOrder } }, (response) => {
-          resolve(response);
-        });
+      const response = await new Promise<JsonRpcResponse>(resolve => {
+        sendFn(
+          "setKeyboardMacros",
+          { params: { macros: macrosWithSortOrder } },
+          response => {
+            resolve(response);
+          },
+        );
       });
 
       if (response.error) {
         console.error("Error saving macros:", response.error);
-        const errorMessage = typeof response.error.data === 'string'
-          ? response.error.data
-          : response.error.message || "Failed to save macros";
+        const errorMessage =
+          typeof response.error.data === "string"
+            ? response.error.data
+            : response.error.message || "Failed to save macros";
         throw new Error(errorMessage);
       }
 
@@ -900,5 +940,5 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
     } finally {
       set({ loading: false });
     }
-  }
+  },
 }));
