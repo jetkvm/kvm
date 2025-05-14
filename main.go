@@ -76,6 +76,7 @@ func Main() {
 	}()
 
 	initUsbGadget()
+	StartNtpAudioServer(handleAudioClient)
 
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
