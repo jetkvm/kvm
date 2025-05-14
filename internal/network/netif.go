@@ -37,6 +37,8 @@ type NetworkInterfaceState struct {
 	onInitialCheck func(state *NetworkInterfaceState)
 	cbConfigChange func(config *NetworkConfig)
 
+	natEnabled bool
+
 	checked bool
 }
 
@@ -50,6 +52,7 @@ type NetworkInterfaceOptions struct {
 	OnDhcpLeaseChange func(lease *udhcpc.Lease)
 	OnConfigChange    func(config *NetworkConfig)
 	NetworkConfig     *NetworkConfig
+	UsbNetworkConfig  *UsbNetworkConfig
 }
 
 func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceState, error) {
@@ -73,15 +76,15 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 		stateLock:       sync.Mutex{},
 		l:               l,
 		onStateChange: func(s *NetworkInterfaceState) {
-			s.reconfigureNat(true, "172.16.55.0/24")
+			s.reconfigureNat(opts.NetworkConfig.NatEnable, opts.UsbNetworkConfig.IPv4Network)
 			opts.OnStateChange(s)
 		},
 		onInitialCheck: func(s *NetworkInterfaceState) {
-			s.reconfigureNat(true, "172.16.55.0/24")
+			s.reconfigureNat(opts.NetworkConfig.NatEnable, opts.UsbNetworkConfig.IPv4Network)
 			opts.OnInitialCheck(s)
 		},
-		cbConfigChange:  opts.OnConfigChange,
-		config:          opts.NetworkConfig,
+		cbConfigChange: opts.OnConfigChange,
+		config:         opts.NetworkConfig,
 	}
 
 	// create the dhcp client

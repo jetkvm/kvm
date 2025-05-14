@@ -13,19 +13,27 @@ const (
 func (s *NetworkInterfaceState) reconfigureNat(wantNat bool, sourceAddr string) error {
 	scopedLogger := s.l.With().Str("iface", s.interfaceName).Logger()
 
+	if !wantNat {
+		if s.natEnabled {
+			scopedLogger.Info().Msg("disabling NAT")
+			err := disableNat()
+			if err != nil {
+				s.l.Error().Err(err).Msg("failed to disable NAT")
+			}
+		}
+		return nil
+	}
+
 	if wantNat && s.IsOnline() {
 		scopedLogger.Info().Msg("enabling NAT")
 		err := enableNat(sourceAddr, s.interfaceName, s.IPv4String())
 		if err != nil {
 			s.l.Error().Err(err).Msg("failed to enable NAT")
 		}
-	} else {
-		scopedLogger.Info().Msg("disabling NAT")
-		err := disableNat()
-		if err != nil {
-			s.l.Error().Err(err).Msg("failed to disable NAT")
-		}
+		s.natEnabled = true
+		return nil
 	}
+
 	return nil
 }
 

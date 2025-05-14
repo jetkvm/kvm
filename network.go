@@ -32,10 +32,11 @@ func initNetwork() error {
 	ensureConfigLoaded()
 
 	state, err := network.NewNetworkInterfaceState(&network.NetworkInterfaceOptions{
-		DefaultHostname: GetDefaultHostname(),
-		InterfaceName:   NetIfName,
-		NetworkConfig:   config.NetworkConfig,
-		Logger:          networkLogger,
+		DefaultHostname:  GetDefaultHostname(),
+		InterfaceName:    NetIfName,
+		NetworkConfig:    config.NetworkConfig,
+		UsbNetworkConfig: config.UsbNetworkConfig,
+		Logger:           networkLogger,
 		OnStateChange: func(state *network.NetworkInterfaceState) {
 			networkStateChanged()
 		},

@@ -48,6 +48,13 @@ type NetworkConfig struct {
 	TimeSyncOrdering        []string    `json:"time_sync_ordering,omitempty" one_of:"http,ntp,ntp_dhcp,ntp_user_provided,ntp_fallback" default:"ntp,http"`
 	TimeSyncDisableFallback null.Bool   `json:"time_sync_disable_fallback,omitempty" default:"false"`
 	TimeSyncParallel        null.Int    `json:"time_sync_parallel,omitempty" default:"4"`
+
+	NatEnable bool `json:"nat_enable,omitempty" default:"false" required:"true"`
+}
+
+type UsbNetworkConfig struct {
+	IPv4Addr    string `json:"ipv4_addr,omitempty" validate_type:"ipv4" default:"172.16.55.1" required:"true"`
+	IPv4Network string `json:"ipv4_network,omitempty" validate_type:"ipv4" default:"172.16.55.0/24" required:"true"`
 }
 
 func (c *NetworkConfig) GetMDNSMode() *mdns.MDNSListenOptions {
