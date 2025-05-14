@@ -304,8 +304,8 @@ function KeyboardWrapper() {
                         onKeyPress={onKeyDown}
                         display={keyDisplayMap}
                         layout={{
-                          default: ["Home Pageup", "Delete End Pagedown"],
-                        }}
+                          default: ["PrintScreen ScrollLock Pause", "Insert Home Pageup", "Delete End Pagedown"],
+                          shift: ["(PrintScreen) ScrollLock (Pause)", "Insert Home Pageup", "Delete End Pagedown"],
                         }}
                         syncInstanceInputs={true}
                         debug={false}
