@@ -174,11 +174,12 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 	}
 
 	if changed {
+		scopedLogger := s.l.With().Str("iface", s.interfaceName).Logger()
 		if interfaceGoingUp {
-			s.l.Info().Msg("interface state transitioned to up")
+			scopedLogger.Info().Msg("interface state transitioned to up")
 			dhcpTargetState = DhcpTargetStateRenew
 		} else if interfaceGoingDown {
-			s.l.Info().Msg("interface state transitioned to down")
+			scopedLogger.Info().Msg("interface state transitioned to down")
 		}
 	}
 
