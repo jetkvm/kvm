@@ -200,6 +200,14 @@ func (u *UsbGadget) Init() error {
 		u.log.Error().Err(err).Msg("failed to mount configfs, usb stack might not function properly")
 	}
 
+	if _, err := os.Stat(u.configC1Path); err == nil {
+		u.log.Error().Str("configC1Path", u.configC1Path).Msg("removing existing config path")
+		err := os.RemoveAll(u.configC1Path);
+		if err != nil {
+			u.log.Error().Err(err).Msg("failed to remove existing config path")
+		}
+	}
+
 	if err := os.MkdirAll(u.configC1Path, 0755); err != nil {
 		u.log.Error().Err(err).Msg("failed to create config path")
 	}
