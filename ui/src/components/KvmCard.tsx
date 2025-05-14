@@ -113,7 +113,7 @@ export default function KvmCard({
               transition
               className="data-[closed]:scale-95 data-[closed]:transform data-[closed]:opacity-0 data-[enter]:duration-100 data-[leave]:duration-75 data-[enter]:ease-out data-[leave]:ease-in"
             >
-              <Card className="absolute right-0 z-10 w-56 px-1 mt-2 transition origin-top-right ring-1 ring-black ring-opacity-5 focus:outline-none">
+              <Card className="absolute right-0 z-10 w-56 px-1 mt-2 transition origin-top-right ring-1 ring-black/50 focus:outline-hidden">
                 <div className="divide-y divide-slate-800/20 dark:divide-slate-300/20">
                   <MenuItem>
                     <div>

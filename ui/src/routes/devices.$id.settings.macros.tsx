@@ -157,7 +157,7 @@ export default function SettingsMacrosRoute() {
 
                     return (
                       <span key={stepIndex} className="inline-flex items-center">
-                        <StepIcon className="mr-1 text-slate-400 dark:text-slate-500 h-3 w-3 flex-shrink-0" />
+                        <StepIcon className="mr-1 text-slate-400 dark:text-slate-500 h-3 w-3 shrink-0" />
                         <span className="bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200/50 dark:border-slate-700/50">
                           {(Array.isArray(step.modifiers) && step.modifiers.length > 0) || (Array.isArray(step.keys) && step.keys.length > 0) ? (
                             <>

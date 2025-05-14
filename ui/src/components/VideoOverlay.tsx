@@ -14,7 +14,7 @@ interface OverlayContentProps {
 }
 function OverlayContent({ children }: OverlayContentProps) {
   return (
-    <GridCard cardClassName="h-full pointer-events-auto !outline-none">
+    <GridCard cardClassName="h-full pointer-events-auto !outline-hidden">
       <div className="flex h-full w-full flex-col items-center justify-center rounded-md border border-slate-800/30 dark:border-slate-300/20">
         {children}
       </div>
@@ -377,7 +377,7 @@ export function PointerLockBar({ show }: PointerLockBarProps) {
         >
           <div>
             <Card className="rounded-b-none shadow-none !outline-0">
-              <div className="flex items-center justify-between border border-slate-800/50 px-4 py-2 outline-0 backdrop-blur-sm dark:border-slate-300/20 dark:bg-slate-800">
+              <div className="flex items-center justify-between border border-slate-800/50 px-4 py-2 outline-0 backdrop-blur-xs dark:border-slate-300/20 dark:bg-slate-800">
                 <div className="flex items-center space-x-2">
                   <BsMouseFill className="h-4 w-4 text-blue-700 dark:text-blue-500" />
                   <span className="text-sm text-black dark:text-white">

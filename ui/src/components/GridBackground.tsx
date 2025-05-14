@@ -2,7 +2,7 @@ export default function GridBackground() {
   return (
     <div className="absolute w-screen h-screen overflow-hidden isolate opacity-60">
       <svg
-        className="absolute inset-x-0 top-0 -z-10 h-[64rem] w-full stroke-gray-300 [mask-image:radial-gradient(32rem_32rem_at_center,white,transparent)] dark:stroke-slate-300/20"
+        className="absolute inset-x-0 top-0 -z-10 h-[64rem] w-full stroke-gray-300 [mask-image:radial-gradient(center_at_32rem_32rem,white,transparent)] dark:stroke-slate-300/20"
         aria-hidden="true"
       >
         <defs>

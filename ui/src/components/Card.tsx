@@ -30,7 +30,7 @@ const Card = forwardRef<HTMLDivElement, CardPropsType>(({ children, className },
     <div
       ref={ref}
       className={cx(
-        "w-full rounded border-none bg-white shadow outline outline-1 outline-slate-800/30 dark:bg-slate-800 dark:outline-slate-300/20",
+        "w-full rounded-sm border-none bg-white shadow-xs outline-1 outline-slate-800/30 dark:bg-slate-800 dark:outline-slate-300/20",
         className,
       )}
     >

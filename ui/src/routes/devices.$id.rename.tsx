@@ -81,6 +81,7 @@ export default function DeviceIdRename() {
         primaryLinks={[{ title: "Cloud Devices", to: "/devices" }]}
         userEmail={user?.email}
         picture={user?.picture}
+        kvmName={device?.name}
       />
 
       <div className="h-full w-full">

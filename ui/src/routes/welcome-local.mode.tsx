@@ -61,13 +61,13 @@ export default function WelcomeLocalModeRoute() {
         <Container>
           <div className="flex items-center justify-center w-full h-full isolate">
             <div className="max-w-xl space-y-8">
-              <div className="flex items-center justify-center opacity-0 animate-fadeIn">
+              <div className="flex items-center justify-center animate-fadeIn">
                 <img src={LogoWhiteIcon} alt="" className="-ml-4 h-[32px] hidden dark:block" />
                 <img src={LogoBlueIcon} alt="" className="-ml-4 h-[32px] dark:hidden" />
               </div>
 
               <div
-                className="space-y-2 text-center opacity-0 animate-fadeIn"
+                className="space-y-2 text-center animate-fadeIn"
                 style={{ animationDelay: "200ms" }}
               >
                 <h1 className="text-4xl font-semibold text-black dark:text-white">Local Authentication Method</h1>
@@ -78,7 +78,7 @@ export default function WelcomeLocalModeRoute() {
 
               <Form method="POST" className="space-y-8">
                 <div
-                  className="grid grid-cols-1 gap-6 opacity-0 animate-fadeIn sm:grid-cols-2"
+                  className="grid grid-cols-1 gap-6 animate-fadeIn sm:grid-cols-2"
                   style={{ animationDelay: "400ms" }}
                 >
                   {["password", "noPassword"].map(mode => (
@@ -120,7 +120,7 @@ export default function WelcomeLocalModeRoute() {
 
                 {actionData?.error && (
                   <p
-                    className="text-sm text-center text-red-600 opacity-0 dark:text-red-400 animate-fadeIn"
+                    className="text-sm text-center text-red-600 dark:text-red-400 animate-fadeIn"
                     style={{ animationDelay: "500ms" }}
                   >
                     {actionData.error}
@@ -128,7 +128,7 @@ export default function WelcomeLocalModeRoute() {
                 )}
 
                 <div
-                  className="max-w-sm mx-auto opacity-0 animate-fadeIn"
+                  className="max-w-sm mx-auto animate-fadeIn"
                   style={{ animationDelay: "500ms" }}
                 >
                   <Button
@@ -144,7 +144,7 @@ export default function WelcomeLocalModeRoute() {
               </Form>
 
               <p
-                className="max-w-md mx-auto text-xs text-center opacity-0 animate-fadeIn text-slate-500 dark:text-slate-400"
+                className="max-w-md mx-auto text-xs text-center animate-fadeIn text-slate-500 dark:text-slate-400"
                 style={{ animationDelay: "600ms" }}
               >
                 You can always change your authentication method later in the settings.

@@ -83,7 +83,7 @@ export default function PasteModal() {
               />
 
               <div
-                className="animate-fadeIn space-y-2 opacity-0"
+                className="animate-fadeIn space-y-2"
                 style={{
                   animationDuration: "0.7s",
                   animationDelay: "0.1s",
@@ -137,7 +137,7 @@ export default function PasteModal() {
           </div>
         </div>
         <div
-          className="flex animate-fadeIn items-center justify-end gap-x-2 opacity-0"
+          className="flex animate-fadeIn items-center justify-end gap-x-2"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.2s",

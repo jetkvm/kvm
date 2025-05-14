@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 html {
   @apply scroll-smooth;
@@ -50,7 +49,7 @@ video::-webkit-media-controls {
 }
 
 .hg-theme-default .hg-button {
-  @apply border !border-b border-slate-800/25 !border-b-slate-800/25 !shadow-sm;
+  @apply border !border-b border-slate-800/25 !border-b-slate-800/25 !shadow-xs;
 }
 
 .hg-theme-default .hg-button span {
@@ -174,7 +173,7 @@ video::-webkit-media-controls {
 }
 
 .hg-theme-default .hg-row .combination-key {
-  @apply inline-flex !h-auto !w-auto flex-grow-0 py-1 text-xs;
+  @apply inline-flex !h-auto !w-auto grow-0 py-1 text-xs;
 }
 
 .hg-theme-default .hg-row:has(.combination-key) {

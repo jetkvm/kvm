@@ -92,7 +92,7 @@ export default function ExtensionPopover() {
                 {renderActiveExtension()}
 
                 <div
-                  className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
+                  className="flex animate-fadeIn items-center justify-end space-x-2"
                   style={{
                     animationDuration: "0.7s",
                     animationDelay: "0.2s",
@@ -113,7 +113,7 @@ export default function ExtensionPopover() {
                   title="Extensions"
                   description="Load and manage your extensions"
                 />
-                <Card className="animate-fadeIn opacity-0">
+                <Card className="animate-fadeIn">
                   <div className="w-full divide-y divide-slate-700/30 dark:divide-slate-600/30">
                     {AVAILABLE_EXTENSIONS.map(extension => (
                       <div

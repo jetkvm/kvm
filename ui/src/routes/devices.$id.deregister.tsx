@@ -77,6 +77,7 @@ export default function DevicesIdDeregister() {
         primaryLinks={[{ title: "Cloud Devices", to: "/devices" }]}
         userEmail={user?.email}
         picture={user?.picture}
+        kvmName={device?.name}
       />
 
       <div className="w-full h-full">

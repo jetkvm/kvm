@@ -724,7 +724,7 @@ export default function WebRTCVideo() {
                                 hdmiError ||
                                 peerConnectionState !== "connected",
                               "!opacity-60": showPointerLockBar,
-                              "animate-slideUpFade border border-slate-800/30 opacity-0 shadow dark:border-slate-300/20":
+                              "animate-slideUpFade border border-slate-800/30 shadow-xs dark:border-slate-300/20":
                                 isPlaying,
                             },
                           )}
@@ -732,7 +732,7 @@ export default function WebRTCVideo() {
                         {peerConnection?.connectionState == "connected" && (
                           <div
                             style={{ animationDuration: "500ms" }}
-                            className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center opacity-0"
+                            className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center"
                           >
                             <div className="relative h-full w-full rounded-md">
                               <LoadingVideoOverlay show={isVideoLoading} />

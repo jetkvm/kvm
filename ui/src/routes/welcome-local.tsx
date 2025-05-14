@@ -47,7 +47,7 @@ export default function WelcomeRoute() {
               <div className="max-w-3xl text-center">
                 <div className="space-y-8">
                   <div className="space-y-4">
-                    <div className="flex items-center justify-center opacity-0 animate-fadeIn animation-delay-1000">
+                    <div className="flex items-center justify-center animate-fadeIn animation-delay-1000">
                       <img src={LogoWhiteIcon} alt="JetKVM Logo" className="h-[32px] hidden dark:block" />
                       <img src={LogoBlueIcon} alt="JetKVM Logo" className="h-[32px] dark:hidden" />
                     </div>
@@ -69,21 +69,21 @@ export default function WelcomeRoute() {
                     <img
                       src={DeviceImage}
                       alt="JetKVM Device"
-                      className="animation-delay-0 max-w-md scale-[0.98] animate-fadeInScaleFloat opacity-0 transition-all duration-1000 ease-out"
+                      className="animation-delay-0 max-w-md scale-[0.98] animate-fadeInScaleFloat transition-all duration-1000 ease-out"
                     />
                   </div>
                 </div>
                 <div className="-mt-8 space-y-4">
                   <p
                     style={{ animationDelay: "2000ms" }}
-                    className="max-w-lg mx-auto text-lg opacity-0 animate-fadeIn text-slate-700 dark:text-slate-300"
+                    className="max-w-lg mx-auto text-lg animate-fadeIn text-slate-700 dark:text-slate-300"
                   >
                     JetKVM combines powerful hardware with intuitive software to provide a
                     seamless remote control experience.
                   </p>
                   <div
                     style={{ animationDelay: "2300ms" }}
-                    className="opacity-0 animate-fadeIn"
+                    className="animate-fadeIn"
                   >
                     <LinkButton
                       size="LG"

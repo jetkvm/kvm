@@ -7,7 +7,7 @@ export default function LoadingSpinner({
 }) {
   return (
     <svg
-      className={clsx(className, "flex-shrink-0 animate-spin p-[2px]")}
+      className={clsx(className, "shrink-0 animate-spin p-[2px]")}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"

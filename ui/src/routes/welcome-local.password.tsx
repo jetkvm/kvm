@@ -71,13 +71,13 @@ export default function WelcomeLocalPasswordRoute() {
         <Container>
           <div className="flex items-center justify-center w-full h-full isolate">
             <div className="max-w-2xl space-y-8">
-              <div className="flex items-center justify-center opacity-0 animate-fadeIn">
+              <div className="flex items-center justify-center animate-fadeIn">
                 <img src={LogoWhiteIcon} alt="" className="-ml-4 h-[32px] hidden dark:block" />
                 <img src={LogoBlueIcon} alt="" className="-ml-4 h-[32px] dark:hidden" />
               </div>
 
               <div
-                className="space-y-2 text-center opacity-0 animate-fadeIn"
+                className="space-y-2 text-center animate-fadeIn"
                 style={{ animationDelay: "200ms" }}
               >
                 <h1 className="text-4xl font-semibold text-black dark:text-white">Set a Password</h1>
@@ -90,7 +90,7 @@ export default function WelcomeLocalPasswordRoute() {
                 <Form method="POST" className="max-w-sm mx-auto space-y-4">
                   <div className="space-y-4">
                     <div
-                      className="opacity-0 animate-fadeIn"
+                      className="animate-fadeIn"
                       style={{ animationDelay: "400ms" }}
                     >
                       <InputFieldWithLabel
@@ -120,7 +120,7 @@ export default function WelcomeLocalPasswordRoute() {
                       />
                     </div>
                     <div
-                      className="opacity-0 animate-fadeIn"
+                      className="animate-fadeIn"
                       style={{ animationDelay: "400ms" }}
                     >
                       <InputFieldWithLabel
@@ -137,7 +137,7 @@ export default function WelcomeLocalPasswordRoute() {
                   {actionData?.error && <p className="text-sm text-red-600">{}</p>}
 
                   <div
-                    className="opacity-0 animate-fadeIn"
+                    className="animate-fadeIn"
                     style={{ animationDelay: "600ms" }}
                   >
                     <Button
@@ -153,7 +153,7 @@ export default function WelcomeLocalPasswordRoute() {
               </Fieldset>
 
               <p
-                className="max-w-md text-xs text-center opacity-0 animate-fadeIn text-slate-500 dark:text-slate-400"
+                className="max-w-md text-xs text-center animate-fadeIn text-slate-500 dark:text-slate-400"
                 style={{ animationDelay: "800ms" }}
               >
                 This password will be used to secure your device data and protect against

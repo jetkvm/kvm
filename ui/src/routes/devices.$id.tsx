@@ -12,7 +12,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { useInterval } from "usehooks-ts";
-import FocusTrap from "focus-trap-react";
+import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
 import useWebSocket from "react-use-websocket";
 
@@ -809,7 +809,7 @@ export default function KvmIdRoute() {
             <WebRTCVideo />
             <div
               style={{ animationDuration: "500ms" }}
-              className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center p-4 opacity-0"
+              className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center p-4"
             >
               <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
                 {!!ConnectionStatusElement && ConnectionStatusElement}

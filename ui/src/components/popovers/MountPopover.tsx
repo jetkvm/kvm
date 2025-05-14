@@ -214,7 +214,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
               ) : null}
 
               <div
-                className="animate-fadeIn space-y-2 opacity-0"
+                className="animate-fadeIn space-y-2"
                 style={{
                   animationDuration: "0.7s",
                   animationDelay: "0.1s",
@@ -289,7 +289,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
 
         {!remoteVirtualMediaState && (
           <div
-            className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
+            className="flex animate-fadeIn items-center justify-end space-x-2"
             style={{
               animationDuration: "0.7s",
               animationDelay: "0.2s",

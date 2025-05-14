@@ -99,7 +99,7 @@ export default function ConnectionStatsSidebar() {
   }, 500);
 
   return (
-    <div className="grid h-full grid-rows-headerBody shadow-sm">
+    <div className="grid h-full grid-rows-headerBody shadow-xs">
       <SidebarHeader title="Connection Stats" setSidebarView={setSidebarView} />
       <div className="h-full space-y-4 overflow-y-scroll bg-white px-4 py-2 pb-8 dark:bg-slate-900">
         <div className="space-y-4">

@@ -356,7 +356,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <Notifications
         toastOptions={{
           className:
-            "rounded border-none bg-white text-black shadow outline outline-1 outline-slate-800/30",
+            "rounded-sm border-none bg-white text-black shadow-sm outline-1 outline-slate-800/30",
         }}
         max={2}
       />

@@ -24,7 +24,7 @@ const checkboxVariants = cva({
     "active:bg-slate-200 dark:active:bg-slate-700",
 
     // Focus
-    "focus:border-slate-300 dark:focus:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-700 dark:focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900",
+    "focus:border-slate-300 dark:focus:border-slate-600 focus:outline-hidden focus:ring-2 focus:ring-blue-700 dark:focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900",
 
     // Disabled
     "disabled:pointer-events-none disabled:opacity-30",

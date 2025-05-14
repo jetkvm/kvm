@@ -44,7 +44,7 @@ export default function StepCounter({ nSteps, currStepIdx, size = "MD" }: Props)
           return (
             <div
               className={cx(
-                "rounded-md border border-blue-800 bg-blue-700 px-2 py-1 font-medium text-white shadow-sm dark:border-blue-300",
+                "rounded-md border border-blue-800 bg-blue-700 px-2 py-1 font-medium text-white shadow-xs dark:border-blue-300",
                 textStyle,
               )}
               key={`${i}-${currStepIdx}`}

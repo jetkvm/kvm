@@ -13,7 +13,7 @@ export default function EmptyStateCard({
 }) {
   return (
     <div className="select-none space-y-4">
-      <Card className="animate-fadeIn opacity-0">
+      <Card className="animate-fadeIn">
         <div className="flex items-center justify-center py-8 text-center">
           <div className="space-y-3">
             <div className="space-y-1">
@@ -35,7 +35,7 @@ export default function EmptyStateCard({
         </div>
       </Card>
       <div
-        className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
+        className="flex animate-fadeIn items-center justify-end space-x-2"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",

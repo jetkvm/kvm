@@ -58,7 +58,7 @@ export function SerialConsole() {
         description="Configure your serial console settings"
       />
 
-      <Card className="animate-fadeIn opacity-0">
+      <Card className="animate-fadeIn">
         <div className="space-y-4 p-3">
           {/* Open Console Button */}
           <div className="flex items-center">

@@ -54,14 +54,14 @@ export function Combobox({
     >
       {() => (
         <>
-          <Card className="w-auto !border border-solid !border-slate-800/30 shadow outline-0 dark:!border-slate-300/30">
+          <Card className="w-auto !border border-solid !border-slate-800/30 shadow-xs outline-0 dark:!border-slate-300/30">
             <ComboboxInput
             ref={inputRef}
             className={clsx(
               classes,
               
               // General styling
-              "block w-full cursor-pointer rounded border-none py-0 font-medium shadow-none outline-0 transition duration-300",
+              "block w-full cursor-pointer rounded-sm border-none py-0 font-medium shadow-none outline-0 transition duration-300",
               
               // Hover
               "hover:bg-blue-50/80 active:bg-blue-100/60",

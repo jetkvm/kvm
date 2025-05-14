@@ -320,7 +320,7 @@ function ModeSelectionView({
         ].map(({ label, description, value: mode, icon: Icon, tag, disabled }, index) => (
           <div
             key={label}
-            className={cx("animate-fadeIn opacity-0")}
+            className={cx("animate-fadeIn")}
             style={{
               animationDuration: "0.7s",
               animationDelay: `${25 * (index * 5)}ms`,
@@ -328,7 +328,7 @@ function ModeSelectionView({
           >
             <Card
               className={cx(
-                "w-full min-w-[250px] cursor-pointer bg-white shadow-sm transition-all duration-100 hover:shadow-md dark:bg-slate-800",
+                "w-full min-w-[250px] cursor-pointer bg-white shadow-xs transition-all duration-100 hover:shadow-md dark:bg-slate-800",
                 {
                   "ring-2 ring-blue-700": selectedMode === mode,
                   "hover:ring-2 hover:ring-blue-500": selectedMode !== mode && !disabled,
@@ -373,7 +373,7 @@ function ModeSelectionView({
         ))}
       </div>
       <div
-        className="flex animate-fadeIn justify-end opacity-0"
+        className="flex animate-fadeIn justify-end"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",
@@ -437,7 +437,7 @@ function BrowserFileView({
           className="block cursor-pointer select-none"
         >
           <div
-            className="group animate-fadeIn opacity-0"
+            className="group animate-fadeIn"
             style={{
               animationDuration: "0.7s",
             }}
@@ -483,7 +483,7 @@ function BrowserFileView({
       </div>
 
       <div
-        className="flex w-full animate-fadeIn items-end justify-between opacity-0"
+        className="flex w-full animate-fadeIn items-end justify-between"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",
@@ -578,7 +578,7 @@ function UrlView({
       />
 
       <div
-        className="animate-fadeIn opacity-0"
+        className="animate-fadeIn"
         style={{
           animationDuration: "0.7s",
         }}
@@ -593,7 +593,7 @@ function UrlView({
         />
       </div>
       <div
-        className="flex w-full animate-fadeIn items-end justify-between opacity-0"
+        className="flex w-full animate-fadeIn items-end justify-between"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",
@@ -619,7 +619,7 @@ function UrlView({
 
       <hr className="border-slate-800/30 dark:border-slate-300/20" />
       <div
-        className="animate-fadeIn opacity-0"
+        className="animate-fadeIn"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",
@@ -797,7 +797,7 @@ function DeviceFileView({
         description="Select an image to mount from the JetKVM storage"
       />
       <div
-        className="w-full animate-fadeIn opacity-0"
+        className="w-full animate-fadeIn"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",
@@ -886,7 +886,7 @@ function DeviceFileView({
 
       {onStorageFiles.length > 0 ? (
         <div
-          className="flex animate-fadeIn items-end justify-between opacity-0"
+          className="flex animate-fadeIn items-end justify-between"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.15s",
@@ -914,7 +914,7 @@ function DeviceFileView({
         </div>
       ) : (
         <div
-          className="flex animate-fadeIn items-end justify-end opacity-0"
+          className="flex animate-fadeIn items-end justify-end"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.15s",
@@ -927,7 +927,7 @@ function DeviceFileView({
       )}
       <hr className="border-slate-800/20 dark:border-slate-300/20" />
       <div
-        className="animate-fadeIn space-y-2 opacity-0"
+        className="animate-fadeIn space-y-2"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.20s",
@@ -941,9 +941,9 @@ function DeviceFileView({
             {percentageUsed}% used
           </span>
         </div>
-        <div className="h-3.5 w-full overflow-hidden rounded-sm bg-slate-200 dark:bg-slate-700">
+        <div className="h-3.5 w-full overflow-hidden rounded-xs bg-slate-200 dark:bg-slate-700">
           <div
-            className="h-full rounded-sm bg-blue-700 transition-all duration-300 ease-in-out dark:bg-blue-500"
+            className="h-full rounded-xs bg-blue-700 transition-all duration-300 ease-in-out dark:bg-blue-500"
             style={{ width: `${percentageUsed}%` }}
           ></div>
         </div>
@@ -959,7 +959,7 @@ function DeviceFileView({
 
       {onStorageFiles.length > 0 && (
         <div
-          className="w-full animate-fadeIn opacity-0"
+          className="w-full animate-fadeIn"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.25s",
@@ -1251,7 +1251,7 @@ function UploadFileView({
         }
       />
       <div
-        className="animate-fadeIn space-y-2 opacity-0"
+        className="animate-fadeIn space-y-2"
         style={{
           animationDuration: "0.7s",
         }}
@@ -1365,7 +1365,7 @@ function UploadFileView({
       {/* Display upload error if present */}
       {uploadError && (
         <div
-          className="mt-2 animate-fadeIn truncate text-sm text-red-600 opacity-0 dark:text-red-400"
+          className="mt-2 animate-fadeIn truncate text-sm text-red-600 dark:text-red-400"
           style={{ animationDuration: "0.7s" }}
         >
           Error: {uploadError}
@@ -1373,7 +1373,7 @@ function UploadFileView({
       )}
 
       <div
-        className="flex w-full animate-fadeIn items-end opacity-0"
+        className="flex w-full animate-fadeIn items-end"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",
@@ -1496,7 +1496,7 @@ function PreUploadedImageItem({
       </div>
       <div className="relative flex select-none items-center gap-x-3">
         <div
-          className={cx("opacity-0  transition-opacity duration-200", {
+          className={cx("opacity-0 transition-opacity duration-200", {
             "w-auto opacity-100": isHovering,
           })}
         >
