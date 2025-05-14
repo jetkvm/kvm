@@ -72,8 +72,14 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 		defaultHostname: opts.DefaultHostname,
 		stateLock:       sync.Mutex{},
 		l:               l,
-		onStateChange:   opts.OnStateChange,
-		onInitialCheck:  opts.OnInitialCheck,
+		onStateChange: func(s *NetworkInterfaceState) {
+			s.reconfigureNat(true, "172.16.55.0/24")
+			opts.OnStateChange(s)
+		},
+		onInitialCheck: func(s *NetworkInterfaceState) {
+			s.reconfigureNat(true, "172.16.55.0/24")
+			opts.OnInitialCheck(s)
+		},
 		cbConfigChange:  opts.OnConfigChange,
 		config:          opts.NetworkConfig,
 	}
