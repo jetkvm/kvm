@@ -326,9 +326,7 @@ func (u *UsbGadget) writeGadgetItemConfig(item gadgetConfigItem) error {
 	}
 
 	// create symlink if configPath is set
-	fmt.Println("******", item.configPath, "*****")
 	if item.configPath != nil && item.configAttrs == nil {
-		fmt.Println("YES")
 		configPath := joinPath(u.configC1Path, item.configPath)
 		u.log.Trace().Str("source", configPath).Str("target", gadgetItemPath).Msg("creating symlink")
 		if err := ensureSymlink(configPath, gadgetItemPath); err != nil {
