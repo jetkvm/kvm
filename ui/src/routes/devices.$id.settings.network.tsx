@@ -77,7 +77,7 @@ export default function SettingsNetworkRoute() {
     useState<NetworkSettings>(defaultNetworkSettings);
 
   // We use this to determine whether the settings have changed
-  const firstNetworkSettings = useRef<NetworkSettings>();
+  const firstNetworkSettings = useRef<NetworkSettings | undefined>(undefined);
 
   const [networkSettingsLoaded, setNetworkSettingsLoaded] = useState(false);
 
