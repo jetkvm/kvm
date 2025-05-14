@@ -242,10 +242,10 @@ export const keyDisplayMap: Record<string, string> = {
   MetaRight: "meta",
   Space: " ",
   Home: "home",
-  PageUp: "pageup",
+  PageUp: "page up",
   Delete: "delete",
   End: "end",
-  PageDown: "pagedown",
+  PageDown: "page down",
   ArrowLeft: "←",
   ArrowRight: "→",
   ArrowUp: "↑",
@@ -259,22 +259,45 @@ export const keyDisplayMap: Record<string, string> = {
   KeyU: "u", KeyV: "v", KeyW: "w", KeyX: "x", KeyY: "y",
   KeyZ: "z",
 
+  // Capital letters
+  "(KeyA)": "A", "(KeyB)": "B", "(KeyC)": "C", "(KeyD)": "D", "(KeyE)": "E",
+  "(KeyF)": "F", "(KeyG)": "G", "(KeyH)": "H", "(KeyI)": "I", "(KeyJ)": "J",
+  "(KeyK)": "K", "(KeyL)": "L", "(KeyM)": "M", "(KeyN)": "N", "(KeyO)": "O",
+  "(KeyP)": "P", "(KeyQ)": "Q", "(KeyR)": "R", "(KeyS)": "S", "(KeyT)": "T",
+  "(KeyU)": "U", "(KeyV)": "V", "(KeyW)": "W", "(KeyX)": "X", "(KeyY)": "Y",
+  "(KeyZ)": "Z",
+
   // Numbers
   Digit1: "1", Digit2: "2", Digit3: "3", Digit4: "4", Digit5: "5",
   Digit6: "6", Digit7: "7", Digit8: "8", Digit9: "9", Digit0: "0",
 
+  // Shifted Numbers
+  "(Digit1)": "!", "(Digit2)": "@", "(Digit3)": "#", "(Digit4)": "$", "(Digit5)": "%",
+  "(Digit6)": "^", "(Digit7)": "&", "(Digit8)": "*", "(Digit9)": "(", "(Digit0)": ")",
+
   // Symbols
   Minus: "-",
+  "(Minus)": "_",
   Equal: "=",
+  "(Equal)": "+",
   BracketLeft: "[",
+   "(BracketLeft)": "{",
   BracketRight: "]",
+  "(BracketRight)": "}",
   Backslash: "\\",
+  "(Backslash)": "|",
   Semicolon: ";",
+  "(Semicolon)": ":",
   Quote: "'",
+  "(Quote)": "\"",
   Comma: ",",
+  "(Comma)": "<",
   Period: ".",
+  "(Period)": ">",
   Slash: "/",
+  "(Slash)": "?",
   Backquote: "`",
+  "(Backquote)": "~",
   IntlBackslash: "\\",
 
   // Function keys

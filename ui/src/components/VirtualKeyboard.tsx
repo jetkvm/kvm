@@ -292,7 +292,7 @@ function KeyboardWrapper() {
                         ],
                       }}
                       disableButtonHold={true}
-                      mergeDisplay={true}
+                      syncInstanceInputs={true}
                       debug={false}
                     />
 
@@ -300,34 +300,25 @@ function KeyboardWrapper() {
                       <Keyboard
                         baseClass="simple-keyboard-control"
                         theme="simple-keyboard hg-theme-default hg-layout-default"
+                        layoutName={layoutName}
+                        onKeyPress={onKeyDown}
+                        display={keyDisplayMap}
                         layout={{
                           default: ["Home Pageup", "Delete End Pagedown"],
                         }}
-                        display={{
-                          Home: "home",
-                          Pageup: "pageup",
-                          Delete: "delete",
-                          End: "end",
-                          Pagedown: "pagedown",
                         }}
                         syncInstanceInputs={true}
-                        onKeyPress={onKeyDown}
-                        mergeDisplay={true}
                         debug={false}
                       />
                       <Keyboard
                         baseClass="simple-keyboard-arrows"
                         theme="simple-keyboard hg-theme-default hg-layout-default"
-                        display={{
-                          ArrowLeft: "←",
-                          ArrowRight: "→",
-                          ArrowUp: "↑",
-                          ArrowDown: "↓",
-                        }}
+                        onKeyPress={onKeyDown}
+                        display={keyDisplayMap}
                         layout={{
                           default: ["ArrowUp", "ArrowLeft ArrowDown ArrowRight"],
                         }}
-                        onKeyPress={onKeyDown}
+                        syncInstanceInputs={true}
                         debug={false}
                       />
                     </div>
