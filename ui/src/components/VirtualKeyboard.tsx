@@ -143,6 +143,16 @@ function KeyboardWrapper() {
         return;
       }
 
+      if (key === "CtrlAltBackspace") {
+        sendKeyboardEvent(
+          [keys["Backspace"]],
+          [modifiers["ControlLeft"], modifiers["AltLeft"]],
+        );
+
+        setTimeout(resetKeyboardState, 100);
+        return;
+      }
+
       if (isKeyShift || isKeyCaps) {
         toggleLayout();
 
@@ -257,13 +267,13 @@ function KeyboardWrapper() {
                       buttonTheme={[
                         {
                           class: "combination-key",
-                          buttons: "CtrlAltDelete AltMetaEscape",
+                          buttons: "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
                         },
                       ]}
                       display={keyDisplayMap}
                       layout={{
                         default: [
-                          "CtrlAltDelete AltMetaEscape",
+                          "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
                           "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
                           "Backquote Digit1 Digit2 Digit3 Digit4 Digit5 Digit6 Digit7 Digit8 Digit9 Digit0 Minus Equal Backspace",
                           "Tab KeyQ KeyW KeyE KeyR KeyT KeyY KeyU KeyI KeyO KeyP BracketLeft BracketRight Backslash",
@@ -272,7 +282,7 @@ function KeyboardWrapper() {
                           "ControlLeft AltLeft MetaLeft Space MetaRight AltRight",
                         ],
                         shift: [
-                          "CtrlAltDelete AltMetaEscape",
+                          "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
                           "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
                           "(Backquote) (Digit1) (Digit2) (Digit3) (Digit4) (Digit5) (Digit6) (Digit7) (Digit8) (Digit9) (Digit0) (Minus) (Equal) (Backspace)",
                           "Tab (KeyQ) (KeyW) (KeyE) (KeyR) (KeyT) (KeyY) (KeyU) (KeyI) (KeyO) (KeyP) (BracketLeft) (BracketRight) (Backslash)",

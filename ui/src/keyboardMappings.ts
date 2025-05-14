@@ -227,6 +227,7 @@ export const modifierDisplayMap: Record<string, string> = {
 export const keyDisplayMap: Record<string, string> = {
   CtrlAltDelete: "Ctrl + Alt + Delete",
   AltMetaEscape: "Alt + Meta + Escape",
+  CtrlAltBackspace: "Ctrl + Alt + Backspace",
   Escape: "esc",
   Tab: "tab",
   Backspace: "backspace",
