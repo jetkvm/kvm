@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useResizeObserver } from "usehooks-ts";
 
 import {
   useDeviceSettingsStore,
@@ -10,7 +11,6 @@ import {
   useVideoStore,
 } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
-import { useResizeObserver } from "usehooks-ts";
 import { cx } from "@/cva.config";
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
@@ -151,7 +151,7 @@ export default function WebRTCVideo() {
     const isKeyboardLockGranted = await checkNavigatorPermissions("keyboard-lock");
     if (isKeyboardLockGranted) {
       if ("keyboard" in navigator) {
-        // @ts-ignore
+        // @ts-expect-error because ignore error isn't good enough
         await navigator.keyboard.lock();
       }
     }

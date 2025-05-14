@@ -1,5 +1,4 @@
 import { useState } from "react";
-
 import { LuPlus } from "react-icons/lu";
 
 import { KeySequence } from "@/hooks/stores";
@@ -7,8 +6,8 @@ import { Button } from "@/components/Button";
 import { InputFieldWithLabel, FieldError } from "@/components/InputField";
 import Fieldset from "@/components/Fieldset";
 import { MacroStepCard } from "@/components/MacroStepCard";
-import { DEFAULT_DELAY, MAX_STEPS_PER_MACRO, MAX_KEYS_PER_STEP } from "@/constants/macros";
 import FieldLabel from "@/components/FieldLabel";
+import { DEFAULT_DELAY, MAX_STEPS_PER_MACRO, MAX_KEYS_PER_STEP } from "@/constants/macros";
 
 interface ValidationErrors {
   name?: string;

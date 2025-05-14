@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+
+import { IPv4Mode, IPv6Mode, LLDPMode, mDNSMode, NetworkSettings, NetworkState, TimeSyncMode, useNetworkStateStore } from "@/hooks/stores";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { Button } from "@components/Button";
+import { GridCard } from "@components/Card";
+import InputField from "@components/InputField";
+import notifications from "@/notifications";
 
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { SettingsPageHeader } from "../components/SettingsPageheader";
 
-import { IPv4Mode, IPv6Mode, LLDPMode, mDNSMode, NetworkSettings, NetworkState, TimeSyncMode, useNetworkStateStore } from "@/hooks/stores";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
-import notifications from "@/notifications";
-import { Button } from "@components/Button";
-import { GridCard } from "@components/Card";
-import InputField from "@components/InputField";
-import { SettingsItem } from "./devices.$id.settings";
 
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
+import { SettingsItem } from "./devices.$id.settings";
 
 dayjs.extend(relativeTime);
 
@@ -28,10 +29,6 @@ const defaultNetworkSettings: NetworkSettings = {
 }
 
 export function LifeTimeLabel({ lifetime }: { lifetime: string }) {
-  if (lifetime == "") {
-    return <strong>N/A</strong>;
-  }
-
   const [remaining, setRemaining] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,6 +39,10 @@ export function LifeTimeLabel({ lifetime }: { lifetime: string }) {
     }, 1000 * 30);
     return () => clearInterval(interval);
   }, [lifetime]);
+
+  if (lifetime == "") {
+    return <strong>N/A</strong>;
+  }
 
   return <>
     <strong>{dayjs(lifetime).format()}</strong>
@@ -90,7 +91,7 @@ export default function SettingsNetworkRoute() {
       console.log(resp.result);
       setNetworkState(resp.result as NetworkState);
     });
-  }, [send]);
+  }, [send, setNetworkState]);
 
   const handleRenewLease = useCallback(() => {
     send("renewDHCPLease", {}, resp => {

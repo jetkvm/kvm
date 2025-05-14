@@ -17,7 +17,7 @@ import AdoptRoute from "@routes/adopt";
 import SignupRoute from "@routes/signup";
 import LoginRoute from "@routes/login";
 import SetupRoute from "@routes/devices.$id.setup";
-import DevicesRoute, { loader as DeviceListLoader } from "@routes/devices";
+import DevicesRoute from "@routes/devices";
 import DeviceRoute, { LocalDevice } from "@routes/devices.$id";
 import Card from "@components/Card";
 import DevicesAlreadyAdopted from "@routes/devices.already-adopted";
@@ -36,7 +36,7 @@ import SettingsKeyboardMouseRoute from "./routes/devices.$id.settings.mouse";
 import api from "./api";
 import * as SettingsIndexRoute from "./routes/devices.$id.settings._index";
 import SettingsAdvancedRoute from "./routes/devices.$id.settings.advanced";
-import * as SettingsAccessIndexRoute from "./routes/devices.$id.settings.access._index";
+import SettingsAccessIndexRoute from "./routes/devices.$id.settings.access._index";
 import SettingsHardwareRoute from "./routes/devices.$id.settings.hardware";
 import SettingsVideoRoute from "./routes/devices.$id.settings.video";
 import SettingsAppearanceRoute from "./routes/devices.$id.settings.appearance";
@@ -166,7 +166,7 @@ if (isOnDevice) {
               children: [
                 {
                   index: true,
-                  element: <SettingsAccessIndexRoute.default />,
+                  element: <SettingsAccessIndexRoute />,
                   loader: SettingsAccessIndexRoute.loader,
                 },
                 {
@@ -291,7 +291,7 @@ if (isOnDevice) {
                       children: [
                         {
                           index: true,
-                          element: <SettingsAccessIndexRoute.default />,
+                          element: <SettingsAccessIndexRoute />,
                           loader: SettingsAccessIndexRoute.loader,
                         },
                         {
@@ -341,7 +341,10 @@ if (isOnDevice) {
               loader: DeviceIdRename.loader,
               action: DeviceIdRename.action,
             },
-            { path: "devices", element: <DevicesRoute />, loader: DeviceListLoader },
+            { 
+              path: "devices", 
+              element: <DevicesRoute />,
+              loader: DevicesRoute.loader },
           ],
         },
       ],

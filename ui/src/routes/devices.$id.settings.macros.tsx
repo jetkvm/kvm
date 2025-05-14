@@ -250,7 +250,7 @@ export default function SettingsMacrosRoute() {
         isConfirming={actionLoadingId === macroToDelete?.id}
       />
     </div>
-  ), [macros, actionLoadingId, showDeleteConfirm, macroToDelete, handleDeleteMacro]);
+  ), [macros, actionLoadingId, showDeleteConfirm, macroToDelete, handleDeleteMacro, handleDuplicateMacro, handleMoveMacro, navigate]);
 
   return (
     <div className="space-y-4">
