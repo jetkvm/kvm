@@ -168,7 +168,7 @@ export default function SettingsMacrosRoute() {
                 <h3 className="truncate text-sm font-semibold text-black dark:text-white">
                   {macro.name}
                 </h3>
-                <p className="ml-4 mt-1 overflow-hidden text-xs text-slate-500 dark:text-slate-400">
+                <p className="mt-1 ml-4 overflow-hidden text-xs text-slate-500 dark:text-slate-400">
                   <span className="flex flex-col items-start gap-1">
                     {macro.steps.map((step, stepIndex) => {
                       const StepIcon = stepIndex === 0 ? LuMoveRight : LuCornerDownRight;
@@ -176,7 +176,7 @@ export default function SettingsMacrosRoute() {
                       return (
                         <span key={stepIndex} className="inline-flex items-center">
                           <StepIcon className="mr-1 h-3 w-3 shrink-0 text-slate-400 dark:text-slate-500" />
-                          <span className="px-2 py-0.5 rounded-md border border-slate-200/50 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800">
+                          <span className="rounded-md border border-slate-200/50 bg-slate-50 px-2 py-0.5 dark:border-slate-700/50 dark:bg-slate-800">
                             {(Array.isArray(step.modifiers) &&
                               step.modifiers.length > 0) ||
                             (Array.isArray(step.keys) && step.keys.length > 0) ? (
@@ -338,6 +338,7 @@ export default function SettingsMacrosRoute() {
           <EmptyCard
             IconElm={LuCommand}
             headline="Create Your First Macro"
+            description="Combine keystrokes into a single action"
             BtnElm={
               <Button
                 size="SM"
