@@ -259,25 +259,22 @@ export default function WebRTCVideo() {
     (e: WheelEvent) => {
       if (blockWheelEvent) return;
 
-      // Determine if the wheel event is from a trackpad or a mouse wheel
-      const isTrackpad = Math.abs(e.deltaY) < trackpadThreshold;
+      // Determine if the wheel event is an accelerable scroll value
+      const isAccel = Math.abs(e.deltaY) >= 100;
 
-      // Apply appropriate sensitivity based on input device
-      const scrollSensitivity = isTrackpad ? trackpadSensitivity : mouseSensitivity;
+      // Calculate the accelerable scroll value
+      const accelScrollValue = e.deltaY / 100;
 
-      // Calculate the scroll value
-      const scroll = e.deltaY * scrollSensitivity;
+      // Calculate the non-accelerable scroll value
+      const nonAccelScrollValue = e.deltaY > 0 ? 1: -1;
 
-      // Apply clamping
-      const clampedScroll = Math.max(clampMin, Math.min(clampMax, scroll));
+      // Get actual scroll value
+      const scrollValue = isAccel ? accelScrollValue : nonAccelScrollValue;
 
-      // Round to the nearest integer
-      const roundedScroll = Math.round(clampedScroll);
+      // Apply clamping (i.e. min and max mouse wheel hardware value)
+      const clampedScrollValue = Math.max(-128, Math.min(127, scrollValue));
 
-      // Invert the scroll value to match expected behavior
-      const invertedScroll = -roundedScroll;
-
-      send("wheelReport", { wheelY: invertedScroll });
+      send("wheelReport", { wheelY: clampedScrollValue });      
 
       // Apply blocking delay
       setBlockWheelEvent(true);
