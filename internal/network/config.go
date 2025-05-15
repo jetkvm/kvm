@@ -53,7 +53,7 @@ type NetworkConfig struct {
 }
 
 type UsbNetworkConfig struct {
-	IPv4Addr    string `json:"ipv4_addr,omitempty" validate_type:"ipv4" default:"172.16.55.1" required:"true"`
+	IPv4Addr    string `json:"ipv4_addr,omitempty" validate_type:"ipv4" default:"172.16.55.1/24" required:"true"`
 	IPv4Network string `json:"ipv4_network,omitempty" validate_type:"ipv4" default:"172.16.55.0/24" required:"true"`
 }
 

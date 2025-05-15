@@ -1,5 +1,9 @@
 package usbgadget
 
+const (
+	usbEthernetDevice = "usb0"
+)
+
 // Ethernet Control Model (ECM)
 var ethernetEcmConfig = gadgetConfigItem{
 	order:      4000,
@@ -42,4 +46,15 @@ var ethernetRndisConfig = gadgetConfigItem{
 		"host_addr": "", // MAC address of target host (randomly select)
 		"dev_addr":  "", // MAC address of JetKVM (randomly select)
 	},
+}
+
+func (u *UsbGadget) UsbEthernetEnabled() bool {
+	return u.isGadgetConfigItemEnabled("ecm") ||
+		u.isGadgetConfigItemEnabled("eem") ||
+		u.isGadgetConfigItemEnabled("ncm") ||
+		u.isGadgetConfigItemEnabled("rndis")
+}
+
+func (u *UsbGadget) UsbEthernetDevice() string {
+	return usbEthernetDevice
 }

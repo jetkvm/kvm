@@ -10,6 +10,10 @@ const (
 	procIpv4ForwardPath = "/proc/sys/net/ipv4/ip_forward"
 )
 
+func (s *NetworkInterfaceState) UsbNetworkConfig() *UsbNetworkConfig {
+	return s.usbNetConfig
+}
+
 func (s *NetworkInterfaceState) reconfigureNat(wantNat bool, sourceAddr string) error {
 	scopedLogger := s.l.With().Str("iface", s.interfaceName).Logger()
 

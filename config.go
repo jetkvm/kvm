@@ -133,7 +133,7 @@ var defaultConfig = &Config{
 		NatEnable: false,
 	},
 	UsbNetworkConfig: &network.UsbNetworkConfig{
-		IPv4Addr:    "172.16.55.1",
+		IPv4Addr:    "172.16.55.1/24",
 		IPv4Network: "172.16.55.0/24",
 	},
 	DefaultLogLevel: "INFO",
@@ -181,6 +181,10 @@ func LoadConfig() {
 
 	if loadedConfig.NetworkConfig == nil {
 		loadedConfig.NetworkConfig = defaultConfig.NetworkConfig
+	}
+
+	if loadedConfig.UsbNetworkConfig == nil {
+		loadedConfig.UsbNetworkConfig = defaultConfig.UsbNetworkConfig
 	}
 
 	config = &loadedConfig

@@ -18,6 +18,11 @@ func initUsbGadget() {
 		usbLogger,
 	)
 
+	err := initUsbEthernet(gadget)
+	if err != nil {
+		usbLogger.Err(err).Msg("Failed to initialize USB Ethernet")
+	}
+
 	go func() {
 		for {
 			checkUSBState()

@@ -26,8 +26,9 @@ type NetworkInterfaceState struct {
 	l         *zerolog.Logger
 	stateLock sync.Mutex
 
-	config     *NetworkConfig
-	dhcpClient *udhcpc.DHCPClient
+	config       *NetworkConfig
+	usbNetConfig *UsbNetworkConfig
+	dhcpClient   *udhcpc.DHCPClient
 
 	defaultHostname string
 	currentHostname string
@@ -85,6 +86,7 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 		},
 		cbConfigChange: opts.OnConfigChange,
 		config:         opts.NetworkConfig,
+		usbNetConfig:   opts.UsbNetworkConfig,
 	}
 
 	// create the dhcp client
