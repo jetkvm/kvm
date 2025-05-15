@@ -243,6 +243,7 @@ export const keyDisplayMap: Record<string, string> = {
   Escape: "esc",
   Tab: "tab",
   Backspace: "backspace",
+  "(Backspace)": "backspace",
   Enter: "enter",
   CapsLock: "caps lock",
   ShiftLeft: "shift",
