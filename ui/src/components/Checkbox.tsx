@@ -15,7 +15,7 @@ const checkboxVariants = cva({
     "block rounded",
 
     // Colors
-    "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-blue-700 dark:text-blue-500 transition-colors",
+    "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 checked:accent-blue-700 checked:dark:accent-blue-500 transition-colors",
 
     // Hover
     "hover:bg-slate-200/50 dark:hover:bg-slate-700/50",
@@ -41,7 +41,9 @@ const Checkbox = forwardRef<HTMLInputElement, CheckBoxProps>(function Checkbox(
   ref,
 ) {
   const classes = checkboxVariants({ size });
-  return <input ref={ref} {...props} type="checkbox" className={clsx(classes, className)} />;
+  return (
+    <input ref={ref} {...props} type="checkbox" className={clsx(classes, className)} />
+  );
 });
 Checkbox.displayName = "Checkbox";
 

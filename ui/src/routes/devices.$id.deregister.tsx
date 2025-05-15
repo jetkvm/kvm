@@ -71,7 +71,7 @@ export default function DevicesIdDeregister() {
   const error = useActionData() as { message: string };
 
   return (
-    <div className="grid min-h-screen grid-rows-layout">
+    <div className="grid min-h-screen grid-rows-(--grid-layout)">
       <DashboardNavbar
         isLoggedIn={!!user}
         primaryLinks={[{ title: "Cloud Devices", to: "/devices" }]}

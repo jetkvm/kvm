@@ -37,7 +37,7 @@ export default function AuthLayout({
     <>
       <GridBackground />
 
-      <div className="grid min-h-screen grid-rows-layout">
+      <div className="grid min-h-screen grid-rows-(--grid-layout)">
         <SimpleNavbar
           logoHref="/"
           actionElement={

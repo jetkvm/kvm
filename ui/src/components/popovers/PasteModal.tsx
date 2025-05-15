@@ -74,7 +74,7 @@ export default function PasteModal() {
   return (
     <GridCard>
       <div className="space-y-4 p-4 py-3">
-        <div className="grid h-full grid-rows-headerBody">
+        <div className="grid h-full grid-rows-(--grid-headerBody)">
           <div className="h-full space-y-4">
             <div className="space-y-4">
               <SettingsPageHeader

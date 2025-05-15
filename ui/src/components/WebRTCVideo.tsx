@@ -673,7 +673,7 @@ export default function WebRTCVideo() {
   ]);
 
   return (
-    <div className="grid h-full w-full grid-rows-layout">
+    <div className="grid h-full w-full grid-rows-(--grid-layout)">
       <div className="flex min-h-[39.5px] flex-col">
         <div className="flex flex-col">
           <fieldset
@@ -699,7 +699,7 @@ export default function WebRTCVideo() {
           <div className="flex h-full flex-col">
             <div className="relative flex-grow overflow-hidden">
               <div className="flex h-full flex-col">
-                <div className="grid flex-grow grid-rows-bodyFooter overflow-hidden">
+                <div className="grid flex-grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
                     <div className="relative flex h-full w-full items-center justify-center">
                       <div className="relative inline-block">

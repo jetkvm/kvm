@@ -84,7 +84,7 @@ export default function ExtensionPopover() {
   return (
     <GridCard>
       <div className="space-y-4 p-4 py-3">
-        <div className="grid h-full grid-rows-headerBody">
+        <div className="grid h-full grid-rows-(--grid-headerBody)">
           <div className="space-y-4">
             {activeExtension ? (
               // Extension Control View

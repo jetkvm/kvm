@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeftEndOnRectangleIcon, ChevronDownIcon } from "@heroicons/react/16/solid";
 import { Button, Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { LuMonitorSmartphone } from "react-icons/lu";
+import { LuMonitorSmartphone, LuUser } from "react-icons/lu";
 
 import Container from "@/components/Container";
 import Card from "@/components/Card";
@@ -55,7 +55,7 @@ export default function DashboardNavbar({
   //picture = "https://placehold.co/32x32"
 
   return (
-    <div className="w-full select-none border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">
+    <div className="w-full border-b border-b-slate-800/20 bg-white select-none dark:border-b-slate-300/20 dark:bg-slate-900">
       <Container>
         <div className="flex h-14 items-center justify-between">
           <div className="flex shrink-0 items-center gap-x-8">
@@ -81,7 +81,7 @@ export default function DashboardNavbar({
           </div>
           <div className="flex w-full items-center justify-end gap-x-2">
             <div className="flex shrink-0 items-center space-x-4">
-              <div className="hidden items-center gap-x-2 md:flex">
+              <div className="hidden items-stretch gap-x-2 md:flex">
                 {showConnectionStatus && (
                   <>
                     <div className="w-[159px]">
@@ -100,47 +100,50 @@ export default function DashboardNavbar({
                 )}
                 {isLoggedIn ? (
                   <>
-                    <hr className="h-[20px] w-[1px] border-none bg-slate-800/20 dark:bg-slate-300/20" />
+                    <hr className="h-[20px] w-[1px] self-center border-none bg-slate-800/20 dark:bg-slate-300/20" />
                     <div className="relative inline-block text-left">
                       <Menu>
-                        <MenuButton>
-                          <Button className="flex items-center gap-x-3 rounded-md border bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-white border-slate-800/20 px-2 py-1.5">
-                            {picture
-                              ? (
-                                <img
-                                  src={picture}
-                                  alt="Avatar"
-                                  className="size-6 rounded-full border-2 border-transparent transition-colors group-hover:border-blue-700"
-                                />
-                              )
-                              : (
-                                <span className="max-w-[200px] text-sm/6 font-display font-semibold truncate">
-                                  {userEmail}
-                                </span>
-                              )
-                            }
+                        <MenuButton className="h-full">
+                          <Button className="flex h-full items-center gap-x-3 rounded-md border border-slate-800/20 bg-white px-2 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-white">
+                            {picture ? (
+                              <img
+                                src={picture}
+                                alt="Avatar"
+                                className="size-6 rounded-full border-2 border-transparent transition-colors group-hover:border-blue-700"
+                              />
+                            ) : userEmail ? (
+                              <span className="font-display max-w-[200px] truncate text-sm/6 font-semibold">
+                                {userEmail}
+                              </span>
+                            ) : null}
                             <ChevronDownIcon className="size-4 shrink-0 text-slate-900 dark:text-white" />
                           </Button>
                         </MenuButton>
                         <MenuItems
                           transition
                           anchor="bottom end"
-                          className="right-0 mt-1 w-56 origin-top-right data-closed:opacity-0 focus:outline-hidden">
+                          className="right-0 mt-1 w-56 origin-top-right p-px focus:outline-hidden data-closed:opacity-0"
+                        >
                           <MenuItem>
                             <Card className="overflow-hidden">
-                              <div className="space-y-1 p-1 dark:text-white">
-                                {userEmail && (
+                              {userEmail && (
+                                <div className="space-y-1 p-1 dark:text-white">
                                   <div className="border-b border-b-slate-800/20 dark:border-slate-300/20">
                                     <div className="p-2">
-                                      <div className="font-display text-xs">Logged in as</div>
-                                      <div className="max-w-[200px] truncate font-display text-sm font-semibold">
+                                      <div className="font-display text-xs">
+                                        Logged in as
+                                      </div>
+                                      <div className="font-display max-w-[200px] truncate text-sm font-semibold">
                                         {userEmail}
                                       </div>
                                     </div>
                                   </div>
-                                )}
-                              </div>
-                              <div className="space-y-1 p-1 dark:text-white" onClick={onLogout}>
+                                </div>
+                              )}
+                              <div
+                                className="space-y-1 p-1 dark:text-white"
+                                onClick={onLogout}
+                              >
                                 <button className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">
                                   <ArrowLeftEndOnRectangleIcon className="size-4" />
                                   <div className="font-display">Log out</div>

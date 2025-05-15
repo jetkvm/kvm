@@ -1,5 +1,13 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
+@plugin "@tailwindcss/typography";
+@plugin "@tailwindcss/forms" {
+  strategy: "base";
+}
+@plugin "@headlessui/tailwindcss";
+
+/* Dark mode uses CSS selector instead of prefers-color-scheme */
+@custom-variant dark (&:where(.dark, .dark *));
 
 html {
   @apply scroll-smooth;
@@ -10,6 +18,128 @@ body {
   height: 100%;
   width: 100%;
   overflow: auto;
+}
+
+@theme {
+  --font-sans: "Circular", sans-serif;
+  --font-display: "Circular", sans-serif;
+  --font-serif: "Circular", serif;
+  --font-mono: "Source Code Pro Variable", monospace;
+
+  --grid-layout: auto 1fr auto;
+  --grid-headerBody: auto 1fr;
+  --grid-bodyFooter: 1fr auto;
+  --grid-sidebar: 1fr minmax(360px, 25%);
+
+  --breakpoint-xs: 480px;
+  --breakpoint-2xl: 1440px;
+  --breakpoint-3xl: 1920px;
+  --breakpoint-4xl: 2560px;
+
+  /* Migrated animations */
+  --animate-enter: enter 0.2s ease-out;
+  --animate-leave: leave 0.15s ease-in forwards;
+  --animate-fadeInScale: fadeInScale 1s ease-out forwards;
+  --animate-fadeInScaleFloat:
+    fadeInScaleFloat 1s ease-out forwards, float 3s ease-in-out infinite;
+  --animate-fadeIn: fadeIn 1s ease-out forwards;
+  --animate-slideUpFade: slideUpFade 1s ease-out forwards;
+
+  --container-8xl: 88rem;
+  --container-9xl: 96rem;
+  --container-10xl: 104rem;
+  --container-11xl: 112rem;
+  --container-12xl: 120rem;
+
+  /* Migrated keyframes */
+  @keyframes enter {
+    0% {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes leave {
+    0% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+  }
+
+  @keyframes fadeInScale {
+    0% {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes fadeInScaleFloat {
+    0% {
+      opacity: 0;
+      transform: scale(0.98) translateY(10px);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  @keyframes fadeIn {
+    0% {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    70% {
+      opacity: 0.8;
+      transform: translateY(1px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slideUpFade {
+    0% {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@utility max-width-* {
+  max-width: --modifier(--container- *, [length], [ *]);
+}
+
+/* Ensure there is not a `ms` and ms -> `...)ms` */
+@utility animation-delay-* {
+  animation-delay: --value(integer) ms;
 }
 
 @property --grid-color-start {

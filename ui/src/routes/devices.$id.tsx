@@ -795,7 +795,7 @@ export default function KvmIdRoute() {
           </div>
         </FocusTrap>
 
-        <div className="grid h-full select-none grid-rows-headerBody">
+        <div className="grid h-full grid-rows-(--grid-headerBody) select-none">
           <DashboardNavbar
             primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
             showConnectionStatus={true}
@@ -809,7 +809,7 @@ export default function KvmIdRoute() {
             <WebRTCVideo />
             <div
               style={{ animationDuration: "500ms" }}
-              className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center p-4"
+              className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
             >
               <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
                 {!!ConnectionStatusElement && ConnectionStatusElement}
