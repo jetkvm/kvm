@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeftEndOnRectangleIcon, ChevronDownIcon } from "@heroicons/react/16/solid";
 import { Button, Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { LuMonitorSmartphone, LuUser } from "react-icons/lu";
+import { LuMonitorSmartphone } from "react-icons/lu";
 
 import Container from "@/components/Container";
 import Card from "@/components/Card";
