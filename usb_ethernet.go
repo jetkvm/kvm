@@ -19,11 +19,11 @@ func initUsbEthernet(gadget *usbgadget.UsbGadget) error {
 	scopedLogger.Info().Msg("enabling USB Ethernet")
 
 	if err := exec.Command("ip", "addr", "add", ipv4addr, "dev", iface).Run(); err != nil {
-		return fmt.Errorf("failed to flush table nat: %w", err)
+		return fmt.Errorf("failed to add ip addr: %w", err)
 	}
 
 	if err := exec.Command("ip", "link", "set", "dev", iface, "up").Run(); err != nil {
-		return fmt.Errorf("failed to flush table nat: %w", err)
+		return fmt.Errorf("failed to set ip link: %w", err)
 	}
 
 	return nil
