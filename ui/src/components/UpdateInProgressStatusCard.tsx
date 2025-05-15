@@ -11,7 +11,7 @@ export default function UpdateInProgressStatusCard() {
 
   return (
     <div className="w-full select-none opacity-100 transition-all duration-300 ease-in-out">
-      <GridCard cardClassName="!shadow-xl">
+      <GridCard cardClassName="shadow-xl!">
         <div className="flex items-center justify-between gap-x-3 px-2.5 py-2.5 text-black dark:text-white">
           <div className="flex items-center gap-x-3">
             <LoadingSpinner className={cx("h-5 w-5", "shrink-0 text-blue-700")} />

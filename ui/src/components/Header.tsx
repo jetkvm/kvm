@@ -100,7 +100,7 @@ export default function DashboardNavbar({
                 )}
                 {isLoggedIn ? (
                   <>
-                    <hr className="h-[20px] w-[1px] self-center border-none bg-slate-800/20 dark:bg-slate-300/20" />
+                    <hr className="h-[20px] w-px self-center border-none bg-slate-800/20 dark:bg-slate-300/20" />
                     <div className="relative inline-block text-left">
                       <Menu>
                         <MenuButton className="h-full">

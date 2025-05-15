@@ -150,7 +150,7 @@ export function UsbDeviceSetting() {
 
   return (
     <Fieldset disabled={loading} className="space-y-4">
-      <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+      <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
 
       <SettingsSectionHeader
         title="USB Device"

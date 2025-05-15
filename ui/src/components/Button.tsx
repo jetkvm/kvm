@@ -126,9 +126,9 @@ function ButtonContent(props: ButtonContentPropsType) {
       <div
         className={cx(
           "flex w-full min-w-0 items-center gap-x-1.5 text-center",
-          textAlign === "left" ? "!text-left" : "",
-          textAlign === "center" ? "!text-center" : "",
-          textAlign === "right" ? "!text-right" : "",
+          textAlign === "left" ? "text-left!" : "",
+          textAlign === "center" ? "text-center!" : "",
+          textAlign === "right" ? "text-right!" : "",
         )}
       >
         {loading ? (
@@ -216,7 +216,7 @@ type LinkPropsType = Pick<LinkProps, "to"> &
 export const LinkButton = ({ to, ...props }: LinkPropsType) => {
   const classes = cx(
     "group outline-hidden",
-    props.disabled ? "pointer-events-none !opacity-70" : "",
+    props.disabled ? "pointer-events-none opacity-70!" : "",
     props.fullWidth ? "w-full" : "",
     props.loading ? "pointer-events-none" : "",
     props.className,
@@ -242,7 +242,7 @@ type LabelPropsType = Pick<HTMLLabelElement, "htmlFor"> &
 export const LabelButton = ({ htmlFor, ...props }: LabelPropsType) => {
   const classes = cx(
     "group outline-hidden block cursor-pointer",
-    props.disabled ? "pointer-events-none !opacity-70" : "",
+    props.disabled ? "pointer-events-none opacity-70!" : "",
     props.fullWidth ? "w-full" : "",
     props.loading ? "pointer-events-none" : "",
     props.className,

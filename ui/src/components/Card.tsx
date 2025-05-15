@@ -17,8 +17,8 @@ export const GridCard = ({
   return (
     <Card className={cx("overflow-hidden", cardClassName)}>
       <div className="relative h-full">
-        <div className="absolute inset-0 z-0 h-full w-full bg-gradient-to-tr from-blue-50/30 to-blue-50/20 transition-colors duration-300 ease-in-out dark:from-slate-800/30 dark:to-slate-800/20" />
-        <div className="absolute inset-0 z-0 h-full w-full rotate-0 bg-grid-blue-100/[25%] dark:bg-grid-slate-700/[7%]" />
+        <div className="absolute inset-0 z-0 h-full w-full bg-linear-to-tr from-blue-50/30 to-blue-50/20 transition-colors duration-300 ease-in-out dark:from-slate-800/30 dark:to-slate-800/20" />
+        <div className="absolute inset-0 z-0 h-full w-full rotate-0 bg-grid-blue-100/25 dark:bg-grid-slate-700/7" />
         <div className="isolate h-full">{children}</div>
       </div>
     </Card>

@@ -89,8 +89,8 @@ export default function Actionbar({
               anchor="bottom start"
               transition
               className={cx(
-                "z-10 flex w-[420px] origin-top flex-col !overflow-visible",
-                "flex origin-top flex-col transition duration-300 ease-out data-[closed]:translate-y-8 data-[closed]:opacity-0",
+                "z-10 flex w-[420px] origin-top flex-col overflow-visible!",
+                "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
               )}
             >
               {({ open }) => {
@@ -131,8 +131,8 @@ export default function Actionbar({
                 anchor="bottom start"
                 transition
                 className={cx(
-                  "z-10 flex w-[420px] origin-top flex-col !overflow-visible",
-                  "flex origin-top flex-col transition duration-300 ease-out data-[closed]:translate-y-8 data-[closed]:opacity-0",
+                  "z-10 flex w-[420px] origin-top flex-col overflow-visible!",
+                  "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
                 )}
               >
                 {({ open }) => {
@@ -183,8 +183,8 @@ export default function Actionbar({
                   transitionProperty: "opacity",
                 }}
                 className={cx(
-                  "z-10 flex w-[420px] origin-top flex-col !overflow-visible",
-                  "flex origin-top flex-col transition duration-300 ease-out data-[closed]:translate-y-8 data-[closed]:opacity-0",
+                  "z-10 flex w-[420px] origin-top flex-col overflow-visible!",
+                  "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
                 )}
               >
                 {({ open }) => {
@@ -226,8 +226,8 @@ export default function Actionbar({
               anchor="bottom start"
               transition
               className={cx(
-                "z-10 flex w-[420px] flex-col !overflow-visible",
-                "flex origin-top flex-col transition duration-300 ease-out data-[closed]:translate-y-8 data-[closed]:opacity-0",
+                "z-10 flex w-[420px] flex-col overflow-visible!",
+                "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
               )}
             >
               {({ open }) => {
@@ -274,7 +274,7 @@ export default function Actionbar({
           </div>
 
           <div className="hidden items-center gap-x-2 lg:flex">
-            <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-600" />
+            <div className="h-4 w-px bg-slate-300 dark:bg-slate-600" />
             <Button
               size="XS"
               theme="light"

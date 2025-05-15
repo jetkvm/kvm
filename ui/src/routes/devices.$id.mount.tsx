@@ -185,7 +185,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
               <img
                 src={LogoWhiteIcon}
                 alt="JetKVM Logo"
-                className="hidden h-[24px] dark:!mt-0 dark:block"
+                className="hidden h-[24px] dark:mt-0! dark:block"
               />
               {modalView === "mode" && (
                 <ModeSelectionView
@@ -332,7 +332,7 @@ function ModeSelectionView({
                 {
                   "ring-2 ring-blue-700": selectedMode === mode,
                   "hover:ring-2 hover:ring-blue-500": selectedMode !== mode && !disabled,
-                  "!cursor-not-allowed": disabled,
+                  "cursor-not-allowed!": disabled,
                 },
               )}
             >
@@ -1489,7 +1489,7 @@ function PreUploadedImageItem({
             <div className="flex items-center gap-x-1 text-slate-600 dark:text-slate-400">
               {formatters.date(new Date(uploadedAt), { month: "short" })}
             </div>
-            <div className="mx-1 h-[10px] w-[1px] bg-slate-300 text-slate-300 dark:bg-slate-600"></div>
+            <div className="mx-1 h-[10px] w-px bg-slate-300 text-slate-300 dark:bg-slate-600"></div>
             <div className="text-gray-600 dark:text-slate-400">{size}</div>
           </div>
         </div>

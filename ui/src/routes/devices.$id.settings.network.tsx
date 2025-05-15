@@ -345,7 +345,7 @@ export default function SettingsNetworkRoute() {
           />
         </div>
 
-        <div className="h-[1px] w-full bg-slate-800/10 dark:bg-slate-300/20" />
+        <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
 
         <div className="space-y-4">
           <SettingsItem title="IPv4 Mode" description="Configure the IPv4 mode">

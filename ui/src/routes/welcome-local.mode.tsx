@@ -90,8 +90,8 @@ export default function WelcomeLocalModeRoute() {
                     <GridCard
                       key={mode}
                       cardClassName={cx("transition-all duration-100", {
-                        "!outline-blue-700 !outline-2": selectedMode === mode,
-                        "hover:!outline-blue-700": selectedMode !== mode,
+                        "outline-blue-700! outline-2!": selectedMode === mode,
+                        "hover:outline-blue-700!": selectedMode !== mode,
                       })}
                     >
                       <div

@@ -691,15 +691,15 @@ export default function WebRTCVideo() {
           <div
             className={cx(
               "absolute inset-0 -z-0 bg-blue-50/40 opacity-80 dark:bg-slate-800/40",
-              "[background-image:radial-gradient(theme(colors.blue.300)_0.5px,transparent_0.5px),radial-gradient(theme(colors.blue.300)_0.5px,transparent_0.5px)] dark:[background-image:radial-gradient(theme(colors.slate.700)_0.5px,transparent_0.5px),radial-gradient(theme(colors.slate.700)_0.5px,transparent_0.5px)]",
-              "[background-position:0_0,10px_10px]",
-              "[background-size:20px_20px]",
+              "bg-[radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px),radial-gradient(var(--color-blue-300)_0.5px,transparent_0.5px)] dark:bg-[radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px),radial-gradient(var(--color-slate-700)_0.5px,transparent_0.5px)]",
+              "bg-position-[0_0,10px_10px]",
+              "bg-size-[20px_20px]",
             )}
           />
           <div className="flex h-full flex-col">
-            <div className="relative flex-grow overflow-hidden">
+            <div className="relative grow overflow-hidden">
               <div className="flex h-full flex-col">
-                <div className="grid flex-grow grid-rows-(--grid-bodyFooter) overflow-hidden">
+                <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
                     <div className="relative flex h-full w-full items-center justify-center">
                       <div className="relative inline-block">
@@ -723,7 +723,7 @@ export default function WebRTCVideo() {
                                 isVideoLoading ||
                                 hdmiError ||
                                 peerConnectionState !== "connected",
-                              "!opacity-60": showPointerLockBar,
+                              "opacity-60!": showPointerLockBar,
                               "animate-slideUpFade border border-slate-800/30 shadow-xs dark:border-slate-300/20":
                                 isPlaying,
                             },

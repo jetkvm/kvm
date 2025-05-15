@@ -171,12 +171,12 @@ function Terminal({
             [
               // Base styles
               "fixed bottom-0 w-full transform transition duration-500 ease-in-out",
-              "translate-y-[0px]",
+              "-translate-y-[0px]",
             ],
             {
               "pointer-events-none translate-y-[500px] opacity-100 transition duration-300":
                 !enableTerminal,
-              "pointer-events-auto translate-y-[0px] opacity-100 transition duration-300":
+              "pointer-events-auto -translate-y-[0px] opacity-100 transition duration-300":
                 enableTerminal,
             },
           )}

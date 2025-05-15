@@ -58,7 +58,7 @@ export function Combobox({
     <HeadlessCombobox onChange={onChange} {...otherProps}>
       {() => (
         <>
-          <Card className="w-auto !border border-solid !border-slate-800/30 shadow-xs outline-0 dark:!border-slate-300/30">
+          <Card className="w-auto border! border-solid border-slate-800/30! shadow-xs outline-0 dark:border-slate-300/30!">
             <ComboboxInput
               ref={inputRef}
               className={clsx(
@@ -88,7 +88,7 @@ export function Combobox({
           </Card>
 
           {options().length > 0 && (
-            <ComboboxOptions className="hide-scrollbar absolute left-0 z-[100] mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-sm shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:ring-slate-700">
+            <ComboboxOptions className="hide-scrollbar absolute left-0 z-100 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-sm shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:ring-slate-700">
               {options().map(option => (
                 <ComboboxOption
                   key={option.value}
@@ -111,7 +111,7 @@ export function Combobox({
           )}
 
           {options().length === 0 && inputRef.current?.value && (
-            <div className="absolute left-0 z-[100] mt-1 w-full rounded-md bg-white px-4 py-2 text-sm shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:ring-slate-700">
+            <div className="absolute left-0 z-100 mt-1 w-full rounded-md bg-white px-4 py-2 text-sm shadow-lg ring-1 ring-black/5 dark:bg-slate-800 dark:ring-slate-700">
               <div className="text-slate-500 dark:text-slate-400">{emptyMessage}</div>
             </div>
           )}

@@ -1,5 +1,7 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+
 @config "../tailwind.config.js";
+
 @plugin "@tailwindcss/typography";
 @plugin "@tailwindcss/forms";
 @plugin "@headlessui/tailwindcss";
@@ -7,22 +9,11 @@
 /* Dark mode uses CSS selector instead of prefers-color-scheme */
 @custom-variant dark (&:where(.dark, .dark *));
 
-html {
-  @apply scroll-smooth;
-}
-
-html,
-body {
-  height: 100%;
-  width: 100%;
-  overflow: auto;
-}
-
 @theme {
-  --font-sans: "Circular", sans-serif;
-  --font-display: "Circular", sans-serif;
-  --font-serif: "Circular", serif;
-  --font-mono: "Source Code Pro Variable", monospace;
+  --font-sans: 'Circular', sans-serif;
+  --font-display: 'Circular', sans-serif;
+  --font-serif: 'Circular', serif;
+  --font-mono: 'Source Code Pro Variable', monospace;
 
   --grid-layout: auto 1fr auto;
   --grid-headerBody: auto 1fr;
@@ -140,15 +131,26 @@ body {
   animation-delay: --value(integer) ms;
 }
 
+html {
+  @apply scroll-smooth;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+}
+
 @property --grid-color-start {
   syntax: "<color>";
-  initial-value: theme("colors.blue.50/10");
+  initial-value: var(--color-blue-50/10);
   inherits: false;
 }
 
 @property --grid-color-end {
   syntax: "<color>";
-  initial-value: theme("colors.blue.50/100");
+  initial-value: var(--color-blue-50/100);
   inherits: false;
 }
 
@@ -164,8 +166,8 @@ body {
 }
 
 .group:hover .grid-card {
-  --grid-color-start: theme("colors.blue.100/50");
-  --grid-color-end: theme("colors.blue.50/50");
+  --grid-color-start: var(--color-blue-100/50);
+  --grid-color-end: var(--color-blue-50/50);
 }
 
 video::-webkit-media-controls {
@@ -173,11 +175,11 @@ video::-webkit-media-controls {
 }
 
 .hg-theme-default {
-  @apply !font-display font-normal;
+  @apply font-display! font-normal;
 }
 
 .hg-theme-default .hg-button {
-  @apply border !border-b border-slate-800/25 !border-b-slate-800/25 !shadow-xs;
+  @apply border border-b! border-slate-800/25 border-b-slate-800/25! shadow-xs!;
 }
 
 .hg-theme-default .hg-button span {
@@ -249,7 +251,7 @@ video::-webkit-media-controls {
 }
 
 .hg-button {
-  @apply dark:!bg-slate-800 dark:text-white;
+  @apply dark:bg-slate-800! dark:text-white;
 }
 
 .simple-keyboard-control .hg-button {
@@ -297,25 +299,21 @@ video::-webkit-media-controls {
 }
 
 .hg-button.hg-standardBtn[data-skbtn="Space"] {
-  @apply md:!w-[350px];
+  @apply md:w-[350px]!;
 }
 
 .hg-theme-default .hg-row .combination-key {
-  @apply inline-flex !h-auto !w-auto grow-0 py-1 text-xs;
-}
-
-.hg-theme-default .hg-row:has(.combination-key) {
-  /*margin-bottom: 100px !important;*/
+  @apply inline-flex h-auto! w-auto! grow-0 py-1 text-xs;
 }
 
 .hg-theme-default .hg-row .hg-button-container,
 .hg-theme-default .hg-row .hg-button:not(:last-child) {
-  @apply !mr-[2px] md:!mr-[5px];
+  @apply mr-[2px]! md:mr-[5px]!;
 }
 
 /* Hide the scrollbar by setting the scrollbar color to the background color */
 .xterm .xterm-viewport {
-  scrollbar-color: theme("colors.gray.900") #002b36;
+  scrollbar-color: var(--color-gray-900) #002b36;
   scrollbar-width: thin;
 }
 

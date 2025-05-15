@@ -68,7 +68,7 @@ export default function WelcomeRoute() {
                     </div>
                   </div>
 
-                  <div className="!-mt-2 -ml-6 flex items-center justify-center">
+                  <div className="-mt-2! -ml-6 flex items-center justify-center">
                     <img
                       src={DeviceImage}
                       alt="JetKVM Device"
@@ -90,7 +90,7 @@ export default function WelcomeRoute() {
                       theme="light"
                       text="Set up your JetKVM"
                       LeadingIcon={({ className }) => (
-                        <img src={LogoMark} className={cx(className, "mr-1.5 !h-5")} />
+                        <img src={LogoMark} className={cx(className, "mr-1.5 h-5!")} />
                       )}
                       textAlign="center"
                       to="/welcome/mode"

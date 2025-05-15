@@ -78,7 +78,7 @@ export default function KvmCard({
             )}
           </div>
         </div>
-        <div className="h-[1px] bg-slate-800/20 dark:bg-slate-300/20" />
+        <div className="h-px bg-slate-800/20 dark:bg-slate-300/20" />
         <div className="flex justify-between">
           <div>
             {online ? (
@@ -111,7 +111,7 @@ export default function KvmCard({
 
             <MenuItems
               transition
-              className="data-[closed]:scale-95 data-[closed]:transform data-[closed]:opacity-0 data-[enter]:duration-100 data-[leave]:duration-75 data-[enter]:ease-out data-[leave]:ease-in"
+              className="data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-leave:duration-75 data-enter:ease-out data-leave:ease-in"
             >
               <Card className="absolute right-0 z-10 w-56 px-1 mt-2 transition origin-top-right ring-1 ring-black/50 focus:outline-hidden">
                 <div className="divide-y divide-slate-800/20 dark:divide-slate-300/20">
