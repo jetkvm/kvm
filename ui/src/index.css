@@ -1,9 +1,7 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 @plugin "@tailwindcss/typography";
-@plugin "@tailwindcss/forms" {
-  strategy: "base";
-}
+@plugin "@tailwindcss/forms";
 @plugin "@headlessui/tailwindcss";
 
 /* Dark mode uses CSS selector instead of prefers-color-scheme */
