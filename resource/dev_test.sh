@@ -9,7 +9,7 @@ EXIT_CODE=0
 
 runTest() {
     if [ "$JSON_OUTPUT" = true ]; then
-        ./test2json $1 -test.v $ADDITIONAL_ARGS
+        ./test2json $1 -test.v $ADDITIONAL_ARGS | tee $1.result.json
         if [ $? -ne 0 ]; then
             EXIT_CODE=1
         fi
