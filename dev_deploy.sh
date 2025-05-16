@@ -143,5 +143,3 @@ PION_LOG_TRACE=${LOG_TRACE_SCOPES} ./jetkvm_app_debug
 EOF
 
 echo "Deployment complete."
-
-popd
