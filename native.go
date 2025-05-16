@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/resource"
+	"github.com/pion/rtp"
 
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -243,6 +244,8 @@ func handleAudioClient(conn net.Conn) {
 
 	scopedLogger.Info().Msg("native audio socket client connected")
 	inboundPacket := make([]byte, maxAudioFrameSize)
+	var timestamp uint32
+	var packet rtp.Packet
 	for {
 		n, err := conn.Read(inboundPacket)
 		if err != nil {
@@ -250,10 +253,21 @@ func handleAudioClient(conn net.Conn) {
 			return
 		}
 
-		logger.Info().Msgf("audio socket msg: %d", n)
-		
 		if currentSession != nil {
-			if _, err := currentSession.AudioTrack.Write(inboundPacket[:n]); err != nil {
+			if err := packet.Unmarshal(inboundPacket[:n]); err != nil {
+				scopedLogger.Warn().Err(err).Msg("error unmarshalling audio socket packet")
+				continue
+			}
+
+			timestamp += 960
+			packet.Header.Timestamp = timestamp
+			buf, err := packet.Marshal()
+			if err != nil {
+				scopedLogger.Warn().Err(err).Msg("error marshalling packet")
+				continue
+			}
+
+			if _, err := currentSession.AudioTrack.Write(buf); err != nil {
 				scopedLogger.Warn().Err(err).Msg("error writing sample")
 			}
 		}
