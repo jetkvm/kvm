@@ -109,7 +109,7 @@ func (u *UsbGadget) AbsMouseReport(x, y int, buttons uint8) error {
 	return nil
 }
 
-func (u *UsbGadget) AbsMouseWheelReport(wheelY int8, wheelX int8) error {
+func (u *UsbGadget) AbsMouseWheelReport(wheelY, wheelX int8) error {
 	u.absMouseLock.Lock()
 	defer u.absMouseLock.Unlock()
 
