@@ -113,7 +113,7 @@ fi
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
 
 # Copy the binary to the remote host
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < jetkvm_app
+ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < jetkvm_app_debug
 
 if [ "$RESET_USB_HID_DEVICE" = true ]; then
     # Remove the old USB gadget configuration
