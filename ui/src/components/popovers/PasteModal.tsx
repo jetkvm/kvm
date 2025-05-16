@@ -8,13 +8,20 @@ import { GridCard } from "@components/Card";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useHidStore, useRTCStore, useUiStore } from "@/hooks/stores";
-import { chars, keys, modifiers } from "@/keyboardMappings";
+import { useHidStore, useRTCStore, useUiStore, useDeviceSettingsStore } from "@/hooks/stores";
+import { keys, modifiers } from "@/keyboardMappings";
+import { layouts, chars } from "@/keyboardLayouts";
 import notifications from "@/notifications";
 
-const hidKeyboardPayload = (keys: number[], modifier: number) => {
-  return { keys, modifier };
+const hidKeyboardPayload = (keys: number[], modifier: number, hold: boolean) => {
+  return { keys, modifier, hold };
 };
+
+const modifierCode = (shift?: boolean, altRight?: boolean) => {
+  return (shift ? modifiers["ShiftLeft"] : 0)
+       | (altRight ? modifiers["AltRight"] : 0)
+}
+const noModifier = 0
 
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -27,6 +34,18 @@ export default function PasteModal() {
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
   const close = useClose();
 
+  const keyboardLayout = useDeviceSettingsStore(state => state.keyboardLayout);
+  const setKeyboardLayout = useDeviceSettingsStore(
+    state => state.setKeyboardLayout,
+  );
+
+  useEffect(() => {
+    send("getKeyboardLayout", {}, resp => {
+      if ("error" in resp) return;
+      setKeyboardLayout(resp.result as string);
+    });
+  }, []);
+
   const onCancelPasteMode = useCallback(() => {
     setPasteMode(false);
     setDisableVideoFocusTrap(false);
@@ -37,27 +56,40 @@ export default function PasteModal() {
     setPasteMode(false);
     setDisableVideoFocusTrap(false);
     if (rpcDataChannel?.readyState !== "open" || !TextAreaRef.current) return;
+    if (!keyboardLayout) return;
+    if (!chars[keyboardLayout]) return;
 
     const text = TextAreaRef.current.value;
 
     try {
       for (const char of text) {
-        const { key, shift } = chars[char] ?? {};
+        const { key, shift, altRight, deadKey, accentKey } = chars[keyboardLayout][char]
         if (!key) continue;
 
-        await new Promise<void>((resolve, reject) => {
-          send(
-            "keyboardReport",
-            hidKeyboardPayload([keys[key]], shift ? modifiers["ShiftLeft"] : 0),
-            params => {
-              if ("error" in params) return reject(params.error);
-              send("keyboardReport", hidKeyboardPayload([], 0), params => {
+	const keyz = [ keys[key] ];
+	const modz = [ modifierCode(shift, altRight) ];
+
+	if (deadKey) {
+            keyz.push(keys["Space"]);
+            modz.push(noModifier);
+	}
+	if (accentKey) {
+            keyz.unshift(keys[accentKey.key])
+            modz.unshift(modifierCode(accentKey.shift, accentKey.altRight))
+	}
+
+	for (const [index, kei] of keyz.entries()) {
+          await new Promise<void>((resolve, reject) => {
+            send(
+              "keyboardReport",
+              hidKeyboardPayload([kei], modz[index], false),
+              params => {
                 if ("error" in params) return reject(params.error);
                 resolve();
-              });
-            },
-          );
-        });
+              },
+            );
+          });
+	}
       }
     } catch (error) {
       console.error(error);
@@ -113,7 +145,7 @@ export default function PasteModal() {
                             // @ts-expect-error TS doesn't recognize Intl.Segmenter in some environments
                             [...new Intl.Segmenter().segment(value)]
                               .map(x => x.segment)
-                              .filter(char => !chars[char]),
+                              .filter(char => !chars[keyboardLayout][char]),
                           ),
                         ];
 
@@ -132,6 +164,11 @@ export default function PasteModal() {
                     )}
                   </div>
                 </div>
+		<div className="space-y-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Sending key codes using keyboard layout {layouts[keyboardLayout]}
+                  </p>
+		</div>
               </div>
             </div>
           </div>

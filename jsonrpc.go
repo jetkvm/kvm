@@ -888,6 +888,18 @@ func rpcSetScrollSensitivity(sensitivity string) error {
 	return nil
 }
 
+func rpcGetKeyboardLayout() (string, error) {
+	return config.KeyboardLayout, nil
+}
+
+func rpcSetKeyboardLayout(layout string) error {
+	config.KeyboardLayout = layout
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
 func getKeyboardMacros() (interface{}, error) {
 	macros := make([]KeyboardMacro, len(config.KeyboardMacros))
 	copy(macros, config.KeyboardMacros)
@@ -991,7 +1003,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getNetworkSettings":     {Func: rpcGetNetworkSettings},
 	"setNetworkSettings":     {Func: rpcSetNetworkSettings, Params: []string{"settings"}},
 	"renewDHCPLease":         {Func: rpcRenewDHCPLease},
-	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
+	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys", "hold"}},
 	"absMouseReport":         {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
 	"relMouseReport":         {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
 	"wheelReport":            {Func: rpcWheelReport, Params: []string{"wheelY"}},
@@ -1055,6 +1067,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
 	"getScrollSensitivity":   {Func: rpcGetScrollSensitivity},
 	"setScrollSensitivity":   {Func: rpcSetScrollSensitivity, Params: []string{"sensitivity"}},
+	"getKeyboardLayout":      {Func: rpcGetKeyboardLayout},
+	"setKeyboardLayout":      {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
 	"getKeyboardMacros":      {Func: getKeyboardMacros},
 	"setKeyboardMacros":      {Func: setKeyboardMacros, Params: []string{"params"}},
 }

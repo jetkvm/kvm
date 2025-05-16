@@ -26,8 +26,8 @@ func initUsbGadget() {
 	}()
 }
 
-func rpcKeyboardReport(modifier uint8, keys []uint8) error {
-	return gadget.KeyboardReport(modifier, keys)
+func rpcKeyboardReport(modifier uint8, keys []uint8, hold bool) error {
+	return gadget.KeyboardReport(modifier, keys, hold)
 }
 
 func rpcAbsMouseReport(x, y int, buttons uint8) error {
