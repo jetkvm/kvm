@@ -260,21 +260,26 @@ export default function WebRTCVideo() {
       if (blockWheelEvent) return;
 
       // Determine if the wheel event is an accelerable scroll value
-      const isAccel = Math.abs(e.deltaY) >= 100;
+      const isAccelY = Math.abs(e.deltaY) >= 100;
+      const isAccelX = Math.abs(e.deltaX) >= 100;
 
       // Calculate the accelerable scroll value
-      const accelScrollValue = e.deltaY / 100;
+      const accelScrollValueY = e.deltaY / 100;
+      const accelScrollValueX = e.deltaX / 100;
 
       // Calculate the non-accelerable scroll value
-      const nonAccelScrollValue = e.deltaY > 0 ? 1: -1;
+      const nonAccelScrollValueY = e.deltaY > 0 ? 1 : e.deltaY < 0 ? -1 : 0;
+      const nonAccelScrollValueX = e.deltaX > 0 ? 1 : e.deltaX < 0 ? -1 : 0;
 
       // Get actual scroll value
-      const scrollValue = isAccel ? accelScrollValue : nonAccelScrollValue;
+      const scrollValueY = isAccelY ? accelScrollValueY : nonAccelScrollValueY;
+      const scrollValueX = isAccelX ? accelScrollValueX : nonAccelScrollValueX;
 
       // Apply clamping (i.e. min and max mouse wheel hardware value)
-      const clampedScrollValue = Math.max(-128, Math.min(127, scrollValue));
+      const clampedScrollValueY = Math.max(-127, Math.min(127, scrollValueY));
+      const clampedScrollValueX = Math.max(-127, Math.min(127, scrollValueX));
 
-      send("wheelReport", { wheelY: clampedScrollValue });      
+      send("wheelReport", { wheelY: clampedScrollValueY, wheelX : clampedScrollValueX });      
 
       // Apply blocking delay
       setBlockWheelEvent(true);
