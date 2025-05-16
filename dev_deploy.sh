@@ -3,6 +3,19 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+C_RST="$(tput sgr0)"
+C_ERR="$(tput setaf 1)"
+C_OK="$(tput setaf 2)"
+C_WARN="$(tput setaf 3)"
+C_INFO="$(tput setaf 5)"
+
+msg() { printf '%s%s%s\n' $2 "$1" $C_RST; }
+
+msg_info() { msg "$1" $C_INFO; }
+msg_ok() { msg "$1" $C_OK; }
+msg_err() { msg "$1" $C_ERR; }
+msg_warn() { msg "$1" $C_WARN; }
+
 # Function to display help message
 show_help() {
     echo "Usage: $0 [options] -r <remote_ip>"
@@ -12,6 +25,7 @@ show_help() {
     echo
     echo "Optional:"
     echo "  -u, --user <remote_user>   Remote username (default: root)"
+    echo "      --run-go-tests         Run go tests"
     echo "      --skip-ui-build        Skip frontend/UI build"
     echo "      --help                 Display this help message"
     echo
@@ -26,6 +40,7 @@ REMOTE_PATH="/userdata/jetkvm/bin"
 SKIP_UI_BUILD=false
 RESET_USB_HID_DEVICE=false
 LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
+RUN_GO_TESTS=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -46,6 +61,10 @@ while [[ $# -gt 0 ]]; do
             RESET_USB_HID_DEVICE=true
             shift
             ;;
+        --run-go-tests)
+            RUN_GO_TESTS=true
+            shift
+            ;;
         --help)
             show_help
             exit 0
@@ -60,18 +79,35 @@ done
 
 # Verify required parameters
 if [ -z "$REMOTE_HOST" ]; then
-    echo "Error: Remote IP is a required parameter"
+    msg_err "Error: Remote IP is a required parameter"
     show_help
+    exit 1
 fi
 
 # Build the development version on the host
 if [ "$SKIP_UI_BUILD" = false ]; then
+    msg_info "▶ Building frontend"
     make frontend
 fi
+
+msg_info "▶ Building go binary"
 make build_dev
 
-# Change directory to the binary output directory
-cd bin
+if [ "$RUN_GO_TESTS" = true ]; then
+    msg_info "▶ Building go tests"
+    make build_dev_test  
+
+    msg_info "▶ Copying device-tests.tar.gz to remote host"
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/device-tests.tar.gz" < device-tests.tar.gz
+
+    msg_info "▶ Running go tests"
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << EOF
+set -e
+cd ${REMOTE_PATH}
+tar zxvf device-tests.tar.gz
+./run_all_tests -test.v
+EOF
+fi
 
 # Kill any existing instances of the application
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
@@ -107,3 +143,5 @@ PION_LOG_TRACE=${LOG_TRACE_SCOPES} ./jetkvm_app_debug
 EOF
 
 echo "Deployment complete."
+
+popd

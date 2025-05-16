@@ -22,6 +22,29 @@ build_dev: hash_resource
 	@echo "Building..."
 	GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" -o bin/jetkvm_app cmd/main.go
 
+build_test2json:
+	GOOS=linux GOARCH=arm GOARM=7 go build -o bin/test2json cmd/test2json
+
+build_dev_test: build_test2json
+# collect all directories that contain tests
+	@echo "Building tests for devices ..."
+	@rm -rf bin/tests && mkdir -p bin/tests
+	GOOS=linux GOARCH=arm GOARM=7 \
+		go test -v \
+		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
+		-c -o bin/tests ./...; \
+
+	@cat resource/dev_test.sh > bin/tests/run_all_tests
+	@for test in bin/tests/*.test; do \
+		chmod +x $$test; \
+		base_name=$$(basename $$test); \
+		echo "runTest ./$$base_name" >> bin/tests/run_all_tests; \
+	done; \
+	chmod +x bin/tests/run_all_tests; \
+	cp bin/test2json bin/tests/; \
+	chmod +x bin/tests/test2json; \
+	tar czfv device-tests.tar.gz -C bin/tests .
+
 frontend:
 	cd ui && npm ci && npm run build:device
 
