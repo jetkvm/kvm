@@ -98,9 +98,6 @@ if [ "$SKIP_UI_BUILD" = false ]; then
     make frontend
 fi
 
-msg_info "▶ Building go binary"
-make build_dev
-
 if [ "$RUN_GO_TESTS" = true ]; then
     msg_info "▶ Building go tests"
     make build_dev_test  
@@ -120,6 +117,9 @@ tar zxvf device-tests.tar.gz
 ./run_all_tests $TEST_ARGS
 EOF
 fi
+
+msg_info "▶ Building go binary"
+make build_dev
 
 # Kill any existing instances of the application
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"

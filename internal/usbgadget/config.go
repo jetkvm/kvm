@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
-	"path/filepath"
-	"sort"
 )
 
 type gadgetConfigItem struct {
@@ -160,15 +157,15 @@ func (u *UsbGadget) OverrideGadgetConfig(itemKey string, itemAttr string, value 
 	return nil, true
 }
 
-func mountConfigFS() error {
-	_, err := os.Stat(gadgetPath)
+func mountConfigFS(path string) error {
+	_, err := os.Stat(path)
 	// TODO: check if it's mounted properly
 	if err == nil {
 		return nil
 	}
 
 	if os.IsNotExist(err) {
-		err = exec.Command("mount", "-t", "configfs", "none", configFSPath).Run()
+		err = exec.Command("mount", "-t", "configfs", "none", path).Run()
 		if err != nil {
 			return fmt.Errorf("failed to mount configfs: %w", err)
 		}
@@ -186,26 +183,19 @@ func (u *UsbGadget) Init() error {
 
 	udcs := getUdcs()
 	if len(udcs) < 1 {
-		u.log.Error().Msg("no udc found, skipping USB stack init")
-		return nil
+		return u.logWarn("no udc found, skipping USB stack init", nil)
 	}
 
 	u.udc = udcs[0]
-	_, err := os.Stat(u.kvmGadgetPath)
-	if err == nil {
-		u.log.Info().Msg("usb gadget already exists")
-	}
 
-	if err := mountConfigFS(); err != nil {
-		u.log.Error().Err(err).Msg("failed to mount configfs, usb stack might not function properly")
-	}
-
-	if err := os.MkdirAll(u.configC1Path, 0755); err != nil {
-		u.log.Error().Err(err).Msg("failed to create config path")
-	}
-
-	if err := u.writeGadgetConfig(); err != nil {
-		u.log.Error().Err(err).Msg("failed to start gadget")
+	err := u.WithTransaction(func() error {
+		u.tx.MountConfigFS()
+		u.tx.CreateConfigPath()
+		u.tx.WriteGadgetConfig()
+		return nil
+	})
+	if err != nil {
+		return u.logError("unable to initialize USB stack", err)
 	}
 
 	return nil
@@ -217,143 +207,13 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 
 	u.loadGadgetConfig()
 
-	if err := u.writeGadgetConfig(); err != nil {
-		u.log.Error().Err(err).Msg("failed to update gadget")
-	}
-
-	return nil
-}
-
-func (u *UsbGadget) getOrderedConfigItems() orderedGadgetConfigItems {
-	items := make([]gadgetConfigItemWithKey, 0)
-	for key, item := range u.configMap {
-		items = append(items, gadgetConfigItemWithKey{key, item})
-	}
-
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].item.order < items[j].item.order
+	err := u.WithTransaction(func() error {
+		u.tx.WriteGadgetConfig()
+		return nil
 	})
-
-	return items
-}
-
-func (u *UsbGadget) writeGadgetConfig() error {
-	// create kvm gadget path
-	err := os.MkdirAll(u.kvmGadgetPath, 0755)
 	if err != nil {
-		return err
+		return u.logError("unable to update gadget config", err)
 	}
 
-	u.log.Trace().Msg("writing gadget config")
-	for _, val := range u.getOrderedConfigItems() {
-		key := val.key
-		item := val.item
-
-		// check if the item is enabled in the config
-		if !u.isGadgetConfigItemEnabled(key) {
-			u.log.Trace().Str("key", key).Msg("disabling gadget config")
-			err = u.disableGadgetItemConfig(item)
-			if err != nil {
-				return err
-			}
-			continue
-		}
-		u.log.Trace().Str("key", key).Msg("writing gadget config")
-		err = u.writeGadgetItemConfig(item)
-		if err != nil {
-			return err
-		}
-	}
-
-	if err = u.writeUDC(); err != nil {
-		u.log.Error().Err(err).Msg("failed to write UDC")
-		return err
-	}
-
-	if err = u.rebindUsb(true); err != nil {
-		u.log.Info().Err(err).Msg("failed to rebind usb")
-	}
-
-	return nil
-}
-
-func (u *UsbGadget) disableGadgetItemConfig(item gadgetConfigItem) error {
-	// remove symlink if exists
-	if item.configPath == nil {
-		return nil
-	}
-
-	configPath := joinPath(u.configC1Path, item.configPath)
-
-	if _, err := os.Lstat(configPath); os.IsNotExist(err) {
-		u.log.Trace().Str("path", configPath).Msg("symlink does not exist")
-		return nil
-	}
-
-	if err := os.Remove(configPath); err != nil {
-		return fmt.Errorf("failed to remove symlink %s: %w", item.configPath, err)
-	}
-
-	return nil
-}
-
-func (u *UsbGadget) writeGadgetItemConfig(item gadgetConfigItem) error {
-	// create directory for the item
-	gadgetItemPath := joinPath(u.kvmGadgetPath, item.path)
-	err := os.MkdirAll(gadgetItemPath, 0755)
-	if err != nil {
-		return fmt.Errorf("failed to create path %s: %w", gadgetItemPath, err)
-	}
-
-	if len(item.attrs) > 0 {
-		// write attributes for the item
-		err = u.writeGadgetAttrs(gadgetItemPath, item.attrs)
-		if err != nil {
-			return fmt.Errorf("failed to write attributes for %s: %w", gadgetItemPath, err)
-		}
-	}
-
-	// write report descriptor if available
-	if item.reportDesc != nil {
-		err = u.writeIfDifferent(path.Join(gadgetItemPath, "report_desc"), item.reportDesc, 0644)
-		if err != nil {
-			return err
-		}
-	}
-
-	// create config directory if configAttrs are set
-	if len(item.configAttrs) > 0 {
-		configItemPath := joinPath(u.configC1Path, item.configPath)
-		err = os.MkdirAll(configItemPath, 0755)
-		if err != nil {
-			return fmt.Errorf("failed to create path %s: %w", configItemPath, err)
-		}
-
-		err = u.writeGadgetAttrs(configItemPath, item.configAttrs)
-		if err != nil {
-			return fmt.Errorf("failed to write config attributes for %s: %w", configItemPath, err)
-		}
-	}
-
-	// create symlink if configPath is set
-	if item.configPath != nil && item.configAttrs == nil {
-		configPath := joinPath(u.configC1Path, item.configPath)
-		u.log.Trace().Str("source", configPath).Str("target", gadgetItemPath).Msg("creating symlink")
-		if err := ensureSymlink(configPath, gadgetItemPath); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (u *UsbGadget) writeGadgetAttrs(basePath string, attrs gadgetAttributes) error {
-	for key, val := range attrs {
-		filePath := filepath.Join(basePath, key)
-		err := u.writeIfDifferent(filePath, []byte(val), 0644)
-		if err != nil {
-			return fmt.Errorf("failed to write to %s: %w", filePath, err)
-		}
-	}
 	return nil
 }

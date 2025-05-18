@@ -1,6 +1,8 @@
 module github.com/jetkvm/kvm
 
-go 1.23.0
+go 1.23.4
+
+toolchain go1.24.3
 
 require (
 	github.com/Masterminds/semver/v3 v3.3.0
@@ -12,21 +14,25 @@ require (
 	github.com/gin-contrib/logger v1.2.5
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.6.0
+	github.com/guregu/null/v6 v6.0.0
 	github.com/gwatts/rootcerts v0.0.0-20240401182218-3ab9db955caf
 	github.com/hanwen/go-fuse/v2 v2.5.1
-	github.com/hashicorp/go-envparse v0.1.0
 	github.com/pion/logging v0.2.2
 	github.com/pion/mdns/v2 v2.0.7
 	github.com/pion/webrtc/v4 v4.0.0
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/prometheus/client_golang v1.21.0
 	github.com/prometheus/common v0.62.0
+	github.com/prometheus/procfs v0.15.1
 	github.com/psanford/httpreadat v0.1.0
 	github.com/rs/zerolog v1.34.0
+	github.com/sourcegraph/tf-dag v0.2.2-0.20250131204052-3e8ff1477b4f
+	github.com/stretchr/testify v1.10.0
 	github.com/vishvananda/netlink v1.3.0
 	go.bug.st/serial v1.6.2
 	golang.org/x/crypto v0.36.0
 	golang.org/x/net v0.38.0
+	golang.org/x/sys v0.32.0
 )
 
 replace github.com/pojntfx/go-nbd v0.3.2 => github.com/chemhack/go-nbd v0.0.0-20241006125820-59e45f5b1e7b
@@ -38,6 +44,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.5 // indirect
 	github.com/creack/goselect v0.1.2 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/sse v1.0.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.2 // indirect
@@ -45,7 +52,6 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.26.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
-	github.com/guregu/null/v6 v6.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
@@ -70,15 +76,14 @@ require (
 	github.com/pion/stun/v3 v3.0.0 // indirect
 	github.com/pion/transport/v3 v3.0.7 // indirect
 	github.com/pion/turn/v4 v4.0.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/arch v0.15.0 // indirect
 	golang.org/x/oauth2 v0.24.0 // indirect
-	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

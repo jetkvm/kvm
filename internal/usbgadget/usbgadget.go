@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
 )
 
@@ -28,7 +29,8 @@ type Config struct {
 	Manufacturer string `json:"manufacturer"`
 	Product      string `json:"product"`
 
-	isEmpty bool
+	strictMode bool // when it's enabled, all warnings will be converted to errors
+	isEmpty    bool
 }
 
 var defaultUsbGadgetDevices = Devices{
@@ -59,9 +61,14 @@ type UsbGadget struct {
 
 	enabledDevices Devices
 
+	strictMode bool // only intended for testing for now
+
 	absMouseAccumulatedWheelY float64
 
 	lastUserInput time.Time
+
+	tx     *UsbGadgetTransaction
+	txLock sync.Mutex
 
 	log *zerolog.Logger
 }
@@ -69,12 +76,12 @@ type UsbGadget struct {
 const configFSPath = "/sys/kernel/config"
 const gadgetPath = "/sys/kernel/config/usb_gadget"
 
-var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
+var defaultLogger = logging.GetSubsystemLogger("usbgadget")
 
 // NewUsbGadget creates a new UsbGadget.
 func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
 	if logger == nil {
-		logger = &defaultLogger
+		logger = defaultLogger
 	}
 
 	if enabledDevices == nil {
@@ -95,9 +102,12 @@ func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *
 		keyboardLock:   sync.Mutex{},
 		absMouseLock:   sync.Mutex{},
 		relMouseLock:   sync.Mutex{},
+		txLock:         sync.Mutex{},
 		enabledDevices: *enabledDevices,
 		lastUserInput:  time.Now(),
 		log:            logger,
+
+		strictMode: config.strictMode,
 
 		absMouseAccumulatedWheelY: 0,
 	}
