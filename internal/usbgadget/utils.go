@@ -7,14 +7,6 @@ import (
 	"path/filepath"
 )
 
-// Helper function to get absolute value of float64
-func abs(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
 func joinPath(basePath string, paths []string) string {
 	pathArr := append([]string{basePath}, paths...)
 	return filepath.Join(pathArr...)
