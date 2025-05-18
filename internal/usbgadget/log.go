@@ -1,12 +1,12 @@
 package usbgadget
 
 import (
-	"fmt"
+	"errors"
 )
 
 func (u *UsbGadget) logWarn(msg string, err error) error {
 	if err == nil {
-		err = fmt.Errorf(msg)
+		err = errors.New(msg)
 	}
 	if u.strictMode {
 		return err
@@ -17,7 +17,7 @@ func (u *UsbGadget) logWarn(msg string, err error) error {
 
 func (u *UsbGadget) logError(msg string, err error) error {
 	if err == nil {
-		err = fmt.Errorf(msg)
+		err = errors.New(msg)
 	}
 	if u.strictMode {
 		return err
