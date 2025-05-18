@@ -113,7 +113,7 @@ func (u *UsbGadget) AbsMouseWheelReport(wheelY int8) error {
 	}
 
 	err := u.absMouseWriteHidFile([]byte{
-		2,                  // Report ID 2
+		2,            // Report ID 2
 		byte(wheelY), // Wheel Y (signed)
 	})
 
