@@ -96,7 +96,12 @@ func (tx *UsbGadgetTransaction) removeFile(component string, path string, descri
 }
 
 func (tx *UsbGadgetTransaction) Commit() error {
-	tx.log.Info().Interface("transaction", tx.c.Apply()).Msg("committing transaction")
+	err := tx.c.Apply()
+	if err != nil {
+		tx.log.Error().Err(err).Msg("failed to update usbgadget configuration")
+		return err
+	}
+	tx.log.Info().Msg("usbgadget configuration updated")
 	return nil
 }
 
