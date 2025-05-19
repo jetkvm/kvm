@@ -107,7 +107,7 @@ export const chars = {
   y: { key: "KeyZ" },
   z: { key: "KeyY" },
   "§": { key: "Backquote" },
-  "°": { key: "Backquote", shift: true }, 
+  "°": { key: "Backquote", shift: true },
   1: { key: "Digit1" },
   "+": { key: "Digit1", shift: true },
   "|": { key: "Digit1", altRight: true },
