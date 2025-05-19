@@ -881,5 +881,4 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
       set({ loading: false });
     }
   },
-  }
 }));
