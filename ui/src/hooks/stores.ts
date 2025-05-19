@@ -302,6 +302,9 @@ interface SettingsState {
 
   backlightSettings: BacklightSettings;
   setBacklightSettings: (settings: BacklightSettings) => void;
+
+  keyboardLayout: string;
+  setKeyboardLayout: (layout: string) => void;
 }
 
 export const useSettingsStore = create(
@@ -330,6 +333,9 @@ export const useSettingsStore = create(
       },
       setBacklightSettings: (settings: BacklightSettings) =>
         set({ backlightSettings: settings }),
+
+      keyboardLayout: "en-US",
+      setKeyboardLayout: layout => set({ keyboardLayout: layout }),
     }),
     {
       name: "settings",
@@ -347,8 +353,6 @@ export interface DeviceSettingsState {
   trackpadThreshold: number;
   scrollSensitivity: "low" | "default" | "high";
   setScrollSensitivity: (sensitivity: DeviceSettingsState["scrollSensitivity"]) => void;
-  keyboardLayout: string;
-  setKeyboardLayout: (layout: string) => void;
 }
 
 export interface RemoteVirtualMediaState {

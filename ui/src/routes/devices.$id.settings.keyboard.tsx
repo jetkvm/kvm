@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 
-import { useDeviceSettingsStore } from "@/hooks/stores";
+import { useSettingsStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
@@ -12,8 +12,8 @@ import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { SettingsItem } from "./devices.$id.settings";
 
 export default function SettingsKeyboardRoute() {
-  const keyboardLayout = useDeviceSettingsStore(state => state.keyboardLayout);
-  const setKeyboardLayout = useDeviceSettingsStore(
+  const keyboardLayout = useSettingsStore(state => state.keyboardLayout);
+  const setKeyboardLayout = useSettingsStore(
     state => state.setKeyboardLayout,
   );
 

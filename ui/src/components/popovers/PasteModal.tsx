@@ -8,7 +8,7 @@ import { GridCard } from "@components/Card";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useHidStore, useRTCStore, useUiStore, useDeviceSettingsStore } from "@/hooks/stores";
+import { useHidStore, useRTCStore, useUiStore, useSettingsStore } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
 import { layouts, chars } from "@/keyboardLayouts";
 import notifications from "@/notifications";
@@ -34,8 +34,8 @@ export default function PasteModal() {
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
   const close = useClose();
 
-  const keyboardLayout = useDeviceSettingsStore(state => state.keyboardLayout);
-  const setKeyboardLayout = useDeviceSettingsStore(
+  const keyboardLayout = useSettingsStore(state => state.keyboardLayout);
+  const setKeyboardLayout = useSettingsStore(
     state => state.setKeyboardLayout,
   );
 
