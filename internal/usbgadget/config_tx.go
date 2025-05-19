@@ -319,6 +319,7 @@ func (tx *UsbGadgetTransaction) WriteUDC() {
 	// bound the gadget to a UDC (USB Device Controller)
 	path := path.Join(tx.kvmGadgetPath, "UDC")
 	tx.addFileChange("udc", RequestedFileChange{
+		Key:             "udc",
 		Path:            path,
 		ExpectedState:   FileStateFileContentMatch,
 		ExpectedContent: []byte(tx.udc),
@@ -334,6 +335,8 @@ func (tx *UsbGadgetTransaction) RebindUsb(ignoreUnbindError bool) {
 		ExpectedState:   FileStateFileWrite,
 		ExpectedContent: []byte(tx.udc),
 		Description:     "unbind UDC",
+		DependsOn:       []string{"udc"},
+		IgnoreErrors:    ignoreUnbindError,
 	})
 	// bind the gadget to the UDC
 	tx.addFileChange("udc", RequestedFileChange{
@@ -342,6 +345,5 @@ func (tx *UsbGadgetTransaction) RebindUsb(ignoreUnbindError bool) {
 		ExpectedContent: []byte(tx.udc),
 		Description:     "bind UDC",
 		DependsOn:       []string{path.Join(tx.dwc3Path, "unbind")},
-		IgnoreErrors:    ignoreUnbindError,
 	})
 }

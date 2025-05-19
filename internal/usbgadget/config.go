@@ -177,7 +177,7 @@ func (u *UsbGadget) Init() error {
 
 	u.udc = udcs[0]
 
-	err := u.configureUsbGadget()
+	err := u.configureUsbGadget(false)
 	if err != nil {
 		return u.logError("unable to initialize USB stack", err)
 	}
@@ -191,7 +191,7 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 
 	u.loadGadgetConfig()
 
-	err := u.configureUsbGadget()
+	err := u.configureUsbGadget(true)
 	if err != nil {
 		return u.logError("unable to update gadget config", err)
 	}
@@ -199,11 +199,14 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 	return nil
 }
 
-func (u *UsbGadget) configureUsbGadget() error {
+func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
 	return u.WithTransaction(func() error {
 		u.tx.MountConfigFS()
 		u.tx.CreateConfigPath()
 		u.tx.WriteGadgetConfig()
+		if resetUsb {
+			u.tx.RebindUsb(true)
+		}
 		return nil
 	})
 }

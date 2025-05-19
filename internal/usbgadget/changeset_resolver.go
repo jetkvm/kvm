@@ -128,7 +128,11 @@ func (c *ChangeSetResolver) applyChanges() error {
 
 		err := c.changeset.applyChange(change)
 		if err != nil {
-			return err
+			if change.IgnoreErrors {
+				c.l.Warn().Str("change", change.String()).Err(err).Msg("ignoring error")
+			} else {
+				return err
+			}
 		}
 	}
 
