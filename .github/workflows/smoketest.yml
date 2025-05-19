@@ -106,7 +106,7 @@ jobs:
       - name: Set up Golang
         uses: actions/setup-go@v4
         with:
-          go-version: "1.24.0"
+          go-version: "1.24.3"
       - name: Golang Test Report
         uses: becheran/go-testreport@v0.3.2
         with:
