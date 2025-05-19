@@ -13,8 +13,8 @@ import { keys, modifiers } from "@/keyboardMappings";
 import { layouts, chars } from "@/keyboardLayouts";
 import notifications from "@/notifications";
 
-const hidKeyboardPayload = (keys: number[], modifier: number, hold: boolean) => {
-  return { keys, modifier, hold };
+const hidKeyboardPayload = (keys: number[], modifier: number) => {
+  return { keys, modifier };
 };
 
 const modifierCode = (shift?: boolean, altRight?: boolean) => {
@@ -82,10 +82,13 @@ export default function PasteModal() {
           await new Promise<void>((resolve, reject) => {
             send(
               "keyboardReport",
-              hidKeyboardPayload([kei], modz[index], false),
+              hidKeyboardPayload([kei], modz[index]),
               params => {
                 if ("error" in params) return reject(params.error);
-                resolve();
+                send("keyboardReport", hidKeyboardPayload([], 0), params => {
+                  if ("error" in params) return reject(params.error);
+                  resolve();
+                });
               },
             );
           });

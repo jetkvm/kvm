@@ -74,7 +74,7 @@ func (u *UsbGadget) keyboardWriteHidFile(data []byte) error {
 	return nil
 }
 
-func (u *UsbGadget) KeyboardReport(modifier uint8, keys []uint8, hold bool) error {
+func (u *UsbGadget) KeyboardReport(modifier uint8, keys []uint8) error {
 	u.keyboardLock.Lock()
 	defer u.keyboardLock.Unlock()
 
@@ -88,13 +88,6 @@ func (u *UsbGadget) KeyboardReport(modifier uint8, keys []uint8, hold bool) erro
 	err := u.keyboardWriteHidFile([]byte{modifier, 0, keys[0], keys[1], keys[2], keys[3], keys[4], keys[5]})
 	if err != nil {
 		return err
-	}
-
-	if !hold {
-		err := u.keyboardWriteHidFile(make([]uint8, 8))
-		if err != nil {
-			return err
-		}
 	}
 
 	u.resetUserInputTime()

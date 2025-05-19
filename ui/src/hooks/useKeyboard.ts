@@ -4,10 +4,6 @@ import { useHidStore, useRTCStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { keys, modifiers } from "@/keyboardMappings";
 
-const hidKeyboardPayload = (keys: number[], modifier: number, hold: boolean) => {
-  return { keys, modifier, hold };
-};
-
 export default function useKeyboard() {
   const [send] = useJsonRpc();
 
@@ -21,7 +17,7 @@ export default function useKeyboard() {
       if (rpcDataChannel?.readyState !== "open") return;
       const accModifier = modifiers.reduce((acc, val) => acc + val, 0);
 
-      send("keyboardReport", hidKeyboardPayload(keys, accModifier, true));
+      send("keyboardReport", { keys, modifier: accModifier });
 
       // We do this for the info bar to display the currently pressed keys for the user
       updateActiveKeysAndModifiers({ keys: keys, modifiers: modifiers });
