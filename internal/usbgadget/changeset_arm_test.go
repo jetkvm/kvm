@@ -1,3 +1,5 @@
+//go:build arm && linux
+
 package usbgadget
 
 import (
@@ -35,5 +37,5 @@ func TestUsbGadgetInit(t *testing.T) {
 func TestUsbGadgetStrictModeInitFail(t *testing.T) {
 	usbConfig.strictMode = true
 	u := NewUsbGadget("test", usbDevices, usbConfig, nil)
-	assert.NotNil(t, u, "should be nil")
+	assert.Nil(t, u, "should be nil")
 }
