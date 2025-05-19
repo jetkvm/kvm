@@ -3,12 +3,14 @@ package usbgadget
 import (
 	"fmt"
 
+	"github.com/rs/zerolog"
 	"github.com/sourcegraph/tf-dag/dag"
 )
 
 type ChangeSetResolver struct {
 	changeset *ChangeSet
 
+	l *zerolog.Logger
 	g *dag.AcyclicGraph
 
 	changesMap            map[string]*FileChange
@@ -95,6 +97,10 @@ func (c *ChangeSetResolver) resolveChanges(initial bool) error {
 		return err
 	}
 
+	for _, change := range c.resolvedChanges {
+		c.l.Trace().Str("change", change.String()).Msg("resolved change")
+	}
+
 	if !c.additionalResolveRequired || !initial {
 		return nil
 	}
@@ -108,9 +114,9 @@ func (c *ChangeSetResolver) applyChanges() error {
 		action := change.Action()
 		actionStr := FileChangeResolvedActionString[action]
 
-		l := defaultLogger.Info()
+		l := c.l.Info()
 		if action == FileChangeResolvedActionDoNothing {
-			l = defaultLogger.Trace()
+			l = c.l.Trace()
 		}
 
 		l.Str("action", actionStr).Str("change", change.String()).Msg("applying change")

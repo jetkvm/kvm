@@ -22,6 +22,8 @@ type UsbGadgetTransaction struct {
 	configC1Path              string
 	orderedConfigItems        orderedGadgetConfigItems
 	isGadgetConfigItemEnabled func(key string) bool
+
+	reorderSymlinkChanges *RequestedFileChange
 }
 
 func (u *UsbGadget) newUsbGadgetTransaction(lock bool) error {
@@ -96,6 +98,8 @@ func (tx *UsbGadgetTransaction) removeFile(component string, path string, descri
 }
 
 func (tx *UsbGadgetTransaction) Commit() error {
+	tx.addFileChange("gadget-finalize", *tx.reorderSymlinkChanges)
+
 	err := tx.c.Apply()
 	if err != nil {
 		tx.log.Error().Err(err).Msg("failed to update usbgadget configuration")
@@ -151,6 +155,21 @@ func (tx *UsbGadgetTransaction) WriteGadgetConfig() {
 	tx.WriteUDC()
 }
 
+func (tx *UsbGadgetTransaction) getDisableKeys() []string {
+	disableKeys := make([]string, 0)
+	for _, item := range tx.orderedConfigItems {
+		if !tx.isGadgetConfigItemEnabled(item.key) {
+			continue
+		}
+		if item.item.configPath == nil || item.item.configAttrs != nil {
+			continue
+		}
+
+		disableKeys = append(disableKeys, fmt.Sprintf("disable-%s", item.item.device))
+	}
+	return disableKeys
+}
+
 func (tx *UsbGadgetTransaction) DisableGadgetItemConfig(item gadgetConfigItem) {
 	// remove symlink if exists
 	if item.configPath == nil {
@@ -174,7 +193,7 @@ func (tx *UsbGadgetTransaction) writeGadgetItemConfig(item gadgetConfigItem, dep
 	beforeChange := make([]string, 0)
 	disableGadgetItemKey := fmt.Sprintf("disable-%s", item.device)
 	if item.configPath != nil && item.configAttrs == nil {
-		beforeChange = append(beforeChange, disableGadgetItemKey)
+		beforeChange = append(beforeChange, tx.getDisableKeys()...)
 	}
 
 	if len(item.attrs) > 0 {
@@ -234,13 +253,7 @@ func (tx *UsbGadgetTransaction) writeGadgetItemConfig(item gadgetConfigItem, dep
 			Description:   "remove symlink",
 		})
 
-		tx.addFileChange(component, RequestedFileChange{
-			Path:            configPath,
-			ExpectedState:   FileStateSymlink,
-			ExpectedContent: []byte(gadgetItemPath),
-			Description:     "create symlink",
-			DependsOn:       files,
-		})
+		tx.addReorderSymlinkChange(configPath, gadgetItemPath, files)
 	}
 
 	return files
@@ -263,6 +276,27 @@ func (tx *UsbGadgetTransaction) writeGadgetAttrs(basePath string, attrs gadgetAt
 	return files
 }
 
+func (tx *UsbGadgetTransaction) addReorderSymlinkChange(path string, target string, deps []string) {
+	tx.log.Trace().Str("path", path).Str("target", target).Msg("add reorder symlink change")
+
+	if tx.reorderSymlinkChanges == nil {
+		tx.reorderSymlinkChanges = &RequestedFileChange{
+			Component:     "gadget-finalize",
+			Key:           "reorder-symlinks",
+			Path:          tx.configC1Path,
+			ExpectedState: FileStateSymlinkInOrderConfigFS,
+			Description:   "order symlinks",
+			ParamSymlinks: []symlink{},
+		}
+	}
+
+	tx.reorderSymlinkChanges.DependsOn = append(tx.reorderSymlinkChanges.DependsOn, deps...)
+	tx.reorderSymlinkChanges.ParamSymlinks = append(tx.reorderSymlinkChanges.ParamSymlinks, symlink{
+		Path:   path,
+		Target: target,
+	})
+}
+
 func (tx *UsbGadgetTransaction) WriteUDC() {
 	// bound the gadget to a UDC (USB Device Controller)
 	path := path.Join(tx.kvmGadgetPath, "UDC")
@@ -270,6 +304,7 @@ func (tx *UsbGadgetTransaction) WriteUDC() {
 		Path:            path,
 		ExpectedState:   FileStateFileContentMatch,
 		ExpectedContent: []byte(tx.udc),
+		DependsOn:       []string{"reorder-symlinks"},
 		Description:     "write UDC",
 	})
 }

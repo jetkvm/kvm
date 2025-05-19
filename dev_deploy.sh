@@ -26,6 +26,8 @@ show_help() {
     echo "Optional:"
     echo "  -u, --user <remote_user>   Remote username (default: root)"
     echo "      --run-go-tests         Run go tests"
+    echo "      --run-go-tests-only    Run go tests and exit"
+    echo "      --run-go-tests-json    Run go tests and output JSON"
     echo "      --skip-ui-build        Skip frontend/UI build"
     echo "      --help                 Display this help message"
     echo
@@ -42,6 +44,8 @@ RESET_USB_HID_DEVICE=false
 LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
 RUN_GO_TESTS=false
 RUN_GO_TESTS_JSON=false
+RUN_GO_TESTS_ONLY=false
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -67,6 +71,12 @@ while [[ $# -gt 0 ]]; do
             ;;
         --run-go-tests-json)
             RUN_GO_TESTS_JSON=true
+            RUN_GO_TESTS=true
+            shift
+            ;;
+        --run-go-tests-only)
+            RUN_GO_TESTS_ONLY=true
+            RUN_GO_TESTS=true
             shift
             ;;
         --help)
@@ -80,10 +90,6 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
-
-if [ "$RUN_GO_TESTS_JSON" = true ]; then
-    RUN_GO_TESTS=true
-fi
 
 # Verify required parameters
 if [ -z "$REMOTE_HOST" ]; then
@@ -114,8 +120,13 @@ if [ "$RUN_GO_TESTS" = true ]; then
 set -e
 cd ${REMOTE_PATH}
 tar zxvf device-tests.tar.gz
-./run_all_tests $TEST_ARGS
+PION_LOG_TRACE=all ./run_all_tests $TEST_ARGS
 EOF
+
+    if [ "$RUN_GO_TESTS_ONLY" = true ]; then
+        msg_info "▶ Go tests completed"
+        exit 0
+    fi
 fi
 
 msg_info "▶ Building go binary"

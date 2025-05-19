@@ -80,6 +80,10 @@ var defaultLogger = logging.GetSubsystemLogger("usbgadget")
 
 // NewUsbGadget creates a new UsbGadget.
 func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
+	return newUsbGadget(name, defaultGadgetConfig, enabledDevices, config, logger)
+}
+
+func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
 	if logger == nil {
 		logger = defaultLogger
 	}
@@ -96,7 +100,7 @@ func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *
 		name:           name,
 		kvmGadgetPath:  path.Join(gadgetPath, name),
 		configC1Path:   path.Join(gadgetPath, name, "configs/c.1"),
-		configMap:      defaultGadgetConfig,
+		configMap:      configMap,
 		customConfig:   *config,
 		configLock:     sync.Mutex{},
 		keyboardLock:   sync.Mutex{},

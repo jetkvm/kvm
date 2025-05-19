@@ -69,6 +69,15 @@ jobs:
           CI_USER: ${{ vars.JETKVM_CI_USER }}
           CI_HOST: ${{ vars.JETKVM_CI_HOST }}
           CI_SSH_PRIVATE: ${{ secrets.JETKVM_CI_SSH_PRIVATE }}
+      - name: Run tests
+        run: |
+          set -e
+          make build_dev_test  
+
+          echo "+ Copying device-tests.tar.gz to remote host"
+          ssh jkci "cat > /userdata/jetkvm/device-tests.tar.gz" < device-tests.tar.gz
+          echo "+ Running go tests"
+          ssh jkci "cd /userdata/jetkvm && tar zxvf device-tests.tar.gz && ./run_all_tests -json"
       - name: Deploy application
         run: |
           set -e

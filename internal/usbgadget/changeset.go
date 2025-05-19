@@ -35,20 +35,23 @@ const (
 	FileStateMounted
 	FileStateMountedConfigFS
 	FileStateSymlink
+	FileStateSymlinkInOrderConfigFS // configfs is a shithole, so we need to check if the symlinks are created in the correct order
+	FileStateSymlinkNotInOrderConfigFS
 	FileStateTouch
 )
 
 var FileStateString = map[FileState]string{
-	FileStateUnknown:          "UNKNOWN",
-	FileStateAbsent:           "ABSENT",
-	FileStateDirectory:        "DIRECTORY",
-	FileStateFile:             "FILE",
-	FileStateFileContentMatch: "FILE_CONTENT_MATCH",
-	FileStateFileWrite:        "FILE_WRITE",
-	FileStateMounted:          "MOUNTED",
-	FileStateMountedConfigFS:  "CONFIGFS_MOUNT",
-	FileStateSymlink:          "SYMLINK",
-	FileStateTouch:            "TOUCH",
+	FileStateUnknown:                "UNKNOWN",
+	FileStateAbsent:                 "ABSENT",
+	FileStateDirectory:              "DIRECTORY",
+	FileStateFile:                   "FILE",
+	FileStateFileContentMatch:       "FILE_CONTENT_MATCH",
+	FileStateFileWrite:              "FILE_WRITE",
+	FileStateMounted:                "MOUNTED",
+	FileStateMountedConfigFS:        "CONFIGFS_MOUNT",
+	FileStateSymlink:                "SYMLINK",
+	FileStateSymlinkInOrderConfigFS: "SYMLINK_IN_ORDER_CONFIGFS",
+	FileStateTouch:                  "TOUCH",
 }
 
 const (
@@ -69,6 +72,8 @@ const (
 	FileChangeResolvedActionAppendFile
 	FileChangeResolvedActionCreateSymlink
 	FileChangeResolvedActionRecreateSymlink
+	FileChangeResolvedActionCreateDirectoryAndSymlinks
+	FileChangeResolvedActionReorderSymlinks
 	FileChangeResolvedActionCreateDirectory
 	FileChangeResolvedActionRemoveDirectory
 	FileChangeResolvedActionTouch
@@ -76,19 +81,21 @@ const (
 )
 
 var FileChangeResolvedActionString = map[FileChangeResolvedAction]string{
-	FileChangeResolvedActionUnknown:         "UNKNOWN",
-	FileChangeResolvedActionDoNothing:       "DO_NOTHING",
-	FileChangeResolvedActionRemove:          "REMOVE",
-	FileChangeResolvedActionCreateFile:      "FILE_CREATE",
-	FileChangeResolvedActionWriteFile:       "FILE_WRITE",
-	FileChangeResolvedActionUpdateFile:      "FILE_UPDATE",
-	FileChangeResolvedActionAppendFile:      "FILE_APPEND",
-	FileChangeResolvedActionCreateSymlink:   "SYMLINK_CREATE",
-	FileChangeResolvedActionRecreateSymlink: "SYMLINK_RECREATE",
-	FileChangeResolvedActionCreateDirectory: "DIR_CREATE",
-	FileChangeResolvedActionRemoveDirectory: "DIR_REMOVE",
-	FileChangeResolvedActionTouch:           "TOUCH",
-	FileChangeResolvedActionMountConfigFS:   "CONFIGFS_MOUNT",
+	FileChangeResolvedActionUnknown:                    "UNKNOWN",
+	FileChangeResolvedActionDoNothing:                  "DO_NOTHING",
+	FileChangeResolvedActionRemove:                     "REMOVE",
+	FileChangeResolvedActionCreateFile:                 "FILE_CREATE",
+	FileChangeResolvedActionWriteFile:                  "FILE_WRITE",
+	FileChangeResolvedActionUpdateFile:                 "FILE_UPDATE",
+	FileChangeResolvedActionAppendFile:                 "FILE_APPEND",
+	FileChangeResolvedActionCreateSymlink:              "SYMLINK_CREATE",
+	FileChangeResolvedActionRecreateSymlink:            "SYMLINK_RECREATE",
+	FileChangeResolvedActionCreateDirectoryAndSymlinks: "DIR_CREATE_AND_SYMLINKS",
+	FileChangeResolvedActionReorderSymlinks:            "SYMLINK_REORDER",
+	FileChangeResolvedActionCreateDirectory:            "DIR_CREATE",
+	FileChangeResolvedActionRemoveDirectory:            "DIR_REMOVE",
+	FileChangeResolvedActionTouch:                      "TOUCH",
+	FileChangeResolvedActionMountConfigFS:              "CONFIGFS_MOUNT",
 }
 
 type ChangeSet struct {
@@ -99,6 +106,7 @@ type RequestedFileChange struct {
 	Component       string
 	Key             string
 	Path            string // will be used as Key if Key is empty
+	ParamSymlinks   []symlink
 	ExpectedState   FileState
 	ExpectedContent []byte
 	DependsOn       []string
@@ -127,6 +135,10 @@ func (f *RequestedFileChange) String() string {
 		s = fmt.Sprintf("file: %s", f.Path)
 	case FileStateSymlink:
 		s = fmt.Sprintf("symlink: %s -> %s", f.Path, f.ExpectedContent)
+	case FileStateSymlinkInOrderConfigFS:
+		s = fmt.Sprintf("symlink_in_order_configfs: %s -> %s", f.Path, f.ExpectedContent)
+	case FileStateSymlinkNotInOrderConfigFS:
+		s = fmt.Sprintf("symlink_not_in_order_configfs: %s -> %s", f.Path, f.ExpectedContent)
 	case FileStateAbsent:
 		s = fmt.Sprintf("absent: %s", f.Path)
 	case FileStateFileContentMatch:
@@ -217,12 +229,20 @@ func (fc *FileChange) getActualState() error {
 	if fi.IsDir() {
 		fc.ActualState = FileStateDirectory
 
-		if fc.ExpectedState == FileStateMountedConfigFS {
+		switch fc.ExpectedState {
+		case FileStateMountedConfigFS:
 			err := fc.checkIfDirIsMountPoint()
 			if err != nil {
 				l.Warn().Err(err).Msg("failed to check if dir is mount point")
 				return err
 			}
+		case FileStateSymlinkInOrderConfigFS:
+			state, err := checkIfSymlinksInOrder(fc, &l)
+			if err != nil {
+				l.Warn().Err(err).Msg("failed to check if symlinks are in order")
+				return err
+			}
+			fc.ActualState = state
 		}
 		return nil
 	}
@@ -323,6 +343,12 @@ func (fc *FileChange) getFileChangeResolvedAction() FileChangeResolvedAction {
 			return FileChangeResolvedActionRecreateSymlink
 		}
 		return FileChangeResolvedActionCreateSymlink
+	case FileStateSymlinkInOrderConfigFS:
+		// if the file is already a symlink, check if the target is the same
+		if fc.ActualState == FileStateSymlinkInOrderConfigFS {
+			return FileChangeResolvedActionDoNothing
+		}
+		return FileChangeResolvedActionReorderSymlinks
 	case FileStateAbsent:
 		if fc.ActualState == FileStateAbsent {
 			return FileChangeResolvedActionDoNothing
@@ -361,6 +387,7 @@ func (c *ChangeSet) ApplyChanges() error {
 	r := ChangeSetResolver{
 		changeset: c,
 		g:         &dag.AcyclicGraph{},
+		l:         defaultLogger,
 	}
 
 	return r.Apply()
@@ -381,6 +408,8 @@ func (c *ChangeSet) applyChange(change *FileChange) error {
 			return fmt.Errorf("failed to remove symlink: %w", err)
 		}
 		return os.Symlink(string(change.ExpectedContent), change.Path)
+	case FileChangeResolvedActionReorderSymlinks:
+		return recreateSymlinks(change, nil)
 	case FileChangeResolvedActionCreateDirectory:
 		return os.MkdirAll(change.Path, 0755)
 	case FileChangeResolvedActionRemove:
