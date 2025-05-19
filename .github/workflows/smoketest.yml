@@ -75,9 +75,40 @@ jobs:
           make build_dev_test  
 
           echo "+ Copying device-tests.tar.gz to remote host"
-          ssh jkci "cat > /userdata/jetkvm/device-tests.tar.gz" < device-tests.tar.gz
+          ssh jkci "cat > /tmp/device-tests.tar.gz" < device-tests.tar.gz
           echo "+ Running go tests"
-          ssh jkci "cd /userdata/jetkvm && tar zxvf device-tests.tar.gz && ./run_all_tests -json"
+          ssh jkci ash << 'EOF'
+          set -e
+          TMP_DIR=$(mktemp -d)
+          cd ${TMP_DIR}
+          tar zxf /tmp/device-tests.tar.gz
+          ./gotestsum --format=testdox \
+              --jsonfile=/tmp/device-tests.json \
+              --post-run-command 'sh -c "echo $TESTS_FAILED > /tmp/device-tests.failed"' \
+              --raw-command -- ./run_all_tests -json
+
+          GOTESTSUM_EXIT_CODE=$?
+          if [ $GOTESTSUM_EXIT_CODE -ne 0 ]; then
+              echo "❌ Tests failed (exit code: $GOTESTSUM_EXIT_CODE)"
+              rm -rf ${TMP_DIR} /tmp/device-tests.tar.gz
+              exit 1
+          fi
+
+          TESTS_FAILED=$(cat /tmp/device-tests.failed)
+          if [ "$TESTS_FAILED" -ne 0 ]; then
+              echo "❌ Tests failed $TESTS_FAILED tests failed"
+              rm -rf ${TMP_DIR} /tmp/device-tests.tar.gz
+              exit 1
+          fi
+
+          echo "✅ Tests passed"
+          rm -rf ${TMP_DIR} /tmp/device-tests.tar.gz
+          EOF
+          ssh jkci "cat /tmp/device-tests.json" > device-tests.json
+      - name: Golang Test Report
+        uses: becheran/go-testreport@v0.3.2
+        with:
+          input: "device-tests.json"
       - name: Deploy application
         run: |
           set -e
@@ -117,15 +148,25 @@ jobs:
         run: |
           echo "+ Checking the status of the device"
           curl -v http://$CI_HOST/device/status && echo
-          echo "+ Waiting for 10 seconds to allow all services to start"
-          sleep 10
+          echo "+ Waiting for 15 seconds to allow all services to start"
+          sleep 15
           echo "+ Collecting logs"
-          ssh jkci "cat /userdata/jetkvm/last.log" > last.log
-          cat last.log
+          local_log_tar=$(mktemp)
+          ssh jkci ash > $local_log_tar <<'EOF'
+          log_path=$(mktemp -d)
+          dmesg > $log_path/dmesg.log
+          cp /userdata/jetkvm/last.log $log_path/last.log
+          tar -czf - -C $log_path .
+          EOF
+          tar -xf $local_log_tar
+          cat dmesg.log last.log
         env:
           CI_HOST: ${{ vars.JETKVM_CI_HOST }}
       - name: Upload logs
         uses: actions/upload-artifact@v4
         with:
           name: device-logs
-          path: last.log
+          path: |
+            last.log
+            dmesg.log
+            device-tests.json
