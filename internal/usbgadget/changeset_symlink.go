@@ -29,7 +29,7 @@ func checkIfSymlinksInOrder(fc *FileChange, logger *zerolog.Logger) (FileState, 
 	}
 	l := logger.With().Str("path", fc.Path).Logger()
 
-	if fc.ParamSymlinks == nil || len(fc.ParamSymlinks) == 0 {
+	if len(fc.ParamSymlinks) == 0 {
 		return FileStateUnknown, fmt.Errorf("no symlinks to check")
 	}
 
