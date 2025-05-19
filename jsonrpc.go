@@ -877,6 +877,18 @@ func rpcSetCloudUrl(apiUrl string, appUrl string) error {
 	return nil
 }
 
+func rpcGetKeyboardLayout() (string, error) {
+	return config.KeyboardLayout, nil
+}
+
+func rpcSetKeyboardLayout(layout string) error {
+	config.KeyboardLayout = layout
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
+}
+
 func getKeyboardMacros() (interface{}, error) {
 	macros := make([]KeyboardMacro, len(config.KeyboardMacros))
 	copy(macros, config.KeyboardMacros)
