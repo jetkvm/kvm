@@ -48,7 +48,7 @@ var FileStateString = map[FileState]string{
 	FileStateFileContentMatch:       "FILE_CONTENT_MATCH",
 	FileStateFileWrite:              "FILE_WRITE",
 	FileStateMounted:                "MOUNTED",
-	FileStateMountedConfigFS:        "CONFIGFS_MOUNT",
+	FileStateMountedConfigFS:        "CONFIGFS_MOUNTED",
 	FileStateSymlink:                "SYMLINK",
 	FileStateSymlinkInOrderConfigFS: "SYMLINK_IN_ORDER_CONFIGFS",
 	FileStateTouch:                  "TOUCH",
@@ -153,6 +153,10 @@ func (f *RequestedFileChange) String() string {
 		s = fmt.Sprintf("unknown change for %s", f.Path)
 	default:
 		s = fmt.Sprintf("unknown expected state %d for %s", f.ExpectedState, f.Path)
+	}
+
+	if len(f.Description) > 0 {
+		s += fmt.Sprintf(" (%s)", f.Description)
 	}
 
 	return s

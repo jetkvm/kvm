@@ -81,11 +81,12 @@ func (tx *UsbGadgetTransaction) addFileChange(component string, change Requested
 	return key
 }
 
-func (tx *UsbGadgetTransaction) mkdirAll(component string, path string, description string) string {
+func (tx *UsbGadgetTransaction) mkdirAll(component string, path string, description string, deps []string) string {
 	return tx.addFileChange(component, RequestedFileChange{
 		Path:          path,
 		ExpectedState: FileStateDirectory,
 		Description:   description,
+		DependsOn:     deps,
 	})
 }
 
@@ -131,14 +132,25 @@ func (tx *UsbGadgetTransaction) MountConfigFS() {
 }
 
 func (tx *UsbGadgetTransaction) CreateConfigPath() {
-	tx.mkdirAll("gadget", tx.configC1Path, "create config path")
+	tx.mkdirAll(
+		"gadget",
+		tx.configC1Path,
+		"create config path",
+		[]string{configFSPath},
+	)
 }
 
 func (tx *UsbGadgetTransaction) WriteGadgetConfig() {
 	// create kvm gadget path
-	tx.mkdirAll("gadget", tx.kvmGadgetPath, "create kvm gadget path")
+	tx.mkdirAll(
+		"gadget",
+		tx.kvmGadgetPath,
+		"create kvm gadget path",
+		[]string{tx.configC1Path},
+	)
 
 	deps := make([]string, 0)
+	deps = append(deps, tx.kvmGadgetPath)
 
 	for _, val := range tx.orderedConfigItems {
 		key := val.key
@@ -188,7 +200,10 @@ func (tx *UsbGadgetTransaction) writeGadgetItemConfig(item gadgetConfigItem, dep
 	files = append(files, deps...)
 
 	gadgetItemPath := joinPath(tx.kvmGadgetPath, item.path)
-	files = append(files, tx.mkdirAll(component, gadgetItemPath, "create gadget item directory"))
+	if gadgetItemPath != tx.kvmGadgetPath {
+		gadgetItemDir := tx.mkdirAll(component, gadgetItemPath, "create gadget item directory", files)
+		files = append(files, gadgetItemDir)
+	}
 
 	beforeChange := make([]string, 0)
 	disableGadgetItemKey := fmt.Sprintf("disable-%s", item.device)
@@ -231,7 +246,10 @@ func (tx *UsbGadgetTransaction) writeGadgetItemConfig(item gadgetConfigItem, dep
 	// create config directory if configAttrs are set
 	if len(item.configAttrs) > 0 {
 		configItemPath := joinPath(tx.configC1Path, item.configPath)
-		tx.mkdirAll(component, configItemPath, "create config item directory")
+		if configItemPath != tx.configC1Path {
+			configItemDir := tx.mkdirAll(component, configItemPath, "create config item directory", files)
+			files = append(files, configItemDir)
+		}
 		files = append(files, tx.writeGadgetAttrs(
 			configItemPath,
 			item.configAttrs,

@@ -2,7 +2,6 @@ package usbgadget
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 )
 
@@ -158,19 +157,9 @@ func (u *UsbGadget) OverrideGadgetConfig(itemKey string, itemAttr string, value 
 }
 
 func mountConfigFS(path string) error {
-	_, err := os.Stat(path)
-	// TODO: check if it's mounted properly
-	if err == nil {
-		return nil
-	}
-
-	if os.IsNotExist(err) {
-		err = exec.Command("mount", "-t", "configfs", "none", path).Run()
-		if err != nil {
-			return fmt.Errorf("failed to mount configfs: %w", err)
-		}
-	} else {
-		return fmt.Errorf("unable to access usb gadget path: %w", err)
+	err := exec.Command("mount", "-t", "configfs", "none", path).Run()
+	if err != nil {
+		return fmt.Errorf("failed to mount configfs: %w", err)
 	}
 	return nil
 }
