@@ -877,17 +877,6 @@ func rpcSetCloudUrl(apiUrl string, appUrl string) error {
 	return nil
 }
 
-var currentScrollSensitivity string = "default"
-
-func rpcGetScrollSensitivity() (string, error) {
-	return currentScrollSensitivity, nil
-}
-
-func rpcSetScrollSensitivity(sensitivity string) error {
-	currentScrollSensitivity = sensitivity
-	return nil
-}
-
 func getKeyboardMacros() (interface{}, error) {
 	macros := make([]KeyboardMacro, len(config.KeyboardMacros))
 	copy(macros, config.KeyboardMacros)
@@ -1053,8 +1042,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"setUsbDevices":          {Func: rpcSetUsbDevices, Params: []string{"devices"}},
 	"setUsbDeviceState":      {Func: rpcSetUsbDeviceState, Params: []string{"device", "enabled"}},
 	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
-	"getScrollSensitivity":   {Func: rpcGetScrollSensitivity},
-	"setScrollSensitivity":   {Func: rpcSetScrollSensitivity, Params: []string{"sensitivity"}},
 	"getKeyboardMacros":      {Func: getKeyboardMacros},
 	"setKeyboardMacros":      {Func: setKeyboardMacros, Params: []string{"params"}},
 }

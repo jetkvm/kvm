@@ -18,11 +18,9 @@ import useWebSocket from "react-use-websocket";
 
 import { cx } from "@/cva.config";
 import {
-  DeviceSettingsState,
   HidState,
   NetworkState,
   UpdateState,
-  useDeviceSettingsStore,
   useDeviceStore,
   useHidStore,
   useMountMediaStore,
@@ -713,21 +711,6 @@ export default function KvmIdRoute() {
       }
     });
   }, [appVersion, send, setAppVersion, setSystemVersion]);
-
-  const setScrollSensitivity = useDeviceSettingsStore(
-    state => state.setScrollSensitivity,
-  );
-
-  // Initialize device settings
-  useEffect(
-    function initializeDeviceSettings() {
-      send("getScrollSensitivity", {}, resp => {
-        if ("error" in resp) return;
-        setScrollSensitivity(resp.result as DeviceSettingsState["scrollSensitivity"]);
-      });
-    },
-    [send, setScrollSensitivity],
-  );
 
   const ConnectionStatusElement = useMemo(() => {
     const hasConnectionFailed =

@@ -321,8 +321,7 @@ export const useSettingsStore = create(
       setDeveloperMode: enabled => set({ developerMode: enabled }),
 
       displayRotation: "270",
-      setDisplayRotation: (rotation: string) =>
-        set({ displayRotation: rotation }),
+      setDisplayRotation: (rotation: string) => set({ displayRotation: rotation }),
 
       backlightSettings: {
         max_brightness: 100,
@@ -349,67 +348,6 @@ export interface DeviceSettingsState {
   scrollSensitivity: "low" | "default" | "high";
   setScrollSensitivity: (sensitivity: DeviceSettingsState["scrollSensitivity"]) => void;
 }
-
-export const useDeviceSettingsStore = create<DeviceSettingsState>(set => ({
-  trackpadSensitivity: 3.0,
-  mouseSensitivity: 5.0,
-  clampMin: -8,
-  clampMax: 8,
-  blockDelay: 25,
-  trackpadThreshold: 10,
-
-  scrollSensitivity: "default",
-  setScrollSensitivity: sensitivity => {
-    const wheelSettings: Record<
-      DeviceSettingsState["scrollSensitivity"],
-      {
-        trackpadSensitivity: DeviceSettingsState["trackpadSensitivity"];
-        mouseSensitivity: DeviceSettingsState["mouseSensitivity"];
-        clampMin: DeviceSettingsState["clampMin"];
-        clampMax: DeviceSettingsState["clampMax"];
-        blockDelay: DeviceSettingsState["blockDelay"];
-        trackpadThreshold: DeviceSettingsState["trackpadThreshold"];
-      }
-    > = {
-      low: {
-        trackpadSensitivity: 2.0,
-        mouseSensitivity: 3.0,
-        clampMin: -6,
-        clampMax: 6,
-        blockDelay: 30,
-        trackpadThreshold: 10,
-      },
-      default: {
-        trackpadSensitivity: 3.0,
-        mouseSensitivity: 5.0,
-        clampMin: -8,
-        clampMax: 8,
-        blockDelay: 25,
-        trackpadThreshold: 10,
-      },
-      high: {
-        trackpadSensitivity: 4.0,
-        mouseSensitivity: 6.0,
-        clampMin: -9,
-        clampMax: 9,
-        blockDelay: 20,
-        trackpadThreshold: 10,
-      },
-    };
-
-    const settings = wheelSettings[sensitivity];
-
-    return set({
-      trackpadSensitivity: settings.trackpadSensitivity,
-      trackpadThreshold: settings.trackpadThreshold,
-      mouseSensitivity: settings.mouseSensitivity,
-      clampMin: settings.clampMin,
-      clampMax: settings.clampMax,
-      blockDelay: settings.blockDelay,
-      scrollSensitivity: sensitivity,
-    });
-  },
-}));
 
 export interface RemoteVirtualMediaState {
   source: "WebRTC" | "HTTP" | "Storage" | null;

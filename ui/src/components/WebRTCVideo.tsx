@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
 
 import {
-  useDeviceSettingsStore,
   useHidStore,
   useMouseStore,
   useRTCStore,
@@ -61,7 +60,6 @@ export default function WebRTCVideo() {
     useHidStore();
 
   // Misc states and hooks
-  const [blockWheelEvent, setBlockWheelEvent] = useState(false);
   const disableVideoFocusTrap = useUiStore(state => state.disableVideoFocusTrap);
   const [send] = useJsonRpc();
 
@@ -248,17 +246,8 @@ export default function WebRTCVideo() {
     ],
   );
 
-  const trackpadSensitivity = useDeviceSettingsStore(state => state.trackpadSensitivity);
-  const mouseSensitivity = useDeviceSettingsStore(state => state.mouseSensitivity);
-  const clampMin = useDeviceSettingsStore(state => state.clampMin);
-  const clampMax = useDeviceSettingsStore(state => state.clampMax);
-  const blockDelay = useDeviceSettingsStore(state => state.blockDelay);
-  const trackpadThreshold = useDeviceSettingsStore(state => state.trackpadThreshold);
-
   const mouseWheelHandler = useCallback(
     (e: WheelEvent) => {
-      if (blockWheelEvent) return;
-
       // Determine if the wheel event is an accel scroll value
       const isAccel = Math.abs(e.deltaY) >= 100;
 
@@ -266,7 +255,7 @@ export default function WebRTCVideo() {
       const accelScrollValue = e.deltaY / 100;
 
       // Calculate the no accel scroll value
-      const noAccelScrollValue = e.deltaY > 0 ? 1 : (e.deltaY < 0 ? -1 : 0);
+      const noAccelScrollValue = e.deltaY > 0 ? 1 : e.deltaY < 0 ? -1 : 0;
 
       // Get scroll value
       const scrollValue = isAccel ? accelScrollValue : noAccelScrollValue;
@@ -277,22 +266,9 @@ export default function WebRTCVideo() {
       // Invert the clamped scroll value to match expected behavior
       const invertedScrollValue = -clampedScrollValue;
 
-      send("wheelReport", { wheelY : invertedScrollValue });
-
-      // Apply blocking delay
-      setBlockWheelEvent(true);
-      setTimeout(() => setBlockWheelEvent(false), blockDelay);
+      send("wheelReport", { wheelY: invertedScrollValue });
     },
-    [
-      blockDelay,
-      blockWheelEvent,
-      clampMax,
-      clampMin,
-      mouseSensitivity,
-      send,
-      trackpadSensitivity,
-      trackpadThreshold,
-    ],
+    [send],
   );
 
   const resetMousePosition = useCallback(() => {
@@ -351,11 +327,7 @@ export default function WebRTCVideo() {
           // which means the Alt Gr key state would then be "stuck". At this
           // point, we would need to rely on the user to press Alt Gr again
           // to properly release the state of that modifier.
-          .filter(
-            modifier =>
-              altKey ||
-              (modifier !== modifiers["AltLeft"]),
-          )
+          .filter(modifier => altKey || modifier !== modifiers["AltLeft"])
           // Meta: Keep if Meta is pressed or if the key isn't a Meta key
           // Example: If metaKey is true, keep all modifiers
           // If metaKey is false, filter out 0x08 (MetaLeft) and 0x80 (MetaRight)
@@ -716,7 +688,7 @@ export default function WebRTCVideo() {
                           disablePictureInPicture
                           controlsList="nofullscreen"
                           className={cx(
-                            "z-30 max-h-full min-h-[384px] min-w-[512px] max-w-full bg-black/50 object-contain transition-all duration-1000",
+                            "z-30 max-h-full min-h-[384px] max-w-full min-w-[512px] bg-black/50 object-contain transition-all duration-1000",
                             {
                               "cursor-none": settings.isCursorHidden,
                               "opacity-0":
@@ -732,7 +704,7 @@ export default function WebRTCVideo() {
                         {peerConnection?.connectionState == "connected" && (
                           <div
                             style={{ animationDuration: "500ms" }}
-                            className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center"
+                            className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center"
                           >
                             <div className="relative h-full w-full rounded-md">
                               <LoadingVideoOverlay show={isVideoLoading} />
