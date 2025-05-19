@@ -27,7 +27,6 @@ show_help() {
     echo "  -u, --user <remote_user>   Remote username (default: root)"
     echo "      --run-go-tests         Run go tests"
     echo "      --run-go-tests-only    Run go tests and exit"
-    echo "      --run-go-tests-json    Run go tests and output JSON"
     echo "      --skip-ui-build        Skip frontend/UI build"
     echo "      --help                 Display this help message"
     echo
@@ -43,7 +42,6 @@ SKIP_UI_BUILD=false
 RESET_USB_HID_DEVICE=false
 LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
 RUN_GO_TESTS=false
-RUN_GO_TESTS_JSON=false
 RUN_GO_TESTS_ONLY=false
 
 # Parse command line arguments
@@ -66,11 +64,6 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --run-go-tests)
-            RUN_GO_TESTS=true
-            shift
-            ;;
-        --run-go-tests-json)
-            RUN_GO_TESTS_JSON=true
             RUN_GO_TESTS=true
             shift
             ;;
@@ -109,18 +102,35 @@ if [ "$RUN_GO_TESTS" = true ]; then
     make build_dev_test  
 
     msg_info "▶ Copying device-tests.tar.gz to remote host"
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/device-tests.tar.gz" < device-tests.tar.gz
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > /tmp/device-tests.tar.gz" < device-tests.tar.gz
 
     msg_info "▶ Running go tests"
-    TEST_ARGS=""
-    if [ "$RUN_GO_TESTS_JSON" = true ]; then
-        TEST_ARGS="-json"
-    fi
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << EOF
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << 'EOF'
 set -e
-cd ${REMOTE_PATH}
-tar zxvf device-tests.tar.gz
-PION_LOG_TRACE=all ./run_all_tests $TEST_ARGS
+TMP_DIR=$(mktemp -d)
+cd ${TMP_DIR}
+tar zxf /tmp/device-tests.tar.gz
+./gotestsum --format=testdox \
+    --jsonfile=/tmp/device-tests.json \
+    --post-run-command 'sh -c "echo $TESTS_FAILED > /tmp/device-tests.failed"' \
+    --raw-command -- ./run_all_tests -json
+
+GOTESTSUM_EXIT_CODE=$?
+if [ $GOTESTSUM_EXIT_CODE -ne 0 ]; then
+    echo "❌ Tests failed (exit code: $GOTESTSUM_EXIT_CODE)"
+    rm -rf ${TMP_DIR} /tmp/device-tests.tar.gz
+    exit 1
+fi
+
+TESTS_FAILED=$(cat /tmp/device-tests.failed)
+if [ "$TESTS_FAILED" -ne 0 ]; then
+    echo "❌ Tests failed $TESTS_FAILED tests failed"
+    rm -rf ${TMP_DIR} /tmp/device-tests.tar.gz
+    exit 1
+fi
+
+echo "✅ Tests passed"
+rm -rf ${TMP_DIR} /tmp/device-tests.tar.gz
 EOF
 
     if [ "$RUN_GO_TESTS_ONLY" = true ]; then

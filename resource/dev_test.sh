@@ -29,8 +29,6 @@ runTest() {
 function exit_with_code() {
     if [ $EXIT_CODE -ne 0 ]; then
         printf "\e[0;31m❌ Test failed\e[0m\n"
-    else
-        printf "\e[0;32m✅ All tests passed\e[0m\n"
     fi
 
     exit $EXIT_CODE
