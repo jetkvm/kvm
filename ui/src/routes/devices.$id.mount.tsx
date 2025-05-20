@@ -7,7 +7,7 @@ import {
   LuCheck,
   LuUpload,
 } from "react-icons/lu";
-import { PlusCircleIcon , ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { PlusCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { TrashIcon } from "@heroicons/react/16/solid";
 import { useNavigate } from "react-router-dom";
 
@@ -37,7 +37,6 @@ import {
   useMountMediaStore,
   useRTCStore,
 } from "../hooks/stores";
-
 
 export default function MountRoute() {
   const navigate = useNavigate();
@@ -284,7 +283,7 @@ function ModeSelectionView({
   return (
     <div className="w-full space-y-4">
       <div className="animate-fadeIn space-y-0">
-        <h2 className="text-lg font-bold leading-tight dark:text-white">
+        <h2 className="text-lg leading-tight font-bold dark:text-white">
           Virtual Media Source
         </h2>
         <div className="text-sm leading-snug text-slate-600 dark:text-slate-400">
@@ -320,7 +319,7 @@ function ModeSelectionView({
         ].map(({ label, description, value: mode, icon: Icon, tag, disabled }, index) => (
           <div
             key={label}
-            className={cx("animate-fadeIn")}
+            className="animate-fadeIn"
             style={{
               animationDuration: "0.7s",
               animationDelay: `${25 * (index * 5)}ms`,
@@ -337,7 +336,7 @@ function ModeSelectionView({
               )}
             >
               <div
-                className="relative z-50 flex select-none flex-col items-start p-4"
+                className="relative z-50 flex flex-col items-start p-4 select-none"
                 onClick={() =>
                   disabled ? null : setSelectedMode(mode as "browser" | "url" | "device")
                 }
@@ -365,7 +364,7 @@ function ModeSelectionView({
                   value={mode}
                   disabled={disabled}
                   checked={selectedMode === mode}
-                  className="absolute right-4 top-4 h-4 w-4 text-blue-700"
+                  className="absolute top-4 right-4 form-radio h-4 w-4 rounded-full text-blue-700"
                 />
               </div>
             </Card>
@@ -442,14 +441,14 @@ function BrowserFileView({
               animationDuration: "0.7s",
             }}
           >
-            <Card className="outline-dashed transition-all duration-300 hover:bg-blue-50/50">
+            <Card className="transition-all duration-300 outline-dashed">
               <div className="w-full px-4 py-12">
                 <div className="flex h-full flex-col items-center justify-center text-center">
                   {selectedFile ? (
                     <>
                       <div className="space-y-1">
                         <LuHardDrive className="mx-auto h-6 w-6 text-blue-700" />
-                        <h3 className="text-sm font-semibold leading-none">
+                        <h3 className="text-sm leading-none font-semibold">
                           {formatters.truncateMiddle(selectedFile.name, 40)}
                         </h3>
                         <p className="text-xs leading-none text-slate-700">
@@ -460,7 +459,7 @@ function BrowserFileView({
                   ) : (
                     <div className="space-y-1">
                       <PlusCircleIcon className="mx-auto h-6 w-6 text-blue-700" />
-                      <h3 className="text-sm font-semibold leading-none">
+                      <h3 className="text-sm leading-none font-semibold">
                         Click to select a file
                       </h3>
                       <p className="text-xs leading-none text-slate-700">
@@ -483,7 +482,7 @@ function BrowserFileView({
       </div>
 
       <div
-        className="flex w-full animate-fadeIn items-end justify-between"
+        className="flex w-full animate-fadeIn items-end justify-between opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",
@@ -628,13 +627,13 @@ function UrlView({
         <h2 className="mb-2 text-sm font-semibold text-black dark:text-white">
           Popular images
         </h2>
-        <Card className="divide-y-slate-800/30 w-full divide-y dark:divide-slate-300/20">
+        <Card className="w-full divide-y divide-slate-800/20 dark:divide-slate-300/20">
           {popularImages.map((image, index) => (
             <div key={index} className="flex items-center justify-between gap-x-4 p-3.5">
               <div className="flex items-center gap-x-4">
                 <img src={image.icon} alt={`${image.name} Icon`} className="w-6" />
                 <div className="flex flex-col gap-y-1">
-                  <h3 className="text-sm font-semibold leading-none dark:text-white">
+                  <h3 className="text-sm leading-none font-semibold dark:text-white">
                     {formatters.truncateMiddle(image.name, 40)}
                   </h3>
                   {image.description && (
@@ -809,7 +808,7 @@ function DeviceFileView({
               <div className="space-y-3">
                 <div className="space-y-1">
                   <PlusCircleIcon className="mx-auto h-6 w-6 text-blue-700 dark:text-blue-500" />
-                  <h3 className="text-sm font-semibold leading-none text-black dark:text-white">
+                  <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
                     No images available
                   </h3>
                   <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
@@ -827,7 +826,7 @@ function DeviceFileView({
               </div>
             </div>
           ) : (
-            <div className="divide-y-slate-800/30 w-full divide-y dark:divide-slate-300/20">
+            <div className="w-full divide-y divide-slate-800/20 dark:divide-slate-300/20">
               {currentFiles.map((file, index) => (
                 <PreUploadedImageItem
                   key={index}
@@ -1267,7 +1266,7 @@ function UploadFileView({
           <div className="group">
             <Card
               className={cx("transition-all duration-300", {
-                "cursor-pointer hover:bg-blue-900/50 dark:hover:bg-blue-900/50":
+                "cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-900/50":
                   uploadState === "idle",
               })}
             >
@@ -1282,7 +1281,7 @@ function UploadFileView({
                           </div>
                         </Card>
                       </div>
-                      <h3 className="text-sm font-semibold leading-none text-black dark:text-white">
+                      <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
                         {incompleteFileName
                           ? `Click to select "${incompleteFileName.replace(".incomplete", "")}"`
                           : "Click to select a file"}
@@ -1336,7 +1335,7 @@ function UploadFileView({
                           </div>
                         </Card>
                       </div>
-                      <h3 className="text-sm font-semibold leading-none text-black dark:text-white">
+                      <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
                         Upload successful
                       </h3>
                       <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
@@ -1422,7 +1421,7 @@ function ErrorView({
       <div className="space-y-2">
         <div className="flex items-center space-x-2 text-red-600">
           <ExclamationTriangleIcon className="h-6 w-6" />
-          <h2 className="text-lg font-bold leading-tight">Mount Error</h2>
+          <h2 className="text-lg leading-tight font-bold">Mount Error</h2>
         </div>
         <p className="text-sm leading-snug text-slate-600">
           An error occurred while attempting to mount the media. Please try again.
@@ -1481,8 +1480,8 @@ function PreUploadedImageItem({
       }}
     >
       <div className="flex items-center gap-x-4">
-        <div className="select-none space-y-0.5">
-          <div className="text-sm font-semibold leading-none dark:text-white">
+        <div className="space-y-0.5 select-none">
+          <div className="text-sm leading-none font-semibold dark:text-white">
             {formatters.truncateMiddle(name, 45)}
           </div>
           <div className="flex items-center text-sm">
@@ -1494,7 +1493,7 @@ function PreUploadedImageItem({
           </div>
         </div>
       </div>
-      <div className="relative flex select-none items-center gap-x-3">
+      <div className="relative flex items-center gap-x-3 select-none">
         <div
           className={cx("opacity-0 transition-opacity duration-200", {
             "w-auto opacity-100": isHovering,
@@ -1518,7 +1517,7 @@ function PreUploadedImageItem({
             checked={isSelected}
             onChange={onSelect}
             name={name}
-            className="h-3 w-3 border-slate-800/30 bg-white text-blue-700 focus:ring-blue-500 disabled:opacity-30 dark:border-slate-300/20 dark:bg-slate-800"
+            className="form-radio h-3 w-3 border-slate-800/30 bg-white text-blue-700 focus:ring-blue-500 disabled:opacity-30 dark:border-slate-300/20 dark:bg-slate-800"
             onClick={e => e.stopPropagation()} // Prevent double-firing of onSelect
           />
         ) : (
@@ -1540,7 +1539,7 @@ function PreUploadedImageItem({
 function ViewHeader({ title, description }: { title: string; description: string }) {
   return (
     <div className="space-y-0">
-      <h2 className="text-lg font-bold leading-tight text-black dark:text-white">
+      <h2 className="text-lg leading-tight font-bold text-black dark:text-white">
         {title}
       </h2>
       <div className="text-sm leading-snug text-slate-600 dark:text-slate-400">
@@ -1558,7 +1557,7 @@ function UsbModeSelector({
   setUsbMode: (mode: RemoteVirtualMediaState["mode"]) => void;
 }) {
   return (
-    <div className="flex select-none flex-col items-start space-y-1">
+    <div className="flex flex-col items-start space-y-1 select-none">
       <label className="text-sm font-semibold text-black dark:text-white">Mount as</label>
       <div className="flex space-x-4">
         <label htmlFor="cdrom" className="flex items-center">
@@ -1568,7 +1567,7 @@ function UsbModeSelector({
             name="mountType"
             onChange={() => setUsbMode("CDROM")}
             checked={usbMode === "CDROM"}
-            className="h-3 w-3 border-slate-800/30 bg-white text-blue-700 transition-opacity focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
+            className="form-radio h-3 w-3 rounded-full border-slate-800/30 bg-white text-blue-700 transition-opacity focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
           />
           <span className="ml-2 text-sm font-medium text-slate-900 dark:text-white">
             CD/DVD
@@ -1581,13 +1580,11 @@ function UsbModeSelector({
             name="mountType"
             checked={usbMode === "Disk"}
             onChange={() => setUsbMode("Disk")}
-            className="h-3 w-3 border-slate-800/30 bg-white text-blue-700 transition-opacity focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
+            className="form-radio h-3 w-3 rounded-full border-slate-800/30 bg-white text-blue-700 transition-opacity focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
           />
-          <div className="ml-2 flex flex-col gap-y-0">
-            <span className="text-sm font-medium leading-none text-slate-900 opacity-50 dark:text-white">
-              Disk
-            </span>
-          </div>
+          <span className="ml-2 text-sm font-medium text-slate-900 dark:text-white">
+            Disk
+          </span>
         </label>
       </div>
     </div>

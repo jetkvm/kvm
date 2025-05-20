@@ -116,7 +116,7 @@ export default function WelcomeLocalModeRoute() {
                           onChange={() => {
                             setSelectedMode(mode as "password" | "noPassword");
                           }}
-                          className="absolute top-2 right-2 h-4 w-4 text-blue-600"
+                          className="form-radio absolute top-2 right-2 h-4 w-4 text-blue-600"
                         />
                       </div>
                     </GridCard>

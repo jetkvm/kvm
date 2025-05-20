@@ -12,7 +12,7 @@ const sizes = {
 
 const checkboxVariants = cva({
   base: cx(
-    "block rounded",
+    "form-checkbox block rounded",
 
     // Colors
     "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 checked:accent-blue-700 checked:dark:accent-blue-500 transition-colors",
