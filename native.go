@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -295,7 +296,7 @@ func GetNativeVersion() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(version), nil
+	return strings.TrimSpace(string(version)), nil
 }
 
 func ensureBinaryUpdated(destPath string) error {
