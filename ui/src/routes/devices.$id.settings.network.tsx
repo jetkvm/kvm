@@ -356,7 +356,7 @@ export default function SettingsNetworkRoute() {
             />
           </SettingsItem>
           <AutoHeight>
-            {!networkSettingsLoaded ? (
+            {networkSettingsLoaded === false && !networkState?.dhcp_lease ? (
               <GridCard>
                 <div className="p-4">
                   <div className="space-y-4">
@@ -402,7 +402,8 @@ export default function SettingsNetworkRoute() {
             />
           </SettingsItem>
           <AutoHeight>
-            {!networkSettingsLoaded ? (
+            {!networkSettingsLoaded &&
+            !(networkState?.ipv6_addresses && networkState.ipv6_addresses.length > 0) ? (
               <GridCard>
                 <div className="p-4">
                   <div className="space-y-4">
