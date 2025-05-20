@@ -282,7 +282,7 @@ function ModeSelectionView({
 
   return (
     <div className="w-full space-y-4">
-      <div className="animate-fadeIn space-y-0">
+      <div className="animate-fadeIn space-y-0 opacity-0">
         <h2 className="text-lg leading-tight font-bold dark:text-white">
           Virtual Media Source
         </h2>
@@ -319,7 +319,7 @@ function ModeSelectionView({
         ].map(({ label, description, value: mode, icon: Icon, tag, disabled }, index) => (
           <div
             key={label}
-            className="animate-fadeIn"
+            className="animate-fadeIn opacity-0"
             style={{
               animationDuration: "0.7s",
               animationDelay: `${25 * (index * 5)}ms`,
@@ -372,7 +372,7 @@ function ModeSelectionView({
         ))}
       </div>
       <div
-        className="flex animate-fadeIn justify-end"
+        className="flex animate-fadeIn justify-end opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",
@@ -436,7 +436,7 @@ function BrowserFileView({
           className="block cursor-pointer select-none"
         >
           <div
-            className="group animate-fadeIn"
+            className="group animate-fadeIn opacity-0"
             style={{
               animationDuration: "0.7s",
             }}
@@ -577,7 +577,7 @@ function UrlView({
       />
 
       <div
-        className="animate-fadeIn"
+        className="animate-fadeIn opacity-0"
         style={{
           animationDuration: "0.7s",
         }}
@@ -592,7 +592,7 @@ function UrlView({
         />
       </div>
       <div
-        className="flex w-full animate-fadeIn items-end justify-between"
+        className="flex w-full animate-fadeIn items-end justify-between opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",
@@ -618,7 +618,7 @@ function UrlView({
 
       <hr className="border-slate-800/30 dark:border-slate-300/20" />
       <div
-        className="animate-fadeIn"
+        className="animate-fadeIn opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",
@@ -796,7 +796,7 @@ function DeviceFileView({
         description="Select an image to mount from the JetKVM storage"
       />
       <div
-        className="w-full animate-fadeIn"
+        className="w-full animate-fadeIn opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",
@@ -885,7 +885,7 @@ function DeviceFileView({
 
       {onStorageFiles.length > 0 ? (
         <div
-          className="flex animate-fadeIn items-end justify-between"
+          className="flex animate-fadeIn items-end justify-between opacity-0"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.15s",
@@ -913,7 +913,7 @@ function DeviceFileView({
         </div>
       ) : (
         <div
-          className="flex animate-fadeIn items-end justify-end"
+          className="flex animate-fadeIn items-end justify-end opacity-0"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.15s",
@@ -926,7 +926,7 @@ function DeviceFileView({
       )}
       <hr className="border-slate-800/20 dark:border-slate-300/20" />
       <div
-        className="animate-fadeIn space-y-2"
+        className="animate-fadeIn space-y-2 opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.20s",
@@ -958,7 +958,7 @@ function DeviceFileView({
 
       {onStorageFiles.length > 0 && (
         <div
-          className="w-full animate-fadeIn"
+          className="w-full animate-fadeIn opacity-0"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.25s",
@@ -1250,7 +1250,7 @@ function UploadFileView({
         }
       />
       <div
-        className="animate-fadeIn space-y-2"
+        className="animate-fadeIn space-y-2 opacity-0"
         style={{
           animationDuration: "0.7s",
         }}
@@ -1364,7 +1364,7 @@ function UploadFileView({
       {/* Display upload error if present */}
       {uploadError && (
         <div
-          className="mt-2 animate-fadeIn truncate text-sm text-red-600 dark:text-red-400"
+          className="mt-2 animate-fadeIn truncate text-sm text-red-600 dark:text-red-400 opacity-0"
           style={{ animationDuration: "0.7s" }}
         >
           Error: {uploadError}
@@ -1372,7 +1372,7 @@ function UploadFileView({
       )}
 
       <div
-        className="flex w-full animate-fadeIn items-end"
+        className="flex w-full animate-fadeIn items-end opacity-0"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.1s",

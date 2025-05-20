@@ -63,7 +63,7 @@ export function DCPowerControl() {
           <LoadingSpinner className="h-6 w-6 text-blue-500 dark:text-blue-400" />
         </Card>
       ) : (
-        <Card className="h-[160px] animate-fadeIn">
+        <Card className="h-[160px] animate-fadeIn opacity-0">
           <div className="space-y-4 p-3">
             {/* Power Controls */}
             <div className="flex items-center space-x-2">

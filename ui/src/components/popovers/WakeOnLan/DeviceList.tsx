@@ -28,7 +28,7 @@ export default function DeviceList({
 }: DeviceListProps) {
   return (
     <div className="space-y-4">
-      <Card className="animate-fadeIn">
+      <Card className="animate-fadeIn opacity-0">
         <div className="w-full divide-y divide-slate-700/30 dark:divide-slate-600/30">
           {storedDevices.map((device, index) => (
             <div key={index} className="flex items-center justify-between gap-x-2 p-3">
@@ -63,7 +63,7 @@ export default function DeviceList({
         </div>
       </Card>
       <div
-        className="flex animate-fadeIn items-center justify-end space-x-2"
+        className="flex animate-fadeIn opacity-0 items-center justify-end space-x-2"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",

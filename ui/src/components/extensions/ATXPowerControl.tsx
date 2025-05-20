@@ -107,7 +107,7 @@ export function ATXPowerControl() {
           <LoadingSpinner className="h-6 w-6 text-blue-500 dark:text-blue-400" />
         </Card>
       ) : (
-        <Card className="h-[120px] animate-fadeIn">
+        <Card className="h-[120px] animate-fadeIn opacity-0">
           <div className="space-y-4 p-3">
             {/* Control Buttons */}
             <div className="flex items-center space-x-2">
