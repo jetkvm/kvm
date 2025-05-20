@@ -356,7 +356,7 @@ export default function SettingsNetworkRoute() {
             />
           </SettingsItem>
           <AutoHeight>
-            {networkSettingsLoaded === false && !networkState?.dhcp_lease ? (
+            {!networkSettingsLoaded && !networkState?.dhcp_lease ? (
               <GridCard>
                 <div className="p-4">
                   <div className="space-y-4">
