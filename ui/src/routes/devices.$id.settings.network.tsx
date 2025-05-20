@@ -16,7 +16,7 @@ import {
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
-import InputField from "@components/InputField";
+import InputField, { InputFieldWithLabel } from "@components/InputField";
 import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
 import Fieldset from "@/components/Fieldset";
@@ -115,6 +115,14 @@ export default function SettingsNetworkRoute() {
     });
   }, [send]);
 
+  const getNetworkState = useCallback(() => {
+    send("getNetworkState", {}, resp => {
+      if ("error" in resp) return;
+      console.log(resp.result);
+      setNetworkState(resp.result as NetworkState);
+    });
+  }, [send, setNetworkState]);
+
   const setNetworkSettingsRemote = useCallback(
     (settings: NetworkSettings) => {
       setNetworkSettingsLoaded(false);
@@ -130,20 +138,13 @@ export default function SettingsNetworkRoute() {
         // We need to update the firstNetworkSettings ref to the new settings so we can use it to determine if the settings have changed
         firstNetworkSettings.current = resp.result as NetworkSettings;
         setNetworkSettings(resp.result as NetworkSettings);
+        getNetworkState();
         setNetworkSettingsLoaded(true);
         notifications.success("Network settings saved");
       });
     },
-    [send],
+    [getNetworkState, send],
   );
-
-  const getNetworkState = useCallback(() => {
-    send("getNetworkState", {}, resp => {
-      if ("error" in resp) return;
-      console.log(resp.result);
-      setNetworkState(resp.result as NetworkState);
-    });
-  }, [send, setNetworkState]);
 
   const handleRenewLease = useCallback(() => {
     send("renewDHCPLease", {}, resp => {
@@ -255,7 +256,7 @@ export default function SettingsNetworkRoute() {
         </div>
 
         <div className="space-y-4">
-          <div className="space-y-4">
+          <div className="space-y-1">
             <SettingsItem
               title="Domain"
               description="Network domain suffix for the device"
@@ -274,19 +275,17 @@ export default function SettingsNetworkRoute() {
               </div>
             </SettingsItem>
             {selectedDomainOption === "custom" && (
-              <div className="flex items-center justify-between gap-x-2">
-                <InputField
+              <div className="mt-2 w-1/3 border-l border-slate-800/10 pl-4 dark:border-slate-300/20">
+                <InputFieldWithLabel
                   size="SM"
                   type="text"
+                  label="Custom Domain"
                   placeholder="home"
                   value={customDomain}
-                  onChange={e => setCustomDomain(e.target.value)}
-                />
-                <Button
-                  size="SM"
-                  theme="primary"
-                  text="Set"
-                  onClick={() => handleCustomDomainChange(customDomain)}
+                  onChange={e => {
+                    setCustomDomain(e.target.value);
+                    handleCustomDomainChange(e.target.value);
+                  }}
                 />
               </div>
             )}

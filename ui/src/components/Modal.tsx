@@ -20,7 +20,9 @@ const Modal = React.memo(function Modal({
         transition
         className="fixed inset-0 bg-gray-500/75 transition-opacity data-closed:opacity-0 data-enter:duration-500 data-leave:duration-200 data-enter:ease-out data-leave:ease-in dark:bg-slate-900/90"
       />
-      <div className="fixed inset-0 z-20 w-screen overflow-y-auto">
+      <div className="fixed inset-0 z-20 w-screen overflow-y-auto" style={{
+        scrollbarGutter: 'stable'
+      }}>
         {/* TODO: This doesn't work well with other-sessions */}
         <div className="flex min-h-full items-end justify-center p-4 text-center md:items-baseline md:p-4">
           <DialogPanel
