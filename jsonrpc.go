@@ -266,8 +266,13 @@ func rpcSetDevChannelState(enabled bool) error {
 func rpcGetUpdateStatus() (*UpdateStatus, error) {
 	includePreRelease := config.IncludePreRelease
 	updateStatus, err := GetUpdateStatus(context.Background(), GetDeviceID(), includePreRelease)
+	// to ensure backwards compatibility,
+	// if there's an error, we won't return an error, but we will set the error field
 	if err != nil {
-		return nil, fmt.Errorf("error checking for updates: %w", err)
+		if updateStatus == nil {
+			return nil, fmt.Errorf("error checking for updates: %w", err)
+		}
+		updateStatus.Error = err.Error()
 	}
 
 	return updateStatus, nil

@@ -703,12 +703,17 @@ export default function KvmIdRoute() {
 
     send("getUpdateStatus", {}, async resp => {
       if ("error" in resp) {
-        notifications.error("Failed to get device version");
-      } else {
-        const result = resp.result as SystemVersionInfo;
-        setAppVersion(result.local.appVersion);
-        setSystemVersion(result.local.systemVersion);
+        notifications.error(`Failed to get device version: ${resp.error}`);
+        return 
       }
+
+      const result = resp.result as SystemVersionInfo;
+      if (result.error) {
+        notifications.error(`Failed to get device version: ${result.error}`);
+      }
+
+      setAppVersion(result.local.appVersion);
+      setSystemVersion(result.local.systemVersion);
     });
   }, [appVersion, send, setAppVersion, setSystemVersion]);
 
