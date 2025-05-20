@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @config "../tailwind.config.js";
 
@@ -10,10 +10,10 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: 'Circular', sans-serif;
-  --font-display: 'Circular', sans-serif;
-  --font-serif: 'Circular', serif;
-  --font-mono: 'Source Code Pro Variable', monospace;
+  --font-sans: "Circular", sans-serif;
+  --font-display: "Circular", sans-serif;
+  --font-serif: "Circular", serif;
+  --font-mono: "Source Code Pro Variable", monospace;
 
   --grid-layout: auto 1fr auto;
   --grid-headerBody: auto 1fr;
@@ -122,13 +122,22 @@
   }
 }
 
+/* If we don't ignore this, Prettier will add a space between the value and the `ms`. Rendering the utility invalid. */
+/* prettier-ignore */
 @utility max-width-* {
-  max-width: --modifier(--container- *, [length], [ *]);
+  max-width: --modifier(--container-*, [length], [*]);
 }
 
-/* Ensure there is not a `ms` and ms -> `...)ms` */
+/* If we don't ignore this, Prettier will add a space between the value and the `ms`. Rendering the utility invalid. */
+/* prettier-ignore */
 @utility animation-delay-* {
-  animation-delay: --value(integer) ms;
+  animation-delay: --value(integer)ms;
+}
+
+/* If we don't ignore this, Prettier will add a space between the value and the `ms`. Rendering the utility invalid. */
+/* prettier-ignore */
+@utility animation-duration-* {
+  animation-duration: --value(integer)ms;
 }
 
 html {
