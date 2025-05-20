@@ -3,28 +3,23 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/jetkvm/kvm"
-	"github.com/prometheus/common/version"
 )
-
-func printVersion() {
-	version.Version = kvm.GetBuiltAppVersion()
-	app_version := version.Print("JetKVM Application")
-	fmt.Println(app_version)
-
-	nativeVersion, err := kvm.GetNativeVersion()
-	if err == nil {
-		fmt.Println("\nJetKVM Native, version", nativeVersion)
-	}
-}
 
 func main() {
 	versionPtr := flag.Bool("version", false, "print version and exit")
+	versionJsonPtr := flag.Bool("version-json", false, "print version as json and exit")
 	flag.Parse()
 
-	if *versionPtr {
-		printVersion()
+	if *versionPtr || *versionJsonPtr {
+		versionData, err := kvm.GetVersionData(*versionJsonPtr)
+		if err != nil {
+			fmt.Printf("failed to get version data: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(versionData))
 		return
 	}
 
