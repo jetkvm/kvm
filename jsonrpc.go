@@ -466,7 +466,31 @@ func rpcSetTLSState(state TLSState) error {
 	return nil
 }
 
-func callRPCHandler(handler RPCHandler, params map[string]interface{}) (interface{}, error) {
+type RPCHandler struct {
+	Func   interface{}
+	Params []string
+}
+
+// call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
+func callRPCHandler(handler RPCHandler, params map[string]interface{}) (result interface{}, err error) {
+	// Use defer to recover from a panic
+	defer func() {
+		if r := recover(); r != nil {
+			// Convert the panic to an error
+			if e, ok := r.(error); ok {
+				err = e
+			} else {
+				err = fmt.Errorf("panic occurred: %v", r)
+			}
+		}
+	}()
+
+	// Call the handler
+	result, err = riskyCallRPCHandler(handler, params)
+	return result, err
+}
+
+func riskyCallRPCHandler(handler RPCHandler, params map[string]interface{}) (interface{}, error) {
 	handlerValue := reflect.ValueOf(handler.Func)
 	handlerType := handlerValue.Type()
 
@@ -561,11 +585,6 @@ func callRPCHandler(handler RPCHandler, params map[string]interface{}) (interfac
 	}
 
 	return nil, errors.New("unexpected return values from handler")
-}
-
-type RPCHandler struct {
-	Func   interface{}
-	Params []string
 }
 
 func rpcSetMassStorageMode(mode string) (string, error) {
