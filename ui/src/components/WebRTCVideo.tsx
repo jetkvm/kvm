@@ -68,7 +68,6 @@ export default function WebRTCVideo() {
   const isVideoLoading = !isPlaying;
 
   // Misc states and hooks
-  const disableVideoFocusTrap = useUiStore(state => state.disableVideoFocusTrap);
   const [send] = useJsonRpc();
 
   // Video-related
