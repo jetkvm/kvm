@@ -344,17 +344,6 @@ export const useSettingsStore = create(
   ),
 );
 
-export interface DeviceSettingsState {
-  trackpadSensitivity: number;
-  mouseSensitivity: number;
-  clampMin: number;
-  clampMax: number;
-  blockDelay: number;
-  trackpadThreshold: number;
-  scrollSensitivity: "low" | "default" | "high";
-  setScrollSensitivity: (sensitivity: DeviceSettingsState["scrollSensitivity"]) => void;
-}
-
 export interface RemoteVirtualMediaState {
   source: "WebRTC" | "HTTP" | "Storage" | null;
   mode: "CDROM" | "Disk" | null;
