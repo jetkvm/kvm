@@ -4,7 +4,7 @@ import { useSettingsStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { layouts } from "@/keyboardLayouts";
+import { keyboardOptions } from "@/keyboardLayouts";
 
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 
@@ -16,7 +16,7 @@ export default function SettingsKeyboardRoute() {
     state => state.setKeyboardLayout,
   );
 
-  const layoutOptions = Object.entries(layouts).map(([code, language]) => { return { value: code, label: language } })
+  const layoutOptions = keyboardOptions();
 
   const [send] = useJsonRpc();
 
