@@ -4,6 +4,7 @@ linters:
     - forbidigo
     - misspell
     - whitespace
+    - gochecknoinits
   settings:
     forbidigo:
       forbid:
@@ -22,6 +23,9 @@ linters:
       - linters:
           - errcheck
         path: _test.go
+      - linters:
+          - gochecknoinits
+        path: internal/logging/sse.go
     paths:
       - third_party$
       - builtin$
