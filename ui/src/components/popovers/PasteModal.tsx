@@ -98,7 +98,7 @@ export default function PasteModal() {
       console.error(error);
       notifications.error("Failed to paste text");
     }
-  }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode]);
+  }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode, keyboardLayout]);
 
   useEffect(() => {
     if (TextAreaRef.current) {
