@@ -1,8 +1,8 @@
-import { KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
 
-export const name = "English (US)";
+const name = "English (US)";
 
-export const chars = {
+const chars = {
   A: { key: "KeyA", shift: true },
   B: { key: "KeyB", shift: true },
   C: { key: "KeyC", shift: true },
@@ -111,3 +111,9 @@ export const chars = {
   Insert: { key: "Insert", shift: false },
   Delete: { key: "Delete", shift: false },
 } as Record<string, KeyCombo>
+
+export const en_US: KeyboardLayout = {
+  isoCode: "en-US",
+  name: name,
+  chars: chars
+};
