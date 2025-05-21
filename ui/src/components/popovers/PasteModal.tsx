@@ -169,7 +169,7 @@ export default function PasteModal() {
                 </div>
 		<div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Sending key codes using keyboard layout {layouts[keyboardLayout]}
+                    Sending text using keyboard layout: {layouts[keyboardLayout]}
                   </p>
 		</div>
               </div>
