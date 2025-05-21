@@ -44,7 +44,7 @@ export default function PasteModal() {
       if ("error" in resp) return;
       setKeyboardLayout(resp.result as string);
     });
-  }, []);
+  }, [send, setKeyboardLayout]);
 
   const onCancelPasteMode = useCallback(() => {
     setPasteMode(false);
