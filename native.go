@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/resource"
+	"github.com/pion/rtp"
 
 	"github.com/pion/webrtc/v4/pkg/media"
 )
@@ -215,7 +216,7 @@ func handleVideoClient(conn net.Conn) {
 
 	scopedLogger.Info().Msg("native video socket client connected")
 
-	inboundPacket := make([]byte, maxFrameSize)
+	inboundPacket := make([]byte, maxVideoFrameSize)
 	lastFrame := time.Now()
 	for {
 		n, err := conn.Read(inboundPacket)
@@ -229,6 +230,44 @@ func handleVideoClient(conn net.Conn) {
 		if currentSession != nil {
 			err := currentSession.VideoTrack.WriteSample(media.Sample{Data: inboundPacket[:n], Duration: sinceLastFrame})
 			if err != nil {
+				scopedLogger.Warn().Err(err).Msg("error writing sample")
+			}
+		}
+	}
+}
+
+func handleAudioClient(conn net.Conn) {
+	defer conn.Close()
+	scopedLogger := nativeLogger.With().
+		Str("type", "audio").
+		Logger()
+
+	scopedLogger.Info().Msg("native audio socket client connected")
+	inboundPacket := make([]byte, maxAudioFrameSize)
+	var timestamp uint32
+	var packet rtp.Packet
+	for {
+		n, err := conn.Read(inboundPacket)
+		if err != nil {
+			scopedLogger.Warn().Err(err).Msg("error during read")
+			return
+		}
+
+		if currentSession != nil {
+			if err := packet.Unmarshal(inboundPacket[:n]); err != nil {
+				scopedLogger.Warn().Err(err).Msg("error unmarshalling audio socket packet")
+				continue
+			}
+
+			timestamp += 960
+			packet.Header.Timestamp = timestamp
+			buf, err := packet.Marshal()
+			if err != nil {
+				scopedLogger.Warn().Err(err).Msg("error marshalling packet")
+				continue
+			}
+
+			if _, err := currentSession.AudioTrack.Write(buf); err != nil {
 				scopedLogger.Warn().Err(err).Msg("error writing sample")
 			}
 		}

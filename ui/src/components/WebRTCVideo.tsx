@@ -683,7 +683,7 @@ export default function WebRTCVideo() {
                           controls={false}
                           onPlaying={onVideoPlaying}
                           onPlay={onVideoPlaying}
-                          muted={true}
+                          muted={false}
                           playsInline
                           disablePictureInPicture
                           controlsList="nofullscreen"
