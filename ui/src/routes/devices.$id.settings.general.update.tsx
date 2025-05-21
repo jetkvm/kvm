@@ -242,9 +242,9 @@ function UpdatingDeviceState({
 
     console.log(
       `For ${type}:\n` +
-      `  Download Progress: ${downloadProgress}% (${otaState[`${type}DownloadProgress`]})\n` +
-      `  Update Progress: ${updateProgress}% (${otaState[`${type}UpdateProgress`]})\n` +
-      `  Verification Progress: ${verificationProgress}% (${otaState[`${type}VerificationProgress`]})`,
+        `  Download Progress: ${downloadProgress}% (${otaState[`${type}DownloadProgress`]})\n` +
+        `  Update Progress: ${updateProgress}% (${otaState[`${type}UpdateProgress`]})\n` +
+        `  Verification Progress: ${verificationProgress}% (${otaState[`${type}VerificationProgress`]})`,
     );
 
     if (type === "app") {

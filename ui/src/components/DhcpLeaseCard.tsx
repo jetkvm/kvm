@@ -14,7 +14,7 @@ export default function DhcpLeaseCard({
 }) {
   return (
     <GridCard>
-      <div className="animate-fadeIn p-4 opacity-0 animation-duration-500 text-black dark:text-white">
+      <div className="animate-fadeIn p-4 text-black opacity-0 animation-duration-500 dark:text-white">
         <div className="space-y-3">
           <h3 className="text-base font-bold text-slate-900 dark:text-white">
             DHCP Lease Information

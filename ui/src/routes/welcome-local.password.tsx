@@ -71,7 +71,7 @@ export default function WelcomeLocalPasswordRoute() {
         <Container>
           <div className="isolate flex h-full w-full items-center justify-center">
             <div className="max-w-2xl space-y-8">
-              <div className="animate-fadeIn flex items-center justify-center opacity-0">
+              <div className="flex animate-fadeIn items-center justify-center opacity-0">
                 <img
                   src={LogoWhiteIcon}
                   alt=""
@@ -159,7 +159,7 @@ export default function WelcomeLocalPasswordRoute() {
               </Fieldset>
 
               <p
-                className="animate-fadeIn max-w-md text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
+                className="max-w-md animate-fadeIn text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
                 style={{ animationDelay: "800ms" }}
               >
                 This password will be used to secure your device data and protect against

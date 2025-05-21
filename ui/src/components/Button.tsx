@@ -16,7 +16,7 @@ const sizes = {
 const themes = {
   primary: cx(
     // Base styles
-    "bg-blue-700 dark:border-blue-600 border border-blue-900/60 text-white shadow-sm",
+    "border border-blue-900/60 bg-blue-700 text-white shadow-sm dark:border-blue-600",
     // Hover states
     "group-hover:bg-blue-800",
     // Active states
@@ -24,9 +24,9 @@ const themes = {
   ),
   danger: cx(
     // Base styles
-    "bg-red-600 text-white border-red-700 shadow-xs shadow-red-200/80 dark:border-red-600 dark:shadow-red-900/20",
+    "border-red-700 bg-red-600 text-white shadow-xs shadow-red-200/80 dark:border-red-600 dark:shadow-red-900/20",
     // Hover states
-    "group-hover:bg-red-700 group-hover:border-red-800 dark:group-hover:bg-red-700 dark:group-hover:border-red-600",
+    "group-hover:border-red-800 group-hover:bg-red-700 dark:group-hover:border-red-600 dark:group-hover:bg-red-700",
     // Active states
     "group-active:bg-red-800 dark:group-active:bg-red-800",
     // Focus states
@@ -34,7 +34,7 @@ const themes = {
   ),
   light: cx(
     // Base styles
-    "bg-white text-black border-slate-800/30 shadow-xs dark:bg-slate-800 dark:border-slate-300/20 dark:text-white",
+    "border-slate-800/30 bg-white text-black shadow-xs dark:border-slate-300/20 dark:bg-slate-800 dark:text-white",
     // Hover states
     "group-hover:bg-blue-50/80 dark:group-hover:bg-slate-700",
     // Active states
@@ -44,7 +44,7 @@ const themes = {
   ),
   lightDanger: cx(
     // Base styles
-    "bg-white text-black border-red-400/60 shadow-xs",
+    "border-red-400/60 bg-white text-black shadow-xs",
     // Hover states
     "group-hover:bg-red-50/80",
     // Active states
@@ -54,9 +54,9 @@ const themes = {
   ),
   blank: cx(
     // Base styles
-    "bg-white/0 text-black border-transparent dark:text-white",
+    "border-transparent bg-white/0 text-black dark:text-white",
     // Hover states
-    "group-hover:bg-white group-hover:border-slate-800/30 group-hover:shadow-sm dark:group-hover:bg-slate-700 dark:group-hover:border-slate-600",
+    "group-hover:border-slate-800/30 group-hover:bg-white group-hover:shadow-sm dark:group-hover:border-slate-600 dark:group-hover:bg-slate-700",
     // Active states
     "group-active:bg-slate-100/80",
   ),
@@ -65,16 +65,16 @@ const themes = {
 const btnVariants = cva({
   base: cx(
     // Base styles
-    "border rounded-sm select-none",
+    "rounded-sm border select-none",
     // Size classes
-    "justify-center items-center shrink-0",
+    "shrink-0 items-center justify-center",
     // Transition classes
     "outline-hidden transition-all duration-200",
     // Text classes
-    "font-display text-center font-medium leading-tight",
+    "text-center font-display leading-tight font-medium",
     // States
-    "group-focus:outline-hidden group-focus:ring-2 group-focus:ring-offset-2 group-focus:ring-blue-700",
-    "group-disabled:opacity-50 group-disabled:pointer-events-none",
+    "group-focus:ring-2 group-focus:ring-blue-700 group-focus:ring-offset-2 group-focus:outline-hidden",
+    "group-disabled:pointer-events-none group-disabled:opacity-50",
   ),
 
   variants: {
@@ -241,7 +241,7 @@ type LabelPropsType = Pick<HTMLLabelElement, "htmlFor"> &
   React.ComponentProps<typeof ButtonContent> & { disabled?: boolean };
 export const LabelButton = ({ htmlFor, ...props }: LabelPropsType) => {
   const classes = cx(
-    "group outline-hidden block cursor-pointer",
+    "group block cursor-pointer outline-hidden",
     props.disabled ? "pointer-events-none opacity-70!" : "",
     props.fullWidth ? "w-full" : "",
     props.loading ? "pointer-events-none" : "",

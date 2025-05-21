@@ -4,7 +4,6 @@ import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/20/solid";
 
 import Card from "@/components/Card";
 
-
 interface NotificationOptions {
   duration?: number;
   // Add other options as needed
@@ -26,7 +25,9 @@ const ToastContent = ({
   >
     <div className="flex items-center gap-x-2 p-2.5 px-2">
       {icon}
-      <p className="text-[14px] font-medium text-gray-900 dark:text-gray-100">{message}</p>
+      <p className="text-[14px] font-medium text-gray-900 dark:text-gray-100">
+        {message}
+      </p>
     </div>
   </Card>
 );
@@ -36,7 +37,9 @@ const notifications = {
     return toast.custom(
       t => (
         <ToastContent
-          icon={<CheckCircleIcon className="w-5 h-5 text-green-500 dark:text-green-400" />}
+          icon={
+            <CheckCircleIcon className="h-5 w-5 text-green-500 dark:text-green-400" />
+          }
           message={message}
           t={t}
         />
@@ -49,7 +52,7 @@ const notifications = {
     return toast.custom(
       t => (
         <ToastContent
-          icon={<XCircleIcon className="w-5 h-5 text-red-500 dark:text-red-400" />}
+          icon={<XCircleIcon className="h-5 w-5 text-red-500 dark:text-red-400" />}
           message={message}
           t={t}
         />

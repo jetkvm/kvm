@@ -6,7 +6,6 @@ import { cva } from "@/cva.config";
 
 import Card from "./Card";
 
-
 type SelectMenuProps = Pick<
   JSX.IntrinsicElements["select"],
   "disabled" | "onChange" | "name" | "value"
@@ -84,10 +83,10 @@ export const SelectMenuBasic = React.forwardRef<HTMLSelectElement, SelectMenuPro
               "invalid:ring-2 invalid:ring-red-600 invalid:ring-offset-2",
 
               // Focus
-              "focus:outline-blue-600 focus:ring-2 focus:ring-blue-700 focus:ring-offset-2 dark:focus:outline-blue-500 dark:focus:ring-blue-500",
+              "focus:ring-2 focus:ring-blue-700 focus:ring-offset-2 focus:outline-blue-600 dark:focus:ring-blue-500 dark:focus:outline-blue-500",
 
               // Disabled
-              "disabled:pointer-events-none disabled:select-none disabled:bg-slate-50 disabled:text-slate-500/80 dark:disabled:bg-slate-800 dark:disabled:text-slate-400/80",
+              "disabled:pointer-events-none disabled:bg-slate-50 disabled:text-slate-500/80 disabled:select-none dark:disabled:bg-slate-800 dark:disabled:text-slate-400/80",
             )}
             value={value}
             id={id}

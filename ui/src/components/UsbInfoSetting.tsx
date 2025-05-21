@@ -1,7 +1,6 @@
-import { useMemo , useCallback , useEffect, useState } from "react";
+import { useMemo, useCallback, useEffect, useState } from "react";
 
 import { Button } from "@components/Button";
-
 
 import { UsbConfigState } from "../hooks/stores";
 import { useJsonRpc } from "../hooks/useJsonRpc";
@@ -174,7 +173,7 @@ export function UsbInfoSetting() {
         />
       </SettingsItem>
       {usbConfigProduct === "custom" && (
-        <div className="ml-2 space-y-4 border-l border-slate-800/10 pl-4 dark:border-slate-300/20 ">
+        <div className="ml-2 space-y-4 border-l border-slate-800/10 pl-4 dark:border-slate-300/20">
           <USBConfigDialog
             loading={loading}
             onSetUsbConfig={usbConfig => handleUsbConfigChange(usbConfig)}

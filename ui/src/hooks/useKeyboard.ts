@@ -29,10 +29,13 @@ export default function useKeyboard() {
     sendKeyboardEvent([], []);
   }, [sendKeyboardEvent]);
 
-  const executeMacro = async (steps: { keys: string[] | null; modifiers: string[] | null; delay: number }[]) => {
+  const executeMacro = async (
+    steps: { keys: string[] | null; modifiers: string[] | null; delay: number }[],
+  ) => {
     for (const [index, step] of steps.entries()) {
       const keyValues = step.keys?.map(key => keys[key]).filter(Boolean) || [];
-      const modifierValues = step.modifiers?.map(mod => modifiers[mod]).filter(Boolean) || [];
+      const modifierValues =
+        step.modifiers?.map(mod => modifiers[mod]).filter(Boolean) || [];
 
       // If the step has keys and/or modifiers, press them and hold for the delay
       if (keyValues.length > 0 || modifierValues.length > 0) {

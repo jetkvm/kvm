@@ -704,7 +704,7 @@ export default function WebRTCVideo() {
                         {peerConnection?.connectionState == "connected" && (
                           <div
                             style={{ animationDuration: "500ms" }}
-                            className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center"
+                            className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center"
                           >
                             <div className="relative h-full w-full rounded-md">
                               <LoadingVideoOverlay show={isVideoLoading} />

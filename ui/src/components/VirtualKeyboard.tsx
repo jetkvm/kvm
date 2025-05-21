@@ -210,7 +210,7 @@ function KeyboardWrapper() {
             <div
               className={cx(
                 !showAttachedVirtualKeyboard
-                  ? "fixed left-0 top-0 z-50 select-none"
+                  ? "fixed top-0 left-0 z-50 select-none"
                   : "relative",
               )}
               ref={keyboardRef}
@@ -244,7 +244,7 @@ function KeyboardWrapper() {
                       />
                     )}
                   </div>
-                  <h2 className="select-none self-center font-sans text-[12px] text-slate-700 dark:text-slate-300">
+                  <h2 className="self-center font-sans text-[12px] text-slate-700 select-none dark:text-slate-300">
                     Virtual Keyboard
                   </h2>
                   <div className="absolute right-2">
@@ -304,8 +304,16 @@ function KeyboardWrapper() {
                         onKeyPress={onKeyDown}
                         display={keyDisplayMap}
                         layout={{
-                          default: ["PrintScreen ScrollLock Pause", "Insert Home Pageup", "Delete End Pagedown"],
-                          shift: ["(PrintScreen) ScrollLock (Pause)", "Insert Home Pageup", "Delete End Pagedown"],
+                          default: [
+                            "PrintScreen ScrollLock Pause",
+                            "Insert Home Pageup",
+                            "Delete End Pagedown",
+                          ],
+                          shift: [
+                            "(PrintScreen) ScrollLock (Pause)",
+                            "Insert Home Pageup",
+                            "Delete End Pagedown",
+                          ],
                         }}
                         syncInstanceInputs={true}
                         debug={false}

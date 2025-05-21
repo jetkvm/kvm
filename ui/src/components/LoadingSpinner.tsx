@@ -1,10 +1,6 @@
 import clsx from "clsx";
 
-export default function LoadingSpinner({
-  className,
-}: {
-  className: string | undefined;
-}) {
+export default function LoadingSpinner({ className }: { className: string | undefined }) {
   return (
     <svg
       className={clsx(className, "shrink-0 animate-spin p-[2px]")}

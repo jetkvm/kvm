@@ -4,7 +4,7 @@ import React, { ReactNode } from "react";
 import { cx } from "@/cva.config";
 
 function Container({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx("mx-auto h-full w-full px-8 ", className)}>{children}</div>;
+  return <div className={cx("mx-auto h-full w-full px-8", className)}>{children}</div>;
 }
 
 function Article({ children }: { children: React.ReactNode }) {

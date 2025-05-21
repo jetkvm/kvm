@@ -74,11 +74,11 @@ export function Combobox({
                 "dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700 dark:active:bg-slate-800/60",
 
                 // Focus
-                "focus:outline-blue-600 focus:ring-2 focus:ring-blue-700 focus:ring-offset-2 dark:focus:outline-blue-500 dark:focus:ring-blue-500",
+                "focus:ring-2 focus:ring-blue-700 focus:ring-offset-2 focus:outline-blue-600 dark:focus:ring-blue-500 dark:focus:outline-blue-500",
 
                 // Disabled
                 disabled &&
-                  "pointer-events-none select-none bg-slate-50 text-slate-500/80 disabled:hover:bg-white dark:bg-slate-800 dark:text-slate-400/80 dark:disabled:hover:bg-slate-800",
+                  "pointer-events-none bg-slate-50 text-slate-500/80 select-none disabled:hover:bg-white dark:bg-slate-800 dark:text-slate-400/80 dark:disabled:hover:bg-slate-800",
               )}
               placeholder={disabled ? disabledMessage : placeholder}
               displayValue={displayValue}
@@ -95,7 +95,7 @@ export function Combobox({
                   value={option}
                   className={clsx(
                     // General styling
-                    "cursor-default select-none px-4 py-2",
+                    "cursor-default px-4 py-2 select-none",
 
                     // Hover and active states
                     "hover:bg-blue-50/80 ui-active:bg-blue-50/80 ui-active:text-blue-900",

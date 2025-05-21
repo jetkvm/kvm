@@ -1,5 +1,4 @@
-
-import { useState , useEffect } from "react";
+import { useState, useEffect } from "react";
 
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 

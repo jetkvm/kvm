@@ -1,4 +1,4 @@
-import { useCallback , useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
@@ -174,7 +174,7 @@ export function UsbDeviceSetting() {
       </SettingsItem>
 
       {selectedPreset === "custom" && (
-        <div className="ml-2 border-l border-slate-800/10 pl-4 dark:border-slate-300/20 ">
+        <div className="ml-2 border-l border-slate-800/10 pl-4 dark:border-slate-300/20">
           <div className="space-y-4">
             <div className="space-y-4">
               <SettingsItem title="Enable Keyboard" description="Enable Keyboard">

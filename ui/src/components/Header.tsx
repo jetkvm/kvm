@@ -112,7 +112,7 @@ export default function DashboardNavbar({
                                 className="size-6 rounded-full border-2 border-transparent transition-colors group-hover:border-blue-700"
                               />
                             ) : userEmail ? (
-                              <span className="font-display max-w-[200px] truncate text-sm/6 font-semibold">
+                              <span className="max-w-[200px] truncate font-display text-sm/6 font-semibold">
                                 {userEmail}
                               </span>
                             ) : null}
@@ -133,7 +133,7 @@ export default function DashboardNavbar({
                                       <div className="font-display text-xs">
                                         Logged in as
                                       </div>
-                                      <div className="font-display max-w-[200px] truncate text-sm font-semibold">
+                                      <div className="max-w-[200px] truncate font-display text-sm font-semibold">
                                         {userEmail}
                                       </div>
                                     </div>

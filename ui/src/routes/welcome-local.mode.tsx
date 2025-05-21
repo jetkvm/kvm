@@ -60,7 +60,7 @@ export default function WelcomeLocalModeRoute() {
         <Container>
           <div className="isolate flex h-full w-full items-center justify-center">
             <div className="max-w-xl space-y-8">
-              <div className="animate-fadeIn flex items-center justify-center opacity-0">
+              <div className="flex animate-fadeIn items-center justify-center opacity-0">
                 <img
                   src={LogoWhiteIcon}
                   alt=""
@@ -83,14 +83,14 @@ export default function WelcomeLocalModeRoute() {
 
               <Form method="POST" className="space-y-8">
                 <div
-                  className="animate-fadeIn grid grid-cols-1 gap-6 opacity-0 sm:grid-cols-2"
+                  className="grid animate-fadeIn grid-cols-1 gap-6 opacity-0 sm:grid-cols-2"
                   style={{ animationDelay: "400ms" }}
                 >
                   {["password", "noPassword"].map(mode => (
                     <GridCard
                       key={mode}
                       cardClassName={cx("transition-all duration-100", {
-                        "outline-blue-700! outline-2!": selectedMode === mode,
+                        "outline-2! outline-blue-700!": selectedMode === mode,
                         "hover:outline-blue-700!": selectedMode !== mode,
                       })}
                     >
@@ -116,7 +116,7 @@ export default function WelcomeLocalModeRoute() {
                           onChange={() => {
                             setSelectedMode(mode as "password" | "noPassword");
                           }}
-                          className="form-radio absolute top-2 right-2 h-4 w-4 text-blue-600"
+                          className="absolute top-2 right-2 form-radio h-4 w-4 text-blue-600"
                         />
                       </div>
                     </GridCard>
@@ -133,7 +133,7 @@ export default function WelcomeLocalModeRoute() {
                 )}
 
                 <div
-                  className="animate-fadeIn mx-auto max-w-sm opacity-0"
+                  className="mx-auto max-w-sm animate-fadeIn opacity-0"
                   style={{ animationDelay: "500ms" }}
                 >
                   <Button
@@ -149,7 +149,7 @@ export default function WelcomeLocalModeRoute() {
               </Form>
 
               <p
-                className="animate-fadeIn mx-auto max-w-md text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
+                className="mx-auto max-w-md animate-fadeIn text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
                 style={{ animationDelay: "600ms" }}
               >
                 You can always change your authentication method later in the settings.

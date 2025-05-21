@@ -14,7 +14,7 @@ export default function MacroBar() {
 
   useEffect(() => {
     setSendFn(send);
-    
+
     if (!initialized) {
       loadMacros();
     }
@@ -25,7 +25,7 @@ export default function MacroBar() {
   }
 
   return (
-    <Container className="bg-white dark:bg-slate-900 border-b border-b-slate-800/20 dark:border-b-slate-300/20">
+    <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">
       <div className="flex items-center gap-x-2 py-1.5">
         <div className="absolute -ml-5">
           <LuCommand className="h-4 w-4 text-slate-500" />
@@ -45,4 +45,4 @@ export default function MacroBar() {
       </div>
     </Container>
   );
-} 
+}
