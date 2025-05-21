@@ -84,7 +84,9 @@ export default function SettingsVideoRoute() {
         return;
       }
 
-      notifications.success(`Stream quality set to ${streamQualityOptions.find(x => x.value === factor)?.label}`);
+      notifications.success(
+        `Stream quality set to ${streamQualityOptions.find(x => x.value === factor)?.label}`,
+      );
       setStreamQuality(factor);
     });
   };

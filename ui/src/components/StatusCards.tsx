@@ -18,7 +18,7 @@ export default function StatusCard({
   statusIndicatorClassName,
 }: Props) {
   return (
-    <div className="flex items-center gap-x-3 rounded-md border bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-white border-slate-800/20 px-2 py-1.5">
+    <div className="flex items-center gap-x-3 rounded-md border border-slate-800/20 bg-white px-2 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-white">
       {Icon ? (
         <span>
           <Icon className={cx(iconClassName, "shrink-0")} />
@@ -26,7 +26,7 @@ export default function StatusCard({
       ) : null}
 
       <div className="space-y-1">
-        <div className="text-xs font-semibold leading-none transition text-ellipsis">
+        <div className="text-xs leading-none font-semibold text-ellipsis transition">
           {title}
         </div>
         <div className="text-xs leading-none">

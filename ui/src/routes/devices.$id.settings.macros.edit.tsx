@@ -34,8 +34,8 @@ export default function SettingsMacrosEditRoute() {
           ...step,
           keys: Array.isArray(step.keys) ? step.keys : [],
           modifiers: Array.isArray(step.modifiers) ? step.modifiers : [],
-          delay: typeof step.delay === 'number' ? step.delay : 0
-        }))
+          delay: typeof step.delay === "number" ? step.delay : 0,
+        })),
       });
     } else {
       navigate("../");
@@ -47,12 +47,14 @@ export default function SettingsMacrosEditRoute() {
 
     setIsUpdating(true);
     try {
-      const newMacros = macros.map(m => 
-        m.id === macro.id ? {
-          ...macro,
-          name: updatedMacro.name!.trim(),
-          steps: updatedMacro.steps || [],
-        } : m
+      const newMacros = macros.map(m =>
+        m.id === macro.id
+          ? {
+              ...macro,
+              name: updatedMacro.name!.trim(),
+              steps: updatedMacro.steps || [],
+            }
+          : m,
       );
 
       await saveMacros(normalizeSortOrders(newMacros));
@@ -94,10 +96,7 @@ export default function SettingsMacrosEditRoute() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <SettingsPageHeader
-          title="Edit Macro"
-          description="Modify your keyboard macro"
-        />
+        <SettingsPageHeader title="Edit Macro" description="Modify your keyboard macro" />
         <Button
           size="SM"
           theme="light"
@@ -131,4 +130,4 @@ export default function SettingsMacrosEditRoute() {
       />
     </div>
   );
-} 
+}

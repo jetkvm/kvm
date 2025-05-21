@@ -18,7 +18,7 @@ export default function CustomTooltip({ payload }: CustomTooltipProps) {
           <div className="space-y-1">
             <div className="flex items-center gap-x-1">
               <div className="h-[2px] w-2 bg-blue-700" />
-              <span >
+              <span>
                 {stat} {toolTipData?.unit}
               </span>
             </div>

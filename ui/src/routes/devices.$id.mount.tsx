@@ -1364,7 +1364,7 @@ function UploadFileView({
       {/* Display upload error if present */}
       {uploadError && (
         <div
-          className="mt-2 animate-fadeIn truncate text-sm text-red-600 dark:text-red-400 opacity-0"
+          className="mt-2 animate-fadeIn truncate text-sm text-red-600 opacity-0 dark:text-red-400"
           style={{ animationDuration: "0.7s" }}
         >
           Error: {uploadError}

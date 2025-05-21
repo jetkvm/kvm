@@ -23,7 +23,7 @@ const variants = cva({
 export default function StepCounter({ nSteps, currStepIdx, size = "MD" }: Props) {
   const textStyle = variants({ size });
   return (
-    <Card className="inline-flex! w-auto select-none items-center justify-center gap-x-2 rounded-lg p-1">
+    <Card className="inline-flex! w-auto items-center justify-center gap-x-2 rounded-lg p-1 select-none">
       {[...Array(nSteps).keys()].map(i => {
         if (i < currStepIdx) {
           return (

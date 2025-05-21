@@ -32,7 +32,7 @@ export default function EmptyCard({
             {IconElm && (
               <IconElm className="mx-auto h-5 w-5 text-blue-600 dark:text-blue-600" />
             )}
-            <h4 className="text-base font-bold leading-none text-black dark:text-white">
+            <h4 className="text-base leading-none font-bold text-black dark:text-white">
               {headline}
             </h4>
           </div>

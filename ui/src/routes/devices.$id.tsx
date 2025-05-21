@@ -704,7 +704,7 @@ export default function KvmIdRoute() {
     send("getUpdateStatus", {}, async resp => {
       if ("error" in resp) {
         notifications.error(`Failed to get device version: ${resp.error}`);
-        return 
+        return;
       }
 
       const result = resp.result as SystemVersionInfo;
@@ -797,7 +797,7 @@ export default function KvmIdRoute() {
             <WebRTCVideo />
             <div
               style={{ animationDuration: "500ms" }}
-              className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
+              className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center p-4"
             >
               <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
                 {!!ConnectionStatusElement && ConnectionStatusElement}

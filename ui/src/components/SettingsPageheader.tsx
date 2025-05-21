@@ -9,7 +9,7 @@ export function SettingsPageHeader({
 }) {
   return (
     <div className="select-none">
-      <h2 className=" text-xl font-extrabold text-black dark:text-white">{title}</h2>
+      <h2 className="text-xl font-extrabold text-black dark:text-white">{title}</h2>
       <div className="text-sm text-black dark:text-slate-300">{description}</div>
     </div>
   );

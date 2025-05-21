@@ -9,7 +9,7 @@ import { MAX_KEYS_PER_STEP, DEFAULT_DELAY } from "@/constants/macros";
 import FieldLabel from "@/components/FieldLabel";
 
 // Filter out modifier keys since they're handled in the modifiers section
-const modifierKeyPrefixes = ['Alt', 'Control', 'Shift', 'Meta'];
+const modifierKeyPrefixes = ["Alt", "Control", "Shift", "Meta"];
 
 const keyOptions = Object.keys(keys)
   .filter(key => !modifierKeyPrefixes.some(prefix => key.startsWith(prefix)))
@@ -24,10 +24,10 @@ const modifierOptions = Object.keys(modifiers).map(modifier => ({
 }));
 
 const groupedModifiers: Record<string, typeof modifierOptions> = {
-  Control: modifierOptions.filter(mod => mod.value.startsWith('Control')),
-  Shift: modifierOptions.filter(mod => mod.value.startsWith('Shift')),
-  Alt: modifierOptions.filter(mod => mod.value.startsWith('Alt')),
-  Meta: modifierOptions.filter(mod => mod.value.startsWith('Meta')),
+  Control: modifierOptions.filter(mod => mod.value.startsWith("Control")),
+  Shift: modifierOptions.filter(mod => mod.value.startsWith("Shift")),
+  Alt: modifierOptions.filter(mod => mod.value.startsWith("Alt")),
+  Meta: modifierOptions.filter(mod => mod.value.startsWith("Meta")),
 };
 
 const basePresetDelays = [
@@ -84,16 +84,20 @@ export function MacroStepCard({
   keyQuery,
   onModifierChange,
   onDelayChange,
-  isLastStep
+  isLastStep,
 }: MacroStepCardProps) {
   const getFilteredKeys = () => {
     const selectedKeys = ensureArray(step.keys);
-    const availableKeys = keyOptions.filter(option => !selectedKeys.includes(option.value));
-    
-    if (keyQuery === '') {
+    const availableKeys = keyOptions.filter(
+      option => !selectedKeys.includes(option.value),
+    );
+
+    if (keyQuery === "") {
       return availableKeys;
     } else {
-      return availableKeys.filter(option => option.label.toLowerCase().includes(keyQuery.toLowerCase()));
+      return availableKeys.filter(option =>
+        option.label.toLowerCase().includes(keyQuery.toLowerCase()),
+      );
     }
   };
 
@@ -136,13 +140,16 @@ export function MacroStepCard({
         </div>
       </div>
 
-      <div className="space-y-4 mt-2">
-        <div className="w-full flex flex-col gap-2">
+      <div className="mt-2 space-y-4">
+        <div className="flex w-full flex-col gap-2">
           <FieldLabel label="Modifiers" />
           <div className="inline-flex flex-wrap gap-3">
             {Object.entries(groupedModifiers).map(([group, mods]) => (
-              <div key={group} className="relative min-w-[120px] rounded-md border border-slate-200 dark:border-slate-700 p-2">
-                <span className="absolute -top-2.5 left-2 px-1 text-xs font-medium bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+              <div
+                key={group}
+                className="relative min-w-[120px] rounded-md border border-slate-200 p-2 dark:border-slate-700"
+              >
+                <span className="absolute -top-2.5 left-2 bg-white px-1 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                   {group}
                 </span>
                 <div className="flex flex-wrap gap-4 pt-1">
@@ -150,8 +157,12 @@ export function MacroStepCard({
                     <Button
                       key={option.value}
                       size="XS"
-                      theme={ensureArray(step.modifiers).includes(option.value) ? "primary" : "light"}
-                      text={option.label.split(' ')[1] || option.label}
+                      theme={
+                        ensureArray(step.modifiers).includes(option.value)
+                          ? "primary"
+                          : "light"
+                      }
+                      text={option.label.split(" ")[1] || option.label}
                       onClick={() => {
                         const modifiersArray = ensureArray(step.modifiers);
                         const isSelected = modifiersArray.includes(option.value);
@@ -167,27 +178,30 @@ export function MacroStepCard({
             ))}
           </div>
         </div>
-        
-        <div className="w-full flex flex-col gap-1">
+
+        <div className="flex w-full flex-col gap-1">
           <div className="flex items-center gap-1">
-            <FieldLabel label="Keys" description={`Maximum ${MAX_KEYS_PER_STEP} keys per step.`} />
+            <FieldLabel
+              label="Keys"
+              description={`Maximum ${MAX_KEYS_PER_STEP} keys per step.`}
+            />
           </div>
           {ensureArray(step.keys) && step.keys.length > 0 && (
             <div className="flex flex-wrap gap-1 pb-2">
               {step.keys.map((key, keyIndex) => (
                 <span
                   key={keyIndex}
-                  className="inline-flex items-center py-0.5 rounded-md bg-blue-100 px-1 text-xs font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
+                  className="inline-flex items-center rounded-md bg-blue-100 px-1 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
                 >
-                  <span className="px-1">
-                    {keyDisplayMap[key] || key}
-                  </span>
+                  <span className="px-1">{keyDisplayMap[key] || key}</span>
                   <Button
                     size="XS"
                     className=""
                     theme="blank"
                     onClick={() => {
-                      const newKeys = ensureArray(step.keys).filter((_, i) => i !== keyIndex);
+                      const newKeys = ensureArray(step.keys).filter(
+                        (_, i) => i !== keyIndex,
+                      );
                       onKeySelect({ value: null, keys: newKeys });
                     }}
                     LeadingIcon={LuX}
@@ -200,7 +214,7 @@ export function MacroStepCard({
             <Combobox
               onChange={(value: { value: string; label: string }) => {
                 onKeySelect(value);
-                onKeyQueryChange('');
+                onKeyQueryChange("");
               }}
               displayValue={() => keyQuery}
               onInputChange={onKeyQueryChange}
@@ -209,22 +223,29 @@ export function MacroStepCard({
               size="SM"
               immediate
               disabled={ensureArray(step.keys).length >= MAX_KEYS_PER_STEP}
-              placeholder={ensureArray(step.keys).length >= MAX_KEYS_PER_STEP ? "Max keys reached" : "Search for key..."}
+              placeholder={
+                ensureArray(step.keys).length >= MAX_KEYS_PER_STEP
+                  ? "Max keys reached"
+                  : "Search for key..."
+              }
               emptyMessage="No matching keys found"
             />
           </div>
         </div>
-        
-        <div className="w-full flex flex-col gap-1">
+
+        <div className="flex w-full flex-col gap-1">
           <div className="flex items-center gap-1">
-            <FieldLabel label="Step Duration" description="Time to wait before executing the next step." />
+            <FieldLabel
+              label="Step Duration"
+              description="Time to wait before executing the next step."
+            />
           </div>
           <div className="flex items-center gap-3">
             <SelectMenuBasic
               size="SM"
               fullWidth
               value={step.delay.toString()}
-              onChange={(e) => onDelayChange(parseInt(e.target.value, 10))}
+              onChange={e => onDelayChange(parseInt(e.target.value, 10))}
               options={PRESET_DELAYS}
             />
           </div>
@@ -232,4 +253,4 @@ export function MacroStepCard({
       </div>
     </Card>
   );
-} 
+}

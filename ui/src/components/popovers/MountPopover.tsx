@@ -80,7 +80,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
             </Card>
           </div>
           <div className="space-y-1">
-            <h3 className="text-sm font-semibold leading-none text-black dark:text-white">
+            <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
               No mounted media
             </h3>
             <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
@@ -214,7 +214,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
               ) : null}
 
               <div
-                className="animate-fadeIn opacity-0 space-y-2"
+                className="animate-fadeIn space-y-2 opacity-0"
                 style={{
                   animationDuration: "0.7s",
                   animationDelay: "0.1s",
@@ -232,8 +232,8 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
                   </div>
                 </div>
                 {remoteVirtualMediaState ? (
-                  <div className="flex select-none items-center justify-between text-xs">
-                    <div className="select-none text-white dark:text-slate-300">
+                  <div className="flex items-center justify-between text-xs select-none">
+                    <div className="text-white select-none dark:text-slate-300">
                       <span>Mounted as</span>{" "}
                       <span className="font-semibold">
                         {remoteVirtualMediaState.mode === "Disk" ? "Disk" : "CD-ROM"}
@@ -289,7 +289,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
 
         {!remoteVirtualMediaState && (
           <div
-            className="flex animate-fadeIn opacity-0 items-center justify-end space-x-2"
+            className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
             style={{
               animationDuration: "0.7s",
               animationDelay: "0.2s",

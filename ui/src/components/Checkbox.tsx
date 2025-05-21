@@ -15,7 +15,7 @@ const checkboxVariants = cva({
     "form-checkbox block rounded",
 
     // Colors
-    "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 checked:accent-blue-700 checked:dark:accent-blue-500 transition-colors",
+    "border-slate-300 bg-slate-50 transition-colors checked:accent-blue-700 dark:border-slate-600 dark:bg-slate-800 checked:dark:accent-blue-500",
 
     // Hover
     "hover:bg-slate-200/50 dark:hover:bg-slate-700/50",
@@ -24,7 +24,7 @@ const checkboxVariants = cva({
     "active:bg-slate-200 dark:active:bg-slate-700",
 
     // Focus
-    "focus:border-slate-300 dark:focus:border-slate-600 focus:outline-hidden focus:ring-2 focus:ring-blue-700 dark:focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900",
+    "focus:border-slate-300 focus:ring-2 focus:ring-blue-700 focus:ring-offset-2 focus:outline-hidden dark:focus:border-slate-600 dark:focus:ring-blue-500 dark:focus:ring-offset-slate-900",
 
     // Disabled
     "disabled:pointer-events-none disabled:opacity-30",

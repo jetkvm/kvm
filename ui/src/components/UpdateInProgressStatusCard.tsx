@@ -10,13 +10,13 @@ export default function UpdateInProgressStatusCard() {
   const { navigateTo } = useDeviceUiNavigation();
 
   return (
-    <div className="w-full select-none opacity-100 transition-all duration-300 ease-in-out">
+    <div className="w-full opacity-100 transition-all duration-300 ease-in-out select-none">
       <GridCard cardClassName="shadow-xl!">
         <div className="flex items-center justify-between gap-x-3 px-2.5 py-2.5 text-black dark:text-white">
           <div className="flex items-center gap-x-3">
             <LoadingSpinner className={cx("h-5 w-5", "shrink-0 text-blue-700")} />
             <div className="space-y-1">
-              <div className="text-ellipsis text-sm font-semibold leading-none transition">
+              <div className="text-sm leading-none font-semibold text-ellipsis transition">
                 Update in Progress
               </div>
               <div className="text-sm leading-none">

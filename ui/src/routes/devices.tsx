@@ -40,7 +40,7 @@ export default function DevicesRoute() {
   useInterval(revalidate.revalidate, 4000);
   return (
     <div className="relative h-full">
-      <div className="grid h-full select-none grid-rows-(--grid-headerBody)">
+      <div className="grid h-full grid-rows-(--grid-headerBody) select-none">
         <DashboardNavbar
           isLoggedIn={!!user}
           primaryLinks={[{ title: "Cloud Devices", to: "/devices" }]}

@@ -59,14 +59,16 @@ export default function SetupRoute() {
       <div className="grid min-h-screen grid-rows-(--grid-layout)">
         <SimpleNavbar />
         <Container>
-          <div className="flex items-center justify-center w-full h-full isolate">
-            <div className="max-w-2xl -mt-32 space-y-8">
+          <div className="isolate flex h-full w-full items-center justify-center">
+            <div className="-mt-32 max-w-2xl space-y-8">
               <div className="text-center">
                 <StepCounter currStepIdx={1} nSteps={2} />
               </div>
 
               <div className="space-y-2 text-center">
-                <h1 className="text-4xl font-semibold text-black dark:text-white">Let&apos;s name your device</h1>
+                <h1 className="text-4xl font-semibold text-black dark:text-white">
+                  Let&apos;s name your device
+                </h1>
                 <p className="text-slate-600 dark:text-slate-400">
                   Name your device so you can easily identify it later. You can change
                   this name at any time.
@@ -74,7 +76,7 @@ export default function SetupRoute() {
               </div>
 
               <Fieldset className="space-y-12">
-                <Form method="POST" className="max-w-sm mx-auto space-y-4">
+                <Form method="POST" className="mx-auto max-w-sm space-y-4">
                   <InputFieldWithLabel
                     label="Device Name"
                     type="text"

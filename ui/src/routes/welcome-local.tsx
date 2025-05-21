@@ -45,7 +45,7 @@ export default function WelcomeRoute() {
               <div className="max-w-3xl text-center">
                 <div className="space-y-8">
                   <div className="space-y-4">
-                    <div className="animate-fadeIn animation-delay-1000 flex items-center justify-center opacity-0">
+                    <div className="flex animate-fadeIn items-center justify-center opacity-0 animation-delay-1000">
                       <img
                         src={LogoWhiteIcon}
                         alt="JetKVM Logo"
@@ -58,7 +58,7 @@ export default function WelcomeRoute() {
                       />
                     </div>
 
-                    <div className="animate-fadeIn animation-delay-1500 space-y-1 opacity-0">
+                    <div className="animate-fadeIn space-y-1 opacity-0 animation-delay-1500">
                       <h1 className="text-4xl font-semibold text-black dark:text-white">
                         Welcome to JetKVM
                       </h1>
@@ -72,19 +72,19 @@ export default function WelcomeRoute() {
                     <img
                       src={DeviceImage}
                       alt="JetKVM Device"
-                      className="animation-delay-300 animate-fadeInScaleFloat max-w-md scale-[0.98] opacity-0 transition-all duration-1000 ease-out"
+                      className="max-w-md scale-[0.98] animate-fadeInScaleFloat opacity-0 transition-all duration-1000 ease-out animation-delay-300"
                     />
                   </div>
                 </div>
                 <div className="-mt-8 space-y-4">
                   <p
                     style={{ animationDelay: "2000ms" }}
-                    className="animate-fadeIn mx-auto max-w-lg text-lg text-slate-700 opacity-0 dark:text-slate-300"
+                    className="mx-auto max-w-lg animate-fadeIn text-lg text-slate-700 opacity-0 dark:text-slate-300"
                   >
                     JetKVM combines powerful hardware with intuitive software to provide a
                     seamless remote control experience.
                   </p>
-                  <div className="animate-fadeIn animation-delay-2300 opacity-0">
+                  <div className="animate-fadeIn opacity-0 animation-delay-2300">
                     <LinkButton
                       size="LG"
                       theme="light"

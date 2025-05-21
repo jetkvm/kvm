@@ -369,7 +369,7 @@ export function PointerLockBar({ show }: PointerLockBarProps) {
     <AnimatePresence mode="wait">
       {show ? (
         <motion.div
-          className="absolute -top-[36px] left-0 right-0 z-20 bg-white"
+          className="absolute -top-[36px] right-0 left-0 z-20 bg-white"
           initial={{ y: 20, opacity: 0, zIndex: 0 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ y: 43, zIndex: 0 }}

@@ -80,9 +80,9 @@ export default function DevicesIdDeregister() {
         kvmName={device?.name}
       />
 
-      <div className="w-full h-full">
+      <div className="h-full w-full">
         <div className="mt-4">
-          <div className="w-full h-full px-4 mx-auto space-y-6 sm:max-w-6xl sm:px-8 md:max-w-7xl md:px-12 lg:max-w-8xl">
+          <div className="mx-auto h-full w-full space-y-6 px-4 sm:max-w-6xl sm:px-8 md:max-w-7xl md:px-12 lg:max-w-8xl">
             <div className="space-y-4">
               <LinkButton
                 size="SM"

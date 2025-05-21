@@ -23,15 +23,19 @@ export default function SettingsHardwareRoute() {
   };
 
   const handleDisplayRotationSave = () => {
-    send("setDisplayRotation", { params: { rotation: settings.displayRotation } }, resp => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to set display orientation: ${resp.error.data || "Unknown error"}`,
-        );
-        return;
-      }
-      notifications.success("Display orientation updated successfully");
-    });
+    send(
+      "setDisplayRotation",
+      { params: { rotation: settings.displayRotation } },
+      resp => {
+        if ("error" in resp) {
+          notifications.error(
+            `Failed to set display orientation: ${resp.error.data || "Unknown error"}`,
+          );
+          return;
+        }
+        notifications.success("Display orientation updated successfully");
+      },
+    );
   };
 
   const setBacklightSettings = useSettingsStore(state => state.setBacklightSettings);

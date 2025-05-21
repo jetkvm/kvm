@@ -52,10 +52,10 @@ export default function KvmCard({
 }) {
   return (
     <Card>
-      <div className="px-5 py-5 space-y-3">
-        <div className="flex justify-between items-center">
+      <div className="space-y-3 px-5 py-5">
+        <div className="flex items-center justify-between">
           <div className="space-y-1.5">
-            <div className="text-lg font-bold leading-none text-black dark:text-white">
+            <div className="text-lg leading-none font-bold text-black dark:text-white">
               {title}
             </div>
 
@@ -66,7 +66,7 @@ export default function KvmCard({
               </div>
             ) : (
               <div className="flex items-center gap-x-1.5">
-                <div className="h-2.5 w-2.5 rounded-full border border-slate-400/60 dark:border-slate-500 bg-slate-200 dark:bg-slate-600" />
+                <div className="h-2.5 w-2.5 rounded-full border border-slate-400/60 bg-slate-200 dark:border-slate-500 dark:bg-slate-600" />
                 <div className="text-sm text-black dark:text-white">
                   {lastSeen ? (
                     <>Last online {getRelativeTimeString(lastSeen)}</>
@@ -111,14 +111,14 @@ export default function KvmCard({
 
             <MenuItems
               transition
-              className="data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-leave:duration-75 data-enter:ease-out data-leave:ease-in"
+              className="data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
             >
-              <Card className="absolute right-0 z-10 w-56 px-1 mt-2 transition origin-top-right ring-1 ring-black/50 focus:outline-hidden">
+              <Card className="absolute right-0 z-10 mt-2 w-56 origin-top-right px-1 ring-1 ring-black/50 transition focus:outline-hidden">
                 <div className="divide-y divide-slate-800/20 dark:divide-slate-300/20">
                   <MenuItem>
                     <div>
                       <div className="block w-full">
-                        <div className="flex items-center px-2 my-1 text-sm transition-colors rounded-md gap-x-2 hover:bg-slate-100 dark:hover:bg-slate-700">
+                        <div className="my-1 flex items-center gap-x-2 rounded-md px-2 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">
                           <Link
                             className="block w-full py-1.5 text-black dark:text-white"
                             to={`./${id}/rename`}
@@ -132,7 +132,7 @@ export default function KvmCard({
                   <MenuItem>
                     <div>
                       <div className="block w-full">
-                        <div className="flex items-center px-2 my-1 text-sm transition-colors rounded-md gap-x-2 hover:bg-slate-100 dark:hover:bg-slate-700">
+                        <div className="my-1 flex items-center gap-x-2 rounded-md px-2 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">
                           <Link
                             className="block w-full py-1.5 text-black dark:text-white"
                             to={`./${id}/deregister`}

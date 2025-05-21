@@ -1,4 +1,3 @@
-
 import { useCallback, useState, useEffect } from "react";
 
 import { GridCard } from "@components/Card";
@@ -11,7 +10,6 @@ import { TextAreaWithLabel } from "../components/TextArea";
 import { isOnDevice } from "../main";
 import { Button } from "../components/Button";
 import { useSettingsStore } from "../hooks/stores";
-
 
 import { SettingsItem } from "./devices.$id.settings";
 
@@ -153,7 +151,7 @@ export default function SettingsAdvancedRoute() {
 
         {settings.developerMode && (
           <GridCard>
-            <div className="flex select-none items-start gap-x-4 p-4">
+            <div className="flex items-start gap-x-4 p-4 select-none">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
