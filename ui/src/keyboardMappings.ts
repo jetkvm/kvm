@@ -132,10 +132,8 @@ export const keyDisplayMap: Record<string, string> = {
   CtrlAltBackspace: "Ctrl + Alt + Backspace",
   Escape: "esc",
   Tab: "tab ⇥",
-  "(Tab)": "tab ↹",
   Backspace: "backspace ⌫",
-  "(Backspace)": "backspace ⌫",
-  Enter: "enter ↵",
+  Enter: "enter",
   CapsLock: "caps lock ⇪",
   ShiftLeft: "shift ⇧",
   ShiftRight: "⇧ shift",
@@ -222,6 +220,5 @@ export const keyDisplayMap: Record<string, string> = {
 
   // Modals
   PrintScreen: "prt sc", ScrollLock: "scr lk", Pause: "pause",
-  "(PrintScreen)": "sys rq", "(Pause)": "break",
-  SystemRequest: "sys rq"
+  "(PrintScreen)": "sys rq", "(Pause)": "break"
 };
