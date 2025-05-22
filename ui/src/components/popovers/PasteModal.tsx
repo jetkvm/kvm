@@ -10,11 +10,11 @@ import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidStore, useRTCStore, useUiStore, useSettingsStore } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
-import { layouts, chars } from "@/keyboardLayouts";
+import { KeyStroke, KeyboardLayout, selectedKeyboard } from "@/keyboardLayouts";
 import notifications from "@/notifications";
 
-const hidKeyboardPayload = (keys: number[], modifier: number) => {
-  return { keys, modifier };
+const hidKeyboardPayload = (modifier: number, keys: number[]) => {
+  return { modifier, keys };
 };
 
 const modifierCode = (shift?: boolean, altRight?: boolean) => {
@@ -57,46 +57,52 @@ export default function PasteModal() {
     setDisableVideoFocusTrap(false);
     if (rpcDataChannel?.readyState !== "open" || !TextAreaRef.current) return;
     if (!keyboardLayout) return;
-    if (!chars[keyboardLayout]) return;
+    const keyboard: KeyboardLayout = selectedKeyboard(keyboardLayout);
+    if (!keyboard) return;
 
     const text = TextAreaRef.current.value;
 
     try {
       for (const char of text) {
-        const { key, shift, altRight, deadKey, accentKey } = chars[keyboardLayout][char]
+        const keyprops = keyboard.chars[char];
+        if (!keyprops) continue;
+
+        const { key, shift, altRight, deadKey, accentKey } = keyprops;
         if (!key) continue;
 
-	const keyz = [ keys[key] ];
-	const modz = [ modifierCode(shift, altRight) ];
+        // if this is an accented character, we need to send that accent FIRST
+        if (accentKey) {
+          await sendKeystroke({modifier: modifierCode(accentKey.shift, accentKey.altRight), keys: [ keys[accentKey.key] ] })
+        }
 
-	if (deadKey) {
-            keyz.push(keys["Space"]);
-            modz.push(noModifier);
-	}
-	if (accentKey) {
-            keyz.unshift(keys[accentKey.key])
-            modz.unshift(modifierCode(accentKey.shift, accentKey.altRight))
-	}
+        // now send the actual key
+        await sendKeystroke({ modifier: modifierCode(shift, altRight), keys: [ keys[key] ]});
 
-	for (const [index, kei] of keyz.entries()) {
-          await new Promise<void>((resolve, reject) => {
-            send(
-              "keyboardReport",
-              hidKeyboardPayload([kei], modz[index]),
-              params => {
-                if ("error" in params) return reject(params.error);
-                send("keyboardReport", hidKeyboardPayload([], 0), params => {
-                  if ("error" in params) return reject(params.error);
-                  resolve();
-                });
-              },
-            );
-          });
-	}
+        // if what was requested was a dead key, we need to send an unmodified space to emit
+        // just the accent character
+        if (deadKey) {
+           await sendKeystroke({ modifier: noModifier, keys: [ keys["Space"] ] });
+        }
+
+        // now send a message with no keys down to "release" the keys
+        await sendKeystroke({ modifier: 0, keys: [] });
       }
     } catch (error) {
-      console.error(error);
+      console.error("Failed to paste text:", error);
       notifications.error("Failed to paste text");
+    }
+
+    async function sendKeystroke(stroke: KeyStroke) {
+      await new Promise<void>((resolve, reject) => {
+        send(
+          "keyboardReport",
+          hidKeyboardPayload(stroke.modifier, stroke.keys),
+          params => {
+            if ("error" in params) return reject(params.error);
+            resolve();
+          }
+        );
+      });
     }
   }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode, keyboardLayout]);
 
@@ -148,7 +154,7 @@ export default function PasteModal() {
                             // @ts-expect-error TS doesn't recognize Intl.Segmenter in some environments
                             [...new Intl.Segmenter().segment(value)]
                               .map(x => x.segment)
-                              .filter(char => !chars[keyboardLayout][char]),
+                              .filter(char => !selectedKeyboard(keyboardLayout).chars[char]),
                           ),
                         ];
 
@@ -167,11 +173,11 @@ export default function PasteModal() {
                     )}
                   </div>
                 </div>
-		<div className="space-y-4">
+                <div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Sending text using keyboard layout: {layouts[keyboardLayout]}
+                    Sending text using keyboard layout: {selectedKeyboard(keyboardLayout).name}
                   </p>
-		</div>
+                </div>
               </div>
             </div>
           </div>
