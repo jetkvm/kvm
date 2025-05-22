@@ -674,7 +674,6 @@ export default function WebRTCVideo() {
                 <div className="grid grow grid-rows-(--grid-bodyFooter) overflow-hidden">
                   <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
                     <div className="relative flex h-full w-full items-center justify-center">
-                      <div className="relative inline-block">
                         {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                         <PointerLockBar show={showPointerLockBar} />
                         <video
@@ -688,7 +687,7 @@ export default function WebRTCVideo() {
                           disablePictureInPicture
                           controlsList="nofullscreen"
                           className={cx(
-                            "z-30 max-h-full min-h-[384px] max-w-full min-w-[512px] bg-black/50 object-contain transition-all duration-1000",
+                            "max-h-full min-h-[384px] max-w-full min-w-[512px] bg-black/50 object-contain transition-all duration-1000",
                             {
                               "cursor-none": settings.isCursorHidden,
                               "opacity-0":
@@ -718,7 +717,6 @@ export default function WebRTCVideo() {
                             </div>
                           </div>
                         )}
-                      </div>
                     </div>
                   </div>
                   <VirtualKeyboard />
