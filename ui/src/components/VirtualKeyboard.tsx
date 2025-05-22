@@ -1,7 +1,7 @@
 import { useShallow } from "zustand/react/shallow";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Keyboard from "react-simple-keyboard";
 
 import Card from "@components/Card";
@@ -13,7 +13,7 @@ import "react-simple-keyboard/build/css/index.css";
 import AttachIconRaw from "@/assets/attach-icon.svg";
 import DetachIconRaw from "@/assets/detach-icon.svg";
 import { cx } from "@/cva.config";
-import { useHidStore, useUiStore } from "@/hooks/stores";
+import { useHidStore, useSettingsStore, useUiStore } from "@/hooks/stores";
 import useKeyboard from "@/hooks/useKeyboard";
 import { keyDisplayMap, keys, modifiers } from "@/keyboardMappings";
 
@@ -43,6 +43,16 @@ function KeyboardWrapper() {
   const [newPosition, setNewPosition] = useState({ x: 0, y: 0 });
 
   const isCapsLockActive = useHidStore(useShallow(state => state.keyboardLedState?.caps_lock));
+
+  // HID related states
+  const keyboardLedStateSyncAvailable = useHidStore(state => state.keyboardLedStateSyncAvailable);
+  const keyboardLedSync = useSettingsStore(state => state.keyboardLedSync);
+  const isKeyboardLedManagedByHost = useMemo(() =>
+    keyboardLedSync !== "browser" && keyboardLedStateSyncAvailable,
+    [keyboardLedSync, keyboardLedStateSyncAvailable],
+  );
+
+  const setIsCapsLockActive = useHidStore(state => state.setIsCapsLockActive);
 
   const startDrag = useCallback((e: MouseEvent | TouchEvent) => {
     if (!keyboardRef.current) return;
@@ -158,9 +168,17 @@ function KeyboardWrapper() {
         toggleLayout();
 
         if (isCapsLockActive) {
+          if (!isKeyboardLedManagedByHost) {
+            setIsCapsLockActive(false);
+          }
           sendKeyboardEvent([keys["CapsLock"]], []);
           return;
         }
+      }
+
+      // Handle caps lock state change
+      if (isKeyCaps && !isKeyboardLedManagedByHost) {
+        setIsCapsLockActive(!isCapsLockActive);
       }
 
       // Collect new active keys and modifiers
@@ -178,7 +196,7 @@ function KeyboardWrapper() {
 
       setTimeout(resetKeyboardState, 100);
     },
-    [isCapsLockActive, sendKeyboardEvent, resetKeyboardState],
+    [isCapsLockActive, isKeyboardLedManagedByHost, sendKeyboardEvent, resetKeyboardState, setIsCapsLockActive],
   );
 
   const virtualKeyboard = useHidStore(state => state.isVirtualKeyboardEnabled);

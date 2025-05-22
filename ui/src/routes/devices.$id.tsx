@@ -590,6 +590,8 @@ export default function KvmIdRoute() {
   const keyboardLedState = useHidStore(state => state.keyboardLedState);
   const setKeyboardLedState = useHidStore(state => state.setKeyboardLedState);
 
+  const setKeyboardLedStateSyncAvailable = useHidStore(state => state.setKeyboardLedStateSyncAvailable);
+
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
 
@@ -615,6 +617,7 @@ export default function KvmIdRoute() {
       const ledState = resp.params as KeyboardLedState;
       console.log("Setting keyboard led state", ledState);
       setKeyboardLedState(ledState);
+      setKeyboardLedStateSyncAvailable(true);
     }
 
     if (resp.method === "otaState") {
@@ -658,12 +661,23 @@ export default function KvmIdRoute() {
     if (rpcDataChannel?.readyState !== "open") return;
     if (keyboardLedState !== undefined) return;
     console.log("Requesting keyboard led state");
+
     send("getKeyboardLedState", {}, resp => {
-      if ("error" in resp) return;
+      if ("error" in resp) {
+        // -32601 means the method is not supported
+        if (resp.error.code === -32601) {
+          setKeyboardLedStateSyncAvailable(false);
+          console.error("Failed to get keyboard led state, disabling sync", resp.error);
+        } else {
+          console.error("Failed to get keyboard led state", resp.error);
+        }
+        return;
+      }
       console.log("Keyboard led state", resp.result);
       setKeyboardLedState(resp.result as KeyboardLedState);
+      setKeyboardLedStateSyncAvailable(true);
     });
-  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, keyboardLedState]);
+  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, setKeyboardLedStateSyncAvailable, keyboardLedState]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {

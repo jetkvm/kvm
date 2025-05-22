@@ -283,6 +283,8 @@ export const useVideoStore = create<VideoState>(set => ({
   },
 }));
 
+export type KeyboardLedSync = "auto" | "browser" | "host";
+
 interface SettingsState {
   isCursorHidden: boolean;
   setCursorVisibility: (enabled: boolean) => void;
@@ -305,6 +307,9 @@ interface SettingsState {
 
   keyboardLayout: string;
   setKeyboardLayout: (layout: string) => void;
+
+  keyboardLedSync: KeyboardLedSync;
+  setKeyboardLedSync: (sync: KeyboardLedSync) => void;
 }
 
 export const useSettingsStore = create(
@@ -336,6 +341,9 @@ export const useSettingsStore = create(
 
       keyboardLayout: "en-US",
       setKeyboardLayout: layout => set({ keyboardLayout: layout }),
+
+      keyboardLedSync: "auto",
+      setKeyboardLedSync: sync => set({ keyboardLedSync: sync }),
     }),
     {
       name: "settings",
@@ -411,7 +419,14 @@ export interface KeyboardLedState {
   scroll_lock: boolean;
   compose: boolean;
   kana: boolean;
-}
+};
+const defaultKeyboardLedState: KeyboardLedState = {
+  num_lock: false,
+  caps_lock: false,
+  scroll_lock: false,
+  compose: false,
+  kana: false,
+};
 
 export interface HidState {
   activeKeys: number[];
@@ -433,6 +448,12 @@ export interface HidState {
 
   keyboardLedState?: KeyboardLedState;
   setKeyboardLedState: (state: KeyboardLedState) => void;
+  setIsNumLockActive: (active: boolean) => void;
+  setIsCapsLockActive: (active: boolean) => void;
+  setIsScrollLockActive: (active: boolean) => void;
+
+  keyboardLedStateSyncAvailable: boolean;
+  setKeyboardLedStateSyncAvailable: (available: boolean) => void;
 
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
@@ -444,7 +465,7 @@ export interface HidState {
   setUsbState: (state: HidState["usbState"]) => void;
 }
 
-export const useHidStore = create<HidState>(set => ({
+export const useHidStore = create<HidState>((set, get) => ({
   activeKeys: [],
   activeModifiers: [],
   updateActiveKeysAndModifiers: ({ keys, modifiers }) => {
@@ -461,6 +482,24 @@ export const useHidStore = create<HidState>(set => ({
   setAltGrCtrlTime: time => set({ altGrCtrlTime: time }),
 
   setKeyboardLedState: ledState => set({ keyboardLedState: ledState }),
+  setIsNumLockActive: active => {
+    const keyboardLedState = get().keyboardLedState || defaultKeyboardLedState;
+    keyboardLedState.num_lock = active;
+    set({ keyboardLedState });
+  },
+  setIsCapsLockActive: active => {
+    const keyboardLedState = get().keyboardLedState || defaultKeyboardLedState;
+    keyboardLedState.caps_lock = active;
+    set({ keyboardLedState });
+  },
+  setIsScrollLockActive: active => {
+    const keyboardLedState = get().keyboardLedState || defaultKeyboardLedState;
+    keyboardLedState.scroll_lock = active;
+    set({ keyboardLedState });
+  },
+
+  keyboardLedStateSyncAvailable: false,
+  setKeyboardLedStateSyncAvailable: available => set({ keyboardLedStateSyncAvailable: available }),
 
   isVirtualKeyboardEnabled: false,
   setVirtualKeyboardEnabled: enabled => set({ isVirtualKeyboardEnabled: enabled }),

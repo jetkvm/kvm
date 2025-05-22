@@ -37,6 +37,8 @@ export default function InfoBar() {
   }, [rpcDataChannel]);
 
   const keyboardLedState = useHidStore(state => state.keyboardLedState);
+  const keyboardLedStateSyncAvailable = useHidStore(state => state.keyboardLedStateSyncAvailable);
+  const keyboardLedSync = useSettingsStore(state => state.keyboardLedSync);
 
   const isTurnServerInUse = useRTCStore(state => state.isTurnServerInUse);
 
@@ -116,6 +118,20 @@ export default function InfoBar() {
               Relayed by Cloudflare
             </div>
           )}
+
+          {keyboardLedStateSyncAvailable ? (
+            <div
+              className={cx(
+                "shrink-0 p-1 px-1.5 text-xs",
+                keyboardLedSync !== "browser"
+                  ? "text-black dark:text-white"
+                  : "text-slate-800/20 dark:text-slate-300/20",
+              )}
+              title={"Your keyboard LED state is managed by" + (keyboardLedSync === "browser" ? " the browser" : " the host")}
+            >
+              {keyboardLedSync === "browser" ? "Browser" : "Host"}
+            </div>
+          ) : null}
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
