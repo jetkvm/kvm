@@ -19,6 +19,7 @@ import useWebSocket from "react-use-websocket";
 import { cx } from "@/cva.config";
 import {
   HidState,
+  KeyboardLedState,
   NetworkState,
   UpdateState,
   useDeviceStore,
@@ -586,6 +587,9 @@ export default function KvmIdRoute() {
   const setUsbState = useHidStore(state => state.setUsbState);
   const setHdmiState = useVideoStore(state => state.setHdmiState);
 
+  const keyboardLedState = useHidStore(state => state.keyboardLedState);
+  const setKeyboardLedState = useHidStore(state => state.setKeyboardLedState);
+
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
 
@@ -605,6 +609,12 @@ export default function KvmIdRoute() {
     if (resp.method === "networkState") {
       console.log("Setting network state", resp.params);
       setNetworkState(resp.params as NetworkState);
+    }
+
+    if (resp.method === "keyboardLedState") {
+      const ledState = resp.params as KeyboardLedState;
+      console.log("Setting keyboard led state", ledState);
+      setKeyboardLedState(ledState);
     }
 
     if (resp.method === "otaState") {
@@ -642,6 +652,18 @@ export default function KvmIdRoute() {
       setHdmiState(resp.result as Parameters<VideoState["setHdmiState"]>[0]);
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
+
+  // request keyboard led state from the device
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open") return;
+    if (keyboardLedState !== undefined) return;
+    console.log("Requesting keyboard led state");
+    send("getKeyboardLedState", {}, resp => {
+      if ("error" in resp) return;
+      console.log("Keyboard led state", resp.result);
+      setKeyboardLedState(resp.result as KeyboardLedState);
+    });
+  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, keyboardLedState]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {

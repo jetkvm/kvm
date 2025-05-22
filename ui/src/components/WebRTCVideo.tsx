@@ -55,10 +55,6 @@ export default function WebRTCVideo() {
   const hdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const isVideoLoading = !isPlaying;
 
-  // Keyboard related states
-  const { setIsNumLockActive, setIsCapsLockActive, setIsScrollLockActive } =
-    useHidStore();
-
   // Misc states and hooks
   const disableVideoFocusTrap = useUiStore(state => state.disableVideoFocusTrap);
   const [send] = useJsonRpc();
@@ -355,10 +351,6 @@ export default function WebRTCVideo() {
 
       // console.log(document.activeElement);
 
-      setIsNumLockActive(e.getModifierState("NumLock"));
-      setIsCapsLockActive(e.getModifierState("CapsLock"));
-      setIsScrollLockActive(e.getModifierState("ScrollLock"));
-
       if (code == "IntlBackslash" && ["`", "~"].includes(key)) {
         code = "Backquote";
       } else if (code == "Backquote" && ["§", "±"].includes(key)) {
@@ -388,9 +380,6 @@ export default function WebRTCVideo() {
       sendKeyboardEvent([...new Set(newKeys)], [...new Set(newModifiers)]);
     },
     [
-      setIsNumLockActive,
-      setIsCapsLockActive,
-      setIsScrollLockActive,
       handleModifierKeys,
       sendKeyboardEvent,
     ],
@@ -400,10 +389,6 @@ export default function WebRTCVideo() {
     (e: KeyboardEvent) => {
       e.preventDefault();
       const prev = useHidStore.getState();
-
-      setIsNumLockActive(e.getModifierState("NumLock"));
-      setIsCapsLockActive(e.getModifierState("CapsLock"));
-      setIsScrollLockActive(e.getModifierState("ScrollLock"));
 
       // Filtering out the key that was just released (keys[e.code])
       const newKeys = prev.activeKeys.filter(k => k !== keys[e.code]).filter(Boolean);
@@ -417,9 +402,6 @@ export default function WebRTCVideo() {
       sendKeyboardEvent([...new Set(newKeys)], [...new Set(newModifiers)]);
     },
     [
-      setIsNumLockActive,
-      setIsCapsLockActive,
-      setIsScrollLockActive,
       handleModifierKeys,
       sendKeyboardEvent,
     ],

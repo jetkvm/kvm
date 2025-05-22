@@ -405,6 +405,14 @@ export const useMountMediaStore = create<MountMediaState>(set => ({
   setErrorMessage: message => set({ errorMessage: message }),
 }));
 
+export interface KeyboardLedState {
+  num_lock: boolean;
+  caps_lock: boolean;
+  scroll_lock: boolean;
+  compose: boolean;
+  kana: boolean;
+}
+
 export interface HidState {
   activeKeys: number[];
   activeModifiers: number[];
@@ -423,17 +431,11 @@ export interface HidState {
   altGrCtrlTime: number; // _altGrCtrlTime
   setAltGrCtrlTime: (time: number) => void;
 
-  isNumLockActive: boolean;
-  setIsNumLockActive: (enabled: boolean) => void;
-
-  isScrollLockActive: boolean;
-  setIsScrollLockActive: (enabled: boolean) => void;
+  keyboardLedState?: KeyboardLedState;
+  setKeyboardLedState: (state: KeyboardLedState) => void;
 
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
-
-  isCapsLockActive: boolean;
-  setIsCapsLockActive: (enabled: boolean) => void;
 
   isPasteModeEnabled: boolean;
   setPasteModeEnabled: (enabled: boolean) => void;
@@ -458,17 +460,10 @@ export const useHidStore = create<HidState>(set => ({
   altGrCtrlTime: 0,
   setAltGrCtrlTime: time => set({ altGrCtrlTime: time }),
 
-  isNumLockActive: false,
-  setIsNumLockActive: enabled => set({ isNumLockActive: enabled }),
-
-  isScrollLockActive: false,
-  setIsScrollLockActive: enabled => set({ isScrollLockActive: enabled }),
+  setKeyboardLedState: ledState => set({ keyboardLedState: ledState }),
 
   isVirtualKeyboardEnabled: false,
   setVirtualKeyboardEnabled: enabled => set({ isVirtualKeyboardEnabled: enabled }),
-
-  isCapsLockActive: false,
-  setIsCapsLockActive: enabled => set({ isCapsLockActive: enabled }),
 
   isPasteModeEnabled: false,
   setPasteModeEnabled: enabled => set({ isPasteModeEnabled: enabled }),

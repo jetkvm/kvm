@@ -36,9 +36,7 @@ export default function InfoBar() {
       console.log(`Error on DataChannel '${rpcDataChannel.label}': ${e}`);
   }, [rpcDataChannel]);
 
-  const isCapsLockActive = useHidStore(state => state.isCapsLockActive);
-  const isNumLockActive = useHidStore(state => state.isNumLockActive);
-  const isScrollLockActive = useHidStore(state => state.isScrollLockActive);
+  const keyboardLedState = useHidStore(state => state.keyboardLedState);
 
   const isTurnServerInUse = useRTCStore(state => state.isTurnServerInUse);
 
@@ -121,7 +119,7 @@ export default function InfoBar() {
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
-              isCapsLockActive
+              keyboardLedState?.caps_lock
                 ? "text-black dark:text-white"
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
@@ -131,7 +129,7 @@ export default function InfoBar() {
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
-              isNumLockActive
+              keyboardLedState?.num_lock
                 ? "text-black dark:text-white"
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
@@ -141,13 +139,23 @@ export default function InfoBar() {
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
-              isScrollLockActive
+              keyboardLedState?.scroll_lock
                 ? "text-black dark:text-white"
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
           >
             Scroll Lock
           </div>
+          {keyboardLedState?.compose ? (
+            <div className="shrink-0 p-1 px-1.5 text-xs">
+              Compose
+            </div>
+          ) : null}
+          {keyboardLedState?.kana ? (
+            <div className="shrink-0 p-1 px-1.5 text-xs">
+              Kana
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
