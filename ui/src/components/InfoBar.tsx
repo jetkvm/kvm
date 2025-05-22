@@ -1,4 +1,4 @@
-/import { useEffect } from "react";
+import { useEffect } from "react";
 
 import { cx } from "@/cva.config";
 import {
@@ -40,15 +40,11 @@ export default function InfoBar() {
   const keyboardLedStateSyncAvailable = useHidStore(state => state.keyboardLedStateSyncAvailable);
   const keyboardLedSync = useSettingsStore(state => state.keyboardLedSync);
   
-  //const isCapsLockActive = useHidStore(state => state.isCapsLockActive);
-  const isCapsLockActive = useHidStore(state => state.isCapsLockActive);
   const isShiftActive = useHidStore(state => state.isShiftActive);
   const isCtrlActive = useHidStore(state => state.isCtrlActive);
   const isAltActive = useHidStore(state => state.isAltActive);
   const isMetaActive = useHidStore(state => state.isMetaActive);
   const isAltGrActive = useHidStore(state => state.isAltGrActive);
-  const isNumLockActive = useHidStore(state => state.isNumLockActive);
-  const isScrollLockActive = useHidStore(state => state.isScrollLockActive);
 
   const isTurnServerInUse = useRTCStore(state => state.isTurnServerInUse);
 
