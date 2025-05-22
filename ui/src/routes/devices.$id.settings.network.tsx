@@ -228,7 +228,6 @@ export default function SettingsNetworkRoute() {
               size="SM"
               value={networkState?.mac_address}
               error={""}
-              disabled={true}
               readOnly={true}
               className="dark:!text-opacity-60"
             />
