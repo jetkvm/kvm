@@ -42,6 +42,7 @@ import SettingsHardwareRoute from "./routes/devices.$id.settings.hardware";
 import SettingsVideoRoute from "./routes/devices.$id.settings.video";
 import SettingsAppearanceRoute from "./routes/devices.$id.settings.appearance";
 import * as SettingsGeneralIndexRoute from "./routes/devices.$id.settings.general._index";
+import SettingsGeneralRebootRoute from "./routes/devices.$id.settings.general.reboot";
 import SettingsGeneralUpdateRoute from "./routes/devices.$id.settings.general.update";
 import SettingsNetworkRoute from "./routes/devices.$id.settings.network";
 import SecurityAccessLocalAuthRoute from "./routes/devices.$id.settings.access.local-auth";
@@ -139,6 +140,10 @@ if (isOnDevice) {
                 {
                   index: true,
                   element: <SettingsGeneralIndexRoute.default />,
+                },
+                {
+                  path: "reboot",
+                  element: <SettingsGeneralRebootRoute />,
                 },
                 {
                   path: "update",

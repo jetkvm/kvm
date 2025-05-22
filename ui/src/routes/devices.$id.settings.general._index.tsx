@@ -92,6 +92,21 @@ export default function SettingsGeneralRoute() {
               />
             </SettingsItem>
           </div>
+
+          <div className="mt-2 flex items-center justify-between gap-x-2">
+            <SettingsItem
+              title="Reboot Device"
+              description="Power cycle the JetKVM"
+            />
+            <div>
+              <Button
+                size="SM"
+                theme="light"
+                text="Reboot Device"
+                onClick={() => navigateTo("./reboot")}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
