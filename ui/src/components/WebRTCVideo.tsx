@@ -370,16 +370,12 @@ export default function WebRTCVideo() {
       //   return;
       // }
 
-
       if (!isKeyboardLedManagedByHost) {
         setIsNumLockActive(e.getModifierState("NumLock"));
         setIsCapsLockActive(e.getModifierState("CapsLock"));
         setIsScrollLockActive(e.getModifierState("ScrollLock"));
       }
-      
-      //setIsNumLockActive(e.getModifierState("NumLock"));
-      //setIsCapsLockActive(e.getModifierState("CapsLock"));
-      //setIsScrollLockActive(e.getModifierState("ScrollLock"));
+
       setIsShiftActive(e.getModifierState("Shift"))
       setIsCtrlActive(e.getModifierState("Control"))
       setIsAltActive(e.getModifierState("Alt"))
