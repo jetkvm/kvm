@@ -27,6 +27,7 @@ const AttachIcon = ({ className }: { className?: string }) => {
 
 function KeyboardWrapper() {
   const [layoutName, setLayoutName] = useState("default");
+  const [depressedButtons, setDepressedButtons] = useState("");
 
   const keyboardRef = useRef<HTMLDivElement>(null);
   const showAttachedVirtualKeyboard = useUiStore(
@@ -53,6 +54,21 @@ function KeyboardWrapper() {
   );
 
   const setIsCapsLockActive = useHidStore(state => state.setIsCapsLockActive);
+
+  const isShiftActive = useHidStore(state => state.isShiftActive);
+  const setIsShiftActive = useHidStore(state => state.setIsShiftActive);
+
+  const isCtrlActive = useHidStore(state => state.isCtrlActive);
+  const setIsCtrlActive = useHidStore(state => state.setIsCtrlActive);
+
+  const isAltActive = useHidStore(state => state.isAltActive);
+  const setIsAltActive = useHidStore(state => state.setIsAltActive);
+
+  const isMetaActive = useHidStore(state => state.isMetaActive);
+  const setIsMetaActive = useHidStore(state => state.setIsMetaActive);
+
+  const isAltGrActive = useHidStore(state => state.isAltGrActive);
+  const setIsAltGrActive = useHidStore(state => state.setIsAltGrActive);
 
   const startDrag = useCallback((e: MouseEvent | TouchEvent) => {
     if (!keyboardRef.current) return;
@@ -123,80 +139,123 @@ function KeyboardWrapper() {
     };
   }, [endDrag, onDrag, startDrag]);
 
-  const onKeyDown = useCallback(
-    (key: string) => {
-      const isKeyShift = key === "{shift}" || key === "ShiftLeft" || key === "ShiftRight";
-      const isKeyCaps = key === "CapsLock";
-      const cleanKey = key.replace(/[()]/g, "");
-      const keyHasShiftModifier = key.includes("(");
+  useEffect(() => {
+    // if you have the CapsLock "down", then the shift state is inverted
+    const effectiveShift = isCapsLockActive ? false === isShiftActive : isShiftActive;
+    setLayoutName(effectiveShift ? "shift" : "default");
+  },
+    [setLayoutName, isCapsLockActive, isShiftActive]
+  );
 
-      // Handle toggle of layout for shift or caps lock
-      const toggleLayout = () => {
-        setLayoutName(prevLayout => (prevLayout === "default" ? "shift" : "default"));
-      };
+  // this causes the buttons to look depressed/clicked depending on the sticky state
+  useEffect(() => {
+    let buttons = "None ";  // make sure we name at least one (fake) button
+    if (isCapsLockActive) buttons += "CapsLock ";
+    if (isShiftActive) buttons += "ShiftLeft ShiftRight ";
+    if (isCtrlActive) buttons += "ControlLeft ControlRight ";
+    if (isAltActive) buttons += "AltLeft AltRight ";
+    if (isMetaActive) buttons += "MetaLeft MetaRight ";
+    setDepressedButtons(buttons.trimEnd());
+  },
+    [setDepressedButtons, isCapsLockActive, isShiftActive, isCtrlActive, isAltActive, isMetaActive, isAltGrActive]
+  );
 
-      if (key === "CtrlAltDelete") {
-        sendKeyboardEvent(
-          [keys["Delete"]],
-          [modifiers["ControlLeft"], modifiers["AltLeft"]],
-        );
-        setTimeout(resetKeyboardState, 100);
-        return;
-      }
+  const onKeyPress = useCallback((key: string) => {
+    // handle the fake combo keys first
+    if (key === "CtrlAltDelete") {
+      sendKeyboardEvent(
+        [keys["Delete"]],
+        [modifiers["ControlLeft"], modifiers["AltLeft"]],
+      );
+      setTimeout(resetKeyboardState, 100);
+      return;
+    }
 
-      if (key === "AltMetaEscape") {
-        sendKeyboardEvent(
-          [keys["Escape"]],
-          [modifiers["MetaLeft"], modifiers["AltLeft"]],
-        );
-
-        setTimeout(resetKeyboardState, 100);
-        return;
-      }
-
-      if (key === "CtrlAltBackspace") {
-        sendKeyboardEvent(
-          [keys["Backspace"]],
-          [modifiers["ControlLeft"], modifiers["AltLeft"]],
-        );
-
-        setTimeout(resetKeyboardState, 100);
-        return;
-      }
-
-      if (isKeyShift || isKeyCaps) {
-        toggleLayout();
-
-        if (isCapsLockActive) {
-          if (!isKeyboardLedManagedByHost) {
-            setIsCapsLockActive(false);
-          }
-          sendKeyboardEvent([keys["CapsLock"]], []);
-          return;
-        }
-      }
-
-      // Handle caps lock state change
-      if (isKeyCaps && !isKeyboardLedManagedByHost) {
-        setIsCapsLockActive(!isCapsLockActive);
-      }
-
-      // Collect new active keys and modifiers
-      const newKeys = keys[cleanKey] ? [keys[cleanKey]] : [];
-      const newModifiers =
-        keyHasShiftModifier && !isCapsLockActive ? [modifiers["ShiftLeft"]] : [];
-
-      // Update current keys and modifiers
-      sendKeyboardEvent(newKeys, newModifiers);
-
-      // If shift was used as a modifier and caps lock is not active, revert to default layout
-      if (keyHasShiftModifier && !isCapsLockActive) {
-        setLayoutName("default");
-      }
+    if (key === "AltMetaEscape") {
+      sendKeyboardEvent(
+        [keys["Escape"]],
+        [modifiers["MetaLeft"], modifiers["AltLeft"]],
+      );
 
       setTimeout(resetKeyboardState, 100);
-    },
-    [isCapsLockActive, isKeyboardLedManagedByHost, sendKeyboardEvent, resetKeyboardState, setIsCapsLockActive],
+      return;
+    }
+
+    if (key === "CtrlAltBackspace") {
+      sendKeyboardEvent(
+        [keys["Backspace"]],
+        [modifiers["ControlLeft"], modifiers["AltLeft"]],
+      );
+
+      setTimeout(resetKeyboardState, 100);
+      return;
+    }
+
+    // strip away the parens for shifted characters
+    const cleanKey = key.replace(/[()]/g, "");
+
+    const passthrough = ["PrintScreen", "SystemRequest", "Pause", "Break", "ScrollLock", "Enter", "Space"].find((value) => value === cleanKey);
+
+    if (passthrough) {
+      emitkeycode(cleanKey);
+      return;
+    }
+
+    // adjust the sticky state of the Shift/Ctrl/Alt/Meta/AltGr
+    if (key === "CapsLock" && !isKeyboardLedManagedByHost)
+      setIsCapsLockActive(!isCapsLockActive);
+    else if (key === "ShiftLeft" || key === "ShiftRight")
+      setIsShiftActive(!isShiftActive);
+    else if (key === "ControlLeft" || key === "ControlRight")
+      setIsCtrlActive(!isCtrlActive);
+    else if (key === "AltLeft" || key === "AltRight")
+      setIsAltActive(!isAltActive);
+    else if (key === "MetaLeft" || key === "MetaRight")
+      setIsMetaActive(!isMetaActive);
+    else if (key === "AltGr")
+      setIsAltGrActive(!isAltGrActive);
+
+    emitkeycode(cleanKey);
+
+    function emitkeycode(key: string) {
+      const effectiveMods: number[] = [];
+
+      if (isShiftActive)
+        effectiveMods.push(modifiers["ShiftLeft"]);
+
+      if (isCtrlActive)
+        effectiveMods.push(modifiers["ControlLeft"]);
+
+      if (isAltActive)
+        effectiveMods.push(modifiers["AltLeft"]);
+
+      if (isMetaActive)
+        effectiveMods.push(modifiers["MetaLeft"]);
+
+      if (isAltGrActive) {
+        effectiveMods.push(modifiers["MetaRight"]);
+        effectiveMods.push(modifiers["CtrlLeft"]);
+      }
+
+      const keycode = keys[key];
+      if (keycode) {
+        // send the keycode with modifiers
+        sendKeyboardEvent([keycode], effectiveMods);
+      }
+
+      // release the key (if one pressed), but retain the modifiers
+      setTimeout(() => sendKeyboardEvent([], effectiveMods), 50);
+    }
+  },
+    [isKeyboardLedManagedByHost,
+      setIsCapsLockActive, isCapsLockActive,
+      setIsShiftActive, isShiftActive,
+      setIsCtrlActive, isCtrlActive,
+      setIsAltActive, isAltActive,
+      setIsMetaActive, isMetaActive,
+      setIsAltGrActive, isAltGrActive,
+      sendKeyboardEvent, resetKeyboardState
+    ],
   );
 
   const virtualKeyboard = useHidStore(state => state.isVirtualKeyboardEnabled);
@@ -276,11 +335,15 @@ function KeyboardWrapper() {
                     <Keyboard
                       baseClass="simple-keyboard-main"
                       layoutName={layoutName}
-                      onKeyPress={onKeyDown}
+                      onKeyPress={onKeyPress}
                       buttonTheme={[
                         {
                           class: "combination-key",
                           buttons: "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
+                        },
+                        {
+                          class: "depressed-key",
+                          buttons: depressedButtons
                         },
                       ]}
                       display={keyDisplayMap}
@@ -305,8 +368,6 @@ function KeyboardWrapper() {
                         ],
                       }}
                       disableButtonHold={true}
-                      syncInstanceInputs={true}
-                      debug={false}
                     />
 
                     <div className="controlArrows">
@@ -314,25 +375,24 @@ function KeyboardWrapper() {
                         baseClass="simple-keyboard-control"
                         theme="simple-keyboard hg-theme-default hg-layout-default"
                         layoutName={layoutName}
-                        onKeyPress={onKeyDown}
+                        onKeyPress={onKeyPress}
                         display={keyDisplayMap}
                         layout={{
-                          default: ["PrintScreen ScrollLock Pause", "Insert Home Pageup", "Delete End Pagedown"],
-                          shift: ["(PrintScreen) ScrollLock (Pause)", "Insert Home Pageup", "Delete End Pagedown"],
+                          default: ["PrintScreen ScrollLock Pause", "Insert Home PageUp", "Delete End PageDown"],
+                          shift: ["(PrintScreen) ScrollLock (Pause)", "Insert Home PageUp", "Delete End PageDown"],
                         }}
-                        syncInstanceInputs={true}
-                        debug={false}
+                        disableButtonHold={true}
                       />
                       <Keyboard
                         baseClass="simple-keyboard-arrows"
                         theme="simple-keyboard hg-theme-default hg-layout-default"
-                        onKeyPress={onKeyDown}
+                        onKeyPress={onKeyPress}
                         display={keyDisplayMap}
                         layout={{
                           default: ["ArrowUp", "ArrowLeft ArrowDown ArrowRight"],
+                          shift: ["ArrowUp", "ArrowLeft ArrowDown ArrowRight"],
                         }}
-                        syncInstanceInputs={true}
-                        debug={false}
+                        disableButtonHold={true}
                       />
                     </div>
                   </div>
