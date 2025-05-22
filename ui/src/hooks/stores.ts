@@ -483,17 +483,17 @@ export const useHidStore = create<HidState>((set, get) => ({
 
   setKeyboardLedState: ledState => set({ keyboardLedState: ledState }),
   setIsNumLockActive: active => {
-    const keyboardLedState = get().keyboardLedState || defaultKeyboardLedState;
+    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
     keyboardLedState.num_lock = active;
     set({ keyboardLedState });
   },
   setIsCapsLockActive: active => {
-    const keyboardLedState = get().keyboardLedState || defaultKeyboardLedState;
+    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
     keyboardLedState.caps_lock = active;
     set({ keyboardLedState });
   },
   setIsScrollLockActive: active => {
-    const keyboardLedState = get().keyboardLedState || defaultKeyboardLedState;
+    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
     keyboardLedState.scroll_lock = active;
     set({ keyboardLedState });
   },
