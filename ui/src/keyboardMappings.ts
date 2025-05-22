@@ -223,5 +223,5 @@ export const keyDisplayMap: Record<string, string> = {
   // Modals
   PrintScreen: "prt sc", ScrollLock: "scr lk", Pause: "pause",
   "(PrintScreen)": "sys rq", "(Pause)": "break",
-  SystemRequest: "sys rq", Break: "break"
+  SystemRequest: "sys rq"
 };
