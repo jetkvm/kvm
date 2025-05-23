@@ -1,15 +1,24 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsItem } from "@routes/devices.$id.settings";
 import { BacklightSettings, useSettingsStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
+import Checkbox from "@components/Checkbox";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { UsbDeviceSetting } from "@components/UsbDeviceSetting";
 
 import notifications from "../notifications";
 import { UsbInfoSetting } from "../components/UsbInfoSetting";
 import { FeatureFlag } from "../components/FeatureFlag";
+
+export interface ActionBarConfig {
+  ctrlAltDel: boolean;
+}
+
+const defaultActionBarConfig: ActionBarConfig = {
+  ctrlAltDel: false,
+};
 
 export default function SettingsHardwareRoute() {
   const [send] = useJsonRpc();
@@ -71,6 +80,18 @@ export default function SettingsHardwareRoute() {
     });
   }, [send, setBacklightSettings]);
 
+  const [actionBarConfig, setActionBarConfig] = useState<ActionBarConfig>(defaultActionBarConfig);
+  
+  const onActionBarItemChange = useCallback(
+      (key: keyof ActionBarConfig) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        setActionBarConfig(prev => ({
+          ...prev,
+          [key]: e.target.checked,
+        }));
+      },
+      [],
+    );
+
   return (
     <div className="space-y-4">
       <SettingsPageHeader
@@ -114,6 +135,15 @@ export default function SettingsHardwareRoute() {
               settings.backlightSettings.max_brightness = parseInt(e.target.value);
               handleBacklightSettingsChange(settings.backlightSettings);
             }}
+          />
+        </SettingsItem>
+        <SettingsItem
+          title="Enable Ctrl+Alt+Del Action Bar"
+          description="Enable or disable the action bar action for sending a Ctrl+Alt+Del to the host"
+        >
+          <Checkbox
+            checked={actionBarConfig.ctrlAltDel}
+            onChange={onActionBarItemChange("ctrlAltDel")}
           />
         </SettingsItem>
         {settings.backlightSettings.max_brightness != 0 && (
