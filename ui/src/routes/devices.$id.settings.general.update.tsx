@@ -9,6 +9,7 @@ import { UpdateState, useDeviceStore, useUpdateStore } from "@/hooks/stores";
 import notifications from "@/notifications";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import { logger } from "@/log";
 
 export default function SettingsGeneralUpdateRoute() {
   const navigate = useNavigate();
@@ -184,7 +185,7 @@ function LoadingState({
       })
       .catch(error => {
         if (!signal.aborted) {
-          console.error("LoadingState: Error fetching version info", error);
+          logger.error("LoadingState: Error fetching version info", error);
         }
       });
 
@@ -240,7 +241,7 @@ function UpdatingDeviceState({
       return 0;
     }
 
-    console.log(
+    logger.info(
       `For ${type}:\n` +
       `  Download Progress: ${downloadProgress}% (${otaState[`${type}DownloadProgress`]})\n` +
       `  Update Progress: ${updateProgress}% (${otaState[`${type}UpdateProgress`]})\n` +

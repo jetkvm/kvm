@@ -1,5 +1,7 @@
 import { useCallback , useEffect, useState } from "react";
 
+import { logger } from "@/log";
+
 import { useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
 import { SettingsItem } from "../routes/devices.$id.settings";
@@ -9,6 +11,7 @@ import { Button } from "./Button";
 import { SelectMenuBasic } from "./SelectMenuBasic";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import Fieldset from "./Fieldset";
+
 export interface USBConfig {
   vendor_id: string;
   product_id: string;
@@ -69,7 +72,7 @@ export function UsbDeviceSetting() {
   const syncUsbDeviceConfig = useCallback(() => {
     send("getUsbDevices", {}, resp => {
       if ("error" in resp) {
-        console.error("Failed to load USB devices:", resp.error);
+        logger.error("Failed to load USB devices:", resp.error);
         notifications.error(
           `Failed to load USB devices: ${resp.error.data || "Unknown error"}`,
         );

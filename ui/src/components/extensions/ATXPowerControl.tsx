@@ -6,6 +6,7 @@ import Card from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import notifications from "@/notifications";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import { logger } from "@/log";
 
 import { useJsonRpc } from "../../hooks/useJsonRpc";
 
@@ -53,7 +54,7 @@ export function ATXPowerControl() {
       // Start long press timer
       const timer = setTimeout(() => {
         // Send long press action
-        console.log("Sending long press ATX power action");
+        logger.info("Sending long press ATX power action");
         send("setATXPowerAction", { action: "power-long" }, resp => {
           if ("error" in resp) {
             notifications.error(
@@ -74,7 +75,7 @@ export function ATXPowerControl() {
         setPowerPressTimer(null);
 
         // Send short press action
-        console.log("Sending short press ATX power action");
+        logger.info("Sending short press ATX power action");
         send("setATXPowerAction", { action: "power-short" }, resp => {
           if ("error" in resp) {
             notifications.error(

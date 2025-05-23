@@ -18,6 +18,7 @@ import InfoBar from "@components/InfoBar";
 import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
+import { logger } from "@/log";
 
 import {
   HDMIErrorOverlay,
@@ -445,7 +446,7 @@ export default function WebRTCVideo() {
     // Fix only works in chrome based browsers.
     if (e.code === "Space") {
       if (videoElm.current?.paused == true) {
-        console.log("Force playing video");
+        logger.info("Force playing video");
         videoElm.current?.play();
       }
     }
@@ -487,7 +488,7 @@ export default function WebRTCVideo() {
   useEffect(
     function updateVideoStream() {
       if (!mediaStream) return;
-      console.log("Updating video stream from mediaStream");
+      logger.info("Updating video stream from mediaStream");
       // We set the as early as possible
       addStreamToVideoElm(mediaStream);
     },

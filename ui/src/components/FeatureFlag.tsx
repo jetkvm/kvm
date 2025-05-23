@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 
-import { useFeatureFlag } from "../hooks/useFeatureFlag";
+import { logger } from "@/log";
 
+import { useFeatureFlag } from "../hooks/useFeatureFlag";
 export function FeatureFlag({
   minAppVersion,
   name = "unnamed",
@@ -17,7 +18,7 @@ export function FeatureFlag({
 
   useEffect(() => {
     if (!appVersion) return;
-    console.log(
+    logger.info(
       `Feature '${name}' ${isEnabled ? "ENABLED" : "DISABLED"}: ` +
         `Current version: ${appVersion}, ` +
         `Required min version: ${minAppVersion || "N/A"}`,

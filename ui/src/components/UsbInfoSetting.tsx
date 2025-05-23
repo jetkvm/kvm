@@ -1,7 +1,7 @@
 import { useMemo , useCallback , useEffect, useState } from "react";
 
 import { Button } from "@components/Button";
-
+import { jsonRpcLogger, logger } from "@/log";
 
 import { UsbConfigState } from "../hooks/stores";
 import { useJsonRpc } from "../hooks/useJsonRpc";
@@ -96,12 +96,12 @@ export function UsbInfoSetting() {
   const syncUsbConfigProduct = useCallback(() => {
     send("getUsbConfig", {}, resp => {
       if ("error" in resp) {
-        console.error("Failed to load USB Config:", resp.error);
+        jsonRpcLogger.error("Failed to load USB Config:", resp.error);
         notifications.error(
           `Failed to load USB Config: ${resp.error.data || "Unknown error"}`,
         );
       } else {
-        console.log("syncUsbConfigProduct#getUsbConfig result:", resp.result);
+        jsonRpcLogger.info("syncUsbConfigProduct#getUsbConfig result:", resp.result);
         const usbConfigState = resp.result as UsbConfigState;
         const product = usbConfigs.map(u => u.value).includes(usbConfigState.product)
           ? usbConfigState.product
@@ -210,7 +210,7 @@ function USBConfigDialog({
   const syncUsbConfig = useCallback(() => {
     send("getUsbConfig", {}, resp => {
       if ("error" in resp) {
-        console.error("Failed to load USB Config:", resp.error);
+        logger.error("Failed to load USB Config:", resp.error);
       } else {
         setUsbConfigState(resp.result as UsbConfigState);
       }

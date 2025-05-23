@@ -19,7 +19,7 @@ import WakeOnLanModal from "@/components/popovers/WakeOnLan/Index";
 import MountPopopover from "@/components/popovers/MountPopover";
 import ExtensionPopover from "@/components/popovers/ExtensionPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
-
+import { logger } from "@/log";
 export default function Actionbar({
   requestFullscreen,
 }: {
@@ -48,7 +48,7 @@ export default function Actionbar({
         if (!open) {
           setTimeout(() => {
             setDisableFocusTrap(false);
-            console.log("Popover is closing. Returning focus trap to video");
+            logger.info("Popover is closing. Returning focus trap to video");
           }, 0);
         }
       }
