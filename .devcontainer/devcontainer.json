@@ -9,6 +9,19 @@
 	},
 	"mounts": [
     	"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
-	]
+	],
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"bradlc.vscode-tailwindcss",
+				"GitHub.vscode-pull-request-github",
+				"dbaeumer.vscode-eslint",
+				"golang.go",
+				"ms-vscode.makefile-tools",
+				"esbenp.prettier-vscode",
+				"github.vscode-github-actions"
+			]
+		}
+	}
 }
 
