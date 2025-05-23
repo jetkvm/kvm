@@ -1022,22 +1022,7 @@ func rpcSetLocalWebServerLoopbackOnly(enabled bool) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	// Log the change
-	if enabled {
-		logger.Info().Msg("Web server now set to only listen on loopback interface, this will take effect after reboot")
-	} else {
-		logger.Info().Msg("Web server now set to listen on all interfaces, this will take effect after reboot")
-	}
-
-	// Return a message that changes require a reboot
-	message := "Web server binding changed. You must reboot the device for this change to take effect."
-	if enabled {
-		message = "Web server set to loopback-only mode. After reboot, the web interface will only be accessible from the device itself. You must reboot the device for this change to take effect."
-	} else {
-		message = "Web server set to listen on all interfaces. After reboot, the web interface will be accessible from other devices on the network. You must reboot the device for this change to take effect."
-	}
-
-	return fmt.Errorf(message)
+	return nil
 }
 
 var rpcHandlers = map[string]RPCHandler{
