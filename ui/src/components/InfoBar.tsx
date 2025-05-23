@@ -28,6 +28,7 @@ export default function InfoBar() {
   const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
 
   const settings = useSettingsStore();
+  const showPressedKeys = useSettingsStore(state => state.showPressedKeys);
 
   useEffect(() => {
     if (!rpcDataChannel) return;
@@ -97,19 +98,21 @@ export default function InfoBar() {
               </div>
             )}
 
-            <div className="flex items-center gap-x-1">
-              <span className="text-xs font-semibold">Keys:</span>
-              <h2 className="text-xs">
-                {[
-                  ...activeKeys.map(
-                    x => Object.entries(keys).filter(y => y[1] === x)[0][0],
-                  ),
-                  activeModifiers.map(
-                    x => Object.entries(modifiers).filter(y => y[1] === x)[0][0],
-                  ),
-                ].join(", ")}
-              </h2>
-            </div>
+            {showPressedKeys && (
+              <div className="flex items-center gap-x-1">
+                <span className="text-xs font-semibold">Keys:</span>
+                <h2 className="text-xs">
+                  {[
+                    ...activeKeys.map(
+                      x => Object.entries(keys).filter(y => y[1] === x)[0][0],
+                    ),
+                    activeModifiers.map(
+                      x => Object.entries(modifiers).filter(y => y[1] === x)[0][0],
+                    ),
+                  ].join(", ")}
+                </h2>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center divide-x first:divide-l divide-slate-800/20 dark:divide-slate-300/20">

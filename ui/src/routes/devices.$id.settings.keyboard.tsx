@@ -5,6 +5,7 @@ import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { layouts } from "@/keyboardLayouts";
+import { Checkbox } from "@/components/Checkbox";
 
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
 
@@ -13,11 +14,15 @@ import { SettingsItem } from "./devices.$id.settings";
 export default function SettingsKeyboardRoute() {
   const keyboardLayout = useSettingsStore(state => state.keyboardLayout);
   const keyboardLedSync = useSettingsStore(state => state.keyboardLedSync);
+  const showPressedKeys = useSettingsStore(state => state.showPressedKeys);
   const setKeyboardLayout = useSettingsStore(
     state => state.setKeyboardLayout,
   );
   const setKeyboardLedSync = useSettingsStore(
     state => state.setKeyboardLedSync,
+  );
+  const setShowPressedKeys = useSettingsStore(
+    state => state.setShowPressedKeys,
   );
 
   // this ensures we always get the original en-US if it hasn't been set yet
@@ -99,6 +104,18 @@ export default function SettingsKeyboardRoute() {
             value={keyboardLedSync}
             onChange={e => setKeyboardLedSync(e.target.value as KeyboardLedSync)}
             options={ledSyncOptions}
+          />
+        </SettingsItem>
+      </div>
+      
+      <div className="space-y-4">
+        <SettingsItem
+          title="Show Pressed Keys"
+          description="Display currently pressed keys in the status bar"
+        >
+          <Checkbox
+            checked={showPressedKeys}
+            onChange={e => setShowPressedKeys(e.target.checked)}
           />
         </SettingsItem>
       </div>
