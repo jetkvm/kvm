@@ -310,6 +310,9 @@ interface SettingsState {
 
   keyboardLedSync: KeyboardLedSync;
   setKeyboardLedSync: (sync: KeyboardLedSync) => void;
+
+  showPressedKeys: boolean;
+  setShowPressedKeys: (show: boolean) => void;
 }
 
 export const useSettingsStore = create(
@@ -344,6 +347,9 @@ export const useSettingsStore = create(
 
       keyboardLedSync: "auto",
       setKeyboardLedSync: sync => set({ keyboardLedSync: sync }),
+
+      showPressedKeys: true,
+      setShowPressedKeys: show => set({ showPressedKeys: show }),
     }),
     {
       name: "settings",
