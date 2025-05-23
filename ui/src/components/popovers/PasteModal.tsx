@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuCornerDownLeft } from "react-icons/lu";
 import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
 import { useClose } from "@headlessui/react";
@@ -39,6 +39,13 @@ export default function PasteModal() {
     state => state.setKeyboardLayout,
   );
 
+  // this ensures we always get the original en-US if it hasn't been set yet
+  const safeKeyboardLayout = useMemo(() => {
+    if (keyboardLayout && keyboardLayout.length > 0)
+      return keyboardLayout;
+    return "en-US";
+  }, [keyboardLayout]);
+
   useEffect(() => {
     send("getKeyboardLayout", {}, resp => {
       if ("error" in resp) return;
@@ -56,29 +63,28 @@ export default function PasteModal() {
     setPasteMode(false);
     setDisableVideoFocusTrap(false);
     if (rpcDataChannel?.readyState !== "open" || !TextAreaRef.current) return;
-    if (!keyboardLayout) return;
-    if (!chars[keyboardLayout]) return;
-
+    if (!safeKeyboardLayout) return;
+    if (!chars[safeKeyboardLayout]) return;
     const text = TextAreaRef.current.value;
 
     try {
       for (const char of text) {
-        const { key, shift, altRight, deadKey, accentKey } = chars[keyboardLayout][char]
+        const { key, shift, altRight, deadKey, accentKey } = chars[safeKeyboardLayout][char]
         if (!key) continue;
 
-	const keyz = [ keys[key] ];
-	const modz = [ modifierCode(shift, altRight) ];
+        const keyz = [ keys[key] ];
+        const modz = [ modifierCode(shift, altRight) ];
 
-	if (deadKey) {
+        if (deadKey) {
             keyz.push(keys["Space"]);
             modz.push(noModifier);
-	}
-	if (accentKey) {
+        }
+        if (accentKey) {
             keyz.unshift(keys[accentKey.key])
             modz.unshift(modifierCode(accentKey.shift, accentKey.altRight))
-	}
+        }
 
-	for (const [index, kei] of keyz.entries()) {
+        for (const [index, kei] of keyz.entries()) {
           await new Promise<void>((resolve, reject) => {
             send(
               "keyboardReport",
@@ -92,13 +98,13 @@ export default function PasteModal() {
               },
             );
           });
-	}
+        }
       }
     } catch (error) {
       console.error(error);
       notifications.error("Failed to paste text");
     }
-  }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode, keyboardLayout]);
+  }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode, safeKeyboardLayout]);
 
   useEffect(() => {
     if (TextAreaRef.current) {
@@ -148,7 +154,7 @@ export default function PasteModal() {
                             // @ts-expect-error TS doesn't recognize Intl.Segmenter in some environments
                             [...new Intl.Segmenter().segment(value)]
                               .map(x => x.segment)
-                              .filter(char => !chars[keyboardLayout][char]),
+                              .filter(char => !chars[safeKeyboardLayout][char]),
                           ),
                         ];
 
@@ -167,11 +173,11 @@ export default function PasteModal() {
                     )}
                   </div>
                 </div>
-		<div className="space-y-4">
+                <div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Sending text using keyboard layout: {layouts[keyboardLayout]}
+                    Sending text using keyboard layout: {layouts[safeKeyboardLayout]}
                   </p>
-		</div>
+                </div>
               </div>
             </div>
           </div>

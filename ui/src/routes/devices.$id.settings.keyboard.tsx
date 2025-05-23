@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import { KeyboardLedSync, useSettingsStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
@@ -19,6 +19,13 @@ export default function SettingsKeyboardRoute() {
   const setKeyboardLedSync = useSettingsStore(
     state => state.setKeyboardLedSync,
   );
+
+  // this ensures we always get the original en-US if it hasn't been set yet
+  const safeKeyboardLayout = useMemo(() => {
+      if (keyboardLayout && keyboardLayout.length > 0)
+        return keyboardLayout;
+      return "en-US";
+  }, [keyboardLayout]);
 
   const layoutOptions = Object.entries(layouts).map(([code, language]) => { return { value: code, label: language } })
   const ledSyncOptions = [
@@ -69,7 +76,7 @@ export default function SettingsKeyboardRoute() {
             size="SM"
             label=""
             fullWidth
-            value={keyboardLayout}
+            value={safeKeyboardLayout}
             onChange={onKeyboardLayoutChange}
             options={layoutOptions}
           />
