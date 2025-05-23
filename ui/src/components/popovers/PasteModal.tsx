@@ -12,7 +12,7 @@ import { useHidStore, useRTCStore, useUiStore, useSettingsStore } from "@/hooks/
 import { keys, modifiers } from "@/keyboardMappings";
 import { layouts, chars } from "@/keyboardLayouts";
 import notifications from "@/notifications";
-
+import { logger } from "@/log";
 const hidKeyboardPayload = (keys: number[], modifier: number) => {
   return { keys, modifier };
 };
@@ -95,7 +95,7 @@ export default function PasteModal() {
 	}
       }
     } catch (error) {
-      console.error(error);
+      logger.error("Failed to paste text", error);
       notifications.error("Failed to paste text");
     }
   }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode, keyboardLayout]);

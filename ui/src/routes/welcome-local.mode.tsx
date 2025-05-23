@@ -7,13 +7,13 @@ import { Button } from "@components/Button";
 import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
 import { DEVICE_API } from "@/ui.config";
+  import { logger } from "@/log";
 
 import { GridCard } from "../components/Card";
 import { cx } from "../cva.config";
 import api from "../api";
 
 import { DeviceStatus } from "./welcome-local";
-
 const loader = async () => {
   const res = await api
     .GET(`${DEVICE_API}/device/status`)
@@ -39,7 +39,7 @@ const action = async ({ request }: ActionFunctionArgs) => {
       });
       return redirect("/");
     } catch (error) {
-      console.error("Error setting authentication mode:", error);
+      logger.error("Error setting authentication mode:", error);
       return { error: "An error occurred while setting the authentication mode" };
     }
   }

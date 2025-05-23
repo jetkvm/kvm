@@ -10,7 +10,7 @@ import { LinkButton } from "@components/Button";
 import { User } from "@/hooks/stores";
 import { checkAuth } from "@/main";
 import { CLOUD_API } from "@/ui.config";
-
+import { logger } from "@/log";
 interface LoaderData {
   devices: { id: string; name: string; online: boolean; lastSeen: string }[];
   user: User;
@@ -29,7 +29,7 @@ const loader = async () => {
     const { devices } = await res.json();
     return { devices, user };
   } catch (e) {
-    console.error(e);
+    logger.error("Error loading devices", e);
     return { devices: [] };
   }
 };

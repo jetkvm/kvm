@@ -9,6 +9,7 @@ import {
   useVideoStore,
 } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
+import { logger } from "@/log";
 
 export default function InfoBar() {
   const activeKeys = useHidStore(state => state.activeKeys);
@@ -31,9 +32,9 @@ export default function InfoBar() {
 
   useEffect(() => {
     if (!rpcDataChannel) return;
-    rpcDataChannel.onclose = () => console.log("rpcDataChannel has closed");
+    rpcDataChannel.onclose = () => logger.info("rpcDataChannel has closed");
     rpcDataChannel.onerror = e =>
-      console.log(`Error on DataChannel '${rpcDataChannel.label}': ${e}`);
+      logger.error(`Error on DataChannel '${rpcDataChannel.label}': ${e}`);
   }, [rpcDataChannel]);
 
   const keyboardLedState = useHidStore(state => state.keyboardLedState);

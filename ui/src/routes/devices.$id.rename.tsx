@@ -17,6 +17,7 @@ import { User } from "@/hooks/stores";
 import { checkAuth } from "@/main";
 import Fieldset from "@components/Fieldset";
 import { CLOUD_API } from "@/ui.config";
+import { logger } from "@/log";
 
 import api from "../api";
 
@@ -41,7 +42,7 @@ const action = async ({ params, request }: ActionFunctionArgs) => {
       return { message: "There was an error renaming your device. Please try again." };
     }
   } catch (e) {
-    console.error(e);
+    logger.error("Error renaming device", e);
     return { message: "There was an error renaming your device. Please try again." };
   }
 
@@ -65,7 +66,7 @@ const loader = async ({ params }: LoaderFunctionArgs) => {
 
     return { device, user };
   } catch (e) {
-    console.error(e);
+    logger.error("Error renaming device", e);
     return { devices: [] };
   }
 };

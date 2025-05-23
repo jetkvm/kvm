@@ -15,6 +15,7 @@ import { DEVICE_API } from "@/ui.config";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { isOnDevice } from "@/main";
 import { TextAreaWithLabel } from "@components/TextArea";
+import { logger } from "@/log";
 
 import { LocalDevice } from "./devices.$id";
 import { SettingsItem } from "./devices.$id.settings";
@@ -57,7 +58,7 @@ export default function SettingsAccessIndexRoute() {
 
   const getCloudState = useCallback(() => {
     send("getCloudState", {}, resp => {
-      if ("error" in resp) return console.error(resp.error);
+      if ("error" in resp) return logger.error("Error getting cloud state", resp.error);
       const cloudState = resp.result as CloudState;
       setAdopted(cloudState.connected);
       setCloudApiUrl(cloudState.url);
@@ -78,7 +79,7 @@ export default function SettingsAccessIndexRoute() {
 
   const getTLSState = useCallback(() => {
     send("getTLSState", {}, resp => {
-      if ("error" in resp) return console.error(resp.error);
+      if ("error" in resp) return logger.error("Error getting TLS state", resp.error);
       const tlsState = resp.result as TLSState;
 
       setTlsMode(tlsState.mode);
@@ -199,7 +200,7 @@ export default function SettingsAccessIndexRoute() {
     getTLSState();
 
     send("getDeviceID", {}, async resp => {
-      if ("error" in resp) return console.error(resp.error);
+      if ("error" in resp) return logger.error("Error getting device ID", resp.error);
       setDeviceId(resp.result as string);
     });
   }, [send, getCloudState, getTLSState]);

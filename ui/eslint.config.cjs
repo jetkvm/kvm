@@ -62,6 +62,7 @@ module.exports = defineConfig([{
             allowConstantExport: true,
         }],
 
+        "no-console": ["warn", {}],
         "import/order": ["error", {
             groups: ["builtin", "external", "internal", "parent", "sibling"],
             "newlines-between": "always",

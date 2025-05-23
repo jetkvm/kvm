@@ -6,6 +6,7 @@ import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useRTCStore, useUiStore } from "@/hooks/stores";
 import notifications from "@/notifications";
+import { logger } from "@/log";
 
 import EmptyStateCard from "./EmptyStateCard";
 import DeviceList, { StoredDevice } from "./DeviceList";
@@ -56,7 +57,7 @@ export default function WakeOnLanModal() {
       if ("result" in resp) {
         setStoredDevices(resp.result as StoredDevice[]);
       } else {
-        console.error("Failed to load Wake-on-LAN devices:", resp.error);
+        logger.error("Failed to load Wake-on-LAN devices:", resp.error);
       }
     });
   }, [send, setStoredDevices]);
@@ -72,7 +73,7 @@ export default function WakeOnLanModal() {
 
       send("setWakeOnLanDevices", { params: { devices: updatedDevices } }, resp => {
         if ("error" in resp) {
-          console.error("Failed to update Wake-on-LAN devices:", resp.error);
+          logger.error("Failed to update Wake-on-LAN devices:", resp.error);
         } else {
           syncStoredDevices();
         }
@@ -85,10 +86,10 @@ export default function WakeOnLanModal() {
     (name: string, macAddress: string) => {
       if (!name || !macAddress) return;
       const updatedDevices = [...storedDevices, { name, macAddress }];
-      console.log("updatedDevices", updatedDevices);
+      logger.info("updatedDevices", updatedDevices);
       send("setWakeOnLanDevices", { params: { devices: updatedDevices } }, resp => {
         if ("error" in resp) {
-          console.error("Failed to add Wake-on-LAN device:", resp.error);
+          logger.error("Failed to add Wake-on-LAN device:", { error: resp.error });
           setAddDeviceErrorMessage("Failed to add device");
         } else {
           setShowAddForm(false);
