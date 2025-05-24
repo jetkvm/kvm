@@ -1006,6 +1006,25 @@ func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
 	return nil, nil
 }
 
+func rpcGetLocalLoopbackOnly() (bool, error) {
+	return config.LocalLoopbackOnly, nil
+}
+
+func rpcSetLocalLoopbackOnly(enabled bool) error {
+	// Check if the setting is actually changing
+	if config.LocalLoopbackOnly == enabled {
+		return nil
+	}
+
+	// Update the setting
+	config.LocalLoopbackOnly = enabled
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"reboot":                 {Func: rpcReboot, Params: []string{"force"}},
@@ -1083,4 +1102,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"setKeyboardLayout":      {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
 	"getKeyboardMacros":      {Func: getKeyboardMacros},
 	"setKeyboardMacros":      {Func: setKeyboardMacros, Params: []string{"params"}},
+	"getLocalLoopbackOnly":   {Func: rpcGetLocalLoopbackOnly},
+	"setLocalLoopbackOnly":   {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
 }
