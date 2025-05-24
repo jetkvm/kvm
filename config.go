@@ -75,48 +75,47 @@ func (m *KeyboardMacro) Validate() error {
 }
 
 type Config struct {
-	CloudURL                   string                 `json:"cloud_url"`
-	CloudAppURL                string                 `json:"cloud_app_url"`
-	CloudToken                 string                 `json:"cloud_token"`
-	GoogleIdentity             string                 `json:"google_identity"`
-	JigglerEnabled             bool                   `json:"jiggler_enabled"`
-	AutoUpdateEnabled          bool                   `json:"auto_update_enabled"`
-	IncludePreRelease          bool                   `json:"include_pre_release"`
-	HashedPassword             string                 `json:"hashed_password"`
-	LocalAuthToken             string                 `json:"local_auth_token"`
-	LocalAuthMode              string                 `json:"localAuthMode"` //TODO: fix it with migration
-	WakeOnLanDevices           []WakeOnLanDevice      `json:"wake_on_lan_devices"`
-	KeyboardMacros             []KeyboardMacro        `json:"keyboard_macros"`
-	KeyboardLayout             string                 `json:"keyboard_layout"`
-	EdidString                 string                 `json:"hdmi_edid_string"`
-	ActiveExtension            string                 `json:"active_extension"`
-	DisplayRotation            string                 `json:"display_rotation"`
-	DisplayMaxBrightness       int                    `json:"display_max_brightness"`
-	DisplayDimAfterSec         int                    `json:"display_dim_after_sec"`
-	DisplayOffAfterSec         int                    `json:"display_off_after_sec"`
-	TLSMode                    string                 `json:"tls_mode"` // options: "self-signed", "user-defined", ""
-	LocalWebServerLoopbackOnly bool                   `json:"local_web_server_loopback_only"`
-	UsbConfig                  *usbgadget.Config      `json:"usb_config"`
-	UsbDevices                 *usbgadget.Devices     `json:"usb_devices"`
-	NetworkConfig              *network.NetworkConfig `json:"network_config"`
-	DefaultLogLevel            string                 `json:"default_log_level"`
+	CloudURL             string                 `json:"cloud_url"`
+	CloudAppURL          string                 `json:"cloud_app_url"`
+	CloudToken           string                 `json:"cloud_token"`
+	GoogleIdentity       string                 `json:"google_identity"`
+	JigglerEnabled       bool                   `json:"jiggler_enabled"`
+	AutoUpdateEnabled    bool                   `json:"auto_update_enabled"`
+	IncludePreRelease    bool                   `json:"include_pre_release"`
+	HashedPassword       string                 `json:"hashed_password"`
+	LocalAuthToken       string                 `json:"local_auth_token"`
+	LocalAuthMode        string                 `json:"localAuthMode"` //TODO: fix it with migration
+	LocalLoopbackOnly    bool                   `json:"local_loopback_only"`
+	WakeOnLanDevices     []WakeOnLanDevice      `json:"wake_on_lan_devices"`
+	KeyboardMacros       []KeyboardMacro        `json:"keyboard_macros"`
+	KeyboardLayout       string                 `json:"keyboard_layout"`
+	EdidString           string                 `json:"hdmi_edid_string"`
+	ActiveExtension      string                 `json:"active_extension"`
+	DisplayRotation      string                 `json:"display_rotation"`
+	DisplayMaxBrightness int                    `json:"display_max_brightness"`
+	DisplayDimAfterSec   int                    `json:"display_dim_after_sec"`
+	DisplayOffAfterSec   int                    `json:"display_off_after_sec"`
+	TLSMode              string                 `json:"tls_mode"` // options: "self-signed", "user-defined", ""
+	UsbConfig            *usbgadget.Config      `json:"usb_config"`
+	UsbDevices           *usbgadget.Devices     `json:"usb_devices"`
+	NetworkConfig        *network.NetworkConfig `json:"network_config"`
+	DefaultLogLevel      string                 `json:"default_log_level"`
 }
 
 const configPath = "/userdata/kvm_config.json"
 
 var defaultConfig = &Config{
-	CloudURL:                   "https://api.jetkvm.com",
-	CloudAppURL:                "https://app.jetkvm.com",
-	AutoUpdateEnabled:          true, // Set a default value
-	ActiveExtension:            "",
-	KeyboardMacros:             []KeyboardMacro{},
-	DisplayRotation:            "270",
-	KeyboardLayout:             "en-US",
-	DisplayMaxBrightness:       64,
-	DisplayDimAfterSec:         120,  // 2 minutes
-	DisplayOffAfterSec:         1800, // 30 minutes
-	TLSMode:                    "",
-	LocalWebServerLoopbackOnly: false, // Allow access from any network interface by default
+	CloudURL:             "https://api.jetkvm.com",
+	CloudAppURL:          "https://app.jetkvm.com",
+	AutoUpdateEnabled:    true, // Set a default value
+	ActiveExtension:      "",
+	KeyboardMacros:       []KeyboardMacro{},
+	DisplayRotation:      "270",
+	KeyboardLayout:       "en-US",
+	DisplayMaxBrightness: 64,
+	DisplayDimAfterSec:   120,  // 2 minutes
+	DisplayOffAfterSec:   1800, // 30 minutes
+	TLSMode:              "",
 	UsbConfig: &usbgadget.Config{
 		VendorId:     "0x1d6b", //The Linux Foundation
 		ProductId:    "0x0104", //Multifunction Composite Gadget
