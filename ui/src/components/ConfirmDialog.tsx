@@ -1,12 +1,12 @@
 import {
-  ExclamationTriangleIcon,
   CheckCircleIcon,
+  ExclamationTriangleIcon,
   InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 
-import { cx } from "@/cva.config";
 import { Button } from "@/components/Button";
 import Modal from "@/components/Modal";
+import { cx } from "@/cva.config";
 
 type Variant = "danger" | "success" | "warning" | "info";
 
@@ -14,7 +14,7 @@ interface ConfirmDialogProps {
   open: boolean;
   onClose: () => void;
   title: string;
-  description: string;
+  description: React.ReactNode;
   variant?: Variant;
   confirmText?: string;
   cancelText?: string | null;
@@ -84,8 +84,8 @@ export function ConfirmDialog({
               >
                 <Icon aria-hidden="true" className={cx("size-6", iconClass)} />
               </div>
-              <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left">
-                <h2 className="text-lg font-bold leading-tight text-black dark:text-white">
+              <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                <h2 className="text-lg leading-tight font-bold text-black dark:text-white">
                   {title}
                 </h2>
                 <div className="mt-2 text-sm leading-snug text-slate-600 dark:text-slate-400">
