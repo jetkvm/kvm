@@ -11,12 +11,12 @@ import { Button } from "@components/Button";
 import LogoBlueIcon from "@/assets/logo-blue.png";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
 import { DEVICE_API } from "@/ui.config";
+import { logger } from "@/log";
 
 import api from "../api";
 import ExtLink from "../components/ExtLink";
 
 import { DeviceStatus } from "./welcome-local";
-
 const loader = async () => {
   const res = await api
     .GET(`${DEVICE_API}/device/status`)
@@ -44,7 +44,7 @@ const action = async ({ request }: ActionFunctionArgs) => {
       return { error: "Invalid password" };
     }
   } catch (error) {
-    console.error(error);
+    logger.error("An error occurred while logging in", error);
     return { error: "An error occurred while logging in" };
   }
 };

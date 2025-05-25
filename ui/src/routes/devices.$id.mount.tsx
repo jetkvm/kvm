@@ -26,6 +26,7 @@ import ArchIcon from "@/assets/arch-icon.png";
 import NetBootIcon from "@/assets/netboot-icon.svg";
 import Fieldset from "@/components/Fieldset";
 import { DEVICE_API } from "@/ui.config";
+import { logger } from "@/log";
 
 import { useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
@@ -86,7 +87,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
   }
 
   function handleUrlMount(url: string, mode: RemoteVirtualMediaState["mode"]) {
-    console.log(`Mounting ${url} as ${mode}`);
+    logger.info(`Mounting ${url} as ${mode}`);
 
     setMountInProgress(true);
     send("mountWithHTTP", { url, mode }, async resp => {
@@ -105,7 +106,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
   }
 
   function handleStorageMount(fileName: string, mode: RemoteVirtualMediaState["mode"]) {
-    console.log(`Mounting ${fileName} as ${mode}`);
+    logger.info(`Mounting ${fileName} as ${mode}`);
 
     setMountInProgress(true);
     send("mountWithStorage", { filename: fileName, mode }, async resp => {
@@ -132,7 +133,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
   }
 
   function handleBrowserMount(file: File, mode: RemoteVirtualMediaState["mode"]) {
-    console.log(`Mounting ${file.name} as ${mode}`);
+    logger.info(`Mounting ${file.name} as ${mode}`);
 
     setMountInProgress(true);
     send(
@@ -419,7 +420,7 @@ function BrowserFileView({
 
   const handleMount = () => {
     if (selectedFile) {
-      console.log(`Mounting ${selectedFile.name} as ${setUsbMode}`);
+      logger.info(`Mounting ${selectedFile.name} as ${setUsbMode}`);
       onMountFile(selectedFile, usbMode);
     }
   };
@@ -756,7 +757,7 @@ function DeviceFileView({
   }, [syncStorage]);
 
   function handleDeleteFile(file: { name: string; size: string; createdAt: string }) {
-    console.log("Deleting file:", file);
+    logger.info("Deleting file:", file);
     send("deleteStorageFile", { filename: file.name }, res => {
       if ("error" in res) {
         notifications.error(`Error deleting file: ${res.error}`);
@@ -986,6 +987,8 @@ function UploadFileView({
   onCancelUpload: () => void;
   incompleteFileName?: string;
 }) {
+  const l = logger.getSubLogger({ name: "file-upload" });
+
   const [uploadState, setUploadState] = useState<"idle" | "uploading" | "success">(
     "idle",
   );
@@ -1002,7 +1005,7 @@ function UploadFileView({
   useEffect(() => {
     const ref = rtcDataChannelRef.current;
     return () => {
-      console.log("unmounting");
+      logger.info("unmounting");
       if (ref) {
         ref.onopen = null;
         ref.onerror = null;
@@ -1023,10 +1026,10 @@ function UploadFileView({
       .peerConnection?.createDataChannel(dataChannel);
 
     if (!rtcDataChannel) {
-      console.error("Failed to create data channel for file upload");
+      l.error("Failed to create data channel for file upload");
       notifications.error("Failed to create data channel for file upload");
       setUploadState("idle");
-      console.log("Upload state set to 'idle'");
+      l.info("Upload state set to 'idle'");
 
       return;
     }
@@ -1072,7 +1075,7 @@ function UploadFileView({
         lastUploadedBytes = AlreadyUploadedBytes;
         lastUpdateTime = now;
       } catch (e) {
-        console.error("Error processing RTC Data channel message:", e);
+        l.error("Error processing RTC Data channel message:", e);
       }
     };
 
@@ -1099,24 +1102,24 @@ function UploadFileView({
           }
 
           offset += buffer.byteLength;
-          console.log(`Chunk sent: ${offset} / ${file.size} bytes`);
+          l.info(`Chunk sent: ${offset} / ${file.size} bytes`);
           sendNextChunk();
         });
       };
 
       sendNextChunk();
       rtcDataChannel.onbufferedamountlow = () => {
-        console.log("RTC Data channel buffered amount low");
+        l.info("RTC Data channel buffered amount low");
         pauseSending = false; // Now the data channel is ready to send more data
         sendNextChunk();
       };
     };
 
     rtcDataChannel.onerror = error => {
-      console.error("RTC Data channel error:", error);
+      l.error("RTC Data channel error:", error);
       notifications.error(`Upload failed: ${error}`);
       setUploadState("idle");
-      console.log("Upload state set to 'idle'");
+      l.info("Upload state set to 'idle'");
     };
   }
 
@@ -1169,14 +1172,14 @@ function UploadFileView({
       if (xhr.status === 200) {
         setUploadState("success");
       } else {
-        console.error("Upload error:", xhr.statusText);
+        l.error("Upload error:", xhr.statusText);
         setUploadError(xhr.statusText);
         setUploadState("idle");
       }
     };
 
     xhr.onerror = () => {
-      console.error("XHR error:", xhr.statusText);
+      l.error("XHR error:", xhr.statusText);
       setUploadError(xhr.statusText);
       setUploadState("idle");
     };
@@ -1205,19 +1208,19 @@ function UploadFileView({
       }
 
       setFileError(null);
-      console.log(`File selected: ${file.name}, size: ${file.size} bytes`);
+      l.info(`File selected: ${file.name}, size: ${file.size} bytes`);
       setUploadedFileName(file.name);
       setUploadedFileSize(file.size);
       setUploadState("uploading");
-      console.log("Upload state set to 'uploading'");
+      l.info("Upload state set to 'uploading'");
 
       send("startStorageFileUpload", { filename: file.name, size: file.size }, resp => {
-        console.log("startStorageFileUpload response:", resp);
+        l.info("startStorageFileUpload response:", resp);
         if ("error" in resp) {
-          console.error("Upload error:", resp.error.message);
+          l.error("Upload error:", resp.error.message);
           setUploadError(resp.error.data || resp.error.message);
           setUploadState("idle");
-          console.log("Upload state set to 'idle'");
+          l.info("Upload state set to 'idle'");
           return;
         }
 
@@ -1226,7 +1229,7 @@ function UploadFileView({
           dataChannel: string;
         };
 
-        console.log(
+        l.info(
           `Already uploaded bytes: ${alreadyUploadedBytes}, Data channel: ${dataChannel}`,
         );
 

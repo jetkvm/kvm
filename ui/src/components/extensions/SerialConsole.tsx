@@ -69,7 +69,7 @@ export function SerialConsole() {
               text="Open Console"
               onClick={() => {
                 setTerminalType("serial");
-                console.log("Opening serial console with settings: ", settings);
+                logger.info("Opening serial console with settings: ", settings);
               }}
             />
           </div>

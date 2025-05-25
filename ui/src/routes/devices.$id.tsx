@@ -28,6 +28,7 @@ import {
   useNetworkStateStore,
   User,
   useRTCStore,
+  useSettingsStore,
   useUiStore,
   useUpdateStore,
   useVideoStore,
@@ -40,6 +41,7 @@ import ConnectionStatsSidebar from "@/components/sidebar/connectionStats";
 import { JsonRpcRequest, useJsonRpc } from "@/hooks/useJsonRpc";
 import Terminal from "@components/Terminal";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import { logger, enableDebugMode, disableDebugMode } from "@/log";
 
 import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard";
 import api from "../api";
@@ -130,6 +132,16 @@ export default function KvmIdRoute() {
   const sidebarView = useUiStore(state => state.sidebarView);
   const [queryParams, setQueryParams] = useSearchParams();
 
+  // Enable dev mode if the user is in debug mode
+  const isDebugMode = useSettingsStore(state => state.debugMode);
+  useEffect(() => {
+    if (isDebugMode) {
+      enableDebugMode();
+    } else {
+      disableDebugMode();
+    }
+  }, [isDebugMode]);
+
   const setIsTurnServerInUse = useRTCStore(state => state.setTurnServerInUse);
   const peerConnection = useRTCStore(state => state.peerConnection);
   const setPeerConnectionState = useRTCStore(state => state.setPeerConnectionState);
@@ -151,7 +163,7 @@ export default function KvmIdRoute() {
   const [loadingMessage, setLoadingMessage] = useState("Connecting to device...");
   const cleanupAndStopReconnecting = useCallback(
     function cleanupAndStopReconnecting() {
-      console.log("Closing peer connection");
+      logger.info("Closing peer connection");
 
       setConnectionFailed(true);
       if (peerConnection) {
@@ -187,15 +199,14 @@ export default function KvmIdRoute() {
     ) {
       setLoadingMessage("Setting remote description");
 
+      const l = logger.getSubLogger({ name: "setRemoteSessionDescription" });
+
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(remoteDescription));
-        console.log("[setRemoteSessionDescription] Remote description set successfully");
+        l.info("Remote description set successfully");
         setLoadingMessage("Establishing secure connection...");
       } catch (error) {
-        console.error(
-          "[setRemoteSessionDescription] Failed to set remote description:",
-          error,
-        );
+        l.error("Failed to set remote description", { error });
         cleanupAndStopReconnecting();
         return;
       }
@@ -207,12 +218,12 @@ export default function KvmIdRoute() {
 
         // When vivaldi has disabled "Broadcast IP for Best WebRTC Performance", this never connects
         if (pc.sctp?.state === "connected") {
-          console.log("[setRemoteSessionDescription] Remote description set");
+          l.info("Remote description set");
           clearInterval(checkInterval);
           setLoadingMessage("Connection established");
         } else if (attempts >= 10) {
-          console.log(
-            "[setRemoteSessionDescription] Failed to establish connection after 10 attempts",
+          l.error(
+            "Failed to establish connection after 10 attempts",
             {
               connectionState: pc.connectionState,
               iceConnectionState: pc.iceConnectionState,
@@ -221,7 +232,7 @@ export default function KvmIdRoute() {
           cleanupAndStopReconnecting();
           clearInterval(checkInterval);
         } else {
-          console.log("[setRemoteSessionDescription] Waiting for connection, state:", {
+          l.info("[setRemoteSessionDescription] Waiting for connection, state:", {
             connectionState: pc.connectionState,
             iceConnectionState: pc.iceConnectionState,
           });
@@ -236,6 +247,7 @@ export default function KvmIdRoute() {
   const makingOffer = useRef(false);
 
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const wsLogger = logger.getSubLogger({ name: "websocket" });
 
   const { sendMessage, getWebSocket } = useWebSocket(
     isOnDevice
@@ -247,27 +259,27 @@ export default function KvmIdRoute() {
       reconnectAttempts: 15,
       reconnectInterval: 1000,
       onReconnectStop: () => {
-        console.log("Reconnect stopped");
+        wsLogger.info("Reconnect stopped");
         cleanupAndStopReconnecting();
       },
 
       shouldReconnect(event) {
-        console.log("[Websocket] shouldReconnect", event);
+        wsLogger.info("shouldReconnect", event);
         // TODO: Why true?
         return true;
       },
 
       onClose(event) {
-        console.log("[Websocket] onClose", event);
+        wsLogger.info("onClose", event);
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
 
       onError(event) {
-        console.log("[Websocket] onError", event);
+        wsLogger.error("onError", event);
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
       onOpen() {
-        console.log("[Websocket] onOpen");
+        wsLogger.info("onOpen");
       },
 
       onMessage: message => {
@@ -289,18 +301,18 @@ export default function KvmIdRoute() {
         const parsedMessage = JSON.parse(message.data);
         if (parsedMessage.type === "device-metadata") {
           const { deviceVersion } = parsedMessage.data;
-          console.log("[Websocket] Received device-metadata message");
-          console.log("[Websocket] Device version", deviceVersion);
+          wsLogger.info("Received device-metadata message");
+          wsLogger.info("Device version", deviceVersion);
           // If the device version is not set, we can assume the device is using the legacy signaling
           if (!deviceVersion) {
-            console.log("[Websocket] Device is using legacy signaling");
+            wsLogger.info("Device is using legacy signaling");
 
             // Now we don't need the websocket connection anymore, as we've established that we need to use the legacy signaling
             // which does everything over HTTP(at least from the perspective of the client)
             isLegacySignalingEnabled.current = true;
             getWebSocket()?.close();
           } else {
-            console.log("[Websocket] Device is using new signaling");
+            wsLogger.info("Device is using new signaling");
             isLegacySignalingEnabled.current = false;
           }
           setupPeerConnection();
@@ -308,7 +320,7 @@ export default function KvmIdRoute() {
 
         if (!peerConnection) return;
         if (parsedMessage.type === "answer") {
-          console.log("[Websocket] Received answer");
+          wsLogger.info("Received answer");
           const readyForOffer =
             // If we're making an offer, we don't want to accept an answer
             !makingOffer &&
@@ -322,10 +334,7 @@ export default function KvmIdRoute() {
 
           // Set so we don't accept an answer while we're setting the remote description
           isSettingRemoteAnswerPending.current = parsedMessage.type === "answer";
-          console.log(
-            "[Websocket] Setting remote answer pending",
-            isSettingRemoteAnswerPending.current,
-          );
+          wsLogger.info("Setting remote answer pending", isSettingRemoteAnswerPending.current);
 
           const sd = atob(parsedMessage.data);
           const remoteSessionDescription = JSON.parse(sd);
@@ -338,8 +347,8 @@ export default function KvmIdRoute() {
           // Reset the remote answer pending flag
           isSettingRemoteAnswerPending.current = false;
         } else if (parsedMessage.type === "new-ice-candidate") {
-          console.log("[Websocket] Received new-ice-candidate");
           const candidate = parsedMessage.data;
+          wsLogger.info("Received new-ice-candidate", { candidate});
           peerConnection.addIceCandidate(candidate);
         }
       },
@@ -366,7 +375,7 @@ export default function KvmIdRoute() {
       // In device mode, old devices wont server this JS, and on newer devices legacy mode wont be enabled
       const sessionUrl = `${CLOUD_API}/webrtc/session`;
 
-      console.log("Trying to get remote session description");
+      logger.info("Trying to get remote session description");
       setLoadingMessage(
         `Getting remote session description...  ${signalingAttempts.current > 0 ? `(attempt ${signalingAttempts.current + 1})` : ""}`,
       );
@@ -379,12 +388,12 @@ export default function KvmIdRoute() {
       const json = await res.json();
       if (res.status === 401) return navigate(isOnDevice ? "/login-local" : "/login");
       if (!res.ok) {
-        console.error("Error getting SDP", { status: res.status, json });
+        logger.error("Error getting SDP", { status: res.status, json });
         cleanupAndStopReconnecting();
         return;
       }
 
-      console.log("Successfully got Remote Session Description. Setting.");
+      logger.info("Successfully got Remote Session Description. Setting.");
       setLoadingMessage("Setting remote session description...");
 
       const decodedSd = atob(json.sd);
@@ -395,13 +404,15 @@ export default function KvmIdRoute() {
   );
 
   const setupPeerConnection = useCallback(async () => {
-    console.log("[setupPeerConnection] Setting up peer connection");
+    const l = logger.getSubLogger({ name: "setupPeerConnection" });
+
+    l.info("Setting up peer connection");
     setConnectionFailed(false);
     setLoadingMessage("Connecting to device...");
 
     let pc: RTCPeerConnection;
     try {
-      console.log("[setupPeerConnection] Creating peer connection");
+      l.info("Creating peer connection");
       setLoadingMessage("Creating peer connection...");
       pc = new RTCPeerConnection({
         // We only use STUN or TURN servers if we're in the cloud
@@ -411,10 +422,10 @@ export default function KvmIdRoute() {
       });
 
       setPeerConnectionState(pc.connectionState);
-      console.log("[setupPeerConnection] Peer connection created", pc);
+      l.info("Peer connection created", pc);
       setLoadingMessage("Setting up connection to device...");
     } catch (e) {
-      console.error(`[setupPeerConnection] Error creating peer connection: ${e}`);
+      l.error(`Error creating peer connection: ${e}`);
       setTimeout(() => {
         cleanupAndStopReconnecting();
       }, 1000);
@@ -423,13 +434,13 @@ export default function KvmIdRoute() {
 
     // Set up event listeners and data channels
     pc.onconnectionstatechange = () => {
-      console.log("[setupPeerConnection] Connection state changed", pc.connectionState);
+      l.info("Connection state changed", pc.connectionState);
       setPeerConnectionState(pc.connectionState);
     };
 
     pc.onnegotiationneeded = async () => {
       try {
-        console.log("[setupPeerConnection] Creating offer");
+        l.info("Creating offer");
         makingOffer.current = true;
 
         const offer = await pc.createOffer();
@@ -439,13 +450,10 @@ export default function KvmIdRoute() {
         if (isNewSignalingEnabled) {
           sendWebRTCSignal("offer", { sd: sd });
         } else {
-          console.log("Legacy signanling. Waiting for ICE Gathering to complete...");
+          l.info("Legacy signanling. Waiting for ICE Gathering to complete...");
         }
       } catch (e) {
-        console.error(
-          `[setupPeerConnection] Error creating offer: ${e}`,
-          new Date().toISOString(),
-        );
+        l.error(`Error creating offer`, { date: new Date().toISOString(), error: e });
         cleanupAndStopReconnecting();
       } finally {
         makingOffer.current = false;
@@ -461,7 +469,7 @@ export default function KvmIdRoute() {
     pc.onicegatheringstatechange = event => {
       const pc = event.currentTarget as RTCPeerConnection;
       if (pc.iceGatheringState === "complete") {
-        console.log("ICE Gathering completed");
+        l.info("ICE Gathering completed");
         setLoadingMessage("ICE Gathering completed");
 
         if (isLegacySignalingEnabled.current) {
@@ -469,7 +477,7 @@ export default function KvmIdRoute() {
           legacyHTTPSignaling(pc);
         }
       } else if (pc.iceGatheringState === "gathering") {
-        console.log("ICE Gathering Started");
+        l.info("ICE Gathering Started");
         setLoadingMessage("Gathering ICE candidates...");
       }
     };
@@ -506,7 +514,7 @@ export default function KvmIdRoute() {
 
   useEffect(() => {
     if (peerConnectionState === "failed") {
-      console.log("Connection failed, closing peer connection");
+      logger.info("Connection failed, closing peer connection");
       cleanupAndStopReconnecting();
     }
   }, [peerConnectionState, cleanupAndStopReconnecting]);
@@ -609,13 +617,13 @@ export default function KvmIdRoute() {
     }
 
     if (resp.method === "networkState") {
-      console.log("Setting network state", resp.params);
+      logger.info("Setting network state", resp.params);
       setNetworkState(resp.params as NetworkState);
     }
 
     if (resp.method === "keyboardLedState") {
       const ledState = resp.params as KeyboardLedState;
-      console.log("Setting keyboard led state", ledState);
+      logger.info("Setting keyboard led state", ledState);
       setKeyboardLedState(ledState);
       setKeyboardLedStateSyncAvailable(true);
     }
@@ -660,20 +668,20 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     if (keyboardLedState !== undefined) return;
-    console.log("Requesting keyboard led state");
+    logger.info("Requesting keyboard led state");
 
     send("getKeyboardLedState", {}, resp => {
       if ("error" in resp) {
         // -32601 means the method is not supported
         if (resp.error.code === -32601) {
           setKeyboardLedStateSyncAvailable(false);
-          console.error("Failed to get keyboard led state, disabling sync", resp.error);
+          logger.error("Failed to get keyboard led state, disabling sync", resp.error);
         } else {
-          console.error("Failed to get keyboard led state", resp.error);
+          logger.error("Failed to get keyboard led state", resp.error);
         }
         return;
       }
-      console.log("Keyboard led state", resp.result);
+      logger.info("Keyboard led state", resp.result);
       setKeyboardLedState(resp.result as KeyboardLedState);
       setKeyboardLedStateSyncAvailable(true);
     });
@@ -691,7 +699,7 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (!diskChannel || !file) return;
     diskChannel.onmessage = async e => {
-      console.log("Received", e.data);
+      logger.info("Received", e.data);
       const data = JSON.parse(e.data);
       const blob = file.slice(data.start, data.end);
       const buf = await blob.arrayBuffer();

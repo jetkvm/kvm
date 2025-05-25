@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from "react";
 
 import { useRTCStore } from "@/hooks/stores";
-
+import { jsonRpcLogger } from "@/log";
 export interface JsonRpcRequest {
   jsonrpc: string;
   method: string;
@@ -61,7 +61,7 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
         return;
       }
 
-      if ("error" in payload) console.error(payload.error);
+      if ("error" in payload) jsonRpcLogger.error(payload.error);
       if (!payload.id) return;
 
       const callback = callbackStore.get(payload.id);

@@ -6,6 +6,7 @@ import { InputFieldWithLabel } from "@/components/InputField";
 import api from "@/api";
 import { useLocalAuthModalStore } from "@/hooks/stores";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import { logger } from "@/log";
 
 export default function SecurityAccessLocalAuthRoute() {
   const { setModalView } = useLocalAuthModalStore();
@@ -54,7 +55,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         setError(data.error || "An error occurred while setting the password");
       }
     } catch (error) {
-      console.error(error);
+      logger.error("An error occurred while setting the password", error);
       setError("An error occurred while setting the password");
     }
   };
@@ -94,7 +95,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         setError(data.error || "An error occurred while changing the password");
       }
     } catch (error) {
-      console.error(error);
+      logger.error("An error occurred while changing the password", error);
       setError("An error occurred while changing the password");
     }
   };
@@ -116,7 +117,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         setError(data.error || "An error occurred while disabling the password");
       }
     } catch (error) {
-      console.error(error);
+      logger.error("An error occurred while disabling the password", error);
       setError("An error occurred while disabling the password");
     }
   };

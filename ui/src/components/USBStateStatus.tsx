@@ -5,6 +5,7 @@ import KeyboardAndMouseConnectedIcon from "@/assets/keyboard-and-mouse-connected
 import LoadingSpinner from "@components/LoadingSpinner";
 import StatusCard from "@components/StatusCards";
 import { HidState } from "@/hooks/stores";
+import { logger } from "@/log";
 
 type USBStates = HidState["usbState"];
 
@@ -67,7 +68,7 @@ export default function USBStateStatus({
   };
   const props = StatusCardProps[state];
   if (!props) {
-    console.log("Unsupported USB state: ", state);
+    logger.error("Unsupported USB state: ", { state });
     return;
   }
 

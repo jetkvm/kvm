@@ -20,10 +20,10 @@ import { LinkButton } from "@/components/Button";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { useUiStore } from "@/hooks/stores";
 import useKeyboard from "@/hooks/useKeyboard";
+import { logger } from "@/log";
 
 import { FeatureFlag } from "../components/FeatureFlag";
 import { cx } from "../cva.config";
-
 
 /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
 export default function SettingsRoute() {
@@ -73,7 +73,7 @@ export default function SettingsRoute() {
       // For some reason, the focus trap is not disabled immediately
       // so we need to blur the active element
       (document.activeElement as HTMLElement)?.blur();
-      console.log("Just disabled focus trap");
+      logger.info("Just disabled focus trap");
     }, 300);
 
     return () => {

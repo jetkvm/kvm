@@ -22,6 +22,7 @@ import { SettingsPageHeader } from "@/components/SettingsPageheader";
 import Fieldset from "@/components/Fieldset";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import notifications from "@/notifications";
+import { logger } from "@/log";
 
 import Ipv6NetworkCard from "../components/Ipv6NetworkCard";
 import EmptyCard from "../components/EmptyCard";
@@ -29,7 +30,6 @@ import AutoHeight from "../components/AutoHeight";
 import DhcpLeaseCard from "../components/DhcpLeaseCard";
 
 import { SettingsItem } from "./devices.$id.settings";
-
 dayjs.extend(relativeTime);
 
 const defaultNetworkSettings: NetworkSettings = {
@@ -105,7 +105,7 @@ export default function SettingsNetworkRoute() {
     setNetworkSettingsLoaded(false);
     send("getNetworkSettings", {}, resp => {
       if ("error" in resp) return;
-      console.log(resp.result);
+      logger.trace("getNetworkSettings result:", resp.result);
       setNetworkSettings(resp.result as NetworkSettings);
 
       if (!firstNetworkSettings.current) {
@@ -118,7 +118,7 @@ export default function SettingsNetworkRoute() {
   const getNetworkState = useCallback(() => {
     send("getNetworkState", {}, resp => {
       if ("error" in resp) return;
-      console.log(resp.result);
+      logger.trace("getNetworkState result:", resp.result);
       setNetworkState(resp.result as NetworkState);
     });
   }, [send, setNetworkState]);
