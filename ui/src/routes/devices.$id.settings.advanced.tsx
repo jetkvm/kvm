@@ -116,53 +116,62 @@ export default function SettingsAdvancedRoute() {
     [send, setDeveloperMode],
   );
 
-  const handleDevChannelChange = (enabled: boolean) => {
-    send("setDevChannelState", { enabled }, resp => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
-        );
-        return;
-      }
-      setDevChannel(enabled);
-    });
-  };
+  const handleDevChannelChange = useCallback(
+    (enabled: boolean) => {
+      send("setDevChannelState", { enabled }, resp => {
+        if ("error" in resp) {
+          notifications.error(
+            `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
+          );
+          return;
+        }
+        setDevChannel(enabled);
+      });
+    },
+    [send, setDevChannel],
+  );
 
-  const handleLoopbackOnlyModeChange = (enabled: boolean) => {
-    // If trying to enable loopback-only mode, show warning first
-    if (enabled) {
-      setShowLoopbackWarning(true);
-    } else {
-      // If disabling, just proceed
-      applyLoopbackOnlyMode(false);
-    }
-  };
+  const applyLoopbackOnlyMode = useCallback(
+    (enabled: boolean) => {
+      send("setLocalLoopbackOnly", { enabled }, resp => {
+        if ("error" in resp) {
+          notifications.error(
+            `Failed to ${enabled ? "enable" : "disable"} loopback-only mode: ${resp.error.data || "Unknown error"}`,
+          );
+          return;
+        }
+        setLocalLoopbackOnly(enabled);
+        if (enabled) {
+          notifications.success(
+            "Loopback-only mode enabled. Restart your device to apply.",
+          );
+        } else {
+          notifications.success(
+            "Loopback-only mode disabled. Restart your device to apply.",
+          );
+        }
+      });
+    },
+    [send, setLocalLoopbackOnly],
+  );
 
-  const applyLoopbackOnlyMode = (enabled: boolean) => {
-    send("setLocalLoopbackOnly", { enabled }, resp => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to ${enabled ? "enable" : "disable"} loopback-only mode: ${resp.error.data || "Unknown error"}`,
-        );
-        return;
-      }
-      setLocalLoopbackOnly(enabled);
+  const handleLoopbackOnlyModeChange = useCallback(
+    (enabled: boolean) => {
+      // If trying to enable loopback-only mode, show warning first
       if (enabled) {
-        notifications.success(
-          "Loopback-only mode enabled. Restart your device to apply.",
-        );
+        setShowLoopbackWarning(true);
       } else {
-        notifications.success(
-          "Loopback-only mode disabled. Restart your device to apply.",
-        );
+        // If disabling, just proceed
+        applyLoopbackOnlyMode(false);
       }
-    });
-  };
+    },
+    [applyLoopbackOnlyMode, setShowLoopbackWarning],
+  );
 
-  const confirmLoopbackModeEnable = () => {
+  const confirmLoopbackModeEnable = useCallback(() => {
     applyLoopbackOnlyMode(true);
     setShowLoopbackWarning(false);
-  };
+  }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
 
   return (
     <div className="space-y-4">
