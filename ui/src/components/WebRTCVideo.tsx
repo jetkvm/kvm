@@ -229,16 +229,16 @@ export default function WebRTCVideo() {
       }
 
       // Clamp mouse position within the effective video boundaries
-      const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
-      const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
+      const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth - 1);
+      const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight - 1);
 
       // Map clamped mouse position to the video stream's coordinate system
       const relativeX = (clampedX - offsetX) / effectiveWidth;
       const relativeY = (clampedY - offsetY) / effectiveHeight;
 
       // Convert to HID absolute coordinate system (0-32767 range)
-      const x = Math.round(relativeX * 32767);
-      const y = Math.round(relativeY * 32767);
+      const x = Math.trunc(relativeX * 32768);
+      const y = Math.trunc(relativeY * 32768);
 
       // Send mouse movement
       const { buttons } = e;
