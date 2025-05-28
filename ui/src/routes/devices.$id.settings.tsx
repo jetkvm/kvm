@@ -269,22 +269,17 @@ export default function SettingsRoute() {
   );
 }
 
-export function SettingsItem({
-  title,
-  description,
-  children,
-  className,
-  loading,
-  badge,
-}: {
-  title: string;
-  description: string | React.ReactNode;
-  children?: React.ReactNode;
-  className?: string;
-  name?: string;
-  loading?: boolean;
-  badge?: string;
-}) {
+interface SettingsItemProps {
+  readonly title: string;
+  readonly description: string | React.ReactNode;
+  readonly badge?: string;
+  readonly className?: string;
+  readonly loading?: boolean;
+  readonly children?: React.ReactNode;
+}
+export function SettingsItem(props: SettingsItemProps) {
+  const { title, description, badge, children, className, loading } = props;
+
   return (
     <label
       className={cx(

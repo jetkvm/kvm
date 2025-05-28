@@ -131,7 +131,7 @@ export default function PasteModal() {
                 }}
               >
                 <div>
-                  <div className="w-full" onKeyUp={e => e.stopPropagation()}>
+                  <div className="w-full" onKeyUp={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
                     <TextAreaWithLabel
                       ref={TextAreaRef}
                       label="Paste from host"

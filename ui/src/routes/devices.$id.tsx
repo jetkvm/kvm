@@ -715,12 +715,10 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (!peerConnection) return;
     if (!kvmTerminal) {
-      // console.log('Creating data channel "terminal"');
       setKvmTerminal(peerConnection.createDataChannel("terminal"));
     }
 
     if (!serialConsole) {
-      // console.log('Creating data channel "serial"');
       setSerialConsole(peerConnection.createDataChannel("serial"));
     }
   }, [kvmTerminal, peerConnection, serialConsole]);
@@ -755,10 +753,10 @@ export default function KvmIdRoute() {
 
   const ConnectionStatusElement = useMemo(() => {
     const hasConnectionFailed =
-      connectionFailed || ["failed", "closed"].includes(peerConnectionState || "");
+      connectionFailed || ["failed", "closed"].includes(peerConnectionState ?? "");
 
     const isPeerConnectionLoading =
-      ["connecting", "new"].includes(peerConnectionState || "") ||
+      ["connecting", "new"].includes(peerConnectionState ?? "") ||
       peerConnection === null;
 
     const isDisconnected = peerConnectionState === "disconnected";
@@ -826,7 +824,7 @@ export default function KvmIdRoute() {
             isLoggedIn={authMode === "password" || !!user}
             userEmail={user?.email}
             picture={user?.picture}
-            kvmName={deviceName || "JetKVM Device"}
+            kvmName={deviceName ?? "JetKVM Device"}
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
@@ -846,6 +844,9 @@ export default function KvmIdRoute() {
 
       <div
         className="z-50"
+        onClick={e => e.stopPropagation()}
+        onMouseUp={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
         onKeyUp={e => e.stopPropagation()}
         onKeyDown={e => {
           e.stopPropagation();
@@ -869,7 +870,12 @@ export default function KvmIdRoute() {
   );
 }
 
-function SidebarContainer({ sidebarView }: { sidebarView: string | null }) {
+interface SidebarContainerProps {
+  readonly sidebarView: string | null;
+}
+
+function SidebarContainer(props: SidebarContainerProps) {
+  const { sidebarView }= props;
   return (
     <div
       className={cx(
