@@ -343,7 +343,7 @@ func startBacklightTickers() {
 		dimTicker.Stop()
 	}
 
-	if offticker != nil {
+	if offTicker != nil {
 		offTicker.Stop()
 	}
 
