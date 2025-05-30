@@ -339,6 +339,7 @@ func startBacklightTickers() {
 		return
 	}
 
+	// Stop existing tickers to prevent multiple active instances on repeated calls
 	if dimTicker != nil {
 		dimTicker.Stop()
 	}
