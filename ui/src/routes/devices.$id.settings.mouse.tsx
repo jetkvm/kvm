@@ -14,6 +14,7 @@ import { useFeatureFlag } from "../hooks/useFeatureFlag";
 import { cx } from "../cva.config";
 
 import { SettingsItem } from "./devices.$id.settings";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 
 export default function SettingsMouseRoute() {
   const hideCursor = useSettingsStore(state => state.isCursorHidden);
@@ -25,6 +26,19 @@ export default function SettingsMouseRoute() {
   const { isEnabled: isScrollSensitivityEnabled } = useFeatureFlag("0.3.8");
 
   const [jiggler, setJiggler] = useState(false);
+
+  const scrollThrottling = useSettingsStore(state => state.scrollThrottling);
+  const setScrollThrottling = useSettingsStore(
+    state => state.setScrollThrottling,
+  );
+
+  const scrollThrottlingOptions = [
+    { value: "0", label: "Off" },
+    { value: "10", label: "Low" },
+    { value: "25", label: "Medium" },
+    { value: "50", label: "High" },
+    { value: "100", label: "Very High" },
+  ];
 
   const [send] = useJsonRpc();
 
@@ -64,6 +78,21 @@ export default function SettingsMouseRoute() {
             onChange={e => setHideCursor(e.target.checked)}
           />
         </SettingsItem>
+
+      <SettingsItem
+        title="Scroll Throttling"
+        description="Reduce the frequency of scroll events"
+      >
+        <SelectMenuBasic
+          size="SM"
+          label=""
+          className="max-w-[292px]"
+          value={scrollThrottling}
+          fullWidth
+          onChange={e => setScrollThrottling(parseInt(e.target.value))}
+          options={scrollThrottlingOptions}
+        />
+      </SettingsItem>
 
         <SettingsItem
           title="Jiggler"

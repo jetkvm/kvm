@@ -314,6 +314,9 @@ interface SettingsState {
   keyboardLedSync: KeyboardLedSync;
   setKeyboardLedSync: (sync: KeyboardLedSync) => void;
 
+  scrollThrottling: number;
+  setScrollThrottling: (value: number) => void;
+
   showPressedKeys: boolean;
   setShowPressedKeys: (show: boolean) => void;
 }
@@ -353,6 +356,9 @@ export const useSettingsStore = create(
 
       keyboardLedSync: "auto",
       setKeyboardLedSync: sync => set({ keyboardLedSync: sync }),
+
+      scrollThrottling: 0,
+      setScrollThrottling: value => set({ scrollThrottling: value }),
 
       showPressedKeys: true,
       setShowPressedKeys: show => set({ showPressedKeys: show }),

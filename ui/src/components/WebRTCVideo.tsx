@@ -67,6 +67,8 @@ export default function WebRTCVideo() {
   const hdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const isVideoLoading = !isPlaying;
 
+  const [blockWheelEvent, setBlockWheelEvent] = useState(false);
+
   // Misc states and hooks
   const disableVideoFocusTrap = useUiStore(state => state.disableVideoFocusTrap);
   const [send] = useJsonRpc();
@@ -256,6 +258,11 @@ export default function WebRTCVideo() {
 
   const mouseWheelHandler = useCallback(
     (e: WheelEvent) => {
+
+      if (settings.scrollThrottling && blockWheelEvent) {
+        return;
+      }
+
       // Determine if the wheel event is an accel scroll value
       const isAccel = Math.abs(e.deltaY) >= 100;
 
@@ -275,8 +282,14 @@ export default function WebRTCVideo() {
       const invertedScrollValue = -clampedScrollValue;
 
       send("wheelReport", { wheelY: invertedScrollValue });
+
+      // Apply blocking delay based of throttling settings
+      if (settings.scrollThrottling && !blockWheelEvent) {
+        setBlockWheelEvent(true);
+        setTimeout(() => setBlockWheelEvent(false), settings.scrollThrottling);
+      }
     },
-    [send],
+    [send, blockWheelEvent, settings],
   );
 
   const resetMousePosition = useCallback(() => {
