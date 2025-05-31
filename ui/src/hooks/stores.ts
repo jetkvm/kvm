@@ -283,6 +283,8 @@ export const useVideoStore = create<VideoState>(set => ({
   },
 }));
 
+export type KeyboardLedSync = "auto" | "browser" | "host";
+
 interface SettingsState {
   isCursorHidden: boolean;
   setCursorVisibility: (enabled: boolean) => void;
@@ -305,6 +307,15 @@ interface SettingsState {
 
   keyboardLayout: string;
   setKeyboardLayout: (layout: string) => void;
+
+  actionBarCtrlAltDel: boolean;
+  setActionBarCtrlAltDel: (enabled: boolean) => void;
+
+  keyboardLedSync: KeyboardLedSync;
+  setKeyboardLedSync: (sync: KeyboardLedSync) => void;
+
+  showPressedKeys: boolean;
+  setShowPressedKeys: (show: boolean) => void;
 }
 
 export const useSettingsStore = create(
@@ -336,6 +347,15 @@ export const useSettingsStore = create(
 
       keyboardLayout: "en-US",
       setKeyboardLayout: layout => set({ keyboardLayout: layout }),
+
+      actionBarCtrlAltDel: false,
+      setActionBarCtrlAltDel: enabled => set({ actionBarCtrlAltDel: enabled }),
+
+      keyboardLedSync: "auto",
+      setKeyboardLedSync: sync => set({ keyboardLedSync: sync }),
+
+      showPressedKeys: true,
+      setShowPressedKeys: show => set({ showPressedKeys: show }),
     }),
     {
       name: "settings",
@@ -343,17 +363,6 @@ export const useSettingsStore = create(
     },
   ),
 );
-
-export interface DeviceSettingsState {
-  trackpadSensitivity: number;
-  mouseSensitivity: number;
-  clampMin: number;
-  clampMax: number;
-  blockDelay: number;
-  trackpadThreshold: number;
-  scrollSensitivity: "low" | "default" | "high";
-  setScrollSensitivity: (sensitivity: DeviceSettingsState["scrollSensitivity"]) => void;
-}
 
 export interface RemoteVirtualMediaState {
   source: "WebRTC" | "HTTP" | "Storage" | null;
@@ -405,6 +414,21 @@ export const useMountMediaStore = create<MountMediaState>(set => ({
   setErrorMessage: message => set({ errorMessage: message }),
 }));
 
+export interface KeyboardLedState {
+  num_lock: boolean;
+  caps_lock: boolean;
+  scroll_lock: boolean;
+  compose: boolean;
+  kana: boolean;
+};
+const defaultKeyboardLedState: KeyboardLedState = {
+  num_lock: false,
+  caps_lock: false,
+  scroll_lock: false,
+  compose: false,
+  kana: false,
+};
+
 export interface HidState {
   activeKeys: number[];
   activeModifiers: number[];
@@ -423,17 +447,17 @@ export interface HidState {
   altGrCtrlTime: number; // _altGrCtrlTime
   setAltGrCtrlTime: (time: number) => void;
 
-  isNumLockActive: boolean;
-  setIsNumLockActive: (enabled: boolean) => void;
+  keyboardLedState?: KeyboardLedState;
+  setKeyboardLedState: (state: KeyboardLedState) => void;
+  setIsNumLockActive: (active: boolean) => void;
+  setIsCapsLockActive: (active: boolean) => void;
+  setIsScrollLockActive: (active: boolean) => void;
 
-  isScrollLockActive: boolean;
-  setIsScrollLockActive: (enabled: boolean) => void;
+  keyboardLedStateSyncAvailable: boolean;
+  setKeyboardLedStateSyncAvailable: (available: boolean) => void;
 
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
-
-  isCapsLockActive: boolean;
-  setIsCapsLockActive: (enabled: boolean) => void;
 
   isPasteModeEnabled: boolean;
   setPasteModeEnabled: (enabled: boolean) => void;
@@ -442,7 +466,7 @@ export interface HidState {
   setUsbState: (state: HidState["usbState"]) => void;
 }
 
-export const useHidStore = create<HidState>(set => ({
+export const useHidStore = create<HidState>((set, get) => ({
   activeKeys: [],
   activeModifiers: [],
   updateActiveKeysAndModifiers: ({ keys, modifiers }) => {
@@ -458,17 +482,28 @@ export const useHidStore = create<HidState>(set => ({
   altGrCtrlTime: 0,
   setAltGrCtrlTime: time => set({ altGrCtrlTime: time }),
 
-  isNumLockActive: false,
-  setIsNumLockActive: enabled => set({ isNumLockActive: enabled }),
+  setKeyboardLedState: ledState => set({ keyboardLedState: ledState }),
+  setIsNumLockActive: active => {
+    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
+    keyboardLedState.num_lock = active;
+    set({ keyboardLedState });
+  },
+  setIsCapsLockActive: active => {
+    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
+    keyboardLedState.caps_lock = active;
+    set({ keyboardLedState });
+  },
+  setIsScrollLockActive: active => {
+    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
+    keyboardLedState.scroll_lock = active;
+    set({ keyboardLedState });
+  },
 
-  isScrollLockActive: false,
-  setIsScrollLockActive: enabled => set({ isScrollLockActive: enabled }),
+  keyboardLedStateSyncAvailable: false,
+  setKeyboardLedStateSyncAvailable: available => set({ keyboardLedStateSyncAvailable: available }),
 
   isVirtualKeyboardEnabled: false,
   setVirtualKeyboardEnabled: enabled => set({ isVirtualKeyboardEnabled: enabled }),
-
-  isCapsLockActive: false,
-  setIsCapsLockActive: enabled => set({ isCapsLockActive: enabled }),
 
   isPasteModeEnabled: false,
   setPasteModeEnabled: enabled => set({ isPasteModeEnabled: enabled }),

@@ -61,9 +61,9 @@ function Terminal({
   dataChannel,
   type,
 }: {
-  title: string;
-  dataChannel: RTCDataChannel;
-  type: AvailableTerminalTypes;
+  readonly title: string;
+  readonly dataChannel: RTCDataChannel;
+  readonly type: AvailableTerminalTypes;
 }) {
   const enableTerminal = useUiStore(state => state.terminalType == type);
   const setTerminalType = useUiStore(state => state.setTerminalType);

@@ -1,8 +1,11 @@
 package usbgadget
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"reflect"
+	"time"
 )
 
 var keyboardConfig = gadgetConfigItem{
@@ -36,6 +39,7 @@ var keyboardReportDesc = []byte{
 	0x81, 0x03, /*   INPUT (Cnst,Var,Abs)                 */
 	0x95, 0x05, /*   REPORT_COUNT (5)                     */
 	0x75, 0x01, /*   REPORT_SIZE (1)                      */
+
 	0x05, 0x08, /*   USAGE_PAGE (LEDs)                    */
 	0x19, 0x01, /*   USAGE_MINIMUM (Num Lock)             */
 	0x29, 0x05, /*   USAGE_MAXIMUM (Kana)                 */
@@ -54,13 +58,139 @@ var keyboardReportDesc = []byte{
 	0xc0, /* END_COLLECTION                         */
 }
 
-func (u *UsbGadget) keyboardWriteHidFile(data []byte) error {
-	if u.keyboardHidFile == nil {
-		var err error
-		u.keyboardHidFile, err = os.OpenFile("/dev/hidg0", os.O_RDWR, 0666)
-		if err != nil {
-			return fmt.Errorf("failed to open hidg0: %w", err)
+const (
+	hidReadBufferSize = 8
+	// https://www.usb.org/sites/default/files/documents/hid1_11.pdf
+	// https://www.usb.org/sites/default/files/hut1_2.pdf
+	KeyboardLedMaskNumLock    = 1 << 0
+	KeyboardLedMaskCapsLock   = 1 << 1
+	KeyboardLedMaskScrollLock = 1 << 2
+	KeyboardLedMaskCompose    = 1 << 3
+	KeyboardLedMaskKana       = 1 << 4
+	ValidKeyboardLedMasks     = KeyboardLedMaskNumLock | KeyboardLedMaskCapsLock | KeyboardLedMaskScrollLock | KeyboardLedMaskCompose | KeyboardLedMaskKana
+)
+
+// Synchronization between LED states and CAPS LOCK, NUM LOCK, SCROLL LOCK,
+// COMPOSE, and KANA events is maintained by the host and NOT the keyboard. If
+// using the keyboard descriptor in Appendix B, LED states are set by sending a
+// 5-bit absolute report to the keyboard via a Set_Report(Output) request.
+type KeyboardState struct {
+	NumLock    bool `json:"num_lock"`
+	CapsLock   bool `json:"caps_lock"`
+	ScrollLock bool `json:"scroll_lock"`
+	Compose    bool `json:"compose"`
+	Kana       bool `json:"kana"`
+}
+
+func getKeyboardState(b byte) KeyboardState {
+	// should we check if it's the correct usage page?
+	return KeyboardState{
+		NumLock:    b&KeyboardLedMaskNumLock != 0,
+		CapsLock:   b&KeyboardLedMaskCapsLock != 0,
+		ScrollLock: b&KeyboardLedMaskScrollLock != 0,
+		Compose:    b&KeyboardLedMaskCompose != 0,
+		Kana:       b&KeyboardLedMaskKana != 0,
+	}
+}
+
+func (u *UsbGadget) updateKeyboardState(b byte) {
+	u.keyboardStateLock.Lock()
+	defer u.keyboardStateLock.Unlock()
+
+	if b&^ValidKeyboardLedMasks != 0 {
+		u.log.Trace().Uint8("b", b).Msg("contains invalid bits, ignoring")
+		return
+	}
+
+	newState := getKeyboardState(b)
+	if reflect.DeepEqual(u.keyboardState, newState) {
+		return
+	}
+	u.log.Info().Interface("old", u.keyboardState).Interface("new", newState).Msg("keyboardState updated")
+	u.keyboardState = newState
+
+	if u.onKeyboardStateChange != nil {
+		(*u.onKeyboardStateChange)(newState)
+	}
+}
+
+func (u *UsbGadget) SetOnKeyboardStateChange(f func(state KeyboardState)) {
+	u.onKeyboardStateChange = &f
+}
+
+func (u *UsbGadget) GetKeyboardState() KeyboardState {
+	u.keyboardStateLock.Lock()
+	defer u.keyboardStateLock.Unlock()
+
+	return u.keyboardState
+}
+
+func (u *UsbGadget) listenKeyboardEvents() {
+	var path string
+	if u.keyboardHidFile != nil {
+		path = u.keyboardHidFile.Name()
+	}
+	l := u.log.With().Str("listener", "keyboardEvents").Str("path", path).Logger()
+	l.Trace().Msg("starting")
+
+	go func() {
+		buf := make([]byte, hidReadBufferSize)
+		for {
+			select {
+			case <-u.keyboardStateCtx.Done():
+				l.Info().Msg("context done")
+				return
+			default:
+				l.Trace().Msg("reading from keyboard")
+				if u.keyboardHidFile == nil {
+					l.Error().Msg("keyboardHidFile is nil")
+					time.Sleep(time.Second)
+					continue
+				}
+				n, err := u.keyboardHidFile.Read(buf)
+				if err != nil {
+					l.Error().Err(err).Msg("failed to read")
+					continue
+				}
+				l.Trace().Int("n", n).Bytes("buf", buf).Msg("got data from keyboard")
+				if n != 1 {
+					l.Trace().Int("n", n).Msg("expected 1 byte, got")
+					continue
+				}
+				u.updateKeyboardState(buf[0])
+			}
 		}
+	}()
+}
+
+func (u *UsbGadget) openKeyboardHidFile() error {
+	if u.keyboardHidFile != nil {
+		return nil
+	}
+
+	var err error
+	u.keyboardHidFile, err = os.OpenFile("/dev/hidg0", os.O_RDWR, 0666)
+	if err != nil {
+		return fmt.Errorf("failed to open hidg0: %w", err)
+	}
+
+	if u.keyboardStateCancel != nil {
+		u.keyboardStateCancel()
+	}
+
+	u.keyboardStateCtx, u.keyboardStateCancel = context.WithCancel(context.Background())
+	u.listenKeyboardEvents()
+
+	return nil
+}
+
+func (u *UsbGadget) OpenKeyboardHidFile() error {
+	return u.openKeyboardHidFile()
+}
+
+func (u *UsbGadget) keyboardWriteHidFile(data []byte) error {
+	if err := u.openKeyboardHidFile(); err != nil {
+		return err
 	}
 
 	_, err := u.keyboardHidFile.Write(data)

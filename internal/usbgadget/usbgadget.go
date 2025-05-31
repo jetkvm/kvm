@@ -3,6 +3,7 @@
 package usbgadget
 
 import (
+	"context"
 	"os"
 	"path"
 	"sync"
@@ -59,6 +60,11 @@ type UsbGadget struct {
 	relMouseHidFile *os.File
 	relMouseLock    sync.Mutex
 
+	keyboardState       KeyboardState
+	keyboardStateLock   sync.Mutex
+	keyboardStateCtx    context.Context
+	keyboardStateCancel context.CancelFunc
+
 	enabledDevices Devices
 
 	strictMode bool // only intended for testing for now
@@ -69,6 +75,8 @@ type UsbGadget struct {
 
 	tx     *UsbGadgetTransaction
 	txLock sync.Mutex
+
+	onKeyboardStateChange *func(state KeyboardState)
 
 	log *zerolog.Logger
 }
@@ -96,20 +104,25 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		config = &Config{isEmpty: true}
 	}
 
+	keyboardCtx, keyboardCancel := context.WithCancel(context.Background())
+
 	g := &UsbGadget{
-		name:           name,
-		kvmGadgetPath:  path.Join(gadgetPath, name),
-		configC1Path:   path.Join(gadgetPath, name, "configs/c.1"),
-		configMap:      configMap,
-		customConfig:   *config,
-		configLock:     sync.Mutex{},
-		keyboardLock:   sync.Mutex{},
-		absMouseLock:   sync.Mutex{},
-		relMouseLock:   sync.Mutex{},
-		txLock:         sync.Mutex{},
-		enabledDevices: *enabledDevices,
-		lastUserInput:  time.Now(),
-		log:            logger,
+		name:                name,
+		kvmGadgetPath:       path.Join(gadgetPath, name),
+		configC1Path:        path.Join(gadgetPath, name, "configs/c.1"),
+		configMap:           configMap,
+		customConfig:        *config,
+		configLock:          sync.Mutex{},
+		keyboardLock:        sync.Mutex{},
+		absMouseLock:        sync.Mutex{},
+		relMouseLock:        sync.Mutex{},
+		txLock:              sync.Mutex{},
+		keyboardStateCtx:    keyboardCtx,
+		keyboardStateCancel: keyboardCancel,
+		keyboardState:       KeyboardState{},
+		enabledDevices:      *enabledDevices,
+		lastUserInput:       time.Now(),
+		log:                 logger,
 
 		strictMode: config.strictMode,
 
