@@ -60,8 +60,10 @@ export default function DashboardNavbar({
         <div className="flex h-14 items-center justify-between">
           <div className="flex shrink-0 items-center gap-x-8">
             <div className="inline-block shrink-0">
-              <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
-              <img src={LogoWhiteIcon} alt="" className="hidden h-[24px] dark:block" />
+              <a href="https://jetkvm.com/" target="_blank" rel="norefferer noreferrer" title="Learn more about JetKVM">
+                <img src={LogoBlueIcon} alt="" className="h-[24px] dark:hidden" />
+                <img src={LogoWhiteIcon} alt="" className="hidden h-[24px] dark:block" />
+              </a>
             </div>
 
             <div className="flex gap-x-2">
