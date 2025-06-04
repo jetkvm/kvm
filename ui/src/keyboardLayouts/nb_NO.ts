@@ -1,6 +1,6 @@
-import { KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
 
-export const name = "Norsk bokmål";
+const name = "Norsk bokmål";
 
 const keyTrema = { key: "BracketRight" } // tréma (umlaut), two dots placed above a vowel
 const keyAcute = { key: "Equal", altRight: true } // accent aigu (acute accent), mark ´ placed above the letter
@@ -8,7 +8,7 @@ const keyHat = { key: "BracketRight", shift: true } // accent circonflexe (accen
 const keyGrave = { key: "Equal", shift: true } // accent grave, mark ` placed above the letter
 const keyTilde = { key: "BracketRight", altRight: true } // tilde, mark ~ placed above the letter
 
-export const chars = {
+const chars = {
   A: { key: "KeyA", shift: true },
   "Ä": { key: "KeyA", shift: true, accentKey: keyTrema },
   "Á": { key: "KeyA", shift: true, accentKey: keyAcute },
@@ -165,3 +165,9 @@ export const chars = {
   Enter: { key: "Enter" },
   Tab: { key: "Tab" },
 } as Record<string, KeyCombo>;
+
+export const nb_NO: KeyboardLayout = {
+  isoCode: "nb-NO",
+  name: name,
+  chars: chars
+};
