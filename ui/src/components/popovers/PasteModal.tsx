@@ -10,6 +10,7 @@ import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidStore, useRTCStore, useUiStore, useSettingsStore } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
+import { layouts, chars } from "@/keyboardLayouts";
 import notifications from "@/notifications";
 
 const hidKeyboardPayload = (keys: number[], modifier: number) => {
