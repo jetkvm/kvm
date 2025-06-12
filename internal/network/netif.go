@@ -48,7 +48,7 @@ type NetworkInterfaceOptions struct {
 	DefaultHostname   string
 	OnStateChange     func(state *NetworkInterfaceState)
 	OnInitialCheck    func(state *NetworkInterfaceState)
-	OnDhcpLeaseChange func(lease *udhcpc.Lease)
+	OnDhcpLeaseChange func(lease *udhcpc.Lease, state *NetworkInterfaceState)
 	OnConfigChange    func(config *NetworkConfig)
 	NetworkConfig     *NetworkConfig
 }
@@ -94,7 +94,7 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 			_ = s.updateNtpServersFromLease(lease)
 			_ = s.setHostnameIfNotSame()
 
-			opts.OnDhcpLeaseChange(lease)
+			opts.OnDhcpLeaseChange(lease, s)
 		},
 	})
 
