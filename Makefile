@@ -15,7 +15,7 @@ GO_LDFLAGS := \
   -X $(PROMETHEUS_TAG).Revision=$(REVISION) \
   -X $(KVM_PKG_NAME).builtTimestamp=$(BUILDTS)
 
-GO_CMD := GOOS=linux GOARCH=arm GOARM=7 go
+GO_CMD := GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go
 BIN_DIR := $(shell pwd)/bin
 
 TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort -u)
