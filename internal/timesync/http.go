@@ -57,6 +57,7 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 				ctx,
 				url,
 				timeout,
+				t.httpUserAgent,
 			)
 			duration := time.Since(startTime)
 
@@ -111,6 +112,7 @@ func queryHttpTime(
 	ctx context.Context,
 	url string,
 	timeout time.Duration,
+	httpUserAgent string,
 ) (now *time.Time, response *http.Response, err error) {
 	client := http.Client{
 		Timeout: timeout,
@@ -119,6 +121,10 @@ func queryHttpTime(
 	if err != nil {
 		return nil, nil, err
 	}
+	if httpUserAgent != "" {
+		req.Header.Set("User-Agent", httpUserAgent)
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, err

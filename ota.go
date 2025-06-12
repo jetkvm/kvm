@@ -88,6 +88,7 @@ func fetchUpdateMetadata(ctx context.Context, deviceId string, includePreRelease
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
+	req.Header.Set("User-Agent", httpUserAgent)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -131,7 +132,7 @@ func downloadFile(ctx context.Context, path string, url string, downloadProgress
 	if err != nil {
 		return fmt.Errorf("error creating request: %w", err)
 	}
-
+	req.Header.Set("User-Agent", httpUserAgent)
 	client := http.Client{
 		Timeout: 10 * time.Minute,
 		Transport: &http.Transport{
