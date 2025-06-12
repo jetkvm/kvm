@@ -174,7 +174,7 @@ cd "${REMOTE_PATH}"
 chmod +x jetkvm_app_debug
 
 # Run the application in the background
-PION_LOG_TRACE=${LOG_TRACE_SCOPES} ./jetkvm_app_debug
+PION_LOG_TRACE=${LOG_TRACE_SCOPES} GODEBUG=netdns=1 ./jetkvm_app_debug
 EOF
 
 echo "Deployment complete."
