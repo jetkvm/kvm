@@ -296,6 +296,10 @@ if (isOnDevice) {
                       element: <SettingsHardwareRoute />,
                     },
                     {
+                      path: "network",
+                      element: <SettingsNetworkRoute />,
+                    },
+                    {
                       path: "access",
                       children: [
                         {
@@ -350,10 +354,11 @@ if (isOnDevice) {
               loader: DeviceIdRename.loader,
               action: DeviceIdRename.action,
             },
-            { 
-              path: "devices", 
+            {
+              path: "devices",
               element: <DevicesRoute />,
-              loader: DevicesRoute.loader },
+              loader: DevicesRoute.loader
+            },
           ],
         },
       ],
