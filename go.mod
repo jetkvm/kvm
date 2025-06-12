@@ -16,7 +16,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/guregu/null/v6 v6.0.0
 	github.com/gwatts/rootcerts v0.0.0-20240401182218-3ab9db955caf
-	github.com/hanwen/go-fuse/v2 v2.5.1
+	github.com/hanwen/go-fuse/v2 v2.8.0
 	github.com/pion/logging v0.2.3
 	github.com/pion/mdns/v2 v2.0.7
 	github.com/pion/webrtc/v4 v4.0.16
