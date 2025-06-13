@@ -3,6 +3,7 @@ package kvm
 import (
 	"fmt"
 
+	"github.com/jetkvm/kvm/internal/lldp"
 	"github.com/jetkvm/kvm/internal/network"
 	"github.com/jetkvm/kvm/internal/udhcpc"
 )
@@ -30,6 +31,16 @@ func networkStateChanged() {
 
 func initNetwork() error {
 	ensureConfigLoaded()
+
+	lldp := lldp.NewLLDP(&lldp.LLDPOptions{
+		InterfaceName: NetIfName,
+		EnableRx:      true,
+		EnableTx:      true,
+		Logger:        networkLogger,
+	})
+	if err := lldp.Start(); err != nil {
+		return err
+	}
 
 	state, err := network.NewNetworkInterfaceState(&network.NetworkInterfaceOptions{
 		DefaultHostname: GetDefaultHostname(),
