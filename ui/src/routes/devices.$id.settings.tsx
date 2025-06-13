@@ -79,7 +79,7 @@ export default function SettingsRoute() {
     return () => {
       setDisableVideoFocusTrap(false);
     };
-  }, [setDisableVideoFocusTrap, sendKeyboardEvent]);
+  }, [sendKeyboardEvent, setDisableVideoFocusTrap]);
 
   return (
     <div className="pointer-events-auto relative mx-auto max-w-4xl translate-x-0 transform text-left dark:text-white">

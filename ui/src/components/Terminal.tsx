@@ -67,19 +67,19 @@ function Terminal({
 }) {
   const enableTerminal = useUiStore(state => state.terminalType == type);
   const setTerminalType = useUiStore(state => state.setTerminalType);
-  const setDisableKeyboardFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
+  const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
 
   const { instance, ref } = useXTerm({ options: TERMINAL_CONFIG });
 
   useEffect(() => {
     setTimeout(() => {
-      setDisableKeyboardFocusTrap(enableTerminal);
+      setDisableVideoFocusTrap(enableTerminal);
     }, 500);
 
     return () => {
-      setDisableKeyboardFocusTrap(false);
+      setDisableVideoFocusTrap(false);
     };
-  }, [ref, instance, enableTerminal, setDisableKeyboardFocusTrap, type]);
+  }, [enableTerminal, setDisableVideoFocusTrap]);
 
   const readyState = dataChannel.readyState;
   useEffect(() => {
@@ -116,7 +116,7 @@ function Terminal({
       const { domEvent } = e;
       if (domEvent.key === "Escape") {
         setTerminalType("none");
-        setDisableKeyboardFocusTrap(false);
+        setDisableVideoFocusTrap(false);
         domEvent.preventDefault();
       }
     });
@@ -131,7 +131,7 @@ function Terminal({
       onDataHandler.dispose();
       onKeyHandler.dispose();
     };
-  }, [instance, dataChannel, readyState, setDisableKeyboardFocusTrap, setTerminalType]);
+  }, [dataChannel, instance, readyState, setDisableVideoFocusTrap, setTerminalType]);
 
   useEffect(() => {
     if (!instance) return;
@@ -158,7 +158,7 @@ function Terminal({
     return () => {
       window.removeEventListener("resize", handleResize);
     };
-  }, [ref, instance]);
+  }, [instance]);
 
   return (
     <div
