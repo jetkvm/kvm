@@ -1,6 +1,8 @@
 package lldp
 
 import (
+	"context"
+	"sync"
 	"time"
 
 	"github.com/google/gopacket"
@@ -16,6 +18,9 @@ type LLDP struct {
 	l         *zerolog.Logger
 	tPacket   *afpacket.TPacket
 	pktSource *gopacket.PacketSource
+	rxCtx     context.Context
+	rxCancel  context.CancelFunc
+	rxLock    sync.Mutex
 
 	enableRx bool
 	enableTx bool
@@ -53,6 +58,16 @@ func NewLLDP(opts *LLDPOptions) *LLDP {
 }
 
 func (l *LLDP) Start() error {
+	l.rxLock.Lock()
+	defer l.rxLock.Unlock()
+
+	if l.rxCtx != nil {
+		l.l.Info().Msg("LLDP already started")
+		return nil
+	}
+
+	l.rxCtx, l.rxCancel = context.WithCancel(context.Background())
+
 	if l.enableRx {
 		l.l.Info().Msg("setting up AF_PACKET")
 		if err := l.setUpCapture(); err != nil {
@@ -63,6 +78,26 @@ func (l *LLDP) Start() error {
 	}
 
 	go l.neighbors.Start()
+
+	return nil
+}
+
+func (l *LLDP) Stop() error {
+	l.rxLock.Lock()
+	defer l.rxLock.Unlock()
+
+	if l.rxCancel != nil {
+		l.rxCancel()
+		l.rxCancel = nil
+		l.rxCtx = nil
+	}
+
+	if l.enableRx {
+		l.shutdownCapture()
+	}
+
+	l.neighbors.Stop()
+	l.neighbors.DeleteAll()
 
 	return nil
 }

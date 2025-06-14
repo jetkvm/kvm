@@ -51,5 +51,7 @@ func (l *LLDP) GetNeighbors() []Neighbor {
 		neighbors = append(neighbors, item.Value())
 	}
 
+	l.l.Info().Interface("neighbors", neighbors).Msg("neighbors")
+
 	return neighbors
 }

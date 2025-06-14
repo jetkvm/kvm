@@ -32,16 +32,6 @@ func networkStateChanged() {
 func initNetwork() error {
 	ensureConfigLoaded()
 
-	lldp := lldp.NewLLDP(&lldp.LLDPOptions{
-		InterfaceName: NetIfName,
-		EnableRx:      true,
-		EnableTx:      true,
-		Logger:        networkLogger,
-	})
-	if err := lldp.Start(); err != nil {
-		return err
-	}
-
 	state, err := network.NewNetworkInterfaceState(&network.NetworkInterfaceOptions{
 		DefaultHostname: GetDefaultHostname(),
 		InterfaceName:   NetIfName,
@@ -115,4 +105,8 @@ func rpcSetNetworkSettings(settings network.RpcNetworkSettings) (*network.RpcNet
 
 func rpcRenewDHCPLease() error {
 	return networkState.RpcRenewDHCPLease()
+}
+
+func rpcGetLLDPNeighbors() ([]lldp.Neighbor, error) {
+	return networkState.GetLLDPNeighbors()
 }

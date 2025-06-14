@@ -99,11 +99,18 @@ func (l *LLDP) startCapture() error {
 	go func() {
 		logger.Info().Msg("starting capture LLDP ethernet frames")
 
-		for packet := range l.pktSource.Packets() {
-			if err := l.handlePacket(packet, &logger); err != nil {
-				logger.Error().Msgf("error handling packet: %s", err)
+		for {
+			select {
+			case <-l.rxCtx.Done():
+				logger.Info().Msg("shutting down LLDP capture")
+				return
+			case packet := <-l.pktSource.Packets():
+				if err := l.handlePacket(packet, &logger); err != nil {
+					logger.Error().Msgf("error handling packet: %s", err)
+				}
 			}
 		}
+
 	}()
 
 	return nil
@@ -242,11 +249,13 @@ func (l *LLDP) handlePacketCDP(mac string, raw *layers.CiscoDiscovery, info *lay
 
 func (l *LLDP) shutdownCapture() error {
 	if l.tPacket != nil {
+		l.l.Info().Msg("closing TPacket")
 		l.tPacket.Close()
 		l.tPacket = nil
 	}
 
 	if l.pktSource != nil {
+		l.l.Info().Msg("closing packet source")
 		l.pktSource = nil
 	}
 
