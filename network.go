@@ -3,6 +3,7 @@ package kvm
 import (
 	"fmt"
 
+	"github.com/jetkvm/kvm/internal/lldp"
 	"github.com/jetkvm/kvm/internal/network"
 	"github.com/jetkvm/kvm/internal/udhcpc"
 )
@@ -104,4 +105,8 @@ func rpcSetNetworkSettings(settings network.RpcNetworkSettings) (*network.RpcNet
 
 func rpcRenewDHCPLease() error {
 	return networkState.RpcRenewDHCPLease()
+}
+
+func rpcGetLLDPNeighbors() ([]lldp.Neighbor, error) {
+	return networkState.GetLLDPNeighbors()
 }

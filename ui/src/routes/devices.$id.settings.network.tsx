@@ -7,6 +7,7 @@ import {
   IPv4Mode,
   IPv6Mode,
   LLDPMode,
+  LLDPNeighbor,
   mDNSMode,
   NetworkSettings,
   NetworkState,
@@ -29,6 +30,7 @@ import AutoHeight from "../components/AutoHeight";
 import DhcpLeaseCard from "../components/DhcpLeaseCard";
 
 import { SettingsItem } from "./devices.$id.settings";
+import LLDPNeighCard from "../components/LLDPNeighCard";
 
 dayjs.extend(relativeTime);
 
@@ -88,6 +90,14 @@ export default function SettingsNetworkRoute() {
   const [customDomain, setCustomDomain] = useState<string>("");
   const [selectedDomainOption, setSelectedDomainOption] = useState<string>("dhcp");
 
+  const [lldpNeighbors, setLldpNeighbors] = useState<LLDPNeighbor[] | undefined>(undefined);
+  useEffect(() => {
+    send("getLLDPNeighbors", {}, resp => {
+      if ("error" in resp) return;
+      setLldpNeighbors(resp.result as LLDPNeighbor[]);
+    });
+  }, [send]);
+
   useEffect(() => {
     if (networkSettings.domain && networkSettingsLoaded) {
       // Check if the domain is one of the predefined options
@@ -130,7 +140,7 @@ export default function SettingsNetworkRoute() {
         if ("error" in resp) {
           notifications.error(
             "Failed to save network settings: " +
-              (resp.error.data ? resp.error.data : resp.error.message),
+            (resp.error.data ? resp.error.data : resp.error.message),
           );
           setNetworkSettingsLoaded(true);
           return;
@@ -402,7 +412,7 @@ export default function SettingsNetworkRoute() {
           </SettingsItem>
           <AutoHeight>
             {!networkSettingsLoaded &&
-            !(networkState?.ipv6_addresses && networkState.ipv6_addresses.length > 0) ? (
+              !(networkState?.ipv6_addresses && networkState.ipv6_addresses.length > 0) ? (
               <GridCard>
                 <div className="p-4">
                   <div className="space-y-4">
@@ -428,22 +438,49 @@ export default function SettingsNetworkRoute() {
             )}
           </AutoHeight>
         </div>
-        <div className="hidden space-y-4">
-          <SettingsItem
-            title="LLDP"
-            description="Control which TLVs will be sent over Link Layer Discovery Protocol"
-          >
+
+        <div className="space-y-4">
+          <SettingsItem title="LLDP" description="Configure the LLDP mode">
             <SelectMenuBasic
               size="SM"
               value={networkSettings.lldp_mode}
               onChange={e => handleLldpModeChange(e.target.value)}
               options={filterUnknown([
                 { value: "disabled", label: "Disabled" },
-                { value: "basic", label: "Basic" },
-                { value: "all", label: "All" },
+                { value: "tx_only", label: "Tx only" },
+                { value: "rx_only", label: "Rx only" },
+                { value: "basic", label: "Tx Minimal + Rx" },
+                { value: "all", label: "Tx Detailed + Rx" },
+                { value: "enabled", label: "Enabled" },
               ])}
             />
           </SettingsItem>
+          <AutoHeight>
+            {lldpNeighbors === undefined ? (
+              <GridCard>
+                <div className="p-4">
+                  <div className="space-y-4">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      LLDP Neighbors
+                    </h3>
+                    <div className="animate-pulse space-y-3">
+                      <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+                      <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
+                      <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
+                    </div>
+                  </div>
+                </div>
+              </GridCard>
+            ) : lldpNeighbors.length > 0 ? (
+              <LLDPNeighCard neighbors={lldpNeighbors} />
+            ) : (
+              <EmptyCard
+                IconElm={LuEthernetPort}
+                headline="LLDP Neighbors"
+                description="No LLDP neighbors found"
+              />
+            )}
+          </AutoHeight>
         </div>
       </Fieldset>
       <ConfirmDialog
