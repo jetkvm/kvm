@@ -74,7 +74,10 @@ func (l *LLDP) Start() error {
 			l.l.Error().Err(err).Msg("unable to set up AF_PACKET")
 			return err
 		}
-		l.startCapture()
+		if err := l.startCapture(); err != nil {
+			l.l.Error().Err(err).Msg("unable to start capture")
+			return err
+		}
 	}
 
 	go l.neighbors.Start()
@@ -93,7 +96,7 @@ func (l *LLDP) Stop() error {
 	}
 
 	if l.enableRx {
-		l.shutdownCapture()
+		_ = l.shutdownCapture()
 	}
 
 	l.neighbors.Stop()

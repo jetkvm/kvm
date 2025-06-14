@@ -18,7 +18,6 @@ const (
 
 func afPacketComputeSize(targetSizeMb int, snaplen int, pageSize int) (
 	frameSize int, blockSize int, numBlocks int, err error) {
-
 	if snaplen < pageSize {
 		frameSize = pageSize / (pageSize / snaplen)
 	} else {

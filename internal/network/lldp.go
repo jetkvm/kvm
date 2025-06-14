@@ -14,11 +14,7 @@ func (s *NetworkInterfaceState) shouldStartLLDP() bool {
 
 	s.l.Trace().Msgf("LLDP mode: %s", s.config.LLDPMode.String)
 
-	if s.config.LLDPMode.String == "disabled" {
-		return false
-	}
-
-	return true
+	return s.config.LLDPMode.String != "disabled"
 }
 
 func (s *NetworkInterfaceState) startLLDP() {
@@ -27,7 +23,9 @@ func (s *NetworkInterfaceState) startLLDP() {
 	}
 
 	s.l.Trace().Msg("starting LLDP")
-	s.lldp.Start()
+	if err := s.lldp.Start(); err != nil {
+		s.l.Error().Err(err).Msg("unable to start LLDP")
+	}
 }
 
 func (s *NetworkInterfaceState) stopLLDP() {
@@ -35,7 +33,9 @@ func (s *NetworkInterfaceState) stopLLDP() {
 		return
 	}
 	s.l.Trace().Msg("stopping LLDP")
-	s.lldp.Stop()
+	if err := s.lldp.Stop(); err != nil {
+		s.l.Error().Err(err).Msg("unable to stop LLDP")
+	}
 }
 
 func (s *NetworkInterfaceState) GetLLDPNeighbors() ([]lldp.Neighbor, error) {

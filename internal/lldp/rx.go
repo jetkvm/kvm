@@ -20,6 +20,8 @@ var (
 
 // from lldpd
 // https://github.com/lldpd/lldpd/blob/9034c9332cca0c8b1a20e1287f0e5fed81f7eb2a/src/daemon/lldpd.h#L246
+//
+//nolint:govet
 var bpfFilter = []bpf.RawInstruction{
 	{0x30, 0, 0, 0x00000000}, {0x54, 0, 0, 0x00000001}, {0x15, 0, 16, 0x00000001},
 	{0x28, 0, 0, 0x0000000c}, {0x15, 0, 6, 0x000088cc},
@@ -110,7 +112,6 @@ func (l *LLDP) startCapture() error {
 				}
 			}
 		}
-
 	}()
 
 	return nil
@@ -239,7 +240,7 @@ func (l *LLDP) handlePacketCDP(mac string, raw *layers.CiscoDiscovery, info *lay
 	}
 
 	if len(info.MgmtAddresses) > 0 {
-		n.ManagementAddress = fmt.Sprintf("%s", info.MgmtAddresses[0])
+		n.ManagementAddress = string(info.MgmtAddresses[0])
 	}
 
 	l.addNeighbor(mac, *n, ttl)
