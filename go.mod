@@ -19,7 +19,7 @@ require (
 	github.com/hanwen/go-fuse/v2 v2.8.0
 	github.com/pion/logging v0.2.3
 	github.com/pion/mdns/v2 v2.0.7
-	github.com/pion/webrtc/v4 v4.0.16
+	github.com/pion/webrtc/v4 v4.1.1
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/prometheus/client_golang v1.22.0
 	github.com/prometheus/common v0.62.0
