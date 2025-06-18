@@ -1,6 +1,7 @@
 package timesync
 
 import (
+	"context"
 	"math/rand/v2"
 	"strconv"
 	"time"
@@ -21,9 +22,9 @@ var defaultNTPServers = []string{
 	"3.pool.ntp.org",
 }
 
-func (t *TimeSync) queryNetworkTime() (now *time.Time, offset *time.Duration) {
-	chunkSize := 4
-	ntpServers := t.ntpServers
+func (t *TimeSync) queryNetworkTime(ntpServers []string) (now *time.Time, offset *time.Duration) {
+	chunkSize := int(t.networkConfig.TimeSyncParallel.ValueOr(4))
+	t.l.Info().Strs("servers", ntpServers).Int("chunkSize", chunkSize).Msg("querying NTP servers")
 
 	// shuffle the ntp servers to avoid always querying the same servers
 	rand.Shuffle(len(ntpServers), func(i, j int) { ntpServers[i], ntpServers[j] = ntpServers[j], ntpServers[i] })
@@ -46,6 +47,10 @@ type ntpResult struct {
 
 func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (now *time.Time, offset *time.Duration) {
 	results := make(chan *ntpResult, len(servers))
+
+	_, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	for _, server := range servers {
 		go func(server string) {
 			scopedLogger := t.l.With().
@@ -66,15 +71,25 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 				return
 			}
 
+			if response.IsKissOfDeath() {
+				scopedLogger.Warn().
+					Str("kiss_code", response.KissCode).
+					Msg("ignoring NTP server kiss of death")
+				results <- nil
+				return
+			}
+
+			rtt := float64(response.RTT.Milliseconds())
+
 			// set the last RTT
 			metricNtpServerLastRTT.WithLabelValues(
 				server,
-			).Set(float64(response.RTT.Milliseconds()))
+			).Set(rtt)
 
 			// set the RTT histogram
 			metricNtpServerRttHistogram.WithLabelValues(
 				server,
-			).Observe(float64(response.RTT.Milliseconds()))
+			).Observe(rtt)
 
 			// set the server info
 			metricNtpServerInfo.WithLabelValues(
@@ -91,10 +106,13 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 			scopedLogger.Info().
 				Str("time", now.Format(time.RFC3339)).
 				Str("reference", response.ReferenceString()).
-				Str("rtt", response.RTT.String()).
+				Float64("rtt", rtt).
 				Str("clockOffset", response.ClockOffset.String()).
 				Uint8("stratum", response.Stratum).
 				Msg("NTP server returned time")
+
+			cancel()
+
 			results <- &ntpResult{
 				now:    now,
 				offset: &response.ClockOffset,

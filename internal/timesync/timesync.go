@@ -28,8 +28,6 @@ type TimeSync struct {
 	syncLock *sync.Mutex
 	l        *zerolog.Logger
 
-	ntpServers    []string
-	httpUrls      []string
 	networkConfig *network.NetworkConfig
 
 	rtcDevicePath string
@@ -69,8 +67,6 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 		rtcDevicePath: rtcDevice,
 		rtcLock:       &sync.Mutex{},
 		preCheckFunc:  opts.PreCheckFunc,
-		ntpServers:    defaultNTPServers,
-		httpUrls:      defaultHTTPUrls,
 		networkConfig: opts.NetworkConfig,
 	}
 
@@ -84,32 +80,36 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 
 func (t *TimeSync) getSyncMode() SyncMode {
 	syncMode := SyncMode{
+		Ntp:             true,
+		Http:            true,
+		Ordering:        []string{"ntp_dhcp", "ntp_fallback", "http_fallback"},
 		NtpUseFallback:  true,
 		HttpUseFallback: true,
 	}
-	var syncModeString string
 
 	if t.networkConfig != nil {
-		syncModeString = t.networkConfig.TimeSyncMode.String
+		switch t.networkConfig.TimeSyncMode.String {
+		case "ntp_only":
+			syncMode.Http = false
+		case "http_only":
+			syncMode.Ntp = false
+		}
+
 		if t.networkConfig.TimeSyncDisableFallback.Bool {
 			syncMode.NtpUseFallback = false
 			syncMode.HttpUseFallback = false
 		}
+
+		var syncOrdering = t.networkConfig.TimeSyncOrdering
+		if len(syncOrdering) > 0 {
+			syncMode.Ordering = syncOrdering
+		}
 	}
 
-	switch syncModeString {
-	case "ntp_only":
-		syncMode.Ntp = true
-	case "http_only":
-		syncMode.Http = true
-	default:
-		syncMode.Ntp = true
-		syncMode.Http = true
-	}
+	t.l.Debug().Strs("Ordering", syncMode.Ordering).Bool("Ntp", syncMode.Ntp).Bool("Http", syncMode.Http).Bool("NtpUseFallback", syncMode.NtpUseFallback).Bool("HttpUseFallback", syncMode.HttpUseFallback).Msg("sync mode")
 
 	return syncMode
 }
-
 func (t *TimeSync) doTimeSync() {
 	metricTimeSyncStatus.Set(0)
 	for {
@@ -154,16 +154,53 @@ func (t *TimeSync) Sync() error {
 		offset *time.Duration
 	)
 
-	syncMode := t.getSyncMode()
-
 	metricTimeSyncCount.Inc()
 
-	if syncMode.Ntp {
-		now, offset = t.queryNetworkTime()
-	}
+	syncMode := t.getSyncMode()
 
-	if syncMode.Http && now == nil {
-		now = t.queryAllHttpTime()
+Orders:
+	for _, mode := range syncMode.Ordering {
+		switch mode {
+		case "ntp_custom":
+			if syncMode.Ntp {
+				t.l.Info().Msg("using NTP custom servers")
+				now, offset = t.queryNetworkTime(t.networkConfig.TimeSyncNTPServers)
+				if now != nil {
+					t.l.Info().Str("source", "NTP").Time("now", *now).Msg("time obtained")
+					break Orders
+				}
+			}
+		case "ntp_fallback":
+		case "ntp":
+			if syncMode.Ntp && syncMode.NtpUseFallback {
+				t.l.Info().Msg("using NTP fallback")
+				now, offset = t.queryNetworkTime(defaultNTPServers)
+				if now != nil {
+					t.l.Info().Str("source", "NTP fallback").Time("now", *now).Msg("time obtained")
+					break Orders
+				}
+			}
+		case "http_custom":
+			if syncMode.Http {
+				t.l.Info().Msg("using HTTP custom URLs")
+				now = t.queryAllHttpTime(t.networkConfig.TimeSyncHTTPUrls)
+				if now != nil {
+					t.l.Info().Str("source", "HTTP").Time("now", *now).Msg("time obtained")
+					break Orders
+				}
+			}
+		case "http":
+			if syncMode.Http && syncMode.HttpUseFallback {
+				t.l.Info().Msg("using HTTP fallback")
+				now = t.queryAllHttpTime(defaultHTTPUrls)
+				if now != nil {
+					t.l.Info().Str("source", "HTTP fallback").Time("now", *now).Msg("time obtained")
+					break Orders
+				}
+			}
+		default:
+			t.l.Warn().Str("mode", mode).Msg("unknown time sync mode, skipping")
+		}
 	}
 
 	if now == nil {
