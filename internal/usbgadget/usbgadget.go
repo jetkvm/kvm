@@ -79,6 +79,8 @@ type UsbGadget struct {
 	onKeyboardStateChange *func(state KeyboardState)
 
 	log *zerolog.Logger
+
+	logSuppressionCounter map[string]int
 }
 
 const configFSPath = "/sys/kernel/config"
@@ -125,6 +127,8 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		log:                 logger,
 
 		strictMode: config.strictMode,
+
+		logSuppressionCounter: make(map[string]int),
 
 		absMouseAccumulatedWheelY: 0,
 	}

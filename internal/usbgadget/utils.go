@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/rs/zerolog"
 )
 
 func joinPath(basePath string, paths []string) string {
@@ -77,4 +79,28 @@ func compareFileContent(oldContent []byte, newContent []byte, looserMatch bool) 
 	}
 
 	return false
+}
+
+func (u *UsbGadget) logWithSupression(counterName string, every int, logger *zerolog.Logger, err error, msg string, args ...interface{}) {
+	if _, ok := u.logSuppressionCounter[counterName]; !ok {
+		u.logSuppressionCounter[counterName] = 0
+	} else {
+		u.logSuppressionCounter[counterName]++
+	}
+
+	l := logger.With().Int("counter", u.logSuppressionCounter[counterName]).Logger()
+
+	if u.logSuppressionCounter[counterName]%every == 0 {
+		if err != nil {
+			l.Error().Err(err).Msgf(msg, args...)
+		} else {
+			l.Error().Msgf(msg, args...)
+		}
+	}
+}
+
+func (u *UsbGadget) resetLogSuppressionCounter(counterName string) {
+	if _, ok := u.logSuppressionCounter[counterName]; !ok {
+		u.logSuppressionCounter[counterName] = 0
+	}
 }
