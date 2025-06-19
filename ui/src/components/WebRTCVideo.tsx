@@ -115,9 +115,18 @@ export default function WebRTCVideo() {
   const isFullscreenEnabled = document.fullscreenEnabled;
  
   const checkNavigatorPermissions = useCallback(async (permissionName: string) => {
-    const name = permissionName as PermissionName;
-    const { state } = await navigator.permissions.query({ name });
-    return state === "granted";
+    if (!navigator.permissions || !navigator.permissions.query) {
+      return false; // if can't query permissions, assume NOT granted
+    }
+
+    try {
+      const name = permissionName as PermissionName;
+      const { state } = await navigator.permissions.query({ name });
+      return state === "granted";
+    } catch {
+      // ignore errors
+    }
+    return false; // if query fails, assume NOT granted
   }, []);
 
   const requestPointerLock = useCallback(async () => {
@@ -128,7 +137,11 @@ export default function WebRTCVideo() {
     const isPointerLockGranted = await checkNavigatorPermissions("pointer-lock");
 
     if (isPointerLockGranted && settings.mouseMode === "relative") {
-      await videoElm.current.requestPointerLock();
+      try {
+        await videoElm.current.requestPointerLock();
+      } catch {
+        // ignore errors
+      }
     }
   }, [checkNavigatorPermissions, isPointerLockPossible, settings.mouseMode]);
 
@@ -136,10 +149,13 @@ export default function WebRTCVideo() {
     if (videoElm.current === null) return;
 
     const isKeyboardLockGranted = await checkNavigatorPermissions("keyboard-lock");
-    if (isKeyboardLockGranted) {
-      if ("keyboard" in navigator) {
+  
+    if (isKeyboardLockGranted && "keyboard" in navigator) {
+      try {
         // @ts-expect-error - keyboard lock is not supported in all browsers
-        await navigator.keyboard.lock();
+         await navigator.keyboard.lock();
+      } catch {
+        // ignore errors
       }
     }
   }, [checkNavigatorPermissions]);
@@ -148,8 +164,12 @@ export default function WebRTCVideo() {
     if (videoElm.current === null || document.fullscreenElement !== videoElm.current) return;
 
     if ("keyboard" in navigator) {
-        // @ts-expect-error - keyboard unlock is not supported in all browsers
-        await navigator.keyboard.unlock();
+        try {
+          // @ts-expect-error - keyboard unlock is not supported in all browsers
+          await navigator.keyboard.unlock();
+        } catch {
+          // ignore errors
+       }
     }
   }, []);
 
