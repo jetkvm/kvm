@@ -28,7 +28,8 @@ type TimeSync struct {
 	syncLock *sync.Mutex
 	l        *zerolog.Logger
 
-	networkConfig *network.NetworkConfig
+	networkConfig    *network.NetworkConfig
+	dhcpNtpAddresses []string
 
 	rtcDevicePath string
 	rtcDevice     *os.File //nolint:unused
@@ -62,12 +63,13 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 	}
 
 	t := &TimeSync{
-		syncLock:      &sync.Mutex{},
-		l:             opts.Logger,
-		rtcDevicePath: rtcDevice,
-		rtcLock:       &sync.Mutex{},
-		preCheckFunc:  opts.PreCheckFunc,
-		networkConfig: opts.NetworkConfig,
+		syncLock:         &sync.Mutex{},
+		l:                opts.Logger,
+		dhcpNtpAddresses: []string{},
+		rtcDevicePath:    rtcDevice,
+		rtcLock:          &sync.Mutex{},
+		preCheckFunc:     opts.PreCheckFunc,
+		networkConfig:    opts.NetworkConfig,
 	}
 
 	if t.rtcDevicePath != "" {
@@ -78,11 +80,15 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 	return t
 }
 
+func (t *TimeSync) SetDhcpNtpAddresses(addresses []string) {
+	t.dhcpNtpAddresses = addresses
+}
+
 func (t *TimeSync) getSyncMode() SyncMode {
 	syncMode := SyncMode{
 		Ntp:             true,
 		Http:            true,
-		Ordering:        []string{"ntp_dhcp", "ntp_fallback", "http_fallback"},
+		Ordering:        []string{"ntp_dhcp", "ntp", "http"},
 		NtpUseFallback:  true,
 		HttpUseFallback: true,
 	}
@@ -161,7 +167,7 @@ func (t *TimeSync) Sync() error {
 Orders:
 	for _, mode := range syncMode.Ordering {
 		switch mode {
-		case "ntp_custom":
+		case "ntp_user_provided":
 			if syncMode.Ntp {
 				t.l.Info().Msg("using NTP custom servers")
 				now, offset = t.queryNetworkTime(t.networkConfig.TimeSyncNTPServers)
@@ -170,7 +176,15 @@ Orders:
 					break Orders
 				}
 			}
-		case "ntp_fallback":
+		case "ntp_dhcp":
+			if syncMode.Ntp {
+				t.l.Info().Msg("using NTP servers from DHCP")
+				now, offset = t.queryNetworkTime(t.dhcpNtpAddresses)
+				if now != nil {
+					t.l.Info().Str("source", "NTP DHCP").Time("now", *now).Msg("time obtained")
+					break Orders
+				}
+			}
 		case "ntp":
 			if syncMode.Ntp && syncMode.NtpUseFallback {
 				t.l.Info().Msg("using NTP fallback")
@@ -180,7 +194,7 @@ Orders:
 					break Orders
 				}
 			}
-		case "http_custom":
+		case "http_user_provided":
 			if syncMode.Http {
 				t.l.Info().Msg("using HTTP custom URLs")
 				now = t.queryAllHttpTime(t.networkConfig.TimeSyncHTTPUrls)
