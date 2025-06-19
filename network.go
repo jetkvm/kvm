@@ -15,7 +15,7 @@ var (
 	networkState *network.NetworkInterfaceState
 )
 
-func networkStateChanged() {
+func networkStateChanged(isOnline bool) {
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(true)
 
@@ -25,6 +25,13 @@ func networkStateChanged() {
 			networkState.GetHostname(),
 			networkState.GetFQDN(),
 		}, true)
+	}
+
+	// if the network is now online, trigger an NTP sync if still needed
+	if isOnline && timeSync != nil && (isTimeSyncNeeded() || !timeSync.IsSyncSuccess()) {
+		if err := timeSync.Sync(); err != nil {
+			logger.Warn().Str("error", err.Error()).Msg("unable to sync time on network state change")
+		}
 	}
 }
 
@@ -37,13 +44,13 @@ func initNetwork() error {
 		NetworkConfig:   config.NetworkConfig,
 		Logger:          networkLogger,
 		OnStateChange: func(state *network.NetworkInterfaceState) {
-			networkStateChanged()
+			networkStateChanged(state.IsOnline())
 		},
 		OnInitialCheck: func(state *network.NetworkInterfaceState) {
-			networkStateChanged()
+			networkStateChanged(state.IsOnline())
 		},
-		OnDhcpLeaseChange: func(lease *udhcpc.Lease) {
-			networkStateChanged()
+		OnDhcpLeaseChange: func(lease *udhcpc.Lease, state *network.NetworkInterfaceState) {
+			networkStateChanged(state.IsOnline())
 
 			if currentSession == nil {
 				return
@@ -53,7 +60,7 @@ func initNetwork() error {
 		},
 		OnConfigChange: func(networkConfig *network.NetworkConfig) {
 			config.NetworkConfig = networkConfig
-			networkStateChanged()
+			networkStateChanged(false)
 
 			if mDNS != nil {
 				_ = mDNS.SetListenOptions(networkConfig.GetMDNSMode())

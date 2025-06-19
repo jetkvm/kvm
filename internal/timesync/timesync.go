@@ -69,7 +69,7 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 		rtcDevicePath: rtcDevice,
 		rtcLock:       &sync.Mutex{},
 		preCheckFunc:  opts.PreCheckFunc,
-		ntpServers:    defaultNTPServers,
+		ntpServers:    defaultNTPServerIPs,
 		httpUrls:      defaultHTTPUrls,
 		networkConfig: opts.NetworkConfig,
 	}
@@ -159,11 +159,28 @@ func (t *TimeSync) Sync() error {
 	metricTimeSyncCount.Inc()
 
 	if syncMode.Ntp {
-		now, offset = t.queryNetworkTime()
+		// try the configured servers first
+		now, offset = t.queryNetworkTime(t.ntpServers)
+
+		if syncMode.NtpUseFallback && now == nil {
+			// now try the default hard-coded IP servers in case DNS is down
+			now, offset = t.queryNetworkTime(defaultNTPServerIPs)
+
+			if now == nil {
+				// unlikely to arrive here, but fall-back to DNS names default servers
+				now, offset = t.queryNetworkTime(defaultNTPServerHostnames)
+			}
+		}
 	}
 
 	if syncMode.Http && now == nil {
-		now = t.queryAllHttpTime()
+		// try the configured servers first
+		now = t.queryAllHttpTime(t.httpUrls)
+
+		if syncMode.HttpUseFallback && now == nil {
+			// unlikely to arrive here, but fall-back to DNS names default servers
+			now = t.queryAllHttpTime(defaultHTTPUrls)
+		}
 	}
 
 	if now == nil {
