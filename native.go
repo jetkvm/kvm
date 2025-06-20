@@ -283,10 +283,6 @@ func superviseNativeBinary(binaryPath string) error {
 		return restartNativeBinary(binaryPath)
 	}
 
-	if nativeCmd.Process == nil {
-		return restartNativeBinary(binaryPath)
-	}
-
 	err := nativeCmd.Wait()
 
 	if err == nil {
