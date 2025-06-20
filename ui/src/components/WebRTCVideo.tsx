@@ -71,6 +71,15 @@ export default function WebRTCVideo() {
   const hdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const isVideoLoading = !isPlaying;
 
+  // Keyboard related states
+  const { 
+    setIsShiftActive,
+    setIsCtrlActive,
+    setIsAltActive,
+    setIsMetaActive,
+    setIsAltGrActive
+  } = useHidStore();
+
   const [blockWheelEvent, setBlockWheelEvent] = useState(false);
 
   // Misc states and hooks
@@ -423,6 +432,12 @@ export default function WebRTCVideo() {
         setIsScrollLockActive(e.getModifierState("ScrollLock"));
       }
 
+      setIsShiftActive(e.getModifierState("Shift"))
+      setIsCtrlActive(e.getModifierState("Control"))
+      setIsAltActive(e.getModifierState("Alt"))
+      setIsMetaActive(e.getModifierState("Meta"))
+      setIsAltGrActive(e.getModifierState("AltGraph"))
+
       if (code == "IntlBackslash" && ["`", "~"].includes(key)) {
         code = "Backquote";
       } else if (code == "Backquote" && ["§", "±"].includes(key)) {
@@ -452,12 +467,17 @@ export default function WebRTCVideo() {
       sendKeyboardEvent([...new Set(newKeys)], [...new Set(newModifiers)]);
     },
     [
-      handleModifierKeys,
-      sendKeyboardEvent,
       isKeyboardLedManagedByHost,
       setIsNumLockActive,
       setIsCapsLockActive,
       setIsScrollLockActive,
+      setIsShiftActive,
+      setIsCtrlActive,
+      setIsAltActive,
+      setIsMetaActive,
+      setIsAltGrActive,
+      handleModifierKeys,
+      sendKeyboardEvent
     ],
   );
 
@@ -472,6 +492,12 @@ export default function WebRTCVideo() {
         setIsScrollLockActive(e.getModifierState("ScrollLock"));
       }
 
+      setIsShiftActive(e.getModifierState("Shift"))
+      setIsCtrlActive(e.getModifierState("Control"))
+      setIsAltActive(e.getModifierState("Alt"))
+      setIsMetaActive(e.getModifierState("Meta"))
+      setIsAltGrActive(e.getModifierState("AltGraph"))
+
       // Filtering out the key that was just released (keys[e.code])
       const newKeys = prev.activeKeys.filter(k => k !== keys[e.code]).filter(Boolean);
 
@@ -484,12 +510,17 @@ export default function WebRTCVideo() {
       sendKeyboardEvent([...new Set(newKeys)], [...new Set(newModifiers)]);
     },
     [
-      handleModifierKeys,
-      sendKeyboardEvent,
       isKeyboardLedManagedByHost,
       setIsNumLockActive,
       setIsCapsLockActive,
       setIsScrollLockActive,
+      setIsShiftActive,
+      setIsCtrlActive,
+      setIsAltActive,
+      setIsMetaActive,
+      setIsAltGrActive,
+      handleModifierKeys,
+      sendKeyboardEvent
     ],
   );
 
