@@ -707,7 +707,7 @@ export default function KvmIdRoute() {
   }, [diskChannel, file]);
 
   // System update
-  const disableKeyboardFocusTrap = useUiStore(state => state.disableVideoFocusTrap);
+  const disableVideoFocusTrap = useUiStore(state => state.disableVideoFocusTrap);
 
   const [kvmTerminal, setKvmTerminal] = useState<RTCDataChannel | null>(null);
   const [serialConsole, setSerialConsole] = useState<RTCDataChannel | null>(null);
@@ -805,7 +805,7 @@ export default function KvmIdRoute() {
       )}
       <div className="relative h-full">
         <FocusTrap
-          paused={disableKeyboardFocusTrap}
+          paused={disableVideoFocusTrap}
           focusTrapOptions={{
             allowOutsideClick: true,
             escapeDeactivates: false,
