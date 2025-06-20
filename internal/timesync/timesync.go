@@ -32,6 +32,8 @@ type TimeSync struct {
 	httpUrls      []string
 	networkConfig *network.NetworkConfig
 
+	httpUserAgent string
+
 	rtcDevicePath string
 	rtcDevice     *os.File //nolint:unused
 	rtcLock       *sync.Mutex
@@ -45,6 +47,7 @@ type TimeSyncOptions struct {
 	PreCheckFunc  func() (bool, error)
 	Logger        *zerolog.Logger
 	NetworkConfig *network.NetworkConfig
+	HttpUserAgent string
 }
 
 type SyncMode struct {
@@ -71,6 +74,7 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 		preCheckFunc:  opts.PreCheckFunc,
 		ntpServers:    defaultNTPServers,
 		httpUrls:      defaultHTTPUrls,
+		httpUserAgent: opts.HttpUserAgent,
 		networkConfig: opts.NetworkConfig,
 	}
 
