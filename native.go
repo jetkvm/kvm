@@ -327,6 +327,7 @@ func ExtractAndRunNativeBin() error {
 				err := superviseNativeBinary(binaryPath)
 				if err != nil {
 					nativeLogger.Warn().Err(err).Msg("failed to supervise native binary")
+					time.Sleep(1 * time.Second) // Add a short delay to prevent rapid successive calls
 				}
 			}
 		}
