@@ -34,6 +34,7 @@ dayjs.extend(relativeTime);
 
 const defaultNetworkSettings: NetworkSettings = {
   hostname: "",
+  http_proxy: "",
   domain: "",
   ipv4_mode: "unknown",
   ipv6_mode: "unknown",
@@ -185,6 +186,10 @@ export default function SettingsNetworkRoute() {
     setNetworkSettings({ ...networkSettings, hostname: value });
   };
 
+  const handleProxyChange = (value: string) => {
+    setNetworkSettings({ ...networkSettings, http_proxy: value });
+  };
+
   const handleDomainChange = (value: string) => {
     setNetworkSettings({ ...networkSettings, domain: value });
   };
@@ -247,6 +252,26 @@ export default function SettingsNetworkRoute() {
                   defaultValue={networkSettings.hostname}
                   onChange={e => {
                     handleHostnameChange(e.target.value);
+                  }}
+                />
+              </div>
+            </div>
+          </SettingsItem>
+        </div>
+        <div className="space-y-4">
+          <SettingsItem
+            title="HTTP Proxy"
+            description="Proxy server for outgoing HTTP(S) requests from the device. Blank for none."
+          >
+            <div className="relative">
+              <div>
+                <InputField
+                  size="SM"
+                  type="text"
+                  placeholder="http://proxy.example.com:8080/"
+                  defaultValue={networkSettings.http_proxy}
+                  onChange={e => {
+                    handleProxyChange(e.target.value);
                   }}
                 />
               </div>
