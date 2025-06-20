@@ -111,7 +111,7 @@ var defaultConfig = &Config{
 	ActiveExtension:      "",
 	KeyboardMacros:       []KeyboardMacro{},
 	DisplayRotation:      "270",
-	KeyboardLayout:       "en-US",
+	KeyboardLayout:       "en_US",
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes

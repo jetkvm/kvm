@@ -39,11 +39,11 @@ export default function PasteModal() {
     state => state.setKeyboardLayout,
   );
 
-  // this ensures we always get the original en-US if it hasn't been set yet
+  // this ensures we always get the original en_US if it hasn't been set yet
   const safeKeyboardLayout = useMemo(() => {
     if (keyboardLayout && keyboardLayout.length > 0)
       return keyboardLayout;
-    return "en-US";
+    return "en_US";
   }, [keyboardLayout]);
 
   useEffect(() => {
