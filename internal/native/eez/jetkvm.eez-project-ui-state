@@ -1,7 +1,9 @@
 {
   "navigation": {
-    "selectedUserPageObject": "[jetkvm.eez-project]:/userPages/2",
-    "selectedActionObject": "[jetkvm.eez-project]:/actions/1",
+    "selectedUserPageObject": "[jetkvm.eez-project]:/userPages/0",
+    "selectedUserWidgetObject": "[jetkvm.eez-project]:/userWidgets/-1",
+    "selectedActionObject": "[jetkvm.eez-project]:/actions/7",
+    "selectedGlobalVariableObject": "[jetkvm.eez-project]:/variables/globalVariables/0",
     "selectedStyleObject": "[jetkvm.eez-project]:/lvglStyles/styles/0",
     "selectedThemeObject": "[jetkvm.eez-project]:/themes/0",
     "selectedFontObject": "[jetkvm.eez-project]:/fonts/1",
@@ -28,7 +30,7 @@
           {
             "type": "border",
             "selected": 4,
-            "size": 253.5,
+            "size": 113.5,
             "location": "right",
             "children": [
               {
@@ -122,13 +124,13 @@
             {
               "type": "row",
               "id": "#3ab81c80-448e-41ff-9159-e5a7ecb1936c",
-              "weight": 20.250356691846424,
+              "weight": 25.73707052518943,
               "children": [
                 {
                   "type": "tabset",
                   "id": "#2e3d9a08-c69c-42b5-b434-525109f2a5a7",
                   "weight": 1,
-                  "selected": 2,
+                  "selected": 1,
                   "enableClose": false,
                   "children": [
                     {
@@ -141,19 +143,19 @@
                     },
                     {
                       "type": "tab",
-                      "id": "WIDGETS",
-                      "name": "User Widgets",
-                      "component": "widgets",
-                      "enableClose": false,
-                      "icon": "svg:user_widgets"
-                    },
-                    {
-                      "type": "tab",
                       "id": "ACTIONS",
                       "name": "User Actions",
                       "component": "actions",
                       "enableClose": false,
                       "icon": "material:code"
+                    },
+                    {
+                      "type": "tab",
+                      "id": "WIDGETS",
+                      "name": "User Widgets",
+                      "component": "widgets",
+                      "enableClose": false,
+                      "icon": "svg:user_widgets"
                     }
                   ]
                 },
@@ -194,19 +196,41 @@
             {
               "type": "tabset",
               "id": "EDITORS",
-              "weight": 63.667074907133006,
-              "selected": 3,
+              "weight": 49.31058517127421,
+              "selected": 1,
               "enableDeleteWhenEmpty": false,
               "enableClose": false,
               "children": [
                 {
                   "type": "tab",
-                  "id": "#b444e818-4663-4332-ab40-a34acb670c8c",
-                  "name": "HomeScreen",
+                  "id": "#467ae6a9-0f08-4392-a580-25f8916524e4",
+                  "name": "BootScreen",
                   "component": "editor",
                   "config": {
-                    "objectPath": "[jetkvm.eez-project]:/userPages/1",
+                    "objectPath": "[jetkvm.eez-project]:/userPages/0",
                     "permanent": false
+                  },
+                  "icon": "svg:page"
+                },
+                {
+                  "type": "tab",
+                  "id": "#d1704ae1-993d-4a7d-bade-0903bb61e9c6",
+                  "name": "AboutScreen",
+                  "component": "editor",
+                  "config": {
+                    "objectPath": "[jetkvm.eez-project]:/userPages/5",
+                    "permanent": true
+                  },
+                  "icon": "svg:page"
+                },
+                {
+                  "type": "tab",
+                  "id": "#b444e818-4663-4332-ab40-a34acb670c8c",
+                  "name": "MenuAdvancedScreen",
+                  "component": "editor",
+                  "config": {
+                    "objectPath": "[jetkvm.eez-project]:/userPages/4",
+                    "permanent": true
                   },
                   "icon": "svg:page"
                 },
@@ -220,17 +244,6 @@
                     "permanent": true
                   },
                   "icon": "svg:page"
-                },
-                {
-                  "type": "tab",
-                  "id": "#ab5bf7de-d982-416b-b26b-8fffecd56449",
-                  "name": "FontBook16",
-                  "component": "editor",
-                  "config": {
-                    "objectPath": "[jetkvm.eez-project]:/fonts/1",
-                    "permanent": false
-                  },
-                  "icon": "material:font_download"
                 },
                 {
                   "type": "tab",
@@ -250,7 +263,7 @@
             {
               "type": "row",
               "id": "#ee319cf9-6145-49e4-b40e-1d999be897c8",
-              "weight": 16.082568401020577,
+              "weight": 24.95234430353635,
               "children": [
                 {
                   "type": "tabset",
@@ -1077,12 +1090,12 @@
         "0": {
           "0": {
             "0": {
-              "1": {}
+              "1": {
+                "0": {}
+              }
             },
             "1": {
-              "0": {
-                "$selected": true
-              }
+              "0": {}
             },
             "2": {},
             "3": {
@@ -1131,7 +1144,8 @@
                 "2": {},
                 "3": {},
                 "4": {
-                  "0": {}
+                  "0": {},
+                  "$selected": true
                 }
               }
             }
@@ -1142,6 +1156,107 @@
         "translate": {
           "x": -194,
           "y": -454
+        },
+        "scale": 1
+      },
+      "timeline": {
+        "isEditorActive": false,
+        "position": 0,
+        "secondToPx": 200,
+        "scrollLeft": 0
+      }
+    },
+    "[jetkvm.eez-project]:/userPages/3[flow-state]": {
+      "selection": {
+        "0": {
+          "0": {
+            "0": {
+              "0": {
+                "$selected": true
+              }
+            },
+            "1": {
+              "0": {
+                "0": {},
+                "1": {},
+                "2": {},
+                "3": {}
+              }
+            }
+          }
+        }
+      },
+      "transform": {
+        "translate": {
+          "x": -150,
+          "y": -120
+        },
+        "scale": 1
+      },
+      "timeline": {
+        "isEditorActive": false,
+        "position": 0,
+        "secondToPx": 200,
+        "scrollLeft": 0
+      }
+    },
+    "[jetkvm.eez-project]:/userPages/4[flow-state]": {
+      "selection": {},
+      "transform": {
+        "translate": {
+          "x": -150,
+          "y": -120
+        },
+        "scale": 1
+      },
+      "timeline": {
+        "isEditorActive": false,
+        "position": 0,
+        "secondToPx": 200,
+        "scrollLeft": 0
+      }
+    },
+    "[jetkvm.eez-project]:/userPages/5[flow-state]": {
+      "selection": {
+        "0": {
+          "0": {
+            "0": {
+              "0": {}
+            },
+            "1": {
+              "0": {
+                "0": {},
+                "1": {},
+                "2": {},
+                "3": {},
+                "4": {},
+                "5": {},
+                "6": {}
+              }
+            }
+          }
+        }
+      },
+      "transform": {
+        "translate": {
+          "x": -150,
+          "y": -120
+        },
+        "scale": 1
+      },
+      "timeline": {
+        "isEditorActive": false,
+        "position": 0,
+        "secondToPx": 200,
+        "scrollLeft": 0
+      }
+    },
+    "[jetkvm.eez-project]:/userWidgets/0[flow-state]": {
+      "selection": {},
+      "transform": {
+        "translate": {
+          "x": -150,
+          "y": -120
         },
         "scale": 1
       },
@@ -1170,7 +1285,9 @@
   "lvglExpandedPropertiesGroup": [
     "POSITION AND SIZE",
     "PADDING",
-    "MARGIN"
+    "MARGIN",
+    "TEXT",
+    "BACKGROUND"
   ],
   "showInactiveFlowsInDebugger": true,
   "globalFlowZoom": true,

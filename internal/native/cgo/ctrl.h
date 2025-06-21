@@ -22,6 +22,8 @@ typedef void (jetkvm_video_handler_t)(const uint8_t *frame, ssize_t len);
 void jetkvm_set_log_handler(jetkvm_log_handler_t *handler);
 void jetkvm_set_video_handler(jetkvm_video_handler_t *handler);
 
+void jetkvm_set_app_version(const char *version);
+
 void jetkvm_ui_init();
 void jetkvm_ui_tick();
 

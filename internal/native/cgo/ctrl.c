@@ -12,6 +12,7 @@
 #include "edid.h"
 #include "ctrl.h"
 #include <lvgl.h>
+#include "ui/vars.h"
 #include "log.h"
 #include "log_handler.h"
 
@@ -158,6 +159,10 @@ lv_obj_flag_t str_to_lv_obj_flag(const char *flag)
     }
 }
 
+void jetkvm_set_app_version(const char *version) {
+    set_var_app_version(version);
+}
+
 void jetkvm_ui_init() {
     lvgl_init();
 }
@@ -237,7 +242,20 @@ void jetkvm_ui_set_state(const char *obj_name, const char *state_name) {
     {
         state_val = LV_STATE_USER_2;
     }
-    lv_obj_clear_state(obj, LV_STATE_USER_1 | LV_STATE_USER_2);
+    else if (strcmp(state_name, "LV_STATE_USER_3") == 0)
+    {
+        state_val = LV_STATE_USER_3;
+    }
+    else if (strcmp(state_name, "LV_STATE_USER_4") == 0)
+    {
+        state_val = LV_STATE_USER_4;
+    }
+    else if (strcmp(state_name, "LV_STATE_DISABLED") == 0)
+    {
+        state_val = LV_STATE_DISABLED;
+    }
+    // TODO: use LV_STATE_USER_* once eez supports it
+    lv_obj_clear_state(obj, LV_STATE_USER_1 | LV_STATE_USER_2 | LV_STATE_USER_3 | LV_STATE_USER_4 | LV_STATE_DISABLED);
     lv_obj_add_state(obj, state_val);
 }
 
