@@ -1,0 +1,44 @@
+#ifndef VIDEO_DAEMON_CTRL_H
+#define VIDEO_DAEMON_CTRL_H
+
+#include <stdbool.h>
+#include <sys/types.h>
+
+typedef struct
+{
+    bool ready;
+    const char *error;
+    u_int16_t width;
+    u_int16_t height;
+    double frame_per_second;
+} jetkvm_video_state_t;
+
+typedef void (jetkvm_video_state_handler_t)(jetkvm_video_state_t *state);
+
+void jetkvm_ui_init();
+void jetkvm_ui_tick();
+
+void jetkvm_set_video_state_handler(jetkvm_video_state_handler_t *handler);
+
+void jetkvm_ui_set_rotation(u_int8_t rotation);
+const char *jetkvm_ui_get_current_screen();
+void jetkvm_ui_load_screen(const char *obj_name);
+int jetkvm_ui_set_text(const char *obj_name, const char *text);
+void jetkvm_ui_set_image(const char *obj_name, const char *image_name);
+void jetkvm_ui_set_state(const char *obj_name, const char *state_name);
+void jetkvm_ui_fade_in(const char *obj_name, u_int32_t duration);
+void jetkvm_ui_fade_out(const char *obj_name, u_int32_t duration);
+void jetkvm_ui_set_opacity(const char *obj_name, u_int8_t opacity);
+int jetkvm_ui_add_flag(const char *obj_name, const char *flag_name);
+int jetkvm_ui_clear_flag(const char *obj_name, const char *flag_name);
+
+int jetkvm_video_init();
+void jetkvm_video_shutdown();
+void jetkvm_video_start();
+void jetkvm_video_stop();
+int jetkvm_video_set_quality_factor(float quality_factor);
+int jetkvm_video_set_edid(const char *edid_hex);
+char *jetkvm_video_get_edid_hex();
+jetkvm_video_state_t *jetkvm_video_get_status();
+
+#endif //VIDEO_DAEMON_CTRL_H

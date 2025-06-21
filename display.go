@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var currentScreen = "ui_Boot_Screen"
+var currentScreen = "boot_screen"
 var backlightState = 0 // 0 - NORMAL, 1 - DIMMED, 2 - OFF
 
 var (
@@ -22,75 +22,6 @@ const (
 	backlightControlClass string = "/sys/class/backlight/backlight/brightness"
 )
 
-func switchToScreen(screen string) {
-	_, err := CallCtrlAction("lv_scr_load", map[string]interface{}{"obj": screen})
-	if err != nil {
-		displayLogger.Warn().Err(err).Str("screen", screen).Msg("failed to switch to screen")
-		return
-	}
-	currentScreen = screen
-}
-
-var displayedTexts = make(map[string]string)
-
-func lvObjSetState(objName string, state string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": objName, "state": state})
-}
-
-func lvObjAddFlag(objName string, flag string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_add_flag", map[string]interface{}{"obj": objName, "flag": flag})
-}
-
-func lvObjClearFlag(objName string, flag string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_clear_flag", map[string]interface{}{"obj": objName, "flag": flag})
-}
-
-func lvObjHide(objName string) (*CtrlResponse, error) {
-	return lvObjAddFlag(objName, "LV_OBJ_FLAG_HIDDEN")
-}
-
-func lvObjShow(objName string) (*CtrlResponse, error) {
-	return lvObjClearFlag(objName, "LV_OBJ_FLAG_HIDDEN")
-}
-
-func lvObjSetOpacity(objName string, opacity int) (*CtrlResponse, error) { // nolint:unused
-	return CallCtrlAction("lv_obj_set_style_opa_layered", map[string]interface{}{"obj": objName, "opa": opacity})
-}
-
-func lvObjFadeIn(objName string, duration uint32) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_fade_in", map[string]interface{}{"obj": objName, "time": duration})
-}
-
-func lvObjFadeOut(objName string, duration uint32) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_fade_out", map[string]interface{}{"obj": objName, "time": duration})
-}
-
-func lvLabelSetText(objName string, text string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_label_set_text", map[string]interface{}{"obj": objName, "text": text})
-}
-
-func lvImgSetSrc(objName string, src string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_img_set_src", map[string]interface{}{"obj": objName, "src": src})
-}
-
-func lvDispSetRotation(rotation string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_disp_set_rotation", map[string]interface{}{"rotation": rotation})
-}
-
-func updateLabelIfChanged(objName string, newText string) {
-	if newText != "" && newText != displayedTexts[objName] {
-		_, _ = lvLabelSetText(objName, newText)
-		displayedTexts[objName] = newText
-	}
-}
-
-func switchToScreenIfDifferent(screenName string) {
-	if currentScreen != screenName {
-		displayLogger.Info().Str("from", currentScreen).Str("to", screenName).Msg("switching screen")
-		switchToScreen(screenName)
-	}
-}
-
 var (
 	cloudBlinkLock    sync.Mutex = sync.Mutex{}
 	cloudBlinkStopped bool
@@ -98,44 +29,48 @@ var (
 )
 
 func updateDisplay() {
-	updateLabelIfChanged("ui_Home_Content_Ip", networkState.IPv4String())
+	nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkState.IPv4String())
+	nativeInstance.UpdateLabelIfChanged("home_info_ipv6_addr", networkState.IPv6String())
+
+	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkState.MACString())
+
 	if usbState == "configured" {
-		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Connected")
-		_, _ = lvObjSetState("ui_Home_Footer_Usb_Status_Label", "LV_STATE_DEFAULT")
+		nativeInstance.UpdateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Connected")
+		_, _ = nativeInstance.ObjSetState("ui_Home_Footer_Usb_Status_Label", "LV_STATE_DEFAULT")
 	} else {
-		updateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Disconnected")
-		_, _ = lvObjSetState("ui_Home_Footer_Usb_Status_Label", "LV_STATE_USER_2")
+		nativeInstance.UpdateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Disconnected")
+		_, _ = nativeInstance.ObjSetState("ui_Home_Footer_Usb_Status_Label", "LV_STATE_USER_2")
 	}
 	if lastVideoState.Ready {
-		updateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Connected")
-		_, _ = lvObjSetState("ui_Home_Footer_Hdmi_Status_Label", "LV_STATE_DEFAULT")
+		nativeInstance.UpdateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Connected")
+		_, _ = nativeInstance.ObjSetState("ui_Home_Footer_Hdmi_Status_Label", "LV_STATE_DEFAULT")
 	} else {
-		updateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Disconnected")
-		_, _ = lvObjSetState("ui_Home_Footer_Hdmi_Status_Label", "LV_STATE_USER_2")
+		nativeInstance.UpdateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Disconnected")
+		_, _ = nativeInstance.ObjSetState("ui_Home_Footer_Hdmi_Status_Label", "LV_STATE_USER_2")
 	}
-	updateLabelIfChanged("ui_Home_Header_Cloud_Status_Label", fmt.Sprintf("%d active", actionSessions))
+	nativeInstance.UpdateLabelIfChanged("ui_Home_Header_Cloud_Status_Label", fmt.Sprintf("%d active", actionSessions))
 
 	if networkState.IsUp() {
-		switchToScreenIfDifferent("ui_Home_Screen")
+		nativeInstance.SwitchToScreenIf("home_screen", []string{"no_network_screen", "boot_screen"})
 	} else {
-		switchToScreenIfDifferent("ui_No_Network_Screen")
+		nativeInstance.SwitchToScreenIf("no_network_screen", []string{"home_screen", "boot_screen"})
 	}
 
 	if cloudConnectionState == CloudConnectionStateNotConfigured {
-		_, _ = lvObjHide("ui_Home_Header_Cloud_Status_Icon")
+		_, _ = nativeInstance.ObjHide("ui_Home_Header_Cloud_Status_Icon")
 	} else {
-		_, _ = lvObjShow("ui_Home_Header_Cloud_Status_Icon")
+		_, _ = nativeInstance.ObjShow("ui_Home_Header_Cloud_Status_Icon")
 	}
 
 	switch cloudConnectionState {
 	case CloudConnectionStateDisconnected:
-		_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud_disconnected.png")
+		_, _ = nativeInstance.ImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud_disconnected.png")
 		stopCloudBlink()
 	case CloudConnectionStateConnecting:
-		_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
+		_, _ = nativeInstance.ImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
 		startCloudBlink()
 	case CloudConnectionStateConnected:
-		_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
+		_, _ = nativeInstance.ImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
 		stopCloudBlink()
 	}
 }
@@ -159,9 +94,9 @@ func startCloudBlink() {
 			if cloudConnectionState != CloudConnectionStateConnecting {
 				continue
 			}
-			_, _ = lvObjFadeOut("ui_Home_Header_Cloud_Status_Icon", 1000)
+			_, _ = nativeInstance.ObjFadeOut("ui_Home_Header_Cloud_Status_Icon", 1000)
 			time.Sleep(1000 * time.Millisecond)
-			_, _ = lvObjFadeIn("ui_Home_Header_Cloud_Status_Icon", 1000)
+			_, _ = nativeInstance.ObjFadeIn("ui_Home_Header_Cloud_Status_Icon", 1000)
 			time.Sleep(1000 * time.Millisecond)
 		}
 	}()
@@ -205,20 +140,20 @@ func waitCtrlAndRequestDisplayUpdate(shouldWakeDisplay bool) {
 	waitDisplayUpdate.Lock()
 	defer waitDisplayUpdate.Unlock()
 
-	waitCtrlClientConnected()
+	// nativeInstance.WaitCtrlClientConnected()
 	requestDisplayUpdate(shouldWakeDisplay)
 }
 
 func updateStaticContents() {
 	//contents that never change
-	updateLabelIfChanged("ui_Home_Content_Mac", networkState.MACString())
+	nativeInstance.UpdateLabelIfChanged("ui_Home_Content_Mac", networkState.MACString())
 	systemVersion, appVersion, err := GetLocalVersion()
 	if err == nil {
-		updateLabelIfChanged("ui_About_Content_Operating_System_Version_ContentLabel", systemVersion.String())
-		updateLabelIfChanged("ui_About_Content_App_Version_Content_Label", appVersion.String())
+		nativeInstance.UpdateLabelIfChanged("ui_About_Content_Operating_System_Version_ContentLabel", systemVersion.String())
+		nativeInstance.UpdateLabelIfChanged("ui_About_Content_App_Version_Content_Label", appVersion.String())
 	}
 
-	updateLabelIfChanged("ui_Status_Content_Device_Id_Content_Label", GetDeviceID())
+	nativeInstance.UpdateLabelIfChanged("ui_Status_Content_Device_Id_Content_Label", GetDeviceID())
 }
 
 // setDisplayBrightness sets /sys/class/backlight/backlight/brightness to alter
@@ -379,10 +314,9 @@ func startBacklightTickers() {
 
 func initDisplay() {
 	go func() {
-		waitCtrlClientConnected()
 		displayLogger.Info().Msg("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
-		_, _ = lvDispSetRotation(config.DisplayRotation)
+		_, _ = nativeInstance.DispSetRotation(config.DisplayRotation)
 		updateStaticContents()
 		displayInited = true
 		displayLogger.Info().Msg("display inited")

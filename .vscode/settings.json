@@ -1,3 +1,7 @@
 {
-  "tailwindCSS.classFunctions": ["cva", "cx"]
+  "tailwindCSS.classFunctions": [
+    "cva",
+    "cx"
+  ],
+  "cmake.sourceDirectory": "/workspaces/ymjk/jetkvm-native"
 }

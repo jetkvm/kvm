@@ -20,12 +20,12 @@ GO_LDFLAGS := \
   -X $(PROMETHEUS_TAG).Revision=$(REVISION) \
   -X $(KVM_PKG_NAME).builtTimestamp=$(BUILDTS)
 
-GO_ARGS := GOOS=linux GOARCH=arm GOARM=7
+GO_ARGS := GOOS=linux GOARCH=arm GOARM=7 ARCHFLAGS="-arch arm"
 # if BUILDKIT_PATH exists, use buildkit to build
 ifneq ($(wildcard $(BUILDKIT_PATH)),)
 	GO_ARGS := $(GO_ARGS) \
-		CGO_CFLAGS="-I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include" \
-		CGO_LDFLAGS="-L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib" \
+		CGO_CFLAGS="-Ijetkvm-native -Ijetkvm-native/ui -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include" \
+		CGO_LDFLAGS="-Ljetkvm-native/build -Ljetkvm-native/build/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -ljknative -lrockit -lrockchip_mpp -lrga -lpthread -lm -llvgl" \
 		CC="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-gcc" \
 		LD="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-ld" \
 		CGO_ENABLED=1
@@ -37,15 +37,16 @@ BIN_DIR := $(shell pwd)/bin
 
 TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort -u)
 
-hash_resource:
-	@shasum -a 256 resource/jetkvm_native | cut -d ' ' -f 1 > resource/jetkvm_native.sha256
+build_native:
+	@echo "Building native..."
+	cd internal/native/cgo && ./ui_index.gen.sh && ./build.sh
 
-build_dev: hash_resource
+build_dev: build_native
 	@echo "Building..."
 	$(GO_CMD) build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
 		$(GO_RELEASE_BUILD_ARGS) \
-		-o $(BIN_DIR)/jetkvm_app cmd/main.go
+		-o $(BIN_DIR)/jetkvm_app -v cmd/main.go
 
 build_afpacket:
 	@echo "Building..."
