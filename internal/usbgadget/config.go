@@ -59,6 +59,23 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 	// mass storage
 	"mass_storage_base": massStorageBaseConfig,
 	"mass_storage_lun0": massStorageLun0Config,
+	// audio
+	"audio": {
+		order:      4000,
+		device:     "uac1.usb0",
+		path:       []string{"functions", "uac1.usb0"},
+		configPath: []string{"uac1.usb0"},
+		attrs: gadgetAttributes{
+			"p_chmask":         "3",
+			"p_srate":          "48000",
+			"p_ssize":          "2",
+			"p_volume_present": "0",
+			"c_chmask":         "3",
+			"c_srate":          "48000",
+			"c_ssize":          "2",
+			"c_volume_present": "0",
+		},
+	},
 }
 
 func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
@@ -73,6 +90,8 @@ func (u *UsbGadget) isGadgetConfigItemEnabled(itemKey string) bool {
 		return u.enabledDevices.MassStorage
 	case "mass_storage_lun0":
 		return u.enabledDevices.MassStorage
+	case "audio":
+		return u.enabledDevices.Audio
 	default:
 		return true
 	}
