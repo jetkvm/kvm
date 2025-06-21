@@ -3,61 +3,104 @@ package usbgadget
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"path/filepath"
-)
+	"strconv"
+	"strings"
 
-// Helper function to get absolute value of float64
-func abs(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
+	"github.com/rs/zerolog"
+)
 
 func joinPath(basePath string, paths []string) string {
 	pathArr := append([]string{basePath}, paths...)
 	return filepath.Join(pathArr...)
 }
 
-func ensureSymlink(linkPath string, target string) error {
-	if _, err := os.Lstat(linkPath); err == nil {
-		currentTarget, err := os.Readlink(linkPath)
-		if err != nil || currentTarget != target {
-			err = os.Remove(linkPath)
-			if err != nil {
-				return fmt.Errorf("failed to remove existing symlink %s: %w", linkPath, err)
-			}
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("failed to check if symlink exists: %w", err)
+func hexToDecimal(hex string) (int64, error) {
+	decimal, err := strconv.ParseInt(hex, 16, 64)
+	if err != nil {
+		return 0, err
 	}
-
-	if err := os.Symlink(target, linkPath); err != nil {
-		return fmt.Errorf("failed to create symlink from %s to %s: %w", linkPath, target, err)
-	}
-
-	return nil
+	return decimal, nil
 }
 
-func (u *UsbGadget) writeIfDifferent(filePath string, content []byte, permMode os.FileMode) error {
-	if _, err := os.Stat(filePath); err == nil {
-		oldContent, err := os.ReadFile(filePath)
-		if err == nil {
-			if bytes.Equal(oldContent, content) {
-				u.log.Trace().Str("path", filePath).Msg("skipping writing to as it already has the correct content")
-				return nil
-			}
+func decimalToOctal(decimal int64) string {
+	return fmt.Sprintf("%04o", decimal)
+}
 
-			if len(oldContent) == len(content)+1 &&
-				bytes.Equal(oldContent[:len(content)], content) &&
-				oldContent[len(content)] == 10 {
-				u.log.Trace().Str("path", filePath).Msg("skipping writing to as it already has the correct content")
-				return nil
-			}
+func hexToOctal(hex string) (string, error) {
+	hex = strings.ToLower(hex)
+	hex = strings.Replace(hex, "0x", "", 1) //remove 0x or 0X
 
-			u.log.Trace().Str("path", filePath).Bytes("old", oldContent).Bytes("new", content).Msg("writing to as it has different content")
+	decimal, err := hexToDecimal(hex)
+	if err != nil {
+		return "", err
+	}
+
+	// Convert the decimal integer to an octal string.
+	octal := decimalToOctal(decimal)
+	return octal, nil
+}
+
+func compareFileContent(oldContent []byte, newContent []byte, looserMatch bool) bool {
+	if bytes.Equal(oldContent, newContent) {
+		return true
+	}
+
+	if len(oldContent) == len(newContent)+1 &&
+		bytes.Equal(oldContent[:len(newContent)], newContent) &&
+		oldContent[len(newContent)] == 10 {
+		return true
+	}
+
+	if len(newContent) == 4 {
+		if len(oldContent) < 6 || len(oldContent) > 7 {
+			return false
+		}
+
+		if len(oldContent) == 7 && oldContent[6] == 0x0a {
+			oldContent = oldContent[:6]
+		}
+
+		oldOctalValue, err := hexToOctal(string(oldContent))
+		if err != nil {
+			return false
+		}
+
+		if oldOctalValue == string(newContent) {
+			return true
 		}
 	}
-	return os.WriteFile(filePath, content, permMode)
+
+	if looserMatch {
+		oldContentStr := strings.TrimSpace(string(oldContent))
+		newContentStr := strings.TrimSpace(string(newContent))
+
+		return oldContentStr == newContentStr
+	}
+
+	return false
+}
+
+func (u *UsbGadget) logWithSupression(counterName string, every int, logger *zerolog.Logger, err error, msg string, args ...interface{}) {
+	if _, ok := u.logSuppressionCounter[counterName]; !ok {
+		u.logSuppressionCounter[counterName] = 0
+	} else {
+		u.logSuppressionCounter[counterName]++
+	}
+
+	l := logger.With().Int("counter", u.logSuppressionCounter[counterName]).Logger()
+
+	if u.logSuppressionCounter[counterName]%every == 0 {
+		if err != nil {
+			l.Error().Err(err).Msgf(msg, args...)
+		} else {
+			l.Error().Msgf(msg, args...)
+		}
+	}
+}
+
+func (u *UsbGadget) resetLogSuppressionCounter(counterName string) {
+	if _, ok := u.logSuppressionCounter[counterName]; !ok {
+		u.logSuppressionCounter[counterName] = 0
+	}
 }

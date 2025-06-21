@@ -1,14 +1,14 @@
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { LuMonitorSmartphone } from "react-icons/lu";
 import { ArrowRightIcon } from "@heroicons/react/16/solid";
+import { useInterval } from "usehooks-ts";
 
 import DashboardNavbar from "@components/Header";
-import { LinkButton } from "@components/Button";
-import KvmCard from "@components/KvmCard";
-import { useInterval } from "usehooks-ts";
-import { checkAuth } from "@/main";
-import { User } from "@/hooks/stores";
 import EmptyCard from "@components/EmptyCard";
+import KvmCard from "@components/KvmCard";
+import { LinkButton } from "@components/Button";
+import { User } from "@/hooks/stores";
+import { checkAuth } from "@/main";
 import { CLOUD_API } from "@/ui.config";
 
 interface LoaderData {
@@ -16,7 +16,7 @@ interface LoaderData {
   user: User;
 }
 
-export const loader = async () => {
+const loader = async () => {
   const user = await checkAuth();
 
   try {
@@ -40,7 +40,7 @@ export default function DevicesRoute() {
   useInterval(revalidate.revalidate, 4000);
   return (
     <div className="relative h-full">
-      <div className="grid h-full select-none grid-rows-headerBody">
+      <div className="grid h-full select-none grid-rows-(--grid-headerBody)">
         <DashboardNavbar
           isLoggedIn={!!user}
           primaryLinks={[{ title: "Cloud Devices", to: "/devices" }]}
@@ -101,3 +101,5 @@ export default function DevicesRoute() {
     </div>
   );
 }
+
+DevicesRoute.loader = loader;

@@ -43,9 +43,10 @@ export default function SettingsGeneralUpdateRoute() {
 
 export interface SystemVersionInfo {
   local: { appVersion: string; systemVersion: string };
-  remote: { appVersion: string; systemVersion: string };
+  remote?: { appVersion: string; systemVersion: string };
   systemUpdateAvailable: boolean;
   appUpdateAvailable: boolean;
+  error?: string;
 }
 
 export function Dialog({
@@ -142,13 +143,19 @@ function LoadingState({
     return new Promise<SystemVersionInfo>((resolve, reject) => {
       send("getUpdateStatus", {}, async resp => {
         if ("error" in resp) {
-          notifications.error("Failed to check for updates");
+          notifications.error(`Failed to check for updates: ${resp.error}`);
           reject(new Error("Failed to check for updates"));
         } else {
           const result = resp.result as SystemVersionInfo;
           setAppVersion(result.local.appVersion);
           setSystemVersion(result.local.systemVersion);
-          resolve(result);
+
+          if (result.error) {
+            notifications.error(`Failed to check for updates: ${result.error}`);
+            reject(new Error("Failed to check for updates"));
+          } else {
+            resolve(result);
+          }
         }
       });
     });
@@ -235,9 +242,9 @@ function UpdatingDeviceState({
 
     console.log(
       `For ${type}:\n` +
-        `  Download Progress: ${downloadProgress}% (${otaState[`${type}DownloadProgress`]})\n` +
-        `  Update Progress: ${updateProgress}% (${otaState[`${type}UpdateProgress`]})\n` +
-        `  Verification Progress: ${verificationProgress}% (${otaState[`${type}VerificationProgress`]})`,
+      `  Download Progress: ${downloadProgress}% (${otaState[`${type}DownloadProgress`]})\n` +
+      `  Update Progress: ${updateProgress}% (${otaState[`${type}UpdateProgress`]})\n` +
+      `  Verification Progress: ${verificationProgress}% (${otaState[`${type}VerificationProgress`]})`,
     );
 
     if (type === "app") {
@@ -442,13 +449,14 @@ function UpdateAvailableState({
           {versionInfo?.systemUpdateAvailable ? (
             <>
               <span className="font-semibold">System:</span>{" "}
-              {versionInfo?.remote.systemVersion}
+              {versionInfo?.remote?.systemVersion}
               <br />
             </>
           ) : null}
           {versionInfo?.appUpdateAvailable ? (
             <>
-              <span className="font-semibold">App:</span> {versionInfo?.remote.appVersion}
+              <span className="font-semibold">App:</span>{" "}
+              {versionInfo?.remote?.appVersion}
             </>
           ) : null}
         </p>

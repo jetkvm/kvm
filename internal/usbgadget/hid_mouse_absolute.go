@@ -12,7 +12,7 @@ var absoluteMouseConfig = gadgetConfigItem{
 	configPath: []string{"hid.usb1"},
 	attrs: gadgetAttributes{
 		"protocol":      "2",
-		"subclass":      "1",
+		"subclass":      "0",
 		"report_length": "6",
 	},
 	reportDesc: absoluteMouseCombinedReportDesc,
@@ -75,11 +75,12 @@ func (u *UsbGadget) absMouseWriteHidFile(data []byte) error {
 
 	_, err := u.absMouseHidFile.Write(data)
 	if err != nil {
-		u.log.Error().Err(err).Msg("failed to write to hidg1")
+		u.logWithSupression("absMouseWriteHidFile", 100, u.log, err, "failed to write to hidg1")
 		u.absMouseHidFile.Close()
 		u.absMouseHidFile = nil
 		return err
 	}
+	u.resetLogSuppressionCounter("absMouseWriteHidFile")
 	return nil
 }
 
@@ -107,23 +108,15 @@ func (u *UsbGadget) AbsMouseWheelReport(wheelY int8) error {
 	u.absMouseLock.Lock()
 	defer u.absMouseLock.Unlock()
 
-	// Accumulate the wheelY value
-	u.absMouseAccumulatedWheelY += float64(wheelY) / 8.0
-
-	// Only send a report if the accumulated value is significant
-	if abs(u.absMouseAccumulatedWheelY) < 1.0 {
+	// Only send a report if the value is non-zero
+	if wheelY == 0 {
 		return nil
 	}
 
-	scaledWheelY := int8(u.absMouseAccumulatedWheelY)
-
 	err := u.absMouseWriteHidFile([]byte{
-		2,                  // Report ID 2
-		byte(scaledWheelY), // Scaled Wheel Y (signed)
+		2,            // Report ID 2
+		byte(wheelY), // Wheel Y (signed)
 	})
-
-	// Reset the accumulator, keeping any remainder
-	u.absMouseAccumulatedWheelY -= float64(scaledWheelY)
 
 	u.resetUserInputTime()
 	return err

@@ -63,7 +63,7 @@ export default function DeviceList({
         </div>
       </Card>
       <div
-        className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
+        className="flex animate-fadeIn opacity-0 items-center justify-end space-x-2"
         style={{
           animationDuration: "0.7s",
           animationDelay: "0.2s",

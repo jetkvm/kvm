@@ -85,8 +85,10 @@ type Config struct {
 	HashedPassword       string                 `json:"hashed_password"`
 	LocalAuthToken       string                 `json:"local_auth_token"`
 	LocalAuthMode        string                 `json:"localAuthMode"` //TODO: fix it with migration
+	LocalLoopbackOnly    bool                   `json:"local_loopback_only"`
 	WakeOnLanDevices     []WakeOnLanDevice      `json:"wake_on_lan_devices"`
 	KeyboardMacros       []KeyboardMacro        `json:"keyboard_macros"`
+	KeyboardLayout       string                 `json:"keyboard_layout"`
 	EdidString           string                 `json:"hdmi_edid_string"`
 	ActiveExtension      string                 `json:"active_extension"`
 	DisplayRotation      string                 `json:"display_rotation"`
@@ -109,6 +111,7 @@ var defaultConfig = &Config{
 	ActiveExtension:      "",
 	KeyboardMacros:       []KeyboardMacro{},
 	DisplayRotation:      "270",
+	KeyboardLayout:       "en_US",
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes

@@ -12,17 +12,16 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { useInterval } from "usehooks-ts";
-import FocusTrap from "focus-trap-react";
+import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
 import useWebSocket from "react-use-websocket";
 
 import { cx } from "@/cva.config";
 import {
-  DeviceSettingsState,
   HidState,
+  KeyboardLedState,
   NetworkState,
   UpdateState,
-  useDeviceSettingsStore,
   useDeviceStore,
   useHidStore,
   useMountMediaStore,
@@ -590,6 +589,11 @@ export default function KvmIdRoute() {
   const setUsbState = useHidStore(state => state.setUsbState);
   const setHdmiState = useVideoStore(state => state.setHdmiState);
 
+  const keyboardLedState = useHidStore(state => state.keyboardLedState);
+  const setKeyboardLedState = useHidStore(state => state.setKeyboardLedState);
+
+  const setKeyboardLedStateSyncAvailable = useHidStore(state => state.setKeyboardLedStateSyncAvailable);
+
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
 
@@ -609,6 +613,13 @@ export default function KvmIdRoute() {
     if (resp.method === "networkState") {
       console.log("Setting network state", resp.params);
       setNetworkState(resp.params as NetworkState);
+    }
+
+    if (resp.method === "keyboardLedState") {
+      const ledState = resp.params as KeyboardLedState;
+      console.log("Setting keyboard led state", ledState);
+      setKeyboardLedState(ledState);
+      setKeyboardLedStateSyncAvailable(true);
     }
 
     if (resp.method === "otaState") {
@@ -647,6 +658,29 @@ export default function KvmIdRoute() {
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
 
+  // request keyboard led state from the device
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open") return;
+    if (keyboardLedState !== undefined) return;
+    console.log("Requesting keyboard led state");
+
+    send("getKeyboardLedState", {}, resp => {
+      if ("error" in resp) {
+        // -32601 means the method is not supported
+        if (resp.error.code === -32601) {
+          setKeyboardLedStateSyncAvailable(false);
+          console.error("Failed to get keyboard led state, disabling sync", resp.error);
+        } else {
+          console.error("Failed to get keyboard led state", resp.error);
+        }
+        return;
+      }
+      console.log("Keyboard led state", resp.result);
+      setKeyboardLedState(resp.result as KeyboardLedState);
+      setKeyboardLedStateSyncAvailable(true);
+    });
+  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, setKeyboardLedStateSyncAvailable, keyboardLedState]);
+
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {
     if (queryParams.get("updateSuccess")) {
@@ -683,12 +717,10 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (!peerConnection) return;
     if (!kvmTerminal) {
-      // console.log('Creating data channel "terminal"');
       setKvmTerminal(peerConnection.createDataChannel("terminal"));
     }
 
     if (!serialConsole) {
-      // console.log('Creating data channel "serial"');
       setSerialConsole(peerConnection.createDataChannel("serial"));
     }
   }, [kvmTerminal, peerConnection, serialConsole]);
@@ -707,36 +739,26 @@ export default function KvmIdRoute() {
 
     send("getUpdateStatus", {}, async resp => {
       if ("error" in resp) {
-        notifications.error("Failed to get device version");
-      } else {
-        const result = resp.result as SystemVersionInfo;
-        setAppVersion(result.local.appVersion);
-        setSystemVersion(result.local.systemVersion);
+        notifications.error(`Failed to get device version: ${resp.error}`);
+        return 
       }
+
+      const result = resp.result as SystemVersionInfo;
+      if (result.error) {
+        notifications.error(`Failed to get device version: ${result.error}`);
+      }
+
+      setAppVersion(result.local.appVersion);
+      setSystemVersion(result.local.systemVersion);
     });
   }, [appVersion, send, setAppVersion, setSystemVersion]);
 
-  const setScrollSensitivity = useDeviceSettingsStore(
-    state => state.setScrollSensitivity,
-  );
-
-  // Initialize device settings
-  useEffect(
-    function initializeDeviceSettings() {
-      send("getScrollSensitivity", {}, resp => {
-        if ("error" in resp) return;
-        setScrollSensitivity(resp.result as DeviceSettingsState["scrollSensitivity"]);
-      });
-    },
-    [send, setScrollSensitivity],
-  );
-
   const ConnectionStatusElement = useMemo(() => {
     const hasConnectionFailed =
-      connectionFailed || ["failed", "closed"].includes(peerConnectionState || "");
+      connectionFailed || ["failed", "closed"].includes(peerConnectionState ?? "");
 
     const isPeerConnectionLoading =
-      ["connecting", "new"].includes(peerConnectionState || "") ||
+      ["connecting", "new"].includes(peerConnectionState ?? "") ||
       peerConnection === null;
 
     const isDisconnected = peerConnectionState === "disconnected";
@@ -797,21 +819,21 @@ export default function KvmIdRoute() {
           </div>
         </FocusTrap>
 
-        <div className="grid h-full select-none grid-rows-headerBody">
+        <div className="grid h-full grid-rows-(--grid-headerBody) select-none">
           <DashboardNavbar
             primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
             showConnectionStatus={true}
             isLoggedIn={authMode === "password" || !!user}
             userEmail={user?.email}
             picture={user?.picture}
-            kvmName={deviceName || "JetKVM Device"}
+            kvmName={deviceName ?? "JetKVM Device"}
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
             <WebRTCVideo />
             <div
               style={{ animationDuration: "500ms" }}
-              className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center p-4 opacity-0"
+              className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
             >
               <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
                 {!!ConnectionStatusElement && ConnectionStatusElement}
@@ -824,6 +846,9 @@ export default function KvmIdRoute() {
 
       <div
         className="z-50"
+        onClick={e => e.stopPropagation()}
+        onMouseUp={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
         onKeyUp={e => e.stopPropagation()}
         onKeyDown={e => {
           e.stopPropagation();
@@ -847,7 +872,12 @@ export default function KvmIdRoute() {
   );
 }
 
-function SidebarContainer({ sidebarView }: { sidebarView: string | null }) {
+interface SidebarContainerProps {
+  readonly sidebarView: string | null;
+}
+
+function SidebarContainer(props: SidebarContainerProps) {
+  const { sidebarView }= props;
   return (
     <div
       className={cx(

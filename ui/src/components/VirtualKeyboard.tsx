@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import Keyboard from "react-simple-keyboard";
+import { useShallow } from "zustand/react/shallow";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Keyboard from "react-simple-keyboard";
 
 import Card from "@components/Card";
 // eslint-disable-next-line import/order
@@ -9,12 +10,12 @@ import { Button } from "@components/Button";
 
 import "react-simple-keyboard/build/css/index.css";
 
-import { useHidStore, useUiStore } from "@/hooks/stores";
-import { cx } from "@/cva.config";
-import { keys, modifiers, keyDisplayMap } from "@/keyboardMappings";
-import useKeyboard from "@/hooks/useKeyboard";
-import DetachIconRaw from "@/assets/detach-icon.svg";
 import AttachIconRaw from "@/assets/attach-icon.svg";
+import DetachIconRaw from "@/assets/detach-icon.svg";
+import { cx } from "@/cva.config";
+import { useHidStore, useSettingsStore, useUiStore } from "@/hooks/stores";
+import useKeyboard from "@/hooks/useKeyboard";
+import { keyDisplayMap, keys, modifiers } from "@/keyboardMappings";
 
 export const DetachIcon = ({ className }: { className?: string }) => {
   return <img src={DetachIconRaw} alt="Detach Icon" className={className} />;
@@ -40,7 +41,17 @@ function KeyboardWrapper() {
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [newPosition, setNewPosition] = useState({ x: 0, y: 0 });
-  const isCapsLockActive = useHidStore(state => state.isCapsLockActive);
+
+  const isCapsLockActive = useHidStore(useShallow(state => state.keyboardLedState?.caps_lock));
+
+  // HID related states
+  const keyboardLedStateSyncAvailable = useHidStore(state => state.keyboardLedStateSyncAvailable);
+  const keyboardLedSync = useSettingsStore(state => state.keyboardLedSync);
+  const isKeyboardLedManagedByHost = useMemo(() =>
+    keyboardLedSync !== "browser" && keyboardLedStateSyncAvailable,
+    [keyboardLedSync, keyboardLedStateSyncAvailable],
+  );
+
   const setIsCapsLockActive = useHidStore(state => state.setIsCapsLockActive);
 
   const startDrag = useCallback((e: MouseEvent | TouchEvent) => {
@@ -143,18 +154,30 @@ function KeyboardWrapper() {
         return;
       }
 
+      if (key === "CtrlAltBackspace") {
+        sendKeyboardEvent(
+          [keys["Backspace"]],
+          [modifiers["ControlLeft"], modifiers["AltLeft"]],
+        );
+
+        setTimeout(resetKeyboardState, 100);
+        return;
+      }
+
       if (isKeyShift || isKeyCaps) {
         toggleLayout();
 
         if (isCapsLockActive) {
-          setIsCapsLockActive(false);
+          if (!isKeyboardLedManagedByHost) {
+            setIsCapsLockActive(false);
+          }
           sendKeyboardEvent([keys["CapsLock"]], []);
           return;
         }
       }
 
       // Handle caps lock state change
-      if (isKeyCaps) {
+      if (isKeyCaps && !isKeyboardLedManagedByHost) {
         setIsCapsLockActive(!isCapsLockActive);
       }
 
@@ -173,7 +196,7 @@ function KeyboardWrapper() {
 
       setTimeout(resetKeyboardState, 100);
     },
-    [isCapsLockActive, sendKeyboardEvent, resetKeyboardState, setIsCapsLockActive],
+    [isCapsLockActive, isKeyboardLedManagedByHost, sendKeyboardEvent, resetKeyboardState, setIsCapsLockActive],
   );
 
   const virtualKeyboard = useHidStore(state => state.isVirtualKeyboardEnabled);
@@ -257,13 +280,13 @@ function KeyboardWrapper() {
                       buttonTheme={[
                         {
                           class: "combination-key",
-                          buttons: "CtrlAltDelete AltMetaEscape",
+                          buttons: "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
                         },
                       ]}
                       display={keyDisplayMap}
                       layout={{
                         default: [
-                          "CtrlAltDelete AltMetaEscape",
+                          "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
                           "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
                           "Backquote Digit1 Digit2 Digit3 Digit4 Digit5 Digit6 Digit7 Digit8 Digit9 Digit0 Minus Equal Backspace",
                           "Tab KeyQ KeyW KeyE KeyR KeyT KeyY KeyU KeyI KeyO KeyP BracketLeft BracketRight Backslash",
@@ -272,7 +295,7 @@ function KeyboardWrapper() {
                           "ControlLeft AltLeft MetaLeft Space MetaRight AltRight",
                         ],
                         shift: [
-                          "CtrlAltDelete AltMetaEscape",
+                          "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
                           "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
                           "(Backquote) (Digit1) (Digit2) (Digit3) (Digit4) (Digit5) (Digit6) (Digit7) (Digit8) (Digit9) (Digit0) (Minus) (Equal) (Backspace)",
                           "Tab (KeyQ) (KeyW) (KeyE) (KeyR) (KeyT) (KeyY) (KeyU) (KeyI) (KeyO) (KeyP) (BracketLeft) (BracketRight) (Backslash)",
@@ -282,7 +305,7 @@ function KeyboardWrapper() {
                         ],
                       }}
                       disableButtonHold={true}
-                      mergeDisplay={true}
+                      syncInstanceInputs={true}
                       debug={false}
                     />
 
@@ -290,34 +313,25 @@ function KeyboardWrapper() {
                       <Keyboard
                         baseClass="simple-keyboard-control"
                         theme="simple-keyboard hg-theme-default hg-layout-default"
+                        layoutName={layoutName}
+                        onKeyPress={onKeyDown}
+                        display={keyDisplayMap}
                         layout={{
-                          default: ["Home Pageup", "Delete End Pagedown"],
-                        }}
-                        display={{
-                          Home: "home",
-                          Pageup: "pageup",
-                          Delete: "delete",
-                          End: "end",
-                          Pagedown: "pagedown",
+                          default: ["PrintScreen ScrollLock Pause", "Insert Home Pageup", "Delete End Pagedown"],
+                          shift: ["(PrintScreen) ScrollLock (Pause)", "Insert Home Pageup", "Delete End Pagedown"],
                         }}
                         syncInstanceInputs={true}
-                        onKeyPress={onKeyDown}
-                        mergeDisplay={true}
                         debug={false}
                       />
                       <Keyboard
                         baseClass="simple-keyboard-arrows"
                         theme="simple-keyboard hg-theme-default hg-layout-default"
-                        display={{
-                          ArrowLeft: "←",
-                          ArrowRight: "→",
-                          ArrowUp: "↑",
-                          ArrowDown: "↓",
-                        }}
+                        onKeyPress={onKeyDown}
+                        display={keyDisplayMap}
                         layout={{
                           default: ["ArrowUp", "ArrowLeft ArrowDown ArrowRight"],
                         }}
-                        onKeyPress={onKeyDown}
+                        syncInstanceInputs={true}
                         debug={false}
                       />
                     </div>

@@ -1,6 +1,144 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@config "../tailwind.config.js";
+
+@plugin "@tailwindcss/typography";
+@plugin "@tailwindcss/forms";
+@plugin "@headlessui/tailwindcss";
+
+/* Dark mode uses CSS selector instead of prefers-color-scheme */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Circular", sans-serif;
+  --font-display: "Circular", sans-serif;
+  --font-serif: "Circular", serif;
+  --font-mono: "Source Code Pro Variable", monospace;
+
+  --grid-layout: auto 1fr auto;
+  --grid-headerBody: auto 1fr;
+  --grid-bodyFooter: 1fr auto;
+  --grid-sidebar: 1fr minmax(360px, 25%);
+
+  --breakpoint-xs: 480px;
+  --breakpoint-2xl: 1440px;
+  --breakpoint-3xl: 1920px;
+  --breakpoint-4xl: 2560px;
+
+  /* Migrated animations */
+  --animate-enter: enter 0.2s ease-out;
+  --animate-leave: leave 0.15s ease-in forwards;
+  --animate-fadeInScale: fadeInScale 1s ease-out forwards;
+  --animate-fadeInScaleFloat:
+    fadeInScaleFloat 1s ease-out forwards, float 3s ease-in-out infinite;
+  --animate-fadeIn: fadeIn 1s ease-out forwards;
+  --animate-slideUpFade: slideUpFade 1s ease-out forwards;
+
+  --container-8xl: 88rem;
+  --container-9xl: 96rem;
+  --container-10xl: 104rem;
+  --container-11xl: 112rem;
+  --container-12xl: 120rem;
+
+  /* Migrated keyframes */
+  @keyframes enter {
+    0% {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes leave {
+    0% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+  }
+
+  @keyframes fadeInScale {
+    0% {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes fadeInScaleFloat {
+    0% {
+      opacity: 0;
+      transform: scale(0.98) translateY(10px);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  @keyframes float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  @keyframes fadeIn {
+    0% {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    70% {
+      opacity: 0.8;
+      transform: translateY(1px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slideUpFade {
+    0% {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* If we don't ignore this, Prettier will add a space between the value and the `ms`. Rendering the utility invalid. */
+/* prettier-ignore */
+@utility max-width-* {
+  max-width: --modifier(--container-*, [length], [*]);
+}
+
+/* If we don't ignore this, Prettier will add a space between the value and the `ms`. Rendering the utility invalid. */
+/* prettier-ignore */
+@utility animation-delay-* {
+  animation-delay: --value(integer)ms;
+}
+
+/* If we don't ignore this, Prettier will add a space between the value and the `ms`. Rendering the utility invalid. */
+/* prettier-ignore */
+@utility animation-duration-* {
+  animation-duration: --value(integer)ms;
+}
 
 html {
   @apply scroll-smooth;
@@ -15,13 +153,13 @@ body {
 
 @property --grid-color-start {
   syntax: "<color>";
-  initial-value: theme("colors.blue.50/10");
+  initial-value: var(--color-blue-50/10);
   inherits: false;
 }
 
 @property --grid-color-end {
   syntax: "<color>";
-  initial-value: theme("colors.blue.50/100");
+  initial-value: var(--color-blue-50/100);
   inherits: false;
 }
 
@@ -37,8 +175,8 @@ body {
 }
 
 .group:hover .grid-card {
-  --grid-color-start: theme("colors.blue.100/50");
-  --grid-color-end: theme("colors.blue.50/50");
+  --grid-color-start: var(--color-blue-100/50);
+  --grid-color-end: var(--color-blue-50/50);
 }
 
 video::-webkit-media-controls {
@@ -46,11 +184,11 @@ video::-webkit-media-controls {
 }
 
 .hg-theme-default {
-  @apply !font-display font-normal;
+  @apply font-display! font-normal;
 }
 
 .hg-theme-default .hg-button {
-  @apply border !border-b border-slate-800/25 !border-b-slate-800/25 !shadow-sm;
+  @apply border border-b! border-slate-800/25 border-b-slate-800/25! shadow-xs!;
 }
 
 .hg-theme-default .hg-button span {
@@ -122,7 +260,7 @@ video::-webkit-media-controls {
 }
 
 .hg-button {
-  @apply dark:!bg-slate-800 dark:text-white;
+  @apply dark:bg-slate-800! dark:text-white;
 }
 
 .simple-keyboard-control .hg-button {
@@ -170,25 +308,21 @@ video::-webkit-media-controls {
 }
 
 .hg-button.hg-standardBtn[data-skbtn="Space"] {
-  @apply md:!w-[350px];
+  @apply md:w-[350px]!;
 }
 
 .hg-theme-default .hg-row .combination-key {
-  @apply inline-flex !h-auto !w-auto flex-grow-0 py-1 text-xs;
-}
-
-.hg-theme-default .hg-row:has(.combination-key) {
-  /*margin-bottom: 100px !important;*/
+  @apply inline-flex h-auto! w-auto! grow-0 py-1 text-xs;
 }
 
 .hg-theme-default .hg-row .hg-button-container,
 .hg-theme-default .hg-row .hg-button:not(:last-child) {
-  @apply !mr-[2px] md:!mr-[5px];
+  @apply mr-[2px]! md:mr-[5px]!;
 }
 
 /* Hide the scrollbar by setting the scrollbar color to the background color */
 .xterm .xterm-viewport {
-  scrollbar-color: theme("colors.gray.900") #002b36;
+  scrollbar-color: var(--color-gray-900) #002b36;
   scrollbar-width: thin;
 }
 

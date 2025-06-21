@@ -75,8 +75,9 @@ func Main() {
 		}
 	}()
 
+	// initialize usb gadget
 	initUsbGadget()
-	StartNtpAudioServer(handleAudioClient)
+	StartRtpAudioServer(handleAudioClient)
 
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
@@ -85,6 +86,10 @@ func Main() {
 	if err := initImagesFolder(); err != nil {
 		logger.Warn().Err(err).Msg("failed to init images folder")
 	}
+	initJiggler()
+
+	// initialize display
+	initDisplay()
 
 	go func() {
 		time.Sleep(15 * time.Minute)

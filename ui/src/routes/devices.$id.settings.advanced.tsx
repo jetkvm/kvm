@@ -1,17 +1,16 @@
-
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { GridCard } from "@components/Card";
 
-import { SettingsPageHeader } from "../components/SettingsPageheader";
-import Checkbox from "../components/Checkbox";
-import { useJsonRpc } from "../hooks/useJsonRpc";
-import notifications from "../notifications";
-import { TextAreaWithLabel } from "../components/TextArea";
-import { isOnDevice } from "../main";
 import { Button } from "../components/Button";
+import Checkbox from "../components/Checkbox";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { SettingsPageHeader } from "../components/SettingsPageheader";
+import { TextAreaWithLabel } from "../components/TextArea";
 import { useSettingsStore } from "../hooks/stores";
-
+import { useJsonRpc } from "../hooks/useJsonRpc";
+import { isOnDevice } from "../main";
+import notifications from "../notifications";
 
 import { SettingsItem } from "./devices.$id.settings";
 
@@ -22,6 +21,8 @@ export default function SettingsAdvancedRoute() {
   const setDeveloperMode = useSettingsStore(state => state.setDeveloperMode);
   const [devChannel, setDevChannel] = useState(false);
   const [usbEmulationEnabled, setUsbEmulationEnabled] = useState(false);
+  const [showLoopbackWarning, setShowLoopbackWarning] = useState(false);
+  const [localLoopbackOnly, setLocalLoopbackOnly] = useState(false);
 
   const settings = useSettingsStore();
 
@@ -45,6 +46,11 @@ export default function SettingsAdvancedRoute() {
     send("getDevChannelState", {}, resp => {
       if ("error" in resp) return;
       setDevChannel(resp.result as boolean);
+    });
+
+    send("getLocalLoopbackOnly", {}, resp => {
+      if ("error" in resp) return;
+      setLocalLoopbackOnly(resp.result as boolean);
     });
   }, [send, setDeveloperMode]);
 
@@ -110,17 +116,62 @@ export default function SettingsAdvancedRoute() {
     [send, setDeveloperMode],
   );
 
-  const handleDevChannelChange = (enabled: boolean) => {
-    send("setDevChannelState", { enabled }, resp => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
-        );
-        return;
+  const handleDevChannelChange = useCallback(
+    (enabled: boolean) => {
+      send("setDevChannelState", { enabled }, resp => {
+        if ("error" in resp) {
+          notifications.error(
+            `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
+          );
+          return;
+        }
+        setDevChannel(enabled);
+      });
+    },
+    [send, setDevChannel],
+  );
+
+  const applyLoopbackOnlyMode = useCallback(
+    (enabled: boolean) => {
+      send("setLocalLoopbackOnly", { enabled }, resp => {
+        if ("error" in resp) {
+          notifications.error(
+            `Failed to ${enabled ? "enable" : "disable"} loopback-only mode: ${resp.error.data || "Unknown error"}`,
+          );
+          return;
+        }
+        setLocalLoopbackOnly(enabled);
+        if (enabled) {
+          notifications.success(
+            "Loopback-only mode enabled. Restart your device to apply.",
+          );
+        } else {
+          notifications.success(
+            "Loopback-only mode disabled. Restart your device to apply.",
+          );
+        }
+      });
+    },
+    [send, setLocalLoopbackOnly],
+  );
+
+  const handleLoopbackOnlyModeChange = useCallback(
+    (enabled: boolean) => {
+      // If trying to enable loopback-only mode, show warning first
+      if (enabled) {
+        setShowLoopbackWarning(true);
+      } else {
+        // If disabling, just proceed
+        applyLoopbackOnlyMode(false);
       }
-      setDevChannel(enabled);
-    });
-  };
+    },
+    [applyLoopbackOnlyMode, setShowLoopbackWarning],
+  );
+
+  const confirmLoopbackModeEnable = useCallback(() => {
+    applyLoopbackOnlyMode(true);
+    setShowLoopbackWarning(false);
+  }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
 
   return (
     <div className="space-y-4">
@@ -153,7 +204,7 @@ export default function SettingsAdvancedRoute() {
 
         {settings.developerMode && (
           <GridCard>
-            <div className="flex select-none items-start gap-x-4 p-4">
+            <div className="flex items-start gap-x-4 p-4 select-none">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
@@ -186,6 +237,16 @@ export default function SettingsAdvancedRoute() {
             </div>
           </GridCard>
         )}
+
+        <SettingsItem
+          title="Loopback-Only Mode"
+          description="Restrict web interface access to localhost only (127.0.0.1)"
+        >
+          <Checkbox
+            checked={localLoopbackOnly}
+            onChange={e => handleLoopbackOnlyModeChange(e.target.checked)}
+          />
+        </SettingsItem>
 
         {isOnDevice && settings.developerMode && (
           <div className="space-y-4">
@@ -261,6 +322,30 @@ export default function SettingsAdvancedRoute() {
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={showLoopbackWarning}
+        onClose={() => {
+          setShowLoopbackWarning(false);
+        }}
+        title="Enable Loopback-Only Mode?"
+        description={
+          <>
+            <p>
+              WARNING: This will restrict web interface access to localhost (127.0.0.1)
+              only.
+            </p>
+            <p>Before enabling this feature, make sure you have either:</p>
+            <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
+              <li>SSH access configured and tested</li>
+              <li>Cloud access enabled and working</li>
+            </ul>
+          </>
+        }
+        variant="warning"
+        confirmText="I Understand, Enable Anyway"
+        onConfirm={confirmLoopbackModeEnable}
+      />
     </div>
   );
 }

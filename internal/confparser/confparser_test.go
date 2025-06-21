@@ -57,7 +57,22 @@ func TestValidateConfig(t *testing.T) {
 	}
 }
 
-func TestValidateIPv4StaticConfigRequired(t *testing.T) {
+func TestValidateIPv4StaticConfigNetmaskRequiredIfStatic(t *testing.T) {
+	config := &testNetworkConfig{
+		IPv4Static: &testIPv4StaticConfig{
+			Address: null.StringFrom("192.168.1.1"),
+			Gateway: null.StringFrom("192.168.1.1"),
+		},
+		IPv4Mode: null.StringFrom("static"),
+	}
+
+	err := SetDefaultsAndValidate(config)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestValidateIPv4StaticConfigNetmaskNotRequiredIfStatic(t *testing.T) {
 	config := &testNetworkConfig{
 		IPv4Static: &testIPv4StaticConfig{
 			Address: null.StringFrom("192.168.1.1"),
@@ -66,8 +81,8 @@ func TestValidateIPv4StaticConfigRequired(t *testing.T) {
 	}
 
 	err := SetDefaultsAndValidate(config)
-	if err == nil {
-		t.Fatalf("expected error, got nil")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
 	}
 }
 

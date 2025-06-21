@@ -4,11 +4,24 @@
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {
 			// Should match what is defined in ui/package.json
-			"version": "21.1.0"
+			"version": "22.15.0"
 		}
 	},
 	"mounts": [
     	"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
-	]
+	],
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"bradlc.vscode-tailwindcss",
+				"GitHub.vscode-pull-request-github",
+				"dbaeumer.vscode-eslint",
+				"golang.go",
+				"ms-vscode.makefile-tools",
+				"esbenp.prettier-vscode",
+				"github.vscode-github-actions"
+			]
+		}
+	}
 }
 

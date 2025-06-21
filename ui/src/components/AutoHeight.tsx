@@ -22,7 +22,7 @@ const AutoHeight = ({ children, ...props }: { children: React.ReactNode }) => {
       {...props}
       height={height}
       duration={300}
-      contentClassName="h-fit"
+      contentClassName="h-fit p-px"
       contentRef={contentDiv}
       disableDisplayNone
     >

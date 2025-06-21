@@ -3,11 +3,13 @@
 package usbgadget
 
 import (
+	"context"
 	"os"
 	"path"
 	"sync"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
 )
 
@@ -29,7 +31,8 @@ type Config struct {
 	Manufacturer string `json:"manufacturer"`
 	Product      string `json:"product"`
 
-	isEmpty bool
+	strictMode bool // when it's enabled, all warnings will be converted to errors
+	isEmpty    bool
 }
 
 var defaultUsbGadgetDevices = Devices{
@@ -58,24 +61,42 @@ type UsbGadget struct {
 	relMouseHidFile *os.File
 	relMouseLock    sync.Mutex
 
+	keyboardState       KeyboardState
+	keyboardStateLock   sync.Mutex
+	keyboardStateCtx    context.Context
+	keyboardStateCancel context.CancelFunc
+
 	enabledDevices Devices
+
+	strictMode bool // only intended for testing for now
 
 	absMouseAccumulatedWheelY float64
 
 	lastUserInput time.Time
 
+	tx     *UsbGadgetTransaction
+	txLock sync.Mutex
+
+	onKeyboardStateChange *func(state KeyboardState)
+
 	log *zerolog.Logger
+
+	logSuppressionCounter map[string]int
 }
 
 const configFSPath = "/sys/kernel/config"
 const gadgetPath = "/sys/kernel/config/usb_gadget"
 
-var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
+var defaultLogger = logging.GetSubsystemLogger("usbgadget")
 
 // NewUsbGadget creates a new UsbGadget.
 func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
+	return newUsbGadget(name, defaultGadgetConfig, enabledDevices, config, logger)
+}
+
+func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
 	if logger == nil {
-		logger = &defaultLogger
+		logger = defaultLogger
 	}
 
 	if enabledDevices == nil {
@@ -86,19 +107,29 @@ func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *
 		config = &Config{isEmpty: true}
 	}
 
+	keyboardCtx, keyboardCancel := context.WithCancel(context.Background())
+
 	g := &UsbGadget{
-		name:           name,
-		kvmGadgetPath:  path.Join(gadgetPath, name),
-		configC1Path:   path.Join(gadgetPath, name, "configs/c.1"),
-		configMap:      defaultGadgetConfig,
-		customConfig:   *config,
-		configLock:     sync.Mutex{},
-		keyboardLock:   sync.Mutex{},
-		absMouseLock:   sync.Mutex{},
-		relMouseLock:   sync.Mutex{},
-		enabledDevices: *enabledDevices,
-		lastUserInput:  time.Now(),
-		log:            logger,
+		name:                name,
+		kvmGadgetPath:       path.Join(gadgetPath, name),
+		configC1Path:        path.Join(gadgetPath, name, "configs/c.1"),
+		configMap:           configMap,
+		customConfig:        *config,
+		configLock:          sync.Mutex{},
+		keyboardLock:        sync.Mutex{},
+		absMouseLock:        sync.Mutex{},
+		relMouseLock:        sync.Mutex{},
+		txLock:              sync.Mutex{},
+		keyboardStateCtx:    keyboardCtx,
+		keyboardStateCancel: keyboardCancel,
+		keyboardState:       KeyboardState{},
+		enabledDevices:      *enabledDevices,
+		lastUserInput:       time.Now(),
+		log:                 logger,
+
+		strictMode: config.strictMode,
+
+		logSuppressionCounter: make(map[string]int),
 
 		absMouseAccumulatedWheelY: 0,
 	}
