@@ -26,7 +26,7 @@ export interface TLSState {
   privateKey?: string;
 }
 
-export const loader = async () => {
+const loader = async () => {
   if (isOnDevice) {
     const status = await api
       .GET(`${DEVICE_API}/device`)
@@ -409,7 +409,7 @@ export default function SettingsAccessIndexRoute() {
                       .
                     </div>
                   </div>
-                  <hr className="block w-full dark:border-slate-600" />
+                  <hr className="block w-full border-slate-800/20 dark:border-slate-300/20" />
 
                   <div>
                     <LinkButton
@@ -468,3 +468,5 @@ export default function SettingsAccessIndexRoute() {
     </div>
   );
 }
+
+SettingsAccessIndexRoute.loader = loader;

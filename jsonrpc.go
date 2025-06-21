@@ -266,8 +266,13 @@ func rpcSetDevChannelState(enabled bool) error {
 func rpcGetUpdateStatus() (*UpdateStatus, error) {
 	includePreRelease := config.IncludePreRelease
 	updateStatus, err := GetUpdateStatus(context.Background(), GetDeviceID(), includePreRelease)
+	// to ensure backwards compatibility,
+	// if there's an error, we won't return an error, but we will set the error field
 	if err != nil {
-		return nil, fmt.Errorf("error checking for updates: %w", err)
+		if updateStatus == nil {
+			return nil, fmt.Errorf("error checking for updates: %w", err)
+		}
+		updateStatus.Error = err.Error()
 	}
 
 	return updateStatus, nil
@@ -461,7 +466,31 @@ func rpcSetTLSState(state TLSState) error {
 	return nil
 }
 
-func callRPCHandler(handler RPCHandler, params map[string]interface{}) (interface{}, error) {
+type RPCHandler struct {
+	Func   interface{}
+	Params []string
+}
+
+// call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
+func callRPCHandler(handler RPCHandler, params map[string]interface{}) (result interface{}, err error) {
+	// Use defer to recover from a panic
+	defer func() {
+		if r := recover(); r != nil {
+			// Convert the panic to an error
+			if e, ok := r.(error); ok {
+				err = e
+			} else {
+				err = fmt.Errorf("panic occurred: %v", r)
+			}
+		}
+	}()
+
+	// Call the handler
+	result, err = riskyCallRPCHandler(handler, params)
+	return result, err
+}
+
+func riskyCallRPCHandler(handler RPCHandler, params map[string]interface{}) (interface{}, error) {
 	handlerValue := reflect.ValueOf(handler.Func)
 	handlerType := handlerValue.Type()
 
@@ -556,11 +585,6 @@ func callRPCHandler(handler RPCHandler, params map[string]interface{}) (interfac
 	}
 
 	return nil, errors.New("unexpected return values from handler")
-}
-
-type RPCHandler struct {
-	Func   interface{}
-	Params []string
 }
 
 func rpcSetMassStorageMode(mode string) (string, error) {
@@ -877,14 +901,15 @@ func rpcSetCloudUrl(apiUrl string, appUrl string) error {
 	return nil
 }
 
-var currentScrollSensitivity string = "default"
-
-func rpcGetScrollSensitivity() (string, error) {
-	return currentScrollSensitivity, nil
+func rpcGetKeyboardLayout() (string, error) {
+	return config.KeyboardLayout, nil
 }
 
-func rpcSetScrollSensitivity(sensitivity string) error {
-	currentScrollSensitivity = sensitivity
+func rpcSetKeyboardLayout(layout string) error {
+	config.KeyboardLayout = layout
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
 	return nil
 }
 
@@ -981,6 +1006,25 @@ func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
 	return nil, nil
 }
 
+func rpcGetLocalLoopbackOnly() (bool, error) {
+	return config.LocalLoopbackOnly, nil
+}
+
+func rpcSetLocalLoopbackOnly(enabled bool) error {
+	// Check if the setting is actually changing
+	if config.LocalLoopbackOnly == enabled {
+		return nil
+	}
+
+	// Update the setting
+	config.LocalLoopbackOnly = enabled
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"reboot":                 {Func: rpcReboot, Params: []string{"force"}},
@@ -992,6 +1036,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setNetworkSettings":     {Func: rpcSetNetworkSettings, Params: []string{"settings"}},
 	"renewDHCPLease":         {Func: rpcRenewDHCPLease},
 	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
+	"getKeyboardLedState":    {Func: rpcGetKeyboardLedState},
 	"absMouseReport":         {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
 	"relMouseReport":         {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
 	"wheelReport":            {Func: rpcWheelReport, Params: []string{"wheelY"}},
@@ -1053,8 +1098,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"setUsbDevices":          {Func: rpcSetUsbDevices, Params: []string{"devices"}},
 	"setUsbDeviceState":      {Func: rpcSetUsbDeviceState, Params: []string{"device", "enabled"}},
 	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
-	"getScrollSensitivity":   {Func: rpcGetScrollSensitivity},
-	"setScrollSensitivity":   {Func: rpcSetScrollSensitivity, Params: []string{"sensitivity"}},
+	"getKeyboardLayout":      {Func: rpcGetKeyboardLayout},
+	"setKeyboardLayout":      {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
 	"getKeyboardMacros":      {Func: getKeyboardMacros},
 	"setKeyboardMacros":      {Func: setKeyboardMacros, Params: []string{"params"}},
+	"getLocalLoopbackOnly":   {Func: rpcGetLocalLoopbackOnly},
+	"setLocalLoopbackOnly":   {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
 }

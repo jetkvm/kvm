@@ -1,7 +1,12 @@
-import { ExclamationTriangleIcon, CheckCircleIcon, InformationCircleIcon } from "@heroicons/react/24/outline";
-import { cx } from "@/cva.config";
+import {
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+} from "@heroicons/react/24/outline";
+
 import { Button } from "@/components/Button";
 import Modal from "@/components/Modal";
+import { cx } from "@/cva.config";
 
 type Variant = "danger" | "success" | "warning" | "info";
 
@@ -9,7 +14,7 @@ interface ConfirmDialogProps {
   open: boolean;
   onClose: () => void;
   title: string;
-  description: string;
+  description: React.ReactNode;
   variant?: Variant;
   confirmText?: string;
   cancelText?: string | null;
@@ -42,12 +47,15 @@ const variantConfig = {
     iconBgClass: "bg-blue-100",
     buttonTheme: "primary",
   },
-} as Record<Variant, {
+} as Record<
+  Variant,
+  {
     icon: React.ElementType;
     iconClass: string;
     iconBgClass: string;
     buttonTheme: "danger" | "primary" | "blank" | "light" | "lightDanger";
-}>;
+  }
+>;
 
 export function ConfirmDialog({
   open,
@@ -65,14 +73,19 @@ export function ConfirmDialog({
   return (
     <Modal open={open} onClose={onClose}>
       <div className="mx-auto max-w-xl px-4 transition-all duration-300 ease-in-out">
-        <div className="relative w-full overflow-hidden rounded-lg bg-white p-6 text-left align-middle shadow-xl transition-all dark:bg-slate-800 pointer-events-auto">
+        <div className="pointer-events-auto relative w-full overflow-hidden rounded-lg bg-white p-6 text-left align-middle shadow-xl transition-all dark:bg-slate-800">
           <div className="space-y-4">
             <div className="sm:flex sm:items-start">
-              <div className={cx("mx-auto flex size-12 shrink-0 items-center justify-center rounded-full sm:mx-0 sm:size-10", iconBgClass)}>
+              <div
+                className={cx(
+                  "mx-auto flex size-12 shrink-0 items-center justify-center rounded-full sm:mx-0 sm:size-10",
+                  iconBgClass,
+                )}
+              >
                 <Icon aria-hidden="true" className={cx("size-6", iconClass)} />
               </div>
               <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                <h2 className="text-lg font-bold leading-tight text-black dark:text-white">
+                <h2 className="text-lg leading-tight font-bold text-black dark:text-white">
                   {title}
                 </h2>
                 <div className="mt-2 text-sm leading-snug text-slate-600 dark:text-slate-400">
@@ -83,12 +96,7 @@ export function ConfirmDialog({
 
             <div className="flex justify-end gap-x-2">
               {cancelText && (
-                <Button
-                  size="SM"
-                  theme="blank"
-                  text={cancelText}
-                  onClick={onClose}
-                />
+                <Button size="SM" theme="blank" text={cancelText} onClick={onClose} />
               )}
               <Button
                 size="SM"
@@ -103,4 +111,4 @@ export function ConfirmDialog({
       </div>
     </Modal>
   );
-} 
+}

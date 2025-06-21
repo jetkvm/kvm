@@ -52,8 +52,9 @@ type ChangePasswordRequest struct {
 }
 
 type LocalDevice struct {
-	AuthMode *string `json:"authMode"`
-	DeviceID string  `json:"deviceId"`
+	AuthMode     *string `json:"authMode"`
+	DeviceID     string  `json:"deviceId"`
+	LoopbackOnly bool    `json:"loopbackOnly"`
 }
 
 type DeviceStatus struct {
@@ -532,7 +533,15 @@ func basicAuthProtectedMiddleware(requireDeveloperMode bool) gin.HandlerFunc {
 
 func RunWebServer() {
 	r := setupRouter()
-	err := r.Run(":80")
+
+	// Determine the binding address based on the config
+	bindAddress := ":80" // Default to all interfaces
+	if config.LocalLoopbackOnly {
+		bindAddress = "localhost:80" // Loopback only (both IPv4 and IPv6)
+	}
+
+	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
+	err := r.Run(bindAddress)
 	if err != nil {
 		panic(err)
 	}
@@ -540,8 +549,9 @@ func RunWebServer() {
 
 func handleDevice(c *gin.Context) {
 	response := LocalDevice{
-		AuthMode: &config.LocalAuthMode,
-		DeviceID: GetDeviceID(),
+		AuthMode:     &config.LocalAuthMode,
+		DeviceID:     GetDeviceID(),
+		LoopbackOnly: config.LocalLoopbackOnly,
 	}
 
 	c.JSON(http.StatusOK, response)

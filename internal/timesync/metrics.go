@@ -14,44 +14,44 @@ var (
 	)
 	metricTimeSyncCount = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_count",
+			Name: "jetkvm_timesync_total",
 			Help: "The number of times the timesync has been run",
 		},
 	)
 	metricTimeSyncSuccessCount = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_success_count",
+			Name: "jetkvm_timesync_success_total",
 			Help: "The number of times the timesync has been successful",
 		},
 	)
 	metricRTCUpdateCount = promauto.NewCounter( //nolint:unused
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_rtc_update_count",
+			Name: "jetkvm_timesync_rtc_update_total",
 			Help: "The number of times the RTC has been updated",
 		},
 	)
 	metricNtpTotalSuccessCount = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_ntp_total_success_count",
+			Name: "jetkvm_timesync_ntp_total_success_total",
 			Help: "The total number of successful NTP requests",
 		},
 	)
 	metricNtpTotalRequestCount = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_ntp_total_request_count",
+			Name: "jetkvm_timesync_ntp_total_request_total",
 			Help: "The total number of NTP requests sent",
 		},
 	)
 	metricNtpSuccessCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_ntp_success_count",
+			Name: "jetkvm_timesync_ntp_success_total",
 			Help: "The number of successful NTP requests",
 		},
 		[]string{"url"},
 	)
 	metricNtpRequestCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_ntp_request_count",
+			Name: "jetkvm_timesync_ntp_request_total",
 			Help: "The number of NTP requests sent to the server",
 		},
 		[]string{"url"},
@@ -83,39 +83,39 @@ var (
 
 	metricHttpTotalSuccessCount = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_http_total_success_count",
+			Name: "jetkvm_timesync_http_total_success_total",
 			Help: "The total number of successful HTTP requests",
 		},
 	)
 	metricHttpTotalRequestCount = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_http_total_request_count",
+			Name: "jetkvm_timesync_http_total_request_total",
 			Help: "The total number of HTTP requests sent",
 		},
 	)
 	metricHttpTotalCancelCount = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_http_total_cancel_count",
+			Name: "jetkvm_timesync_http_total_cancel_total",
 			Help: "The total number of HTTP requests cancelled",
 		},
 	)
 	metricHttpSuccessCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_http_success_count",
+			Name: "jetkvm_timesync_http_success_total",
 			Help: "The number of successful HTTP requests",
 		},
 		[]string{"url"},
 	)
 	metricHttpRequestCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_http_request_count",
+			Name: "jetkvm_timesync_http_request_total",
 			Help: "The number of HTTP requests sent to the server",
 		},
 		[]string{"url"},
 	)
 	metricHttpCancelCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "jetkvm_timesync_http_cancel_count",
+			Name: "jetkvm_timesync_http_cancel_total",
 			Help: "The number of HTTP requests cancelled",
 		},
 		[]string{"url"},

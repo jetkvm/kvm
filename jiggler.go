@@ -15,9 +15,7 @@ func rpcGetJigglerState() bool {
 	return jigglerEnabled
 }
 
-func init() {
-	ensureConfigLoaded()
-
+func initJiggler() {
 	go runJiggler()
 }
 

@@ -13,8 +13,6 @@ import { DEVICE_API } from "@/ui.config";
 
 import api from "../api";
 
-
-
 export interface DeviceStatus {
   isSetup: boolean;
 }
@@ -43,19 +41,24 @@ export default function WelcomeRoute() {
       <div className="grid min-h-screen">
         {imageLoaded && (
           <Container>
-            <div className="flex items-center justify-center w-full h-full isolate">
+            <div className="isolate flex h-full w-full items-center justify-center">
               <div className="max-w-3xl text-center">
                 <div className="space-y-8">
                   <div className="space-y-4">
-                    <div className="flex items-center justify-center opacity-0 animate-fadeIn animation-delay-1000">
-                      <img src={LogoWhiteIcon} alt="JetKVM Logo" className="h-[32px] hidden dark:block" />
-                      <img src={LogoBlueIcon} alt="JetKVM Logo" className="h-[32px] dark:hidden" />
+                    <div className="animate-fadeIn animation-delay-1000 flex items-center justify-center opacity-0">
+                      <img
+                        src={LogoWhiteIcon}
+                        alt="JetKVM Logo"
+                        className="hidden h-[32px] dark:block"
+                      />
+                      <img
+                        src={LogoBlueIcon}
+                        alt="JetKVM Logo"
+                        className="h-[32px] dark:hidden"
+                      />
                     </div>
 
-                    <div
-                      className="space-y-1 opacity-0 animate-fadeIn"
-                      style={{ animationDelay: "1500ms" }}
-                    >
+                    <div className="animate-fadeIn animation-delay-1500 space-y-1 opacity-0">
                       <h1 className="text-4xl font-semibold text-black dark:text-white">
                         Welcome to JetKVM
                       </h1>
@@ -65,32 +68,29 @@ export default function WelcomeRoute() {
                     </div>
                   </div>
 
-                  <div className="!-mt-2 -ml-6 flex items-center justify-center">
+                  <div className="-mt-2! -ml-6 flex items-center justify-center">
                     <img
                       src={DeviceImage}
                       alt="JetKVM Device"
-                      className="animation-delay-0 max-w-md scale-[0.98] animate-fadeInScaleFloat opacity-0 transition-all duration-1000 ease-out"
+                      className="animation-delay-300 animate-fadeInScaleFloat max-w-md scale-[0.98] opacity-0 transition-all duration-1000 ease-out"
                     />
                   </div>
                 </div>
                 <div className="-mt-8 space-y-4">
                   <p
                     style={{ animationDelay: "2000ms" }}
-                    className="max-w-lg mx-auto text-lg opacity-0 animate-fadeIn text-slate-700 dark:text-slate-300"
+                    className="animate-fadeIn mx-auto max-w-lg text-lg text-slate-700 opacity-0 dark:text-slate-300"
                   >
                     JetKVM combines powerful hardware with intuitive software to provide a
                     seamless remote control experience.
                   </p>
-                  <div
-                    style={{ animationDelay: "2300ms" }}
-                    className="opacity-0 animate-fadeIn"
-                  >
+                  <div className="animate-fadeIn animation-delay-2300 opacity-0">
                     <LinkButton
                       size="LG"
                       theme="light"
                       text="Set up your JetKVM"
                       LeadingIcon={({ className }) => (
-                        <img src={LogoMark} className={cx(className, "mr-1.5 !h-5")} />
+                        <img src={LogoMark} className={cx(className, "mr-1.5 h-5!")} />
                       )}
                       textAlign="center"
                       to="/welcome/mode"

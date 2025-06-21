@@ -41,6 +41,9 @@ type UpdateStatus struct {
 	Remote                *UpdateMetadata `json:"remote"`
 	SystemUpdateAvailable bool            `json:"systemUpdateAvailable"`
 	AppUpdateAvailable    bool            `json:"appUpdateAvailable"`
+
+	// for backwards compatibility
+	Error string `json:"error,omitempty"`
 }
 
 const UpdateMetadataUrl = "https://api.jetkvm.com/releases"
@@ -489,52 +492,47 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 }
 
 func GetUpdateStatus(ctx context.Context, deviceId string, includePreRelease bool) (*UpdateStatus, error) {
+	updateStatus := &UpdateStatus{}
+
 	// Get local versions
 	systemVersionLocal, appVersionLocal, err := GetLocalVersion()
 	if err != nil {
-		return nil, fmt.Errorf("error getting local version: %w", err)
+		return updateStatus, fmt.Errorf("error getting local version: %w", err)
+	}
+	updateStatus.Local = &LocalMetadata{
+		AppVersion:    appVersionLocal.String(),
+		SystemVersion: systemVersionLocal.String(),
 	}
 
 	// Get remote metadata
 	remoteMetadata, err := fetchUpdateMetadata(ctx, deviceId, includePreRelease)
 	if err != nil {
-		return nil, fmt.Errorf("error checking for updates: %w", err)
+		return updateStatus, fmt.Errorf("error checking for updates: %w", err)
 	}
+	updateStatus.Remote = remoteMetadata
 
-	// Build local UpdateMetadata
-	localMetadata := &LocalMetadata{
-		AppVersion:    appVersionLocal.String(),
-		SystemVersion: systemVersionLocal.String(),
-	}
-
+	// Get remote versions
 	systemVersionRemote, err := semver.NewVersion(remoteMetadata.SystemVersion)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing remote system version: %w", err)
+		return updateStatus, fmt.Errorf("error parsing remote system version: %w", err)
 	}
 	appVersionRemote, err := semver.NewVersion(remoteMetadata.AppVersion)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing remote app version: %w, %s", err, remoteMetadata.AppVersion)
+		return updateStatus, fmt.Errorf("error parsing remote app version: %w, %s", err, remoteMetadata.AppVersion)
 	}
 
-	systemUpdateAvailable := systemVersionRemote.GreaterThan(systemVersionLocal)
-	appUpdateAvailable := appVersionRemote.GreaterThan(appVersionLocal)
+	updateStatus.SystemUpdateAvailable = systemVersionRemote.GreaterThan(systemVersionLocal)
+	updateStatus.AppUpdateAvailable = appVersionRemote.GreaterThan(appVersionLocal)
 
 	// Handle pre-release updates
 	isRemoteSystemPreRelease := systemVersionRemote.Prerelease() != ""
 	isRemoteAppPreRelease := appVersionRemote.Prerelease() != ""
 
 	if isRemoteSystemPreRelease && !includePreRelease {
-		systemUpdateAvailable = false
+		updateStatus.SystemUpdateAvailable = false
 	}
 	if isRemoteAppPreRelease && !includePreRelease {
-		appUpdateAvailable = false
-	}
-
-	updateStatus := &UpdateStatus{
-		Local:                 localMetadata,
-		Remote:                remoteMetadata,
-		SystemUpdateAvailable: systemUpdateAvailable,
-		AppUpdateAvailable:    appUpdateAvailable,
+		updateStatus.AppUpdateAvailable = false
 	}
 
 	return updateStatus, nil

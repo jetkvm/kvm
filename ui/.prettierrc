@@ -6,6 +6,7 @@
   "arrowParens": "avoid",
   "singleQuote": false,
   "plugins": ["prettier-plugin-tailwindcss"],
-  "tailwindFunctions": ["clsx"],
-  "printWidth": 90
+  "tailwindFunctions": ["clsx", "cx"],
+  "printWidth": 90,
+  "tailwindStylesheet": "./src/index.css"
 }
