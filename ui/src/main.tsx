@@ -17,7 +17,7 @@ import AdoptRoute from "@routes/adopt";
 import SignupRoute from "@routes/signup";
 import LoginRoute from "@routes/login";
 import SetupRoute from "@routes/devices.$id.setup";
-import DevicesRoute, { loader as DeviceListLoader } from "@routes/devices";
+import DevicesRoute from "@routes/devices";
 import DeviceRoute, { LocalDevice } from "@routes/devices.$id";
 import Card from "@components/Card";
 import DevicesAlreadyAdopted from "@routes/devices.already-adopted";
@@ -32,11 +32,12 @@ import { CLOUD_API, DEVICE_API } from "./ui.config";
 import OtherSessionRoute from "./routes/devices.$id.other-session";
 import MountRoute from "./routes/devices.$id.mount";
 import * as SettingsRoute from "./routes/devices.$id.settings";
-import SettingsKeyboardMouseRoute from "./routes/devices.$id.settings.mouse";
+import SettingsMouseRoute from "./routes/devices.$id.settings.mouse";
+import SettingsKeyboardRoute from "./routes/devices.$id.settings.keyboard";
 import api from "./api";
 import * as SettingsIndexRoute from "./routes/devices.$id.settings._index";
 import SettingsAdvancedRoute from "./routes/devices.$id.settings.advanced";
-import * as SettingsAccessIndexRoute from "./routes/devices.$id.settings.access._index";
+import SettingsAccessIndexRoute from "./routes/devices.$id.settings.access._index";
 import SettingsHardwareRoute from "./routes/devices.$id.settings.hardware";
 import SettingsVideoRoute from "./routes/devices.$id.settings.video";
 import SettingsAppearanceRoute from "./routes/devices.$id.settings.appearance";
@@ -147,7 +148,11 @@ if (isOnDevice) {
             },
             {
               path: "mouse",
-              element: <SettingsKeyboardMouseRoute />,
+              element: <SettingsMouseRoute />,
+            },
+            {
+              path: "keyboard",
+              element: <SettingsKeyboardRoute />,
             },
             {
               path: "advanced",
@@ -166,7 +171,7 @@ if (isOnDevice) {
               children: [
                 {
                   index: true,
-                  element: <SettingsAccessIndexRoute.default />,
+                  element: <SettingsAccessIndexRoute />,
                   loader: SettingsAccessIndexRoute.loader,
                 },
                 {
@@ -276,7 +281,11 @@ if (isOnDevice) {
                     },
                     {
                       path: "mouse",
-                      element: <SettingsKeyboardMouseRoute />,
+                      element: <SettingsMouseRoute />,
+                    },
+                    {
+                      path: "keyboard",
+                      element: <SettingsKeyboardRoute />,
                     },
                     {
                       path: "advanced",
@@ -287,11 +296,15 @@ if (isOnDevice) {
                       element: <SettingsHardwareRoute />,
                     },
                     {
+                      path: "network",
+                      element: <SettingsNetworkRoute />,
+                    },
+                    {
                       path: "access",
                       children: [
                         {
                           index: true,
-                          element: <SettingsAccessIndexRoute.default />,
+                          element: <SettingsAccessIndexRoute />,
                           loader: SettingsAccessIndexRoute.loader,
                         },
                         {
@@ -341,7 +354,11 @@ if (isOnDevice) {
               loader: DeviceIdRename.loader,
               action: DeviceIdRename.action,
             },
-            { path: "devices", element: <DevicesRoute />, loader: DeviceListLoader },
+            {
+              path: "devices",
+              element: <DevicesRoute />,
+              loader: DevicesRoute.loader
+            },
           ],
         },
       ],
@@ -356,7 +373,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <Notifications
         toastOptions={{
           className:
-            "rounded border-none bg-white text-black shadow outline outline-1 outline-slate-800/30",
+            "rounded-sm border-none bg-white text-black shadow-sm outline-1 outline-slate-800/30",
         }}
         max={2}
       />

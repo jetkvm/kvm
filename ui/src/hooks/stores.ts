@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { MAX_STEPS_PER_MACRO, MAX_TOTAL_MACROS, MAX_KEYS_PER_STEP } from "@/constants/macros";
+
+import {
+  MAX_STEPS_PER_MACRO,
+  MAX_TOTAL_MACROS,
+  MAX_KEYS_PER_STEP,
+} from "@/constants/macros";
 
 // Define the JsonRpc types for better type checking
 interface JsonRpcResponse {
@@ -278,6 +283,8 @@ export const useVideoStore = create<VideoState>(set => ({
   },
 }));
 
+export type KeyboardLedSync = "auto" | "browser" | "host";
+
 interface SettingsState {
   isCursorHidden: boolean;
   setCursorVisibility: (enabled: boolean) => void;
@@ -297,6 +304,29 @@ interface SettingsState {
 
   backlightSettings: BacklightSettings;
   setBacklightSettings: (settings: BacklightSettings) => void;
+
+  keyboardLayout: string;
+  setKeyboardLayout: (layout: string) => void;
+
+  actionBarCtrlAltDel: boolean;
+  setActionBarCtrlAltDel: (enabled: boolean) => void;
+
+  keyboardLedSync: KeyboardLedSync;
+  setKeyboardLedSync: (sync: KeyboardLedSync) => void;
+
+  scrollThrottling: number;
+  setScrollThrottling: (value: number) => void;
+
+  showPressedKeys: boolean;
+  setShowPressedKeys: (show: boolean) => void;
+
+  // Video enhancement settings
+  videoSaturation: number;
+  setVideoSaturation: (value: number) => void;
+  videoBrightness: number;
+  setVideoBrightness: (value: number) => void;
+  videoContrast: number;
+  setVideoContrast: (value: number) => void;
 }
 
 export const useSettingsStore = create(
@@ -316,8 +346,7 @@ export const useSettingsStore = create(
       setDeveloperMode: enabled => set({ developerMode: enabled }),
 
       displayRotation: "270",
-      setDisplayRotation: (rotation: string) =>
-        set({ displayRotation: rotation }),
+      setDisplayRotation: (rotation: string) => set({ displayRotation: rotation }),
 
       backlightSettings: {
         max_brightness: 100,
@@ -326,6 +355,29 @@ export const useSettingsStore = create(
       },
       setBacklightSettings: (settings: BacklightSettings) =>
         set({ backlightSettings: settings }),
+
+      keyboardLayout: "en-US",
+      setKeyboardLayout: layout => set({ keyboardLayout: layout }),
+
+      actionBarCtrlAltDel: false,
+      setActionBarCtrlAltDel: enabled => set({ actionBarCtrlAltDel: enabled }),
+
+      keyboardLedSync: "auto",
+      setKeyboardLedSync: sync => set({ keyboardLedSync: sync }),
+
+      scrollThrottling: 0,
+      setScrollThrottling: value => set({ scrollThrottling: value }),
+
+      showPressedKeys: true,
+      setShowPressedKeys: show => set({ showPressedKeys: show }),
+
+      // Video enhancement settings with default values (1.0 = normal)
+      videoSaturation: 1.0,
+      setVideoSaturation: value => set({ videoSaturation: value }),
+      videoBrightness: 1.0,
+      setVideoBrightness: value => set({ videoBrightness: value }),
+      videoContrast: 1.0,
+      setVideoContrast: value => set({ videoContrast: value }),
     }),
     {
       name: "settings",
@@ -333,78 +385,6 @@ export const useSettingsStore = create(
     },
   ),
 );
-
-export interface DeviceSettingsState {
-  trackpadSensitivity: number;
-  mouseSensitivity: number;
-  clampMin: number;
-  clampMax: number;
-  blockDelay: number;
-  trackpadThreshold: number;
-  scrollSensitivity: "low" | "default" | "high";
-  setScrollSensitivity: (sensitivity: DeviceSettingsState["scrollSensitivity"]) => void;
-}
-
-export const useDeviceSettingsStore = create<DeviceSettingsState>(set => ({
-  trackpadSensitivity: 3.0,
-  mouseSensitivity: 5.0,
-  clampMin: -8,
-  clampMax: 8,
-  blockDelay: 25,
-  trackpadThreshold: 10,
-
-  scrollSensitivity: "default",
-  setScrollSensitivity: sensitivity => {
-    const wheelSettings: Record<
-      DeviceSettingsState["scrollSensitivity"],
-      {
-        trackpadSensitivity: DeviceSettingsState["trackpadSensitivity"];
-        mouseSensitivity: DeviceSettingsState["mouseSensitivity"];
-        clampMin: DeviceSettingsState["clampMin"];
-        clampMax: DeviceSettingsState["clampMax"];
-        blockDelay: DeviceSettingsState["blockDelay"];
-        trackpadThreshold: DeviceSettingsState["trackpadThreshold"];
-      }
-    > = {
-      low: {
-        trackpadSensitivity: 2.0,
-        mouseSensitivity: 3.0,
-        clampMin: -6,
-        clampMax: 6,
-        blockDelay: 30,
-        trackpadThreshold: 10,
-      },
-      default: {
-        trackpadSensitivity: 3.0,
-        mouseSensitivity: 5.0,
-        clampMin: -8,
-        clampMax: 8,
-        blockDelay: 25,
-        trackpadThreshold: 10,
-      },
-      high: {
-        trackpadSensitivity: 4.0,
-        mouseSensitivity: 6.0,
-        clampMin: -9,
-        clampMax: 9,
-        blockDelay: 20,
-        trackpadThreshold: 10,
-      },
-    };
-
-    const settings = wheelSettings[sensitivity];
-
-    return set({
-      trackpadSensitivity: settings.trackpadSensitivity,
-      trackpadThreshold: settings.trackpadThreshold,
-      mouseSensitivity: settings.mouseSensitivity,
-      clampMin: settings.clampMin,
-      clampMax: settings.clampMax,
-      blockDelay: settings.blockDelay,
-      scrollSensitivity: sensitivity,
-    });
-  },
-}));
 
 export interface RemoteVirtualMediaState {
   source: "WebRTC" | "HTTP" | "Storage" | null;
@@ -456,6 +436,21 @@ export const useMountMediaStore = create<MountMediaState>(set => ({
   setErrorMessage: message => set({ errorMessage: message }),
 }));
 
+export interface KeyboardLedState {
+  num_lock: boolean;
+  caps_lock: boolean;
+  scroll_lock: boolean;
+  compose: boolean;
+  kana: boolean;
+};
+const defaultKeyboardLedState: KeyboardLedState = {
+  num_lock: false,
+  caps_lock: false,
+  scroll_lock: false,
+  compose: false,
+  kana: false,
+};
+
 export interface HidState {
   activeKeys: number[];
   activeModifiers: number[];
@@ -474,17 +469,17 @@ export interface HidState {
   altGrCtrlTime: number; // _altGrCtrlTime
   setAltGrCtrlTime: (time: number) => void;
 
-  isNumLockActive: boolean;
-  setIsNumLockActive: (enabled: boolean) => void;
+  keyboardLedState?: KeyboardLedState;
+  setKeyboardLedState: (state: KeyboardLedState) => void;
+  setIsNumLockActive: (active: boolean) => void;
+  setIsCapsLockActive: (active: boolean) => void;
+  setIsScrollLockActive: (active: boolean) => void;
 
-  isScrollLockActive: boolean;
-  setIsScrollLockActive: (enabled: boolean) => void;
+  keyboardLedStateSyncAvailable: boolean;
+  setKeyboardLedStateSyncAvailable: (available: boolean) => void;
 
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
-
-  isCapsLockActive: boolean;
-  setIsCapsLockActive: (enabled: boolean) => void;
 
   isPasteModeEnabled: boolean;
   setPasteModeEnabled: (enabled: boolean) => void;
@@ -493,7 +488,7 @@ export interface HidState {
   setUsbState: (state: HidState["usbState"]) => void;
 }
 
-export const useHidStore = create<HidState>(set => ({
+export const useHidStore = create<HidState>((set, get) => ({
   activeKeys: [],
   activeModifiers: [],
   updateActiveKeysAndModifiers: ({ keys, modifiers }) => {
@@ -509,17 +504,28 @@ export const useHidStore = create<HidState>(set => ({
   altGrCtrlTime: 0,
   setAltGrCtrlTime: time => set({ altGrCtrlTime: time }),
 
-  isNumLockActive: false,
-  setIsNumLockActive: enabled => set({ isNumLockActive: enabled }),
+  setKeyboardLedState: ledState => set({ keyboardLedState: ledState }),
+  setIsNumLockActive: active => {
+    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
+    keyboardLedState.num_lock = active;
+    set({ keyboardLedState });
+  },
+  setIsCapsLockActive: active => {
+    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
+    keyboardLedState.caps_lock = active;
+    set({ keyboardLedState });
+  },
+  setIsScrollLockActive: active => {
+    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
+    keyboardLedState.scroll_lock = active;
+    set({ keyboardLedState });
+  },
 
-  isScrollLockActive: false,
-  setIsScrollLockActive: enabled => set({ isScrollLockActive: enabled }),
+  keyboardLedStateSyncAvailable: false,
+  setKeyboardLedStateSyncAvailable: available => set({ keyboardLedStateSyncAvailable: available }),
 
   isVirtualKeyboardEnabled: false,
   setVirtualKeyboardEnabled: enabled => set({ isVirtualKeyboardEnabled: enabled }),
-
-  isCapsLockActive: false,
-  setIsCapsLockActive: enabled => set({ isCapsLockActive: enabled }),
 
   isPasteModeEnabled: false,
   setPasteModeEnabled: enabled => set({ isPasteModeEnabled: enabled }),
@@ -571,12 +577,12 @@ export interface UpdateState {
   setOtaState: (state: UpdateState["otaState"]) => void;
   setUpdateDialogHasBeenMinimized: (hasBeenMinimized: boolean) => void;
   modalView:
-  | "loading"
-  | "updating"
-  | "upToDate"
-  | "updateAvailable"
-  | "updateCompleted"
-  | "error";
+    | "loading"
+    | "updating"
+    | "upToDate"
+    | "updateAvailable"
+    | "updateCompleted"
+    | "error";
   setModalView: (view: UpdateState["modalView"]) => void;
   setUpdateErrorMessage: (errorMessage: string) => void;
   updateErrorMessage: string | null;
@@ -640,12 +646,12 @@ export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
 
 interface LocalAuthModalState {
   modalView:
-  | "createPassword"
-  | "deletePassword"
-  | "updatePassword"
-  | "creationSuccess"
-  | "deleteSuccess"
-  | "updateSuccess";
+    | "createPassword"
+    | "deletePassword"
+    | "updatePassword"
+    | "creationSuccess"
+    | "deleteSuccess"
+    | "updateSuccess";
   setModalView: (view: LocalAuthModalState["modalView"]) => void;
 }
 
@@ -726,12 +732,23 @@ export interface NetworkState {
   setDhcpLeaseExpiry: (expiry: Date) => void;
 }
 
-
-export type IPv6Mode = "disabled" | "slaac" | "dhcpv6" | "slaac_and_dhcpv6" | "static" | "link_local" | "unknown";
+export type IPv6Mode =
+  | "disabled"
+  | "slaac"
+  | "dhcpv6"
+  | "slaac_and_dhcpv6"
+  | "static"
+  | "link_local"
+  | "unknown";
 export type IPv4Mode = "disabled" | "static" | "dhcp" | "unknown";
 export type LLDPMode = "disabled" | "basic" | "all" | "unknown";
 export type mDNSMode = "disabled" | "auto" | "ipv4_only" | "ipv6_only" | "unknown";
-export type TimeSyncMode = "ntp_only" | "ntp_and_http" | "http_only" | "custom" | "unknown";
+export type TimeSyncMode =
+  | "ntp_only"
+  | "ntp_and_http"
+  | "http_only"
+  | "custom"
+  | "unknown";
 
 export interface NetworkSettings {
   hostname: string;
@@ -756,7 +773,7 @@ export const useNetworkStateStore = create<NetworkState>((set, get) => ({
 
     lease.lease_expiry = expiry;
     set({ dhcp_lease: lease });
-  }
+  },
 }));
 
 export interface KeySequenceStep {
@@ -778,8 +795,20 @@ export interface MacrosState {
   initialized: boolean;
   loadMacros: () => Promise<void>;
   saveMacros: (macros: KeySequence[]) => Promise<void>;
-  sendFn: ((method: string, params: unknown, callback?: ((resp: JsonRpcResponse) => void) | undefined) => void) | null;
-  setSendFn: (sendFn: ((method: string, params: unknown, callback?: ((resp: JsonRpcResponse) => void) | undefined) => void)) => void;
+  sendFn:
+    | ((
+        method: string,
+        params: unknown,
+        callback?: ((resp: JsonRpcResponse) => void) | undefined,
+      ) => void)
+    | null;
+  setSendFn: (
+    sendFn: (
+      method: string,
+      params: unknown,
+      callback?: ((resp: JsonRpcResponse) => void) | undefined,
+    ) => void,
+  ) => void;
 }
 
 export const generateMacroId = () => {
@@ -792,7 +821,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
   initialized: false,
   sendFn: null,
 
-  setSendFn: (sendFn) => {
+  setSendFn: sendFn => {
     set({ sendFn });
   },
 
@@ -809,7 +838,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
 
     try {
       await new Promise<void>((resolve, reject) => {
-        sendFn("getKeyboardMacros", {}, (response) => {
+        sendFn("getKeyboardMacros", {}, response => {
           if (response.error) {
             console.error("Error loading macros:", response.error);
             reject(new Error(response.error.message));
@@ -829,7 +858,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
 
           set({
             macros: sortedMacros,
-            initialized: true
+            initialized: true,
           });
 
           resolve();
@@ -856,15 +885,23 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
 
     for (const macro of macros) {
       if (macro.steps.length > MAX_STEPS_PER_MACRO) {
-        console.error(`Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`);
-        throw new Error(`Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`);
+        console.error(
+          `Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`,
+        );
+        throw new Error(
+          `Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`,
+        );
       }
 
       for (let i = 0; i < macro.steps.length; i++) {
         const step = macro.steps[i];
         if (step.keys && step.keys.length > MAX_KEYS_PER_STEP) {
-          console.error(`Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`);
-          throw new Error(`Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`);
+          console.error(
+            `Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`,
+          );
+          throw new Error(
+            `Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`,
+          );
         }
       }
     }
@@ -874,20 +911,25 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
     try {
       const macrosWithSortOrder = macros.map((macro, index) => ({
         ...macro,
-        sortOrder: macro.sortOrder !== undefined ? macro.sortOrder : index
+        sortOrder: macro.sortOrder !== undefined ? macro.sortOrder : index,
       }));
 
-      const response = await new Promise<JsonRpcResponse>((resolve) => {
-        sendFn("setKeyboardMacros", { params: { macros: macrosWithSortOrder } }, (response) => {
-          resolve(response);
-        });
+      const response = await new Promise<JsonRpcResponse>(resolve => {
+        sendFn(
+          "setKeyboardMacros",
+          { params: { macros: macrosWithSortOrder } },
+          response => {
+            resolve(response);
+          },
+        );
       });
 
       if (response.error) {
         console.error("Error saving macros:", response.error);
-        const errorMessage = typeof response.error.data === 'string'
-          ? response.error.data
-          : response.error.message || "Failed to save macros";
+        const errorMessage =
+          typeof response.error.data === "string"
+            ? response.error.data
+            : response.error.message || "Failed to save macros";
         throw new Error(errorMessage);
       }
 
@@ -899,5 +941,5 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
     } finally {
       set({ loading: false });
     }
-  }
+  },
 }));

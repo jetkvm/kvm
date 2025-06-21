@@ -56,7 +56,7 @@ export default function LoginLocalRoute() {
   return (
     <>
       <GridBackground />
-      <div className="grid min-h-screen grid-rows-layout">
+      <div className="grid min-h-screen grid-rows-(--grid-layout)">
         <SimpleNavbar />
         <Container>
           <div className="isolate flex h-full w-full items-center justify-center">

@@ -3,18 +3,18 @@ import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
 import { LuPlay } from "react-icons/lu";
+import { BsMouseFill } from "react-icons/bs";
 
 import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import Card, { GridCard } from "@components/Card";
-import { BsMouseFill } from "react-icons/bs";
 
 interface OverlayContentProps {
-  children: React.ReactNode;
+  readonly children: React.ReactNode;
 }
 function OverlayContent({ children }: OverlayContentProps) {
   return (
-    <GridCard cardClassName="h-full pointer-events-auto !outline-none">
+    <GridCard cardClassName="h-full pointer-events-auto outline-hidden!">
       <div className="flex h-full w-full flex-col items-center justify-center rounded-md border border-slate-800/30 dark:border-slate-300/20">
         {children}
       </div>
@@ -23,7 +23,7 @@ function OverlayContent({ children }: OverlayContentProps) {
 }
 
 interface LoadingOverlayProps {
-  show: boolean;
+  readonly show: boolean;
 }
 
 export function LoadingVideoOverlay({ show }: LoadingOverlayProps) {
@@ -57,8 +57,8 @@ export function LoadingVideoOverlay({ show }: LoadingOverlayProps) {
 }
 
 interface LoadingConnectionOverlayProps {
-  show: boolean;
-  text: string;
+  readonly show: boolean;
+  readonly text: string;
 }
 export function LoadingConnectionOverlay({ show, text }: LoadingConnectionOverlayProps) {
   return (
@@ -91,8 +91,8 @@ export function LoadingConnectionOverlay({ show, text }: LoadingConnectionOverla
 }
 
 interface ConnectionErrorOverlayProps {
-  show: boolean;
-  setupPeerConnection: () => Promise<void>;
+  readonly show: boolean;
+  readonly setupPeerConnection: () => Promise<void>;
 }
 
 export function ConnectionFailedOverlay({
@@ -153,7 +153,7 @@ export function ConnectionFailedOverlay({
 }
 
 interface PeerConnectionDisconnectedOverlay {
-  show: boolean;
+  readonly show: boolean;
 }
 
 export function PeerConnectionDisconnectedOverlay({
@@ -207,8 +207,8 @@ export function PeerConnectionDisconnectedOverlay({
 }
 
 interface HDMIErrorOverlayProps {
-  show: boolean;
-  hdmiState: string;
+  readonly show: boolean;
+  readonly hdmiState: string;
 }
 
 export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
@@ -242,8 +242,8 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                           Ensure source device is powered on and outputting a signal
                         </li>
                         <li>
-                          If using an adapter, ensure it&apos;s compatible and
-                          functioning correctly
+                          If using an adapter, ensure it&apos;s compatible and functioning
+                          correctly
                         </li>
                       </ul>
                     </div>
@@ -310,8 +310,8 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
 }
 
 interface NoAutoplayPermissionsOverlayProps {
-  show: boolean;
-  onPlayClick: () => void;
+  readonly show: boolean;
+  readonly onPlayClick: () => void;
 }
 
 export function NoAutoplayPermissionsOverlay({
@@ -361,7 +361,7 @@ export function NoAutoplayPermissionsOverlay({
 }
 
 interface PointerLockBarProps {
-  show: boolean;
+  readonly show: boolean;
 }
 
 export function PointerLockBar({ show }: PointerLockBarProps) {
@@ -369,15 +369,15 @@ export function PointerLockBar({ show }: PointerLockBarProps) {
     <AnimatePresence mode="wait">
       {show ? (
         <motion.div
-          className="absolute -top-[36px] left-0 right-0 z-20 bg-white"
-          initial={{ y: 20, opacity: 0, zIndex: 0 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ y: 43, zIndex: 0 }}
+          className="flex w-full items-center justify-between bg-transparent"
+          initial={{ opacity: 0, zIndex: 0 }}
+          animate={{ opacity: 1, zIndex: 20 }}
+          exit={{ opacity: 0, zIndex: 0 }}
           transition={{ duration: 0.5, ease: "easeInOut", delay: 0.5 }}
         >
           <div>
-            <Card className="rounded-b-none shadow-none !outline-0">
-              <div className="flex items-center justify-between border border-slate-800/50 px-4 py-2 outline-0 backdrop-blur-sm dark:border-slate-300/20 dark:bg-slate-800">
+            <Card className="rounded-b-none shadow-none outline-0!">
+              <div className="flex items-center justify-between border border-slate-800/50 px-4 py-2 outline-0 backdrop-blur-xs dark:border-slate-300/20 dark:bg-slate-800">
                 <div className="flex items-center space-x-2">
                   <BsMouseFill className="h-4 w-4 text-blue-700 dark:text-blue-500" />
                   <span className="text-sm text-black dark:text-white">

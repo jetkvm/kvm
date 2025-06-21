@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuCornerDownLeft } from "react-icons/lu";
 import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
 import { useClose } from "@headlessui/react";
@@ -8,13 +8,20 @@ import { GridCard } from "@components/Card";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useHidStore, useRTCStore, useUiStore } from "@/hooks/stores";
-import { chars, keys, modifiers } from "@/keyboardMappings";
+import { useHidStore, useRTCStore, useUiStore, useSettingsStore } from "@/hooks/stores";
+import { keys, modifiers } from "@/keyboardMappings";
+import { layouts, chars } from "@/keyboardLayouts";
 import notifications from "@/notifications";
 
 const hidKeyboardPayload = (keys: number[], modifier: number) => {
   return { keys, modifier };
 };
+
+const modifierCode = (shift?: boolean, altRight?: boolean) => {
+  return (shift ? modifiers["ShiftLeft"] : 0)
+       | (altRight ? modifiers["AltRight"] : 0)
+}
+const noModifier = 0
 
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -27,6 +34,25 @@ export default function PasteModal() {
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
   const close = useClose();
 
+  const keyboardLayout = useSettingsStore(state => state.keyboardLayout);
+  const setKeyboardLayout = useSettingsStore(
+    state => state.setKeyboardLayout,
+  );
+
+  // this ensures we always get the original en_US if it hasn't been set yet
+  const safeKeyboardLayout = useMemo(() => {
+    if (keyboardLayout && keyboardLayout.length > 0)
+      return keyboardLayout;
+    return "en_US";
+  }, [keyboardLayout]);
+
+  useEffect(() => {
+    send("getKeyboardLayout", {}, resp => {
+      if ("error" in resp) return;
+      setKeyboardLayout(resp.result as string);
+    });
+  }, [send, setKeyboardLayout]);
+
   const onCancelPasteMode = useCallback(() => {
     setPasteMode(false);
     setDisableVideoFocusTrap(false);
@@ -37,33 +63,48 @@ export default function PasteModal() {
     setPasteMode(false);
     setDisableVideoFocusTrap(false);
     if (rpcDataChannel?.readyState !== "open" || !TextAreaRef.current) return;
-
+    if (!safeKeyboardLayout) return;
+    if (!chars[safeKeyboardLayout]) return;
     const text = TextAreaRef.current.value;
 
     try {
       for (const char of text) {
-        const { key, shift } = chars[char] ?? {};
+        const { key, shift, altRight, deadKey, accentKey } = chars[safeKeyboardLayout][char]
         if (!key) continue;
 
-        await new Promise<void>((resolve, reject) => {
-          send(
-            "keyboardReport",
-            hidKeyboardPayload([keys[key]], shift ? modifiers["ShiftLeft"] : 0),
-            params => {
-              if ("error" in params) return reject(params.error);
-              send("keyboardReport", hidKeyboardPayload([], 0), params => {
+        const keyz = [ keys[key] ];
+        const modz = [ modifierCode(shift, altRight) ];
+
+        if (deadKey) {
+            keyz.push(keys["Space"]);
+            modz.push(noModifier);
+        }
+        if (accentKey) {
+            keyz.unshift(keys[accentKey.key])
+            modz.unshift(modifierCode(accentKey.shift, accentKey.altRight))
+        }
+
+        for (const [index, kei] of keyz.entries()) {
+          await new Promise<void>((resolve, reject) => {
+            send(
+              "keyboardReport",
+              hidKeyboardPayload([kei], modz[index]),
+              params => {
                 if ("error" in params) return reject(params.error);
-                resolve();
-              });
-            },
-          );
-        });
+                send("keyboardReport", hidKeyboardPayload([], 0), params => {
+                  if ("error" in params) return reject(params.error);
+                  resolve();
+                });
+              },
+            );
+          });
+        }
       }
     } catch (error) {
       console.error(error);
       notifications.error("Failed to paste text");
     }
-  }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode]);
+  }, [rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteMode, safeKeyboardLayout]);
 
   useEffect(() => {
     if (TextAreaRef.current) {
@@ -74,7 +115,7 @@ export default function PasteModal() {
   return (
     <GridCard>
       <div className="space-y-4 p-4 py-3">
-        <div className="grid h-full grid-rows-headerBody">
+        <div className="grid h-full grid-rows-(--grid-headerBody)">
           <div className="h-full space-y-4">
             <div className="space-y-4">
               <SettingsPageHeader
@@ -83,14 +124,14 @@ export default function PasteModal() {
               />
 
               <div
-                className="animate-fadeIn space-y-2 opacity-0"
+                className="animate-fadeIn opacity-0 space-y-2"
                 style={{
                   animationDuration: "0.7s",
                   animationDelay: "0.1s",
                 }}
               >
                 <div>
-                  <div className="w-full" onKeyUp={e => e.stopPropagation()}>
+                  <div className="w-full" onKeyUp={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
                     <TextAreaWithLabel
                       ref={TextAreaRef}
                       label="Paste from host"
@@ -113,7 +154,7 @@ export default function PasteModal() {
                             // @ts-expect-error TS doesn't recognize Intl.Segmenter in some environments
                             [...new Intl.Segmenter().segment(value)]
                               .map(x => x.segment)
-                              .filter(char => !chars[char]),
+                              .filter(char => !chars[safeKeyboardLayout][char]),
                           ),
                         ];
 
@@ -132,12 +173,17 @@ export default function PasteModal() {
                     )}
                   </div>
                 </div>
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Sending text using keyboard layout: {layouts[safeKeyboardLayout]}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         </div>
         <div
-          className="flex animate-fadeIn items-center justify-end gap-x-2 opacity-0"
+          className="flex animate-fadeIn opacity-0 items-center justify-end gap-x-2"
           style={{
             animationDuration: "0.7s",
             animationDelay: "0.2s",

@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"os"
@@ -55,18 +56,23 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 			return
 		}
 		if msg.IsString {
-			var size TerminalSize
-			err := json.Unmarshal([]byte(msg.Data), &size)
-			if err == nil {
-				err = pty.Setsize(ptmx, &pty.Winsize{
-					Rows: uint16(size.Rows),
-					Cols: uint16(size.Cols),
-				})
+			maybeJson := bytes.TrimSpace(msg.Data)
+			// Cheap check to see if this resembles JSON
+			if len(maybeJson) > 1 && maybeJson[0] == '{' && maybeJson[len(maybeJson)-1] == '}' {
+				var size TerminalSize
+				err := json.Unmarshal(maybeJson, &size)
 				if err == nil {
-					return
+					err = pty.Setsize(ptmx, &pty.Winsize{
+						Rows: uint16(size.Rows),
+						Cols: uint16(size.Cols),
+					})
+					if err == nil {
+						scopedLogger.Info().Int("rows", size.Rows).Int("cols", size.Cols).Msg("Set terminal size")
+						return
+					}
 				}
+				scopedLogger.Warn().Err(err).Msg("Failed to parse terminal size")
 			}
-			scopedLogger.Warn().Err(err).Msg("Failed to parse terminal size")
 		}
 		_, err := ptmx.Write(msg.Data)
 		if err != nil {

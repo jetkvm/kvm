@@ -22,7 +22,7 @@ const ToastContent = ({
   <Card
     className={`${
       t.visible ? "animate-enter" : "animate-leave"
-    } pointer-events-auto z-30 w-full max-w-sm !shadow-xl`}
+    } pointer-events-auto z-30 w-full max-w-sm shadow-xl!`}
   >
     <div className="flex items-center gap-x-2 p-2.5 px-2">
       {icon}

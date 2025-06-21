@@ -53,7 +53,7 @@ func startFFmpeg() (cmd *exec.Cmd, err error) {
 	return
 }
 
-func StartNtpAudioServer(handleClient func(net.Conn)) {
+func StartRtpAudioServer(handleClient func(net.Conn)) {
 	scopedLogger := nativeLogger.With().
 		Logger()
 

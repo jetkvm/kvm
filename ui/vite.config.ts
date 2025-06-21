@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
+import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 
@@ -16,7 +17,11 @@ export default defineConfig(({ mode, command }) => {
   const { JETKVM_PROXY_URL, USE_SSL } = process.env;
   const useSSL = USE_SSL === "true";
 
-  const plugins = [tsconfigPaths(), react()];
+  const plugins = [
+    tailwindcss(),
+    tsconfigPaths(),
+    react()
+  ];
   if (useSSL) {
     plugins.push(basicSsl());
   }

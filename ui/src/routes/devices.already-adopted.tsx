@@ -8,7 +8,7 @@ export default function DevicesAlreadyAdopted() {
     <>
       <GridBackground />
 
-      <div className="grid min-h-screen grid-rows-layout">
+      <div className="grid min-h-screen grid-rows-(--grid-layout)">
         <SimpleNavbar />
         <Container>
           <div className="flex items-center justify-center w-full h-full isolate">

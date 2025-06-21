@@ -21,6 +21,7 @@ func networkStateChanged() {
 
 	// always restart mDNS when the network state changes
 	if mDNS != nil {
+		_ = mDNS.SetListenOptions(config.NetworkConfig.GetMDNSMode())
 		_ = mDNS.SetLocalNames([]string{
 			networkState.GetHostname(),
 			networkState.GetFQDN(),
@@ -54,14 +55,6 @@ func initNetwork() error {
 		OnConfigChange: func(networkConfig *network.NetworkConfig) {
 			config.NetworkConfig = networkConfig
 			networkStateChanged()
-
-			if mDNS != nil {
-				_ = mDNS.SetListenOptions(networkConfig.GetMDNSMode())
-				_ = mDNS.SetLocalNames([]string{
-					networkState.GetHostname(),
-					networkState.GetFQDN(),
-				}, true)
-			}
 		},
 	})
 
