@@ -7,15 +7,27 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <fcntl.h>
-#include "frozen.h"
 #include "video.h"
 #include "screen.h"
 #include "edid.h"
 #include "ctrl.h"
 #include <lvgl.h>
+#include "log.h"
+#include "log_handler.h"
 
 jetkvm_video_state_t state;
 jetkvm_video_state_handler_t *video_state_handler = NULL;
+
+jetkvm_video_handler_t *video_handler = NULL;
+
+
+void jetkvm_set_log_handler(jetkvm_log_handler_t *handler) {
+    log_set_handler(handler);
+}
+
+void jetkvm_set_video_handler(jetkvm_video_handler_t *handler) {
+    video_handler = handler;
+}
 
 void report_video_format(bool ready, const char *error, u_int16_t width, u_int16_t height, double frame_per_second)
 {
@@ -27,6 +39,21 @@ void report_video_format(bool ready, const char *error, u_int16_t width, u_int16
     if (video_state_handler != NULL) {
         (*video_state_handler)(&state);
     }
+}
+
+int socket_send_frame(const uint8_t *frame, ssize_t len)
+{
+    if (video_handler != NULL) {
+        (*video_handler)(frame, len);
+    } else {
+        log_error("video handler is not set");
+    }
+    return 0;
+    // if (video_client_fd <= 0)
+    // {
+    //     return -1;
+    // }
+    // return send(video_client_fd, frame, len, 0);
 }
 
 /**
@@ -282,6 +309,10 @@ int jetkvm_video_set_quality_factor(float quality_factor) {
     }
     video_set_quality_factor(quality_factor);
     return 0;
+}
+
+float jetkvm_video_get_quality_factor() {
+    return video_get_quality_factor();
 }
 
 int jetkvm_video_set_edid(const char *edid_hex) {

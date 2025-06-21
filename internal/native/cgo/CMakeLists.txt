@@ -41,10 +41,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(lv_drivers)
 
 # Get source files, excluding CMake generated files
-file(GLOB_RECURSE sources CONFIGURE_DEPENDS "*.c")
+file(GLOB_RECURSE sources CONFIGURE_DEPENDS "*.c" "ui/*.c")
 list(FILTER sources EXCLUDE REGEX "CMakeFiles.*CompilerId.*\\.c$")
 
-add_library(jknative STATIC ${sources} ${CMAKE_CURRENT_SOURCE_DIR}/jknative.h)
+add_library(jknative STATIC ${sources} ${CMAKE_CURRENT_SOURCE_DIR}/ctrl.h)
 
 # Include directories
 target_include_directories(jknative PRIVATE

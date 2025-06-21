@@ -24,11 +24,12 @@ GO_ARGS := GOOS=linux GOARCH=arm GOARM=7 ARCHFLAGS="-arch arm"
 # if BUILDKIT_PATH exists, use buildkit to build
 ifneq ($(wildcard $(BUILDKIT_PATH)),)
 	GO_ARGS := $(GO_ARGS) \
-		CGO_CFLAGS="-Ijetkvm-native -Ijetkvm-native/ui -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include" \
-		CGO_LDFLAGS="-Ljetkvm-native/build -Ljetkvm-native/build/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -ljknative -lrockit -lrockchip_mpp -lrga -lpthread -lm -llvgl" \
+		CGO_CFLAGS="-I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include" \
+		CGO_LDFLAGS="-L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -lrockit -lrockchip_mpp -lrga -lpthread -lm" \
 		CC="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-gcc" \
 		LD="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-ld" \
-		CGO_ENABLED=1
+		CGO_ENABLED=1 
+	# GO_RELEASE_BUILD_ARGS := $(GO_RELEASE_BUILD_ARGS) -x -work
 endif
 
 GO_CMD := $(GO_ARGS) go

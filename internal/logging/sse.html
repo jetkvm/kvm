@@ -128,7 +128,7 @@
             this.statsElement = statsElement;
             this.stream = null;
             this.reconnectAttempts = 0;
-            this.maxReconnectAttempts = 10;
+            this.maxReconnectAttempts = 500;
             this.reconnectDelay = 1000; // Start with 1 second
             this.maxReconnectDelay = 30000; // Max 30 seconds
             this.isConnecting = false;

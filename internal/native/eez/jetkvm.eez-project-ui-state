@@ -1,8 +1,7 @@
 {
   "navigation": {
-    "selectedUserPageObject": "[jetkvm.eez-project]:/userPages/1",
-    "selectedActionObject": "[jetkvm.eez-project]:/actions/0",
-    "selectedGlobalVariableObject": "[jetkvm.eez-project]:/variables/globalVariables/-1",
+    "selectedUserPageObject": "[jetkvm.eez-project]:/userPages/2",
+    "selectedActionObject": "[jetkvm.eez-project]:/actions/1",
     "selectedStyleObject": "[jetkvm.eez-project]:/lvglStyles/styles/0",
     "selectedThemeObject": "[jetkvm.eez-project]:/themes/0",
     "selectedFontObject": "[jetkvm.eez-project]:/fonts/1",
@@ -129,6 +128,7 @@
                   "type": "tabset",
                   "id": "#2e3d9a08-c69c-42b5-b434-525109f2a5a7",
                   "weight": 1,
+                  "selected": 2,
                   "enableClose": false,
                   "children": [
                     {
@@ -194,18 +194,30 @@
             {
               "type": "tabset",
               "id": "EDITORS",
-              "weight": 43.26842349697695,
+              "weight": 63.667074907133006,
+              "selected": 3,
               "enableDeleteWhenEmpty": false,
               "enableClose": false,
               "children": [
                 {
                   "type": "tab",
-                  "id": "#f8258cf3-e12a-4be9-8021-33199674dbe6",
+                  "id": "#b444e818-4663-4332-ab40-a34acb670c8c",
                   "name": "HomeScreen",
                   "component": "editor",
                   "config": {
                     "objectPath": "[jetkvm.eez-project]:/userPages/1",
                     "permanent": false
+                  },
+                  "icon": "svg:page"
+                },
+                {
+                  "type": "tab",
+                  "id": "#f8258cf3-e12a-4be9-8021-33199674dbe6",
+                  "name": "MenuScreen",
+                  "component": "editor",
+                  "config": {
+                    "objectPath": "[jetkvm.eez-project]:/userPages/2",
+                    "permanent": true
                   },
                   "icon": "svg:page"
                 },
@@ -232,12 +244,13 @@
                   },
                   "icon": "material:settings"
                 }
-              ]
+              ],
+              "active": true
             },
             {
               "type": "row",
               "id": "#ee319cf9-6145-49e4-b40e-1d999be897c8",
-              "weight": 36.48121981117664,
+              "weight": 16.082568401020577,
               "children": [
                 {
                   "type": "tabset",
@@ -252,8 +265,7 @@
                       "enableClose": false,
                       "icon": "svg:properties"
                     }
-                  ],
-                  "active": true
+                  ]
                 },
                 {
                   "type": "tabset",
@@ -1067,7 +1079,11 @@
             "0": {
               "1": {}
             },
-            "1": {},
+            "1": {
+              "0": {
+                "$selected": true
+              }
+            },
             "2": {},
             "3": {
               "0": {
@@ -1076,9 +1092,7 @@
               },
               "1": {
                 "0": {},
-                "1": {
-                  "$selected": true
-                }
+                "1": {}
               }
             }
           }
@@ -1111,13 +1125,13 @@
               "0": {}
             },
             "1": {
-              "0": {},
-              "1": {},
-              "2": {},
-              "3": {},
-              "4": {
-                "0": {
-                  "$selected": true
+              "0": {
+                "0": {},
+                "1": {},
+                "2": {},
+                "3": {},
+                "4": {
+                  "0": {}
                 }
               }
             }
@@ -1126,8 +1140,8 @@
       },
       "transform": {
         "translate": {
-          "x": -150,
-          "y": -120
+          "x": -194,
+          "y": -454
         },
         "scale": 1
       },
@@ -1154,9 +1168,9 @@
   "lvglPart": "MAIN",
   "lvglState": "DEFAULT",
   "lvglExpandedPropertiesGroup": [
-    "MARGIN",
-    "TEXT",
-    "POSITION AND SIZE"
+    "POSITION AND SIZE",
+    "PADDING",
+    "MARGIN"
   ],
   "showInactiveFlowsInDebugger": true,
   "globalFlowZoom": true,

@@ -1,30 +1,70 @@
 package native
 
 import (
+	"time"
+
 	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
 )
 
 type Native struct {
-	ready         chan struct{}
-	l             *zerolog.Logger
-	lD            *zerolog.Logger
-	SystemVersion *semver.Version
-	AppVersion    *semver.Version
+	ready                chan struct{}
+	l                    *zerolog.Logger
+	lD                   *zerolog.Logger
+	systemVersion        *semver.Version
+	appVersion           *semver.Version
+	onVideoStateChange   func(state VideoState)
+	onVideoFrameReceived func(frame []byte, duration time.Duration)
 }
 
-func NewNative(systemVersion *semver.Version, appVersion *semver.Version) *Native {
+type NativeOptions struct {
+	SystemVersion        *semver.Version
+	AppVersion           *semver.Version
+	OnVideoStateChange   func(state VideoState)
+	OnVideoFrameReceived func(frame []byte, duration time.Duration)
+}
+
+func NewNative(opts NativeOptions) *Native {
+	onVideoStateChange := opts.OnVideoStateChange
+	if onVideoStateChange == nil {
+		onVideoStateChange = func(state VideoState) {
+			nativeLogger.Info().Msg("video state changed")
+		}
+	}
+
+	onVideoFrameReceived := opts.OnVideoFrameReceived
+	if onVideoFrameReceived == nil {
+		onVideoFrameReceived = func(frame []byte, duration time.Duration) {
+			nativeLogger.Info().Msg("video frame received")
+		}
+	}
+
 	return &Native{
-		ready:         make(chan struct{}),
-		l:             nativeLogger,
-		lD:            displayLogger,
-		SystemVersion: systemVersion,
-		AppVersion:    appVersion,
+		ready:                make(chan struct{}),
+		l:                    nativeLogger,
+		lD:                   displayLogger,
+		systemVersion:        opts.SystemVersion,
+		appVersion:           opts.AppVersion,
+		onVideoStateChange:   opts.OnVideoStateChange,
+		onVideoFrameReceived: opts.OnVideoFrameReceived,
 	}
 }
 
 func (n *Native) Start() {
 	go n.StartNativeVideo()
+	go n.HandleVideoChan()
+}
+
+func (n *Native) HandleVideoChan() {
+	lastFrame := time.Now()
+
+	for {
+		frame := <-jkVideoChan
+		now := time.Now()
+		sinceLastFrame := now.Sub(lastFrame)
+		lastFrame = now
+		n.onVideoFrameReceived(frame, sinceLastFrame)
+	}
 }
 
 // func handleCtrlClient(conn net.Conn) {

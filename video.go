@@ -1,5 +1,7 @@
 package kvm
 
+import "github.com/jetkvm/kvm/internal/native"
+
 // max frame size for 1080p video, specified in mpp venc setting
 const maxFrameSize = 1920 * 1080 / 2
 
@@ -7,15 +9,7 @@ func writeCtrlAction(action string) error {
 	return nil
 }
 
-type VideoInputState struct {
-	Ready          bool    `json:"ready"`
-	Error          string  `json:"error,omitempty"` //no_signal, no_lock, out_of_range
-	Width          int     `json:"width"`
-	Height         int     `json:"height"`
-	FramePerSecond float64 `json:"fps"`
-}
-
-var lastVideoState VideoInputState
+var lastVideoState native.VideoState
 
 func triggerVideoStateUpdate() {
 	go func() {
@@ -35,6 +29,6 @@ func triggerVideoStateUpdate() {
 // 	requestDisplayUpdate(true)
 // }
 
-func rpcGetVideoState() (VideoInputState, error) {
+func rpcGetVideoState() (native.VideoState, error) {
 	return lastVideoState, nil
 }

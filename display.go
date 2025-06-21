@@ -30,25 +30,35 @@ var (
 
 func updateDisplay() {
 	nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkState.IPv4String())
-	nativeInstance.UpdateLabelIfChanged("home_info_ipv6_addr", networkState.IPv6String())
+	ipv6 := networkState.IPv6String()
+	if ipv6 != "" {
+		nativeInstance.UpdateLabelIfChanged("home_info_ipv6_addr", ipv6)
+		nativeInstance.ObjShow("home_info_ipv6_addr")
+	} else {
+		nativeInstance.UpdateLabelIfChanged("home_info_ipv6_addr", "")
+		nativeInstance.ObjHide("home_info_ipv6_addr")
+	}
+
+	nativeInstance.ObjHide("menu_btn_network")
+	nativeInstance.ObjHide("menu_btn_access")
 
 	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkState.MACString())
 
 	if usbState == "configured" {
-		nativeInstance.UpdateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Connected")
-		_, _ = nativeInstance.ObjSetState("ui_Home_Footer_Usb_Status_Label", "LV_STATE_DEFAULT")
+		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Connected")
+		_, _ = nativeInstance.ObjSetState("usb_status", "LV_STATE_DEFAULT")
 	} else {
-		nativeInstance.UpdateLabelIfChanged("ui_Home_Footer_Usb_Status_Label", "Disconnected")
-		_, _ = nativeInstance.ObjSetState("ui_Home_Footer_Usb_Status_Label", "LV_STATE_USER_2")
+		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Disconnected")
+		_, _ = nativeInstance.ObjSetState("usb_status", "LV_STATE_USER_2")
 	}
 	if lastVideoState.Ready {
-		nativeInstance.UpdateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Connected")
-		_, _ = nativeInstance.ObjSetState("ui_Home_Footer_Hdmi_Status_Label", "LV_STATE_DEFAULT")
+		nativeInstance.UpdateLabelIfChanged("hdmi_status_label", "Connected")
+		_, _ = nativeInstance.ObjSetState("hdmi_status", "LV_STATE_DEFAULT")
 	} else {
-		nativeInstance.UpdateLabelIfChanged("ui_Home_Footer_Hdmi_Status_Label", "Disconnected")
-		_, _ = nativeInstance.ObjSetState("ui_Home_Footer_Hdmi_Status_Label", "LV_STATE_USER_2")
+		nativeInstance.UpdateLabelIfChanged("hdmi_status_label", "Disconnected")
+		_, _ = nativeInstance.ObjSetState("hdmi_status", "LV_STATE_USER_2")
 	}
-	nativeInstance.UpdateLabelIfChanged("ui_Home_Header_Cloud_Status_Label", fmt.Sprintf("%d active", actionSessions))
+	nativeInstance.UpdateLabelIfChanged("cloud_status_label", fmt.Sprintf("%d active", actionSessions))
 
 	if networkState.IsUp() {
 		nativeInstance.SwitchToScreenIf("home_screen", []string{"no_network_screen", "boot_screen"})
@@ -57,20 +67,20 @@ func updateDisplay() {
 	}
 
 	if cloudConnectionState == CloudConnectionStateNotConfigured {
-		_, _ = nativeInstance.ObjHide("ui_Home_Header_Cloud_Status_Icon")
+		_, _ = nativeInstance.ObjHide("cloud_status_icon")
 	} else {
-		_, _ = nativeInstance.ObjShow("ui_Home_Header_Cloud_Status_Icon")
+		_, _ = nativeInstance.ObjShow("cloud_status_icon")
 	}
 
 	switch cloudConnectionState {
 	case CloudConnectionStateDisconnected:
-		_, _ = nativeInstance.ImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud_disconnected.png")
+		_, _ = nativeInstance.ImgSetSrc("cloud_status_icon", "cloud_disconnected")
 		stopCloudBlink()
 	case CloudConnectionStateConnecting:
-		_, _ = nativeInstance.ImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
+		_, _ = nativeInstance.ImgSetSrc("cloud_status_icon", "cloud")
 		startCloudBlink()
 	case CloudConnectionStateConnected:
-		_, _ = nativeInstance.ImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
+		_, _ = nativeInstance.ImgSetSrc("cloud_status_icon", "cloud")
 		stopCloudBlink()
 	}
 }
@@ -94,9 +104,9 @@ func startCloudBlink() {
 			if cloudConnectionState != CloudConnectionStateConnecting {
 				continue
 			}
-			_, _ = nativeInstance.ObjFadeOut("ui_Home_Header_Cloud_Status_Icon", 1000)
+			_, _ = nativeInstance.ObjFadeOut("cloud_status_icon", 1000)
 			time.Sleep(1000 * time.Millisecond)
-			_, _ = nativeInstance.ObjFadeIn("ui_Home_Header_Cloud_Status_Icon", 1000)
+			_, _ = nativeInstance.ObjFadeIn("cloud_status_icon", 1000)
 			time.Sleep(1000 * time.Millisecond)
 		}
 	}()
@@ -146,14 +156,14 @@ func waitCtrlAndRequestDisplayUpdate(shouldWakeDisplay bool) {
 
 func updateStaticContents() {
 	//contents that never change
-	nativeInstance.UpdateLabelIfChanged("ui_Home_Content_Mac", networkState.MACString())
+	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkState.MACString())
 	systemVersion, appVersion, err := GetLocalVersion()
 	if err == nil {
-		nativeInstance.UpdateLabelIfChanged("ui_About_Content_Operating_System_Version_ContentLabel", systemVersion.String())
-		nativeInstance.UpdateLabelIfChanged("ui_About_Content_App_Version_Content_Label", appVersion.String())
+		nativeInstance.UpdateLabelIfChanged("boot_screen_version", systemVersion.String())
+		nativeInstance.UpdateLabelIfChanged("boot_screen_app_version", appVersion.String())
 	}
 
-	nativeInstance.UpdateLabelIfChanged("ui_Status_Content_Device_Id_Content_Label", GetDeviceID())
+	nativeInstance.UpdateLabelIfChanged("boot_screen_device_id", GetDeviceID())
 }
 
 // setDisplayBrightness sets /sys/class/backlight/backlight/brightness to alter

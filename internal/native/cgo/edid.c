@@ -1,4 +1,5 @@
 #include "edid.h"
+#include "log.h"
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -172,7 +173,7 @@ const char *videoc_log_status()
     }
     else
     {
-        printf("Failed to read kernel log\n");
+        log_error("Failed to read kernel log\n");
         return NULL;
     }
 

@@ -2,6 +2,7 @@
 #define VIDEO_DAEMON_CTRL_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <sys/types.h>
 
 typedef struct
@@ -14,6 +15,12 @@ typedef struct
 } jetkvm_video_state_t;
 
 typedef void (jetkvm_video_state_handler_t)(jetkvm_video_state_t *state);
+typedef void (jetkvm_log_handler_t)(int level, const char *filename, const char *funcname, int line, const char *message);
+
+typedef void (jetkvm_video_handler_t)(const uint8_t *frame, ssize_t len);
+
+void jetkvm_set_log_handler(jetkvm_log_handler_t *handler);
+void jetkvm_set_video_handler(jetkvm_video_handler_t *handler);
 
 void jetkvm_ui_init();
 void jetkvm_ui_tick();
@@ -37,6 +44,7 @@ void jetkvm_video_shutdown();
 void jetkvm_video_start();
 void jetkvm_video_stop();
 int jetkvm_video_set_quality_factor(float quality_factor);
+float jetkvm_video_get_quality_factor();
 int jetkvm_video_set_edid(const char *edid_hex);
 char *jetkvm_video_get_edid_hex();
 jetkvm_video_state_t *jetkvm_video_get_status();

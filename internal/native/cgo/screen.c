@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include "log.h"
 #include "screen.h"
 #include <lvgl.h>
 #include <display/fbdev.h>
@@ -17,7 +18,10 @@ static lv_disp_drv_t disp_drv;
 static lv_indev_drv_t indev_drv;
 
 void lvgl_init(void) {
+    log_trace("initalizing lvgl");
     lv_init();
+
+    log_trace("initalizing fbdev");
     fbdev_init();
     lv_disp_draw_buf_init(&disp_buf, buf, NULL, DISP_BUF_SIZE);
     lv_disp_drv_init(&disp_drv);
@@ -31,6 +35,7 @@ void lvgl_init(void) {
 
     lv_disp_drv_register(&disp_drv);
 
+    log_trace("initalizing evdev");
     evdev_init();
     evdev_set_file("/dev/input/event1");
 
@@ -39,7 +44,10 @@ void lvgl_init(void) {
     indev_drv.read_cb = evdev_read;
     lv_indev_drv_register(&indev_drv);
 
+    log_trace("initalizing ui");
     ui_init();
+    
+    log_info("ui initalized");
     // lv_label_set_text(ui_Boot_Screen_Version, "");
     // lv_label_set_text(ui_Home_Content_Ip, "...");
     // lv_label_set_text(ui_Home_Header_Cloud_Status_Label, "0 active");
@@ -102,7 +110,7 @@ lv_img_dsc_t *ui_get_image(const char *name) {
 void ui_set_text(const char *name, const char *text) {
     lv_obj_t *obj = ui_get_obj(name);
     if(obj == NULL) {
-        printf("ui_set_text %s %s, obj not found\n", name, text);
+        log_error("ui_set_text %s %s, obj not found\n", name, text);
         return;
     }
     lv_label_set_text(obj, text);

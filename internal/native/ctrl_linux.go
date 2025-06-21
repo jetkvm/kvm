@@ -5,34 +5,128 @@ package native
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 	"unsafe"
+
+	"github.com/rs/zerolog"
 )
 
-// #cgo LDFLAGS: -Ljetkvm-native
+// #cgo LDFLAGS: -Lcgo/build -Lcgo/build/lib -ljknative -llvgl
+// #cgo CFLAGS: -Icgo -Icgo/ui -Icgo/build/_deps/lvgl-src
 // #include "ctrl.h"
 // #include <stdlib.h>
+// typedef const char cchar_t;
+// typedef const uint8_t cuint8_t;
 // extern void jetkvm_video_state_handler(jetkvm_video_state_t *state);
 // static inline void jetkvm_setup_video_state_handler() {
 //     jetkvm_set_video_state_handler(&jetkvm_video_state_handler);
 // }
+// extern void jetkvm_go_log_handler(int level, cchar_t *filename, cchar_t *funcname, int line, cchar_t *message);
+// static inline void jetkvm_setup_log_handler() {
+//     jetkvm_set_log_handler(&jetkvm_go_log_handler);
+// }
+// extern void jetkvm_video_handler(cuint8_t *frame, ssize_t len);
+// static inline void jetkvm_setup_video_handler() {
+//     jetkvm_set_video_handler(&jetkvm_video_handler);
+// }
 import "C"
+
+var (
+	jkInstance     *Native
+	jkInstanceLock sync.RWMutex
+	jkVideoChan    chan []byte = make(chan []byte)
+)
+
+func setUpJkInstance(instance *Native) {
+	jkInstanceLock.Lock()
+	defer jkInstanceLock.Unlock()
+
+	if jkInstance == nil {
+		jkInstance = instance
+	}
+
+	if jkInstance != instance {
+		panic("jkInstance is already set")
+	}
+}
 
 //export jetkvm_video_state_handler
 func jetkvm_video_state_handler(state *C.jetkvm_video_state_t) {
-	nativeLogger.Info().Msg("video state handler")
-	nativeLogger.Info().Msg(fmt.Sprintf("state: %+v", state))
+	jkInstanceLock.RLock()
+	defer jkInstanceLock.RUnlock()
+
+	if jkInstance != nil {
+		// convert state to VideoState
+		videoState := VideoState{
+			Ready:          bool(state.ready),
+			Error:          C.GoString(state.error),
+			Width:          int(state.width),
+			Height:         int(state.height),
+			FramePerSecond: float64(state.frame_per_second),
+		}
+		jkInstance.handleVideoStateMessage(videoState)
+	}
+}
+
+//export jetkvm_go_log_handler
+func jetkvm_go_log_handler(level C.int, filename *C.cchar_t, funcname *C.cchar_t, line C.int, message *C.cchar_t) {
+	l := nativeLogger.With().
+		Str("file", C.GoString(filename)).
+		Str("function", C.GoString(funcname)).
+		Int("line", int(line)).
+		Logger()
+
+	gLevel := zerolog.Level(level)
+	switch gLevel {
+	case zerolog.DebugLevel:
+		l.Debug().Msg(C.GoString(message))
+	case zerolog.InfoLevel:
+		l.Info().Msg(C.GoString(message))
+	case zerolog.WarnLevel:
+		l.Warn().Msg(C.GoString(message))
+	case zerolog.ErrorLevel:
+		l.Error().Msg(C.GoString(message))
+	case zerolog.PanicLevel:
+		l.Panic().Msg(C.GoString(message))
+	case zerolog.FatalLevel:
+		l.Fatal().Msg(C.GoString(message))
+	case zerolog.TraceLevel:
+		l.Trace().Msg(C.GoString(message))
+	case zerolog.NoLevel:
+		l.Info().Msg(C.GoString(message))
+	default:
+		l.Info().Msg(C.GoString(message))
+	}
+}
+
+//export jetkvm_video_handler
+func jetkvm_video_handler(frame *C.cuint8_t, len C.ssize_t) {
+	jkVideoChan <- C.GoBytes(unsafe.Pointer(frame), C.int(len))
 }
 
 func setVideoStateHandler() {
 	C.jetkvm_setup_video_state_handler()
 }
 
+func setLogHandler() {
+	C.jetkvm_setup_log_handler()
+}
+
+func setVideoHandler() {
+	C.jetkvm_setup_video_handler()
+}
+
 func (n *Native) StartNativeVideo() {
+	setUpJkInstance(n)
+
 	setVideoStateHandler()
+	setLogHandler()
+	setVideoHandler()
+
 	C.jetkvm_ui_init()
 
-	n.UpdateLabelIfChanged("boot_screen_version", n.AppVersion.String())
+	n.UpdateLabelIfChanged("boot_screen_version", n.appVersion.String())
 
 	go func() {
 		for {
@@ -45,6 +139,7 @@ func (n *Native) StartNativeVideo() {
 		nativeLogger.Error().Msg("failed to initialize video")
 		return
 	}
+
 	C.jetkvm_video_start()
 
 	close(n.ready)
@@ -163,17 +258,23 @@ func (n *Native) DispSetRotation(rotation string) (bool, error) {
 }
 
 func (n *Native) GetStreamQualityFactor() (float64, error) {
-	return 1.0, nil
+	factor := C.jetkvm_video_get_quality_factor()
+	return float64(factor), nil
 }
 
 func (n *Native) SetStreamQualityFactor(factor float64) error {
+	C.jetkvm_video_set_quality_factor(C.float(factor))
 	return nil
 }
 
 func (n *Native) GetEDID() (string, error) {
-	return "", nil
+	edidCStr := C.jetkvm_video_get_edid_hex()
+	return C.GoString(edidCStr), nil
 }
 
 func (n *Native) SetEDID(edid string) error {
+	edidCStr := C.CString(edid)
+	defer C.free(unsafe.Pointer(edidCStr))
+	C.jetkvm_video_set_edid(edidCStr)
 	return nil
 }

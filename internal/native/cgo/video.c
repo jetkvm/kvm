@@ -24,6 +24,7 @@
 #include <sys/socket.h>
 #include "video.h"
 #include "ctrl.h"
+#include "log.h"
 
 #define VIDEO_DEV "/dev/video0"
 #define SUB_DEV "/dev/v4l-subdev2"
@@ -181,75 +182,39 @@ static int32_t buf_init()
     {
         return -1;
     }
-    printf("Created memory pool\n");
+    log_info("created memory pool");
 
     return RK_SUCCESS;
 }
 
 pthread_t *format_thread = NULL;
 
-int video_client_fd = 0;
-
-int connect_video_client(const char *path)
-{
-    int client_fd = socket(AF_UNIX, SOCK_SEQPACKET, 0);
-    if (client_fd == -1)
-    {
-        perror("can not create socket");
-        return -1;
-    }
-
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(struct sockaddr_un));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
-
-    if (connect(client_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
-    {
-        perror("can not connect to video socket");
-        close(client_fd);
-        return -1;
-    }
-    video_client_fd = client_fd;
-    return 0;
-}
-
-int socket_send_frame(const uint8_t *frame, ssize_t len)
-{
-    if (video_client_fd <= 0)
-    {
-        return -1;
-    }
-    return send(video_client_fd, frame, len, 0);
-}
-
 int video_init()
 {
-    if (connect_video_client("/var/run/jetkvm_video.sock") != 0)
+    if (RK_MPI_SYS_Init() != RK_SUCCESS)
     {
-        printf("can not connect to video socket\n");
-        return -1;
+        log_error("RK_MPI_SYS_Init failed");
+        return RK_FAILURE;
     }
-    printf("Connected to video socket\n");
 
     if (sub_dev_fd < 0)
     {
         sub_dev_fd = open(SUB_DEV, O_RDWR);
         if (sub_dev_fd < 0)
         {
-            printf("failed to open control sub device %s: %s\n", SUB_DEV, strerror(errno));
+            log_error("failed to open control sub device %s: %s", SUB_DEV, strerror(errno));
             return errno;
         }
-        printf("Opened control sub device %s\n", SUB_DEV);
+        log_info("opened control sub device %s", SUB_DEV);
     }
 
     int32_t ret = buf_init();
     if (ret != RK_SUCCESS)
     {
-        RK_LOGE("buf_init failed with error: %d", ret);
+        log_error("buf_init failed with error: %d", ret);
         return ret;
     }
-    printf("buf_init completed successfully\n");
+    log_info("buf_init completed successfully");
 
     format_thread = malloc(sizeof(pthread_t));
     pthread_create(format_thread, NULL, run_detect_format, NULL);
@@ -315,7 +280,7 @@ static void *venc_read_stream(void *arg)
             s32Ret = RK_MPI_VENC_ReleaseStream(VENC_CHANNEL, &stFrame);
             if (s32Ret != RK_SUCCESS)
             {
-                RK_LOGE("RK_MPI_VENC_ReleaseStream fail %x", s32Ret);
+                log_error("RK_MPI_VENC_ReleaseStream fail %x", s32Ret);
             }
             loopCount++;
         }
@@ -325,11 +290,11 @@ static void *venc_read_stream(void *arg)
             {
                 continue;
             }
-            RK_LOGE("RK_MPI_VENC_GetStream fail %x", s32Ret);
+            log_error("RK_MPI_VENC_GetStream fail %x", s32Ret);
             break;
         }
     }
-    printf("exiting venc_read_stream\n");
+    log_info("exiting venc_read_stream");
     free(stFrame.pstPack);
     return NULL;
 }
@@ -350,6 +315,8 @@ void *run_video_stream(void *arg)
 {
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 
+    log_info("running video stream");
+
     while (streaming_flag)
     {
         if (detected_signal == false)
@@ -361,11 +328,11 @@ void *run_video_stream(void *arg)
         int video_dev_fd = open(VIDEO_DEV, O_RDWR);
         if (video_dev_fd < 0)
         {
-            printf("failed to open video capture device %s: %s\n", VIDEO_DEV, strerror(errno));
+            log_error("failed to open video capture device %s: %s", VIDEO_DEV, strerror(errno));
             usleep(1000000);
             continue;
         }
-        printf("Opened video capture device %s\n", VIDEO_DEV);
+        log_info("opened video capture device %s", VIDEO_DEV);
 
         uint32_t width = detected_width;
         uint32_t height = detected_height;
@@ -397,10 +364,10 @@ void *run_video_stream(void *arg)
             perror("VIDIOC_REQBUFS failed");
             return errno;
         }
-        printf("VIDIOC_REQBUFS successful\n");
+        log_info("VIDIOC_REQBUFS successful");
 
         struct buffer buffers[3] = {};
-        printf("Allocated buffers\n");
+        log_info("allocated buffers");
 
         for (int i = 0; i < input_buffer_count; i++)
         {
@@ -475,7 +442,7 @@ void *run_video_stream(void *arg)
         RK_S32 ret = venc_start(bitrate, bitrate * 2, width, height);
         if (ret != RK_SUCCESS)
         {
-            RK_LOGE("Set VENC parameters failed with %#x", ret);
+            log_error("Set VENC parameters failed with %#x", ret);
             goto cleanup;
         }
 
@@ -495,7 +462,7 @@ void *run_video_stream(void *arg)
             r = select(video_dev_fd + 1, &fds, NULL, NULL, &tv);
             if (r == 0)
             {
-                printf("select timeout \n");
+                log_info("select timeout \n");
                 break;
             }
             if (r == -1)
@@ -632,7 +599,7 @@ void video_start_streaming()
 {
     if (streaming_thread != NULL)
     {
-        printf("video streaming already started\n");
+        log_info("video streaming already started");
         return;
     }
     streaming_thread = malloc(sizeof(pthread_t));
@@ -649,7 +616,7 @@ void video_stop_streaming()
         pthread_join(*streaming_thread, NULL);
         free(streaming_thread);
         streaming_thread = NULL;
-        printf("video streaming stopped\n");
+        log_info("video streaming stopped");
     }
 }
 
@@ -663,6 +630,7 @@ void *run_detect_format(void *arg)
     sub.type = V4L2_EVENT_SOURCE_CHANGE;
     if (ioctl(sub_dev_fd, VIDIOC_SUBSCRIBE_EVENT, &sub) == -1)
     {
+        log_error("cannot subscribe to event");
         perror("Cannot subscribe to event");
         goto exit;
     }
@@ -676,13 +644,13 @@ void *run_detect_format(void *arg)
             if (errno == ENOLINK)
             {
                 // No timings could be detected because no signal was found.
-                printf("HDMI status: no signal\n");
+                log_info("HDMI status: no signal");
                 report_video_format(false, "no_signal", 0, 0, 0);
             }
             else if (errno == ENOLCK)
             {
                 // The signal was unstable and the hardware could not lock on to it.
-                printf("HDMI status: no lock\n");
+                log_info("HDMI status: no lock");
                 report_video_format(false, "no_lock", 0, 0, 0);
             }
             else if (errno == ERANGE)
@@ -700,21 +668,21 @@ void *run_detect_format(void *arg)
         }
         else
         {
-            printf("Active width: %d\n", dv_timings.bt.width);
-            printf("Active height: %d\n", dv_timings.bt.height);
+            log_info("Active width: %d", dv_timings.bt.width);
+            log_info("Active height: %d", dv_timings.bt.height);
             double frames_per_second = (double)dv_timings.bt.pixelclock /
                                        ((dv_timings.bt.height + dv_timings.bt.vfrontporch + dv_timings.bt.vsync +
                                          dv_timings.bt.vbackporch) *
                                         (dv_timings.bt.width + dv_timings.bt.hfrontporch + dv_timings.bt.hsync +
                                          dv_timings.bt.hbackporch));
-            printf("Frames per second: %.2f fps\n", frames_per_second);
+            log_info("Frames per second: %.2f fps", frames_per_second);
             detected_width = dv_timings.bt.width;
             detected_height = dv_timings.bt.height;
             detected_signal = true;
             report_video_format(true, NULL, detected_width, detected_height, frames_per_second);
             if (streaming_flag == true)
             {
-                printf("restarting on going video streaming\n");
+                log_info("restarting on going video streaming");
                 video_stop_streaming();
                 video_start_streaming();
             }
@@ -723,15 +691,16 @@ void *run_detect_format(void *arg)
         memset(&ev, 0, sizeof(ev));
         if (ioctl(sub_dev_fd, VIDIOC_DQEVENT, &ev) != 0)
         {
+            log_error("failed to VIDIOC_DQEVENT");
             perror("failed to VIDIOC_DQEVENT");
             break;
         }
-        printf("New event of type %u\n", ev.type);
+        log_info("New event of type %u", ev.type);
         if (ev.type != V4L2_EVENT_SOURCE_CHANGE)
         {
             continue;
         }
-        printf("source change detected!\n");
+        log_info("source change detected!");
     }
 exit:
     close(sub_dev_fd);
@@ -747,8 +716,12 @@ void video_set_quality_factor(float factor)
 
     if (streaming_flag == true)
     {
-        printf("restarting on going video streaming due to quality factor change\n");
+        log_info("restarting on going video streaming due to quality factor change");
         video_stop_streaming();
         video_start_streaming();
     }
+}
+
+float video_get_quality_factor() {
+    return quality_factor;
 }
