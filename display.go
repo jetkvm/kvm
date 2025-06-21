@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/prometheus/common/version"
 )
 
 var currentScreen = "boot_screen"
@@ -161,7 +164,32 @@ func updateStaticContents() {
 	if err == nil {
 		nativeInstance.UpdateLabelIfChanged("boot_screen_version", systemVersion.String())
 		nativeInstance.UpdateLabelIfChanged("boot_screen_app_version", appVersion.String())
+		nativeInstance.UpdateLabelIfChanged("system_version_label", systemVersion.String())
+		nativeInstance.UpdateLabelIfChanged("app_version_label", appVersion.String())
 	}
+
+	// get cpu info
+	cpuInfo, err := os.ReadFile("/proc/cpuinfo")
+	// get the line starting with "Serial"
+	for _, line := range strings.Split(string(cpuInfo), "\n") {
+		if strings.HasPrefix(line, "Serial") {
+			serial := strings.SplitN(line, ":", 2)[1]
+			nativeInstance.UpdateLabelIfChanged("cpu_serial_label", strings.TrimSpace(serial))
+			break
+		}
+	}
+
+	// get kernel version
+	kernelVersion, err := os.ReadFile("/proc/version")
+	if err == nil {
+		kernelVersion := strings.TrimPrefix(string(kernelVersion), "Linux version ")
+		kernelVersion = strings.SplitN(kernelVersion, " ", 2)[0]
+		nativeInstance.UpdateLabelIfChanged("kernel_version_label", kernelVersion)
+	}
+
+	nativeInstance.UpdateLabelIfChanged("build_branch_label", version.Branch)
+	nativeInstance.UpdateLabelIfChanged("build_date_label", version.BuildDate)
+	nativeInstance.UpdateLabelIfChanged("golang_version_label", version.GoVersion)
 
 	nativeInstance.UpdateLabelIfChanged("boot_screen_device_id", GetDeviceID())
 }
