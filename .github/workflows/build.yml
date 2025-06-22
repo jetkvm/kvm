@@ -16,6 +16,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up Cmake cache
+        uses: buildjet/cache@v4
+        with:
+          path: internal/native/cgo/build
+          key: jetkvm-cgo-${{ hashFiles('internal/native/cgo/**/*.c', 'internal/native/cgo/**/*.h', 'internal/native/cgo/**/*.patch', 'internal/native/cgo/**/*.txt', 'internal/native/cgo/**/*.sh', '!internal/native/cgo/build/**') }}
+          restore-keys: |
+            jetkvm-cgo-${{ hashFiles('internal/native/cgo/**/*.c', 'internal/native/cgo/**/*.h', 'internal/native/cgo/**/*.patch', 'internal/native/cgo/**/*.txt', 'internal/native/cgo/**/*.sh', '!internal/native/cgo/build/**') }}
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

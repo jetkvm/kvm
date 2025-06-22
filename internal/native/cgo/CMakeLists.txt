@@ -32,7 +32,10 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/lvgl/lvgl.git
     GIT_TAG v8.3.11
     GIT_SHALLOW 1
-    PATCH_COMMAND git apply ${CMAKE_CURRENT_SOURCE_DIR}/lvgl-no-examples.patch
+    UPDATE_DISCONNECTED 1
+    PATCH_COMMAND
+      git apply ${CMAKE_CURRENT_SOURCE_DIR}/lvgl-no-examples.patch
+      COMMAND rm -rf demos examples
 )
 FetchContent_MakeAvailable(lvgl)
 
@@ -41,6 +44,7 @@ FetchContent_Declare(
     lv_drivers
     GIT_REPOSITORY https://github.com/lvgl/lv_drivers.git
     GIT_TAG v8.3.0
+    UPDATE_DISCONNECTED 1
 )
 FetchContent_MakeAvailable(lv_drivers)
 

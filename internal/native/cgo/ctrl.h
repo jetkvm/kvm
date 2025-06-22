@@ -51,4 +51,7 @@ int jetkvm_video_set_edid(const char *edid_hex);
 char *jetkvm_video_get_edid_hex();
 jetkvm_video_state_t *jetkvm_video_get_status();
 
+void video_report_format(bool ready, const char *error, u_int16_t width, u_int16_t height, double frame_per_second);
+int video_send_frame(const uint8_t *frame, ssize_t len);
+
 #endif //VIDEO_DAEMON_CTRL_H

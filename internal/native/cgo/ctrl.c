@@ -30,7 +30,7 @@ void jetkvm_set_video_handler(jetkvm_video_handler_t *handler) {
     video_handler = handler;
 }
 
-void report_video_format(bool ready, const char *error, u_int16_t width, u_int16_t height, double frame_per_second)
+void video_report_format(bool ready, const char *error, u_int16_t width, u_int16_t height, double frame_per_second)
 {
     state.ready = ready;
     state.error = error;
@@ -42,7 +42,7 @@ void report_video_format(bool ready, const char *error, u_int16_t width, u_int16
     }
 }
 
-int socket_send_frame(const uint8_t *frame, ssize_t len)
+int video_send_frame(const uint8_t *frame, ssize_t len)
 {
     if (video_handler != NULL) {
         (*video_handler)(frame, len);
@@ -50,11 +50,6 @@ int socket_send_frame(const uint8_t *frame, ssize_t len)
         log_error("video handler is not set");
     }
     return 0;
-    // if (video_client_fd <= 0)
-    // {
-    //     return -1;
-    // }
-    // return send(video_client_fd, frame, len, 0);
 }
 
 /**

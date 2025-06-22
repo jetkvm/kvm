@@ -14,6 +14,6 @@ VERBOSE=1 cmake -B build \
     -DCMAKE_CROSSCOMPILING=1 \
     -DCMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE \
     -DSKIP_GLIBC_NAMES=ON \
-    -DMAKE_BUILD_TYPE=Release
+    -DCMAKE_BUILD_TYPE=Release
 
 cmake --build build

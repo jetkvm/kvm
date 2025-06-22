@@ -3,6 +3,7 @@
 #include <time.h>
 #include <rk_type.h>
 #include <rk_mpi_venc.h>
+#include <rk_mpi_sys.h>
 #include <string.h>
 #include <rk_debug.h>
 #include <malloc.h>
@@ -276,7 +277,7 @@ static void *venc_read_stream(void *arg)
             //        loopCount, stFrame.u32Seq, stFrame.pstPack->u32Len,
             //        stFrame.pstPack->u64PTS, nowUs - stFrame.pstPack->u64PTS);
             pData = RK_MPI_MB_Handle2VirAddr(stFrame.pstPack->pMbBlk);
-            socket_send_frame(pData, (ssize_t)stFrame.pstPack->u32Len);
+            video_send_frame(pData, (ssize_t)stFrame.pstPack->u32Len);
             s32Ret = RK_MPI_VENC_ReleaseStream(VENC_CHANNEL, &stFrame);
             if (s32Ret != RK_SUCCESS)
             {
@@ -645,19 +646,19 @@ void *run_detect_format(void *arg)
             {
                 // No timings could be detected because no signal was found.
                 log_info("HDMI status: no signal");
-                report_video_format(false, "no_signal", 0, 0, 0);
+                video_report_format(false, "no_signal", 0, 0, 0);
             }
             else if (errno == ENOLCK)
             {
                 // The signal was unstable and the hardware could not lock on to it.
                 log_info("HDMI status: no lock");
-                report_video_format(false, "no_lock", 0, 0, 0);
+                video_report_format(false, "no_lock", 0, 0, 0);
             }
             else if (errno == ERANGE)
             {
                 // Timings were found, but they are out of range of the hardware capabilities.
                 printf("HDMI status: out of range\n");
-                report_video_format(false, "out_of_range", 0, 0, 0);
+                video_report_format(false, "out_of_range", 0, 0, 0);
             }
             else
             {
@@ -679,7 +680,7 @@ void *run_detect_format(void *arg)
             detected_width = dv_timings.bt.width;
             detected_height = dv_timings.bt.height;
             detected_signal = true;
-            report_video_format(true, NULL, detected_width, detected_height, frames_per_second);
+            video_report_format(true, NULL, detected_width, detected_height, frames_per_second);
             if (streaming_flag == true)
             {
                 log_info("restarting on going video streaming");
