@@ -1,0 +1,207 @@
+diff --git a/env_support/cmake/custom.cmake b/env_support/cmake/custom.cmake
+index 7da68124b..1fbe2d3de 100644
+--- a/env_support/cmake/custom.cmake
++++ b/env_support/cmake/custom.cmake
+@@ -15,8 +15,6 @@ get_filename_component(LV_CONF_DIR ${LV_CONF_PATH} DIRECTORY)
+ option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
+ 
+ file(GLOB_RECURSE SOURCES ${LVGL_ROOT_DIR}/src/*.c)
+-file(GLOB_RECURSE EXAMPLE_SOURCES ${LVGL_ROOT_DIR}/examples/*.c)
+-file(GLOB_RECURSE DEMO_SOURCES ${LVGL_ROOT_DIR}/demos/*.c)
+ 
+ if (BUILD_SHARED_LIBS)
+   add_library(lvgl SHARED ${SOURCES})
+@@ -25,10 +23,6 @@ else()
+ endif()
+ 
+ add_library(lvgl::lvgl ALIAS lvgl)
+-add_library(lvgl_examples STATIC ${EXAMPLE_SOURCES})
+-add_library(lvgl::examples ALIAS lvgl_examples)
+-add_library(lvgl_demos STATIC ${DEMO_SOURCES})
+-add_library(lvgl::demos ALIAS lvgl_demos)
+ 
+ target_compile_definitions(
+   lvgl PUBLIC $<$<BOOL:${LV_LVGL_H_INCLUDE_SIMPLE}>:LV_LVGL_H_INCLUDE_SIMPLE>
+@@ -37,15 +31,6 @@ target_compile_definitions(
+ # Include root and optional parent path of LV_CONF_PATH
+ target_include_directories(lvgl SYSTEM PUBLIC ${LVGL_ROOT_DIR} ${LV_CONF_DIR})
+ 
+-# Include /examples folder
+-target_include_directories(lvgl_examples SYSTEM
+-                           PUBLIC ${LVGL_ROOT_DIR}/examples)
+-target_include_directories(lvgl_demos SYSTEM
+-                           PUBLIC ${LVGL_ROOT_DIR}/demos)
+-
+-target_link_libraries(lvgl_examples PUBLIC lvgl)
+-target_link_libraries(lvgl_demos PUBLIC lvgl)
+-
+ # Lbrary and headers can be installed to system using make install
+ file(GLOB LVGL_PUBLIC_HEADERS "${CMAKE_SOURCE_DIR}/lv_conf.h"
+      "${CMAKE_SOURCE_DIR}/lvgl.h")
+diff --git a/lvgl.mk b/lvgl.mk
+index 0ea126daa..300fb6cbe 100644
+--- a/lvgl.mk
++++ b/lvgl.mk
+@@ -1,5 +1,3 @@
+-include $(LVGL_DIR)/$(LVGL_DIR_NAME)/demos/lv_demos.mk
+-include $(LVGL_DIR)/$(LVGL_DIR_NAME)/examples/lv_examples.mk
+ include $(LVGL_DIR)/$(LVGL_DIR_NAME)/src/core/lv_core.mk
+ include $(LVGL_DIR)/$(LVGL_DIR_NAME)/src/draw/lv_draw.mk
+ include $(LVGL_DIR)/$(LVGL_DIR_NAME)/src/extra/lv_extra.mk
+diff --git a/src/font/lv_font.h b/src/font/lv_font.h
+index e3b670c87..4cceffc45 100644
+--- a/src/font/lv_font.h
++++ b/src/font/lv_font.h
+@@ -132,114 +132,10 @@ static inline lv_coord_t lv_font_get_line_height(const lv_font_t * font_p)
+ 
+ #define LV_FONT_DECLARE(font_name) extern const lv_font_t font_name;
+ 
+-#if LV_FONT_MONTSERRAT_8
+-LV_FONT_DECLARE(lv_font_montserrat_8)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_10
+-LV_FONT_DECLARE(lv_font_montserrat_10)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_12
+-LV_FONT_DECLARE(lv_font_montserrat_12)
+-#endif
+-
+ #if LV_FONT_MONTSERRAT_14
+ LV_FONT_DECLARE(lv_font_montserrat_14)
+ #endif
+ 
+-#if LV_FONT_MONTSERRAT_16
+-LV_FONT_DECLARE(lv_font_montserrat_16)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_18
+-LV_FONT_DECLARE(lv_font_montserrat_18)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_20
+-LV_FONT_DECLARE(lv_font_montserrat_20)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_22
+-LV_FONT_DECLARE(lv_font_montserrat_22)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_24
+-LV_FONT_DECLARE(lv_font_montserrat_24)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_26
+-LV_FONT_DECLARE(lv_font_montserrat_26)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_28
+-LV_FONT_DECLARE(lv_font_montserrat_28)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_30
+-LV_FONT_DECLARE(lv_font_montserrat_30)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_32
+-LV_FONT_DECLARE(lv_font_montserrat_32)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_34
+-LV_FONT_DECLARE(lv_font_montserrat_34)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_36
+-LV_FONT_DECLARE(lv_font_montserrat_36)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_38
+-LV_FONT_DECLARE(lv_font_montserrat_38)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_40
+-LV_FONT_DECLARE(lv_font_montserrat_40)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_42
+-LV_FONT_DECLARE(lv_font_montserrat_42)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_44
+-LV_FONT_DECLARE(lv_font_montserrat_44)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_46
+-LV_FONT_DECLARE(lv_font_montserrat_46)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_48
+-LV_FONT_DECLARE(lv_font_montserrat_48)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_12_SUBPX
+-LV_FONT_DECLARE(lv_font_montserrat_12_subpx)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_28_COMPRESSED
+-LV_FONT_DECLARE(lv_font_montserrat_28_compressed)
+-#endif
+-
+-#if LV_FONT_DEJAVU_16_PERSIAN_HEBREW
+-LV_FONT_DECLARE(lv_font_dejavu_16_persian_hebrew)
+-#endif
+-
+-#if LV_FONT_SIMSUN_16_CJK
+-LV_FONT_DECLARE(lv_font_simsun_16_cjk)
+-#endif
+-
+-#if LV_FONT_UNSCII_8
+-LV_FONT_DECLARE(lv_font_unscii_8)
+-#endif
+-
+-#if LV_FONT_UNSCII_16
+-LV_FONT_DECLARE(lv_font_unscii_16)
+-#endif
+-
+ /*Declare the custom (user defined) fonts*/
+ #ifdef LV_FONT_CUSTOM_DECLARE
+ LV_FONT_CUSTOM_DECLARE
+diff --git a/src/font/lv_font.mk b/src/font/lv_font.mk
+index 2201b73f2..7b2707da4 100644
+--- a/src/font/lv_font.mk
++++ b/src/font/lv_font.mk
+@@ -2,33 +2,7 @@ CSRCS += lv_font.c
+ CSRCS += lv_font_fmt_txt.c
+ CSRCS += lv_font_loader.c
+ 
+-CSRCS += lv_font_dejavu_16_persian_hebrew.c
+-CSRCS += lv_font_montserrat_8.c
+-CSRCS += lv_font_montserrat_10.c
+-CSRCS += lv_font_montserrat_12.c
+-CSRCS += lv_font_montserrat_12_subpx.c
+ CSRCS += lv_font_montserrat_14.c
+-CSRCS += lv_font_montserrat_16.c
+-CSRCS += lv_font_montserrat_18.c
+-CSRCS += lv_font_montserrat_20.c
+-CSRCS += lv_font_montserrat_22.c
+-CSRCS += lv_font_montserrat_24.c
+-CSRCS += lv_font_montserrat_26.c
+-CSRCS += lv_font_montserrat_28.c
+-CSRCS += lv_font_montserrat_28_compressed.c
+-CSRCS += lv_font_montserrat_30.c
+-CSRCS += lv_font_montserrat_32.c
+-CSRCS += lv_font_montserrat_34.c
+-CSRCS += lv_font_montserrat_36.c
+-CSRCS += lv_font_montserrat_38.c
+-CSRCS += lv_font_montserrat_40.c
+-CSRCS += lv_font_montserrat_42.c
+-CSRCS += lv_font_montserrat_44.c
+-CSRCS += lv_font_montserrat_46.c
+-CSRCS += lv_font_montserrat_48.c
+-CSRCS += lv_font_simsun_16_cjk.c
+-CSRCS += lv_font_unscii_8.c
+-CSRCS += lv_font_unscii_16.c
+ 
+ DEPPATH += --dep-path $(LVGL_DIR)/$(LVGL_DIR_NAME)/src/font
+ VPATH += :$(LVGL_DIR)/$(LVGL_DIR_NAME)/src/font

@@ -33,14 +33,7 @@ var (
 
 func updateDisplay() {
 	nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkState.IPv4String())
-	ipv6 := networkState.IPv6String()
-	if ipv6 != "" {
-		nativeInstance.UpdateLabelIfChanged("home_info_ipv6_addr", ipv6)
-		nativeInstance.ObjShow("home_info_ipv6_addr")
-	} else {
-		nativeInstance.UpdateLabelIfChanged("home_info_ipv6_addr", "")
-		nativeInstance.ObjHide("home_info_ipv6_addr")
-	}
+	nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv6_addr", networkState.IPv6String())
 
 	nativeInstance.ObjHide("menu_btn_network")
 	nativeInstance.ObjHide("menu_btn_access")
@@ -52,14 +45,14 @@ func updateDisplay() {
 		_, _ = nativeInstance.ObjSetState("usb_status", "LV_STATE_DEFAULT")
 	} else {
 		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Disconnected")
-		_, _ = nativeInstance.ObjSetState("usb_status", "LV_STATE_USER_2")
+		_, _ = nativeInstance.ObjSetState("usb_status", "LV_STATE_DISABLED")
 	}
 	if lastVideoState.Ready {
 		nativeInstance.UpdateLabelIfChanged("hdmi_status_label", "Connected")
 		_, _ = nativeInstance.ObjSetState("hdmi_status", "LV_STATE_DEFAULT")
 	} else {
 		nativeInstance.UpdateLabelIfChanged("hdmi_status_label", "Disconnected")
-		_, _ = nativeInstance.ObjSetState("hdmi_status", "LV_STATE_USER_2")
+		_, _ = nativeInstance.ObjSetState("hdmi_status", "LV_STATE_DISABLED")
 	}
 	nativeInstance.UpdateLabelIfChanged("cloud_status_label", fmt.Sprintf("%d active", actionSessions))
 
@@ -164,8 +157,8 @@ func updateStaticContents() {
 	if err == nil {
 		nativeInstance.UpdateLabelIfChanged("boot_screen_version", systemVersion.String())
 		nativeInstance.UpdateLabelIfChanged("boot_screen_app_version", appVersion.String())
-		nativeInstance.UpdateLabelIfChanged("system_version_label", systemVersion.String())
-		nativeInstance.UpdateLabelIfChanged("app_version_label", appVersion.String())
+		nativeInstance.UpdateLabelAndChangeVisibility("system_version", systemVersion.String())
+		nativeInstance.UpdateLabelAndChangeVisibility("app_version", appVersion.String())
 	}
 
 	// get cpu info
@@ -174,7 +167,7 @@ func updateStaticContents() {
 	for _, line := range strings.Split(string(cpuInfo), "\n") {
 		if strings.HasPrefix(line, "Serial") {
 			serial := strings.SplitN(line, ":", 2)[1]
-			nativeInstance.UpdateLabelIfChanged("cpu_serial_label", strings.TrimSpace(serial))
+			nativeInstance.UpdateLabelAndChangeVisibility("cpu_serial", strings.TrimSpace(serial))
 			break
 		}
 	}
@@ -184,14 +177,14 @@ func updateStaticContents() {
 	if err == nil {
 		kernelVersion := strings.TrimPrefix(string(kernelVersion), "Linux version ")
 		kernelVersion = strings.SplitN(kernelVersion, " ", 2)[0]
-		nativeInstance.UpdateLabelIfChanged("kernel_version_label", kernelVersion)
+		nativeInstance.UpdateLabelAndChangeVisibility("kernel_version", kernelVersion)
 	}
 
-	nativeInstance.UpdateLabelIfChanged("build_branch_label", version.Branch)
-	nativeInstance.UpdateLabelIfChanged("build_date_label", version.BuildDate)
-	nativeInstance.UpdateLabelIfChanged("golang_version_label", version.GoVersion)
+	nativeInstance.UpdateLabelAndChangeVisibility("build_branch", version.Branch)
+	nativeInstance.UpdateLabelAndChangeVisibility("build_date", version.BuildDate)
+	nativeInstance.UpdateLabelAndChangeVisibility("golang_version", version.GoVersion)
 
-	nativeInstance.UpdateLabelIfChanged("boot_screen_device_id", GetDeviceID())
+	// nativeInstance.UpdateLabelAndChangeVisibility("boot_screen_device_id", GetDeviceID())
 }
 
 // setDisplayBrightness sets /sys/class/backlight/backlight/brightness to alter

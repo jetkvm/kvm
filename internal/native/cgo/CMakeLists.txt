@@ -24,11 +24,15 @@ set(RK_MEDIA_OUTPUT "${RK_SDK_BASE}/media/out")
 set(RK_MEDIA_INCLUDE_PATH "${RK_MEDIA_OUTPUT}/include")
 set(RK_APP_MEDIA_LIBS_PATH "${RK_MEDIA_OUTPUT}/lib")
 
+set(LV_BUILD_EXAMPLES 0 CACHE BOOL "" FORCE)
+
 # Fetch LVGL from GitHub
 FetchContent_Declare(
     lvgl
     GIT_REPOSITORY https://github.com/lvgl/lvgl.git
     GIT_TAG v8.3.11
+    GIT_SHALLOW 1
+    PATCH_COMMAND git apply ${CMAKE_CURRENT_SOURCE_DIR}/lvgl-no-examples.patch
 )
 FetchContent_MakeAvailable(lvgl)
 

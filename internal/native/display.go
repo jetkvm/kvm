@@ -18,6 +18,19 @@ func (n *Native) UpdateLabelIfChanged(objName string, newText string) {
 	}
 }
 
+func (n *Native) UpdateLabelAndChangeVisibility(objName string, newText string) {
+	containerName := objName + "_container"
+	if newText == "" {
+		_, _ = n.ObjHide(objName)
+		_, _ = n.ObjHide(containerName)
+	} else {
+		_, _ = n.ObjShow(objName)
+		_, _ = n.ObjShow(containerName)
+	}
+
+	n.UpdateLabelIfChanged(objName, newText)
+}
+
 func (n *Native) SwitchToScreenIf(screenName string, shouldSwitch []string) {
 	currentScreen := n.GetCurrentScreen()
 	if currentScreen == screenName {

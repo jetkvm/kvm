@@ -124,6 +124,8 @@ func (n *Native) StartNativeVideo() {
 	setLogHandler()
 	setVideoHandler()
 
+	C.jetkvm_set_app_version(C.CString(n.appVersion.String()))
+
 	C.jetkvm_ui_init()
 
 	n.UpdateLabelIfChanged("boot_screen_version", n.appVersion.String())
