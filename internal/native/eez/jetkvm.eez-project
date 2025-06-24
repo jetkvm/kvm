@@ -58,7 +58,7 @@
         {
           "objID": "316b04e4-a7de-4afc-c413-31f5f36d3843",
           "fileName": "vars.c",
-          "template": "#include <string.h>\n#include \"vars.h\"\n\nchar app_version[100] = { 0 };\n\nconst char *get_var_app_version() {\n    return app_version;\n}\n\nvoid set_var_app_version(const char *value) {\n    strncpy(app_version, value, sizeof(app_version) / sizeof(char));\n    app_version[sizeof(app_version) / sizeof(char) - 1] = 0;\n}\n"
+          "template": "#include <string.h>\n#include \"vars.h\"\n\nchar app_version[100] = { 0 };\nchar system_version[100] = { 0 };\n\nconst char *get_var_app_version() {\n    return app_version;\n}\n\nconst char *get_var_system_version() {\n    return system_version;\n}\n\nvoid set_var_app_version(const char *value) {\n    strncpy(app_version, value, sizeof(app_version) / sizeof(char));\n    app_version[sizeof(app_version) / sizeof(char) - 1] = 0;\n}\n\nvoid set_var_system_version(const char *value) {\n    strncpy(system_version, value, sizeof(system_version) / sizeof(char));\n    system_version[sizeof(system_version) / sizeof(char) - 1] = 0;\n}"
         },
         {
           "objID": "cbe7cde1-8920-476a-b2a2-1761ae7451b0",
@@ -120,6 +120,14 @@
       {
         "objID": "620da94f-9a31-4015-a138-244add28a9ee",
         "name": "appVersion",
+        "type": "string",
+        "defaultValue": "\"\"",
+        "persistent": false,
+        "native": false
+      },
+      {
+        "objID": "f20790a9-e7dd-4537-f50b-c716cee2af24",
+        "name": "systemVersion",
         "type": "string",
         "defaultValue": "\"\"",
         "persistent": false,
@@ -4048,10 +4056,11 @@
                               },
                               "group": "",
                               "groupIndex": 0,
-                              "text": "0.0.1",
-                              "textType": "literal",
+                              "text": "systemVersion",
+                              "textType": "expression",
                               "longMode": "WRAP",
-                              "recolor": false
+                              "recolor": false,
+                              "previewValue": "0.0.1"
                             }
                           ],
                           "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
@@ -4185,10 +4194,11 @@
                               },
                               "group": "",
                               "groupIndex": 0,
-                              "text": "0.0.1",
-                              "textType": "literal",
+                              "text": "appVersion",
+                              "textType": "expression",
                               "longMode": "WRAP",
-                              "recolor": false
+                              "recolor": false,
+                              "previewValue": "0.0.1"
                             }
                           ],
                           "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",

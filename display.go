@@ -35,24 +35,24 @@ func updateDisplay() {
 	nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkState.IPv4String())
 	nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv6_addr", networkState.IPv6String())
 
-	nativeInstance.ObjHide("menu_btn_network")
-	nativeInstance.ObjHide("menu_btn_access")
+	nativeInstance.UIObjHide("menu_btn_network")
+	nativeInstance.UIObjHide("menu_btn_access")
 
 	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkState.MACString())
 
 	if usbState == "configured" {
 		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Connected")
-		_, _ = nativeInstance.ObjSetState("usb_status", "LV_STATE_DEFAULT")
+		_, _ = nativeInstance.UIObjSetState("usb_status", "LV_STATE_DEFAULT")
 	} else {
 		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Disconnected")
-		_, _ = nativeInstance.ObjSetState("usb_status", "LV_STATE_DISABLED")
+		_, _ = nativeInstance.UIObjSetState("usb_status", "LV_STATE_DISABLED")
 	}
 	if lastVideoState.Ready {
 		nativeInstance.UpdateLabelIfChanged("hdmi_status_label", "Connected")
-		_, _ = nativeInstance.ObjSetState("hdmi_status", "LV_STATE_DEFAULT")
+		_, _ = nativeInstance.UIObjSetState("hdmi_status", "LV_STATE_DEFAULT")
 	} else {
 		nativeInstance.UpdateLabelIfChanged("hdmi_status_label", "Disconnected")
-		_, _ = nativeInstance.ObjSetState("hdmi_status", "LV_STATE_DISABLED")
+		_, _ = nativeInstance.UIObjSetState("hdmi_status", "LV_STATE_DISABLED")
 	}
 	nativeInstance.UpdateLabelIfChanged("cloud_status_label", fmt.Sprintf("%d active", actionSessions))
 
@@ -63,20 +63,20 @@ func updateDisplay() {
 	}
 
 	if cloudConnectionState == CloudConnectionStateNotConfigured {
-		_, _ = nativeInstance.ObjHide("cloud_status_icon")
+		_, _ = nativeInstance.UIObjHide("cloud_status_icon")
 	} else {
-		_, _ = nativeInstance.ObjShow("cloud_status_icon")
+		_, _ = nativeInstance.UIObjShow("cloud_status_icon")
 	}
 
 	switch cloudConnectionState {
 	case CloudConnectionStateDisconnected:
-		_, _ = nativeInstance.ImgSetSrc("cloud_status_icon", "cloud_disconnected")
+		_, _ = nativeInstance.UIObjSetImageSrc("cloud_status_icon", "cloud_disconnected")
 		stopCloudBlink()
 	case CloudConnectionStateConnecting:
-		_, _ = nativeInstance.ImgSetSrc("cloud_status_icon", "cloud")
+		_, _ = nativeInstance.UIObjSetImageSrc("cloud_status_icon", "cloud")
 		startCloudBlink()
 	case CloudConnectionStateConnected:
-		_, _ = nativeInstance.ImgSetSrc("cloud_status_icon", "cloud")
+		_, _ = nativeInstance.UIObjSetImageSrc("cloud_status_icon", "cloud")
 		stopCloudBlink()
 	}
 }
@@ -100,9 +100,9 @@ func startCloudBlink() {
 			if cloudConnectionState != CloudConnectionStateConnecting {
 				continue
 			}
-			_, _ = nativeInstance.ObjFadeOut("cloud_status_icon", 1000)
+			_, _ = nativeInstance.UIObjFadeOut("cloud_status_icon", 1000)
 			time.Sleep(1000 * time.Millisecond)
-			_, _ = nativeInstance.ObjFadeIn("cloud_status_icon", 1000)
+			_, _ = nativeInstance.UIObjFadeIn("cloud_status_icon", 1000)
 			time.Sleep(1000 * time.Millisecond)
 		}
 	}()
@@ -347,7 +347,7 @@ func initDisplay() {
 	go func() {
 		displayLogger.Info().Msg("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
-		_, _ = nativeInstance.DispSetRotation(config.DisplayRotation)
+		_, _ = nativeInstance.DisplaySetRotation(config.DisplayRotation)
 		updateStaticContents()
 		displayInited = true
 		displayLogger.Info().Msg("display inited")

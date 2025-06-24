@@ -4,6 +4,7 @@
 #include "ui/ui.h"
 #include "ui/screens.h"
 #include "ui/images.h"
+#include "ui/vars.h"
 
 typedef struct {
     const char *name;
@@ -21,5 +22,13 @@ typedef struct {
 extern ui_img_map ui_images[];
 extern const int ui_images_size;
 
+typedef struct {
+    const char *name;
+    const char *(*getter)();
+    void (*setter)(const char *value);
+} ui_var_map;
+
+extern ui_var_map ui_vars[];
+extern const int ui_vars_size;
 
 #endif // UI_INDEX_H

@@ -200,7 +200,7 @@ func rpcGetStreamQualityFactor() (float64, error) {
 
 func rpcSetStreamQualityFactor(factor float64) error {
 	logger.Info().Float64("factor", factor).Msg("Setting stream quality factor")
-	err := nativeInstance.SetStreamQualityFactor(factor)
+	err := nativeInstance.VideoSetQualityFactor(factor)
 	if err != nil {
 		return err
 	}
@@ -222,7 +222,7 @@ func rpcSetAutoUpdateState(enabled bool) (bool, error) {
 }
 
 func rpcGetEDID() (string, error) {
-	resp, err := nativeInstance.GetEDID()
+	resp, err := nativeInstance.VideoGetEDID()
 	if err != nil {
 		return "", err
 	}
@@ -236,7 +236,7 @@ func rpcSetEDID(edid string) error {
 	} else {
 		logger.Info().Str("edid", edid).Msg("Setting EDID")
 	}
-	err := nativeInstance.SetEDID(edid)
+	err := nativeInstance.VideoSetEDID(edid)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ func rpcTryUpdate() error {
 
 func rpcSetDisplayRotation(params DisplayRotationSettings) error {
 	var err error
-	_, err = nativeInstance.DispSetRotation(params.Rotation)
+	_, err = nativeInstance.DisplaySetRotation(params.Rotation)
 	if err == nil {
 		config.DisplayRotation = params.Rotation
 		if err := SaveConfig(); err != nil {

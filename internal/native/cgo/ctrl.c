@@ -12,7 +12,7 @@
 #include "edid.h"
 #include "ctrl.h"
 #include <lvgl.h>
-#include "ui/vars.h"
+#include "ui_index.h"
 #include "log.h"
 #include "log_handler.h"
 
@@ -154,8 +154,24 @@ lv_obj_flag_t str_to_lv_obj_flag(const char *flag)
     }
 }
 
-void jetkvm_set_app_version(const char *version) {
-    set_var_app_version(version);
+void jetkvm_ui_set_var(const char *name, const char *value) {
+    for (int i = 0; i < ui_vars_size; i++) {
+        if (strcmp(ui_vars[i].name, name) == 0) {
+            ui_vars[i].setter(value);
+            return;
+        }
+    }
+    log_error("variable %s not found", name);
+}
+
+const char *jetkvm_ui_get_var(const char *name) {
+    for (int i = 0; i < ui_vars_size; i++) {
+        if (strcmp(ui_vars[i].name, name) == 0) {
+            return ui_vars[i].getter();
+        }
+    }
+    log_error("variable %s not found", name);
+    return NULL;
 }
 
 void jetkvm_ui_init() {

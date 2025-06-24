@@ -19,6 +19,14 @@ done)
 };
 
 const int ui_images_size = sizeof(ui_images) / sizeof(ui_images[0]);
+
+ui_var_map ui_vars[] = {
+$(grep 'extern const char \*get_var_' ui/vars.h | sed 's/extern const char \*get_var_//g' | sed 's/();//g' | sed 's/\r//' | while read -r line; do
+echo "    {\"$line\", &get_var_$line, &set_var_$line},"
+done)
+};
+
+const int ui_vars_size = sizeof(ui_vars) / sizeof(ui_vars[0]);
 EOF
 
 echo "ui_index.c has been generated successfully."
