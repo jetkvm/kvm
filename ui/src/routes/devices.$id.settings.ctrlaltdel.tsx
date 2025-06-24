@@ -1,9 +1,9 @@
-import { SettingsItem } from "./devices.$id.settings";
 
 import { Checkbox } from "@/components/Checkbox";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
-
 import { useSettingsStore } from "@/hooks/stores";
+
+import { SettingsItem } from "./devices.$id.settings";
 
 export default function SettingsCtrlAltDelRoute() {
   const enableCtrlAltDel = useSettingsStore(state => state.actionBarCtrlAltDel);

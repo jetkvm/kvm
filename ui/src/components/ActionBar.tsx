@@ -1,6 +1,6 @@
 import { MdOutlineContentPasteGo } from "react-icons/md";
 import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
-import { FaKeyboard, FaLock} from "react-icons/fa6";
+import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { Fragment, useCallback, useRef } from "react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
@@ -19,8 +19,6 @@ import WakeOnLanModal from "@/components/popovers/WakeOnLan/Index";
 import MountPopopover from "@/components/popovers/MountPopover";
 import ExtensionPopover from "@/components/popovers/ExtensionPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
-import useKeyboard from "@/hooks/useKeyboard";
-import { keys, modifiers } from "@/keyboardMappings";
 
 export default function Actionbar({
   requestFullscreen,
@@ -57,8 +55,6 @@ export default function Actionbar({
     },
     [setDisableFocusTrap],
   );
-
-  const { sendKeyboardEvent, resetKeyboardState } = useKeyboard();
 
   return (
     <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">
@@ -266,7 +262,7 @@ export default function Actionbar({
               }}
             />
           </div>
-          {useSettingsStore().actionBarCtrlAltDel && (
+          {/* {useSettingsStore().actionBarCtrlAltDel && (
             <div className="hidden lg:block">
               <Button
               size="XS"
@@ -282,7 +278,7 @@ export default function Actionbar({
               }}
               />
             </div>
-            )}
+            )} */}
           <div>
             <Button
               size="XS"

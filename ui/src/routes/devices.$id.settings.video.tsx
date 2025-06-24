@@ -4,6 +4,7 @@ import { Button } from "@/components/Button";
 import { TextAreaWithLabel } from "@/components/TextArea";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { useSettingsStore } from "@/hooks/stores";
 
 import notifications from "../notifications";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
@@ -44,6 +45,14 @@ export default function SettingsVideoRoute() {
   const [streamQuality, setStreamQuality] = useState("1");
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
+
+  // Video enhancement settings from store
+  const videoSaturation = useSettingsStore(state => state.videoSaturation);
+  const setVideoSaturation = useSettingsStore(state => state.setVideoSaturation);
+  const videoBrightness = useSettingsStore(state => state.videoBrightness);
+  const setVideoBrightness = useSettingsStore(state => state.setVideoBrightness);
+  const videoContrast = useSettingsStore(state => state.videoContrast);
+  const setVideoContrast = useSettingsStore(state => state.setVideoContrast);
 
   useEffect(() => {
     send("getStreamQualityFactor", {}, resp => {
@@ -126,6 +135,73 @@ export default function SettingsVideoRoute() {
                 onChange={e => handleStreamQualityChange(e.target.value)}
               />
             </SettingsItem>
+
+            {/* Video Enhancement Settings */}
+            <SettingsItem
+              title="Video Enhancement"
+              description="Adjust color settings to make the video output more vibrant and colorful"
+            />
+            
+            <div className="space-y-4 pl-4">
+              <SettingsItem
+                title="Saturation"
+                description={`Color saturation (${videoSaturation.toFixed(1)}x)`}
+              >
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.1"
+                  value={videoSaturation}
+                  onChange={e => setVideoSaturation(parseFloat(e.target.value))}
+                  className="w-32 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                />
+              </SettingsItem>
+
+              <SettingsItem
+                title="Brightness"
+                description={`Brightness level (${videoBrightness.toFixed(1)}x)`}
+              >
+                <input
+                  type="range"
+                  min="0.5"
+                  max="1.5"
+                  step="0.1"
+                  value={videoBrightness}
+                  onChange={e => setVideoBrightness(parseFloat(e.target.value))}
+                  className="w-32 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                />
+              </SettingsItem>
+
+              <SettingsItem
+                title="Contrast"
+                description={`Contrast level (${videoContrast.toFixed(1)}x)`}
+              >
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.1"
+                  value={videoContrast}
+                  onChange={e => setVideoContrast(parseFloat(e.target.value))}
+                  className="w-32 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                />
+              </SettingsItem>
+
+              <div className="flex gap-2">
+                <Button
+                  size="SM"
+                  theme="light"
+                  text="Reset to Default"
+                  onClick={() => {
+                    setVideoSaturation(1.0);
+                    setVideoBrightness(1.0);
+                    setVideoContrast(1.0);
+                  }}
+                />
+              </div>
+            </div>
+
             <SettingsItem
               title="EDID"
               description="Adjust the EDID settings for the display"

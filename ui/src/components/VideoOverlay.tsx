@@ -10,7 +10,7 @@ import LoadingSpinner from "@components/LoadingSpinner";
 import Card, { GridCard } from "@components/Card";
 
 interface OverlayContentProps {
-  children: React.ReactNode;
+  readonly children: React.ReactNode;
 }
 function OverlayContent({ children }: OverlayContentProps) {
   return (
@@ -23,7 +23,7 @@ function OverlayContent({ children }: OverlayContentProps) {
 }
 
 interface LoadingOverlayProps {
-  show: boolean;
+  readonly show: boolean;
 }
 
 export function LoadingVideoOverlay({ show }: LoadingOverlayProps) {
@@ -57,8 +57,8 @@ export function LoadingVideoOverlay({ show }: LoadingOverlayProps) {
 }
 
 interface LoadingConnectionOverlayProps {
-  show: boolean;
-  text: string;
+  readonly show: boolean;
+  readonly text: string;
 }
 export function LoadingConnectionOverlay({ show, text }: LoadingConnectionOverlayProps) {
   return (
@@ -91,8 +91,8 @@ export function LoadingConnectionOverlay({ show, text }: LoadingConnectionOverla
 }
 
 interface ConnectionErrorOverlayProps {
-  show: boolean;
-  setupPeerConnection: () => Promise<void>;
+  readonly show: boolean;
+  readonly setupPeerConnection: () => Promise<void>;
 }
 
 export function ConnectionFailedOverlay({
@@ -153,7 +153,7 @@ export function ConnectionFailedOverlay({
 }
 
 interface PeerConnectionDisconnectedOverlay {
-  show: boolean;
+  readonly show: boolean;
 }
 
 export function PeerConnectionDisconnectedOverlay({
@@ -207,8 +207,8 @@ export function PeerConnectionDisconnectedOverlay({
 }
 
 interface HDMIErrorOverlayProps {
-  show: boolean;
-  hdmiState: string;
+  readonly show: boolean;
+  readonly hdmiState: string;
 }
 
 export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
@@ -310,8 +310,8 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
 }
 
 interface NoAutoplayPermissionsOverlayProps {
-  show: boolean;
-  onPlayClick: () => void;
+  readonly show: boolean;
+  readonly onPlayClick: () => void;
 }
 
 export function NoAutoplayPermissionsOverlay({
@@ -361,7 +361,7 @@ export function NoAutoplayPermissionsOverlay({
 }
 
 interface PointerLockBarProps {
-  show: boolean;
+  readonly show: boolean;
 }
 
 export function PointerLockBar({ show }: PointerLockBarProps) {
@@ -369,10 +369,10 @@ export function PointerLockBar({ show }: PointerLockBarProps) {
     <AnimatePresence mode="wait">
       {show ? (
         <motion.div
-          className="absolute -top-[36px] left-0 right-0 z-20 bg-white"
-          initial={{ y: 20, opacity: 0, zIndex: 0 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ y: 43, zIndex: 0 }}
+          className="flex w-full items-center justify-between bg-transparent"
+          initial={{ opacity: 0, zIndex: 0 }}
+          animate={{ opacity: 1, zIndex: 20 }}
+          exit={{ opacity: 0, zIndex: 0 }}
           transition={{ duration: 0.5, ease: "easeInOut", delay: 0.5 }}
         >
           <div>

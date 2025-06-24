@@ -2,12 +2,14 @@ BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE ?= $(shell date -u +%FT%T%z)
 BUILDTS   ?= $(shell date -u +%s)
 REVISION  ?= $(shell git rev-parse HEAD)
-VERSION_DEV := 0.4.2-dev$(shell date +%Y%m%d%H%M)
-VERSION := 0.4.1
+VERSION_DEV ?= 0.4.5-dev$(shell date +%Y%m%d%H%M)
+VERSION ?= 0.4.4
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
 
+GO_BUILD_ARGS := -tags netgo
+GO_RELEASE_BUILD_ARGS := -trimpath $(GO_BUILD_ARGS)
 GO_LDFLAGS := \
   -s -w \
   -X $(PROMETHEUS_TAG).Branch=$(BRANCH) \
@@ -27,7 +29,7 @@ build_dev: hash_resource
 	@echo "Building..."
 	$(GO_CMD) build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
-		-trimpath \
+		$(GO_RELEASE_BUILD_ARGS) \
 		-o $(BIN_DIR)/jetkvm_app cmd/main.go
 
 build_test2json:
@@ -50,6 +52,7 @@ build_dev_test: build_test2json build_gotestsum
 		test_filename=$$(echo $$test_pkg_name | sed 's/\//__/g')_test; \
 		$(GO_CMD) test -v \
 			-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
+			$(GO_BUILD_ARGS) \
 			-c -o $(BIN_DIR)/tests/$$test_filename $$test; \
 		echo "runTest ./$$test_filename $$test_pkg_full_name" >> $(BIN_DIR)/tests/run_all_tests; \
 	done; \
@@ -71,7 +74,7 @@ build_release: frontend hash_resource
 	@echo "Building release..."
 	$(GO_CMD) build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION)" \
-		-trimpath \
+		$(GO_RELEASE_BUILD_ARGS) \
 		-o bin/jetkvm_app cmd/main.go
 
 release:

@@ -314,8 +314,19 @@ interface SettingsState {
   keyboardLedSync: KeyboardLedSync;
   setKeyboardLedSync: (sync: KeyboardLedSync) => void;
 
+  scrollThrottling: number;
+  setScrollThrottling: (value: number) => void;
+
   showPressedKeys: boolean;
   setShowPressedKeys: (show: boolean) => void;
+
+  // Video enhancement settings
+  videoSaturation: number;
+  setVideoSaturation: (value: number) => void;
+  videoBrightness: number;
+  setVideoBrightness: (value: number) => void;
+  videoContrast: number;
+  setVideoContrast: (value: number) => void;
 }
 
 export const useSettingsStore = create(
@@ -354,8 +365,19 @@ export const useSettingsStore = create(
       keyboardLedSync: "auto",
       setKeyboardLedSync: sync => set({ keyboardLedSync: sync }),
 
+      scrollThrottling: 0,
+      setScrollThrottling: value => set({ scrollThrottling: value }),
+
       showPressedKeys: true,
       setShowPressedKeys: show => set({ showPressedKeys: show }),
+
+      // Video enhancement settings with default values (1.0 = normal)
+      videoSaturation: 1.0,
+      setVideoSaturation: value => set({ videoSaturation: value }),
+      videoBrightness: 1.0,
+      setVideoBrightness: value => set({ videoBrightness: value }),
+      videoContrast: 1.0,
+      setVideoContrast: value => set({ videoContrast: value }),
     }),
     {
       name: "settings",

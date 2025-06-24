@@ -339,10 +339,18 @@ func startBacklightTickers() {
 		return
 	}
 
-	if dimTicker == nil && config.DisplayDimAfterSec != 0 {
+	// Stop existing tickers to prevent multiple active instances on repeated calls
+	if dimTicker != nil {
+		dimTicker.Stop()
+	}
+
+	if offTicker != nil {
+		offTicker.Stop()
+	}
+
+	if config.DisplayDimAfterSec != 0 {
 		displayLogger.Info().Msg("dim_ticker has started")
 		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
-		defer dimTicker.Stop()
 
 		go func() {
 			for { //nolint:staticcheck
@@ -354,10 +362,9 @@ func startBacklightTickers() {
 		}()
 	}
 
-	if offTicker == nil && config.DisplayOffAfterSec != 0 {
+	if config.DisplayOffAfterSec != 0 {
 		displayLogger.Info().Msg("off_ticker has started")
 		offTicker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
-		defer offTicker.Stop()
 
 		go func() {
 			for { //nolint:staticcheck

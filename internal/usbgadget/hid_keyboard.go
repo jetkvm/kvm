@@ -143,15 +143,21 @@ func (u *UsbGadget) listenKeyboardEvents() {
 			default:
 				l.Trace().Msg("reading from keyboard")
 				if u.keyboardHidFile == nil {
-					l.Error().Msg("keyboardHidFile is nil")
+					u.logWithSupression("keyboardHidFileNil", 100, &l, nil, "keyboardHidFile is nil")
+					// show the error every 100 times to avoid spamming the logs
 					time.Sleep(time.Second)
 					continue
 				}
+				// reset the counter
+				u.resetLogSuppressionCounter("keyboardHidFileNil")
+
 				n, err := u.keyboardHidFile.Read(buf)
 				if err != nil {
-					l.Error().Err(err).Msg("failed to read")
+					u.logWithSupression("keyboardHidFileRead", 100, &l, err, "failed to read")
 					continue
 				}
+				u.resetLogSuppressionCounter("keyboardHidFileRead")
+
 				l.Trace().Int("n", n).Bytes("buf", buf).Msg("got data from keyboard")
 				if n != 1 {
 					l.Trace().Int("n", n).Msg("expected 1 byte, got")
@@ -195,12 +201,12 @@ func (u *UsbGadget) keyboardWriteHidFile(data []byte) error {
 
 	_, err := u.keyboardHidFile.Write(data)
 	if err != nil {
-		u.log.Error().Err(err).Msg("failed to write to hidg0")
+		u.logWithSupression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
 		u.keyboardHidFile.Close()
 		u.keyboardHidFile = nil
 		return err
 	}
-
+	u.resetLogSuppressionCounter("keyboardWriteHidFile")
 	return nil
 }
 
