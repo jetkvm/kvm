@@ -73,6 +73,7 @@ var (
 		},
 		[]string{"url"},
 	)
+
 	metricNtpServerInfo = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "jetkvm_timesync_ntp_server_info",
