@@ -13,8 +13,6 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/resource"
-	"github.com/pion/rtp"
-
 	"github.com/pion/webrtc/v4/pkg/media"
 )
 
@@ -107,6 +105,7 @@ func WriteCtrlMessage(message []byte) error {
 
 var nativeCtrlSocketListener net.Listener  //nolint:unused
 var nativeVideoSocketListener net.Listener //nolint:unused
+var nativeAudioSocketListener net.Listener //nolint:unused
 
 var ctrlClientConnected = make(chan struct{})
 
@@ -260,8 +259,6 @@ func handleAudioClient(conn net.Conn) {
 
 	scopedLogger.Info().Msg("native audio socket client connected")
 	inboundPacket := make([]byte, maxAudioFrameSize)
-	var timestamp uint32
-	var packet rtp.Packet
 	for {
 		n, err := conn.Read(inboundPacket)
 		if err != nil {
@@ -270,20 +267,10 @@ func handleAudioClient(conn net.Conn) {
 		}
 
 		if currentSession != nil {
-			if err := packet.Unmarshal(inboundPacket[:n]); err != nil {
-				scopedLogger.Warn().Err(err).Msg("error unmarshalling audio socket packet")
-				continue
-			}
-
-			timestamp += 960
-			packet.Header.Timestamp = timestamp
-			buf, err := packet.Marshal()
-			if err != nil {
-				scopedLogger.Warn().Err(err).Msg("error marshalling packet")
-				continue
-			}
-
-			if _, err := currentSession.AudioTrack.Write(buf); err != nil {
+			if err := currentSession.AudioTrack.WriteSample(media.Sample{
+				Data:     inboundPacket[:n],
+				Duration: 20 * time.Millisecond,
+			}); err != nil {
 				scopedLogger.Warn().Err(err).Msg("error writing sample")
 			}
 		}
