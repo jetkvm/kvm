@@ -14,16 +14,16 @@ permissions:
 jobs:
   ui-lint:
     name: UI Lint
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: v21.1.0
+          node-version: "22"
           cache: "npm"
-          cache-dependency-path: "ui/package-lock.json"
+          cache-dependency-path: "**/package-lock.json"
       - name: Install dependencies
         run: |
           cd ui

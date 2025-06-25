@@ -10,9 +10,9 @@ on:
 
 jobs:
   build:
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: ubuntu-latest
     name: Build
-    if: "github.event.review.state == 'approved' || github.event.event_type != 'pull_request_review'"
+    if: github.event_name != 'pull_request_review' || github.event.review.state == 'approved'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
