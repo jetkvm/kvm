@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/jetkvm/kvm/internal/confparser"
+	"github.com/jetkvm/kvm/internal/lldp"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/udhcpc"
 	"github.com/rs/zerolog"
@@ -28,6 +29,8 @@ type NetworkInterfaceState struct {
 
 	config     *NetworkConfig
 	dhcpClient *udhcpc.DHCPClient
+
+	lldp *lldp.LLDP
 
 	defaultHostname string
 	currentHostname string
@@ -96,8 +99,16 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 		},
 	})
 
-	s.dhcpClient = dhcpClient
+	// create the lldp service
+	lldpClient := lldp.NewLLDP(&lldp.LLDPOptions{
+		InterfaceName: opts.InterfaceName,
+		EnableRx:      true,
+		EnableTx:      true,
+		Logger:        l,
+	})
 
+	s.dhcpClient = dhcpClient
+	s.lldp = lldpClient
 	return s, nil
 }
 
@@ -310,12 +321,28 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 	}
 
 	if initialCheck {
-		s.onInitialCheck(s)
+		s.handleInitialCheck()
 	} else if changed {
-		s.onStateChange(s)
+		s.handleStateChange()
 	}
 
 	return dhcpTargetState, nil
+}
+
+func (s *NetworkInterfaceState) handleInitialCheck() {
+	if s.IsUp() {
+		s.startLLDP()
+	}
+	s.onInitialCheck(s)
+}
+
+func (s *NetworkInterfaceState) handleStateChange() {
+	if s.IsUp() {
+		s.startLLDP()
+	} else {
+		s.stopLLDP()
+	}
+	s.onStateChange(s)
 }
 
 func (s *NetworkInterfaceState) CheckAndUpdateDhcp() error {
