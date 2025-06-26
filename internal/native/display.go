@@ -7,10 +7,11 @@ import (
 
 func (n *Native) setUIVars() {
 	uiSetVar("app_version", n.appVersion.String())
+	uiSetVar("system_version", n.systemVersion.String())
 }
 
 func (n *Native) initUI() {
-	uiInit()
+	uiInit(n.displayRotation)
 	n.setUIVars()
 }
 
@@ -61,7 +62,7 @@ func (n *Native) UIObjSetImageSrc(objName string, image string) (bool, error) {
 	return uiImgSetSrc(objName, image)
 }
 
-func (n *Native) DisplaySetRotation(rotation string) (bool, error) {
+func (n *Native) DisplaySetRotation(rotation uint16) (bool, error) {
 	return uiDispSetRotation(rotation)
 }
 

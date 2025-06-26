@@ -12,6 +12,14 @@ done)
 
 const int ui_objects_size = sizeof(ui_objects) / sizeof(ui_objects[0]);
 
+ui_style_map ui_styles[] = {
+$(grep 'lv_style_t \*get_style_' ui/styles.h | sed 's/lv_style_t \*get_style_//g' | sed 's/_MAIN_DEFAULT();//g' | sed 's/\r//' | while read -r line; do
+echo "    {\"$line\", &get_style_${line}_MAIN_DEFAULT},"
+done)
+};
+
+const int ui_styles_size = sizeof(ui_styles) / sizeof(ui_styles[0]);
+
 ui_img_map ui_images[] = {
 $(grep "extern const lv_img_dsc_t " ui/images.h | sed 's/extern const lv_img_dsc_t //g' | sed 's/;//g' | while read -r line; do
     echo "    {\"$line\", &$line},"

@@ -153,13 +153,6 @@ func waitCtrlAndRequestDisplayUpdate(shouldWakeDisplay bool) {
 func updateStaticContents() {
 	//contents that never change
 	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkState.MACString())
-	systemVersion, appVersion, err := GetLocalVersion()
-	if err == nil {
-		nativeInstance.UpdateLabelIfChanged("boot_screen_version", systemVersion.String())
-		nativeInstance.UpdateLabelIfChanged("boot_screen_app_version", appVersion.String())
-		nativeInstance.UpdateLabelAndChangeVisibility("system_version", systemVersion.String())
-		nativeInstance.UpdateLabelAndChangeVisibility("app_version", appVersion.String())
-	}
 
 	// get cpu info
 	cpuInfo, err := os.ReadFile("/proc/cpuinfo")
@@ -266,34 +259,6 @@ func wakeDisplay(force bool) {
 	backlightState = 0
 }
 
-// watchTsEvents monitors the touchscreen for events and simply calls wakeDisplay() to ensure the
-// touchscreen interface still works even with LCD dimming/off.
-// TODO: This is quite a hack, really we should be getting an event from jetkvm_native, or the whole display backlight
-// control should be hoisted up to jetkvm_native.
-func watchTsEvents() {
-	ts, err := os.OpenFile(touchscreenDevice, os.O_RDONLY, 0666)
-	if err != nil {
-		displayLogger.Warn().Err(err).Msg("failed to open touchscreen device")
-		return
-	}
-
-	defer ts.Close()
-
-	// This buffer is set to 24 bytes as that's the normal size of events on /dev/input
-	// Reference: https://www.kernel.org/doc/Documentation/input/input.txt
-	// This could potentially be set higher, to require multiple events to wake the display.
-	buf := make([]byte, 24)
-	for {
-		_, err := ts.Read(buf)
-		if err != nil {
-			displayLogger.Warn().Err(err).Msg("failed to read from touchscreen device")
-			return
-		}
-
-		wakeDisplay(false)
-	}
-}
-
 // startBacklightTickers starts the two tickers for dimming and switching off the display
 // if they're not already set. This is done separately to the init routine as the "never dim"
 // option has the value set to zero, but time.NewTicker only accept positive values.
@@ -347,7 +312,6 @@ func initDisplay() {
 	go func() {
 		displayLogger.Info().Msg("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
-		_, _ = nativeInstance.DisplaySetRotation(config.DisplayRotation)
 		updateStaticContents()
 		displayInited = true
 		displayLogger.Info().Msg("display inited")
@@ -355,6 +319,4 @@ func initDisplay() {
 		wakeDisplay(true)
 		requestDisplayUpdate(true)
 	}()
-
-	go watchTsEvents()
 }

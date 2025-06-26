@@ -286,14 +286,25 @@ func rpcTryUpdate() error {
 }
 
 func rpcSetDisplayRotation(params DisplayRotationSettings) error {
-	var err error
-	_, err = nativeInstance.DisplaySetRotation(params.Rotation)
-	if err == nil {
-		config.DisplayRotation = params.Rotation
-		if err := SaveConfig(); err != nil {
-			return fmt.Errorf("failed to save config: %w", err)
-		}
+	currentRotation := config.DisplayRotation
+	if currentRotation == params.Rotation {
+		return nil
 	}
+
+	err := config.SetDisplayRotation(params.Rotation)
+	if err != nil {
+		return err
+	}
+
+	_, err = nativeInstance.DisplaySetRotation(config.GetDisplayRotation())
+	if err != nil {
+		return err
+	}
+
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
 	return err
 }
 

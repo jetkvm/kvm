@@ -1,12 +1,12 @@
 {
   "navigation": {
-    "selectedUserPageObject": "[jetkvm.eez-project]:/userPages/0",
-    "selectedUserWidgetObject": "[jetkvm.eez-project]:/userWidgets/-1",
-    "selectedActionObject": "[jetkvm.eez-project]:/actions/7",
-    "selectedGlobalVariableObject": "[jetkvm.eez-project]:/variables/globalVariables/0",
+    "selectedUserPageObject": "[jetkvm.eez-project]:/userPages/5",
+    "selectedActionObject": "[jetkvm.eez-project]:/actions/0",
+    "selectedGlobalVariableObject": "[jetkvm.eez-project]:/variables/globalVariables/1",
     "selectedStyleObject": "[jetkvm.eez-project]:/lvglStyles/styles/0",
     "selectedThemeObject": "[jetkvm.eez-project]:/themes/0",
-    "selectedFontObject": "[jetkvm.eez-project]:/fonts/1",
+    "selectedFontObject": "[jetkvm.eez-project]:/fonts/4",
+    "selectedBitmapObject": "[jetkvm.eez-project]:/bitmaps/11",
     "subnavigationSelectedItems": {
       "variables-tab/sub-navigation/selected-item": "Global"
     }
@@ -29,7 +29,7 @@
           },
           {
             "type": "border",
-            "selected": 4,
+            "selected": 2,
             "size": 113.5,
             "location": "right",
             "children": [
@@ -77,7 +77,7 @@
           },
           {
             "type": "border",
-            "selected": 0,
+            "selected": 1,
             "location": "bottom",
             "children": [
               {
@@ -130,7 +130,6 @@
                   "type": "tabset",
                   "id": "#2e3d9a08-c69c-42b5-b434-525109f2a5a7",
                   "weight": 1,
-                  "selected": 1,
                   "enableClose": false,
                   "children": [
                     {
@@ -189,7 +188,8 @@
                       "enableClose": false,
                       "icon": "svg:variable"
                     }
-                  ]
+                  ],
+                  "active": true
                 }
               ]
             },
@@ -197,46 +197,46 @@
               "type": "tabset",
               "id": "EDITORS",
               "weight": 49.31058517127421,
-              "selected": 1,
+              "selected": 4,
               "enableDeleteWhenEmpty": false,
               "enableClose": false,
               "children": [
                 {
                   "type": "tab",
-                  "id": "#467ae6a9-0f08-4392-a580-25f8916524e4",
-                  "name": "BootScreen",
+                  "id": "#aec56ae8-5b75-4a2f-ad81-f0d7d683c77a",
+                  "name": "FontBook24",
                   "component": "editor",
                   "config": {
-                    "objectPath": "[jetkvm.eez-project]:/userPages/0",
+                    "objectPath": "[jetkvm.eez-project]:/fonts/4",
+                    "permanent": false
+                  },
+                  "icon": "material:font_download"
+                },
+                {
+                  "type": "tab",
+                  "id": "#c8dece00-e490-46b8-8a14-5dcfa8bbce36",
+                  "name": "AboutScreen",
+                  "component": "editor",
+                  "config": {
+                    "objectPath": "[jetkvm.eez-project]:/userPages/5",
                     "permanent": false
                   },
                   "icon": "svg:page"
                 },
                 {
                   "type": "tab",
-                  "id": "#d1704ae1-993d-4a7d-bade-0903bb61e9c6",
-                  "name": "AboutScreen",
+                  "id": "#e9afee88-d3be-4069-aa77-22930d1efcf3",
+                  "name": "HomeScreen",
                   "component": "editor",
                   "config": {
-                    "objectPath": "[jetkvm.eez-project]:/userPages/5",
+                    "objectPath": "[jetkvm.eez-project]:/userPages/1",
                     "permanent": true
                   },
                   "icon": "svg:page"
                 },
                 {
                   "type": "tab",
-                  "id": "#b444e818-4663-4332-ab40-a34acb670c8c",
-                  "name": "MenuAdvancedScreen",
-                  "component": "editor",
-                  "config": {
-                    "objectPath": "[jetkvm.eez-project]:/userPages/4",
-                    "permanent": true
-                  },
-                  "icon": "svg:page"
-                },
-                {
-                  "type": "tab",
-                  "id": "#f8258cf3-e12a-4be9-8021-33199674dbe6",
+                  "id": "#f5a057a5-977c-46be-8702-5447d603a34f",
                   "name": "MenuScreen",
                   "component": "editor",
                   "config": {
@@ -247,7 +247,7 @@
                 },
                 {
                   "type": "tab",
-                  "id": "#5dcfc8a4-36a7-4dea-a0cc-8dbeb4aab914",
+                  "id": "#8af97439-79ee-4705-be34-53ca8814f3a0",
                   "name": "Settings",
                   "component": "editor",
                   "config": {
@@ -257,8 +257,7 @@
                   },
                   "icon": "material:settings"
                 }
-              ],
-              "active": true
+              ]
             },
             {
               "type": "row",
@@ -1066,7 +1065,8 @@
         "0": {
           "0": {
             "0": {
-              "1": {}
+              "1": {},
+              "$selected": true
             }
           }
         }
@@ -1090,6 +1090,7 @@
         "0": {
           "0": {
             "0": {
+              "0": {},
               "1": {
                 "0": {}
               }
@@ -1101,7 +1102,9 @@
             "3": {
               "0": {
                 "0": {},
-                "1": {}
+                "1": {
+                  "$selected": true
+                }
               },
               "1": {
                 "0": {},
@@ -1154,8 +1157,8 @@
       },
       "transform": {
         "translate": {
-          "x": -194,
-          "y": -454
+          "x": -230,
+          "y": -94
         },
         "scale": 1
       },
@@ -1171,9 +1174,8 @@
         "0": {
           "0": {
             "0": {
-              "0": {
-                "$selected": true
-              }
+              "0": {},
+              "$selected": true
             },
             "1": {
               "0": {
@@ -1201,11 +1203,28 @@
       }
     },
     "[jetkvm.eez-project]:/userPages/4[flow-state]": {
-      "selection": {},
+      "selection": {
+        "0": {
+          "0": {
+            "0": {
+              "0": {
+                "$selected": true
+              }
+            },
+            "1": {
+              "0": {
+                "0": {},
+                "1": {},
+                "2": {}
+              }
+            }
+          }
+        }
+      },
       "transform": {
         "translate": {
-          "x": -150,
-          "y": -120
+          "x": -176,
+          "y": -127
         },
         "scale": 1
       },
@@ -1226,12 +1245,19 @@
             "1": {
               "0": {
                 "0": {},
-                "1": {},
+                "1": {
+                  "1": {}
+                },
                 "2": {},
                 "3": {},
                 "4": {},
-                "5": {},
-                "6": {}
+                "5": {
+                  "1": {
+                    "$selected": true
+                  }
+                },
+                "6": {},
+                "7": {}
               }
             }
           }
@@ -1266,6 +1292,38 @@
         "secondToPx": 200,
         "scrollLeft": 0
       }
+    },
+    "[jetkvm.eez-project]:/userPages/6[flow-state]": {
+      "selection": {
+        "0": {
+          "0": {
+            "0": {},
+            "1": {
+              "0": {
+                "0": {},
+                "2": {
+                  "1": {
+                    "$selected": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "transform": {
+        "translate": {
+          "x": -138,
+          "y": -122
+        },
+        "scale": 1
+      },
+      "timeline": {
+        "isEditorActive": false,
+        "position": 0,
+        "secondToPx": 200,
+        "scrollLeft": 0
+      }
     }
   },
   "activeOutputSection": 0,
@@ -1281,13 +1339,10 @@
   "logsPanelFilter": "all",
   "selectedStylePropertyName": "",
   "lvglPart": "MAIN",
-  "lvglState": "DEFAULT",
+  "lvglState": "DISABLED",
   "lvglExpandedPropertiesGroup": [
-    "POSITION AND SIZE",
-    "PADDING",
     "MARGIN",
-    "TEXT",
-    "BACKGROUND"
+    "TEXT"
   ],
   "showInactiveFlowsInDebugger": true,
   "globalFlowZoom": true,

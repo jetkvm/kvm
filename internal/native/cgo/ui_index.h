@@ -3,6 +3,7 @@
 
 #include "ui/ui.h"
 #include "ui/screens.h"
+#include "ui/styles.h"
 #include "ui/images.h"
 #include "ui/vars.h"
 
@@ -13,6 +14,14 @@ typedef struct {
 
 extern ui_obj_map ui_objects[];
 extern const int ui_objects_size;
+
+typedef struct {
+    const char *name;
+    lv_style_t *(*getter)();
+} ui_style_map;
+
+extern ui_style_map ui_styles[];
+extern const int ui_styles_size;
 
 typedef struct {
     const char *name;

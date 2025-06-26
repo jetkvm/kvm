@@ -30,6 +30,15 @@ void jetkvm_set_video_handler(jetkvm_video_handler_t *handler) {
     video_handler = handler;
 }
 
+void jetkvm_set_indev_handler(jetkvm_indev_handler_t *handler) {
+    lvgl_set_indev_handler(handler);
+}
+
+const char *jetkvm_ui_event_code_to_name(int code) {
+    lv_event_code_t cCode = (lv_event_code_t)code;
+    return lv_event_code_get_name(code);
+}
+
 void video_report_format(bool ready, const char *error, u_int16_t width, u_int16_t height, double frame_per_second)
 {
     state.ready = ready;
@@ -174,8 +183,8 @@ const char *jetkvm_ui_get_var(const char *name) {
     return NULL;
 }
 
-void jetkvm_ui_init() {
-    lvgl_init();
+void jetkvm_ui_init(u_int16_t rotation) {
+    lvgl_init(rotation);
 }
 
 void jetkvm_ui_tick() {
@@ -186,19 +195,9 @@ void jetkvm_set_video_state_handler(jetkvm_video_state_handler_t *handler) {
     video_state_handler = handler;
 }
 
-void jetkvm_ui_set_rotation(u_int8_t rotation)
+void jetkvm_ui_set_rotation(u_int16_t rotation)
 {
-    printf("setting rotation to %d\n", rotation);
-    if (rotation == 90)
-    {
-        lv_disp_set_rotation(NULL, LV_DISP_ROT_90);
-    } else if (rotation == 180) {
-        lv_disp_set_rotation(NULL, LV_DISP_ROT_180);
-    } else if (rotation == 270) {
-        lv_disp_set_rotation(NULL, LV_DISP_ROT_270);
-    } else {
-        lv_disp_set_rotation(NULL, LV_DISP_ROT_NONE);
-    }
+    lvgl_set_rotation(NULL, rotation);
 }
 
 const char *jetkvm_ui_get_current_screen() {

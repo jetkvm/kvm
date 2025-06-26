@@ -11,13 +11,19 @@ import (
 var nativeInstance *native.Native
 
 func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
+
 	nativeInstance = native.NewNative(native.NativeOptions{
-		SystemVersion: systemVersion,
-		AppVersion:    appVersion,
+		SystemVersion:   systemVersion,
+		AppVersion:      appVersion,
+		DisplayRotation: config.GetDisplayRotation(),
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
 			triggerVideoStateUpdate()
 			requestDisplayUpdate(true)
+		},
+		OnIndevEvent: func(event string) {
+			nativeLogger.Trace().Str("event", event).Msg("indev event received")
+			wakeDisplay(false)
 		},
 		OnVideoFrameReceived: func(frame []byte, duration time.Duration) {
 			if currentSession != nil {
