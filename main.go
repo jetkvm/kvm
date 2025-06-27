@@ -2,6 +2,7 @@ package kvm
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,6 +13,7 @@ import (
 )
 
 var appCtx context.Context
+var httpUserAgent string = fmt.Sprintf("jetkvm-app/%s", builtAppVersion)
 
 func Main() {
 	LoadConfig()
@@ -24,6 +26,8 @@ func Main() {
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to get local version")
 	}
+
+	httpUserAgent = fmt.Sprintf("jetkvm-app/%s jetkvm-system/%s", appVersionLocal, systemVersionLocal)
 
 	logger.Info().
 		Interface("system_version", systemVersionLocal).
