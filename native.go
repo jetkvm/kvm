@@ -272,6 +272,13 @@ func restartNativeBinary(binaryPath string) error {
 		nativeLogger.Warn().Err(err).Msg("failed to restart binary")
 	}
 	nativeCmd = cmd
+
+	// reset the display state
+	time.Sleep(1 * time.Second)
+	clearDisplayState()
+	updateStaticContents()
+	requestDisplayUpdate(true)
+
 	return err
 }
 
