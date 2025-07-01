@@ -3,7 +3,7 @@ module github.com/jetkvm/kvm
 go 1.24.4
 
 require (
-	github.com/Masterminds/semver/v3 v3.3.1
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/beevik/ntp v1.4.3
 	github.com/coder/websocket v1.8.13
 	github.com/coreos/go-oidc/v3 v3.14.1
