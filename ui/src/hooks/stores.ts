@@ -741,7 +741,7 @@ export type IPv6Mode =
   | "link_local"
   | "unknown";
 export type IPv4Mode = "disabled" | "static" | "dhcp" | "unknown";
-export type LLDPMode = "disabled" | "basic" | "all" | "unknown";
+export type LLDPMode = "disabled" | "basic" | "all" | "tx_only" | "rx_only" | "unknown";
 export type mDNSMode = "disabled" | "auto" | "ipv4_only" | "ipv6_only" | "unknown";
 export type TimeSyncMode =
   | "ntp_only"
@@ -759,6 +759,19 @@ export interface NetworkSettings {
   lldp_tx_tlvs: string[];
   mdns_mode: mDNSMode;
   time_sync_mode: TimeSyncMode;
+}
+
+export interface LLDPNeighbor {
+  mac: string;
+  source: string;
+  chassis_id: string;
+  port_id: string;
+  port_description: string;
+  system_name: string;
+  system_description: string;
+  ttl: number | null;
+  management_address: string | null;
+  values: Record<string, string>;
 }
 
 export const useNetworkStateStore = create<NetworkState>((set, get) => ({
