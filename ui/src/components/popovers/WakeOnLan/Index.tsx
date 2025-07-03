@@ -14,7 +14,7 @@ import AddDeviceForm from "./AddDeviceForm";
 export default function WakeOnLanModal() {
   const [storedDevices, setStoredDevices] = useState<StoredDevice[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const setDisableFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
+  const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
 
   const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
 
@@ -24,9 +24,9 @@ export default function WakeOnLanModal() {
   const [addDeviceErrorMessage, setAddDeviceErrorMessage] = useState<string | null>(null);
 
   const onCancelWakeOnLanModal = useCallback(() => {
+    setDisableVideoFocusTrap(false);
     close();
-    setDisableFocusTrap(false);
-  }, [close, setDisableFocusTrap]);
+  }, [close, setDisableVideoFocusTrap]);
 
   const onSendMagicPacket = useCallback(
     (macAddress: string) => {
@@ -43,12 +43,12 @@ export default function WakeOnLanModal() {
           }
         } else {
           notifications.success("Magic Packet sent successfully");
-          setDisableFocusTrap(false);
+          setDisableVideoFocusTrap(false);
           close();
         }
       });
     },
-    [close, rpcDataChannel?.readyState, send, setDisableFocusTrap],
+    [close, rpcDataChannel?.readyState, send, setDisableVideoFocusTrap],
   );
 
   const syncStoredDevices = useCallback(() => {
@@ -78,7 +78,7 @@ export default function WakeOnLanModal() {
         }
       });
     },
-    [storedDevices, send, syncStoredDevices],
+    [send, storedDevices, syncStoredDevices],
   );
 
   const onAddDevice = useCallback(

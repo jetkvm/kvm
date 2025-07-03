@@ -1,17 +1,19 @@
 // Key codes and modifiers correspond to definitions in the
 // [Linux USB HID gadget driver](https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt)
+// [Section 10. Keyboard/Keypad Page 0x07](https://usb.org/sites/default/files/hut1_21.pdf)
 export const keys = {
   ArrowDown: 0x51,
   ArrowLeft: 0x50,
   ArrowRight: 0x4f,
   ArrowUp: 0x52,
-  Backquote: 0x35,
+  Backquote: 0x35,    // aka Grave
   Backslash: 0x31,
   Backspace: 0x2a,
-  BracketLeft: 0x2f,
-  BracketRight: 0x30,
+  BracketLeft: 0x2f,  // aka LeftBrace
+  BracketRight: 0x30, // aka RightBrace
   CapsLock: 0x39,
   Comma: 0x36,
+  Compose: 0x65,
   ContextMenu: 0,
   Delete: 0x4c,
   Digit0: 0x27,
@@ -40,10 +42,21 @@ export const keys = {
   F10: 0x43,
   F11: 0x44,
   F12: 0x45,
-  F13: 0x68,
+  F14: 0x69,
+  F15: 0x6a,
+  F16: 0x6b,
+  F17: 0x6c,
+  F18: 0x6d,
+  F19: 0x6e,
+  F20: 0x6f,
+  F21: 0x70,
+  F22: 0x71,
+  F23: 0x72,
+  F24: 0x73,
   Home: 0x4a,
+  HashTilde: 0x32,  // non-US # and ~
   Insert: 0x49,
-  IntlBackslash: 0x64,
+  IntlBackslash: 0x64, // non-US \ and |
   KeyA: 0x04,
   KeyB: 0x05,
   KeyC: 0x06,
@@ -72,30 +85,35 @@ export const keys = {
   KeyZ: 0x1d,
   KeypadExclamation: 0xcf,
   Minus: 0x2d,
-  NumLock: 0x53,
-  Numpad0: 0x62,
-  Numpad1: 0x59,
-  Numpad2: 0x5a,
-  Numpad3: 0x5b,
-  Numpad4: 0x5c,
+  None: 0x00,
+  NumLock: 0x53,  // and Clear
+  Numpad0: 0x62,  // and Insert
+  Numpad1: 0x59,  // and End
+  Numpad2: 0x5a,  // and Down Arrow
+  Numpad3: 0x5b,  // and Page Down
+  Numpad4: 0x5c,  // and Left Arrow
   Numpad5: 0x5d,
-  Numpad6: 0x5e,
-  Numpad7: 0x5f,
-  Numpad8: 0x60,
-  Numpad9: 0x61,
+  Numpad6: 0x5e,  // and Right Arrow
+  Numpad7: 0x5f,  // and Home
+  Numpad8: 0x60,  // and Up Arrow
+  Numpad9: 0x61,  // and Page Up
   NumpadAdd: 0x57,
+  NumpadComma: 0x85,
+  NumpadDecimal: 0x63,
   NumpadDivide: 0x54,
   NumpadEnter: 0x58,
   NumpadEqual: 0x67,
+  NumpadLeftParen: 0xb6,
   NumpadMultiply: 0x55,
+  NumpadRightParen: 0xb7,
   NumpadSubtract: 0x56,
-  NumpadDecimal: 0x63,
   PageDown: 0x4e,
   PageUp: 0x4b,
   Period: 0x37,
   PrintScreen: 0x46,
   Pause: 0x48,
-  Quote: 0x34,
+  Power: 0x66,
+  Quote: 0x34, // aka Single Quote or Apostrophe
   ScrollLock: 0x47,
   Semicolon: 0x33,
   Slash: 0x38,

@@ -1,6 +1,6 @@
-import { KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
 
-export const name = "Schwiizerdütsch";
+const name = "Schwiizerdütsch";
 
 const keyTrema = { key: "BracketRight" } // tréma (umlaut), two dots placed above a vowel
 const keyAcute = { key: "Minus", altRight: true } // accent aigu (acute accent), mark ´ placed above the letter
@@ -8,7 +8,7 @@ const keyHat = { key: "Equal" } // accent circonflexe (accent hat), mark ^ place
 const keyGrave = { key: "Equal", shift: true } // accent grave, mark ` placed above the letter
 const keyTilde = { key: "Equal", altRight: true } // tilde, mark ~ placed above the letter
 
-export const chars = {
+const chars = {
   A: { key: "KeyA", shift: true },
   "Ä": { key: "KeyA", shift: true, accentKey: keyTrema },
   "Á": { key: "KeyA", shift: true, accentKey: keyAcute },
@@ -163,3 +163,9 @@ export const chars = {
   Enter: { key: "Enter" },
   Tab: { key: "Tab" },
 } as Record<string, KeyCombo>;
+
+export const de_CH: KeyboardLayout = {
+  isoCode: "de-CH",
+  name: name,
+  chars: chars
+};
