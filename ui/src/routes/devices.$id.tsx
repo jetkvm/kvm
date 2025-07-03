@@ -58,9 +58,11 @@ import { SystemVersionInfo } from "./devices.$id.settings.general.update";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
+  deviceId: string;
 }
 
 interface CloudLoaderResp {
+  deviceId: string;
   deviceName: string;
   user: User | null;
   iceConfig: {
@@ -85,7 +87,7 @@ const deviceLoader = async () => {
   if (deviceRes.status === 401) return redirect("/login-local");
   if (deviceRes.ok) {
     const device = (await deviceRes.json()) as LocalDevice;
-    return { authMode: device.authMode };
+    return { authMode: device.authMode, deviceId: device.deviceId };
   }
 
   throw new Error("Error fetching device");
@@ -111,7 +113,7 @@ const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => 
     device: { id: string; name: string; user: { googleId: string } };
   };
 
-  return { user, iceConfig, deviceName: device.name || device.id };
+  return { user, iceConfig, deviceName: device.name || device.id, deviceId: device.id };
 };
 
 const loader = async ({ params }: LoaderFunctionArgs) => {
@@ -123,6 +125,7 @@ export default function KvmIdRoute() {
   // Depending on the mode, we set the appropriate variables
   const user = "user" in loaderResp ? loaderResp.user : null;
   const deviceName = "deviceName" in loaderResp ? loaderResp.deviceName : null;
+  const deviceId = "deviceId" in loaderResp ? loaderResp.deviceId : null;
   const iceConfig = "iceConfig" in loaderResp ? loaderResp.iceConfig : null;
   const authMode = "authMode" in loaderResp ? loaderResp.authMode : null;
 
@@ -787,6 +790,14 @@ export default function KvmIdRoute() {
     peerConnectionState,
     setupPeerConnection,
   ]);
+
+  // update the browser tab title with the name of the JetKVM we're discussing
+  useEffect(() => {
+    const name = deviceName || deviceId;
+    document.title = (name && name.length > 0)
+                    ? "JetKVM-" + name
+                    : "JetKVM";
+  }, [deviceName, deviceId]);
 
   return (
     <FeatureFlagProvider appVersion={appVersion}>
