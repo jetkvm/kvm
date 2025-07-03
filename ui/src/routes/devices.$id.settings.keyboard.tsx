@@ -46,7 +46,7 @@ export default function SettingsKeyboardRoute() {
       if ("error" in resp) return;
       setKeyboardLayout(resp.result as string);
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [send, setKeyboardLayout]);
 
   const onKeyboardLayoutChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
