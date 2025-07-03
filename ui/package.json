@@ -19,7 +19,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@headlessui/react": "^2.2.3",
+    "@headlessui/react": "^2.2.4",
     "@headlessui/tailwindcss": "^0.2.2",
     "@heroicons/react": "^2.2.0",
     "@vitejs/plugin-basic-ssl": "^2.0.0",
