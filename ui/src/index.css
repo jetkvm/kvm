@@ -222,6 +222,10 @@ video::-webkit-media-controls {
   background: none;
 }
 
+.simple-keyboard .hg-button.depressed-key {
+  @apply border-gray-800! border-b-gray-600! border-t-gray-900! bg-gray-700!;
+}
+
 .simple-keyboard .hg-button.selectedButton {
   background: rgba(5, 25, 70, 0.53);
   @apply text-white;

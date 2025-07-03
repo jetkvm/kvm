@@ -481,6 +481,21 @@ export interface HidState {
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
 
+  isShiftActive: boolean;
+  setIsShiftActive: (enabled: boolean) => void;
+
+  isCtrlActive: boolean;
+  setIsCtrlActive: (enabled: boolean) => void;
+
+  isAltActive: boolean;
+  setIsAltActive: (enabled: boolean) => void;
+
+  isMetaActive: boolean;
+  setIsMetaActive: (enabled: boolean) => void;
+
+  isAltGrActive: boolean;
+  setIsAltGrActive: (enabled: boolean) => void;
+
   isPasteModeEnabled: boolean;
   setPasteModeEnabled: (enabled: boolean) => void;
 
@@ -526,6 +541,21 @@ export const useHidStore = create<HidState>((set, get) => ({
 
   isVirtualKeyboardEnabled: false,
   setVirtualKeyboardEnabled: enabled => set({ isVirtualKeyboardEnabled: enabled }),
+
+  isShiftActive: false,
+  setIsShiftActive: enabled => set({ isShiftActive: enabled }),
+
+  isCtrlActive: false,
+  setIsCtrlActive: enabled => set({ isCtrlActive: enabled }),
+
+  isAltActive: false,
+  setIsAltActive: enabled => set({ isAltActive: enabled }),
+
+  isMetaActive: false,
+  setIsMetaActive: enabled => set({ isMetaActive: enabled }),
+
+  isAltGrActive: false,
+  setIsAltGrActive: enabled => set({ isAltGrActive: enabled }),
 
   isPasteModeEnabled: false,
   setPasteModeEnabled: enabled => set({ isPasteModeEnabled: enabled }),
