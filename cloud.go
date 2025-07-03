@@ -223,6 +223,7 @@ func handleCloudRegister(c *gin.Context) {
 		return
 	}
 	apiReq.Header.Set("Content-Type", "application/json")
+	apiReq.Header.Set("User-Agent", httpUserAgent)
 
 	apiResp, err := client.Do(apiReq)
 	if err != nil {
@@ -537,6 +538,8 @@ func rpcDeregisterDevice() error {
 	}
 
 	req.Header.Set("Authorization", "Bearer "+config.CloudToken)
+	req.Header.Set("User-Agent", httpUserAgent)
+
 	client := &http.Client{Timeout: CloudAPIRequestTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
