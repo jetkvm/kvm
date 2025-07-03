@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -57,6 +58,7 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 				ctx,
 				url,
 				timeout,
+				t.networkConfig.GetTransportProxyFunc(),
 			)
 			duration := time.Since(startTime)
 
@@ -122,10 +124,16 @@ func queryHttpTime(
 	ctx context.Context,
 	url string,
 	timeout time.Duration,
+	proxyFunc func(*http.Request) (*url.URL, error),
 ) (now *time.Time, response *http.Response, err error) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = proxyFunc
+
 	client := http.Client{
-		Timeout: timeout,
+		Transport: transport,
+		Timeout:   timeout,
 	}
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, nil, err
