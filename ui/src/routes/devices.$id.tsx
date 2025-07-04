@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   LoaderFunctionArgs,
   Outlet,
   Params,
   redirect,
   useLoaderData,
-  useLocation,
   useNavigate,
   useOutlet,
   useParams,
@@ -139,7 +138,6 @@ export default function KvmIdRoute() {
   const setDiskChannel = useRTCStore(state => state.setDiskChannel);
   const setRpcDataChannel = useRTCStore(state => state.setRpcDataChannel);
   const setTransceiver = useRTCStore(state => state.setTransceiver);
-  const location = useLocation();
 
   const isLegacySignalingEnabled = useRef(false);
 
@@ -724,9 +722,49 @@ export default function KvmIdRoute() {
   }, [kvmTerminal, peerConnection, serialConsole]);
 
   const outlet = useOutlet();
+  
+  // Helper function to create connection status element without useLocation dependency
+  const createConnectionStatusElement = useCallback((pathname: string) => {
+    const hasConnectionFailed =
+      connectionFailed || ["failed", "closed"].includes(peerConnectionState ?? "");
+
+    const isPeerConnectionLoading =
+      ["connecting", "new"].includes(peerConnectionState ?? "") ||
+      peerConnection === null;
+
+    const isDisconnected = peerConnectionState === "disconnected";
+
+    const isOtherSession = pathname.includes("other-session");
+
+    if (isOtherSession) return null;
+    if (peerConnectionState === "connected") return null;
+    if (isDisconnected) {
+      return <PeerConnectionDisconnectedOverlay show={true} />;
+    }
+
+    if (hasConnectionFailed)
+      return (
+        <ConnectionFailedOverlay show={true} setupPeerConnection={setupPeerConnection} />
+      );
+
+    if (isPeerConnectionLoading) {
+      return <LoadingConnectionOverlay show={true} text={loadingMessage} />;
+    }
+
+    return null;
+  }, [
+    connectionFailed,
+    loadingMessage,
+    peerConnection,
+    peerConnectionState,
+    setupPeerConnection,
+  ]);
+
   const onModalClose = useCallback(() => {
-    if (location.pathname !== "/other-session") navigateTo("/");
-  }, [navigateTo, location.pathname]);
+    // Get the current pathname without useLocation
+    const currentPathname = window.location.pathname;
+    if (currentPathname !== "/other-session") navigateTo("/");
+  }, [navigateTo]);
 
   const appVersion = useDeviceStore(state => state.appVersion);
   const setAppVersion = useDeviceStore(state => state.setAppVersion);
@@ -751,42 +789,9 @@ export default function KvmIdRoute() {
     });
   }, [appVersion, send, setAppVersion, setSystemVersion]);
 
-  const ConnectionStatusElement = useMemo(() => {
-    const hasConnectionFailed =
-      connectionFailed || ["failed", "closed"].includes(peerConnectionState ?? "");
-
-    const isPeerConnectionLoading =
-      ["connecting", "new"].includes(peerConnectionState ?? "") ||
-      peerConnection === null;
-
-    const isDisconnected = peerConnectionState === "disconnected";
-
-    const isOtherSession = location.pathname.includes("other-session");
-
-    if (isOtherSession) return null;
-    if (peerConnectionState === "connected") return null;
-    if (isDisconnected) {
-      return <PeerConnectionDisconnectedOverlay show={true} />;
-    }
-
-    if (hasConnectionFailed)
-      return (
-        <ConnectionFailedOverlay show={true} setupPeerConnection={setupPeerConnection} />
-      );
-
-    if (isPeerConnectionLoading) {
-      return <LoadingConnectionOverlay show={true} text={loadingMessage} />;
-    }
-
-    return null;
-  }, [
-    connectionFailed,
-    loadingMessage,
-    location.pathname,
-    peerConnection,
-    peerConnectionState,
-    setupPeerConnection,
-  ]);
+  // Get current pathname without useLocation hook
+  const currentPathname = window.location.pathname;
+  const ConnectionStatusElement = createConnectionStatusElement(currentPathname);
 
   return (
     <FeatureFlagProvider appVersion={appVersion}>
