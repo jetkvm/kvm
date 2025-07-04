@@ -5,7 +5,6 @@ import {
   Params,
   redirect,
   useLoaderData,
-  useLocation,
   useNavigate,
   useOutlet,
   useParams,
@@ -139,7 +138,6 @@ export default function KvmIdRoute() {
   const setDiskChannel = useRTCStore(state => state.setDiskChannel);
   const setRpcDataChannel = useRTCStore(state => state.setRpcDataChannel);
   const setTransceiver = useRTCStore(state => state.setTransceiver);
-  const location = useLocation();
 
   const isLegacySignalingEnabled = useRef(false);
 
@@ -725,8 +723,8 @@ export default function KvmIdRoute() {
 
   const outlet = useOutlet();
   const onModalClose = useCallback(() => {
-    if (location.pathname !== "/other-session") navigateTo("/");
-  }, [navigateTo, location.pathname]);
+    navigateTo("/");
+  }, [navigateTo]);
 
   const appVersion = useDeviceStore(state => state.appVersion);
   const setAppVersion = useDeviceStore(state => state.setAppVersion);
@@ -761,7 +759,7 @@ export default function KvmIdRoute() {
 
     const isDisconnected = peerConnectionState === "disconnected";
 
-    const isOtherSession = location.pathname.includes("other-session");
+    const isOtherSession = outlet !== null;
 
     if (isOtherSession) return null;
     if (peerConnectionState === "connected") return null;
@@ -782,7 +780,7 @@ export default function KvmIdRoute() {
   }, [
     connectionFailed,
     loadingMessage,
-    location.pathname,
+    outlet,
     peerConnection,
     peerConnectionState,
     setupPeerConnection,
