@@ -77,6 +77,12 @@ func Main() {
 
 	// initialize usb gadget
 	initUsbGadget()
+
+	StartAudioServer()
+	if _, err := runAudioClient(); err != nil {
+		logger.Warn().Err(err).Msg("failed to run audio client")
+	}
+
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
 	}

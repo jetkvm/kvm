@@ -479,6 +479,8 @@ export default function KvmIdRoute() {
     };
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
+    // Add audio transceiver to receive audio from the server
+    pc.addTransceiver("audio", { direction: "recvonly" });
 
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onopen = () => {

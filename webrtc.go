@@ -18,6 +18,7 @@ import (
 type Session struct {
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
+	AudioTrack               *webrtc.TrackLocalStaticSample
 	ControlChannel           *webrtc.DataChannel
 	RPCChannel               *webrtc.DataChannel
 	HidChannel               *webrtc.DataChannel
@@ -136,7 +137,17 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 
-	rtpSender, err := peerConnection.AddTrack(session.VideoTrack)
+	session.AudioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", "kvm")
+	if err != nil {
+		return nil, err
+	}
+
+	videoRtpSender, err := peerConnection.AddTrack(session.VideoTrack)
+	if err != nil {
+		return nil, err
+	}
+
+	audioRtpSender, err := peerConnection.AddTrack(session.AudioTrack)
 	if err != nil {
 		return nil, err
 	}
@@ -144,14 +155,9 @@ func newSession(config SessionConfig) (*Session, error) {
 	// Read incoming RTCP packets
 	// Before these packets are returned they are processed by interceptors. For things
 	// like NACK this needs to be called.
-	go func() {
-		rtcpBuf := make([]byte, 1500)
-		for {
-			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
-				return
-			}
-		}
-	}()
+	go drainRtpSender(videoRtpSender)
+	go drainRtpSender(audioRtpSender)
+
 	var isConnected bool
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
@@ -201,6 +207,15 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	})
 	return session, nil
+}
+
+func drainRtpSender(rtpSender *webrtc.RTPSender) {
+	rtcpBuf := make([]byte, 1500)
+	for {
+		if _, _, err := rtpSender.Read(rtcpBuf); err != nil {
+			return
+		}
+	}
 }
 
 var actionSessions = 0

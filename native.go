@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/resource"
-
 	"github.com/pion/webrtc/v4/pkg/media"
 )
 
@@ -106,6 +105,7 @@ func WriteCtrlMessage(message []byte) error {
 
 var nativeCtrlSocketListener net.Listener  //nolint:unused
 var nativeVideoSocketListener net.Listener //nolint:unused
+var nativeAudioSocketListener net.Listener //nolint:unused
 
 var ctrlClientConnected = make(chan struct{})
 
@@ -231,7 +231,7 @@ func handleVideoClient(conn net.Conn) {
 
 	scopedLogger.Info().Msg("native video socket client connected")
 
-	inboundPacket := make([]byte, maxFrameSize)
+	inboundPacket := make([]byte, maxVideoFrameSize)
 	lastFrame := time.Now()
 	for {
 		n, err := conn.Read(inboundPacket)
@@ -245,6 +245,32 @@ func handleVideoClient(conn net.Conn) {
 		if currentSession != nil {
 			err := currentSession.VideoTrack.WriteSample(media.Sample{Data: inboundPacket[:n], Duration: sinceLastFrame})
 			if err != nil {
+				scopedLogger.Warn().Err(err).Msg("error writing sample")
+			}
+		}
+	}
+}
+
+func handleAudioClient(conn net.Conn) {
+	defer conn.Close()
+	scopedLogger := nativeLogger.With().
+		Str("type", "audio").
+		Logger()
+
+	scopedLogger.Info().Msg("native audio socket client connected")
+	inboundPacket := make([]byte, maxAudioFrameSize)
+	for {
+		n, err := conn.Read(inboundPacket)
+		if err != nil {
+			scopedLogger.Warn().Err(err).Msg("error during read")
+			return
+		}
+
+		if currentSession != nil {
+			if err := currentSession.AudioTrack.WriteSample(media.Sample{
+				Data:     inboundPacket[:n],
+				Duration: 20 * time.Millisecond,
+			}); err != nil {
 				scopedLogger.Warn().Err(err).Msg("error writing sample")
 			}
 		}
