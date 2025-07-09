@@ -262,23 +262,6 @@ export default function Actionbar({
               }}
             />
           </div>
-          {/* {useSettingsStore().actionBarCtrlAltDel && (
-            <div className="hidden lg:block">
-              <Button
-              size="XS"
-              theme="light"
-              text="Ctrl + Alt + Del"
-              LeadingIcon={FaLock}
-              onClick={() => {
-                sendKeyboardEvent(
-                [keys["Delete"]],
-                [modifiers["ControlLeft"], modifiers["AltLeft"]],
-                );
-                setTimeout(resetKeyboardState, 100);
-              }}
-              />
-            </div>
-            )} */}
           <div>
             <Button
               size="XS"

@@ -308,9 +308,6 @@ interface SettingsState {
   keyboardLayout: string;
   setKeyboardLayout: (layout: string) => void;
 
-  actionBarCtrlAltDel: boolean;
-  setActionBarCtrlAltDel: (enabled: boolean) => void;
-
   keyboardLedSync: KeyboardLedSync;
   setKeyboardLedSync: (sync: KeyboardLedSync) => void;
 
@@ -358,9 +355,6 @@ export const useSettingsStore = create(
 
       keyboardLayout: "en-US",
       setKeyboardLayout: layout => set({ keyboardLayout: layout }),
-
-      actionBarCtrlAltDel: false,
-      setActionBarCtrlAltDel: enabled => set({ actionBarCtrlAltDel: enabled }),
 
       keyboardLedSync: "auto",
       setKeyboardLedSync: sync => set({ keyboardLedSync: sync }),
