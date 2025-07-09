@@ -142,6 +142,7 @@ var dcState DCPowerState
 func runDCControl() {
 	scopedLogger := serialLogger.With().Str("service", "dc_control").Logger()
 	reader := bufio.NewReader(port)
+	hasRestoreFeature := false
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -151,7 +152,13 @@ func runDCControl() {
 
 		// Split the line by semicolon
 		parts := strings.Split(strings.TrimSpace(line), ";")
-		if len(parts) != 4 {
+		if len(parts) == 5 {
+			scopedLogger.Debug().Str("line", line).Msg("Detected DC extension with restore feature")
+			hasRestoreFeature = true
+		} else if len(parts) == 4 {
+			scopedLogger.Debug().Str("line", line).Msg("Detected DC extension without restore feature")
+			hasRestoreFeature = false
+		} else {
 			scopedLogger.Warn().Str("line", line).Msg("Invalid line")
 			continue
 		}
@@ -163,6 +170,17 @@ func runDCControl() {
 			continue
 		}
 		dcState.IsOn = powerState == 1
+		if hasRestoreFeature {
+			restoreState, err := strconv.Atoi(parts[4])
+			if err != nil {
+				scopedLogger.Warn().Err(err).Msg("Invalid restore state")
+				continue
+			}
+			dcState.RestoreState = restoreState
+		} else {
+			// -1 means not supported
+			dcState.RestoreState = -1
+		}
 		milliVolts, err := strconv.ParseFloat(parts[1], 64)
 		if err != nil {
 			scopedLogger.Warn().Err(err).Msg("Invalid voltage")
@@ -202,6 +220,25 @@ func setDCPowerState(on bool) error {
 	command := "PWR_OFF\n"
 	if on {
 		command = "PWR_ON\n"
+	}
+	_, err = port.Write([]byte(command))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func setDCRestoreState(state int) error {
+	_, err := port.Write([]byte("\n"))
+	if err != nil {
+		return err
+	}
+	command := "RESTORE_MODE_OFF\n"
+	switch state {
+	case 1:
+		command = "RESTORE_MODE_ON\n"
+	case 2:
+		command = "RESTORE_MODE_LAST_STATE\n"
 	}
 	_, err = port.Write([]byte(command))
 	if err != nil {
