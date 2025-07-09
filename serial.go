@@ -234,9 +234,10 @@ func setDCRestoreState(state int) error {
 		return err
 	}
 	command := "RESTORE_MODE_OFF\n"
-	if state == 1 {
+	switch state {
+	case 1:
 		command = "RESTORE_MODE_ON\n"
-	} else if state == 2 {
+	case 2:
 		command = "RESTORE_MODE_LAST_STATE\n"
 	}
 	_, err = port.Write([]byte(command))
