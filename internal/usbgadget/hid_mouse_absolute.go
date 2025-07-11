@@ -11,9 +11,10 @@ var absoluteMouseConfig = gadgetConfigItem{
 	path:       []string{"functions", "hid.usb1"},
 	configPath: []string{"hid.usb1"},
 	attrs: gadgetAttributes{
-		"protocol":      "2",
-		"subclass":      "0",
-		"report_length": "6",
+		"protocol":        "2",
+		"subclass":        "0",
+		"report_length":   "6",
+		"no_out_endpoint": "1",
 	},
 	reportDesc: absoluteMouseCombinedReportDesc,
 }
