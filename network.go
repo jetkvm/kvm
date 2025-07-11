@@ -24,7 +24,9 @@ func networkStateChanged() {
 			timeSync.SetDhcpNtpAddresses(networkState.NtpAddressesString())
 		}
 
-		timeSync.Sync()
+		if err := timeSync.Sync(); err != nil {
+			networkLogger.Error().Err(err).Msg("failed to sync time after network state change")
+		}
 	}
 
 	// always restart mDNS when the network state changes
