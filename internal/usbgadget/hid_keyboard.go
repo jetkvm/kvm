@@ -17,7 +17,7 @@ var keyboardConfig = gadgetConfigItem{
 		"protocol":        "1",
 		"subclass":        "1",
 		"report_length":   "8",
-		"no_out_endpoint": "0",		
+		"no_out_endpoint": "0",
 	},
 	reportDesc: keyboardReportDesc,
 }
