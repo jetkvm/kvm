@@ -747,6 +747,7 @@ export type TimeSyncMode =
 export interface NetworkSettings {
   hostname: string;
   domain: string;
+  http_proxy: string;
   ipv4_mode: IPv4Mode;
   ipv6_mode: IPv6Mode;
   lldp_mode: LLDPMode;

@@ -3,6 +3,7 @@ package confparser
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"reflect"
 	"slices"
 	"strconv"
@@ -371,6 +372,10 @@ func (f *FieldConfig) validateField() error {
 		case "hostname":
 			if _, err := idna.Lookup.ToASCII(val); err != nil {
 				return fmt.Errorf("field `%s` is not a valid hostname: %s", f.Name, val)
+			}
+		case "proxy":
+			if url, err := url.Parse(val); err != nil || (url.Scheme != "http" && url.Scheme != "https") || url.Host == "" {
+				return fmt.Errorf("field `%s` is not a valid HTTP proxy URL: %s", f.Name, val)
 			}
 		default:
 			return fmt.Errorf("field `%s` cannot use validate_type: unsupported validator: %s", f.Name, validateType)

@@ -93,7 +93,14 @@ func fetchUpdateMetadata(ctx context.Context, deviceId string, includePreRelease
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = config.NetworkConfig.GetTransportProxyFunc()
+
+	client := &http.Client{
+		Transport: transport,
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error sending request: %w", err)
 	}
@@ -139,6 +146,7 @@ func downloadFile(ctx context.Context, path string, url string, downloadProgress
 	client := http.Client{
 		Timeout: 10 * time.Minute,
 		Transport: &http.Transport{
+			Proxy:               config.NetworkConfig.GetTransportProxyFunc(),
 			TLSHandshakeTimeout: 30 * time.Second,
 			TLSClientConfig: &tls.Config{
 				RootCAs: rootcerts.ServerCertPool(),
