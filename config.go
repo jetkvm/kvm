@@ -9,6 +9,8 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network"
 	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 type WakeOnLanDevice struct {
@@ -138,6 +140,21 @@ var (
 	configLock = &sync.Mutex{}
 )
 
+var (
+	configSuccess = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_config_last_reload_successful",
+			Help: "The last configuration load succeeded",
+		},
+	)
+	configSuccessTime = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_config_last_reload_success_timestamp_seconds",
+			Help: "Timestamp of last successful config load",
+		},
+	)
+)
+
 func LoadConfig() {
 	configLock.Lock()
 	defer configLock.Unlock()
@@ -153,6 +170,8 @@ func LoadConfig() {
 	file, err := os.Open(configPath)
 	if err != nil {
 		logger.Debug().Msg("default config file doesn't exist, using default")
+		configSuccess.Set(1.0)
+		configSuccessTime.SetToCurrentTime()
 		return
 	}
 	defer file.Close()
@@ -161,6 +180,7 @@ func LoadConfig() {
 	loadedConfig := *defaultConfig
 	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
 		logger.Warn().Err(err).Msg("config file JSON parsing failed")
+		configSuccess.Set(0.0)
 		return
 	}
 
@@ -180,6 +200,9 @@ func LoadConfig() {
 	config = &loadedConfig
 
 	logging.GetRootLogger().UpdateLogLevel(config.DefaultLogLevel)
+
+	configSuccess.Set(1.0)
+	configSuccessTime.SetToCurrentTime()
 
 	logger.Info().Str("path", configPath).Msg("config loaded")
 }
