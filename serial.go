@@ -128,6 +128,7 @@ func pressATXResetButton(duration time.Duration) error {
 
 func mountDCControl() error {
 	_ = port.SetMode(defaultMode)
+	registerDCMetrics()
 	go runDCControl()
 	return nil
 }
@@ -205,6 +206,9 @@ func runDCControl() {
 		dcState.Voltage = volts
 		dcState.Current = amps
 		dcState.Power = watts
+
+		// Update Prometheus metrics
+		updateDCMetrics(dcState)
 
 		if currentSession != nil {
 			writeJSONRPCEvent("dcState", dcState, currentSession)
