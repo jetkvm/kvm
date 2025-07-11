@@ -24,6 +24,9 @@ linters:
           - errcheck
         path: _test.go
       - linters:
+          - forbidigo
+        path: cmd/main.go
+      - linters:
           - gochecknoinits
         path: internal/logging/sse.go
     paths:
