@@ -28,6 +28,7 @@ show_help() {
     echo "      --run-go-tests         Run go tests"
     echo "      --run-go-tests-only    Run go tests and exit"
     echo "      --skip-ui-build        Skip frontend/UI build"
+    echo "  -i, --install              Build for release and install the app"
     echo "      --help                 Display this help message"
     echo
     echo "Example:"
@@ -43,6 +44,7 @@ RESET_USB_HID_DEVICE=false
 LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
 RUN_GO_TESTS=false
 RUN_GO_TESTS_ONLY=false
+INSTALL_APP=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -70,6 +72,10 @@ while [[ $# -gt 0 ]]; do
         --run-go-tests-only)
             RUN_GO_TESTS_ONLY=true
             RUN_GO_TESTS=true
+            shift
+            ;;
+        -i|--install)
+            INSTALL_APP=true
             shift
             ;;
         --help)
@@ -139,25 +145,36 @@ EOF
     fi
 fi
 
-msg_info "▶ Building go binary"
-make build_dev
-
-# Kill any existing instances of the application
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
-
-# Copy the binary to the remote host
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
-
-if [ "$RESET_USB_HID_DEVICE" = true ]; then
-    msg_info "▶ Resetting USB HID device"
-    msg_warn "The option has been deprecated and will be removed in a future version, as JetKVM will now reset USB gadget configuration when needed"
-    # Remove the old USB gadget configuration
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -rf /sys/kernel/config/usb_gadget/jetkvm/configs/c.1/hid.usb*"
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" "ls /sys/class/udc > /sys/kernel/config/usb_gadget/jetkvm/UDC"
-fi
-
-# Deploy and run the application on the remote host
-ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << EOF
+if [ "$INSTALL_APP" = true ]
+then
+	msg_info "▶ Building release binary"
+	make build_release
+	
+	# Copy the binary to the remote host as if we were the OTA updater.
+	ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
+	
+	# Reboot the device, the new app will be deployed by the startup process.
+	ssh "${REMOTE_USER}@${REMOTE_HOST}" "reboot"
+else
+	msg_info "▶ Building development binary"
+	make build_dev
+	
+	# Kill any existing instances of the application
+	ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
+	
+	# Copy the binary to the remote host
+	ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
+	
+	if [ "$RESET_USB_HID_DEVICE" = true ]; then
+	msg_info "▶ Resetting USB HID device"
+	msg_warn "The option has been deprecated and will be removed in a future version, as JetKVM will now reset USB gadget configuration when needed"
+	# Remove the old USB gadget configuration
+	ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -rf /sys/kernel/config/usb_gadget/jetkvm/configs/c.1/hid.usb*"
+	ssh "${REMOTE_USER}@${REMOTE_HOST}" "ls /sys/class/udc > /sys/kernel/config/usb_gadget/jetkvm/UDC"
+	fi
+	
+	# Deploy and run the application on the remote host
+	ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << EOF
 set -e
 
 # Set the library path to include the directory where librockit.so is located
@@ -176,5 +193,6 @@ chmod +x jetkvm_app_debug
 # Run the application in the background
 PION_LOG_TRACE=${LOG_TRACE_SCOPES} ./jetkvm_app_debug | tee -a /tmp/jetkvm_app_debug.log
 EOF
+fi
 
 echo "Deployment complete."
