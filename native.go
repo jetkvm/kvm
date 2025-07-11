@@ -8,6 +8,8 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,6 +42,11 @@ var seq int32 = 1
 var ongoingRequests = make(map[int32]chan *CtrlResponse)
 
 var lock = &sync.Mutex{}
+
+var (
+	nativeCmd     *exec.Cmd
+	nativeCmdLock = &sync.Mutex{}
+)
 
 func CallCtrlAction(action string, params map[string]interface{}) (*CtrlResponse, error) {
 	lock.Lock()
@@ -129,16 +136,26 @@ func StartNativeSocketServer(socketPath string, handleClient func(net.Conn), isC
 	scopedLogger.Info().Msg("server listening")
 
 	go func() {
-		conn, err := listener.Accept()
-		listener.Close()
-		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("failed to accept socket")
+		for {
+			conn, err := listener.Accept()
+
+			if err != nil {
+				scopedLogger.Warn().Err(err).Msg("failed to accept socket")
+				continue
+			}
+			if isCtrl {
+				// check if the channel is closed
+				select {
+				case <-ctrlClientConnected:
+					scopedLogger.Debug().Msg("ctrl client reconnected")
+				default:
+					close(ctrlClientConnected)
+					scopedLogger.Debug().Msg("first native ctrl socket client connected")
+				}
+			}
+
+			go handleClient(conn)
 		}
-		if isCtrl {
-			close(ctrlClientConnected)
-			scopedLogger.Debug().Msg("first native ctrl socket client connected")
-		}
-		handleClient(conn)
 	}()
 
 	return listener
@@ -235,6 +252,58 @@ func handleVideoClient(conn net.Conn) {
 	}
 }
 
+func startNativeBinaryWithLock(binaryPath string) (*exec.Cmd, error) {
+	nativeCmdLock.Lock()
+	defer nativeCmdLock.Unlock()
+
+	cmd, err := startNativeBinary(binaryPath)
+	if err != nil {
+		return nil, err
+	}
+	nativeCmd = cmd
+	return cmd, nil
+}
+
+func restartNativeBinary(binaryPath string) error {
+	time.Sleep(10 * time.Second)
+	// restart the binary
+	nativeLogger.Info().Msg("restarting jetkvm_native binary")
+	cmd, err := startNativeBinary(binaryPath)
+	if err != nil {
+		nativeLogger.Warn().Err(err).Msg("failed to restart binary")
+	}
+	nativeCmd = cmd
+
+	// reset the display state
+	time.Sleep(1 * time.Second)
+	clearDisplayState()
+	updateStaticContents()
+	requestDisplayUpdate(true)
+
+	return err
+}
+
+func superviseNativeBinary(binaryPath string) error {
+	nativeCmdLock.Lock()
+	defer nativeCmdLock.Unlock()
+
+	if nativeCmd == nil || nativeCmd.Process == nil {
+		return restartNativeBinary(binaryPath)
+	}
+
+	err := nativeCmd.Wait()
+
+	if err == nil {
+		nativeLogger.Info().Err(err).Msg("jetkvm_native binary exited with no error")
+	} else if exiterr, ok := err.(*exec.ExitError); ok {
+		nativeLogger.Warn().Int("exit_code", exiterr.ExitCode()).Msg("jetkvm_native binary exited with error")
+	} else {
+		nativeLogger.Warn().Err(err).Msg("jetkvm_native binary exited with unknown error")
+	}
+
+	return restartNativeBinary(binaryPath)
+}
+
 func ExtractAndRunNativeBin() error {
 	binaryPath := "/userdata/jetkvm/bin/jetkvm_native"
 	if err := ensureBinaryUpdated(binaryPath); err != nil {
@@ -246,12 +315,28 @@ func ExtractAndRunNativeBin() error {
 		return fmt.Errorf("failed to make binary executable: %w", err)
 	}
 	// Run the binary in the background
-	cmd, err := startNativeBinary(binaryPath)
+	cmd, err := startNativeBinaryWithLock(binaryPath)
 	if err != nil {
 		return fmt.Errorf("failed to start binary: %w", err)
 	}
 
-	//TODO: add auto restart
+	// check if the binary is still running every 10 seconds
+	go func() {
+		for {
+			select {
+			case <-appCtx.Done():
+				nativeLogger.Info().Msg("stopping native binary supervisor")
+				return
+			default:
+				err := superviseNativeBinary(binaryPath)
+				if err != nil {
+					nativeLogger.Warn().Err(err).Msg("failed to supervise native binary")
+					time.Sleep(1 * time.Second) // Add a short delay to prevent rapid successive calls
+				}
+			}
+		}
+	}()
+
 	go func() {
 		<-appCtx.Done()
 		nativeLogger.Info().Int("pid", cmd.Process.Pid).Msg("killing process")
@@ -282,6 +367,22 @@ func shouldOverwrite(destPath string, srcHash []byte) bool {
 	return !bytes.Equal(srcHash, dstHash)
 }
 
+func getNativeSha256() ([]byte, error) {
+	version, err := resource.ResourceFS.ReadFile("jetkvm_native.sha256")
+	if err != nil {
+		return nil, err
+	}
+	return version, nil
+}
+
+func GetNativeVersion() (string, error) {
+	version, err := getNativeSha256()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(version)), nil
+}
+
 func ensureBinaryUpdated(destPath string) error {
 	srcFile, err := resource.ResourceFS.Open("jetkvm_native")
 	if err != nil {
@@ -289,7 +390,7 @@ func ensureBinaryUpdated(destPath string) error {
 	}
 	defer srcFile.Close()
 
-	srcHash, err := resource.ResourceFS.ReadFile("jetkvm_native.sha256")
+	srcHash, err := getNativeSha256()
 	if err != nil {
 		nativeLogger.Debug().Msg("error reading embedded jetkvm_native.sha256, proceeding with update")
 		srcHash = nil

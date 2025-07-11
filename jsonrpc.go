@@ -681,10 +681,11 @@ func rpcResetConfig() error {
 }
 
 type DCPowerState struct {
-	IsOn    bool    `json:"isOn"`
-	Voltage float64 `json:"voltage"`
-	Current float64 `json:"current"`
-	Power   float64 `json:"power"`
+	IsOn         bool    `json:"isOn"`
+	Voltage      float64 `json:"voltage"`
+	Current      float64 `json:"current"`
+	Power        float64 `json:"power"`
+	RestoreState int     `json:"restoreState"`
 }
 
 func rpcGetDCPowerState() (DCPowerState, error) {
@@ -696,6 +697,15 @@ func rpcSetDCPowerState(enabled bool) error {
 	err := setDCPowerState(enabled)
 	if err != nil {
 		return fmt.Errorf("failed to set DC power state: %w", err)
+	}
+	return nil
+}
+
+func rpcSetDCRestoreState(state int) error {
+	logger.Info().Int("state", state).Msg("Setting DC restore state")
+	err := setDCRestoreState(state)
+	if err != nil {
+		return fmt.Errorf("failed to set DC restore state: %w", err)
 	}
 	return nil
 }
@@ -1088,6 +1098,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getBacklightSettings":   {Func: rpcGetBacklightSettings},
 	"getDCPowerState":        {Func: rpcGetDCPowerState},
 	"setDCPowerState":        {Func: rpcSetDCPowerState, Params: []string{"enabled"}},
+	"setDCRestoreState":      {Func: rpcSetDCRestoreState, Params: []string{"state"}},
 	"getActiveExtension":     {Func: rpcGetActiveExtension},
 	"setActiveExtension":     {Func: rpcSetActiveExtension, Params: []string{"extensionId"}},
 	"getATXState":            {Func: rpcGetATXState},

@@ -30,8 +30,8 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 		attrs: gadgetAttributes{
 			"bcdUSB":    "0x0200", // USB 2.0
 			"idVendor":  "0x1d6b", // The Linux Foundation
-			"idProduct": "0104",   // Multifunction Composite Gadget
-			"bcdDevice": "0100",
+			"idProduct": "0x0104", // Multifunction Composite Gadget
+			"bcdDevice": "0x0100", // USB2
 		},
 		configAttrs: gadgetAttributes{
 			"MaxPower": "250", // in unit of 2mA

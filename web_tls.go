@@ -108,6 +108,9 @@ func setTLSState(s TLSState) error {
 			isChanged = true
 		}
 		// parse pem to cert and key
+		if certStore == nil {
+			initCertStore()
+		}
 		err, _ := certStore.ValidateAndSaveCertificate(webSecureCustomCertificateName, s.Certificate, s.PrivateKey, true)
 		// warn doesn't matter as ... we don't know the hostname yet
 		if err != nil {

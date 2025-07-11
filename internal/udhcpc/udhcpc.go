@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -149,6 +150,12 @@ func (c *DHCPClient) loadLeaseFile() error {
 	}
 
 	isFirstLoad := c.lease == nil
+
+	// Skip processing if lease hasn't changed to avoid unnecessary wake-ups.
+	if reflect.DeepEqual(c.lease, lease) {
+		return nil
+	}
+
 	c.lease = lease
 
 	if lease.IPAddress == nil {
