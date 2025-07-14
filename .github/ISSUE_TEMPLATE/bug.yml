@@ -55,6 +55,18 @@ body:
         - Serial Console
     validations:
       required: false
+  - type: input
+    attributes:
+      label: Remote device Hardware
+      description: If the bug is related to a remote device, please provide its hardware information e.g. Raspberry Pi 5
+    validations:
+      required: false
+  - type: input
+    attributes:
+      label: Remote device OS
+      description: If the bug is related to a remote device, please provide its OS information as detailed as possible e.g. Debian 12.
+    validations:
+      required: false
   - type: textarea
     attributes:
       label: Bug description
