@@ -1,0 +1,10 @@
+blank_issues_enabled: true
+
+contact_links:
+  - name: Hardware Issues
+    url: https://jetkvm.com/contact
+    about: If your hardware is not powering on or is not working, please contact us.
+
+  - name: Discord
+    url: https://jetkvm.com/discord
+    about: Engage with the JetKVM team and other community members.
