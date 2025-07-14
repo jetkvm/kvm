@@ -1,0 +1,46 @@
+name: Feature
+type: 'Feature'
+description: 🚀 Request a new feature.
+labels:
+- 'type: feature'
+body:
+  - type: textarea
+    attributes:
+      label: A note for the community
+      value: |
+        > [!NOTE]
+        > Please vote on this issue by adding a 👍 [reaction](https://blog.github.com/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/) to the original issue to help the community and maintainers prioritize this request.
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Disclaimer
+      description: |
+        Before requesting a feature, check it does not already exist in the [documentation](https://jetkvm.com/docs) or our [roadmap](https://jetkvm.com/roadmap).
+        You are quite welcome opening a feature request before spending time to implement it yourself.
+      options:
+        - label: I have read and understood the disclaimer.
+          required: true
+        - label: I plan to implement the feature myself.
+  - type: dropdown
+    attributes:
+      label: Subsystem
+      description: Provide the subsystem of the feature you request, you can choose multiple if you think it fits in multiple areas.
+      options:
+        - Hardware
+        - Device Compatibility
+        - Keyboard
+        - Mouse
+        - Power
+        - UI: Screen
+        - UI: Application
+        - UI: Cloud
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Feature description
+      description: |
+        Provide a description of the feature you request.
+    validations:
+      required: true
