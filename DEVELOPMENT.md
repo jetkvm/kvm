@@ -23,6 +23,16 @@ Welcome to JetKVM development! This guide will help you get started quickly, whe
 - **Git** for version control
 - **SSH access** to your JetKVM device
 
+### Development Environment
+
+**Recommended:** Development is best done on **Linux** or **macOS**. 
+
+If you're using Windows, we strongly recommend using **WSL (Windows Subsystem for Linux)** for the best development experience:
+- [Install WSL on Windows](https://docs.microsoft.com/en-us/windows/wsl/install)
+- [WSL Setup Guide](https://docs.microsoft.com/en-us/windows/wsl/setup/environment)
+
+This ensures compatibility with shell scripts and build tools used in the project.
+
 ### Project Setup
 
 1. **Clone the repository:**
