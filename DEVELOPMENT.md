@@ -19,9 +19,9 @@ Welcome to JetKVM development! This guide will help you get started quickly, whe
 
 ### Prerequisites
 - **A JetKVM device** (for full development)
-- **Go 1.24.4+** and **Node.js 22.15.0**
-- **Git** for version control
-- **SSH access** to your JetKVM device
+- **[Go 1.24.4+](https://go.dev/doc/install)** and **[Node.js 22.15.0](https://nodejs.org/en/download/)**
+- **[Git](https://git-scm.com/downloads)** for version control
+- **[SSH access](https://jetkvm.com/docs/advanced-usage/developing#developer-mode)** to your JetKVM device
 
 ### Development Environment
 
