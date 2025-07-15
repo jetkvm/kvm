@@ -205,6 +205,20 @@ func SaveConfig() error {
 	return nil
 }
 
+func RemoveConfig() error {
+	configLock.Lock()
+	defer configLock.Unlock()
+
+	logger.Trace().Str("path", configPath).Msg("Removing config")
+
+	err := os.Remove(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to remove config file: %w", err)
+	}
+
+	return nil
+}
+
 func ensureConfigLoaded() {
 	if config == nil {
 		LoadConfig()

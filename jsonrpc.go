@@ -192,6 +192,24 @@ func rpcReboot(force bool) error {
 	return nil
 }
 
+func rpcFactoryReset() error {
+	logger.Info().Msg("Got factory reset request from JSONRPC")
+
+	err := RemoveConfig()
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to remove config")
+		return err
+	}
+
+	err = rpcReboot(true)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to reboot after config remove")
+		return err
+	}
+
+	return nil
+}
+
 var streamFactor = 1.0
 
 func rpcGetStreamQualityFactor() (float64, error) {
@@ -1038,6 +1056,7 @@ func rpcSetLocalLoopbackOnly(enabled bool) error {
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"reboot":                 {Func: rpcReboot, Params: []string{"force"}},
+	"factoryReset":           {Func: rpcFactoryReset},
 	"getDeviceID":            {Func: rpcGetDeviceID},
 	"deregisterDevice":       {Func: rpcDeregisterDevice},
 	"getCloudState":          {Func: rpcGetCloudState},

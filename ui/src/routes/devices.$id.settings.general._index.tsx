@@ -95,15 +95,30 @@ export default function SettingsGeneralRoute() {
 
           <div className="mt-2 flex items-center justify-between gap-x-2">
             <SettingsItem
-              title="Reboot Device"
-              description="Power cycle the JetKVM"
+              title="Reboot"
+              description="Reboot the JetKVM"
             />
             <div>
               <Button
                 size="SM"
                 theme="light"
-                text="Reboot Device"
+                text="Reboot"
                 onClick={() => navigateTo("./reboot")}
+              />
+            </div>
+          </div>
+
+          <div className="mt-2 flex items-center justify-between gap-x-2">
+            <SettingsItem
+              title="Factory Reset"
+              description="Factory reset the JetKVM to the default configuration"
+            />
+            <div>
+              <Button
+                size="SM"
+                theme="light"
+                text="Factory Reset"
+                onClick={() => navigateTo("./factory-reset")}
               />
             </div>
           </div>

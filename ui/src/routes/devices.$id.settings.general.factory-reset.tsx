@@ -4,13 +4,13 @@ import { useCallback } from "react";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 
-export default function SettingsGeneralRebootRoute() {
+export default function SettingsGeneralFactoryResetRoute() {
   const navigate = useNavigate();
   const [send] = useJsonRpc();
 
   const onConfirmUpdate = useCallback(() => {
     // This is where we send the RPC to the golang binary
-    send("reboot", {force: true});
+    send("factoryReset", {});
   }, [send]);
 
   {
@@ -20,8 +20,8 @@ export default function SettingsGeneralRebootRoute() {
     <ConfirmDialog
       open={true}
       onClose={() => navigate("..")}
-      title="Reboot JetKVM"
-      description="Do you want to proceed with rebooting the JetKVM?"
+      title="Factory Reset"
+      description="Do you want to proceed with factory resetting the JetKVM?"
       variant="danger"
       onConfirm={onConfirmUpdate}
     />
