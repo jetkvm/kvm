@@ -1,6 +1,6 @@
-import { KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
 
-export const name = "Čeština";
+const name = "Čeština";
 
 const keyTrema = { key: "Backslash" } // tréma (umlaut), two dots placed above a vowel
 const keyAcute = { key: "Equal" } // accent aigu (acute accent), mark ´ placed above the letter
@@ -13,7 +13,7 @@ const keyOverdot = { key: "Digit8", shift: true, altRight: true } // overdot (do
 const keyHook = { key: "Digit6", shift: true, altRight: true } // ogonoek (little hook), mark ˛ placed beneath a letter
 const keyCedille = { key: "Equal", shift: true, altRight: true } // accent cedille (cedilla), mark ¸ placed beneath a letter
 
-export const chars = {
+const chars = {
   A: { key: "KeyA", shift: true },
   "Ä": { key: "KeyA", shift: true, accentKey: keyTrema },
   "Á": { key: "KeyA", shift: true, accentKey: keyAcute },
@@ -242,3 +242,9 @@ export const chars = {
   Enter: { key: "Enter" },
   Tab: { key: "Tab" },
 } as Record<string, KeyCombo>;
+
+export const cs_CZ: KeyboardLayout = {
+  isoCode: "cs-CZ",
+  name: name,
+  chars: chars
+};

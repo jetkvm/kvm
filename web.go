@@ -97,9 +97,6 @@ func setupRouter() *gin.Engine {
 	// We use this to determine if the device is setup
 	r.GET("/device/status", handleDeviceStatus)
 
-	// We use this to provide the UI with the device configuration
-	r.GET("/device/ui-config.js", handleDeviceUIConfig)
-
 	// We use this to setup the device in the welcome page
 	r.POST("/device/setup", handleSetup)
 
@@ -692,21 +689,6 @@ func handleCloudState(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
-}
-
-func handleDeviceUIConfig(c *gin.Context) {
-	config, _ := json.Marshal(gin.H{
-		"CLOUD_API":      config.CloudURL,
-		"DEVICE_VERSION": builtAppVersion,
-	})
-	if config == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to marshal config"})
-		return
-	}
-
-	response := fmt.Sprintf("window.JETKVM_CONFIG = %s;", config)
-
-	c.Data(http.StatusOK, "text/javascript; charset=utf-8", []byte(response))
 }
 
 func handleSetup(c *gin.Context) {

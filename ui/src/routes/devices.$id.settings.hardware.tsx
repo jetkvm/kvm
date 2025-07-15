@@ -116,15 +116,6 @@ export default function SettingsHardwareRoute() {
             }}
           />
         </SettingsItem>
-        {/* <SettingsItem
-          title="Enable Ctrl+Alt+Del Action Bar"
-          description="Enable or disable the action bar action for sending a Ctrl+Alt+Del to the host"
-        >
-          <Checkbox
-            checked={actionBarConfig.ctrlAltDel}
-            onChange={onActionBarItemChange("ctrlAltDel")}
-          />
-        </SettingsItem> */}
         {settings.backlightSettings.max_brightness != 0 && (
           <>
             <SettingsItem

@@ -308,9 +308,6 @@ interface SettingsState {
   keyboardLayout: string;
   setKeyboardLayout: (layout: string) => void;
 
-  actionBarCtrlAltDel: boolean;
-  setActionBarCtrlAltDel: (enabled: boolean) => void;
-
   keyboardLedSync: KeyboardLedSync;
   setKeyboardLedSync: (sync: KeyboardLedSync) => void;
 
@@ -358,9 +355,6 @@ export const useSettingsStore = create(
 
       keyboardLayout: "en-US",
       setKeyboardLayout: layout => set({ keyboardLayout: layout }),
-
-      actionBarCtrlAltDel: false,
-      setActionBarCtrlAltDel: enabled => set({ actionBarCtrlAltDel: enabled }),
 
       keyboardLedSync: "auto",
       setKeyboardLedSync: sync => set({ keyboardLedSync: sync }),
@@ -753,6 +747,7 @@ export type TimeSyncMode =
 export interface NetworkSettings {
   hostname: string;
   domain: string;
+  http_proxy: string;
   ipv4_mode: IPv4Mode;
   ipv6_mode: IPv6Mode;
   lldp_mode: LLDPMode;
@@ -941,5 +936,5 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
     } finally {
       set({ loading: false });
     }
-  },
+  }
 }));

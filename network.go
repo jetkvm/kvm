@@ -19,6 +19,16 @@ func networkStateChanged() {
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(true)
 
+	if timeSync != nil {
+		if networkState != nil {
+			timeSync.SetDhcpNtpAddresses(networkState.NtpAddressesString())
+		}
+
+		if err := timeSync.Sync(); err != nil {
+			networkLogger.Error().Err(err).Msg("failed to sync time after network state change")
+		}
+	}
+
 	// always restart mDNS when the network state changes
 	if mDNS != nil {
 		_ = mDNS.SetListenOptions(config.NetworkConfig.GetMDNSMode())

@@ -4,7 +4,7 @@ import { KeyboardLedSync, useSettingsStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { layouts } from "@/keyboardLayouts";
+import { keyboardOptions } from "@/keyboardLayouts";
 import { Checkbox } from "@/components/Checkbox";
 
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
@@ -32,7 +32,7 @@ export default function SettingsKeyboardRoute() {
       return "en_US";
   }, [keyboardLayout]);
 
-  const layoutOptions = Object.entries(layouts).map(([code, language]) => { return { value: code, label: language } })
+  const layoutOptions = keyboardOptions();
   const ledSyncOptions = [
     { value: "auto", label: "Automatic" },
     { value: "browser", label: "Browser Only" },
@@ -46,7 +46,7 @@ export default function SettingsKeyboardRoute() {
       if ("error" in resp) return;
       setKeyboardLayout(resp.result as string);
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [send, setKeyboardLayout]);
 
   const onKeyboardLayoutChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {

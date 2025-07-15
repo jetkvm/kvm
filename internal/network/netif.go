@@ -21,6 +21,7 @@ type NetworkInterfaceState struct {
 	ipv6Addr      *net.IP
 	ipv6Addresses []IPv6Address
 	ipv6LinkLocal *net.IP
+	ntpAddresses  []*net.IP
 	macAddr       *net.HardwareAddr
 
 	l         *zerolog.Logger
@@ -76,6 +77,7 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 		onInitialCheck:  opts.OnInitialCheck,
 		cbConfigChange:  opts.OnConfigChange,
 		config:          opts.NetworkConfig,
+		ntpAddresses:    make([]*net.IP, 0),
 	}
 
 	// create the dhcp client
@@ -89,7 +91,7 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 				opts.Logger.Error().Err(err).Msg("failed to update network state")
 				return
 			}
-
+			_ = s.updateNtpServersFromLease(lease)
 			_ = s.setHostnameIfNotSame()
 
 			opts.OnDhcpLeaseChange(lease)
@@ -133,6 +135,27 @@ func (s *NetworkInterfaceState) IPv6String() string {
 		return "..."
 	}
 	return s.ipv6Addr.String()
+}
+
+func (s *NetworkInterfaceState) NtpAddresses() []*net.IP {
+	return s.ntpAddresses
+}
+
+func (s *NetworkInterfaceState) NtpAddressesString() []string {
+	ntpServers := []string{}
+
+	if s != nil {
+		s.l.Debug().Any("s", s).Msg("getting NTP address strings")
+
+		if len(s.ntpAddresses) > 0 {
+			for _, server := range s.ntpAddresses {
+				s.l.Debug().IPAddr("server", *server).Msg("converting NTP address")
+				ntpServers = append(ntpServers, server.String())
+			}
+		}
+	}
+
+	return ntpServers
 }
 
 func (s *NetworkInterfaceState) MAC() *net.HardwareAddr {
@@ -316,6 +339,25 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 	}
 
 	return dhcpTargetState, nil
+}
+
+func (s *NetworkInterfaceState) updateNtpServersFromLease(lease *udhcpc.Lease) error {
+	if lease != nil && len(lease.NTPServers) > 0 {
+		s.l.Info().Msg("lease found, updating DHCP NTP addresses")
+		s.ntpAddresses = make([]*net.IP, 0, len(lease.NTPServers))
+
+		for _, ntpServer := range lease.NTPServers {
+			if ntpServer != nil {
+				s.l.Info().IPAddr("ntp_server", ntpServer).Msg("NTP server found in lease")
+				s.ntpAddresses = append(s.ntpAddresses, &ntpServer)
+			}
+		}
+	} else {
+		s.l.Info().Msg("no NTP servers found in lease")
+		s.ntpAddresses = make([]*net.IP, 0, len(s.config.TimeSyncNTPServers))
+	}
+
+	return nil
 }
 
 func (s *NetworkInterfaceState) CheckAndUpdateDhcp() error {

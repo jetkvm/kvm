@@ -657,6 +657,16 @@ export default function WebRTCVideo() {
     return true;
   }, [isPlaying, isPointerLockActive, isPointerLockPossible, isVideoLoading, settings.mouseMode, videoHeight, videoWidth]);
 
+  // Conditionally set the filter style so we don't fallback to software rendering if these values are default of 1.0
+  const videoStyle = useMemo(() => {
+    const isDefault = videoSaturation === 1.0 && videoBrightness === 1.0 && videoContrast === 1.0;
+    return isDefault
+      ? {} // No filter if all settings are default (1.0)
+      : {
+          filter: `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`,
+        };
+  }, [videoSaturation, videoBrightness, videoContrast]);
+
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
       <div className="flex min-h-[39.5px] flex-col">
@@ -691,17 +701,15 @@ export default function WebRTCVideo() {
                     <div className="relative flex h-full w-full items-center justify-center">
                         <video
                           ref={videoElm}
-                          autoPlay={true}
+                          autoPlay
                           controls={false}
                           onPlaying={onVideoPlaying}
                           onPlay={onVideoPlaying}
-                          muted={true}
+                          muted
                           playsInline
                           disablePictureInPicture
                           controlsList="nofullscreen"
-                          style={{
-                            filter: `saturate(${videoSaturation}) brightness(${videoBrightness}) contrast(${videoContrast})`,
-                          }}
+                          style={videoStyle}
                           className={cx(
                             "max-h-full min-h-[384px] max-w-full min-w-[512px] bg-black/50 object-contain transition-all duration-1000",
                             {

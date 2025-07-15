@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -366,6 +367,22 @@ func shouldOverwrite(destPath string, srcHash []byte) bool {
 	return !bytes.Equal(srcHash, dstHash)
 }
 
+func getNativeSha256() ([]byte, error) {
+	version, err := resource.ResourceFS.ReadFile("jetkvm_native.sha256")
+	if err != nil {
+		return nil, err
+	}
+	return version, nil
+}
+
+func GetNativeVersion() (string, error) {
+	version, err := getNativeSha256()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(version)), nil
+}
+
 func ensureBinaryUpdated(destPath string) error {
 	srcFile, err := resource.ResourceFS.Open("jetkvm_native")
 	if err != nil {
@@ -373,7 +390,7 @@ func ensureBinaryUpdated(destPath string) error {
 	}
 	defer srcFile.Close()
 
-	srcHash, err := resource.ResourceFS.ReadFile("jetkvm_native.sha256")
+	srcHash, err := getNativeSha256()
 	if err != nil {
 		nativeLogger.Debug().Msg("error reading embedded jetkvm_native.sha256, proceeding with update")
 		srcHash = nil

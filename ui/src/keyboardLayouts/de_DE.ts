@@ -1,12 +1,12 @@
-import { KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
 
-export const name = "Deutsch";
+const name = "Deutsch";
 
 const keyAcute = { key: "Equal" } // accent aigu (acute accent), mark ´ placed above the letter
 const keyHat = { key: "Backquote" } // accent circonflexe (accent hat), mark ^ placed above the letter
 const keyGrave = { key: "Equal", shift: true } // accent grave, mark ` placed above the letter
 
-export const chars = {
+const chars = {
   A: { key: "KeyA", shift: true },
   "Á": { key: "KeyA", shift: true, accentKey: keyAcute },
   "Â": { key: "KeyA", shift: true, accentKey: keyHat },
@@ -150,3 +150,9 @@ export const chars = {
   Enter: { key: "Enter" },
   Tab: { key: "Tab" },
 } as Record<string, KeyCombo>;
+
+export const de_DE: KeyboardLayout = {
+  isoCode: "de-DE",
+  name: name,
+  chars: chars
+};

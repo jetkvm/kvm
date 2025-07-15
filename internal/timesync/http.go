@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -19,9 +20,9 @@ var defaultHTTPUrls = []string{
 	// "http://www.msftconnecttest.com/connecttest.txt",
 }
 
-func (t *TimeSync) queryAllHttpTime() (now *time.Time) {
-	chunkSize := 4
-	httpUrls := t.httpUrls
+func (t *TimeSync) queryAllHttpTime(httpUrls []string) (now *time.Time) {
+	chunkSize := int(t.networkConfig.TimeSyncParallel.ValueOr(4))
+	t.l.Info().Strs("httpUrls", httpUrls).Int("chunkSize", chunkSize).Msg("querying HTTP URLs")
 
 	// shuffle the http urls to avoid always querying the same servers
 	rand.Shuffle(len(httpUrls), func(i, j int) { httpUrls[i], httpUrls[j] = httpUrls[j], httpUrls[i] })
@@ -57,6 +58,7 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 				ctx,
 				url,
 				timeout,
+				t.networkConfig.GetTransportProxyFunc(),
 			)
 			duration := time.Since(startTime)
 
@@ -122,10 +124,16 @@ func queryHttpTime(
 	ctx context.Context,
 	url string,
 	timeout time.Duration,
+	proxyFunc func(*http.Request) (*url.URL, error),
 ) (now *time.Time, response *http.Response, err error) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = proxyFunc
+
 	client := http.Client{
-		Timeout: timeout,
+		Transport: transport,
+		Timeout:   timeout,
 	}
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, nil, err
