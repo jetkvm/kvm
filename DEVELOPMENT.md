@@ -464,12 +464,6 @@ GOOS=linux GOARCH=amd64 go build -o bin/jetkvm_app_x64 cmd/main.go
 go build -o bin/jetkvm_app_native cmd/main.go
 ```
 
-### Custom Build Tags
-
-```bash
-# Build with specific tags
-go build -tags "netgo,debug" -o bin/jetkvm_app cmd/main.go
-```
 
 ### Performance Profiling
 
@@ -480,26 +474,5 @@ go build -o bin/jetkvm_app -ldflags="-X main.enableProfiling=true" cmd/main.go
 # Access profiling endpoints
 curl http://<IP>:6060/debug/pprof/
 ```
-
-## Release Process
-
-### Development Release
-
-```bash
-# Build and upload development release
-make dev_release
-```
-
-### Production Release
-
-```bash
-# Update version in Makefile
-VERSION := 0.4.7
-
-# Build and upload production release
-make release
-```
-
----
 
 For more information, visit the [JetKVM Documentation](https://jetkvm.com/docs) or join our [Discord Server](https://jetkvm.com/discord).
