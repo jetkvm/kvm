@@ -17,8 +17,6 @@ Welcome to JetKVM development! This guide will help you get started quickly, whe
 
 ## Get Started
 
-## Get Started
-
 ### Prerequisites
 - **A JetKVM device** (for full development)
 - **Go 1.24.4+** and **Node.js 22.15.0**
