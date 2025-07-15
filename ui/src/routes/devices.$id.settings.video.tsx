@@ -220,7 +220,6 @@ export default function SettingsVideoRoute() {
                 />
               </div>
             </div>
-
             <Fieldset disabled={edidLoading} className="space-y-2">
               <SettingsItem
                 title="EDID"
@@ -262,12 +261,14 @@ export default function SettingsVideoRoute() {
                       size="SM"
                       theme="primary"
                       text="Set Custom EDID"
+                      loading={edidLoading}
                       onClick={() => handleEDIDChange(customEdidValue)}
                     />
                     <Button
                       size="SM"
                       theme="light"
                       text="Restore to default"
+                      loading={edidLoading}
                       onClick={() => {
                         setCustomEdidValue(null);
                         handleEDIDChange(defaultEdid);
