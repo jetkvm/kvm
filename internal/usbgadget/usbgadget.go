@@ -19,6 +19,7 @@ type Devices struct {
 	RelativeMouse bool `json:"relative_mouse"`
 	Keyboard      bool `json:"keyboard"`
 	MassStorage   bool `json:"mass_storage"`
+	Audio         bool `json:"audio"`
 }
 
 // Config is a struct that represents the customizations for a USB gadget.

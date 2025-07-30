@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gwatts/rootcerts"
+	"github.com/jetkvm/kvm/internal/audio"
+	"github.com/pion/webrtc/v4/pkg/media"
 )
 
 var appCtx context.Context
@@ -71,12 +73,41 @@ func Main() {
 		err = ExtractAndRunNativeBin()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to extract and run native bin")
-			//TODO: prepare an error message screen buffer to show on kvm screen
+			// (future) prepare an error message screen buffer to show on kvm screen
 		}
 	}()
 
 	// initialize usb gadget
 	initUsbGadget()
+
+	// Start in-process audio streaming and deliver Opus frames to WebRTC
+	go func() {
+		err := audio.StartAudioStreaming(func(frame []byte) {
+			// Deliver Opus frame to WebRTC audio track if session is active
+			if currentSession != nil {
+				config := audio.GetAudioConfig()
+				var sampleData []byte
+				if audio.IsAudioMuted() {
+					sampleData = make([]byte, len(frame)) // silence
+				} else {
+					sampleData = frame
+				}
+				if err := currentSession.AudioTrack.WriteSample(media.Sample{
+					Data:     sampleData,
+					Duration: config.FrameSize,
+				}); err != nil {
+					logger.Warn().Err(err).Msg("error writing audio sample")
+					audio.RecordFrameDropped()
+				}
+			} else {
+				audio.RecordFrameDropped()
+			}
+		})
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to start in-process audio streaming")
+		}
+	}()
+
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
 	}

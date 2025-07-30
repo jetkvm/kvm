@@ -1,6 +1,12 @@
 bin/*
 static/*
+.vscode/
+tmp/
+.devcontainer/devcontainer-lock.json
 .idea
 .DS_Store
+*.log
+*.tmp
+*.code-workspace
 
 device-tests.tar.gz

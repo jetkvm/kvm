@@ -1,3 +1,20 @@
+# --- JetKVM Audio/Toolchain Dev Environment Setup ---
+.PHONY: setup_toolchain build_audio_deps dev_env
+
+# Clone the rv1106-system toolchain to $HOME/.jetkvm/rv1106-system
+setup_toolchain:
+	bash tools/setup_rv1106_toolchain.sh
+
+# Build ALSA and Opus static libs for ARM in $HOME/.jetkvm/audio-libs
+build_audio_deps: setup_toolchain
+	bash tools/build_audio_deps.sh
+
+# Prepare everything needed for local development (toolchain + audio deps)
+dev_env: build_audio_deps
+	@echo "Development environment ready."
+JETKVM_HOME ?= $(HOME)/.jetkvm
+TOOLCHAIN_DIR ?= $(JETKVM_HOME)/rv1106-system
+AUDIO_LIBS_DIR ?= $(JETKVM_HOME)/audio-libs
 BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE ?= $(shell date -u +%FT%T%z)
 BUILDTS   ?= $(shell date -u +%s)
@@ -25,9 +42,14 @@ TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort
 hash_resource:
 	@shasum -a 256 resource/jetkvm_native | cut -d ' ' -f 1 > resource/jetkvm_native.sha256
 
-build_dev: hash_resource
+build_dev: build_audio_deps hash_resource
 	@echo "Building..."
-	$(GO_CMD) build \
+	GOOS=linux GOARCH=arm GOARM=7 \
+	CC=$(TOOLCHAIN_DIR)/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc \
+	CGO_ENABLED=1 \
+	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-1.2.14/include -I$(AUDIO_LIBS_DIR)/opus-1.5.2/include -I$(AUDIO_LIBS_DIR)/opus-1.5.2/celt" \
+	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-1.2.14/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-1.5.2/.libs -lopus -lm -ldl -static" \
+	go build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
 		$(GO_RELEASE_BUILD_ARGS) \
 		-o $(BIN_DIR)/jetkvm_app cmd/main.go
@@ -70,9 +92,14 @@ dev_release: frontend build_dev
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256
 
-build_release: frontend hash_resource
+build_release: frontend build_audio_deps hash_resource
 	@echo "Building release..."
-	$(GO_CMD) build \
+	GOOS=linux GOARCH=arm GOARM=7 \
+	CC=$(TOOLCHAIN_DIR)/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc \
+	CGO_ENABLED=1 \
+	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-1.2.14/include -I$(AUDIO_LIBS_DIR)/opus-1.5.2/include -I$(AUDIO_LIBS_DIR)/opus-1.5.2/celt" \
+	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-1.2.14/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-1.5.2/.libs -lopus -lm -ldl -static" \
+	go build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION)" \
 		$(GO_RELEASE_BUILD_ARGS) \
 		-o bin/jetkvm_app cmd/main.go

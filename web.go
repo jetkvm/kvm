@@ -14,8 +14,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/audio"
+
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+
 	gin_logger "github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -155,6 +158,67 @@ func setupRouter() *gin.Engine {
 		protected.DELETE("/auth/local-password", handleDeletePassword)
 		protected.POST("/storage/upload", handleUploadHttp)
 	}
+
+	protected.GET("/audio/mute", func(c *gin.Context) {
+		c.JSON(200, gin.H{"muted": audio.IsAudioMuted()})
+	})
+
+	protected.POST("/audio/mute", func(c *gin.Context) {
+		type muteReq struct {
+			Muted bool `json:"muted"`
+		}
+		var req muteReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "invalid request"})
+			return
+		}
+		audio.SetAudioMuted(req.Muted)
+		c.JSON(200, gin.H{"muted": req.Muted})
+	})
+
+	protected.GET("/audio/quality", func(c *gin.Context) {
+		config := audio.GetAudioConfig()
+		presets := audio.GetAudioQualityPresets()
+		c.JSON(200, gin.H{
+			"current": config,
+			"presets": presets,
+		})
+	})
+
+	protected.POST("/audio/quality", func(c *gin.Context) {
+		type qualityReq struct {
+			Quality int `json:"quality"`
+		}
+		var req qualityReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "invalid request"})
+			return
+		}
+		
+		// Validate quality level
+		if req.Quality < 0 || req.Quality > 3 {
+			c.JSON(400, gin.H{"error": "invalid quality level (0-3)"})
+			return
+		}
+		
+		audio.SetAudioQuality(audio.AudioQuality(req.Quality))
+		c.JSON(200, gin.H{
+			"quality": req.Quality,
+			"config": audio.GetAudioConfig(),
+		})
+	})
+
+	protected.GET("/audio/metrics", func(c *gin.Context) {
+		metrics := audio.GetAudioMetrics()
+		c.JSON(200, gin.H{
+			"frames_received":   metrics.FramesReceived,
+			"frames_dropped":    metrics.FramesDropped,
+			"bytes_processed":   metrics.BytesProcessed,
+			"last_frame_time":   metrics.LastFrameTime,
+			"connection_drops":  metrics.ConnectionDrops,
+			"average_latency":   metrics.AverageLatency.String(),
+		})
+	})
 
 	// Catch-all route for SPA
 	r.NoRoute(func(c *gin.Context) {

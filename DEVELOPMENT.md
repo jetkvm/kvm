@@ -11,27 +11,46 @@
 
 </div>
 
+
 # JetKVM Development Guide
+
 
 Welcome to JetKVM development! This guide will help you get started quickly, whether you're fixing bugs, adding features, or just exploring the codebase.
 
 ## Get Started
+
 
 ### Prerequisites
 - **A JetKVM device** (for full development)
 - **[Go 1.24.4+](https://go.dev/doc/install)** and **[Node.js 22.15.0](https://nodejs.org/en/download/)**
 - **[Git](https://git-scm.com/downloads)** for version control
 - **[SSH access](https://jetkvm.com/docs/advanced-usage/developing#developer-mode)** to your JetKVM device
+- **Audio build dependencies:**
+   - **New in this release:** The audio pipeline is now fully in-process using CGO, ALSA, and Opus. You must run the provided scripts in `tools/` to set up the cross-compiler and build static ALSA/Opus libraries for ARM. See below.
+
 
 ### Development Environment
 
-**Recommended:** Development is best done on **Linux** or **macOS**. 
+**Recommended:** Development is best done on **Linux** or **macOS**.
+
+#### Apple Silicon (M1/M2/M3) Mac Users
+
+If you are developing on an Apple Silicon Mac, you should use a devcontainer to ensure compatibility with the JetKVM build environment (which targets linux/amd64 and ARM). There are two main options:
+
+- **VS Code Dev Containers**: Open the project in VS Code and use the built-in Dev Containers support. The configuration is in `.devcontainer/devcontainer.json`.
+- **Devpod**: [Devpod](https://devpod.sh/) is a fast, open-source tool for running devcontainers anywhere. If you use Devpod, go to **Settings → Experimental → Additional Environmental Variables** and add:
+   - `DOCKER_DEFAULT_PLATFORM=linux/amd64`
+   This ensures all builds run in the correct architecture.
+- **devcontainer CLI**: You can also use the [devcontainer CLI](https://github.com/devcontainers/cli) to launch the devcontainer from the terminal.
+
+This approach ensures compatibility with all shell scripts, build tools, and cross-compilation steps used in the project.
 
 If you're using Windows, we strongly recommend using **WSL (Windows Subsystem for Linux)** for the best development experience:
 - [Install WSL on Windows](https://docs.microsoft.com/en-us/windows/wsl/install)
 - [WSL Setup Guide](https://docs.microsoft.com/en-us/windows/wsl/setup/environment)
 
 This ensures compatibility with shell scripts and build tools used in the project.
+
 
 ### Project Setup
 
@@ -46,16 +65,25 @@ This ensures compatibility with shell scripts and build tools used in the projec
    go version && node --version
    ```
 
-3. **Find your JetKVM IP address** (check your router or device screen)
+3. **Set up the cross-compiler and audio dependencies:**
+   ```bash
+   make dev_env
+   # This will run tools/setup_rv1106_toolchain.sh and tools/build_audio_deps.sh
+   # It will clone the cross-compiler and build ALSA/Opus static libs in $HOME/.jetkvm
+   #
+   # **Note:** This is required for the new in-process audio pipeline. If you skip this step, audio will not work.
+   ```
 
-4. **Deploy and test:**
+4. **Find your JetKVM IP address** (check your router or device screen)
+
+5. **Deploy and test:**
    ```bash
    ./dev_deploy.sh -r 192.168.1.100  # Replace with your device IP
    ```
 
-5. **Open in browser:** `http://192.168.1.100`
+6. **Open in browser:** `http://192.168.1.100`
 
-That's it! You're now running your own development version of JetKVM.
+That's it! You're now running your own development version of JetKVM, **with in-process audio streaming for the first time.**
 
 ---
 
@@ -71,12 +99,14 @@ npm install
 
 Now edit files in `ui/src/` and see changes live in your browser!
 
-### Modify the backend
+
+### Modify the backend (including audio)
 
 ```bash
-# Edit Go files (config.go, web.go, etc.)
+# Edit Go files (config.go, web.go, internal/audio, etc.)
 ./dev_deploy.sh -r 192.168.1.100 --skip-ui-build
 ```
+
 
 ### Run tests
 
@@ -93,21 +123,26 @@ tail -f /var/log/jetkvm.log
 
 ---
 
+
 ## Project Layout
 
 ```
 /kvm/
 ├── main.go              # App entry point
-├── config.go           # Settings & configuration
-├── web.go              # API endpoints
-├── ui/                 # React frontend
-│   ├── src/routes/     # Pages (login, settings, etc.)
-│   └── src/components/ # UI components
-└── internal/           # Internal Go packages
+├── config.go            # Settings & configuration
+├── web.go               # API endpoints
+├── ui/                  # React frontend
+│   ├── src/routes/      # Pages (login, settings, etc.)
+│   └── src/components/  # UI components
+├── internal/            # Internal Go packages
+│   └── audio/           # In-process audio pipeline (CGO, ALSA, Opus) [NEW]
+├── tools/               # Toolchain and audio dependency setup scripts
+└── Makefile             # Build and dev automation (see audio targets)
 ```
 
 **Key files for beginners:**
 
+- `internal/audio/` - [NEW] In-process audio pipeline (CGO, ALSA, Opus)
 - `web.go` - Add new API endpoints here
 - `config.go` - Add new settings here
 - `ui/src/routes/` - Add new pages here
@@ -136,9 +171,10 @@ npm install
 ./dev_device.sh <YOUR_DEVICE_IP>
 ```
 
+
 ### Quick Backend Changes
 
-*Best for: API or backend logic changes*
+*Best for: API, backend, or audio logic changes (including audio pipeline)*
 
 ```bash
 # Skip frontend build for faster deployment
@@ -206,7 +242,8 @@ curl -X POST http://<IP>/auth/password-local \
 
 ---
 
-## Common Issues & Solutions
+
+### Common Issues & Solutions
 
 ### "Build failed" or "Permission denied"
 
@@ -218,6 +255,8 @@ ssh root@<IP> chmod +x /userdata/jetkvm/bin/jetkvm_app_debug
 go clean -modcache
 go mod tidy
 make build_dev
+# If you see errors about missing ALSA/Opus or toolchain, run:
+make dev_env  # Required for new audio support
 ```
 
 ### "Can't connect to device"
@@ -228,6 +267,15 @@ ping <IP>
 
 # Check SSH
 ssh root@<IP> echo "Connection OK"
+```
+
+
+### "Audio not working"
+
+```bash
+# Make sure you have run:
+make dev_env
+# If you see errors about ALSA/Opus, check logs and re-run the setup scripts in tools/.
 ```
 
 ### "Frontend not updating"
@@ -244,18 +292,21 @@ npm install
 
 ## Next Steps
 
+
 ### Adding a New Feature
 
-1. **Backend:** Add API endpoint in `web.go`
+1. **Backend:** Add API endpoint in `web.go` or extend audio in `internal/audio/`
 2. **Config:** Add settings in `config.go`
 3. **Frontend:** Add UI in `ui/src/routes/`
 4. **Test:** Deploy and test with `./dev_deploy.sh`
+
 
 ### Code Style
 
 - **Go:** Follow standard Go conventions
 - **TypeScript:** Use TypeScript for type safety
 - **React:** Keep components small and reusable
+- **Audio/CGO:** Keep C/Go integration minimal, robust, and well-documented. Use zerolog for all logging.
 
 ### Environment Variables
 
