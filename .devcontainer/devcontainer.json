@@ -1,10 +1,15 @@
 {
 	"name": "JetKVM",
-	"image": "mcr.microsoft.com/devcontainers/go:1-1.23-bookworm",
+	"image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+	"runArgs": ["--platform=linux/amd64" ],
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {
 			// Should match what is defined in ui/package.json
 			"version": "22.15.0"
+		},
+		"ghcr.io/devcontainers/features/go:1": {
+			// Should match what is defined in go.mod
+			"version": "latest"
 		}
 	},
 	"mounts": [

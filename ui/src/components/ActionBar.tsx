@@ -1,8 +1,8 @@
-import { MdOutlineContentPasteGo } from "react-icons/md";
+import { MdOutlineContentPasteGo, MdVolumeOff, MdVolumeUp, MdGraphicEq } from "react-icons/md";
 import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
-import { Fragment, useCallback, useRef } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 
 import { Button } from "@components/Button";
@@ -18,7 +18,9 @@ import PasteModal from "@/components/popovers/PasteModal";
 import WakeOnLanModal from "@/components/popovers/WakeOnLan/Index";
 import MountPopopover from "@/components/popovers/MountPopover";
 import ExtensionPopover from "@/components/popovers/ExtensionPopover";
+import AudioControlPopover from "@/components/popovers/AudioControlPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import api from "@/api";
 
 export default function Actionbar({
   requestFullscreen,
@@ -55,6 +57,28 @@ export default function Actionbar({
     },
     [setDisableFocusTrap],
   );
+
+  // Mute/unmute state for button display
+  const [isMuted, setIsMuted] = useState(false);
+  useEffect(() => {
+    api.GET("/audio/mute").then(async resp => {
+      if (resp.ok) {
+        const data = await resp.json();
+        setIsMuted(!!data.muted);
+      }
+    });
+    
+    // Refresh mute state periodically for button display
+    const interval = setInterval(async () => {
+      const resp = await api.GET("/audio/mute");
+      if (resp.ok) {
+        const data = await resp.json();
+        setIsMuted(!!data.muted);
+      }
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">
@@ -262,6 +286,7 @@ export default function Actionbar({
               }}
             />
           </div>
+
           <div>
             <Button
               size="XS"
@@ -282,6 +307,45 @@ export default function Actionbar({
               onClick={() => requestFullscreen()}
             />
           </div>
+          <Popover>
+            <PopoverButton as={Fragment}>
+              <Button
+                size="XS"
+                theme="light"
+                text="Audio"
+                LeadingIcon={({ className }) => (
+                  <div className="flex items-center">
+                    {isMuted ? (
+                      <MdVolumeOff className={cx(className, "text-red-500")} />
+                    ) : (
+                      <MdVolumeUp className={cx(className, "text-green-500")} />
+                    )}
+                    <MdGraphicEq className={cx(className, "ml-1 text-blue-500")} />
+                  </div>
+                )}
+                onClick={() => {
+                  setDisableFocusTrap(true);
+                }}
+              />
+            </PopoverButton>
+            <PopoverPanel
+              anchor="bottom end"
+              transition
+              className={cx(
+                "z-10 flex origin-top flex-col overflow-visible!",
+                "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
+              )}
+            >
+              {({ open }) => {
+                checkIfStateChanged(open);
+                return (
+                  <div className="mx-auto">
+                    <AudioControlPopover />
+                  </div>
+                );
+              }}
+            </PopoverPanel>
+          </Popover>
         </div>
       </div>
     </Container>
