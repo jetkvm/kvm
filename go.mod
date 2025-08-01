@@ -19,7 +19,7 @@ require (
 	github.com/pion/mdns/v2 v2.0.7
 	github.com/pion/webrtc/v4 v4.1.3
 	github.com/pojntfx/go-nbd v0.3.2
-	github.com/prometheus/client_golang v1.22.0
+	github.com/prometheus/client_golang v1.23.0
 	github.com/prometheus/common v0.65.0
 	github.com/prometheus/procfs v0.16.1
 	github.com/psanford/httpreadat v0.1.0
