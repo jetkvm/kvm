@@ -30,7 +30,7 @@ require (
 	go.bug.st/serial v1.6.4
 	golang.org/x/crypto v0.39.0
 	golang.org/x/net v0.41.0
-	golang.org/x/sys v0.33.0
+	golang.org/x/sys v0.34.0
 )
 
 replace github.com/pojntfx/go-nbd v0.3.2 => github.com/chemhack/go-nbd v0.0.0-20241006125820-59e45f5b1e7b
