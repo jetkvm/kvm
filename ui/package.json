@@ -67,7 +67,7 @@
     "@typescript-eslint/parser": "^8.36.0",
     "@vitejs/plugin-react-swc": "^3.10.2",
     "autoprefixer": "^10.4.21",
-    "eslint": "^9.30.1",
+    "eslint": "^9.32.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react": "^7.37.5",
