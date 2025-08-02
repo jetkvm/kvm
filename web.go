@@ -194,29 +194,29 @@ func setupRouter() *gin.Engine {
 			c.JSON(400, gin.H{"error": "invalid request"})
 			return
 		}
-		
+
 		// Validate quality level
 		if req.Quality < 0 || req.Quality > 3 {
 			c.JSON(400, gin.H{"error": "invalid quality level (0-3)"})
 			return
 		}
-		
+
 		audio.SetAudioQuality(audio.AudioQuality(req.Quality))
 		c.JSON(200, gin.H{
 			"quality": req.Quality,
-			"config": audio.GetAudioConfig(),
+			"config":  audio.GetAudioConfig(),
 		})
 	})
 
 	protected.GET("/audio/metrics", func(c *gin.Context) {
 		metrics := audio.GetAudioMetrics()
 		c.JSON(200, gin.H{
-			"frames_received":   metrics.FramesReceived,
-			"frames_dropped":    metrics.FramesDropped,
-			"bytes_processed":   metrics.BytesProcessed,
-			"last_frame_time":   metrics.LastFrameTime,
-			"connection_drops":  metrics.ConnectionDrops,
-			"average_latency":   metrics.AverageLatency.String(),
+			"frames_received":  metrics.FramesReceived,
+			"frames_dropped":   metrics.FramesDropped,
+			"bytes_processed":  metrics.BytesProcessed,
+			"last_frame_time":  metrics.LastFrameTime,
+			"connection_drops": metrics.ConnectionDrops,
+			"average_latency":  metrics.AverageLatency.String(),
 		})
 	})
 

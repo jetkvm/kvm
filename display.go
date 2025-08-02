@@ -372,11 +372,8 @@ func startBacklightTickers() {
 		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
 
 		go func() {
-			for { //nolint:staticcheck
-				select {
-				case <-dimTicker.C:
-					tick_displayDim()
-				}
+			for range dimTicker.C {
+				tick_displayDim()
 			}
 		}()
 	}
@@ -386,11 +383,8 @@ func startBacklightTickers() {
 		offTicker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
 
 		go func() {
-			for { //nolint:staticcheck
-				select {
-				case <-offTicker.C:
-					tick_displayOff()
-				}
+			for range offTicker.C {
+				tick_displayOff()
 			}
 		}()
 	}

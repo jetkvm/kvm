@@ -6,7 +6,6 @@ import (
 
 // max frame size for 1080p video, specified in mpp venc setting
 const maxVideoFrameSize = 1920 * 1080 / 2
-const maxAudioFrameSize = 1500
 
 func writeCtrlAction(action string) error {
 	actionMessage := map[string]string{
