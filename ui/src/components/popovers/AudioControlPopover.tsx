@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { MdVolumeOff, MdVolumeUp, MdGraphicEq } from "react-icons/md";
 import { LuActivity, LuSettings, LuSignal } from "react-icons/lu";
+
 import { Button } from "@components/Button";
 import { cx } from "@/cva.config";
 import { useUiStore } from "@/hooks/stores";
