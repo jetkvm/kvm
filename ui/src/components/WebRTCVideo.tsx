@@ -25,7 +25,22 @@ import {
   PointerLockBar,
 } from "./VideoOverlay";
 
-export default function WebRTCVideo() {
+// Interface for microphone hook return type
+interface MicrophoneHookReturn {
+  isMicrophoneActive: boolean;
+  isMicrophoneMuted: boolean;
+  microphoneStream: MediaStream | null;
+  startMicrophone: (deviceId?: string) => Promise<{ success: boolean; error?: any }>;
+  stopMicrophone: () => Promise<{ success: boolean; error?: any }>;
+  toggleMicrophoneMute: () => Promise<{ success: boolean; error?: any }>;
+  syncMicrophoneState: () => Promise<void>;
+}
+
+interface WebRTCVideoProps {
+  microphone: MicrophoneHookReturn;
+}
+
+export default function WebRTCVideo({ microphone }: WebRTCVideoProps) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
   const mediaStream = useRTCStore(state => state.mediaStream);
@@ -675,7 +690,7 @@ export default function WebRTCVideo() {
             disabled={peerConnection?.connectionState !== "connected"}
             className="contents"
           >
-            <Actionbar requestFullscreen={requestFullscreen} />
+            <Actionbar requestFullscreen={requestFullscreen} microphone={microphone} />
             <MacroBar />
           </fieldset>
         </div>

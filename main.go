@@ -80,33 +80,31 @@ func Main() {
 	// initialize usb gadget
 	initUsbGadget()
 
-	// Start in-process audio streaming and deliver Opus frames to WebRTC
-	go func() {
-		err := audio.StartAudioStreaming(func(frame []byte) {
-			// Deliver Opus frame to WebRTC audio track if session is active
-			if currentSession != nil {
-				config := audio.GetAudioConfig()
-				var sampleData []byte
-				if audio.IsAudioMuted() {
-					sampleData = make([]byte, len(frame)) // silence
-				} else {
-					sampleData = frame
-				}
-				if err := currentSession.AudioTrack.WriteSample(media.Sample{
-					Data:     sampleData,
-					Duration: config.FrameSize,
-				}); err != nil {
-					logger.Warn().Err(err).Msg("error writing audio sample")
-					audio.RecordFrameDropped()
-				}
+	// Start non-blocking audio streaming and deliver Opus frames to WebRTC
+	err = audio.StartNonBlockingAudioStreaming(func(frame []byte) {
+		// Deliver Opus frame to WebRTC audio track if session is active
+		if currentSession != nil {
+			config := audio.GetAudioConfig()
+			var sampleData []byte
+			if audio.IsAudioMuted() {
+				sampleData = make([]byte, len(frame)) // silence
 			} else {
+				sampleData = frame
+			}
+			if err := currentSession.AudioTrack.WriteSample(media.Sample{
+				Data:     sampleData,
+				Duration: config.FrameSize,
+			}); err != nil {
+				logger.Warn().Err(err).Msg("error writing audio sample")
 				audio.RecordFrameDropped()
 			}
-		})
-		if err != nil {
-			logger.Warn().Err(err).Msg("failed to start in-process audio streaming")
+		} else {
+			audio.RecordFrameDropped()
 		}
-	}()
+	})
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to start non-blocking audio streaming")
+	}
 
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
@@ -157,6 +155,9 @@ func Main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
 	logger.Info().Msg("JetKVM Shutting Down")
+	
+	// Stop non-blocking audio manager
+	audio.StopNonBlockingAudioStreaming()
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")
 	//	if err != nil {

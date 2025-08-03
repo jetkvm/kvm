@@ -1,9 +1,14 @@
 package audio
 
 import (
+	"errors"
 	"sync/atomic"
 	"time"
 	// Explicit import for CGO audio stream glue
+)
+
+var (
+	ErrAudioAlreadyRunning = errors.New("audio already running")
 )
 
 const MaxAudioFrameSize = 1500
@@ -46,6 +51,13 @@ var (
 		Channels:   2,
 		FrameSize:  20 * time.Millisecond,
 	}
+	currentMicrophoneConfig = AudioConfig{
+		Quality:    AudioQualityMedium,
+		Bitrate:    32,
+		SampleRate: 48000,
+		Channels:   1,
+		FrameSize:  20 * time.Millisecond,
+	}
 	metrics AudioMetrics
 )
 
@@ -55,14 +67,14 @@ func GetAudioQualityPresets() map[AudioQuality]AudioConfig {
 		AudioQualityLow: {
 			Quality:    AudioQualityLow,
 			Bitrate:    32,
-			SampleRate: 48000,
-			Channels:   2,
-			FrameSize:  20 * time.Millisecond,
+			SampleRate: 22050,
+			Channels:   1,
+			FrameSize:  40 * time.Millisecond,
 		},
 		AudioQualityMedium: {
 			Quality:    AudioQualityMedium,
 			Bitrate:    64,
-			SampleRate: 48000,
+			SampleRate: 44100,
 			Channels:   2,
 			FrameSize:  20 * time.Millisecond,
 		},
@@ -75,9 +87,43 @@ func GetAudioQualityPresets() map[AudioQuality]AudioConfig {
 		},
 		AudioQualityUltra: {
 			Quality:    AudioQualityUltra,
-			Bitrate:    256,
+			Bitrate:    192,
 			SampleRate: 48000,
 			Channels:   2,
+			FrameSize:  10 * time.Millisecond,
+		},
+	}
+}
+
+// GetMicrophoneQualityPresets returns predefined quality configurations for microphone input
+func GetMicrophoneQualityPresets() map[AudioQuality]AudioConfig {
+	return map[AudioQuality]AudioConfig{
+		AudioQualityLow: {
+			Quality:    AudioQualityLow,
+			Bitrate:    16,
+			SampleRate: 16000,
+			Channels:   1,
+			FrameSize:  40 * time.Millisecond,
+		},
+		AudioQualityMedium: {
+			Quality:    AudioQualityMedium,
+			Bitrate:    32,
+			SampleRate: 22050,
+			Channels:   1,
+			FrameSize:  20 * time.Millisecond,
+		},
+		AudioQualityHigh: {
+			Quality:    AudioQualityHigh,
+			Bitrate:    64,
+			SampleRate: 44100,
+			Channels:   1,
+			FrameSize:  20 * time.Millisecond,
+		},
+		AudioQualityUltra: {
+			Quality:    AudioQualityUltra,
+			Bitrate:    96,
+			SampleRate: 48000,
+			Channels:   1,
 			FrameSize:  10 * time.Millisecond,
 		},
 	}
@@ -94,6 +140,19 @@ func SetAudioQuality(quality AudioQuality) {
 // GetAudioConfig returns the current audio configuration
 func GetAudioConfig() AudioConfig {
 	return currentConfig
+}
+
+// SetMicrophoneQuality updates the current microphone quality configuration
+func SetMicrophoneQuality(quality AudioQuality) {
+	presets := GetMicrophoneQualityPresets()
+	if config, exists := presets[quality]; exists {
+		currentMicrophoneConfig = config
+	}
+}
+
+// GetMicrophoneConfig returns the current microphone configuration
+func GetMicrophoneConfig() AudioConfig {
+	return currentMicrophoneConfig
 }
 
 // GetAudioMetrics returns current audio metrics

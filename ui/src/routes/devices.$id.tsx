@@ -33,6 +33,7 @@ import {
   useVideoStore,
   VideoState,
 } from "@/hooks/stores";
+import { useMicrophone } from "@/hooks/useMicrophone";
 import WebRTCVideo from "@components/WebRTCVideo";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import DashboardNavbar from "@components/Header";
@@ -141,6 +142,9 @@ export default function KvmIdRoute() {
   const setRpcDataChannel = useRTCStore(state => state.setRpcDataChannel);
   const setTransceiver = useRTCStore(state => state.setTransceiver);
   const location = useLocation();
+
+  // Microphone hook - moved here to prevent unmounting when popover closes
+  const microphoneHook = useMicrophone();
 
   const isLegacySignalingEnabled = useRef(false);
 
@@ -480,8 +484,8 @@ export default function KvmIdRoute() {
     };
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
-    // Add audio transceiver to receive audio from the server
-    pc.addTransceiver("audio", { direction: "recvonly" });
+    // Add audio transceiver to receive audio from the server and send microphone audio
+    pc.addTransceiver("audio", { direction: "sendrecv" });
 
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onopen = () => {
@@ -831,7 +835,7 @@ export default function KvmIdRoute() {
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
-            <WebRTCVideo />
+            <WebRTCVideo microphone={microphoneHook} />
             <div
               style={{ animationDuration: "500ms" }}
               className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"

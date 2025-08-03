@@ -220,6 +220,136 @@ func setupRouter() *gin.Engine {
 		})
 	})
 
+	protected.GET("/microphone/quality", func(c *gin.Context) {
+		config := audio.GetMicrophoneConfig()
+		presets := audio.GetMicrophoneQualityPresets()
+		c.JSON(200, gin.H{
+			"current": config,
+			"presets": presets,
+		})
+	})
+
+	protected.POST("/microphone/quality", func(c *gin.Context) {
+		type qualityReq struct {
+			Quality int `json:"quality"`
+		}
+		var req qualityReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "invalid request"})
+			return
+		}
+
+		// Validate quality level
+		if req.Quality < 0 || req.Quality > 3 {
+			c.JSON(400, gin.H{"error": "invalid quality level (0-3)"})
+			return
+		}
+
+		audio.SetMicrophoneQuality(audio.AudioQuality(req.Quality))
+		c.JSON(200, gin.H{
+			"quality": req.Quality,
+			"config":  audio.GetMicrophoneConfig(),
+		})
+	})
+
+	// Microphone API endpoints
+	protected.GET("/microphone/status", func(c *gin.Context) {
+		sessionActive := currentSession != nil
+		var running bool
+		
+		if sessionActive && currentSession.AudioInputManager != nil {
+			running = currentSession.AudioInputManager.IsRunning()
+		}
+		
+		c.JSON(200, gin.H{
+			"running": running,
+			"session_active": sessionActive,
+		})
+	})
+
+	protected.POST("/microphone/start", func(c *gin.Context) {
+		if currentSession == nil {
+			c.JSON(400, gin.H{"error": "no active session"})
+			return
+		}
+
+		if currentSession.AudioInputManager == nil {
+			c.JSON(500, gin.H{"error": "audio input manager not available"})
+			return
+		}
+
+		err := currentSession.AudioInputManager.Start()
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"status": "started",
+			"running": currentSession.AudioInputManager.IsRunning(),
+		})
+	})
+
+	protected.POST("/microphone/stop", func(c *gin.Context) {
+		if currentSession == nil {
+			c.JSON(400, gin.H{"error": "no active session"})
+			return
+		}
+
+		if currentSession.AudioInputManager == nil {
+			c.JSON(500, gin.H{"error": "audio input manager not available"})
+			return
+		}
+
+		currentSession.AudioInputManager.Stop()
+		c.JSON(200, gin.H{
+			"status": "stopped",
+			"running": currentSession.AudioInputManager.IsRunning(),
+		})
+	})
+
+	protected.POST("/microphone/mute", func(c *gin.Context) {
+		var req struct {
+			Muted bool `json:"muted"`
+		}
+		
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "invalid request body"})
+			return
+		}
+		
+		// Note: Microphone muting is typically handled at the frontend level
+		// This endpoint is provided for consistency but doesn't affect backend processing
+		c.JSON(200, gin.H{
+			"status": "mute state updated",
+			"muted":  req.Muted,
+		})
+	})
+
+	protected.GET("/microphone/metrics", func(c *gin.Context) {
+		if currentSession == nil || currentSession.AudioInputManager == nil {
+			c.JSON(200, gin.H{
+				"frames_sent":      0,
+				"frames_dropped":   0,
+				"bytes_processed":  0,
+				"last_frame_time":  "",
+				"connection_drops": 0,
+				"average_latency":  "0s",
+			})
+			return
+		}
+
+		metrics := currentSession.AudioInputManager.GetMetrics()
+		c.JSON(200, gin.H{
+			"frames_sent":      metrics.FramesSent,
+			"frames_dropped":   metrics.FramesDropped,
+			"bytes_processed":  metrics.BytesProcessed,
+			"last_frame_time":  metrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
+			"connection_drops": metrics.ConnectionDrops,
+			"average_latency":  metrics.AverageLatency.String(),
+		})
+	})
+
 	// Catch-all route for SPA
 	r.NoRoute(func(c *gin.Context) {
 		if c.Request.Method == "GET" && c.NegotiateFormat(gin.MIMEHTML) == gin.MIMEHTML {
@@ -243,26 +373,63 @@ func handleWebRTCSession(c *gin.Context) {
 		return
 	}
 
-	session, err := newSession(SessionConfig{})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
+	var session *Session
+	var err error
+	var sd string
+
+	// Check if we have an existing session and handle renegotiation
+	if currentSession != nil {
+		logger.Info().Msg("handling renegotiation for existing session")
+		
+		// Handle renegotiation with existing session
+		sd, err = currentSession.ExchangeOffer(req.Sd)
+		if err != nil {
+			logger.Warn().Err(err).Msg("renegotiation failed, creating new session")
+			// If renegotiation fails, fall back to creating a new session
+			session, err = newSession(SessionConfig{})
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+				return
+			}
+
+			sd, err = session.ExchangeOffer(req.Sd)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+				return
+			}
+
+			// Close the old session
+			writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
+			peerConn := currentSession.peerConnection
+			go func() {
+				time.Sleep(1 * time.Second)
+				_ = peerConn.Close()
+			}()
+
+			currentSession = session
+			logger.Info().Interface("session", session).Msg("new session created after renegotiation failure")
+		} else {
+			logger.Info().Msg("renegotiation successful")
+		}
+	} else {
+		// No existing session, create a new one
+		logger.Info().Msg("creating new session")
+		session, err = newSession(SessionConfig{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			return
+		}
+
+		sd, err = session.ExchangeOffer(req.Sd)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			return
+		}
+
+		currentSession = session
+		logger.Info().Interface("session", session).Msg("new session accepted")
 	}
 
-	sd, err := session.ExchangeOffer(req.Sd)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
-	}
-	if currentSession != nil {
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		peerConn := currentSession.peerConnection
-		go func() {
-			time.Sleep(1 * time.Second)
-			_ = peerConn.Close()
-		}()
-	}
-	currentSession = session
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }
 
