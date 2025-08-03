@@ -10,6 +10,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
+	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
@@ -23,6 +24,7 @@ type Session struct {
 	RPCChannel               *webrtc.DataChannel
 	HidChannel               *webrtc.DataChannel
 	DiskChannel              *webrtc.DataChannel
+	AudioInputManager        *audio.AudioInputManager
 	shouldUmountVirtualMedia bool
 }
 
@@ -105,7 +107,10 @@ func newSession(config SessionConfig) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	session := &Session{peerConnection: peerConnection}
+	session := &Session{
+		peerConnection:    peerConnection,
+		AudioInputManager: audio.NewAudioInputManager(),
+	}
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		scopedLogger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
@@ -113,7 +118,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				go onRPCMessage(msg, session)
+				go onRPCMessageThrottled(msg, session)
 			})
 			triggerOTAStateUpdate()
 			triggerVideoStateUpdate()
@@ -147,10 +152,42 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 
-	audioRtpSender, err := peerConnection.AddTrack(session.AudioTrack)
+	// Add bidirectional audio transceiver for microphone input
+	audioTransceiver, err := peerConnection.AddTransceiverFromTrack(session.AudioTrack, webrtc.RTPTransceiverInit{
+		Direction: webrtc.RTPTransceiverDirectionSendrecv,
+	})
 	if err != nil {
 		return nil, err
 	}
+	audioRtpSender := audioTransceiver.Sender()
+
+	// Handle incoming audio track (microphone from browser)
+	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		scopedLogger.Info().Str("codec", track.Codec().MimeType).Str("id", track.ID()).Msg("Got remote track")
+		
+		if track.Kind() == webrtc.RTPCodecTypeAudio && track.Codec().MimeType == webrtc.MimeTypeOpus {
+			scopedLogger.Info().Msg("Processing incoming audio track for microphone input")
+			
+			go func() {
+				for {
+					rtpPacket, _, err := track.ReadRTP()
+					if err != nil {
+						scopedLogger.Debug().Err(err).Msg("Error reading RTP packet from audio track")
+						return
+					}
+					
+					// Extract Opus payload from RTP packet
+					opusPayload := rtpPacket.Payload
+					if len(opusPayload) > 0 && session.AudioInputManager != nil {
+						err := session.AudioInputManager.WriteOpusFrame(opusPayload)
+						if err != nil {
+							scopedLogger.Warn().Err(err).Msg("Failed to write Opus frame to audio input manager")
+						}
+					}
+				}
+			}()
+		}
+	})
 
 	// Read incoming RTCP packets
 	// Before these packets are returned they are processed by interceptors. For things
@@ -195,6 +232,10 @@ func newSession(config SessionConfig) (*Session, error) {
 			if session.shouldUmountVirtualMedia {
 				err := rpcUnmountImage()
 				scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")
+			}
+			// Stop audio input manager
+			if session.AudioInputManager != nil {
+				session.AudioInputManager.Stop()
 			}
 			if isConnected {
 				isConnected = false

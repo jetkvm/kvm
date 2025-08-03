@@ -447,35 +447,76 @@ func handleSessionRequest(
 		}
 	}
 
-	session, err := newSession(SessionConfig{
-		ws:         c,
-		IsCloud:    isCloudConnection,
-		LocalIP:    req.IP,
-		ICEServers: req.ICEServers,
-		Logger:     scopedLogger,
-	})
-	if err != nil {
-		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
-		return err
-	}
+	var session *Session
+	var err error
+	var sd string
 
-	sd, err := session.ExchangeOffer(req.Sd)
-	if err != nil {
-		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
-		return err
-	}
+	// Check if we have an existing session and handle renegotiation
 	if currentSession != nil {
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		peerConn := currentSession.peerConnection
-		go func() {
-			time.Sleep(1 * time.Second)
-			_ = peerConn.Close()
-		}()
+		scopedLogger.Info().Msg("handling renegotiation for existing session")
+		
+		// Handle renegotiation with existing session
+		sd, err = currentSession.ExchangeOffer(req.Sd)
+		if err != nil {
+			scopedLogger.Warn().Err(err).Msg("renegotiation failed, creating new session")
+			// If renegotiation fails, fall back to creating a new session
+			session, err = newSession(SessionConfig{
+				ws:         c,
+				IsCloud:    isCloudConnection,
+				LocalIP:    req.IP,
+				ICEServers: req.ICEServers,
+				Logger:     scopedLogger,
+			})
+			if err != nil {
+				_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
+				return err
+			}
+
+			sd, err = session.ExchangeOffer(req.Sd)
+			if err != nil {
+				_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
+				return err
+			}
+
+			// Close the old session
+			writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
+			peerConn := currentSession.peerConnection
+			go func() {
+				time.Sleep(1 * time.Second)
+				_ = peerConn.Close()
+			}()
+
+			currentSession = session
+			cloudLogger.Info().Interface("session", session).Msg("new session created after renegotiation failure")
+		} else {
+			scopedLogger.Info().Msg("renegotiation successful")
+		}
+	} else {
+		// No existing session, create a new one
+		scopedLogger.Info().Msg("creating new session")
+		session, err = newSession(SessionConfig{
+			ws:         c,
+			IsCloud:    isCloudConnection,
+			LocalIP:    req.IP,
+			ICEServers: req.ICEServers,
+			Logger:     scopedLogger,
+		})
+		if err != nil {
+			_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
+			return err
+		}
+
+		sd, err = session.ExchangeOffer(req.Sd)
+		if err != nil {
+			_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
+			return err
+		}
+
+		currentSession = session
+		cloudLogger.Info().Interface("session", session).Msg("new session accepted")
+		cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
 	}
 
-	cloudLogger.Info().Interface("session", session).Msg("new session accepted")
-	cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
-	currentSession = session
 	_ = wsjson.Write(context.Background(), c, gin.H{"type": "answer", "data": sd})
 	return nil
 }

@@ -22,10 +22,23 @@ import AudioControlPopover from "@/components/popovers/AudioControlPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import api from "@/api";
 
+// Type for microphone hook return value
+interface MicrophoneHookReturn {
+  isMicrophoneActive: boolean;
+  isMicrophoneMuted: boolean;
+  microphoneStream: MediaStream | null;
+  startMicrophone: (deviceId?: string) => Promise<{ success: boolean; error?: any }>;
+  stopMicrophone: () => Promise<{ success: boolean; error?: any }>;
+  toggleMicrophoneMute: () => Promise<{ success: boolean; error?: any }>;
+  syncMicrophoneState: () => Promise<void>;
+}
+
 export default function Actionbar({
   requestFullscreen,
+  microphone,
 }: {
   requestFullscreen: () => Promise<void>;
+  microphone: MicrophoneHookReturn;
 }) {
   const { navigateTo } = useDeviceUiNavigation();
   const virtualKeyboard = useHidStore(state => state.isVirtualKeyboardEnabled);
@@ -340,7 +353,7 @@ export default function Actionbar({
                 checkIfStateChanged(open);
                 return (
                   <div className="mx-auto">
-                    <AudioControlPopover />
+                    <AudioControlPopover microphone={microphone} />
                   </div>
                 );
               }}

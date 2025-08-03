@@ -1,15 +1,8 @@
-//go:build linux && arm
-// +build linux,arm
-
 package audio
 
 import (
 	"errors"
-	"sync/atomic"
-	"time"
 	"unsafe"
-
-	"github.com/jetkvm/kvm/internal/logging"
 )
 
 /*
@@ -18,10 +11,13 @@ import (
 #include <alsa/asoundlib.h>
 #include <opus.h>
 #include <stdlib.h>
+#include <string.h>
 
 // C state for ALSA/Opus
 static snd_pcm_t *pcm_handle = NULL;
+static snd_pcm_t *pcm_playback_handle = NULL;
 static OpusEncoder *encoder = NULL;
+static OpusDecoder *decoder = NULL;
 static int opus_bitrate = 64000;
 static int opus_complexity = 5;
 static int sample_rate = 48000;
@@ -58,21 +54,101 @@ int jetkvm_audio_read_encode(void *opus_buf) {
 	short pcm_buffer[1920]; // max 2ch*960
 	unsigned char *out = (unsigned char*)opus_buf;
 	int pcm_rc = snd_pcm_readi(pcm_handle, pcm_buffer, frame_size);
-	if (pcm_rc < 0) return -1;
+	
+	// Handle ALSA errors with recovery
+	if (pcm_rc < 0) {
+		if (pcm_rc == -EPIPE) {
+			// Buffer underrun - try to recover
+			snd_pcm_prepare(pcm_handle);
+			pcm_rc = snd_pcm_readi(pcm_handle, pcm_buffer, frame_size);
+			if (pcm_rc < 0) return -1;
+		} else if (pcm_rc == -EAGAIN) {
+			// No data available - return 0 to indicate no frame
+			return 0;
+		} else {
+			// Other error - return error code
+			return -1;
+		}
+	}
+	
+	// If we got fewer frames than expected, pad with silence
+	if (pcm_rc < frame_size) {
+		memset(&pcm_buffer[pcm_rc * channels], 0, (frame_size - pcm_rc) * channels * sizeof(short));
+	}
+	
 	int nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
 	return nb_bytes;
+}
+
+// Initialize ALSA playback for microphone input (browser -> USB gadget)
+int jetkvm_audio_playback_init() {
+	int err;
+	snd_pcm_hw_params_t *params;
+	if (pcm_playback_handle) return 0;
+	
+	// Try to open the USB gadget audio device for playback
+	// This should correspond to the capture endpoint of the USB gadget
+	if (snd_pcm_open(&pcm_playback_handle, "hw:1,0", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
+		// Fallback to default device if hw:1,0 doesn't work for playback
+		if (snd_pcm_open(&pcm_playback_handle, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0)
+			return -1;
+	}
+	
+	snd_pcm_hw_params_malloc(&params);
+	snd_pcm_hw_params_any(pcm_playback_handle, params);
+	snd_pcm_hw_params_set_access(pcm_playback_handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
+	snd_pcm_hw_params_set_format(pcm_playback_handle, params, SND_PCM_FORMAT_S16_LE);
+	snd_pcm_hw_params_set_channels(pcm_playback_handle, params, channels);
+	snd_pcm_hw_params_set_rate(pcm_playback_handle, params, sample_rate, 0);
+	snd_pcm_hw_params_set_period_size(pcm_playback_handle, params, frame_size, 0);
+	snd_pcm_hw_params(pcm_playback_handle, params);
+	snd_pcm_hw_params_free(params);
+	snd_pcm_prepare(pcm_playback_handle);
+	
+	// Initialize Opus decoder
+	decoder = opus_decoder_create(sample_rate, channels, &err);
+	if (!decoder) return -2;
+	
+	return 0;
+}
+
+// Decode Opus and write PCM to playback device
+int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
+	short pcm_buffer[1920]; // max 2ch*960
+	unsigned char *in = (unsigned char*)opus_buf;
+	
+	// Decode Opus to PCM
+	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
+	if (pcm_frames < 0) return -1;
+	
+	// Write PCM to playback device
+	int pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
+	if (pcm_rc < 0) {
+		// Try to recover from underrun
+		if (pcm_rc == -EPIPE) {
+			snd_pcm_prepare(pcm_playback_handle);
+			pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
+		}
+		if (pcm_rc < 0) return -2;
+	}
+	
+	return pcm_frames;
+}
+
+void jetkvm_audio_playback_close() {
+	if (decoder) { opus_decoder_destroy(decoder); decoder = NULL; }
+	if (pcm_playback_handle) { snd_pcm_close(pcm_playback_handle); pcm_playback_handle = NULL; }
 }
 
 void jetkvm_audio_close() {
 	if (encoder) { opus_encoder_destroy(encoder); encoder = NULL; }
 	if (pcm_handle) { snd_pcm_close(pcm_handle); pcm_handle = NULL; }
+	jetkvm_audio_playback_close();
 }
 */
 import "C"
 
-var (
-	audioStreamRunning int32
-)
+
 
 // Go wrappers for initializing, starting, stopping, and controlling audio
 func cgoAudioInit() error {
@@ -96,62 +172,63 @@ func cgoAudioReadEncode(buf []byte) (int, error) {
 	if n < 0 {
 		return 0, errors.New("audio read/encode error")
 	}
+	if n == 0 {
+		// No data available - this is not an error, just no audio frame
+		return 0, nil
+	}
 	return int(n), nil
 }
 
-func StartCGOAudioStream(send func([]byte)) error {
-	if !atomic.CompareAndSwapInt32(&audioStreamRunning, 0, 1) {
-		return errors.New("audio stream already running")
+
+
+// Go wrappers for audio playback (microphone input)
+func cgoAudioPlaybackInit() error {
+	ret := C.jetkvm_audio_playback_init()
+	if ret != 0 {
+		return errors.New("failed to init ALSA playback/Opus decoder")
 	}
-	go func() {
-		defer atomic.StoreInt32(&audioStreamRunning, 0)
-		logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
-		err := cgoAudioInit()
-		if err != nil {
-			logger.Error().Err(err).Msg("cgoAudioInit failed")
-			return
-		}
-		defer cgoAudioClose()
-		buf := make([]byte, 1500)
-		errorCount := 0
-		for atomic.LoadInt32(&audioStreamRunning) == 1 {
-			m := IsAudioMuted()
-			// (debug) logger.Debug().Msgf("audio loop: IsAudioMuted=%v", m)
-			if m {
-				time.Sleep(20 * time.Millisecond)
-				continue
-			}
-			n, err := cgoAudioReadEncode(buf)
-			if err != nil {
-				logger.Warn().Err(err).Msg("cgoAudioReadEncode error")
-				RecordFrameDropped()
-				errorCount++
-				if errorCount >= 10 {
-					logger.Warn().Msg("Too many audio read errors, reinitializing ALSA/Opus state")
-					cgoAudioClose()
-					time.Sleep(100 * time.Millisecond)
-					if err := cgoAudioInit(); err != nil {
-						logger.Error().Err(err).Msg("cgoAudioInit failed during recovery")
-						time.Sleep(500 * time.Millisecond)
-						continue
-					}
-					errorCount = 0
-				} else {
-					time.Sleep(5 * time.Millisecond)
-				}
-				continue
-			}
-			errorCount = 0
-			// (debug) logger.Debug().Msgf("frame encoded: %d bytes", n)
-			RecordFrameReceived(n)
-			send(buf[:n])
-		}
-		logger.Info().Msg("audio loop exited")
-	}()
 	return nil
 }
 
-// StopCGOAudioStream signals the audio stream goroutine to stop
-func StopCGOAudioStream() {
-	atomic.StoreInt32(&audioStreamRunning, 0)
+func cgoAudioPlaybackClose() {
+	C.jetkvm_audio_playback_close()
+}
+
+// Decodes Opus frame and writes to playback device
+func cgoAudioDecodeWrite(buf []byte) (int, error) {
+	if len(buf) == 0 {
+		return 0, errors.New("empty buffer")
+	}
+	n := C.jetkvm_audio_decode_write(unsafe.Pointer(&buf[0]), C.int(len(buf)))
+	if n < 0 {
+		return 0, errors.New("audio decode/write error")
+	}
+	return int(n), nil
+}
+
+
+
+// Wrapper functions for non-blocking audio manager
+func CGOAudioInit() error {
+	return cgoAudioInit()
+}
+
+func CGOAudioClose() {
+	cgoAudioClose()
+}
+
+func CGOAudioReadEncode(buf []byte) (int, error) {
+	return cgoAudioReadEncode(buf)
+}
+
+func CGOAudioPlaybackInit() error {
+	return cgoAudioPlaybackInit()
+}
+
+func CGOAudioPlaybackClose() {
+	cgoAudioPlaybackClose()
+}
+
+func CGOAudioDecodeWrite(buf []byte) (int, error) {
+	return cgoAudioDecodeWrite(buf)
 }

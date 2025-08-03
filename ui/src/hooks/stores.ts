@@ -117,6 +117,16 @@ interface RTCState {
   mediaStream: MediaStream | null;
   setMediaStream: (stream: MediaStream) => void;
 
+  // Microphone stream management
+  microphoneStream: MediaStream | null;
+  setMicrophoneStream: (stream: MediaStream | null) => void;
+  microphoneSender: RTCRtpSender | null;
+  setMicrophoneSender: (sender: RTCRtpSender | null) => void;
+  isMicrophoneActive: boolean;
+  setMicrophoneActive: (active: boolean) => void;
+  isMicrophoneMuted: boolean;
+  setMicrophoneMuted: (muted: boolean) => void;
+
   videoStreamStats: RTCInboundRtpStreamStats | null;
   appendVideoStreamStats: (state: RTCInboundRtpStreamStats) => void;
   videoStreamStatsHistory: Map<number, RTCInboundRtpStreamStats>;
@@ -165,6 +175,16 @@ export const useRTCStore = create<RTCState>(set => ({
 
   mediaStream: null,
   setMediaStream: stream => set({ mediaStream: stream }),
+
+  // Microphone stream management
+  microphoneStream: null,
+  setMicrophoneStream: stream => set({ microphoneStream: stream }),
+  microphoneSender: null,
+  setMicrophoneSender: sender => set({ microphoneSender: sender }),
+  isMicrophoneActive: false,
+  setMicrophoneActive: active => set({ isMicrophoneActive: active }),
+  isMicrophoneMuted: false,
+  setMicrophoneMuted: muted => set({ isMicrophoneMuted: muted }),
 
   videoStreamStats: null,
   appendVideoStreamStats: stats => set({ videoStreamStats: stats }),

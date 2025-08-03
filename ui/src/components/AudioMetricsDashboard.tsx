@@ -1,12 +1,24 @@
 import { useEffect, useState } from "react";
-import { MdGraphicEq, MdSignalWifi4Bar, MdError } from "react-icons/md";
+import { MdGraphicEq, MdSignalWifi4Bar, MdError, MdMic } from "react-icons/md";
 import { LuActivity, LuClock, LuHardDrive, LuSettings } from "react-icons/lu";
 
+import { AudioLevelMeter } from "@components/AudioLevelMeter";
 import { cx } from "@/cva.config";
+import { useMicrophone } from "@/hooks/useMicrophone";
+import { useAudioLevel } from "@/hooks/useAudioLevel";
 import api from "@/api";
 
 interface AudioMetrics {
   frames_received: number;
+  frames_dropped: number;
+  bytes_processed: number;
+  last_frame_time: string;
+  connection_drops: number;
+  average_latency: string;
+}
+
+interface MicrophoneMetrics {
+  frames_sent: number;
   frames_dropped: number;
   bytes_processed: number;
   last_frame_time: string;
@@ -31,9 +43,15 @@ const qualityLabels = {
 
 export default function AudioMetricsDashboard() {
   const [metrics, setMetrics] = useState<AudioMetrics | null>(null);
+  const [microphoneMetrics, setMicrophoneMetrics] = useState<MicrophoneMetrics | null>(null);
   const [config, setConfig] = useState<AudioConfig | null>(null);
+  const [microphoneConfig, setMicrophoneConfig] = useState<AudioConfig | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  
+  // Microphone state for audio level monitoring
+  const { isMicrophoneActive, isMicrophoneMuted, microphoneStream } = useMicrophone();
+  const { audioLevel, isAnalyzing } = useAudioLevel(microphoneStream);
 
   useEffect(() => {
     loadAudioData();
@@ -57,11 +75,34 @@ export default function AudioMetricsDashboard() {
         setIsConnected(false);
       }
 
+      // Load microphone metrics
+      try {
+        const micResp = await api.GET("/microphone/metrics");
+        if (micResp.ok) {
+          const micData = await micResp.json();
+          setMicrophoneMetrics(micData);
+        }
+      } catch (micError) {
+        // Microphone metrics might not be available, that's okay
+        console.debug("Microphone metrics not available:", micError);
+      }
+
       // Load config
       const configResp = await api.GET("/audio/quality");
       if (configResp.ok) {
         const configData = await configResp.json();
         setConfig(configData.current);
+      }
+
+      // Load microphone config
+      try {
+        const micConfigResp = await api.GET("/microphone/quality");
+        if (micConfigResp.ok) {
+          const micConfigData = await micConfigResp.json();
+          setMicrophoneConfig(micConfigData.current);
+        }
+      } catch (micConfigError) {
+        console.debug("Microphone config not available:", micConfigError);
       }
     } catch (error) {
       console.error("Failed to load audio data:", error);
@@ -118,52 +159,91 @@ export default function AudioMetricsDashboard() {
       </div>
 
       {/* Current Configuration */}
-      {config && (
-        <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-          <div className="mb-2 flex items-center gap-2">
-            <LuSettings className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-            <span className="font-medium text-slate-900 dark:text-slate-100">
-              Current Configuration
-            </span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {config && (
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            <div className="mb-2 flex items-center gap-2">
+              <LuSettings className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <span className="font-medium text-slate-900 dark:text-slate-100">
+                Audio Output Config
+              </span>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Quality:</span>
+                <span className={cx("font-medium", getQualityColor(config.Quality))}>
+                  {qualityLabels[config.Quality as keyof typeof qualityLabels]}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Bitrate:</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">
+                  {config.Bitrate}kbps
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Sample Rate:</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">
+                  {config.SampleRate}Hz
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Channels:</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">
+                  {config.Channels}
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-slate-500 dark:text-slate-400">Quality:</span>
-              <span className={cx("font-medium", getQualityColor(config.Quality))}>
-                {qualityLabels[config.Quality as keyof typeof qualityLabels]}
+        )}
+
+        {microphoneConfig && (
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            <div className="mb-2 flex items-center gap-2">
+              <MdMic className="h-4 w-4 text-green-600 dark:text-green-400" />
+              <span className="font-medium text-slate-900 dark:text-slate-100">
+                Microphone Input Config
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500 dark:text-slate-400">Bitrate:</span>
-              <span className="font-medium text-slate-900 dark:text-slate-100">
-                {config.Bitrate}kbps
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500 dark:text-slate-400">Sample Rate:</span>
-              <span className="font-medium text-slate-900 dark:text-slate-100">
-                {config.SampleRate}Hz
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500 dark:text-slate-400">Channels:</span>
-              <span className="font-medium text-slate-900 dark:text-slate-100">
-                {config.Channels}
-              </span>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Quality:</span>
+                <span className={cx("font-medium", getQualityColor(microphoneConfig.Quality))}>
+                  {qualityLabels[microphoneConfig.Quality as keyof typeof qualityLabels]}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Bitrate:</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">
+                  {microphoneConfig.Bitrate}kbps
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Sample Rate:</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">
+                  {microphoneConfig.SampleRate}Hz
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Channels:</span>
+                <span className="font-medium text-slate-900 dark:text-slate-100">
+                  {microphoneConfig.Channels}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Performance Metrics */}
       {metrics && (
         <div className="space-y-3">
-          {/* Frames */}
+          {/* Audio Output Frames */}
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
             <div className="mb-2 flex items-center gap-2">
               <LuActivity className="h-4 w-4 text-green-600 dark:text-green-400" />
               <span className="font-medium text-slate-900 dark:text-slate-100">
-                Frame Statistics
+                Audio Output
               </span>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -222,6 +302,87 @@ export default function AudioMetricsDashboard() {
               </div>
             </div>
           </div>
+
+          {/* Microphone Input Metrics */}
+          {microphoneMetrics && (
+            <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+              <div className="mb-2 flex items-center gap-2">
+                <MdMic className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                <span className="font-medium text-slate-900 dark:text-slate-100">
+                  Microphone Input
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                    {formatNumber(microphoneMetrics.frames_sent)}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    Frames Sent
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className={cx(
+                    "text-2xl font-bold",
+                    microphoneMetrics.frames_dropped > 0 
+                      ? "text-red-600 dark:text-red-400" 
+                      : "text-green-600 dark:text-green-400"
+                  )}>
+                    {formatNumber(microphoneMetrics.frames_dropped)}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    Frames Dropped
+                  </div>
+                </div>
+              </div>
+              
+              {/* Microphone Drop Rate */}
+              <div className="mt-3 rounded-md bg-slate-50 p-2 dark:bg-slate-700">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                    Drop Rate
+                  </span>
+                  <span className={cx(
+                    "font-bold",
+                    (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100 : 0) > 5 
+                      ? "text-red-600 dark:text-red-400"
+                      : (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100 : 0) > 1
+                      ? "text-yellow-600 dark:text-yellow-400"
+                      : "text-green-600 dark:text-green-400"
+                  )}>
+                    {microphoneMetrics.frames_sent > 0 ? ((microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100).toFixed(2) : "0.00"}%
+                  </span>
+                </div>
+                <div className="mt-1 h-2 w-full rounded-full bg-slate-200 dark:bg-slate-600">
+                  <div 
+                    className={cx(
+                      "h-2 rounded-full transition-all duration-300",
+                      (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100 : 0) > 5 
+                        ? "bg-red-500"
+                        : (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100 : 0) > 1
+                        ? "bg-yellow-500"
+                        : "bg-green-500"
+                    )}
+                    style={{ 
+                      width: `${Math.min(microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100 : 0, 100)}%` 
+                    }}
+                  />
+                </div>
+              </div>
+              
+              {/* Microphone Audio Level */}
+              {isMicrophoneActive && (
+                <div className="mt-3 rounded-md bg-slate-50 p-2 dark:bg-slate-700">
+                  <AudioLevelMeter
+                    level={audioLevel}
+                    isActive={isMicrophoneActive && !isMicrophoneMuted && isAnalyzing}
+                    size="sm"
+                    showLabel={true}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Data Transfer */}
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
