@@ -173,11 +173,11 @@ func setupRouter() *gin.Engine {
 			return
 		}
 		audio.SetAudioMuted(req.Muted)
-		
+
 		// Broadcast audio mute state change via WebSocket
 		broadcaster := GetAudioEventBroadcaster()
 		broadcaster.BroadcastAudioMuteChanged(req.Muted)
-		
+
 		c.JSON(200, gin.H{"muted": req.Muted})
 	})
 
@@ -314,7 +314,7 @@ func setupRouter() *gin.Engine {
 		// Broadcast microphone state change via WebSocket
 		broadcaster := GetAudioEventBroadcaster()
 		broadcaster.BroadcastMicrophoneStateChanged(true, true)
-		
+
 		c.JSON(200, gin.H{
 			"status":  "started",
 			"running": currentSession.AudioInputManager.IsRunning(),
