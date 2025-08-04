@@ -21,8 +21,8 @@ import (
 
 // Mouse event processing with single worker
 var (
-	mouseEventChan   = make(chan mouseEventData, 100) // Buffered channel for mouse events
-	mouseWorkerOnce  sync.Once
+	mouseEventChan  = make(chan mouseEventData, 100) // Buffered channel for mouse events
+	mouseWorkerOnce sync.Once
 )
 
 type mouseEventData struct {
@@ -35,15 +35,15 @@ func startMouseWorker() {
 	go func() {
 		ticker := time.NewTicker(16 * time.Millisecond) // ~60 FPS
 		defer ticker.Stop()
-		
+
 		var latestMouseEvent *mouseEventData
-		
+
 		for {
 			select {
 			case event := <-mouseEventChan:
 				// Always keep the latest mouse event
 				latestMouseEvent = &event
-				
+
 			case <-ticker.C:
 				// Process the latest mouse event at regular intervals
 				if latestMouseEvent != nil {
@@ -68,7 +68,7 @@ func onRPCMessageThrottled(message webrtc.DataChannelMessage, session *Session) 
 	if isMouseEvent(request.Method) {
 		// Start the mouse worker if not already started
 		mouseWorkerOnce.Do(startMouseWorker)
-		
+
 		// Send to mouse worker (non-blocking)
 		select {
 		case mouseEventChan <- mouseEventData{message: message, session: session}:

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 
 	"github.com/creack/pty"
 	"github.com/pion/webrtc/v4"
@@ -33,6 +34,10 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 		}
 
 		go func() {
+			// Lock to OS thread to isolate PTY I/O
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+
 			buf := make([]byte, 1024)
 			for {
 				n, err := ptmx.Read(buf)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useRTCStore } from "@/hooks/stores";
 import api from "@/api";
@@ -22,6 +22,11 @@ export function useMicrophone() {
   } = useRTCStore();
 
   const microphoneStreamRef = useRef<MediaStream | null>(null);
+  
+  // Loading states
+  const [isStarting, setIsStarting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
+  const [isToggling, setIsToggling] = useState(false);
 
   // Cleanup function to stop microphone stream
   const stopMicrophoneStream = useCallback(async () => {
@@ -110,7 +115,7 @@ export function useMicrophone() {
   const syncMicrophoneState = useCallback(async () => {
     // Debounce sync calls to prevent race conditions
     const now = Date.now();
-    if (now - lastSyncRef.current < 500) {
+    if (now - lastSyncRef.current < 1000) { // Increased debounce time
       console.log("Skipping sync - too frequent");
       return;
     }
@@ -128,16 +133,24 @@ export function useMicrophone() {
         const data = await response.json();
         const backendRunning = data.running;
         
-        // If backend state differs from frontend state, sync them
+        // Only sync if there's a significant state difference and we're not in a transition
         if (backendRunning !== isMicrophoneActive) {
           console.info(`Syncing microphone state: backend=${backendRunning}, frontend=${isMicrophoneActive}`);
-          setMicrophoneActive(backendRunning);
           
-          // Only clean up stream if backend is definitely not running AND we have a stream
-          // Use ref to get current stream state, not stale closure value
-          if (!backendRunning && microphoneStreamRef.current) {
-            console.log("Backend not running, cleaning up stream");
-            await stopMicrophoneStream();
+          // If backend is running but frontend thinks it's not, just update frontend state
+          if (backendRunning && !isMicrophoneActive) {
+            console.log("Backend running, updating frontend state to active");
+            setMicrophoneActive(true);
+          }
+          // If backend is not running but frontend thinks it is, clean up and update state
+          else if (!backendRunning && isMicrophoneActive) {
+            console.log("Backend not running, cleaning up frontend state");
+            setMicrophoneActive(false);
+            // Only clean up stream if we actually have one
+            if (microphoneStreamRef.current) {
+              console.log("Cleaning up orphaned stream");
+              await stopMicrophoneStream();
+            }
           }
         }
       }
@@ -148,6 +161,13 @@ export function useMicrophone() {
 
   // Start microphone stream
   const startMicrophone = useCallback(async (deviceId?: string): Promise<{ success: boolean; error?: MicrophoneError }> => {
+    // Prevent multiple simultaneous start operations
+    if (isStarting || isStopping || isToggling) {
+      console.log("Microphone operation already in progress, skipping start");
+      return { success: false, error: { type: 'unknown', message: 'Operation already in progress' } };
+    }
+    
+    setIsStarting(true);
     try {
       // Set flag to prevent sync during startup
       isStartingRef.current = true;
@@ -300,41 +320,73 @@ export function useMicrophone() {
 
       // Notify backend that microphone is started
       console.log("Notifying backend about microphone start...");
-      try {
-        const backendResp = await api.POST("/microphone/start", {});
-        console.log("Backend response status:", backendResp.status, "ok:", backendResp.ok);
-        
-        if (!backendResp.ok) {
-          console.error("Backend microphone start failed with status:", backendResp.status);
-        // If backend fails, cleanup the stream
-        await stopMicrophoneStream();
-        isStartingRef.current = false;
-        return {
-          success: false,
-          error: {
-            type: 'network',
-            message: 'Failed to start microphone on backend'
+      
+      // Retry logic for backend failures
+      let backendSuccess = false;
+      let lastError: any = null;
+      
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          // If this is a retry, first try to stop the backend microphone to reset state
+          if (attempt > 1) {
+            console.log(`Backend start attempt ${attempt}, first trying to reset backend state...`);
+            try {
+              await api.POST("/microphone/stop", {});
+              // Wait a bit for the backend to reset
+              await new Promise(resolve => setTimeout(resolve, 200));
+            } catch (resetError) {
+              console.warn("Failed to reset backend state:", resetError);
+            }
           }
-        };
+          
+          const backendResp = await api.POST("/microphone/start", {});
+          console.log(`Backend response status (attempt ${attempt}):`, backendResp.status, "ok:", backendResp.ok);
+          
+          if (!backendResp.ok) {
+            lastError = `Backend returned status ${backendResp.status}`;
+            console.error(`Backend microphone start failed with status: ${backendResp.status} (attempt ${attempt})`);
+            
+            // For 500 errors, try again after a short delay
+            if (backendResp.status === 500 && attempt < 3) {
+              console.log(`Retrying backend start in 500ms (attempt ${attempt + 1}/3)...`);
+              await new Promise(resolve => setTimeout(resolve, 500));
+              continue;
+            }
+          } else {
+            // Success!
+            const responseData = await backendResp.json();
+            console.log("Backend response data:", responseData);
+            if (responseData.status === "already running") {
+              console.info("Backend microphone was already running");
+            }
+            console.log("Backend microphone start successful");
+            backendSuccess = true;
+            break;
+          }
+        } catch (error) {
+          lastError = error;
+          console.error(`Backend microphone start threw error (attempt ${attempt}):`, error);
+          
+          // For network errors, try again after a short delay
+          if (attempt < 3) {
+            console.log(`Retrying backend start in 500ms (attempt ${attempt + 1}/3)...`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            continue;
+          }
         }
-        
-        // Check the response to see if it was already running
-        const responseData = await backendResp.json();
-        console.log("Backend response data:", responseData);
-        if (responseData.status === "already running") {
-          console.info("Backend microphone was already running");
-        }
-        console.log("Backend microphone start successful");
-      } catch (error) {
-        console.error("Backend microphone start threw error:", error);
-        // If backend fails, cleanup the stream
+      }
+      
+      // If all backend attempts failed, cleanup and return error
+      if (!backendSuccess) {
+        console.error("All backend start attempts failed, cleaning up stream");
         await stopMicrophoneStream();
         isStartingRef.current = false;
+        setIsStarting(false);
         return {
           success: false,
           error: {
             type: 'network',
-            message: 'Failed to communicate with backend'
+            message: `Failed to start microphone on backend after 3 attempts. Last error: ${lastError}`
           }
         };
       }
@@ -364,6 +416,7 @@ export function useMicrophone() {
 
       // Clear the starting flag
       isStartingRef.current = false;
+      setIsStarting(false);
       return { success: true };
     } catch (error) {
       console.error("Failed to start microphone:", error);
@@ -395,28 +448,58 @@ export function useMicrophone() {
 
       // Clear the starting flag on error
       isStartingRef.current = false;
+      setIsStarting(false);
       return { success: false, error: micError };
     }
-  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, stopMicrophoneStream, isMicrophoneActive, isMicrophoneMuted, microphoneStream]);
+  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, stopMicrophoneStream, isMicrophoneActive, isMicrophoneMuted, microphoneStream, isStarting, isStopping, isToggling]);
+
+  // Reset backend microphone state
+  const resetBackendMicrophoneState = useCallback(async (): Promise<boolean> => {
+    try {
+      console.log("Resetting backend microphone state...");
+      await api.POST("/microphone/stop", {});
+      // Wait for backend to process the stop
+      await new Promise(resolve => setTimeout(resolve, 300));
+      return true;
+    } catch (error) {
+      console.warn("Failed to reset backend microphone state:", error);
+      return false;
+    }
+  }, []);
 
   // Stop microphone
   const stopMicrophone = useCallback(async (): Promise<{ success: boolean; error?: MicrophoneError }> => {
+    // Prevent multiple simultaneous stop operations
+    if (isStarting || isStopping || isToggling) {
+      console.log("Microphone operation already in progress, skipping stop");
+      return { success: false, error: { type: 'unknown', message: 'Operation already in progress' } };
+    }
+    
+    setIsStopping(true);
     try {
+      // First stop the stream
       await stopMicrophoneStream();
 
-      // Notify backend that microphone is stopped
+      // Then notify backend that microphone is stopped
       try {
         await api.POST("/microphone/stop", {});
+        console.log("Backend notified about microphone stop");
       } catch (error) {
         console.warn("Failed to notify backend about microphone stop:", error);
       }
 
-      // Sync state after stopping to ensure consistency
-      setTimeout(() => syncMicrophoneState(), 100);
+      // Update frontend state immediately
+      setMicrophoneActive(false);
+      setMicrophoneMuted(false);
 
+      // Sync state after stopping to ensure consistency (with longer delay)
+      setTimeout(() => syncMicrophoneState(), 500);
+
+      setIsStopping(false);
       return { success: true };
     } catch (error) {
       console.error("Failed to stop microphone:", error);
+      setIsStopping(false);
       return {
         success: false,
         error: {
@@ -425,10 +508,17 @@ export function useMicrophone() {
         }
       };
     }
-  }, [stopMicrophoneStream, syncMicrophoneState]);
+  }, [stopMicrophoneStream, syncMicrophoneState, setMicrophoneActive, setMicrophoneMuted, isStarting, isStopping, isToggling]);
 
   // Toggle microphone mute
   const toggleMicrophoneMute = useCallback(async (): Promise<{ success: boolean; error?: MicrophoneError }> => {
+    // Prevent multiple simultaneous toggle operations
+    if (isStarting || isStopping || isToggling) {
+      console.log("Microphone operation already in progress, skipping toggle");
+      return { success: false, error: { type: 'unknown', message: 'Operation already in progress' } };
+    }
+    
+    setIsToggling(true);
     try {
       // Use the ref instead of store value to avoid race conditions
       const currentStream = microphoneStreamRef.current || microphoneStream;
@@ -461,6 +551,7 @@ export function useMicrophone() {
           errorMessage = 'Microphone is not marked as active. Please restart the microphone.';
         }
         
+        setIsToggling(false);
         return {
           success: false,
           error: {
@@ -472,6 +563,7 @@ export function useMicrophone() {
 
       const audioTracks = currentStream.getAudioTracks();
       if (audioTracks.length === 0) {
+        setIsToggling(false);
         return {
           success: false,
           error: {
@@ -498,9 +590,11 @@ export function useMicrophone() {
         console.warn("Failed to notify backend about microphone mute:", error);
       }
 
+      setIsToggling(false);
       return { success: true };
     } catch (error) {
       console.error("Failed to toggle microphone mute:", error);
+      setIsToggling(false);
       return {
         success: false,
         error: {
@@ -509,7 +603,7 @@ export function useMicrophone() {
         }
       };
     }
-  }, [microphoneStream, isMicrophoneActive, isMicrophoneMuted, setMicrophoneMuted]);
+  }, [microphoneStream, isMicrophoneActive, isMicrophoneMuted, setMicrophoneMuted, isStarting, isStopping, isToggling]);
 
   // Function to check WebRTC audio transmission stats
   const checkAudioTransmissionStats = useCallback(async () => {
@@ -685,35 +779,53 @@ export function useMicrophone() {
       debugMicrophone?: () => unknown;
       checkAudioStats?: () => unknown;
       testMicrophoneAudio?: () => unknown;
+      resetBackendMicrophone?: () => unknown;
     }).debugMicrophone = debugMicrophoneState;
     (window as Window & { 
       debugMicrophone?: () => unknown;
       checkAudioStats?: () => unknown;
       testMicrophoneAudio?: () => unknown;
+      resetBackendMicrophone?: () => unknown;
     }).checkAudioStats = checkAudioTransmissionStats;
     (window as Window & { 
       debugMicrophone?: () => unknown;
       checkAudioStats?: () => unknown;
       testMicrophoneAudio?: () => unknown;
+      resetBackendMicrophone?: () => unknown;
     }).testMicrophoneAudio = testMicrophoneAudio;
+    (window as Window & { 
+      debugMicrophone?: () => unknown;
+      checkAudioStats?: () => unknown;
+      testMicrophoneAudio?: () => unknown;
+      resetBackendMicrophone?: () => unknown;
+    }).resetBackendMicrophone = resetBackendMicrophoneState;
     return () => {
       delete (window as Window & { 
         debugMicrophone?: () => unknown;
         checkAudioStats?: () => unknown;
         testMicrophoneAudio?: () => unknown;
+        resetBackendMicrophone?: () => unknown;
       }).debugMicrophone;
       delete (window as Window & { 
         debugMicrophone?: () => unknown;
         checkAudioStats?: () => unknown;
         testMicrophoneAudio?: () => unknown;
+        resetBackendMicrophone?: () => unknown;
       }).checkAudioStats;
       delete (window as Window & { 
         debugMicrophone?: () => unknown;
         checkAudioStats?: () => unknown;
         testMicrophoneAudio?: () => unknown;
+        resetBackendMicrophone?: () => unknown;
       }).testMicrophoneAudio;
+      delete (window as Window & { 
+        debugMicrophone?: () => unknown;
+        checkAudioStats?: () => unknown;
+        testMicrophoneAudio?: () => unknown;
+        resetBackendMicrophone?: () => unknown;
+      }).resetBackendMicrophone;
     };
-  }, [debugMicrophoneState, checkAudioTransmissionStats, testMicrophoneAudio]);
+  }, [debugMicrophoneState, checkAudioTransmissionStats, testMicrophoneAudio, resetBackendMicrophoneState]);
 
   // Sync state on mount
   useEffect(() => {
@@ -745,5 +857,10 @@ export function useMicrophone() {
     toggleMicrophoneMute,
     syncMicrophoneState,
     debugMicrophoneState,
+    resetBackendMicrophoneState,
+    // Loading states
+    isStarting,
+    isStopping,
+    isToggling,
   };
 }

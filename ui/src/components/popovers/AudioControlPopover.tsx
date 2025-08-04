@@ -26,6 +26,10 @@ interface MicrophoneHookReturn {
   stopMicrophone: () => Promise<{ success: boolean; error?: MicrophoneError }>;
   toggleMicrophoneMute: () => Promise<{ success: boolean; error?: MicrophoneError }>;
   syncMicrophoneState: () => Promise<void>;
+  // Loading states
+  isStarting: boolean;
+  isStopping: boolean;
+  isToggling: boolean;
 }
 
 interface AudioConfig {
@@ -76,6 +80,10 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   
+  // Add cooldown to prevent rapid clicking
+  const [lastClickTime, setLastClickTime] = useState(0);
+  const CLICK_COOLDOWN = 500; // 500ms cooldown between clicks
+  
   // Microphone state from props
   const {
     isMicrophoneActive,
@@ -85,9 +93,12 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     stopMicrophone,
     toggleMicrophoneMute,
     syncMicrophoneState,
+    // Loading states
+    isStarting,
+    isStopping,
+    isToggling,
   } = microphone;
   const [microphoneMetrics, setMicrophoneMetrics] = useState<MicrophoneMetrics | null>(null);
-  const [isMicrophoneLoading, setIsMicrophoneLoading] = useState(false);
   
   // Audio level monitoring
   const { audioLevel, isAnalyzing } = useAudioLevel(microphoneStream);
@@ -210,7 +221,6 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   };
 
   const handleMicrophoneQualityChange = async (quality: number) => {
-    setIsMicrophoneLoading(true);
     try {
       const resp = await api.POST("/microphone/quality", { quality });
       if (resp.ok) {
@@ -219,13 +229,20 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
       }
     } catch (error) {
       console.error("Failed to change microphone quality:", error);
-    } finally {
-      setIsMicrophoneLoading(false);
     }
   };
 
   const handleToggleMicrophone = async () => {
-    setIsMicrophoneLoading(true);
+    const now = Date.now();
+    
+    // Prevent rapid clicking - if any operation is in progress or within cooldown, ignore the click
+    if (isStarting || isStopping || isToggling || (now - lastClickTime < CLICK_COOLDOWN)) {
+      console.log("Microphone operation already in progress or within cooldown, ignoring click");
+      return;
+    }
+    
+    setLastClickTime(now);
+    
     try {
       const result = isMicrophoneActive ? await stopMicrophone() : await startMicrophone(selectedInputDevice);
       if (!result.success && result.error) {
@@ -234,13 +251,20 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     } catch (error) {
       console.error("Failed to toggle microphone:", error);
       notifications.error("An unexpected error occurred");
-    } finally {
-      setIsMicrophoneLoading(false);
     }
   };
 
   const handleToggleMicrophoneMute = async () => {
-    setIsMicrophoneLoading(true);
+    const now = Date.now();
+    
+    // Prevent rapid clicking - if any operation is in progress or within cooldown, ignore the click
+    if (isStarting || isStopping || isToggling || (now - lastClickTime < CLICK_COOLDOWN)) {
+      console.log("Microphone operation already in progress or within cooldown, ignoring mute toggle");
+      return;
+    }
+    
+    setLastClickTime(now);
+    
     try {
       const result = await toggleMicrophoneMute();
       if (!result.success && result.error) {
@@ -249,8 +273,6 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     } catch (error) {
       console.error("Failed to toggle microphone mute:", error);
       notifications.error("Failed to toggle microphone mute");
-    } finally {
-      setIsMicrophoneLoading(false);
     }
   };
 
@@ -260,7 +282,6 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     
     // If microphone is currently active, restart it with the new device
     if (isMicrophoneActive) {
-      setIsMicrophoneLoading(true);
       try {
         // Stop current microphone
         await stopMicrophone();
@@ -269,8 +290,9 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
         if (!result.success && result.error) {
           notifications.error(result.error.message);
         }
-      } finally {
-        setIsMicrophoneLoading(false);
+      } catch (error) {
+        console.error("Failed to change microphone device:", error);
+        notifications.error("Failed to change microphone device");
       }
     }
   };
@@ -377,17 +399,26 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
               <Button
                 size="SM"
                 theme={isMicrophoneActive ? "danger" : "primary"}
-                text={isMicrophoneActive ? "Stop" : "Start"}
+                text={
+                  isStarting ? "Starting..." : 
+                  isStopping ? "Stopping..." : 
+                  isMicrophoneActive ? "Stop" : "Start"
+                }
                 onClick={handleToggleMicrophone}
-                disabled={isMicrophoneLoading}
+                disabled={isStarting || isStopping || isToggling}
+                loading={isStarting || isStopping}
               />
               {isMicrophoneActive && (
                 <Button
                   size="SM"
                   theme={isMicrophoneMuted ? "danger" : "light"}
-                  text={isMicrophoneMuted ? "Unmute" : "Mute"}
+                  text={
+                    isToggling ? (isMicrophoneMuted ? "Unmuting..." : "Muting...") :
+                    isMicrophoneMuted ? "Unmute" : "Mute"
+                  }
                   onClick={handleToggleMicrophoneMute}
-                  disabled={isMicrophoneLoading}
+                  disabled={isStarting || isStopping || isToggling}
+                  loading={isToggling}
                 />
               )}
             </div>
@@ -517,13 +548,13 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
                 <button
                   key={`mic-${quality}`}
                   onClick={() => handleMicrophoneQualityChange(parseInt(quality))}
-                  disabled={isMicrophoneLoading}
+                  disabled={isStarting || isStopping || isToggling}
                   className={cx(
                     "rounded-md border px-3 py-2 text-sm font-medium transition-colors",
                     currentMicrophoneConfig?.Quality === parseInt(quality)
                       ? "border-green-500 bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300"
                       : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600",
-                    isMicrophoneLoading && "opacity-50 cursor-not-allowed"
+                    (isStarting || isStopping || isToggling) && "opacity-50 cursor-not-allowed"
                   )}
                 >
                   {label}

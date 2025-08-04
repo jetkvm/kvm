@@ -155,7 +155,7 @@ func Main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
 	logger.Info().Msg("JetKVM Shutting Down")
-	
+
 	// Stop non-blocking audio manager
 	audio.StopNonBlockingAudioStreaming()
 	//if fuseServer != nil {

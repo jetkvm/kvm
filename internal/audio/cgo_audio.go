@@ -1,3 +1,5 @@
+//go:build !nolint
+
 package audio
 
 import (
@@ -54,7 +56,7 @@ int jetkvm_audio_read_encode(void *opus_buf) {
 	short pcm_buffer[1920]; // max 2ch*960
 	unsigned char *out = (unsigned char*)opus_buf;
 	int pcm_rc = snd_pcm_readi(pcm_handle, pcm_buffer, frame_size);
-	
+
 	// Handle ALSA errors with recovery
 	if (pcm_rc < 0) {
 		if (pcm_rc == -EPIPE) {
@@ -70,12 +72,12 @@ int jetkvm_audio_read_encode(void *opus_buf) {
 			return -1;
 		}
 	}
-	
+
 	// If we got fewer frames than expected, pad with silence
 	if (pcm_rc < frame_size) {
 		memset(&pcm_buffer[pcm_rc * channels], 0, (frame_size - pcm_rc) * channels * sizeof(short));
 	}
-	
+
 	int nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
 	return nb_bytes;
 }
@@ -85,7 +87,7 @@ int jetkvm_audio_playback_init() {
 	int err;
 	snd_pcm_hw_params_t *params;
 	if (pcm_playback_handle) return 0;
-	
+
 	// Try to open the USB gadget audio device for playback
 	// This should correspond to the capture endpoint of the USB gadget
 	if (snd_pcm_open(&pcm_playback_handle, "hw:1,0", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
@@ -93,7 +95,7 @@ int jetkvm_audio_playback_init() {
 		if (snd_pcm_open(&pcm_playback_handle, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0)
 			return -1;
 	}
-	
+
 	snd_pcm_hw_params_malloc(&params);
 	snd_pcm_hw_params_any(pcm_playback_handle, params);
 	snd_pcm_hw_params_set_access(pcm_playback_handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
@@ -104,11 +106,11 @@ int jetkvm_audio_playback_init() {
 	snd_pcm_hw_params(pcm_playback_handle, params);
 	snd_pcm_hw_params_free(params);
 	snd_pcm_prepare(pcm_playback_handle);
-	
+
 	// Initialize Opus decoder
 	decoder = opus_decoder_create(sample_rate, channels, &err);
 	if (!decoder) return -2;
-	
+
 	return 0;
 }
 
@@ -116,11 +118,11 @@ int jetkvm_audio_playback_init() {
 int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 	short pcm_buffer[1920]; // max 2ch*960
 	unsigned char *in = (unsigned char*)opus_buf;
-	
+
 	// Decode Opus to PCM
 	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
 	if (pcm_frames < 0) return -1;
-	
+
 	// Write PCM to playback device
 	int pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
 	if (pcm_rc < 0) {
@@ -131,7 +133,7 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 		}
 		if (pcm_rc < 0) return -2;
 	}
-	
+
 	return pcm_frames;
 }
 
@@ -147,8 +149,6 @@ void jetkvm_audio_close() {
 }
 */
 import "C"
-
-
 
 // Go wrappers for initializing, starting, stopping, and controlling audio
 func cgoAudioInit() error {
@@ -179,8 +179,6 @@ func cgoAudioReadEncode(buf []byte) (int, error) {
 	return int(n), nil
 }
 
-
-
 // Go wrappers for audio playback (microphone input)
 func cgoAudioPlaybackInit() error {
 	ret := C.jetkvm_audio_playback_init()
@@ -205,8 +203,6 @@ func cgoAudioDecodeWrite(buf []byte) (int, error) {
 	}
 	return int(n), nil
 }
-
-
 
 // Wrapper functions for non-blocking audio manager
 func CGOAudioInit() error {
