@@ -175,7 +175,7 @@ func setupRouter() *gin.Engine {
 		audio.SetAudioMuted(req.Muted)
 
 		// Broadcast audio mute state change via WebSocket
-		broadcaster := GetAudioEventBroadcaster()
+		broadcaster := audio.GetAudioEventBroadcaster()
 		broadcaster.BroadcastAudioMuteChanged(req.Muted)
 
 		c.JSON(200, gin.H{"muted": req.Muted})
@@ -312,7 +312,7 @@ func setupRouter() *gin.Engine {
 		}
 
 		// Broadcast microphone state change via WebSocket
-		broadcaster := GetAudioEventBroadcaster()
+		broadcaster := audio.GetAudioEventBroadcaster()
 		broadcaster.BroadcastMicrophoneStateChanged(true, true)
 
 		c.JSON(200, gin.H{
@@ -347,7 +347,7 @@ func setupRouter() *gin.Engine {
 		audio.StopNonBlockingAudioInput()
 
 		// Broadcast microphone state change via WebSocket
-		broadcaster := GetAudioEventBroadcaster()
+		broadcaster := audio.GetAudioEventBroadcaster()
 		broadcaster.BroadcastMicrophoneStateChanged(false, true)
 
 		c.JSON(200, gin.H{
@@ -547,7 +547,7 @@ func handleWebRTCSignalWsMessages(
 			setCloudConnectionState(CloudConnectionStateDisconnected)
 		}
 		// Clean up audio event subscription
-		broadcaster := GetAudioEventBroadcaster()
+		broadcaster := audio.GetAudioEventBroadcaster()
 		broadcaster.Unsubscribe(connectionID)
 		cancelRun()
 	}()
@@ -708,7 +708,7 @@ func handleWebRTCSignalWsMessages(
 			}
 		} else if message.Type == "subscribe-audio-events" {
 			l.Info().Msg("client subscribing to audio events")
-			broadcaster := GetAudioEventBroadcaster()
+			broadcaster := audio.GetAudioEventBroadcaster()
 			broadcaster.Subscribe(connectionID, wsCon, runCtx, &l)
 		}
 	}

@@ -1,4 +1,4 @@
-package kvm
+package audio
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/jetkvm/kvm/internal/audio"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
 )
 
@@ -80,7 +80,7 @@ var (
 // InitializeAudioEventBroadcaster initializes the global audio event broadcaster
 func InitializeAudioEventBroadcaster() {
 	audioEventOnce.Do(func() {
-		l := logger.With().Str("component", "audio-events").Logger()
+		l := logging.GetDefaultLogger().With().Str("component", "audio-events").Logger()
 		audioEventBroadcaster = &AudioEventBroadcaster{
 			subscribers: make(map[string]*AudioEventSubscriber),
 			logger:      &l,
@@ -94,7 +94,7 @@ func InitializeAudioEventBroadcaster() {
 // GetAudioEventBroadcaster returns the singleton audio event broadcaster
 func GetAudioEventBroadcaster() *AudioEventBroadcaster {
 	audioEventOnce.Do(func() {
-		l := logger.With().Str("component", "audio-events").Logger()
+		l := logging.GetDefaultLogger().With().Str("component", "audio-events").Logger()
 		audioEventBroadcaster = &AudioEventBroadcaster{
 			subscribers: make(map[string]*AudioEventSubscriber),
 			logger:      &l,
@@ -166,15 +166,18 @@ func (aeb *AudioEventBroadcaster) sendInitialState(connectionID string) {
 	// Send current audio mute state
 	muteEvent := AudioEvent{
 		Type: AudioEventMuteChanged,
-		Data: AudioMuteData{Muted: audio.IsAudioMuted()},
+		Data: AudioMuteData{Muted: IsAudioMuted()},
 	}
 	aeb.sendToSubscriber(subscriber, muteEvent)
 
-	// Send current microphone state
-	sessionActive := currentSession != nil
+	// Send current microphone state using session provider
+	sessionProvider := GetSessionProvider()
+	sessionActive := sessionProvider.IsSessionActive()
 	var running bool
-	if sessionActive && currentSession.AudioInputManager != nil {
-		running = currentSession.AudioInputManager.IsRunning()
+	if sessionActive {
+		if inputManager := sessionProvider.GetAudioInputManager(); inputManager != nil {
+			running = inputManager.IsRunning()
+		}
 	}
 
 	micStateEvent := AudioEvent{
@@ -193,7 +196,7 @@ func (aeb *AudioEventBroadcaster) sendInitialState(connectionID string) {
 // sendCurrentMetrics sends current audio and microphone metrics to a subscriber
 func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubscriber) {
 	// Send audio metrics
-	audioMetrics := audio.GetAudioMetrics()
+	audioMetrics := GetAudioMetrics()
 	audioMetricsEvent := AudioEvent{
 		Type: AudioEventMetricsUpdate,
 		Data: AudioMetricsData{
@@ -207,21 +210,24 @@ func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubsc
 	}
 	aeb.sendToSubscriber(subscriber, audioMetricsEvent)
 
-	// Send microphone metrics
-	if currentSession != nil && currentSession.AudioInputManager != nil {
-		micMetrics := currentSession.AudioInputManager.GetMetrics()
-		micMetricsEvent := AudioEvent{
-			Type: AudioEventMicrophoneMetrics,
-			Data: MicrophoneMetricsData{
-				FramesSent:      micMetrics.FramesSent,
-				FramesDropped:   micMetrics.FramesDropped,
-				BytesProcessed:  micMetrics.BytesProcessed,
-				LastFrameTime:   micMetrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
-				ConnectionDrops: micMetrics.ConnectionDrops,
-				AverageLatency:  micMetrics.AverageLatency.String(),
-			},
+	// Send microphone metrics using session provider
+	sessionProvider := GetSessionProvider()
+	if sessionProvider.IsSessionActive() {
+		if inputManager := sessionProvider.GetAudioInputManager(); inputManager != nil {
+			micMetrics := inputManager.GetMetrics()
+			micMetricsEvent := AudioEvent{
+				Type: AudioEventMicrophoneMetrics,
+				Data: MicrophoneMetricsData{
+					FramesSent:      micMetrics.FramesSent,
+					FramesDropped:   micMetrics.FramesDropped,
+					BytesProcessed:  micMetrics.BytesProcessed,
+					LastFrameTime:   micMetrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
+					ConnectionDrops: micMetrics.ConnectionDrops,
+					AverageLatency:  micMetrics.AverageLatency.String(),
+				},
+			}
+			aeb.sendToSubscriber(subscriber, micMetricsEvent)
 		}
-		aeb.sendToSubscriber(subscriber, micMetricsEvent)
 	}
 }
 
@@ -241,7 +247,7 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 		}
 
 		// Broadcast audio metrics
-		audioMetrics := audio.GetAudioMetrics()
+		audioMetrics := GetAudioMetrics()
 		audioMetricsEvent := AudioEvent{
 			Type: AudioEventMetricsUpdate,
 			Data: AudioMetricsData{
@@ -255,21 +261,24 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 		}
 		aeb.broadcast(audioMetricsEvent)
 
-		// Broadcast microphone metrics if available
-		if currentSession != nil && currentSession.AudioInputManager != nil {
-			micMetrics := currentSession.AudioInputManager.GetMetrics()
-			micMetricsEvent := AudioEvent{
-				Type: AudioEventMicrophoneMetrics,
-				Data: MicrophoneMetricsData{
-					FramesSent:      micMetrics.FramesSent,
-					FramesDropped:   micMetrics.FramesDropped,
-					BytesProcessed:  micMetrics.BytesProcessed,
-					LastFrameTime:   micMetrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
-					ConnectionDrops: micMetrics.ConnectionDrops,
-					AverageLatency:  micMetrics.AverageLatency.String(),
-				},
+		// Broadcast microphone metrics if available using session provider
+		sessionProvider := GetSessionProvider()
+		if sessionProvider.IsSessionActive() {
+			if inputManager := sessionProvider.GetAudioInputManager(); inputManager != nil {
+				micMetrics := inputManager.GetMetrics()
+				micMetricsEvent := AudioEvent{
+					Type: AudioEventMicrophoneMetrics,
+					Data: MicrophoneMetricsData{
+						FramesSent:      micMetrics.FramesSent,
+						FramesDropped:   micMetrics.FramesDropped,
+						BytesProcessed:  micMetrics.BytesProcessed,
+						LastFrameTime:   micMetrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
+						ConnectionDrops: micMetrics.ConnectionDrops,
+						AverageLatency:  micMetrics.AverageLatency.String(),
+					},
+				}
+				aeb.broadcast(micMetricsEvent)
 			}
-			aeb.broadcast(micMetricsEvent)
 		}
 	}
 }
