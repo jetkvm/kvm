@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net"
+	"runtime"
 	"strings"
 
 	"github.com/coder/websocket"
@@ -164,18 +165,22 @@ func newSession(config SessionConfig) (*Session, error) {
 	// Handle incoming audio track (microphone from browser)
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		scopedLogger.Info().Str("codec", track.Codec().MimeType).Str("id", track.ID()).Msg("Got remote track")
-		
+
 		if track.Kind() == webrtc.RTPCodecTypeAudio && track.Codec().MimeType == webrtc.MimeTypeOpus {
 			scopedLogger.Info().Msg("Processing incoming audio track for microphone input")
-			
+
 			go func() {
+				// Lock to OS thread to isolate RTP processing
+				runtime.LockOSThread()
+				defer runtime.UnlockOSThread()
+
 				for {
 					rtpPacket, _, err := track.ReadRTP()
 					if err != nil {
 						scopedLogger.Debug().Err(err).Msg("Error reading RTP packet from audio track")
 						return
 					}
-					
+
 					// Extract Opus payload from RTP packet
 					opusPayload := rtpPacket.Payload
 					if len(opusPayload) > 0 && session.AudioInputManager != nil {
@@ -251,6 +256,10 @@ func newSession(config SessionConfig) (*Session, error) {
 }
 
 func drainRtpSender(rtpSender *webrtc.RTPSender) {
+	// Lock to OS thread to isolate RTCP processing
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	rtcpBuf := make([]byte, 1500)
 	for {
 		if _, _, err := rtpSender.Read(rtcpBuf); err != nil {

@@ -40,6 +40,10 @@ interface MicrophoneHookReturn {
   stopMicrophone: () => Promise<{ success: boolean; error?: MicrophoneError }>;
   toggleMicrophoneMute: () => Promise<{ success: boolean; error?: MicrophoneError }>;
   syncMicrophoneState: () => Promise<void>;
+  // Loading states
+  isStarting: boolean;
+  isStopping: boolean;
+  isToggling: boolean;
 }
 
 interface WebRTCVideoProps {

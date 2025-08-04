@@ -14,11 +14,14 @@ func StartNonBlockingAudioStreaming(send func([]byte)) error {
 	managerMutex.Lock()
 	defer managerMutex.Unlock()
 
-	if globalNonBlockingManager != nil && globalNonBlockingManager.IsRunning() {
-		return ErrAudioAlreadyRunning
+	if globalNonBlockingManager != nil && globalNonBlockingManager.IsOutputRunning() {
+		return nil // Already running, this is not an error
 	}
 
-	globalNonBlockingManager = NewNonBlockingAudioManager()
+	if globalNonBlockingManager == nil {
+		globalNonBlockingManager = NewNonBlockingAudioManager()
+	}
+
 	return globalNonBlockingManager.StartAudioOutput(send)
 }
 
@@ -29,6 +32,11 @@ func StartNonBlockingAudioInput(receiveChan <-chan []byte) error {
 
 	if globalNonBlockingManager == nil {
 		globalNonBlockingManager = NewNonBlockingAudioManager()
+	}
+
+	// Check if input is already running to avoid unnecessary operations
+	if globalNonBlockingManager.IsInputRunning() {
+		return nil // Already running, this is not an error
 	}
 
 	return globalNonBlockingManager.StartAudioInput(receiveChan)
@@ -42,6 +50,16 @@ func StopNonBlockingAudioStreaming() {
 	if globalNonBlockingManager != nil {
 		globalNonBlockingManager.Stop()
 		globalNonBlockingManager = nil
+	}
+}
+
+// StopNonBlockingAudioInput stops only the audio input without affecting output
+func StopNonBlockingAudioInput() {
+	managerMutex.Lock()
+	defer managerMutex.Unlock()
+
+	if globalNonBlockingManager != nil && globalNonBlockingManager.IsInputRunning() {
+		globalNonBlockingManager.StopAudioInput()
 	}
 }
 
@@ -62,4 +80,12 @@ func IsNonBlockingAudioRunning() bool {
 	defer managerMutex.Unlock()
 
 	return globalNonBlockingManager != nil && globalNonBlockingManager.IsRunning()
+}
+
+// IsNonBlockingAudioInputRunning returns true if the non-blocking audio input is running
+func IsNonBlockingAudioInputRunning() bool {
+	managerMutex.Lock()
+	defer managerMutex.Unlock()
+
+	return globalNonBlockingManager != nil && globalNonBlockingManager.IsInputRunning()
 }

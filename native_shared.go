@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -165,6 +166,10 @@ func StartNativeVideoSocketServer() {
 }
 
 func handleCtrlClient(conn net.Conn) {
+	// Lock to OS thread to isolate blocking socket I/O
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	defer conn.Close()
 
 	scopedLogger := nativeLogger.With().
@@ -172,7 +177,7 @@ func handleCtrlClient(conn net.Conn) {
 		Str("type", "ctrl").
 		Logger()
 
-	scopedLogger.Info().Msg("native ctrl socket client connected")
+	scopedLogger.Info().Msg("native ctrl socket client connected (OS thread locked)")
 	if ctrlSocketConn != nil {
 		scopedLogger.Debug().Msg("closing existing native socket connection")
 		ctrlSocketConn.Close()
@@ -216,6 +221,10 @@ func handleCtrlClient(conn net.Conn) {
 }
 
 func handleVideoClient(conn net.Conn) {
+	// Lock to OS thread to isolate blocking video I/O
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	defer conn.Close()
 
 	scopedLogger := nativeLogger.With().
@@ -223,7 +232,7 @@ func handleVideoClient(conn net.Conn) {
 		Str("type", "video").
 		Logger()
 
-	scopedLogger.Info().Msg("native video socket client connected")
+	scopedLogger.Info().Msg("native video socket client connected (OS thread locked)")
 
 	inboundPacket := make([]byte, maxVideoFrameSize)
 	lastFrame := time.Now()
@@ -277,6 +286,10 @@ func GetNativeVersion() (string, error) {
 }
 
 func ensureBinaryUpdated(destPath string) error {
+	// Lock to OS thread for file I/O operations
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	srcFile, err := resource.ResourceFS.Open("jetkvm_native")
 	if err != nil {
 		return err

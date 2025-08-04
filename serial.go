@@ -3,6 +3,7 @@ package kvm
 import (
 	"bufio"
 	"io"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -141,6 +142,10 @@ func unmountDCControl() error {
 var dcState DCPowerState
 
 func runDCControl() {
+	// Lock to OS thread to isolate DC control serial I/O
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	scopedLogger := serialLogger.With().Str("service", "dc_control").Logger()
 	reader := bufio.NewReader(port)
 	hasRestoreFeature := false
@@ -290,6 +295,10 @@ func handleSerialChannel(d *webrtc.DataChannel) {
 
 	d.OnOpen(func() {
 		go func() {
+			// Lock to OS thread to isolate serial I/O
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+
 			buf := make([]byte, 1024)
 			for {
 				n, err := port.Read(buf)

@@ -23,14 +23,14 @@ type NonBlockingAudioManager struct {
 	logger *zerolog.Logger
 
 	// Audio output (capture from device, send to WebRTC)
-	outputSendFunc  func([]byte)
-	outputWorkChan  chan audioWorkItem
+	outputSendFunc   func([]byte)
+	outputWorkChan   chan audioWorkItem
 	outputResultChan chan audioResult
 
-	// Audio input (receive from WebRTC, playback to device)  
+	// Audio input (receive from WebRTC, playback to device)
 	inputReceiveChan <-chan []byte
-	inputWorkChan   chan audioWorkItem
-	inputResultChan chan audioResult
+	inputWorkChan    chan audioWorkItem
+	inputResultChan  chan audioResult
 
 	// Worker threads and flags - int32 fields grouped together
 	outputRunning       int32
@@ -69,7 +69,7 @@ type NonBlockingAudioStats struct {
 	InputFramesDropped    int64
 	WorkerErrors          int64
 	// time.Time is int64 internally, so it's also aligned
-	LastProcessTime       time.Time
+	LastProcessTime time.Time
 }
 
 // NewNonBlockingAudioManager creates a new non-blocking audio manager
@@ -81,8 +81,8 @@ func NewNonBlockingAudioManager() *NonBlockingAudioManager {
 		ctx:              ctx,
 		cancel:           cancel,
 		logger:           &logger,
-		outputWorkChan:   make(chan audioWorkItem, 10),   // Buffer for work items
-		outputResultChan: make(chan audioResult, 10),     // Buffer for results
+		outputWorkChan:   make(chan audioWorkItem, 10), // Buffer for work items
+		outputResultChan: make(chan audioResult, 10),   // Buffer for results
 		inputWorkChan:    make(chan audioWorkItem, 10),
 		inputResultChan:  make(chan audioResult, 10),
 	}
@@ -327,7 +327,7 @@ func (nam *NonBlockingAudioManager) inputCoordinatorThread() {
 			return
 
 		case frame := <-nam.inputReceiveChan:
-			if frame == nil || len(frame) == 0 {
+			if len(frame) == 0 {
 				continue
 			}
 
@@ -397,6 +397,16 @@ func (nam *NonBlockingAudioManager) Stop() {
 	nam.logger.Info().Msg("non-blocking audio manager stopped")
 }
 
+// StopAudioInput stops only the audio input operations
+func (nam *NonBlockingAudioManager) StopAudioInput() {
+	nam.logger.Info().Msg("stopping audio input")
+
+	// Stop only the input coordinator
+	atomic.StoreInt32(&nam.inputRunning, 0)
+
+	nam.logger.Info().Msg("audio input stopped")
+}
+
 // GetStats returns current statistics
 func (nam *NonBlockingAudioManager) GetStats() NonBlockingAudioStats {
 	return NonBlockingAudioStats{
@@ -412,4 +422,14 @@ func (nam *NonBlockingAudioManager) GetStats() NonBlockingAudioStats {
 // IsRunning returns true if any audio operations are running
 func (nam *NonBlockingAudioManager) IsRunning() bool {
 	return atomic.LoadInt32(&nam.outputRunning) == 1 || atomic.LoadInt32(&nam.inputRunning) == 1
+}
+
+// IsInputRunning returns true if audio input is running
+func (nam *NonBlockingAudioManager) IsInputRunning() bool {
+	return atomic.LoadInt32(&nam.inputRunning) == 1
+}
+
+// IsOutputRunning returns true if audio output is running
+func (nam *NonBlockingAudioManager) IsOutputRunning() bool {
+	return atomic.LoadInt32(&nam.outputRunning) == 1
 }

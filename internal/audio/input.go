@@ -11,7 +11,7 @@ import (
 // AudioInputMetrics holds metrics for microphone input
 // Note: int64 fields must be 64-bit aligned for atomic operations on ARM
 type AudioInputMetrics struct {
-	FramesSent      int64         // Must be first for alignment
+	FramesSent      int64 // Must be first for alignment
 	FramesDropped   int64
 	BytesProcessed  int64
 	ConnectionDrops int64
@@ -22,8 +22,8 @@ type AudioInputMetrics struct {
 // AudioInputManager manages microphone input stream from WebRTC to USB gadget
 type AudioInputManager struct {
 	// metrics MUST be first for ARM32 alignment (contains int64 fields)
-	metrics     AudioInputMetrics
-	
+	metrics AudioInputMetrics
+
 	inputBuffer chan []byte
 	logger      zerolog.Logger
 	running     int32
@@ -44,7 +44,7 @@ func (aim *AudioInputManager) Start() error {
 	}
 
 	aim.logger.Info().Msg("Starting audio input manager")
-	
+
 	// Start the non-blocking audio input stream
 	err := StartNonBlockingAudioInput(aim.inputBuffer)
 	if err != nil {
@@ -62,11 +62,11 @@ func (aim *AudioInputManager) Stop() {
 	}
 
 	aim.logger.Info().Msg("Stopping audio input manager")
-	
+
 	// Stop the non-blocking audio input stream
 	// Note: This is handled by the global non-blocking audio manager
 	// Individual input streams are managed centrally
-	
+
 	// Drain the input buffer
 	go func() {
 		for {

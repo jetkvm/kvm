@@ -454,7 +454,7 @@ func handleSessionRequest(
 	// Check if we have an existing session and handle renegotiation
 	if currentSession != nil {
 		scopedLogger.Info().Msg("handling renegotiation for existing session")
-		
+
 		// Handle renegotiation with existing session
 		sd, err = currentSession.ExchangeOffer(req.Sd)
 		if err != nil {

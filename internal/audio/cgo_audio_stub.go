@@ -29,3 +29,29 @@ func cgoAudioPlaybackClose() {
 func cgoAudioDecodeWrite(buf []byte) (int, error) {
 	return 0, errors.New("audio not available in lint mode")
 }
+
+// Uppercase wrapper functions (called by nonblocking_audio.go)
+
+func CGOAudioInit() error {
+	return cgoAudioInit()
+}
+
+func CGOAudioClose() {
+	cgoAudioClose()
+}
+
+func CGOAudioReadEncode(buf []byte) (int, error) {
+	return cgoAudioReadEncode(buf)
+}
+
+func CGOAudioPlaybackInit() error {
+	return cgoAudioPlaybackInit()
+}
+
+func CGOAudioPlaybackClose() {
+	cgoAudioPlaybackClose()
+}
+
+func CGOAudioDecodeWrite(buf []byte) (int, error) {
+	return cgoAudioDecodeWrite(buf)
+}

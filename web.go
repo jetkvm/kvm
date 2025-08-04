@@ -256,13 +256,13 @@ func setupRouter() *gin.Engine {
 	protected.GET("/microphone/status", func(c *gin.Context) {
 		sessionActive := currentSession != nil
 		var running bool
-		
+
 		if sessionActive && currentSession.AudioInputManager != nil {
 			running = currentSession.AudioInputManager.IsRunning()
 		}
-		
+
 		c.JSON(200, gin.H{
-			"running": running,
+			"running":        running,
 			"session_active": sessionActive,
 		})
 	})
@@ -278,14 +278,36 @@ func setupRouter() *gin.Engine {
 			return
 		}
 
+		// Check if already running before attempting to start
+		if currentSession.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning() {
+			c.JSON(200, gin.H{
+				"status":  "already running",
+				"running": true,
+			})
+			return
+		}
+
 		err := currentSession.AudioInputManager.Start()
 		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
+			// Log the error for debugging but don't expose internal details
+			logger.Warn().Err(err).Msg("failed to start microphone")
+
+			// Check if it's already running after the failed start attempt
+			// This handles race conditions where another request started it
+			if currentSession.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning() {
+				c.JSON(200, gin.H{
+					"status":  "started by concurrent request",
+					"running": true,
+				})
+				return
+			}
+
+			c.JSON(500, gin.H{"error": "failed to start microphone"})
 			return
 		}
 
 		c.JSON(200, gin.H{
-			"status": "started",
+			"status":  "started",
 			"running": currentSession.AudioInputManager.IsRunning(),
 		})
 	})
@@ -301,9 +323,22 @@ func setupRouter() *gin.Engine {
 			return
 		}
 
+		// Check if already stopped before attempting to stop
+		if !currentSession.AudioInputManager.IsRunning() && !audio.IsNonBlockingAudioInputRunning() {
+			c.JSON(200, gin.H{
+				"status":  "already stopped",
+				"running": false,
+			})
+			return
+		}
+
 		currentSession.AudioInputManager.Stop()
+
+		// Also stop the non-blocking audio input specifically
+		audio.StopNonBlockingAudioInput()
+
 		c.JSON(200, gin.H{
-			"status": "stopped",
+			"status":  "stopped",
 			"running": currentSession.AudioInputManager.IsRunning(),
 		})
 	})
@@ -312,12 +347,12 @@ func setupRouter() *gin.Engine {
 		var req struct {
 			Muted bool `json:"muted"`
 		}
-		
+
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "invalid request body"})
 			return
 		}
-		
+
 		// Note: Microphone muting is typically handled at the frontend level
 		// This endpoint is provided for consistency but doesn't affect backend processing
 		c.JSON(200, gin.H{
@@ -380,7 +415,7 @@ func handleWebRTCSession(c *gin.Context) {
 	// Check if we have an existing session and handle renegotiation
 	if currentSession != nil {
 		logger.Info().Msg("handling renegotiation for existing session")
-		
+
 		// Handle renegotiation with existing session
 		sd, err = currentSession.ExchangeOffer(req.Sd)
 		if err != nil {
