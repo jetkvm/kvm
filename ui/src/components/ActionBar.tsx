@@ -20,6 +20,7 @@ import MountPopopover from "@/components/popovers/MountPopover";
 import ExtensionPopover from "@/components/popovers/ExtensionPopover";
 import AudioControlPopover from "@/components/popovers/AudioControlPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import { useAudioEvents } from "@/hooks/useAudioEvents";
 import api from "@/api";
 
 // Type for microphone error
@@ -81,27 +82,36 @@ export default function Actionbar({
     [setDisableFocusTrap],
   );
 
-  // Mute/unmute state for button display
-  const [isMuted, setIsMuted] = useState(false);
+  // Use WebSocket-based audio events for real-time updates
+  const { audioMuted, isConnected } = useAudioEvents();
+  
+  // Fallback to polling if WebSocket is not connected
+  const [fallbackMuted, setFallbackMuted] = useState(false);
   useEffect(() => {
-    api.GET("/audio/mute").then(async resp => {
-      if (resp.ok) {
-        const data = await resp.json();
-        setIsMuted(!!data.muted);
-      }
-    });
-    
-    // Refresh mute state periodically for button display
-    const interval = setInterval(async () => {
-      const resp = await api.GET("/audio/mute");
-      if (resp.ok) {
-        const data = await resp.json();
-        setIsMuted(!!data.muted);
-      }
-    }, 1000);
-    
-    return () => clearInterval(interval);
-  }, []);
+    if (!isConnected) {
+      // Load initial state
+      api.GET("/audio/mute").then(async resp => {
+        if (resp.ok) {
+          const data = await resp.json();
+          setFallbackMuted(!!data.muted);
+        }
+      });
+      
+      // Fallback polling when WebSocket is not available
+      const interval = setInterval(async () => {
+        const resp = await api.GET("/audio/mute");
+        if (resp.ok) {
+          const data = await resp.json();
+          setFallbackMuted(!!data.muted);
+        }
+      }, 1000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [isConnected]);
+  
+  // Use WebSocket data when available, fallback to polling data otherwise
+  const isMuted = isConnected && audioMuted !== null ? audioMuted : fallbackMuted;
 
   return (
     <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">

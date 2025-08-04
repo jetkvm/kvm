@@ -106,6 +106,10 @@ func Main() {
 		logger.Warn().Err(err).Msg("failed to start non-blocking audio streaming")
 	}
 
+	// Initialize audio event broadcaster for WebSocket-based real-time updates
+	InitializeAudioEventBroadcaster()
+	logger.Info().Msg("audio event broadcaster initialized")
+
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
 	}

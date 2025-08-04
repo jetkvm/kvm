@@ -6,6 +6,7 @@ import { AudioLevelMeter } from "@components/AudioLevelMeter";
 import { cx } from "@/cva.config";
 import { useMicrophone } from "@/hooks/useMicrophone";
 import { useAudioLevel } from "@/hooks/useAudioLevel";
+import { useAudioEvents } from "@/hooks/useAudioEvents";
 import api from "@/api";
 
 interface AudioMetrics {
@@ -42,51 +43,46 @@ const qualityLabels = {
 };
 
 export default function AudioMetricsDashboard() {
-  const [metrics, setMetrics] = useState<AudioMetrics | null>(null);
-  const [microphoneMetrics, setMicrophoneMetrics] = useState<MicrophoneMetrics | null>(null);
+  // Use WebSocket-based audio events for real-time updates
+  const { 
+    audioMetrics, 
+    microphoneMetrics: wsMicrophoneMetrics, 
+    isConnected: wsConnected 
+  } = useAudioEvents();
+  
+  // Fallback state for when WebSocket is not connected
+  const [fallbackMetrics, setFallbackMetrics] = useState<AudioMetrics | null>(null);
+  const [fallbackMicrophoneMetrics, setFallbackMicrophoneMetrics] = useState<MicrophoneMetrics | null>(null);
+  const [fallbackConnected, setFallbackConnected] = useState(false);
+  
+  // Configuration state (these don't change frequently, so we can load them once)
   const [config, setConfig] = useState<AudioConfig | null>(null);
   const [microphoneConfig, setMicrophoneConfig] = useState<AudioConfig | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  
+  // Use WebSocket data when available, fallback to polling data otherwise
+  const metrics = wsConnected && audioMetrics !== null ? audioMetrics : fallbackMetrics;
+  const microphoneMetrics = wsConnected && wsMicrophoneMetrics !== null ? wsMicrophoneMetrics : fallbackMicrophoneMetrics;
+  const isConnected = wsConnected ? wsConnected : fallbackConnected;
   
   // Microphone state for audio level monitoring
   const { isMicrophoneActive, isMicrophoneMuted, microphoneStream } = useMicrophone();
   const { audioLevel, isAnalyzing } = useAudioLevel(microphoneStream);
 
   useEffect(() => {
-    loadAudioData();
+    // Load initial configuration (only once)
+    loadAudioConfig();
     
-    // Refresh every 1 second for real-time metrics
-    const interval = setInterval(loadAudioData, 1000);
-    return () => clearInterval(interval);
-  }, []);
+    // Set up fallback polling only when WebSocket is not connected
+    if (!wsConnected) {
+      loadAudioData();
+      const interval = setInterval(loadAudioData, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [wsConnected]);
 
-  const loadAudioData = async () => {
+  const loadAudioConfig = async () => {
     try {
-      // Load metrics
-      const metricsResp = await api.GET("/audio/metrics");
-      if (metricsResp.ok) {
-        const metricsData = await metricsResp.json();
-        setMetrics(metricsData);
-        // Consider connected if API call succeeds, regardless of frame count
-        setIsConnected(true);
-        setLastUpdate(new Date());
-      } else {
-        setIsConnected(false);
-      }
-
-      // Load microphone metrics
-      try {
-        const micResp = await api.GET("/microphone/metrics");
-        if (micResp.ok) {
-          const micData = await micResp.json();
-          setMicrophoneMetrics(micData);
-        }
-      } catch (micError) {
-        // Microphone metrics might not be available, that's okay
-        console.debug("Microphone metrics not available:", micError);
-      }
-
       // Load config
       const configResp = await api.GET("/audio/quality");
       if (configResp.ok) {
@@ -105,8 +101,38 @@ export default function AudioMetricsDashboard() {
         console.debug("Microphone config not available:", micConfigError);
       }
     } catch (error) {
+      console.error("Failed to load audio config:", error);
+    }
+  };
+
+  const loadAudioData = async () => {
+    try {
+      // Load metrics
+      const metricsResp = await api.GET("/audio/metrics");
+      if (metricsResp.ok) {
+        const metricsData = await metricsResp.json();
+        setFallbackMetrics(metricsData);
+        // Consider connected if API call succeeds, regardless of frame count
+        setFallbackConnected(true);
+        setLastUpdate(new Date());
+      } else {
+        setFallbackConnected(false);
+      }
+
+      // Load microphone metrics
+      try {
+        const micResp = await api.GET("/microphone/metrics");
+        if (micResp.ok) {
+          const micData = await micResp.json();
+          setFallbackMicrophoneMetrics(micData);
+        }
+      } catch (micError) {
+        // Microphone metrics might not be available, that's okay
+        console.debug("Microphone metrics not available:", micError);
+      }
+    } catch (error) {
       console.error("Failed to load audio data:", error);
-      setIsConnected(false);
+      setFallbackConnected(false);
     }
   };
 

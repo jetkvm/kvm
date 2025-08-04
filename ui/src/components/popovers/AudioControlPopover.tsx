@@ -8,6 +8,7 @@ import { cx } from "@/cva.config";
 import { useUiStore } from "@/hooks/stores";
 import { useAudioDevices } from "@/hooks/useAudioDevices";
 import { useAudioLevel } from "@/hooks/useAudioLevel";
+import { useAudioEvents } from "@/hooks/useAudioEvents";
 import api from "@/api";
 import notifications from "@/notifications";
 
@@ -74,15 +75,26 @@ interface AudioControlPopoverProps {
 export default function AudioControlPopover({ microphone }: AudioControlPopoverProps) {
   const [currentConfig, setCurrentConfig] = useState<AudioConfig | null>(null);
   const [currentMicrophoneConfig, setCurrentMicrophoneConfig] = useState<AudioConfig | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [metrics, setMetrics] = useState<AudioMetrics | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
   
   // Add cooldown to prevent rapid clicking
   const [lastClickTime, setLastClickTime] = useState(0);
   const CLICK_COOLDOWN = 500; // 500ms cooldown between clicks
+  
+  // Use WebSocket-based audio events for real-time updates
+  const { 
+    audioMuted, 
+    audioMetrics, 
+    microphoneMetrics, 
+    isConnected: wsConnected 
+  } = useAudioEvents();
+  
+  // Fallback state for when WebSocket is not connected
+  const [fallbackMuted, setFallbackMuted] = useState(false);
+  const [fallbackMetrics, setFallbackMetrics] = useState<AudioMetrics | null>(null);
+  const [fallbackMicMetrics, setFallbackMicMetrics] = useState<MicrophoneMetrics | null>(null);
+  const [fallbackConnected, setFallbackConnected] = useState(false);
   
   // Microphone state from props
   const {
@@ -98,7 +110,12 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     isStopping,
     isToggling,
   } = microphone;
-  const [microphoneMetrics, setMicrophoneMetrics] = useState<MicrophoneMetrics | null>(null);
+  
+  // Use WebSocket data when available, fallback to polling data otherwise
+  const isMuted = wsConnected && audioMuted !== null ? audioMuted : fallbackMuted;
+  const metrics = wsConnected && audioMetrics !== null ? audioMetrics : fallbackMetrics;
+  const micMetrics = wsConnected && microphoneMetrics !== null ? microphoneMetrics : fallbackMicMetrics;
+  const isConnected = wsConnected ? wsConnected : fallbackConnected;
   
   // Audio level monitoring
   const { audioLevel, isAnalyzing } = useAudioLevel(microphoneStream);
@@ -118,30 +135,33 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   
   const { toggleSidebarView } = useUiStore();
 
-  // Load initial audio state
+  // Load initial configurations once (these don't change frequently)
   useEffect(() => {
-    loadAudioState();
-    loadAudioMetrics();
-    loadMicrophoneMetrics();
-    syncMicrophoneState();
-    
-    // Set up metrics refresh interval
-    const metricsInterval = setInterval(() => {
+    loadAudioConfigurations();
+  }, []);
+
+  // Load initial audio state and set up fallback polling when WebSocket is not connected
+  useEffect(() => {
+    if (!wsConnected) {
+      loadAudioState();
+      // Only load metrics as fallback when WebSocket is disconnected
       loadAudioMetrics();
       loadMicrophoneMetrics();
-    }, 2000);
-    return () => clearInterval(metricsInterval);
-  }, [syncMicrophoneState]);
+      
+      // Set up metrics refresh interval for fallback only
+      const metricsInterval = setInterval(() => {
+        loadAudioMetrics();
+        loadMicrophoneMetrics();
+      }, 2000);
+      return () => clearInterval(metricsInterval);
+    }
+    
+    // Always sync microphone state
+    syncMicrophoneState();
+  }, [wsConnected, syncMicrophoneState]);
 
-  const loadAudioState = async () => {
+  const loadAudioConfigurations = async () => {
     try {
-      // Load mute state
-      const muteResp = await api.GET("/audio/mute");
-      if (muteResp.ok) {
-        const muteData = await muteResp.json();
-        setIsMuted(!!muteData.muted);
-      }
-
       // Load quality config
       const qualityResp = await api.GET("/audio/quality");
       if (qualityResp.ok) {
@@ -156,6 +176,19 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
         setCurrentMicrophoneConfig(micQualityData.current);
       }
     } catch (error) {
+      console.error("Failed to load audio configurations:", error);
+    }
+  };
+
+  const loadAudioState = async () => {
+    try {
+      // Load mute state only (configurations are loaded separately)
+      const muteResp = await api.GET("/audio/mute");
+      if (muteResp.ok) {
+        const muteData = await muteResp.json();
+        setFallbackMuted(!!muteData.muted);
+      }
+    } catch (error) {
       console.error("Failed to load audio state:", error);
     }
   };
@@ -165,15 +198,15 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
       const resp = await api.GET("/audio/metrics");
       if (resp.ok) {
         const data = await resp.json();
-        setMetrics(data);
+        setFallbackMetrics(data);
         // Consider connected if API call succeeds, regardless of frame count
-        setIsConnected(true);
+        setFallbackConnected(true);
       } else {
-        setIsConnected(false);
+        setFallbackConnected(false);
       }
     } catch (error) {
       console.error("Failed to load audio metrics:", error);
-      setIsConnected(false);
+      setFallbackConnected(false);
     }
   };
 
@@ -184,7 +217,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
       const resp = await api.GET("/microphone/metrics");
       if (resp.ok) {
         const data = await resp.json();
-        setMicrophoneMetrics(data);
+        setFallbackMicMetrics(data);
       }
     } catch (error) {
       console.error("Failed to load microphone metrics:", error);
@@ -196,7 +229,10 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     try {
       const resp = await api.POST("/audio/mute", { muted: !isMuted });
       if (resp.ok) {
-        setIsMuted(!isMuted);
+        // WebSocket will handle the state update, but update fallback for immediate feedback
+        if (!wsConnected) {
+          setFallbackMuted(!isMuted);
+        }
       }
     } catch (error) {
       console.error("Failed to toggle mute:", error);
@@ -687,14 +723,14 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
                   </div>
                 </div>
 
-                {microphoneMetrics && (
+                {micMetrics && (
                   <div className="mb-4">
                     <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Microphone Input</h4>
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <div className="space-y-1">
                         <div className="text-slate-500 dark:text-slate-400">Frames Sent</div>
                         <div className="font-mono text-green-600 dark:text-green-400">
-                          {formatNumber(microphoneMetrics.frames_sent)}
+                          {formatNumber(micMetrics.frames_sent)}
                         </div>
                       </div>
                       
@@ -702,18 +738,18 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
                         <div className="text-slate-500 dark:text-slate-400">Frames Dropped</div>
                         <div className={cx(
                           "font-mono",
-                          microphoneMetrics.frames_dropped > 0 
+                          micMetrics.frames_dropped > 0 
                             ? "text-red-600 dark:text-red-400" 
                             : "text-green-600 dark:text-green-400"
                         )}>
-                          {formatNumber(microphoneMetrics.frames_dropped)}
+                          {formatNumber(micMetrics.frames_dropped)}
                         </div>
                       </div>
                       
                       <div className="space-y-1">
                         <div className="text-slate-500 dark:text-slate-400">Data Processed</div>
                         <div className="font-mono text-blue-600 dark:text-blue-400">
-                          {formatBytes(microphoneMetrics.bytes_processed)}
+                          {formatBytes(micMetrics.bytes_processed)}
                         </div>
                       </div>
                       
@@ -721,11 +757,11 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
                         <div className="text-slate-500 dark:text-slate-400">Connection Drops</div>
                         <div className={cx(
                           "font-mono",
-                          microphoneMetrics.connection_drops > 0 
+                          micMetrics.connection_drops > 0 
                             ? "text-red-600 dark:text-red-400" 
                             : "text-green-600 dark:text-green-400"
                         )}>
-                          {formatNumber(microphoneMetrics.connection_drops)}
+                          {formatNumber(micMetrics.connection_drops)}
                         </div>
                       </div>
                     </div>

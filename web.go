@@ -173,6 +173,11 @@ func setupRouter() *gin.Engine {
 			return
 		}
 		audio.SetAudioMuted(req.Muted)
+		
+		// Broadcast audio mute state change via WebSocket
+		broadcaster := GetAudioEventBroadcaster()
+		broadcaster.BroadcastAudioMuteChanged(req.Muted)
+		
 		c.JSON(200, gin.H{"muted": req.Muted})
 	})
 
@@ -306,6 +311,10 @@ func setupRouter() *gin.Engine {
 			return
 		}
 
+		// Broadcast microphone state change via WebSocket
+		broadcaster := GetAudioEventBroadcaster()
+		broadcaster.BroadcastMicrophoneStateChanged(true, true)
+		
 		c.JSON(200, gin.H{
 			"status":  "started",
 			"running": currentSession.AudioInputManager.IsRunning(),
@@ -336,6 +345,10 @@ func setupRouter() *gin.Engine {
 
 		// Also stop the non-blocking audio input specifically
 		audio.StopNonBlockingAudioInput()
+
+		// Broadcast microphone state change via WebSocket
+		broadcaster := GetAudioEventBroadcaster()
+		broadcaster.BroadcastMicrophoneStateChanged(false, true)
 
 		c.JSON(200, gin.H{
 			"status":  "stopped",
@@ -533,6 +546,9 @@ func handleWebRTCSignalWsMessages(
 		if isCloudConnection {
 			setCloudConnectionState(CloudConnectionStateDisconnected)
 		}
+		// Clean up audio event subscription
+		broadcaster := GetAudioEventBroadcaster()
+		broadcaster.Unsubscribe(connectionID)
 		cancelRun()
 	}()
 
@@ -690,6 +706,10 @@ func handleWebRTCSignalWsMessages(
 			if err = currentSession.peerConnection.AddICECandidate(candidate); err != nil {
 				l.Warn().Str("error", err.Error()).Msg("failed to add incoming ICE candidate to our peer connection")
 			}
+		} else if message.Type == "subscribe-audio-events" {
+			l.Info().Msg("client subscribing to audio events")
+			broadcaster := GetAudioEventBroadcaster()
+			broadcaster.Subscribe(connectionID, wsCon, runCtx, &l)
 		}
 	}
 }

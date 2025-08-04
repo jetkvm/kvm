@@ -134,7 +134,7 @@ func (nam *NonBlockingAudioManager) outputWorkerThread() {
 	// Lock to OS thread to isolate blocking CGO operations
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	
+
 	defer nam.wg.Done()
 	defer atomic.StoreInt32(&nam.outputWorkerRunning, 0)
 
@@ -271,7 +271,7 @@ func (nam *NonBlockingAudioManager) inputWorkerThread() {
 	// Lock to OS thread to isolate blocking CGO operations
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	
+
 	defer nam.wg.Done()
 	defer atomic.StoreInt32(&nam.inputWorkerRunning, 0)
 
