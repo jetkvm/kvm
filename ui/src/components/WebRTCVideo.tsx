@@ -25,14 +25,20 @@ import {
   PointerLockBar,
 } from "./VideoOverlay";
 
+// Type for microphone error
+interface MicrophoneError {
+  type: 'permission' | 'device' | 'network' | 'unknown';
+  message: string;
+}
+
 // Interface for microphone hook return type
 interface MicrophoneHookReturn {
   isMicrophoneActive: boolean;
   isMicrophoneMuted: boolean;
   microphoneStream: MediaStream | null;
-  startMicrophone: (deviceId?: string) => Promise<{ success: boolean; error?: any }>;
-  stopMicrophone: () => Promise<{ success: boolean; error?: any }>;
-  toggleMicrophoneMute: () => Promise<{ success: boolean; error?: any }>;
+  startMicrophone: (deviceId?: string) => Promise<{ success: boolean; error?: MicrophoneError }>;
+  stopMicrophone: () => Promise<{ success: boolean; error?: MicrophoneError }>;
+  toggleMicrophoneMute: () => Promise<{ success: boolean; error?: MicrophoneError }>;
   syncMicrophoneState: () => Promise<void>;
 }
 

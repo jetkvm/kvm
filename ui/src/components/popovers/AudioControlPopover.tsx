@@ -11,14 +11,20 @@ import { useAudioLevel } from "@/hooks/useAudioLevel";
 import api from "@/api";
 import notifications from "@/notifications";
 
+// Type for microphone error
+interface MicrophoneError {
+  type: 'permission' | 'device' | 'network' | 'unknown';
+  message: string;
+}
+
 // Type for microphone hook return value
 interface MicrophoneHookReturn {
   isMicrophoneActive: boolean;
   isMicrophoneMuted: boolean;
   microphoneStream: MediaStream | null;
-  startMicrophone: (deviceId?: string) => Promise<{ success: boolean; error?: any }>;
-  stopMicrophone: () => Promise<{ success: boolean; error?: any }>;
-  toggleMicrophoneMute: () => Promise<{ success: boolean; error?: any }>;
+  startMicrophone: (deviceId?: string) => Promise<{ success: boolean; error?: MicrophoneError }>;
+  stopMicrophone: () => Promise<{ success: boolean; error?: MicrophoneError }>;
+  toggleMicrophoneMute: () => Promise<{ success: boolean; error?: MicrophoneError }>;
   syncMicrophoneState: () => Promise<void>;
 }
 
@@ -276,9 +282,9 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     const videoElement = document.querySelector('video');
     if (videoElement && 'setSinkId' in videoElement) {
       try {
-        await (videoElement as any).setSinkId(deviceId);
+        await (videoElement as HTMLVideoElement & { setSinkId: (deviceId: string) => Promise<void> }).setSinkId(deviceId);
         console.log('Audio output device changed to:', deviceId);
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('Failed to change audio output device:', error);
       }
     } else {
