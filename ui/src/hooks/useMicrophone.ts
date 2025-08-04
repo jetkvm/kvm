@@ -323,7 +323,7 @@ export function useMicrophone() {
       
       // Retry logic for backend failures
       let backendSuccess = false;
-      let lastError: any = null;
+      let lastError: Error | string | null = null;
       
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
@@ -364,7 +364,7 @@ export function useMicrophone() {
             break;
           }
         } catch (error) {
-          lastError = error;
+          lastError = error instanceof Error ? error : String(error);
           console.error(`Backend microphone start threw error (attempt ${attempt}):`, error);
           
           // For network errors, try again after a short delay
