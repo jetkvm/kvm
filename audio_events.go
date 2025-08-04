@@ -15,9 +15,9 @@ import (
 type AudioEventType string
 
 const (
-	AudioEventMuteChanged     AudioEventType = "audio-mute-changed"
-	AudioEventMetricsUpdate   AudioEventType = "audio-metrics-update"
-	AudioEventMicrophoneState AudioEventType = "microphone-state-changed"
+	AudioEventMuteChanged       AudioEventType = "audio-mute-changed"
+	AudioEventMetricsUpdate     AudioEventType = "audio-metrics-update"
+	AudioEventMicrophoneState   AudioEventType = "microphone-state-changed"
 	AudioEventMicrophoneMetrics AudioEventType = "microphone-metrics-update"
 )
 
@@ -85,7 +85,7 @@ func InitializeAudioEventBroadcaster() {
 			subscribers: make(map[string]*AudioEventSubscriber),
 			logger:      &l,
 		}
-		
+
 		// Start metrics broadcasting goroutine
 		go audioEventBroadcaster.startMetricsBroadcasting()
 	})
@@ -99,7 +99,7 @@ func GetAudioEventBroadcaster() *AudioEventBroadcaster {
 			subscribers: make(map[string]*AudioEventSubscriber),
 			logger:      &l,
 		}
-		
+
 		// Start metrics broadcasting goroutine
 		go audioEventBroadcaster.startMetricsBroadcasting()
 	})
@@ -110,15 +110,15 @@ func GetAudioEventBroadcaster() *AudioEventBroadcaster {
 func (aeb *AudioEventBroadcaster) Subscribe(connectionID string, conn *websocket.Conn, ctx context.Context, logger *zerolog.Logger) {
 	aeb.mutex.Lock()
 	defer aeb.mutex.Unlock()
-	
+
 	aeb.subscribers[connectionID] = &AudioEventSubscriber{
 		conn:   conn,
 		ctx:    ctx,
 		logger: logger,
 	}
-	
+
 	aeb.logger.Info().Str("connectionID", connectionID).Msg("audio events subscription added")
-	
+
 	// Send initial state to new subscriber
 	go aeb.sendInitialState(connectionID)
 }
@@ -127,7 +127,7 @@ func (aeb *AudioEventBroadcaster) Subscribe(connectionID string, conn *websocket
 func (aeb *AudioEventBroadcaster) Unsubscribe(connectionID string) {
 	aeb.mutex.Lock()
 	defer aeb.mutex.Unlock()
-	
+
 	delete(aeb.subscribers, connectionID)
 	aeb.logger.Info().Str("connectionID", connectionID).Msg("audio events subscription removed")
 }
@@ -158,25 +158,25 @@ func (aeb *AudioEventBroadcaster) sendInitialState(connectionID string) {
 	aeb.mutex.RLock()
 	subscriber, exists := aeb.subscribers[connectionID]
 	aeb.mutex.RUnlock()
-	
+
 	if !exists {
 		return
 	}
-	
+
 	// Send current audio mute state
 	muteEvent := AudioEvent{
 		Type: AudioEventMuteChanged,
 		Data: AudioMuteData{Muted: audio.IsAudioMuted()},
 	}
 	aeb.sendToSubscriber(subscriber, muteEvent)
-	
+
 	// Send current microphone state
 	sessionActive := currentSession != nil
 	var running bool
 	if sessionActive && currentSession.AudioInputManager != nil {
 		running = currentSession.AudioInputManager.IsRunning()
 	}
-	
+
 	micStateEvent := AudioEvent{
 		Type: AudioEventMicrophoneState,
 		Data: MicrophoneStateData{
@@ -185,7 +185,7 @@ func (aeb *AudioEventBroadcaster) sendInitialState(connectionID string) {
 		},
 	}
 	aeb.sendToSubscriber(subscriber, micStateEvent)
-	
+
 	// Send current metrics
 	aeb.sendCurrentMetrics(subscriber)
 }
@@ -206,7 +206,7 @@ func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubsc
 		},
 	}
 	aeb.sendToSubscriber(subscriber, audioMetricsEvent)
-	
+
 	// Send microphone metrics
 	if currentSession != nil && currentSession.AudioInputManager != nil {
 		micMetrics := currentSession.AudioInputManager.GetMetrics()
@@ -229,17 +229,17 @@ func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubsc
 func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 	ticker := time.NewTicker(2 * time.Second) // Same interval as current polling
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		aeb.mutex.RLock()
 		subscriberCount := len(aeb.subscribers)
 		aeb.mutex.RUnlock()
-		
+
 		// Only broadcast if there are subscribers
 		if subscriberCount == 0 {
 			continue
 		}
-		
+
 		// Broadcast audio metrics
 		audioMetrics := audio.GetAudioMetrics()
 		audioMetricsEvent := AudioEvent{
@@ -254,7 +254,7 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 			},
 		}
 		aeb.broadcast(audioMetricsEvent)
-		
+
 		// Broadcast microphone metrics if available
 		if currentSession != nil && currentSession.AudioInputManager != nil {
 			micMetrics := currentSession.AudioInputManager.GetMetrics()
@@ -278,7 +278,7 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 func (aeb *AudioEventBroadcaster) broadcast(event AudioEvent) {
 	aeb.mutex.RLock()
 	defer aeb.mutex.RUnlock()
-	
+
 	for connectionID, subscriber := range aeb.subscribers {
 		go func(id string, sub *AudioEventSubscriber) {
 			if !aeb.sendToSubscriber(sub, event) {
@@ -296,12 +296,12 @@ func (aeb *AudioEventBroadcaster) broadcast(event AudioEvent) {
 func (aeb *AudioEventBroadcaster) sendToSubscriber(subscriber *AudioEventSubscriber, event AudioEvent) bool {
 	ctx, cancel := context.WithTimeout(subscriber.ctx, 5*time.Second)
 	defer cancel()
-	
+
 	err := wsjson.Write(ctx, subscriber.conn, event)
 	if err != nil {
 		subscriber.logger.Warn().Err(err).Msg("failed to send audio event to subscriber")
 		return false
 	}
-	
+
 	return true
 }
