@@ -43,7 +43,7 @@ export const useAudioLevel = (stream: MediaStream | null): AudioLevelHookResult 
 
     try {
       // Create audio context and analyser
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioContext = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)();
       const analyser = audioContext.createAnalyser();
       const source = audioContext.createMediaStreamSource(stream);
 
@@ -68,8 +68,8 @@ export const useAudioLevel = (stream: MediaStream | null): AudioLevelHookResult 
         
         // Calculate RMS (Root Mean Square) for more accurate level representation
         let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i] * dataArray[i];
+        for (const value of dataArray) {
+          sum += value * value;
         }
         const rms = Math.sqrt(sum / dataArray.length);
         

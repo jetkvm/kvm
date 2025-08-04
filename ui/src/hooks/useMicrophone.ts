@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+
 import { useRTCStore } from "@/hooks/stores";
 import api from "@/api";
 
@@ -97,9 +98,9 @@ export function useMicrophone() {
 
   // Make debug function available globally for console access
   useEffect(() => {
-    (window as any).debugMicrophoneState = debugMicrophoneState;
+    (window as Window & { debugMicrophoneState?: () => unknown }).debugMicrophoneState = debugMicrophoneState;
     return () => {
-      delete (window as any).debugMicrophoneState;
+      delete (window as Window & { debugMicrophoneState?: () => unknown }).debugMicrophoneState;
     };
   }, [debugMicrophoneState]);
 
@@ -396,7 +397,7 @@ export function useMicrophone() {
       isStartingRef.current = false;
       return { success: false, error: micError };
     }
-  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, syncMicrophoneState, stopMicrophoneStream]);
+  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, stopMicrophoneStream, isMicrophoneActive, isMicrophoneMuted, microphoneStream]);
 
   // Stop microphone
   const stopMicrophone = useCallback(async (): Promise<{ success: boolean; error?: MicrophoneError }> => {
@@ -519,7 +520,15 @@ export function useMicrophone() {
 
     try {
       const stats = await microphoneSender.getStats();
-      const audioStats: any[] = [];
+      const audioStats: {
+        id: string;
+        type: string;
+        kind: string;
+        packetsSent?: number;
+        bytesSent?: number;
+        timestamp?: number;
+        ssrc?: number;
+      }[] = [];
       
       stats.forEach((report, id) => {
         if (report.type === 'outbound-rtp' && report.kind === 'audio') {
@@ -576,7 +585,7 @@ export function useMicrophone() {
     
     // 3. Test audio level detection manually
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioContext = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)();
       const analyser = audioContext.createAnalyser();
       const source = audioContext.createMediaStreamSource(stream);
       
@@ -595,8 +604,8 @@ export function useMicrophone() {
         analyser.getByteFrequencyData(dataArray);
         
         let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i] * dataArray[i];
+        for (const value of dataArray) {
+          sum += value * value;
         }
         const rms = Math.sqrt(sum / dataArray.length);
         const level = Math.min(100, (rms / 255) * 100);
@@ -672,13 +681,37 @@ export function useMicrophone() {
 
   // Make debug functions available globally for console access
   useEffect(() => {
-    (window as any).debugMicrophone = debugMicrophoneState;
-    (window as any).checkAudioStats = checkAudioTransmissionStats;
-    (window as any).testMicrophoneAudio = testMicrophoneAudio;
+    (window as Window & { 
+      debugMicrophone?: () => unknown;
+      checkAudioStats?: () => unknown;
+      testMicrophoneAudio?: () => unknown;
+    }).debugMicrophone = debugMicrophoneState;
+    (window as Window & { 
+      debugMicrophone?: () => unknown;
+      checkAudioStats?: () => unknown;
+      testMicrophoneAudio?: () => unknown;
+    }).checkAudioStats = checkAudioTransmissionStats;
+    (window as Window & { 
+      debugMicrophone?: () => unknown;
+      checkAudioStats?: () => unknown;
+      testMicrophoneAudio?: () => unknown;
+    }).testMicrophoneAudio = testMicrophoneAudio;
     return () => {
-      delete (window as any).debugMicrophone;
-      delete (window as any).checkAudioStats;
-      delete (window as any).testMicrophoneAudio;
+      delete (window as Window & { 
+        debugMicrophone?: () => unknown;
+        checkAudioStats?: () => unknown;
+        testMicrophoneAudio?: () => unknown;
+      }).debugMicrophone;
+      delete (window as Window & { 
+        debugMicrophone?: () => unknown;
+        checkAudioStats?: () => unknown;
+        testMicrophoneAudio?: () => unknown;
+      }).checkAudioStats;
+      delete (window as Window & { 
+        debugMicrophone?: () => unknown;
+        checkAudioStats?: () => unknown;
+        testMicrophoneAudio?: () => unknown;
+      }).testMicrophoneAudio;
     };
   }, [debugMicrophoneState, checkAudioTransmissionStats, testMicrophoneAudio]);
 
