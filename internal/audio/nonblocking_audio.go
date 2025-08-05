@@ -413,6 +413,10 @@ func (nam *NonBlockingAudioManager) StopAudioInput() {
 	// Stop only the input coordinator
 	atomic.StoreInt32(&nam.inputRunning, 0)
 
+	// Allow coordinator thread to process the stop signal and update state
+	// This prevents race conditions in state queries immediately after stopping
+	time.Sleep(50 * time.Millisecond)
+
 	nam.logger.Info().Msg("audio input stopped")
 }
 

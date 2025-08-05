@@ -64,8 +64,7 @@ func (aim *AudioInputManager) Stop() {
 	aim.logger.Info().Msg("Stopping audio input manager")
 
 	// Stop the non-blocking audio input stream
-	// Note: This is handled by the global non-blocking audio manager
-	// Individual input streams are managed centrally
+	StopNonBlockingAudioInput()
 
 	// Drain the input buffer
 	go func() {
@@ -78,6 +77,8 @@ func (aim *AudioInputManager) Stop() {
 			}
 		}
 	}()
+
+	aim.logger.Info().Msg("Audio input manager stopped")
 }
 
 // WriteOpusFrame writes an Opus frame to the input buffer

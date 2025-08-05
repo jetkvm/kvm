@@ -327,11 +327,18 @@ export function useMicrophone() {
       
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          // If this is a retry, first try to stop the backend microphone to reset state
+          // If this is a retry, first try to reset the backend microphone state
           if (attempt > 1) {
             console.log(`Backend start attempt ${attempt}, first trying to reset backend state...`);
             try {
-              await api.POST("/microphone/stop", {});
+              // Try the new reset endpoint first
+              const resetResp = await api.POST("/microphone/reset", {});
+              if (resetResp.ok) {
+                console.log("Backend reset successful");
+              } else {
+                // Fallback to stop
+                await api.POST("/microphone/stop", {});
+              }
               // Wait a bit for the backend to reset
               await new Promise(resolve => setTimeout(resolve, 200));
             } catch (resetError) {
@@ -358,6 +365,24 @@ export function useMicrophone() {
             console.log("Backend response data:", responseData);
             if (responseData.status === "already running") {
               console.info("Backend microphone was already running");
+              
+              // If we're on the first attempt and backend says "already running",
+              // but frontend thinks it's not active, this might be a stuck state
+              if (attempt === 1 && !isMicrophoneActive) {
+                console.warn("Backend reports 'already running' but frontend is not active - possible stuck state");
+                console.log("Attempting to reset backend state and retry...");
+                
+                try {
+                  const resetResp = await api.POST("/microphone/reset", {});
+                  if (resetResp.ok) {
+                    console.log("Backend reset successful, retrying start...");
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    continue; // Retry the start
+                  }
+                } catch (resetError) {
+                  console.warn("Failed to reset stuck backend state:", resetError);
+                }
+              }
             }
             console.log("Backend microphone start successful");
             backendSuccess = true;
@@ -457,15 +482,47 @@ export function useMicrophone() {
   const resetBackendMicrophoneState = useCallback(async (): Promise<boolean> => {
     try {
       console.log("Resetting backend microphone state...");
-      await api.POST("/microphone/stop", {});
-      // Wait for backend to process the stop
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return true;
+      const response = await api.POST("/microphone/reset", {});
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Backend microphone reset successful:", data);
+        
+        // Update frontend state to match backend
+        setMicrophoneActive(false);
+        setMicrophoneMuted(false);
+        
+        // Clean up any orphaned streams
+        if (microphoneStreamRef.current) {
+          console.log("Cleaning up orphaned stream after reset");
+          await stopMicrophoneStream();
+        }
+        
+        // Wait a bit for everything to settle
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Sync state to ensure consistency
+        await syncMicrophoneState();
+        
+        return true;
+      } else {
+        console.error("Backend microphone reset failed:", response.status);
+        return false;
+      }
     } catch (error) {
       console.warn("Failed to reset backend microphone state:", error);
-      return false;
+      // Fallback to old method
+      try {
+        console.log("Trying fallback reset method...");
+        await api.POST("/microphone/stop", {});
+        await new Promise(resolve => setTimeout(resolve, 300));
+        return true;
+      } catch (fallbackError) {
+        console.error("Fallback reset also failed:", fallbackError);
+        return false;
+      }
     }
-  }, []);
+  }, [setMicrophoneActive, setMicrophoneMuted, stopMicrophoneStream, syncMicrophoneState]);
 
   // Stop microphone
   const stopMicrophone = useCallback(async (): Promise<{ success: boolean; error?: MicrophoneError }> => {
