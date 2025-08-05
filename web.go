@@ -398,6 +398,37 @@ func setupRouter() *gin.Engine {
 		})
 	})
 
+	protected.POST("/microphone/reset", func(c *gin.Context) {
+		if currentSession == nil {
+			c.JSON(400, gin.H{"error": "no active session"})
+			return
+		}
+
+		if currentSession.AudioInputManager == nil {
+			c.JSON(500, gin.H{"error": "audio input manager not available"})
+			return
+		}
+
+		logger.Info().Msg("forcing microphone state reset")
+
+		// Force stop both the AudioInputManager and NonBlockingAudioManager
+		currentSession.AudioInputManager.Stop()
+		audio.StopNonBlockingAudioInput()
+
+		// Wait a bit to ensure everything is stopped
+		time.Sleep(100 * time.Millisecond)
+
+		// Broadcast microphone state change via WebSocket
+		broadcaster := audio.GetAudioEventBroadcaster()
+		broadcaster.BroadcastMicrophoneStateChanged(false, true)
+
+		c.JSON(200, gin.H{
+			"status":                    "reset",
+			"audio_input_running":       currentSession.AudioInputManager.IsRunning(),
+			"nonblocking_input_running": audio.IsNonBlockingAudioInputRunning(),
+		})
+	})
+
 	// Catch-all route for SPA
 	r.NoRoute(func(c *gin.Context) {
 		if c.Request.Method == "GET" && c.NegotiateFormat(gin.MIMEHTML) == gin.MIMEHTML {
