@@ -1,28 +1,29 @@
 import { LuPlus, LuX } from "react-icons/lu";
 import { useFieldArray, useFormContext } from "react-hook-form";
+import validator from "validator";
 import { useEffect } from "react";
 
 import { GridCard } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { InputFieldWithLabel } from "@/components/InputField";
 
-export default function StaticIpv4Card() {
+export default function StaticIpv6Card() {
   const formMethods = useFormContext();
   const { register, formState, watch } = formMethods;
 
-  const { fields, append, remove } = useFieldArray({ name: "ipv4_static.dns" });
+  const { fields, append, remove } = useFieldArray({ name: "ipv6_static.dns" });
 
   useEffect(() => {
     if (fields.length === 0) append("");
   }, [append, fields.length]);
 
-  const dns = watch("ipv4_static.dns");
+  const dns = watch("ipv6_static.dns");
   return (
     <GridCard>
       <div className="animate-fadeIn p-4 text-black opacity-0 animation-duration-500 dark:text-white">
         <div className="space-y-4">
           <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            Static IPv4 Configuration
+            Static IPv6 Configuration
           </h3>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -30,16 +31,16 @@ export default function StaticIpv4Card() {
               label="IP Address"
               type="text"
               size="SM"
-              placeholder="192.168.1.100"
-              {...register("ipv4_static.address")}
+              placeholder="2001:db8::1"
+              {...register("ipv6_static.address")}
             />
 
             <InputFieldWithLabel
-              label="Subnet Mask"
+              label="Prefix"
               type="text"
               size="SM"
-              placeholder="255.255.255.0"
-              {...register("ipv4_static.netmask")}
+              placeholder="64"
+              {...register("ipv6_static.prefix")}
             />
           </div>
 
@@ -47,8 +48,8 @@ export default function StaticIpv4Card() {
             label="Gateway"
             type="text"
             size="SM"
-            placeholder="192.168.1.1"
-            {...register("ipv4_static.gateway")}
+            placeholder="2001:db8::1"
+            {...register("ipv6_static.gateway")}
           />
 
           {/* DNS server fields */}
@@ -63,14 +64,14 @@ export default function StaticIpv4Card() {
                         type="text"
                         size="SM"
                         placeholder="1.1.1.1"
-                        {...register(`ipv4_static.dns.${index}`, {
-                          // validate: (value: string) => {
-                          //   if (value === "") return true;
-                          //   if (!validator.isIP(value)) return "Invalid IP address";
-                          //   return true;
-                          // },
+                        {...register(`ipv6_static.dns.${index}`, {
+                          validate: (value: string) => {
+                            if (value === "") return true;
+                            if (!validator.isIP(value)) return "Invalid IP address";
+                            return true;
+                          },
                         })}
-                        error={formState.errors.ipv4_static?.dns?.[index]?.message}
+                        error={formState.errors.ipv6_static?.dns?.[index]?.message}
                       />
                     </div>
                     {index > 0 && (

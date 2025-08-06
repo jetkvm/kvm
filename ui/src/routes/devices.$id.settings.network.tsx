@@ -21,6 +21,7 @@ import AutoHeight from "../components/AutoHeight";
 import DhcpLeaseCard from "../components/DhcpLeaseCard";
 import StaticIpv4Card from "../components/StaticIpv4Card";
 import { useJsonRpc } from "../hooks/useJsonRpc";
+import StaticIpv6Card from "../components/StaticIpv6Card";
 
 import { SettingsItem } from "./devices.$id.settings";
 
@@ -106,6 +107,13 @@ export default function SettingsNetworkRoute() {
           gateway: settings.ipv4_static?.gateway || state.dhcp_lease?.routers?.[0] || "",
           dns: settings.ipv4_static?.dns || state.dhcp_lease?.dns_servers || [],
         },
+        ipv6_static: {
+          address:
+            settings.ipv6_static?.address || state.ipv6_addresses?.[0]?.address || "",
+          prefix: settings.ipv6_static?.prefix || state.ipv6_addresses?.[0]?.prefix || "",
+          gateway: settings.ipv6_static?.gateway || "",
+          dns: settings.ipv6_static?.dns || [],
+        },
       };
 
       return { settings: settingsWithDefaults, state };
@@ -143,6 +151,12 @@ export default function SettingsNetworkRoute() {
         // Remove empty DNS entries
         dns: data.ipv4_static?.dns.filter((dns: string) => dns.trim() !== ""),
       },
+      ipv6_static: {
+        ...data.ipv6_static,
+
+        // Remove empty DNS entries
+        dns: data.ipv6_static?.dns.filter((dns: string) => dns.trim() !== ""),
+      },
     };
 
     send("setNetworkSettings", { settings }, async resp => {
@@ -160,7 +174,8 @@ export default function SettingsNetworkRoute() {
     });
   };
 
-  const isIPv4Mode = watch("ipv4_mode");
+  const ipv4mode = watch("ipv4_mode");
+  const ipv6mode = watch("ipv6_mode");
   return (
     <>
       <FormProvider {...formMethods}>
@@ -309,9 +324,9 @@ export default function SettingsNetworkRoute() {
                       </div>
                     </div>
                   </GridCard>
-                ) : isIPv4Mode === "static" ? (
+                ) : ipv4mode === "static" ? (
                   <StaticIpv4Card />
-                ) : isIPv4Mode === "dhcp" ? (
+                ) : ipv4mode === "dhcp" ? (
                   <DhcpLeaseCard
                     networkState={networkState}
                     setShowRenewLeaseConfirm={setShowRenewLeaseConfirm}
@@ -329,7 +344,10 @@ export default function SettingsNetworkRoute() {
             <SettingsItem title="IPv6 Mode" description="Configure the IPv6 mode">
               <SelectMenuBasic
                 size="SM"
-                options={[{ value: "slaac", label: "SLAAC" }]}
+                options={[
+                  { value: "slaac", label: "SLAAC" },
+                  { value: "static", label: "Static" },
+                ]}
                 {...register("ipv6_mode")}
               />
             </SettingsItem>
@@ -350,23 +368,27 @@ export default function SettingsNetworkRoute() {
                       </div>
                     </div>
                   </GridCard>
+                ) : ipv6mode === "static" ? (
+                  <StaticIpv6Card />
                 ) : (
                   <Ipv6NetworkCard networkState={networkState || undefined} />
                 )}
               </AutoHeight>
             </div>
-            <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
             {(formState.isDirty || formState.isSubmitting) && (
-              <div className="animate-fadeInStill opacity-0 animation-duration-300">
-                <Button
-                  size="SM"
-                  theme="primary"
-                  disabled={formState.isSubmitting}
-                  loading={formState.isSubmitting}
-                  type="submit"
-                  text={formState.isSubmitting ? "Saving..." : "Save Settings"}
-                />
-              </div>
+              <>
+                <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
+                <div className="animate-fadeInStill opacity-0 animation-duration-300">
+                  <Button
+                    size="SM"
+                    theme="primary"
+                    disabled={formState.isSubmitting}
+                    loading={formState.isSubmitting}
+                    type="submit"
+                    text={formState.isSubmitting ? "Saving..." : "Save Settings"}
+                  />
+                </div>
+              </>
             )}
           </div>
         </form>

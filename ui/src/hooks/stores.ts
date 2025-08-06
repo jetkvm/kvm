@@ -752,6 +752,13 @@ export interface IPv4StaticConfig {
   dns: string[];
 }
 
+export interface IPv6StaticConfig {
+  address: string;
+  prefix: string;
+  gateway: string;
+  dns: string[];
+}
+
 export interface NetworkSettings {
   hostname: string | null;
   domain: string | null;
@@ -759,6 +766,7 @@ export interface NetworkSettings {
   ipv4_mode: IPv4Mode;
   ipv4_static?: IPv4StaticConfig;
   ipv6_mode: IPv6Mode;
+  ipv6_static?: IPv6StaticConfig;
   lldp_mode: LLDPMode;
   lldp_tx_tlvs: string[];
   mdns_mode: mDNSMode;
