@@ -436,7 +436,7 @@ export interface KeyboardLedState {
   scroll_lock: boolean;
   compose: boolean;
   kana: boolean;
-};
+}
 const defaultKeyboardLedState: KeyboardLedState = {
   num_lock: false,
   caps_lock: false,
@@ -516,7 +516,8 @@ export const useHidStore = create<HidState>((set, get) => ({
   },
 
   keyboardLedStateSyncAvailable: false,
-  setKeyboardLedStateSyncAvailable: available => set({ keyboardLedStateSyncAvailable: available }),
+  setKeyboardLedStateSyncAvailable: available =>
+    set({ keyboardLedStateSyncAvailable: available }),
 
   isVirtualKeyboardEnabled: false,
   setVirtualKeyboardEnabled: enabled => set({ isVirtualKeyboardEnabled: enabled }),
@@ -752,9 +753,9 @@ export interface IPv4StaticConfig {
 }
 
 export interface NetworkSettings {
-  hostname: string;
-  domain: string;
-  http_proxy: string;
+  hostname: string | null;
+  domain: string | null;
+  http_proxy: string | null;
   ipv4_mode: IPv4Mode;
   ipv4_static?: IPv4StaticConfig;
   ipv6_mode: IPv6Mode;
@@ -944,5 +945,5 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
     } finally {
       set({ loading: false });
     }
-  }
+  },
 }));

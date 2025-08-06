@@ -6,7 +6,7 @@ import { GridCard } from "./Card";
 export default function Ipv6NetworkCard({
   networkState,
 }: {
-  networkState: NetworkState;
+  networkState: NetworkState | undefined;
 }) {
   return (
     <GridCard>

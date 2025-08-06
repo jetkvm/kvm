@@ -9,12 +9,12 @@ export default function DhcpLeaseCard({
   networkState,
   setShowRenewLeaseConfirm,
 }: {
-  networkState: NetworkState;
+  networkState: NetworkState | null;
   setShowRenewLeaseConfirm: (show: boolean) => void;
 }) {
   return (
     <GridCard>
-      <div className="animate-fadeIn p-4 opacity-0 animation-duration-500 text-black dark:text-white">
+      <div className="animate-fadeIn p-4 text-black opacity-0 animation-duration-500 dark:text-white">
         <div className="space-y-3">
           <h3 className="text-base font-bold text-slate-900 dark:text-white">
             DHCP Lease Information
@@ -44,24 +44,15 @@ export default function DhcpLeaseCard({
                 </div>
               )}
 
-              {networkState?.dhcp_lease?.dns && (
+              {networkState?.dhcp_lease?.dns_servers && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     DNS Servers
                   </span>
                   <span className="text-right text-sm font-medium">
-                    {networkState?.dhcp_lease?.dns.map(dns => <div key={dns}>{dns}</div>)}
-                  </span>
-                </div>
-              )}
-
-              {networkState?.dhcp_lease?.broadcast && (
-                <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">
-                    Broadcast
-                  </span>
-                  <span className="text-sm font-medium">
-                    {networkState?.dhcp_lease?.broadcast}
+                    {networkState?.dhcp_lease?.dns_servers.map(dns => (
+                      <div key={dns}>{dns}</div>
+                    ))}
                   </span>
                 </div>
               )}
@@ -138,6 +129,17 @@ export default function DhcpLeaseCard({
                     <LifeTimeLabel
                       lifetime={`${networkState?.dhcp_lease?.lease_expiry}`}
                     />
+                  </span>
+                </div>
+              )}
+
+              {networkState?.dhcp_lease?.broadcast && (
+                <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                    Broadcast
+                  </span>
+                  <span className="text-sm font-medium">
+                    {networkState?.dhcp_lease?.broadcast}
                   </span>
                 </div>
               )}

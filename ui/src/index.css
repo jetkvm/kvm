@@ -32,6 +32,7 @@
   --animate-fadeInScaleFloat:
     fadeInScaleFloat 1s ease-out forwards, float 3s ease-in-out infinite;
   --animate-fadeIn: fadeIn 1s ease-out forwards;
+  --animate-fadeInStill: fadeInStill 1s ease-out forwards;
   --animate-slideUpFade: slideUpFade 1s ease-out forwards;
 
   --container-8xl: 88rem;
@@ -107,6 +108,15 @@
     100% {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  @keyframes fadeInStill {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
     }
   }
 
