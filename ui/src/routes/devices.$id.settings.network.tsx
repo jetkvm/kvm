@@ -27,6 +27,7 @@ import Ipv6NetworkCard from "../components/Ipv6NetworkCard";
 import EmptyCard from "../components/EmptyCard";
 import AutoHeight from "../components/AutoHeight";
 import DhcpLeaseCard from "../components/DhcpLeaseCard";
+import StaticIpv4Card from "../components/StaticIpv4Card";
 
 import { SettingsItem } from "./devices.$id.settings";
 
@@ -37,6 +38,7 @@ const defaultNetworkSettings: NetworkSettings = {
   http_proxy: "",
   domain: "",
   ipv4_mode: "unknown",
+  ipv4_static: undefined,
   ipv6_mode: "unknown",
   lldp_mode: "unknown",
   lldp_tx_tlvs: [],
@@ -127,7 +129,17 @@ export default function SettingsNetworkRoute() {
   const setNetworkSettingsRemote = useCallback(
     (settings: NetworkSettings) => {
       setNetworkSettingsLoaded(false);
-      send("setNetworkSettings", { settings }, resp => {
+
+      // Filter out empty DNS strings from static IP config before sending
+      const filteredSettings = { ...settings };
+      if (filteredSettings.ipv4_static?.dns) {
+        filteredSettings.ipv4_static = {
+          ...filteredSettings.ipv4_static,
+          dns: filteredSettings.ipv4_static.dns.filter(dns => dns.trim() !== "")
+        };
+      }
+
+      send("setNetworkSettings", { settings: filteredSettings }, resp => {
         if ("error" in resp) {
           notifications.error(
             "Failed to save network settings: " +
@@ -375,7 +387,7 @@ export default function SettingsNetworkRoute() {
               onChange={e => handleIpv4ModeChange(e.target.value)}
               options={filterUnknown([
                 { value: "dhcp", label: "DHCP" },
-                // { value: "static", label: "Static" },
+                { value: "static", label: "Static" },
               ])}
             />
           </SettingsItem>
@@ -390,12 +402,21 @@ export default function SettingsNetworkRoute() {
                     <div className="animate-pulse space-y-3">
                       <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
                       <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-700" />
-                      <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
-                    </div>
+                      <div classNa
+                onApply={() => setNetworkSettingsRemote(networkSettings)}   </div>
                   </div>
                 </div>
               </GridCard>
-            ) : networkState?.dhcp_lease && networkState.dhcp_lease.ip ? (
+            ) : networkSettings.ipv4_mode === "static" ? (
+              <StaticIpv4Card
+                networkSettings={networkSettings}
+                onUpdate={setNetworkSettings}
+                networkState={networkState}
+                onApply={() => setNetworkSettingsRemote(networkSettings)}
+              />
+            ) : networkSettings.ipv4_mode === "dhcp" &&
+              networkState?.dhcp_lease &&
+              networkState.dhcp_lease.ip ? (
               <DhcpLeaseCard
                 networkState={networkState}
                 setShowRenewLeaseConfirm={setShowRenewLeaseConfirm}
@@ -403,8 +424,8 @@ export default function SettingsNetworkRoute() {
             ) : (
               <EmptyCard
                 IconElm={LuEthernetPort}
-                headline="DHCP Information"
-                description="No DHCP lease information available"
+                headline="Network Information"
+                description="No network configuration available"
               />
             )}
           </AutoHeight>

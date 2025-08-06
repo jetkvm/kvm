@@ -346,6 +346,17 @@ func (f *FieldConfig) validateField() error {
 		return nil
 	}
 
+	// Handle []string types, like dns servers, time sync ntp servers, etc.
+	if slice, ok := f.CurrentValue.([]string); ok {
+		for i, item := range slice {
+			if err := f.validateSingleValue(item, i); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// Handle single string types
 	val, err := toString(f.CurrentValue)
 	if err != nil {
 		return fmt.Errorf("field `%s` cannot use validate_type: %s", f.Name, err)
@@ -355,27 +366,46 @@ func (f *FieldConfig) validateField() error {
 		return nil
 	}
 
+	return f.validateSingleValue(val, -1)
+}
+
+func (f *FieldConfig) validateSingleValue(val string, index int) error {
 	for _, validateType := range f.ValidateTypes {
+		var fieldRef string
+		if index >= 0 {
+			fieldRef = fmt.Sprintf("field `%s[%d]`", f.Name, index)
+		} else {
+			fieldRef = fmt.Sprintf("field `%s`", f.Name)
+		}
+
 		switch validateType {
 		case "ipv4":
 			if net.ParseIP(val).To4() == nil {
-				return fmt.Errorf("field `%s` is not a valid IPv4 address: %s", f.Name, val)
+				return fmt.Errorf("%s is not a valid IPv4 address: %s", fieldRef, val)
 			}
 		case "ipv6":
 			if net.ParseIP(val).To16() == nil {
-				return fmt.Errorf("field `%s` is not a valid IPv6 address: %s", f.Name, val)
+				return fmt.Errorf("%s is not a valid IPv6 address: %s", fieldRef, val)
+			}
+		case "ipv4_or_ipv6":
+			if net.ParseIP(val) == nil {
+				return fmt.Errorf("%s is not a valid IPv4 or IPv6 address: %s", fieldRef, val)
 			}
 		case "hwaddr":
 			if _, err := net.ParseMAC(val); err != nil {
-				return fmt.Errorf("field `%s` is not a valid MAC address: %s", f.Name, val)
+				return fmt.Errorf("%s is not a valid MAC address: %s", fieldRef, val)
 			}
 		case "hostname":
 			if _, err := idna.Lookup.ToASCII(val); err != nil {
-				return fmt.Errorf("field `%s` is not a valid hostname: %s", f.Name, val)
+				return fmt.Errorf("%s is not a valid hostname: %s", fieldRef, val)
 			}
 		case "proxy":
 			if url, err := url.Parse(val); err != nil || (url.Scheme != "http" && url.Scheme != "https") || url.Host == "" {
-				return fmt.Errorf("field `%s` is not a valid HTTP proxy URL: %s", f.Name, val)
+				return fmt.Errorf("%s is not a valid HTTP proxy URL: %s", fieldRef, val)
+			}
+		case "url":
+			if _, err := url.Parse(val); err != nil {
+				return fmt.Errorf("%s is not a valid URL: %s", fieldRef, val)
 			}
 		default:
 			return fmt.Errorf("field `%s` cannot use validate_type: unsupported validator: %s", f.Name, validateType)

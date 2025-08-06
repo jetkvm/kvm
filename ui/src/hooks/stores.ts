@@ -683,7 +683,7 @@ export interface DhcpLease {
   bootp_file?: string;
   timezone?: string;
   routers?: string[];
-  dns?: string[];
+  dns_servers?: string[];
   ntp_servers?: string[];
   lpr_servers?: string[];
   _time_servers?: string[];
@@ -744,11 +744,19 @@ export type TimeSyncMode =
   | "custom"
   | "unknown";
 
+export interface IPv4StaticConfig {
+  address: string;
+  netmask: string;
+  gateway: string;
+  dns: string[];
+}
+
 export interface NetworkSettings {
   hostname: string;
   domain: string;
   http_proxy: string;
   ipv4_mode: IPv4Mode;
+  ipv4_static?: IPv4StaticConfig;
   ipv6_mode: IPv6Mode;
   lldp_mode: LLDPMode;
   lldp_tx_tlvs: string[];
