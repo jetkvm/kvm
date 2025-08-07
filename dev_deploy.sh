@@ -180,8 +180,17 @@ set -e
 # Set the library path to include the directory where librockit.so is located
 export LD_LIBRARY_PATH=/oem/usr/lib:\$LD_LIBRARY_PATH
 
+# Check if production jetkvm_app is running and save its state
+PROD_APP_RUNNING=false
+if pgrep -f "/userdata/jetkvm/bin/jetkvm_app" > /dev/null; then
+    PROD_APP_RUNNING=true
+    echo "Production jetkvm_app is running, will restore after development session"
+else
+    echo "No production jetkvm_app detected"
+fi
+
 # Kill any existing instances of the application
-killall jetkvm_app || true
+pkill -f "/userdata/jetkvm/bin/jetkvm_app" || true
 killall jetkvm_app_debug || true
 
 # Navigate to the directory where the binary will be stored
@@ -190,7 +199,29 @@ cd "${REMOTE_PATH}"
 # Make the new binary executable
 chmod +x jetkvm_app_debug
 
-# Run the application in the background
+# Create a cleanup script that will restore the production app
+cat > /tmp/restore_jetkvm.sh << RESTORE_EOF
+#!/bin/ash
+set -e
+export LD_LIBRARY_PATH=/oem/usr/lib:\$LD_LIBRARY_PATH
+cd ${REMOTE_PATH}
+if [ "$PROD_APP_RUNNING" = "true" ]; then
+    echo "Restoring production jetkvm_app..."
+    killall jetkvm_app_debug || true
+    nohup /userdata/jetkvm/bin/jetkvm_app > /tmp/jetkvm_app.log 2>&1 &
+    echo "Production jetkvm_app restored"
+else
+    echo "No production app was running before, not restoring"
+fi
+RESTORE_EOF
+
+chmod +x /tmp/restore_jetkvm.sh
+
+# Set up signal handler to restore production app on exit
+trap '/tmp/restore_jetkvm.sh' EXIT INT TERM
+
+# Run the application in the foreground
+echo "Starting development jetkvm_app_debug..."
 PION_LOG_TRACE=${LOG_TRACE_SCOPES} ./jetkvm_app_debug | tee -a /tmp/jetkvm_app_debug.log
 EOF
 fi

@@ -451,46 +451,40 @@ func handleSessionRequest(
 	var err error
 	var sd string
 
-	// Check if we have an existing session and handle renegotiation
+	// Check if we have an existing session
 	if currentSession != nil {
-		scopedLogger.Info().Msg("handling renegotiation for existing session")
+		scopedLogger.Info().Msg("existing session detected, creating new session and notifying old session")
 
-		// Handle renegotiation with existing session
-		sd, err = currentSession.ExchangeOffer(req.Sd)
+		// Always create a new session when there's an existing one
+		// This ensures the "otherSessionConnected" prompt is shown
+		session, err = newSession(SessionConfig{
+			ws:         c,
+			IsCloud:    isCloudConnection,
+			LocalIP:    req.IP,
+			ICEServers: req.ICEServers,
+			Logger:     scopedLogger,
+		})
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("renegotiation failed, creating new session")
-			// If renegotiation fails, fall back to creating a new session
-			session, err = newSession(SessionConfig{
-				ws:         c,
-				IsCloud:    isCloudConnection,
-				LocalIP:    req.IP,
-				ICEServers: req.ICEServers,
-				Logger:     scopedLogger,
-			})
-			if err != nil {
-				_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
-				return err
-			}
-
-			sd, err = session.ExchangeOffer(req.Sd)
-			if err != nil {
-				_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
-				return err
-			}
-
-			// Close the old session
-			writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-			peerConn := currentSession.peerConnection
-			go func() {
-				time.Sleep(1 * time.Second)
-				_ = peerConn.Close()
-			}()
-
-			currentSession = session
-			cloudLogger.Info().Interface("session", session).Msg("new session created after renegotiation failure")
-		} else {
-			scopedLogger.Info().Msg("renegotiation successful")
+			_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
+			return err
 		}
+
+		sd, err = session.ExchangeOffer(req.Sd)
+		if err != nil {
+			_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
+			return err
+		}
+
+		// Notify the old session about the takeover
+		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
+		peerConn := currentSession.peerConnection
+		go func() {
+			time.Sleep(1 * time.Second)
+			_ = peerConn.Close()
+		}()
+
+		currentSession = session
+		scopedLogger.Info().Interface("session", session).Msg("new session created, old session notified")
 	} else {
 		// No existing session, create a new one
 		scopedLogger.Info().Msg("creating new session")
