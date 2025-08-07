@@ -28,8 +28,7 @@ type IPv4StaticConfig struct {
 }
 
 type IPv6StaticConfig struct {
-	Address null.String `json:"address,omitempty" validate_type:"ipv6" required:"true"`
-	Prefix  null.String `json:"prefix,omitempty" required:"true"`
+	Address null.String `json:"address,omitempty" validate_type:"cidr" required:"true"`
 	Gateway null.String `json:"gateway,omitempty" validate_type:"ipv6" required:"true"`
 	DNS     []string    `json:"dns,omitempty" validate_type:"ipv6" required:"true"`
 }

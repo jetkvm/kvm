@@ -407,6 +407,10 @@ func (f *FieldConfig) validateSingleValue(val string, index int) error {
 			if _, err := url.Parse(val); err != nil {
 				return fmt.Errorf("%s is not a valid URL: %s", fieldRef, val)
 			}
+		case "cidr":
+			if _, _, err := net.ParseCIDR(val); err != nil {
+				return fmt.Errorf("%s is not a valid CIDR notation: %s", fieldRef, val)
+			}
 		default:
 			return fmt.Errorf("field `%s` cannot use validate_type: unsupported validator: %s", f.Name, validateType)
 		}

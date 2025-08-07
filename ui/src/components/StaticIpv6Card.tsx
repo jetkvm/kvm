@@ -26,23 +26,29 @@ export default function StaticIpv6Card() {
             Static IPv6 Configuration
           </h3>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <InputFieldWithLabel
-              label="IP Address"
-              type="text"
-              size="SM"
-              placeholder="2001:db8::1"
-              {...register("ipv6_static.address")}
-            />
-
-            <InputFieldWithLabel
-              label="Prefix"
-              type="text"
-              size="SM"
-              placeholder="64"
-              {...register("ipv6_static.prefix")}
-            />
-          </div>
+          <InputFieldWithLabel
+            label="IP Address/Prefix"
+            type="text"
+            size="SM"
+            placeholder="2001:db8::1/64"
+            {...register("ipv6_static.address", {
+              validate: (value: string) => {
+                if (value === "") return true;
+                // Check if it's a valid IPv6 address with CIDR notation
+                const parts = value.split("/");
+                if (parts.length !== 2)
+                  return "Please use CIDR notation (e.g., 2001:db8::1/64)";
+                const [address, prefix] = parts;
+                if (!validator.isIP(address, 6)) return "Invalid IPv6 address";
+                const prefixNum = parseInt(prefix);
+                if (isNaN(prefixNum) || prefixNum < 0 || prefixNum > 128) {
+                  return "Prefix must be between 0 and 128";
+                }
+                return true;
+              },
+            })}
+            error={formState.errors.ipv6_static?.address?.message}
+          />
 
           <InputFieldWithLabel
             label="Gateway"
@@ -63,7 +69,7 @@ export default function StaticIpv6Card() {
                         label={index === 0 ? "DNS Server" : null}
                         type="text"
                         size="SM"
-                        placeholder="1.1.1.1"
+                        placeholder="2001:4860:4860::8888"
                         {...register(`ipv6_static.dns.${index}`, {
                           validate: (value: string) => {
                             if (value === "") return true;
