@@ -47,12 +47,11 @@ export default function SettingsVideoRoute() {
   const [edid, setEdid] = useState<string | null>(null);
 
   // Video enhancement settings from store
-  const videoSaturation = useSettingsStore(state => state.videoSaturation);
-  const setVideoSaturation = useSettingsStore(state => state.setVideoSaturation);
-  const videoBrightness = useSettingsStore(state => state.videoBrightness);
-  const setVideoBrightness = useSettingsStore(state => state.setVideoBrightness);
-  const videoContrast = useSettingsStore(state => state.videoContrast);
-  const setVideoContrast = useSettingsStore(state => state.setVideoContrast);
+  const {
+    videoSaturation, setVideoSaturation,
+    videoBrightness, setVideoBrightness,
+    videoContrast, setVideoContrast
+  } = useSettingsStore();
 
   useEffect(() => {
     send("getStreamQualityFactor", {}, (resp: JsonRpcResponse) => {

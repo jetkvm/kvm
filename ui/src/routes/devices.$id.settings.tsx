@@ -17,19 +17,16 @@ import { useResizeObserver } from "usehooks-ts";
 
 import Card from "@/components/Card";
 import { LinkButton } from "@/components/Button";
+import { FeatureFlag } from "@/components/FeatureFlag";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { useUiStore } from "@/hooks/stores";
-import useKeyboard from "@/hooks/useKeyboard";
 
-import { FeatureFlag } from "../components/FeatureFlag";
 import { cx } from "../cva.config";
-
 
 /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
 export default function SettingsRoute() {
   const location = useLocation();
-  const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
-  const { sendKeyboardEvent } = useKeyboard();
+  const { setDisableVideoFocusTrap } = useUiStore();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(false);
@@ -65,21 +62,14 @@ export default function SettingsRoute() {
   }, [width]);
 
   useEffect(() => {
-    // disable focus trap
     setTimeout(() => {
-      // Reset keyboard state. Incase the user is pressing a key while enabling the sidebar
-      sendKeyboardEvent([], []);
       setDisableVideoFocusTrap(true);
-      // For some reason, the focus trap is not disabled immediately
-      // so we need to blur the active element
-      (document.activeElement as HTMLElement)?.blur();
-      console.log("Just disabled focus trap");
-    }, 300);
+    }, 500);
 
     return () => {
       setDisableVideoFocusTrap(false);
     };
-  }, [sendKeyboardEvent, setDisableVideoFocusTrap]);
+  }, [setDisableVideoFocusTrap]);
 
   return (
     <div className="pointer-events-auto relative mx-auto max-w-4xl translate-x-0 transform text-left dark:text-white">

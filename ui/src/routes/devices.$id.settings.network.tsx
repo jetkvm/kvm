@@ -106,11 +106,12 @@ export default function SettingsNetworkRoute() {
     setNetworkSettingsLoaded(false);
     send("getNetworkSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
-      console.log(resp.result);
-      setNetworkSettings(resp.result as NetworkSettings);
+      const networkSettings = resp.result as NetworkSettings;
+      console.debug("Network settings: ", networkSettings);
+      setNetworkSettings(networkSettings);
 
       if (!firstNetworkSettings.current) {
-        firstNetworkSettings.current = resp.result as NetworkSettings;
+        firstNetworkSettings.current = networkSettings;
       }
       setNetworkSettingsLoaded(true);
     });
@@ -119,8 +120,9 @@ export default function SettingsNetworkRoute() {
   const getNetworkState = useCallback(() => {
     send("getNetworkState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
-      console.log(resp.result);
-      setNetworkState(resp.result as NetworkState);
+      const networkState = resp.result as NetworkState;
+      console.debug("Network state:", networkState);
+      setNetworkState(networkState);
     });
   }, [send, setNetworkState]);
 
@@ -136,9 +138,10 @@ export default function SettingsNetworkRoute() {
           setNetworkSettingsLoaded(true);
           return;
         }
+        const networkSettings = resp.result as NetworkSettings;
         // We need to update the firstNetworkSettings ref to the new settings so we can use it to determine if the settings have changed
-        firstNetworkSettings.current = resp.result as NetworkSettings;
-        setNetworkSettings(resp.result as NetworkSettings);
+        firstNetworkSettings.current = networkSettings;
+        setNetworkSettings(networkSettings);
         getNetworkState();
         setNetworkSettingsLoaded(true);
         notifications.success("Network settings saved");

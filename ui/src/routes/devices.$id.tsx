@@ -18,10 +18,11 @@ import useWebSocket from "react-use-websocket";
 
 import { cx } from "@/cva.config";
 import {
-  HidState,
   KeyboardLedState,
+  KeysDownState,
   NetworkState,
-  UpdateState,
+  OtaState,
+  USBStates,
   useDeviceStore,
   useHidStore,
   useMountMediaStore,
@@ -127,22 +128,22 @@ export default function KvmIdRoute() {
   const authMode = "authMode" in loaderResp ? loaderResp.authMode : null;
 
   const params = useParams() as { id: string };
-  const sidebarView = useUiStore(state => state.sidebarView);
-  const [queryParams, setQueryParams] = useSearchParams();
+  const { sidebarView, setSidebarView, disableVideoFocusTrap } = useUiStore();
+  const [ queryParams, setQueryParams ] = useSearchParams();
 
-  const setIsTurnServerInUse = useRTCStore(state => state.setTurnServerInUse);
-  const peerConnection = useRTCStore(state => state.peerConnection);
-  const setPeerConnectionState = useRTCStore(state => state.setPeerConnectionState);
-  const peerConnectionState = useRTCStore(state => state.peerConnectionState);
-  const setMediaMediaStream = useRTCStore(state => state.setMediaStream);
-  const setPeerConnection = useRTCStore(state => state.setPeerConnection);
-  const setDiskChannel = useRTCStore(state => state.setDiskChannel);
-  const setRpcDataChannel = useRTCStore(state => state.setRpcDataChannel);
-  const setTransceiver = useRTCStore(state => state.setTransceiver);
+  const { 
+    peerConnection, setPeerConnection,
+    peerConnectionState, setPeerConnectionState,
+    diskChannel, setDiskChannel,
+    setMediaStream,
+    setRpcDataChannel,
+    isTurnServerInUse, setTurnServerInUse,
+    rpcDataChannel,
+    setTransceiver
+  } = useRTCStore();
+
   const location = useLocation();
-
   const isLegacySignalingEnabled = useRef(false);
-
   const [connectionFailed, setConnectionFailed] = useState(false);
 
   const navigate = useNavigate();
@@ -211,7 +212,7 @@ export default function KvmIdRoute() {
           clearInterval(checkInterval);
           setLoadingMessage("Connection established");
         } else if (attempts >= 10) {
-          console.log(
+          console.warn(
             "[setRemoteSessionDescription] Failed to establish connection after 10 attempts",
             {
               connectionState: pc.connectionState,
@@ -247,27 +248,27 @@ export default function KvmIdRoute() {
       reconnectAttempts: 15,
       reconnectInterval: 1000,
       onReconnectStop: () => {
-        console.log("Reconnect stopped");
+        console.debug("Reconnect stopped");
         cleanupAndStopReconnecting();
       },
 
       shouldReconnect(event) {
-        console.log("[Websocket] shouldReconnect", event);
+        console.debug("[Websocket] shouldReconnect", event);
         // TODO: Why true?
         return true;
       },
 
       onClose(event) {
-        console.log("[Websocket] onClose", event);
+        console.debug("[Websocket] onClose", event);
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
 
       onError(event) {
-        console.log("[Websocket] onError", event);
+        console.error("[Websocket] onError", event);
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
       onOpen() {
-        console.log("[Websocket] onOpen");
+        console.debug("[Websocket] onOpen");
       },
 
       onMessage: message => {
@@ -289,8 +290,8 @@ export default function KvmIdRoute() {
         const parsedMessage = JSON.parse(message.data);
         if (parsedMessage.type === "device-metadata") {
           const { deviceVersion } = parsedMessage.data;
-          console.log("[Websocket] Received device-metadata message");
-          console.log("[Websocket] Device version", deviceVersion);
+          console.debug("[Websocket] Received device-metadata message");
+          console.debug("[Websocket] Device version", deviceVersion);
           // If the device version is not set, we can assume the device is using the legacy signaling
           if (!deviceVersion) {
             console.log("[Websocket] Device is using legacy signaling");
@@ -308,7 +309,7 @@ export default function KvmIdRoute() {
 
         if (!peerConnection) return;
         if (parsedMessage.type === "answer") {
-          console.log("[Websocket] Received answer");
+          console.debug("[Websocket] Received answer");
           const readyForOffer =
             // If we're making an offer, we don't want to accept an answer
             !makingOffer &&
@@ -322,7 +323,7 @@ export default function KvmIdRoute() {
 
           // Set so we don't accept an answer while we're setting the remote description
           isSettingRemoteAnswerPending.current = parsedMessage.type === "answer";
-          console.log(
+          console.debug(
             "[Websocket] Setting remote answer pending",
             isSettingRemoteAnswerPending.current,
           );
@@ -338,7 +339,7 @@ export default function KvmIdRoute() {
           // Reset the remote answer pending flag
           isSettingRemoteAnswerPending.current = false;
         } else if (parsedMessage.type === "new-ice-candidate") {
-          console.log("[Websocket] Received new-ice-candidate");
+          console.debug("[Websocket] Received new-ice-candidate");
           const candidate = parsedMessage.data;
           peerConnection.addIceCandidate(candidate);
         }
@@ -384,7 +385,7 @@ export default function KvmIdRoute() {
         return;
       }
 
-      console.log("Successfully got Remote Session Description. Setting.");
+      console.debug("Successfully got Remote Session Description. Setting.");
       setLoadingMessage("Setting remote session description...");
 
       const decodedSd = atob(json.sd);
@@ -395,13 +396,13 @@ export default function KvmIdRoute() {
   );
 
   const setupPeerConnection = useCallback(async () => {
-    console.log("[setupPeerConnection] Setting up peer connection");
+    console.debug("[setupPeerConnection] Setting up peer connection");
     setConnectionFailed(false);
     setLoadingMessage("Connecting to device...");
 
     let pc: RTCPeerConnection;
     try {
-      console.log("[setupPeerConnection] Creating peer connection");
+      console.debug("[setupPeerConnection] Creating peer connection");
       setLoadingMessage("Creating peer connection...");
       pc = new RTCPeerConnection({
         // We only use STUN or TURN servers if we're in the cloud
@@ -411,7 +412,7 @@ export default function KvmIdRoute() {
       });
 
       setPeerConnectionState(pc.connectionState);
-      console.log("[setupPeerConnection] Peer connection created", pc);
+      console.debug("[setupPeerConnection] Peer connection created", pc);
       setLoadingMessage("Setting up connection to device...");
     } catch (e) {
       console.error(`[setupPeerConnection] Error creating peer connection: ${e}`);
@@ -423,13 +424,13 @@ export default function KvmIdRoute() {
 
     // Set up event listeners and data channels
     pc.onconnectionstatechange = () => {
-      console.log("[setupPeerConnection] Connection state changed", pc.connectionState);
+      console.debug("[setupPeerConnection] Connection state changed", pc.connectionState);
       setPeerConnectionState(pc.connectionState);
     };
 
     pc.onnegotiationneeded = async () => {
       try {
-        console.log("[setupPeerConnection] Creating offer");
+        console.debug("[setupPeerConnection] Creating offer");
         makingOffer.current = true;
 
         const offer = await pc.createOffer();
@@ -439,7 +440,7 @@ export default function KvmIdRoute() {
         if (isNewSignalingEnabled) {
           sendWebRTCSignal("offer", { sd: sd });
         } else {
-          console.log("Legacy signanling. Waiting for ICE Gathering to complete...");
+          console.log("Legacy signaling. Waiting for ICE Gathering to complete...");
         }
       } catch (e) {
         console.error(
@@ -461,7 +462,7 @@ export default function KvmIdRoute() {
     pc.onicegatheringstatechange = event => {
       const pc = event.currentTarget as RTCPeerConnection;
       if (pc.iceGatheringState === "complete") {
-        console.log("ICE Gathering completed");
+        console.debug("ICE Gathering completed");
         setLoadingMessage("ICE Gathering completed");
 
         if (isLegacySignalingEnabled.current) {
@@ -469,13 +470,13 @@ export default function KvmIdRoute() {
           legacyHTTPSignaling(pc);
         }
       } else if (pc.iceGatheringState === "gathering") {
-        console.log("ICE Gathering Started");
+        console.debug("ICE Gathering Started");
         setLoadingMessage("Gathering ICE candidates...");
       }
     };
 
     pc.ontrack = function (event) {
-      setMediaMediaStream(event.streams[0]);
+      setMediaStream(event.streams[0]);
     };
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
@@ -497,7 +498,7 @@ export default function KvmIdRoute() {
     legacyHTTPSignaling,
     sendWebRTCSignal,
     setDiskChannel,
-    setMediaMediaStream,
+    setMediaStream,
     setPeerConnection,
     setPeerConnectionState,
     setRpcDataChannel,
@@ -506,15 +507,13 @@ export default function KvmIdRoute() {
 
   useEffect(() => {
     if (peerConnectionState === "failed") {
-      console.log("Connection failed, closing peer connection");
+      console.warn("Connection failed, closing peer connection");
       cleanupAndStopReconnecting();
     }
   }, [peerConnectionState, cleanupAndStopReconnecting]);
 
   // Cleanup effect
-  const clearInboundRtpStats = useRTCStore(state => state.clearInboundRtpStats);
-  const clearCandidatePairStats = useRTCStore(state => state.clearCandidatePairStats);
-  const setSidebarView = useUiStore(state => state.setSidebarView);
+  const { clearInboundRtpStats, clearCandidatePairStats } = useRTCStore();
 
   useEffect(() => {
     return () => {
@@ -545,11 +544,10 @@ export default function KvmIdRoute() {
     if (!lastRemoteStat?.length) return;
     const remoteCandidateIsUsingTurn = lastRemoteStat[1].candidateType === "relay"; // [0] is the timestamp, which we don't care about here
 
-    setIsTurnServerInUse(localCandidateIsUsingTurn || remoteCandidateIsUsingTurn);
-  }, [peerConnectionState, setIsTurnServerInUse]);
+    setTurnServerInUse(localCandidateIsUsingTurn || remoteCandidateIsUsingTurn);
+  }, [peerConnectionState, setTurnServerInUse]);
 
   // TURN server usage reporting
-  const isTurnServerInUse = useRTCStore(state => state.isTurnServerInUse);
   const lastBytesReceived = useRef<number>(0);
   const lastBytesSent = useRef<number>(0);
 
@@ -582,15 +580,13 @@ export default function KvmIdRoute() {
     });
   }, 10000);
 
-  const setNetworkState = useNetworkStateStore(state => state.setNetworkState);
-
-  const setUsbState = useHidStore(state => state.setUsbState);
-  const setHdmiState = useVideoStore(state => state.setHdmiState);
-
-  const keyboardLedState = useHidStore(state => state.keyboardLedState);
-  const setKeyboardLedState = useHidStore(state => state.setKeyboardLedState);
-
-  const setKeyboardLedStateSyncAvailable = useHidStore(state => state.setKeyboardLedStateSyncAvailable);
+  const { setNetworkState} = useNetworkStateStore();
+  const { setHdmiState } = useVideoStore();
+  const { 
+    keyboardLedState,  setKeyboardLedState,
+    keysDownState, setKeysDownState, setUsbState,
+    setkeyPressReportApiAvailable
+  } = useHidStore();
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
@@ -601,27 +597,38 @@ export default function KvmIdRoute() {
     }
 
     if (resp.method === "usbState") {
-      setUsbState(resp.params as unknown as HidState["usbState"]);
+      const usbState = resp.params as unknown as USBStates;
+      console.debug("Setting USB state", usbState);
+      setUsbState(usbState);
     }
 
     if (resp.method === "videoInputState") {
-      setHdmiState(resp.params as Parameters<VideoState["setHdmiState"]>[0]);
+      const hdmiState = resp.params as Parameters<VideoState["setHdmiState"]>[0];
+      console.debug("Setting HDMI state", hdmiState);
+      setHdmiState(hdmiState);
     }
 
     if (resp.method === "networkState") {
-      console.log("Setting network state", resp.params);
+      console.debug("Setting network state", resp.params);
       setNetworkState(resp.params as NetworkState);
     }
 
     if (resp.method === "keyboardLedState") {
       const ledState = resp.params as KeyboardLedState;
-      console.log("Setting keyboard led state", ledState);
+      console.debug("Setting keyboard led state", ledState);
       setKeyboardLedState(ledState);
-      setKeyboardLedStateSyncAvailable(true);
+    }
+
+    if (resp.method === "keysDownState") {
+      const downState = resp.params as KeysDownState;
+      console.debug("Setting key down state:", downState);
+      setKeysDownState(downState);
+      setkeyPressReportApiAvailable(true); // if they returned a keyDownState, we know they also support keyPressReport
     }
 
     if (resp.method === "otaState") {
-      const otaState = resp.params as UpdateState["otaState"];
+      const otaState = resp.params as OtaState;
+      console.debug("Setting OTA state", otaState);
       setOtaState(otaState);
 
       if (otaState.updating === true) {
@@ -645,39 +652,67 @@ export default function KvmIdRoute() {
     }
   }
 
-  const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
   const { send } = useJsonRpc(onJsonRpcRequest);
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
+    console.log("Requesting video state");
     send("getVideoState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
-      setHdmiState(resp.result as Parameters<VideoState["setHdmiState"]>[0]);
+      const hdmiState = resp.result as Parameters<VideoState["setHdmiState"]>[0];
+      console.debug("Setting HDMI state", hdmiState);
+      setHdmiState(hdmiState);
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
+
+  const [needLedState, setNeedLedState] = useState(true);
 
   // request keyboard led state from the device
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
-    if (keyboardLedState !== undefined) return;
+    if (!needLedState) return;
     console.log("Requesting keyboard led state");
 
     send("getKeyboardLedState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
+        console.error("Failed to get keyboard led state", resp.error);
+        return;
+      } else {
+        const ledState = resp.result as KeyboardLedState;
+        console.debug("Keyboard led state: ", ledState);
+        setKeyboardLedState(ledState);
+      }
+      setNeedLedState(false);
+    });
+  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, keyboardLedState, needLedState]);
+
+  const [needKeyDownState, setNeedKeyDownState] = useState(true);
+
+  // request keyboard key down state from the device
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open") return;
+    if (!needKeyDownState) return;
+    console.log("Requesting keys down state");
+
+    send("getKeyDownState", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
         // -32601 means the method is not supported
         if (resp.error.code === -32601) {
-          setKeyboardLedStateSyncAvailable(false);
-          console.error("Failed to get keyboard led state, disabling sync", resp.error);
+          // if we don't support key down state, we know key press is also not available
+          console.warn("Failed to get key down state, switching to old-school", resp.error);
+          setkeyPressReportApiAvailable(false);
         } else {
-          console.error("Failed to get keyboard led state", resp.error);
+          console.error("Failed to get key down state", resp.error);
         }
-        return;
+      } else {
+        const downState = resp.result as KeysDownState;
+        console.debug("Keyboard key down state", downState);
+        setKeysDownState(downState);
+        setkeyPressReportApiAvailable(true); // if they returned a keyDownState, we know they also support keyPressReport
       }
-      console.log("Keyboard led state", resp.result);
-      setKeyboardLedState(resp.result as KeyboardLedState);
-      setKeyboardLedStateSyncAvailable(true);
+      setNeedKeyDownState(false);
     });
-  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, setKeyboardLedStateSyncAvailable, keyboardLedState]);
+  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setkeyPressReportApiAvailable, setKeysDownState]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {
@@ -686,14 +721,13 @@ export default function KvmIdRoute() {
     }
   }, [navigate, navigateTo, queryParams, setModalView, setQueryParams]);
 
-  const diskChannel = useRTCStore(state => state.diskChannel)!;
-  const file = useMountMediaStore(state => state.localFile)!;
+  const { localFile } = useMountMediaStore();
   useEffect(() => {
-    if (!diskChannel || !file) return;
+    if (!diskChannel || !localFile) return;
     diskChannel.onmessage = async e => {
-      console.log("Received", e.data);
+      console.debug("Received", e.data);
       const data = JSON.parse(e.data);
-      const blob = file.slice(data.start, data.end);
+      const blob = localFile.slice(data.start, data.end);
       const buf = await blob.arrayBuffer();
       const header = new ArrayBuffer(16);
       const headerView = new DataView(header);
@@ -704,11 +738,9 @@ export default function KvmIdRoute() {
       fullData.set(new Uint8Array(buf), header.byteLength);
       diskChannel.send(fullData);
     };
-  }, [diskChannel, file]);
+  }, [diskChannel, localFile]);
 
   // System update
-  const disableVideoFocusTrap = useUiStore(state => state.disableVideoFocusTrap);
-
   const [kvmTerminal, setKvmTerminal] = useState<RTCDataChannel | null>(null);
   const [serialConsole, setSerialConsole] = useState<RTCDataChannel | null>(null);
 
@@ -728,9 +760,7 @@ export default function KvmIdRoute() {
     if (location.pathname !== "/other-session") navigateTo("/");
   }, [navigateTo, location.pathname]);
 
-  const appVersion = useDeviceStore(state => state.appVersion);
-  const setAppVersion = useDeviceStore(state => state.setAppVersion);
-  const setSystemVersion = useDeviceStore(state => state.setSystemVersion);
+  const { appVersion, setAppVersion, setSystemVersion}  = useDeviceStore();
 
   useEffect(() => {
     if (appVersion) return;
@@ -738,7 +768,7 @@ export default function KvmIdRoute() {
     send("getUpdateStatus", {}, async (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(`Failed to get device version: ${resp.error}`);
-        return 
+        return
       }
 
       const result = resp.result as SystemVersionInfo;
@@ -875,7 +905,7 @@ interface SidebarContainerProps {
 }
 
 function SidebarContainer(props: SidebarContainerProps) {
-  const { sidebarView }= props;
+  const { sidebarView } = props;
   return (
     <div
       className={cx(

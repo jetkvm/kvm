@@ -75,15 +75,15 @@ func (u *UsbGadget) relMouseWriteHidFile(data []byte) error {
 	return nil
 }
 
-func (u *UsbGadget) RelMouseReport(mx, my int8, buttons uint8) error {
+func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 	u.relMouseLock.Lock()
 	defer u.relMouseLock.Unlock()
 
 	err := u.relMouseWriteHidFile([]byte{
-		buttons,   // Buttons
-		uint8(mx), // X
-		uint8(my), // Y
-		0,         // Wheel
+		buttons,  // Buttons
+		byte(mx), // X
+		byte(my), // Y
+		0,        // Wheel
 	})
 	if err != nil {
 		return err

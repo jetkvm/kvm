@@ -13,7 +13,7 @@ func GetDefaultLogger() *zerolog.Logger {
 	return &defaultLogger
 }
 
-func ErrorfL(l *zerolog.Logger, format string, err error, args ...interface{}) error {
+func ErrorfL(l *zerolog.Logger, format string, err error, args ...any) error {
 	// TODO: move rootLogger to logging package
 	if l == nil {
 		l = &defaultLogger

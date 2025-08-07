@@ -27,10 +27,7 @@ func (w *WebRTCDiskReader) Read(ctx context.Context, offset int64, size int64) (
 	}
 	mountedImageSize := currentVirtualMediaState.Size
 	virtualMediaStateMutex.RUnlock()
-	end := offset + size
-	if end > mountedImageSize {
-		end = mountedImageSize
-	}
+	end := min(offset+size, mountedImageSize)
 	req := DiskReadRequest{
 		Start: uint64(offset),
 		End:   uint64(end),

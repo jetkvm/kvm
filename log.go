@@ -5,7 +5,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func ErrorfL(l *zerolog.Logger, format string, err error, args ...interface{}) error {
+func ErrorfL(l *zerolog.Logger, format string, err error, args ...any) error {
 	return logging.ErrorfL(l, format, err, args...)
 }
 

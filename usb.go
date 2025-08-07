@@ -31,21 +31,31 @@ func initUsbGadget() {
 		}
 	})
 
+	gadget.SetOnKeysDownChange(func(state usbgadget.KeysDownState) {
+		if currentSession != nil {
+			writeJSONRPCEvent("keysDownState", state, currentSession)
+		}
+	})
+
 	// open the keyboard hid file to listen for keyboard events
 	if err := gadget.OpenKeyboardHidFile(); err != nil {
 		usbLogger.Error().Err(err).Msg("failed to open keyboard hid file")
 	}
 }
 
-func rpcKeyboardReport(modifier uint8, keys []uint8) error {
+func rpcKeyboardReport(modifier byte, keys []byte) (usbgadget.KeysDownState, error) {
 	return gadget.KeyboardReport(modifier, keys)
 }
 
-func rpcAbsMouseReport(x, y int, buttons uint8) error {
+func rpcKeypressReport(key byte, press bool) (usbgadget.KeysDownState, error) {
+	return gadget.KeypressReport(key, press)
+}
+
+func rpcAbsMouseReport(x int, y int, buttons uint8) error {
 	return gadget.AbsMouseReport(x, y, buttons)
 }
 
-func rpcRelMouseReport(dx, dy int8, buttons uint8) error {
+func rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
 	return gadget.RelMouseReport(dx, dy, buttons)
 }
 
@@ -57,6 +67,10 @@ func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {
 	return gadget.GetKeyboardState()
 }
 
+func rpcGetKeysDownState() (state usbgadget.KeysDownState) {
+	return gadget.GetKeysDownState()
+}
+
 var usbState = "unknown"
 
 func rpcGetUSBState() (state string) {
@@ -66,7 +80,7 @@ func rpcGetUSBState() (state string) {
 func triggerUSBStateUpdate() {
 	go func() {
 		if currentSession == nil {
-			usbLogger.Info().Msg("No active RPC session, skipping update state update")
+			usbLogger.Info().Msg("No active RPC session, skipping USB state update")
 			return
 		}
 		writeJSONRPCEvent("usbState", usbState, currentSession)
@@ -78,9 +92,9 @@ func checkUSBState() {
 	if newState == usbState {
 		return
 	}
+	usbLogger.Info().Str("from", usbState).Str("to", newState).Msg("USB state changed")
 	usbState = newState
 
-	usbLogger.Info().Str("from", usbState).Str("to", newState).Msg("USB state changed")
 	requestDisplayUpdate(true)
 	triggerUSBStateUpdate()
 }

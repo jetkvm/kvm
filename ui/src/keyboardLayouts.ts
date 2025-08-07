@@ -1,9 +1,20 @@
 export interface KeyStroke { modifier: number; keys: number[]; }
 export interface KeyInfo { key: string | number; shift?: boolean, altRight?: boolean }
 export interface KeyCombo extends KeyInfo { deadKey?: boolean, accentKey?: KeyInfo }
-export interface KeyboardLayout { isoCode: string, name: string, chars: Record<string, KeyCombo> }
+export interface KeyboardLayout {
+  isoCode: string;
+  name: string;
+  chars: Record<string, KeyCombo>;
+  modifierDisplayMap: Record<string, string>;
+  keyDisplayMap: Record<string, string>;
+  virtualKeyboard: {
+    main: { default: string[], shift: string[] },
+    control?: { default: string[], shift?: string[] },
+    arrows?: { default: string[] }
+  };
+}
 
-// to add a new layout, create a file like the above and add it to the list
+// To add a new layout, create a file like the above and add it to the list
 import { cs_CZ } from "@/keyboardLayouts/cs_CZ"
 import { de_CH } from "@/keyboardLayouts/de_CH"
 import { de_DE } from "@/keyboardLayouts/de_DE"
@@ -18,15 +29,3 @@ import { nb_NO } from "@/keyboardLayouts/nb_NO"
 import { sv_SE } from "@/keyboardLayouts/sv_SE"
 
 export const keyboards: KeyboardLayout[] = [ cs_CZ, de_CH, de_DE, en_UK, en_US, es_ES, fr_BE, fr_CH, fr_FR, it_IT, nb_NO, sv_SE ];
-
-export const selectedKeyboard = (isoCode: string): KeyboardLayout => {
-  // fallback to original behaviour of en-US if no isoCode given
-  return keyboards.find(keyboard => keyboard.isoCode == isoCode) 
-        ?? keyboards.find(keyboard => keyboard.isoCode == "en-US")!;
-};
-
-export const keyboardOptions = () => {
-  return keyboards.map((keyboard) => {
-    return { label: keyboard.name, value: keyboard.isoCode }
-  });
-}

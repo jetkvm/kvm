@@ -49,7 +49,7 @@ export function SerialConsole() {
       setSettings(newSettings);
     });
   };
-  const setTerminalType = useUiStore(state => state.setTerminalType);
+  const { setTerminalType } = useUiStore();
 
   return (
     <div className="space-y-4">

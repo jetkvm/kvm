@@ -134,10 +134,8 @@ function LoadingState({
 }) {
   const [progressWidth, setProgressWidth] = useState("0%");
   const abortControllerRef = useRef<AbortController | null>(null);
+  const { setAppVersion, setSystemVersion } = useDeviceStore();
   const { send } = useJsonRpc();
-
-  const setAppVersion = useDeviceStore(state => state.setAppVersion);
-  const setSystemVersion = useDeviceStore(state => state.setSystemVersion);
 
   const getVersionInfo = useCallback(() => {
     return new Promise<SystemVersionInfo>((resolve, reject) => {

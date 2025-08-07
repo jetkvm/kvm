@@ -1,20 +1,39 @@
 // Key codes and modifiers correspond to definitions in the
 // [Linux USB HID gadget driver](https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt)
-// [Section 10. Keyboard/Keypad Page 0x07](https://usb.org/sites/default/files/hut1_21.pdf)
+// [Universal Serial Bus HID Usage Tables: Section 10](https://www.usb.org/sites/default/files/documents/hut1_12v2.pdf)
+// These are all the key codes (not scan codes) that an 85/101/102 keyboard might have on it
 export const keys = {
+  Again: 0x79,
+  AlternateErase: 0x9d,
+  AltGr: 0xe6,        // aka AltRight
+  AltLeft: 0xe2,
+  AltRight: 0xe6,
+  Application: 0x65,
   ArrowDown: 0x51,
   ArrowLeft: 0x50,
   ArrowRight: 0x4f,
   ArrowUp: 0x52,
+  Attention: 0x9a,
   Backquote: 0x35,    // aka Grave
   Backslash: 0x31,
   Backspace: 0x2a,
   BracketLeft: 0x2f,  // aka LeftBrace
   BracketRight: 0x30, // aka RightBrace
+  Cancel: 0x9b,
   CapsLock: 0x39,
+  Clear: 0x9c,
+  ClearAgain: 0xa2,
   Comma: 0x36,
-  Compose: 0x65,
-  ContextMenu: 0,
+  Compose: 0xe3,
+  ContextMenu: 0x65,
+  ControlLeft: 0xe0,
+  ControlRight: 0xe4,
+  Copy: 0x7c,
+  CrSel: 0xa3,
+  CurrencySubunit: 0xb5,
+  CurrencyUnit: 0xb4,
+  Cut: 0x7b,
+  DecimalSeparator: 0xb3,
   Delete: 0x4c,
   Digit0: 0x27,
   Digit1: 0x1e,
@@ -30,6 +49,8 @@ export const keys = {
   Enter: 0x28,
   Equal: 0x2e,
   Escape: 0x29,
+  Execute: 0x74,
+  ExSel: 0xa4,
   F1: 0x3a,
   F2: 0x3b,
   F3: 0x3c,
@@ -42,6 +63,7 @@ export const keys = {
   F10: 0x43,
   F11: 0x44,
   F12: 0x45,
+  F13: 0x68,
   F14: 0x69,
   F15: 0x6a,
   F16: 0x6b,
@@ -53,9 +75,21 @@ export const keys = {
   F22: 0x71,
   F23: 0x72,
   F24: 0x73,
-  Home: 0x4a,
+  Find: 0x7e,
+  Grave: 0x35,
   HashTilde: 0x32,  // non-US # and ~
+  Help: 0x75,
+  Home: 0x4a,
   Insert: 0x49,
+  International1: 0x87,
+  International2: 0x88,
+  International3: 0x89,
+  International4: 0x8a,
+  International5: 0x8b,
+  International6: 0x8c,
+  International7: 0x8d,
+  International8: 0x8e,
+  International9: 0x8f,
   IntlBackslash: 0x64, // non-US \ and |
   KeyA: 0x04,
   KeyB: 0x05,
@@ -83,11 +117,27 @@ export const keys = {
   KeyX: 0x1b,
   KeyY: 0x1c,
   KeyZ: 0x1d,
-  KeypadExclamation: 0xcf,
+  LockingCapsLock: 0x82,
+  LockingNumLock: 0x83,
+  LockingScrollLock: 0x84,
+  Lang1: 0x90,  // Hangul/English toggle on Korean keyboards
+  Lang2: 0x91,  // Hanja conversion on Korean keyboards
+  Lang3: 0x92,  // Katakana on Japanese keyboards
+  Lang4: 0x93,  // Hiragana on Japanese keyboards
+  Lang5: 0x94,  // Zenkaku/Hankaku toggle on Japanese keyboards
+  Lang6: 0x95,
+  Lang7: 0x96,
+  Lang8: 0x97,
+  Lang9: 0x98,
+  Menu: 0x76,
+  MetaLeft: 0xe3,
+  MetaRight: 0xe7,
   Minus: 0x2d,
-  None: 0x00,
+  Mute: 0x7f,
   NumLock: 0x53,  // and Clear
   Numpad0: 0x62,  // and Insert
+  Numpad00: 0xb0,
+  Numpad000: 0xb1,
   Numpad1: 0x59,  // and End
   Numpad2: 0x5a,  // and Down Arrow
   Numpad3: 0x5b,  // and Page Down
@@ -98,29 +148,110 @@ export const keys = {
   Numpad8: 0x60,  // and Up Arrow
   Numpad9: 0x61,  // and Page Up
   NumpadAdd: 0x57,
+  NumpadAnd: 0xc7,
+  NumpadAt: 0xce,
+  NumpadBackspace: 0xbb,
+  NumpadBinary: 0xda,
+  NumpadCircumflex: 0xc3,
+  NumpadClear: 0xd8,
+  NumpadClearEntry: 0xd9,
+  NumpadColon: 0xcb,
   NumpadComma: 0x85,
   NumpadDecimal: 0x63,
+  NumpadDecimalBase: 0xdc,
+  NumpadDelete: 0x63,
   NumpadDivide: 0x54,
+  NumpadDownArrow: 0x5a,
+  NumpadEnd: 0x59,
   NumpadEnter: 0x58,
   NumpadEqual: 0x67,
+  NumpadExclamation: 0xcf,
+  NumpadGreaterThan: 0xc6,
+  NumpadHexadecimal: 0xdd,
+  NumpadHome: 0x5f,
+  NumpadKeyA: 0xbc,
+  NumpadKeyB: 0xbd,
+  NumpadKeyC: 0xbe,
+  NumpadKeyD: 0xbf,
+  NumpadKeyE: 0xc0,
+  NumpadKeyF: 0xc1,
+  NumpadLeftArrow: 0x5c,
+  NumpadLeftBrace: 0xb8,
   NumpadLeftParen: 0xb6,
+  NumpadLessThan: 0xc5,
+  NumpadLogicalAnd: 0xc8,
+  NumpadLogicalOr: 0xca,
+  NumpadMemoryAdd: 0xd3,
+  NumpadMemoryClear: 0xd2,
+  NumpadMemoryDivide: 0xd6,
+  NumpadMemoryMultiply: 0xd5,
+  NumpadMemoryRecall: 0xd1,
+  NumpadMemoryStore: 0xd0,
+  NumpadMemorySubtract: 0xd4,
   NumpadMultiply: 0x55,
+  NumpadOctal: 0xdb,
+  NumpadOctathorpe: 0xcc,
+  NumpadOr: 0xc9,
+  NumpadPageDown: 0x5b,
+  NumpadPageUp: 0x61,
+  NumpadPercent: 0xc4,
+  NumpadPlusMinus: 0xd7,
+  NumpadRightArrow: 0x5e,
+  NumpadRightBrace: 0xb9,
   NumpadRightParen: 0xb7,
+  NumpadSpace: 0xcd,
   NumpadSubtract: 0x56,
+  NumpadTab: 0xba,
+  NumpadUpArrow: 0x60,
+  NumpadXOR: 0xc2,
+  Octothorpe: 0x32, // non-US # and ~
+  Operation: 0xa1,
+  Out: 0xa0,
   PageDown: 0x4e,
   PageUp: 0x4b,
-  Period: 0x37,
-  PrintScreen: 0x46,
+  Paste: 0x7d,
   Pause: 0x48,
+  Period: 0x37,
   Power: 0x66,
+  PrintScreen: 0x46,
+  Prior: 0x9d,
   Quote: 0x34, // aka Single Quote or Apostrophe
+  Return: 0x9e,
   ScrollLock: 0x47,
+  Select: 0x77,
   Semicolon: 0x33,
+  Separator: 0x9f,
+  ShiftLeft: 0xe1,
+  ShiftRight: 0xe5,
   Slash: 0x38,
   Space: 0x2c,
+  Stop: 0x78,
   SystemRequest: 0x9a,
   Tab: 0x2b,
+  ThousandsSeparator: 0xb2,
+  Tilde: 0x35,
+  Undo: 0x7a,
+  VolumeDown: 0x81,
+  VolumeUp: 0x80,
 } as Record<string, number>;
+
+export const deadKeys = {
+  Acute: 0x00b4,
+  Breve: 0x02d8,
+  Caron: 0x02c7,
+  Cedilla: 0x00b8,
+  Circumflex: 0x005e, // or 0x02c6?
+  Comma: 0x002c,
+  Dot: 0x00b7,
+  DoubleAcute: 0x02dd,
+  Grave: 0x0060,
+  Kreis: 0x00b0,
+  Ogonek: 0x02db,
+  Ring: 0x02da,
+  Slash: 0x02f8,
+  Tilde: 0x007e,
+  Umlaut: 0x00a8,
+} as Record<string, number>
 
 export const modifiers = {
   ControlLeft: 0x01,
@@ -131,113 +262,28 @@ export const modifiers = {
   AltRight: 0x40,
   MetaLeft: 0x08,
   MetaRight: 0x80,
+  AltGr: 0x40,
 } as Record<string, number>;
 
-export const modifierDisplayMap: Record<string, string> = {
-  ControlLeft: "Left Ctrl",
-  ControlRight: "Right Ctrl",
-  ShiftLeft: "Left Shift",
-  ShiftRight: "Right Shift",
-  AltLeft: "Left Alt",
-  AltRight: "Right Alt",
-  MetaLeft: "Left Meta",
-  MetaRight: "Right Meta",
-} as Record<string, string>;
+export const hidKeyToModifierMask = {
+  0xe0: modifiers.ControlLeft,
+  0xe1: modifiers.ShiftLeft,
+  0xe2: modifiers.AltLeft,
+  0xe3: modifiers.MetaLeft,
+  0xe4: modifiers.ControlRight,
+  0xe5: modifiers.ShiftRight,
+  0xe6: modifiers.AltRight, // can also be AltGr
+  0xe7: modifiers.MetaRight,
+} as Record<number, number>;
 
-export const keyDisplayMap: Record<string, string> = {
-  CtrlAltDelete: "Ctrl + Alt + Delete",
-  AltMetaEscape: "Alt + Meta + Escape",
-  CtrlAltBackspace: "Ctrl + Alt + Backspace",
-  Escape: "esc",
-  Tab: "tab",
-  Backspace: "backspace",
-  "(Backspace)": "backspace",
-  Enter: "enter",
-  CapsLock: "caps lock",
-  ShiftLeft: "shift",
-  ShiftRight: "shift",
-  ControlLeft: "ctrl",
-  AltLeft: "alt",
-  AltRight: "alt",
-  MetaLeft: "meta",
-  MetaRight: "meta",
-  Space: " ",
-  Insert: "insert",
-  Home: "home",
-  PageUp: "page up",
-  Delete: "delete",
-  End: "end",
-  PageDown: "page down",
-  ArrowLeft: "←",
-  ArrowRight: "→",
-  ArrowUp: "↑",
-  ArrowDown: "↓",
-  
-  // Letters
-  KeyA: "a", KeyB: "b", KeyC: "c", KeyD: "d", KeyE: "e",
-  KeyF: "f", KeyG: "g", KeyH: "h", KeyI: "i", KeyJ: "j",
-  KeyK: "k", KeyL: "l", KeyM: "m", KeyN: "n", KeyO: "o",
-  KeyP: "p", KeyQ: "q", KeyR: "r", KeyS: "s", KeyT: "t",
-  KeyU: "u", KeyV: "v", KeyW: "w", KeyX: "x", KeyY: "y",
-  KeyZ: "z",
+export const latchingKeys = ["CapsLock", "ScrollLock", "NumLock", "Meta", "Compose", "Kana"];
 
-  // Capital letters
-  "(KeyA)": "A", "(KeyB)": "B", "(KeyC)": "C", "(KeyD)": "D", "(KeyE)": "E",
-  "(KeyF)": "F", "(KeyG)": "G", "(KeyH)": "H", "(KeyI)": "I", "(KeyJ)": "J",
-  "(KeyK)": "K", "(KeyL)": "L", "(KeyM)": "M", "(KeyN)": "N", "(KeyO)": "O",
-  "(KeyP)": "P", "(KeyQ)": "Q", "(KeyR)": "R", "(KeyS)": "S", "(KeyT)": "T",
-  "(KeyU)": "U", "(KeyV)": "V", "(KeyW)": "W", "(KeyX)": "X", "(KeyY)": "Y",
-  "(KeyZ)": "Z",
-
-  // Numbers
-  Digit1: "1", Digit2: "2", Digit3: "3", Digit4: "4", Digit5: "5",
-  Digit6: "6", Digit7: "7", Digit8: "8", Digit9: "9", Digit0: "0",
-
-  // Shifted Numbers
-  "(Digit1)": "!", "(Digit2)": "@", "(Digit3)": "#", "(Digit4)": "$", "(Digit5)": "%",
-  "(Digit6)": "^", "(Digit7)": "&", "(Digit8)": "*", "(Digit9)": "(", "(Digit0)": ")",
-
-  // Symbols
-  Minus: "-",
-  "(Minus)": "_",
-  Equal: "=",
-  "(Equal)": "+",
-  BracketLeft: "[",
-   "(BracketLeft)": "{",
-  BracketRight: "]",
-  "(BracketRight)": "}",
-  Backslash: "\\",
-  "(Backslash)": "|",
-  Semicolon: ";",
-  "(Semicolon)": ":",
-  Quote: "'",
-  "(Quote)": "\"",
-  Comma: ",",
-  "(Comma)": "<",
-  Period: ".",
-  "(Period)": ">",
-  Slash: "/",
-  "(Slash)": "?",
-  Backquote: "`",
-  "(Backquote)": "~",
-  IntlBackslash: "\\",
-
-  // Function keys
-  F1: "F1", F2: "F2", F3: "F3", F4: "F4",
-  F5: "F5", F6: "F6", F7: "F7", F8: "F8",
-  F9: "F9", F10: "F10", F11: "F11", F12: "F12",
-
-  // Numpad
-  Numpad0: "Num 0", Numpad1: "Num 1", Numpad2: "Num 2",
-  Numpad3: "Num 3", Numpad4: "Num 4", Numpad5: "Num 5",
-  Numpad6: "Num 6", Numpad7: "Num 7", Numpad8: "Num 8",
-  Numpad9: "Num 9", NumpadAdd: "Num +", NumpadSubtract: "Num -",
-  NumpadMultiply: "Num *", NumpadDivide: "Num /", NumpadDecimal: "Num .",
-  NumpadEqual: "Num =", NumpadEnter: "Num Enter",
-  NumLock: "Num Lock",
-
-  // Modals
-  PrintScreen: "prt sc", ScrollLock: "scr lk", Pause: "pause",
-  "(PrintScreen)": "sys rq", "(Pause)": "break",
-  SystemRequest: "sys rq", Break: "break"
-};
+export function decodeModifiers(modifier: number) {
+  return { 
+    isShiftActive: (modifier & (modifiers.ShiftLeft | modifiers.ShiftRight)) !== 0,
+    isControlActive: (modifier & (modifiers.ControlLeft | modifiers.ControlRight)) !== 0,
+    isAltActive: (modifier & (modifiers.AltLeft | modifiers.AltRight)) !== 0,
+    isMetaActive: (modifier & (modifiers.MetaLeft | modifiers.MetaRight)) !== 0,
+    isAltGrActive: (modifier & modifiers.AltGr) !== 0,
+  };
+}

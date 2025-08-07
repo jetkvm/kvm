@@ -4,9 +4,7 @@ import { cx } from "@/cva.config";
 import KeyboardAndMouseConnectedIcon from "@/assets/keyboard-and-mouse-connected.png";
 import LoadingSpinner from "@components/LoadingSpinner";
 import StatusCard from "@components/StatusCards";
-import { HidState } from "@/hooks/stores";
-
-type USBStates = HidState["usbState"];
+import { USBStates } from "@/hooks/stores";
 
 type StatusProps = Record<
   USBStates,
@@ -67,7 +65,7 @@ export default function USBStateStatus({
   };
   const props = StatusCardProps[state];
   if (!props) {
-    console.log("Unsupported USB state: ", state);
+    console.warn("Unsupported USB state: ", state);
     return;
   }
 

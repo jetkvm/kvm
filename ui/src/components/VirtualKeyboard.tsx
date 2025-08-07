@@ -1,4 +1,3 @@
-import { useShallow } from "zustand/react/shallow";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -13,9 +12,10 @@ import "react-simple-keyboard/build/css/index.css";
 import AttachIconRaw from "@/assets/attach-icon.svg";
 import DetachIconRaw from "@/assets/detach-icon.svg";
 import { cx } from "@/cva.config";
-import { useHidStore, useSettingsStore, useUiStore } from "@/hooks/stores";
+import { useHidStore, useUiStore } from "@/hooks/stores";
 import useKeyboard from "@/hooks/useKeyboard";
-import { keyDisplayMap, keys, modifiers } from "@/keyboardMappings";
+import useKeyboardLayout from "@/hooks/useKeyboardLayout";
+import { keys, modifiers, latchingKeys, decodeModifiers } from "@/keyboardMappings";
 
 export const DetachIcon = ({ className }: { className?: string }) => {
   return <img src={DetachIconRaw} alt="Detach Icon" className={className} />;
@@ -26,34 +26,47 @@ const AttachIcon = ({ className }: { className?: string }) => {
 };
 
 function KeyboardWrapper() {
-  const [layoutName, setLayoutName] = useState("default");
-
   const keyboardRef = useRef<HTMLDivElement>(null);
-  const showAttachedVirtualKeyboard = useUiStore(
-    state => state.isAttachedVirtualKeyboardVisible,
-  );
-  const setShowAttachedVirtualKeyboard = useUiStore(
-    state => state.setAttachedVirtualKeyboardVisibility,
-  );
-
-  const { sendKeyboardEvent, resetKeyboardState } = useKeyboard();
+  const { isAttachedVirtualKeyboardVisible, setAttachedVirtualKeyboardVisibility } = useUiStore();
+  const { keysDownState, /* keyboardLedState,*/ isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
+  const { handleKeyPress, executeMacro } = useKeyboard();
+  const { selectedKeyboard } = useKeyboardLayout();
 
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [newPosition, setNewPosition] = useState({ x: 0, y: 0 });
 
-  const isCapsLockActive = useHidStore(useShallow(state => state.keyboardLedState?.caps_lock));
+  const keyDisplayMap = useMemo(() => {
+    return selectedKeyboard.keyDisplayMap;
+  }, [selectedKeyboard]);
 
-  // HID related states
-  const keyboardLedStateSyncAvailable = useHidStore(state => state.keyboardLedStateSyncAvailable);
-  const keyboardLedSync = useSettingsStore(state => state.keyboardLedSync);
-  const isKeyboardLedManagedByHost = useMemo(() =>
-    keyboardLedSync !== "browser" && keyboardLedStateSyncAvailable,
-    [keyboardLedSync, keyboardLedStateSyncAvailable],
-  );
+  const virtualKeyboard = useMemo(() => {
+    return selectedKeyboard.virtualKeyboard;
+  }, [selectedKeyboard]);
 
-  const setIsCapsLockActive = useHidStore(state => state.setIsCapsLockActive);
+  //const isCapsLockActive = useMemo(() => {
+  //  return (keyboardLedState.caps_lock);
+  //}, [keyboardLedState]);
 
+  const { isShiftActive, /*isControlActive, isAltActive, isMetaActive, isAltGrActive*/ } = useMemo(() => {
+    return decodeModifiers(keysDownState.modifier);
+  }, [keysDownState]);
+
+  const mainLayoutName = useMemo(() => {
+   const layoutName = isShiftActive ? "shift": "default";
+   return layoutName;
+  }, [isShiftActive]);
+
+  const keyNamesForDownKeys = useMemo(() => {
+    const activeModifierMask = keysDownState.modifier || 0;
+    const modifierNames = Object.entries(modifiers).filter(([_, mask]) => (activeModifierMask & mask) !== 0).map(([name, _]) => name);
+
+    const keysDown = keysDownState.keys || [];
+    const keyNames = Object.entries(keys).filter(([_, value]) => keysDown.includes(value)).map(([name, _]) => name);
+
+    return [...modifierNames,...keyNames, ' ']; // we have to have at least one space to avoid keyboard whining
+  }, [keysDownState]);
+  
   const startDrag = useCallback((e: MouseEvent | TouchEvent) => {
     if (!keyboardRef.current) return;
     if (e instanceof TouchEvent && e.touches.length > 1) return;
@@ -123,94 +136,69 @@ function KeyboardWrapper() {
     };
   }, [endDrag, onDrag, startDrag]);
 
+  const onKeyUp = useCallback(
+    async (_: string, e: MouseEvent | undefined) => {
+      e?.preventDefault();
+      e?.stopPropagation();
+    },
+    []
+  );
+
   const onKeyDown = useCallback(
-    (key: string) => {
-      const isKeyShift = key === "{shift}" || key === "ShiftLeft" || key === "ShiftRight";
-      const isKeyCaps = key === "CapsLock";
-      const cleanKey = key.replace(/[()]/g, "");
-      const keyHasShiftModifier = key.includes("(");
+    async (key: string, e: MouseEvent | undefined) => {
+      e?.preventDefault();
+      e?.stopPropagation();
 
-      // Handle toggle of layout for shift or caps lock
-      const toggleLayout = () => {
-        setLayoutName(prevLayout => (prevLayout === "default" ? "shift" : "default"));
-      };
-
+      // handle the fake key-macros we have defined for common combinations
       if (key === "CtrlAltDelete") {
-        sendKeyboardEvent(
-          [keys["Delete"]],
-          [modifiers["ControlLeft"], modifiers["AltLeft"]],
-        );
-        setTimeout(resetKeyboardState, 100);
+        await executeMacro([ { keys: ["Delete"], modifiers: ["ControlLeft", "AltLeft"], delay: 100 } ]);
         return;
       }
 
       if (key === "AltMetaEscape") {
-        sendKeyboardEvent(
-          [keys["Escape"]],
-          [modifiers["MetaLeft"], modifiers["AltLeft"]],
-        );
-
-        setTimeout(resetKeyboardState, 100);
+        await executeMacro([ { keys: ["Escape"], modifiers: ["AltLeft", "MetaLeft"], delay: 100 } ]);
         return;
       }
 
       if (key === "CtrlAltBackspace") {
-        sendKeyboardEvent(
-          [keys["Backspace"]],
-          [modifiers["ControlLeft"], modifiers["AltLeft"]],
-        );
-
-        setTimeout(resetKeyboardState, 100);
+        await executeMacro([ { keys: ["Backspace"], modifiers: ["ControlLeft", "AltLeft"], delay: 100 } ]);
         return;
       }
 
-      if (isKeyShift || isKeyCaps) {
-        toggleLayout();
-
-        if (isCapsLockActive) {
-          if (!isKeyboardLedManagedByHost) {
-            setIsCapsLockActive(false);
-          }
-          sendKeyboardEvent([keys["CapsLock"]], []);
-          return;
-        }
+      // if they press any of the latching keys, we send a keypress down event and the release it automatically (on timer)
+      if (latchingKeys.includes(key)) {
+        console.debug(`Latching key pressed: ${key} sending down and delayed up pair`);
+        handleKeyPress(keys[key], true)
+        setTimeout(() => handleKeyPress(keys[key], false), 100);
+        return;
       }
 
-      // Handle caps lock state change
-      if (isKeyCaps && !isKeyboardLedManagedByHost) {
-        setIsCapsLockActive(!isCapsLockActive);
+      // if they press any of the dynamic keys, we send a keypress down event but we don't release it until they click it again
+      if (Object.keys(modifiers).includes(key)) {
+        const currentlyDown = keyNamesForDownKeys.includes(key);
+        console.debug(`Dynamic key pressed: ${key} was currently down: ${currentlyDown}, toggling state`);
+        handleKeyPress(keys[key], !currentlyDown)
+        return;
       }
 
-      // Collect new active keys and modifiers
-      const newKeys = keys[cleanKey] ? [keys[cleanKey]] : [];
-      const newModifiers =
-        keyHasShiftModifier && !isCapsLockActive ? [modifiers["ShiftLeft"]] : [];
-
-      // Update current keys and modifiers
-      sendKeyboardEvent(newKeys, newModifiers);
-
-      // If shift was used as a modifier and caps lock is not active, revert to default layout
-      if (keyHasShiftModifier && !isCapsLockActive) {
-        setLayoutName("default");
-      }
-
-      setTimeout(resetKeyboardState, 100);
+      // otherwise, just treat it as a down+up pair
+      const cleanKey = key.replace(/[()]/g, "");
+      console.debug(`Regular key pressed: ${cleanKey} sending down and up pair`);
+      handleKeyPress(keys[cleanKey], true);
+      setTimeout(() => handleKeyPress(keys[cleanKey], false), 50);
     },
-    [isCapsLockActive, isKeyboardLedManagedByHost, sendKeyboardEvent, resetKeyboardState, setIsCapsLockActive],
+    [executeMacro, handleKeyPress, keyNamesForDownKeys],
   );
-
-  const virtualKeyboard = useHidStore(state => state.isVirtualKeyboardEnabled);
-  const setVirtualKeyboard = useHidStore(state => state.setVirtualKeyboardEnabled);
 
   return (
     <div
       className="transition-all duration-500 ease-in-out"
       style={{
-        marginBottom: virtualKeyboard ? "0px" : `-${350}px`,
+        marginBottom: isVirtualKeyboardEnabled ? "0px" : `-${350}px`,
       }}
     >
       <AnimatePresence>
-        {virtualKeyboard && (
+        {isVirtualKeyboardEnabled && (
           <motion.div
             initial={{ opacity: 0, y: "100%" }}
             animate={{ opacity: 1, y: "0%" }}
@@ -222,30 +210,30 @@ function KeyboardWrapper() {
           >
             <div
               className={cx(
-                !showAttachedVirtualKeyboard
+                !isAttachedVirtualKeyboardVisible
                   ? "fixed left-0 top-0 z-50 select-none"
                   : "relative",
               )}
               ref={keyboardRef}
               style={{
-                ...(!showAttachedVirtualKeyboard
+                ...(!isAttachedVirtualKeyboardVisible
                   ? { transform: `translate(${newPosition.x}px, ${newPosition.y}px)` }
                   : {}),
               }}
             >
               <Card
                 className={cx("overflow-hidden", {
-                  "rounded-none": showAttachedVirtualKeyboard,
+                  "rounded-none": isAttachedVirtualKeyboardVisible,
                 })}
               >
                 <div className="flex items-center justify-center border-b border-b-slate-800/30 bg-white px-2 py-1 dark:border-b-slate-300/20 dark:bg-slate-800">
                   <div className="absolute left-2 flex items-center gap-x-2">
-                    {showAttachedVirtualKeyboard ? (
+                    {isAttachedVirtualKeyboardVisible ? (
                       <Button
                         size="XS"
                         theme="light"
                         text="Detach"
-                        onClick={() => setShowAttachedVirtualKeyboard(false)}
+                        onClick={() => setAttachedVirtualKeyboardVisibility(false)}
                       />
                     ) : (
                       <Button
@@ -253,7 +241,7 @@ function KeyboardWrapper() {
                         theme="light"
                         text="Attach"
                         LeadingIcon={AttachIcon}
-                        onClick={() => setShowAttachedVirtualKeyboard(true)}
+                        onClick={() => setAttachedVirtualKeyboardVisibility(true)}
                       />
                     )}
                   </div>
@@ -266,7 +254,7 @@ function KeyboardWrapper() {
                       theme="light"
                       text="Hide"
                       LeadingIcon={ChevronDownIcon}
-                      onClick={() => setVirtualKeyboard(false)}
+                      onClick={() => setVirtualKeyboardEnabled(false)}
                     />
                   </div>
                 </div>
@@ -275,66 +263,61 @@ function KeyboardWrapper() {
                   <div className="flex flex-col bg-blue-50/80 md:flex-row dark:bg-slate-700">
                     <Keyboard
                       baseClass="simple-keyboard-main"
-                      layoutName={layoutName}
+                      layoutName={mainLayoutName}
                       onKeyPress={onKeyDown}
+                      onKeyReleased={onKeyUp}
                       buttonTheme={[
                         {
                           class: "combination-key",
                           buttons: "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
                         },
+                        {
+                          class: "down-key",
+                          buttons: keyNamesForDownKeys.join(" "),
+                        },
                       ]}
                       display={keyDisplayMap}
-                      layout={{
-                        default: [
-                          "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
-                          "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
-                          "Backquote Digit1 Digit2 Digit3 Digit4 Digit5 Digit6 Digit7 Digit8 Digit9 Digit0 Minus Equal Backspace",
-                          "Tab KeyQ KeyW KeyE KeyR KeyT KeyY KeyU KeyI KeyO KeyP BracketLeft BracketRight Backslash",
-                          "CapsLock KeyA KeyS KeyD KeyF KeyG KeyH KeyJ KeyK KeyL Semicolon Quote Enter",
-                          "ShiftLeft KeyZ KeyX KeyC KeyV KeyB KeyN KeyM Comma Period Slash ShiftRight",
-                          "ControlLeft AltLeft MetaLeft Space MetaRight AltRight",
-                        ],
-                        shift: [
-                          "CtrlAltDelete AltMetaEscape CtrlAltBackspace",
-                          "Escape F1 F2 F3 F4 F5 F6 F7 F8 F9 F10 F11 F12",
-                          "(Backquote) (Digit1) (Digit2) (Digit3) (Digit4) (Digit5) (Digit6) (Digit7) (Digit8) (Digit9) (Digit0) (Minus) (Equal) (Backspace)",
-                          "Tab (KeyQ) (KeyW) (KeyE) (KeyR) (KeyT) (KeyY) (KeyU) (KeyI) (KeyO) (KeyP) (BracketLeft) (BracketRight) (Backslash)",
-                          "CapsLock (KeyA) (KeyS) (KeyD) (KeyF) (KeyG) (KeyH) (KeyJ) (KeyK) (KeyL) (Semicolon) (Quote) Enter",
-                          "ShiftLeft (KeyZ) (KeyX) (KeyC) (KeyV) (KeyB) (KeyN) (KeyM) (Comma) (Period) (Slash) ShiftRight",
-                          "ControlLeft AltLeft MetaLeft Space MetaRight AltRight",
-                        ],
-                      }}
+                      layout={virtualKeyboard.main}
                       disableButtonHold={true}
-                      syncInstanceInputs={true}
-                      debug={false}
+                      enableLayoutCandidates={false}
+                      preventMouseDownDefault={true}
+                      preventMouseUpDefault={true}
+                      stopMouseDownPropagation={true}
+                      stopMouseUpPropagation={true}
                     />
 
                     <div className="controlArrows">
                       <Keyboard
                         baseClass="simple-keyboard-control"
                         theme="simple-keyboard hg-theme-default hg-layout-default"
-                        layoutName={layoutName}
+                        layoutName="default"
                         onKeyPress={onKeyDown}
+                        onKeyReleased={onKeyUp}
                         display={keyDisplayMap}
-                        layout={{
-                          default: ["PrintScreen ScrollLock Pause", "Insert Home Pageup", "Delete End Pagedown"],
-                          shift: ["(PrintScreen) ScrollLock (Pause)", "Insert Home Pageup", "Delete End Pagedown"],
-                        }}
-                        syncInstanceInputs={true}
-                        debug={false}
+                        layout={virtualKeyboard.control}
+                        disableButtonHold={true}
+                        enableLayoutCandidates={false}
+                        preventMouseDownDefault={true}
+                        preventMouseUpDefault={true}
+                        stopMouseDownPropagation={true}
+                        stopMouseUpPropagation={true}
                       />
                       <Keyboard
                         baseClass="simple-keyboard-arrows"
                         theme="simple-keyboard hg-theme-default hg-layout-default"
                         onKeyPress={onKeyDown}
+                        onKeyReleased={onKeyUp}
                         display={keyDisplayMap}
-                        layout={{
-                          default: ["ArrowUp", "ArrowLeft ArrowDown ArrowRight"],
-                        }}
-                        syncInstanceInputs={true}
-                        debug={false}
+                        layout={virtualKeyboard.arrows}
+                        disableButtonHold={true}
+                        enableLayoutCandidates={false}
+                        preventMouseDownDefault={true}
+                        preventMouseUpDefault={true}
+                        stopMouseDownPropagation={true}
+                        stopMouseUpPropagation={true}
                       />
                     </div>
+                    { /* TODO add optional number pad */ }
                   </div>
                 </div>
               </Card>

@@ -103,6 +103,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		ICEServers: []webrtc.ICEServer{iceServer},
 	})
 	if err != nil {
+		scopedLogger.Warn().Err(err).Msg("Failed to create PeerConnection")
 		return nil, err
 	}
 	session := &Session{peerConnection: peerConnection}
@@ -141,11 +142,13 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	session.VideoTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "kvm")
 	if err != nil {
+		scopedLogger.Warn().Err(err).Msg("Failed to create VideoTrack")
 		return nil, err
 	}
 
 	rtpSender, err := peerConnection.AddTrack(session.VideoTrack)
 	if err != nil {
+		scopedLogger.Warn().Err(err).Msg("Failed to add VideoTrack to PeerConnection")
 		return nil, err
 	}
 
@@ -200,8 +203,9 @@ func newSession(config SessionConfig) (*Session, error) {
 				session.rpcQueue = nil
 			}
 			if session.shouldUmountVirtualMedia {
-				err := rpcUnmountImage()
-				scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")
+				if err := rpcUnmountImage(); err != nil {
+					scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")
+				}
 			}
 			if isConnected {
 				isConnected = false

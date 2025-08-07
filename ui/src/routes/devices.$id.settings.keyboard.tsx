@@ -1,64 +1,44 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect } from "react";
 
-import { KeyboardLedSync, useSettingsStore } from "@/hooks/stores";
+import { useSettingsStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import notifications from "@/notifications";
+import useKeyboardLayout from "@/hooks/useKeyboardLayout";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { keyboardOptions } from "@/keyboardLayouts";
 import { Checkbox } from "@/components/Checkbox";
-
-import { SelectMenuBasic } from "../components/SelectMenuBasic";
+import { SelectMenuBasic } from "@/components/SelectMenuBasic";
+import notifications from "@/notifications";
 
 import { SettingsItem } from "./devices.$id.settings";
 
 export default function SettingsKeyboardRoute() {
-  const keyboardLayout = useSettingsStore(state => state.keyboardLayout);
-  const keyboardLedSync = useSettingsStore(state => state.keyboardLedSync);
-  const showPressedKeys = useSettingsStore(state => state.showPressedKeys);
-  const setKeyboardLayout = useSettingsStore(
-    state => state.setKeyboardLayout,
-  );
-  const setKeyboardLedSync = useSettingsStore(
-    state => state.setKeyboardLedSync,
-  );
-  const setShowPressedKeys = useSettingsStore(
-    state => state.setShowPressedKeys,
-  );
-
-  // this ensures we always get the original en_US if it hasn't been set yet
-  const safeKeyboardLayout = useMemo(() => {
-      if (keyboardLayout && keyboardLayout.length > 0)
-        return keyboardLayout;
-      return "en_US";
-  }, [keyboardLayout]);
-
-  const layoutOptions = keyboardOptions();
-  const ledSyncOptions = [
-    { value: "auto", label: "Automatic" },
-    { value: "browser", label: "Browser Only" },
-    { value: "host", label: "Host Only" },
-  ];
+  const { setKeyboardLayout } = useSettingsStore();
+  const { showPressedKeys, setShowPressedKeys } = useSettingsStore();
+  const { selectedKeyboard, keyboardOptions } = useKeyboardLayout();
 
   const { send } = useJsonRpc();
 
   useEffect(() => {
     send("getKeyboardLayout", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
-      setKeyboardLayout(resp.result as string);
+      const isoCode = resp.result as string;
+      console.log("Fetched keyboard layout from backend:", isoCode);
+      if (isoCode && isoCode.length > 0) {
+        setKeyboardLayout(isoCode);
+      }
     });
   }, [send, setKeyboardLayout]);
 
   const onKeyboardLayoutChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const layout = e.target.value;
-      send("setKeyboardLayout", { layout }, (resp: JsonRpcResponse) => {
+      const isoCode = e.target.value;
+      send("setKeyboardLayout", { layout: isoCode }, resp => {
         if ("error" in resp) {
           notifications.error(
             `Failed to set keyboard layout: ${resp.error.data || "Unknown error"}`,
           );
         }
-        notifications.success("Keyboard layout set successfully");
-        setKeyboardLayout(layout);
+        notifications.success("Keyboard layout set successfully to " + isoCode);
+        setKeyboardLayout(isoCode);
       });
     },
     [send, setKeyboardLayout],
@@ -72,7 +52,6 @@ export default function SettingsKeyboardRoute() {
       />
 
       <div className="space-y-4">
-        { /* this menu item could be renamed to plain "Keyboard layout" in the future, when also the virtual keyboard layout mappings are being implemented */ }
         <SettingsItem
           title="Paste text"
           description="Keyboard layout of target operating system"
@@ -81,9 +60,9 @@ export default function SettingsKeyboardRoute() {
             size="SM"
             label=""
             fullWidth
-            value={safeKeyboardLayout}
+            value={selectedKeyboard.isoCode}
             onChange={onKeyboardLayoutChange}
-            options={layoutOptions}
+            options={keyboardOptions}
           />
         </SettingsItem>
         <p className="text-xs text-slate-600 dark:text-slate-400">
@@ -91,23 +70,6 @@ export default function SettingsKeyboardRoute() {
         </p>
       </div>
 
-      <div className="space-y-4">
-        { /* this menu item could be renamed to plain "Keyboard layout" in the future, when also the virtual keyboard layout mappings are being implemented */ }
-        <SettingsItem
-          title="LED state synchronization"
-          description="Synchronize the LED state of the keyboard with the target device"
-        >
-          <SelectMenuBasic
-            size="SM"
-            label=""
-            fullWidth
-            value={keyboardLedSync}
-            onChange={e => setKeyboardLedSync(e.target.value as KeyboardLedSync)}
-            options={ledSyncOptions}
-          />
-        </SettingsItem>
-      </div>
-      
       <div className="space-y-4">
         <SettingsItem
           title="Show Pressed Keys"

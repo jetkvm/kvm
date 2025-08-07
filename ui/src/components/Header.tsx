@@ -48,7 +48,7 @@ export default function DashboardNavbar({
     navigate("/");
   }, [navigate, setUser]);
 
-  const usbState = useHidStore(state => state.usbState);
+  const { usbState } = useHidStore();
 
   // for testing
   //userEmail = "user@example.org";

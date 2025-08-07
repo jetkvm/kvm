@@ -41,6 +41,11 @@ var defaultUsbGadgetDevices = Devices{
 	MassStorage:   true,
 }
 
+type KeysDownState struct {
+	Modifier byte      `json:"modifier"`
+	Keys     ByteSlice `json:"keys"`
+}
+
 // UsbGadget is a struct that represents a USB gadget.
 type UsbGadget struct {
 	name          string
@@ -60,7 +65,9 @@ type UsbGadget struct {
 	relMouseHidFile *os.File
 	relMouseLock    sync.Mutex
 
-	keyboardState       KeyboardState
+	keyboardState byte          // keyboard latched state (NumLock, CapsLock, ScrollLock, Compose, Kana)
+	keysDownState KeysDownState // keyboard dynamic state (modifier keys and pressed keys)
+
 	keyboardStateLock   sync.Mutex
 	keyboardStateCtx    context.Context
 	keyboardStateCancel context.CancelFunc
@@ -77,6 +84,7 @@ type UsbGadget struct {
 	txLock sync.Mutex
 
 	onKeyboardStateChange *func(state KeyboardState)
+	onKeysDownChange      *func(state KeysDownState)
 
 	log *zerolog.Logger
 
@@ -122,7 +130,8 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		txLock:              sync.Mutex{},
 		keyboardStateCtx:    keyboardCtx,
 		keyboardStateCancel: keyboardCancel,
-		keyboardState:       KeyboardState{},
+		keyboardState:       0,
+		keysDownState:       KeysDownState{Modifier: 0, Keys: []byte{0, 0, 0, 0, 0, 0}}, // must be initialized to hidKeyBufferSize (6) zero bytes
 		enabledDevices:      *enabledDevices,
 		lastUserInput:       time.Now(),
 		log:                 logger,
