@@ -206,6 +206,16 @@ export default function SettingsNetworkRoute() {
   const ipv4mode = watch("ipv4_mode");
   const ipv6mode = watch("ipv6_mode");
 
+  const onDhcpLeaseRenew = () => {
+    send("renewDHCPLease", {}, resp => {
+      if ("error" in resp) {
+        notifications.error("Failed to renew lease: " + resp.error.message);
+      } else {
+        notifications.success("DHCP lease renewed");
+      }
+    });
+  };
+
   return (
     <>
       <FormProvider {...formMethods}>
@@ -496,15 +506,24 @@ export default function SettingsNetworkRoute() {
           </div>
         }
       />
-
       <ConfirmDialog
         open={showRenewLeaseConfirm}
-        title="Renew DHCP lease"
+        title="Renew DHCP Lease"
         variant="warning"
-        confirmText="Renew lease"
-        description="The device may briefly disconnect while requesting a new lease."
+        confirmText="Renew Lease"
+        description={
+          <p>
+            This will request a new IP address from your router. The device may briefly
+            disconnect during the renewal process.
+            <br />
+            <br />
+            If you receive a new IP address,{" "}
+            <strong>you may need to reconnect using the new address</strong>.
+          </p>
+        }
         onConfirm={() => {
           setShowRenewLeaseConfirm(false);
+          onDhcpLeaseRenew();
         }}
         onClose={() => setShowRenewLeaseConfirm(false)}
       />

@@ -29,9 +29,23 @@ export default function DhcpLeaseCard({
     <GridCard>
       <div className="animate-fadeIn p-4 text-black opacity-0 animation-duration-500 dark:text-white">
         <div className="space-y-3">
-          <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            DHCP Lease Information
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              DHCP Lease Information
+            </h3>
+
+            <div>
+              <Button
+                size="XS"
+                theme="light"
+                type="button"
+                className="text-red-500"
+                text="Renew DHCP Lease"
+                LeadingIcon={LuRefreshCcw}
+                onClick={() => setShowRenewLeaseConfirm(true)}
+              />
+            </div>
+          </div>
 
           <div className="flex gap-x-6 gap-y-2">
             <div className="flex-1 space-y-2">
@@ -208,17 +222,6 @@ export default function DhcpLeaseCard({
                 </div>
               )}
             </div>
-          </div>
-
-          <div>
-            <Button
-              size="SM"
-              theme="light"
-              className="text-red-500"
-              text="Renew DHCP Lease"
-              LeadingIcon={LuRefreshCcw}
-              onClick={() => setShowRenewLeaseConfirm(true)}
-            />
           </div>
         </div>
       </div>

@@ -97,6 +97,7 @@ export function ConfirmDialog({
               )}
               <Button
                 size="SM"
+                type="button"
                 theme={buttonTheme}
                 text={isConfirming ? `${confirmText}...` : confirmText}
                 onClick={onConfirm}
