@@ -151,18 +151,6 @@ export default function SettingsNetworkRoute() {
 
       // If custom domain option is selected, use the custom domain as value
       domain: data.domain === "custom" ? customDomain : data.domain,
-      ipv4_static: {
-        ...data.ipv4_static,
-
-        // Remove empty DNS entries
-        dns: data.ipv4_static?.dns.filter((dns: string) => dns.trim() !== ""),
-      },
-      ipv6_static: {
-        ...data.ipv6_static,
-
-        // Remove empty DNS entries
-        dns: data.ipv6_static?.dns.filter((dns: string) => dns.trim() !== ""),
-      },
     } as NetworkSettings;
   };
 
