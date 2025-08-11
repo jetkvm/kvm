@@ -1,13 +1,15 @@
 import { LuPlus, LuX } from "react-icons/lu";
 import { useFieldArray, useFormContext } from "react-hook-form";
 import { useEffect } from "react";
+import validator from "validator";
 
 import { GridCard } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { InputFieldWithLabel } from "@/components/InputField";
+import { NetworkSettings } from "@/hooks/stores";
 
 export default function StaticIpv4Card() {
-  const formMethods = useFormContext();
+  const formMethods = useFormContext<NetworkSettings>();
   const { register, formState, watch } = formMethods;
 
   const { fields, append, remove } = useFieldArray({ name: "ipv4_static.dns" });
@@ -17,6 +19,12 @@ export default function StaticIpv4Card() {
   }, [append, fields.length]);
 
   const dns = watch("ipv4_static.dns");
+
+  const validate = (value: string) => {
+    if (!validator.isIP(value)) return "Invalid IP address";
+    return true;
+  };
+
   return (
     <GridCard>
       <div className="animate-fadeIn p-4 text-black opacity-0 animation-duration-500 dark:text-white">
@@ -31,7 +39,8 @@ export default function StaticIpv4Card() {
               type="text"
               size="SM"
               placeholder="192.168.1.100"
-              {...register("ipv4_static.address")}
+              {...register("ipv4_static.address", { validate })}
+              error={formState.errors.ipv4_static?.address?.message}
             />
 
             <InputFieldWithLabel
@@ -39,7 +48,8 @@ export default function StaticIpv4Card() {
               type="text"
               size="SM"
               placeholder="255.255.255.0"
-              {...register("ipv4_static.netmask")}
+              {...register("ipv4_static.netmask", { validate })}
+              error={formState.errors.ipv4_static?.netmask?.message}
             />
           </div>
 
@@ -48,7 +58,8 @@ export default function StaticIpv4Card() {
             type="text"
             size="SM"
             placeholder="192.168.1.1"
-            {...register("ipv4_static.gateway")}
+            {...register("ipv4_static.gateway", { validate })}
+            error={formState.errors.ipv4_static?.gateway?.message}
           />
 
           {/* DNS server fields */}
@@ -63,14 +74,7 @@ export default function StaticIpv4Card() {
                         type="text"
                         size="SM"
                         placeholder="1.1.1.1"
-                        {...register(`ipv4_static.dns.${index}`, {
-                          // validate: (value: string) => {
-                          //   if (value === "") return true;
-                          //   if (!validator.isIP(value)) return "Invalid IP address";
-                          //   return true;
-                          // },
-                        })}
-                        // @ts-expect-error - dns is not a field in the form
+                        {...register(`ipv4_static.dns.${index}`, { validate })}
                         error={formState.errors.ipv4_static?.dns?.[index]?.message}
                       />
                     </div>
