@@ -47,6 +47,7 @@ export default function StaticIpv6Card() {
                 return true;
               },
             })}
+            // @ts-expect-error - address is not a field in the form
             error={formState.errors.ipv6_static?.address?.message}
           />
 
@@ -77,6 +78,7 @@ export default function StaticIpv6Card() {
                             return true;
                           },
                         })}
+                        // @ts-expect-error - dns is not a field in the form
                         error={formState.errors.ipv6_static?.dns?.[index]?.message}
                       />
                     </div>

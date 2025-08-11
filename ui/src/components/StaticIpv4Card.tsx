@@ -70,6 +70,7 @@ export default function StaticIpv4Card() {
                           //   return true;
                           // },
                         })}
+                        // @ts-expect-error - dns is not a field in the form
                         error={formState.errors.ipv4_static?.dns?.[index]?.message}
                       />
                     </div>
