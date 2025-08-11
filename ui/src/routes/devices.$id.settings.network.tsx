@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { LuEthernetPort } from "react-icons/lu";
@@ -83,6 +83,13 @@ export default function SettingsNetworkRoute() {
 
   // Confirm dialog
   const [showRenewLeaseConfirm, setShowRenewLeaseConfirm] = useState(false);
+  const initialSettingsRef = useRef<NetworkSettings | null>(null);
+
+  const [showCriticalSettingsConfirm, setShowCriticalSettingsConfirm] = useState(false);
+  const [stagedSettings, setStagedSettings] = useState<NetworkSettings | null>(null);
+  const [criticalChanges, setCriticalChanges] = useState<
+    { label: string; from: string; to: string }[]
+  >([]);
 
   const fetchNetworkData = useCallback(async () => {
     try {
@@ -116,6 +123,7 @@ export default function SettingsNetworkRoute() {
         },
       };
 
+      initialSettingsRef.current = settingsWithDefaults;
       return { settings: settingsWithDefaults, state };
     } catch (err) {
       notifications.error(err instanceof Error ? err.message : "Unknown error");
@@ -137,10 +145,8 @@ export default function SettingsNetworkRoute() {
     },
   });
 
-  const { register, handleSubmit, watch, formState, reset } = formMethods;
-
-  const onSubmit = async (data: FieldValues) => {
-    const settings = {
+  const prepareSettings = (data: FieldValues) => {
+    return {
       ...data,
 
       // If custom domain option is selected, use the custom domain as value
@@ -157,8 +163,12 @@ export default function SettingsNetworkRoute() {
         // Remove empty DNS entries
         dns: data.ipv6_static?.dns.filter((dns: string) => dns.trim() !== ""),
       },
-    };
+    } as NetworkSettings;
+  };
 
+  const { register, handleSubmit, watch, formState, reset } = formMethods;
+
+  const onSubmit = async (settings: NetworkSettings) => {
     send("setNetworkSettings", { settings }, async resp => {
       if ("error" in resp) {
         return notifications.error(
@@ -174,12 +184,44 @@ export default function SettingsNetworkRoute() {
     });
   };
 
+  const onSubmitGate = async (data: FieldValues) => {
+    const settings = prepareSettings(data);
+    const dirty = formState.dirtyFields;
+
+    // These fields will prompt a confirm dialog, all else save immediately
+    const criticalFields = [
+      // Label is for the UI, key is the internal key of the field
+      { label: "IPv4 mode", key: "ipv4_mode" },
+      { label: "IPv6 mode", key: "ipv6_mode" },
+    ] as { label: string; key: keyof NetworkSettings }[];
+
+    const criticalChanged = criticalFields.some(field => dirty[field.key]);
+
+    // If no critical fields are changed, save immediately
+    if (!criticalChanged) return onSubmit(settings);
+
+    const changes = new Set<{ label: string; from: string; to: string }>();
+    criticalFields.forEach(field => {
+      const { key, label } = field;
+      if (dirty[key]) {
+        const from = initialSettingsRef?.current?.[key] as string;
+        const to = data[key] as string;
+        changes.add({ label, from, to });
+      }
+    });
+
+    setStagedSettings(settings);
+    setCriticalChanges(Array.from(changes));
+    setShowCriticalSettingsConfirm(true);
+  };
+
   const ipv4mode = watch("ipv4_mode");
   const ipv6mode = watch("ipv6_mode");
+
   return (
     <>
       <FormProvider {...formMethods}>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmitGate)} className="space-y-4">
           <SettingsPageHeader
             title="Network"
             description="Configure the network settings for the device"
@@ -326,6 +368,12 @@ export default function SettingsNetworkRoute() {
                   </GridCard>
                 ) : ipv4mode === "static" ? (
                   <StaticIpv4Card />
+                ) : ipv4mode === "dhcp" && !!formState.dirtyFields.ipv4_mode ? (
+                  <EmptyCard
+                    IconElm={LuEthernetPort}
+                    headline="Pending DHCP IPv4 mode change"
+                    description="Save settings to enable DHCP mode and view lease information"
+                  />
                 ) : ipv4mode === "dhcp" ? (
                   <DhcpLeaseCard
                     networkState={networkState}
@@ -393,10 +441,80 @@ export default function SettingsNetworkRoute() {
           </div>
         </form>
       </FormProvider>
+
+      {/* Critical change confirm */}
+      <ConfirmDialog
+        open={showCriticalSettingsConfirm}
+        title="Apply network settings"
+        variant="warning"
+        confirmText="Apply changes"
+        onConfirm={() => {
+          setShowCriticalSettingsConfirm(false);
+          if (stagedSettings) onSubmit(stagedSettings);
+
+          // Wait for the close animation to finish before resetting the staged settings
+          setTimeout(() => {
+            setStagedSettings(null);
+            setCriticalChanges([]);
+          }, 500);
+        }}
+        onClose={() => {
+          // close();
+          setShowCriticalSettingsConfirm(false);
+        }}
+        isConfirming={formState.isSubmitting}
+        description={
+          <div className="space-y-4">
+            <p>
+              This will update the device&apos;s network configuration and may briefly
+              disconnect your session.
+            </p>
+
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+              <div className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+                Pending changes
+              </div>
+              <dl className="grid grid-cols-1 gap-y-2">
+                {criticalChanges.map((c, idx) => (
+                  <div key={idx} className="w-full not-last:pb-2">
+                    <div className="flex items-center gap-2 gap-x-8">
+                      <dt className="text-sm text-slate-500 dark:text-slate-400">
+                        {c.label}
+                      </dt>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-sm bg-slate-200 px-1.5 py-0.5 text-sm font-medium text-slate-900 dark:bg-slate-700 dark:text-slate-100">
+                          {c.from || "—"}
+                        </span>
+
+                        <span className="text-sm text-slate-500 dark:text-slate-400">
+                          →
+                        </span>
+
+                        <span className="rounded-sm bg-slate-200 px-1.5 py-0.5 text-sm font-medium text-slate-900 dark:bg-slate-700 dark:text-slate-100">
+                          {c.to}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </dl>
+            </div>
+
+            <p className="text-sm">
+              If the network settings are invalid,{" "}
+              <strong>the device may become unreachable</strong> and require a factory
+              reset to restore connectivity.
+            </p>
+          </div>
+        }
+      />
+
       <ConfirmDialog
         open={showRenewLeaseConfirm}
-        title="Renew DHCP Lease"
-        description="Are you sure you want to renew the DHCP lease? This may temporarily disconnect the device."
+        title="Renew DHCP lease"
+        variant="warning"
+        confirmText="Renew lease"
+        description="The device may briefly disconnect while requesting a new lease."
         onConfirm={() => {
           setShowRenewLeaseConfirm(false);
         }}
