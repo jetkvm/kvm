@@ -5,6 +5,8 @@ import { GridCard } from "@/components/Card";
 import { LifeTimeLabel } from "@/routes/devices.$id.settings.network";
 import { NetworkState } from "@/hooks/stores";
 
+import EmptyCard from "./EmptyCard";
+
 export default function DhcpLeaseCard({
   networkState,
   setShowRenewLeaseConfirm,
@@ -12,6 +14,17 @@ export default function DhcpLeaseCard({
   networkState: NetworkState | null;
   setShowRenewLeaseConfirm: (show: boolean) => void;
 }) {
+  const isDhcpLeaseEmpty = Object.keys(networkState?.dhcp_lease || {}).length === 0;
+
+  if (isDhcpLeaseEmpty) {
+    return (
+      <EmptyCard
+        headline="No DHCP Lease information"
+        description="We haven't received any DHCP lease information from the device yet."
+      />
+    );
+  }
+
   return (
     <GridCard>
       <div className="animate-fadeIn p-4 text-black opacity-0 animation-duration-500 dark:text-white">
