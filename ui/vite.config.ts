@@ -17,11 +17,7 @@ export default defineConfig(({ mode, command }) => {
   const { JETKVM_PROXY_URL, USE_SSL } = process.env;
   const useSSL = USE_SSL === "true";
 
-  const plugins = [
-    tailwindcss(),
-    tsconfigPaths(),
-    react()
-  ];
+  const plugins = [tailwindcss(), tsconfigPaths(), react()];
   if (useSSL) {
     plugins.push(basicSsl());
   }
@@ -41,6 +37,8 @@ export default defineConfig(({ mode, command }) => {
             "/storage": JETKVM_PROXY_URL,
             "/cloud": JETKVM_PROXY_URL,
             "/developer": JETKVM_PROXY_URL,
+            "/microphone": JETKVM_PROXY_URL,
+            "/audio": JETKVM_PROXY_URL,
           }
         : undefined,
     },
