@@ -7,7 +7,7 @@ setup_toolchain:
 
 # Build ALSA and Opus static libs for ARM in $HOME/.jetkvm/audio-libs
 build_audio_deps: setup_toolchain
-	bash tools/build_audio_deps.sh
+	bash tools/build_audio_deps.sh $(ALSA_VERSION) $(OPUS_VERSION)
 
 # Prepare everything needed for local development (toolchain + audio deps)
 dev_env: build_audio_deps
@@ -21,6 +21,10 @@ BUILDTS   ?= $(shell date -u +%s)
 REVISION  ?= $(shell git rev-parse HEAD)
 VERSION_DEV ?= 0.4.7-dev$(shell date +%Y%m%d%H%M)
 VERSION ?= 0.4.6
+
+# Audio library versions
+ALSA_VERSION ?= 1.2.14
+OPUS_VERSION ?= 1.5.2
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
@@ -47,8 +51,8 @@ build_dev: build_audio_deps hash_resource
 	GOOS=linux GOARCH=arm GOARM=7 \
 	CC=$(TOOLCHAIN_DIR)/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc \
 	CGO_ENABLED=1 \
-	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-1.2.14/include -I$(AUDIO_LIBS_DIR)/opus-1.5.2/include -I$(AUDIO_LIBS_DIR)/opus-1.5.2/celt" \
-	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-1.2.14/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-1.5.2/.libs -lopus -lm -ldl -static" \
+	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
+	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
 	go build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
 		$(GO_RELEASE_BUILD_ARGS) \
@@ -62,7 +66,7 @@ build_gotestsum:
 	$(GO_CMD) install gotest.tools/gotestsum@latest
 	cp $(shell $(GO_CMD) env GOPATH)/bin/linux_arm/gotestsum $(BIN_DIR)/gotestsum
 
-build_dev_test: build_test2json build_gotestsum
+build_dev_test: build_audio_deps build_test2json build_gotestsum
 # collect all directories that contain tests
 	@echo "Building tests for devices ..."
 	@rm -rf $(BIN_DIR)/tests && mkdir -p $(BIN_DIR)/tests
@@ -72,7 +76,12 @@ build_dev_test: build_test2json build_gotestsum
 		test_pkg_name=$$(echo $$test | sed 's/^.\///g'); \
 		test_pkg_full_name=$(KVM_PKG_NAME)/$$(echo $$test | sed 's/^.\///g'); \
 		test_filename=$$(echo $$test_pkg_name | sed 's/\//__/g')_test; \
-		$(GO_CMD) test -v \
+		GOOS=linux GOARCH=arm GOARM=7 \
+		CC=$(TOOLCHAIN_DIR)/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc \
+		CGO_ENABLED=1 \
+		CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
+		CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
+		go test -v \
 			-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
 			$(GO_BUILD_ARGS) \
 			-c -o $(BIN_DIR)/tests/$$test_filename $$test; \
@@ -97,8 +106,8 @@ build_release: frontend build_audio_deps hash_resource
 	GOOS=linux GOARCH=arm GOARM=7 \
 	CC=$(TOOLCHAIN_DIR)/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc \
 	CGO_ENABLED=1 \
-	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-1.2.14/include -I$(AUDIO_LIBS_DIR)/opus-1.5.2/include -I$(AUDIO_LIBS_DIR)/opus-1.5.2/celt" \
-	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-1.2.14/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-1.5.2/.libs -lopus -lm -ldl -static" \
+	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
+	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
 	go build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION)" \
 		$(GO_RELEASE_BUILD_ARGS) \
