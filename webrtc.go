@@ -125,6 +125,9 @@ func newSession(config SessionConfig) (*Session, error) {
 			triggerOTAStateUpdate()
 			triggerVideoStateUpdate()
 			triggerUSBStateUpdate()
+		case "hid":
+			session.HidChannel = d
+			d.OnMessage(handleHidMessage)
 		case "terminal":
 			handleTerminalChannel(d)
 		case "serial":

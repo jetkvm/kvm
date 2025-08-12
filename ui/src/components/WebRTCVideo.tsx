@@ -50,7 +50,7 @@ export default function WebRTCVideo() {
 
   // RTC related states
   const { peerConnection } = useRTCStore();
-
+  const hidDataChannel = useRTCStore(state => state.hidDataChannel);
   // HDMI and UI states
   const hdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const isVideoLoading = !isPlaying;
@@ -243,11 +243,21 @@ export default function WebRTCVideo() {
   const sendAbsMouseMovement = useCallback(
     (x: number, y: number, buttons: number) => {
       if (settings.mouseMode !== "absolute") return;
-      send("absMouseReport", { x, y, buttons });
+      if (hidDataChannel?.readyState === "open") {
+        const buffer = new ArrayBuffer(6);
+        const view = new DataView(buffer);
+        view.setUint8(0, 8); // type
+        view.setUint16(1, x, true); // x, little-endian
+        view.setUint16(3, y, true); // y, little-endian
+        view.setUint8(5, buttons); // buttons
+        hidDataChannel.send(buffer);
+      } else {
+        send("absMouseReport", { x, y, buttons });
+      }
       // We set that for the debug info bar
       setMousePosition(x, y);
     },
-    [send, setMousePosition, settings.mouseMode],
+    [hidDataChannel?.readyState, send, setMousePosition, settings.mouseMode],
   );
 
   const absMouseMoveHandler = useCallback(

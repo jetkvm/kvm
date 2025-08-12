@@ -265,6 +265,8 @@ func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) (KeysDownState, e
 	defer u.keyboardLock.Unlock()
 	defer u.resetUserInputTime()
 
+	u.log.Trace().Uint8("modifier", modifier).Bytes("keys", keys).Msg("KeyboardReport")
+
 	if len(keys) > hidKeyBufferSize {
 		keys = keys[:hidKeyBufferSize]
 	}

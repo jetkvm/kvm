@@ -159,10 +159,10 @@ else
 	msg_info "▶ Building development binary"
 	make build_dev
 	
-	# Kill any existing instances of the application
+	msg_info "▶ Killing any existing instances of the application"
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
 	
-	# Copy the binary to the remote host
+	msg_info "▶ Copying binary to remote host"
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
 	
 	if [ "$RESET_USB_HID_DEVICE" = true ]; then
@@ -173,7 +173,7 @@ else
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "ls /sys/class/udc > /sys/kernel/config/usb_gadget/jetkvm/UDC"
 	fi
 	
-	# Deploy and run the application on the remote host
+	msg_info "▶ Deploying and running the application on the remote host"
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << EOF
 set -e
 

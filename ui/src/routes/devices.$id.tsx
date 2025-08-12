@@ -482,6 +482,12 @@ export default function KvmIdRoute() {
       setRpcDataChannel(rpcDataChannel);
     };
 
+    const hidDataChannel = pc.createDataChannel("hid");
+    hidDataChannel.binaryType = "arraybuffer";
+    hidDataChannel.onopen = () => {
+      setHidDataChannel(hidDataChannel);
+    };
+
     setPeerConnection(pc);
   }, [
     cleanupAndStopReconnecting,
@@ -492,6 +498,7 @@ export default function KvmIdRoute() {
     setPeerConnection,
     setPeerConnectionState,
     setRpcDataChannel,
+    setHidDataChannel,
     setTransceiver,
   ]);
 

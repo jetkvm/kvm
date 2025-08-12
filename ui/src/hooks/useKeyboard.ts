@@ -25,6 +25,15 @@ export default function useKeyboard() {
   // and resetting keyboard state. It sends the keys currently pressed and the modifier state.
   // The device will respond with the keysDownState if it supports the keyPressReport API
   // or just accept the state if it does not support (returning no result)
+  const [send] = useJsonRpc();
+
+  const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
+  const hidDataChannel = useRTCStore(state => state.hidDataChannel);
+
+  const updateActiveKeysAndModifiers = useHidStore(
+    state => state.updateActiveKeysAndModifiers,
+  );
+
   const sendKeyboardEvent = useCallback(
     async (state: KeysDownState) => {
       if (rpcDataChannel?.readyState !== "open") return;
@@ -82,6 +91,29 @@ export default function useKeyboard() {
           }
         }
       });
+    (keys: number[], modifiers: number[]) => {
+      const rpcChannelReady = rpcDataChannel?.readyState === "open";
+      const hidChannelReady = hidDataChannel?.readyState === "open";
+      if (!rpcChannelReady && !hidChannelReady) return;
+
+      const accModifier = modifiers.reduce((acc, val) => acc + val, 0);
+
+      if (hidChannelReady) {
+        if (accModifier > 0) {
+          hidDataChannel?.send(new Uint8Array([1, accModifier, ...keys]));
+        } else {
+          if (keys.length > 0) {
+            hidDataChannel?.send(new Uint8Array([2, ...keys]));
+          } else {
+            hidDataChannel?.send(new Uint8Array([3]));
+          }
+        }
+      } else {
+        send("keyboardReport", { keys, modifier: accModifier });
+      }
+
+      // We do this for the info bar to display the currently pressed keys for the user
+      updateActiveKeysAndModifiers({ keys: keys, modifiers: modifiers });
     },
     [rpcDataChannel?.readyState, send, setkeyPressReportApiAvailable, setKeysDownState],
   );
@@ -97,6 +129,17 @@ export default function useKeyboard() {
       keysDownState.modifier = 0;
       sendKeyboardEvent(keysDownState);
     }, [keysDownState, sendKeyboardEvent]);
+    [
+      hidDataChannel?.readyState,
+      rpcDataChannel?.readyState,
+      send,
+      updateActiveKeysAndModifiers,
+    ],
+  );
+
+  const resetKeyboardState = useCallback(() => {
+    sendKeyboardEvent([], []);
+  }, [sendKeyboardEvent]);
 
   // executeMacro is used to execute a macro consisting of multiple steps.
   // Each step can have multiple keys, multiple modifiers and a delay.

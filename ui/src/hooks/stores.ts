@@ -142,6 +142,9 @@ export interface RTCState {
 
   terminalChannel: RTCDataChannel | null;
   setTerminalChannel: (channel: RTCDataChannel) => void;
+
+  hidDataChannel: RTCDataChannel | null;
+  setHidDataChannel: (channel: RTCDataChannel) => void;
 }
 
 export const useRTCStore = create<RTCState>(set => ({
@@ -150,6 +153,9 @@ export const useRTCStore = create<RTCState>(set => ({
 
   rpcDataChannel: null,
   setRpcDataChannel: (channel: RTCDataChannel) => set({ rpcDataChannel: channel }),
+
+  hidDataChannel: null,
+  setHidDataChannel: channel => set({ hidDataChannel: channel }),
 
   transceiver: null,
   setTransceiver: (transceiver: RTCRtpTransceiver) => set({ transceiver }),
