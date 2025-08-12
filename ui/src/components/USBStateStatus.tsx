@@ -30,7 +30,7 @@ export default function USBStateStatus({
   peerConnectionState,
 }: {
   state: USBStates;
-  peerConnectionState: RTCPeerConnectionState | null;
+  peerConnectionState?: RTCPeerConnectionState | null;
 }) {
   const StatusCardProps: StatusProps = {
     configured: {

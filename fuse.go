@@ -37,7 +37,7 @@ func (f *WebRTCStreamFile) Getattr(ctx context.Context, fh fs.FileHandle, out *f
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	out.Attr = f.Attr
-	out.Attr.Size = f.size
+	out.Size = f.size
 	return fs.OK
 }
 
@@ -103,7 +103,7 @@ func RunFuseServer() {
 	var err error
 	fuseServer, err = fs.Mount(fuseMountPoint, &FuseRoot{}, opts)
 	if err != nil {
-		logger.Warnf("failed to mount fuse: %v", err)
+		logger.Warn().Err(err).Msg("failed to mount fuse")
 	}
 	fuseServer.Wait()
 }

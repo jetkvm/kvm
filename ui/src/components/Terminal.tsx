@@ -61,28 +61,29 @@ function Terminal({
   dataChannel,
   type,
 }: {
-  title: string;
-  dataChannel: RTCDataChannel;
-  type: AvailableTerminalTypes;
+  readonly title: string;
+  readonly dataChannel: RTCDataChannel;
+  readonly type: AvailableTerminalTypes;
 }) {
   const enableTerminal = useUiStore(state => state.terminalType == type);
   const setTerminalType = useUiStore(state => state.setTerminalType);
-  const setDisableKeyboardFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
+  const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
 
   const { instance, ref } = useXTerm({ options: TERMINAL_CONFIG });
 
   useEffect(() => {
     setTimeout(() => {
-      setDisableKeyboardFocusTrap(enableTerminal);
+      setDisableVideoFocusTrap(enableTerminal);
     }, 500);
 
     return () => {
-      setDisableKeyboardFocusTrap(false);
+      setDisableVideoFocusTrap(false);
     };
-  }, [enableTerminal, instance, ref, setDisableKeyboardFocusTrap, type]);
+  }, [enableTerminal, setDisableVideoFocusTrap]);
 
   const readyState = dataChannel.readyState;
   useEffect(() => {
+    if (!instance) return;
     if (readyState !== "open") return;
 
     const abortController = new AbortController();
@@ -93,11 +94,10 @@ function Terminal({
         // Handle binary data differently based on browser implementation
         // Firefox sends data as blobs, chrome sends data as arraybuffer
         if (binaryType === "arraybuffer") {
-          instance?.write(new Uint8Array(e.data));
+          instance.write(new Uint8Array(e.data));
         } else if (binaryType === "blob") {
           const reader = new FileReader();
           reader.onload = () => {
-            if (!instance) return;
             if (!reader.result) return;
             instance.write(new Uint8Array(reader.result as ArrayBuffer));
           };
@@ -107,48 +107,48 @@ function Terminal({
       { signal: abortController.signal },
     );
 
-    const onDataHandler = instance?.onData(data => {
+    const onDataHandler = instance.onData(data => {
       dataChannel.send(data);
     });
 
     // Setup escape key handler
-    const onKeyHandler = instance?.onKey(e => {
+    const onKeyHandler = instance.onKey(e => {
       const { domEvent } = e;
       if (domEvent.key === "Escape") {
         setTerminalType("none");
-        setDisableKeyboardFocusTrap(false);
+        setDisableVideoFocusTrap(false);
         domEvent.preventDefault();
       }
     });
 
     // Send initial terminal size
     if (dataChannel.readyState === "open") {
-      dataChannel.send(JSON.stringify({ rows: instance?.rows, cols: instance?.cols }));
+      dataChannel.send(JSON.stringify({ rows: instance.rows, cols: instance.cols }));
     }
 
     return () => {
       abortController.abort();
-      onDataHandler?.dispose();
-      onKeyHandler?.dispose();
+      onDataHandler.dispose();
+      onKeyHandler.dispose();
     };
-  }, [dataChannel, instance, readyState, setDisableKeyboardFocusTrap, setTerminalType]);
+  }, [dataChannel, instance, readyState, setDisableVideoFocusTrap, setTerminalType]);
 
   useEffect(() => {
     if (!instance) return;
 
     // Load the fit addon
     const fitAddon = new FitAddon();
-    instance?.loadAddon(fitAddon);
+    instance.loadAddon(fitAddon);
 
-    instance?.loadAddon(new ClipboardAddon());
-    instance?.loadAddon(new Unicode11Addon());
-    instance?.loadAddon(new WebLinksAddon());
+    instance.loadAddon(new ClipboardAddon());
+    instance.loadAddon(new Unicode11Addon());
+    instance.loadAddon(new WebLinksAddon());
     instance.unicode.activeVersion = "11";
 
     if (isWebGl2Supported) {
       const webGl2Addon = new WebglAddon();
       webGl2Addon.onContextLoss(() => webGl2Addon.dispose());
-      instance?.loadAddon(webGl2Addon);
+      instance.loadAddon(webGl2Addon);
     }
 
     const handleResize = () => fitAddon.fit();
@@ -158,13 +158,11 @@ function Terminal({
     return () => {
       window.removeEventListener("resize", handleResize);
     };
-  }, [ref, instance, dataChannel]);
+  }, [instance]);
 
   return (
     <div
-      onKeyDown={e => {
-        e.stopPropagation();
-      }}
+      onKeyDown={e => e.stopPropagation()}
       onKeyUp={e => e.stopPropagation()}
     >
       <div>
@@ -173,12 +171,12 @@ function Terminal({
             [
               // Base styles
               "fixed bottom-0 w-full transform transition duration-500 ease-in-out",
-              "translate-y-[0px]",
+              "-translate-y-[0px]",
             ],
             {
               "pointer-events-none translate-y-[500px] opacity-100 transition duration-300":
                 !enableTerminal,
-              "pointer-events-auto translate-y-[0px] opacity-100 transition duration-300":
+              "pointer-events-auto -translate-y-[0px] opacity-100 transition duration-300":
                 enableTerminal,
             },
           )}

@@ -11,9 +11,10 @@ var absoluteMouseConfig = gadgetConfigItem{
 	path:       []string{"functions", "hid.usb1"},
 	configPath: []string{"hid.usb1"},
 	attrs: gadgetAttributes{
-		"protocol":      "2",
-		"subclass":      "1",
-		"report_length": "6",
+		"protocol":        "2",
+		"subclass":        "0",
+		"report_length":   "6",
+		"no_out_endpoint": "1",
 	},
 	reportDesc: absoluteMouseCombinedReportDesc,
 }
@@ -55,6 +56,8 @@ var absoluteMouseCombinedReportDesc = []byte{
 	0x09, 0x38, //     Usage (Wheel)
 	0x15, 0x81, //     Logical Minimum (-127)
 	0x25, 0x7F, //     Logical Maximum (127)
+	0x35, 0x00, //     Physical Minimum (0) = Reset Physical Minimum
+	0x45, 0x00, //     Physical Maximum (0) = Reset Physical Maximum
 	0x75, 0x08, //     Report Size (8)
 	0x95, 0x01, //     Report Count (1)
 	0x81, 0x06, //     Input (Data, Var, Rel)
@@ -73,11 +76,12 @@ func (u *UsbGadget) absMouseWriteHidFile(data []byte) error {
 
 	_, err := u.absMouseHidFile.Write(data)
 	if err != nil {
-		u.log.Errorf("failed to write to hidg1: %w", err)
+		u.logWithSuppression("absMouseWriteHidFile", 100, u.log, err, "failed to write to hidg1")
 		u.absMouseHidFile.Close()
 		u.absMouseHidFile = nil
 		return err
 	}
+	u.resetLogSuppressionCounter("absMouseWriteHidFile")
 	return nil
 }
 
@@ -105,23 +109,15 @@ func (u *UsbGadget) AbsMouseWheelReport(wheelY int8) error {
 	u.absMouseLock.Lock()
 	defer u.absMouseLock.Unlock()
 
-	// Accumulate the wheelY value
-	u.absMouseAccumulatedWheelY += float64(wheelY) / 8.0
-
-	// Only send a report if the accumulated value is significant
-	if abs(u.absMouseAccumulatedWheelY) < 1.0 {
+	// Only send a report if the value is non-zero
+	if wheelY == 0 {
 		return nil
 	}
 
-	scaledWheelY := int8(u.absMouseAccumulatedWheelY)
-
 	err := u.absMouseWriteHidFile([]byte{
-		2,                  // Report ID 2
-		byte(scaledWheelY), // Scaled Wheel Y (signed)
+		2,            // Report ID 2
+		byte(wheelY), // Wheel Y (signed)
 	})
-
-	// Reset the accumulator, keeping any remainder
-	u.absMouseAccumulatedWheelY -= float64(scaledWheelY)
 
 	u.resetUserInputTime()
 	return err

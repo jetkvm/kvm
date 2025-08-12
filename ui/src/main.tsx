@@ -17,7 +17,7 @@ import AdoptRoute from "@routes/adopt";
 import SignupRoute from "@routes/signup";
 import LoginRoute from "@routes/login";
 import SetupRoute from "@routes/devices.$id.setup";
-import DevicesRoute, { loader as DeviceListLoader } from "@routes/devices";
+import DevicesRoute from "@routes/devices";
 import DeviceRoute, { LocalDevice } from "@routes/devices.$id";
 import Card from "@components/Card";
 import DevicesAlreadyAdopted from "@routes/devices.already-adopted";
@@ -32,17 +32,23 @@ import { CLOUD_API, DEVICE_API } from "./ui.config";
 import OtherSessionRoute from "./routes/devices.$id.other-session";
 import MountRoute from "./routes/devices.$id.mount";
 import * as SettingsRoute from "./routes/devices.$id.settings";
-import SettingsKeyboardMouseRoute from "./routes/devices.$id.settings.mouse";
+import SettingsMouseRoute from "./routes/devices.$id.settings.mouse";
+import SettingsKeyboardRoute from "./routes/devices.$id.settings.keyboard";
 import api from "./api";
 import * as SettingsIndexRoute from "./routes/devices.$id.settings._index";
 import SettingsAdvancedRoute from "./routes/devices.$id.settings.advanced";
-import * as SettingsAccessIndexRoute from "./routes/devices.$id.settings.access._index";
+import SettingsAccessIndexRoute from "./routes/devices.$id.settings.access._index";
 import SettingsHardwareRoute from "./routes/devices.$id.settings.hardware";
 import SettingsVideoRoute from "./routes/devices.$id.settings.video";
 import SettingsAppearanceRoute from "./routes/devices.$id.settings.appearance";
 import * as SettingsGeneralIndexRoute from "./routes/devices.$id.settings.general._index";
+import SettingsGeneralRebootRoute from "./routes/devices.$id.settings.general.reboot";
 import SettingsGeneralUpdateRoute from "./routes/devices.$id.settings.general.update";
+import SettingsNetworkRoute from "./routes/devices.$id.settings.network";
 import SecurityAccessLocalAuthRoute from "./routes/devices.$id.settings.access.local-auth";
+import SettingsMacrosRoute from "./routes/devices.$id.settings.macros";
+import SettingsMacrosAddRoute from "./routes/devices.$id.settings.macros.add";
+import SettingsMacrosEditRoute from "./routes/devices.$id.settings.macros.edit";
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
@@ -136,6 +142,10 @@ if (isOnDevice) {
                   element: <SettingsGeneralIndexRoute.default />,
                 },
                 {
+                  path: "reboot",
+                  element: <SettingsGeneralRebootRoute />,
+                },
+                {
                   path: "update",
                   element: <SettingsGeneralUpdateRoute />,
                 },
@@ -143,7 +153,11 @@ if (isOnDevice) {
             },
             {
               path: "mouse",
-              element: <SettingsKeyboardMouseRoute />,
+              element: <SettingsMouseRoute />,
+            },
+            {
+              path: "keyboard",
+              element: <SettingsKeyboardRoute />,
             },
             {
               path: "advanced",
@@ -154,11 +168,15 @@ if (isOnDevice) {
               element: <SettingsHardwareRoute />,
             },
             {
+              path: "network",
+              element: <SettingsNetworkRoute />,
+            },
+            {
               path: "access",
               children: [
                 {
                   index: true,
-                  element: <SettingsAccessIndexRoute.default />,
+                  element: <SettingsAccessIndexRoute />,
                   loader: SettingsAccessIndexRoute.loader,
                 },
                 {
@@ -174,6 +192,23 @@ if (isOnDevice) {
             {
               path: "appearance",
               element: <SettingsAppearanceRoute />,
+            },
+            {
+              path: "macros",
+              children: [
+                {
+                  index: true,
+                  element: <SettingsMacrosRoute />,
+                },
+                {
+                  path: "add",
+                  element: <SettingsMacrosAddRoute />,
+                },
+                {
+                  path: ":macroId/edit",
+                  element: <SettingsMacrosEditRoute />,
+                },
+              ],
             },
           ],
         },
@@ -251,7 +286,11 @@ if (isOnDevice) {
                     },
                     {
                       path: "mouse",
-                      element: <SettingsKeyboardMouseRoute />,
+                      element: <SettingsMouseRoute />,
+                    },
+                    {
+                      path: "keyboard",
+                      element: <SettingsKeyboardRoute />,
                     },
                     {
                       path: "advanced",
@@ -262,11 +301,15 @@ if (isOnDevice) {
                       element: <SettingsHardwareRoute />,
                     },
                     {
+                      path: "network",
+                      element: <SettingsNetworkRoute />,
+                    },
+                    {
                       path: "access",
                       children: [
                         {
                           index: true,
-                          element: <SettingsAccessIndexRoute.default />,
+                          element: <SettingsAccessIndexRoute />,
                           loader: SettingsAccessIndexRoute.loader,
                         },
                         {
@@ -282,6 +325,23 @@ if (isOnDevice) {
                     {
                       path: "appearance",
                       element: <SettingsAppearanceRoute />,
+                    },
+                    {
+                      path: "macros",
+                      children: [
+                        {
+                          index: true,
+                          element: <SettingsMacrosRoute />,
+                        },
+                        {
+                          path: "add",
+                          element: <SettingsMacrosAddRoute />,
+                        },
+                        {
+                          path: ":macroId/edit",
+                          element: <SettingsMacrosEditRoute />,
+                        },
+                      ],
                     },
                   ],
                 },
@@ -299,7 +359,11 @@ if (isOnDevice) {
               loader: DeviceIdRename.loader,
               action: DeviceIdRename.action,
             },
-            { path: "devices", element: <DevicesRoute />, loader: DeviceListLoader },
+            {
+              path: "devices",
+              element: <DevicesRoute />,
+              loader: DevicesRoute.loader
+            },
           ],
         },
       ],
@@ -314,7 +378,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <Notifications
         toastOptions={{
           className:
-            "rounded border-none bg-white text-black shadow outline outline-1 outline-slate-800/30",
+            "rounded-sm border-none bg-white text-black shadow-sm outline-1 outline-slate-800/30",
         }}
         max={2}
       />

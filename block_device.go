@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/pojntfx/go-nbd/pkg/client"
 	"github.com/pojntfx/go-nbd/pkg/server"
+	"github.com/rs/zerolog"
 )
 
 type remoteImageBackend struct {
@@ -16,8 +16,8 @@ type remoteImageBackend struct {
 
 func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 	virtualMediaStateMutex.RLock()
-	logger.Debugf("currentVirtualMediaState is %v", currentVirtualMediaState)
-	logger.Debugf("read size: %d, off: %d", len(p), off)
+	logger.Debug().Interface("currentVirtualMediaState", currentVirtualMediaState).Msg("currentVirtualMediaState")
+	logger.Debug().Int64("read size", int64(len(p))).Int64("off", off).Msg("read size and off")
 	if currentVirtualMediaState == nil {
 		return 0, errors.New("image not mounted")
 	}
@@ -33,16 +33,17 @@ func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 		readLen = mountedImageSize - off
 	}
 	var data []byte
-	if source == WebRTC {
+	switch source {
+	case WebRTC:
 		data, err = webRTCDiskReader.Read(ctx, off, readLen)
 		if err != nil {
 			return 0, err
 		}
 		n = copy(p, data)
 		return n, nil
-	} else if source == HTTP {
+	case HTTP:
 		return httpRangeReader.ReadAt(p, off)
-	} else {
+	default:
 		return 0, errors.New("unknown image source")
 	}
 }
@@ -72,6 +73,8 @@ type NBDDevice struct {
 	serverConn net.Conn
 	clientConn net.Conn
 	dev        *os.File
+
+	l *zerolog.Logger
 }
 
 func NewNBDDevice() *NBDDevice {
@@ -90,10 +93,18 @@ func (d *NBDDevice) Start() error {
 		return err
 	}
 
+	if d.l == nil {
+		scopedLogger := nbdLogger.With().
+			Str("socket_path", nbdSocketPath).
+			Str("device_path", nbdDevicePath).
+			Logger()
+		d.l = &scopedLogger
+	}
+
 	// Remove the socket file if it already exists
 	if _, err := os.Stat(nbdSocketPath); err == nil {
 		if err := os.Remove(nbdSocketPath); err != nil {
-			logger.Errorf("Failed to remove existing socket file %s: %v", nbdSocketPath, err)
+			d.l.Error().Err(err).Msg("failed to remove existing socket file")
 			os.Exit(1)
 		}
 	}
@@ -134,32 +145,6 @@ func (d *NBDDevice) runServerConn() {
 			MaximumBlockSize:   uint32(16 * 1024),
 			SupportsMultiConn:  false,
 		})
-	logger.Infof("nbd server exited: %v", err)
-}
 
-func (d *NBDDevice) runClientConn() {
-	err := client.Connect(d.clientConn, d.dev, &client.Options{
-		ExportName: "jetkvm",
-		BlockSize:  uint32(4 * 1024),
-	})
-	logger.Infof("nbd client exited: %v", err)
-}
-
-func (d *NBDDevice) Close() {
-	if d.dev != nil {
-		err := client.Disconnect(d.dev)
-		if err != nil {
-			logger.Warnf("error disconnecting nbd client: %v", err)
-		}
-		_ = d.dev.Close()
-	}
-	if d.listener != nil {
-		_ = d.listener.Close()
-	}
-	if d.clientConn != nil {
-		_ = d.clientConn.Close()
-	}
-	if d.serverConn != nil {
-		_ = d.serverConn.Close()
-	}
+	d.l.Info().Err(err).Msg("nbd server exited")
 }

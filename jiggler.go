@@ -2,9 +2,10 @@ package kvm
 
 import (
 	"fmt"
-	"github.com/go-co-op/gocron/v2"
 	"math/rand"
 	"time"
+
+	"github.com/go-co-op/gocron/v2"
 )
 
 type JigglerConfig struct {
@@ -29,7 +30,7 @@ func rpcGetJigglerConfig() (JigglerConfig, error) {
 }
 
 func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
-	logger.Infof("jigglerConfig: %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab)
+	logger.Info().Msgf("jigglerConfig: %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab)
 	config.JigglerConfig = &jigglerConfig
 	err := removeExistingCrobJobs(scheduler)
 	if err != nil {
@@ -60,7 +61,7 @@ func init() {
 	ensureConfigLoaded()
 	err := runJigglerCronTab()
 	if err != nil {
-		logger.Errorf("Error scheduling jiggler crontab: %v", err)
+		logger.Error().Msgf("Error scheduling jiggler crontab: %v", err)
 		return
 	}
 }
@@ -89,7 +90,7 @@ func runJigglerCronTab() error {
 	s.Start()
 	delta, err := calculateJobDelta(s)
 	jobDelta = delta
-	logger.Infof("Time between jiggler runs: %v", jobDelta)
+	logger.Info().Msgf("Time between jiggler runs: %v", jobDelta)
 	if err != nil {
 		return err
 	}
@@ -104,17 +105,17 @@ func runJiggler() {
 		}
 		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
 		timeSinceLastInput := time.Since(gadget.GetLastUserInputTime())
-		logger.Debugf("Time since last user input %v", timeSinceLastInput)
+		logger.Debug().Msgf("Time since last user input %v", timeSinceLastInput)
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
-			logger.Debug("Jiggling mouse...")
+			logger.Debug().Msg("Jiggling mouse...")
 			//TODO: change to rel mouse
 			err := rpcAbsMouseReport(1, 1, 0)
 			if err != nil {
-				logger.Warnf("Failed to jiggle mouse: %v", err)
+				logger.Warn().Msgf("Failed to jiggle mouse: %v", err)
 			}
 			err = rpcAbsMouseReport(0, 0, 0)
 			if err != nil {
-				logger.Warnf("Failed to reset mouse position: %v", err)
+				logger.Warn().Msgf("Failed to reset mouse position: %v", err)
 			}
 		}
 	}

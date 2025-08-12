@@ -3,8 +3,25 @@ package kvm
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"net"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	wolPackets = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "jetkvm_wol_sent_packets_total",
+			Help: "Total number of Wake-on-LAN magic packets sent.",
+		},
+	)
+	wolErrors = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "jetkvm_wol_sent_packet_errors_total",
+			Help: "Total number of Wake-on-LAN magic packets errors.",
+		},
+	)
 )
 
 // SendWOLMagicPacket sends a Wake-on-LAN magic packet to the specified MAC address
@@ -12,7 +29,8 @@ func rpcSendWOLMagicPacket(macAddress string) error {
 	// Parse the MAC address
 	mac, err := net.ParseMAC(macAddress)
 	if err != nil {
-		return fmt.Errorf("invalid MAC address: %v", err)
+		wolErrors.Inc()
+		return ErrorfL(wolLogger, "invalid MAC address", err)
 	}
 
 	// Create the magic packet
@@ -21,15 +39,20 @@ func rpcSendWOLMagicPacket(macAddress string) error {
 	// Set up UDP connection
 	conn, err := net.Dial("udp", "255.255.255.255:9")
 	if err != nil {
-		return fmt.Errorf("failed to establish UDP connection: %v", err)
+		wolErrors.Inc()
+		return ErrorfL(wolLogger, "failed to establish UDP connection", err)
 	}
 	defer conn.Close()
 
 	// Send the packet
 	_, err = conn.Write(packet)
 	if err != nil {
-		return fmt.Errorf("failed to send WOL packet: %v", err)
+		wolErrors.Inc()
+		return ErrorfL(wolLogger, "failed to send WOL packet", err)
 	}
+
+	wolLogger.Info().Str("mac", macAddress).Msg("WOL packet sent")
+	wolPackets.Inc()
 
 	return nil
 }

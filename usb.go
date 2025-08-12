@@ -15,7 +15,7 @@ func initUsbGadget() {
 		"jetkvm",
 		config.UsbDevices,
 		config.UsbConfig,
-		&logger,
+		usbLogger,
 	)
 
 	go func() {
@@ -24,6 +24,17 @@ func initUsbGadget() {
 			time.Sleep(500 * time.Millisecond)
 		}
 	}()
+
+	gadget.SetOnKeyboardStateChange(func(state usbgadget.KeyboardState) {
+		if currentSession != nil {
+			writeJSONRPCEvent("keyboardLedState", state, currentSession)
+		}
+	})
+
+	// open the keyboard hid file to listen for keyboard events
+	if err := gadget.OpenKeyboardHidFile(); err != nil {
+		usbLogger.Error().Err(err).Msg("failed to open keyboard hid file")
+	}
 }
 
 func rpcKeyboardReport(modifier uint8, keys []uint8) error {
@@ -42,6 +53,10 @@ func rpcWheelReport(wheelY int8) error {
 	return gadget.AbsMouseWheelReport(wheelY)
 }
 
+func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {
+	return gadget.GetKeyboardState()
+}
+
 var usbState = "unknown"
 
 func rpcGetUSBState() (state string) {
@@ -51,7 +66,7 @@ func rpcGetUSBState() (state string) {
 func triggerUSBStateUpdate() {
 	go func() {
 		if currentSession == nil {
-			logger.Info("No active RPC session, skipping update state update")
+			usbLogger.Info().Msg("No active RPC session, skipping update state update")
 			return
 		}
 		writeJSONRPCEvent("usbState", usbState, currentSession)
@@ -65,7 +80,7 @@ func checkUSBState() {
 	}
 	usbState = newState
 
-	logger.Infof("USB state changed from %s to %s", usbState, newState)
-	requestDisplayUpdate()
+	usbLogger.Info().Str("from", usbState).Str("to", newState).Msg("USB state changed")
+	requestDisplayUpdate(true)
 	triggerUSBStateUpdate()
 }

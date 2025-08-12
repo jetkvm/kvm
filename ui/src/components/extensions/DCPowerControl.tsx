@@ -8,12 +8,14 @@ import { useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import FieldLabel from "@components/FieldLabel";
 import LoadingSpinner from "@components/LoadingSpinner";
+import {SelectMenuBasic} from "@components/SelectMenuBasic";
 
 interface DCPowerState {
   isOn: boolean;
   voltage: number;
   current: number;
   power: number;
+  restoreState: number;
 }
 
 export function DCPowerControl() {
@@ -43,6 +45,20 @@ export function DCPowerControl() {
       getDCPowerState(); // Refresh state after change
     });
   };
+  const handleRestoreChange = (state: number) => {
+    // const state = powerState?.restoreState === 0 ? 1 : powerState?.restoreState === 1 ? 2 : 0;
+    send("setDCRestoreState", { state }, resp => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to set DC power state: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      getDCPowerState(); // Refresh state after change
+    });
+  };
+
+
 
   useEffect(() => {
     getDCPowerState();
@@ -63,7 +79,7 @@ export function DCPowerControl() {
           <LoadingSpinner className="h-6 w-6 text-blue-500 dark:text-blue-400" />
         </Card>
       ) : (
-        <Card className="h-[160px] animate-fadeIn opacity-0">
+        <Card className="animate-fadeIn opacity-0">
           <div className="space-y-4 p-3">
             {/* Power Controls */}
             <div className="flex items-center space-x-2">
@@ -84,6 +100,21 @@ export function DCPowerControl() {
                 onClick={() => handlePowerToggle(false)}
               />
             </div>
+            {powerState.restoreState > -1 ? (
+              <div className="flex items-center">
+                <SelectMenuBasic
+                    size="SM"
+                    label="Restore Power Loss"
+                    value={powerState.restoreState}
+                    onChange={e => handleRestoreChange(parseInt(e.target.value))}
+                    options={[
+                      { value: '0', label: "Power OFF" },
+                      { value: '1', label: "Power ON" },
+                      { value: '2', label: "Last State" },
+                    ]}
+                />
+              </div>
+            ) : null}
             <hr className="border-slate-700/30 dark:border-slate-600/30" />
 
             {/* Status Display */}

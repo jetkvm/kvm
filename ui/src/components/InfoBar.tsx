@@ -28,6 +28,7 @@ export default function InfoBar() {
   const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
 
   const settings = useSettingsStore();
+  const showPressedKeys = useSettingsStore(state => state.showPressedKeys);
 
   useEffect(() => {
     if (!rpcDataChannel) return;
@@ -36,9 +37,9 @@ export default function InfoBar() {
       console.log(`Error on DataChannel '${rpcDataChannel.label}': ${e}`);
   }, [rpcDataChannel]);
 
-  const isCapsLockActive = useHidStore(state => state.isCapsLockActive);
-  const isNumLockActive = useHidStore(state => state.isNumLockActive);
-  const isScrollLockActive = useHidStore(state => state.isScrollLockActive);
+  const keyboardLedState = useHidStore(state => state.keyboardLedState);
+  const keyboardLedStateSyncAvailable = useHidStore(state => state.keyboardLedStateSyncAvailable);
+  const keyboardLedSync = useSettingsStore(state => state.keyboardLedSync);
 
   const isTurnServerInUse = useRTCStore(state => state.isTurnServerInUse);
 
@@ -97,19 +98,21 @@ export default function InfoBar() {
               </div>
             )}
 
-            <div className="flex items-center gap-x-1">
-              <span className="text-xs font-semibold">Keys:</span>
-              <h2 className="text-xs">
-                {[
-                  ...activeKeys.map(
-                    x => Object.entries(keys).filter(y => y[1] === x)[0][0],
-                  ),
-                  activeModifiers.map(
-                    x => Object.entries(modifiers).filter(y => y[1] === x)[0][0],
-                  ),
-                ].join(", ")}
-              </h2>
-            </div>
+            {showPressedKeys && (
+              <div className="flex items-center gap-x-1">
+                <span className="text-xs font-semibold">Keys:</span>
+                <h2 className="text-xs">
+                  {[
+                    ...activeKeys.map(
+                      x => Object.entries(keys).filter(y => y[1] === x)[0][0],
+                    ),
+                    activeModifiers.map(
+                      x => Object.entries(modifiers).filter(y => y[1] === x)[0][0],
+                    ),
+                  ].join(", ")}
+                </h2>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center divide-x first:divide-l divide-slate-800/20 dark:divide-slate-300/20">
@@ -118,10 +121,24 @@ export default function InfoBar() {
               Relayed by Cloudflare
             </div>
           )}
+
+          {keyboardLedStateSyncAvailable ? (
+            <div
+              className={cx(
+                "shrink-0 p-1 px-1.5 text-xs",
+                keyboardLedSync !== "browser"
+                  ? "text-black dark:text-white"
+                  : "text-slate-800/20 dark:text-slate-300/20",
+              )}
+              title={"Your keyboard LED state is managed by" + (keyboardLedSync === "browser" ? " the browser" : " the host")}
+            >
+              {keyboardLedSync === "browser" ? "Browser" : "Host"}
+            </div>
+          ) : null}
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
-              isCapsLockActive
+              keyboardLedState?.caps_lock
                 ? "text-black dark:text-white"
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
@@ -131,7 +148,7 @@ export default function InfoBar() {
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
-              isNumLockActive
+              keyboardLedState?.num_lock
                 ? "text-black dark:text-white"
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
@@ -141,13 +158,23 @@ export default function InfoBar() {
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
-              isScrollLockActive
+              keyboardLedState?.scroll_lock
                 ? "text-black dark:text-white"
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
           >
             Scroll Lock
           </div>
+          {keyboardLedState?.compose ? (
+            <div className="shrink-0 p-1 px-1.5 text-xs">
+              Compose
+            </div>
+          ) : null}
+          {keyboardLedState?.kana ? (
+            <div className="shrink-0 p-1 px-1.5 text-xs">
+              Kana
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

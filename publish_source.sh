@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Check if a commit message was provided
 if [ -z "$1" ]; then
@@ -26,7 +26,7 @@ git checkout -b release-temp
 if git ls-remote --heads public main | grep -q 'refs/heads/main'; then
     git reset --soft public/main
 else
-    git reset --soft $(git rev-list --max-parents=0 HEAD)
+    git reset --soft "$(git rev-list --max-parents=0 HEAD)"
 fi
 
 # Merge changes from main

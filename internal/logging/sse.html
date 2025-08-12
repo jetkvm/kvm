@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Server Sent Event</title>
+    <style>
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+
+            font-family: 'Hack', monospace;
+            font-size: 12px;
+        }
+
+        #loading {
+            font-style: italic;
+        }
+
+        .log-entry {
+            font-size: 12px;
+            line-height: 1.2;
+        }
+
+        .log-entry > span {
+            min-width: 0;
+            overflow-wrap: break-word;
+            word-break: break-word;
+            margin-right: 10px;
+        }
+
+        .log-entry > span:last-child {
+            margin-right: 0;
+        }
+
+        .log-entry.log-entry-trace .log-level {
+            color: blue;
+        }
+
+        .log-entry.log-entry-debug .log-level {
+            color: gray;
+        }
+
+        .log-entry.log-entry-info .log-level {
+            color: green;
+        }
+
+        .log-entry.log-entry-warn .log-level {
+            color: yellow;
+        }
+
+        .log-entry.log-entry-error .log-level,
+        .log-entry.log-entry-fatal .log-level,
+        .log-entry.log-entry-panic .log-level {
+            color: red;
+        }
+
+        .log-entry.log-entry-info .log-message,
+        .log-entry.log-entry-warn .log-message,
+        .log-entry.log-entry-error .log-message,
+        .log-entry.log-entry-fatal .log-message,
+        .log-entry.log-entry-panic .log-message {
+            font-weight: bold;
+        }
+
+        .log-timestamp {
+            color: #666;
+            min-width: 150px;
+        }
+
+        .log-level {
+            font-size: 12px;
+            min-width: 50px;
+        }
+
+        .log-scope {
+            font-size: 12px;
+            min-width: 40px;
+        }
+
+        .log-component {
+            font-size: 12px;
+            min-width: 80px;
+        }
+
+        .log-message {
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 500px;
+        }
+
+        .log-extras {
+            color: #000;
+        }
+        .log-extras .log-extras-header {
+            font-weight: bold;
+            color:cornflowerblue;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="main-container">
+        <div id="header">
+            <span id="loading">
+            Connecting to log stream...
+            </span>
+
+            <span id="stats">
+
+            </span>
+        </div>
+        <div id="event-data">
+
+        </div>
+    </div>
+</body>
+
+<script>
+    class LogStream {
+        constructor(url, eventDataElement, loadingElement, statsElement) {
+            this.url = url;
+            this.eventDataElement = eventDataElement;
+            this.loadingElement = loadingElement;
+            this.statsElement = statsElement;
+            this.stream = null;
+            this.reconnectAttempts = 0;
+            this.maxReconnectAttempts = 10;
+            this.reconnectDelay = 1000; // Start with 1 second
+            this.maxReconnectDelay = 30000; // Max 30 seconds
+            this.isConnecting = false;
+
+            this.totalMessages = 0;
+            
+            this.connect();
+        }
+
+        connect() {
+            if (this.isConnecting) return;
+            this.isConnecting = true;
+            
+            this.loadingElement.innerText = "Connecting to log stream...";
+            
+            this.stream = new EventSource(this.url);
+            
+            this.stream.onopen = () => {
+                this.isConnecting = false;
+                this.reconnectAttempts = 0;
+                this.reconnectDelay = 1000;
+                this.loadingElement.innerText = "Log stream connected.";
+
+
+                this.totalMessages = 0;
+                this.totalBytes = 0;
+            };
+            
+            this.stream.onmessage = (event) => {
+                this.totalBytes += event.data.length;
+                this.totalMessages++;
+
+                const data = JSON.parse(event.data);
+                this.addLogEntry(data);
+                this.updateStats();
+            };
+            
+            this.stream.onerror = () => {
+                this.isConnecting = false;
+                this.loadingElement.innerText = "Log stream disconnected.";
+                this.stream.close();
+                this.handleReconnect();
+            };
+        }
+
+        updateStats() {
+            this.statsElement.innerHTML = `Messages: <strong>${this.totalMessages}</strong>, Bytes: <strong>${this.totalBytes}</strong> `;
+        }
+        
+        handleReconnect() {
+            if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                this.loadingElement.innerText = "Failed to reconnect after multiple attempts";
+                return;
+            }
+            
+            this.reconnectAttempts++;
+            this.reconnectDelay = Math.min(this.reconnectDelay * 1, this.maxReconnectDelay);
+            
+            this.loadingElement.innerText = `Reconnecting in ${this.reconnectDelay/1000} seconds... (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`;
+            
+            setTimeout(() => {
+                this.connect();
+            }, this.reconnectDelay);
+        }
+        
+        addLogEntry(data) {
+            const el = document.createElement("div");
+            el.className = "log-entry log-entry-" + data.level;
+
+            const timestamp = document.createElement("span");
+            timestamp.className = "log-timestamp";
+            timestamp.innerText = data.time;
+            el.appendChild(timestamp);
+
+            const level = document.createElement("span");
+            level.className = "log-level";
+            level.innerText = this.shortLogLevel(data.level);
+            el.appendChild(level);
+
+            const scope = document.createElement("span");
+            scope.className = "log-scope";
+            scope.innerText = data.scope;
+            el.appendChild(scope);
+
+            const component = document.createElement("span");
+            component.className = "log-component";
+            component.innerText = data.component;
+            el.appendChild(component);
+
+            const message = document.createElement("span");
+            message.className = "log-message";
+            message.innerText = data.message;
+            el.appendChild(message);
+
+            this.addLogExtras(el, data);
+
+            this.eventDataElement.appendChild(el);
+
+            window.scrollTo(0, document.body.scrollHeight);
+        }
+        
+        shortLogLevel(level) {
+            switch (level) {
+                case "trace":
+                    return "TRC";
+                case "debug":
+                    return "DBG";
+                case "info":
+                    return "INF";
+                case "warn":
+                    return "WRN";
+                case "error":
+                    return "ERR";
+                case "fatal":
+                    return "FTL";
+                case "panic":
+                    return "PNC";
+                default:
+                    return level;
+            }
+        }
+        
+        addLogExtras(el, data) {
+            const excludeKeys = [
+                "timestamp",
+                "time",
+                "level",
+                "scope",
+                "component",
+                "message",
+            ];
+            
+            const extras = {};
+            for (const key in data) {
+                if (excludeKeys.includes(key)) {
+                    continue;
+                }
+                extras[key] = data[key];
+            }
+
+            for (const key in extras) {
+                const extra = document.createElement("span");
+                extra.className = "log-extras log-extras-" + key;
+
+                const extraKey = document.createElement("span");
+                extraKey.className = "log-extras-header";
+                extraKey.innerText = key + '=';
+                extra.appendChild(extraKey);
+
+                const extraValue = document.createElement("span");
+                extraValue.className = "log-extras-value";
+                
+                let value = extras[key];
+                if (typeof value === 'object') {
+                    value = JSON.stringify(value);
+                }   
+                extraValue.innerText = value;
+                extra.appendChild(extraValue);
+
+                el.appendChild(extra);
+            }
+        }
+        
+        disconnect() {
+            if (this.stream) {
+                this.stream.close();
+                this.stream = null;
+            }
+        }
+    }
+
+    // Initialize the log stream when the page loads
+    document.addEventListener('DOMContentLoaded', () => {
+        const logStream = new LogStream(
+            "/developer/log-stream",
+            document.getElementById("event-data"),
+            document.getElementById("loading"),
+            document.getElementById("stats"),
+        );
+        
+        // Clean up when the page is unloaded
+        window.addEventListener('beforeunload', () => {
+            logStream.disconnect();
+        });
+    });
+</script>
+
+</html>

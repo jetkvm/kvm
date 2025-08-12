@@ -38,12 +38,12 @@ func HandleVideoStateMessage(event CtrlResponse) {
 	videoState := VideoInputState{}
 	err := json.Unmarshal(event.Data, &videoState)
 	if err != nil {
-		logger.Warnf("Error parsing video state json: %v", err)
+		logger.Warn().Err(err).Msg("Error parsing video state json")
 		return
 	}
 	lastVideoState = videoState
 	triggerVideoStateUpdate()
-	requestDisplayUpdate()
+	requestDisplayUpdate(true)
 }
 
 func rpcGetVideoState() (VideoInputState, error) {

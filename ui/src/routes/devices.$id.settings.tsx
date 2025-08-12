@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LuSettings,
+  LuMouse,
   LuKeyboard,
   LuVideo,
   LuCpu,
@@ -8,17 +9,21 @@ import {
   LuWrench,
   LuArrowLeft,
   LuPalette,
+  LuCommand,
+  LuNetwork,
 } from "react-icons/lu";
 import React, { useEffect, useRef, useState } from "react";
+import { useResizeObserver } from "usehooks-ts";
 
 import Card from "@/components/Card";
+import { LinkButton } from "@/components/Button";
+import LoadingSpinner from "@/components/LoadingSpinner";
+import { useUiStore } from "@/hooks/stores";
+import useKeyboard from "@/hooks/useKeyboard";
 
-import { LinkButton } from "../components/Button";
+import { FeatureFlag } from "../components/FeatureFlag";
 import { cx } from "../cva.config";
-import { useUiStore } from "../hooks/stores";
-import useKeyboard from "../hooks/useKeyboard";
-import { useResizeObserver } from "../hooks/useResizeObserver";
-import LoadingSpinner from "../components/LoadingSpinner";
+
 
 /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
 export default function SettingsRoute() {
@@ -28,7 +33,7 @@ export default function SettingsRoute() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(false);
-  const { width } = useResizeObserver({ ref: scrollContainerRef });
+  const { width = 0 } = useResizeObserver({ ref: scrollContainerRef as React.RefObject<HTMLDivElement> });
 
   // Handle scroll position to show/hide gradients
   const handleScroll = () => {
@@ -74,7 +79,7 @@ export default function SettingsRoute() {
     return () => {
       setDisableVideoFocusTrap(false);
     };
-  }, [setDisableVideoFocusTrap, sendKeyboardEvent]);
+  }, [sendKeyboardEvent, setDisableVideoFocusTrap]);
 
   return (
     <div className="pointer-events-auto relative mx-auto max-w-4xl translate-x-0 transform text-left dark:text-white">
@@ -108,7 +113,7 @@ export default function SettingsRoute() {
               {/* Gradient overlay for left side - only visible on mobile when scrolled */}
               <div
                 className={cx(
-                  "pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-white to-transparent transition-opacity duration-300 ease-in-out md:hidden dark:from-slate-900",
+                  "pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-linear-to-r from-white to-transparent transition-opacity duration-300 ease-in-out md:hidden dark:from-slate-900",
                   {
                     "opacity-0": !showLeftGradient,
                     "opacity-100": showLeftGradient,
@@ -118,7 +123,7 @@ export default function SettingsRoute() {
               {/* Gradient overlay for right side - only visible on mobile when there's more content */}
               <div
                 className={cx(
-                  "pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-white to-transparent transition duration-300 ease-in-out md:hidden dark:from-slate-900",
+                  "pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-linear-to-l from-white to-transparent transition duration-300 ease-in-out md:hidden dark:from-slate-900",
                   {
                     "opacity-0": !showRightGradient,
                     "opacity-100": showRightGradient,
@@ -134,7 +139,7 @@ export default function SettingsRoute() {
                     to="general"
                     className={({ isActive }) => (isActive ? "active" : "")}
                   >
-                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 [.active_&]:bg-blue-50 [.active_&]:!text-blue-700 md:[.active_&]:bg-transparent dark:[.active_&]:bg-blue-900 dark:[.active_&]:!text-blue-200 dark:md:[.active_&]:bg-transparent">
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuSettings className="h-4 w-4 shrink-0" />
                       <h1>General</h1>
                     </div>
@@ -145,18 +150,31 @@ export default function SettingsRoute() {
                     to="mouse"
                     className={({ isActive }) => (isActive ? "active" : "")}
                   >
-                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 [.active_&]:bg-blue-50 [.active_&]:!text-blue-700 md:[.active_&]:bg-transparent dark:[.active_&]:bg-blue-900 dark:[.active_&]:!text-blue-200 dark:md:[.active_&]:bg-transparent">
-                      <LuKeyboard className="h-4 w-4 shrink-0" />
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
+                      <LuMouse className="h-4 w-4 shrink-0" />
                       <h1>Mouse</h1>
                     </div>
                   </NavLink>
                 </div>
+                <FeatureFlag minAppVersion="0.4.0" name="Paste text">
+                  <div className="shrink-0">
+                    <NavLink
+                      to="keyboard"
+                      className={({ isActive }) => (isActive ? "active" : "")}
+                    >
+                      <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
+                        <LuKeyboard className="h-4 w-4 shrink-0" />
+                        <h1>Keyboard</h1>
+                      </div>
+                    </NavLink>
+                  </div>
+                </FeatureFlag>
                 <div className="shrink-0">
                   <NavLink
                     to="video"
                     className={({ isActive }) => (isActive ? "active" : "")}
                   >
-                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 [.active_&]:bg-blue-50 [.active_&]:!text-blue-700 md:[.active_&]:bg-transparent dark:[.active_&]:bg-blue-900 dark:[.active_&]:!text-blue-200 dark:md:[.active_&]:bg-transparent">
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuVideo className="h-4 w-4 shrink-0" />
                       <h1>Video</h1>
                     </div>
@@ -167,7 +185,7 @@ export default function SettingsRoute() {
                     to="hardware"
                     className={({ isActive }) => (isActive ? "active" : "")}
                   >
-                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 [.active_&]:bg-blue-50 [.active_&]:!text-blue-700 md:[.active_&]:bg-transparent dark:[.active_&]:bg-blue-900 dark:[.active_&]:!text-blue-200 dark:md:[.active_&]:bg-transparent">
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuCpu className="h-4 w-4 shrink-0" />
                       <h1>Hardware</h1>
                     </div>
@@ -178,7 +196,7 @@ export default function SettingsRoute() {
                     to="access"
                     className={({ isActive }) => (isActive ? "active" : "")}
                   >
-                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 [.active_&]:bg-blue-50 [.active_&]:!text-blue-700 md:[.active_&]:bg-transparent dark:[.active_&]:bg-blue-900 dark:[.active_&]:!text-blue-200 dark:md:[.active_&]:bg-transparent">
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuShieldCheck className="h-4 w-4 shrink-0" />
                       <h1>Access</h1>
                     </div>
@@ -189,9 +207,31 @@ export default function SettingsRoute() {
                     to="appearance"
                     className={({ isActive }) => (isActive ? "active" : "")}
                   >
-                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 [.active_&]:bg-blue-50 [.active_&]:!text-blue-700 md:[.active_&]:bg-transparent dark:[.active_&]:bg-blue-900 dark:[.active_&]:!text-blue-200 dark:md:[.active_&]:bg-transparent">
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuPalette className="h-4 w-4 shrink-0" />
                       <h1>Appearance</h1>
+                    </div>
+                  </NavLink>
+                </div>
+                <div className="shrink-0">
+                  <NavLink
+                    to="macros"
+                    className={({ isActive }) => (isActive ? "active" : "")}
+                  >
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
+                      <LuCommand className="h-4 w-4 shrink-0" />
+                      <h1>Keyboard Macros</h1>
+                    </div>
+                  </NavLink>
+                </div>
+                <div className="shrink-0">
+                  <NavLink
+                    to="network"
+                    className={({ isActive }) => (isActive ? "active" : "")}
+                  >
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
+                      <LuNetwork className="h-4 w-4 shrink-0" />
+                      <h1>Network</h1>
                     </div>
                   </NavLink>
                 </div>
@@ -200,7 +240,7 @@ export default function SettingsRoute() {
                     to="advanced"
                     className={({ isActive }) => (isActive ? "active" : "")}
                   >
-                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 [.active_&]:bg-blue-50 [.active_&]:!text-blue-700 md:[.active_&]:bg-transparent dark:[.active_&]:bg-blue-900 dark:[.active_&]:!text-blue-200 dark:md:[.active_&]:bg-transparent">
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuWrench className="h-4 w-4 shrink-0" />
                       <h1>Advanced</h1>
                     </div>
@@ -228,20 +268,17 @@ export default function SettingsRoute() {
   );
 }
 
-export function SettingsItem({
-  title,
-  description,
-  children,
-  className,
-  loading,
-}: {
-  title: string;
-  description: string | React.ReactNode;
-  children?: React.ReactNode;
-  className?: string;
-  name?: string;
-  loading?: boolean;
-}) {
+interface SettingsItemProps {
+  readonly title: string;
+  readonly description: string | React.ReactNode;
+  readonly badge?: string;
+  readonly className?: string;
+  readonly loading?: boolean;
+  readonly children?: React.ReactNode;
+}
+export function SettingsItem(props: SettingsItemProps) {
+  const { title, description, badge, children, className, loading } = props;
+
   return (
     <label
       className={cx(
@@ -251,10 +288,17 @@ export function SettingsItem({
     >
       <div className="space-y-0.5">
         <div className="flex items-center gap-x-2">
-          <h3 className="text-base font-semibold text-black dark:text-white">{title}</h3>
+          <div className="flex items-center text-base font-semibold text-black dark:text-white">
+            {title}
+            {badge && (
+              <span className="ml-2 rounded-full bg-red-500 px-2 py-1 text-[10px] font-medium leading-none text-white dark:border dark:border-red-700 dark:bg-red-800 dark:text-red-50">
+                {badge}
+              </span>
+            )}
+          </div>
           {loading && <LoadingSpinner className="h-4 w-4 text-blue-500" />}
         </div>
-        <p className="text-sm text-slate-700 dark:text-slate-300">{description}</p>
+        <div className="text-sm text-slate-700 dark:text-slate-300">{description}</div>
       </div>
       {children ? <div>{children}</div> : null}
     </label>

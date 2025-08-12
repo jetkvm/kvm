@@ -1,5 +1,5 @@
 import type { Ref } from "react";
-import React, { forwardRef } from "react";
+import React, { forwardRef, JSX } from "react";
 import clsx from "clsx";
 
 import FieldLabel from "@/components/FieldLabel";
@@ -12,10 +12,10 @@ const sizes = {
 
 const checkboxVariants = cva({
   base: cx(
-    "block rounded",
+    "form-checkbox block rounded",
 
     // Colors
-    "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 text-blue-700 dark:text-blue-500 transition-colors",
+    "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 checked:accent-blue-700 checked:dark:accent-blue-500 transition-colors",
 
     // Hover
     "hover:bg-slate-200/50 dark:hover:bg-slate-700/50",
@@ -24,7 +24,7 @@ const checkboxVariants = cva({
     "active:bg-slate-200 dark:active:bg-slate-700",
 
     // Focus
-    "focus:border-slate-300 dark:focus:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-700 dark:focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900",
+    "focus:border-slate-300 dark:focus:border-slate-600 focus:outline-hidden focus:ring-2 focus:ring-blue-700 dark:focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900",
 
     // Disabled
     "disabled:pointer-events-none disabled:opacity-30",
@@ -37,11 +37,13 @@ type CheckBoxProps = {
 } & Omit<JSX.IntrinsicElements["input"], "size" | "type">;
 
 const Checkbox = forwardRef<HTMLInputElement, CheckBoxProps>(function Checkbox(
-  { size = "MD", ...props },
+  { size = "MD", className, ...props },
   ref,
 ) {
   const classes = checkboxVariants({ size });
-  return <input ref={ref} {...props} type="checkbox" className={classes} />;
+  return (
+    <input ref={ref} {...props} type="checkbox" className={clsx(classes, className)} />
+  );
 });
 Checkbox.displayName = "Checkbox";
 

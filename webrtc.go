@@ -1,12 +1,18 @@
 package kvm
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net"
 	"strings"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
+	"github.com/gin-gonic/gin"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pion/webrtc/v4"
+	"github.com/rs/zerolog"
 )
 
 type Session struct {
@@ -23,6 +29,8 @@ type SessionConfig struct {
 	ICEServers []string
 	LocalIP    string
 	IsCloud    bool
+	ws         *websocket.Conn
+	Logger     *zerolog.Logger
 }
 
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
@@ -46,18 +54,10 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 		return "", err
 	}
 
-	// Create channel that is blocked until ICE Gathering is complete
-	gatherComplete := webrtc.GatheringCompletePromise(s.peerConnection)
-
 	// Sets the LocalDescription, and starts our UDP listeners
 	if err = s.peerConnection.SetLocalDescription(answer); err != nil {
 		return "", err
 	}
-
-	// Block until ICE Gathering is complete, disabling trickle ICE
-	// we do this because we only can exchange one signaling message
-	// in a production application you should exchange ICE Candidates via OnICECandidate
-	<-gatherComplete
 
 	localDescription, err := json.Marshal(s.peerConnection.LocalDescription())
 	if err != nil {
@@ -68,22 +68,32 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 }
 
 func newSession(config SessionConfig) (*Session, error) {
-	webrtcSettingEngine := webrtc.SettingEngine{}
+	webrtcSettingEngine := webrtc.SettingEngine{
+		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
+	}
 	iceServer := webrtc.ICEServer{}
+
+	var scopedLogger *zerolog.Logger
+	if config.Logger != nil {
+		l := config.Logger.With().Str("component", "webrtc").Logger()
+		scopedLogger = &l
+	} else {
+		scopedLogger = webrtcLogger
+	}
 
 	if config.IsCloud {
 		if config.ICEServers == nil {
-			logger.Info("ICE Servers not provided by cloud")
+			scopedLogger.Info().Msg("ICE Servers not provided by cloud")
 		} else {
 			iceServer.URLs = config.ICEServers
-			logger.Infof("Using ICE Servers provided by cloud: %v", iceServer.URLs)
+			scopedLogger.Info().Interface("iceServers", iceServer.URLs).Msg("Using ICE Servers provided by cloud")
 		}
 
 		if config.LocalIP == "" || net.ParseIP(config.LocalIP) == nil {
-			logger.Infof("Local IP address %v not provided or invalid, won't set NAT1To1IPs", config.LocalIP)
+			scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set NAT1To1IPs")
 		} else {
 			webrtcSettingEngine.SetNAT1To1IPs([]string{config.LocalIP}, webrtc.ICECandidateTypeSrflx)
-			logger.Infof("Setting NAT1To1IPs to %s", config.LocalIP)
+			scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Setting NAT1To1IPs")
 		}
 	}
 
@@ -97,7 +107,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	session := &Session{peerConnection: peerConnection}
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		logger.Infof("New DataChannel %s %d", d.Label(), d.ID())
+		scopedLogger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
 		switch d.Label() {
 		case "rpc":
 			session.RPCChannel = d
@@ -144,8 +154,18 @@ func newSession(config SessionConfig) (*Session, error) {
 	}()
 	var isConnected bool
 
+	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		scopedLogger.Info().Interface("candidate", candidate).Msg("WebRTC peerConnection has a new ICE candidate")
+		if candidate != nil {
+			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
+			if err != nil {
+				scopedLogger.Warn().Err(err).Msg("failed to write new-ice-candidate to WebRTC signaling channel")
+			}
+		}
+	})
+
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		logger.Infof("Connection State has changed %s", connectionState)
+		scopedLogger.Info().Str("connectionState", connectionState.String()).Msg("ICE Connection State has changed")
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			if !isConnected {
 				isConnected = true
@@ -158,15 +178,17 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 		//state changes on closing browser tab disconnected->failed, we need to manually close it
 		if connectionState == webrtc.ICEConnectionStateFailed {
+			scopedLogger.Debug().Msg("ICE Connection State is failed, closing peerConnection")
 			_ = peerConnection.Close()
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
+			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
 			if session == currentSession {
 				currentSession = nil
 			}
 			if session.shouldUmountVirtualMedia {
 				err := rpcUnmountImage()
-				logger.Debugf("unmount image failed on connection close %v", err)
+				scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")
 			}
 			if isConnected {
 				isConnected = false
@@ -184,7 +206,7 @@ func newSession(config SessionConfig) (*Session, error) {
 var actionSessions = 0
 
 func onActiveSessionsChanged() {
-	requestDisplayUpdate()
+	requestDisplayUpdate(true)
 }
 
 func onFirstSessionConnected() {

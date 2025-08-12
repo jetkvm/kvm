@@ -1,0 +1,76 @@
+---
+name: Bug report
+description: 🐛 Let us know about an unexpected error, a crash, or an unexpected behavior.
+type: 'Bug'
+labels:
+  - 'type: bug'
+body:
+  - type: checkboxes
+    attributes:
+      label: Disclaimer
+      description: |
+        For support questions, please use the [discussions][] or [Discord][] instead. Before
+        opening a bug report, ensure you have read the [documentation][],
+        [Troubleshooting][] and [Device FAQs][]. Only use bug reports for actual
+        bugs.
+
+        [documentation]: https://jetkvm.com/docs
+        [Troubleshooting]: https://jetkvm.com/docs/getting-started/troubleshooting
+        [Device FAQs]: https://jetkvm.com/docs/getting-started/faq
+        [discussions]: https://github.com/jetkvm/kvm/discussions
+        [Discord]: https://jetkvm.com/discord
+      options:
+        - label: I have read and understood the disclaimer.
+          required: true
+  - type: input
+    attributes:
+      label: Application version
+      description: |
+        Provide the application version (can be found in General settings)
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: System version
+      description: |
+        Provide the system version (can be found in General settings)
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: Device model
+      description: Provide the device model
+      options:
+        - JetKVM
+        - JetKVM (POE)
+    validations:
+      required: false
+  - type: dropdown
+    attributes:
+      label: Extension model
+      description: Provide the extension model (if the bug is related to the extension)
+      options:
+        - ATX Power Control
+        - DC Power Control
+        - Serial Console
+    validations:
+      required: false
+  - type: input
+    attributes:
+      label: Remote device Hardware
+      description: If the bug is related to a remote device, please provide its hardware information e.g. Raspberry Pi 5
+    validations:
+      required: false
+  - type: input
+    attributes:
+      label: Remote device OS
+      description: If the bug is related to a remote device, please provide its OS information as detailed as possible e.g. Debian 12.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Bug description
+      description: |
+        Provide a description of the problem: steps to reproduce it, what you are expecting and what you got.
+    validations:
+      required: true

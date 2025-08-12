@@ -38,7 +38,7 @@ func rebindUsb(udc string, ignoreUnbindError bool) error {
 }
 
 func (u *UsbGadget) rebindUsb(ignoreUnbindError bool) error {
-	u.log.Infof("rebinding USB gadget to UDC %s", u.udc)
+	u.log.Info().Str("udc", u.udc).Msg("rebinding USB gadget to UDC")
 	return rebindUsb(u.udc, ignoreUnbindError)
 }
 
@@ -50,18 +50,6 @@ func (u *UsbGadget) RebindUsb(ignoreUnbindError bool) error {
 	return u.rebindUsb(ignoreUnbindError)
 }
 
-func (u *UsbGadget) writeUDC() error {
-	path := path.Join(u.kvmGadgetPath, "UDC")
-
-	u.log.Tracef("writing UDC %s to %s", u.udc, path)
-	err := u.writeIfDifferent(path, []byte(u.udc), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write UDC: %w", err)
-	}
-
-	return nil
-}
-
 // GetUsbState returns the current state of the USB gadget
 func (u *UsbGadget) GetUsbState() (state string) {
 	stateFile := path.Join("/sys/class/udc", u.udc, "state")
@@ -70,7 +58,7 @@ func (u *UsbGadget) GetUsbState() (state string) {
 		if os.IsNotExist(err) {
 			return "not attached"
 		} else {
-			u.log.Tracef("failed to read usb state: %v", err)
+			u.log.Trace().Err(err).Msg("failed to read usb state")
 		}
 		return "unknown"
 	}

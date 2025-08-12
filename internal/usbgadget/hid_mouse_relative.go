@@ -11,9 +11,10 @@ var relativeMouseConfig = gadgetConfigItem{
 	path:       []string{"functions", "hid.usb2"},
 	configPath: []string{"hid.usb2"},
 	attrs: gadgetAttributes{
-		"protocol":      "2",
-		"subclass":      "1",
-		"report_length": "4",
+		"protocol":        "2",
+		"subclass":        "1",
+		"report_length":   "4",
+		"no_out_endpoint": "1",
 	},
 	reportDesc: relativeMouseCombinedReportDesc,
 }
@@ -65,11 +66,12 @@ func (u *UsbGadget) relMouseWriteHidFile(data []byte) error {
 
 	_, err := u.relMouseHidFile.Write(data)
 	if err != nil {
-		u.log.Errorf("failed to write to hidg2: %w", err)
+		u.logWithSuppression("relMouseWriteHidFile", 100, u.log, err, "failed to write to hidg2")
 		u.relMouseHidFile.Close()
 		u.relMouseHidFile = nil
 		return err
 	}
+	u.resetLogSuppressionCounter("relMouseWriteHidFile")
 	return nil
 }
 
