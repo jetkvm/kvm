@@ -9,7 +9,7 @@ import (
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../tools/alsa-opus-includes
-#cgo LDFLAGS: -L$HOME/.jetkvm/audio-libs/alsa-lib-1.2.14/src/.libs -lasound -L$HOME/.jetkvm/audio-libs/opus-1.5.2/.libs -lopus -lm -ldl -static
+#cgo LDFLAGS: -L$HOME/.jetkvm/audio-libs/alsa-lib-$ALSA_VERSION/src/.libs -lasound -L$HOME/.jetkvm/audio-libs/opus-$OPUS_VERSION/.libs -lopus -lm -ldl -static
 #include <alsa/asoundlib.h>
 #include <opus.h>
 #include <stdlib.h>
