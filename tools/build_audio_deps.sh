@@ -2,6 +2,11 @@
 # tools/build_audio_deps.sh
 # Build ALSA and Opus static libs for ARM in $HOME/.jetkvm/audio-libs
 set -e
+
+# Accept version parameters or use defaults
+ALSA_VERSION="${1:-1.2.14}"
+OPUS_VERSION="${2:-1.5.2}"
+
 JETKVM_HOME="$HOME/.jetkvm"
 AUDIO_LIBS_DIR="$JETKVM_HOME/audio-libs"
 TOOLCHAIN_DIR="$JETKVM_HOME/rv1106-system"
@@ -11,17 +16,17 @@ mkdir -p "$AUDIO_LIBS_DIR"
 cd "$AUDIO_LIBS_DIR"
 
 # Download sources
-[ -f alsa-lib-1.2.14.tar.bz2 ] || wget -N https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.14.tar.bz2
-[ -f opus-1.5.2.tar.gz ] || wget -N https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz
+[ -f alsa-lib-${ALSA_VERSION}.tar.bz2 ] || wget -N https://www.alsa-project.org/files/pub/lib/alsa-lib-${ALSA_VERSION}.tar.bz2
+[ -f opus-${OPUS_VERSION}.tar.gz ] || wget -N https://downloads.xiph.org/releases/opus/opus-${OPUS_VERSION}.tar.gz
 
 # Extract
-[ -d alsa-lib-1.2.14 ] || tar xf alsa-lib-1.2.14.tar.bz2
-[ -d opus-1.5.2 ] || tar xf opus-1.5.2.tar.gz
+[ -d alsa-lib-${ALSA_VERSION} ] || tar xf alsa-lib-${ALSA_VERSION}.tar.bz2
+[ -d opus-${OPUS_VERSION} ] || tar xf opus-${OPUS_VERSION}.tar.gz
 
 export CC="${CROSS_PREFIX}-gcc"
 
 # Build ALSA
-cd alsa-lib-1.2.14
+cd alsa-lib-${ALSA_VERSION}
 if [ ! -f .built ]; then
   ./configure --host arm-rockchip830-linux-uclibcgnueabihf --enable-static=yes --enable-shared=no --with-pcm-plugins=rate,linear --disable-seq --disable-rawmidi --disable-ucm
   make -j$(nproc)
@@ -30,7 +35,7 @@ fi
 cd ..
 
 # Build Opus
-cd opus-1.5.2
+cd opus-${OPUS_VERSION}
 if [ ! -f .built ]; then
   ./configure --host arm-rockchip830-linux-uclibcgnueabihf --enable-static=yes --enable-shared=no --enable-fixed-point
   make -j$(nproc)
