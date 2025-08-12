@@ -26,7 +26,7 @@ type InputFieldProps = {
 
 type InputFieldWithLabelProps = InputFieldProps & {
   label: React.ReactNode;
-  description?: string | null;
+  description?: React.ReactNode | string | null;
 };
 
 const InputField = forwardRef<HTMLInputElement, InputFieldProps>(function InputField(
