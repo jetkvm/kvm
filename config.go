@@ -118,10 +118,11 @@ var defaultConfig = &Config{
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes
+	// This is the "Standard" jiggler option in the UI
 	JigglerConfig: &JigglerConfig{
-		InactivityLimitSeconds: 20,
-		JitterPercentage:       0,
-		ScheduleCronTab:        "*/20 * * * * *",
+		InactivityLimitSeconds: 60,
+		JitterPercentage:       25,
+		ScheduleCronTab:        "0 * * * * *",
 	},
 	TLSMode: "",
 	UsbConfig: &usbgadget.Config{
