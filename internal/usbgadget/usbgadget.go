@@ -95,6 +95,33 @@ func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *
 	return newUsbGadget(name, defaultGadgetConfig, enabledDevices, config, logger)
 }
 
+// PreOpenHidFiles opens all HID files to reduce input latency
+func (u *UsbGadget) PreOpenHidFiles() {
+	if u.enabledDevices.Keyboard {
+		if err := u.openKeyboardHidFile(); err != nil {
+			u.log.Debug().Err(err).Msg("failed to pre-open keyboard HID file")
+		}
+	}
+	if u.enabledDevices.AbsoluteMouse {
+		if u.absMouseHidFile == nil {
+			var err error
+			u.absMouseHidFile, err = os.OpenFile("/dev/hidg1", os.O_RDWR, 0666)
+			if err != nil {
+				u.log.Debug().Err(err).Msg("failed to pre-open absolute mouse HID file")
+			}
+		}
+	}
+	if u.enabledDevices.RelativeMouse {
+		if u.relMouseHidFile == nil {
+			var err error
+			u.relMouseHidFile, err = os.OpenFile("/dev/hidg2", os.O_RDWR, 0666)
+			if err != nil {
+				u.log.Debug().Err(err).Msg("failed to pre-open relative mouse HID file")
+			}
+		}
+	}
+}
+
 func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
 	if logger == nil {
 		logger = defaultLogger
