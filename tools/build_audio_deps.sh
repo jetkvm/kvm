@@ -23,12 +23,17 @@ cd "$AUDIO_LIBS_DIR"
 [ -d alsa-lib-${ALSA_VERSION} ] || tar xf alsa-lib-${ALSA_VERSION}.tar.bz2
 [ -d opus-${OPUS_VERSION} ] || tar xf opus-${OPUS_VERSION}.tar.gz
 
+# Optimization flags for ARM Cortex-A7 with NEON
+OPTIM_CFLAGS="-O3 -mcpu=cortex-a7 -mfpu=neon -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops"
+
 export CC="${CROSS_PREFIX}-gcc"
+export CFLAGS="$OPTIM_CFLAGS"
+export CXXFLAGS="$OPTIM_CFLAGS"
 
 # Build ALSA
 cd alsa-lib-${ALSA_VERSION}
 if [ ! -f .built ]; then
-  ./configure --host arm-rockchip830-linux-uclibcgnueabihf --enable-static=yes --enable-shared=no --with-pcm-plugins=rate,linear --disable-seq --disable-rawmidi --disable-ucm
+  CFLAGS="$OPTIM_CFLAGS" ./configure --host arm-rockchip830-linux-uclibcgnueabihf --enable-static=yes --enable-shared=no --with-pcm-plugins=rate,linear --disable-seq --disable-rawmidi --disable-ucm
   make -j$(nproc)
   touch .built
 fi
@@ -37,7 +42,7 @@ cd ..
 # Build Opus
 cd opus-${OPUS_VERSION}
 if [ ! -f .built ]; then
-  ./configure --host arm-rockchip830-linux-uclibcgnueabihf --enable-static=yes --enable-shared=no --enable-fixed-point
+  CFLAGS="$OPTIM_CFLAGS" ./configure --host arm-rockchip830-linux-uclibcgnueabihf --enable-static=yes --enable-shared=no --enable-fixed-point
   make -j$(nproc)
   touch .built
 fi
