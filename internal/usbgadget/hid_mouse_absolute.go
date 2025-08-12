@@ -77,8 +77,7 @@ func (u *UsbGadget) absMouseWriteHidFile(data []byte) error {
 	_, err := u.absMouseHidFile.Write(data)
 	if err != nil {
 		u.logWithSuppression("absMouseWriteHidFile", 100, u.log, err, "failed to write to hidg1")
-		u.absMouseHidFile.Close()
-		u.absMouseHidFile = nil
+		// Keep file open on write errors to reduce I/O overhead
 		return err
 	}
 	u.resetLogSuppressionCounter("absMouseWriteHidFile")

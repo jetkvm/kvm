@@ -201,6 +201,9 @@ func (u *UsbGadget) Init() error {
 		return u.logError("unable to initialize USB stack", err)
 	}
 
+	// Pre-open HID files to reduce input latency
+	u.PreOpenHidFiles()
+
 	return nil
 }
 

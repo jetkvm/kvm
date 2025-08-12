@@ -60,15 +60,14 @@ func (u *UsbGadget) relMouseWriteHidFile(data []byte) error {
 		var err error
 		u.relMouseHidFile, err = os.OpenFile("/dev/hidg2", os.O_RDWR, 0666)
 		if err != nil {
-			return fmt.Errorf("failed to open hidg1: %w", err)
+			return fmt.Errorf("failed to open hidg2: %w", err)
 		}
 	}
 
 	_, err := u.relMouseHidFile.Write(data)
 	if err != nil {
 		u.logWithSuppression("relMouseWriteHidFile", 100, u.log, err, "failed to write to hidg2")
-		u.relMouseHidFile.Close()
-		u.relMouseHidFile = nil
+		// Keep file open on write errors to reduce I/O overhead
 		return err
 	}
 	u.resetLogSuppressionCounter("relMouseWriteHidFile")

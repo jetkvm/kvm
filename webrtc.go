@@ -119,7 +119,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				go onRPCMessageThrottled(msg, session)
+				go onRPCMessage(msg, session)
 			})
 			triggerOTAStateUpdate()
 			triggerVideoStateUpdate()

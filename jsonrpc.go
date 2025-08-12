@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/pion/webrtc/v4"
@@ -19,73 +18,7 @@ import (
 	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
-// Mouse event processing with single worker
-var (
-	mouseEventChan  = make(chan mouseEventData, 100) // Buffered channel for mouse events
-	mouseWorkerOnce sync.Once
-)
-
-type mouseEventData struct {
-	message webrtc.DataChannelMessage
-	session *Session
-}
-
-// startMouseWorker starts a single worker goroutine for processing mouse events
-func startMouseWorker() {
-	go func() {
-		ticker := time.NewTicker(16 * time.Millisecond) // ~60 FPS
-		defer ticker.Stop()
-
-		var latestMouseEvent *mouseEventData
-
-		for {
-			select {
-			case event := <-mouseEventChan:
-				// Always keep the latest mouse event
-				latestMouseEvent = &event
-
-			case <-ticker.C:
-				// Process the latest mouse event at regular intervals
-				if latestMouseEvent != nil {
-					onRPCMessage(latestMouseEvent.message, latestMouseEvent.session)
-					latestMouseEvent = nil
-				}
-			}
-		}
-	}()
-}
-
-// onRPCMessageThrottled handles RPC messages with special throttling for mouse events
-func onRPCMessageThrottled(message webrtc.DataChannelMessage, session *Session) {
-	var request JSONRPCRequest
-	err := json.Unmarshal(message.Data, &request)
-	if err != nil {
-		onRPCMessage(message, session)
-		return
-	}
-
-	// Check if this is a mouse event that should be throttled
-	if isMouseEvent(request.Method) {
-		// Start the mouse worker if not already started
-		mouseWorkerOnce.Do(startMouseWorker)
-
-		// Send to mouse worker (non-blocking)
-		select {
-		case mouseEventChan <- mouseEventData{message: message, session: session}:
-			// Event queued successfully
-		default:
-			// Channel is full, drop the event (this prevents blocking)
-		}
-	} else {
-		// Non-mouse events are processed immediately
-		go onRPCMessage(message, session)
-	}
-}
-
-// isMouseEvent checks if the RPC method is a mouse-related event
-func isMouseEvent(method string) bool {
-	return method == "absMouseReport" || method == "relMouseReport"
-}
+// Direct RPC message handling for optimal input responsiveness
 
 type JSONRPCRequest struct {
 	JSONRPC string                 `json:"jsonrpc"`

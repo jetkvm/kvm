@@ -203,8 +203,7 @@ func (u *UsbGadget) keyboardWriteHidFile(data []byte) error {
 	_, err := u.keyboardHidFile.Write(data)
 	if err != nil {
 		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
-		u.keyboardHidFile.Close()
-		u.keyboardHidFile = nil
+		// Keep file open on write errors to reduce I/O overhead
 		return err
 	}
 	u.resetLogSuppressionCounter("keyboardWriteHidFile")
