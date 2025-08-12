@@ -57,7 +57,7 @@ func removeExistingCrobJobs(s gocron.Scheduler) error {
 	return nil
 }
 
-func init() {
+func initJiggler() {
 	ensureConfigLoaded()
 	err := runJigglerCronTab()
 	if err != nil {
