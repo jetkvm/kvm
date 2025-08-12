@@ -27,7 +27,7 @@ export default function FieldLabel({
       >
         {label}
         {description && (
-          <span className="my-0.5 text-[13px] font-normal text-slate-600 dark:text-slate-400">
+          <span className="mb-0.5 text-[13px] font-normal text-slate-600 dark:text-slate-400">
             {description}
           </span>
         )}
@@ -36,11 +36,11 @@ export default function FieldLabel({
   } else if (as === "span") {
     return (
       <div className="flex select-none flex-col">
-        <span className="font-display text-[13px] font-medium leading-snug text-black dark:text-white">
+        <span className="font-display text-[13px] font-semibold leading-snug text-black dark:text-white">
           {label}
         </span>
         {description && (
-          <span className="my-0.5 text-[13px] font-normal text-slate-600 dark:text-slate-400">
+          <span className="mb-0.5 text-[13px] font-normal text-slate-600 dark:text-slate-400">
             {description}
           </span>
         )}
