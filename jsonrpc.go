@@ -1056,6 +1056,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"rpcMountBuiltInImage":   {Func: rpcMountBuiltInImage, Params: []string{"filename"}},
 	"setJigglerState":        {Func: rpcSetJigglerState, Params: []string{"enabled"}},
 	"getJigglerState":        {Func: rpcGetJigglerState},
+	"setJigglerConfig":       {Func: rpcSetJigglerConfig, Params: []string{"jigglerConfig"}},
+	"getJigglerConfig":       {Func: rpcGetJigglerConfig},
 	"sendWOLMagicPacket":     {Func: rpcSendWOLMagicPacket, Params: []string{"macAddress"}},
 	"getStreamQualityFactor": {Func: rpcGetStreamQualityFactor},
 	"setStreamQualityFactor": {Func: rpcSetStreamQualityFactor, Params: []string{"factor"}},

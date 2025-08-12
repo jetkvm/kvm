@@ -1,5 +1,5 @@
 import { CheckCircleIcon } from "@heroicons/react/16/solid";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import MouseIcon from "@/assets/mouse-icon.svg";
 import PointingFinger from "@/assets/pointing-finger.svg";
@@ -7,14 +7,63 @@ import { GridCard } from "@/components/Card";
 import { Checkbox } from "@/components/Checkbox";
 import { useSettingsStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import notifications from "@/notifications";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 
-import { useFeatureFlag } from "../hooks/useFeatureFlag";
 import { cx } from "../cva.config";
 
 import { SettingsItem } from "./devices.$id.settings";
+import notifications from "../notifications";
+import SettingsNestedSection from "../components/SettingsNestedSection";
+import { JigglerSetting } from "@components/JigglerSetting";
+
+export interface JigglerConfig {
+  inactivity_limit_seconds: number;
+  jitter_percentage: number;
+  schedule_cron_tab: string;
+}
+
+const jigglerOptions = [
+  { value: "disabled", label: "Disabled", config: null },
+  {
+    value: "frequent",
+    label: "Frequent - 30s",
+    config: {
+      inactivity_limit_seconds: 30,
+      jitter_percentage: 25,
+      schedule_cron_tab: "*/30 * * * * *",
+    },
+  },
+  {
+    value: "standard",
+    label: "Standard - 1m",
+    config: {
+      inactivity_limit_seconds: 60,
+      jitter_percentage: 25,
+      schedule_cron_tab: "0 * * * * *",
+    },
+  },
+  {
+    value: "light",
+    label: "Light - 5m",
+    config: {
+      inactivity_limit_seconds: 300,
+      jitter_percentage: 25,
+      schedule_cron_tab: "0 */5 * * * *",
+    },
+  },
+  {
+    value: "business_hours",
+    label: "Business Hours - 1m - (Mon-Fri 9-17)",
+    config: {
+      inactivity_limit_seconds: 60,
+      jitter_percentage: 25,
+      schedule_cron_tab: "0 * 9-17 * * 1-5",
+    },
+  },
+] as const;
+
+type JigglerValues = (typeof jigglerOptions)[number]["value"] | "custom";
 
 export default function SettingsMouseRoute() {
   const hideCursor = useSettingsStore(state => state.isCursorHidden);
@@ -23,14 +72,11 @@ export default function SettingsMouseRoute() {
   const mouseMode = useSettingsStore(state => state.mouseMode);
   const setMouseMode = useSettingsStore(state => state.setMouseMode);
 
-  const { isEnabled: isScrollSensitivityEnabled } = useFeatureFlag("0.3.8");
-
-  const [jiggler, setJiggler] = useState(false);
-
   const scrollThrottling = useSettingsStore(state => state.scrollThrottling);
-  const setScrollThrottling = useSettingsStore(
-    state => state.setScrollThrottling,
-  );
+  const setScrollThrottling = useSettingsStore(state => state.setScrollThrottling);
+
+  const [selectedJigglerOption, setSelectedJigglerOption] =
+    useState<JigglerValues | null>(null);
 
   const scrollThrottlingOptions = [
     { value: "0", label: "Off" },
@@ -42,23 +88,85 @@ export default function SettingsMouseRoute() {
 
   const [send] = useJsonRpc();
 
-  useEffect(() => {
+  const syncJigglerSettings = useCallback(() => {
     send("getJigglerState", {}, resp => {
       if ("error" in resp) return;
-      setJiggler(resp.result as boolean);
-    });
-  }, [isScrollSensitivityEnabled, send]);
+      const isEnabled = resp.result as boolean;
 
-  const handleJigglerChange = (enabled: boolean) => {
-    send("setJigglerState", { enabled }, resp => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to set jiggler state: ${resp.error.data || "Unknown error"}`,
-        );
-        return;
-      }
-      setJiggler(enabled);
+      // If the jiggler is disabled, set the selected option to "disabled" and nothing else
+      if (!isEnabled) return setSelectedJigglerOption("disabled");
+
+      send("getJigglerConfig", {}, resp => {
+        if ("error" in resp) return;
+        const result = resp.result as JigglerConfig;
+        const value = jigglerOptions.find(
+          o =>
+            o?.config?.inactivity_limit_seconds === result.inactivity_limit_seconds &&
+            o?.config?.jitter_percentage === result.jitter_percentage &&
+            o?.config?.schedule_cron_tab === result.schedule_cron_tab,
+        )?.value;
+
+        setSelectedJigglerOption(value || "custom");
+      });
     });
+  }, [send]);
+
+  useEffect(() => {
+    syncJigglerSettings();
+  }, [syncJigglerSettings]);
+
+  const saveJigglerConfig = useCallback(
+    (jigglerConfig: JigglerConfig) => {
+      // We assume the jiggler should be set to enabled if the config is being updated
+      send("setJigglerState", { enabled: true }, async resp => {
+        if ("error" in resp) {
+          return notifications.error(
+            `Failed to set jiggler state: ${resp.error.data || "Unknown error"}`,
+          );
+        }
+      });
+
+      send("setJigglerConfig", { jigglerConfig }, async resp => {
+        if ("error" in resp) {
+          return notifications.error(
+            `Failed to set jiggler config: ${resp.error.data || "Unknown error"}`,
+          );
+        }
+
+        notifications.success(`Jiggler Config successfully updated`);
+        syncJigglerSettings();
+      });
+    },
+    [send, syncJigglerSettings],
+  );
+
+  const handleJigglerChange = (option: JigglerValues) => {
+    if (option === "custom") {
+      setSelectedJigglerOption("custom");
+      // We don't need to sync the jiggler settings when the option is "custom". The user will press "Save" to save the custom settings.
+      return;
+    }
+
+    // We don't need to update the device jiggler state when the option is "disabled"
+    if (option === "disabled") {
+      send("setJigglerState", { enabled: false }, async resp => {
+        if ("error" in resp) {
+          return notifications.error(
+            `Failed to set jiggler state: ${resp.error.data || "Unknown error"}`,
+          );
+        }
+      });
+
+      notifications.success(`Jiggler Config successfully updated`);
+      return setSelectedJigglerOption("disabled");
+    }
+
+    const jigglerConfig = jigglerOptions.find(o => o.value === option)?.config;
+    if (!jigglerConfig) {
+      return notifications.error("There was an error setting the jiggler config");
+    }
+
+    saveJigglerConfig(jigglerConfig);
   };
 
   return (
@@ -79,30 +187,50 @@ export default function SettingsMouseRoute() {
           />
         </SettingsItem>
 
-      <SettingsItem
-        title="Scroll Throttling"
-        description="Reduce the frequency of scroll events"
-      >
-        <SelectMenuBasic
-          size="SM"
-          label=""
-          className="max-w-[292px]"
-          value={scrollThrottling}
-          fullWidth
-          onChange={e => setScrollThrottling(parseInt(e.target.value))}
-          options={scrollThrottlingOptions}
-        />
-      </SettingsItem>
+        <SettingsItem
+          title="Scroll Throttling"
+          description="Reduce the frequency of scroll events"
+        >
+          <SelectMenuBasic
+            size="SM"
+            label=""
+            className="max-w-[292px]"
+            value={scrollThrottling}
+            fullWidth
+            onChange={e => setScrollThrottling(parseInt(e.target.value))}
+            options={scrollThrottlingOptions}
+          />
+        </SettingsItem>
 
         <SettingsItem
           title="Jiggler"
           description="Simulate movement of a computer mouse. Prevents sleep mode, standby mode or the screensaver from activating"
         >
-          <Checkbox
-            checked={jiggler}
-            onChange={e => handleJigglerChange(e.target.checked)}
+          <SelectMenuBasic
+            size="SM"
+            label=""
+            value={selectedJigglerOption || "disabled"}
+            options={[
+              ...jigglerOptions.map(option => ({
+                value: option.value,
+                label: option.label,
+              })),
+              { value: "custom", label: "Custom" },
+            ]}
+            onChange={e => {
+              handleJigglerChange(
+                e.target.value as (typeof jigglerOptions)[number]["value"],
+              );
+            }}
+            fullWidth
           />
         </SettingsItem>
+
+        {selectedJigglerOption === "custom" && (
+          <SettingsNestedSection>
+            <JigglerSetting onSave={saveJigglerConfig} />
+          </SettingsNestedSection>
+        )}
         <div className="space-y-4">
           <SettingsItem title="Modes" description="Choose the mouse input mode" />
           <div className="flex items-center gap-4">

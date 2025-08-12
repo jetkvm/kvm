@@ -26,7 +26,7 @@ type SelectMenuProps = Pick<
 
 const sizes = {
   XS: "h-[24.5px] pl-3 pr-8 text-xs",
-  SM: "h-[32px] pl-3 pr-8 text-[13px]",
+  SM: "h-[36px] pl-3 pr-8 text-[13px]",
   MD: "h-[40px] pl-4 pr-10 text-sm",
   LG: "h-[48px] pl-4 pr-10 px-5 text-base",
 };
@@ -62,7 +62,7 @@ export const SelectMenuBasic = React.forwardRef<HTMLSelectElement, SelectMenuPro
           "text-sm",
         )}
       >
-        {label && <FieldLabel label={label} id={id} as="span" />}
+        {label && <FieldLabel label={label} id={id} />}
         <Card className="w-auto border! border-solid border-slate-800/30! shadow-xs outline-0 dark:border-slate-300/30!">
           <select
             ref={ref}

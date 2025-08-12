@@ -82,6 +82,7 @@ type Config struct {
 	CloudToken           string                 `json:"cloud_token"`
 	GoogleIdentity       string                 `json:"google_identity"`
 	JigglerEnabled       bool                   `json:"jiggler_enabled"`
+	JigglerConfig        *JigglerConfig         `json:"jiggler_config"`
 	AutoUpdateEnabled    bool                   `json:"auto_update_enabled"`
 	IncludePreRelease    bool                   `json:"include_pre_release"`
 	HashedPassword       string                 `json:"hashed_password"`
@@ -117,7 +118,13 @@ var defaultConfig = &Config{
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes
-	TLSMode:              "",
+	// This is the "Standard" jiggler option in the UI
+	JigglerConfig: &JigglerConfig{
+		InactivityLimitSeconds: 60,
+		JitterPercentage:       25,
+		ScheduleCronTab:        "0 * * * * *",
+	},
+	TLSMode: "",
 	UsbConfig: &usbgadget.Config{
 		VendorId:     "0x1d6b", //The Linux Foundation
 		ProductId:    "0x0104", //Multifunction Composite Gadget
