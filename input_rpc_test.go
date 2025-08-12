@@ -200,7 +200,7 @@ func TestHandleKeyboardReportDirect(t *testing.T) {
 		{
 			name: "valid keyboard report",
 			params: map[string]interface{}{
-				"modifier": 2.0, // Shift key
+				"modifier": 2.0,                       // Shift key
 				"keys":     []interface{}{65.0, 66.0}, // A, B keys
 			},
 			expectError: false,
