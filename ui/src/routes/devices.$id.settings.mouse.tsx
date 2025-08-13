@@ -9,13 +9,13 @@ import { useSettingsStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
+import { JigglerSetting } from "@components/JigglerSetting";
 
 import { cx } from "../cva.config";
-
-import { SettingsItem } from "./devices.$id.settings";
 import notifications from "../notifications";
 import SettingsNestedSection from "../components/SettingsNestedSection";
-import { JigglerSetting } from "@components/JigglerSetting";
+
+import { SettingsItem } from "./devices.$id.settings";
 
 export interface JigglerConfig {
   inactivity_limit_seconds: number;
