@@ -28,6 +28,33 @@ export function useMicrophone() {
   const [isStopping, setIsStopping] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
 
+  // Add debouncing refs to prevent rapid operations
+  const lastOperationRef = useRef<number>(0);
+  const operationTimeoutRef = useRef<number | null>(null);
+  const OPERATION_DEBOUNCE_MS = 1000; // 1 second debounce
+
+  // Debounced operation wrapper
+  const debouncedOperation = useCallback((operation: () => Promise<void>, operationType: string) => {
+    const now = Date.now();
+    const timeSinceLastOp = now - lastOperationRef.current;
+    
+    if (timeSinceLastOp < OPERATION_DEBOUNCE_MS) {
+      console.log(`Debouncing ${operationType} operation - too soon (${timeSinceLastOp}ms since last)`);
+      return;
+    }
+    
+    // Clear any pending operation
+    if (operationTimeoutRef.current) {
+      clearTimeout(operationTimeoutRef.current);
+      operationTimeoutRef.current = null;
+    }
+    
+    lastOperationRef.current = now;
+    operation().catch(error => {
+      console.error(`Debounced ${operationType} operation failed:`, error);
+    });
+  }, []);
+
   // Cleanup function to stop microphone stream
   const stopMicrophoneStream = useCallback(async () => {
     console.log("stopMicrophoneStream called - cleaning up stream");
@@ -830,6 +857,14 @@ export function useMicrophone() {
     
   }, [microphoneSender, peerConnection]);
 
+  const startMicrophoneDebounced = useCallback((deviceId?: string) => {
+    debouncedOperation(() => startMicrophone(deviceId).then(() => {}), "start");
+  }, [startMicrophone, debouncedOperation]);
+
+  const stopMicrophoneDebounced = useCallback(() => {
+    debouncedOperation(() => stopMicrophone().then(() => {}), "stop");
+  }, [stopMicrophone, debouncedOperation]);
+
   // Make debug functions available globally for console access
   useEffect(() => {
     (window as Window & { 
@@ -912,10 +947,12 @@ export function useMicrophone() {
     startMicrophone,
     stopMicrophone,
     toggleMicrophoneMute,
-    syncMicrophoneState,
     debugMicrophoneState,
-    resetBackendMicrophoneState,
-    // Loading states
+    // Expose debounced variants for UI handlers
+    startMicrophoneDebounced,
+    stopMicrophoneDebounced,
+    // Expose sync and loading flags for consumers that expect them
+    syncMicrophoneState,
     isStarting,
     isStopping,
     isToggling,

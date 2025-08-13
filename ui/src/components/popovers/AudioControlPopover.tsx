@@ -70,13 +70,17 @@ const qualityLabels = {
 
 interface AudioControlPopoverProps {
   microphone: MicrophoneHookReturn;
+  open?: boolean; // whether the popover is open (controls analysis)
 }
 
-export default function AudioControlPopover({ microphone }: AudioControlPopoverProps) {
+export default function AudioControlPopover({ microphone, open }: AudioControlPopoverProps) {
   const [currentConfig, setCurrentConfig] = useState<AudioConfig | null>(null);
   const [currentMicrophoneConfig, setCurrentMicrophoneConfig] = useState<AudioConfig | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Add cache flags to prevent unnecessary API calls
+  const [configsLoaded, setConfigsLoaded] = useState(false);
   
   // Add cooldown to prevent rapid clicking
   const [lastClickTime, setLastClickTime] = useState(0);
@@ -117,8 +121,12 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   const micMetrics = wsConnected && microphoneMetrics !== null ? microphoneMetrics : fallbackMicMetrics;
   const isConnected = wsConnected ? wsConnected : fallbackConnected;
   
-  // Audio level monitoring
-  const { audioLevel, isAnalyzing } = useAudioLevel(microphoneStream);
+  // Audio level monitoring - enable only when popover is open and microphone is active to save resources
+  const analysisEnabled = (open ?? true) && isMicrophoneActive;
+  const { audioLevel, isAnalyzing } = useAudioLevel(analysisEnabled ? microphoneStream : null, {
+    enabled: analysisEnabled,
+    updateInterval: 120, // 8-10 fps to reduce CPU without losing UX quality
+  });
   
   // Audio devices
   const { 
@@ -135,46 +143,61 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   
   const { toggleSidebarView } = useUiStore();
 
-  // Load initial configurations once (these don't change frequently)
+  // Load initial configurations once - cache to prevent repeated calls
   useEffect(() => {
-    loadAudioConfigurations();
-  }, []);
+    if (!configsLoaded) {
+      loadAudioConfigurations();
+    }
+  }, [configsLoaded]);
 
-  // Load initial audio state and set up fallback polling when WebSocket is not connected
+  // Optimize fallback polling - only run when WebSocket is not connected
   useEffect(() => {
-    if (!wsConnected) {
+    if (!wsConnected && !configsLoaded) {
+      // Load state once if configs aren't loaded yet
       loadAudioState();
-      // Only load metrics as fallback when WebSocket is disconnected
+    }
+    
+    if (!wsConnected) {
       loadAudioMetrics();
       loadMicrophoneMetrics();
       
-      // Set up metrics refresh interval for fallback only
+      // Reduced frequency for fallback polling (every 3 seconds instead of 2)
       const metricsInterval = setInterval(() => {
-        loadAudioMetrics();
-        loadMicrophoneMetrics();
-      }, 2000);
+        if (!wsConnected) { // Double-check to prevent unnecessary requests
+          loadAudioMetrics();
+          loadMicrophoneMetrics();
+        }
+      }, 3000);
       return () => clearInterval(metricsInterval);
     }
     
-    // Always sync microphone state
-    syncMicrophoneState();
-  }, [wsConnected, syncMicrophoneState]);
+    // Always sync microphone state, but debounce it
+    const syncTimeout = setTimeout(() => {
+      syncMicrophoneState();
+    }, 500);
+    
+    return () => clearTimeout(syncTimeout);
+  }, [wsConnected, syncMicrophoneState, configsLoaded]);
 
   const loadAudioConfigurations = async () => {
     try {
-      // Load quality config
-      const qualityResp = await api.GET("/audio/quality");
+      // Parallel loading for better performance
+      const [qualityResp, micQualityResp] = await Promise.all([
+        api.GET("/audio/quality"),
+        api.GET("/microphone/quality")
+      ]);
+
       if (qualityResp.ok) {
         const qualityData = await qualityResp.json();
         setCurrentConfig(qualityData.current);
       }
 
-      // Load microphone quality config
-      const micQualityResp = await api.GET("/microphone/quality");
       if (micQualityResp.ok) {
         const micQualityData = await micQualityResp.json();
         setCurrentMicrophoneConfig(micQualityData.current);
       }
+      
+      setConfigsLoaded(true);
     } catch (error) {
       console.error("Failed to load audio configurations:", error);
     }
