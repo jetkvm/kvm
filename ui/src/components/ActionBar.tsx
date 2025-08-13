@@ -150,7 +150,7 @@ export default function Actionbar({
                 "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
               )}
             >
-              {({ open }) => {
+              {({ open }: { open: boolean }) => {
                 checkIfStateChanged(open);
                 return (
                   <div className="mx-auto w-full max-w-xl">
@@ -192,7 +192,7 @@ export default function Actionbar({
                   "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
                 )}
               >
-                {({ open }) => {
+                {({ open }: { open: boolean }) => {
                   checkIfStateChanged(open);
                   return (
                     <div className="mx-auto w-full max-w-xl">
@@ -244,7 +244,7 @@ export default function Actionbar({
                   "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
                 )}
               >
-                {({ open }) => {
+                {({ open }: { open: boolean }) => {
                   checkIfStateChanged(open);
                   return (
                     <div className="mx-auto w-full max-w-xl">
@@ -287,7 +287,7 @@ export default function Actionbar({
                 "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
               )}
             >
-              {({ open }) => {
+              {({ open }: { open: boolean }) => {
                 checkIfStateChanged(open);
                 return <ExtensionPopover />;
               }}
@@ -369,11 +369,11 @@ export default function Actionbar({
                 "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
               )}
             >
-              {({ open }) => {
+              {({ open }: { open: boolean }) => {
                 checkIfStateChanged(open);
                 return (
                   <div className="mx-auto">
-                    <AudioControlPopover microphone={microphone} />
+                    <AudioControlPopover microphone={microphone} open={open} />
                   </div>
                 );
               }}

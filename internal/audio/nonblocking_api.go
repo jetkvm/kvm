@@ -60,6 +60,11 @@ func StopNonBlockingAudioInput() {
 
 	if globalNonBlockingManager != nil && globalNonBlockingManager.IsInputRunning() {
 		globalNonBlockingManager.StopAudioInput()
+		
+		// If both input and output are stopped, recreate manager to ensure clean state
+		if !globalNonBlockingManager.IsRunning() {
+			globalNonBlockingManager = nil
+		}
 	}
 }
 

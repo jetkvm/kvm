@@ -5,20 +5,31 @@ interface AudioLevelHookResult {
   isAnalyzing: boolean;
 }
 
-export const useAudioLevel = (stream: MediaStream | null): AudioLevelHookResult => {
+interface AudioLevelOptions {
+  enabled?: boolean; // Allow external control of analysis
+  updateInterval?: number; // Throttle updates (default: 100ms for 10fps instead of 60fps)
+}
+
+export const useAudioLevel = (
+  stream: MediaStream | null, 
+  options: AudioLevelOptions = {}
+): AudioLevelHookResult => {
+  const { enabled = true, updateInterval = 100 } = options;
+  
   const [audioLevel, setAudioLevel] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  const intervalRef = useRef<number | null>(null);
+  const lastUpdateTimeRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!stream) {
-      // Clean up when stream is null
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
+    if (!stream || !enabled) {
+      // Clean up when stream is null or disabled
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
       if (sourceRef.current) {
         sourceRef.current.disconnect();
@@ -47,8 +58,8 @@ export const useAudioLevel = (stream: MediaStream | null): AudioLevelHookResult 
       const analyser = audioContext.createAnalyser();
       const source = audioContext.createMediaStreamSource(stream);
 
-      // Configure analyser
-      analyser.fftSize = 256;
+      // Configure analyser - use smaller FFT for better performance
+      analyser.fftSize = 128; // Reduced from 256 for better performance
       analyser.smoothingTimeConstant = 0.8;
       
       // Connect nodes
@@ -64,24 +75,34 @@ export const useAudioLevel = (stream: MediaStream | null): AudioLevelHookResult 
       const updateLevel = () => {
         if (!analyserRef.current) return;
 
+        const now = performance.now();
+        
+        // Throttle updates to reduce CPU usage
+        if (now - lastUpdateTimeRef.current < updateInterval) {
+          return;
+        }
+        lastUpdateTimeRef.current = now;
+
         analyserRef.current.getByteFrequencyData(dataArray);
         
-        // Calculate RMS (Root Mean Square) for more accurate level representation
+        // Optimized RMS calculation - process only relevant frequency bands
         let sum = 0;
-        for (const value of dataArray) {
+        const relevantBins = Math.min(dataArray.length, 32); // Focus on lower frequencies for voice
+        for (let i = 0; i < relevantBins; i++) {
+          const value = dataArray[i];
           sum += value * value;
         }
-        const rms = Math.sqrt(sum / dataArray.length);
+        const rms = Math.sqrt(sum / relevantBins);
         
-        // Convert to percentage (0-100)
-        const level = Math.min(100, (rms / 255) * 100);
-        setAudioLevel(level);
-
-        animationFrameRef.current = requestAnimationFrame(updateLevel);
+        // Convert to percentage (0-100) with better scaling
+        const level = Math.min(100, Math.max(0, (rms / 180) * 100)); // Adjusted scaling for better sensitivity
+        setAudioLevel(Math.round(level));
       };
 
       setIsAnalyzing(true);
-      updateLevel();
+      
+      // Use setInterval instead of requestAnimationFrame for more predictable timing
+      intervalRef.current = window.setInterval(updateLevel, updateInterval);
 
     } catch (error) {
       console.error('Failed to create audio level analyzer:', error);
@@ -91,9 +112,9 @@ export const useAudioLevel = (stream: MediaStream | null): AudioLevelHookResult 
 
     // Cleanup function
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
       if (sourceRef.current) {
         sourceRef.current.disconnect();
@@ -107,7 +128,7 @@ export const useAudioLevel = (stream: MediaStream | null): AudioLevelHookResult 
       setIsAnalyzing(false);
       setAudioLevel(0);
     };
-  }, [stream]);
+  }, [stream, enabled, updateInterval]);
 
   return { audioLevel, isAnalyzing };
 };

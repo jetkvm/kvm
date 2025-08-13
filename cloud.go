@@ -39,7 +39,8 @@ const (
 	// should be lower than the websocket response timeout set in cloud-api
 	CloudOidcRequestTimeout = 10 * time.Second
 	// WebsocketPingInterval is the interval at which the websocket client sends ping messages to the cloud
-	WebsocketPingInterval = 15 * time.Second
+	// Increased to 30 seconds for constrained environments to reduce overhead
+	WebsocketPingInterval = 30 * time.Second
 )
 
 var (

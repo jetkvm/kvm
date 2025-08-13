@@ -67,7 +67,12 @@ export default function AudioMetricsDashboard() {
   
   // Microphone state for audio level monitoring
   const { isMicrophoneActive, isMicrophoneMuted, microphoneStream } = useMicrophone();
-  const { audioLevel, isAnalyzing } = useAudioLevel(microphoneStream);
+  const { audioLevel, isAnalyzing } = useAudioLevel(
+  isMicrophoneActive ? microphoneStream : null,
+  {
+  enabled: isMicrophoneActive,
+  updateInterval: 120,
+  });
 
   useEffect(() => {
     // Load initial configuration (only once)

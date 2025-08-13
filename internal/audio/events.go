@@ -2,6 +2,7 @@ package audio
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -110,6 +111,14 @@ func GetAudioEventBroadcaster() *AudioEventBroadcaster {
 func (aeb *AudioEventBroadcaster) Subscribe(connectionID string, conn *websocket.Conn, ctx context.Context, logger *zerolog.Logger) {
 	aeb.mutex.Lock()
 	defer aeb.mutex.Unlock()
+
+	// Check if there's already a subscription for this connectionID
+	if _, exists := aeb.subscribers[connectionID]; exists {
+		aeb.logger.Debug().Str("connectionID", connectionID).Msg("duplicate audio events subscription detected; replacing existing entry")
+		// Do NOT close the existing WebSocket connection here because it's shared
+		// with the signaling channel. Just replace the subscriber map entry.
+		delete(aeb.subscribers, connectionID)
+	}
 
 	aeb.subscribers[connectionID] = &AudioEventSubscriber{
 		conn:   conn,
@@ -233,16 +242,37 @@ func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubsc
 
 // startMetricsBroadcasting starts a goroutine that periodically broadcasts metrics
 func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
-	ticker := time.NewTicker(2 * time.Second) // Same interval as current polling
+	// Use 5-second interval instead of 2 seconds for constrained environments
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		aeb.mutex.RLock()
 		subscriberCount := len(aeb.subscribers)
+		
+		// Early exit if no subscribers to save CPU
+		if subscriberCount == 0 {
+			aeb.mutex.RUnlock()
+			continue
+		}
+		
+		// Create a copy for safe iteration
+		subscribersCopy := make([]*AudioEventSubscriber, 0, subscriberCount)
+		for _, sub := range aeb.subscribers {
+			subscribersCopy = append(subscribersCopy, sub)
+		}
 		aeb.mutex.RUnlock()
 
-		// Only broadcast if there are subscribers
-		if subscriberCount == 0 {
+		// Pre-check for cancelled contexts to avoid unnecessary work
+		activeSubscribers := 0
+		for _, sub := range subscribersCopy {
+			if sub.ctx.Err() == nil {
+				activeSubscribers++
+			}
+		}
+		
+		// Skip metrics gathering if no active subscribers
+		if activeSubscribers == 0 {
 			continue
 		}
 
@@ -286,29 +316,54 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 // broadcast sends an event to all subscribers
 func (aeb *AudioEventBroadcaster) broadcast(event AudioEvent) {
 	aeb.mutex.RLock()
-	defer aeb.mutex.RUnlock()
+	// Create a copy of subscribers to avoid holding the lock during sending
+	subscribersCopy := make(map[string]*AudioEventSubscriber)
+	for id, sub := range aeb.subscribers {
+		subscribersCopy[id] = sub
+	}
+	aeb.mutex.RUnlock()
 
-	for connectionID, subscriber := range aeb.subscribers {
-		go func(id string, sub *AudioEventSubscriber) {
-			if !aeb.sendToSubscriber(sub, event) {
-				// Remove failed subscriber
-				aeb.mutex.Lock()
-				delete(aeb.subscribers, id)
-				aeb.mutex.Unlock()
-				aeb.logger.Warn().Str("connectionID", id).Msg("removed failed audio events subscriber")
-			}
-		}(connectionID, subscriber)
+	// Track failed subscribers to remove them after sending
+	var failedSubscribers []string
+
+	// Send to all subscribers without holding the lock
+	for connectionID, subscriber := range subscribersCopy {
+		if !aeb.sendToSubscriber(subscriber, event) {
+			failedSubscribers = append(failedSubscribers, connectionID)
+		}
+	}
+
+	// Remove failed subscribers if any
+	if len(failedSubscribers) > 0 {
+		aeb.mutex.Lock()
+		for _, connectionID := range failedSubscribers {
+			delete(aeb.subscribers, connectionID)
+			aeb.logger.Warn().Str("connectionID", connectionID).Msg("removed failed audio events subscriber")
+		}
+		aeb.mutex.Unlock()
 	}
 }
 
 // sendToSubscriber sends an event to a specific subscriber
 func (aeb *AudioEventBroadcaster) sendToSubscriber(subscriber *AudioEventSubscriber, event AudioEvent) bool {
-	ctx, cancel := context.WithTimeout(subscriber.ctx, 5*time.Second)
+	// Check if subscriber context is already cancelled
+	if subscriber.ctx.Err() != nil {
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(subscriber.ctx, 2*time.Second)
 	defer cancel()
 
 	err := wsjson.Write(ctx, subscriber.conn, event)
 	if err != nil {
-		subscriber.logger.Warn().Err(err).Msg("failed to send audio event to subscriber")
+		// Don't log network errors for closed connections as warnings, they're expected
+		if strings.Contains(err.Error(), "use of closed network connection") || 
+		   strings.Contains(err.Error(), "connection reset by peer") ||
+		   strings.Contains(err.Error(), "context canceled") {
+			subscriber.logger.Debug().Err(err).Msg("websocket connection closed during audio event send")
+		} else {
+			subscriber.logger.Warn().Err(err).Msg("failed to send audio event to subscriber")
+		}
 		return false
 	}
 

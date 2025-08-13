@@ -61,16 +61,23 @@ export interface UseAudioEventsReturn {
   unsubscribe: () => void;
 }
 
+// Global subscription management to prevent multiple subscriptions per WebSocket connection
+let globalSubscriptionState = {
+  isSubscribed: false,
+  subscriberCount: 0,
+  connectionId: null as string | null
+};
+
 export function useAudioEvents(): UseAudioEventsReturn {
   // State for audio data
   const [audioMuted, setAudioMuted] = useState<boolean | null>(null);
   const [audioMetrics, setAudioMetrics] = useState<AudioMetricsData | null>(null);
   const [microphoneState, setMicrophoneState] = useState<MicrophoneStateData | null>(null);
-  const [microphoneMetrics, setMicrophoneMetrics] = useState<MicrophoneMetricsData | null>(null);
+  const [microphoneMetrics, setMicrophoneMetricsData] = useState<MicrophoneMetricsData | null>(null);
   
-  // Subscription state
-  const [isSubscribed, setIsSubscribed] = useState(false);
-  const subscriptionSent = useRef(false);
+  // Local subscription state
+  const [isLocallySubscribed, setIsLocallySubscribed] = useState(false);
+  const subscriptionTimeoutRef = useRef<number | null>(null);
 
   // Get WebSocket URL
   const getWebSocketUrl = () => {
@@ -79,7 +86,7 @@ export function useAudioEvents(): UseAudioEventsReturn {
     return `${protocol}//${host}/webrtc/signaling/client`;
   };
 
-  // WebSocket connection
+  // Shared WebSocket connection using the `share` option for better resource management
   const {
     sendMessage,
     lastMessage,
@@ -88,14 +95,19 @@ export function useAudioEvents(): UseAudioEventsReturn {
     shouldReconnect: () => true,
     reconnectAttempts: 10,
     reconnectInterval: 3000,
+    share: true, // Share the WebSocket connection across multiple hooks
     onOpen: () => {
       console.log('[AudioEvents] WebSocket connected');
-      subscriptionSent.current = false;
+      // Reset global state on new connection
+      globalSubscriptionState.isSubscribed = false;
+      globalSubscriptionState.connectionId = Math.random().toString(36);
     },
     onClose: () => {
       console.log('[AudioEvents] WebSocket disconnected');
-      subscriptionSent.current = false;
-      setIsSubscribed(false);
+      // Reset global state on disconnect
+      globalSubscriptionState.isSubscribed = false;
+      globalSubscriptionState.subscriberCount = 0;
+      globalSubscriptionState.connectionId = null;
     },
     onError: (event) => {
       console.error('[AudioEvents] WebSocket error:', event);
@@ -104,18 +116,66 @@ export function useAudioEvents(): UseAudioEventsReturn {
 
   // Subscribe to audio events
   const subscribe = useCallback(() => {
-    if (readyState === ReadyState.OPEN && !subscriptionSent.current) {
-      const subscribeMessage = {
-        type: 'subscribe-audio-events',
-        data: {}
-      };
-      
-      sendMessage(JSON.stringify(subscribeMessage));
-      subscriptionSent.current = true;
-      setIsSubscribed(true);
-      console.log('[AudioEvents] Subscribed to audio events');
+    if (readyState === ReadyState.OPEN && !globalSubscriptionState.isSubscribed) {
+      // Clear any pending subscription timeout
+      if (subscriptionTimeoutRef.current) {
+        clearTimeout(subscriptionTimeoutRef.current);
+        subscriptionTimeoutRef.current = null;
+      }
+
+      // Add a small delay to prevent rapid subscription attempts
+      subscriptionTimeoutRef.current = setTimeout(() => {
+        if (readyState === ReadyState.OPEN && !globalSubscriptionState.isSubscribed) {
+          const subscribeMessage = {
+            type: 'subscribe-audio-events',
+            data: {}
+          };
+          
+          sendMessage(JSON.stringify(subscribeMessage));
+          globalSubscriptionState.isSubscribed = true;
+          console.log('[AudioEvents] Subscribed to audio events');
+        }
+      }, 100); // 100ms delay to debounce subscription attempts
     }
-  }, [readyState, sendMessage]);
+    
+    // Track local subscription regardless of global state
+    if (!isLocallySubscribed) {
+      globalSubscriptionState.subscriberCount++;
+      setIsLocallySubscribed(true);
+    }
+  }, [readyState, sendMessage, isLocallySubscribed]);
+
+  // Unsubscribe from audio events
+  const unsubscribe = useCallback(() => {
+    // Clear any pending subscription timeout
+    if (subscriptionTimeoutRef.current) {
+      clearTimeout(subscriptionTimeoutRef.current);
+      subscriptionTimeoutRef.current = null;
+    }
+
+    if (isLocallySubscribed) {
+      globalSubscriptionState.subscriberCount--;
+      setIsLocallySubscribed(false);
+      
+      // Only send unsubscribe message if this is the last subscriber and connection is still open
+      if (globalSubscriptionState.subscriberCount <= 0 && 
+          readyState === ReadyState.OPEN && 
+          globalSubscriptionState.isSubscribed) {
+        
+        const unsubscribeMessage = {
+          type: 'unsubscribe-audio-events',
+          data: {}
+        };
+        
+        sendMessage(JSON.stringify(unsubscribeMessage));
+        globalSubscriptionState.isSubscribed = false;
+        globalSubscriptionState.subscriberCount = 0;
+        console.log('[AudioEvents] Sent unsubscribe message to backend');
+      }
+    }
+    
+    console.log('[AudioEvents] Component unsubscribed from audio events');
+  }, [readyState, isLocallySubscribed, sendMessage]);
 
   // Handle incoming messages
   useEffect(() => {
@@ -150,7 +210,7 @@ export function useAudioEvents(): UseAudioEventsReturn {
               
             case 'microphone-metrics-update': {
               const micMetricsData = audioEvent.data as MicrophoneMetricsData;
-              setMicrophoneMetrics(micMetricsData);
+              setMicrophoneMetricsData(micMetricsData);
               break;
             }
               
@@ -170,22 +230,42 @@ export function useAudioEvents(): UseAudioEventsReturn {
 
   // Auto-subscribe when connected
   useEffect(() => {
-    if (readyState === ReadyState.OPEN && !subscriptionSent.current) {
+    if (readyState === ReadyState.OPEN) {
       subscribe();
     }
-  }, [readyState, subscribe]);
+    
+    // Cleanup subscription on component unmount or connection change
+    return () => {
+      if (subscriptionTimeoutRef.current) {
+        clearTimeout(subscriptionTimeoutRef.current);
+        subscriptionTimeoutRef.current = null;
+      }
+      unsubscribe();
+    };
+  }, [readyState, subscribe, unsubscribe]);
 
-  // Unsubscribe from audio events (connection will be cleaned up automatically)
-  const unsubscribe = useCallback(() => {
-    setIsSubscribed(false);
-    subscriptionSent.current = false;
-    console.log('[AudioEvents] Unsubscribed from audio events');
-  }, []);
+  // Reset local subscription state on disconnect
+  useEffect(() => {
+    if (readyState === ReadyState.CLOSED || readyState === ReadyState.CLOSING) {
+      setIsLocallySubscribed(false);
+      if (subscriptionTimeoutRef.current) {
+        clearTimeout(subscriptionTimeoutRef.current);
+        subscriptionTimeoutRef.current = null;
+      }
+    }
+  }, [readyState]);
+
+  // Cleanup on component unmount
+  useEffect(() => {
+    return () => {
+      unsubscribe();
+    };
+  }, [unsubscribe]);
 
   return {
     // Connection state
     connectionState: readyState,
-    isConnected: readyState === ReadyState.OPEN && isSubscribed,
+    isConnected: readyState === ReadyState.OPEN && globalSubscriptionState.isSubscribed,
     
     // Audio state
     audioMuted,
@@ -193,7 +273,7 @@ export function useAudioEvents(): UseAudioEventsReturn {
     
     // Microphone state
     microphoneState,
-    microphoneMetrics,
+    microphoneMetrics: microphoneMetrics,
     
     // Manual subscription control
     subscribe,

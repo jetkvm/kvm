@@ -7,6 +7,8 @@ import (
 	"net"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -27,6 +29,11 @@ type Session struct {
 	DiskChannel              *webrtc.DataChannel
 	AudioInputManager        *audio.AudioInputManager
 	shouldUmountVirtualMedia bool
+
+	// Microphone operation cooldown to mitigate rapid start/stop races
+	micOpMu          sync.Mutex
+	lastMicOp        time.Time
+	micCooldown      time.Duration
 }
 
 type SessionConfig struct {

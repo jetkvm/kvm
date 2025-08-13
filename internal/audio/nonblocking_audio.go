@@ -2,6 +2,7 @@ package audio
 
 import (
 	"context"
+	"errors"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -273,7 +274,9 @@ func (nam *NonBlockingAudioManager) inputWorkerThread() {
 	defer runtime.UnlockOSThread()
 
 	defer nam.wg.Done()
-	defer atomic.StoreInt32(&nam.inputWorkerRunning, 0)
+	// Cleanup CGO resources properly to avoid double-close scenarios
+	// The outputWorkerThread's CGOAudioClose() will handle all cleanup
+	atomic.StoreInt32(&nam.inputWorkerRunning, 0)
 
 	atomic.StoreInt32(&nam.inputWorkerRunning, 1)
 	nam.logger.Debug().Msg("input worker thread started")
@@ -283,32 +286,102 @@ func (nam *NonBlockingAudioManager) inputWorkerThread() {
 		nam.logger.Error().Err(err).Msg("failed to initialize audio playback in worker thread")
 		return
 	}
-	defer CGOAudioPlaybackClose()
+	
+	// Ensure CGO cleanup happens even if we exit unexpectedly
+	cgoInitialized := true
+	defer func() {
+		if cgoInitialized {
+			nam.logger.Debug().Msg("cleaning up CGO audio playback")
+			// Add extra safety: ensure no more CGO calls can happen
+			atomic.StoreInt32(&nam.inputWorkerRunning, 0)
+			// Note: Don't call CGOAudioPlaybackClose() here to avoid double-close
+			// The outputWorkerThread's CGOAudioClose() will handle all cleanup
+		}
+	}()
 
 	for {
+		// If coordinator has stopped, exit worker loop
+		if atomic.LoadInt32(&nam.inputRunning) == 0 {
+			return
+		}
 		select {
 		case <-nam.ctx.Done():
-			nam.logger.Debug().Msg("input worker thread stopping")
+			nam.logger.Debug().Msg("input worker thread stopping due to context cancellation")
 			return
 
 		case workItem := <-nam.inputWorkChan:
 			switch workItem.workType {
 			case audioWorkDecodeWrite:
-				// Perform blocking audio decode/write operation
-				n, err := CGOAudioDecodeWrite(workItem.data)
-				result := audioResult{
-					success: err == nil,
-					length:  n,
-					err:     err,
+				// Check if we're still supposed to be running before processing
+				if atomic.LoadInt32(&nam.inputWorkerRunning) == 0 || atomic.LoadInt32(&nam.inputRunning) == 0 {
+					nam.logger.Debug().Msg("input worker stopping, ignoring decode work")
+					// Do not send to resultChan; coordinator may have exited
+					return
+				}
+				
+				// Validate input data before CGO call
+				if workItem.data == nil || len(workItem.data) == 0 {
+					result := audioResult{
+						success: false,
+						err:     errors.New("invalid audio data"),
+					}
+					
+					// Check if coordinator is still running before sending result
+					if atomic.LoadInt32(&nam.inputRunning) == 1 {
+						select {
+						case workItem.resultChan <- result:
+						case <-nam.ctx.Done():
+							return
+						case <-time.After(10 * time.Millisecond):
+							// Timeout - coordinator may have stopped, drop result
+							atomic.AddInt64(&nam.stats.InputFramesDropped, 1)
+						}
+					} else {
+						// Coordinator has stopped, drop result
+						atomic.AddInt64(&nam.stats.InputFramesDropped, 1)
+					}
+					continue
 				}
 
-				// Send result back (non-blocking)
-				select {
-				case workItem.resultChan <- result:
-				case <-nam.ctx.Done():
-					return
-				default:
-					// Drop result if coordinator is not ready
+				// Perform blocking CGO operation with panic recovery
+				var result audioResult
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							nam.logger.Error().Interface("panic", r).Msg("CGO decode write panic recovered")
+							result = audioResult{
+								success: false,
+								err:     errors.New("CGO decode write panic"),
+							}
+						}
+					}()
+					
+					// Double-check we're still running before CGO call
+					if atomic.LoadInt32(&nam.inputWorkerRunning) == 0 {
+						result = audioResult{success: false, err: errors.New("worker shutting down")}
+						return
+					}
+					
+					n, err := CGOAudioDecodeWrite(workItem.data)
+					result = audioResult{
+						success: err == nil,
+						length:  n,
+						err:     err,
+					}
+				}()
+
+				// Send result back (non-blocking) - check if coordinator is still running
+				if atomic.LoadInt32(&nam.inputRunning) == 1 {
+					select {
+					case workItem.resultChan <- result:
+					case <-nam.ctx.Done():
+						return
+					case <-time.After(10 * time.Millisecond):
+						// Timeout - coordinator may have stopped, drop result
+						atomic.AddInt64(&nam.stats.InputFramesDropped, 1)
+					}
+				} else {
+					// Coordinator has stopped, drop result
 					atomic.AddInt64(&nam.stats.InputFramesDropped, 1)
 				}
 
@@ -328,6 +401,7 @@ func (nam *NonBlockingAudioManager) inputCoordinatorThread() {
 	nam.logger.Debug().Msg("input coordinator thread started")
 
 	resultChan := make(chan audioResult, 1)
+	// Do not close resultChan to avoid races with worker sends during shutdown
 
 	for atomic.LoadInt32(&nam.inputRunning) == 1 {
 		select {
@@ -350,7 +424,7 @@ func (nam *NonBlockingAudioManager) inputCoordinatorThread() {
 
 				select {
 				case nam.inputWorkChan <- workItem:
-					// Wait for result with timeout
+					// Wait for result with timeout and context cancellation
 					select {
 					case result := <-resultChan:
 						if result.success {
@@ -362,10 +436,18 @@ func (nam *NonBlockingAudioManager) inputCoordinatorThread() {
 								nam.logger.Warn().Err(result.err).Msg("audio input worker error")
 							}
 						}
+					case <-nam.ctx.Done():
+						nam.logger.Debug().Msg("input coordinator stopping during result wait")
+						return
 					case <-time.After(50 * time.Millisecond):
 						// Timeout waiting for result
 						atomic.AddInt64(&nam.stats.InputFramesDropped, 1)
 						nam.logger.Warn().Msg("timeout waiting for input worker result")
+						// Drain any pending result to prevent worker blocking
+						select {
+						case <-resultChan:
+						default:
+						}
 					}
 				default:
 					// Worker is busy, drop this frame
@@ -379,13 +461,7 @@ func (nam *NonBlockingAudioManager) inputCoordinatorThread() {
 		}
 	}
 
-	// Signal worker to close
-	select {
-	case nam.inputWorkChan <- audioWorkItem{workType: audioWorkClose}:
-	case <-time.After(100 * time.Millisecond):
-		nam.logger.Warn().Msg("timeout signaling input worker to close")
-	}
-
+	// Avoid sending close signals or touching channels here; inputRunning=0 will stop worker via checks
 	nam.logger.Info().Msg("input coordinator thread stopped")
 }
 
@@ -413,11 +489,37 @@ func (nam *NonBlockingAudioManager) StopAudioInput() {
 	// Stop only the input coordinator
 	atomic.StoreInt32(&nam.inputRunning, 0)
 
-	// Allow coordinator thread to process the stop signal and update state
-	// This prevents race conditions in state queries immediately after stopping
-	time.Sleep(50 * time.Millisecond)
+	// Drain the receive channel to prevent blocking senders
+	go func() {
+		for {
+			select {
+			case <-nam.inputReceiveChan:
+				// Drain any remaining frames
+			case <-time.After(100 * time.Millisecond):
+				return
+			}
+		}
+	}()
 
-	nam.logger.Info().Msg("audio input stopped")
+	// Wait for the worker to actually stop to prevent race conditions
+	timeout := time.After(2 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			nam.logger.Warn().Msg("timeout waiting for input worker to stop")
+			return
+		case <-ticker.C:
+			if atomic.LoadInt32(&nam.inputWorkerRunning) == 0 {
+				nam.logger.Info().Msg("audio input stopped successfully")
+				// Close ALSA playback resources now that input worker has stopped
+				CGOAudioPlaybackClose()
+				return
+			}
+		}
+	}
 }
 
 // GetStats returns current statistics

@@ -283,6 +283,30 @@ func setupRouter() *gin.Engine {
 			return
 		}
 
+		// Server-side cooldown to prevent rapid start/stop thrashing
+		{
+			cs := currentSession
+			cs.micOpMu.Lock()
+			now := time.Now()
+			if cs.micCooldown == 0 {
+				cs.micCooldown = 200 * time.Millisecond
+			}
+			since := now.Sub(cs.lastMicOp)
+			if since < cs.micCooldown {
+				remaining := cs.micCooldown - since
+				running := cs.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning()
+				cs.micOpMu.Unlock()
+				c.JSON(200, gin.H{
+					"status":                 "cooldown",
+					"running":                running,
+					"cooldown_ms_remaining":  remaining.Milliseconds(),
+				})
+				return
+			}
+			cs.lastMicOp = now
+			cs.micOpMu.Unlock()
+		}
+
 		// Check if already running before attempting to start
 		if currentSession.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning() {
 			c.JSON(200, gin.H{
@@ -332,6 +356,30 @@ func setupRouter() *gin.Engine {
 			return
 		}
 
+		// Server-side cooldown to prevent rapid start/stop thrashing
+		{
+			cs := currentSession
+			cs.micOpMu.Lock()
+			now := time.Now()
+			if cs.micCooldown == 0 {
+				cs.micCooldown = 200 * time.Millisecond
+			}
+			since := now.Sub(cs.lastMicOp)
+			if since < cs.micCooldown {
+				remaining := cs.micCooldown - since
+				running := cs.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning()
+				cs.micOpMu.Unlock()
+				c.JSON(200, gin.H{
+					"status":                 "cooldown",
+					"running":                running,
+					"cooldown_ms_remaining":  remaining.Milliseconds(),
+				})
+				return
+			}
+			cs.lastMicOp = now
+			cs.micOpMu.Unlock()
+		}
+
 		// Check if already stopped before attempting to stop
 		if !currentSession.AudioInputManager.IsRunning() && !audio.IsNonBlockingAudioInputRunning() {
 			c.JSON(200, gin.H{
@@ -343,8 +391,8 @@ func setupRouter() *gin.Engine {
 
 		currentSession.AudioInputManager.Stop()
 
-		// Also stop the non-blocking audio input specifically
-		audio.StopNonBlockingAudioInput()
+		// AudioInputManager.Stop() already coordinates a clean stop via StopNonBlockingAudioInput()
+		// so we don't need to call it again here
 
 		// Broadcast microphone state change via WebSocket
 		broadcaster := audio.GetAudioEventBroadcaster()
@@ -735,6 +783,10 @@ func handleWebRTCSignalWsMessages(
 			l.Info().Msg("client subscribing to audio events")
 			broadcaster := audio.GetAudioEventBroadcaster()
 			broadcaster.Subscribe(connectionID, wsCon, runCtx, &l)
+		} else if message.Type == "unsubscribe-audio-events" {
+			l.Info().Msg("client unsubscribing from audio events")
+			broadcaster := audio.GetAudioEventBroadcaster()
+			broadcaster.Unsubscribe(connectionID)
 		}
 	}
 }
