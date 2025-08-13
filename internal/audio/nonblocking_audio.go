@@ -3,7 +3,7 @@ package audio
 import (
 	"context"
 	"errors"
-	"runtime"
+	// "runtime" // removed: no longer directly pinning OS thread here; batching handles it
 	"sync"
 	"sync/atomic"
 	"time"
@@ -98,6 +98,9 @@ func (nam *NonBlockingAudioManager) StartAudioOutput(sendFunc func([]byte)) erro
 
 	nam.outputSendFunc = sendFunc
 
+	// Enable batch audio processing for performance
+	EnableBatchAudioProcessing()
+
 	// Start the blocking worker thread
 	nam.wg.Add(1)
 	go nam.outputWorkerThread()
@@ -106,7 +109,7 @@ func (nam *NonBlockingAudioManager) StartAudioOutput(sendFunc func([]byte)) erro
 	nam.wg.Add(1)
 	go nam.outputCoordinatorThread()
 
-	nam.logger.Info().Msg("non-blocking audio output started")
+	nam.logger.Info().Msg("non-blocking audio output started with batch processing")
 	return nil
 }
 
@@ -118,6 +121,9 @@ func (nam *NonBlockingAudioManager) StartAudioInput(receiveChan <-chan []byte) e
 
 	nam.inputReceiveChan = receiveChan
 
+	// Enable batch audio processing for performance
+	EnableBatchAudioProcessing()
+
 	// Start the blocking worker thread
 	nam.wg.Add(1)
 	go nam.inputWorkerThread()
@@ -126,16 +132,12 @@ func (nam *NonBlockingAudioManager) StartAudioInput(receiveChan <-chan []byte) e
 	nam.wg.Add(1)
 	go nam.inputCoordinatorThread()
 
-	nam.logger.Info().Msg("non-blocking audio input started")
+	nam.logger.Info().Msg("non-blocking audio input started with batch processing")
 	return nil
 }
 
 // outputWorkerThread handles all blocking audio output operations
 func (nam *NonBlockingAudioManager) outputWorkerThread() {
-	// Lock to OS thread to isolate blocking CGO operations
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	defer nam.wg.Done()
 	defer atomic.StoreInt32(&nam.outputWorkerRunning, 0)
 
@@ -149,7 +151,9 @@ func (nam *NonBlockingAudioManager) outputWorkerThread() {
 	}
 	defer CGOAudioClose()
 
-	buf := make([]byte, 1500)
+	// Use buffer pool to avoid allocations
+	buf := GetAudioFrameBuffer()
+	defer PutAudioFrameBuffer(buf)
 
 	for {
 		select {
@@ -160,17 +164,18 @@ func (nam *NonBlockingAudioManager) outputWorkerThread() {
 		case workItem := <-nam.outputWorkChan:
 			switch workItem.workType {
 			case audioWorkReadEncode:
-				// Perform blocking audio read/encode operation
-				n, err := CGOAudioReadEncode(buf)
-				result := audioResult{
+				n, err := BatchCGOAudioReadEncode(buf)
+					
+					result := audioResult{
 					success: err == nil,
 					length:  n,
 					err:     err,
 				}
 				if err == nil && n > 0 {
-					// Copy data to avoid race conditions
-					result.data = make([]byte, n)
-					copy(result.data, buf[:n])
+					// Get buffer from pool and copy data
+					resultBuf := GetAudioFrameBuffer()
+					copy(resultBuf[:n], buf[:n])
+					result.data = resultBuf[:n]
 				}
 
 				// Send result back (non-blocking)
@@ -180,6 +185,9 @@ func (nam *NonBlockingAudioManager) outputWorkerThread() {
 					return
 				default:
 					// Drop result if coordinator is not ready
+					if result.data != nil {
+						PutAudioFrameBuffer(result.data)
+					}
 					atomic.AddInt64(&nam.stats.OutputFramesDropped, 1)
 				}
 
@@ -243,6 +251,8 @@ func (nam *NonBlockingAudioManager) outputCoordinatorThread() {
 					atomic.AddInt64(&nam.stats.OutputFramesProcessed, 1)
 					RecordFrameReceived(result.length)
 				}
+				// Return buffer to pool after use
+				PutAudioFrameBuffer(result.data)
 			} else if result.success && result.length == 0 {
 				// No data available - this is normal, not an error
 				// Just continue without logging or counting as error
@@ -251,6 +261,10 @@ func (nam *NonBlockingAudioManager) outputCoordinatorThread() {
 				atomic.AddInt64(&nam.stats.WorkerErrors, 1)
 				if result.err != nil {
 					nam.logger.Warn().Err(result.err).Msg("audio output worker error")
+				}
+				// Clean up buffer if present
+				if result.data != nil {
+					PutAudioFrameBuffer(result.data)
 				}
 				RecordFrameDropped()
 			}
@@ -269,10 +283,6 @@ func (nam *NonBlockingAudioManager) outputCoordinatorThread() {
 
 // inputWorkerThread handles all blocking audio input operations
 func (nam *NonBlockingAudioManager) inputWorkerThread() {
-	// Lock to OS thread to isolate blocking CGO operations
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	defer nam.wg.Done()
 	// Cleanup CGO resources properly to avoid double-close scenarios
 	// The outputWorkerThread's CGOAudioClose() will handle all cleanup
@@ -362,7 +372,8 @@ func (nam *NonBlockingAudioManager) inputWorkerThread() {
 						return
 					}
 					
-					n, err := CGOAudioDecodeWrite(workItem.data)
+					n, err := BatchCGOAudioDecodeWrite(workItem.data)
+					
 					result = audioResult{
 						success: err == nil,
 						length:  n,
@@ -478,6 +489,9 @@ func (nam *NonBlockingAudioManager) Stop() {
 
 	// Wait for all goroutines to finish
 	nam.wg.Wait()
+
+	// Disable batch processing to free resources
+	DisableBatchAudioProcessing()
 
 	nam.logger.Info().Msg("non-blocking audio manager stopped")
 }
