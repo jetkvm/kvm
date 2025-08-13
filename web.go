@@ -283,28 +283,17 @@ func setupRouter() *gin.Engine {
 			return
 		}
 
-		// Server-side cooldown to prevent rapid start/stop thrashing
-		{
-			cs := currentSession
-			cs.micOpMu.Lock()
-			now := time.Now()
-			if cs.micCooldown == 0 {
-				cs.micCooldown = 200 * time.Millisecond
-			}
-			since := now.Sub(cs.lastMicOp)
-			if since < cs.micCooldown {
-				remaining := cs.micCooldown - since
-				running := cs.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning()
-				cs.micOpMu.Unlock()
-				c.JSON(200, gin.H{
-					"status":                 "cooldown",
-					"running":                running,
-					"cooldown_ms_remaining":  remaining.Milliseconds(),
-				})
-				return
-			}
-			cs.lastMicOp = now
-			cs.micOpMu.Unlock()
+		// Optimized server-side cooldown using atomic operations
+		opResult := audio.TryMicrophoneOperation()
+		if !opResult.Allowed {
+			running := currentSession.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning()
+			c.JSON(200, gin.H{
+				"status":                 "cooldown",
+				"running":                running,
+				"cooldown_ms_remaining":  opResult.RemainingCooldown.Milliseconds(),
+				"operation_id":           opResult.OperationID,
+			})
+			return
 		}
 
 		// Check if already running before attempting to start
@@ -356,28 +345,17 @@ func setupRouter() *gin.Engine {
 			return
 		}
 
-		// Server-side cooldown to prevent rapid start/stop thrashing
-		{
-			cs := currentSession
-			cs.micOpMu.Lock()
-			now := time.Now()
-			if cs.micCooldown == 0 {
-				cs.micCooldown = 200 * time.Millisecond
-			}
-			since := now.Sub(cs.lastMicOp)
-			if since < cs.micCooldown {
-				remaining := cs.micCooldown - since
-				running := cs.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning()
-				cs.micOpMu.Unlock()
-				c.JSON(200, gin.H{
-					"status":                 "cooldown",
-					"running":                running,
-					"cooldown_ms_remaining":  remaining.Milliseconds(),
-				})
-				return
-			}
-			cs.lastMicOp = now
-			cs.micOpMu.Unlock()
+		// Optimized server-side cooldown using atomic operations
+		opResult := audio.TryMicrophoneOperation()
+		if !opResult.Allowed {
+			running := currentSession.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning()
+			c.JSON(200, gin.H{
+				"status":                 "cooldown",
+				"running":                running,
+				"cooldown_ms_remaining":  opResult.RemainingCooldown.Milliseconds(),
+				"operation_id":           opResult.OperationID,
+			})
+			return
 		}
 
 		// Check if already stopped before attempting to stop

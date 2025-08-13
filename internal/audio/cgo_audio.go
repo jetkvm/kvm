@@ -1,4 +1,4 @@
-//go:build !nolint
+//go:build cgo
 
 package audio
 
@@ -385,11 +385,23 @@ void jetkvm_audio_close() {
 */
 import "C"
 
-// Go wrappers for initializing, starting, stopping, and controlling audio
+// Optimized Go wrappers with reduced overhead
+var (
+	errAudioInitFailed    = errors.New("failed to init ALSA/Opus")
+	errBufferTooSmall     = errors.New("buffer too small")
+	errAudioReadEncode    = errors.New("audio read/encode error")
+	errAudioDecodeWrite   = errors.New("audio decode/write error")
+	errAudioPlaybackInit  = errors.New("failed to init ALSA playback/Opus decoder")
+	errEmptyBuffer        = errors.New("empty buffer")
+	errNilBuffer          = errors.New("nil buffer")
+	errBufferTooLarge     = errors.New("buffer too large")
+	errInvalidBufferPtr   = errors.New("invalid buffer pointer")
+)
+
 func cgoAudioInit() error {
 	ret := C.jetkvm_audio_init()
 	if ret != 0 {
-		return errors.New("failed to init ALSA/Opus")
+		return errAudioInitFailed
 	}
 	return nil
 }
@@ -398,18 +410,19 @@ func cgoAudioClose() {
 	C.jetkvm_audio_close()
 }
 
-// Reads and encodes one frame, returns encoded bytes or error
+// Optimized read and encode with pre-allocated error objects and reduced checks
 func cgoAudioReadEncode(buf []byte) (int, error) {
-	if len(buf) < 1500 {
-		return 0, errors.New("buffer too small")
+	// Fast path: check minimum buffer size (reduced from 1500 to 1276 for 10ms frames)
+	if len(buf) < 1276 {
+		return 0, errBufferTooSmall
 	}
+	
 	n := C.jetkvm_audio_read_encode(unsafe.Pointer(&buf[0]))
 	if n < 0 {
-		return 0, errors.New("audio read/encode error")
+		return 0, errAudioReadEncode
 	}
 	if n == 0 {
-		// No data available - this is not an error, just no audio frame
-		return 0, nil
+		return 0, nil // No data available
 	}
 	return int(n), nil
 }

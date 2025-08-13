@@ -1,4 +1,4 @@
-//go:build nolint
+//go:build !cgo
 
 package audio
 
