@@ -22,6 +22,8 @@ BIN_DIR := $(shell pwd)/bin
 
 TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort -u)
 
+TEST_FORMAT := testdox
+
 hash_resource:
 	@shasum -a 256 resource/jetkvm_native | cut -d ' ' -f 1 > resource/jetkvm_native.sha256
 
@@ -59,6 +61,7 @@ build_dev_test: build_test2json build_gotestsum
 	chmod +x $(BIN_DIR)/tests/run_all_tests; \
 	cp $(BIN_DIR)/test2json $(BIN_DIR)/tests/ && chmod +x $(BIN_DIR)/tests/test2json; \
 	cp $(BIN_DIR)/gotestsum $(BIN_DIR)/tests/ && chmod +x $(BIN_DIR)/tests/gotestsum; \
+	echo $(TEST_FORMAT) > $(BIN_DIR)/tests/.test_format; \
 	tar czfv device-tests.tar.gz -C $(BIN_DIR)/tests .
 
 frontend:

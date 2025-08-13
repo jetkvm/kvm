@@ -1,4 +1,4 @@
-package udhcpc
+package dhclient
 
 import (
 	"bufio"
@@ -10,8 +10,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
+	"github.com/insomniacslk/dhcp/dhcpv6"
 )
 
+var (
+	defaultLeaseTime   = time.Duration(30 * time.Minute)
+	defaultRenewalTime = time.Duration(15 * time.Minute)
+)
+
+// Lease is a network configuration obtained by DHCP.
 type Lease struct {
 	// from https://udhcp.busybox.net/README.udhcpc
 	IPAddress         net.IP        `env:"ip" json:"ip"`                               // The obtained IP
@@ -21,6 +30,7 @@ type Lease struct {
 	MTU               int           `env:"mtu" json:"mtu,omitempty"`                   // The MTU to use for this network
 	HostName          string        `env:"hostname" json:"hostname,omitempty"`         // The assigned hostname
 	Domain            string        `env:"domain" json:"domain,omitempty"`             // The domain name of the network
+	SearchList        []string      `env:"search" json:"search_list,omitempty"`        // The search list for the network
 	BootPNextServer   net.IP        `env:"siaddr" json:"bootp_next_server,omitempty"`  // The bootp next server option
 	BootPServerName   string        `env:"sname" json:"bootp_server_name,omitempty"`   // The bootp server name option
 	BootPFile         string        `env:"boot_file" json:"bootp_file,omitempty"`      // The bootp boot file option
@@ -38,24 +48,100 @@ type Lease struct {
 	BootSize          int           `env:"bootsize" json:"bootsize,omitempty"`         // The length in 512 octect blocks of the bootfile
 	RootPath          string        `env:"rootpath" json:"root_path,omitempty"`        // The path name of the client's root disk
 	LeaseTime         time.Duration `env:"lease" json:"lease,omitempty"`               // The lease time, in seconds
+	RenewalTime       time.Duration `env:"renewal" json:"renewal,omitempty"`           // The renewal time, in seconds
+	RebindingTime     time.Duration `env:"rebinding" json:"rebinding,omitempty"`       // The rebinding time, in seconds
 	DHCPType          string        `env:"dhcptype" json:"dhcp_type,omitempty"`        // DHCP message type (safely ignored)
 	ServerID          string        `env:"serverid" json:"server_id,omitempty"`        // The IP of the server
 	Message           string        `env:"message" json:"reason,omitempty"`            // Reason for a DHCPNAK
 	TFTPServerName    string        `env:"tftp" json:"tftp,omitempty"`                 // The TFTP server name
 	BootFileName      string        `env:"bootfile" json:"bootfile,omitempty"`         // The boot file name
 	Uptime            time.Duration `env:"uptime" json:"uptime,omitempty"`             // The uptime of the device when the lease was obtained, in seconds
+	ClassIdentifier   string        `env:"classid" json:"class_identifier,omitempty"`  // The class identifier
 	LeaseExpiry       *time.Time    `json:"lease_expiry,omitempty"`                    // The expiry time of the lease
-	isEmpty           map[string]bool
+
+	InterfaceName string `json:"interface_name,omitempty"` // The name of the interface
+
+	p4 *nclient4.Lease
+	p6 *dhcpv6.Message
+
+	isEmpty map[string]bool
+}
+
+// fromNclient4Lease creates a lease from a nclient4.Lease.
+func fromNclient4Lease(l *nclient4.Lease, iface string) *Lease {
+	lease := &Lease{}
+
+	lease.p4 = l
+
+	// only the fields that we need are set
+	lease.Routers = l.ACK.Router()
+	lease.IPAddress = l.ACK.YourIPAddr
+	lease.Netmask = net.IP(l.ACK.SubnetMask())
+	lease.Broadcast = l.ACK.BroadcastAddress()
+	// lease.MTU = int(resp.Options.Get(dhcpv4.OptionInterfaceMTU))
+
+	lease.NTPServers = l.ACK.NTPServers()
+
+	lease.HostName = l.ACK.HostName()
+	lease.Domain = l.ACK.DomainName()
+
+	searchList := l.ACK.DomainSearch()
+	if searchList != nil {
+		lease.SearchList = searchList.Labels
+	}
+
+	lease.DNS = l.ACK.DNS()
+
+	lease.ClassIdentifier = l.ACK.ClassIdentifier()
+	lease.ServerID = l.ACK.ServerIdentifier().String()
+
+	lease.Message = l.ACK.Message()
+	lease.LeaseTime = l.ACK.IPAddressLeaseTime(defaultLeaseTime)
+	lease.RenewalTime = l.ACK.IPAddressRenewalTime(defaultRenewalTime)
+
+	lease.InterfaceName = iface
+
+	return lease
+}
+
+// fromNclient6Lease creates a lease from a nclient6.Message.
+func fromNclient6Lease(l *dhcpv6.Message, iface string) *Lease {
+	lease := &Lease{}
+
+	lease.p6 = l
+
+	iana := l.Options.OneIANA()
+	if iana == nil {
+		return nil
+	}
+
+	address := iana.Options.OneAddress()
+	if address == nil {
+		return nil
+	}
+
+	lease.IPAddress = address.IPv6Addr
+	lease.Netmask = net.IP(net.CIDRMask(128, 128))
+	lease.DNS = l.Options.DNS()
+	// lease.LeaseTime = iana.Options.OnePreferredLifetime()
+	// lease.RenewalTime = iana.Options.OneValidLifetime()
+	// lease.RebindingTime = iana.Options.OneRebindingTime()
+
+	lease.InterfaceName = iface
+
+	return lease
 }
 
 func (l *Lease) setIsEmpty(m map[string]bool) {
 	l.isEmpty = m
 }
 
+// IsEmpty returns true if the lease is empty for the given key.
 func (l *Lease) IsEmpty(key string) bool {
 	return l.isEmpty[key]
 }
 
+// ToJSON returns the lease as a JSON string.
 func (l *Lease) ToJSON() string {
 	json, err := json.Marshal(l)
 	if err != nil {
@@ -64,13 +150,13 @@ func (l *Lease) ToJSON() string {
 	return string(json)
 }
 
+// SetLeaseExpiry sets the lease expiry time.
 func (l *Lease) SetLeaseExpiry() (time.Time, error) {
 	if l.Uptime == 0 || l.LeaseTime == 0 {
 		return time.Time{}, fmt.Errorf("uptime or lease time isn't set")
 	}
 
 	// get the uptime of the device
-
 	file, err := os.Open("/proc/uptime")
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to open uptime file: %w", err)
@@ -98,6 +184,7 @@ func (l *Lease) SetLeaseExpiry() (time.Time, error) {
 	return leaseExpiry, nil
 }
 
+// UnmarshalDHCPCLease unmarshals a lease from a string.
 func UnmarshalDHCPCLease(lease *Lease, str string) error {
 	// parse the lease file as a map
 	data := make(map[string]string)
@@ -183,4 +270,46 @@ func UnmarshalDHCPCLease(lease *Lease, str string) error {
 	lease.setIsEmpty(valuesParsed)
 
 	return nil
+}
+
+// MarshalDHCPCLease marshals a lease to a string.
+func MarshalDHCPCLease(lease *Lease) (string, error) {
+	leaseType := reflect.TypeOf(lease).Elem()
+	leaseValue := reflect.ValueOf(lease).Elem()
+
+	leaseFile := ""
+
+	for i := 0; i < leaseType.NumField(); i++ {
+		field := leaseValue.Field(i)
+		key := leaseType.Field(i).Tag.Get("env")
+		if key == "" {
+			continue
+		}
+
+		outValue := ""
+
+		switch field.Interface().(type) {
+		case string:
+			outValue = field.String()
+		case int:
+			outValue = strconv.Itoa(int(field.Int()))
+		case time.Duration:
+			outValue = strconv.Itoa(int(field.Int()))
+		case net.IP:
+			outValue = field.String()
+		case []net.IP:
+			ips := field.Interface().([]net.IP)
+			ipStrings := make([]string, len(ips))
+			for i, ip := range ips {
+				ipStrings[i] = ip.String()
+			}
+			outValue = strings.Join(ipStrings, " ")
+		default:
+			return "", fmt.Errorf("unsupported field `%s` type: %s", key, field.Type().String())
+		}
+
+		leaseFile += fmt.Sprintf("%s=%s\n", key, outValue)
+	}
+
+	return leaseFile, nil
 }

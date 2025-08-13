@@ -379,6 +379,18 @@ func (f *FieldConfig) validateSingleValue(val string, index int) error {
 		}
 
 		switch validateType {
+		case "int":
+			if _, err := strconv.Atoi(val); err != nil {
+				return fmt.Errorf("field `%s` is not a valid integer: %s", f.Name, val)
+			}
+		case "ipv6_prefix_length":
+			valInt, err := strconv.Atoi(val)
+			if err != nil {
+				return fmt.Errorf("field `%s` is not a valid IPv6 prefix length: %s", f.Name, val)
+			}
+			if valInt < 0 || valInt > 128 {
+				return fmt.Errorf("field `%s` is not a valid IPv6 prefix length: %s", f.Name, val)
+			}
 		case "ipv4":
 			if net.ParseIP(val).To4() == nil {
 				return fmt.Errorf("%s is not a valid IPv4 address: %s", fieldRef, val)

@@ -1,13 +1,14 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
 
 	"github.com/jetkvm/kvm/internal/confparser"
+	"github.com/jetkvm/kvm/internal/dhclient"
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/jetkvm/kvm/internal/udhcpc"
 	"github.com/rs/zerolog"
 
 	"github.com/vishvananda/netlink"
@@ -28,7 +29,8 @@ type NetworkInterfaceState struct {
 	stateLock sync.Mutex
 
 	config     *NetworkConfig
-	dhcpClient *udhcpc.DHCPClient
+	ifConfig   *NetworkInterfaceConfig
+	dhcpClient *dhclient.Client
 
 	defaultHostname string
 	currentHostname string
@@ -48,7 +50,7 @@ type NetworkInterfaceOptions struct {
 	DefaultHostname   string
 	OnStateChange     func(state *NetworkInterfaceState)
 	OnInitialCheck    func(state *NetworkInterfaceState)
-	OnDhcpLeaseChange func(lease *udhcpc.Lease)
+	OnDhcpLeaseChange func(lease *dhclient.Lease)
 	OnConfigChange    func(config *NetworkConfig)
 	NetworkConfig     *NetworkConfig
 }
@@ -80,12 +82,23 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 		ntpAddresses:    make([]*net.IP, 0),
 	}
 
+	ifConfig, err := NewNetworkInterfaceConfig(opts.InterfaceName, opts.NetworkConfig, opts.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	link, err := netlink.LinkByName(opts.InterfaceName)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+
 	// create the dhcp client
-	dhcpClient := udhcpc.NewDHCPClient(&udhcpc.DHCPClientOptions{
-		InterfaceName: opts.InterfaceName,
-		PidFile:       opts.DhcpPidFile,
-		Logger:        l,
-		OnLeaseChange: func(lease *udhcpc.Lease) {
+	dhcpClient, err := dhclient.NewClient(ctx, []netlink.Link{link}, &dhclient.Config{
+		IPv4: true,
+		IPv6: true,
+		OnLease4Change: func(lease *dhclient.Lease) {
 			_, err := s.update()
 			if err != nil {
 				opts.Logger.Error().Err(err).Msg("failed to update network state")
@@ -96,9 +109,16 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 
 			opts.OnDhcpLeaseChange(lease)
 		},
-	})
+		OnLease6Change: func(lease *dhclient.Lease) {
+			// NOT IMPLEMENTED
+		},
+	}, l)
+	if err != nil {
+		return nil, err
+	}
 
 	s.dhcpClient = dhcpClient
+	s.ifConfig = ifConfig
 
 	return s, nil
 }
@@ -341,7 +361,7 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 	return dhcpTargetState, nil
 }
 
-func (s *NetworkInterfaceState) updateNtpServersFromLease(lease *udhcpc.Lease) error {
+func (s *NetworkInterfaceState) updateNtpServersFromLease(lease *dhclient.Lease) error {
 	if lease != nil && len(lease.NTPServers) > 0 {
 		s.l.Info().Msg("lease found, updating DHCP NTP addresses")
 		s.ntpAddresses = make([]*net.IP, 0, len(lease.NTPServers))
@@ -369,10 +389,10 @@ func (s *NetworkInterfaceState) CheckAndUpdateDhcp() error {
 	switch dhcpTargetState {
 	case DhcpTargetStateRenew:
 		s.l.Info().Msg("renewing DHCP lease")
-		_ = s.dhcpClient.Renew()
+		s.dhcpClient.Renew()
 	case DhcpTargetStateRelease:
 		s.l.Info().Msg("releasing DHCP lease")
-		_ = s.dhcpClient.Release()
+		s.dhcpClient.Release()
 	case DhcpTargetStateStart:
 		s.l.Warn().Msg("dhcpTargetStateStart not implemented")
 	case DhcpTargetStateStop:
@@ -384,5 +404,10 @@ func (s *NetworkInterfaceState) CheckAndUpdateDhcp() error {
 
 func (s *NetworkInterfaceState) onConfigChange(config *NetworkConfig) {
 	_ = s.setHostnameIfNotSame()
+
+	if err := s.ifConfig.Apply(s); err != nil {
+		s.l.Error().Err(err).Msg("failed to apply network interface config")
+	}
+
 	s.cbConfigChange(config)
 }

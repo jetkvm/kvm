@@ -267,7 +267,7 @@ export default function SettingsNetworkRoute() {
                 placeholder="http://proxy.example.com:8080"
                 {...register("http_proxy", {
                   validate: (value: string | null) => {
-                    if (value === "") return true;
+                    if (value === "" || value === null) return true;
                     if (!validator.isURL(value || "", { protocols: ["http", "https"] })) {
                       return "Invalid HTTP proxy URL";
                     }

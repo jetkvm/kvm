@@ -3,8 +3,8 @@ package kvm
 import (
 	"fmt"
 
+	"github.com/jetkvm/kvm/internal/dhclient"
 	"github.com/jetkvm/kvm/internal/network"
-	"github.com/jetkvm/kvm/internal/udhcpc"
 )
 
 const (
@@ -53,7 +53,7 @@ func initNetwork() error {
 		OnInitialCheck: func(state *network.NetworkInterfaceState) {
 			networkStateChanged()
 		},
-		OnDhcpLeaseChange: func(lease *udhcpc.Lease) {
+		OnDhcpLeaseChange: func(lease *dhclient.Lease) {
 			networkStateChanged()
 
 			if currentSession == nil {

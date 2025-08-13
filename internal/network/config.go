@@ -28,9 +28,10 @@ type IPv4StaticConfig struct {
 }
 
 type IPv6StaticConfig struct {
-	Address null.String `json:"address,omitempty" validate_type:"cidr" required:"true"`
-	Gateway null.String `json:"gateway,omitempty" validate_type:"ipv6" required:"true"`
-	DNS     []string    `json:"dns,omitempty" validate_type:"ipv6" required:"true"`
+	Address      null.String `json:"address,omitempty" validate_type:"ipv6" required:"true"`
+	PrefixLength null.Int    `json:"prefix_length" validate_type:"ipv6_prefix_length" required:"true"`
+	Gateway      null.String `json:"gateway,omitempty" validate_type:"ipv6" required:"true"`
+	DNS          []string    `json:"dns,omitempty" validate_type:"ipv6" required:"true"`
 }
 type NetworkConfig struct {
 	Hostname  null.String `json:"hostname,omitempty" validate_type:"hostname"`
@@ -108,7 +109,7 @@ func (s *NetworkInterfaceState) GetDomain() string {
 	domain := ToValidDomain(s.config.Domain.String)
 
 	if domain == "" {
-		lease := s.dhcpClient.GetLease()
+		lease := s.dhcpClient.Lease4()
 		if lease != nil && lease.Domain != "" {
 			domain = ToValidDomain(lease.Domain)
 		}

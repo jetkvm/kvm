@@ -45,6 +45,7 @@ LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
 RUN_GO_TESTS=false
 RUN_GO_TESTS_ONLY=false
 INSTALL_APP=false
+TEST_FORMAT=${TEST_FORMAT:-"testdox"}
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -105,7 +106,7 @@ fi
 
 if [ "$RUN_GO_TESTS" = true ]; then
     msg_info "▶ Building go tests"
-    make build_dev_test  
+    make TEST_FORMAT=${TEST_FORMAT} build_dev_test  
 
     msg_info "▶ Copying device-tests.tar.gz to remote host"
     ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > /tmp/device-tests.tar.gz" < device-tests.tar.gz
@@ -116,7 +117,7 @@ set -e
 TMP_DIR=$(mktemp -d)
 cd ${TMP_DIR}
 tar zxf /tmp/device-tests.tar.gz
-./gotestsum --format=testdox \
+./gotestsum --format=$(cat .test_format) \
     --jsonfile=/tmp/device-tests.json \
     --post-run-command 'sh -c "echo $TESTS_FAILED > /tmp/device-tests.failed"' \
     --raw-command -- ./run_all_tests -json

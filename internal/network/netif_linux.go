@@ -28,10 +28,16 @@ func (s *NetworkInterfaceState) Run() error {
 	_ = s.setHostnameIfNotSame()
 
 	// run the dhcp client
-	go s.dhcpClient.Run() // nolint:errcheck
+	if err := s.dhcpClient.Start(); err != nil {
+		return err
+	}
 
 	if err := s.CheckAndUpdateDhcp(); err != nil {
 		return err
+	}
+
+	if err := s.ifConfig.Apply(s); err != nil {
+		s.l.Error().Err(err).Msg("failed to apply network interface config")
 	}
 
 	go func() {

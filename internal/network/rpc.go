@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/confparser"
-	"github.com/jetkvm/kvm/internal/udhcpc"
+	"github.com/jetkvm/kvm/internal/dhclient"
 )
 
 type RpcIPv6Address struct {
@@ -23,7 +23,8 @@ type RpcNetworkState struct {
 	IPv6LinkLocal string           `json:"ipv6_link_local,omitempty"`
 	IPv4Addresses []string         `json:"ipv4_addresses,omitempty"`
 	IPv6Addresses []RpcIPv6Address `json:"ipv6_addresses,omitempty"`
-	DHCPLease     *udhcpc.Lease    `json:"dhcp_lease,omitempty"`
+	DHCPLease4    *dhclient.Lease  `json:"dhcp_lease,omitempty"` // name kept for backwards compatibility
+	DHCPLease6    *dhclient.Lease  `json:"dhcp_lease6,omitempty"`
 }
 
 type RpcNetworkSettings struct {
@@ -84,7 +85,8 @@ func (s *NetworkInterfaceState) RpcGetNetworkState() RpcNetworkState {
 		IPv6LinkLocal: s.IPv6LinkLocalAddress(),
 		IPv4Addresses: s.ipv4Addresses,
 		IPv6Addresses: ipv6Addresses,
-		DHCPLease:     s.dhcpClient.GetLease(),
+		DHCPLease4:    s.dhcpClient.Lease4(),
+		DHCPLease6:    s.dhcpClient.Lease6(),
 	}
 }
 
@@ -111,6 +113,14 @@ func (s *NetworkInterfaceState) RpcSetNetworkSettings(settings RpcNetworkSetting
 		return nil
 	}
 
+	if err := validateIPv4Config(&settings.NetworkConfig); err != nil {
+		return err
+	}
+
+	if err := validateIPv6Config(&settings.NetworkConfig); err != nil {
+		return err
+	}
+
 	s.config = &settings.NetworkConfig
 	s.onConfigChange(s.config)
 
@@ -122,5 +132,7 @@ func (s *NetworkInterfaceState) RpcRenewDHCPLease() error {
 		return fmt.Errorf("dhcp client not initialized")
 	}
 
-	return s.dhcpClient.Renew()
+	s.dhcpClient.Renew()
+
+	return nil
 }
