@@ -526,8 +526,8 @@ function UrlView({
       icon: UbuntuIcon,
     },
     {
-      name: "Debian 12",
-      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.9.0-amd64-netinst.iso",
+      name: "Debian 13 Trixie",
+      url: "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.0.0-amd64-netinst.iso",
       icon: DebianIcon,
     },
     {
