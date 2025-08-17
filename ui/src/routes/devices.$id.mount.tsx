@@ -531,6 +531,11 @@ function UrlView({
       icon: DebianIcon,
     },
     {
+      name: "Debian 12 Bookworm (old-stable)",
+      url: "https://cdimage.debian.org/mirror/cdimage/archive/12.11.0/amd64/iso-cd/debian-12.11.0-amd64-netinst.iso",
+      icon: DebianIcon,
+    },
+    {
       name: "Fedora 41",
       url: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso",
       icon: FedoraIcon,
