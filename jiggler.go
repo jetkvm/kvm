@@ -69,12 +69,12 @@ func initJiggler() {
 
 func runJigglerCronTab() error {
 	cronTab := config.JigglerConfig.ScheduleCronTab
-	
+
 	// Apply timezone if specified
 	if config.JigglerConfig.Timezone != "" && config.JigglerConfig.Timezone != "UTC" {
 		cronTab = fmt.Sprintf("TZ=%s %s", config.JigglerConfig.Timezone, cronTab)
 	}
-	
+
 	s, err := gocron.NewScheduler()
 	if err != nil {
 		return err
