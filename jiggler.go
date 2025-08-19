@@ -7,6 +7,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/go-co-op/gocron/v2"
+	"github.com/jetkvm/kvm/internal/tzdata"
 )
 
 type JigglerConfig struct {
@@ -23,8 +24,13 @@ var scheduler gocron.Scheduler = nil
 func rpcSetJigglerState(enabled bool) {
 	jigglerEnabled = enabled
 }
+
 func rpcGetJigglerState() bool {
 	return jigglerEnabled
+}
+
+func rpcGetTimezones() []string {
+	return tzdata.TimeZones
 }
 
 func rpcGetJigglerConfig() (JigglerConfig, error) {
