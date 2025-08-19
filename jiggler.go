@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/go-co-op/gocron/v2"
 )
@@ -31,7 +32,7 @@ func rpcGetJigglerConfig() (JigglerConfig, error) {
 }
 
 func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
-	logger.Info().Msgf("jigglerConfig: %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab)
+	logger.Info().Msgf("jigglerConfig: %v, %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab, jigglerConfig.Timezone)
 	config.JigglerConfig = &jigglerConfig
 	err := removeExistingCrobJobs(scheduler)
 	if err != nil {
@@ -70,9 +71,15 @@ func initJiggler() {
 func runJigglerCronTab() error {
 	cronTab := config.JigglerConfig.ScheduleCronTab
 
-	// Apply timezone if specified
+	// Apply timezone if specified and valid
 	if config.JigglerConfig.Timezone != "" && config.JigglerConfig.Timezone != "UTC" {
-		cronTab = fmt.Sprintf("TZ=%s %s", config.JigglerConfig.Timezone, cronTab)
+		// Validate timezone before applying
+		if _, err := time.LoadLocation(config.JigglerConfig.Timezone); err != nil {
+			logger.Warn().Msgf("Invalid timezone '%s', falling back to UTC: %v", config.JigglerConfig.Timezone, err)
+			// Don't add TZ prefix, let it run in UTC
+		} else {
+			cronTab = fmt.Sprintf("TZ=%s %s", config.JigglerConfig.Timezone, cronTab)
+		}
 	}
 
 	s, err := gocron.NewScheduler()
