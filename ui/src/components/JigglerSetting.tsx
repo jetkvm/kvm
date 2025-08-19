@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { LuExternalLink } from "react-icons/lu";
 
 import { Button, LinkButton } from "@components/Button";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
 
 import { InputFieldWithLabel } from "./InputField";
 import { SelectMenuBasic } from "./SelectMenuBasic";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
 
 export interface JigglerConfig {
   inactivity_limit_seconds: number;
@@ -27,7 +27,7 @@ export function JigglerSetting({
       jitter_percentage: 0,
       schedule_cron_tab: "*/20 * * * * *",
       timezone: "UTC",
-    }
+    },
   );
 
   const [send] = useJsonRpc();
@@ -38,7 +38,7 @@ export function JigglerSetting({
       if ("error" in resp) return;
       setTimezones(resp.result as string[]);
     });
-  }, []);
+  }, [send]);
 
   const timezoneOptions = useMemo(
     () =>
@@ -76,7 +76,7 @@ export function JigglerSetting({
         <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
           Examples
         </h4>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex flex-wrap gap-2">
           {exampleConfigs.map((example, index) => (
             <Button
               key={index}
@@ -96,7 +96,7 @@ export function JigglerSetting({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 items-end gap-4">
+      <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-2">
         <InputFieldWithLabel
           required
           size="SM"
