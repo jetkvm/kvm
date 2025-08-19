@@ -123,6 +123,7 @@ var defaultConfig = &Config{
 		InactivityLimitSeconds: 60,
 		JitterPercentage:       25,
 		ScheduleCronTab:        "0 * * * * *",
+		Timezone:               "UTC",
 	},
 	TLSMode: "",
 	UsbConfig: &usbgadget.Config{

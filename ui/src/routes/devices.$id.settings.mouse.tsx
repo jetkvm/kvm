@@ -21,6 +21,7 @@ export interface JigglerConfig {
   inactivity_limit_seconds: number;
   jitter_percentage: number;
   schedule_cron_tab: string;
+  timezone?: string;
 }
 
 const jigglerOptions = [
@@ -32,6 +33,8 @@ const jigglerOptions = [
       inactivity_limit_seconds: 30,
       jitter_percentage: 25,
       schedule_cron_tab: "*/30 * * * * *",
+      // We don't care about the timezone for this preset
+      // timezone: "UTC",
     },
   },
   {
@@ -41,6 +44,8 @@ const jigglerOptions = [
       inactivity_limit_seconds: 60,
       jitter_percentage: 25,
       schedule_cron_tab: "0 * * * * *",
+      // We don't care about the timezone for this preset
+      // timezone: "UTC",
     },
   },
   {
@@ -50,15 +55,8 @@ const jigglerOptions = [
       inactivity_limit_seconds: 300,
       jitter_percentage: 25,
       schedule_cron_tab: "0 */5 * * * *",
-    },
-  },
-  {
-    value: "business_hours",
-    label: "Business Hours - 1m - (Mon-Fri 9-17)",
-    config: {
-      inactivity_limit_seconds: 60,
-      jitter_percentage: 25,
-      schedule_cron_tab: "0 * 9-17 * * 1-5",
+      // We don't care about the timezone for this preset
+      // timezone: "UTC",
     },
   },
 ] as const;
@@ -77,6 +75,9 @@ export default function SettingsMouseRoute() {
 
   const [selectedJigglerOption, setSelectedJigglerOption] =
     useState<JigglerValues | null>(null);
+  const [currentJigglerConfig, setCurrentJigglerConfig] = useState<JigglerConfig | null>(
+    null,
+  );
 
   const scrollThrottlingOptions = [
     { value: "0", label: "Off" },
@@ -99,6 +100,8 @@ export default function SettingsMouseRoute() {
       send("getJigglerConfig", {}, resp => {
         if ("error" in resp) return;
         const result = resp.result as JigglerConfig;
+        setCurrentJigglerConfig(result);
+
         const value = jigglerOptions.find(
           o =>
             o?.config?.inactivity_limit_seconds === result.inactivity_limit_seconds &&
@@ -128,9 +131,20 @@ export default function SettingsMouseRoute() {
 
       send("setJigglerConfig", { jigglerConfig }, async resp => {
         if ("error" in resp) {
-          return notifications.error(
-            `Failed to set jiggler config: ${resp.error.data || "Unknown error"}`,
-          );
+          const errorMsg = resp.error.data || "Unknown error";
+
+          // Check for cron syntax errors and provide user-friendly message
+          if (
+            errorMsg.includes("invalid syntax") ||
+            errorMsg.includes("parse failure") ||
+            errorMsg.includes("invalid cron")
+          ) {
+            return notifications.error(
+              "Invalid cron expression. Please check your schedule format (e.g., '0 * * * * *' for every minute).",
+            );
+          }
+
+          return notifications.error(`Failed to set jiggler config: ${errorMsg}`);
         }
 
         notifications.success(`Jiggler Config successfully updated`);
@@ -202,10 +216,7 @@ export default function SettingsMouseRoute() {
           />
         </SettingsItem>
 
-        <SettingsItem
-          title="Jiggler"
-          description="Simulate movement of a computer mouse. Prevents sleep mode, standby mode or the screensaver from activating"
-        >
+        <SettingsItem title="Jiggler" description="Simulate movement of a computer mouse">
           <SelectMenuBasic
             size="SM"
             label=""
@@ -222,13 +233,15 @@ export default function SettingsMouseRoute() {
                 e.target.value as (typeof jigglerOptions)[number]["value"],
               );
             }}
-            fullWidth
           />
         </SettingsItem>
 
         {selectedJigglerOption === "custom" && (
           <SettingsNestedSection>
-            <JigglerSetting onSave={saveJigglerConfig} />
+            <JigglerSetting
+              onSave={saveJigglerConfig}
+              defaultJigglerState={currentJigglerConfig || undefined}
+            />
           </SettingsNestedSection>
         )}
         <div className="space-y-4">
