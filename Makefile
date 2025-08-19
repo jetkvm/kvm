@@ -8,7 +8,7 @@ VERSION ?= 0.4.6
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
 
-GO_BUILD_ARGS := -tags netgo
+GO_BUILD_ARGS := -tags netgo -tags timetzdata
 GO_RELEASE_BUILD_ARGS := -trimpath $(GO_BUILD_ARGS)
 GO_LDFLAGS := \
   -s -w \
