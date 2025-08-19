@@ -33,6 +33,8 @@ const jigglerOptions = [
       inactivity_limit_seconds: 30,
       jitter_percentage: 25,
       schedule_cron_tab: "*/30 * * * * *",
+      // We don't care about the timezone for this preset
+      // timezone: "UTC",
     },
   },
   {
@@ -42,6 +44,8 @@ const jigglerOptions = [
       inactivity_limit_seconds: 60,
       jitter_percentage: 25,
       schedule_cron_tab: "0 * * * * *",
+      // We don't care about the timezone for this preset
+      // timezone: "UTC",
     },
   },
   {
@@ -51,6 +55,8 @@ const jigglerOptions = [
       inactivity_limit_seconds: 300,
       jitter_percentage: 25,
       schedule_cron_tab: "0 */5 * * * *",
+      // We don't care about the timezone for this preset
+      // timezone: "UTC",
     },
   },
 ] as const;
@@ -69,8 +75,9 @@ export default function SettingsMouseRoute() {
 
   const [selectedJigglerOption, setSelectedJigglerOption] =
     useState<JigglerValues | null>(null);
-  const [currentJigglerConfig, setCurrentJigglerConfig] =
-    useState<JigglerConfig | null>(null);
+  const [currentJigglerConfig, setCurrentJigglerConfig] = useState<JigglerConfig | null>(
+    null,
+  );
 
   const scrollThrottlingOptions = [
     { value: "0", label: "Off" },
@@ -127,9 +134,13 @@ export default function SettingsMouseRoute() {
           const errorMsg = resp.error.data || "Unknown error";
 
           // Check for cron syntax errors and provide user-friendly message
-          if (errorMsg.includes("invalid syntax") || errorMsg.includes("parse failure") || errorMsg.includes("invalid cron")) {
+          if (
+            errorMsg.includes("invalid syntax") ||
+            errorMsg.includes("parse failure") ||
+            errorMsg.includes("invalid cron")
+          ) {
             return notifications.error(
-              "Invalid cron expression. Please check your schedule format (e.g., '0 * * * * *' for every minute)."
+              "Invalid cron expression. Please check your schedule format (e.g., '0 * * * * *' for every minute).",
             );
           }
 
@@ -205,10 +216,7 @@ export default function SettingsMouseRoute() {
           />
         </SettingsItem>
 
-        <SettingsItem
-          title="Jiggler"
-          description="Simulate movement of a computer mouse"
-        >
+        <SettingsItem title="Jiggler" description="Simulate movement of a computer mouse">
           <SelectMenuBasic
             size="SM"
             label=""
@@ -225,7 +233,6 @@ export default function SettingsMouseRoute() {
                 e.target.value as (typeof jigglerOptions)[number]["value"],
               );
             }}
-
           />
         </SettingsItem>
 
