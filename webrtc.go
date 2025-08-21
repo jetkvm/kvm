@@ -30,10 +30,15 @@ type Session struct {
 	AudioInputManager        *audio.AudioInputManager
 	shouldUmountVirtualMedia bool
 
-	// Microphone operation cooldown to mitigate rapid start/stop races
-	micOpMu          sync.Mutex
-	lastMicOp        time.Time
-	micCooldown      time.Duration
+	// Microphone operation throttling
+	micOpMu     sync.Mutex
+	lastMicOp   time.Time
+	micCooldown time.Duration
+
+	// Audio frame processing
+	audioFrameChan chan []byte
+	audioStopChan  chan struct{}
+	audioWg        sync.WaitGroup
 }
 
 type SessionConfig struct {
@@ -118,7 +123,13 @@ func newSession(config SessionConfig) (*Session, error) {
 	session := &Session{
 		peerConnection:    peerConnection,
 		AudioInputManager: audio.NewAudioInputManager(),
+		micCooldown:       100 * time.Millisecond,
+		audioFrameChan:    make(chan []byte, 1000),
+		audioStopChan:     make(chan struct{}),
 	}
+
+	// Start audio processing goroutine
+	session.startAudioProcessor(*logger)
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		scopedLogger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
@@ -153,6 +164,11 @@ func newSession(config SessionConfig) (*Session, error) {
 	session.AudioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", "kvm")
 	if err != nil {
 		return nil, err
+	}
+
+	// Update the audio relay with the new WebRTC audio track
+	if err := audio.UpdateAudioRelayTrack(session.AudioTrack); err != nil {
+		scopedLogger.Warn().Err(err).Msg("Failed to update audio relay track")
 	}
 
 	videoRtpSender, err := peerConnection.AddTrack(session.VideoTrack)
@@ -190,10 +206,14 @@ func newSession(config SessionConfig) (*Session, error) {
 
 					// Extract Opus payload from RTP packet
 					opusPayload := rtpPacket.Payload
-					if len(opusPayload) > 0 && session.AudioInputManager != nil {
-						err := session.AudioInputManager.WriteOpusFrame(opusPayload)
-						if err != nil {
-							scopedLogger.Warn().Err(err).Msg("Failed to write Opus frame to audio input manager")
+					if len(opusPayload) > 0 {
+						// Send to buffered channel for processing
+						select {
+						case session.audioFrameChan <- opusPayload:
+							// Frame sent successfully
+						default:
+							// Channel is full, drop the frame
+							scopedLogger.Warn().Msg("Audio frame channel full, dropping frame")
 						}
 					}
 				}
@@ -245,7 +265,8 @@ func newSession(config SessionConfig) (*Session, error) {
 				err := rpcUnmountImage()
 				scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")
 			}
-			// Stop audio input manager
+			// Stop audio processing and input manager
+			session.stopAudioProcessor()
 			if session.AudioInputManager != nil {
 				session.AudioInputManager.Stop()
 			}
@@ -260,6 +281,36 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	})
 	return session, nil
+}
+
+// startAudioProcessor starts the dedicated audio processing goroutine
+func (s *Session) startAudioProcessor(logger zerolog.Logger) {
+	s.audioWg.Add(1)
+	go func() {
+		defer s.audioWg.Done()
+		logger.Debug().Msg("Audio processor goroutine started")
+
+		for {
+			select {
+			case frame := <-s.audioFrameChan:
+				if s.AudioInputManager != nil {
+					err := s.AudioInputManager.WriteOpusFrame(frame)
+					if err != nil {
+						logger.Warn().Err(err).Msg("Failed to write Opus frame to audio input manager")
+					}
+				}
+			case <-s.audioStopChan:
+				logger.Debug().Msg("Audio processor goroutine stopping")
+				return
+			}
+		}
+	}()
+}
+
+// stopAudioProcessor stops the audio processing goroutine
+func (s *Session) stopAudioProcessor() {
+	close(s.audioStopChan)
+	s.audioWg.Wait()
 }
 
 func drainRtpSender(rtpSender *webrtc.RTPSender) {

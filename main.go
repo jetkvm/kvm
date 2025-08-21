@@ -2,6 +2,8 @@ package kvm
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,12 +12,130 @@ import (
 
 	"github.com/gwatts/rootcerts"
 	"github.com/jetkvm/kvm/internal/audio"
-	"github.com/pion/webrtc/v4/pkg/media"
 )
 
-var appCtx context.Context
+var (
+	appCtx context.Context
+	isAudioServer bool
+	audioProcessDone chan struct{}
+	audioSupervisor *audio.AudioServerSupervisor
+)
+
+func init() {
+	flag.BoolVar(&isAudioServer, "audio-server", false, "Run as audio server subprocess")
+	audioProcessDone = make(chan struct{})
+}
+
+func runAudioServer() {
+	logger.Info().Msg("Starting audio server subprocess")
+
+	// Create audio server
+	server, err := audio.NewAudioServer()
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to create audio server")
+		os.Exit(1)
+	}
+	defer server.Close()
+
+	// Start accepting connections
+	if err := server.Start(); err != nil {
+		logger.Error().Err(err).Msg("failed to start audio server")
+		os.Exit(1)
+	}
+
+	// Initialize audio processing
+	err = audio.StartNonBlockingAudioStreaming(func(frame []byte) {
+		if err := server.SendFrame(frame); err != nil {
+			logger.Warn().Err(err).Msg("failed to send audio frame")
+			audio.RecordFrameDropped()
+		}
+	})
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to start audio processing")
+		os.Exit(1)
+	}
+
+	// Wait for termination signal
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	<-sigs
+
+	// Cleanup
+	audio.StopNonBlockingAudioStreaming()
+	logger.Info().Msg("Audio server subprocess stopped")
+}
+
+func startAudioSubprocess() error {
+	// Create audio server supervisor
+	audioSupervisor = audio.NewAudioServerSupervisor()
+
+	// Set up callbacks for process lifecycle events
+	audioSupervisor.SetCallbacks(
+		// onProcessStart
+		func(pid int) {
+			logger.Info().Int("pid", pid).Msg("audio server process started")
+			
+			// Start audio relay system for main process without a track initially
+			// The track will be updated when a WebRTC session is created
+			if err := audio.StartAudioRelay(nil); err != nil {
+				logger.Error().Err(err).Msg("failed to start audio relay")
+			}
+		},
+		// onProcessExit
+		func(pid int, exitCode int, crashed bool) {
+			if crashed {
+				logger.Error().Int("pid", pid).Int("exit_code", exitCode).Msg("audio server process crashed")
+			} else {
+				logger.Info().Int("pid", pid).Msg("audio server process exited gracefully")
+			}
+			
+			// Stop audio relay when process exits
+			audio.StopAudioRelay()
+		},
+		// onRestart
+		func(attempt int, delay time.Duration) {
+			logger.Warn().Int("attempt", attempt).Dur("delay", delay).Msg("restarting audio server process")
+		},
+	)
+
+	// Start the supervisor
+	if err := audioSupervisor.Start(); err != nil {
+		return fmt.Errorf("failed to start audio supervisor: %w", err)
+	}
+
+	// Monitor supervisor and handle cleanup
+	go func() {
+		defer close(audioProcessDone)
+		
+		// Wait for supervisor to stop
+		for audioSupervisor.IsRunning() {
+			time.Sleep(100 * time.Millisecond)
+		}
+		
+		logger.Info().Msg("audio supervisor stopped")
+	}()
+
+	return nil
+}
 
 func Main() {
+	flag.Parse()
+
+	// If running as audio server, only initialize audio processing
+	if isAudioServer {
+		runAudioServer()
+		return
+	}
+
+	// If running as audio input server, only initialize audio input processing
+	if audio.IsAudioInputServerProcess() {
+		err := audio.RunAudioInputServer()
+		if err != nil {
+			logger.Error().Err(err).Msg("audio input server failed")
+			os.Exit(1)
+		}
+		return
+	}
 	LoadConfig()
 
 	var cancel context.CancelFunc
@@ -80,30 +200,10 @@ func Main() {
 	// initialize usb gadget
 	initUsbGadget()
 
-	// Start non-blocking audio streaming and deliver Opus frames to WebRTC
-	err = audio.StartNonBlockingAudioStreaming(func(frame []byte) {
-		// Deliver Opus frame to WebRTC audio track if session is active
-		if currentSession != nil {
-			config := audio.GetAudioConfig()
-			var sampleData []byte
-			if audio.IsAudioMuted() {
-				sampleData = make([]byte, len(frame)) // silence
-			} else {
-				sampleData = frame
-			}
-			if err := currentSession.AudioTrack.WriteSample(media.Sample{
-				Data:     sampleData,
-				Duration: config.FrameSize,
-			}); err != nil {
-				logger.Warn().Err(err).Msg("error writing audio sample")
-				audio.RecordFrameDropped()
-			}
-		} else {
-			audio.RecordFrameDropped()
-		}
-	})
+	// Start audio subprocess
+	err = startAudioSubprocess()
 	if err != nil {
-		logger.Warn().Err(err).Msg("failed to start non-blocking audio streaming")
+		logger.Warn().Err(err).Msg("failed to start audio subprocess")
 	}
 
 	// Initialize session provider for audio events
@@ -163,8 +263,18 @@ func Main() {
 	<-sigs
 	logger.Info().Msg("JetKVM Shutting Down")
 
-	// Stop non-blocking audio manager
-	audio.StopNonBlockingAudioStreaming()
+	// Stop audio subprocess and wait for cleanup
+	if !isAudioServer {
+		if audioSupervisor != nil {
+			logger.Info().Msg("stopping audio supervisor")
+			if err := audioSupervisor.Stop(); err != nil {
+				logger.Error().Err(err).Msg("failed to stop audio supervisor")
+			}
+		}
+		<-audioProcessDone
+	} else {
+		audio.StopNonBlockingAudioStreaming()
+	}
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")
 	//	if err != nil {

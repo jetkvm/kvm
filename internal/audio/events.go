@@ -249,13 +249,13 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 	for range ticker.C {
 		aeb.mutex.RLock()
 		subscriberCount := len(aeb.subscribers)
-		
+
 		// Early exit if no subscribers to save CPU
 		if subscriberCount == 0 {
 			aeb.mutex.RUnlock()
 			continue
 		}
-		
+
 		// Create a copy for safe iteration
 		subscribersCopy := make([]*AudioEventSubscriber, 0, subscriberCount)
 		for _, sub := range aeb.subscribers {
@@ -270,7 +270,7 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 				activeSubscribers++
 			}
 		}
-		
+
 		// Skip metrics gathering if no active subscribers
 		if activeSubscribers == 0 {
 			continue
@@ -357,9 +357,9 @@ func (aeb *AudioEventBroadcaster) sendToSubscriber(subscriber *AudioEventSubscri
 	err := wsjson.Write(ctx, subscriber.conn, event)
 	if err != nil {
 		// Don't log network errors for closed connections as warnings, they're expected
-		if strings.Contains(err.Error(), "use of closed network connection") || 
-		   strings.Contains(err.Error(), "connection reset by peer") ||
-		   strings.Contains(err.Error(), "context canceled") {
+		if strings.Contains(err.Error(), "use of closed network connection") ||
+			strings.Contains(err.Error(), "connection reset by peer") ||
+			strings.Contains(err.Error(), "context canceled") {
 			subscriber.logger.Debug().Err(err).Msg("websocket connection closed during audio event send")
 		} else {
 			subscriber.logger.Warn().Err(err).Msg("failed to send audio event to subscriber")

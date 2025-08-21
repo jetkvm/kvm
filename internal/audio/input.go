@@ -19,21 +19,21 @@ type AudioInputMetrics struct {
 	LastFrameTime   time.Time
 }
 
-// AudioInputManager manages microphone input stream from WebRTC to USB gadget
+// AudioInputManager manages microphone input stream using IPC mode only
 type AudioInputManager struct {
 	// metrics MUST be first for ARM32 alignment (contains int64 fields)
 	metrics AudioInputMetrics
 
-	inputBuffer chan []byte
-	logger      zerolog.Logger
-	running     int32
+	ipcManager *AudioInputIPCManager
+	logger     zerolog.Logger
+	running    int32
 }
 
-// NewAudioInputManager creates a new audio input manager
+// NewAudioInputManager creates a new audio input manager (IPC mode only)
 func NewAudioInputManager() *AudioInputManager {
 	return &AudioInputManager{
-		inputBuffer: make(chan []byte, 100), // Buffer up to 100 frames
-		logger:      logging.GetDefaultLogger().With().Str("component", "audio-input").Logger(),
+		ipcManager: NewAudioInputIPCManager(),
+		logger:     logging.GetDefaultLogger().With().Str("component", "audio-input").Logger(),
 	}
 }
 
@@ -45,9 +45,10 @@ func (aim *AudioInputManager) Start() error {
 
 	aim.logger.Info().Msg("Starting audio input manager")
 
-	// Start the non-blocking audio input stream
-	err := StartNonBlockingAudioInput(aim.inputBuffer)
+	// Start the IPC-based audio input
+	err := aim.ipcManager.Start()
 	if err != nil {
+		aim.logger.Error().Err(err).Msg("Failed to start IPC audio input")
 		atomic.StoreInt32(&aim.running, 0)
 		return err
 	}
@@ -63,54 +64,102 @@ func (aim *AudioInputManager) Stop() {
 
 	aim.logger.Info().Msg("Stopping audio input manager")
 
-	// Stop the non-blocking audio input stream
-	StopNonBlockingAudioInput()
-
-	// Drain the input buffer
-	go func() {
-		for {
-			select {
-			case <-aim.inputBuffer:
-				// Drain
-			case <-time.After(100 * time.Millisecond):
-				return
-			}
-		}
-	}()
+	// Stop the IPC-based audio input
+	aim.ipcManager.Stop()
 
 	aim.logger.Info().Msg("Audio input manager stopped")
 }
 
-// WriteOpusFrame writes an Opus frame to the input buffer
+// WriteOpusFrame writes an Opus frame to the audio input system with latency tracking
 func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
-	if atomic.LoadInt32(&aim.running) == 0 {
-		return nil // Not running, ignore
+	if !aim.IsRunning() {
+		return nil // Not running, silently drop
 	}
 
-	select {
-	case aim.inputBuffer <- frame:
-		atomic.AddInt64(&aim.metrics.FramesSent, 1)
-		atomic.AddInt64(&aim.metrics.BytesProcessed, int64(len(frame)))
-		aim.metrics.LastFrameTime = time.Now()
-		return nil
-	default:
-		// Buffer full, drop frame
+	// Track end-to-end latency from WebRTC to IPC
+	startTime := time.Now()
+	err := aim.ipcManager.WriteOpusFrame(frame)
+	processingTime := time.Since(startTime)
+
+	// Log high latency warnings
+	if processingTime > 10*time.Millisecond {
+		aim.logger.Warn().
+			Dur("latency_ms", processingTime).
+			Msg("High audio processing latency detected")
+	}
+
+	if err != nil {
 		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
-		aim.logger.Warn().Msg("Audio input buffer full, dropping frame")
-		return nil
+		return err
+	}
+
+	// Update metrics
+	atomic.AddInt64(&aim.metrics.FramesSent, 1)
+	atomic.AddInt64(&aim.metrics.BytesProcessed, int64(len(frame)))
+	aim.metrics.LastFrameTime = time.Now()
+	aim.metrics.AverageLatency = processingTime
+	return nil
+}
+
+// GetMetrics returns current audio input metrics
+func (aim *AudioInputManager) GetMetrics() AudioInputMetrics {
+	return AudioInputMetrics{
+		FramesSent:     atomic.LoadInt64(&aim.metrics.FramesSent),
+		FramesDropped:  atomic.LoadInt64(&aim.metrics.FramesDropped),
+		BytesProcessed: atomic.LoadInt64(&aim.metrics.BytesProcessed),
+		AverageLatency: aim.metrics.AverageLatency,
+		LastFrameTime:  aim.metrics.LastFrameTime,
 	}
 }
 
-// GetMetrics returns current microphone input metrics
-func (aim *AudioInputManager) GetMetrics() AudioInputMetrics {
-	return AudioInputMetrics{
-		FramesSent:      atomic.LoadInt64(&aim.metrics.FramesSent),
-		FramesDropped:   atomic.LoadInt64(&aim.metrics.FramesDropped),
-		BytesProcessed:  atomic.LoadInt64(&aim.metrics.BytesProcessed),
-		LastFrameTime:   aim.metrics.LastFrameTime,
-		ConnectionDrops: atomic.LoadInt64(&aim.metrics.ConnectionDrops),
-		AverageLatency:  aim.metrics.AverageLatency,
+// GetComprehensiveMetrics returns detailed performance metrics across all components
+func (aim *AudioInputManager) GetComprehensiveMetrics() map[string]interface{} {
+	// Get base metrics
+	baseMetrics := aim.GetMetrics()
+
+	// Get detailed IPC metrics
+	ipcMetrics, detailedStats := aim.ipcManager.GetDetailedMetrics()
+
+	comprehensiveMetrics := map[string]interface{}{
+		"manager": map[string]interface{}{
+			"frames_sent":        baseMetrics.FramesSent,
+			"frames_dropped":     baseMetrics.FramesDropped,
+			"bytes_processed":    baseMetrics.BytesProcessed,
+			"average_latency_ms": float64(baseMetrics.AverageLatency.Nanoseconds()) / 1e6,
+			"last_frame_time":    baseMetrics.LastFrameTime,
+			"running":            aim.IsRunning(),
+		},
+		"ipc": map[string]interface{}{
+			"frames_sent":        ipcMetrics.FramesSent,
+			"frames_dropped":     ipcMetrics.FramesDropped,
+			"bytes_processed":    ipcMetrics.BytesProcessed,
+			"average_latency_ms": float64(ipcMetrics.AverageLatency.Nanoseconds()) / 1e6,
+			"last_frame_time":    ipcMetrics.LastFrameTime,
+		},
+		"detailed": detailedStats,
 	}
+
+	return comprehensiveMetrics
+}
+
+// LogPerformanceStats logs current performance statistics
+func (aim *AudioInputManager) LogPerformanceStats() {
+	metrics := aim.GetComprehensiveMetrics()
+
+	managerStats := metrics["manager"].(map[string]interface{})
+	ipcStats := metrics["ipc"].(map[string]interface{})
+	detailedStats := metrics["detailed"].(map[string]interface{})
+
+	aim.logger.Info().
+		Int64("manager_frames_sent", managerStats["frames_sent"].(int64)).
+		Int64("manager_frames_dropped", managerStats["frames_dropped"].(int64)).
+		Float64("manager_latency_ms", managerStats["average_latency_ms"].(float64)).
+		Int64("ipc_frames_sent", ipcStats["frames_sent"].(int64)).
+		Int64("ipc_frames_dropped", ipcStats["frames_dropped"].(int64)).
+		Float64("ipc_latency_ms", ipcStats["average_latency_ms"].(float64)).
+		Float64("client_drop_rate", detailedStats["client_drop_rate"].(float64)).
+		Float64("frames_per_second", detailedStats["frames_per_second"].(float64)).
+		Msg("Audio input performance metrics")
 }
 
 // IsRunning returns whether the audio input manager is running
