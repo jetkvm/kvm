@@ -173,6 +173,8 @@ func setupRouter() *gin.Engine {
 			return
 		}
 		audio.SetAudioMuted(req.Muted)
+		// Also set relay mute state if in main process
+		audio.SetAudioRelayMuted(req.Muted)
 
 		// Broadcast audio mute state change via WebSocket
 		broadcaster := audio.GetAudioEventBroadcaster()
@@ -286,7 +288,7 @@ func setupRouter() *gin.Engine {
 		// Optimized server-side cooldown using atomic operations
 		opResult := audio.TryMicrophoneOperation()
 		if !opResult.Allowed {
-			running := currentSession.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning()
+			running := currentSession.AudioInputManager.IsRunning()
 			c.JSON(200, gin.H{
 				"status":                 "cooldown",
 				"running":                running,
@@ -297,7 +299,7 @@ func setupRouter() *gin.Engine {
 		}
 
 		// Check if already running before attempting to start
-		if currentSession.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning() {
+		if currentSession.AudioInputManager.IsRunning() {
 			c.JSON(200, gin.H{
 				"status":  "already running",
 				"running": true,
@@ -312,7 +314,7 @@ func setupRouter() *gin.Engine {
 
 			// Check if it's already running after the failed start attempt
 			// This handles race conditions where another request started it
-			if currentSession.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning() {
+			if currentSession.AudioInputManager.IsRunning() {
 				c.JSON(200, gin.H{
 					"status":  "started by concurrent request",
 					"running": true,
@@ -348,7 +350,7 @@ func setupRouter() *gin.Engine {
 		// Optimized server-side cooldown using atomic operations
 		opResult := audio.TryMicrophoneOperation()
 		if !opResult.Allowed {
-			running := currentSession.AudioInputManager.IsRunning() || audio.IsNonBlockingAudioInputRunning()
+			running := currentSession.AudioInputManager.IsRunning()
 			c.JSON(200, gin.H{
 				"status":                 "cooldown",
 				"running":                running,
@@ -359,7 +361,7 @@ func setupRouter() *gin.Engine {
 		}
 
 		// Check if already stopped before attempting to stop
-		if !currentSession.AudioInputManager.IsRunning() && !audio.IsNonBlockingAudioInputRunning() {
+		if !currentSession.AudioInputManager.IsRunning() {
 			c.JSON(200, gin.H{
 				"status":  "already stopped",
 				"running": false,
@@ -369,7 +371,7 @@ func setupRouter() *gin.Engine {
 
 		currentSession.AudioInputManager.Stop()
 
-		// AudioInputManager.Stop() already coordinates a clean stop via StopNonBlockingAudioInput()
+		// AudioInputManager.Stop() already coordinates a clean stop via IPC audio input system
 		// so we don't need to call it again here
 
 		// Broadcast microphone state change via WebSocket
@@ -437,9 +439,8 @@ func setupRouter() *gin.Engine {
 
 		logger.Info().Msg("forcing microphone state reset")
 
-		// Force stop both the AudioInputManager and NonBlockingAudioManager
+		// Force stop the AudioInputManager
 		currentSession.AudioInputManager.Stop()
-		audio.StopNonBlockingAudioInput()
 
 		// Wait a bit to ensure everything is stopped
 		time.Sleep(100 * time.Millisecond)
@@ -449,9 +450,8 @@ func setupRouter() *gin.Engine {
 		broadcaster.BroadcastMicrophoneStateChanged(false, true)
 
 		c.JSON(200, gin.H{
-			"status":                    "reset",
-			"audio_input_running":       currentSession.AudioInputManager.IsRunning(),
-			"nonblocking_input_running": audio.IsNonBlockingAudioInputRunning(),
+			"status":              "reset",
+			"audio_input_running": currentSession.AudioInputManager.IsRunning(),
 		})
 	})
 
