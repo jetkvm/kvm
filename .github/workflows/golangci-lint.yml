@@ -36,12 +36,18 @@ jobs:
           echo "opus_version=$OPUS_VERSION" >> $GITHUB_OUTPUT
           echo "Extracted ALSA_VERSION: $ALSA_VERSION"
           echo "Extracted OPUS_VERSION: $OPUS_VERSION"
+      - name: Get rv1106-system latest commit
+        id: rv1106-commit
+        run: |
+          RV1106_COMMIT=$(git ls-remote https://github.com/jetkvm/rv1106-system.git HEAD | cut -f1)
+          echo "rv1106_commit=$RV1106_COMMIT" >> $GITHUB_OUTPUT
+          echo "Latest rv1106-system commit: $RV1106_COMMIT"
       - name: Cache audio dependencies
         id: cache-audio-deps
         uses: actions/cache@v4
         with:
           path: $HOME/.jetkvm/audio-libs
-          key: audio-deps-${{ runner.os }}-alsa-${{ steps.versions.outputs.alsa_version }}-opus-${{ steps.versions.outputs.opus_version }}
+          key: audio-deps-${{ runner.os }}-alsa-${{ steps.versions.outputs.alsa_version }}-opus-${{ steps.versions.outputs.opus_version }}-rv1106-${{ steps.rv1106-commit.outputs.rv1106_commit }}
           save-always: true
       - name: Setup development environment
         if: steps.cache-audio-deps.outputs.cache-hit != 'true'
