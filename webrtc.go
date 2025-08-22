@@ -23,6 +23,7 @@ type Session struct {
 	HidChannel               *webrtc.DataChannel
 	DiskChannel              *webrtc.DataChannel
 	shouldUmountVirtualMedia bool
+	rpcQueue                 chan webrtc.DataChannelMessage
 }
 
 type SessionConfig struct {
@@ -105,6 +106,12 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 	session := &Session{peerConnection: peerConnection}
+	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
+	go func() {
+		for msg := range session.rpcQueue {
+			onRPCMessage(msg, session)
+		}
+	}()
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		scopedLogger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
@@ -112,7 +119,8 @@ func newSession(config SessionConfig) (*Session, error) {
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				go onRPCMessage(msg, session)
+				// Enqueue to ensure ordered processing
+				session.rpcQueue <- msg
 			})
 			triggerOTAStateUpdate()
 			triggerVideoStateUpdate()
@@ -185,6 +193,11 @@ func newSession(config SessionConfig) (*Session, error) {
 			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
 			if session == currentSession {
 				currentSession = nil
+			}
+			// Stop RPC processor
+			if session.rpcQueue != nil {
+				close(session.rpcQueue)
+				session.rpcQueue = nil
 			}
 			if session.shouldUmountVirtualMedia {
 				err := rpcUnmountImage()
