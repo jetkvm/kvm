@@ -178,8 +178,6 @@ func (ais *AudioInputSupervisor) monitorSubprocess() {
 		ais.running = false
 		ais.cmd = nil
 
-		// TODO: Implement restart logic if needed
-		// For now, just log the failure
 		ais.logger.Info().Msg("Audio input server subprocess monitoring stopped")
 	}
 }

@@ -315,7 +315,7 @@ func (s *AudioServerSupervisor) terminateProcess() {
 	// Wait for graceful shutdown
 	done := make(chan struct{})
 	go func() {
-		cmd.Wait()
+		_ = cmd.Wait()
 		close(done)
 	}()
 

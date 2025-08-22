@@ -31,8 +31,6 @@ type Session struct {
 	shouldUmountVirtualMedia bool
 
 	// Microphone operation throttling
-	micOpMu     sync.Mutex
-	lastMicOp   time.Time
 	micCooldown time.Duration
 
 	// Audio frame processing

@@ -15,9 +15,12 @@ var (
 	outputStreamingLogger  *zerolog.Logger
 )
 
-func init() {
-	logger := logging.GetDefaultLogger().With().Str("component", "audio-output").Logger()
-	outputStreamingLogger = &logger
+func getOutputStreamingLogger() *zerolog.Logger {
+	if outputStreamingLogger == nil {
+		logger := logging.GetDefaultLogger().With().Str("component", "audio-output").Logger()
+		outputStreamingLogger = &logger
+	}
+	return outputStreamingLogger
 }
 
 // StartAudioOutputStreaming starts audio output streaming (capturing system audio)
@@ -40,10 +43,10 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 		defer func() {
 			CGOAudioClose()
 			atomic.StoreInt32(&outputStreamingRunning, 0)
-			outputStreamingLogger.Info().Msg("Audio output streaming stopped")
+			getOutputStreamingLogger().Info().Msg("Audio output streaming stopped")
 		}()
 
-		outputStreamingLogger.Info().Msg("Audio output streaming started")
+		getOutputStreamingLogger().Info().Msg("Audio output streaming started")
 		buffer := make([]byte, MaxAudioFrameSize)
 
 		for {
@@ -54,7 +57,7 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 				// Capture audio frame
 				n, err := CGOAudioReadEncode(buffer)
 				if err != nil {
-					outputStreamingLogger.Warn().Err(err).Msg("Failed to read/encode audio")
+					getOutputStreamingLogger().Warn().Err(err).Msg("Failed to read/encode audio")
 					continue
 				}
 				if n > 0 {

@@ -23,14 +23,18 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 
 // Get retrieves a buffer from the pool
 func (p *AudioBufferPool) Get() []byte {
-	return p.pool.Get().([]byte)
+	if buf := p.pool.Get(); buf != nil {
+		return *buf.(*[]byte)
+	}
+	return make([]byte, 0, 1500) // fallback if pool is empty
 }
 
 // Put returns a buffer to the pool
 func (p *AudioBufferPool) Put(buf []byte) {
 	// Reset length but keep capacity for reuse
 	if cap(buf) >= 1500 { // Only pool buffers of reasonable size
-		p.pool.Put(buf[:0])
+		resetBuf := buf[:0]
+		p.pool.Put(&resetBuf)
 	}
 }
 
@@ -38,7 +42,7 @@ func (p *AudioBufferPool) Put(buf []byte) {
 var (
 	// Pool for 1500-byte audio frame buffers (Opus max frame size)
 	audioFramePool = NewAudioBufferPool(1500)
-	
+
 	// Pool for smaller control buffers
 	audioControlPool = NewAudioBufferPool(64)
 )

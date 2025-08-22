@@ -33,7 +33,7 @@ type BatchAudioProcessor struct {
 	threadPinned int32
 
 	// Buffers (pre-allocated to avoid allocation overhead)
-	readBufPool  *sync.Pool
+	readBufPool *sync.Pool
 }
 
 type BatchAudioStats struct {

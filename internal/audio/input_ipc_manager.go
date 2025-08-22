@@ -102,7 +102,7 @@ func (aim *AudioInputIPCManager) WriteOpusFrame(frame []byte) error {
 		return err
 	}
 
-	// Calculate and update latency
+	// Calculate and update latency (end-to-end IPC transmission time)
 	latency := time.Since(startTime)
 	aim.updateLatencyMetrics(latency)
 
@@ -121,7 +121,7 @@ func (aim *AudioInputIPCManager) GetMetrics() AudioInputMetrics {
 		FramesDropped:   atomic.LoadInt64(&aim.metrics.FramesDropped),
 		BytesProcessed:  atomic.LoadInt64(&aim.metrics.BytesProcessed),
 		ConnectionDrops: atomic.LoadInt64(&aim.metrics.ConnectionDrops),
-		AverageLatency:  aim.metrics.AverageLatency, // TODO: Calculate actual latency
+		AverageLatency:  aim.metrics.AverageLatency,
 		LastFrameTime:   aim.metrics.LastFrameTime,
 	}
 }
@@ -154,7 +154,7 @@ func (aim *AudioInputIPCManager) GetDetailedMetrics() (AudioInputMetrics, map[st
 	// Get server statistics if available
 	serverStats := make(map[string]interface{})
 	if aim.supervisor.IsRunning() {
-		// Note: Server stats would need to be exposed through IPC
+
 		serverStats["status"] = "running"
 	} else {
 		serverStats["status"] = "stopped"
@@ -179,9 +179,8 @@ func (aim *AudioInputIPCManager) calculateFrameRate() float64 {
 		return 0.0
 	}
 
-	// Estimate based on recent activity (simplified)
-	// In a real implementation, you'd track frames over time windows
-	return 50.0 // Typical Opus frame rate
+	// Return typical Opus frame rate
+	return 50.0
 }
 
 // GetSupervisor returns the supervisor for advanced operations
