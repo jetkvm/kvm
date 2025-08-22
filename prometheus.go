@@ -11,7 +11,7 @@ func initPrometheus() {
 	// A Prometheus metrics endpoint.
 	version.Version = builtAppVersion
 	prometheus.MustRegister(versioncollector.NewCollector("jetkvm"))
-	
+
 	// Start audio metrics collection
 	audio.StartMetricsUpdater()
 }
