@@ -27,33 +27,47 @@ jobs:
         uses: actions/setup-go@fa96338abe5531f6e34c5cc0bbe28c1a533d5505 # v4.2.1
         with:
           go-version: 1.24.4
-      - name: Extract versions from Makefile
-        id: versions
+      - name: Setup build environment variables
+        id: build-env
         run: |
-          ALSA_VERSION=$(grep '^ALSA_VERSION' Makefile | cut -d'=' -f2 | tr -d ' ?')
-          OPUS_VERSION=$(grep '^OPUS_VERSION' Makefile | cut -d'=' -f2 | tr -d ' ?')
+          # Extract versions from Makefile
+          ALSA_VERSION=$(grep '^ALSA_VERSION' Makefile | cut -d'=' -f2 | tr -d ' ')
+          OPUS_VERSION=$(grep '^OPUS_VERSION' Makefile | cut -d'=' -f2 | tr -d ' ')
+          
+          # Get rv1106-system latest commit
+          RV1106_COMMIT=$(git ls-remote https://github.com/jetkvm/rv1106-system.git HEAD | cut -f1)
+          
+          # Set environment variables
+          echo "ALSA_VERSION=$ALSA_VERSION" >> $GITHUB_ENV
+          echo "OPUS_VERSION=$OPUS_VERSION" >> $GITHUB_ENV
+          echo "RV1106_COMMIT=$RV1106_COMMIT" >> $GITHUB_ENV
+          
+          # Set outputs for use in other steps
           echo "alsa_version=$ALSA_VERSION" >> $GITHUB_OUTPUT
           echo "opus_version=$OPUS_VERSION" >> $GITHUB_OUTPUT
-          echo "Extracted ALSA_VERSION: $ALSA_VERSION"
-          echo "Extracted OPUS_VERSION: $OPUS_VERSION"
-      - name: Get rv1106-system latest commit
-        id: rv1106-commit
-        run: |
-          RV1106_COMMIT=$(git ls-remote https://github.com/jetkvm/rv1106-system.git HEAD | cut -f1)
           echo "rv1106_commit=$RV1106_COMMIT" >> $GITHUB_OUTPUT
+          
+          # Set resolved cache path
+          CACHE_PATH="$HOME/.jetkvm/audio-libs"
+          echo "CACHE_PATH=$CACHE_PATH" >> $GITHUB_ENV
+          echo "cache_path=$CACHE_PATH" >> $GITHUB_OUTPUT
+          
+          echo "Extracted ALSA version: $ALSA_VERSION"
+          echo "Extracted Opus version: $OPUS_VERSION"
           echo "Latest rv1106-system commit: $RV1106_COMMIT"
+          echo "Cache path: $CACHE_PATH"
       - name: Restore audio dependencies cache
         id: cache-audio-deps
         uses: actions/cache/restore@v4
         with:
-          path: $HOME/.jetkvm/audio-libs
-          key: audio-deps-${{ runner.os }}-alsa-${{ steps.versions.outputs.alsa_version }}-opus-${{ steps.versions.outputs.opus_version }}-rv1106-${{ steps.rv1106-commit.outputs.rv1106_commit }}
+          path: ${{ steps.build-env.outputs.cache_path }}
+          key: audio-deps-${{ runner.os }}-alsa-${{ steps.build-env.outputs.alsa_version }}-opus-${{ steps.build-env.outputs.opus_version }}-rv1106-${{ steps.build-env.outputs.rv1106_commit }}
       - name: Setup development environment
         if: steps.cache-audio-deps.outputs.cache-hit != 'true'
         run: make dev_env
         env:
-          ALSA_VERSION: ${{ steps.versions.outputs.alsa_version }}
-          OPUS_VERSION: ${{ steps.versions.outputs.opus_version }}
+          ALSA_VERSION: ${{ env.ALSA_VERSION }}
+          OPUS_VERSION: ${{ env.OPUS_VERSION }}
       - name: Create empty resource directory
         run: |
           mkdir -p static && touch static/.gitkeep
@@ -61,7 +75,7 @@ jobs:
         if: always() && steps.cache-audio-deps.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: $HOME/.jetkvm/audio-libs
+          path: ${{ steps.build-env.outputs.cache_path }}
           key: ${{ steps.cache-audio-deps.outputs.cache-primary-key }}
       - name: Lint
         uses: golangci/golangci-lint-action@1481404843c368bc19ca9406f87d6e0fc97bdcfd # v7.0.0
@@ -70,7 +84,7 @@ jobs:
           version: v2.0.2
         env:
           CGO_ENABLED: 1
-          ALSA_VERSION: ${{ steps.versions.outputs.alsa_version }}
-          OPUS_VERSION: ${{ steps.versions.outputs.opus_version }}
-          CGO_CFLAGS: "-I$HOME/.jetkvm/audio-libs/alsa-lib-${{ steps.versions.outputs.alsa_version }}/include -I$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/include -I$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/celt"
-          CGO_LDFLAGS: "-L$HOME/.jetkvm/audio-libs/alsa-lib-${{ steps.versions.outputs.alsa_version }}/src/.libs -lasound -L$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/.libs -lopus -lm -ldl -static"
+          ALSA_VERSION: ${{ env.ALSA_VERSION }}
+          OPUS_VERSION: ${{ env.OPUS_VERSION }}
+          CGO_CFLAGS: "-I${{ steps.build-env.outputs.cache_path }}/alsa-lib-${{ steps.build-env.outputs.alsa_version }}/include -I${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}/include -I${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}/celt"
+          CGO_LDFLAGS: "-L${{ steps.build-env.outputs.cache_path }}/alsa-lib-${{ steps.build-env.outputs.alsa_version }}/src/.libs -lasound -L${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}/.libs -lopus -lm -ldl -static"
