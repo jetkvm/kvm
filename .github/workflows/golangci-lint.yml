@@ -42,6 +42,7 @@ jobs:
         with:
           path: $HOME/.jetkvm/audio-libs
           key: audio-deps-${{ runner.os }}-alsa-${{ steps.versions.outputs.alsa_version }}-opus-${{ steps.versions.outputs.opus_version }}
+          save-always: true
       - name: Setup development environment
         if: steps.cache-audio-deps.outputs.cache-hit != 'true'
         run: make dev_env
