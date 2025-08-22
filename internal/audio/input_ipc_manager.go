@@ -154,7 +154,6 @@ func (aim *AudioInputIPCManager) GetDetailedMetrics() (AudioInputMetrics, map[st
 	// Get server statistics if available
 	serverStats := make(map[string]interface{})
 	if aim.supervisor.IsRunning() {
-
 		serverStats["status"] = "running"
 	} else {
 		serverStats["status"] = "stopped"

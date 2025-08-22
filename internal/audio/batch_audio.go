@@ -38,13 +38,13 @@ type BatchAudioProcessor struct {
 
 type BatchAudioStats struct {
 	// int64 fields MUST be first for ARM32 alignment
-	BatchedReads      int64
-	SingleReads       int64
-	BatchedFrames     int64
-	SingleFrames      int64
-	CGOCallsReduced   int64
-	OSThreadPinTime   time.Duration // time.Duration is int64 internally
-	LastBatchTime     time.Time
+	BatchedReads    int64
+	SingleReads     int64
+	BatchedFrames   int64
+	SingleFrames    int64
+	CGOCallsReduced int64
+	OSThreadPinTime time.Duration // time.Duration is int64 internally
+	LastBatchTime   time.Time
 }
 
 type batchReadRequest struct {
@@ -153,8 +153,6 @@ func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
 	}
 }
 
-
-
 // batchReadProcessor processes batched read operations
 func (bap *BatchAudioProcessor) batchReadProcessor() {
 	defer bap.logger.Debug().Msg("batch read processor stopped")
@@ -190,8 +188,6 @@ func (bap *BatchAudioProcessor) batchReadProcessor() {
 		bap.processBatchRead(batch)
 	}
 }
-
-
 
 // processBatchRead processes a batch of read requests efficiently
 func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
@@ -236,8 +232,6 @@ func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
 	bap.stats.LastBatchTime = time.Now()
 }
 
-
-
 // GetStats returns current batch processor statistics
 func (bap *BatchAudioProcessor) GetStats() BatchAudioStats {
 	return BatchAudioStats{
@@ -258,7 +252,7 @@ func (bap *BatchAudioProcessor) IsRunning() bool {
 
 // Global batch processor instance
 var (
-	globalBatchProcessor     unsafe.Pointer // *BatchAudioProcessor
+	globalBatchProcessor      unsafe.Pointer // *BatchAudioProcessor
 	batchProcessorInitialized int32
 )
 
