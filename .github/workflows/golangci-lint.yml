@@ -60,3 +60,5 @@ jobs:
           CGO_ENABLED: 1
           ALSA_VERSION: ${{ steps.versions.outputs.alsa_version }}
           OPUS_VERSION: ${{ steps.versions.outputs.opus_version }}
+          CGO_CFLAGS: "-I$HOME/.jetkvm/audio-libs/alsa-lib-${{ steps.versions.outputs.alsa_version }}/include -I$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/include -I$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/celt"
+          CGO_LDFLAGS: "-L$HOME/.jetkvm/audio-libs/alsa-lib-${{ steps.versions.outputs.alsa_version }}/src/.libs -lasound -L$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/.libs -lopus -lm -ldl -static"
