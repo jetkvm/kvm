@@ -40,7 +40,7 @@ jobs:
         id: cache-audio-deps
         uses: actions/cache@v4
         with:
-          path: ~/.jetkvm/audio-libs
+          path: $HOME/.jetkvm/audio-libs
           key: audio-deps-${{ runner.os }}-alsa-${{ steps.versions.outputs.alsa_version }}-opus-${{ steps.versions.outputs.opus_version }}
       - name: Setup development environment
         if: steps.cache-audio-deps.outputs.cache-hit != 'true'
