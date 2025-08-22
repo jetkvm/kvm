@@ -57,7 +57,7 @@ jobs:
       - name: Create empty resource directory
         run: |
           mkdir -p static && touch static/.gitkeep
-            - name: Save audio dependencies cache
+      - name: Save audio dependencies cache
         if: always() && steps.cache-audio-deps.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
