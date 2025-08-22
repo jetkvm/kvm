@@ -10,10 +10,10 @@ import (
 // with reduced contention using atomic operations and conditional locking
 type MicrophoneContentionManager struct {
 	// Atomic fields (must be 64-bit aligned on 32-bit systems)
-	lastOpNano    int64         // Unix nanoseconds of last operation
-	cooldownNanos int64         // Cooldown duration in nanoseconds
-	operationID   int64         // Incremental operation ID for tracking
-	
+	lastOpNano    int64 // Unix nanoseconds of last operation
+	cooldownNanos int64 // Cooldown duration in nanoseconds
+	operationID   int64 // Incremental operation ID for tracking
+
 	// Lock-free state flags (using atomic.Pointer for lock-free updates)
 	lockPtr unsafe.Pointer // *sync.Mutex - conditionally allocated
 }
@@ -27,61 +27,61 @@ func NewMicrophoneContentionManager(cooldown time.Duration) *MicrophoneContentio
 
 // OperationResult represents the result of attempting a microphone operation
 type OperationResult struct {
-	Allowed         bool
+	Allowed           bool
 	RemainingCooldown time.Duration
-	OperationID     int64
+	OperationID       int64
 }
 
 // TryOperation attempts to perform a microphone operation with optimized contention handling
 func (mcm *MicrophoneContentionManager) TryOperation() OperationResult {
 	now := time.Now().UnixNano()
 	cooldown := atomic.LoadInt64(&mcm.cooldownNanos)
-	
+
 	// Fast path: check if we're clearly outside cooldown period using atomic read
 	lastOp := atomic.LoadInt64(&mcm.lastOpNano)
 	elapsed := now - lastOp
-	
+
 	if elapsed >= cooldown {
 		// Attempt atomic update without locking
 		if atomic.CompareAndSwapInt64(&mcm.lastOpNano, lastOp, now) {
 			opID := atomic.AddInt64(&mcm.operationID, 1)
 			return OperationResult{
-				Allowed:         true,
+				Allowed:           true,
 				RemainingCooldown: 0,
-				OperationID:     opID,
+				OperationID:       opID,
 			}
 		}
 	}
-	
+
 	// Slow path: potential contention, check remaining cooldown
 	currentLastOp := atomic.LoadInt64(&mcm.lastOpNano)
 	currentElapsed := now - currentLastOp
-	
+
 	if currentElapsed >= cooldown {
 		// Race condition: another operation might have updated lastOpNano
 		// Try once more with CAS
 		if atomic.CompareAndSwapInt64(&mcm.lastOpNano, currentLastOp, now) {
 			opID := atomic.AddInt64(&mcm.operationID, 1)
 			return OperationResult{
-				Allowed:         true,
+				Allowed:           true,
 				RemainingCooldown: 0,
-				OperationID:     opID,
+				OperationID:       opID,
 			}
 		}
 		// If CAS failed, fall through to cooldown calculation
 		currentLastOp = atomic.LoadInt64(&mcm.lastOpNano)
 		currentElapsed = now - currentLastOp
 	}
-	
+
 	remaining := time.Duration(cooldown - currentElapsed)
 	if remaining < 0 {
 		remaining = 0
 	}
-	
+
 	return OperationResult{
-		Allowed:         false,
+		Allowed:           false,
 		RemainingCooldown: remaining,
-		OperationID:     atomic.LoadInt64(&mcm.operationID),
+		OperationID:       atomic.LoadInt64(&mcm.operationID),
 	}
 }
 
@@ -127,20 +127,20 @@ func GetMicrophoneContentionManager() *MicrophoneContentionManager {
 	if ptr != nil {
 		return (*MicrophoneContentionManager)(ptr)
 	}
-	
+
 	// Initialize on first use
 	if atomic.CompareAndSwapInt32(&micContentionInitialized, 0, 1) {
 		manager := NewMicrophoneContentionManager(200 * time.Millisecond)
 		atomic.StorePointer(&globalMicContentionManager, unsafe.Pointer(manager))
 		return manager
 	}
-	
+
 	// Another goroutine initialized it, try again
 	ptr = atomic.LoadPointer(&globalMicContentionManager)
 	if ptr != nil {
 		return (*MicrophoneContentionManager)(ptr)
 	}
-	
+
 	// Fallback: create a new manager (should rarely happen)
 	return NewMicrophoneContentionManager(200 * time.Millisecond)
 }
