@@ -1,6 +1,6 @@
 import { useCallback , useEffect, useState } from "react";
 
-import { useJsonRpc } from "../hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
 import { SettingsItem } from "../routes/devices.$id.settings";
 
@@ -59,7 +59,7 @@ const usbPresets = [
 ];
 
 export function UsbDeviceSetting() {
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const [loading, setLoading] = useState(false);
 
   const [usbDeviceConfig, setUsbDeviceConfig] =
@@ -67,7 +67,7 @@ export function UsbDeviceSetting() {
   const [selectedPreset, setSelectedPreset] = useState<string>("default");
 
   const syncUsbDeviceConfig = useCallback(() => {
-    send("getUsbDevices", {}, resp => {
+    send("getUsbDevices", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         console.error("Failed to load USB devices:", resp.error);
         notifications.error(
@@ -97,7 +97,7 @@ export function UsbDeviceSetting() {
   const handleUsbConfigChange = useCallback(
     (devices: UsbDeviceConfig) => {
       setLoading(true);
-      send("setUsbDevices", { devices }, async resp => {
+      send("setUsbDevices", { devices }, async (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             `Failed to set usb devices: ${resp.error.data || "Unknown error"}`,

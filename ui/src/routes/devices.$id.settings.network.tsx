@@ -13,7 +13,7 @@ import {
   TimeSyncMode,
   useNetworkStateStore,
 } from "@/hooks/stores";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
 import InputField, { InputFieldWithLabel } from "@components/InputField";
@@ -72,7 +72,7 @@ export function LifeTimeLabel({ lifetime }: { lifetime: string }) {
 }
 
 export default function SettingsNetworkRoute() {
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const [networkState, setNetworkState] = useNetworkStateStore(state => [
     state,
     state.setNetworkState,
@@ -104,7 +104,7 @@ export default function SettingsNetworkRoute() {
 
   const getNetworkSettings = useCallback(() => {
     setNetworkSettingsLoaded(false);
-    send("getNetworkSettings", {}, resp => {
+    send("getNetworkSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       console.log(resp.result);
       setNetworkSettings(resp.result as NetworkSettings);
@@ -117,7 +117,7 @@ export default function SettingsNetworkRoute() {
   }, [send]);
 
   const getNetworkState = useCallback(() => {
-    send("getNetworkState", {}, resp => {
+    send("getNetworkState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       console.log(resp.result);
       setNetworkState(resp.result as NetworkState);
@@ -127,7 +127,7 @@ export default function SettingsNetworkRoute() {
   const setNetworkSettingsRemote = useCallback(
     (settings: NetworkSettings) => {
       setNetworkSettingsLoaded(false);
-      send("setNetworkSettings", { settings }, resp => {
+      send("setNetworkSettings", { settings }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             "Failed to save network settings: " +
@@ -148,7 +148,7 @@ export default function SettingsNetworkRoute() {
   );
 
   const handleRenewLease = useCallback(() => {
-    send("renewDHCPLease", {}, resp => {
+    send("renewDHCPLease", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error("Failed to renew lease: " + resp.error.message);
       } else {

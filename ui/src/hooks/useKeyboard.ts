@@ -5,7 +5,7 @@ import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { keys, modifiers } from "@/keyboardMappings";
 
 export default function useKeyboard() {
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
   const updateActiveKeysAndModifiers = useHidStore(

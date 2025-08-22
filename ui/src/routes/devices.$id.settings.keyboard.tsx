@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 
 import { KeyboardLedSync, useSettingsStore } from "@/hooks/stores";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { keyboardOptions } from "@/keyboardLayouts";
@@ -39,10 +39,10 @@ export default function SettingsKeyboardRoute() {
     { value: "host", label: "Host Only" },
   ];
 
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   useEffect(() => {
-    send("getKeyboardLayout", {}, resp => {
+    send("getKeyboardLayout", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setKeyboardLayout(resp.result as string);
     });
@@ -51,7 +51,7 @@ export default function SettingsKeyboardRoute() {
   const onKeyboardLayoutChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       const layout = e.target.value;
-      send("setKeyboardLayout", { layout }, resp => {
+      send("setKeyboardLayout", { layout }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             `Failed to set keyboard layout: ${resp.error.data || "Unknown error"}`,

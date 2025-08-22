@@ -12,7 +12,7 @@ import { SettingsSectionHeader } from "@/components/SettingsSectionHeader";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import notifications from "@/notifications";
 import { DEVICE_API } from "@/ui.config";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { isOnDevice } from "@/main";
 import { TextAreaWithLabel } from "@components/TextArea";
 
@@ -42,7 +42,7 @@ export default function SettingsAccessIndexRoute() {
   const { navigateTo } = useDeviceUiNavigation();
   const navigate = useNavigate();
 
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   const [isAdopted, setAdopted] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -56,7 +56,7 @@ export default function SettingsAccessIndexRoute() {
   const [tlsKey, setTlsKey] = useState<string>("");
 
   const getCloudState = useCallback(() => {
-    send("getCloudState", {}, resp => {
+    send("getCloudState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return console.error(resp.error);
       const cloudState = resp.result as CloudState;
       setAdopted(cloudState.connected);
@@ -77,7 +77,7 @@ export default function SettingsAccessIndexRoute() {
   }, [send]);
 
   const getTLSState = useCallback(() => {
-    send("getTLSState", {}, resp => {
+    send("getTLSState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return console.error(resp.error);
       const tlsState = resp.result as TLSState;
 
@@ -88,7 +88,7 @@ export default function SettingsAccessIndexRoute() {
   }, [send]);
 
   const deregisterDevice = async () => {
-    send("deregisterDevice", {}, resp => {
+    send("deregisterDevice", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to de-register device: ${resp.error.data || "Unknown error"}`,
@@ -110,7 +110,7 @@ export default function SettingsAccessIndexRoute() {
         return;
       }
 
-      send("setCloudUrl", { apiUrl: cloudApiUrl, appUrl: cloudAppUrl }, resp => {
+      send("setCloudUrl", { apiUrl: cloudApiUrl, appUrl: cloudAppUrl }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             `Failed to update cloud URL: ${resp.error.data || "Unknown error"}`,
@@ -156,7 +156,7 @@ export default function SettingsAccessIndexRoute() {
         state.privateKey = key;
       }
 
-      send("setTLSState", { state }, resp => {
+      send("setTLSState", { state }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             `Failed to update TLS settings: ${resp.error.data || "Unknown error"}`,
@@ -198,7 +198,7 @@ export default function SettingsAccessIndexRoute() {
     getCloudState();
     getTLSState();
 
-    send("getDeviceID", {}, async resp => {
+    send("getDeviceID", {}, async (resp: JsonRpcResponse) => {
       if ("error" in resp) return console.error(resp.error);
       setDeviceId(resp.result as string);
     });

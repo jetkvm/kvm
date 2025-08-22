@@ -833,7 +833,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
 
     try {
       await new Promise<void>((resolve, reject) => {
-        sendFn("getKeyboardMacros", {}, response => {
+        sendFn("getKeyboardMacros", {}, (response: JsonRpcResponse) => {
           if (response.error) {
             console.error("Error loading macros:", response.error);
             reject(new Error(response.error.message));

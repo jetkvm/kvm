@@ -10,7 +10,7 @@ import { useJsonRpc } from "@/hooks/useJsonRpc";
 export default function MacroBar() {
   const { macros, initialized, loadMacros, setSendFn } = useMacrosStore();
   const { executeMacro } = useKeyboard();
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   useEffect(() => {
     setSendFn(send);

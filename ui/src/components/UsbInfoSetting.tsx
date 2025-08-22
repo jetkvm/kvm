@@ -4,7 +4,7 @@ import { Button } from "@components/Button";
 
 
 import { UsbConfigState } from "../hooks/stores";
-import { useJsonRpc } from "../hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
 import { SettingsItem } from "../routes/devices.$id.settings";
 
@@ -54,7 +54,7 @@ const usbConfigs = [
 type UsbConfigMap = Record<string, USBConfig>;
 
 export function UsbInfoSetting() {
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const [loading, setLoading] = useState(false);
 
   const [usbConfigProduct, setUsbConfigProduct] = useState("");
@@ -94,7 +94,7 @@ export function UsbInfoSetting() {
   );
 
   const syncUsbConfigProduct = useCallback(() => {
-    send("getUsbConfig", {}, resp => {
+    send("getUsbConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         console.error("Failed to load USB Config:", resp.error);
         notifications.error(
@@ -114,7 +114,7 @@ export function UsbInfoSetting() {
   const handleUsbConfigChange = useCallback(
     (usbConfig: USBConfig) => {
       setLoading(true);
-      send("setUsbConfig", { usbConfig }, async resp => {
+      send("setUsbConfig", { usbConfig }, async (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             `Failed to set usb config: ${resp.error.data || "Unknown error"}`,
@@ -137,7 +137,7 @@ export function UsbInfoSetting() {
   );
 
   useEffect(() => {
-    send("getDeviceID", {}, async resp => {
+    send("getDeviceID", {}, async (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         return notifications.error(
           `Failed to get device ID: ${resp.error.data || "Unknown error"}`,
@@ -205,10 +205,10 @@ function USBConfigDialog({
     product: "",
   });
 
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   const syncUsbConfig = useCallback(() => {
-    send("getUsbConfig", {}, resp => {
+    send("getUsbConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         console.error("Failed to load USB Config:", resp.error);
       } else {

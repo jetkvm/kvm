@@ -74,7 +74,7 @@ export default function WebRTCVideo() {
   const [blockWheelEvent, setBlockWheelEvent] = useState(false);
 
   // Misc states and hooks
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   // Video-related
   useResizeObserver({
