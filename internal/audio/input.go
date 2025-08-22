@@ -166,3 +166,12 @@ func (aim *AudioInputManager) LogPerformanceStats() {
 func (aim *AudioInputManager) IsRunning() bool {
 	return atomic.LoadInt32(&aim.running) == 1
 }
+
+// IsReady returns whether the audio input manager is ready to receive frames
+// This checks both that it's running and that the IPC connection is established
+func (aim *AudioInputManager) IsReady() bool {
+	if !aim.IsRunning() {
+		return false
+	}
+	return aim.ipcManager.IsReady()
+}

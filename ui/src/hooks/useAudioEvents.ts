@@ -62,7 +62,7 @@ export interface UseAudioEventsReturn {
 }
 
 // Global subscription management to prevent multiple subscriptions per WebSocket connection
-let globalSubscriptionState = {
+const globalSubscriptionState = {
   isSubscribed: false,
   subscriberCount: 0,
   connectionId: null as string | null

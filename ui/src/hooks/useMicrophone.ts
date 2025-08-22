@@ -858,11 +858,15 @@ export function useMicrophone() {
   }, [microphoneSender, peerConnection]);
 
   const startMicrophoneDebounced = useCallback((deviceId?: string) => {
-    debouncedOperation(() => startMicrophone(deviceId).then(() => {}), "start");
+    debouncedOperation(async () => {
+      await startMicrophone(deviceId).catch(console.error);
+    }, "start");
   }, [startMicrophone, debouncedOperation]);
 
   const stopMicrophoneDebounced = useCallback(() => {
-    debouncedOperation(() => stopMicrophone().then(() => {}), "stop");
+    debouncedOperation(async () => {
+      await stopMicrophone().catch(console.error);
+    }, "stop");
   }, [stopMicrophone, debouncedOperation]);
 
   // Make debug functions available globally for console access

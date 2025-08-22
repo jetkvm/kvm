@@ -15,19 +15,21 @@ import (
 
 // AudioInputSupervisor manages the audio input server subprocess
 type AudioInputSupervisor struct {
-	cmd     *exec.Cmd
-	cancel  context.CancelFunc
-	mtx     sync.Mutex
-	running bool
-	logger  zerolog.Logger
-	client  *AudioInputClient
+	cmd            *exec.Cmd
+	cancel         context.CancelFunc
+	mtx            sync.Mutex
+	running        bool
+	logger         zerolog.Logger
+	client         *AudioInputClient
+	processMonitor *ProcessMonitor
 }
 
 // NewAudioInputSupervisor creates a new audio input supervisor
 func NewAudioInputSupervisor() *AudioInputSupervisor {
 	return &AudioInputSupervisor{
-		logger: logging.GetDefaultLogger().With().Str("component", "audio-input-supervisor").Logger(),
-		client: NewAudioInputClient(),
+		logger:         logging.GetDefaultLogger().With().Str("component", "audio-input-supervisor").Logger(),
+		client:         NewAudioInputClient(),
+		processMonitor: GetProcessMonitor(),
 	}
 }
 
@@ -74,6 +76,9 @@ func (ais *AudioInputSupervisor) Start() error {
 	}
 
 	ais.logger.Info().Int("pid", cmd.Process.Pid).Msg("Audio input server subprocess started")
+
+	// Add process to monitoring
+	ais.processMonitor.AddProcess(cmd.Process.Pid, "audio-input-server")
 
 	// Monitor the subprocess in a goroutine
 	go ais.monitorSubprocess()
@@ -145,9 +150,36 @@ func (ais *AudioInputSupervisor) IsRunning() bool {
 	return ais.running
 }
 
+// IsConnected returns whether the client is connected to the audio input server
+func (ais *AudioInputSupervisor) IsConnected() bool {
+	if !ais.IsRunning() {
+		return false
+	}
+	return ais.client.IsConnected()
+}
+
 // GetClient returns the IPC client for sending audio frames
 func (ais *AudioInputSupervisor) GetClient() *AudioInputClient {
 	return ais.client
+}
+
+// GetProcessMetrics returns current process metrics if the process is running
+func (ais *AudioInputSupervisor) GetProcessMetrics() *ProcessMetrics {
+	ais.mtx.Lock()
+	defer ais.mtx.Unlock()
+
+	if ais.cmd == nil || ais.cmd.Process == nil {
+		return nil
+	}
+
+	pid := ais.cmd.Process.Pid
+	metrics := ais.processMonitor.GetCurrentMetrics()
+	for _, metric := range metrics {
+		if metric.PID == pid {
+			return &metric
+		}
+	}
+	return nil
 }
 
 // monitorSubprocess monitors the subprocess and handles unexpected exits
@@ -156,7 +188,11 @@ func (ais *AudioInputSupervisor) monitorSubprocess() {
 		return
 	}
 
+	pid := ais.cmd.Process.Pid
 	err := ais.cmd.Wait()
+
+	// Remove process from monitoring
+	ais.processMonitor.RemoveProcess(pid)
 
 	ais.mtx.Lock()
 	defer ais.mtx.Unlock()
@@ -184,8 +220,8 @@ func (ais *AudioInputSupervisor) monitorSubprocess() {
 
 // connectClient attempts to connect the client to the server
 func (ais *AudioInputSupervisor) connectClient() {
-	// Wait a bit for the server to start
-	time.Sleep(500 * time.Millisecond)
+	// Wait briefly for the server to start (reduced from 500ms)
+	time.Sleep(100 * time.Millisecond)
 
 	err := ais.client.Connect()
 	if err != nil {
