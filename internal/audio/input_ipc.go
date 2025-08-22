@@ -16,9 +16,9 @@ import (
 const (
 	inputMagicNumber uint32 = 0x4A4B4D49 // "JKMI" (JetKVM Microphone Input)
 	inputSocketName         = "audio_input.sock"
-	maxFrameSize            = 4096 // Maximum Opus frame size
+	maxFrameSize            = 4096                 // Maximum Opus frame size
 	writeTimeout            = 5 * time.Millisecond // Non-blocking write timeout
-	maxDroppedFrames        = 100 // Maximum consecutive dropped frames before reconnect
+	maxDroppedFrames        = 100                  // Maximum consecutive dropped frames before reconnect
 )
 
 // InputMessageType represents the type of IPC message
@@ -55,17 +55,17 @@ type AudioInputServer struct {
 	processingTime int64 // Average processing time in nanoseconds (atomic)
 	droppedFrames  int64 // Dropped frames counter (atomic)
 	totalFrames    int64 // Total frames counter (atomic)
-	
+
 	listener net.Listener
 	conn     net.Conn
 	mtx      sync.Mutex
 	running  bool
 
 	// Triple-goroutine architecture
-	messageChan    chan *InputIPCMessage // Buffered channel for incoming messages
-	processChan    chan *InputIPCMessage // Buffered channel for processing queue
-	stopChan       chan struct{}         // Stop signal for all goroutines
-	wg             sync.WaitGroup        // Wait group for goroutine coordination
+	messageChan chan *InputIPCMessage // Buffered channel for incoming messages
+	processChan chan *InputIPCMessage // Buffered channel for processing queue
+	stopChan    chan struct{}         // Stop signal for all goroutines
+	wg          sync.WaitGroup        // Wait group for goroutine coordination
 }
 
 // NewAudioInputServer creates a new audio input server
@@ -315,10 +315,10 @@ type AudioInputClient struct {
 	// Atomic fields must be first for proper alignment on ARM
 	droppedFrames int64 // Atomic counter for dropped frames
 	totalFrames   int64 // Atomic counter for total frames
-	
-	conn         net.Conn
-	mtx          sync.Mutex
-	running      bool
+
+	conn    net.Conn
+	mtx     sync.Mutex
+	running bool
 }
 
 // NewAudioInputClient creates a new audio input client
@@ -575,7 +575,7 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 					// Check if processing queue is getting full
 					queueLen := len(ais.processChan)
 					bufferSize := int(atomic.LoadInt64(&ais.bufferSize))
-					
+
 					if queueLen > bufferSize*3/4 {
 						// Drop oldest frames, keep newest
 						select {
@@ -585,7 +585,7 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 						}
 					}
 				}
-				
+
 				// Send to processing queue
 				select {
 				case ais.processChan <- msg:
@@ -605,7 +605,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 		defer ais.wg.Done()
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ais.stopChan:
@@ -618,7 +618,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 						start := time.Now()
 						err := ais.processMessage(msg)
 						processingTime := time.Since(start).Nanoseconds()
-						
+
 						// Calculate end-to-end latency using message timestamp
 						if msg.Type == InputMessageTypeOpusFrame && msg.Timestamp > 0 {
 							msgTime := time.Unix(0, msg.Timestamp)
@@ -634,7 +634,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 							newAvg := (currentAvg + processingTime) / 2
 							atomic.StoreInt64(&ais.processingTime, newAvg)
 						}
-						
+
 						if err != nil {
 							atomic.AddInt64(&ais.droppedFrames, 1)
 						}
@@ -643,12 +643,12 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 						goto adaptiveBuffering
 					}
 				}
-				
-				adaptiveBuffering:
+
+			adaptiveBuffering:
 				// Adaptive buffer sizing based on processing time
 				avgTime := atomic.LoadInt64(&ais.processingTime)
 				currentSize := atomic.LoadInt64(&ais.bufferSize)
-				
+
 				if avgTime > 10*1000*1000 { // > 10ms processing time
 					// Increase buffer size
 					newSize := currentSize * 2
