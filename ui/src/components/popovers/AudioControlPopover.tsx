@@ -41,23 +41,7 @@ interface AudioConfig {
   FrameSize: string;
 }
 
-interface AudioMetrics {
-  frames_received: number;
-  frames_dropped: number;
-  bytes_processed: number;
-  last_frame_time: string;
-  connection_drops: number;
-  average_latency: string;
-}
 
-interface MicrophoneMetrics {
-  frames_sent: number;
-  frames_dropped: number;
-  bytes_processed: number;
-  last_frame_time: string;
-  connection_drops: number;
-  average_latency: string;
-}
 
 
 
@@ -94,11 +78,7 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
     isConnected: wsConnected 
   } = useAudioEvents();
   
-  // Fallback state for when WebSocket is not connected
-  const [fallbackMuted, setFallbackMuted] = useState(false);
-  const [fallbackMetrics, setFallbackMetrics] = useState<AudioMetrics | null>(null);
-  const [fallbackMicMetrics, setFallbackMicMetrics] = useState<MicrophoneMetrics | null>(null);
-  const [fallbackConnected, setFallbackConnected] = useState(false);
+  // WebSocket-only implementation - no fallback polling
   
   // Microphone state from props
   const {
@@ -115,11 +95,11 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
     isToggling,
   } = microphone;
   
-  // Use WebSocket data when available, fallback to polling data otherwise
-  const isMuted = wsConnected && audioMuted !== null ? audioMuted : fallbackMuted;
-  const metrics = wsConnected && audioMetrics !== null ? audioMetrics : fallbackMetrics;
-  const micMetrics = wsConnected && microphoneMetrics !== null ? microphoneMetrics : fallbackMicMetrics;
-  const isConnected = wsConnected ? wsConnected : fallbackConnected;
+  // Use WebSocket data exclusively - no polling fallback
+  const isMuted = audioMuted ?? false;
+  const metrics = audioMetrics;
+  const micMetrics = microphoneMetrics;
+  const isConnected = wsConnected;
   
   // Audio level monitoring - enable only when popover is open and microphone is active to save resources
   const analysisEnabled = (open ?? true) && isMicrophoneActive;
@@ -150,34 +130,15 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
     }
   }, [configsLoaded]);
 
-  // Optimize fallback polling - only run when WebSocket is not connected
+  // WebSocket-only implementation - sync microphone state when needed
   useEffect(() => {
-    if (!wsConnected && !configsLoaded) {
-      // Load state once if configs aren't loaded yet
-      loadAudioState();
-    }
-    
-    if (!wsConnected) {
-      loadAudioMetrics();
-      loadMicrophoneMetrics();
-      
-      // Reduced frequency for fallback polling (every 3 seconds instead of 2)
-      const metricsInterval = setInterval(() => {
-        if (!wsConnected) { // Double-check to prevent unnecessary requests
-          loadAudioMetrics();
-          loadMicrophoneMetrics();
-        }
-      }, 3000);
-      return () => clearInterval(metricsInterval);
-    }
-    
     // Always sync microphone state, but debounce it
     const syncTimeout = setTimeout(() => {
       syncMicrophoneState();
     }, 500);
     
     return () => clearTimeout(syncTimeout);
-  }, [wsConnected, syncMicrophoneState, configsLoaded]);
+  }, [syncMicrophoneState]);
 
   const loadAudioConfigurations = async () => {
     try {
@@ -203,60 +164,14 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
     }
   };
 
-  const loadAudioState = async () => {
-    try {
-      // Load mute state only (configurations are loaded separately)
-      const muteResp = await api.GET("/audio/mute");
-      if (muteResp.ok) {
-        const muteData = await muteResp.json();
-        setFallbackMuted(!!muteData.muted);
-      }
-    } catch (error) {
-      console.error("Failed to load audio state:", error);
-    }
-  };
-
-  const loadAudioMetrics = async () => {
-    try {
-      const resp = await api.GET("/audio/metrics");
-      if (resp.ok) {
-        const data = await resp.json();
-        setFallbackMetrics(data);
-        // Consider connected if API call succeeds, regardless of frame count
-        setFallbackConnected(true);
-      } else {
-        setFallbackConnected(false);
-      }
-    } catch (error) {
-      console.error("Failed to load audio metrics:", error);
-      setFallbackConnected(false);
-    }
-  };
-
-
-
-  const loadMicrophoneMetrics = async () => {
-    try {
-      const resp = await api.GET("/microphone/metrics");
-      if (resp.ok) {
-        const data = await resp.json();
-        setFallbackMicMetrics(data);
-      }
-    } catch (error) {
-      console.error("Failed to load microphone metrics:", error);
-    }
-  };
-
   const handleToggleMute = async () => {
     setIsLoading(true);
     try {
       const resp = await api.POST("/audio/mute", { muted: !isMuted });
-      if (resp.ok) {
-        // WebSocket will handle the state update, but update fallback for immediate feedback
-        if (!wsConnected) {
-          setFallbackMuted(!isMuted);
-        }
+      if (!resp.ok) {
+        console.error("Failed to toggle mute:", resp.statusText);
       }
+      // WebSocket will handle the state update automatically
     } catch (error) {
       console.error("Failed to toggle mute:", error);
     } finally {
