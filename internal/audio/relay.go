@@ -12,13 +12,13 @@ import (
 // AudioRelay handles forwarding audio frames from the audio server subprocess
 // to WebRTC without any CGO audio processing. This runs in the main process.
 type AudioRelay struct {
-	client   *AudioClient
-	ctx      context.Context
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
-	logger   *zerolog.Logger
-	running  bool
-	mutex    sync.RWMutex
+	client  *AudioClient
+	ctx     context.Context
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+	logger  *zerolog.Logger
+	running bool
+	mutex   sync.RWMutex
 
 	// WebRTC integration
 	audioTrack AudioTrackWriter
@@ -34,8 +34,6 @@ type AudioRelay struct {
 type AudioTrackWriter interface {
 	WriteSample(sample media.Sample) error
 }
-
-
 
 // NewAudioRelay creates a new audio relay for the main process
 func NewAudioRelay() *AudioRelay {
