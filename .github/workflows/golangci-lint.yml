@@ -57,6 +57,12 @@ jobs:
       - name: Create empty resource directory
         run: |
           mkdir -p static && touch static/.gitkeep
+            - name: Save audio dependencies cache
+        if: always() && steps.cache-audio-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: $HOME/.jetkvm/audio-libs
+          key: ${{ steps.cache-audio-deps.outputs.cache-primary-key }}
       - name: Lint
         uses: golangci/golangci-lint-action@1481404843c368bc19ca9406f87d6e0fc97bdcfd # v7.0.0
         with:
@@ -68,10 +74,3 @@ jobs:
           OPUS_VERSION: ${{ steps.versions.outputs.opus_version }}
           CGO_CFLAGS: "-I$HOME/.jetkvm/audio-libs/alsa-lib-${{ steps.versions.outputs.alsa_version }}/include -I$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/include -I$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/celt"
           CGO_LDFLAGS: "-L$HOME/.jetkvm/audio-libs/alsa-lib-${{ steps.versions.outputs.alsa_version }}/src/.libs -lasound -L$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/.libs -lopus -lm -ldl -static"
-
-      - name: Save audio dependencies cache
-        if: always() && steps.cache-audio-deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: $HOME/.jetkvm/audio-libs
-          key: ${{ steps.cache-audio-deps.outputs.cache-primary-key }}
