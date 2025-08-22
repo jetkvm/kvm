@@ -14,10 +14,10 @@ import (
 )
 
 var (
-	appCtx context.Context
-	isAudioServer bool
+	appCtx           context.Context
+	isAudioServer    bool
 	audioProcessDone chan struct{}
-	audioSupervisor *audio.AudioServerSupervisor
+	audioSupervisor  *audio.AudioServerSupervisor
 )
 
 func runAudioServer() {
@@ -68,7 +68,7 @@ func startAudioSubprocess() error {
 		// onProcessStart
 		func(pid int) {
 			logger.Info().Int("pid", pid).Msg("audio server process started")
-			
+
 			// Start audio relay system for main process without a track initially
 			// The track will be updated when a WebRTC session is created
 			if err := audio.StartAudioRelay(nil); err != nil {
@@ -82,7 +82,7 @@ func startAudioSubprocess() error {
 			} else {
 				logger.Info().Int("pid", pid).Msg("audio server process exited gracefully")
 			}
-			
+
 			// Stop audio relay when process exits
 			audio.StopAudioRelay()
 		},
@@ -100,12 +100,12 @@ func startAudioSubprocess() error {
 	// Monitor supervisor and handle cleanup
 	go func() {
 		defer close(audioProcessDone)
-		
+
 		// Wait for supervisor to stop
 		for audioSupervisor.IsRunning() {
 			time.Sleep(100 * time.Millisecond)
 		}
-		
+
 		logger.Info().Msg("audio supervisor stopped")
 	}()
 
