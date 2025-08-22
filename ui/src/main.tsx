@@ -1,3 +1,4 @@
+import { lazy } from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import {
@@ -9,46 +10,45 @@ import {
 } from "react-router-dom";
 import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
 
+import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import api from "@/api";
+import Root from "@/root";
+import Card from "@components/Card";
 import EmptyCard from "@components/EmptyCard";
 import NotFoundPage from "@components/NotFoundPage";
+import DeviceRoute, { LocalDevice } from "@routes/devices.$id";
+import WelcomeRoute, { DeviceStatus } from "@routes/welcome-local";
+import LoginLocalRoute from "@routes/login-local";
+import WelcomeLocalModeRoute from "@routes/welcome-local.mode";
+import WelcomeLocalPasswordRoute from "@routes/welcome-local.password";
+import AdoptRoute from "@routes/adopt";
+import SetupRoute from "@routes/devices.$id.setup";
 import DevicesIdDeregister from "@routes/devices.$id.deregister";
 import DeviceIdRename from "@routes/devices.$id.rename";
-import AdoptRoute from "@routes/adopt";
-import SignupRoute from "@routes/signup";
-import LoginRoute from "@routes/login";
-import SetupRoute from "@routes/devices.$id.setup";
 import DevicesRoute from "@routes/devices";
-import DeviceRoute, { LocalDevice } from "@routes/devices.$id";
-import Card from "@components/Card";
-import DevicesAlreadyAdopted from "@routes/devices.already-adopted";
-
-import Root from "./root";
-import Notifications from "./notifications";
-import LoginLocalRoute from "./routes/login-local";
-import WelcomeLocalModeRoute from "./routes/welcome-local.mode";
-import WelcomeRoute, { DeviceStatus } from "./routes/welcome-local";
-import WelcomeLocalPasswordRoute from "./routes/welcome-local.password";
-import { CLOUD_API, DEVICE_API } from "./ui.config";
-import OtherSessionRoute from "./routes/devices.$id.other-session";
-import MountRoute from "./routes/devices.$id.mount";
-import * as SettingsRoute from "./routes/devices.$id.settings";
-import SettingsMouseRoute from "./routes/devices.$id.settings.mouse";
-import SettingsKeyboardRoute from "./routes/devices.$id.settings.keyboard";
-import api from "./api";
-import * as SettingsIndexRoute from "./routes/devices.$id.settings._index";
-import SettingsAdvancedRoute from "./routes/devices.$id.settings.advanced";
-import SettingsAccessIndexRoute from "./routes/devices.$id.settings.access._index";
-import SettingsHardwareRoute from "./routes/devices.$id.settings.hardware";
-import SettingsVideoRoute from "./routes/devices.$id.settings.video";
-import SettingsAppearanceRoute from "./routes/devices.$id.settings.appearance";
-import * as SettingsGeneralIndexRoute from "./routes/devices.$id.settings.general._index";
-import SettingsGeneralRebootRoute from "./routes/devices.$id.settings.general.reboot";
-import SettingsGeneralUpdateRoute from "./routes/devices.$id.settings.general.update";
-import SettingsNetworkRoute from "./routes/devices.$id.settings.network";
-import SecurityAccessLocalAuthRoute from "./routes/devices.$id.settings.access.local-auth";
-import SettingsMacrosRoute from "./routes/devices.$id.settings.macros";
-import SettingsMacrosAddRoute from "./routes/devices.$id.settings.macros.add";
-import SettingsMacrosEditRoute from "./routes/devices.$id.settings.macros.edit";
+import SettingsIndexRoute from "@routes/devices.$id.settings._index";
+import SettingsAccessIndexRoute from "@routes/devices.$id.settings.access._index";
+const Notifications = lazy(() => import("@/notifications"));
+const SignupRoute = lazy(() => import("@routes/signup"));
+const LoginRoute = lazy(() => import("@routes/login"));
+const DevicesAlreadyAdopted = lazy(() => import("@routes/devices.already-adopted"));
+const OtherSessionRoute = lazy(() => import("@routes/devices.$id.other-session"));
+const MountRoute = lazy(() => import("./routes/devices.$id.mount"));
+const SettingsRoute = lazy(() => import("@routes/devices.$id.settings"));
+const SettingsMouseRoute = lazy(() => import("@routes/devices.$id.settings.mouse"));
+const SettingsKeyboardRoute = lazy(() => import("@routes/devices.$id.settings.keyboard"));
+const SettingsAdvancedRoute = lazy(() => import("@routes/devices.$id.settings.advanced"));
+const SettingsHardwareRoute = lazy(() => import("@routes/devices.$id.settings.hardware"));
+const SettingsVideoRoute = lazy(() => import("@routes/devices.$id.settings.video"));
+const SettingsAppearanceRoute = lazy(() => import("@routes/devices.$id.settings.appearance"));
+const SettingsGeneralIndexRoute = lazy(() => import("@routes/devices.$id.settings.general._index"));
+const SettingsGeneralRebootRoute = lazy(() => import("@routes/devices.$id.settings.general.reboot"));
+const SettingsGeneralUpdateRoute = lazy(() => import("@routes/devices.$id.settings.general.update"));
+const SettingsNetworkRoute = lazy(() => import("@routes/devices.$id.settings.network"));
+const SecurityAccessLocalAuthRoute = lazy(() => import("@routes/devices.$id.settings.access.local-auth"));
+const SettingsMacrosRoute = lazy(() => import("@routes/devices.$id.settings.macros"));
+const SettingsMacrosAddRoute = lazy(() => import("@routes/devices.$id.settings.macros.add"));
+const SettingsMacrosEditRoute = lazy(() => import("@routes/devices.$id.settings.macros.edit"));
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
@@ -128,7 +128,7 @@ if (isOnDevice) {
         },
         {
           path: "settings",
-          element: <SettingsRoute.default />,
+          element: <SettingsRoute />,
           children: [
             {
               index: true,
@@ -139,7 +139,7 @@ if (isOnDevice) {
               children: [
                 {
                   index: true,
-                  element: <SettingsGeneralIndexRoute.default />,
+                  element: <SettingsGeneralIndexRoute />,
                 },
                 {
                   path: "reboot",
@@ -265,7 +265,7 @@ if (isOnDevice) {
                 },
                 {
                   path: "settings",
-                  element: <SettingsRoute.default />,
+                  element: <SettingsRoute />,
                   children: [
                     {
                       index: true,
@@ -276,7 +276,7 @@ if (isOnDevice) {
                       children: [
                         {
                           index: true,
-                          element: <SettingsGeneralIndexRoute.default />,
+                          element: <SettingsGeneralIndexRoute />,
                         },
                         {
                           path: "update",
