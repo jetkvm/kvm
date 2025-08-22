@@ -2,7 +2,7 @@ import { MdOutlineContentPasteGo, MdVolumeOff, MdVolumeUp, MdGraphicEq } from "r
 import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useRef } from "react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 
 import { Button } from "@components/Button";
@@ -21,7 +21,7 @@ import ExtensionPopover from "@/components/popovers/ExtensionPopover";
 import AudioControlPopover from "@/components/popovers/AudioControlPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { useAudioEvents } from "@/hooks/useAudioEvents";
-import api from "@/api";
+
 
 // Type for microphone error
 interface MicrophoneError {
@@ -83,35 +83,10 @@ export default function Actionbar({
   );
 
   // Use WebSocket-based audio events for real-time updates
-  const { audioMuted, isConnected } = useAudioEvents();
+  const { audioMuted } = useAudioEvents();
   
-  // Fallback to polling if WebSocket is not connected
-  const [fallbackMuted, setFallbackMuted] = useState(false);
-  useEffect(() => {
-    if (!isConnected) {
-      // Load initial state
-      api.GET("/audio/mute").then(async resp => {
-        if (resp.ok) {
-          const data = await resp.json();
-          setFallbackMuted(!!data.muted);
-        }
-      });
-      
-      // Fallback polling when WebSocket is not available
-      const interval = setInterval(async () => {
-        const resp = await api.GET("/audio/mute");
-        if (resp.ok) {
-          const data = await resp.json();
-          setFallbackMuted(!!data.muted);
-        }
-      }, 1000);
-      
-      return () => clearInterval(interval);
-    }
-  }, [isConnected]);
-  
-  // Use WebSocket data when available, fallback to polling data otherwise
-  const isMuted = isConnected && audioMuted !== null ? audioMuted : fallbackMuted;
+  // Use WebSocket data exclusively - no polling fallback
+  const isMuted = audioMuted ?? false; // Default to false if WebSocket data not available yet
 
   return (
     <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">

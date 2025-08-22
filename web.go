@@ -159,10 +159,6 @@ func setupRouter() *gin.Engine {
 		protected.POST("/storage/upload", handleUploadHttp)
 	}
 
-	protected.GET("/audio/mute", func(c *gin.Context) {
-		c.JSON(200, gin.H{"muted": audio.IsAudioMuted()})
-	})
-
 	protected.POST("/audio/mute", func(c *gin.Context) {
 		type muteReq struct {
 			Muted bool `json:"muted"`
