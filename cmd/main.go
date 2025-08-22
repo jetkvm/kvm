@@ -11,6 +11,7 @@ import (
 func main() {
 	versionPtr := flag.Bool("version", false, "print version and exit")
 	versionJsonPtr := flag.Bool("version-json", false, "print version as json and exit")
+	audioServerPtr := flag.Bool("audio-server", false, "Run as audio server subprocess")
 	flag.Parse()
 
 	if *versionPtr || *versionJsonPtr {
@@ -23,5 +24,5 @@ func main() {
 		return
 	}
 
-	kvm.Main()
+	kvm.Main(*audioServerPtr)
 }
