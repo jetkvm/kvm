@@ -229,14 +229,14 @@ var (
 	lastMetricsUpdate  time.Time
 
 	// Counter value tracking (since prometheus counters don't have Get() method)
-	audioFramesReceivedValue    int64
-	audioFramesDroppedValue     int64
-	audioBytesProcessedValue    int64
-	audioConnectionDropsValue   int64
-	micFramesSentValue          int64
-	micFramesDroppedValue       int64
-	micBytesProcessedValue      int64
-	micConnectionDropsValue     int64
+	audioFramesReceivedValue  int64
+	audioFramesDroppedValue   int64
+	audioBytesProcessedValue  int64
+	audioConnectionDropsValue int64
+	micFramesSentValue        int64
+	micFramesDroppedValue     int64
+	micBytesProcessedValue    int64
+	micConnectionDropsValue   int64
 )
 
 // UpdateAudioMetrics updates Prometheus metrics with current audio data

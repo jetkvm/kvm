@@ -26,12 +26,12 @@ type ProcessMetrics struct {
 
 // ProcessMonitor monitors CPU and memory usage of processes
 type ProcessMonitor struct {
-	logger       zerolog.Logger
-	mutex        sync.RWMutex
-	monitoredPIDs map[int]*processState
-	running      bool
-	stopChan     chan struct{}
-	metricsChan  chan ProcessMetrics
+	logger         zerolog.Logger
+	mutex          sync.RWMutex
+	monitoredPIDs  map[int]*processState
+	running        bool
+	stopChan       chan struct{}
+	metricsChan    chan ProcessMetrics
 	updateInterval time.Duration
 }
 
@@ -201,11 +201,11 @@ func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessM
 	if !state.lastSample.IsZero() {
 		timeDelta := now.Sub(state.lastSample).Seconds()
 		cpuDelta := float64(totalCPUTime - state.lastCPUTime)
-		
+
 		// Convert from clock ticks to seconds (assuming 100 Hz)
 		clockTicks := 100.0
 		cpuSeconds := cpuDelta / clockTicks
-		
+
 		if timeDelta > 0 {
 			metric.CPUPercent = (cpuSeconds / timeDelta) * 100.0
 		}
