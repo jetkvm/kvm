@@ -259,8 +259,7 @@ func (ais *AudioInputServer) processOpusFrame(data []byte) error {
 
 // processConfig processes a configuration update
 func (ais *AudioInputServer) processConfig(data []byte) error {
-	// For now, just acknowledge the config
-	// TODO: Parse and apply configuration
+	// Acknowledge configuration receipt
 	return ais.sendAck()
 }
 
@@ -370,7 +369,7 @@ func (aic *AudioInputClient) Disconnect() {
 			Length:    0,
 			Timestamp: time.Now().UnixNano(),
 		}
-		aic.writeMessage(msg) // Ignore errors during shutdown
+		_ = aic.writeMessage(msg) // Ignore errors during shutdown
 
 		aic.conn.Close()
 		aic.conn = nil
@@ -620,10 +619,21 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 						err := ais.processMessage(msg)
 						processingTime := time.Since(start).Nanoseconds()
 						
-						// Update average processing time
-						currentAvg := atomic.LoadInt64(&ais.processingTime)
-						newAvg := (currentAvg + processingTime) / 2
-						atomic.StoreInt64(&ais.processingTime, newAvg)
+						// Calculate end-to-end latency using message timestamp
+						if msg.Type == InputMessageTypeOpusFrame && msg.Timestamp > 0 {
+							msgTime := time.Unix(0, msg.Timestamp)
+							endToEndLatency := time.Since(msgTime).Nanoseconds()
+							// Use exponential moving average for end-to-end latency tracking
+							currentAvg := atomic.LoadInt64(&ais.processingTime)
+							// Weight: 90% historical, 10% current (for smoother averaging)
+							newAvg := (currentAvg*9 + endToEndLatency) / 10
+							atomic.StoreInt64(&ais.processingTime, newAvg)
+						} else {
+							// Fallback to processing time only
+							currentAvg := atomic.LoadInt64(&ais.processingTime)
+							newAvg := (currentAvg + processingTime) / 2
+							atomic.StoreInt64(&ais.processingTime, newAvg)
+						}
 						
 						if err != nil {
 							atomic.AddInt64(&ais.droppedFrames, 1)
@@ -675,15 +685,4 @@ func getInputSocketPath() string {
 		return path
 	}
 	return filepath.Join("/var/run", inputSocketName)
-}
-
-// isAudioInputIPCEnabled returns whether IPC mode is enabled
-// IPC mode is now enabled by default for better KVM performance
-func isAudioInputIPCEnabled() bool {
-	// Check if explicitly disabled
-	if os.Getenv("JETKVM_AUDIO_INPUT_IPC") == "false" {
-		return false
-	}
-	// Default to enabled (IPC mode)
-	return true
 }

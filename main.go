@@ -21,11 +21,6 @@ var (
 	audioSupervisor *audio.AudioServerSupervisor
 )
 
-func init() {
-	flag.BoolVar(&isAudioServer, "audio-server", false, "Run as audio server subprocess")
-	audioProcessDone = make(chan struct{})
-}
-
 func runAudioServer() {
 	logger.Info().Msg("Starting audio server subprocess")
 
@@ -119,6 +114,10 @@ func startAudioSubprocess() error {
 }
 
 func Main() {
+	// Initialize flag and channel
+	flag.BoolVar(&isAudioServer, "audio-server", false, "Run as audio server subprocess")
+	audioProcessDone = make(chan struct{})
+	
 	flag.Parse()
 
 	// If running as audio server, only initialize audio processing

@@ -412,6 +412,41 @@ export default function AudioMetricsDashboard() {
                   />
                 </div>
               )}
+              
+              {/* Microphone Connection Health */}
+              <div className="mt-3 rounded-md bg-slate-50 p-2 dark:bg-slate-700">
+                <div className="mb-2 flex items-center gap-2">
+                  <MdSignalWifi4Bar className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+                  <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    Connection Health
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      Connection Drops:
+                    </span>
+                    <span className={cx(
+                      "text-xs font-medium",
+                      microphoneMetrics.connection_drops > 0 
+                        ? "text-red-600 dark:text-red-400" 
+                        : "text-green-600 dark:text-green-400"
+                    )}>
+                      {formatNumber(microphoneMetrics.connection_drops)}
+                    </span>
+                  </div>
+                  {microphoneMetrics.average_latency && (
+                    <div className="flex justify-between">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        Avg Latency:
+                      </span>
+                      <span className="text-xs font-medium text-slate-900 dark:text-slate-100">
+                        {microphoneMetrics.average_latency}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

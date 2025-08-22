@@ -466,6 +466,7 @@ func cgoAudioDecodeWrite(buf []byte) (int, error) {
 		if r := recover(); r != nil {
 			// Log the panic but don't crash the entire program
 			// This should not happen with proper validation, but provides safety
+			_ = r // Explicitly ignore the panic value
 		}
 	}()
 	
