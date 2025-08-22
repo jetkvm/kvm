@@ -2,6 +2,7 @@ package audio
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -286,7 +287,7 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 				BytesProcessed:  audioMetrics.BytesProcessed,
 				LastFrameTime:   audioMetrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
 				ConnectionDrops: audioMetrics.ConnectionDrops,
-				AverageLatency:  audioMetrics.AverageLatency.String(),
+				AverageLatency:  fmt.Sprintf("%.1fms", float64(audioMetrics.AverageLatency.Nanoseconds())/1e6),
 			},
 		}
 		aeb.broadcast(audioMetricsEvent)
@@ -304,7 +305,7 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 						BytesProcessed:  micMetrics.BytesProcessed,
 						LastFrameTime:   micMetrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
 						ConnectionDrops: micMetrics.ConnectionDrops,
-						AverageLatency:  micMetrics.AverageLatency.String(),
+						AverageLatency:  fmt.Sprintf("%.1fms", float64(micMetrics.AverageLatency.Nanoseconds())/1e6),
 					},
 				}
 				aeb.broadcast(micMetricsEvent)
