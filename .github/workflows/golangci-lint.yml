@@ -42,13 +42,12 @@ jobs:
           RV1106_COMMIT=$(git ls-remote https://github.com/jetkvm/rv1106-system.git HEAD | cut -f1)
           echo "rv1106_commit=$RV1106_COMMIT" >> $GITHUB_OUTPUT
           echo "Latest rv1106-system commit: $RV1106_COMMIT"
-      - name: Cache audio dependencies
+      - name: Restore audio dependencies cache
         id: cache-audio-deps
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: $HOME/.jetkvm/audio-libs
           key: audio-deps-${{ runner.os }}-alsa-${{ steps.versions.outputs.alsa_version }}-opus-${{ steps.versions.outputs.opus_version }}-rv1106-${{ steps.rv1106-commit.outputs.rv1106_commit }}
-          save-always: true
       - name: Setup development environment
         if: steps.cache-audio-deps.outputs.cache-hit != 'true'
         run: make dev_env
@@ -69,3 +68,10 @@ jobs:
           OPUS_VERSION: ${{ steps.versions.outputs.opus_version }}
           CGO_CFLAGS: "-I$HOME/.jetkvm/audio-libs/alsa-lib-${{ steps.versions.outputs.alsa_version }}/include -I$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/include -I$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/celt"
           CGO_LDFLAGS: "-L$HOME/.jetkvm/audio-libs/alsa-lib-${{ steps.versions.outputs.alsa_version }}/src/.libs -lasound -L$HOME/.jetkvm/audio-libs/opus-${{ steps.versions.outputs.opus_version }}/.libs -lopus -lm -ldl -static"
+
+      - name: Save audio dependencies cache
+        if: always() && steps.cache-audio-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: $HOME/.jetkvm/audio-libs
+          key: ${{ steps.cache-audio-deps.outputs.cache-primary-key }}
