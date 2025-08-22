@@ -290,10 +290,10 @@ func setupRouter() *gin.Engine {
 		if !opResult.Allowed {
 			running := currentSession.AudioInputManager.IsRunning()
 			c.JSON(200, gin.H{
-				"status":                 "cooldown",
-				"running":                running,
-				"cooldown_ms_remaining":  opResult.RemainingCooldown.Milliseconds(),
-				"operation_id":           opResult.OperationID,
+				"status":                "cooldown",
+				"running":               running,
+				"cooldown_ms_remaining": opResult.RemainingCooldown.Milliseconds(),
+				"operation_id":          opResult.OperationID,
 			})
 			return
 		}
@@ -352,10 +352,10 @@ func setupRouter() *gin.Engine {
 		if !opResult.Allowed {
 			running := currentSession.AudioInputManager.IsRunning()
 			c.JSON(200, gin.H{
-				"status":                 "cooldown",
-				"running":                running,
-				"cooldown_ms_remaining":  opResult.RemainingCooldown.Milliseconds(),
-				"operation_id":           opResult.OperationID,
+				"status":                "cooldown",
+				"running":               running,
+				"cooldown_ms_remaining": opResult.RemainingCooldown.Milliseconds(),
+				"operation_id":          opResult.OperationID,
 			})
 			return
 		}
