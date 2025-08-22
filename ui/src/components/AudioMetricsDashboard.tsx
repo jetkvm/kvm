@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { MdGraphicEq, MdSignalWifi4Bar, MdError, MdMic } from "react-icons/md";
-import { LuActivity, LuClock, LuHardDrive, LuSettings } from "react-icons/lu";
+import { LuActivity, LuClock, LuHardDrive, LuSettings, LuCpu, LuMemoryStick } from "react-icons/lu";
 
 import { AudioLevelMeter } from "@components/AudioLevelMeter";
 import { cx } from "@/cva.config";
@@ -25,6 +25,14 @@ interface MicrophoneMetrics {
   last_frame_time: string;
   connection_drops: number;
   average_latency: string;
+}
+
+interface ProcessMetrics {
+  cpu_percent: number;
+  memory_percent: number;
+  memory_rss: number;
+  memory_vms: number;
+  running: boolean;
 }
 
 interface AudioConfig {
@@ -54,6 +62,16 @@ export default function AudioMetricsDashboard() {
   const [fallbackMetrics, setFallbackMetrics] = useState<AudioMetrics | null>(null);
   const [fallbackMicrophoneMetrics, setFallbackMicrophoneMetrics] = useState<MicrophoneMetrics | null>(null);
   const [fallbackConnected, setFallbackConnected] = useState(false);
+  
+  // Process metrics state
+  const [audioProcessMetrics, setAudioProcessMetrics] = useState<ProcessMetrics | null>(null);
+  const [microphoneProcessMetrics, setMicrophoneProcessMetrics] = useState<ProcessMetrics | null>(null);
+  
+  // Historical data for histograms (last 60 data points, ~1 minute at 1s intervals)
+  const [audioCpuHistory, setAudioCpuHistory] = useState<number[]>([]);
+  const [audioMemoryHistory, setAudioMemoryHistory] = useState<number[]>([]);
+  const [micCpuHistory, setMicCpuHistory] = useState<number[]>([]);
+  const [micMemoryHistory, setMicMemoryHistory] = useState<number[]>([]);
   
   // Configuration state (these don't change frequently, so we can load them once)
   const [config, setConfig] = useState<AudioConfig | null>(null);
@@ -124,6 +142,29 @@ export default function AudioMetricsDashboard() {
         setFallbackConnected(false);
       }
 
+      // Load audio process metrics
+      try {
+        const audioProcessResp = await api.GET("/audio/process-metrics");
+        if (audioProcessResp.ok) {
+          const audioProcessData = await audioProcessResp.json();
+          setAudioProcessMetrics(audioProcessData);
+          
+          // Update historical data for histograms (keep last 60 points)
+          if (audioProcessData.running) {
+            setAudioCpuHistory(prev => {
+              const newHistory = [...prev, audioProcessData.cpu_percent];
+              return newHistory.slice(-60); // Keep last 60 data points
+            });
+            setAudioMemoryHistory(prev => {
+              const newHistory = [...prev, audioProcessData.memory_percent];
+              return newHistory.slice(-60);
+            });
+          }
+        }
+      } catch (audioProcessError) {
+        console.debug("Audio process metrics not available:", audioProcessError);
+      }
+
       // Load microphone metrics
       try {
         const micResp = await api.GET("/microphone/metrics");
@@ -134,6 +175,29 @@ export default function AudioMetricsDashboard() {
       } catch (micError) {
         // Microphone metrics might not be available, that's okay
         console.debug("Microphone metrics not available:", micError);
+      }
+
+      // Load microphone process metrics
+      try {
+        const micProcessResp = await api.GET("/microphone/process-metrics");
+        if (micProcessResp.ok) {
+          const micProcessData = await micProcessResp.json();
+          setMicrophoneProcessMetrics(micProcessData);
+          
+          // Update historical data for histograms (keep last 60 points)
+          if (micProcessData.running) {
+            setMicCpuHistory(prev => {
+              const newHistory = [...prev, micProcessData.cpu_percent];
+              return newHistory.slice(-60); // Keep last 60 data points
+            });
+            setMicMemoryHistory(prev => {
+              const newHistory = [...prev, micProcessData.memory_percent];
+              return newHistory.slice(-60);
+            });
+          }
+        }
+      } catch (micProcessError) {
+        console.debug("Microphone process metrics not available:", micProcessError);
       }
     } catch (error) {
       console.error("Failed to load audio data:", error);
@@ -158,6 +222,18 @@ export default function AudioMetricsDashboard() {
     return ((metrics.frames_dropped / metrics.frames_received) * 100);
   };
 
+  const formatMemory = (bytes: number) => {
+    if (bytes === 0) return "0 MB";
+    const mb = bytes / (1024 * 1024);
+    if (mb < 1024) {
+      return `${mb.toFixed(1)} MB`;
+    }
+    const gb = mb / 1024;
+    return `${gb.toFixed(2)} GB`;
+  };
+
+
+
   const getQualityColor = (quality: number) => {
     switch (quality) {
       case 0: return "text-yellow-600 dark:text-yellow-400";
@@ -166,6 +242,53 @@ export default function AudioMetricsDashboard() {
       case 3: return "text-purple-600 dark:text-purple-400";
       default: return "text-slate-600 dark:text-slate-400";
     }
+  };
+
+  // Histogram component for displaying historical data
+  const Histogram = ({ data, title, unit, color }: { 
+    data: number[], 
+    title: string, 
+    unit: string, 
+    color: string 
+  }) => {
+    if (data.length === 0) return null;
+    
+    const maxValue = Math.max(...data, 1); // Avoid division by zero
+    const minValue = Math.min(...data);
+    const range = maxValue - minValue;
+    
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            {title}
+          </span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {data.length > 0 ? `${data[data.length - 1].toFixed(1)}${unit}` : `0${unit}`}
+          </span>
+        </div>
+        <div className="flex items-end gap-0.5 h-16 bg-slate-50 dark:bg-slate-800 rounded p-2">
+          {data.slice(-30).map((value, index) => { // Show last 30 points
+            const height = range > 0 ? ((value - minValue) / range) * 100 : 0;
+            return (
+              <div
+                key={index}
+                className={cx(
+                  "flex-1 rounded-sm transition-all duration-200",
+                  color
+                )}
+                style={{ height: `${Math.max(height, 2)}%` }}
+                title={`${value.toFixed(1)}${unit}`}
+              />
+            );
+          })}
+        </div>
+        <div className="flex justify-between text-xs text-slate-400 dark:text-slate-500">
+          <span>{minValue.toFixed(1)}{unit}</span>
+          <span>{maxValue.toFixed(1)}{unit}</span>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -260,6 +383,97 @@ export default function AudioMetricsDashboard() {
                 <span className="font-medium text-slate-900 dark:text-slate-100">
                   {microphoneConfig.Channels}
                 </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Subprocess Resource Usage - Histogram View */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Audio Output Subprocess */}
+        {audioProcessMetrics && (
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            <div className="mb-3 flex items-center gap-2">
+              <LuCpu className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <span className="font-medium text-slate-900 dark:text-slate-100">
+                Audio Output Process
+              </span>
+              <div className={cx(
+                "h-2 w-2 rounded-full ml-auto",
+                audioProcessMetrics.running ? "bg-green-500" : "bg-red-500"
+              )} />
+            </div>
+            <div className="space-y-4">
+              <Histogram 
+                data={audioCpuHistory} 
+                title="CPU Usage" 
+                unit="%" 
+                color="bg-blue-500 dark:bg-blue-400" 
+              />
+              <Histogram 
+                data={audioMemoryHistory} 
+                title="Memory Usage" 
+                unit="%" 
+                color="bg-purple-500 dark:bg-purple-400" 
+              />
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                  <div className="font-medium text-slate-900 dark:text-slate-100">
+                    {formatMemory(audioProcessMetrics.memory_rss)}
+                  </div>
+                  <div className="text-slate-500 dark:text-slate-400">RSS</div>
+                </div>
+                <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                  <div className="font-medium text-slate-900 dark:text-slate-100">
+                    {formatMemory(audioProcessMetrics.memory_vms)}
+                  </div>
+                  <div className="text-slate-500 dark:text-slate-400">VMS</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Microphone Input Subprocess */}
+        {microphoneProcessMetrics && (
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            <div className="mb-3 flex items-center gap-2">
+              <LuMemoryStick className="h-4 w-4 text-green-600 dark:text-green-400" />
+              <span className="font-medium text-slate-900 dark:text-slate-100">
+                Microphone Input Process
+              </span>
+              <div className={cx(
+                "h-2 w-2 rounded-full ml-auto",
+                microphoneProcessMetrics.running ? "bg-green-500" : "bg-red-500"
+              )} />
+            </div>
+            <div className="space-y-4">
+              <Histogram 
+                data={micCpuHistory} 
+                title="CPU Usage" 
+                unit="%" 
+                color="bg-green-500 dark:bg-green-400" 
+              />
+              <Histogram 
+                data={micMemoryHistory} 
+                title="Memory Usage" 
+                unit="%" 
+                color="bg-orange-500 dark:bg-orange-400" 
+              />
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                  <div className="font-medium text-slate-900 dark:text-slate-100">
+                    {formatMemory(microphoneProcessMetrics.memory_rss)}
+                  </div>
+                  <div className="text-slate-500 dark:text-slate-400">RSS</div>
+                </div>
+                <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                  <div className="font-medium text-slate-900 dark:text-slate-100">
+                    {formatMemory(microphoneProcessMetrics.memory_vms)}
+                  </div>
+                  <div className="text-slate-500 dark:text-slate-400">VMS</div>
+                </div>
               </div>
             </div>
           </div>

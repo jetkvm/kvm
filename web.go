@@ -422,6 +422,87 @@ func setupRouter() *gin.Engine {
 		})
 	})
 
+	// Audio subprocess process metrics endpoints
+	protected.GET("/audio/process-metrics", func(c *gin.Context) {
+		// Access the global audio supervisor from main.go
+		if audioSupervisor == nil {
+			c.JSON(200, gin.H{
+				"cpu_percent":    0.0,
+				"memory_percent": 0.0,
+				"memory_rss":     0,
+				"memory_vms":     0,
+				"running":        false,
+			})
+			return
+		}
+
+		metrics := audioSupervisor.GetProcessMetrics()
+		if metrics == nil {
+			c.JSON(200, gin.H{
+				"cpu_percent":    0.0,
+				"memory_percent": 0.0,
+				"memory_rss":     0,
+				"memory_vms":     0,
+				"running":        false,
+			})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"cpu_percent":    metrics.CPUPercent,
+			"memory_percent": metrics.MemoryPercent,
+			"memory_rss":     metrics.MemoryRSS,
+			"memory_vms":     metrics.MemoryVMS,
+			"running":        true,
+		})
+	})
+
+	protected.GET("/microphone/process-metrics", func(c *gin.Context) {
+		if currentSession == nil || currentSession.AudioInputManager == nil {
+			c.JSON(200, gin.H{
+				"cpu_percent":    0.0,
+				"memory_percent": 0.0,
+				"memory_rss":     0,
+				"memory_vms":     0,
+				"running":        false,
+			})
+			return
+		}
+
+		// Get the supervisor from the audio input manager
+		supervisor := currentSession.AudioInputManager.GetSupervisor()
+		if supervisor == nil {
+			c.JSON(200, gin.H{
+				"cpu_percent":    0.0,
+				"memory_percent": 0.0,
+				"memory_rss":     0,
+				"memory_vms":     0,
+				"running":        false,
+			})
+			return
+		}
+
+		metrics := supervisor.GetProcessMetrics()
+		if metrics == nil {
+			c.JSON(200, gin.H{
+				"cpu_percent":    0.0,
+				"memory_percent": 0.0,
+				"memory_rss":     0,
+				"memory_vms":     0,
+				"running":        false,
+			})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"cpu_percent":    metrics.CPUPercent,
+			"memory_percent": metrics.MemoryPercent,
+			"memory_rss":     metrics.MemoryRSS,
+			"memory_vms":     metrics.MemoryVMS,
+			"running":        true,
+		})
+	})
+
 	protected.POST("/microphone/reset", func(c *gin.Context) {
 		if currentSession == nil {
 			c.JSON(400, gin.H{"error": "no active session"})

@@ -48,8 +48,8 @@ func (aim *AudioInputIPCManager) Start() error {
 		FrameSize:  960, // 20ms at 48kHz
 	}
 
-	// Wait a bit for the subprocess to be ready
-	time.Sleep(time.Second)
+	// Wait briefly for the subprocess to be ready (reduced from 1 second)
+	time.Sleep(200 * time.Millisecond)
 
 	err = aim.supervisor.SendConfig(config)
 	if err != nil {
@@ -109,9 +109,18 @@ func (aim *AudioInputIPCManager) WriteOpusFrame(frame []byte) error {
 	return nil
 }
 
-// IsRunning returns whether the IPC audio input system is running
+// IsRunning returns whether the IPC manager is running
 func (aim *AudioInputIPCManager) IsRunning() bool {
 	return atomic.LoadInt32(&aim.running) == 1
+}
+
+// IsReady returns whether the IPC manager is ready to receive frames
+// This checks that the supervisor is connected to the audio input server
+func (aim *AudioInputIPCManager) IsReady() bool {
+	if !aim.IsRunning() {
+		return false
+	}
+	return aim.supervisor.IsConnected()
 }
 
 // GetMetrics returns current metrics

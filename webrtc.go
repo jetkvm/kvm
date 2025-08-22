@@ -292,9 +292,16 @@ func (s *Session) startAudioProcessor(logger zerolog.Logger) {
 			select {
 			case frame := <-s.audioFrameChan:
 				if s.AudioInputManager != nil {
-					err := s.AudioInputManager.WriteOpusFrame(frame)
-					if err != nil {
-						logger.Warn().Err(err).Msg("Failed to write Opus frame to audio input manager")
+					// Check if audio input manager is ready before processing frames
+					if s.AudioInputManager.IsReady() {
+						err := s.AudioInputManager.WriteOpusFrame(frame)
+						if err != nil {
+							logger.Warn().Err(err).Msg("Failed to write Opus frame to audio input manager")
+						}
+					} else {
+						// Audio input manager not ready, drop frame silently
+						// This prevents the "client not connected" errors during startup
+						logger.Debug().Msg("Audio input manager not ready, dropping frame")
 					}
 				}
 			case <-s.audioStopChan:

@@ -49,6 +49,9 @@ type AudioServerSupervisor struct {
 	processDone chan struct{}
 	stopChan    chan struct{}
 
+	// Process monitoring
+	processMonitor *ProcessMonitor
+
 	// Callbacks
 	onProcessStart func(pid int)
 	onProcessExit  func(pid int, exitCode int, crashed bool)
@@ -61,11 +64,12 @@ func NewAudioServerSupervisor() *AudioServerSupervisor {
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-supervisor").Logger()
 
 	return &AudioServerSupervisor{
-		ctx:         ctx,
-		cancel:      cancel,
-		logger:      &logger,
-		processDone: make(chan struct{}),
-		stopChan:    make(chan struct{}),
+		ctx:            ctx,
+		cancel:         cancel,
+		logger:         &logger,
+		processDone:    make(chan struct{}),
+		stopChan:       make(chan struct{}),
+		processMonitor: GetProcessMonitor(),
 	}
 }
 
@@ -138,6 +142,25 @@ func (s *AudioServerSupervisor) GetLastExitInfo() (exitCode int, exitTime time.T
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.lastExitCode, s.lastExitTime
+}
+
+// GetProcessMetrics returns current process metrics if the process is running
+func (s *AudioServerSupervisor) GetProcessMetrics() *ProcessMetrics {
+	s.mutex.RLock()
+	pid := s.processPID
+	s.mutex.RUnlock()
+
+	if pid == 0 {
+		return nil
+	}
+
+	metrics := s.processMonitor.GetCurrentMetrics()
+	for _, metric := range metrics {
+		if metric.PID == pid {
+			return &metric
+		}
+	}
+	return nil
 }
 
 // supervisionLoop is the main supervision loop
@@ -237,6 +260,9 @@ func (s *AudioServerSupervisor) startProcess() error {
 	s.processPID = s.cmd.Process.Pid
 	s.logger.Info().Int("pid", s.processPID).Msg("audio server process started")
 
+	// Add process to monitoring
+	s.processMonitor.AddProcess(s.processPID, "audio-server")
+
 	if s.onProcessStart != nil {
 		s.onProcessStart(s.processPID)
 	}
@@ -281,6 +307,9 @@ func (s *AudioServerSupervisor) waitForProcessExit() {
 
 	s.lastExitCode = exitCode
 	s.mutex.Unlock()
+
+	// Remove process from monitoring
+	s.processMonitor.RemoveProcess(pid)
 
 	if crashed {
 		s.logger.Error().Int("pid", pid).Int("exit_code", exitCode).Msg("audio server process crashed")

@@ -337,14 +337,20 @@ func (aic *AudioInputClient) Connect() error {
 
 	socketPath := getInputSocketPath()
 	// Try connecting multiple times as the server might not be ready
-	for i := 0; i < 5; i++ {
+	// Reduced retry count and delay for faster startup
+	for i := 0; i < 10; i++ {
 		conn, err := net.Dial("unix", socketPath)
 		if err == nil {
 			aic.conn = conn
 			aic.running = true
 			return nil
 		}
-		time.Sleep(time.Second)
+		// Exponential backoff starting at 50ms
+		delay := time.Duration(50*(1<<uint(i/3))) * time.Millisecond
+		if delay > 500*time.Millisecond {
+			delay = 500 * time.Millisecond
+		}
+		time.Sleep(delay)
 	}
 
 	return fmt.Errorf("failed to connect to audio input server")
