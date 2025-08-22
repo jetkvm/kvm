@@ -223,7 +223,7 @@ func setupRouter() *gin.Engine {
 			"bytes_processed":  metrics.BytesProcessed,
 			"last_frame_time":  metrics.LastFrameTime,
 			"connection_drops": metrics.ConnectionDrops,
-			"average_latency":  metrics.AverageLatency.String(),
+			"average_latency":  fmt.Sprintf("%.1fms", float64(metrics.AverageLatency.Nanoseconds())/1e6),
 		})
 	})
 
@@ -410,7 +410,7 @@ func setupRouter() *gin.Engine {
 				"bytes_processed":  0,
 				"last_frame_time":  "",
 				"connection_drops": 0,
-				"average_latency":  "0s",
+				"average_latency":  "0.0ms",
 			})
 			return
 		}
@@ -422,7 +422,7 @@ func setupRouter() *gin.Engine {
 			"bytes_processed":  metrics.BytesProcessed,
 			"last_frame_time":  metrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
 			"connection_drops": metrics.ConnectionDrops,
-			"average_latency":  metrics.AverageLatency.String(),
+			"average_latency":  fmt.Sprintf("%.1fms", float64(metrics.AverageLatency.Nanoseconds())/1e6),
 		})
 	})
 

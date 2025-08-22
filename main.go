@@ -2,7 +2,6 @@ package kvm
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -113,12 +112,10 @@ func startAudioSubprocess() error {
 	return nil
 }
 
-func Main() {
-	// Initialize flag and channel
-	flag.BoolVar(&isAudioServer, "audio-server", false, "Run as audio server subprocess")
+func Main(audioServer bool) {
+	// Initialize channel and set audio server flag
+	isAudioServer = audioServer
 	audioProcessDone = make(chan struct{})
-	
-	flag.Parse()
 
 	// If running as audio server, only initialize audio processing
 	if isAudioServer {
