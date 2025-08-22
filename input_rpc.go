@@ -14,7 +14,7 @@ const (
 // Input RPC Direct Handlers
 // This module provides optimized direct handlers for high-frequency input events,
 // bypassing the reflection-based RPC system for improved performance.
-// 
+//
 // Performance benefits:
 // - Eliminates reflection overhead (~2-3ms per call)
 // - Reduces memory allocations
