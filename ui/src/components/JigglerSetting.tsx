@@ -30,7 +30,7 @@ export function JigglerSetting({
     },
   );
 
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const [timezones, setTimezones] = useState<string[]>([]);
 
   useEffect(() => {
