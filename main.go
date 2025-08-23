@@ -212,14 +212,6 @@ func Main(audioServer bool, audioInputServer bool) {
 	audio.InitializeAudioEventBroadcaster()
 	logger.Info().Msg("audio event broadcaster initialized")
 
-	// Start audio input system for microphone processing
-	err = audio.StartAudioInput()
-	if err != nil {
-		logger.Warn().Err(err).Msg("failed to start audio input system")
-	} else {
-		logger.Info().Msg("audio input system started")
-	}
-
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
 	}
@@ -272,10 +264,6 @@ func Main(audioServer bool, audioInputServer bool) {
 
 	// Stop audio subprocess and wait for cleanup
 	if !isAudioServer {
-		// Stop audio input system
-		logger.Info().Msg("stopping audio input system")
-		audio.StopAudioInput()
-
 		if audioSupervisor != nil {
 			logger.Info().Msg("stopping audio supervisor")
 			if err := audioSupervisor.Stop(); err != nil {
