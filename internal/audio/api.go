@@ -3,6 +3,13 @@ package audio
 import (
 	"os"
 	"strings"
+	"sync/atomic"
+	"unsafe"
+)
+
+var (
+	// Global audio output supervisor instance
+	globalOutputSupervisor unsafe.Pointer // *AudioServerSupervisor
 )
 
 // isAudioServerProcess detects if we're running as the audio server subprocess
@@ -48,4 +55,18 @@ func StartNonBlockingAudioStreaming(send func([]byte)) error {
 // StopNonBlockingAudioStreaming is an alias for backward compatibility
 func StopNonBlockingAudioStreaming() {
 	StopAudioOutputStreaming()
+}
+
+// SetAudioOutputSupervisor sets the global audio output supervisor
+func SetAudioOutputSupervisor(supervisor *AudioServerSupervisor) {
+	atomic.StorePointer(&globalOutputSupervisor, unsafe.Pointer(supervisor))
+}
+
+// GetAudioOutputSupervisor returns the global audio output supervisor
+func GetAudioOutputSupervisor() *AudioServerSupervisor {
+	ptr := atomic.LoadPointer(&globalOutputSupervisor)
+	if ptr == nil {
+		return nil
+	}
+	return (*AudioServerSupervisor)(ptr)
 }
