@@ -410,9 +410,7 @@ func cgoAudioClose() {
 	C.jetkvm_audio_close()
 }
 
-// Optimized read and encode with pre-allocated error objects and reduced checks
 func cgoAudioReadEncode(buf []byte) (int, error) {
-	// Fast path: check minimum buffer size (reduced from 1500 to 1276 for 10ms frames)
 	if len(buf) < 1276 {
 		return 0, errBufferTooSmall
 	}
@@ -427,11 +425,11 @@ func cgoAudioReadEncode(buf []byte) (int, error) {
 	return int(n), nil
 }
 
-// Go wrappers for audio playback (microphone input)
+// Audio playback functions
 func cgoAudioPlaybackInit() error {
 	ret := C.jetkvm_audio_playback_init()
 	if ret != 0 {
-		return errors.New("failed to init ALSA playback/Opus decoder")
+		return errAudioPlaybackInit
 	}
 	return nil
 }
@@ -440,44 +438,36 @@ func cgoAudioPlaybackClose() {
 	C.jetkvm_audio_playback_close()
 }
 
-// Decodes Opus frame and writes to playback device
 func cgoAudioDecodeWrite(buf []byte) (int, error) {
 	if len(buf) == 0 {
-		return 0, errors.New("empty buffer")
+		return 0, errEmptyBuffer
 	}
-	// Additional safety check to prevent segfault
 	if buf == nil {
-		return 0, errors.New("nil buffer")
+		return 0, errNilBuffer
+	}
+	if len(buf) > 4096 {
+		return 0, errBufferTooLarge
 	}
 
-	// Validate buffer size to prevent potential overruns
-	if len(buf) > 4096 { // Maximum reasonable Opus frame size
-		return 0, errors.New("buffer too large")
-	}
-
-	// Ensure buffer is not deallocated by keeping a reference
 	bufPtr := unsafe.Pointer(&buf[0])
 	if bufPtr == nil {
-		return 0, errors.New("invalid buffer pointer")
+		return 0, errInvalidBufferPtr
 	}
 
-	// Add recovery mechanism for C function crashes
 	defer func() {
 		if r := recover(); r != nil {
-			// Log the panic but don't crash the entire program
-			// This should not happen with proper validation, but provides safety
-			_ = r // Explicitly ignore the panic value
+			_ = r
 		}
 	}()
 
 	n := C.jetkvm_audio_decode_write(bufPtr, C.int(len(buf)))
 	if n < 0 {
-		return 0, errors.New("audio decode/write error")
+		return 0, errAudioDecodeWrite
 	}
 	return int(n), nil
 }
 
-// Wrapper functions for non-blocking audio manager
+// CGO function aliases
 var (
 	CGOAudioInit          = cgoAudioInit
 	CGOAudioClose         = cgoAudioClose

@@ -1,5 +1,5 @@
 # --- JetKVM Audio/Toolchain Dev Environment Setup ---
-.PHONY: setup_toolchain build_audio_deps dev_env lint lint-fix ui-lint
+.PHONY: setup_toolchain build_audio_deps dev_env lint lint-go lint-ui lint-fix lint-go-fix lint-ui-fix ui-lint
 
 # Clone the rv1106-system toolchain to $HOME/.jetkvm/rv1106-system
 setup_toolchain:
@@ -9,8 +9,10 @@ setup_toolchain:
 build_audio_deps: setup_toolchain
 	bash tools/build_audio_deps.sh $(ALSA_VERSION) $(OPUS_VERSION)
 
-# Prepare everything needed for local development (toolchain + audio deps)
+# Prepare everything needed for local development (toolchain + audio deps + Go tools)
 dev_env: build_audio_deps
+	@echo "Installing Go development tools..."
+	go install golang.org/x/tools/cmd/goimports@latest
 	@echo "Development environment ready."
 JETKVM_HOME ?= $(HOME)/.jetkvm
 TOOLCHAIN_DIR ?= $(JETKVM_HOME)/rv1106-system
@@ -127,8 +129,12 @@ release:
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sha256
 
+# Run both Go and UI linting
+lint: lint-go lint-ui
+	@echo "All linting completed successfully!"
+
 # Run golangci-lint locally with the same configuration as CI
-lint: build_audio_deps
+lint-go: build_audio_deps
 	@echo "Running golangci-lint..."
 	@mkdir -p static && touch static/.gitkeep
 	CGO_ENABLED=1 \
@@ -136,8 +142,12 @@ lint: build_audio_deps
 	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
 	golangci-lint run --verbose
 
+# Run both Go and UI linting with auto-fix
+lint-fix: lint-go-fix lint-ui-fix
+	@echo "All linting with auto-fix completed successfully!"
+
 # Run golangci-lint with auto-fix
-lint-fix: build_audio_deps
+lint-go-fix: build_audio_deps
 	@echo "Running golangci-lint with auto-fix..."
 	@mkdir -p static && touch static/.gitkeep
 	CGO_ENABLED=1 \
@@ -146,7 +156,16 @@ lint-fix: build_audio_deps
 	golangci-lint run --fix --verbose
 
 # Run UI linting locally (mirrors GitHub workflow ui-lint.yml)
-ui-lint:
+lint-ui:
 	@echo "Running UI lint..."
 	@cd ui && npm ci
 	@cd ui && npm run lint
+
+# Run UI linting with auto-fix
+lint-ui-fix:
+	@echo "Running UI lint with auto-fix..."
+	@cd ui && npm ci
+	@cd ui && npm run lint:fix
+
+# Legacy alias for UI linting (for backward compatibility)
+ui-lint: lint-ui

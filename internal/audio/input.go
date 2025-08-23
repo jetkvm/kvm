@@ -9,9 +9,8 @@ import (
 )
 
 // AudioInputMetrics holds metrics for microphone input
-// Note: int64 fields must be 64-bit aligned for atomic operations on ARM
 type AudioInputMetrics struct {
-	FramesSent      int64 // Must be first for alignment
+	FramesSent      int64
 	FramesDropped   int64
 	BytesProcessed  int64
 	ConnectionDrops int64
@@ -21,7 +20,6 @@ type AudioInputMetrics struct {
 
 // AudioInputManager manages microphone input stream using IPC mode only
 type AudioInputManager struct {
-	// metrics MUST be first for ARM32 alignment (contains int64 fields)
 	metrics AudioInputMetrics
 
 	ipcManager *AudioInputIPCManager

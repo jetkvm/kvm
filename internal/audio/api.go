@@ -15,7 +15,7 @@ var (
 // isAudioServerProcess detects if we're running as the audio server subprocess
 func isAudioServerProcess() bool {
 	for _, arg := range os.Args {
-		if strings.Contains(arg, "--audio-server") {
+		if strings.Contains(arg, "--audio-output-server") {
 			return true
 		}
 	}
