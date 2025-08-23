@@ -216,6 +216,53 @@ func (aeb *AudioEventBroadcaster) sendInitialState(connectionID string) {
 	aeb.sendCurrentMetrics(subscriber)
 }
 
+// getMicrophoneProcessMetrics returns microphone process metrics data, always providing a valid response
+// getInactiveProcessMetrics returns ProcessMetricsData for an inactive audio input process
+func getInactiveProcessMetrics() ProcessMetricsData {
+	return ProcessMetricsData{
+		PID:           0,
+		CPUPercent:    0.0,
+		MemoryRSS:     0,
+		MemoryVMS:     0,
+		MemoryPercent: 0.0,
+		Running:       false,
+		ProcessName:   "audio-input-server",
+	}
+}
+
+func (aeb *AudioEventBroadcaster) getMicrophoneProcessMetrics() ProcessMetricsData {
+	sessionProvider := GetSessionProvider()
+	if !sessionProvider.IsSessionActive() {
+		return getInactiveProcessMetrics()
+	}
+
+	inputManager := sessionProvider.GetAudioInputManager()
+	if inputManager == nil {
+		return getInactiveProcessMetrics()
+	}
+
+	inputSupervisor := inputManager.GetSupervisor()
+	if inputSupervisor == nil {
+		return getInactiveProcessMetrics()
+	}
+
+	processMetrics := inputSupervisor.GetProcessMetrics()
+	if processMetrics == nil {
+		return getInactiveProcessMetrics()
+	}
+
+	// Subprocess is running, return actual metrics
+	return ProcessMetricsData{
+		PID:           processMetrics.PID,
+		CPUPercent:    processMetrics.CPUPercent,
+		MemoryRSS:     processMetrics.MemoryRSS,
+		MemoryVMS:     processMetrics.MemoryVMS,
+		MemoryPercent: processMetrics.MemoryPercent,
+		Running:       inputSupervisor.IsRunning(),
+		ProcessName:   processMetrics.ProcessName,
+	}
+}
+
 // sendCurrentMetrics sends current audio and microphone metrics to a subscriber
 func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubscriber) {
 	// Send audio metrics
@@ -273,89 +320,11 @@ func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubsc
 	}
 
 	// Send microphone process metrics (always send, even when subprocess is not running)
-	sessionProvider = GetSessionProvider()
-	if sessionProvider.IsSessionActive() {
-		if inputManager := sessionProvider.GetAudioInputManager(); inputManager != nil {
-			if inputSupervisor := inputManager.GetSupervisor(); inputSupervisor != nil {
-				if processMetrics := inputSupervisor.GetProcessMetrics(); processMetrics != nil {
-					// Subprocess is running, send actual metrics
-					micProcessEvent := AudioEvent{
-						Type: AudioEventMicProcessMetrics,
-						Data: ProcessMetricsData{
-							PID:           processMetrics.PID,
-							CPUPercent:    processMetrics.CPUPercent,
-							MemoryRSS:     processMetrics.MemoryRSS,
-							MemoryVMS:     processMetrics.MemoryVMS,
-							MemoryPercent: processMetrics.MemoryPercent,
-							Running:       inputSupervisor.IsRunning(),
-							ProcessName:   processMetrics.ProcessName,
-						},
-					}
-					aeb.sendToSubscriber(subscriber, micProcessEvent)
-				} else {
-					// Supervisor exists but no process metrics (subprocess not running)
-					micProcessEvent := AudioEvent{
-						Type: AudioEventMicProcessMetrics,
-						Data: ProcessMetricsData{
-							PID:           0,
-							CPUPercent:    0.0,
-							MemoryRSS:     0,
-							MemoryVMS:     0,
-							MemoryPercent: 0.0,
-							Running:       false,
-							ProcessName:   "audio-input-server",
-						},
-					}
-					aeb.sendToSubscriber(subscriber, micProcessEvent)
-				}
-			} else {
-				// No supervisor (microphone never started)
-				micProcessEvent := AudioEvent{
-					Type: AudioEventMicProcessMetrics,
-					Data: ProcessMetricsData{
-						PID:           0,
-						CPUPercent:    0.0,
-						MemoryRSS:     0,
-						MemoryVMS:     0,
-						MemoryPercent: 0.0,
-						Running:       false,
-						ProcessName:   "audio-input-server",
-					},
-				}
-				aeb.sendToSubscriber(subscriber, micProcessEvent)
-			}
-		} else {
-			// No input manager (no session)
-			micProcessEvent := AudioEvent{
-				Type: AudioEventMicProcessMetrics,
-				Data: ProcessMetricsData{
-					PID:           0,
-					CPUPercent:    0.0,
-					MemoryRSS:     0,
-					MemoryVMS:     0,
-					MemoryPercent: 0.0,
-					Running:       false,
-					ProcessName:   "audio-input-server",
-				},
-			}
-			aeb.sendToSubscriber(subscriber, micProcessEvent)
-		}
-	} else {
-		// No active session
-		micProcessEvent := AudioEvent{
-			Type: AudioEventMicProcessMetrics,
-			Data: ProcessMetricsData{
-				PID:           0,
-				CPUPercent:    0.0,
-				MemoryRSS:     0,
-				MemoryVMS:     0,
-				MemoryPercent: 0.0,
-				Running:       false,
-				ProcessName:   "audio-input-server",
-			},
-		}
-		aeb.sendToSubscriber(subscriber, micProcessEvent)
+	micProcessEvent := AudioEvent{
+		Type: AudioEventMicProcessMetrics,
+		Data: aeb.getMicrophoneProcessMetrics(),
 	}
+	aeb.sendToSubscriber(subscriber, micProcessEvent)
 }
 
 // startMetricsBroadcasting starts a goroutine that periodically broadcasts metrics
@@ -449,89 +418,11 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 		}
 
 		// Broadcast microphone process metrics (always broadcast, even when subprocess is not running)
-		sessionProvider = GetSessionProvider()
-		if sessionProvider.IsSessionActive() {
-			if inputManager := sessionProvider.GetAudioInputManager(); inputManager != nil {
-				if inputSupervisor := inputManager.GetSupervisor(); inputSupervisor != nil {
-					if processMetrics := inputSupervisor.GetProcessMetrics(); processMetrics != nil {
-						// Subprocess is running, broadcast actual metrics
-						micProcessEvent := AudioEvent{
-							Type: AudioEventMicProcessMetrics,
-							Data: ProcessMetricsData{
-								PID:           processMetrics.PID,
-								CPUPercent:    processMetrics.CPUPercent,
-								MemoryRSS:     processMetrics.MemoryRSS,
-								MemoryVMS:     processMetrics.MemoryVMS,
-								MemoryPercent: processMetrics.MemoryPercent,
-								Running:       inputSupervisor.IsRunning(),
-								ProcessName:   processMetrics.ProcessName,
-							},
-						}
-						aeb.broadcast(micProcessEvent)
-					} else {
-						// Supervisor exists but no process metrics (subprocess not running)
-						micProcessEvent := AudioEvent{
-							Type: AudioEventMicProcessMetrics,
-							Data: ProcessMetricsData{
-								PID:           0,
-								CPUPercent:    0.0,
-								MemoryRSS:     0,
-								MemoryVMS:     0,
-								MemoryPercent: 0.0,
-								Running:       false,
-								ProcessName:   "audio-input-server",
-							},
-						}
-						aeb.broadcast(micProcessEvent)
-					}
-				} else {
-					// No supervisor (microphone never started)
-					micProcessEvent := AudioEvent{
-						Type: AudioEventMicProcessMetrics,
-						Data: ProcessMetricsData{
-							PID:           0,
-							CPUPercent:    0.0,
-							MemoryRSS:     0,
-							MemoryVMS:     0,
-							MemoryPercent: 0.0,
-							Running:       false,
-							ProcessName:   "audio-input-server",
-						},
-					}
-					aeb.broadcast(micProcessEvent)
-				}
-			} else {
-				// No input manager (no session)
-				micProcessEvent := AudioEvent{
-					Type: AudioEventMicProcessMetrics,
-					Data: ProcessMetricsData{
-						PID:           0,
-						CPUPercent:    0.0,
-						MemoryRSS:     0,
-						MemoryVMS:     0,
-						MemoryPercent: 0.0,
-						Running:       false,
-						ProcessName:   "audio-input-server",
-					},
-				}
-				aeb.broadcast(micProcessEvent)
-			}
-		} else {
-			// No active session
-			micProcessEvent := AudioEvent{
-				Type: AudioEventMicProcessMetrics,
-				Data: ProcessMetricsData{
-					PID:           0,
-					CPUPercent:    0.0,
-					MemoryRSS:     0,
-					MemoryVMS:     0,
-					MemoryPercent: 0.0,
-					Running:       false,
-					ProcessName:   "audio-input-server",
-				},
-			}
-			aeb.broadcast(micProcessEvent)
+		micProcessEvent := AudioEvent{
+			Type: AudioEventMicProcessMetrics,
+			Data: aeb.getMicrophoneProcessMetrics(),
 		}
+		aeb.broadcast(micProcessEvent)
 	}
 }
 
