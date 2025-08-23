@@ -2,6 +2,7 @@ package audio
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -226,7 +227,7 @@ var (
 
 	// Metrics update tracking
 	metricsUpdateMutex sync.RWMutex
-	lastMetricsUpdate  time.Time
+	lastMetricsUpdate  int64
 
 	// Counter value tracking (since prometheus counters don't have Get() method)
 	audioFramesReceivedValue  int64
@@ -241,28 +242,24 @@ var (
 
 // UpdateAudioMetrics updates Prometheus metrics with current audio data
 func UpdateAudioMetrics(metrics AudioMetrics) {
-	metricsUpdateMutex.Lock()
-	defer metricsUpdateMutex.Unlock()
-
-	// Update counters with delta values
-	if metrics.FramesReceived > audioFramesReceivedValue {
-		audioFramesReceivedTotal.Add(float64(metrics.FramesReceived - audioFramesReceivedValue))
-		audioFramesReceivedValue = metrics.FramesReceived
+	oldReceived := atomic.SwapInt64(&audioFramesReceivedValue, metrics.FramesReceived)
+	if metrics.FramesReceived > oldReceived {
+		audioFramesReceivedTotal.Add(float64(metrics.FramesReceived - oldReceived))
 	}
 
-	if metrics.FramesDropped > audioFramesDroppedValue {
-		audioFramesDroppedTotal.Add(float64(metrics.FramesDropped - audioFramesDroppedValue))
-		audioFramesDroppedValue = metrics.FramesDropped
+	oldDropped := atomic.SwapInt64(&audioFramesDroppedValue, metrics.FramesDropped)
+	if metrics.FramesDropped > oldDropped {
+		audioFramesDroppedTotal.Add(float64(metrics.FramesDropped - oldDropped))
 	}
 
-	if metrics.BytesProcessed > audioBytesProcessedValue {
-		audioBytesProcessedTotal.Add(float64(metrics.BytesProcessed - audioBytesProcessedValue))
-		audioBytesProcessedValue = metrics.BytesProcessed
+	oldBytes := atomic.SwapInt64(&audioBytesProcessedValue, metrics.BytesProcessed)
+	if metrics.BytesProcessed > oldBytes {
+		audioBytesProcessedTotal.Add(float64(metrics.BytesProcessed - oldBytes))
 	}
 
-	if metrics.ConnectionDrops > audioConnectionDropsValue {
-		audioConnectionDropsTotal.Add(float64(metrics.ConnectionDrops - audioConnectionDropsValue))
-		audioConnectionDropsValue = metrics.ConnectionDrops
+	oldDrops := atomic.SwapInt64(&audioConnectionDropsValue, metrics.ConnectionDrops)
+	if metrics.ConnectionDrops > oldDrops {
+		audioConnectionDropsTotal.Add(float64(metrics.ConnectionDrops - oldDrops))
 	}
 
 	// Update gauges
@@ -271,33 +268,29 @@ func UpdateAudioMetrics(metrics AudioMetrics) {
 		audioLastFrameTimestamp.Set(float64(metrics.LastFrameTime.Unix()))
 	}
 
-	lastMetricsUpdate = time.Now()
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
 
 // UpdateMicrophoneMetrics updates Prometheus metrics with current microphone data
 func UpdateMicrophoneMetrics(metrics AudioInputMetrics) {
-	metricsUpdateMutex.Lock()
-	defer metricsUpdateMutex.Unlock()
-
-	// Update counters with delta values
-	if metrics.FramesSent > micFramesSentValue {
-		microphoneFramesSentTotal.Add(float64(metrics.FramesSent - micFramesSentValue))
-		micFramesSentValue = metrics.FramesSent
+	oldSent := atomic.SwapInt64(&micFramesSentValue, metrics.FramesSent)
+	if metrics.FramesSent > oldSent {
+		microphoneFramesSentTotal.Add(float64(metrics.FramesSent - oldSent))
 	}
 
-	if metrics.FramesDropped > micFramesDroppedValue {
-		microphoneFramesDroppedTotal.Add(float64(metrics.FramesDropped - micFramesDroppedValue))
-		micFramesDroppedValue = metrics.FramesDropped
+	oldDropped := atomic.SwapInt64(&micFramesDroppedValue, metrics.FramesDropped)
+	if metrics.FramesDropped > oldDropped {
+		microphoneFramesDroppedTotal.Add(float64(metrics.FramesDropped - oldDropped))
 	}
 
-	if metrics.BytesProcessed > micBytesProcessedValue {
-		microphoneBytesProcessedTotal.Add(float64(metrics.BytesProcessed - micBytesProcessedValue))
-		micBytesProcessedValue = metrics.BytesProcessed
+	oldBytes := atomic.SwapInt64(&micBytesProcessedValue, metrics.BytesProcessed)
+	if metrics.BytesProcessed > oldBytes {
+		microphoneBytesProcessedTotal.Add(float64(metrics.BytesProcessed - oldBytes))
 	}
 
-	if metrics.ConnectionDrops > micConnectionDropsValue {
-		microphoneConnectionDropsTotal.Add(float64(metrics.ConnectionDrops - micConnectionDropsValue))
-		micConnectionDropsValue = metrics.ConnectionDrops
+	oldDrops := atomic.SwapInt64(&micConnectionDropsValue, metrics.ConnectionDrops)
+	if metrics.ConnectionDrops > oldDrops {
+		microphoneConnectionDropsTotal.Add(float64(metrics.ConnectionDrops - oldDrops))
 	}
 
 	// Update gauges
@@ -306,7 +299,7 @@ func UpdateMicrophoneMetrics(metrics AudioInputMetrics) {
 		microphoneLastFrameTimestamp.Set(float64(metrics.LastFrameTime.Unix()))
 	}
 
-	lastMetricsUpdate = time.Now()
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
 
 // UpdateAudioProcessMetrics updates Prometheus metrics with audio subprocess data
@@ -324,7 +317,7 @@ func UpdateAudioProcessMetrics(metrics ProcessMetrics, isRunning bool) {
 		audioProcessRunning.Set(0)
 	}
 
-	lastMetricsUpdate = time.Now()
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
 
 // UpdateMicrophoneProcessMetrics updates Prometheus metrics with microphone subprocess data
@@ -342,7 +335,7 @@ func UpdateMicrophoneProcessMetrics(metrics ProcessMetrics, isRunning bool) {
 		microphoneProcessRunning.Set(0)
 	}
 
-	lastMetricsUpdate = time.Now()
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
 
 // UpdateAudioConfigMetrics updates Prometheus metrics with audio configuration
@@ -355,7 +348,7 @@ func UpdateAudioConfigMetrics(config AudioConfig) {
 	audioConfigSampleRate.Set(float64(config.SampleRate))
 	audioConfigChannels.Set(float64(config.Channels))
 
-	lastMetricsUpdate = time.Now()
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
 
 // UpdateMicrophoneConfigMetrics updates Prometheus metrics with microphone configuration
@@ -368,14 +361,13 @@ func UpdateMicrophoneConfigMetrics(config AudioConfig) {
 	microphoneConfigSampleRate.Set(float64(config.SampleRate))
 	microphoneConfigChannels.Set(float64(config.Channels))
 
-	lastMetricsUpdate = time.Now()
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
 
 // GetLastMetricsUpdate returns the timestamp of the last metrics update
 func GetLastMetricsUpdate() time.Time {
-	metricsUpdateMutex.RLock()
-	defer metricsUpdateMutex.RUnlock()
-	return lastMetricsUpdate
+	timestamp := atomic.LoadInt64(&lastMetricsUpdate)
+	return time.Unix(timestamp, 0)
 }
 
 // StartMetricsUpdater starts a goroutine that periodically updates Prometheus metrics

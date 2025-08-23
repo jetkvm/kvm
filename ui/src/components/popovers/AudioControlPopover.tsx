@@ -41,10 +41,6 @@ interface AudioConfig {
   FrameSize: string;
 }
 
-
-
-
-
 const qualityLabels = {
   0: "Low (32kbps)",
   1: "Medium (64kbps)",
@@ -211,7 +207,6 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
     
     // Prevent rapid clicking - if any operation is in progress or within cooldown, ignore the click
     if (isStarting || isStopping || isToggling || (now - lastClickTime < CLICK_COOLDOWN)) {
-      console.log("Microphone operation already in progress or within cooldown, ignoring click");
       return;
     }
     
@@ -233,7 +228,6 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
     
     // Prevent rapid clicking - if any operation is in progress or within cooldown, ignore the click
     if (isStarting || isStopping || isToggling || (now - lastClickTime < CLICK_COOLDOWN)) {
-      console.log("Microphone operation already in progress or within cooldown, ignoring mute toggle");
       return;
     }
     
@@ -279,7 +273,6 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
     if (videoElement && 'setSinkId' in videoElement) {
       try {
         await (videoElement as HTMLVideoElement & { setSinkId: (deviceId: string) => Promise<void> }).setSinkId(deviceId);
-        console.log('Audio output device changed to:', deviceId);
       } catch (error: unknown) {
         console.error('Failed to change audio output device:', error);
       }

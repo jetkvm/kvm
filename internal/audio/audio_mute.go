@@ -2,8 +2,6 @@ package audio
 
 import (
 	"sync"
-
-	"github.com/jetkvm/kvm/internal/logging"
 )
 
 var audioMuteState struct {
@@ -13,9 +11,7 @@ var audioMuteState struct {
 
 func SetAudioMuted(muted bool) {
 	audioMuteState.mu.Lock()
-	prev := audioMuteState.muted
 	audioMuteState.muted = muted
-	logging.GetDefaultLogger().Info().Str("component", "audio").Msgf("SetAudioMuted: prev=%v, new=%v", prev, muted)
 	audioMuteState.mu.Unlock()
 }
 

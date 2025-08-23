@@ -3,6 +3,7 @@ package audio
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pion/webrtc/v4/pkg/media"
@@ -123,10 +124,12 @@ func (r *AudioRelay) UpdateTrack(audioTrack AudioTrackWriter) {
 	r.audioTrack = audioTrack
 }
 
-// relayLoop is the main relay loop that forwards frames from subprocess to WebRTC
 func (r *AudioRelay) relayLoop() {
 	defer r.wg.Done()
 	r.logger.Debug().Msg("Audio relay loop started")
+
+	const maxConsecutiveErrors = 10
+	consecutiveErrors := 0
 
 	for {
 		select {
@@ -134,15 +137,21 @@ func (r *AudioRelay) relayLoop() {
 			r.logger.Debug().Msg("Audio relay loop stopping")
 			return
 		default:
-			// Receive frame from audio server subprocess
 			frame, err := r.client.ReceiveFrame()
 			if err != nil {
-				r.logger.Error().Err(err).Msg("Failed to receive audio frame")
+				consecutiveErrors++
+				r.logger.Error().Err(err).Int("consecutive_errors", consecutiveErrors).Msg("Failed to receive audio frame")
 				r.incrementDropped()
+
+				if consecutiveErrors >= maxConsecutiveErrors {
+					r.logger.Error().Msg("Too many consecutive errors, stopping relay")
+					return
+				}
+				time.Sleep(10 * time.Millisecond)
 				continue
 			}
 
-			// Forward frame to WebRTC
+			consecutiveErrors = 0
 			if err := r.forwardToWebRTC(frame); err != nil {
 				r.logger.Warn().Err(err).Msg("Failed to forward frame to WebRTC")
 				r.incrementDropped()

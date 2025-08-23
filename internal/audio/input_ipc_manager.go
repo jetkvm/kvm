@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 
@@ -10,51 +11,59 @@ import (
 
 // AudioInputIPCManager manages microphone input using IPC when enabled
 type AudioInputIPCManager struct {
-	// metrics MUST be first for ARM32 alignment (contains int64 fields)
 	metrics AudioInputMetrics
 
 	supervisor *AudioInputSupervisor
 	logger     zerolog.Logger
 	running    int32
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
 // NewAudioInputIPCManager creates a new IPC-based audio input manager
 func NewAudioInputIPCManager() *AudioInputIPCManager {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &AudioInputIPCManager{
 		supervisor: NewAudioInputSupervisor(),
 		logger:     logging.GetDefaultLogger().With().Str("component", "audio-input-ipc").Logger(),
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 }
 
 // Start starts the IPC-based audio input system
 func (aim *AudioInputIPCManager) Start() error {
 	if !atomic.CompareAndSwapInt32(&aim.running, 0, 1) {
-		return nil // Already running
+		return nil
 	}
 
 	aim.logger.Info().Msg("Starting IPC-based audio input system")
 
-	// Start the supervisor which will launch the subprocess
 	err := aim.supervisor.Start()
 	if err != nil {
 		atomic.StoreInt32(&aim.running, 0)
+		aim.logger.Error().Err(err).Msg("Failed to start audio input supervisor")
 		return err
 	}
 
-	// Send initial configuration
 	config := InputIPCConfig{
 		SampleRate: 48000,
 		Channels:   2,
-		FrameSize:  960, // 20ms at 48kHz
+		FrameSize:  960,
 	}
 
-	// Wait briefly for the subprocess to be ready (reduced from 1 second)
-	time.Sleep(200 * time.Millisecond)
+	// Wait with timeout for subprocess readiness
+	select {
+	case <-time.After(200 * time.Millisecond):
+	case <-aim.ctx.Done():
+		aim.supervisor.Stop()
+		atomic.StoreInt32(&aim.running, 0)
+		return aim.ctx.Err()
+	}
 
 	err = aim.supervisor.SendConfig(config)
 	if err != nil {
-		aim.logger.Warn().Err(err).Msg("Failed to send initial config to audio input server")
-		// Don't fail startup for config errors
+		aim.logger.Warn().Err(err).Msg("Failed to send initial config, will retry later")
 	}
 
 	aim.logger.Info().Msg("IPC-based audio input system started")
@@ -64,14 +73,12 @@ func (aim *AudioInputIPCManager) Start() error {
 // Stop stops the IPC-based audio input system
 func (aim *AudioInputIPCManager) Stop() {
 	if !atomic.CompareAndSwapInt32(&aim.running, 1, 0) {
-		return // Already stopped
+		return
 	}
 
 	aim.logger.Info().Msg("Stopping IPC-based audio input system")
-
-	// Stop the supervisor
+	aim.cancel()
 	aim.supervisor.Stop()
-
 	aim.logger.Info().Msg("IPC-based audio input system stopped")
 }
 

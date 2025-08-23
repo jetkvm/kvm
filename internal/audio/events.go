@@ -204,7 +204,6 @@ func (aeb *AudioEventBroadcaster) sendInitialState(connectionID string) {
 	aeb.sendCurrentMetrics(subscriber)
 }
 
-// getMicrophoneProcessMetrics returns microphone process metrics data, always providing a valid response
 // convertAudioMetricsToEventData converts internal audio metrics to AudioMetricsData for events
 func convertAudioMetricsToEventData(metrics AudioMetrics) AudioMetricsData {
 	return AudioMetricsData{
@@ -371,8 +370,8 @@ func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubsc
 
 // startMetricsBroadcasting starts a goroutine that periodically broadcasts metrics
 func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
-	// Use 500ms interval to match Connection Stats sidebar frequency for smooth histogram progression
-	ticker := time.NewTicker(500 * time.Millisecond)
+	// Use 1000ms interval to match process monitor frequency for synchronized metrics
+	ticker := time.NewTicker(1000 * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
