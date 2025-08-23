@@ -53,10 +53,9 @@ func (ais *AudioInputSupervisor) Start() error {
 	}
 
 	// Create command for audio input server subprocess
-	cmd := exec.CommandContext(ctx, execPath)
+	cmd := exec.CommandContext(ctx, execPath, "--audio-input-server")
 	cmd.Env = append(os.Environ(),
-		"JETKVM_AUDIO_INPUT_SERVER=true", // Flag to indicate this is the input server process
-		"JETKVM_AUDIO_INPUT_IPC=true",    // Enable IPC mode
+		"JETKVM_AUDIO_INPUT_IPC=true", // Enable IPC mode
 	)
 
 	// Set process group to allow clean termination

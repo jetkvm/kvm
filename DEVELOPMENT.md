@@ -231,6 +231,23 @@ systemctl restart jetkvm
 cd ui && npm run lint
 ```
 
+### Local Code Quality Tools
+
+The project includes several Makefile targets for local code quality checks that mirror the GitHub Actions workflows:
+
+```bash
+# Run Go linting (mirrors .github/workflows/lint.yml)
+make lint
+
+# Run Go linting with auto-fix
+make lint-fix
+
+# Run UI linting (mirrors .github/workflows/ui-lint.yml)
+make ui-lint
+```
+
+**Note:** The `lint` and `lint-fix` targets require audio dependencies. Run `make dev_env` first if you haven't already.
+
 ### API Testing
 
 ```bash

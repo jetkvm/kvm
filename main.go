@@ -63,6 +63,9 @@ func startAudioSubprocess() error {
 	// Create audio server supervisor
 	audioSupervisor = audio.NewAudioServerSupervisor()
 
+	// Set the global supervisor for access from audio package
+	audio.SetAudioOutputSupervisor(audioSupervisor)
+
 	// Set up callbacks for process lifecycle events
 	audioSupervisor.SetCallbacks(
 		// onProcessStart
@@ -112,7 +115,7 @@ func startAudioSubprocess() error {
 	return nil
 }
 
-func Main(audioServer bool) {
+func Main(audioServer bool, audioInputServer bool) {
 	// Initialize channel and set audio server flag
 	isAudioServer = audioServer
 	audioProcessDone = make(chan struct{})
@@ -124,7 +127,7 @@ func Main(audioServer bool) {
 	}
 
 	// If running as audio input server, only initialize audio input processing
-	if audio.IsAudioInputServerProcess() {
+	if audioInputServer {
 		err := audio.RunAudioInputServer()
 		if err != nil {
 			logger.Error().Err(err).Msg("audio input server failed")
@@ -209,6 +212,14 @@ func Main(audioServer bool) {
 	audio.InitializeAudioEventBroadcaster()
 	logger.Info().Msg("audio event broadcaster initialized")
 
+	// Start audio input system for microphone processing
+	err = audio.StartAudioInput()
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to start audio input system")
+	} else {
+		logger.Info().Msg("audio input system started")
+	}
+
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
 	}
@@ -261,6 +272,10 @@ func Main(audioServer bool) {
 
 	// Stop audio subprocess and wait for cleanup
 	if !isAudioServer {
+		// Stop audio input system
+		logger.Info().Msg("stopping audio input system")
+		audio.StopAudioInput()
+
 		if audioSupervisor != nil {
 			logger.Info().Msg("stopping audio supervisor")
 			if err := audioSupervisor.Stop(); err != nil {

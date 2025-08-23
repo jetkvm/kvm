@@ -6,7 +6,9 @@ export type AudioEventType =
   | 'audio-mute-changed'
   | 'audio-metrics-update'
   | 'microphone-state-changed'
-  | 'microphone-metrics-update';
+  | 'microphone-metrics-update'
+  | 'audio-process-metrics'
+  | 'microphone-process-metrics';
 
 // Audio event data interfaces
 export interface AudioMuteData {
@@ -36,10 +38,20 @@ export interface MicrophoneMetricsData {
   average_latency: string;
 }
 
+export interface ProcessMetricsData {
+  pid: number;
+  cpu_percent: number;
+  memory_rss: number;
+  memory_vms: number;
+  memory_percent: number;
+  running: boolean;
+  process_name: string;
+}
+
 // Audio event structure
 export interface AudioEvent {
   type: AudioEventType;
-  data: AudioMuteData | AudioMetricsData | MicrophoneStateData | MicrophoneMetricsData;
+  data: AudioMuteData | AudioMetricsData | MicrophoneStateData | MicrophoneMetricsData | ProcessMetricsData;
 }
 
 // Hook return type
@@ -55,6 +67,10 @@ export interface UseAudioEventsReturn {
   // Microphone state
   microphoneState: MicrophoneStateData | null;
   microphoneMetrics: MicrophoneMetricsData | null;
+  
+  // Process metrics
+  audioProcessMetrics: ProcessMetricsData | null;
+  microphoneProcessMetrics: ProcessMetricsData | null;
   
   // Manual subscription control
   subscribe: () => void;
@@ -74,6 +90,8 @@ export function useAudioEvents(): UseAudioEventsReturn {
   const [audioMetrics, setAudioMetrics] = useState<AudioMetricsData | null>(null);
   const [microphoneState, setMicrophoneState] = useState<MicrophoneStateData | null>(null);
   const [microphoneMetrics, setMicrophoneMetricsData] = useState<MicrophoneMetricsData | null>(null);
+  const [audioProcessMetrics, setAudioProcessMetrics] = useState<ProcessMetricsData | null>(null);
+  const [microphoneProcessMetrics, setMicrophoneProcessMetrics] = useState<ProcessMetricsData | null>(null);
   
   // Local subscription state
   const [isLocallySubscribed, setIsLocallySubscribed] = useState(false);
@@ -214,6 +232,18 @@ export function useAudioEvents(): UseAudioEventsReturn {
               break;
             }
               
+            case 'audio-process-metrics': {
+              const audioProcessData = audioEvent.data as ProcessMetricsData;
+              setAudioProcessMetrics(audioProcessData);
+              break;
+            }
+              
+            case 'microphone-process-metrics': {
+              const micProcessData = audioEvent.data as ProcessMetricsData;
+              setMicrophoneProcessMetrics(micProcessData);
+              break;
+            }
+              
             default:
               // Ignore other message types (WebRTC signaling, etc.)
               break;
@@ -274,6 +304,10 @@ export function useAudioEvents(): UseAudioEventsReturn {
     // Microphone state
     microphoneState,
     microphoneMetrics: microphoneMetrics,
+    
+    // Process metrics
+    audioProcessMetrics,
+    microphoneProcessMetrics,
     
     // Manual subscription control
     subscribe,

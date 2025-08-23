@@ -208,6 +208,10 @@ func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessM
 
 		if timeDelta > 0 {
 			metric.CPUPercent = (cpuSeconds / timeDelta) * 100.0
+			// Cap CPU percentage at 100% to handle multi-core usage
+			if metric.CPUPercent > 100.0 {
+				metric.CPUPercent = 100.0
+			}
 		}
 	}
 
@@ -247,6 +251,11 @@ func (pm *ProcessMonitor) getTotalMemory() int64 {
 		}
 	}
 	return 0
+}
+
+// GetTotalMemory returns total system memory in bytes (public method)
+func (pm *ProcessMonitor) GetTotalMemory() int64 {
+	return pm.getTotalMemory()
 }
 
 // Global process monitor instance

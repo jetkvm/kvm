@@ -1,5 +1,5 @@
 # --- JetKVM Audio/Toolchain Dev Environment Setup ---
-.PHONY: setup_toolchain build_audio_deps dev_env
+.PHONY: setup_toolchain build_audio_deps dev_env lint lint-fix ui-lint
 
 # Clone the rv1106-system toolchain to $HOME/.jetkvm/rv1106-system
 setup_toolchain:
@@ -126,3 +126,27 @@ release:
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sha256
+
+# Run golangci-lint locally with the same configuration as CI
+lint: build_audio_deps
+	@echo "Running golangci-lint..."
+	@mkdir -p static && touch static/.gitkeep
+	CGO_ENABLED=1 \
+	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
+	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
+	golangci-lint run --verbose
+
+# Run golangci-lint with auto-fix
+lint-fix: build_audio_deps
+	@echo "Running golangci-lint with auto-fix..."
+	@mkdir -p static && touch static/.gitkeep
+	CGO_ENABLED=1 \
+	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
+	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
+	golangci-lint run --fix --verbose
+
+# Run UI linting locally (mirrors GitHub workflow ui-lint.yml)
+ui-lint:
+	@echo "Running UI lint..."
+	@cd ui && npm ci
+	@cd ui && npm run lint

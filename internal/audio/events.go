@@ -21,6 +21,8 @@ const (
 	AudioEventMetricsUpdate     AudioEventType = "audio-metrics-update"
 	AudioEventMicrophoneState   AudioEventType = "microphone-state-changed"
 	AudioEventMicrophoneMetrics AudioEventType = "microphone-metrics-update"
+	AudioEventProcessMetrics    AudioEventType = "audio-process-metrics"
+	AudioEventMicProcessMetrics AudioEventType = "microphone-process-metrics"
 )
 
 // AudioEvent represents a WebSocket audio event
@@ -58,6 +60,17 @@ type MicrophoneMetricsData struct {
 	LastFrameTime   string `json:"last_frame_time"`
 	ConnectionDrops int64  `json:"connection_drops"`
 	AverageLatency  string `json:"average_latency"`
+}
+
+// ProcessMetricsData represents process metrics data for WebSocket events
+type ProcessMetricsData struct {
+	PID           int     `json:"pid"`
+	CPUPercent    float64 `json:"cpu_percent"`
+	MemoryRSS     int64   `json:"memory_rss"`
+	MemoryVMS     int64   `json:"memory_vms"`
+	MemoryPercent float64 `json:"memory_percent"`
+	Running       bool    `json:"running"`
+	ProcessName   string  `json:"process_name"`
 }
 
 // AudioEventSubscriber represents a WebSocket connection subscribed to audio events
@@ -220,6 +233,25 @@ func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubsc
 	}
 	aeb.sendToSubscriber(subscriber, audioMetricsEvent)
 
+	// Send audio process metrics
+	if outputSupervisor := GetAudioOutputSupervisor(); outputSupervisor != nil {
+		if processMetrics := outputSupervisor.GetProcessMetrics(); processMetrics != nil {
+			audioProcessEvent := AudioEvent{
+				Type: AudioEventProcessMetrics,
+				Data: ProcessMetricsData{
+					PID:           processMetrics.PID,
+					CPUPercent:    processMetrics.CPUPercent,
+					MemoryRSS:     processMetrics.MemoryRSS,
+					MemoryVMS:     processMetrics.MemoryVMS,
+					MemoryPercent: processMetrics.MemoryPercent,
+					Running:       outputSupervisor.IsRunning(),
+					ProcessName:   processMetrics.ProcessName,
+				},
+			}
+			aeb.sendToSubscriber(subscriber, audioProcessEvent)
+		}
+	}
+
 	// Send microphone metrics using session provider
 	sessionProvider := GetSessionProvider()
 	if sessionProvider.IsSessionActive() {
@@ -239,12 +271,31 @@ func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubsc
 			aeb.sendToSubscriber(subscriber, micMetricsEvent)
 		}
 	}
+
+	// Send microphone process metrics
+	if inputSupervisor := GetAudioInputIPCSupervisor(); inputSupervisor != nil {
+		if processMetrics := inputSupervisor.GetProcessMetrics(); processMetrics != nil {
+			micProcessEvent := AudioEvent{
+				Type: AudioEventMicProcessMetrics,
+				Data: ProcessMetricsData{
+					PID:           processMetrics.PID,
+					CPUPercent:    processMetrics.CPUPercent,
+					MemoryRSS:     processMetrics.MemoryRSS,
+					MemoryVMS:     processMetrics.MemoryVMS,
+					MemoryPercent: processMetrics.MemoryPercent,
+					Running:       inputSupervisor.IsRunning(),
+					ProcessName:   processMetrics.ProcessName,
+				},
+			}
+			aeb.sendToSubscriber(subscriber, micProcessEvent)
+		}
+	}
 }
 
 // startMetricsBroadcasting starts a goroutine that periodically broadcasts metrics
 func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
-	// Use 5-second interval instead of 2 seconds for constrained environments
-	ticker := time.NewTicker(5 * time.Second)
+	// Use 1-second interval to match Connection Stats sidebar frequency for smooth histogram progression
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -309,6 +360,44 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 					},
 				}
 				aeb.broadcast(micMetricsEvent)
+			}
+		}
+
+		// Broadcast audio process metrics
+		if outputSupervisor := GetAudioOutputSupervisor(); outputSupervisor != nil {
+			if processMetrics := outputSupervisor.GetProcessMetrics(); processMetrics != nil {
+				audioProcessEvent := AudioEvent{
+					Type: AudioEventProcessMetrics,
+					Data: ProcessMetricsData{
+						PID:           processMetrics.PID,
+						CPUPercent:    processMetrics.CPUPercent,
+						MemoryRSS:     processMetrics.MemoryRSS,
+						MemoryVMS:     processMetrics.MemoryVMS,
+						MemoryPercent: processMetrics.MemoryPercent,
+						Running:       outputSupervisor.IsRunning(),
+						ProcessName:   processMetrics.ProcessName,
+					},
+				}
+				aeb.broadcast(audioProcessEvent)
+			}
+		}
+
+		// Broadcast microphone process metrics
+		if inputSupervisor := GetAudioInputIPCSupervisor(); inputSupervisor != nil {
+			if processMetrics := inputSupervisor.GetProcessMetrics(); processMetrics != nil {
+				micProcessEvent := AudioEvent{
+					Type: AudioEventMicProcessMetrics,
+					Data: ProcessMetricsData{
+						PID:           processMetrics.PID,
+						CPUPercent:    processMetrics.CPUPercent,
+						MemoryRSS:     processMetrics.MemoryRSS,
+						MemoryVMS:     processMetrics.MemoryVMS,
+						MemoryPercent: processMetrics.MemoryPercent,
+						Running:       inputSupervisor.IsRunning(),
+						ProcessName:   processMetrics.ProcessName,
+					},
+				}
+				aeb.broadcast(micProcessEvent)
 			}
 		}
 	}

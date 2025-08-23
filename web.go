@@ -503,6 +503,16 @@ func setupRouter() *gin.Engine {
 		})
 	})
 
+	// System memory information endpoint
+	protected.GET("/system/memory", func(c *gin.Context) {
+		processMonitor := audio.GetProcessMonitor()
+		totalMemory := processMonitor.GetTotalMemory()
+		c.JSON(200, gin.H{
+			"total_memory_bytes": totalMemory,
+			"total_memory_mb":    totalMemory / (1024 * 1024),
+		})
+	})
+
 	protected.POST("/microphone/reset", func(c *gin.Context) {
 		if currentSession == nil {
 			c.JSON(400, gin.H{"error": "no active session"})

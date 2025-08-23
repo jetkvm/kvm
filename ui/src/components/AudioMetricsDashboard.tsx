@@ -3,6 +3,7 @@ import { MdGraphicEq, MdSignalWifi4Bar, MdError, MdMic } from "react-icons/md";
 import { LuActivity, LuClock, LuHardDrive, LuSettings, LuCpu, LuMemoryStick } from "react-icons/lu";
 
 import { AudioLevelMeter } from "@components/AudioLevelMeter";
+import StatChart from "@components/StatChart";
 import { cx } from "@/cva.config";
 import { useMicrophone } from "@/hooks/useMicrophone";
 import { useAudioLevel } from "@/hooks/useAudioLevel";
@@ -50,28 +51,165 @@ const qualityLabels = {
   3: "Ultra"
 };
 
+// Format percentage values to 2 decimal places
+function formatPercentage(value: number | null | undefined): string {
+  if (value === null || value === undefined || isNaN(value)) {
+    return "0.00%";
+  }
+  return `${value.toFixed(2)}%`;
+}
+
+function formatMemoryMB(rssBytes: number | null | undefined): string {
+  if (rssBytes === null || rssBytes === undefined || isNaN(rssBytes)) {
+    return "0.00 MB";
+  }
+  const mb = rssBytes / (1024 * 1024);
+  return `${mb.toFixed(2)} MB`;
+}
+
+// Default system memory estimate in MB (will be replaced by actual value from backend)
+const DEFAULT_SYSTEM_MEMORY_MB = 4096; // 4GB default
+
+// Create chart array similar to connectionStats.tsx
+function createChartArray<T, K extends keyof T>(
+  stream: Map<number, T>,
+  metric: K,
+): { date: number; stat: T[K] | null }[] {
+  const stat = Array.from(stream).map(([key, stats]) => {
+    return { date: key, stat: stats[metric] };
+  });
+
+  // Sort the dates to ensure they are in chronological order
+  const sortedStat = stat.map(x => x.date).sort((a, b) => a - b);
+
+  // Determine the earliest statistic date
+  const earliestStat = sortedStat[0];
+
+  // Current time in seconds since the Unix epoch
+  const now = Math.floor(Date.now() / 1000);
+
+  // Determine the starting point for the chart data
+  const firstChartDate = earliestStat ? Math.min(earliestStat, now - 120) : now - 120;
+
+  // Generate the chart array for the range between 'firstChartDate' and 'now'
+  return Array.from({ length: now - firstChartDate }, (_, i) => {
+    const currentDate = firstChartDate + i;
+    return {
+      date: currentDate,
+      // Find the statistic for 'currentDate', or use the last known statistic if none exists for that date
+      stat: stat.find(x => x.date === currentDate)?.stat ?? null,
+    };
+  });
+}
+
 export default function AudioMetricsDashboard() {
+  // System memory state
+  const [systemMemoryMB, setSystemMemoryMB] = useState(DEFAULT_SYSTEM_MEMORY_MB);
+
   // Use WebSocket-based audio events for real-time updates
   const { 
     audioMetrics, 
     microphoneMetrics: wsMicrophoneMetrics, 
+    audioProcessMetrics: wsAudioProcessMetrics,
+    microphoneProcessMetrics: wsMicrophoneProcessMetrics,
     isConnected: wsConnected 
   } = useAudioEvents();
+
+  // Fetch system memory information on component mount
+  useEffect(() => {
+    const fetchSystemMemory = async () => {
+      try {
+        const response = await api.GET('/system/memory');
+        const data = await response.json();
+        setSystemMemoryMB(data.total_memory_mb);
+      } catch (error) {
+        console.warn('Failed to fetch system memory, using default:', error);
+      }
+    };
+    fetchSystemMemory();
+  }, []);
+
+  // Update historical data when WebSocket process metrics are received
+   useEffect(() => {
+     if (wsConnected && wsAudioProcessMetrics && wsAudioProcessMetrics.running) {
+       const now = Math.floor(Date.now() / 1000); // Convert to seconds for StatChart
+       // Validate that now is a valid number
+       if (isNaN(now)) return;
+       
+       const cpuStat = isNaN(wsAudioProcessMetrics.cpu_percent) ? null : wsAudioProcessMetrics.cpu_percent;
+       
+       setAudioCpuStats(prev => {
+         const newMap = new Map(prev);
+         newMap.set(now, { cpu_percent: cpuStat });
+         // Keep only last 120 seconds of data for memory management
+         const cutoff = now - 120;
+         for (const [key] of newMap) {
+           if (key < cutoff) newMap.delete(key);
+         }
+         return newMap;
+       });
+       
+       setAudioMemoryStats(prev => {
+         const newMap = new Map(prev);
+         const memoryRss = isNaN(wsAudioProcessMetrics.memory_rss) ? null : wsAudioProcessMetrics.memory_rss;
+         newMap.set(now, { memory_rss: memoryRss });
+         // Keep only last 120 seconds of data for memory management
+         const cutoff = now - 120;
+         for (const [key] of newMap) {
+           if (key < cutoff) newMap.delete(key);
+         }
+         return newMap;
+       });
+     }
+   }, [wsConnected, wsAudioProcessMetrics]);
+
+   useEffect(() => {
+     if (wsConnected && wsMicrophoneProcessMetrics) {
+       const now = Math.floor(Date.now() / 1000); // Convert to seconds for StatChart
+       // Validate that now is a valid number
+       if (isNaN(now)) return;
+       
+       const cpuStat = isNaN(wsMicrophoneProcessMetrics.cpu_percent) ? null : wsMicrophoneProcessMetrics.cpu_percent;
+       
+       setMicCpuStats(prev => {
+         const newMap = new Map(prev);
+         newMap.set(now, { cpu_percent: cpuStat });
+         // Keep only last 120 seconds of data for memory management
+         const cutoff = now - 120;
+         for (const [key] of newMap) {
+           if (key < cutoff) newMap.delete(key);
+         }
+         return newMap;
+       });
+       
+       setMicMemoryStats(prev => {
+         const newMap = new Map(prev);
+         const memoryRss = isNaN(wsMicrophoneProcessMetrics.memory_rss) ? null : wsMicrophoneProcessMetrics.memory_rss;
+         newMap.set(now, { memory_rss: memoryRss });
+         // Keep only last 120 seconds of data for memory management
+         const cutoff = now - 120;
+         for (const [key] of newMap) {
+           if (key < cutoff) newMap.delete(key);
+         }
+         return newMap;
+       });
+     }
+   }, [wsConnected, wsMicrophoneProcessMetrics]);
   
   // Fallback state for when WebSocket is not connected
   const [fallbackMetrics, setFallbackMetrics] = useState<AudioMetrics | null>(null);
   const [fallbackMicrophoneMetrics, setFallbackMicrophoneMetrics] = useState<MicrophoneMetrics | null>(null);
   const [fallbackConnected, setFallbackConnected] = useState(false);
   
-  // Process metrics state
-  const [audioProcessMetrics, setAudioProcessMetrics] = useState<ProcessMetrics | null>(null);
-  const [microphoneProcessMetrics, setMicrophoneProcessMetrics] = useState<ProcessMetrics | null>(null);
+  // Process metrics state (fallback for when WebSocket is not connected)
+  const [fallbackAudioProcessMetrics, setFallbackAudioProcessMetrics] = useState<ProcessMetrics | null>(null);
+  const [fallbackMicrophoneProcessMetrics, setFallbackMicrophoneProcessMetrics] = useState<ProcessMetrics | null>(null);
   
-  // Historical data for histograms (last 60 data points, ~1 minute at 1s intervals)
-  const [audioCpuHistory, setAudioCpuHistory] = useState<number[]>([]);
-  const [audioMemoryHistory, setAudioMemoryHistory] = useState<number[]>([]);
-  const [micCpuHistory, setMicCpuHistory] = useState<number[]>([]);
-  const [micMemoryHistory, setMicMemoryHistory] = useState<number[]>([]);
+  // Historical data for charts using Maps for better memory management
+  const [audioCpuStats, setAudioCpuStats] = useState<Map<number, { cpu_percent: number | null }>>(new Map());
+  const [audioMemoryStats, setAudioMemoryStats] = useState<Map<number, { memory_rss: number | null }>>(new Map());
+  const [micCpuStats, setMicCpuStats] = useState<Map<number, { cpu_percent: number | null }>>(new Map());
+  const [micMemoryStats, setMicMemoryStats] = useState<Map<number, { memory_rss: number | null }>>(new Map());
   
   // Configuration state (these don't change frequently, so we can load them once)
   const [config, setConfig] = useState<AudioConfig | null>(null);
@@ -81,6 +219,8 @@ export default function AudioMetricsDashboard() {
   // Use WebSocket data when available, fallback to polling data otherwise
   const metrics = wsConnected && audioMetrics !== null ? audioMetrics : fallbackMetrics;
   const microphoneMetrics = wsConnected && wsMicrophoneMetrics !== null ? wsMicrophoneMetrics : fallbackMicrophoneMetrics;
+  const audioProcessMetrics = wsConnected && wsAudioProcessMetrics !== null ? wsAudioProcessMetrics : fallbackAudioProcessMetrics;
+  const microphoneProcessMetrics = wsConnected && wsMicrophoneProcessMetrics !== null ? wsMicrophoneProcessMetrics : fallbackMicrophoneProcessMetrics;
   const isConnected = wsConnected ? wsConnected : fallbackConnected;
   
   // Microphone state for audio level monitoring
@@ -147,17 +287,37 @@ export default function AudioMetricsDashboard() {
         const audioProcessResp = await api.GET("/audio/process-metrics");
         if (audioProcessResp.ok) {
           const audioProcessData = await audioProcessResp.json();
-          setAudioProcessMetrics(audioProcessData);
+          setFallbackAudioProcessMetrics(audioProcessData);
           
-          // Update historical data for histograms (keep last 60 points)
+          // Update historical data for charts (keep last 120 seconds)
           if (audioProcessData.running) {
-            setAudioCpuHistory(prev => {
-              const newHistory = [...prev, audioProcessData.cpu_percent];
-              return newHistory.slice(-60); // Keep last 60 data points
+            const now = Math.floor(Date.now() / 1000); // Convert to seconds for StatChart
+            // Validate that now is a valid number
+            if (isNaN(now)) return;
+            
+            const cpuStat = isNaN(audioProcessData.cpu_percent) ? null : audioProcessData.cpu_percent;
+            const memoryRss = isNaN(audioProcessData.memory_rss) ? null : audioProcessData.memory_rss;
+            
+            setAudioCpuStats(prev => {
+              const newMap = new Map(prev);
+              newMap.set(now, { cpu_percent: cpuStat });
+              // Keep only last 120 seconds of data for memory management
+              const cutoff = now - 120;
+              for (const [key] of newMap) {
+                if (key < cutoff) newMap.delete(key);
+              }
+              return newMap;
             });
-            setAudioMemoryHistory(prev => {
-              const newHistory = [...prev, audioProcessData.memory_percent];
-              return newHistory.slice(-60);
+            
+            setAudioMemoryStats(prev => {
+              const newMap = new Map(prev);
+              newMap.set(now, { memory_rss: memoryRss });
+              // Keep only last 120 seconds of data for memory management
+              const cutoff = now - 120;
+              for (const [key] of newMap) {
+                if (key < cutoff) newMap.delete(key);
+              }
+              return newMap;
             });
           }
         }
@@ -182,19 +342,37 @@ export default function AudioMetricsDashboard() {
         const micProcessResp = await api.GET("/microphone/process-metrics");
         if (micProcessResp.ok) {
           const micProcessData = await micProcessResp.json();
-          setMicrophoneProcessMetrics(micProcessData);
+          setFallbackMicrophoneProcessMetrics(micProcessData);
           
-          // Update historical data for histograms (keep last 60 points)
-          if (micProcessData.running) {
-            setMicCpuHistory(prev => {
-              const newHistory = [...prev, micProcessData.cpu_percent];
-              return newHistory.slice(-60); // Keep last 60 data points
-            });
-            setMicMemoryHistory(prev => {
-              const newHistory = [...prev, micProcessData.memory_percent];
-              return newHistory.slice(-60);
-            });
-          }
+          // Update historical data for charts (keep last 120 seconds)
+          const now = Math.floor(Date.now() / 1000); // Convert to seconds for StatChart
+          // Validate that now is a valid number
+          if (isNaN(now)) return;
+          
+          const cpuStat = isNaN(micProcessData.cpu_percent) ? null : micProcessData.cpu_percent;
+          const memoryRss = isNaN(micProcessData.memory_rss) ? null : micProcessData.memory_rss;
+          
+          setMicCpuStats(prev => {
+            const newMap = new Map(prev);
+            newMap.set(now, { cpu_percent: cpuStat });
+            // Keep only last 120 seconds of data for memory management
+            const cutoff = now - 120;
+            for (const [key] of newMap) {
+              if (key < cutoff) newMap.delete(key);
+            }
+            return newMap;
+          });
+          
+          setMicMemoryStats(prev => {
+            const newMap = new Map(prev);
+            newMap.set(now, { memory_rss: memoryRss });
+            // Keep only last 120 seconds of data for memory management
+            const cutoff = now - 120;
+            for (const [key] of newMap) {
+              if (key < cutoff) newMap.delete(key);
+            }
+            return newMap;
+          });
         }
       } catch (micProcessError) {
         console.debug("Microphone process metrics not available:", micProcessError);
@@ -222,15 +400,7 @@ export default function AudioMetricsDashboard() {
     return ((metrics.frames_dropped / metrics.frames_received) * 100);
   };
 
-  const formatMemory = (bytes: number) => {
-    if (bytes === 0) return "0 MB";
-    const mb = bytes / (1024 * 1024);
-    if (mb < 1024) {
-      return `${mb.toFixed(1)} MB`;
-    }
-    const gb = mb / 1024;
-    return `${gb.toFixed(2)} GB`;
-  };
+
 
 
 
@@ -242,53 +412,6 @@ export default function AudioMetricsDashboard() {
       case 3: return "text-purple-600 dark:text-purple-400";
       default: return "text-slate-600 dark:text-slate-400";
     }
-  };
-
-  // Histogram component for displaying historical data
-  const Histogram = ({ data, title, unit, color }: { 
-    data: number[], 
-    title: string, 
-    unit: string, 
-    color: string 
-  }) => {
-    if (data.length === 0) return null;
-    
-    const maxValue = Math.max(...data, 1); // Avoid division by zero
-    const minValue = Math.min(...data);
-    const range = maxValue - minValue;
-    
-    return (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-            {title}
-          </span>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            {data.length > 0 ? `${data[data.length - 1].toFixed(1)}${unit}` : `0${unit}`}
-          </span>
-        </div>
-        <div className="flex items-end gap-0.5 h-16 bg-slate-50 dark:bg-slate-800 rounded p-2">
-          {data.slice(-30).map((value, index) => { // Show last 30 points
-            const height = range > 0 ? ((value - minValue) / range) * 100 : 0;
-            return (
-              <div
-                key={index}
-                className={cx(
-                  "flex-1 rounded-sm transition-all duration-200",
-                  color
-                )}
-                style={{ height: `${Math.max(height, 2)}%` }}
-                title={`${value.toFixed(1)}${unit}`}
-              />
-            );
-          })}
-        </div>
-        <div className="flex justify-between text-xs text-slate-400 dark:text-slate-500">
-          <span>{minValue.toFixed(1)}{unit}</span>
-          <span>{maxValue.toFixed(1)}{unit}</span>
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -405,30 +528,41 @@ export default function AudioMetricsDashboard() {
               )} />
             </div>
             <div className="space-y-4">
-              <Histogram 
-                data={audioCpuHistory} 
-                title="CPU Usage" 
-                unit="%" 
-                color="bg-blue-500 dark:bg-blue-400" 
-              />
-              <Histogram 
-                data={audioMemoryHistory} 
-                title="Memory Usage" 
-                unit="%" 
-                color="bg-purple-500 dark:bg-purple-400" 
-              />
+              <div>
+                <h4 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">CPU Usage</h4>
+                <div className="h-24">
+                  <StatChart
+                    data={createChartArray(audioCpuStats, 'cpu_percent')}
+                    unit="%"
+                    domain={[0, 100]}
+                  />
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">Memory Usage</h4>
+                <div className="h-24">
+                  <StatChart 
+                    data={createChartArray(audioMemoryStats, 'memory_rss').map(item => ({
+                      date: item.date,
+                      stat: item.stat ? item.stat / (1024 * 1024) : null // Convert bytes to MB
+                    }))}
+                    unit="MB" 
+                    domain={[0, systemMemoryMB]} 
+                  />
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
                   <div className="font-medium text-slate-900 dark:text-slate-100">
-                    {formatMemory(audioProcessMetrics.memory_rss)}
+                    {formatPercentage(audioProcessMetrics.cpu_percent)}
                   </div>
-                  <div className="text-slate-500 dark:text-slate-400">RSS</div>
+                  <div className="text-slate-500 dark:text-slate-400">CPU</div>
                 </div>
                 <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
                   <div className="font-medium text-slate-900 dark:text-slate-100">
-                    {formatMemory(audioProcessMetrics.memory_vms)}
+                    {formatMemoryMB(audioProcessMetrics.memory_rss)}
                   </div>
-                  <div className="text-slate-500 dark:text-slate-400">VMS</div>
+                  <div className="text-slate-500 dark:text-slate-400">Memory</div>
                 </div>
               </div>
             </div>
@@ -449,30 +583,41 @@ export default function AudioMetricsDashboard() {
               )} />
             </div>
             <div className="space-y-4">
-              <Histogram 
-                data={micCpuHistory} 
-                title="CPU Usage" 
-                unit="%" 
-                color="bg-green-500 dark:bg-green-400" 
-              />
-              <Histogram 
-                data={micMemoryHistory} 
-                title="Memory Usage" 
-                unit="%" 
-                color="bg-orange-500 dark:bg-orange-400" 
-              />
+              <div>
+                <h4 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">CPU Usage</h4>
+                <div className="h-24">
+                  <StatChart 
+                    data={createChartArray(micCpuStats, 'cpu_percent')} 
+                    unit="%" 
+                    domain={[0, 100]} 
+                  />
+                </div>
+              </div>
+              <div>
+                <h4 className="text-sm font-medium text-slate-900 dark:text-slate-100 mb-2">Memory Usage</h4>
+                <div className="h-24">
+                  <StatChart 
+                    data={createChartArray(micMemoryStats, 'memory_rss').map(item => ({
+                      date: item.date,
+                      stat: item.stat ? item.stat / (1024 * 1024) : null // Convert bytes to MB
+                    }))}
+                    unit="MB" 
+                    domain={[0, systemMemoryMB]} 
+                  />
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
                   <div className="font-medium text-slate-900 dark:text-slate-100">
-                    {formatMemory(microphoneProcessMetrics.memory_rss)}
+                    {formatPercentage(microphoneProcessMetrics.cpu_percent)}
                   </div>
-                  <div className="text-slate-500 dark:text-slate-400">RSS</div>
+                  <div className="text-slate-500 dark:text-slate-400">CPU</div>
                 </div>
                 <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
                   <div className="font-medium text-slate-900 dark:text-slate-100">
-                    {formatMemory(microphoneProcessMetrics.memory_vms)}
+                    {formatMemoryMB(microphoneProcessMetrics.memory_rss)}
                   </div>
-                  <div className="text-slate-500 dark:text-slate-400">VMS</div>
+                  <div className="text-slate-500 dark:text-slate-400">Memory</div>
                 </div>
               </div>
             </div>

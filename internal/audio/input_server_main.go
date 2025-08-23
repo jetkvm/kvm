@@ -10,11 +10,6 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 )
 
-// IsAudioInputServerProcess detects if we're running as the audio input server subprocess
-func IsAudioInputServerProcess() bool {
-	return os.Getenv("JETKVM_AUDIO_INPUT_SERVER") == "true"
-}
-
 // RunAudioInputServer runs the audio input server subprocess
 // This should be called from main() when the subprocess is detected
 func RunAudioInputServer() error {

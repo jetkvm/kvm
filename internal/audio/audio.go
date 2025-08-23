@@ -157,9 +157,20 @@ func GetMicrophoneConfig() AudioConfig {
 
 // GetAudioMetrics returns current audio metrics
 func GetAudioMetrics() AudioMetrics {
+	// Get base metrics
+	framesReceived := atomic.LoadInt64(&metrics.FramesReceived)
+	framesDropped := atomic.LoadInt64(&metrics.FramesDropped)
+
+	// If audio relay is running, use relay stats instead
+	if IsAudioRelayRunning() {
+		relayReceived, relayDropped := GetAudioRelayStats()
+		framesReceived = relayReceived
+		framesDropped = relayDropped
+	}
+
 	return AudioMetrics{
-		FramesReceived:  atomic.LoadInt64(&metrics.FramesReceived),
-		FramesDropped:   atomic.LoadInt64(&metrics.FramesDropped),
+		FramesReceived:  framesReceived,
+		FramesDropped:   framesDropped,
 		BytesProcessed:  atomic.LoadInt64(&metrics.BytesProcessed),
 		LastFrameTime:   metrics.LastFrameTime,
 		ConnectionDrops: atomic.LoadInt64(&metrics.ConnectionDrops),
