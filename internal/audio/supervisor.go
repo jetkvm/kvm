@@ -248,7 +248,7 @@ func (s *AudioServerSupervisor) startProcess() error {
 	defer s.mutex.Unlock()
 
 	// Create new command
-	s.cmd = exec.CommandContext(s.ctx, execPath, "--audio-server")
+	s.cmd = exec.CommandContext(s.ctx, execPath, "--audio-output-server")
 	s.cmd.Stdout = os.Stdout
 	s.cmd.Stderr = os.Stderr
 
@@ -261,7 +261,7 @@ func (s *AudioServerSupervisor) startProcess() error {
 	s.logger.Info().Int("pid", s.processPID).Msg("audio server process started")
 
 	// Add process to monitoring
-	s.processMonitor.AddProcess(s.processPID, "audio-server")
+	s.processMonitor.AddProcess(s.processPID, "audio-output-server")
 
 	if s.onProcessStart != nil {
 		s.onProcessStart(s.processPID)

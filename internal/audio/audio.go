@@ -4,7 +4,6 @@ import (
 	"errors"
 	"sync/atomic"
 	"time"
-	// Explicit import for CGO audio stream glue
 )
 
 var (
@@ -33,7 +32,7 @@ type AudioConfig struct {
 }
 
 // AudioMetrics tracks audio performance metrics
-// Note: 64-bit fields must be first for proper alignment on 32-bit ARM
+
 type AudioMetrics struct {
 	FramesReceived  int64
 	FramesDropped   int64
@@ -61,72 +60,67 @@ var (
 	metrics AudioMetrics
 )
 
-// GetAudioQualityPresets returns predefined quality configurations
+// qualityPresets defines the base quality configurations
+var qualityPresets = map[AudioQuality]struct {
+	outputBitrate, inputBitrate int
+	sampleRate, channels        int
+	frameSize                   time.Duration
+}{
+	AudioQualityLow: {
+		outputBitrate: 32, inputBitrate: 16,
+		sampleRate: 22050, channels: 1,
+		frameSize: 40 * time.Millisecond,
+	},
+	AudioQualityMedium: {
+		outputBitrate: 64, inputBitrate: 32,
+		sampleRate: 44100, channels: 2,
+		frameSize: 20 * time.Millisecond,
+	},
+	AudioQualityHigh: {
+		outputBitrate: 128, inputBitrate: 64,
+		sampleRate: 48000, channels: 2,
+		frameSize: 20 * time.Millisecond,
+	},
+	AudioQualityUltra: {
+		outputBitrate: 192, inputBitrate: 96,
+		sampleRate: 48000, channels: 2,
+		frameSize: 10 * time.Millisecond,
+	},
+}
+
+// GetAudioQualityPresets returns predefined quality configurations for audio output
 func GetAudioQualityPresets() map[AudioQuality]AudioConfig {
-	return map[AudioQuality]AudioConfig{
-		AudioQualityLow: {
-			Quality:    AudioQualityLow,
-			Bitrate:    32,
-			SampleRate: 22050,
-			Channels:   1,
-			FrameSize:  40 * time.Millisecond,
-		},
-		AudioQualityMedium: {
-			Quality:    AudioQualityMedium,
-			Bitrate:    64,
-			SampleRate: 44100,
-			Channels:   2,
-			FrameSize:  20 * time.Millisecond,
-		},
-		AudioQualityHigh: {
-			Quality:    AudioQualityHigh,
-			Bitrate:    128,
-			SampleRate: 48000,
-			Channels:   2,
-			FrameSize:  20 * time.Millisecond,
-		},
-		AudioQualityUltra: {
-			Quality:    AudioQualityUltra,
-			Bitrate:    192,
-			SampleRate: 48000,
-			Channels:   2,
-			FrameSize:  10 * time.Millisecond,
-		},
+	result := make(map[AudioQuality]AudioConfig)
+	for quality, preset := range qualityPresets {
+		result[quality] = AudioConfig{
+			Quality:    quality,
+			Bitrate:    preset.outputBitrate,
+			SampleRate: preset.sampleRate,
+			Channels:   preset.channels,
+			FrameSize:  preset.frameSize,
+		}
 	}
+	return result
 }
 
 // GetMicrophoneQualityPresets returns predefined quality configurations for microphone input
 func GetMicrophoneQualityPresets() map[AudioQuality]AudioConfig {
-	return map[AudioQuality]AudioConfig{
-		AudioQualityLow: {
-			Quality:    AudioQualityLow,
-			Bitrate:    16,
-			SampleRate: 16000,
-			Channels:   1,
-			FrameSize:  40 * time.Millisecond,
-		},
-		AudioQualityMedium: {
-			Quality:    AudioQualityMedium,
-			Bitrate:    32,
-			SampleRate: 22050,
-			Channels:   1,
-			FrameSize:  20 * time.Millisecond,
-		},
-		AudioQualityHigh: {
-			Quality:    AudioQualityHigh,
-			Bitrate:    64,
-			SampleRate: 44100,
-			Channels:   1,
-			FrameSize:  20 * time.Millisecond,
-		},
-		AudioQualityUltra: {
-			Quality:    AudioQualityUltra,
-			Bitrate:    96,
-			SampleRate: 48000,
-			Channels:   1,
-			FrameSize:  10 * time.Millisecond,
-		},
+	result := make(map[AudioQuality]AudioConfig)
+	for quality, preset := range qualityPresets {
+		result[quality] = AudioConfig{
+			Quality: quality,
+			Bitrate: preset.inputBitrate,
+			SampleRate: func() int {
+				if quality == AudioQualityLow {
+					return 16000
+				}
+				return preset.sampleRate
+			}(),
+			Channels:  1, // Microphone is always mono
+			FrameSize: preset.frameSize,
+		}
 	}
+	return result
 }
 
 // SetAudioQuality updates the current audio quality configuration

@@ -231,22 +231,102 @@ systemctl restart jetkvm
 cd ui && npm run lint
 ```
 
-### Local Code Quality Tools
+### Essential Makefile Targets
 
-The project includes several Makefile targets for local code quality checks that mirror the GitHub Actions workflows:
+The project includes several essential Makefile targets for development environment setup, building, and code quality:
+
+#### Development Environment Setup
 
 ```bash
-# Run Go linting (mirrors .github/workflows/lint.yml)
-make lint
+# Set up complete development environment (recommended first step)
+make dev_env
+# This runs setup_toolchain + build_audio_deps + installs Go tools
+# - Clones rv1106-system toolchain to $HOME/.jetkvm/rv1106-system
+# - Builds ALSA and Opus static libraries for ARM
+# - Installs goimports and other Go development tools
 
-# Run Go linting with auto-fix
-make lint-fix
+# Set up only the cross-compiler toolchain
+make setup_toolchain
 
-# Run UI linting (mirrors .github/workflows/ui-lint.yml)
-make ui-lint
+# Build only the audio dependencies (requires setup_toolchain)
+make build_audio_deps
 ```
 
-**Note:** The `lint` and `lint-fix` targets require audio dependencies. Run `make dev_env` first if you haven't already.
+#### Building
+
+```bash
+# Build development version with debug symbols
+make build_dev
+# Builds jetkvm_app with version like 0.4.7-dev20241222
+# Requires: make dev_env (for toolchain and audio dependencies)
+
+# Build release version (production)
+make build_release
+# Builds optimized release version
+# Requires: make dev_env and frontend build
+
+# Build test binaries for device testing
+make build_dev_test
+# Creates device-tests.tar.gz with all test binaries
+```
+
+#### Code Quality and Linting
+
+```bash
+# Run both Go and UI linting
+make lint
+
+# Run both Go and UI linting with auto-fix
+make lint-fix
+
+# Run only Go linting
+make lint-go
+
+# Run only Go linting with auto-fix
+make lint-go-fix
+
+# Run only UI linting
+make lint-ui
+
+# Run only UI linting with auto-fix
+make lint-ui-fix
+```
+
+**Note:** The Go linting targets (`lint-go`, `lint-go-fix`, and the combined `lint`/`lint-fix` targets) require audio dependencies. Run `make dev_env` first if you haven't already.
+
+### Development Deployment Script
+
+The `dev_deploy.sh` script is the primary tool for deploying your development changes to a JetKVM device:
+
+```bash
+# Basic deployment (builds and deploys everything)
+./dev_deploy.sh -r 192.168.1.100
+
+# Skip UI build for faster backend-only deployment
+./dev_deploy.sh -r 192.168.1.100 --skip-ui-build
+
+# Run Go tests on the device after deployment
+./dev_deploy.sh -r 192.168.1.100 --run-go-tests
+
+# Deploy with release build and install
+./dev_deploy.sh -r 192.168.1.100 -i
+
+# View all available options
+./dev_deploy.sh --help
+```
+
+**Key features:**
+- Automatically builds the Go backend with proper cross-compilation
+- Optionally builds the React frontend (unless `--skip-ui-build`)
+- Deploys binaries to the device via SSH/SCP
+- Restarts the JetKVM service
+- Can run tests on the device
+- Supports custom SSH user and various deployment options
+
+**Requirements:**
+- SSH access to your JetKVM device
+- `make dev_env` must be run first (for toolchain and audio dependencies)
+- Device IP address or hostname
 
 ### API Testing
 
