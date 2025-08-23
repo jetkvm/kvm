@@ -22,7 +22,7 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 
 func (p *AudioBufferPool) Get() []byte {
 	if buf := p.pool.Get(); buf != nil {
-		return buf.([]byte)
+		return *buf.(*[]byte)
 	}
 	return make([]byte, 0, p.bufferSize)
 }
@@ -30,7 +30,7 @@ func (p *AudioBufferPool) Get() []byte {
 func (p *AudioBufferPool) Put(buf []byte) {
 	if cap(buf) >= p.bufferSize {
 		resetBuf := buf[:0]
-		p.pool.Put(resetBuf)
+		p.pool.Put(&resetBuf)
 	}
 }
 
