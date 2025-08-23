@@ -13,6 +13,28 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// Constants for process monitoring
+const (
+	// System constants
+	pageSize          = 4096
+	maxCPUPercent     = 100.0
+	minCPUPercent     = 0.01
+	defaultClockTicks = 250.0 // Common for embedded ARM systems
+	defaultMemoryGB   = 8
+
+	// Monitoring thresholds
+	maxWarmupSamples    = 3
+	warmupCPUSamples    = 2
+	logThrottleInterval = 10
+
+	// Channel buffer size
+	metricsChannelBuffer = 100
+
+	// Clock tick detection ranges
+	minValidClockTicks = 50
+	maxValidClockTicks = 1000
+)
+
 // ProcessMetrics represents CPU and memory usage metrics for a process
 type ProcessMetrics struct {
 	PID           int       `json:"pid"`
@@ -34,15 +56,18 @@ type ProcessMonitor struct {
 	updateInterval time.Duration
 	totalMemory    int64
 	memoryOnce     sync.Once
+	clockTicks     float64
+	clockTicksOnce sync.Once
 }
 
 // processState tracks the state needed for CPU calculation
 type processState struct {
-	name         string
-	lastCPUTime  int64
-	lastSysTime  int64
-	lastUserTime int64
-	lastSample   time.Time
+	name          string
+	lastCPUTime   int64
+	lastSysTime   int64
+	lastUserTime  int64
+	lastSample    time.Time
+	warmupSamples int
 }
 
 // NewProcessMonitor creates a new process monitor
@@ -51,8 +76,8 @@ func NewProcessMonitor() *ProcessMonitor {
 		logger:         logging.GetDefaultLogger().With().Str("component", "process-monitor").Logger(),
 		monitoredPIDs:  make(map[int]*processState),
 		stopChan:       make(chan struct{}),
-		metricsChan:    make(chan ProcessMetrics, 100),
-		updateInterval: 1000 * time.Millisecond, // Update every 1000ms to sync with websocket broadcasts
+		metricsChan:    make(chan ProcessMetrics, metricsChannelBuffer),
+		updateInterval: GetMetricsUpdateInterval(),
 	}
 }
 
@@ -192,26 +217,15 @@ func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessM
 	vsize, _ := strconv.ParseInt(fields[22], 10, 64)
 	rss, _ := strconv.ParseInt(fields[23], 10, 64)
 
-	const pageSize = 4096
 	metric.MemoryRSS = rss * pageSize
 	metric.MemoryVMS = vsize
 
 	// Calculate CPU percentage
-	if !state.lastSample.IsZero() {
-		timeDelta := now.Sub(state.lastSample).Seconds()
-		cpuDelta := float64(totalCPUTime - state.lastCPUTime)
+	metric.CPUPercent = pm.calculateCPUPercent(totalCPUTime, state, now)
 
-		// Convert from clock ticks to seconds (assuming 100 Hz)
-		clockTicks := 100.0
-		cpuSeconds := cpuDelta / clockTicks
-
-		if timeDelta > 0 {
-			metric.CPUPercent = (cpuSeconds / timeDelta) * 100.0
-			// Cap CPU percentage at 100% to handle multi-core usage
-			if metric.CPUPercent > 100.0 {
-				metric.CPUPercent = 100.0
-			}
-		}
+	// Increment warmup counter
+	if state.warmupSamples < maxWarmupSamples {
+		state.warmupSamples++
 	}
 
 	// Calculate memory percentage (RSS / total system memory)
@@ -228,11 +242,106 @@ func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessM
 	return metric, nil
 }
 
+// calculateCPUPercent calculates CPU percentage for a process
+func (pm *ProcessMonitor) calculateCPUPercent(totalCPUTime int64, state *processState, now time.Time) float64 {
+	if state.lastSample.IsZero() {
+		// First sample - initialize baseline
+		state.warmupSamples = 0
+		return 0.0
+	}
+
+	timeDelta := now.Sub(state.lastSample).Seconds()
+	cpuDelta := float64(totalCPUTime - state.lastCPUTime)
+
+	if timeDelta <= 0 {
+		return 0.0
+	}
+
+	if cpuDelta > 0 {
+		// Convert from clock ticks to seconds using actual system clock ticks
+		clockTicks := pm.getClockTicks()
+		cpuSeconds := cpuDelta / clockTicks
+		cpuPercent := (cpuSeconds / timeDelta) * 100.0
+
+		// Apply bounds
+		if cpuPercent > maxCPUPercent {
+			cpuPercent = maxCPUPercent
+		}
+		if cpuPercent < minCPUPercent {
+			cpuPercent = minCPUPercent
+		}
+
+		return cpuPercent
+	}
+
+	// No CPU delta - process was idle
+	if state.warmupSamples < warmupCPUSamples {
+		// During warmup, provide a small non-zero value to indicate process is alive
+		return minCPUPercent
+	}
+
+	return 0.0
+}
+
+func (pm *ProcessMonitor) getClockTicks() float64 {
+	pm.clockTicksOnce.Do(func() {
+		// Try to detect actual clock ticks from kernel boot parameters or /proc/stat
+		if data, err := os.ReadFile("/proc/cmdline"); err == nil {
+			// Look for HZ parameter in kernel command line
+			cmdline := string(data)
+			if strings.Contains(cmdline, "HZ=") {
+				fields := strings.Fields(cmdline)
+				for _, field := range fields {
+					if strings.HasPrefix(field, "HZ=") {
+						if hz, err := strconv.ParseFloat(field[3:], 64); err == nil && hz > 0 {
+							pm.clockTicks = hz
+							return
+						}
+					}
+				}
+			}
+		}
+
+		// Try reading from /proc/timer_list for more accurate detection
+		if data, err := os.ReadFile("/proc/timer_list"); err == nil {
+			timer := string(data)
+			// Look for tick device frequency
+			lines := strings.Split(timer, "\n")
+			for _, line := range lines {
+				if strings.Contains(line, "tick_period:") {
+					fields := strings.Fields(line)
+					if len(fields) >= 2 {
+						if period, err := strconv.ParseInt(fields[1], 10, 64); err == nil && period > 0 {
+							// Convert nanoseconds to Hz
+							hz := 1000000000.0 / float64(period)
+							if hz >= minValidClockTicks && hz <= maxValidClockTicks {
+								pm.clockTicks = hz
+								return
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Fallback: Most embedded ARM systems (like jetKVM) use 250 Hz or 1000 Hz
+		// rather than the traditional 100 Hz
+		pm.clockTicks = defaultClockTicks
+		pm.logger.Warn().Float64("clock_ticks", pm.clockTicks).Msg("Using fallback clock ticks value")
+
+		// Log successful detection for non-fallback values
+		if pm.clockTicks != defaultClockTicks {
+			pm.logger.Info().Float64("clock_ticks", pm.clockTicks).Msg("Detected system clock ticks")
+		}
+	})
+	return pm.clockTicks
+}
+
 func (pm *ProcessMonitor) getTotalMemory() int64 {
 	pm.memoryOnce.Do(func() {
 		file, err := os.Open("/proc/meminfo")
 		if err != nil {
-			pm.totalMemory = 8 * 1024 * 1024 * 1024 // Default 8GB
+			pm.totalMemory = defaultMemoryGB * 1024 * 1024 * 1024
 			return
 		}
 		defer file.Close()
@@ -251,7 +360,7 @@ func (pm *ProcessMonitor) getTotalMemory() int64 {
 				break
 			}
 		}
-		pm.totalMemory = 8 * 1024 * 1024 * 1024 // Fallback
+		pm.totalMemory = defaultMemoryGB * 1024 * 1024 * 1024 // Fallback
 	})
 	return pm.totalMemory
 }

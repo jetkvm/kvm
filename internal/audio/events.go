@@ -370,8 +370,8 @@ func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubsc
 
 // startMetricsBroadcasting starts a goroutine that periodically broadcasts metrics
 func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
-	// Use 1000ms interval to match process monitor frequency for synchronized metrics
-	ticker := time.NewTicker(1000 * time.Millisecond)
+	// Use centralized interval to match process monitor frequency for synchronized metrics
+	ticker := time.NewTicker(GetMetricsUpdateInterval())
 	defer ticker.Stop()
 
 	for range ticker.C {
