@@ -251,6 +251,20 @@ func (aeb *AudioEventBroadcaster) getMicrophoneProcessMetrics() ProcessMetricsDa
 		return getInactiveProcessMetrics()
 	}
 
+	// If process is running but CPU is 0%, it means we're waiting for the second sample
+	// to calculate CPU percentage. Return metrics with correct running status but skip CPU data.
+	if inputSupervisor.IsRunning() && processMetrics.CPUPercent == 0.0 {
+		return ProcessMetricsData{
+			PID:           processMetrics.PID,
+			CPUPercent:    0.0, // Keep 0% but with correct running status
+			MemoryRSS:     processMetrics.MemoryRSS,
+			MemoryVMS:     processMetrics.MemoryVMS,
+			MemoryPercent: processMetrics.MemoryPercent,
+			Running:       true, // Correctly show as running
+			ProcessName:   processMetrics.ProcessName,
+		}
+	}
+
 	// Subprocess is running, return actual metrics
 	return ProcessMetricsData{
 		PID:           processMetrics.PID,
@@ -329,8 +343,8 @@ func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubsc
 
 // startMetricsBroadcasting starts a goroutine that periodically broadcasts metrics
 func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
-	// Use 1-second interval to match Connection Stats sidebar frequency for smooth histogram progression
-	ticker := time.NewTicker(1 * time.Second)
+	// Use 500ms interval to match Connection Stats sidebar frequency for smooth histogram progression
+	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
