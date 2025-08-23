@@ -20,43 +20,14 @@ var (
 	audioSupervisor  *audio.AudioServerSupervisor
 )
 
+// runAudioServer is now handled by audio.RunAudioOutputServer
+// This function is kept for backward compatibility but delegates to the audio package
 func runAudioServer() {
-	logger.Info().Msg("Starting audio server subprocess")
-
-	// Create audio server
-	server, err := audio.NewAudioServer()
+	err := audio.RunAudioOutputServer()
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to create audio server")
+		logger.Error().Err(err).Msg("audio output server failed")
 		os.Exit(1)
 	}
-	defer server.Close()
-
-	// Start accepting connections
-	if err := server.Start(); err != nil {
-		logger.Error().Err(err).Msg("failed to start audio server")
-		os.Exit(1)
-	}
-
-	// Initialize audio processing
-	err = audio.StartNonBlockingAudioStreaming(func(frame []byte) {
-		if err := server.SendFrame(frame); err != nil {
-			logger.Warn().Err(err).Msg("failed to send audio frame")
-			audio.RecordFrameDropped()
-		}
-	})
-	if err != nil {
-		logger.Error().Err(err).Msg("failed to start audio processing")
-		os.Exit(1)
-	}
-
-	// Wait for termination signal
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	<-sigs
-
-	// Cleanup
-	audio.StopNonBlockingAudioStreaming()
-	logger.Info().Msg("Audio server subprocess stopped")
 }
 
 func startAudioSubprocess() error {

@@ -24,7 +24,6 @@ type ProcessMetrics struct {
 	ProcessName   string    `json:"process_name"`
 }
 
-// ProcessMonitor monitors CPU and memory usage of processes
 type ProcessMonitor struct {
 	logger         zerolog.Logger
 	mutex          sync.RWMutex
@@ -33,6 +32,8 @@ type ProcessMonitor struct {
 	stopChan       chan struct{}
 	metricsChan    chan ProcessMetrics
 	updateInterval time.Duration
+	totalMemory    int64
+	memoryOnce     sync.Once
 }
 
 // processState tracks the state needed for CPU calculation
@@ -51,7 +52,7 @@ func NewProcessMonitor() *ProcessMonitor {
 		monitoredPIDs:  make(map[int]*processState),
 		stopChan:       make(chan struct{}),
 		metricsChan:    make(chan ProcessMetrics, 100),
-		updateInterval: 2 * time.Second, // Update every 2 seconds
+		updateInterval: 1000 * time.Millisecond, // Update every 1000ms to sync with websocket broadcasts
 	}
 }
 
@@ -138,30 +139,33 @@ func (pm *ProcessMonitor) monitorLoop() {
 	}
 }
 
-// collectAllMetrics collects metrics for all monitored processes
 func (pm *ProcessMonitor) collectAllMetrics() {
 	pm.mutex.RLock()
-	pids := make(map[int]*processState)
+	pidsToCheck := make([]int, 0, len(pm.monitoredPIDs))
+	states := make([]*processState, 0, len(pm.monitoredPIDs))
 	for pid, state := range pm.monitoredPIDs {
-		pids[pid] = state
+		pidsToCheck = append(pidsToCheck, pid)
+		states = append(states, state)
 	}
 	pm.mutex.RUnlock()
 
-	for pid, state := range pids {
-		if metric, err := pm.collectMetrics(pid, state); err == nil {
+	deadPIDs := make([]int, 0)
+	for i, pid := range pidsToCheck {
+		if metric, err := pm.collectMetrics(pid, states[i]); err == nil {
 			select {
 			case pm.metricsChan <- metric:
 			default:
-				// Channel full, skip this metric
 			}
 		} else {
-			// Process might have died, remove it
-			pm.RemoveProcess(pid)
+			deadPIDs = append(deadPIDs, pid)
 		}
+	}
+
+	for _, pid := range deadPIDs {
+		pm.RemoveProcess(pid)
 	}
 }
 
-// collectMetrics collects metrics for a specific process
 func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessMetrics, error) {
 	now := time.Now()
 	metric := ProcessMetrics{
@@ -170,30 +174,25 @@ func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessM
 		ProcessName: state.name,
 	}
 
-	// Read /proc/[pid]/stat for CPU and memory info
 	statPath := fmt.Sprintf("/proc/%d/stat", pid)
 	statData, err := os.ReadFile(statPath)
 	if err != nil {
-		return metric, fmt.Errorf("failed to read stat file: %w", err)
+		return metric, err
 	}
 
-	// Parse stat file
 	fields := strings.Fields(string(statData))
 	if len(fields) < 24 {
-		return metric, fmt.Errorf("invalid stat file format")
+		return metric, fmt.Errorf("invalid stat format")
 	}
 
-	// Extract CPU times (fields 13, 14 are utime, stime in clock ticks)
 	utime, _ := strconv.ParseInt(fields[13], 10, 64)
 	stime, _ := strconv.ParseInt(fields[14], 10, 64)
 	totalCPUTime := utime + stime
 
-	// Extract memory info (field 22 is vsize, field 23 is rss in pages)
 	vsize, _ := strconv.ParseInt(fields[22], 10, 64)
 	rss, _ := strconv.ParseInt(fields[23], 10, 64)
 
-	// Convert RSS from pages to bytes (assuming 4KB pages)
-	pageSize := int64(4096)
+	const pageSize = 4096
 	metric.MemoryRSS = rss * pageSize
 	metric.MemoryVMS = vsize
 
@@ -229,28 +228,32 @@ func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessM
 	return metric, nil
 }
 
-// getTotalMemory returns total system memory in bytes
 func (pm *ProcessMonitor) getTotalMemory() int64 {
-	file, err := os.Open("/proc/meminfo")
-	if err != nil {
-		return 0
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "MemTotal:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				if kb, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
-					return kb * 1024 // Convert KB to bytes
-				}
-			}
-			break
+	pm.memoryOnce.Do(func() {
+		file, err := os.Open("/proc/meminfo")
+		if err != nil {
+			pm.totalMemory = 8 * 1024 * 1024 * 1024 // Default 8GB
+			return
 		}
-	}
-	return 0
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "MemTotal:") {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 {
+					if kb, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
+						pm.totalMemory = kb * 1024
+						return
+					}
+				}
+				break
+			}
+		}
+		pm.totalMemory = 8 * 1024 * 1024 * 1024 // Fallback
+	})
+	return pm.totalMemory
 }
 
 // GetTotalMemory returns total system memory in bytes (public method)
