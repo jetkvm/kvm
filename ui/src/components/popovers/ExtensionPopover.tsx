@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { LuPower, LuTerminal, LuPlugZap } from "react-icons/lu";
 
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import Card, { GridCard } from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { ATXPowerControl } from "@components/extensions/ATXPowerControl";
@@ -39,12 +39,12 @@ const AVAILABLE_EXTENSIONS: Extension[] = [
 ];
 
 export default function ExtensionPopover() {
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const [activeExtension, setActiveExtension] = useState<Extension | null>(null);
 
   // Load active extension on component mount
   useEffect(() => {
-    send("getActiveExtension", {}, resp => {
+    send("getActiveExtension", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const extensionId = resp.result as string;
       if (extensionId) {
@@ -57,7 +57,7 @@ export default function ExtensionPopover() {
   }, [send]);
 
   const handleSetActiveExtension = (extension: Extension | null) => {
-    send("setActiveExtension", { extensionId: extension?.id || "" }, resp => {
+    send("setActiveExtension", { extensionId: extension?.id || "" }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to set active extension: ${resp.error.data || "Unknown error"}`,

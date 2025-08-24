@@ -7,7 +7,7 @@ import { SettingsPageHeader } from "@components/SettingsPageheader";
 import notifications from "@/notifications";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
-import { useJsonRpc } from "../../hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "../../hooks/useJsonRpc";
 
 const LONG_PRESS_DURATION = 3000; // 3 seconds for long press
 
@@ -23,7 +23,7 @@ export function ATXPowerControl() {
   > | null>(null);
   const [atxState, setAtxState] = useState<ATXState | null>(null);
 
-  const [send] = useJsonRpc(function onRequest(resp) {
+  const { send }  = useJsonRpc(function onRequest(resp) {
     if (resp.method === "atxState") {
       setAtxState(resp.params as ATXState);
     }
@@ -31,7 +31,7 @@ export function ATXPowerControl() {
 
   // Request initial state
   useEffect(() => {
-    send("getATXState", {}, resp => {
+    send("getATXState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to get ATX state: ${resp.error.data || "Unknown error"}`,
@@ -54,7 +54,7 @@ export function ATXPowerControl() {
       const timer = setTimeout(() => {
         // Send long press action
         console.log("Sending long press ATX power action");
-        send("setATXPowerAction", { action: "power-long" }, resp => {
+        send("setATXPowerAction", { action: "power-long" }, (resp: JsonRpcResponse) => {
           if ("error" in resp) {
             notifications.error(
               `Failed to send ATX power action: ${resp.error.data || "Unknown error"}`,
@@ -75,7 +75,7 @@ export function ATXPowerControl() {
 
         // Send short press action
         console.log("Sending short press ATX power action");
-        send("setATXPowerAction", { action: "power-short" }, resp => {
+        send("setATXPowerAction", { action: "power-short" }, (resp: JsonRpcResponse) => {
           if ("error" in resp) {
             notifications.error(
               `Failed to send ATX power action: ${resp.error.data || "Unknown error"}`,
@@ -127,7 +127,7 @@ export function ATXPowerControl() {
                 LeadingIcon={LuRotateCcw}
                 text="Reset"
                 onClick={() => {
-                  send("setATXPowerAction", { action: "reset" }, resp => {
+                  send("setATXPowerAction", { action: "reset" }, (resp: JsonRpcResponse) => {
                     if ("error" in resp) {
                       notifications.error(
                         `Failed to send ATX power action: ${resp.error.data || "Unknown error"}`,
