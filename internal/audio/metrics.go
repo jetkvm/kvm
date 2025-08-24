@@ -46,6 +46,31 @@ var (
 		},
 	)
 
+	// Socket buffer metrics
+	socketBufferSizeGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_socket_buffer_size_bytes",
+			Help: "Current socket buffer size in bytes",
+		},
+		[]string{"component", "buffer_type"}, // buffer_type: send, receive
+	)
+
+	socketBufferUtilizationGauge = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_socket_buffer_utilization_percent",
+			Help: "Socket buffer utilization percentage",
+		},
+		[]string{"component", "buffer_type"}, // buffer_type: send, receive
+	)
+
+	socketBufferOverflowCounter = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "jetkvm_audio_socket_buffer_overflow_total",
+			Help: "Total number of socket buffer overflows",
+		},
+		[]string{"component", "buffer_type"}, // buffer_type: send, receive
+	)
+
 	// Audio output metrics
 	audioFramesReceivedTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
