@@ -30,12 +30,12 @@ type Session struct {
 	AudioInputManager        *audio.AudioInputManager
 	shouldUmountVirtualMedia bool
 	// Microphone operation throttling
-	micCooldown time.Duration
+	micCooldown              time.Duration
 	// Audio frame processing
-	audioFrameChan chan []byte
-	audioStopChan  chan struct{}
-	audioWg        sync.WaitGroup
-	rpcQueue       chan webrtc.DataChannelMessage
+	audioFrameChan           chan []byte
+	audioStopChan            chan struct{}
+	audioWg                  sync.WaitGroup
+	rpcQueue                 chan webrtc.DataChannelMessage
 }
 
 type SessionConfig struct {
