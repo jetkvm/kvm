@@ -26,7 +26,7 @@ Welcome to JetKVM development! This guide will help you get started quickly, whe
 - **[Git](https://git-scm.com/downloads)** for version control
 - **[SSH access](https://jetkvm.com/docs/advanced-usage/developing#developer-mode)** to your JetKVM device
 - **Audio build dependencies:**
-   - **New in this release:** The audio pipeline is now fully in-process using CGO, ALSA, and Opus. You must run the provided scripts in `tools/` to set up the cross-compiler and build static ALSA/Opus libraries for ARM. See below.
+   - **New:** The audio system uses a dual-subprocess architecture with CGO, ALSA, and Opus integration. You must run the provided scripts in `tools/` to set up the cross-compiler and build static ALSA/Opus libraries for ARM. See below.
 
 
 ### Development Environment
@@ -71,7 +71,7 @@ This ensures compatibility with shell scripts and build tools used in the projec
    # This will run tools/setup_rv1106_toolchain.sh and tools/build_audio_deps.sh
    # It will clone the cross-compiler and build ALSA/Opus static libs in $HOME/.jetkvm
    #
-   # **Note:** This is required for the new in-process audio pipeline. If you skip this step, audio will not work.
+   # **Note:** This is required for the audio subprocess architecture. If you skip this step, builds will not succeed.
    ```
 
 4. **Find your JetKVM IP address** (check your router or device screen)
@@ -83,7 +83,7 @@ This ensures compatibility with shell scripts and build tools used in the projec
 
 6. **Open in browser:** `http://192.168.1.100`
 
-That's it! You're now running your own development version of JetKVM, **with in-process audio streaming for the first time.**
+That's it! You're now running your own development version of JetKVM, **with bidirectional audio streaming using the dual-subprocess architecture.**
 
 ---
 
@@ -135,14 +135,14 @@ tail -f /var/log/jetkvm.log
 │   ├── src/routes/      # Pages (login, settings, etc.)
 │   └── src/components/  # UI components
 ├── internal/            # Internal Go packages
-│   └── audio/           # In-process audio pipeline (CGO, ALSA, Opus) [NEW]
+│   └── audio/           # Dual-subprocess audio architecture (CGO, ALSA, Opus) [NEW]
 ├── tools/               # Toolchain and audio dependency setup scripts
 └── Makefile             # Build and dev automation (see audio targets)
 ```
 
 **Key files for beginners:**
 
-- `internal/audio/` - [NEW] In-process audio pipeline (CGO, ALSA, Opus)
+- `internal/audio/` - [NEW] Dual-subprocess audio architecture (CGO, ALSA, Opus)
 - `web.go` - Add new API endpoints here
 - `config.go` - Add new settings here
 - `ui/src/routes/` - Add new pages here
@@ -174,7 +174,7 @@ npm install
 
 ### Quick Backend Changes
 
-*Best for: API, backend, or audio logic changes (including audio pipeline)*
+*Best for: API, backend, or audio logic changes (including audio subprocess architecture)*
 
 ```bash
 # Skip frontend build for faster deployment
@@ -353,7 +353,7 @@ go clean -modcache
 go mod tidy
 make build_dev
 # If you see errors about missing ALSA/Opus or toolchain, run:
-make dev_env  # Required for new audio support
+make dev_env  # Required for audio subprocess architecture
 ```
 
 ### "Can't connect to device"

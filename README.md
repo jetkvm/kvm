@@ -22,7 +22,7 @@ JetKVM is a high-performance, open-source KVM over IP (Keyboard, Video, Mouse, *
 ## Features
 
 - **Ultra-low Latency** - 1080p@60FPS video with 30-60ms latency using H.264 encoding. Smooth mouse, keyboard, and audio for responsive remote control.
-- **First-Class Audio Support** - JetKVM now supports in-process, low-latency audio streaming using ALSA and Opus, fully integrated via CGO. No external audio binaries or IPC required—audio is delivered directly from the device to your browser.
+- **First-Class Audio Support** - JetKVM now supports bidirectional, low-latency audio streaming using a dual-subprocess architecture with ALSA and Opus integration via CGO. Features both audio output (PC→Browser) and audio input (Browser→PC) with dedicated subprocesses for optimal performance and isolation.
 - **Free & Optional Remote Access** - Remote management via JetKVM Cloud using WebRTC.
 - **Open-source software** - Written in Golang (with CGO for audio) on Linux. Easily customizable through SSH access to the JetKVM device.
 
@@ -42,7 +42,7 @@ If you've found an issue and want to report it, please check our [Issues](https:
 
 # Development
 
-JetKVM is written in Go & TypeScript, with some C for low-level integration. **Audio support is now fully in-process using CGO, ALSA, and Opus—no external audio binaries required.**
+JetKVM is written in Go & TypeScript, with some C for low-level integration. **Audio support uses a sophisticated dual-subprocess architecture with CGO, ALSA, and Opus integration for bidirectional streaming with complete process isolation.**
 
 The project contains two main parts: the backend software (Go, CGO) that runs on the KVM device, and the frontend software (React/TypeScript) that is served by the KVM device and the cloud.
 
@@ -53,7 +53,7 @@ For quick device development, use the `./dev_deploy.sh` script. It will build th
 
 ## Backend
 
-The backend is written in Go and is responsible for KVM device management, audio/video streaming, the cloud API, and the cloud web. **Audio is now captured and encoded in-process using ALSA and Opus via CGO, with no external processes or IPC.**
+The backend is written in Go and is responsible for KVM device management, audio/video streaming, the cloud API, and the cloud web. **Audio uses dedicated subprocesses for both output and input streams, with CGO-based ALSA and Opus processing, IPC communication via Unix sockets, and comprehensive process supervision for reliability.**
 
 ## Frontend
 
