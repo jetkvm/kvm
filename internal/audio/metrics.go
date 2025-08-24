@@ -10,6 +10,42 @@ import (
 )
 
 var (
+	// Adaptive buffer metrics
+	adaptiveInputBufferSize = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_adaptive_input_buffer_size_bytes",
+			Help: "Current adaptive input buffer size in bytes",
+		},
+	)
+
+	adaptiveOutputBufferSize = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_adaptive_output_buffer_size_bytes",
+			Help: "Current adaptive output buffer size in bytes",
+		},
+	)
+
+	adaptiveBufferAdjustmentsTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "jetkvm_adaptive_buffer_adjustments_total",
+			Help: "Total number of adaptive buffer size adjustments",
+		},
+	)
+
+	adaptiveSystemCpuPercent = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_adaptive_system_cpu_percent",
+			Help: "System CPU usage percentage used by adaptive buffer manager",
+		},
+	)
+
+	adaptiveSystemMemoryPercent = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_adaptive_system_memory_percent",
+			Help: "System memory usage percentage used by adaptive buffer manager",
+		},
+	)
+
 	// Audio output metrics
 	audioFramesReceivedTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
@@ -360,6 +396,23 @@ func UpdateMicrophoneConfigMetrics(config AudioConfig) {
 	microphoneConfigBitrate.Set(float64(config.Bitrate))
 	microphoneConfigSampleRate.Set(float64(config.SampleRate))
 	microphoneConfigChannels.Set(float64(config.Channels))
+
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
+}
+
+// UpdateAdaptiveBufferMetrics updates Prometheus metrics with adaptive buffer information
+func UpdateAdaptiveBufferMetrics(inputBufferSize, outputBufferSize int, cpuPercent, memoryPercent float64, adjustmentMade bool) {
+	metricsUpdateMutex.Lock()
+	defer metricsUpdateMutex.Unlock()
+
+	adaptiveInputBufferSize.Set(float64(inputBufferSize))
+	adaptiveOutputBufferSize.Set(float64(outputBufferSize))
+	adaptiveSystemCpuPercent.Set(cpuPercent)
+	adaptiveSystemMemoryPercent.Set(memoryPercent)
+
+	if adjustmentMade {
+		adaptiveBufferAdjustmentsTotal.Inc()
+	}
 
 	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }

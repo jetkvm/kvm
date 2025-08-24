@@ -16,6 +16,10 @@ func RunAudioInputServer() error {
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-input-server").Logger()
 	logger.Info().Msg("Starting audio input server subprocess")
 
+	// Start adaptive buffer management for optimal performance
+	StartAdaptiveBuffering()
+	defer StopAdaptiveBuffering()
+
 	// Initialize CGO audio system
 	err := CGOAudioPlaybackInit()
 	if err != nil {

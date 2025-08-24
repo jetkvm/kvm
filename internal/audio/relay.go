@@ -2,6 +2,7 @@ package audio
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -13,6 +14,10 @@ import (
 // AudioRelay handles forwarding audio frames from the audio server subprocess
 // to WebRTC without any CGO audio processing. This runs in the main process.
 type AudioRelay struct {
+	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
+	framesRelayed int64
+	framesDropped int64
+	
 	client  *AudioClient
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -25,10 +30,6 @@ type AudioRelay struct {
 	audioTrack AudioTrackWriter
 	config     AudioConfig
 	muted      bool
-
-	// Statistics
-	framesRelayed int64
-	framesDropped int64
 }
 
 // AudioTrackWriter interface for WebRTC audio track
@@ -58,13 +59,15 @@ func (r *AudioRelay) Start(audioTrack AudioTrackWriter, config AudioConfig) erro
 	}
 
 	// Create audio client to connect to subprocess
-	client, err := NewAudioClient()
-	if err != nil {
-		return err
-	}
+	client := NewAudioClient()
 	r.client = client
 	r.audioTrack = audioTrack
 	r.config = config
+
+	// Connect to the audio output server
+	if err := client.Connect(); err != nil {
+		return fmt.Errorf("failed to connect to audio output server: %w", err)
+	}
 
 	// Start relay goroutine
 	r.wg.Add(1)
@@ -88,7 +91,7 @@ func (r *AudioRelay) Stop() {
 	r.wg.Wait()
 
 	if r.client != nil {
-		r.client.Close()
+		r.client.Disconnect()
 		r.client = nil
 	}
 

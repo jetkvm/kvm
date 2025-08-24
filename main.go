@@ -31,6 +31,9 @@ func runAudioServer() {
 }
 
 func startAudioSubprocess() error {
+	// Start adaptive buffer management for optimal performance
+	audio.StartAdaptiveBuffering()
+	
 	// Create audio server supervisor
 	audioSupervisor = audio.NewAudioServerSupervisor()
 
@@ -59,6 +62,8 @@ func startAudioSubprocess() error {
 
 			// Stop audio relay when process exits
 			audio.StopAudioRelay()
+			// Stop adaptive buffering
+			audio.StopAdaptiveBuffering()
 		},
 		// onRestart
 		func(attempt int, delay time.Duration) {

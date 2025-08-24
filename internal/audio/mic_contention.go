@@ -8,9 +8,11 @@ import (
 
 // MicrophoneContentionManager manages microphone access with cooldown periods
 type MicrophoneContentionManager struct {
+	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
 	lastOpNano    int64
 	cooldownNanos int64
 	operationID   int64
+	
 	lockPtr       unsafe.Pointer
 }
 
