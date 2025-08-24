@@ -20,14 +20,14 @@ type ZeroCopyAudioFrame struct {
 // ZeroCopyFramePool manages reusable zero-copy audio frames
 type ZeroCopyFramePool struct {
 	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
-	counter     int64                 // Frame counter (atomic)
-	hitCount    int64                 // Pool hit counter (atomic)
-	missCount   int64                 // Pool miss counter (atomic)
-	
+	counter   int64 // Frame counter (atomic)
+	hitCount  int64 // Pool hit counter (atomic)
+	missCount int64 // Pool miss counter (atomic)
+
 	// Other fields
-	pool         sync.Pool
-	maxSize      int
-	mutex        sync.RWMutex
+	pool    sync.Pool
+	maxSize int
+	mutex   sync.RWMutex
 	// Memory optimization fields
 	preallocated []*ZeroCopyAudioFrame // Pre-allocated frames for immediate use
 	preallocSize int                   // Number of pre-allocated frames
@@ -40,7 +40,7 @@ func NewZeroCopyFramePool(maxFrameSize int) *ZeroCopyFramePool {
 	preallocSize := 15
 	maxPoolSize := 50 // Limit total pool size
 	preallocated := make([]*ZeroCopyAudioFrame, 0, preallocSize)
-	
+
 	// Pre-allocate frames to reduce initial allocation overhead
 	for i := 0; i < preallocSize; i++ {
 		frame := &ZeroCopyAudioFrame{
@@ -50,7 +50,7 @@ func NewZeroCopyFramePool(maxFrameSize int) *ZeroCopyFramePool {
 		}
 		preallocated = append(preallocated, frame)
 	}
-	
+
 	return &ZeroCopyFramePool{
 		maxSize:      maxFrameSize,
 		preallocated: preallocated,
@@ -76,18 +76,18 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 		frame := p.preallocated[len(p.preallocated)-1]
 		p.preallocated = p.preallocated[:len(p.preallocated)-1]
 		p.mutex.Unlock()
-		
+
 		frame.mutex.Lock()
 		frame.refCount = 1
 		frame.length = 0
 		frame.data = frame.data[:0]
 		frame.mutex.Unlock()
-		
+
 		atomic.AddInt64(&p.hitCount, 1)
 		return frame
 	}
 	p.mutex.Unlock()
-	
+
 	// Try sync.Pool next
 	frame := p.pool.Get().(*ZeroCopyAudioFrame)
 	frame.mutex.Lock()
@@ -95,7 +95,7 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 	frame.length = 0
 	frame.data = frame.data[:0]
 	frame.mutex.Unlock()
-	
+
 	atomic.AddInt64(&p.hitCount, 1)
 	return frame
 }
@@ -113,7 +113,7 @@ func (p *ZeroCopyFramePool) Put(frame *ZeroCopyAudioFrame) {
 		frame.length = 0
 		frame.data = frame.data[:0]
 		frame.mutex.Unlock()
-		
+
 		// First try to return to pre-allocated pool for fastest reuse
 		p.mutex.Lock()
 		if len(p.preallocated) < p.preallocSize {
@@ -122,16 +122,16 @@ func (p *ZeroCopyFramePool) Put(frame *ZeroCopyAudioFrame) {
 			return
 		}
 		p.mutex.Unlock()
-		
+
 		// Check pool size limit to prevent excessive memory usage
 		p.mutex.RLock()
 		currentCount := atomic.LoadInt64(&p.counter)
 		p.mutex.RUnlock()
-		
+
 		if currentCount >= int64(p.maxPoolSize) {
 			return // Pool is full, let GC handle this frame
 		}
-		
+
 		// Return to sync.Pool
 		p.pool.Put(frame)
 		atomic.AddInt64(&p.counter, 1)
@@ -227,16 +227,16 @@ func (p *ZeroCopyFramePool) GetZeroCopyPoolStats() ZeroCopyFramePoolStats {
 	preallocatedCount := len(p.preallocated)
 	currentCount := atomic.LoadInt64(&p.counter)
 	p.mutex.RUnlock()
-	
+
 	hitCount := atomic.LoadInt64(&p.hitCount)
 	missCount := atomic.LoadInt64(&p.missCount)
 	totalRequests := hitCount + missCount
-	
+
 	var hitRate float64
 	if totalRequests > 0 {
 		hitRate = float64(hitCount) / float64(totalRequests) * 100
 	}
-	
+
 	return ZeroCopyFramePoolStats{
 		MaxFrameSize:      p.maxSize,
 		MaxPoolSize:       p.maxPoolSize,
@@ -283,7 +283,7 @@ func PutZeroCopyFrame(frame *ZeroCopyAudioFrame) {
 // ZeroCopyAudioReadEncode performs audio read and encode with zero-copy optimization
 func ZeroCopyAudioReadEncode() (*ZeroCopyAudioFrame, error) {
 	frame := GetZeroCopyFrame()
-	
+
 	// Ensure frame has enough capacity
 	if frame.Capacity() < MaxAudioFrameSize {
 		// Reallocate if needed

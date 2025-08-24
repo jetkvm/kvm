@@ -7,15 +7,15 @@ import (
 
 type AudioBufferPool struct {
 	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
-	currentSize int64     // Current pool size (atomic)
-	hitCount    int64     // Pool hit counter (atomic)
-	missCount   int64     // Pool miss counter (atomic)
-	
+	currentSize int64 // Current pool size (atomic)
+	hitCount    int64 // Pool hit counter (atomic)
+	missCount   int64 // Pool miss counter (atomic)
+
 	// Other fields
-	pool         sync.Pool
-	bufferSize   int
-	maxPoolSize  int
-	mutex        sync.RWMutex
+	pool        sync.Pool
+	bufferSize  int
+	maxPoolSize int
+	mutex       sync.RWMutex
 	// Memory optimization fields
 	preallocated []*[]byte // Pre-allocated buffers for immediate use
 	preallocSize int       // Number of pre-allocated buffers
@@ -25,16 +25,16 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 	// Pre-allocate 20% of max pool size for immediate availability
 	preallocSize := 20
 	preallocated := make([]*[]byte, 0, preallocSize)
-	
+
 	// Pre-allocate buffers to reduce initial allocation overhead
 	for i := 0; i < preallocSize; i++ {
 		buf := make([]byte, 0, bufferSize)
 		preallocated = append(preallocated, &buf)
 	}
-	
+
 	return &AudioBufferPool{
-		bufferSize: bufferSize,
-		maxPoolSize: 100, // Limit pool size to prevent excessive memory usage
+		bufferSize:   bufferSize,
+		maxPoolSize:  100, // Limit pool size to prevent excessive memory usage
 		preallocated: preallocated,
 		preallocSize: preallocSize,
 		pool: sync.Pool{
@@ -56,10 +56,10 @@ func (p *AudioBufferPool) Get() []byte {
 		return (*buf)[:0] // Reset length but keep capacity
 	}
 	p.mutex.Unlock()
-	
+
 	// Try sync.Pool next
 	if buf := p.pool.Get(); buf != nil {
-		bufSlice := buf.([]byte)
+		bufPtr := buf.(*[]byte)
 		// Update pool size counter when retrieving from pool
 		p.mutex.Lock()
 		if p.currentSize > 0 {
@@ -67,9 +67,9 @@ func (p *AudioBufferPool) Get() []byte {
 		}
 		p.mutex.Unlock()
 		atomic.AddInt64(&p.hitCount, 1)
-		return bufSlice[:0] // Reset length but keep capacity
+		return (*bufPtr)[:0] // Reset length but keep capacity
 	}
-	
+
 	// Last resort: allocate new buffer
 	atomic.AddInt64(&p.missCount, 1)
 	return make([]byte, 0, p.bufferSize)
@@ -82,7 +82,7 @@ func (p *AudioBufferPool) Put(buf []byte) {
 
 	// Reset buffer for reuse
 	resetBuf := buf[:0]
-	
+
 	// First try to return to pre-allocated pool for fastest reuse
 	p.mutex.Lock()
 	if len(p.preallocated) < p.preallocSize {
@@ -102,7 +102,7 @@ func (p *AudioBufferPool) Put(buf []byte) {
 	}
 
 	// Return to sync.Pool
-	p.pool.Put(resetBuf)
+	p.pool.Put(&resetBuf)
 
 	// Update pool size counter
 	p.mutex.Lock()
@@ -137,16 +137,16 @@ func (p *AudioBufferPool) GetPoolStats() AudioBufferPoolDetailedStats {
 	preallocatedCount := len(p.preallocated)
 	currentSize := p.currentSize
 	p.mutex.RUnlock()
-	
+
 	hitCount := atomic.LoadInt64(&p.hitCount)
 	missCount := atomic.LoadInt64(&p.missCount)
 	totalRequests := hitCount + missCount
-	
+
 	var hitRate float64
 	if totalRequests > 0 {
 		hitRate = float64(hitCount) / float64(totalRequests) * 100
 	}
-	
+
 	return AudioBufferPoolDetailedStats{
 		BufferSize:        p.bufferSize,
 		MaxPoolSize:       p.maxPoolSize,
@@ -173,15 +173,15 @@ type AudioBufferPoolDetailedStats struct {
 
 // GetAudioBufferPoolStats returns statistics about the audio buffer pools
 type AudioBufferPoolStats struct {
-	FramePoolSize    int64
-	FramePoolMax     int
-	ControlPoolSize  int64
-	ControlPoolMax   int
+	FramePoolSize   int64
+	FramePoolMax    int
+	ControlPoolSize int64
+	ControlPoolMax  int
 	// Enhanced statistics
-	FramePoolHitRate    float64
-	ControlPoolHitRate  float64
-	FramePoolDetails    AudioBufferPoolDetailedStats
-	ControlPoolDetails  AudioBufferPoolDetailedStats
+	FramePoolHitRate   float64
+	ControlPoolHitRate float64
+	FramePoolDetails   AudioBufferPoolDetailedStats
+	ControlPoolDetails AudioBufferPoolDetailedStats
 }
 
 func GetAudioBufferPoolStats() AudioBufferPoolStats {
@@ -194,19 +194,19 @@ func GetAudioBufferPoolStats() AudioBufferPoolStats {
 	controlSize := audioControlPool.currentSize
 	controlMax := audioControlPool.maxPoolSize
 	audioControlPool.mutex.RUnlock()
-	
+
 	// Get detailed statistics
 	frameDetails := audioFramePool.GetPoolStats()
 	controlDetails := audioControlPool.GetPoolStats()
 
 	return AudioBufferPoolStats{
-		FramePoolSize:       frameSize,
-		FramePoolMax:        frameMax,
-		ControlPoolSize:     controlSize,
-		ControlPoolMax:      controlMax,
-		FramePoolHitRate:    frameDetails.HitRate,
-		ControlPoolHitRate:  controlDetails.HitRate,
-		FramePoolDetails:    frameDetails,
-		ControlPoolDetails:  controlDetails,
+		FramePoolSize:      frameSize,
+		FramePoolMax:       frameMax,
+		ControlPoolSize:    controlSize,
+		ControlPoolMax:     controlMax,
+		FramePoolHitRate:   frameDetails.HitRate,
+		ControlPoolHitRate: controlDetails.HitRate,
+		FramePoolDetails:   frameDetails,
+		ControlPoolDetails: controlDetails,
 	}
 }

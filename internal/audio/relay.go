@@ -17,7 +17,7 @@ type AudioRelay struct {
 	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
 	framesRelayed int64
 	framesDropped int64
-	
+
 	client  *AudioClient
 	ctx     context.Context
 	cancel  context.CancelFunc

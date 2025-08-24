@@ -33,7 +33,7 @@ func runAudioServer() {
 func startAudioSubprocess() error {
 	// Start adaptive buffer management for optimal performance
 	audio.StartAdaptiveBuffering()
-	
+
 	// Create audio server supervisor
 	audioSupervisor = audio.NewAudioServerSupervisor()
 

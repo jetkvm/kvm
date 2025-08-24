@@ -12,8 +12,8 @@ type MicrophoneContentionManager struct {
 	lastOpNano    int64
 	cooldownNanos int64
 	operationID   int64
-	
-	lockPtr       unsafe.Pointer
+
+	lockPtr unsafe.Pointer
 }
 
 func NewMicrophoneContentionManager(cooldown time.Duration) *MicrophoneContentionManager {

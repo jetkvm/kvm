@@ -199,12 +199,12 @@ func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
 	start := time.Now()
 	if atomic.CompareAndSwapInt32(&bap.threadPinned, 0, 1) {
 		runtime.LockOSThread()
-		
+
 		// Set high priority for batch audio processing
 		if err := SetAudioThreadPriority(); err != nil {
 			bap.logger.Warn().Err(err).Msg("Failed to set batch audio processing priority")
 		}
-		
+
 		defer func() {
 			if err := ResetThreadPriority(); err != nil {
 				bap.logger.Warn().Err(err).Msg("Failed to reset thread priority")
