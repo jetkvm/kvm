@@ -244,6 +244,19 @@ func (ais *AudioInputSupervisor) SendFrame(frame []byte) error {
 	return ais.client.SendFrame(frame)
 }
 
+// SendFrameZeroCopy sends a zero-copy frame to the subprocess
+func (ais *AudioInputSupervisor) SendFrameZeroCopy(frame *ZeroCopyAudioFrame) error {
+	if ais.client == nil {
+		return fmt.Errorf("client not initialized")
+	}
+
+	if !ais.client.IsConnected() {
+		return fmt.Errorf("client not connected")
+	}
+
+	return ais.client.SendFrameZeroCopy(frame)
+}
+
 // SendConfig sends a configuration update to the subprocess (convenience method)
 func (ais *AudioInputSupervisor) SendConfig(config InputIPCConfig) error {
 	if ais.client == nil {

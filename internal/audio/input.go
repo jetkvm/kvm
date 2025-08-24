@@ -99,6 +99,42 @@ func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 	return nil
 }
 
+// WriteOpusFrameZeroCopy writes an Opus frame using zero-copy optimization
+func (aim *AudioInputManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFrame) error {
+	if !aim.IsRunning() {
+		return nil // Not running, silently drop
+	}
+
+	if frame == nil {
+		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
+		return nil
+	}
+
+	// Track end-to-end latency from WebRTC to IPC
+	startTime := time.Now()
+	err := aim.ipcManager.WriteOpusFrameZeroCopy(frame)
+	processingTime := time.Since(startTime)
+
+	// Log high latency warnings
+	if processingTime > 10*time.Millisecond {
+		aim.logger.Warn().
+			Dur("latency_ms", processingTime).
+			Msg("High audio processing latency detected")
+	}
+
+	if err != nil {
+		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
+		return err
+	}
+
+	// Update metrics
+	atomic.AddInt64(&aim.metrics.FramesSent, 1)
+	atomic.AddInt64(&aim.metrics.BytesProcessed, int64(frame.Length()))
+	aim.metrics.LastFrameTime = time.Now()
+	aim.metrics.AverageLatency = processingTime
+	return nil
+}
+
 // GetMetrics returns current audio input metrics
 func (aim *AudioInputManager) GetMetrics() AudioInputMetrics {
 	return AudioInputMetrics{

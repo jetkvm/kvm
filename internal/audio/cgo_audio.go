@@ -22,8 +22,14 @@ static snd_pcm_t *pcm_handle = NULL;
 static snd_pcm_t *pcm_playback_handle = NULL;
 static OpusEncoder *encoder = NULL;
 static OpusDecoder *decoder = NULL;
-static int opus_bitrate = 64000;
-static int opus_complexity = 5;
+// Optimized Opus encoder settings for ARM Cortex-A7
+static int opus_bitrate = 96000;        // Increased for better quality
+static int opus_complexity = 3;         // Reduced for ARM performance
+static int opus_vbr = 1;                // Variable bitrate enabled
+static int opus_vbr_constraint = 1;     // Constrained VBR for consistent latency
+static int opus_signal_type = OPUS_SIGNAL_MUSIC; // Optimized for general audio
+static int opus_bandwidth = OPUS_BANDWIDTH_FULLBAND; // Full bandwidth
+static int opus_dtx = 0;                // Disable DTX for real-time audio
 static int sample_rate = 48000;
 static int channels = 2;
 static int frame_size = 960; // 20ms for 48kHz
@@ -164,7 +170,7 @@ int jetkvm_audio_init() {
 		return -1;
 	}
 
-	// Initialize Opus encoder
+	// Initialize Opus encoder with optimized settings
 	int opus_err = 0;
 	encoder = opus_encoder_create(sample_rate, channels, OPUS_APPLICATION_AUDIO, &opus_err);
 	if (!encoder || opus_err != OPUS_OK) {
@@ -173,8 +179,18 @@ int jetkvm_audio_init() {
 		return -2;
 	}
 
+	// Apply optimized Opus encoder settings
 	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(opus_bitrate));
 	opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(opus_complexity));
+	opus_encoder_ctl(encoder, OPUS_SET_VBR(opus_vbr));
+	opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(opus_vbr_constraint));
+	opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(opus_signal_type));
+	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth));
+	opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
+	// Enable packet loss concealment for better resilience
+	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(5));
+	// Set prediction disabled for lower latency
+	opus_encoder_ctl(encoder, OPUS_SET_PREDICTION_DISABLED(1));
 
 	capture_initialized = 1;
 	capture_initializing = 0;

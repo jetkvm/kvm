@@ -457,6 +457,9 @@ func setupRouter() *gin.Engine {
 		})
 	})
 
+	// Audio memory allocation metrics endpoint
+	protected.GET("/audio/memory-metrics", gin.WrapF(audio.HandleMemoryMetrics))
+
 	protected.GET("/microphone/process-metrics", func(c *gin.Context) {
 		if currentSession == nil || currentSession.AudioInputManager == nil {
 			c.JSON(200, gin.H{

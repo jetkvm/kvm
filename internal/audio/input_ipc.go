@@ -8,17 +8,22 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
 const (
 	inputMagicNumber uint32 = 0x4A4B4D49 // "JKMI" (JetKVM Microphone Input)
 	inputSocketName         = "audio_input.sock"
-	maxFrameSize            = 4096                 // Maximum Opus frame size
-	writeTimeout            = 5 * time.Millisecond // Non-blocking write timeout
-	maxDroppedFrames        = 100                  // Maximum consecutive dropped frames before reconnect
+	maxFrameSize            = 4096                  // Maximum Opus frame size
+	writeTimeout            = 15 * time.Millisecond // Non-blocking write timeout (increased for high load)
+	maxDroppedFrames        = 100                   // Maximum consecutive dropped frames before reconnect
+	headerSize              = 17                    // Fixed header size: 4+1+4+8 bytes
+	messagePoolSize         = 256                   // Pre-allocated message pool size
 )
 
 // InputMessageType represents the type of IPC message
@@ -39,6 +44,108 @@ type InputIPCMessage struct {
 	Length    uint32
 	Timestamp int64
 	Data      []byte
+}
+
+// OptimizedIPCMessage represents an optimized message with pre-allocated buffers
+type OptimizedIPCMessage struct {
+	header [headerSize]byte // Pre-allocated header buffer
+	data   []byte          // Reusable data buffer
+	msg    InputIPCMessage // Embedded message
+}
+
+// MessagePool manages a pool of reusable messages to reduce allocations
+type MessagePool struct {
+	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
+	hitCount     int64                  // Pool hit counter (atomic)
+	missCount    int64                  // Pool miss counter (atomic)
+	
+	// Other fields
+	pool         chan *OptimizedIPCMessage
+	// Memory optimization fields
+	preallocated []*OptimizedIPCMessage // Pre-allocated messages for immediate use
+	preallocSize int                    // Number of pre-allocated messages
+	maxPoolSize  int                    // Maximum pool size to prevent memory bloat
+	mutex        sync.RWMutex           // Protects preallocated slice
+}
+
+// Global message pool instance
+var globalMessagePool = &MessagePool{
+	pool: make(chan *OptimizedIPCMessage, messagePoolSize),
+}
+
+// Initialize the message pool with pre-allocated messages
+func init() {
+	// Pre-allocate 30% of pool size for immediate availability
+	preallocSize := messagePoolSize * 30 / 100
+	globalMessagePool.preallocSize = preallocSize
+	globalMessagePool.maxPoolSize = messagePoolSize * 2 // Allow growth up to 2x
+	globalMessagePool.preallocated = make([]*OptimizedIPCMessage, 0, preallocSize)
+	
+	// Pre-allocate messages to reduce initial allocation overhead
+	for i := 0; i < preallocSize; i++ {
+		msg := &OptimizedIPCMessage{
+			data: make([]byte, 0, maxFrameSize),
+		}
+		globalMessagePool.preallocated = append(globalMessagePool.preallocated, msg)
+	}
+	
+	// Fill the channel pool with remaining messages
+	for i := preallocSize; i < messagePoolSize; i++ {
+		globalMessagePool.pool <- &OptimizedIPCMessage{
+			data: make([]byte, 0, maxFrameSize),
+		}
+	}
+}
+
+// Get retrieves a message from the pool
+func (mp *MessagePool) Get() *OptimizedIPCMessage {
+	// First try pre-allocated messages for fastest access
+	mp.mutex.Lock()
+	if len(mp.preallocated) > 0 {
+		msg := mp.preallocated[len(mp.preallocated)-1]
+		mp.preallocated = mp.preallocated[:len(mp.preallocated)-1]
+		mp.mutex.Unlock()
+		atomic.AddInt64(&mp.hitCount, 1)
+		return msg
+	}
+	mp.mutex.Unlock()
+	
+	// Try channel pool next
+	select {
+	case msg := <-mp.pool:
+		atomic.AddInt64(&mp.hitCount, 1)
+		return msg
+	default:
+		// Pool exhausted, create new message
+		atomic.AddInt64(&mp.missCount, 1)
+		return &OptimizedIPCMessage{
+			data: make([]byte, 0, maxFrameSize),
+		}
+	}
+}
+
+// Put returns a message to the pool
+func (mp *MessagePool) Put(msg *OptimizedIPCMessage) {
+	// Reset the message for reuse
+	msg.data = msg.data[:0]
+	msg.msg = InputIPCMessage{}
+	
+	// First try to return to pre-allocated pool for fastest reuse
+	mp.mutex.Lock()
+	if len(mp.preallocated) < mp.preallocSize {
+		mp.preallocated = append(mp.preallocated, msg)
+		mp.mutex.Unlock()
+		return
+	}
+	mp.mutex.Unlock()
+	
+	// Try channel pool next
+	select {
+	case mp.pool <- msg:
+		// Successfully returned to pool
+	default:
+		// Pool full, let GC handle it
+	}
 }
 
 // InputIPCConfig represents configuration for audio input
@@ -79,8 +186,9 @@ func NewAudioInputServer() (*AudioInputServer, error) {
 		return nil, fmt.Errorf("failed to create unix socket: %w", err)
 	}
 
-	// Initialize with adaptive buffer size (start with 1000 frames)
-	initialBufferSize := int64(1000)
+	// Get initial buffer size from adaptive buffer manager
+	adaptiveManager := GetAdaptiveBufferManager()
+	initialBufferSize := int64(adaptiveManager.GetInputBufferSize())
 
 	return &AudioInputServer{
 		listener:    listener,
@@ -192,21 +300,22 @@ func (ais *AudioInputServer) handleConnection(conn net.Conn) {
 
 // readMessage reads a complete message from the connection
 func (ais *AudioInputServer) readMessage(conn net.Conn) (*InputIPCMessage, error) {
-	// Read header (magic + type + length + timestamp)
-	headerSize := 4 + 1 + 4 + 8 // uint32 + uint8 + uint32 + int64
-	header := make([]byte, headerSize)
+	// Get optimized message from pool
+	optMsg := globalMessagePool.Get()
+	defer globalMessagePool.Put(optMsg)
 
-	_, err := io.ReadFull(conn, header)
+	// Read header directly into pre-allocated buffer
+	_, err := io.ReadFull(conn, optMsg.header[:])
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse header
-	msg := &InputIPCMessage{}
-	msg.Magic = binary.LittleEndian.Uint32(header[0:4])
-	msg.Type = InputMessageType(header[4])
-	msg.Length = binary.LittleEndian.Uint32(header[5:9])
-	msg.Timestamp = int64(binary.LittleEndian.Uint64(header[9:17]))
+	// Parse header using optimized access
+	msg := &optMsg.msg
+	msg.Magic = binary.LittleEndian.Uint32(optMsg.header[0:4])
+	msg.Type = InputMessageType(optMsg.header[4])
+	msg.Length = binary.LittleEndian.Uint32(optMsg.header[5:9])
+	msg.Timestamp = int64(binary.LittleEndian.Uint64(optMsg.header[9:17]))
 
 	// Validate magic number
 	if msg.Magic != inputMagicNumber {
@@ -218,16 +327,37 @@ func (ais *AudioInputServer) readMessage(conn net.Conn) (*InputIPCMessage, error
 		return nil, fmt.Errorf("message too large: %d bytes", msg.Length)
 	}
 
-	// Read data if present
+	// Read data if present using pooled buffer
 	if msg.Length > 0 {
-		msg.Data = make([]byte, msg.Length)
-		_, err = io.ReadFull(conn, msg.Data)
+		// Ensure buffer capacity
+		if cap(optMsg.data) < int(msg.Length) {
+			optMsg.data = make([]byte, msg.Length)
+		} else {
+			optMsg.data = optMsg.data[:msg.Length]
+		}
+		
+		_, err = io.ReadFull(conn, optMsg.data)
 		if err != nil {
 			return nil, err
 		}
+		msg.Data = optMsg.data
 	}
 
-	return msg, nil
+	// Return a copy of the message (data will be copied by caller if needed)
+	result := &InputIPCMessage{
+		Magic:     msg.Magic,
+		Type:      msg.Type,
+		Length:    msg.Length,
+		Timestamp: msg.Timestamp,
+	}
+	
+	if msg.Length > 0 {
+		// Copy data to ensure it's not affected by buffer reuse
+		result.Data = make([]byte, msg.Length)
+		copy(result.Data, msg.Data)
+	}
+
+	return result, nil
 }
 
 // processMessage processes a received message
@@ -282,19 +412,20 @@ func (ais *AudioInputServer) sendAck() error {
 	return ais.writeMessage(ais.conn, msg)
 }
 
-// writeMessage writes a message to the connection
+// writeMessage writes a message to the connection using optimized buffers
 func (ais *AudioInputServer) writeMessage(conn net.Conn, msg *InputIPCMessage) error {
-	// Prepare header
-	headerSize := 4 + 1 + 4 + 8
-	header := make([]byte, headerSize)
+	// Get optimized message from pool for header preparation
+	optMsg := globalMessagePool.Get()
+	defer globalMessagePool.Put(optMsg)
 
-	binary.LittleEndian.PutUint32(header[0:4], msg.Magic)
-	header[4] = byte(msg.Type)
-	binary.LittleEndian.PutUint32(header[5:9], msg.Length)
-	binary.LittleEndian.PutUint64(header[9:17], uint64(msg.Timestamp))
+	// Prepare header in pre-allocated buffer
+	binary.LittleEndian.PutUint32(optMsg.header[0:4], msg.Magic)
+	optMsg.header[4] = byte(msg.Type)
+	binary.LittleEndian.PutUint32(optMsg.header[5:9], msg.Length)
+	binary.LittleEndian.PutUint64(optMsg.header[9:17], uint64(msg.Timestamp))
 
 	// Write header
-	_, err := conn.Write(header)
+	_, err := conn.Write(optMsg.header[:])
 	if err != nil {
 		return err
 	}
@@ -312,7 +443,7 @@ func (ais *AudioInputServer) writeMessage(conn net.Conn, msg *InputIPCMessage) e
 
 // AudioInputClient handles IPC communication from the main process
 type AudioInputClient struct {
-	// Atomic fields must be first for proper alignment on ARM
+	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
 	droppedFrames int64 // Atomic counter for dropped frames
 	totalFrames   int64 // Atomic counter for total frames
 
@@ -410,6 +541,35 @@ func (aic *AudioInputClient) SendFrame(frame []byte) error {
 	return aic.writeMessage(msg)
 }
 
+// SendFrameZeroCopy sends a zero-copy Opus frame to the audio input server
+func (aic *AudioInputClient) SendFrameZeroCopy(frame *ZeroCopyAudioFrame) error {
+	aic.mtx.Lock()
+	defer aic.mtx.Unlock()
+
+	if !aic.running || aic.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	if frame == nil || frame.Length() == 0 {
+		return nil // Empty frame, ignore
+	}
+
+	if frame.Length() > maxFrameSize {
+		return fmt.Errorf("frame too large: %d bytes", frame.Length())
+	}
+
+	// Use zero-copy data directly
+	msg := &InputIPCMessage{
+		Magic:     inputMagicNumber,
+		Type:      InputMessageTypeOpusFrame,
+		Length:    uint32(frame.Length()),
+		Timestamp: time.Now().UnixNano(),
+		Data:      frame.Data(), // Zero-copy data access
+	}
+
+	return aic.writeMessage(msg)
+}
+
 // SendConfig sends a configuration update to the audio input server
 func (aic *AudioInputClient) SendConfig(config InputIPCConfig) error {
 	aic.mtx.Lock()
@@ -460,14 +620,15 @@ func (aic *AudioInputClient) writeMessage(msg *InputIPCMessage) error {
 	// Increment total frames counter
 	atomic.AddInt64(&aic.totalFrames, 1)
 
-	// Prepare header
-	headerSize := 4 + 1 + 4 + 8
-	header := make([]byte, headerSize)
+	// Get optimized message from pool for header preparation
+	optMsg := globalMessagePool.Get()
+	defer globalMessagePool.Put(optMsg)
 
-	binary.LittleEndian.PutUint32(header[0:4], msg.Magic)
-	header[4] = byte(msg.Type)
-	binary.LittleEndian.PutUint32(header[5:9], msg.Length)
-	binary.LittleEndian.PutUint64(header[9:17], uint64(msg.Timestamp))
+	// Prepare header in pre-allocated buffer
+	binary.LittleEndian.PutUint32(optMsg.header[0:4], msg.Magic)
+	optMsg.header[4] = byte(msg.Type)
+	binary.LittleEndian.PutUint32(optMsg.header[5:9], msg.Length)
+	binary.LittleEndian.PutUint64(optMsg.header[9:17], uint64(msg.Timestamp))
 
 	// Use non-blocking write with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
@@ -476,8 +637,8 @@ func (aic *AudioInputClient) writeMessage(msg *InputIPCMessage) error {
 	// Create a channel to signal write completion
 	done := make(chan error, 1)
 	go func() {
-		// Write header
-		_, err := aic.conn.Write(header)
+		// Write header using pre-allocated buffer
+		_, err := aic.conn.Write(optMsg.header[:])
 		if err != nil {
 			done <- err
 			return
@@ -570,6 +731,20 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 func (ais *AudioInputServer) startProcessorGoroutine() {
 	ais.wg.Add(1)
 	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		
+		// Set high priority for audio processing
+		logger := logging.GetDefaultLogger().With().Str("component", "audio-input-processor").Logger()
+		if err := SetAudioThreadPriority(); err != nil {
+			logger.Warn().Err(err).Msg("Failed to set audio processing priority")
+		}
+		defer func() {
+			if err := ResetThreadPriority(); err != nil {
+				logger.Warn().Err(err).Msg("Failed to reset thread priority")
+			}
+		}()
+		
 		defer ais.wg.Done()
 		for {
 			select {
@@ -608,9 +783,27 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 func (ais *AudioInputServer) startMonitorGoroutine() {
 	ais.wg.Add(1)
 	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		
+		// Set I/O priority for monitoring
+		logger := logging.GetDefaultLogger().With().Str("component", "audio-input-monitor").Logger()
+		if err := SetAudioIOThreadPriority(); err != nil {
+			logger.Warn().Err(err).Msg("Failed to set audio I/O priority")
+		}
+		defer func() {
+			if err := ResetThreadPriority(); err != nil {
+				logger.Warn().Err(err).Msg("Failed to reset thread priority")
+			}
+		}()
+		
 		defer ais.wg.Done()
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
+		
+		// Buffer size update ticker (less frequent)
+		bufferUpdateTicker := time.NewTicker(500 * time.Millisecond)
+		defer bufferUpdateTicker.Stop()
 
 		for {
 			select {
@@ -623,52 +816,46 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 					case msg := <-ais.processChan:
 						start := time.Now()
 						err := ais.processMessage(msg)
-						processingTime := time.Since(start).Nanoseconds()
+						processingTime := time.Since(start)
 
 						// Calculate end-to-end latency using message timestamp
+						var latency time.Duration
 						if msg.Type == InputMessageTypeOpusFrame && msg.Timestamp > 0 {
 							msgTime := time.Unix(0, msg.Timestamp)
-							endToEndLatency := time.Since(msgTime).Nanoseconds()
+							latency = time.Since(msgTime)
 							// Use exponential moving average for end-to-end latency tracking
 							currentAvg := atomic.LoadInt64(&ais.processingTime)
 							// Weight: 90% historical, 10% current (for smoother averaging)
-							newAvg := (currentAvg*9 + endToEndLatency) / 10
+							newAvg := (currentAvg*9 + latency.Nanoseconds()) / 10
 							atomic.StoreInt64(&ais.processingTime, newAvg)
 						} else {
 							// Fallback to processing time only
+							latency = processingTime
 							currentAvg := atomic.LoadInt64(&ais.processingTime)
-							newAvg := (currentAvg + processingTime) / 2
+							newAvg := (currentAvg + processingTime.Nanoseconds()) / 2
 							atomic.StoreInt64(&ais.processingTime, newAvg)
 						}
+						
+						// Report latency to adaptive buffer manager
+						ais.ReportLatency(latency)
 
 						if err != nil {
 							atomic.AddInt64(&ais.droppedFrames, 1)
 						}
 					default:
 						// No more messages to process
-						goto adaptiveBuffering
+						goto checkBufferUpdate
 					}
 				}
-
-			adaptiveBuffering:
-				// Adaptive buffer sizing based on processing time
-				avgTime := atomic.LoadInt64(&ais.processingTime)
-				currentSize := atomic.LoadInt64(&ais.bufferSize)
-
-				if avgTime > 10*1000*1000 { // > 10ms processing time
-					// Increase buffer size
-					newSize := currentSize * 2
-					if newSize > 1000 {
-						newSize = 1000
-					}
-					atomic.StoreInt64(&ais.bufferSize, newSize)
-				} else if avgTime < 1*1000*1000 { // < 1ms processing time
-					// Decrease buffer size
-					newSize := currentSize / 2
-					if newSize < 50 {
-						newSize = 50
-					}
-					atomic.StoreInt64(&ais.bufferSize, newSize)
+				
+			checkBufferUpdate:
+				// Check if we need to update buffer size
+				select {
+				case <-bufferUpdateTicker.C:
+					// Update buffer size from adaptive buffer manager
+					ais.UpdateBufferSize()
+				default:
+					// No buffer update needed
 				}
 			}
 		}
@@ -681,6 +868,64 @@ func (ais *AudioInputServer) GetServerStats() (total, dropped int64, avgProcessi
 		atomic.LoadInt64(&ais.droppedFrames),
 		time.Duration(atomic.LoadInt64(&ais.processingTime)),
 		atomic.LoadInt64(&ais.bufferSize)
+}
+
+// UpdateBufferSize updates the buffer size from adaptive buffer manager
+func (ais *AudioInputServer) UpdateBufferSize() {
+	adaptiveManager := GetAdaptiveBufferManager()
+	newSize := int64(adaptiveManager.GetInputBufferSize())
+	atomic.StoreInt64(&ais.bufferSize, newSize)
+}
+
+// ReportLatency reports processing latency to adaptive buffer manager
+func (ais *AudioInputServer) ReportLatency(latency time.Duration) {
+	adaptiveManager := GetAdaptiveBufferManager()
+	adaptiveManager.UpdateLatency(latency)
+}
+
+// GetMessagePoolStats returns detailed statistics about the message pool
+func (mp *MessagePool) GetMessagePoolStats() MessagePoolStats {
+	mp.mutex.RLock()
+	preallocatedCount := len(mp.preallocated)
+	mp.mutex.RUnlock()
+	
+	hitCount := atomic.LoadInt64(&mp.hitCount)
+	missCount := atomic.LoadInt64(&mp.missCount)
+	totalRequests := hitCount + missCount
+	
+	var hitRate float64
+	if totalRequests > 0 {
+		hitRate = float64(hitCount) / float64(totalRequests) * 100
+	}
+	
+	// Calculate channel pool size
+	channelPoolSize := len(mp.pool)
+	
+	return MessagePoolStats{
+		MaxPoolSize:       mp.maxPoolSize,
+		ChannelPoolSize:   channelPoolSize,
+		PreallocatedCount: int64(preallocatedCount),
+		PreallocatedMax:   int64(mp.preallocSize),
+		HitCount:          hitCount,
+		MissCount:         missCount,
+		HitRate:           hitRate,
+	}
+}
+
+// MessagePoolStats provides detailed message pool statistics
+type MessagePoolStats struct {
+	MaxPoolSize       int
+	ChannelPoolSize   int
+	PreallocatedCount int64
+	PreallocatedMax   int64
+	HitCount          int64
+	MissCount         int64
+	HitRate           float64 // Percentage
+}
+
+// GetGlobalMessagePoolStats returns statistics for the global message pool
+func GetGlobalMessagePoolStats() MessagePoolStats {
+	return globalMessagePool.GetMessagePoolStats()
 }
 
 // Helper functions

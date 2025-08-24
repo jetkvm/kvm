@@ -116,6 +116,40 @@ func (aim *AudioInputIPCManager) WriteOpusFrame(frame []byte) error {
 	return nil
 }
 
+// WriteOpusFrameZeroCopy sends an Opus frame via IPC using zero-copy optimization
+func (aim *AudioInputIPCManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFrame) error {
+	if atomic.LoadInt32(&aim.running) == 0 {
+		return nil // Not running, silently ignore
+	}
+
+	if frame == nil || frame.Length() == 0 {
+		return nil // Empty frame, ignore
+	}
+
+	// Start latency measurement
+	startTime := time.Now()
+
+	// Update metrics
+	atomic.AddInt64(&aim.metrics.FramesSent, 1)
+	atomic.AddInt64(&aim.metrics.BytesProcessed, int64(frame.Length()))
+	aim.metrics.LastFrameTime = startTime
+
+	// Send frame via IPC using zero-copy data
+	err := aim.supervisor.SendFrameZeroCopy(frame)
+	if err != nil {
+		// Count as dropped frame
+		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
+		aim.logger.Debug().Err(err).Msg("Failed to send zero-copy frame via IPC")
+		return err
+	}
+
+	// Calculate and update latency (end-to-end IPC transmission time)
+	latency := time.Since(startTime)
+	aim.updateLatencyMetrics(latency)
+
+	return nil
+}
+
 // IsRunning returns whether the IPC manager is running
 func (aim *AudioInputIPCManager) IsRunning() bool {
 	return atomic.LoadInt32(&aim.running) == 1
