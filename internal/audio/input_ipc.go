@@ -178,6 +178,9 @@ type AudioInputServer struct {
 	processChan chan *InputIPCMessage // Buffered channel for processing queue
 	stopChan    chan struct{}         // Stop signal for all goroutines
 	wg          sync.WaitGroup        // Wait group for goroutine coordination
+
+	// Socket buffer configuration
+	socketBufferConfig SocketBufferConfig
 }
 
 // NewAudioInputServer creates a new audio input server
@@ -195,12 +198,16 @@ func NewAudioInputServer() (*AudioInputServer, error) {
 	adaptiveManager := GetAdaptiveBufferManager()
 	initialBufferSize := int64(adaptiveManager.GetInputBufferSize())
 
+	// Initialize socket buffer configuration
+	socketBufferConfig := DefaultSocketBufferConfig()
+
 	return &AudioInputServer{
-		listener:    listener,
-		messageChan: make(chan *InputIPCMessage, initialBufferSize),
-		processChan: make(chan *InputIPCMessage, initialBufferSize),
-		stopChan:    make(chan struct{}),
-		bufferSize:  initialBufferSize,
+		listener:           listener,
+		messageChan:        make(chan *InputIPCMessage, initialBufferSize),
+		processChan:        make(chan *InputIPCMessage, initialBufferSize),
+		stopChan:           make(chan struct{}),
+		bufferSize:         initialBufferSize,
+		socketBufferConfig: socketBufferConfig,
 	}, nil
 }
 
@@ -268,6 +275,16 @@ func (ais *AudioInputServer) acceptConnections() {
 				continue
 			}
 			return
+		}
+
+		// Configure socket buffers for optimal performance
+		if err := ConfigureSocketBuffers(conn, ais.socketBufferConfig); err != nil {
+			// Log warning but don't fail - socket buffer optimization is not critical
+			logger := logging.GetDefaultLogger().With().Str("component", "audio-input-server").Logger()
+			logger.Warn().Err(err).Msg("Failed to configure socket buffers, continuing with defaults")
+		} else {
+			// Record socket buffer metrics for monitoring
+			RecordSocketBufferMetrics(conn, "audio-input")
 		}
 
 		ais.mtx.Lock()

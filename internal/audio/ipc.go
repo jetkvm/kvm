@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
 )
 
@@ -118,6 +119,9 @@ type AudioServer struct {
 	// Latency monitoring
 	latencyMonitor    *LatencyMonitor
 	adaptiveOptimizer *AdaptiveOptimizer
+
+	// Socket buffer configuration
+	socketBufferConfig SocketBufferConfig
 }
 
 func NewAudioServer() (*AudioServer, error) {
@@ -146,13 +150,17 @@ func NewAudioServer() (*AudioServer, error) {
 	optimizerConfig := DefaultOptimizerConfig()
 	adaptiveOptimizer := NewAdaptiveOptimizer(latencyMonitor, bufferManager, optimizerConfig, logger)
 
+	// Initialize socket buffer configuration
+	socketBufferConfig := DefaultSocketBufferConfig()
+
 	return &AudioServer{
-		listener:          listener,
-		messageChan:       make(chan *OutputIPCMessage, initialBufferSize),
-		stopChan:          make(chan struct{}),
-		bufferSize:        initialBufferSize,
-		latencyMonitor:    latencyMonitor,
-		adaptiveOptimizer: adaptiveOptimizer,
+		listener:           listener,
+		messageChan:        make(chan *OutputIPCMessage, initialBufferSize),
+		stopChan:           make(chan struct{}),
+		bufferSize:         initialBufferSize,
+		latencyMonitor:     latencyMonitor,
+		adaptiveOptimizer:  adaptiveOptimizer,
+		socketBufferConfig: socketBufferConfig,
 	}, nil
 }
 
@@ -193,6 +201,16 @@ func (s *AudioServer) acceptConnections() {
 				continue
 			}
 			return
+		}
+
+		// Configure socket buffers for optimal performance
+		if err := ConfigureSocketBuffers(conn, s.socketBufferConfig); err != nil {
+			// Log warning but don't fail - socket buffer optimization is not critical
+			logger := logging.GetDefaultLogger().With().Str("component", "audio-server").Logger()
+			logger.Warn().Err(err).Msg("Failed to configure socket buffers, continuing with defaults")
+		} else {
+			// Record socket buffer metrics for monitoring
+			RecordSocketBufferMetrics(conn, "audio-output")
 		}
 
 		s.mtx.Lock()
