@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsItem } from "@routes/devices.$id.settings";
 import { BacklightSettings, useSettingsStore } from "@/hooks/stores";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { UsbDeviceSetting } from "@components/UsbDeviceSetting";
 
@@ -12,7 +12,7 @@ import { UsbInfoSetting } from "../components/UsbInfoSetting";
 import { FeatureFlag } from "../components/FeatureFlag";
 
 export default function SettingsHardwareRoute() {
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const settings = useSettingsStore();
 
   const setDisplayRotation = useSettingsStore(state => state.setDisplayRotation);
@@ -23,7 +23,7 @@ export default function SettingsHardwareRoute() {
   };
 
   const handleDisplayRotationSave = () => {
-    send("setDisplayRotation", { params: { rotation: settings.displayRotation } }, resp => {
+    send("setDisplayRotation", { params: { rotation: settings.displayRotation } }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to set display orientation: ${resp.error.data || "Unknown error"}`,
@@ -48,7 +48,7 @@ export default function SettingsHardwareRoute() {
   };
 
   const handleBacklightSettingsSave = () => {
-    send("setBacklightSettings", { params: settings.backlightSettings }, resp => {
+    send("setBacklightSettings", { params: settings.backlightSettings }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to set backlight settings: ${resp.error.data || "Unknown error"}`,
@@ -60,7 +60,7 @@ export default function SettingsHardwareRoute() {
   };
 
   useEffect(() => {
-    send("getBacklightSettings", {}, resp => {
+    send("getBacklightSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         return notifications.error(
           `Failed to get backlight settings: ${resp.error.data || "Unknown error"}`,

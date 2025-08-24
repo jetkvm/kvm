@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 
 import { Button } from "@/components/Button";
 import { TextAreaWithLabel } from "@/components/TextArea";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useSettingsStore } from "@/hooks/stores";
 
@@ -41,7 +41,7 @@ const streamQualityOptions = [
 ];
 
 export default function SettingsVideoRoute() {
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const [streamQuality, setStreamQuality] = useState("1");
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
@@ -55,12 +55,12 @@ export default function SettingsVideoRoute() {
   const setVideoContrast = useSettingsStore(state => state.setVideoContrast);
 
   useEffect(() => {
-    send("getStreamQualityFactor", {}, resp => {
+    send("getStreamQualityFactor", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setStreamQuality(String(resp.result));
     });
 
-    send("getEDID", {}, resp => {
+    send("getEDID", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(`Failed to get EDID: ${resp.error.data || "Unknown error"}`);
         return;
@@ -85,7 +85,7 @@ export default function SettingsVideoRoute() {
   }, [send]);
 
   const handleStreamQualityChange = (factor: string) => {
-    send("setStreamQualityFactor", { factor: Number(factor) }, resp => {
+    send("setStreamQualityFactor", { factor: Number(factor) }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to set stream quality: ${resp.error.data || "Unknown error"}`,
@@ -99,7 +99,7 @@ export default function SettingsVideoRoute() {
   };
 
   const handleEDIDChange = (newEdid: string) => {
-    send("setEDID", { edid: newEdid }, resp => {
+    send("setEDID", { edid: newEdid }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(`Failed to set EDID: ${resp.error.data || "Unknown error"}`);
         return;

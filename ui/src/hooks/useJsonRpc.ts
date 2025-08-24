@@ -78,5 +78,5 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
     };
   }, [rpcDataChannel, onRequest]);
 
-  return [send];
+  return { send };
 }

@@ -3,7 +3,7 @@ import { useClose } from "@headlessui/react";
 
 import { GridCard } from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { useRTCStore, useUiStore } from "@/hooks/stores";
 import notifications from "@/notifications";
 
@@ -18,7 +18,7 @@ export default function WakeOnLanModal() {
 
   const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
 
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const close = useClose();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [addDeviceErrorMessage, setAddDeviceErrorMessage] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export default function WakeOnLanModal() {
       setErrorMessage(null);
       if (rpcDataChannel?.readyState !== "open") return;
 
-      send("sendWOLMagicPacket", { macAddress }, resp => {
+      send("sendWOLMagicPacket", { macAddress }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           const isInvalid = resp.error.data?.includes("invalid MAC address");
           if (isInvalid) {
@@ -52,7 +52,7 @@ export default function WakeOnLanModal() {
   );
 
   const syncStoredDevices = useCallback(() => {
-    send("getWakeOnLanDevices", {}, resp => {
+    send("getWakeOnLanDevices", {}, (resp: JsonRpcResponse) => {
       if ("result" in resp) {
         setStoredDevices(resp.result as StoredDevice[]);
       } else {
@@ -70,7 +70,7 @@ export default function WakeOnLanModal() {
     (index: number) => {
       const updatedDevices = storedDevices.filter((_, i) => i !== index);
 
-      send("setWakeOnLanDevices", { params: { devices: updatedDevices } }, resp => {
+      send("setWakeOnLanDevices", { params: { devices: updatedDevices } }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           console.error("Failed to update Wake-on-LAN devices:", resp.error);
         } else {
@@ -86,7 +86,7 @@ export default function WakeOnLanModal() {
       if (!name || !macAddress) return;
       const updatedDevices = [...storedDevices, { name, macAddress }];
       console.log("updatedDevices", updatedDevices);
-      send("setWakeOnLanDevices", { params: { devices: updatedDevices } }, resp => {
+      send("setWakeOnLanDevices", { params: { devices: updatedDevices } }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           console.error("Failed to add Wake-on-LAN device:", resp.error);
           setAddDeviceErrorMessage("Failed to add device");

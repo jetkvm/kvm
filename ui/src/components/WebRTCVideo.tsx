@@ -99,7 +99,7 @@ export default function WebRTCVideo({ microphone }: WebRTCVideoProps) {
   const [blockWheelEvent, setBlockWheelEvent] = useState(false);
 
   // Misc states and hooks
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   // Video-related
   useResizeObserver({

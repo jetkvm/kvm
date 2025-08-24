@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 
 import Card from "@/components/Card";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
 import { UpdateState, useDeviceStore, useUpdateStore } from "@/hooks/stores";
 import notifications from "@/notifications";
@@ -16,7 +16,7 @@ export default function SettingsGeneralUpdateRoute() {
   const { updateSuccess } = location.state || {};
 
   const { setModalView, otaState } = useUpdateStore();
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   const onConfirmUpdate = useCallback(() => {
     send("tryUpdate", {});
@@ -134,14 +134,14 @@ function LoadingState({
 }) {
   const [progressWidth, setProgressWidth] = useState("0%");
   const abortControllerRef = useRef<AbortController | null>(null);
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   const setAppVersion = useDeviceStore(state => state.setAppVersion);
   const setSystemVersion = useDeviceStore(state => state.setSystemVersion);
 
   const getVersionInfo = useCallback(() => {
     return new Promise<SystemVersionInfo>((resolve, reject) => {
-      send("getUpdateStatus", {}, async resp => {
+      send("getUpdateStatus", {}, async (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(`Failed to check for updates: ${resp.error}`);
           reject(new Error("Failed to check for updates"));

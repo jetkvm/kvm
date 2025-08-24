@@ -6,7 +6,7 @@ import { Button } from "@components/Button";
 
 export default function SettingsGeneralRebootRoute() {
   const navigate = useNavigate();
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   const onConfirmUpdate = useCallback(() => {
     // This is where we send the RPC to the golang binary
