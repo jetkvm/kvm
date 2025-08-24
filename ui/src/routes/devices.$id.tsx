@@ -39,7 +39,7 @@ import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import DashboardNavbar from "@components/Header";
 import ConnectionStatsSidebar from "@/components/sidebar/connectionStats";
 import AudioMetricsSidebar from "@/components/sidebar/AudioMetricsSidebar";
-import { JsonRpcRequest, useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcRequest, JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import Terminal from "@components/Terminal";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
 
@@ -653,11 +653,11 @@ export default function KvmIdRoute() {
   }
 
   const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
-  const [send] = useJsonRpc(onJsonRpcRequest);
+  const { send } = useJsonRpc(onJsonRpcRequest);
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
-    send("getVideoState", {}, resp => {
+    send("getVideoState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setHdmiState(resp.result as Parameters<VideoState["setHdmiState"]>[0]);
     });
@@ -669,7 +669,7 @@ export default function KvmIdRoute() {
     if (keyboardLedState !== undefined) return;
     console.log("Requesting keyboard led state");
 
-    send("getKeyboardLedState", {}, resp => {
+    send("getKeyboardLedState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         // -32601 means the method is not supported
         if (resp.error.code === -32601) {
@@ -742,7 +742,7 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (appVersion) return;
 
-    send("getUpdateStatus", {}, async resp => {
+    send("getUpdateStatus", {}, async (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(`Failed to get device version: ${resp.error}`);
         return 

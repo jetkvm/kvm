@@ -27,7 +27,7 @@ import NetBootIcon from "@/assets/netboot-icon.svg";
 import Fieldset from "@/components/Fieldset";
 import { DEVICE_API } from "@/ui.config";
 
-import { useJsonRpc } from "../hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
 import { isOnDevice } from "../main";
 import { cx } from "../cva.config";
@@ -64,10 +64,10 @@ export function Dialog({ onClose }: { onClose: () => void }) {
     setRemoteVirtualMediaState(null);
   }
 
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   async function syncRemoteVirtualMediaState() {
     return new Promise((resolve, reject) => {
-      send("getVirtualMediaState", {}, resp => {
+      send("getVirtualMediaState", {}, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           reject(new Error(resp.error.message));
         } else {
@@ -89,7 +89,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
     console.log(`Mounting ${url} as ${mode}`);
 
     setMountInProgress(true);
-    send("mountWithHTTP", { url, mode }, async resp => {
+    send("mountWithHTTP", { url, mode }, async (resp: JsonRpcResponse) => {
       if ("error" in resp) triggerError(resp.error.message);
 
       clearMountMediaState();
@@ -108,7 +108,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
     console.log(`Mounting ${fileName} as ${mode}`);
 
     setMountInProgress(true);
-    send("mountWithStorage", { filename: fileName, mode }, async resp => {
+    send("mountWithStorage", { filename: fileName, mode }, async (resp: JsonRpcResponse) => {
       if ("error" in resp) triggerError(resp.error.message);
 
       clearMountMediaState();
@@ -689,7 +689,7 @@ function DeviceFileView({
   const [currentPage, setCurrentPage] = useState(1);
   const filesPerPage = 5;
 
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   interface StorageSpace {
     bytesUsed: number;
@@ -718,12 +718,12 @@ function DeviceFileView({
   }, [storageSpace]);
 
   const syncStorage = useCallback(() => {
-    send("listStorageFiles", {}, res => {
-      if ("error" in res) {
-        notifications.error(`Error listing storage files: ${res.error}`);
+    send("listStorageFiles", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(`Error listing storage files: ${resp.error}`);
         return;
       }
-      const { files } = res.result as StorageFiles;
+      const { files } = resp.result as StorageFiles;
       const formattedFiles = files.map(file => ({
         name: file.filename,
         size: formatters.bytes(file.size),
@@ -733,13 +733,13 @@ function DeviceFileView({
       setOnStorageFiles(formattedFiles);
     });
 
-    send("getStorageSpace", {}, res => {
-      if ("error" in res) {
-        notifications.error(`Error getting storage space: ${res.error}`);
+    send("getStorageSpace", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(`Error getting storage space: ${resp.error}`);
         return;
       }
 
-      const space = res.result as StorageSpace;
+      const space = resp.result as StorageSpace;
       setStorageSpace(space);
     });
   }, [send, setOnStorageFiles, setStorageSpace]);
@@ -762,9 +762,9 @@ function DeviceFileView({
 
   function handleDeleteFile(file: { name: string; size: string; createdAt: string }) {
     console.log("Deleting file:", file);
-    send("deleteStorageFile", { filename: file.name }, res => {
-      if ("error" in res) {
-        notifications.error(`Error deleting file: ${res.error}`);
+    send("deleteStorageFile", { filename: file.name }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(`Error deleting file: ${resp.error}`);
         return;
       }
 
@@ -1001,7 +1001,7 @@ function UploadFileView({
   const [fileError, setFileError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const rtcDataChannelRef = useRef<RTCDataChannel | null>(null);
 
   useEffect(() => {
@@ -1216,7 +1216,7 @@ function UploadFileView({
       setUploadState("uploading");
       console.log("Upload state set to 'uploading'");
 
-      send("startStorageFileUpload", { filename: file.name, size: file.size }, resp => {
+      send("startStorageFileUpload", { filename: file.name, size: file.size }, (resp: JsonRpcResponse) => {
         console.log("startStorageFileUpload response:", resp);
         if ("error" in resp) {
           console.error("Upload error:", resp.error.message);

@@ -16,13 +16,13 @@ import Card, { GridCard } from "@components/Card";
 import { formatters } from "@/utils";
 import { RemoteVirtualMediaState, useMountMediaStore, useRTCStore } from "@/hooks/stores";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import notifications from "@/notifications";
 
 const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
   const diskDataChannelStats = useRTCStore(state => state.diskDataChannelStats);
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const { remoteVirtualMediaState, setModalView, setRemoteVirtualMediaState } =
     useMountMediaStore();
 
@@ -47,7 +47,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
   }, [diskDataChannelStats]);
 
   const syncRemoteVirtualMediaState = useCallback(() => {
-    send("getVirtualMediaState", {}, response => {
+    send("getVirtualMediaState", {}, (response: JsonRpcResponse) => {
       if ("error" in response) {
         notifications.error(
           `Failed to get virtual media state: ${response.error.message}`,
@@ -59,7 +59,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
   }, [send, setRemoteVirtualMediaState]);
 
   const handleUnmount = () => {
-    send("unmountImage", {}, response => {
+    send("unmountImage", {}, (response: JsonRpcResponse) => {
       if ("error" in response) {
         notifications.error(`Failed to unmount image: ${response.error.message}`);
       } else {

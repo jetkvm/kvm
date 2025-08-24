@@ -1,7 +1,7 @@
 
 import { useState , useEffect } from "react";
 
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 
 import { SettingsPageHeader } from "../components/SettingsPageheader";
 import { Button } from "../components/Button";
@@ -13,7 +13,7 @@ import { useDeviceStore } from "../hooks/stores";
 import { SettingsItem } from "./devices.$id.settings";
 
 export default function SettingsGeneralRoute() {
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
   const [autoUpdate, setAutoUpdate] = useState(true);
 
@@ -24,14 +24,14 @@ export default function SettingsGeneralRoute() {
   });
 
   useEffect(() => {
-    send("getAutoUpdateState", {}, resp => {
+    send("getAutoUpdateState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setAutoUpdate(resp.result as boolean);
     });
   }, [send]);
 
   const handleAutoUpdateChange = (enabled: boolean) => {
-    send("setAutoUpdateState", { enabled }, resp => {
+    send("setAutoUpdateState", { enabled }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to set auto-update: ${resp.error.data || "Unknown error"}`,

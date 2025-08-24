@@ -8,14 +8,14 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SettingsPageHeader } from "../components/SettingsPageheader";
 import { TextAreaWithLabel } from "../components/TextArea";
 import { useSettingsStore } from "../hooks/stores";
-import { useJsonRpc } from "../hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
 import { isOnDevice } from "../main";
 import notifications from "../notifications";
 
 import { SettingsItem } from "./devices.$id.settings";
 
 export default function SettingsAdvancedRoute() {
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
 
   const [sshKey, setSSHKey] = useState<string>("");
   const setDeveloperMode = useSettingsStore(state => state.setDeveloperMode);
@@ -27,35 +27,35 @@ export default function SettingsAdvancedRoute() {
   const settings = useSettingsStore();
 
   useEffect(() => {
-    send("getDevModeState", {}, resp => {
+    send("getDevModeState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const result = resp.result as { enabled: boolean };
       setDeveloperMode(result.enabled);
     });
 
-    send("getSSHKeyState", {}, resp => {
+    send("getSSHKeyState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setSSHKey(resp.result as string);
     });
 
-    send("getUsbEmulationState", {}, resp => {
+    send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setUsbEmulationEnabled(resp.result as boolean);
     });
 
-    send("getDevChannelState", {}, resp => {
+    send("getDevChannelState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setDevChannel(resp.result as boolean);
     });
 
-    send("getLocalLoopbackOnly", {}, resp => {
+    send("getLocalLoopbackOnly", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setLocalLoopbackOnly(resp.result as boolean);
     });
   }, [send, setDeveloperMode]);
 
   const getUsbEmulationState = useCallback(() => {
-    send("getUsbEmulationState", {}, resp => {
+    send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setUsbEmulationEnabled(resp.result as boolean);
     });
@@ -63,7 +63,7 @@ export default function SettingsAdvancedRoute() {
 
   const handleUsbEmulationToggle = useCallback(
     (enabled: boolean) => {
-      send("setUsbEmulationState", { enabled: enabled }, resp => {
+      send("setUsbEmulationState", { enabled: enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             `Failed to ${enabled ? "enable" : "disable"} USB emulation: ${resp.error.data || "Unknown error"}`,
@@ -78,7 +78,7 @@ export default function SettingsAdvancedRoute() {
   );
 
   const handleResetConfig = useCallback(() => {
-    send("resetConfig", {}, resp => {
+    send("resetConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to reset configuration: ${resp.error.data || "Unknown error"}`,
@@ -90,7 +90,7 @@ export default function SettingsAdvancedRoute() {
   }, [send]);
 
   const handleUpdateSSHKey = useCallback(() => {
-    send("setSSHKeyState", { sshKey }, resp => {
+    send("setSSHKeyState", { sshKey }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to update SSH key: ${resp.error.data || "Unknown error"}`,
@@ -103,7 +103,7 @@ export default function SettingsAdvancedRoute() {
 
   const handleDevModeChange = useCallback(
     (developerMode: boolean) => {
-      send("setDevModeState", { enabled: developerMode }, resp => {
+      send("setDevModeState", { enabled: developerMode }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             `Failed to set dev mode: ${resp.error.data || "Unknown error"}`,
@@ -118,7 +118,7 @@ export default function SettingsAdvancedRoute() {
 
   const handleDevChannelChange = useCallback(
     (enabled: boolean) => {
-      send("setDevChannelState", { enabled }, resp => {
+      send("setDevChannelState", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
@@ -133,7 +133,7 @@ export default function SettingsAdvancedRoute() {
 
   const applyLoopbackOnlyMode = useCallback(
     (enabled: boolean) => {
-      send("setLocalLoopbackOnly", { enabled }, resp => {
+      send("setLocalLoopbackOnly", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
             `Failed to ${enabled ? "enable" : "disable"} loopback-only mode: ${resp.error.data || "Unknown error"}`,

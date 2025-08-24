@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import FieldLabel from "@components/FieldLabel";
 import LoadingSpinner from "@components/LoadingSpinner";
@@ -19,11 +19,11 @@ interface DCPowerState {
 }
 
 export function DCPowerControl() {
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const [powerState, setPowerState] = useState<DCPowerState | null>(null);
 
   const getDCPowerState = useCallback(() => {
-    send("getDCPowerState", {}, resp => {
+    send("getDCPowerState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to get DC power state: ${resp.error.data || "Unknown error"}`,
@@ -35,7 +35,7 @@ export function DCPowerControl() {
   }, [send]);
 
   const handlePowerToggle = (enabled: boolean) => {
-    send("setDCPowerState", { enabled }, resp => {
+    send("setDCPowerState", { enabled }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to set DC power state: ${resp.error.data || "Unknown error"}`,
@@ -47,7 +47,7 @@ export function DCPowerControl() {
   };
   const handleRestoreChange = (state: number) => {
     // const state = powerState?.restoreState === 0 ? 1 : powerState?.restoreState === 1 ? 2 : 0;
-    send("setDCRestoreState", { state }, resp => {
+    send("setDCRestoreState", { state }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to set DC power state: ${resp.error.data || "Unknown error"}`,

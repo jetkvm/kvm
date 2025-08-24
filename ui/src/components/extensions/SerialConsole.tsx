@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { useUiStore } from "@/hooks/stores";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
@@ -17,7 +17,7 @@ interface SerialSettings {
 }
 
 export function SerialConsole() {
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const [settings, setSettings] = useState<SerialSettings>({
     baudRate: "9600",
     dataBits: "8",
@@ -26,7 +26,7 @@ export function SerialConsole() {
   });
 
   useEffect(() => {
-    send("getSerialSettings", {}, resp => {
+    send("getSerialSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to get serial settings: ${resp.error.data || "Unknown error"}`,
@@ -39,7 +39,7 @@ export function SerialConsole() {
 
   const handleSettingChange = (setting: keyof SerialSettings, value: string) => {
     const newSettings = { ...settings, [setting]: value };
-    send("setSerialSettings", { settings: newSettings }, resp => {
+    send("setSerialSettings", { settings: newSettings }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to update serial settings: ${resp.error.data || "Unknown error"}`,

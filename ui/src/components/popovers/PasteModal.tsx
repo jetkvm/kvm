@@ -7,7 +7,7 @@ import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidStore, useRTCStore, useUiStore, useSettingsStore } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
 import { KeyStroke, KeyboardLayout, selectedKeyboard } from "@/keyboardLayouts";
@@ -28,7 +28,7 @@ export default function PasteModal() {
   const setPasteMode = useHidStore(state => state.setPasteModeEnabled);
   const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
 
-  const [send] = useJsonRpc();
+  const { send } = useJsonRpc();
   const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
 
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
@@ -47,7 +47,7 @@ export default function PasteModal() {
   }, [keyboardLayout]);
 
   useEffect(() => {
-    send("getKeyboardLayout", {}, resp => {
+    send("getKeyboardLayout", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setKeyboardLayout(resp.result as string);
     });
