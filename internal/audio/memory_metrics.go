@@ -13,17 +13,17 @@ import (
 // MemoryMetrics provides comprehensive memory allocation statistics
 type MemoryMetrics struct {
 	// Runtime memory statistics
-	RuntimeStats    RuntimeMemoryStats    `json:"runtime_stats"`
+	RuntimeStats RuntimeMemoryStats `json:"runtime_stats"`
 	// Audio buffer pool statistics
-	BufferPools     AudioBufferPoolStats  `json:"buffer_pools"`
+	BufferPools AudioBufferPoolStats `json:"buffer_pools"`
 	// Zero-copy frame pool statistics
-	ZeroCopyPool    ZeroCopyFramePoolStats `json:"zero_copy_pool"`
+	ZeroCopyPool ZeroCopyFramePoolStats `json:"zero_copy_pool"`
 	// Message pool statistics
-	MessagePool     MessagePoolStats      `json:"message_pool"`
+	MessagePool MessagePoolStats `json:"message_pool"`
 	// Batch processor statistics
-	BatchProcessor  BatchProcessorMemoryStats `json:"batch_processor,omitempty"`
+	BatchProcessor BatchProcessorMemoryStats `json:"batch_processor,omitempty"`
 	// Collection timestamp
-	Timestamp       time.Time             `json:"timestamp"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // RuntimeMemoryStats provides Go runtime memory statistics
@@ -59,10 +59,10 @@ type RuntimeMemoryStats struct {
 
 // BatchProcessorMemoryStats provides batch processor memory statistics
 type BatchProcessorMemoryStats struct {
-	Initialized   bool                     `json:"initialized"`
-	Running       bool                     `json:"running"`
-	Stats         BatchAudioStats          `json:"stats"`
-	BufferPool    AudioBufferPoolDetailedStats `json:"buffer_pool,omitempty"`
+	Initialized bool                         `json:"initialized"`
+	Running     bool                         `json:"running"`
+	Stats       BatchAudioStats              `json:"stats"`
+	BufferPool  AudioBufferPoolDetailedStats `json:"buffer_pool,omitempty"`
 }
 
 // GetBatchAudioProcessor is defined in batch_audio.go
@@ -83,7 +83,7 @@ func CollectMemoryMetrics() MemoryMetrics {
 	// Collect runtime memory statistics
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	
+
 	runtimeStats := RuntimeMemoryStats{
 		Alloc:         m.Alloc,
 		TotalAlloc:    m.TotalAlloc,
@@ -113,16 +113,16 @@ func CollectMemoryMetrics() MemoryMetrics {
 		NumForcedGC:   m.NumForcedGC,
 		GCCPUFraction: m.GCCPUFraction,
 	}
-	
+
 	// Collect audio buffer pool statistics
 	bufferPoolStats := GetAudioBufferPoolStats()
-	
+
 	// Collect zero-copy frame pool statistics
 	zeroCopyStats := GetGlobalZeroCopyPoolStats()
-	
+
 	// Collect message pool statistics
 	messagePoolStats := GetGlobalMessagePoolStats()
-	
+
 	// Collect batch processor statistics if available
 	var batchStats BatchProcessorMemoryStats
 	if processor := GetBatchAudioProcessor(); processor != nil {
@@ -131,7 +131,7 @@ func CollectMemoryMetrics() MemoryMetrics {
 		batchStats.Stats = processor.GetStats()
 		// Note: BatchAudioProcessor uses sync.Pool, detailed stats not available
 	}
-	
+
 	return MemoryMetrics{
 		RuntimeStats:   runtimeStats,
 		BufferPools:    bufferPoolStats,
@@ -145,23 +145,23 @@ func CollectMemoryMetrics() MemoryMetrics {
 // HandleMemoryMetrics provides an HTTP handler for memory metrics
 func HandleMemoryMetrics(w http.ResponseWriter, r *http.Request) {
 	logger := getMemoryMetricsLogger()
-	
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	
+
 	metrics := CollectMemoryMetrics()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
-	
+
 	if err := json.NewEncoder(w).Encode(metrics); err != nil {
 		logger.Error().Err(err).Msg("failed to encode memory metrics")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	
+
 	logger.Debug().Msg("memory metrics served")
 }
 
@@ -169,7 +169,7 @@ func HandleMemoryMetrics(w http.ResponseWriter, r *http.Request) {
 func LogMemoryMetrics() {
 	logger := getMemoryMetricsLogger()
 	metrics := CollectMemoryMetrics()
-	
+
 	logger.Info().
 		Uint64("heap_alloc_mb", metrics.RuntimeStats.HeapAlloc/1024/1024).
 		Uint64("heap_sys_mb", metrics.RuntimeStats.HeapSys/1024/1024).
@@ -186,11 +186,11 @@ func LogMemoryMetrics() {
 func StartMemoryMetricsLogging(interval time.Duration) {
 	logger := getMemoryMetricsLogger()
 	logger.Info().Dur("interval", interval).Msg("starting memory metrics logging")
-	
+
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		
+
 		for range ticker.C {
 			LogMemoryMetrics()
 		}

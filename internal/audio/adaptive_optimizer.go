@@ -15,47 +15,44 @@ type AdaptiveOptimizer struct {
 	optimizationCount int64 // Number of optimizations performed (atomic)
 	lastOptimization  int64 // Timestamp of last optimization (atomic)
 	optimizationLevel int64 // Current optimization level (0-10) (atomic)
-	
+
 	latencyMonitor *LatencyMonitor
 	bufferManager  *AdaptiveBufferManager
 	logger         zerolog.Logger
-	
+
 	// Control channels
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
-	
+
 	// Configuration
 	config OptimizerConfig
-	mutex  sync.RWMutex
 }
 
 // OptimizerConfig holds configuration for the adaptive optimizer
 type OptimizerConfig struct {
 	MaxOptimizationLevel int           // Maximum optimization level (0-10)
-	CooldownPeriod      time.Duration // Minimum time between optimizations
-	Aggressiveness      float64       // How aggressively to optimize (0.0-1.0)
-	RollbackThreshold   time.Duration // Latency threshold to rollback optimizations
-	StabilityPeriod     time.Duration // Time to wait for stability after optimization
+	CooldownPeriod       time.Duration // Minimum time between optimizations
+	Aggressiveness       float64       // How aggressively to optimize (0.0-1.0)
+	RollbackThreshold    time.Duration // Latency threshold to rollback optimizations
+	StabilityPeriod      time.Duration // Time to wait for stability after optimization
 }
-
-
 
 // DefaultOptimizerConfig returns a sensible default configuration
 func DefaultOptimizerConfig() OptimizerConfig {
 	return OptimizerConfig{
 		MaxOptimizationLevel: 8,
-		CooldownPeriod:      30 * time.Second,
-		Aggressiveness:      0.7,
-		RollbackThreshold:   300 * time.Millisecond,
-		StabilityPeriod:     10 * time.Second,
+		CooldownPeriod:       30 * time.Second,
+		Aggressiveness:       0.7,
+		RollbackThreshold:    300 * time.Millisecond,
+		StabilityPeriod:      10 * time.Second,
 	}
 }
 
 // NewAdaptiveOptimizer creates a new adaptive optimizer
 func NewAdaptiveOptimizer(latencyMonitor *LatencyMonitor, bufferManager *AdaptiveBufferManager, config OptimizerConfig, logger zerolog.Logger) *AdaptiveOptimizer {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	optimizer := &AdaptiveOptimizer{
 		latencyMonitor: latencyMonitor,
 		bufferManager:  bufferManager,
@@ -64,12 +61,10 @@ func NewAdaptiveOptimizer(latencyMonitor *LatencyMonitor, bufferManager *Adaptiv
 		ctx:            ctx,
 		cancel:         cancel,
 	}
-	
 
-	
 	// Register as latency monitor callback
 	latencyMonitor.AddOptimizationCallback(optimizer.handleLatencyOptimization)
-	
+
 	return optimizer
 }
 
@@ -89,26 +84,25 @@ func (ao *AdaptiveOptimizer) Stop() {
 
 // initializeStrategies sets up the available optimization strategies
 
-
 // handleLatencyOptimization is called when latency optimization is needed
 func (ao *AdaptiveOptimizer) handleLatencyOptimization(metrics LatencyMetrics) error {
 	currentLevel := atomic.LoadInt64(&ao.optimizationLevel)
 	lastOpt := atomic.LoadInt64(&ao.lastOptimization)
-	
+
 	// Check cooldown period
 	if time.Since(time.Unix(0, lastOpt)) < ao.config.CooldownPeriod {
 		return nil
 	}
-	
+
 	// Determine if we need to increase or decrease optimization level
 	targetLevel := ao.calculateTargetOptimizationLevel(metrics)
-	
+
 	if targetLevel > currentLevel {
 		return ao.increaseOptimization(int(targetLevel))
 	} else if targetLevel < currentLevel {
 		return ao.decreaseOptimization(int(targetLevel))
 	}
-	
+
 	return nil
 }
 
@@ -116,7 +110,7 @@ func (ao *AdaptiveOptimizer) handleLatencyOptimization(metrics LatencyMetrics) e
 func (ao *AdaptiveOptimizer) calculateTargetOptimizationLevel(metrics LatencyMetrics) int64 {
 	// Base calculation on current latency vs target
 	latencyRatio := float64(metrics.Current) / float64(50*time.Millisecond) // 50ms target
-	
+
 	// Adjust based on trend
 	switch metrics.Trend {
 	case LatencyTrendIncreasing:
@@ -126,10 +120,10 @@ func (ao *AdaptiveOptimizer) calculateTargetOptimizationLevel(metrics LatencyMet
 	case LatencyTrendVolatile:
 		latencyRatio *= 1.1 // Slightly more aggressive
 	}
-	
+
 	// Apply aggressiveness factor
 	latencyRatio *= ao.config.Aggressiveness
-	
+
 	// Convert to optimization level
 	targetLevel := int64(latencyRatio * 2) // Scale to 0-10 range
 	if targetLevel > int64(ao.config.MaxOptimizationLevel) {
@@ -138,7 +132,7 @@ func (ao *AdaptiveOptimizer) calculateTargetOptimizationLevel(metrics LatencyMet
 	if targetLevel < 0 {
 		targetLevel = 0
 	}
-	
+
 	return targetLevel
 }
 
@@ -147,7 +141,7 @@ func (ao *AdaptiveOptimizer) increaseOptimization(targetLevel int) error {
 	atomic.StoreInt64(&ao.optimizationLevel, int64(targetLevel))
 	atomic.StoreInt64(&ao.lastOptimization, time.Now().UnixNano())
 	atomic.AddInt64(&ao.optimizationCount, 1)
-	
+
 	return nil
 }
 
@@ -155,17 +149,17 @@ func (ao *AdaptiveOptimizer) increaseOptimization(targetLevel int) error {
 func (ao *AdaptiveOptimizer) decreaseOptimization(targetLevel int) error {
 	atomic.StoreInt64(&ao.optimizationLevel, int64(targetLevel))
 	atomic.StoreInt64(&ao.lastOptimization, time.Now().UnixNano())
-	
+
 	return nil
 }
 
 // optimizationLoop runs the main optimization monitoring loop
 func (ao *AdaptiveOptimizer) optimizationLoop() {
 	defer ao.wg.Done()
-	
+
 	ticker := time.NewTicker(ao.config.StabilityPeriod)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ao.ctx.Done():
@@ -179,13 +173,15 @@ func (ao *AdaptiveOptimizer) optimizationLoop() {
 // checkStability monitors system stability and rolls back if needed
 func (ao *AdaptiveOptimizer) checkStability() {
 	metrics := ao.latencyMonitor.GetMetrics()
-	
+
 	// Check if we need to rollback due to excessive latency
 	if metrics.Current > ao.config.RollbackThreshold {
 		currentLevel := int(atomic.LoadInt64(&ao.optimizationLevel))
 		if currentLevel > 0 {
 			ao.logger.Warn().Dur("current_latency", metrics.Current).Dur("threshold", ao.config.RollbackThreshold).Msg("Rolling back optimizations due to excessive latency")
-			ao.decreaseOptimization(currentLevel - 1)
+			if err := ao.decreaseOptimization(currentLevel - 1); err != nil {
+				ao.logger.Error().Err(err).Msg("Failed to decrease optimization level")
+			}
 		}
 	}
 }

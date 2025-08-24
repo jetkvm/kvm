@@ -22,7 +22,7 @@ const (
 	AudioHighPriority   = 80 // High priority for critical audio processing
 	AudioMediumPriority = 60 // Medium priority for regular audio processing
 	AudioLowPriority    = 40 // Low priority for background audio tasks
-	
+
 	// SCHED_NORMAL is the default (priority 0)
 	NormalPriority = 0
 )
@@ -36,14 +36,14 @@ const (
 
 // PriorityScheduler manages thread priorities for audio processing
 type PriorityScheduler struct {
-	logger zerolog.Logger
+	logger  zerolog.Logger
 	enabled bool
 }
 
 // NewPriorityScheduler creates a new priority scheduler
 func NewPriorityScheduler() *PriorityScheduler {
 	return &PriorityScheduler{
-		logger: logging.GetDefaultLogger().With().Str("component", "priority-scheduler").Logger(),
+		logger:  logging.GetDefaultLogger().With().Str("component", "priority-scheduler").Logger(),
 		enabled: true,
 	}
 }

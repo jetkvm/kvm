@@ -49,18 +49,18 @@ type InputIPCMessage struct {
 // OptimizedIPCMessage represents an optimized message with pre-allocated buffers
 type OptimizedIPCMessage struct {
 	header [headerSize]byte // Pre-allocated header buffer
-	data   []byte          // Reusable data buffer
-	msg    InputIPCMessage // Embedded message
+	data   []byte           // Reusable data buffer
+	msg    InputIPCMessage  // Embedded message
 }
 
 // MessagePool manages a pool of reusable messages to reduce allocations
 type MessagePool struct {
 	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
-	hitCount     int64                  // Pool hit counter (atomic)
-	missCount    int64                  // Pool miss counter (atomic)
-	
+	hitCount  int64 // Pool hit counter (atomic)
+	missCount int64 // Pool miss counter (atomic)
+
 	// Other fields
-	pool         chan *OptimizedIPCMessage
+	pool chan *OptimizedIPCMessage
 	// Memory optimization fields
 	preallocated []*OptimizedIPCMessage // Pre-allocated messages for immediate use
 	preallocSize int                    // Number of pre-allocated messages
@@ -73,32 +73,37 @@ var globalMessagePool = &MessagePool{
 	pool: make(chan *OptimizedIPCMessage, messagePoolSize),
 }
 
-// Initialize the message pool with pre-allocated messages
-func init() {
-	// Pre-allocate 30% of pool size for immediate availability
-	preallocSize := messagePoolSize * 30 / 100
-	globalMessagePool.preallocSize = preallocSize
-	globalMessagePool.maxPoolSize = messagePoolSize * 2 // Allow growth up to 2x
-	globalMessagePool.preallocated = make([]*OptimizedIPCMessage, 0, preallocSize)
-	
-	// Pre-allocate messages to reduce initial allocation overhead
-	for i := 0; i < preallocSize; i++ {
-		msg := &OptimizedIPCMessage{
-			data: make([]byte, 0, maxFrameSize),
+var messagePoolInitOnce sync.Once
+
+// initializeMessagePool initializes the message pool with pre-allocated messages
+func initializeMessagePool() {
+	messagePoolInitOnce.Do(func() {
+		// Pre-allocate 30% of pool size for immediate availability
+		preallocSize := messagePoolSize * 30 / 100
+		globalMessagePool.preallocSize = preallocSize
+		globalMessagePool.maxPoolSize = messagePoolSize * 2 // Allow growth up to 2x
+		globalMessagePool.preallocated = make([]*OptimizedIPCMessage, 0, preallocSize)
+
+		// Pre-allocate messages to reduce initial allocation overhead
+		for i := 0; i < preallocSize; i++ {
+			msg := &OptimizedIPCMessage{
+				data: make([]byte, 0, maxFrameSize),
+			}
+			globalMessagePool.preallocated = append(globalMessagePool.preallocated, msg)
 		}
-		globalMessagePool.preallocated = append(globalMessagePool.preallocated, msg)
-	}
-	
-	// Fill the channel pool with remaining messages
-	for i := preallocSize; i < messagePoolSize; i++ {
-		globalMessagePool.pool <- &OptimizedIPCMessage{
-			data: make([]byte, 0, maxFrameSize),
+
+		// Fill the channel pool with remaining messages
+		for i := preallocSize; i < messagePoolSize; i++ {
+			globalMessagePool.pool <- &OptimizedIPCMessage{
+				data: make([]byte, 0, maxFrameSize),
+			}
 		}
-	}
+	})
 }
 
 // Get retrieves a message from the pool
 func (mp *MessagePool) Get() *OptimizedIPCMessage {
+	initializeMessagePool()
 	// First try pre-allocated messages for fastest access
 	mp.mutex.Lock()
 	if len(mp.preallocated) > 0 {
@@ -109,7 +114,7 @@ func (mp *MessagePool) Get() *OptimizedIPCMessage {
 		return msg
 	}
 	mp.mutex.Unlock()
-	
+
 	// Try channel pool next
 	select {
 	case msg := <-mp.pool:
@@ -129,7 +134,7 @@ func (mp *MessagePool) Put(msg *OptimizedIPCMessage) {
 	// Reset the message for reuse
 	msg.data = msg.data[:0]
 	msg.msg = InputIPCMessage{}
-	
+
 	// First try to return to pre-allocated pool for fastest reuse
 	mp.mutex.Lock()
 	if len(mp.preallocated) < mp.preallocSize {
@@ -138,7 +143,7 @@ func (mp *MessagePool) Put(msg *OptimizedIPCMessage) {
 		return
 	}
 	mp.mutex.Unlock()
-	
+
 	// Try channel pool next
 	select {
 	case mp.pool <- msg:
@@ -335,7 +340,7 @@ func (ais *AudioInputServer) readMessage(conn net.Conn) (*InputIPCMessage, error
 		} else {
 			optMsg.data = optMsg.data[:msg.Length]
 		}
-		
+
 		_, err = io.ReadFull(conn, optMsg.data)
 		if err != nil {
 			return nil, err
@@ -350,7 +355,7 @@ func (ais *AudioInputServer) readMessage(conn net.Conn) (*InputIPCMessage, error
 		Length:    msg.Length,
 		Timestamp: msg.Timestamp,
 	}
-	
+
 	if msg.Length > 0 {
 		// Copy data to ensure it's not affected by buffer reuse
 		result.Data = make([]byte, msg.Length)
@@ -733,7 +738,7 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		
+
 		// Set high priority for audio processing
 		logger := logging.GetDefaultLogger().With().Str("component", "audio-input-processor").Logger()
 		if err := SetAudioThreadPriority(); err != nil {
@@ -744,7 +749,7 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 				logger.Warn().Err(err).Msg("Failed to reset thread priority")
 			}
 		}()
-		
+
 		defer ais.wg.Done()
 		for {
 			select {
@@ -785,7 +790,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		
+
 		// Set I/O priority for monitoring
 		logger := logging.GetDefaultLogger().With().Str("component", "audio-input-monitor").Logger()
 		if err := SetAudioIOThreadPriority(); err != nil {
@@ -796,11 +801,11 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 				logger.Warn().Err(err).Msg("Failed to reset thread priority")
 			}
 		}()
-		
+
 		defer ais.wg.Done()
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
-		
+
 		// Buffer size update ticker (less frequent)
 		bufferUpdateTicker := time.NewTicker(500 * time.Millisecond)
 		defer bufferUpdateTicker.Stop()
@@ -835,7 +840,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 							newAvg := (currentAvg + processingTime.Nanoseconds()) / 2
 							atomic.StoreInt64(&ais.processingTime, newAvg)
 						}
-						
+
 						// Report latency to adaptive buffer manager
 						ais.ReportLatency(latency)
 
@@ -847,7 +852,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 						goto checkBufferUpdate
 					}
 				}
-				
+
 			checkBufferUpdate:
 				// Check if we need to update buffer size
 				select {
@@ -888,19 +893,19 @@ func (mp *MessagePool) GetMessagePoolStats() MessagePoolStats {
 	mp.mutex.RLock()
 	preallocatedCount := len(mp.preallocated)
 	mp.mutex.RUnlock()
-	
+
 	hitCount := atomic.LoadInt64(&mp.hitCount)
 	missCount := atomic.LoadInt64(&mp.missCount)
 	totalRequests := hitCount + missCount
-	
+
 	var hitRate float64
 	if totalRequests > 0 {
 		hitRate = float64(hitCount) / float64(totalRequests) * 100
 	}
-	
+
 	// Calculate channel pool size
 	channelPoolSize := len(mp.pool)
-	
+
 	return MessagePoolStats{
 		MaxPoolSize:       mp.maxPoolSize,
 		ChannelPoolSize:   channelPoolSize,

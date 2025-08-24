@@ -61,9 +61,9 @@ func NewOutputStreamer() (*OutputStreamer, error) {
 		bufferPool:     NewAudioBufferPool(MaxAudioFrameSize), // Use existing buffer pool
 		ctx:            ctx,
 		cancel:         cancel,
-		batchSize:      initialBatchSize,             // Use adaptive batch size
-		processingChan: make(chan []byte, 500),       // Large buffer for smooth processing
-		statsInterval:  5 * time.Second,              // Statistics every 5 seconds
+		batchSize:      initialBatchSize,       // Use adaptive batch size
+		processingChan: make(chan []byte, 500), // Large buffer for smooth processing
+		statsInterval:  5 * time.Second,        // Statistics every 5 seconds
 		lastStatsTime:  time.Now().UnixNano(),
 	}, nil
 }
@@ -85,9 +85,9 @@ func (s *OutputStreamer) Start() error {
 
 	// Start multiple goroutines for optimal performance
 	s.wg.Add(3)
-	go s.streamLoop()      // Main streaming loop
-	go s.processingLoop()  // Frame processing loop
-	go s.statisticsLoop()  // Performance monitoring loop
+	go s.streamLoop()     // Main streaming loop
+	go s.processingLoop() // Frame processing loop
+	go s.statisticsLoop() // Performance monitoring loop
 
 	return nil
 }
@@ -125,7 +125,7 @@ func (s *OutputStreamer) streamLoop() {
 	frameInterval := time.Duration(20) * time.Millisecond // 50 FPS base rate
 	ticker := time.NewTicker(frameInterval)
 	defer ticker.Stop()
-	
+
 	// Batch size update ticker
 	batchUpdateTicker := time.NewTicker(500 * time.Millisecond)
 	defer batchUpdateTicker.Stop()
@@ -181,7 +181,7 @@ func (s *OutputStreamer) processingLoop() {
 	// Pin goroutine to OS thread for consistent performance
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	
+
 	// Set high priority for audio output processing
 	if err := SetAudioThreadPriority(); err != nil {
 		getOutputStreamingLogger().Warn().Err(err).Msg("Failed to set audio output processing priority")
@@ -192,7 +192,7 @@ func (s *OutputStreamer) processingLoop() {
 		}
 	}()
 
-	for _ = range s.processingChan {
+	for range s.processingChan {
 		// Process frame (currently just receiving, but can be extended)
 		if _, err := s.client.ReceiveFrame(); err != nil {
 			if s.client.IsConnected() {
@@ -260,13 +260,13 @@ func (s *OutputStreamer) GetDetailedStats() map[string]interface{} {
 	processingTime := atomic.LoadInt64(&s.processingTime)
 
 	stats := map[string]interface{}{
-		"processed_frames":      processed,
-		"dropped_frames":        dropped,
+		"processed_frames":       processed,
+		"dropped_frames":         dropped,
 		"avg_processing_time_ns": processingTime,
-		"batch_size":            s.batchSize,
-		"channel_buffer_size":   cap(s.processingChan),
-		"channel_current_size":  len(s.processingChan),
-		"connected":             s.client.IsConnected(),
+		"batch_size":             s.batchSize,
+		"channel_buffer_size":    cap(s.processingChan),
+		"channel_current_size":   len(s.processingChan),
+		"connected":              s.client.IsConnected(),
 	}
 
 	if processed+dropped > 0 {

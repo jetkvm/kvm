@@ -11,18 +11,18 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	
+
 	"github.com/rs/zerolog"
 )
 
 const (
-	outputMagicNumber uint32 = 0x4A4B4F55 // "JKOU" (JetKVM Output)
-	outputSocketName         = "audio_output.sock"
-	outputMaxFrameSize       = 4096                  // Maximum Opus frame size
-	outputWriteTimeout       = 10 * time.Millisecond // Non-blocking write timeout (increased for high load)
-	outputMaxDroppedFrames   = 50                    // Maximum consecutive dropped frames
-	outputHeaderSize         = 17                    // Fixed header size: 4+1+4+8 bytes
-	outputMessagePoolSize    = 128                   // Pre-allocated message pool size
+	outputMagicNumber      uint32 = 0x4A4B4F55 // "JKOU" (JetKVM Output)
+	outputSocketName              = "audio_output.sock"
+	outputMaxFrameSize            = 4096                  // Maximum Opus frame size
+	outputWriteTimeout            = 10 * time.Millisecond // Non-blocking write timeout (increased for high load)
+	outputMaxDroppedFrames        = 50                    // Maximum consecutive dropped frames
+	outputHeaderSize              = 17                    // Fixed header size: 4+1+4+8 bytes
+	outputMessagePoolSize         = 128                   // Pre-allocated message pool size
 )
 
 // OutputMessageType represents the type of IPC message
@@ -61,7 +61,7 @@ func NewOutputMessagePool(size int) *OutputMessagePool {
 	pool := &OutputMessagePool{
 		pool: make(chan *OutputOptimizedMessage, size),
 	}
-	
+
 	// Pre-allocate messages
 	for i := 0; i < size; i++ {
 		msg := &OutputOptimizedMessage{
@@ -69,7 +69,7 @@ func NewOutputMessagePool(size int) *OutputMessagePool {
 		}
 		pool.pool <- msg
 	}
-	
+
 	return pool
 }
 
@@ -101,10 +101,9 @@ var globalOutputMessagePool = NewOutputMessagePool(outputMessagePoolSize)
 
 type AudioServer struct {
 	// Atomic fields must be first for proper alignment on ARM
-	bufferSize     int64 // Current buffer size (atomic)
-	processingTime int64 // Average processing time in nanoseconds (atomic)
-	droppedFrames  int64 // Dropped frames counter (atomic)
-	totalFrames    int64 // Total frames counter (atomic)
+	bufferSize    int64 // Current buffer size (atomic)
+	droppedFrames int64 // Dropped frames counter (atomic)
+	totalFrames   int64 // Total frames counter (atomic)
 
 	listener net.Listener
 	conn     net.Conn
@@ -115,9 +114,9 @@ type AudioServer struct {
 	messageChan chan *OutputIPCMessage // Buffered channel for incoming messages
 	stopChan    chan struct{}          // Stop signal
 	wg          sync.WaitGroup         // Wait group for goroutine coordination
-	
+
 	// Latency monitoring
-	latencyMonitor *LatencyMonitor
+	latencyMonitor    *LatencyMonitor
 	adaptiveOptimizer *AdaptiveOptimizer
 }
 
@@ -138,11 +137,11 @@ func NewAudioServer() (*AudioServer, error) {
 	latencyConfig := DefaultLatencyConfig()
 	logger := zerolog.New(os.Stderr).With().Timestamp().Str("component", "audio-server").Logger()
 	latencyMonitor := NewLatencyMonitor(latencyConfig, logger)
-	
+
 	// Initialize adaptive buffer manager with default config
 	bufferConfig := DefaultAdaptiveBufferConfig()
 	bufferManager := NewAdaptiveBufferManager(bufferConfig)
-	
+
 	// Initialize adaptive optimizer
 	optimizerConfig := DefaultOptimizerConfig()
 	adaptiveOptimizer := NewAdaptiveOptimizer(latencyMonitor, bufferManager, optimizerConfig, logger)
@@ -216,7 +215,10 @@ func (s *AudioServer) startProcessorGoroutine() {
 			case msg := <-s.messageChan:
 				// Process message (currently just frame sending)
 				if msg.Type == OutputMessageTypeOpusFrame {
-					s.sendFrameToClient(msg.Data)
+					if err := s.sendFrameToClient(msg.Data); err != nil {
+						// Log error but continue processing
+						atomic.AddInt64(&s.droppedFrames, 1)
+					}
 				}
 			case <-s.stopChan:
 				return
@@ -283,13 +285,13 @@ func (s *AudioServer) SendFrame(frame []byte) error {
 	select {
 	case s.messageChan <- msg:
 		atomic.AddInt64(&s.totalFrames, 1)
-		
+
 		// Record latency for monitoring
 		if s.latencyMonitor != nil {
 			processingTime := time.Since(start)
 			s.latencyMonitor.RecordLatency(processingTime, "ipc_send")
 		}
-		
+
 		return nil
 	default:
 		// Channel full, drop frame to prevent blocking
