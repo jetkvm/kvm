@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { JsonRpcResponse, useJsonRpc } from "./useJsonRpc";
+import { useAudioEvents } from "./useAudioEvents";
 
 export interface UsbDeviceConfig {
   keyboard: boolean;
@@ -34,6 +35,15 @@ export function useUsbDeviceConfig() {
       }
     });
   }, [send]);
+
+  // Listen for audio device changes to update USB config in real-time
+  const handleAudioDeviceChanged = useCallback(() => {
+    console.log('[useUsbDeviceConfig] Audio device changed, refetching USB config');
+    fetchUsbDeviceConfig();
+  }, [fetchUsbDeviceConfig]);
+
+  // Subscribe to audio events for real-time updates
+  useAudioEvents(handleAudioDeviceChanged);
 
   useEffect(() => {
     fetchUsbDeviceConfig();
