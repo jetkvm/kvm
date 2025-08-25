@@ -58,7 +58,7 @@ func NewOutputStreamer() (*OutputStreamer, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &OutputStreamer{
 		client:         client,
-		bufferPool:     NewAudioBufferPool(MaxAudioFrameSize), // Use existing buffer pool
+		bufferPool:     NewAudioBufferPool(GetMaxAudioFrameSize()), // Use existing buffer pool
 		ctx:            ctx,
 		cancel:         cancel,
 		batchSize:      initialBatchSize,       // Use adaptive batch size
@@ -319,7 +319,7 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 		}()
 
 		getOutputStreamingLogger().Info().Msg("Audio output streaming started")
-		buffer := make([]byte, MaxAudioFrameSize)
+		buffer := make([]byte, GetMaxAudioFrameSize())
 
 		for {
 			select {

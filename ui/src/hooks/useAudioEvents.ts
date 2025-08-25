@@ -124,13 +124,13 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
     reconnectInterval: 3000,
     share: true, // Share the WebSocket connection across multiple hooks
     onOpen: () => {
-      console.log('[AudioEvents] WebSocket connected');
+      // WebSocket connected
       // Reset global state on new connection
       globalSubscriptionState.isSubscribed = false;
       globalSubscriptionState.connectionId = Math.random().toString(36);
     },
     onClose: () => {
-      console.log('[AudioEvents] WebSocket disconnected');
+      // WebSocket disconnected
       // Reset global state on disconnect
       globalSubscriptionState.isSubscribed = false;
       globalSubscriptionState.subscriberCount = 0;
@@ -160,7 +160,7 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
           
           sendMessage(JSON.stringify(subscribeMessage));
           globalSubscriptionState.isSubscribed = true;
-          console.log('[AudioEvents] Subscribed to audio events');
+          // Subscribed to audio events
         }
       }, 100); // 100ms delay to debounce subscription attempts
     }
@@ -197,11 +197,11 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
         sendMessage(JSON.stringify(unsubscribeMessage));
         globalSubscriptionState.isSubscribed = false;
         globalSubscriptionState.subscriberCount = 0;
-        console.log('[AudioEvents] Sent unsubscribe message to backend');
+        // Sent unsubscribe message to backend
       }
     }
     
-    console.log('[AudioEvents] Component unsubscribed from audio events');
+    // Component unsubscribed from audio events
   }, [readyState, isLocallySubscribed, sendMessage]);
 
   // Handle incoming messages
@@ -218,7 +218,7 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
             case 'audio-mute-changed': {
               const muteData = audioEvent.data as AudioMuteData;
               setAudioMuted(muteData.muted);
-              console.log('[AudioEvents] Audio mute changed:', muteData.muted);
+              // Audio mute changed
               break;
             }
               
@@ -231,7 +231,7 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
             case 'microphone-state-changed': {
               const micStateData = audioEvent.data as MicrophoneStateData;
               setMicrophoneState(micStateData);
-              console.log('[AudioEvents] Microphone state changed:', micStateData);
+              // Microphone state changed
               break;
             }
               
@@ -255,7 +255,7 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
               
             case 'audio-device-changed': {
               const deviceChangedData = audioEvent.data as AudioDeviceChangedData;
-              console.log('[AudioEvents] Audio device changed:', deviceChangedData);
+              // Audio device changed
               if (onAudioDeviceChanged) {
                 onAudioDeviceChanged(deviceChangedData);
               }

@@ -17,16 +17,22 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const (
-	// Maximum number of restart attempts within the restart window
-	maxRestartAttempts = 5
-	// Time window for counting restart attempts
-	restartWindow = 5 * time.Minute
-	// Delay between restart attempts
-	restartDelay = 2 * time.Second
-	// Maximum restart delay (exponential backoff)
-	maxRestartDelay = 30 * time.Second
-)
+// Restart configuration is now retrieved from centralized config
+func getMaxRestartAttempts() int {
+	return GetConfig().MaxRestartAttempts
+}
+
+func getRestartWindow() time.Duration {
+	return GetConfig().RestartWindow
+}
+
+func getRestartDelay() time.Duration {
+	return GetConfig().RestartDelay
+}
+
+func getMaxRestartDelay() time.Duration {
+	return GetConfig().MaxRestartDelay
+}
 
 // AudioServerSupervisor manages the audio server subprocess lifecycle
 type AudioServerSupervisor struct {
@@ -395,13 +401,13 @@ func (s *AudioServerSupervisor) shouldRestart() bool {
 	now := time.Now()
 	var recentAttempts []time.Time
 	for _, attempt := range s.restartAttempts {
-		if now.Sub(attempt) < restartWindow {
+		if now.Sub(attempt) < getRestartWindow() {
 			recentAttempts = append(recentAttempts, attempt)
 		}
 	}
 	s.restartAttempts = recentAttempts
 
-	return len(s.restartAttempts) < maxRestartAttempts
+	return len(s.restartAttempts) < getMaxRestartAttempts()
 }
 
 // recordRestartAttempt records a restart attempt
@@ -420,17 +426,17 @@ func (s *AudioServerSupervisor) calculateRestartDelay() time.Duration {
 	// Exponential backoff based on recent restart attempts
 	attempts := len(s.restartAttempts)
 	if attempts == 0 {
-		return restartDelay
+		return getRestartDelay()
 	}
 
 	// Calculate exponential backoff: 2^attempts * base delay
-	delay := restartDelay
-	for i := 0; i < attempts && delay < maxRestartDelay; i++ {
+	delay := getRestartDelay()
+	for i := 0; i < attempts && delay < getMaxRestartDelay(); i++ {
 		delay *= 2
 	}
 
-	if delay > maxRestartDelay {
-		delay = maxRestartDelay
+	if delay > getMaxRestartDelay() {
+		delay = getMaxRestartDelay()
 	}
 
 	return delay

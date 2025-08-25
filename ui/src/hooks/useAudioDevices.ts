@@ -63,10 +63,7 @@ export function useAudioDevices(): UseAudioDevicesReturn {
       setAudioInputDevices(inputDevices);
       setAudioOutputDevices(outputDevices);
       
-      console.log('Audio devices enumerated:', {
-        inputs: inputDevices.length,
-        outputs: outputDevices.length
-      });
+      // Audio devices enumerated
       
     } catch (err) {
       console.error('Failed to enumerate audio devices:', err);
@@ -79,7 +76,7 @@ export function useAudioDevices(): UseAudioDevicesReturn {
   // Listen for device changes
   useEffect(() => {
     const handleDeviceChange = () => {
-      console.log('Audio devices changed, refreshing...');
+      // Audio devices changed, refreshing
       refreshDevices();
     };
 

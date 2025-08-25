@@ -57,19 +57,14 @@ export function useMicrophone() {
 
   // Cleanup function to stop microphone stream
   const stopMicrophoneStream = useCallback(async () => {
-    console.log("stopMicrophoneStream called - cleaning up stream");
-    console.trace("stopMicrophoneStream call stack");
+    // Cleaning up microphone stream
     
     if (microphoneStreamRef.current) {
-      console.log("Stopping microphone stream:", microphoneStreamRef.current.id);
       microphoneStreamRef.current.getTracks().forEach(track => {
         track.stop();
       });
       microphoneStreamRef.current = null;
       setMicrophoneStream(null);
-      console.log("Microphone stream cleared from ref and store");
-    } else {
-      console.log("No microphone stream to stop");
     }
 
     if (microphoneSender && peerConnection) {
@@ -217,17 +212,7 @@ export function useMicrophone() {
         audio: audioConstraints
       });
 
-      console.log("Microphone stream created successfully:", {
-        streamId: stream.id,
-        audioTracks: stream.getAudioTracks().length,
-        videoTracks: stream.getVideoTracks().length,
-        audioTrackDetails: stream.getAudioTracks().map(track => ({
-          id: track.id,
-          label: track.label,
-          enabled: track.enabled,
-          readyState: track.readyState
-        }))
-      });
+      // Microphone stream created successfully
 
       // Store the stream in both ref and store
       microphoneStreamRef.current = stream;
@@ -471,7 +456,7 @@ export function useMicrophone() {
       setIsStarting(false);
       return { success: true };
     } catch (error) {
-      console.error("Failed to start microphone:", error);
+      // Failed to start microphone
       
       let micError: MicrophoneError;
       if (error instanceof Error) {

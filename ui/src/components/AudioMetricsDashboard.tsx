@@ -122,8 +122,8 @@ export default function AudioMetricsDashboard() {
         const response = await api.GET('/system/memory');
         const data = await response.json();
         setSystemMemoryMB(data.total_memory_mb);
-      } catch (error) {
-        console.warn('Failed to fetch system memory, using default:', error);
+      } catch {
+        // Failed to fetch system memory, using default
       }
     };
     fetchSystemMemory();
@@ -260,8 +260,8 @@ export default function AudioMetricsDashboard() {
           const micConfigData = await micConfigResp.json();
           setMicrophoneConfig(micConfigData.current);
         }
-      } catch (micConfigError) {
-        console.debug("Microphone config not available:", micConfigError);
+      } catch {
+        // Microphone config not available
       }
     } catch (error) {
       console.error("Failed to load audio config:", error);
@@ -321,8 +321,8 @@ export default function AudioMetricsDashboard() {
             });
           }
         }
-      } catch (audioProcessError) {
-        console.debug("Audio process metrics not available:", audioProcessError);
+      } catch {
+        // Audio process metrics not available
       }
 
       // Load microphone metrics
@@ -332,9 +332,9 @@ export default function AudioMetricsDashboard() {
           const micData = await micResp.json();
           setFallbackMicrophoneMetrics(micData);
         }
-      } catch (micError) {
+      } catch {
         // Microphone metrics might not be available, that's okay
-        console.debug("Microphone metrics not available:", micError);
+        // Microphone metrics not available
       }
 
       // Load microphone process metrics
@@ -374,8 +374,8 @@ export default function AudioMetricsDashboard() {
             return newMap;
           });
         }
-      } catch (micProcessError) {
-        console.debug("Microphone process metrics not available:", micProcessError);
+      } catch {
+        // Microphone process metrics not available
       }
     } catch (error) {
       console.error("Failed to load audio data:", error);

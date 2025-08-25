@@ -38,7 +38,7 @@ export function useUsbDeviceConfig() {
 
   // Listen for audio device changes to update USB config in real-time
   const handleAudioDeviceChanged = useCallback(() => {
-    console.log('[useUsbDeviceConfig] Audio device changed, refetching USB config');
+    // Audio device changed, refetching USB config
     fetchUsbDeviceConfig();
   }, [fetchUsbDeviceConfig]);
 

@@ -104,8 +104,8 @@ export const useAudioLevel = (
       // Use setInterval instead of requestAnimationFrame for more predictable timing
       intervalRef.current = window.setInterval(updateLevel, updateInterval);
 
-    } catch (error) {
-      console.error('Failed to create audio level analyzer:', error);
+    } catch {
+      // Audio level analyzer creation failed - silently handle
       setIsAnalyzing(false);
       setAudioLevel(0);
     }
