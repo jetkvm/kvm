@@ -23,6 +23,7 @@ type ZeroCopyFramePool struct {
 	counter   int64 // Frame counter (atomic)
 	hitCount  int64 // Pool hit counter (atomic)
 	missCount int64 // Pool miss counter (atomic)
+	allocationCount int64 // Total allocations counter (atomic)
 
 	// Other fields
 	pool    sync.Pool
@@ -36,13 +37,23 @@ type ZeroCopyFramePool struct {
 
 // NewZeroCopyFramePool creates a new zero-copy frame pool
 func NewZeroCopyFramePool(maxFrameSize int) *ZeroCopyFramePool {
-	// Pre-allocate 15 frames for immediate availability
-	preallocSize := 15
-	maxPoolSize := 50 // Limit total pool size
-	preallocated := make([]*ZeroCopyAudioFrame, 0, preallocSize)
+	// Pre-allocate frames for immediate availability
+	preallocSizeBytes := GetConfig().PreallocSize
+	maxPoolSize := GetConfig().MaxPoolSize // Limit total pool size
+
+	// Calculate number of frames based on memory budget, not frame count
+	preallocFrameCount := preallocSizeBytes / maxFrameSize
+	if preallocFrameCount > maxPoolSize {
+		preallocFrameCount = maxPoolSize
+	}
+	if preallocFrameCount < 1 {
+		preallocFrameCount = 1 // Always preallocate at least one frame
+	}
+
+	preallocated := make([]*ZeroCopyAudioFrame, 0, preallocFrameCount)
 
 	// Pre-allocate frames to reduce initial allocation overhead
-	for i := 0; i < preallocSize; i++ {
+	for i := 0; i < preallocFrameCount; i++ {
 		frame := &ZeroCopyAudioFrame{
 			data:     make([]byte, 0, maxFrameSize),
 			capacity: maxFrameSize,
@@ -54,7 +65,7 @@ func NewZeroCopyFramePool(maxFrameSize int) *ZeroCopyFramePool {
 	return &ZeroCopyFramePool{
 		maxSize:      maxFrameSize,
 		preallocated: preallocated,
-		preallocSize: preallocSize,
+		preallocSize: preallocFrameCount,
 		maxPoolSize:  maxPoolSize,
 		pool: sync.Pool{
 			New: func() interface{} {
@@ -70,6 +81,20 @@ func NewZeroCopyFramePool(maxFrameSize int) *ZeroCopyFramePool {
 
 // Get retrieves a zero-copy frame from the pool
 func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
+	// Memory guard: Track allocation count to prevent excessive memory usage
+	allocationCount := atomic.LoadInt64(&p.allocationCount)
+	if allocationCount > int64(p.maxPoolSize*2) {
+		// If we've allocated too many frames, force pool reuse
+		atomic.AddInt64(&p.missCount, 1)
+		frame := p.pool.Get().(*ZeroCopyAudioFrame)
+		frame.mutex.Lock()
+		frame.refCount = 1
+		frame.length = 0
+		frame.data = frame.data[:0]
+		frame.mutex.Unlock()
+		return frame
+	}
+	
 	// First try pre-allocated frames for fastest access
 	p.mutex.Lock()
 	if len(p.preallocated) > 0 {
@@ -88,7 +113,8 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 	}
 	p.mutex.Unlock()
 
-	// Try sync.Pool next
+	// Try sync.Pool next and track allocation
+	atomic.AddInt64(&p.allocationCount, 1)
 	frame := p.pool.Get().(*ZeroCopyAudioFrame)
 	frame.mutex.Lock()
 	frame.refCount = 1
@@ -230,6 +256,7 @@ func (p *ZeroCopyFramePool) GetZeroCopyPoolStats() ZeroCopyFramePoolStats {
 
 	hitCount := atomic.LoadInt64(&p.hitCount)
 	missCount := atomic.LoadInt64(&p.missCount)
+	allocationCount := atomic.LoadInt64(&p.allocationCount)
 	totalRequests := hitCount + missCount
 
 	var hitRate float64
@@ -245,6 +272,7 @@ func (p *ZeroCopyFramePool) GetZeroCopyPoolStats() ZeroCopyFramePoolStats {
 		PreallocatedMax:   int64(p.preallocSize),
 		HitCount:          hitCount,
 		MissCount:         missCount,
+		AllocationCount:   allocationCount,
 		HitRate:           hitRate,
 	}
 }
@@ -258,6 +286,7 @@ type ZeroCopyFramePoolStats struct {
 	PreallocatedMax   int64
 	HitCount          int64
 	MissCount         int64
+	AllocationCount   int64
 	HitRate           float64 // Percentage
 }
 

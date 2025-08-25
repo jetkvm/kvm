@@ -19,11 +19,11 @@ import (
 var (
 	inputMagicNumber uint32 = GetConfig().InputMagicNumber // "JKMI" (JetKVM Microphone Input)
 	inputSocketName         = "audio_input.sock"
-	writeTimeout            = 15 * time.Millisecond // Non-blocking write timeout (increased for high load)
+	writeTimeout            = GetConfig().WriteTimeout // Non-blocking write timeout
 )
 
 const (
-	headerSize = 17 // Fixed header size: 4+1+4+8 bytes
+	headerSize = 17 // Fixed header size: 4+1+4+8 bytes - matches GetConfig().HeaderSize
 )
 
 var (
@@ -503,10 +503,12 @@ func (aic *AudioInputClient) Connect() error {
 			aic.running = true
 			return nil
 		}
-		// Exponential backoff starting at 50ms
-		delay := time.Duration(50*(1<<uint(i/3))) * time.Millisecond
-		if delay > 500*time.Millisecond {
-			delay = 500 * time.Millisecond
+		// Exponential backoff starting from config
+		backoffStart := GetConfig().BackoffStart
+		delay := time.Duration(backoffStart.Nanoseconds()*(1<<uint(i/3))) * time.Nanosecond
+		maxDelay := GetConfig().MaxRetryDelay
+		if delay > maxDelay {
+			delay = maxDelay
 		}
 		time.Sleep(delay)
 	}
