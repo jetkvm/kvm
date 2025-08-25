@@ -691,11 +691,40 @@ type AudioConfigConstants struct {
 	// Default 50ms represents maximum acceptable latency for real-time audio.
 	LatencyThresholdHigh time.Duration
 
+	// CPUFactor defines weighting factor for CPU usage in performance calculations.
+	// Used in: adaptive_optimizer.go for balancing CPU impact in optimization decisions
+	// Impact: Higher values make CPU usage more influential in performance tuning.
+	// Default 0.5 provides balanced CPU consideration in optimization algorithms.
 	CPUFactor           float64
+
+	// MemoryFactor defines weighting factor for memory usage in performance calculations.
+	// Used in: adaptive_optimizer.go for balancing memory impact in optimization decisions
+	// Impact: Higher values make memory usage more influential in performance tuning.
+	// Default 0.3 provides moderate memory consideration in optimization algorithms.
 	MemoryFactor        float64
+
+	// LatencyFactor defines weighting factor for latency in performance calculations.
+	// Used in: adaptive_optimizer.go for balancing latency impact in optimization decisions
+	// Impact: Higher values make latency more influential in performance tuning.
+	// Default 0.2 provides latency consideration while prioritizing CPU and memory.
 	LatencyFactor       float64
+
+	// InputSizeThreshold defines threshold for input buffer size optimization (bytes).
+	// Used in: adaptive_buffer.go for determining when to resize input buffers
+	// Impact: Lower values trigger more frequent resizing, higher values reduce overhead.
+	// Default 1024 bytes provides good balance for typical audio input scenarios.
 	InputSizeThreshold  int
+
+	// OutputSizeThreshold defines threshold for output buffer size optimization (bytes).
+	// Used in: adaptive_buffer.go for determining when to resize output buffers
+	// Impact: Lower values trigger more frequent resizing, higher values reduce overhead.
+	// Default 2048 bytes accommodates larger output buffers typical in audio processing.
 	OutputSizeThreshold int
+
+	// TargetLevel defines target performance level for optimization algorithms.
+	// Used in: adaptive_optimizer.go for setting optimization goals
+	// Impact: Higher values aim for better performance but may increase resource usage.
+	// Default 0.8 (80%) provides good performance while maintaining system stability.
 	TargetLevel         float64
 
 	// Adaptive Buffer Configuration - Controls dynamic buffer sizing for optimal performance
@@ -720,11 +749,38 @@ type AudioConfigConstants struct {
 	// Default 6 frames balances initial latency with adaptation headroom.
 	AdaptiveDefaultBufferSize int
 
-	// Priority Scheduling
+	// Priority Scheduling - Real-time priority configuration for audio processing
+	// Used in: priority_scheduler.go for setting process and thread priorities
+	// Impact: Controls audio processing priority relative to other system processes
+
+	// AudioHighPriority defines highest real-time priority for critical audio processing.
+	// Used in: priority_scheduler.go for time-critical audio operations
+	// Impact: Ensures audio processing gets CPU time even under high system load.
+	// Default 90 provides high priority while leaving room for system-critical tasks.
 	AudioHighPriority   int
+
+	// AudioMediumPriority defines medium real-time priority for standard audio processing.
+	// Used in: priority_scheduler.go for normal audio operations
+	// Impact: Balances audio performance with system responsiveness.
+	// Default 70 provides good audio performance without monopolizing CPU.
 	AudioMediumPriority int
+
+	// AudioLowPriority defines low real-time priority for background audio tasks.
+	// Used in: priority_scheduler.go for non-critical audio operations
+	// Impact: Allows audio processing while yielding to higher priority tasks.
+	// Default 50 provides background processing capability.
 	AudioLowPriority    int
+
+	// NormalPriority defines standard system priority for non-real-time tasks.
+	// Used in: priority_scheduler.go for utility and monitoring tasks
+	// Impact: Standard priority level for non-time-critical operations.
+	// Default 0 uses standard Linux process priority.
 	NormalPriority      int
+
+	// NiceValue defines process nice value for CPU scheduling priority.
+	// Used in: priority_scheduler.go for adjusting process scheduling priority
+	// Impact: Lower values increase priority, higher values decrease priority.
+	// Default -10 provides elevated priority for audio processes.
 	NiceValue           int
 
 	// Error Handling - Configuration for error recovery and retry mechanisms
@@ -761,125 +817,559 @@ type AudioConfigConstants struct {
 	// Default 50 errors provides adequate buffering for error bursts.
 	ErrorChannelSize int
 
+	// MaxConsecutiveErrors defines maximum consecutive errors before escalation.
+	// Used in: error_handler.go for error threshold monitoring
+	// Impact: Lower values trigger faster escalation, higher values tolerate more errors.
+	// Default 5 errors provides tolerance for transient issues while detecting problems.
 	MaxConsecutiveErrors int
+
+	// MaxRetryAttempts defines maximum total retry attempts across all operations.
+	// Used in: retry_manager.go for global retry limit enforcement
+	// Impact: Higher values improve success rate but may delay failure detection.
+	// Default 10 attempts provides comprehensive retry coverage.
 	MaxRetryAttempts     int
 
-	// Timing Constants
+	// Timing Constants - Core timing configuration for audio processing operations
+	// Used in: Various components for timing control and synchronization
+	// Impact: Controls timing behavior, responsiveness, and system stability
+
+	// DefaultSleepDuration defines standard sleep duration for general operations.
+	// Used in: Various components for standard timing delays
+	// Impact: Balances CPU usage with responsiveness in polling operations.
+	// Default 100ms provides good balance for most timing scenarios.
 	DefaultSleepDuration       time.Duration // 100ms
+
+	// ShortSleepDuration defines brief sleep duration for time-sensitive operations.
+	// Used in: Real-time components for minimal delays
+	// Impact: Reduces latency but increases CPU usage in tight loops.
+	// Default 10ms provides minimal delay for responsive operations.
 	ShortSleepDuration         time.Duration // 10ms
+
+	// LongSleepDuration defines extended sleep duration for background operations.
+	// Used in: Background tasks and cleanup operations
+	// Impact: Reduces CPU usage but increases response time for background tasks.
+	// Default 200ms provides efficient background operation timing.
 	LongSleepDuration          time.Duration // 200ms
+
+	// DefaultTickerInterval defines standard ticker interval for periodic operations.
+	// Used in: Periodic monitoring and maintenance tasks
+	// Impact: Controls frequency of periodic operations and resource usage.
+	// Default 100ms provides good balance for monitoring tasks.
 	DefaultTickerInterval      time.Duration // 100ms
+
+	// BufferUpdateInterval defines frequency of buffer status updates.
+	// Used in: buffer_pool.go and adaptive_buffer.go for buffer management
+	// Impact: More frequent updates improve responsiveness but increase overhead.
+	// Default 500ms provides adequate buffer monitoring without excessive overhead.
 	BufferUpdateInterval       time.Duration // 500ms
+
+	// StatsUpdateInterval defines frequency of statistics collection and reporting.
+	// Used in: metrics.go for performance statistics updates
+	// Impact: More frequent updates provide better monitoring but increase overhead.
+	// Default 5s provides comprehensive statistics without performance impact.
 	StatsUpdateInterval        time.Duration // 5s
+
+	// SupervisorTimeout defines timeout for supervisor process operations.
+	// Used in: supervisor.go for process monitoring and control
+	// Impact: Shorter timeouts improve responsiveness but may cause false timeouts.
+	// Default 10s provides adequate time for supervisor operations.
 	SupervisorTimeout          time.Duration // 10s
+
+	// InputSupervisorTimeout defines timeout for input supervisor operations.
+	// Used in: input_supervisor.go for input process monitoring
+	// Impact: Shorter timeouts improve input responsiveness but may cause false timeouts.
+	// Default 5s provides responsive input monitoring.
 	InputSupervisorTimeout     time.Duration // 5s
+
+	// ShortTimeout defines brief timeout for time-critical operations.
+	// Used in: Real-time audio processing for minimal timeout scenarios
+	// Impact: Very short timeouts ensure responsiveness but may cause premature failures.
+	// Default 5ms provides minimal timeout for critical operations.
 	ShortTimeout               time.Duration // 5ms
+
+	// MediumTimeout defines moderate timeout for standard operations.
+	// Used in: Standard audio processing operations
+	// Impact: Balances responsiveness with operation completion time.
+	// Default 50ms provides good balance for most audio operations.
 	MediumTimeout              time.Duration // 50ms
+
+	// BatchProcessingDelay defines delay between batch processing operations.
+	// Used in: batch_audio.go for controlling batch processing timing
+	// Impact: Shorter delays improve throughput but increase CPU usage.
+	// Default 10ms provides efficient batch processing timing.
 	BatchProcessingDelay       time.Duration // 10ms
+
+	// AdaptiveOptimizerStability defines stability period for adaptive optimization.
+	// Used in: adaptive_optimizer.go for optimization stability control
+	// Impact: Longer periods provide more stable optimization but slower adaptation.
+	// Default 10s provides good balance between stability and adaptability.
 	AdaptiveOptimizerStability time.Duration // 10s
+
+	// MaxLatencyTarget defines maximum acceptable latency target.
+	// Used in: latency_monitor.go for latency threshold monitoring
+	// Impact: Lower values enforce stricter latency requirements.
+	// Default 50ms provides good real-time audio latency target.
 	MaxLatencyTarget           time.Duration // 50ms
+
+	// LatencyMonitorTarget defines target latency for monitoring and optimization.
+	// Used in: latency_monitor.go for latency optimization goals
+	// Impact: Lower targets improve audio responsiveness but may increase system load.
+	// Default 50ms provides excellent real-time audio performance target.
 	LatencyMonitorTarget       time.Duration // 50ms
 
-	// Adaptive Buffer Configuration
+	// Adaptive Buffer Configuration - Thresholds for dynamic buffer adaptation
+	// Used in: adaptive_buffer.go for system load-based buffer sizing
+	// Impact: Controls when buffer sizes are adjusted based on system conditions
+
+	// LowCPUThreshold defines CPU usage threshold for buffer size reduction.
+	// Used in: adaptive_buffer.go for detecting low CPU load conditions
+	// Impact: Below this threshold, buffers may be reduced to minimize latency.
+	// Default 20% allows buffer optimization during low system load.
 	LowCPUThreshold     float64       // 20% CPU threshold
+
+	// HighCPUThreshold defines CPU usage threshold for buffer size increase.
+	// Used in: adaptive_buffer.go for detecting high CPU load conditions
+	// Impact: Above this threshold, buffers are increased to prevent underruns.
+	// Default 60% provides early detection of CPU pressure for buffer adjustment.
 	HighCPUThreshold    float64       // 60% CPU threshold
+
+	// LowMemoryThreshold defines memory usage threshold for buffer optimization.
+	// Used in: adaptive_buffer.go for memory-conscious buffer management
+	// Impact: Above this threshold, buffer sizes may be reduced to save memory.
+	// Default 50% provides early memory pressure detection.
 	LowMemoryThreshold  float64       // 50% memory threshold
+
+	// HighMemoryThreshold defines memory usage threshold for aggressive optimization.
+	// Used in: adaptive_buffer.go for high memory pressure scenarios
+	// Impact: Above this threshold, aggressive buffer reduction is applied.
+	// Default 75% triggers aggressive memory conservation measures.
 	HighMemoryThreshold float64       // 75% memory threshold
+
+	// TargetLatency defines target latency for adaptive buffer optimization.
+	// Used in: adaptive_buffer.go for latency-based buffer sizing
+	// Impact: Lower targets reduce buffer sizes, higher targets increase stability.
+	// Default 20ms provides excellent real-time performance target.
 	TargetLatency       time.Duration // 20ms target latency
 
-	// Adaptive Optimizer Configuration
+	// Adaptive Optimizer Configuration - Settings for performance optimization
+	// Used in: adaptive_optimizer.go for system performance optimization
+	// Impact: Controls optimization behavior and stability
+
+	// CooldownPeriod defines minimum time between optimization adjustments.
+	// Used in: adaptive_optimizer.go for preventing optimization oscillation
+	// Impact: Longer periods provide more stable optimization but slower adaptation.
+	// Default 30s prevents rapid optimization changes that could destabilize system.
 	CooldownPeriod    time.Duration // 30s cooldown period
+
+	// RollbackThreshold defines latency threshold for optimization rollback.
+	// Used in: adaptive_optimizer.go for detecting failed optimizations
+	// Impact: Lower thresholds trigger faster rollback but may be too sensitive.
+	// Default 300ms provides clear indication of optimization failure.
 	RollbackThreshold time.Duration // 300ms rollback threshold
+
+	// LatencyTarget defines target latency for optimization goals.
+	// Used in: adaptive_optimizer.go for optimization target setting
+	// Impact: Lower targets improve responsiveness but may increase system load.
+	// Default 50ms provides good balance between performance and stability.
 	LatencyTarget     time.Duration // 50ms latency target
 
-	// Latency Monitor Configuration
+	// Latency Monitor Configuration - Settings for latency monitoring and analysis
+	// Used in: latency_monitor.go for latency tracking and alerting
+	// Impact: Controls latency monitoring sensitivity and thresholds
+
+	// MaxLatencyThreshold defines maximum acceptable latency before alerts.
+	// Used in: latency_monitor.go for latency violation detection
+	// Impact: Lower values provide stricter latency enforcement.
+	// Default 200ms defines clear boundary for unacceptable latency.
 	MaxLatencyThreshold time.Duration // 200ms max latency
+
+	// JitterThreshold defines maximum acceptable latency variation.
+	// Used in: latency_monitor.go for jitter detection and monitoring
+	// Impact: Lower values detect smaller latency variations.
+	// Default 20ms provides good jitter detection for audio quality.
 	JitterThreshold     time.Duration // 20ms jitter threshold
 
-	// Microphone Contention Configuration
+	// Microphone Contention Configuration - Settings for microphone access management
+	// Used in: mic_contention.go for managing concurrent microphone access
+	// Impact: Controls microphone resource sharing and timeout behavior
+
+	// MicContentionTimeout defines timeout for microphone access contention.
+	// Used in: mic_contention.go for microphone access arbitration
+	// Impact: Shorter timeouts improve responsiveness but may cause access failures.
+	// Default 200ms provides reasonable wait time for microphone access.
 	MicContentionTimeout time.Duration // 200ms contention timeout
 
-	// Priority Scheduler Configuration
+	// Priority Scheduler Configuration - Settings for process priority management
+	// Used in: priority_scheduler.go for system priority control
+	// Impact: Controls valid range for process priority adjustments
+
+	// MinNiceValue defines minimum (highest priority) nice value.
+	// Used in: priority_scheduler.go for priority validation
+	// Impact: Lower values allow higher priority but may affect system stability.
+	// Default -20 provides maximum priority elevation capability.
 	MinNiceValue int // -20 minimum nice value
+
+	// MaxNiceValue defines maximum (lowest priority) nice value.
+	// Used in: priority_scheduler.go for priority validation
+	// Impact: Higher values allow lower priority for background tasks.
+	// Default 19 provides maximum priority reduction capability.
 	MaxNiceValue int // 19 maximum nice value
 
-	// Buffer Pool Configuration
+	// Buffer Pool Configuration - Settings for memory pool preallocation
+	// Used in: buffer_pool.go for memory pool management
+	// Impact: Controls memory preallocation strategy and efficiency
+
+	// PreallocPercentage defines percentage of buffers to preallocate.
+	// Used in: buffer_pool.go for initial memory pool sizing
+	// Impact: Higher values reduce allocation overhead but increase memory usage.
+	// Default 20% provides good balance between performance and memory efficiency.
 	PreallocPercentage      int // 20% preallocation percentage
+
+	// InputPreallocPercentage defines percentage of input buffers to preallocate.
+	// Used in: buffer_pool.go for input-specific memory pool sizing
+	// Impact: Higher values improve input performance but increase memory usage.
+	// Default 30% provides enhanced input performance with reasonable memory usage.
 	InputPreallocPercentage int // 30% input preallocation percentage
 
-	// Exponential Moving Average Configuration
+	// Exponential Moving Average Configuration - Settings for statistical smoothing
+	// Used in: metrics.go and various monitoring components
+	// Impact: Controls smoothing behavior for performance metrics
+
+	// HistoricalWeight defines weight given to historical data in EMA calculations.
+	// Used in: metrics.go for exponential moving average calculations
+	// Impact: Higher values provide more stable metrics but slower response to changes.
+	// Default 70% provides good stability while maintaining responsiveness.
 	HistoricalWeight float64 // 70% historical weight
+
+	// CurrentWeight defines weight given to current data in EMA calculations.
+	// Used in: metrics.go for exponential moving average calculations
+	// Impact: Higher values provide faster response but less stability.
+	// Default 30% complements historical weight for balanced EMA calculation.
 	CurrentWeight    float64 // 30% current weight
 
-	// Sleep and Backoff Configuration
+	// Sleep and Backoff Configuration - Settings for timing and retry behavior
+	// Used in: Various components for timing control and retry logic
+	// Impact: Controls system timing behavior and retry strategies
+
+	// CGOSleepMicroseconds defines sleep duration for CGO operations.
+	// Used in: cgo_audio.go for CGO operation timing
+	// Impact: Longer sleeps reduce CPU usage but may increase latency.
+	// Default 50000 microseconds (50ms) provides good balance for CGO operations.
 	CGOSleepMicroseconds int           // 50000 microseconds (50ms)
+
+	// BackoffStart defines initial backoff duration for retry operations.
+	// Used in: retry_manager.go for exponential backoff initialization
+	// Impact: Longer initial backoff reduces immediate retry pressure.
+	// Default 50ms provides reasonable initial retry delay.
 	BackoffStart         time.Duration // 50ms initial backoff
 
-	// Protocol Magic Numbers
-	InputMagicNumber  uint32 // 0x4A4B4D49 "JKMI" (JetKVM Microphone Input)
-	OutputMagicNumber uint32 // 0x4A4B4F55 "JKOU" (JetKVM Output)
+	// Protocol Magic Numbers - Unique identifiers for IPC message validation
+	// Used in: ipc.go, input_ipc.go for message protocol validation
+	// Impact: Must match expected values to ensure proper message routing
 
-	// Calculation Constants
-	PercentageMultiplier    float64 // 100.0 for percentage calculations
-	AveragingWeight         float64 // 0.7 for weighted averaging calculations
-	ScalingFactor           float64 // 1.5 for scaling calculations
-	SmoothingFactor         float64 // 0.3 for adaptive buffer smoothing
-	CPUMemoryWeight         float64 // 0.5 for CPU factor in combined calculations
-	MemoryWeight            float64 // 0.3 for memory factor in combined calculations
-	LatencyWeight           float64 // 0.2 for latency factor in combined calculations
-	PoolGrowthMultiplier    int     // 2x growth multiplier for pool sizes
-	LatencyScalingFactor    float64 // 2.0 for latency ratio scaling
-	OptimizerAggressiveness float64 // 0.7 for optimizer aggressiveness
+	// InputMagicNumber defines magic number for input IPC messages.
+	// Used in: input_ipc.go for input message validation
+	// Impact: Must match expected value to prevent input protocol errors.
+	// Default 0x4A4B4D49 "JKMI" (JetKVM Microphone Input) provides distinctive input identifier.
+	InputMagicNumber  uint32
 
-	// CGO Audio Processing Constants
-	CGOUsleepMicroseconds   int     // 1000 microseconds (1ms) for CGO usleep calls
-	CGOPCMBufferSize        int     // 1920 samples for PCM buffer (max 2ch*960)
-	CGONanosecondsPerSecond float64 // 1000000000.0 for nanosecond conversions
+	// OutputMagicNumber defines magic number for output IPC messages.
+	// Used in: ipc.go for output message validation
+	// Impact: Must match expected value to prevent output protocol errors.
+	// Default 0x4A4B4F55 "JKOU" (JetKVM Output) provides distinctive output identifier.
+	OutputMagicNumber uint32
 
-	// Frontend Constants
-	FrontendOperationDebounceMS int // 1000ms debounce for frontend operations
-	FrontendSyncDebounceMS      int // 1000ms debounce for sync operations
-	FrontendSampleRate          int // 48000Hz sample rate for frontend audio
-	FrontendRetryDelayMS        int // 500ms retry delay
-	FrontendShortDelayMS        int // 200ms short delay
-	FrontendLongDelayMS         int // 300ms long delay
-	FrontendSyncDelayMS         int // 500ms sync delay
-	FrontendMaxRetryAttempts    int // 3 maximum retry attempts
-	FrontendAudioLevelUpdateMS  int // 100ms audio level update interval
-	FrontendFFTSize             int // 256 FFT size for audio analysis
-	FrontendAudioLevelMax       int // 100 maximum audio level
-	FrontendReconnectIntervalMS int // 3000ms reconnect interval
-	FrontendSubscriptionDelayMS int // 100ms subscription delay
-	FrontendDebugIntervalMS     int // 5000ms debug interval
+	// Calculation Constants - Mathematical constants for audio processing calculations
+	// Used in: Various components for mathematical operations and scaling
+	// Impact: Controls precision and behavior of audio processing algorithms
 
-	// Process Monitor Constants
-	ProcessMonitorDefaultMemoryGB int     // 4GB default memory for fallback
-	ProcessMonitorKBToBytes       int     // 1024 conversion factor
-	ProcessMonitorDefaultClockHz  float64 // 250.0 Hz default for ARM systems
-	ProcessMonitorFallbackClockHz float64 // 1000.0 Hz fallback clock
-	ProcessMonitorTraditionalHz   float64 // 100.0 Hz traditional clock
+	// PercentageMultiplier defines multiplier for percentage calculations.
+	// Used in: metrics.go, process_monitor.go for percentage conversions
+	// Impact: Must be 100.0 for accurate percentage calculations.
+	// Default 100.0 provides standard percentage calculation base.
+	PercentageMultiplier    float64
 
-	// Batch Processing Constants
-	BatchProcessorFramesPerBatch int           // 4 frames per batch
-	BatchProcessorTimeout        time.Duration // 5ms timeout
+	// AveragingWeight defines weight for weighted averaging calculations.
+	// Used in: metrics.go for exponential moving averages
+	// Impact: Higher values emphasize historical data more heavily.
+	// Default 0.7 provides good balance between stability and responsiveness.
+	AveragingWeight         float64
 
-	// Output Streaming Constants
-	OutputStreamingFrameIntervalMS int // 20ms frame interval (50 FPS)
+	// ScalingFactor defines general scaling factor for calculations.
+	// Used in: adaptive_buffer.go for buffer size scaling
+	// Impact: Higher values increase scaling aggressiveness.
+	// Default 1.5 provides moderate scaling for buffer adjustments.
+	ScalingFactor           float64
 
-	// IPC Constants
-	IPCInitialBufferFrames int // 500 frames for initial buffer
+	// SmoothingFactor defines smoothing factor for adaptive buffer calculations.
+	// Used in: adaptive_buffer.go for buffer size smoothing
+	// Impact: Higher values provide more aggressive smoothing.
+	// Default 0.3 provides good smoothing without excessive dampening.
+	SmoothingFactor         float64
 
-	// Event Constants
-	EventTimeoutSeconds      int    // 2 seconds for event timeout
-	EventTimeFormatString    string // "2006-01-02T15:04:05.000Z" time format
-	EventSubscriptionDelayMS int    // 100ms subscription delay
+	// CPUMemoryWeight defines weight for CPU factor in combined calculations.
+	// Used in: adaptive_optimizer.go for balancing CPU vs memory considerations
+	// Impact: Higher values prioritize CPU optimization over memory optimization.
+	// Default 0.5 provides equal weighting between CPU and memory factors.
+	CPUMemoryWeight         float64
 
-	// Input Processing Constants
-	InputProcessingTimeoutMS int // 10ms processing timeout threshold
+	// MemoryWeight defines weight for memory factor in combined calculations.
+	// Used in: adaptive_optimizer.go for memory impact weighting
+	// Impact: Higher values make memory usage more influential in decisions.
+	// Default 0.3 provides moderate memory consideration in optimization.
+	MemoryWeight            float64
 
-	// Adaptive Buffer Constants
-	AdaptiveBufferCPUMultiplier    int // 100 multiplier for CPU percentage
-	AdaptiveBufferMemoryMultiplier int // 100 multiplier for memory percentage
+	// LatencyWeight defines weight for latency factor in combined calculations.
+	// Used in: adaptive_optimizer.go for latency impact weighting
+	// Impact: Higher values prioritize latency optimization over resource usage.
+	// Default 0.2 provides latency consideration while prioritizing resources.
+	LatencyWeight           float64
+
+	// PoolGrowthMultiplier defines multiplier for pool size growth.
+	// Used in: buffer_pool.go for pool expansion calculations
+	// Impact: Higher values cause more aggressive pool growth.
+	// Default 2 provides standard doubling growth pattern.
+	PoolGrowthMultiplier    int
+
+	// LatencyScalingFactor defines scaling factor for latency ratio calculations.
+	// Used in: latency_monitor.go for latency scaling operations
+	// Impact: Higher values amplify latency differences in calculations.
+	// Default 2.0 provides moderate latency scaling for monitoring.
+	LatencyScalingFactor    float64
+
+	// OptimizerAggressiveness defines aggressiveness level for optimization algorithms.
+	// Used in: adaptive_optimizer.go for optimization behavior control
+	// Impact: Higher values cause more aggressive optimization changes.
+	// Default 0.7 provides assertive optimization while maintaining stability.
+	OptimizerAggressiveness float64
+
+	// CGO Audio Processing Constants - Low-level CGO audio processing configuration
+	// Used in: cgo_audio.go for native audio processing operations
+	// Impact: Controls CGO audio processing timing and buffer management
+
+	// CGOUsleepMicroseconds defines sleep duration for CGO usleep calls.
+	// Used in: cgo_audio.go for CGO operation timing control
+	// Impact: Controls timing precision in native audio processing.
+	// Default 1000 microseconds (1ms) provides good balance for CGO timing.
+	CGOUsleepMicroseconds   int
+
+	// CGOPCMBufferSize defines PCM buffer size for CGO audio processing.
+	// Used in: cgo_audio.go for native PCM buffer allocation
+	// Impact: Must accommodate maximum expected PCM frame size.
+	// Default 1920 samples handles maximum 2-channel 960-sample frames.
+	CGOPCMBufferSize        int
+
+	// CGONanosecondsPerSecond defines nanoseconds per second for time conversions.
+	// Used in: cgo_audio.go for time unit conversions in native code
+	// Impact: Must be accurate for precise timing calculations.
+	// Default 1000000000.0 provides standard nanosecond conversion factor.
+	CGONanosecondsPerSecond float64
+
+	// Frontend Constants - Configuration for frontend audio interface
+	// Used in: Frontend components for user interface audio controls
+	// Impact: Controls frontend audio behavior, timing, and user experience
+
+	// FrontendOperationDebounceMS defines debounce time for frontend operations.
+	// Used in: Frontend components for preventing rapid operation triggers
+	// Impact: Longer values reduce operation frequency but may feel less responsive.
+	// Default 1000ms prevents accidental rapid operations while maintaining usability.
+	FrontendOperationDebounceMS int
+
+	// FrontendSyncDebounceMS defines debounce time for sync operations.
+	// Used in: Frontend components for sync operation rate limiting
+	// Impact: Controls frequency of sync operations to prevent overload.
+	// Default 1000ms provides reasonable sync operation spacing.
+	FrontendSyncDebounceMS      int
+
+	// FrontendSampleRate defines sample rate for frontend audio processing.
+	// Used in: Frontend audio components for audio parameter configuration
+	// Impact: Must match backend sample rate for proper audio processing.
+	// Default 48000Hz provides high-quality audio for frontend display.
+	FrontendSampleRate          int
+
+	// FrontendRetryDelayMS defines delay between frontend retry attempts.
+	// Used in: Frontend components for retry operation timing
+	// Impact: Longer delays reduce server load but slow error recovery.
+	// Default 500ms provides reasonable retry timing for frontend operations.
+	FrontendRetryDelayMS        int
+
+	// FrontendShortDelayMS defines short delay for frontend operations.
+	// Used in: Frontend components for brief operation delays
+	// Impact: Controls timing for quick frontend operations.
+	// Default 200ms provides brief delay for responsive operations.
+	FrontendShortDelayMS        int
+
+	// FrontendLongDelayMS defines long delay for frontend operations.
+	// Used in: Frontend components for extended operation delays
+	// Impact: Controls timing for slower frontend operations.
+	// Default 300ms provides extended delay for complex operations.
+	FrontendLongDelayMS         int
+
+	// FrontendSyncDelayMS defines delay for frontend sync operations.
+	// Used in: Frontend components for sync operation timing
+	// Impact: Controls frequency of frontend synchronization.
+	// Default 500ms provides good balance for sync operations.
+	FrontendSyncDelayMS         int
+
+	// FrontendMaxRetryAttempts defines maximum retry attempts for frontend operations.
+	// Used in: Frontend components for retry limit enforcement
+	// Impact: More attempts improve success rate but may delay error reporting.
+	// Default 3 attempts provides good balance between persistence and responsiveness.
+	FrontendMaxRetryAttempts    int
+
+	// FrontendAudioLevelUpdateMS defines audio level update interval.
+	// Used in: Frontend components for audio level meter updates
+	// Impact: Shorter intervals provide smoother meters but increase CPU usage.
+	// Default 100ms provides smooth audio level visualization.
+	FrontendAudioLevelUpdateMS  int
+
+	// FrontendFFTSize defines FFT size for frontend audio analysis.
+	// Used in: Frontend components for audio spectrum analysis
+	// Impact: Larger sizes provide better frequency resolution but increase CPU usage.
+	// Default 256 provides good balance for audio visualization.
+	FrontendFFTSize             int
+
+	// FrontendAudioLevelMax defines maximum audio level value.
+	// Used in: Frontend components for audio level scaling
+	// Impact: Controls maximum value for audio level displays.
+	// Default 100 provides standard percentage-based audio level scale.
+	FrontendAudioLevelMax       int
+
+	// FrontendReconnectIntervalMS defines interval between reconnection attempts.
+	// Used in: Frontend components for connection retry timing
+	// Impact: Shorter intervals retry faster but may overload server.
+	// Default 3000ms provides reasonable reconnection timing.
+	FrontendReconnectIntervalMS int
+
+	// FrontendSubscriptionDelayMS defines delay for subscription operations.
+	// Used in: Frontend components for subscription timing
+	// Impact: Controls timing for frontend event subscriptions.
+	// Default 100ms provides quick subscription establishment.
+	FrontendSubscriptionDelayMS int
+
+	// FrontendDebugIntervalMS defines interval for frontend debug output.
+	// Used in: Frontend components for debug information timing
+	// Impact: Shorter intervals provide more debug info but increase overhead.
+	// Default 5000ms provides periodic debug information without excessive output.
+	FrontendDebugIntervalMS     int
+
+	// Process Monitor Constants - System resource monitoring configuration
+	// Used in: process_monitor.go for system resource tracking
+	// Impact: Controls process monitoring behavior and system compatibility
+
+	// ProcessMonitorDefaultMemoryGB defines default memory size for fallback calculations.
+	// Used in: process_monitor.go when system memory cannot be detected
+	// Impact: Should approximate actual system memory for accurate calculations.
+	// Default 4GB provides reasonable fallback for typical embedded systems.
+	ProcessMonitorDefaultMemoryGB int
+
+	// ProcessMonitorKBToBytes defines conversion factor from kilobytes to bytes.
+	// Used in: process_monitor.go for memory unit conversions
+	// Impact: Must be 1024 for accurate binary unit conversions.
+	// Default 1024 provides standard binary conversion factor.
+	ProcessMonitorKBToBytes       int
+
+	// ProcessMonitorDefaultClockHz defines default system clock frequency.
+	// Used in: process_monitor.go for CPU time calculations on ARM systems
+	// Impact: Should match actual system clock for accurate CPU measurements.
+	// Default 250.0 Hz matches typical ARM embedded system configuration.
+	ProcessMonitorDefaultClockHz  float64
+
+	// ProcessMonitorFallbackClockHz defines fallback clock frequency.
+	// Used in: process_monitor.go when system clock cannot be detected
+	// Impact: Provides fallback for CPU time calculations.
+	// Default 1000.0 Hz provides reasonable fallback clock frequency.
+	ProcessMonitorFallbackClockHz float64
+
+	// ProcessMonitorTraditionalHz defines traditional system clock frequency.
+	// Used in: process_monitor.go for legacy system compatibility
+	// Impact: Supports older systems with traditional clock frequencies.
+	// Default 100.0 Hz provides compatibility with traditional Unix systems.
+	ProcessMonitorTraditionalHz   float64
+
+	// Batch Processing Constants - Configuration for audio batch processing
+	// Used in: batch_audio.go for batch audio operation control
+	// Impact: Controls batch processing efficiency and latency
+
+	// BatchProcessorFramesPerBatch defines number of frames processed per batch.
+	// Used in: batch_audio.go for batch size control
+	// Impact: Larger batches improve efficiency but increase latency.
+	// Default 4 frames provides good balance between efficiency and latency.
+	BatchProcessorFramesPerBatch int
+
+	// BatchProcessorTimeout defines timeout for batch processing operations.
+	// Used in: batch_audio.go for batch operation timeout control
+	// Impact: Shorter timeouts improve responsiveness but may cause timeouts.
+	// Default 5ms provides quick batch processing with reasonable timeout.
+	BatchProcessorTimeout        time.Duration
+
+	// Output Streaming Constants - Configuration for audio output streaming
+	// Used in: output_streaming.go for output stream timing control
+	// Impact: Controls output streaming frame rate and timing
+
+	// OutputStreamingFrameIntervalMS defines interval between output frames.
+	// Used in: output_streaming.go for output frame timing
+	// Impact: Shorter intervals provide smoother output but increase CPU usage.
+	// Default 20ms provides 50 FPS output rate for smooth audio streaming.
+	OutputStreamingFrameIntervalMS int
+
+	// IPC Constants - Inter-Process Communication configuration
+	// Used in: ipc.go for IPC buffer management
+	// Impact: Controls IPC buffer sizing and performance
+
+	// IPCInitialBufferFrames defines initial buffer size for IPC operations.
+	// Used in: ipc.go for initial IPC buffer allocation
+	// Impact: Larger buffers reduce allocation overhead but increase memory usage.
+	// Default 500 frames provides good initial buffer size for IPC operations.
+	IPCInitialBufferFrames int
+
+	// Event Constants - Configuration for event handling and timing
+	// Used in: Event handling components for event processing control
+	// Impact: Controls event processing timing and format
+
+	// EventTimeoutSeconds defines timeout for event processing operations.
+	// Used in: Event handling components for event timeout control
+	// Impact: Shorter timeouts improve responsiveness but may cause event loss.
+	// Default 2 seconds provides reasonable event processing timeout.
+	EventTimeoutSeconds      int
+
+	// EventTimeFormatString defines time format string for event timestamps.
+	// Used in: Event handling components for timestamp formatting
+	// Impact: Must match expected format for proper event processing.
+	// Default "2006-01-02T15:04:05.000Z" provides ISO 8601 format with milliseconds.
+	EventTimeFormatString    string
+
+	// EventSubscriptionDelayMS defines delay for event subscription operations.
+	// Used in: Event handling components for subscription timing
+	// Impact: Controls timing for event subscription establishment.
+	// Default 100ms provides quick event subscription setup.
+	EventSubscriptionDelayMS int
+
+	// Input Processing Constants - Configuration for audio input processing
+	// Used in: Input processing components for input timing control
+	// Impact: Controls input processing timing and thresholds
+
+	// InputProcessingTimeoutMS defines timeout for input processing operations.
+	// Used in: Input processing components for processing timeout control
+	// Impact: Shorter timeouts improve responsiveness but may cause processing failures.
+	// Default 10ms provides quick input processing with minimal timeout.
+	InputProcessingTimeoutMS int
+
+	// Adaptive Buffer Constants - Configuration for adaptive buffer calculations
+	// Used in: adaptive_buffer.go for buffer adaptation calculations
+	// Impact: Controls adaptive buffer scaling and calculations
+
+	// AdaptiveBufferCPUMultiplier defines multiplier for CPU percentage calculations.
+	// Used in: adaptive_buffer.go for CPU-based buffer adaptation
+	// Impact: Controls scaling factor for CPU influence on buffer sizing.
+	// Default 100 provides standard percentage scaling for CPU calculations.
+	AdaptiveBufferCPUMultiplier    int
+
+	// AdaptiveBufferMemoryMultiplier defines multiplier for memory percentage calculations.
+	// Used in: adaptive_buffer.go for memory-based buffer adaptation
+	// Impact: Controls scaling factor for memory influence on buffer sizing.
+	// Default 100 provides standard percentage scaling for memory calculations.
+	AdaptiveBufferMemoryMultiplier int
 }
 
 // DefaultAudioConfig returns the default configuration constants
@@ -887,282 +1377,588 @@ type AudioConfigConstants struct {
 // real-time audio requirements, and extensive testing for optimal performance.
 func DefaultAudioConfig() *AudioConfigConstants {
 	return &AudioConfigConstants{
-		// Audio Quality Presets
-		// Rationale: 4096 bytes accommodates largest expected audio frames with safety margin
-		// for high-quality audio while preventing buffer overruns on embedded systems
+		// Audio Quality Presets - Core audio frame and packet size configuration
+		// Used in: Throughout audio pipeline for buffer allocation and frame processing
+		// Impact: Controls memory usage and prevents buffer overruns
+
+		// MaxAudioFrameSize defines maximum size for audio frames.
+		// Used in: Buffer allocation throughout audio pipeline
+		// Impact: Prevents buffer overruns while accommodating high-quality audio.
+		// Default 4096 bytes provides safety margin for largest expected frames.
 		MaxAudioFrameSize: 4096,
 
-		// Opus Encoding Parameters
-		// Rationale: 128kbps provides excellent quality for KVM audio while maintaining
-		// reasonable bandwidth usage over network connections
+		// Opus Encoding Parameters - Configuration for Opus audio codec
+		// Used in: Audio encoding/decoding pipeline for quality control
+		// Impact: Controls audio quality, bandwidth usage, and encoding performance
+
+		// OpusBitrate defines target bitrate for Opus encoding.
+		// Used in: Opus encoder initialization and quality control
+		// Impact: Higher bitrates improve quality but increase bandwidth usage.
+		// Default 128kbps provides excellent quality with reasonable bandwidth.
 		OpusBitrate: 128000,
-		// Rationale: Maximum complexity (10) ensures best quality encoding, acceptable
-		// on modern ARM processors with sufficient CPU headroom
+
+		// OpusComplexity defines computational complexity for Opus encoding.
+		// Used in: Opus encoder for quality vs CPU usage balance
+		// Impact: Higher complexity improves quality but increases CPU usage.
+		// Default 10 (maximum) ensures best quality on modern ARM processors.
 		OpusComplexity: 10,
-		// Rationale: VBR enabled (1) optimizes bitrate based on audio content complexity,
-		// reducing bandwidth for simple audio while maintaining quality for complex audio
+
+		// OpusVBR enables variable bitrate encoding.
+		// Used in: Opus encoder for adaptive bitrate control
+		// Impact: Optimizes bandwidth based on audio content complexity.
+		// Default 1 (enabled) reduces bandwidth for simple audio content.
 		OpusVBR: 1,
-		// Rationale: Unconstrained VBR (0) allows maximum bitrate flexibility for
-		// optimal quality-bandwidth balance in varying network conditions
+
+		// OpusVBRConstraint controls VBR constraint mode.
+		// Used in: Opus encoder for bitrate variation control
+		// Impact: 0=unconstrained allows maximum flexibility for quality.
+		// Default 0 provides optimal quality-bandwidth balance.
 		OpusVBRConstraint: 0,
-		// Rationale: DTX disabled (0) ensures consistent audio stream for KVM applications
-		// where silence detection might interfere with system audio monitoring
+
+		// OpusDTX controls discontinuous transmission.
+		// Used in: Opus encoder for silence detection and transmission
+		// Impact: Can interfere with system audio monitoring in KVM applications.
+		// Default 0 (disabled) ensures consistent audio stream.
 		OpusDTX: 0,
 
-		// Audio Parameters
-		// Rationale: 48kHz sample rate is professional audio standard, provides full
-		// frequency range (up to 24kHz) for accurate system audio reproduction
+		// Audio Parameters - Core audio format configuration
+		// Used in: Audio processing pipeline for format consistency
+		// Impact: Controls audio quality, compatibility, and processing requirements
+
+		// SampleRate defines audio sampling frequency.
+		// Used in: Audio capture, processing, and playback throughout pipeline
+		// Impact: Higher rates improve quality but increase processing and bandwidth.
+		// Default 48kHz provides professional audio quality with full frequency range.
 		SampleRate: 48000,
-		// Rationale: Stereo (2 channels) captures full system audio including spatial
-		// information and stereo effects common in modern operating systems
+
+		// Channels defines number of audio channels.
+		// Used in: Audio processing pipeline for channel handling
+		// Impact: Stereo preserves spatial information but doubles bandwidth.
+		// Default 2 (stereo) captures full system audio including spatial effects.
 		Channels: 2,
-		// Rationale: 960 samples = 20ms frames at 48kHz, optimal balance between
-		// latency (low enough for real-time) and efficiency (reduces packet overhead)
+
+		// FrameSize defines number of samples per audio frame.
+		// Used in: Audio processing for frame-based operations
+		// Impact: Larger frames improve efficiency but increase latency.
+		// Default 960 samples (20ms at 48kHz) balances latency and efficiency.
 		FrameSize: 960,
-		// Rationale: 4000 bytes accommodates compressed Opus frames with overhead,
-		// prevents packet fragmentation while allowing for quality variations
+
+		// MaxPacketSize defines maximum size for audio packets.
+		// Used in: Network transmission and buffer allocation
+		// Impact: Must accommodate compressed frames with overhead.
+		// Default 4000 bytes prevents fragmentation while allowing quality variations.
 		MaxPacketSize: 4000,
 
-		// Audio Quality Bitrates (kbps)
-		// Rationale: Low quality optimized for bandwidth-constrained connections,
-		// output higher than input as system audio typically more complex than microphone
+		// Audio Quality Bitrates - Preset bitrates for different quality levels
+		// Used in: Audio quality management and adaptive bitrate control
+		// Impact: Controls bandwidth usage and audio quality for different scenarios
+
+		// AudioQualityLowOutputBitrate defines bitrate for low-quality output audio.
+		// Used in: Bandwidth-constrained connections and basic audio monitoring
+		// Impact: Minimizes bandwidth while maintaining acceptable quality.
+		// Default 32kbps optimized for constrained connections, higher than input.
 		AudioQualityLowOutputBitrate: 32,
+
+		// AudioQualityLowInputBitrate defines bitrate for low-quality input audio.
+		// Used in: Microphone input in bandwidth-constrained scenarios
+		// Impact: Reduces bandwidth for microphone audio which is typically simpler.
+		// Default 16kbps sufficient for basic voice input.
 		AudioQualityLowInputBitrate:  16,
-		// Rationale: Medium quality balances bandwidth and quality for typical usage,
-		// suitable for most KVM scenarios with reasonable network connections
+
+		// AudioQualityMediumOutputBitrate defines bitrate for medium-quality output.
+		// Used in: Typical KVM scenarios with reasonable network connections
+		// Impact: Balances bandwidth and quality for most use cases.
+		// Default 64kbps provides good quality for standard usage.
 		AudioQualityMediumOutputBitrate: 64,
+
+		// AudioQualityMediumInputBitrate defines bitrate for medium-quality input.
+		// Used in: Standard microphone input scenarios
+		// Impact: Provides good voice quality without excessive bandwidth.
+		// Default 32kbps suitable for clear voice communication.
 		AudioQualityMediumInputBitrate:  32,
-		// Rationale: High quality for excellent audio fidelity, matches default Opus
-		// bitrate for professional applications requiring clear audio reproduction
+
+		// AudioQualityHighOutputBitrate defines bitrate for high-quality output.
+		// Used in: Professional applications requiring excellent audio fidelity
+		// Impact: Provides excellent quality but increases bandwidth usage.
+		// Default 128kbps matches professional Opus encoding standards.
 		AudioQualityHighOutputBitrate: 128,
+
+		// AudioQualityHighInputBitrate defines bitrate for high-quality input.
+		// Used in: High-quality microphone input for professional use
+		// Impact: Ensures clear voice reproduction for professional scenarios.
+		// Default 64kbps provides excellent voice quality.
 		AudioQualityHighInputBitrate:  64,
-		// Rationale: Ultra quality for audiophile-grade reproduction, suitable for
-		// high-bandwidth connections where audio quality is paramount
+
+		// AudioQualityUltraOutputBitrate defines bitrate for ultra-quality output.
+		// Used in: Audiophile-grade reproduction and high-bandwidth connections
+		// Impact: Maximum quality but requires significant bandwidth.
+		// Default 192kbps suitable for high-bandwidth, quality-critical scenarios.
 		AudioQualityUltraOutputBitrate: 192,
+
+		// AudioQualityUltraInputBitrate defines bitrate for ultra-quality input.
+		// Used in: Professional microphone input requiring maximum quality
+		// Impact: Provides audiophile-grade voice quality with high bandwidth.
+		// Default 96kbps ensures maximum voice reproduction quality.
 		AudioQualityUltraInputBitrate:  96,
 
-		// Audio Quality Sample Rates (Hz)
-		// Rationale: 22.05kHz captures frequencies up to 11kHz, sufficient for speech
-		// and basic audio while minimizing processing load on constrained connections
+		// Audio Quality Sample Rates - Sampling frequencies for different quality levels
+		// Used in: Audio capture, processing, and format negotiation
+		// Impact: Controls audio frequency range and processing requirements
+
+		// AudioQualityLowSampleRate defines sampling frequency for low-quality audio.
+		// Used in: Bandwidth-constrained scenarios and basic audio requirements
+		// Impact: Captures frequencies up to 11kHz while minimizing processing load.
+		// Default 22.05kHz sufficient for speech and basic audio.
 		AudioQualityLowSampleRate: 22050,
-		// Rationale: 44.1kHz CD-quality standard, captures full audible range up to
-		// 22kHz, excellent balance of quality and processing requirements
+
+		// AudioQualityMediumSampleRate defines sampling frequency for medium-quality audio.
+		// Used in: Standard audio scenarios requiring CD-quality reproduction
+		// Impact: Captures full audible range up to 22kHz with balanced processing.
+		// Default 44.1kHz provides CD-quality standard with excellent balance.
 		AudioQualityMediumSampleRate: 44100,
-		// Rationale: 16kHz optimized for voice/microphone input, captures speech
-		// frequencies (300-8000Hz) efficiently while reducing bandwidth
+
+		// AudioQualityMicLowSampleRate defines sampling frequency for low-quality microphone.
+		// Used in: Voice/microphone input in bandwidth-constrained scenarios
+		// Impact: Captures speech frequencies efficiently while reducing bandwidth.
+		// Default 16kHz optimized for speech frequencies (300-8000Hz).
 		AudioQualityMicLowSampleRate: 16000,
 
-		// Audio Quality Frame Sizes
-		// Rationale: 40ms frames reduce processing overhead for low-quality mode,
-		// acceptable latency increase for bandwidth-constrained scenarios
+		// Audio Quality Frame Sizes - Frame durations for different quality levels
+		// Used in: Audio processing pipeline for latency and efficiency control
+		// Impact: Controls latency vs processing efficiency trade-offs
+
+		// AudioQualityLowFrameSize defines frame duration for low-quality audio.
+		// Used in: Bandwidth-constrained scenarios prioritizing efficiency
+		// Impact: Reduces processing overhead with acceptable latency increase.
+		// Default 40ms provides efficiency for constrained scenarios.
 		AudioQualityLowFrameSize: 40 * time.Millisecond,
-		// Rationale: 20ms frames provide good balance of latency and efficiency,
-		// standard for real-time audio applications
+
+		// AudioQualityMediumFrameSize defines frame duration for medium-quality audio.
+		// Used in: Standard real-time audio applications
+		// Impact: Provides good balance of latency and processing efficiency.
+		// Default 20ms standard for real-time audio applications.
 		AudioQualityMediumFrameSize: 20 * time.Millisecond,
+
+		// AudioQualityHighFrameSize defines frame duration for high-quality audio.
+		// Used in: High-quality audio scenarios with balanced requirements
+		// Impact: Maintains good latency while ensuring quality processing.
+		// Default 20ms provides optimal balance for high-quality scenarios.
 		AudioQualityHighFrameSize:   20 * time.Millisecond,
-		// Rationale: 10ms frames minimize latency for ultra-responsive audio,
-		// suitable for applications requiring immediate audio feedback
+
+		// AudioQualityUltraFrameSize defines frame duration for ultra-quality audio.
+		// Used in: Applications requiring immediate audio feedback
+		// Impact: Minimizes latency for ultra-responsive audio processing.
+		// Default 10ms ensures minimal latency for immediate feedback.
 		AudioQualityUltraFrameSize: 10 * time.Millisecond,
 
-		// Audio Quality Channels
-		// Rationale: Mono (1 channel) reduces bandwidth by 50% for low-quality mode,
-		// acceptable for basic audio monitoring where stereo separation not critical
+		// Audio Quality Channels - Channel configuration for different quality levels
+		// Used in: Audio processing pipeline for channel handling and bandwidth control
+		// Impact: Controls spatial audio information and bandwidth requirements
+
+		// AudioQualityLowChannels defines channel count for low-quality audio.
+		// Used in: Basic audio monitoring in bandwidth-constrained scenarios
+		// Impact: Reduces bandwidth by 50% with acceptable quality trade-off.
+		// Default 1 (mono) suitable where stereo separation not critical.
 		AudioQualityLowChannels: 1,
-		// Rationale: Stereo (2 channels) preserves spatial audio information for
-		// medium/high/ultra quality modes, essential for modern system audio
+
+		// AudioQualityMediumChannels defines channel count for medium-quality audio.
+		// Used in: Standard audio scenarios requiring spatial information
+		// Impact: Preserves spatial audio information essential for modern systems.
+		// Default 2 (stereo) maintains spatial audio for medium quality.
 		AudioQualityMediumChannels: 2,
+
+		// AudioQualityHighChannels defines channel count for high-quality audio.
+		// Used in: High-quality audio scenarios requiring full spatial reproduction
+		// Impact: Ensures complete spatial audio information for quality scenarios.
+		// Default 2 (stereo) preserves spatial information for high quality.
 		AudioQualityHighChannels:   2,
+
+		// AudioQualityUltraChannels defines channel count for ultra-quality audio.
+		// Used in: Ultra-quality scenarios requiring maximum spatial fidelity
+		// Impact: Provides complete spatial audio reproduction for audiophile use.
+		// Default 2 (stereo) ensures maximum spatial fidelity for ultra quality.
 		AudioQualityUltraChannels:  2,
 
-		// CGO Audio Constants
-		// Rationale: 96kbps provides good quality for CGO layer while being more
-		// conservative than main Opus bitrate, suitable for embedded processing
+		// CGO Audio Constants - Configuration for C interop audio processing
+		// Used in: CGO audio operations and C library compatibility
+		// Impact: Controls quality, performance, and compatibility for C-side processing
+
+		// CGOOpusBitrate defines bitrate for CGO Opus operations.
+		// Used in: CGO audio encoding with embedded processing constraints
+		// Impact: Conservative bitrate reduces processing load while maintaining quality.
+		// Default 96kbps provides good quality suitable for embedded processing.
 		CGOOpusBitrate: 96000,
-		// Rationale: Lower complexity (3) reduces CPU load in CGO layer while
-		// maintaining acceptable quality for real-time processing
+
+		// CGOOpusComplexity defines complexity for CGO Opus operations.
+		// Used in: CGO audio encoding for CPU load management
+		// Impact: Lower complexity reduces CPU load while maintaining acceptable quality.
+		// Default 3 balances quality and real-time processing requirements.
 		CGOOpusComplexity: 3,
-		// Rationale: VBR enabled (1) allows bitrate adaptation based on content
-		// complexity, optimizing bandwidth usage in CGO processing
+
+		// CGOOpusVBR enables variable bitrate for CGO operations.
+		// Used in: CGO audio encoding for adaptive bandwidth optimization
+		// Impact: Allows bitrate adaptation based on content complexity.
+		// Default 1 (enabled) optimizes bandwidth usage in CGO processing.
 		CGOOpusVBR: 1,
-		// Rationale: Constrained VBR (1) limits bitrate variations for more
-		// predictable processing load in embedded environment
+
+		// CGOOpusVBRConstraint controls VBR constraint for CGO operations.
+		// Used in: CGO audio encoding for predictable processing load
+		// Impact: Limits bitrate variations for more predictable embedded performance.
+		// Default 1 (constrained) ensures predictable processing in embedded environment.
 		CGOOpusVBRConstraint: 1,
-		// Rationale: OPUS_SIGNAL_MUSIC (3) optimizes encoding for general audio
-		// content including system sounds, music, and mixed audio
+
+		// CGOOpusSignalType defines signal type for CGO Opus operations.
+		// Used in: CGO audio encoding for content-optimized processing
+		// Impact: Optimizes encoding for general audio content types.
+		// Default 3 (OPUS_SIGNAL_MUSIC) handles system sounds, music, and mixed audio.
 		CGOOpusSignalType: 3, // OPUS_SIGNAL_MUSIC
-		// Rationale: OPUS_BANDWIDTH_FULLBAND (1105) enables full 20kHz bandwidth
-		// for complete audio spectrum reproduction
+
+		// CGOOpusBandwidth defines bandwidth for CGO Opus operations.
+		// Used in: CGO audio encoding for frequency range control
+		// Impact: Enables full audio spectrum reproduction up to 20kHz.
+		// Default 1105 (OPUS_BANDWIDTH_FULLBAND) provides complete spectrum coverage.
 		CGOOpusBandwidth: 1105, // OPUS_BANDWIDTH_FULLBAND
-		// Rationale: DTX disabled (0) ensures consistent audio stream without
-		// silence detection that could interfere with system audio monitoring
+
+		// CGOOpusDTX controls discontinuous transmission for CGO operations.
+		// Used in: CGO audio encoding for silence detection control
+		// Impact: Prevents silence detection interference with system audio monitoring.
+		// Default 0 (disabled) ensures consistent audio stream.
 		CGOOpusDTX: 0,
-		// Rationale: 48kHz sample rate matches main audio parameters for
-		// consistency and professional audio quality
+
+		// CGOSampleRate defines sample rate for CGO audio operations.
+		// Used in: CGO audio processing for format consistency
+		// Impact: Matches main audio parameters for pipeline consistency.
+		// Default 48kHz provides professional audio quality and consistency.
 		CGOSampleRate: 48000,
-		// Rationale: Stereo (2 channels) maintains spatial audio information
-		// throughout the CGO processing pipeline
+
+		// CGOChannels defines channel count for CGO audio operations.
+		// Used in: CGO audio processing for spatial audio handling
+		// Impact: Maintains spatial audio information throughout CGO pipeline.
+		// Default 2 (stereo) preserves spatial information in CGO processing.
 		CGOChannels: 2,
-		// Rationale: 960 samples (20ms at 48kHz) matches main frame size for
-		// consistent timing and efficient processing
+
+		// CGOFrameSize defines frame size for CGO audio operations.
+		// Used in: CGO audio processing for timing consistency
+		// Impact: Matches main frame size for consistent timing and efficiency.
+		// Default 960 samples (20ms at 48kHz) ensures consistent processing timing.
 		CGOFrameSize: 960,
-		// Rationale: 1500 bytes accommodates Ethernet MTU constraints while
-		// providing sufficient space for compressed audio packets
+
+		// CGOMaxPacketSize defines maximum packet size for CGO operations.
+		// Used in: CGO audio transmission and buffer allocation
+		// Impact: Accommodates Ethernet MTU while providing sufficient packet space.
+		// Default 1500 bytes fits Ethernet MTU constraints with compressed audio.
 		CGOMaxPacketSize: 1500,
 
-		// Input IPC Constants
-		// Rationale: 48kHz sample rate ensures high-quality microphone input
-		// capture matching system audio output for consistent quality
+		// Input IPC Constants - Configuration for microphone input IPC
+		// Used in: Microphone input processing and IPC communication
+		// Impact: Controls quality and compatibility for input audio processing
+
+		// InputIPCSampleRate defines sample rate for input IPC operations.
+		// Used in: Microphone input capture and processing
+		// Impact: Ensures high-quality input matching system audio output.
+		// Default 48kHz provides consistent quality across input/output.
 		InputIPCSampleRate: 48000,
-		// Rationale: Stereo (2 channels) captures spatial microphone information
-		// and maintains compatibility with stereo input devices
+
+		// InputIPCChannels defines channel count for input IPC operations.
+		// Used in: Microphone input processing and device compatibility
+		// Impact: Captures spatial information and maintains device compatibility.
+		// Default 2 (stereo) supports spatial microphone information.
 		InputIPCChannels: 2,
-		// Rationale: 960 samples (20ms) provides optimal balance between latency
-		// and processing efficiency for real-time microphone input
+
+		// InputIPCFrameSize defines frame size for input IPC operations.
+		// Used in: Real-time microphone input processing
+		// Impact: Balances latency and processing efficiency for input.
+		// Default 960 samples (20ms) optimal for real-time microphone input.
 		InputIPCFrameSize: 960,
 
-		// Output IPC Constants
-		// Rationale: 4096 bytes accommodates largest audio frames with safety
-		// margin, preventing buffer overruns in IPC communication
+		// Output IPC Constants - Configuration for audio output IPC
+		// Used in: Audio output processing and IPC communication
+		// Impact: Controls performance and reliability for output audio
+
+		// OutputMaxFrameSize defines maximum frame size for output IPC.
+		// Used in: Output IPC communication and buffer allocation
+		// Impact: Prevents buffer overruns while accommodating large frames.
+		// Default 4096 bytes provides safety margin for largest audio frames.
 		OutputMaxFrameSize: 4096,
-		// Rationale: 10ms timeout provides quick response for real-time audio
-		// while preventing blocking in high-performance scenarios
+
+		// OutputWriteTimeout defines timeout for output write operations.
+		// Used in: Real-time audio output and blocking prevention
+		// Impact: Provides quick response while preventing blocking scenarios.
+		// Default 10ms ensures real-time response for high-performance audio.
 		OutputWriteTimeout: 10 * time.Millisecond,
-		// Rationale: Allow up to 50 dropped frames before error handling,
-		// providing resilience against temporary network/processing issues
+
+		// OutputMaxDroppedFrames defines maximum allowed dropped frames.
+		// Used in: Error handling and resilience management
+		// Impact: Provides resilience against temporary processing issues.
+		// Default 50 frames allows recovery from temporary network/processing issues.
 		OutputMaxDroppedFrames: 50,
-		// Rationale: 17-byte header provides sufficient space for frame metadata
-		// including timestamps, sequence numbers, and format information
+
+		// OutputHeaderSize defines size of output frame headers.
+		// Used in: Frame metadata and IPC communication
+		// Impact: Provides space for timestamps, sequence numbers, and format info.
+		// Default 17 bytes sufficient for comprehensive frame metadata.
 		OutputHeaderSize: 17,
-		// Rationale: 128 message pool size balances memory usage with throughput
-		// for efficient audio streaming without excessive buffering
+
+		// OutputMessagePoolSize defines size of output message pool.
+		// Used in: Efficient audio streaming and memory management
+		// Impact: Balances memory usage with streaming throughput.
+		// Default 128 messages provides efficient streaming without excessive buffering.
 		OutputMessagePoolSize: 128,
 
-		// Socket Buffer Constants
-		// Rationale: 128KB optimal buffer provides good balance between memory
-		// usage and network throughput for typical audio streaming scenarios
+		// Socket Buffer Constants - Configuration for network socket buffers
+		// Used in: Network audio streaming and socket management
+		// Impact: Controls buffering capacity and memory usage for audio streaming
+
+		// SocketOptimalBuffer defines optimal socket buffer size.
+		// Used in: Network throughput optimization for audio streaming
+		// Impact: Provides good balance between memory usage and performance.
+		// Default 128KB balances memory usage and network throughput.
 		SocketOptimalBuffer: 131072, // 128KB
-		// Rationale: 256KB maximum buffer accommodates burst traffic and high
-		// bitrate audio while preventing excessive memory consumption
+
+		// SocketMaxBuffer defines maximum socket buffer size.
+		// Used in: Burst traffic handling and high bitrate audio streaming
+		// Impact: Accommodates burst traffic without excessive memory consumption.
+		// Default 256KB handles high bitrate audio and burst traffic.
 		SocketMaxBuffer: 262144, // 256KB
-		// Rationale: 32KB minimum buffer ensures adequate buffering for basic
-		// audio streaming while minimizing memory footprint
+
+		// SocketMinBuffer defines minimum socket buffer size.
+		// Used in: Basic audio streaming and memory-constrained scenarios
+		// Impact: Ensures adequate buffering while minimizing memory footprint.
+		// Default 32KB provides basic buffering for audio streaming.
 		SocketMinBuffer: 32768, // 32KB
 
-		// Scheduling Policy Constants
-		// Rationale: SCHED_NORMAL (0) provides standard time-sharing scheduling
-		// suitable for non-critical audio processing tasks
+		// Scheduling Policy Constants - Configuration for process scheduling
+		// Used in: Process scheduling and real-time audio processing
+		// Impact: Controls scheduling behavior for audio processing tasks
+
+		// SchedNormal defines standard time-sharing scheduling policy.
+		// Used in: Non-critical audio processing tasks
+		// Impact: Provides standard scheduling suitable for non-critical tasks.
+		// Default 0 (SCHED_NORMAL) for standard time-sharing scheduling.
 		SchedNormal: 0,
-		// Rationale: SCHED_FIFO (1) provides real-time first-in-first-out
-		// scheduling for critical audio processing requiring deterministic timing
+
+		// SchedFIFO defines real-time first-in-first-out scheduling policy.
+		// Used in: Critical audio processing requiring deterministic timing
+		// Impact: Provides deterministic scheduling for latency-critical operations.
+		// Default 1 (SCHED_FIFO) for real-time first-in-first-out scheduling.
 		SchedFIFO: 1,
-		// Rationale: SCHED_RR (2) provides real-time round-robin scheduling
-		// for balanced real-time processing with time slicing
+
+		// SchedRR defines real-time round-robin scheduling policy.
+		// Used in: Balanced real-time processing with time slicing
+		// Impact: Provides real-time scheduling with balanced time slicing.
+		// Default 2 (SCHED_RR) for real-time round-robin scheduling.
 		SchedRR: 2,
 
-		// Real-time Priority Levels
-		// Rationale: Priority 80 ensures audio processing gets highest CPU
-		// priority for latency-critical operations without starving system
+		// Real-time Priority Levels - Configuration for process priorities
+		// Used in: Process priority management and CPU scheduling
+		// Impact: Controls priority hierarchy for audio system components
+
+		// RTAudioHighPriority defines highest priority for audio processing.
+		// Used in: Latency-critical audio operations and CPU priority assignment
+		// Impact: Ensures highest CPU priority without starving system processes.
+		// Default 80 provides highest priority for latency-critical operations.
 		RTAudioHighPriority: 80,
-		// Rationale: Priority 60 provides elevated priority for important
-		// audio tasks while allowing higher priority system operations
+
+		// RTAudioMediumPriority defines medium priority for audio tasks.
+		// Used in: Important audio tasks requiring elevated priority
+		// Impact: Provides elevated priority while allowing higher priority operations.
+		// Default 60 balances importance with system operation priority.
 		RTAudioMediumPriority: 60,
-		// Rationale: Priority 40 provides moderate real-time priority for
-		// audio tasks that need responsiveness but aren't latency-critical
+
+		// RTAudioLowPriority defines low priority for audio tasks.
+		// Used in: Audio tasks needing responsiveness but not latency-critical
+		// Impact: Provides moderate real-time priority for responsive tasks.
+		// Default 40 ensures responsiveness without being latency-critical.
 		RTAudioLowPriority: 40,
-		// Rationale: Priority 0 represents normal scheduling priority for
-		// non-real-time audio processing tasks
+
+		// RTNormalPriority defines normal scheduling priority.
+		// Used in: Non-real-time audio processing tasks
+		// Impact: Provides standard priority for non-real-time operations.
+		// Default 0 represents normal scheduling priority.
 		RTNormalPriority: 0,
 
-		// Process Management
-		// Rationale: 5 restart attempts provides resilience against transient
-		// failures while preventing infinite restart loops
+		// Process Management - Configuration for process restart and recovery
+		// Used in: Process monitoring and failure recovery systems
+		// Impact: Controls resilience and stability of audio processes
+
+		// MaxRestartAttempts defines maximum number of restart attempts.
+		// Used in: Process failure recovery and restart logic
+		// Impact: Provides resilience against transient failures while preventing loops.
+		// Default 5 attempts balances recovery capability with loop prevention.
 		MaxRestartAttempts: 5,
-		// Rationale: 5-minute restart window allows recovery from temporary
-		// issues while resetting attempt counter for long-term stability
+
+		// RestartWindow defines time window for restart attempt counting.
+		// Used in: Restart attempt counter reset and long-term stability
+		// Impact: Allows recovery from temporary issues while resetting counters.
+		// Default 5 minutes provides adequate window for temporary issue recovery.
 		RestartWindow: 5 * time.Minute,
-		// Rationale: 1-second initial restart delay prevents rapid restart
-		// cycles while allowing quick recovery from brief failures
+
+		// RestartDelay defines initial delay before restart attempts.
+		// Used in: Process restart timing and rapid cycle prevention
+		// Impact: Prevents rapid restart cycles while allowing quick recovery.
+		// Default 1 second prevents rapid cycles while enabling quick recovery.
 		RestartDelay: 1 * time.Second,
-		// Rationale: 30-second maximum delay prevents excessive wait times
-		// while implementing exponential backoff for persistent failures
+
+		// MaxRestartDelay defines maximum delay for exponential backoff.
+		// Used in: Exponential backoff implementation for persistent failures
+		// Impact: Prevents excessive wait times while implementing backoff strategy.
+		// Default 30 seconds limits wait time while providing backoff for failures.
 		MaxRestartDelay: 30 * time.Second,
 
-		// Buffer Management
-		// Rationale: 1MB preallocation provides substantial buffer space for
-		// high-throughput audio processing while remaining reasonable for embedded systems
+		// Buffer Management - Configuration for memory buffer allocation
+		// Used in: Memory management and buffer allocation systems
+		// Impact: Controls memory usage and performance for audio processing
+
+		// PreallocSize defines size for buffer preallocation.
+		// Used in: High-throughput audio processing and memory preallocation
+		// Impact: Provides substantial buffer space while remaining reasonable for embedded systems.
+		// Default 1MB balances throughput capability with embedded system constraints.
 		PreallocSize: 1024 * 1024, // 1MB
-		// Rationale: 100 pool size limits memory usage while providing adequate
-		// object pooling for efficient memory management
+
+		// MaxPoolSize defines maximum size for object pools.
+		// Used in: Object pooling and efficient memory management
+		// Impact: Limits memory usage while providing adequate pooling efficiency.
+		// Default 100 objects balances memory usage with pooling benefits.
 		MaxPoolSize: 100,
-		// Rationale: 256 message pool size balances memory usage with message
-		// throughput for efficient IPC communication
+
+		// MessagePoolSize defines size for message pools.
+		// Used in: IPC communication and message throughput optimization
+		// Impact: Balances memory usage with message throughput for efficient IPC.
+		// Default 256 messages optimizes IPC communication efficiency.
 		MessagePoolSize: 256,
-		// Rationale: 256KB optimal socket buffer provides good network performance
-		// for audio streaming without excessive memory consumption
+
+		// OptimalSocketBuffer defines optimal socket buffer size.
+		// Used in: Network performance optimization for audio streaming
+		// Impact: Provides good network performance without excessive memory consumption.
+		// Default 256KB balances network performance with memory efficiency.
 		OptimalSocketBuffer: 262144, // 256KB
-		// Rationale: 1MB maximum socket buffer accommodates burst traffic and
-		// high-bitrate audio while preventing excessive memory usage
+
+		// MaxSocketBuffer defines maximum socket buffer size.
+		// Used in: Burst traffic handling and high-bitrate audio streaming
+		// Impact: Accommodates burst traffic while preventing excessive memory usage.
+		// Default 1MB handles burst traffic and high-bitrate audio efficiently.
 		MaxSocketBuffer: 1048576, // 1MB
-		// Rationale: 8KB minimum socket buffer ensures basic network buffering
-		// while minimizing memory footprint for low-bandwidth scenarios
+
+		// MinSocketBuffer defines minimum socket buffer size.
+		// Used in: Basic network buffering and low-bandwidth scenarios
+		// Impact: Ensures basic buffering while minimizing memory footprint.
+		// Default 8KB provides basic buffering for low-bandwidth scenarios.
 		MinSocketBuffer: 8192, // 8KB
-		// Rationale: 500 channel buffer size provides adequate buffering for
-		// inter-goroutine communication without blocking
+
+		// ChannelBufferSize defines buffer size for inter-goroutine channels.
+		// Used in: Inter-goroutine communication and processing pipelines
+		// Impact: Provides adequate buffering without blocking communication.
+		// Default 500 ensures smooth inter-goroutine communication.
 		ChannelBufferSize: 500, // Channel buffer size for processing
-		// Rationale: 1500 audio frame pool size accommodates frame reuse for
-		// efficient memory management in high-throughput scenarios
+
+		// AudioFramePoolSize defines size for audio frame object pools.
+		// Used in: Frame reuse and efficient memory management
+		// Impact: Accommodates frame reuse for high-throughput scenarios.
+		// Default 1500 frames optimizes memory management in high-throughput scenarios.
 		AudioFramePoolSize: 1500, // Audio frame pool size
-		// Rationale: 4096-byte page size aligns with system memory pages for
-		// optimal memory allocation and cache performance
+
+		// PageSize defines memory page size for allocation alignment.
+		// Used in: Memory allocation and cache performance optimization
+		// Impact: Aligns with system memory pages for optimal allocation and cache performance.
+		// Default 4096 bytes aligns with standard system memory pages.
 		PageSize: 4096, // Memory page size
-		// Rationale: 500 initial buffer frames provides adequate startup buffering
-		// without excessive memory allocation during initialization
+
+		// InitialBufferFrames defines initial buffer size during startup.
+		// Used in: Startup buffering and initialization memory allocation
+		// Impact: Provides adequate startup buffering without excessive allocation.
+		// Default 500 frames balances startup buffering with memory efficiency.
 		InitialBufferFrames: 500, // Initial buffer size in frames
-		// Rationale: 1024*1024 divisor provides standard MB conversion for
-		// memory usage calculations and reporting
+
+		// BytesToMBDivisor defines divisor for byte to megabyte conversion.
+		// Used in: Memory usage calculations and reporting
+		// Impact: Provides standard MB conversion for memory calculations.
+		// Default 1024*1024 provides standard megabyte conversion.
 		BytesToMBDivisor: 1024 * 1024, // Divisor for converting bytes to MB
-		// Rationale: 1276 bytes minimum buffer accommodates smallest CGO audio
-		// read/encode operations while ensuring adequate processing space
+
+		// MinReadEncodeBuffer defines minimum buffer for CGO read/encode operations.
+		// Used in: CGO audio read/encode operations and processing space allocation
+		// Impact: Accommodates smallest operations while ensuring adequate processing space.
+		// Default 1276 bytes ensures adequate space for smallest CGO operations.
 		MinReadEncodeBuffer: 1276, // Minimum buffer size for CGO audio read/encode
-		// Rationale: 4096 bytes maximum buffer provides sufficient space for
-		// largest CGO audio decode/write operations without excessive allocation
+
+		// MaxDecodeWriteBuffer defines maximum buffer for CGO decode/write operations.
+		// Used in: CGO audio decode/write operations and memory allocation
+		// Impact: Provides sufficient space for largest operations without excessive allocation.
+		// Default 4096 bytes accommodates largest CGO operations efficiently.
 		MaxDecodeWriteBuffer: 4096, // Maximum buffer size for CGO audio decode/write
 
-		// IPC Configuration
-		// Rationale: 0xDEADBEEF magic number provides distinctive header for
-		// IPC message validation and debugging purposes
+		// IPC Configuration - Settings for inter-process communication
+		// Used in: ipc_manager.go for message validation and processing
+		// Impact: Controls IPC message structure and validation mechanisms
+		
+		// MagicNumber defines distinctive header for IPC message validation.
+		// Used in: ipc_manager.go for message header validation and debugging
+		// Impact: Provides reliable message boundary detection and corruption detection
+		// Default 0xDEADBEEF provides easily recognizable pattern for debugging
 		MagicNumber: 0xDEADBEEF,
-		// Rationale: 4096 bytes maximum frame size accommodates largest audio
-		// frames while preventing excessive memory allocation
+		
+		// MaxFrameSize defines maximum size for audio frames in IPC messages.
+		// Used in: ipc_manager.go for buffer allocation and message size validation
+		// Impact: Prevents excessive memory allocation while accommodating largest frames
+		// Default 4096 bytes handles typical audio frame sizes with safety margin
 		MaxFrameSize: 4096,
-		// Rationale: 5-second write timeout provides reasonable wait time for
-		// IPC operations while preventing indefinite blocking
+		
+		// WriteTimeout defines maximum wait time for IPC write operations.
+		// Used in: ipc_manager.go for preventing indefinite blocking on writes
+		// Impact: Balances responsiveness with reliability for IPC operations
+		// Default 5 seconds provides reasonable timeout for most system conditions
 		WriteTimeout: 5 * time.Second,
-		// Rationale: Allow up to 10 dropped frames before error handling,
-		// balancing audio continuity with quality maintenance
+		
+		// MaxDroppedFrames defines threshold for dropped frame error handling.
+		// Used in: ipc_manager.go for quality degradation detection and recovery
+		// Impact: Balances audio continuity with quality maintenance requirements
+		// Default 10 frames allows temporary issues while preventing quality loss
 		MaxDroppedFrames: 10,
-		// Rationale: 8-byte header provides sufficient space for basic IPC
-		// metadata including message type and size information
+		
+		// HeaderSize defines size of IPC message headers in bytes.
+		// Used in: ipc_manager.go for message parsing and buffer management
+		// Impact: Determines metadata capacity and parsing efficiency
+		// Default 8 bytes provides space for message type and size information
 		HeaderSize: 8,
 
-		// Monitoring and Metrics
-		// Rationale: 1-second metrics update interval provides timely monitoring
-		// without excessive overhead for performance tracking
+		// Monitoring and Metrics - Settings for performance monitoring and data collection
+		// Used in: metrics_collector.go, performance_monitor.go for system monitoring
+		// Impact: Controls monitoring frequency and data collection efficiency
+		
+		// MetricsUpdateInterval defines frequency of metrics collection updates.
+		// Used in: metrics_collector.go for scheduling performance data collection
+		// Impact: Balances monitoring timeliness with system overhead
+		// Default 1 second provides responsive monitoring without excessive CPU usage
 		MetricsUpdateInterval: 1000 * time.Millisecond,
-		// Rationale: 0.1 EMA alpha provides smooth exponential moving average
-		// with 90% weight on historical data for stable metrics
+		
+		// EMAAlpha defines smoothing factor for exponential moving averages.
+		// Used in: metrics_collector.go for calculating smoothed performance metrics
+		// Impact: Controls responsiveness vs stability of metric calculations
+		// Default 0.1 provides smooth averaging with 90% weight on historical data
 		EMAAlpha: 0.1,
-		// Rationale: 10 warmup samples allow metrics to stabilize before
-		// making optimization decisions based on performance data
+		
+		// WarmupSamples defines number of samples before metrics stabilization.
+		// Used in: metrics_collector.go for preventing premature optimization decisions
+		// Impact: Ensures metrics accuracy before triggering performance adjustments
+		// Default 10 samples allows sufficient data collection for stable metrics
 		WarmupSamples: 10,
-		// Rationale: 5-second log throttle interval prevents log spam while
-		// ensuring important events are captured for debugging
+		
+		// LogThrottleInterval defines minimum time between similar log messages.
+		// Used in: logger.go for preventing log spam while capturing important events
+		// Impact: Balances debugging information with log file size management
+		// Default 5 seconds prevents spam while ensuring critical events are logged
 		LogThrottleInterval: 5 * time.Second,
-		// Rationale: 100 metrics channel buffer provides adequate buffering
-		// for metrics collection without blocking performance monitoring
+		
+		// MetricsChannelBuffer defines buffer size for metrics data channels.
+		// Used in: metrics_collector.go for buffering performance data collection
+		// Impact: Prevents blocking of metrics collection during processing spikes
+		// Default 100 provides adequate buffering without excessive memory usage
 		MetricsChannelBuffer: 100,
-		// Rationale: 100 latency measurements provide sufficient history for
-		// statistical analysis and trend detection
+		
+		// LatencyHistorySize defines number of latency measurements to retain.
+		// Used in: performance_monitor.go for statistical analysis and trend detection
+		// Impact: Determines accuracy of latency statistics and memory usage
+		// Default 100 measurements provides sufficient history for trend analysis
 		LatencyHistorySize: 100, // Number of latency measurements to keep
 
 		// Process Monitoring Constants
@@ -1176,52 +1972,260 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		MinValidClockTicks:     50,    // Minimum valid clock ticks
 		MaxValidClockTicks:     1000,  // Maximum valid clock ticks
 
-		// Performance Tuning
+		// Performance Tuning - Thresholds for adaptive performance management
+		// Used in: adaptive_optimizer.go, quality_manager.go for performance scaling
+		// Impact: Controls when system switches between performance modes
+		
+		// CPUThresholdLow defines low CPU usage threshold (20%).
+		// Used in: adaptive_optimizer.go for triggering quality increases
+		// Impact: Below this threshold, system can increase audio quality/buffer sizes
+		// Default 0.20 (20%) ensures conservative quality upgrades with CPU headroom
 		CPUThresholdLow:      0.20,
+		
+		// CPUThresholdMedium defines medium CPU usage threshold (60%).
+		// Used in: adaptive_optimizer.go for balanced performance mode
+		// Impact: Between low and medium, system maintains current settings
+		// Default 0.60 (60%) provides good balance between quality and performance
 		CPUThresholdMedium:   0.60,
+		
+		// CPUThresholdHigh defines high CPU usage threshold (75%).
+		// Used in: adaptive_optimizer.go for triggering quality reductions
+		// Impact: Above this threshold, system reduces quality to prevent overload
+		// Default 0.75 (75%) allows high utilization while preventing system stress
 		CPUThresholdHigh:     0.75,
+		
+		// MemoryThresholdLow defines low memory usage threshold (30%).
+		// Used in: adaptive_optimizer.go for memory-based optimizations
+		// Impact: Below this, system can allocate larger buffers for better performance
+		// Default 0.30 (30%) ensures sufficient memory headroom for buffer expansion
 		MemoryThresholdLow:   0.30,
+		
+		// MemoryThresholdMed defines medium memory usage threshold (60%).
+		// Used in: adaptive_optimizer.go for balanced memory management
+		// Impact: Between low and medium, system maintains current buffer sizes
+		// Default 0.60 (60%) provides balance between performance and memory efficiency
 		MemoryThresholdMed:   0.60,
+		
+		// MemoryThresholdHigh defines high memory usage threshold (80%).
+		// Used in: adaptive_optimizer.go for triggering memory optimizations
+		// Impact: Above this, system reduces buffer sizes to prevent memory pressure
+		// Default 0.80 (80%) allows high memory usage while preventing OOM conditions
 		MemoryThresholdHigh:  0.80,
+		
+		// LatencyThresholdLow defines acceptable low latency threshold (20ms).
+		// Used in: adaptive_optimizer.go for latency-based quality adjustments
+		// Impact: Below this, system can increase quality as latency is acceptable
+		// Default 20ms provides excellent real-time audio experience
 		LatencyThresholdLow:  20 * time.Millisecond,
+		
+		// LatencyThresholdHigh defines maximum acceptable latency threshold (50ms).
+		// Used in: adaptive_optimizer.go for triggering latency optimizations
+		// Impact: Above this, system prioritizes latency reduction over quality
+		// Default 50ms is the upper limit for acceptable real-time audio latency
 		LatencyThresholdHigh: 50 * time.Millisecond,
+		
+		// CPUFactor defines weight of CPU usage in performance calculations (0.7).
+		// Used in: adaptive_optimizer.go for weighted performance scoring
+		// Impact: Higher values make CPU usage more influential in decisions
+		// Default 0.7 (70%) emphasizes CPU as primary performance bottleneck
 		CPUFactor:            0.7,
+		
+		// MemoryFactor defines weight of memory usage in performance calculations (0.8).
+		// Used in: adaptive_optimizer.go for weighted performance scoring
+		// Impact: Higher values make memory usage more influential in decisions
+		// Default 0.8 (80%) emphasizes memory as critical for stability
 		MemoryFactor:         0.8,
+		
+		// LatencyFactor defines weight of latency in performance calculations (0.9).
+		// Used in: adaptive_optimizer.go for weighted performance scoring
+		// Impact: Higher values make latency more influential in decisions
+		// Default 0.9 (90%) prioritizes latency as most critical for real-time audio
 		LatencyFactor:        0.9,
+		
+		// InputSizeThreshold defines threshold for input buffer size optimizations (1024 bytes).
+		// Used in: input processing for determining when to optimize buffer handling
+		// Impact: Larger values delay optimizations but reduce overhead
+		// Default 1024 bytes balances optimization frequency with processing efficiency
 		InputSizeThreshold:   1024,
+		
+		// OutputSizeThreshold defines threshold for output buffer size optimizations (2048 bytes).
+		// Used in: output processing for determining when to optimize buffer handling
+		// Impact: Larger values delay optimizations but reduce overhead
+		// Default 2048 bytes (2x input) accounts for potential encoding expansion
 		OutputSizeThreshold:  2048,
+		
+		// TargetLevel defines target performance level for adaptive algorithms (0.5).
+		// Used in: adaptive_optimizer.go as target for performance balancing
+		// Impact: Controls how aggressively system optimizes (0.0=conservative, 1.0=aggressive)
+		// Default 0.5 (50%) provides balanced optimization between quality and performance
 		TargetLevel:          0.5,
 
-		// Priority Scheduling
+		// Priority Scheduling - Process priority values for real-time audio performance
+		// Used in: process management, thread scheduling for audio processing
+		// Impact: Controls CPU scheduling priority for audio threads
+		
+		// AudioHighPriority defines highest priority for critical audio threads (-10).
+		// Used in: Real-time audio processing threads, encoder/decoder threads
+		// Impact: Ensures audio threads get CPU time before other processes
+		// Default -10 provides high priority without requiring root privileges
 		AudioHighPriority:   -10,
+		
+		// AudioMediumPriority defines medium priority for important audio threads (-5).
+		// Used in: Audio buffer management, IPC communication threads
+		// Impact: Balances audio performance with system responsiveness
+		// Default -5 ensures good performance while allowing other critical tasks
 		AudioMediumPriority: -5,
+		
+		// AudioLowPriority defines low priority for non-critical audio threads (0).
+		// Used in: Metrics collection, logging, cleanup tasks
+		// Impact: Prevents non-critical tasks from interfering with audio processing
+		// Default 0 (normal priority) for background audio-related tasks
 		AudioLowPriority:    0,
+		
+		// NormalPriority defines standard system priority (0).
+		// Used in: Fallback priority, non-audio system tasks
+		// Impact: Standard scheduling behavior for general tasks
+		// Default 0 represents normal Linux process priority
 		NormalPriority:      0,
+		
+		// NiceValue defines default nice value for audio processes (-10).
+		// Used in: Process creation, priority adjustment for audio components
+		// Impact: Improves audio process scheduling without requiring special privileges
+		// Default -10 provides better scheduling while remaining accessible to non-root users
 		NiceValue:           -10,
 
-		// Error Handling
+		// Error Handling - Configuration for robust error recovery and retry logic
+		// Used in: Throughout audio pipeline for handling transient failures
+		// Impact: Controls system resilience and recovery behavior
+		
+		// MaxRetries defines maximum retry attempts for failed operations (3).
+		// Used in: Audio encoding/decoding, IPC communication, file operations
+		// Impact: Higher values increase resilience but may delay error detection
+		// Default 3 provides good balance between resilience and responsiveness
 		MaxRetries:           3,
+		
+		// RetryDelay defines initial delay between retry attempts (100ms).
+		// Used in: Exponential backoff retry logic across audio components
+		// Impact: Shorter delays retry faster but may overwhelm failing resources
+		// Default 100ms allows quick recovery while preventing resource flooding
 		RetryDelay:           100 * time.Millisecond,
+		
+		// MaxRetryDelay defines maximum delay between retry attempts (5s).
+		// Used in: Exponential backoff to cap maximum wait time
+		// Impact: Prevents indefinitely long delays while maintaining backoff benefits
+		// Default 5s ensures reasonable maximum wait time for audio operations
 		MaxRetryDelay:        5 * time.Second,
+		
+		// BackoffMultiplier defines exponential backoff multiplier (2.0).
+		// Used in: Retry logic to calculate increasing delays between attempts
+		// Impact: Higher values create longer delays, lower values retry more aggressively
+		// Default 2.0 provides standard exponential backoff (100ms, 200ms, 400ms, etc.)
 		BackoffMultiplier:    2.0,
+		
+		// ErrorChannelSize defines buffer size for error reporting channels (50).
+		// Used in: Error collection and reporting across audio components
+		// Impact: Larger buffers prevent error loss but use more memory
+		// Default 50 accommodates burst errors while maintaining reasonable memory usage
 		ErrorChannelSize:     50,
+		
+		// MaxConsecutiveErrors defines threshold for consecutive error handling (5).
+		// Used in: Error monitoring to detect persistent failure conditions
+		// Impact: Lower values trigger failure handling sooner, higher values are more tolerant
+		// Default 5 allows for transient issues while detecting persistent problems
 		MaxConsecutiveErrors: 5,
+		
+		// MaxRetryAttempts defines maximum retry attempts for critical operations (3).
+		// Used in: Critical audio operations that require additional retry logic
+		// Impact: Provides additional retry layer for mission-critical audio functions
+		// Default 3 matches MaxRetries for consistency in retry behavior
 		MaxRetryAttempts:     3,
 
-		// Timing Constants
+		// Timing Constants - Critical timing values for audio processing coordination
+		// Used in: Scheduling, synchronization, and timing-sensitive operations
+		// Impact: Controls system responsiveness and timing accuracy
+		
+		// DefaultSleepDuration defines standard sleep interval for polling loops (100ms).
+		// Used in: General purpose polling, non-critical background tasks
+		// Impact: Shorter intervals increase responsiveness but consume more CPU
+		// Default 100ms balances responsiveness with CPU efficiency
 		DefaultSleepDuration:       100 * time.Millisecond,
+		
+		// ShortSleepDuration defines brief sleep interval for tight loops (10ms).
+		// Used in: High-frequency polling, real-time audio processing loops
+		// Impact: Critical for maintaining low-latency audio processing
+		// Default 10ms provides responsive polling while preventing CPU spinning
 		ShortSleepDuration:         10 * time.Millisecond,
+		
+		// LongSleepDuration defines extended sleep interval for slow operations (200ms).
+		// Used in: Background maintenance, non-urgent periodic tasks
+		// Impact: Reduces CPU usage for infrequent operations
+		// Default 200ms suitable for background tasks that don't need frequent execution
 		LongSleepDuration:          200 * time.Millisecond,
+		
+		// DefaultTickerInterval defines standard ticker interval for periodic tasks (100ms).
+		// Used in: Metrics collection, periodic health checks, status updates
+		// Impact: Controls frequency of periodic operations and system monitoring
+		// Default 100ms provides good balance between monitoring accuracy and overhead
 		DefaultTickerInterval:      100 * time.Millisecond,
+		
+		// BufferUpdateInterval defines frequency of buffer status updates (500ms).
+		// Used in: Buffer management, adaptive buffer sizing, performance monitoring
+		// Impact: Controls how quickly system responds to buffer condition changes
+		// Default 500ms allows buffer conditions to stabilize before adjustments
 		BufferUpdateInterval:       500 * time.Millisecond,
+		
+		// StatsUpdateInterval defines frequency of statistics collection (5s).
+		// Used in: Performance metrics, system statistics, monitoring dashboards
+		// Impact: Controls granularity of performance monitoring and reporting
+		// Default 5s provides meaningful statistics while minimizing collection overhead
 		StatsUpdateInterval:        5 * time.Second,
+		
+		// SupervisorTimeout defines timeout for supervisor operations (10s).
+		// Used in: Process supervision, health monitoring, restart logic
+		// Impact: Controls how long to wait before considering operations failed
+		// Default 10s allows for slow operations while preventing indefinite hangs
 		SupervisorTimeout:          10 * time.Second,
+		
+		// InputSupervisorTimeout defines timeout for input supervision (5s).
+		// Used in: Input process monitoring, microphone supervision
+		// Impact: Controls responsiveness of input failure detection
+		// Default 5s (shorter than general supervisor) for faster input recovery
 		InputSupervisorTimeout:     5 * time.Second,
+		
+		// ShortTimeout defines brief timeout for quick operations (5ms).
+		// Used in: Lock acquisition, quick IPC operations, immediate responses
+		// Impact: Critical for maintaining real-time performance
+		// Default 5ms prevents blocking while allowing for brief delays
 		ShortTimeout:               5 * time.Millisecond,
+		
+		// MediumTimeout defines moderate timeout for standard operations (50ms).
+		// Used in: Network operations, file I/O, moderate complexity tasks
+		// Impact: Balances operation completion time with responsiveness
+		// Default 50ms accommodates most standard operations without excessive waiting
 		MediumTimeout:              50 * time.Millisecond,
+		
+		// BatchProcessingDelay defines delay between batch processing cycles (10ms).
+		// Used in: Batch audio frame processing, bulk operations
+		// Impact: Controls batch processing frequency and system load
+		// Default 10ms maintains high throughput while allowing system breathing room
 		BatchProcessingDelay:       10 * time.Millisecond,
+		
+		// AdaptiveOptimizerStability defines stability period for adaptive changes (10s).
+		// Used in: Adaptive optimization algorithms, performance tuning
+		// Impact: Prevents oscillation in adaptive systems
+		// Default 10s allows system to stabilize before making further adjustments
 		AdaptiveOptimizerStability: 10 * time.Second,
+		
+		// MaxLatencyTarget defines maximum acceptable latency target (50ms).
+		// Used in: Latency monitoring, performance optimization, quality control
+		// Impact: Sets upper bound for acceptable audio latency
+		// Default 50ms represents maximum tolerable latency for real-time audio
 		MaxLatencyTarget:           50 * time.Millisecond,
+		
+		// LatencyMonitorTarget defines target latency for monitoring (50ms).
+		// Used in: Latency monitoring systems, performance alerts
+		// Impact: Controls when latency warnings and optimizations are triggered
+		// Default 50ms matches MaxLatencyTarget for consistent latency management
 		LatencyMonitorTarget:       50 * time.Millisecond,
 
 		// Adaptive Buffer Configuration
