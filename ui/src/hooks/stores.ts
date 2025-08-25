@@ -845,7 +845,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
 
     const { sendFn } = get();
     if (!sendFn) {
-      console.warn("JSON-RPC send function not available.");
+      // console.warn("JSON-RPC send function not available.");
       return;
     }
 
@@ -855,7 +855,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
       await new Promise<void>((resolve, reject) => {
         sendFn("getKeyboardMacros", {}, (response: JsonRpcResponse) => {
           if (response.error) {
-            console.error("Error loading macros:", response.error);
+            // console.error("Error loading macros:", response.error);
             reject(new Error(response.error.message));
             return;
           }
@@ -879,8 +879,8 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
           resolve();
         });
       });
-    } catch (error) {
-      console.error("Failed to load macros:", error);
+    } catch {
+      // console.error("Failed to load macros:", _error);
     } finally {
       set({ loading: false });
     }
@@ -889,20 +889,20 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
   saveMacros: async (macros: KeySequence[]) => {
     const { sendFn } = get();
     if (!sendFn) {
-      console.warn("JSON-RPC send function not available.");
+      // console.warn("JSON-RPC send function not available.");
       throw new Error("JSON-RPC send function not available");
     }
 
     if (macros.length > MAX_TOTAL_MACROS) {
-      console.error(`Cannot save: exceeded maximum of ${MAX_TOTAL_MACROS} macros`);
+      // console.error(`Cannot save: exceeded maximum of ${MAX_TOTAL_MACROS} macros`);
       throw new Error(`Cannot save: exceeded maximum of ${MAX_TOTAL_MACROS} macros`);
     }
 
     for (const macro of macros) {
       if (macro.steps.length > MAX_STEPS_PER_MACRO) {
-        console.error(
-          `Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`,
-        );
+        // console.error(
+        //   `Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`,
+        // );
         throw new Error(
           `Cannot save: macro "${macro.name}" exceeds maximum of ${MAX_STEPS_PER_MACRO} steps`,
         );
@@ -911,9 +911,9 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
       for (let i = 0; i < macro.steps.length; i++) {
         const step = macro.steps[i];
         if (step.keys && step.keys.length > MAX_KEYS_PER_STEP) {
-          console.error(
-            `Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`,
-          );
+          // console.error(
+          //   `Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`,
+          // );
           throw new Error(
             `Cannot save: macro "${macro.name}" step ${i + 1} exceeds maximum of ${MAX_KEYS_PER_STEP} keys`,
           );
@@ -940,7 +940,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
       });
 
       if (response.error) {
-        console.error("Error saving macros:", response.error);
+        // console.error("Error saving macros:", response.error);
         const errorMessage =
           typeof response.error.data === "string"
             ? response.error.data
@@ -950,9 +950,6 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
 
       // Only update the store if the request was successful
       set({ macros: macrosWithSortOrder });
-    } catch (error) {
-      console.error("Failed to save macros:", error);
-      throw error;
     } finally {
       set({ loading: false });
     }

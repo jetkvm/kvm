@@ -2,28 +2,14 @@ package audio
 
 import "time"
 
-// MonitoringConfig contains configuration constants for audio monitoring
-type MonitoringConfig struct {
-	// MetricsUpdateInterval defines how often metrics are collected and broadcast
-	MetricsUpdateInterval time.Duration
-}
-
-// DefaultMonitoringConfig returns the default monitoring configuration
-func DefaultMonitoringConfig() MonitoringConfig {
-	return MonitoringConfig{
-		MetricsUpdateInterval: 1000 * time.Millisecond, // 1 second interval
-	}
-}
-
-// Global monitoring configuration instance
-var monitoringConfig = DefaultMonitoringConfig()
-
-// GetMetricsUpdateInterval returns the current metrics update interval
+// GetMetricsUpdateInterval returns the current metrics update interval from centralized config
 func GetMetricsUpdateInterval() time.Duration {
-	return monitoringConfig.MetricsUpdateInterval
+	return GetConfig().MetricsUpdateInterval
 }
 
-// SetMetricsUpdateInterval sets the metrics update interval
+// SetMetricsUpdateInterval sets the metrics update interval in centralized config
 func SetMetricsUpdateInterval(interval time.Duration) {
-	monitoringConfig.MetricsUpdateInterval = interval
+	config := GetConfig()
+	config.MetricsUpdateInterval = interval
+	UpdateConfig(config)
 }

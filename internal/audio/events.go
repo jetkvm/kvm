@@ -220,18 +220,6 @@ func (aeb *AudioEventBroadcaster) sendInitialState(connectionID string) {
 	aeb.sendCurrentMetrics(subscriber)
 }
 
-// convertAudioMetricsToEventData converts internal audio metrics to AudioMetricsData for events
-func convertAudioMetricsToEventData(metrics AudioMetrics) AudioMetricsData {
-	return AudioMetricsData{
-		FramesReceived:  metrics.FramesReceived,
-		FramesDropped:   metrics.FramesDropped,
-		BytesProcessed:  metrics.BytesProcessed,
-		LastFrameTime:   metrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
-		ConnectionDrops: metrics.ConnectionDrops,
-		AverageLatency:  metrics.AverageLatency.String(),
-	}
-}
-
 // convertAudioMetricsToEventDataWithLatencyMs converts internal audio metrics to AudioMetricsData with millisecond latency formatting
 func convertAudioMetricsToEventDataWithLatencyMs(metrics AudioMetrics) AudioMetricsData {
 	return AudioMetricsData{
@@ -241,18 +229,6 @@ func convertAudioMetricsToEventDataWithLatencyMs(metrics AudioMetrics) AudioMetr
 		LastFrameTime:   metrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
 		ConnectionDrops: metrics.ConnectionDrops,
 		AverageLatency:  fmt.Sprintf("%.1fms", float64(metrics.AverageLatency.Nanoseconds())/1e6),
-	}
-}
-
-// convertAudioInputMetricsToEventData converts internal audio input metrics to MicrophoneMetricsData for events
-func convertAudioInputMetricsToEventData(metrics AudioInputMetrics) MicrophoneMetricsData {
-	return MicrophoneMetricsData{
-		FramesSent:      metrics.FramesSent,
-		FramesDropped:   metrics.FramesDropped,
-		BytesProcessed:  metrics.BytesProcessed,
-		LastFrameTime:   metrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
-		ConnectionDrops: metrics.ConnectionDrops,
-		AverageLatency:  metrics.AverageLatency.String(),
 	}
 }
 
@@ -358,7 +334,7 @@ func (aeb *AudioEventBroadcaster) getMicrophoneProcessMetrics() ProcessMetricsDa
 func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubscriber) {
 	// Send audio metrics
 	audioMetrics := GetAudioMetrics()
-	audioMetricsEvent := createAudioEvent(AudioEventMetricsUpdate, convertAudioMetricsToEventData(audioMetrics))
+	audioMetricsEvent := createAudioEvent(AudioEventMetricsUpdate, convertAudioMetricsToEventDataWithLatencyMs(audioMetrics))
 	aeb.sendToSubscriber(subscriber, audioMetricsEvent)
 
 	// Send audio process metrics
@@ -374,7 +350,7 @@ func (aeb *AudioEventBroadcaster) sendCurrentMetrics(subscriber *AudioEventSubsc
 	if sessionProvider.IsSessionActive() {
 		if inputManager := sessionProvider.GetAudioInputManager(); inputManager != nil {
 			micMetrics := inputManager.GetMetrics()
-			micMetricsEvent := createAudioEvent(AudioEventMicrophoneMetrics, convertAudioInputMetricsToEventData(micMetrics))
+			micMetricsEvent := createAudioEvent(AudioEventMicrophoneMetrics, convertAudioInputMetricsToEventDataWithLatencyMs(micMetrics))
 			aeb.sendToSubscriber(subscriber, micMetricsEvent)
 		}
 	}

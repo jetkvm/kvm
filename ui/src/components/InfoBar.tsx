@@ -32,9 +32,8 @@ export default function InfoBar() {
 
   useEffect(() => {
     if (!rpcDataChannel) return;
-    rpcDataChannel.onclose = () => console.log("rpcDataChannel has closed");
-    rpcDataChannel.onerror = e =>
-      console.log(`Error on DataChannel '${rpcDataChannel.label}': ${e}`);
+    rpcDataChannel.onclose = () => { /* RPC data channel closed */ };
+    rpcDataChannel.onerror = () => { /* Error on RPC data channel */ };
   }, [rpcDataChannel]);
 
   const keyboardLedState = useHidStore(state => state.keyboardLedState);

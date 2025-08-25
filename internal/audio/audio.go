@@ -10,7 +10,10 @@ var (
 	ErrAudioAlreadyRunning = errors.New("audio already running")
 )
 
-const MaxAudioFrameSize = 1500
+// MaxAudioFrameSize is now retrieved from centralized config
+func GetMaxAudioFrameSize() int {
+	return GetConfig().MaxAudioFrameSize
+}
 
 // AudioQuality represents different audio quality presets
 type AudioQuality int
@@ -45,14 +48,14 @@ var (
 	currentConfig = AudioConfig{
 		Quality:    AudioQualityMedium,
 		Bitrate:    64,
-		SampleRate: 48000,
-		Channels:   2,
+		SampleRate: GetConfig().SampleRate,
+		Channels:   GetConfig().Channels,
 		FrameSize:  20 * time.Millisecond,
 	}
 	currentMicrophoneConfig = AudioConfig{
 		Quality:    AudioQualityMedium,
 		Bitrate:    32,
-		SampleRate: 48000,
+		SampleRate: GetConfig().SampleRate,
 		Channels:   1,
 		FrameSize:  20 * time.Millisecond,
 	}
@@ -77,12 +80,12 @@ var qualityPresets = map[AudioQuality]struct {
 	},
 	AudioQualityHigh: {
 		outputBitrate: 128, inputBitrate: 64,
-		sampleRate: 48000, channels: 2,
+		sampleRate: GetConfig().SampleRate, channels: GetConfig().Channels,
 		frameSize: 20 * time.Millisecond,
 	},
 	AudioQualityUltra: {
 		outputBitrate: 192, inputBitrate: 96,
-		sampleRate: 48000, channels: 2,
+		sampleRate: GetConfig().SampleRate, channels: GetConfig().Channels,
 		frameSize: 10 * time.Millisecond,
 	},
 }

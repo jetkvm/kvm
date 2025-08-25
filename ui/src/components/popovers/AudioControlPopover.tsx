@@ -155,8 +155,8 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
       }
       
       setConfigsLoaded(true);
-    } catch (error) {
-      console.error("Failed to load audio configurations:", error);
+    } catch {
+      // Failed to load audio configurations
     }
   };
 
@@ -165,11 +165,11 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
     try {
       const resp = await api.POST("/audio/mute", { muted: !isMuted });
       if (!resp.ok) {
-        console.error("Failed to toggle mute:", resp.statusText);
+        // Failed to toggle mute
       }
       // WebSocket will handle the state update automatically
-    } catch (error) {
-      console.error("Failed to toggle mute:", error);
+    } catch {
+      // Failed to toggle mute
     } finally {
       setIsLoading(false);
     }
@@ -183,8 +183,8 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
         const data = await resp.json();
         setCurrentConfig(data.config);
       }
-    } catch (error) {
-      console.error("Failed to change audio quality:", error);
+    } catch {
+      // Failed to change audio quality
     } finally {
       setIsLoading(false);
     }
@@ -197,8 +197,8 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
         const data = await resp.json();
         setCurrentMicrophoneConfig(data.config);
       }
-    } catch (error) {
-      console.error("Failed to change microphone quality:", error);
+    } catch {
+      // Failed to change microphone quality
     }
   };
 
@@ -217,8 +217,8 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
       if (!result.success && result.error) {
         notifications.error(result.error.message);
       }
-    } catch (error) {
-      console.error("Failed to toggle microphone:", error);
+    } catch {
+      // Failed to toggle microphone
       notifications.error("An unexpected error occurred");
     }
   };
@@ -238,8 +238,8 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
       if (!result.success && result.error) {
         notifications.error(result.error.message);
       }
-    } catch (error) {
-      console.error("Failed to toggle microphone mute:", error);
+    } catch {
+      // Failed to toggle microphone mute
       notifications.error("Failed to toggle microphone mute");
     }
   };
@@ -258,8 +258,8 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
         if (!result.success && result.error) {
           notifications.error(result.error.message);
         }
-      } catch (error) {
-        console.error("Failed to change microphone device:", error);
+      } catch {
+        // Failed to change microphone device
         notifications.error("Failed to change microphone device");
       }
     }
@@ -273,11 +273,11 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
     if (videoElement && 'setSinkId' in videoElement) {
       try {
         await (videoElement as HTMLVideoElement & { setSinkId: (deviceId: string) => Promise<void> }).setSinkId(deviceId);
-      } catch (error: unknown) {
-        console.error('Failed to change audio output device:', error);
+      } catch {
+        // Failed to change audio output device
       }
     } else {
-      console.warn('setSinkId not supported or video element not found');
+      // setSinkId not supported or video element not found
     }
   };
 

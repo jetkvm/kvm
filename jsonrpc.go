@@ -1088,15 +1088,15 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 			if err := audioSupervisor.Start(); err != nil {
 				logger.Error().Err(err).Msg("failed to start audio supervisor")
 			} else {
-			// Broadcast audio device change event to notify WebRTC session
+				// Broadcast audio device change event to notify WebRTC session
+				broadcaster := audio.GetAudioEventBroadcaster()
+				broadcaster.BroadcastAudioDeviceChanged(true, "device_enabled")
+				logger.Info().Msg("broadcasted audio device change event after enabling audio device")
+			}
+			// Always broadcast the audio device change event regardless of enable/disable
 			broadcaster := audio.GetAudioEventBroadcaster()
-			broadcaster.BroadcastAudioDeviceChanged(true, "device_enabled")
-			logger.Info().Msg("broadcasted audio device change event after enabling audio device")
-		}
-		// Always broadcast the audio device change event regardless of enable/disable
-		broadcaster := audio.GetAudioEventBroadcaster()
-		broadcaster.BroadcastAudioDeviceChanged(enabled, "device_state_changed")
-		logger.Info().Bool("enabled", enabled).Msg("broadcasted audio device state change event")
+			broadcaster.BroadcastAudioDeviceChanged(enabled, "device_state_changed")
+			logger.Info().Bool("enabled", enabled).Msg("broadcasted audio device state change event")
 		}
 		config.UsbDevices.Audio = enabled
 	default:
