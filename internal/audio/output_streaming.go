@@ -63,7 +63,7 @@ func NewOutputStreamer() (*OutputStreamer, error) {
 		cancel:         cancel,
 		batchSize:      initialBatchSize,                                 // Use adaptive batch size
 		processingChan: make(chan []byte, GetConfig().ChannelBufferSize), // Large buffer for smooth processing
-		statsInterval:  5 * time.Second,                                  // Statistics every 5 seconds
+		statsInterval:  GetConfig().StatsUpdateInterval,                  // Statistics interval from config
 		lastStatsTime:  time.Now().UnixNano(),
 	}, nil
 }

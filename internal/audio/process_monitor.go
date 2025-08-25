@@ -245,7 +245,26 @@ func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessM
 	return metric, nil
 }
 
-// calculateCPUPercent calculates CPU percentage for a process
+// calculateCPUPercent calculates CPU percentage for a process with validation and bounds checking.
+//
+// Validation Rules:
+//   - Returns 0.0 for first sample (no baseline for comparison)
+//   - Requires positive time delta between samples
+//   - Applies CPU percentage bounds: [MinCPUPercent, MaxCPUPercent]
+//   - Uses system clock ticks for accurate CPU time conversion
+//   - Validates clock ticks within range [MinValidClockTicks, MaxValidClockTicks]
+//
+// Bounds Applied:
+//   - CPU percentage clamped to [0.01%, 100.0%] (default values)
+//   - Clock ticks validated within [50, 1000] range (default values)
+//   - Time delta must be > 0 to prevent division by zero
+//
+// Warmup Behavior:
+//   - During warmup period (< WarmupCPUSamples), returns MinCPUPercent for idle processes
+//   - This indicates process is alive but not consuming significant CPU
+//
+// The function ensures accurate CPU percentage calculation while preventing
+// invalid measurements that could affect system monitoring and adaptive algorithms.
 func (pm *ProcessMonitor) calculateCPUPercent(totalCPUTime int64, state *processState, now time.Time) float64 {
 	if state.lastSample.IsZero() {
 		// First sample - initialize baseline

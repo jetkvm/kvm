@@ -233,8 +233,25 @@ func (abm *AdaptiveBufferManager) adaptBufferSizes() {
 	UpdateAdaptiveBufferMetrics(currentInputSize, currentOutputSize, systemCPU, systemMemory, adjustmentMade)
 }
 
-// calculateCPUFactor returns adaptation factor based on CPU usage
-// Returns: -1.0 (decrease buffers) to +1.0 (increase buffers)
+// calculateCPUFactor returns adaptation factor based on CPU usage with threshold validation.
+//
+// Validation Rules:
+//   - CPU percentage must be within valid range [0.0, 100.0]
+//   - Uses LowCPUThreshold and HighCPUThreshold from config for decision boundaries
+//   - Default thresholds: Low=20.0%, High=80.0%
+//
+// Adaptation Logic:
+//   - CPU > HighCPUThreshold: Return -1.0 (decrease buffers to reduce CPU load)
+//   - CPU < LowCPUThreshold: Return +1.0 (increase buffers for better quality)
+//   - Between thresholds: Linear interpolation based on distance from midpoint
+//
+// Returns: Adaptation factor in range [-1.0, +1.0]
+//   - Negative values: Decrease buffer sizes to reduce CPU usage
+//   - Positive values: Increase buffer sizes for better audio quality
+//   - Zero: No adaptation needed
+//
+// The function ensures CPU-aware buffer management to balance audio quality
+// with system performance, preventing CPU starvation of the KVM process.
 func (abm *AdaptiveBufferManager) calculateCPUFactor(cpuPercent float64) float64 {
 	if cpuPercent > abm.config.HighCPUThreshold {
 		// High CPU: decrease buffers to reduce latency and give CPU to KVM
@@ -248,7 +265,25 @@ func (abm *AdaptiveBufferManager) calculateCPUFactor(cpuPercent float64) float64
 	return (midpoint - cpuPercent) / (midpoint - abm.config.LowCPUThreshold)
 }
 
-// calculateMemoryFactor returns adaptation factor based on memory usage
+// calculateMemoryFactor returns adaptation factor based on memory usage with threshold validation.
+//
+// Validation Rules:
+//   - Memory percentage must be within valid range [0.0, 100.0]
+//   - Uses LowMemoryThreshold and HighMemoryThreshold from config for decision boundaries
+//   - Default thresholds: Low=30.0%, High=85.0%
+//
+// Adaptation Logic:
+//   - Memory > HighMemoryThreshold: Return -1.0 (decrease buffers to free memory)
+//   - Memory < LowMemoryThreshold: Return +1.0 (increase buffers for performance)
+//   - Between thresholds: Linear interpolation based on distance from midpoint
+//
+// Returns: Adaptation factor in range [-1.0, +1.0]
+//   - Negative values: Decrease buffer sizes to reduce memory usage
+//   - Positive values: Increase buffer sizes for better performance
+//   - Zero: No adaptation needed
+//
+// The function prevents memory exhaustion while optimizing buffer sizes
+// for audio processing performance and system stability.
 func (abm *AdaptiveBufferManager) calculateMemoryFactor(memoryPercent float64) float64 {
 	if memoryPercent > abm.config.HighMemoryThreshold {
 		// High memory: decrease buffers to free memory
@@ -262,7 +297,25 @@ func (abm *AdaptiveBufferManager) calculateMemoryFactor(memoryPercent float64) f
 	return (midpoint - memoryPercent) / (midpoint - abm.config.LowMemoryThreshold)
 }
 
-// calculateLatencyFactor returns adaptation factor based on latency
+// calculateLatencyFactor returns adaptation factor based on latency with threshold validation.
+//
+// Validation Rules:
+//   - Latency must be non-negative duration
+//   - Uses TargetLatency and MaxLatency from config for decision boundaries
+//   - Default thresholds: Target=50ms, Max=200ms
+//
+// Adaptation Logic:
+//   - Latency > MaxLatency: Return -1.0 (decrease buffers to reduce latency)
+//   - Latency < TargetLatency: Return +1.0 (increase buffers for quality)
+//   - Between thresholds: Linear interpolation based on distance from midpoint
+//
+// Returns: Adaptation factor in range [-1.0, +1.0]
+//   - Negative values: Decrease buffer sizes to reduce audio latency
+//   - Positive values: Increase buffer sizes for better audio quality
+//   - Zero: Latency is at optimal level
+//
+// The function balances audio latency with quality, ensuring real-time
+// performance while maintaining acceptable audio processing quality.
 func (abm *AdaptiveBufferManager) calculateLatencyFactor(latency time.Duration) float64 {
 	if latency > abm.config.MaxLatency {
 		// High latency: decrease buffers
