@@ -107,6 +107,9 @@ if [ "$RUN_GO_TESTS" = true ]; then
     msg_info "▶ Building go tests"
     make build_dev_test  
 
+    msg_info "▶ Cleaning up /tmp directory on remote host"
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -rf /tmp/tmp.* /tmp/device-tests.* || true"
+
     msg_info "▶ Copying device-tests.tar.gz to remote host"
     ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > /tmp/device-tests.tar.gz" < device-tests.tar.gz
 
@@ -119,7 +122,7 @@ tar zxf /tmp/device-tests.tar.gz
 ./gotestsum --format=testdox \
     --jsonfile=/tmp/device-tests.json \
     --post-run-command 'sh -c "echo $TESTS_FAILED > /tmp/device-tests.failed"' \
-    --raw-command -- ./run_all_tests -json
+    --raw-command -- sh ./run_all_tests -json
 
 GOTESTSUM_EXIT_CODE=$?
 if [ $GOTESTSUM_EXIT_CODE -ne 0 ]; then
