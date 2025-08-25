@@ -234,7 +234,7 @@ func (p *ZeroCopyFramePool) GetZeroCopyPoolStats() ZeroCopyFramePoolStats {
 
 	var hitRate float64
 	if totalRequests > 0 {
-		hitRate = float64(hitCount) / float64(totalRequests) * 100
+		hitRate = float64(hitCount) / float64(totalRequests) * GetConfig().PercentageMultiplier
 	}
 
 	return ZeroCopyFramePoolStats{

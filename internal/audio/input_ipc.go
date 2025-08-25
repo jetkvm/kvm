@@ -16,14 +16,19 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 )
 
-const (
-	inputMagicNumber uint32 = 0x4A4B4D49 // "JKMI" (JetKVM Microphone Input)
+var (
+	inputMagicNumber uint32 = GetConfig().InputMagicNumber // "JKMI" (JetKVM Microphone Input)
 	inputSocketName         = "audio_input.sock"
-	maxFrameSize            = 4096                  // Maximum Opus frame size
 	writeTimeout            = 15 * time.Millisecond // Non-blocking write timeout (increased for high load)
-	maxDroppedFrames        = 100                   // Maximum consecutive dropped frames before reconnect
-	headerSize              = 17                    // Fixed header size: 4+1+4+8 bytes
-	messagePoolSize         = 256                   // Pre-allocated message pool size
+)
+
+const (
+	headerSize = 17 // Fixed header size: 4+1+4+8 bytes
+)
+
+var (
+	maxFrameSize    = GetConfig().MaxFrameSize    // Maximum Opus frame size
+	messagePoolSize = GetConfig().MessagePoolSize // Pre-allocated message pool size
 )
 
 // InputMessageType represents the type of IPC message
@@ -79,9 +84,9 @@ var messagePoolInitOnce sync.Once
 func initializeMessagePool() {
 	messagePoolInitOnce.Do(func() {
 		// Pre-allocate 30% of pool size for immediate availability
-		preallocSize := messagePoolSize * 30 / 100
+		preallocSize := messagePoolSize * GetConfig().InputPreallocPercentage / 100
 		globalMessagePool.preallocSize = preallocSize
-		globalMessagePool.maxPoolSize = messagePoolSize * 2 // Allow growth up to 2x
+		globalMessagePool.maxPoolSize = messagePoolSize * GetConfig().PoolGrowthMultiplier // Allow growth up to 2x
 		globalMessagePool.preallocated = make([]*OptimizedIPCMessage, 0, preallocSize)
 
 		// Pre-allocate messages to reduce initial allocation overhead
@@ -315,7 +320,7 @@ func (ais *AudioInputServer) handleConnection(conn net.Conn) {
 			if ais.conn == nil {
 				return
 			}
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(GetConfig().DefaultSleepDuration)
 		}
 	}
 }
@@ -345,7 +350,7 @@ func (ais *AudioInputServer) readMessage(conn net.Conn) (*InputIPCMessage, error
 	}
 
 	// Validate message length
-	if msg.Length > maxFrameSize {
+	if msg.Length > uint32(maxFrameSize) {
 		return nil, fmt.Errorf("message too large: %d bytes", msg.Length)
 	}
 
@@ -711,7 +716,7 @@ func (aic *AudioInputClient) GetDropRate() float64 {
 	if total == 0 {
 		return 0.0
 	}
-	return float64(dropped) / float64(total) * 100.0
+	return float64(dropped) / float64(total) * GetConfig().PercentageMultiplier
 }
 
 // ResetStats resets frame statistics
@@ -820,11 +825,11 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 		}()
 
 		defer ais.wg.Done()
-		ticker := time.NewTicker(100 * time.Millisecond)
+		ticker := time.NewTicker(GetConfig().DefaultTickerInterval)
 		defer ticker.Stop()
 
 		// Buffer size update ticker (less frequent)
-		bufferUpdateTicker := time.NewTicker(500 * time.Millisecond)
+		bufferUpdateTicker := time.NewTicker(GetConfig().BufferUpdateInterval)
 		defer bufferUpdateTicker.Stop()
 
 		for {
@@ -917,7 +922,7 @@ func (mp *MessagePool) GetMessagePoolStats() MessagePoolStats {
 
 	var hitRate float64
 	if totalRequests > 0 {
-		hitRate = float64(hitCount) / float64(totalRequests) * 100
+		hitRate = float64(hitCount) / float64(totalRequests) * GetConfig().PercentageMultiplier
 	}
 
 	// Calculate channel pool size

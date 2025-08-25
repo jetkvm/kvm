@@ -41,13 +41,13 @@ func (aim *AudioInputIPCManager) Start() error {
 	}
 
 	config := InputIPCConfig{
-		SampleRate: 48000,
-		Channels:   2,
-		FrameSize:  960,
+		SampleRate: GetConfig().InputIPCSampleRate,
+		Channels:   GetConfig().InputIPCChannels,
+		FrameSize:  GetConfig().InputIPCFrameSize,
 	}
 
 	// Wait for subprocess readiness
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(GetConfig().LongSleepDuration)
 
 	err = aim.supervisor.SendConfig(config)
 	if err != nil {

@@ -151,7 +151,7 @@ func (r *AudioRelay) relayLoop() {
 					r.logger.Error().Msg("Too many consecutive errors, stopping relay")
 					return
 				}
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(GetConfig().ShortSleepDuration)
 				continue
 			}
 

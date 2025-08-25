@@ -131,7 +131,7 @@ func (s *AudioServerSupervisor) Stop() error {
 	select {
 	case <-s.processDone:
 		s.logger.Info().Msg("audio server process stopped gracefully")
-	case <-time.After(10 * time.Second):
+	case <-time.After(GetConfig().SupervisorTimeout):
 		s.logger.Warn().Msg("audio server process did not stop gracefully, forcing termination")
 		s.forceKillProcess()
 	}
@@ -365,7 +365,7 @@ func (s *AudioServerSupervisor) terminateProcess() {
 	select {
 	case <-done:
 		s.logger.Info().Int("pid", pid).Msg("audio server process terminated gracefully")
-	case <-time.After(5 * time.Second):
+	case <-time.After(GetConfig().InputSupervisorTimeout):
 		s.logger.Warn().Int("pid", pid).Msg("process did not terminate gracefully, sending SIGKILL")
 		s.forceKillProcess()
 	}

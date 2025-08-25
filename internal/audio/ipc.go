@@ -16,15 +16,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const (
-	outputMagicNumber      uint32 = 0x4A4B4F55 // "JKOU" (JetKVM Output)
-	outputSocketName              = "audio_output.sock"
-	outputMaxFrameSize            = 4096                  // Maximum Opus frame size
-	outputWriteTimeout            = 10 * time.Millisecond // Non-blocking write timeout (increased for high load)
-	outputMaxDroppedFrames        = 50                    // Maximum consecutive dropped frames
-	outputHeaderSize              = 17                    // Fixed header size: 4+1+4+8 bytes
-	outputMessagePoolSize         = 128                   // Pre-allocated message pool size
+var (
+	outputMagicNumber uint32 = GetConfig().OutputMagicNumber // "JKOU" (JetKVM Output)
+	outputSocketName         = "audio_output.sock"
 )
+
+// Output IPC constants are now centralized in config_constants.go
+// outputMaxFrameSize, outputWriteTimeout, outputMaxDroppedFrames, outputHeaderSize, outputMessagePoolSize
 
 // OutputMessageType represents the type of IPC message
 type OutputMessageType uint8
@@ -48,8 +46,8 @@ type OutputIPCMessage struct {
 
 // OutputOptimizedMessage represents a pre-allocated message for zero-allocation operations
 type OutputOptimizedMessage struct {
-	header [outputHeaderSize]byte // Pre-allocated header buffer
-	data   []byte                 // Reusable data buffer
+	header [17]byte // Pre-allocated header buffer (using constant value since array size must be compile-time constant)
+	data   []byte   // Reusable data buffer
 }
 
 // OutputMessagePool manages pre-allocated messages for zero-allocation IPC
@@ -66,7 +64,7 @@ func NewOutputMessagePool(size int) *OutputMessagePool {
 	// Pre-allocate messages
 	for i := 0; i < size; i++ {
 		msg := &OutputOptimizedMessage{
-			data: make([]byte, outputMaxFrameSize),
+			data: make([]byte, GetConfig().OutputMaxFrameSize),
 		}
 		pool.pool <- msg
 	}
@@ -82,7 +80,7 @@ func (p *OutputMessagePool) Get() *OutputOptimizedMessage {
 	default:
 		// Pool exhausted, create new message
 		return &OutputOptimizedMessage{
-			data: make([]byte, outputMaxFrameSize),
+			data: make([]byte, GetConfig().OutputMaxFrameSize),
 		}
 	}
 }
@@ -98,7 +96,7 @@ func (p *OutputMessagePool) Put(msg *OutputOptimizedMessage) {
 }
 
 // Global message pool for output IPC
-var globalOutputMessagePool = NewOutputMessagePool(outputMessagePoolSize)
+var globalOutputMessagePool = NewOutputMessagePool(GetConfig().OutputMessagePoolSize)
 
 type AudioServer struct {
 	// Atomic fields must be first for proper alignment on ARM
@@ -135,7 +133,7 @@ func NewAudioServer() (*AudioServer, error) {
 	}
 
 	// Initialize with adaptive buffer size (start with 500 frames)
-	initialBufferSize := int64(500)
+	initialBufferSize := int64(GetConfig().InitialBufferFrames)
 
 	// Initialize latency monitoring
 	latencyConfig := DefaultLatencyConfig()
@@ -284,8 +282,8 @@ func (s *AudioServer) Close() error {
 }
 
 func (s *AudioServer) SendFrame(frame []byte) error {
-	if len(frame) > outputMaxFrameSize {
-		return fmt.Errorf("frame size %d exceeds maximum %d", len(frame), outputMaxFrameSize)
+	if len(frame) > GetConfig().OutputMaxFrameSize {
+		return fmt.Errorf("frame size %d exceeds maximum %d", len(frame), GetConfig().OutputMaxFrameSize)
 	}
 
 	start := time.Now()
@@ -340,7 +338,7 @@ func (s *AudioServer) sendFrameToClient(frame []byte) error {
 	binary.LittleEndian.PutUint64(optMsg.header[9:17], uint64(start.UnixNano()))
 
 	// Use non-blocking write with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), outputWriteTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), GetConfig().OutputWriteTimeout)
 	defer cancel()
 
 	// Create a channel to signal write completion
@@ -492,8 +490,8 @@ func (c *AudioClient) ReceiveFrame() ([]byte, error) {
 	}
 
 	size := binary.LittleEndian.Uint32(optMsg.header[5:9])
-	if size > outputMaxFrameSize {
-		return nil, fmt.Errorf("frame size %d exceeds maximum %d", size, outputMaxFrameSize)
+	if int(size) > GetConfig().OutputMaxFrameSize {
+		return nil, fmt.Errorf("frame size %d exceeds maximum %d", size, GetConfig().OutputMaxFrameSize)
 	}
 
 	// Read frame data

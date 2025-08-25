@@ -13,26 +13,29 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Constants for process monitoring
-const (
+// Variables for process monitoring (using configuration)
+var (
 	// System constants
-	pageSize          = 4096
-	maxCPUPercent     = 100.0
-	minCPUPercent     = 0.01
-	defaultClockTicks = 250.0 // Common for embedded ARM systems
-	defaultMemoryGB   = 8
+	maxCPUPercent     = GetConfig().MaxCPUPercent
+	minCPUPercent     = GetConfig().MinCPUPercent
+	defaultClockTicks = GetConfig().DefaultClockTicks
+	defaultMemoryGB   = GetConfig().DefaultMemoryGB
 
 	// Monitoring thresholds
-	maxWarmupSamples    = 3
-	warmupCPUSamples    = 2
-	logThrottleInterval = 10
+	maxWarmupSamples = GetConfig().MaxWarmupSamples
+	warmupCPUSamples = GetConfig().WarmupCPUSamples
 
 	// Channel buffer size
-	metricsChannelBuffer = 100
+	metricsChannelBuffer = GetConfig().MetricsChannelBuffer
 
 	// Clock tick detection ranges
-	minValidClockTicks = 50
-	maxValidClockTicks = 1000
+	minValidClockTicks = float64(GetConfig().MinValidClockTicks)
+	maxValidClockTicks = float64(GetConfig().MaxValidClockTicks)
+)
+
+// Variables for process monitoring
+var (
+	pageSize = GetConfig().PageSize
 )
 
 // ProcessMetrics represents CPU and memory usage metrics for a process
@@ -217,7 +220,7 @@ func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessM
 	vsize, _ := strconv.ParseInt(fields[22], 10, 64)
 	rss, _ := strconv.ParseInt(fields[23], 10, 64)
 
-	metric.MemoryRSS = rss * pageSize
+	metric.MemoryRSS = rss * int64(pageSize)
 	metric.MemoryVMS = vsize
 
 	// Calculate CPU percentage
@@ -230,7 +233,7 @@ func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessM
 
 	// Calculate memory percentage (RSS / total system memory)
 	if totalMem := pm.getTotalMemory(); totalMem > 0 {
-		metric.MemoryPercent = float64(metric.MemoryRSS) / float64(totalMem) * 100.0
+		metric.MemoryPercent = float64(metric.MemoryRSS) / float64(totalMem) * GetConfig().PercentageMultiplier
 	}
 
 	// Update state for next calculation
@@ -261,7 +264,7 @@ func (pm *ProcessMonitor) calculateCPUPercent(totalCPUTime int64, state *process
 		// Convert from clock ticks to seconds using actual system clock ticks
 		clockTicks := pm.getClockTicks()
 		cpuSeconds := cpuDelta / clockTicks
-		cpuPercent := (cpuSeconds / timeDelta) * 100.0
+		cpuPercent := (cpuSeconds / timeDelta) * GetConfig().PercentageMultiplier
 
 		// Apply bounds
 		if cpuPercent > maxCPUPercent {
@@ -341,7 +344,7 @@ func (pm *ProcessMonitor) getTotalMemory() int64 {
 	pm.memoryOnce.Do(func() {
 		file, err := os.Open("/proc/meminfo")
 		if err != nil {
-			pm.totalMemory = defaultMemoryGB * 1024 * 1024 * 1024
+			pm.totalMemory = int64(defaultMemoryGB) * 1024 * 1024 * 1024
 			return
 		}
 		defer file.Close()
@@ -360,7 +363,7 @@ func (pm *ProcessMonitor) getTotalMemory() int64 {
 				break
 			}
 		}
-		pm.totalMemory = defaultMemoryGB * 1024 * 1024 * 1024 // Fallback
+		pm.totalMemory = int64(defaultMemoryGB) * 1024 * 1024 * 1024 // Fallback
 	})
 	return pm.totalMemory
 }

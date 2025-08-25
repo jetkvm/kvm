@@ -64,7 +64,7 @@ func RunAudioOutputServer() error {
 	StopNonBlockingAudioStreaming()
 
 	// Give some time for cleanup
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(GetConfig().DefaultSleepDuration)
 
 	logger.Info().Msg("Audio output server subprocess stopped")
 	return nil

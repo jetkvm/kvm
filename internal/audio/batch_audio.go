@@ -72,7 +72,7 @@ func NewBatchAudioProcessor(batchSize int, batchDuration time.Duration) *BatchAu
 		readQueue:     make(chan batchReadRequest, batchSize*2),
 		readBufPool: &sync.Pool{
 			New: func() interface{} {
-				return make([]byte, 1500) // Max audio frame size
+				return make([]byte, GetConfig().AudioFramePoolSize) // Max audio frame size
 			},
 		},
 	}
@@ -110,7 +110,7 @@ func (bap *BatchAudioProcessor) Stop() {
 	bap.cancel()
 
 	// Wait for processing to complete
-	time.Sleep(bap.batchDuration + 10*time.Millisecond)
+	time.Sleep(bap.batchDuration + GetConfig().BatchProcessingDelay)
 
 	bap.logger.Info().Msg("batch audio processor stopped")
 }
@@ -134,7 +134,7 @@ func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
 	select {
 	case bap.readQueue <- request:
 		// Successfully queued
-	case <-time.After(5 * time.Millisecond):
+	case <-time.After(GetConfig().ShortTimeout):
 		// Queue is full or blocked, fallback to single operation
 		atomic.AddInt64(&bap.stats.SingleReads, 1)
 		atomic.AddInt64(&bap.stats.SingleFrames, 1)
@@ -145,7 +145,7 @@ func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
 	select {
 	case result := <-resultChan:
 		return result.length, result.err
-	case <-time.After(50 * time.Millisecond):
+	case <-time.After(GetConfig().MediumTimeout):
 		// Timeout, fallback to single operation
 		atomic.AddInt64(&bap.stats.SingleReads, 1)
 		atomic.AddInt64(&bap.stats.SingleFrames, 1)
