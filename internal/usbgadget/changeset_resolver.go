@@ -116,7 +116,7 @@ func (c *ChangeSetResolver) resolveChanges(initial bool) error {
 }
 
 func (c *ChangeSetResolver) applyChanges() error {
-	return c.applyChangesWithTimeout(30 * time.Second)
+	return c.applyChangesWithTimeout(45 * time.Second)
 }
 
 func (c *ChangeSetResolver) applyChangesWithTimeout(timeout time.Duration) error {

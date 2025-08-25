@@ -1,10 +1,12 @@
 package usbgadget
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -52,22 +54,50 @@ func (u *UsbGadget) newUsbGadgetTransaction(lock bool) error {
 }
 
 func (u *UsbGadget) WithTransaction(fn func() error) error {
-	u.txLock.Lock()
-	defer u.txLock.Unlock()
+	return u.WithTransactionTimeout(fn, 60*time.Second)
+}
 
-	err := u.newUsbGadgetTransaction(false)
-	if err != nil {
-		u.log.Error().Err(err).Msg("failed to create transaction")
-		return err
-	}
-	if err := fn(); err != nil {
-		u.log.Error().Err(err).Msg("transaction failed")
-		return err
-	}
-	result := u.tx.Commit()
-	u.tx = nil
+// WithTransactionTimeout executes a USB gadget transaction with a specified timeout
+// to prevent indefinite blocking during USB reconfiguration operations
+func (u *UsbGadget) WithTransactionTimeout(fn func() error, timeout time.Duration) error {
+	// Create a context with timeout for the entire transaction
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
-	return result
+	// Channel to signal when the transaction is complete
+	done := make(chan error, 1)
+
+	// Execute the transaction in a goroutine
+	go func() {
+		u.txLock.Lock()
+		defer u.txLock.Unlock()
+
+		err := u.newUsbGadgetTransaction(false)
+		if err != nil {
+			u.log.Error().Err(err).Msg("failed to create transaction")
+			done <- err
+			return
+		}
+
+		if err := fn(); err != nil {
+			u.log.Error().Err(err).Msg("transaction failed")
+			done <- err
+			return
+		}
+
+		result := u.tx.Commit()
+		u.tx = nil
+		done <- result
+	}()
+
+	// Wait for either completion or timeout
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		u.log.Error().Dur("timeout", timeout).Msg("USB gadget transaction timed out")
+		return fmt.Errorf("USB gadget transaction timed out after %v: %w", timeout, ctx.Err())
+	}
 }
 
 func (tx *UsbGadgetTransaction) addFileChange(component string, change RequestedFileChange) string {
