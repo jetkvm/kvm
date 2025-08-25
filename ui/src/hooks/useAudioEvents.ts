@@ -8,7 +8,8 @@ export type AudioEventType =
   | 'microphone-state-changed'
   | 'microphone-metrics-update'
   | 'audio-process-metrics'
-  | 'microphone-process-metrics';
+  | 'microphone-process-metrics'
+  | 'audio-device-changed';
 
 // Audio event data interfaces
 export interface AudioMuteData {
@@ -48,10 +49,15 @@ export interface ProcessMetricsData {
   process_name: string;
 }
 
+export interface AudioDeviceChangedData {
+  enabled: boolean;
+  reason: string;
+}
+
 // Audio event structure
 export interface AudioEvent {
   type: AudioEventType;
-  data: AudioMuteData | AudioMetricsData | MicrophoneStateData | MicrophoneMetricsData | ProcessMetricsData;
+  data: AudioMuteData | AudioMetricsData | MicrophoneStateData | MicrophoneMetricsData | ProcessMetricsData | AudioDeviceChangedData;
 }
 
 // Hook return type
@@ -72,6 +78,9 @@ export interface UseAudioEventsReturn {
   audioProcessMetrics: ProcessMetricsData | null;
   microphoneProcessMetrics: ProcessMetricsData | null;
   
+  // Device change events
+  onAudioDeviceChanged?: (data: AudioDeviceChangedData) => void;
+  
   // Manual subscription control
   subscribe: () => void;
   unsubscribe: () => void;
@@ -84,7 +93,7 @@ const globalSubscriptionState = {
   connectionId: null as string | null
 };
 
-export function useAudioEvents(): UseAudioEventsReturn {
+export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedData) => void): UseAudioEventsReturn {
   // State for audio data
   const [audioMuted, setAudioMuted] = useState<boolean | null>(null);
   const [audioMetrics, setAudioMetrics] = useState<AudioMetricsData | null>(null);
@@ -244,6 +253,15 @@ export function useAudioEvents(): UseAudioEventsReturn {
               break;
             }
               
+            case 'audio-device-changed': {
+              const deviceChangedData = audioEvent.data as AudioDeviceChangedData;
+              console.log('[AudioEvents] Audio device changed:', deviceChangedData);
+              if (onAudioDeviceChanged) {
+                onAudioDeviceChanged(deviceChangedData);
+              }
+              break;
+            }
+              
             default:
               // Ignore other message types (WebRTC signaling, etc.)
               break;
@@ -256,7 +274,7 @@ export function useAudioEvents(): UseAudioEventsReturn {
         }
       }
     }
-  }, [lastMessage]);
+  }, [lastMessage, onAudioDeviceChanged]);
 
   // Auto-subscribe when connected
   useEffect(() => {
@@ -308,6 +326,9 @@ export function useAudioEvents(): UseAudioEventsReturn {
     // Process metrics
     audioProcessMetrics,
     microphoneProcessMetrics,
+    
+    // Device change events
+    onAudioDeviceChanged,
     
     // Manual subscription control
     subscribe,

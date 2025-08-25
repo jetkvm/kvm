@@ -34,6 +34,7 @@ import {
   VideoState,
 } from "@/hooks/stores";
 import { useMicrophone } from "@/hooks/useMicrophone";
+import { useAudioEvents } from "@/hooks/useAudioEvents";
 import WebRTCVideo from "@components/WebRTCVideo";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import DashboardNavbar from "@components/Header";
@@ -654,6 +655,9 @@ export default function KvmIdRoute() {
 
   const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
   const { send } = useJsonRpc(onJsonRpcRequest);
+
+  // Use audio events hook without device change handler to avoid subscription loops
+  useAudioEvents();
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
