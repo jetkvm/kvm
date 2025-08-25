@@ -38,22 +38,37 @@ func initUsbGadget() {
 }
 
 func rpcKeyboardReport(modifier uint8, keys []uint8) error {
+	if gadget == nil {
+		return nil // Gracefully handle uninitialized gadget (e.g., in tests)
+	}
 	return gadget.KeyboardReport(modifier, keys)
 }
 
 func rpcAbsMouseReport(x, y int, buttons uint8) error {
+	if gadget == nil {
+		return nil // Gracefully handle uninitialized gadget (e.g., in tests)
+	}
 	return gadget.AbsMouseReport(x, y, buttons)
 }
 
 func rpcRelMouseReport(dx, dy int8, buttons uint8) error {
+	if gadget == nil {
+		return nil // Gracefully handle uninitialized gadget (e.g., in tests)
+	}
 	return gadget.RelMouseReport(dx, dy, buttons)
 }
 
 func rpcWheelReport(wheelY int8) error {
+	if gadget == nil {
+		return nil // Gracefully handle uninitialized gadget (e.g., in tests)
+	}
 	return gadget.AbsMouseWheelReport(wheelY)
 }
 
 func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {
+	if gadget == nil {
+		return usbgadget.KeyboardState{} // Return empty state for uninitialized gadget
+	}
 	return gadget.GetKeyboardState()
 }
 
