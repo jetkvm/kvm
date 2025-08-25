@@ -325,7 +325,29 @@ func (ais *AudioInputServer) handleConnection(conn net.Conn) {
 	}
 }
 
-// readMessage reads a complete message from the connection
+// readMessage reads a message from the connection using optimized pooled buffers with validation.
+//
+// Validation Rules:
+//   - Magic number must match InputMagicNumber ("JKMI" - JetKVM Microphone Input)
+//   - Message length must not exceed MaxFrameSize (default: 4096 bytes)
+//   - Header size is fixed at 17 bytes (4+1+4+8: Magic+Type+Length+Timestamp)
+//   - Data length validation prevents buffer overflow attacks
+//
+// Message Format:
+//   - Magic (4 bytes): Identifies valid JetKVM audio messages
+//   - Type (1 byte): InputMessageType (OpusFrame, Config, Stop, Heartbeat, Ack)
+//   - Length (4 bytes): Data payload size in bytes
+//   - Timestamp (8 bytes): Message timestamp for latency tracking
+//   - Data (variable): Message payload up to MaxFrameSize
+//
+// Error Conditions:
+//   - Invalid magic number: Rejects non-JetKVM messages
+//   - Message too large: Prevents memory exhaustion
+//   - Connection errors: Network/socket failures
+//   - Incomplete reads: Partial message reception
+//
+// The function uses pooled buffers for efficient memory management and
+// ensures all messages conform to the JetKVM audio protocol specification.
 func (ais *AudioInputServer) readMessage(conn net.Conn) (*InputIPCMessage, error) {
 	// Get optimized message from pool
 	optMsg := globalMessagePool.Get()

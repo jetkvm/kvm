@@ -81,13 +81,14 @@ const (
 
 // DefaultLatencyConfig returns a sensible default configuration
 func DefaultLatencyConfig() LatencyConfig {
+	config := GetConfig()
 	return LatencyConfig{
-		TargetLatency:        50 * time.Millisecond,
-		MaxLatency:           GetConfig().MaxLatencyThreshold,
-		OptimizationInterval: 5 * time.Second,
-		HistorySize:          GetConfig().LatencyHistorySize,
-		JitterThreshold:      GetConfig().JitterThreshold,
-		AdaptiveThreshold:    0.8, // Trigger optimization when 80% above target
+		TargetLatency:        config.LatencyMonitorTarget,
+		MaxLatency:           config.MaxLatencyThreshold,
+		OptimizationInterval: config.LatencyOptimizationInterval,
+		HistorySize:          config.LatencyHistorySize,
+		JitterThreshold:      config.JitterThreshold,
+		AdaptiveThreshold:    config.LatencyAdaptiveThreshold,
 	}
 }
 
@@ -223,7 +224,26 @@ func (lm *LatencyMonitor) monitoringLoop() {
 	}
 }
 
-// runOptimization checks if optimization is needed and triggers callbacks
+// runOptimization checks if optimization is needed and triggers callbacks with threshold validation.
+//
+// Validation Rules:
+//   - Current latency must not exceed MaxLatency (default: 200ms)
+//   - Average latency checked against adaptive threshold: TargetLatency * (1 + AdaptiveThreshold)
+//   - Jitter must not exceed JitterThreshold (default: 20ms)
+//   - All latency values must be non-negative durations
+//
+// Optimization Triggers:
+//   - Current latency > MaxLatency: Immediate optimization needed
+//   - Average latency > adaptive threshold: Gradual optimization needed
+//   - Jitter > JitterThreshold: Stability optimization needed
+//
+// Threshold Calculations:
+//   - Adaptive threshold = TargetLatency * (1.0 + AdaptiveThreshold)
+//   - Default: 50ms * (1.0 + 0.8) = 90ms adaptive threshold
+//   - Provides buffer above target before triggering optimization
+//
+// The function ensures real-time audio performance by monitoring multiple
+// latency metrics and triggering optimization callbacks when thresholds are exceeded.
 func (lm *LatencyMonitor) runOptimization() {
 	metrics := lm.GetMetrics()
 

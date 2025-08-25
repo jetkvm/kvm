@@ -101,7 +101,23 @@ func GetSocketBufferSizes(conn net.Conn) (sendSize, recvSize int, err error) {
 	return sendSize, recvSize, nil
 }
 
-// ValidateSocketBufferConfig validates socket buffer configuration
+// ValidateSocketBufferConfig validates socket buffer configuration parameters.
+//
+// Validation Rules:
+//   - If config.Enabled is false, no validation is performed (returns nil)
+//   - SendBufferSize must be >= SocketMinBuffer (default: 8192 bytes)
+//   - RecvBufferSize must be >= SocketMinBuffer (default: 8192 bytes)
+//   - SendBufferSize must be <= SocketMaxBuffer (default: 1048576 bytes)
+//   - RecvBufferSize must be <= SocketMaxBuffer (default: 1048576 bytes)
+//
+// Error Conditions:
+//   - Returns error if send buffer size is below minimum threshold
+//   - Returns error if receive buffer size is below minimum threshold
+//   - Returns error if send buffer size exceeds maximum threshold
+//   - Returns error if receive buffer size exceeds maximum threshold
+//
+// The validation ensures socket buffers are sized appropriately for audio streaming
+// performance while preventing excessive memory usage.
 func ValidateSocketBufferConfig(config SocketBufferConfig) error {
 	if !config.Enabled {
 		return nil
