@@ -122,7 +122,7 @@ func (s *OutputStreamer) streamLoop() {
 	defer runtime.UnlockOSThread()
 
 	// Adaptive timing for frame reading
-	frameInterval := time.Duration(20) * time.Millisecond // 50 FPS base rate
+	frameInterval := time.Duration(GetConfig().OutputStreamingFrameIntervalMS) * time.Millisecond // 50 FPS base rate
 	ticker := time.NewTicker(frameInterval)
 	defer ticker.Stop()
 

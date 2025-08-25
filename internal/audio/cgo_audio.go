@@ -34,7 +34,7 @@ static int sample_rate = 48000;         // Will be set from GetConfig().CGOSampl
 static int channels = 2;                // Will be set from GetConfig().CGOChannels
 static int frame_size = 960;            // Will be set from GetConfig().CGOFrameSize
 static int max_packet_size = 1500;      // Will be set from GetConfig().CGOMaxPacketSize
-static int sleep_microseconds = 50000;  // Will be set from GetConfig().CGOSleepMicroseconds
+static int sleep_microseconds = 1000;   // Will be set from GetConfig().CGOUsleepMicroseconds
 
 // Function to update constants from Go configuration
 void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constraint,
@@ -244,7 +244,7 @@ int jetkvm_audio_read_encode(void *opus_buf) {
 		} else if (pcm_rc == -ESTRPIPE) {
 			// Device suspended, try to resume
 			while ((err = snd_pcm_resume(pcm_handle)) == -EAGAIN) {
-				usleep(1000); // 1ms
+				usleep(sleep_microseconds); // Use centralized constant
 			}
 			if (err < 0) {
 				err = snd_pcm_prepare(pcm_handle);
@@ -358,7 +358,7 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 		} else if (pcm_rc == -ESTRPIPE) {
 			// Device suspended, try to resume
 			while ((err = snd_pcm_resume(pcm_playback_handle)) == -EAGAIN) {
-				usleep(1000); // 1ms
+				usleep(sleep_microseconds); // Use centralized constant
 			}
 			if (err < 0) {
 				err = snd_pcm_prepare(pcm_playback_handle);
@@ -376,7 +376,7 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 void jetkvm_audio_playback_close() {
 	// Wait for any ongoing operations to complete
 	while (playback_initializing) {
-		usleep(1000); // 1ms
+		usleep(sleep_microseconds); // Use centralized constant
 	}
 
 	// Atomic check and set to prevent double cleanup
@@ -399,7 +399,7 @@ void jetkvm_audio_playback_close() {
 void jetkvm_audio_close() {
 	// Wait for any ongoing operations to complete
 	while (capture_initializing) {
-		usleep(1000); // 1ms
+		usleep(sleep_microseconds); // Use centralized constant
 	}
 
 	capture_initialized = 0;
@@ -448,7 +448,7 @@ func cgoAudioInit() error {
 		C.int(config.CGOChannels),
 		C.int(config.CGOFrameSize),
 		C.int(config.CGOMaxPacketSize),
-		C.int(config.CGOSleepMicroseconds),
+		C.int(config.CGOUsleepMicroseconds),
 	)
 
 	result := C.jetkvm_audio_init()

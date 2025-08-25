@@ -316,7 +316,7 @@ func (pm *ProcessMonitor) getClockTicks() float64 {
 					if len(fields) >= 2 {
 						if period, err := strconv.ParseInt(fields[1], 10, 64); err == nil && period > 0 {
 							// Convert nanoseconds to Hz
-							hz := 1000000000.0 / float64(period)
+							hz := GetConfig().CGONanosecondsPerSecond / float64(period)
 							if hz >= minValidClockTicks && hz <= maxValidClockTicks {
 								pm.clockTicks = hz
 								return
@@ -344,7 +344,7 @@ func (pm *ProcessMonitor) getTotalMemory() int64 {
 	pm.memoryOnce.Do(func() {
 		file, err := os.Open("/proc/meminfo")
 		if err != nil {
-			pm.totalMemory = int64(defaultMemoryGB) * 1024 * 1024 * 1024
+			pm.totalMemory = int64(defaultMemoryGB) * int64(GetConfig().ProcessMonitorKBToBytes) * int64(GetConfig().ProcessMonitorKBToBytes) * int64(GetConfig().ProcessMonitorKBToBytes)
 			return
 		}
 		defer file.Close()
@@ -356,14 +356,14 @@ func (pm *ProcessMonitor) getTotalMemory() int64 {
 				fields := strings.Fields(line)
 				if len(fields) >= 2 {
 					if kb, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
-						pm.totalMemory = kb * 1024
+						pm.totalMemory = kb * int64(GetConfig().ProcessMonitorKBToBytes)
 						return
 					}
 				}
 				break
 			}
 		}
-		pm.totalMemory = int64(defaultMemoryGB) * 1024 * 1024 * 1024 // Fallback
+		pm.totalMemory = int64(defaultMemoryGB) * int64(GetConfig().ProcessMonitorKBToBytes) * int64(GetConfig().ProcessMonitorKBToBytes) * int64(GetConfig().ProcessMonitorKBToBytes) // Fallback
 	})
 	return pm.totalMemory
 }

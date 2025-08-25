@@ -830,6 +830,56 @@ type AudioConfigConstants struct {
 	PoolGrowthMultiplier    int     // 2x growth multiplier for pool sizes
 	LatencyScalingFactor    float64 // 2.0 for latency ratio scaling
 	OptimizerAggressiveness float64 // 0.7 for optimizer aggressiveness
+
+	// CGO Audio Processing Constants
+	CGOUsleepMicroseconds   int     // 1000 microseconds (1ms) for CGO usleep calls
+	CGOPCMBufferSize        int     // 1920 samples for PCM buffer (max 2ch*960)
+	CGONanosecondsPerSecond float64 // 1000000000.0 for nanosecond conversions
+
+	// Frontend Constants
+	FrontendOperationDebounceMS int // 1000ms debounce for frontend operations
+	FrontendSyncDebounceMS      int // 1000ms debounce for sync operations
+	FrontendSampleRate          int // 48000Hz sample rate for frontend audio
+	FrontendRetryDelayMS        int // 500ms retry delay
+	FrontendShortDelayMS        int // 200ms short delay
+	FrontendLongDelayMS         int // 300ms long delay
+	FrontendSyncDelayMS         int // 500ms sync delay
+	FrontendMaxRetryAttempts    int // 3 maximum retry attempts
+	FrontendAudioLevelUpdateMS  int // 100ms audio level update interval
+	FrontendFFTSize             int // 256 FFT size for audio analysis
+	FrontendAudioLevelMax       int // 100 maximum audio level
+	FrontendReconnectIntervalMS int // 3000ms reconnect interval
+	FrontendSubscriptionDelayMS int // 100ms subscription delay
+	FrontendDebugIntervalMS     int // 5000ms debug interval
+
+	// Process Monitor Constants
+	ProcessMonitorDefaultMemoryGB int     // 4GB default memory for fallback
+	ProcessMonitorKBToBytes       int     // 1024 conversion factor
+	ProcessMonitorDefaultClockHz  float64 // 250.0 Hz default for ARM systems
+	ProcessMonitorFallbackClockHz float64 // 1000.0 Hz fallback clock
+	ProcessMonitorTraditionalHz   float64 // 100.0 Hz traditional clock
+
+	// Batch Processing Constants
+	BatchProcessorFramesPerBatch int           // 4 frames per batch
+	BatchProcessorTimeout        time.Duration // 5ms timeout
+
+	// Output Streaming Constants
+	OutputStreamingFrameIntervalMS int // 20ms frame interval (50 FPS)
+
+	// IPC Constants
+	IPCInitialBufferFrames int // 500 frames for initial buffer
+
+	// Event Constants
+	EventTimeoutSeconds      int    // 2 seconds for event timeout
+	EventTimeFormatString    string // "2006-01-02T15:04:05.000Z" time format
+	EventSubscriptionDelayMS int    // 100ms subscription delay
+
+	// Input Processing Constants
+	InputProcessingTimeoutMS int // 10ms processing timeout threshold
+
+	// Adaptive Buffer Constants
+	AdaptiveBufferCPUMultiplier    int // 100 multiplier for CPU percentage
+	AdaptiveBufferMemoryMultiplier int // 100 multiplier for memory percentage
 }
 
 // DefaultAudioConfig returns the default configuration constants
@@ -1247,6 +1297,56 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		PoolGrowthMultiplier:    2,   // Pool growth multiplier
 		LatencyScalingFactor:    2.0, // Latency ratio scaling factor
 		OptimizerAggressiveness: 0.7, // Optimizer aggressiveness factor
+
+		// CGO Audio Processing Constants
+		CGOUsleepMicroseconds:   1000,         // 1000 microseconds (1ms) for CGO usleep calls
+		CGOPCMBufferSize:        1920,         // 1920 samples for PCM buffer (max 2ch*960)
+		CGONanosecondsPerSecond: 1000000000.0, // 1000000000.0 for nanosecond conversions
+
+		// Frontend Constants
+		FrontendOperationDebounceMS: 1000,  // 1000ms debounce for frontend operations
+		FrontendSyncDebounceMS:      1000,  // 1000ms debounce for sync operations
+		FrontendSampleRate:          48000, // 48000Hz sample rate for frontend audio
+		FrontendRetryDelayMS:        500,   // 500ms retry delay
+		FrontendShortDelayMS:        200,   // 200ms short delay
+		FrontendLongDelayMS:         300,   // 300ms long delay
+		FrontendSyncDelayMS:         500,   // 500ms sync delay
+		FrontendMaxRetryAttempts:    3,     // 3 maximum retry attempts
+		FrontendAudioLevelUpdateMS:  100,   // 100ms audio level update interval
+		FrontendFFTSize:             256,   // 256 FFT size for audio analysis
+		FrontendAudioLevelMax:       100,   // 100 maximum audio level
+		FrontendReconnectIntervalMS: 3000,  // 3000ms reconnect interval
+		FrontendSubscriptionDelayMS: 100,   // 100ms subscription delay
+		FrontendDebugIntervalMS:     5000,  // 5000ms debug interval
+
+		// Process Monitor Constants
+		ProcessMonitorDefaultMemoryGB: 4,      // 4GB default memory for fallback
+		ProcessMonitorKBToBytes:       1024,   // 1024 conversion factor
+		ProcessMonitorDefaultClockHz:  250.0,  // 250.0 Hz default for ARM systems
+		ProcessMonitorFallbackClockHz: 1000.0, // 1000.0 Hz fallback clock
+		ProcessMonitorTraditionalHz:   100.0,  // 100.0 Hz traditional clock
+
+		// Batch Processing Constants
+		BatchProcessorFramesPerBatch: 4,                    // 4 frames per batch
+		BatchProcessorTimeout:        5 * time.Millisecond, // 5ms timeout
+
+		// Output Streaming Constants
+		OutputStreamingFrameIntervalMS: 20, // 20ms frame interval (50 FPS)
+
+		// IPC Constants
+		IPCInitialBufferFrames: 500, // 500 frames for initial buffer
+
+		// Event Constants
+		EventTimeoutSeconds:      2,                          // 2 seconds for event timeout
+		EventTimeFormatString:    "2006-01-02T15:04:05.000Z", // "2006-01-02T15:04:05.000Z" time format
+		EventSubscriptionDelayMS: 100,                        // 100ms subscription delay
+
+		// Input Processing Constants
+		InputProcessingTimeoutMS: 10, // 10ms processing timeout threshold
+
+		// Adaptive Buffer Constants
+		AdaptiveBufferCPUMultiplier:    100, // 100 multiplier for CPU percentage
+		AdaptiveBufferMemoryMultiplier: 100, // 100 multiplier for memory percentage
 	}
 }
 
