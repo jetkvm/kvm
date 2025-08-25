@@ -3,6 +3,7 @@ package audio
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -168,13 +169,20 @@ func (r *AudioRelay) relayLoop() {
 // forwardToWebRTC forwards a frame to the WebRTC audio track
 func (r *AudioRelay) forwardToWebRTC(frame []byte) error {
 	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	
 	audioTrack := r.audioTrack
 	config := r.config
 	muted := r.muted
-	r.mutex.RUnlock()
 
+	// Comprehensive nil check for audioTrack to prevent panic
 	if audioTrack == nil {
 		return nil // No audio track available
+	}
+
+	// Check if interface contains nil pointer using reflection
+	if reflect.ValueOf(audioTrack).IsNil() {
+		return nil // Audio track interface contains nil pointer
 	}
 
 	// Prepare sample data
@@ -186,7 +194,7 @@ func (r *AudioRelay) forwardToWebRTC(frame []byte) error {
 		sampleData = frame
 	}
 
-	// Write sample to WebRTC track
+	// Write sample to WebRTC track while holding the read lock
 	return audioTrack.WriteSample(media.Sample{
 		Data:     sampleData,
 		Duration: config.FrameSize,

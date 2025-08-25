@@ -11,6 +11,7 @@ import (
 
 	"github.com/gwatts/rootcerts"
 	"github.com/jetkvm/kvm/internal/audio"
+	"github.com/pion/webrtc/v4"
 )
 
 var (
@@ -46,9 +47,17 @@ func startAudioSubprocess() error {
 		func(pid int) {
 			logger.Info().Int("pid", pid).Msg("audio server process started")
 
-			// Start audio relay system for main process without a track initially
-			// The track will be updated when a WebRTC session is created
-			if err := audio.StartAudioRelay(nil); err != nil {
+			// Start audio relay system for main process
+			// If there's an active WebRTC session, use its audio track
+			var audioTrack *webrtc.TrackLocalStaticSample
+			if currentSession != nil && currentSession.AudioTrack != nil {
+				audioTrack = currentSession.AudioTrack
+				logger.Info().Msg("restarting audio relay with existing WebRTC audio track")
+			} else {
+				logger.Info().Msg("starting audio relay without WebRTC track (will be updated when session is created)")
+			}
+
+			if err := audio.StartAudioRelay(audioTrack); err != nil {
 				logger.Error().Err(err).Msg("failed to start audio relay")
 			}
 		},
