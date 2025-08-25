@@ -109,6 +109,9 @@ func initializeBroadcaster() {
 
 	// Start metrics broadcasting goroutine
 	go audioEventBroadcaster.startMetricsBroadcasting()
+
+	// Start granular metrics logging with same interval as metrics broadcasting
+	StartGranularMetricsLogging(GetMetricsUpdateInterval())
 }
 
 // InitializeAudioEventBroadcaster initializes the global audio event broadcaster

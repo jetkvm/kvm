@@ -123,20 +123,27 @@ func ValidateSocketBufferConfig(config SocketBufferConfig) error {
 		return nil
 	}
 
-	if config.SendBufferSize < GetConfig().SocketMinBuffer {
-		return fmt.Errorf("send buffer size %d is below minimum %d", config.SendBufferSize, GetConfig().SocketMinBuffer)
+	minBuffer := GetConfig().SocketMinBuffer
+	maxBuffer := GetConfig().SocketMaxBuffer
+
+	if config.SendBufferSize < minBuffer {
+		return fmt.Errorf("send buffer size validation failed: got %d bytes, minimum required %d bytes (configured range: %d-%d)",
+			config.SendBufferSize, minBuffer, minBuffer, maxBuffer)
 	}
 
-	if config.RecvBufferSize < GetConfig().SocketMinBuffer {
-		return fmt.Errorf("receive buffer size %d is below minimum %d", config.RecvBufferSize, GetConfig().SocketMinBuffer)
+	if config.RecvBufferSize < minBuffer {
+		return fmt.Errorf("receive buffer size validation failed: got %d bytes, minimum required %d bytes (configured range: %d-%d)",
+			config.RecvBufferSize, minBuffer, minBuffer, maxBuffer)
 	}
 
-	if config.SendBufferSize > GetConfig().SocketMaxBuffer {
-		return fmt.Errorf("send buffer size %d exceeds maximum %d", config.SendBufferSize, GetConfig().SocketMaxBuffer)
+	if config.SendBufferSize > maxBuffer {
+		return fmt.Errorf("send buffer size validation failed: got %d bytes, maximum allowed %d bytes (configured range: %d-%d)",
+			config.SendBufferSize, maxBuffer, minBuffer, maxBuffer)
 	}
 
-	if config.RecvBufferSize > GetConfig().SocketMaxBuffer {
-		return fmt.Errorf("receive buffer size %d exceeds maximum %d", config.RecvBufferSize, GetConfig().SocketMaxBuffer)
+	if config.RecvBufferSize > maxBuffer {
+		return fmt.Errorf("receive buffer size validation failed: got %d bytes, maximum allowed %d bytes (configured range: %d-%d)",
+			config.RecvBufferSize, maxBuffer, minBuffer, maxBuffer)
 	}
 
 	return nil

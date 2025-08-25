@@ -78,7 +78,7 @@ func (s *OutputStreamer) Start() error {
 
 	// Connect to audio output server
 	if err := s.client.Connect(); err != nil {
-		return fmt.Errorf("failed to connect to audio output server: %w", err)
+		return fmt.Errorf("failed to connect to audio output server at %s: %w", getOutputSocketPath(), err)
 	}
 
 	s.running = true
@@ -196,7 +196,7 @@ func (s *OutputStreamer) processingLoop() {
 		// Process frame (currently just receiving, but can be extended)
 		if _, err := s.client.ReceiveFrame(); err != nil {
 			if s.client.IsConnected() {
-				getOutputStreamingLogger().Warn().Err(err).Msg("Failed to receive frame")
+				getOutputStreamingLogger().Warn().Err(err).Msg("Error reading audio frame from output server")
 				atomic.AddInt64(&s.droppedFrames, 1)
 			}
 			// Try to reconnect if disconnected
@@ -318,7 +318,7 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 			getOutputStreamingLogger().Info().Msg("Audio output streaming stopped")
 		}()
 
-		getOutputStreamingLogger().Info().Msg("Audio output streaming started")
+		getOutputStreamingLogger().Info().Str("socket_path", getOutputSocketPath()).Msg("Audio output streaming started, connected to output server")
 		buffer := make([]byte, GetMaxAudioFrameSize())
 
 		for {

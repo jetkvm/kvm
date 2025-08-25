@@ -368,12 +368,12 @@ func (ais *AudioInputServer) readMessage(conn net.Conn) (*InputIPCMessage, error
 
 	// Validate magic number
 	if msg.Magic != inputMagicNumber {
-		return nil, fmt.Errorf("invalid magic number: %x", msg.Magic)
+		return nil, fmt.Errorf("invalid magic number: got 0x%x, expected 0x%x", msg.Magic, inputMagicNumber)
 	}
 
 	// Validate message length
 	if msg.Length > uint32(maxFrameSize) {
-		return nil, fmt.Errorf("message too large: %d bytes", msg.Length)
+		return nil, fmt.Errorf("message too large: got %d bytes, maximum allowed %d bytes", msg.Length, maxFrameSize)
 	}
 
 	// Read data if present using pooled buffer
@@ -570,7 +570,7 @@ func (aic *AudioInputClient) SendFrame(frame []byte) error {
 	defer aic.mtx.Unlock()
 
 	if !aic.running || aic.conn == nil {
-		return fmt.Errorf("not connected")
+		return fmt.Errorf("not connected to audio input server")
 	}
 
 	if len(frame) == 0 {
@@ -578,7 +578,7 @@ func (aic *AudioInputClient) SendFrame(frame []byte) error {
 	}
 
 	if len(frame) > maxFrameSize {
-		return fmt.Errorf("frame too large: %d bytes", len(frame))
+		return fmt.Errorf("frame too large: got %d bytes, maximum allowed %d bytes", len(frame), maxFrameSize)
 	}
 
 	msg := &InputIPCMessage{
@@ -598,7 +598,7 @@ func (aic *AudioInputClient) SendFrameZeroCopy(frame *ZeroCopyAudioFrame) error 
 	defer aic.mtx.Unlock()
 
 	if !aic.running || aic.conn == nil {
-		return fmt.Errorf("not connected")
+		return fmt.Errorf("not connected to audio input server")
 	}
 
 	if frame == nil || frame.Length() == 0 {
@@ -606,7 +606,7 @@ func (aic *AudioInputClient) SendFrameZeroCopy(frame *ZeroCopyAudioFrame) error 
 	}
 
 	if frame.Length() > maxFrameSize {
-		return fmt.Errorf("frame too large: %d bytes", frame.Length())
+		return fmt.Errorf("frame too large: got %d bytes, maximum allowed %d bytes", frame.Length(), maxFrameSize)
 	}
 
 	// Use zero-copy data directly
@@ -627,7 +627,7 @@ func (aic *AudioInputClient) SendConfig(config InputIPCConfig) error {
 	defer aic.mtx.Unlock()
 
 	if !aic.running || aic.conn == nil {
-		return fmt.Errorf("not connected")
+		return fmt.Errorf("not connected to audio input server")
 	}
 
 	// Serialize config (simple binary format)
@@ -653,7 +653,7 @@ func (aic *AudioInputClient) SendHeartbeat() error {
 	defer aic.mtx.Unlock()
 
 	if !aic.running || aic.conn == nil {
-		return fmt.Errorf("not connected")
+		return fmt.Errorf("not connected to audio input server")
 	}
 
 	msg := &InputIPCMessage{

@@ -3,6 +3,7 @@ package audio
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 )
 
@@ -81,11 +82,19 @@ func NewZeroCopyFramePool(maxFrameSize int) *ZeroCopyFramePool {
 
 // Get retrieves a zero-copy frame from the pool
 func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
+	start := time.Now()
+	var wasHit bool
+	defer func() {
+		latency := time.Since(start)
+		GetGranularMetricsCollector().RecordZeroCopyGet(latency, wasHit)
+	}()
+
 	// Memory guard: Track allocation count to prevent excessive memory usage
 	allocationCount := atomic.LoadInt64(&p.allocationCount)
 	if allocationCount > int64(p.maxPoolSize*2) {
 		// If we've allocated too many frames, force pool reuse
 		atomic.AddInt64(&p.missCount, 1)
+		wasHit = true // Pool reuse counts as hit
 		frame := p.pool.Get().(*ZeroCopyAudioFrame)
 		frame.mutex.Lock()
 		frame.refCount = 1
@@ -98,6 +107,7 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 	// First try pre-allocated frames for fastest access
 	p.mutex.Lock()
 	if len(p.preallocated) > 0 {
+		wasHit = true
 		frame := p.preallocated[len(p.preallocated)-1]
 		p.preallocated = p.preallocated[:len(p.preallocated)-1]
 		p.mutex.Unlock()
@@ -128,6 +138,11 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 
 // Put returns a zero-copy frame to the pool
 func (p *ZeroCopyFramePool) Put(frame *ZeroCopyAudioFrame) {
+	start := time.Now()
+	defer func() {
+		latency := time.Since(start)
+		GetGranularMetricsCollector().RecordZeroCopyPut(latency, frame.capacity)
+	}()
 	if frame == nil || !frame.pooled {
 		return
 	}

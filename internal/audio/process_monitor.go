@@ -205,12 +205,12 @@ func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessM
 	statPath := fmt.Sprintf("/proc/%d/stat", pid)
 	statData, err := os.ReadFile(statPath)
 	if err != nil {
-		return metric, err
+		return metric, fmt.Errorf("failed to read process statistics from /proc/%d/stat: %w", pid, err)
 	}
 
 	fields := strings.Fields(string(statData))
 	if len(fields) < 24 {
-		return metric, fmt.Errorf("invalid stat format")
+		return metric, fmt.Errorf("invalid process stat format: expected at least 24 fields, got %d from /proc/%d/stat", len(fields), pid)
 	}
 
 	utime, _ := strconv.ParseInt(fields[13], 10, 64)

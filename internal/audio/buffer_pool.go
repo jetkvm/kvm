@@ -3,6 +3,7 @@ package audio
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type AudioBufferPool struct {
@@ -46,6 +47,17 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 }
 
 func (p *AudioBufferPool) Get() []byte {
+	start := time.Now()
+	defer func() {
+		latency := time.Since(start)
+		// Record metrics for frame pool (assuming this is the main usage)
+		if p.bufferSize >= GetConfig().AudioFramePoolSize {
+			GetGranularMetricsCollector().RecordFramePoolGet(latency, atomic.LoadInt64(&p.hitCount) > 0)
+		} else {
+			GetGranularMetricsCollector().RecordControlPoolGet(latency, atomic.LoadInt64(&p.hitCount) > 0)
+		}
+	}()
+
 	// First try pre-allocated buffers for fastest access
 	p.mutex.Lock()
 	if len(p.preallocated) > 0 {
@@ -76,6 +88,17 @@ func (p *AudioBufferPool) Get() []byte {
 }
 
 func (p *AudioBufferPool) Put(buf []byte) {
+	start := time.Now()
+	defer func() {
+		latency := time.Since(start)
+		// Record metrics for frame pool (assuming this is the main usage)
+		if p.bufferSize >= GetConfig().AudioFramePoolSize {
+			GetGranularMetricsCollector().RecordFramePoolPut(latency, cap(buf))
+		} else {
+			GetGranularMetricsCollector().RecordControlPoolPut(latency, cap(buf))
+		}
+	}()
+
 	if cap(buf) < p.bufferSize {
 		return // Buffer too small, don't pool it
 	}
