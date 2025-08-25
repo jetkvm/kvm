@@ -15,6 +15,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"go.bug.st/serial"
 
+	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
@@ -956,6 +957,11 @@ func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 		if err := audioSupervisor.Start(); err != nil {
 			logger.Error().Err(err).Msg("failed to start audio supervisor")
 			// Don't return error here as USB reconfiguration was successful
+		} else {
+			// Broadcast audio device change event to notify WebRTC session
+			broadcaster := audio.GetAudioEventBroadcaster()
+			broadcaster.BroadcastAudioDeviceChanged(true, "usb_reconfiguration")
+			logger.Info().Msg("broadcasted audio device change event after USB reconfiguration")
 		}
 	}
 
@@ -999,6 +1005,11 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 			logger.Info().Msg("starting audio processes due to audio device being enabled")
 			if err := audioSupervisor.Start(); err != nil {
 				logger.Error().Err(err).Msg("failed to start audio supervisor")
+			} else {
+				// Broadcast audio device change event to notify WebRTC session
+				broadcaster := audio.GetAudioEventBroadcaster()
+				broadcaster.BroadcastAudioDeviceChanged(true, "device_enabled")
+				logger.Info().Msg("broadcasted audio device change event after enabling audio device")
 			}
 		}
 		config.UsbDevices.Audio = enabled

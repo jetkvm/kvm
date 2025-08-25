@@ -23,6 +23,7 @@ const (
 	AudioEventMicrophoneMetrics AudioEventType = "microphone-metrics-update"
 	AudioEventProcessMetrics    AudioEventType = "audio-process-metrics"
 	AudioEventMicProcessMetrics AudioEventType = "microphone-process-metrics"
+	AudioEventDeviceChanged     AudioEventType = "audio-device-changed"
 )
 
 // AudioEvent represents a WebSocket audio event
@@ -71,6 +72,12 @@ type ProcessMetricsData struct {
 	MemoryPercent float64 `json:"memory_percent"`
 	Running       bool    `json:"running"`
 	ProcessName   string  `json:"process_name"`
+}
+
+// AudioDeviceChangedData represents audio device configuration change data
+type AudioDeviceChangedData struct {
+	Enabled bool   `json:"enabled"`
+	Reason  string `json:"reason"`
 }
 
 // AudioEventSubscriber represents a WebSocket connection subscribed to audio events
@@ -160,6 +167,15 @@ func (aeb *AudioEventBroadcaster) BroadcastMicrophoneStateChanged(running, sessi
 	event := createAudioEvent(AudioEventMicrophoneState, MicrophoneStateData{
 		Running:       running,
 		SessionActive: sessionActive,
+	})
+	aeb.broadcast(event)
+}
+
+// BroadcastAudioDeviceChanged broadcasts audio device configuration changes
+func (aeb *AudioEventBroadcaster) BroadcastAudioDeviceChanged(enabled bool, reason string) {
+	event := createAudioEvent(AudioEventDeviceChanged, AudioDeviceChangedData{
+		Enabled: enabled,
+		Reason:  reason,
 	})
 	aeb.broadcast(event)
 }
