@@ -22,6 +22,7 @@ export interface UsbDeviceConfig {
   absolute_mouse: boolean;
   relative_mouse: boolean;
   mass_storage: boolean;
+  audio: boolean;
 }
 
 const defaultUsbDeviceConfig: UsbDeviceConfig = {
@@ -29,17 +30,30 @@ const defaultUsbDeviceConfig: UsbDeviceConfig = {
   absolute_mouse: true,
   relative_mouse: true,
   mass_storage: true,
+  audio: true,
 };
 
 const usbPresets = [
   {
-    label: "Keyboard, Mouse and Mass Storage",
+    label: "Keyboard, Mouse, Mass Storage and Audio",
     value: "default",
     config: {
       keyboard: true,
       absolute_mouse: true,
       relative_mouse: true,
       mass_storage: true,
+      audio: true,
+    },
+  },
+  {
+    label: "Keyboard, Mouse and Mass Storage",
+    value: "no_audio",
+    config: {
+      keyboard: true,
+      absolute_mouse: true,
+      relative_mouse: true,
+      mass_storage: true,
+      audio: false,
     },
   },
   {
@@ -50,6 +64,7 @@ const usbPresets = [
       absolute_mouse: false,
       relative_mouse: false,
       mass_storage: false,
+      audio: false,
     },
   },
   {
@@ -214,6 +229,17 @@ export function UsbDeviceSetting() {
                 <Checkbox
                   checked={usbDeviceConfig.mass_storage}
                   onChange={onUsbConfigItemChange("mass_storage")}
+                />
+              </SettingsItem>
+            </div>
+            <div className="space-y-4">
+              <SettingsItem
+                title="Enable Audio Input/Output"
+                description="Enable USB audio input and output devices"
+              >
+                <Checkbox
+                  checked={usbDeviceConfig.audio}
+                  onChange={onUsbConfigItemChange("audio")}
                 />
               </SettingsItem>
             </div>

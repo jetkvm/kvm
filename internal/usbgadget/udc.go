@@ -1,10 +1,12 @@
 package usbgadget
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
 	"strings"
+	"time"
 )
 
 func getUdcs() []string {
@@ -26,15 +28,42 @@ func getUdcs() []string {
 }
 
 func rebindUsb(udc string, ignoreUnbindError bool) error {
-	err := os.WriteFile(path.Join(dwc3Path, "unbind"), []byte(udc), 0644)
+	return rebindUsbWithTimeout(udc, ignoreUnbindError, 10*time.Second)
+}
+
+func rebindUsbWithTimeout(udc string, ignoreUnbindError bool, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Unbind with timeout
+	err := writeFileWithTimeout(ctx, path.Join(dwc3Path, "unbind"), []byte(udc), 0644)
 	if err != nil && !ignoreUnbindError {
-		return err
+		return fmt.Errorf("failed to unbind UDC: %w", err)
 	}
-	err = os.WriteFile(path.Join(dwc3Path, "bind"), []byte(udc), 0644)
+
+	// Small delay to allow unbind to complete
+	time.Sleep(100 * time.Millisecond)
+
+	// Bind with timeout
+	err = writeFileWithTimeout(ctx, path.Join(dwc3Path, "bind"), []byte(udc), 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to bind UDC: %w", err)
 	}
 	return nil
+}
+
+func writeFileWithTimeout(ctx context.Context, filename string, data []byte, perm os.FileMode) error {
+	done := make(chan error, 1)
+	go func() {
+		done <- os.WriteFile(filename, data, perm)
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return fmt.Errorf("write operation timed out: %w", ctx.Err())
+	}
 }
 
 func (u *UsbGadget) rebindUsb(ignoreUnbindError bool) error {

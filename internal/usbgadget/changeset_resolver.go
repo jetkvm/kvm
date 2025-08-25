@@ -1,7 +1,9 @@
 package usbgadget
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/sourcegraph/tf-dag/dag"
@@ -114,7 +116,20 @@ func (c *ChangeSetResolver) resolveChanges(initial bool) error {
 }
 
 func (c *ChangeSetResolver) applyChanges() error {
+	return c.applyChangesWithTimeout(30 * time.Second)
+}
+
+func (c *ChangeSetResolver) applyChangesWithTimeout(timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	for _, change := range c.resolvedChanges {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("USB gadget reconfiguration timed out after %v: %w", timeout, ctx.Err())
+		default:
+		}
+
 		change.ResetActionResolution()
 		action := change.Action()
 		actionStr := FileChangeResolvedActionString[action]
@@ -126,7 +141,7 @@ func (c *ChangeSetResolver) applyChanges() error {
 
 		l.Str("action", actionStr).Str("change", change.String()).Msg("applying change")
 
-		err := c.changeset.applyChange(change)
+		err := c.applyChangeWithTimeout(ctx, change)
 		if err != nil {
 			if change.IgnoreErrors {
 				c.l.Warn().Str("change", change.String()).Err(err).Msg("ignoring error")
@@ -137,6 +152,20 @@ func (c *ChangeSetResolver) applyChanges() error {
 	}
 
 	return nil
+}
+
+func (c *ChangeSetResolver) applyChangeWithTimeout(ctx context.Context, change *FileChange) error {
+	done := make(chan error, 1)
+	go func() {
+		done <- c.changeset.applyChange(change)
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return fmt.Errorf("change application timed out for %s: %w", change.String(), ctx.Err())
+	}
 }
 
 func (c *ChangeSetResolver) GetChanges() ([]*FileChange, error) {
