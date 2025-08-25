@@ -2,7 +2,7 @@ import { LoaderFunctionArgs, redirect } from "react-router-dom";
 
 import { getDeviceUiPath } from "../hooks/useAppNavigation";
 
-const loader = async ({ params }: LoaderFunctionArgs) => {
+const loader = ({ params }: LoaderFunctionArgs) => {
   return redirect(getDeviceUiPath("/settings/general", params.id));
 }
 

@@ -137,7 +137,7 @@ export function UsbInfoSetting() {
   );
 
   useEffect(() => {
-    send("getDeviceID", {}, async (resp: JsonRpcResponse) => {
+    send("getDeviceID", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         return notifications.error(
           `Failed to get device ID: ${resp.error.data || "Unknown error"}`,

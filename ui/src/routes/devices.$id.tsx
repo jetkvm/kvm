@@ -112,7 +112,7 @@ const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => 
   return { user, iceConfig, deviceName: device.name || device.id };
 };
 
-const loader = async ({ params }: LoaderFunctionArgs) => {
+const loader = ({ params }: LoaderFunctionArgs) => {
   return import.meta.env.MODE === "device" ? deviceLoader() : cloudLoader(params);
 };
 
@@ -450,7 +450,7 @@ export default function KvmIdRoute() {
       }
     };
 
-    pc.onicecandidate = async ({ candidate }) => {
+    pc.onicecandidate = ({ candidate }) => {
       if (!candidate) return;
       if (candidate.candidate === "") return;
       sendWebRTCSignal("new-ice-candidate", candidate);
@@ -733,7 +733,7 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (appVersion) return;
 
-    send("getUpdateStatus", {}, async (resp: JsonRpcResponse) => {
+    send("getUpdateStatus", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(`Failed to get device version: ${resp.error}`);
         return 
