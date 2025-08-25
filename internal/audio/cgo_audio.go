@@ -4,6 +4,7 @@ package audio
 
 import (
 	"errors"
+	"fmt"
 	"unsafe"
 )
 
@@ -422,16 +423,40 @@ import "C"
 
 // Optimized Go wrappers with reduced overhead
 var (
+	// Base error types for wrapping with context
 	errAudioInitFailed   = errors.New("failed to init ALSA/Opus")
-	errBufferTooSmall    = errors.New("buffer too small")
 	errAudioReadEncode   = errors.New("audio read/encode error")
 	errAudioDecodeWrite  = errors.New("audio decode/write error")
 	errAudioPlaybackInit = errors.New("failed to init ALSA playback/Opus decoder")
 	errEmptyBuffer       = errors.New("empty buffer")
 	errNilBuffer         = errors.New("nil buffer")
-	errBufferTooLarge    = errors.New("buffer too large")
 	errInvalidBufferPtr  = errors.New("invalid buffer pointer")
 )
+
+// Error creation functions with context
+func newBufferTooSmallError(actual, required int) error {
+	return fmt.Errorf("buffer too small: got %d bytes, need at least %d bytes", actual, required)
+}
+
+func newBufferTooLargeError(actual, max int) error {
+	return fmt.Errorf("buffer too large: got %d bytes, maximum allowed %d bytes", actual, max)
+}
+
+func newAudioInitError(cErrorCode int) error {
+	return fmt.Errorf("%w: C error code %d", errAudioInitFailed, cErrorCode)
+}
+
+func newAudioPlaybackInitError(cErrorCode int) error {
+	return fmt.Errorf("%w: C error code %d", errAudioPlaybackInit, cErrorCode)
+}
+
+func newAudioReadEncodeError(cErrorCode int) error {
+	return fmt.Errorf("%w: C error code %d", errAudioReadEncode, cErrorCode)
+}
+
+func newAudioDecodeWriteError(cErrorCode int) error {
+	return fmt.Errorf("%w: C error code %d", errAudioDecodeWrite, cErrorCode)
+}
 
 func cgoAudioInit() error {
 	// Update C constants from Go configuration
@@ -453,7 +478,7 @@ func cgoAudioInit() error {
 
 	result := C.jetkvm_audio_init()
 	if result != 0 {
-		return errAudioInitFailed
+		return newAudioInitError(int(result))
 	}
 	return nil
 }
@@ -463,13 +488,14 @@ func cgoAudioClose() {
 }
 
 func cgoAudioReadEncode(buf []byte) (int, error) {
-	if len(buf) < GetConfig().MinReadEncodeBuffer {
-		return 0, errBufferTooSmall
+	minRequired := GetConfig().MinReadEncodeBuffer
+	if len(buf) < minRequired {
+		return 0, newBufferTooSmallError(len(buf), minRequired)
 	}
 
 	n := C.jetkvm_audio_read_encode(unsafe.Pointer(&buf[0]))
 	if n < 0 {
-		return 0, errAudioReadEncode
+		return 0, newAudioReadEncodeError(int(n))
 	}
 	if n == 0 {
 		return 0, nil // No data available
@@ -481,7 +507,7 @@ func cgoAudioReadEncode(buf []byte) (int, error) {
 func cgoAudioPlaybackInit() error {
 	ret := C.jetkvm_audio_playback_init()
 	if ret != 0 {
-		return errAudioPlaybackInit
+		return newAudioPlaybackInitError(int(ret))
 	}
 	return nil
 }
@@ -497,8 +523,9 @@ func cgoAudioDecodeWrite(buf []byte) (int, error) {
 	if buf == nil {
 		return 0, errNilBuffer
 	}
-	if len(buf) > GetConfig().MaxDecodeWriteBuffer {
-		return 0, errBufferTooLarge
+	maxAllowed := GetConfig().MaxDecodeWriteBuffer
+	if len(buf) > maxAllowed {
+		return 0, newBufferTooLargeError(len(buf), maxAllowed)
 	}
 
 	bufPtr := unsafe.Pointer(&buf[0])
@@ -514,7 +541,7 @@ func cgoAudioDecodeWrite(buf []byte) (int, error) {
 
 	n := C.jetkvm_audio_decode_write(bufPtr, C.int(len(buf)))
 	if n < 0 {
-		return 0, errAudioDecodeWrite
+		return 0, newAudioDecodeWriteError(int(n))
 	}
 	return int(n), nil
 }

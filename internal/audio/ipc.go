@@ -282,8 +282,9 @@ func (s *AudioServer) Close() error {
 }
 
 func (s *AudioServer) SendFrame(frame []byte) error {
-	if len(frame) > GetConfig().OutputMaxFrameSize {
-		return fmt.Errorf("frame size %d exceeds maximum %d", len(frame), GetConfig().OutputMaxFrameSize)
+	maxFrameSize := GetConfig().OutputMaxFrameSize
+	if len(frame) > maxFrameSize {
+		return fmt.Errorf("output frame size validation failed: got %d bytes, maximum allowed %d bytes", len(frame), maxFrameSize)
 	}
 
 	start := time.Now()
@@ -312,7 +313,7 @@ func (s *AudioServer) SendFrame(frame []byte) error {
 	default:
 		// Channel full, drop frame to prevent blocking
 		atomic.AddInt64(&s.droppedFrames, 1)
-		return fmt.Errorf("message channel full - frame dropped")
+		return fmt.Errorf("output message channel full (capacity: %d) - frame dropped to prevent blocking", cap(s.messageChan))
 	}
 }
 
@@ -322,7 +323,7 @@ func (s *AudioServer) sendFrameToClient(frame []byte) error {
 	defer s.mtx.Unlock()
 
 	if s.conn == nil {
-		return fmt.Errorf("no client connected")
+		return fmt.Errorf("no audio output client connected to server")
 	}
 
 	start := time.Now()
@@ -378,7 +379,7 @@ func (s *AudioServer) sendFrameToClient(frame []byte) error {
 	case <-ctx.Done():
 		// Timeout occurred - drop frame to prevent blocking
 		atomic.AddInt64(&s.droppedFrames, 1)
-		return fmt.Errorf("write timeout - frame dropped")
+		return fmt.Errorf("write timeout after %v - frame dropped to prevent blocking", GetConfig().OutputWriteTimeout)
 	}
 }
 
@@ -432,7 +433,7 @@ func (c *AudioClient) Connect() error {
 		time.Sleep(delay)
 	}
 
-	return fmt.Errorf("failed to connect to audio output server")
+	return fmt.Errorf("failed to connect to audio output server at %s after %d retries", socketPath, 8)
 }
 
 // Disconnect disconnects from the audio output server
@@ -468,7 +469,7 @@ func (c *AudioClient) ReceiveFrame() ([]byte, error) {
 	defer c.mtx.Unlock()
 
 	if !c.running || c.conn == nil {
-		return nil, fmt.Errorf("not connected")
+		return nil, fmt.Errorf("not connected to audio output server")
 	}
 
 	// Get optimized message from pool for header reading
@@ -477,13 +478,13 @@ func (c *AudioClient) ReceiveFrame() ([]byte, error) {
 
 	// Read header
 	if _, err := io.ReadFull(c.conn, optMsg.header[:]); err != nil {
-		return nil, fmt.Errorf("failed to read header: %w", err)
+		return nil, fmt.Errorf("failed to read IPC message header from audio output server: %w", err)
 	}
 
 	// Parse header
 	magic := binary.LittleEndian.Uint32(optMsg.header[0:4])
 	if magic != outputMagicNumber {
-		return nil, fmt.Errorf("invalid magic number: %x", magic)
+		return nil, fmt.Errorf("invalid magic number in IPC message: got 0x%x, expected 0x%x", magic, outputMagicNumber)
 	}
 
 	msgType := OutputMessageType(optMsg.header[4])
@@ -492,8 +493,9 @@ func (c *AudioClient) ReceiveFrame() ([]byte, error) {
 	}
 
 	size := binary.LittleEndian.Uint32(optMsg.header[5:9])
-	if int(size) > GetConfig().OutputMaxFrameSize {
-		return nil, fmt.Errorf("frame size %d exceeds maximum %d", size, GetConfig().OutputMaxFrameSize)
+	maxFrameSize := GetConfig().OutputMaxFrameSize
+	if int(size) > maxFrameSize {
+		return nil, fmt.Errorf("received frame size validation failed: got %d bytes, maximum allowed %d bytes", size, maxFrameSize)
 	}
 
 	// Read frame data

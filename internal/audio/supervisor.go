@@ -268,7 +268,7 @@ func (s *AudioServerSupervisor) startProcess() error {
 
 	// Start the process
 	if err := s.cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start process: %w", err)
+		return fmt.Errorf("failed to start audio output server process: %w", err)
 	}
 
 	s.processPID = s.cmd.Process.Pid

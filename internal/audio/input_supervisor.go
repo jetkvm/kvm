@@ -39,7 +39,7 @@ func (ais *AudioInputSupervisor) Start() error {
 	defer ais.mtx.Unlock()
 
 	if ais.running {
-		return fmt.Errorf("audio input supervisor already running")
+		return fmt.Errorf("audio input supervisor already running with PID %d", ais.cmd.Process.Pid)
 	}
 
 	// Create context for subprocess management
@@ -71,7 +71,7 @@ func (ais *AudioInputSupervisor) Start() error {
 	if err != nil {
 		ais.running = false
 		cancel()
-		return fmt.Errorf("failed to start audio input server: %w", err)
+		return fmt.Errorf("failed to start audio input server process: %w", err)
 	}
 
 	ais.logger.Info().Int("pid", cmd.Process.Pid).Msg("Audio input server subprocess started")
@@ -199,9 +199,9 @@ func (ais *AudioInputSupervisor) monitorSubprocess() {
 	if ais.running {
 		// Unexpected exit
 		if err != nil {
-			ais.logger.Error().Err(err).Msg("Audio input server subprocess exited unexpectedly")
+			ais.logger.Error().Err(err).Int("pid", pid).Msg("Audio input server subprocess exited unexpectedly")
 		} else {
-			ais.logger.Warn().Msg("Audio input server subprocess exited unexpectedly")
+			ais.logger.Warn().Int("pid", pid).Msg("Audio input server subprocess exited unexpectedly")
 		}
 
 		// Disconnect client
@@ -213,7 +213,7 @@ func (ais *AudioInputSupervisor) monitorSubprocess() {
 		ais.running = false
 		ais.cmd = nil
 
-		ais.logger.Info().Msg("Audio input server subprocess monitoring stopped")
+		ais.logger.Info().Int("pid", pid).Msg("Audio input server subprocess monitoring stopped")
 	}
 }
 

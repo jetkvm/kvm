@@ -75,7 +75,7 @@ func (r *AudioRelay) Start(audioTrack AudioTrackWriter, config AudioConfig) erro
 	go r.relayLoop()
 
 	r.running = true
-	r.logger.Info().Msg("Audio relay started")
+	r.logger.Info().Msg("Audio relay connected to output server")
 	return nil
 }
 
@@ -97,7 +97,7 @@ func (r *AudioRelay) Stop() {
 	}
 
 	r.running = false
-	r.logger.Info().Msg("Audio relay stopped")
+	r.logger.Info().Msgf("Audio relay stopped after relaying %d frames", r.framesRelayed)
 }
 
 // SetMuted sets the mute state
@@ -144,11 +144,11 @@ func (r *AudioRelay) relayLoop() {
 			frame, err := r.client.ReceiveFrame()
 			if err != nil {
 				consecutiveErrors++
-				r.logger.Error().Err(err).Int("consecutive_errors", consecutiveErrors).Msg("Failed to receive audio frame")
+				r.logger.Error().Err(err).Int("consecutive_errors", consecutiveErrors).Msg("Error reading frame from audio output server")
 				r.incrementDropped()
 
 				if consecutiveErrors >= maxConsecutiveErrors {
-					r.logger.Error().Msg("Too many consecutive errors, stopping relay")
+					r.logger.Error().Msgf("Too many consecutive read errors (%d/%d), stopping audio relay", consecutiveErrors, maxConsecutiveErrors)
 					return
 				}
 				time.Sleep(GetConfig().ShortSleepDuration)
