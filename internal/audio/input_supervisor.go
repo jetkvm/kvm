@@ -128,7 +128,7 @@ func (ais *AudioInputSupervisor) Stop() {
 		select {
 		case <-done:
 			ais.logger.Info().Msg("Audio input server subprocess stopped gracefully")
-		case <-time.After(5 * time.Second):
+		case <-time.After(GetConfig().InputSupervisorTimeout):
 			// Force kill if graceful shutdown failed
 			ais.logger.Warn().Msg("Audio input server subprocess did not stop gracefully, force killing")
 			err := ais.cmd.Process.Kill()
@@ -220,7 +220,7 @@ func (ais *AudioInputSupervisor) monitorSubprocess() {
 // connectClient attempts to connect the client to the server
 func (ais *AudioInputSupervisor) connectClient() {
 	// Wait briefly for the server to start (reduced from 500ms)
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(GetConfig().DefaultSleepDuration)
 
 	err := ais.client.Connect()
 	if err != nil {

@@ -83,10 +83,10 @@ const (
 func DefaultLatencyConfig() LatencyConfig {
 	return LatencyConfig{
 		TargetLatency:        50 * time.Millisecond,
-		MaxLatency:           200 * time.Millisecond,
+		MaxLatency:           GetConfig().MaxLatencyThreshold,
 		OptimizationInterval: 5 * time.Second,
-		HistorySize:          100,
-		JitterThreshold:      20 * time.Millisecond,
+		HistorySize:          GetConfig().LatencyHistorySize,
+		JitterThreshold:      GetConfig().JitterThreshold,
 		AdaptiveThreshold:    0.8, // Trigger optimization when 80% above target
 	}
 }

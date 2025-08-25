@@ -61,9 +61,9 @@ func NewOutputStreamer() (*OutputStreamer, error) {
 		bufferPool:     NewAudioBufferPool(GetMaxAudioFrameSize()), // Use existing buffer pool
 		ctx:            ctx,
 		cancel:         cancel,
-		batchSize:      initialBatchSize,       // Use adaptive batch size
-		processingChan: make(chan []byte, 500), // Large buffer for smooth processing
-		statsInterval:  5 * time.Second,        // Statistics every 5 seconds
+		batchSize:      initialBatchSize,                                 // Use adaptive batch size
+		processingChan: make(chan []byte, GetConfig().ChannelBufferSize), // Large buffer for smooth processing
+		statsInterval:  5 * time.Second,                                  // Statistics every 5 seconds
 		lastStatsTime:  time.Now().UnixNano(),
 	}, nil
 }
@@ -127,7 +127,7 @@ func (s *OutputStreamer) streamLoop() {
 	defer ticker.Stop()
 
 	// Batch size update ticker
-	batchUpdateTicker := time.NewTicker(500 * time.Millisecond)
+	batchUpdateTicker := time.NewTicker(GetConfig().BufferUpdateInterval)
 	defer batchUpdateTicker.Stop()
 
 	for {
@@ -233,7 +233,7 @@ func (s *OutputStreamer) reportStatistics() {
 	processingTime := atomic.LoadInt64(&s.processingTime)
 
 	if processed > 0 {
-		dropRate := float64(dropped) / float64(processed+dropped) * 100
+		dropRate := float64(dropped) / float64(processed+dropped) * GetConfig().PercentageMultiplier
 		avgProcessingTime := time.Duration(processingTime)
 
 		getOutputStreamingLogger().Info().Int64("processed", processed).Int64("dropped", dropped).Float64("drop_rate", dropRate).Dur("avg_processing", avgProcessingTime).Msg("Output Audio Stats")
@@ -270,7 +270,7 @@ func (s *OutputStreamer) GetDetailedStats() map[string]interface{} {
 	}
 
 	if processed+dropped > 0 {
-		stats["drop_rate_percent"] = float64(dropped) / float64(processed+dropped) * 100
+		stats["drop_rate_percent"] = float64(dropped) / float64(processed+dropped) * GetConfig().PercentageMultiplier
 	}
 
 	// Add client statistics
@@ -343,7 +343,7 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 					RecordFrameReceived(n)
 				}
 				// Small delay to prevent busy waiting
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(GetConfig().ShortSleepDuration)
 			}
 		}
 	}()
@@ -364,6 +364,6 @@ func StopAudioOutputStreaming() {
 
 	// Wait for streaming to stop
 	for atomic.LoadInt32(&outputStreamingRunning) == 1 {
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(GetConfig().ShortSleepDuration)
 	}
 }

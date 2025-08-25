@@ -42,20 +42,20 @@ func DefaultAdaptiveBufferConfig() AdaptiveBufferConfig {
 		DefaultBufferSize: 6,  // Default 6 frames (increased for better stability)
 
 		// CPU thresholds optimized for single-core ARM Cortex A7 under load
-		LowCPUThreshold:  20.0, // Below 20% CPU
-		HighCPUThreshold: 60.0, // Above 60% CPU (lowered to be more responsive)
+		LowCPUThreshold:  GetConfig().LowCPUThreshold * 100,  // Below 20% CPU
+		HighCPUThreshold: GetConfig().HighCPUThreshold * 100, // Above 60% CPU (lowered to be more responsive)
 
 		// Memory thresholds for 256MB total RAM
-		LowMemoryThreshold:  35.0, // Below 35% memory usage
-		HighMemoryThreshold: 75.0, // Above 75% memory usage (lowered for earlier response)
+		LowMemoryThreshold:  GetConfig().LowMemoryThreshold * 100,  // Below 35% memory usage
+		HighMemoryThreshold: GetConfig().HighMemoryThreshold * 100, // Above 75% memory usage (lowered for earlier response)
 
 		// Latency targets
-		TargetLatency: 20 * time.Millisecond, // Target 20ms latency
-		MaxLatency:    50 * time.Millisecond, // Max acceptable 50ms
+		TargetLatency: GetConfig().TargetLatency,    // Target 20ms latency
+		MaxLatency:    GetConfig().MaxLatencyTarget, // Max acceptable latency
 
 		// Adaptation settings
-		AdaptationInterval: 500 * time.Millisecond, // Check every 500ms
-		SmoothingFactor:    0.3,                    // Moderate responsiveness
+		AdaptationInterval: GetConfig().BufferUpdateInterval, // Check every 500ms
+		SmoothingFactor:    GetConfig().SmoothingFactor,      // Moderate responsiveness
 	}
 }
 
@@ -133,7 +133,7 @@ func (abm *AdaptiveBufferManager) UpdateLatency(latency time.Duration) {
 		atomic.StoreInt64(&abm.averageLatency, newLatency)
 	} else {
 		// Exponential moving average: 70% historical, 30% current
-		newAvg := int64(float64(currentAvg)*0.7 + float64(newLatency)*0.3)
+		newAvg := int64(float64(currentAvg)*GetConfig().HistoricalWeight + float64(newLatency)*GetConfig().CurrentWeight)
 		atomic.StoreInt64(&abm.averageLatency, newAvg)
 	}
 }
@@ -195,7 +195,7 @@ func (abm *AdaptiveBufferManager) adaptBufferSizes() {
 	latencyFactor := abm.calculateLatencyFactor(currentLatency)
 
 	// Combine factors with weights (CPU has highest priority for KVM coexistence)
-	combinedFactor := 0.5*cpuFactor + 0.3*memoryFactor + 0.2*latencyFactor
+	combinedFactor := GetConfig().CPUMemoryWeight*cpuFactor + GetConfig().MemoryWeight*memoryFactor + GetConfig().LatencyWeight*latencyFactor
 
 	// Apply adaptation with smoothing
 	currentInput := float64(atomic.LoadInt64(&abm.currentInputBufferSize))
@@ -306,8 +306,8 @@ func (abm *AdaptiveBufferManager) GetStats() map[string]interface{} {
 		"input_buffer_size":     abm.GetInputBufferSize(),
 		"output_buffer_size":    abm.GetOutputBufferSize(),
 		"average_latency_ms":    float64(atomic.LoadInt64(&abm.averageLatency)) / 1e6,
-		"system_cpu_percent":    float64(atomic.LoadInt64(&abm.systemCPUPercent)) / 100,
-		"system_memory_percent": float64(atomic.LoadInt64(&abm.systemMemoryPercent)) / 100,
+		"system_cpu_percent":    float64(atomic.LoadInt64(&abm.systemCPUPercent)) / GetConfig().PercentageMultiplier,
+		"system_memory_percent": float64(atomic.LoadInt64(&abm.systemMemoryPercent)) / GetConfig().PercentageMultiplier,
 		"adaptation_count":      atomic.LoadInt64(&abm.adaptationCount),
 		"last_adaptation":       lastAdaptation,
 	}

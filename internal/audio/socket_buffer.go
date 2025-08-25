@@ -6,12 +6,7 @@ import (
 	"syscall"
 )
 
-const (
-	// Socket buffer sizes optimized for JetKVM's audio workload
-	OptimalSocketBuffer = 128 * 1024 // 128KB (32 frames @ 4KB each)
-	MaxSocketBuffer     = 256 * 1024 // 256KB for high-load scenarios
-	MinSocketBuffer     = 32 * 1024  // 32KB minimum for basic functionality
-)
+// Socket buffer sizes are now centralized in config_constants.go
 
 // SocketBufferConfig holds socket buffer configuration
 type SocketBufferConfig struct {
@@ -23,8 +18,8 @@ type SocketBufferConfig struct {
 // DefaultSocketBufferConfig returns the default socket buffer configuration
 func DefaultSocketBufferConfig() SocketBufferConfig {
 	return SocketBufferConfig{
-		SendBufferSize: OptimalSocketBuffer,
-		RecvBufferSize: OptimalSocketBuffer,
+		SendBufferSize: GetConfig().SocketOptimalBuffer,
+		RecvBufferSize: GetConfig().SocketOptimalBuffer,
 		Enabled:        true,
 	}
 }
@@ -32,8 +27,8 @@ func DefaultSocketBufferConfig() SocketBufferConfig {
 // HighLoadSocketBufferConfig returns configuration for high-load scenarios
 func HighLoadSocketBufferConfig() SocketBufferConfig {
 	return SocketBufferConfig{
-		SendBufferSize: MaxSocketBuffer,
-		RecvBufferSize: MaxSocketBuffer,
+		SendBufferSize: GetConfig().SocketMaxBuffer,
+		RecvBufferSize: GetConfig().SocketMaxBuffer,
 		Enabled:        true,
 	}
 }
@@ -112,20 +107,20 @@ func ValidateSocketBufferConfig(config SocketBufferConfig) error {
 		return nil
 	}
 
-	if config.SendBufferSize < MinSocketBuffer {
-		return fmt.Errorf("send buffer size %d is below minimum %d", config.SendBufferSize, MinSocketBuffer)
+	if config.SendBufferSize < GetConfig().SocketMinBuffer {
+		return fmt.Errorf("send buffer size %d is below minimum %d", config.SendBufferSize, GetConfig().SocketMinBuffer)
 	}
 
-	if config.RecvBufferSize < MinSocketBuffer {
-		return fmt.Errorf("receive buffer size %d is below minimum %d", config.RecvBufferSize, MinSocketBuffer)
+	if config.RecvBufferSize < GetConfig().SocketMinBuffer {
+		return fmt.Errorf("receive buffer size %d is below minimum %d", config.RecvBufferSize, GetConfig().SocketMinBuffer)
 	}
 
-	if config.SendBufferSize > MaxSocketBuffer {
-		return fmt.Errorf("send buffer size %d exceeds maximum %d", config.SendBufferSize, MaxSocketBuffer)
+	if config.SendBufferSize > GetConfig().SocketMaxBuffer {
+		return fmt.Errorf("send buffer size %d exceeds maximum %d", config.SendBufferSize, GetConfig().SocketMaxBuffer)
 	}
 
-	if config.RecvBufferSize > MaxSocketBuffer {
-		return fmt.Errorf("receive buffer size %d exceeds maximum %d", config.RecvBufferSize, MaxSocketBuffer)
+	if config.RecvBufferSize > GetConfig().SocketMaxBuffer {
+		return fmt.Errorf("receive buffer size %d exceeds maximum %d", config.RecvBufferSize, GetConfig().SocketMaxBuffer)
 	}
 
 	return nil

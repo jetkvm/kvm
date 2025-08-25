@@ -23,7 +23,7 @@ type AudioBufferPool struct {
 
 func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 	// Pre-allocate 20% of max pool size for immediate availability
-	preallocSize := 20
+	preallocSize := GetConfig().PreallocPercentage
 	preallocated := make([]*[]byte, 0, preallocSize)
 
 	// Pre-allocate buffers to reduce initial allocation overhead
@@ -34,7 +34,7 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 
 	return &AudioBufferPool{
 		bufferSize:   bufferSize,
-		maxPoolSize:  100, // Limit pool size to prevent excessive memory usage
+		maxPoolSize:  GetConfig().MaxPoolSize, // Limit pool size to prevent excessive memory usage
 		preallocated: preallocated,
 		preallocSize: preallocSize,
 		pool: sync.Pool{
@@ -111,8 +111,8 @@ func (p *AudioBufferPool) Put(buf []byte) {
 }
 
 var (
-	audioFramePool   = NewAudioBufferPool(1500)
-	audioControlPool = NewAudioBufferPool(64)
+	audioFramePool   = NewAudioBufferPool(GetConfig().AudioFramePoolSize)
+	audioControlPool = NewAudioBufferPool(GetConfig().OutputHeaderSize)
 )
 
 func GetAudioFrameBuffer() []byte {
@@ -144,7 +144,7 @@ func (p *AudioBufferPool) GetPoolStats() AudioBufferPoolDetailedStats {
 
 	var hitRate float64
 	if totalRequests > 0 {
-		hitRate = float64(hitCount) / float64(totalRequests) * 100
+		hitRate = float64(hitCount) / float64(totalRequests) * GetConfig().PercentageMultiplier
 	}
 
 	return AudioBufferPoolDetailedStats{

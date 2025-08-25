@@ -47,17 +47,17 @@ type AudioMetrics struct {
 var (
 	currentConfig = AudioConfig{
 		Quality:    AudioQualityMedium,
-		Bitrate:    64,
+		Bitrate:    GetConfig().AudioQualityMediumOutputBitrate,
 		SampleRate: GetConfig().SampleRate,
 		Channels:   GetConfig().Channels,
-		FrameSize:  20 * time.Millisecond,
+		FrameSize:  GetConfig().AudioQualityMediumFrameSize,
 	}
 	currentMicrophoneConfig = AudioConfig{
 		Quality:    AudioQualityMedium,
-		Bitrate:    32,
+		Bitrate:    GetConfig().AudioQualityMediumInputBitrate,
 		SampleRate: GetConfig().SampleRate,
 		Channels:   1,
-		FrameSize:  20 * time.Millisecond,
+		FrameSize:  GetConfig().AudioQualityMediumFrameSize,
 	}
 	metrics AudioMetrics
 )
@@ -69,24 +69,24 @@ var qualityPresets = map[AudioQuality]struct {
 	frameSize                   time.Duration
 }{
 	AudioQualityLow: {
-		outputBitrate: 32, inputBitrate: 16,
-		sampleRate: 22050, channels: 1,
-		frameSize: 40 * time.Millisecond,
+		outputBitrate: GetConfig().AudioQualityLowOutputBitrate, inputBitrate: GetConfig().AudioQualityLowInputBitrate,
+		sampleRate: GetConfig().AudioQualityLowSampleRate, channels: GetConfig().AudioQualityLowChannels,
+		frameSize: GetConfig().AudioQualityLowFrameSize,
 	},
 	AudioQualityMedium: {
-		outputBitrate: 64, inputBitrate: 32,
-		sampleRate: 44100, channels: 2,
-		frameSize: 20 * time.Millisecond,
+		outputBitrate: GetConfig().AudioQualityMediumOutputBitrate, inputBitrate: GetConfig().AudioQualityMediumInputBitrate,
+		sampleRate: GetConfig().AudioQualityMediumSampleRate, channels: GetConfig().AudioQualityMediumChannels,
+		frameSize: GetConfig().AudioQualityMediumFrameSize,
 	},
 	AudioQualityHigh: {
-		outputBitrate: 128, inputBitrate: 64,
-		sampleRate: GetConfig().SampleRate, channels: GetConfig().Channels,
-		frameSize: 20 * time.Millisecond,
+		outputBitrate: GetConfig().AudioQualityHighOutputBitrate, inputBitrate: GetConfig().AudioQualityHighInputBitrate,
+		sampleRate: GetConfig().SampleRate, channels: GetConfig().AudioQualityHighChannels,
+		frameSize: GetConfig().AudioQualityHighFrameSize,
 	},
 	AudioQualityUltra: {
-		outputBitrate: 192, inputBitrate: 96,
-		sampleRate: GetConfig().SampleRate, channels: GetConfig().Channels,
-		frameSize: 10 * time.Millisecond,
+		outputBitrate: GetConfig().AudioQualityUltraOutputBitrate, inputBitrate: GetConfig().AudioQualityUltraInputBitrate,
+		sampleRate: GetConfig().SampleRate, channels: GetConfig().AudioQualityUltraChannels,
+		frameSize: GetConfig().AudioQualityUltraFrameSize,
 	},
 }
 
@@ -114,7 +114,7 @@ func GetMicrophoneQualityPresets() map[AudioQuality]AudioConfig {
 			Bitrate: preset.inputBitrate,
 			SampleRate: func() int {
 				if quality == AudioQualityLow {
-					return 16000
+					return GetConfig().AudioQualityMicLowSampleRate
 				}
 				return preset.sampleRate
 			}(),

@@ -105,7 +105,7 @@ func GetMicrophoneContentionManager() *MicrophoneContentionManager {
 	}
 
 	if atomic.CompareAndSwapInt32(&micContentionInitialized, 0, 1) {
-		manager := NewMicrophoneContentionManager(200 * time.Millisecond)
+		manager := NewMicrophoneContentionManager(GetConfig().MicContentionTimeout)
 		atomic.StorePointer(&globalMicContentionManager, unsafe.Pointer(manager))
 		return manager
 	}
@@ -115,7 +115,7 @@ func GetMicrophoneContentionManager() *MicrophoneContentionManager {
 		return (*MicrophoneContentionManager)(ptr)
 	}
 
-	return NewMicrophoneContentionManager(200 * time.Millisecond)
+	return NewMicrophoneContentionManager(GetConfig().MicContentionTimeout)
 }
 
 func TryMicrophoneOperation() OperationResult {

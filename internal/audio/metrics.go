@@ -451,7 +451,7 @@ func GetLastMetricsUpdate() time.Time {
 // StartMetricsUpdater starts a goroutine that periodically updates Prometheus metrics
 func StartMetricsUpdater() {
 	go func() {
-		ticker := time.NewTicker(5 * time.Second) // Update every 5 seconds
+		ticker := time.NewTicker(GetConfig().StatsUpdateInterval) // Update every 5 seconds
 		defer ticker.Stop()
 
 		for range ticker.C {

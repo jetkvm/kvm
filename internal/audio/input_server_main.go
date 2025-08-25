@@ -64,7 +64,7 @@ func RunAudioInputServer() error {
 	server.Stop()
 
 	// Give some time for cleanup
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(GetConfig().DefaultSleepDuration)
 
 	logger.Info().Msg("Audio input server subprocess stopped")
 	return nil

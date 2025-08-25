@@ -171,8 +171,8 @@ func LogMemoryMetrics() {
 	metrics := CollectMemoryMetrics()
 
 	logger.Info().
-		Uint64("heap_alloc_mb", metrics.RuntimeStats.HeapAlloc/1024/1024).
-		Uint64("heap_sys_mb", metrics.RuntimeStats.HeapSys/1024/1024).
+		Uint64("heap_alloc_mb", metrics.RuntimeStats.HeapAlloc/uint64(GetConfig().BytesToMBDivisor)).
+		Uint64("heap_sys_mb", metrics.RuntimeStats.HeapSys/uint64(GetConfig().BytesToMBDivisor)).
 		Uint64("heap_objects", metrics.RuntimeStats.HeapObjects).
 		Uint32("num_gc", metrics.RuntimeStats.NumGC).
 		Float64("gc_cpu_fraction", metrics.RuntimeStats.GCCPUFraction).

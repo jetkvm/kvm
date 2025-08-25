@@ -22,18 +22,37 @@ static snd_pcm_t *pcm_handle = NULL;
 static snd_pcm_t *pcm_playback_handle = NULL;
 static OpusEncoder *encoder = NULL;
 static OpusDecoder *decoder = NULL;
-// Optimized Opus encoder settings for ARM Cortex-A7
-static int opus_bitrate = 96000;        // Increased for better quality
-static int opus_complexity = 3;         // Reduced for ARM performance
-static int opus_vbr = 1;                // Variable bitrate enabled
-static int opus_vbr_constraint = 1;     // Constrained VBR for consistent latency
-static int opus_signal_type = OPUS_SIGNAL_MUSIC; // Optimized for general audio
-static int opus_bandwidth = OPUS_BANDWIDTH_FULLBAND; // Full bandwidth
-static int opus_dtx = 0;                // Disable DTX for real-time audio
-static int sample_rate = 48000;
-static int channels = 2;
-static int frame_size = 960; // 20ms for 48kHz
-static int max_packet_size = 1500;
+// Opus encoder settings - initialized from Go configuration
+static int opus_bitrate = 96000;        // Will be set from GetConfig().CGOOpusBitrate
+static int opus_complexity = 3;         // Will be set from GetConfig().CGOOpusComplexity
+static int opus_vbr = 1;                // Will be set from GetConfig().CGOOpusVBR
+static int opus_vbr_constraint = 1;     // Will be set from GetConfig().CGOOpusVBRConstraint
+static int opus_signal_type = 3;        // Will be set from GetConfig().CGOOpusSignalType
+static int opus_bandwidth = 1105;       // Will be set from GetConfig().CGOOpusBandwidth
+static int opus_dtx = 0;                // Will be set from GetConfig().CGOOpusDTX
+static int sample_rate = 48000;         // Will be set from GetConfig().CGOSampleRate
+static int channels = 2;                // Will be set from GetConfig().CGOChannels
+static int frame_size = 960;            // Will be set from GetConfig().CGOFrameSize
+static int max_packet_size = 1500;      // Will be set from GetConfig().CGOMaxPacketSize
+static int sleep_microseconds = 50000;  // Will be set from GetConfig().CGOSleepMicroseconds
+
+// Function to update constants from Go configuration
+void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constraint,
+                           int signal_type, int bandwidth, int dtx, int sr, int ch,
+                           int fs, int max_pkt, int sleep_us) {
+    opus_bitrate = bitrate;
+    opus_complexity = complexity;
+    opus_vbr = vbr;
+    opus_vbr_constraint = vbr_constraint;
+    opus_signal_type = signal_type;
+    opus_bandwidth = bandwidth;
+    opus_dtx = dtx;
+    sample_rate = sr;
+    channels = ch;
+    frame_size = fs;
+    max_packet_size = max_pkt;
+    sleep_microseconds = sleep_us;
+}
 
 // State tracking to prevent race conditions during rapid start/stop
 static volatile int capture_initializing = 0;
@@ -56,7 +75,7 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 
 		if (err == -EBUSY && attempts > 0) {
 			// Device busy, wait and retry
-			usleep(50000); // 50ms
+			usleep(sleep_microseconds); // 50ms
 			continue;
 		}
 		break;
@@ -415,8 +434,25 @@ var (
 )
 
 func cgoAudioInit() error {
-	ret := C.jetkvm_audio_init()
-	if ret != 0 {
+	// Update C constants from Go configuration
+	config := GetConfig()
+	C.update_audio_constants(
+		C.int(config.CGOOpusBitrate),
+		C.int(config.CGOOpusComplexity),
+		C.int(config.CGOOpusVBR),
+		C.int(config.CGOOpusVBRConstraint),
+		C.int(config.CGOOpusSignalType),
+		C.int(config.CGOOpusBandwidth),
+		C.int(config.CGOOpusDTX),
+		C.int(config.CGOSampleRate),
+		C.int(config.CGOChannels),
+		C.int(config.CGOFrameSize),
+		C.int(config.CGOMaxPacketSize),
+		C.int(config.CGOSleepMicroseconds),
+	)
+
+	result := C.jetkvm_audio_init()
+	if result != 0 {
 		return errAudioInitFailed
 	}
 	return nil
@@ -427,7 +463,7 @@ func cgoAudioClose() {
 }
 
 func cgoAudioReadEncode(buf []byte) (int, error) {
-	if len(buf) < 1276 {
+	if len(buf) < GetConfig().MinReadEncodeBuffer {
 		return 0, errBufferTooSmall
 	}
 
@@ -461,7 +497,7 @@ func cgoAudioDecodeWrite(buf []byte) (int, error) {
 	if buf == nil {
 		return 0, errNilBuffer
 	}
-	if len(buf) > 4096 {
+	if len(buf) > GetConfig().MaxDecodeWriteBuffer {
 		return 0, errBufferTooLarge
 	}
 
