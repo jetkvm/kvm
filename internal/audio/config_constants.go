@@ -698,6 +698,28 @@ type AudioConfigConstants struct {
 	OutputSizeThreshold int
 	TargetLevel         float64
 
+	// Adaptive Buffer Configuration - Controls dynamic buffer sizing for optimal performance
+	// Used in: adaptive_buffer.go for dynamic buffer management
+	// Impact: Controls buffer size adaptation based on system load and latency
+
+	// AdaptiveMinBufferSize defines minimum buffer size in frames for adaptive buffering.
+	// Used in: adaptive_buffer.go DefaultAdaptiveBufferConfig()
+	// Impact: Lower values reduce latency but may cause underruns under high load.
+	// Default 3 frames provides stability while maintaining low latency.
+	AdaptiveMinBufferSize int
+
+	// AdaptiveMaxBufferSize defines maximum buffer size in frames for adaptive buffering.
+	// Used in: adaptive_buffer.go DefaultAdaptiveBufferConfig()
+	// Impact: Higher values handle load spikes but increase maximum latency.
+	// Default 20 frames accommodates high load scenarios without excessive latency.
+	AdaptiveMaxBufferSize int
+
+	// AdaptiveDefaultBufferSize defines default buffer size in frames for adaptive buffering.
+	// Used in: adaptive_buffer.go DefaultAdaptiveBufferConfig()
+	// Impact: Starting point for buffer adaptation, affects initial latency.
+	// Default 6 frames balances initial latency with adaptation headroom.
+	AdaptiveDefaultBufferSize int
+
 	// Priority Scheduling
 	AudioHighPriority   int
 	AudioMediumPriority int
@@ -1158,6 +1180,11 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		LowMemoryThreshold:  0.50,
 		HighMemoryThreshold: 0.75,
 		TargetLatency:       20 * time.Millisecond,
+
+		// Adaptive Buffer Size Configuration
+		AdaptiveMinBufferSize:     3,  // Minimum 3 frames for stability
+		AdaptiveMaxBufferSize:     20, // Maximum 20 frames for high load
+		AdaptiveDefaultBufferSize: 6,  // Default 6 frames for balanced performance
 
 		// Adaptive Optimizer Configuration
 		CooldownPeriod:    30 * time.Second,

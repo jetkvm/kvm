@@ -37,9 +37,9 @@ type AdaptiveBufferConfig struct {
 func DefaultAdaptiveBufferConfig() AdaptiveBufferConfig {
 	return AdaptiveBufferConfig{
 		// Conservative buffer sizes for 256MB RAM constraint
-		MinBufferSize:     3,  // Minimum 3 frames (slightly higher for stability)
-		MaxBufferSize:     20, // Maximum 20 frames (increased for high load scenarios)
-		DefaultBufferSize: 6,  // Default 6 frames (increased for better stability)
+		MinBufferSize:     GetConfig().AdaptiveMinBufferSize,
+		MaxBufferSize:     GetConfig().AdaptiveMaxBufferSize,
+		DefaultBufferSize: GetConfig().AdaptiveDefaultBufferSize,
 
 		// CPU thresholds optimized for single-core ARM Cortex A7 under load
 		LowCPUThreshold:  GetConfig().LowCPUThreshold * 100,  // Below 20% CPU

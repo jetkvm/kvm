@@ -422,10 +422,12 @@ func (c *AudioClient) Connect() error {
 			c.running = true
 			return nil
 		}
-		// Exponential backoff starting at 50ms
-		delay := time.Duration(50*(1<<uint(i/3))) * time.Millisecond
-		if delay > 400*time.Millisecond {
-			delay = 400 * time.Millisecond
+		// Exponential backoff starting from config
+		backoffStart := GetConfig().BackoffStart
+		delay := time.Duration(backoffStart.Nanoseconds()*(1<<uint(i/3))) * time.Nanosecond
+		maxDelay := GetConfig().MaxRetryDelay
+		if delay > maxDelay {
+			delay = maxDelay
 		}
 		time.Sleep(delay)
 	}

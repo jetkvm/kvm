@@ -132,7 +132,7 @@ func (r *AudioRelay) relayLoop() {
 	defer r.wg.Done()
 	r.logger.Debug().Msg("Audio relay loop started")
 
-	const maxConsecutiveErrors = 10
+	var maxConsecutiveErrors = GetConfig().MaxConsecutiveErrors
 	consecutiveErrors := 0
 
 	for {
