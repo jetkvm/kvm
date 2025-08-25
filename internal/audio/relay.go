@@ -170,7 +170,7 @@ func (r *AudioRelay) relayLoop() {
 func (r *AudioRelay) forwardToWebRTC(frame []byte) error {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
-	
+
 	audioTrack := r.audioTrack
 	config := r.config
 	muted := r.muted
