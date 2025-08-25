@@ -915,19 +915,40 @@ func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 
 	// Handle audio process management if state is changing
 	if previousAudioEnabled != newAudioEnabled {
-		if !newAudioEnabled && audioSupervisor != nil && audioSupervisor.IsRunning() {
+		if !newAudioEnabled {
 			// Stop audio processes when audio is disabled
 			logger.Info().Msg("stopping audio processes due to audio device being disabled")
-			if err := audioSupervisor.Stop(); err != nil {
-				logger.Error().Err(err).Msg("failed to stop audio supervisor")
-			}
-			// Wait for audio processes to fully stop before proceeding
-			for i := 0; i < 50; i++ { // Wait up to 5 seconds
-				if !audioSupervisor.IsRunning() {
-					break
+
+			// Stop audio input manager if active
+			if currentSession != nil && currentSession.AudioInputManager != nil && currentSession.AudioInputManager.IsRunning() {
+				logger.Info().Msg("stopping audio input manager")
+				currentSession.AudioInputManager.Stop()
+				// Wait for audio input to fully stop
+				for i := 0; i < 50; i++ { // Wait up to 5 seconds
+					if !currentSession.AudioInputManager.IsRunning() {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
 				}
-				time.Sleep(100 * time.Millisecond)
+				logger.Info().Msg("audio input manager stopped")
 			}
+
+			// Stop audio output supervisor
+			if audioSupervisor != nil && audioSupervisor.IsRunning() {
+				logger.Info().Msg("stopping audio output supervisor")
+				if err := audioSupervisor.Stop(); err != nil {
+					logger.Error().Err(err).Msg("failed to stop audio supervisor")
+				}
+				// Wait for audio processes to fully stop before proceeding
+				for i := 0; i < 50; i++ { // Wait up to 5 seconds
+					if !audioSupervisor.IsRunning() {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+				logger.Info().Msg("audio output supervisor stopped")
+			}
+
 			logger.Info().Msg("audio processes stopped, proceeding with USB gadget reconfiguration")
 		} else if newAudioEnabled && audioSupervisor != nil && !audioSupervisor.IsRunning() {
 			// Start audio processes when audio is enabled (after USB reconfiguration)
@@ -980,18 +1001,38 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		config.UsbDevices.MassStorage = enabled
 	case "audio":
 		// Handle audio process management
-		if !enabled && audioSupervisor != nil && audioSupervisor.IsRunning() {
+		if !enabled {
 			// Stop audio processes when audio is disabled
 			logger.Info().Msg("stopping audio processes due to audio device being disabled")
-			if err := audioSupervisor.Stop(); err != nil {
-				logger.Error().Err(err).Msg("failed to stop audio supervisor")
-			}
-			// Wait for audio processes to fully stop
-			for i := 0; i < 50; i++ { // Wait up to 5 seconds
-				if !audioSupervisor.IsRunning() {
-					break
+
+			// Stop audio input manager if active
+			if currentSession != nil && currentSession.AudioInputManager != nil && currentSession.AudioInputManager.IsRunning() {
+				logger.Info().Msg("stopping audio input manager")
+				currentSession.AudioInputManager.Stop()
+				// Wait for audio input to fully stop
+				for i := 0; i < 50; i++ { // Wait up to 5 seconds
+					if !currentSession.AudioInputManager.IsRunning() {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
 				}
-				time.Sleep(100 * time.Millisecond)
+				logger.Info().Msg("audio input manager stopped")
+			}
+
+			// Stop audio output supervisor
+			if audioSupervisor != nil && audioSupervisor.IsRunning() {
+				logger.Info().Msg("stopping audio output supervisor")
+				if err := audioSupervisor.Stop(); err != nil {
+					logger.Error().Err(err).Msg("failed to stop audio supervisor")
+				}
+				// Wait for audio processes to fully stop
+				for i := 0; i < 50; i++ { // Wait up to 5 seconds
+					if !audioSupervisor.IsRunning() {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+				logger.Info().Msg("audio output supervisor stopped")
 			}
 		} else if enabled && audioSupervisor != nil {
 			// Ensure supervisor is fully stopped before starting
