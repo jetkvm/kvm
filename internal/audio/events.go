@@ -226,7 +226,7 @@ func convertAudioMetricsToEventDataWithLatencyMs(metrics AudioMetrics) AudioMetr
 		FramesReceived:  metrics.FramesReceived,
 		FramesDropped:   metrics.FramesDropped,
 		BytesProcessed:  metrics.BytesProcessed,
-		LastFrameTime:   metrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
+		LastFrameTime:   metrics.LastFrameTime.Format(GetConfig().EventTimeFormatString),
 		ConnectionDrops: metrics.ConnectionDrops,
 		AverageLatency:  fmt.Sprintf("%.1fms", float64(metrics.AverageLatency.Nanoseconds())/1e6),
 	}
@@ -238,7 +238,7 @@ func convertAudioInputMetricsToEventDataWithLatencyMs(metrics AudioInputMetrics)
 		FramesSent:      metrics.FramesSent,
 		FramesDropped:   metrics.FramesDropped,
 		BytesProcessed:  metrics.BytesProcessed,
-		LastFrameTime:   metrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
+		LastFrameTime:   metrics.LastFrameTime.Format(GetConfig().EventTimeFormatString),
 		ConnectionDrops: metrics.ConnectionDrops,
 		AverageLatency:  fmt.Sprintf("%.1fms", float64(metrics.AverageLatency.Nanoseconds())/1e6),
 	}
@@ -463,7 +463,7 @@ func (aeb *AudioEventBroadcaster) sendToSubscriber(subscriber *AudioEventSubscri
 		return false
 	}
 
-	ctx, cancel := context.WithTimeout(subscriber.ctx, 2*time.Second)
+	ctx, cancel := context.WithTimeout(subscriber.ctx, time.Duration(GetConfig().EventTimeoutSeconds)*time.Second)
 	defer cancel()
 
 	err := wsjson.Write(ctx, subscriber.conn, event)

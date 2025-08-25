@@ -274,7 +274,8 @@ func GetBatchAudioProcessor() *BatchAudioProcessor {
 
 	// Initialize on first use
 	if atomic.CompareAndSwapInt32(&batchProcessorInitialized, 0, 1) {
-		processor := NewBatchAudioProcessor(4, 5*time.Millisecond) // 4 frames per batch, 5ms timeout
+		config := GetConfig()
+		processor := NewBatchAudioProcessor(config.BatchProcessorFramesPerBatch, config.BatchProcessorTimeout)
 		atomic.StorePointer(&globalBatchProcessor, unsafe.Pointer(processor))
 		return processor
 	}
@@ -286,7 +287,8 @@ func GetBatchAudioProcessor() *BatchAudioProcessor {
 	}
 
 	// Fallback: create a new processor (should rarely happen)
-	return NewBatchAudioProcessor(4, 5*time.Millisecond)
+	config := GetConfig()
+	return NewBatchAudioProcessor(config.BatchProcessorFramesPerBatch, config.BatchProcessorTimeout)
 }
 
 // EnableBatchAudioProcessing enables the global batch processor

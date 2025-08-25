@@ -20,9 +20,9 @@ type ZeroCopyAudioFrame struct {
 // ZeroCopyFramePool manages reusable zero-copy audio frames
 type ZeroCopyFramePool struct {
 	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
-	counter   int64 // Frame counter (atomic)
-	hitCount  int64 // Pool hit counter (atomic)
-	missCount int64 // Pool miss counter (atomic)
+	counter         int64 // Frame counter (atomic)
+	hitCount        int64 // Pool hit counter (atomic)
+	missCount       int64 // Pool miss counter (atomic)
 	allocationCount int64 // Total allocations counter (atomic)
 
 	// Other fields
@@ -94,7 +94,7 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 		frame.mutex.Unlock()
 		return frame
 	}
-	
+
 	// First try pre-allocated frames for fastest access
 	p.mutex.Lock()
 	if len(p.preallocated) > 0 {
