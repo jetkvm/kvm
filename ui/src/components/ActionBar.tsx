@@ -21,6 +21,7 @@ import ExtensionPopover from "@/components/popovers/ExtensionPopover";
 import AudioControlPopover from "@/components/popovers/AudioControlPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { useAudioEvents } from "@/hooks/useAudioEvents";
+import { useUsbDeviceConfig } from "@/hooks/useUsbDeviceConfig";
 
 
 // Type for microphone error
@@ -87,6 +88,10 @@ export default function Actionbar({
   
   // Use WebSocket data exclusively - no polling fallback
   const isMuted = audioMuted ?? false; // Default to false if WebSocket data not available yet
+  
+  // Get USB device configuration to check if audio is enabled
+  const { usbDeviceConfig } = useUsbDeviceConfig();
+  const isAudioEnabledInUsb = usbDeviceConfig?.audio ?? true; // Default to true while loading
 
   return (
     <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">
@@ -316,25 +321,32 @@ export default function Actionbar({
             />
           </div>
           <Popover>
-            <PopoverButton as={Fragment}>
-              <Button
-                size="XS"
-                theme="light"
-                text="Audio"
-                LeadingIcon={({ className }) => (
-                  <div className="flex items-center">
-                    {isMuted ? (
-                      <MdVolumeOff className={cx(className, "text-red-500")} />
-                    ) : (
-                      <MdVolumeUp className={cx(className, "text-green-500")} />
-                    )}
-                    <MdGraphicEq className={cx(className, "ml-1 text-blue-500")} />
-                  </div>
-                )}
-                onClick={() => {
-                  setDisableFocusTrap(true);
-                }}
-              />
+            <PopoverButton as={Fragment} disabled={!isAudioEnabledInUsb}>
+              <div title={!isAudioEnabledInUsb ? "Audio needs to be enabled in USB device settings" : undefined}>
+                <Button
+                  size="XS"
+                  theme="light"
+                  text="Audio"
+                  disabled={!isAudioEnabledInUsb}
+                  LeadingIcon={({ className }) => (
+                    <div className="flex items-center">
+                      {!isAudioEnabledInUsb ? (
+                        <MdVolumeOff className={cx(className, "text-gray-400")} />
+                      ) : isMuted ? (
+                        <MdVolumeOff className={cx(className, "text-red-500")} />
+                      ) : (
+                        <MdVolumeUp className={cx(className, "text-green-500")} />
+                      )}
+                      <MdGraphicEq className={cx(className, "ml-1", !isAudioEnabledInUsb ? "text-gray-400" : "text-blue-500")} />
+                    </div>
+                  )}
+                  onClick={() => {
+                    if (isAudioEnabledInUsb) {
+                      setDisableFocusTrap(true);
+                    }
+                  }}
+                />
+              </div>
             </PopoverButton>
             <PopoverPanel
               anchor="bottom end"

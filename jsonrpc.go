@@ -908,9 +908,58 @@ func updateUsbRelatedConfig() error {
 }
 
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
+	// Check if audio state is changing
+	previousAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+	newAudioEnabled := usbDevices.Audio
+
+	// Handle audio process management if state is changing
+	if previousAudioEnabled != newAudioEnabled {
+		if !newAudioEnabled && audioSupervisor != nil && audioSupervisor.IsRunning() {
+			// Stop audio processes when audio is disabled
+			logger.Info().Msg("stopping audio processes due to audio device being disabled")
+			if err := audioSupervisor.Stop(); err != nil {
+				logger.Error().Err(err).Msg("failed to stop audio supervisor")
+			}
+			// Wait for audio processes to fully stop before proceeding
+			for i := 0; i < 50; i++ { // Wait up to 5 seconds
+				if !audioSupervisor.IsRunning() {
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+			logger.Info().Msg("audio processes stopped, proceeding with USB gadget reconfiguration")
+		} else if newAudioEnabled && audioSupervisor != nil && !audioSupervisor.IsRunning() {
+			// Start audio processes when audio is enabled (after USB reconfiguration)
+			logger.Info().Msg("audio will be started after USB gadget reconfiguration")
+		}
+	}
+
 	config.UsbDevices = &usbDevices
 	gadget.SetGadgetDevices(config.UsbDevices)
-	return updateUsbRelatedConfig()
+
+	// Apply USB gadget configuration changes
+	err := updateUsbRelatedConfig()
+	if err != nil {
+		return err
+	}
+
+	// Start audio processes after successful USB reconfiguration if needed
+	if previousAudioEnabled != newAudioEnabled && newAudioEnabled && audioSupervisor != nil {
+		// Ensure supervisor is fully stopped before starting
+		for i := 0; i < 50; i++ { // Wait up to 5 seconds
+			if !audioSupervisor.IsRunning() {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		logger.Info().Msg("starting audio processes after USB gadget reconfiguration")
+		if err := audioSupervisor.Start(); err != nil {
+			logger.Error().Err(err).Msg("failed to start audio supervisor")
+			// Don't return error here as USB reconfiguration was successful
+		}
+	}
+
+	return nil
 }
 
 func rpcSetUsbDeviceState(device string, enabled bool) error {
@@ -923,6 +972,36 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		config.UsbDevices.Keyboard = enabled
 	case "massStorage":
 		config.UsbDevices.MassStorage = enabled
+	case "audio":
+		// Handle audio process management
+		if !enabled && audioSupervisor != nil && audioSupervisor.IsRunning() {
+			// Stop audio processes when audio is disabled
+			logger.Info().Msg("stopping audio processes due to audio device being disabled")
+			if err := audioSupervisor.Stop(); err != nil {
+				logger.Error().Err(err).Msg("failed to stop audio supervisor")
+			}
+			// Wait for audio processes to fully stop
+			for i := 0; i < 50; i++ { // Wait up to 5 seconds
+				if !audioSupervisor.IsRunning() {
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		} else if enabled && audioSupervisor != nil {
+			// Ensure supervisor is fully stopped before starting
+			for i := 0; i < 50; i++ { // Wait up to 5 seconds
+				if !audioSupervisor.IsRunning() {
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+			// Start audio processes when audio is enabled
+			logger.Info().Msg("starting audio processes due to audio device being enabled")
+			if err := audioSupervisor.Start(); err != nil {
+				logger.Error().Err(err).Msg("failed to start audio supervisor")
+			}
+		}
+		config.UsbDevices.Audio = enabled
 	default:
 		return fmt.Errorf("invalid device: %s", device)
 	}

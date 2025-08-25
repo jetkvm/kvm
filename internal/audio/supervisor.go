@@ -95,6 +95,14 @@ func (s *AudioServerSupervisor) Start() error {
 
 	s.logger.Info().Msg("starting audio server supervisor")
 
+	// Recreate channels in case they were closed by a previous Stop() call
+	s.mutex.Lock()
+	s.processDone = make(chan struct{})
+	s.stopChan = make(chan struct{})
+	// Recreate context as well since it might have been cancelled
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	s.mutex.Unlock()
+
 	// Start the supervision loop
 	go s.supervisionLoop()
 

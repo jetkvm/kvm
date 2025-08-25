@@ -95,8 +95,41 @@ func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *
 	return newUsbGadget(name, defaultGadgetConfig, enabledDevices, config, logger)
 }
 
+// CloseHidFiles closes all open HID files
+func (u *UsbGadget) CloseHidFiles() {
+	u.log.Debug().Msg("closing HID files")
+
+	// Close keyboard HID file
+	if u.keyboardHidFile != nil {
+		if err := u.keyboardHidFile.Close(); err != nil {
+			u.log.Debug().Err(err).Msg("failed to close keyboard HID file")
+		}
+		u.keyboardHidFile = nil
+	}
+
+	// Close absolute mouse HID file
+	if u.absMouseHidFile != nil {
+		if err := u.absMouseHidFile.Close(); err != nil {
+			u.log.Debug().Err(err).Msg("failed to close absolute mouse HID file")
+		}
+		u.absMouseHidFile = nil
+	}
+
+	// Close relative mouse HID file
+	if u.relMouseHidFile != nil {
+		if err := u.relMouseHidFile.Close(); err != nil {
+			u.log.Debug().Err(err).Msg("failed to close relative mouse HID file")
+		}
+		u.relMouseHidFile = nil
+	}
+}
+
 // PreOpenHidFiles opens all HID files to reduce input latency
 func (u *UsbGadget) PreOpenHidFiles() {
+	// Add a small delay to allow USB gadget reconfiguration to complete
+	// This prevents "no such device or address" errors when trying to open HID files
+	time.Sleep(100 * time.Millisecond)
+
 	if u.enabledDevices.Keyboard {
 		if err := u.openKeyboardHidFile(); err != nil {
 			u.log.Debug().Err(err).Msg("failed to pre-open keyboard HID file")

@@ -213,10 +213,16 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 
 	u.loadGadgetConfig()
 
+	// Close HID files before reconfiguration to prevent "file already closed" errors
+	u.CloseHidFiles()
+
 	err := u.configureUsbGadget(true)
 	if err != nil {
 		return u.logError("unable to update gadget config", err)
 	}
+
+	// Reopen HID files after reconfiguration
+	u.PreOpenHidFiles()
 
 	return nil
 }
