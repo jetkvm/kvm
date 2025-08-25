@@ -1,7 +1,6 @@
 package audio
 
 import (
-	"context"
 	"sync/atomic"
 	"time"
 
@@ -16,18 +15,13 @@ type AudioInputIPCManager struct {
 	supervisor *AudioInputSupervisor
 	logger     zerolog.Logger
 	running    int32
-	ctx        context.Context
-	cancel     context.CancelFunc
 }
 
 // NewAudioInputIPCManager creates a new IPC-based audio input manager
 func NewAudioInputIPCManager() *AudioInputIPCManager {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &AudioInputIPCManager{
 		supervisor: NewAudioInputSupervisor(),
 		logger:     logging.GetDefaultLogger().With().Str("component", "audio-input-ipc").Logger(),
-		ctx:        ctx,
-		cancel:     cancel,
 	}
 }
 
@@ -52,14 +46,8 @@ func (aim *AudioInputIPCManager) Start() error {
 		FrameSize:  960,
 	}
 
-	// Wait with timeout for subprocess readiness
-	select {
-	case <-time.After(200 * time.Millisecond):
-	case <-aim.ctx.Done():
-		aim.supervisor.Stop()
-		atomic.StoreInt32(&aim.running, 0)
-		return aim.ctx.Err()
-	}
+	// Wait for subprocess readiness
+	time.Sleep(200 * time.Millisecond)
 
 	err = aim.supervisor.SendConfig(config)
 	if err != nil {
@@ -77,7 +65,6 @@ func (aim *AudioInputIPCManager) Stop() {
 	}
 
 	aim.logger.Info().Msg("Stopping IPC-based audio input system")
-	aim.cancel()
 	aim.supervisor.Stop()
 	aim.logger.Info().Msg("IPC-based audio input system stopped")
 }

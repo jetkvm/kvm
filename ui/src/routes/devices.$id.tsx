@@ -146,6 +146,8 @@ export default function KvmIdRoute() {
 
   // Microphone hook - moved here to prevent unmounting when popover closes
   const microphoneHook = useMicrophone();
+  // Extract syncMicrophoneState to avoid dependency issues
+  const { syncMicrophoneState } = microphoneHook;
 
   const isLegacySignalingEnabled = useRef(false);
 
@@ -656,8 +658,20 @@ export default function KvmIdRoute() {
   const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
   const { send } = useJsonRpc(onJsonRpcRequest);
 
-  // Use audio events hook without device change handler to avoid subscription loops
-  useAudioEvents();
+  // Handle audio device changes to sync microphone state
+  const handleAudioDeviceChanged = useCallback((data: { enabled: boolean; reason: string }) => {
+    console.log('[AudioDeviceChanged] Audio device changed:', data);
+    // Sync microphone state when audio device configuration changes
+    // This ensures the microphone state is properly synchronized after USB audio reconfiguration
+    if (syncMicrophoneState) {
+      setTimeout(() => {
+        syncMicrophoneState();
+      }, 500); // Small delay to ensure backend state is settled
+    }
+  }, [syncMicrophoneState]);
+
+  // Use audio events hook with device change handler
+  useAudioEvents(handleAudioDeviceChanged);
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
