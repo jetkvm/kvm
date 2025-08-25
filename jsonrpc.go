@@ -908,7 +908,38 @@ func updateUsbRelatedConfig() error {
 	return nil
 }
 
+// validateAudioConfiguration checks if audio functionality can be enabled
+func validateAudioConfiguration(enabled bool) error {
+	if !enabled {
+		return nil // Disabling audio is always allowed
+	}
+
+	// Check if audio supervisor is available
+	if audioSupervisor == nil {
+		return fmt.Errorf("audio supervisor not initialized - audio functionality not available")
+	}
+
+	// Check if ALSA devices are available by attempting to list them
+	// This is a basic check to ensure the system has audio capabilities
+	if _, err := os.Stat("/proc/asound/cards"); os.IsNotExist(err) {
+		return fmt.Errorf("no ALSA sound cards detected - audio hardware not available")
+	}
+
+	// Check if USB gadget audio function is supported
+	if _, err := os.Stat("/sys/kernel/config/usb_gadget"); os.IsNotExist(err) {
+		return fmt.Errorf("USB gadget configfs not available - cannot enable USB audio")
+	}
+
+	return nil
+}
+
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
+	// Validate audio configuration before proceeding
+	if err := validateAudioConfiguration(usbDevices.Audio); err != nil {
+		logger.Warn().Err(err).Msg("audio configuration validation failed")
+		return fmt.Errorf("audio validation failed: %w", err)
+	}
+
 	// Check if audio state is changing
 	previousAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
 	newAudioEnabled := usbDevices.Audio
@@ -984,6 +1015,11 @@ func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 			broadcaster.BroadcastAudioDeviceChanged(true, "usb_reconfiguration")
 			logger.Info().Msg("broadcasted audio device change event after USB reconfiguration")
 		}
+	} else if previousAudioEnabled != newAudioEnabled {
+		// Broadcast audio device change event for disabling audio
+		broadcaster := audio.GetAudioEventBroadcaster()
+		broadcaster.BroadcastAudioDeviceChanged(newAudioEnabled, "usb_reconfiguration")
+		logger.Info().Bool("enabled", newAudioEnabled).Msg("broadcasted audio device change event after USB reconfiguration")
 	}
 
 	return nil
@@ -1000,6 +1036,11 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 	case "massStorage":
 		config.UsbDevices.MassStorage = enabled
 	case "audio":
+		// Validate audio configuration before proceeding
+		if err := validateAudioConfiguration(enabled); err != nil {
+			logger.Warn().Err(err).Msg("audio device state validation failed")
+			return fmt.Errorf("audio validation failed: %w", err)
+		}
 		// Handle audio process management
 		if !enabled {
 			// Stop audio processes when audio is disabled
@@ -1047,11 +1088,15 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 			if err := audioSupervisor.Start(); err != nil {
 				logger.Error().Err(err).Msg("failed to start audio supervisor")
 			} else {
-				// Broadcast audio device change event to notify WebRTC session
-				broadcaster := audio.GetAudioEventBroadcaster()
-				broadcaster.BroadcastAudioDeviceChanged(true, "device_enabled")
-				logger.Info().Msg("broadcasted audio device change event after enabling audio device")
-			}
+			// Broadcast audio device change event to notify WebRTC session
+			broadcaster := audio.GetAudioEventBroadcaster()
+			broadcaster.BroadcastAudioDeviceChanged(true, "device_enabled")
+			logger.Info().Msg("broadcasted audio device change event after enabling audio device")
+		}
+		// Always broadcast the audio device change event regardless of enable/disable
+		broadcaster := audio.GetAudioEventBroadcaster()
+		broadcaster.BroadcastAudioDeviceChanged(enabled, "device_state_changed")
+		logger.Info().Bool("enabled", enabled).Msg("broadcasted audio device state change event")
 		}
 		config.UsbDevices.Audio = enabled
 	default:
