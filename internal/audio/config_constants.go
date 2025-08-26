@@ -1540,6 +1540,49 @@ type AudioConfigConstants struct {
 	// Impact: Prevents excessive channel counts that could impact performance.
 	// Default 8 channels provides reasonable upper bound for multi-channel audio.
 	MaxChannels int
+
+	// Device Health Monitoring Configuration
+	// Used in: device_health.go for proactive device monitoring and recovery
+	// Impact: Controls health check frequency and recovery thresholds
+
+	// HealthCheckIntervalMS defines interval between device health checks in milliseconds.
+	// Used in: DeviceHealthMonitor for periodic health assessment
+	// Impact: Lower values provide faster detection but increase CPU usage.
+	// Default 5000ms (5s) provides good balance between responsiveness and overhead.
+	HealthCheckIntervalMS int
+
+	// HealthRecoveryThreshold defines number of consecutive successful operations
+	// required to mark a device as healthy after being unhealthy.
+	// Used in: DeviceHealthMonitor for recovery state management
+	// Impact: Higher values prevent premature recovery declarations.
+	// Default 3 consecutive successes ensures stable recovery.
+	HealthRecoveryThreshold int
+
+	// HealthLatencyThresholdMS defines maximum acceptable latency in milliseconds
+	// before considering a device unhealthy.
+	// Used in: DeviceHealthMonitor for latency-based health assessment
+	// Impact: Lower values trigger recovery sooner but may cause false positives.
+	// Default 100ms provides reasonable threshold for real-time audio.
+	HealthLatencyThresholdMS int
+
+	// HealthErrorRateLimit defines maximum error rate (0.0-1.0) before
+	// considering a device unhealthy.
+	// Used in: DeviceHealthMonitor for error rate assessment
+	// Impact: Lower values trigger recovery sooner for error-prone devices.
+	// Default 0.1 (10%) allows some transient errors while detecting problems.
+	HealthErrorRateLimit float64
+
+	// Latency Histogram Bucket Configuration
+	// Used in: LatencyHistogram for granular latency measurement buckets
+	// Impact: Defines the boundaries for latency distribution analysis
+	LatencyBucket10ms  time.Duration // 10ms latency bucket
+	LatencyBucket25ms  time.Duration // 25ms latency bucket
+	LatencyBucket50ms  time.Duration // 50ms latency bucket
+	LatencyBucket100ms time.Duration // 100ms latency bucket
+	LatencyBucket250ms time.Duration // 250ms latency bucket
+	LatencyBucket500ms time.Duration // 500ms latency bucket
+	LatencyBucket1s    time.Duration // 1s latency bucket
+	LatencyBucket2s    time.Duration // 2s latency bucket
 }
 
 // DefaultAudioConfig returns the default configuration constants
@@ -2563,6 +2606,22 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		MinSampleRate:            8000,                   // 8kHz minimum sample rate
 		MaxSampleRate:            48000,                  // 48kHz maximum sample rate
 		MaxChannels:              8,                      // 8 maximum audio channels
+
+		// Device Health Monitoring Configuration
+		HealthCheckIntervalMS:    5000, // 5000ms (5s) health check interval
+		HealthRecoveryThreshold:  3,    // 3 consecutive successes for recovery
+		HealthLatencyThresholdMS: 100,  // 100ms latency threshold for health
+		HealthErrorRateLimit:     0.1,  // 10% error rate limit for health
+
+		// Latency Histogram Bucket Configuration
+		LatencyBucket10ms:  10 * time.Millisecond,  // 10ms latency bucket
+		LatencyBucket25ms:  25 * time.Millisecond,  // 25ms latency bucket
+		LatencyBucket50ms:  50 * time.Millisecond,  // 50ms latency bucket
+		LatencyBucket100ms: 100 * time.Millisecond, // 100ms latency bucket
+		LatencyBucket250ms: 250 * time.Millisecond, // 250ms latency bucket
+		LatencyBucket500ms: 500 * time.Millisecond, // 500ms latency bucket
+		LatencyBucket1s:    1 * time.Second,        // 1s latency bucket
+		LatencyBucket2s:    2 * time.Second,        // 2s latency bucket
 	}
 }
 

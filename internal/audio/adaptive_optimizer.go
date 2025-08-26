@@ -45,7 +45,7 @@ func DefaultOptimizerConfig() OptimizerConfig {
 		CooldownPeriod:       GetConfig().CooldownPeriod,
 		Aggressiveness:       GetConfig().OptimizerAggressiveness,
 		RollbackThreshold:    GetConfig().RollbackThreshold,
-		StabilityPeriod:      10 * time.Second,
+		StabilityPeriod:      GetConfig().AdaptiveOptimizerStability,
 	}
 }
 

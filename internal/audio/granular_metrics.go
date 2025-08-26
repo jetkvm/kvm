@@ -93,18 +93,18 @@ type BufferPoolEfficiencyTracker struct {
 
 // NewLatencyHistogram creates a new latency histogram with predefined buckets
 func NewLatencyHistogram(maxSamples int, logger zerolog.Logger) *LatencyHistogram {
-	// Define latency buckets: 1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s+
+	// Define latency buckets using configuration constants
 	buckets := []int64{
 		int64(1 * time.Millisecond),
 		int64(5 * time.Millisecond),
-		int64(10 * time.Millisecond),
-		int64(25 * time.Millisecond),
-		int64(50 * time.Millisecond),
-		int64(100 * time.Millisecond),
-		int64(250 * time.Millisecond),
-		int64(500 * time.Millisecond),
-		int64(1 * time.Second),
-		int64(2 * time.Second),
+		int64(GetConfig().LatencyBucket10ms),
+		int64(GetConfig().LatencyBucket25ms),
+		int64(GetConfig().LatencyBucket50ms),
+		int64(GetConfig().LatencyBucket100ms),
+		int64(GetConfig().LatencyBucket250ms),
+		int64(GetConfig().LatencyBucket500ms),
+		int64(GetConfig().LatencyBucket1s),
+		int64(GetConfig().LatencyBucket2s),
 	}
 
 	return &LatencyHistogram{

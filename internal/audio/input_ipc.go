@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 )
 
 var (
@@ -99,16 +100,15 @@ var globalMessagePool = &MessagePool{
 
 var messagePoolInitOnce sync.Once
 
-// initializeMessagePool initializes the message pool with pre-allocated messages
+// initializeMessagePool initializes the global message pool with pre-allocated messages
 func initializeMessagePool() {
 	messagePoolInitOnce.Do(func() {
-		// Pre-allocate 30% of pool size for immediate availability
-		preallocSize := messagePoolSize * GetConfig().InputPreallocPercentage / 100
+		preallocSize := messagePoolSize / 4 // 25% pre-allocated for immediate use
 		globalMessagePool.preallocSize = preallocSize
 		globalMessagePool.maxPoolSize = messagePoolSize * GetConfig().PoolGrowthMultiplier // Allow growth up to 2x
 		globalMessagePool.preallocated = make([]*OptimizedIPCMessage, 0, preallocSize)
 
-		// Pre-allocate messages to reduce initial allocation overhead
+		// Pre-allocate messages for immediate use
 		for i := 0; i < preallocSize; i++ {
 			msg := &OptimizedIPCMessage{
 				data: make([]byte, 0, maxFrameSize),
@@ -116,7 +116,7 @@ func initializeMessagePool() {
 			globalMessagePool.preallocated = append(globalMessagePool.preallocated, msg)
 		}
 
-		// Fill the channel pool with remaining messages
+		// Fill the channel with remaining messages
 		for i := preallocSize; i < messagePoolSize; i++ {
 			globalMessagePool.pool <- &OptimizedIPCMessage{
 				data: make([]byte, 0, maxFrameSize),
@@ -488,33 +488,13 @@ func (ais *AudioInputServer) sendAck() error {
 	return ais.writeMessage(ais.conn, msg)
 }
 
-// writeMessage writes a message to the connection using optimized buffers
+// Global shared message pool for input IPC server
+var globalInputServerMessagePool = NewGenericMessagePool(messagePoolSize)
+
+// writeMessage writes a message to the connection using shared common utilities
 func (ais *AudioInputServer) writeMessage(conn net.Conn, msg *InputIPCMessage) error {
-	// Get optimized message from pool for header preparation
-	optMsg := globalMessagePool.Get()
-	defer globalMessagePool.Put(optMsg)
-
-	// Prepare header in pre-allocated buffer
-	binary.LittleEndian.PutUint32(optMsg.header[0:4], msg.Magic)
-	optMsg.header[4] = byte(msg.Type)
-	binary.LittleEndian.PutUint32(optMsg.header[5:9], msg.Length)
-	binary.LittleEndian.PutUint64(optMsg.header[9:17], uint64(msg.Timestamp))
-
-	// Write header
-	_, err := conn.Write(optMsg.header[:])
-	if err != nil {
-		return err
-	}
-
-	// Write data if present
-	if msg.Length > 0 && msg.Data != nil {
-		_, err = conn.Write(msg.Data)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	// Use shared WriteIPCMessage function with global message pool
+	return WriteIPCMessage(conn, msg, globalInputServerMessagePool, &ais.droppedFrames)
 }
 
 // AudioInputClient handles IPC communication from the main process
@@ -706,21 +686,15 @@ func (aic *AudioInputClient) SendHeartbeat() error {
 }
 
 // writeMessage writes a message to the server
+// Global shared message pool for input IPC clients
+var globalInputMessagePool = NewGenericMessagePool(messagePoolSize)
+
 func (aic *AudioInputClient) writeMessage(msg *InputIPCMessage) error {
 	// Increment total frames counter
 	atomic.AddInt64(&aic.totalFrames, 1)
 
-	// Use common write function with shared message pool
-	sharedPool := &GenericMessagePool{
-		pool:         make(chan *OptimizedMessage, messagePoolSize),
-		hitCount:     globalMessagePool.hitCount,
-		missCount:    globalMessagePool.missCount,
-		preallocated: make([]*OptimizedMessage, 0),
-		preallocSize: messagePoolSize / 4,
-		maxPoolSize:  messagePoolSize,
-	}
-
-	return WriteIPCMessage(aic.conn, msg, sharedPool, &aic.droppedFrames)
+	// Use shared WriteIPCMessage function with global message pool
+	return WriteIPCMessage(aic.conn, msg, globalInputMessagePool, &aic.droppedFrames)
 }
 
 // IsConnected returns whether the client is connected
@@ -752,6 +726,17 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 	ais.wg.Add(1)
 	go func() {
 		defer ais.wg.Done()
+
+		// Enhanced error tracking and recovery
+		var consecutiveErrors int
+		var lastErrorTime time.Time
+		maxConsecutiveErrors := GetConfig().MaxConsecutiveErrors
+		errorResetWindow := GetConfig().RestartWindow // Use existing restart window
+		baseBackoffDelay := GetConfig().RetryDelay
+		maxBackoffDelay := GetConfig().MaxRetryDelay
+
+		logger := logging.GetDefaultLogger().With().Str("component", "audio-input-reader").Logger()
+
 		for {
 			select {
 			case <-ais.stopChan:
@@ -760,8 +745,55 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 				if ais.conn != nil {
 					msg, err := ais.readMessage(ais.conn)
 					if err != nil {
-						continue // Connection error, retry
+						// Enhanced error handling with progressive backoff
+						now := time.Now()
+
+						// Reset error counter if enough time has passed
+						if now.Sub(lastErrorTime) > errorResetWindow {
+							consecutiveErrors = 0
+						}
+
+						consecutiveErrors++
+						lastErrorTime = now
+
+						// Log error with context
+						logger.Warn().Err(err).
+							Int("consecutive_errors", consecutiveErrors).
+							Msg("Failed to read message from input connection")
+
+						// Progressive backoff based on error count
+						if consecutiveErrors > 1 {
+							backoffDelay := time.Duration(consecutiveErrors-1) * baseBackoffDelay
+							if backoffDelay > maxBackoffDelay {
+								backoffDelay = maxBackoffDelay
+							}
+							time.Sleep(backoffDelay)
+						}
+
+						// If too many consecutive errors, close connection to force reconnect
+						if consecutiveErrors >= maxConsecutiveErrors {
+							logger.Error().
+								Int("consecutive_errors", consecutiveErrors).
+								Msg("Too many consecutive read errors, closing connection")
+
+							ais.mtx.Lock()
+							if ais.conn != nil {
+								ais.conn.Close()
+								ais.conn = nil
+							}
+							ais.mtx.Unlock()
+
+							consecutiveErrors = 0 // Reset for next connection
+						}
+						continue
 					}
+
+					// Reset error counter on successful read
+					if consecutiveErrors > 0 {
+						consecutiveErrors = 0
+						logger.Info().Msg("Input connection recovered")
+					}
+
 					// Send to message channel with non-blocking write
 					select {
 					case ais.messageChan <- msg:
@@ -769,7 +801,11 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 					default:
 						// Channel full, drop message
 						atomic.AddInt64(&ais.droppedFrames, 1)
+						logger.Warn().Msg("Message channel full, dropping frame")
 					}
+				} else {
+					// No connection, wait briefly before checking again
+					time.Sleep(GetConfig().DefaultSleepDuration)
 				}
 			}
 		}
@@ -794,38 +830,103 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 			}
 		}()
 
+		// Enhanced error tracking for processing
+		var processingErrors int
+		var lastProcessingError time.Time
+		maxProcessingErrors := GetConfig().MaxConsecutiveErrors
+		errorResetWindow := GetConfig().RestartWindow
+
 		defer ais.wg.Done()
 		for {
 			select {
 			case <-ais.stopChan:
 				return
 			case msg := <-ais.messageChan:
-				// Intelligent frame dropping: prioritize recent frames
-				if msg.Type == InputMessageTypeOpusFrame {
-					// Check if processing queue is getting full
-					queueLen := len(ais.processChan)
-					bufferSize := int(atomic.LoadInt64(&ais.bufferSize))
+				// Process message with error handling
+				start := time.Now()
+				err := ais.processMessageWithRecovery(msg, logger)
+				processingTime := time.Since(start)
 
-					if queueLen > bufferSize*3/4 {
-						// Drop oldest frames, keep newest
-						select {
-						case <-ais.processChan: // Remove oldest
-							atomic.AddInt64(&ais.droppedFrames, 1)
-						default:
-						}
+				if err != nil {
+					// Track processing errors
+					now := time.Now()
+					if now.Sub(lastProcessingError) > errorResetWindow {
+						processingErrors = 0
 					}
+
+					processingErrors++
+					lastProcessingError = now
+
+					logger.Warn().Err(err).
+						Int("processing_errors", processingErrors).
+						Dur("processing_time", processingTime).
+						Msg("Failed to process input message")
+
+					// If too many processing errors, drop frames more aggressively
+					if processingErrors >= maxProcessingErrors {
+						logger.Error().
+							Int("processing_errors", processingErrors).
+							Msg("Too many processing errors, entering aggressive drop mode")
+
+						// Clear processing queue to recover
+						for len(ais.processChan) > 0 {
+							select {
+							case <-ais.processChan:
+								atomic.AddInt64(&ais.droppedFrames, 1)
+							default:
+								break
+							}
+						}
+						processingErrors = 0 // Reset after clearing queue
+					}
+					continue
 				}
 
-				// Send to processing queue
-				select {
-				case ais.processChan <- msg:
-				default:
-					// Processing queue full, drop frame
-					atomic.AddInt64(&ais.droppedFrames, 1)
+				// Reset error counter on successful processing
+				if processingErrors > 0 {
+					processingErrors = 0
+					logger.Info().Msg("Input processing recovered")
 				}
+
+				// Update processing time metrics
+				atomic.StoreInt64(&ais.processingTime, processingTime.Nanoseconds())
 			}
 		}
 	}()
+}
+
+// processMessageWithRecovery processes a message with enhanced error recovery
+func (ais *AudioInputServer) processMessageWithRecovery(msg *InputIPCMessage, logger zerolog.Logger) error {
+	// Intelligent frame dropping: prioritize recent frames
+	if msg.Type == InputMessageTypeOpusFrame {
+		// Check if processing queue is getting full
+		queueLen := len(ais.processChan)
+		bufferSize := int(atomic.LoadInt64(&ais.bufferSize))
+
+		if queueLen > bufferSize*3/4 {
+			// Drop oldest frames, keep newest
+			select {
+			case <-ais.processChan: // Remove oldest
+				atomic.AddInt64(&ais.droppedFrames, 1)
+				logger.Debug().Msg("Dropped oldest frame to make room")
+			default:
+			}
+		}
+	}
+
+	// Send to processing queue with timeout
+	select {
+	case ais.processChan <- msg:
+		return nil
+	case <-time.After(GetConfig().WriteTimeout):
+		// Processing queue full and timeout reached, drop frame
+		atomic.AddInt64(&ais.droppedFrames, 1)
+		return fmt.Errorf("processing queue timeout")
+	default:
+		// Processing queue full, drop frame immediately
+		atomic.AddInt64(&ais.droppedFrames, 1)
+		return fmt.Errorf("processing queue full")
+	}
 }
 
 // startMonitorGoroutine starts the performance monitoring goroutine
