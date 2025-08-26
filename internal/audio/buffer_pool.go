@@ -40,7 +40,8 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 		preallocSize: preallocSize,
 		pool: sync.Pool{
 			New: func() interface{} {
-				return make([]byte, 0, bufferSize)
+				buf := make([]byte, 0, bufferSize)
+				return &buf
 			},
 		},
 	}

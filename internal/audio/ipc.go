@@ -452,7 +452,7 @@ func (c *AudioOutputClient) ReceiveFrame() ([]byte, error) {
 			return nil, fmt.Errorf("failed to read frame data: %w", err)
 		}
 	}
-	
+
 	// Note: Caller is responsible for returning frame to pool via PutAudioFrameBuffer()
 
 	atomic.AddInt64(&c.totalFrames, 1)

@@ -78,8 +78,8 @@ const (
 	AudioOutputIPCComponent        = "audio-output-ipc"
 
 	// Common component names
-	AudioRelayComponent  = "audio-relay"
-	AudioEventsComponent = "audio-events"
+	AudioRelayComponent   = "audio-relay"
+	AudioEventsComponent  = "audio-events"
 	AudioMetricsComponent = "audio-metrics"
 )
 
