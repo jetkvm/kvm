@@ -251,9 +251,7 @@ func Main(audioServer bool, audioInputServer bool) {
 	if !isAudioServer {
 		if audioSupervisor != nil {
 			logger.Info().Msg("stopping audio supervisor")
-			if err := audioSupervisor.Stop(); err != nil {
-				logger.Error().Err(err).Msg("failed to stop audio supervisor")
-			}
+			audioSupervisor.Stop()
 		}
 		<-audioProcessDone
 	} else {

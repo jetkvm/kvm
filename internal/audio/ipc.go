@@ -337,13 +337,16 @@ type AudioOutputClient struct {
 	droppedFrames int64 // Atomic counter for dropped frames
 	totalFrames   int64 // Atomic counter for total frames
 
-	conn    net.Conn
-	mtx     sync.Mutex
-	running bool
+	conn       net.Conn
+	mtx        sync.Mutex
+	running    bool
+	bufferPool *AudioBufferPool // Buffer pool for memory optimization
 }
 
 func NewAudioOutputClient() *AudioOutputClient {
-	return &AudioOutputClient{}
+	return &AudioOutputClient{
+		bufferPool: NewAudioBufferPool(GetMaxAudioFrameSize()),
+	}
 }
 
 // Connect connects to the audio output server
@@ -440,13 +443,17 @@ func (c *AudioOutputClient) ReceiveFrame() ([]byte, error) {
 		return nil, fmt.Errorf("received frame size validation failed: got %d bytes, maximum allowed %d bytes", size, maxFrameSize)
 	}
 
-	// Read frame data
-	frame := make([]byte, size)
+	// Read frame data using buffer pool to avoid allocation
+	frame := c.bufferPool.Get()
+	frame = frame[:size] // Resize to actual frame size
 	if size > 0 {
 		if _, err := io.ReadFull(c.conn, frame); err != nil {
+			c.bufferPool.Put(frame) // Return buffer on error
 			return nil, fmt.Errorf("failed to read frame data: %w", err)
 		}
 	}
+	
+	// Note: Caller is responsible for returning frame to pool via PutAudioFrameBuffer()
 
 	atomic.AddInt64(&c.totalFrames, 1)
 	return frame, nil

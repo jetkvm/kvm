@@ -54,6 +54,8 @@ type AudioOutputSupervisor struct {
 	// Channels for coordination
 	processDone chan struct{}
 	stopChan    chan struct{}
+	stopChanClosed bool // Track if stopChan is closed
+	processDoneClosed bool // Track if processDone is closed
 
 	// Process monitoring
 	processMonitor *ProcessMonitor
@@ -67,7 +69,7 @@ type AudioOutputSupervisor struct {
 // NewAudioOutputSupervisor creates a new audio output server supervisor
 func NewAudioOutputSupervisor() *AudioOutputSupervisor {
 	ctx, cancel := context.WithCancel(context.Background())
-	logger := logging.GetDefaultLogger().With().Str("component", "audio-supervisor").Logger()
+	logger := logging.GetDefaultLogger().With().Str("component", AudioOutputSupervisorComponent).Logger()
 
 	return &AudioOutputSupervisor{
 		ctx:            ctx,
@@ -96,15 +98,17 @@ func (s *AudioOutputSupervisor) SetCallbacks(
 // Start begins supervising the audio output server process
 func (s *AudioOutputSupervisor) Start() error {
 	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
-		return fmt.Errorf("supervisor already running")
+		return fmt.Errorf("audio output supervisor is already running")
 	}
 
-	s.logger.Info().Msg("starting audio server supervisor")
+	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("starting component")
 
 	// Recreate channels in case they were closed by a previous Stop() call
 	s.mutex.Lock()
 	s.processDone = make(chan struct{})
 	s.stopChan = make(chan struct{})
+	s.stopChanClosed = false // Reset channel closed flag
+	s.processDoneClosed = false // Reset channel closed flag
 	// Recreate context as well since it might have been cancelled
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	// Reset restart tracking on start
@@ -116,31 +120,37 @@ func (s *AudioOutputSupervisor) Start() error {
 	// Start the supervision loop
 	go s.supervisionLoop()
 
+	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component started successfully")
 	return nil
 }
 
 // Stop gracefully stops the audio server and supervisor
-func (s *AudioOutputSupervisor) Stop() error {
+func (s *AudioOutputSupervisor) Stop() {
 	if !atomic.CompareAndSwapInt32(&s.running, 1, 0) {
-		return nil // Already stopped
+		return // Already stopped
 	}
 
-	s.logger.Info().Msg("stopping audio server supervisor")
+	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("stopping component")
 
 	// Signal stop and wait for cleanup
-	close(s.stopChan)
+	s.mutex.Lock()
+	if !s.stopChanClosed {
+		close(s.stopChan)
+		s.stopChanClosed = true
+	}
+	s.mutex.Unlock()
 	s.cancel()
 
 	// Wait for process to exit
 	select {
 	case <-s.processDone:
-		s.logger.Info().Msg("audio server process stopped gracefully")
+		s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component stopped gracefully")
 	case <-time.After(GetConfig().SupervisorTimeout):
-		s.logger.Warn().Msg("audio server process did not stop gracefully, forcing termination")
+		s.logger.Warn().Str("component", AudioOutputSupervisorComponent).Msg("component did not stop gracefully, forcing termination")
 		s.forceKillProcess()
 	}
 
-	return nil
+	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component stopped")
 }
 
 // IsRunning returns true if the supervisor is running
@@ -169,7 +179,16 @@ func (s *AudioOutputSupervisor) GetProcessMetrics() *ProcessMetrics {
 	s.mutex.RUnlock()
 
 	if pid == 0 {
-		return nil
+		// Return default metrics when no process is running
+		return &ProcessMetrics{
+			PID:           0,
+			CPUPercent:    0.0,
+			MemoryRSS:     0,
+			MemoryVMS:     0,
+			MemoryPercent: 0.0,
+			Timestamp:     time.Now(),
+			ProcessName:   "audio-output-server",
+		}
 	}
 
 	metrics := s.processMonitor.GetCurrentMetrics()
@@ -178,13 +197,28 @@ func (s *AudioOutputSupervisor) GetProcessMetrics() *ProcessMetrics {
 			return &metric
 		}
 	}
-	return nil
+	
+	// Return default metrics if process not found in monitor
+	return &ProcessMetrics{
+		PID:           pid,
+		CPUPercent:    0.0,
+		MemoryRSS:     0,
+		MemoryVMS:     0,
+		MemoryPercent: 0.0,
+		Timestamp:     time.Now(),
+		ProcessName:   "audio-output-server",
+	}
 }
 
 // supervisionLoop is the main supervision loop
 func (s *AudioOutputSupervisor) supervisionLoop() {
 	defer func() {
-		close(s.processDone)
+		s.mutex.Lock()
+		if !s.processDoneClosed {
+			close(s.processDone)
+			s.processDoneClosed = true
+		}
+		s.mutex.Unlock()
 		s.logger.Info().Msg("audio server supervision ended")
 	}()
 

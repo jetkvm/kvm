@@ -168,7 +168,16 @@ func (ais *AudioInputSupervisor) GetProcessMetrics() *ProcessMetrics {
 	defer ais.mtx.Unlock()
 
 	if ais.cmd == nil || ais.cmd.Process == nil {
-		return nil
+		// Return default metrics when no process is running
+		return &ProcessMetrics{
+			PID:           0,
+			CPUPercent:    0.0,
+			MemoryRSS:     0,
+			MemoryVMS:     0,
+			MemoryPercent: 0.0,
+			Timestamp:     time.Now(),
+			ProcessName:   "audio-input-server",
+		}
 	}
 
 	pid := ais.cmd.Process.Pid
@@ -178,12 +187,21 @@ func (ais *AudioInputSupervisor) GetProcessMetrics() *ProcessMetrics {
 			return &metric
 		}
 	}
-	return nil
+	// Return default metrics if process not found in monitoring
+	return &ProcessMetrics{
+		PID:           pid,
+		CPUPercent:    0.0,
+		MemoryRSS:     0,
+		MemoryVMS:     0,
+		MemoryPercent: 0.0,
+		Timestamp:     time.Now(),
+		ProcessName:   "audio-input-server",
+	}
 }
 
 // monitorSubprocess monitors the subprocess and handles unexpected exits
 func (ais *AudioInputSupervisor) monitorSubprocess() {
-	if ais.cmd == nil {
+	if ais.cmd == nil || ais.cmd.Process == nil {
 		return
 	}
 

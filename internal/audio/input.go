@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -31,32 +32,30 @@ type AudioInputManager struct {
 func NewAudioInputManager() *AudioInputManager {
 	return &AudioInputManager{
 		ipcManager: NewAudioInputIPCManager(),
-		logger:     logging.GetDefaultLogger().With().Str("component", "audio-input").Logger(),
+		logger:     logging.GetDefaultLogger().With().Str("component", AudioInputManagerComponent).Logger(),
 	}
 }
 
 // Start begins processing microphone input
 func (aim *AudioInputManager) Start() error {
 	if !atomic.CompareAndSwapInt32(&aim.running, 0, 1) {
-		return nil // Already running
+		return fmt.Errorf("audio input manager is already running")
 	}
 
-	aim.logger.Info().Msg("Starting audio input manager")
+	aim.logger.Info().Str("component", AudioInputManagerComponent).Msg("starting component")
 
 	// Start the IPC-based audio input
 	err := aim.ipcManager.Start()
 	if err != nil {
-		aim.logger.Error().Err(err).Msg("Failed to start IPC audio input")
+		aim.logger.Error().Err(err).Str("component", AudioInputManagerComponent).Msg("failed to start component")
 		// Ensure proper cleanup on error
 		atomic.StoreInt32(&aim.running, 0)
 		// Reset metrics on failed start
-		atomic.StoreInt64(&aim.metrics.FramesSent, 0)
-		atomic.StoreInt64(&aim.metrics.FramesDropped, 0)
-		atomic.StoreInt64(&aim.metrics.BytesProcessed, 0)
-		atomic.StoreInt64(&aim.metrics.ConnectionDrops, 0)
+		aim.resetMetrics()
 		return err
 	}
 
+	aim.logger.Info().Str("component", AudioInputManagerComponent).Msg("component started successfully")
 	return nil
 }
 
@@ -66,12 +65,20 @@ func (aim *AudioInputManager) Stop() {
 		return // Already stopped
 	}
 
-	aim.logger.Info().Msg("Stopping audio input manager")
+	aim.logger.Info().Str("component", AudioInputManagerComponent).Msg("stopping component")
 
 	// Stop the IPC-based audio input
 	aim.ipcManager.Stop()
 
-	aim.logger.Info().Msg("Audio input manager stopped")
+	aim.logger.Info().Str("component", AudioInputManagerComponent).Msg("component stopped")
+}
+
+// resetMetrics resets all metrics to zero
+func (aim *AudioInputManager) resetMetrics() {
+	atomic.StoreInt64(&aim.metrics.FramesSent, 0)
+	atomic.StoreInt64(&aim.metrics.FramesDropped, 0)
+	atomic.StoreInt64(&aim.metrics.BytesProcessed, 0)
+	atomic.StoreInt64(&aim.metrics.ConnectionDrops, 0)
 }
 
 // WriteOpusFrame writes an Opus frame to the audio input system with latency tracking

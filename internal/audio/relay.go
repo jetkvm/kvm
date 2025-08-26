@@ -19,13 +19,14 @@ type AudioRelay struct {
 	framesRelayed int64
 	framesDropped int64
 
-	client  *AudioOutputClient
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	logger  *zerolog.Logger
-	running bool
-	mutex   sync.RWMutex
+	client     *AudioOutputClient
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	logger     *zerolog.Logger
+	running    bool
+	mutex      sync.RWMutex
+	bufferPool *AudioBufferPool // Buffer pool for memory optimization
 
 	// WebRTC integration
 	audioTrack AudioTrackWriter
@@ -44,9 +45,10 @@ func NewAudioRelay() *AudioRelay {
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-relay").Logger()
 
 	return &AudioRelay{
-		ctx:    ctx,
-		cancel: cancel,
-		logger: &logger,
+		ctx:        ctx,
+		cancel:     cancel,
+		logger:     &logger,
+		bufferPool: NewAudioBufferPool(GetMaxAudioFrameSize()),
 	}
 }
 
@@ -188,8 +190,14 @@ func (r *AudioRelay) forwardToWebRTC(frame []byte) error {
 	// Prepare sample data
 	var sampleData []byte
 	if muted {
-		// Send silence when muted
-		sampleData = make([]byte, len(frame))
+		// Send silence when muted - use buffer pool to avoid allocation
+		sampleData = r.bufferPool.Get()
+		sampleData = sampleData[:len(frame)] // Resize to frame length
+		// Clear the buffer to create silence
+		for i := range sampleData {
+			sampleData[i] = 0
+		}
+		defer r.bufferPool.Put(sampleData) // Return to pool after use
 	} else {
 		sampleData = frame
 	}
