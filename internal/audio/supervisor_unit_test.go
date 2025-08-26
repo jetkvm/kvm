@@ -109,9 +109,9 @@ func TestAudioOutputSupervisorConcurrentOperations(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func() {
-				defer wg.Done()
-				_ = supervisor.GetProcessMetrics()
-			}()
+			defer wg.Done()
+			_ = supervisor.GetProcessMetrics()
+		}()
 	}
 
 	// Test concurrent status checks

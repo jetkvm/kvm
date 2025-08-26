@@ -202,7 +202,7 @@ func (s *AudioOutputStreamer) processingLoop() {
 		// Process frame and return buffer to pool after processing
 		func() {
 			defer s.bufferPool.Put(frameData)
-			
+
 			if _, err := s.client.ReceiveFrame(); err != nil {
 				if s.client.IsConnected() {
 					getOutputStreamingLogger().Warn().Err(err).Msg("Error reading audio frame from output server")

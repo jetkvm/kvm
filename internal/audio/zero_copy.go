@@ -13,25 +13,27 @@ import (
 // allocations and memory copying in the audio pipeline:
 //
 // Key Features:
-// 1. Reference Counting: Multiple components can safely share the same frame data
-//    without copying. The frame is automatically returned to the pool when the last
-//    reference is released.
 //
-// 2. Thread Safety: All operations are protected by RWMutex, allowing concurrent
-//    reads while ensuring exclusive access for modifications.
+//  1. Reference Counting: Multiple components can safely share the same frame data
+//     without copying. The frame is automatically returned to the pool when the last
+//     reference is released.
 //
-// 3. Pool Integration: Frames are automatically managed by ZeroCopyFramePool,
-//    enabling efficient reuse and preventing memory fragmentation.
+//  2. Thread Safety: All operations are protected by RWMutex, allowing concurrent
+//     reads while ensuring exclusive access for modifications.
 //
-// 4. Unsafe Pointer Access: For performance-critical CGO operations, direct
-//    memory access is provided while maintaining safety through reference counting.
+//  3. Pool Integration: Frames are automatically managed by ZeroCopyFramePool,
+//     enabling efficient reuse and preventing memory fragmentation.
+//
+//  4. Unsafe Pointer Access: For performance-critical CGO operations, direct
+//     memory access is provided while maintaining safety through reference counting.
 //
 // Usage Pattern:
-//   frame := pool.Get()        // Acquire frame (refCount = 1)
-//   frame.AddRef()             // Share with another component (refCount = 2)
-//   data := frame.Data()       // Access data safely
-//   frame.Release()            // Release reference (refCount = 1)
-//   frame.Release()            // Final release, returns to pool (refCount = 0)
+//
+//	frame := pool.Get()        // Acquire frame (refCount = 1)
+//	frame.AddRef()             // Share with another component (refCount = 2)
+//	data := frame.Data()       // Access data safely
+//	frame.Release()            // Release reference (refCount = 1)
+//	frame.Release()            // Final release, returns to pool (refCount = 0)
 //
 // Memory Safety:
 // - Frames cannot be modified while shared (refCount > 1)
@@ -52,23 +54,26 @@ type ZeroCopyAudioFrame struct {
 // real-time audio processing with minimal allocation overhead:
 //
 // Tier 1 - Pre-allocated Frames:
-//   A small number of frames are pre-allocated at startup and kept ready
-//   for immediate use. This provides the fastest possible allocation for
-//   the most common case and eliminates allocation latency spikes.
+//
+//	A small number of frames are pre-allocated at startup and kept ready
+//	for immediate use. This provides the fastest possible allocation for
+//	the most common case and eliminates allocation latency spikes.
 //
 // Tier 2 - sync.Pool Cache:
-//   The standard Go sync.Pool provides efficient reuse of frames with
-//   automatic garbage collection integration. Frames are automatically
-//   returned here when memory pressure is low.
+//
+//	The standard Go sync.Pool provides efficient reuse of frames with
+//	automatic garbage collection integration. Frames are automatically
+//	returned here when memory pressure is low.
 //
 // Tier 3 - Memory Guard:
-//   A configurable limit prevents excessive memory usage by limiting
-//   the total number of allocated frames. When the limit is reached,
-//   allocation requests are denied to prevent OOM conditions.
+//
+//	A configurable limit prevents excessive memory usage by limiting
+//	the total number of allocated frames. When the limit is reached,
+//	allocation requests are denied to prevent OOM conditions.
 //
 // Performance Characteristics:
 // - Pre-allocated tier: ~10ns allocation time
-// - sync.Pool tier: ~50ns allocation time  
+// - sync.Pool tier: ~50ns allocation time
 // - Memory guard: Prevents unbounded growth
 // - Metrics tracking: Hit/miss rates for optimization
 //

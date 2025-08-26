@@ -52,9 +52,9 @@ type AudioOutputSupervisor struct {
 	lastExitTime    time.Time
 
 	// Channels for coordination
-	processDone chan struct{}
-	stopChan    chan struct{}
-	stopChanClosed bool // Track if stopChan is closed
+	processDone       chan struct{}
+	stopChan          chan struct{}
+	stopChanClosed    bool // Track if stopChan is closed
 	processDoneClosed bool // Track if processDone is closed
 
 	// Process monitoring
@@ -107,7 +107,7 @@ func (s *AudioOutputSupervisor) Start() error {
 	s.mutex.Lock()
 	s.processDone = make(chan struct{})
 	s.stopChan = make(chan struct{})
-	s.stopChanClosed = false // Reset channel closed flag
+	s.stopChanClosed = false    // Reset channel closed flag
 	s.processDoneClosed = false // Reset channel closed flag
 	// Recreate context as well since it might have been cancelled
 	s.ctx, s.cancel = context.WithCancel(context.Background())
@@ -197,7 +197,7 @@ func (s *AudioOutputSupervisor) GetProcessMetrics() *ProcessMetrics {
 			return &metric
 		}
 	}
-	
+
 	// Return default metrics if process not found in monitor
 	return &ProcessMetrics{
 		PID:           pid,
