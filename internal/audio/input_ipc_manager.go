@@ -21,7 +21,7 @@ type AudioInputIPCManager struct {
 func NewAudioInputIPCManager() *AudioInputIPCManager {
 	return &AudioInputIPCManager{
 		supervisor: NewAudioInputSupervisor(),
-		logger:     logging.GetDefaultLogger().With().Str("component", "audio-input-ipc").Logger(),
+		logger:     logging.GetDefaultLogger().With().Str("component", AudioInputIPCComponent).Logger(),
 	}
 }
 
@@ -31,18 +31,15 @@ func (aim *AudioInputIPCManager) Start() error {
 		return nil
 	}
 
-	aim.logger.Info().Msg("Starting IPC-based audio input system")
+	aim.logger.Info().Str("component", AudioInputIPCComponent).Msg("starting component")
 
 	err := aim.supervisor.Start()
 	if err != nil {
 		// Ensure proper cleanup on supervisor start failure
 		atomic.StoreInt32(&aim.running, 0)
 		// Reset metrics on failed start
-		atomic.StoreInt64(&aim.metrics.FramesSent, 0)
-		atomic.StoreInt64(&aim.metrics.FramesDropped, 0)
-		atomic.StoreInt64(&aim.metrics.BytesProcessed, 0)
-		atomic.StoreInt64(&aim.metrics.ConnectionDrops, 0)
-		aim.logger.Error().Err(err).Msg("Failed to start audio input supervisor")
+		aim.resetMetrics()
+		aim.logger.Error().Err(err).Str("component", AudioInputIPCComponent).Msg("failed to start audio input supervisor")
 		return err
 	}
 
@@ -58,10 +55,10 @@ func (aim *AudioInputIPCManager) Start() error {
 	err = aim.supervisor.SendConfig(config)
 	if err != nil {
 		// Config send failure is not critical, log warning and continue
-		aim.logger.Warn().Err(err).Msg("Failed to send initial config, will retry later")
+		aim.logger.Warn().Err(err).Str("component", AudioInputIPCComponent).Msg("failed to send initial config, will retry later")
 	}
 
-	aim.logger.Info().Msg("IPC-based audio input system started")
+	aim.logger.Info().Str("component", AudioInputIPCComponent).Msg("component started successfully")
 	return nil
 }
 
@@ -71,9 +68,17 @@ func (aim *AudioInputIPCManager) Stop() {
 		return
 	}
 
-	aim.logger.Info().Msg("Stopping IPC-based audio input system")
+	aim.logger.Info().Str("component", AudioInputIPCComponent).Msg("stopping component")
 	aim.supervisor.Stop()
-	aim.logger.Info().Msg("IPC-based audio input system stopped")
+	aim.logger.Info().Str("component", AudioInputIPCComponent).Msg("component stopped")
+}
+
+// resetMetrics resets all metrics to zero
+func (aim *AudioInputIPCManager) resetMetrics() {
+	atomic.StoreInt64(&aim.metrics.FramesSent, 0)
+	atomic.StoreInt64(&aim.metrics.FramesDropped, 0)
+	atomic.StoreInt64(&aim.metrics.BytesProcessed, 0)
+	atomic.StoreInt64(&aim.metrics.ConnectionDrops, 0)
 }
 
 // WriteOpusFrame sends an Opus frame to the audio input server via IPC

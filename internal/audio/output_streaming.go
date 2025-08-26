@@ -12,9 +12,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// OutputStreamer manages high-performance audio output streaming
-type OutputStreamer struct {
-	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
+// AudioOutputStreamer manages high-performance audio output streaming
+type AudioOutputStreamer struct {
+	// Performance metrics (atomic operations for thread safety)
 	processedFrames int64 // Total processed frames counter (atomic)
 	droppedFrames   int64 // Dropped frames counter (atomic)
 	processingTime  int64 // Average processing time in nanoseconds (atomic)
@@ -27,8 +27,9 @@ type OutputStreamer struct {
 	wg         sync.WaitGroup
 	running    bool
 	mtx        sync.Mutex
+	chanClosed bool // Track if processing channel is closed
 
-	// Performance optimization fields
+	// Adaptive processing configuration
 	batchSize      int           // Adaptive batch size for frame processing
 	processingChan chan []byte   // Buffered channel for frame processing
 	statsInterval  time.Duration // Statistics reporting interval
@@ -42,13 +43,13 @@ var (
 
 func getOutputStreamingLogger() *zerolog.Logger {
 	if outputStreamingLogger == nil {
-		logger := logging.GetDefaultLogger().With().Str("component", "audio-output").Logger()
+		logger := logging.GetDefaultLogger().With().Str("component", AudioOutputStreamerComponent).Logger()
 		outputStreamingLogger = &logger
 	}
 	return outputStreamingLogger
 }
 
-func NewOutputStreamer() (*OutputStreamer, error) {
+func NewAudioOutputStreamer() (*AudioOutputStreamer, error) {
 	client := NewAudioOutputClient()
 
 	// Get initial batch size from adaptive buffer manager
@@ -56,7 +57,7 @@ func NewOutputStreamer() (*OutputStreamer, error) {
 	initialBatchSize := adaptiveManager.GetOutputBufferSize()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	return &OutputStreamer{
+	return &AudioOutputStreamer{
 		client:         client,
 		bufferPool:     NewAudioBufferPool(GetMaxAudioFrameSize()), // Use existing buffer pool
 		ctx:            ctx,
@@ -68,7 +69,7 @@ func NewOutputStreamer() (*OutputStreamer, error) {
 	}, nil
 }
 
-func (s *OutputStreamer) Start() error {
+func (s *AudioOutputStreamer) Start() error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -92,7 +93,7 @@ func (s *OutputStreamer) Start() error {
 	return nil
 }
 
-func (s *OutputStreamer) Stop() {
+func (s *AudioOutputStreamer) Stop() {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -103,8 +104,11 @@ func (s *OutputStreamer) Stop() {
 	s.running = false
 	s.cancel()
 
-	// Close processing channel to signal goroutines
-	close(s.processingChan)
+	// Close processing channel to signal goroutines (only if not already closed)
+	if !s.chanClosed {
+		close(s.processingChan)
+		s.chanClosed = true
+	}
 
 	// Wait for all goroutines to finish
 	s.wg.Wait()
@@ -114,7 +118,7 @@ func (s *OutputStreamer) Stop() {
 	}
 }
 
-func (s *OutputStreamer) streamLoop() {
+func (s *AudioOutputStreamer) streamLoop() {
 	defer s.wg.Done()
 
 	// Pin goroutine to OS thread for consistent performance
@@ -153,7 +157,9 @@ func (s *OutputStreamer) streamLoop() {
 
 			if n > 0 {
 				// Send frame for processing (non-blocking)
-				frameData := make([]byte, n)
+				// Use buffer pool to avoid allocation
+				frameData := s.bufferPool.Get()
+				frameData = frameData[:n]
 				copy(frameData, frameBuf[:n])
 
 				select {
@@ -175,7 +181,7 @@ func (s *OutputStreamer) streamLoop() {
 }
 
 // processingLoop handles frame processing in a separate goroutine
-func (s *OutputStreamer) processingLoop() {
+func (s *AudioOutputStreamer) processingLoop() {
 	defer s.wg.Done()
 
 	// Pin goroutine to OS thread for consistent performance
@@ -192,25 +198,29 @@ func (s *OutputStreamer) processingLoop() {
 		}
 	}()
 
-	for range s.processingChan {
-		// Process frame (currently just receiving, but can be extended)
-		if _, err := s.client.ReceiveFrame(); err != nil {
-			if s.client.IsConnected() {
-				getOutputStreamingLogger().Warn().Err(err).Msg("Error reading audio frame from output server")
-				atomic.AddInt64(&s.droppedFrames, 1)
-			}
-			// Try to reconnect if disconnected
-			if !s.client.IsConnected() {
-				if err := s.client.Connect(); err != nil {
-					getOutputStreamingLogger().Warn().Err(err).Msg("Failed to reconnect")
+	for frameData := range s.processingChan {
+		// Process frame and return buffer to pool after processing
+		func() {
+			defer s.bufferPool.Put(frameData)
+			
+			if _, err := s.client.ReceiveFrame(); err != nil {
+				if s.client.IsConnected() {
+					getOutputStreamingLogger().Warn().Err(err).Msg("Error reading audio frame from output server")
+					atomic.AddInt64(&s.droppedFrames, 1)
+				}
+				// Try to reconnect if disconnected
+				if !s.client.IsConnected() {
+					if err := s.client.Connect(); err != nil {
+						getOutputStreamingLogger().Warn().Err(err).Msg("Failed to reconnect")
+					}
 				}
 			}
-		}
+		}()
 	}
 }
 
 // statisticsLoop monitors and reports performance statistics
-func (s *OutputStreamer) statisticsLoop() {
+func (s *AudioOutputStreamer) statisticsLoop() {
 	defer s.wg.Done()
 
 	ticker := time.NewTicker(s.statsInterval)
@@ -227,7 +237,7 @@ func (s *OutputStreamer) statisticsLoop() {
 }
 
 // reportStatistics logs current performance statistics
-func (s *OutputStreamer) reportStatistics() {
+func (s *AudioOutputStreamer) reportStatistics() {
 	processed := atomic.LoadInt64(&s.processedFrames)
 	dropped := atomic.LoadInt64(&s.droppedFrames)
 	processingTime := atomic.LoadInt64(&s.processingTime)
@@ -245,7 +255,7 @@ func (s *OutputStreamer) reportStatistics() {
 }
 
 // GetStats returns streaming statistics
-func (s *OutputStreamer) GetStats() (processed, dropped int64, avgProcessingTime time.Duration) {
+func (s *AudioOutputStreamer) GetStats() (processed, dropped int64, avgProcessingTime time.Duration) {
 	processed = atomic.LoadInt64(&s.processedFrames)
 	dropped = atomic.LoadInt64(&s.droppedFrames)
 	processingTimeNs := atomic.LoadInt64(&s.processingTime)
@@ -254,7 +264,7 @@ func (s *OutputStreamer) GetStats() (processed, dropped int64, avgProcessingTime
 }
 
 // GetDetailedStats returns comprehensive streaming statistics
-func (s *OutputStreamer) GetDetailedStats() map[string]interface{} {
+func (s *AudioOutputStreamer) GetDetailedStats() map[string]interface{} {
 	processed := atomic.LoadInt64(&s.processedFrames)
 	dropped := atomic.LoadInt64(&s.droppedFrames)
 	processingTime := atomic.LoadInt64(&s.processingTime)
@@ -282,7 +292,7 @@ func (s *OutputStreamer) GetDetailedStats() map[string]interface{} {
 }
 
 // UpdateBatchSize updates the batch size from adaptive buffer manager
-func (s *OutputStreamer) UpdateBatchSize() {
+func (s *AudioOutputStreamer) UpdateBatchSize() {
 	s.mtx.Lock()
 	adaptiveManager := GetAdaptiveBufferManager()
 	s.batchSize = adaptiveManager.GetOutputBufferSize()
@@ -290,7 +300,7 @@ func (s *OutputStreamer) UpdateBatchSize() {
 }
 
 // ReportLatency reports processing latency to adaptive buffer manager
-func (s *OutputStreamer) ReportLatency(latency time.Duration) {
+func (s *AudioOutputStreamer) ReportLatency(latency time.Duration) {
 	adaptiveManager := GetAdaptiveBufferManager()
 	adaptiveManager.UpdateLatency(latency)
 }

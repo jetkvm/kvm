@@ -967,9 +967,7 @@ func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 			// Stop audio output supervisor
 			if audioSupervisor != nil && audioSupervisor.IsRunning() {
 				logger.Info().Msg("stopping audio output supervisor")
-				if err := audioSupervisor.Stop(); err != nil {
-					logger.Error().Err(err).Msg("failed to stop audio supervisor")
-				}
+				audioSupervisor.Stop()
 				// Wait for audio processes to fully stop before proceeding
 				for i := 0; i < 50; i++ { // Wait up to 5 seconds
 					if !audioSupervisor.IsRunning() {
@@ -1063,9 +1061,7 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 			// Stop audio output supervisor
 			if audioSupervisor != nil && audioSupervisor.IsRunning() {
 				logger.Info().Msg("stopping audio output supervisor")
-				if err := audioSupervisor.Stop(); err != nil {
-					logger.Error().Err(err).Msg("failed to stop audio supervisor")
-				}
+				audioSupervisor.Stop()
 				// Wait for audio processes to fully stop
 				for i := 0; i < 50; i++ { // Wait up to 5 seconds
 					if !audioSupervisor.IsRunning() {

@@ -11,7 +11,27 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// AdaptiveBufferConfig holds configuration for adaptive buffer sizing
+// AdaptiveBufferConfig holds configuration for the adaptive buffer sizing algorithm.
+//
+// The adaptive buffer system dynamically adjusts audio buffer sizes based on real-time
+// system conditions to optimize the trade-off between latency and stability. The algorithm
+// uses multiple factors to make decisions:
+//
+// 1. System Load Monitoring:
+//    - CPU usage: High CPU load increases buffer sizes to prevent underruns
+//    - Memory usage: High memory pressure reduces buffer sizes to conserve RAM
+//
+// 2. Latency Tracking:
+//    - Target latency: Optimal latency for the current quality setting
+//    - Max latency: Hard limit beyond which buffers are aggressively reduced
+//
+// 3. Adaptation Strategy:
+//    - Exponential smoothing: Prevents oscillation and provides stable adjustments
+//    - Discrete steps: Buffer sizes change in fixed increments to avoid instability
+//    - Hysteresis: Different thresholds for increasing vs decreasing buffer sizes
+//
+// The algorithm is specifically tuned for embedded ARM systems with limited resources,
+// prioritizing stability over absolute minimum latency.
 type AdaptiveBufferConfig struct {
 	// Buffer size limits (in frames)
 	MinBufferSize     int
@@ -156,6 +176,29 @@ func (abm *AdaptiveBufferManager) adaptationLoop() {
 }
 
 // adaptBufferSizes analyzes system conditions and adjusts buffer sizes
+// adaptBufferSizes implements the core adaptive buffer sizing algorithm.
+//
+// This function uses a multi-factor approach to determine optimal buffer sizes:
+//
+// Mathematical Model:
+// 1. Factor Calculation:
+//    - CPU Factor: Sigmoid function that increases buffer size under high CPU load
+//    - Memory Factor: Inverse relationship that decreases buffer size under memory pressure
+//    - Latency Factor: Exponential decay that aggressively reduces buffers when latency exceeds targets
+//
+// 2. Combined Factor:
+//    Combined = (CPU_factor * Memory_factor * Latency_factor)
+//    This multiplicative approach ensures any single critical factor can override others
+//
+// 3. Exponential Smoothing:
+//    New_size = Current_size + smoothing_factor * (Target_size - Current_size)
+//    This prevents rapid oscillations and provides stable convergence
+//
+// 4. Discrete Quantization:
+//    Final sizes are rounded to frame boundaries and clamped to configured limits
+//
+// The algorithm runs periodically and only applies changes when the adaptation interval
+// has elapsed, preventing excessive adjustments that could destabilize the audio pipeline.
 func (abm *AdaptiveBufferManager) adaptBufferSizes() {
 	// Collect current system metrics
 	metrics := abm.processMonitor.GetCurrentMetrics()

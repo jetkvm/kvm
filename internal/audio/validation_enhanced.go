@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 	"unsafe"
+
+	"github.com/rs/zerolog"
 )
 
 // Enhanced validation errors with more specific context
@@ -41,13 +43,12 @@ type ValidationConfig struct {
 
 // GetValidationConfig returns the current validation configuration
 func GetValidationConfig() ValidationConfig {
-	config := GetConfig()
 	return ValidationConfig{
 		Level:                ValidationStandard,
 		EnableRangeChecks:    true,
 		EnableAlignmentCheck: true,
 		EnableDataIntegrity:  false, // Disabled by default for performance
-		MaxValidationTime:    time.Duration(config.ValidationTimeoutMS) * time.Millisecond,
+		MaxValidationTime:    5 * time.Second, // Default validation timeout
 	}
 }
 
@@ -87,14 +88,16 @@ func ValidateAudioFrameComprehensive(data []byte, expectedSampleRate int, expect
 	// Range validation
 	if validationConfig.EnableRangeChecks {
 		config := GetConfig()
-		if len(data) < config.MinAudioFrameSize {
-			return fmt.Errorf("%w: frame size %d below minimum %d", ErrInvalidFrameSize, len(data), config.MinAudioFrameSize)
+		minFrameSize := 64 // Minimum reasonable frame size
+		if len(data) < minFrameSize {
+			return fmt.Errorf("%w: frame size %d below minimum %d", ErrInvalidFrameSize, len(data), minFrameSize)
 		}
 		
 		// Validate frame length matches expected sample format
 		expectedFrameSize := (expectedSampleRate * expectedChannels * 2) / 1000 * int(config.AudioQualityMediumFrameSize/time.Millisecond)
-		if abs(len(data)-expectedFrameSize) > config.FrameSizeTolerance {
-			return fmt.Errorf("%w: frame size %d doesn't match expected %d (±%d)", ErrInvalidFrameLength, len(data), expectedFrameSize, config.FrameSizeTolerance)
+		tolerance := 512 // Frame size tolerance in bytes
+		if abs(len(data)-expectedFrameSize) > tolerance {
+			return fmt.Errorf("%w: frame size %d doesn't match expected %d (±%d)", ErrInvalidFrameLength, len(data), expectedFrameSize, tolerance)
 		}
 	}
 	
@@ -181,8 +184,10 @@ func ValidateAudioConfiguration(config AudioConfig) error {
 	configConstants := GetConfig()
 	
 	// Validate bitrate ranges
-	if config.Bitrate < configConstants.MinBitrate || config.Bitrate > configConstants.MaxBitrate {
-		return fmt.Errorf("%w: bitrate %d outside valid range [%d, %d]", ErrInvalidConfiguration, config.Bitrate, configConstants.MinBitrate, configConstants.MaxBitrate)
+	minBitrate := 6000   // Minimum Opus bitrate
+	maxBitrate := 510000 // Maximum Opus bitrate
+	if config.Bitrate < minBitrate || config.Bitrate > maxBitrate {
+		return fmt.Errorf("%w: bitrate %d outside valid range [%d, %d]", ErrInvalidConfiguration, config.Bitrate, minBitrate, maxBitrate)
 	}
 	
 	// Validate sample rate
@@ -204,8 +209,10 @@ func ValidateAudioConfiguration(config AudioConfig) error {
 	}
 	
 	// Validate frame size
-	if config.FrameSize < configConstants.MinFrameSize || config.FrameSize > configConstants.MaxFrameSize {
-		return fmt.Errorf("%w: frame size %v outside valid range [%v, %v]", ErrInvalidConfiguration, config.FrameSize, configConstants.MinFrameSize, configConstants.MaxFrameSize)
+	minFrameSize := 10 * time.Millisecond  // Minimum frame duration
+	maxFrameSize := 100 * time.Millisecond // Maximum frame duration
+	if config.FrameSize < minFrameSize || config.FrameSize > maxFrameSize {
+		return fmt.Errorf("%w: frame size %v outside valid range [%v, %v]", ErrInvalidConfiguration, config.FrameSize, minFrameSize, maxFrameSize)
 	}
 	
 	return nil
@@ -276,6 +283,7 @@ func abs(x int) int {
 
 // getValidationLogger returns a logger for validation operations
 func getValidationLogger() *zerolog.Logger {
-	logger := logging.GetDefaultLogger().With().Str("component", "audio-validation").Logger()
+	// Return a basic logger for validation
+	logger := zerolog.New(nil).With().Timestamp().Logger()
 	return &logger
 }
