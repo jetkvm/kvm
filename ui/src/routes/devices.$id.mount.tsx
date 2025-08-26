@@ -89,7 +89,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
     console.log(`Mounting ${url} as ${mode}`);
 
     setMountInProgress(true);
-    send("mountWithHTTP", { url, mode }, async (resp: JsonRpcResponse) => {
+    send("mountWithHTTP", { url, mode }, (resp: JsonRpcResponse) => {
       if ("error" in resp) triggerError(resp.error.message);
 
       clearMountMediaState();
@@ -108,7 +108,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
     console.log(`Mounting ${fileName} as ${mode}`);
 
     setMountInProgress(true);
-    send("mountWithStorage", { filename: fileName, mode }, async (resp: JsonRpcResponse) => {
+    send("mountWithStorage", { filename: fileName, mode }, (resp: JsonRpcResponse) => {
       if ("error" in resp) triggerError(resp.error.message);
 
       clearMountMediaState();

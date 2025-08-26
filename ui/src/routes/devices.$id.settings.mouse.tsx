@@ -121,7 +121,7 @@ export default function SettingsMouseRoute() {
   const saveJigglerConfig = useCallback(
     (jigglerConfig: JigglerConfig) => {
       // We assume the jiggler should be set to enabled if the config is being updated
-      send("setJigglerState", { enabled: true }, async (resp: JsonRpcResponse) => {
+      send("setJigglerState", { enabled: true }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           return notifications.error(
             `Failed to set jiggler state: ${resp.error.data || "Unknown error"}`,
@@ -129,7 +129,7 @@ export default function SettingsMouseRoute() {
         }
       });
 
-      send("setJigglerConfig", { jigglerConfig }, async (resp: JsonRpcResponse) => {
+      send("setJigglerConfig", { jigglerConfig }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           const errorMsg = resp.error.data || "Unknown error";
 
@@ -163,7 +163,7 @@ export default function SettingsMouseRoute() {
 
     // We don't need to update the device jiggler state when the option is "disabled"
     if (option === "disabled") {
-      send("setJigglerState", { enabled: false }, async (resp: JsonRpcResponse) => {
+      send("setJigglerState", { enabled: false }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           return notifications.error(
             `Failed to set jiggler state: ${resp.error.data || "Unknown error"}`,

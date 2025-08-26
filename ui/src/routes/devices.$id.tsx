@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LoaderFunctionArgs,
   Outlet,
@@ -16,7 +16,11 @@ import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
 import useWebSocket from "react-use-websocket";
 
+import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import api from "@/api";
+import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import { cx } from "@/cva.config";
+import notifications from "@/notifications";
 import {
   HidState,
   KeyboardLedState,
@@ -34,27 +38,21 @@ import {
   VideoState,
 } from "@/hooks/stores";
 import WebRTCVideo from "@components/WebRTCVideo";
-import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import DashboardNavbar from "@components/Header";
-import ConnectionStatsSidebar from "@/components/sidebar/connectionStats";
+const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectionStats'));
+const Terminal = lazy(() => import('@components/Terminal'));
+const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
+import Modal from "@/components/Modal";
 import { JsonRpcRequest, JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import Terminal from "@components/Terminal";
-import { CLOUD_API, DEVICE_API } from "@/ui.config";
-
-import UpdateInProgressStatusCard from "../components/UpdateInProgressStatusCard";
-import api from "../api";
-import Modal from "../components/Modal";
-import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 import {
   ConnectionFailedOverlay,
   LoadingConnectionOverlay,
   PeerConnectionDisconnectedOverlay,
-} from "../components/VideoOverlay";
-import { FeatureFlagProvider } from "../providers/FeatureFlagProvider";
-import notifications from "../notifications";
-
-import { DeviceStatus } from "./welcome-local";
-import { SystemVersionInfo } from "./devices.$id.settings.general.update";
+} from "@/components/VideoOverlay";
+import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import { FeatureFlagProvider } from "@/providers/FeatureFlagProvider";
+import { DeviceStatus } from "@routes/welcome-local";
+import { SystemVersionInfo } from "@routes/devices.$id.settings.general.update";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -114,7 +112,7 @@ const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => 
   return { user, iceConfig, deviceName: device.name || device.id };
 };
 
-const loader = async ({ params }: LoaderFunctionArgs) => {
+const loader = ({ params }: LoaderFunctionArgs) => {
   return import.meta.env.MODE === "device" ? deviceLoader() : cloudLoader(params);
 };
 
@@ -452,7 +450,7 @@ export default function KvmIdRoute() {
       }
     };
 
-    pc.onicecandidate = async ({ candidate }) => {
+    pc.onicecandidate = ({ candidate }) => {
       if (!candidate) return;
       if (candidate.candidate === "") return;
       sendWebRTCSignal("new-ice-candidate", candidate);
@@ -735,7 +733,7 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (appVersion) return;
 
-    send("getUpdateStatus", {}, async (resp: JsonRpcResponse) => {
+    send("getUpdateStatus", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(`Failed to get device version: ${resp.error}`);
         return 

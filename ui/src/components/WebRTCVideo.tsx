@@ -411,7 +411,7 @@ export default function WebRTCVideo() {
   );
 
   const keyDownHandler = useCallback(
-    async (e: KeyboardEvent) => {
+    (e: KeyboardEvent) => {
       e.preventDefault();
       const prev = useHidStore.getState();
       let code = e.code;
