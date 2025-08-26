@@ -18,7 +18,7 @@ var (
 	appCtx           context.Context
 	isAudioServer    bool
 	audioProcessDone chan struct{}
-	audioSupervisor  *audio.AudioServerSupervisor
+	audioSupervisor  *audio.AudioOutputSupervisor
 )
 
 // runAudioServer is now handled by audio.RunAudioOutputServer
@@ -36,7 +36,7 @@ func startAudioSubprocess() error {
 	audio.StartAdaptiveBuffering()
 
 	// Create audio server supervisor
-	audioSupervisor = audio.NewAudioServerSupervisor()
+	audioSupervisor = audio.NewAudioOutputSupervisor()
 
 	// Set the global supervisor for access from audio package
 	audio.SetAudioOutputSupervisor(audioSupervisor)

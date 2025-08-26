@@ -17,7 +17,7 @@ func RunAudioOutputServer() error {
 	logger.Info().Msg("Starting audio output server subprocess")
 
 	// Create audio server
-	server, err := NewAudioServer()
+	server, err := NewAudioOutputServer()
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to create audio server")
 		return err

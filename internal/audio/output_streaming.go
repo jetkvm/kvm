@@ -14,13 +14,13 @@ import (
 
 // OutputStreamer manages high-performance audio output streaming
 type OutputStreamer struct {
-	// Atomic fields must be first for proper alignment on ARM
+	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
 	processedFrames int64 // Total processed frames counter (atomic)
 	droppedFrames   int64 // Dropped frames counter (atomic)
 	processingTime  int64 // Average processing time in nanoseconds (atomic)
 	lastStatsTime   int64 // Last statistics update time (atomic)
 
-	client     *AudioClient
+	client     *AudioOutputClient
 	bufferPool *AudioBufferPool
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -49,7 +49,7 @@ func getOutputStreamingLogger() *zerolog.Logger {
 }
 
 func NewOutputStreamer() (*OutputStreamer, error) {
-	client := NewAudioClient()
+	client := NewAudioOutputClient()
 
 	// Get initial batch size from adaptive buffer manager
 	adaptiveManager := GetAdaptiveBufferManager()

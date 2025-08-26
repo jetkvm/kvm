@@ -881,6 +881,12 @@ type AudioConfigConstants struct {
 	// Default 5s provides responsive input monitoring.
 	InputSupervisorTimeout time.Duration // 5s
 
+	// OutputSupervisorTimeout defines timeout for output supervisor operations.
+	// Used in: supervisor.go for output process monitoring
+	// Impact: Shorter timeouts improve output responsiveness but may cause false timeouts.
+	// Default 5s provides responsive output monitoring.
+	OutputSupervisorTimeout time.Duration // 5s
+
 	// ShortTimeout defines brief timeout for time-critical operations.
 	// Used in: Real-time audio processing for minimal timeout scenarios
 	// Impact: Very short timeouts ensure responsiveness but may cause premature failures.
@@ -1382,6 +1388,158 @@ type AudioConfigConstants struct {
 	// Impact: Controls scaling factor for memory influence on buffer sizing.
 	// Default 100 provides standard percentage scaling for memory calculations.
 	AdaptiveBufferMemoryMultiplier int
+
+	// Socket Names - Configuration for IPC socket file names
+	// Used in: IPC communication for audio input/output
+	// Impact: Controls socket file naming and IPC connection endpoints
+
+	// InputSocketName defines the socket file name for audio input IPC.
+	// Used in: input_ipc.go for microphone input communication
+	// Impact: Must be unique to prevent conflicts with other audio sockets.
+	// Default "audio_input.sock" provides clear identification for input socket.
+	InputSocketName string
+
+	// OutputSocketName defines the socket file name for audio output IPC.
+	// Used in: ipc.go for audio output communication
+	// Impact: Must be unique to prevent conflicts with other audio sockets.
+	// Default "audio_output.sock" provides clear identification for output socket.
+	OutputSocketName string
+
+	// Component Names - Standardized component identifiers for logging
+	// Used in: Logging and monitoring throughout audio system
+	// Impact: Provides consistent component identification across logs
+
+	// AudioInputComponentName defines component name for audio input logging.
+	// Used in: input_ipc.go and related input processing components
+	// Impact: Ensures consistent logging identification for input components.
+	// Default "audio-input" provides clear component identification.
+	AudioInputComponentName string
+
+	// AudioOutputComponentName defines component name for audio output logging.
+	// Used in: ipc.go and related output processing components
+	// Impact: Ensures consistent logging identification for output components.
+	// Default "audio-output" provides clear component identification.
+	AudioOutputComponentName string
+
+	// AudioServerComponentName defines component name for audio server logging.
+	// Used in: supervisor.go and server management components
+	// Impact: Ensures consistent logging identification for server components.
+	// Default "audio-server" provides clear component identification.
+	AudioServerComponentName string
+
+	// AudioRelayComponentName defines component name for audio relay logging.
+	// Used in: relay.go for audio relay operations
+	// Impact: Ensures consistent logging identification for relay components.
+	// Default "audio-relay" provides clear component identification.
+	AudioRelayComponentName string
+
+	// AudioEventsComponentName defines component name for audio events logging.
+	// Used in: events.go for event broadcasting operations
+	// Impact: Ensures consistent logging identification for event components.
+	// Default "audio-events" provides clear component identification.
+	AudioEventsComponentName string
+
+	// Test Configuration - Constants for testing scenarios
+	// Used in: Test files for consistent test configuration
+	// Impact: Provides standardized test parameters and timeouts
+
+	// TestSocketTimeout defines timeout for test socket operations.
+	// Used in: integration_test.go for test socket communication
+	// Impact: Prevents test hangs while allowing sufficient time for operations.
+	// Default 100ms provides quick test execution with adequate timeout.
+	TestSocketTimeout time.Duration
+
+	// TestBufferSize defines buffer size for test operations.
+	// Used in: test_utils.go for test buffer allocation
+	// Impact: Provides adequate buffer space for test scenarios.
+	// Default 4096 bytes matches production buffer sizes for realistic testing.
+	TestBufferSize int
+
+	// TestRetryDelay defines delay between test retry attempts.
+	// Used in: Test files for retry logic in test scenarios
+	// Impact: Provides reasonable delay for test retry operations.
+	// Default 200ms allows sufficient time for test state changes.
+	TestRetryDelay time.Duration
+
+	// Latency Histogram Configuration - Constants for latency tracking
+	// Used in: granular_metrics.go for latency distribution analysis
+	// Impact: Controls granularity and accuracy of latency measurements
+
+	// LatencyHistogramMaxSamples defines maximum samples for latency tracking.
+	// Used in: granular_metrics.go for latency histogram management
+	// Impact: Controls memory usage and accuracy of latency statistics.
+	// Default 1000 samples provides good statistical accuracy with reasonable memory usage.
+	LatencyHistogramMaxSamples int
+
+	// LatencyPercentile50 defines 50th percentile calculation factor.
+	// Used in: granular_metrics.go for median latency calculation
+	// Impact: Must be 50 for accurate median calculation.
+	// Default 50 provides standard median percentile calculation.
+	LatencyPercentile50 int
+
+	// LatencyPercentile95 defines 95th percentile calculation factor.
+	// Used in: granular_metrics.go for high-percentile latency calculation
+	// Impact: Must be 95 for accurate 95th percentile calculation.
+	// Default 95 provides standard high-percentile calculation.
+	LatencyPercentile95 int
+
+	// LatencyPercentile99 defines 99th percentile calculation factor.
+	// Used in: granular_metrics.go for extreme latency calculation
+	// Impact: Must be 99 for accurate 99th percentile calculation.
+	// Default 99 provides standard extreme percentile calculation.
+	LatencyPercentile99 int
+
+	// BufferPoolMaxOperations defines maximum operations to track for efficiency.
+	// Used in: granular_metrics.go for buffer pool efficiency tracking
+	// Impact: Controls memory usage and accuracy of efficiency statistics.
+	// Default 1000 operations provides good balance of accuracy and memory usage.
+	BufferPoolMaxOperations int
+
+	// HitRateCalculationBase defines base value for hit rate percentage calculation.
+	// Used in: granular_metrics.go for hit rate percentage calculation
+	// Impact: Must be 100 for accurate percentage calculation.
+	// Default 100 provides standard percentage calculation base.
+	HitRateCalculationBase float64
+
+	// Validation Constants - Configuration for input validation
+	// Used in: validation.go for parameter validation
+	// Impact: Controls validation thresholds and limits
+
+	// MaxLatency defines maximum allowed latency for audio processing.
+	// Used in: validation.go for latency validation
+	// Impact: Controls maximum acceptable latency before optimization triggers.
+	// Default 200ms provides reasonable upper bound for real-time audio.
+	MaxLatency time.Duration
+
+	// MinMetricsUpdateInterval defines minimum allowed metrics update interval.
+	// Used in: validation.go for metrics interval validation
+	// Impact: Prevents excessive metrics updates that could impact performance.
+	// Default 100ms provides reasonable minimum update frequency.
+	MinMetricsUpdateInterval time.Duration
+
+	// MaxMetricsUpdateInterval defines maximum allowed metrics update interval.
+	// Used in: validation.go for metrics interval validation
+	// Impact: Ensures metrics are updated frequently enough for monitoring.
+	// Default 30s provides reasonable maximum update interval.
+	MaxMetricsUpdateInterval time.Duration
+
+	// MinSampleRate defines minimum allowed audio sample rate.
+	// Used in: validation.go for sample rate validation
+	// Impact: Ensures sample rate is sufficient for audio quality.
+	// Default 8000Hz provides minimum for voice communication.
+	MinSampleRate int
+
+	// MaxSampleRate defines maximum allowed audio sample rate.
+	// Used in: validation.go for sample rate validation
+	// Impact: Prevents excessive sample rates that could impact performance.
+	// Default 192000Hz provides upper bound for high-quality audio.
+	MaxSampleRate int
+
+	// MaxChannels defines maximum allowed audio channels.
+	// Used in: validation.go for channel count validation
+	// Impact: Prevents excessive channel counts that could impact performance.
+	// Default 8 channels provides reasonable upper bound for multi-channel audio.
+	MaxChannels int
 }
 
 // DefaultAudioConfig returns the default configuration constants
@@ -2204,6 +2362,12 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Default 5s (shorter than general supervisor) for faster input recovery
 		InputSupervisorTimeout: 5 * time.Second,
 
+		// OutputSupervisorTimeout defines timeout for output supervisor operations.
+		// Used in: Output process monitoring, speaker supervision
+		// Impact: Controls responsiveness of output failure detection
+		// Default 5s (shorter than general supervisor) for faster output recovery
+		OutputSupervisorTimeout: 5 * time.Second,
+
 		// ShortTimeout defines brief timeout for quick operations (5ms).
 		// Used in: Lock acquisition, quick IPC operations, immediate responses
 		// Impact: Critical for maintaining real-time performance
@@ -2365,6 +2529,40 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Adaptive Buffer Constants
 		AdaptiveBufferCPUMultiplier:    100, // 100 multiplier for CPU percentage
 		AdaptiveBufferMemoryMultiplier: 100, // 100 multiplier for memory percentage
+
+		// Socket Names
+		InputSocketName:  "audio_input.sock",  // Socket name for audio input IPC
+		OutputSocketName: "audio_output.sock", // Socket name for audio output IPC
+
+		// Component Names
+		AudioInputComponentName:  "audio-input",  // Component name for input logging
+		AudioOutputComponentName: "audio-output", // Component name for output logging
+		AudioServerComponentName: "audio-server", // Component name for server logging
+		AudioRelayComponentName:  "audio-relay",  // Component name for relay logging
+		AudioEventsComponentName: "audio-events", // Component name for events logging
+
+		// Test Configuration
+		TestSocketTimeout: 100 * time.Millisecond, // 100ms timeout for test socket operations
+		TestBufferSize:    4096,                   // 4096 bytes buffer size for test operations
+		TestRetryDelay:    200 * time.Millisecond, // 200ms delay between test retry attempts
+
+		// Latency Histogram Configuration
+		LatencyHistogramMaxSamples: 1000, // 1000 samples for latency tracking
+		LatencyPercentile50:        50,   // 50th percentile calculation factor
+		LatencyPercentile95:        95,   // 95th percentile calculation factor
+		LatencyPercentile99:        99,   // 99th percentile calculation factor
+
+		// Buffer Pool Efficiency Constants
+		BufferPoolMaxOperations: 1000,  // 1000 operations for efficiency tracking
+		HitRateCalculationBase:  100.0, // 100.0 base for hit rate percentage calculation
+
+		// Validation Constants
+		MaxLatency:               500 * time.Millisecond, // 500ms maximum allowed latency
+		MinMetricsUpdateInterval: 100 * time.Millisecond, // 100ms minimum metrics update interval
+		MaxMetricsUpdateInterval: 10 * time.Second,       // 10s maximum metrics update interval
+		MinSampleRate:            8000,                   // 8kHz minimum sample rate
+		MaxSampleRate:            48000,                  // 48kHz maximum sample rate
+		MaxChannels:              8,                      // 8 maximum audio channels
 	}
 }
 

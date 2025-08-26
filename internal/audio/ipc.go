@@ -35,13 +35,34 @@ const (
 	OutputMessageTypeAck
 )
 
-// OutputIPCMessage represents an IPC message for audio output
+// OutputIPCMessage represents a message sent over IPC
 type OutputIPCMessage struct {
 	Magic     uint32
 	Type      OutputMessageType
 	Length    uint32
 	Timestamp int64
 	Data      []byte
+}
+
+// Implement IPCMessage interface
+func (msg *OutputIPCMessage) GetMagic() uint32 {
+	return msg.Magic
+}
+
+func (msg *OutputIPCMessage) GetType() uint8 {
+	return uint8(msg.Type)
+}
+
+func (msg *OutputIPCMessage) GetLength() uint32 {
+	return msg.Length
+}
+
+func (msg *OutputIPCMessage) GetTimestamp() int64 {
+	return msg.Timestamp
+}
+
+func (msg *OutputIPCMessage) GetData() []byte {
+	return msg.Data
 }
 
 // OutputOptimizedMessage represents a pre-allocated message for zero-allocation operations
@@ -98,8 +119,8 @@ func (p *OutputMessagePool) Put(msg *OutputOptimizedMessage) {
 // Global message pool for output IPC
 var globalOutputMessagePool = NewOutputMessagePool(GetConfig().OutputMessagePoolSize)
 
-type AudioServer struct {
-	// Atomic fields must be first for proper alignment on ARM
+type AudioOutputServer struct {
+	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
 	bufferSize    int64 // Current buffer size (atomic)
 	droppedFrames int64 // Dropped frames counter (atomic)
 	totalFrames   int64 // Total frames counter (atomic)
@@ -122,7 +143,7 @@ type AudioServer struct {
 	socketBufferConfig SocketBufferConfig
 }
 
-func NewAudioServer() (*AudioServer, error) {
+func NewAudioOutputServer() (*AudioOutputServer, error) {
 	socketPath := getOutputSocketPath()
 	// Remove existing socket if any
 	os.Remove(socketPath)
@@ -151,7 +172,7 @@ func NewAudioServer() (*AudioServer, error) {
 	// Initialize socket buffer configuration
 	socketBufferConfig := DefaultSocketBufferConfig()
 
-	return &AudioServer{
+	return &AudioOutputServer{
 		listener:           listener,
 		messageChan:        make(chan *OutputIPCMessage, initialBufferSize),
 		stopChan:           make(chan struct{}),
@@ -162,7 +183,7 @@ func NewAudioServer() (*AudioServer, error) {
 	}, nil
 }
 
-func (s *AudioServer) Start() error {
+func (s *AudioOutputServer) Start() error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -190,12 +211,14 @@ func (s *AudioServer) Start() error {
 }
 
 // acceptConnections accepts incoming connections
-func (s *AudioServer) acceptConnections() {
+func (s *AudioOutputServer) acceptConnections() {
+	logger := logging.GetDefaultLogger().With().Str("component", "audio-server").Logger()
 	for s.running {
 		conn, err := s.listener.Accept()
 		if err != nil {
 			if s.running {
-				// Only log error if we're still supposed to be running
+				// Log warning and retry on accept failure
+				logger.Warn().Err(err).Msg("Failed to accept connection, retrying")
 				continue
 			}
 			return
@@ -204,7 +227,6 @@ func (s *AudioServer) acceptConnections() {
 		// Configure socket buffers for optimal performance
 		if err := ConfigureSocketBuffers(conn, s.socketBufferConfig); err != nil {
 			// Log warning but don't fail - socket buffer optimization is not critical
-			logger := logging.GetDefaultLogger().With().Str("component", "audio-server").Logger()
 			logger.Warn().Err(err).Msg("Failed to configure socket buffers, continuing with defaults")
 		} else {
 			// Record socket buffer metrics for monitoring
@@ -215,6 +237,7 @@ func (s *AudioServer) acceptConnections() {
 		// Close existing connection if any
 		if s.conn != nil {
 			s.conn.Close()
+			s.conn = nil
 		}
 		s.conn = conn
 		s.mtx.Unlock()
@@ -222,7 +245,7 @@ func (s *AudioServer) acceptConnections() {
 }
 
 // startProcessorGoroutine starts the message processor
-func (s *AudioServer) startProcessorGoroutine() {
+func (s *AudioOutputServer) startProcessorGoroutine() {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -243,7 +266,7 @@ func (s *AudioServer) startProcessorGoroutine() {
 	}()
 }
 
-func (s *AudioServer) Stop() {
+func (s *AudioOutputServer) Stop() {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -271,7 +294,7 @@ func (s *AudioServer) Stop() {
 	}
 }
 
-func (s *AudioServer) Close() error {
+func (s *AudioOutputServer) Close() error {
 	s.Stop()
 	if s.listener != nil {
 		s.listener.Close()
@@ -281,7 +304,7 @@ func (s *AudioServer) Close() error {
 	return nil
 }
 
-func (s *AudioServer) SendFrame(frame []byte) error {
+func (s *AudioOutputServer) SendFrame(frame []byte) error {
 	maxFrameSize := GetConfig().OutputMaxFrameSize
 	if len(frame) > maxFrameSize {
 		return fmt.Errorf("output frame size validation failed: got %d bytes, maximum allowed %d bytes", len(frame), maxFrameSize)
@@ -318,7 +341,7 @@ func (s *AudioServer) SendFrame(frame []byte) error {
 }
 
 // sendFrameToClient sends frame data directly to the connected client
-func (s *AudioServer) sendFrameToClient(frame []byte) error {
+func (s *AudioOutputServer) sendFrameToClient(frame []byte) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -384,14 +407,13 @@ func (s *AudioServer) sendFrameToClient(frame []byte) error {
 }
 
 // GetServerStats returns server performance statistics
-func (s *AudioServer) GetServerStats() (total, dropped int64, bufferSize int64) {
-	return atomic.LoadInt64(&s.totalFrames),
-		atomic.LoadInt64(&s.droppedFrames),
-		atomic.LoadInt64(&s.bufferSize)
+func (s *AudioOutputServer) GetServerStats() (total, dropped int64, bufferSize int64) {
+	stats := GetFrameStats(&s.totalFrames, &s.droppedFrames)
+	return stats.Total, stats.Dropped, atomic.LoadInt64(&s.bufferSize)
 }
 
-type AudioClient struct {
-	// Atomic fields must be first for proper alignment on ARM
+type AudioOutputClient struct {
+	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
 	droppedFrames int64 // Atomic counter for dropped frames
 	totalFrames   int64 // Atomic counter for total frames
 
@@ -400,12 +422,12 @@ type AudioClient struct {
 	running bool
 }
 
-func NewAudioClient() *AudioClient {
-	return &AudioClient{}
+func NewAudioOutputClient() *AudioOutputClient {
+	return &AudioOutputClient{}
 }
 
 // Connect connects to the audio output server
-func (c *AudioClient) Connect() error {
+func (c *AudioOutputClient) Connect() error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -437,7 +459,7 @@ func (c *AudioClient) Connect() error {
 }
 
 // Disconnect disconnects from the audio output server
-func (c *AudioClient) Disconnect() {
+func (c *AudioOutputClient) Disconnect() {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -453,18 +475,18 @@ func (c *AudioClient) Disconnect() {
 }
 
 // IsConnected returns whether the client is connected
-func (c *AudioClient) IsConnected() bool {
+func (c *AudioOutputClient) IsConnected() bool {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	return c.running && c.conn != nil
 }
 
-func (c *AudioClient) Close() error {
+func (c *AudioOutputClient) Close() error {
 	c.Disconnect()
 	return nil
 }
 
-func (c *AudioClient) ReceiveFrame() ([]byte, error) {
+func (c *AudioOutputClient) ReceiveFrame() ([]byte, error) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -511,9 +533,9 @@ func (c *AudioClient) ReceiveFrame() ([]byte, error) {
 }
 
 // GetClientStats returns client performance statistics
-func (c *AudioClient) GetClientStats() (total, dropped int64) {
-	return atomic.LoadInt64(&c.totalFrames),
-		atomic.LoadInt64(&c.droppedFrames)
+func (c *AudioOutputClient) GetClientStats() (total, dropped int64) {
+	stats := GetFrameStats(&c.totalFrames, &c.droppedFrames)
+	return stats.Total, stats.Dropped
 }
 
 // Helper functions
