@@ -738,7 +738,7 @@ export default function KvmIdRoute() {
     send("getUpdateStatus", {}, async (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(`Failed to get device version: ${resp.error}`);
-        return 
+        return
       }
 
       const result = resp.result as SystemVersionInfo;

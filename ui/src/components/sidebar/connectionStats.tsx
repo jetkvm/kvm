@@ -5,18 +5,12 @@ import { useRTCStore, useUiStore } from "@/hooks/stores";
 
 import { createChartArray, Metric } from "../Metric";
 import { SettingsSectionHeader } from "../SettingsSectionHeader";
+import { someIterable } from "../../utils";
 
 export default function ConnectionStatsSidebar() {
   const inboundVideoRtpStats = useRTCStore(state => state.inboundRtpStats);
   const iceCandidatePairStats = useRTCStore(state => state.candidatePairStats);
   const setSidebarView = useUiStore(state => state.setSidebarView);
-
-  function isMetricSupported<T, K extends keyof T>(
-    stream: Map<number, T>,
-    metric: K,
-  ): boolean {
-    return Array.from(stream).some(([, stat]) => stat[metric] !== undefined);
-  }
 
   const appendInboundVideoRtpStats = useRTCStore(state => state.appendInboundRtpStats);
   const appendIceCandidatePair = useRTCStore(state => state.appendCandidatePairStats);
@@ -72,13 +66,13 @@ export default function ConnectionStatsSidebar() {
   );
 
   const jitterBufferAvgDelayData = jitterBufferDelay.map((d, idx) => {
-    if (idx === 0) return { date: d.date, stat: null };
-    const prevDelay = jitterBufferDelay[idx - 1]?.stat as number | null | undefined;
-    const currDelay = d.stat as number | null | undefined;
+    if (idx === 0) return { date: d.date, metric: null };
+    const prevDelay = jitterBufferDelay[idx - 1]?.metric as number | null | undefined;
+    const currDelay = d.metric as number | null | undefined;
     const prevEmitted =
-      (jitterBufferEmittedCount[idx - 1]?.stat as number | null | undefined) ?? null;
+      (jitterBufferEmittedCount[idx - 1]?.metric as number | null | undefined) ?? null;
     const currEmitted =
-      (jitterBufferEmittedCount[idx]?.stat as number | null | undefined) ?? null;
+      (jitterBufferEmittedCount[idx]?.metric as number | null | undefined) ?? null;
 
     if (
       prevDelay == null ||
@@ -86,7 +80,7 @@ export default function ConnectionStatsSidebar() {
       prevEmitted == null ||
       currEmitted == null
     ) {
-      return { date: d.date, stat: null };
+      return { date: d.date, metric: null };
     }
 
     const deltaDelay = currDelay - prevDelay;
@@ -94,22 +88,12 @@ export default function ConnectionStatsSidebar() {
 
     // Guard counter resets or no emitted frames
     if (deltaDelay < 0 || deltaEmitted <= 0) {
-      return { date: d.date, stat: null };
+      return { date: d.date, metric: null };
     }
 
     const valueMs = Math.round((deltaDelay / deltaEmitted) * 1000);
-    return { date: d.date, stat: valueMs };
+    return { date: d.date, metric: valueMs };
   });
-
-  // Rolling average over the last N seconds for the reference line
-  const rollingWindowSeconds = 20;
-  const recent = jitterBufferAvgDelayData
-    .slice(-rollingWindowSeconds)
-    .filter(x => x.stat != null) as { date: number; stat: number }[];
-  const referenceValue =
-    recent.length > 0
-      ? Math.round(recent.reduce((sum, x) => sum + (x.stat as number), 0) / recent.length)
-      : undefined;
 
   return (
     <div className="grid h-full grid-rows-(--grid-headerBody) shadow-xs">
@@ -128,11 +112,10 @@ export default function ConnectionStatsSidebar() {
                   title="Round-Trip Time"
                   description="Round-trip time for the active ICE candidate pair between peers."
                   stream={iceCandidatePairStats}
-                  gate={inboundVideoRtpStats}
                   metric="currentRoundTripTime"
                   map={x => ({
                     date: x.date,
-                    stat: x.stat ? Math.round((x.stat as number) * 1000) : null,
+                    metric: x.metric != null ? Math.round(x.metric * 1000) : null,
                   })}
                   domain={[0, 600]}
                   unit=" ms"
@@ -156,7 +139,7 @@ export default function ConnectionStatsSidebar() {
                   metric="jitter"
                   map={x => ({
                     date: x.date,
-                    stat: x.stat ? Math.round((x.stat as number) * 1000) : null,
+                    metric: x.metric != null ? Math.round(x.metric * 1000) : null,
                   })}
                   domain={[0, 10]}
                   unit=" ms"
@@ -171,12 +154,17 @@ export default function ConnectionStatsSidebar() {
                   data={jitterBufferAvgDelayData}
                   gate={inboundVideoRtpStats}
                   supported={
-                    isMetricSupported(inboundVideoRtpStats, "jitterBufferDelay") &&
-                    isMetricSupported(inboundVideoRtpStats, "jitterBufferEmittedCount")
+                    someIterable(
+                      inboundVideoRtpStats,
+                      ([, x]) => x.jitterBufferDelay != null,
+                    ) &&
+                    someIterable(
+                      inboundVideoRtpStats,
+                      ([, x]) => x.jitterBufferEmittedCount != null,
+                    )
                   }
                   domain={[0, 30]}
                   unit=" ms"
-                  referenceValue={referenceValue}
                 />
 
                 {/* Packets Lost */}

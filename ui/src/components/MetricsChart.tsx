@@ -12,13 +12,13 @@ import {
 
 import CustomTooltip, { CustomTooltipProps } from "@components/CustomTooltip";
 
-export default function StatChart({
+export default function MetricsChart({
   data,
   domain,
   unit,
   referenceValue,
 }: {
-  data: { date: number; stat: number | null | undefined }[];
+  data: { date: number; metric: number | null | undefined }[];
   domain?: [string | number, string | number];
   unit?: string;
   referenceValue?: number;
@@ -33,7 +33,7 @@ export default function StatChart({
           strokeLinecap="butt"
           stroke="rgba(30, 41, 59, 0.1)"
         />
-        {referenceValue && (
+        {referenceValue !== undefined && (
           <ReferenceLine
             y={referenceValue}
             strokeDasharray="3 3"
@@ -64,7 +64,7 @@ export default function StatChart({
             .map(x => x.date)}
         />
         <YAxis
-          dataKey="stat"
+          dataKey="metric"
           axisLine={false}
           orientation="right"
           tick={{
@@ -73,6 +73,7 @@ export default function StatChart({
             fill: "rgba(107, 114, 128, 1)",
           }}
           padding={{ top: 0, bottom: 0 }}
+          allowDecimals
           tickLine={false}
           unit={unit}
           domain={domain || ["auto", "auto"]}
@@ -87,7 +88,7 @@ export default function StatChart({
         <Line
           type="monotone"
           isAnimationActive={false}
-          dataKey="stat"
+          dataKey="metric"
           stroke="rgb(29 78 216)"
           strokeLinecap="round"
           strokeWidth={2}

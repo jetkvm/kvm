@@ -1,12 +1,14 @@
 import { ComponentProps } from "react";
 import { cva, cx } from "cva";
 
+import { someIterable } from "../utils";
+
 import { GridCard } from "./Card";
-import StatChart from "./StatChart";
+import MetricsChart from "./MetricsChart";
 
 interface ChartPoint {
   date: number;
-  stat: number | null;
+  metric: number | null;
 }
 
 interface MetricProps<T, K extends keyof T> {
@@ -17,45 +19,42 @@ interface MetricProps<T, K extends keyof T> {
   data?: ChartPoint[];
   gate?: Map<number, unknown>;
   supported?: boolean;
-  map?: (p: { date: number; stat: T[K] | null }) => ChartPoint;
+  map?: (p: { date: number; metric: number | null }) => ChartPoint;
   domain?: [number, number];
-  unit?: string;
+  unit: string;
   heightClassName?: string;
   referenceValue?: number;
   badge?: ComponentProps<typeof MetricHeader>["badge"];
   badgeTheme?: ComponentProps<typeof MetricHeader>["badgeTheme"];
 }
 
+/* eslint-disable-next-line */
 export function createChartArray<T, K extends keyof T>(
-  stream: Map<number, T>,
-  metric: K,
-): { date: number; stat: T[K] | null }[] {
-  const stat = Array.from(stream).map(([key, stats]) => {
-    return { date: key, stat: stats[metric] };
-  });
-
-  // Sort the dates to ensure they are in chronological order
-  const sortedStat = stat.map(x => x.date).sort((a, b) => a - b);
-
-  // Determine the earliest statistic date
-  const earliestStat = sortedStat[0];
-
-  // Current time in seconds since the Unix epoch
+  metrics: Map<number, T>,
+  metricName: K,
+) {
+  const result: { date: number; metric: number | null }[] = [];
+  const iter = metrics.entries();
+  let next = iter.next() as IteratorResult<[number, T]>;
   const now = Math.floor(Date.now() / 1000);
 
-  // Determine the starting point for the chart data
-  const firstChartDate = earliestStat ? Math.min(earliestStat, now - 120) : now - 120;
+  // We want 120 data points, in the chart.
+  const firstDate = Math.min(next.value?.[0] ?? now, now - 120);
 
-  // Generate the chart array for the range between 'firstChartDate' and 'now'
-  return Array.from({ length: now - firstChartDate }, (_, i) => {
-    const currentDate = firstChartDate + i;
-    return {
-      date: currentDate,
-      // Find the statistic for 'currentDate', or use the last known statistic if none exists for that date
-      stat: stat.find(x => x.date === currentDate)?.stat ?? null,
-    };
-  });
+  for (let t = firstDate; t < now; t++) {
+    while (!next.done && next.value[0] < t) next = iter.next();
+    const has = !next.done && next.value[0] === t;
+
+    let metric = null;
+    if (has) metric = next.value[1][metricName] as number;
+    result.push({ date: t, metric });
+
+    if (has) next = iter.next();
+  }
+
+  return result;
 }
+
 const theme = {
   light:
     "bg-white text-black border border-slate-800/20 dark:border dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
@@ -110,26 +109,30 @@ export function Metric<T, K extends keyof T>({
   domain = [0, 600],
   unit = "",
   heightClassName = "h-[127px]",
-  referenceValue,
   badge,
   badgeTheme,
 }: MetricProps<T, K>) {
   const ready = gate ? gate.size > 0 : stream ? stream.size > 0 : true;
   const supportedFinal =
     supported ??
-    (stream && metric
-      ? Array.from(stream).some(([, s]) => s[metric] !== undefined)
-      : true);
+    (stream && metric ? someIterable(stream, ([, s]) => s[metric] !== undefined) : true);
 
-  const raw = stream && metric ? createChartArray(stream, metric) : [];
-  const dataFinal: ChartPoint[] =
-    data ??
-    (map
-      ? raw.map(map)
-      : raw.map(x => ({
-          date: x.date,
-          stat: typeof x.stat === "number" ? (x.stat as unknown as number) : null,
-        })));
+  // Either we let the consumer provide their own chartArray, or we create one from the stream and metric.
+  const raw = data ?? ((stream && metric && createChartArray(stream, metric)) || []);
+
+  // If the consumer provides a map function, we apply it to the raw data.
+  const dataFinal: ChartPoint[] = map ? raw.map(map) : raw;
+  const recent = dataFinal
+    .slice(-(raw.length - 1))
+    .filter(x => x.metric != null) as ChartPoint[];
+
+  // Average the recent values
+  const computedReferenceValue =
+    recent.length > 0
+      ? Math.round(
+          recent.reduce((sum, x) => sum + (x.metric as number), 0) / recent.length,
+        )
+      : undefined;
 
   return (
     <div className="space-y-2">
@@ -149,11 +152,11 @@ export function Metric<T, K extends keyof T>({
               <p className="text-slate-700">Waiting for data...</p>
             </div>
           ) : supportedFinal ? (
-            <StatChart
+            <MetricsChart
               data={dataFinal}
               domain={domain}
               unit={unit}
-              referenceValue={referenceValue}
+              referenceValue={computedReferenceValue}
             />
           ) : (
             <div className="flex flex-col items-center space-y-1">
