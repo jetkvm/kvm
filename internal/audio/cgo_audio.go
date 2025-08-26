@@ -61,12 +61,15 @@ static volatile int capture_initialized = 0;
 static volatile int playback_initializing = 0;
 static volatile int playback_initialized = 0;
 
-// Safe ALSA device opening with retry logic
+// Enhanced ALSA device opening with exponential backoff retry logic
 static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream_t stream) {
-	int attempts = 3;
+	int max_attempts = 5; // Increased from 3 to 5
+	int attempt = 0;
 	int err;
+	int backoff_us = sleep_microseconds; // Start with base sleep time
+	const int max_backoff_us = 500000; // Max 500ms backoff
 
-	while (attempts-- > 0) {
+	while (attempt < max_attempts) {
 		err = snd_pcm_open(handle, device, stream, SND_PCM_NONBLOCK);
 		if (err >= 0) {
 			// Switch to blocking mode after successful open
@@ -74,12 +77,26 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 			return 0;
 		}
 
-		if (err == -EBUSY && attempts > 0) {
-			// Device busy, wait and retry
-			usleep(sleep_microseconds); // 50ms
-			continue;
+		attempt++;
+		if (attempt >= max_attempts) break;
+
+		// Enhanced error handling with specific retry strategies
+		if (err == -EBUSY || err == -EAGAIN) {
+			// Device busy or temporarily unavailable - retry with backoff
+			usleep(backoff_us);
+			backoff_us = (backoff_us * 2 < max_backoff_us) ? backoff_us * 2 : max_backoff_us;
+		} else if (err == -ENODEV || err == -ENOENT) {
+			// Device not found - longer wait as device might be initializing
+			usleep(backoff_us * 2);
+			backoff_us = (backoff_us * 2 < max_backoff_us) ? backoff_us * 2 : max_backoff_us;
+		} else if (err == -EPERM || err == -EACCES) {
+			// Permission denied - shorter wait, likely persistent issue
+			usleep(backoff_us / 2);
+		} else {
+			// Other errors - standard backoff
+			usleep(backoff_us);
+			backoff_us = (backoff_us * 2 < max_backoff_us) ? backoff_us * 2 : max_backoff_us;
 		}
-		break;
 	}
 	return err;
 }
@@ -217,43 +234,90 @@ int jetkvm_audio_init() {
 	return 0;
 }
 
-// Read and encode one frame with enhanced error handling
+// Read and encode one frame with robust error handling and recovery
 int jetkvm_audio_read_encode(void *opus_buf) {
 	short pcm_buffer[1920]; // max 2ch*960
 	unsigned char *out = (unsigned char*)opus_buf;
 	int err = 0;
+	int recovery_attempts = 0;
+	const int max_recovery_attempts = 3;
 
 	// Safety checks
 	if (!capture_initialized || !pcm_handle || !encoder || !opus_buf) {
 		return -1;
 	}
 
+retry_read:
+	;
 	int pcm_rc = snd_pcm_readi(pcm_handle, pcm_buffer, frame_size);
 
-	// Handle ALSA errors with enhanced recovery
+	// Handle ALSA errors with robust recovery strategies
 	if (pcm_rc < 0) {
 		if (pcm_rc == -EPIPE) {
-			// Buffer underrun - try to recover
-			err = snd_pcm_prepare(pcm_handle);
-			if (err < 0) return -1;
+			// Buffer underrun - implement progressive recovery
+			recovery_attempts++;
+			if (recovery_attempts > max_recovery_attempts) {
+				return -1; // Give up after max attempts
+			}
 
-			pcm_rc = snd_pcm_readi(pcm_handle, pcm_buffer, frame_size);
-			if (pcm_rc < 0) return -1;
+			// Try to recover with prepare
+			err = snd_pcm_prepare(pcm_handle);
+			if (err < 0) {
+				// If prepare fails, try drop and prepare
+				snd_pcm_drop(pcm_handle);
+				err = snd_pcm_prepare(pcm_handle);
+				if (err < 0) return -1;
+			}
+
+			// Wait before retry to allow device to stabilize
+			usleep(sleep_microseconds * recovery_attempts);
+			goto retry_read;
 		} else if (pcm_rc == -EAGAIN) {
 			// No data available - return 0 to indicate no frame
 			return 0;
 		} else if (pcm_rc == -ESTRPIPE) {
-			// Device suspended, try to resume
-			while ((err = snd_pcm_resume(pcm_handle)) == -EAGAIN) {
-				usleep(sleep_microseconds); // Use centralized constant
+			// Device suspended, implement robust resume logic
+			recovery_attempts++;
+			if (recovery_attempts > max_recovery_attempts) {
+				return -1;
+			}
+
+			// Try to resume with timeout
+			int resume_attempts = 0;
+			while ((err = snd_pcm_resume(pcm_handle)) == -EAGAIN && resume_attempts < 10) {
+				usleep(sleep_microseconds);
+				resume_attempts++;
 			}
 			if (err < 0) {
+				// Resume failed, try prepare as fallback
 				err = snd_pcm_prepare(pcm_handle);
 				if (err < 0) return -1;
 			}
-			return 0; // Skip this frame
+			// Wait before retry to allow device to stabilize
+			usleep(sleep_microseconds * recovery_attempts);
+			return 0; // Skip this frame but don't fail
+		} else if (pcm_rc == -ENODEV) {
+			// Device disconnected - critical error
+			return -1;
+		} else if (pcm_rc == -EIO) {
+			// I/O error - try recovery once
+			recovery_attempts++;
+			if (recovery_attempts <= max_recovery_attempts) {
+				snd_pcm_drop(pcm_handle);
+				err = snd_pcm_prepare(pcm_handle);
+				if (err >= 0) {
+					usleep(sleep_microseconds);
+					goto retry_read;
+				}
+			}
+			return -1;
 		} else {
-			// Other error - return error code
+			// Other errors - limited retry for transient issues
+			recovery_attempts++;
+			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY)) {
+				usleep(sleep_microseconds / 2);
+				goto retry_read;
+			}
 			return -1;
 		}
 	}
@@ -327,11 +391,13 @@ int jetkvm_audio_playback_init() {
 	return 0;
 }
 
-// Decode Opus and write PCM with enhanced error handling
+// Decode Opus and write PCM with robust error handling and recovery
 int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 	short pcm_buffer[1920]; // max 2ch*960
 	unsigned char *in = (unsigned char*)opus_buf;
 	int err = 0;
+	int recovery_attempts = 0;
+	const int max_recovery_attempts = 3;
 
 	// Safety checks
 	if (!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0) {
@@ -343,31 +409,91 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 		return -1;
 	}
 
-	// Decode Opus to PCM
+	// Decode Opus to PCM with error handling
 	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
-	if (pcm_frames < 0) return -1;
+	if (pcm_frames < 0) {
+		// Try packet loss concealment on decode error
+		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 0);
+		if (pcm_frames < 0) return -1;
+	}
 
-	// Write PCM to playback device with enhanced recovery
+retry_write:
+	;
+	// Write PCM to playback device with robust recovery
 	int pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
 	if (pcm_rc < 0) {
 		if (pcm_rc == -EPIPE) {
-			// Buffer underrun - try to recover
-			err = snd_pcm_prepare(pcm_playback_handle);
-			if (err < 0) return -2;
-
-			pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
-		} else if (pcm_rc == -ESTRPIPE) {
-			// Device suspended, try to resume
-			while ((err = snd_pcm_resume(pcm_playback_handle)) == -EAGAIN) {
-				usleep(sleep_microseconds); // Use centralized constant
+			// Buffer underrun - implement progressive recovery
+			recovery_attempts++;
+			if (recovery_attempts > max_recovery_attempts) {
+				return -2;
 			}
+
+			// Try to recover with prepare
+			err = snd_pcm_prepare(pcm_playback_handle);
 			if (err < 0) {
+				// If prepare fails, try drop and prepare
+				snd_pcm_drop(pcm_playback_handle);
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err < 0) return -2;
 			}
-			return 0; // Skip this frame
+
+			// Wait before retry to allow device to stabilize
+			usleep(sleep_microseconds * recovery_attempts);
+			goto retry_write;
+		} else if (pcm_rc == -ESTRPIPE) {
+			// Device suspended, implement robust resume logic
+			recovery_attempts++;
+			if (recovery_attempts > max_recovery_attempts) {
+				return -2;
+			}
+
+			// Try to resume with timeout
+			int resume_attempts = 0;
+			while ((err = snd_pcm_resume(pcm_playback_handle)) == -EAGAIN && resume_attempts < 10) {
+				usleep(sleep_microseconds);
+				resume_attempts++;
+			}
+			if (err < 0) {
+				// Resume failed, try prepare as fallback
+				err = snd_pcm_prepare(pcm_playback_handle);
+				if (err < 0) return -2;
+			}
+			// Wait before retry to allow device to stabilize
+			usleep(sleep_microseconds * recovery_attempts);
+			return 0; // Skip this frame but don't fail
+		} else if (pcm_rc == -ENODEV) {
+			// Device disconnected - critical error
+			return -2;
+		} else if (pcm_rc == -EIO) {
+			// I/O error - try recovery once
+			recovery_attempts++;
+			if (recovery_attempts <= max_recovery_attempts) {
+				snd_pcm_drop(pcm_playback_handle);
+				err = snd_pcm_prepare(pcm_playback_handle);
+				if (err >= 0) {
+					usleep(sleep_microseconds);
+					goto retry_write;
+				}
+			}
+			return -2;
+		} else if (pcm_rc == -EAGAIN) {
+			// Device not ready - brief wait and retry
+			recovery_attempts++;
+			if (recovery_attempts <= max_recovery_attempts) {
+				usleep(sleep_microseconds / 4);
+				goto retry_write;
+			}
+			return -2;
+		} else {
+			// Other errors - limited retry for transient issues
+			recovery_attempts++;
+			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY)) {
+				usleep(sleep_microseconds / 2);
+				goto retry_write;
+			}
+			return -2;
 		}
-		if (pcm_rc < 0) return -2;
 	}
 
 	return pcm_frames;

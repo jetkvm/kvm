@@ -321,17 +321,61 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 		getOutputStreamingLogger().Info().Str("socket_path", getOutputSocketPath()).Msg("Audio output streaming started, connected to output server")
 		buffer := make([]byte, GetMaxAudioFrameSize())
 
+		consecutiveErrors := 0
+		maxConsecutiveErrors := GetConfig().MaxConsecutiveErrors
+		errorBackoffDelay := GetConfig().RetryDelay
+		maxErrorBackoff := GetConfig().MaxRetryDelay
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				// Capture audio frame
+				// Capture audio frame with enhanced error handling
 				n, err := CGOAudioReadEncode(buffer)
 				if err != nil {
-					getOutputStreamingLogger().Warn().Err(err).Msg("Failed to read/encode audio")
+					consecutiveErrors++
+					getOutputStreamingLogger().Warn().
+						Err(err).
+						Int("consecutive_errors", consecutiveErrors).
+						Msg("Failed to read/encode audio")
+
+					// Implement progressive backoff for consecutive errors
+					if consecutiveErrors >= maxConsecutiveErrors {
+						getOutputStreamingLogger().Error().
+							Int("consecutive_errors", consecutiveErrors).
+							Msg("Too many consecutive audio errors, attempting recovery")
+
+						// Try to reinitialize audio system
+						CGOAudioClose()
+						time.Sleep(errorBackoffDelay)
+						if initErr := CGOAudioInit(); initErr != nil {
+							getOutputStreamingLogger().Error().
+								Err(initErr).
+								Msg("Failed to reinitialize audio system")
+							// Exponential backoff for reinitialization failures
+							errorBackoffDelay = time.Duration(float64(errorBackoffDelay) * GetConfig().BackoffMultiplier)
+							if errorBackoffDelay > maxErrorBackoff {
+								errorBackoffDelay = maxErrorBackoff
+							}
+						} else {
+							getOutputStreamingLogger().Info().Msg("Audio system reinitialized successfully")
+							consecutiveErrors = 0
+							errorBackoffDelay = GetConfig().RetryDelay // Reset backoff
+						}
+					} else {
+						// Brief delay for transient errors
+						time.Sleep(GetConfig().ShortSleepDuration)
+					}
 					continue
 				}
+
+				// Success - reset error counters
+				if consecutiveErrors > 0 {
+					consecutiveErrors = 0
+					errorBackoffDelay = GetConfig().RetryDelay
+				}
+
 				if n > 0 {
 					// Get frame buffer from pool to reduce allocations
 					frame := GetAudioFrameBuffer()

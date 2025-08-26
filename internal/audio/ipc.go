@@ -1,7 +1,6 @@
 package audio
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -65,59 +64,8 @@ func (msg *OutputIPCMessage) GetData() []byte {
 	return msg.Data
 }
 
-// OutputOptimizedMessage represents a pre-allocated message for zero-allocation operations
-type OutputOptimizedMessage struct {
-	header [17]byte // Pre-allocated header buffer (using constant value since array size must be compile-time constant)
-	data   []byte   // Reusable data buffer
-}
-
-// OutputMessagePool manages pre-allocated messages for zero-allocation IPC
-type OutputMessagePool struct {
-	pool chan *OutputOptimizedMessage
-}
-
-// NewOutputMessagePool creates a new message pool
-func NewOutputMessagePool(size int) *OutputMessagePool {
-	pool := &OutputMessagePool{
-		pool: make(chan *OutputOptimizedMessage, size),
-	}
-
-	// Pre-allocate messages
-	for i := 0; i < size; i++ {
-		msg := &OutputOptimizedMessage{
-			data: make([]byte, GetConfig().OutputMaxFrameSize),
-		}
-		pool.pool <- msg
-	}
-
-	return pool
-}
-
-// Get retrieves a message from the pool
-func (p *OutputMessagePool) Get() *OutputOptimizedMessage {
-	select {
-	case msg := <-p.pool:
-		return msg
-	default:
-		// Pool exhausted, create new message
-		return &OutputOptimizedMessage{
-			data: make([]byte, GetConfig().OutputMaxFrameSize),
-		}
-	}
-}
-
-// Put returns a message to the pool
-func (p *OutputMessagePool) Put(msg *OutputOptimizedMessage) {
-	select {
-	case p.pool <- msg:
-		// Successfully returned to pool
-	default:
-		// Pool full, let GC handle it
-	}
-}
-
-// Global message pool for output IPC
-var globalOutputMessagePool = NewOutputMessagePool(GetConfig().OutputMessagePoolSize)
+// Global shared message pool for output IPC client header reading
+var globalOutputClientMessagePool = NewGenericMessagePool(GetConfig().OutputMessagePoolSize)
 
 type AudioOutputServer struct {
 	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
@@ -341,6 +289,9 @@ func (s *AudioOutputServer) SendFrame(frame []byte) error {
 }
 
 // sendFrameToClient sends frame data directly to the connected client
+// Global shared message pool for output IPC server
+var globalOutputServerMessagePool = NewGenericMessagePool(GetConfig().OutputMessagePoolSize)
+
 func (s *AudioOutputServer) sendFrameToClient(frame []byte) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -351,59 +302,28 @@ func (s *AudioOutputServer) sendFrameToClient(frame []byte) error {
 
 	start := time.Now()
 
-	// Get optimized message from pool
-	optMsg := globalOutputMessagePool.Get()
-	defer globalOutputMessagePool.Put(optMsg)
-
-	// Prepare header in pre-allocated buffer
-	binary.LittleEndian.PutUint32(optMsg.header[0:4], outputMagicNumber)
-	optMsg.header[4] = byte(OutputMessageTypeOpusFrame)
-	binary.LittleEndian.PutUint32(optMsg.header[5:9], uint32(len(frame)))
-	binary.LittleEndian.PutUint64(optMsg.header[9:17], uint64(start.UnixNano()))
-
-	// Use non-blocking write with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), GetConfig().OutputWriteTimeout)
-	defer cancel()
-
-	// Create a channel to signal write completion
-	done := make(chan error, 1)
-	go func() {
-		// Write header using pre-allocated buffer
-		_, err := s.conn.Write(optMsg.header[:])
-		if err != nil {
-			done <- err
-			return
-		}
-
-		// Write frame data
-		if len(frame) > 0 {
-			_, err = s.conn.Write(frame)
-			if err != nil {
-				done <- err
-				return
-			}
-		}
-		done <- nil
-	}()
-
-	// Wait for completion or timeout
-	select {
-	case err := <-done:
-		if err != nil {
-			atomic.AddInt64(&s.droppedFrames, 1)
-			return err
-		}
-		// Record latency for monitoring
-		if s.latencyMonitor != nil {
-			writeLatency := time.Since(start)
-			s.latencyMonitor.RecordLatency(writeLatency, "ipc_write")
-		}
-		return nil
-	case <-ctx.Done():
-		// Timeout occurred - drop frame to prevent blocking
-		atomic.AddInt64(&s.droppedFrames, 1)
-		return fmt.Errorf("write timeout after %v - frame dropped to prevent blocking", GetConfig().OutputWriteTimeout)
+	// Create output IPC message
+	msg := &OutputIPCMessage{
+		Magic:     outputMagicNumber,
+		Type:      OutputMessageTypeOpusFrame,
+		Length:    uint32(len(frame)),
+		Timestamp: start.UnixNano(),
+		Data:      frame,
 	}
+
+	// Use shared WriteIPCMessage function
+	err := WriteIPCMessage(s.conn, msg, globalOutputServerMessagePool, &s.droppedFrames)
+	if err != nil {
+		return err
+	}
+
+	// Record latency for monitoring
+	if s.latencyMonitor != nil {
+		writeLatency := time.Since(start)
+		s.latencyMonitor.RecordLatency(writeLatency, "ipc_write")
+	}
+
+	return nil
 }
 
 // GetServerStats returns server performance statistics
@@ -495,8 +415,8 @@ func (c *AudioOutputClient) ReceiveFrame() ([]byte, error) {
 	}
 
 	// Get optimized message from pool for header reading
-	optMsg := globalOutputMessagePool.Get()
-	defer globalOutputMessagePool.Put(optMsg)
+	optMsg := globalOutputClientMessagePool.Get()
+	defer globalOutputClientMessagePool.Put(optMsg)
 
 	// Read header
 	if _, err := io.ReadFull(c.conn, optMsg.header[:]); err != nil {

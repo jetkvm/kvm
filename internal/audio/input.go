@@ -10,10 +10,10 @@ import (
 
 // AudioInputMetrics holds metrics for microphone input
 type AudioInputMetrics struct {
-	FramesSent      int64
-	FramesDropped   int64
-	BytesProcessed  int64
-	ConnectionDrops int64
+	FramesSent      int64         // Total frames sent
+	FramesDropped   int64         // Total frames dropped
+	BytesProcessed  int64         // Total bytes processed
+	ConnectionDrops int64         // Connection drops
 	AverageLatency  time.Duration // time.Duration is int64
 	LastFrameTime   time.Time
 }
