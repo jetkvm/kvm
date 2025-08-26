@@ -19,7 +19,7 @@ type AudioRelay struct {
 	framesRelayed int64
 	framesDropped int64
 
-	client  *AudioClient
+	client  *AudioOutputClient
 	ctx     context.Context
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
@@ -60,7 +60,7 @@ func (r *AudioRelay) Start(audioTrack AudioTrackWriter, config AudioConfig) erro
 	}
 
 	// Create audio client to connect to subprocess
-	client := NewAudioClient()
+	client := NewAudioOutputClient()
 	r.client = client
 	r.audioTrack = audioTrack
 	r.config = config

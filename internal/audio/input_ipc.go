@@ -1,7 +1,6 @@
 package audio
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -19,7 +18,6 @@ import (
 var (
 	inputMagicNumber uint32 = GetConfig().InputMagicNumber // "JKMI" (JetKVM Microphone Input)
 	inputSocketName         = "audio_input.sock"
-	writeTimeout            = GetConfig().WriteTimeout // Non-blocking write timeout
 )
 
 const (
@@ -49,6 +47,27 @@ type InputIPCMessage struct {
 	Length    uint32
 	Timestamp int64
 	Data      []byte
+}
+
+// Implement IPCMessage interface
+func (msg *InputIPCMessage) GetMagic() uint32 {
+	return msg.Magic
+}
+
+func (msg *InputIPCMessage) GetType() uint8 {
+	return uint8(msg.Type)
+}
+
+func (msg *InputIPCMessage) GetLength() uint32 {
+	return msg.Length
+}
+
+func (msg *InputIPCMessage) GetTimestamp() int64 {
+	return msg.Timestamp
+}
+
+func (msg *InputIPCMessage) GetData() []byte {
+	return msg.Data
 }
 
 // OptimizedIPCMessage represents an optimized message with pre-allocated buffers
@@ -167,7 +186,7 @@ type InputIPCConfig struct {
 
 // AudioInputServer handles IPC communication for audio input processing
 type AudioInputServer struct {
-	// Atomic fields must be first for proper alignment on ARM
+	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
 	bufferSize     int64 // Current buffer size (atomic)
 	processingTime int64 // Average processing time in nanoseconds (atomic)
 	droppedFrames  int64 // Dropped frames counter (atomic)
@@ -227,6 +246,11 @@ func (ais *AudioInputServer) Start() error {
 
 	ais.running = true
 
+	// Reset counters on start
+	atomic.StoreInt64(&ais.totalFrames, 0)
+	atomic.StoreInt64(&ais.droppedFrames, 0)
+	atomic.StoreInt64(&ais.processingTime, 0)
+
 	// Start triple-goroutine architecture
 	ais.startReaderGoroutine()
 	ais.startProcessorGoroutine()
@@ -276,7 +300,9 @@ func (ais *AudioInputServer) acceptConnections() {
 		conn, err := ais.listener.Accept()
 		if err != nil {
 			if ais.running {
-				// Only log error if we're still supposed to be running
+				// Log error and continue accepting
+				logger := logging.GetDefaultLogger().With().Str("component", "audio-input-server").Logger()
+				logger.Warn().Err(err).Msg("Failed to accept connection, retrying")
 				continue
 			}
 			return
@@ -293,9 +319,10 @@ func (ais *AudioInputServer) acceptConnections() {
 		}
 
 		ais.mtx.Lock()
-		// Close existing connection if any
+		// Close existing connection if any to prevent resource leaks
 		if ais.conn != nil {
 			ais.conn.Close()
+			ais.conn = nil
 		}
 		ais.conn = conn
 		ais.mtx.Unlock()
@@ -515,6 +542,12 @@ func (aic *AudioInputClient) Connect() error {
 		return nil // Already connected
 	}
 
+	// Ensure clean state before connecting
+	if aic.conn != nil {
+		aic.conn.Close()
+		aic.conn = nil
+	}
+
 	socketPath := getInputSocketPath()
 	// Try connecting multiple times as the server might not be ready
 	// Reduced retry count and delay for faster startup
@@ -523,6 +556,9 @@ func (aic *AudioInputClient) Connect() error {
 		if err == nil {
 			aic.conn = conn
 			aic.running = true
+			// Reset frame counters on successful connection
+			atomic.StoreInt64(&aic.totalFrames, 0)
+			atomic.StoreInt64(&aic.droppedFrames, 0)
 			return nil
 		}
 		// Exponential backoff starting from config
@@ -535,7 +571,10 @@ func (aic *AudioInputClient) Connect() error {
 		time.Sleep(delay)
 	}
 
-	return fmt.Errorf("failed to connect to audio input server")
+	// Ensure clean state on connection failure
+	aic.conn = nil
+	aic.running = false
+	return fmt.Errorf("failed to connect to audio input server after 10 attempts")
 }
 
 // Disconnect disconnects from the audio input server
@@ -671,54 +710,17 @@ func (aic *AudioInputClient) writeMessage(msg *InputIPCMessage) error {
 	// Increment total frames counter
 	atomic.AddInt64(&aic.totalFrames, 1)
 
-	// Get optimized message from pool for header preparation
-	optMsg := globalMessagePool.Get()
-	defer globalMessagePool.Put(optMsg)
-
-	// Prepare header in pre-allocated buffer
-	binary.LittleEndian.PutUint32(optMsg.header[0:4], msg.Magic)
-	optMsg.header[4] = byte(msg.Type)
-	binary.LittleEndian.PutUint32(optMsg.header[5:9], msg.Length)
-	binary.LittleEndian.PutUint64(optMsg.header[9:17], uint64(msg.Timestamp))
-
-	// Use non-blocking write with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), writeTimeout)
-	defer cancel()
-
-	// Create a channel to signal write completion
-	done := make(chan error, 1)
-	go func() {
-		// Write header using pre-allocated buffer
-		_, err := aic.conn.Write(optMsg.header[:])
-		if err != nil {
-			done <- err
-			return
-		}
-
-		// Write data if present
-		if msg.Length > 0 && msg.Data != nil {
-			_, err = aic.conn.Write(msg.Data)
-			if err != nil {
-				done <- err
-				return
-			}
-		}
-		done <- nil
-	}()
-
-	// Wait for completion or timeout
-	select {
-	case err := <-done:
-		if err != nil {
-			atomic.AddInt64(&aic.droppedFrames, 1)
-			return err
-		}
-		return nil
-	case <-ctx.Done():
-		// Timeout occurred - drop frame to prevent blocking
-		atomic.AddInt64(&aic.droppedFrames, 1)
-		return fmt.Errorf("write timeout - frame dropped")
+	// Use common write function with shared message pool
+	sharedPool := &GenericMessagePool{
+		pool:         make(chan *OptimizedMessage, messagePoolSize),
+		hitCount:     globalMessagePool.hitCount,
+		missCount:    globalMessagePool.missCount,
+		preallocated: make([]*OptimizedMessage, 0),
+		preallocSize: messagePoolSize / 4,
+		maxPoolSize:  messagePoolSize,
 	}
+
+	return WriteIPCMessage(aic.conn, msg, sharedPool, &aic.droppedFrames)
 }
 
 // IsConnected returns whether the client is connected
@@ -730,23 +732,19 @@ func (aic *AudioInputClient) IsConnected() bool {
 
 // GetFrameStats returns frame statistics
 func (aic *AudioInputClient) GetFrameStats() (total, dropped int64) {
-	return atomic.LoadInt64(&aic.totalFrames), atomic.LoadInt64(&aic.droppedFrames)
+	stats := GetFrameStats(&aic.totalFrames, &aic.droppedFrames)
+	return stats.Total, stats.Dropped
 }
 
 // GetDropRate returns the current frame drop rate as a percentage
 func (aic *AudioInputClient) GetDropRate() float64 {
-	total := atomic.LoadInt64(&aic.totalFrames)
-	dropped := atomic.LoadInt64(&aic.droppedFrames)
-	if total == 0 {
-		return 0.0
-	}
-	return float64(dropped) / float64(total) * GetConfig().PercentageMultiplier
+	stats := GetFrameStats(&aic.totalFrames, &aic.droppedFrames)
+	return CalculateDropRate(stats)
 }
 
 // ResetStats resets frame statistics
 func (aic *AudioInputClient) ResetStats() {
-	atomic.StoreInt64(&aic.totalFrames, 0)
-	atomic.StoreInt64(&aic.droppedFrames, 0)
+	ResetFrameStats(&aic.totalFrames, &aic.droppedFrames)
 }
 
 // startReaderGoroutine starts the message reader goroutine

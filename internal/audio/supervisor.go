@@ -34,8 +34,8 @@ func getMaxRestartDelay() time.Duration {
 	return GetConfig().MaxRestartDelay
 }
 
-// AudioServerSupervisor manages the audio server subprocess lifecycle
-type AudioServerSupervisor struct {
+// AudioOutputSupervisor manages the audio output server subprocess lifecycle
+type AudioOutputSupervisor struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	logger  *zerolog.Logger
@@ -64,12 +64,12 @@ type AudioServerSupervisor struct {
 	onRestart      func(attempt int, delay time.Duration)
 }
 
-// NewAudioServerSupervisor creates a new audio server supervisor
-func NewAudioServerSupervisor() *AudioServerSupervisor {
+// NewAudioOutputSupervisor creates a new audio output server supervisor
+func NewAudioOutputSupervisor() *AudioOutputSupervisor {
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-supervisor").Logger()
 
-	return &AudioServerSupervisor{
+	return &AudioOutputSupervisor{
 		ctx:            ctx,
 		cancel:         cancel,
 		logger:         &logger,
@@ -80,7 +80,7 @@ func NewAudioServerSupervisor() *AudioServerSupervisor {
 }
 
 // SetCallbacks sets optional callbacks for process lifecycle events
-func (s *AudioServerSupervisor) SetCallbacks(
+func (s *AudioOutputSupervisor) SetCallbacks(
 	onStart func(pid int),
 	onExit func(pid int, exitCode int, crashed bool),
 	onRestart func(attempt int, delay time.Duration),
@@ -93,8 +93,8 @@ func (s *AudioServerSupervisor) SetCallbacks(
 	s.onRestart = onRestart
 }
 
-// Start begins supervising the audio server process
-func (s *AudioServerSupervisor) Start() error {
+// Start begins supervising the audio output server process
+func (s *AudioOutputSupervisor) Start() error {
 	if !atomic.CompareAndSwapInt32(&s.running, 0, 1) {
 		return fmt.Errorf("supervisor already running")
 	}
@@ -107,6 +107,10 @@ func (s *AudioServerSupervisor) Start() error {
 	s.stopChan = make(chan struct{})
 	// Recreate context as well since it might have been cancelled
 	s.ctx, s.cancel = context.WithCancel(context.Background())
+	// Reset restart tracking on start
+	s.restartAttempts = s.restartAttempts[:0]
+	s.lastExitCode = 0
+	s.lastExitTime = time.Time{}
 	s.mutex.Unlock()
 
 	// Start the supervision loop
@@ -116,7 +120,7 @@ func (s *AudioServerSupervisor) Start() error {
 }
 
 // Stop gracefully stops the audio server and supervisor
-func (s *AudioServerSupervisor) Stop() error {
+func (s *AudioOutputSupervisor) Stop() error {
 	if !atomic.CompareAndSwapInt32(&s.running, 1, 0) {
 		return nil // Already stopped
 	}
@@ -140,26 +144,26 @@ func (s *AudioServerSupervisor) Stop() error {
 }
 
 // IsRunning returns true if the supervisor is running
-func (s *AudioServerSupervisor) IsRunning() bool {
+func (s *AudioOutputSupervisor) IsRunning() bool {
 	return atomic.LoadInt32(&s.running) == 1
 }
 
 // GetProcessPID returns the current process PID (0 if not running)
-func (s *AudioServerSupervisor) GetProcessPID() int {
+func (s *AudioOutputSupervisor) GetProcessPID() int {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.processPID
 }
 
 // GetLastExitInfo returns information about the last process exit
-func (s *AudioServerSupervisor) GetLastExitInfo() (exitCode int, exitTime time.Time) {
+func (s *AudioOutputSupervisor) GetLastExitInfo() (exitCode int, exitTime time.Time) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return s.lastExitCode, s.lastExitTime
 }
 
 // GetProcessMetrics returns current process metrics if the process is running
-func (s *AudioServerSupervisor) GetProcessMetrics() *ProcessMetrics {
+func (s *AudioOutputSupervisor) GetProcessMetrics() *ProcessMetrics {
 	s.mutex.RLock()
 	pid := s.processPID
 	s.mutex.RUnlock()
@@ -178,7 +182,7 @@ func (s *AudioServerSupervisor) GetProcessMetrics() *ProcessMetrics {
 }
 
 // supervisionLoop is the main supervision loop
-func (s *AudioServerSupervisor) supervisionLoop() {
+func (s *AudioOutputSupervisor) supervisionLoop() {
 	defer func() {
 		close(s.processDone)
 		s.logger.Info().Msg("audio server supervision ended")
@@ -252,7 +256,7 @@ func (s *AudioServerSupervisor) supervisionLoop() {
 }
 
 // startProcess starts the audio server process
-func (s *AudioServerSupervisor) startProcess() error {
+func (s *AudioOutputSupervisor) startProcess() error {
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -285,7 +289,7 @@ func (s *AudioServerSupervisor) startProcess() error {
 }
 
 // waitForProcessExit waits for the current process to exit and logs the result
-func (s *AudioServerSupervisor) waitForProcessExit() {
+func (s *AudioOutputSupervisor) waitForProcessExit() {
 	s.mutex.RLock()
 	cmd := s.cmd
 	pid := s.processPID
@@ -338,7 +342,7 @@ func (s *AudioServerSupervisor) waitForProcessExit() {
 }
 
 // terminateProcess gracefully terminates the current process
-func (s *AudioServerSupervisor) terminateProcess() {
+func (s *AudioOutputSupervisor) terminateProcess() {
 	s.mutex.RLock()
 	cmd := s.cmd
 	pid := s.processPID
@@ -365,14 +369,14 @@ func (s *AudioServerSupervisor) terminateProcess() {
 	select {
 	case <-done:
 		s.logger.Info().Int("pid", pid).Msg("audio server process terminated gracefully")
-	case <-time.After(GetConfig().InputSupervisorTimeout):
+	case <-time.After(GetConfig().OutputSupervisorTimeout):
 		s.logger.Warn().Int("pid", pid).Msg("process did not terminate gracefully, sending SIGKILL")
 		s.forceKillProcess()
 	}
 }
 
 // forceKillProcess forcefully kills the current process
-func (s *AudioServerSupervisor) forceKillProcess() {
+func (s *AudioOutputSupervisor) forceKillProcess() {
 	s.mutex.RLock()
 	cmd := s.cmd
 	pid := s.processPID
@@ -389,7 +393,7 @@ func (s *AudioServerSupervisor) forceKillProcess() {
 }
 
 // shouldRestart determines if the process should be restarted
-func (s *AudioServerSupervisor) shouldRestart() bool {
+func (s *AudioOutputSupervisor) shouldRestart() bool {
 	if atomic.LoadInt32(&s.running) == 0 {
 		return false // Supervisor is stopping
 	}
@@ -411,7 +415,7 @@ func (s *AudioServerSupervisor) shouldRestart() bool {
 }
 
 // recordRestartAttempt records a restart attempt
-func (s *AudioServerSupervisor) recordRestartAttempt() {
+func (s *AudioOutputSupervisor) recordRestartAttempt() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -419,7 +423,7 @@ func (s *AudioServerSupervisor) recordRestartAttempt() {
 }
 
 // calculateRestartDelay calculates the delay before next restart attempt
-func (s *AudioServerSupervisor) calculateRestartDelay() time.Duration {
+func (s *AudioOutputSupervisor) calculateRestartDelay() time.Duration {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 

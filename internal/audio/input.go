@@ -47,7 +47,13 @@ func (aim *AudioInputManager) Start() error {
 	err := aim.ipcManager.Start()
 	if err != nil {
 		aim.logger.Error().Err(err).Msg("Failed to start IPC audio input")
+		// Ensure proper cleanup on error
 		atomic.StoreInt32(&aim.running, 0)
+		// Reset metrics on failed start
+		atomic.StoreInt64(&aim.metrics.FramesSent, 0)
+		atomic.StoreInt64(&aim.metrics.FramesDropped, 0)
+		atomic.StoreInt64(&aim.metrics.BytesProcessed, 0)
+		atomic.StoreInt64(&aim.metrics.ConnectionDrops, 0)
 		return err
 	}
 

@@ -111,7 +111,7 @@ func initializeBroadcaster() {
 	go audioEventBroadcaster.startMetricsBroadcasting()
 
 	// Start granular metrics logging with same interval as metrics broadcasting
-	StartGranularMetricsLogging(GetMetricsUpdateInterval())
+	// StartGranularMetricsLogging(GetMetricsUpdateInterval()) // Disabled to reduce log pollution
 }
 
 // InitializeAudioEventBroadcaster initializes the global audio event broadcaster

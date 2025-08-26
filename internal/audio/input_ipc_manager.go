@@ -35,7 +35,13 @@ func (aim *AudioInputIPCManager) Start() error {
 
 	err := aim.supervisor.Start()
 	if err != nil {
+		// Ensure proper cleanup on supervisor start failure
 		atomic.StoreInt32(&aim.running, 0)
+		// Reset metrics on failed start
+		atomic.StoreInt64(&aim.metrics.FramesSent, 0)
+		atomic.StoreInt64(&aim.metrics.FramesDropped, 0)
+		atomic.StoreInt64(&aim.metrics.BytesProcessed, 0)
+		atomic.StoreInt64(&aim.metrics.ConnectionDrops, 0)
 		aim.logger.Error().Err(err).Msg("Failed to start audio input supervisor")
 		return err
 	}
@@ -51,6 +57,7 @@ func (aim *AudioInputIPCManager) Start() error {
 
 	err = aim.supervisor.SendConfig(config)
 	if err != nil {
+		// Config send failure is not critical, log warning and continue
 		aim.logger.Warn().Err(err).Msg("Failed to send initial config, will retry later")
 	}
 

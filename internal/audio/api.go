@@ -9,7 +9,7 @@ import (
 
 var (
 	// Global audio output supervisor instance
-	globalOutputSupervisor unsafe.Pointer // *AudioServerSupervisor
+	globalOutputSupervisor unsafe.Pointer // *AudioOutputSupervisor
 )
 
 // isAudioServerProcess detects if we're running as the audio server subprocess
@@ -58,15 +58,15 @@ func StopNonBlockingAudioStreaming() {
 }
 
 // SetAudioOutputSupervisor sets the global audio output supervisor
-func SetAudioOutputSupervisor(supervisor *AudioServerSupervisor) {
+func SetAudioOutputSupervisor(supervisor *AudioOutputSupervisor) {
 	atomic.StorePointer(&globalOutputSupervisor, unsafe.Pointer(supervisor))
 }
 
 // GetAudioOutputSupervisor returns the global audio output supervisor
-func GetAudioOutputSupervisor() *AudioServerSupervisor {
+func GetAudioOutputSupervisor() *AudioOutputSupervisor {
 	ptr := atomic.LoadPointer(&globalOutputSupervisor)
 	if ptr == nil {
 		return nil
 	}
-	return (*AudioServerSupervisor)(ptr)
+	return (*AudioOutputSupervisor)(ptr)
 }
