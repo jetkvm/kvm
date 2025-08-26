@@ -17,10 +17,10 @@ import { Button } from "@/components/Button";
 import EmptyCard from "@/components/EmptyCard";
 import Card from "@/components/Card";
 import { MAX_TOTAL_MACROS, COPY_SUFFIX, DEFAULT_DELAY } from "@/constants/macros";
-import { keyDisplayMap, modifierDisplayMap } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import useKeyboardLayout from "@/hooks/useKeyboardLayout";
 
 const normalizeSortOrders = (macros: KeySequence[]): KeySequence[] => {
   return macros.map((macro, index) => ({
@@ -35,6 +35,7 @@ export default function SettingsMacrosRoute() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [macroToDelete, setMacroToDelete] = useState<KeySequence | null>(null);
+  const { selectedKeyboard }  = useKeyboardLayout();
 
   const isMaxMacrosReached = useMemo(
     () => macros.length >= MAX_TOTAL_MACROS,
@@ -185,7 +186,7 @@ export default function SettingsMacrosRoute() {
                                   step.modifiers.map((modifier, idx) => (
                                     <Fragment key={`mod-${idx}`}>
                                       <span className="font-medium text-slate-600 dark:text-slate-200">
-                                        {modifierDisplayMap[modifier] || modifier}
+                                        {selectedKeyboard.modifierDisplayMap[modifier] || modifier}
                                       </span>
                                       {idx < step.modifiers.length - 1 && (
                                         <span className="text-slate-400 dark:text-slate-600">
@@ -210,7 +211,7 @@ export default function SettingsMacrosRoute() {
                                   step.keys.map((key, idx) => (
                                     <Fragment key={`key-${idx}`}>
                                       <span className="font-medium text-blue-600 dark:text-blue-400">
-                                        {keyDisplayMap[key] || key}
+                                        {selectedKeyboard.keyDisplayMap[key] || key}
                                       </span>
                                       {idx < step.keys.length - 1 && (
                                         <span className="text-slate-400 dark:text-slate-600">
@@ -297,8 +298,10 @@ export default function SettingsMacrosRoute() {
       actionLoadingId,
       handleDeleteMacro,
       handleMoveMacro,
+      selectedKeyboard.modifierDisplayMap,
+      selectedKeyboard.keyDisplayMap,
       handleDuplicateMacro,
-      navigate,
+      navigate
     ],
   );
 

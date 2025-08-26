@@ -26,17 +26,13 @@ export default function Actionbar({
   requestFullscreen: () => Promise<void>;
 }) {
   const { navigateTo } = useDeviceUiNavigation();
-  const virtualKeyboard = useHidStore(state => state.isVirtualKeyboardEnabled);
+  const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
+  const { setDisableVideoFocusTrap, terminalType, setTerminalType, toggleSidebarView } = useUiStore();
 
-  const setVirtualKeyboard = useHidStore(state => state.setVirtualKeyboardEnabled);
-  const toggleSidebarView = useUiStore(state => state.toggleSidebarView);
-  const setDisableFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
-  const terminalType = useUiStore(state => state.terminalType);
-  const setTerminalType = useUiStore(state => state.setTerminalType);
   const remoteVirtualMediaState = useMountMediaStore(
     state => state.remoteVirtualMediaState,
   );
-  const developerMode = useSettingsStore(state => state.developerMode);
+  const { developerMode } = useSettingsStore();
 
   // This is the only way to get a reliable state change for the popover
   // at time of writing this there is no mount, or unmount event for the popover
@@ -47,13 +43,13 @@ export default function Actionbar({
         isOpen.current = open;
         if (!open) {
           setTimeout(() => {
-            setDisableFocusTrap(false);
-            console.log("Popover is closing. Returning focus trap to video");
+            setDisableVideoFocusTrap(false);
+            console.debug("Popover is closing. Returning focus trap to video");
           }, 0);
         }
       }
     },
-    [setDisableFocusTrap],
+    [setDisableVideoFocusTrap],
   );
 
   return (
@@ -81,7 +77,7 @@ export default function Actionbar({
                 text="Paste text"
                 LeadingIcon={MdOutlineContentPasteGo}
                 onClick={() => {
-                  setDisableFocusTrap(true);
+                  setDisableVideoFocusTrap(true);
                 }}
               />
             </PopoverButton>
@@ -123,7 +119,7 @@ export default function Actionbar({
                     );
                   }}
                   onClick={() => {
-                    setDisableFocusTrap(true);
+                    setDisableVideoFocusTrap(true);
                   }}
                 />
               </PopoverButton>
@@ -154,7 +150,7 @@ export default function Actionbar({
                   theme="light"
                   text="Wake on LAN"
                   onClick={() => {
-                    setDisableFocusTrap(true);
+                    setDisableVideoFocusTrap(true);
                   }}
                   LeadingIcon={({ className }) => (
                     <svg
@@ -204,7 +200,7 @@ export default function Actionbar({
               theme="light"
               text="Virtual Keyboard"
               LeadingIcon={FaKeyboard}
-              onClick={() => setVirtualKeyboard(!virtualKeyboard)}
+              onClick={() => setVirtualKeyboardEnabled(!isVirtualKeyboardEnabled)}
             />
           </div>
         </div>
@@ -218,7 +214,7 @@ export default function Actionbar({
                 text="Extension"
                 LeadingIcon={LuCable}
                 onClick={() => {
-                  setDisableFocusTrap(true);
+                  setDisableVideoFocusTrap(true);
                 }}
               />
             </PopoverButton>
@@ -243,7 +239,7 @@ export default function Actionbar({
               theme="light"
               text="Virtual Keyboard"
               LeadingIcon={FaKeyboard}
-              onClick={() => setVirtualKeyboard(!virtualKeyboard)}
+              onClick={() => setVirtualKeyboardEnabled(!isVirtualKeyboardEnabled)}
             />
           </div>
           <div className="hidden md:block">
@@ -268,7 +264,10 @@ export default function Actionbar({
               theme="light"
               text="Settings"
               LeadingIcon={LuSettings}
-              onClick={() => navigateTo("/settings")}
+              onClick={() => {
+                  setDisableVideoFocusTrap(true);
+                  navigateTo("/settings")
+              }}
             />
           </div>
 

@@ -13,7 +13,7 @@ func lifetimeToTime(lifetime int) *time.Time {
 	return &t
 }
 
-func IsSame(a, b interface{}) bool {
+func IsSame(a, b any) bool {
 	aJSON, err := json.Marshal(a)
 	if err != nil {
 		return false

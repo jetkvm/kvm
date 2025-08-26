@@ -2,6 +2,7 @@ package usbgadget
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -9,6 +10,31 @@ import (
 
 	"github.com/rs/zerolog"
 )
+
+type ByteSlice []byte
+
+func (s ByteSlice) MarshalJSON() ([]byte, error) {
+	vals := make([]int, len(s))
+	for i, v := range s {
+		vals[i] = int(v)
+	}
+	return json.Marshal(vals)
+}
+
+func (s *ByteSlice) UnmarshalJSON(data []byte) error {
+	var vals []int
+	if err := json.Unmarshal(data, &vals); err != nil {
+		return err
+	}
+	*s = make([]byte, len(vals))
+	for i, v := range vals {
+		if v < 0 || v > 255 {
+			return fmt.Errorf("value %d out of byte range", v)
+		}
+		(*s)[i] = byte(v)
+	}
+	return nil
+}
 
 func joinPath(basePath string, paths []string) string {
 	pathArr := append([]string{basePath}, paths...)
@@ -81,7 +107,7 @@ func compareFileContent(oldContent []byte, newContent []byte, looserMatch bool) 
 	return false
 }
 
-func (u *UsbGadget) logWithSuppression(counterName string, every int, logger *zerolog.Logger, err error, msg string, args ...interface{}) {
+func (u *UsbGadget) logWithSuppression(counterName string, every int, logger *zerolog.Logger, err error, msg string, args ...any) {
 	u.logSuppressionLock.Lock()
 	defer u.logSuppressionLock.Unlock()
 

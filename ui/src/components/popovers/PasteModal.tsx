@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LuCornerDownLeft } from "react-icons/lu";
 import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
 import { useClose } from "@headlessui/react";
@@ -10,7 +10,8 @@ import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidStore, useRTCStore, useUiStore, useSettingsStore } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
-import { KeyStroke, KeyboardLayout, selectedKeyboard } from "@/keyboardLayouts";
+import { KeyStroke } from "@/keyboardLayouts";
+import useKeyboardLayout from "@/hooks/useKeyboardLayout";
 import notifications from "@/notifications";
 
 const hidKeyboardPayload = (modifier: number, keys: number[]) => {
@@ -18,33 +19,24 @@ const hidKeyboardPayload = (modifier: number, keys: number[]) => {
 };
 
 const modifierCode = (shift?: boolean, altRight?: boolean) => {
-  return (shift ? modifiers["ShiftLeft"] : 0)
-       | (altRight ? modifiers["AltRight"] : 0)
+  return (shift ? modifiers.ShiftLeft : 0)
+       | (altRight ? modifiers.AltRight : 0)
 }
 const noModifier = 0
 
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
-  const setPasteMode = useHidStore(state => state.setPasteModeEnabled);
-  const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
+  const { setPasteModeEnabled } = useHidStore();
+  const { setDisableVideoFocusTrap } = useUiStore();
 
   const { send } = useJsonRpc();
-  const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
+  const { rpcDataChannel } = useRTCStore();
 
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
   const close = useClose();
 
-  const keyboardLayout = useSettingsStore(state => state.keyboardLayout);
-  const setKeyboardLayout = useSettingsStore(
-    state => state.setKeyboardLayout,
-  );
-
-  // this ensures we always get the original en_US if it hasn't been set yet
-  const safeKeyboardLayout = useMemo(() => {
-    if (keyboardLayout && keyboardLayout.length > 0)
-      return keyboardLayout;
-    return "en_US";
-  }, [keyboardLayout]);
+  const { setKeyboardLayout } = useSettingsStore();
+  const { selectedKeyboard }  = useKeyboardLayout();
 
   useEffect(() => {
     send("getKeyboardLayout", {}, (resp: JsonRpcResponse) => {
@@ -54,24 +46,23 @@ export default function PasteModal() {
   }, [send, setKeyboardLayout]);
 
   const onCancelPasteMode = useCallback(() => {
-    setPasteMode(false);
+    setPasteModeEnabled(false);
     setDisableVideoFocusTrap(false);
     setInvalidChars([]);
-  }, [setDisableVideoFocusTrap, setPasteMode]);
+  }, [setDisableVideoFocusTrap, setPasteModeEnabled]);
 
   const onConfirmPaste = useCallback(async () => {
-    setPasteMode(false);
+    setPasteModeEnabled(false);
     setDisableVideoFocusTrap(false);
 
     if (rpcDataChannel?.readyState !== "open" || !TextAreaRef.current) return;
-    const keyboard: KeyboardLayout = selectedKeyboard(safeKeyboardLayout);
-    if (!keyboard) return;
+    if (!selectedKeyboard) return;
 
     const text = TextAreaRef.current.value;
 
     try {
       for (const char of text) {
-        const keyprops = keyboard.chars[char];
+        const keyprops = selectedKeyboard.chars[char];
         if (!keyprops) continue;
 
         const { key, shift, altRight, deadKey, accentKey } = keyprops;
@@ -111,7 +102,7 @@ export default function PasteModal() {
         );
       });
     }
-  }, [rpcDataChannel?.readyState, safeKeyboardLayout, send, setDisableVideoFocusTrap, setPasteMode]);
+  }, [selectedKeyboard, rpcDataChannel?.readyState, send, setDisableVideoFocusTrap, setPasteModeEnabled]);
 
   useEffect(() => {
     if (TextAreaRef.current) {
@@ -161,7 +152,7 @@ export default function PasteModal() {
                             // @ts-expect-error TS doesn't recognize Intl.Segmenter in some environments
                             [...new Intl.Segmenter().segment(value)]
                               .map(x => x.segment)
-                              .filter(char => !selectedKeyboard(safeKeyboardLayout).chars[char]),
+                              .filter(char => !selectedKeyboard.chars[char]),
                           ),
                         ];
 
@@ -182,7 +173,7 @@ export default function PasteModal() {
                 </div>
                 <div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Sending text using keyboard layout: {selectedKeyboard(safeKeyboardLayout).name}
+                    Sending text using keyboard layout: {selectedKeyboard.isoCode}-{selectedKeyboard.name}
                   </p>
                 </div>
               </div>

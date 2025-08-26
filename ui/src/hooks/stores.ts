@@ -47,12 +47,12 @@ export interface User {
   picture?: string;
 }
 
-interface UserState {
+export interface UserState {
   user: User | null;
   setUser: (user: User | null) => void;
 }
 
-interface UIState {
+export interface UIState {
   sidebarView: AvailableSidebarViews | null;
   setSidebarView: (view: AvailableSidebarViews | null) => void;
 
@@ -68,21 +68,21 @@ interface UIState {
   setAttachedVirtualKeyboardVisibility: (enabled: boolean) => void;
 
   terminalType: AvailableTerminalTypes;
-  setTerminalType: (enabled: UIState["terminalType"]) => void;
+  setTerminalType: (type: UIState["terminalType"]) => void;
 }
 
 export const useUiStore = create<UIState>(set => ({
   terminalType: "none",
-  setTerminalType: type => set({ terminalType: type }),
+  setTerminalType: (type: UIState["terminalType"])  => set({ terminalType: type }),
 
   sidebarView: null,
-  setSidebarView: view => set({ sidebarView: view }),
+  setSidebarView:  (view: AvailableSidebarViews | null) => set({ sidebarView: view }),
 
   disableVideoFocusTrap: false,
-  setDisableVideoFocusTrap: enabled => set({ disableVideoFocusTrap: enabled }),
+  setDisableVideoFocusTrap: (enabled: boolean) => set({ disableVideoFocusTrap: enabled }),
 
   isWakeOnLanModalVisible: false,
-  setWakeOnLanModalVisibility: enabled => set({ isWakeOnLanModalVisible: enabled }),
+  setWakeOnLanModalVisibility: (enabled: boolean) => set({ isWakeOnLanModalVisible: enabled }),
 
   toggleSidebarView: view =>
     set(state => {
@@ -94,11 +94,11 @@ export const useUiStore = create<UIState>(set => ({
     }),
 
   isAttachedVirtualKeyboardVisible: true,
-  setAttachedVirtualKeyboardVisibility: enabled =>
+  setAttachedVirtualKeyboardVisibility: (enabled: boolean) =>
     set({ isAttachedVirtualKeyboardVisible: enabled }),
 }));
 
-interface RTCState {
+export interface RTCState {
   peerConnection: RTCPeerConnection | null;
   setPeerConnection: (pc: RTCState["peerConnection"]) => void;
 
@@ -118,18 +118,18 @@ interface RTCState {
   setMediaStream: (stream: MediaStream) => void;
 
   videoStreamStats: RTCInboundRtpStreamStats | null;
-  appendVideoStreamStats: (state: RTCInboundRtpStreamStats) => void;
+  appendVideoStreamStats: (stats: RTCInboundRtpStreamStats) => void;
   videoStreamStatsHistory: Map<number, RTCInboundRtpStreamStats>;
 
   isTurnServerInUse: boolean;
   setTurnServerInUse: (inUse: boolean) => void;
 
   inboundRtpStats: Map<number, RTCInboundRtpStreamStats>;
-  appendInboundRtpStats: (state: RTCInboundRtpStreamStats) => void;
+  appendInboundRtpStats: (stats: RTCInboundRtpStreamStats) => void;
   clearInboundRtpStats: () => void;
 
   candidatePairStats: Map<number, RTCIceCandidatePairStats>;
-  appendCandidatePairStats: (pair: RTCIceCandidatePairStats) => void;
+  appendCandidatePairStats: (stats: RTCIceCandidatePairStats) => void;
   clearCandidatePairStats: () => void;
 
   // Remote ICE candidates stat type doesn't exist as of today
@@ -141,7 +141,7 @@ interface RTCState {
 
   // Disk data channel stats type doesn't exist as of today
   diskDataChannelStats: Map<number, RTCDataChannelStats>;
-  appendDiskDataChannelStats: (stat: RTCDataChannelStats) => void;
+  appendDiskDataChannelStats: (stats: RTCDataChannelStats) => void;
 
   terminalChannel: RTCDataChannel | null;
   setTerminalChannel: (channel: RTCDataChannel) => void;
@@ -149,78 +149,78 @@ interface RTCState {
 
 export const useRTCStore = create<RTCState>(set => ({
   peerConnection: null,
-  setPeerConnection: pc => set({ peerConnection: pc }),
+  setPeerConnection: (pc: RTCState["peerConnection"]) => set({ peerConnection: pc }),
 
   rpcDataChannel: null,
-  setRpcDataChannel: channel => set({ rpcDataChannel: channel }),
+  setRpcDataChannel: (channel: RTCDataChannel) => set({ rpcDataChannel: channel }),
 
   transceiver: null,
-  setTransceiver: transceiver => set({ transceiver }),
+  setTransceiver: (transceiver: RTCRtpTransceiver) => set({ transceiver }),
 
   peerConnectionState: null,
-  setPeerConnectionState: state => set({ peerConnectionState: state }),
+  setPeerConnectionState: (state: RTCPeerConnectionState) => set({ peerConnectionState: state }),
 
   diskChannel: null,
-  setDiskChannel: channel => set({ diskChannel: channel }),
+  setDiskChannel: (channel: RTCDataChannel) => set({ diskChannel: channel }),
 
   mediaStream: null,
-  setMediaStream: stream => set({ mediaStream: stream }),
+  setMediaStream: (stream: MediaStream) => set({ mediaStream: stream }),
 
   videoStreamStats: null,
-  appendVideoStreamStats: stats => set({ videoStreamStats: stats }),
+  appendVideoStreamStats: (stats: RTCInboundRtpStreamStats) => set({ videoStreamStats: stats }),
   videoStreamStatsHistory: new Map(),
 
   isTurnServerInUse: false,
-  setTurnServerInUse: inUse => set({ isTurnServerInUse: inUse }),
+  setTurnServerInUse: (inUse: boolean)  => set({ isTurnServerInUse: inUse }),
 
   inboundRtpStats: new Map(),
-  appendInboundRtpStats: newStat => {
+  appendInboundRtpStats: (stats: RTCInboundRtpStreamStats) => {
     set(prevState => ({
-      inboundRtpStats: appendStatToMap(newStat, prevState.inboundRtpStats),
+      inboundRtpStats: appendStatToMap(stats, prevState.inboundRtpStats),
     }));
   },
   clearInboundRtpStats: () => set({ inboundRtpStats: new Map() }),
 
   candidatePairStats: new Map(),
-  appendCandidatePairStats: newStat => {
+  appendCandidatePairStats: (stats: RTCIceCandidatePairStats) => {
     set(prevState => ({
-      candidatePairStats: appendStatToMap(newStat, prevState.candidatePairStats),
+      candidatePairStats: appendStatToMap(stats, prevState.candidatePairStats),
     }));
   },
   clearCandidatePairStats: () => set({ candidatePairStats: new Map() }),
 
   localCandidateStats: new Map(),
-  appendLocalCandidateStats: newStat => {
+  appendLocalCandidateStats: (stats: RTCIceCandidateStats) => {
     set(prevState => ({
-      localCandidateStats: appendStatToMap(newStat, prevState.localCandidateStats),
+      localCandidateStats: appendStatToMap(stats, prevState.localCandidateStats),
     }));
   },
 
   remoteCandidateStats: new Map(),
-  appendRemoteCandidateStats: newStat => {
+  appendRemoteCandidateStats: (stats: RTCIceCandidateStats) => {
     set(prevState => ({
-      remoteCandidateStats: appendStatToMap(newStat, prevState.remoteCandidateStats),
+      remoteCandidateStats: appendStatToMap(stats, prevState.remoteCandidateStats),
     }));
   },
 
   diskDataChannelStats: new Map(),
-  appendDiskDataChannelStats: newStat => {
+  appendDiskDataChannelStats: (stats: RTCDataChannelStats) => {
     set(prevState => ({
-      diskDataChannelStats: appendStatToMap(newStat, prevState.diskDataChannelStats),
+      diskDataChannelStats: appendStatToMap(stats, prevState.diskDataChannelStats),
     }));
   },
 
   // Add these new properties to the store implementation
   terminalChannel: null,
-  setTerminalChannel: channel => set({ terminalChannel: channel }),
+  setTerminalChannel: (channel: RTCDataChannel) => set({ terminalChannel: channel }),
 }));
 
-interface MouseMove {
+export interface MouseMove {
   x: number;
   y: number;
   buttons: number;
 }
-interface MouseState {
+export interface MouseState {
   mouseX: number;
   mouseY: number;
   mouseMove?: MouseMove;
@@ -232,8 +232,16 @@ export const useMouseStore = create<MouseState>(set => ({
   mouseX: 0,
   mouseY: 0,
   setMouseMove: (move?: MouseMove) => set({ mouseMove: move }),
-  setMousePosition: (x, y) => set({ mouseX: x, mouseY: y }),
+  setMousePosition: (x: number, y: number) => set({ mouseX: x, mouseY: y }),
 }));
+
+export type HdmiStates = "ready" | "no_signal" | "no_lock" | "out_of_range" | "connecting";
+export type HdmiErrorStates = Extract<VideoState["hdmiState"], "no_signal" | "no_lock" | "out_of_range">
+
+export interface HdmiState {
+  ready: boolean;
+  error?: HdmiErrorStates;
+}
 
 export interface VideoState {
   width: number;
@@ -242,17 +250,11 @@ export interface VideoState {
   clientHeight: number;
   setClientSize: (width: number, height: number) => void;
   setSize: (width: number, height: number) => void;
-  hdmiState: "ready" | "no_signal" | "no_lock" | "out_of_range" | "connecting";
+  hdmiState: HdmiStates;
   setHdmiState: (state: {
     ready: boolean;
-    error?: Extract<VideoState["hdmiState"], "no_signal" | "no_lock" | "out_of_range">;
+    error?: HdmiErrorStates;
   }) => void;
-}
-
-export interface BacklightSettings {
-  max_brightness: number;
-  dim_after: number;
-  off_after: number;
 }
 
 export const useVideoStore = create<VideoState>(set => ({
@@ -263,13 +265,13 @@ export const useVideoStore = create<VideoState>(set => ({
   clientHeight: 0,
 
   // The video element's client size
-  setClientSize: (clientWidth, clientHeight) => set({ clientWidth, clientHeight }),
+  setClientSize: (clientWidth: number, clientHeight: number) => set({ clientWidth, clientHeight }),
 
   // Resolution
-  setSize: (width, height) => set({ width, height }),
+  setSize: (width: number, height: number) => set({ width, height }),
 
   hdmiState: "connecting",
-  setHdmiState: state => {
+  setHdmiState: (state: HdmiState) => {
     if (!state) return;
     const { ready, error } = state;
 
@@ -283,9 +285,13 @@ export const useVideoStore = create<VideoState>(set => ({
   },
 }));
 
-export type KeyboardLedSync = "auto" | "browser" | "host";
+export interface BacklightSettings {
+  max_brightness: number;
+  dim_after: number;
+  off_after: number;
+}
 
-interface SettingsState {
+export interface SettingsState {
   isCursorHidden: boolean;
   setCursorVisibility: (enabled: boolean) => void;
 
@@ -308,9 +314,6 @@ interface SettingsState {
   keyboardLayout: string;
   setKeyboardLayout: (layout: string) => void;
 
-  keyboardLedSync: KeyboardLedSync;
-  setKeyboardLedSync: (sync: KeyboardLedSync) => void;
-
   scrollThrottling: number;
   setScrollThrottling: (value: number) => void;
 
@@ -330,17 +333,17 @@ export const useSettingsStore = create(
   persist<SettingsState>(
     set => ({
       isCursorHidden: false,
-      setCursorVisibility: enabled => set({ isCursorHidden: enabled }),
+      setCursorVisibility: (enabled: boolean) => set({ isCursorHidden: enabled }),
 
       mouseMode: "absolute",
-      setMouseMode: mode => set({ mouseMode: mode }),
+      setMouseMode: (mode: string) => set({ mouseMode: mode }),
 
       debugMode: import.meta.env.DEV,
-      setDebugMode: enabled => set({ debugMode: enabled }),
+      setDebugMode: (enabled: boolean) => set({ debugMode: enabled }),
 
       // Add developer mode with default value
       developerMode: false,
-      setDeveloperMode: enabled => set({ developerMode: enabled }),
+      setDeveloperMode: (enabled: boolean) => set({ developerMode: enabled }),
 
       displayRotation: "270",
       setDisplayRotation: (rotation: string) => set({ displayRotation: rotation }),
@@ -354,24 +357,21 @@ export const useSettingsStore = create(
         set({ backlightSettings: settings }),
 
       keyboardLayout: "en-US",
-      setKeyboardLayout: layout => set({ keyboardLayout: layout }),
-
-      keyboardLedSync: "auto",
-      setKeyboardLedSync: sync => set({ keyboardLedSync: sync }),
+      setKeyboardLayout: (layout: string) => set({ keyboardLayout: layout }),
 
       scrollThrottling: 0,
-      setScrollThrottling: value => set({ scrollThrottling: value }),
+      setScrollThrottling: (value: number) => set({ scrollThrottling: value }),
 
       showPressedKeys: true,
-      setShowPressedKeys: show => set({ showPressedKeys: show }),
+      setShowPressedKeys: (show: boolean) => set({ showPressedKeys: show }),
 
       // Video enhancement settings with default values (1.0 = normal)
       videoSaturation: 1.0,
-      setVideoSaturation: value => set({ videoSaturation: value }),
+      setVideoSaturation: (value: number) => set({ videoSaturation: value }),
       videoBrightness: 1.0,
-      setVideoBrightness: value => set({ videoBrightness: value }),
+      setVideoBrightness: (value: number) => set({ videoBrightness: value }),
       videoContrast: 1.0,
-      setVideoContrast: value => set({ videoContrast: value }),
+      setVideoContrast: (value: number) => set({ videoContrast: value }),
     }),
     {
       name: "settings",
@@ -411,23 +411,23 @@ export interface MountMediaState {
 
 export const useMountMediaStore = create<MountMediaState>(set => ({
   localFile: null,
-  setLocalFile: file => set({ localFile: file }),
+  setLocalFile: (file: MountMediaState["localFile"]) => set({ localFile: file }),
 
   remoteVirtualMediaState: null,
-  setRemoteVirtualMediaState: state => set({ remoteVirtualMediaState: state }),
+  setRemoteVirtualMediaState: (state: MountMediaState["remoteVirtualMediaState"]) => set({ remoteVirtualMediaState: state }),
 
   modalView: "mode",
-  setModalView: view => set({ modalView: view }),
+  setModalView: (view: MountMediaState["modalView"]) => set({ modalView: view }),
 
   isMountMediaDialogOpen: false,
-  setIsMountMediaDialogOpen: isOpen => set({ isMountMediaDialogOpen: isOpen }),
+  setIsMountMediaDialogOpen: (isOpen: MountMediaState["isMountMediaDialogOpen"]) => set({ isMountMediaDialogOpen: isOpen }),
 
   uploadedFiles: [],
-  addUploadedFile: file =>
+  addUploadedFile: (file: { name: string; size: string; uploadedAt: string }) =>
     set(state => ({ uploadedFiles: [...state.uploadedFiles, file] })),
 
   errorMessage: null,
-  setErrorMessage: message => set({ errorMessage: message }),
+  setErrorMessage: (message: string | null) => set({ errorMessage: message }),
 }));
 
 export interface KeyboardLedState {
@@ -436,41 +436,33 @@ export interface KeyboardLedState {
   scroll_lock: boolean;
   compose: boolean;
   kana: boolean;
+  shift: boolean; // Optional, as not all keyboards have a shift LED
 };
-const defaultKeyboardLedState: KeyboardLedState = {
-  num_lock: false,
-  caps_lock: false,
-  scroll_lock: false,
-  compose: false,
-  kana: false,
-};
+
+export const hidKeyBufferSize = 6;
+export const hidErrorRollOver = 0x01;
+
+export interface KeysDownState {
+	modifier: number;
+	keys: number[];
+}
+
+export type USBStates = 
+  | "configured"
+  | "attached"
+  | "not attached"
+  | "suspended"
+  | "addressed";
 
 export interface HidState {
-  activeKeys: number[];
-  activeModifiers: number[];
-
-  updateActiveKeysAndModifiers: (keysAndModifiers: {
-    keys: number[];
-    modifiers: number[];
-  }) => void;
-
-  altGrArmed: boolean;
-  setAltGrArmed: (armed: boolean) => void;
-
-  altGrTimer: number | null; // _altGrCtrlTime
-  setAltGrTimer: (timeout: number | null) => void;
-
-  altGrCtrlTime: number; // _altGrCtrlTime
-  setAltGrCtrlTime: (time: number) => void;
-
-  keyboardLedState?: KeyboardLedState;
+  keyboardLedState: KeyboardLedState;
   setKeyboardLedState: (state: KeyboardLedState) => void;
-  setIsNumLockActive: (active: boolean) => void;
-  setIsCapsLockActive: (active: boolean) => void;
-  setIsScrollLockActive: (active: boolean) => void;
 
-  keyboardLedStateSyncAvailable: boolean;
-  setKeyboardLedStateSyncAvailable: (available: boolean) => void;
+  keysDownState: KeysDownState;
+  setKeysDownState: (state: KeysDownState) => void;
+
+  keyPressReportApiAvailable: boolean;
+  setkeyPressReportApiAvailable: (available: boolean) => void;
 
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
@@ -478,55 +470,29 @@ export interface HidState {
   isPasteModeEnabled: boolean;
   setPasteModeEnabled: (enabled: boolean) => void;
 
-  usbState: "configured" | "attached" | "not attached" | "suspended" | "addressed";
-  setUsbState: (state: HidState["usbState"]) => void;
+  usbState: USBStates;
+  setUsbState: (state: USBStates) => void;
 }
 
-export const useHidStore = create<HidState>((set, get) => ({
-  activeKeys: [],
-  activeModifiers: [],
-  updateActiveKeysAndModifiers: ({ keys, modifiers }) => {
-    return set({ activeKeys: keys, activeModifiers: modifiers });
-  },
+export const useHidStore = create<HidState>(set => ({
+  keyboardLedState: {} as KeyboardLedState,
+  setKeyboardLedState: (ledState: KeyboardLedState): void => set({ keyboardLedState: ledState }),
 
-  altGrArmed: false,
-  setAltGrArmed: armed => set({ altGrArmed: armed }),
+  keysDownState: { modifier: 0, keys: [0,0,0,0,0,0] } as KeysDownState,
+  setKeysDownState: (state: KeysDownState): void => set({ keysDownState: state }),
 
-  altGrTimer: 0,
-  setAltGrTimer: timeout => set({ altGrTimer: timeout }),
-
-  altGrCtrlTime: 0,
-  setAltGrCtrlTime: time => set({ altGrCtrlTime: time }),
-
-  setKeyboardLedState: ledState => set({ keyboardLedState: ledState }),
-  setIsNumLockActive: active => {
-    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
-    keyboardLedState.num_lock = active;
-    set({ keyboardLedState });
-  },
-  setIsCapsLockActive: active => {
-    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
-    keyboardLedState.caps_lock = active;
-    set({ keyboardLedState });
-  },
-  setIsScrollLockActive: active => {
-    const keyboardLedState = { ...(get().keyboardLedState || defaultKeyboardLedState) };
-    keyboardLedState.scroll_lock = active;
-    set({ keyboardLedState });
-  },
-
-  keyboardLedStateSyncAvailable: false,
-  setKeyboardLedStateSyncAvailable: available => set({ keyboardLedStateSyncAvailable: available }),
+  keyPressReportApiAvailable: true,
+  setkeyPressReportApiAvailable: (available: boolean) => set({ keyPressReportApiAvailable: available }),
 
   isVirtualKeyboardEnabled: false,
-  setVirtualKeyboardEnabled: enabled => set({ isVirtualKeyboardEnabled: enabled }),
+  setVirtualKeyboardEnabled: (enabled: boolean): void => set({ isVirtualKeyboardEnabled: enabled }),
 
   isPasteModeEnabled: false,
-  setPasteModeEnabled: enabled => set({ isPasteModeEnabled: enabled }),
+  setPasteModeEnabled: (enabled: boolean): void => set({ isPasteModeEnabled: enabled }),
 
   // Add these new properties for USB state
   usbState: "not attached",
-  setUsbState: state => set({ usbState: state }),
+  setUsbState: (state: USBStates) => set({ usbState: state }),
 }));
 
 export const useUserStore = create<UserState>(set => ({
@@ -534,11 +500,15 @@ export const useUserStore = create<UserState>(set => ({
   setUser: user => set({ user }),
 }));
 
-export interface UpdateState {
-  isUpdatePending: boolean;
-  setIsUpdatePending: (isPending: boolean) => void;
-  updateDialogHasBeenMinimized: boolean;
-  otaState: {
+export type UpdateModalViews =
+  | "loading"
+  | "updating"
+  | "upToDate"
+  | "updateAvailable"
+  | "updateCompleted"
+  | "error";
+
+export interface OtaState {
     updating: boolean;
     error: string | null;
 
@@ -567,24 +537,24 @@ export interface UpdateState {
 
     systemUpdateProgress: number;
     systemUpdatedAt: string | null;
-  };
-  setOtaState: (state: UpdateState["otaState"]) => void;
+};
+
+export interface UpdateState {
+  isUpdatePending: boolean;
+  setIsUpdatePending: (isPending: boolean) => void;
+  updateDialogHasBeenMinimized: boolean;
+  otaState: OtaState;
+  setOtaState: (state: OtaState) => void;
   setUpdateDialogHasBeenMinimized: (hasBeenMinimized: boolean) => void;
-  modalView:
-    | "loading"
-    | "updating"
-    | "upToDate"
-    | "updateAvailable"
-    | "updateCompleted"
-    | "error";
-  setModalView: (view: UpdateState["modalView"]) => void;
+  modalView: UpdateModalViews
+  setModalView: (view: UpdateModalViews) => void;
   setUpdateErrorMessage: (errorMessage: string) => void;
   updateErrorMessage: string | null;
 }
 
 export const useUpdateStore = create<UpdateState>(set => ({
   isUpdatePending: false,
-  setIsUpdatePending: isPending => set({ isUpdatePending: isPending }),
+  setIsUpdatePending: (isPending: boolean) => set({ isUpdatePending: isPending }),
 
   setOtaState: state => set({ otaState: state }),
   otaState: {
@@ -608,18 +578,22 @@ export const useUpdateStore = create<UpdateState>(set => ({
   },
 
   updateDialogHasBeenMinimized: false,
-  setUpdateDialogHasBeenMinimized: hasBeenMinimized =>
+  setUpdateDialogHasBeenMinimized: (hasBeenMinimized: boolean) =>
     set({ updateDialogHasBeenMinimized: hasBeenMinimized }),
   modalView: "loading",
-  setModalView: view => set({ modalView: view }),
+  setModalView: (view: UpdateModalViews) => set({ modalView: view }),
   updateErrorMessage: null,
-  setUpdateErrorMessage: errorMessage => set({ updateErrorMessage: errorMessage }),
+  setUpdateErrorMessage: (errorMessage: string) => set({ updateErrorMessage: errorMessage }),
 }));
 
-interface UsbConfigModalState {
-  modalView: "updateUsbConfig" | "updateUsbConfigSuccess";
+export type UsbConfigModalViews =
+  | "updateUsbConfig"
+  | "updateUsbConfigSuccess";
+
+export interface UsbConfigModalState {
+  modalView: UsbConfigModalViews ;
   errorMessage: string | null;
-  setModalView: (view: UsbConfigModalState["modalView"]) => void;
+  setModalView: (view: UsbConfigModalViews) => void;
   setErrorMessage: (message: string | null) => void;
 }
 
@@ -634,24 +608,26 @@ export interface UsbConfigState {
 export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
   modalView: "updateUsbConfig",
   errorMessage: null,
-  setModalView: view => set({ modalView: view }),
-  setErrorMessage: message => set({ errorMessage: message }),
+  setModalView:  (view: UsbConfigModalViews) => set({ modalView: view }),
+  setErrorMessage: (message: string | null) => set({ errorMessage: message }),
 }));
 
-interface LocalAuthModalState {
-  modalView:
-    | "createPassword"
-    | "deletePassword"
-    | "updatePassword"
-    | "creationSuccess"
-    | "deleteSuccess"
-    | "updateSuccess";
-  setModalView: (view: LocalAuthModalState["modalView"]) => void;
+export type LocalAuthModalViews =
+  | "createPassword"
+  | "deletePassword"
+  | "updatePassword"
+  | "creationSuccess"
+  | "deleteSuccess"
+  | "updateSuccess";
+
+export interface LocalAuthModalState {
+  modalView:LocalAuthModalViews;
+  setModalView: (view:LocalAuthModalViews) => void;
 }
 
 export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
   modalView: "createPassword",
-  setModalView: view => set({ modalView: view }),
+  setModalView: (view: LocalAuthModalViews)  => set({ modalView: view }),
 }));
 
 export interface DeviceState {
@@ -666,8 +642,8 @@ export const useDeviceStore = create<DeviceState>(set => ({
   appVersion: null,
   systemVersion: null,
 
-  setAppVersion: version => set({ appVersion: version }),
-  setSystemVersion: version => set({ systemVersion: version }),
+  setAppVersion: (version: string) => set({ appVersion: version }),
+  setSystemVersion: (version: string) => set({ systemVersion: version }),
 }));
 
 export interface DhcpLease {
@@ -913,7 +889,7 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
         sendFn(
           "setKeyboardMacros",
           { params: { macros: macrosWithSortOrder } },
-          response => {
+          (response: JsonRpcResponse) => {
             resolve(response);
           },
         );

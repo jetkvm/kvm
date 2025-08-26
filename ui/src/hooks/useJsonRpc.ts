@@ -33,10 +33,10 @@ const callbackStore = new Map<number | string, (resp: JsonRpcResponse) => void>(
 let requestCounter = 0;
 
 export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
-  const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
+  const { rpcDataChannel } = useRTCStore();
 
   const send = useCallback(
-    (method: string, params: unknown, callback?: (resp: JsonRpcResponse) => void) => {
+    async (method: string, params: unknown, callback?: (resp: JsonRpcResponse) => void) => {
       if (rpcDataChannel?.readyState !== "open") return;
       requestCounter++;
       const payload = { jsonrpc: "2.0", method, params, id: requestCounter };
@@ -45,7 +45,7 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
 
       rpcDataChannel.send(JSON.stringify(payload));
     },
-    [rpcDataChannel],
+    [rpcDataChannel]
   );
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
         return;
       }
 
-      if ("error" in payload) console.error(payload.error);
+      if ("error" in payload) console.error("RPC error", payload);
       if (!payload.id) return;
 
       const callback = callbackStore.get(payload.id);
@@ -76,7 +76,8 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
     return () => {
       rpcDataChannel.removeEventListener("message", messageHandler);
     };
-  }, [rpcDataChannel, onRequest]);
+  },
+  [rpcDataChannel, onRequest]);
 
   return { send };
 }

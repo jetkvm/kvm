@@ -1,6 +1,6 @@
 import "react-simple-keyboard/build/css/index.css";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useXTerm } from "react-xtermjs";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -65,21 +65,22 @@ function Terminal({
   readonly dataChannel: RTCDataChannel;
   readonly type: AvailableTerminalTypes;
 }) {
-  const enableTerminal = useUiStore(state => state.terminalType == type);
-  const setTerminalType = useUiStore(state => state.setTerminalType);
-  const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
-
+  const { terminalType, setTerminalType, setDisableVideoFocusTrap } = useUiStore();
   const { instance, ref } = useXTerm({ options: TERMINAL_CONFIG });
+
+  const isTerminalTypeEnabled = useMemo(() => {
+    return terminalType == type;
+  }, [terminalType, type]);
 
   useEffect(() => {
     setTimeout(() => {
-      setDisableVideoFocusTrap(enableTerminal);
+      setDisableVideoFocusTrap(isTerminalTypeEnabled);
     }, 500);
 
     return () => {
       setDisableVideoFocusTrap(false);
     };
-  }, [enableTerminal, setDisableVideoFocusTrap]);
+  }, [setDisableVideoFocusTrap, isTerminalTypeEnabled]);
 
   const readyState = dataChannel.readyState;
   useEffect(() => {
@@ -175,9 +176,9 @@ function Terminal({
             ],
             {
               "pointer-events-none translate-y-[500px] opacity-100 transition duration-300":
-                !enableTerminal,
+                !isTerminalTypeEnabled,
               "pointer-events-auto -translate-y-[0px] opacity-100 transition duration-300":
-                enableTerminal,
+                isTerminalTypeEnabled,
             },
           )}
         >

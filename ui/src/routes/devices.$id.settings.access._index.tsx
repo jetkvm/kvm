@@ -166,9 +166,7 @@ export default function SettingsAccessIndexRoute() {
 
         notifications.success("TLS settings updated successfully");
       });
-    },
-    [send],
-  );
+    }, [send]);
 
   // Handle TLS mode change
   const handleTlsModeChange = (value: string) => {

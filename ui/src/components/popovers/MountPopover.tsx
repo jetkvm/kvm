@@ -21,7 +21,7 @@ import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import notifications from "@/notifications";
 
 const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
-  const diskDataChannelStats = useRTCStore(state => state.diskDataChannelStats);
+  const { diskDataChannelStats } = useRTCStore();
   const { send } = useJsonRpc();
   const { remoteVirtualMediaState, setModalView, setRemoteVirtualMediaState } =
     useMountMediaStore();

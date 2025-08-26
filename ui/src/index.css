@@ -315,6 +315,11 @@ video::-webkit-media-controls {
   @apply inline-flex h-auto! w-auto! grow-0 py-1 text-xs;
 }
 
+.hg-theme-default .hg-row .down-key {
+  background: rgb(28, 28, 28);
+  @apply text-white! font-bold!;
+}
+
 .hg-theme-default .hg-row .hg-button-container,
 .hg-theme-default .hg-row .hg-button:not(:last-child) {
   @apply mr-[2px]! md:mr-[5px]!;

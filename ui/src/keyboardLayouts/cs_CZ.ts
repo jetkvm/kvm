@@ -1,17 +1,20 @@
 import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
 
-const name = "Čeština";
+import { en_US } from "./en_US" // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
 
-const keyTrema = { key: "Backslash" } // tréma (umlaut), two dots placed above a vowel
-const keyAcute = { key: "Equal" } // accent aigu (acute accent), mark ´ placed above the letter
-const keyHat = { key: "Digit3", shift: true, altRight: true } // accent circonflexe (accent hat), mark ^ placed above the letter
-const keyCaron = { key: "Equal", shift: true } // caron or haček (inverted hat), mark ˇ placed above the letter
-const keyGrave = { key: "Digit7", shift: true, altRight: true } // accent grave, mark ` placed above the letter
-const keyTilde = { key: "Digit1", shift: true, altRight: true } // tilde, mark ~ placed above the letter
-const keyRing = { key: "Backquote", shift: true } // kroužek (little ring), mark ° placed above the letter
-const keyOverdot = { key: "Digit8", shift: true, altRight: true } // overdot (dot above), mark ˙ placed above the letter
-const keyHook = { key: "Digit6", shift: true, altRight: true } // ogonoek (little hook), mark ˛ placed beneath a letter
-const keyCedille = { key: "Equal", shift: true, altRight: true } // accent cedille (cedilla), mark ¸ placed beneath a letter
+const name = "Čeština";
+const isoCode = "cs-CZ";
+
+const keyTrema: KeyCombo = { key: "Backslash" } // tréma (umlaut), two dots placed above a vowel
+const keyAcute: KeyCombo = { key: "Equal" } // accent aigu (acute accent), mark ´ placed above the letter
+const keyHat: KeyCombo = { key: "Digit3", shift: true, altRight: true } // accent circonflexe (accent hat), mark ^ placed above the letter
+const keyCaron: KeyCombo = { key: "Equal", shift: true } // caron or haček (inverted hat), mark ˇ placed above the letter
+const keyGrave: KeyCombo = { key: "Digit7", shift: true, altRight: true } // accent grave, mark ` placed above the letter
+const keyTilde: KeyCombo = { key: "Digit1", shift: true, altRight: true } // tilde, mark ~ placed above the letter
+const keyRing: KeyCombo = { key: "Backquote", shift: true } // kroužek (little ring), mark ° placed above the letter
+const keyOverdot: KeyCombo = { key: "Digit8", shift: true, altRight: true } // overdot (dot above), mark ˙ placed above the letter
+const keyHook: KeyCombo = { key: "Digit6", shift: true, altRight: true } // ogonoek (little hook), mark ˛ placed beneath a letter
+const keyCedille: KeyCombo = { key: "Equal", shift: true, altRight: true } // accent cedille (cedilla), mark ¸ placed beneath a letter
 
 const chars = {
   A: { key: "KeyA", shift: true },
@@ -244,7 +247,11 @@ const chars = {
 } as Record<string, KeyCombo>;
 
 export const cs_CZ: KeyboardLayout = {
-  isoCode: "cs-CZ",
+  isoCode: isoCode,
   name: name,
-  chars: chars
+  chars: chars,
+  // TODO need to localize these maps and layouts
+  keyDisplayMap: en_US.keyDisplayMap, 
+  modifierDisplayMap: en_US.modifierDisplayMap,
+  virtualKeyboard: en_US.virtualKeyboard
 };

@@ -64,14 +64,11 @@ const jigglerOptions = [
 type JigglerValues = (typeof jigglerOptions)[number]["value"] | "custom";
 
 export default function SettingsMouseRoute() {
-  const hideCursor = useSettingsStore(state => state.isCursorHidden);
-  const setHideCursor = useSettingsStore(state => state.setCursorVisibility);
-
-  const mouseMode = useSettingsStore(state => state.mouseMode);
-  const setMouseMode = useSettingsStore(state => state.setMouseMode);
-
-  const scrollThrottling = useSettingsStore(state => state.scrollThrottling);
-  const setScrollThrottling = useSettingsStore(state => state.setScrollThrottling);
+  const {
+    isCursorHidden, setCursorVisibility,
+    mouseMode, setMouseMode,
+    scrollThrottling, setScrollThrottling
+  } = useSettingsStore();
 
   const [selectedJigglerOption, setSelectedJigglerOption] =
     useState<JigglerValues | null>(null);
@@ -196,8 +193,8 @@ export default function SettingsMouseRoute() {
           description="Hide the cursor when sending mouse movements"
         >
           <Checkbox
-            checked={hideCursor}
-            onChange={e => setHideCursor(e.target.checked)}
+            checked={isCursorHidden}
+            onChange={e => setCursorVisibility(e.target.checked)}
           />
         </SettingsItem>
 

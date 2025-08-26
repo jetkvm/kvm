@@ -13,29 +13,30 @@ import (
 	"time"
 
 	"github.com/pion/webrtc/v4"
+	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 
 	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
 type JSONRPCRequest struct {
-	JSONRPC string                 `json:"jsonrpc"`
-	Method  string                 `json:"method"`
-	Params  map[string]interface{} `json:"params,omitempty"`
-	ID      interface{}            `json:"id,omitempty"`
+	JSONRPC string         `json:"jsonrpc"`
+	Method  string         `json:"method"`
+	Params  map[string]any `json:"params,omitempty"`
+	ID      any            `json:"id,omitempty"`
 }
 
 type JSONRPCResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   interface{} `json:"error,omitempty"`
-	ID      interface{} `json:"id"`
+	JSONRPC string `json:"jsonrpc"`
+	Result  any    `json:"result,omitempty"`
+	Error   any    `json:"error,omitempty"`
+	ID      any    `json:"id"`
 }
 
 type JSONRPCEvent struct {
-	JSONRPC string      `json:"jsonrpc"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params,omitempty"`
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+	Params  any    `json:"params,omitempty"`
 }
 
 type DisplayRotationSettings struct {
@@ -61,7 +62,7 @@ func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	}
 }
 
-func writeJSONRPCEvent(event string, params interface{}, session *Session) {
+func writeJSONRPCEvent(event string, params any, session *Session) {
 	request := JSONRPCEvent{
 		JSONRPC: "2.0",
 		Method:  event,
@@ -102,7 +103,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
-			Error: map[string]interface{}{
+			Error: map[string]any{
 				"code":    -32700,
 				"message": "Parse error",
 			},
@@ -123,7 +124,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	if !ok {
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
-			Error: map[string]interface{}{
+			Error: map[string]any{
 				"code":    -32601,
 				"message": "Method not found",
 			},
@@ -133,13 +134,12 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	scopedLogger.Trace().Msg("Calling RPC handler")
-	result, err := callRPCHandler(handler, request.Params)
+	result, err := callRPCHandler(scopedLogger, handler, request.Params)
 	if err != nil {
 		scopedLogger.Error().Err(err).Msg("Error calling RPC handler")
 		errorResponse := JSONRPCResponse{
 			JSONRPC: "2.0",
-			Error: map[string]interface{}{
+			Error: map[string]any{
 				"code":    -32603,
 				"message": "Internal error",
 				"data":    err.Error(),
@@ -200,7 +200,7 @@ func rpcGetStreamQualityFactor() (float64, error) {
 
 func rpcSetStreamQualityFactor(factor float64) error {
 	logger.Info().Float64("factor", factor).Msg("Setting stream quality factor")
-	var _, err = CallCtrlAction("set_video_quality_factor", map[string]interface{}{"quality_factor": factor})
+	var _, err = CallCtrlAction("set_video_quality_factor", map[string]any{"quality_factor": factor})
 	if err != nil {
 		return err
 	}
@@ -240,7 +240,7 @@ func rpcSetEDID(edid string) error {
 	} else {
 		logger.Info().Str("edid", edid).Msg("Setting EDID")
 	}
-	_, err := CallCtrlAction("set_edid", map[string]interface{}{"edid": edid})
+	_, err := CallCtrlAction("set_edid", map[string]any{"edid": edid})
 	if err != nil {
 		return err
 	}
@@ -467,12 +467,12 @@ func rpcSetTLSState(state TLSState) error {
 }
 
 type RPCHandler struct {
-	Func   interface{}
+	Func   any
 	Params []string
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
-func callRPCHandler(handler RPCHandler, params map[string]interface{}) (result interface{}, err error) {
+func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any) (result any, err error) {
 	// Use defer to recover from a panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -486,11 +486,11 @@ func callRPCHandler(handler RPCHandler, params map[string]interface{}) (result i
 	}()
 
 	// Call the handler
-	result, err = riskyCallRPCHandler(handler, params)
-	return result, err
+	result, err = riskyCallRPCHandler(logger, handler, params)
+	return result, err // do not combine these two lines into one, as it breaks the above defer function's setting of err
 }
 
-func riskyCallRPCHandler(handler RPCHandler, params map[string]interface{}) (interface{}, error) {
+func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any) (any, error) {
 	handlerValue := reflect.ValueOf(handler.Func)
 	handlerType := handlerValue.Type()
 
@@ -499,20 +499,24 @@ func riskyCallRPCHandler(handler RPCHandler, params map[string]interface{}) (int
 	}
 
 	numParams := handlerType.NumIn()
-	args := make([]reflect.Value, numParams)
-	// Get the parameter names from the RPCHandler
-	paramNames := handler.Params
+	paramNames := handler.Params // Get the parameter names from the RPCHandler
 
 	if len(paramNames) != numParams {
-		return nil, errors.New("mismatch between handler parameters and defined parameter names")
+		err := fmt.Errorf("mismatch between handler parameters (%d) and defined parameter names (%d)", numParams, len(paramNames))
+		logger.Error().Strs("paramNames", paramNames).Err(err).Msg("Cannot call RPC handler")
+		return nil, err
 	}
 
-	for i := 0; i < numParams; i++ {
+	args := make([]reflect.Value, numParams)
+
+	for i := range numParams {
 		paramType := handlerType.In(i)
 		paramName := paramNames[i]
 		paramValue, ok := params[paramName]
 		if !ok {
-			return nil, errors.New("missing parameter: " + paramName)
+			err := fmt.Errorf("missing parameter: %s", paramName)
+			logger.Error().Err(err).Msg("Cannot marshal arguments for RPC handler")
+			return nil, err
 		}
 
 		convertedValue := reflect.ValueOf(paramValue)
@@ -529,7 +533,7 @@ func riskyCallRPCHandler(handler RPCHandler, params map[string]interface{}) (int
 						if elemValue.Kind() == reflect.Float64 && paramType.Elem().Kind() == reflect.Uint8 {
 							intValue := int(elemValue.Float())
 							if intValue < 0 || intValue > 255 {
-								return nil, fmt.Errorf("value out of range for uint8: %v", intValue)
+								return nil, fmt.Errorf("value out of range for uint8: %v for parameter %s", intValue, paramName)
 							}
 							newSlice.Index(j).SetUint(uint64(intValue))
 						} else {
@@ -545,12 +549,12 @@ func riskyCallRPCHandler(handler RPCHandler, params map[string]interface{}) (int
 			} else if paramType.Kind() == reflect.Struct && convertedValue.Kind() == reflect.Map {
 				jsonData, err := json.Marshal(convertedValue.Interface())
 				if err != nil {
-					return nil, fmt.Errorf("failed to marshal map to JSON: %v", err)
+					return nil, fmt.Errorf("failed to marshal map to JSON: %v for parameter %s", err, paramName)
 				}
 
 				newStruct := reflect.New(paramType).Interface()
 				if err := json.Unmarshal(jsonData, newStruct); err != nil {
-					return nil, fmt.Errorf("failed to unmarshal JSON into struct: %v", err)
+					return nil, fmt.Errorf("failed to unmarshal JSON into struct: %v for parameter %s", err, paramName)
 				}
 				args[i] = reflect.ValueOf(newStruct).Elem()
 			} else {
@@ -561,6 +565,7 @@ func riskyCallRPCHandler(handler RPCHandler, params map[string]interface{}) (int
 		}
 	}
 
+	logger.Trace().Msg("Calling RPC handler")
 	results := handlerValue.Call(args)
 
 	if len(results) == 0 {
@@ -568,23 +573,32 @@ func riskyCallRPCHandler(handler RPCHandler, params map[string]interface{}) (int
 	}
 
 	if len(results) == 1 {
-		if results[0].Type().Implements(reflect.TypeOf((*error)(nil)).Elem()) {
-			if !results[0].IsNil() {
-				return nil, results[0].Interface().(error)
+		if ok, err := asError(results[0]); ok {
+			return nil, err
+		}
+		return results[0].Interface(), nil
+	}
+
+	if len(results) == 2 {
+		if ok, err := asError(results[1]); ok {
+			if err != nil {
+				return nil, err
 			}
-			return nil, nil
 		}
 		return results[0].Interface(), nil
 	}
 
-	if len(results) == 2 && results[1].Type().Implements(reflect.TypeOf((*error)(nil)).Elem()) {
-		if !results[1].IsNil() {
-			return nil, results[1].Interface().(error)
-		}
-		return results[0].Interface(), nil
-	}
+	return nil, fmt.Errorf("too many return values from handler: %d", len(results))
+}
 
-	return nil, errors.New("unexpected return values from handler")
+func asError(value reflect.Value) (bool, error) {
+	if value.Type().Implements(reflect.TypeOf((*error)(nil)).Elem()) {
+		if value.IsNil() {
+			return true, nil
+		}
+		return true, value.Interface().(error)
+	}
+	return false, nil
 }
 
 func rpcSetMassStorageMode(mode string) (string, error) {
@@ -923,7 +937,7 @@ func rpcSetKeyboardLayout(layout string) error {
 	return nil
 }
 
-func getKeyboardMacros() (interface{}, error) {
+func getKeyboardMacros() (any, error) {
 	macros := make([]KeyboardMacro, len(config.KeyboardMacros))
 	copy(macros, config.KeyboardMacros)
 
@@ -931,10 +945,10 @@ func getKeyboardMacros() (interface{}, error) {
 }
 
 type KeyboardMacrosParams struct {
-	Macros []interface{} `json:"macros"`
+	Macros []any `json:"macros"`
 }
 
-func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
+func setKeyboardMacros(params KeyboardMacrosParams) (any, error) {
 	if params.Macros == nil {
 		return nil, fmt.Errorf("missing or invalid macros parameter")
 	}
@@ -942,7 +956,7 @@ func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
 	newMacros := make([]KeyboardMacro, 0, len(params.Macros))
 
 	for i, item := range params.Macros {
-		macroMap, ok := item.(map[string]interface{})
+		macroMap, ok := item.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("invalid macro at index %d", i)
 		}
@@ -960,16 +974,16 @@ func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
 		}
 
 		steps := []KeyboardMacroStep{}
-		if stepsArray, ok := macroMap["steps"].([]interface{}); ok {
+		if stepsArray, ok := macroMap["steps"].([]any); ok {
 			for _, stepItem := range stepsArray {
-				stepMap, ok := stepItem.(map[string]interface{})
+				stepMap, ok := stepItem.(map[string]any)
 				if !ok {
 					continue
 				}
 
 				step := KeyboardMacroStep{}
 
-				if keysArray, ok := stepMap["keys"].([]interface{}); ok {
+				if keysArray, ok := stepMap["keys"].([]any); ok {
 					for _, k := range keysArray {
 						if keyStr, ok := k.(string); ok {
 							step.Keys = append(step.Keys, keyStr)
@@ -977,7 +991,7 @@ func setKeyboardMacros(params KeyboardMacrosParams) (interface{}, error) {
 					}
 				}
 
-				if modsArray, ok := stepMap["modifiers"].([]interface{}); ok {
+				if modsArray, ok := stepMap["modifiers"].([]any); ok {
 					for _, m := range modsArray {
 						if modStr, ok := m.(string); ok {
 							step.Modifiers = append(step.Modifiers, modStr)
@@ -1047,6 +1061,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"renewDHCPLease":         {Func: rpcRenewDHCPLease},
 	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
 	"getKeyboardLedState":    {Func: rpcGetKeyboardLedState},
+	"keypressReport":         {Func: rpcKeypressReport, Params: []string{"key", "press"}},
+	"getKeyDownState":        {Func: rpcGetKeysDownState},
 	"absMouseReport":         {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
 	"relMouseReport":         {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
 	"wheelReport":            {Func: rpcWheelReport, Params: []string{"wheelY"}},

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
 import { cx } from "@/cva.config";
 import {
@@ -7,65 +7,68 @@ import {
   useRTCStore,
   useSettingsStore,
   useVideoStore,
+  VideoState
 } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
 
 export default function InfoBar() {
-  const activeKeys = useHidStore(state => state.activeKeys);
-  const activeModifiers = useHidStore(state => state.activeModifiers);
-  const mouseX = useMouseStore(state => state.mouseX);
-  const mouseY = useMouseStore(state => state.mouseY);
-  const mouseMove = useMouseStore(state => state.mouseMove);
+  const { keysDownState } = useHidStore();
+  const { mouseX, mouseY, mouseMove } = useMouseStore();
 
   const videoClientSize = useVideoStore(
-    state => `${Math.round(state.clientWidth)}x${Math.round(state.clientHeight)}`,
+    (state: VideoState) => `${Math.round(state.clientWidth)}x${Math.round(state.clientHeight)}`,
   );
 
   const videoSize = useVideoStore(
-    state => `${Math.round(state.width)}x${Math.round(state.height)}`,
+    (state: VideoState) => `${Math.round(state.width)}x${Math.round(state.height)}`,
   );
 
-  const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
-
-  const settings = useSettingsStore();
-  const showPressedKeys = useSettingsStore(state => state.showPressedKeys);
+  const { rpcDataChannel } = useRTCStore();
+  const { debugMode, mouseMode, showPressedKeys } = useSettingsStore();
 
   useEffect(() => {
     if (!rpcDataChannel) return;
     rpcDataChannel.onclose = () => console.log("rpcDataChannel has closed");
-    rpcDataChannel.onerror = e =>
-      console.log(`Error on DataChannel '${rpcDataChannel.label}': ${e}`);
+    rpcDataChannel.onerror = (e: Event) =>
+      console.error(`Error on DataChannel '${rpcDataChannel.label}': ${e}`);
   }, [rpcDataChannel]);
 
-  const keyboardLedState = useHidStore(state => state.keyboardLedState);
-  const keyboardLedStateSyncAvailable = useHidStore(state => state.keyboardLedStateSyncAvailable);
-  const keyboardLedSync = useSettingsStore(state => state.keyboardLedSync);
+  const { keyboardLedState, usbState } = useHidStore();
+  const { isTurnServerInUse } = useRTCStore();
+  const { hdmiState } = useVideoStore();
 
-  const isTurnServerInUse = useRTCStore(state => state.isTurnServerInUse);
+  const displayKeys = useMemo(() => {
+    if (!showPressedKeys)
+      return "";
 
-  const usbState = useHidStore(state => state.usbState);
-  const hdmiState = useVideoStore(state => state.hdmiState);
+    const activeModifierMask = keysDownState.modifier || 0;
+    const keysDown = keysDownState.keys || [];
+    const modifierNames = Object.entries(modifiers).filter(([_, mask]) => (activeModifierMask & mask) !== 0).map(([name, _]) => name);
+    const keyNames = Object.entries(keys).filter(([_, value]) => keysDown.includes(value)).map(([name, _]) => name);
+
+    return [...modifierNames,...keyNames].join(", ");
+  }, [keysDownState, showPressedKeys]);
 
   return (
     <div className="bg-white border-t border-t-slate-800/30 text-slate-800 dark:border-t-slate-300/20 dark:bg-slate-900 dark:text-slate-300">
       <div className="flex flex-wrap items-stretch justify-between gap-1">
         <div className="flex items-center">
           <div className="flex flex-wrap items-center pl-2 gap-x-4">
-            {settings.debugMode ? (
+            {debugMode ? (
               <div className="flex">
                 <span className="text-xs font-semibold">Resolution:</span>{" "}
                 <span className="text-xs">{videoSize}</span>
               </div>
             ) : null}
 
-            {settings.debugMode ? (
+            {debugMode ? (
               <div className="flex">
                 <span className="text-xs font-semibold">Video Size: </span>
                 <span className="text-xs">{videoClientSize}</span>
               </div>
             ) : null}
 
-            {(settings.debugMode && settings.mouseMode == "absolute") ? (
+            {(debugMode && mouseMode == "absolute") ? (
               <div className="flex w-[118px] items-center gap-x-1">
                 <span className="text-xs font-semibold">Pointer:</span>
                 <span className="text-xs">
@@ -74,7 +77,7 @@ export default function InfoBar() {
               </div>
             ) : null}
 
-            {(settings.debugMode && settings.mouseMode == "relative") ? (
+            {(debugMode && mouseMode == "relative") ? (
               <div className="flex w-[118px] items-center gap-x-1">
                 <span className="text-xs font-semibold">Last Move:</span>
                 <span className="text-xs">
@@ -85,13 +88,13 @@ export default function InfoBar() {
               </div>
             ) : null}
 
-            {settings.debugMode && (
+            {debugMode && (
               <div className="flex w-[156px] items-center gap-x-1">
                 <span className="text-xs font-semibold">USB State:</span>
                 <span className="text-xs">{usbState}</span>
               </div>
             )}
-            {settings.debugMode && (
+            {debugMode && (
               <div className="flex w-[156px] items-center gap-x-1">
                 <span className="text-xs font-semibold">HDMI State:</span>
                 <span className="text-xs">{hdmiState}</span>
@@ -102,14 +105,7 @@ export default function InfoBar() {
               <div className="flex items-center gap-x-1">
                 <span className="text-xs font-semibold">Keys:</span>
                 <h2 className="text-xs">
-                  {[
-                    ...activeKeys.map(
-                      x => Object.entries(keys).filter(y => y[1] === x)[0][0],
-                    ),
-                    activeModifiers.map(
-                      x => Object.entries(modifiers).filter(y => y[1] === x)[0][0],
-                    ),
-                  ].join(", ")}
+                  {displayKeys}
                 </h2>
               </div>
             )}
@@ -122,23 +118,10 @@ export default function InfoBar() {
             </div>
           )}
 
-          {keyboardLedStateSyncAvailable ? (
-            <div
-              className={cx(
-                "shrink-0 p-1 px-1.5 text-xs",
-                keyboardLedSync !== "browser"
-                  ? "text-black dark:text-white"
-                  : "text-slate-800/20 dark:text-slate-300/20",
-              )}
-              title={"Your keyboard LED state is managed by" + (keyboardLedSync === "browser" ? " the browser" : " the host")}
-            >
-              {keyboardLedSync === "browser" ? "Browser" : "Host"}
-            </div>
-          ) : null}
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
-              keyboardLedState?.caps_lock
+              keyboardLedState.caps_lock
                 ? "text-black dark:text-white"
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
@@ -148,7 +131,7 @@ export default function InfoBar() {
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
-              keyboardLedState?.num_lock
+              keyboardLedState.num_lock
                 ? "text-black dark:text-white"
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
@@ -158,21 +141,26 @@ export default function InfoBar() {
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
-              keyboardLedState?.scroll_lock
+              keyboardLedState.scroll_lock
                 ? "text-black dark:text-white"
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
           >
             Scroll Lock
           </div>
-          {keyboardLedState?.compose ? (
+          {keyboardLedState.compose ? (
             <div className="shrink-0 p-1 px-1.5 text-xs">
               Compose
             </div>
           ) : null}
-          {keyboardLedState?.kana ? (
+          {keyboardLedState.kana ? (
             <div className="shrink-0 p-1 px-1.5 text-xs">
               Kana
+            </div>
+          ) : null}
+          {keyboardLedState.shift ? (
+            <div className="shrink-0 p-1 px-1.5 text-xs">
+              Shift
             </div>
           ) : null}
         </div>
