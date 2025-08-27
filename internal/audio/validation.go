@@ -14,6 +14,8 @@ var (
 	ErrInvalidAudioQuality    = errors.New("invalid audio quality level")
 	ErrInvalidFrameSize       = errors.New("invalid frame size")
 	ErrInvalidFrameData       = errors.New("invalid frame data")
+	ErrFrameDataEmpty         = errors.New("invalid frame data: frame data is empty")
+	ErrFrameDataTooLarge      = errors.New("invalid frame data: exceeds maximum")
 	ErrInvalidBufferSize      = errors.New("invalid buffer size")
 	ErrInvalidPriority        = errors.New("invalid priority value")
 	ErrInvalidLatency         = errors.New("invalid latency value")
@@ -325,11 +327,13 @@ func InitValidationCache() {
 //
 //go:inline
 func ValidateAudioFrame(data []byte) error {
-	// Single optimized check: empty data OR exceeds cached maximum
-	// This branch prediction friendly pattern minimizes CPU pipeline stalls
+	// Optimized validation with pre-allocated error messages for minimal overhead
 	dataLen := len(data)
-	if dataLen == 0 || dataLen > cachedMaxFrameSize {
-		return ErrInvalidFrameData
+	if dataLen == 0 {
+		return ErrFrameDataEmpty
+	}
+	if dataLen > cachedMaxFrameSize {
+		return ErrFrameDataTooLarge
 	}
 	return nil
 }
