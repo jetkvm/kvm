@@ -4,6 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
 type AudioBufferPool struct {
@@ -23,6 +25,14 @@ type AudioBufferPool struct {
 }
 
 func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
+	// Validate buffer size parameter
+	if err := ValidateBufferSize(bufferSize); err != nil {
+		// Log validation error and use default value
+		logger := logging.GetDefaultLogger().With().Str("component", "AudioBufferPool").Logger()
+		logger.Error().Err(err).Int("bufferSize", bufferSize).Msg("Invalid buffer size provided, using default")
+		bufferSize = GetConfig().AudioFramePoolSize
+	}
+
 	// Pre-allocate 20% of max pool size for immediate availability
 	preallocSize := GetConfig().PreallocPercentage
 	preallocated := make([]*[]byte, 0, preallocSize)

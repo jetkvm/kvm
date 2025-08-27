@@ -36,11 +36,13 @@ static int channels = 2;                // Will be set from GetConfig().CGOChann
 static int frame_size = 960;            // Will be set from GetConfig().CGOFrameSize
 static int max_packet_size = 1500;      // Will be set from GetConfig().CGOMaxPacketSize
 static int sleep_microseconds = 1000;   // Will be set from GetConfig().CGOUsleepMicroseconds
+static int max_attempts_global = 5;     // Will be set from GetConfig().CGOMaxAttempts
+static int max_backoff_us_global = 500000; // Will be set from GetConfig().CGOMaxBackoffMicroseconds
 
 // Function to update constants from Go configuration
 void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constraint,
                            int signal_type, int bandwidth, int dtx, int sr, int ch,
-                           int fs, int max_pkt, int sleep_us) {
+                           int fs, int max_pkt, int sleep_us, int max_attempts, int max_backoff) {
     opus_bitrate = bitrate;
     opus_complexity = complexity;
     opus_vbr = vbr;
@@ -53,6 +55,8 @@ void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constr
     frame_size = fs;
     max_packet_size = max_pkt;
     sleep_microseconds = sleep_us;
+    max_attempts_global = max_attempts;
+    max_backoff_us_global = max_backoff;
 }
 
 // State tracking to prevent race conditions during rapid start/stop
@@ -63,13 +67,11 @@ static volatile int playback_initialized = 0;
 
 // Enhanced ALSA device opening with exponential backoff retry logic
 static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream_t stream) {
-	int max_attempts = 5; // Increased from 3 to 5
 	int attempt = 0;
 	int err;
 	int backoff_us = sleep_microseconds; // Start with base sleep time
-	const int max_backoff_us = 500000; // Max 500ms backoff
 
-	while (attempt < max_attempts) {
+	while (attempt < max_attempts_global) {
 		err = snd_pcm_open(handle, device, stream, SND_PCM_NONBLOCK);
 		if (err >= 0) {
 			// Switch to blocking mode after successful open
@@ -78,24 +80,24 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 		}
 
 		attempt++;
-		if (attempt >= max_attempts) break;
+		if (attempt >= max_attempts_global) break;
 
 		// Enhanced error handling with specific retry strategies
 		if (err == -EBUSY || err == -EAGAIN) {
 			// Device busy or temporarily unavailable - retry with backoff
 			usleep(backoff_us);
-			backoff_us = (backoff_us * 2 < max_backoff_us) ? backoff_us * 2 : max_backoff_us;
+			backoff_us = (backoff_us * 2 < max_backoff_us_global) ? backoff_us * 2 : max_backoff_us_global;
 		} else if (err == -ENODEV || err == -ENOENT) {
 			// Device not found - longer wait as device might be initializing
 			usleep(backoff_us * 2);
-			backoff_us = (backoff_us * 2 < max_backoff_us) ? backoff_us * 2 : max_backoff_us;
+			backoff_us = (backoff_us * 2 < max_backoff_us_global) ? backoff_us * 2 : max_backoff_us_global;
 		} else if (err == -EPERM || err == -EACCES) {
 			// Permission denied - shorter wait, likely persistent issue
 			usleep(backoff_us / 2);
 		} else {
 			// Other errors - standard backoff
 			usleep(backoff_us);
-			backoff_us = (backoff_us * 2 < max_backoff_us) ? backoff_us * 2 : max_backoff_us;
+			backoff_us = (backoff_us * 2 < max_backoff_us_global) ? backoff_us * 2 : max_backoff_us_global;
 		}
 	}
 	return err;
@@ -649,6 +651,8 @@ func cgoAudioInit() error {
 		C.int(config.CGOFrameSize),
 		C.int(config.CGOMaxPacketSize),
 		C.int(config.CGOUsleepMicroseconds),
+		C.int(config.CGOMaxAttempts),
+		C.int(config.CGOMaxBackoffMicroseconds),
 	)
 
 	result := C.jetkvm_audio_init()

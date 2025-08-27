@@ -35,11 +35,8 @@ func ValidateFrameData(data []byte) error {
 	if len(data) == 0 {
 		return ErrInvalidFrameData
 	}
-	// Use a reasonable default if config is not available
-	maxFrameSize := 4096
-	if config := GetConfig(); config != nil {
-		maxFrameSize = config.MaxAudioFrameSize
-	}
+	// Use config value or fallback to default
+	maxFrameSize := GetConfig().MaxAudioFrameSize
 	if len(data) > maxFrameSize {
 		return ErrInvalidFrameSize
 	}
@@ -55,11 +52,8 @@ func ValidateZeroCopyFrame(frame *ZeroCopyAudioFrame) error {
 	if len(data) == 0 {
 		return ErrInvalidFrameData
 	}
-	// Use a reasonable default if config is not available
-	maxFrameSize := 4096
-	if config := GetConfig(); config != nil {
-		maxFrameSize = config.MaxAudioFrameSize
-	}
+	// Use config value
+	maxFrameSize := GetConfig().MaxAudioFrameSize
 	if len(data) > maxFrameSize {
 		return ErrInvalidFrameSize
 	}
@@ -71,11 +65,8 @@ func ValidateBufferSize(size int) error {
 	if size <= 0 {
 		return ErrInvalidBufferSize
 	}
-	// Use a reasonable default if config is not available
-	maxBuffer := 262144 // 256KB default
-	if config := GetConfig(); config != nil {
-		maxBuffer = config.SocketMaxBuffer
-	}
+	// Use config value
+	maxBuffer := GetConfig().SocketMaxBuffer
 	if size > maxBuffer {
 		return ErrInvalidBufferSize
 	}
@@ -102,11 +93,8 @@ func ValidateLatency(latency time.Duration) error {
 	if latency < 0 {
 		return ErrInvalidLatency
 	}
-	// Use a reasonable default if config is not available
-	maxLatency := 500 * time.Millisecond
-	if config := GetConfig(); config != nil {
-		maxLatency = config.MaxLatency
-	}
+	// Use config value
+	maxLatency := GetConfig().MaxLatency
 	if latency > maxLatency {
 		return ErrInvalidLatency
 	}
@@ -115,13 +103,10 @@ func ValidateLatency(latency time.Duration) error {
 
 // ValidateMetricsInterval validates metrics update interval
 func ValidateMetricsInterval(interval time.Duration) error {
-	// Use reasonable defaults if config is not available
-	minInterval := 100 * time.Millisecond
-	maxInterval := 10 * time.Second
-	if config := GetConfig(); config != nil {
-		minInterval = config.MinMetricsUpdateInterval
-		maxInterval = config.MaxMetricsUpdateInterval
-	}
+	// Use config values
+	config := GetConfig()
+	minInterval := config.MinMetricsUpdateInterval
+	maxInterval := config.MaxMetricsUpdateInterval
 	if interval < minInterval {
 		return ErrInvalidMetricsInterval
 	}
@@ -143,10 +128,7 @@ func ValidateAdaptiveBufferConfig(minSize, maxSize, defaultSize int) error {
 		return ErrInvalidBufferSize
 	}
 	// Validate against global limits
-	maxBuffer := 262144 // 256KB default
-	if config := GetConfig(); config != nil {
-		maxBuffer = config.SocketMaxBuffer
-	}
+	maxBuffer := GetConfig().SocketMaxBuffer
 	if maxSize > maxBuffer {
 		return ErrInvalidBufferSize
 	}
@@ -155,15 +137,11 @@ func ValidateAdaptiveBufferConfig(minSize, maxSize, defaultSize int) error {
 
 // ValidateInputIPCConfig validates input IPC configuration
 func ValidateInputIPCConfig(sampleRate, channels, frameSize int) error {
-	// Use reasonable defaults if config is not available
-	minSampleRate := 8000
-	maxSampleRate := 48000
-	maxChannels := 8
-	if config := GetConfig(); config != nil {
-		minSampleRate = config.MinSampleRate
-		maxSampleRate = config.MaxSampleRate
-		maxChannels = config.MaxChannels
-	}
+	// Use config values
+	config := GetConfig()
+	minSampleRate := config.MinSampleRate
+	maxSampleRate := config.MaxSampleRate
+	maxChannels := config.MaxChannels
 	if sampleRate < minSampleRate || sampleRate > maxSampleRate {
 		return ErrInvalidSampleRate
 	}
@@ -172,6 +150,51 @@ func ValidateInputIPCConfig(sampleRate, channels, frameSize int) error {
 	}
 	if frameSize <= 0 {
 		return ErrInvalidFrameSize
+	}
+	return nil
+}
+
+// ValidateOutputIPCConfig validates output IPC configuration
+func ValidateOutputIPCConfig(sampleRate, channels, frameSize int) error {
+	// Use config values
+	config := GetConfig()
+	minSampleRate := config.MinSampleRate
+	maxSampleRate := config.MaxSampleRate
+	maxChannels := config.MaxChannels
+	if sampleRate < minSampleRate || sampleRate > maxSampleRate {
+		return ErrInvalidSampleRate
+	}
+	if channels < 1 || channels > maxChannels {
+		return ErrInvalidChannels
+	}
+	if frameSize <= 0 {
+		return ErrInvalidFrameSize
+	}
+	return nil
+}
+
+// ValidateLatencyConfig validates latency monitor configuration
+func ValidateLatencyConfig(config LatencyConfig) error {
+	if err := ValidateLatency(config.TargetLatency); err != nil {
+		return err
+	}
+	if err := ValidateLatency(config.MaxLatency); err != nil {
+		return err
+	}
+	if config.TargetLatency >= config.MaxLatency {
+		return ErrInvalidLatency
+	}
+	if err := ValidateMetricsInterval(config.OptimizationInterval); err != nil {
+		return err
+	}
+	if config.HistorySize <= 0 {
+		return ErrInvalidBufferSize
+	}
+	if config.JitterThreshold < 0 {
+		return ErrInvalidLatency
+	}
+	if config.AdaptiveThreshold < 0 || config.AdaptiveThreshold > 1.0 {
+		return ErrInvalidConfiguration
 	}
 	return nil
 }

@@ -43,12 +43,13 @@ type ValidationConfig struct {
 
 // GetValidationConfig returns the current validation configuration
 func GetValidationConfig() ValidationConfig {
+	configConstants := GetConfig()
 	return ValidationConfig{
 		Level:                ValidationStandard,
 		EnableRangeChecks:    true,
 		EnableAlignmentCheck: true,
-		EnableDataIntegrity:  false,           // Disabled by default for performance
-		MaxValidationTime:    5 * time.Second, // Default validation timeout
+		EnableDataIntegrity:  false,                             // Disabled by default for performance
+		MaxValidationTime:    configConstants.MaxValidationTime, // Configurable validation timeout
 	}
 }
 
@@ -88,16 +89,14 @@ func ValidateAudioFrameComprehensive(data []byte, expectedSampleRate int, expect
 	// Range validation
 	if validationConfig.EnableRangeChecks {
 		config := GetConfig()
-		minFrameSize := 64 // Minimum reasonable frame size
-		if len(data) < minFrameSize {
-			return fmt.Errorf("%w: frame size %d below minimum %d", ErrInvalidFrameSize, len(data), minFrameSize)
+		if len(data) < config.MinFrameSize {
+			return fmt.Errorf("%w: frame size %d below minimum %d", ErrInvalidFrameSize, len(data), config.MinFrameSize)
 		}
 
 		// Validate frame length matches expected sample format
 		expectedFrameSize := (expectedSampleRate * expectedChannels * 2) / 1000 * int(config.AudioQualityMediumFrameSize/time.Millisecond)
-		tolerance := 512 // Frame size tolerance in bytes
-		if abs(len(data)-expectedFrameSize) > tolerance {
-			return fmt.Errorf("%w: frame size %d doesn't match expected %d (±%d)", ErrInvalidFrameLength, len(data), expectedFrameSize, tolerance)
+		if abs(len(data)-expectedFrameSize) > config.FrameSizeTolerance {
+			return fmt.Errorf("%w: frame size %d doesn't match expected %d (±%d)", ErrInvalidFrameLength, len(data), expectedFrameSize, config.FrameSizeTolerance)
 		}
 	}
 
@@ -184,14 +183,12 @@ func ValidateAudioConfiguration(config AudioConfig) error {
 	configConstants := GetConfig()
 
 	// Validate bitrate ranges
-	minBitrate := 6000   // Minimum Opus bitrate
-	maxBitrate := 510000 // Maximum Opus bitrate
-	if config.Bitrate < minBitrate || config.Bitrate > maxBitrate {
-		return fmt.Errorf("%w: bitrate %d outside valid range [%d, %d]", ErrInvalidConfiguration, config.Bitrate, minBitrate, maxBitrate)
+	if config.Bitrate < configConstants.MinOpusBitrate || config.Bitrate > configConstants.MaxOpusBitrate {
+		return fmt.Errorf("%w: bitrate %d outside valid range [%d, %d]", ErrInvalidConfiguration, config.Bitrate, configConstants.MinOpusBitrate, configConstants.MaxOpusBitrate)
 	}
 
 	// Validate sample rate
-	validSampleRates := []int{8000, 12000, 16000, 24000, 48000}
+	validSampleRates := configConstants.ValidSampleRates
 	validSampleRate := false
 	for _, rate := range validSampleRates {
 		if config.SampleRate == rate {
@@ -209,10 +206,105 @@ func ValidateAudioConfiguration(config AudioConfig) error {
 	}
 
 	// Validate frame size
-	minFrameSize := 10 * time.Millisecond  // Minimum frame duration
-	maxFrameSize := 100 * time.Millisecond // Maximum frame duration
+	minFrameSize := GetConfig().MinFrameDuration
+	maxFrameSize := GetConfig().MaxFrameDuration
 	if config.FrameSize < minFrameSize || config.FrameSize > maxFrameSize {
 		return fmt.Errorf("%w: frame size %v outside valid range [%v, %v]", ErrInvalidConfiguration, config.FrameSize, minFrameSize, maxFrameSize)
+	}
+
+	return nil
+}
+
+// ValidateAudioConfigConstants performs comprehensive validation of AudioConfigConstants
+func ValidateAudioConfigConstants(config *AudioConfigConstants) error {
+	if config == nil {
+		return fmt.Errorf("%w: configuration is nil", ErrInvalidConfiguration)
+	}
+
+	// Validate basic audio parameters
+	if config.MaxAudioFrameSize <= 0 {
+		return fmt.Errorf("%w: MaxAudioFrameSize must be positive", ErrInvalidConfiguration)
+	}
+	if config.SampleRate <= 0 {
+		return fmt.Errorf("%w: SampleRate must be positive", ErrInvalidSampleRate)
+	}
+	if config.Channels <= 0 || config.Channels > 8 {
+		return fmt.Errorf("%w: Channels must be between 1 and 8", ErrInvalidChannels)
+	}
+
+	// Validate Opus parameters
+	if config.OpusBitrate < 6000 || config.OpusBitrate > 510000 {
+		return fmt.Errorf("%w: OpusBitrate must be between 6000 and 510000", ErrInvalidConfiguration)
+	}
+	if config.OpusComplexity < 0 || config.OpusComplexity > 10 {
+		return fmt.Errorf("%w: OpusComplexity must be between 0 and 10", ErrInvalidConfiguration)
+	}
+
+	// Validate bitrate ranges
+	if config.MinOpusBitrate <= 0 || config.MaxOpusBitrate <= 0 {
+		return fmt.Errorf("%w: MinOpusBitrate and MaxOpusBitrate must be positive", ErrInvalidConfiguration)
+	}
+	if config.MinOpusBitrate >= config.MaxOpusBitrate {
+		return fmt.Errorf("%w: MinOpusBitrate must be less than MaxOpusBitrate", ErrInvalidConfiguration)
+	}
+
+	// Validate sample rate ranges
+	if config.MinSampleRate <= 0 || config.MaxSampleRate <= 0 {
+		return fmt.Errorf("%w: MinSampleRate and MaxSampleRate must be positive", ErrInvalidSampleRate)
+	}
+	if config.MinSampleRate >= config.MaxSampleRate {
+		return fmt.Errorf("%w: MinSampleRate must be less than MaxSampleRate", ErrInvalidSampleRate)
+	}
+
+	// Validate frame duration ranges
+	if config.MinFrameDuration <= 0 || config.MaxFrameDuration <= 0 {
+		return fmt.Errorf("%w: MinFrameDuration and MaxFrameDuration must be positive", ErrInvalidConfiguration)
+	}
+	if config.MinFrameDuration >= config.MaxFrameDuration {
+		return fmt.Errorf("%w: MinFrameDuration must be less than MaxFrameDuration", ErrInvalidConfiguration)
+	}
+
+	// Validate buffer sizes
+	if config.SocketMinBuffer <= 0 || config.SocketMaxBuffer <= 0 {
+		return fmt.Errorf("%w: SocketMinBuffer and SocketMaxBuffer must be positive", ErrInvalidBufferSize)
+	}
+	if config.SocketMinBuffer >= config.SocketMaxBuffer {
+		return fmt.Errorf("%w: SocketMinBuffer must be less than SocketMaxBuffer", ErrInvalidBufferSize)
+	}
+
+	// Validate priority ranges
+	if config.MinNiceValue < -20 || config.MinNiceValue > 19 {
+		return fmt.Errorf("%w: MinNiceValue must be between -20 and 19", ErrInvalidPriority)
+	}
+	if config.MaxNiceValue < -20 || config.MaxNiceValue > 19 {
+		return fmt.Errorf("%w: MaxNiceValue must be between -20 and 19", ErrInvalidPriority)
+	}
+	if config.MinNiceValue >= config.MaxNiceValue {
+		return fmt.Errorf("%w: MinNiceValue must be less than MaxNiceValue", ErrInvalidPriority)
+	}
+
+	// Validate timeout values
+	if config.MaxValidationTime <= 0 {
+		return fmt.Errorf("%w: MaxValidationTime must be positive", ErrInvalidConfiguration)
+	}
+	if config.RestartDelay <= 0 || config.MaxRestartDelay <= 0 {
+		return fmt.Errorf("%w: RestartDelay and MaxRestartDelay must be positive", ErrInvalidConfiguration)
+	}
+	if config.RestartDelay >= config.MaxRestartDelay {
+		return fmt.Errorf("%w: RestartDelay must be less than MaxRestartDelay", ErrInvalidConfiguration)
+	}
+
+	// Validate valid sample rates array
+	if len(config.ValidSampleRates) == 0 {
+		return fmt.Errorf("%w: ValidSampleRates cannot be empty", ErrInvalidSampleRate)
+	}
+	for _, rate := range config.ValidSampleRates {
+		if rate <= 0 {
+			return fmt.Errorf("%w: all ValidSampleRates must be positive", ErrInvalidSampleRate)
+		}
+		if rate < config.MinSampleRate || rate > config.MaxSampleRate {
+			return fmt.Errorf("%w: ValidSampleRate %d outside range [%d, %d]", ErrInvalidSampleRate, rate, config.MinSampleRate, config.MaxSampleRate)
+		}
 	}
 
 	return nil

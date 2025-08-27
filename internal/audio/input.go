@@ -6,85 +6,87 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/rs/zerolog"
 )
 
 // AudioInputMetrics holds metrics for microphone input
+// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
 type AudioInputMetrics struct {
-	FramesSent      int64         // Total frames sent
-	FramesDropped   int64         // Total frames dropped
-	BytesProcessed  int64         // Total bytes processed
-	ConnectionDrops int64         // Connection drops
-	AverageLatency  time.Duration // time.Duration is int64
-	LastFrameTime   time.Time
+	// Atomic int64 field first for proper ARM32 alignment
+	FramesSent int64 `json:"frames_sent"` // Total frames sent (input-specific)
+
+	// Embedded struct with atomic fields properly aligned
+	BaseAudioMetrics
 }
 
 // AudioInputManager manages microphone input stream using IPC mode only
 type AudioInputManager struct {
-	metrics AudioInputMetrics
-
+	*BaseAudioManager
 	ipcManager *AudioInputIPCManager
-	logger     zerolog.Logger
-	running    int32
+	framesSent int64 // Input-specific metric
 }
 
-// NewAudioInputManager creates a new audio input manager (IPC mode only)
+// NewAudioInputManager creates a new audio input manager
 func NewAudioInputManager() *AudioInputManager {
+	logger := logging.GetDefaultLogger().With().Str("component", AudioInputManagerComponent).Logger()
 	return &AudioInputManager{
-		ipcManager: NewAudioInputIPCManager(),
-		logger:     logging.GetDefaultLogger().With().Str("component", AudioInputManagerComponent).Logger(),
+		BaseAudioManager: NewBaseAudioManager(logger),
+		ipcManager:       NewAudioInputIPCManager(),
 	}
 }
 
 // Start begins processing microphone input
 func (aim *AudioInputManager) Start() error {
-	if !atomic.CompareAndSwapInt32(&aim.running, 0, 1) {
+	if !aim.setRunning(true) {
 		return fmt.Errorf("audio input manager is already running")
 	}
 
-	aim.logger.Info().Str("component", AudioInputManagerComponent).Msg("starting component")
+	aim.logComponentStart(AudioInputManagerComponent)
 
 	// Start the IPC-based audio input
 	err := aim.ipcManager.Start()
 	if err != nil {
-		aim.logger.Error().Err(err).Str("component", AudioInputManagerComponent).Msg("failed to start component")
+		aim.logComponentError(AudioInputManagerComponent, err, "failed to start component")
 		// Ensure proper cleanup on error
-		atomic.StoreInt32(&aim.running, 0)
+		aim.setRunning(false)
 		// Reset metrics on failed start
 		aim.resetMetrics()
 		return err
 	}
 
-	aim.logger.Info().Str("component", AudioInputManagerComponent).Msg("component started successfully")
+	aim.logComponentStarted(AudioInputManagerComponent)
 	return nil
 }
 
 // Stop stops processing microphone input
 func (aim *AudioInputManager) Stop() {
-	if !atomic.CompareAndSwapInt32(&aim.running, 1, 0) {
+	if !aim.setRunning(false) {
 		return // Already stopped
 	}
 
-	aim.logger.Info().Str("component", AudioInputManagerComponent).Msg("stopping component")
+	aim.logComponentStop(AudioInputManagerComponent)
 
 	// Stop the IPC-based audio input
 	aim.ipcManager.Stop()
 
-	aim.logger.Info().Str("component", AudioInputManagerComponent).Msg("component stopped")
+	aim.logComponentStopped(AudioInputManagerComponent)
 }
 
 // resetMetrics resets all metrics to zero
 func (aim *AudioInputManager) resetMetrics() {
-	atomic.StoreInt64(&aim.metrics.FramesSent, 0)
-	atomic.StoreInt64(&aim.metrics.FramesDropped, 0)
-	atomic.StoreInt64(&aim.metrics.BytesProcessed, 0)
-	atomic.StoreInt64(&aim.metrics.ConnectionDrops, 0)
+	aim.BaseAudioManager.resetMetrics()
+	atomic.StoreInt64(&aim.framesSent, 0)
 }
 
 // WriteOpusFrame writes an Opus frame to the audio input system with latency tracking
 func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 	if !aim.IsRunning() {
 		return nil // Not running, silently drop
+	}
+
+	// Validate frame before processing
+	if err := ValidateFrameData(frame); err != nil {
+		aim.logComponentError(AudioInputManagerComponent, err, "Frame validation failed")
+		return fmt.Errorf("input frame validation failed: %w", err)
 	}
 
 	// Track end-to-end latency from WebRTC to IPC
@@ -105,10 +107,9 @@ func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 	}
 
 	// Update metrics
-	atomic.AddInt64(&aim.metrics.FramesSent, 1)
-	atomic.AddInt64(&aim.metrics.BytesProcessed, int64(len(frame)))
-	aim.metrics.LastFrameTime = time.Now()
-	aim.metrics.AverageLatency = processingTime
+	atomic.AddInt64(&aim.framesSent, 1)
+	aim.recordFrameProcessed(len(frame))
+	aim.updateLatency(processingTime)
 	return nil
 }
 
@@ -141,21 +142,17 @@ func (aim *AudioInputManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFrame) 
 	}
 
 	// Update metrics
-	atomic.AddInt64(&aim.metrics.FramesSent, 1)
-	atomic.AddInt64(&aim.metrics.BytesProcessed, int64(frame.Length()))
-	aim.metrics.LastFrameTime = time.Now()
-	aim.metrics.AverageLatency = processingTime
+	atomic.AddInt64(&aim.framesSent, 1)
+	aim.recordFrameProcessed(frame.Length())
+	aim.updateLatency(processingTime)
 	return nil
 }
 
-// GetMetrics returns current audio input metrics
+// GetMetrics returns current metrics
 func (aim *AudioInputManager) GetMetrics() AudioInputMetrics {
 	return AudioInputMetrics{
-		FramesSent:     atomic.LoadInt64(&aim.metrics.FramesSent),
-		FramesDropped:  atomic.LoadInt64(&aim.metrics.FramesDropped),
-		BytesProcessed: atomic.LoadInt64(&aim.metrics.BytesProcessed),
-		AverageLatency: aim.metrics.AverageLatency,
-		LastFrameTime:  aim.metrics.LastFrameTime,
+		FramesSent:       atomic.LoadInt64(&aim.framesSent),
+		BaseAudioMetrics: aim.getBaseMetrics(),
 	}
 }
 
@@ -209,10 +206,7 @@ func (aim *AudioInputManager) LogPerformanceStats() {
 		Msg("Audio input performance metrics")
 }
 
-// IsRunning returns whether the audio input manager is running
-func (aim *AudioInputManager) IsRunning() bool {
-	return atomic.LoadInt32(&aim.running) == 1
-}
+// Note: IsRunning() is inherited from BaseAudioManager
 
 // IsReady returns whether the audio input manager is ready to receive frames
 // This checks both that it's running and that the IPC connection is established

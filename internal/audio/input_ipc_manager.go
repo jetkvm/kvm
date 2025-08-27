@@ -49,6 +49,17 @@ func (aim *AudioInputIPCManager) Start() error {
 		FrameSize:  GetConfig().InputIPCFrameSize,
 	}
 
+	// Validate configuration before using it
+	if err := ValidateInputIPCConfig(config.SampleRate, config.Channels, config.FrameSize); err != nil {
+		aim.logger.Error().Err(err).Msg("Invalid input IPC config from constants, using defaults")
+		// Use safe defaults if config validation fails
+		config = InputIPCConfig{
+			SampleRate: 48000,
+			Channels:   2,
+			FrameSize:  960,
+		}
+	}
+
 	// Wait for subprocess readiness
 	time.Sleep(GetConfig().LongSleepDuration)
 
@@ -91,6 +102,13 @@ func (aim *AudioInputIPCManager) WriteOpusFrame(frame []byte) error {
 		return nil // Empty frame, ignore
 	}
 
+	// Validate frame data
+	if err := ValidateFrameData(frame); err != nil {
+		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
+		aim.logger.Debug().Err(err).Msg("Invalid frame data")
+		return err
+	}
+
 	// Start latency measurement
 	startTime := time.Now()
 
@@ -123,6 +141,13 @@ func (aim *AudioInputIPCManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFram
 
 	if frame == nil || frame.Length() == 0 {
 		return nil // Empty frame, ignore
+	}
+
+	// Validate zero-copy frame
+	if err := ValidateZeroCopyFrame(frame); err != nil {
+		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
+		aim.logger.Debug().Err(err).Msg("Invalid zero-copy frame")
+		return err
 	}
 
 	// Start latency measurement
@@ -166,12 +191,15 @@ func (aim *AudioInputIPCManager) IsReady() bool {
 // GetMetrics returns current metrics
 func (aim *AudioInputIPCManager) GetMetrics() AudioInputMetrics {
 	return AudioInputMetrics{
-		FramesSent:      atomic.LoadInt64(&aim.metrics.FramesSent),
-		FramesDropped:   atomic.LoadInt64(&aim.metrics.FramesDropped),
-		BytesProcessed:  atomic.LoadInt64(&aim.metrics.BytesProcessed),
-		ConnectionDrops: atomic.LoadInt64(&aim.metrics.ConnectionDrops),
-		AverageLatency:  aim.metrics.AverageLatency,
-		LastFrameTime:   aim.metrics.LastFrameTime,
+		FramesSent: atomic.LoadInt64(&aim.metrics.FramesSent),
+		BaseAudioMetrics: BaseAudioMetrics{
+			FramesProcessed: atomic.LoadInt64(&aim.metrics.FramesProcessed),
+			FramesDropped:   atomic.LoadInt64(&aim.metrics.FramesDropped),
+			BytesProcessed:  atomic.LoadInt64(&aim.metrics.BytesProcessed),
+			ConnectionDrops: atomic.LoadInt64(&aim.metrics.ConnectionDrops),
+			AverageLatency:  aim.metrics.AverageLatency,
+			LastFrameTime:   aim.metrics.LastFrameTime,
+		},
 	}
 }
 

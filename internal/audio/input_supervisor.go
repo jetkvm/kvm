@@ -1,50 +1,38 @@
 package audio
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
-	"sync"
 	"syscall"
 	"time"
-
-	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/rs/zerolog"
 )
 
 // AudioInputSupervisor manages the audio input server subprocess
 type AudioInputSupervisor struct {
-	cmd            *exec.Cmd
-	cancel         context.CancelFunc
-	mtx            sync.Mutex
-	running        bool
-	logger         zerolog.Logger
-	client         *AudioInputClient
-	processMonitor *ProcessMonitor
+	*BaseSupervisor
+	client *AudioInputClient
 }
 
 // NewAudioInputSupervisor creates a new audio input supervisor
 func NewAudioInputSupervisor() *AudioInputSupervisor {
 	return &AudioInputSupervisor{
-		logger:         logging.GetDefaultLogger().With().Str("component", "audio-input-supervisor").Logger(),
+		BaseSupervisor: NewBaseSupervisor("audio-input-supervisor"),
 		client:         NewAudioInputClient(),
-		processMonitor: GetProcessMonitor(),
 	}
 }
 
 // Start starts the audio input server subprocess
 func (ais *AudioInputSupervisor) Start() error {
-	ais.mtx.Lock()
-	defer ais.mtx.Unlock()
+	ais.mutex.Lock()
+	defer ais.mutex.Unlock()
 
-	if ais.running {
+	if ais.IsRunning() {
 		return fmt.Errorf("audio input supervisor already running with PID %d", ais.cmd.Process.Pid)
 	}
 
 	// Create context for subprocess management
-	ctx, cancel := context.WithCancel(context.Background())
-	ais.cancel = cancel
+	ais.createContext()
 
 	// Get current executable path
 	execPath, err := os.Executable()
@@ -53,7 +41,7 @@ func (ais *AudioInputSupervisor) Start() error {
 	}
 
 	// Create command for audio input server subprocess
-	cmd := exec.CommandContext(ctx, execPath, "--audio-input-server")
+	cmd := exec.CommandContext(ais.ctx, execPath, "--audio-input-server")
 	cmd.Env = append(os.Environ(),
 		"JETKVM_AUDIO_INPUT_IPC=true", // Enable IPC mode
 	)
@@ -64,13 +52,13 @@ func (ais *AudioInputSupervisor) Start() error {
 	}
 
 	ais.cmd = cmd
-	ais.running = true
+	ais.setRunning(true)
 
 	// Start the subprocess
 	err = cmd.Start()
 	if err != nil {
-		ais.running = false
-		cancel()
+		ais.setRunning(false)
+		ais.cancelContext()
 		return fmt.Errorf("failed to start audio input server process: %w", err)
 	}
 
@@ -90,14 +78,14 @@ func (ais *AudioInputSupervisor) Start() error {
 
 // Stop stops the audio input server subprocess
 func (ais *AudioInputSupervisor) Stop() {
-	ais.mtx.Lock()
-	defer ais.mtx.Unlock()
+	ais.mutex.Lock()
+	defer ais.mutex.Unlock()
 
-	if !ais.running {
+	if !ais.IsRunning() {
 		return
 	}
 
-	ais.running = false
+	ais.logSupervisorStop()
 
 	// Disconnect client first
 	if ais.client != nil {
@@ -105,9 +93,7 @@ func (ais *AudioInputSupervisor) Stop() {
 	}
 
 	// Cancel context to signal subprocess to stop
-	if ais.cancel != nil {
-		ais.cancel()
-	}
+	ais.cancelContext()
 
 	// Try graceful termination first
 	if ais.cmd != nil && ais.cmd.Process != nil {
@@ -138,19 +124,14 @@ func (ais *AudioInputSupervisor) Stop() {
 		}
 	}
 
+	ais.setRunning(false)
 	ais.cmd = nil
-	ais.cancel = nil
-}
-
-// IsRunning returns whether the supervisor is running
-func (ais *AudioInputSupervisor) IsRunning() bool {
-	ais.mtx.Lock()
-	defer ais.mtx.Unlock()
-	return ais.running
 }
 
 // IsConnected returns whether the client is connected to the audio input server
 func (ais *AudioInputSupervisor) IsConnected() bool {
+	ais.mutex.Lock()
+	defer ais.mutex.Unlock()
 	if !ais.IsRunning() {
 		return false
 	}
@@ -162,41 +143,11 @@ func (ais *AudioInputSupervisor) GetClient() *AudioInputClient {
 	return ais.client
 }
 
-// GetProcessMetrics returns current process metrics if the process is running
+// GetProcessMetrics returns current process metrics with audio-input-server name
 func (ais *AudioInputSupervisor) GetProcessMetrics() *ProcessMetrics {
-	ais.mtx.Lock()
-	defer ais.mtx.Unlock()
-
-	if ais.cmd == nil || ais.cmd.Process == nil {
-		// Return default metrics when no process is running
-		return &ProcessMetrics{
-			PID:           0,
-			CPUPercent:    0.0,
-			MemoryRSS:     0,
-			MemoryVMS:     0,
-			MemoryPercent: 0.0,
-			Timestamp:     time.Now(),
-			ProcessName:   "audio-input-server",
-		}
-	}
-
-	pid := ais.cmd.Process.Pid
-	metrics := ais.processMonitor.GetCurrentMetrics()
-	for _, metric := range metrics {
-		if metric.PID == pid {
-			return &metric
-		}
-	}
-	// Return default metrics if process not found in monitoring
-	return &ProcessMetrics{
-		PID:           pid,
-		CPUPercent:    0.0,
-		MemoryRSS:     0,
-		MemoryVMS:     0,
-		MemoryPercent: 0.0,
-		Timestamp:     time.Now(),
-		ProcessName:   "audio-input-server",
-	}
+	metrics := ais.BaseSupervisor.GetProcessMetrics()
+	metrics.ProcessName = "audio-input-server"
+	return metrics
 }
 
 // monitorSubprocess monitors the subprocess and handles unexpected exits
@@ -211,10 +162,10 @@ func (ais *AudioInputSupervisor) monitorSubprocess() {
 	// Remove process from monitoring
 	ais.processMonitor.RemoveProcess(pid)
 
-	ais.mtx.Lock()
-	defer ais.mtx.Unlock()
+	ais.mutex.Lock()
+	defer ais.mutex.Unlock()
 
-	if ais.running {
+	if ais.IsRunning() {
 		// Unexpected exit
 		if err != nil {
 			ais.logger.Error().Err(err).Int("pid", pid).Msg("Audio input server subprocess exited unexpectedly")
@@ -228,7 +179,7 @@ func (ais *AudioInputSupervisor) monitorSubprocess() {
 		}
 
 		// Mark as not running
-		ais.running = false
+		ais.setRunning(false)
 		ais.cmd = nil
 
 		ais.logger.Info().Int("pid", pid).Msg("Audio input server subprocess monitoring stopped")

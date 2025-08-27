@@ -4,17 +4,12 @@
 package audio
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/rs/zerolog"
 )
 
 // Restart configuration is now retrieved from centralized config
@@ -36,29 +31,16 @@ func getMaxRestartDelay() time.Duration {
 
 // AudioOutputSupervisor manages the audio output server subprocess lifecycle
 type AudioOutputSupervisor struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	logger  *zerolog.Logger
-	mutex   sync.RWMutex
-	running int32
-
-	// Process management
-	cmd        *exec.Cmd
-	processPID int
+	*BaseSupervisor
 
 	// Restart management
 	restartAttempts []time.Time
-	lastExitCode    int
-	lastExitTime    time.Time
 
-	// Channels for coordination
-	processDone       chan struct{}
+	// Channel management
 	stopChan          chan struct{}
+	processDone       chan struct{}
 	stopChanClosed    bool // Track if stopChan is closed
 	processDoneClosed bool // Track if processDone is closed
-
-	// Process monitoring
-	processMonitor *ProcessMonitor
 
 	// Callbacks
 	onProcessStart func(pid int)
@@ -68,16 +50,11 @@ type AudioOutputSupervisor struct {
 
 // NewAudioOutputSupervisor creates a new audio output server supervisor
 func NewAudioOutputSupervisor() *AudioOutputSupervisor {
-	ctx, cancel := context.WithCancel(context.Background())
-	logger := logging.GetDefaultLogger().With().Str("component", AudioOutputSupervisorComponent).Logger()
-
 	return &AudioOutputSupervisor{
-		ctx:            ctx,
-		cancel:         cancel,
-		logger:         &logger,
-		processDone:    make(chan struct{}),
-		stopChan:       make(chan struct{}),
-		processMonitor: GetProcessMonitor(),
+		BaseSupervisor:  NewBaseSupervisor("audio-output-supervisor"),
+		restartAttempts: make([]time.Time, 0),
+		stopChan:        make(chan struct{}),
+		processDone:     make(chan struct{}),
 	}
 }
 
@@ -101,7 +78,8 @@ func (s *AudioOutputSupervisor) Start() error {
 		return fmt.Errorf("audio output supervisor is already running")
 	}
 
-	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("starting component")
+	s.logSupervisorStart()
+	s.createContext()
 
 	// Recreate channels in case they were closed by a previous Stop() call
 	s.mutex.Lock()
@@ -109,12 +87,8 @@ func (s *AudioOutputSupervisor) Start() error {
 	s.stopChan = make(chan struct{})
 	s.stopChanClosed = false    // Reset channel closed flag
 	s.processDoneClosed = false // Reset channel closed flag
-	// Recreate context as well since it might have been cancelled
-	s.ctx, s.cancel = context.WithCancel(context.Background())
 	// Reset restart tracking on start
 	s.restartAttempts = s.restartAttempts[:0]
-	s.lastExitCode = 0
-	s.lastExitTime = time.Time{}
 	s.mutex.Unlock()
 
 	// Start the supervision loop
@@ -130,7 +104,7 @@ func (s *AudioOutputSupervisor) Stop() {
 		return // Already stopped
 	}
 
-	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("stopping component")
+	s.logSupervisorStop()
 
 	// Signal stop and wait for cleanup
 	s.mutex.Lock()
@@ -139,7 +113,7 @@ func (s *AudioOutputSupervisor) Stop() {
 		s.stopChanClosed = true
 	}
 	s.mutex.Unlock()
-	s.cancel()
+	s.cancelContext()
 
 	// Wait for process to exit
 	select {
@@ -153,61 +127,11 @@ func (s *AudioOutputSupervisor) Stop() {
 	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component stopped")
 }
 
-// IsRunning returns true if the supervisor is running
-func (s *AudioOutputSupervisor) IsRunning() bool {
-	return atomic.LoadInt32(&s.running) == 1
-}
-
-// GetProcessPID returns the current process PID (0 if not running)
-func (s *AudioOutputSupervisor) GetProcessPID() int {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.processPID
-}
-
-// GetLastExitInfo returns information about the last process exit
-func (s *AudioOutputSupervisor) GetLastExitInfo() (exitCode int, exitTime time.Time) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.lastExitCode, s.lastExitTime
-}
-
-// GetProcessMetrics returns current process metrics if the process is running
+// GetProcessMetrics returns current process metrics with audio-output-server name
 func (s *AudioOutputSupervisor) GetProcessMetrics() *ProcessMetrics {
-	s.mutex.RLock()
-	pid := s.processPID
-	s.mutex.RUnlock()
-
-	if pid == 0 {
-		// Return default metrics when no process is running
-		return &ProcessMetrics{
-			PID:           0,
-			CPUPercent:    0.0,
-			MemoryRSS:     0,
-			MemoryVMS:     0,
-			MemoryPercent: 0.0,
-			Timestamp:     time.Now(),
-			ProcessName:   "audio-output-server",
-		}
-	}
-
-	metrics := s.processMonitor.GetCurrentMetrics()
-	for _, metric := range metrics {
-		if metric.PID == pid {
-			return &metric
-		}
-	}
-
-	// Return default metrics if process not found in monitor
-	return &ProcessMetrics{
-		PID:           pid,
-		CPUPercent:    0.0,
-		MemoryRSS:     0,
-		MemoryVMS:     0,
-		MemoryPercent: 0.0,
-		Timestamp:     time.Now(),
-		ProcessName:   "audio-output-server",
-	}
+	metrics := s.BaseSupervisor.GetProcessMetrics()
+	metrics.ProcessName = "audio-output-server"
+	return metrics
 }
 
 // supervisionLoop is the main supervision loop

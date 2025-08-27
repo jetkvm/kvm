@@ -1,6 +1,10 @@
 package audio
 
-import "time"
+import (
+	"time"
+
+	"github.com/jetkvm/kvm/internal/logging"
+)
 
 // AudioConfigConstants centralizes all hardcoded values used across audio components.
 // This configuration system allows runtime tuning of audio performance, quality, and resource usage.
@@ -1541,6 +1545,82 @@ type AudioConfigConstants struct {
 	// Default 8 channels provides reasonable upper bound for multi-channel audio.
 	MaxChannels int
 
+	// CGO Constants
+	// Used in: cgo_audio.go for CGO operation limits and retry logic
+	// Impact: Controls CGO retry behavior and backoff timing
+
+	// CGOMaxBackoffMicroseconds defines maximum backoff time in microseconds for CGO operations.
+	// Used in: safe_alsa_open for exponential backoff retry logic
+	// Impact: Prevents excessive wait times while allowing device recovery.
+	// Default 500000 microseconds (500ms) provides reasonable maximum wait time.
+	CGOMaxBackoffMicroseconds int
+
+	// CGOMaxAttempts defines maximum retry attempts for CGO operations.
+	// Used in: safe_alsa_open for retry limit enforcement
+	// Impact: Prevents infinite retry loops while allowing transient error recovery.
+	// Default 5 attempts provides good balance between reliability and performance.
+	CGOMaxAttempts int
+
+	// Validation Frame Size Limits
+	// Used in: validation_enhanced.go for frame duration validation
+	// Impact: Ensures frame sizes are within acceptable bounds for real-time audio
+
+	// MinFrameDuration defines minimum acceptable frame duration.
+	// Used in: ValidateAudioConfiguration for frame size validation
+	// Impact: Prevents excessively small frames that could impact performance.
+	// Default 10ms provides minimum viable frame duration for real-time audio.
+	MinFrameDuration time.Duration
+
+	// MaxFrameDuration defines maximum acceptable frame duration.
+	// Used in: ValidateAudioConfiguration for frame size validation
+	// Impact: Prevents excessively large frames that could impact latency.
+	// Default 100ms provides reasonable maximum frame duration.
+	MaxFrameDuration time.Duration
+
+	// Valid Sample Rates
+	// Used in: validation_enhanced.go for sample rate validation
+	// Impact: Defines the set of supported sample rates for audio processing
+
+	// ValidSampleRates defines the list of supported sample rates.
+	// Used in: ValidateAudioConfiguration for sample rate validation
+	// Impact: Ensures only supported sample rates are used in audio processing.
+	// Default rates support common audio standards from voice (8kHz) to professional (48kHz).
+	ValidSampleRates []int
+
+	// Opus Bitrate Validation Constants
+	// Used in: validation_enhanced.go for bitrate range validation
+	// Impact: Ensures bitrate values are within Opus codec specifications
+
+	// MinOpusBitrate defines the minimum valid Opus bitrate in bits per second.
+	// Used in: ValidateAudioConfiguration for bitrate validation
+	// Impact: Prevents bitrates below Opus codec minimum specification.
+	// Default 6000 bps is the minimum supported by Opus codec.
+	MinOpusBitrate int
+
+	// MaxOpusBitrate defines the maximum valid Opus bitrate in bits per second.
+	// Used in: ValidateAudioConfiguration for bitrate validation
+	// Impact: Prevents bitrates above Opus codec maximum specification.
+	// Default 510000 bps is the maximum supported by Opus codec.
+	MaxOpusBitrate int
+
+	// MaxValidationTime defines the maximum time allowed for validation operations.
+	// Used in: GetValidationConfig for timeout control
+	// Impact: Prevents validation operations from blocking indefinitely.
+	// Default 5s provides reasonable timeout for validation operations.
+	MaxValidationTime time.Duration
+
+	// MinFrameSize defines the minimum reasonable audio frame size in bytes.
+	// Used in: ValidateAudioFrameComprehensive for frame size validation
+	// Impact: Prevents processing of unreasonably small audio frames.
+	// Default 64 bytes ensures minimum viable audio data.
+	MinFrameSize int
+
+	// FrameSizeTolerance defines the tolerance for frame size validation in bytes.
+	// Used in: ValidateAudioFrameComprehensive for frame size matching
+	// Impact: Allows reasonable variation in frame sizes due to encoding.
+	// Default 512 bytes accommodates typical encoding variations.
+	FrameSizeTolerance int
+
 	// Device Health Monitoring Configuration
 	// Used in: device_health.go for proactive device monitoring and recovery
 	// Impact: Controls health check frequency and recovery thresholds
@@ -2607,6 +2687,26 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		MaxSampleRate:            48000,                  // 48kHz maximum sample rate
 		MaxChannels:              8,                      // 8 maximum audio channels
 
+		// CGO Constants
+		CGOMaxBackoffMicroseconds: 500000, // 500ms maximum backoff in microseconds
+		CGOMaxAttempts:            5,      // 5 maximum retry attempts
+
+		// Validation Frame Size Limits
+		MinFrameDuration: 10 * time.Millisecond,  // 10ms minimum frame duration
+		MaxFrameDuration: 100 * time.Millisecond, // 100ms maximum frame duration
+
+		// Valid Sample Rates
+		ValidSampleRates: []int{8000, 12000, 16000, 22050, 24000, 44100, 48000}, // Supported sample rates
+
+		// Opus Bitrate Validation Constants
+		MinOpusBitrate: 6000,   // 6000 bps minimum Opus bitrate
+		MaxOpusBitrate: 510000, // 510000 bps maximum Opus bitrate
+
+		// Validation Configuration
+		MaxValidationTime:  5 * time.Second, // 5s maximum validation timeout
+		MinFrameSize:       64,              // 64 bytes minimum frame size
+		FrameSizeTolerance: 512,             // 512 bytes frame size tolerance
+
 		// Device Health Monitoring Configuration
 		HealthCheckIntervalMS:    5000, // 5000ms (5s) health check interval
 		HealthRecoveryThreshold:  3,    // 3 consecutive successes for recovery
@@ -2630,7 +2730,17 @@ var audioConfigInstance = DefaultAudioConfig()
 
 // UpdateConfig allows runtime configuration updates
 func UpdateConfig(newConfig *AudioConfigConstants) {
+	// Validate the new configuration before applying it
+	if err := ValidateAudioConfigConstants(newConfig); err != nil {
+		// Log validation error and keep current configuration
+		logger := logging.GetDefaultLogger().With().Str("component", "AudioConfig").Logger()
+		logger.Error().Err(err).Msg("Configuration validation failed, keeping current configuration")
+		return
+	}
+
 	audioConfigInstance = newConfig
+	logger := logging.GetDefaultLogger().With().Str("component", "AudioConfig").Logger()
+	logger.Info().Msg("Audio configuration updated successfully")
 }
 
 // GetConfig returns the current configuration

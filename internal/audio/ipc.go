@@ -23,6 +23,13 @@ var (
 // Output IPC constants are now centralized in config_constants.go
 // outputMaxFrameSize, outputWriteTimeout, outputMaxDroppedFrames, outputHeaderSize, outputMessagePoolSize
 
+// OutputIPCConfig represents configuration for audio output
+type OutputIPCConfig struct {
+	SampleRate int
+	Channels   int
+	FrameSize  int
+}
+
 // OutputMessageType represents the type of IPC message
 type OutputMessageType uint8
 
@@ -106,7 +113,7 @@ func NewAudioOutputServer() (*AudioOutputServer, error) {
 
 	// Initialize latency monitoring
 	latencyConfig := DefaultLatencyConfig()
-	logger := zerolog.New(os.Stderr).With().Timestamp().Str("component", "audio-server").Logger()
+	logger := zerolog.New(os.Stderr).With().Timestamp().Str("component", AudioOutputServerComponent).Logger()
 	latencyMonitor := NewLatencyMonitor(latencyConfig, logger)
 
 	// Initialize adaptive buffer manager with default config
@@ -160,7 +167,7 @@ func (s *AudioOutputServer) Start() error {
 
 // acceptConnections accepts incoming connections
 func (s *AudioOutputServer) acceptConnections() {
-	logger := logging.GetDefaultLogger().With().Str("component", "audio-server").Logger()
+	logger := logging.GetDefaultLogger().With().Str("component", AudioOutputServerComponent).Logger()
 	for s.running {
 		conn, err := s.listener.Accept()
 		if err != nil {
@@ -253,6 +260,14 @@ func (s *AudioOutputServer) Close() error {
 }
 
 func (s *AudioOutputServer) SendFrame(frame []byte) error {
+	// Comprehensive frame validation
+	if err := ValidateFrameData(frame); err != nil {
+		logger := logging.GetDefaultLogger().With().Str("component", AudioOutputServerComponent).Logger()
+		logger.Error().Err(err).Msg("Frame validation failed")
+		return fmt.Errorf("output frame validation failed: %w", err)
+	}
+
+	// Additional output-specific size check
 	maxFrameSize := GetConfig().OutputMaxFrameSize
 	if len(frame) > maxFrameSize {
 		return fmt.Errorf("output frame size validation failed: got %d bytes, maximum allowed %d bytes", len(frame), maxFrameSize)
