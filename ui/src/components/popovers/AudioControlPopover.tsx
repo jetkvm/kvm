@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { MdVolumeOff, MdVolumeUp, MdGraphicEq, MdMic, MdMicOff, MdRefresh } from "react-icons/md";
-import { LuActivity, LuSettings, LuSignal } from "react-icons/lu";
+import { LuActivity, LuSignal } from "react-icons/lu";
 
 import { Button } from "@components/Button";
 import { AudioLevelMeter } from "@components/AudioLevelMeter";
@@ -11,7 +11,6 @@ import { useAudioLevel } from "@/hooks/useAudioLevel";
 import { useAudioEvents } from "@/hooks/useAudioEvents";
 import api from "@/api";
 import notifications from "@/notifications";
-import { AUDIO_CONFIG } from "@/config/constants";
 import audioQualityService from "@/services/audioQualityService";
 
 // Type for microphone error
@@ -54,7 +53,7 @@ interface AudioControlPopoverProps {
 export default function AudioControlPopover({ microphone, open }: AudioControlPopoverProps) {
   const [currentConfig, setCurrentConfig] = useState<AudioConfig | null>(null);
   const [currentMicrophoneConfig, setCurrentMicrophoneConfig] = useState<AudioConfig | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const [isLoading, setIsLoading] = useState(false);
   
   // Add cache flags to prevent unnecessary API calls
@@ -274,17 +273,7 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
     }
   };
 
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-  };
 
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat().format(num);
-  };
 
   return (
     <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-800">
@@ -575,152 +564,51 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
           )}
         </div>
 
-        {/* Advanced Controls Toggle */}
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex w-full items-center justify-between rounded-md border border-slate-200 p-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-        >
-          <div className="flex items-center gap-2">
-            <LuSettings className="h-4 w-4" />
-            <span>Advanced Metrics</span>
+        {/* Quick Status Summary */}
+        <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-600">
+          <div className="flex items-center gap-2 mb-2">
+            <LuActivity className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+            <span className="font-medium text-slate-900 dark:text-slate-100">
+              Quick Status
+            </span>
           </div>
-          <span className={cx(
-            "transition-transform",
-            showAdvanced ? "rotate-180" : "rotate-0"
-          )}>
-            ▼
-          </span>
-        </button>
-
-         {/* Advanced Metrics */}
-        {showAdvanced && (
-          <div className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-600">
-            <div className="flex items-center gap-2">
-              <LuActivity className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-              <span className="font-medium text-slate-900 dark:text-slate-100">
-                Performance Metrics
-              </span>
-            </div>
-            
-            {metrics ? (
-              <>
-                <div className="mb-4">
-                  <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Audio Output</h4>
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div className="space-y-1">
-                      <div className="text-slate-500 dark:text-slate-400">Frames Received</div>
-                      <div className="font-mono text-green-600 dark:text-green-400">
-                        {formatNumber(metrics.frames_received)}
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <div className="text-slate-500 dark:text-slate-400">Frames Dropped</div>
-                      <div className={cx(
-                        "font-mono",
-                        metrics.frames_dropped > 0 
-                          ? "text-red-600 dark:text-red-400" 
-                          : "text-green-600 dark:text-green-400"
-                      )}>
-                        {formatNumber(metrics.frames_dropped)}
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <div className="text-slate-500 dark:text-slate-400">Data Processed</div>
-                      <div className="font-mono text-blue-600 dark:text-blue-400">
-                        {formatBytes(metrics.bytes_processed)}
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <div className="text-slate-500 dark:text-slate-400">Connection Drops</div>
-                      <div className={cx(
-                        "font-mono",
-                        metrics.connection_drops > 0 
-                          ? "text-red-600 dark:text-red-400" 
-                          : "text-green-600 dark:text-green-400"
-                      )}>
-                        {formatNumber(metrics.connection_drops)}
-                      </div>
-                    </div>
-                  </div>
+          
+          {metrics ? (
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                <div className={cx(
+                  "font-medium",
+                  metrics.frames_dropped > 0 
+                    ? "text-red-600 dark:text-red-400" 
+                    : "text-green-600 dark:text-green-400"
+                )}>
+                  {metrics.frames_dropped > 0 ? "Issues" : "Good"}
                 </div>
-
-                {micMetrics && (
-                  <div className="mb-4">
-                    <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Microphone Input</h4>
-                    <div className="grid grid-cols-2 gap-3 text-xs">
-                      <div className="space-y-1">
-                        <div className="text-slate-500 dark:text-slate-400">Frames Sent</div>
-                        <div className="font-mono text-green-600 dark:text-green-400">
-                          {formatNumber(micMetrics.frames_sent)}
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <div className="text-slate-500 dark:text-slate-400">Frames Dropped</div>
-                        <div className={cx(
-                          "font-mono",
-                          micMetrics.frames_dropped > 0 
-                            ? "text-red-600 dark:text-red-400" 
-                            : "text-green-600 dark:text-green-400"
-                        )}>
-                          {formatNumber(micMetrics.frames_dropped)}
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <div className="text-slate-500 dark:text-slate-400">Data Processed</div>
-                        <div className="font-mono text-blue-600 dark:text-blue-400">
-                          {formatBytes(micMetrics.bytes_processed)}
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <div className="text-slate-500 dark:text-slate-400">Connection Drops</div>
-                        <div className={cx(
-                          "font-mono",
-                          micMetrics.connection_drops > 0 
-                            ? "text-red-600 dark:text-red-400" 
-                            : "text-green-600 dark:text-green-400"
-                        )}>
-                          {formatNumber(micMetrics.connection_drops)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {metrics.frames_received > 0 && (
-                  <div className="mt-3 rounded-md bg-slate-50 p-2 dark:bg-slate-700">
-                    <div className="text-xs text-slate-500 dark:text-slate-400">Drop Rate</div>
-                    <div className={cx(
-                      "font-mono text-sm",
-                      ((metrics.frames_dropped / metrics.frames_received) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER) > AUDIO_CONFIG.DROP_RATE_CRITICAL_THRESHOLD
-                        ? "text-red-600 dark:text-red-400"
-                        : ((metrics.frames_dropped / metrics.frames_received) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER) > AUDIO_CONFIG.DROP_RATE_WARNING_THRESHOLD
-                        ? "text-yellow-600 dark:text-yellow-400"
-                        : "text-green-600 dark:text-green-400"
-                    )}>
-                      {((metrics.frames_dropped / metrics.frames_received) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER).toFixed(AUDIO_CONFIG.PERCENTAGE_DECIMAL_PLACES)}%
-                    </div>
-                  </div>
-                )}
-
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Last updated: {new Date().toLocaleTimeString()}
-                </div>
-              </>
-            ) : (
-              <div className="text-center py-4">
-                <div className="text-sm text-slate-500 dark:text-slate-400">
-                  Loading metrics...
-                </div>
+                <div className="text-slate-500 dark:text-slate-400">Audio Output</div>
               </div>
-            )}
-          </div>
-        )}
+              
+              {micMetrics && (
+                <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                  <div className={cx(
+                    "font-medium",
+                    micMetrics.frames_dropped > 0 
+                      ? "text-red-600 dark:text-red-400" 
+                      : "text-green-600 dark:text-green-400"
+                  )}>
+                    {micMetrics.frames_dropped > 0 ? "Issues" : "Good"}
+                  </div>
+                  <div className="text-slate-500 dark:text-slate-400">Microphone</div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-2">
+              <div className="text-sm text-slate-500 dark:text-slate-400">
+                No data available
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Audio Metrics Dashboard Button */}
         <div className="pt-2 border-t border-slate-200 dark:border-slate-600">
