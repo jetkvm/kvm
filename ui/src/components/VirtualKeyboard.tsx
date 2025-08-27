@@ -224,9 +224,10 @@ function KeyboardWrapper() {
               <Card
                 className={cx("overflow-hidden", {
                   "rounded-none": isAttachedVirtualKeyboardVisible,
+                  "keyboard-detached": !isAttachedVirtualKeyboardVisible
                 })}
               >
-                <div className="flex items-center justify-center border-b border-b-slate-800/30 bg-white px-2 py-1 dark:border-b-slate-300/20 dark:bg-slate-800">
+                <div className="flex items-center justify-center border-b border-b-slate-800/30 bg-white px-2 py-4 dark:border-b-slate-300/20 dark:bg-slate-800">
                   <div className="absolute left-2 flex items-center gap-x-2">
                     {isAttachedVirtualKeyboardVisible ? (
                       <Button
@@ -246,7 +247,7 @@ function KeyboardWrapper() {
                     )}
                   </div>
                   <h2 className="select-none self-center font-sans text-[12px] text-slate-700 dark:text-slate-300">
-                    Virtual Keyboard
+                    Virtual Keyboard<span className="text-[10px]"> - {selectedKeyboard.name}</span>
                   </h2>
                   <div className="absolute right-2">
                     <Button
