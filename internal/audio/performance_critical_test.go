@@ -45,7 +45,7 @@ func TestPerformanceCriticalPaths(t *testing.T) {
 // This is the most critical path that must not interfere with KVM
 func testAudioFrameProcessingLatency(t *testing.T) {
 	const (
-		frameCount = 1000
+		frameCount         = 1000
 		maxLatencyPerFrame = 100 * time.Microsecond // Very strict requirement
 	)
 
@@ -61,7 +61,7 @@ func testAudioFrameProcessingLatency(t *testing.T) {
 		// Simulate the critical path: validation + metrics update
 		err := ValidateAudioFrameFast(frameData)
 		require.NoError(t, err)
-		
+
 		// Record frame received (atomic operation)
 		RecordFrameReceived(len(frameData))
 	}
@@ -69,22 +69,22 @@ func testAudioFrameProcessingLatency(t *testing.T) {
 
 	avgLatencyPerFrame := elapsed / frameCount
 	t.Logf("Average frame processing latency: %v", avgLatencyPerFrame)
-	
+
 	// Ensure frame processing is fast enough to not interfere with KVM
-	assert.Less(t, avgLatencyPerFrame, maxLatencyPerFrame, 
-		"Frame processing latency %v exceeds maximum %v - may interfere with KVM", 
+	assert.Less(t, avgLatencyPerFrame, maxLatencyPerFrame,
+		"Frame processing latency %v exceeds maximum %v - may interfere with KVM",
 		avgLatencyPerFrame, maxLatencyPerFrame)
 
 	// Ensure total processing time is reasonable
 	maxTotalTime := 50 * time.Millisecond
-	assert.Less(t, elapsed, maxTotalTime, 
+	assert.Less(t, elapsed, maxTotalTime,
 		"Total processing time %v exceeds maximum %v", elapsed, maxTotalTime)
 }
 
 // testMetricsUpdateOverhead tests the overhead of metrics updates
 func testMetricsUpdateOverhead(t *testing.T) {
 	const iterations = 10000
-	
+
 	// Test RecordFrameReceived performance
 	start := time.Now()
 	for i := 0; i < iterations; i++ {
@@ -202,7 +202,7 @@ func testMemoryAllocationPatterns(t *testing.T) {
 // testConcurrentAccessPerformance tests performance under concurrent access
 func testConcurrentAccessPerformance(t *testing.T) {
 	const (
-		numGoroutines = 10
+		numGoroutines          = 10
 		operationsPerGoroutine = 1000
 	)
 
@@ -215,7 +215,7 @@ func testConcurrentAccessPerformance(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			frameData := make([]byte, 1920)
-			
+
 			for j := 0; j < operationsPerGoroutine; j++ {
 				// Simulate concurrent audio processing
 				_ = ValidateAudioFrameFast(frameData)
@@ -232,7 +232,7 @@ func testConcurrentAccessPerformance(t *testing.T) {
 	totalOperations := numGoroutines * operationsPerGoroutine * 4 // 4 operations per iteration
 	avgLatency := elapsed / time.Duration(totalOperations)
 
-	t.Logf("Concurrent access: %d operations in %v (avg: %v per operation)", 
+	t.Logf("Concurrent access: %d operations in %v (avg: %v per operation)",
 		totalOperations, elapsed, avgLatency)
 
 	// Concurrent access should not significantly degrade performance
@@ -306,7 +306,7 @@ func TestRegressionDetection(t *testing.T) {
 	start := time.Now()
 	for i := 0; i < 100; i++ {
 		_ = ValidateAudioFrameFast(frameData)
-			RecordFrameReceived(len(frameData))
+		RecordFrameReceived(len(frameData))
 	}
 	frameProcessingTime := time.Since(start) / 100
 
@@ -335,13 +335,13 @@ func TestRegressionDetection(t *testing.T) {
 	// - ARM Cortex-A7 @ 1GHz single core
 	// - 256MB DDR3L RAM
 	// - Must not interfere with primary KVM functionality
-	assert.Less(t, frameProcessingTime, baselines["frame_processing"], 
+	assert.Less(t, frameProcessingTime, baselines["frame_processing"],
 		"Frame processing regression: %v > %v", frameProcessingTime, baselines["frame_processing"])
-	assert.Less(t, metricsUpdateTime, 100*time.Microsecond, 
+	assert.Less(t, metricsUpdateTime, 100*time.Microsecond,
 		"Metrics update regression: %v > 100μs", metricsUpdateTime)
-	assert.Less(t, configAccessTime, 10*time.Microsecond, 
+	assert.Less(t, configAccessTime, 10*time.Microsecond,
 		"Config access regression: %v > 10μs", configAccessTime)
-	assert.Less(t, validationTime, 10*time.Microsecond, 
+	assert.Less(t, validationTime, 10*time.Microsecond,
 		"Validation regression: %v > 10μs", validationTime)
 
 	t.Logf("Performance results:")
@@ -384,6 +384,6 @@ func TestMemoryLeakDetection(t *testing.T) {
 	t.Logf("Memory growth after 10,000 operations: %d bytes", memoryGrowth)
 
 	// Memory growth should be minimal (less than 1MB)
-	assert.Less(t, memoryGrowth, int64(1024*1024), 
+	assert.Less(t, memoryGrowth, int64(1024*1024),
 		"Excessive memory growth detected: %d bytes", memoryGrowth)
 }

@@ -29,7 +29,7 @@ var (
 func ValidateAudioQuality(quality AudioQuality) error {
 	// Validate enum range
 	if quality < AudioQualityLow || quality > AudioQualityUltra {
-		return fmt.Errorf("%w: quality value %d outside valid range [%d, %d]", 
+		return fmt.Errorf("%w: quality value %d outside valid range [%d, %d]",
 			ErrInvalidAudioQuality, int(quality), int(AudioQualityLow), int(AudioQualityUltra))
 	}
 	return nil
@@ -43,21 +43,21 @@ func ValidateFrameData(data []byte) error {
 	if len(data) == 0 {
 		return fmt.Errorf("%w: frame data is empty", ErrInvalidFrameData)
 	}
-	
+
 	config := GetConfig()
 	// Check minimum frame size
 	if len(data) < config.MinFrameSize {
-		return fmt.Errorf("%w: frame size %d below minimum %d", 
+		return fmt.Errorf("%w: frame size %d below minimum %d",
 			ErrInvalidFrameSize, len(data), config.MinFrameSize)
 	}
 	// Check maximum frame size
 	if len(data) > config.MaxAudioFrameSize {
-		return fmt.Errorf("%w: frame size %d exceeds maximum %d", 
+		return fmt.Errorf("%w: frame size %d exceeds maximum %d",
 			ErrInvalidFrameSize, len(data), config.MaxAudioFrameSize)
 	}
 	// Validate frame alignment for audio samples (must be even for 16-bit samples)
 	if len(data)%2 != 0 {
-		return fmt.Errorf("%w: frame size %d not aligned for 16-bit samples", 
+		return fmt.Errorf("%w: frame size %d not aligned for 16-bit samples",
 			ErrInvalidFrameSize, len(data))
 	}
 	return nil
@@ -89,7 +89,7 @@ func ValidateBufferSize(size int) error {
 	// Use SocketMaxBuffer as the upper limit for general buffer validation
 	// This allows for socket buffers while still preventing extremely large allocations
 	if size > config.SocketMaxBuffer {
-		return fmt.Errorf("%w: buffer size %d exceeds maximum %d", 
+		return fmt.Errorf("%w: buffer size %d exceeds maximum %d",
 			ErrInvalidBufferSize, size, config.SocketMaxBuffer)
 	}
 	return nil
@@ -99,7 +99,7 @@ func ValidateBufferSize(size int) error {
 func ValidateThreadPriority(priority int) error {
 	const minPriority, maxPriority = -20, 19
 	if priority < minPriority || priority > maxPriority {
-		return fmt.Errorf("%w: priority %d outside valid range [%d, %d]", 
+		return fmt.Errorf("%w: priority %d outside valid range [%d, %d]",
 			ErrInvalidPriority, priority, minPriority, maxPriority)
 	}
 	return nil
@@ -113,11 +113,11 @@ func ValidateLatency(latency time.Duration) error {
 	config := GetConfig()
 	minLatency := time.Millisecond // Minimum reasonable latency
 	if latency > 0 && latency < minLatency {
-		return fmt.Errorf("%w: latency %v below minimum %v", 
+		return fmt.Errorf("%w: latency %v below minimum %v",
 			ErrInvalidLatency, latency, minLatency)
 	}
 	if latency > config.MaxLatency {
-		return fmt.Errorf("%w: latency %v exceeds maximum %v", 
+		return fmt.Errorf("%w: latency %v exceeds maximum %v",
 			ErrInvalidLatency, latency, config.MaxLatency)
 	}
 	return nil
@@ -233,7 +233,7 @@ func ValidateSampleRate(sampleRate int) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("%w: sample rate %d not in supported rates %v", 
+	return fmt.Errorf("%w: sample rate %d not in supported rates %v",
 		ErrInvalidSampleRate, sampleRate, validRates)
 }
 
@@ -244,7 +244,7 @@ func ValidateChannelCount(channels int) error {
 	}
 	config := GetConfig()
 	if channels > config.MaxChannels {
-		return fmt.Errorf("%w: channel count %d exceeds maximum %d", 
+		return fmt.Errorf("%w: channel count %d exceeds maximum %d",
 			ErrInvalidChannels, channels, config.MaxChannels)
 	}
 	return nil
@@ -259,11 +259,11 @@ func ValidateBitrate(bitrate int) error {
 	// Convert kbps to bps for comparison with config limits
 	bitrateInBps := bitrate * 1000
 	if bitrateInBps < config.MinOpusBitrate {
-		return fmt.Errorf("%w: bitrate %d kbps (%d bps) below minimum %d bps", 
+		return fmt.Errorf("%w: bitrate %d kbps (%d bps) below minimum %d bps",
 			ErrInvalidBitrate, bitrate, bitrateInBps, config.MinOpusBitrate)
 	}
 	if bitrateInBps > config.MaxOpusBitrate {
-		return fmt.Errorf("%w: bitrate %d kbps (%d bps) exceeds maximum %d bps", 
+		return fmt.Errorf("%w: bitrate %d kbps (%d bps) exceeds maximum %d bps",
 			ErrInvalidBitrate, bitrate, bitrateInBps, config.MaxOpusBitrate)
 	}
 	return nil
@@ -276,11 +276,11 @@ func ValidateFrameDuration(duration time.Duration) error {
 	}
 	config := GetConfig()
 	if duration < config.MinFrameDuration {
-		return fmt.Errorf("%w: frame duration %v below minimum %v", 
+		return fmt.Errorf("%w: frame duration %v below minimum %v",
 			ErrInvalidFrameDuration, duration, config.MinFrameDuration)
 	}
 	if duration > config.MaxFrameDuration {
-		return fmt.Errorf("%w: frame duration %v exceeds maximum %v", 
+		return fmt.Errorf("%w: frame duration %v exceeds maximum %v",
 			ErrInvalidFrameDuration, duration, config.MaxFrameDuration)
 	}
 	return nil
