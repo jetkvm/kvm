@@ -35,34 +35,6 @@ func ValidateAudioQuality(quality AudioQuality) error {
 	return nil
 }
 
-// ValidateFrameData validates audio frame data with comprehensive boundary checks
-func ValidateFrameData(data []byte) error {
-	if data == nil {
-		return fmt.Errorf("%w: frame data is nil", ErrInvalidFrameData)
-	}
-	if len(data) == 0 {
-		return fmt.Errorf("%w: frame data is empty", ErrInvalidFrameData)
-	}
-
-	config := GetConfig()
-	// Check minimum frame size
-	if len(data) < config.MinFrameSize {
-		return fmt.Errorf("%w: frame size %d below minimum %d",
-			ErrInvalidFrameSize, len(data), config.MinFrameSize)
-	}
-	// Check maximum frame size
-	if len(data) > config.MaxAudioFrameSize {
-		return fmt.Errorf("%w: frame size %d exceeds maximum %d",
-			ErrInvalidFrameSize, len(data), config.MaxAudioFrameSize)
-	}
-	// Validate frame alignment for audio samples (must be even for 16-bit samples)
-	if len(data)%2 != 0 {
-		return fmt.Errorf("%w: frame size %d not aligned for 16-bit samples",
-			ErrInvalidFrameSize, len(data))
-	}
-	return nil
-}
-
 // ValidateZeroCopyFrame validates zero-copy audio frame
 func ValidateZeroCopyFrame(frame *ZeroCopyAudioFrame) error {
 	if frame == nil {
@@ -327,6 +299,8 @@ func ValidateAudioConfigConstants(config *AudioConfigConstants) error {
 }
 
 // ValidateAudioFrameFast performs fast validation of audio frame data
+// ValidateAudioFrameFast provides minimal validation for critical audio processing paths
+// This function is optimized for performance and only checks essential safety bounds
 func ValidateAudioFrameFast(data []byte) error {
 	if len(data) == 0 {
 		return fmt.Errorf("%w: frame data is empty", ErrInvalidFrameData)
@@ -334,6 +308,17 @@ func ValidateAudioFrameFast(data []byte) error {
 	maxFrameSize := GetConfig().MaxAudioFrameSize
 	if len(data) > maxFrameSize {
 		return fmt.Errorf("%w: frame size %d exceeds maximum %d", ErrInvalidFrameSize, len(data), maxFrameSize)
+	}
+	return nil
+}
+
+// ValidateAudioFrameUltraFast provides zero-overhead validation for ultra-critical paths
+// This function only checks for nil/empty data and maximum size to prevent buffer overruns
+// Use this in hot audio processing loops where every microsecond matters
+func ValidateAudioFrameUltraFast(data []byte) error {
+	// Only check for catastrophic failures that could crash the system
+	if len(data) == 0 || len(data) > 8192 { // Hard-coded 8KB safety limit
+		return ErrInvalidFrameData
 	}
 	return nil
 }

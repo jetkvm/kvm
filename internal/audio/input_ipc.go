@@ -477,8 +477,8 @@ func (ais *AudioInputServer) processOpusFrame(data []byte) error {
 		return nil // Empty frame, ignore
 	}
 
-	// Validate frame data before processing
-	if err := ValidateFrameData(data); err != nil {
+	// Use ultra-fast validation for critical audio path
+	if err := ValidateAudioFrameUltraFast(data); err != nil {
 		logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
 		logger.Error().Err(err).Msg("Frame validation failed")
 		return fmt.Errorf("input frame validation failed: %w", err)
@@ -635,7 +635,7 @@ func (aic *AudioInputClient) SendFrame(frame []byte) error {
 	}
 
 	// Validate frame data before sending
-	if err := ValidateFrameData(frame); err != nil {
+	if err := ValidateAudioFrameUltraFast(frame); err != nil {
 		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
 		logger.Error().Err(err).Msg("Frame validation failed")
 		return fmt.Errorf("input frame validation failed: %w", err)

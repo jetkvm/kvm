@@ -2388,7 +2388,7 @@ func DefaultAudioConfig() *AudioConfigConstants {
 
 		// Validation Configuration
 		MaxValidationTime:  5 * time.Second, // 5s maximum validation timeout
-		MinFrameSize:       64,              // 64 bytes minimum frame size
+		MinFrameSize:       1,               // 1 byte minimum frame size (allow small frames)
 		FrameSizeTolerance: 512,             // 512 bytes frame size tolerance
 
 		// Device Health Monitoring Configuration

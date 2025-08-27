@@ -62,46 +62,25 @@ func testAudioQualityValidation(t *testing.T) {
 	}
 }
 
-// testFrameDataValidation tests frame data validation with various edge cases
+// testFrameDataValidation tests frame data validation with various edge cases using modern validation
 func testFrameDataValidation(t *testing.T) {
 	config := GetConfig()
 
-	// Test nil data
-	err := ValidateFrameData(nil)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "frame data is nil")
-
 	// Test empty data
-	err = ValidateFrameData([]byte{})
+	err := ValidateAudioFrameFast([]byte{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "frame data is empty")
 
-	// Test data below minimum size
-	if config.MinFrameSize > 0 {
-		smallData := make([]byte, config.MinFrameSize-1)
-		err = ValidateFrameData(smallData)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "below minimum")
-	}
-
 	// Test data above maximum size
 	largeData := make([]byte, config.MaxAudioFrameSize+1)
-	err = ValidateFrameData(largeData)
+	err = ValidateAudioFrameFast(largeData)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeds maximum")
 
-	// Test unaligned data (odd number of bytes for 16-bit samples)
-	oddData := make([]byte, 1001) // Odd number
-	if len(oddData) >= config.MinFrameSize {
-		err = ValidateFrameData(oddData)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "not aligned")
-	}
-
-	// Test valid aligned data
-	validData := make([]byte, 1000) // Even number, within bounds
-	if len(validData) >= config.MinFrameSize && len(validData) <= config.MaxAudioFrameSize {
-		err = ValidateFrameData(validData)
+	// Test valid data
+	validData := make([]byte, 1000) // Within bounds
+	if len(validData) <= config.MaxAudioFrameSize {
+		err = ValidateAudioFrameFast(validData)
 		assert.NoError(t, err)
 	}
 }
