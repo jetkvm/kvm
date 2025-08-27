@@ -301,8 +301,45 @@ var (
 	micConnectionDropsValue   int64
 )
 
+// UnifiedAudioMetrics provides a common structure for both input and output audio streams
+type UnifiedAudioMetrics struct {
+	FramesReceived  int64         `json:"frames_received"`
+	FramesDropped   int64         `json:"frames_dropped"`
+	FramesSent      int64         `json:"frames_sent,omitempty"`
+	BytesProcessed  int64         `json:"bytes_processed"`
+	ConnectionDrops int64         `json:"connection_drops"`
+	LastFrameTime   time.Time     `json:"last_frame_time"`
+	AverageLatency  time.Duration `json:"average_latency"`
+}
+
+// convertAudioMetricsToUnified converts AudioMetrics to UnifiedAudioMetrics
+func convertAudioMetricsToUnified(metrics AudioMetrics) UnifiedAudioMetrics {
+	return UnifiedAudioMetrics{
+		FramesReceived:  metrics.FramesReceived,
+		FramesDropped:   metrics.FramesDropped,
+		FramesSent:      0, // AudioMetrics doesn't have FramesSent
+		BytesProcessed:  metrics.BytesProcessed,
+		ConnectionDrops: metrics.ConnectionDrops,
+		LastFrameTime:   metrics.LastFrameTime,
+		AverageLatency:  metrics.AverageLatency,
+	}
+}
+
+// convertAudioInputMetricsToUnified converts AudioInputMetrics to UnifiedAudioMetrics
+func convertAudioInputMetricsToUnified(metrics AudioInputMetrics) UnifiedAudioMetrics {
+	return UnifiedAudioMetrics{
+		FramesReceived:  0, // AudioInputMetrics doesn't have FramesReceived
+		FramesDropped:   metrics.FramesDropped,
+		FramesSent:      metrics.FramesSent,
+		BytesProcessed:  metrics.BytesProcessed,
+		ConnectionDrops: metrics.ConnectionDrops,
+		LastFrameTime:   metrics.LastFrameTime,
+		AverageLatency:  metrics.AverageLatency,
+	}
+}
+
 // UpdateAudioMetrics updates Prometheus metrics with current audio data
-func UpdateAudioMetrics(metrics AudioMetrics) {
+func UpdateAudioMetrics(metrics UnifiedAudioMetrics) {
 	oldReceived := atomic.SwapInt64(&audioFramesReceivedValue, metrics.FramesReceived)
 	if metrics.FramesReceived > oldReceived {
 		audioFramesReceivedTotal.Add(float64(metrics.FramesReceived - oldReceived))
@@ -333,7 +370,7 @@ func UpdateAudioMetrics(metrics AudioMetrics) {
 }
 
 // UpdateMicrophoneMetrics updates Prometheus metrics with current microphone data
-func UpdateMicrophoneMetrics(metrics AudioInputMetrics) {
+func UpdateMicrophoneMetrics(metrics UnifiedAudioMetrics) {
 	oldSent := atomic.SwapInt64(&micFramesSentValue, metrics.FramesSent)
 	if metrics.FramesSent > oldSent {
 		microphoneFramesSentTotal.Add(float64(metrics.FramesSent - oldSent))
@@ -457,11 +494,11 @@ func StartMetricsUpdater() {
 		for range ticker.C {
 			// Update audio output metrics
 			audioMetrics := GetAudioMetrics()
-			UpdateAudioMetrics(audioMetrics)
+			UpdateAudioMetrics(convertAudioMetricsToUnified(audioMetrics))
 
 			// Update microphone input metrics
 			micMetrics := GetAudioInputMetrics()
-			UpdateMicrophoneMetrics(micMetrics)
+			UpdateMicrophoneMetrics(convertAudioInputMetricsToUnified(micMetrics))
 
 			// Update microphone subprocess process metrics
 			if inputSupervisor := GetAudioInputIPCSupervisor(); inputSupervisor != nil {

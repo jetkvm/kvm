@@ -2,6 +2,7 @@ import { useNavigate, useParams, NavigateOptions } from "react-router-dom";
 import { useCallback, useMemo } from "react";
 
 import { isOnDevice } from "../main";
+import { devError } from '../utils/debug';
 
 /**
  * Generates the correct path based on whether the app is running on device or in cloud mode
@@ -21,7 +22,7 @@ export function getDeviceUiPath(path: string, deviceId?: string): string {
     return normalizedPath;
   } else {
     if (!deviceId) {
-      console.error("No device ID provided when generating path in cloud mode");
+      devError("No device ID provided when generating path in cloud mode");
       throw new Error("Device ID is required for cloud mode path generation");
     }
     return `/devices/${deviceId}${normalizedPath}`;

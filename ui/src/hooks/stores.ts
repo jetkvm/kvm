@@ -7,6 +7,8 @@ import {
   MAX_KEYS_PER_STEP,
 } from "@/constants/macros";
 
+import { devWarn } from '../utils/debug';
+
 // Define the JsonRpc types for better type checking
 interface JsonRpcResponse {
   jsonrpc: string;
@@ -782,7 +784,7 @@ export const useNetworkStateStore = create<NetworkState>((set, get) => ({
   setDhcpLeaseExpiry: (expiry: Date) => {
     const lease = get().dhcp_lease;
     if (!lease) {
-      console.warn("No lease found");
+      devWarn("No lease found");
       return;
     }
 

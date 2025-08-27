@@ -11,6 +11,8 @@ import { useAudioLevel } from "@/hooks/useAudioLevel";
 import { useAudioEvents } from "@/hooks/useAudioEvents";
 import api from "@/api";
 import notifications from "@/notifications";
+import { AUDIO_CONFIG } from "@/config/constants";
+import audioQualityService from "@/services/audioQualityService";
 
 // Type for microphone error
 interface MicrophoneError {
@@ -41,12 +43,8 @@ interface AudioConfig {
   FrameSize: string;
 }
 
-const qualityLabels = {
-  0: "Low (32kbps)",
-  1: "Medium (64kbps)",
-  2: "High (128kbps)",
-  3: "Ultra (256kbps)"
-};
+// Quality labels will be managed by the audio quality service
+const getQualityLabels = () => audioQualityService.getQualityLabels();
 
 interface AudioControlPopoverProps {
   microphone: MicrophoneHookReturn;
@@ -138,20 +136,15 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
 
   const loadAudioConfigurations = async () => {
     try {
-      // Parallel loading for better performance
-      const [qualityResp, micQualityResp] = await Promise.all([
-        api.GET("/audio/quality"),
-        api.GET("/microphone/quality")
-      ]);
+      // Use centralized audio quality service
+      const { audio, microphone } = await audioQualityService.loadAllConfigurations();
 
-      if (qualityResp.ok) {
-        const qualityData = await qualityResp.json();
-        setCurrentConfig(qualityData.current);
+      if (audio) {
+        setCurrentConfig(audio.current);
       }
 
-      if (micQualityResp.ok) {
-        const micQualityData = await micQualityResp.json();
-        setCurrentMicrophoneConfig(micQualityData.current);
+      if (microphone) {
+        setCurrentMicrophoneConfig(microphone.current);
       }
       
       setConfigsLoaded(true);
@@ -511,7 +504,7 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
             </div>
             
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(qualityLabels).map(([quality, label]) => (
+              {Object.entries(getQualityLabels()).map(([quality, label]) => (
                 <button
                   key={`mic-${quality}`}
                   onClick={() => handleMicrophoneQualityChange(parseInt(quality))}
@@ -552,7 +545,7 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
           </div>
           
           <div className="grid grid-cols-2 gap-2">
-            {Object.entries(qualityLabels).map(([quality, label]) => (
+            {Object.entries(getQualityLabels()).map(([quality, label]) => (
               <button
                 key={quality}
                 onClick={() => handleQualityChange(parseInt(quality))}
@@ -704,13 +697,13 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
                     <div className="text-xs text-slate-500 dark:text-slate-400">Drop Rate</div>
                     <div className={cx(
                       "font-mono text-sm",
-                      ((metrics.frames_dropped / metrics.frames_received) * 100) > 5
+                      ((metrics.frames_dropped / metrics.frames_received) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER) > AUDIO_CONFIG.DROP_RATE_CRITICAL_THRESHOLD
                         ? "text-red-600 dark:text-red-400"
-                        : ((metrics.frames_dropped / metrics.frames_received) * 100) > 1
+                        : ((metrics.frames_dropped / metrics.frames_received) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER) > AUDIO_CONFIG.DROP_RATE_WARNING_THRESHOLD
                         ? "text-yellow-600 dark:text-yellow-400"
                         : "text-green-600 dark:text-green-400"
                     )}>
-                      {((metrics.frames_dropped / metrics.frames_received) * 100).toFixed(2)}%
+                      {((metrics.frames_dropped / metrics.frames_received) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER).toFixed(AUDIO_CONFIG.PERCENTAGE_DECIMAL_PLACES)}%
                     </div>
                   </div>
                 )}

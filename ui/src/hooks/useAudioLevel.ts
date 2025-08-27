@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { AUDIO_CONFIG } from '@/config/constants';
+
 interface AudioLevelHookResult {
   audioLevel: number; // 0-100 percentage
   isAnalyzing: boolean;
@@ -7,14 +9,14 @@ interface AudioLevelHookResult {
 
 interface AudioLevelOptions {
   enabled?: boolean; // Allow external control of analysis
-  updateInterval?: number; // Throttle updates (default: 100ms for 10fps instead of 60fps)
+  updateInterval?: number; // Throttle updates (default from AUDIO_CONFIG)
 }
 
 export const useAudioLevel = (
   stream: MediaStream | null, 
   options: AudioLevelOptions = {}
 ): AudioLevelHookResult => {
-  const { enabled = true, updateInterval = 100 } = options;
+  const { enabled = true, updateInterval = AUDIO_CONFIG.LEVEL_UPDATE_INTERVAL } = options;
   
   const [audioLevel, setAudioLevel] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -59,8 +61,8 @@ export const useAudioLevel = (
       const source = audioContext.createMediaStreamSource(stream);
 
       // Configure analyser - use smaller FFT for better performance
-      analyser.fftSize = 128; // Reduced from 256 for better performance
-      analyser.smoothingTimeConstant = 0.8;
+      analyser.fftSize = AUDIO_CONFIG.FFT_SIZE;
+      analyser.smoothingTimeConstant = AUDIO_CONFIG.SMOOTHING_TIME_CONSTANT;
       
       // Connect nodes
       source.connect(analyser);
@@ -87,7 +89,7 @@ export const useAudioLevel = (
         
         // Optimized RMS calculation - process only relevant frequency bands
         let sum = 0;
-        const relevantBins = Math.min(dataArray.length, 32); // Focus on lower frequencies for voice
+        const relevantBins = Math.min(dataArray.length, AUDIO_CONFIG.RELEVANT_FREQUENCY_BINS);
         for (let i = 0; i < relevantBins; i++) {
           const value = dataArray[i];
           sum += value * value;
@@ -95,7 +97,7 @@ export const useAudioLevel = (
         const rms = Math.sqrt(sum / relevantBins);
         
         // Convert to percentage (0-100) with better scaling
-        const level = Math.min(100, Math.max(0, (rms / 180) * 100)); // Adjusted scaling for better sensitivity
+        const level = Math.min(AUDIO_CONFIG.MAX_LEVEL_PERCENTAGE, Math.max(0, (rms / AUDIO_CONFIG.RMS_SCALING_FACTOR) * AUDIO_CONFIG.MAX_LEVEL_PERCENTAGE));
         setAudioLevel(Math.round(level));
       };
 

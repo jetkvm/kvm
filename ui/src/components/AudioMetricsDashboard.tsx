@@ -9,6 +9,8 @@ import { useMicrophone } from "@/hooks/useMicrophone";
 import { useAudioLevel } from "@/hooks/useAudioLevel";
 import { useAudioEvents } from "@/hooks/useAudioEvents";
 import api from "@/api";
+import { AUDIO_CONFIG } from "@/config/constants";
+import audioQualityService from "@/services/audioQualityService";
 
 interface AudioMetrics {
   frames_received: number;
@@ -44,12 +46,8 @@ interface AudioConfig {
   FrameSize: string;
 }
 
-const qualityLabels = {
-  0: "Low",
-  1: "Medium", 
-  2: "High",
-  3: "Ultra"
-};
+// Quality labels will be managed by the audio quality service
+const getQualityLabels = () => audioQualityService.getQualityLabels();
 
 // Format percentage values to 2 decimal places
 function formatPercentage(value: number | null | undefined): string {
@@ -246,22 +244,15 @@ export default function AudioMetricsDashboard() {
 
   const loadAudioConfig = async () => {
     try {
-      // Load config
-      const configResp = await api.GET("/audio/quality");
-      if (configResp.ok) {
-        const configData = await configResp.json();
-        setConfig(configData.current);
+      // Use centralized audio quality service
+      const { audio, microphone } = await audioQualityService.loadAllConfigurations();
+
+      if (audio) {
+        setConfig(audio.current);
       }
 
-      // Load microphone config
-      try {
-        const micConfigResp = await api.GET("/microphone/quality");
-        if (micConfigResp.ok) {
-          const micConfigData = await micConfigResp.json();
-          setMicrophoneConfig(micConfigData.current);
-        }
-      } catch {
-        // Microphone config not available
+      if (microphone) {
+        setMicrophoneConfig(microphone.current);
       }
     } catch (error) {
       console.error("Failed to load audio config:", error);
@@ -397,7 +388,7 @@ export default function AudioMetricsDashboard() {
 
   const getDropRate = () => {
     if (!metrics || metrics.frames_received === 0) return 0;
-    return ((metrics.frames_dropped / metrics.frames_received) * 100);
+    return ((metrics.frames_dropped / metrics.frames_received) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER);
   };
 
 
@@ -449,7 +440,7 @@ export default function AudioMetricsDashboard() {
               <div className="flex justify-between">
                 <span className="text-slate-500 dark:text-slate-400">Quality:</span>
                 <span className={cx("font-medium", getQualityColor(config.Quality))}>
-                  {qualityLabels[config.Quality as keyof typeof qualityLabels]}
+                  {getQualityLabels()[config.Quality]}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -486,7 +477,7 @@ export default function AudioMetricsDashboard() {
               <div className="flex justify-between">
                 <span className="text-slate-500 dark:text-slate-400">Quality:</span>
                 <span className={cx("font-medium", getQualityColor(microphoneConfig.Quality))}>
-                  {qualityLabels[microphoneConfig.Quality as keyof typeof qualityLabels]}
+                  {getQualityLabels()[microphoneConfig.Quality]}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -668,26 +659,26 @@ export default function AudioMetricsDashboard() {
                 </span>
                 <span className={cx(
                   "font-bold",
-                  getDropRate() > 5 
+                  getDropRate() > AUDIO_CONFIG.DROP_RATE_CRITICAL_THRESHOLD 
                     ? "text-red-600 dark:text-red-400"
-                    : getDropRate() > 1
+                    : getDropRate() > AUDIO_CONFIG.DROP_RATE_WARNING_THRESHOLD
                     ? "text-yellow-600 dark:text-yellow-400"
                     : "text-green-600 dark:text-green-400"
                 )}>
-                  {getDropRate().toFixed(2)}%
+                  {getDropRate().toFixed(AUDIO_CONFIG.PERCENTAGE_DECIMAL_PLACES)}%
                 </span>
               </div>
               <div className="mt-1 h-2 w-full rounded-full bg-slate-200 dark:bg-slate-600">
                 <div 
                   className={cx(
                     "h-2 rounded-full transition-all duration-300",
-                    getDropRate() > 5 
+                    getDropRate() > AUDIO_CONFIG.DROP_RATE_CRITICAL_THRESHOLD 
                       ? "bg-red-500"
-                      : getDropRate() > 1
+                      : getDropRate() > AUDIO_CONFIG.DROP_RATE_WARNING_THRESHOLD
                       ? "bg-yellow-500"
                       : "bg-green-500"
                   )}
-                  style={{ width: `${Math.min(getDropRate(), 100)}%` }}
+                  style={{ width: `${Math.min(getDropRate(), AUDIO_CONFIG.MAX_LEVEL_PERCENTAGE)}%` }}
                 />
               </div>
             </div>
@@ -734,27 +725,27 @@ export default function AudioMetricsDashboard() {
                   </span>
                   <span className={cx(
                     "font-bold",
-                    (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100 : 0) > 5 
+                    (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER : 0) > AUDIO_CONFIG.DROP_RATE_CRITICAL_THRESHOLD 
                       ? "text-red-600 dark:text-red-400"
-                      : (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100 : 0) > 1
+                      : (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER : 0) > AUDIO_CONFIG.DROP_RATE_WARNING_THRESHOLD
                       ? "text-yellow-600 dark:text-yellow-400"
                       : "text-green-600 dark:text-green-400"
                   )}>
-                    {microphoneMetrics.frames_sent > 0 ? ((microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100).toFixed(2) : "0.00"}%
+                    {microphoneMetrics.frames_sent > 0 ? ((microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER).toFixed(AUDIO_CONFIG.PERCENTAGE_DECIMAL_PLACES) : "0.00"}%
                   </span>
                 </div>
                 <div className="mt-1 h-2 w-full rounded-full bg-slate-200 dark:bg-slate-600">
                   <div 
                     className={cx(
                       "h-2 rounded-full transition-all duration-300",
-                      (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100 : 0) > 5 
+                      (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER : 0) > AUDIO_CONFIG.DROP_RATE_CRITICAL_THRESHOLD 
                         ? "bg-red-500"
-                        : (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100 : 0) > 1
+                        : (microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER : 0) > AUDIO_CONFIG.DROP_RATE_WARNING_THRESHOLD
                         ? "bg-yellow-500"
                         : "bg-green-500"
                     )}
                     style={{ 
-                      width: `${Math.min(microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * 100 : 0, 100)}%` 
+                      width: `${Math.min(microphoneMetrics.frames_sent > 0 ? (microphoneMetrics.frames_dropped / microphoneMetrics.frames_sent) * AUDIO_CONFIG.PERCENTAGE_MULTIPLIER : 0, AUDIO_CONFIG.MAX_LEVEL_PERCENTAGE)}%` 
                     }}
                   />
                 </div>
