@@ -312,12 +312,40 @@ func ValidateAudioFrameFast(data []byte) error {
 	return nil
 }
 
+// Cached constants for ultra-fast validation (initialized once at startup)
+var (
+	maxFrameSizeCache = 8192 // Will be updated from config during init
+)
+
+// init initializes cached validation constants for optimal performance
+//
+//nolint:gochecknoinits // Required for performance-critical config caching
+func init() {
+	// Cache the maximum frame size to avoid function calls in hot paths
+	if config := GetConfig(); config != nil {
+		maxFrameSizeCache = config.MaxAudioFrameSize
+	}
+	// Fallback to safe default if config unavailable
+	if maxFrameSizeCache <= 0 {
+		maxFrameSizeCache = 8192
+	}
+}
+
 // ValidateAudioFrameUltraFast provides zero-overhead validation for ultra-critical paths
 // This function only checks for nil/empty data and maximum size to prevent buffer overruns
 // Use this in hot audio processing loops where every microsecond matters
+//
+// Performance optimizations:
+// - Uses cached max frame size to avoid config function calls
+// - Single branch condition for optimal CPU pipeline efficiency
+// - Inlined length checks for minimal overhead
+//
+//go:inline
 func ValidateAudioFrameUltraFast(data []byte) error {
-	// Only check for catastrophic failures that could crash the system
-	if len(data) == 0 || len(data) > 8192 { // Hard-coded 8KB safety limit
+	// Single optimized check: empty data OR exceeds cached maximum
+	// This branch prediction friendly pattern minimizes CPU pipeline stalls
+	dataLen := len(data)
+	if dataLen == 0 || dataLen > maxFrameSizeCache {
 		return ErrInvalidFrameData
 	}
 	return nil

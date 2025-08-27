@@ -1,12 +1,42 @@
 package audio
 
 import (
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/jetkvm/kvm/internal/logging"
 )
+
+// Lock-free buffer cache for per-goroutine optimization
+type lockFreeBufferCache struct {
+	buffers [4]*[]byte // Small fixed-size array for lock-free access
+}
+
+// Per-goroutine buffer cache using goroutine-local storage
+var goroutineBufferCache = make(map[int64]*lockFreeBufferCache)
+var goroutineCacheMutex sync.RWMutex
+
+// getGoroutineID extracts goroutine ID from runtime stack for cache key
+func getGoroutineID() int64 {
+	b := make([]byte, 64)
+	b = b[:runtime.Stack(b, false)]
+	// Parse "goroutine 123 [running]:" format
+	for i := 10; i < len(b); i++ {
+		if b[i] == ' ' {
+			id := int64(0)
+			for j := 10; j < i; j++ {
+				if b[j] >= '0' && b[j] <= '9' {
+					id = id*10 + int64(b[j]-'0')
+				}
+			}
+			return id
+		}
+	}
+	return 0
+}
 
 type AudioBufferPool struct {
 	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
@@ -81,7 +111,27 @@ func (p *AudioBufferPool) Get() []byte {
 		}
 	}()
 
-	// First try to get from pre-allocated pool for fastest access
+	// Fast path: Try lock-free per-goroutine cache first
+	gid := getGoroutineID()
+	goroutineCacheMutex.RLock()
+	cache, exists := goroutineBufferCache[gid]
+	goroutineCacheMutex.RUnlock()
+
+	if exists && cache != nil {
+		// Try to get buffer from lock-free cache
+		for i := 0; i < len(cache.buffers); i++ {
+			bufPtr := (*unsafe.Pointer)(unsafe.Pointer(&cache.buffers[i]))
+			buf := (*[]byte)(atomic.LoadPointer(bufPtr))
+			if buf != nil && atomic.CompareAndSwapPointer(bufPtr, unsafe.Pointer(buf), nil) {
+				atomic.AddInt64(&p.hitCount, 1)
+				wasHit = true
+				*buf = (*buf)[:0]
+				return *buf
+			}
+		}
+	}
+
+	// Fallback: Try pre-allocated pool with mutex
 	p.mutex.Lock()
 	if len(p.preallocated) > 0 {
 		lastIdx := len(p.preallocated) - 1
@@ -141,7 +191,31 @@ func (p *AudioBufferPool) Put(buf []byte) {
 	// Reset buffer for reuse - clear any sensitive data
 	resetBuf := buf[:0]
 
-	// First try to return to pre-allocated pool for fastest reuse
+	// Fast path: Try to put in lock-free per-goroutine cache
+	gid := getGoroutineID()
+	goroutineCacheMutex.RLock()
+	cache, exists := goroutineBufferCache[gid]
+	goroutineCacheMutex.RUnlock()
+
+	if !exists {
+		// Create new cache for this goroutine
+		cache = &lockFreeBufferCache{}
+		goroutineCacheMutex.Lock()
+		goroutineBufferCache[gid] = cache
+		goroutineCacheMutex.Unlock()
+	}
+
+	if cache != nil {
+		// Try to store in lock-free cache
+		for i := 0; i < len(cache.buffers); i++ {
+			bufPtr := (*unsafe.Pointer)(unsafe.Pointer(&cache.buffers[i]))
+			if atomic.CompareAndSwapPointer(bufPtr, nil, unsafe.Pointer(&buf)) {
+				return // Successfully cached
+			}
+		}
+	}
+
+	// Fallback: Try to return to pre-allocated pool for fastest reuse
 	p.mutex.Lock()
 	if len(p.preallocated) < p.preallocSize {
 		p.preallocated = append(p.preallocated, &resetBuf)
