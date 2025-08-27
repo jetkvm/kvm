@@ -1,3 +1,6 @@
+//go:build !cgo || arm
+// +build !cgo arm
+
 package audio
 
 import (
@@ -298,54 +301,34 @@ func ValidateAudioConfigConstants(config *AudioConfigConstants) error {
 	return nil
 }
 
-// ValidateAudioFrameFast performs fast validation of audio frame data
-// ValidateAudioFrameFast provides minimal validation for critical audio processing paths
-// This function is optimized for performance and only checks essential safety bounds
-func ValidateAudioFrameFast(data []byte) error {
-	if len(data) == 0 {
-		return fmt.Errorf("%w: frame data is empty", ErrInvalidFrameData)
-	}
-	maxFrameSize := GetConfig().MaxAudioFrameSize
-	if len(data) > maxFrameSize {
-		return fmt.Errorf("%w: frame size %d exceeds maximum %d", ErrInvalidFrameSize, len(data), maxFrameSize)
-	}
-	return nil
-}
+// Cached max frame size to avoid function call overhead in hot paths
+var cachedMaxFrameSize int
 
-// Cached constants for ultra-fast validation (initialized once at startup)
-var (
-	maxFrameSizeCache = 8192 // Will be updated from config during init
-)
-
-// init initializes cached validation constants for optimal performance
-//
-//nolint:gochecknoinits // Required for performance-critical config caching
+// Initialize validation cache at package initialization
 func init() {
-	// Cache the maximum frame size to avoid function calls in hot paths
-	if config := GetConfig(); config != nil {
-		maxFrameSizeCache = config.MaxAudioFrameSize
-	}
-	// Fallback to safe default if config unavailable
-	if maxFrameSizeCache <= 0 {
-		maxFrameSizeCache = 8192
-	}
+	// This ensures the cache is always initialized before any validation calls
+	cachedMaxFrameSize = 4096 // Default value, will be updated by InitValidationCache
 }
 
-// ValidateAudioFrameUltraFast provides zero-overhead validation for ultra-critical paths
-// This function only checks for nil/empty data and maximum size to prevent buffer overruns
-// Use this in hot audio processing loops where every microsecond matters
+// InitValidationCache initializes cached validation values with actual config
+func InitValidationCache() {
+	cachedMaxFrameSize = GetConfig().MaxAudioFrameSize
+}
+
+// ValidateAudioFrame provides optimized validation for audio frame data
+// This is the primary validation function used in all audio processing paths
 //
 // Performance optimizations:
-// - Uses cached max frame size to avoid config function calls
+// - Uses cached config value to eliminate function call overhead
 // - Single branch condition for optimal CPU pipeline efficiency
 // - Inlined length checks for minimal overhead
 //
 //go:inline
-func ValidateAudioFrameUltraFast(data []byte) error {
+func ValidateAudioFrame(data []byte) error {
 	// Single optimized check: empty data OR exceeds cached maximum
 	// This branch prediction friendly pattern minimizes CPU pipeline stalls
 	dataLen := len(data)
-	if dataLen == 0 || dataLen > maxFrameSizeCache {
+	if dataLen == 0 || dataLen > cachedMaxFrameSize {
 		return ErrInvalidFrameData
 	}
 	return nil

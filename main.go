@@ -32,6 +32,9 @@ func runAudioServer() {
 }
 
 func startAudioSubprocess() error {
+	// Initialize validation cache for optimal performance
+	audio.InitValidationCache()
+
 	// Start adaptive buffer management for optimal performance
 	audio.StartAdaptiveBuffering()
 

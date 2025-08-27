@@ -16,6 +16,9 @@ func RunAudioInputServer() error {
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-input-server").Logger()
 	logger.Debug().Msg("audio input server subprocess starting")
 
+	// Initialize validation cache for optimal performance
+	InitValidationCache()
+
 	// Start adaptive buffer management for optimal performance
 	StartAdaptiveBuffering()
 	defer StopAdaptiveBuffering()

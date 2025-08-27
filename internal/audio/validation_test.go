@@ -15,6 +15,9 @@ import (
 // TestValidationFunctions provides comprehensive testing of all validation functions
 // to ensure they catch breaking changes and regressions effectively
 func TestValidationFunctions(t *testing.T) {
+	// Initialize validation cache for testing
+	InitValidationCache()
+
 	tests := []struct {
 		name     string
 		testFunc func(t *testing.T)
@@ -67,20 +70,20 @@ func testFrameDataValidation(t *testing.T) {
 	config := GetConfig()
 
 	// Test empty data
-	err := ValidateAudioFrameFast([]byte{})
+	err := ValidateAudioFrame([]byte{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "frame data is empty")
 
 	// Test data above maximum size
 	largeData := make([]byte, config.MaxAudioFrameSize+1)
-	err = ValidateAudioFrameFast(largeData)
+	err = ValidateAudioFrame(largeData)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeds maximum")
 
 	// Test valid data
 	validData := make([]byte, 1000) // Within bounds
 	if len(validData) <= config.MaxAudioFrameSize {
-		err = ValidateAudioFrameFast(validData)
+		err = ValidateAudioFrame(validData)
 		assert.NoError(t, err)
 	}
 }
@@ -439,19 +442,19 @@ func testAudioFrameFastValidation(t *testing.T) {
 	config := GetConfig()
 
 	// Test empty data
-	err := ValidateAudioFrameFast([]byte{})
+	err := ValidateAudioFrame([]byte{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "frame data is empty")
 
 	// Test data exceeding maximum size
 	largeData := make([]byte, config.MaxAudioFrameSize+1)
-	err = ValidateAudioFrameFast(largeData)
+	err = ValidateAudioFrame(largeData)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "exceeds maximum")
 
 	// Test valid data
 	validData := make([]byte, 1000)
-	err = ValidateAudioFrameFast(validData)
+	err = ValidateAudioFrame(validData)
 	assert.NoError(t, err)
 }
 
@@ -512,6 +515,9 @@ func TestValidationPerformance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping performance test in short mode")
 	}
+
+	// Initialize validation cache for performance testing
+	InitValidationCache()
 
 	// Test that validation functions complete quickly
 	start := time.Now()
