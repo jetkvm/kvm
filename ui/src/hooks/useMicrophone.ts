@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useRTCStore } from "@/hooks/stores";
 import api from "@/api";
+import { devLog, devInfo, devWarn, devError, devOnly } from "@/utils/debug";
+import { NETWORK_CONFIG, AUDIO_CONFIG } from "@/config/constants";
 
 export interface MicrophoneError {
   type: 'permission' | 'device' | 'network' | 'unknown';
@@ -31,15 +33,14 @@ export function useMicrophone() {
   // Add debouncing refs to prevent rapid operations
   const lastOperationRef = useRef<number>(0);
   const operationTimeoutRef = useRef<number | null>(null);
-  const OPERATION_DEBOUNCE_MS = 1000; // 1 second debounce
 
   // Debounced operation wrapper
   const debouncedOperation = useCallback((operation: () => Promise<void>, operationType: string) => {
     const now = Date.now();
     const timeSinceLastOp = now - lastOperationRef.current;
     
-    if (timeSinceLastOp < OPERATION_DEBOUNCE_MS) {
-      console.log(`Debouncing ${operationType} operation - too soon (${timeSinceLastOp}ms since last)`);
+    if (timeSinceLastOp < AUDIO_CONFIG.OPERATION_DEBOUNCE_MS) {
+      devLog(`Debouncing ${operationType} operation - too soon (${timeSinceLastOp}ms since last)`);
       return;
     }
     
@@ -51,7 +52,7 @@ export function useMicrophone() {
     
     lastOperationRef.current = now;
     operation().catch(error => {
-      console.error(`Debounced ${operationType} operation failed:`, error);
+      devError(`Debounced ${operationType} operation failed:`, error);
     });
   }, []);
 
@@ -72,7 +73,7 @@ export function useMicrophone() {
       try {
         await microphoneSender.replaceTrack(null);
       } catch (error) {
-        console.warn("Failed to replace track with null:", error);
+        devWarn("Failed to replace track with null:", error);
         // Fallback to removing the track
         peerConnection.removeTrack(microphoneSender);
       }
@@ -110,14 +111,14 @@ export function useMicrophone() {
       } : "No peer connection",
       streamMatch: refStream === microphoneStream
     };
-    console.log("Microphone Debug State:", state);
+    devLog("Microphone Debug State:", state);
     
     // Also check if streams are active
     if (refStream) {
-      console.log("Ref stream active tracks:", refStream.getAudioTracks().filter(t => t.readyState === 'live').length);
+      devLog("Ref stream active tracks:", refStream.getAudioTracks().filter(t => t.readyState === 'live').length);
     }
     if (microphoneStream && microphoneStream !== refStream) {
-      console.log("Store stream active tracks:", microphoneStream.getAudioTracks().filter(t => t.readyState === 'live').length);
+      devLog("Store stream active tracks:", microphoneStream.getAudioTracks().filter(t => t.readyState === 'live').length);
     }
     
     return state;
@@ -137,15 +138,15 @@ export function useMicrophone() {
   const syncMicrophoneState = useCallback(async () => {
     // Debounce sync calls to prevent race conditions
     const now = Date.now();
-    if (now - lastSyncRef.current < 1000) { // Increased debounce time
-      console.log("Skipping sync - too frequent");
+    if (now - lastSyncRef.current < AUDIO_CONFIG.SYNC_DEBOUNCE_MS) {
+      devLog("Skipping sync - too frequent");
       return;
     }
     lastSyncRef.current = now;
     
     // Don't sync if we're in the middle of starting the microphone
     if (isStartingRef.current) {
-      console.log("Skipping sync - microphone is starting");
+      devLog("Skipping sync - microphone is starting");
       return;
     }
     
@@ -157,27 +158,27 @@ export function useMicrophone() {
         
         // Only sync if there's a significant state difference and we're not in a transition
         if (backendRunning !== isMicrophoneActive) {
-          console.info(`Syncing microphone state: backend=${backendRunning}, frontend=${isMicrophoneActive}`);
+          devInfo(`Syncing microphone state: backend=${backendRunning}, frontend=${isMicrophoneActive}`);
           
           // If backend is running but frontend thinks it's not, just update frontend state
           if (backendRunning && !isMicrophoneActive) {
-            console.log("Backend running, updating frontend state to active");
+            devLog("Backend running, updating frontend state to active");
             setMicrophoneActive(true);
           }
           // If backend is not running but frontend thinks it is, clean up and update state
           else if (!backendRunning && isMicrophoneActive) {
-            console.log("Backend not running, cleaning up frontend state");
+            devLog("Backend not running, cleaning up frontend state");
             setMicrophoneActive(false);
             // Only clean up stream if we actually have one
             if (microphoneStreamRef.current) {
-              console.log("Cleaning up orphaned stream");
+              devLog("Cleaning up orphaned stream");
               await stopMicrophoneStream();
             }
           }
         }
       }
     } catch (error) {
-      console.warn("Failed to sync microphone state:", error);
+      devWarn("Failed to sync microphone state:", error);
     }
   }, [isMicrophoneActive, setMicrophoneActive, stopMicrophoneStream]);
 
@@ -185,7 +186,7 @@ export function useMicrophone() {
   const startMicrophone = useCallback(async (deviceId?: string): Promise<{ success: boolean; error?: MicrophoneError }> => {
     // Prevent multiple simultaneous start operations
     if (isStarting || isStopping || isToggling) {
-      console.log("Microphone operation already in progress, skipping start");
+      devLog("Microphone operation already in progress, skipping start");
       return { success: false, error: { type: 'unknown', message: 'Operation already in progress' } };
     }
     
@@ -198,8 +199,8 @@ export function useMicrophone() {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
-        sampleRate: 48000,
-        channelCount: 1,
+        sampleRate: AUDIO_CONFIG.SAMPLE_RATE,
+        channelCount: AUDIO_CONFIG.CHANNEL_COUNT,
       };
       
       // Add device ID if specified
@@ -207,7 +208,7 @@ export function useMicrophone() {
         audioConstraints.deviceId = { exact: deviceId };
       }
       
-      console.log("Requesting microphone with constraints:", audioConstraints);
+      devLog("Requesting microphone with constraints:", audioConstraints);
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints
       });
@@ -219,14 +220,14 @@ export function useMicrophone() {
       setMicrophoneStream(stream);
       
       // Verify the stream was stored correctly
-      console.log("Stream storage verification:", {
+      devLog("Stream storage verification:", {
         refSet: !!microphoneStreamRef.current,
         refId: microphoneStreamRef.current?.id,
         storeWillBeSet: true // Store update is async
       });
 
       // Add audio track to peer connection if available
-      console.log("Peer connection state:", peerConnection ? {
+      devLog("Peer connection state:", peerConnection ? {
         connectionState: peerConnection.connectionState,
         iceConnectionState: peerConnection.iceConnectionState,
         signalingState: peerConnection.signalingState
@@ -234,11 +235,11 @@ export function useMicrophone() {
       
       if (peerConnection && stream.getAudioTracks().length > 0) {
         const audioTrack = stream.getAudioTracks()[0];
-        console.log("Starting microphone with audio track:", audioTrack.id, "kind:", audioTrack.kind);
+        devLog("Starting microphone with audio track:", audioTrack.id, "kind:", audioTrack.kind);
         
         // Find the audio transceiver (should already exist with sendrecv direction)
         const transceivers = peerConnection.getTransceivers();
-        console.log("Available transceivers:", transceivers.map(t => ({
+        devLog("Available transceivers:", transceivers.map(t => ({
           direction: t.direction,
           mid: t.mid,
           senderTrack: t.sender.track?.kind,
@@ -264,7 +265,7 @@ export function useMicrophone() {
           return false;
         });
 
-        console.log("Found audio transceiver:", audioTransceiver ? {
+        devLog("Found audio transceiver:", audioTransceiver ? {
           direction: audioTransceiver.direction,
           mid: audioTransceiver.mid,
           senderTrack: audioTransceiver.sender.track?.kind,
@@ -276,10 +277,10 @@ export function useMicrophone() {
           // Use the existing audio transceiver's sender
           await audioTransceiver.sender.replaceTrack(audioTrack);
           sender = audioTransceiver.sender;
-          console.log("Replaced audio track on existing transceiver");
+          devLog("Replaced audio track on existing transceiver");
           
           // Verify the track was set correctly
-          console.log("Transceiver after track replacement:", {
+          devLog("Transceiver after track replacement:", {
             direction: audioTransceiver.direction,
             senderTrack: audioTransceiver.sender.track?.id,
             senderTrackKind: audioTransceiver.sender.track?.kind,
@@ -289,11 +290,11 @@ export function useMicrophone() {
         } else {
           // Fallback: add new track if no transceiver found
           sender = peerConnection.addTrack(audioTrack, stream);
-          console.log("Added new audio track to peer connection");
+          devLog("Added new audio track to peer connection");
           
           // Find the transceiver that was created for this track
           const newTransceiver = peerConnection.getTransceivers().find(t => t.sender === sender);
-          console.log("New transceiver created:", newTransceiver ? {
+          devLog("New transceiver created:", newTransceiver ? {
             direction: newTransceiver.direction,
             senderTrack: newTransceiver.sender.track?.id,
             senderTrackKind: newTransceiver.sender.track?.kind
@@ -301,7 +302,7 @@ export function useMicrophone() {
         }
         
         setMicrophoneSender(sender);
-        console.log("Microphone sender set:", {
+        devLog("Microphone sender set:", {
           senderId: sender,
           track: sender.track?.id,
           trackKind: sender.track?.kind,
@@ -310,28 +311,30 @@ export function useMicrophone() {
         });
         
         // Check sender stats to verify audio is being transmitted
-        setTimeout(async () => {
-          try {
-            const stats = await sender.getStats();
-            console.log("Sender stats after 2 seconds:");
-            stats.forEach((report, id) => {
-              if (report.type === 'outbound-rtp' && report.kind === 'audio') {
-                console.log("Outbound audio RTP stats:", {
-                  id,
-                  packetsSent: report.packetsSent,
-                  bytesSent: report.bytesSent,
-                  timestamp: report.timestamp
-                });
-              }
-            });
-          } catch (error) {
-            console.error("Failed to get sender stats:", error);
-          }
-        }, 2000);
+        devOnly(() => {
+          setTimeout(async () => {
+            try {
+              const stats = await sender.getStats();
+              devLog("Sender stats after 2 seconds:");
+              stats.forEach((report, id) => {
+                if (report.type === 'outbound-rtp' && report.kind === 'audio') {
+                  devLog("Outbound audio RTP stats:", {
+                    id,
+                    packetsSent: report.packetsSent,
+                    bytesSent: report.bytesSent,
+                    timestamp: report.timestamp
+                  });
+                }
+              });
+            } catch (error) {
+              devError("Failed to get sender stats:", error);
+            }
+          }, 2000);
+        });
       }
 
       // Notify backend that microphone is started
-      console.log("Notifying backend about microphone start...");
+      devLog("Notifying backend about microphone start...");
       
       // Retry logic for backend failures
       let backendSuccess = false;
@@ -341,12 +344,12 @@ export function useMicrophone() {
         try {
           // If this is a retry, first try to reset the backend microphone state
           if (attempt > 1) {
-            console.log(`Backend start attempt ${attempt}, first trying to reset backend state...`);
+            devLog(`Backend start attempt ${attempt}, first trying to reset backend state...`);
             try {
               // Try the new reset endpoint first
               const resetResp = await api.POST("/microphone/reset", {});
               if (resetResp.ok) {
-                console.log("Backend reset successful");
+                devLog("Backend reset successful");
               } else {
                 // Fallback to stop
                 await api.POST("/microphone/stop", {});
@@ -354,59 +357,59 @@ export function useMicrophone() {
               // Wait a bit for the backend to reset
               await new Promise(resolve => setTimeout(resolve, 200));
             } catch (resetError) {
-              console.warn("Failed to reset backend state:", resetError);
+              devWarn("Failed to reset backend state:", resetError);
             }
           }
           
           const backendResp = await api.POST("/microphone/start", {});
-          console.log(`Backend response status (attempt ${attempt}):`, backendResp.status, "ok:", backendResp.ok);
+          devLog(`Backend response status (attempt ${attempt}):`, backendResp.status, "ok:", backendResp.ok);
           
           if (!backendResp.ok) {
             lastError = `Backend returned status ${backendResp.status}`;
-            console.error(`Backend microphone start failed with status: ${backendResp.status} (attempt ${attempt})`);
+            devError(`Backend microphone start failed with status: ${backendResp.status} (attempt ${attempt})`);
             
             // For 500 errors, try again after a short delay
             if (backendResp.status === 500 && attempt < 3) {
-              console.log(`Retrying backend start in 500ms (attempt ${attempt + 1}/3)...`);
+              devLog(`Retrying backend start in 500ms (attempt ${attempt + 1}/3)...`);
               await new Promise(resolve => setTimeout(resolve, 500));
               continue;
             }
           } else {
             // Success!
             const responseData = await backendResp.json();
-            console.log("Backend response data:", responseData);
+            devLog("Backend response data:", responseData);
             if (responseData.status === "already running") {
-              console.info("Backend microphone was already running");
+              devInfo("Backend microphone was already running");
               
               // If we're on the first attempt and backend says "already running",
               // but frontend thinks it's not active, this might be a stuck state
               if (attempt === 1 && !isMicrophoneActive) {
-                console.warn("Backend reports 'already running' but frontend is not active - possible stuck state");
-                console.log("Attempting to reset backend state and retry...");
+                devWarn("Backend reports 'already running' but frontend is not active - possible stuck state");
+                devLog("Attempting to reset backend state and retry...");
                 
                 try {
                   const resetResp = await api.POST("/microphone/reset", {});
                   if (resetResp.ok) {
-                    console.log("Backend reset successful, retrying start...");
+                    devLog("Backend reset successful, retrying start...");
                     await new Promise(resolve => setTimeout(resolve, 200));
                     continue; // Retry the start
                   }
                 } catch (resetError) {
-                  console.warn("Failed to reset stuck backend state:", resetError);
+                  devWarn("Failed to reset stuck backend state:", resetError);
                 }
               }
             }
-            console.log("Backend microphone start successful");
+            devLog("Backend microphone start successful");
             backendSuccess = true;
             break;
           }
         } catch (error) {
           lastError = error instanceof Error ? error : String(error);
-          console.error(`Backend microphone start threw error (attempt ${attempt}):`, error);
+          devError(`Backend microphone start threw error (attempt ${attempt}):`, error);
           
           // For network errors, try again after a short delay
           if (attempt < 3) {
-            console.log(`Retrying backend start in 500ms (attempt ${attempt + 1}/3)...`);
+            devLog(`Retrying backend start in 500ms (attempt ${attempt + 1}/3)...`);
             await new Promise(resolve => setTimeout(resolve, 500));
             continue;
           }
@@ -415,7 +418,7 @@ export function useMicrophone() {
       
       // If all backend attempts failed, cleanup and return error
       if (!backendSuccess) {
-        console.error("All backend start attempts failed, cleaning up stream");
+        devError("All backend start attempts failed, cleaning up stream");
         await stopMicrophoneStream();
         isStartingRef.current = false;
         setIsStarting(false);
@@ -432,7 +435,7 @@ export function useMicrophone() {
       setMicrophoneActive(true);
       setMicrophoneMuted(false);
       
-      console.log("Microphone state set to active. Verifying state:", {
+      devLog("Microphone state set to active. Verifying state:", {
         streamInRef: !!microphoneStreamRef.current,
         streamInStore: !!microphoneStream,
         isActive: true,
@@ -441,15 +444,17 @@ export function useMicrophone() {
 
       // Don't sync immediately after starting - it causes race conditions
       // The sync will happen naturally through other triggers
-      setTimeout(() => {
-        // Just verify state after a delay for debugging
-        console.log("State check after delay:", {
-          streamInRef: !!microphoneStreamRef.current,
-          streamInStore: !!microphoneStream,
-          isActive: isMicrophoneActive,
-          isMuted: isMicrophoneMuted
-        });
-      }, 100);
+      devOnly(() => {
+        setTimeout(() => {
+          // Just verify state after a delay for debugging
+          devLog("State check after delay:", {
+            streamInRef: !!microphoneStreamRef.current,
+            streamInStore: !!microphoneStream,
+            isActive: isMicrophoneActive,
+            isMuted: isMicrophoneMuted
+          });
+        }, AUDIO_CONFIG.AUDIO_TEST_TIMEOUT);
+      });
 
       // Clear the starting flag
       isStartingRef.current = false;
@@ -493,12 +498,12 @@ export function useMicrophone() {
   // Reset backend microphone state
   const resetBackendMicrophoneState = useCallback(async (): Promise<boolean> => {
     try {
-      console.log("Resetting backend microphone state...");
+      devLog("Resetting backend microphone state...");
       const response = await api.POST("/microphone/reset", {});
       
       if (response.ok) {
         const data = await response.json();
-        console.log("Backend microphone reset successful:", data);
+        devLog("Backend microphone reset successful:", data);
         
         // Update frontend state to match backend
         setMicrophoneActive(false);
@@ -506,7 +511,7 @@ export function useMicrophone() {
         
         // Clean up any orphaned streams
         if (microphoneStreamRef.current) {
-          console.log("Cleaning up orphaned stream after reset");
+          devLog("Cleaning up orphaned stream after reset");
           await stopMicrophoneStream();
         }
         
@@ -518,19 +523,19 @@ export function useMicrophone() {
         
         return true;
       } else {
-        console.error("Backend microphone reset failed:", response.status);
+        devError("Backend microphone reset failed:", response.status);
         return false;
       }
     } catch (error) {
-      console.warn("Failed to reset backend microphone state:", error);
+      devWarn("Failed to reset backend microphone state:", error);
       // Fallback to old method
       try {
-        console.log("Trying fallback reset method...");
+        devLog("Trying fallback reset method...");
         await api.POST("/microphone/stop", {});
         await new Promise(resolve => setTimeout(resolve, 300));
         return true;
       } catch (fallbackError) {
-        console.error("Fallback reset also failed:", fallbackError);
+        devError("Fallback reset also failed:", fallbackError);
         return false;
       }
     }
@@ -540,7 +545,7 @@ export function useMicrophone() {
   const stopMicrophone = useCallback(async (): Promise<{ success: boolean; error?: MicrophoneError }> => {
     // Prevent multiple simultaneous stop operations
     if (isStarting || isStopping || isToggling) {
-      console.log("Microphone operation already in progress, skipping stop");
+      devLog("Microphone operation already in progress, skipping stop");
       return { success: false, error: { type: 'unknown', message: 'Operation already in progress' } };
     }
     
@@ -552,9 +557,9 @@ export function useMicrophone() {
       // Then notify backend that microphone is stopped
       try {
         await api.POST("/microphone/stop", {});
-        console.log("Backend notified about microphone stop");
+        devLog("Backend notified about microphone stop");
       } catch (error) {
-        console.warn("Failed to notify backend about microphone stop:", error);
+        devWarn("Failed to notify backend about microphone stop:", error);
       }
 
       // Update frontend state immediately
@@ -567,7 +572,7 @@ export function useMicrophone() {
       setIsStopping(false);
       return { success: true };
     } catch (error) {
-      console.error("Failed to stop microphone:", error);
+      devError("Failed to stop microphone:", error);
       setIsStopping(false);
       return {
         success: false,
@@ -583,7 +588,7 @@ export function useMicrophone() {
   const toggleMicrophoneMute = useCallback(async (): Promise<{ success: boolean; error?: MicrophoneError }> => {
     // Prevent multiple simultaneous toggle operations
     if (isStarting || isStopping || isToggling) {
-      console.log("Microphone operation already in progress, skipping toggle");
+      devLog("Microphone operation already in progress, skipping toggle");
       return { success: false, error: { type: 'unknown', message: 'Operation already in progress' } };
     }
     
@@ -592,7 +597,7 @@ export function useMicrophone() {
       // Use the ref instead of store value to avoid race conditions
       const currentStream = microphoneStreamRef.current || microphoneStream;
       
-      console.log("Toggle microphone mute - current state:", {
+      devLog("Toggle microphone mute - current state:", {
         hasRefStream: !!microphoneStreamRef.current,
         hasStoreStream: !!microphoneStream,
         isActive: isMicrophoneActive,
@@ -610,7 +615,7 @@ export function useMicrophone() {
           streamId: currentStream?.id,
           audioTracks: currentStream?.getAudioTracks().length || 0
         };
-        console.warn("Microphone mute failed: stream or active state missing", errorDetails);
+        devWarn("Microphone mute failed: stream or active state missing", errorDetails);
         
         // Provide more specific error message
         let errorMessage = 'Microphone is not active';
@@ -647,7 +652,7 @@ export function useMicrophone() {
       // Mute/unmute the audio track
       audioTracks.forEach(track => {
         track.enabled = !newMutedState;
-        console.log(`Audio track ${track.id} enabled: ${track.enabled}`);
+        devLog(`Audio track ${track.id} enabled: ${track.enabled}`);
       });
 
       setMicrophoneMuted(newMutedState);
@@ -656,13 +661,13 @@ export function useMicrophone() {
       try {
         await api.POST("/microphone/mute", { muted: newMutedState });
       } catch (error) {
-        console.warn("Failed to notify backend about microphone mute:", error);
+        devWarn("Failed to notify backend about microphone mute:", error);
       }
 
       setIsToggling(false);
       return { success: true };
     } catch (error) {
-      console.error("Failed to toggle microphone mute:", error);
+      devError("Failed to toggle microphone mute:", error);
       setIsToggling(false);
       return {
         success: false,
@@ -677,7 +682,7 @@ export function useMicrophone() {
   // Function to check WebRTC audio transmission stats
   const checkAudioTransmissionStats = useCallback(async () => {
     if (!microphoneSender) {
-      console.log("No microphone sender available");
+      devLog("No microphone sender available");
       return null;
     }
 
@@ -707,38 +712,38 @@ export function useMicrophone() {
         }
       });
       
-      console.log("Audio transmission stats:", audioStats);
+      devLog("Audio transmission stats:", audioStats);
       return audioStats;
     } catch (error) {
-      console.error("Failed to get audio transmission stats:", error);
+      devError("Failed to get audio transmission stats:", error);
       return null;
     }
   }, [microphoneSender]);
 
   // Comprehensive test function to diagnose microphone issues
   const testMicrophoneAudio = useCallback(async () => {
-    console.log("=== MICROPHONE AUDIO TEST ===");
+    devLog("=== MICROPHONE AUDIO TEST ===");
     
     // 1. Check if we have a stream
     const stream = microphoneStreamRef.current;
     if (!stream) {
-      console.log("❌ No microphone stream available");
+      devLog("❌ No microphone stream available");
       return;
     }
     
-    console.log("✅ Microphone stream exists:", stream.id);
+    devLog("✅ Microphone stream exists:", stream.id);
     
     // 2. Check audio tracks
     const audioTracks = stream.getAudioTracks();
-    console.log("Audio tracks:", audioTracks.length);
+    devLog("Audio tracks:", audioTracks.length);
     
     if (audioTracks.length === 0) {
-      console.log("❌ No audio tracks in stream");
+      devLog("❌ No audio tracks in stream");
       return;
     }
     
     const track = audioTracks[0];
-    console.log("✅ Audio track details:", {
+    devLog("✅ Audio track details:", {
       id: track.id,
       label: track.label,
       enabled: track.enabled,
@@ -752,13 +757,13 @@ export function useMicrophone() {
       const analyser = audioContext.createAnalyser();
       const source = audioContext.createMediaStreamSource(stream);
       
-      analyser.fftSize = 256;
+      analyser.fftSize = AUDIO_CONFIG.ANALYSIS_FFT_SIZE;
       source.connect(analyser);
       
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       
-      console.log("🎤 Testing audio level detection for 5 seconds...");
-      console.log("Please speak into your microphone now!");
+      devLog("🎤 Testing audio level detection for 5 seconds...");
+      devLog("Please speak into your microphone now!");
       
       let maxLevel = 0;
       let sampleCount = 0;
@@ -771,39 +776,39 @@ export function useMicrophone() {
           sum += value * value;
         }
         const rms = Math.sqrt(sum / dataArray.length);
-        const level = Math.min(100, (rms / 255) * 100);
+        const level = Math.min(AUDIO_CONFIG.MAX_LEVEL_PERCENTAGE, (rms / AUDIO_CONFIG.LEVEL_SCALING_FACTOR) * AUDIO_CONFIG.MAX_LEVEL_PERCENTAGE);
         
         maxLevel = Math.max(maxLevel, level);
         sampleCount++;
         
         if (sampleCount % 10 === 0) { // Log every 10th sample
-          console.log(`Audio level: ${level.toFixed(1)}% (max so far: ${maxLevel.toFixed(1)}%)`);
+          devLog(`Audio level: ${level.toFixed(1)}% (max so far: ${maxLevel.toFixed(1)}%)`);
         }
-      }, 100);
+      }, AUDIO_CONFIG.ANALYSIS_UPDATE_INTERVAL);
       
       setTimeout(() => {
         clearInterval(testInterval);
         source.disconnect();
         audioContext.close();
         
-        console.log("🎤 Audio test completed!");
-        console.log(`Maximum audio level detected: ${maxLevel.toFixed(1)}%`);
+        devLog("🎤 Audio test completed!");
+        devLog(`Maximum audio level detected: ${maxLevel.toFixed(1)}%`);
         
         if (maxLevel > 5) {
-          console.log("✅ Microphone is detecting audio!");
+          devLog("✅ Microphone is detecting audio!");
         } else {
-          console.log("❌ No significant audio detected. Check microphone permissions and hardware.");
+          devLog("❌ No significant audio detected. Check microphone permissions and hardware.");
         }
-      }, 5000);
+      }, NETWORK_CONFIG.AUDIO_TEST_DURATION);
       
     } catch (error) {
-      console.error("❌ Failed to test audio level:", error);
+      devError("❌ Failed to test audio level:", error);
     }
     
     // 4. Check WebRTC sender
     if (microphoneSender) {
-      console.log("✅ WebRTC sender exists");
-      console.log("Sender track:", {
+      devLog("✅ WebRTC sender exists");
+      devLog("Sender track:", {
         id: microphoneSender.track?.id,
         kind: microphoneSender.track?.kind,
         enabled: microphoneSender.track?.enabled,
@@ -812,45 +817,45 @@ export function useMicrophone() {
       
       // Check if sender track matches stream track
       if (microphoneSender.track === track) {
-        console.log("✅ Sender track matches stream track");
+        devLog("✅ Sender track matches stream track");
       } else {
-        console.log("❌ Sender track does NOT match stream track");
+        devLog("❌ Sender track does NOT match stream track");
       }
     } else {
-      console.log("❌ No WebRTC sender available");
+      devLog("❌ No WebRTC sender available");
     }
     
     // 5. Check peer connection
     if (peerConnection) {
-      console.log("✅ Peer connection exists");
-      console.log("Connection state:", peerConnection.connectionState);
-      console.log("ICE connection state:", peerConnection.iceConnectionState);
+      devLog("✅ Peer connection exists");
+      devLog("Connection state:", peerConnection.connectionState);
+      devLog("ICE connection state:", peerConnection.iceConnectionState);
       
       const transceivers = peerConnection.getTransceivers();
       const audioTransceivers = transceivers.filter(t => 
         t.sender.track?.kind === 'audio' || t.receiver.track?.kind === 'audio'
       );
       
-      console.log("Audio transceivers:", audioTransceivers.map(t => ({
+      devLog("Audio transceivers:", audioTransceivers.map(t => ({
         direction: t.direction,
         senderTrack: t.sender.track?.id,
         receiverTrack: t.receiver.track?.id
       })));
     } else {
-      console.log("❌ No peer connection available");
+      devLog("❌ No peer connection available");
     }
     
   }, [microphoneSender, peerConnection]);
 
   const startMicrophoneDebounced = useCallback((deviceId?: string) => {
     debouncedOperation(async () => {
-      await startMicrophone(deviceId).catch(console.error);
+      await startMicrophone(deviceId).catch(devError);
     }, "start");
   }, [startMicrophone, debouncedOperation]);
 
   const stopMicrophoneDebounced = useCallback(() => {
     debouncedOperation(async () => {
-      await stopMicrophone().catch(console.error);
+      await stopMicrophone().catch(devError);
     }, "stop");
   }, [stopMicrophone, debouncedOperation]);
 
@@ -919,10 +924,10 @@ export function useMicrophone() {
       // Clean up stream directly without depending on the callback
       const stream = microphoneStreamRef.current;
       if (stream) {
-        console.log("Cleanup: stopping microphone stream on unmount");
+        devLog("Cleanup: stopping microphone stream on unmount");
         stream.getAudioTracks().forEach(track => {
           track.stop();
-          console.log(`Cleanup: stopped audio track ${track.id}`);
+          devLog(`Cleanup: stopped audio track ${track.id}`);
         });
         microphoneStreamRef.current = null;
       }

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { devError } from '../utils/debug';
+
 import { JsonRpcResponse, useJsonRpc } from "./useJsonRpc";
 import { useAudioEvents } from "./useAudioEvents";
 
@@ -25,7 +27,7 @@ export function useUsbDeviceConfig() {
       setLoading(false);
       
       if ("error" in resp) {
-        console.error("Failed to load USB devices:", resp.error);
+        devError("Failed to load USB devices:", resp.error);
         setError(resp.error.data || "Unknown error");
         setUsbDeviceConfig(null);
       } else {

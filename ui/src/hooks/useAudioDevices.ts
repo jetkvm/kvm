@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
+import { devError } from '../utils/debug';
+
 export interface AudioDevice {
   deviceId: string;
   label: string;
@@ -66,7 +68,7 @@ export function useAudioDevices(): UseAudioDevicesReturn {
       // Audio devices enumerated
       
     } catch (err) {
-      console.error('Failed to enumerate audio devices:', err);
+      devError('Failed to enumerate audio devices:', err);
       setError(err instanceof Error ? err.message : 'Failed to access audio devices');
     } finally {
       setIsLoading(false);

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 
+import { devError, devWarn } from '../utils/debug';
+import { NETWORK_CONFIG } from '../config/constants';
+
 // Audio event types matching the backend
 export type AudioEventType = 
   | 'audio-mute-changed'
@@ -121,7 +124,7 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
   } = useWebSocket(getWebSocketUrl(), {
     shouldReconnect: () => true,
     reconnectAttempts: 10,
-    reconnectInterval: 3000,
+    reconnectInterval: NETWORK_CONFIG.WEBSOCKET_RECONNECT_INTERVAL,
     share: true, // Share the WebSocket connection across multiple hooks
     onOpen: () => {
       // WebSocket connected
@@ -137,7 +140,7 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
       globalSubscriptionState.connectionId = null;
     },
     onError: (event) => {
-      console.error('[AudioEvents] WebSocket error:', event);
+      devError('[AudioEvents] WebSocket error:', event);
     },
   });
 
@@ -270,7 +273,7 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
       } catch (error) {
         // Ignore parsing errors for non-JSON messages (like "pong")
         if (lastMessage.data !== 'pong') {
-          console.warn('[AudioEvents] Failed to parse WebSocket message:', error);
+          devWarn('[AudioEvents] Failed to parse WebSocket message:', error);
         }
       }
     }
