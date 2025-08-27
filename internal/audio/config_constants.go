@@ -53,6 +53,31 @@ type AudioConfigConstants struct {
 	AudioQualityHighChannels   int // High-quality channel count (default: 2)
 	AudioQualityUltraChannels  int // Ultra-quality channel count (default: 2)
 
+	// Audio Quality OPUS Encoder Parameters
+	AudioQualityLowOpusComplexity    int // Low-quality OPUS complexity (default: 1)
+	AudioQualityLowOpusVBR           int // Low-quality OPUS VBR setting (default: 0)
+	AudioQualityLowOpusSignalType    int // Low-quality OPUS signal type (default: 3001)
+	AudioQualityLowOpusBandwidth     int // Low-quality OPUS bandwidth (default: 1101)
+	AudioQualityLowOpusDTX           int // Low-quality OPUS DTX setting (default: 1)
+
+	AudioQualityMediumOpusComplexity int // Medium-quality OPUS complexity (default: 5)
+	AudioQualityMediumOpusVBR        int // Medium-quality OPUS VBR setting (default: 1)
+	AudioQualityMediumOpusSignalType int // Medium-quality OPUS signal type (default: 3002)
+	AudioQualityMediumOpusBandwidth  int // Medium-quality OPUS bandwidth (default: 1103)
+	AudioQualityMediumOpusDTX        int // Medium-quality OPUS DTX setting (default: 0)
+
+	AudioQualityHighOpusComplexity   int // High-quality OPUS complexity (default: 8)
+	AudioQualityHighOpusVBR          int // High-quality OPUS VBR setting (default: 1)
+	AudioQualityHighOpusSignalType   int // High-quality OPUS signal type (default: 3002)
+	AudioQualityHighOpusBandwidth    int // High-quality OPUS bandwidth (default: 1104)
+	AudioQualityHighOpusDTX          int // High-quality OPUS DTX setting (default: 0)
+
+	AudioQualityUltraOpusComplexity  int // Ultra-quality OPUS complexity (default: 10)
+	AudioQualityUltraOpusVBR         int // Ultra-quality OPUS VBR setting (default: 1)
+	AudioQualityUltraOpusSignalType  int // Ultra-quality OPUS signal type (default: 3002)
+	AudioQualityUltraOpusBandwidth   int // Ultra-quality OPUS bandwidth (default: 1105)
+	AudioQualityUltraOpusDTX         int // Ultra-quality OPUS DTX setting (default: 0)
+
 	// CGO Audio Constants
 	CGOOpusBitrate int // Native Opus encoder bitrate in bps (default: 96000)
 
@@ -1615,6 +1640,38 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		AudioQualityMediumChannels: 2,
 		AudioQualityHighChannels:   2,
 		AudioQualityUltraChannels:  2,
+
+		// Audio Quality OPUS Encoder Parameters - Quality-specific encoder settings
+		// Used in: Dynamic OPUS encoder configuration based on quality presets
+		// Impact: Controls encoding complexity, VBR, signal type, bandwidth, and DTX
+
+		// Low Quality OPUS Parameters - Optimized for bandwidth conservation
+		AudioQualityLowOpusComplexity:    1, // Low complexity for minimal CPU usage
+		AudioQualityLowOpusVBR:           0, // CBR for predictable bandwidth
+		AudioQualityLowOpusSignalType:    3001, // OPUS_SIGNAL_VOICE
+		AudioQualityLowOpusBandwidth:     1101, // OPUS_BANDWIDTH_NARROWBAND
+		AudioQualityLowOpusDTX:           1, // Enable DTX for silence suppression
+
+		// Medium Quality OPUS Parameters - Balanced performance and quality
+		AudioQualityMediumOpusComplexity: 5, // Medium complexity for balanced performance
+		AudioQualityMediumOpusVBR:        1, // VBR for better quality
+		AudioQualityMediumOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
+		AudioQualityMediumOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND
+		AudioQualityMediumOpusDTX:        0, // Disable DTX for consistent quality
+
+		// High Quality OPUS Parameters - High quality with good performance
+		AudioQualityHighOpusComplexity:   8, // High complexity for better quality
+		AudioQualityHighOpusVBR:          1, // VBR for optimal quality
+		AudioQualityHighOpusSignalType:   3002, // OPUS_SIGNAL_MUSIC
+		AudioQualityHighOpusBandwidth:    1104, // OPUS_BANDWIDTH_SUPERWIDEBAND
+		AudioQualityHighOpusDTX:          0, // Disable DTX for consistent quality
+
+		// Ultra Quality OPUS Parameters - Maximum quality settings
+		AudioQualityUltraOpusComplexity:  10, // Maximum complexity for best quality
+		AudioQualityUltraOpusVBR:         1,  // VBR for optimal quality
+		AudioQualityUltraOpusSignalType:  3002, // OPUS_SIGNAL_MUSIC
+		AudioQualityUltraOpusBandwidth:   1105, // OPUS_BANDWIDTH_FULLBAND
+		AudioQualityUltraOpusDTX:         0,  // Disable DTX for maximum quality
 
 		// CGO Audio Constants
 		CGOOpusBitrate:       96000,

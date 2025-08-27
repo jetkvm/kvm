@@ -84,7 +84,7 @@ func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 	}
 
 	// Use ultra-fast validation for critical audio path
-	if err := ValidateAudioFrameUltraFast(frame); err != nil {
+	if err := ValidateAudioFrame(frame); err != nil {
 		aim.logComponentError(AudioInputManagerComponent, err, "Frame validation failed")
 		return fmt.Errorf("input frame validation failed: %w", err)
 	}

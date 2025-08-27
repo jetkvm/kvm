@@ -166,6 +166,47 @@ func SetAudioQuality(quality AudioQuality) {
 	presets := GetAudioQualityPresets()
 	if config, exists := presets[quality]; exists {
 		currentConfig = config
+		
+		// Update CGO OPUS encoder parameters based on quality
+		var complexity, vbr, signalType, bandwidth, dtx int
+		switch quality {
+		case AudioQualityLow:
+			complexity = GetConfig().AudioQualityLowOpusComplexity
+			vbr = GetConfig().AudioQualityLowOpusVBR
+			signalType = GetConfig().AudioQualityLowOpusSignalType
+			bandwidth = GetConfig().AudioQualityLowOpusBandwidth
+			dtx = GetConfig().AudioQualityLowOpusDTX
+		case AudioQualityMedium:
+			complexity = GetConfig().AudioQualityMediumOpusComplexity
+			vbr = GetConfig().AudioQualityMediumOpusVBR
+			signalType = GetConfig().AudioQualityMediumOpusSignalType
+			bandwidth = GetConfig().AudioQualityMediumOpusBandwidth
+			dtx = GetConfig().AudioQualityMediumOpusDTX
+		case AudioQualityHigh:
+			complexity = GetConfig().AudioQualityHighOpusComplexity
+			vbr = GetConfig().AudioQualityHighOpusVBR
+			signalType = GetConfig().AudioQualityHighOpusSignalType
+			bandwidth = GetConfig().AudioQualityHighOpusBandwidth
+			dtx = GetConfig().AudioQualityHighOpusDTX
+		case AudioQualityUltra:
+			complexity = GetConfig().AudioQualityUltraOpusComplexity
+			vbr = GetConfig().AudioQualityUltraOpusVBR
+			signalType = GetConfig().AudioQualityUltraOpusSignalType
+			bandwidth = GetConfig().AudioQualityUltraOpusBandwidth
+			dtx = GetConfig().AudioQualityUltraOpusDTX
+		default:
+			// Use medium quality as fallback
+			complexity = GetConfig().AudioQualityMediumOpusComplexity
+			vbr = GetConfig().AudioQualityMediumOpusVBR
+			signalType = GetConfig().AudioQualityMediumOpusSignalType
+			bandwidth = GetConfig().AudioQualityMediumOpusBandwidth
+			dtx = GetConfig().AudioQualityMediumOpusDTX
+		}
+		
+		// Dynamically update CGO OPUS encoder parameters
+		// Use current VBR constraint setting from config
+		vbrConstraint := GetConfig().CGOOpusVBRConstraint
+		updateOpusEncoderParams(config.Bitrate*1000, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx)
 	}
 }
 

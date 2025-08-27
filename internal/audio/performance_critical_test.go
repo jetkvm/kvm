@@ -17,6 +17,13 @@ import (
 // TestPerformanceCriticalPaths tests the most frequently executed code paths
 // to ensure they remain efficient and don't interfere with KVM functionality
 func TestPerformanceCriticalPaths(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping performance tests in short mode")
+	}
+
+	// Initialize validation cache for performance testing
+	InitValidationCache()
+
 	tests := []struct {
 		name     string
 		testFunc func(t *testing.T)
@@ -33,9 +40,6 @@ func TestPerformanceCriticalPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if testing.Short() {
-				t.Skip("Skipping performance test in short mode")
-			}
 			tt.testFunc(t)
 		})
 	}
@@ -59,7 +63,7 @@ func testAudioFrameProcessingLatency(t *testing.T) {
 	start := time.Now()
 	for i := 0; i < frameCount; i++ {
 		// Simulate the critical path: validation + metrics update
-		err := ValidateAudioFrameFast(frameData)
+		err := ValidateAudioFrame(frameData)
 		require.NoError(t, err)
 
 		// Record frame received (atomic operation)
@@ -139,10 +143,10 @@ func testValidationFunctionSpeed(t *testing.T) {
 	const iterations = 10000
 	frameData := make([]byte, 1920)
 
-	// Test ValidateAudioFrameFast (most critical)
+	// Test ValidateAudioFrame (most critical)
 	start := time.Now()
 	for i := 0; i < iterations; i++ {
-		err := ValidateAudioFrameFast(frameData)
+		err := ValidateAudioFrame(frameData)
 		require.NoError(t, err)
 	}
 	fastValidationLatency := time.Since(start) / iterations
@@ -163,13 +167,13 @@ func testValidationFunctionSpeed(t *testing.T) {
 	}
 	bufferValidationLatency := time.Since(start) / iterations
 
-	t.Logf("ValidateAudioFrameFast latency: %v", fastValidationLatency)
+	t.Logf("ValidateAudioFrame latency: %v", fastValidationLatency)
 	t.Logf("ValidateAudioQuality latency: %v", qualityValidationLatency)
 	t.Logf("ValidateBufferSize latency: %v", bufferValidationLatency)
 
 	// Validation functions optimized for ARM Cortex-A7 single core @ 1GHz
 	// Conservative thresholds to ensure KVM functionality isn't impacted
-	assert.Less(t, fastValidationLatency, 100*time.Microsecond, "ValidateAudioFrameFast too slow")
+	assert.Less(t, fastValidationLatency, 100*time.Microsecond, "ValidateAudioFrame too slow")
 	assert.Less(t, qualityValidationLatency, 50*time.Microsecond, "ValidateAudioQuality too slow")
 	assert.Less(t, bufferValidationLatency, 50*time.Microsecond, "ValidateBufferSize too slow")
 }
@@ -218,7 +222,7 @@ func testConcurrentAccessPerformance(t *testing.T) {
 
 			for j := 0; j < operationsPerGoroutine; j++ {
 				// Simulate concurrent audio processing
-				_ = ValidateAudioFrameFast(frameData)
+				_ = ValidateAudioFrame(frameData)
 				RecordFrameReceived(len(frameData))
 				_ = GetAudioMetrics()
 				_ = GetAudioConfig()
@@ -305,7 +309,7 @@ func TestRegressionDetection(t *testing.T) {
 	frameData := make([]byte, 1920)
 	start := time.Now()
 	for i := 0; i < 100; i++ {
-		_ = ValidateAudioFrameFast(frameData)
+		_ = ValidateAudioFrame(frameData)
 		RecordFrameReceived(len(frameData))
 	}
 	frameProcessingTime := time.Since(start) / 100
@@ -367,7 +371,7 @@ func TestMemoryLeakDetection(t *testing.T) {
 	for cycle := 0; cycle < 10; cycle++ {
 		for i := 0; i < 1000; i++ {
 			frameData := make([]byte, 1920)
-			_ = ValidateAudioFrameFast(frameData)
+			_ = ValidateAudioFrame(frameData)
 			RecordFrameReceived(len(frameData))
 			_ = GetAudioMetrics()
 			_ = GetAudioConfig()

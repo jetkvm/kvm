@@ -16,6 +16,9 @@ func RunAudioOutputServer() error {
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-output-server").Logger()
 	logger.Debug().Msg("audio output server subprocess starting")
 
+	// Initialize validation cache for optimal performance
+	InitValidationCache()
+
 	// Create audio server
 	server, err := NewAudioOutputServer()
 	if err != nil {

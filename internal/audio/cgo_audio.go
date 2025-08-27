@@ -65,6 +65,35 @@ static volatile int capture_initialized = 0;
 static volatile int playback_initializing = 0;
 static volatile int playback_initialized = 0;
 
+// Function to dynamically update Opus encoder parameters
+int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_constraint,
+                              int signal_type, int bandwidth, int dtx) {
+    if (!encoder || !capture_initialized) {
+        return -1; // Encoder not initialized
+    }
+    
+    // Update the static variables
+    opus_bitrate = bitrate;
+    opus_complexity = complexity;
+    opus_vbr = vbr;
+    opus_vbr_constraint = vbr_constraint;
+    opus_signal_type = signal_type;
+    opus_bandwidth = bandwidth;
+    opus_dtx = dtx;
+    
+    // Apply the new settings to the encoder
+    int result = 0;
+    result |= opus_encoder_ctl(encoder, OPUS_SET_BITRATE(opus_bitrate));
+    result |= opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(opus_complexity));
+    result |= opus_encoder_ctl(encoder, OPUS_SET_VBR(opus_vbr));
+    result |= opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(opus_vbr_constraint));
+    result |= opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(opus_signal_type));
+    result |= opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth));
+    result |= opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
+    
+    return result; // 0 on success, non-zero on error
+}
+
 // Enhanced ALSA device opening with exponential backoff retry logic
 static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream_t stream) {
 	int attempt = 0;
@@ -733,12 +762,30 @@ func cgoAudioDecodeWrite(buf []byte) (int, error) {
 	return int(n), nil
 }
 
+// updateOpusEncoderParams dynamically updates OPUS encoder parameters
+func updateOpusEncoderParams(bitrate, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx int) error {
+	result := C.update_opus_encoder_params(
+		C.int(bitrate),
+		C.int(complexity),
+		C.int(vbr),
+		C.int(vbrConstraint),
+		C.int(signalType),
+		C.int(bandwidth),
+		C.int(dtx),
+	)
+	if result != 0 {
+		return fmt.Errorf("failed to update OPUS encoder parameters: C error code %d", result)
+	}
+	return nil
+}
+
 // CGO function aliases
 var (
-	CGOAudioInit          = cgoAudioInit
-	CGOAudioClose         = cgoAudioClose
-	CGOAudioReadEncode    = cgoAudioReadEncode
-	CGOAudioPlaybackInit  = cgoAudioPlaybackInit
-	CGOAudioPlaybackClose = cgoAudioPlaybackClose
-	CGOAudioDecodeWrite   = cgoAudioDecodeWrite
+	CGOAudioInit              = cgoAudioInit
+	CGOAudioClose             = cgoAudioClose
+	CGOAudioReadEncode        = cgoAudioReadEncode
+	CGOAudioPlaybackInit      = cgoAudioPlaybackInit
+	CGOAudioPlaybackClose     = cgoAudioPlaybackClose
+	CGOAudioDecodeWrite       = cgoAudioDecodeWrite
+	CGOUpdateOpusEncoderParams = updateOpusEncoderParams
 )

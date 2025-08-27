@@ -103,7 +103,7 @@ func (aim *AudioInputIPCManager) WriteOpusFrame(frame []byte) error {
 	}
 
 	// Validate frame data
-	if err := ValidateAudioFrameUltraFast(frame); err != nil {
+	if err := ValidateAudioFrame(frame); err != nil {
 		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
 		aim.logger.Debug().Err(err).Msg("invalid frame data")
 		return err
