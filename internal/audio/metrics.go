@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -286,6 +287,141 @@ var (
 		},
 	)
 
+	// Device health metrics
+	deviceHealthStatus = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_device_health_status",
+			Help: "Current device health status (0=Healthy, 1=Degraded, 2=Failing, 3=Critical)",
+		},
+		[]string{"device_type"}, // device_type: capture, playback
+	)
+
+	deviceHealthScore = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_device_health_score",
+			Help: "Device health score (0.0-1.0, higher is better)",
+		},
+		[]string{"device_type"}, // device_type: capture, playback
+	)
+
+	deviceConsecutiveErrors = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_device_consecutive_errors",
+			Help: "Number of consecutive errors for device",
+		},
+		[]string{"device_type"}, // device_type: capture, playback
+	)
+
+	deviceTotalErrors = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "jetkvm_audio_device_total_errors",
+			Help: "Total number of errors for device",
+		},
+		[]string{"device_type"}, // device_type: capture, playback
+	)
+
+	deviceLatencySpikes = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "jetkvm_audio_device_latency_spikes_total",
+			Help: "Total number of latency spikes for device",
+		},
+		[]string{"device_type"}, // device_type: capture, playback
+	)
+
+	// Memory metrics
+	memoryHeapAllocBytes = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_memory_heap_alloc_bytes",
+			Help: "Current heap allocation in bytes",
+		},
+	)
+
+	memoryHeapSysBytes = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_memory_heap_sys_bytes",
+			Help: "Total heap system memory in bytes",
+		},
+	)
+
+	memoryHeapObjects = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_memory_heap_objects",
+			Help: "Number of heap objects",
+		},
+	)
+
+	memoryGCCount = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "jetkvm_audio_memory_gc_total",
+			Help: "Total number of garbage collections",
+		},
+	)
+
+	memoryGCCPUFraction = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_memory_gc_cpu_fraction",
+			Help: "Fraction of CPU time spent in garbage collection",
+		},
+	)
+
+	// Buffer pool efficiency metrics
+	bufferPoolHitRate = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_buffer_pool_hit_rate_percent",
+			Help: "Buffer pool hit rate percentage",
+		},
+		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
+	)
+
+	bufferPoolMissRate = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_buffer_pool_miss_rate_percent",
+			Help: "Buffer pool miss rate percentage",
+		},
+		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
+	)
+
+	bufferPoolUtilization = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_buffer_pool_utilization_percent",
+			Help: "Buffer pool utilization percentage",
+		},
+		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
+	)
+
+	bufferPoolThroughput = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_buffer_pool_throughput_ops_per_sec",
+			Help: "Buffer pool throughput in operations per second",
+		},
+		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
+	)
+
+	bufferPoolGetLatency = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_buffer_pool_get_latency_seconds",
+			Help: "Average buffer pool get operation latency in seconds",
+		},
+		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
+	)
+
+	bufferPoolPutLatency = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_buffer_pool_put_latency_seconds",
+			Help: "Average buffer pool put operation latency in seconds",
+		},
+		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
+	)
+
+	// Latency percentile metrics
+	latencyPercentile = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "jetkvm_audio_latency_percentile_seconds",
+			Help: "Audio latency percentiles in seconds",
+		},
+		[]string{"source", "percentile"}, // source: input, output, processing; percentile: p50, p95, p99, min, max, avg
+	)
+
 	// Metrics update tracking
 	metricsUpdateMutex sync.RWMutex
 	lastMetricsUpdate  int64
@@ -299,6 +435,15 @@ var (
 	micFramesDroppedValue     int64
 	micBytesProcessedValue    int64
 	micConnectionDropsValue   int64
+
+	// Atomic counters for device health metrics
+	deviceCaptureErrorsValue  int64
+	devicePlaybackErrorsValue int64
+	deviceCaptureSpikesValue  int64
+	devicePlaybackSpikesValue int64
+
+	// Atomic counter for memory GC
+	memoryGCCountValue uint32
 )
 
 // UnifiedAudioMetrics provides a common structure for both input and output audio streams
@@ -479,6 +624,95 @@ func UpdateAdaptiveBufferMetrics(inputBufferSize, outputBufferSize int, cpuPerce
 	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
 
+// UpdateSocketBufferMetrics updates socket buffer metrics
+func UpdateSocketBufferMetrics(component, bufferType string, size, utilization float64, overflowOccurred bool) {
+	metricsUpdateMutex.Lock()
+	defer metricsUpdateMutex.Unlock()
+
+	socketBufferSizeGauge.WithLabelValues(component, bufferType).Set(size)
+	socketBufferUtilizationGauge.WithLabelValues(component, bufferType).Set(utilization)
+
+	if overflowOccurred {
+		socketBufferOverflowCounter.WithLabelValues(component, bufferType).Inc()
+	}
+
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
+}
+
+// UpdateDeviceHealthMetrics updates device health metrics
+func UpdateDeviceHealthMetrics(deviceType string, status int, healthScore float64, consecutiveErrors, totalErrors, latencySpikes int64) {
+	metricsUpdateMutex.Lock()
+	defer metricsUpdateMutex.Unlock()
+
+	deviceHealthStatus.WithLabelValues(deviceType).Set(float64(status))
+	deviceHealthScore.WithLabelValues(deviceType).Set(healthScore)
+	deviceConsecutiveErrors.WithLabelValues(deviceType).Set(float64(consecutiveErrors))
+
+	// Update error counters with delta calculation
+	var prevErrors, prevSpikes int64
+	if deviceType == "capture" {
+		prevErrors = atomic.SwapInt64(&deviceCaptureErrorsValue, totalErrors)
+		prevSpikes = atomic.SwapInt64(&deviceCaptureSpikesValue, latencySpikes)
+	} else {
+		prevErrors = atomic.SwapInt64(&devicePlaybackErrorsValue, totalErrors)
+		prevSpikes = atomic.SwapInt64(&devicePlaybackSpikesValue, latencySpikes)
+	}
+
+	if prevErrors > 0 && totalErrors > prevErrors {
+		deviceTotalErrors.WithLabelValues(deviceType).Add(float64(totalErrors - prevErrors))
+	}
+	if prevSpikes > 0 && latencySpikes > prevSpikes {
+		deviceLatencySpikes.WithLabelValues(deviceType).Add(float64(latencySpikes - prevSpikes))
+	}
+
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
+}
+
+// UpdateMemoryMetrics updates memory metrics
+func UpdateMemoryMetrics() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	memoryHeapAllocBytes.Set(float64(m.HeapAlloc))
+	memoryHeapSysBytes.Set(float64(m.HeapSys))
+	memoryHeapObjects.Set(float64(m.HeapObjects))
+	memoryGCCPUFraction.Set(m.GCCPUFraction)
+
+	// Update GC count with delta calculation
+	currentGCCount := uint32(m.NumGC)
+	prevGCCount := atomic.SwapUint32(&memoryGCCountValue, currentGCCount)
+	if prevGCCount > 0 && currentGCCount > prevGCCount {
+		memoryGCCount.Add(float64(currentGCCount - prevGCCount))
+	}
+
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
+}
+
+// UpdateBufferPoolMetrics updates buffer pool efficiency metrics
+func UpdateBufferPoolMetrics(poolName string, hitRate, missRate, utilization, throughput, getLatency, putLatency float64) {
+	metricsUpdateMutex.Lock()
+	defer metricsUpdateMutex.Unlock()
+
+	bufferPoolHitRate.WithLabelValues(poolName).Set(hitRate * 100)
+	bufferPoolMissRate.WithLabelValues(poolName).Set(missRate * 100)
+	bufferPoolUtilization.WithLabelValues(poolName).Set(utilization * 100)
+	bufferPoolThroughput.WithLabelValues(poolName).Set(throughput)
+	bufferPoolGetLatency.WithLabelValues(poolName).Set(getLatency)
+	bufferPoolPutLatency.WithLabelValues(poolName).Set(putLatency)
+
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
+}
+
+// UpdateLatencyMetrics updates latency percentile metrics
+func UpdateLatencyMetrics(source, percentile string, latencySeconds float64) {
+	metricsUpdateMutex.Lock()
+	defer metricsUpdateMutex.Unlock()
+
+	latencyPercentile.WithLabelValues(source, percentile).Set(latencySeconds)
+
+	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
+}
+
 // GetLastMetricsUpdate returns the timestamp of the last metrics update
 func GetLastMetricsUpdate() time.Time {
 	timestamp := atomic.LoadInt64(&lastMetricsUpdate)
@@ -488,7 +722,7 @@ func GetLastMetricsUpdate() time.Time {
 // StartMetricsUpdater starts a goroutine that periodically updates Prometheus metrics
 func StartMetricsUpdater() {
 	go func() {
-		ticker := time.NewTicker(GetConfig().StatsUpdateInterval) // Update every 5 seconds
+		ticker := time.NewTicker(5 * time.Second) // Update every 5 seconds
 		defer ticker.Stop()
 
 		for range ticker.C {
@@ -500,18 +734,14 @@ func StartMetricsUpdater() {
 			micMetrics := GetAudioInputMetrics()
 			UpdateMicrophoneMetrics(convertAudioInputMetricsToUnified(micMetrics))
 
-			// Update microphone subprocess process metrics
-			if inputSupervisor := GetAudioInputIPCSupervisor(); inputSupervisor != nil {
-				if processMetrics := inputSupervisor.GetProcessMetrics(); processMetrics != nil {
-					UpdateMicrophoneProcessMetrics(*processMetrics, inputSupervisor.IsRunning())
-				}
-			}
-
 			// Update audio configuration metrics
 			audioConfig := GetAudioConfig()
 			UpdateAudioConfigMetrics(audioConfig)
 			micConfig := GetMicrophoneConfig()
 			UpdateMicrophoneConfigMetrics(micConfig)
+
+			// Update memory metrics
+			UpdateMemoryMetrics()
 		}
 	}()
 }

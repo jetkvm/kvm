@@ -8,210 +8,53 @@ import (
 
 // AudioConfigConstants centralizes all hardcoded values used across audio components.
 // This configuration system allows runtime tuning of audio performance, quality, and resource usage.
-// Each constant is documented with its purpose, usage location, and impact on system behavior.
 type AudioConfigConstants struct {
 	// Audio Quality Presets
-	// MaxAudioFrameSize defines the maximum size of an audio frame in bytes.
-	// Used in: buffer_pool.go, adaptive_buffer.go
-	// Impact: Higher values allow larger audio chunks but increase memory usage and latency.
-	// Typical range: 1024-8192 bytes. Default 4096 provides good balance.
-	MaxAudioFrameSize int
+	MaxAudioFrameSize int // Maximum audio frame size in bytes (default: 4096)
 
-	// Opus Encoding Parameters - Core codec settings for audio compression
-	// OpusBitrate sets the target bitrate for Opus encoding in bits per second.
-	// Used in: cgo_audio.go for encoder initialization
-	// Impact: Higher bitrates improve audio quality but increase bandwidth usage.
-	// Range: 6000-510000 bps. 128000 (128kbps) provides high quality for most use cases.
-	OpusBitrate int
+	// Opus Encoding Parameters
+	OpusBitrate       int // Target bitrate for Opus encoding in bps (default: 128000)
+	OpusComplexity    int // Computational complexity 0-10 (default: 10 for best quality)
+	OpusVBR           int // Variable Bit Rate: 0=CBR, 1=VBR (default: 1)
+	OpusVBRConstraint int // VBR constraint: 0=unconstrained, 1=constrained (default: 0)
+	OpusDTX           int // Discontinuous Transmission: 0=disabled, 1=enabled (default: 0)
 
-	// OpusComplexity controls the computational complexity of Opus encoding (0-10).
-	// Used in: cgo_audio.go for encoder configuration
-	// Impact: Higher values improve quality but increase CPU usage and encoding latency.
-	// Range: 0-10. Value 10 provides best quality, 0 fastest encoding.
-	OpusComplexity int
+	// Audio Parameters
+	SampleRate    int // Audio sampling frequency in Hz (default: 48000)
+	Channels      int // Number of audio channels: 1=mono, 2=stereo (default: 2)
+	FrameSize     int // Samples per audio frame (default: 960 for 20ms at 48kHz)
+	MaxPacketSize int // Maximum encoded packet size in bytes (default: 4000)
 
-	// OpusVBR enables Variable Bit Rate encoding (0=CBR, 1=VBR).
-	// Used in: cgo_audio.go for encoder mode selection
-	// Impact: VBR (1) adapts bitrate to content complexity, improving efficiency.
-	// CBR (0) maintains constant bitrate for predictable bandwidth usage.
-	OpusVBR int
+	// Audio Quality Bitrates (kbps)
+	AudioQualityLowOutputBitrate    int // Low-quality output bitrate (default: 32)
+	AudioQualityLowInputBitrate     int // Low-quality input bitrate (default: 16)
+	AudioQualityMediumOutputBitrate int // Medium-quality output bitrate (default: 64)
+	AudioQualityMediumInputBitrate  int // Medium-quality input bitrate (default: 32)
+	AudioQualityHighOutputBitrate   int // High-quality output bitrate (default: 128)
+	AudioQualityHighInputBitrate    int // High-quality input bitrate (default: 64)
+	AudioQualityUltraOutputBitrate  int // Ultra-quality output bitrate (default: 192)
+	AudioQualityUltraInputBitrate   int // Ultra-quality input bitrate (default: 96)
 
-	// OpusVBRConstraint enables constrained VBR mode (0=unconstrained, 1=constrained).
-	// Used in: cgo_audio.go when VBR is enabled
-	// Impact: Constrained VBR (1) limits bitrate variation for more predictable bandwidth.
-	// Unconstrained (0) allows full bitrate adaptation for optimal quality.
-	OpusVBRConstraint int
+	// Audio Quality Sample Rates (Hz)
+	AudioQualityLowSampleRate    int // Low-quality sample rate (default: 22050)
+	AudioQualityMediumSampleRate int // Medium-quality sample rate (default: 44100)
+	AudioQualityMicLowSampleRate int // Low-quality microphone sample rate (default: 16000)
 
-	// OpusDTX enables Discontinuous Transmission (0=disabled, 1=enabled).
-	// Used in: cgo_audio.go for encoder optimization
-	// Impact: DTX (1) reduces bandwidth during silence but may cause audio artifacts.
-	// Disabled (0) maintains constant transmission for consistent quality.
-	OpusDTX int
+	// Audio Quality Frame Sizes
+	AudioQualityLowFrameSize    time.Duration // Low-quality frame duration (default: 40ms)
+	AudioQualityMediumFrameSize time.Duration // Medium-quality frame duration (default: 20ms)
+	AudioQualityHighFrameSize   time.Duration // High-quality frame duration (default: 20ms)
 
-	// Audio Parameters - Fundamental audio stream characteristics
-	// SampleRate defines the number of audio samples per second in Hz.
-	// Used in: All audio processing components
-	// Impact: Higher rates improve frequency response but increase processing load.
-	// Common values: 16000 (voice), 44100 (CD quality), 48000 (professional).
-	SampleRate int
+	AudioQualityUltraFrameSize time.Duration // Ultra-quality frame duration (default: 10ms)
 
-	// Channels specifies the number of audio channels (1=mono, 2=stereo).
-	// Used in: All audio processing and encoding/decoding operations
-	// Impact: Stereo (2) provides spatial audio but doubles bandwidth and processing.
-	// Mono (1) reduces resource usage but loses spatial information.
-	Channels int
+	// Audio Quality Channels
+	AudioQualityLowChannels    int // Low-quality channel count (default: 1)
+	AudioQualityMediumChannels int // Medium-quality channel count (default: 2)
+	AudioQualityHighChannels   int // High-quality channel count (default: 2)
+	AudioQualityUltraChannels  int // Ultra-quality channel count (default: 2)
 
-	// FrameSize defines the number of samples per audio frame.
-	// Used in: Opus encoding/decoding, buffer management
-	// Impact: Larger frames reduce overhead but increase latency.
-	// Must match Opus frame sizes: 120, 240, 480, 960, 1920, 2880 samples.
-	FrameSize int
-
-	// MaxPacketSize sets the maximum size of encoded audio packets in bytes.
-	// Used in: Network transmission, buffer allocation
-	// Impact: Larger packets reduce network overhead but increase burst bandwidth.
-	// Should accommodate worst-case Opus output plus protocol headers.
-	MaxPacketSize int
-
-	// Audio Quality Bitrates - Predefined quality presets for different use cases
-	// These bitrates are used in audio.go for quality level selection
-	// Impact: Higher bitrates improve audio fidelity but increase bandwidth usage
-
-	// AudioQualityLowOutputBitrate defines bitrate for low-quality audio output (kbps).
-	// Used in: audio.go for bandwidth-constrained scenarios
-	// Impact: Minimal bandwidth usage but reduced audio quality. Suitable for voice-only.
-	// Default 32kbps provides acceptable voice quality with very low bandwidth.
-	AudioQualityLowOutputBitrate int
-
-	// AudioQualityLowInputBitrate defines bitrate for low-quality audio input (kbps).
-	// Used in: audio.go for microphone input in low-bandwidth scenarios
-	// Impact: Reduces upload bandwidth but may affect voice clarity.
-	// Default 16kbps suitable for basic voice communication.
-	AudioQualityLowInputBitrate int
-
-	// AudioQualityMediumOutputBitrate defines bitrate for medium-quality audio output (kbps).
-	// Used in: audio.go for balanced quality/bandwidth scenarios
-	// Impact: Good balance between quality and bandwidth usage.
-	// Default 64kbps provides clear voice and acceptable music quality.
-	AudioQualityMediumOutputBitrate int
-
-	// AudioQualityMediumInputBitrate defines bitrate for medium-quality audio input (kbps).
-	// Used in: audio.go for microphone input with balanced quality
-	// Impact: Better voice quality than low setting with moderate bandwidth usage.
-	// Default 32kbps suitable for clear voice communication.
-	AudioQualityMediumInputBitrate int
-
-	// AudioQualityHighOutputBitrate defines bitrate for high-quality audio output (kbps).
-	// Used in: audio.go for high-fidelity audio scenarios
-	// Impact: Excellent audio quality but higher bandwidth requirements.
-	// Default 128kbps provides near-CD quality for music and crystal-clear voice.
-	AudioQualityHighOutputBitrate int
-
-	// AudioQualityHighInputBitrate defines bitrate for high-quality audio input (kbps).
-	// Used in: audio.go for high-quality microphone capture
-	// Impact: Superior voice quality but increased upload bandwidth usage.
-	// Default 64kbps suitable for professional voice communication.
-	AudioQualityHighInputBitrate int
-
-	// AudioQualityUltraOutputBitrate defines bitrate for ultra-high-quality audio output (kbps).
-	// Used in: audio.go for maximum quality scenarios
-	// Impact: Maximum audio fidelity but highest bandwidth consumption.
-	// Default 192kbps provides studio-quality audio for critical applications.
-	AudioQualityUltraOutputBitrate int
-
-	// AudioQualityUltraInputBitrate defines bitrate for ultra-high-quality audio input (kbps).
-	// Used in: audio.go for maximum quality microphone capture
-	// Impact: Best possible voice quality but maximum upload bandwidth usage.
-	// Default 96kbps suitable for broadcast-quality voice communication.
-	AudioQualityUltraInputBitrate int
-
-	// Audio Quality Sample Rates - Frequency sampling rates for different quality levels
-	// Used in: audio.go for configuring audio capture and playback sample rates
-	// Impact: Higher sample rates capture more frequency detail but increase processing load
-
-	// AudioQualityLowSampleRate defines sample rate for low-quality audio (Hz).
-	// Used in: audio.go for bandwidth-constrained scenarios
-	// Impact: Reduces frequency response but minimizes processing and bandwidth.
-	// Default 22050Hz captures frequencies up to 11kHz, adequate for voice.
-	AudioQualityLowSampleRate int
-
-	// AudioQualityMediumSampleRate defines sample rate for medium-quality audio (Hz).
-	// Used in: audio.go for balanced quality scenarios
-	// Impact: Good frequency response with moderate processing requirements.
-	// Default 44100Hz (CD quality) captures frequencies up to 22kHz.
-	AudioQualityMediumSampleRate int
-
-	// AudioQualityMicLowSampleRate defines sample rate for low-quality microphone input (Hz).
-	// Used in: audio.go for microphone capture in constrained scenarios
-	// Impact: Optimized for voice communication with minimal processing overhead.
-	// Default 16000Hz captures voice frequencies (300-3400Hz) efficiently.
-	AudioQualityMicLowSampleRate int
-
-	// Audio Quality Frame Sizes - Duration of audio frames for different quality levels
-	// Used in: audio.go for configuring Opus frame duration
-	// Impact: Larger frames reduce overhead but increase latency and memory usage
-
-	// AudioQualityLowFrameSize defines frame duration for low-quality audio.
-	// Used in: audio.go for low-latency scenarios with minimal processing
-	// Impact: Longer frames reduce CPU overhead but increase audio latency.
-	// Default 40ms provides good efficiency for voice communication.
-	AudioQualityLowFrameSize time.Duration
-
-	// AudioQualityMediumFrameSize defines frame duration for medium-quality audio.
-	// Used in: audio.go for balanced latency and efficiency
-	// Impact: Moderate frame size balances latency and processing efficiency.
-	// Default 20ms provides good balance for most applications.
-	AudioQualityMediumFrameSize time.Duration
-
-	// AudioQualityHighFrameSize defines frame duration for high-quality audio.
-	// Used in: audio.go for high-quality scenarios
-	// Impact: Optimized frame size for high-quality encoding efficiency.
-	// Default 20ms maintains low latency while supporting high bitrates.
-	AudioQualityHighFrameSize time.Duration
-
-	// AudioQualityUltraFrameSize defines frame duration for ultra-quality audio.
-	// Used in: audio.go for maximum quality scenarios
-	// Impact: Smaller frames reduce latency but increase processing overhead.
-	// Default 10ms provides minimal latency for real-time applications.
-	AudioQualityUltraFrameSize time.Duration
-
-	// Audio Quality Channels - Channel configuration for different quality levels
-	// Used in: audio.go for configuring mono/stereo audio
-	// Impact: Stereo doubles bandwidth and processing but provides spatial audio
-
-	// AudioQualityLowChannels defines channel count for low-quality audio.
-	// Used in: audio.go for bandwidth-constrained scenarios
-	// Impact: Mono (1) minimizes bandwidth and processing for voice communication.
-	// Default 1 (mono) suitable for voice-only applications.
-	AudioQualityLowChannels int
-
-	// AudioQualityMediumChannels defines channel count for medium-quality audio.
-	// Used in: audio.go for balanced quality scenarios
-	// Impact: Stereo (2) provides spatial audio with moderate bandwidth increase.
-	// Default 2 (stereo) suitable for general audio applications.
-	AudioQualityMediumChannels int
-
-	// AudioQualityHighChannels defines channel count for high-quality audio.
-	// Used in: audio.go for high-fidelity scenarios
-	// Impact: Stereo (2) essential for high-quality music and spatial audio.
-	// Default 2 (stereo) required for full audio experience.
-	AudioQualityHighChannels int
-
-	// AudioQualityUltraChannels defines channel count for ultra-quality audio.
-	// Used in: audio.go for maximum quality scenarios
-	// Impact: Stereo (2) mandatory for studio-quality audio reproduction.
-	// Default 2 (stereo) provides full spatial audio fidelity.
-	AudioQualityUltraChannels int
-
-	// CGO Audio Constants - Low-level C library configuration for audio processing
-	// These constants are passed to C code in cgo_audio.go for native audio operations
-	// Impact: Direct control over native audio library behavior and performance
-
-	// CGOOpusBitrate sets the bitrate for native Opus encoder (bits per second).
-	// Used in: cgo_audio.go update_audio_constants() function
-	// Impact: Controls quality vs bandwidth tradeoff in native encoding.
-	// Default 96000 (96kbps) provides good quality for real-time applications.
-	CGOOpusBitrate int
+	// CGO Audio Constants
+	CGOOpusBitrate int // Native Opus encoder bitrate in bps (default: 96000)
 
 	// CGOOpusComplexity sets computational complexity for native Opus encoder (0-10).
 	// Used in: cgo_audio.go for native encoder configuration

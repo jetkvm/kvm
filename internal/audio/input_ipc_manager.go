@@ -31,7 +31,7 @@ func (aim *AudioInputIPCManager) Start() error {
 		return nil
 	}
 
-	aim.logger.Info().Str("component", AudioInputIPCComponent).Msg("starting component")
+	aim.logger.Debug().Str("component", AudioInputIPCComponent).Msg("starting component")
 
 	err := aim.supervisor.Start()
 	if err != nil {
@@ -51,7 +51,7 @@ func (aim *AudioInputIPCManager) Start() error {
 
 	// Validate configuration before using it
 	if err := ValidateInputIPCConfig(config.SampleRate, config.Channels, config.FrameSize); err != nil {
-		aim.logger.Error().Err(err).Msg("Invalid input IPC config from constants, using defaults")
+		aim.logger.Warn().Err(err).Msg("invalid input IPC config from constants, using defaults")
 		// Use safe defaults if config validation fails
 		config = InputIPCConfig{
 			SampleRate: 48000,
@@ -69,7 +69,7 @@ func (aim *AudioInputIPCManager) Start() error {
 		aim.logger.Warn().Err(err).Str("component", AudioInputIPCComponent).Msg("failed to send initial config, will retry later")
 	}
 
-	aim.logger.Info().Str("component", AudioInputIPCComponent).Msg("component started successfully")
+	aim.logger.Debug().Str("component", AudioInputIPCComponent).Msg("component started successfully")
 	return nil
 }
 
@@ -79,9 +79,9 @@ func (aim *AudioInputIPCManager) Stop() {
 		return
 	}
 
-	aim.logger.Info().Str("component", AudioInputIPCComponent).Msg("stopping component")
+	aim.logger.Debug().Str("component", AudioInputIPCComponent).Msg("stopping component")
 	aim.supervisor.Stop()
-	aim.logger.Info().Str("component", AudioInputIPCComponent).Msg("component stopped")
+	aim.logger.Debug().Str("component", AudioInputIPCComponent).Msg("component stopped")
 }
 
 // resetMetrics resets all metrics to zero
@@ -105,7 +105,7 @@ func (aim *AudioInputIPCManager) WriteOpusFrame(frame []byte) error {
 	// Validate frame data
 	if err := ValidateFrameData(frame); err != nil {
 		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
-		aim.logger.Debug().Err(err).Msg("Invalid frame data")
+		aim.logger.Debug().Err(err).Msg("invalid frame data")
 		return err
 	}
 
@@ -122,7 +122,7 @@ func (aim *AudioInputIPCManager) WriteOpusFrame(frame []byte) error {
 	if err != nil {
 		// Count as dropped frame
 		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
-		aim.logger.Debug().Err(err).Msg("Failed to send frame via IPC")
+		aim.logger.Debug().Err(err).Msg("failed to send frame via IPC")
 		return err
 	}
 
@@ -146,7 +146,7 @@ func (aim *AudioInputIPCManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFram
 	// Validate zero-copy frame
 	if err := ValidateZeroCopyFrame(frame); err != nil {
 		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
-		aim.logger.Debug().Err(err).Msg("Invalid zero-copy frame")
+		aim.logger.Debug().Err(err).Msg("invalid zero-copy frame")
 		return err
 	}
 
@@ -163,7 +163,7 @@ func (aim *AudioInputIPCManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFram
 	if err != nil {
 		// Count as dropped frame
 		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
-		aim.logger.Debug().Err(err).Msg("Failed to send zero-copy frame via IPC")
+		aim.logger.Debug().Err(err).Msg("failed to send zero-copy frame via IPC")
 		return err
 	}
 

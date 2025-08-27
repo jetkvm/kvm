@@ -230,8 +230,8 @@ func SetAudioQuality(quality AudioQuality) {
 	// Validate audio quality parameter
 	if err := ValidateAudioQuality(quality); err != nil {
 		// Log validation error but don't fail - maintain backward compatibility
-		logger := logging.GetDefaultLogger().With().Str("component", "AudioConfig").Logger()
-		logger.Error().Err(err).Int("quality", int(quality)).Msg("Invalid audio quality provided, ignoring")
+		logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
+		logger.Warn().Err(err).Int("quality", int(quality)).Msg("invalid audio quality, using current config")
 		return
 	}
 
@@ -251,8 +251,8 @@ func SetMicrophoneQuality(quality AudioQuality) {
 	// Validate audio quality parameter
 	if err := ValidateAudioQuality(quality); err != nil {
 		// Log validation error but don't fail - maintain backward compatibility
-		logger := logging.GetDefaultLogger().With().Str("component", "MicrophoneConfig").Logger()
-		logger.Error().Err(err).Int("quality", int(quality)).Msg("Invalid microphone quality provided, ignoring")
+		logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
+		logger.Warn().Err(err).Int("quality", int(quality)).Msg("invalid microphone quality, using current config")
 		return
 	}
 

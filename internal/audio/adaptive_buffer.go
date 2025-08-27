@@ -108,7 +108,7 @@ func NewAdaptiveBufferManager(config AdaptiveBufferConfig) *AdaptiveBufferManage
 	logger := logging.GetDefaultLogger().With().Str("component", "adaptive-buffer").Logger()
 
 	if err := ValidateAdaptiveBufferConfig(config.MinBufferSize, config.MaxBufferSize, config.DefaultBufferSize); err != nil {
-		logger.Error().Err(err).Msg("Invalid adaptive buffer config, using defaults")
+		logger.Warn().Err(err).Msg("invalid adaptive buffer config, using defaults")
 		config = DefaultAdaptiveBufferConfig()
 	}
 
@@ -130,14 +130,14 @@ func NewAdaptiveBufferManager(config AdaptiveBufferConfig) *AdaptiveBufferManage
 func (abm *AdaptiveBufferManager) Start() {
 	abm.wg.Add(1)
 	go abm.adaptationLoop()
-	abm.logger.Info().Msg("Adaptive buffer manager started")
+	abm.logger.Info().Msg("adaptive buffer manager started")
 }
 
 // Stop stops the adaptive buffer management
 func (abm *AdaptiveBufferManager) Stop() {
 	abm.cancel()
 	abm.wg.Wait()
-	abm.logger.Info().Msg("Adaptive buffer manager stopped")
+	abm.logger.Info().Msg("adaptive buffer manager stopped")
 }
 
 // GetInputBufferSize returns the current recommended input buffer size

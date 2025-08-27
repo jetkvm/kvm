@@ -117,14 +117,14 @@ func NewLatencyMonitor(config LatencyConfig, logger zerolog.Logger) *LatencyMoni
 func (lm *LatencyMonitor) Start() {
 	lm.wg.Add(1)
 	go lm.monitoringLoop()
-	lm.logger.Info().Msg("Latency monitor started")
+	lm.logger.Debug().Msg("latency monitor started")
 }
 
 // Stop stops the latency monitor
 func (lm *LatencyMonitor) Stop() {
 	lm.cancel()
 	lm.wg.Wait()
-	lm.logger.Info().Msg("Latency monitor stopped")
+	lm.logger.Debug().Msg("latency monitor stopped")
 }
 
 // RecordLatency records a new latency measurement
@@ -263,20 +263,20 @@ func (lm *LatencyMonitor) runOptimization() {
 	// Check if current latency exceeds threshold
 	if metrics.Current > lm.config.MaxLatency {
 		needsOptimization = true
-		lm.logger.Warn().Dur("current_latency", metrics.Current).Dur("max_latency", lm.config.MaxLatency).Msg("Latency exceeds maximum threshold")
+		lm.logger.Warn().Dur("current_latency", metrics.Current).Dur("max_latency", lm.config.MaxLatency).Msg("latency exceeds maximum threshold")
 	}
 
 	// Check if average latency is above adaptive threshold
 	adaptiveThreshold := time.Duration(float64(lm.config.TargetLatency.Nanoseconds()) * (1.0 + lm.config.AdaptiveThreshold))
 	if metrics.Average > adaptiveThreshold {
 		needsOptimization = true
-		lm.logger.Info().Dur("average_latency", metrics.Average).Dur("threshold", adaptiveThreshold).Msg("Average latency above adaptive threshold")
+		lm.logger.Debug().Dur("average_latency", metrics.Average).Dur("threshold", adaptiveThreshold).Msg("average latency above adaptive threshold")
 	}
 
 	// Check if jitter is too high
 	if metrics.Jitter > lm.config.JitterThreshold {
 		needsOptimization = true
-		lm.logger.Info().Dur("jitter", metrics.Jitter).Dur("threshold", lm.config.JitterThreshold).Msg("Jitter above threshold")
+		lm.logger.Debug().Dur("jitter", metrics.Jitter).Dur("threshold", lm.config.JitterThreshold).Msg("jitter above threshold")
 	}
 
 	if needsOptimization {
@@ -290,11 +290,11 @@ func (lm *LatencyMonitor) runOptimization() {
 
 		for _, callback := range callbacks {
 			if err := callback(metrics); err != nil {
-				lm.logger.Error().Err(err).Msg("Optimization callback failed")
+				lm.logger.Error().Err(err).Msg("optimization callback failed")
 			}
 		}
 
-		lm.logger.Info().Interface("metrics", metrics).Msg("Latency optimization triggered")
+		lm.logger.Debug().Interface("metrics", metrics).Msg("latency optimization triggered")
 	}
 }
 

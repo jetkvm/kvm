@@ -14,7 +14,7 @@ import (
 // This should be called from main() when the subprocess is detected
 func RunAudioOutputServer() error {
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-output-server").Logger()
-	logger.Info().Msg("Starting audio output server subprocess")
+	logger.Debug().Msg("audio output server subprocess starting")
 
 	// Create audio server
 	server, err := NewAudioOutputServer()
@@ -42,7 +42,7 @@ func RunAudioOutputServer() error {
 		return err
 	}
 
-	logger.Info().Msg("Audio output server started, waiting for connections")
+	logger.Debug().Msg("audio output server started, waiting for connections")
 
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -54,18 +54,18 @@ func RunAudioOutputServer() error {
 	// Wait for shutdown signal
 	select {
 	case sig := <-sigChan:
-		logger.Info().Str("signal", sig.String()).Msg("Received shutdown signal")
+		logger.Info().Str("signal", sig.String()).Msg("received shutdown signal")
 	case <-ctx.Done():
-		logger.Info().Msg("Context cancelled")
+		logger.Debug().Msg("context cancelled")
 	}
 
 	// Graceful shutdown
-	logger.Info().Msg("Shutting down audio output server")
+	logger.Debug().Msg("shutting down audio output server")
 	StopNonBlockingAudioStreaming()
 
 	// Give some time for cleanup
 	time.Sleep(GetConfig().DefaultSleepDuration)
 
-	logger.Info().Msg("Audio output server subprocess stopped")
+	logger.Debug().Msg("audio output server subprocess stopped")
 	return nil
 }

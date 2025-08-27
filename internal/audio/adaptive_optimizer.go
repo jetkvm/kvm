@@ -72,14 +72,14 @@ func NewAdaptiveOptimizer(latencyMonitor *LatencyMonitor, bufferManager *Adaptiv
 func (ao *AdaptiveOptimizer) Start() {
 	ao.wg.Add(1)
 	go ao.optimizationLoop()
-	ao.logger.Info().Msg("Adaptive optimizer started")
+	ao.logger.Debug().Msg("adaptive optimizer started")
 }
 
 // Stop stops the adaptive optimizer
 func (ao *AdaptiveOptimizer) Stop() {
 	ao.cancel()
 	ao.wg.Wait()
-	ao.logger.Info().Msg("Adaptive optimizer stopped")
+	ao.logger.Debug().Msg("adaptive optimizer stopped")
 }
 
 // initializeStrategies sets up the available optimization strategies
@@ -178,9 +178,9 @@ func (ao *AdaptiveOptimizer) checkStability() {
 	if metrics.Current > ao.config.RollbackThreshold {
 		currentLevel := int(atomic.LoadInt64(&ao.optimizationLevel))
 		if currentLevel > 0 {
-			ao.logger.Warn().Dur("current_latency", metrics.Current).Dur("threshold", ao.config.RollbackThreshold).Msg("Rolling back optimizations due to excessive latency")
+			ao.logger.Warn().Dur("current_latency", metrics.Current).Dur("threshold", ao.config.RollbackThreshold).Msg("rolling back optimizations due to excessive latency")
 			if err := ao.decreaseOptimization(currentLevel - 1); err != nil {
-				ao.logger.Error().Err(err).Msg("Failed to decrease optimization level")
+				ao.logger.Error().Err(err).Msg("failed to decrease optimization level")
 			}
 		}
 	}

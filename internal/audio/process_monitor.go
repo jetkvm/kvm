@@ -95,7 +95,7 @@ func (pm *ProcessMonitor) Start() {
 
 	pm.running = true
 	go pm.monitorLoop()
-	pm.logger.Info().Msg("Process monitor started")
+	pm.logger.Debug().Msg("process monitor started")
 }
 
 // Stop stops monitoring processes
@@ -109,7 +109,7 @@ func (pm *ProcessMonitor) Stop() {
 
 	pm.running = false
 	close(pm.stopChan)
-	pm.logger.Info().Msg("Process monitor stopped")
+	pm.logger.Debug().Msg("process monitor stopped")
 }
 
 // AddProcess adds a process to monitor

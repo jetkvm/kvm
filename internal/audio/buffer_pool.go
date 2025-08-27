@@ -29,7 +29,7 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 	if err := ValidateBufferSize(bufferSize); err != nil {
 		// Log validation error and use default value
 		logger := logging.GetDefaultLogger().With().Str("component", "AudioBufferPool").Logger()
-		logger.Error().Err(err).Int("bufferSize", bufferSize).Msg("Invalid buffer size provided, using default")
+		logger.Warn().Err(err).Int("bufferSize", bufferSize).Msg("invalid buffer size, using default")
 		bufferSize = GetConfig().AudioFramePoolSize
 	}
 

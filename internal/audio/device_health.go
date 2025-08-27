@@ -130,7 +130,7 @@ func (dhm *DeviceHealthMonitor) Start() error {
 		return fmt.Errorf("device health monitor already running")
 	}
 
-	dhm.logger.Info().Msg("starting device health monitor")
+	dhm.logger.Debug().Msg("device health monitor starting")
 	atomic.StoreInt32(&dhm.monitoringEnabled, 1)
 
 	go dhm.monitoringLoop()
@@ -143,7 +143,7 @@ func (dhm *DeviceHealthMonitor) Stop() {
 		return
 	}
 
-	dhm.logger.Info().Msg("stopping device health monitor")
+	dhm.logger.Debug().Msg("device health monitor stopping")
 	atomic.StoreInt32(&dhm.monitoringEnabled, 0)
 
 	close(dhm.stopChan)
@@ -152,7 +152,7 @@ func (dhm *DeviceHealthMonitor) Stop() {
 	// Wait for monitoring loop to finish
 	select {
 	case <-dhm.doneChan:
-		dhm.logger.Info().Msg("device health monitor stopped")
+		dhm.logger.Debug().Msg("device health monitor stopped")
 	case <-time.After(time.Duration(dhm.config.SupervisorTimeout)):
 		dhm.logger.Warn().Msg("device health monitor stop timeout")
 	}
@@ -163,7 +163,7 @@ func (dhm *DeviceHealthMonitor) RegisterRecoveryCallback(component string, callb
 	dhm.callbackMutex.Lock()
 	defer dhm.callbackMutex.Unlock()
 	dhm.recoveryCallbacks[component] = callback
-	dhm.logger.Info().Str("component", component).Msg("registered recovery callback")
+	dhm.logger.Debug().Str("component", component).Msg("registered recovery callback")
 }
 
 // RecordError records an error for health tracking

@@ -63,12 +63,12 @@ func NewBatchAudioProcessor(batchSize int, batchDuration time.Duration) *BatchAu
 	// Validate input parameters
 	if err := ValidateBufferSize(batchSize); err != nil {
 		logger := logging.GetDefaultLogger().With().Str("component", "batch-audio").Logger()
-		logger.Error().Err(err).Int("batchSize", batchSize).Msg("Invalid batch size provided, using default")
+		logger.Warn().Err(err).Int("batchSize", batchSize).Msg("invalid batch size, using default")
 		batchSize = GetConfig().BatchProcessorFramesPerBatch
 	}
 	if batchDuration <= 0 {
 		logger := logging.GetDefaultLogger().With().Str("component", "batch-audio").Logger()
-		logger.Error().Dur("batchDuration", batchDuration).Msg("Invalid batch duration provided, using default")
+		logger.Warn().Dur("batchDuration", batchDuration).Msg("invalid batch duration, using default")
 		batchDuration = GetConfig().BatchProcessingDelay
 	}
 
@@ -131,7 +131,7 @@ func (bap *BatchAudioProcessor) Stop() {
 func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
 	// Validate buffer before processing
 	if err := ValidateBufferSize(len(buffer)); err != nil {
-		bap.logger.Debug().Err(err).Msg("Invalid buffer for batch processing")
+		bap.logger.Debug().Err(err).Msg("invalid buffer for batch processing")
 		return 0, err
 	}
 
@@ -220,12 +220,12 @@ func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
 
 		// Set high priority for batch audio processing
 		if err := SetAudioThreadPriority(); err != nil {
-			bap.logger.Warn().Err(err).Msg("Failed to set batch audio processing priority")
+			bap.logger.Warn().Err(err).Msg("failed to set batch audio processing priority")
 		}
 
 		defer func() {
 			if err := ResetThreadPriority(); err != nil {
-				bap.logger.Warn().Err(err).Msg("Failed to reset thread priority")
+				bap.logger.Warn().Err(err).Msg("failed to reset thread priority")
 			}
 			runtime.UnlockOSThread()
 			atomic.StoreInt32(&bap.threadPinned, 0)
