@@ -236,31 +236,9 @@ int jetkvm_audio_init() {
 	return 0;
 }
 
-// jetkvm_audio_read_encode reads one audio frame from ALSA, encodes it with Opus, and handles errors.
-//
-// This function implements a robust audio capture pipeline with the following features:
-// - ALSA PCM capture with automatic device recovery
-// - Opus encoding with optimized settings for real-time processing
-// - Progressive error recovery with exponential backoff
-// - Buffer underrun and device suspension handling
-//
-// Error Recovery Strategy:
-// 1. EPIPE (buffer underrun): Prepare device and retry with progressive delays
-// 2. ESTRPIPE (device suspended): Resume device with timeout and fallback to prepare
-// 3. Other errors: Log and attempt recovery up to max_recovery_attempts
-//
-// Performance Optimizations:
-// - Stack-allocated PCM buffer to avoid heap allocations
-// - Direct memory access for Opus encoding
-// - Minimal system calls in the hot path
-//
-// Parameters:
-//   opus_buf: Output buffer for encoded Opus data (must be at least max_packet_size bytes)
-//
-// Returns:
-//   >0: Number of bytes written to opus_buf
-//   -1: Initialization error or safety check failure
-//   -2: Unrecoverable ALSA or Opus error after all retry attempts
+// jetkvm_audio_read_encode captures audio from ALSA, encodes with Opus, and handles errors.
+// Implements robust error recovery for buffer underruns and device suspension.
+// Returns: >0 (bytes written), -1 (init error), -2 (unrecoverable error)
 int jetkvm_audio_read_encode(void *opus_buf) {
 	short pcm_buffer[1920]; // max 2ch*960
 	unsigned char *out = (unsigned char*)opus_buf;
@@ -610,29 +588,59 @@ var (
 	errInvalidBufferPtr  = errors.New("invalid buffer pointer")
 )
 
-// Error creation functions with context
+// Error creation functions with enhanced context
 func newBufferTooSmallError(actual, required int) error {
-	return fmt.Errorf("buffer too small: got %d bytes, need at least %d bytes", actual, required)
+	baseErr := fmt.Errorf("buffer too small: got %d bytes, need at least %d bytes", actual, required)
+	return WrapWithMetadata(baseErr, "cgo_audio", "buffer_validation", map[string]interface{}{
+		"actual_size":   actual,
+		"required_size": required,
+		"error_type":    "buffer_undersize",
+	})
 }
 
 func newBufferTooLargeError(actual, max int) error {
-	return fmt.Errorf("buffer too large: got %d bytes, maximum allowed %d bytes", actual, max)
+	baseErr := fmt.Errorf("buffer too large: got %d bytes, maximum allowed %d bytes", actual, max)
+	return WrapWithMetadata(baseErr, "cgo_audio", "buffer_validation", map[string]interface{}{
+		"actual_size": actual,
+		"max_size":    max,
+		"error_type":  "buffer_oversize",
+	})
 }
 
 func newAudioInitError(cErrorCode int) error {
-	return fmt.Errorf("%w: C error code %d", errAudioInitFailed, cErrorCode)
+	baseErr := fmt.Errorf("%w: C error code %d", errAudioInitFailed, cErrorCode)
+	return WrapWithMetadata(baseErr, "cgo_audio", "initialization", map[string]interface{}{
+		"c_error_code": cErrorCode,
+		"error_type":   "init_failure",
+		"severity":     "critical",
+	})
 }
 
 func newAudioPlaybackInitError(cErrorCode int) error {
-	return fmt.Errorf("%w: C error code %d", errAudioPlaybackInit, cErrorCode)
+	baseErr := fmt.Errorf("%w: C error code %d", errAudioPlaybackInit, cErrorCode)
+	return WrapWithMetadata(baseErr, "cgo_audio", "playback_init", map[string]interface{}{
+		"c_error_code": cErrorCode,
+		"error_type":   "playback_init_failure",
+		"severity":     "high",
+	})
 }
 
 func newAudioReadEncodeError(cErrorCode int) error {
-	return fmt.Errorf("%w: C error code %d", errAudioReadEncode, cErrorCode)
+	baseErr := fmt.Errorf("%w: C error code %d", errAudioReadEncode, cErrorCode)
+	return WrapWithMetadata(baseErr, "cgo_audio", "read_encode", map[string]interface{}{
+		"c_error_code": cErrorCode,
+		"error_type":   "read_encode_failure",
+		"severity":     "medium",
+	})
 }
 
 func newAudioDecodeWriteError(cErrorCode int) error {
-	return fmt.Errorf("%w: C error code %d", errAudioDecodeWrite, cErrorCode)
+	baseErr := fmt.Errorf("%w: C error code %d", errAudioDecodeWrite, cErrorCode)
+	return WrapWithMetadata(baseErr, "cgo_audio", "decode_write", map[string]interface{}{
+		"c_error_code": cErrorCode,
+		"error_type":   "decode_write_failure",
+		"severity":     "medium",
+	})
 }
 
 func cgoAudioInit() error {

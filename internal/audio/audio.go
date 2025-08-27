@@ -1,82 +1,10 @@
-// Package audio provides a comprehensive real-time audio processing system for JetKVM.
+// Package audio provides real-time audio processing for JetKVM with low-latency streaming.
 //
-// # Architecture Overview
+// Key components: output/input pipelines with Opus codec, adaptive buffer management,
+// zero-copy frame pools, IPC communication, and process supervision.
 //
-// The audio package implements a multi-component architecture designed for low-latency,
-// high-quality audio streaming in embedded ARM environments. The system consists of:
-//
-//   - Audio Output Pipeline: Receives compressed audio frames, decodes via Opus, and
-//     outputs to ALSA-compatible audio devices
-//   - Audio Input Pipeline: Captures microphone input, encodes via Opus, and streams
-//     to connected clients
-//   - Adaptive Buffer Management: Dynamically adjusts buffer sizes based on system
-//     load and latency requirements
-//   - Zero-Copy Frame Pool: Minimizes memory allocations through frame reuse
-//   - IPC Communication: Unix domain sockets for inter-process communication
-//   - Process Supervision: Automatic restart and health monitoring of audio subprocesses
-//
-// # Key Components
-//
-// ## Buffer Pool System (buffer_pool.go)
-// Implements a two-tier buffer pool with separate pools for audio frames and control
-// messages. Uses sync.Pool for efficient memory reuse and tracks allocation statistics.
-//
-// ## Zero-Copy Frame Management (zero_copy.go)
-// Provides reference-counted audio frames that can be shared between components
-// without copying data. Includes automatic cleanup and pool-based allocation.
-//
-// ## Adaptive Buffering Algorithm (adaptive_buffer.go)
-// Dynamically adjusts buffer sizes based on:
-//   - System CPU and memory usage
-//   - Audio latency measurements
-//   - Frame drop rates
-//   - Network conditions
-//
-// The algorithm uses exponential smoothing and configurable thresholds to balance
-// latency and stability. Buffer sizes are adjusted in discrete steps to prevent
-// oscillation.
-//
-// ## Latency Monitoring (latency_monitor.go)
-// Tracks end-to-end audio latency using high-resolution timestamps. Implements
-// adaptive optimization that adjusts system parameters when latency exceeds
-// configured thresholds.
-//
-// ## Process Supervision (supervisor.go)
-// Manages audio subprocess lifecycle with automatic restart capabilities.
-// Monitors process health and implements exponential backoff for restart attempts.
-//
-// # Quality Levels
-//
-// The system supports four quality presets optimized for different use cases:
-//   - Low: 32kbps output, 16kbps input - minimal bandwidth, voice-optimized
-//   - Medium: 96kbps output, 64kbps input - balanced quality and bandwidth
-//   - High: 192kbps output, 128kbps input - high quality for music
-//   - Ultra: 320kbps output, 256kbps input - maximum quality
-//
-// # Configuration System
-//
-// All configuration is centralized in config_constants.go, allowing runtime
-// tuning of performance parameters. Key configuration areas include:
-//   - Opus codec parameters (bitrate, complexity, VBR settings)
-//   - Buffer sizes and pool configurations
-//   - Latency thresholds and optimization parameters
-//   - Process monitoring and restart policies
-//
-// # Thread Safety
-//
-// All public APIs are thread-safe. Internal synchronization uses:
-//   - atomic operations for performance counters
-//   - sync.RWMutex for configuration updates
-//   - sync.Pool for buffer management
-//   - channel-based communication for IPC
-//
-// # Error Handling
-//
-// The system implements comprehensive error handling with:
-//   - Graceful degradation on component failures
-//   - Automatic retry with exponential backoff
-//   - Detailed error context for debugging
-//   - Metrics collection for monitoring
+// Supports four quality presets (Low/Medium/High/Ultra) with configurable bitrates.
+// All APIs are thread-safe with comprehensive error handling and metrics collection.
 //
 // # Performance Characteristics
 //

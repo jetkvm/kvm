@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Enhanced validation errors with more specific context
+// Validation errors
 var (
 	ErrInvalidFrameLength    = errors.New("invalid frame length")
 	ErrFrameDataCorrupted    = errors.New("frame data appears corrupted")
@@ -21,6 +21,11 @@ var (
 	ErrInvalidPointer        = errors.New("invalid pointer")
 	ErrBufferOverflow        = errors.New("buffer overflow detected")
 	ErrInvalidState          = errors.New("invalid state")
+	ErrOperationTimeout      = errors.New("operation timeout")
+	ErrSystemOverload        = errors.New("system overload detected")
+	ErrHardwareFailure       = errors.New("hardware failure")
+	ErrNetworkError          = errors.New("network error")
+	ErrMemoryExhaustion      = errors.New("memory exhaustion")
 )
 
 // ValidationLevel defines the level of validation to perform
@@ -43,13 +48,14 @@ type ValidationConfig struct {
 
 // GetValidationConfig returns the current validation configuration
 func GetValidationConfig() ValidationConfig {
-	configConstants := GetConfig()
+	// Use direct config access
+	config := GetConfig()
 	return ValidationConfig{
 		Level:                ValidationStandard,
 		EnableRangeChecks:    true,
 		EnableAlignmentCheck: true,
-		EnableDataIntegrity:  false,                             // Disabled by default for performance
-		MaxValidationTime:    configConstants.MaxValidationTime, // Configurable validation timeout
+		EnableDataIntegrity:  false,                    // Disabled by default for performance
+		MaxValidationTime:    config.MaxValidationTime, // Configurable validation timeout
 	}
 }
 
@@ -59,10 +65,10 @@ func ValidateAudioFrameFast(data []byte) error {
 		return ErrInvalidFrameData
 	}
 
-	// Quick bounds check using config constants
-	maxSize := GetConfig().MaxAudioFrameSize
-	if len(data) > maxSize {
-		return fmt.Errorf("%w: frame size %d exceeds maximum %d", ErrInvalidFrameSize, len(data), maxSize)
+	// Quick bounds check using direct config access
+	config := GetConfig()
+	if len(data) > config.MaxAudioFrameSize {
+		return fmt.Errorf("%w: frame size %d exceeds maximum %d", ErrInvalidFrameSize, len(data), config.MaxAudioFrameSize)
 	}
 
 	return nil
@@ -88,6 +94,7 @@ func ValidateAudioFrameComprehensive(data []byte, expectedSampleRate int, expect
 
 	// Range validation
 	if validationConfig.EnableRangeChecks {
+		// Use direct config access
 		config := GetConfig()
 		if len(data) < config.MinFrameSize {
 			return fmt.Errorf("%w: frame size %d below minimum %d", ErrInvalidFrameSize, len(data), config.MinFrameSize)
@@ -180,15 +187,21 @@ func ValidateAudioConfiguration(config AudioConfig) error {
 		return fmt.Errorf("quality validation failed: %w", err)
 	}
 
+	// Use direct config access
 	configConstants := GetConfig()
+	minOpusBitrate := configConstants.MinOpusBitrate
+	maxOpusBitrate := configConstants.MaxOpusBitrate
+	maxChannels := configConstants.MaxChannels
+	validSampleRates := configConstants.ValidSampleRates
+	minFrameDuration := configConstants.MinFrameDuration
+	maxFrameDuration := configConstants.MaxFrameDuration
 
 	// Validate bitrate ranges
-	if config.Bitrate < configConstants.MinOpusBitrate || config.Bitrate > configConstants.MaxOpusBitrate {
-		return fmt.Errorf("%w: bitrate %d outside valid range [%d, %d]", ErrInvalidConfiguration, config.Bitrate, configConstants.MinOpusBitrate, configConstants.MaxOpusBitrate)
+	if config.Bitrate < minOpusBitrate || config.Bitrate > maxOpusBitrate {
+		return fmt.Errorf("%w: bitrate %d outside valid range [%d, %d]", ErrInvalidConfiguration, config.Bitrate, minOpusBitrate, maxOpusBitrate)
 	}
 
 	// Validate sample rate
-	validSampleRates := configConstants.ValidSampleRates
 	validSampleRate := false
 	for _, rate := range validSampleRates {
 		if config.SampleRate == rate {
@@ -201,15 +214,13 @@ func ValidateAudioConfiguration(config AudioConfig) error {
 	}
 
 	// Validate channels
-	if config.Channels < 1 || config.Channels > configConstants.MaxChannels {
-		return fmt.Errorf("%w: channels %d outside valid range [1, %d]", ErrInvalidChannels, config.Channels, configConstants.MaxChannels)
+	if config.Channels < 1 || config.Channels > maxChannels {
+		return fmt.Errorf("%w: channels %d outside valid range [1, %d]", ErrInvalidChannels, config.Channels, maxChannels)
 	}
 
 	// Validate frame size
-	minFrameSize := GetConfig().MinFrameDuration
-	maxFrameSize := GetConfig().MaxFrameDuration
-	if config.FrameSize < minFrameSize || config.FrameSize > maxFrameSize {
-		return fmt.Errorf("%w: frame size %v outside valid range [%v, %v]", ErrInvalidConfiguration, config.FrameSize, minFrameSize, maxFrameSize)
+	if config.FrameSize < minFrameDuration || config.FrameSize > maxFrameDuration {
+		return fmt.Errorf("%w: frame size %v outside valid range [%v, %v]", ErrInvalidConfiguration, config.FrameSize, minFrameDuration, maxFrameDuration)
 	}
 
 	return nil
@@ -379,4 +390,90 @@ func getValidationLogger() *zerolog.Logger {
 	// Return a basic logger for validation
 	logger := zerolog.New(nil).With().Timestamp().Logger()
 	return &logger
+}
+
+// ErrorContext provides structured error context for better debugging
+type ErrorContext struct {
+	Component  string                 `json:"component"`
+	Operation  string                 `json:"operation"`
+	Timestamp  time.Time              `json:"timestamp"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	StackTrace []string               `json:"stack_trace,omitempty"`
+}
+
+// ContextualError wraps an error with additional context
+type ContextualError struct {
+	Err     error        `json:"error"`
+	Context ErrorContext `json:"context"`
+}
+
+func (ce *ContextualError) Error() string {
+	return fmt.Sprintf("%s [%s:%s]: %v", ce.Context.Component, ce.Context.Operation, ce.Context.Timestamp.Format(time.RFC3339), ce.Err)
+}
+
+func (ce *ContextualError) Unwrap() error {
+	return ce.Err
+}
+
+// NewContextualError creates a new contextual error with metadata
+func NewContextualError(err error, component, operation string, metadata map[string]interface{}) *ContextualError {
+	return &ContextualError{
+		Err: err,
+		Context: ErrorContext{
+			Component: component,
+			Operation: operation,
+			Timestamp: time.Now(),
+			Metadata:  metadata,
+		},
+	}
+}
+
+// WrapWithContext wraps an error with component and operation context
+func WrapWithContext(err error, component, operation string) error {
+	if err == nil {
+		return nil
+	}
+	return NewContextualError(err, component, operation, nil)
+}
+
+// WrapWithMetadata wraps an error with additional metadata
+func WrapWithMetadata(err error, component, operation string, metadata map[string]interface{}) error {
+	if err == nil {
+		return nil
+	}
+	return NewContextualError(err, component, operation, metadata)
+}
+
+// IsTimeoutError checks if an error is a timeout error
+func IsTimeoutError(err error) bool {
+	return errors.Is(err, ErrOperationTimeout)
+}
+
+// IsResourceError checks if an error is related to resource exhaustion
+func IsResourceError(err error) bool {
+	return errors.Is(err, ErrResourceExhaustion) || errors.Is(err, ErrMemoryExhaustion) || errors.Is(err, ErrSystemOverload)
+}
+
+// IsHardwareError checks if an error is hardware-related
+func IsHardwareError(err error) bool {
+	return errors.Is(err, ErrHardwareFailure)
+}
+
+// IsNetworkError checks if an error is network-related
+func IsNetworkError(err error) bool {
+	return errors.Is(err, ErrNetworkError)
+}
+
+// GetErrorSeverity returns the severity level of an error
+func GetErrorSeverity(err error) string {
+	if IsHardwareError(err) {
+		return "critical"
+	}
+	if IsResourceError(err) {
+		return "high"
+	}
+	if IsNetworkError(err) || IsTimeoutError(err) {
+		return "medium"
+	}
+	return "low"
 }

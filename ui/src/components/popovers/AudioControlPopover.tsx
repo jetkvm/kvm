@@ -4,6 +4,8 @@ import { LuActivity, LuSignal } from "react-icons/lu";
 
 import { Button } from "@components/Button";
 import { AudioLevelMeter } from "@components/AudioLevelMeter";
+import { AudioConfigDisplay } from "@components/AudioConfigDisplay";
+import { AudioStatusIndicator } from "@components/AudioStatusIndicator";
 import { cx } from "@/cva.config";
 import { useUiStore } from "@/hooks/stores";
 import { useAudioDevices } from "@/hooks/useAudioDevices";
@@ -512,14 +514,10 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
             </div>
 
             {currentMicrophoneConfig && (
-              <div className="rounded-md bg-green-50 p-2 text-xs text-green-600 dark:bg-green-900/20 dark:text-green-400">
-                <div className="grid grid-cols-2 gap-1">
-                  <span>Sample Rate: {currentMicrophoneConfig.SampleRate}Hz</span>
-                  <span>Channels: {currentMicrophoneConfig.Channels}</span>
-                  <span>Bitrate: {currentMicrophoneConfig.Bitrate}kbps</span>
-                  <span>Frame: {currentMicrophoneConfig.FrameSize}</span>
-                </div>
-              </div>
+              <AudioConfigDisplay 
+                config={currentMicrophoneConfig} 
+                variant="success" 
+              />
             )}
           </div>
         )}
@@ -553,14 +551,10 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
           </div>
 
           {currentConfig && (
-            <div className="rounded-md bg-slate-50 p-2 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-400">
-              <div className="grid grid-cols-2 gap-1">
-                <span>Sample Rate: {currentConfig.SampleRate}Hz</span>
-                <span>Channels: {currentConfig.Channels}</span>
-                <span>Bitrate: {currentConfig.Bitrate}kbps</span>
-                <span>Frame: {currentConfig.FrameSize}</span>
-              </div>
-            </div>
+            <AudioConfigDisplay 
+              config={currentConfig} 
+              variant="default" 
+            />
           )}
         </div>
 
@@ -575,30 +569,16 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
           
           {metrics ? (
             <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
-                <div className={cx(
-                  "font-medium",
-                  metrics.frames_dropped > 0 
-                    ? "text-red-600 dark:text-red-400" 
-                    : "text-green-600 dark:text-green-400"
-                )}>
-                  {metrics.frames_dropped > 0 ? "Issues" : "Good"}
-                </div>
-                <div className="text-slate-500 dark:text-slate-400">Audio Output</div>
-              </div>
+              <AudioStatusIndicator 
+                metrics={metrics} 
+                label="Audio Output" 
+              />
               
               {micMetrics && (
-                <div className="text-center p-2 bg-slate-50 dark:bg-slate-800 rounded">
-                  <div className={cx(
-                    "font-medium",
-                    micMetrics.frames_dropped > 0 
-                      ? "text-red-600 dark:text-red-400" 
-                      : "text-green-600 dark:text-green-400"
-                  )}>
-                    {micMetrics.frames_dropped > 0 ? "Issues" : "Good"}
-                  </div>
-                  <div className="text-slate-500 dark:text-slate-400">Microphone</div>
-                </div>
+                <AudioStatusIndicator 
+                  metrics={micMetrics} 
+                  label="Microphone" 
+                />
               )}
             </div>
           ) : (

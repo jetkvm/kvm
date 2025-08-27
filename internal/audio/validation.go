@@ -22,6 +22,7 @@ var (
 
 // ValidateAudioQuality validates audio quality enum values
 func ValidateAudioQuality(quality AudioQuality) error {
+	// Perform validation
 	switch quality {
 	case AudioQualityLow, AudioQualityMedium, AudioQualityHigh, AudioQualityUltra:
 		return nil
@@ -35,7 +36,7 @@ func ValidateFrameData(data []byte) error {
 	if len(data) == 0 {
 		return ErrInvalidFrameData
 	}
-	// Use config value or fallback to default
+	// Use config value
 	maxFrameSize := GetConfig().MaxAudioFrameSize
 	if len(data) > maxFrameSize {
 		return ErrInvalidFrameSize
@@ -75,14 +76,9 @@ func ValidateBufferSize(size int) error {
 
 // ValidateThreadPriority validates thread priority values
 func ValidateThreadPriority(priority int) error {
-	// Use reasonable defaults if config is not available
-	minPriority := -20
-	maxPriority := 99
-	if config := GetConfig(); config != nil {
-		minPriority = config.MinNiceValue
-		maxPriority = config.RTAudioHighPriority
-	}
-	if priority < minPriority || priority > maxPriority {
+	// Use config values
+	config := GetConfig()
+	if priority < config.MinNiceValue || priority > config.RTAudioHighPriority {
 		return ErrInvalidPriority
 	}
 	return nil
