@@ -17,7 +17,7 @@ export default function Ipv6NetworkCard({
           </h3>
 
           <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-            {networkState?.dhcp_lease?.ip && (
+            {networkState?.ipv6_link_local && (
               <div className="flex flex-col justify-between">
                 <span className="text-sm text-slate-600 dark:text-slate-400">
                   Link-local
