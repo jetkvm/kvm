@@ -288,10 +288,10 @@ func (s *AudioOutputSupervisor) waitForProcessExit() {
 	s.processMonitor.RemoveProcess(pid)
 
 	if crashed {
-		s.logger.Error().Int("pid", pid).Int("exit_code", exitCode).Msg("audio server process crashed")
+		s.logger.Error().Int("pid", pid).Int("exit_code", exitCode).Msg("audio output server process crashed")
 		s.recordRestartAttempt()
 	} else {
-		s.logger.Info().Int("pid", pid).Msg("audio server process exited gracefully")
+		s.logger.Info().Int("pid", pid).Msg("audio output server process exited gracefully")
 	}
 
 	if s.onProcessExit != nil {
@@ -310,11 +310,11 @@ func (s *AudioOutputSupervisor) terminateProcess() {
 		return
 	}
 
-	s.logger.Info().Int("pid", pid).Msg("terminating audio server process")
+	s.logger.Info().Int("pid", pid).Msg("terminating audio output server process")
 
 	// Send SIGTERM first
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		s.logger.Warn().Err(err).Int("pid", pid).Msg("failed to send SIGTERM")
+		s.logger.Warn().Err(err).Int("pid", pid).Msg("failed to send SIGTERM to audio output server process")
 	}
 
 	// Wait for graceful shutdown

@@ -210,10 +210,10 @@ func testMemoryLeakPrevention(t *testing.T) {
 func testConfigValidationEdgeCases(t *testing.T) {
 	// Test sample rate edge cases
 	testCases := []struct {
-		sampleRate int
-		channels   int
-		frameSize  int
-		shouldPass bool
+		sampleRate  int
+		channels    int
+		frameSize   int
+		shouldPass  bool
 		description string
 	}{
 		{0, 2, 960, false, "zero sample rate"},

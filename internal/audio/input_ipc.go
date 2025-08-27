@@ -301,8 +301,8 @@ func (ais *AudioInputServer) acceptConnections() {
 		if err != nil {
 			if ais.running {
 				// Log error and continue accepting
-				logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
-				logger.Warn().Err(err).Msg("Failed to accept connection, retrying")
+				logger := logging.GetDefaultLogger().With().Str("component", "audio-input").Logger()
+				logger.Warn().Err(err).Msg("failed to accept connection, retrying")
 				continue
 			}
 			return
@@ -311,8 +311,8 @@ func (ais *AudioInputServer) acceptConnections() {
 		// Configure socket buffers for optimal performance
 		if err := ConfigureSocketBuffers(conn, ais.socketBufferConfig); err != nil {
 			// Log warning but don't fail - socket buffer optimization is not critical
-			logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
-			logger.Warn().Err(err).Msg("Failed to configure socket buffers, continuing with defaults")
+			logger := logging.GetDefaultLogger().With().Str("component", "audio-input").Logger()
+			logger.Warn().Err(err).Msg("failed to configure socket buffers, using defaults")
 		} else {
 			// Record socket buffer metrics for monitoring
 			RecordSocketBufferMetrics(conn, "audio-input")

@@ -94,7 +94,7 @@ func testAudioQualityPresetsConsistency(t *testing.T) {
 	// Verify presets have expected structure
 	for i, preset := range presets {
 		t.Logf("Audio preset %d: %+v", i, preset)
-		
+
 		// Each preset should have reasonable values
 		assert.GreaterOrEqual(t, preset.Bitrate, 0, "Bitrate should be non-negative")
 		assert.Greater(t, preset.SampleRate, 0, "Sample rate should be positive")
@@ -119,7 +119,7 @@ func testMicrophoneQualityPresetsConsistency(t *testing.T) {
 	// Verify presets have expected structure
 	for i, preset := range presets {
 		t.Logf("Microphone preset %d: %+v", i, preset)
-		
+
 		// Each preset should have reasonable values
 		assert.GreaterOrEqual(t, preset.Bitrate, 0, "Bitrate should be non-negative")
 		assert.Greater(t, preset.SampleRate, 0, "Sample rate should be positive")
@@ -225,11 +225,11 @@ func testQualityPresetsImmutability(t *testing.T) {
 
 	// Verify each preset is identical
 	for quality := range presets1 {
-		assert.Equal(t, presets1[quality].Bitrate, presets2[quality].Bitrate, 
+		assert.Equal(t, presets1[quality].Bitrate, presets2[quality].Bitrate,
 			"Preset %v bitrate should be consistent", quality)
-		assert.Equal(t, presets1[quality].SampleRate, presets2[quality].SampleRate, 
+		assert.Equal(t, presets1[quality].SampleRate, presets2[quality].SampleRate,
 			"Preset %v sample rate should be consistent", quality)
-		assert.Equal(t, presets1[quality].Channels, presets2[quality].Channels, 
+		assert.Equal(t, presets1[quality].Channels, presets2[quality].Channels,
 			"Preset %v channels should be consistent", quality)
 	}
 
@@ -240,11 +240,11 @@ func testQualityPresetsImmutability(t *testing.T) {
 	require.Equal(t, len(micPresets1), len(micPresets2), "Microphone preset count should be consistent")
 
 	for quality := range micPresets1 {
-		assert.Equal(t, micPresets1[quality].Bitrate, micPresets2[quality].Bitrate, 
+		assert.Equal(t, micPresets1[quality].Bitrate, micPresets2[quality].Bitrate,
 			"Microphone preset %v bitrate should be consistent", quality)
-		assert.Equal(t, micPresets1[quality].SampleRate, micPresets2[quality].SampleRate, 
+		assert.Equal(t, micPresets1[quality].SampleRate, micPresets2[quality].SampleRate,
 			"Microphone preset %v sample rate should be consistent", quality)
-		assert.Equal(t, micPresets1[quality].Channels, micPresets2[quality].Channels, 
+		assert.Equal(t, micPresets1[quality].Channels, micPresets2[quality].Channels,
 			"Microphone preset %v channels should be consistent", quality)
 	}
 }
@@ -252,7 +252,7 @@ func testQualityPresetsImmutability(t *testing.T) {
 // TestQualityValidationRemovalRegression tests that validation removal doesn't cause regressions
 func TestQualityValidationRemovalRegression(t *testing.T) {
 	// This test ensures that removing validation from GET endpoints doesn't break functionality
-	
+
 	// Test that presets are still accessible
 	audioPresets := GetAudioQualityPresets()
 	assert.NotNil(t, audioPresets, "Audio presets should be accessible after validation removal")

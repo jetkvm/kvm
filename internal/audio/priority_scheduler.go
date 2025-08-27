@@ -69,13 +69,13 @@ func (ps *PriorityScheduler) SetThreadPriority(priority int, policy int) error {
 		// If we can't set real-time priority, try nice value instead
 		schedNormal, _, _ := getSchedulingPolicies()
 		if policy != schedNormal {
-			ps.logger.Warn().Int("errno", int(errno)).Msg("Failed to set real-time priority, falling back to nice")
+			ps.logger.Warn().Int("errno", int(errno)).Msg("failed to set real-time priority, falling back to nice")
 			return ps.setNicePriority(priority)
 		}
 		return errno
 	}
 
-	ps.logger.Debug().Int("tid", tid).Int("priority", priority).Int("policy", policy).Msg("Thread priority set")
+	ps.logger.Debug().Int("tid", tid).Int("priority", priority).Int("policy", policy).Msg("thread priority set")
 	return nil
 }
 
@@ -93,11 +93,11 @@ func (ps *PriorityScheduler) setNicePriority(rtPriority int) error {
 
 	err := syscall.Setpriority(syscall.PRIO_PROCESS, 0, niceValue)
 	if err != nil {
-		ps.logger.Warn().Err(err).Int("nice", niceValue).Msg("Failed to set nice priority")
+		ps.logger.Warn().Err(err).Int("nice", niceValue).Msg("failed to set nice priority")
 		return err
 	}
 
-	ps.logger.Debug().Int("nice", niceValue).Msg("Nice priority set as fallback")
+	ps.logger.Debug().Int("nice", niceValue).Msg("nice priority set as fallback")
 	return nil
 }
 
@@ -132,13 +132,13 @@ func (ps *PriorityScheduler) ResetPriority() error {
 // Disable disables priority scheduling (useful for testing or fallback)
 func (ps *PriorityScheduler) Disable() {
 	ps.enabled = false
-	ps.logger.Info().Msg("Priority scheduling disabled")
+	ps.logger.Debug().Msg("priority scheduling disabled")
 }
 
 // Enable enables priority scheduling
 func (ps *PriorityScheduler) Enable() {
 	ps.enabled = true
-	ps.logger.Info().Msg("Priority scheduling enabled")
+	ps.logger.Debug().Msg("priority scheduling enabled")
 }
 
 // Global priority scheduler instance

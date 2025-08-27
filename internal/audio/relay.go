@@ -140,17 +140,17 @@ func (r *AudioRelay) relayLoop() {
 	for {
 		select {
 		case <-r.ctx.Done():
-			r.logger.Debug().Msg("Audio relay loop stopping")
+			r.logger.Debug().Msg("audio relay loop stopping")
 			return
 		default:
 			frame, err := r.client.ReceiveFrame()
 			if err != nil {
 				consecutiveErrors++
-				r.logger.Error().Err(err).Int("consecutive_errors", consecutiveErrors).Msg("Error reading frame from audio output server")
+				r.logger.Error().Err(err).Int("consecutive_errors", consecutiveErrors).Msg("error reading frame from audio output server")
 				r.incrementDropped()
 
 				if consecutiveErrors >= maxConsecutiveErrors {
-					r.logger.Error().Msgf("Too many consecutive read errors (%d/%d), stopping audio relay", consecutiveErrors, maxConsecutiveErrors)
+					r.logger.Error().Int("consecutive_errors", consecutiveErrors).Int("max_errors", maxConsecutiveErrors).Msg("too many consecutive read errors, stopping audio relay")
 					return
 				}
 				time.Sleep(GetConfig().ShortSleepDuration)
@@ -159,7 +159,7 @@ func (r *AudioRelay) relayLoop() {
 
 			consecutiveErrors = 0
 			if err := r.forwardToWebRTC(frame); err != nil {
-				r.logger.Warn().Err(err).Msg("Failed to forward frame to WebRTC")
+				r.logger.Warn().Err(err).Msg("failed to forward frame to webrtc")
 				r.incrementDropped()
 			} else {
 				r.incrementRelayed()
@@ -173,7 +173,7 @@ func (r *AudioRelay) forwardToWebRTC(frame []byte) error {
 	// Validate frame data before processing
 	if err := ValidateFrameData(frame); err != nil {
 		r.incrementDropped()
-		r.logger.Debug().Err(err).Msg("Invalid frame data in relay")
+		r.logger.Debug().Err(err).Msg("invalid frame data in relay")
 		return err
 	}
 

@@ -144,7 +144,7 @@ func (aeb *AudioEventBroadcaster) Subscribe(connectionID string, conn *websocket
 		logger: logger,
 	}
 
-	aeb.logger.Info().Str("connectionID", connectionID).Msg("audio events subscription added")
+	aeb.logger.Debug().Str("connectionID", connectionID).Msg("audio events subscription added")
 
 	// Send initial state to new subscriber
 	go aeb.sendInitialState(connectionID)
@@ -156,7 +156,7 @@ func (aeb *AudioEventBroadcaster) Unsubscribe(connectionID string) {
 	defer aeb.mutex.Unlock()
 
 	delete(aeb.subscribers, connectionID)
-	aeb.logger.Info().Str("connectionID", connectionID).Msg("audio events subscription removed")
+	aeb.logger.Debug().Str("connectionID", connectionID).Msg("audio events subscription removed")
 }
 
 // BroadcastAudioMuteChanged broadcasts audio mute state changes

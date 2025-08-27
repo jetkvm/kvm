@@ -156,7 +156,10 @@ func HandleMemoryMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
 
-	if err := json.NewEncoder(w).Encode(metrics); err != nil {
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+
+	if err := encoder.Encode(metrics); err != nil {
 		logger.Error().Err(err).Msg("failed to encode memory metrics")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -185,7 +188,7 @@ func LogMemoryMetrics() {
 // StartMemoryMetricsLogging starts periodic memory metrics logging
 func StartMemoryMetricsLogging(interval time.Duration) {
 	logger := getMemoryMetricsLogger()
-	logger.Info().Dur("interval", interval).Msg("starting memory metrics logging")
+	logger.Debug().Dur("interval", interval).Msg("memory metrics logging started")
 
 	go func() {
 		ticker := time.NewTicker(interval)

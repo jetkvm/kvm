@@ -96,22 +96,22 @@ func (bam *BaseAudioManager) updateLatency(latency time.Duration) {
 
 // logComponentStart logs component start with consistent format
 func (bam *BaseAudioManager) logComponentStart(component string) {
-	bam.logger.Info().Str("component", component).Msg("starting component")
+	bam.logger.Debug().Str("component", component).Msg("starting component")
 }
 
 // logComponentStarted logs component started with consistent format
 func (bam *BaseAudioManager) logComponentStarted(component string) {
-	bam.logger.Info().Str("component", component).Msg("component started successfully")
+	bam.logger.Debug().Str("component", component).Msg("component started successfully")
 }
 
 // logComponentStop logs component stop with consistent format
 func (bam *BaseAudioManager) logComponentStop(component string) {
-	bam.logger.Info().Str("component", component).Msg("stopping component")
+	bam.logger.Debug().Str("component", component).Msg("stopping component")
 }
 
 // logComponentStopped logs component stopped with consistent format
 func (bam *BaseAudioManager) logComponentStopped(component string) {
-	bam.logger.Info().Str("component", component).Msg("component stopped")
+	bam.logger.Debug().Str("component", component).Msg("component stopped")
 }
 
 // logComponentError logs component error with consistent format
