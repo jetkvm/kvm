@@ -181,12 +181,15 @@ func TestAudioInputManagerMultipleStartStop(t *testing.T) {
 
 func TestAudioInputMetrics(t *testing.T) {
 	metrics := &AudioInputMetrics{
-		FramesSent:      100,
-		FramesDropped:   5,
-		BytesProcessed:  1024,
-		ConnectionDrops: 2,
-		AverageLatency:  time.Millisecond * 10,
-		LastFrameTime:   time.Now(),
+		BaseAudioMetrics: BaseAudioMetrics{
+			FramesProcessed: 100,
+			FramesDropped:   5,
+			BytesProcessed:  1024,
+			ConnectionDrops: 2,
+			AverageLatency:  time.Millisecond * 10,
+			LastFrameTime:   time.Now(),
+		},
+		FramesSent: 100,
 	}
 
 	assert.Equal(t, int64(100), metrics.FramesSent)

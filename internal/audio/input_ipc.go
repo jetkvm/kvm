@@ -301,7 +301,7 @@ func (ais *AudioInputServer) acceptConnections() {
 		if err != nil {
 			if ais.running {
 				// Log error and continue accepting
-				logger := logging.GetDefaultLogger().With().Str("component", "audio-input-server").Logger()
+				logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
 				logger.Warn().Err(err).Msg("Failed to accept connection, retrying")
 				continue
 			}
@@ -311,7 +311,7 @@ func (ais *AudioInputServer) acceptConnections() {
 		// Configure socket buffers for optimal performance
 		if err := ConfigureSocketBuffers(conn, ais.socketBufferConfig); err != nil {
 			// Log warning but don't fail - socket buffer optimization is not critical
-			logger := logging.GetDefaultLogger().With().Str("component", "audio-input-server").Logger()
+			logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
 			logger.Warn().Err(err).Msg("Failed to configure socket buffers, continuing with defaults")
 		} else {
 			// Record socket buffer metrics for monitoring
@@ -458,6 +458,13 @@ func (ais *AudioInputServer) processOpusFrame(data []byte) error {
 		return nil // Empty frame, ignore
 	}
 
+	// Validate frame data before processing
+	if err := ValidateFrameData(data); err != nil {
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
+		logger.Error().Err(err).Msg("Frame validation failed")
+		return fmt.Errorf("input frame validation failed: %w", err)
+	}
+
 	// Process the Opus frame using CGO
 	_, err := CGOAudioDecodeWrite(data)
 	return err
@@ -465,6 +472,18 @@ func (ais *AudioInputServer) processOpusFrame(data []byte) error {
 
 // processConfig processes a configuration update
 func (ais *AudioInputServer) processConfig(data []byte) error {
+	// Validate configuration data
+	if len(data) == 0 {
+		return fmt.Errorf("empty configuration data")
+	}
+
+	// Basic validation for configuration size
+	if err := ValidateBufferSize(len(data)); err != nil {
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
+		logger.Error().Err(err).Msg("Configuration buffer validation failed")
+		return fmt.Errorf("configuration validation failed: %w", err)
+	}
+
 	// Acknowledge configuration receipt
 	return ais.sendAck()
 }
@@ -596,6 +615,13 @@ func (aic *AudioInputClient) SendFrame(frame []byte) error {
 		return nil // Empty frame, ignore
 	}
 
+	// Validate frame data before sending
+	if err := ValidateFrameData(frame); err != nil {
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
+		logger.Error().Err(err).Msg("Frame validation failed")
+		return fmt.Errorf("input frame validation failed: %w", err)
+	}
+
 	if len(frame) > maxFrameSize {
 		return fmt.Errorf("frame too large: got %d bytes, maximum allowed %d bytes", len(frame), maxFrameSize)
 	}
@@ -624,6 +650,13 @@ func (aic *AudioInputClient) SendFrameZeroCopy(frame *ZeroCopyAudioFrame) error 
 		return nil // Empty frame, ignore
 	}
 
+	// Validate zero-copy frame before sending
+	if err := ValidateZeroCopyFrame(frame); err != nil {
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
+		logger.Error().Err(err).Msg("Zero-copy frame validation failed")
+		return fmt.Errorf("input frame validation failed: %w", err)
+	}
+
 	if frame.Length() > maxFrameSize {
 		return fmt.Errorf("frame too large: got %d bytes, maximum allowed %d bytes", frame.Length(), maxFrameSize)
 	}
@@ -647,6 +680,13 @@ func (aic *AudioInputClient) SendConfig(config InputIPCConfig) error {
 
 	if !aic.running || aic.conn == nil {
 		return fmt.Errorf("not connected to audio input server")
+	}
+
+	// Validate configuration parameters
+	if err := ValidateInputIPCConfig(config.SampleRate, config.Channels, config.FrameSize); err != nil {
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
+		logger.Error().Err(err).Msg("Configuration validation failed")
+		return fmt.Errorf("input configuration validation failed: %w", err)
 	}
 
 	// Serialize config (simple binary format)
@@ -735,7 +775,7 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 		baseBackoffDelay := GetConfig().RetryDelay
 		maxBackoffDelay := GetConfig().MaxRetryDelay
 
-		logger := logging.GetDefaultLogger().With().Str("component", "audio-input-reader").Logger()
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
 
 		for {
 			select {
@@ -820,7 +860,7 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 		defer runtime.UnlockOSThread()
 
 		// Set high priority for audio processing
-		logger := logging.GetDefaultLogger().With().Str("component", "audio-input-processor").Logger()
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
 		if err := SetAudioThreadPriority(); err != nil {
 			logger.Warn().Err(err).Msg("Failed to set audio processing priority")
 		}
@@ -937,7 +977,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 		defer runtime.UnlockOSThread()
 
 		// Set I/O priority for monitoring
-		logger := logging.GetDefaultLogger().With().Str("component", "audio-input-monitor").Logger()
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
 		if err := SetAudioIOThreadPriority(); err != nil {
 			logger.Warn().Err(err).Msg("Failed to set audio I/O priority")
 		}

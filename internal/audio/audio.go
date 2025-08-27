@@ -100,6 +100,8 @@ import (
 	"errors"
 	"sync/atomic"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
 var (
@@ -190,13 +192,14 @@ var qualityPresets = map[AudioQuality]struct {
 func GetAudioQualityPresets() map[AudioQuality]AudioConfig {
 	result := make(map[AudioQuality]AudioConfig)
 	for quality, preset := range qualityPresets {
-		result[quality] = AudioConfig{
+		config := AudioConfig{
 			Quality:    quality,
 			Bitrate:    preset.outputBitrate,
 			SampleRate: preset.sampleRate,
 			Channels:   preset.channels,
 			FrameSize:  preset.frameSize,
 		}
+		result[quality] = config
 	}
 	return result
 }
@@ -205,7 +208,7 @@ func GetAudioQualityPresets() map[AudioQuality]AudioConfig {
 func GetMicrophoneQualityPresets() map[AudioQuality]AudioConfig {
 	result := make(map[AudioQuality]AudioConfig)
 	for quality, preset := range qualityPresets {
-		result[quality] = AudioConfig{
+		config := AudioConfig{
 			Quality: quality,
 			Bitrate: preset.inputBitrate,
 			SampleRate: func() int {
@@ -217,12 +220,21 @@ func GetMicrophoneQualityPresets() map[AudioQuality]AudioConfig {
 			Channels:  1, // Microphone is always mono
 			FrameSize: preset.frameSize,
 		}
+		result[quality] = config
 	}
 	return result
 }
 
 // SetAudioQuality updates the current audio quality configuration
 func SetAudioQuality(quality AudioQuality) {
+	// Validate audio quality parameter
+	if err := ValidateAudioQuality(quality); err != nil {
+		// Log validation error but don't fail - maintain backward compatibility
+		logger := logging.GetDefaultLogger().With().Str("component", "AudioConfig").Logger()
+		logger.Error().Err(err).Int("quality", int(quality)).Msg("Invalid audio quality provided, ignoring")
+		return
+	}
+
 	presets := GetAudioQualityPresets()
 	if config, exists := presets[quality]; exists {
 		currentConfig = config
@@ -236,6 +248,14 @@ func GetAudioConfig() AudioConfig {
 
 // SetMicrophoneQuality updates the current microphone quality configuration
 func SetMicrophoneQuality(quality AudioQuality) {
+	// Validate audio quality parameter
+	if err := ValidateAudioQuality(quality); err != nil {
+		// Log validation error but don't fail - maintain backward compatibility
+		logger := logging.GetDefaultLogger().With().Str("component", "MicrophoneConfig").Logger()
+		logger.Error().Err(err).Int("quality", int(quality)).Msg("Invalid microphone quality provided, ignoring")
+		return
+	}
+
 	presets := GetMicrophoneQualityPresets()
 	if config, exists := presets[quality]; exists {
 		currentMicrophoneConfig = config

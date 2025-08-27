@@ -105,13 +105,20 @@ type AdaptiveBufferManager struct {
 
 // NewAdaptiveBufferManager creates a new adaptive buffer manager
 func NewAdaptiveBufferManager(config AdaptiveBufferConfig) *AdaptiveBufferManager {
+	logger := logging.GetDefaultLogger().With().Str("component", "adaptive-buffer").Logger()
+
+	if err := ValidateAdaptiveBufferConfig(config.MinBufferSize, config.MaxBufferSize, config.DefaultBufferSize); err != nil {
+		logger.Error().Err(err).Msg("Invalid adaptive buffer config, using defaults")
+		config = DefaultAdaptiveBufferConfig()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &AdaptiveBufferManager{
 		currentInputBufferSize:  int64(config.DefaultBufferSize),
 		currentOutputBufferSize: int64(config.DefaultBufferSize),
 		config:                  config,
-		logger:                  logging.GetDefaultLogger().With().Str("component", "adaptive-buffer").Logger(),
+		logger:                  logger,
 		processMonitor:          GetProcessMonitor(),
 		ctx:                     ctx,
 		cancel:                  cancel,

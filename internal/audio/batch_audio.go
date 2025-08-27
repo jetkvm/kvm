@@ -60,6 +60,18 @@ type batchReadResult struct {
 
 // NewBatchAudioProcessor creates a new batch audio processor
 func NewBatchAudioProcessor(batchSize int, batchDuration time.Duration) *BatchAudioProcessor {
+	// Validate input parameters
+	if err := ValidateBufferSize(batchSize); err != nil {
+		logger := logging.GetDefaultLogger().With().Str("component", "batch-audio").Logger()
+		logger.Error().Err(err).Int("batchSize", batchSize).Msg("Invalid batch size provided, using default")
+		batchSize = GetConfig().BatchProcessorFramesPerBatch
+	}
+	if batchDuration <= 0 {
+		logger := logging.GetDefaultLogger().With().Str("component", "batch-audio").Logger()
+		logger.Error().Dur("batchDuration", batchDuration).Msg("Invalid batch duration provided, using default")
+		batchDuration = GetConfig().BatchProcessingDelay
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := logging.GetDefaultLogger().With().Str("component", "batch-audio").Logger()
 
@@ -117,6 +129,12 @@ func (bap *BatchAudioProcessor) Stop() {
 
 // BatchReadEncode performs batched audio read and encode operations
 func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
+	// Validate buffer before processing
+	if err := ValidateBufferSize(len(buffer)); err != nil {
+		bap.logger.Debug().Err(err).Msg("Invalid buffer for batch processing")
+		return 0, err
+	}
+
 	if atomic.LoadInt32(&bap.running) == 0 {
 		// Fallback to single operation if batch processor is not running
 		atomic.AddInt64(&bap.stats.SingleReads, 1)

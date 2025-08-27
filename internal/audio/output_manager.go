@@ -2,60 +2,56 @@ package audio
 
 import (
 	"sync/atomic"
-	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/rs/zerolog"
 )
 
 // AudioOutputManager manages audio output stream using IPC mode
 type AudioOutputManager struct {
-	metrics AudioOutputMetrics
-
-	streamer *AudioOutputStreamer
-	logger   zerolog.Logger
-	running  int32
+	*BaseAudioManager
+	streamer       *AudioOutputStreamer
+	framesReceived int64 // Output-specific metric
 }
 
 // AudioOutputMetrics tracks output-specific metrics
+// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
 type AudioOutputMetrics struct {
-	FramesReceived  int64
-	FramesDropped   int64
-	BytesProcessed  int64
-	ConnectionDrops int64
-	LastFrameTime   time.Time
-	AverageLatency  time.Duration
+	// Atomic int64 field first for proper ARM32 alignment
+	FramesReceived int64 `json:"frames_received"` // Total frames received (output-specific)
+
+	// Embedded struct with atomic fields properly aligned
+	BaseAudioMetrics
 }
 
 // NewAudioOutputManager creates a new audio output manager
 func NewAudioOutputManager() *AudioOutputManager {
+	logger := logging.GetDefaultLogger().With().Str("component", AudioOutputManagerComponent).Logger()
 	streamer, err := NewAudioOutputStreamer()
 	if err != nil {
 		// Log error but continue with nil streamer - will be handled gracefully
-		logger := logging.GetDefaultLogger().With().Str("component", AudioOutputManagerComponent).Logger()
 		logger.Error().Err(err).Msg("Failed to create audio output streamer")
 	}
 
 	return &AudioOutputManager{
-		streamer: streamer,
-		logger:   logging.GetDefaultLogger().With().Str("component", AudioOutputManagerComponent).Logger(),
+		BaseAudioManager: NewBaseAudioManager(logger),
+		streamer:         streamer,
 	}
 }
 
 // Start starts the audio output manager
 func (aom *AudioOutputManager) Start() error {
-	if !atomic.CompareAndSwapInt32(&aom.running, 0, 1) {
+	if !aom.setRunning(true) {
 		return nil // Already running
 	}
 
-	aom.logger.Info().Str("component", AudioOutputManagerComponent).Msg("starting component")
+	aom.logComponentStart(AudioOutputManagerComponent)
 
 	if aom.streamer == nil {
 		// Try to recreate streamer if it was nil
 		streamer, err := NewAudioOutputStreamer()
 		if err != nil {
-			atomic.StoreInt32(&aom.running, 0)
-			aom.logger.Error().Err(err).Str("component", AudioOutputManagerComponent).Msg("failed to create audio output streamer")
+			aom.setRunning(false)
+			aom.logComponentError(AudioOutputManagerComponent, err, "failed to create audio output streamer")
 			return err
 		}
 		aom.streamer = streamer
@@ -63,44 +59,39 @@ func (aom *AudioOutputManager) Start() error {
 
 	err := aom.streamer.Start()
 	if err != nil {
-		atomic.StoreInt32(&aom.running, 0)
+		aom.setRunning(false)
 		// Reset metrics on failed start
 		aom.resetMetrics()
-		aom.logger.Error().Err(err).Str("component", AudioOutputManagerComponent).Msg("failed to start component")
+		aom.logComponentError(AudioOutputManagerComponent, err, "failed to start component")
 		return err
 	}
 
-	aom.logger.Info().Str("component", AudioOutputManagerComponent).Msg("component started successfully")
+	aom.logComponentStarted(AudioOutputManagerComponent)
 	return nil
 }
 
 // Stop stops the audio output manager
 func (aom *AudioOutputManager) Stop() {
-	if !atomic.CompareAndSwapInt32(&aom.running, 1, 0) {
+	if !aom.setRunning(false) {
 		return // Already stopped
 	}
 
-	aom.logger.Info().Str("component", AudioOutputManagerComponent).Msg("stopping component")
+	aom.logComponentStop(AudioOutputManagerComponent)
 
 	if aom.streamer != nil {
 		aom.streamer.Stop()
 	}
 
-	aom.logger.Info().Str("component", AudioOutputManagerComponent).Msg("component stopped")
+	aom.logComponentStopped(AudioOutputManagerComponent)
 }
 
 // resetMetrics resets all metrics to zero
 func (aom *AudioOutputManager) resetMetrics() {
-	atomic.StoreInt64(&aom.metrics.FramesReceived, 0)
-	atomic.StoreInt64(&aom.metrics.FramesDropped, 0)
-	atomic.StoreInt64(&aom.metrics.BytesProcessed, 0)
-	atomic.StoreInt64(&aom.metrics.ConnectionDrops, 0)
+	aom.BaseAudioManager.resetMetrics()
+	atomic.StoreInt64(&aom.framesReceived, 0)
 }
 
-// IsRunning returns whether the audio output manager is running
-func (aom *AudioOutputManager) IsRunning() bool {
-	return atomic.LoadInt32(&aom.running) == 1
-}
+// Note: IsRunning() is inherited from BaseAudioManager
 
 // IsReady returns whether the audio output manager is ready to receive frames
 func (aom *AudioOutputManager) IsReady() bool {
@@ -115,12 +106,8 @@ func (aom *AudioOutputManager) IsReady() bool {
 // GetMetrics returns current metrics
 func (aom *AudioOutputManager) GetMetrics() AudioOutputMetrics {
 	return AudioOutputMetrics{
-		FramesReceived:  atomic.LoadInt64(&aom.metrics.FramesReceived),
-		FramesDropped:   atomic.LoadInt64(&aom.metrics.FramesDropped),
-		BytesProcessed:  atomic.LoadInt64(&aom.metrics.BytesProcessed),
-		ConnectionDrops: atomic.LoadInt64(&aom.metrics.ConnectionDrops),
-		AverageLatency:  aom.metrics.AverageLatency,
-		LastFrameTime:   aom.metrics.LastFrameTime,
+		FramesReceived:   atomic.LoadInt64(&aom.framesReceived),
+		BaseAudioMetrics: aom.getBaseMetrics(),
 	}
 }
 
@@ -131,6 +118,7 @@ func (aom *AudioOutputManager) GetComprehensiveMetrics() map[string]interface{} 
 	comprehensiveMetrics := map[string]interface{}{
 		"manager": map[string]interface{}{
 			"frames_received":    baseMetrics.FramesReceived,
+			"frames_processed":   baseMetrics.FramesProcessed,
 			"frames_dropped":     baseMetrics.FramesDropped,
 			"bytes_processed":    baseMetrics.BytesProcessed,
 			"connection_drops":   baseMetrics.ConnectionDrops,

@@ -391,6 +391,14 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 					frame := GetAudioFrameBuffer()
 					frame = frame[:n] // Resize to actual frame size
 					copy(frame, buffer[:n])
+
+					// Validate frame before sending
+					if err := ValidateAudioFrameFast(frame); err != nil {
+						getOutputStreamingLogger().Warn().Err(err).Msg("Frame validation failed, dropping frame")
+						PutAudioFrameBuffer(frame)
+						continue
+					}
+
 					send(frame)
 					// Return buffer to pool after sending
 					PutAudioFrameBuffer(frame)

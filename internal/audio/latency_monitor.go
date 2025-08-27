@@ -94,6 +94,13 @@ func DefaultLatencyConfig() LatencyConfig {
 
 // NewLatencyMonitor creates a new latency monitoring system
 func NewLatencyMonitor(config LatencyConfig, logger zerolog.Logger) *LatencyMonitor {
+	// Validate latency configuration
+	if err := ValidateLatencyConfig(config); err != nil {
+		// Log validation error and use default configuration
+		logger.Error().Err(err).Msg("Invalid latency configuration provided, using defaults")
+		config = DefaultLatencyConfig()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &LatencyMonitor{
