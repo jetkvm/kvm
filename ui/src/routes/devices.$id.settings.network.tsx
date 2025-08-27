@@ -419,7 +419,7 @@ export default function SettingsNetworkRoute() {
               value={networkSettings.ipv6_mode}
               onChange={e => handleIpv6ModeChange(e.target.value)}
               options={filterUnknown([
-                // { value: "disabled", label: "Disabled" },
+                { value: "disabled", label: "Disabled" },
                 { value: "slaac", label: "SLAAC" },
                 // { value: "dhcpv6", label: "DHCPv6" },
                 // { value: "slaac_and_dhcpv6", label: "SLAAC and DHCPv6" },

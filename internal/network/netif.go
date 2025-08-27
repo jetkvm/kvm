@@ -239,6 +239,10 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 			ipv4Addresses = append(ipv4Addresses, addr.IP)
 			ipv4AddressesString = append(ipv4AddressesString, addr.IPNet.String())
 		} else if addr.IP.To16() != nil {
+			if s.config.IPv6Mode.String == "disabled" {
+				continue
+			}
+
 			scopedLogger := s.l.With().Str("ipv6", addr.IP.String()).Logger()
 			// check if it's a link local address
 			if addr.IP.IsLinkLocalUnicast() {
@@ -287,35 +291,37 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 	}
 	s.ipv4Addresses = ipv4AddressesString
 
-	if ipv6LinkLocal != nil {
-		if s.ipv6LinkLocal == nil || s.ipv6LinkLocal.String() != ipv6LinkLocal.String() {
-			scopedLogger := s.l.With().Str("ipv6", ipv6LinkLocal.String()).Logger()
-			if s.ipv6LinkLocal != nil {
-				scopedLogger.Info().
-					Str("old_ipv6", s.ipv6LinkLocal.String()).
-					Msg("IPv6 link local address changed")
-			} else {
-				scopedLogger.Info().Msg("IPv6 link local address found")
+	if s.config.IPv6Mode.String != "disabled" {
+		if ipv6LinkLocal != nil {
+			if s.ipv6LinkLocal == nil || s.ipv6LinkLocal.String() != ipv6LinkLocal.String() {
+				scopedLogger := s.l.With().Str("ipv6", ipv6LinkLocal.String()).Logger()
+				if s.ipv6LinkLocal != nil {
+					scopedLogger.Info().
+						Str("old_ipv6", s.ipv6LinkLocal.String()).
+						Msg("IPv6 link local address changed")
+				} else {
+					scopedLogger.Info().Msg("IPv6 link local address found")
+				}
+				s.ipv6LinkLocal = ipv6LinkLocal
+				changed = true
 			}
-			s.ipv6LinkLocal = ipv6LinkLocal
-			changed = true
 		}
-	}
-	s.ipv6Addresses = ipv6Addresses
+		s.ipv6Addresses = ipv6Addresses
 
-	if len(ipv6Addresses) > 0 {
-		// compare the addresses to see if there's a change
-		if s.ipv6Addr == nil || s.ipv6Addr.String() != ipv6Addresses[0].Address.String() {
-			scopedLogger := s.l.With().Str("ipv6", ipv6Addresses[0].Address.String()).Logger()
-			if s.ipv6Addr != nil {
-				scopedLogger.Info().
-					Str("old_ipv6", s.ipv6Addr.String()).
-					Msg("IPv6 address changed")
-			} else {
-				scopedLogger.Info().Msg("IPv6 address found")
+		if len(ipv6Addresses) > 0 {
+			// compare the addresses to see if there's a change
+			if s.ipv6Addr == nil || s.ipv6Addr.String() != ipv6Addresses[0].Address.String() {
+				scopedLogger := s.l.With().Str("ipv6", ipv6Addresses[0].Address.String()).Logger()
+				if s.ipv6Addr != nil {
+					scopedLogger.Info().
+						Str("old_ipv6", s.ipv6Addr.String()).
+						Msg("IPv6 address changed")
+				} else {
+					scopedLogger.Info().Msg("IPv6 address found")
+				}
+				s.ipv6Addr = &ipv6Addresses[0].Address
+				changed = true
 			}
-			s.ipv6Addr = &ipv6Addresses[0].Address
-			changed = true
 		}
 	}
 
