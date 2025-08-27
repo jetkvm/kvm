@@ -89,62 +89,17 @@ export const AUDIO_CONFIG = {
   SYNC_DEBOUNCE_MS: 1000, // debounce state synchronization
   AUDIO_TEST_TIMEOUT: 100, // ms - timeout for audio testing
   
-  // Audio Output Quality Bitrates (matching backend config_constants.go)
-  OUTPUT_QUALITY_BITRATES: {
-    LOW: 32,     // AudioQualityLowOutputBitrate
-    MEDIUM: 64,  // AudioQualityMediumOutputBitrate
-    HIGH: 128,   // AudioQualityHighOutputBitrate
-    ULTRA: 192,  // AudioQualityUltraOutputBitrate
+  // NOTE: Audio quality presets (bitrates, sample rates, channels, frame sizes)
+  // are now fetched dynamically from the backend API via audioQualityService
+  // to eliminate duplication with backend config_constants.go
+  
+  // Default Quality Labels - will be updated dynamically by audioQualityService
+  DEFAULT_QUALITY_LABELS: {
+    0: "Low",
+    1: "Medium",
+    2: "High",
+    3: "Ultra",
   } as const,
-  // Audio Input Quality Bitrates (matching backend config_constants.go)
-  INPUT_QUALITY_BITRATES: {
-    LOW: 16,     // AudioQualityLowInputBitrate
-    MEDIUM: 32,  // AudioQualityMediumInputBitrate
-    HIGH: 64,    // AudioQualityHighInputBitrate
-    ULTRA: 96,   // AudioQualityUltraInputBitrate
-  } as const,
-  // Sample Rates (matching backend config_constants.go)
-  QUALITY_SAMPLE_RATES: {
-    LOW: 22050,    // AudioQualityLowSampleRate
-    MEDIUM: 44100, // AudioQualityMediumSampleRate
-    HIGH: 48000,   // Default SampleRate
-    ULTRA: 48000,  // Default SampleRate
-  } as const,
-  // Microphone Sample Rates
-  MIC_QUALITY_SAMPLE_RATES: {
-    LOW: 16000,    // AudioQualityMicLowSampleRate
-    MEDIUM: 44100, // AudioQualityMediumSampleRate
-    HIGH: 48000,   // Default SampleRate
-    ULTRA: 48000,  // Default SampleRate
-  } as const,
-  // Channels (matching backend config_constants.go)
-  QUALITY_CHANNELS: {
-    LOW: 1,      // AudioQualityLowChannels (mono)
-    MEDIUM: 2,   // AudioQualityMediumChannels (stereo)
-    HIGH: 2,     // AudioQualityHighChannels (stereo)
-    ULTRA: 2,    // AudioQualityUltraChannels (stereo)
-  } as const,
-  // Frame Sizes in milliseconds (matching backend config_constants.go)
-  QUALITY_FRAME_SIZES: {
-    LOW: 40,     // AudioQualityLowFrameSize (40ms)
-    MEDIUM: 20,  // AudioQualityMediumFrameSize (20ms)
-    HIGH: 20,    // AudioQualityHighFrameSize (20ms)
-    ULTRA: 10,   // AudioQualityUltraFrameSize (10ms)
-  } as const,
-  // Updated Quality Labels with correct output bitrates
-  QUALITY_LABELS: {
-    0: "Low (32 kbps)",
-    1: "Medium (64 kbps)",
-    2: "High (128 kbps)",
-    3: "Ultra (192 kbps)",
-  } as const,
-  // Legacy support - keeping for backward compatibility
-  QUALITY_BITRATES: {
-    LOW: 32,
-    MEDIUM: 64,
-    HIGH: 128,
-    ULTRA: 192,  // Updated to match backend
-  },
   
   // Audio Analysis
   ANALYSIS_FFT_SIZE: 256, // for detailed audio analysis

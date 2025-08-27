@@ -135,6 +135,9 @@ func (mp *MessagePool) Get() *OptimizedIPCMessage {
 		mp.preallocated = mp.preallocated[:len(mp.preallocated)-1]
 		mp.mutex.Unlock()
 		atomic.AddInt64(&mp.hitCount, 1)
+		// Reset message for reuse
+		msg.data = msg.data[:0]
+		msg.msg = InputIPCMessage{}
 		return msg
 	}
 	mp.mutex.Unlock()
@@ -143,9 +146,16 @@ func (mp *MessagePool) Get() *OptimizedIPCMessage {
 	select {
 	case msg := <-mp.pool:
 		atomic.AddInt64(&mp.hitCount, 1)
+		// Reset message for reuse and ensure proper capacity
+		msg.data = msg.data[:0]
+		msg.msg = InputIPCMessage{}
+		// Ensure data buffer has sufficient capacity
+		if cap(msg.data) < maxFrameSize {
+			msg.data = make([]byte, 0, maxFrameSize)
+		}
 		return msg
 	default:
-		// Pool exhausted, create new message
+		// Pool exhausted, create new message with exact capacity
 		atomic.AddInt64(&mp.missCount, 1)
 		return &OptimizedIPCMessage{
 			data: make([]byte, 0, maxFrameSize),
@@ -155,6 +165,15 @@ func (mp *MessagePool) Get() *OptimizedIPCMessage {
 
 // Put returns a message to the pool
 func (mp *MessagePool) Put(msg *OptimizedIPCMessage) {
+	if msg == nil {
+		return
+	}
+
+	// Validate buffer capacity - reject if too small or too large
+	if cap(msg.data) < maxFrameSize/2 || cap(msg.data) > maxFrameSize*2 {
+		return // Let GC handle oversized or undersized buffers
+	}
+
 	// Reset the message for reuse
 	msg.data = msg.data[:0]
 	msg.msg = InputIPCMessage{}

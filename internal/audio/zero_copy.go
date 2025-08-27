@@ -192,6 +192,7 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 	frame.data = frame.data[:0]
 	frame.mutex.Unlock()
 
+	wasHit = true // Pool hit
 	atomic.AddInt64(&p.hitCount, 1)
 	return frame
 }

@@ -33,23 +33,34 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 		bufferSize = GetConfig().AudioFramePoolSize
 	}
 
-	// Pre-allocate 20% of max pool size for immediate availability
-	preallocSize := GetConfig().PreallocPercentage
+	// Optimize preallocation based on buffer size to reduce memory footprint
+	var preallocSize int
+	if bufferSize <= GetConfig().AudioFramePoolSize {
+		// For frame buffers, use configured percentage
+		preallocSize = GetConfig().PreallocPercentage
+	} else {
+		// For larger buffers, reduce preallocation to save memory
+		preallocSize = GetConfig().PreallocPercentage / 2
+	}
+
+	// Pre-allocate with exact capacity to avoid slice growth
 	preallocated := make([]*[]byte, 0, preallocSize)
 
-	// Pre-allocate buffers to reduce initial allocation overhead
+	// Pre-allocate buffers with optimized capacity
 	for i := 0; i < preallocSize; i++ {
+		// Use exact buffer size to prevent over-allocation
 		buf := make([]byte, 0, bufferSize)
 		preallocated = append(preallocated, &buf)
 	}
 
 	return &AudioBufferPool{
 		bufferSize:   bufferSize,
-		maxPoolSize:  GetConfig().MaxPoolSize, // Limit pool size to prevent excessive memory usage
+		maxPoolSize:  GetConfig().MaxPoolSize,
 		preallocated: preallocated,
 		preallocSize: preallocSize,
 		pool: sync.Pool{
 			New: func() interface{} {
+				// Allocate exact size to minimize memory waste
 				buf := make([]byte, 0, bufferSize)
 				return &buf
 			},
@@ -59,41 +70,52 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 
 func (p *AudioBufferPool) Get() []byte {
 	start := time.Now()
+	wasHit := false
 	defer func() {
 		latency := time.Since(start)
 		// Record metrics for frame pool (assuming this is the main usage)
 		if p.bufferSize >= GetConfig().AudioFramePoolSize {
-			GetGranularMetricsCollector().RecordFramePoolGet(latency, atomic.LoadInt64(&p.hitCount) > 0)
+			GetGranularMetricsCollector().RecordFramePoolGet(latency, wasHit)
 		} else {
-			GetGranularMetricsCollector().RecordControlPoolGet(latency, atomic.LoadInt64(&p.hitCount) > 0)
+			GetGranularMetricsCollector().RecordControlPoolGet(latency, wasHit)
 		}
 	}()
 
-	// First try pre-allocated buffers for fastest access
+	// First try to get from pre-allocated pool for fastest access
 	p.mutex.Lock()
 	if len(p.preallocated) > 0 {
-		buf := p.preallocated[len(p.preallocated)-1]
-		p.preallocated = p.preallocated[:len(p.preallocated)-1]
+		lastIdx := len(p.preallocated) - 1
+		buf := p.preallocated[lastIdx]
+		p.preallocated = p.preallocated[:lastIdx]
 		p.mutex.Unlock()
+
+		// Update hit counter
 		atomic.AddInt64(&p.hitCount, 1)
-		return (*buf)[:0] // Reset length but keep capacity
+		wasHit = true
+		// Ensure buffer is properly reset
+		*buf = (*buf)[:0]
+		return *buf
 	}
 	p.mutex.Unlock()
 
 	// Try sync.Pool next
-	if buf := p.pool.Get(); buf != nil {
-		bufPtr := buf.(*[]byte)
-		// Update pool size counter when retrieving from pool
-		p.mutex.Lock()
-		if p.currentSize > 0 {
-			p.currentSize--
-		}
-		p.mutex.Unlock()
+	if poolBuf := p.pool.Get(); poolBuf != nil {
+		buf := poolBuf.(*[]byte)
+		// Update hit counter
 		atomic.AddInt64(&p.hitCount, 1)
-		return (*bufPtr)[:0] // Reset length but keep capacity
+		// Ensure buffer is properly reset and check capacity
+		if cap(*buf) >= p.bufferSize {
+			wasHit = true
+			*buf = (*buf)[:0]
+			return *buf
+		} else {
+			// Buffer too small, allocate new one
+			atomic.AddInt64(&p.missCount, 1)
+			return make([]byte, 0, p.bufferSize)
+		}
 	}
 
-	// Last resort: allocate new buffer
+	// Pool miss - allocate new buffer with exact capacity
 	atomic.AddInt64(&p.missCount, 1)
 	return make([]byte, 0, p.bufferSize)
 }
@@ -110,11 +132,13 @@ func (p *AudioBufferPool) Put(buf []byte) {
 		}
 	}()
 
-	if cap(buf) < p.bufferSize {
-		return // Buffer too small, don't pool it
+	// Validate buffer capacity - reject buffers that are too small or too large
+	bufCap := cap(buf)
+	if bufCap < p.bufferSize || bufCap > p.bufferSize*2 {
+		return // Buffer size mismatch, don't pool it to prevent memory bloat
 	}
 
-	// Reset buffer for reuse
+	// Reset buffer for reuse - clear any sensitive data
 	resetBuf := buf[:0]
 
 	// First try to return to pre-allocated pool for fastest reuse
@@ -127,10 +151,7 @@ func (p *AudioBufferPool) Put(buf []byte) {
 	p.mutex.Unlock()
 
 	// Check sync.Pool size limit to prevent excessive memory usage
-	p.mutex.RLock()
-	currentSize := p.currentSize
-	p.mutex.RUnlock()
-
+	currentSize := atomic.LoadInt64(&p.currentSize)
 	if currentSize >= int64(p.maxPoolSize) {
 		return // Pool is full, let GC handle this buffer
 	}
@@ -138,10 +159,8 @@ func (p *AudioBufferPool) Put(buf []byte) {
 	// Return to sync.Pool
 	p.pool.Put(&resetBuf)
 
-	// Update pool size counter
-	p.mutex.Lock()
-	p.currentSize++
-	p.mutex.Unlock()
+	// Update pool size counter atomically
+	atomic.AddInt64(&p.currentSize, 1)
 }
 
 var (

@@ -1513,105 +1513,27 @@ type AudioConfigConstants struct {
 // real-time audio requirements, and extensive testing for optimal performance.
 func DefaultAudioConfig() *AudioConfigConstants {
 	return &AudioConfigConstants{
-		// Audio Quality Presets - Core audio frame and packet size configuration
-		// Used in: Throughout audio pipeline for buffer allocation and frame processing
-		// Impact: Controls memory usage and prevents buffer overruns
-
-		// MaxAudioFrameSize defines maximum size for audio frames.
-		// Used in: Buffer allocation throughout audio pipeline
-		// Impact: Prevents buffer overruns while accommodating high-quality audio.
-		// Default 4096 bytes provides safety margin for largest expected frames.
+		// Audio Quality Presets
 		MaxAudioFrameSize: 4096,
 
-		// Opus Encoding Parameters - Configuration for Opus audio codec
-		// Used in: Audio encoding/decoding pipeline for quality control
-		// Impact: Controls audio quality, bandwidth usage, and encoding performance
-
-		// OpusBitrate defines target bitrate for Opus encoding.
-		// Used in: Opus encoder initialization and quality control
-		// Impact: Higher bitrates improve quality but increase bandwidth usage.
-		// Default 128kbps provides excellent quality with reasonable bandwidth.
-		OpusBitrate: 128000,
-
-		// OpusComplexity defines computational complexity for Opus encoding.
-		// Used in: Opus encoder for quality vs CPU usage balance
-		// Impact: Higher complexity improves quality but increases CPU usage.
-		// Default 10 (maximum) ensures best quality on modern ARM processors.
-		OpusComplexity: 10,
-
-		// OpusVBR enables variable bitrate encoding.
-		// Used in: Opus encoder for adaptive bitrate control
-		// Impact: Optimizes bandwidth based on audio content complexity.
-		// Default 1 (enabled) reduces bandwidth for simple audio content.
-		OpusVBR: 1,
-
-		// OpusVBRConstraint controls VBR constraint mode.
-		// Used in: Opus encoder for bitrate variation control
-		// Impact: 0=unconstrained allows maximum flexibility for quality.
-		// Default 0 provides optimal quality-bandwidth balance.
+		// Opus Encoding Parameters
+		OpusBitrate:       128000,
+		OpusComplexity:    10,
+		OpusVBR:           1,
 		OpusVBRConstraint: 0,
+		OpusDTX:           0,
 
-		// OpusDTX controls discontinuous transmission.
-		// Used in: Opus encoder for silence detection and transmission
-		// Impact: Can interfere with system audio monitoring in KVM applications.
-		// Default 0 (disabled) ensures consistent audio stream.
-		OpusDTX: 0,
-
-		// Audio Parameters - Core audio format configuration
-		// Used in: Audio processing pipeline for format consistency
-		// Impact: Controls audio quality, compatibility, and processing requirements
-
-		// SampleRate defines audio sampling frequency.
-		// Used in: Audio capture, processing, and playback throughout pipeline
-		// Impact: Higher rates improve quality but increase processing and bandwidth.
-		// Default 48kHz provides professional audio quality with full frequency range.
-		SampleRate: 48000,
-
-		// Channels defines number of audio channels.
-		// Used in: Audio processing pipeline for channel handling
-		// Impact: Stereo preserves spatial information but doubles bandwidth.
-		// Default 2 (stereo) captures full system audio including spatial effects.
-		Channels: 2,
-
-		// FrameSize defines number of samples per audio frame.
-		// Used in: Audio processing for frame-based operations
-		// Impact: Larger frames improve efficiency but increase latency.
-		// Default 960 samples (20ms at 48kHz) balances latency and efficiency.
-		FrameSize: 960,
-
-		// MaxPacketSize defines maximum size for audio packets.
-		// Used in: Network transmission and buffer allocation
-		// Impact: Must accommodate compressed frames with overhead.
-		// Default 4000 bytes prevents fragmentation while allowing quality variations.
+		// Audio Parameters
+		SampleRate:    48000,
+		Channels:      2,
+		FrameSize:     960,
 		MaxPacketSize: 4000,
 
-		// Audio Quality Bitrates - Preset bitrates for different quality levels
-		// Used in: Audio quality management and adaptive bitrate control
-		// Impact: Controls bandwidth usage and audio quality for different scenarios
-
-		// AudioQualityLowOutputBitrate defines bitrate for low-quality output audio.
-		// Used in: Bandwidth-constrained connections and basic audio monitoring
-		// Impact: Minimizes bandwidth while maintaining acceptable quality.
-		// Default 32kbps optimized for constrained connections, higher than input.
-		AudioQualityLowOutputBitrate: 32,
-
-		// AudioQualityLowInputBitrate defines bitrate for low-quality input audio.
-		// Used in: Microphone input in bandwidth-constrained scenarios
-		// Impact: Reduces bandwidth for microphone audio which is typically simpler.
-		// Default 16kbps sufficient for basic voice input.
-		AudioQualityLowInputBitrate: 16,
-
-		// AudioQualityMediumOutputBitrate defines bitrate for medium-quality output.
-		// Used in: Typical KVM scenarios with reasonable network connections
-		// Impact: Balances bandwidth and quality for most use cases.
-		// Default 64kbps provides good quality for standard usage.
+		// Audio Quality Bitrates
+		AudioQualityLowOutputBitrate:    32,
+		AudioQualityLowInputBitrate:     16,
 		AudioQualityMediumOutputBitrate: 64,
-
-		// AudioQualityMediumInputBitrate defines bitrate for medium-quality input.
-		// Used in: Standard microphone input scenarios
-		// Impact: Provides good voice quality without excessive bandwidth.
-		// Default 32kbps suitable for clear voice communication.
-		AudioQualityMediumInputBitrate: 32,
+		AudioQualityMediumInputBitrate:  32,
 
 		// AudioQualityHighOutputBitrate defines bitrate for high-quality output.
 		// Used in: Professional applications requiring excellent audio fidelity
@@ -1689,106 +1611,25 @@ func DefaultAudioConfig() *AudioConfigConstants {
 
 		// Audio Quality Channels - Channel configuration for different quality levels
 		// Used in: Audio processing pipeline for channel handling and bandwidth control
-		// Impact: Controls spatial audio information and bandwidth requirements
-
-		// AudioQualityLowChannels defines channel count for low-quality audio.
-		// Used in: Basic audio monitoring in bandwidth-constrained scenarios
-		// Impact: Reduces bandwidth by 50% with acceptable quality trade-off.
-		// Default 1 (mono) suitable where stereo separation not critical.
-		AudioQualityLowChannels: 1,
-
-		// AudioQualityMediumChannels defines channel count for medium-quality audio.
-		// Used in: Standard audio scenarios requiring spatial information
-		// Impact: Preserves spatial audio information essential for modern systems.
-		// Default 2 (stereo) maintains spatial audio for medium quality.
+		AudioQualityLowChannels:    1,
 		AudioQualityMediumChannels: 2,
+		AudioQualityHighChannels:   2,
+		AudioQualityUltraChannels:  2,
 
-		// AudioQualityHighChannels defines channel count for high-quality audio.
-		// Used in: High-quality audio scenarios requiring full spatial reproduction
-		// Impact: Ensures complete spatial audio information for quality scenarios.
-		// Default 2 (stereo) preserves spatial information for high quality.
-		AudioQualityHighChannels: 2,
-
-		// AudioQualityUltraChannels defines channel count for ultra-quality audio.
-		// Used in: Ultra-quality scenarios requiring maximum spatial fidelity
-		// Impact: Provides complete spatial audio reproduction for audiophile use.
-		// Default 2 (stereo) ensures maximum spatial fidelity for ultra quality.
-		AudioQualityUltraChannels: 2,
-
-		// CGO Audio Constants - Configuration for C interop audio processing
-		// Used in: CGO audio operations and C library compatibility
-		// Impact: Controls quality, performance, and compatibility for C-side processing
-
-		// CGOOpusBitrate defines bitrate for CGO Opus operations.
-		// Used in: CGO audio encoding with embedded processing constraints
-		// Impact: Conservative bitrate reduces processing load while maintaining quality.
-		// Default 96kbps provides good quality suitable for embedded processing.
-		CGOOpusBitrate: 96000,
-
-		// CGOOpusComplexity defines complexity for CGO Opus operations.
-		// Used in: CGO audio encoding for CPU load management
-		// Impact: Lower complexity reduces CPU load while maintaining acceptable quality.
-		// Default 3 balances quality and real-time processing requirements.
-		CGOOpusComplexity: 3,
-
-		// CGOOpusVBR enables variable bitrate for CGO operations.
-		// Used in: CGO audio encoding for adaptive bandwidth optimization
-		// Impact: Allows bitrate adaptation based on content complexity.
-		// Default 1 (enabled) optimizes bandwidth usage in CGO processing.
-		CGOOpusVBR: 1,
-
-		// CGOOpusVBRConstraint controls VBR constraint for CGO operations.
-		// Used in: CGO audio encoding for predictable processing load
-		// Impact: Limits bitrate variations for more predictable embedded performance.
-		// Default 1 (constrained) ensures predictable processing in embedded environment.
+		// CGO Audio Constants
+		CGOOpusBitrate:       96000,
+		CGOOpusComplexity:    3,
+		CGOOpusVBR:           1,
 		CGOOpusVBRConstraint: 1,
+		CGOOpusSignalType:    3,    // OPUS_SIGNAL_MUSIC
+		CGOOpusBandwidth:     1105, // OPUS_BANDWIDTH_FULLBAND
+		CGOOpusDTX:           0,
+		CGOSampleRate:        48000,
+		CGOChannels:          2,
+		CGOFrameSize:         960,
+		CGOMaxPacketSize:     1500,
 
-		// CGOOpusSignalType defines signal type for CGO Opus operations.
-		// Used in: CGO audio encoding for content-optimized processing
-		// Impact: Optimizes encoding for general audio content types.
-		// Default 3 (OPUS_SIGNAL_MUSIC) handles system sounds, music, and mixed audio.
-		CGOOpusSignalType: 3, // OPUS_SIGNAL_MUSIC
-
-		// CGOOpusBandwidth defines bandwidth for CGO Opus operations.
-		// Used in: CGO audio encoding for frequency range control
-		// Impact: Enables full audio spectrum reproduction up to 20kHz.
-		// Default 1105 (OPUS_BANDWIDTH_FULLBAND) provides complete spectrum coverage.
-		CGOOpusBandwidth: 1105, // OPUS_BANDWIDTH_FULLBAND
-
-		// CGOOpusDTX controls discontinuous transmission for CGO operations.
-		// Used in: CGO audio encoding for silence detection control
-		// Impact: Prevents silence detection interference with system audio monitoring.
-		// Default 0 (disabled) ensures consistent audio stream.
-		CGOOpusDTX: 0,
-
-		// CGOSampleRate defines sample rate for CGO audio operations.
-		// Used in: CGO audio processing for format consistency
-		// Impact: Matches main audio parameters for pipeline consistency.
-		// Default 48kHz provides professional audio quality and consistency.
-		CGOSampleRate: 48000,
-
-		// CGOChannels defines channel count for CGO audio operations.
-		// Used in: CGO audio processing for spatial audio handling
-		// Impact: Maintains spatial audio information throughout CGO pipeline.
-		// Default 2 (stereo) preserves spatial information in CGO processing.
-		CGOChannels: 2,
-
-		// CGOFrameSize defines frame size for CGO audio operations.
-		// Used in: CGO audio processing for timing consistency
-		// Impact: Matches main frame size for consistent timing and efficiency.
-		// Default 960 samples (20ms at 48kHz) ensures consistent processing timing.
-		CGOFrameSize: 960,
-
-		// CGOMaxPacketSize defines maximum packet size for CGO operations.
-		// Used in: CGO audio transmission and buffer allocation
-		// Impact: Accommodates Ethernet MTU while providing sufficient packet space.
-		// Default 1500 bytes fits Ethernet MTU constraints with compressed audio.
-		CGOMaxPacketSize: 1500,
-
-		// Input IPC Constants - Configuration for microphone input IPC
-		// Used in: Microphone input processing and IPC communication
-		// Impact: Controls quality and compatibility for input audio processing
-
+		// Input IPC Constants
 		// InputIPCSampleRate defines sample rate for input IPC operations.
 		// Used in: Microphone input capture and processing
 		// Impact: Ensures high-quality input matching system audio output.
