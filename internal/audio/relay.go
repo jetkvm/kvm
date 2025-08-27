@@ -170,8 +170,8 @@ func (r *AudioRelay) relayLoop() {
 
 // forwardToWebRTC forwards a frame to the WebRTC audio track
 func (r *AudioRelay) forwardToWebRTC(frame []byte) error {
-	// Validate frame data before processing
-	if err := ValidateFrameData(frame); err != nil {
+	// Use ultra-fast validation for critical audio path
+	if err := ValidateAudioFrameUltraFast(frame); err != nil {
 		r.incrementDropped()
 		r.logger.Debug().Err(err).Msg("invalid frame data in relay")
 		return err

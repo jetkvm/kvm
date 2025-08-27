@@ -260,8 +260,8 @@ func (s *AudioOutputServer) Close() error {
 }
 
 func (s *AudioOutputServer) SendFrame(frame []byte) error {
-	// Comprehensive frame validation
-	if err := ValidateFrameData(frame); err != nil {
+	// Use ultra-fast validation for critical audio path
+	if err := ValidateAudioFrameUltraFast(frame); err != nil {
 		logger := logging.GetDefaultLogger().With().Str("component", AudioOutputServerComponent).Logger()
 		logger.Error().Err(err).Msg("Frame validation failed")
 		return fmt.Errorf("output frame validation failed: %w", err)
