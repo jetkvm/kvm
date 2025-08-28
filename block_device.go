@@ -22,16 +22,10 @@ func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 		return 0, errors.New("image not mounted")
 	}
 	source := currentVirtualMediaState.Source
-	mountedImageSize := currentVirtualMediaState.Size
 	virtualMediaStateMutex.RUnlock()
 
 	_, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
-	readLen := int64(len(p))
-	if off+readLen > mountedImageSize {
-		readLen = mountedImageSize - off
-	}
 
 	switch source {
 	case HTTP:

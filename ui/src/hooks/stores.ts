@@ -375,7 +375,7 @@ export const useSettingsStore = create(
 );
 
 export interface RemoteVirtualMediaState {
-  source: "WebRTC" | "HTTP" | "Storage" | null;
+  source: "HTTP" | "Storage" | null;
   mode: "CDROM" | "Disk" | null;
   filename: string | null;
   url: string | null;

@@ -161,7 +161,6 @@ func rpcCheckMountUrl(url string) (*VirtualMediaUrlInfo, error) {
 type VirtualMediaSource string
 
 const (
-	WebRTC  VirtualMediaSource = "WebRTC"
 	HTTP    VirtualMediaSource = "HTTP"
 	Storage VirtualMediaSource = "Storage"
 )
