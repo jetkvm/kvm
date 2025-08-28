@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -42,6 +43,9 @@ type AudioOutputSupervisor struct {
 	stopChanClosed    bool // Track if stopChan is closed
 	processDoneClosed bool // Track if processDone is closed
 
+	// Environment variables for OPUS configuration
+	opusEnv []string
+
 	// Callbacks
 	onProcessStart func(pid int)
 	onProcessExit  func(pid int, exitCode int, crashed bool)
@@ -70,6 +74,23 @@ func (s *AudioOutputSupervisor) SetCallbacks(
 	s.onProcessStart = onStart
 	s.onProcessExit = onExit
 	s.onRestart = onRestart
+}
+
+// SetOpusConfig sets OPUS configuration parameters as environment variables
+// for the audio output subprocess
+func (s *AudioOutputSupervisor) SetOpusConfig(bitrate, complexity, vbr, signalType, bandwidth, dtx int) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// Store OPUS parameters as environment variables
+	s.opusEnv = []string{
+		"JETKVM_OPUS_BITRATE=" + strconv.Itoa(bitrate),
+		"JETKVM_OPUS_COMPLEXITY=" + strconv.Itoa(complexity),
+		"JETKVM_OPUS_VBR=" + strconv.Itoa(vbr),
+		"JETKVM_OPUS_SIGNAL_TYPE=" + strconv.Itoa(signalType),
+		"JETKVM_OPUS_BANDWIDTH=" + strconv.Itoa(bandwidth),
+		"JETKVM_OPUS_DTX=" + strconv.Itoa(dtx),
+	}
 }
 
 // Start begins supervising the audio output server process
@@ -223,10 +244,16 @@ func (s *AudioOutputSupervisor) startProcess() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	// Build command arguments (only subprocess flag)
+	args := []string{"--audio-output-server"}
+
 	// Create new command
-	s.cmd = exec.CommandContext(s.ctx, execPath, "--audio-output-server")
+	s.cmd = exec.CommandContext(s.ctx, execPath, args...)
 	s.cmd.Stdout = os.Stdout
 	s.cmd.Stderr = os.Stderr
+
+	// Set environment variables for OPUS configuration
+	s.cmd.Env = append(os.Environ(), s.opusEnv...)
 
 	// Start the process
 	if err := s.cmd.Start(); err != nil {
@@ -234,7 +261,7 @@ func (s *AudioOutputSupervisor) startProcess() error {
 	}
 
 	s.processPID = s.cmd.Process.Pid
-	s.logger.Info().Int("pid", s.processPID).Msg("audio server process started")
+	s.logger.Info().Int("pid", s.processPID).Strs("args", args).Strs("opus_env", s.opusEnv).Msg("audio server process started")
 
 	// Add process to monitoring
 	s.processMonitor.AddProcess(s.processPID, "audio-output-server")

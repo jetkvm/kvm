@@ -13,6 +13,7 @@ func main() {
 	versionJsonPtr := flag.Bool("version-json", false, "print version as json and exit")
 	audioServerPtr := flag.Bool("audio-output-server", false, "Run as audio server subprocess")
 	audioInputServerPtr := flag.Bool("audio-input-server", false, "Run as audio input server subprocess")
+
 	flag.Parse()
 
 	if *versionPtr || *versionJsonPtr {

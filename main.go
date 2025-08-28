@@ -44,6 +44,27 @@ func startAudioSubprocess() error {
 	// Set the global supervisor for access from audio package
 	audio.SetAudioOutputSupervisor(audioSupervisor)
 
+	// Create and register audio input supervisor
+	audioInputSupervisor := audio.NewAudioInputSupervisor()
+	audio.SetAudioInputSupervisor(audioInputSupervisor)
+
+	// Set default OPUS configuration for audio input supervisor (low quality for single-core RV1106)
+	config := audio.GetConfig()
+	audioInputSupervisor.SetOpusConfig(
+		config.AudioQualityLowInputBitrate*1000, // Convert kbps to bps
+		config.AudioQualityLowOpusComplexity,
+		config.AudioQualityLowOpusVBR,
+		config.AudioQualityLowOpusSignalType,
+		config.AudioQualityLowOpusBandwidth,
+		config.AudioQualityLowOpusDTX,
+	)
+
+	// Start audio input supervisor
+	if err := audioInputSupervisor.Start(); err != nil {
+		logger.Error().Err(err).Msg("failed to start audio input supervisor")
+		// Continue execution as audio input is not critical for basic functionality
+	}
+
 	// Set up callbacks for process lifecycle events
 	audioSupervisor.SetCallbacks(
 		// onProcessStart

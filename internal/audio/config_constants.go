@@ -1555,10 +1555,10 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		MaxPacketSize: 4000,
 
 		// Audio Quality Bitrates
-		AudioQualityLowOutputBitrate:    32,
-		AudioQualityLowInputBitrate:     16,
-		AudioQualityMediumOutputBitrate: 64,
-		AudioQualityMediumInputBitrate:  32,
+		AudioQualityLowOutputBitrate:    48,
+		AudioQualityLowInputBitrate:     24,
+		AudioQualityMediumOutputBitrate: 80,
+		AudioQualityMediumInputBitrate:  40,
 
 		// AudioQualityHighOutputBitrate defines bitrate for high-quality output.
 		// Used in: Professional applications requiring excellent audio fidelity
@@ -1573,16 +1573,16 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		AudioQualityHighInputBitrate: 64,
 
 		// AudioQualityUltraOutputBitrate defines bitrate for ultra-quality output.
-		// Used in: Audiophile-grade reproduction and high-bandwidth connections
-		// Impact: Maximum quality but requires significant bandwidth.
-		// Default 192kbps suitable for high-bandwidth, quality-critical scenarios.
-		AudioQualityUltraOutputBitrate: 192,
+		// Used in: High-quality reproduction with optimized resource usage
+		// Impact: Excellent quality while maintaining system stability.
+		// Default 160kbps provides excellent audio quality with reduced CPU load.
+		AudioQualityUltraOutputBitrate: 160,
 
 		// AudioQualityUltraInputBitrate defines bitrate for ultra-quality input.
-		// Used in: Professional microphone input requiring maximum quality
-		// Impact: Provides audiophile-grade voice quality with high bandwidth.
-		// Default 96kbps ensures maximum voice reproduction quality.
-		AudioQualityUltraInputBitrate: 96,
+		// Used in: Professional microphone input with balanced resource usage
+		// Impact: Provides excellent voice quality while maintaining stability.
+		// Default 80kbps ensures excellent voice reproduction with reduced CPU load.
+		AudioQualityUltraInputBitrate: 80,
 
 		// Audio Quality Sample Rates - Sampling frequencies for different quality levels
 		// Used in: Audio capture, processing, and format negotiation
@@ -1590,15 +1590,15 @@ func DefaultAudioConfig() *AudioConfigConstants {
 
 		// AudioQualityLowSampleRate defines sampling frequency for low-quality audio.
 		// Used in: Bandwidth-constrained scenarios and basic audio requirements
-		// Impact: Captures frequencies up to 11kHz while minimizing processing load.
-		// Default 22.05kHz sufficient for speech and basic audio.
-		AudioQualityLowSampleRate: 22050,
+		// Impact: Captures frequencies up to 24kHz while maintaining efficiency.
+		// Default 48kHz provides better quality while maintaining compatibility.
+		AudioQualityLowSampleRate: 48000,
 
 		// AudioQualityMediumSampleRate defines sampling frequency for medium-quality audio.
-		// Used in: Standard audio scenarios requiring CD-quality reproduction
-		// Impact: Captures full audible range up to 22kHz with balanced processing.
-		// Default 44.1kHz provides CD-quality standard with excellent balance.
-		AudioQualityMediumSampleRate: 44100,
+		// Used in: Standard audio scenarios requiring high-quality reproduction
+		// Impact: Captures full audible range up to 24kHz with excellent processing.
+		// Default 48kHz provides professional standard with optimal balance.
+		AudioQualityMediumSampleRate: 48000,
 
 		// AudioQualityMicLowSampleRate defines sampling frequency for low-quality microphone.
 		// Used in: Voice/microphone input in bandwidth-constrained scenarios
@@ -1612,9 +1612,9 @@ func DefaultAudioConfig() *AudioConfigConstants {
 
 		// AudioQualityLowFrameSize defines frame duration for low-quality audio.
 		// Used in: Bandwidth-constrained scenarios prioritizing efficiency
-		// Impact: Reduces processing overhead with acceptable latency increase.
-		// Default 40ms provides efficiency for constrained scenarios.
-		AudioQualityLowFrameSize: 40 * time.Millisecond,
+		// Impact: Balances processing overhead with acceptable latency.
+		// Default 20ms provides better responsiveness for low-quality scenarios.
+		AudioQualityLowFrameSize: 20 * time.Millisecond,
 
 		// AudioQualityMediumFrameSize defines frame duration for medium-quality audio.
 		// Used in: Standard real-time audio applications
@@ -1629,14 +1629,14 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		AudioQualityHighFrameSize: 20 * time.Millisecond,
 
 		// AudioQualityUltraFrameSize defines frame duration for ultra-quality audio.
-		// Used in: Applications requiring immediate audio feedback
-		// Impact: Minimizes latency for ultra-responsive audio processing.
-		// Default 10ms ensures minimal latency for immediate feedback.
-		AudioQualityUltraFrameSize: 10 * time.Millisecond,
+		// Used in: Applications requiring excellent quality with balanced performance
+		// Impact: Balances latency and processing efficiency for stable operation.
+		// Default 20ms provides excellent quality while reducing CPU load.
+		AudioQualityUltraFrameSize: 20 * time.Millisecond,
 
 		// Audio Quality Channels - Channel configuration for different quality levels
 		// Used in: Audio processing pipeline for channel handling and bandwidth control
-		AudioQualityLowChannels:    1,
+		AudioQualityLowChannels:    2,
 		AudioQualityMediumChannels: 2,
 		AudioQualityHighChannels:   2,
 		AudioQualityUltraChannels:  2,
@@ -1645,32 +1645,32 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Used in: Dynamic OPUS encoder configuration based on quality presets
 		// Impact: Controls encoding complexity, VBR, signal type, bandwidth, and DTX
 
-		// Low Quality OPUS Parameters - Optimized for bandwidth conservation
-		AudioQualityLowOpusComplexity: 1,    // Low complexity for minimal CPU usage
-		AudioQualityLowOpusVBR:        0,    // CBR for predictable bandwidth
-		AudioQualityLowOpusSignalType: 3001, // OPUS_SIGNAL_VOICE
-		AudioQualityLowOpusBandwidth:  1101, // OPUS_BANDWIDTH_NARROWBAND
-		AudioQualityLowOpusDTX:        1,    // Enable DTX for silence suppression
+		// Low Quality OPUS Parameters - Optimized for bandwidth conservation with better quality
+		AudioQualityLowOpusComplexity: 3,    // Balanced complexity for better quality
+		AudioQualityLowOpusVBR:        1,    // VBR for better quality at same bitrate
+		AudioQualityLowOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC for better general audio
+		AudioQualityLowOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND for better frequency range
+		AudioQualityLowOpusDTX:        0,    // Disable DTX for consistent quality
 
-		// Medium Quality OPUS Parameters - Balanced performance and quality
-		AudioQualityMediumOpusComplexity: 5,    // Medium complexity for balanced performance
-		AudioQualityMediumOpusVBR:        1,    // VBR for better quality
+		// Medium Quality OPUS Parameters - Enhanced performance and quality
+		AudioQualityMediumOpusComplexity: 6,    // Higher complexity for better quality
+		AudioQualityMediumOpusVBR:        1,    // VBR for optimal quality
 		AudioQualityMediumOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
-		AudioQualityMediumOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND
+		AudioQualityMediumOpusBandwidth:  1104, // OPUS_BANDWIDTH_SUPERWIDEBAND for better range
 		AudioQualityMediumOpusDTX:        0,    // Disable DTX for consistent quality
 
-		// High Quality OPUS Parameters - High quality with good performance
-		AudioQualityHighOpusComplexity: 8,    // High complexity for better quality
+		// High Quality OPUS Parameters - Premium quality with optimized performance
+		AudioQualityHighOpusComplexity: 9,    // Near-maximum complexity for excellent quality
 		AudioQualityHighOpusVBR:        1,    // VBR for optimal quality
 		AudioQualityHighOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
-		AudioQualityHighOpusBandwidth:  1104, // OPUS_BANDWIDTH_SUPERWIDEBAND
+		AudioQualityHighOpusBandwidth:  1105, // OPUS_BANDWIDTH_FULLBAND for full frequency range
 		AudioQualityHighOpusDTX:        0,    // Disable DTX for consistent quality
 
-		// Ultra Quality OPUS Parameters - Maximum quality settings
-		AudioQualityUltraOpusComplexity: 10,   // Maximum complexity for best quality
+		// Ultra Quality OPUS Parameters - Optimized for high quality with reasonable resource usage
+		AudioQualityUltraOpusComplexity: 8,    // Reduced complexity to prevent CPU overload
 		AudioQualityUltraOpusVBR:        1,    // VBR for optimal quality
 		AudioQualityUltraOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
-		AudioQualityUltraOpusBandwidth:  1105, // OPUS_BANDWIDTH_FULLBAND
+		AudioQualityUltraOpusBandwidth:  1104, // OPUS_BANDWIDTH_SUPERWIDEBAND for better stability
 		AudioQualityUltraOpusDTX:        0,    // Disable DTX for maximum quality
 
 		// CGO Audio Constants

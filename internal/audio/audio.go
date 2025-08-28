@@ -167,7 +167,7 @@ func SetAudioQuality(quality AudioQuality) {
 	if config, exists := presets[quality]; exists {
 		currentConfig = config
 
-		// Update CGO OPUS encoder parameters based on quality
+		// Get OPUS encoder parameters based on quality
 		var complexity, vbr, signalType, bandwidth, dtx int
 		switch quality {
 		case AudioQualityLow:
@@ -203,11 +203,27 @@ func SetAudioQuality(quality AudioQuality) {
 			dtx = GetConfig().AudioQualityMediumOpusDTX
 		}
 
-		// Dynamically update CGO OPUS encoder parameters
-		// Use current VBR constraint setting from config
-		vbrConstraint := GetConfig().CGOOpusVBRConstraint
-		if err := updateOpusEncoderParams(config.Bitrate*1000, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx); err != nil {
-			logging.GetDefaultLogger().Error().Err(err).Msg("Failed to update OPUS encoder parameters")
+		// Restart audio output subprocess with new OPUS configuration
+		if supervisor := GetAudioOutputSupervisor(); supervisor != nil {
+			logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
+			logger.Info().Int("quality", int(quality)).Msg("restarting audio output subprocess with new quality settings")
+
+			// Set new OPUS configuration
+			supervisor.SetOpusConfig(config.Bitrate*1000, complexity, vbr, signalType, bandwidth, dtx)
+
+			// Stop current subprocess
+			supervisor.Stop()
+
+			// Start subprocess with new configuration
+			if err := supervisor.Start(); err != nil {
+				logger.Error().Err(err).Msg("failed to restart audio output subprocess")
+			}
+		} else {
+			// Fallback to dynamic update if supervisor is not available
+			vbrConstraint := GetConfig().CGOOpusVBRConstraint
+			if err := updateOpusEncoderParams(config.Bitrate*1000, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx); err != nil {
+				logging.GetDefaultLogger().Error().Err(err).Msg("Failed to update OPUS encoder parameters")
+			}
 		}
 	}
 }
@@ -230,6 +246,59 @@ func SetMicrophoneQuality(quality AudioQuality) {
 	presets := GetMicrophoneQualityPresets()
 	if config, exists := presets[quality]; exists {
 		currentMicrophoneConfig = config
+
+		// Get OPUS parameters for the selected quality
+		var complexity, vbr, signalType, bandwidth, dtx int
+		switch quality {
+		case AudioQualityLow:
+			complexity = GetConfig().AudioQualityLowOpusComplexity
+			vbr = GetConfig().AudioQualityLowOpusVBR
+			signalType = GetConfig().AudioQualityLowOpusSignalType
+			bandwidth = GetConfig().AudioQualityLowOpusBandwidth
+			dtx = GetConfig().AudioQualityLowOpusDTX
+		case AudioQualityMedium:
+			complexity = GetConfig().AudioQualityMediumOpusComplexity
+			vbr = GetConfig().AudioQualityMediumOpusVBR
+			signalType = GetConfig().AudioQualityMediumOpusSignalType
+			bandwidth = GetConfig().AudioQualityMediumOpusBandwidth
+			dtx = GetConfig().AudioQualityMediumOpusDTX
+		case AudioQualityHigh:
+			complexity = GetConfig().AudioQualityHighOpusComplexity
+			vbr = GetConfig().AudioQualityHighOpusVBR
+			signalType = GetConfig().AudioQualityHighOpusSignalType
+			bandwidth = GetConfig().AudioQualityHighOpusBandwidth
+			dtx = GetConfig().AudioQualityHighOpusDTX
+		case AudioQualityUltra:
+			complexity = GetConfig().AudioQualityUltraOpusComplexity
+			vbr = GetConfig().AudioQualityUltraOpusVBR
+			signalType = GetConfig().AudioQualityUltraOpusSignalType
+			bandwidth = GetConfig().AudioQualityUltraOpusBandwidth
+			dtx = GetConfig().AudioQualityUltraOpusDTX
+		default:
+			// Use medium quality as fallback
+			complexity = GetConfig().AudioQualityMediumOpusComplexity
+			vbr = GetConfig().AudioQualityMediumOpusVBR
+			signalType = GetConfig().AudioQualityMediumOpusSignalType
+			bandwidth = GetConfig().AudioQualityMediumOpusBandwidth
+			dtx = GetConfig().AudioQualityMediumOpusDTX
+		}
+
+		// Restart audio input subprocess with new OPUS configuration
+		if supervisor := GetAudioInputSupervisor(); supervisor != nil {
+			logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
+			logger.Info().Int("quality", int(quality)).Msg("restarting audio input subprocess with new quality settings")
+
+			// Set new OPUS configuration
+			supervisor.SetOpusConfig(config.Bitrate*1000, complexity, vbr, signalType, bandwidth, dtx)
+
+			// Stop current subprocess
+			supervisor.Stop()
+
+			// Start subprocess with new configuration
+			if err := supervisor.Start(); err != nil {
+				logger.Error().Err(err).Msg("failed to restart audio input subprocess")
+			}
+		}
 	}
 }
 
