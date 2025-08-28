@@ -1,5 +1,5 @@
-//go:build cgo
-// +build cgo
+//go:build cgo || arm
+// +build cgo arm
 
 package audio
 
