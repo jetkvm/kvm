@@ -39,13 +39,12 @@ type AudioMuteData struct {
 
 // AudioMetricsData represents audio metrics data
 type AudioMetricsData struct {
-	FramesReceived   int64                 `json:"frames_received"`
-	FramesDropped    int64                 `json:"frames_dropped"`
-	BytesProcessed   int64                 `json:"bytes_processed"`
-	LastFrameTime    string                `json:"last_frame_time"`
-	ConnectionDrops  int64                 `json:"connection_drops"`
-	AverageLatency   string                `json:"average_latency"`
-	LatencyHistogram *LatencyHistogramData `json:"latency_histogram,omitempty"`
+	FramesReceived  int64  `json:"frames_received"`
+	FramesDropped   int64  `json:"frames_dropped"`
+	BytesProcessed  int64  `json:"bytes_processed"`
+	LastFrameTime   string `json:"last_frame_time"`
+	ConnectionDrops int64  `json:"connection_drops"`
+	AverageLatency  string `json:"average_latency"`
 }
 
 // MicrophoneStateData represents microphone state data
@@ -56,13 +55,12 @@ type MicrophoneStateData struct {
 
 // MicrophoneMetricsData represents microphone metrics data
 type MicrophoneMetricsData struct {
-	FramesSent       int64                 `json:"frames_sent"`
-	FramesDropped    int64                 `json:"frames_dropped"`
-	BytesProcessed   int64                 `json:"bytes_processed"`
-	LastFrameTime    string                `json:"last_frame_time"`
-	ConnectionDrops  int64                 `json:"connection_drops"`
-	AverageLatency   string                `json:"average_latency"`
-	LatencyHistogram *LatencyHistogramData `json:"latency_histogram,omitempty"`
+	FramesSent      int64  `json:"frames_sent"`
+	FramesDropped   int64  `json:"frames_dropped"`
+	BytesProcessed  int64  `json:"bytes_processed"`
+	LastFrameTime   string `json:"last_frame_time"`
+	ConnectionDrops int64  `json:"connection_drops"`
+	AverageLatency  string `json:"average_latency"`
 }
 
 // ProcessMetricsData represents process metrics data for WebSocket events
@@ -227,41 +225,25 @@ func (aeb *AudioEventBroadcaster) sendInitialState(connectionID string) {
 
 // convertAudioMetricsToEventDataWithLatencyMs converts internal audio metrics to AudioMetricsData with millisecond latency formatting
 func convertAudioMetricsToEventDataWithLatencyMs(metrics AudioMetrics) AudioMetricsData {
-	// Get histogram data from granular metrics collector
-	granularCollector := GetGranularMetricsCollector()
-	var histogramData *LatencyHistogramData
-	if granularCollector != nil {
-		histogramData = granularCollector.GetOutputLatencyHistogram()
-	}
-
 	return AudioMetricsData{
-		FramesReceived:   metrics.FramesReceived,
-		FramesDropped:    metrics.FramesDropped,
-		BytesProcessed:   metrics.BytesProcessed,
-		LastFrameTime:    metrics.LastFrameTime.Format(GetConfig().EventTimeFormatString),
-		ConnectionDrops:  metrics.ConnectionDrops,
-		AverageLatency:   fmt.Sprintf("%.1fms", float64(metrics.AverageLatency.Nanoseconds())/1e6),
-		LatencyHistogram: histogramData,
+		FramesReceived:  metrics.FramesReceived,
+		FramesDropped:   metrics.FramesDropped,
+		BytesProcessed:  metrics.BytesProcessed,
+		LastFrameTime:   metrics.LastFrameTime.Format(GetConfig().EventTimeFormatString),
+		ConnectionDrops: metrics.ConnectionDrops,
+		AverageLatency:  fmt.Sprintf("%.1fms", float64(metrics.AverageLatency.Nanoseconds())/1e6),
 	}
 }
 
 // convertAudioInputMetricsToEventDataWithLatencyMs converts internal audio input metrics to MicrophoneMetricsData with millisecond latency formatting
 func convertAudioInputMetricsToEventDataWithLatencyMs(metrics AudioInputMetrics) MicrophoneMetricsData {
-	// Get histogram data from granular metrics collector
-	granularCollector := GetGranularMetricsCollector()
-	var histogramData *LatencyHistogramData
-	if granularCollector != nil {
-		histogramData = granularCollector.GetInputLatencyHistogram()
-	}
-
 	return MicrophoneMetricsData{
-		FramesSent:       metrics.FramesSent,
-		FramesDropped:    metrics.FramesDropped,
-		BytesProcessed:   metrics.BytesProcessed,
-		LastFrameTime:    metrics.LastFrameTime.Format(GetConfig().EventTimeFormatString),
-		ConnectionDrops:  metrics.ConnectionDrops,
-		AverageLatency:   fmt.Sprintf("%.1fms", float64(metrics.AverageLatency.Nanoseconds())/1e6),
-		LatencyHistogram: histogramData,
+		FramesSent:      metrics.FramesSent,
+		FramesDropped:   metrics.FramesDropped,
+		BytesProcessed:  metrics.BytesProcessed,
+		LastFrameTime:   metrics.LastFrameTime.Format(GetConfig().EventTimeFormatString),
+		ConnectionDrops: metrics.ConnectionDrops,
+		AverageLatency:  fmt.Sprintf("%.1fms", float64(metrics.AverageLatency.Nanoseconds())/1e6),
 	}
 }
 

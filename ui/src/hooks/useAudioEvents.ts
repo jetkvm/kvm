@@ -19,11 +19,6 @@ export interface AudioMuteData {
   muted: boolean;
 }
 
-export interface LatencyHistogramData {
-  buckets: number[]; // Bucket boundaries in milliseconds
-  counts: number[];  // Count for each bucket
-}
-
 export interface AudioMetricsData {
   frames_received: number;
   frames_dropped: number;
@@ -31,7 +26,6 @@ export interface AudioMetricsData {
   last_frame_time: string;
   connection_drops: number;
   average_latency: string;
-  latency_histogram?: LatencyHistogramData;
 }
 
 export interface MicrophoneStateData {
@@ -46,7 +40,6 @@ export interface MicrophoneMetricsData {
   last_frame_time: string;
   connection_drops: number;
   average_latency: string;
-  latency_histogram?: LatencyHistogramData;
 }
 
 export interface ProcessMetricsData {

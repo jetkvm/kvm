@@ -101,10 +101,10 @@ var (
 		},
 	)
 
-	audioAverageLatencySeconds = promauto.NewGauge(
+	audioAverageLatencyMilliseconds = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_average_latency_seconds",
-			Help: "Average audio latency in seconds",
+			Name: "jetkvm_audio_average_latency_milliseconds",
+			Help: "Average audio latency in milliseconds",
 		},
 	)
 
@@ -144,10 +144,10 @@ var (
 		},
 	)
 
-	microphoneAverageLatencySeconds = promauto.NewGauge(
+	microphoneAverageLatencyMilliseconds = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "jetkvm_microphone_average_latency_seconds",
-			Help: "Average microphone latency in seconds",
+			Name: "jetkvm_microphone_average_latency_milliseconds",
+			Help: "Average microphone latency in milliseconds",
 		},
 	)
 
@@ -416,8 +416,8 @@ var (
 	// Latency percentile metrics
 	latencyPercentile = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_latency_percentile_seconds",
-			Help: "Audio latency percentiles in seconds",
+			Name: "jetkvm_audio_latency_percentile_milliseconds",
+			Help: "Audio latency percentiles in milliseconds",
 		},
 		[]string{"source", "percentile"}, // source: input, output, processing; percentile: p50, p95, p99, min, max, avg
 	)
@@ -506,7 +506,7 @@ func UpdateAudioMetrics(metrics UnifiedAudioMetrics) {
 	}
 
 	// Update gauges
-	audioAverageLatencySeconds.Set(float64(metrics.AverageLatency.Nanoseconds()) / 1e9)
+	audioAverageLatencyMilliseconds.Set(float64(metrics.AverageLatency.Nanoseconds()) / 1e6)
 	if !metrics.LastFrameTime.IsZero() {
 		audioLastFrameTimestamp.Set(float64(metrics.LastFrameTime.Unix()))
 	}
@@ -537,7 +537,7 @@ func UpdateMicrophoneMetrics(metrics UnifiedAudioMetrics) {
 	}
 
 	// Update gauges
-	microphoneAverageLatencySeconds.Set(float64(metrics.AverageLatency.Nanoseconds()) / 1e9)
+	microphoneAverageLatencyMilliseconds.Set(float64(metrics.AverageLatency.Nanoseconds()) / 1e6)
 	if !metrics.LastFrameTime.IsZero() {
 		microphoneLastFrameTimestamp.Set(float64(metrics.LastFrameTime.Unix()))
 	}
@@ -704,11 +704,11 @@ func UpdateBufferPoolMetrics(poolName string, hitRate, missRate, utilization, th
 }
 
 // UpdateLatencyMetrics updates latency percentile metrics
-func UpdateLatencyMetrics(source, percentile string, latencySeconds float64) {
+func UpdateLatencyMetrics(source, percentile string, latencyMilliseconds float64) {
 	metricsUpdateMutex.Lock()
 	defer metricsUpdateMutex.Unlock()
 
-	latencyPercentile.WithLabelValues(source, percentile).Set(latencySeconds)
+	latencyPercentile.WithLabelValues(source, percentile).Set(latencyMilliseconds)
 
 	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
