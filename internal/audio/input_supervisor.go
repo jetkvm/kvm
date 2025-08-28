@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -12,6 +13,9 @@ import (
 type AudioInputSupervisor struct {
 	*BaseSupervisor
 	client *AudioInputClient
+
+	// Environment variables for OPUS configuration
+	opusEnv []string
 }
 
 // NewAudioInputSupervisor creates a new audio input supervisor
@@ -19,6 +23,23 @@ func NewAudioInputSupervisor() *AudioInputSupervisor {
 	return &AudioInputSupervisor{
 		BaseSupervisor: NewBaseSupervisor("audio-input-supervisor"),
 		client:         NewAudioInputClient(),
+	}
+}
+
+// SetOpusConfig sets OPUS configuration parameters as environment variables
+// for the audio input subprocess
+func (ais *AudioInputSupervisor) SetOpusConfig(bitrate, complexity, vbr, signalType, bandwidth, dtx int) {
+	ais.mutex.Lock()
+	defer ais.mutex.Unlock()
+
+	// Store OPUS parameters as environment variables
+	ais.opusEnv = []string{
+		"JETKVM_OPUS_BITRATE=" + strconv.Itoa(bitrate),
+		"JETKVM_OPUS_COMPLEXITY=" + strconv.Itoa(complexity),
+		"JETKVM_OPUS_VBR=" + strconv.Itoa(vbr),
+		"JETKVM_OPUS_SIGNAL_TYPE=" + strconv.Itoa(signalType),
+		"JETKVM_OPUS_BANDWIDTH=" + strconv.Itoa(bandwidth),
+		"JETKVM_OPUS_DTX=" + strconv.Itoa(dtx),
 	}
 }
 
@@ -40,11 +61,16 @@ func (ais *AudioInputSupervisor) Start() error {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
 
+	// Build command arguments (only subprocess flag)
+	args := []string{"--audio-input-server"}
+
 	// Create command for audio input server subprocess
-	cmd := exec.CommandContext(ais.ctx, execPath, "--audio-input-server")
-	cmd.Env = append(os.Environ(),
-		"JETKVM_AUDIO_INPUT_IPC=true", // Enable IPC mode
-	)
+	cmd := exec.CommandContext(ais.ctx, execPath, args...)
+
+	// Set environment variables for IPC and OPUS configuration
+	env := append(os.Environ(), "JETKVM_AUDIO_INPUT_IPC=true") // Enable IPC mode
+	env = append(env, ais.opusEnv...)                          // Add OPUS configuration
+	cmd.Env = env
 
 	// Set process group to allow clean termination
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -62,7 +88,7 @@ func (ais *AudioInputSupervisor) Start() error {
 		return fmt.Errorf("failed to start audio input server process: %w", err)
 	}
 
-	ais.logger.Info().Int("pid", cmd.Process.Pid).Msg("Audio input server subprocess started")
+	ais.logger.Info().Int("pid", cmd.Process.Pid).Strs("args", args).Strs("opus_env", ais.opusEnv).Msg("Audio input server subprocess started")
 
 	// Add process to monitoring
 	ais.processMonitor.AddProcess(cmd.Process.Pid, "audio-input-server")

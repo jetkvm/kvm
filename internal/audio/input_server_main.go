@@ -4,17 +4,57 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
 )
 
+// getEnvInt reads an integer from environment variable with a default value
+func getEnvIntInput(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
+}
+
+// parseOpusConfigInput reads OPUS configuration from environment variables
+// with fallback to default config values for input server
+func parseOpusConfigInput() (bitrate, complexity, vbr, signalType, bandwidth, dtx int) {
+	// Read configuration from environment variables with config defaults
+	bitrate = getEnvIntInput("JETKVM_OPUS_BITRATE", GetConfig().CGOOpusBitrate)
+	complexity = getEnvIntInput("JETKVM_OPUS_COMPLEXITY", GetConfig().CGOOpusComplexity)
+	vbr = getEnvIntInput("JETKVM_OPUS_VBR", GetConfig().CGOOpusVBR)
+	signalType = getEnvIntInput("JETKVM_OPUS_SIGNAL_TYPE", GetConfig().CGOOpusSignalType)
+	bandwidth = getEnvIntInput("JETKVM_OPUS_BANDWIDTH", GetConfig().CGOOpusBandwidth)
+	dtx = getEnvIntInput("JETKVM_OPUS_DTX", GetConfig().CGOOpusDTX)
+
+	return bitrate, complexity, vbr, signalType, bandwidth, dtx
+}
+
+// applyOpusConfigInput applies OPUS configuration to the global config for input server
+func applyOpusConfigInput(bitrate, complexity, vbr, signalType, bandwidth, dtx int) {
+	config := GetConfig()
+	config.CGOOpusBitrate = bitrate
+	config.CGOOpusComplexity = complexity
+	config.CGOOpusVBR = vbr
+	config.CGOOpusSignalType = signalType
+	config.CGOOpusBandwidth = bandwidth
+	config.CGOOpusDTX = dtx
+}
+
 // RunAudioInputServer runs the audio input server subprocess
 // This should be called from main() when the subprocess is detected
 func RunAudioInputServer() error {
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-input-server").Logger()
 	logger.Debug().Msg("audio input server subprocess starting")
+
+	// Parse OPUS configuration from environment variables
+	bitrate, complexity, vbr, signalType, bandwidth, dtx := parseOpusConfigInput()
+	applyOpusConfigInput(bitrate, complexity, vbr, signalType, bandwidth, dtx)
 
 	// Initialize validation cache for optimal performance
 	InitValidationCache()
