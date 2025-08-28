@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { ComponentProps } from "react";
 import { cva, cx } from "cva";
 
@@ -28,7 +29,12 @@ interface MetricProps<T, K extends keyof T> {
   badgeTheme?: ComponentProps<typeof MetricHeader>["badgeTheme"];
 }
 
-/* eslint-disable-next-line */
+/**
+ * Creates a chart array from a metrics map and a metric name.
+ *
+ * @param metrics - Expected to be ordered from oldest to newest.
+ * @param metricName - Name of the metric to create a chart array for.
+ */
 export function createChartArray<T, K extends keyof T>(
   metrics: Map<number, T>,
   metricName: K,
