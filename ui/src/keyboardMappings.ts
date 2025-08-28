@@ -81,12 +81,6 @@ export const keys = {
   Help: 0x75,
   Home: 0x4a,
   Insert: 0x49,
-  International1: 0x87,
-  International2: 0x88,
-  International3: 0x89,
-  International4: 0x8a,
-  International5: 0x8b,
-  International6: 0x8c,
   International7: 0x8d,
   International8: 0x8e,
   International9: 0x8f,
@@ -117,14 +111,20 @@ export const keys = {
   KeyX: 0x1b,
   KeyY: 0x1c,
   KeyZ: 0x1d,
+  KeyRO: 0x87,
+  KatakanaHiragana: 0x88,
+  Yen: 0x89,
+  Henkan: 0x8a,
+  Muhenkan: 0x8b,
+  KPJPComma: 0x8c,
+  Hangeul: 0x90,
+  Hanja: 0x91,
+  Katakana: 0x92,
+  Hiragana: 0x93,
+  ZenkakuHankaku:0x94,
   LockingCapsLock: 0x82,
   LockingNumLock: 0x83,
   LockingScrollLock: 0x84,
-  Lang1: 0x90,  // Hangul/English toggle on Korean keyboards
-  Lang2: 0x91,  // Hanja conversion on Korean keyboards
-  Lang3: 0x92,  // Katakana on Japanese keyboards
-  Lang4: 0x93,  // Hiragana on Japanese keyboards
-  Lang5: 0x94,  // Zenkaku/Hankaku toggle on Japanese keyboards
   Lang6: 0x95,
   Lang7: 0x96,
   Lang8: 0x97,
@@ -157,7 +157,7 @@ export const keys = {
   NumpadClearEntry: 0xd9,
   NumpadColon: 0xcb,
   NumpadComma: 0x85,
-  NumpadDecimal: 0x63,
+  NumpadDecimal: 0x63, // and Delete
   NumpadDecimalBase: 0xdc,
   NumpadDelete: 0x63,
   NumpadDivide: 0x54,
@@ -211,7 +211,7 @@ export const keys = {
   PageUp: 0x4b,
   Paste: 0x7d,
   Pause: 0x48,
-  Period: 0x37,
+  Period: 0x37, // aka Dot
   Power: 0x66,
   PrintScreen: 0x46,
   Prior: 0x9d,
@@ -226,7 +226,7 @@ export const keys = {
   Slash: 0x38,
   Space: 0x2c,
   Stop: 0x78,
-  SystemRequest: 0x9a,
+  SystemRequest: 0x9a,  // aka Attention
   Tab: 0x2b,
   ThousandsSeparator: 0xb2,
   Tilde: 0x35,
