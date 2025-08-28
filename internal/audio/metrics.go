@@ -721,26 +721,17 @@ func GetLastMetricsUpdate() time.Time {
 
 // StartMetricsUpdater starts a goroutine that periodically updates Prometheus metrics
 func StartMetricsUpdater() {
+	// Start the centralized metrics collector
+	registry := GetMetricsRegistry()
+	registry.StartMetricsCollector()
+
+	// Start a separate goroutine for periodic updates
 	go func() {
 		ticker := time.NewTicker(5 * time.Second) // Update every 5 seconds
 		defer ticker.Stop()
 
 		for range ticker.C {
-			// Update audio output metrics
-			audioMetrics := GetAudioMetrics()
-			UpdateAudioMetrics(convertAudioMetricsToUnified(audioMetrics))
-
-			// Update microphone input metrics
-			micMetrics := GetAudioInputMetrics()
-			UpdateMicrophoneMetrics(convertAudioInputMetricsToUnified(micMetrics))
-
-			// Update audio configuration metrics
-			audioConfig := GetAudioConfig()
-			UpdateAudioConfigMetrics(audioConfig)
-			micConfig := GetMicrophoneConfig()
-			UpdateMicrophoneConfigMetrics(micConfig)
-
-			// Update memory metrics
+			// Update memory metrics (not part of centralized registry)
 			UpdateMemoryMetrics()
 		}
 	}()
