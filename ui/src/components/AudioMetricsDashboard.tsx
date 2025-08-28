@@ -4,7 +4,6 @@ import { LuActivity, LuClock, LuHardDrive, LuSettings, LuCpu, LuMemoryStick } fr
 
 import { AudioLevelMeter } from "@components/AudioLevelMeter";
 import StatChart from "@components/StatChart";
-import LatencyHistogram from "@components/charts/LatencyHistogram";
 import { cx } from "@/cva.config";
 import { useMicrophone } from "@/hooks/useMicrophone";
 import { useAudioLevel } from "@/hooks/useAudioLevel";
@@ -13,11 +12,6 @@ import api from "@/api";
 import { AUDIO_CONFIG } from "@/config/constants";
 import audioQualityService from "@/services/audioQualityService";
 
-interface LatencyHistogramData {
-  buckets: number[]; // Bucket boundaries in milliseconds
-  counts: number[];  // Count for each bucket
-}
-
 interface AudioMetrics {
   frames_received: number;
   frames_dropped: number;
@@ -25,7 +19,6 @@ interface AudioMetrics {
   last_frame_time: string;
   connection_drops: number;
   average_latency: string;
-  latency_histogram?: LatencyHistogramData;
 }
 
 interface MicrophoneMetrics {
@@ -35,7 +28,6 @@ interface MicrophoneMetrics {
   last_frame_time: string;
   connection_drops: number;
   average_latency: string;
-  latency_histogram?: LatencyHistogramData;
 }
 
 interface ProcessMetrics {
@@ -511,25 +503,7 @@ export default function AudioMetricsDashboard() {
         )}
       </div>
 
-      {/* Latency Histograms */}
-      {metrics && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <LatencyHistogram
-            data={audioMetrics?.latency_histogram}
-            title="Audio Output Latency Distribution"
-            height={180}
-            className=""
-          />
-          {microphoneMetrics && (
-            <LatencyHistogram
-              data={microphoneMetrics.latency_histogram}
-              title="Microphone Input Latency Distribution"
-              height={180}
-              className=""
-            />
-          )}
-        </div>
-      )}
+
 
       {/* Subprocess Resource Usage - Histogram View */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

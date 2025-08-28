@@ -132,9 +132,6 @@ func (lm *LatencyMonitor) RecordLatency(latency time.Duration, source string) {
 	now := time.Now()
 	latencyNanos := latency.Nanoseconds()
 
-	// Record in granular metrics histogram
-	GetGranularMetricsCollector().RecordProcessingLatency(latency)
-
 	// Update atomic counters
 	atomic.StoreInt64(&lm.currentLatency, latencyNanos)
 	atomic.AddInt64(&lm.latencySamples, 1)
