@@ -110,6 +110,12 @@ func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 	atomic.AddInt64(&aim.framesSent, 1)
 	aim.recordFrameProcessed(len(frame))
 	aim.updateLatency(processingTime)
+
+	// Record latency to granular metrics collector for histogram
+	if granularCollector := GetGranularMetricsCollector(); granularCollector != nil {
+		granularCollector.RecordInputLatency(processingTime)
+	}
+
 	return nil
 }
 
@@ -145,6 +151,12 @@ func (aim *AudioInputManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFrame) 
 	atomic.AddInt64(&aim.framesSent, 1)
 	aim.recordFrameProcessed(frame.Length())
 	aim.updateLatency(processingTime)
+
+	// Record latency to granular metrics collector for histogram
+	if granularCollector := GetGranularMetricsCollector(); granularCollector != nil {
+		granularCollector.RecordInputLatency(processingTime)
+	}
+
 	return nil
 }
 

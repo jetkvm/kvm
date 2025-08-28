@@ -103,6 +103,11 @@ func (aom *AudioOutputIPCManager) WriteOpusFrame(frame *ZeroCopyAudioFrame) erro
 	aom.recordFrameProcessed(frame.Length())
 	aom.updateLatency(processingTime)
 
+	// Record latency to granular metrics collector for histogram
+	if granularCollector := GetGranularMetricsCollector(); granularCollector != nil {
+		granularCollector.RecordOutputLatency(processingTime)
+	}
+
 	return nil
 }
 
@@ -131,6 +136,11 @@ func (aom *AudioOutputIPCManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFra
 	processingTime := time.Since(start)
 	aom.recordFrameProcessed(len(frameData))
 	aom.updateLatency(processingTime)
+
+	// Record latency to granular metrics collector for histogram
+	if granularCollector := GetGranularMetricsCollector(); granularCollector != nil {
+		granularCollector.RecordOutputLatency(processingTime)
+	}
 
 	return nil
 }

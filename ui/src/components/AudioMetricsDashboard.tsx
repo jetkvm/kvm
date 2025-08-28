@@ -478,7 +478,7 @@ export default function AudioMetricsDashboard() {
             <div className="mb-2 flex items-center gap-2">
               <MdMic className="h-4 w-4 text-green-600 dark:text-green-400" />
               <span className="font-medium text-slate-900 dark:text-slate-100">
-                Microphone Input Config
+                Audio Input Config
               </span>
             </div>
             <div className="space-y-2 text-sm">
