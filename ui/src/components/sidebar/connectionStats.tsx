@@ -29,6 +29,10 @@ export default function ConnectionStatsSidebar() {
   useInterval(function collectWebRTCStats() {
     (async () => {
       if (!mediaStream) return;
+
+      const videoTrack = mediaStream.getVideoTracks()[0];
+      if (!videoTrack) return;
+
       const stats = await peerConnection?.getStats();
       let successfulLocalCandidateId: string | null = null;
       let successfulRemoteCandidateId: string | null = null;
