@@ -36,12 +36,12 @@ export function createChartArray<T, K extends keyof T>(
   const result: { date: number; metric: number | null }[] = [];
   const iter = metrics.entries();
   let next = iter.next() as IteratorResult<[number, T]>;
-  const now = Math.floor(Date.now() / 1000);
+  const nowSeconds = Math.floor(Date.now() / 1000);
 
   // We want 120 data points, in the chart.
-  const firstDate = Math.min(next.value?.[0] ?? now, now - 120);
+  const firstDate = Math.min(next.value?.[0] ?? nowSeconds, nowSeconds - 120);
 
-  for (let t = firstDate; t < now; t++) {
+  for (let t = firstDate; t < nowSeconds; t++) {
     while (!next.done && next.value[0] < t) next = iter.next();
     const has = !next.done && next.value[0] === t;
 
