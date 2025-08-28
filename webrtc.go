@@ -126,9 +126,6 @@ func newSession(config SessionConfig) (*Session, error) {
 			triggerOTAStateUpdate()
 			triggerVideoStateUpdate()
 			triggerUSBStateUpdate()
-		case "disk":
-			session.DiskChannel = d
-			d.OnMessage(onDiskMessage)
 		case "terminal":
 			handleTerminalChannel(d)
 		case "serial":
