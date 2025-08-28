@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  LuGlobe,
   LuLink,
   LuRadioReceiver,
-  LuHardDrive,
   LuCheck,
   LuUpload,
 } from "react-icons/lu";
@@ -50,7 +48,6 @@ export function Dialog({ onClose }: { onClose: () => void }) {
   const {
     modalView,
     setModalView,
-    setLocalFile,
     setRemoteVirtualMediaState,
     errorMessage,
     setErrorMessage,
@@ -60,7 +57,6 @@ export function Dialog({ onClose }: { onClose: () => void }) {
   const [incompleteFileName, setIncompleteFileName] = useState<string | null>(null);
   const [mountInProgress, setMountInProgress] = useState(false);
   function clearMountMediaState() {
-    setLocalFile(null);
     setRemoteVirtualMediaState(null);
   }
 
@@ -131,35 +127,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
     clearMountMediaState();
   }
 
-  function handleBrowserMount(file: File, mode: RemoteVirtualMediaState["mode"]) {
-    console.log(`Mounting ${file.name} as ${mode}`);
-
-    setMountInProgress(true);
-    send(
-      "mountWithWebRTC",
-      { filename: file.name, size: file.size, mode },
-      async resp => {
-        if ("error" in resp) triggerError(resp.error.message);
-
-        clearMountMediaState();
-        syncRemoteVirtualMediaState()
-          .then(() => {
-            // We need to keep the local file in the store so that the browser can
-            // continue to stream the file to the device
-            setLocalFile(file);
-            navigate("..");
-          })
-          .catch(err => {
-            triggerError(err instanceof Error ? err.message : String(err));
-          })
-          .finally(() => {
-            setMountInProgress(false);
-          });
-      },
-    );
-  }
-
-  const [selectedMode, setSelectedMode] = useState<"browser" | "url" | "device">("url");
+  const [selectedMode, setSelectedMode] = useState<"url" | "device">("url");
   return (
     <AutoHeight>
       <div
@@ -167,7 +135,6 @@ export function Dialog({ onClose }: { onClose: () => void }) {
           "max-w-4xl": modalView === "mode",
           "max-w-2xl": modalView === "device",
           "max-w-xl":
-            modalView === "browser" ||
             modalView === "url" ||
             modalView === "upload" ||
             modalView === "error",
@@ -191,19 +158,6 @@ export function Dialog({ onClose }: { onClose: () => void }) {
                   onClose={() => onClose()}
                   selectedMode={selectedMode}
                   setSelectedMode={setSelectedMode}
-                />
-              )}
-
-              {modalView === "browser" && (
-                <BrowserFileView
-                  mountInProgress={mountInProgress}
-                  onMountFile={(file, mode) => {
-                    handleBrowserMount(file, mode);
-                  }}
-                  onBack={() => {
-                    setMountInProgress(false);
-                    setModalView("mode");
-                  }}
                 />
               )}
 
@@ -275,8 +229,8 @@ function ModeSelectionView({
   setSelectedMode,
 }: {
   onClose: () => void;
-  selectedMode: "browser" | "url" | "device";
-  setSelectedMode: (mode: "browser" | "url" | "device") => void;
+  selectedMode: "url" | "device";
+  setSelectedMode: (mode: "url" | "device") => void;
 }) {
   const { setModalView } = useMountMediaStore();
 
@@ -292,14 +246,6 @@ function ModeSelectionView({
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         {[
-          {
-            label: "Browser Mount",
-            value: "browser",
-            description: "Stream files directly from your browser",
-            icon: LuGlobe,
-            tag: "Coming Soon",
-            disabled: true,
-          },
           {
             label: "URL Mount",
             value: "url",
@@ -338,7 +284,7 @@ function ModeSelectionView({
               <div
                 className="relative z-50 flex flex-col items-start p-4 select-none"
                 onClick={() =>
-                  disabled ? null : setSelectedMode(mode as "browser" | "url" | "device")
+                  disabled ? null : setSelectedMode(mode as "url" | "device")
                 }
               >
                 <div>
@@ -387,119 +333,6 @@ function ModeSelectionView({
               setModalView(selectedMode);
             }}
             text="Continue"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BrowserFileView({
-  onMountFile,
-  onBack,
-  mountInProgress,
-}: {
-  onBack: () => void;
-  onMountFile: (file: File, mode: RemoteVirtualMediaState["mode"]) => void;
-  mountInProgress: boolean;
-}) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [usbMode, setUsbMode] = useState<RemoteVirtualMediaState["mode"]>("CDROM");
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
-    setSelectedFile(file);
-
-    if (file?.name.endsWith(".iso")) {
-      setUsbMode("CDROM");
-    } else if (file?.name.endsWith(".img")) {
-      setUsbMode("Disk");
-    }
-  };
-
-  const handleMount = () => {
-    if (selectedFile) {
-      console.log(`Mounting ${selectedFile.name} as ${setUsbMode}`);
-      onMountFile(selectedFile, usbMode);
-    }
-  };
-
-  return (
-    <div className="w-full space-y-4">
-      <ViewHeader
-        title="Mount from Browser"
-        description="Select an image file to mount"
-      />
-      <div className="space-y-2">
-        <div
-          onClick={() => document.getElementById("file-upload")?.click()}
-          className="block cursor-pointer select-none"
-        >
-          <div
-            className="group animate-fadeIn opacity-0"
-            style={{
-              animationDuration: "0.7s",
-            }}
-          >
-            <Card className="transition-all duration-300 outline-dashed">
-              <div className="w-full px-4 py-12">
-                <div className="flex h-full flex-col items-center justify-center text-center">
-                  {selectedFile ? (
-                    <>
-                      <div className="space-y-1">
-                        <LuHardDrive className="mx-auto h-6 w-6 text-blue-700" />
-                        <h3 className="text-sm leading-none font-semibold">
-                          {formatters.truncateMiddle(selectedFile.name, 40)}
-                        </h3>
-                        <p className="text-xs leading-none text-slate-700">
-                          {formatters.bytes(selectedFile.size)}
-                        </p>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="space-y-1">
-                      <PlusCircleIcon className="mx-auto h-6 w-6 text-blue-700" />
-                      <h3 className="text-sm leading-none font-semibold">
-                        Click to select a file
-                      </h3>
-                      <p className="text-xs leading-none text-slate-700">
-                        Supported formats: ISO, IMG
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </Card>
-          </div>
-        </div>
-        <input
-          id="file-upload"
-          type="file"
-          onChange={handleFileChange}
-          className="hidden"
-          accept=".iso, .img"
-        />
-      </div>
-
-      <div
-        className="flex w-full animate-fadeIn items-end justify-between opacity-0"
-        style={{
-          animationDuration: "0.7s",
-          animationDelay: "0.1s",
-        }}
-      >
-        <Fieldset disabled={!selectedFile}>
-          <UsbModeSelector usbMode={usbMode} setUsbMode={setUsbMode} />
-        </Fieldset>
-        <div className="flex space-x-2">
-          <Button size="MD" theme="blank" text="Back" onClick={onBack} />
-          <Button
-            size="MD"
-            theme="primary"
-            text="Mount File"
-            onClick={handleMount}
-            disabled={!selectedFile || mountInProgress}
-            loading={mountInProgress}
           />
         </div>
       </div>

@@ -21,7 +21,6 @@ type Session struct {
 	ControlChannel           *webrtc.DataChannel
 	RPCChannel               *webrtc.DataChannel
 	HidChannel               *webrtc.DataChannel
-	DiskChannel              *webrtc.DataChannel
 	shouldUmountVirtualMedia bool
 	rpcQueue                 chan webrtc.DataChannelMessage
 }
@@ -126,9 +125,6 @@ func newSession(config SessionConfig) (*Session, error) {
 			triggerOTAStateUpdate()
 			triggerVideoStateUpdate()
 			triggerUSBStateUpdate()
-		case "disk":
-			session.DiskChannel = d
-			d.OnMessage(onDiskMessage)
 		case "terminal":
 			handleTerminalChannel(d)
 		case "serial":

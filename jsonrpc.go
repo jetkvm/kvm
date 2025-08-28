@@ -1103,7 +1103,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"getVirtualMediaState":   {Func: rpcGetVirtualMediaState},
 	"getStorageSpace":        {Func: rpcGetStorageSpace},
 	"mountWithHTTP":          {Func: rpcMountWithHTTP, Params: []string{"url", "mode"}},
-	"mountWithWebRTC":        {Func: rpcMountWithWebRTC, Params: []string{"filename", "size", "mode"}},
 	"mountWithStorage":       {Func: rpcMountWithStorage, Params: []string{"filename", "mode"}},
 	"listStorageFiles":       {Func: rpcListStorageFiles},
 	"deleteStorageFile":      {Func: rpcDeleteStorageFile, Params: []string{"filename"}},

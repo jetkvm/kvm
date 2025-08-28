@@ -22,25 +22,12 @@ func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 		return 0, errors.New("image not mounted")
 	}
 	source := currentVirtualMediaState.Source
-	mountedImageSize := currentVirtualMediaState.Size
 	virtualMediaStateMutex.RUnlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	readLen := int64(len(p))
-	if off+readLen > mountedImageSize {
-		readLen = mountedImageSize - off
-	}
-	var data []byte
 	switch source {
-	case WebRTC:
-		data, err = webRTCDiskReader.Read(ctx, off, readLen)
-		if err != nil {
-			return 0, err
-		}
-		n = copy(p, data)
-		return n, nil
 	case HTTP:
 		return httpRangeReader.ReadAt(p, off)
 	default:
