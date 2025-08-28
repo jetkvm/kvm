@@ -73,22 +73,22 @@ export default function ConnectionStatsSidebar() {
     if (idx === 0) return { date: d.date, metric: null };
     const prevDelay = jitterBufferDelay[idx - 1]?.metric as number | null | undefined;
     const currDelay = d.metric as number | null | undefined;
-    const prevEmitted =
+    const prevCountEmitted =
       (jitterBufferEmittedCount[idx - 1]?.metric as number | null | undefined) ?? null;
-    const currEmitted =
+    const currCountEmitted =
       (jitterBufferEmittedCount[idx]?.metric as number | null | undefined) ?? null;
 
     if (
       prevDelay == null ||
       currDelay == null ||
-      prevEmitted == null ||
-      currEmitted == null
+      prevCountEmitted == null ||
+      currCountEmitted == null
     ) {
       return { date: d.date, metric: null };
     }
 
     const deltaDelay = currDelay - prevDelay;
-    const deltaEmitted = currEmitted - prevEmitted;
+    const deltaEmitted = currCountEmitted - prevCountEmitted;
 
     // Guard counter resets or no emitted frames
     if (deltaDelay < 0 || deltaEmitted <= 0) {
