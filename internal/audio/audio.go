@@ -166,7 +166,7 @@ func SetAudioQuality(quality AudioQuality) {
 	presets := GetAudioQualityPresets()
 	if config, exists := presets[quality]; exists {
 		currentConfig = config
-		
+
 		// Update CGO OPUS encoder parameters based on quality
 		var complexity, vbr, signalType, bandwidth, dtx int
 		switch quality {
@@ -202,11 +202,13 @@ func SetAudioQuality(quality AudioQuality) {
 			bandwidth = GetConfig().AudioQualityMediumOpusBandwidth
 			dtx = GetConfig().AudioQualityMediumOpusDTX
 		}
-		
+
 		// Dynamically update CGO OPUS encoder parameters
 		// Use current VBR constraint setting from config
 		vbrConstraint := GetConfig().CGOOpusVBRConstraint
-		updateOpusEncoderParams(config.Bitrate*1000, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx)
+		if err := updateOpusEncoderParams(config.Bitrate*1000, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx); err != nil {
+			logging.GetDefaultLogger().Error().Err(err).Msg("Failed to update OPUS encoder parameters")
+		}
 	}
 }
 
