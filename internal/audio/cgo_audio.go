@@ -71,7 +71,7 @@ int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_con
     if (!encoder || !capture_initialized) {
         return -1; // Encoder not initialized
     }
-    
+
     // Update the static variables
     opus_bitrate = bitrate;
     opus_complexity = complexity;
@@ -80,7 +80,7 @@ int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_con
     opus_signal_type = signal_type;
     opus_bandwidth = bandwidth;
     opus_dtx = dtx;
-    
+
     // Apply the new settings to the encoder
     int result = 0;
     result |= opus_encoder_ctl(encoder, OPUS_SET_BITRATE(opus_bitrate));
@@ -90,7 +90,7 @@ int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_con
     result |= opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(opus_signal_type));
     result |= opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth));
     result |= opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
-    
+
     return result; // 0 on success, non-zero on error
 }
 
@@ -781,11 +781,11 @@ func updateOpusEncoderParams(bitrate, complexity, vbr, vbrConstraint, signalType
 
 // CGO function aliases
 var (
-	CGOAudioInit              = cgoAudioInit
-	CGOAudioClose             = cgoAudioClose
-	CGOAudioReadEncode        = cgoAudioReadEncode
-	CGOAudioPlaybackInit      = cgoAudioPlaybackInit
-	CGOAudioPlaybackClose     = cgoAudioPlaybackClose
-	CGOAudioDecodeWrite       = cgoAudioDecodeWrite
+	CGOAudioInit               = cgoAudioInit
+	CGOAudioClose              = cgoAudioClose
+	CGOAudioReadEncode         = cgoAudioReadEncode
+	CGOAudioPlaybackInit       = cgoAudioPlaybackInit
+	CGOAudioPlaybackClose      = cgoAudioPlaybackClose
+	CGOAudioDecodeWrite        = cgoAudioDecodeWrite
 	CGOUpdateOpusEncoderParams = updateOpusEncoderParams
 )

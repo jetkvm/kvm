@@ -1,5 +1,5 @@
-//go:build !cgo || arm
-// +build !cgo arm
+//go:build cgo
+// +build cgo
 
 package audio
 
@@ -306,11 +306,7 @@ func ValidateAudioConfigConstants(config *AudioConfigConstants) error {
 // Cached max frame size to avoid function call overhead in hot paths
 var cachedMaxFrameSize int
 
-// Initialize validation cache at package initialization
-func init() {
-	// This ensures the cache is always initialized before any validation calls
-	cachedMaxFrameSize = 4096 // Default value, will be updated by InitValidationCache
-}
+// Note: Validation cache is initialized on first use to avoid init function
 
 // InitValidationCache initializes cached validation values with actual config
 func InitValidationCache() {
@@ -327,6 +323,10 @@ func InitValidationCache() {
 //
 //go:inline
 func ValidateAudioFrame(data []byte) error {
+	// Initialize cache on first use if not already done
+	if cachedMaxFrameSize == 0 {
+		InitValidationCache()
+	}
 	// Optimized validation with pre-allocated error messages for minimal overhead
 	dataLen := len(data)
 	if dataLen == 0 {

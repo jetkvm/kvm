@@ -142,6 +142,32 @@ func (lh *LatencyHistogram) RecordLatency(latency time.Duration) {
 	lh.samplesMutex.Unlock()
 }
 
+// LatencyHistogramData represents histogram data for WebSocket transmission
+type LatencyHistogramData struct {
+	Buckets []float64 `json:"buckets"` // Bucket boundaries in milliseconds
+	Counts  []int64   `json:"counts"`  // Count for each bucket
+}
+
+// GetHistogramData returns histogram buckets and counts for WebSocket transmission
+func (lh *LatencyHistogram) GetHistogramData() LatencyHistogramData {
+	// Convert bucket boundaries from nanoseconds to milliseconds
+	buckets := make([]float64, len(lh.buckets))
+	for i, bucket := range lh.buckets {
+		buckets[i] = float64(bucket) / 1e6 // Convert ns to ms
+	}
+
+	// Get current counts atomically
+	counts := make([]int64, len(lh.counts))
+	for i := range lh.counts {
+		counts[i] = atomic.LoadInt64(&lh.counts[i])
+	}
+
+	return LatencyHistogramData{
+		Buckets: buckets,
+		Counts:  counts,
+	}
+}
+
 // GetPercentiles calculates latency percentiles from recent samples
 func (lh *LatencyHistogram) GetPercentiles() LatencyPercentiles {
 	lh.samplesMutex.RLock()
@@ -339,6 +365,32 @@ func (gmc *GranularMetricsCollector) GetLatencyPercentiles() map[string]LatencyP
 		"output":     gmc.outputLatencyHist.GetPercentiles(),
 		"processing": gmc.processingLatencyHist.GetPercentiles(),
 	}
+}
+
+// GetInputLatencyHistogram returns histogram data for input latency
+func (gmc *GranularMetricsCollector) GetInputLatencyHistogram() *LatencyHistogramData {
+	gmc.mutex.RLock()
+	defer gmc.mutex.RUnlock()
+
+	if gmc.inputLatencyHist == nil {
+		return nil
+	}
+
+	data := gmc.inputLatencyHist.GetHistogramData()
+	return &data
+}
+
+// GetOutputLatencyHistogram returns histogram data for output latency
+func (gmc *GranularMetricsCollector) GetOutputLatencyHistogram() *LatencyHistogramData {
+	gmc.mutex.RLock()
+	defer gmc.mutex.RUnlock()
+
+	if gmc.outputLatencyHist == nil {
+		return nil
+	}
+
+	data := gmc.outputLatencyHist.GetHistogramData()
+	return &data
 }
 
 // GetBufferPoolEfficiency returns efficiency metrics for all buffer pools
