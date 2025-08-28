@@ -212,7 +212,8 @@ func setupRouter() *gin.Engine {
 	})
 
 	protected.GET("/audio/metrics", func(c *gin.Context) {
-		metrics := audio.GetAudioMetrics()
+		registry := audio.GetMetricsRegistry()
+		metrics := registry.GetAudioMetrics()
 		c.JSON(200, gin.H{
 			"frames_received":  metrics.FramesReceived,
 			"frames_dropped":   metrics.FramesDropped,
@@ -399,19 +400,8 @@ func setupRouter() *gin.Engine {
 	})
 
 	protected.GET("/microphone/metrics", func(c *gin.Context) {
-		if currentSession == nil || currentSession.AudioInputManager == nil {
-			c.JSON(200, gin.H{
-				"frames_sent":      0,
-				"frames_dropped":   0,
-				"bytes_processed":  0,
-				"last_frame_time":  "",
-				"connection_drops": 0,
-				"average_latency":  "0.0ms",
-			})
-			return
-		}
-
-		metrics := currentSession.AudioInputManager.GetMetrics()
+		registry := audio.GetMetricsRegistry()
+		metrics := registry.GetAudioInputMetrics()
 		c.JSON(200, gin.H{
 			"frames_sent":      metrics.FramesSent,
 			"frames_dropped":   metrics.FramesDropped,
