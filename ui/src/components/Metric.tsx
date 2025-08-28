@@ -61,6 +61,18 @@ export function createChartArray<T, K extends keyof T>(
   return result;
 }
 
+function computeReferenceValue(points: ChartPoint[]): number | undefined {
+  const values = points
+    .filter(p => p.metric != null && Number.isFinite(p.metric))
+    .map(p => Number(p.metric));
+
+  if (values.length === 0) return undefined;
+
+  const sum = values.reduce((acc, v) => acc + v, 0);
+  const mean = sum / values.length;
+  return Math.round(mean);
+}
+
 const theme = {
   light:
     "bg-white text-black border border-slate-800/20 dark:border dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
@@ -128,17 +140,9 @@ export function Metric<T, K extends keyof T>({
 
   // If the consumer provides a map function, we apply it to the raw data.
   const dataFinal: ChartPoint[] = map ? raw.map(map) : raw;
-  const recent = dataFinal
-    .slice(-(raw.length - 1))
-    .filter(x => x.metric != null) as ChartPoint[];
 
-  // Average the recent values
-  const computedReferenceValue =
-    recent.length > 0
-      ? Math.round(
-          recent.reduce((sum, x) => sum + (x.metric as number), 0) / recent.length,
-        )
-      : undefined;
+  // Compute the average value of the metric.
+  const referenceValue = computeReferenceValue(dataFinal);
 
   return (
     <div className="space-y-2">
@@ -162,7 +166,7 @@ export function Metric<T, K extends keyof T>({
               data={dataFinal}
               domain={domain}
               unit={unit}
-              referenceValue={computedReferenceValue}
+              referenceValue={referenceValue}
             />
           ) : (
             <div className="flex flex-col items-center space-y-1">
