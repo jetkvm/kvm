@@ -1554,35 +1554,36 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		FrameSize:     960,
 		MaxPacketSize: 4000,
 
-		// Audio Quality Bitrates
+		// Audio Quality Bitrates - Optimized for RV1106 SoC and KVM layer compatibility
+		// Low quality increased to 48/24 kbps for better audio quality while maintaining efficiency
 		AudioQualityLowOutputBitrate:    48,
 		AudioQualityLowInputBitrate:     24,
-		AudioQualityMediumOutputBitrate: 80,
-		AudioQualityMediumInputBitrate:  40,
+		AudioQualityMediumOutputBitrate: 64,
+		AudioQualityMediumInputBitrate:  32,
 
 		// AudioQualityHighOutputBitrate defines bitrate for high-quality output.
-		// Used in: Professional applications requiring excellent audio fidelity
-		// Impact: Provides excellent quality but increases bandwidth usage.
-		// Default 128kbps matches professional Opus encoding standards.
-		AudioQualityHighOutputBitrate: 128,
+		// Used in: Professional applications requiring good audio fidelity on RV1106
+		// Impact: Balanced quality optimized for single-core ARM performance.
+		// Reduced to 96kbps for RV1106 compatibility and KVM layer stability.
+		AudioQualityHighOutputBitrate: 96,
 
 		// AudioQualityHighInputBitrate defines bitrate for high-quality input.
-		// Used in: High-quality microphone input for professional use
-		// Impact: Ensures clear voice reproduction for professional scenarios.
-		// Default 64kbps provides excellent voice quality.
-		AudioQualityHighInputBitrate: 64,
+		// Used in: High-quality microphone input optimized for RV1106
+		// Impact: Clear voice reproduction without overwhelming single-core CPU.
+		// Reduced to 48kbps for optimal RV1106 performance.
+		AudioQualityHighInputBitrate: 48,
 
 		// AudioQualityUltraOutputBitrate defines bitrate for ultra-quality output.
-		// Used in: High-quality reproduction with optimized resource usage
-		// Impact: Excellent quality while maintaining system stability.
-		// Default 160kbps provides excellent audio quality with reduced CPU load.
-		AudioQualityUltraOutputBitrate: 160,
+		// Used in: Maximum quality while ensuring RV1106 stability
+		// Impact: Best possible quality without interfering with KVM operations.
+		// Optimized to 128kbps for RV1106 maximum performance threshold.
+		AudioQualityUltraOutputBitrate: 128,
 
 		// AudioQualityUltraInputBitrate defines bitrate for ultra-quality input.
-		// Used in: Professional microphone input with balanced resource usage
-		// Impact: Provides excellent voice quality while maintaining stability.
-		// Default 80kbps ensures excellent voice reproduction with reduced CPU load.
-		AudioQualityUltraInputBitrate: 80,
+		// Used in: Premium microphone input optimized for RV1106 constraints
+		// Impact: Excellent voice quality within RV1106 processing limits.
+		// Optimized to 64kbps for stable RV1106 operation.
+		AudioQualityUltraInputBitrate: 64,
 
 		// Audio Quality Sample Rates - Sampling frequencies for different quality levels
 		// Used in: Audio capture, processing, and format negotiation
@@ -1611,80 +1612,80 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Impact: Controls latency vs processing efficiency trade-offs
 
 		// AudioQualityLowFrameSize defines frame duration for low-quality audio.
-		// Used in: Bandwidth-constrained scenarios prioritizing efficiency
-		// Impact: Balances processing overhead with acceptable latency.
-		// Default 20ms provides better responsiveness for low-quality scenarios.
+		// Used in: RV1106 efficiency-prioritized scenarios
+		// Impact: Balanced frame size for quality and efficiency.
+		// Reduced to 20ms for better responsiveness and reduced audio saccades.
 		AudioQualityLowFrameSize: 20 * time.Millisecond,
 
 		// AudioQualityMediumFrameSize defines frame duration for medium-quality audio.
-		// Used in: Standard real-time audio applications
-		// Impact: Provides good balance of latency and processing efficiency.
-		// Default 20ms standard for real-time audio applications.
+		// Used in: Balanced RV1106 real-time audio applications
+		// Impact: Balances latency and processing efficiency for RV1106.
+		// Optimized to 20ms for RV1106 balanced performance.
 		AudioQualityMediumFrameSize: 20 * time.Millisecond,
 
 		// AudioQualityHighFrameSize defines frame duration for high-quality audio.
-		// Used in: High-quality audio scenarios with balanced requirements
-		// Impact: Maintains good latency while ensuring quality processing.
-		// Default 20ms provides optimal balance for high-quality scenarios.
+		// Used in: RV1106 high-quality scenarios with performance constraints
+		// Impact: Maintains acceptable latency while reducing RV1106 CPU load.
+		// Optimized to 20ms for RV1106 high-quality balance.
 		AudioQualityHighFrameSize: 20 * time.Millisecond,
 
 		// AudioQualityUltraFrameSize defines frame duration for ultra-quality audio.
-		// Used in: Applications requiring excellent quality with balanced performance
-		// Impact: Balances latency and processing efficiency for stable operation.
-		// Default 20ms provides excellent quality while reducing CPU load.
+		// Used in: Maximum RV1106 performance without KVM interference
+		// Impact: Balances quality and processing efficiency for RV1106 stability.
+		// Optimized to 20ms for RV1106 maximum stable performance.
 		AudioQualityUltraFrameSize: 20 * time.Millisecond,
 
-		// Audio Quality Channels - Channel configuration for different quality levels
-		// Used in: Audio processing pipeline for channel handling and bandwidth control
-		AudioQualityLowChannels:    2,
-		AudioQualityMediumChannels: 2,
-		AudioQualityHighChannels:   2,
-		AudioQualityUltraChannels:  2,
+		// Audio Quality Channels - Optimized for RV1106 processing efficiency
+		// Used in: Audio processing pipeline optimized for single-core ARM performance
+		AudioQualityLowChannels:    1, // Mono for minimal RV1106 processing
+		AudioQualityMediumChannels: 2, // Stereo for balanced RV1106 performance
+		AudioQualityHighChannels:   2, // Stereo for RV1106 high-quality scenarios
+		AudioQualityUltraChannels:  2, // Stereo for maximum RV1106 performance
 
 		// Audio Quality OPUS Encoder Parameters - Quality-specific encoder settings
 		// Used in: Dynamic OPUS encoder configuration based on quality presets
 		// Impact: Controls encoding complexity, VBR, signal type, bandwidth, and DTX
 
-		// Low Quality OPUS Parameters - Optimized for bandwidth conservation with better quality
-		AudioQualityLowOpusComplexity: 3,    // Balanced complexity for better quality
+		// Low Quality OPUS Parameters - Optimized for RV1106 minimal CPU usage
+		AudioQualityLowOpusComplexity: 2,    // Slightly increased complexity for better quality
 		AudioQualityLowOpusVBR:        1,    // VBR for better quality at same bitrate
 		AudioQualityLowOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC for better general audio
-		AudioQualityLowOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND for better frequency range
-		AudioQualityLowOpusDTX:        0,    // Disable DTX for consistent quality
+		AudioQualityLowOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND for improved range
+		AudioQualityLowOpusDTX:        0,    // Disable DTX to prevent audio interruptions
 
-		// Medium Quality OPUS Parameters - Enhanced performance and quality
-		AudioQualityMediumOpusComplexity: 6,    // Higher complexity for better quality
+		// Medium Quality OPUS Parameters - Balanced for RV1106 performance
+		AudioQualityMediumOpusComplexity: 3,    // Reduced complexity for RV1106 stability
 		AudioQualityMediumOpusVBR:        1,    // VBR for optimal quality
 		AudioQualityMediumOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
-		AudioQualityMediumOpusBandwidth:  1104, // OPUS_BANDWIDTH_SUPERWIDEBAND for better range
+		AudioQualityMediumOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND for balanced range
 		AudioQualityMediumOpusDTX:        0,    // Disable DTX for consistent quality
 
-		// High Quality OPUS Parameters - Premium quality with optimized performance
-		AudioQualityHighOpusComplexity: 9,    // Near-maximum complexity for excellent quality
+		// High Quality OPUS Parameters - Optimized for RV1106 high performance
+		AudioQualityHighOpusComplexity: 5,    // Moderate complexity for RV1106 limits
 		AudioQualityHighOpusVBR:        1,    // VBR for optimal quality
 		AudioQualityHighOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
-		AudioQualityHighOpusBandwidth:  1105, // OPUS_BANDWIDTH_FULLBAND for full frequency range
+		AudioQualityHighOpusBandwidth:  1104, // OPUS_BANDWIDTH_SUPERWIDEBAND for good range
 		AudioQualityHighOpusDTX:        0,    // Disable DTX for consistent quality
 
-		// Ultra Quality OPUS Parameters - Optimized for high quality with reasonable resource usage
-		AudioQualityUltraOpusComplexity: 8,    // Reduced complexity to prevent CPU overload
+		// Ultra Quality OPUS Parameters - Maximum RV1106 performance without KVM interference
+		AudioQualityUltraOpusComplexity: 6,    // Conservative complexity for RV1106 stability
 		AudioQualityUltraOpusVBR:        1,    // VBR for optimal quality
 		AudioQualityUltraOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
-		AudioQualityUltraOpusBandwidth:  1104, // OPUS_BANDWIDTH_SUPERWIDEBAND for better stability
+		AudioQualityUltraOpusBandwidth:  1104, // OPUS_BANDWIDTH_SUPERWIDEBAND for stability
 		AudioQualityUltraOpusDTX:        0,    // Disable DTX for maximum quality
 
-		// CGO Audio Constants
-		CGOOpusBitrate:       96000,
-		CGOOpusComplexity:    3,
+		// CGO Audio Constants - Optimized for RV1106 native audio processing
+		CGOOpusBitrate:       64000, // Reduced for RV1106 efficiency
+		CGOOpusComplexity:    2,     // Minimal complexity for RV1106
 		CGOOpusVBR:           1,
 		CGOOpusVBRConstraint: 1,
-		CGOOpusSignalType:    3,    // OPUS_SIGNAL_MUSIC
-		CGOOpusBandwidth:     1105, // OPUS_BANDWIDTH_FULLBAND
+		CGOOpusSignalType:    3002, // OPUS_SIGNAL_MUSIC
+		CGOOpusBandwidth:     1103, // OPUS_BANDWIDTH_WIDEBAND for RV1106
 		CGOOpusDTX:           0,
 		CGOSampleRate:        48000,
 		CGOChannels:          2,
 		CGOFrameSize:         960,
-		CGOMaxPacketSize:     1500,
+		CGOMaxPacketSize:     1200, // Reduced for RV1106 memory efficiency
 
 		// Input IPC Constants
 		// InputIPCSampleRate defines sample rate for input IPC operations.
