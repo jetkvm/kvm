@@ -21,7 +21,6 @@ type Session struct {
 	ControlChannel           *webrtc.DataChannel
 	RPCChannel               *webrtc.DataChannel
 	HidChannel               *webrtc.DataChannel
-	DiskChannel              *webrtc.DataChannel
 	shouldUmountVirtualMedia bool
 	rpcQueue                 chan webrtc.DataChannelMessage
 }

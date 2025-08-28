@@ -105,9 +105,6 @@ export interface RTCState {
   setRpcDataChannel: (channel: RTCDataChannel) => void;
   rpcDataChannel: RTCDataChannel | null;
 
-  diskChannel: RTCDataChannel | null;
-  setDiskChannel: (channel: RTCDataChannel) => void;
-
   peerConnectionState: RTCPeerConnectionState | null;
   setPeerConnectionState: (state: RTCPeerConnectionState) => void;
 
@@ -159,9 +156,6 @@ export const useRTCStore = create<RTCState>(set => ({
 
   peerConnectionState: null,
   setPeerConnectionState: (state: RTCPeerConnectionState) => set({ peerConnectionState: state }),
-
-  diskChannel: null,
-  setDiskChannel: (channel: RTCDataChannel) => set({ diskChannel: channel }),
 
   mediaStream: null,
   setMediaStream: (stream: MediaStream) => set({ mediaStream: stream }),
@@ -390,9 +384,6 @@ export interface RemoteVirtualMediaState {
 }
 
 export interface MountMediaState {
-  localFile: File | null;
-  setLocalFile: (file: MountMediaState["localFile"]) => void;
-
   remoteVirtualMediaState: RemoteVirtualMediaState | null;
   setRemoteVirtualMediaState: (state: MountMediaState["remoteVirtualMediaState"]) => void;
 
@@ -410,9 +401,6 @@ export interface MountMediaState {
 }
 
 export const useMountMediaStore = create<MountMediaState>(set => ({
-  localFile: null,
-  setLocalFile: (file: MountMediaState["localFile"]) => set({ localFile: file }),
-
   remoteVirtualMediaState: null,
   setRemoteVirtualMediaState: (state: MountMediaState["remoteVirtualMediaState"]) => set({ remoteVirtualMediaState: state }),
 

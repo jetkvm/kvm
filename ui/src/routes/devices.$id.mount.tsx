@@ -48,7 +48,6 @@ export function Dialog({ onClose }: { onClose: () => void }) {
   const {
     modalView,
     setModalView,
-    setLocalFile,
     setRemoteVirtualMediaState,
     errorMessage,
     setErrorMessage,
@@ -58,7 +57,6 @@ export function Dialog({ onClose }: { onClose: () => void }) {
   const [incompleteFileName, setIncompleteFileName] = useState<string | null>(null);
   const [mountInProgress, setMountInProgress] = useState(false);
   function clearMountMediaState() {
-    setLocalFile(null);
     setRemoteVirtualMediaState(null);
   }
 

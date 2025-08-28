@@ -29,7 +29,6 @@ import {
   USBStates,
   useDeviceStore,
   useHidStore,
-  useMountMediaStore,
   useNetworkStateStore,
   User,
   useRTCStore,
@@ -132,7 +131,6 @@ export default function KvmIdRoute() {
   const { 
     peerConnection, setPeerConnection,
     peerConnectionState, setPeerConnectionState,
-    diskChannel, setDiskChannel,
     setMediaStream,
     setRpcDataChannel,
     isTurnServerInUse, setTurnServerInUse,
@@ -484,18 +482,12 @@ export default function KvmIdRoute() {
       setRpcDataChannel(rpcDataChannel);
     };
 
-    const diskDataChannel = pc.createDataChannel("disk");
-    diskDataChannel.onopen = () => {
-      setDiskChannel(diskDataChannel);
-    };
-
     setPeerConnection(pc);
   }, [
     cleanupAndStopReconnecting,
     iceConfig?.iceServers,
     legacyHTTPSignaling,
     sendWebRTCSignal,
-    setDiskChannel,
     setMediaStream,
     setPeerConnection,
     setPeerConnectionState,
@@ -718,25 +710,6 @@ export default function KvmIdRoute() {
       navigateTo("/settings/general/update", { state: { updateSuccess: true } });
     }
   }, [navigate, navigateTo, queryParams, setModalView, setQueryParams]);
-
-  const { localFile } = useMountMediaStore();
-  useEffect(() => {
-    if (!diskChannel || !localFile) return;
-    diskChannel.onmessage = async e => {
-      console.debug("Received", e.data);
-      const data = JSON.parse(e.data);
-      const blob = localFile.slice(data.start, data.end);
-      const buf = await blob.arrayBuffer();
-      const header = new ArrayBuffer(16);
-      const headerView = new DataView(header);
-      headerView.setBigUint64(0, BigInt(data.start), false); // start offset, big-endian
-      headerView.setBigUint64(8, BigInt(buf.byteLength), false); // length, big-endian
-      const fullData = new Uint8Array(header.byteLength + buf.byteLength);
-      fullData.set(new Uint8Array(header), 0);
-      fullData.set(new Uint8Array(buf), header.byteLength);
-      diskChannel.send(fullData);
-    };
-  }, [diskChannel, localFile]);
 
   // System update
   const [kvmTerminal, setKvmTerminal] = useState<RTCDataChannel | null>(null);
