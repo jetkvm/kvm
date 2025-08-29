@@ -22,7 +22,10 @@ type Session struct {
 	RPCChannel               *webrtc.DataChannel
 	HidChannel               *webrtc.DataChannel
 	shouldUmountVirtualMedia bool
-	rpcQueue                 chan webrtc.DataChannelMessage
+
+	hidRpcAvailable bool
+	hidQueue        chan webrtc.DataChannelMessage
+	rpcQueue        chan webrtc.DataChannelMessage
 }
 
 type SessionConfig struct {
@@ -105,17 +108,49 @@ func newSession(config SessionConfig) (*Session, error) {
 		scopedLogger.Warn().Err(err).Msg("Failed to create PeerConnection")
 		return nil, err
 	}
+
 	session := &Session{peerConnection: peerConnection}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
+	session.hidQueue = make(chan webrtc.DataChannelMessage, 1024)
+
 	go func() {
 		for msg := range session.rpcQueue {
-			onRPCMessage(msg, session)
+			// TODO: only use goroutine if the task is asynchronous
+			go onRPCMessage(msg, session)
+		}
+	}()
+
+	go func() {
+		for msg := range session.hidQueue {
+			onHidMessage(msg.Data, session)
 		}
 	}()
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
+		defer func() {
+			if r := recover(); r != nil {
+				scopedLogger.Warn().Interface("error", r).Msg("Recovered from panic in DataChannel handler")
+			}
+		}()
+
 		scopedLogger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
 		switch d.Label() {
+		case "hidrpc":
+			session.HidChannel = d
+			d.OnMessage(func(msg webrtc.DataChannelMessage) {
+				if msg.IsString {
+					scopedLogger.Warn().Str("data", string(msg.Data)).Msg("received string data in HID RPC message handler")
+					return
+				}
+
+				if len(msg.Data) < 1 {
+					scopedLogger.Warn().Int("length", len(msg.Data)).Msg("received empty data in HID RPC message handler")
+					return
+				}
+
+				// Enqueue to ensure ordered processing
+				session.hidQueue <- msg
+			})
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {

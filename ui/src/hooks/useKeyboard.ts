@@ -1,12 +1,13 @@
 import { useCallback } from "react";
 
-import { KeysDownState, useHidStore, useRTCStore, hidKeyBufferSize, hidErrorRollOver } from "@/hooks/stores";
+import { hidErrorRollOver, hidKeyBufferSize, KeysDownState, useHidStore, useRTCStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { HID_RPC_MESSAGE_TYPES, useHidRpc } from "@/hooks/useHidRpc";
 import { hidKeyToModifierMask, keys, modifiers } from "@/keyboardMappings";
 
 export default function useKeyboard() {
   const { send } = useJsonRpc();
-  const { rpcDataChannel } = useRTCStore();
+  const { rpcDataChannel, rpcHidChannel } = useRTCStore();
   const { keysDownState, setKeysDownState } = useHidStore();
 
   // INTRODUCTION: The earlier version of the JetKVM device shipped with all keyboard state
@@ -19,7 +20,19 @@ export default function useKeyboard() {
   // dynamically set when the device responds to the first key press event or reports its
   // keysDownState when queried since the keyPressReport was introduced together with the 
   // getKeysDownState API.
-  const { keyPressReportApiAvailable, setkeyPressReportApiAvailable} = useHidStore();
+  const { keyPressReportApiAvailable, setkeyPressReportApiAvailable } = useHidStore();
+
+  // HidRPC is a binary format for exchanging keyboard and mouse events
+  const { reportKeyboardEvent, reportKeypressEvent } = useHidRpc((message) => {
+    if (message.type === HID_RPC_MESSAGE_TYPES.KeysDownState) {
+      if (!message.keysDownState) {
+        return;
+      }
+
+      setKeysDownState(message.keysDownState);
+      setkeyPressReportApiAvailable(true);
+    }
+  });
 
   // sendKeyboardEvent is used to send the full keyboard state to the device for macro handling
   // and resetting keyboard state. It sends the keys currently pressed and the modifier state.
@@ -27,9 +40,16 @@ export default function useKeyboard() {
   // or just accept the state if it does not support (returning no result)
   const sendKeyboardEvent = useCallback(
     async (state: KeysDownState) => {
-      if (rpcDataChannel?.readyState !== "open") return;
+      if (rpcDataChannel?.readyState !== "open" && rpcHidChannel?.readyState !== "open") return;
 
       console.debug(`Send keyboardReport keys: ${state.keys}, modifier: ${state.modifier}`);
+
+      if (rpcHidChannel?.readyState === "open") {
+        console.debug("Sending keyboard report via HidRPC");
+        reportKeyboardEvent(state.keys, state.modifier);
+        return;
+      }
+
       send("keyboardReport", { keys: state.keys, modifier: state.modifier }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           console.error(`Failed to send keyboard report ${state}`, resp.error);
@@ -44,13 +64,20 @@ export default function useKeyboard() {
           } else {
             // older devices versions do not return the keyDownState
             // so we just pretend they accepted what we sent
-            setKeysDownState(state); 
+            setKeysDownState(state);
             setkeyPressReportApiAvailable(false); // we ALSO know they do not support keyPressReport
           }
         }
       });
     },
-    [rpcDataChannel?.readyState, send, setKeysDownState, setkeyPressReportApiAvailable],
+    [
+      rpcDataChannel?.readyState,
+      rpcHidChannel?.readyState,
+      send,
+      reportKeyboardEvent,
+      setKeysDownState,
+      setkeyPressReportApiAvailable,
+    ],
   );
 
   // sendKeypressEvent is used to send a single key press/release event to the device.
@@ -61,9 +88,16 @@ export default function useKeyboard() {
   // in client/browser-side code using simulateDeviceSideKeyHandlingForLegacyDevices.
   const sendKeypressEvent = useCallback(
     async (key: number, press: boolean) => {
-      if (rpcDataChannel?.readyState !== "open") return;
+      if (rpcDataChannel?.readyState !== "open" && rpcHidChannel?.readyState !== "open") return;
 
       console.debug(`Send keypressEvent key: ${key}, press: ${press}`);
+
+      if (rpcHidChannel?.readyState === "open") {
+        console.debug("Sending keypress event via HidRPC");
+        reportKeypressEvent(key, press);
+        return; 
+      }
+
       send("keypressReport", { key, press }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           // -32601 means the method is not supported because the device is running an older version
@@ -83,7 +117,14 @@ export default function useKeyboard() {
         }
       });
     },
-    [rpcDataChannel?.readyState, send, setkeyPressReportApiAvailable, setKeysDownState],
+    [
+      rpcDataChannel?.readyState,
+      rpcHidChannel?.readyState,
+      send,
+      setkeyPressReportApiAvailable,
+      setKeysDownState,
+      reportKeypressEvent,
+    ],
   );
 
   // resetKeyboardState is used to reset the keyboard state to no keys pressed and no modifiers.
@@ -135,8 +176,14 @@ export default function useKeyboard() {
   // It then sends the full keyboard state to the device.
   const handleKeyPress = useCallback(
     async (key: number, press: boolean) => {
-      if (rpcDataChannel?.readyState !== "open") return;
+      if (rpcDataChannel?.readyState !== "open" && rpcHidChannel?.readyState !== "open") return;
       if ((key || 0) === 0) return; // ignore zero key presses (they are bad mappings)
+
+      if (rpcHidChannel?.readyState === "open") {
+        console.debug("Sending keypress event via HidRPC");
+        reportKeypressEvent(key, press);
+        return;
+      }
 
       if (keyPressReportApiAvailable) {
         // if the keyPress api is available, we can just send the key press event
@@ -152,7 +199,16 @@ export default function useKeyboard() {
         }
       }
     },
-    [keyPressReportApiAvailable, keysDownState, resetKeyboardState, rpcDataChannel?.readyState, sendKeyboardEvent, sendKeypressEvent],
+    [
+      keyPressReportApiAvailable,
+      keysDownState,
+      resetKeyboardState,
+      rpcDataChannel?.readyState,
+      rpcHidChannel?.readyState,
+      sendKeyboardEvent,
+      sendKeypressEvent,
+      reportKeypressEvent,
+    ],
   );
 
   // IMPORTANT: See the keyPressReportApiAvailable comment above for the reason this exists

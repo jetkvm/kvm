@@ -8,6 +8,7 @@ import InfoBar from "@components/InfoBar";
 import notifications from "@/notifications";
 import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { useHidRpc } from "@/hooks/useHidRpc";
 import { cx } from "@/cva.config";
 import { keys } from "@/keyboardMappings";
 import {
@@ -60,10 +61,11 @@ export default function WebRTCVideo() {
 
   // Misc states and hooks
   const { send } = useJsonRpc();
+  const { reportAbsMouseEvent, reportRelMouseEvent, handshakeCompleted } = useHidRpc();
 
   // Video-related
   const handleResize = useCallback(
-    ( { width, height }: { width: number | undefined; height: number | undefined }) => {
+    ({ width, height }: { width: number | undefined; height: number | undefined }) => {
       if (!videoElm.current) return;
       // Do something with width and height, e.g.:
       setVideoClientSize(width || 0, height || 0);
@@ -222,10 +224,22 @@ export default function WebRTCVideo() {
       if (settings.mouseMode !== "relative") return;
       // if we ignore the event, double-click will not work
       // if (x === 0 && y === 0 && buttons === 0) return;
-      send("relMouseReport", { dx: calcDelta(x), dy: calcDelta(y), buttons });
+      const dx = calcDelta(x);
+      const dy = calcDelta(y);
+      if (handshakeCompleted) {
+        reportRelMouseEvent(dx, dy, buttons);
+      } else {
+        send("relMouseReport", { dx, dy, buttons });
+      }
       setMouseMove({ x, y, buttons });
     },
-    [send, setMouseMove, settings.mouseMode],
+    [
+      send,
+      reportRelMouseEvent,
+      setMouseMove,
+      settings.mouseMode,
+      handshakeCompleted,
+    ],
   );
 
   const relMouseMoveHandler = useCallback(
@@ -243,11 +257,21 @@ export default function WebRTCVideo() {
   const sendAbsMouseMovement = useCallback(
     (x: number, y: number, buttons: number) => {
       if (settings.mouseMode !== "absolute") return;
-      send("absMouseReport", { x, y, buttons });
+      if (handshakeCompleted) {
+        reportAbsMouseEvent(x, y, buttons);
+      } else {
+        send("absMouseReport", { x, y, buttons });
+      }
       // We set that for the debug info bar
       setMousePosition(x, y);
     },
-    [send, setMousePosition, settings.mouseMode],
+    [
+      send,
+      reportAbsMouseEvent,
+      setMousePosition,
+      settings.mouseMode,
+      handshakeCompleted,
+    ],
   );
 
   const absMouseMoveHandler = useCallback(
@@ -357,7 +381,7 @@ export default function WebRTCVideo() {
       }
       console.debug(`Key down: ${hidKey}`);
       handleKeyPress(hidKey, true);
-      
+
       if (!isKeyboardLockActive && hidKey === keys.MetaLeft) {
         // If the left meta key was just pressed and we're not keyboard locked
         // we'll never see the keyup event because the browser is going to lose

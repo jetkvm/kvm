@@ -135,7 +135,8 @@ export default function KvmIdRoute() {
     setRpcDataChannel,
     isTurnServerInUse, setTurnServerInUse,
     rpcDataChannel,
-    setTransceiver
+    setTransceiver,
+    setRpcHidChannel,
   } = useRTCStore();
 
   const location = useLocation();
@@ -482,6 +483,12 @@ export default function KvmIdRoute() {
       setRpcDataChannel(rpcDataChannel);
     };
 
+    const rpcHidChannel = pc.createDataChannel("hidrpc");
+    rpcHidChannel.binaryType = "arraybuffer";
+    rpcHidChannel.onopen = () => {
+      setRpcHidChannel(rpcHidChannel);
+    };
+
     setPeerConnection(pc);
   }, [
     cleanupAndStopReconnecting,
@@ -492,6 +499,7 @@ export default function KvmIdRoute() {
     setPeerConnection,
     setPeerConnectionState,
     setRpcDataChannel,
+    setRpcHidChannel,
     setTransceiver,
   ]);
 

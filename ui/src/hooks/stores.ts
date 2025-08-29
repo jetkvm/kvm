@@ -105,6 +105,9 @@ export interface RTCState {
   setRpcDataChannel: (channel: RTCDataChannel) => void;
   rpcDataChannel: RTCDataChannel | null;
 
+  setRpcHidChannel: (channel: RTCDataChannel) => void;
+  rpcHidChannel: RTCDataChannel | null;
+
   peerConnectionState: RTCPeerConnectionState | null;
   setPeerConnectionState: (state: RTCPeerConnectionState) => void;
 
@@ -150,6 +153,9 @@ export const useRTCStore = create<RTCState>(set => ({
 
   rpcDataChannel: null,
   setRpcDataChannel: (channel: RTCDataChannel) => set({ rpcDataChannel: channel }),
+
+  rpcHidChannel: null,
+  setRpcHidChannel: (channel: RTCDataChannel) => set({ rpcHidChannel: channel }),
 
   transceiver: null,
   setTransceiver: (transceiver: RTCRtpTransceiver) => set({ transceiver }),

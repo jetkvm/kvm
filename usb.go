@@ -27,13 +27,13 @@ func initUsbGadget() {
 
 	gadget.SetOnKeyboardStateChange(func(state usbgadget.KeyboardState) {
 		if currentSession != nil {
-			writeJSONRPCEvent("keyboardLedState", state, currentSession)
+			reportHidRpcKeyboardLedState(state, currentSession)
 		}
 	})
 
 	gadget.SetOnKeysDownChange(func(state usbgadget.KeysDownState) {
 		if currentSession != nil {
-			writeJSONRPCEvent("keysDownState", state, currentSession)
+			reportHidRpcKeysDownState(state, currentSession)
 		}
 	})
 

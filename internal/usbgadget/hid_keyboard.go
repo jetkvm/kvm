@@ -86,6 +86,12 @@ type KeyboardState struct {
 	Compose    bool `json:"compose"`
 	Kana       bool `json:"kana"`
 	Shift      bool `json:"shift"` // This is not part of the main USB HID spec
+	raw        byte
+}
+
+// Byte returns the raw byte representation of the keyboard state.
+func (k *KeyboardState) Byte() byte {
+	return k.raw
 }
 
 func getKeyboardState(b byte) KeyboardState {
