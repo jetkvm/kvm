@@ -8,26 +8,8 @@ import (
 	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
-func onHidMessage(data []byte, session *Session) {
-	if len(data) < 1 {
-		logger.Warn().Int("length", len(data)).Msg("received empty data in HID RPC message handler")
-		return
-	}
-
-	var (
-		message hidrpc.Message
-		rpcErr  error
-	)
-
-	if err := hidrpc.Unmarshal(data, &message); err != nil {
-		logger.Warn().Err(err).Bytes("data", data).Msg("failed to unmarshal HID RPC message")
-		return
-	}
-
-	scopedLogger := hidRpcLogger.With().Str("payload", message.String()).Logger()
-
-	scopedLogger.Debug().Msg("received HID RPC message from the queue")
-	startTime := time.Now()
+func handleHidRpcMessage(message hidrpc.Message, session *Session) {
+	var rpcErr error
 
 	switch message.Type() {
 	case hidrpc.TypeHandshake:
@@ -68,9 +50,39 @@ func onHidMessage(data []byte, session *Session) {
 	if rpcErr != nil {
 		logger.Warn().Err(rpcErr).Msg("failed to handle HID RPC message")
 	}
+}
 
-	duration := time.Since(startTime)
-	scopedLogger.Debug().Dur("duration", duration).Msg("handled HID RPC message")
+func onHidMessage(data []byte, session *Session) {
+	scopedLogger := hidRpcLogger.With().Bytes("data", data).Logger()
+	scopedLogger.Debug().Msg("HID RPC message received")
+
+	if len(data) < 1 {
+		scopedLogger.Warn().Int("length", len(data)).Msg("received empty data in HID RPC message handler")
+		return
+	}
+
+	var message hidrpc.Message
+
+	if err := hidrpc.Unmarshal(data, &message); err != nil {
+		scopedLogger.Warn().Err(err).Msg("failed to unmarshal HID RPC message")
+		return
+	}
+
+	scopedLogger = scopedLogger.With().Str("descr", message.String()).Logger()
+
+	t := time.Now()
+
+	r := make(chan interface{})
+	go func() {
+		handleHidRpcMessage(message, session)
+		r <- nil
+	}()
+	select {
+	case <-time.After(1 * time.Second):
+		scopedLogger.Warn().Msg("HID RPC message timed out")
+	case <-r:
+		scopedLogger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")
+	}
 }
 
 func handleHidRpcKeyboardInput(message hidrpc.Message) (*usbgadget.KeysDownState, error) {

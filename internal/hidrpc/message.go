@@ -28,9 +28,9 @@ func (m *Message) String() string {
 	case TypeKeyboardReport:
 		return fmt.Sprintf("KeyboardReport{Modifier: %d, Keys: %v}", m.d[0], m.d[1:])
 	case TypePointerReport:
-		return fmt.Sprintf("PointerReport{X: %d, Y: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
+		return fmt.Sprintf("PointerReport{X: %d, Y: %d, Button: %d}", m.d[0:4], m.d[4:8], m.d[8])
 	case TypeMouseReport:
-		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
+		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0:2], m.d[2:4], m.d[4])
 	default:
 		return fmt.Sprintf("Unknown{Type: %d, Data: %v}", m.t, m.d)
 	}

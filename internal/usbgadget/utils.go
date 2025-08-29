@@ -3,10 +3,13 @@ package usbgadget
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -105,6 +108,23 @@ func compareFileContent(oldContent []byte, newContent []byte, looserMatch bool) 
 	}
 
 	return false
+}
+
+func writeWithTimeout(file *os.File, data []byte) (n int, err error) {
+	if err := file.SetWriteDeadline(time.Now().Add(hidWriteTimeout)); err != nil {
+		return -1, err
+	}
+
+	n, err = file.Write(data)
+	if err == nil {
+		return
+	}
+
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		err = nil
+	}
+
+	return
 }
 
 func (u *UsbGadget) logWithSuppression(counterName string, every int, logger *zerolog.Logger, err error, msg string, args ...any) {
