@@ -2,6 +2,7 @@ package kvm
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/usbgadget"
@@ -19,9 +20,14 @@ func onHidMessage(data []byte, session *Session) {
 	)
 
 	if err := hidrpc.Unmarshal(data, &message); err != nil {
-		logger.Warn().Err(err).Msg("failed to unmarshal HID RPC message")
+		logger.Warn().Err(err).Bytes("data", data).Msg("failed to unmarshal HID RPC message")
 		return
 	}
+
+	scopedLogger := hidRpcLogger.With().Str("payload", message.String()).Logger()
+
+	scopedLogger.Debug().Msg("received HID RPC message from the queue")
+	startTime := time.Now()
 
 	switch message.Type() {
 	case hidrpc.TypeHandshake:
@@ -62,6 +68,9 @@ func onHidMessage(data []byte, session *Session) {
 	if rpcErr != nil {
 		logger.Warn().Err(rpcErr).Msg("failed to handle HID RPC message")
 	}
+
+	duration := time.Since(startTime)
+	scopedLogger.Debug().Dur("duration", duration).Msg("handled HID RPC message")
 }
 
 func handleHidRpcKeyboardInput(message hidrpc.Message) (*usbgadget.KeysDownState, error) {

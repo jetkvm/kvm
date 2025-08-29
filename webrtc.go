@@ -148,6 +148,8 @@ func newSession(config SessionConfig) (*Session, error) {
 					return
 				}
 
+				scopedLogger.Debug().Str("data", string(msg.Data)).Msg("received data in HID RPC message handler")
+
 				// Enqueue to ensure ordered processing
 				session.hidQueue <- msg
 			})

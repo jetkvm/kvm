@@ -19,6 +19,23 @@ func (m *Message) Type() MessageType {
 	return m.t
 }
 
+func (m *Message) String() string {
+	switch m.t {
+	case TypeHandshake:
+		return "Handshake"
+	case TypeKeypressReport:
+		return fmt.Sprintf("KeypressReport{Key: %d, Press: %v}", m.d[0], m.d[1] == uint8(1))
+	case TypeKeyboardReport:
+		return fmt.Sprintf("KeyboardReport{Modifier: %d, Keys: %v}", m.d[0], m.d[1:])
+	case TypePointerReport:
+		return fmt.Sprintf("PointerReport{X: %d, Y: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
+	case TypeMouseReport:
+		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
+	default:
+		return fmt.Sprintf("Unknown{Type: %d, Data: %v}", m.t, m.d)
+	}
+}
+
 // KeypressReport ..
 type KeypressReport struct {
 	Key   byte
