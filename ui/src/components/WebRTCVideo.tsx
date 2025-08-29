@@ -61,7 +61,7 @@ export default function WebRTCVideo() {
 
   // Misc states and hooks
   const { send } = useJsonRpc();
-  const { reportAbsMouseEvent, reportRelMouseEvent, handshakeCompleted } = useHidRpc();
+  const { reportAbsMouseEvent, reportRelMouseEvent, rpcHidReady } = useHidRpc();
 
   // Video-related
   const handleResize = useCallback(
@@ -226,7 +226,7 @@ export default function WebRTCVideo() {
       // if (x === 0 && y === 0 && buttons === 0) return;
       const dx = calcDelta(x);
       const dy = calcDelta(y);
-      if (handshakeCompleted) {
+      if (rpcHidReady) {
         reportRelMouseEvent(dx, dy, buttons);
       } else {
         send("relMouseReport", { dx, dy, buttons });
@@ -238,7 +238,7 @@ export default function WebRTCVideo() {
       reportRelMouseEvent,
       setMouseMove,
       settings.mouseMode,
-      handshakeCompleted,
+      rpcHidReady,
     ],
   );
 
@@ -257,7 +257,7 @@ export default function WebRTCVideo() {
   const sendAbsMouseMovement = useCallback(
     (x: number, y: number, buttons: number) => {
       if (settings.mouseMode !== "absolute") return;
-      if (handshakeCompleted) {
+      if (rpcHidReady) {
         reportAbsMouseEvent(x, y, buttons);
       } else {
         send("absMouseReport", { x, y, buttons });
@@ -270,7 +270,7 @@ export default function WebRTCVideo() {
       reportAbsMouseEvent,
       setMousePosition,
       settings.mouseMode,
-      handshakeCompleted,
+      rpcHidReady,
     ],
   );
 

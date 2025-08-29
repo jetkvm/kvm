@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
-import { KeysDownState, useRTCStore } from "@/hooks/stores";
+import { KeyboardLedState, KeysDownState, useRTCStore } from "@/hooks/stores";
 
 export const HID_RPC_MESSAGE_TYPES = {
   Handshake: 0x01,
@@ -38,6 +38,30 @@ const fromInt8ToUint8 = (n: number) => {
   }
 
   return (n >> 0) & 0xFF;
+};
+
+const keyboardLedStateMasks = {
+  num_lock: 1 << 0,
+  caps_lock: 1 << 1,
+  scroll_lock: 1 << 2,
+  compose: 1 << 3,
+  kana: 1 << 4,
+  shift: 1 << 6,
+}
+
+export const toKeyboardLedState = (s: number): KeyboardLedState => {
+  if (!withinUint8Range(s)) {
+    throw new Error(`State ${s} is not within the uint8 range`);
+  }
+
+  return {
+    num_lock: (s & keyboardLedStateMasks.num_lock) !== 0,
+    caps_lock: (s & keyboardLedStateMasks.caps_lock) !== 0,
+    scroll_lock: (s & keyboardLedStateMasks.scroll_lock) !== 0,
+    compose: (s & keyboardLedStateMasks.compose) !== 0, // TODO: check if this is correct
+    kana: (s & keyboardLedStateMasks.kana) !== 0,
+    shift: (s & keyboardLedStateMasks.shift) !== 0,
+  } as KeyboardLedState;
 };
 
 const toPointerReportEvent = (x: number, y: number, buttons: number) => {
@@ -130,47 +154,49 @@ const unmarshalHidRpcMessage = (data: Uint8Array): HidRpcMessage | undefined => 
 };
 
 export function useHidRpc(onHidRpcMessage?: (payload: HidRpcMessage) => void) {
-  const { rpcHidChannel } = useRTCStore();
-  const [handshakeCompleted, setHandshakeCompleted] = useState(false);
+  const { rpcHidChannel, setRpcHidProtocolVersion, rpcHidProtocolVersion } = useRTCStore();
+  const rpcHidReady = useMemo(() => {
+    return rpcHidChannel?.readyState === "open" && rpcHidProtocolVersion !== null;
+  }, [rpcHidChannel, rpcHidProtocolVersion]);
 
   const reportKeyboardEvent = useCallback(
     (keys: number[], modifier: number) => {
-      if (rpcHidChannel?.readyState !== "open") return;
-      rpcHidChannel.send(toKeyboardReportEvent(keys, modifier));
+      if (!rpcHidReady) return;
+      rpcHidChannel?.send(toKeyboardReportEvent(keys, modifier));
     },
-    [rpcHidChannel],
+    [rpcHidChannel, rpcHidReady],
   );
 
   const reportKeypressEvent = useCallback(
     (key: number, press: boolean) => {
-      if (rpcHidChannel?.readyState !== "open") return;
-      rpcHidChannel.send(toKeypressReportEvent(key, press));
+      if (!rpcHidReady) return;
+      rpcHidChannel?.send(toKeypressReportEvent(key, press));
     },
-    [rpcHidChannel],
+    [rpcHidChannel, rpcHidReady],
   );
 
   const reportAbsMouseEvent = useCallback(
     (x: number, y: number, buttons: number) => {
-      if (rpcHidChannel?.readyState !== "open") return;
-      rpcHidChannel.send(toPointerReportEvent(x, y, buttons));
+      if (!rpcHidReady) return;
+      rpcHidChannel?.send(toPointerReportEvent(x, y, buttons));
     },
-    [rpcHidChannel],
+    [rpcHidChannel, rpcHidReady],
   );
 
   const reportRelMouseEvent = useCallback(
     (dx: number, dy: number, buttons: number) => {
-      if (rpcHidChannel?.readyState !== "open") return;
-      rpcHidChannel.send(toMouseReportEvent(dx, dy, buttons));
+      if (!rpcHidReady) return;
+      rpcHidChannel?.send(toMouseReportEvent(dx, dy, buttons));
     },
-    [rpcHidChannel],
+    [rpcHidChannel, rpcHidReady],
   );
 
   const doHandshake = useCallback(() => {
-    if (handshakeCompleted) return;
+    if (rpcHidProtocolVersion) return;
     if (!rpcHidChannel) return;
 
-    rpcHidChannel.send(toHandshakeMessage());
-  }, [rpcHidChannel, handshakeCompleted]);
+    rpcHidChannel?.send(toHandshakeMessage());
+  }, [rpcHidChannel, rpcHidProtocolVersion]);
 
   useEffect(() => {
     if (!rpcHidChannel) return;
@@ -184,7 +210,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: HidRpcMessage) => void) {
         return;
       }
 
-      console.log("Received HID RPC message", e.data);
+      console.debug("Received HID RPC message", e.data);
 
       const message = unmarshalHidRpcMessage(new Uint8Array(e.data));
       if (!message) {
@@ -193,7 +219,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: HidRpcMessage) => void) {
       }
 
       if (message.type === HID_RPC_MESSAGE_TYPES.Handshake) {
-        setHandshakeCompleted(true);
+        setRpcHidProtocolVersion(1);
       }
 
       onHidRpcMessage?.(message);
@@ -205,13 +231,21 @@ export function useHidRpc(onHidRpcMessage?: (payload: HidRpcMessage) => void) {
       rpcHidChannel.removeEventListener("message", messageHandler);
     };
   },
-    [rpcHidChannel, onHidRpcMessage, setHandshakeCompleted, doHandshake]);
+    [
+      rpcHidChannel,
+      onHidRpcMessage,
+      setRpcHidProtocolVersion,
+      doHandshake,
+      rpcHidReady,
+    ],
+  );
 
   return {
     reportKeyboardEvent,
     reportKeypressEvent,
     reportAbsMouseEvent,
     reportRelMouseEvent,
-    handshakeCompleted,
+    rpcHidProtocolVersion,
+    rpcHidReady,
   };
 }

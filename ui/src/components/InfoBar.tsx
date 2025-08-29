@@ -10,11 +10,13 @@ import {
   VideoState
 } from "@/hooks/stores";
 import { keys, modifiers } from "@/keyboardMappings";
+import { useHidRpc } from "@/hooks/useHidRpc";
 
 export default function InfoBar() {
   const { keysDownState } = useHidStore();
   const { mouseX, mouseY, mouseMove } = useMouseStore();
-
+  const { rpcHidReady } = useHidRpc();
+  
   const videoClientSize = useVideoStore(
     (state: VideoState) => `${Math.round(state.clientWidth)}x${Math.round(state.clientHeight)}`,
   );
@@ -98,6 +100,12 @@ export default function InfoBar() {
               <div className="flex w-[156px] items-center gap-x-1">
                 <span className="text-xs font-semibold">HDMI State:</span>
                 <span className="text-xs">{hdmiState}</span>
+              </div>
+            )}
+            {debugMode && (
+              <div className="flex w-[156px] items-center gap-x-1">
+                <span className="text-xs font-semibold">HidRPC State:</span>
+                <span className="text-xs">{rpcHidReady ? "Ready" : "Not Ready"}</span>
               </div>
             )}
 

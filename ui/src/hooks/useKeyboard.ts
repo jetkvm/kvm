@@ -7,7 +7,7 @@ import { hidKeyToModifierMask, keys, modifiers } from "@/keyboardMappings";
 
 export default function useKeyboard() {
   const { send } = useJsonRpc();
-  const { rpcDataChannel, rpcHidChannel } = useRTCStore();
+  const { rpcDataChannel } = useRTCStore();
   const { keysDownState, setKeysDownState } = useHidStore();
 
   // INTRODUCTION: The earlier version of the JetKVM device shipped with all keyboard state
@@ -23,7 +23,7 @@ export default function useKeyboard() {
   const { keyPressReportApiAvailable, setkeyPressReportApiAvailable } = useHidStore();
 
   // HidRPC is a binary format for exchanging keyboard and mouse events
-  const { reportKeyboardEvent, reportKeypressEvent } = useHidRpc((message) => {
+  const { reportKeyboardEvent, reportKeypressEvent, rpcHidReady } = useHidRpc((message) => {
     if (message.type === HID_RPC_MESSAGE_TYPES.KeysDownState) {
       if (!message.keysDownState) {
         return;
@@ -40,11 +40,11 @@ export default function useKeyboard() {
   // or just accept the state if it does not support (returning no result)
   const sendKeyboardEvent = useCallback(
     async (state: KeysDownState) => {
-      if (rpcDataChannel?.readyState !== "open" && rpcHidChannel?.readyState !== "open") return;
+      if (rpcDataChannel?.readyState !== "open" && !rpcHidReady) return;
 
       console.debug(`Send keyboardReport keys: ${state.keys}, modifier: ${state.modifier}`);
 
-      if (rpcHidChannel?.readyState === "open") {
+      if (rpcHidReady) {
         console.debug("Sending keyboard report via HidRPC");
         reportKeyboardEvent(state.keys, state.modifier);
         return;
@@ -72,7 +72,7 @@ export default function useKeyboard() {
     },
     [
       rpcDataChannel?.readyState,
-      rpcHidChannel?.readyState,
+      rpcHidReady,
       send,
       reportKeyboardEvent,
       setKeysDownState,
@@ -88,11 +88,11 @@ export default function useKeyboard() {
   // in client/browser-side code using simulateDeviceSideKeyHandlingForLegacyDevices.
   const sendKeypressEvent = useCallback(
     async (key: number, press: boolean) => {
-      if (rpcDataChannel?.readyState !== "open" && rpcHidChannel?.readyState !== "open") return;
+      if (rpcDataChannel?.readyState !== "open" && !rpcHidReady) return;
 
       console.debug(`Send keypressEvent key: ${key}, press: ${press}`);
 
-      if (rpcHidChannel?.readyState === "open") {
+      if (rpcHidReady) {
         console.debug("Sending keypress event via HidRPC");
         reportKeypressEvent(key, press);
         return; 
@@ -119,7 +119,7 @@ export default function useKeyboard() {
     },
     [
       rpcDataChannel?.readyState,
-      rpcHidChannel?.readyState,
+      rpcHidReady,
       send,
       setkeyPressReportApiAvailable,
       setKeysDownState,
@@ -176,10 +176,10 @@ export default function useKeyboard() {
   // It then sends the full keyboard state to the device.
   const handleKeyPress = useCallback(
     async (key: number, press: boolean) => {
-      if (rpcDataChannel?.readyState !== "open" && rpcHidChannel?.readyState !== "open") return;
+      if (rpcDataChannel?.readyState !== "open" && !rpcHidReady) return;
       if ((key || 0) === 0) return; // ignore zero key presses (they are bad mappings)
 
-      if (rpcHidChannel?.readyState === "open") {
+      if (rpcHidReady) {
         console.debug("Sending keypress event via HidRPC");
         reportKeypressEvent(key, press);
         return;
@@ -204,7 +204,7 @@ export default function useKeyboard() {
       keysDownState,
       resetKeyboardState,
       rpcDataChannel?.readyState,
-      rpcHidChannel?.readyState,
+      rpcHidReady,
       sendKeyboardEvent,
       sendKeypressEvent,
       reportKeypressEvent,

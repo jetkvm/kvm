@@ -105,6 +105,9 @@ export interface RTCState {
   setRpcDataChannel: (channel: RTCDataChannel) => void;
   rpcDataChannel: RTCDataChannel | null;
 
+  rpcHidProtocolVersion: number | null;
+  setRpcHidProtocolVersion: (version: number) => void;
+
   setRpcHidChannel: (channel: RTCDataChannel) => void;
   rpcHidChannel: RTCDataChannel | null;
 
@@ -153,6 +156,9 @@ export const useRTCStore = create<RTCState>(set => ({
 
   rpcDataChannel: null,
   setRpcDataChannel: (channel: RTCDataChannel) => set({ rpcDataChannel: channel }),
+
+  rpcHidProtocolVersion: null,
+  setRpcHidProtocolVersion: (version: number) => set({ rpcHidProtocolVersion: version }),
 
   rpcHidChannel: null,
   setRpcHidChannel: (channel: RTCDataChannel) => set({ rpcHidChannel: channel }),
