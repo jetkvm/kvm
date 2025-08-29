@@ -1,10 +1,15 @@
+//go:build cgo
+// +build cgo
+
 package audio
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -49,7 +54,20 @@ func (ais *AudioInputSupervisor) Start() error {
 	defer ais.mutex.Unlock()
 
 	if ais.IsRunning() {
-		return fmt.Errorf("audio input supervisor already running with PID %d", ais.cmd.Process.Pid)
+		if ais.cmd != nil && ais.cmd.Process != nil {
+			return fmt.Errorf("audio input supervisor already running with PID %d", ais.cmd.Process.Pid)
+		}
+		return fmt.Errorf("audio input supervisor already running")
+	}
+
+	// Check for existing audio input server process
+	if existingPID, err := ais.findExistingAudioInputProcess(); err == nil {
+		ais.logger.Info().Int("existing_pid", existingPID).Msg("Found existing audio input server process, connecting to it")
+
+		// Try to connect to the existing process
+		ais.setRunning(true)
+		go ais.connectClient()
+		return nil
 	}
 
 	// Create context for subprocess management
@@ -204,7 +222,7 @@ func (ais *AudioInputSupervisor) monitorSubprocess() {
 			ais.client.Disconnect()
 		}
 
-		// Mark as not running
+		// Mark as not running first to prevent race conditions
 		ais.setRunning(false)
 		ais.cmd = nil
 
@@ -263,4 +281,53 @@ func (ais *AudioInputSupervisor) SendConfig(config InputIPCConfig) error {
 	}
 
 	return ais.client.SendConfig(config)
+}
+
+// findExistingAudioInputProcess checks if there's already an audio input server process running
+func (ais *AudioInputSupervisor) findExistingAudioInputProcess() (int, error) {
+	// Get current executable path
+	execPath, err := os.Executable()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	execName := filepath.Base(execPath)
+
+	// Use ps to find processes with our executable name and audio-input-server argument
+	cmd := exec.Command("ps", "aux")
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("failed to run ps command: %w", err)
+	}
+
+	// Parse ps output to find audio input server processes
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, execName) && strings.Contains(line, "--audio-input-server") {
+			// Extract PID from ps output (second column)
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				if pid, err := strconv.Atoi(fields[1]); err == nil {
+					// Verify the process is still running and accessible
+					if ais.isProcessRunning(pid) {
+						return pid, nil
+					}
+				}
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("no existing audio input server process found")
+}
+
+// isProcessRunning checks if a process with the given PID is still running
+func (ais *AudioInputSupervisor) isProcessRunning(pid int) bool {
+	// Try to send signal 0 to check if process exists
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+
+	err = process.Signal(syscall.Signal(0))
+	return err == nil
 }

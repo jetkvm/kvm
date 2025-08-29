@@ -6,8 +6,6 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
-
-	"github.com/jetkvm/kvm/internal/logging"
 )
 
 // Lock-free buffer cache for per-goroutine optimization
@@ -18,6 +16,9 @@ type lockFreeBufferCache struct {
 // Per-goroutine buffer cache using goroutine-local storage
 var goroutineBufferCache = make(map[int64]*lockFreeBufferCache)
 var goroutineCacheMutex sync.RWMutex
+var lastCleanupTime int64   // Unix timestamp of last cleanup
+const maxCacheSize = 1000   // Maximum number of goroutine caches
+const cleanupInterval = 300 // Cleanup interval in seconds (5 minutes)
 
 // getGoroutineID extracts goroutine ID from runtime stack for cache key
 func getGoroutineID() int64 {
@@ -36,6 +37,41 @@ func getGoroutineID() int64 {
 		}
 	}
 	return 0
+}
+
+// cleanupGoroutineCache removes stale entries from the goroutine cache
+func cleanupGoroutineCache() {
+	now := time.Now().Unix()
+	lastCleanup := atomic.LoadInt64(&lastCleanupTime)
+
+	// Only cleanup if enough time has passed
+	if now-lastCleanup < cleanupInterval {
+		return
+	}
+
+	// Try to acquire cleanup lock atomically
+	if !atomic.CompareAndSwapInt64(&lastCleanupTime, lastCleanup, now) {
+		return // Another goroutine is already cleaning up
+	}
+
+	goroutineCacheMutex.Lock()
+	defer goroutineCacheMutex.Unlock()
+
+	// If cache is too large, remove oldest entries (simple FIFO)
+	if len(goroutineBufferCache) > maxCacheSize {
+		// Remove half of the entries to avoid frequent cleanups
+		toRemove := len(goroutineBufferCache) - maxCacheSize/2
+		count := 0
+		for gid := range goroutineBufferCache {
+			delete(goroutineBufferCache, gid)
+			count++
+			if count >= toRemove {
+				break
+			}
+		}
+		// Log cleanup for debugging (removed logging dependency)
+		_ = count // Avoid unused variable warning
+	}
 }
 
 type AudioBufferPool struct {
@@ -57,9 +93,7 @@ type AudioBufferPool struct {
 func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 	// Validate buffer size parameter
 	if err := ValidateBufferSize(bufferSize); err != nil {
-		// Log validation error and use default value
-		logger := logging.GetDefaultLogger().With().Str("component", "AudioBufferPool").Logger()
-		logger.Warn().Err(err).Int("bufferSize", bufferSize).Msg("invalid buffer size, using default")
+		// Use default value on validation error
 		bufferSize = GetConfig().AudioFramePoolSize
 	}
 
@@ -99,6 +133,9 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 }
 
 func (p *AudioBufferPool) Get() []byte {
+	// Trigger periodic cleanup of goroutine cache
+	cleanupGoroutineCache()
+
 	start := time.Now()
 	wasHit := false
 	defer func() {
