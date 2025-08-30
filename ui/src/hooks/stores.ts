@@ -108,8 +108,8 @@ export interface RTCState {
   rpcHidProtocolVersion: number | null;
   setRpcHidProtocolVersion: (version: number) => void;
 
-  setRpcHidChannel: (channel: RTCDataChannel) => void;
   rpcHidChannel: RTCDataChannel | null;
+  setRpcHidChannel: (channel: RTCDataChannel) => void;
 
   peerConnectionState: RTCPeerConnectionState | null;
   setPeerConnectionState: (state: RTCPeerConnectionState) => void;

@@ -23,7 +23,7 @@ type Session struct {
 	HidChannel               *webrtc.DataChannel
 	shouldUmountVirtualMedia bool
 
-	hidRpcAvailable bool
+	hidRPCAvailable bool
 	hidQueue        chan webrtc.DataChannelMessage
 	rpcQueue        chan webrtc.DataChannelMessage
 }
@@ -111,7 +111,7 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	session := &Session{peerConnection: peerConnection}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
-	session.hidQueue = make(chan webrtc.DataChannelMessage, 1024)
+	session.hidQueue = make(chan webrtc.DataChannelMessage, 256)
 
 	go func() {
 		for msg := range session.rpcQueue {
@@ -129,7 +129,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		defer func() {
 			if r := recover(); r != nil {
-				scopedLogger.Warn().Interface("error", r).Msg("Recovered from panic in DataChannel handler")
+				scopedLogger.Error().Interface("error", r).Msg("Recovered from panic in DataChannel handler")
 			}
 		}()
 
@@ -234,6 +234,11 @@ func newSession(config SessionConfig) (*Session, error) {
 			if session.rpcQueue != nil {
 				close(session.rpcQueue)
 				session.rpcQueue = nil
+			}
+			// Stop HID RPC processor
+			if session.hidQueue != nil {
+				close(session.hidQueue)
+				session.hidQueue = nil
 			}
 			if session.shouldUmountVirtualMedia {
 				if err := rpcUnmountImage(); err != nil {

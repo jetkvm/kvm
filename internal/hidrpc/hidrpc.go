@@ -6,12 +6,8 @@ import (
 	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
-// HID RPC is a variable-length packet format that is used to exchange keyboard and mouse events between the client and the server.
-// The packet format is as follows:
-// 1 byte: Event Type
-
 // MessageType is the type of the HID RPC message
-type MessageType uint8
+type MessageType byte
 
 const (
 	TypeHandshake        MessageType = 0x01
@@ -22,6 +18,10 @@ const (
 	TypeMouseReport      MessageType = 0x06
 	TypeKeyboardLedState MessageType = 0x32
 	TypeKeydownState     MessageType = 0x33
+)
+
+const (
+	Version byte = 0x01 // Version of the HID RPC protocol
 )
 
 // ShouldUseEnqueue returns true if the message type should be enqueued to the HID queue.
@@ -58,7 +58,7 @@ func Marshal(message *Message) ([]byte, error) {
 func NewHandshakeMessage() *Message {
 	return &Message{
 		t: TypeHandshake,
-		d: []byte{},
+		d: []byte{Version},
 	}
 }
 

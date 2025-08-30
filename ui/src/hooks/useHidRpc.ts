@@ -15,6 +15,8 @@ export const HID_RPC_MESSAGE_TYPES = {
 
 export type HidRpcMessageType = typeof HID_RPC_MESSAGE_TYPES[keyof typeof HID_RPC_MESSAGE_TYPES];
 
+export const HID_RPC_VERSION = 0x01;
+
 const withinUint8Range = (value: number) => {
   return value >= 0 && value <= 255;
 };
@@ -58,7 +60,7 @@ export const toKeyboardLedState = (s: number): KeyboardLedState => {
     num_lock: (s & keyboardLedStateMasks.num_lock) !== 0,
     caps_lock: (s & keyboardLedStateMasks.caps_lock) !== 0,
     scroll_lock: (s & keyboardLedStateMasks.scroll_lock) !== 0,
-    compose: (s & keyboardLedStateMasks.compose) !== 0, // TODO: check if this is correct
+    compose: (s & keyboardLedStateMasks.compose) !== 0,
     kana: (s & keyboardLedStateMasks.kana) !== 0,
     shift: (s & keyboardLedStateMasks.shift) !== 0,
   } as KeyboardLedState;
@@ -120,11 +122,12 @@ const toKeypressReportEvent = (key: number, press: boolean) => {
 };
 
 const toHandshakeMessage = () => {
-  return new Uint8Array([HID_RPC_MESSAGE_TYPES.Handshake]);
+  return new Uint8Array([HID_RPC_MESSAGE_TYPES.Handshake, HID_RPC_VERSION]);
 };
 
 export interface HidRpcMessage {
   type: HidRpcMessageType;
+  version?: number;
   keysDownState?: KeysDownState;
 }
 
@@ -139,6 +142,7 @@ const unmarshalHidRpcMessage = (data: Uint8Array): HidRpcMessage | undefined => 
     case HID_RPC_MESSAGE_TYPES.Handshake:
       return {
         type: HID_RPC_MESSAGE_TYPES.Handshake,
+        version: payload[0],
       };
     case HID_RPC_MESSAGE_TYPES.KeysDownState:
       return {
@@ -219,7 +223,18 @@ export function useHidRpc(onHidRpcMessage?: (payload: HidRpcMessage) => void) {
       }
 
       if (message.type === HID_RPC_MESSAGE_TYPES.Handshake) {
-        setRpcHidProtocolVersion(1);
+        if (!message.version) {
+          console.error("Received handshake message without version", message);
+          return;
+        }
+
+        // TODO: use capabilities to determine the supported functions rather than the version
+        if (message.version < HID_RPC_VERSION) {
+          console.error("Server is using an older HID RPC version than the client", message);
+          return;
+        }
+
+        setRpcHidProtocolVersion(message.version);
       }
 
       onHidRpcMessage?.(message);

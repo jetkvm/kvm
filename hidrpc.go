@@ -8,7 +8,7 @@ import (
 	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
-func handleHidRpcMessage(message hidrpc.Message, session *Session) {
+func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 	var rpcErr error
 
 	switch message.Type() {
@@ -22,11 +22,11 @@ func handleHidRpcMessage(message hidrpc.Message, session *Session) {
 			logger.Warn().Err(err).Msg("failed to send handshake message")
 			return
 		}
-		session.hidRpcAvailable = true
+		session.hidRPCAvailable = true
 	case hidrpc.TypeKeypressReport, hidrpc.TypeKeyboardReport:
-		keysDownState, err := handleHidRpcKeyboardInput(message)
+		keysDownState, err := handleHidRPCKeyboardInput(message)
 		if keysDownState != nil {
-			reportHidRpcKeysDownState(*keysDownState, session)
+			session.reportHidRPCKeysDownState(*keysDownState)
 		}
 		rpcErr = err
 	case hidrpc.TypePointerReport:
@@ -53,7 +53,7 @@ func handleHidRpcMessage(message hidrpc.Message, session *Session) {
 }
 
 func onHidMessage(data []byte, session *Session) {
-	scopedLogger := hidRpcLogger.With().Bytes("data", data).Logger()
+	scopedLogger := hidRPCLogger.With().Bytes("data", data).Logger()
 	scopedLogger.Debug().Msg("HID RPC message received")
 
 	if len(data) < 1 {
@@ -74,7 +74,7 @@ func onHidMessage(data []byte, session *Session) {
 
 	r := make(chan interface{})
 	go func() {
-		handleHidRpcMessage(message, session)
+		handleHidRPCMessage(message, session)
 		r <- nil
 	}()
 	select {
@@ -85,7 +85,7 @@ func onHidMessage(data []byte, session *Session) {
 	}
 }
 
-func handleHidRpcKeyboardInput(message hidrpc.Message) (*usbgadget.KeysDownState, error) {
+func handleHidRPCKeyboardInput(message hidrpc.Message) (*usbgadget.KeysDownState, error) {
 	switch message.Type() {
 	case hidrpc.TypeKeypressReport:
 		keypressReport, err := message.KeypressReport()
@@ -108,7 +108,7 @@ func handleHidRpcKeyboardInput(message hidrpc.Message) (*usbgadget.KeysDownState
 	return nil, fmt.Errorf("unknown HID RPC message type: %d", message.Type())
 }
 
-func reportHidRpc(params any, session *Session) {
+func reportHidRPC(params any, session *Session) {
 	var (
 		message []byte
 		err     error
@@ -118,6 +118,8 @@ func reportHidRpc(params any, session *Session) {
 		message, err = hidrpc.NewKeyboardLedMessage(params).Marshal()
 	case usbgadget.KeysDownState:
 		message, err = hidrpc.NewKeydownStateMessage(params).Marshal()
+	default:
+		err = fmt.Errorf("unknown HID RPC message type: %T", params)
 	}
 
 	if err != nil {
@@ -135,16 +137,16 @@ func reportHidRpc(params any, session *Session) {
 	}
 }
 
-func reportHidRpcKeyboardLedState(state usbgadget.KeyboardState, session *Session) {
-	if !session.hidRpcAvailable {
-		writeJSONRPCEvent("keyboardLedState", state, currentSession)
+func (s *Session) reportHidRPCKeyboardLedState(state usbgadget.KeyboardState) {
+	if !s.hidRPCAvailable {
+		writeJSONRPCEvent("keyboardLedState", state, s)
 	}
-	reportHidRpc(state, session)
+	reportHidRPC(state, s)
 }
 
-func reportHidRpcKeysDownState(state usbgadget.KeysDownState, session *Session) {
-	if !session.hidRpcAvailable {
-		writeJSONRPCEvent("keysDownState", state, currentSession)
+func (s *Session) reportHidRPCKeysDownState(state usbgadget.KeysDownState) {
+	if !s.hidRPCAvailable {
+		writeJSONRPCEvent("keysDownState", state, s)
 	}
-	reportHidRpc(state, session)
+	reportHidRPC(state, s)
 }
