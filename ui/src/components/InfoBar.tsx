@@ -15,8 +15,8 @@ import { useHidRpc } from "@/hooks/useHidRpc";
 export default function InfoBar() {
   const { keysDownState } = useHidStore();
   const { mouseX, mouseY, mouseMove } = useMouseStore();
-  const { rpcHidReady } = useHidRpc();
-  
+  const { rpcHidStatus } = useHidRpc();
+
   const videoClientSize = useVideoStore(
     (state: VideoState) => `${Math.round(state.clientWidth)}x${Math.round(state.clientHeight)}`,
   );
@@ -48,7 +48,7 @@ export default function InfoBar() {
     const modifierNames = Object.entries(modifiers).filter(([_, mask]) => (activeModifierMask & mask) !== 0).map(([name, _]) => name);
     const keyNames = Object.entries(keys).filter(([_, value]) => keysDown.includes(value)).map(([name, _]) => name);
 
-    return [...modifierNames,...keyNames].join(", ");
+    return [...modifierNames, ...keyNames].join(", ");
   }, [keysDownState, showPressedKeys]);
 
   return (
@@ -105,7 +105,7 @@ export default function InfoBar() {
             {debugMode && (
               <div className="flex w-[156px] items-center gap-x-1">
                 <span className="text-xs font-semibold">HidRPC State:</span>
-                <span className="text-xs">{rpcHidReady ? "Ready" : "Not Ready"}</span>
+                <span className="text-xs">{rpcHidStatus}</span>
               </div>
             )}
 

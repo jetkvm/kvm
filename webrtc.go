@@ -134,21 +134,24 @@ func newSession(config SessionConfig) (*Session, error) {
 		}()
 
 		scopedLogger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
+
 		switch d.Label() {
 		case "hidrpc":
 			session.HidChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
+				l := scopedLogger.With().Str("data", string(msg.Data)).Int("length", len(msg.Data)).Logger()
+
 				if msg.IsString {
-					scopedLogger.Warn().Str("data", string(msg.Data)).Msg("received string data in HID RPC message handler")
+					l.Warn().Msg("received string data in HID RPC message handler")
 					return
 				}
 
 				if len(msg.Data) < 1 {
-					scopedLogger.Warn().Int("length", len(msg.Data)).Msg("received empty data in HID RPC message handler")
+					l.Warn().Msg("received empty data in HID RPC message handler")
 					return
 				}
 
-				scopedLogger.Debug().Str("data", string(msg.Data)).Msg("received data in HID RPC message handler")
+				l.Trace().Msg("received data in HID RPC message handler")
 
 				// Enqueue to ensure ordered processing
 				session.hidQueue <- msg

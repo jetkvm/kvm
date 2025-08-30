@@ -163,6 +163,13 @@ export function useHidRpc(onHidRpcMessage?: (payload: HidRpcMessage) => void) {
     return rpcHidChannel?.readyState === "open" && rpcHidProtocolVersion !== null;
   }, [rpcHidChannel, rpcHidProtocolVersion]);
 
+  const rpcHidStatus = useMemo(() => {
+    if (!rpcHidChannel) return "N/A";
+    if (rpcHidChannel.readyState !== "open") return rpcHidChannel.readyState;
+    if (!rpcHidProtocolVersion) return "handshaking";
+    return `ready (v${rpcHidProtocolVersion})`;
+  }, [rpcHidChannel, rpcHidProtocolVersion]);
+
   const reportKeyboardEvent = useCallback(
     (keys: number[], modifier: number) => {
       if (!rpcHidReady) return;
@@ -262,5 +269,6 @@ export function useHidRpc(onHidRpcMessage?: (payload: HidRpcMessage) => void) {
     reportRelMouseEvent,
     rpcHidProtocolVersion,
     rpcHidReady,
+    rpcHidStatus,
   };
 }
