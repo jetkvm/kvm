@@ -103,6 +103,7 @@ func getKeyboardState(b byte) KeyboardState {
 		Compose:    b&KeyboardLedMaskCompose != 0,
 		Kana:       b&KeyboardLedMaskKana != 0,
 		Shift:      b&KeyboardLedMaskShift != 0,
+		raw:        b,
 	}
 }
 

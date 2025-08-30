@@ -1,163 +1,19 @@
 import { useCallback, useEffect, useMemo } from "react";
 
-import { KeyboardLedState, KeysDownState, useRTCStore } from "@/hooks/stores";
+import { useRTCStore } from "@/hooks/stores";
 
-export const HID_RPC_MESSAGE_TYPES = {
-  Handshake: 0x01,
-  KeyboardReport: 0x02,
-  PointerReport: 0x03,
-  WheelReport: 0x04,
-  KeypressReport: 0x05,
-  MouseReport: 0x06,
-  KeyboardLedState: 0x32,
-  KeysDownState: 0x33,
-}
+import {
+  HID_RPC_VERSION,
+  HandshakeMessage,
+  KeyboardReportMessage,
+  KeypressReportMessage,
+  MouseReportMessage,
+  PointerReportMessage,
+  RpcMessage,
+  unmarshalHidRpcMessage,
+} from "./hidRpc";
 
-export type HidRpcMessageType = typeof HID_RPC_MESSAGE_TYPES[keyof typeof HID_RPC_MESSAGE_TYPES];
-
-export const HID_RPC_VERSION = 0x01;
-
-const withinUint8Range = (value: number) => {
-  return value >= 0 && value <= 255;
-};
-
-const fromInt32toUint8 = (n: number) => {
-  if (n !== n >> 0) {
-    throw new Error(`Number ${n} is not within the int32 range`);
-  }
-
-  return new Uint8Array([
-    (n >> 24) & 0xFF,
-    (n >> 16) & 0xFF,
-    (n >> 8) & 0xFF,
-    (n >> 0) & 0xFF,
-  ]);
-};
-
-const fromInt8ToUint8 = (n: number) => {
-  if (n < -128 || n > 127) {
-    throw new Error(`Number ${n} is not within the int8 range`);
-  }
-
-  return (n >> 0) & 0xFF;
-};
-
-const keyboardLedStateMasks = {
-  num_lock: 1 << 0,
-  caps_lock: 1 << 1,
-  scroll_lock: 1 << 2,
-  compose: 1 << 3,
-  kana: 1 << 4,
-  shift: 1 << 6,
-}
-
-export const toKeyboardLedState = (s: number): KeyboardLedState => {
-  if (!withinUint8Range(s)) {
-    throw new Error(`State ${s} is not within the uint8 range`);
-  }
-
-  return {
-    num_lock: (s & keyboardLedStateMasks.num_lock) !== 0,
-    caps_lock: (s & keyboardLedStateMasks.caps_lock) !== 0,
-    scroll_lock: (s & keyboardLedStateMasks.scroll_lock) !== 0,
-    compose: (s & keyboardLedStateMasks.compose) !== 0,
-    kana: (s & keyboardLedStateMasks.kana) !== 0,
-    shift: (s & keyboardLedStateMasks.shift) !== 0,
-  } as KeyboardLedState;
-};
-
-const toPointerReportEvent = (x: number, y: number, buttons: number) => {
-  if (!withinUint8Range(buttons)) {
-    throw new Error(`Buttons ${buttons} is not within the uint8 range`);
-  }
-
-  return new Uint8Array([
-    HID_RPC_MESSAGE_TYPES.PointerReport,
-    ...fromInt32toUint8(x),
-    ...fromInt32toUint8(y),
-    buttons,
-  ]);
-};
-
-const toMouseReportEvent = (dx: number, dy: number, buttons: number) => {
-  if (!withinUint8Range(buttons)) {
-    throw new Error(`Buttons ${buttons} is not within the uint8 range`);
-  }
-  return new Uint8Array([
-    HID_RPC_MESSAGE_TYPES.MouseReport,
-    fromInt8ToUint8(dx),
-    fromInt8ToUint8(dy),
-    buttons,
-  ]);
-};
-
-const toKeyboardReportEvent = (keys: number[], modifier: number) => {
-  if (!withinUint8Range(modifier)) {
-    throw new Error(`Modifier ${modifier} is not within the uint8 range`);
-  }
-
-  keys.forEach((k) => {
-    if (!withinUint8Range(k)) {
-      throw new Error(`Key ${k} is not within the uint8 range`);
-    }
-  });
-
-  return new Uint8Array([
-    HID_RPC_MESSAGE_TYPES.KeyboardReport,
-    modifier,
-    ...keys,
-  ]);
-};
-
-const toKeypressReportEvent = (key: number, press: boolean) => {
-  if (!withinUint8Range(key)) {
-    throw new Error(`Key ${key} is not within the uint8 range`);
-  }
-
-  return new Uint8Array([
-    HID_RPC_MESSAGE_TYPES.KeypressReport,
-    key,
-    press ? 1 : 0,
-  ]);
-};
-
-const toHandshakeMessage = () => {
-  return new Uint8Array([HID_RPC_MESSAGE_TYPES.Handshake, HID_RPC_VERSION]);
-};
-
-export interface HidRpcMessage {
-  type: HidRpcMessageType;
-  version?: number;
-  keysDownState?: KeysDownState;
-}
-
-const unmarshalHidRpcMessage = (data: Uint8Array): HidRpcMessage | undefined => {
-  if (data.length < 1) {
-    throw new Error(`Invalid HID RPC message length: ${data.length}`);
-  }
-
-  const payload = data.slice(1);
-
-  switch (data[0]) {
-    case HID_RPC_MESSAGE_TYPES.Handshake:
-      return {
-        type: HID_RPC_MESSAGE_TYPES.Handshake,
-        version: payload[0],
-      };
-    case HID_RPC_MESSAGE_TYPES.KeysDownState:
-      return {
-        type: HID_RPC_MESSAGE_TYPES.KeysDownState,
-        keysDownState: {
-          modifier: payload[0],
-          keys: Array.from(payload.slice(1))
-        },
-      };
-    default:
-      throw new Error(`Unknown HID RPC message type: ${data[0]}`);
-  }
-};
-
-export function useHidRpc(onHidRpcMessage?: (payload: HidRpcMessage) => void) {
+export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
   const { rpcHidChannel, setRpcHidProtocolVersion, rpcHidProtocolVersion } = useRTCStore();
   const rpcHidReady = useMemo(() => {
     return rpcHidChannel?.readyState === "open" && rpcHidProtocolVersion !== null;
@@ -170,50 +26,74 @@ export function useHidRpc(onHidRpcMessage?: (payload: HidRpcMessage) => void) {
     return `ready (v${rpcHidProtocolVersion})`;
   }, [rpcHidChannel, rpcHidProtocolVersion]);
 
+  const sendMessage = useCallback((message: RpcMessage, ignoreHandshakeState = false) => {
+    if (rpcHidChannel?.readyState !== "open") return;
+    if (!rpcHidReady && !ignoreHandshakeState) return;
+
+    let data: Uint8Array | undefined;
+    try {
+      data = message.marshal();
+    } catch (e) {
+      console.error("Failed to send HID RPC message", e);
+    }
+    if (!data) return;
+
+    rpcHidChannel?.send(data as unknown as ArrayBuffer);
+  }, [rpcHidChannel, rpcHidReady]);
+
   const reportKeyboardEvent = useCallback(
     (keys: number[], modifier: number) => {
-      if (!rpcHidReady) return;
-      rpcHidChannel?.send(toKeyboardReportEvent(keys, modifier));
-    },
-    [rpcHidChannel, rpcHidReady],
+      sendMessage(new KeyboardReportMessage(keys, modifier));
+    }, [sendMessage],
   );
 
   const reportKeypressEvent = useCallback(
     (key: number, press: boolean) => {
-      if (!rpcHidReady) return;
-      rpcHidChannel?.send(toKeypressReportEvent(key, press));
+      sendMessage(new KeypressReportMessage(key, press));
     },
-    [rpcHidChannel, rpcHidReady],
+    [sendMessage],
   );
 
   const reportAbsMouseEvent = useCallback(
     (x: number, y: number, buttons: number) => {
-      if (!rpcHidReady) return;
-      rpcHidChannel?.send(toPointerReportEvent(x, y, buttons));
+      sendMessage(new PointerReportMessage(x, y, buttons));
     },
-    [rpcHidChannel, rpcHidReady],
+    [sendMessage],
   );
 
   const reportRelMouseEvent = useCallback(
     (dx: number, dy: number, buttons: number) => {
-      if (!rpcHidReady) return;
-      rpcHidChannel?.send(toMouseReportEvent(dx, dy, buttons));
+      sendMessage(new MouseReportMessage(dx, dy, buttons));
     },
-    [rpcHidChannel, rpcHidReady],
+    [sendMessage],
   );
 
-  const doHandshake = useCallback(() => {
+  const sendHandshake = useCallback(() => {
     if (rpcHidProtocolVersion) return;
     if (!rpcHidChannel) return;
 
-    rpcHidChannel?.send(toHandshakeMessage());
-  }, [rpcHidChannel, rpcHidProtocolVersion]);
+    sendMessage(new HandshakeMessage(HID_RPC_VERSION), true);
+  }, [rpcHidChannel, rpcHidProtocolVersion, sendMessage]);
+
+  const handleHandshake = useCallback((message: HandshakeMessage) => {
+    if (!message.version) {
+      console.error("Received handshake message without version", message);
+      return;
+    }
+
+    if (message.version < HID_RPC_VERSION) {
+      console.error("Server is using an older HID RPC version than the client", message);
+      return;
+    }
+
+    setRpcHidProtocolVersion(message.version);
+  }, [setRpcHidProtocolVersion]);
 
   useEffect(() => {
     if (!rpcHidChannel) return;
 
     // send handshake message
-    doHandshake();
+    sendHandshake();
 
     const messageHandler = (e: MessageEvent) => {
       if (typeof e.data === "string") {
@@ -221,27 +101,20 @@ export function useHidRpc(onHidRpcMessage?: (payload: HidRpcMessage) => void) {
         return;
       }
 
-      console.debug("Received HID RPC message", e.data);
-
       const message = unmarshalHidRpcMessage(new Uint8Array(e.data));
       if (!message) {
         console.warn("Received invalid HID RPC message", e.data);
         return;
       }
 
-      if (message.type === HID_RPC_MESSAGE_TYPES.Handshake) {
-        if (!message.version) {
-          console.error("Received handshake message without version", message);
-          return;
-        }
-
-        // TODO: use capabilities to determine the supported functions rather than the version
-        if (message.version < HID_RPC_VERSION) {
-          console.error("Server is using an older HID RPC version than the client", message);
-          return;
-        }
-
-        setRpcHidProtocolVersion(message.version);
+      console.debug("Received HID RPC message", message);
+      switch (message.constructor) {
+        case HandshakeMessage:
+          handleHandshake(message as HandshakeMessage);
+          break;
+        default:
+          // not all events are handled here, the rest are handled by the onHidRpcMessage callback
+          break;
       }
 
       onHidRpcMessage?.(message);
@@ -257,8 +130,8 @@ export function useHidRpc(onHidRpcMessage?: (payload: HidRpcMessage) => void) {
       rpcHidChannel,
       onHidRpcMessage,
       setRpcHidProtocolVersion,
-      doHandshake,
-      rpcHidReady,
+      sendHandshake,
+      handleHandshake,
     ],
   );
 

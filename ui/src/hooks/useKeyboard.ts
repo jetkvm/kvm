@@ -2,13 +2,14 @@ import { useCallback } from "react";
 
 import { hidErrorRollOver, hidKeyBufferSize, KeysDownState, useHidStore, useRTCStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import { HID_RPC_MESSAGE_TYPES, useHidRpc } from "@/hooks/useHidRpc";
+import { useHidRpc } from "@/hooks/useHidRpc";
+import { KeyboardLedStateMessage, KeysDownStateMessage } from "@/hooks/hidRpc";
 import { hidKeyToModifierMask, keys, modifiers } from "@/keyboardMappings";
 
 export default function useKeyboard() {
   const { send } = useJsonRpc();
   const { rpcDataChannel } = useRTCStore();
-  const { keysDownState, setKeysDownState } = useHidStore();
+  const { keysDownState, setKeysDownState, setKeyboardLedState } = useHidStore();
 
   // INTRODUCTION: The earlier version of the JetKVM device shipped with all keyboard state
   // being tracked on the browser/client-side. When adding the keyPressReport API to the
@@ -24,13 +25,16 @@ export default function useKeyboard() {
 
   // HidRPC is a binary format for exchanging keyboard and mouse events
   const { reportKeyboardEvent, reportKeypressEvent, rpcHidReady } = useHidRpc((message) => {
-    if (message.type === HID_RPC_MESSAGE_TYPES.KeysDownState) {
-      if (!message.keysDownState) {
-        return;
-      }
-
-      setKeysDownState(message.keysDownState);
-      setkeyPressReportApiAvailable(true);
+    switch (message.constructor) {
+      case KeysDownStateMessage:
+        setKeysDownState((message as KeysDownStateMessage).keysDownState);
+        setkeyPressReportApiAvailable(true);
+        break;
+      case KeyboardLedStateMessage:
+        setKeyboardLedState((message as KeyboardLedStateMessage).keyboardLedState);
+        break;
+      default:
+        break;
     }
   });
 
@@ -95,7 +99,7 @@ export default function useKeyboard() {
       if (rpcHidReady) {
         console.debug("Sending keypress event via HidRPC");
         reportKeypressEvent(key, press);
-        return; 
+        return;
       }
 
       send("keypressReport", { key, press }, (resp: JsonRpcResponse) => {

@@ -24,13 +24,25 @@ func (m *Message) String() string {
 	case TypeHandshake:
 		return "Handshake"
 	case TypeKeypressReport:
+		if len(m.d) < 2 {
+			return fmt.Sprintf("KeypressReport{Malformed: %v}", m.d)
+		}
 		return fmt.Sprintf("KeypressReport{Key: %d, Press: %v}", m.d[0], m.d[1] == uint8(1))
 	case TypeKeyboardReport:
+		if len(m.d) < 2 {
+			return fmt.Sprintf("KeyboardReport{Malformed: %v}", m.d)
+		}
 		return fmt.Sprintf("KeyboardReport{Modifier: %d, Keys: %v}", m.d[0], m.d[1:])
 	case TypePointerReport:
+		if len(m.d) < 9 {
+			return fmt.Sprintf("PointerReport{Malformed: %v}", m.d)
+		}
 		return fmt.Sprintf("PointerReport{X: %d, Y: %d, Button: %d}", m.d[0:4], m.d[4:8], m.d[8])
 	case TypeMouseReport:
-		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0:2], m.d[2:4], m.d[4])
+		if len(m.d) < 3 {
+			return fmt.Sprintf("MouseReport{Malformed: %v}", m.d)
+		}
+		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
 	default:
 		return fmt.Sprintf("Unknown{Type: %d, Data: %v}", m.t, m.d)
 	}
