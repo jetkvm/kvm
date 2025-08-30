@@ -83,7 +83,7 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 		Str("data", requestString).
 		Logger()
 
-	scopedLogger.Info().Msg("sending JSONRPC event")
+	scopedLogger.Trace().Msg("sending JSONRPC event")
 
 	err = session.RPCChannel.SendText(requestString)
 	if err != nil {
