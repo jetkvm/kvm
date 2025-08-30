@@ -24,9 +24,18 @@ const (
 	Version byte = 0x01 // Version of the HID RPC protocol
 )
 
-// ShouldUseEnqueue returns true if the message type should be enqueued to the HID queue.
-func ShouldUseEnqueue(messageType MessageType) bool {
-	return messageType == TypeMouseReport
+// GetQueueIndex returns the index of the queue to which the message should be enqueued.
+func GetQueueIndex(messageType MessageType) int {
+	switch messageType {
+	case TypeHandshake:
+		return 0
+	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardLedState, TypeKeydownState:
+		return 1
+	case TypePointerReport, TypeMouseReport, TypeWheelReport:
+		return 2
+	default:
+		return 3
+	}
 }
 
 // Unmarshal unmarshals the HID RPC message from the data.
