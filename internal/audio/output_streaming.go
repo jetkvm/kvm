@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -311,10 +312,18 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 		return ErrAudioAlreadyRunning
 	}
 
-	// Initialize CGO audio capture
-	if err := CGOAudioInit(); err != nil {
+	// Initialize CGO audio capture with retry logic
+	var initErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if initErr = CGOAudioInit(); initErr == nil {
+			break
+		}
+		getOutputStreamingLogger().Warn().Err(initErr).Int("attempt", attempt+1).Msg("Audio initialization failed, retrying")
+		time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+	}
+	if initErr != nil {
 		atomic.StoreInt32(&outputStreamingRunning, 0)
-		return err
+		return fmt.Errorf("failed to initialize audio after 3 attempts: %w", initErr)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -341,7 +350,7 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 			case <-ctx.Done():
 				return
 			default:
-				// Capture audio frame with enhanced error handling
+				// Capture audio frame with enhanced error handling and initialization checking
 				n, err := CGOAudioReadEncode(buffer)
 				if err != nil {
 					consecutiveErrors++
@@ -349,6 +358,13 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 						Err(err).
 						Int("consecutive_errors", consecutiveErrors).
 						Msg("Failed to read/encode audio")
+
+					// Check if this is an initialization error (C error code -1)
+					if strings.Contains(err.Error(), "C error code -1") {
+						getOutputStreamingLogger().Error().Msg("Audio system not initialized properly, forcing reinitialization")
+						// Force immediate reinitialization for init errors
+						consecutiveErrors = maxConsecutiveErrors
+					}
 
 					// Implement progressive backoff for consecutive errors
 					if consecutiveErrors >= maxConsecutiveErrors {
