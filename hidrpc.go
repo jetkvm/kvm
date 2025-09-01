@@ -109,6 +109,16 @@ func handleHidRPCKeyboardInput(message hidrpc.Message) (*usbgadget.KeysDownState
 }
 
 func reportHidRPC(params any, session *Session) {
+	if session == nil {
+		logger.Warn().Msg("session is nil, skipping reportHidRPC")
+		return
+	}
+
+	if !session.hidRPCAvailable || session.HidChannel == nil {
+		logger.Warn().Msg("HID RPC is not available, skipping reportHidRPC")
+		return
+	}
+
 	var (
 		message []byte
 		err     error
