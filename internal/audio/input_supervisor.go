@@ -152,27 +152,49 @@ func (ais *AudioInputSupervisor) Stop() {
 
 		// Wait for graceful shutdown with timeout
 		done := make(chan error, 1)
+		var waitErr error
 		go func() {
-			done <- ais.cmd.Wait()
+			waitErr = ais.cmd.Wait()
+			done <- waitErr
 		}()
 
 		select {
 		case <-done:
-			ais.logger.Info().Msg("Audio input server subprocess stopped gracefully")
+			if waitErr != nil {
+				ais.logger.Info().Err(waitErr).Msg("Audio input server subprocess stopped with error")
+			} else {
+				ais.logger.Info().Msg("Audio input server subprocess stopped gracefully")
+			}
 		case <-time.After(GetConfig().InputSupervisorTimeout):
 			// Force kill if graceful shutdown failed
 			ais.logger.Warn().Msg("Audio input server subprocess did not stop gracefully, force killing")
-			// Check if process is still alive before attempting to kill
+			// Use a more robust approach to check if process is still alive
 			if ais.cmd != nil && ais.cmd.Process != nil {
-				// Check process state to avoid "process already finished" error
-				if ais.cmd.ProcessState == nil {
-					err := ais.cmd.Process.Kill()
-					if err != nil {
-						ais.logger.Error().Err(err).Msg("Failed to kill audio input server subprocess")
+				// Try to send signal 0 to check if process exists
+				if err := ais.cmd.Process.Signal(syscall.Signal(0)); err == nil {
+					// Process is still alive, force kill it
+					if killErr := ais.cmd.Process.Kill(); killErr != nil {
+						// Only log error if it's not "process already finished"
+						if !strings.Contains(killErr.Error(), "process already finished") {
+							ais.logger.Error().Err(killErr).Msg("Failed to kill audio input server subprocess")
+						} else {
+							ais.logger.Debug().Msg("Audio input server subprocess already finished during kill attempt")
+						}
+					} else {
+						ais.logger.Info().Msg("Audio input server subprocess force killed successfully")
 					}
 				} else {
-					ais.logger.Info().Msg("Audio input server subprocess already finished")
+					ais.logger.Debug().Msg("Audio input server subprocess already finished")
 				}
+				// Wait a bit for the kill to take effect and collect the exit status
+				go func() {
+					select {
+					case <-done:
+						// Process finished
+					case <-time.After(1 * time.Second):
+						// Give up waiting
+					}
+				}()
 			}
 		}
 	}
