@@ -146,6 +146,8 @@ func (u *UsbGadget) GetKeysDownState() KeysDownState {
 }
 
 func (u *UsbGadget) updateKeyDownState(state KeysDownState) {
+	u.log.Trace().Interface("old", u.keysDownState).Interface("new", state).Msg("acquiring keyboardStateLock for updateKeyDownState")
+
 	u.keyboardStateLock.Lock()
 	defer u.keyboardStateLock.Unlock()
 
@@ -242,7 +244,7 @@ func (u *UsbGadget) keyboardWriteHidFile(modifier byte, keys []byte) error {
 		return err
 	}
 
-	_, err := writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
+	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
 	if err != nil {
 		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
 		u.keyboardHidFile.Close()
