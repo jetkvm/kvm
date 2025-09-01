@@ -709,6 +709,9 @@ func cgoAudioReadEncode(buf []byte) (int, error) {
 		return 0, newBufferTooSmallError(len(buf), minRequired)
 	}
 
+	// Skip initialization check for now to avoid CGO compilation issues
+	// TODO: Add proper initialization state checking
+
 	n := C.jetkvm_audio_read_encode(unsafe.Pointer(&buf[0]))
 	if n < 0 {
 		return 0, newAudioReadEncodeError(int(n))

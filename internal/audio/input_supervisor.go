@@ -141,7 +141,8 @@ func (ais *AudioInputSupervisor) Stop() {
 
 	// Try graceful termination first
 	if ais.cmd != nil && ais.cmd.Process != nil {
-		ais.logger.Info().Int("pid", ais.cmd.Process.Pid).Msg("Stopping audio input server subprocess")
+		pid := ais.cmd.Process.Pid
+		ais.logger.Info().Int("pid", pid).Msg("Stopping audio input server subprocess")
 
 		// Send SIGTERM
 		err := ais.cmd.Process.Signal(syscall.SIGTERM)
@@ -161,9 +162,17 @@ func (ais *AudioInputSupervisor) Stop() {
 		case <-time.After(GetConfig().InputSupervisorTimeout):
 			// Force kill if graceful shutdown failed
 			ais.logger.Warn().Msg("Audio input server subprocess did not stop gracefully, force killing")
-			err := ais.cmd.Process.Kill()
-			if err != nil {
-				ais.logger.Error().Err(err).Msg("Failed to kill audio input server subprocess")
+			// Check if process is still alive before attempting to kill
+			if ais.cmd != nil && ais.cmd.Process != nil {
+				// Check process state to avoid "process already finished" error
+				if ais.cmd.ProcessState == nil {
+					err := ais.cmd.Process.Kill()
+					if err != nil {
+						ais.logger.Error().Err(err).Msg("Failed to kill audio input server subprocess")
+					}
+				} else {
+					ais.logger.Info().Msg("Audio input server subprocess already finished")
+				}
 			}
 		}
 	}
