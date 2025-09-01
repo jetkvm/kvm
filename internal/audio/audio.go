@@ -309,6 +309,7 @@ func SetMicrophoneQuality(quality AudioQuality) {
 					DTX:        dtx,
 				}
 
+				logger.Info().Interface("opusConfig", opusConfig).Msg("sending Opus configuration to audio input subprocess")
 				if err := supervisor.SendOpusConfig(opusConfig); err != nil {
 					logger.Warn().Err(err).Msg("failed to send dynamic Opus config update, subprocess may need restart")
 					// Fallback to restart if dynamic update fails
@@ -320,7 +321,7 @@ func SetMicrophoneQuality(quality AudioQuality) {
 					logger.Info().Msg("audio input quality updated dynamically with complete Opus configuration")
 				}
 			} else {
-				logger.Info().Msg("audio input subprocess not connected, configuration will apply on next start")
+				logger.Info().Bool("supervisor_running", supervisor.IsRunning()).Msg("audio input subprocess not connected, configuration will apply on next start")
 			}
 		}
 	}
