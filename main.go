@@ -44,7 +44,8 @@ func startAudioSubprocess() error {
 	// Set the global supervisor for access from audio package
 	audio.SetAudioOutputSupervisor(audioSupervisor)
 
-	// Create and register audio input supervisor
+	// Create and register audio input supervisor (but don't start it)
+	// Audio input will be started on-demand through the UI
 	audioInputSupervisor := audio.NewAudioInputSupervisor()
 	audio.SetAudioInputSupervisor(audioInputSupervisor)
 
@@ -59,11 +60,8 @@ func startAudioSubprocess() error {
 		config.AudioQualityLowOpusDTX,
 	)
 
-	// Start audio input supervisor
-	if err := audioInputSupervisor.Start(); err != nil {
-		logger.Error().Err(err).Msg("failed to start audio input supervisor")
-		// Continue execution as audio input is not critical for basic functionality
-	}
+	// Note: Audio input supervisor is NOT started here - it will be started on-demand
+	// when the user activates microphone input through the UI
 
 	// Set up callbacks for process lifecycle events
 	audioSupervisor.SetCallbacks(

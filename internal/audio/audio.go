@@ -1,3 +1,6 @@
+//go:build cgo
+// +build cgo
+
 // Package audio provides real-time audio processing for JetKVM with low-latency streaming.
 //
 // Key components: output/input pipelines with Opus codec, adaptive buffer management,
@@ -283,20 +286,41 @@ func SetMicrophoneQuality(quality AudioQuality) {
 			dtx = GetConfig().AudioQualityMediumOpusDTX
 		}
 
-		// Restart audio input subprocess with new OPUS configuration
+		// Update audio input subprocess configuration dynamically without restart
 		if supervisor := GetAudioInputSupervisor(); supervisor != nil {
 			logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
-			logger.Info().Int("quality", int(quality)).Msg("restarting audio input subprocess with new quality settings")
+			logger.Info().Int("quality", int(quality)).Msg("updating audio input subprocess quality settings dynamically")
 
-			// Set new OPUS configuration
+			// Set new OPUS configuration for future restarts
 			supervisor.SetOpusConfig(config.Bitrate*1000, complexity, vbr, signalType, bandwidth, dtx)
 
-			// Stop current subprocess
-			supervisor.Stop()
+			// Send dynamic configuration update to running subprocess
+			if supervisor.IsConnected() {
+				// Convert AudioConfig to InputIPCOpusConfig with complete Opus parameters
+				opusConfig := InputIPCOpusConfig{
+					SampleRate: config.SampleRate,
+					Channels:   config.Channels,
+					FrameSize:  int(config.FrameSize.Milliseconds() * int64(config.SampleRate) / 1000), // Convert ms to samples
+					Bitrate:    config.Bitrate * 1000,                                                  // Convert kbps to bps
+					Complexity: complexity,
+					VBR:        vbr,
+					SignalType: signalType,
+					Bandwidth:  bandwidth,
+					DTX:        dtx,
+				}
 
-			// Start subprocess with new configuration
-			if err := supervisor.Start(); err != nil {
-				logger.Error().Err(err).Msg("failed to restart audio input subprocess")
+				if err := supervisor.SendOpusConfig(opusConfig); err != nil {
+					logger.Warn().Err(err).Msg("failed to send dynamic Opus config update, subprocess may need restart")
+					// Fallback to restart if dynamic update fails
+					supervisor.Stop()
+					if err := supervisor.Start(); err != nil {
+						logger.Error().Err(err).Msg("failed to restart audio input subprocess after config update failure")
+					}
+				} else {
+					logger.Info().Msg("audio input quality updated dynamically with complete Opus configuration")
+				}
+			} else {
+				logger.Info().Msg("audio input subprocess not connected, configuration will apply on next start")
 			}
 		}
 	}
