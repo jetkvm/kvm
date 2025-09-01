@@ -51,26 +51,13 @@ export default function useKeyboard() {
       if (rpcHidReady) {
         console.debug("Sending keyboard report via HidRPC");
         reportKeyboardEvent(state.keys, state.modifier);
+        setkeyPressReportApiAvailable(true);
         return;
       }
 
       send("keyboardReport", { keys: state.keys, modifier: state.modifier }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           console.error(`Failed to send keyboard report ${state}`, resp.error);
-        } else {
-          // If the device supports keyPressReport API, it will (also) return the keysDownState when we send
-          // the keyboardReport
-          const keysDownState = resp.result as KeysDownState;
-
-          if (keysDownState) {
-            setKeysDownState(keysDownState); // treat the response as the canonical state
-            setkeyPressReportApiAvailable(true); // if they returned a keysDownState, we ALSO know they also support keyPressReport
-          } else {
-            // older devices versions do not return the keyDownState
-            // so we just pretend they accepted what we sent
-            setKeysDownState(state);
-            setkeyPressReportApiAvailable(false); // we ALSO know they do not support keyPressReport
-          }
         }
       });
     },
@@ -79,7 +66,6 @@ export default function useKeyboard() {
       rpcHidReady,
       send,
       reportKeyboardEvent,
-      setKeysDownState,
       setkeyPressReportApiAvailable,
     ],
   );
@@ -92,41 +78,14 @@ export default function useKeyboard() {
   // in client/browser-side code using simulateDeviceSideKeyHandlingForLegacyDevices.
   const sendKeypressEvent = useCallback(
     async (key: number, press: boolean) => {
-      if (rpcDataChannel?.readyState !== "open" && !rpcHidReady) return;
-
       console.debug(`Send keypressEvent key: ${key}, press: ${press}`);
 
-      if (rpcHidReady) {
-        console.debug("Sending keypress event via HidRPC");
-        reportKeypressEvent(key, press);
-        return;
-      }
+      if (!rpcHidReady) return;
 
-      send("keypressReport", { key, press }, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          // -32601 means the method is not supported because the device is running an older version
-          if (resp.error.code === -32601) {
-            console.error("Legacy device does not support keypressReport API, switching to local key down state handling", resp.error);
-            setkeyPressReportApiAvailable(false);
-          } else {
-            console.error(`Failed to send key ${key} press: ${press}`, resp.error);
-          }
-        } else {
-          const keysDownState = resp.result as KeysDownState;
-
-          if (keysDownState) {
-            setKeysDownState(keysDownState);
-            // we don't need to set keyPressReportApiAvailable here, because it's already true or we never landed here
-          }
-        }
-      });
+      reportKeypressEvent(key, press);
     },
     [
-      rpcDataChannel?.readyState,
       rpcHidReady,
-      send,
-      setkeyPressReportApiAvailable,
-      setKeysDownState,
       reportKeypressEvent,
     ],
   );

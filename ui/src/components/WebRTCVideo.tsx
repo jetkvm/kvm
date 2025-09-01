@@ -229,6 +229,7 @@ export default function WebRTCVideo() {
       if (rpcHidReady) {
         reportRelMouseEvent(dx, dy, buttons);
       } else {
+        // kept for backward compatibility
         send("relMouseReport", { dx, dy, buttons });
       }
       setMouseMove({ x, y, buttons });
@@ -260,6 +261,7 @@ export default function WebRTCVideo() {
       if (rpcHidReady) {
         reportAbsMouseEvent(x, y, buttons);
       } else {
+        // kept for backward compatibility
         send("absMouseReport", { x, y, buttons });
       }
       // We set that for the debug info bar
