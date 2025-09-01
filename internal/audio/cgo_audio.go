@@ -711,6 +711,9 @@ func cgoAudioReadEncode(buf []byte) (int, error) {
 
 	// Skip initialization check for now to avoid CGO compilation issues
 	// TODO: Add proper initialization state checking
+	// Note: The C code already has comprehensive state tracking with capture_initialized,
+	// capture_initializing, playback_initialized, and playback_initializing flags.
+	// When CGO environment is properly configured, this should check C.capture_initialized.
 
 	n := C.jetkvm_audio_read_encode(unsafe.Pointer(&buf[0]))
 	if n < 0 {
