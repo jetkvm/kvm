@@ -36,6 +36,7 @@ type InputMessageType uint8
 const (
 	InputMessageTypeOpusFrame InputMessageType = iota
 	InputMessageTypeConfig
+	InputMessageTypeOpusConfig
 	InputMessageTypeStop
 	InputMessageTypeHeartbeat
 	InputMessageTypeAck
@@ -201,6 +202,19 @@ type InputIPCConfig struct {
 	SampleRate int
 	Channels   int
 	FrameSize  int
+}
+
+// InputIPCOpusConfig contains complete Opus encoder configuration
+type InputIPCOpusConfig struct {
+	SampleRate int
+	Channels   int
+	FrameSize  int
+	Bitrate    int
+	Complexity int
+	VBR        int
+	SignalType int
+	Bandwidth  int
+	DTX        int
 }
 
 // AudioInputServer handles IPC communication for audio input processing
@@ -462,6 +476,8 @@ func (ais *AudioInputServer) processMessage(msg *InputIPCMessage) error {
 		return ais.processOpusFrame(msg.Data)
 	case InputMessageTypeConfig:
 		return ais.processConfig(msg.Data)
+	case InputMessageTypeOpusConfig:
+		return ais.processOpusConfig(msg.Data)
 	case InputMessageTypeStop:
 		return fmt.Errorf("stop message received")
 	case InputMessageTypeHeartbeat:
@@ -504,6 +520,50 @@ func (ais *AudioInputServer) processConfig(data []byte) error {
 	}
 
 	// Acknowledge configuration receipt
+	return ais.sendAck()
+}
+
+// processOpusConfig processes a complete Opus encoder configuration update
+func (ais *AudioInputServer) processOpusConfig(data []byte) error {
+	logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
+
+	// Validate configuration data size (9 * int32 = 36 bytes)
+	if len(data) != 36 {
+		return fmt.Errorf("invalid Opus configuration data size: expected 36 bytes, got %d", len(data))
+	}
+
+	// Deserialize Opus configuration
+	config := InputIPCOpusConfig{
+		SampleRate: int(binary.LittleEndian.Uint32(data[0:4])),
+		Channels:   int(binary.LittleEndian.Uint32(data[4:8])),
+		FrameSize:  int(binary.LittleEndian.Uint32(data[8:12])),
+		Bitrate:    int(binary.LittleEndian.Uint32(data[12:16])),
+		Complexity: int(binary.LittleEndian.Uint32(data[16:20])),
+		VBR:        int(binary.LittleEndian.Uint32(data[20:24])),
+		SignalType: int(binary.LittleEndian.Uint32(data[24:28])),
+		Bandwidth:  int(binary.LittleEndian.Uint32(data[28:32])),
+		DTX:        int(binary.LittleEndian.Uint32(data[32:36])),
+	}
+
+	logger.Info().Interface("config", config).Msg("applying dynamic Opus encoder configuration")
+
+	// Apply the Opus encoder configuration dynamically
+	err := CGOUpdateOpusEncoderParams(
+		config.Bitrate,
+		config.Complexity,
+		config.VBR,
+		0, // VBR constraint - using default
+		config.SignalType,
+		config.Bandwidth,
+		config.DTX,
+	)
+
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to apply Opus encoder configuration")
+		return fmt.Errorf("failed to apply Opus configuration: %w", err)
+	}
+
+	logger.Info().Msg("Opus encoder configuration applied successfully")
 	return ais.sendAck()
 }
 
@@ -717,6 +777,44 @@ func (aic *AudioInputClient) SendConfig(config InputIPCConfig) error {
 	msg := &InputIPCMessage{
 		Magic:     inputMagicNumber,
 		Type:      InputMessageTypeConfig,
+		Length:    uint32(len(data)),
+		Timestamp: time.Now().UnixNano(),
+		Data:      data,
+	}
+
+	return aic.writeMessage(msg)
+}
+
+// SendOpusConfig sends a complete Opus encoder configuration update to the audio input server
+func (aic *AudioInputClient) SendOpusConfig(config InputIPCOpusConfig) error {
+	aic.mtx.Lock()
+	defer aic.mtx.Unlock()
+
+	if !aic.running || aic.conn == nil {
+		return fmt.Errorf("not connected to audio input server")
+	}
+
+	// Validate configuration parameters
+	if config.SampleRate <= 0 || config.Channels <= 0 || config.FrameSize <= 0 || config.Bitrate <= 0 {
+		return fmt.Errorf("invalid Opus configuration: SampleRate=%d, Channels=%d, FrameSize=%d, Bitrate=%d",
+			config.SampleRate, config.Channels, config.FrameSize, config.Bitrate)
+	}
+
+	// Serialize Opus configuration (9 * int32 = 36 bytes)
+	data := make([]byte, 36)
+	binary.LittleEndian.PutUint32(data[0:4], uint32(config.SampleRate))
+	binary.LittleEndian.PutUint32(data[4:8], uint32(config.Channels))
+	binary.LittleEndian.PutUint32(data[8:12], uint32(config.FrameSize))
+	binary.LittleEndian.PutUint32(data[12:16], uint32(config.Bitrate))
+	binary.LittleEndian.PutUint32(data[16:20], uint32(config.Complexity))
+	binary.LittleEndian.PutUint32(data[20:24], uint32(config.VBR))
+	binary.LittleEndian.PutUint32(data[24:28], uint32(config.SignalType))
+	binary.LittleEndian.PutUint32(data[28:32], uint32(config.Bandwidth))
+	binary.LittleEndian.PutUint32(data[32:36], uint32(config.DTX))
+
+	msg := &InputIPCMessage{
+		Magic:     inputMagicNumber,
+		Type:      InputMessageTypeOpusConfig,
 		Length:    uint32(len(data)),
 		Timestamp: time.Now().UnixNano(),
 		Data:      data,

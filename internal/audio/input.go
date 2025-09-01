@@ -208,7 +208,30 @@ func (aim *AudioInputManager) LogPerformanceStats() {
 		Msg("Audio input performance metrics")
 }
 
-// Note: IsRunning() is inherited from BaseAudioManager
+// IsRunning returns whether the audio input manager is running
+// This checks both the internal state and existing system processes
+func (aim *AudioInputManager) IsRunning() bool {
+	// First check internal state
+	if aim.BaseAudioManager.IsRunning() {
+		return true
+	}
+
+	// If internal state says not running, check for existing system processes
+	// This prevents duplicate subprocess creation when a process already exists
+	if aim.ipcManager != nil {
+		supervisor := aim.ipcManager.GetSupervisor()
+		if supervisor != nil {
+			if existingPID, exists := supervisor.HasExistingProcess(); exists {
+				aim.logger.Info().Int("existing_pid", existingPID).Msg("Found existing audio input server process")
+				// Update internal state to reflect reality
+				aim.setRunning(true)
+				return true
+			}
+		}
+	}
+
+	return false
+}
 
 // IsReady returns whether the audio input manager is ready to receive frames
 // This checks both that it's running and that the IPC connection is established

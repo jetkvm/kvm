@@ -1,4 +1,13 @@
+//go:build cgo
+// +build cgo
+
 package audio
+
+/*
+#cgo pkg-config: alsa
+#cgo LDFLAGS: -lopus
+*/
+import "C"
 
 import (
 	"context"
@@ -63,13 +72,16 @@ func RunAudioInputServer() error {
 	StartAdaptiveBuffering()
 	defer StopAdaptiveBuffering()
 
-	// Initialize CGO audio system
+	// Initialize CGO audio playback (optional for input server)
+	// This is used for audio loopback/monitoring features
 	err := CGOAudioPlaybackInit()
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to initialize CGO audio playback")
-		return err
+		logger.Warn().Err(err).Msg("failed to initialize CGO audio playback - audio monitoring disabled")
+		// Continue without playback - input functionality doesn't require it
+	} else {
+		defer CGOAudioPlaybackClose()
+		logger.Debug().Msg("CGO audio playback initialized successfully")
 	}
-	defer CGOAudioPlaybackClose()
 
 	// Create and start the IPC server
 	server, err := NewAudioInputServer()

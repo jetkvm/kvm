@@ -1555,35 +1555,35 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		MaxPacketSize: 4000,
 
 		// Audio Quality Bitrates - Optimized for RV1106 SoC and KVM layer compatibility
-		// Low quality increased to 48/24 kbps for better audio quality while maintaining efficiency
-		AudioQualityLowOutputBitrate:    48,
-		AudioQualityLowInputBitrate:     24,
-		AudioQualityMediumOutputBitrate: 64,
-		AudioQualityMediumInputBitrate:  32,
+		// Reduced bitrates to minimize CPU load and prevent mouse lag
+		AudioQualityLowOutputBitrate:    32,
+		AudioQualityLowInputBitrate:     16,
+		AudioQualityMediumOutputBitrate: 48,
+		AudioQualityMediumInputBitrate:  24,
 
 		// AudioQualityHighOutputBitrate defines bitrate for high-quality output.
 		// Used in: Professional applications requiring good audio fidelity on RV1106
 		// Impact: Balanced quality optimized for single-core ARM performance.
-		// Reduced to 96kbps for RV1106 compatibility and KVM layer stability.
-		AudioQualityHighOutputBitrate: 96,
+		// Reduced to 64kbps for RV1106 compatibility and minimal CPU overhead.
+		AudioQualityHighOutputBitrate: 64,
 
 		// AudioQualityHighInputBitrate defines bitrate for high-quality input.
 		// Used in: High-quality microphone input optimized for RV1106
 		// Impact: Clear voice reproduction without overwhelming single-core CPU.
-		// Reduced to 48kbps for optimal RV1106 performance.
-		AudioQualityHighInputBitrate: 48,
+		// Reduced to 32kbps for optimal RV1106 performance without lag.
+		AudioQualityHighInputBitrate: 32,
 
 		// AudioQualityUltraOutputBitrate defines bitrate for ultra-quality output.
 		// Used in: Maximum quality while ensuring RV1106 stability
 		// Impact: Best possible quality without interfering with KVM operations.
-		// Optimized to 128kbps for RV1106 maximum performance threshold.
-		AudioQualityUltraOutputBitrate: 128,
+		// Reduced to 96kbps for RV1106 maximum performance without mouse lag.
+		AudioQualityUltraOutputBitrate: 96,
 
 		// AudioQualityUltraInputBitrate defines bitrate for ultra-quality input.
 		// Used in: Premium microphone input optimized for RV1106 constraints
 		// Impact: Excellent voice quality within RV1106 processing limits.
-		// Optimized to 64kbps for stable RV1106 operation.
-		AudioQualityUltraInputBitrate: 64,
+		// Reduced to 48kbps for stable RV1106 operation without lag.
+		AudioQualityUltraInputBitrate: 48,
 
 		// Audio Quality Sample Rates - Sampling frequencies for different quality levels
 		// Used in: Audio capture, processing, and format negotiation
@@ -1647,31 +1647,31 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Impact: Controls encoding complexity, VBR, signal type, bandwidth, and DTX
 
 		// Low Quality OPUS Parameters - Optimized for RV1106 minimal CPU usage
-		AudioQualityLowOpusComplexity: 2,    // Slightly increased complexity for better quality
+		AudioQualityLowOpusComplexity: 0,    // Minimum complexity to reduce CPU load
 		AudioQualityLowOpusVBR:        1,    // VBR for better quality at same bitrate
-		AudioQualityLowOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC for better general audio
-		AudioQualityLowOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND for improved range
-		AudioQualityLowOpusDTX:        0,    // Disable DTX to prevent audio interruptions
+		AudioQualityLowOpusSignalType: 3001, // OPUS_SIGNAL_VOICE for lower complexity
+		AudioQualityLowOpusBandwidth:  1101, // OPUS_BANDWIDTH_NARROWBAND for efficiency
+		AudioQualityLowOpusDTX:        1,    // Enable DTX to reduce processing when silent
 
 		// Medium Quality OPUS Parameters - Balanced for RV1106 performance
-		AudioQualityMediumOpusComplexity: 3,    // Reduced complexity for RV1106 stability
+		AudioQualityMediumOpusComplexity: 1,    // Very low complexity for RV1106 stability
 		AudioQualityMediumOpusVBR:        1,    // VBR for optimal quality
-		AudioQualityMediumOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
-		AudioQualityMediumOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND for balanced range
-		AudioQualityMediumOpusDTX:        0,    // Disable DTX for consistent quality
+		AudioQualityMediumOpusSignalType: 3001, // OPUS_SIGNAL_VOICE for efficiency
+		AudioQualityMediumOpusBandwidth:  1102, // OPUS_BANDWIDTH_MEDIUMBAND for balance
+		AudioQualityMediumOpusDTX:        1,    // Enable DTX for CPU savings
 
 		// High Quality OPUS Parameters - Optimized for RV1106 high performance
-		AudioQualityHighOpusComplexity: 5,    // Moderate complexity for RV1106 limits
+		AudioQualityHighOpusComplexity: 2,    // Low complexity for RV1106 limits
 		AudioQualityHighOpusVBR:        1,    // VBR for optimal quality
 		AudioQualityHighOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
-		AudioQualityHighOpusBandwidth:  1104, // OPUS_BANDWIDTH_SUPERWIDEBAND for good range
+		AudioQualityHighOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND for good range
 		AudioQualityHighOpusDTX:        0,    // Disable DTX for consistent quality
 
 		// Ultra Quality OPUS Parameters - Maximum RV1106 performance without KVM interference
-		AudioQualityUltraOpusComplexity: 6,    // Conservative complexity for RV1106 stability
+		AudioQualityUltraOpusComplexity: 3,    // Moderate complexity for RV1106 stability
 		AudioQualityUltraOpusVBR:        1,    // VBR for optimal quality
 		AudioQualityUltraOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
-		AudioQualityUltraOpusBandwidth:  1104, // OPUS_BANDWIDTH_SUPERWIDEBAND for stability
+		AudioQualityUltraOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND for stability
 		AudioQualityUltraOpusDTX:        0,    // Disable DTX for maximum quality
 
 		// CGO Audio Constants - Optimized for RV1106 native audio processing

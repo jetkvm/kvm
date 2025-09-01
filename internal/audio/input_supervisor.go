@@ -283,6 +283,19 @@ func (ais *AudioInputSupervisor) SendConfig(config InputIPCConfig) error {
 	return ais.client.SendConfig(config)
 }
 
+// SendOpusConfig sends a complete Opus encoder configuration to the audio input server
+func (ais *AudioInputSupervisor) SendOpusConfig(config InputIPCOpusConfig) error {
+	if ais.client == nil {
+		return fmt.Errorf("client not initialized")
+	}
+
+	if !ais.client.IsConnected() {
+		return fmt.Errorf("client not connected")
+	}
+
+	return ais.client.SendOpusConfig(config)
+}
+
 // findExistingAudioInputProcess checks if there's already an audio input server process running
 func (ais *AudioInputSupervisor) findExistingAudioInputProcess() (int, error) {
 	// Get current executable path
@@ -330,4 +343,11 @@ func (ais *AudioInputSupervisor) isProcessRunning(pid int) bool {
 
 	err = process.Signal(syscall.Signal(0))
 	return err == nil
+}
+
+// HasExistingProcess checks if there's already an audio input server process running
+// This is a public wrapper around findExistingAudioInputProcess for external access
+func (ais *AudioInputSupervisor) HasExistingProcess() (int, bool) {
+	pid, err := ais.findExistingAudioInputProcess()
+	return pid, err == nil
 }
