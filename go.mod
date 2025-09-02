@@ -11,11 +11,10 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-contrib/logger v1.2.6
 	github.com/gin-gonic/gin v1.10.1
-	github.com/go-co-op/gocron/v2 v2.16.3
+	github.com/go-co-op/gocron/v2 v2.16.4
 	github.com/google/uuid v1.6.0
 	github.com/guregu/null/v6 v6.0.0
 	github.com/gwatts/rootcerts v0.0.0-20250601184604-370a9a75f341
-	github.com/hanwen/go-fuse/v2 v2.8.0
 	github.com/pion/logging v0.2.4
 	github.com/pion/mdns/v2 v2.0.7
 	github.com/pion/webrtc/v4 v4.1.3
@@ -26,7 +25,7 @@ require (
 	github.com/psanford/httpreadat v0.1.0
 	github.com/rs/zerolog v1.34.0
 	github.com/sourcegraph/tf-dag v0.2.2-0.20250131204052-3e8ff1477b4f
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/vishvananda/netlink v1.3.1
 	go.bug.st/serial v1.6.4
 	golang.org/x/crypto v0.40.0
