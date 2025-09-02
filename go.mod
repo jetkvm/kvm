@@ -15,7 +15,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/guregu/null/v6 v6.0.0
 	github.com/gwatts/rootcerts v0.0.0-20250601184604-370a9a75f341
-	github.com/hanwen/go-fuse/v2 v2.8.0
 	github.com/pion/logging v0.2.4
 	github.com/pion/mdns/v2 v2.0.7
 	github.com/pion/webrtc/v4 v4.1.3
@@ -31,7 +30,7 @@ require (
 	go.bug.st/serial v1.6.4
 	golang.org/x/crypto v0.40.0
 	golang.org/x/net v0.41.0
-	golang.org/x/sys v0.34.0
+	golang.org/x/sys v0.35.0
 )
 
 replace github.com/pojntfx/go-nbd v0.3.2 => github.com/chemhack/go-nbd v0.0.0-20241006125820-59e45f5b1e7b
