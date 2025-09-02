@@ -254,14 +254,17 @@ function KeyboardWrapper() {
                     Virtual Keyboard
                   </h2>
                   <div className="absolute right-2 flex items-center gap-x-2">
-                    <LinkButton
-                      size="XS"
-                      to="settings/keyboard"
-                      theme="light"
-                      text={selectedKeyboard.name}
-                      TrailingIcon={LuKeyboard}
-                    />
-                    <div className="h-[16px] w-px bg-slate-800/20 dark:bg-slate-200/20" />
+                    <div className="hidden md:flex gap-x-2 items-center">
+                      <LinkButton
+                        size="XS"
+                        to="settings/keyboard"
+                        theme="light"
+                        text={selectedKeyboard.name}
+                        LeadingIcon={LuKeyboard}
+                      />
+                      <div className="h-[20px] w-px bg-slate-800/20 dark:bg-slate-200/20" />
+                    </div>
+
                     <Button
                       size="XS"
                       theme="light"
