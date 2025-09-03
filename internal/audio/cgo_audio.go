@@ -727,6 +727,14 @@ type AudioConfigCache struct {
 	channels             atomic.Int32
 	frameSize            atomic.Int32
 
+	// Additional cached values for validation functions
+	maxAudioFrameSize atomic.Int32
+	maxChannels       atomic.Int32
+	minFrameDuration  atomic.Int64 // Store as nanoseconds
+	maxFrameDuration  atomic.Int64 // Store as nanoseconds
+	minOpusBitrate    atomic.Int32
+	maxOpusBitrate    atomic.Int32
+
 	// Mutex for updating the cache
 	mutex       sync.RWMutex
 	lastUpdate  time.Time
@@ -768,7 +776,7 @@ func (c *AudioConfigCache) Update() {
 	if !c.initialized.Load() || time.Since(c.lastUpdate) > c.cacheExpiry {
 		config := GetConfig() // Call GetConfig() only once
 
-		// Update atomic values for lock-free access
+		// Update atomic values for lock-free access - CGO values
 		c.minReadEncodeBuffer.Store(int32(config.MinReadEncodeBuffer))
 		c.maxDecodeWriteBuffer.Store(int32(config.MaxDecodeWriteBuffer))
 		c.maxPacketSize.Store(int32(config.CGOMaxPacketSize))
@@ -783,12 +791,25 @@ func (c *AudioConfigCache) Update() {
 		c.channels.Store(int32(config.CGOChannels))
 		c.frameSize.Store(int32(config.CGOFrameSize))
 
+		// Update additional validation values
+		c.maxAudioFrameSize.Store(int32(config.MaxAudioFrameSize))
+		c.maxChannels.Store(int32(config.MaxChannels))
+		c.minFrameDuration.Store(int64(config.MinFrameDuration))
+		c.maxFrameDuration.Store(int64(config.MaxFrameDuration))
+		c.minOpusBitrate.Store(int32(config.MinOpusBitrate))
+		c.maxOpusBitrate.Store(int32(config.MaxOpusBitrate))
+
 		// Pre-allocate common errors
 		c.bufferTooSmallReadEncode = newBufferTooSmallError(0, config.MinReadEncodeBuffer)
 		c.bufferTooLargeDecodeWrite = newBufferTooLargeError(config.MaxDecodeWriteBuffer+1, config.MaxDecodeWriteBuffer)
 
 		c.lastUpdate = time.Now()
 		c.initialized.Store(true)
+
+		// Update the global validation cache as well
+		if cachedMaxFrameSize != 0 {
+			cachedMaxFrameSize = config.MaxAudioFrameSize
+		}
 	}
 }
 
@@ -1029,16 +1050,19 @@ func ReturnBufferToPool(buf []byte) {
 	ReturnOptimalBuffer(buf)
 }
 
+// Note: AudioFrameBatch is now defined in batch_audio.go
+// This is kept here for reference but commented out to avoid conflicts
+/*
 // AudioFrameBatch represents a batch of audio frames for processing
 type AudioFrameBatch struct {
 	// Buffer for batch processing
-	Buffer []byte
+	buffer []byte
 	// Number of frames in the batch
-	FrameCount int
+	frameCount int
 	// Size of each frame
-	FrameSize int
+	frameSize int
 	// Current position in the buffer
-	Position int
+	position int
 }
 
 // NewAudioFrameBatch creates a new audio frame batch with the specified capacity
@@ -1052,10 +1076,10 @@ func NewAudioFrameBatch(maxFrames int) *AudioFrameBatch {
 
 	// Create batch with buffer sized for maxFrames
 	return &AudioFrameBatch{
-		Buffer:     GetBufferFromPool(maxFrames * frameSize),
-		FrameCount: 0,
-		FrameSize:  frameSize,
-		Position:   0,
+		buffer:     GetBufferFromPool(maxFrames * frameSize),
+		frameCount: 0,
+		frameSize:  frameSize,
+		position:   0,
 	}
 }
 
@@ -1063,33 +1087,34 @@ func NewAudioFrameBatch(maxFrames int) *AudioFrameBatch {
 // Returns true if the batch is full after adding this frame
 func (b *AudioFrameBatch) AddFrame(frame []byte) bool {
 	// Calculate position in buffer for this frame
-	pos := b.Position
+	pos := b.position
 
 	// Copy frame data to batch buffer
-	copy(b.Buffer[pos:pos+len(frame)], frame)
+	copy(b.buffer[pos:pos+len(frame)], frame)
 
 	// Update position and frame count
-	b.Position += len(frame)
-	b.FrameCount++
+	b.position += len(frame)
+	b.frameCount++
 
 	// Check if batch is full (buffer capacity reached)
-	return b.Position >= len(b.Buffer)
+	return b.position >= len(b.buffer)
 }
 
 // Reset resets the batch for reuse
 func (b *AudioFrameBatch) Reset() {
-	b.FrameCount = 0
-	b.Position = 0
+	b.frameCount = 0
+	b.position = 0
 }
 
 // Release returns the batch buffer to the pool
 func (b *AudioFrameBatch) Release() {
-	ReturnBufferToPool(b.Buffer)
-	b.Buffer = nil
-	b.FrameCount = 0
-	b.FrameSize = 0
-	b.Position = 0
+	ReturnBufferToPool(b.buffer)
+	b.buffer = nil
+	b.frameCount = 0
+	b.frameSize = 0
+	b.position = 0
 }
+*/
 
 // ReadEncodeWithPooledBuffer reads audio data and encodes it using a buffer from the pool
 // This reduces memory allocations by reusing buffers
