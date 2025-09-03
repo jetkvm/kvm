@@ -4,6 +4,7 @@ package audio
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -67,7 +68,9 @@ type batchReadResult struct {
 }
 
 type batchWriteRequest struct {
-	buffer     []byte
+	buffer     []byte // Buffer for backward compatibility
+	opusData   []byte // Opus encoded data for decode-write operations
+	pcmBuffer  []byte // PCM buffer for decode-write operations
 	resultChan chan batchWriteResult
 	timestamp  time.Time
 }
@@ -207,6 +210,7 @@ func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
 }
 
 // BatchDecodeWrite performs batched audio decode and write operations
+// This is the legacy version that uses a single buffer
 func (bap *BatchAudioProcessor) BatchDecodeWrite(buffer []byte) (int, error) {
 	// Get cached config to avoid GetConfig() calls in hot path
 	cache := GetCachedConfig()
@@ -222,7 +226,7 @@ func (bap *BatchAudioProcessor) BatchDecodeWrite(buffer []byte) (int, error) {
 		// Fallback to single operation if batch processor is not running
 		atomic.AddInt64(&bap.stats.SingleWrites, 1)
 		atomic.AddInt64(&bap.stats.WriteFrames, 1)
-		return CGOAudioDecodeWrite(buffer)
+		return CGOAudioDecodeWriteLegacy(buffer)
 	}
 
 	resultChan := make(chan batchWriteResult, 1)
@@ -240,7 +244,7 @@ func (bap *BatchAudioProcessor) BatchDecodeWrite(buffer []byte) (int, error) {
 		// Queue is full, fall back to single operation
 		atomic.AddInt64(&bap.stats.SingleWrites, 1)
 		atomic.AddInt64(&bap.stats.WriteFrames, 1)
-		return CGOAudioDecodeWrite(buffer)
+		return CGOAudioDecodeWriteLegacy(buffer)
 	}
 
 	// Wait for result with timeout
@@ -250,7 +254,61 @@ func (bap *BatchAudioProcessor) BatchDecodeWrite(buffer []byte) (int, error) {
 	case <-time.After(cache.BatchProcessingTimeout):
 		atomic.AddInt64(&bap.stats.SingleWrites, 1)
 		atomic.AddInt64(&bap.stats.WriteFrames, 1)
-		return CGOAudioDecodeWrite(buffer)
+		return CGOAudioDecodeWriteLegacy(buffer)
+	}
+}
+
+// BatchDecodeWriteWithBuffers performs batched audio decode and write operations with separate opus and PCM buffers
+func (bap *BatchAudioProcessor) BatchDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, error) {
+	// Get cached config to avoid GetConfig() calls in hot path
+	cache := GetCachedConfig()
+	cache.Update()
+
+	// Validate buffers before processing
+	if len(opusData) == 0 {
+		return 0, fmt.Errorf("empty opus data buffer")
+	}
+	if len(pcmBuffer) == 0 {
+		return 0, fmt.Errorf("empty PCM buffer")
+	}
+
+	if !bap.IsRunning() {
+		// Fallback to single operation if batch processor is not running
+		atomic.AddInt64(&bap.stats.SingleWrites, 1)
+		atomic.AddInt64(&bap.stats.WriteFrames, 1)
+		// Use the optimized function with separate buffers
+		return CGOAudioDecodeWrite(opusData, pcmBuffer)
+	}
+
+	resultChan := make(chan batchWriteResult, 1)
+	request := batchWriteRequest{
+		opusData:   opusData,
+		pcmBuffer:  pcmBuffer,
+		resultChan: resultChan,
+		timestamp:  time.Now(),
+	}
+
+	// Try to queue the request with non-blocking send
+	select {
+	case bap.writeQueue <- request:
+		// Successfully queued
+	default:
+		// Queue is full, fall back to single operation
+		atomic.AddInt64(&bap.stats.SingleWrites, 1)
+		atomic.AddInt64(&bap.stats.WriteFrames, 1)
+		// Use the optimized function with separate buffers
+		return CGOAudioDecodeWrite(opusData, pcmBuffer)
+	}
+
+	// Wait for result with timeout
+	select {
+	case result := <-resultChan:
+		return result.length, result.err
+	case <-time.After(cache.BatchProcessingTimeout):
+		atomic.AddInt64(&bap.stats.SingleWrites, 1)
+		atomic.AddInt64(&bap.stats.WriteFrames, 1)
+		// Use the optimized function with separate buffers
+		return CGOAudioDecodeWrite(opusData, pcmBuffer)
 	}
 }
 
@@ -437,7 +495,18 @@ func (bap *BatchAudioProcessor) processBatchWrite(batch []batchWriteRequest) {
 
 	// Process each request in the batch
 	for _, req := range batch {
-		length, err := CGOAudioDecodeWrite(req.buffer)
+		var length int
+		var err error
+
+		// Handle both legacy and new decode-write operations
+		if req.opusData != nil && req.pcmBuffer != nil {
+			// New style with separate opus data and PCM buffer
+			length, err = CGOAudioDecodeWrite(req.opusData, req.pcmBuffer)
+		} else {
+			// Legacy style with single buffer
+			length, err = CGOAudioDecodeWriteLegacy(req.buffer)
+		}
+
 		result := batchWriteResult{
 			length: length,
 			err:    err,
@@ -543,8 +612,19 @@ func BatchCGOAudioDecodeWrite(buffer []byte) (int, error) {
 	processor := GetBatchAudioProcessor()
 	if processor == nil || !processor.IsRunning() {
 		// Fall back to non-batched version if processor is not running
-		return CGOAudioDecodeWrite(buffer)
+		return CGOAudioDecodeWriteLegacy(buffer)
 	}
 
 	return processor.BatchDecodeWrite(buffer)
+}
+
+// BatchCGOAudioDecodeWriteWithBuffers is a batched version of CGOAudioDecodeWrite that uses separate opus and PCM buffers
+func BatchCGOAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, error) {
+	processor := GetBatchAudioProcessor()
+	if processor == nil || !processor.IsRunning() {
+		// Fall back to non-batched version if processor is not running
+		return CGOAudioDecodeWrite(opusData, pcmBuffer)
+	}
+
+	return processor.BatchDecodeWriteWithBuffers(opusData, pcmBuffer)
 }
