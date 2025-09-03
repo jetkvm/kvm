@@ -2435,11 +2435,11 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		EventSubscriptionDelayMS: 100,                        // 100ms subscription delay
 
 		// Goroutine Pool Configuration
-		MaxAudioProcessorWorkers: 8,                // 8 workers for audio processing tasks
-		MaxAudioReaderWorkers:    4,                // 4 workers for audio reading tasks
-		AudioProcessorQueueSize:  32,               // 32 tasks queue size for processor pool
-		AudioReaderQueueSize:     16,               // 16 tasks queue size for reader pool
-		WorkerMaxIdleTime:        30 * time.Second, // 30s maximum idle time before worker termination
+		MaxAudioProcessorWorkers: 16,               // 16 workers for audio processing tasks
+		MaxAudioReaderWorkers:    8,                // 8 workers for audio reading tasks
+		AudioProcessorQueueSize:  64,               // 64 tasks queue size for processor pool
+		AudioReaderQueueSize:     32,               // 32 tasks queue size for reader pool
+		WorkerMaxIdleTime:        60 * time.Second, // 60s maximum idle time before worker termination
 
 		// Input Processing Constants
 		InputProcessingTimeoutMS: 10, // 10ms processing timeout threshold
