@@ -859,44 +859,15 @@ func (c *AudioConfigCache) GetBufferTooLargeError() error {
 	return c.bufferTooLargeDecodeWrite
 }
 
-// For backward compatibility
-var (
-	cachedMinReadEncodeBuffer  int
-	cachedMaxDecodeWriteBuffer int
-	cachedMaxPacketSize        int
-	configCacheMutex           sync.RWMutex
-	lastConfigUpdate           time.Time
-	configCacheExpiry          = 10 * time.Second
-	configCacheInitialized     atomic.Bool
-)
-
-// Pre-allocated errors to avoid allocations in hot path
-var (
-	errBufferTooSmallReadEncode  error
-	errBufferTooLargeDecodeWrite error
-)
-
-// updateConfigCache refreshes the cached config values if needed
-// This function is kept for backward compatibility
-func updateConfigCache() {
-	// Use the new global cache
-	globalAudioConfigCache.Update()
-
-	// Update old variables for backward compatibility
-	cachedMinReadEncodeBuffer = globalAudioConfigCache.GetMinReadEncodeBuffer()
-	cachedMaxDecodeWriteBuffer = globalAudioConfigCache.GetMaxDecodeWriteBuffer()
-	cachedMaxPacketSize = globalAudioConfigCache.GetMaxPacketSize()
-	errBufferTooSmallReadEncode = globalAudioConfigCache.GetBufferTooSmallError()
-	errBufferTooLargeDecodeWrite = globalAudioConfigCache.GetBufferTooLargeError()
-
-	// Mark as initialized
-	configCacheInitialized.Store(true)
-}
+// Removed duplicate config caching system - using AudioConfigCache instead
 
 func cgoAudioReadEncode(buf []byte) (int, error) {
 	// Fast path: Use AudioConfigCache to avoid GetConfig() in hot path
 	cache := GetCachedConfig()
-	cache.Update()
+	// Only update cache if expired - avoid unnecessary overhead
+	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+		cache.Update()
+	}
 
 	// Fast validation with cached values - avoid lock with atomic access
 	minRequired := cache.GetMinReadEncodeBuffer()
@@ -914,14 +885,8 @@ func cgoAudioReadEncode(buf []byte) (int, error) {
 	// Note: The C code already has comprehensive state tracking with capture_initialized,
 	// capture_initializing, playback_initialized, and playback_initializing flags.
 
-	// Direct CGO call with minimal overhead - avoid bounds check with unsafe
-	var bufPtr unsafe.Pointer
-	if len(buf) > 0 {
-		bufPtr = unsafe.Pointer(&buf[0])
-	}
-
-	// Direct CGO call with minimal overhead
-	n := C.jetkvm_audio_read_encode(bufPtr)
+	// Direct CGO call with minimal overhead - unsafe.Pointer(&slice[0]) is safe for validated non-empty buffers
+	n := C.jetkvm_audio_read_encode(unsafe.Pointer(&buf[0]))
 
 	// Fast path for success case
 	if n > 0 {
@@ -967,14 +932,14 @@ func cgoAudioPlaybackClose() {
 func cgoAudioDecodeWrite(buf []byte) (n int, err error) {
 	// Fast validation with AudioConfigCache
 	cache := GetCachedConfig()
-	cache.Update()
+	// Only update cache if expired - avoid unnecessary overhead
+	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+		cache.Update()
+	}
 
 	// Optimized buffer validation
 	if len(buf) == 0 {
 		return 0, errEmptyBuffer
-	}
-	if buf == nil {
-		return 0, errNilBuffer
 	}
 
 	// Use cached max buffer size with atomic access
@@ -987,26 +952,8 @@ func cgoAudioDecodeWrite(buf []byte) (n int, err error) {
 		return 0, newBufferTooLargeError(len(buf), maxAllowed)
 	}
 
-	// Avoid bounds check with unsafe
-	var bufPtr unsafe.Pointer
-	if len(buf) > 0 {
-		bufPtr = unsafe.Pointer(&buf[0])
-		if bufPtr == nil {
-			return 0, errInvalidBufferPtr
-		}
-	}
-
-	// Simplified panic recovery - only recover from C panics
-	defer func() {
-		if r := recover(); r != nil {
-			// Log the panic but don't allocate in the hot path
-			// Using pre-allocated error to avoid allocations
-			err = errAudioDecodeWrite
-		}
-	}()
-
-	// Direct CGO call with minimal overhead
-	n = int(C.jetkvm_audio_decode_write(bufPtr, C.int(len(buf))))
+	// Direct CGO call with minimal overhead - unsafe.Pointer(&slice[0]) is safe for validated non-empty buffers
+	n = int(C.jetkvm_audio_decode_write(unsafe.Pointer(&buf[0]), C.int(len(buf))))
 
 	// Fast path for success case
 	if n >= 0 {
@@ -1051,10 +998,12 @@ var (
 	// Track buffer pool usage for monitoring
 	cgoBufferPoolGets atomic.Int64
 	cgoBufferPoolPuts atomic.Int64
-	// Batch processing statistics
+	// Batch processing statistics - only enabled in debug builds
 	batchProcessingCount atomic.Int64
 	batchFrameCount      atomic.Int64
 	batchProcessingTime  atomic.Int64
+	// Flag to control time tracking overhead
+	enableBatchTimeTracking atomic.Bool
 )
 
 // GetBufferFromPool gets a buffer from the pool with at least the specified capacity
@@ -1142,7 +1091,10 @@ func (b *AudioFrameBatch) Release() {
 func ReadEncodeWithPooledBuffer() ([]byte, int, error) {
 	// Get cached config
 	cache := GetCachedConfig()
-	cache.Update()
+	// Only update cache if expired - avoid unnecessary overhead
+	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+		cache.Update()
+	}
 
 	// Get a buffer from the pool with appropriate capacity
 	bufferSize := cache.GetMinReadEncodeBuffer()
@@ -1178,7 +1130,10 @@ func DecodeWriteWithPooledBuffer(data []byte) (int, error) {
 
 	// Get cached config
 	cache := GetCachedConfig()
-	cache.Update()
+	// Only update cache if expired - avoid unnecessary overhead
+	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+		cache.Update()
+	}
 
 	// Ensure data doesn't exceed max packet size
 	maxPacketSize := cache.GetMaxPacketSize()
@@ -1202,7 +1157,10 @@ func DecodeWriteWithPooledBuffer(data []byte) (int, error) {
 func BatchReadEncode(batchSize int) ([][]byte, error) {
 	// Get cached config
 	cache := GetCachedConfig()
-	cache.Update()
+	// Only update cache if expired - avoid unnecessary overhead
+	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+		cache.Update()
+	}
 
 	// Calculate total buffer size needed for batch
 	frameSize := cache.GetMinReadEncodeBuffer()
@@ -1212,8 +1170,24 @@ func BatchReadEncode(batchSize int) ([][]byte, error) {
 	batchBuffer := GetBufferFromPool(totalSize)
 	defer ReturnBufferToPool(batchBuffer)
 
-	// Track batch processing statistics
-	startTime := time.Now()
+	// Pre-allocate frame result buffers from pool to avoid allocations in loop
+	frameBuffers := make([][]byte, 0, batchSize)
+	for i := 0; i < batchSize; i++ {
+		frameBuffers = append(frameBuffers, GetBufferFromPool(frameSize))
+	}
+	defer func() {
+		// Return all frame buffers to pool
+		for _, buf := range frameBuffers {
+			ReturnBufferToPool(buf)
+		}
+	}()
+
+	// Track batch processing statistics - only if enabled
+	var startTime time.Time
+	trackTime := enableBatchTimeTracking.Load()
+	if trackTime {
+		startTime = time.Now()
+	}
 	batchProcessingCount.Add(1)
 
 	// Process frames in batch
@@ -1229,21 +1203,25 @@ func BatchReadEncode(batchSize int) ([][]byte, error) {
 			// Return partial batch on error
 			if i > 0 {
 				batchFrameCount.Add(int64(i))
-				batchProcessingTime.Add(time.Since(startTime).Microseconds())
+				if trackTime {
+					batchProcessingTime.Add(time.Since(startTime).Microseconds())
+				}
 				return frames, nil
 			}
 			return nil, err
 		}
 
-		// Copy frame data to result
-		frameCopy := make([]byte, n)
+		// Reuse pre-allocated buffer instead of make([]byte, n)
+		frameCopy := frameBuffers[i][:n] // Slice to actual size
 		copy(frameCopy, frameBuf[:n])
 		frames = append(frames, frameCopy)
 	}
 
 	// Update statistics
 	batchFrameCount.Add(int64(len(frames)))
-	batchProcessingTime.Add(time.Since(startTime).Microseconds())
+	if trackTime {
+		batchProcessingTime.Add(time.Since(startTime).Microseconds())
+	}
 
 	return frames, nil
 }
@@ -1258,10 +1236,17 @@ func BatchDecodeWrite(frames [][]byte) error {
 
 	// Get cached config
 	cache := GetCachedConfig()
-	cache.Update()
+	// Only update cache if expired - avoid unnecessary overhead
+	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+		cache.Update()
+	}
 
-	// Track batch processing statistics
-	startTime := time.Now()
+	// Track batch processing statistics - only if enabled
+	var startTime time.Time
+	trackTime := enableBatchTimeTracking.Load()
+	if trackTime {
+		startTime = time.Now()
+	}
 	batchProcessingCount.Add(1)
 
 	// Get a PCM buffer from the pool for optimized decode-write
@@ -1281,7 +1266,9 @@ func BatchDecodeWrite(frames [][]byte) error {
 		if err != nil {
 			// Update statistics before returning error
 			batchFrameCount.Add(int64(frameCount))
-			batchProcessingTime.Add(time.Since(startTime).Microseconds())
+			if trackTime {
+				batchProcessingTime.Add(time.Since(startTime).Microseconds())
+			}
 			return err
 		}
 
@@ -1290,7 +1277,9 @@ func BatchDecodeWrite(frames [][]byte) error {
 
 	// Update statistics
 	batchFrameCount.Add(int64(frameCount))
-	batchProcessingTime.Add(time.Since(startTime).Microseconds())
+	if trackTime {
+		batchProcessingTime.Add(time.Since(startTime).Microseconds())
+	}
 
 	return nil
 }
@@ -1322,7 +1311,10 @@ func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, err
 
 	// Get cached config
 	cache := GetCachedConfig()
-	cache.Update()
+	// Only update cache if expired - avoid unnecessary overhead
+	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+		cache.Update()
+	}
 
 	// Ensure data doesn't exceed max packet size
 	maxPacketSize := cache.GetMaxPacketSize()
@@ -1330,46 +1322,23 @@ func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, err
 		return 0, newBufferTooLargeError(len(opusData), maxPacketSize)
 	}
 
-	// Avoid bounds check with unsafe
-	var opusPtr unsafe.Pointer
-	if len(opusData) > 0 {
-		opusPtr = unsafe.Pointer(&opusData[0])
-		if opusPtr == nil {
-			return 0, errInvalidBufferPtr
-		}
-	}
-
-	// Simplified panic recovery - only recover from C panics
-	var n int
-	var err error
-	defer func() {
-		if r := recover(); r != nil {
-			// Using pre-allocated error to avoid allocations
-			err = errAudioDecodeWrite
-		}
-	}()
-
-	// Direct CGO call with minimal overhead
-	n = int(C.jetkvm_audio_decode_write(opusPtr, C.int(len(opusData))))
+	// Direct CGO call with minimal overhead - unsafe.Pointer(&slice[0]) is never nil for non-empty slices
+	n := int(C.jetkvm_audio_decode_write(unsafe.Pointer(&opusData[0]), C.int(len(opusData))))
 
 	// Fast path for success case
 	if n >= 0 {
 		return n, nil
 	}
 
-	// Handle error cases with static error codes
+	// Handle error cases with static error codes to reduce allocations
 	switch n {
 	case -1:
-		n = 0
-		err = errAudioInitFailed
+		return 0, errAudioInitFailed
 	case -2:
-		n = 0
-		err = errAudioDecodeWrite
+		return 0, errAudioDecodeWrite
 	default:
-		n = 0
-		err = newAudioDecodeWriteError(n)
+		return 0, newAudioDecodeWriteError(n)
 	}
-	return n, err
 }
 
 // CGO function aliases
