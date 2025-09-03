@@ -224,51 +224,8 @@ type AudioConfigConstants struct {
 	// Used in: process_monitor.go for configuring thread scheduling behavior
 	// Impact: Controls how audio threads are scheduled by the Linux kernel
 
-	// SchedNormal defines normal (CFS) scheduling policy.
-	// Used in: process_monitor.go for non-critical audio threads
-	// Impact: Standard time-sharing scheduling, may cause audio latency under load.
-	// Value 0 corresponds to SCHED_NORMAL in Linux kernel.
-	SchedNormal int
-
-	// SchedFIFO defines First-In-First-Out real-time scheduling policy.
-	// Used in: process_monitor.go for critical audio threads requiring deterministic timing
-	// Impact: Provides real-time scheduling but may starve other processes if misused.
-	// Value 1 corresponds to SCHED_FIFO in Linux kernel.
-	SchedFIFO int
-
-	// SchedRR defines Round-Robin real-time scheduling policy.
-	// Used in: process_monitor.go for real-time threads that should share CPU time
-	// Impact: Real-time scheduling with time slicing, balances determinism and fairness.
-	// Value 2 corresponds to SCHED_RR in Linux kernel.
-	SchedRR int
-
-	// Real-time Priority Levels - Priority values for real-time audio thread scheduling
-	// Used in: process_monitor.go for setting thread priorities
-	// Impact: Higher priorities get more CPU time but may affect system responsiveness
-
-	// RTAudioHighPriority defines highest priority for critical audio threads.
-	// Used in: process_monitor.go for time-critical audio processing (encoding/decoding)
-	// Impact: Ensures audio threads get CPU time but may impact system responsiveness.
-	// Default 80 provides high priority without completely starving other processes.
-	RTAudioHighPriority int
-
-	// RTAudioMediumPriority defines medium priority for important audio threads.
-	// Used in: process_monitor.go for audio I/O and buffering operations
-	// Impact: Good priority for audio operations while maintaining system balance.
-	// Default 60 provides elevated priority for audio without extreme impact.
-	RTAudioMediumPriority int
-
-	// RTAudioLowPriority defines low priority for background audio threads.
-	// Used in: process_monitor.go for audio monitoring and metrics collection
-	// Impact: Ensures audio background tasks run without impacting critical operations.
-	// Default 40 provides some priority elevation while remaining background.
-	RTAudioLowPriority int
-
-	// RTNormalPriority defines normal priority (no real-time scheduling).
-	// Used in: process_monitor.go for non-critical audio threads
-	// Impact: Standard scheduling priority, no special real-time guarantees.
-	// Default 0 uses normal kernel scheduling without real-time privileges.
-	RTNormalPriority int
+	// Removed unused scheduling policy constants and RT priority values
+	// The priority scheduler is not implemented - functions are called but don't exist
 
 	// Process Management - Configuration for audio process lifecycle management
 	// Used in: supervisor.go for managing audio process restarts and recovery
@@ -1842,47 +1799,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Used in: Non-critical audio processing tasks
 		// Impact: Provides standard scheduling suitable for non-critical tasks.
 		// Default 0 (SCHED_NORMAL) for standard time-sharing scheduling.
-		SchedNormal: 0,
-
-		// SchedFIFO defines real-time first-in-first-out scheduling policy.
-		// Used in: Critical audio processing requiring deterministic timing
-		// Impact: Provides deterministic scheduling for latency-critical operations.
-		// Default 1 (SCHED_FIFO) for real-time first-in-first-out scheduling.
-		SchedFIFO: 1,
-
-		// SchedRR defines real-time round-robin scheduling policy.
-		// Used in: Balanced real-time processing with time slicing
-		// Impact: Provides real-time scheduling with balanced time slicing.
-		// Default 2 (SCHED_RR) for real-time round-robin scheduling.
-		SchedRR: 2,
-
-		// Real-time Priority Levels - Configuration for process priorities
-		// Used in: Process priority management and CPU scheduling
-		// Impact: Controls priority hierarchy for audio system components
-
-		// RTAudioHighPriority defines highest priority for audio processing.
-		// Used in: Latency-critical audio operations and CPU priority assignment
-		// Impact: Ensures highest CPU priority without starving system processes.
-		// Default 80 provides highest priority for latency-critical operations.
-		RTAudioHighPriority: 80,
-
-		// RTAudioMediumPriority defines medium priority for audio tasks.
-		// Used in: Important audio tasks requiring elevated priority
-		// Impact: Provides elevated priority while allowing higher priority operations.
-		// Default 60 balances importance with system operation priority.
-		RTAudioMediumPriority: 60,
-
-		// RTAudioLowPriority defines low priority for audio tasks.
-		// Used in: Audio tasks needing responsiveness but not latency-critical
-		// Impact: Provides moderate real-time priority for responsive tasks.
-		// Default 40 ensures responsiveness without being latency-critical.
-		RTAudioLowPriority: 40,
-
-		// RTNormalPriority defines normal scheduling priority.
-		// Used in: Non-real-time audio processing tasks
-		// Impact: Provides standard priority for non-real-time operations.
-		// Default 0 represents normal scheduling priority.
-		RTNormalPriority: 0,
 
 		// Process Management - Configuration for process restart and recovery
 		// Used in: Process monitoring and failure recovery systems
@@ -2171,17 +2087,17 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Used in: process management, thread scheduling for audio processing
 		// Impact: Controls CPU scheduling priority for audio threads
 
-		// AudioHighPriority defines highest priority for critical audio threads (-10).
+		// AudioHighPriority defines highest priority for critical audio threads (5).
 		// Used in: Real-time audio processing threads, encoder/decoder threads
-		// Impact: Ensures audio threads get CPU time before other processes
-		// Default -10 provides high priority without requiring root privileges
-		AudioHighPriority: -10,
+		// Impact: Ensures audio threads get CPU time but prioritizes mouse input
+		// Modified to 5 to prevent mouse lag on single-core RV1106
+		AudioHighPriority: 5,
 
-		// AudioMediumPriority defines medium priority for important audio threads (-5).
+		// AudioMediumPriority defines medium priority for important audio threads (10).
 		// Used in: Audio buffer management, IPC communication threads
 		// Impact: Balances audio performance with system responsiveness
-		// Default -5 ensures good performance while allowing other critical tasks
-		AudioMediumPriority: -5,
+		// Modified to 10 to prioritize mouse input on single-core RV1106
+		AudioMediumPriority: 10,
 
 		// AudioLowPriority defines low priority for non-critical audio threads (0).
 		// Used in: Metrics collection, logging, cleanup tasks
@@ -2195,11 +2111,11 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Default 0 represents normal Linux process priority
 		NormalPriority: 0,
 
-		// NiceValue defines default nice value for audio processes (-10).
+		// NiceValue defines default nice value for audio processes (5).
 		// Used in: Process creation, priority adjustment for audio components
-		// Impact: Improves audio process scheduling without requiring special privileges
-		// Default -10 provides better scheduling while remaining accessible to non-root users
-		NiceValue: -10,
+		// Impact: Ensures audio processes don't interfere with mouse input
+		// Modified to 5 to prioritize mouse input on single-core RV1106
+		NiceValue: 5,
 
 		// Error Handling - Configuration for robust error recovery and retry logic
 		// Used in: Throughout audio pipeline for handling transient failures
