@@ -1543,6 +1543,40 @@ type AudioConfigConstants struct {
 	LatencyBucket500ms time.Duration // 500ms latency bucket
 	LatencyBucket1s    time.Duration // 1s latency bucket
 	LatencyBucket2s    time.Duration // 2s latency bucket
+
+	// Goroutine Pool Configuration
+	// Used in: goroutine_pool.go for managing reusable goroutines
+	// Impact: Reduces goroutine creation overhead and improves performance
+
+	// MaxAudioProcessorWorkers defines maximum number of workers in the audio processor pool.
+	// Used in: goroutine_pool.go for limiting concurrent audio processing goroutines
+	// Impact: Controls resource usage while ensuring sufficient processing capacity.
+	// Default 8 provides good parallelism without excessive resource consumption.
+	MaxAudioProcessorWorkers int
+
+	// MaxAudioReaderWorkers defines maximum number of workers in the audio reader pool.
+	// Used in: goroutine_pool.go for limiting concurrent audio reading goroutines
+	// Impact: Controls resource usage while ensuring sufficient reading capacity.
+	// Default 4 provides good parallelism for I/O operations.
+	MaxAudioReaderWorkers int
+
+	// AudioProcessorQueueSize defines the task queue size for the audio processor pool.
+	// Used in: goroutine_pool.go for buffering audio processing tasks
+	// Impact: Larger queue allows more tasks to be buffered during load spikes.
+	// Default 32 provides good buffering without excessive memory usage.
+	AudioProcessorQueueSize int
+
+	// AudioReaderQueueSize defines the task queue size for the audio reader pool.
+	// Used in: goroutine_pool.go for buffering audio reading tasks
+	// Impact: Larger queue allows more tasks to be buffered during load spikes.
+	// Default 16 provides good buffering for I/O operations.
+	AudioReaderQueueSize int
+
+	// WorkerMaxIdleTime defines how long a worker goroutine can remain idle before termination.
+	// Used in: goroutine_pool.go for efficient worker lifecycle management
+	// Impact: Shorter times reduce resource usage, longer times improve responsiveness.
+	// Default 30s balances resource usage with startup latency.
+	WorkerMaxIdleTime time.Duration
 }
 
 // DefaultAudioConfig returns the default configuration constants
@@ -2399,6 +2433,13 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		EventTimeoutSeconds:      2,                          // 2 seconds for event timeout
 		EventTimeFormatString:    "2006-01-02T15:04:05.000Z", // "2006-01-02T15:04:05.000Z" time format
 		EventSubscriptionDelayMS: 100,                        // 100ms subscription delay
+
+		// Goroutine Pool Configuration
+		MaxAudioProcessorWorkers: 8,                // 8 workers for audio processing tasks
+		MaxAudioReaderWorkers:    4,                // 4 workers for audio reading tasks
+		AudioProcessorQueueSize:  32,               // 32 tasks queue size for processor pool
+		AudioReaderQueueSize:     16,               // 16 tasks queue size for reader pool
+		WorkerMaxIdleTime:        30 * time.Second, // 30s maximum idle time before worker termination
 
 		// Input Processing Constants
 		InputProcessingTimeoutMS: 10, // 10ms processing timeout threshold
