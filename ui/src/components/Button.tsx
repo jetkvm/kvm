@@ -175,7 +175,7 @@ type ButtonPropsType = Pick<
 export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
   ({ type, disabled, onClick, formNoValidate, loading, fetcher, ...props }, ref) => {
     const classes = cx(
-      "group outline-hidden",
+      "group outline-hidden cursor-pointer",
       props.fullWidth ? "w-full" : "",
       loading ? "pointer-events-none" : "",
     );

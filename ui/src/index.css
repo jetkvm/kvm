@@ -325,6 +325,20 @@ video::-webkit-media-controls {
   @apply mr-[2px]! md:mr-[5px]!;
 }
 
+/* Reduce font size for selected keys when keyboard is detached */
+.keyboard-detached .simple-keyboard-main.simple-keyboard {
+  min-width: calc(14 * 7ch);
+}
+
+.keyboard-detached .simple-keyboard.hg-theme-default div.hg-button {
+  text-wrap: auto;
+  text-align: center; 
+  min-width: 6ch;
+}
+.keyboard-detached .simple-keyboard.hg-theme-default .hg-button span {
+  font-size: 50%;
+}
+
 /* Hide the scrollbar by setting the scrollbar color to the background color */
 .xterm .xterm-viewport {
   scrollbar-color: var(--color-gray-900) #002b36;
