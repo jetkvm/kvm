@@ -1397,14 +1397,17 @@ func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, err
 	}
 }
 
-// CGO function aliases
-var (
-	CGOAudioInit               = cgoAudioInit
-	CGOAudioClose              = cgoAudioClose
-	CGOAudioReadEncode         = cgoAudioReadEncode
-	CGOAudioPlaybackInit       = cgoAudioPlaybackInit
-	CGOAudioPlaybackClose      = cgoAudioPlaybackClose
-	CGOAudioDecodeWriteLegacy  = cgoAudioDecodeWrite
-	CGOAudioDecodeWrite        = cgoAudioDecodeWriteWithBuffers
-	CGOUpdateOpusEncoderParams = updateOpusEncoderParams
-)
+// Optimized CGO function aliases - use direct function calls to reduce overhead
+// These are now direct function aliases instead of variable assignments
+func CGOAudioInit() error                               { return cgoAudioInit() }
+func CGOAudioClose()                                    { cgoAudioClose() }
+func CGOAudioReadEncode(buf []byte) (int, error)        { return cgoAudioReadEncode(buf) }
+func CGOAudioPlaybackInit() error                       { return cgoAudioPlaybackInit() }
+func CGOAudioPlaybackClose()                            { cgoAudioPlaybackClose() }
+func CGOAudioDecodeWriteLegacy(buf []byte) (int, error) { return cgoAudioDecodeWrite(buf) }
+func CGOAudioDecodeWrite(opusData []byte, pcmBuffer []byte) (int, error) {
+	return cgoAudioDecodeWriteWithBuffers(opusData, pcmBuffer)
+}
+func CGOUpdateOpusEncoderParams(bitrate, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx int) error {
+	return updateOpusEncoderParams(bitrate, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx)
+}

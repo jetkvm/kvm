@@ -86,20 +86,23 @@ func NewBatchAudioProcessor(batchSize int, batchDuration time.Duration) *BatchAu
 	cache := GetCachedConfig()
 	cache.Update()
 
-	// Validate input parameters
-	if err := ValidateBufferSize(batchSize); err != nil {
-		logger := logging.GetDefaultLogger().With().Str("component", "batch-audio").Logger()
-		logger.Warn().Err(err).Int("batchSize", batchSize).Msg("invalid batch size, using default")
+	// Validate input parameters with minimal overhead
+	if batchSize <= 0 || batchSize > 1000 {
 		batchSize = cache.BatchProcessorFramesPerBatch
 	}
 	if batchDuration <= 0 {
-		logger := logging.GetDefaultLogger().With().Str("component", "batch-audio").Logger()
-		logger.Warn().Dur("batchDuration", batchDuration).Msg("invalid batch duration, using default")
 		batchDuration = cache.BatchProcessingDelay
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	// Pre-allocate logger to avoid repeated allocations
 	logger := logging.GetDefaultLogger().With().Str("component", "batch-audio").Logger()
+
+	// Pre-calculate frame size to avoid repeated GetConfig() calls
+	frameSize := cache.GetMinReadEncodeBuffer()
+	if frameSize == 0 {
+		frameSize = 1500 // Safe fallback
+	}
 
 	processor := &BatchAudioProcessor{
 		ctx:           ctx,
@@ -111,12 +114,14 @@ func NewBatchAudioProcessor(batchSize int, batchDuration time.Duration) *BatchAu
 		writeQueue:    make(chan batchWriteRequest, batchSize*2),
 		readBufPool: &sync.Pool{
 			New: func() interface{} {
-				return make([]byte, GetConfig().AudioFramePoolSize) // Max audio frame size
+				// Use pre-calculated frame size to avoid GetConfig() calls
+				return make([]byte, 0, frameSize)
 			},
 		},
 		writeBufPool: &sync.Pool{
 			New: func() interface{} {
-				return make([]byte, GetConfig().AudioFramePoolSize) // Max audio frame size
+				// Use pre-calculated frame size to avoid GetConfig() calls
+				return make([]byte, 0, frameSize)
 			},
 		},
 	}
@@ -386,63 +391,50 @@ func (bap *BatchAudioProcessor) batchWriteProcessor() {
 
 // processBatchRead processes a batch of read requests efficiently
 func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
-	if len(batch) == 0 {
+	batchSize := len(batch)
+	if batchSize == 0 {
 		return
 	}
 
-	// Get cached config to avoid GetConfig() calls in hot path
+	// Get cached config once - avoid repeated calls
 	cache := GetCachedConfig()
+	minBatchSize := cache.MinBatchSizeForThreadPinning
 
 	// Only pin to OS thread for large batches to reduce thread contention
-	start := time.Now()
-	shouldPinThread := len(batch) >= cache.MinBatchSizeForThreadPinning
-
-	// Track if we pinned the thread in this call
+	var start time.Time
 	threadWasPinned := false
-
-	if shouldPinThread && atomic.CompareAndSwapInt32(&bap.threadPinned, 0, 1) {
+	if batchSize >= minBatchSize && atomic.CompareAndSwapInt32(&bap.threadPinned, 0, 1) {
+		start = time.Now()
 		threadWasPinned = true
 		runtime.LockOSThread()
-
-		// Set high priority for batch audio processing
-		if err := SetAudioThreadPriority(); err != nil {
-			bap.logger.Warn().Err(err).Msg("failed to set batch audio processing priority")
-		}
+		// Skip priority setting for better performance - audio threads already have good priority
 	}
 
-	batchSize := len(batch)
+	// Update stats efficiently
 	atomic.AddInt64(&bap.stats.BatchedReads, 1)
 	atomic.AddInt64(&bap.stats.BatchedFrames, int64(batchSize))
 	if batchSize > 1 {
 		atomic.AddInt64(&bap.stats.CGOCallsReduced, int64(batchSize-1))
 	}
 
-	// Add deferred function to release thread lock if we pinned it
-	if threadWasPinned {
-		defer func() {
-			if err := ResetThreadPriority(); err != nil {
-				bap.logger.Warn().Err(err).Msg("failed to reset thread priority")
-			}
-			runtime.UnlockOSThread()
-			atomic.StoreInt32(&bap.threadPinned, 0)
-			bap.stats.OSThreadPinTime += time.Since(start)
-		}()
-	}
-
-	// Process each request in the batch
-	for _, req := range batch {
+	// Process each request in the batch with minimal overhead
+	for i := range batch {
+		req := &batch[i]
 		length, err := CGOAudioReadEncode(req.buffer)
-		result := batchReadResult{
-			length: length,
-			err:    err,
-		}
 
-		// Send result back (non-blocking)
+		// Send result back (non-blocking) - reuse result struct
 		select {
-		case req.resultChan <- result:
+		case req.resultChan <- batchReadResult{length: length, err: err}:
 		default:
 			// Requestor timed out, drop result
 		}
+	}
+
+	// Release thread lock if we pinned it
+	if threadWasPinned {
+		runtime.UnlockOSThread()
+		atomic.StoreInt32(&bap.threadPinned, 0)
+		bap.stats.OSThreadPinTime += time.Since(start)
 	}
 
 	bap.stats.LastBatchTime = time.Now()
@@ -468,10 +460,8 @@ func (bap *BatchAudioProcessor) processBatchWrite(batch []batchWriteRequest) {
 		threadWasPinned = true
 		runtime.LockOSThread()
 
-		// Set high priority for batch audio processing
-		if err := SetAudioThreadPriority(); err != nil {
-			bap.logger.Warn().Err(err).Msg("failed to set batch audio processing priority")
-		}
+		// Set high priority for batch audio processing - skip logging in hotpath
+		_ = SetAudioThreadPriority()
 	}
 
 	batchSize := len(batch)
@@ -484,9 +474,8 @@ func (bap *BatchAudioProcessor) processBatchWrite(batch []batchWriteRequest) {
 	// Add deferred function to release thread lock if we pinned it
 	if threadWasPinned {
 		defer func() {
-			if err := ResetThreadPriority(); err != nil {
-				bap.logger.Warn().Err(err).Msg("failed to reset thread priority")
-			}
+			// Skip logging in hotpath for performance
+			_ = ResetThreadPriority()
 			runtime.UnlockOSThread()
 			atomic.StoreInt32(&bap.writePinned, 0)
 			bap.stats.WriteThreadTime += time.Since(start)

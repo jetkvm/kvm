@@ -351,50 +351,29 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 }
 
 func (p *AudioBufferPool) Get() []byte {
-	// Trigger periodic cleanup of goroutine cache
-	cleanupGoroutineCache()
-
-	start := time.Now()
-	wasHit := false
-	defer func() {
-		latency := time.Since(start)
-		// Record metrics for frame pool (assuming this is the main usage)
-		if p.bufferSize >= GetConfig().AudioFramePoolSize {
-			GetGranularMetricsCollector().RecordFramePoolGet(latency, wasHit)
-		} else {
-			GetGranularMetricsCollector().RecordControlPoolGet(latency, wasHit)
-		}
-	}()
+	// Skip cleanup trigger in hotpath - cleanup runs in background
+	// cleanupGoroutineCache() - moved to background goroutine
 
 	// Fast path: Try lock-free per-goroutine cache first
 	gid := getGoroutineID()
 	goroutineCacheMutex.RLock()
-
-	// Try new TTL-based cache first
 	cacheEntry, exists := goroutineCacheWithTTL[gid]
-	var cache *lockFreeBufferCache
-	if exists && cacheEntry != nil {
-		cache = cacheEntry.cache
-		// Update last access time
-		cacheEntry.lastAccess = time.Now().Unix()
-	} else {
-		// Fall back to legacy cache if needed
-		cache, exists = goroutineBufferCache[gid]
-	}
 	goroutineCacheMutex.RUnlock()
 
-	if exists && cache != nil {
+	if exists && cacheEntry != nil && cacheEntry.cache != nil {
 		// Try to get buffer from lock-free cache
+		cache := cacheEntry.cache
 		for i := 0; i < len(cache.buffers); i++ {
 			bufPtr := (*unsafe.Pointer)(unsafe.Pointer(&cache.buffers[i]))
 			buf := (*[]byte)(atomic.LoadPointer(bufPtr))
 			if buf != nil && atomic.CompareAndSwapPointer(bufPtr, unsafe.Pointer(buf), nil) {
 				atomic.AddInt64(&p.hitCount, 1)
-				wasHit = true
 				*buf = (*buf)[:0]
 				return *buf
 			}
 		}
+		// Update access time only after cache miss to reduce overhead
+		cacheEntry.lastAccess = time.Now().Unix()
 	}
 
 	// Fallback: Try pre-allocated pool with mutex
@@ -404,11 +383,7 @@ func (p *AudioBufferPool) Get() []byte {
 		buf := p.preallocated[lastIdx]
 		p.preallocated = p.preallocated[:lastIdx]
 		p.mutex.Unlock()
-
-		// Update hit counter
 		atomic.AddInt64(&p.hitCount, 1)
-		wasHit = true
-		// Ensure buffer is properly reset
 		*buf = (*buf)[:0]
 		return *buf
 	}
@@ -417,20 +392,14 @@ func (p *AudioBufferPool) Get() []byte {
 	// Try sync.Pool next
 	if poolBuf := p.pool.Get(); poolBuf != nil {
 		buf := poolBuf.(*[]byte)
-		// Update hit counter
 		atomic.AddInt64(&p.hitCount, 1)
-		// Decrement pool size counter atomically
 		atomic.AddInt64(&p.currentSize, -1)
-		// Ensure buffer is properly reset and check capacity
+		// Fast capacity check - most buffers should be correct size
 		if cap(*buf) >= p.bufferSize {
-			wasHit = true
 			*buf = (*buf)[:0]
 			return *buf
-		} else {
-			// Buffer too small, allocate new one
-			atomic.AddInt64(&p.missCount, 1)
-			return make([]byte, 0, p.bufferSize)
 		}
+		// Buffer too small, fall through to allocation
 	}
 
 	// Pool miss - allocate new buffer with exact capacity
@@ -439,18 +408,7 @@ func (p *AudioBufferPool) Get() []byte {
 }
 
 func (p *AudioBufferPool) Put(buf []byte) {
-	start := time.Now()
-	defer func() {
-		latency := time.Since(start)
-		// Record metrics for frame pool (assuming this is the main usage)
-		if p.bufferSize >= GetConfig().AudioFramePoolSize {
-			GetGranularMetricsCollector().RecordFramePoolPut(latency, cap(buf))
-		} else {
-			GetGranularMetricsCollector().RecordControlPoolPut(latency, cap(buf))
-		}
-	}()
-
-	// Validate buffer capacity - reject buffers that are too small or too large
+	// Fast validation - reject buffers that are too small or too large
 	bufCap := cap(buf)
 	if bufCap < p.bufferSize || bufCap > p.bufferSize*2 {
 		return // Buffer size mismatch, don't pool it to prevent memory bloat
@@ -461,27 +419,19 @@ func (p *AudioBufferPool) Put(buf []byte) {
 
 	// Fast path: Try to put in lock-free per-goroutine cache
 	gid := getGoroutineID()
-	now := time.Now().Unix()
-
-	// Check if we have a TTL-based cache entry for this goroutine
 	goroutineCacheMutex.RLock()
 	entryWithTTL, exists := goroutineCacheWithTTL[gid]
+	goroutineCacheMutex.RUnlock()
+
 	var cache *lockFreeBufferCache
 	if exists && entryWithTTL != nil {
 		cache = entryWithTTL.cache
-		// Update last access time
-		entryWithTTL.lastAccess = now
+		// Update access time only when we successfully use the cache
 	} else {
-		// Fall back to legacy cache if needed
-		cache, exists = goroutineBufferCache[gid]
-	}
-	goroutineCacheMutex.RUnlock()
-
-	if !exists {
 		// Create new cache for this goroutine
 		cache = &lockFreeBufferCache{}
+		now := time.Now().Unix()
 		goroutineCacheMutex.Lock()
-		// Store in TTL-based cache
 		goroutineCacheWithTTL[gid] = &cacheEntry{
 			cache:      cache,
 			lastAccess: now,
@@ -495,6 +445,10 @@ func (p *AudioBufferPool) Put(buf []byte) {
 		for i := 0; i < len(cache.buffers); i++ {
 			bufPtr := (*unsafe.Pointer)(unsafe.Pointer(&cache.buffers[i]))
 			if atomic.CompareAndSwapPointer(bufPtr, nil, unsafe.Pointer(&buf)) {
+				// Update access time only on successful cache
+				if exists && entryWithTTL != nil {
+					entryWithTTL.lastAccess = time.Now().Unix()
+				}
 				return // Successfully cached
 			}
 		}
@@ -510,14 +464,12 @@ func (p *AudioBufferPool) Put(buf []byte) {
 	p.mutex.Unlock()
 
 	// Check sync.Pool size limit to prevent excessive memory usage
-	currentSize := atomic.LoadInt64(&p.currentSize)
-	if currentSize >= int64(p.maxPoolSize) {
+	if atomic.LoadInt64(&p.currentSize) >= int64(p.maxPoolSize) {
 		return // Pool is full, let GC handle this buffer
 	}
 
 	// Return to sync.Pool and update counter atomically
 	p.pool.Put(&resetBuf)
-	// Update pool size counter atomically
 	atomic.AddInt64(&p.currentSize, 1)
 }
 
