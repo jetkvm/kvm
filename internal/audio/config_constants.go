@@ -11,6 +11,7 @@ import (
 type AudioConfigConstants struct {
 	// Audio Quality Presets
 	MaxAudioFrameSize int // Maximum audio frame size in bytes (default: 4096)
+	MaxPCMBufferSize  int // Maximum PCM buffer size in bytes for separate buffer optimization
 
 	// Opus Encoding Parameters
 	OpusBitrate       int // Target bitrate for Opus encoding in bps (default: 128000)
@@ -1586,6 +1587,7 @@ func DefaultAudioConfig() *AudioConfigConstants {
 	return &AudioConfigConstants{
 		// Audio Quality Presets
 		MaxAudioFrameSize: 4096,
+		MaxPCMBufferSize:  8192, // Default PCM buffer size (2x MaxAudioFrameSize for safety)
 
 		// Opus Encoding Parameters
 		OpusBitrate:       128000,

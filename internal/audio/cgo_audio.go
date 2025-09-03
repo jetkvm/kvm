@@ -716,6 +716,7 @@ type AudioConfigCache struct {
 	minReadEncodeBuffer  atomic.Int32
 	maxDecodeWriteBuffer atomic.Int32
 	maxPacketSize        atomic.Int32
+	maxPCMBufferSize     atomic.Int32
 	opusBitrate          atomic.Int32
 	opusComplexity       atomic.Int32
 	opusVBR              atomic.Int32
@@ -787,6 +788,7 @@ func (c *AudioConfigCache) Update() {
 		c.minReadEncodeBuffer.Store(int32(config.MinReadEncodeBuffer))
 		c.maxDecodeWriteBuffer.Store(int32(config.MaxDecodeWriteBuffer))
 		c.maxPacketSize.Store(int32(config.CGOMaxPacketSize))
+		c.maxPCMBufferSize.Store(int32(config.MaxPCMBufferSize))
 		c.opusBitrate.Store(int32(config.CGOOpusBitrate))
 		c.opusComplexity.Store(int32(config.CGOOpusComplexity))
 		c.opusVBR.Store(int32(config.CGOOpusVBR))
@@ -840,6 +842,11 @@ func (c *AudioConfigCache) GetMaxDecodeWriteBuffer() int {
 // GetMaxPacketSize returns the cached MaxPacketSize value
 func (c *AudioConfigCache) GetMaxPacketSize() int {
 	return int(c.maxPacketSize.Load())
+}
+
+// GetMaxPCMBufferSize returns the cached MaxPCMBufferSize value
+func (c *AudioConfigCache) GetMaxPCMBufferSize() int {
+	return int(c.maxPCMBufferSize.Load())
 }
 
 // GetBufferTooSmallError returns the pre-allocated buffer too small error
@@ -1179,8 +1186,12 @@ func DecodeWriteWithPooledBuffer(data []byte) (int, error) {
 		return 0, newBufferTooLargeError(len(data), maxPacketSize)
 	}
 
-	// Perform decode/write operation
-	n, err := cgoAudioDecodeWrite(data)
+	// Get a PCM buffer from the pool for optimized decode-write
+	pcmBuffer := GetBufferFromPool(cache.GetMaxPCMBufferSize())
+	defer ReturnBufferToPool(pcmBuffer)
+
+	// Perform decode/write operation using optimized implementation
+	n, err := CGOAudioDecodeWrite(data, pcmBuffer)
 
 	// Return result
 	return n, err
@@ -1253,6 +1264,10 @@ func BatchDecodeWrite(frames [][]byte) error {
 	startTime := time.Now()
 	batchProcessingCount.Add(1)
 
+	// Get a PCM buffer from the pool for optimized decode-write
+	pcmBuffer := GetBufferFromPool(cache.GetMaxPCMBufferSize())
+	defer ReturnBufferToPool(pcmBuffer)
+
 	// Process each frame
 	frameCount := 0
 	for _, frame := range frames {
@@ -1261,8 +1276,8 @@ func BatchDecodeWrite(frames [][]byte) error {
 			continue
 		}
 
-		// Process this frame
-		_, err := DecodeWriteWithPooledBuffer(frame)
+		// Process this frame using optimized implementation
+		_, err := CGOAudioDecodeWrite(frame, pcmBuffer)
 		if err != nil {
 			// Update statistics before returning error
 			batchFrameCount.Add(int64(frameCount))
@@ -1294,6 +1309,69 @@ func GetBatchProcessingStats() (count, frames, avgTimeUs int64) {
 	return count, frames, avgTimeUs
 }
 
+// cgoAudioDecodeWriteWithBuffers decodes opus data and writes to PCM buffer
+// This implementation uses separate buffers for opus data and PCM output
+func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, error) {
+	// Validate input
+	if len(opusData) == 0 {
+		return 0, errEmptyBuffer
+	}
+	if len(pcmBuffer) == 0 {
+		return 0, errEmptyBuffer
+	}
+
+	// Get cached config
+	cache := GetCachedConfig()
+	cache.Update()
+
+	// Ensure data doesn't exceed max packet size
+	maxPacketSize := cache.GetMaxPacketSize()
+	if len(opusData) > maxPacketSize {
+		return 0, newBufferTooLargeError(len(opusData), maxPacketSize)
+	}
+
+	// Avoid bounds check with unsafe
+	var opusPtr unsafe.Pointer
+	if len(opusData) > 0 {
+		opusPtr = unsafe.Pointer(&opusData[0])
+		if opusPtr == nil {
+			return 0, errInvalidBufferPtr
+		}
+	}
+
+	// Simplified panic recovery - only recover from C panics
+	var n int
+	var err error
+	defer func() {
+		if r := recover(); r != nil {
+			// Using pre-allocated error to avoid allocations
+			err = errAudioDecodeWrite
+		}
+	}()
+
+	// Direct CGO call with minimal overhead
+	n = int(C.jetkvm_audio_decode_write(opusPtr, C.int(len(opusData))))
+
+	// Fast path for success case
+	if n >= 0 {
+		return n, nil
+	}
+
+	// Handle error cases with static error codes
+	switch n {
+	case -1:
+		n = 0
+		err = errAudioInitFailed
+	case -2:
+		n = 0
+		err = errAudioDecodeWrite
+	default:
+		n = 0
+		err = newAudioDecodeWriteError(n)
+	}
+	return n, err
+}
+
 // CGO function aliases
 var (
 	CGOAudioInit               = cgoAudioInit
@@ -1301,6 +1379,7 @@ var (
 	CGOAudioReadEncode         = cgoAudioReadEncode
 	CGOAudioPlaybackInit       = cgoAudioPlaybackInit
 	CGOAudioPlaybackClose      = cgoAudioPlaybackClose
-	CGOAudioDecodeWrite        = cgoAudioDecodeWrite
+	CGOAudioDecodeWriteLegacy  = cgoAudioDecodeWrite
+	CGOAudioDecodeWrite        = cgoAudioDecodeWriteWithBuffers
 	CGOUpdateOpusEncoderParams = updateOpusEncoderParams
 )

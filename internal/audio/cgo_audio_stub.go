@@ -30,6 +30,11 @@ func cgoAudioDecodeWrite(buf []byte) (int, error) {
 	return 0, errors.New("audio not available in lint mode")
 }
 
+// cgoAudioDecodeWriteWithBuffers is a stub implementation for the optimized decode-write function
+func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, error) {
+	return 0, errors.New("audio not available in lint mode")
+}
+
 // Uppercase aliases for external API compatibility
 
 var (
@@ -38,5 +43,6 @@ var (
 	CGOAudioReadEncode     = cgoAudioReadEncode
 	CGOAudioPlaybackInit   = cgoAudioPlaybackInit
 	CGOAudioPlaybackClose  = cgoAudioPlaybackClose
-	CGOAudioDecodeWrite    = cgoAudioDecodeWrite
+	CGOAudioDecodeWriteLegacy = cgoAudioDecodeWrite
+	CGOAudioDecodeWrite    = cgoAudioDecodeWriteWithBuffers
 )

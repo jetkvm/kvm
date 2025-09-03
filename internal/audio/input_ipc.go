@@ -512,8 +512,16 @@ func (ais *AudioInputServer) processOpusFrame(data []byte) error {
 		return fmt.Errorf("input frame validation failed: %w", err)
 	}
 
-	// Process the Opus frame using CGO
-	_, err := CGOAudioDecodeWrite(data)
+	// Get cached config for optimal performance
+	cache := GetCachedConfig()
+	cache.Update()
+
+	// Get a PCM buffer from the pool for optimized decode-write
+	pcmBuffer := GetBufferFromPool(cache.GetMaxPCMBufferSize())
+	defer ReturnBufferToPool(pcmBuffer)
+
+	// Process the Opus frame using optimized CGO implementation with separate buffers
+	_, err := CGOAudioDecodeWrite(data, pcmBuffer)
 	return err
 }
 
