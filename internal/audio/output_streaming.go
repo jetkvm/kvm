@@ -135,9 +135,14 @@ func (s *AudioOutputStreamer) Stop() {
 func (s *AudioOutputStreamer) streamLoop() {
 	defer s.wg.Done()
 
-	// Pin goroutine to OS thread for consistent performance
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	// Only pin to OS thread for high-throughput scenarios to reduce scheduler interference
+	config := GetConfig()
+	useThreadOptimizations := config.MaxAudioProcessorWorkers > 8
+
+	if useThreadOptimizations {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+	}
 
 	// Adaptive timing for frame reading
 	frameInterval := time.Duration(GetConfig().OutputStreamingFrameIntervalMS) * time.Millisecond // 50 FPS base rate
@@ -198,25 +203,31 @@ func (s *AudioOutputStreamer) streamLoop() {
 func (s *AudioOutputStreamer) processingLoop() {
 	defer s.wg.Done()
 
-	// Pin goroutine to OS thread for consistent performance
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	// Only use thread optimizations for high-throughput scenarios
+	config := GetConfig()
+	useThreadOptimizations := config.MaxAudioProcessorWorkers > 8
 
-	// Set high priority for audio output processing
-	if err := SetAudioThreadPriority(); err != nil {
-		// Only log priority warnings if warn level enabled to reduce overhead
-		if getOutputStreamingLogger().GetLevel() <= zerolog.WarnLevel {
-			getOutputStreamingLogger().Warn().Err(err).Msg("Failed to set audio output processing priority")
-		}
-	}
-	defer func() {
-		if err := ResetThreadPriority(); err != nil {
+	if useThreadOptimizations {
+		// Pin goroutine to OS thread for consistent performance
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+
+		// Set high priority for audio output processing
+		if err := SetAudioThreadPriority(); err != nil {
 			// Only log priority warnings if warn level enabled to reduce overhead
 			if getOutputStreamingLogger().GetLevel() <= zerolog.WarnLevel {
-				getOutputStreamingLogger().Warn().Err(err).Msg("Failed to reset thread priority")
+				getOutputStreamingLogger().Warn().Err(err).Msg("Failed to set audio output processing priority")
 			}
 		}
-	}()
+		defer func() {
+			if err := ResetThreadPriority(); err != nil {
+				// Only log priority warnings if warn level enabled to reduce overhead
+				if getOutputStreamingLogger().GetLevel() <= zerolog.WarnLevel {
+					getOutputStreamingLogger().Warn().Err(err).Msg("Failed to reset thread priority")
+				}
+			}
+		}()
+	}
 
 	for frameData := range s.processingChan {
 		// Process frame and return buffer to pool after processing

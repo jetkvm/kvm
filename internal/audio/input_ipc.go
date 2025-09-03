@@ -1010,12 +1010,19 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 
 	// Create a processor task that will run in the goroutine pool
 	processorTask := func() {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
+		// Only lock OS thread and set priority for high-load scenarios
+		// This reduces interference with input processing threads
+		config := GetConfig()
+		useThreadOptimizations := config.MaxAudioProcessorWorkers > 8
 
-		// Set high priority for audio processing - skip logging in hotpath
-		_ = SetAudioThreadPriority()
-		defer func() { _ = ResetThreadPriority() }()
+		if useThreadOptimizations {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+
+			// Set priority only when necessary to reduce scheduler interference
+			_ = SetAudioThreadPriority()
+			defer func() { _ = ResetThreadPriority() }()
+		}
 
 		// Create logger for this goroutine
 		logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
@@ -1023,8 +1030,8 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 		// Enhanced error tracking for processing
 		var processingErrors int
 		var lastProcessingError time.Time
-		maxProcessingErrors := GetConfig().MaxConsecutiveErrors
-		errorResetWindow := GetConfig().RestartWindow
+		maxProcessingErrors := config.MaxConsecutiveErrors
+		errorResetWindow := config.RestartWindow
 
 		defer ais.wg.Done()
 		for {
@@ -1127,19 +1134,27 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 
 	// Create a monitor task that will run in the goroutine pool
 	monitorTask := func() {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
+		// Monitor goroutine doesn't need thread locking for most scenarios
+		// Only use thread optimizations for high-throughput scenarios
+		config := GetConfig()
+		useThreadOptimizations := config.MaxAudioProcessorWorkers > 8
 
-		// Set I/O priority for monitoring
 		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-		if err := SetAudioIOThreadPriority(); err != nil {
-			logger.Warn().Err(err).Msg("Failed to set audio I/O priority")
-		}
-		defer func() {
-			if err := ResetThreadPriority(); err != nil {
-				logger.Warn().Err(err).Msg("Failed to reset thread priority")
+
+		if useThreadOptimizations {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+
+			// Set I/O priority for monitoring only when needed
+			if err := SetAudioIOThreadPriority(); err != nil {
+				logger.Warn().Err(err).Msg("Failed to set audio I/O priority")
 			}
-		}()
+			defer func() {
+				if err := ResetThreadPriority(); err != nil {
+					logger.Warn().Err(err).Msg("Failed to reset thread priority")
+				}
+			}()
+		}
 
 		defer ais.wg.Done()
 		ticker := time.NewTicker(GetConfig().DefaultTickerInterval)
