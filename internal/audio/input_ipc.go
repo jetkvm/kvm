@@ -292,9 +292,6 @@ func (ais *AudioInputServer) Start() error {
 	// Submit the connection acceptor to the audio reader pool
 	if !SubmitAudioReaderTask(ais.acceptConnections) {
 		// If the pool is full or shutting down, fall back to direct goroutine creation
-		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-		logger.Warn().Msg("Audio reader pool full or shutting down, falling back to direct goroutine creation")
-
 		go ais.acceptConnections()
 	}
 
@@ -369,9 +366,6 @@ func (ais *AudioInputServer) acceptConnections() {
 		// Handle this connection using the goroutine pool
 		if !SubmitAudioReaderTask(func() { ais.handleConnection(conn) }) {
 			// If the pool is full or shutting down, fall back to direct goroutine creation
-			logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-			logger.Warn().Msg("Audio reader pool full or shutting down, falling back to direct goroutine creation")
-
 			go ais.handleConnection(conn)
 		}
 	}
@@ -1019,9 +1013,7 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 			runtime.LockOSThread()
 			defer runtime.UnlockOSThread()
 
-			// Set priority only when necessary to reduce scheduler interference
-			_ = SetAudioThreadPriority()
-			defer func() { _ = ResetThreadPriority() }()
+			// Priority scheduler not implemented - using default thread priority
 		}
 
 		// Create logger for this goroutine
@@ -1139,21 +1131,11 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 		config := GetConfig()
 		useThreadOptimizations := config.MaxAudioProcessorWorkers > 8
 
-		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-
 		if useThreadOptimizations {
 			runtime.LockOSThread()
 			defer runtime.UnlockOSThread()
 
-			// Set I/O priority for monitoring only when needed
-			if err := SetAudioIOThreadPriority(); err != nil {
-				logger.Warn().Err(err).Msg("Failed to set audio I/O priority")
-			}
-			defer func() {
-				if err := ResetThreadPriority(); err != nil {
-					logger.Warn().Err(err).Msg("Failed to reset thread priority")
-				}
-			}()
+			// Priority scheduler not implemented - using default thread priority
 		}
 
 		defer ais.wg.Done()

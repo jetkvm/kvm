@@ -498,8 +498,7 @@ func (bap *BatchAudioProcessor) processBatchWrite(batch []batchWriteRequest) {
 		threadWasPinned = true
 		runtime.LockOSThread()
 
-		// Set high priority for batch audio processing - skip logging in hotpath
-		_ = SetAudioThreadPriority()
+		// Priority scheduler not implemented - using default thread priority
 	}
 
 	batchSize := len(batch)
@@ -512,8 +511,7 @@ func (bap *BatchAudioProcessor) processBatchWrite(batch []batchWriteRequest) {
 	// Add deferred function to release thread lock if we pinned it
 	if threadWasPinned {
 		defer func() {
-			// Skip logging in hotpath for performance
-			_ = ResetThreadPriority()
+			// Priority scheduler not implemented - using default thread priority
 			runtime.UnlockOSThread()
 			atomic.StoreInt32(&bap.writePinned, 0)
 			bap.stats.WriteThreadTime += time.Since(start)
