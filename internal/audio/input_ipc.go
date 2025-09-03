@@ -507,14 +507,16 @@ func (ais *AudioInputServer) processOpusFrame(data []byte) error {
 
 	// Use ultra-fast validation for critical audio path
 	if err := ValidateAudioFrame(data); err != nil {
-		logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
-		logger.Error().Err(err).Msg("Frame validation failed")
+		// Skip logging in hotpath to avoid overhead - validation errors are rare
 		return fmt.Errorf("input frame validation failed: %w", err)
 	}
 
 	// Get cached config for optimal performance
 	cache := GetCachedConfig()
-	cache.Update()
+	// Only update cache if expired - avoid unnecessary overhead
+	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+		cache.Update()
+	}
 
 	// Get a PCM buffer from the pool for optimized decode-write
 	pcmBuffer := GetBufferFromPool(cache.GetMaxPCMBufferSize())
