@@ -289,8 +289,14 @@ func (ais *AudioInputServer) Start() error {
 	ais.startProcessorGoroutine()
 	ais.startMonitorGoroutine()
 
-	// Accept connections in a goroutine
-	go ais.acceptConnections()
+	// Submit the connection acceptor to the audio reader pool
+	if !SubmitAudioReaderTask(ais.acceptConnections) {
+		// If the pool is full or shutting down, fall back to direct goroutine creation
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
+		logger.Warn().Msg("Audio reader pool full or shutting down, falling back to direct goroutine creation")
+
+		go ais.acceptConnections()
+	}
 
 	return nil
 }
@@ -360,8 +366,14 @@ func (ais *AudioInputServer) acceptConnections() {
 		ais.conn = conn
 		ais.mtx.Unlock()
 
-		// Handle this connection
-		go ais.handleConnection(conn)
+		// Handle this connection using the goroutine pool
+		if !SubmitAudioReaderTask(func() { ais.handleConnection(conn) }) {
+			// If the pool is full or shutting down, fall back to direct goroutine creation
+			logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
+			logger.Warn().Msg("Audio reader pool full or shutting down, falling back to direct goroutine creation")
+
+			go ais.handleConnection(conn)
+		}
 	}
 }
 
@@ -878,10 +890,12 @@ func (aic *AudioInputClient) ResetStats() {
 	ResetFrameStats(&aic.totalFrames, &aic.droppedFrames)
 }
 
-// startReaderGoroutine starts the message reader goroutine
+// startReaderGoroutine starts the message reader using the goroutine pool
 func (ais *AudioInputServer) startReaderGoroutine() {
 	ais.wg.Add(1)
-	go func() {
+
+	// Create a reader task that will run in the goroutine pool
+	readerTask := func() {
 		defer ais.wg.Done()
 
 		// Enhanced error tracking and recovery
@@ -966,13 +980,24 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 				}
 			}
 		}
-	}()
+	}
+
+	// Submit the reader task to the audio reader pool
+	logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
+	if !SubmitAudioReaderTask(readerTask) {
+		// If the pool is full or shutting down, fall back to direct goroutine creation
+		logger.Warn().Msg("Audio reader pool full or shutting down, falling back to direct goroutine creation")
+
+		go readerTask()
+	}
 }
 
-// startProcessorGoroutine starts the message processor goroutine
+// startProcessorGoroutine starts the message processor using the goroutine pool
 func (ais *AudioInputServer) startProcessorGoroutine() {
 	ais.wg.Add(1)
-	go func() {
+
+	// Create a processor task that will run in the goroutine pool
+	processorTask := func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 
@@ -1049,7 +1074,16 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 				atomic.StoreInt64(&ais.processingTime, processingTime.Nanoseconds())
 			}
 		}
-	}()
+	}
+
+	// Submit the processor task to the audio processor pool
+	logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
+	if !SubmitAudioProcessorTask(processorTask) {
+		// If the pool is full or shutting down, fall back to direct goroutine creation
+		logger.Warn().Msg("Audio processor pool full or shutting down, falling back to direct goroutine creation")
+
+		go processorTask()
+	}
 }
 
 // processMessageWithRecovery processes a message with enhanced error recovery
@@ -1086,10 +1120,12 @@ func (ais *AudioInputServer) processMessageWithRecovery(msg *InputIPCMessage, lo
 	}
 }
 
-// startMonitorGoroutine starts the performance monitoring goroutine
+// startMonitorGoroutine starts the performance monitoring using the goroutine pool
 func (ais *AudioInputServer) startMonitorGoroutine() {
 	ais.wg.Add(1)
-	go func() {
+
+	// Create a monitor task that will run in the goroutine pool
+	monitorTask := func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 
@@ -1166,7 +1202,16 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 				}
 			}
 		}
-	}()
+	}
+
+	// Submit the monitor task to the audio processor pool
+	logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
+	if !SubmitAudioProcessorTask(monitorTask) {
+		// If the pool is full or shutting down, fall back to direct goroutine creation
+		logger.Warn().Msg("Audio processor pool full or shutting down, falling back to direct goroutine creation")
+
+		go monitorTask()
+	}
 }
 
 // GetServerStats returns server performance statistics

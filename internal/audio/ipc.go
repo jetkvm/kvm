@@ -159,8 +159,14 @@ func (s *AudioOutputServer) Start() error {
 	// Start message processor goroutine
 	s.startProcessorGoroutine()
 
-	// Accept connections in a goroutine
-	go s.acceptConnections()
+	// Submit the connection acceptor to the audio reader pool
+	if !SubmitAudioReaderTask(s.acceptConnections) {
+		// If the pool is full or shutting down, fall back to direct goroutine creation
+		logger := logging.GetDefaultLogger().With().Str("component", AudioOutputServerComponent).Logger()
+		logger.Warn().Msg("Audio reader pool full or shutting down, falling back to direct goroutine creation")
+
+		go s.acceptConnections()
+	}
 
 	return nil
 }
@@ -199,10 +205,12 @@ func (s *AudioOutputServer) acceptConnections() {
 	}
 }
 
-// startProcessorGoroutine starts the message processor
+// startProcessorGoroutine starts the message processor using the goroutine pool
 func (s *AudioOutputServer) startProcessorGoroutine() {
 	s.wg.Add(1)
-	go func() {
+
+	// Create a processor task that will run in the goroutine pool
+	processorTask := func() {
 		defer s.wg.Done()
 		for {
 			select {
@@ -218,7 +226,16 @@ func (s *AudioOutputServer) startProcessorGoroutine() {
 				return
 			}
 		}
-	}()
+	}
+
+	// Submit the processor task to the audio processor pool
+	if !SubmitAudioProcessorTask(processorTask) {
+		// If the pool is full or shutting down, fall back to direct goroutine creation
+		logger := logging.GetDefaultLogger().With().Str("component", AudioOutputServerComponent).Logger()
+		logger.Warn().Msg("Audio processor pool full or shutting down, falling back to direct goroutine creation")
+
+		go processorTask()
+	}
 }
 
 func (s *AudioOutputServer) Stop() {
