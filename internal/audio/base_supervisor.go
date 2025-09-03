@@ -71,45 +71,6 @@ func (bs *BaseSupervisor) GetLastExitInfo() (exitCode int, exitTime time.Time) {
 	return bs.lastExitCode, bs.lastExitTime
 }
 
-// GetProcessMetrics returns process metrics if available
-func (bs *BaseSupervisor) GetProcessMetrics() *ProcessMetrics {
-	bs.mutex.RLock()
-	defer bs.mutex.RUnlock()
-
-	if bs.cmd == nil || bs.cmd.Process == nil {
-		return &ProcessMetrics{
-			PID:           0,
-			CPUPercent:    0.0,
-			MemoryRSS:     0,
-			MemoryVMS:     0,
-			MemoryPercent: 0.0,
-			Timestamp:     time.Now(),
-			ProcessName:   "audio-server",
-		}
-	}
-
-	pid := bs.cmd.Process.Pid
-	if bs.processMonitor != nil {
-		metrics := bs.processMonitor.GetCurrentMetrics()
-		for _, metric := range metrics {
-			if metric.PID == pid {
-				return &metric
-			}
-		}
-	}
-
-	// Return default metrics if process not found in monitor
-	return &ProcessMetrics{
-		PID:           pid,
-		CPUPercent:    0.0,
-		MemoryRSS:     0,
-		MemoryVMS:     0,
-		MemoryPercent: 0.0,
-		Timestamp:     time.Now(),
-		ProcessName:   "audio-server",
-	}
-}
-
 // logSupervisorStart logs supervisor start event
 func (bs *BaseSupervisor) logSupervisorStart() {
 	bs.logger.Info().Msg("Supervisor starting")

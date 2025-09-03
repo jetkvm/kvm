@@ -97,7 +97,6 @@ type AudioSupervisorInterface interface {
 	Stop() error
 	IsRunning() bool
 	GetProcessPID() int
-	GetProcessMetrics() *ProcessMetrics
 }
 
 type AudioServerInterface interface {
