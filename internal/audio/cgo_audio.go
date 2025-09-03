@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build cgo && !arm
 
 package audio
 
@@ -735,6 +735,13 @@ type AudioConfigCache struct {
 	minOpusBitrate    atomic.Int32
 	maxOpusBitrate    atomic.Int32
 
+	// Batch processing related values
+	BatchProcessingTimeout       time.Duration
+	BatchProcessorFramesPerBatch int
+	BatchProcessorTimeout        time.Duration
+	BatchProcessingDelay         time.Duration
+	MinBatchSizeForThreadPinning int
+
 	// Mutex for updating the cache
 	mutex       sync.RWMutex
 	lastUpdate  time.Time
@@ -798,6 +805,13 @@ func (c *AudioConfigCache) Update() {
 		c.maxFrameDuration.Store(int64(config.MaxFrameDuration))
 		c.minOpusBitrate.Store(int32(config.MinOpusBitrate))
 		c.maxOpusBitrate.Store(int32(config.MaxOpusBitrate))
+
+		// Update batch processing related values
+		c.BatchProcessingTimeout = 100 * time.Millisecond // Fixed timeout for batch processing
+		c.BatchProcessorFramesPerBatch = config.BatchProcessorFramesPerBatch
+		c.BatchProcessorTimeout = config.BatchProcessorTimeout
+		c.BatchProcessingDelay = config.BatchProcessingDelay
+		c.MinBatchSizeForThreadPinning = config.MinBatchSizeForThreadPinning
 
 		// Pre-allocate common errors
 		c.bufferTooSmallReadEncode = newBufferTooSmallError(0, config.MinReadEncodeBuffer)
