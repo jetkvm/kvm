@@ -18,11 +18,17 @@ import (
 
 // AudioOutputStreamer manages high-performance audio output streaming
 type AudioOutputStreamer struct {
-	// Performance metrics (atomic operations for thread safety)
+	// Atomic int64 fields MUST be first for ARM32 alignment (8-byte alignment required)
 	processedFrames int64 // Total processed frames counter (atomic)
 	droppedFrames   int64 // Dropped frames counter (atomic)
 	processingTime  int64 // Average processing time in nanoseconds (atomic)
 	lastStatsTime   int64 // Last statistics update time (atomic)
+	frameCounter    int64 // Local counter for sampling
+	localProcessed  int64 // Local processed frame accumulator
+	localDropped    int64 // Local dropped frame accumulator
+
+	// Other fields after atomic int64 fields
+	sampleRate int32 // Sample every N frames (default: 10)
 
 	client     *AudioOutputClient
 	bufferPool *AudioBufferPool
@@ -70,6 +76,7 @@ func NewAudioOutputStreamer() (*AudioOutputStreamer, error) {
 		processingChan: make(chan []byte, GetConfig().ChannelBufferSize), // Large buffer for smooth processing
 		statsInterval:  GetConfig().StatsUpdateInterval,                  // Statistics interval from config
 		lastStatsTime:  time.Now().UnixNano(),
+		sampleRate:     10, // Update metrics every 10 frames to reduce atomic ops
 	}, nil
 }
 
@@ -107,6 +114,9 @@ func (s *AudioOutputStreamer) Stop() {
 
 	s.running = false
 	s.cancel()
+
+	// Flush any pending sampled metrics before stopping
+	s.flushPendingMetrics()
 
 	// Close processing channel to signal goroutines (only if not already closed)
 	if !s.chanClosed {
@@ -194,11 +204,17 @@ func (s *AudioOutputStreamer) processingLoop() {
 
 	// Set high priority for audio output processing
 	if err := SetAudioThreadPriority(); err != nil {
-		getOutputStreamingLogger().Warn().Err(err).Msg("Failed to set audio output processing priority")
+		// Only log priority warnings if warn level enabled to reduce overhead
+		if getOutputStreamingLogger().GetLevel() <= zerolog.WarnLevel {
+			getOutputStreamingLogger().Warn().Err(err).Msg("Failed to set audio output processing priority")
+		}
 	}
 	defer func() {
 		if err := ResetThreadPriority(); err != nil {
-			getOutputStreamingLogger().Warn().Err(err).Msg("Failed to reset thread priority")
+			// Only log priority warnings if warn level enabled to reduce overhead
+			if getOutputStreamingLogger().GetLevel() <= zerolog.WarnLevel {
+				getOutputStreamingLogger().Warn().Err(err).Msg("Failed to reset thread priority")
+			}
 		}
 	}()
 
@@ -209,15 +225,23 @@ func (s *AudioOutputStreamer) processingLoop() {
 
 			if _, err := s.client.ReceiveFrame(); err != nil {
 				if s.client.IsConnected() {
-					getOutputStreamingLogger().Warn().Err(err).Msg("Error reading audio frame from output server")
-					atomic.AddInt64(&s.droppedFrames, 1)
+					// Sample logging to reduce overhead - log every 50th error
+					if atomic.LoadInt64(&s.droppedFrames)%50 == 0 && getOutputStreamingLogger().GetLevel() <= zerolog.WarnLevel {
+						getOutputStreamingLogger().Warn().Err(err).Msg("Error reading audio frame from output server")
+					}
+					s.recordFrameDropped()
 				}
 				// Try to reconnect if disconnected
 				if !s.client.IsConnected() {
 					if err := s.client.Connect(); err != nil {
-						getOutputStreamingLogger().Warn().Err(err).Msg("Failed to reconnect")
+						// Only log reconnection failures if warn level enabled
+						if getOutputStreamingLogger().GetLevel() <= zerolog.WarnLevel {
+							getOutputStreamingLogger().Warn().Err(err).Msg("Failed to reconnect")
+						}
 					}
 				}
+			} else {
+				s.recordFrameProcessed()
 			}
 		}()
 	}
@@ -258,8 +282,51 @@ func (s *AudioOutputStreamer) reportStatistics() {
 	}
 }
 
-// GetStats returns streaming statistics
+// recordFrameProcessed records a processed frame with sampling optimization
+func (s *AudioOutputStreamer) recordFrameProcessed() {
+	// Increment local counters
+	frameCount := atomic.AddInt64(&s.frameCounter, 1)
+	atomic.AddInt64(&s.localProcessed, 1)
+
+	// Update metrics only every N frames to reduce atomic operation overhead
+	if frameCount%int64(atomic.LoadInt32(&s.sampleRate)) == 0 {
+		// Batch update atomic metrics
+		localProcessed := atomic.SwapInt64(&s.localProcessed, 0)
+		atomic.AddInt64(&s.processedFrames, localProcessed)
+	}
+}
+
+// recordFrameDropped records a dropped frame with sampling optimization
+func (s *AudioOutputStreamer) recordFrameDropped() {
+	// Increment local counter
+	localDropped := atomic.AddInt64(&s.localDropped, 1)
+
+	// Update atomic metrics every N dropped frames
+	if localDropped%int64(atomic.LoadInt32(&s.sampleRate)) == 0 {
+		atomic.AddInt64(&s.droppedFrames, int64(atomic.LoadInt32(&s.sampleRate)))
+		atomic.StoreInt64(&s.localDropped, 0)
+	}
+}
+
+// flushPendingMetrics flushes any pending sampled metrics to atomic counters
+func (s *AudioOutputStreamer) flushPendingMetrics() {
+	// Flush remaining processed and dropped frames
+	localProcessed := atomic.SwapInt64(&s.localProcessed, 0)
+	localDropped := atomic.SwapInt64(&s.localDropped, 0)
+
+	if localProcessed > 0 {
+		atomic.AddInt64(&s.processedFrames, localProcessed)
+	}
+	if localDropped > 0 {
+		atomic.AddInt64(&s.droppedFrames, localDropped)
+	}
+}
+
+// GetStats returns streaming statistics with pending metrics flushed
 func (s *AudioOutputStreamer) GetStats() (processed, dropped int64, avgProcessingTime time.Duration) {
+	// Flush pending metrics for accurate reading
+	s.flushPendingMetrics()
+
 	processed = atomic.LoadInt64(&s.processedFrames)
 	dropped = atomic.LoadInt64(&s.droppedFrames)
 	processingTimeNs := atomic.LoadInt64(&s.processingTime)
@@ -269,6 +336,9 @@ func (s *AudioOutputStreamer) GetStats() (processed, dropped int64, avgProcessin
 
 // GetDetailedStats returns comprehensive streaming statistics
 func (s *AudioOutputStreamer) GetDetailedStats() map[string]interface{} {
+	// Flush pending metrics for accurate reading
+	s.flushPendingMetrics()
+
 	processed := atomic.LoadInt64(&s.processedFrames)
 	dropped := atomic.LoadInt64(&s.droppedFrames)
 	processingTime := atomic.LoadInt64(&s.processingTime)

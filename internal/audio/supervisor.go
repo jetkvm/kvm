@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 // Restart configuration is now retrieved from centralized config
@@ -180,16 +182,25 @@ func (s *AudioOutputSupervisor) supervisionLoop() {
 		default:
 			// Start or restart the process
 			if err := s.startProcess(); err != nil {
-				s.logger.Error().Err(err).Msg("failed to start audio server process")
+				// Only log start errors if error level enabled to reduce overhead
+				if s.logger.GetLevel() <= zerolog.ErrorLevel {
+					s.logger.Error().Err(err).Msg("failed to start audio server process")
+				}
 
 				// Check if we should attempt restart
 				if !s.shouldRestart() {
-					s.logger.Error().Msg("maximum restart attempts exceeded, stopping supervisor")
+					// Only log critical errors to reduce overhead
+					if s.logger.GetLevel() <= zerolog.ErrorLevel {
+						s.logger.Error().Msg("maximum restart attempts exceeded, stopping supervisor")
+					}
 					return
 				}
 
 				delay := s.calculateRestartDelay()
-				s.logger.Warn().Dur("delay", delay).Msg("retrying process start after delay")
+				// Sample logging to reduce overhead - log every 5th restart attempt
+				if len(s.restartAttempts)%5 == 0 && s.logger.GetLevel() <= zerolog.WarnLevel {
+					s.logger.Warn().Dur("delay", delay).Int("attempt", len(s.restartAttempts)).Msg("retrying process start after delay")
+				}
 
 				if s.onRestart != nil {
 					s.onRestart(len(s.restartAttempts), delay)

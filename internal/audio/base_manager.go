@@ -23,6 +23,7 @@ type BaseAudioMetrics struct {
 
 // BaseAudioManager provides common functionality for audio managers
 type BaseAudioManager struct {
+	// Core metrics and state
 	metrics BaseAudioMetrics
 	logger  zerolog.Logger
 	running int32
@@ -58,6 +59,12 @@ func (bam *BaseAudioManager) resetMetrics() {
 	bam.metrics.AverageLatency = 0
 }
 
+// flushPendingMetrics is now a no-op since we use direct atomic updates
+func (bam *BaseAudioManager) flushPendingMetrics() {
+	// No-op: metrics are now updated directly without local buffering
+	// This function is kept for API compatibility
+}
+
 // getBaseMetrics returns a copy of the base metrics
 func (bam *BaseAudioManager) getBaseMetrics() BaseAudioMetrics {
 	return BaseAudioMetrics{
@@ -70,15 +77,19 @@ func (bam *BaseAudioManager) getBaseMetrics() BaseAudioMetrics {
 	}
 }
 
-// recordFrameProcessed records a processed frame
+// recordFrameProcessed records a processed frame with simplified tracking
 func (bam *BaseAudioManager) recordFrameProcessed(bytes int) {
+	// Direct atomic updates to avoid sampling complexity in critical path
 	atomic.AddInt64(&bam.metrics.FramesProcessed, 1)
 	atomic.AddInt64(&bam.metrics.BytesProcessed, int64(bytes))
+
+	// Always update timestamp for accurate last frame tracking
 	bam.metrics.LastFrameTime = time.Now()
 }
 
-// recordFrameDropped records a dropped frame
+// recordFrameDropped records a dropped frame with simplified tracking
 func (bam *BaseAudioManager) recordFrameDropped() {
+	// Direct atomic update to avoid sampling complexity in critical path
 	atomic.AddInt64(&bam.metrics.FramesDropped, 1)
 }
 

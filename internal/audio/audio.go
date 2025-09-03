@@ -355,19 +355,30 @@ func GetAudioMetrics() AudioMetrics {
 	}
 }
 
-// RecordFrameReceived increments the frames received counter
+// RecordFrameReceived increments the frames received counter with simplified tracking
 func RecordFrameReceived(bytes int) {
+	// Direct atomic updates to avoid sampling complexity in critical path
 	atomic.AddInt64(&metrics.FramesReceived, 1)
 	atomic.AddInt64(&metrics.BytesProcessed, int64(bytes))
+
+	// Always update timestamp for accurate last frame tracking
 	metrics.LastFrameTime = time.Now()
 }
 
-// RecordFrameDropped increments the frames dropped counter
+// RecordFrameDropped increments the frames dropped counter with simplified tracking
 func RecordFrameDropped() {
+	// Direct atomic update to avoid sampling complexity in critical path
 	atomic.AddInt64(&metrics.FramesDropped, 1)
 }
 
-// RecordConnectionDrop increments the connection drops counter
+// RecordConnectionDrop increments the connection drops counter with simplified tracking
 func RecordConnectionDrop() {
+	// Direct atomic update to avoid sampling complexity in critical path
 	atomic.AddInt64(&metrics.ConnectionDrops, 1)
+}
+
+// FlushPendingMetrics is now a no-op since we use direct atomic updates
+func FlushPendingMetrics() {
+	// No-op: metrics are now updated directly without local buffering
+	// This function is kept for API compatibility
 }

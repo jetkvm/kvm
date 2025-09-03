@@ -712,7 +712,17 @@ func cgoAudioClose() {
 // AudioConfigCache provides a comprehensive caching system for audio configuration
 // to minimize GetConfig() calls in the hot path
 type AudioConfigCache struct {
-	// Atomic fields for lock-free access to frequently used values
+	// Atomic int64 fields MUST be first for ARM32 alignment (8-byte alignment required)
+	minFrameDuration         atomic.Int64 // Store as nanoseconds
+	maxFrameDuration         atomic.Int64 // Store as nanoseconds
+	maxLatency               atomic.Int64 // Store as nanoseconds
+	minMetricsUpdateInterval atomic.Int64 // Store as nanoseconds
+	maxMetricsUpdateInterval atomic.Int64 // Store as nanoseconds
+	restartWindow            atomic.Int64 // Store as nanoseconds
+	restartDelay             atomic.Int64 // Store as nanoseconds
+	maxRestartDelay          atomic.Int64 // Store as nanoseconds
+
+	// Atomic int32 fields for lock-free access to frequently used values
 	minReadEncodeBuffer  atomic.Int32
 	maxDecodeWriteBuffer atomic.Int32
 	maxPacketSize        atomic.Int32
@@ -731,10 +741,14 @@ type AudioConfigCache struct {
 	// Additional cached values for validation functions
 	maxAudioFrameSize atomic.Int32
 	maxChannels       atomic.Int32
-	minFrameDuration  atomic.Int64 // Store as nanoseconds
-	maxFrameDuration  atomic.Int64 // Store as nanoseconds
 	minOpusBitrate    atomic.Int32
 	maxOpusBitrate    atomic.Int32
+
+	// Socket and buffer configuration values
+	socketMaxBuffer          atomic.Int32
+	socketMinBuffer          atomic.Int32
+	inputProcessingTimeoutMS atomic.Int32
+	maxRestartAttempts       atomic.Int32
 
 	// Batch processing related values
 	BatchProcessingTimeout       time.Duration
