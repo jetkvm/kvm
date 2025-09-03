@@ -1,3 +1,6 @@
+//go:build cgo
+// +build cgo
+
 package audio
 
 import (
@@ -308,6 +311,9 @@ func (s *AudioOutputStreamer) ReportLatency(latency time.Duration) {
 
 // StartAudioOutputStreaming starts audio output streaming (capturing system audio)
 func StartAudioOutputStreaming(send func([]byte)) error {
+	// Initialize audio monitoring (latency tracking and cache cleanup)
+	InitializeAudioMonitoring()
+
 	if !atomic.CompareAndSwapInt32(&outputStreamingRunning, 0, 1) {
 		return ErrAudioAlreadyRunning
 	}

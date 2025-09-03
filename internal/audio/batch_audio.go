@@ -213,16 +213,32 @@ func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
 		return
 	}
 
-	// Pin to OS thread for the entire batch to minimize thread switching overhead
+	// Only pin to OS thread for large batches to reduce thread contention
 	start := time.Now()
-	if atomic.CompareAndSwapInt32(&bap.threadPinned, 0, 1) {
+	shouldPinThread := len(batch) >= GetConfig().MinBatchSizeForThreadPinning
+
+	// Track if we pinned the thread in this call
+	threadWasPinned := false
+
+	if shouldPinThread && atomic.CompareAndSwapInt32(&bap.threadPinned, 0, 1) {
+		threadWasPinned = true
 		runtime.LockOSThread()
 
 		// Set high priority for batch audio processing
 		if err := SetAudioThreadPriority(); err != nil {
 			bap.logger.Warn().Err(err).Msg("failed to set batch audio processing priority")
 		}
+	}
 
+	batchSize := len(batch)
+	atomic.AddInt64(&bap.stats.BatchedReads, 1)
+	atomic.AddInt64(&bap.stats.BatchedFrames, int64(batchSize))
+	if batchSize > 1 {
+		atomic.AddInt64(&bap.stats.CGOCallsReduced, int64(batchSize-1))
+	}
+
+	// Add deferred function to release thread lock if we pinned it
+	if threadWasPinned {
 		defer func() {
 			if err := ResetThreadPriority(); err != nil {
 				bap.logger.Warn().Err(err).Msg("failed to reset thread priority")
@@ -231,13 +247,6 @@ func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
 			atomic.StoreInt32(&bap.threadPinned, 0)
 			bap.stats.OSThreadPinTime += time.Since(start)
 		}()
-	}
-
-	batchSize := len(batch)
-	atomic.AddInt64(&bap.stats.BatchedReads, 1)
-	atomic.AddInt64(&bap.stats.BatchedFrames, int64(batchSize))
-	if batchSize > 1 {
-		atomic.AddInt64(&bap.stats.CGOCallsReduced, int64(batchSize-1))
 	}
 
 	// Process each request in the batch

@@ -5,6 +5,8 @@ package audio
 import (
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -703,26 +705,63 @@ func cgoAudioClose() {
 	C.jetkvm_audio_close()
 }
 
+// Cache config values to avoid repeated GetConfig() calls in hot path
+var (
+	cachedMinReadEncodeBuffer int
+	configCacheMutex          sync.RWMutex
+	lastConfigUpdate          time.Time
+	configCacheExpiry         = 5 * time.Second
+)
+
+// updateConfigCache refreshes the cached config values if needed
+func updateConfigCache() {
+	configCacheMutex.RLock()
+	cacheExpired := time.Since(lastConfigUpdate) > configCacheExpiry
+	configCacheMutex.RUnlock()
+
+	if cacheExpired {
+		configCacheMutex.Lock()
+		defer configCacheMutex.Unlock()
+		// Double-check after acquiring lock
+		if time.Since(lastConfigUpdate) > configCacheExpiry {
+			cachedMinReadEncodeBuffer = GetConfig().MinReadEncodeBuffer
+			lastConfigUpdate = time.Now()
+		}
+	}
+}
+
 func cgoAudioReadEncode(buf []byte) (int, error) {
-	minRequired := GetConfig().MinReadEncodeBuffer
+	// Use cached config values to avoid GetConfig() in hot path
+	updateConfigCache()
+
+	// Fast validation with cached values
+	configCacheMutex.RLock()
+	minRequired := cachedMinReadEncodeBuffer
+	configCacheMutex.RUnlock()
+
 	if len(buf) < minRequired {
 		return 0, newBufferTooSmallError(len(buf), minRequired)
 	}
 
 	// Skip initialization check for now to avoid CGO compilation issues
-	// TODO: Add proper initialization state checking
 	// Note: The C code already has comprehensive state tracking with capture_initialized,
 	// capture_initializing, playback_initialized, and playback_initializing flags.
-	// When CGO environment is properly configured, this should check C.capture_initialized.
 
+	// Direct CGO call with minimal overhead
 	n := C.jetkvm_audio_read_encode(unsafe.Pointer(&buf[0]))
+
+	// Fast path for success case
+	if n > 0 {
+		return int(n), nil
+	}
+
+	// Handle error cases
 	if n < 0 {
 		return 0, newAudioReadEncodeError(int(n))
 	}
-	if n == 0 {
-		return 0, nil // No data available
-	}
-	return int(n), nil
+
+	// n == 0 case
+	return 0, nil // No data available
 }
 
 // Audio playback functions
