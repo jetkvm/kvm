@@ -7,11 +7,7 @@ import { NETWORK_CONFIG } from '../config/constants';
 // Audio event types matching the backend
 export type AudioEventType = 
   | 'audio-mute-changed'
-  | 'audio-metrics-update'
   | 'microphone-state-changed'
-  | 'microphone-metrics-update'
-  | 'audio-process-metrics'
-  | 'microphone-process-metrics'
   | 'audio-device-changed';
 
 // Audio event data interfaces
@@ -19,37 +15,9 @@ export interface AudioMuteData {
   muted: boolean;
 }
 
-export interface AudioMetricsData {
-  frames_received: number;
-  frames_dropped: number;
-  bytes_processed: number;
-  last_frame_time: string;
-  connection_drops: number;
-  average_latency: string;
-}
-
 export interface MicrophoneStateData {
   running: boolean;
   session_active: boolean;
-}
-
-export interface MicrophoneMetricsData {
-  frames_sent: number;
-  frames_dropped: number;
-  bytes_processed: number;
-  last_frame_time: string;
-  connection_drops: number;
-  average_latency: string;
-}
-
-export interface ProcessMetricsData {
-  pid: number;
-  cpu_percent: number;
-  memory_rss: number;
-  memory_vms: number;
-  memory_percent: number;
-  running: boolean;
-  process_name: string;
 }
 
 export interface AudioDeviceChangedData {
@@ -60,7 +28,7 @@ export interface AudioDeviceChangedData {
 // Audio event structure
 export interface AudioEvent {
   type: AudioEventType;
-  data: AudioMuteData | AudioMetricsData | MicrophoneStateData | MicrophoneMetricsData | ProcessMetricsData | AudioDeviceChangedData;
+  data: AudioMuteData | MicrophoneStateData | AudioDeviceChangedData;
 }
 
 // Hook return type
@@ -71,15 +39,9 @@ export interface UseAudioEventsReturn {
   
   // Audio state
   audioMuted: boolean | null;
-  audioMetrics: AudioMetricsData | null;
   
   // Microphone state
   microphoneState: MicrophoneStateData | null;
-  microphoneMetrics: MicrophoneMetricsData | null;
-  
-  // Process metrics
-  audioProcessMetrics: ProcessMetricsData | null;
-  microphoneProcessMetrics: ProcessMetricsData | null;
   
   // Device change events
   onAudioDeviceChanged?: (data: AudioDeviceChangedData) => void;
@@ -99,11 +61,7 @@ const globalSubscriptionState = {
 export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedData) => void): UseAudioEventsReturn {
   // State for audio data
   const [audioMuted, setAudioMuted] = useState<boolean | null>(null);
-  const [audioMetrics, setAudioMetrics] = useState<AudioMetricsData | null>(null);
   const [microphoneState, setMicrophoneState] = useState<MicrophoneStateData | null>(null);
-  const [microphoneMetrics, setMicrophoneMetricsData] = useState<MicrophoneMetricsData | null>(null);
-  const [audioProcessMetrics, setAudioProcessMetrics] = useState<ProcessMetricsData | null>(null);
-  const [microphoneProcessMetrics, setMicrophoneProcessMetrics] = useState<ProcessMetricsData | null>(null);
   
   // Local subscription state
   const [isLocallySubscribed, setIsLocallySubscribed] = useState(false);
@@ -225,34 +183,10 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
               break;
             }
               
-            case 'audio-metrics-update': {
-              const audioMetricsData = audioEvent.data as AudioMetricsData;
-              setAudioMetrics(audioMetricsData);
-              break;
-            }
-              
             case 'microphone-state-changed': {
               const micStateData = audioEvent.data as MicrophoneStateData;
               setMicrophoneState(micStateData);
               // Microphone state changed
-              break;
-            }
-              
-            case 'microphone-metrics-update': {
-              const micMetricsData = audioEvent.data as MicrophoneMetricsData;
-              setMicrophoneMetricsData(micMetricsData);
-              break;
-            }
-              
-            case 'audio-process-metrics': {
-              const audioProcessData = audioEvent.data as ProcessMetricsData;
-              setAudioProcessMetrics(audioProcessData);
-              break;
-            }
-              
-            case 'microphone-process-metrics': {
-              const micProcessData = audioEvent.data as ProcessMetricsData;
-              setMicrophoneProcessMetrics(micProcessData);
               break;
             }
               
@@ -320,15 +254,9 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
     
     // Audio state
     audioMuted,
-    audioMetrics,
     
     // Microphone state
     microphoneState,
-    microphoneMetrics: microphoneMetrics,
-    
-    // Process metrics
-    audioProcessMetrics,
-    microphoneProcessMetrics,
     
     // Device change events
     onAudioDeviceChanged,

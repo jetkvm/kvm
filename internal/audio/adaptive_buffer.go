@@ -152,22 +152,6 @@ func (abm *AdaptiveBufferManager) GetOutputBufferSize() int {
 
 // UpdateLatency updates the current latency measurement
 func (abm *AdaptiveBufferManager) UpdateLatency(latency time.Duration) {
-	cachedConfig := GetCachedConfig()
-	if !cachedConfig.GetEnableMetricsCollection() {
-		return
-	}
-
-	// Use exponential moving average for latency
-	currentAvg := atomic.LoadInt64(&abm.averageLatency)
-	newLatency := latency.Nanoseconds()
-
-	if currentAvg == 0 {
-		atomic.StoreInt64(&abm.averageLatency, newLatency)
-	} else {
-		// Exponential moving average: 70% historical, 30% current
-		newAvg := int64(float64(currentAvg)*GetConfig().HistoricalWeight + float64(newLatency)*GetConfig().CurrentWeight)
-		atomic.StoreInt64(&abm.averageLatency, newAvg)
-	}
 }
 
 // adaptationLoop is the main loop that adjusts buffer sizes
@@ -240,11 +224,8 @@ func (abm *AdaptiveBufferManager) adaptBufferSizes() {
 	systemCPU := totalCPU                               // Total CPU across all monitored processes
 	systemMemory := totalMemory / float64(processCount) // Average memory usage
 
-	cachedConfig := GetCachedConfig()
-	if cachedConfig.GetEnableMetricsCollection() {
-		atomic.StoreInt64(&abm.systemCPUPercent, int64(systemCPU*100))
-		atomic.StoreInt64(&abm.systemMemoryPercent, int64(systemMemory*100))
-	}
+	atomic.StoreInt64(&abm.systemCPUPercent, int64(systemCPU*100))
+	atomic.StoreInt64(&abm.systemMemoryPercent, int64(systemMemory*100))
 
 	// Get current latency
 	currentLatencyNs := atomic.LoadInt64(&abm.averageLatency)

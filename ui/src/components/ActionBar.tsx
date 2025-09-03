@@ -360,7 +360,7 @@ export default function Actionbar({
                 checkIfStateChanged(open);
                 return (
                   <div className="mx-auto">
-                    <AudioControlPopover microphone={microphone} open={open} />
+                    <AudioControlPopover microphone={microphone} />
                   </div>
                 );
               }}
