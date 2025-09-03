@@ -3,7 +3,6 @@ package audio
 import (
 	"sync"
 	"sync/atomic"
-	"time"
 	"unsafe"
 )
 
@@ -188,13 +187,6 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 
 // Put returns a zero-copy frame to the pool
 func (p *ZeroCopyFramePool) Put(frame *ZeroCopyAudioFrame) {
-	// Metrics collection removed
-	var startTime time.Time
-	trackMetrics := false // Metrics disabled
-	if false {
-		startTime = time.Now()
-	}
-
 	if frame == nil || !frame.pooled {
 		return
 	}
@@ -235,11 +227,7 @@ func (p *ZeroCopyFramePool) Put(frame *ZeroCopyAudioFrame) {
 		frame.mutex.Unlock()
 	}
 
-	// Record metrics only for sampled operations
-	if trackMetrics {
-		latency := time.Since(startTime)
-		GetGranularMetricsCollector().RecordZeroCopyPut(latency, frame.capacity)
-	}
+	// Metrics recording removed - granular metrics collector was unused
 }
 
 // Data returns the frame data as a slice (zero-copy view)
