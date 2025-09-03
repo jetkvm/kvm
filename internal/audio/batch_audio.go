@@ -440,7 +440,6 @@ func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
 		start = time.Now()
 		threadWasPinned = true
 		runtime.LockOSThread()
-		// Skip priority setting for better performance - audio threads already have good priority
 	}
 
 	// Batch stats updates to reduce atomic operations (update once per batch instead of per frame)
