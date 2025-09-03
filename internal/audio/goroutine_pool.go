@@ -67,13 +67,22 @@ func (p *GoroutinePool) Submit(task Task) bool {
 
 // ensureWorkerAvailable makes sure at least one worker is available to process tasks
 func (p *GoroutinePool) ensureWorkerAvailable() {
-	// Try to acquire a semaphore slot without blocking
-	select {
-	case p.workerSem <- struct{}{}:
-		// We got a slot, start a new worker
-		p.startWorker()
-	default:
-		// All worker slots are taken, which means we have enough workers
+	// Check if we already have enough workers
+	currentWorkers := atomic.LoadInt64(&p.workerCount)
+
+	// Only start new workers if:
+	// 1. We have no workers at all, or
+	// 2. The queue is growing and we're below max workers
+	queueLen := len(p.taskQueue)
+	if currentWorkers == 0 || (queueLen > int(currentWorkers) && currentWorkers < int64(p.maxWorkers)) {
+		// Try to acquire a semaphore slot without blocking
+		select {
+		case p.workerSem <- struct{}{}:
+			// We got a slot, start a new worker
+			p.startWorker()
+		default:
+			// All worker slots are taken, which means we have enough workers
+		}
 	}
 }
 
@@ -124,12 +133,14 @@ func (p *GoroutinePool) startWorker() {
 
 				atomic.AddInt64(&p.taskCount, 1)
 			case <-idleTimer.C:
-				// Worker has been idle for too long, exit if we have more than minimum workers
-				if atomic.LoadInt64(&p.workerCount) > 1 {
+				// Worker has been idle for too long
+				// Keep at least 2 workers alive to handle incoming tasks without creating new goroutines
+				if atomic.LoadInt64(&p.workerCount) > 2 {
 					return
 				}
-				// Reset timer for the minimum worker
-				idleTimer.Reset(p.maxIdleTime)
+				// For persistent workers (the minimum 2), use a longer idle timeout
+				// This prevents excessive worker creation/destruction cycles
+				idleTimer.Reset(p.maxIdleTime * 3) // Triple the idle time for persistent workers
 			}
 		}
 	}()
