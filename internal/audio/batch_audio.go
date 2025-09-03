@@ -94,6 +94,12 @@ func NewBatchAudioProcessor(batchSize int, batchDuration time.Duration) *BatchAu
 		batchDuration = cache.BatchProcessingDelay
 	}
 
+	// Use optimized queue sizes from configuration
+	queueSize := cache.BatchProcessorMaxQueueSize
+	if queueSize <= 0 {
+		queueSize = batchSize * 2 // Fallback to double batch size
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	// Pre-allocate logger to avoid repeated allocations
 	logger := logging.GetDefaultLogger().With().Str("component", "batch-audio").Logger()
@@ -110,8 +116,8 @@ func NewBatchAudioProcessor(batchSize int, batchDuration time.Duration) *BatchAu
 		logger:        &logger,
 		batchSize:     batchSize,
 		batchDuration: batchDuration,
-		readQueue:     make(chan batchReadRequest, batchSize*2),
-		writeQueue:    make(chan batchWriteRequest, batchSize*2),
+		readQueue:     make(chan batchReadRequest, queueSize),
+		writeQueue:    make(chan batchWriteRequest, queueSize),
 		readBufPool: &sync.Pool{
 			New: func() interface{} {
 				// Use pre-calculated frame size to avoid GetConfig() calls
@@ -422,12 +428,15 @@ func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
 
 	// Get cached config once - avoid repeated calls
 	cache := GetCachedConfig()
-	minBatchSize := cache.MinBatchSizeForThreadPinning
+	threadPinningThreshold := cache.BatchProcessorThreadPinningThreshold
+	if threadPinningThreshold == 0 {
+		threadPinningThreshold = cache.MinBatchSizeForThreadPinning // Fallback
+	}
 
 	// Only pin to OS thread for large batches to reduce thread contention
 	var start time.Time
 	threadWasPinned := false
-	if batchSize >= minBatchSize && atomic.CompareAndSwapInt32(&bap.threadPinned, 0, 1) {
+	if batchSize >= threadPinningThreshold && atomic.CompareAndSwapInt32(&bap.threadPinned, 0, 1) {
 		start = time.Now()
 		threadWasPinned = true
 		runtime.LockOSThread()
@@ -473,10 +482,14 @@ func (bap *BatchAudioProcessor) processBatchWrite(batch []batchWriteRequest) {
 
 	// Get cached config to avoid GetConfig() calls in hot path
 	cache := GetCachedConfig()
+	threadPinningThreshold := cache.BatchProcessorThreadPinningThreshold
+	if threadPinningThreshold == 0 {
+		threadPinningThreshold = cache.MinBatchSizeForThreadPinning // Fallback
+	}
 
 	// Only pin to OS thread for large batches to reduce thread contention
 	start := time.Now()
-	shouldPinThread := len(batch) >= cache.MinBatchSizeForThreadPinning
+	shouldPinThread := len(batch) >= threadPinningThreshold
 
 	// Track if we pinned the thread in this call
 	threadWasPinned := false
