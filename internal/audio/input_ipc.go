@@ -514,7 +514,15 @@ func (ais *AudioInputServer) processOpusFrame(data []byte) error {
 	// Get cached config for optimal performance
 	cache := GetCachedConfig()
 	// Only update cache if expired - avoid unnecessary overhead
-	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+	// Use proper locking to avoid race condition
+	if cache.initialized.Load() {
+		cache.mutex.RLock()
+		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
+		cache.mutex.RUnlock()
+		if cacheExpired {
+			cache.Update()
+		}
+	} else {
 		cache.Update()
 	}
 

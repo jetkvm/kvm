@@ -865,7 +865,15 @@ func cgoAudioReadEncode(buf []byte) (int, error) {
 	// Fast path: Use AudioConfigCache to avoid GetConfig() in hot path
 	cache := GetCachedConfig()
 	// Only update cache if expired - avoid unnecessary overhead
-	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+	// Use proper locking to avoid race condition
+	if cache.initialized.Load() {
+		cache.mutex.RLock()
+		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
+		cache.mutex.RUnlock()
+		if cacheExpired {
+			cache.Update()
+		}
+	} else {
 		cache.Update()
 	}
 
@@ -933,7 +941,15 @@ func cgoAudioDecodeWrite(buf []byte) (n int, err error) {
 	// Fast validation with AudioConfigCache
 	cache := GetCachedConfig()
 	// Only update cache if expired - avoid unnecessary overhead
-	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+	// Use proper locking to avoid race condition
+	if cache.initialized.Load() {
+		cache.mutex.RLock()
+		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
+		cache.mutex.RUnlock()
+		if cacheExpired {
+			cache.Update()
+		}
+	} else {
 		cache.Update()
 	}
 
@@ -1092,7 +1108,15 @@ func ReadEncodeWithPooledBuffer() ([]byte, int, error) {
 	// Get cached config
 	cache := GetCachedConfig()
 	// Only update cache if expired - avoid unnecessary overhead
-	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+	// Use proper locking to avoid race condition
+	if cache.initialized.Load() {
+		cache.mutex.RLock()
+		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
+		cache.mutex.RUnlock()
+		if cacheExpired {
+			cache.Update()
+		}
+	} else {
 		cache.Update()
 	}
 
@@ -1131,7 +1155,15 @@ func DecodeWriteWithPooledBuffer(data []byte) (int, error) {
 	// Get cached config
 	cache := GetCachedConfig()
 	// Only update cache if expired - avoid unnecessary overhead
-	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+	// Use proper locking to avoid race condition
+	if cache.initialized.Load() {
+		cache.mutex.RLock()
+		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
+		cache.mutex.RUnlock()
+		if cacheExpired {
+			cache.Update()
+		}
+	} else {
 		cache.Update()
 	}
 
@@ -1158,7 +1190,15 @@ func BatchReadEncode(batchSize int) ([][]byte, error) {
 	// Get cached config
 	cache := GetCachedConfig()
 	// Only update cache if expired - avoid unnecessary overhead
-	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+	// Use proper locking to avoid race condition
+	if cache.initialized.Load() {
+		cache.mutex.RLock()
+		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
+		cache.mutex.RUnlock()
+		if cacheExpired {
+			cache.Update()
+		}
+	} else {
 		cache.Update()
 	}
 
@@ -1237,7 +1277,15 @@ func BatchDecodeWrite(frames [][]byte) error {
 	// Get cached config
 	cache := GetCachedConfig()
 	// Only update cache if expired - avoid unnecessary overhead
-	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+	// Use proper locking to avoid race condition
+	if cache.initialized.Load() {
+		cache.mutex.RLock()
+		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
+		cache.mutex.RUnlock()
+		if cacheExpired {
+			cache.Update()
+		}
+	} else {
 		cache.Update()
 	}
 
@@ -1312,7 +1360,15 @@ func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, err
 	// Get cached config
 	cache := GetCachedConfig()
 	// Only update cache if expired - avoid unnecessary overhead
-	if time.Since(cache.lastUpdate) > cache.cacheExpiry {
+	// Use proper locking to avoid race condition
+	if cache.initialized.Load() {
+		cache.mutex.RLock()
+		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
+		cache.mutex.RUnlock()
+		if cacheExpired {
+			cache.Update()
+		}
+	} else {
 		cache.Update()
 	}
 
