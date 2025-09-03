@@ -750,12 +750,19 @@ type AudioConfigCache struct {
 	inputProcessingTimeoutMS atomic.Int32
 	maxRestartAttempts       atomic.Int32
 
+	// Performance flags for hot path optimization
+	enableMetricsCollection   atomic.Bool
+	enableGoroutineMonitoring atomic.Bool
+
 	// Batch processing related values
-	BatchProcessingTimeout       time.Duration
-	BatchProcessorFramesPerBatch int
-	BatchProcessorTimeout        time.Duration
-	BatchProcessingDelay         time.Duration
-	MinBatchSizeForThreadPinning int
+	BatchProcessingTimeout               time.Duration
+	BatchProcessorFramesPerBatch         int
+	BatchProcessorTimeout                time.Duration
+	BatchProcessingDelay                 time.Duration
+	MinBatchSizeForThreadPinning         int
+	BatchProcessorMaxQueueSize           int
+	BatchProcessorAdaptiveThreshold      float64
+	BatchProcessorThreadPinningThreshold int
 
 	// Mutex for updating the cache
 	mutex       sync.RWMutex
@@ -822,12 +829,19 @@ func (c *AudioConfigCache) Update() {
 		c.minOpusBitrate.Store(int32(config.MinOpusBitrate))
 		c.maxOpusBitrate.Store(int32(config.MaxOpusBitrate))
 
+		// Update performance flags for hot path optimization
+		c.enableMetricsCollection.Store(config.EnableMetricsCollection)
+		c.enableGoroutineMonitoring.Store(config.EnableGoroutineMonitoring)
+
 		// Update batch processing related values
 		c.BatchProcessingTimeout = 100 * time.Millisecond // Fixed timeout for batch processing
 		c.BatchProcessorFramesPerBatch = config.BatchProcessorFramesPerBatch
 		c.BatchProcessorTimeout = config.BatchProcessorTimeout
 		c.BatchProcessingDelay = config.BatchProcessingDelay
 		c.MinBatchSizeForThreadPinning = config.MinBatchSizeForThreadPinning
+		c.BatchProcessorMaxQueueSize = config.BatchProcessorMaxQueueSize
+		c.BatchProcessorAdaptiveThreshold = config.BatchProcessorAdaptiveThreshold
+		c.BatchProcessorThreadPinningThreshold = config.BatchProcessorThreadPinningThreshold
 
 		// Pre-allocate common errors
 		c.bufferTooSmallReadEncode = newBufferTooSmallError(0, config.MinReadEncodeBuffer)
@@ -871,6 +885,18 @@ func (c *AudioConfigCache) GetBufferTooSmallError() error {
 // GetBufferTooLargeError returns the pre-allocated buffer too large error
 func (c *AudioConfigCache) GetBufferTooLargeError() error {
 	return c.bufferTooLargeDecodeWrite
+}
+
+// GetEnableMetricsCollection returns the cached EnableMetricsCollection flag for hot path optimization
+func (c *AudioConfigCache) GetEnableMetricsCollection() bool {
+	c.Update() // Ensure cache is current
+	return c.enableMetricsCollection.Load()
+}
+
+// GetEnableGoroutineMonitoring returns the cached EnableGoroutineMonitoring flag for hot path optimization
+func (c *AudioConfigCache) GetEnableGoroutineMonitoring() bool {
+	c.Update() // Ensure cache is current
+	return c.enableGoroutineMonitoring.Load()
 }
 
 // Removed duplicate config caching system - using AudioConfigCache instead

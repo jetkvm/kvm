@@ -295,6 +295,12 @@ func (s *AudioOutputStreamer) reportStatistics() {
 
 // recordFrameProcessed records a processed frame with sampling optimization
 func (s *AudioOutputStreamer) recordFrameProcessed() {
+	// Check if metrics collection is enabled
+	cachedConfig := GetCachedConfig()
+	if !cachedConfig.GetEnableMetricsCollection() {
+		return
+	}
+
 	// Increment local counters
 	frameCount := atomic.AddInt64(&s.frameCounter, 1)
 	atomic.AddInt64(&s.localProcessed, 1)
@@ -309,6 +315,12 @@ func (s *AudioOutputStreamer) recordFrameProcessed() {
 
 // recordFrameDropped records a dropped frame with sampling optimization
 func (s *AudioOutputStreamer) recordFrameDropped() {
+	// Check if metrics collection is enabled
+	cachedConfig := GetCachedConfig()
+	if !cachedConfig.GetEnableMetricsCollection() {
+		return
+	}
+
 	// Increment local counter
 	localDropped := atomic.AddInt64(&s.localDropped, 1)
 
@@ -321,6 +333,12 @@ func (s *AudioOutputStreamer) recordFrameDropped() {
 
 // flushPendingMetrics flushes any pending sampled metrics to atomic counters
 func (s *AudioOutputStreamer) flushPendingMetrics() {
+	// Check if metrics collection is enabled
+	cachedConfig := GetCachedConfig()
+	if !cachedConfig.GetEnableMetricsCollection() {
+		return
+	}
+
 	// Flush remaining processed and dropped frames
 	localProcessed := atomic.SwapInt64(&s.localProcessed, 0)
 	localDropped := atomic.SwapInt64(&s.localDropped, 0)

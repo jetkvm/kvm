@@ -374,6 +374,12 @@ const (
 
 // RecordFrameReceived increments the frames received counter with batched updates
 func RecordFrameReceived(bytes int) {
+	// Check if metrics collection is enabled
+	cachedConfig := GetCachedConfig()
+	if !cachedConfig.GetEnableMetricsCollection() {
+		return
+	}
+
 	// Use local batching to reduce atomic operations frequency
 	atomic.AddInt64(&batchedFramesReceived, 1)
 	atomic.AddInt64(&batchedBytesProcessed, int64(bytes))
@@ -396,6 +402,12 @@ func RecordFrameReceived(bytes int) {
 
 // RecordFrameDropped increments the frames dropped counter with batched updates
 func RecordFrameDropped() {
+	// Check if metrics collection is enabled
+	cachedConfig := GetCachedConfig()
+	if !cachedConfig.GetEnableMetricsCollection() {
+		return
+	}
+
 	// Use local batching to reduce atomic operations frequency
 	atomic.AddInt64(&batchedFramesDropped, 1)
 
@@ -407,6 +419,12 @@ func RecordFrameDropped() {
 
 // RecordConnectionDrop increments the connection drops counter with batched updates
 func RecordConnectionDrop() {
+	// Check if metrics collection is enabled
+	cachedConfig := GetCachedConfig()
+	if !cachedConfig.GetEnableMetricsCollection() {
+		return
+	}
+
 	// Use local batching to reduce atomic operations frequency
 	atomic.AddInt64(&batchedConnectionDrops, 1)
 

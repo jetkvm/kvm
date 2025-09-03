@@ -370,6 +370,12 @@ func (aeb *AudioEventBroadcaster) startMetricsBroadcasting() {
 	defer ticker.Stop()
 
 	for range ticker.C {
+		// Skip metrics broadcasting if metrics collection is disabled
+		cachedConfig := GetCachedConfig()
+		if !cachedConfig.GetEnableMetricsCollection() {
+			continue
+		}
+
 		aeb.mutex.RLock()
 		subscriberCount := len(aeb.subscribers)
 

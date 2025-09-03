@@ -142,10 +142,14 @@ func NewZeroCopyFramePool(maxFrameSize int) *ZeroCopyFramePool {
 
 // Get retrieves a zero-copy frame from the pool
 func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
+	// Get cached config once for all metrics operations
+	cachedConfig := GetCachedConfig()
+	enableMetrics := cachedConfig.GetEnableMetricsCollection()
+
 	// Remove metrics overhead in critical path - use sampling instead
 	var wasHit bool
 	var startTime time.Time
-	trackMetrics := atomic.LoadInt64(&p.counter)%100 == 0 // Sample 1% of operations
+	trackMetrics := enableMetrics && atomic.LoadInt64(&p.counter)%100 == 0 // Sample 1% of operations if enabled
 	if trackMetrics {
 		startTime = time.Now()
 	}
@@ -154,7 +158,9 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 	allocationCount := atomic.LoadInt64(&p.allocationCount)
 	if allocationCount > int64(p.maxPoolSize*2) {
 		// If we've allocated too many frames, force pool reuse
-		atomic.AddInt64(&p.missCount, 1)
+		if enableMetrics {
+			atomic.AddInt64(&p.missCount, 1)
+		}
 		wasHit = true // Pool reuse counts as hit
 		frame := p.pool.Get().(*ZeroCopyAudioFrame)
 		frame.mutex.Lock()
@@ -185,7 +191,9 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 		frame.data = frame.data[:0]
 		frame.mutex.Unlock()
 
-		atomic.AddInt64(&p.hitCount, 1)
+		if enableMetrics {
+			atomic.AddInt64(&p.hitCount, 1)
+		}
 
 		// Record metrics only for sampled operations
 		if trackMetrics {
@@ -197,7 +205,9 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 	p.mutex.Unlock()
 
 	// Try sync.Pool next and track allocation
-	atomic.AddInt64(&p.allocationCount, 1)
+	if enableMetrics {
+		atomic.AddInt64(&p.allocationCount, 1)
+	}
 	frame := p.pool.Get().(*ZeroCopyAudioFrame)
 	frame.mutex.Lock()
 	frame.refCount = 1
@@ -218,9 +228,13 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 
 // Put returns a zero-copy frame to the pool
 func (p *ZeroCopyFramePool) Put(frame *ZeroCopyAudioFrame) {
+	// Get cached config once for all metrics operations
+	cachedConfig := GetCachedConfig()
+	enableMetrics := cachedConfig.GetEnableMetricsCollection()
+
 	// Remove metrics overhead in critical path - use sampling instead
 	var startTime time.Time
-	trackMetrics := atomic.LoadInt64(&p.counter)%100 == 0 // Sample 1% of operations
+	trackMetrics := enableMetrics && atomic.LoadInt64(&p.counter)%100 == 0 // Sample 1% of operations if enabled
 	if trackMetrics {
 		startTime = time.Now()
 	}
@@ -257,7 +271,9 @@ func (p *ZeroCopyFramePool) Put(frame *ZeroCopyAudioFrame) {
 
 		// Return to sync.Pool
 		p.pool.Put(frame)
-		atomic.AddInt64(&p.counter, 1)
+		if enableMetrics {
+			atomic.AddInt64(&p.counter, 1)
+		}
 	} else {
 		frame.mutex.Unlock()
 	}

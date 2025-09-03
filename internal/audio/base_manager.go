@@ -79,6 +79,12 @@ func (bam *BaseAudioManager) getBaseMetrics() BaseAudioMetrics {
 
 // recordFrameProcessed records a processed frame with simplified tracking
 func (bam *BaseAudioManager) recordFrameProcessed(bytes int) {
+	// Check if metrics collection is enabled
+	cachedConfig := GetCachedConfig()
+	if !cachedConfig.GetEnableMetricsCollection() {
+		return
+	}
+
 	// Direct atomic updates to avoid sampling complexity in critical path
 	atomic.AddInt64(&bam.metrics.FramesProcessed, 1)
 	atomic.AddInt64(&bam.metrics.BytesProcessed, int64(bytes))
@@ -89,12 +95,24 @@ func (bam *BaseAudioManager) recordFrameProcessed(bytes int) {
 
 // recordFrameDropped records a dropped frame with simplified tracking
 func (bam *BaseAudioManager) recordFrameDropped() {
+	// Check if metrics collection is enabled
+	cachedConfig := GetCachedConfig()
+	if !cachedConfig.GetEnableMetricsCollection() {
+		return
+	}
+
 	// Direct atomic update to avoid sampling complexity in critical path
 	atomic.AddInt64(&bam.metrics.FramesDropped, 1)
 }
 
 // updateLatency updates the average latency
 func (bam *BaseAudioManager) updateLatency(latency time.Duration) {
+	// Check if metrics collection is enabled
+	cachedConfig := GetCachedConfig()
+	if !cachedConfig.GetEnableMetricsCollection() {
+		return
+	}
+
 	// Simple moving average - could be enhanced with more sophisticated algorithms
 	currentAvg := bam.metrics.AverageLatency
 	if currentAvg == 0 {

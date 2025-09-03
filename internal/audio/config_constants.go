@@ -908,6 +908,23 @@ type AudioConfigConstants struct {
 	// Default true enables pre-warming for optimal user experience
 	EnableSubprocessPrewarming bool // Enable subprocess pre-warming (default: true)
 
+	// Performance Mode Configuration
+	// These flags control overhead-inducing features for production optimization
+	EnableMetricsCollection   bool // Enable detailed metrics collection (default: true)
+	EnableLatencyProfiling    bool // Enable latency profiling and detailed tracing (default: false)
+	EnableGoroutineMonitoring bool // Enable goroutine monitoring (default: false)
+	EnableBatchTimeTracking   bool // Enable batch processing time tracking (default: false)
+	EnableDetailedLogging     bool // Enable detailed debug logging (default: false)
+
+	// Metrics Collection Optimization
+	MetricsFlushInterval   int     // Batched metrics flush interval (default: 10)
+	MetricsForceFlushNanos int64   // Force flush after nanoseconds (default: 100ms)
+	MetricsSamplingRate    float64 // Sampling rate for metrics (0.0-1.0, default: 1.0)
+
+	// Latency Profiling Optimization
+	LatencyProfilingSamplingRate float64       // Latency profiling sampling rate (default: 0.01 = 1%)
+	LatencyProfilingInterval     time.Duration // Latency profiling report interval (default: 60s)
+
 	// Priority Scheduler Configuration - Settings for process priority management
 	// Used in: priority_scheduler.go for system priority control
 	// Impact: Controls valid range for process priority adjustments
@@ -1211,6 +1228,24 @@ type AudioConfigConstants struct {
 	// Impact: Shorter timeouts improve responsiveness but may cause timeouts.
 	// Default 5ms provides quick batch processing with reasonable timeout.
 	BatchProcessorTimeout time.Duration
+
+	// BatchProcessorMaxQueueSize defines maximum queue size for batch operations.
+	// Used in: batch_audio.go for queue size control
+	// Impact: Larger queues reduce blocking but increase memory usage.
+	// Default 16 provides good balance between memory and performance.
+	BatchProcessorMaxQueueSize int
+
+	// BatchProcessorAdaptiveThreshold defines threshold for adaptive batch sizing.
+	// Used in: batch_audio.go for dynamic batch size adjustment
+	// Impact: Lower thresholds enable more aggressive batching.
+	// Default 0.8 enables batching when 80% of queue is full.
+	BatchProcessorAdaptiveThreshold float64
+
+	// BatchProcessorThreadPinningThreshold defines minimum batch size for thread pinning.
+	// Used in: batch_audio.go for OS thread pinning optimization
+	// Impact: Higher thresholds reduce thread pinning overhead.
+	// Default 8 frames enables pinning for larger batches only.
+	BatchProcessorThreadPinningThreshold int
 
 	// Output Streaming Constants - Configuration for audio output streaming
 	// Used in: output_streaming.go for output stream timing control
@@ -2431,8 +2466,11 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		ProcessMonitorTraditionalHz:   100.0,  // 100.0 Hz traditional clock
 
 		// Batch Processing Constants
-		BatchProcessorFramesPerBatch: 4,                    // 4 frames per batch
-		BatchProcessorTimeout:        5 * time.Millisecond, // 5ms timeout
+		BatchProcessorFramesPerBatch:         4,                    // 4 frames per batch
+		BatchProcessorTimeout:                5 * time.Millisecond, // 5ms timeout
+		BatchProcessorMaxQueueSize:           16,                   // 16 max queue size for balanced memory/performance
+		BatchProcessorAdaptiveThreshold:      0.8,                  // 0.8 threshold for adaptive batching (80% queue full)
+		BatchProcessorThreadPinningThreshold: 8,                    // 8 frames minimum for thread pinning optimization
 
 		// Output Streaming Constants
 		OutputStreamingFrameIntervalMS: 20, // 20ms frame interval (50 FPS)
@@ -2534,6 +2572,78 @@ func DefaultAudioConfig() *AudioConfigConstants {
 
 		// Goroutine Monitoring Configuration
 		GoroutineMonitorInterval: 30 * time.Second, // 30s monitoring interval
+
+		// Performance Configuration Flags - Production optimizations
+		// Used in: Production environments to reduce overhead and improve performance
+		// Impact: Controls which performance monitoring features are enabled
+
+		// EnableMetricsCollection controls detailed metrics collection.
+		// Used in: metrics.go, granular_metrics.go for performance tracking
+		// Impact: When disabled, reduces atomic operations and memory overhead.
+		// Default true for development, should be false in production for optimal performance.
+		EnableMetricsCollection: true, // Enable detailed metrics collection (default: true)
+
+		// EnableLatencyProfiling controls latency profiling and detailed tracing.
+		// Used in: latency_profiler.go for performance analysis
+		// Impact: When disabled, eliminates profiling overhead and reduces CPU usage.
+		// Default false to minimize overhead in production environments.
+		EnableLatencyProfiling: false, // Enable latency profiling and detailed tracing (default: false)
+
+		// EnableGoroutineMonitoring controls goroutine monitoring.
+		// Used in: goroutine_monitor.go for tracking goroutine health
+		// Impact: When disabled, reduces monitoring overhead and CPU usage.
+		// Default false to minimize overhead in production environments.
+		EnableGoroutineMonitoring: false, // Enable goroutine monitoring (default: false)
+
+		// EnableBatchTimeTracking controls batch processing time tracking.
+		// Used in: batch_audio.go for performance analysis
+		// Impact: When disabled, eliminates time tracking overhead.
+		// Default false to minimize overhead in production environments.
+		EnableBatchTimeTracking: false, // Enable batch processing time tracking (default: false)
+
+		// EnableDetailedLogging controls detailed debug logging.
+		// Used in: Throughout audio system for debugging
+		// Impact: When disabled, reduces logging overhead and improves performance.
+		// Default false to minimize overhead in production environments.
+		EnableDetailedLogging: false, // Enable detailed debug logging (default: false)
+
+		// Metrics Configuration - Batching and sampling for performance
+		// Used in: metrics.go for optimizing metrics collection overhead
+		// Impact: Controls how frequently metrics are updated and flushed
+
+		// MetricsFlushInterval defines batched metrics flush interval.
+		// Used in: metrics.go for batching metrics updates
+		// Impact: Higher values reduce update frequency but increase memory usage.
+		// Default 10 provides good balance between performance and memory.
+		MetricsFlushInterval: 10, // Batched metrics flush interval (default: 10)
+
+		// MetricsForceFlushNanos defines force flush after nanoseconds.
+		// Used in: metrics.go for ensuring metrics are not delayed too long
+		// Impact: Prevents metrics from being delayed indefinitely.
+		// Default 100ms ensures reasonable freshness while allowing batching.
+		MetricsForceFlushNanos: 100000000, // Force flush after nanoseconds (default: 100ms)
+
+		// MetricsSamplingRate defines sampling rate for metrics.
+		// Used in: metrics.go for reducing metrics collection overhead
+		// Impact: Values < 1.0 reduce overhead by sampling only a fraction of events.
+		// Default 1.0 collects all metrics, set to 0.1 in production for 90% reduction.
+		MetricsSamplingRate: 1.0, // Sampling rate for metrics (0.0-1.0, default: 1.0)
+
+		// Latency Profiling Configuration - Sampling for performance
+		// Used in: latency_profiler.go for optimizing profiling overhead
+		// Impact: Controls how frequently latency measurements are taken
+
+		// LatencyProfilingSamplingRate defines latency profiling sampling rate.
+		// Used in: latency_profiler.go for reducing profiling overhead
+		// Impact: Values < 1.0 significantly reduce profiling overhead.
+		// Default 0.01 (1%) provides useful data with minimal overhead.
+		LatencyProfilingSamplingRate: 0.01, // Latency profiling sampling rate (default: 0.01 = 1%)
+
+		// LatencyProfilingInterval defines latency profiling report interval.
+		// Used in: latency_profiler.go for controlling report frequency
+		// Impact: Longer intervals reduce reporting overhead.
+		// Default 60s provides reasonable reporting frequency.
+		LatencyProfilingInterval: 60 * time.Second, // Latency profiling report interval (default: 60s)
 	}
 }
 
