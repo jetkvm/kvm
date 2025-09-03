@@ -84,3 +84,21 @@ func GetAudioInputSupervisor() *AudioInputSupervisor {
 	}
 	return (*AudioInputSupervisor)(ptr)
 }
+
+// PrewarmAudioInputSubprocess starts an audio input subprocess in advance to reduce activation latency
+func PrewarmAudioInputSubprocess() error {
+	supervisor := GetAudioInputSupervisor()
+	if supervisor == nil {
+		return nil // No supervisor available, skip prewarming
+	}
+	return supervisor.PrewarmSubprocess()
+}
+
+// IsAudioInputSubprocessPrewarmed returns whether an audio input subprocess is prewarmed and ready
+func IsAudioInputSubprocessPrewarmed() bool {
+	supervisor := GetAudioInputSupervisor()
+	if supervisor == nil {
+		return false
+	}
+	return supervisor.IsPrewarmed()
+}

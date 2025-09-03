@@ -68,6 +68,17 @@ func startAudioSubprocess() error {
 		config.AudioQualityLowOpusDTX,
 	)
 
+	// Pre-warm audio input subprocess to reduce activation latency (if enabled)
+	if config.EnableSubprocessPrewarming {
+		if err := audio.PrewarmAudioInputSubprocess(); err != nil {
+			logger.Warn().Err(err).Msg("failed to pre-warm audio input subprocess")
+		} else {
+			logger.Info().Msg("audio input subprocess pre-warmed successfully")
+		}
+	} else {
+		logger.Info().Msg("audio input subprocess pre-warming disabled by configuration")
+	}
+
 	// Note: Audio input supervisor is NOT started here - it will be started on-demand
 	// when the user activates microphone input through the UI
 

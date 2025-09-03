@@ -21,6 +21,10 @@ type AudioInputSupervisor struct {
 
 	// Environment variables for OPUS configuration
 	opusEnv []string
+
+	// Pre-warming state
+	prewarmed   bool
+	prewarmTime time.Time
 }
 
 // NewAudioInputSupervisor creates a new audio input supervisor
@@ -48,6 +52,73 @@ func (ais *AudioInputSupervisor) SetOpusConfig(bitrate, complexity, vbr, signalT
 	}
 }
 
+// PrewarmSubprocess starts a subprocess in advance to reduce activation latency
+func (ais *AudioInputSupervisor) PrewarmSubprocess() error {
+	ais.mutex.Lock()
+	defer ais.mutex.Unlock()
+
+	// Don't prewarm if already running or prewarmed
+	if ais.IsRunning() || ais.prewarmed {
+		return nil
+	}
+
+	// Check for existing audio input server process first
+	if existingPID, err := ais.findExistingAudioInputProcess(); err == nil {
+		ais.logger.Info().Int("existing_pid", existingPID).Msg("Found existing audio input server process for prewarming")
+		ais.prewarmed = true
+		ais.prewarmTime = time.Now()
+		return nil
+	}
+
+	// Create context for subprocess management
+	ais.createContext()
+
+	// Get current executable path
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	// Build command arguments (only subprocess flag)
+	args := []string{"--audio-input-server"}
+
+	// Create command for audio input server subprocess
+	cmd := exec.CommandContext(ais.ctx, execPath, args...)
+
+	// Set environment variables for IPC and OPUS configuration
+	env := append(os.Environ(), "JETKVM_AUDIO_INPUT_IPC=true") // Enable IPC mode
+	env = append(env, ais.opusEnv...)                          // Add OPUS configuration
+	cmd.Env = env
+
+	// Set process group to allow clean termination
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+
+	ais.cmd = cmd
+
+	// Start the subprocess
+	err = cmd.Start()
+	if err != nil {
+		ais.cancelContext()
+		return fmt.Errorf("failed to prewarm audio input server process: %w", err)
+	}
+
+	ais.logger.Info().Int("pid", cmd.Process.Pid).Strs("args", args).Strs("opus_env", ais.opusEnv).Msg("Audio input server subprocess prewarmed")
+
+	// Add process to monitoring
+	ais.processMonitor.AddProcess(cmd.Process.Pid, "audio-input-server")
+
+	// Monitor the subprocess in a goroutine
+	go ais.monitorSubprocess()
+
+	// Mark as prewarmed
+	ais.prewarmed = true
+	ais.prewarmTime = time.Now()
+
+	return nil
+}
+
 // Start starts the audio input server subprocess
 func (ais *AudioInputSupervisor) Start() error {
 	ais.mutex.Lock()
@@ -58,6 +129,16 @@ func (ais *AudioInputSupervisor) Start() error {
 			return fmt.Errorf("audio input supervisor already running with PID %d", ais.cmd.Process.Pid)
 		}
 		return fmt.Errorf("audio input supervisor already running")
+	}
+
+	// Use prewarmed subprocess if available
+	if ais.prewarmed && ais.cmd != nil && ais.cmd.Process != nil {
+		ais.logger.Info().Int("pid", ais.cmd.Process.Pid).Dur("prewarm_age", time.Since(ais.prewarmTime)).Msg("Using prewarmed audio input server subprocess")
+		ais.setRunning(true)
+		ais.prewarmed = false // Reset prewarmed state
+		// Connect client to the server
+		go ais.connectClient()
+		return nil
 	}
 
 	// Check for existing audio input server process
@@ -120,10 +201,30 @@ func (ais *AudioInputSupervisor) Start() error {
 	return nil
 }
 
+// IsPrewarmed returns whether a subprocess is prewarmed and ready
+func (ais *AudioInputSupervisor) IsPrewarmed() bool {
+	ais.mutex.RLock()
+	defer ais.mutex.RUnlock()
+	return ais.prewarmed
+}
+
+// GetPrewarmAge returns how long ago the subprocess was prewarmed
+func (ais *AudioInputSupervisor) GetPrewarmAge() time.Duration {
+	ais.mutex.RLock()
+	defer ais.mutex.RUnlock()
+	if !ais.prewarmed {
+		return 0
+	}
+	return time.Since(ais.prewarmTime)
+}
+
 // Stop stops the audio input server subprocess
 func (ais *AudioInputSupervisor) Stop() {
 	ais.mutex.Lock()
 	defer ais.mutex.Unlock()
+
+	// Reset prewarmed state
+	ais.prewarmed = false
 
 	if !ais.IsRunning() {
 		return

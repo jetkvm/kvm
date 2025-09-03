@@ -355,30 +355,94 @@ func GetAudioMetrics() AudioMetrics {
 	}
 }
 
-// RecordFrameReceived increments the frames received counter with simplified tracking
+// Batched metrics to reduce atomic operations frequency
+var (
+	batchedFramesReceived  int64
+	batchedBytesProcessed  int64
+	batchedFramesDropped   int64
+	batchedConnectionDrops int64
+	batchCounter           int64
+	lastFlushTime          int64 // Unix timestamp in nanoseconds
+)
+
+const (
+	// Batch size for metrics updates (reduce atomic ops by 10x)
+	metricsFlushInterval = 10
+	// Force flush every 100ms to ensure metrics freshness
+	metricsForceFlushNanos = 100 * 1000 * 1000 // 100ms in nanoseconds
+)
+
+// RecordFrameReceived increments the frames received counter with batched updates
 func RecordFrameReceived(bytes int) {
-	// Direct atomic updates to avoid sampling complexity in critical path
-	atomic.AddInt64(&metrics.FramesReceived, 1)
-	atomic.AddInt64(&metrics.BytesProcessed, int64(bytes))
+	// Use local batching to reduce atomic operations frequency
+	atomic.AddInt64(&batchedFramesReceived, 1)
+	atomic.AddInt64(&batchedBytesProcessed, int64(bytes))
 
-	// Always update timestamp for accurate last frame tracking
+	// Update timestamp immediately for accurate tracking
 	metrics.LastFrameTime = time.Now()
+
+	// Check if we should flush batched metrics
+	if atomic.AddInt64(&batchCounter, 1)%metricsFlushInterval == 0 {
+		flushBatchedMetrics()
+	} else {
+		// Force flush if too much time has passed
+		now := time.Now().UnixNano()
+		lastFlush := atomic.LoadInt64(&lastFlushTime)
+		if now-lastFlush > metricsForceFlushNanos {
+			flushBatchedMetrics()
+		}
+	}
 }
 
-// RecordFrameDropped increments the frames dropped counter with simplified tracking
+// RecordFrameDropped increments the frames dropped counter with batched updates
 func RecordFrameDropped() {
-	// Direct atomic update to avoid sampling complexity in critical path
-	atomic.AddInt64(&metrics.FramesDropped, 1)
+	// Use local batching to reduce atomic operations frequency
+	atomic.AddInt64(&batchedFramesDropped, 1)
+
+	// Check if we should flush batched metrics
+	if atomic.AddInt64(&batchCounter, 1)%metricsFlushInterval == 0 {
+		flushBatchedMetrics()
+	}
 }
 
-// RecordConnectionDrop increments the connection drops counter with simplified tracking
+// RecordConnectionDrop increments the connection drops counter with batched updates
 func RecordConnectionDrop() {
-	// Direct atomic update to avoid sampling complexity in critical path
-	atomic.AddInt64(&metrics.ConnectionDrops, 1)
+	// Use local batching to reduce atomic operations frequency
+	atomic.AddInt64(&batchedConnectionDrops, 1)
+
+	// Check if we should flush batched metrics
+	if atomic.AddInt64(&batchCounter, 1)%metricsFlushInterval == 0 {
+		flushBatchedMetrics()
+	}
 }
 
-// FlushPendingMetrics is now a no-op since we use direct atomic updates
+// flushBatchedMetrics flushes accumulated metrics to the main counters
+func flushBatchedMetrics() {
+	// Atomically move batched metrics to main metrics
+	framesReceived := atomic.SwapInt64(&batchedFramesReceived, 0)
+	bytesProcessed := atomic.SwapInt64(&batchedBytesProcessed, 0)
+	framesDropped := atomic.SwapInt64(&batchedFramesDropped, 0)
+	connectionDrops := atomic.SwapInt64(&batchedConnectionDrops, 0)
+
+	// Update main metrics if we have any batched data
+	if framesReceived > 0 {
+		atomic.AddInt64(&metrics.FramesReceived, framesReceived)
+	}
+	if bytesProcessed > 0 {
+		atomic.AddInt64(&metrics.BytesProcessed, bytesProcessed)
+	}
+	if framesDropped > 0 {
+		atomic.AddInt64(&metrics.FramesDropped, framesDropped)
+	}
+	if connectionDrops > 0 {
+		atomic.AddInt64(&metrics.ConnectionDrops, connectionDrops)
+	}
+
+	// Update last flush time
+	atomic.StoreInt64(&lastFlushTime, time.Now().UnixNano())
+}
+
+// FlushPendingMetrics forces a flush of all batched metrics
 func FlushPendingMetrics() {
-	// No-op: metrics are now updated directly without local buffering
-	// This function is kept for API compatibility
+	flushBatchedMetrics()
 }

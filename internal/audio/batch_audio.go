@@ -434,7 +434,7 @@ func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
 		// Skip priority setting for better performance - audio threads already have good priority
 	}
 
-	// Update stats efficiently
+	// Batch stats updates to reduce atomic operations (update once per batch instead of per frame)
 	atomic.AddInt64(&bap.stats.BatchedReads, 1)
 	atomic.AddInt64(&bap.stats.BatchedFrames, int64(batchSize))
 	if batchSize > 1 {
@@ -461,6 +461,7 @@ func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
 		bap.stats.OSThreadPinTime += time.Since(start)
 	}
 
+	// Update timestamp only once per batch instead of per frame
 	bap.stats.LastBatchTime = time.Now()
 }
 

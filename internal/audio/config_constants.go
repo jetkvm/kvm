@@ -902,6 +902,12 @@ type AudioConfigConstants struct {
 	// Default 200ms provides reasonable wait time for microphone access.
 	MicContentionTimeout time.Duration // 200ms contention timeout
 
+	// Subprocess Pre-warming Configuration
+	// Used in: input_supervisor.go for reducing microphone activation latency
+	// Impact: Pre-warms audio input subprocess during startup to eliminate cold start delay
+	// Default true enables pre-warming for optimal user experience
+	EnableSubprocessPrewarming bool // Enable subprocess pre-warming (default: true)
+
 	// Priority Scheduler Configuration - Settings for process priority management
 	// Used in: priority_scheduler.go for system priority control
 	// Impact: Controls valid range for process priority adjustments
@@ -2342,6 +2348,9 @@ func DefaultAudioConfig() *AudioConfigConstants {
 
 		// Microphone Contention Configuration
 		MicContentionTimeout: 200 * time.Millisecond,
+
+		// Subprocess Pre-warming Configuration
+		EnableSubprocessPrewarming: true,
 
 		// Priority Scheduler Configuration
 		MinNiceValue: -20,
