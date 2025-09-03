@@ -580,6 +580,8 @@ type AudioBufferPoolDetailedStats struct {
 	HitCount          int64
 	MissCount         int64
 	HitRate           float64 // Percentage
+	TotalBytes        int64   // Total memory usage in bytes
+	AverageBufferSize float64 // Average size of buffers in the pool
 }
 
 // GetAudioBufferPoolStats returns statistics about the audio buffer pools
