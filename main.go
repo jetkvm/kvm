@@ -38,6 +38,14 @@ func startAudioSubprocess() error {
 	// Start adaptive buffer management for optimal performance
 	audio.StartAdaptiveBuffering()
 
+	// Start goroutine monitoring to detect and prevent leaks
+	audio.StartGoroutineMonitoring()
+
+	// Enable batch audio processing to reduce CGO call overhead
+	if err := audio.EnableBatchAudioProcessing(); err != nil {
+		logger.Warn().Err(err).Msg("failed to enable batch audio processing")
+	}
+
 	// Create audio server supervisor
 	audioSupervisor = audio.NewAudioOutputSupervisor()
 
@@ -95,6 +103,10 @@ func startAudioSubprocess() error {
 			audio.StopAudioRelay()
 			// Stop adaptive buffering
 			audio.StopAdaptiveBuffering()
+			// Stop goroutine monitoring
+			audio.StopGoroutineMonitoring()
+			// Disable batch audio processing
+			audio.DisableBatchAudioProcessing()
 		},
 		// onRestart
 		func(attempt int, delay time.Duration) {

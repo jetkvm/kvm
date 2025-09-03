@@ -10,3 +10,4 @@ tmp/
 *.code-workspace
 
 device-tests.tar.gz
+CLAUDE.md

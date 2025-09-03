@@ -379,6 +379,18 @@ type AudioConfigConstants struct {
 	// Default 4096 bytes handles maximum audio frame size with safety margin.
 	MaxDecodeWriteBuffer int
 
+	// MinBatchSizeForThreadPinning defines the minimum batch size required to pin a thread.
+	// Used in: batch_audio.go for deciding when to pin a thread for batch processing.
+	// Impact: Smaller values increase thread pinning frequency but may improve performance.
+	// Default 5 frames provides a good balance between performance and thread contention.
+	MinBatchSizeForThreadPinning int
+
+	// GoroutineMonitorInterval defines the interval for monitoring goroutine counts.
+	// Used in: goroutine_monitor.go for periodic goroutine count checks.
+	// Impact: Shorter intervals provide more frequent monitoring but increase overhead.
+	// Default 30 seconds provides reasonable monitoring frequency with minimal overhead.
+	GoroutineMonitorInterval time.Duration
+
 	// IPC Configuration - Inter-Process Communication settings for audio components
 	// Used in: ipc.go for configuring audio process communication
 	// Impact: Controls IPC reliability, performance, and protocol compliance
@@ -2464,6 +2476,12 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		LatencyBucket500ms: 500 * time.Millisecond, // 500ms latency bucket
 		LatencyBucket1s:    1 * time.Second,        // 1s latency bucket
 		LatencyBucket2s:    2 * time.Second,        // 2s latency bucket
+
+		// Batch Audio Processing Configuration
+		MinBatchSizeForThreadPinning: 5, // Minimum batch size to pin thread
+
+		// Goroutine Monitoring Configuration
+		GoroutineMonitorInterval: 30 * time.Second, // 30s monitoring interval
 	}
 }
 
