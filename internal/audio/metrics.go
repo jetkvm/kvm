@@ -288,45 +288,7 @@ var (
 	)
 
 	// Device health metrics
-	deviceHealthStatus = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_device_health_status",
-			Help: "Current device health status (0=Healthy, 1=Degraded, 2=Failing, 3=Critical)",
-		},
-		[]string{"device_type"}, // device_type: capture, playback
-	)
-
-	deviceHealthScore = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_device_health_score",
-			Help: "Device health score (0.0-1.0, higher is better)",
-		},
-		[]string{"device_type"}, // device_type: capture, playback
-	)
-
-	deviceConsecutiveErrors = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_device_consecutive_errors",
-			Help: "Number of consecutive errors for device",
-		},
-		[]string{"device_type"}, // device_type: capture, playback
-	)
-
-	deviceTotalErrors = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "jetkvm_audio_device_total_errors",
-			Help: "Total number of errors for device",
-		},
-		[]string{"device_type"}, // device_type: capture, playback
-	)
-
-	deviceLatencySpikes = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "jetkvm_audio_device_latency_spikes_total",
-			Help: "Total number of latency spikes for device",
-		},
-		[]string{"device_type"}, // device_type: capture, playback
-	)
+	// Removed device health metrics - functionality not used
 
 	// Memory metrics
 	memoryHeapAllocBytes = promauto.NewGauge(
@@ -436,11 +398,7 @@ var (
 	micBytesProcessedValue    int64
 	micConnectionDropsValue   int64
 
-	// Atomic counters for device health metrics
-	deviceCaptureErrorsValue  int64
-	devicePlaybackErrorsValue int64
-	deviceCaptureSpikesValue  int64
-	devicePlaybackSpikesValue int64
+	// Atomic counters for device health metrics - functionality removed, no longer used
 
 	// Atomic counter for memory GC
 	memoryGCCountValue uint32
@@ -639,34 +597,8 @@ func UpdateSocketBufferMetrics(component, bufferType string, size, utilization f
 	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
 
-// UpdateDeviceHealthMetrics updates device health metrics
-func UpdateDeviceHealthMetrics(deviceType string, status int, healthScore float64, consecutiveErrors, totalErrors, latencySpikes int64) {
-	metricsUpdateMutex.Lock()
-	defer metricsUpdateMutex.Unlock()
-
-	deviceHealthStatus.WithLabelValues(deviceType).Set(float64(status))
-	deviceHealthScore.WithLabelValues(deviceType).Set(healthScore)
-	deviceConsecutiveErrors.WithLabelValues(deviceType).Set(float64(consecutiveErrors))
-
-	// Update error counters with delta calculation
-	var prevErrors, prevSpikes int64
-	if deviceType == "capture" {
-		prevErrors = atomic.SwapInt64(&deviceCaptureErrorsValue, totalErrors)
-		prevSpikes = atomic.SwapInt64(&deviceCaptureSpikesValue, latencySpikes)
-	} else {
-		prevErrors = atomic.SwapInt64(&devicePlaybackErrorsValue, totalErrors)
-		prevSpikes = atomic.SwapInt64(&devicePlaybackSpikesValue, latencySpikes)
-	}
-
-	if prevErrors > 0 && totalErrors > prevErrors {
-		deviceTotalErrors.WithLabelValues(deviceType).Add(float64(totalErrors - prevErrors))
-	}
-	if prevSpikes > 0 && latencySpikes > prevSpikes {
-		deviceLatencySpikes.WithLabelValues(deviceType).Add(float64(latencySpikes - prevSpikes))
-	}
-
-	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
-}
+// UpdateDeviceHealthMetrics - Device health monitoring functionality has been removed
+// This function is no longer used as device health monitoring is not implemented
 
 // UpdateMemoryMetrics updates memory metrics
 func UpdateMemoryMetrics() {

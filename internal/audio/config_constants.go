@@ -1483,36 +1483,7 @@ type AudioConfigConstants struct {
 	// Default 512 bytes accommodates typical encoding variations.
 	FrameSizeTolerance int
 
-	// Device Health Monitoring Configuration
-	// Used in: device_health.go for proactive device monitoring and recovery
-	// Impact: Controls health check frequency and recovery thresholds
-
-	// HealthCheckIntervalMS defines interval between device health checks in milliseconds.
-	// Used in: DeviceHealthMonitor for periodic health assessment
-	// Impact: Lower values provide faster detection but increase CPU usage.
-	// Default 5000ms (5s) provides good balance between responsiveness and overhead.
-	HealthCheckIntervalMS int
-
-	// HealthRecoveryThreshold defines number of consecutive successful operations
-	// required to mark a device as healthy after being unhealthy.
-	// Used in: DeviceHealthMonitor for recovery state management
-	// Impact: Higher values prevent premature recovery declarations.
-	// Default 3 consecutive successes ensures stable recovery.
-	HealthRecoveryThreshold int
-
-	// HealthLatencyThresholdMS defines maximum acceptable latency in milliseconds
-	// before considering a device unhealthy.
-	// Used in: DeviceHealthMonitor for latency-based health assessment
-	// Impact: Lower values trigger recovery sooner but may cause false positives.
-	// Default 100ms provides reasonable threshold for real-time audio.
-	HealthLatencyThresholdMS int
-
-	// HealthErrorRateLimit defines maximum error rate (0.0-1.0) before
-	// considering a device unhealthy.
-	// Used in: DeviceHealthMonitor for error rate assessment
-	// Impact: Lower values trigger recovery sooner for error-prone devices.
-	// Default 0.1 (10%) allows some transient errors while detecting problems.
-	HealthErrorRateLimit float64
+	// Removed device health monitoring configuration - functionality not used
 
 	// Latency Histogram Bucket Configuration
 	// Used in: LatencyHistogram for granular latency measurement buckets
@@ -2450,11 +2421,7 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		MinFrameSize:       1,               // 1 byte minimum frame size (allow small frames)
 		FrameSizeTolerance: 512,             // 512 bytes frame size tolerance
 
-		// Device Health Monitoring Configuration
-		HealthCheckIntervalMS:    5000, // 5000ms (5s) health check interval
-		HealthRecoveryThreshold:  3,    // 3 consecutive successes for recovery
-		HealthLatencyThresholdMS: 100,  // 100ms latency threshold for health
-		HealthErrorRateLimit:     0.1,  // 10% error rate limit for health
+		// Removed device health monitoring configuration - functionality not used
 
 		// Latency Histogram Bucket Configuration
 		LatencyBucket10ms:  10 * time.Millisecond,  // 10ms latency bucket
