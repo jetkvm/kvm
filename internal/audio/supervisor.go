@@ -150,13 +150,6 @@ func (s *AudioOutputSupervisor) Stop() {
 	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component stopped")
 }
 
-// GetProcessMetrics returns current process metrics with audio-output-server name
-func (s *AudioOutputSupervisor) GetProcessMetrics() *ProcessMetrics {
-	metrics := s.BaseSupervisor.GetProcessMetrics()
-	metrics.ProcessName = "audio-output-server"
-	return metrics
-}
-
 // supervisionLoop is the main supervision loop
 func (s *AudioOutputSupervisor) supervisionLoop() {
 	defer func() {

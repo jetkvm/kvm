@@ -145,20 +145,6 @@ func (aom *AudioOutputManager) GetComprehensiveMetrics() map[string]interface{} 
 	return comprehensiveMetrics
 }
 
-// LogPerformanceStats logs current performance statistics
-func (aom *AudioOutputManager) LogPerformanceStats() {
-	metrics := aom.GetMetrics()
-	aom.logger.Info().
-		Int64("frames_received", metrics.FramesReceived).
-		Int64("frames_dropped", metrics.FramesDropped).
-		Int64("bytes_processed", metrics.BytesProcessed).
-		Int64("connection_drops", metrics.ConnectionDrops).
-		Float64("average_latency_ms", float64(metrics.AverageLatency.Nanoseconds())/1e6).
-		Bool("running", aom.IsRunning()).
-		Bool("ready", aom.IsReady()).
-		Msg("Audio output manager performance stats")
-}
-
 // GetStreamer returns the streamer for advanced operations
 func (aom *AudioOutputManager) GetStreamer() *AudioOutputStreamer {
 	return aom.streamer

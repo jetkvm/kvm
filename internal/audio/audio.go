@@ -23,8 +23,6 @@
 //	SetAudioQuality(AudioQualityHigh)
 //
 //	// Audio output will automatically start when frames are received
-//	metrics := GetAudioMetrics()
-//	fmt.Printf("Latency: %v, Frames: %d\n", metrics.AverageLatency, metrics.FramesReceived)
 package audio
 
 import (
@@ -330,29 +328,6 @@ func SetMicrophoneQuality(quality AudioQuality) {
 // GetMicrophoneConfig returns the current microphone configuration
 func GetMicrophoneConfig() AudioConfig {
 	return currentMicrophoneConfig
-}
-
-// GetAudioMetrics returns current audio metrics
-func GetAudioMetrics() AudioMetrics {
-	// Get base metrics
-	framesReceived := atomic.LoadInt64(&metrics.FramesReceived)
-	framesDropped := atomic.LoadInt64(&metrics.FramesDropped)
-
-	// If audio relay is running, use relay stats instead
-	if IsAudioRelayRunning() {
-		relayReceived, relayDropped := GetAudioRelayStats()
-		framesReceived = relayReceived
-		framesDropped = relayDropped
-	}
-
-	return AudioMetrics{
-		FramesReceived:  framesReceived,
-		FramesDropped:   framesDropped,
-		BytesProcessed:  atomic.LoadInt64(&metrics.BytesProcessed),
-		LastFrameTime:   metrics.LastFrameTime,
-		ConnectionDrops: atomic.LoadInt64(&metrics.ConnectionDrops),
-		AverageLatency:  metrics.AverageLatency,
-	}
 }
 
 // Batched metrics to reduce atomic operations frequency
