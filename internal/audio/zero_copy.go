@@ -142,12 +142,13 @@ func NewZeroCopyFramePool(maxFrameSize int) *ZeroCopyFramePool {
 
 // Get retrieves a zero-copy frame from the pool
 func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
-	start := time.Now()
+	// Remove metrics overhead in critical path - use sampling instead
 	var wasHit bool
-	defer func() {
-		latency := time.Since(start)
-		GetGranularMetricsCollector().RecordZeroCopyGet(latency, wasHit)
-	}()
+	var startTime time.Time
+	trackMetrics := atomic.LoadInt64(&p.counter)%100 == 0 // Sample 1% of operations
+	if trackMetrics {
+		startTime = time.Now()
+	}
 
 	// Memory guard: Track allocation count to prevent excessive memory usage
 	allocationCount := atomic.LoadInt64(&p.allocationCount)
@@ -161,6 +162,12 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 		frame.length = 0
 		frame.data = frame.data[:0]
 		frame.mutex.Unlock()
+
+		// Record metrics only for sampled operations
+		if trackMetrics {
+			latency := time.Since(startTime)
+			GetGranularMetricsCollector().RecordZeroCopyGet(latency, wasHit)
+		}
 		return frame
 	}
 
@@ -179,6 +186,12 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 		frame.mutex.Unlock()
 
 		atomic.AddInt64(&p.hitCount, 1)
+
+		// Record metrics only for sampled operations
+		if trackMetrics {
+			latency := time.Since(startTime)
+			GetGranularMetricsCollector().RecordZeroCopyGet(latency, wasHit)
+		}
 		return frame
 	}
 	p.mutex.Unlock()
@@ -194,16 +207,24 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 
 	wasHit = true // Pool hit
 	atomic.AddInt64(&p.hitCount, 1)
+
+	// Record metrics only for sampled operations
+	if trackMetrics {
+		latency := time.Since(startTime)
+		GetGranularMetricsCollector().RecordZeroCopyGet(latency, wasHit)
+	}
 	return frame
 }
 
 // Put returns a zero-copy frame to the pool
 func (p *ZeroCopyFramePool) Put(frame *ZeroCopyAudioFrame) {
-	start := time.Now()
-	defer func() {
-		latency := time.Since(start)
-		GetGranularMetricsCollector().RecordZeroCopyPut(latency, frame.capacity)
-	}()
+	// Remove metrics overhead in critical path - use sampling instead
+	var startTime time.Time
+	trackMetrics := atomic.LoadInt64(&p.counter)%100 == 0 // Sample 1% of operations
+	if trackMetrics {
+		startTime = time.Now()
+	}
+
 	if frame == nil || !frame.pooled {
 		return
 	}
@@ -239,6 +260,12 @@ func (p *ZeroCopyFramePool) Put(frame *ZeroCopyAudioFrame) {
 		atomic.AddInt64(&p.counter, 1)
 	} else {
 		frame.mutex.Unlock()
+	}
+
+	// Record metrics only for sampled operations
+	if trackMetrics {
+		latency := time.Since(startTime)
+		GetGranularMetricsCollector().RecordZeroCopyPut(latency, frame.capacity)
 	}
 }
 

@@ -173,14 +173,20 @@ func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
 
 	// Validate buffer before processing
 	if err := ValidateBufferSize(len(buffer)); err != nil {
-		bap.logger.Debug().Err(err).Msg("invalid buffer for batch processing")
+		// Only log validation errors in debug mode to reduce overhead
+		if bap.logger.GetLevel() <= zerolog.DebugLevel {
+			bap.logger.Debug().Err(err).Msg("invalid buffer for batch processing")
+		}
 		return 0, err
 	}
 
 	if !bap.IsRunning() {
 		// Fallback to single operation if batch processor is not running
-		atomic.AddInt64(&bap.stats.SingleReads, 1)
-		atomic.AddInt64(&bap.stats.SingleFrames, 1)
+		// Use sampling to reduce atomic operations overhead
+		if atomic.LoadInt64(&bap.stats.SingleReads)%10 == 0 {
+			atomic.AddInt64(&bap.stats.SingleReads, 10)
+			atomic.AddInt64(&bap.stats.SingleFrames, 10)
+		}
 		return CGOAudioReadEncode(buffer)
 	}
 
@@ -197,8 +203,11 @@ func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
 		// Successfully queued
 	default:
 		// Queue is full, fallback to single operation
-		atomic.AddInt64(&bap.stats.SingleReads, 1)
-		atomic.AddInt64(&bap.stats.SingleFrames, 1)
+		// Use sampling to reduce atomic operations overhead
+		if atomic.LoadInt64(&bap.stats.SingleReads)%10 == 0 {
+			atomic.AddInt64(&bap.stats.SingleReads, 10)
+			atomic.AddInt64(&bap.stats.SingleFrames, 10)
+		}
 		return CGOAudioReadEncode(buffer)
 	}
 
@@ -208,8 +217,11 @@ func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
 		return result.length, result.err
 	case <-time.After(cache.BatchProcessingTimeout):
 		// Timeout, fallback to single operation
-		atomic.AddInt64(&bap.stats.SingleReads, 1)
-		atomic.AddInt64(&bap.stats.SingleFrames, 1)
+		// Use sampling to reduce atomic operations overhead
+		if atomic.LoadInt64(&bap.stats.SingleReads)%10 == 0 {
+			atomic.AddInt64(&bap.stats.SingleReads, 10)
+			atomic.AddInt64(&bap.stats.SingleFrames, 10)
+		}
 		return CGOAudioReadEncode(buffer)
 	}
 }
@@ -223,14 +235,20 @@ func (bap *BatchAudioProcessor) BatchDecodeWrite(buffer []byte) (int, error) {
 
 	// Validate buffer before processing
 	if err := ValidateBufferSize(len(buffer)); err != nil {
-		bap.logger.Debug().Err(err).Msg("invalid buffer for batch processing")
+		// Only log validation errors in debug mode to reduce overhead
+		if bap.logger.GetLevel() <= zerolog.DebugLevel {
+			bap.logger.Debug().Err(err).Msg("invalid buffer for batch processing")
+		}
 		return 0, err
 	}
 
 	if !bap.IsRunning() {
 		// Fallback to single operation if batch processor is not running
-		atomic.AddInt64(&bap.stats.SingleWrites, 1)
-		atomic.AddInt64(&bap.stats.WriteFrames, 1)
+		// Use sampling to reduce atomic operations overhead
+		if atomic.LoadInt64(&bap.stats.SingleWrites)%10 == 0 {
+			atomic.AddInt64(&bap.stats.SingleWrites, 10)
+			atomic.AddInt64(&bap.stats.WriteFrames, 10)
+		}
 		return CGOAudioDecodeWriteLegacy(buffer)
 	}
 
@@ -247,8 +265,11 @@ func (bap *BatchAudioProcessor) BatchDecodeWrite(buffer []byte) (int, error) {
 		// Successfully queued
 	default:
 		// Queue is full, fall back to single operation
-		atomic.AddInt64(&bap.stats.SingleWrites, 1)
-		atomic.AddInt64(&bap.stats.WriteFrames, 1)
+		// Use sampling to reduce atomic operations overhead
+		if atomic.LoadInt64(&bap.stats.SingleWrites)%10 == 0 {
+			atomic.AddInt64(&bap.stats.SingleWrites, 10)
+			atomic.AddInt64(&bap.stats.WriteFrames, 10)
+		}
 		return CGOAudioDecodeWriteLegacy(buffer)
 	}
 
@@ -257,8 +278,11 @@ func (bap *BatchAudioProcessor) BatchDecodeWrite(buffer []byte) (int, error) {
 	case result := <-resultChan:
 		return result.length, result.err
 	case <-time.After(cache.BatchProcessingTimeout):
-		atomic.AddInt64(&bap.stats.SingleWrites, 1)
-		atomic.AddInt64(&bap.stats.WriteFrames, 1)
+		// Use sampling to reduce atomic operations overhead
+		if atomic.LoadInt64(&bap.stats.SingleWrites)%10 == 0 {
+			atomic.AddInt64(&bap.stats.SingleWrites, 10)
+			atomic.AddInt64(&bap.stats.WriteFrames, 10)
+		}
 		return CGOAudioDecodeWriteLegacy(buffer)
 	}
 }

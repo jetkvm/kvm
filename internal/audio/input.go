@@ -65,6 +65,9 @@ func (aim *AudioInputManager) Stop() {
 
 	aim.logComponentStop(AudioInputManagerComponent)
 
+	// Flush any pending sampled metrics before stopping
+	aim.flushPendingMetrics()
+
 	// Stop the IPC-based audio input
 	aim.ipcManager.Stop()
 

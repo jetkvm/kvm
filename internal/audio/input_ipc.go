@@ -942,9 +942,12 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 
 						// If too many consecutive errors, close connection to force reconnect
 						if consecutiveErrors >= maxConsecutiveErrors {
-							logger.Error().
-								Int("consecutive_errors", consecutiveErrors).
-								Msg("Too many consecutive read errors, closing connection")
+							// Only log critical errors to reduce hotpath overhead
+							if logger.GetLevel() <= zerolog.ErrorLevel {
+								logger.Error().
+									Int("consecutive_errors", consecutiveErrors).
+									Msg("Too many consecutive read errors, closing connection")
+							}
 
 							ais.mtx.Lock()
 							if ais.conn != nil {
@@ -961,7 +964,10 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 					// Reset error counter on successful read
 					if consecutiveErrors > 0 {
 						consecutiveErrors = 0
-						logger.Info().Msg("Input connection recovered")
+						// Only log recovery info if debug level enabled to reduce overhead
+						if logger.GetLevel() <= zerolog.InfoLevel {
+							logger.Info().Msg("Input connection recovered")
+						}
 					}
 
 					// Send to message channel with non-blocking write
@@ -971,7 +977,11 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 					default:
 						// Channel full, drop message
 						atomic.AddInt64(&ais.droppedFrames, 1)
-						logger.Warn().Msg("Message channel full, dropping frame")
+						// Avoid sampling logic in critical path - only log if warn level enabled
+						if logger.GetLevel() <= zerolog.WarnLevel {
+							droppedCount := atomic.LoadInt64(&ais.droppedFrames)
+							logger.Warn().Int64("total_dropped", droppedCount).Msg("Message channel full, dropping frame")
+						}
 					}
 				} else {
 					// No connection, wait briefly before checking again
@@ -985,7 +995,10 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 	logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
 	if !SubmitAudioReaderTask(readerTask) {
 		// If the pool is full or shutting down, fall back to direct goroutine creation
-		logger.Warn().Msg("Audio reader pool full or shutting down, falling back to direct goroutine creation")
+		// Only log if warn level enabled - avoid sampling logic in critical path
+		if logger.GetLevel() <= zerolog.WarnLevel {
+			logger.Warn().Msg("Audio reader pool full or shutting down, falling back to direct goroutine creation")
+		}
 
 		go readerTask()
 	}

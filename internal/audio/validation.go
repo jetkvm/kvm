@@ -41,6 +41,7 @@ func ValidateAudioQuality(quality AudioQuality) error {
 }
 
 // ValidateZeroCopyFrame validates zero-copy audio frame
+// Optimized to use cached max frame size
 func ValidateZeroCopyFrame(frame *ZeroCopyAudioFrame) error {
 	if frame == nil {
 		return ErrInvalidFrameData
@@ -49,8 +50,22 @@ func ValidateZeroCopyFrame(frame *ZeroCopyAudioFrame) error {
 	if len(data) == 0 {
 		return ErrInvalidFrameData
 	}
-	// Use config value
-	maxFrameSize := GetConfig().MaxAudioFrameSize
+
+	// Fast path: use cached max frame size
+	maxFrameSize := cachedMaxFrameSize
+	if maxFrameSize == 0 {
+		// Fallback: get from cache
+		cache := GetCachedConfig()
+		maxFrameSize = int(cache.maxAudioFrameSize.Load())
+		if maxFrameSize == 0 {
+			// Last resort: update cache
+			cache.Update()
+			maxFrameSize = int(cache.maxAudioFrameSize.Load())
+		}
+		// Cache globally for next calls
+		cachedMaxFrameSize = maxFrameSize
+	}
+
 	if len(data) > maxFrameSize {
 		return ErrInvalidFrameSize
 	}
@@ -95,10 +110,31 @@ func ValidateThreadPriority(priority int) error {
 }
 
 // ValidateLatency validates latency duration values with reasonable bounds
+// Optimized to use AudioConfigCache for frequently accessed values
 func ValidateLatency(latency time.Duration) error {
 	if latency < 0 {
 		return fmt.Errorf("%w: latency %v cannot be negative", ErrInvalidLatency, latency)
 	}
+
+	// Fast path: check against cached max latency
+	cache := GetCachedConfig()
+	maxLatency := time.Duration(cache.maxLatency.Load())
+
+	// If we have a valid cached value, use it
+	if maxLatency > 0 {
+		minLatency := time.Millisecond // Minimum reasonable latency
+		if latency > 0 && latency < minLatency {
+			return fmt.Errorf("%w: latency %v below minimum %v",
+				ErrInvalidLatency, latency, minLatency)
+		}
+		if latency > maxLatency {
+			return fmt.Errorf("%w: latency %v exceeds maximum %v",
+				ErrInvalidLatency, latency, maxLatency)
+		}
+		return nil
+	}
+
+	// Slower path: full validation with GetConfig()
 	config := GetConfig()
 	minLatency := time.Millisecond // Minimum reasonable latency
 	if latency > 0 && latency < minLatency {
@@ -113,11 +149,30 @@ func ValidateLatency(latency time.Duration) error {
 }
 
 // ValidateMetricsInterval validates metrics update interval
+// Optimized to use AudioConfigCache for frequently accessed values
 func ValidateMetricsInterval(interval time.Duration) error {
-	// Use config values
+	// Fast path: check against cached values
+	cache := GetCachedConfig()
+	minInterval := time.Duration(cache.minMetricsUpdateInterval.Load())
+	maxInterval := time.Duration(cache.maxMetricsUpdateInterval.Load())
+
+	// If we have valid cached values, use them
+	if minInterval > 0 && maxInterval > 0 {
+		if interval < minInterval {
+			return fmt.Errorf("%w: interval %v below minimum %v",
+				ErrInvalidMetricsInterval, interval, minInterval)
+		}
+		if interval > maxInterval {
+			return fmt.Errorf("%w: interval %v exceeds maximum %v",
+				ErrInvalidMetricsInterval, interval, maxInterval)
+		}
+		return nil
+	}
+
+	// Slower path: full validation with GetConfig()
 	config := GetConfig()
-	minInterval := config.MinMetricsUpdateInterval
-	maxInterval := config.MaxMetricsUpdateInterval
+	minInterval = config.MinMetricsUpdateInterval
+	maxInterval = config.MaxMetricsUpdateInterval
 	if interval < minInterval {
 		return ErrInvalidMetricsInterval
 	}
@@ -254,12 +309,18 @@ func ValidateChannelCount(channels int) error {
 		return nil
 	}
 
-	// Check against max channels - still using cache to avoid GetConfig()
-	// Note: We don't have maxChannels in the cache yet, so we'll use GetConfig() for now
-	config := GetConfig()
-	if channels > config.MaxChannels {
+	// Fast path: Check against cached max channels
+	cachedMaxChannels := int(cache.maxChannels.Load())
+	if cachedMaxChannels > 0 && channels <= cachedMaxChannels {
+		return nil
+	}
+
+	// Slow path: Update cache and validate
+	cache.Update()
+	updatedMaxChannels := int(cache.maxChannels.Load())
+	if channels > updatedMaxChannels {
 		return fmt.Errorf("%w: channel count %d exceeds maximum %d",
-			ErrInvalidChannels, channels, config.MaxChannels)
+			ErrInvalidChannels, channels, updatedMaxChannels)
 	}
 	return nil
 }
@@ -331,15 +392,34 @@ func ValidateFrameDuration(duration time.Duration) error {
 		}
 	}
 
-	// Slower path: full validation against min/max
-	config := GetConfig()
-	if duration < config.MinFrameDuration {
-		return fmt.Errorf("%w: frame duration %v below minimum %v",
-			ErrInvalidFrameDuration, duration, config.MinFrameDuration)
+	// Fast path: Check against cached min/max frame duration
+	cachedMinDuration := time.Duration(cache.minFrameDuration.Load())
+	cachedMaxDuration := time.Duration(cache.maxFrameDuration.Load())
+
+	if cachedMinDuration > 0 && cachedMaxDuration > 0 {
+		if duration < cachedMinDuration {
+			return fmt.Errorf("%w: frame duration %v below minimum %v",
+				ErrInvalidFrameDuration, duration, cachedMinDuration)
+		}
+		if duration > cachedMaxDuration {
+			return fmt.Errorf("%w: frame duration %v exceeds maximum %v",
+				ErrInvalidFrameDuration, duration, cachedMaxDuration)
+		}
+		return nil
 	}
-	if duration > config.MaxFrameDuration {
+
+	// Slow path: Update cache and validate
+	cache.Update()
+	updatedMinDuration := time.Duration(cache.minFrameDuration.Load())
+	updatedMaxDuration := time.Duration(cache.maxFrameDuration.Load())
+
+	if duration < updatedMinDuration {
+		return fmt.Errorf("%w: frame duration %v below minimum %v",
+			ErrInvalidFrameDuration, duration, updatedMinDuration)
+	}
+	if duration > updatedMaxDuration {
 		return fmt.Errorf("%w: frame duration %v exceeds maximum %v",
-			ErrInvalidFrameDuration, duration, config.MaxFrameDuration)
+			ErrInvalidFrameDuration, duration, updatedMaxDuration)
 	}
 	return nil
 }

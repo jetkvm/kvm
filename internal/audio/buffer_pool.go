@@ -367,6 +367,7 @@ func (p *AudioBufferPool) Get() []byte {
 			bufPtr := (*unsafe.Pointer)(unsafe.Pointer(&cache.buffers[i]))
 			buf := (*[]byte)(atomic.LoadPointer(bufPtr))
 			if buf != nil && atomic.CompareAndSwapPointer(bufPtr, unsafe.Pointer(buf), nil) {
+				// Direct hit count update to avoid sampling complexity in critical path
 				atomic.AddInt64(&p.hitCount, 1)
 				*buf = (*buf)[:0]
 				return *buf
@@ -383,6 +384,7 @@ func (p *AudioBufferPool) Get() []byte {
 		buf := p.preallocated[lastIdx]
 		p.preallocated = p.preallocated[:lastIdx]
 		p.mutex.Unlock()
+		// Direct hit count update to avoid sampling complexity in critical path
 		atomic.AddInt64(&p.hitCount, 1)
 		*buf = (*buf)[:0]
 		return *buf
@@ -392,6 +394,7 @@ func (p *AudioBufferPool) Get() []byte {
 	// Try sync.Pool next
 	if poolBuf := p.pool.Get(); poolBuf != nil {
 		buf := poolBuf.(*[]byte)
+		// Direct hit count update to avoid sampling complexity in critical path
 		atomic.AddInt64(&p.hitCount, 1)
 		atomic.AddInt64(&p.currentSize, -1)
 		// Fast capacity check - most buffers should be correct size
@@ -403,6 +406,7 @@ func (p *AudioBufferPool) Get() []byte {
 	}
 
 	// Pool miss - allocate new buffer with exact capacity
+	// Direct miss count update to avoid sampling complexity in critical path
 	atomic.AddInt64(&p.missCount, 1)
 	return make([]byte, 0, p.bufferSize)
 }
