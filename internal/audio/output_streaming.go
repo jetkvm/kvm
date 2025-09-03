@@ -208,22 +208,6 @@ func (s *AudioOutputStreamer) processingLoop() {
 		// Pin goroutine to OS thread for consistent performance
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-
-		// Set high priority for audio output processing
-		if err := SetAudioThreadPriority(); err != nil {
-			// Only log priority warnings if warn level enabled to reduce overhead
-			if getOutputStreamingLogger().GetLevel() <= zerolog.WarnLevel {
-				getOutputStreamingLogger().Warn().Err(err).Msg("Failed to set audio output processing priority")
-			}
-		}
-		defer func() {
-			if err := ResetThreadPriority(); err != nil {
-				// Only log priority warnings if warn level enabled to reduce overhead
-				if getOutputStreamingLogger().GetLevel() <= zerolog.WarnLevel {
-					getOutputStreamingLogger().Warn().Err(err).Msg("Failed to reset thread priority")
-				}
-			}
-		}()
 	}
 
 	for frameData := range s.processingChan {
