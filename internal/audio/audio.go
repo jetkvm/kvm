@@ -1,5 +1,5 @@
-//go:build cgo && !arm
-// +build cgo,!arm
+//go:build cgo
+// +build cgo
 
 // Package audio provides real-time audio processing for JetKVM with low-latency streaming.
 //
