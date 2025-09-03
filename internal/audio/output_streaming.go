@@ -23,9 +23,6 @@ type AudioOutputStreamer struct {
 	droppedFrames   int64 // Dropped frames counter (atomic)
 	processingTime  int64 // Average processing time in nanoseconds (atomic)
 	lastStatsTime   int64 // Last statistics update time (atomic)
-	frameCounter    int64 // Local counter for sampling
-	localProcessed  int64 // Local processed frame accumulator
-	localDropped    int64 // Local dropped frame accumulator
 
 	// Other fields after atomic int64 fields
 	sampleRate int32 // Sample every N frames (default: 10)
@@ -295,60 +292,14 @@ func (s *AudioOutputStreamer) reportStatistics() {
 
 // recordFrameProcessed records a processed frame with sampling optimization
 func (s *AudioOutputStreamer) recordFrameProcessed() {
-	// Check if metrics collection is enabled
-	cachedConfig := GetCachedConfig()
-	if !cachedConfig.GetEnableMetricsCollection() {
-		return
-	}
-
-	// Increment local counters
-	frameCount := atomic.AddInt64(&s.frameCounter, 1)
-	atomic.AddInt64(&s.localProcessed, 1)
-
-	// Update metrics only every N frames to reduce atomic operation overhead
-	if frameCount%int64(atomic.LoadInt32(&s.sampleRate)) == 0 {
-		// Batch update atomic metrics
-		localProcessed := atomic.SwapInt64(&s.localProcessed, 0)
-		atomic.AddInt64(&s.processedFrames, localProcessed)
-	}
 }
 
 // recordFrameDropped records a dropped frame with sampling optimization
 func (s *AudioOutputStreamer) recordFrameDropped() {
-	// Check if metrics collection is enabled
-	cachedConfig := GetCachedConfig()
-	if !cachedConfig.GetEnableMetricsCollection() {
-		return
-	}
-
-	// Increment local counter
-	localDropped := atomic.AddInt64(&s.localDropped, 1)
-
-	// Update atomic metrics every N dropped frames
-	if localDropped%int64(atomic.LoadInt32(&s.sampleRate)) == 0 {
-		atomic.AddInt64(&s.droppedFrames, int64(atomic.LoadInt32(&s.sampleRate)))
-		atomic.StoreInt64(&s.localDropped, 0)
-	}
 }
 
 // flushPendingMetrics flushes any pending sampled metrics to atomic counters
 func (s *AudioOutputStreamer) flushPendingMetrics() {
-	// Check if metrics collection is enabled
-	cachedConfig := GetCachedConfig()
-	if !cachedConfig.GetEnableMetricsCollection() {
-		return
-	}
-
-	// Flush remaining processed and dropped frames
-	localProcessed := atomic.SwapInt64(&s.localProcessed, 0)
-	localDropped := atomic.SwapInt64(&s.localDropped, 0)
-
-	if localProcessed > 0 {
-		atomic.AddInt64(&s.processedFrames, localProcessed)
-	}
-	if localDropped > 0 {
-		atomic.AddInt64(&s.droppedFrames, localDropped)
-	}
 }
 
 // GetStats returns streaming statistics with pending metrics flushed

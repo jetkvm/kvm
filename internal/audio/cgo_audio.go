@@ -750,10 +750,6 @@ type AudioConfigCache struct {
 	inputProcessingTimeoutMS atomic.Int32
 	maxRestartAttempts       atomic.Int32
 
-	// Performance flags for hot path optimization
-	enableMetricsCollection   atomic.Bool
-	enableGoroutineMonitoring atomic.Bool
-
 	// Batch processing related values
 	BatchProcessingTimeout               time.Duration
 	BatchProcessorFramesPerBatch         int
@@ -829,10 +825,6 @@ func (c *AudioConfigCache) Update() {
 		c.minOpusBitrate.Store(int32(config.MinOpusBitrate))
 		c.maxOpusBitrate.Store(int32(config.MaxOpusBitrate))
 
-		// Update performance flags for hot path optimization
-		c.enableMetricsCollection.Store(config.EnableMetricsCollection)
-		c.enableGoroutineMonitoring.Store(config.EnableGoroutineMonitoring)
-
 		// Update batch processing related values
 		c.BatchProcessingTimeout = 100 * time.Millisecond // Fixed timeout for batch processing
 		c.BatchProcessorFramesPerBatch = config.BatchProcessorFramesPerBatch
@@ -885,18 +877,6 @@ func (c *AudioConfigCache) GetBufferTooSmallError() error {
 // GetBufferTooLargeError returns the pre-allocated buffer too large error
 func (c *AudioConfigCache) GetBufferTooLargeError() error {
 	return c.bufferTooLargeDecodeWrite
-}
-
-// GetEnableMetricsCollection returns the cached EnableMetricsCollection flag for hot path optimization
-func (c *AudioConfigCache) GetEnableMetricsCollection() bool {
-	c.Update() // Ensure cache is current
-	return c.enableMetricsCollection.Load()
-}
-
-// GetEnableGoroutineMonitoring returns the cached EnableGoroutineMonitoring flag for hot path optimization
-func (c *AudioConfigCache) GetEnableGoroutineMonitoring() bool {
-	c.Update() // Ensure cache is current
-	return c.enableGoroutineMonitoring.Load()
 }
 
 // Removed duplicate config caching system - using AudioConfigCache instead
@@ -1058,8 +1038,7 @@ var (
 	batchProcessingCount atomic.Int64
 	batchFrameCount      atomic.Int64
 	batchProcessingTime  atomic.Int64
-	// Flag to control time tracking overhead
-	enableBatchTimeTracking atomic.Bool
+	// Batch time tracking removed
 )
 
 // GetBufferFromPool gets a buffer from the pool with at least the specified capacity
@@ -1264,7 +1243,8 @@ func BatchReadEncode(batchSize int) ([][]byte, error) {
 
 	// Track batch processing statistics - only if enabled
 	var startTime time.Time
-	trackTime := enableBatchTimeTracking.Load()
+	// Batch time tracking removed
+	trackTime := false
 	if trackTime {
 		startTime = time.Now()
 	}
@@ -1331,7 +1311,8 @@ func BatchDecodeWrite(frames [][]byte) error {
 
 	// Track batch processing statistics - only if enabled
 	var startTime time.Time
-	trackTime := enableBatchTimeTracking.Load()
+	// Batch time tracking removed
+	trackTime := false
 	if trackTime {
 		startTime = time.Now()
 	}

@@ -77,34 +77,10 @@ var (
 		},
 		[]string{"type", "source"},
 	)
-	metricConnectionPingDuration = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "jetkvm_connection_ping_duration_seconds",
-			Help: "The duration of the ping response",
-			Buckets: []float64{
-				0.1, 0.5, 1, 10,
-			},
-		},
-		[]string{"type", "source"},
-	)
-	metricConnectionTotalPingSentCount = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "jetkvm_connection_ping_sent_total",
-			Help: "The total number of pings sent to the connection",
-		},
-		[]string{"type", "source"},
-	)
 	metricConnectionTotalPingReceivedCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "jetkvm_connection_ping_received_total",
 			Help: "The total number of pings received from the connection",
-		},
-		[]string{"type", "source"},
-	)
-	metricConnectionSessionRequestCount = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "jetkvm_connection_session_requests_total",
-			Help: "The total number of session requests received",
 		},
 		[]string{"type", "source"},
 	)

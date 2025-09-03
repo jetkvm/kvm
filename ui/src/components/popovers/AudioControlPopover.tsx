@@ -1,15 +1,10 @@
 import { useEffect, useState } from "react";
 import { MdVolumeOff, MdVolumeUp, MdGraphicEq, MdMic, MdMicOff, MdRefresh } from "react-icons/md";
-import { LuActivity, LuSignal } from "react-icons/lu";
+import { LuActivity } from "react-icons/lu";
 
 import { Button } from "@components/Button";
-import { AudioLevelMeter } from "@components/AudioLevelMeter";
-import { AudioConfigDisplay } from "@components/AudioConfigDisplay";
-import { AudioStatusIndicator } from "@components/AudioStatusIndicator";
 import { cx } from "@/cva.config";
-import { useUiStore } from "@/hooks/stores";
 import { useAudioDevices } from "@/hooks/useAudioDevices";
-import { useAudioLevel } from "@/hooks/useAudioLevel";
 import { useAudioEvents } from "@/hooks/useAudioEvents";
 import api from "@/api";
 import notifications from "@/notifications";
@@ -49,10 +44,9 @@ const getQualityLabels = () => audioQualityService.getQualityLabels();
 
 interface AudioControlPopoverProps {
   microphone: MicrophoneHookReturn;
-  open?: boolean; // whether the popover is open (controls analysis)
 }
 
-export default function AudioControlPopover({ microphone, open }: AudioControlPopoverProps) {
+export default function AudioControlPopover({ microphone }: AudioControlPopoverProps) {
   const [currentConfig, setCurrentConfig] = useState<AudioConfig | null>(null);
   const [currentMicrophoneConfig, setCurrentMicrophoneConfig] = useState<AudioConfig | null>(null);
 
@@ -68,8 +62,6 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
   // Use WebSocket-based audio events for real-time updates
   const { 
     audioMuted, 
-    audioMetrics, 
-    microphoneMetrics, 
     isConnected: wsConnected 
   } = useAudioEvents();
   
@@ -92,16 +84,11 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
   
   // Use WebSocket data exclusively - no polling fallback
   const isMuted = audioMuted ?? false;
-  const metrics = audioMetrics;
-  const micMetrics = microphoneMetrics;
   const isConnected = wsConnected;
   
-  // Audio level monitoring - enable only when popover is open and microphone is active to save resources
-  const analysisEnabled = (open ?? true) && isMicrophoneActive;
-  const { audioLevel, isAnalyzing } = useAudioLevel(analysisEnabled ? microphoneStream : null, {
-    enabled: analysisEnabled,
-    updateInterval: 120, // 8-10 fps to reduce CPU without losing UX quality
-  });
+  // Simple audio level placeholder
+  const audioLevel = 0;
+  const isAnalyzing = isMicrophoneActive && !isMicrophoneMuted;
   
   // Audio devices
   const { 
@@ -116,7 +103,7 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
     refreshDevices 
   } = useAudioDevices();
   
-  const { toggleSidebarView } = useUiStore();
+
 
   // Load initial configurations once - cache to prevent repeated calls
   useEffect(() => {
@@ -375,15 +362,17 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
             </div>
           </div>
           
-          {/* Audio Level Meter */}
+          {/* Audio Level Display */}
           {isMicrophoneActive && (
             <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-700">
-              <AudioLevelMeter
-                level={audioLevel}
-                isActive={isMicrophoneActive && !isMicrophoneMuted && isAnalyzing}
-                size="md"
-                showLabel={true}
-              />
+              <div className="text-center">
+                <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Audio Level: {Math.round(audioLevel * 100)}%
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  {isMicrophoneMuted ? 'Muted' : isAnalyzing ? 'Active' : 'Inactive'}
+                </div>
+              </div>
               {/* Debug information */}
               <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                 <div className="grid grid-cols-2 gap-1">
@@ -514,10 +503,11 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
             </div>
 
             {currentMicrophoneConfig && (
-              <AudioConfigDisplay 
-                config={currentMicrophoneConfig} 
-                variant="success" 
-              />
+              <div className="text-xs text-slate-600 dark:text-slate-400 mt-2">
+                Quality: {currentMicrophoneConfig.Quality} | 
+                Bitrate: {currentMicrophoneConfig.Bitrate}kbps | 
+                Sample Rate: {currentMicrophoneConfig.SampleRate}Hz
+              </div>
             )}
           </div>
         )}
@@ -551,59 +541,32 @@ export default function AudioControlPopover({ microphone, open }: AudioControlPo
           </div>
 
           {currentConfig && (
-            <AudioConfigDisplay 
-              config={currentConfig} 
-              variant="default" 
-            />
+            <div className="text-xs text-slate-600 dark:text-slate-400 mt-2">
+              Quality: {currentConfig.Quality} | 
+              Bitrate: {currentConfig.Bitrate}kbps | 
+              Sample Rate: {currentConfig.SampleRate}Hz
+            </div>
           )}
         </div>
 
-        {/* Quick Status Summary */}
-        <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-600">
-          <div className="flex items-center gap-2 mb-2">
-            <LuActivity className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-            <span className="font-medium text-slate-900 dark:text-slate-100">
-              Quick Status
-            </span>
-          </div>
-          
-          {metrics ? (
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <AudioStatusIndicator 
-                metrics={metrics} 
-                label="Audio Output" 
-              />
-              
-              {micMetrics && (
-                <AudioStatusIndicator 
-                  metrics={micMetrics} 
-                  label="Microphone" 
-                />
-              )}
+        {/* Audio Level Display */}
+        {isMicrophoneActive && (
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-600">
+            <div className="flex items-center gap-2 mb-2">
+              <LuActivity className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+              <span className="font-medium text-slate-900 dark:text-slate-100">
+                Microphone Level
+              </span>
             </div>
-          ) : (
+            
             <div className="text-center py-2">
-              <div className="text-sm text-slate-500 dark:text-slate-400">
-                No data available
+              <div className="text-sm text-slate-700 dark:text-slate-300">
+                Level: {Math.round(audioLevel * 100)}%
               </div>
             </div>
-          )}
-        </div>
-
-        {/* Audio Metrics Dashboard Button */}
-        <div className="pt-2 border-t border-slate-200 dark:border-slate-600">
-          <div className="flex justify-center">
-            <button
-              onClick={() => {
-                toggleSidebarView("audio-metrics");
-              }}
-              className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 transition-colors"
-            >
-              <LuSignal className="h-4 w-4 text-blue-500" />
-              <span>View Full Audio Metrics</span>
-            </button>
           </div>
-        </div>
+        )} 
+
       </div>
     </div>
   );
