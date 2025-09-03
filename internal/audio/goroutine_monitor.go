@@ -133,13 +133,7 @@ func GetGoroutineMonitor() *GoroutineMonitor {
 
 // StartGoroutineMonitoring starts the global goroutine monitor
 func StartGoroutineMonitoring() {
-	cachedConfig := GetCachedConfig()
-	if !cachedConfig.GetEnableGoroutineMonitoring() {
-		return
-	}
-
-	monitor := GetGoroutineMonitor()
-	monitor.Start()
+	// Goroutine monitoring disabled
 }
 
 // StopGoroutineMonitoring stops the global goroutine monitor

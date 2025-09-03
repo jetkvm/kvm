@@ -24,8 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pion/webrtc/v4"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/rs/zerolog"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -102,9 +101,6 @@ func setupRouter() *gin.Engine {
 
 	// We use this to setup the device in the welcome page
 	r.POST("/device/setup", handleSetup)
-
-	// A Prometheus metrics endpoint.
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Developer mode protected routes
 	developerModeRouter := r.Group("/developer/")
@@ -208,19 +204,6 @@ func setupRouter() *gin.Engine {
 		c.JSON(200, gin.H{
 			"quality": req.Quality,
 			"config":  audio.GetAudioConfig(),
-		})
-	})
-
-	protected.GET("/audio/metrics", func(c *gin.Context) {
-		registry := audio.GetMetricsRegistry()
-		metrics := registry.GetAudioMetrics()
-		c.JSON(200, gin.H{
-			"frames_received":  metrics.FramesReceived,
-			"frames_dropped":   metrics.FramesDropped,
-			"bytes_processed":  metrics.BytesProcessed,
-			"last_frame_time":  metrics.LastFrameTime,
-			"connection_drops": metrics.ConnectionDrops,
-			"average_latency":  fmt.Sprintf("%.1fms", float64(metrics.AverageLatency.Nanoseconds())/1e6),
 		})
 	})
 
@@ -396,103 +379,6 @@ func setupRouter() *gin.Engine {
 		c.JSON(200, gin.H{
 			"status": "mute state updated",
 			"muted":  req.Muted,
-		})
-	})
-
-	protected.GET("/microphone/metrics", func(c *gin.Context) {
-		registry := audio.GetMetricsRegistry()
-		metrics := registry.GetAudioInputMetrics()
-		c.JSON(200, gin.H{
-			"frames_sent":      metrics.FramesSent,
-			"frames_dropped":   metrics.FramesDropped,
-			"bytes_processed":  metrics.BytesProcessed,
-			"last_frame_time":  metrics.LastFrameTime.Format("2006-01-02T15:04:05.000Z"),
-			"connection_drops": metrics.ConnectionDrops,
-			"average_latency":  fmt.Sprintf("%.1fms", float64(metrics.AverageLatency.Nanoseconds())/1e6),
-		})
-	})
-
-	// Audio subprocess process metrics endpoints
-	protected.GET("/audio/process-metrics", func(c *gin.Context) {
-		// Access the global audio supervisor from main.go
-		if audioSupervisor == nil {
-			c.JSON(200, gin.H{
-				"cpu_percent":    0.0,
-				"memory_percent": 0.0,
-				"memory_rss":     0,
-				"memory_vms":     0,
-				"running":        false,
-			})
-			return
-		}
-
-		metrics := audioSupervisor.GetProcessMetrics()
-		if metrics == nil {
-			c.JSON(200, gin.H{
-				"cpu_percent":    0.0,
-				"memory_percent": 0.0,
-				"memory_rss":     0,
-				"memory_vms":     0,
-				"running":        false,
-			})
-			return
-		}
-
-		c.JSON(200, gin.H{
-			"cpu_percent":    metrics.CPUPercent,
-			"memory_percent": metrics.MemoryPercent,
-			"memory_rss":     metrics.MemoryRSS,
-			"memory_vms":     metrics.MemoryVMS,
-			"running":        true,
-		})
-	})
-
-	// Audio memory allocation metrics endpoint
-	protected.GET("/audio/memory-metrics", gin.WrapF(audio.HandleMemoryMetrics))
-
-	protected.GET("/microphone/process-metrics", func(c *gin.Context) {
-		if currentSession == nil || currentSession.AudioInputManager == nil {
-			c.JSON(200, gin.H{
-				"cpu_percent":    0.0,
-				"memory_percent": 0.0,
-				"memory_rss":     0,
-				"memory_vms":     0,
-				"running":        false,
-			})
-			return
-		}
-
-		// Get the supervisor from the audio input manager
-		supervisor := currentSession.AudioInputManager.GetSupervisor()
-		if supervisor == nil {
-			c.JSON(200, gin.H{
-				"cpu_percent":    0.0,
-				"memory_percent": 0.0,
-				"memory_rss":     0,
-				"memory_vms":     0,
-				"running":        false,
-			})
-			return
-		}
-
-		metrics := supervisor.GetProcessMetrics()
-		if metrics == nil {
-			c.JSON(200, gin.H{
-				"cpu_percent":    0.0,
-				"memory_percent": 0.0,
-				"memory_rss":     0,
-				"memory_vms":     0,
-				"running":        false,
-			})
-			return
-		}
-
-		c.JSON(200, gin.H{
-			"cpu_percent":    metrics.CPUPercent,
-			"memory_percent": metrics.MemoryPercent,
-			"memory_rss":     metrics.MemoryRSS,
-			"memory_vms":     metrics.MemoryVMS,
-			"running":        true,
 		})
 	})
 
@@ -712,11 +598,7 @@ func handleWebRTCSignalWsMessages(
 				return
 			}
 
-			// set the timer for the ping duration
-			timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
-				metricConnectionLastPingDuration.WithLabelValues(sourceType, source).Set(v)
-				metricConnectionPingDuration.WithLabelValues(sourceType, source).Observe(v)
-			}))
+			// Metrics collection disabled
 
 			l.Trace().Msg("sending ping frame")
 			err := wsCon.Ping(runCtx)
@@ -727,13 +609,9 @@ func handleWebRTCSignalWsMessages(
 				return
 			}
 
-			// dont use `defer` here because we want to observe the duration of the ping
-			duration := timer.ObserveDuration()
+			// Metrics collection disabled
 
-			metricConnectionTotalPingSentCount.WithLabelValues(sourceType, source).Inc()
-			metricConnectionLastPingTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
-
-			l.Trace().Str("duration", duration.String()).Msg("received pong frame")
+			l.Trace().Msg("received pong frame")
 		}
 	}()
 
@@ -779,8 +657,7 @@ func handleWebRTCSignalWsMessages(
 				return err
 			}
 
-			metricConnectionTotalPingReceivedCount.WithLabelValues(sourceType, source).Inc()
-			metricConnectionLastPingReceivedTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
+			// Metrics collection disabled
 
 			continue
 		}
@@ -804,8 +681,7 @@ func handleWebRTCSignalWsMessages(
 				l.Info().Str("oidcGoogle", req.OidcGoogle).Msg("new session request with OIDC Google")
 			}
 
-			metricConnectionSessionRequestCount.WithLabelValues(sourceType, source).Inc()
-			metricConnectionLastSessionRequestTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
+			// Metrics collection disabled
 			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source, &l)
 			if err != nil {
 				l.Warn().Str("error", err.Error()).Msg("error starting new session")

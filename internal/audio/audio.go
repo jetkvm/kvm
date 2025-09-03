@@ -361,77 +361,25 @@ var (
 	batchedBytesProcessed  int64
 	batchedFramesDropped   int64
 	batchedConnectionDrops int64
-	batchCounter           int64
-	lastFlushTime          int64 // Unix timestamp in nanoseconds
-)
 
-const (
-	// Batch size for metrics updates (reduce atomic ops by 10x)
-	metricsFlushInterval = 10
-	// Force flush every 100ms to ensure metrics freshness
-	metricsForceFlushNanos = 100 * 1000 * 1000 // 100ms in nanoseconds
+	lastFlushTime int64 // Unix timestamp in nanoseconds
 )
 
 // RecordFrameReceived increments the frames received counter with batched updates
 func RecordFrameReceived(bytes int) {
-	// Check if metrics collection is enabled
-	cachedConfig := GetCachedConfig()
-	if !cachedConfig.GetEnableMetricsCollection() {
-		return
-	}
-
 	// Use local batching to reduce atomic operations frequency
-	atomic.AddInt64(&batchedFramesReceived, 1)
 	atomic.AddInt64(&batchedBytesProcessed, int64(bytes))
 
 	// Update timestamp immediately for accurate tracking
 	metrics.LastFrameTime = time.Now()
-
-	// Check if we should flush batched metrics
-	if atomic.AddInt64(&batchCounter, 1)%metricsFlushInterval == 0 {
-		flushBatchedMetrics()
-	} else {
-		// Force flush if too much time has passed
-		now := time.Now().UnixNano()
-		lastFlush := atomic.LoadInt64(&lastFlushTime)
-		if now-lastFlush > metricsForceFlushNanos {
-			flushBatchedMetrics()
-		}
-	}
 }
 
 // RecordFrameDropped increments the frames dropped counter with batched updates
 func RecordFrameDropped() {
-	// Check if metrics collection is enabled
-	cachedConfig := GetCachedConfig()
-	if !cachedConfig.GetEnableMetricsCollection() {
-		return
-	}
-
-	// Use local batching to reduce atomic operations frequency
-	atomic.AddInt64(&batchedFramesDropped, 1)
-
-	// Check if we should flush batched metrics
-	if atomic.AddInt64(&batchCounter, 1)%metricsFlushInterval == 0 {
-		flushBatchedMetrics()
-	}
 }
 
 // RecordConnectionDrop increments the connection drops counter with batched updates
 func RecordConnectionDrop() {
-	// Check if metrics collection is enabled
-	cachedConfig := GetCachedConfig()
-	if !cachedConfig.GetEnableMetricsCollection() {
-		return
-	}
-
-	// Use local batching to reduce atomic operations frequency
-	atomic.AddInt64(&batchedConnectionDrops, 1)
-
-	// Check if we should flush batched metrics
-	if atomic.AddInt64(&batchCounter, 1)%metricsFlushInterval == 0 {
-		flushBatchedMetrics()
-	}
 }
 
 // flushBatchedMetrics flushes accumulated metrics to the main counters

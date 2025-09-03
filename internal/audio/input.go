@@ -109,17 +109,7 @@ func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 	}
 
 	if err != nil {
-		cachedConfig := GetCachedConfig()
-		if cachedConfig.GetEnableMetricsCollection() {
-			atomic.AddInt64(&aim.metrics.FramesDropped, 1)
-		}
 		return err
-	}
-
-	// Update metrics
-	cachedConfig := GetCachedConfig()
-	if cachedConfig.GetEnableMetricsCollection() {
-		atomic.AddInt64(&aim.framesSent, 1)
 	}
 	aim.recordFrameProcessed(len(frame))
 	aim.updateLatency(processingTime)

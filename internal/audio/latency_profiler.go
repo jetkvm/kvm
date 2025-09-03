@@ -127,15 +127,14 @@ var (
 
 // DefaultLatencyProfilerConfig returns default profiler configuration
 func DefaultLatencyProfilerConfig() LatencyProfilerConfig {
-	config := GetConfig()
 	return LatencyProfilerConfig{
 		MaxMeasurements:     10000,
-		SamplingRate:        config.LatencyProfilingSamplingRate, // Use configurable sampling rate
+		SamplingRate:        0.01, // Fixed sampling rate (1%)
 		ReportingInterval:   30 * time.Second,
 		ThresholdWarning:    50 * time.Millisecond,
 		ThresholdCritical:   100 * time.Millisecond,
-		EnableDetailedTrace: false,                         // Disabled by default for performance
-		EnableHistogram:     config.EnableLatencyProfiling, // Only enable if profiling is enabled
+		EnableDetailedTrace: false, // Disabled by default for performance
+		EnableHistogram:     false, // Latency profiling disabled
 	}
 }
 
@@ -509,8 +508,8 @@ func GetGlobalLatencyProfiler() *LatencyProfiler {
 
 // EnableLatencyProfiling enables the global latency profiler
 func EnableLatencyProfiling() error {
-	config := GetConfig()
-	if !config.EnableLatencyProfiling {
+	// Latency profiling disabled
+	if true {
 		return fmt.Errorf("latency profiling is disabled in configuration")
 	}
 	profiler := GetGlobalLatencyProfiler()
@@ -528,8 +527,8 @@ func DisableLatencyProfiling() {
 
 // ProfileFrameLatency is a convenience function to profile a single frame's latency
 func ProfileFrameLatency(frameID uint64, frameSize int, source string, fn func(*FrameLatencyTracker)) {
-	config := GetConfig()
-	if !config.EnableLatencyProfiling {
+	// Latency profiling disabled
+	if true {
 		fn(nil)
 		return
 	}

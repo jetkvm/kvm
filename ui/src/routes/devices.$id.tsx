@@ -39,7 +39,6 @@ import WebRTCVideo from "@components/WebRTCVideo";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import DashboardNavbar from "@components/Header";
 import ConnectionStatsSidebar from "@/components/sidebar/connectionStats";
-import AudioMetricsSidebar from "@/components/sidebar/AudioMetricsSidebar";
 import { JsonRpcRequest, JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import Terminal from "@components/Terminal";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
@@ -925,22 +924,7 @@ function SidebarContainer(props: SidebarContainerProps) {
               <ConnectionStatsSidebar />
             </motion.div>
           )}
-          {sidebarView === "audio-metrics" && (
-            <motion.div
-              className="absolute inset-0"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{
-                duration: 0.5,
-                ease: "easeInOut",
-              }}
-            >
-              <div className="grid h-full grid-rows-(--grid-headerBody) shadow-xs">
-                <AudioMetricsSidebar />
-              </div>
-            </motion.div>
-          )}
+
         </AnimatePresence>
       </div>
     </div>
