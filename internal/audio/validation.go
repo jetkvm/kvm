@@ -426,44 +426,36 @@ func InitValidationCache() {
 // This is the primary validation function used in all audio processing paths
 //
 // Performance optimizations:
-// - Uses AudioConfigCache to eliminate GetConfig() call overhead
+// - Uses cached max frame size to eliminate config lookups
 // - Single branch condition for optimal CPU pipeline efficiency
-// - Inlined length checks for minimal overhead
-// - Pre-allocated error messages for minimal allocations
+// - Minimal error allocation overhead
 //
 //go:inline
 func ValidateAudioFrame(data []byte) error {
-	// Fast path: empty check first to avoid unnecessary cache access
+	// Fast path: check length against cached max size in single operation
 	dataLen := len(data)
 	if dataLen == 0 {
 		return ErrFrameDataEmpty
 	}
 
-	// Get cached config - this is a pointer access, not a function call
-	cache := GetCachedConfig()
-
-	// Use atomic access to maxAudioFrameSize for lock-free validation
-	maxSize := int(cache.maxAudioFrameSize.Load())
-
-	// If cache not initialized or value is zero, use global cached value or update
+	// Use global cached value for fastest access - updated during initialization
+	maxSize := cachedMaxFrameSize
 	if maxSize == 0 {
-		if cachedMaxFrameSize > 0 {
-			maxSize = cachedMaxFrameSize
-		} else {
+		// Fallback: get from cache only if global cache not initialized
+		cache := GetCachedConfig()
+		maxSize = int(cache.maxAudioFrameSize.Load())
+		if maxSize == 0 {
+			// Last resort: update cache and get fresh value
 			cache.Update()
 			maxSize = int(cache.maxAudioFrameSize.Load())
-			if maxSize == 0 {
-				// Fallback to global config if cache still not initialized
-				maxSize = GetConfig().MaxAudioFrameSize
-			}
 		}
+		// Cache the value globally for next calls
+		cachedMaxFrameSize = maxSize
 	}
 
-	// Optimized validation with error message
+	// Single comparison for validation
 	if dataLen > maxSize {
-		// Use formatted error since we can't guarantee pre-allocated error is available
-		return fmt.Errorf("%w: frame size %d exceeds maximum %d bytes",
-			ErrFrameDataTooLarge, dataLen, maxSize)
+		return ErrFrameDataTooLarge
 	}
 	return nil
 }

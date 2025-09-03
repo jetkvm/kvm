@@ -501,36 +501,26 @@ func (ais *AudioInputServer) processMessage(msg *InputIPCMessage) error {
 
 // processOpusFrame processes an Opus audio frame
 func (ais *AudioInputServer) processOpusFrame(data []byte) error {
-	if len(data) == 0 {
-		return nil // Empty frame, ignore
+	// Fast path: skip empty frame check - caller should handle this
+	dataLen := len(data)
+	if dataLen == 0 {
+		return nil
 	}
 
-	// Use ultra-fast validation for critical audio path
-	if err := ValidateAudioFrame(data); err != nil {
-		// Skip logging in hotpath to avoid overhead - validation errors are rare
-		return fmt.Errorf("input frame validation failed: %w", err)
+	// Inline validation for critical audio path - avoid function call overhead
+	if dataLen > cachedMaxFrameSize {
+		return ErrFrameDataTooLarge
 	}
 
-	// Get cached config for optimal performance
+	// Get cached config once - avoid repeated calls and locking
 	cache := GetCachedConfig()
-	// Only update cache if expired - avoid unnecessary overhead
-	// Use proper locking to avoid race condition
-	if cache.initialized.Load() {
-		cache.mutex.RLock()
-		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
-		cache.mutex.RUnlock()
-		if cacheExpired {
-			cache.Update()
-		}
-	} else {
-		cache.Update()
-	}
+	// Skip cache expiry check in hotpath - background updates handle this
 
 	// Get a PCM buffer from the pool for optimized decode-write
 	pcmBuffer := GetBufferFromPool(cache.GetMaxPCMBufferSize())
 	defer ReturnBufferToPool(pcmBuffer)
 
-	// Process the Opus frame using optimized CGO implementation with separate buffers
+	// Direct CGO call - avoid wrapper function overhead
 	_, err := CGOAudioDecodeWrite(data, pcmBuffer)
 	return err
 }
@@ -720,25 +710,20 @@ func (aic *AudioInputClient) SendFrame(frame []byte) error {
 		return fmt.Errorf("not connected to audio input server")
 	}
 
-	if len(frame) == 0 {
+	frameLen := len(frame)
+	if frameLen == 0 {
 		return nil // Empty frame, ignore
 	}
 
-	// Validate frame data before sending
-	if err := ValidateAudioFrame(frame); err != nil {
-		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-		logger.Error().Err(err).Msg("Frame validation failed")
-		return fmt.Errorf("input frame validation failed: %w", err)
-	}
-
-	if len(frame) > maxFrameSize {
-		return fmt.Errorf("frame too large: got %d bytes, maximum allowed %d bytes", len(frame), maxFrameSize)
+	// Inline frame validation to reduce function call overhead
+	if frameLen > maxFrameSize {
+		return ErrFrameDataTooLarge
 	}
 
 	msg := &InputIPCMessage{
 		Magic:     inputMagicNumber,
 		Type:      InputMessageTypeOpusFrame,
-		Length:    uint32(len(frame)),
+		Length:    uint32(frameLen),
 		Timestamp: time.Now().UnixNano(),
 		Data:      frame,
 	}
@@ -755,26 +740,25 @@ func (aic *AudioInputClient) SendFrameZeroCopy(frame *ZeroCopyAudioFrame) error 
 		return fmt.Errorf("not connected to audio input server")
 	}
 
-	if frame == nil || frame.Length() == 0 {
+	if frame == nil {
+		return nil // Nil frame, ignore
+	}
+
+	frameLen := frame.Length()
+	if frameLen == 0 {
 		return nil // Empty frame, ignore
 	}
 
-	// Validate zero-copy frame before sending
-	if err := ValidateZeroCopyFrame(frame); err != nil {
-		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-		logger.Error().Err(err).Msg("Zero-copy frame validation failed")
-		return fmt.Errorf("input frame validation failed: %w", err)
-	}
-
-	if frame.Length() > maxFrameSize {
-		return fmt.Errorf("frame too large: got %d bytes, maximum allowed %d bytes", frame.Length(), maxFrameSize)
+	// Inline frame validation to reduce function call overhead
+	if frameLen > maxFrameSize {
+		return ErrFrameDataTooLarge
 	}
 
 	// Use zero-copy data directly
 	msg := &InputIPCMessage{
 		Magic:     inputMagicNumber,
 		Type:      InputMessageTypeOpusFrame,
-		Length:    uint32(frame.Length()),
+		Length:    uint32(frameLen),
 		Timestamp: time.Now().UnixNano(),
 		Data:      frame.Data(), // Zero-copy data access
 	}
@@ -945,10 +929,7 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 						consecutiveErrors++
 						lastErrorTime = now
 
-						// Log error with context
-						logger.Warn().Err(err).
-							Int("consecutive_errors", consecutiveErrors).
-							Msg("Failed to read message from input connection")
+						// Skip logging in hotpath for performance - only log critical errors
 
 						// Progressive backoff based on error count
 						if consecutiveErrors > 1 {
@@ -1019,16 +1000,12 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 
-		// Set high priority for audio processing
-		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-		if err := SetAudioThreadPriority(); err != nil {
-			logger.Warn().Err(err).Msg("Failed to set audio processing priority")
-		}
-		defer func() {
-			if err := ResetThreadPriority(); err != nil {
-				logger.Warn().Err(err).Msg("Failed to reset thread priority")
-			}
-		}()
+		// Set high priority for audio processing - skip logging in hotpath
+		_ = SetAudioThreadPriority()
+		defer func() { _ = ResetThreadPriority() }()
+
+		// Create logger for this goroutine
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
 
 		// Enhanced error tracking for processing
 		var processingErrors int
@@ -1057,17 +1034,10 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 					processingErrors++
 					lastProcessingError = now
 
-					logger.Warn().Err(err).
-						Int("processing_errors", processingErrors).
-						Dur("processing_time", processingTime).
-						Msg("Failed to process input message")
+					// Skip logging in hotpath for performance
 
 					// If too many processing errors, drop frames more aggressively
 					if processingErrors >= maxProcessingErrors {
-						logger.Error().
-							Int("processing_errors", processingErrors).
-							Msg("Too many processing errors, entering aggressive drop mode")
-
 						// Clear processing queue to recover
 						for len(ais.processChan) > 0 {
 							select {
@@ -1085,7 +1055,7 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 				// Reset error counter on successful processing
 				if processingErrors > 0 {
 					processingErrors = 0
-					logger.Info().Msg("Input processing recovered")
+					// Skip logging in hotpath for performance
 				}
 
 				// Update processing time metrics
