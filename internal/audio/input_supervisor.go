@@ -319,13 +319,6 @@ func (ais *AudioInputSupervisor) GetClient() *AudioInputClient {
 	return ais.client
 }
 
-// GetProcessMetrics returns current process metrics with audio-input-server name
-func (ais *AudioInputSupervisor) GetProcessMetrics() *ProcessMetrics {
-	metrics := ais.BaseSupervisor.GetProcessMetrics()
-	metrics.ProcessName = "audio-input-server"
-	return metrics
-}
-
 // monitorSubprocess monitors the subprocess and handles unexpected exits
 func (ais *AudioInputSupervisor) monitorSubprocess() {
 	if ais.cmd == nil || ais.cmd.Process == nil {

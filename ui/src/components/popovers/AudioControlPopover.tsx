@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { MdVolumeOff, MdVolumeUp, MdGraphicEq, MdMic, MdMicOff, MdRefresh } from "react-icons/md";
-import { LuActivity } from "react-icons/lu";
 
 import { Button } from "@components/Button";
 import { cx } from "@/cva.config";
@@ -71,7 +70,6 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   const {
     isMicrophoneActive,
     isMicrophoneMuted,
-    microphoneStream,
     startMicrophone,
     stopMicrophone,
     toggleMicrophoneMute,
@@ -86,9 +84,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   const isMuted = audioMuted ?? false;
   const isConnected = wsConnected;
   
-  // Simple audio level placeholder
-  const audioLevel = 0;
-  const isAnalyzing = isMicrophoneActive && !isMicrophoneMuted;
+
   
   // Audio devices
   const { 
@@ -362,44 +358,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
             </div>
           </div>
           
-          {/* Audio Level Display */}
-          {isMicrophoneActive && (
-            <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-700">
-              <div className="text-center">
-                <div className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Audio Level: {Math.round(audioLevel * 100)}%
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  {isMicrophoneMuted ? 'Muted' : isAnalyzing ? 'Active' : 'Inactive'}
-                </div>
-              </div>
-              {/* Debug information */}
-              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                <div className="grid grid-cols-2 gap-1">
-                  <span>Stream: {microphoneStream ? '✓' : '✗'}</span>
-                  <span>Analyzing: {isAnalyzing ? '✓' : '✗'}</span>
-                  <span>Active: {isMicrophoneActive ? '✓' : '✗'}</span>
-                  <span>Muted: {isMicrophoneMuted ? '✓' : '✗'}</span>
-                </div>
-                {microphoneStream && (
-                  <div className="mt-1">
-                    Tracks: {microphoneStream.getAudioTracks().length}
-                    {microphoneStream.getAudioTracks().length > 0 && (
-                      <span className="ml-2">
-                        (Enabled: {microphoneStream.getAudioTracks().filter((t: MediaStreamTrack) => t.enabled).length})
-                      </span>
-                    )}
-                  </div>
-                )}
-                <button
-                  onClick={syncMicrophoneState}
-                  className="mt-1 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  Sync State
-                </button>
-              </div>
-            </div>
-          )}
+
         </div>
 
         {/* Device Selection */}
@@ -549,23 +508,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
           )}
         </div>
 
-        {/* Audio Level Display */}
-        {isMicrophoneActive && (
-          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-600">
-            <div className="flex items-center gap-2 mb-2">
-              <LuActivity className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-              <span className="font-medium text-slate-900 dark:text-slate-100">
-                Microphone Level
-              </span>
-            </div>
-            
-            <div className="text-center py-2">
-              <div className="text-sm text-slate-700 dark:text-slate-300">
-                Level: {Math.round(audioLevel * 100)}%
-              </div>
-            </div>
-          </div>
-        )} 
+
 
       </div>
     </div>

@@ -195,26 +195,6 @@ func (aim *AudioInputManager) GetComprehensiveMetrics() map[string]interface{} {
 	return comprehensiveMetrics
 }
 
-// LogPerformanceStats logs current performance statistics
-func (aim *AudioInputManager) LogPerformanceStats() {
-	metrics := aim.GetComprehensiveMetrics()
-
-	managerStats := metrics["manager"].(map[string]interface{})
-	ipcStats := metrics["ipc"].(map[string]interface{})
-	detailedStats := metrics["detailed"].(map[string]interface{})
-
-	aim.logger.Info().
-		Int64("manager_frames_sent", managerStats["frames_sent"].(int64)).
-		Int64("manager_frames_dropped", managerStats["frames_dropped"].(int64)).
-		Float64("manager_latency_ms", managerStats["average_latency_ms"].(float64)).
-		Int64("ipc_frames_sent", ipcStats["frames_sent"].(int64)).
-		Int64("ipc_frames_dropped", ipcStats["frames_dropped"].(int64)).
-		Float64("ipc_latency_ms", ipcStats["average_latency_ms"].(float64)).
-		Float64("client_drop_rate", detailedStats["client_drop_rate"].(float64)).
-		Float64("frames_per_second", detailedStats["frames_per_second"].(float64)).
-		Msg("Audio input performance metrics")
-}
-
 // IsRunning returns whether the audio input manager is running
 // This checks both the internal state and existing system processes
 func (aim *AudioInputManager) IsRunning() bool {
