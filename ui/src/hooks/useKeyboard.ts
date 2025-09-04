@@ -23,7 +23,11 @@ export default function useKeyboard() {
   // getKeysDownState API.
 
   // HidRPC is a binary format for exchanging keyboard and mouse events
-  const { reportKeyboardEvent, reportKeypressEvent, rpcHidReady } = useHidRpc((message) => {
+  const {
+    reportKeyboardEvent: sendKeyboardEventHidRpc,
+    reportKeypressEvent: sendKeypressEventHidRpc,
+    rpcHidReady,
+  } = useHidRpc((message) => {
     switch (message.constructor) {
       case KeysDownStateMessage:
         setKeysDownState((message as KeysDownStateMessage).keysDownState);
@@ -48,7 +52,7 @@ export default function useKeyboard() {
 
       if (rpcHidReady) {
         console.debug("Sending keyboard report via HidRPC");
-        reportKeyboardEvent(state.keys, state.modifier);
+        sendKeyboardEventHidRpc(state.keys, state.modifier);
         return;
       }
 
@@ -62,27 +66,7 @@ export default function useKeyboard() {
       rpcDataChannel?.readyState,
       rpcHidReady,
       send,
-      reportKeyboardEvent,
-    ],
-  );
-
-  // sendKeypressEvent is used to send a single key press/release event to the device.
-  // It sends the key and whether it is pressed or released.
-  // Older device version will not understand this request and will respond with
-  // an error with code -32601, which means that the RPC method name was not recognized.
-  // In that case we will switch to local key handling and update the keysDownState
-  // in client/browser-side code using simulateDeviceSideKeyHandlingForLegacyDevices.
-  const sendKeypressEvent = useCallback(
-    async (key: number, press: boolean) => {
-      console.debug(`Send keypressEvent key: ${key}, press: ${press}`);
-
-      if (!rpcHidReady) return;
-
-      reportKeypressEvent(key, press);
-    },
-    [
-      rpcHidReady,
-      reportKeypressEvent,
+      sendKeyboardEventHidRpc,
     ],
   );
 
@@ -139,14 +123,13 @@ export default function useKeyboard() {
       if ((key || 0) === 0) return; // ignore zero key presses (they are bad mappings)
 
       if (rpcHidReady) {
-        console.debug("Sending keypress event via HidRPC");
-        reportKeypressEvent(key, press);
-        return;
-      }
-
-      if (rpcHidReady) {
         // if the keyPress api is available, we can just send the key press event
-        sendKeypressEvent(key, press);
+        // sendKeypressEvent is used to send a single key press/release event to the device.
+        // It sends the key and whether it is pressed or released.
+        // Older device version doesn't support this API, so we will switch to local key handling
+        // In that case we will switch to local key handling and update the keysDownState
+        // in client/browser-side code using simulateDeviceSideKeyHandlingForLegacyDevices.
+        sendKeypressEventHidRpc(key, press);
       } else {
         // if the keyPress api is not available, we need to handle the key locally
         const downState = simulateDeviceSideKeyHandlingForLegacyDevices(keysDownState, key, press);
@@ -164,8 +147,7 @@ export default function useKeyboard() {
       resetKeyboardState,
       rpcDataChannel?.readyState,
       sendKeyboardEvent,
-      sendKeypressEvent,
-      reportKeypressEvent,
+      sendKeypressEventHidRpc,
     ],
   );
 
