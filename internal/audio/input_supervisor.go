@@ -48,8 +48,6 @@ func (ais *AudioInputSupervisor) SetOpusConfig(bitrate, complexity, vbr, signalT
 	}
 }
 
-
-
 // Start starts the audio input server subprocess
 func (ais *AudioInputSupervisor) Start() error {
 	ais.mutex.Lock()
@@ -122,14 +120,10 @@ func (ais *AudioInputSupervisor) Start() error {
 	return nil
 }
 
-
-
 // Stop stops the audio input server subprocess
 func (ais *AudioInputSupervisor) Stop() {
 	ais.mutex.Lock()
 	defer ais.mutex.Unlock()
-
-
 
 	if !ais.IsRunning() {
 		return

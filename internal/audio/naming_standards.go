@@ -25,11 +25,9 @@ STANDARDIZED NAMING CONVENTIONS:
    - AudioInputStreamer     (new: for consistency with OutputStreamer)
 
    Output Components:
-   - AudioOutputManager     (new: missing high-level manager)
    - AudioOutputSupervisor  (replaces: AudioOutputSupervisor) ✓
    - AudioOutputServer      (replaces: AudioOutputServer) ✓
    - AudioOutputClient      (replaces: AudioOutputClient) ✓
-   - AudioOutputStreamer    (replaces: OutputStreamer)
 
 3. IPC NAMING:
    - AudioInputIPCManager   (replaces: AudioInputIPCManager) ✓
@@ -46,18 +44,14 @@ STANDARDIZED NAMING CONVENTIONS:
    - OutputMessageType      (replaces: OutputMessageType) ✓
 
 ISSUES IDENTIFIED:
-1. Missing AudioOutputManager (high-level output management)
-2. Inconsistent naming: OutputStreamer vs AudioInputSupervisor
-3. Missing AudioOutputIPCManager for symmetry
-4. Missing OutputIPCConfig for consistency
-5. Component names in logging should be standardized
+1. Missing AudioOutputIPCManager for symmetry
+2. Missing OutputIPCConfig for consistency
+3. Component names in logging should be standardized
 
 IMPLEMENTATION PLAN:
-1. Create AudioOutputManager to match AudioInputManager
-2. Rename OutputStreamer to AudioOutputStreamer
-3. Create AudioOutputIPCManager for symmetry
-4. Standardize all component logging names
-5. Update all references consistently
+1. Create AudioOutputIPCManager for symmetry
+2. Standardize all component logging names
+3. Update all references consistently
 */
 
 // Component name constants for consistent logging
@@ -70,11 +64,9 @@ const (
 	AudioInputIPCComponent        = "audio-input-ipc"
 
 	// Output component names
-	AudioOutputManagerComponent    = "audio-output-manager"
 	AudioOutputSupervisorComponent = "audio-output-supervisor"
 	AudioOutputServerComponent     = "audio-output-server"
 	AudioOutputClientComponent     = "audio-output-client"
-	AudioOutputStreamerComponent   = "audio-output-streamer"
 	AudioOutputIPCComponent        = "audio-output-ipc"
 
 	// Common component names
