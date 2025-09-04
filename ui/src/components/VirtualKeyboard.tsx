@@ -47,7 +47,7 @@ function KeyboardWrapper() {
   }, [keysDownState]);
 
   const isCapsLockActive = useMemo(() => {
-    return keyboardLedState?.caps_lock || false;
+    return keyboardLedState.caps_lock;
   }, [keyboardLedState]);
 
   const mainLayoutName = useMemo(() => {
