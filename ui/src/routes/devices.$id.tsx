@@ -134,7 +134,8 @@ export default function KvmIdRoute() {
     setRpcDataChannel,
     isTurnServerInUse, setTurnServerInUse,
     rpcDataChannel,
-    setTransceiver
+    setTransceiver,
+    setRpcHidChannel,
   } = useRTCStore();
 
   const location = useLocation();
@@ -481,6 +482,12 @@ export default function KvmIdRoute() {
       setRpcDataChannel(rpcDataChannel);
     };
 
+    const rpcHidChannel = pc.createDataChannel("hidrpc");
+    rpcHidChannel.binaryType = "arraybuffer";
+    rpcHidChannel.onopen = () => {
+      setRpcHidChannel(rpcHidChannel);
+    };
+
     setPeerConnection(pc);
   }, [
     cleanupAndStopReconnecting,
@@ -491,6 +498,7 @@ export default function KvmIdRoute() {
     setPeerConnection,
     setPeerConnectionState,
     setRpcDataChannel,
+    setRpcHidChannel,
     setTransceiver,
   ]);
 
@@ -574,7 +582,6 @@ export default function KvmIdRoute() {
   const { 
     keyboardLedState,  setKeyboardLedState,
     keysDownState, setKeysDownState, setUsbState,
-    setkeyPressReportApiAvailable
   } = useHidStore();
 
   const [hasUpdated, setHasUpdated] = useState(false);
@@ -612,7 +619,6 @@ export default function KvmIdRoute() {
       const downState = resp.params as KeysDownState;
       console.debug("Setting key down state:", downState);
       setKeysDownState(downState);
-      setkeyPressReportApiAvailable(true); // if they returned a keyDownState, we know they also support keyPressReport
     }
 
     if (resp.method === "otaState") {
@@ -689,7 +695,6 @@ export default function KvmIdRoute() {
         if (resp.error.code === -32601) {
           // if we don't support key down state, we know key press is also not available
           console.warn("Failed to get key down state, switching to old-school", resp.error);
-          setkeyPressReportApiAvailable(false);
         } else {
           console.error("Failed to get key down state", resp.error);
         }
@@ -697,11 +702,10 @@ export default function KvmIdRoute() {
         const downState = resp.result as KeysDownState;
         console.debug("Keyboard key down state", downState);
         setKeysDownState(downState);
-        setkeyPressReportApiAvailable(true); // if they returned a keyDownState, we know they also support keyPressReport
       }
       setNeedKeyDownState(false);
     });
-  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setkeyPressReportApiAvailable, setKeysDownState]);
+  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {

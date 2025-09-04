@@ -28,6 +28,9 @@ export default defineConfig(({ mode, command }) => {
 
   return {
     plugins,
+    esbuild: {
+      pure: ["console.debug"],
+    },
     build: { outDir: isCloud ? "dist" : "../static" },
     server: {
       host: "0.0.0.0",

@@ -105,6 +105,12 @@ export interface RTCState {
   setRpcDataChannel: (channel: RTCDataChannel) => void;
   rpcDataChannel: RTCDataChannel | null;
 
+  rpcHidProtocolVersion: number | null;
+  setRpcHidProtocolVersion: (version: number) => void;
+
+  rpcHidChannel: RTCDataChannel | null;
+  setRpcHidChannel: (channel: RTCDataChannel) => void;
+
   peerConnectionState: RTCPeerConnectionState | null;
   setPeerConnectionState: (state: RTCPeerConnectionState) => void;
 
@@ -150,6 +156,12 @@ export const useRTCStore = create<RTCState>(set => ({
 
   rpcDataChannel: null,
   setRpcDataChannel: (channel: RTCDataChannel) => set({ rpcDataChannel: channel }),
+
+  rpcHidProtocolVersion: null,
+  setRpcHidProtocolVersion: (version: number) => set({ rpcHidProtocolVersion: version }),
+
+  rpcHidChannel: null,
+  setRpcHidChannel: (channel: RTCDataChannel) => set({ rpcHidChannel: channel }),
 
   transceiver: null,
   setTransceiver: (transceiver: RTCRtpTransceiver) => set({ transceiver }),
@@ -449,9 +461,6 @@ export interface HidState {
   keysDownState: KeysDownState;
   setKeysDownState: (state: KeysDownState) => void;
 
-  keyPressReportApiAvailable: boolean;
-  setkeyPressReportApiAvailable: (available: boolean) => void;
-
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
 
@@ -468,9 +477,6 @@ export const useHidStore = create<HidState>(set => ({
 
   keysDownState: { modifier: 0, keys: [0,0,0,0,0,0] } as KeysDownState,
   setKeysDownState: (state: KeysDownState): void => set({ keysDownState: state }),
-
-  keyPressReportApiAvailable: true,
-  setkeyPressReportApiAvailable: (available: boolean) => set({ keyPressReportApiAvailable: available }),
 
   isVirtualKeyboardEnabled: false,
   setVirtualKeyboardEnabled: (enabled: boolean): void => set({ isVirtualKeyboardEnabled: enabled }),

@@ -7,15 +7,14 @@ import MacroBar from "@/components/MacroBar";
 import InfoBar from "@components/InfoBar";
 import notifications from "@/notifications";
 import useKeyboard from "@/hooks/useKeyboard";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { cx } from "@/cva.config";
 import { keys } from "@/keyboardMappings";
 import {
-  useMouseStore,
   useRTCStore,
   useSettingsStore,
   useVideoStore,
 } from "@/hooks/stores";
+import useMouse from "@/hooks/useMouse";
 
 import {
   HDMIErrorOverlay,
@@ -31,10 +30,18 @@ export default function WebRTCVideo() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
+
+  const isPointerLockPossible = window.location.protocol === "https:" || window.location.hostname === "localhost";
+
   // Store hooks
   const settings = useSettingsStore();
   const { handleKeyPress, resetKeyboardState } = useKeyboard();
-  const { setMousePosition, setMouseMove } = useMouseStore();
+  const {
+    getRelMouseMoveHandler,
+    getAbsMouseMoveHandler,
+    getMouseWheelHandler,
+    resetMousePosition,
+  } = useMouse();
   const {
     setClientSize: setVideoClientSize,
     setSize: setVideoSize,
@@ -55,15 +62,9 @@ export default function WebRTCVideo() {
   const hdmiError = ["no_lock", "no_signal", "out_of_range"].includes(hdmiState);
   const isVideoLoading = !isPlaying;
 
-  // Mouse wheel states
-  const [blockWheelEvent, setBlockWheelEvent] = useState(false);
-
-  // Misc states and hooks
-  const { send } = useJsonRpc();
-
   // Video-related
   const handleResize = useCallback(
-    ( { width, height }: { width: number | undefined; height: number | undefined }) => {
+    ({ width, height }: { width: number | undefined; height: number | undefined }) => {
       if (!videoElm.current) return;
       // Do something with width and height, e.g.:
       setVideoClientSize(width || 0, height || 0);
@@ -99,7 +100,6 @@ export default function WebRTCVideo() {
   );
 
   // Pointer lock and keyboard lock related
-  const isPointerLockPossible = window.location.protocol === "https:" || window.location.hostname === "localhost";
   const isFullscreenEnabled = document.fullscreenEnabled;
 
   const checkNavigatorPermissions = useCallback(async (permissionName: string) => {
@@ -211,128 +211,28 @@ export default function WebRTCVideo() {
       }
     };
 
-    document.addEventListener("fullscreenchange ", handleFullscreenChange);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
   }, [releaseKeyboardLock]);
 
-  // Mouse-related
-  const calcDelta = (pos: number) => (Math.abs(pos) < 10 ? pos * 2 : pos);
-
-  const sendRelMouseMovement = useCallback(
-    (x: number, y: number, buttons: number) => {
-      if (settings.mouseMode !== "relative") return;
-      // if we ignore the event, double-click will not work
-      // if (x === 0 && y === 0 && buttons === 0) return;
-      send("relMouseReport", { dx: calcDelta(x), dy: calcDelta(y), buttons });
-      setMouseMove({ x, y, buttons });
-    },
-    [send, setMouseMove, settings.mouseMode],
+  const absMouseMoveHandler = useMemo(
+    () => getAbsMouseMoveHandler({
+      videoClientWidth,
+      videoClientHeight,
+      videoWidth,
+      videoHeight,
+    }),
+    [getAbsMouseMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
   );
 
-  const relMouseMoveHandler = useCallback(
-    (e: MouseEvent) => {
-      if (settings.mouseMode !== "relative") return;
-      if (isPointerLockActive === false && isPointerLockPossible) return;
-
-      // Send mouse movement
-      const { buttons } = e;
-      sendRelMouseMovement(e.movementX, e.movementY, buttons);
-    },
-    [isPointerLockActive, isPointerLockPossible, sendRelMouseMovement, settings.mouseMode],
+  const relMouseMoveHandler = useMemo(
+    () => getRelMouseMoveHandler(),
+    [getRelMouseMoveHandler],
   );
 
-  const sendAbsMouseMovement = useCallback(
-    (x: number, y: number, buttons: number) => {
-      if (settings.mouseMode !== "absolute") return;
-      send("absMouseReport", { x, y, buttons });
-      // We set that for the debug info bar
-      setMousePosition(x, y);
-    },
-    [send, setMousePosition, settings.mouseMode],
+  const mouseWheelHandler = useMemo(
+    () => getMouseWheelHandler(),
+    [getMouseWheelHandler],
   );
-
-  const absMouseMoveHandler = useCallback(
-    (e: MouseEvent) => {
-      if (!videoClientWidth || !videoClientHeight) return;
-      if (settings.mouseMode !== "absolute") return;
-
-      // Get the aspect ratios of the video element and the video stream
-      const videoElementAspectRatio = videoClientWidth / videoClientHeight;
-      const videoStreamAspectRatio = videoWidth / videoHeight;
-
-      // Calculate the effective video display area
-      let effectiveWidth = videoClientWidth;
-      let effectiveHeight = videoClientHeight;
-      let offsetX = 0;
-      let offsetY = 0;
-
-      if (videoElementAspectRatio > videoStreamAspectRatio) {
-        // Pillarboxing: black bars on the left and right
-        effectiveWidth = videoClientHeight * videoStreamAspectRatio;
-        offsetX = (videoClientWidth - effectiveWidth) / 2;
-      } else if (videoElementAspectRatio < videoStreamAspectRatio) {
-        // Letterboxing: black bars on the top and bottom
-        effectiveHeight = videoClientWidth / videoStreamAspectRatio;
-        offsetY = (videoClientHeight - effectiveHeight) / 2;
-      }
-
-      // Clamp mouse position within the effective video boundaries
-      const clampedX = Math.min(Math.max(offsetX, e.offsetX), offsetX + effectiveWidth);
-      const clampedY = Math.min(Math.max(offsetY, e.offsetY), offsetY + effectiveHeight);
-
-      // Map clamped mouse position to the video stream's coordinate system
-      const relativeX = (clampedX - offsetX) / effectiveWidth;
-      const relativeY = (clampedY - offsetY) / effectiveHeight;
-
-      // Convert to HID absolute coordinate system (0-32767 range)
-      const x = Math.round(relativeX * 32767);
-      const y = Math.round(relativeY * 32767);
-
-      // Send mouse movement
-      const { buttons } = e;
-      sendAbsMouseMovement(x, y, buttons);
-    },
-    [settings.mouseMode, videoClientWidth, videoClientHeight, videoWidth, videoHeight, sendAbsMouseMovement],
-  );
-
-  const mouseWheelHandler = useCallback(
-    (e: WheelEvent) => {
-
-      if (settings.scrollThrottling && blockWheelEvent) {
-        return;
-      }
-
-      // Determine if the wheel event is an accel scroll value
-      const isAccel = Math.abs(e.deltaY) >= 100;
-
-      // Calculate the accel scroll value
-      const accelScrollValue = e.deltaY / 100;
-
-      // Calculate the no accel scroll value
-      const noAccelScrollValue = Math.sign(e.deltaY);
-
-      // Get scroll value
-      const scrollValue = isAccel ? accelScrollValue : noAccelScrollValue;
-
-      // Apply clamping (i.e. min and max mouse wheel hardware value)
-      const clampedScrollValue = Math.max(-127, Math.min(127, scrollValue));
-
-      // Invert the clamped scroll value to match expected behavior
-      const invertedScrollValue = -clampedScrollValue;
-
-      send("wheelReport", { wheelY: invertedScrollValue });
-
-      // Apply blocking delay based of throttling settings
-      if (settings.scrollThrottling && !blockWheelEvent) {
-        setBlockWheelEvent(true);
-        setTimeout(() => setBlockWheelEvent(false), settings.scrollThrottling);
-      }
-    },
-    [send, blockWheelEvent, settings],
-  );
-
-  const resetMousePosition = useCallback(() => {
-    sendAbsMouseMovement(0, 0, 0);
-  }, [sendAbsMouseMovement]);
 
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
@@ -357,7 +257,7 @@ export default function WebRTCVideo() {
       }
       console.debug(`Key down: ${hidKey}`);
       handleKeyPress(hidKey, true);
-      
+
       if (!isKeyboardLockActive && hidKey === keys.MetaLeft) {
         // If the left meta key was just pressed and we're not keyboard locked
         // we'll never see the keyup event because the browser is going to lose
@@ -488,14 +388,16 @@ export default function WebRTCVideo() {
     function setMouseModeEventListeners() {
       const videoElmRefValue = videoElm.current;
       if (!videoElmRefValue) return;
+
       const isRelativeMouseMode = (settings.mouseMode === "relative");
+      const mouseHandler = isRelativeMouseMode ? relMouseMoveHandler : absMouseMoveHandler;
 
       const abortController = new AbortController();
       const signal = abortController.signal;
 
-      videoElmRefValue.addEventListener("mousemove", isRelativeMouseMode ? relMouseMoveHandler : absMouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("pointerdown", isRelativeMouseMode ? relMouseMoveHandler : absMouseMoveHandler, { signal });
-      videoElmRefValue.addEventListener("pointerup", isRelativeMouseMode ? relMouseMoveHandler : absMouseMoveHandler, { signal });
+      videoElmRefValue.addEventListener("mousemove", mouseHandler, { signal });
+      videoElmRefValue.addEventListener("pointerdown", mouseHandler, { signal });
+      videoElmRefValue.addEventListener("pointerup", mouseHandler, { signal });
       videoElmRefValue.addEventListener("wheel", mouseWheelHandler, {
         signal,
         passive: true,
@@ -523,7 +425,16 @@ export default function WebRTCVideo() {
         abortController.abort();
       };
     },
-    [absMouseMoveHandler, isPointerLockActive, isPointerLockPossible, mouseWheelHandler, relMouseMoveHandler, requestPointerLock, resetMousePosition, settings.mouseMode],
+    [
+      isPointerLockActive,
+      isPointerLockPossible,
+      requestPointerLock,
+      absMouseMoveHandler,
+      relMouseMoveHandler,
+      mouseWheelHandler,
+      resetMousePosition,
+      settings.mouseMode,
+    ],
   );
 
   const containerRef = useRef<HTMLDivElement>(null);

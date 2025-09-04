@@ -19,6 +19,7 @@ var (
 	nbdLogger       = logging.GetSubsystemLogger("nbd")
 	timesyncLogger  = logging.GetSubsystemLogger("timesync")
 	jsonRpcLogger   = logging.GetSubsystemLogger("jsonrpc")
+	hidRPCLogger    = logging.GetSubsystemLogger("hidrpc")
 	watchdogLogger  = logging.GetSubsystemLogger("watchdog")
 	websecureLogger = logging.GetSubsystemLogger("websecure")
 	otaLogger       = logging.GetSubsystemLogger("ota")

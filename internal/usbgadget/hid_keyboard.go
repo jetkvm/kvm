@@ -86,6 +86,12 @@ type KeyboardState struct {
 	Compose    bool `json:"compose"`
 	Kana       bool `json:"kana"`
 	Shift      bool `json:"shift"` // This is not part of the main USB HID spec
+	raw        byte
+}
+
+// Byte returns the raw byte representation of the keyboard state.
+func (k *KeyboardState) Byte() byte {
+	return k.raw
 }
 
 func getKeyboardState(b byte) KeyboardState {
@@ -97,6 +103,7 @@ func getKeyboardState(b byte) KeyboardState {
 		Compose:    b&KeyboardLedMaskCompose != 0,
 		Kana:       b&KeyboardLedMaskKana != 0,
 		Shift:      b&KeyboardLedMaskShift != 0,
+		raw:        b,
 	}
 }
 
@@ -139,19 +146,26 @@ func (u *UsbGadget) GetKeysDownState() KeysDownState {
 }
 
 func (u *UsbGadget) updateKeyDownState(state KeysDownState) {
-	u.keyboardStateLock.Lock()
-	defer u.keyboardStateLock.Unlock()
+	u.log.Trace().Interface("old", u.keysDownState).Interface("new", state).Msg("acquiring keyboardStateLock for updateKeyDownState")
 
-	if u.keysDownState.Modifier == state.Modifier &&
-		bytes.Equal(u.keysDownState.Keys, state.Keys) {
-		return // No change in key down state
+	// this is intentional to unlock keyboard state lock before onKeysDownChange callback
+	{
+		u.keyboardStateLock.Lock()
+		defer u.keyboardStateLock.Unlock()
+
+		if u.keysDownState.Modifier == state.Modifier &&
+			bytes.Equal(u.keysDownState.Keys, state.Keys) {
+			return // No change in key down state
+		}
+
+		u.log.Trace().Interface("old", u.keysDownState).Interface("new", state).Msg("keysDownState updated")
+		u.keysDownState = state
 	}
 
-	u.log.Trace().Interface("old", u.keysDownState).Interface("new", state).Msg("keysDownState updated")
-	u.keysDownState = state
-
 	if u.onKeysDownChange != nil {
+		u.log.Trace().Interface("state", state).Msg("calling onKeysDownChange")
 		(*u.onKeysDownChange)(state)
+		u.log.Trace().Interface("state", state).Msg("onKeysDownChange called")
 	}
 }
 
@@ -233,7 +247,7 @@ func (u *UsbGadget) keyboardWriteHidFile(modifier byte, keys []byte) error {
 		return err
 	}
 
-	_, err := u.keyboardHidFile.Write(append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
+	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
 	if err != nil {
 		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
 		u.keyboardHidFile.Close()
