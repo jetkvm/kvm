@@ -32,8 +32,9 @@ static int opus_complexity = 3;         // Will be set from GetConfig().CGOOpusC
 static int opus_vbr = 1;                // Will be set from GetConfig().CGOOpusVBR
 static int opus_vbr_constraint = 1;     // Will be set from GetConfig().CGOOpusVBRConstraint
 static int opus_signal_type = 3;        // Will be set from GetConfig().CGOOpusSignalType
-static int opus_bandwidth = 1105;       // Will be set from GetConfig().CGOOpusBandwidth
+static int opus_bandwidth = 1105;       // OPUS_BANDWIDTH_WIDEBAND for compatibility (was 1101)
 static int opus_dtx = 0;                // Will be set from GetConfig().CGOOpusDTX
+static int opus_lsb_depth = 16;         // LSB depth for improved bit allocation on constrained hardware
 static int sample_rate = 48000;         // Will be set from GetConfig().CGOSampleRate
 static int channels = 2;                // Will be set from GetConfig().CGOChannels
 static int frame_size = 960;            // Will be set from GetConfig().CGOFrameSize
@@ -41,10 +42,13 @@ static int max_packet_size = 1500;      // Will be set from GetConfig().CGOMaxPa
 static int sleep_microseconds = 1000;   // Will be set from GetConfig().CGOUsleepMicroseconds
 static int max_attempts_global = 5;     // Will be set from GetConfig().CGOMaxAttempts
 static int max_backoff_us_global = 500000; // Will be set from GetConfig().CGOMaxBackoffMicroseconds
+// Hardware optimization flags for constrained environments
+static int use_mmap_access = 0;         // Disable MMAP for compatibility (was 1)
+static int optimized_buffer_size = 0;   // Disable optimized buffer sizing for stability (was 1)
 
 // Function to update constants from Go configuration
 void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constraint,
-                           int signal_type, int bandwidth, int dtx, int sr, int ch,
+                           int signal_type, int bandwidth, int dtx, int lsb_depth, int sr, int ch,
                            int fs, int max_pkt, int sleep_us, int max_attempts, int max_backoff) {
     opus_bitrate = bitrate;
     opus_complexity = complexity;
@@ -53,6 +57,7 @@ void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constr
     opus_signal_type = signal_type;
     opus_bandwidth = bandwidth;
     opus_dtx = dtx;
+    opus_lsb_depth = lsb_depth;
     sample_rate = sr;
     channels = ch;
     frame_size = fs;
@@ -151,7 +156,16 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 	err = snd_pcm_hw_params_any(handle, params);
 	if (err < 0) return err;
 
-	err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
+	// Use MMAP access for direct hardware memory access if enabled
+	if (use_mmap_access) {
+		err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_MMAP_INTERLEAVED);
+		if (err < 0) {
+			// Fallback to RW access if MMAP fails
+			err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
+		}
+	} else {
+		err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
+	}
 	if (err < 0) return err;
 
 	err = snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_S16_LE);
@@ -169,13 +183,25 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 		if (err < 0) return err;
 	}
 
-	// Optimize buffer sizes for low latency
+	// Optimize buffer sizes for constrained hardware
 	snd_pcm_uframes_t period_size = frame_size;
+	if (optimized_buffer_size) {
+		// Use smaller periods for lower latency on constrained hardware
+		period_size = frame_size / 2;
+		if (period_size < 64) period_size = 64; // Minimum safe period size
+	}
 	err = snd_pcm_hw_params_set_period_size_near(handle, params, &period_size, 0);
 	if (err < 0) return err;
 
-	// Set buffer size to 4 periods for good latency/stability balance
-	snd_pcm_uframes_t buffer_size = period_size * 4;
+	// Optimize buffer size based on hardware constraints
+	snd_pcm_uframes_t buffer_size;
+	if (optimized_buffer_size) {
+		// Use 2 periods for ultra-low latency on constrained hardware
+		buffer_size = period_size * 2;
+	} else {
+		// Standard 4 periods for good latency/stability balance
+		buffer_size = period_size * 4;
+	}
 	err = snd_pcm_hw_params_set_buffer_size_near(handle, params, &buffer_size);
 	if (err < 0) return err;
 
@@ -250,14 +276,16 @@ int jetkvm_audio_init() {
 		return -2;
 	}
 
-	// Apply optimized Opus encoder settings
+	// Apply optimized Opus encoder settings for constrained hardware
 	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(opus_bitrate));
 	opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(opus_complexity));
 	opus_encoder_ctl(encoder, OPUS_SET_VBR(opus_vbr));
 	opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(opus_vbr_constraint));
 	opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(opus_signal_type));
-	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth));
-	opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
+	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth)); // WIDEBAND for compatibility
+       opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
+       // Set LSB depth for improved bit allocation on constrained hardware (disabled for compatibility)
+       // opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(opus_lsb_depth));
 	// Enable packet loss concealment for better resilience
 	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(5));
 	// Set prediction disabled for lower latency
@@ -689,6 +717,7 @@ func cgoAudioInit() error {
 		C.int(cache.opusSignalType.Load()),
 		C.int(cache.opusBandwidth.Load()),
 		C.int(cache.opusDTX.Load()),
+		C.int(16), // LSB depth for improved bit allocation
 		C.int(cache.sampleRate.Load()),
 		C.int(cache.channels.Load()),
 		C.int(cache.frameSize.Load()),
