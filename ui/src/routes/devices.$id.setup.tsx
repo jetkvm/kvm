@@ -1,12 +1,5 @@
-import {
-  ActionFunctionArgs,
-  Form,
-  LoaderFunctionArgs,
-  redirect,
-  useActionData,
-  useParams,
-  useSearchParams,
-} from "react-router-dom";
+import { Form, redirect, useActionData, useParams, useSearchParams } from "react-router";
+import type { ActionFunction, ActionFunctionArgs, LoaderFunction, LoaderFunctionArgs } from "react-router";
 
 import SimpleNavbar from "@components/SimpleNavbar";
 import GridBackground from "@components/GridBackground";
@@ -20,7 +13,7 @@ import { CLOUD_API } from "@/ui.config";
 
 import api from "../api";
 
-const loader = async ({ params }: LoaderFunctionArgs) => {
+const loader: LoaderFunction = async ({ params }: LoaderFunctionArgs) => {
   await checkAuth();
   const res = await fetch(`${CLOUD_API}/devices/${params.id}`, {
     method: "GET",
@@ -35,7 +28,7 @@ const loader = async ({ params }: LoaderFunctionArgs) => {
   }
 };
 
-const action = async ({ request }: ActionFunctionArgs) => {
+const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   // Handle form submission
   const { name, id, returnTo } = Object.fromEntries(await request.formData());
   const res = await api.PUT(`${CLOUD_API}/devices/${id}`, { name });
@@ -43,7 +36,7 @@ const action = async ({ request }: ActionFunctionArgs) => {
   if (res.ok) {
     return redirect(returnTo?.toString() ?? `/devices/${id}`);
   } else {
-    return { error: "There was an error creating your device" };
+    return { error: "There was an error registering your device" };
   }
 };
 

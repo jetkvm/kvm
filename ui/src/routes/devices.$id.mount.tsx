@@ -7,7 +7,7 @@ import {
 } from "react-icons/lu";
 import { PlusCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { TrashIcon } from "@heroicons/react/16/solid";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 
 import Card, { GridCard } from "@/components/Card";
 import { Button } from "@components/Button";

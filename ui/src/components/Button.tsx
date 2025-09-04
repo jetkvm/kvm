@@ -1,5 +1,6 @@
 import React, { JSX } from "react";
-import { FetcherWithComponents, Link, LinkProps, useNavigation } from "react-router-dom";
+import { Link, useNavigation } from "react-router";
+import type { FetcherWithComponents, LinkProps } from "react-router";
 
 import ExtLink from "@/components/ExtLink";
 import LoadingSpinner from "@/components/LoadingSpinner";

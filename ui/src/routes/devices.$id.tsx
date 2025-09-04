@@ -1,8 +1,6 @@
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  LoaderFunctionArgs,
   Outlet,
-  Params,
   redirect,
   useLoaderData,
   useLocation,
@@ -10,7 +8,8 @@ import {
   useOutlet,
   useParams,
   useSearchParams,
-} from "react-router-dom";
+} from "react-router";
+import type { LoaderFunction, LoaderFunctionArgs, Params } from "react-router";
 import { useInterval } from "usehooks-ts";
 import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -112,7 +111,7 @@ const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => 
   return { user, iceConfig, deviceName: device.name || device.id };
 };
 
-const loader = ({ params }: LoaderFunctionArgs) => {
+const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
   return import.meta.env.MODE === "device" ? deviceLoader() : cloudLoader(params);
 };
 

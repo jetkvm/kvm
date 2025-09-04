@@ -1,4 +1,4 @@
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
 import { useState, useEffect } from "react";
 import { LuTrash2 } from "react-icons/lu";
 
