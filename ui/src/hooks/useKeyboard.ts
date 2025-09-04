@@ -21,23 +21,15 @@ export default function useKeyboard() {
   // dynamically set when the device responds to the first key press event or reports its
   // keysDownState when queried since the keyPressReport was introduced together with the 
   // getKeysDownState API.
-  const { keyPressReportApiAvailable, setkeyPressReportApiAvailable } = useHidStore();
-  const enableKeyPressReport = useCallback((reason: string) => {
-    if (keyPressReportApiAvailable) return;
-    console.debug(`Enable keyPressReport API because ${reason}`);
-    setkeyPressReportApiAvailable(true);
-  }, [setkeyPressReportApiAvailable, keyPressReportApiAvailable]);
 
   // HidRPC is a binary format for exchanging keyboard and mouse events
   const { reportKeyboardEvent, reportKeypressEvent, rpcHidReady } = useHidRpc((message) => {
     switch (message.constructor) {
       case KeysDownStateMessage:
         setKeysDownState((message as KeysDownStateMessage).keysDownState);
-        enableKeyPressReport("HidRPC:KeysDownStateMessage received");
         break;
       case KeyboardLedStateMessage:
         setKeyboardLedState((message as KeyboardLedStateMessage).keyboardLedState);
-        enableKeyPressReport("HidRPC:KeyboardLedStateMessage received");
         break;
       default:
         break;
@@ -57,7 +49,6 @@ export default function useKeyboard() {
       if (rpcHidReady) {
         console.debug("Sending keyboard report via HidRPC");
         reportKeyboardEvent(state.keys, state.modifier);
-        enableKeyPressReport("HidRPC:KeyboardReport received");
         return;
       }
 
@@ -72,7 +63,6 @@ export default function useKeyboard() {
       rpcHidReady,
       send,
       reportKeyboardEvent,
-      enableKeyPressReport,
     ],
   );
 
@@ -154,7 +144,7 @@ export default function useKeyboard() {
         return;
       }
 
-      if (keyPressReportApiAvailable) {
+      if (rpcHidReady) {
         // if the keyPress api is available, we can just send the key press event
         sendKeypressEvent(key, press);
       } else {
@@ -169,11 +159,10 @@ export default function useKeyboard() {
       }
     },
     [
-      keyPressReportApiAvailable,
+      rpcHidReady,
       keysDownState,
       resetKeyboardState,
       rpcDataChannel?.readyState,
-      rpcHidReady,
       sendKeyboardEvent,
       sendKeypressEvent,
       reportKeypressEvent,

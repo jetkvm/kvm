@@ -461,8 +461,8 @@ export interface HidState {
   keysDownState: KeysDownState;
   setKeysDownState: (state: KeysDownState) => void;
 
-  keyPressReportApiAvailable: boolean;
-  setkeyPressReportApiAvailable: (available: boolean) => void;
+  // keyPressReportApiAvailable is no longer needed, we'll simply use hidChannel available to
+  // determine if the device supports keyPressReport
 
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
@@ -480,9 +480,6 @@ export const useHidStore = create<HidState>(set => ({
 
   keysDownState: { modifier: 0, keys: [0,0,0,0,0,0] } as KeysDownState,
   setKeysDownState: (state: KeysDownState): void => set({ keysDownState: state }),
-
-  keyPressReportApiAvailable: true,
-  setkeyPressReportApiAvailable: (available: boolean) => set({ keyPressReportApiAvailable: available }),
 
   isVirtualKeyboardEnabled: false,
   setVirtualKeyboardEnabled: (enabled: boolean): void => set({ isVirtualKeyboardEnabled: enabled }),
