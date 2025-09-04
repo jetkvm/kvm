@@ -243,12 +243,33 @@ type AudioInputServer struct {
 // NewAudioInputServer creates a new audio input server
 func NewAudioInputServer() (*AudioInputServer, error) {
 	socketPath := getInputSocketPath()
-	// Remove existing socket if any
-	os.Remove(socketPath)
 
-	listener, err := net.Listen("unix", socketPath)
+	// Retry socket creation with cleanup to handle race conditions
+	var listener net.Listener
+	var err error
+	for i := 0; i < 3; i++ {
+		// Remove existing socket if any
+		os.Remove(socketPath)
+
+		// Small delay to ensure cleanup completes
+		if i > 0 {
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		listener, err = net.Listen("unix", socketPath)
+		if err == nil {
+			break
+		}
+
+		// Log retry attempt
+		if i < 2 {
+			logger := logging.GetDefaultLogger().With().Str("component", "audio-input").Logger()
+			logger.Warn().Err(err).Int("attempt", i+1).Msg("Failed to create unix socket, retrying")
+		}
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to create unix socket: %w", err)
+		return nil, fmt.Errorf("failed to create unix socket after 3 attempts: %w", err)
 	}
 
 	// Get initial buffer size from adaptive buffer manager
@@ -320,7 +341,11 @@ func (ais *AudioInputServer) Stop() {
 
 	if ais.listener != nil {
 		ais.listener.Close()
+		ais.listener = nil
 	}
+
+	// Remove socket file to prevent restart issues
+	os.Remove(getInputSocketPath())
 }
 
 // Close closes the server and cleans up resources

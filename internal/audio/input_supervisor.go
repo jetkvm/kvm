@@ -357,8 +357,11 @@ func (ais *AudioInputSupervisor) monitorSubprocess() {
 
 // connectClient attempts to connect the client to the server
 func (ais *AudioInputSupervisor) connectClient() {
-	// Wait briefly for the server to start (reduced from 500ms)
+	// Wait briefly for the server to start and create socket
 	time.Sleep(GetConfig().DefaultSleepDuration)
+
+	// Additional small delay to ensure socket is ready after restart
+	time.Sleep(20 * time.Millisecond)
 
 	err := ais.client.Connect()
 	if err != nil {
