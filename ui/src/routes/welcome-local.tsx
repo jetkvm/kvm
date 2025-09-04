@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { cx } from "cva";
-import { redirect } from "react-router-dom";
+import { redirect } from "react-router";
+import type { LoaderFunction } from "react-router";
 
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
@@ -17,7 +18,7 @@ export interface DeviceStatus {
   isSetup: boolean;
 }
 
-const loader = async () => {
+const loader: LoaderFunction = async () => {
   const res = await api
     .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);

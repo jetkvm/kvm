@@ -1,4 +1,5 @@
-import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
+import { Form, redirect, useActionData } from "react-router";
+import type { ActionFunction, ActionFunctionArgs, LoaderFunction } from "react-router";
 import { useState } from "react";
 
 import GridBackground from "@components/GridBackground";
@@ -14,7 +15,7 @@ import api from "../api";
 
 import { DeviceStatus } from "./welcome-local";
 
-const loader = async () => {
+const loader: LoaderFunction = async () => {
   const res = await api
     .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);
@@ -23,7 +24,7 @@ const loader = async () => {
   return null;
 };
 
-const action = async ({ request }: ActionFunctionArgs) => {
+const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const localAuthMode = formData.get("localAuthMode");
   if (!localAuthMode) return { error: "Please select an authentication mode" };
@@ -162,5 +163,5 @@ export default function WelcomeLocalModeRoute() {
   );
 }
 
-WelcomeLocalModeRoute.action = action;
 WelcomeLocalModeRoute.loader = loader;
+WelcomeLocalModeRoute.action = action;

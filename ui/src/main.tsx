@@ -7,7 +7,7 @@ import {
   redirect,
   RouterProvider,
   useRouteError,
-} from "react-router-dom";
+} from "react-router";
 import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
 
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
@@ -28,7 +28,7 @@ import DeviceIdRename from "@routes/devices.$id.rename";
 import DevicesRoute from "@routes/devices";
 import SettingsIndexRoute from "@routes/devices.$id.settings._index";
 import SettingsAccessIndexRoute from "@routes/devices.$id.settings.access._index";
-const Notifications = lazy(() => import("@/notifications"));
+import Notifications  from "@/notifications";
 const SignupRoute = lazy(() => import("@routes/signup"));
 const LoginRoute = lazy(() => import("@routes/login"));
 const DevicesAlreadyAdopted = lazy(() => import("@routes/devices.already-adopted"));
