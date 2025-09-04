@@ -910,11 +910,8 @@ func (c *AudioConfigCache) GetBufferTooLargeError() error {
 
 // Removed duplicate config caching system - using AudioConfigCache instead
 
-func cgoAudioReadEncode(buf []byte) (int, error) {
-	// Fast path: Use AudioConfigCache to avoid GetConfig() in hot path
-	cache := GetCachedConfig()
-	// Only update cache if expired - avoid unnecessary overhead
-	// Use proper locking to avoid race condition
+// updateCacheIfNeeded updates cache only if expired to avoid overhead
+func updateCacheIfNeeded(cache *AudioConfigCache) {
 	if cache.initialized.Load() {
 		cache.mutex.RLock()
 		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
@@ -925,6 +922,11 @@ func cgoAudioReadEncode(buf []byte) (int, error) {
 	} else {
 		cache.Update()
 	}
+}
+
+func cgoAudioReadEncode(buf []byte) (int, error) {
+	cache := GetCachedConfig()
+	updateCacheIfNeeded(cache)
 
 	// Fast validation with cached values - avoid lock with atomic access
 	minRequired := cache.GetMinReadEncodeBuffer()
@@ -1073,14 +1075,12 @@ var (
 // GetBufferFromPool gets a buffer from the pool with at least the specified capacity
 func GetBufferFromPool(minCapacity int) []byte {
 	cgoBufferPoolGets.Add(1)
-	// Use the SizedBufferPool for better memory management
 	return GetOptimalBuffer(minCapacity)
 }
 
 // ReturnBufferToPool returns a buffer to the pool
 func ReturnBufferToPool(buf []byte) {
 	cgoBufferPoolPuts.Add(1)
-	// Use the SizedBufferPool for better memory management
 	ReturnOptimalBuffer(buf)
 }
 
@@ -1151,104 +1151,49 @@ func (b *AudioFrameBatch) Release() {
 */
 
 // ReadEncodeWithPooledBuffer reads audio data and encodes it using a buffer from the pool
-// This reduces memory allocations by reusing buffers
 func ReadEncodeWithPooledBuffer() ([]byte, int, error) {
-	// Get cached config
 	cache := GetCachedConfig()
-	// Only update cache if expired - avoid unnecessary overhead
-	// Use proper locking to avoid race condition
-	if cache.initialized.Load() {
-		cache.mutex.RLock()
-		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
-		cache.mutex.RUnlock()
-		if cacheExpired {
-			cache.Update()
-		}
-	} else {
-		cache.Update()
-	}
+	updateCacheIfNeeded(cache)
 
-	// Get a buffer from the pool with appropriate capacity
 	bufferSize := cache.GetMinReadEncodeBuffer()
 	if bufferSize == 0 {
-		bufferSize = 1500 // Fallback if cache not initialized
+		bufferSize = 1500
 	}
 
-	// Get buffer from pool
 	buf := GetBufferFromPool(bufferSize)
-
-	// Perform read/encode operation
 	n, err := cgoAudioReadEncode(buf)
 	if err != nil {
-		// Return buffer to pool on error
 		ReturnBufferToPool(buf)
 		return nil, 0, err
 	}
 
-	// Resize buffer to actual data size
-	result := buf[:n]
-
-	// Return the buffer with data
-	return result, n, nil
+	return buf[:n], n, nil
 }
 
 // DecodeWriteWithPooledBuffer decodes and writes audio data using a pooled buffer
-// The caller is responsible for returning the input buffer to the pool if needed
 func DecodeWriteWithPooledBuffer(data []byte) (int, error) {
-	// Validate input
 	if len(data) == 0 {
 		return 0, errEmptyBuffer
 	}
 
-	// Get cached config
 	cache := GetCachedConfig()
-	// Only update cache if expired - avoid unnecessary overhead
-	// Use proper locking to avoid race condition
-	if cache.initialized.Load() {
-		cache.mutex.RLock()
-		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
-		cache.mutex.RUnlock()
-		if cacheExpired {
-			cache.Update()
-		}
-	} else {
-		cache.Update()
-	}
+	updateCacheIfNeeded(cache)
 
-	// Ensure data doesn't exceed max packet size
 	maxPacketSize := cache.GetMaxPacketSize()
 	if len(data) > maxPacketSize {
 		return 0, newBufferTooLargeError(len(data), maxPacketSize)
 	}
 
-	// Get a PCM buffer from the pool for optimized decode-write
 	pcmBuffer := GetBufferFromPool(cache.GetMaxPCMBufferSize())
 	defer ReturnBufferToPool(pcmBuffer)
 
-	// Perform decode/write operation using optimized implementation
-	n, err := CGOAudioDecodeWrite(data, pcmBuffer)
-
-	// Return result
-	return n, err
+	return CGOAudioDecodeWrite(data, pcmBuffer)
 }
 
 // BatchReadEncode reads and encodes multiple audio frames in a single batch
-// This reduces CGO call overhead by processing multiple frames at once
 func BatchReadEncode(batchSize int) ([][]byte, error) {
-	// Get cached config
 	cache := GetCachedConfig()
-	// Only update cache if expired - avoid unnecessary overhead
-	// Use proper locking to avoid race condition
-	if cache.initialized.Load() {
-		cache.mutex.RLock()
-		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
-		cache.mutex.RUnlock()
-		if cacheExpired {
-			cache.Update()
-		}
-	} else {
-		cache.Update()
-	}
+	updateCacheIfNeeded(cache)
 
 	// Calculate total buffer size needed for batch
 	frameSize := cache.GetMinReadEncodeBuffer()

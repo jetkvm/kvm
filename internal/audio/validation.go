@@ -11,13 +11,13 @@ import (
 
 // Validation errors
 var (
-	ErrInvalidAudioQuality    = errors.New("invalid audio quality level")
-	ErrInvalidFrameSize       = errors.New("invalid frame size")
-	ErrInvalidFrameData       = errors.New("invalid frame data")
-	ErrFrameDataEmpty         = errors.New("invalid frame data: frame data is empty")
-	ErrFrameDataTooLarge      = errors.New("invalid frame data: exceeds maximum")
-	ErrInvalidBufferSize      = errors.New("invalid buffer size")
-	ErrInvalidPriority        = errors.New("invalid priority value")
+	ErrInvalidAudioQuality = errors.New("invalid audio quality level")
+	ErrInvalidFrameSize    = errors.New("invalid frame size")
+	ErrInvalidFrameData    = errors.New("invalid frame data")
+	ErrFrameDataEmpty      = errors.New("invalid frame data: frame data is empty")
+	ErrFrameDataTooLarge   = errors.New("invalid frame data: exceeds maximum")
+	ErrInvalidBufferSize   = errors.New("invalid buffer size")
+
 	ErrInvalidLatency         = errors.New("invalid latency value")
 	ErrInvalidConfiguration   = errors.New("invalid configuration")
 	ErrInvalidSocketConfig    = errors.New("invalid socket configuration")
@@ -95,16 +95,6 @@ func ValidateBufferSize(size int) error {
 	if size > config.SocketMaxBuffer {
 		return fmt.Errorf("%w: buffer size %d exceeds maximum %d",
 			ErrInvalidBufferSize, size, config.SocketMaxBuffer)
-	}
-	return nil
-}
-
-// ValidateThreadPriority validates thread priority values with system limits
-func ValidateThreadPriority(priority int) error {
-	const minPriority, maxPriority = -20, 19
-	if priority < minPriority || priority > maxPriority {
-		return fmt.Errorf("%w: priority %d outside valid range [%d, %d]",
-			ErrInvalidPriority, priority, minPriority, maxPriority)
 	}
 	return nil
 }
