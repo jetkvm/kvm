@@ -68,8 +68,6 @@ func startAudioSubprocess() error {
 		config.AudioQualityLowOpusDTX,
 	)
 
-
-
 	// Note: Audio input supervisor is NOT started here - it will be started on-demand
 	// when the user activates microphone input through the UI
 

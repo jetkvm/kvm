@@ -8,6 +8,15 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 )
 
+// AudioOutputMetrics represents metrics for audio output operations
+type AudioOutputMetrics struct {
+	// Atomic int64 field first for proper ARM32 alignment
+	FramesReceived int64 `json:"frames_received"` // Total frames received (output-specific)
+
+	// Embedded struct with atomic fields properly aligned
+	BaseAudioMetrics
+}
+
 // AudioOutputIPCManager manages audio output using IPC when enabled
 type AudioOutputIPCManager struct {
 	*BaseAudioManager

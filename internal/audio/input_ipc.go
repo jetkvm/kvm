@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -16,67 +15,33 @@ import (
 	"github.com/rs/zerolog"
 )
 
-var (
-	inputMagicNumber uint32 = GetConfig().InputMagicNumber // "JKMI" (JetKVM Microphone Input)
-	inputSocketName         = "audio_input.sock"
-)
-
-const (
-	headerSize = 17 // Fixed header size: 4+1+4+8 bytes - matches GetConfig().HeaderSize
-)
-
+// Constants are now defined in unified_ipc.go
 var (
 	maxFrameSize    = GetConfig().MaxFrameSize    // Maximum Opus frame size
 	messagePoolSize = GetConfig().MessagePoolSize // Pre-allocated message pool size
 )
 
-// InputMessageType represents the type of IPC message
-type InputMessageType uint8
+// Legacy aliases for backward compatibility
+type InputMessageType = UnifiedMessageType
+type InputIPCMessage = UnifiedIPCMessage
 
+// Legacy constants for backward compatibility
 const (
-	InputMessageTypeOpusFrame InputMessageType = iota
-	InputMessageTypeConfig
-	InputMessageTypeOpusConfig
-	InputMessageTypeStop
-	InputMessageTypeHeartbeat
-	InputMessageTypeAck
+	InputMessageTypeOpusFrame  = MessageTypeOpusFrame
+	InputMessageTypeConfig     = MessageTypeConfig
+	InputMessageTypeOpusConfig = MessageTypeOpusConfig
+	InputMessageTypeStop       = MessageTypeStop
+	InputMessageTypeHeartbeat  = MessageTypeHeartbeat
+	InputMessageTypeAck        = MessageTypeAck
 )
 
-// InputIPCMessage represents a message sent over IPC
-type InputIPCMessage struct {
-	Magic     uint32
-	Type      InputMessageType
-	Length    uint32
-	Timestamp int64
-	Data      []byte
-}
-
-// Implement IPCMessage interface
-func (msg *InputIPCMessage) GetMagic() uint32 {
-	return msg.Magic
-}
-
-func (msg *InputIPCMessage) GetType() uint8 {
-	return uint8(msg.Type)
-}
-
-func (msg *InputIPCMessage) GetLength() uint32 {
-	return msg.Length
-}
-
-func (msg *InputIPCMessage) GetTimestamp() int64 {
-	return msg.Timestamp
-}
-
-func (msg *InputIPCMessage) GetData() []byte {
-	return msg.Data
-}
+// Methods are now inherited from UnifiedIPCMessage
 
 // OptimizedIPCMessage represents an optimized message with pre-allocated buffers
 type OptimizedIPCMessage struct {
-	header [headerSize]byte // Pre-allocated header buffer
-	data   []byte           // Reusable data buffer
-	msg    InputIPCMessage  // Embedded message
+	header [17]byte        // Pre-allocated header buffer (headerSize = 17)
+	data   []byte          // Reusable data buffer
+	msg    InputIPCMessage // Embedded message
 }
 
 // MessagePool manages a pool of reusable messages to reduce allocations
@@ -197,25 +162,9 @@ func (mp *MessagePool) Put(msg *OptimizedIPCMessage) {
 	}
 }
 
-// InputIPCConfig represents configuration for audio input
-type InputIPCConfig struct {
-	SampleRate int
-	Channels   int
-	FrameSize  int
-}
-
-// InputIPCOpusConfig contains complete Opus encoder configuration
-type InputIPCOpusConfig struct {
-	SampleRate int
-	Channels   int
-	FrameSize  int
-	Bitrate    int
-	Complexity int
-	VBR        int
-	SignalType int
-	Bandwidth  int
-	DTX        int
-}
+// Legacy aliases for backward compatibility
+type InputIPCConfig = UnifiedIPCConfig
+type InputIPCOpusConfig = UnifiedIPCOpusConfig
 
 // AudioInputServer handles IPC communication for audio input processing
 type AudioInputServer struct {
@@ -1305,10 +1254,4 @@ func GetGlobalMessagePoolStats() MessagePoolStats {
 
 // Helper functions
 
-// getInputSocketPath returns the path to the input socket
-func getInputSocketPath() string {
-	if path := os.Getenv("JETKVM_AUDIO_INPUT_SOCKET"); path != "" {
-		return path
-	}
-	return filepath.Join("/var/run", inputSocketName)
-}
+// getInputSocketPath is now defined in unified_ipc.go
