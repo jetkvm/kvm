@@ -1900,8 +1900,8 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// WriteTimeout defines maximum wait time for IPC write operations.
 		// Used in: ipc_manager.go for preventing indefinite blocking on writes
 		// Impact: Balances responsiveness with reliability for IPC operations
-		// Default 5 seconds provides reasonable timeout for most system conditions
-		WriteTimeout: 5 * time.Second,
+		// Optimized to 50ms for real-time audio processing to reduce latency
+		WriteTimeout: 50 * time.Millisecond,
 
 		// MaxDroppedFrames defines threshold for dropped frame error handling.
 		// Used in: ipc_manager.go for quality degradation detection and recovery

@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -15,6 +16,12 @@ type AudioInputIPCManager struct {
 	supervisor *AudioInputSupervisor
 	logger     zerolog.Logger
 	running    int32
+
+	// Connection monitoring and recovery
+	monitoringEnabled   bool
+	lastConnectionCheck time.Time
+	connectionFailures  int32
+	recoveryInProgress  int32
 }
 
 // NewAudioInputIPCManager creates a new IPC-based audio input manager
@@ -33,10 +40,17 @@ func (aim *AudioInputIPCManager) Start() error {
 
 	aim.logger.Debug().Str("component", AudioInputIPCComponent).Msg("starting component")
 
+	// Initialize connection monitoring
+	aim.monitoringEnabled = true
+	aim.lastConnectionCheck = time.Now()
+	atomic.StoreInt32(&aim.connectionFailures, 0)
+	atomic.StoreInt32(&aim.recoveryInProgress, 0)
+
 	err := aim.supervisor.Start()
 	if err != nil {
 		// Ensure proper cleanup on supervisor start failure
 		atomic.StoreInt32(&aim.running, 0)
+		aim.monitoringEnabled = false
 		// Reset metrics on failed start
 		aim.resetMetrics()
 		aim.logger.Error().Err(err).Str("component", AudioInputIPCComponent).Msg("failed to start audio input supervisor")
@@ -80,6 +94,10 @@ func (aim *AudioInputIPCManager) Stop() {
 	}
 
 	aim.logger.Debug().Str("component", AudioInputIPCComponent).Msg("stopping component")
+
+	// Disable connection monitoring
+	aim.monitoringEnabled = false
+
 	aim.supervisor.Stop()
 	aim.logger.Debug().Str("component", AudioInputIPCComponent).Msg("component stopped")
 }
@@ -102,6 +120,11 @@ func (aim *AudioInputIPCManager) WriteOpusFrame(frame []byte) error {
 		return nil // Empty frame, ignore
 	}
 
+	// Check connection health periodically
+	if aim.monitoringEnabled {
+		aim.checkConnectionHealth()
+	}
+
 	// Validate frame data
 	if err := ValidateAudioFrame(frame); err != nil {
 		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
@@ -122,8 +145,19 @@ func (aim *AudioInputIPCManager) WriteOpusFrame(frame []byte) error {
 	if err != nil {
 		// Count as dropped frame
 		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
+
+		// Handle connection failure
+		if aim.monitoringEnabled {
+			aim.handleConnectionFailure(err)
+		}
+
 		aim.logger.Debug().Err(err).Msg("failed to send frame via IPC")
 		return err
+	}
+
+	// Reset connection failure counter on successful send
+	if aim.monitoringEnabled {
+		atomic.StoreInt32(&aim.connectionFailures, 0)
 	}
 
 	// Calculate and update latency (end-to-end IPC transmission time)
@@ -213,6 +247,67 @@ func (aim *AudioInputIPCManager) updateLatencyMetrics(latency time.Duration) {
 		// EMA with alpha = 0.1 for smooth averaging
 		aim.metrics.AverageLatency = time.Duration(float64(currentAvg)*0.9 + float64(latency)*0.1)
 	}
+}
+
+// checkConnectionHealth monitors the IPC connection health
+func (aim *AudioInputIPCManager) checkConnectionHealth() {
+	now := time.Now()
+
+	// Check connection every 5 seconds
+	if now.Sub(aim.lastConnectionCheck) < 5*time.Second {
+		return
+	}
+
+	aim.lastConnectionCheck = now
+
+	// Check if supervisor and client are connected
+	if !aim.supervisor.IsConnected() {
+		aim.logger.Warn().Str("component", AudioInputIPCComponent).Msg("IPC connection lost, attempting recovery")
+		aim.handleConnectionFailure(fmt.Errorf("connection health check failed"))
+	}
+}
+
+// handleConnectionFailure manages connection failure recovery
+func (aim *AudioInputIPCManager) handleConnectionFailure(err error) {
+	// Increment failure counter
+	failures := atomic.AddInt32(&aim.connectionFailures, 1)
+
+	// Prevent multiple concurrent recovery attempts
+	if !atomic.CompareAndSwapInt32(&aim.recoveryInProgress, 0, 1) {
+		return // Recovery already in progress
+	}
+
+	// Start recovery in a separate goroutine to avoid blocking audio processing
+	go func() {
+		defer atomic.StoreInt32(&aim.recoveryInProgress, 0)
+
+		aim.logger.Info().
+			Int32("failures", failures).
+			Err(err).
+			Str("component", AudioInputIPCComponent).
+			Msg("attempting IPC connection recovery")
+
+		// Stop and restart the supervisor to recover the connection
+		aim.supervisor.Stop()
+
+		// Brief delay before restart
+		time.Sleep(100 * time.Millisecond)
+
+		// Attempt to restart
+		if restartErr := aim.supervisor.Start(); restartErr != nil {
+			aim.logger.Error().
+				Err(restartErr).
+				Str("component", AudioInputIPCComponent).
+				Msg("failed to recover IPC connection")
+		} else {
+			aim.logger.Info().
+				Str("component", AudioInputIPCComponent).
+				Msg("IPC connection recovered successfully")
+
+			// Reset failure counter on successful recovery
+			atomic.StoreInt32(&aim.connectionFailures, 0)
+		}
+	}()
 }
 
 // GetDetailedMetrics returns comprehensive performance metrics
