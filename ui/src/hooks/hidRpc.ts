@@ -60,8 +60,7 @@ export class RpcMessage {
         throw new Error("Not implemented");
     }
 
-    // @ts-expect-error: this is a base class, so we don't need to implement it
-    public static unmarshal(data: Uint8Array): RpcMessage | undefined {
+    public static unmarshal(_data: Uint8Array): RpcMessage | undefined {
         throw new Error("Not implemented");
     }
 }
