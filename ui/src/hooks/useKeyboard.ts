@@ -22,16 +22,22 @@ export default function useKeyboard() {
   // keysDownState when queried since the keyPressReport was introduced together with the 
   // getKeysDownState API.
   const { keyPressReportApiAvailable, setkeyPressReportApiAvailable } = useHidStore();
+  const enableKeyPressReport = useCallback((reason: string) => {
+    if (keyPressReportApiAvailable) return;
+    console.debug(`Enable keyPressReport API because ${reason}`);
+    setkeyPressReportApiAvailable(true);
+  }, [setkeyPressReportApiAvailable, keyPressReportApiAvailable]);
 
   // HidRPC is a binary format for exchanging keyboard and mouse events
   const { reportKeyboardEvent, reportKeypressEvent, rpcHidReady } = useHidRpc((message) => {
     switch (message.constructor) {
       case KeysDownStateMessage:
         setKeysDownState((message as KeysDownStateMessage).keysDownState);
-        setkeyPressReportApiAvailable(true);
+        enableKeyPressReport("HidRPC:KeysDownStateMessage received");
         break;
       case KeyboardLedStateMessage:
         setKeyboardLedState((message as KeyboardLedStateMessage).keyboardLedState);
+        enableKeyPressReport("HidRPC:KeyboardLedStateMessage received");
         break;
       default:
         break;
@@ -51,7 +57,7 @@ export default function useKeyboard() {
       if (rpcHidReady) {
         console.debug("Sending keyboard report via HidRPC");
         reportKeyboardEvent(state.keys, state.modifier);
-        setkeyPressReportApiAvailable(true);
+        enableKeyPressReport("HidRPC:KeyboardReport received");
         return;
       }
 
@@ -66,7 +72,7 @@ export default function useKeyboard() {
       rpcHidReady,
       send,
       reportKeyboardEvent,
-      setkeyPressReportApiAvailable,
+      enableKeyPressReport,
     ],
   );
 
