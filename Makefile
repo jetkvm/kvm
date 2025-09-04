@@ -29,7 +29,7 @@ ALSA_VERSION ?= 1.2.14
 OPUS_VERSION ?= 1.5.2
 
 # Optimization flags for ARM Cortex-A7 with NEON
-OPTIM_CFLAGS := -O3 -mcpu=cortex-a7 -mfpu=neon -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops
+OPTIM_CFLAGS := -O3 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
