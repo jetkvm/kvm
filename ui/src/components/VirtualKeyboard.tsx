@@ -25,7 +25,7 @@ function KeyboardWrapper() {
   const keyboardRef = useRef<HTMLDivElement>(null);
   const { isAttachedVirtualKeyboardVisible, setAttachedVirtualKeyboardVisibility } =
     useUiStore();
-  const { keysDownState, isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } =
+  const { keyboardLedState, keysDownState, isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } =
     useHidStore();
   const { handleKeyPress, executeMacro } = useKeyboard();
   const { selectedKeyboard } = useKeyboardLayout();
@@ -46,9 +46,15 @@ function KeyboardWrapper() {
     return decodeModifiers(keysDownState.modifier);
   }, [keysDownState]);
 
+  const isCapsLockActive = useMemo(() => {
+    return keyboardLedState.caps_lock;
+  }, [keyboardLedState]);
+
   const mainLayoutName = useMemo(() => {
-    return isShiftActive ? "shift" : "default";
-  }, [isShiftActive]);
+    // if you have the CapsLock "latched", then the shift state is inverted
+    const effectiveShift = isCapsLockActive ? false === isShiftActive : isShiftActive;
+    return effectiveShift ? "shift" : "default";
+  }, [isCapsLockActive, isShiftActive]);
 
   const keyNamesForDownKeys = useMemo(() => {
     const activeModifierMask = keysDownState.modifier || 0;

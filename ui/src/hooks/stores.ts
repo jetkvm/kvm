@@ -463,7 +463,7 @@ export interface HidState {
 }
 
 export const useHidStore = create<HidState>(set => ({
-  keyboardLedState: {} as KeyboardLedState,
+  keyboardLedState: { num_lock: false, caps_lock: false, scroll_lock: false, compose: false, kana: false, shift: false } as KeyboardLedState,
   setKeyboardLedState: (ledState: KeyboardLedState): void => set({ keyboardLedState: ledState }),
 
   keysDownState: { modifier: 0, keys: [0,0,0,0,0,0] } as KeysDownState,
