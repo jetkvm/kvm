@@ -86,6 +86,7 @@ export default function LoginLocalRoute() {
                       label="Password"
                       type={showPassword ? "text" : "password"}
                       name="password"
+                      autoComplete="current-password"
                       placeholder="Enter your password"
                       autoFocus
                       error={actionData?.error}
