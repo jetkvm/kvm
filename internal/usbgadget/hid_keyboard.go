@@ -148,16 +148,19 @@ func (u *UsbGadget) GetKeysDownState() KeysDownState {
 func (u *UsbGadget) updateKeyDownState(state KeysDownState) {
 	u.log.Trace().Interface("old", u.keysDownState).Interface("new", state).Msg("acquiring keyboardStateLock for updateKeyDownState")
 
-	u.keyboardStateLock.Lock()
-	defer u.keyboardStateLock.Unlock()
+	// this is intentional to unlock keyboard state lock before onKeysDownChange callback
+	{
+		u.keyboardStateLock.Lock()
+		defer u.keyboardStateLock.Unlock()
 
-	if u.keysDownState.Modifier == state.Modifier &&
-		bytes.Equal(u.keysDownState.Keys, state.Keys) {
-		return // No change in key down state
+		if u.keysDownState.Modifier == state.Modifier &&
+			bytes.Equal(u.keysDownState.Keys, state.Keys) {
+			return // No change in key down state
+		}
+
+		u.log.Trace().Interface("old", u.keysDownState).Interface("new", state).Msg("keysDownState updated")
+		u.keysDownState = state
 	}
-
-	u.log.Trace().Interface("old", u.keysDownState).Interface("new", state).Msg("keysDownState updated")
-	u.keysDownState = state
 
 	if u.onKeysDownChange != nil {
 		u.log.Trace().Interface("state", state).Msg("calling onKeysDownChange")
