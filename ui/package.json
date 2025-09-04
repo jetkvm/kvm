@@ -45,7 +45,7 @@
     "react-simple-keyboard": "^3.8.119",
     "react-use-websocket": "^4.13.0",
     "react-xtermjs": "^1.0.10",
-    "recharts": "^2.15.3",
+    "recharts": "^3.1.2",
     "tailwind-merge": "^3.3.1",
     "usehooks-ts": "^3.1.1",
     "validator": "^13.15.15",
