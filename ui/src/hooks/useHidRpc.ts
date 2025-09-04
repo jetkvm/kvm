@@ -81,8 +81,11 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
       return;
     }
 
-    if (message.version < HID_RPC_VERSION) {
-      console.error("Server is using an older HID RPC version than the client", message);
+    if (message.version > HID_RPC_VERSION) {
+      // we assume that the UI is always using the latest version of the HID RPC protocol
+      // so we can't support this
+      // TODO: use capabilities to determine rather than version number
+      console.error("Server is using a newer HID RPC version than the client", message);
       return;
     }
 
