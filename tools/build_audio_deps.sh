@@ -24,7 +24,7 @@ cd "$AUDIO_LIBS_DIR"
 [ -d opus-${OPUS_VERSION} ] || tar xf opus-${OPUS_VERSION}.tar.gz
 
 # Optimization flags for ARM Cortex-A7 with NEON
-OPTIM_CFLAGS="-O3 -mcpu=cortex-a7 -mfpu=neon -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops"
+OPTIM_CFLAGS="-O3 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops"
 
 export CC="${CROSS_PREFIX}-gcc"
 export CFLAGS="$OPTIM_CFLAGS"
