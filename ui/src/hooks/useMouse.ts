@@ -13,11 +13,6 @@ export interface AbsMouseMoveHandlerProps {
   videoHeight: number;
 }
 
-export interface RelMouseMoveHandlerProps {
-  isPointerLockActive: boolean;
-  isPointerLockPossible: boolean;
-}
-
 export default function useMouse() {
   // states
   const { setMousePosition, setMouseMove } = useMouseStore();
@@ -55,9 +50,8 @@ export default function useMouse() {
   );
 
   const getRelMouseMoveHandler = useCallback(
-    ({ isPointerLockActive, isPointerLockPossible }: RelMouseMoveHandlerProps) => (e: MouseEvent) => {
+    () => (e: MouseEvent) => {
       if (mouseMode !== "relative") return;
-      if (isPointerLockActive === false && isPointerLockPossible) return;
 
       // Send mouse movement
       const { buttons } = e;

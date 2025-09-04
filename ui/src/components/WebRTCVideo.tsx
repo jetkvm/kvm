@@ -225,11 +225,8 @@ export default function WebRTCVideo() {
   );
 
   const relMouseMoveHandler = useMemo(
-    () => getRelMouseMoveHandler({
-      isPointerLockActive,
-      isPointerLockPossible,
-    }),
-    [getRelMouseMoveHandler, isPointerLockActive, isPointerLockPossible],
+    () => getRelMouseMoveHandler(),
+    [getRelMouseMoveHandler],
   );
 
   const mouseWheelHandler = useMemo(

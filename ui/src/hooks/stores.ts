@@ -461,9 +461,6 @@ export interface HidState {
   keysDownState: KeysDownState;
   setKeysDownState: (state: KeysDownState) => void;
 
-  // keyPressReportApiAvailable is no longer needed, we'll simply use hidChannel available to
-  // determine if the device supports keyPressReport
-
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
 
