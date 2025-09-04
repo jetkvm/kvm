@@ -158,7 +158,11 @@ func newSession(config SessionConfig) (*Session, error) {
 		case "hidrpc":
 			session.HidChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				l := scopedLogger.With().Str("data", string(msg.Data)).Int("length", len(msg.Data)).Logger()
+				l := scopedLogger.With().Int("length", len(msg.Data)).Logger()
+				// only log data if the log level is debug or lower
+				if scopedLogger.GetLevel() > zerolog.DebugLevel {
+					l = l.With().Str("data", string(msg.Data)).Logger()
+				}
 
 				if msg.IsString {
 					l.Warn().Msg("received string data in HID RPC message handler")
