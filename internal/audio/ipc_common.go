@@ -1,7 +1,6 @@
 package audio
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -149,48 +148,38 @@ func WriteIPCMessage(conn net.Conn, msg IPCMessage, pool *GenericMessagePool, dr
 	binary.LittleEndian.PutUint32(optMsg.header[5:9], msg.GetLength())
 	binary.LittleEndian.PutUint64(optMsg.header[9:17], uint64(msg.GetTimestamp()))
 
-	// Use non-blocking write with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), GetConfig().WriteTimeout)
-	defer cancel()
-
-	// Create a channel to signal write completion
-	done := make(chan error, 1)
-	go func() {
-		// Write header using pre-allocated buffer
-		_, err := conn.Write(optMsg.header[:])
-		if err != nil {
-			done <- err
-			return
+	// Set write deadline for timeout handling (more efficient than goroutines)
+	if deadline := time.Now().Add(GetConfig().WriteTimeout); deadline.After(time.Now()) {
+		if err := conn.SetWriteDeadline(deadline); err != nil {
+			// If we can't set deadline, proceed without it
+			// This maintains compatibility with connections that don't support deadlines
+			_ = err // Explicitly ignore error for linter
 		}
+	}
 
-		// Write data if present
-		if msg.GetLength() > 0 && msg.GetData() != nil {
-			_, err = conn.Write(msg.GetData())
-			if err != nil {
-				done <- err
-				return
-			}
+	// Write header using pre-allocated buffer (synchronous for better performance)
+	_, err := conn.Write(optMsg.header[:])
+	if err != nil {
+		if droppedFramesCounter != nil {
+			atomic.AddInt64(droppedFramesCounter, 1)
 		}
-		done <- nil
-	}()
+		return err
+	}
 
-	// Wait for completion or timeout
-	select {
-	case err := <-done:
+	// Write data if present
+	if msg.GetLength() > 0 && msg.GetData() != nil {
+		_, err = conn.Write(msg.GetData())
 		if err != nil {
 			if droppedFramesCounter != nil {
 				atomic.AddInt64(droppedFramesCounter, 1)
 			}
 			return err
 		}
-		return nil
-	case <-ctx.Done():
-		// Timeout occurred - drop frame to prevent blocking
-		if droppedFramesCounter != nil {
-			atomic.AddInt64(droppedFramesCounter, 1)
-		}
-		return fmt.Errorf("write timeout - frame dropped")
 	}
+
+	// Clear write deadline after successful write
+	_ = conn.SetWriteDeadline(time.Time{}) // Ignore error as this is cleanup
+	return nil
 }
 
 // Common connection acceptance with retry logic
