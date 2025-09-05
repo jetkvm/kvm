@@ -716,14 +716,8 @@ type AudioConfigConstants struct {
 	// Default 10s provides good balance between stability and adaptability.
 	AdaptiveOptimizerStability time.Duration // 10s
 
-	// MaxLatencyTarget defines maximum acceptable latency target.
-	// Used in: latency_monitor.go for latency threshold monitoring
-	// Impact: Lower values enforce stricter latency requirements.
-	// Default 50ms provides good real-time audio latency target.
-	MaxLatencyTarget time.Duration // 50ms
-
-	// LatencyMonitorTarget defines target latency for monitoring and optimization.
-	// Used in: latency_monitor.go for latency optimization goals
+	// LatencyMonitorTarget defines target latency for latency monitoring system.
+	// Used in: latency_monitor.go for latency optimization goals and threshold monitoring
 	// Impact: Lower targets improve audio responsiveness but may increase system load.
 	// Default 50ms provides excellent real-time audio performance target.
 	LatencyMonitorTarget time.Duration // 50ms
@@ -756,11 +750,11 @@ type AudioConfigConstants struct {
 	// Default 75% triggers aggressive memory conservation measures.
 	HighMemoryThreshold float64 // 75% memory threshold
 
-	// TargetLatency defines target latency for adaptive buffer optimization.
+	// AdaptiveBufferTargetLatency defines target latency for adaptive buffer optimization.
 	// Used in: adaptive_buffer.go for latency-based buffer sizing
 	// Impact: Lower targets reduce buffer sizes, higher targets increase stability.
-	// Default 20ms provides excellent real-time performance target.
-	TargetLatency time.Duration // 20ms target latency
+	// Default 20ms provides excellent real-time performance target for buffer management.
+	AdaptiveBufferTargetLatency time.Duration // 20ms target latency
 
 	// Adaptive Optimizer Configuration - Settings for performance optimization
 	// Used in: adaptive_optimizer.go for system performance optimization
@@ -778,11 +772,11 @@ type AudioConfigConstants struct {
 	// Default 300ms provides clear indication of optimization failure.
 	RollbackThreshold time.Duration // 300ms rollback threshold
 
-	// LatencyTarget defines target latency for optimization goals.
+	// AdaptiveOptimizerLatencyTarget defines target latency for adaptive optimizer.
 	// Used in: adaptive_optimizer.go for optimization target setting
 	// Impact: Lower targets improve responsiveness but may increase system load.
 	// Default 50ms provides good balance between performance and stability.
-	LatencyTarget time.Duration // 50ms latency target
+	AdaptiveOptimizerLatencyTarget time.Duration // 50ms latency target
 
 	// Latency Monitor Configuration - Settings for latency monitoring and analysis
 	// Used in: latency_monitor.go for latency tracking and alerting
@@ -2010,12 +2004,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Default 10s allows system to stabilize before making further adjustments
 		AdaptiveOptimizerStability: 10 * time.Second,
 
-		// MaxLatencyTarget defines maximum acceptable latency target (50ms).
-		// Used in: Latency monitoring, performance optimization, quality control
-		// Impact: Sets upper bound for acceptable audio latency
-		// Default 50ms represents maximum tolerable latency for real-time audio
-		MaxLatencyTarget: 50 * time.Millisecond,
-
 		// LatencyMonitorTarget defines target latency for monitoring (50ms).
 		// Used in: Latency monitoring systems, performance alerts
 		// Impact: Controls when latency warnings and optimizations are triggered
@@ -2023,11 +2011,11 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		LatencyMonitorTarget: 50 * time.Millisecond,
 
 		// Adaptive Buffer Configuration
-		LowCPUThreshold:     0.20,
-		HighCPUThreshold:    0.60,
-		LowMemoryThreshold:  0.50,
-		HighMemoryThreshold: 0.75,
-		TargetLatency:       20 * time.Millisecond,
+		LowCPUThreshold:             0.20,
+		HighCPUThreshold:            0.60,
+		LowMemoryThreshold:          0.50,
+		HighMemoryThreshold:         0.75,
+		AdaptiveBufferTargetLatency: 20 * time.Millisecond,
 
 		// Adaptive Buffer Size Configuration
 		AdaptiveMinBufferSize:     3,  // Minimum 3 frames for stability
@@ -2035,9 +2023,9 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		AdaptiveDefaultBufferSize: 6,  // Default 6 frames for balanced performance
 
 		// Adaptive Optimizer Configuration
-		CooldownPeriod:    30 * time.Second,
-		RollbackThreshold: 300 * time.Millisecond,
-		LatencyTarget:     50 * time.Millisecond,
+		CooldownPeriod:                 30 * time.Second,
+		RollbackThreshold:              300 * time.Millisecond,
+		AdaptiveOptimizerLatencyTarget: 50 * time.Millisecond,
 
 		// Latency Monitor Configuration
 		MaxLatencyThreshold:         200 * time.Millisecond,

@@ -109,7 +109,7 @@ func (ao *AdaptiveOptimizer) handleLatencyOptimization(metrics LatencyMetrics) e
 // calculateTargetOptimizationLevel determines the appropriate optimization level
 func (ao *AdaptiveOptimizer) calculateTargetOptimizationLevel(metrics LatencyMetrics) int64 {
 	// Base calculation on current latency vs target
-	latencyRatio := float64(metrics.Current) / float64(GetConfig().LatencyTarget) // 50ms target
+	latencyRatio := float64(metrics.Current) / float64(GetConfig().AdaptiveOptimizerLatencyTarget) // 50ms target
 
 	// Adjust based on trend
 	switch metrics.Trend {
