@@ -2,13 +2,22 @@ package kvm
 
 import (
 	"context"
-	"time"
+	"net/http"
 
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/rs/zerolog"
 )
+
+var audioControlService *audio.AudioControlService
+
+func initAudioControlService() {
+	if audioControlService == nil {
+		sessionProvider := &SessionProviderImpl{}
+		audioControlService = audio.NewAudioControlService(sessionProvider, logger)
+	}
+}
 
 // handleAudioMute handles POST /audio/mute requests
 func handleAudioMute(c *gin.Context) {
@@ -20,13 +29,13 @@ func handleAudioMute(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "invalid request"})
 		return
 	}
-	audio.SetAudioMuted(req.Muted)
-	// Also set relay mute state if in main process
-	audio.SetAudioRelayMuted(req.Muted)
+	initAudioControlService()
 
-	// Broadcast audio mute state change via WebSocket
-	broadcaster := audio.GetAudioEventBroadcaster()
-	broadcaster.BroadcastAudioDeviceChanged(!req.Muted, "audio_mute_changed")
+	err := audioControlService.MuteAudio(req.Muted)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	c.JSON(200, gin.H{
 		"status": "audio mute state updated",
@@ -36,35 +45,15 @@ func handleAudioMute(c *gin.Context) {
 
 // handleMicrophoneStart handles POST /microphone/start requests
 func handleMicrophoneStart(c *gin.Context) {
-	if currentSession == nil {
-		c.JSON(400, gin.H{"error": "no active session"})
-		return
-	}
+	initAudioControlService()
 
-	if currentSession.AudioInputManager == nil {
-		c.JSON(500, gin.H{"error": "audio input manager not available"})
-		return
-	}
-
-	// Check cooldown using atomic operations
-	// Note: Cooldown check would be implemented in audio package if needed
-
-	logger.Info().Msg("starting microphone via HTTP request")
-
-	err := currentSession.AudioInputManager.Start()
+	err := audioControlService.StartMicrophone()
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Broadcast microphone state change via WebSocket
-	broadcaster := audio.GetAudioEventBroadcaster()
-	broadcaster.BroadcastAudioDeviceChanged(true, "microphone_started")
-
-	c.JSON(200, gin.H{
-		"status":     "microphone started",
-		"is_running": currentSession.AudioInputManager.IsRunning(),
-	})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // handleMicrophoneMute handles POST /microphone/mute requests
@@ -74,51 +63,32 @@ func handleMicrophoneMute(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Note: Microphone muting is typically handled at the frontend level
-	// This endpoint is provided for consistency but doesn't affect backend processing
-	c.JSON(200, gin.H{
-		"status": "mute state updated",
-		"muted":  req.Muted,
-	})
+	initAudioControlService()
+
+	err := audioControlService.MuteMicrophone(req.Muted)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
-
-
 
 // handleMicrophoneReset handles POST /microphone/reset requests
 func handleMicrophoneReset(c *gin.Context) {
-	if currentSession == nil {
-		c.JSON(400, gin.H{"error": "no active session"})
+	initAudioControlService()
+
+	err := audioControlService.ResetMicrophone()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if currentSession.AudioInputManager == nil {
-		c.JSON(500, gin.H{"error": "audio input manager not available"})
-		return
-	}
-
-	// Check cooldown using atomic operations
-	// Note: Cooldown check would be implemented in audio package if needed
-
-	logger.Info().Msg("forcing microphone state reset")
-
-	// Force stop the AudioInputManager
-	currentSession.AudioInputManager.Stop()
-
-	// Wait a bit to ensure everything is stopped
-	time.Sleep(100 * time.Millisecond)
-
-	// Broadcast microphone state change via WebSocket
-	broadcaster := audio.GetAudioEventBroadcaster()
-	broadcaster.BroadcastAudioDeviceChanged(false, "microphone_reset")
-
-	c.JSON(200, gin.H{
-		"status":     "microphone reset completed",
-		"is_running": currentSession.AudioInputManager.IsRunning(),
-	})
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // handleSubscribeAudioEvents handles WebSocket audio event subscription
@@ -133,4 +103,64 @@ func handleUnsubscribeAudioEvents(connectionID string, l *zerolog.Logger) {
 	l.Info().Msg("client unsubscribing from audio events")
 	broadcaster := audio.GetAudioEventBroadcaster()
 	broadcaster.Unsubscribe(connectionID)
+}
+
+// handleAudioQuality handles GET requests for audio quality presets
+func handleAudioQuality(c *gin.Context) {
+	presets := audio.GetAudioQualityPresets()
+	c.JSON(200, gin.H{
+		"presets": presets,
+	})
+}
+
+// handleSetAudioQuality handles POST requests to set audio quality
+func handleSetAudioQuality(c *gin.Context) {
+	var req struct {
+		Quality int `json:"quality"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	initAudioControlService()
+
+	// Convert int to AudioQuality type
+	quality := audio.AudioQuality(req.Quality)
+
+	// Set the audio quality
+	audioControlService.SetAudioQuality(quality)
+
+	c.JSON(200, gin.H{"success": true})
+}
+
+// handleMicrophoneQuality handles GET requests for microphone quality presets
+func handleMicrophoneQuality(c *gin.Context) {
+	presets := audio.GetMicrophoneQualityPresets()
+	c.JSON(http.StatusOK, gin.H{
+		"presets": presets,
+	})
+}
+
+// handleSetMicrophoneQuality handles POST requests to set microphone quality
+func handleSetMicrophoneQuality(c *gin.Context) {
+	var req struct {
+		Quality int `json:"quality"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	initAudioControlService()
+
+	// Convert int to AudioQuality type
+	quality := audio.AudioQuality(req.Quality)
+
+	// Set the microphone quality
+	audioControlService.SetMicrophoneQuality(quality)
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
