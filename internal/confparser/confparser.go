@@ -16,22 +16,22 @@ import (
 type FieldConfig struct {
 	Name              string
 	Required          bool
-	RequiredIf        map[string]interface{}
+	RequiredIf        map[string]any
 	OneOf             []string
 	ValidateTypes     []string
-	Defaults          interface{}
+	Defaults          any
 	IsEmpty           bool
-	CurrentValue      interface{}
+	CurrentValue      any
 	TypeString        string
 	Delegated         bool
 	shouldUpdateValue bool
 }
 
-func SetDefaultsAndValidate(config interface{}) error {
+func SetDefaultsAndValidate(config any) error {
 	return setDefaultsAndValidate(config, true)
 }
 
-func setDefaultsAndValidate(config interface{}, isRoot bool) error {
+func setDefaultsAndValidate(config any, isRoot bool) error {
 	// first we need to check if the config is a pointer
 	if reflect.TypeOf(config).Kind() != reflect.Ptr {
 		return fmt.Errorf("config is not a pointer")
@@ -55,7 +55,7 @@ func setDefaultsAndValidate(config interface{}, isRoot bool) error {
 			Name:          field.Name,
 			OneOf:         splitString(field.Tag.Get("one_of")),
 			ValidateTypes: splitString(field.Tag.Get("validate_type")),
-			RequiredIf:    make(map[string]interface{}),
+			RequiredIf:    make(map[string]any),
 			CurrentValue:  fieldValue.Interface(),
 			IsEmpty:       false,
 			TypeString:    fieldType,
@@ -142,8 +142,8 @@ func setDefaultsAndValidate(config interface{}, isRoot bool) error {
 		// now check if the field has required_if
 		requiredIf := field.Tag.Get("required_if")
 		if requiredIf != "" {
-			requiredIfParts := strings.Split(requiredIf, ",")
-			for _, part := range requiredIfParts {
+			requiredIfParts := strings.SplitSeq(requiredIf, ",")
+			for part := range requiredIfParts {
 				partVal := strings.SplitN(part, "=", 2)
 				if len(partVal) != 2 {
 					return fmt.Errorf("invalid required_if for field `%s`: %s", field.Name, requiredIf)
@@ -168,7 +168,7 @@ func setDefaultsAndValidate(config interface{}, isRoot bool) error {
 	return nil
 }
 
-func validateFields(config interface{}, fields map[string]FieldConfig) error {
+func validateFields(config any, fields map[string]FieldConfig) error {
 	// now we can start to validate the fields
 	for _, fieldConfig := range fields {
 		if err := fieldConfig.validate(fields); err != nil {
@@ -215,7 +215,7 @@ func (f *FieldConfig) validate(fields map[string]FieldConfig) error {
 	return nil
 }
 
-func (f *FieldConfig) populate(config interface{}) {
+func (f *FieldConfig) populate(config any) {
 	// update the field if it's not empty
 	if !f.shouldUpdateValue {
 		return

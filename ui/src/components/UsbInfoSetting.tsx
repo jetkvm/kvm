@@ -101,8 +101,8 @@ export function UsbInfoSetting() {
           `Failed to load USB Config: ${resp.error.data || "Unknown error"}`,
         );
       } else {
-        console.log("syncUsbConfigProduct#getUsbConfig result:", resp.result);
         const usbConfigState = resp.result as UsbConfigState;
+        console.log("syncUsbConfigProduct#getUsbConfig result:", usbConfigState);
         const product = usbConfigs.map(u => u.value).includes(usbConfigState.product)
           ? usbConfigState.product
           : "custom";
@@ -137,7 +137,7 @@ export function UsbInfoSetting() {
   );
 
   useEffect(() => {
-    send("getDeviceID", {}, async (resp: JsonRpcResponse) => {
+    send("getDeviceID", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         return notifications.error(
           `Failed to get device ID: ${resp.error.data || "Unknown error"}`,

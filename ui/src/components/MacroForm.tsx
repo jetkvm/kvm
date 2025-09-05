@@ -1,17 +1,18 @@
 import { useState } from "react";
 import { LuPlus } from "react-icons/lu";
 
-import { KeySequence } from "@/hooks/stores";
 import { Button } from "@/components/Button";
-import { InputFieldWithLabel, FieldError } from "@/components/InputField";
+import FieldLabel from "@/components/FieldLabel";
 import Fieldset from "@/components/Fieldset";
+import { InputFieldWithLabel, FieldError } from "@/components/InputField";
 import { MacroStepCard } from "@/components/MacroStepCard";
 import {
   DEFAULT_DELAY,
   MAX_STEPS_PER_MACRO,
   MAX_KEYS_PER_STEP,
 } from "@/constants/macros";
-import FieldLabel from "@/components/FieldLabel";
+import { KeySequence } from "@/hooks/stores";
+import useKeyboardLayout from "@/hooks/useKeyboardLayout";
 
 interface ValidationErrors {
   name?: string;
@@ -44,6 +45,7 @@ export function MacroForm({
   const [keyQueries, setKeyQueries] = useState<Record<number, string>>({});
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { selectedKeyboard } = useKeyboardLayout();
 
   const showTemporaryError = (message: string) => {
     setErrorMessage(message);
@@ -234,6 +236,7 @@ export function MacroForm({
                   }
                   onDelayChange={delay => handleDelayChange(stepIndex, delay)}
                   isLastStep={stepIndex === (macro.steps?.length || 0) - 1}
+                  keyboard={selectedKeyboard}
                 />
               ))}
             </div>

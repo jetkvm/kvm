@@ -142,7 +142,7 @@ export function UsbDeviceSetting() {
   );
 
   const handlePresetChange = useCallback(
-    async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
       const newPreset = e.target.value;
       setSelectedPreset(newPreset);
 

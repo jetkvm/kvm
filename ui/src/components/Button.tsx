@@ -1,5 +1,6 @@
 import React, { JSX } from "react";
-import { FetcherWithComponents, Link, LinkProps, useNavigation } from "react-router-dom";
+import { Link, useNavigation } from "react-router";
+import type { FetcherWithComponents, LinkProps } from "react-router";
 
 import ExtLink from "@/components/ExtLink";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -175,7 +176,7 @@ type ButtonPropsType = Pick<
 export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
   ({ type, disabled, onClick, formNoValidate, loading, fetcher, ...props }, ref) => {
     const classes = cx(
-      "group outline-hidden",
+      "group outline-hidden cursor-pointer",
       props.fullWidth ? "w-full" : "",
       loading ? "pointer-events-none" : "",
     );

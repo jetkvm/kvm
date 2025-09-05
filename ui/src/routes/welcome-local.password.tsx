@@ -1,4 +1,5 @@
-import { ActionFunctionArgs, Form, redirect, useActionData } from "react-router-dom";
+import { Form, redirect, useActionData } from "react-router";
+import type { ActionFunction, ActionFunctionArgs, LoaderFunction } from "react-router";
 import { useState, useRef, useEffect } from "react";
 import { LuEye, LuEyeOff } from "react-icons/lu";
 
@@ -15,7 +16,7 @@ import api from "../api";
 
 import { DeviceStatus } from "./welcome-local";
 
-const loader = async () => {
+const loader: LoaderFunction = async () => {
   const res = await api
     .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);
@@ -24,7 +25,7 @@ const loader = async () => {
   return null;
 };
 
-const action = async ({ request }: ActionFunctionArgs) => {
+const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const password = formData.get("password");
   const confirmPassword = formData.get("confirmPassword");
@@ -174,5 +175,5 @@ export default function WelcomeLocalPasswordRoute() {
   );
 }
 
-WelcomeLocalPasswordRoute.action = action;
 WelcomeLocalPasswordRoute.loader = loader;
+WelcomeLocalPasswordRoute.action = action;

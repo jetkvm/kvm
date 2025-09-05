@@ -1,4 +1,4 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 
@@ -62,7 +62,7 @@ export function Dialog({
   const { modalView, setModalView, otaState } = useUpdateStore();
 
   const onFinishedLoading = useCallback(
-    async (versionInfo: SystemVersionInfo) => {
+    (versionInfo: SystemVersionInfo) => {
       const hasUpdate =
         versionInfo?.systemUpdateAvailable || versionInfo?.appUpdateAvailable;
 
@@ -134,14 +134,12 @@ function LoadingState({
 }) {
   const [progressWidth, setProgressWidth] = useState("0%");
   const abortControllerRef = useRef<AbortController | null>(null);
+  const { setAppVersion, setSystemVersion } = useDeviceStore();
   const { send } = useJsonRpc();
-
-  const setAppVersion = useDeviceStore(state => state.setAppVersion);
-  const setSystemVersion = useDeviceStore(state => state.setSystemVersion);
 
   const getVersionInfo = useCallback(() => {
     return new Promise<SystemVersionInfo>((resolve, reject) => {
-      send("getUpdateStatus", {}, async (resp: JsonRpcResponse) => {
+      send("getUpdateStatus", {}, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(`Failed to check for updates: ${resp.error}`);
           reject(new Error("Failed to check for updates"));

@@ -1,12 +1,15 @@
 import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
 
-const name = "Español";
+import { en_US } from "./en_US" // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
 
-const keyTrema = { key: "Quote", shift: true } // tréma (umlaut), two dots placed above a vowel
-const keyAcute = { key: "Quote" } // accent aigu (acute accent), mark ´ placed above the letter
-const keyHat = { key: "BracketRight", shift: true } // accent circonflexe (accent hat), mark ^ placed above the letter
-const keyGrave = { key: "BracketRight" } // accent grave, mark ` placed above the letter
-const keyTilde = { key: "Key4", altRight: true } // tilde, mark ~ placed above the letter
+const name = "Español";
+const isoCode = "es-ES";
+
+const keyTrema: KeyCombo = { key: "Quote", shift: true } // tréma (umlaut), two dots placed above a vowel
+const keyAcute: KeyCombo = { key: "Quote" } // accent aigu (acute accent), mark ´ placed above the letter
+const keyHat: KeyCombo = { key: "BracketRight", shift: true } // accent circonflexe (accent hat), mark ^ placed above the letter
+const keyGrave: KeyCombo = { key: "BracketRight" } // accent grave, mark ` placed above the letter
+const keyTilde: KeyCombo = { key: "Key4", altRight: true } // tilde, mark ~ placed above the letter
 
 const chars = {
   A: { key: "KeyA", shift: true },
@@ -168,7 +171,11 @@ const chars = {
 } as Record<string, KeyCombo>;
 
 export const es_ES: KeyboardLayout = {
-  isoCode: "es-ES",
+  isoCode: isoCode,
   name: name,
-  chars: chars
+  chars: chars,
+  // TODO need to localize these maps and layouts
+  keyDisplayMap: en_US.keyDisplayMap, 
+  modifierDisplayMap: en_US.modifierDisplayMap,
+  virtualKeyboard: en_US.virtualKeyboard
 };

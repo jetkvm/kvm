@@ -16,7 +16,7 @@ func splitString(s string) []string {
 	return strings.Split(s, ",")
 }
 
-func toString(v interface{}) (string, error) {
+func toString(v any) (string, error) {
 	switch v := v.(type) {
 	case string:
 		return v, nil
