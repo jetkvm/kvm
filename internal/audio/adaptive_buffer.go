@@ -70,8 +70,8 @@ func DefaultAdaptiveBufferConfig() AdaptiveBufferConfig {
 		HighMemoryThreshold: GetConfig().HighMemoryThreshold * 100, // Above 75% memory usage (lowered for earlier response)
 
 		// Latency targets
-		TargetLatency: GetConfig().TargetLatency,    // Target 20ms latency
-		MaxLatency:    GetConfig().MaxLatencyTarget, // Max acceptable latency
+		TargetLatency: GetConfig().AdaptiveBufferTargetLatency, // Target 20ms latency
+		MaxLatency:    GetConfig().LatencyMonitorTarget,        // Max acceptable latency
 
 		// Adaptation settings
 		AdaptationInterval: GetConfig().BufferUpdateInterval, // Check every 500ms
