@@ -93,23 +93,24 @@ func handleMicrophoneReset(c *gin.Context) {
 
 // handleSubscribeAudioEvents handles WebSocket audio event subscription
 func handleSubscribeAudioEvents(connectionID string, wsCon *websocket.Conn, runCtx context.Context, l *zerolog.Logger) {
-	l.Info().Msg("client subscribing to audio events")
-	broadcaster := audio.GetAudioEventBroadcaster()
-	broadcaster.Subscribe(connectionID, wsCon, runCtx, l)
+	initAudioControlService()
+	audioControlService.SubscribeToAudioEvents(connectionID, wsCon, runCtx, l)
 }
 
 // handleUnsubscribeAudioEvents handles WebSocket audio event unsubscription
 func handleUnsubscribeAudioEvents(connectionID string, l *zerolog.Logger) {
-	l.Info().Msg("client unsubscribing from audio events")
-	broadcaster := audio.GetAudioEventBroadcaster()
-	broadcaster.Unsubscribe(connectionID)
+	initAudioControlService()
+	audioControlService.UnsubscribeFromAudioEvents(connectionID, l)
 }
 
 // handleAudioQuality handles GET requests for audio quality presets
 func handleAudioQuality(c *gin.Context) {
-	presets := audio.GetAudioQualityPresets()
+	initAudioControlService()
+	presets := audioControlService.GetAudioQualityPresets()
+	current := audioControlService.GetCurrentAudioQuality()
 	c.JSON(200, gin.H{
 		"presets": presets,
+		"current": current,
 	})
 }
 
@@ -137,9 +138,12 @@ func handleSetAudioQuality(c *gin.Context) {
 
 // handleMicrophoneQuality handles GET requests for microphone quality presets
 func handleMicrophoneQuality(c *gin.Context) {
-	presets := audio.GetMicrophoneQualityPresets()
-	c.JSON(http.StatusOK, gin.H{
+	initAudioControlService()
+	presets := audioControlService.GetMicrophoneQualityPresets()
+	current := audioControlService.GetCurrentMicrophoneQuality()
+	c.JSON(200, gin.H{
 		"presets": presets,
+		"current": current,
 	})
 }
 
