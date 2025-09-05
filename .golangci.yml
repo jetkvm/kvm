@@ -1,10 +1,18 @@
-version: "2"
+version: '2'
 linters:
   enable:
     - forbidigo
     - misspell
     - whitespace
     - gochecknoinits
+    # Static analysis tool to detect potential nil panics in Go code.
+    - nilaway
+    # Checks function and package cyclomatic complexity.
+    - cyclop
+    # Check whether the function uses a non-inherited context.
+    - contextcheck
+    - gosec
+    - promlinter
   settings:
     forbidigo:
       forbid:
@@ -12,6 +20,12 @@ linters:
           msg: Do not commit print statements. Use logger package.
         - pattern: ^log\.(Fatal|Panic|Print)(f|ln)?.*$
           msg: Do not commit log statements. Use logger package.
+    custom:
+      nilaway:
+        type: module
+        description: 'Static analysis tool to detect potential nil panics in Go code.'
+        settings:
+          exclude-pkgs: vendor
   exclusions:
     generated: lax
     presets:
@@ -33,6 +47,22 @@ linters:
       - third_party$
       - builtin$
       - examples$
+severity:
+  default: error
+  rules:
+    - linters:
+        - cyclop
+      severity: warning
+    - linters:
+        - contextcheck
+      severity: warning
+    - linters:
+        - gosec
+      severity: warning
+    - linters:
+        - gosec
+      severity: warning
+
 formatters:
   enable:
     - goimports
