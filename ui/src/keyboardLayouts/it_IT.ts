@@ -1,6 +1,9 @@
 import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
 
+import { en_US } from "./en_US" // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
+
 const name = "Italiano";
+const isoCode = "it-IT";
 
 const chars = {
   A: { key: "KeyA", shift: true },
@@ -113,7 +116,11 @@ const chars = {
 } as Record<string, KeyCombo>;
 
 export const it_IT: KeyboardLayout = {
-  isoCode: "it-IT",
+  isoCode: isoCode,
   name: name,
-  chars: chars
+  chars: chars,
+  // TODO need to localize these maps and layouts
+  keyDisplayMap: en_US.keyDisplayMap, 
+  modifierDisplayMap: en_US.modifierDisplayMap,
+  virtualKeyboard: en_US.virtualKeyboard
 };

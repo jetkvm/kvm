@@ -52,7 +52,7 @@ func NewDHCPClient(options *DHCPClientOptions) *DHCPClient {
 }
 
 func (c *DHCPClient) getWatchPaths() []string {
-	watchPaths := make(map[string]interface{})
+	watchPaths := make(map[string]any)
 	watchPaths[filepath.Dir(c.leaseFile)] = nil
 
 	if c.pidFile != "" {

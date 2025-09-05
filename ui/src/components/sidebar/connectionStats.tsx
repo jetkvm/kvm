@@ -37,10 +37,18 @@ function createChartArray<T, K extends keyof T>(
 }
 
 export default function ConnectionStatsSidebar() {
-  const inboundRtpStats = useRTCStore(state => state.inboundRtpStats);
-
-  const candidatePairStats = useRTCStore(state => state.candidatePairStats);
-  const setSidebarView = useUiStore(state => state.setSidebarView);
+  const { sidebarView, setSidebarView } = useUiStore();
+  const {
+     mediaStream,
+     peerConnection,
+     inboundRtpStats,
+     appendInboundRtpStats,
+     candidatePairStats,
+     appendCandidatePairStats,
+     appendLocalCandidateStats,
+     appendRemoteCandidateStats,
+     appendDiskDataChannelStats,
+  } = useRTCStore();
 
   function isMetricSupported<T, K extends keyof T>(
     stream: Map<number, T>,
@@ -48,20 +56,6 @@ export default function ConnectionStatsSidebar() {
   ): boolean {
     return Array.from(stream).some(([, stat]) => stat[metric] !== undefined);
   }
-
-  const appendInboundRtpStats = useRTCStore(state => state.appendInboundRtpStats);
-  const appendIceCandidatePair = useRTCStore(state => state.appendCandidatePairStats);
-  const appendDiskDataChannelStats = useRTCStore(
-    state => state.appendDiskDataChannelStats,
-  );
-  const appendLocalCandidateStats = useRTCStore(state => state.appendLocalCandidateStats);
-  const appendRemoteCandidateStats = useRTCStore(
-    state => state.appendRemoteCandidateStats,
-  );
-
-  const peerConnection = useRTCStore(state => state.peerConnection);
-  const mediaStream = useRTCStore(state => state.mediaStream);
-  const sidebarView = useUiStore(state => state.sidebarView);
 
   useInterval(function collectWebRTCStats() {
     (async () => {
@@ -80,8 +74,7 @@ export default function ConnectionStatsSidebar() {
             successfulLocalCandidateId = report.localCandidateId;
             successfulRemoteCandidateId = report.remoteCandidateId;
           }
-
-          appendIceCandidatePair(report);
+          appendCandidatePairStats(report);
         } else if (report.type === "local-candidate") {
           // We only want to append the local candidate stats that were used in nominated candidate pair
           if (successfulLocalCandidateId === report.id) {

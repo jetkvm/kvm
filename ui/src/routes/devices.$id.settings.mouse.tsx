@@ -64,14 +64,11 @@ const jigglerOptions = [
 type JigglerValues = (typeof jigglerOptions)[number]["value"] | "custom";
 
 export default function SettingsMouseRoute() {
-  const hideCursor = useSettingsStore(state => state.isCursorHidden);
-  const setHideCursor = useSettingsStore(state => state.setCursorVisibility);
-
-  const mouseMode = useSettingsStore(state => state.mouseMode);
-  const setMouseMode = useSettingsStore(state => state.setMouseMode);
-
-  const scrollThrottling = useSettingsStore(state => state.scrollThrottling);
-  const setScrollThrottling = useSettingsStore(state => state.setScrollThrottling);
+  const {
+    isCursorHidden, setCursorVisibility,
+    mouseMode, setMouseMode,
+    scrollThrottling, setScrollThrottling
+  } = useSettingsStore();
 
   const [selectedJigglerOption, setSelectedJigglerOption] =
     useState<JigglerValues | null>(null);
@@ -121,7 +118,7 @@ export default function SettingsMouseRoute() {
   const saveJigglerConfig = useCallback(
     (jigglerConfig: JigglerConfig) => {
       // We assume the jiggler should be set to enabled if the config is being updated
-      send("setJigglerState", { enabled: true }, async (resp: JsonRpcResponse) => {
+      send("setJigglerState", { enabled: true }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           return notifications.error(
             `Failed to set jiggler state: ${resp.error.data || "Unknown error"}`,
@@ -129,7 +126,7 @@ export default function SettingsMouseRoute() {
         }
       });
 
-      send("setJigglerConfig", { jigglerConfig }, async (resp: JsonRpcResponse) => {
+      send("setJigglerConfig", { jigglerConfig }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           const errorMsg = resp.error.data || "Unknown error";
 
@@ -163,7 +160,7 @@ export default function SettingsMouseRoute() {
 
     // We don't need to update the device jiggler state when the option is "disabled"
     if (option === "disabled") {
-      send("setJigglerState", { enabled: false }, async (resp: JsonRpcResponse) => {
+      send("setJigglerState", { enabled: false }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           return notifications.error(
             `Failed to set jiggler state: ${resp.error.data || "Unknown error"}`,
@@ -196,8 +193,8 @@ export default function SettingsMouseRoute() {
           description="Hide the cursor when sending mouse movements"
         >
           <Checkbox
-            checked={hideCursor}
-            onChange={e => setHideCursor(e.target.checked)}
+            checked={isCursorHidden}
+            onChange={e => setCursorVisibility(e.target.checked)}
           />
         </SettingsItem>
 

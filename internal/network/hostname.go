@@ -42,7 +42,7 @@ func updateEtcHosts(hostname string, fqdn string) error {
 	hostLine := fmt.Sprintf("127.0.1.1\t%s %s", hostname, fqdn)
 	hostLineExists := false
 
-	for _, line := range strings.Split(string(lines), "\n") {
+	for line := range strings.SplitSeq(string(lines), "\n") {
 		if strings.HasPrefix(line, "127.0.1.1") {
 			hostLineExists = true
 			line = hostLine

@@ -1,6 +1,7 @@
 import React from "react";
 import clsx from "clsx";
-import { FetcherWithComponents, useNavigation } from "react-router-dom";
+import { useNavigation } from "react-router";
+import type { FetcherWithComponents } from "react-router";
 
 export default function Fieldset({
   children,

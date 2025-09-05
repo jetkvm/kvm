@@ -1,4 +1,5 @@
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { useLoaderData, useRevalidator } from "react-router";
+import type { LoaderFunction } from "react-router";
 import { LuMonitorSmartphone } from "react-icons/lu";
 import { ArrowRightIcon } from "@heroicons/react/16/solid";
 import { useInterval } from "usehooks-ts";
@@ -16,7 +17,7 @@ interface LoaderData {
   user: User;
 }
 
-const loader = async () => {
+const loader: LoaderFunction = async () => {
   const user = await checkAuth();
 
   try {

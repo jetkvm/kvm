@@ -50,7 +50,7 @@ var (
 		TimeFormat:    time.RFC3339,
 		PartsOrder:    []string{"time", "level", "scope", "component", "message"},
 		FieldsExclude: []string{"scope", "component"},
-		FormatPartValueByName: func(value interface{}, name string) string {
+		FormatPartValueByName: func(value any, name string) string {
 			val := fmt.Sprintf("%s", value)
 			if name == "component" {
 				if value == nil {
@@ -121,8 +121,8 @@ func (l *Logger) updateLogLevel() {
 			continue
 		}
 
-		scopes := strings.Split(strings.ToLower(env), ",")
-		for _, scope := range scopes {
+		scopes := strings.SplitSeq(strings.ToLower(env), ",")
+		for scope := range scopes {
 			l.scopeLevels[scope] = level
 		}
 	}

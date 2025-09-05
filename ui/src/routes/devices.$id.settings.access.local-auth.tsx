@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation, useRevalidator } from "react-router-dom";
+import { useLocation, useRevalidator } from "react-router";
 
 import { Button } from "@components/Button";
 import { InputFieldWithLabel } from "@/components/InputField";

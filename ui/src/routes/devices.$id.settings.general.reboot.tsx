@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useCallback } from "react";
 
 import { useJsonRpc } from "@/hooks/useJsonRpc";

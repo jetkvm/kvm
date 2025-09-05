@@ -315,9 +315,28 @@ video::-webkit-media-controls {
   @apply inline-flex h-auto! w-auto! grow-0 py-1 text-xs;
 }
 
+.hg-theme-default .hg-row .down-key {
+  background: rgb(28, 28, 28);
+  @apply text-white! font-bold!;
+}
+
 .hg-theme-default .hg-row .hg-button-container,
 .hg-theme-default .hg-row .hg-button:not(:last-child) {
   @apply mr-[2px]! md:mr-[5px]!;
+}
+
+/* Reduce font size for selected keys when keyboard is detached */
+.keyboard-detached .simple-keyboard-main.simple-keyboard {
+  min-width: calc(14 * 7ch);
+}
+
+.keyboard-detached .simple-keyboard.hg-theme-default div.hg-button {
+  text-wrap: auto;
+  text-align: center; 
+  min-width: 6ch;
+}
+.keyboard-detached .simple-keyboard.hg-theme-default .hg-button span {
+  font-size: 50%;
 }
 
 /* Hide the scrollbar by setting the scrollbar color to the background color */
