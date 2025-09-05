@@ -29,7 +29,7 @@ func (s *AudioControlService) MuteAudio(muted bool) error {
 
 	// Broadcast audio mute state change via WebSocket
 	broadcaster := GetAudioEventBroadcaster()
-	broadcaster.BroadcastAudioDeviceChanged(!muted, "audio_mute_changed")
+	broadcaster.BroadcastAudioMuteChanged(muted)
 
 	return nil
 }
