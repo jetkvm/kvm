@@ -1,4 +1,4 @@
-import { useNavigate, useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router";
 
 import { GridCard } from "@/components/Card";
 import { Button } from "@components/Button";

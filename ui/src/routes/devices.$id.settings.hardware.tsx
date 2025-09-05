@@ -14,8 +14,7 @@ import { FeatureFlag } from "../components/FeatureFlag";
 export default function SettingsHardwareRoute() {
   const { send } = useJsonRpc();
   const settings = useSettingsStore();
-
-  const setDisplayRotation = useSettingsStore(state => state.setDisplayRotation);
+  const { setDisplayRotation } = useSettingsStore();
 
   const handleDisplayRotationChange = (rotation: string) => {
     setDisplayRotation(rotation);
@@ -34,7 +33,7 @@ export default function SettingsHardwareRoute() {
     });
   };
 
-  const setBacklightSettings = useSettingsStore(state => state.setBacklightSettings);
+  const { setBacklightSettings } = useSettingsStore();
 
   const handleBacklightSettingsChange = (settings: BacklightSettings) => {
     // If the user has set the display to dim after it turns off, set the dim_after

@@ -1,12 +1,15 @@
 import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
 
-const name = "Schwiizerdütsch";
+import { en_US } from "./en_US" // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
 
-const keyTrema = { key: "BracketRight" } // tréma (umlaut), two dots placed above a vowel
-const keyAcute = { key: "Minus", altRight: true } // accent aigu (acute accent), mark ´ placed above the letter
-const keyHat = { key: "Equal" } // accent circonflexe (accent hat), mark ^ placed above the letter
-const keyGrave = { key: "Equal", shift: true } // accent grave, mark ` placed above the letter
-const keyTilde = { key: "Equal", altRight: true } // tilde, mark ~ placed above the letter
+const name = "Schwiizerdütsch";
+const isoCode = "de-CH";
+
+const keyTrema: KeyCombo = { key: "BracketRight" } // tréma (umlaut), two dots placed above a vowel
+const keyAcute: KeyCombo = { key: "Minus", altRight: true } // accent aigu (acute accent), mark ´ placed above the letter
+const keyHat: KeyCombo = { key: "Equal" } // accent circonflexe (accent hat), mark ^ placed above the letter
+const keyGrave: KeyCombo = { key: "Equal", shift: true } // accent grave, mark ` placed above the letter
+const keyTilde: KeyCombo = { key: "Equal", altRight: true } // tilde, mark ~ placed above the letter
 
 const chars = {
   A: { key: "KeyA", shift: true },
@@ -164,8 +167,22 @@ const chars = {
   Tab: { key: "Tab" },
 } as Record<string, KeyCombo>;
 
+const keyDisplayMap = {
+  ...en_US.keyDisplayMap,
+  BracketLeft: "è",
+  "(BracketLeft)": "ü",
+  Semicolon: "é",
+  "(Semicolon)": "ö",
+  Quote: "à",
+  "(Quote)": "ä",
+} as Record<string, string>;
+
 export const de_CH: KeyboardLayout = {
-  isoCode: "de-CH",
+  isoCode: isoCode,
   name: name,
-  chars: chars
+  chars: chars,
+  keyDisplayMap: keyDisplayMap, 
+  // TODO need to localize these maps and layouts
+  modifierDisplayMap: en_US.modifierDisplayMap,
+  virtualKeyboard: en_US.virtualKeyboard
 };

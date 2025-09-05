@@ -1,4 +1,5 @@
-import { useLoaderData, useNavigate } from "react-router-dom";
+import { useLoaderData, useNavigate } from "react-router";
+import type { LoaderFunction } from "react-router";
 import { ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useState } from "react";
 
@@ -26,7 +27,7 @@ export interface TLSState {
   privateKey?: string;
 }
 
-const loader = async () => {
+const loader: LoaderFunction = async () => {
   if (isOnDevice) {
     const status = await api
       .GET(`${DEVICE_API}/device`)
@@ -87,7 +88,7 @@ export default function SettingsAccessIndexRoute() {
     });
   }, [send]);
 
-  const deregisterDevice = async () => {
+  const deregisterDevice = () => {
     send("deregisterDevice", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
@@ -166,9 +167,7 @@ export default function SettingsAccessIndexRoute() {
 
         notifications.success("TLS settings updated successfully");
       });
-    },
-    [send],
-  );
+    }, [send]);
 
   // Handle TLS mode change
   const handleTlsModeChange = (value: string) => {
@@ -198,7 +197,7 @@ export default function SettingsAccessIndexRoute() {
     getCloudState();
     getTLSState();
 
-    send("getDeviceID", {}, async (resp: JsonRpcResponse) => {
+    send("getDeviceID", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return console.error(resp.error);
       setDeviceId(resp.result as string);
     });

@@ -1,6 +1,6 @@
 import { MdConnectWithoutContact } from "react-icons/md";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { LuEllipsisVertical } from "react-icons/lu";
 
 import Card from "@components/Card";

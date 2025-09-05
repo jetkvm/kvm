@@ -101,7 +101,7 @@ func (l *Lease) SetLeaseExpiry() (time.Time, error) {
 func UnmarshalDHCPCLease(lease *Lease, str string) error {
 	// parse the lease file as a map
 	data := make(map[string]string)
-	for _, line := range strings.Split(str, "\n") {
+	for line := range strings.SplitSeq(str, "\n") {
 		line = strings.TrimSpace(line)
 		// skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -165,7 +165,7 @@ func UnmarshalDHCPCLease(lease *Lease, str string) error {
 			field.Set(reflect.ValueOf(ip))
 		case []net.IP:
 			val := make([]net.IP, 0)
-			for _, ipStr := range strings.Fields(value) {
+			for ipStr := range strings.FieldsSeq(value) {
 				ip := net.ParseIP(ipStr)
 				if ip == nil {
 					continue

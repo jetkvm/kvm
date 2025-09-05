@@ -1,4 +1,4 @@
-import { useLocation, useNavigation, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigation, useSearchParams } from "react-router";
 
 import { Button, LinkButton } from "@components/Button";
 import { GoogleIcon } from "@components/Icons";

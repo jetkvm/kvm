@@ -1,11 +1,5 @@
-import {
-  ActionFunctionArgs,
-  Form,
-  LoaderFunctionArgs,
-  redirect,
-  useActionData,
-  useLoaderData,
-} from "react-router-dom";
+import { Form, redirect, useActionData, useLoaderData } from "react-router";
+import type { ActionFunction, ActionFunctionArgs, LoaderFunction, LoaderFunctionArgs } from "react-router";
 import { ChevronLeftIcon } from "@heroicons/react/16/solid";
 
 import { Button, LinkButton } from "@components/Button";
@@ -22,7 +16,7 @@ interface LoaderData {
   user: User;
 }
 
-const action = async ({ request }: ActionFunctionArgs) => {
+const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   const { deviceId } = Object.fromEntries(await request.formData());
 
   try {
@@ -34,17 +28,17 @@ const action = async ({ request }: ActionFunctionArgs) => {
     });
 
     if (!res.ok) {
-      return { message: "There was an error renaming your device. Please try again." };
+      return { message: "There was an error deregistering your device. Please try again." };
     }
   } catch (e) {
     console.error(e);
-    return { message: "There was an error renaming your device. Please try again." };
+    return { message: "There was an error deregistering your device. Please try again." };
   }
 
   return redirect("/devices");
 };
 
-const loader = async ({ params }: LoaderFunctionArgs) => {
+const loader: LoaderFunction = async ({ params }: LoaderFunctionArgs) => {
   const user = await checkAuth();
   const { id } = params;
 

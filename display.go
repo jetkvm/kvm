@@ -30,7 +30,7 @@ const (
 // do not call this function directly, use switchToScreenIfDifferent instead
 // this function is not thread safe
 func switchToScreen(screen string) {
-	_, err := CallCtrlAction("lv_scr_load", map[string]interface{}{"obj": screen})
+	_, err := CallCtrlAction("lv_scr_load", map[string]any{"obj": screen})
 	if err != nil {
 		displayLogger.Warn().Err(err).Str("screen", screen).Msg("failed to switch to screen")
 		return
@@ -39,15 +39,15 @@ func switchToScreen(screen string) {
 }
 
 func lvObjSetState(objName string, state string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_set_state", map[string]interface{}{"obj": objName, "state": state})
+	return CallCtrlAction("lv_obj_set_state", map[string]any{"obj": objName, "state": state})
 }
 
 func lvObjAddFlag(objName string, flag string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_add_flag", map[string]interface{}{"obj": objName, "flag": flag})
+	return CallCtrlAction("lv_obj_add_flag", map[string]any{"obj": objName, "flag": flag})
 }
 
 func lvObjClearFlag(objName string, flag string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_clear_flag", map[string]interface{}{"obj": objName, "flag": flag})
+	return CallCtrlAction("lv_obj_clear_flag", map[string]any{"obj": objName, "flag": flag})
 }
 
 func lvObjHide(objName string) (*CtrlResponse, error) {
@@ -59,27 +59,27 @@ func lvObjShow(objName string) (*CtrlResponse, error) {
 }
 
 func lvObjSetOpacity(objName string, opacity int) (*CtrlResponse, error) { // nolint:unused
-	return CallCtrlAction("lv_obj_set_style_opa_layered", map[string]interface{}{"obj": objName, "opa": opacity})
+	return CallCtrlAction("lv_obj_set_style_opa_layered", map[string]any{"obj": objName, "opa": opacity})
 }
 
 func lvObjFadeIn(objName string, duration uint32) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_fade_in", map[string]interface{}{"obj": objName, "time": duration})
+	return CallCtrlAction("lv_obj_fade_in", map[string]any{"obj": objName, "time": duration})
 }
 
 func lvObjFadeOut(objName string, duration uint32) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_fade_out", map[string]interface{}{"obj": objName, "time": duration})
+	return CallCtrlAction("lv_obj_fade_out", map[string]any{"obj": objName, "time": duration})
 }
 
 func lvLabelSetText(objName string, text string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_label_set_text", map[string]interface{}{"obj": objName, "text": text})
+	return CallCtrlAction("lv_label_set_text", map[string]any{"obj": objName, "text": text})
 }
 
 func lvImgSetSrc(objName string, src string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_img_set_src", map[string]interface{}{"obj": objName, "src": src})
+	return CallCtrlAction("lv_img_set_src", map[string]any{"obj": objName, "src": src})
 }
 
 func lvDispSetRotation(rotation string) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_disp_set_rotation", map[string]interface{}{"rotation": rotation})
+	return CallCtrlAction("lv_disp_set_rotation", map[string]any{"rotation": rotation})
 }
 
 func updateLabelIfChanged(objName string, newText string) {
