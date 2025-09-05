@@ -144,6 +144,16 @@ func (s *AudioControlService) GetMicrophoneQualityPresets() map[AudioQuality]Aud
 	return GetMicrophoneQualityPresets()
 }
 
+// GetCurrentAudioQuality returns the current audio quality configuration
+func (s *AudioControlService) GetCurrentAudioQuality() AudioConfig {
+	return GetAudioConfig()
+}
+
+// GetCurrentMicrophoneQuality returns the current microphone quality configuration
+func (s *AudioControlService) GetCurrentMicrophoneQuality() AudioConfig {
+	return GetMicrophoneConfig()
+}
+
 // SubscribeToAudioEvents subscribes to audio events via WebSocket
 func (s *AudioControlService) SubscribeToAudioEvents(connectionID string, wsCon *websocket.Conn, runCtx context.Context, logger *zerolog.Logger) {
 	logger.Info().Msg("client subscribing to audio events")
