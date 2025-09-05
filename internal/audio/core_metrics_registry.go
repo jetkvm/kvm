@@ -14,8 +14,6 @@ type MetricsRegistry struct {
 	mu                sync.RWMutex
 	audioMetrics      AudioMetrics
 	audioInputMetrics AudioInputMetrics
-	audioConfig       AudioConfig
-	microphoneConfig  AudioConfig
 	lastUpdate        int64 // Unix timestamp
 }
 
@@ -56,28 +54,6 @@ func (mr *MetricsRegistry) UpdateAudioInputMetrics(metrics AudioInputMetrics) {
 	UpdateMicrophoneMetrics(convertAudioInputMetricsToUnified(metrics))
 }
 
-// UpdateAudioConfig updates the centralized audio configuration
-func (mr *MetricsRegistry) UpdateAudioConfig(config AudioConfig) {
-	mr.mu.Lock()
-	mr.audioConfig = config
-	mr.lastUpdate = time.Now().Unix()
-	mr.mu.Unlock()
-
-	// Update Prometheus metrics directly
-	UpdateAudioConfigMetrics(config)
-}
-
-// UpdateMicrophoneConfig updates the centralized microphone configuration
-func (mr *MetricsRegistry) UpdateMicrophoneConfig(config AudioConfig) {
-	mr.mu.Lock()
-	mr.microphoneConfig = config
-	mr.lastUpdate = time.Now().Unix()
-	mr.mu.Unlock()
-
-	// Update Prometheus metrics directly
-	UpdateMicrophoneConfigMetrics(config)
-}
-
 // GetAudioMetrics returns the current audio output metrics
 func (mr *MetricsRegistry) GetAudioMetrics() AudioMetrics {
 	mr.mu.RLock()
@@ -90,20 +66,6 @@ func (mr *MetricsRegistry) GetAudioInputMetrics() AudioInputMetrics {
 	mr.mu.RLock()
 	defer mr.mu.RUnlock()
 	return mr.audioInputMetrics
-}
-
-// GetAudioConfig returns the current audio configuration
-func (mr *MetricsRegistry) GetAudioConfig() AudioConfig {
-	mr.mu.RLock()
-	defer mr.mu.RUnlock()
-	return mr.audioConfig
-}
-
-// GetMicrophoneConfig returns the current microphone configuration
-func (mr *MetricsRegistry) GetMicrophoneConfig() AudioConfig {
-	mr.mu.RLock()
-	defer mr.mu.RUnlock()
-	return mr.microphoneConfig
 }
 
 // GetLastUpdate returns the timestamp of the last metrics update
@@ -132,20 +94,11 @@ func (mr *MetricsRegistry) StartMetricsCollector() {
 				mr.UpdateAudioInputMetrics(metrics)
 			}
 
-			// Collect audio output metrics directly from global metrics variable to avoid circular dependency
-			audioMetrics := AudioMetrics{
-				FramesReceived:  atomic.LoadInt64(&metrics.FramesReceived),
-				FramesDropped:   atomic.LoadInt64(&metrics.FramesDropped),
-				BytesProcessed:  atomic.LoadInt64(&metrics.BytesProcessed),
-				ConnectionDrops: atomic.LoadInt64(&metrics.ConnectionDrops),
-				LastFrameTime:   metrics.LastFrameTime,
-				AverageLatency:  metrics.AverageLatency,
-			}
-			mr.UpdateAudioMetrics(audioMetrics)
-
-			// Collect configuration directly from global variables to avoid circular dependency
-			mr.UpdateAudioConfig(currentConfig)
-			mr.UpdateMicrophoneConfig(currentMicrophoneConfig)
+			// Collect audio output metrics from global audio output manager
+			// Note: We need to get metrics from the actual audio output system
+			// For now, we'll use the global metrics variable from quality_presets.go
+			globalAudioMetrics := GetGlobalAudioMetrics()
+			mr.UpdateAudioMetrics(globalAudioMetrics)
 		}
 	}()
 }

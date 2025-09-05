@@ -230,63 +230,6 @@ var (
 		},
 	)
 
-	// Audio configuration metrics
-	audioConfigQuality = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_config_quality",
-			Help: "Current audio quality setting (0=Low, 1=Medium, 2=High, 3=Ultra)",
-		},
-	)
-
-	audioConfigBitrate = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_config_bitrate_kbps",
-			Help: "Current audio bitrate in kbps",
-		},
-	)
-
-	audioConfigSampleRate = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_config_sample_rate_hz",
-			Help: "Current audio sample rate in Hz",
-		},
-	)
-
-	audioConfigChannels = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_config_channels",
-			Help: "Current audio channel count",
-		},
-	)
-
-	microphoneConfigQuality = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_microphone_config_quality",
-			Help: "Current microphone quality setting (0=Low, 1=Medium, 2=High, 3=Ultra)",
-		},
-	)
-
-	microphoneConfigBitrate = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_microphone_config_bitrate_kbps",
-			Help: "Current microphone bitrate in kbps",
-		},
-	)
-
-	microphoneConfigSampleRate = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_microphone_config_sample_rate_hz",
-			Help: "Current microphone sample rate in Hz",
-		},
-	)
-
-	microphoneConfigChannels = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_microphone_config_channels",
-			Help: "Current microphone channel count",
-		},
-	)
-
 	// Device health metrics
 	// Removed device health metrics - functionality not used
 
@@ -535,32 +478,6 @@ func UpdateMicrophoneProcessMetrics(metrics ProcessMetrics, isRunning bool) {
 	} else {
 		microphoneProcessRunning.Set(0)
 	}
-
-	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
-}
-
-// UpdateAudioConfigMetrics updates Prometheus metrics with audio configuration
-func UpdateAudioConfigMetrics(config AudioConfig) {
-	metricsUpdateMutex.Lock()
-	defer metricsUpdateMutex.Unlock()
-
-	audioConfigQuality.Set(float64(config.Quality))
-	audioConfigBitrate.Set(float64(config.Bitrate))
-	audioConfigSampleRate.Set(float64(config.SampleRate))
-	audioConfigChannels.Set(float64(config.Channels))
-
-	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
-}
-
-// UpdateMicrophoneConfigMetrics updates Prometheus metrics with microphone configuration
-func UpdateMicrophoneConfigMetrics(config AudioConfig) {
-	metricsUpdateMutex.Lock()
-	defer metricsUpdateMutex.Unlock()
-
-	microphoneConfigQuality.Set(float64(config.Quality))
-	microphoneConfigBitrate.Set(float64(config.Bitrate))
-	microphoneConfigSampleRate.Set(float64(config.SampleRate))
-	microphoneConfigChannels.Set(float64(config.Channels))
 
 	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
