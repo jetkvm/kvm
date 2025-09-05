@@ -133,7 +133,12 @@ func handleSetAudioQuality(c *gin.Context) {
 	// Set the audio quality
 	audioControlService.SetAudioQuality(quality)
 
-	c.JSON(200, gin.H{"success": true})
+	// Return the updated configuration
+	current := audioControlService.GetCurrentAudioQuality()
+	c.JSON(200, gin.H{
+		"success": true,
+		"config":  current,
+	})
 }
 
 // handleMicrophoneQuality handles GET requests for microphone quality presets
@@ -166,5 +171,10 @@ func handleSetMicrophoneQuality(c *gin.Context) {
 	// Set the microphone quality
 	audioControlService.SetMicrophoneQuality(quality)
 
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	// Return the updated configuration
+	current := audioControlService.GetCurrentMicrophoneQuality()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"config":  current,
+	})
 }
