@@ -654,6 +654,10 @@ export default function KvmIdRoute() {
 
   const { send } = useJsonRpc(onJsonRpcRequest);
 
+  // Initialize microphone hook
+  const microphoneHook = useMicrophone();
+  const { syncMicrophoneState } = microphoneHook;
+
   // Handle audio device changes to sync microphone state
   const handleAudioDeviceChanged = useCallback((data: { enabled: boolean; reason: string }) => {
     console.log('[AudioDeviceChanged] Audio device changed:', data);

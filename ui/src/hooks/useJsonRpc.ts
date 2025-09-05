@@ -2,8 +2,6 @@ import { useCallback, useEffect } from "react";
 
 import { useRTCStore } from "@/hooks/stores";
 
-import { devError } from '../utils/debug';
-
 export interface JsonRpcRequest {
   jsonrpc: string;
   method: string;

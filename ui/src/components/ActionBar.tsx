@@ -341,7 +341,7 @@ export default function Actionbar({
                   )}
                   onClick={() => {
                     if (isAudioEnabledInUsb) {
-                      setDisableFocusTrap(true);
+                      setDisableVideoFocusTrap(true);
                     }
                   }}
                 />
