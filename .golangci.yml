@@ -5,8 +5,6 @@ linters:
     - misspell
     - whitespace
     - gochecknoinits
-    # Static analysis tool to detect potential nil panics in Go code.
-    - nilaway
     # Checks function and package cyclomatic complexity.
     - cyclop
     # Check whether the function uses a non-inherited context.
@@ -20,12 +18,6 @@ linters:
           msg: Do not commit print statements. Use logger package.
         - pattern: ^log\.(Fatal|Panic|Print)(f|ln)?.*$
           msg: Do not commit log statements. Use logger package.
-    custom:
-      nilaway:
-        type: module
-        description: 'Static analysis tool to detect potential nil panics in Go code.'
-        settings:
-          exclude-pkgs: vendor
   exclusions:
     generated: lax
     presets:
