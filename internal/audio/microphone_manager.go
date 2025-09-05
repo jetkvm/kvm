@@ -8,6 +8,11 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 )
 
+// Component name constant for logging
+const (
+	AudioInputManagerComponent = "audio-input-manager"
+)
+
 // AudioInputMetrics holds metrics for microphone input
 // Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
 type AudioInputMetrics struct {

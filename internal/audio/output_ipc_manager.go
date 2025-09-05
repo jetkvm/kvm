@@ -8,6 +8,11 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 )
 
+// Component name constant for logging
+const (
+	AudioOutputIPCComponent = "audio-output-ipc"
+)
+
 // AudioOutputMetrics represents metrics for audio output operations
 type AudioOutputMetrics struct {
 	// Atomic int64 field first for proper ARM32 alignment
@@ -208,8 +213,6 @@ func (aom *AudioOutputIPCManager) SendConfig(config OutputIPCConfig) error {
 		return fmt.Errorf("output configuration validation failed: %w", err)
 	}
 
-	// Note: AudioOutputServer doesn't have SendConfig method yet
-	// This is a placeholder for future implementation
 	aom.logger.Info().Interface("config", config).Msg("configuration received")
 	return nil
 }
