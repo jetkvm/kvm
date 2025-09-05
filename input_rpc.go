@@ -112,7 +112,8 @@ func handleKeyboardReportDirect(params map[string]interface{}) (interface{}, err
 		return nil, err
 	}
 
-	return nil, rpcKeyboardReport(modifier, keys)
+	_, err = rpcKeyboardReport(modifier, keys)
+	return nil, err
 }
 
 // Direct handler for absolute mouse reports

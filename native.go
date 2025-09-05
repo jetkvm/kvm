@@ -1,10 +1,9 @@
-//go:build linux
-
 package kvm
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +14,8 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/resource"
+
+	"github.com/pion/webrtc/v4/pkg/media"
 )
 
 var ctrlSocketConn net.Conn
@@ -55,15 +56,200 @@ func CallCtrlAction(action string, params map[string]any) (*CtrlResponse, error)
 		Seq:    seq,
 		Params: params,
 	}
-	cmd.Stdout = &nativeOutput{logger: nativeLogger}
-	cmd.Stderr = &nativeOutput{logger: nativeLogger}
 
-	err := cmd.Start()
+	responseChan := make(chan *CtrlResponse)
+	ongoingRequests[seq] = responseChan
+	seq++
+
+	jsonData, err := json.Marshal(ctrlAction)
 	if err != nil {
-		return nil, err
+		delete(ongoingRequests, ctrlAction.Seq)
+		return nil, fmt.Errorf("error marshaling ctrl action: %w", err)
 	}
 
-	return cmd, nil
+	scopedLogger := nativeLogger.With().
+		Str("action", ctrlAction.Action).
+		Interface("params", ctrlAction.Params).Logger()
+
+	scopedLogger.Debug().Msg("sending ctrl action")
+
+	err = WriteCtrlMessage(jsonData)
+	if err != nil {
+		delete(ongoingRequests, ctrlAction.Seq)
+		return nil, ErrorfL(&scopedLogger, "error writing ctrl message", err)
+	}
+
+	select {
+	case response := <-responseChan:
+		delete(ongoingRequests, seq)
+		if response.Error != "" {
+			return nil, ErrorfL(
+				&scopedLogger,
+				"error native response: %s",
+				errors.New(response.Error),
+			)
+		}
+		return response, nil
+	case <-time.After(5 * time.Second):
+		close(responseChan)
+		delete(ongoingRequests, seq)
+		return nil, ErrorfL(&scopedLogger, "timeout waiting for response", nil)
+	}
+}
+
+func WriteCtrlMessage(message []byte) error {
+	if ctrlSocketConn == nil {
+		return fmt.Errorf("ctrl socket not conn ected")
+	}
+	_, err := ctrlSocketConn.Write(message)
+	return err
+}
+
+var nativeCtrlSocketListener net.Listener  //nolint:unused
+var nativeVideoSocketListener net.Listener //nolint:unused
+
+var ctrlClientConnected = make(chan struct{})
+
+func waitCtrlClientConnected() {
+	<-ctrlClientConnected
+}
+
+func StartNativeSocketServer(socketPath string, handleClient func(net.Conn), isCtrl bool) net.Listener {
+	scopedLogger := nativeLogger.With().
+		Str("socket_path", socketPath).
+		Logger()
+
+	// Remove the socket file if it already exists
+	if _, err := os.Stat(socketPath); err == nil {
+		if err := os.Remove(socketPath); err != nil {
+			scopedLogger.Warn().Err(err).Msg("failed to remove existing socket file")
+			os.Exit(1)
+		}
+	}
+
+	listener, err := net.Listen("unixpacket", socketPath)
+	if err != nil {
+		scopedLogger.Warn().Err(err).Msg("failed to start server")
+		os.Exit(1)
+	}
+
+	scopedLogger.Info().Msg("server listening")
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+
+			if err != nil {
+				scopedLogger.Warn().Err(err).Msg("failed to accept socket")
+				continue
+			}
+			if isCtrl {
+				// check if the channel is closed
+				select {
+				case <-ctrlClientConnected:
+					scopedLogger.Debug().Msg("ctrl client reconnected")
+				default:
+					close(ctrlClientConnected)
+					scopedLogger.Debug().Msg("first native ctrl socket client connected")
+				}
+			}
+
+			go handleClient(conn)
+		}
+	}()
+
+	return listener
+}
+
+func StartNativeCtrlSocketServer() {
+	nativeCtrlSocketListener = StartNativeSocketServer("/var/run/jetkvm_ctrl.sock", handleCtrlClient, true)
+	nativeLogger.Debug().Msg("native app ctrl sock started")
+}
+
+func StartNativeVideoSocketServer() {
+	nativeVideoSocketListener = StartNativeSocketServer("/var/run/jetkvm_video.sock", handleVideoClient, false)
+	nativeLogger.Debug().Msg("native app video sock started")
+}
+
+func handleCtrlClient(conn net.Conn) {
+	defer conn.Close()
+
+	scopedLogger := nativeLogger.With().
+		Str("addr", conn.RemoteAddr().String()).
+		Str("type", "ctrl").
+		Logger()
+
+	scopedLogger.Info().Msg("native ctrl socket client connected")
+	if ctrlSocketConn != nil {
+		scopedLogger.Debug().Msg("closing existing native socket connection")
+		ctrlSocketConn.Close()
+	}
+
+	ctrlSocketConn = conn
+
+	// Restore HDMI EDID if applicable
+	go restoreHdmiEdid()
+
+	readBuf := make([]byte, 4096)
+	for {
+		n, err := conn.Read(readBuf)
+		if err != nil {
+			scopedLogger.Warn().Err(err).Msg("error reading from ctrl sock")
+			break
+		}
+		readMsg := string(readBuf[:n])
+
+		ctrlResp := CtrlResponse{}
+		err = json.Unmarshal([]byte(readMsg), &ctrlResp)
+		if err != nil {
+			scopedLogger.Warn().Err(err).Str("data", readMsg).Msg("error parsing ctrl sock msg")
+			continue
+		}
+		scopedLogger.Trace().Interface("data", ctrlResp).Msg("ctrl sock msg")
+
+		if ctrlResp.Seq != 0 {
+			responseChan, ok := ongoingRequests[ctrlResp.Seq]
+			if ok {
+				responseChan <- &ctrlResp
+			}
+		}
+		switch ctrlResp.Event {
+		case "video_input_state":
+			HandleVideoStateMessage(ctrlResp)
+		}
+	}
+
+	scopedLogger.Debug().Msg("ctrl sock disconnected")
+}
+
+func handleVideoClient(conn net.Conn) {
+	defer conn.Close()
+
+	scopedLogger := nativeLogger.With().
+		Str("addr", conn.RemoteAddr().String()).
+		Str("type", "video").
+		Logger()
+
+	scopedLogger.Info().Msg("native video socket client connected")
+
+	inboundPacket := make([]byte, maxFrameSize)
+	lastFrame := time.Now()
+	for {
+		n, err := conn.Read(inboundPacket)
+		if err != nil {
+			scopedLogger.Warn().Err(err).Msg("error during read")
+			return
+		}
+		now := time.Now()
+		sinceLastFrame := now.Sub(lastFrame)
+		lastFrame = now
+		if currentSession != nil {
+			err := currentSession.VideoTrack.WriteSample(media.Sample{Data: inboundPacket[:n], Duration: sinceLastFrame})
+			if err != nil {
+				scopedLogger.Warn().Err(err).Msg("error writing sample")
+			}
+		}
+	}
 }
 
 func startNativeBinaryWithLock(binaryPath string) (*exec.Cmd, error) {
