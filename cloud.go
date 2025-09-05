@@ -39,8 +39,7 @@ const (
 	// should be lower than the websocket response timeout set in cloud-api
 	CloudOidcRequestTimeout = 10 * time.Second
 	// WebsocketPingInterval is the interval at which the websocket client sends ping messages to the cloud
-	// Increased to 30 seconds for constrained environments to reduce overhead
-	WebsocketPingInterval = 30 * time.Second
+	WebsocketPingInterval = 15 * time.Second
 )
 
 var (
@@ -77,10 +76,34 @@ var (
 		},
 		[]string{"type", "source"},
 	)
+	metricConnectionPingDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "jetkvm_connection_ping_duration_seconds",
+			Help: "The duration of the ping response",
+			Buckets: []float64{
+				0.1, 0.5, 1, 10,
+			},
+		},
+		[]string{"type", "source"},
+	)
+	metricConnectionTotalPingSentCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "jetkvm_connection_ping_sent_total",
+			Help: "The total number of pings sent to the connection",
+		},
+		[]string{"type", "source"},
+	)
 	metricConnectionTotalPingReceivedCount = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "jetkvm_connection_ping_received_total",
 			Help: "The total number of pings received from the connection",
+		},
+		[]string{"type", "source"},
+	)
+	metricConnectionSessionRequestCount = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "jetkvm_connection_session_requests_total",
+			Help: "The total number of session requests received",
 		},
 		[]string{"type", "source"},
 	)
@@ -424,70 +447,35 @@ func handleSessionRequest(
 		}
 	}
 
-	var session *Session
-	var err error
-	var sd string
+	session, err := newSession(SessionConfig{
+		ws:         c,
+		IsCloud:    isCloudConnection,
+		LocalIP:    req.IP,
+		ICEServers: req.ICEServers,
+		Logger:     scopedLogger,
+	})
+	if err != nil {
+		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
+		return err
+	}
 
-	// Check if we have an existing session
+	sd, err := session.ExchangeOffer(req.Sd)
+	if err != nil {
+		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
+		return err
+	}
 	if currentSession != nil {
-		scopedLogger.Info().Msg("existing session detected, creating new session and notifying old session")
-
-		// Always create a new session when there's an existing one
-		// This ensures the "otherSessionConnected" prompt is shown
-		session, err = newSession(SessionConfig{
-			ws:         c,
-			IsCloud:    isCloudConnection,
-			LocalIP:    req.IP,
-			ICEServers: req.ICEServers,
-			Logger:     scopedLogger,
-		})
-		if err != nil {
-			_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
-			return err
-		}
-
-		sd, err = session.ExchangeOffer(req.Sd)
-		if err != nil {
-			_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
-			return err
-		}
-
-		// Notify the old session about the takeover
 		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
 		peerConn := currentSession.peerConnection
 		go func() {
 			time.Sleep(1 * time.Second)
 			_ = peerConn.Close()
 		}()
-
-		currentSession = session
-		scopedLogger.Info().Interface("session", session).Msg("new session created, old session notified")
-	} else {
-		// No existing session, create a new one
-		scopedLogger.Info().Msg("creating new session")
-		session, err = newSession(SessionConfig{
-			ws:         c,
-			IsCloud:    isCloudConnection,
-			LocalIP:    req.IP,
-			ICEServers: req.ICEServers,
-			Logger:     scopedLogger,
-		})
-		if err != nil {
-			_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
-			return err
-		}
-
-		sd, err = session.ExchangeOffer(req.Sd)
-		if err != nil {
-			_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
-			return err
-		}
-
-		currentSession = session
-		cloudLogger.Info().Interface("session", session).Msg("new session accepted")
-		cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
 	}
 
+	cloudLogger.Info().Interface("session", session).Msg("new session accepted")
+	cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
+	currentSession = session
 	_ = wsjson.Write(context.Background(), c, gin.H{"type": "answer", "data": sd})
 	return nil
 }
