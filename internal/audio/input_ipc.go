@@ -15,6 +15,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// Component name constants for logging
+const (
+	AudioInputServerComponent = "audio-input-server"
+	AudioInputClientComponent = "audio-input-client"
+)
+
 // Constants are now defined in unified_ipc.go
 var (
 	maxFrameSize    = GetConfig().MaxFrameSize    // Maximum Opus frame size

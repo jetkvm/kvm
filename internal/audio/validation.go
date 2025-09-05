@@ -368,7 +368,6 @@ func ValidateFrameDuration(duration time.Duration) error {
 	cache := GetCachedConfig()
 
 	// Convert frameSize (samples) to duration for comparison
-	// Note: This calculation should match how frameSize is converted to duration elsewhere
 	cachedFrameSize := int(cache.frameSize.Load())
 	cachedSampleRate := int(cache.sampleRate.Load())
 
@@ -475,9 +474,6 @@ func ValidateAudioConfigConstants(config *AudioConfigConstants) error {
 	}
 	return nil
 }
-
-// Note: We're transitioning from individual cached values to using AudioConfigCache
-// for better consistency and reduced maintenance overhead
 
 // Global variable for backward compatibility
 var cachedMaxFrameSize int

@@ -9,6 +9,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// Component name constant for logging
+const (
+	AudioInputIPCComponent = "audio-input-ipc"
+)
+
 // AudioInputIPCManager manages microphone input using IPC when enabled
 type AudioInputIPCManager struct {
 	metrics AudioInputMetrics
