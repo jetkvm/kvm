@@ -941,8 +941,6 @@ func cgoAudioReadEncode(buf []byte) (int, error) {
 	}
 
 	// Skip initialization check for now to avoid CGO compilation issues
-	// Note: The C code already has comprehensive state tracking with capture_initialized,
-	// capture_initializing, playback_initialized, and playback_initializing flags.
 
 	// Direct CGO call with minimal overhead - unsafe.Pointer(&slice[0]) is safe for validated non-empty buffers
 	n := C.jetkvm_audio_read_encode(unsafe.Pointer(&buf[0]))
@@ -1083,72 +1081,6 @@ func ReturnBufferToPool(buf []byte) {
 	cgoBufferPoolPuts.Add(1)
 	ReturnOptimalBuffer(buf)
 }
-
-// Note: AudioFrameBatch is now defined in batch_audio.go
-// This is kept here for reference but commented out to avoid conflicts
-/*
-// AudioFrameBatch represents a batch of audio frames for processing
-type AudioFrameBatch struct {
-	// Buffer for batch processing
-	buffer []byte
-	// Number of frames in the batch
-	frameCount int
-	// Size of each frame
-	frameSize int
-	// Current position in the buffer
-	position int
-}
-
-// NewAudioFrameBatch creates a new audio frame batch with the specified capacity
-func NewAudioFrameBatch(maxFrames int) *AudioFrameBatch {
-	// Get cached config
-	cache := GetCachedConfig()
-	cache.Update()
-
-	// Calculate frame size based on cached config
-	frameSize := cache.GetMinReadEncodeBuffer()
-
-	// Create batch with buffer sized for maxFrames
-	return &AudioFrameBatch{
-		buffer:     GetBufferFromPool(maxFrames * frameSize),
-		frameCount: 0,
-		frameSize:  frameSize,
-		position:   0,
-	}
-}
-
-// AddFrame adds a frame to the batch
-// Returns true if the batch is full after adding this frame
-func (b *AudioFrameBatch) AddFrame(frame []byte) bool {
-	// Calculate position in buffer for this frame
-	pos := b.position
-
-	// Copy frame data to batch buffer
-	copy(b.buffer[pos:pos+len(frame)], frame)
-
-	// Update position and frame count
-	b.position += len(frame)
-	b.frameCount++
-
-	// Check if batch is full (buffer capacity reached)
-	return b.position >= len(b.buffer)
-}
-
-// Reset resets the batch for reuse
-func (b *AudioFrameBatch) Reset() {
-	b.frameCount = 0
-	b.position = 0
-}
-
-// Release returns the batch buffer to the pool
-func (b *AudioFrameBatch) Release() {
-	ReturnBufferToPool(b.buffer)
-	b.buffer = nil
-	b.frameCount = 0
-	b.frameSize = 0
-	b.position = 0
-}
-*/
 
 // ReadEncodeWithPooledBuffer reads audio data and encodes it using a buffer from the pool
 func ReadEncodeWithPooledBuffer() ([]byte, int, error) {

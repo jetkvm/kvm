@@ -15,6 +15,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// Component name constants for logging
+const (
+	AudioOutputSupervisorComponent = "audio-output-supervisor"
+)
+
 // Restart configuration is now retrieved from centralized config
 func getMaxRestartAttempts() int {
 	return GetConfig().MaxRestartAttempts

@@ -117,14 +117,12 @@ func NewLatencyMonitor(config LatencyConfig, logger zerolog.Logger) *LatencyMoni
 func (lm *LatencyMonitor) Start() {
 	lm.wg.Add(1)
 	go lm.monitoringLoop()
-	lm.logger.Debug().Msg("latency monitor started")
 }
 
 // Stop stops the latency monitor
 func (lm *LatencyMonitor) Stop() {
 	lm.cancel()
 	lm.wg.Wait()
-	lm.logger.Debug().Msg("latency monitor stopped")
 }
 
 // RecordLatency records a new latency measurement
@@ -267,13 +265,11 @@ func (lm *LatencyMonitor) runOptimization() {
 	adaptiveThreshold := time.Duration(float64(lm.config.TargetLatency.Nanoseconds()) * (1.0 + lm.config.AdaptiveThreshold))
 	if metrics.Average > adaptiveThreshold {
 		needsOptimization = true
-		lm.logger.Debug().Dur("average_latency", metrics.Average).Dur("threshold", adaptiveThreshold).Msg("average latency above adaptive threshold")
 	}
 
 	// Check if jitter is too high
 	if metrics.Jitter > lm.config.JitterThreshold {
 		needsOptimization = true
-		lm.logger.Debug().Dur("jitter", metrics.Jitter).Dur("threshold", lm.config.JitterThreshold).Msg("jitter above threshold")
 	}
 
 	if needsOptimization {
@@ -290,8 +286,6 @@ func (lm *LatencyMonitor) runOptimization() {
 				lm.logger.Error().Err(err).Msg("optimization callback failed")
 			}
 		}
-
-		lm.logger.Debug().Interface("metrics", metrics).Msg("latency optimization triggered")
 	}
 }
 
