@@ -330,6 +330,11 @@ func GetMicrophoneConfig() AudioConfig {
 	return currentMicrophoneConfig
 }
 
+// GetGlobalAudioMetrics returns the current global audio metrics
+func GetGlobalAudioMetrics() AudioMetrics {
+	return metrics
+}
+
 // Batched metrics to reduce atomic operations frequency
 var (
 	batchedFramesReceived  int64
