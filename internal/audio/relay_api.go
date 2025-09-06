@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"errors"
 	"sync"
 )
 
@@ -106,4 +107,38 @@ func UpdateAudioRelayTrack(audioTrack AudioTrackWriter) error {
 	// Update the track in the existing relay
 	globalRelay.UpdateTrack(audioTrack)
 	return nil
+}
+
+// CurrentSessionCallback is a function type for getting the current session's audio track
+type CurrentSessionCallback func() AudioTrackWriter
+
+// currentSessionCallback holds the callback function to get the current session's audio track
+var currentSessionCallback CurrentSessionCallback
+
+// SetCurrentSessionCallback sets the callback function to get the current session's audio track
+func SetCurrentSessionCallback(callback CurrentSessionCallback) {
+	currentSessionCallback = callback
+}
+
+// connectRelayToCurrentSession connects the audio relay to the current WebRTC session's audio track
+// This is used when restarting the relay during unmute operations
+func connectRelayToCurrentSession() error {
+	if currentSessionCallback == nil {
+		return errors.New("no current session callback set")
+	}
+
+	track := currentSessionCallback()
+	if track == nil {
+		return errors.New("no current session audio track available")
+	}
+
+	relayMutex.Lock()
+	defer relayMutex.Unlock()
+
+	if globalRelay != nil {
+		globalRelay.UpdateTrack(track)
+		return nil
+	}
+
+	return errors.New("no global relay running")
 }

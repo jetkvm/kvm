@@ -22,10 +22,49 @@ func NewAudioControlService(sessionProvider SessionProvider, logger *zerolog.Log
 	}
 }
 
-// MuteAudio sets the audio mute state
+// MuteAudio sets the audio mute state by controlling the audio output subprocess
 func (s *AudioControlService) MuteAudio(muted bool) error {
-	SetAudioMuted(muted)
-	SetAudioRelayMuted(muted)
+	if muted {
+		// Mute: Stop audio output subprocess and relay
+		supervisor := GetAudioOutputSupervisor()
+		if supervisor != nil {
+			supervisor.Stop()
+			s.logger.Info().Msg("audio output supervisor stopped")
+		}
+		StopAudioRelay()
+		SetAudioMuted(true)
+		s.logger.Info().Msg("audio output muted (subprocess and relay stopped)")
+	} else {
+		// Unmute: Start audio output subprocess and relay
+		if !s.sessionProvider.IsSessionActive() {
+			return errors.New("no active session for audio unmute")
+		}
+
+		supervisor := GetAudioOutputSupervisor()
+		if supervisor != nil {
+			err := supervisor.Start()
+			if err != nil {
+				s.logger.Error().Err(err).Msg("failed to start audio output supervisor during unmute")
+				return err
+			}
+			s.logger.Info().Msg("audio output supervisor started")
+		}
+
+		// Start audio relay
+		err := StartAudioRelay(nil)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to start audio relay during unmute")
+			return err
+		}
+
+		// Connect the relay to the current WebRTC session's audio track
+		// This is needed because UpdateAudioRelayTrack is normally only called during session creation
+		if err := connectRelayToCurrentSession(); err != nil {
+			s.logger.Warn().Err(err).Msg("failed to connect relay to current session, audio may not work")
+		}
+		SetAudioMuted(false)
+		s.logger.Info().Msg("audio output unmuted (subprocess and relay started)")
+	}
 
 	// Broadcast audio mute state change via WebSocket
 	broadcaster := GetAudioEventBroadcaster()
@@ -59,16 +98,51 @@ func (s *AudioControlService) StartMicrophone() error {
 	return nil
 }
 
-// MuteMicrophone sets the microphone mute state
+// StopMicrophone stops the microphone input
+func (s *AudioControlService) StopMicrophone() error {
+	if !s.sessionProvider.IsSessionActive() {
+		return errors.New("no active session")
+	}
+
+	audioInputManager := s.sessionProvider.GetAudioInputManager()
+	if audioInputManager == nil {
+		return errors.New("audio input manager not available")
+	}
+
+	if !audioInputManager.IsRunning() {
+		s.logger.Info().Msg("microphone already stopped")
+		return nil
+	}
+
+	audioInputManager.Stop()
+	s.logger.Info().Msg("microphone stopped successfully")
+	return nil
+}
+
+// MuteMicrophone sets the microphone mute state by controlling the microphone process
 func (s *AudioControlService) MuteMicrophone(muted bool) error {
-	// Set microphone mute state using the audio relay
-	SetAudioRelayMuted(muted)
+	if muted {
+		// Mute: Stop microphone process
+		err := s.StopMicrophone()
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to stop microphone during mute")
+			return err
+		}
+		s.logger.Info().Msg("microphone muted (process stopped)")
+	} else {
+		// Unmute: Start microphone process
+		err := s.StartMicrophone()
+		if err != nil {
+			s.logger.Error().Err(err).Msg("failed to start microphone during unmute")
+			return err
+		}
+		s.logger.Info().Msg("microphone unmuted (process started)")
+	}
 
 	// Broadcast microphone mute state change via WebSocket
 	broadcaster := GetAudioEventBroadcaster()
 	broadcaster.BroadcastAudioDeviceChanged(!muted, "microphone_mute_changed")
 
-	s.logger.Info().Bool("muted", muted).Msg("microphone mute state updated")
 	return nil
 }
 
@@ -173,4 +247,23 @@ func (s *AudioControlService) UnsubscribeFromAudioEvents(connectionID string, lo
 	logger.Info().Str("connection_id", connectionID).Msg("client unsubscribing from audio events")
 	broadcaster := GetAudioEventBroadcaster()
 	broadcaster.Unsubscribe(connectionID)
+}
+
+// IsAudioOutputActive returns whether the audio output subprocess is running
+func (s *AudioControlService) IsAudioOutputActive() bool {
+	return !IsAudioMuted() && IsAudioRelayRunning()
+}
+
+// IsMicrophoneActive returns whether the microphone subprocess is running
+func (s *AudioControlService) IsMicrophoneActive() bool {
+	if !s.sessionProvider.IsSessionActive() {
+		return false
+	}
+
+	audioInputManager := s.sessionProvider.GetAudioInputManager()
+	if audioInputManager == nil {
+		return false
+	}
+
+	return audioInputManager.IsRunning()
 }
