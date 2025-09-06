@@ -299,8 +299,8 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
           </div>
           <Button
             size="SM"
-            theme={isMuted ? "danger" : "primary"}
-            text={isMuted ? "Unmute" : "Mute"}
+            theme={isMuted ? "primary" : "danger"}
+            text={isMuted ? "Enable" : "Disable"}
             onClick={handleToggleMute}
             disabled={isLoading}
           />
@@ -330,9 +330,9 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
               size="SM"
               theme={isMicrophoneActive ? "danger" : "primary"}
               text={
-                isStarting ? "Unmuting..." : 
-                isStopping ? "Muting..." : 
-                isMicrophoneActive ? "Mute" : "Unmute"
+                isStarting ? "Enabling..." : 
+                isStopping ? "Disabling..." : 
+                isMicrophoneActive ? "Disable" : "Enable"
               }
               onClick={handleToggleMicrophoneMute}
               disabled={isStarting || isStopping || isToggling}
