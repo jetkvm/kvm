@@ -103,11 +103,21 @@ func handleUnsubscribeAudioEvents(connectionID string, l *zerolog.Logger) {
 	audioControlService.UnsubscribeFromAudioEvents(connectionID, l)
 }
 
+// handleAudioStatus handles GET requests for audio status
+func handleAudioStatus(c *gin.Context) {
+	initAudioControlService()
+
+	status := audioControlService.GetAudioStatus()
+	c.JSON(200, status)
+}
+
 // handleAudioQuality handles GET requests for audio quality presets
 func handleAudioQuality(c *gin.Context) {
 	initAudioControlService()
+
 	presets := audioControlService.GetAudioQualityPresets()
 	current := audioControlService.GetCurrentAudioQuality()
+
 	c.JSON(200, gin.H{
 		"presets": presets,
 		"current": current,

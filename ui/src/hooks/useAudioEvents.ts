@@ -63,6 +63,19 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
   const [audioMuted, setAudioMuted] = useState<boolean | null>(null);
   const [microphoneState, setMicrophoneState] = useState<MicrophoneStateData | null>(null);
   
+  // Fetch initial audio status
+  const fetchInitialAudioStatus = useCallback(async () => {
+    try {
+      const response = await fetch('/audio/status');
+      if (response.ok) {
+        const data = await response.json();
+        setAudioMuted(data.muted);
+      }
+    } catch (error) {
+      devError('Failed to fetch initial audio status:', error);
+    }
+  }, []);
+  
   // Local subscription state
   const [isLocallySubscribed, setIsLocallySubscribed] = useState(false);
   const subscriptionTimeoutRef = useRef<number | null>(null);
@@ -239,6 +252,11 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
       }
     }
   }, [readyState]);
+
+  // Fetch initial audio status on component mount
+  useEffect(() => {
+    fetchInitialAudioStatus();
+  }, [fetchInitialAudioStatus]);
 
   // Cleanup on component unmount
   useEffect(() => {

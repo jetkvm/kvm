@@ -347,8 +347,8 @@ func (ais *AudioInputSupervisor) findExistingAudioInputProcess() (int, error) {
 			// Extract PID from ps output (second column)
 			fields := strings.Fields(line)
 			if len(fields) >= 2 {
-				if pid, err := strconv.Atoi(fields[1]); err == nil {
-					// Verify the process is still running and accessible
+				// PID is the first field
+				if pid, err := strconv.Atoi(fields[0]); err == nil {
 					if ais.isProcessRunning(pid) {
 						return pid, nil
 					}

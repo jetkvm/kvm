@@ -97,6 +97,13 @@ func (s *AudioControlService) ResetMicrophone() error {
 	return nil
 }
 
+// GetAudioStatus returns the current audio output status
+func (s *AudioControlService) GetAudioStatus() map[string]interface{} {
+	return map[string]interface{}{
+		"muted": IsAudioMuted(),
+	}
+}
+
 // GetMicrophoneStatus returns the current microphone status
 func (s *AudioControlService) GetMicrophoneStatus() map[string]interface{} {
 	if s.sessionProvider == nil {
