@@ -69,10 +69,8 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   // Microphone state from props
   const {
     isMicrophoneActive,
-    isMicrophoneMuted,
     startMicrophone,
     stopMicrophone,
-    toggleMicrophoneMute,
     syncMicrophoneState,
     // Loading states
     isStarting,
@@ -138,15 +136,35 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   };
 
   const handleToggleMute = async () => {
+    const now = Date.now();
+    
+    // Prevent rapid clicking
+    if (isLoading || (now - lastClickTime < CLICK_COOLDOWN)) {
+      return;
+    }
+    
+    setLastClickTime(now);
     setIsLoading(true);
+    
     try {
-      const resp = await api.POST("/audio/mute", { muted: !isMuted });
-      if (!resp.ok) {
-        // Failed to toggle mute
+      if (isMuted) {
+        // Unmute: Start audio output process and notify backend
+        const resp = await api.POST("/audio/mute", { muted: false });
+        if (!resp.ok) {
+          throw new Error(`Failed to unmute audio: ${resp.status}`);
+        }
+        // WebSocket will handle the state update automatically
+      } else {
+        // Mute: Stop audio output process and notify backend
+        const resp = await api.POST("/audio/mute", { muted: true });
+        if (!resp.ok) {
+          throw new Error(`Failed to mute audio: ${resp.status}`);
+        }
+        // WebSocket will handle the state update automatically
       }
-      // WebSocket will handle the state update automatically
-    } catch {
-      // Failed to toggle mute
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to toggle audio mute";
+      notifications.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -179,27 +197,6 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     }
   };
 
-  const handleToggleMicrophone = async () => {
-    const now = Date.now();
-    
-    // Prevent rapid clicking - if any operation is in progress or within cooldown, ignore the click
-    if (isStarting || isStopping || isToggling || (now - lastClickTime < CLICK_COOLDOWN)) {
-      return;
-    }
-    
-    setLastClickTime(now);
-    
-    try {
-      const result = isMicrophoneActive ? await stopMicrophone() : await startMicrophone(selectedInputDevice);
-      if (!result.success && result.error) {
-        notifications.error(result.error.message);
-      }
-    } catch {
-      // Failed to toggle microphone
-      notifications.error("An unexpected error occurred");
-    }
-  };
-
   const handleToggleMicrophoneMute = async () => {
     const now = Date.now();
     
@@ -211,13 +208,22 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     setLastClickTime(now);
     
     try {
-      const result = await toggleMicrophoneMute();
-      if (!result.success && result.error) {
-        notifications.error(result.error.message);
+      if (isMicrophoneActive) {
+        // Microphone is active: stop the microphone process and WebRTC tracks
+        const result = await stopMicrophone();
+        if (!result.success && result.error) {
+          notifications.error(result.error.message);
+        }
+      } else {
+        // Microphone is inactive: start the microphone process and WebRTC tracks
+        const result = await startMicrophone(selectedInputDevice);
+        if (!result.success && result.error) {
+          notifications.error(result.error.message);
+        }
       }
-    } catch {
-      // Failed to toggle microphone mute
-      notifications.error("Failed to toggle microphone mute");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to toggle microphone";
+      notifications.error(errorMessage);
     }
   };
 
@@ -225,7 +231,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   const handleMicrophoneDeviceChange = async (deviceId: string) => {
     setSelectedInputDevice(deviceId);
     
-    // If microphone is currently active, restart it with the new device
+    // If microphone is currently active (unmuted), restart it with the new device
     if (isMicrophoneActive) {
       try {
         // Stop current microphone
@@ -312,50 +318,26 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
           <div className="flex items-center justify-between rounded-lg bg-slate-50 p-3 dark:bg-slate-700">
             <div className="flex items-center gap-3">
               {isMicrophoneActive ? (
-                isMicrophoneMuted ? (
-                  <MdMicOff className="h-5 w-5 text-yellow-500" />
-                ) : (
-                  <MdMic className="h-5 w-5 text-green-500" />
-                )
+                <MdMic className="h-5 w-5 text-green-500" />
               ) : (
                 <MdMicOff className="h-5 w-5 text-red-500" />
               )}
               <span className="font-medium text-slate-900 dark:text-slate-100">
-                {!isMicrophoneActive 
-                  ? "Inactive" 
-                  : isMicrophoneMuted 
-                    ? "Muted" 
-                    : "Active"
-                }
+                {isMicrophoneActive ? "Unmuted" : "Muted"}
               </span>
             </div>
-            <div className="flex gap-2">
-              <Button
-                size="SM"
-                theme={isMicrophoneActive ? "danger" : "primary"}
-                text={
-                  isStarting ? "Starting..." : 
-                  isStopping ? "Stopping..." : 
-                  isMicrophoneActive ? "Stop" : "Start"
-                }
-                onClick={handleToggleMicrophone}
-                disabled={isStarting || isStopping || isToggling}
-                loading={isStarting || isStopping}
-              />
-              {isMicrophoneActive && (
-                <Button
-                  size="SM"
-                  theme={isMicrophoneMuted ? "danger" : "light"}
-                  text={
-                    isToggling ? (isMicrophoneMuted ? "Unmuting..." : "Muting...") :
-                    isMicrophoneMuted ? "Unmute" : "Mute"
-                  }
-                  onClick={handleToggleMicrophoneMute}
-                  disabled={isStarting || isStopping || isToggling}
-                  loading={isToggling}
-                />
-              )}
-            </div>
+            <Button
+              size="SM"
+              theme={isMicrophoneActive ? "danger" : "primary"}
+              text={
+                isStarting ? "Unmuting..." : 
+                isStopping ? "Muting..." : 
+                isMicrophoneActive ? "Mute" : "Unmute"
+              }
+              onClick={handleToggleMicrophoneMute}
+              disabled={isStarting || isStopping || isToggling}
+              loading={isStarting || isStopping}
+            />
           </div>
           
 
