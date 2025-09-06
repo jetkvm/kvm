@@ -7,6 +7,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/jetkvm/kvm/internal/audio"
+	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
 
@@ -16,7 +17,79 @@ func initAudioControlService() {
 	if audioControlService == nil {
 		sessionProvider := &SessionProviderImpl{}
 		audioControlService = audio.NewAudioControlService(sessionProvider, logger)
+
+		// Set up callback for audio relay to get current session's audio track
+		audio.SetCurrentSessionCallback(func() audio.AudioTrackWriter {
+			return GetCurrentSessionAudioTrack()
+		})
 	}
+}
+
+// --- Global Convenience Functions for Audio Control ---
+
+// StopAudioOutputAndRemoveTracks is a global helper to stop audio output subprocess and remove WebRTC tracks
+func StopAudioOutputAndRemoveTracks() error {
+	initAudioControlService()
+	return audioControlService.MuteAudio(true)
+}
+
+// StartAudioOutputAndAddTracks is a global helper to start audio output subprocess and add WebRTC tracks
+func StartAudioOutputAndAddTracks() error {
+	initAudioControlService()
+	return audioControlService.MuteAudio(false)
+}
+
+// StopMicrophoneAndRemoveTracks is a global helper to stop microphone subprocess and remove WebRTC tracks
+func StopMicrophoneAndRemoveTracks() error {
+	initAudioControlService()
+	return audioControlService.MuteMicrophone(true)
+}
+
+// StartMicrophoneAndAddTracks is a global helper to start microphone subprocess and add WebRTC tracks
+func StartMicrophoneAndAddTracks() error {
+	initAudioControlService()
+	return audioControlService.MuteMicrophone(false)
+}
+
+// IsAudioOutputActive is a global helper to check if audio output subprocess is running
+func IsAudioOutputActive() bool {
+	initAudioControlService()
+	return audioControlService.IsAudioOutputActive()
+}
+
+// IsMicrophoneActive is a global helper to check if microphone subprocess is running
+func IsMicrophoneActive() bool {
+	initAudioControlService()
+	return audioControlService.IsMicrophoneActive()
+}
+
+// ResetMicrophone is a global helper to reset the microphone
+func ResetMicrophone() error {
+	initAudioControlService()
+	return audioControlService.ResetMicrophone()
+}
+
+// GetCurrentSessionAudioTrack returns the current session's audio track for audio relay
+func GetCurrentSessionAudioTrack() *webrtc.TrackLocalStaticSample {
+	if currentSession != nil {
+		return currentSession.AudioTrack
+	}
+	return nil
+}
+
+// ConnectRelayToCurrentSession connects the audio relay to the current WebRTC session
+func ConnectRelayToCurrentSession() error {
+	if currentTrack := GetCurrentSessionAudioTrack(); currentTrack != nil {
+		err := audio.UpdateAudioRelayTrack(currentTrack)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to connect current session's audio track to relay")
+			return err
+		}
+		logger.Info().Msg("connected current session's audio track to relay")
+		return nil
+	}
+	logger.Warn().Msg("no current session audio track found")
+	return nil
 }
 
 // handleAudioMute handles POST /audio/mute requests
@@ -29,9 +102,14 @@ func handleAudioMute(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "invalid request"})
 		return
 	}
-	initAudioControlService()
 
-	err := audioControlService.MuteAudio(req.Muted)
+	var err error
+	if req.Muted {
+		err = StopAudioOutputAndRemoveTracks()
+	} else {
+		err = StartAudioOutputAndAddTracks()
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -45,9 +123,18 @@ func handleAudioMute(c *gin.Context) {
 
 // handleMicrophoneStart handles POST /microphone/start requests
 func handleMicrophoneStart(c *gin.Context) {
-	initAudioControlService()
+	err := StartMicrophoneAndAddTracks()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
-	err := audioControlService.StartMicrophone()
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// handleMicrophoneStop handles POST /microphone/stop requests
+func handleMicrophoneStop(c *gin.Context) {
+	err := StopMicrophoneAndRemoveTracks()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -67,9 +154,13 @@ func handleMicrophoneMute(c *gin.Context) {
 		return
 	}
 
-	initAudioControlService()
+	var err error
+	if req.Muted {
+		err = StopMicrophoneAndRemoveTracks()
+	} else {
+		err = StartMicrophoneAndAddTracks()
+	}
 
-	err := audioControlService.MuteMicrophone(req.Muted)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -80,9 +171,7 @@ func handleMicrophoneMute(c *gin.Context) {
 
 // handleMicrophoneReset handles POST /microphone/reset requests
 func handleMicrophoneReset(c *gin.Context) {
-	initAudioControlService()
-
-	err := audioControlService.ResetMicrophone()
+	err := ResetMicrophone()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
