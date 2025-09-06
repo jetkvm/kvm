@@ -156,6 +156,7 @@ func setupRouter() *gin.Engine {
 		protected.POST("/storage/upload", handleUploadHttp)
 
 		// Audio handlers
+		protected.GET("/audio/status", handleAudioStatus)
 		protected.POST("/audio/mute", handleAudioMute)
 		protected.GET("/audio/quality", handleAudioQuality)
 		protected.POST("/audio/quality", handleSetAudioQuality)
