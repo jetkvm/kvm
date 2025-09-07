@@ -95,6 +95,12 @@ func (s *AudioControlService) StartMicrophone() error {
 	}
 
 	s.logger.Info().Msg("microphone started successfully")
+
+	// Broadcast microphone state change via WebSocket
+	broadcaster := GetAudioEventBroadcaster()
+	sessionActive := s.sessionProvider.IsSessionActive()
+	broadcaster.BroadcastMicrophoneStateChanged(true, sessionActive)
+
 	return nil
 }
 
@@ -116,6 +122,12 @@ func (s *AudioControlService) StopMicrophone() error {
 
 	audioInputManager.Stop()
 	s.logger.Info().Msg("microphone stopped successfully")
+
+	// Broadcast microphone state change via WebSocket
+	broadcaster := GetAudioEventBroadcaster()
+	sessionActive := s.sessionProvider.IsSessionActive()
+	broadcaster.BroadcastMicrophoneStateChanged(false, sessionActive)
+
 	return nil
 }
 
@@ -153,8 +165,17 @@ func (s *AudioControlService) MuteMicrophone(muted bool) error {
 	// Broadcast microphone state change via WebSocket
 	broadcaster := GetAudioEventBroadcaster()
 	sessionActive := s.sessionProvider.IsSessionActive()
-	// With the new approach, "running" means "not muted"
-	broadcaster.BroadcastMicrophoneStateChanged(!muted, sessionActive)
+
+	// Get actual subprocess running status (not mute status)
+	var subprocessRunning bool
+	if sessionActive {
+		audioInputManager := s.sessionProvider.GetAudioInputManager()
+		if audioInputManager != nil {
+			subprocessRunning = audioInputManager.IsRunning()
+		}
+	}
+
+	broadcaster.BroadcastMicrophoneStateChanged(subprocessRunning, sessionActive)
 
 	return nil
 }
@@ -267,13 +288,17 @@ func (s *AudioControlService) IsAudioOutputActive() bool {
 	return !IsAudioMuted() && IsAudioRelayRunning()
 }
 
-// IsMicrophoneActive returns whether the microphone is active (not muted)
+// IsMicrophoneActive returns whether the microphone subprocess is running
 func (s *AudioControlService) IsMicrophoneActive() bool {
 	if !s.sessionProvider.IsSessionActive() {
 		return false
 	}
 
-	// With the new unified approach, microphone "active" means "not muted"
-	// This matches how audio output works - active means not muted
-	return !IsMicrophoneMuted()
+	audioInputManager := s.sessionProvider.GetAudioInputManager()
+	if audioInputManager == nil {
+		return false
+	}
+
+	// For Enable/Disable buttons, we check subprocess status
+	return audioInputManager.IsRunning()
 }

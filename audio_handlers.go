@@ -42,13 +42,13 @@ func StartAudioOutputAndAddTracks() error {
 // StopMicrophoneAndRemoveTracks is a global helper to stop microphone subprocess and remove WebRTC tracks
 func StopMicrophoneAndRemoveTracks() error {
 	initAudioControlService()
-	return audioControlService.MuteMicrophone(true)
+	return audioControlService.StopMicrophone()
 }
 
 // StartMicrophoneAndAddTracks is a global helper to start microphone subprocess and add WebRTC tracks
 func StartMicrophoneAndAddTracks() error {
 	initAudioControlService()
-	return audioControlService.MuteMicrophone(false)
+	return audioControlService.StartMicrophone()
 }
 
 // IsAudioOutputActive is a global helper to check if audio output subprocess is running
