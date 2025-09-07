@@ -671,17 +671,6 @@ type AudioConfigConstants struct {
 	// Default 500ms provides adequate buffer monitoring without excessive overhead.
 	BufferUpdateInterval time.Duration // 500ms
 
-	// StatsUpdateInterval defines frequency of statistics collection and reporting.
-	// Used in: core_metrics.go for performance statistics updates
-	// Impact: More frequent updates provide better monitoring but increase overhead.
-	// Default 5s provides comprehensive statistics without performance impact.
-
-	// SupervisorTimeout defines timeout for supervisor process operations.
-	// Used in: output_supervisor.go for process monitoring and control
-	// Impact: Shorter timeouts improve responsiveness but may cause false timeouts.
-	// Default 10s provides adequate time for supervisor operations.
-	SupervisorTimeout time.Duration // 10s
-
 	// InputSupervisorTimeout defines timeout for input supervisor operations.
 	// Used in: input_supervisor.go for input process monitoring
 	// Impact: Shorter timeouts improve input responsiveness but may cause false timeouts.
@@ -693,16 +682,6 @@ type AudioConfigConstants struct {
 	// Impact: Shorter timeouts improve output responsiveness but may cause false timeouts.
 	// Default 5s provides responsive output monitoring.
 	OutputSupervisorTimeout time.Duration // 5s
-
-	// ShortTimeout defines brief timeout for time-critical operations.
-	// Used in: Real-time audio processing for minimal timeout scenarios
-	// Impact: Very short timeouts ensure responsiveness but may cause premature failures.
-	// Default 5ms provides minimal timeout for critical operations.
-
-	// MediumTimeout defines moderate timeout for standard operations.
-	// Used in: Standard audio processing operations
-	// Impact: Balances responsiveness with operation completion time.
-	// Default 50ms provides good balance for most audio operations.
 
 	// BatchProcessingDelay defines delay between batch processing operations.
 	// Used in: batch_audio.go for controlling batch processing timing
@@ -816,24 +795,9 @@ type AudioConfigConstants struct {
 	// Default 200ms provides reasonable wait time for microphone access.
 	MicContentionTimeout time.Duration // 200ms contention timeout
 
-	// Subprocess Pre-warming Configuration
-	// Used in: input_supervisor.go for reducing microphone activation latency
-	// Impact: Pre-warms audio input subprocess during startup to eliminate cold start delay
-	// Default true enables pre-warming for optimal user experience
-
 	// Priority Scheduler Configuration - Settings for process priority management
 	// Used in: priority_scheduler.go for system priority control
 	// Impact: Controls valid range for process priority adjustments
-
-	// MinNiceValue defines minimum (highest priority) nice value.
-	// Used in: priority_scheduler.go for priority validation
-	// Impact: Lower values allow higher priority but may affect system stability.
-	// Default -20 provides maximum priority elevation capability.
-
-	// MaxNiceValue defines maximum (lowest priority) nice value.
-	// Used in: priority_scheduler.go for priority validation
-	// Impact: Higher values allow lower priority for background tasks.
-	// Default 19 provides maximum priority reduction capability.
 
 	// Buffer Pool Configuration - Settings for memory pool preallocation
 	// Used in: util_buffer_pool.go for memory pool management
@@ -845,33 +809,13 @@ type AudioConfigConstants struct {
 	// Default 20% provides good balance between performance and memory efficiency.
 	PreallocPercentage int // 20% preallocation percentage
 
-	// InputPreallocPercentage defines percentage of input buffers to preallocate.
-	// Used in: util_buffer_pool.go for input-specific memory pool sizing
-	// Impact: Higher values improve input performance but increase memory usage.
-	// Default 30% provides enhanced input performance with reasonable memory usage.
-
 	// Exponential Moving Average Configuration - Settings for statistical smoothing
 	// Used in: core_metrics.go and various monitoring components
 	// Impact: Controls smoothing behavior for performance metrics
 
-	// HistoricalWeight defines weight given to historical data in EMA calculations.
-	// Used in: core_metrics.go for exponential moving average calculations
-	// Impact: Higher values provide more stable metrics but slower response to changes.
-	// Default 70% provides good stability while maintaining responsiveness.
-
-	// CurrentWeight defines weight given to current data in EMA calculations.
-	// Used in: metrics.go for exponential moving average calculations
-	// Impact: Higher values provide faster response but less stability.
-	// Default 30% complements historical weight for balanced EMA calculation.
-
-	// Sleep and Backoff Configuration - Settings for timing and retry behavior
+	// Backoff Configuration - Settings for timing and retry behavior
 	// Used in: Various components for timing control and retry logic
 	// Impact: Controls system timing behavior and retry strategies
-
-	// CGOSleepMicroseconds defines sleep duration for CGO operations.
-	// Used in: cgo_audio.go for CGO operation timing
-	// Impact: Longer sleeps reduce CPU usage but may increase latency.
-	// Default 50000 microseconds (50ms) provides good balance for CGO operations.
 
 	// BackoffStart defines initial backoff duration for retry operations.
 	// Used in: retry_manager.go for exponential backoff initialization
@@ -1973,12 +1917,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Impact: Controls how quickly system responds to buffer condition changes
 		// Default 500ms allows buffer conditions to stabilize before adjustments
 		BufferUpdateInterval: 500 * time.Millisecond,
-
-		// SupervisorTimeout defines timeout for supervisor operations (10s).
-		// Used in: Process supervision, health monitoring, restart logic
-		// Impact: Controls how long to wait before considering operations failed
-		// Default 10s allows for slow operations while preventing indefinite hangs
-		SupervisorTimeout: 10 * time.Second,
 
 		// InputSupervisorTimeout defines timeout for input supervision (5s).
 		// Used in: Input process monitoring, microphone supervision
