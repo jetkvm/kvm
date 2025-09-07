@@ -119,29 +119,42 @@ func (s *AudioControlService) StopMicrophone() error {
 	return nil
 }
 
-// MuteMicrophone sets the microphone mute state by controlling the microphone process
+// MuteMicrophone sets the microphone mute state by controlling data flow (like audio output)
 func (s *AudioControlService) MuteMicrophone(muted bool) error {
 	if muted {
-		// Mute: Stop microphone process
-		err := s.StopMicrophone()
-		if err != nil {
-			s.logger.Error().Err(err).Msg("failed to stop microphone during mute")
-			return err
-		}
-		s.logger.Info().Msg("microphone muted (process stopped)")
+		// Mute: Control data flow, don't stop subprocess (like audio output)
+		SetMicrophoneMuted(true)
+		s.logger.Info().Msg("microphone muted (data flow disabled)")
 	} else {
-		// Unmute: Start microphone process
-		err := s.StartMicrophone()
-		if err != nil {
-			s.logger.Error().Err(err).Msg("failed to start microphone during unmute")
-			return err
+		// Unmute: Ensure subprocess is running, then enable data flow
+		if !s.sessionProvider.IsSessionActive() {
+			return errors.New("no active session for microphone unmute")
 		}
-		s.logger.Info().Msg("microphone unmuted (process started)")
+
+		audioInputManager := s.sessionProvider.GetAudioInputManager()
+		if audioInputManager == nil {
+			return errors.New("audio input manager not available")
+		}
+
+		// Start subprocess if not already running (async, non-blocking)
+		if !audioInputManager.IsRunning() {
+			go func() {
+				if err := audioInputManager.Start(); err != nil {
+					s.logger.Error().Err(err).Msg("failed to start microphone during unmute")
+				}
+			}()
+		}
+
+		// Enable data flow immediately
+		SetMicrophoneMuted(false)
+		s.logger.Info().Msg("microphone unmuted (data flow enabled)")
 	}
 
-	// Broadcast microphone mute state change via WebSocket
+	// Broadcast microphone state change via WebSocket
 	broadcaster := GetAudioEventBroadcaster()
-	broadcaster.BroadcastAudioDeviceChanged(!muted, "microphone_mute_changed")
+	sessionActive := s.sessionProvider.IsSessionActive()
+	// With the new approach, "running" means "not muted"
+	broadcaster.BroadcastMicrophoneStateChanged(!muted, sessionActive)
 
 	return nil
 }
@@ -254,16 +267,13 @@ func (s *AudioControlService) IsAudioOutputActive() bool {
 	return !IsAudioMuted() && IsAudioRelayRunning()
 }
 
-// IsMicrophoneActive returns whether the microphone subprocess is running
+// IsMicrophoneActive returns whether the microphone is active (not muted)
 func (s *AudioControlService) IsMicrophoneActive() bool {
 	if !s.sessionProvider.IsSessionActive() {
 		return false
 	}
 
-	audioInputManager := s.sessionProvider.GetAudioInputManager()
-	if audioInputManager == nil {
-		return false
-	}
-
-	return audioInputManager.IsRunning()
+	// With the new unified approach, microphone "active" means "not muted"
+	// This matches how audio output works - active means not muted
+	return !IsMicrophoneMuted()
 }
