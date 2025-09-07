@@ -61,14 +61,14 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   // Use WebSocket-based audio events for real-time updates
   const { 
     audioMuted, 
+    microphoneState,
     isConnected: wsConnected 
   } = useAudioEvents();
   
   // WebSocket-only implementation - no fallback polling
   
-  // Microphone state from props
+  // Microphone state from props (keeping hook for legacy device operations)
   const {
-    isMicrophoneActive,
     startMicrophone,
     stopMicrophone,
     syncMicrophoneState,
@@ -81,6 +81,9 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   // Use WebSocket data exclusively - no polling fallback
   const isMuted = audioMuted ?? false;
   const isConnected = wsConnected;
+  
+  // Use WebSocket microphone state instead of hook state for real-time updates
+  const isMicrophoneActiveFromWS = microphoneState?.running ?? false;
   
 
   
@@ -206,24 +209,29 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     }
     
     setLastClickTime(now);
+    setIsLoading(true);
     
     try {
-      if (isMicrophoneActive) {
-        // Microphone is active: stop the microphone process and WebRTC tracks
-        const result = await stopMicrophone();
-        if (!result.success && result.error) {
-          notifications.error(result.error.message);
+      if (isMicrophoneActiveFromWS) {
+        // Mute: Use unified microphone mute API (like audio output)
+        const resp = await api.POST("/microphone/mute", { muted: true });
+        if (!resp.ok) {
+          throw new Error(`Failed to mute microphone: ${resp.status}`);
         }
+        // WebSocket will handle the state update automatically
       } else {
-        // Microphone is inactive: start the microphone process and WebRTC tracks
-        const result = await startMicrophone(selectedInputDevice);
-        if (!result.success && result.error) {
-          notifications.error(result.error.message);
+        // Unmute: Use unified microphone mute API (like audio output)
+        const resp = await api.POST("/microphone/mute", { muted: false });
+        if (!resp.ok) {
+          throw new Error(`Failed to unmute microphone: ${resp.status}`);
         }
+        // WebSocket will handle the state update automatically
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to toggle microphone";
       notifications.error(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -232,7 +240,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     setSelectedInputDevice(deviceId);
     
     // If microphone is currently active (unmuted), restart it with the new device
-    if (isMicrophoneActive) {
+    if (isMicrophoneActiveFromWS) {
       try {
         // Stop current microphone
         await stopMicrophone();
@@ -317,26 +325,21 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
           
           <div className="flex items-center justify-between rounded-lg bg-slate-50 p-3 dark:bg-slate-700">
             <div className="flex items-center gap-3">
-              {isMicrophoneActive ? (
+              {isMicrophoneActiveFromWS ? (
                 <MdMic className="h-5 w-5 text-green-500" />
               ) : (
                 <MdMicOff className="h-5 w-5 text-red-500" />
               )}
               <span className="font-medium text-slate-900 dark:text-slate-100">
-                {isMicrophoneActive ? "Unmuted" : "Muted"}
+                {isMicrophoneActiveFromWS ? "Unmuted" : "Muted"}
               </span>
             </div>
             <Button
               size="SM"
-              theme={isMicrophoneActive ? "danger" : "primary"}
-              text={
-                isStarting ? "Enabling..." : 
-                isStopping ? "Disabling..." : 
-                isMicrophoneActive ? "Disable" : "Enable"
-              }
+              theme={isMicrophoneActiveFromWS ? "danger" : "primary"}
+              text={isMicrophoneActiveFromWS ? "Disable" : "Enable"}
               onClick={handleToggleMicrophoneMute}
-              disabled={isStarting || isStopping || isToggling}
-              loading={isStarting || isStopping}
+              disabled={isLoading}
             />
           </div>
           
@@ -378,7 +381,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
                 </option>
               ))}
             </select>
-            {isMicrophoneActive && (
+            {isMicrophoneActiveFromWS && (
                <p className="text-xs text-slate-500 dark:text-slate-400">
                  Changing device will restart the microphone
                </p>
@@ -415,7 +418,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
         </div>
 
         {/* Microphone Quality Settings */}
-        {isMicrophoneActive && (
+        {isMicrophoneActiveFromWS && (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <MdMic className="h-4 w-4 text-slate-600 dark:text-slate-400" />
@@ -429,13 +432,13 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
                 <button
                   key={`mic-${quality}`}
                   onClick={() => handleMicrophoneQualityChange(parseInt(quality))}
-                  disabled={isStarting || isStopping || isToggling}
+                  disabled={isLoading}
                   className={cx(
                     "rounded-md border px-3 py-2 text-sm font-medium transition-colors",
                     currentMicrophoneConfig?.Quality === parseInt(quality)
                       ? "border-green-500 bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300"
                       : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600",
-                    (isStarting || isStopping || isToggling) && "opacity-50 cursor-not-allowed"
+                    isLoading && "opacity-50 cursor-not-allowed"
                   )}
                 >
                   {label}

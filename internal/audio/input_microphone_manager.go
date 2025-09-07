@@ -91,6 +91,11 @@ func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 		return nil // Not running, silently drop
 	}
 
+	// Check mute state - drop frames if microphone is muted (like audio output)
+	if IsMicrophoneMuted() {
+		return nil // Muted, silently drop
+	}
+
 	// Use ultra-fast validation for critical audio path
 	if err := ValidateAudioFrame(frame); err != nil {
 		aim.logComponentError(AudioInputManagerComponent, err, "Frame validation failed")
@@ -126,6 +131,11 @@ func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 func (aim *AudioInputManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFrame) error {
 	if !aim.IsRunning() {
 		return nil // Not running, silently drop
+	}
+
+	// Check mute state - drop frames if microphone is muted (like audio output)
+	if IsMicrophoneMuted() {
+		return nil // Muted, silently drop
 	}
 
 	if frame == nil {
