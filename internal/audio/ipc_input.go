@@ -884,82 +884,83 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 
 		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
 
-		for {
-			select {
-			case <-ais.stopChan:
-				return
-			default:
-				if ais.conn != nil {
-					msg, err := ais.readMessage(ais.conn)
-					if err != nil {
-						// Enhanced error handling with progressive backoff
-						now := time.Now()
+		for ais.running {
+			ais.mtx.Lock()
+			conn := ais.conn
+			ais.mtx.Unlock()
 
-						// Reset error counter if enough time has passed
-						if now.Sub(lastErrorTime) > errorResetWindow {
-							consecutiveErrors = 0
-						}
+			if conn == nil {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
 
-						consecutiveErrors++
-						lastErrorTime = now
+			msg, err := ais.readMessage(conn)
+			if err != nil {
+				if ais.running {
+					// Enhanced error handling with progressive backoff
+					now := time.Now()
 
-						// Skip logging in hotpath for performance - only log critical errors
-
-						// Progressive backoff based on error count
-						if consecutiveErrors > 1 {
-							backoffDelay := time.Duration(consecutiveErrors-1) * baseBackoffDelay
-							if backoffDelay > maxBackoffDelay {
-								backoffDelay = maxBackoffDelay
-							}
-							time.Sleep(backoffDelay)
-						}
-
-						// If too many consecutive errors, close connection to force reconnect
-						if consecutiveErrors >= maxConsecutiveErrors {
-							// Only log critical errors to reduce hotpath overhead
-							if logger.GetLevel() <= zerolog.ErrorLevel {
-								logger.Error().
-									Int("consecutive_errors", consecutiveErrors).
-									Msg("Too many consecutive read errors, closing connection")
-							}
-
-							ais.mtx.Lock()
-							if ais.conn != nil {
-								ais.conn.Close()
-								ais.conn = nil
-							}
-							ais.mtx.Unlock()
-
-							consecutiveErrors = 0 // Reset for next connection
-						}
-						continue
-					}
-
-					// Reset error counter on successful read
-					if consecutiveErrors > 0 {
+					// Reset error counter if enough time has passed
+					if now.Sub(lastErrorTime) > errorResetWindow {
 						consecutiveErrors = 0
-						// Only log recovery info if debug level enabled to reduce overhead
-						if logger.GetLevel() <= zerolog.InfoLevel {
-							logger.Info().Msg("Input connection recovered")
-						}
 					}
 
-					// Send to message channel with non-blocking write
-					select {
-					case ais.messageChan <- msg:
-						atomic.AddInt64(&ais.totalFrames, 1)
-					default:
-						// Channel full, drop message
-						atomic.AddInt64(&ais.droppedFrames, 1)
-						// Avoid sampling logic in critical path - only log if warn level enabled
-						if logger.GetLevel() <= zerolog.WarnLevel {
-							droppedCount := atomic.LoadInt64(&ais.droppedFrames)
-							logger.Warn().Int64("total_dropped", droppedCount).Msg("Message channel full, dropping frame")
+					consecutiveErrors++
+					lastErrorTime = now
+
+					// Skip logging in hotpath for performance - only log critical errors
+
+					// Progressive backoff based on error count
+					if consecutiveErrors > 1 {
+						backoffDelay := time.Duration(consecutiveErrors-1) * baseBackoffDelay
+						if backoffDelay > maxBackoffDelay {
+							backoffDelay = maxBackoffDelay
 						}
+						time.Sleep(backoffDelay)
 					}
-				} else {
-					// No connection, wait briefly before checking again
-					time.Sleep(GetConfig().DefaultSleepDuration)
+
+					// If too many consecutive errors, close connection to force reconnect
+					if consecutiveErrors >= maxConsecutiveErrors {
+						// Only log critical errors to reduce hotpath overhead
+						if logger.GetLevel() <= zerolog.ErrorLevel {
+							logger.Error().
+								Int("consecutive_errors", consecutiveErrors).
+								Msg("Too many consecutive read errors, closing connection")
+						}
+
+						ais.mtx.Lock()
+						if ais.conn != nil {
+							ais.conn.Close()
+							ais.conn = nil
+						}
+						ais.mtx.Unlock()
+
+						consecutiveErrors = 0 // Reset for next connection
+					}
+				}
+				continue
+			}
+
+			// Reset error counter on successful read
+			if consecutiveErrors > 0 {
+				consecutiveErrors = 0
+				// Only log recovery info if debug level enabled to reduce overhead
+				if logger.GetLevel() <= zerolog.InfoLevel {
+					logger.Info().Msg("Input connection recovered")
+				}
+			}
+
+			// Send to message channel with non-blocking write
+			select {
+			case ais.messageChan <- msg:
+				atomic.AddInt64(&ais.totalFrames, 1)
+			default:
+				// Channel full, drop message
+				atomic.AddInt64(&ais.droppedFrames, 1)
+				// Avoid sampling logic in critical path - only log if warn level enabled
+				if logger.GetLevel() <= zerolog.WarnLevel {
+					droppedCount := atomic.LoadInt64(&ais.droppedFrames)
+					logger.Warn().Int64("total_dropped", droppedCount).Msg("Message channel full, dropping frame")
 				}
 			}
 		}

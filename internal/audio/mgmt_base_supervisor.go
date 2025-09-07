@@ -48,15 +48,6 @@ func (bs *BaseSupervisor) IsRunning() bool {
 	return atomic.LoadInt32(&bs.running) == 1
 }
 
-// setRunning atomically sets the running state
-func (bs *BaseSupervisor) setRunning(running bool) {
-	if running {
-		atomic.StoreInt32(&bs.running, 1)
-	} else {
-		atomic.StoreInt32(&bs.running, 0)
-	}
-}
-
 // GetProcessPID returns the current process PID
 func (bs *BaseSupervisor) GetProcessPID() int {
 	bs.mutex.RLock()
