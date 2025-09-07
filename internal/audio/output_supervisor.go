@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"strconv"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -44,12 +43,6 @@ type AudioOutputSupervisor struct {
 	// Restart management
 	restartAttempts []time.Time
 
-	// Channel management
-	stopChan          chan struct{}
-	processDone       chan struct{}
-	stopChanClosed    bool // Track if stopChan is closed
-	processDoneClosed bool // Track if processDone is closed
-
 	// Environment variables for OPUS configuration
 	opusEnv []string
 
@@ -64,8 +57,6 @@ func NewAudioOutputSupervisor() *AudioOutputSupervisor {
 	return &AudioOutputSupervisor{
 		BaseSupervisor:  NewBaseSupervisor("audio-output-supervisor"),
 		restartAttempts: make([]time.Time, 0),
-		stopChan:        make(chan struct{}),
-		processDone:     make(chan struct{}),
 	}
 }
 
@@ -110,12 +101,10 @@ func (s *AudioOutputSupervisor) Start() error {
 	s.createContext()
 
 	// Recreate channels in case they were closed by a previous Stop() call
-	s.mutex.Lock()
-	s.processDone = make(chan struct{})
-	s.stopChan = make(chan struct{})
-	s.stopChanClosed = false    // Reset channel closed flag
-	s.processDoneClosed = false // Reset channel closed flag
+	s.initializeChannels()
+
 	// Reset restart tracking on start
+	s.mutex.Lock()
 	s.restartAttempts = s.restartAttempts[:0]
 	s.mutex.Unlock()
 
@@ -135,12 +124,7 @@ func (s *AudioOutputSupervisor) Stop() {
 	s.logSupervisorStop()
 
 	// Signal stop and wait for cleanup
-	s.mutex.Lock()
-	if !s.stopChanClosed {
-		close(s.stopChan)
-		s.stopChanClosed = true
-	}
-	s.mutex.Unlock()
+	s.closeStopChan()
 	s.cancelContext()
 
 	// Wait for process to exit
@@ -149,7 +133,7 @@ func (s *AudioOutputSupervisor) Stop() {
 		s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component stopped gracefully")
 	case <-time.After(GetConfig().OutputSupervisorTimeout):
 		s.logger.Warn().Str("component", AudioOutputSupervisorComponent).Msg("component did not stop gracefully, forcing termination")
-		s.forceKillProcess()
+		s.forceKillProcess("audio output server")
 	}
 
 	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component stopped")
@@ -158,12 +142,7 @@ func (s *AudioOutputSupervisor) Stop() {
 // supervisionLoop is the main supervision loop
 func (s *AudioOutputSupervisor) supervisionLoop() {
 	defer func() {
-		s.mutex.Lock()
-		if !s.processDoneClosed {
-			close(s.processDone)
-			s.processDoneClosed = true
-		}
-		s.mutex.Unlock()
+		s.closeProcessDone()
 		s.logger.Info().Msg("audio server supervision ended")
 	}()
 
@@ -171,11 +150,11 @@ func (s *AudioOutputSupervisor) supervisionLoop() {
 		select {
 		case <-s.stopChan:
 			s.logger.Info().Msg("received stop signal")
-			s.terminateProcess()
+			s.terminateProcess(GetConfig().OutputSupervisorTimeout, "audio output server")
 			return
 		case <-s.ctx.Done():
 			s.logger.Info().Msg("context cancelled")
-			s.terminateProcess()
+			s.terminateProcess(GetConfig().OutputSupervisorTimeout, "audio output server")
 			return
 		default:
 			// Start or restart the process
@@ -282,107 +261,27 @@ func (s *AudioOutputSupervisor) startProcess() error {
 	return nil
 }
 
-// waitForProcessExit waits for the current process to exit and logs the result
+// waitForProcessExit waits for the current process to exit and handles restart logic
 func (s *AudioOutputSupervisor) waitForProcessExit() {
 	s.mutex.RLock()
-	cmd := s.cmd
 	pid := s.processPID
 	s.mutex.RUnlock()
 
-	if cmd == nil {
-		return
-	}
+	// Use base supervisor's waitForProcessExit
+	s.BaseSupervisor.waitForProcessExit("audio output server")
 
-	// Wait for process to exit
-	err := cmd.Wait()
+	// Handle output-specific logic (restart tracking and callbacks)
+	s.mutex.RLock()
+	exitCode := s.lastExitCode
+	s.mutex.RUnlock()
 
-	s.mutex.Lock()
-	s.lastExitTime = time.Now()
-	s.processPID = 0
-
-	var exitCode int
-	var crashed bool
-
-	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
-			exitCode = exitError.ExitCode()
-			crashed = exitCode != 0
-		} else {
-			// Process was killed or other error
-			exitCode = -1
-			crashed = true
-		}
-	} else {
-		exitCode = 0
-		crashed = false
-	}
-
-	s.lastExitCode = exitCode
-	s.mutex.Unlock()
-
-	// Remove process from monitoring
-	s.processMonitor.RemoveProcess(pid)
-
+	crashed := exitCode != 0
 	if crashed {
-		s.logger.Error().Int("pid", pid).Int("exit_code", exitCode).Msg("audio output server process crashed")
 		s.recordRestartAttempt()
-	} else {
-		s.logger.Info().Int("pid", pid).Msg("audio output server process exited gracefully")
 	}
 
 	if s.onProcessExit != nil {
 		s.onProcessExit(pid, exitCode, crashed)
-	}
-}
-
-// terminateProcess gracefully terminates the current process
-func (s *AudioOutputSupervisor) terminateProcess() {
-	s.mutex.RLock()
-	cmd := s.cmd
-	pid := s.processPID
-	s.mutex.RUnlock()
-
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-
-	s.logger.Info().Int("pid", pid).Msg("terminating audio output server process")
-
-	// Send SIGTERM first
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		s.logger.Warn().Err(err).Int("pid", pid).Msg("failed to send SIGTERM to audio output server process")
-	}
-
-	// Wait for graceful shutdown
-	done := make(chan struct{})
-	go func() {
-		_ = cmd.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		s.logger.Info().Int("pid", pid).Msg("audio server process terminated gracefully")
-	case <-time.After(GetConfig().OutputSupervisorTimeout):
-		s.logger.Warn().Int("pid", pid).Msg("process did not terminate gracefully, sending SIGKILL")
-		s.forceKillProcess()
-	}
-}
-
-// forceKillProcess forcefully kills the current process
-func (s *AudioOutputSupervisor) forceKillProcess() {
-	s.mutex.RLock()
-	cmd := s.cmd
-	pid := s.processPID
-	s.mutex.RUnlock()
-
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-
-	s.logger.Warn().Int("pid", pid).Msg("force killing audio server process")
-	if err := cmd.Process.Kill(); err != nil {
-		s.logger.Error().Err(err).Int("pid", pid).Msg("failed to kill process")
 	}
 }
 

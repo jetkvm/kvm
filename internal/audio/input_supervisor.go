@@ -20,12 +20,6 @@ type AudioInputSupervisor struct {
 	*BaseSupervisor
 	client *AudioInputClient
 
-	// Channel management
-	stopChan          chan struct{}
-	processDone       chan struct{}
-	stopChanClosed    bool // Track if stopChan is closed
-	processDoneClosed bool // Track if processDone is closed
-
 	// Environment variables for OPUS configuration
 	opusEnv []string
 }
@@ -35,8 +29,6 @@ func NewAudioInputSupervisor() *AudioInputSupervisor {
 	return &AudioInputSupervisor{
 		BaseSupervisor: NewBaseSupervisor("audio-input-supervisor"),
 		client:         NewAudioInputClient(),
-		stopChan:       make(chan struct{}),
-		processDone:    make(chan struct{}),
 	}
 }
 
@@ -67,12 +59,7 @@ func (ais *AudioInputSupervisor) Start() error {
 	ais.createContext()
 
 	// Recreate channels in case they were closed by a previous Stop() call
-	ais.mutex.Lock()
-	ais.processDone = make(chan struct{})
-	ais.stopChan = make(chan struct{})
-	ais.stopChanClosed = false    // Reset channel closed flag
-	ais.processDoneClosed = false // Reset channel closed flag
-	ais.mutex.Unlock()
+	ais.initializeChannels()
 
 	// Start the supervision loop
 	go ais.supervisionLoop()
@@ -84,12 +71,7 @@ func (ais *AudioInputSupervisor) Start() error {
 // supervisionLoop is the main supervision loop
 func (ais *AudioInputSupervisor) supervisionLoop() {
 	defer func() {
-		ais.mutex.Lock()
-		if !ais.processDoneClosed {
-			close(ais.processDone)
-			ais.processDoneClosed = true
-		}
-		ais.mutex.Unlock()
+		ais.closeProcessDone()
 		ais.logger.Info().Msg("audio input server supervision ended")
 	}()
 
@@ -97,11 +79,11 @@ func (ais *AudioInputSupervisor) supervisionLoop() {
 		select {
 		case <-ais.stopChan:
 			ais.logger.Info().Msg("received stop signal")
-			ais.terminateProcess()
+			ais.terminateProcess(GetConfig().InputSupervisorTimeout, "audio input server")
 			return
 		case <-ais.ctx.Done():
 			ais.logger.Info().Msg("context cancelled")
-			ais.terminateProcess()
+			ais.terminateProcess(GetConfig().InputSupervisorTimeout, "audio input server")
 			return
 		default:
 			// Start the process
@@ -111,7 +93,7 @@ func (ais *AudioInputSupervisor) supervisionLoop() {
 			}
 
 			// Wait for process to exit
-			ais.waitForProcessExit()
+			ais.waitForProcessExit("audio input server")
 			return // Single run, no restart logic for now
 		}
 	}
@@ -162,85 +144,6 @@ func (ais *AudioInputSupervisor) startProcess() error {
 	return nil
 }
 
-// waitForProcessExit waits for the current process to exit and logs the result
-func (ais *AudioInputSupervisor) waitForProcessExit() {
-	ais.mutex.RLock()
-	cmd := ais.cmd
-	pid := ais.processPID
-	ais.mutex.RUnlock()
-
-	if cmd == nil {
-		return
-	}
-
-	// Wait for process to exit
-	err := cmd.Wait()
-
-	ais.mutex.Lock()
-	ais.processPID = 0
-	ais.mutex.Unlock()
-
-	// Remove process from monitoring
-	ais.processMonitor.RemoveProcess(pid)
-
-	if err != nil {
-		ais.logger.Error().Int("pid", pid).Err(err).Msg("audio input server process exited with error")
-	} else {
-		ais.logger.Info().Int("pid", pid).Msg("audio input server process exited gracefully")
-	}
-}
-
-// terminateProcess gracefully terminates the current process
-func (ais *AudioInputSupervisor) terminateProcess() {
-	ais.mutex.RLock()
-	cmd := ais.cmd
-	pid := ais.processPID
-	ais.mutex.RUnlock()
-
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-
-	ais.logger.Info().Int("pid", pid).Msg("terminating audio input server process")
-
-	// Send SIGTERM first
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		ais.logger.Warn().Err(err).Int("pid", pid).Msg("failed to send SIGTERM to audio input server process")
-	}
-
-	// Wait for graceful shutdown
-	done := make(chan struct{})
-	go func() {
-		_ = cmd.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		ais.logger.Info().Int("pid", pid).Msg("audio input server process terminated gracefully")
-	case <-time.After(GetConfig().InputSupervisorTimeout):
-		ais.logger.Warn().Int("pid", pid).Msg("process did not terminate gracefully, sending SIGKILL")
-		ais.forceKillProcess()
-	}
-}
-
-// forceKillProcess forcefully kills the current process
-func (ais *AudioInputSupervisor) forceKillProcess() {
-	ais.mutex.RLock()
-	cmd := ais.cmd
-	pid := ais.processPID
-	ais.mutex.RUnlock()
-
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-
-	ais.logger.Warn().Int("pid", pid).Msg("force killing audio input server process")
-	if err := cmd.Process.Kill(); err != nil {
-		ais.logger.Error().Err(err).Int("pid", pid).Msg("failed to kill process")
-	}
-}
-
 // Stop gracefully stops the audio input server and supervisor
 func (ais *AudioInputSupervisor) Stop() {
 	if !atomic.CompareAndSwapInt32(&ais.running, 1, 0) {
@@ -255,12 +158,7 @@ func (ais *AudioInputSupervisor) Stop() {
 	}
 
 	// Signal stop and wait for cleanup
-	ais.mutex.Lock()
-	if !ais.stopChanClosed {
-		close(ais.stopChan)
-		ais.stopChanClosed = true
-	}
-	ais.mutex.Unlock()
+	ais.closeStopChan()
 	ais.cancelContext()
 
 	// Wait for process to exit
@@ -269,7 +167,7 @@ func (ais *AudioInputSupervisor) Stop() {
 		ais.logger.Info().Str("component", "audio-input-supervisor").Msg("component stopped gracefully")
 	case <-time.After(GetConfig().InputSupervisorTimeout):
 		ais.logger.Warn().Str("component", "audio-input-supervisor").Msg("component did not stop gracefully, forcing termination")
-		ais.forceKillProcess()
+		ais.forceKillProcess("audio input server")
 	}
 
 	ais.logger.Info().Str("component", "audio-input-supervisor").Msg("component stopped")
