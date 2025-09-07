@@ -147,7 +147,7 @@ func (s *AudioOutputSupervisor) Stop() {
 	select {
 	case <-s.processDone:
 		s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component stopped gracefully")
-	case <-time.After(GetConfig().SupervisorTimeout):
+	case <-time.After(GetConfig().OutputSupervisorTimeout):
 		s.logger.Warn().Str("component", AudioOutputSupervisorComponent).Msg("component did not stop gracefully, forcing termination")
 		s.forceKillProcess()
 	}
