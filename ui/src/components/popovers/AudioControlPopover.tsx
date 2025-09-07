@@ -61,7 +61,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   // Use WebSocket-based audio events for real-time updates
   const { 
     audioMuted, 
-    microphoneState,
+    // microphoneState - now using hook state instead
     isConnected: wsConnected 
   } = useAudioEvents();
   
@@ -69,6 +69,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   
   // Microphone state from props (keeping hook for legacy device operations)
   const {
+    isMicrophoneActive: isMicrophoneActiveFromHook,
     startMicrophone,
     stopMicrophone,
     syncMicrophoneState,
@@ -82,8 +83,8 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   const isMuted = audioMuted ?? false;
   const isConnected = wsConnected;
   
-  // Use WebSocket microphone state instead of hook state for real-time updates
-  const isMicrophoneActiveFromWS = microphoneState?.running ?? false;
+  // Note: We now use hook state instead of WebSocket state for microphone Enable/Disable
+  // const isMicrophoneActiveFromWS = microphoneState?.running ?? false;
   
 
   
@@ -200,7 +201,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     }
   };
 
-  const handleToggleMicrophoneMute = async () => {
+  const handleToggleMicrophoneEnable = async () => {
     const now = Date.now();
     
     // Prevent rapid clicking - if any operation is in progress or within cooldown, ignore the click
@@ -212,20 +213,18 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     setIsLoading(true);
     
     try {
-      if (isMicrophoneActiveFromWS) {
-        // Mute: Use unified microphone mute API (like audio output)
-        const resp = await api.POST("/microphone/mute", { muted: true });
-        if (!resp.ok) {
-          throw new Error(`Failed to mute microphone: ${resp.status}`);
+      if (isMicrophoneActiveFromHook) {
+        // Disable: Stop microphone subprocess AND remove WebRTC tracks
+        const result = await stopMicrophone();
+        if (!result.success) {
+          throw new Error(result.error?.message || "Failed to stop microphone");
         }
-        // WebSocket will handle the state update automatically
       } else {
-        // Unmute: Use unified microphone mute API (like audio output)
-        const resp = await api.POST("/microphone/mute", { muted: false });
-        if (!resp.ok) {
-          throw new Error(`Failed to unmute microphone: ${resp.status}`);
+        // Enable: Start microphone subprocess AND add WebRTC tracks
+        const result = await startMicrophone();
+        if (!result.success) {
+          throw new Error(result.error?.message || "Failed to start microphone");
         }
-        // WebSocket will handle the state update automatically
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to toggle microphone";
@@ -239,8 +238,8 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   const handleMicrophoneDeviceChange = async (deviceId: string) => {
     setSelectedInputDevice(deviceId);
     
-    // If microphone is currently active (unmuted), restart it with the new device
-    if (isMicrophoneActiveFromWS) {
+    // If microphone is currently active, restart it with the new device
+    if (isMicrophoneActiveFromHook) {
       try {
         // Stop current microphone
         await stopMicrophone();
@@ -325,20 +324,20 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
           
           <div className="flex items-center justify-between rounded-lg bg-slate-50 p-3 dark:bg-slate-700">
             <div className="flex items-center gap-3">
-              {isMicrophoneActiveFromWS ? (
+              {isMicrophoneActiveFromHook ? (
                 <MdMic className="h-5 w-5 text-green-500" />
               ) : (
                 <MdMicOff className="h-5 w-5 text-red-500" />
               )}
               <span className="font-medium text-slate-900 dark:text-slate-100">
-                {isMicrophoneActiveFromWS ? "Unmuted" : "Muted"}
+                {isMicrophoneActiveFromHook ? "Enabled" : "Disabled"}
               </span>
             </div>
             <Button
               size="SM"
-              theme={isMicrophoneActiveFromWS ? "danger" : "primary"}
-              text={isMicrophoneActiveFromWS ? "Disable" : "Enable"}
-              onClick={handleToggleMicrophoneMute}
+              theme={isMicrophoneActiveFromHook ? "danger" : "primary"}
+              text={isMicrophoneActiveFromHook ? "Disable" : "Enable"}
+              onClick={handleToggleMicrophoneEnable}
               disabled={isLoading}
             />
           </div>
@@ -381,7 +380,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
                 </option>
               ))}
             </select>
-            {isMicrophoneActiveFromWS && (
+            {isMicrophoneActiveFromHook && (
                <p className="text-xs text-slate-500 dark:text-slate-400">
                  Changing device will restart the microphone
                </p>
@@ -418,7 +417,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
         </div>
 
         {/* Microphone Quality Settings */}
-        {isMicrophoneActiveFromWS && (
+        {isMicrophoneActiveFromHook && (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <MdMic className="h-4 w-4 text-slate-600 dark:text-slate-400" />
