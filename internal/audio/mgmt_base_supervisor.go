@@ -219,3 +219,126 @@ func (bs *BaseSupervisor) waitForProcessExit(processType string) {
 		bs.logger.Info().Int("pid", pid).Msgf("%s process exited gracefully", processType)
 	}
 }
+
+// SupervisionConfig holds configuration for the supervision loop
+type SupervisionConfig struct {
+	ProcessType        string
+	Timeout            time.Duration
+	EnableRestart      bool
+	MaxRestartAttempts int
+	RestartWindow      time.Duration
+	RestartDelay       time.Duration
+	MaxRestartDelay    time.Duration
+}
+
+// ProcessCallbacks holds callback functions for process lifecycle events
+type ProcessCallbacks struct {
+	OnProcessStart func(pid int)
+	OnProcessExit  func(pid int, exitCode int, crashed bool)
+	OnRestart      func(attempt int, delay time.Duration)
+}
+
+// SupervisionLoop provides a template for supervision loops that can be extended by specific supervisors
+func (bs *BaseSupervisor) SupervisionLoop(
+	config SupervisionConfig,
+	callbacks ProcessCallbacks,
+	startProcessFunc func() error,
+	shouldRestartFunc func() bool,
+	calculateDelayFunc func() time.Duration,
+) {
+	defer func() {
+		bs.closeProcessDone()
+		bs.logger.Info().Msgf("%s supervision ended", config.ProcessType)
+	}()
+
+	for atomic.LoadInt32(&bs.running) == 1 {
+		select {
+		case <-bs.stopChan:
+			bs.logger.Info().Msg("received stop signal")
+			bs.terminateProcess(config.Timeout, config.ProcessType)
+			return
+		case <-bs.ctx.Done():
+			bs.logger.Info().Msg("context cancelled")
+			bs.terminateProcess(config.Timeout, config.ProcessType)
+			return
+		default:
+			// Start or restart the process
+			if err := startProcessFunc(); err != nil {
+				bs.logger.Error().Err(err).Msgf("failed to start %s process", config.ProcessType)
+
+				// Check if we should attempt restart (only if restart is enabled)
+				if !config.EnableRestart || !shouldRestartFunc() {
+					bs.logger.Error().Msgf("maximum restart attempts exceeded or restart disabled, stopping %s supervisor", config.ProcessType)
+					return
+				}
+
+				delay := calculateDelayFunc()
+				bs.logger.Warn().Dur("delay", delay).Msgf("retrying %s process start after delay", config.ProcessType)
+
+				if callbacks.OnRestart != nil {
+					callbacks.OnRestart(0, delay) // 0 indicates start failure, not exit restart
+				}
+
+				select {
+				case <-time.After(delay):
+				case <-bs.stopChan:
+					return
+				case <-bs.ctx.Done():
+					return
+				}
+				continue
+			}
+
+			// Wait for process to exit
+			bs.waitForProcessExitWithCallback(config.ProcessType, callbacks)
+
+			// Check if we should restart (only if restart is enabled)
+			if !config.EnableRestart {
+				bs.logger.Info().Msgf("%s process completed, restart disabled", config.ProcessType)
+				return
+			}
+
+			if !shouldRestartFunc() {
+				bs.logger.Error().Msgf("maximum restart attempts exceeded, stopping %s supervisor", config.ProcessType)
+				return
+			}
+
+			// Calculate restart delay
+			delay := calculateDelayFunc()
+			bs.logger.Info().Dur("delay", delay).Msgf("restarting %s process after delay", config.ProcessType)
+
+			if callbacks.OnRestart != nil {
+				callbacks.OnRestart(1, delay) // 1 indicates restart after exit
+			}
+
+			// Wait for restart delay
+			select {
+			case <-time.After(delay):
+			case <-bs.stopChan:
+				return
+			case <-bs.ctx.Done():
+				return
+			}
+		}
+	}
+}
+
+// waitForProcessExitWithCallback extends waitForProcessExit with callback support
+func (bs *BaseSupervisor) waitForProcessExitWithCallback(processType string, callbacks ProcessCallbacks) {
+	bs.mutex.RLock()
+	pid := bs.processPID
+	bs.mutex.RUnlock()
+
+	// Use the base waitForProcessExit logic
+	bs.waitForProcessExit(processType)
+
+	// Handle callbacks if provided
+	if callbacks.OnProcessExit != nil {
+		bs.mutex.RLock()
+		exitCode := bs.lastExitCode
+		bs.mutex.RUnlock()
+
+		crashed := exitCode != 0
+		callbacks.OnProcessExit(pid, exitCode, crashed)
+	}
+}

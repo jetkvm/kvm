@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
-
-	"github.com/rs/zerolog"
 )
 
 // Component name constants for logging
@@ -70,7 +68,23 @@ func (s *AudioOutputSupervisor) SetCallbacks(
 	defer s.mutex.Unlock()
 
 	s.onProcessStart = onStart
-	s.onProcessExit = onExit
+
+	// Wrap the exit callback to include restart tracking
+	if onExit != nil {
+		s.onProcessExit = func(pid int, exitCode int, crashed bool) {
+			if crashed {
+				s.recordRestartAttempt()
+			}
+			onExit(pid, exitCode, crashed)
+		}
+	} else {
+		s.onProcessExit = func(pid int, exitCode int, crashed bool) {
+			if crashed {
+				s.recordRestartAttempt()
+			}
+		}
+	}
+
 	s.onRestart = onRestart
 }
 
@@ -139,87 +153,34 @@ func (s *AudioOutputSupervisor) Stop() {
 	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component stopped")
 }
 
-// supervisionLoop is the main supervision loop
+// supervisionLoop is the main loop that manages the audio output process
 func (s *AudioOutputSupervisor) supervisionLoop() {
-	defer func() {
-		s.closeProcessDone()
-		s.logger.Info().Msg("audio server supervision ended")
-	}()
-
-	for atomic.LoadInt32(&s.running) == 1 {
-		select {
-		case <-s.stopChan:
-			s.logger.Info().Msg("received stop signal")
-			s.terminateProcess(GetConfig().OutputSupervisorTimeout, "audio output server")
-			return
-		case <-s.ctx.Done():
-			s.logger.Info().Msg("context cancelled")
-			s.terminateProcess(GetConfig().OutputSupervisorTimeout, "audio output server")
-			return
-		default:
-			// Start or restart the process
-			if err := s.startProcess(); err != nil {
-				// Only log start errors if error level enabled to reduce overhead
-				if s.logger.GetLevel() <= zerolog.ErrorLevel {
-					s.logger.Error().Err(err).Msg("failed to start audio server process")
-				}
-
-				// Check if we should attempt restart
-				if !s.shouldRestart() {
-					// Only log critical errors to reduce overhead
-					if s.logger.GetLevel() <= zerolog.ErrorLevel {
-						s.logger.Error().Msg("maximum restart attempts exceeded, stopping supervisor")
-					}
-					return
-				}
-
-				delay := s.calculateRestartDelay()
-				// Sample logging to reduce overhead - log every 5th restart attempt
-				if len(s.restartAttempts)%5 == 0 && s.logger.GetLevel() <= zerolog.WarnLevel {
-					s.logger.Warn().Dur("delay", delay).Int("attempt", len(s.restartAttempts)).Msg("retrying process start after delay")
-				}
-
-				if s.onRestart != nil {
-					s.onRestart(len(s.restartAttempts), delay)
-				}
-
-				select {
-				case <-time.After(delay):
-				case <-s.stopChan:
-					return
-				case <-s.ctx.Done():
-					return
-				}
-				continue
-			}
-
-			// Wait for process to exit
-			s.waitForProcessExit()
-
-			// Check if we should restart
-			if !s.shouldRestart() {
-				s.logger.Error().Msg("maximum restart attempts exceeded, stopping supervisor")
-				return
-			}
-
-			// Calculate restart delay
-			delay := s.calculateRestartDelay()
-			s.logger.Info().Dur("delay", delay).Msg("restarting audio server process after delay")
-
-			if s.onRestart != nil {
-				s.onRestart(len(s.restartAttempts), delay)
-			}
-
-			// Wait for restart delay
-			select {
-			case <-time.After(delay):
-			case <-s.stopChan:
-				return
-			case <-s.ctx.Done():
-				return
-			}
-		}
+	// Configure supervision parameters
+	config := SupervisionConfig{
+		ProcessType:        "audio output server",
+		Timeout:            GetConfig().OutputSupervisorTimeout,
+		EnableRestart:      true,
+		MaxRestartAttempts: getMaxRestartAttempts(),
+		RestartWindow:      getRestartWindow(),
+		RestartDelay:       getRestartDelay(),
+		MaxRestartDelay:    getMaxRestartDelay(),
 	}
+
+	// Configure callbacks
+	callbacks := ProcessCallbacks{
+		OnProcessStart: s.onProcessStart,
+		OnProcessExit:  s.onProcessExit,
+		OnRestart:      s.onRestart,
+	}
+
+	// Use the base supervision loop template
+	s.SupervisionLoop(
+		config,
+		callbacks,
+		s.startProcess,
+		s.shouldRestart,
+		s.calculateRestartDelay,
+	)
 }
 
 // startProcess starts the audio server process
@@ -259,30 +220,6 @@ func (s *AudioOutputSupervisor) startProcess() error {
 	}
 
 	return nil
-}
-
-// waitForProcessExit waits for the current process to exit and handles restart logic
-func (s *AudioOutputSupervisor) waitForProcessExit() {
-	s.mutex.RLock()
-	pid := s.processPID
-	s.mutex.RUnlock()
-
-	// Use base supervisor's waitForProcessExit
-	s.BaseSupervisor.waitForProcessExit("audio output server")
-
-	// Handle output-specific logic (restart tracking and callbacks)
-	s.mutex.RLock()
-	exitCode := s.lastExitCode
-	s.mutex.RUnlock()
-
-	crashed := exitCode != 0
-	if crashed {
-		s.recordRestartAttempt()
-	}
-
-	if s.onProcessExit != nil {
-		s.onProcessExit(pid, exitCode, crashed)
-	}
 }
 
 // shouldRestart determines if the process should be restarted

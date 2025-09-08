@@ -488,13 +488,7 @@ func InitValidationCache() {
 	GetCachedConfig().Update()
 }
 
-// ValidateAudioFrame provides optimized validation for audio frame data
-// This is the primary validation function used in all audio processing paths
-//
-// Performance optimizations:
-// - Uses cached max frame size to eliminate config lookups
-// - Single branch condition for optimal CPU pipeline efficiency
-// - Minimal error allocation overhead
+// ValidateAudioFrame validates audio frame data with cached max size for performance
 //
 //go:inline
 func ValidateAudioFrame(data []byte) error {

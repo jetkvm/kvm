@@ -70,33 +70,32 @@ func (ais *AudioInputSupervisor) Start() error {
 
 // supervisionLoop is the main supervision loop
 func (ais *AudioInputSupervisor) supervisionLoop() {
-	defer func() {
-		ais.closeProcessDone()
-		ais.logger.Info().Msg("audio input server supervision ended")
-	}()
-
-	for atomic.LoadInt32(&ais.running) == 1 {
-		select {
-		case <-ais.stopChan:
-			ais.logger.Info().Msg("received stop signal")
-			ais.terminateProcess(GetConfig().InputSupervisorTimeout, "audio input server")
-			return
-		case <-ais.ctx.Done():
-			ais.logger.Info().Msg("context cancelled")
-			ais.terminateProcess(GetConfig().InputSupervisorTimeout, "audio input server")
-			return
-		default:
-			// Start the process
-			if err := ais.startProcess(); err != nil {
-				ais.logger.Error().Err(err).Msg("failed to start audio input server process")
-				return
-			}
-
-			// Wait for process to exit
-			ais.waitForProcessExit("audio input server")
-			return // Single run, no restart logic for now
-		}
+	// Configure supervision parameters (no restart for input supervisor)
+	config := SupervisionConfig{
+		ProcessType:        "audio input server",
+		Timeout:            GetConfig().InputSupervisorTimeout,
+		EnableRestart:      false, // Input supervisor doesn't restart
+		MaxRestartAttempts: 0,
+		RestartWindow:      0,
+		RestartDelay:       0,
+		MaxRestartDelay:    0,
 	}
+
+	// Configure callbacks (input supervisor doesn't have callbacks currently)
+	callbacks := ProcessCallbacks{
+		OnProcessStart: nil,
+		OnProcessExit:  nil,
+		OnRestart:      nil,
+	}
+
+	// Use the base supervision loop template
+	ais.SupervisionLoop(
+		config,
+		callbacks,
+		ais.startProcess,
+		func() bool { return false },      // Never restart
+		func() time.Duration { return 0 }, // No restart delay needed
+	)
 }
 
 // startProcess starts the audio input server process
