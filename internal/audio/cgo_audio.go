@@ -455,32 +455,8 @@ int jetkvm_audio_playback_init() {
 	return 0;
 }
 
-// jetkvm_audio_decode_write decodes Opus data and writes PCM to ALSA playback device.
-//
-// This function implements a robust audio playback pipeline with the following features:
-// - Opus decoding with packet loss concealment
-// - ALSA PCM playback with automatic device recovery
-// - Progressive error recovery with exponential backoff
-// - Buffer underrun and device suspension handling
-//
-// Error Recovery Strategy:
-// 1. EPIPE (buffer underrun): Prepare device, optionally drop+prepare, retry with delays
-// 2. ESTRPIPE (device suspended): Resume with timeout, fallback to prepare if needed
-// 3. Opus decode errors: Attempt packet loss concealment before failing
-//
-// Performance Optimizations:
-// - Stack-allocated PCM buffer to minimize heap allocations
-// - Bounds checking to prevent buffer overruns
-// - Direct ALSA device access for minimal latency
-//
-// Parameters:
-//   opus_buf: Input buffer containing Opus-encoded audio data
-//   opus_size: Size of the Opus data in bytes (must be > 0 and <= max_packet_size)
-//
-// Returns:
-//   0: Success - audio frame decoded and written to playback device
-//   -1: Invalid parameters, initialization error, or bounds check failure
-//   -2: Unrecoverable ALSA or Opus error after all retry attempts
+// jetkvm_audio_decode_write decodes Opus data and writes PCM to ALSA playback device
+// with error recovery and packet loss concealment
 int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 	short pcm_buffer[1920]; // max 2ch*960
 	unsigned char *in = (unsigned char*)opus_buf;
