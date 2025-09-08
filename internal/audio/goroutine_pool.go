@@ -81,13 +81,13 @@ func (p *GoroutinePool) SubmitWithBackpressure(task Task) bool {
 		queueLen := len(p.taskQueue)
 		queueCap := cap(p.taskQueue)
 		workerCount := atomic.LoadInt64(&p.workerCount)
-
+		
 		// If queue is >90% full and we're at max workers, drop the task
 		if queueLen > int(float64(queueCap)*0.9) && workerCount >= int64(p.maxWorkers) {
 			p.logger.Warn().Int("queue_len", queueLen).Int("queue_cap", queueCap).Msg("Dropping task due to backpressure")
 			return false
 		}
-
+		
 		// Try one more time with a short timeout
 		select {
 		case p.taskQueue <- task:
