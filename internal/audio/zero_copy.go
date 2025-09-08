@@ -147,7 +147,7 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 		// If we've allocated too many frames, force pool reuse
 		frame := p.pool.Get().(*ZeroCopyAudioFrame)
 		frame.mutex.Lock()
-		frame.refCount = 1
+		atomic.StoreInt32(&frame.refCount, 1)
 		frame.length = 0
 		frame.data = frame.data[:0]
 		frame.mutex.Unlock()
@@ -163,11 +163,12 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 		p.mutex.Unlock()
 
 		frame.mutex.Lock()
-		frame.refCount = 1
+		atomic.StoreInt32(&frame.refCount, 1)
 		frame.length = 0
 		frame.data = frame.data[:0]
 		frame.mutex.Unlock()
 
+		atomic.AddInt64(&p.hitCount, 1)
 		return frame
 	}
 	p.mutex.Unlock()
@@ -175,7 +176,7 @@ func (p *ZeroCopyFramePool) Get() *ZeroCopyAudioFrame {
 	// Try sync.Pool next and track allocation
 	frame := p.pool.Get().(*ZeroCopyAudioFrame)
 	frame.mutex.Lock()
-	frame.refCount = 1
+	atomic.StoreInt32(&frame.refCount, 1)
 	frame.length = 0
 	frame.data = frame.data[:0]
 	frame.mutex.Unlock()
@@ -191,43 +192,34 @@ func (p *ZeroCopyFramePool) Put(frame *ZeroCopyAudioFrame) {
 		return
 	}
 
+	// Reset frame state for reuse
 	frame.mutex.Lock()
-	frame.refCount--
-	if frame.refCount <= 0 {
-		frame.refCount = 0
-		frame.length = 0
-		frame.data = frame.data[:0]
-		frame.mutex.Unlock()
+	atomic.StoreInt32(&frame.refCount, 0)
+	frame.length = 0
+	frame.data = frame.data[:0]
+	frame.mutex.Unlock()
 
-		// First try to return to pre-allocated pool for fastest reuse
-		p.mutex.Lock()
-		if len(p.preallocated) < p.preallocSize {
-			p.preallocated = append(p.preallocated, frame)
-			p.mutex.Unlock()
-			return
-		}
+	// First try to return to pre-allocated pool for fastest reuse
+	p.mutex.Lock()
+	if len(p.preallocated) < p.preallocSize {
+		p.preallocated = append(p.preallocated, frame)
 		p.mutex.Unlock()
+		return
+	}
+	p.mutex.Unlock()
 
-		// Check pool size limit to prevent excessive memory usage
-		p.mutex.RLock()
-		currentCount := atomic.LoadInt64(&p.counter)
-		p.mutex.RUnlock()
+	// Check pool size limit to prevent excessive memory usage
+	p.mutex.RLock()
+	currentCount := atomic.LoadInt64(&p.counter)
+	p.mutex.RUnlock()
 
-		if currentCount >= int64(p.maxPoolSize) {
-			return // Pool is full, let GC handle this frame
-		}
-
-		// Return to sync.Pool
-		p.pool.Put(frame)
-		// Metrics collection removed
-		if false {
-			atomic.AddInt64(&p.counter, 1)
-		}
-	} else {
-		frame.mutex.Unlock()
+	if currentCount >= int64(p.maxPoolSize) {
+		return // Pool is full, let GC handle this frame
 	}
 
-	// Metrics recording removed - granular metrics collector was unused
+	// Return to sync.Pool
+	p.pool.Put(frame)
+	atomic.AddInt64(&p.counter, 1)
 }
 
 // Data returns the frame data as a slice (zero-copy view)
@@ -271,18 +263,28 @@ func (f *ZeroCopyAudioFrame) SetDataDirect(data []byte) {
 	f.pooled = false // Direct assignment means we can't pool this frame
 }
 
-// AddRef increments the reference count for shared access
+// AddRef increments the reference count atomically
 func (f *ZeroCopyAudioFrame) AddRef() {
-	f.mutex.Lock()
-	f.refCount++
-	f.mutex.Unlock()
+	atomic.AddInt32(&f.refCount, 1)
 }
 
-// Release decrements the reference count
-func (f *ZeroCopyAudioFrame) Release() {
-	f.mutex.Lock()
-	f.refCount--
-	f.mutex.Unlock()
+// Release decrements the reference count atomically
+// Returns true if this was the final reference
+func (f *ZeroCopyAudioFrame) Release() bool {
+	newCount := atomic.AddInt32(&f.refCount, -1)
+	if newCount == 0 {
+		// Final reference released, return to pool if pooled
+		if f.pooled {
+			globalZeroCopyPool.Put(f)
+		}
+		return true
+	}
+	return false
+}
+
+// RefCount returns the current reference count atomically
+func (f *ZeroCopyAudioFrame) RefCount() int32 {
+	return atomic.LoadInt32(&f.refCount)
 }
 
 // Length returns the current data length
