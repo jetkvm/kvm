@@ -14,10 +14,8 @@ import AddDeviceForm from "./AddDeviceForm";
 export default function WakeOnLanModal() {
   const [storedDevices, setStoredDevices] = useState<StoredDevice[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const setDisableVideoFocusTrap = useUiStore(state => state.setDisableVideoFocusTrap);
-
-  const rpcDataChannel = useRTCStore(state => state.rpcDataChannel);
-
+  const { setDisableVideoFocusTrap } = useUiStore();
+  const { rpcDataChannel } = useRTCStore();
   const { send } = useJsonRpc();
   const close = useClose();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

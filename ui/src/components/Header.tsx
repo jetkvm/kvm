@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { ArrowLeftEndOnRectangleIcon, ChevronDownIcon } from "@heroicons/react/16/solid";
 import { Button, Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { LuMonitorSmartphone } from "react-icons/lu";
@@ -48,7 +48,7 @@ export default function DashboardNavbar({
     navigate("/");
   }, [navigate, setUser]);
 
-  const usbState = useHidStore(state => state.usbState);
+  const { usbState } = useHidStore();
 
   // for testing
   //userEmail = "user@example.org";

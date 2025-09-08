@@ -18,7 +18,7 @@ export default function SettingsAdvancedRoute() {
   const { send } = useJsonRpc();
 
   const [sshKey, setSSHKey] = useState<string>("");
-  const setDeveloperMode = useSettingsStore(state => state.setDeveloperMode);
+  const { setDeveloperMode } = useSettingsStore();
   const [devChannel, setDevChannel] = useState(false);
   const [usbEmulationEnabled, setUsbEmulationEnabled] = useState(false);
   const [showLoopbackWarning, setShowLoopbackWarning] = useState(false);

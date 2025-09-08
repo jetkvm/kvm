@@ -1,22 +1,17 @@
+import { useMemo } from "react";
 import { LuArrowUp, LuArrowDown, LuX, LuTrash2 } from "react-icons/lu";
 
 import { Button } from "@/components/Button";
 import { Combobox } from "@/components/Combobox";
 import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import Card from "@/components/Card";
-import { keys, modifiers, keyDisplayMap } from "@/keyboardMappings";
-import { MAX_KEYS_PER_STEP, DEFAULT_DELAY } from "@/constants/macros";
 import FieldLabel from "@/components/FieldLabel";
+import { MAX_KEYS_PER_STEP, DEFAULT_DELAY } from "@/constants/macros";
+import { KeyboardLayout } from "@/keyboardLayouts";
+import { keys, modifiers } from "@/keyboardMappings";
 
 // Filter out modifier keys since they're handled in the modifiers section
 const modifierKeyPrefixes = ['Alt', 'Control', 'Shift', 'Meta'];
-
-const keyOptions = Object.keys(keys)
-  .filter(key => !modifierKeyPrefixes.some(prefix => key.startsWith(prefix)))
-  .map(key => ({
-    value: key,
-    label: keyDisplayMap[key] || key,
-  }));
 
 const modifierOptions = Object.keys(modifiers).map(modifier => ({
   value: modifier,
@@ -67,6 +62,7 @@ interface MacroStepCardProps {
   onModifierChange: (modifiers: string[]) => void;
   onDelayChange: (delay: number) => void;
   isLastStep: boolean;
+  keyboard: KeyboardLayout
 }
 
 const ensureArray = <T,>(arr: T[] | null | undefined): T[] => {
@@ -84,9 +80,22 @@ export function MacroStepCard({
   keyQuery,
   onModifierChange,
   onDelayChange,
-  isLastStep
+  isLastStep,
+  keyboard
 }: MacroStepCardProps) {
-  const getFilteredKeys = () => {
+  const { keyDisplayMap } = keyboard;
+
+  const keyOptions = useMemo(() =>
+    Object.keys(keys)
+      .filter(key => !modifierKeyPrefixes.some(prefix => key.startsWith(prefix)))
+      .map(key => ({
+        value: key,
+        label: keyDisplayMap[key] || key,
+      })),
+    [keyDisplayMap]
+  );
+  
+  const filteredKeys = useMemo(() => {
     const selectedKeys = ensureArray(step.keys);
     const availableKeys = keyOptions.filter(option => !selectedKeys.includes(option.value));
     
@@ -95,7 +104,7 @@ export function MacroStepCard({
     } else {
       return availableKeys.filter(option => option.label.toLowerCase().includes(keyQuery.toLowerCase()));
     }
-  };
+  }, [keyOptions, keyQuery, step.keys]);
 
   return (
     <Card className="p-4">
@@ -204,7 +213,7 @@ export function MacroStepCard({
               }}
               displayValue={() => keyQuery}
               onInputChange={onKeyQueryChange}
-              options={getFilteredKeys}
+              options={() => filteredKeys}
               disabledMessage="Max keys reached"
               size="SM"
               immediate

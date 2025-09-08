@@ -1,11 +1,5 @@
-import {
-  ActionFunctionArgs,
-  Form,
-  LoaderFunctionArgs,
-  redirect,
-  useActionData,
-  useLoaderData,
-} from "react-router-dom";
+import { Form, redirect, useActionData, useLoaderData } from "react-router";
+import type { ActionFunction, ActionFunctionArgs, LoaderFunction, LoaderFunctionArgs } from "react-router";
 import { ChevronLeftIcon } from "@heroicons/react/16/solid";
 
 import { Button, LinkButton } from "@components/Button";
@@ -25,7 +19,7 @@ interface LoaderData {
   user: User;
 }
 
-const action = async ({ params, request }: ActionFunctionArgs) => {
+const action: ActionFunction = async ({ params, request }: ActionFunctionArgs) => {
   const { id } = params;
   const { name } = Object.fromEntries(await request.formData());
 
@@ -48,7 +42,7 @@ const action = async ({ params, request }: ActionFunctionArgs) => {
   return redirect("/devices");
 };
 
-const loader = async ({ params }: LoaderFunctionArgs) => {
+const loader: LoaderFunction = async ({ params }: LoaderFunctionArgs) => {
   const user = await checkAuth();
   const { id } = params;
 

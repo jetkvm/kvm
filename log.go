@@ -5,7 +5,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func ErrorfL(l *zerolog.Logger, format string, err error, args ...interface{}) error {
+func ErrorfL(l *zerolog.Logger, format string, err error, args ...any) error {
 	return logging.ErrorfL(l, format, err, args...)
 }
 
@@ -19,6 +19,7 @@ var (
 	nbdLogger       = logging.GetSubsystemLogger("nbd")
 	timesyncLogger  = logging.GetSubsystemLogger("timesync")
 	jsonRpcLogger   = logging.GetSubsystemLogger("jsonrpc")
+	hidRPCLogger    = logging.GetSubsystemLogger("hidrpc")
 	watchdogLogger  = logging.GetSubsystemLogger("watchdog")
 	websecureLogger = logging.GetSubsystemLogger("websecure")
 	otaLogger       = logging.GetSubsystemLogger("ota")

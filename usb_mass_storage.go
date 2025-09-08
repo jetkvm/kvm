@@ -69,11 +69,6 @@ func setMassStorageMode(cdrom bool) error {
 	return gadget.UpdateGadgetConfig()
 }
 
-func onDiskMessage(msg webrtc.DataChannelMessage) {
-	logger.Info().Int("len", len(msg.Data)).Msg("Disk Message")
-	diskReadChan <- msg.Data
-}
-
 func mountImage(imagePath string) error {
 	err := setMassStorageImage("")
 	if err != nil {
@@ -166,7 +161,6 @@ func rpcCheckMountUrl(url string) (*VirtualMediaUrlInfo, error) {
 type VirtualMediaSource string
 
 const (
-	WebRTC  VirtualMediaSource = "WebRTC"
 	HTTP    VirtualMediaSource = "HTTP"
 	Storage VirtualMediaSource = "Storage"
 )
@@ -234,7 +228,6 @@ func getInitialVirtualMediaState() (*VirtualMediaState, error) {
 		initialState.Mode = CDROM
 	}
 
-	// TODO: check if it's WebRTC or HTTP
 	switch diskPath {
 	case "":
 		return nil, nil
@@ -298,43 +291,6 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 	logger.Debug().Msg("Starting nbd device")
 	nbdDevice = NewNBDDevice()
 	err = nbdDevice.Start()
-	if err != nil {
-		logger.Warn().Err(err).Msg("failed to start nbd device")
-		return err
-	}
-	logger.Debug().Msg("nbd device started")
-	//TODO: replace by polling on block device having right size
-	time.Sleep(1 * time.Second)
-	err = setMassStorageImage("/dev/nbd0")
-	if err != nil {
-		return err
-	}
-	logger.Info().Msg("usb mass storage mounted")
-	return nil
-}
-
-func rpcMountWithWebRTC(filename string, size int64, mode VirtualMediaMode) error {
-	virtualMediaStateMutex.Lock()
-	if currentVirtualMediaState != nil {
-		virtualMediaStateMutex.Unlock()
-		return fmt.Errorf("another virtual media is already mounted")
-	}
-	currentVirtualMediaState = &VirtualMediaState{
-		Source:   WebRTC,
-		Mode:     mode,
-		Filename: filename,
-		Size:     size,
-	}
-	virtualMediaStateMutex.Unlock()
-
-	if err := setMassStorageMode(mode == CDROM); err != nil {
-		return fmt.Errorf("failed to set mass storage mode: %w", err)
-	}
-
-	logger.Debug().Interface("currentVirtualMediaState", currentVirtualMediaState).Msg("currentVirtualMediaState")
-	logger.Debug().Msg("Starting nbd device")
-	nbdDevice = NewNBDDevice()
-	err := nbdDevice.Start()
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to start nbd device")
 		return err

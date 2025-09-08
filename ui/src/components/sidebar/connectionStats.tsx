@@ -2,29 +2,24 @@ import { useInterval } from "usehooks-ts";
 
 import SidebarHeader from "@/components/SidebarHeader";
 import { useRTCStore, useUiStore } from "@/hooks/stores";
+import { someIterable } from "@/utils";
 
 import { createChartArray, Metric } from "../Metric";
 import { SettingsSectionHeader } from "../SettingsSectionHeader";
-import { someIterable } from "../../utils";
 
 export default function ConnectionStatsSidebar() {
-  const inboundVideoRtpStats = useRTCStore(state => state.inboundRtpStats);
-  const iceCandidatePairStats = useRTCStore(state => state.candidatePairStats);
-  const setSidebarView = useUiStore(state => state.setSidebarView);
-
-  const appendInboundVideoRtpStats = useRTCStore(state => state.appendInboundRtpStats);
-  const appendIceCandidatePair = useRTCStore(state => state.appendCandidatePairStats);
-  const appendDiskDataChannelStats = useRTCStore(
-    state => state.appendDiskDataChannelStats,
-  );
-  const appendLocalCandidateStats = useRTCStore(state => state.appendLocalCandidateStats);
-  const appendRemoteCandidateStats = useRTCStore(
-    state => state.appendRemoteCandidateStats,
-  );
-
-  const peerConnection = useRTCStore(state => state.peerConnection);
-  const mediaStream = useRTCStore(state => state.mediaStream);
-  const sidebarView = useUiStore(state => state.sidebarView);
+  const { sidebarView, setSidebarView } = useUiStore();
+  const {
+    mediaStream,
+    peerConnection,
+    inboundRtpStats: inboundVideoRtpStats,
+    appendInboundRtpStats: appendInboundVideoRtpStats,
+    candidatePairStats: iceCandidatePairStats,
+    appendCandidatePairStats,
+    appendLocalCandidateStats,
+    appendRemoteCandidateStats,
+    appendDiskDataChannelStats,
+  } = useRTCStore();
 
   useInterval(function collectWebRTCStats() {
     (async () => {
@@ -45,8 +40,7 @@ export default function ConnectionStatsSidebar() {
             successfulLocalCandidateId = report.localCandidateId;
             successfulRemoteCandidateId = report.remoteCandidateId;
           }
-
-          appendIceCandidatePair(report);
+          appendCandidatePairStats(report);
         } else if (report.type === "local-candidate") {
           // We only want to append the local candidate stats that were used in nominated candidate pair
           if (successfulLocalCandidateId === report.id) {

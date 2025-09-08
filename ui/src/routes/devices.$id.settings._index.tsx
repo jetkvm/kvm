@@ -1,7 +1,14 @@
-import { LoaderFunctionArgs, redirect } from "react-router-dom";
+import { redirect } from "react-router";
+import type { LoaderFunction, LoaderFunctionArgs } from "react-router";
 
 import { getDeviceUiPath } from "../hooks/useAppNavigation";
 
-export function loader({ params }: LoaderFunctionArgs) {
+const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
   return redirect(getDeviceUiPath("/settings/general", params.id));
 }
+
+export default function SettingIndexRoute() {
+  return (<></>);
+}
+
+SettingIndexRoute.loader = loader;
