@@ -2,7 +2,9 @@ package audio
 
 import (
 	"errors"
+	"fmt"
 	"sync"
+	"time"
 )
 
 // Global relay instance for the main process
@@ -89,41 +91,57 @@ func IsAudioRelayRunning() bool {
 }
 
 // UpdateAudioRelayTrack updates the WebRTC audio track for the relay
+// This function is refactored to prevent mutex deadlocks during quality changes
 func UpdateAudioRelayTrack(audioTrack AudioTrackWriter) error {
-	relayMutex.Lock()
-	defer relayMutex.Unlock()
+	var needsCallback bool
+	var callbackFunc TrackReplacementCallback
 
+	// Critical section: minimize time holding the mutex
+	relayMutex.Lock()
 	if globalRelay == nil {
 		// No relay running, start one with the provided track
 		relay := NewAudioRelay()
 		config := GetAudioConfig()
 		if err := relay.Start(audioTrack, config); err != nil {
+			relayMutex.Unlock()
 			return err
 		}
 		globalRelay = relay
+	} else {
+		// Update the track in the existing relay
+		globalRelay.UpdateTrack(audioTrack)
+	}
 
-		// Replace the track in the WebRTC session if callback is available
-		if trackReplacementCallback != nil {
-			if err := trackReplacementCallback(audioTrack); err != nil {
-				// Log error but don't fail the relay start
+	// Capture callback state while holding mutex
+	needsCallback = trackReplacementCallback != nil
+	if needsCallback {
+		callbackFunc = trackReplacementCallback
+	}
+	relayMutex.Unlock()
+
+	// Execute callback outside of mutex to prevent deadlock
+	if needsCallback && callbackFunc != nil {
+		// Use goroutine with timeout to prevent blocking
+		done := make(chan error, 1)
+		go func() {
+			done <- callbackFunc(audioTrack)
+		}()
+
+		// Wait for callback with timeout
+		select {
+		case err := <-done:
+			if err != nil {
+				// Log error but don't fail the relay operation
 				// The relay can still work even if WebRTC track replacement fails
 				_ = err // Suppress linter warning
 			}
-		}
-		return nil
-	}
-
-	// Update the track in the existing relay
-	globalRelay.UpdateTrack(audioTrack)
-
-	// Replace the track in the WebRTC session if callback is available
-	if trackReplacementCallback != nil {
-		if err := trackReplacementCallback(audioTrack); err != nil {
-			// Log error but don't fail the track update
-			// The relay can still work even if WebRTC track replacement fails
-			_ = err // Suppress linter warning
+		case <-time.After(5 * time.Second):
+			// Timeout: log warning but continue
+			// This prevents indefinite blocking during quality changes
+			_ = fmt.Errorf("track replacement callback timed out")
 		}
 	}
+
 	return nil
 }
 
@@ -147,6 +165,17 @@ func SetCurrentSessionCallback(callback CurrentSessionCallback) {
 // SetTrackReplacementCallback sets the callback function to replace the WebRTC audio track
 func SetTrackReplacementCallback(callback TrackReplacementCallback) {
 	trackReplacementCallback = callback
+}
+
+// UpdateAudioRelayTrackAsync performs async track update to prevent blocking
+// This is used during WebRTC session creation to avoid deadlocks
+func UpdateAudioRelayTrackAsync(audioTrack AudioTrackWriter) {
+	go func() {
+		if err := UpdateAudioRelayTrack(audioTrack); err != nil {
+			// Log error but don't block session creation
+			_ = err // Suppress linter warning
+		}
+	}()
 }
 
 // connectRelayToCurrentSession connects the audio relay to the current WebRTC session's audio track

@@ -224,18 +224,25 @@ func SetAudioQuality(quality AudioQuality) {
 			// Stop current subprocess
 			supervisor.Stop()
 
-			// Wait for supervisor to fully stop before starting again
+			// Wait for supervisor to fully stop before starting again with timeout
 			// This prevents race conditions and audio breakage
-			for i := 0; i < 50; i++ { // Wait up to 5 seconds
-				if !supervisor.IsRunning() {
-					break
+			stopTimeout := time.After(Config.QualityChangeSupervisorTimeout)
+			ticker := time.NewTicker(Config.QualityChangeTickerInterval)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-stopTimeout:
+					logger.Warn().Msg("supervisor did not stop within 5s timeout, proceeding anyway")
+					goto startSupervisor
+				case <-ticker.C:
+					if !supervisor.IsRunning() {
+						goto startSupervisor
+					}
 				}
-				time.Sleep(100 * time.Millisecond)
 			}
 
-			if supervisor.IsRunning() {
-				logger.Warn().Msg("supervisor did not stop within timeout, proceeding anyway")
-			}
+		startSupervisor:
 
 			// Start subprocess with new configuration
 			if err := supervisor.Start(); err != nil {
@@ -246,7 +253,7 @@ func SetAudioQuality(quality AudioQuality) {
 				// Reset audio input server stats after quality change
 				// Allow adaptive buffer manager to naturally adjust buffer sizes
 				go func() {
-					time.Sleep(2 * time.Second) // Wait for quality change to settle
+					time.Sleep(Config.QualityChangeSettleDelay) // Wait for quality change to settle
 					// Reset audio input server stats to clear persistent warnings
 					ResetGlobalAudioInputServerStats()
 					// Attempt recovery if microphone is still having issues
@@ -365,7 +372,7 @@ func SetMicrophoneQuality(quality AudioQuality) {
 					// Reset audio input server stats after config update
 					// Allow adaptive buffer manager to naturally adjust buffer sizes
 					go func() {
-						time.Sleep(2 * time.Second) // Wait for quality change to settle
+						time.Sleep(Config.QualityChangeSettleDelay) // Wait for quality change to settle
 						// Reset audio input server stats to clear persistent warnings
 						ResetGlobalAudioInputServerStats()
 						// Attempt recovery if microphone is still having issues
