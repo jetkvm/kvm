@@ -65,12 +65,12 @@ export default function SettingsVideoRoute() {
 
   useEffect(() => {
     setEdidLoading(true);
-    send("getStreamQualityFactor", {}, resp => {
+    send("getStreamQualityFactor", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setStreamQuality(String(resp.result));
     });
 
-    send("getEDID", {}, resp => {
+    send("getEDID", {}, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
       if ("error" in resp) {
         notifications.error(`Failed to get EDID: ${resp.error.data || "Unknown error"}`);
@@ -117,7 +117,7 @@ export default function SettingsVideoRoute() {
 
   const handleEDIDChange = (newEdid: string) => {
     setEdidLoading(true);
-    send("setEDID", { edid: newEdid }, resp => {
+    send("setEDID", { edid: newEdid }, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
       if ("error" in resp) {
         notifications.error(`Failed to set EDID: ${resp.error.data || "Unknown error"}`);
