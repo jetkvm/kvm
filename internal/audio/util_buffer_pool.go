@@ -366,17 +366,17 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 	// Validate buffer size parameter
 	if err := ValidateBufferSize(bufferSize); err != nil {
 		// Use default value on validation error
-		bufferSize = GetConfig().AudioFramePoolSize
+		bufferSize = Config.AudioFramePoolSize
 	}
 
 	// Enhanced preallocation strategy based on buffer size and system capacity
 	var preallocSize int
-	if bufferSize <= GetConfig().AudioFramePoolSize {
+	if bufferSize <= Config.AudioFramePoolSize {
 		// For smaller pools, use enhanced preallocation (40% instead of 20%)
-		preallocSize = GetConfig().PreallocPercentage * 2
+		preallocSize = Config.PreallocPercentage * 2
 	} else {
 		// For larger pools, use standard enhanced preallocation (30% instead of 10%)
-		preallocSize = (GetConfig().PreallocPercentage * 3) / 2
+		preallocSize = (Config.PreallocPercentage * 3) / 2
 	}
 
 	// Ensure minimum preallocation for better performance
@@ -594,9 +594,9 @@ func (p *AudioBufferPool) Put(buf []byte) {
 // Enhanced global buffer pools for different audio frame types with improved sizing
 var (
 	// Main audio frame pool with enhanced capacity
-	audioFramePool = NewAudioBufferPool(GetConfig().AudioFramePoolSize)
+	audioFramePool = NewAudioBufferPool(Config.AudioFramePoolSize)
 	// Control message pool with enhanced capacity for better throughput
-	audioControlPool = NewAudioBufferPool(512) // Increased from GetConfig().OutputHeaderSize to 512 for better control message handling
+	audioControlPool = NewAudioBufferPool(512) // Increased from Config.OutputHeaderSize to 512 for better control message handling
 )
 
 func GetAudioFrameBuffer() []byte {
@@ -628,7 +628,7 @@ func (p *AudioBufferPool) GetPoolStats() AudioBufferPoolDetailedStats {
 
 	var hitRate float64
 	if totalRequests > 0 {
-		hitRate = float64(hitCount) / float64(totalRequests) * GetConfig().PercentageMultiplier
+		hitRate = float64(hitCount) / float64(totalRequests) * Config.PercentageMultiplier
 	}
 
 	return AudioBufferPoolDetailedStats{

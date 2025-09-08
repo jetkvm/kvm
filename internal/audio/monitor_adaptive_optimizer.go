@@ -64,10 +64,10 @@ type OptimizerConfig struct {
 func DefaultOptimizerConfig() OptimizerConfig {
 	return OptimizerConfig{
 		MaxOptimizationLevel: 8,
-		CooldownPeriod:       GetConfig().CooldownPeriod,
-		Aggressiveness:       GetConfig().OptimizerAggressiveness,
-		RollbackThreshold:    GetConfig().RollbackThreshold,
-		StabilityPeriod:      GetConfig().AdaptiveOptimizerStability,
+		CooldownPeriod:       Config.CooldownPeriod,
+		Aggressiveness:       Config.OptimizerAggressiveness,
+		RollbackThreshold:    Config.RollbackThreshold,
+		StabilityPeriod:      Config.AdaptiveOptimizerStability,
 
 		// Adaptive interval defaults
 		MinOptimizationInterval: 100 * time.Millisecond, // High stability: check every 100ms
@@ -142,7 +142,7 @@ func (ao *AdaptiveOptimizer) handleLatencyOptimization(metrics LatencyMetrics) e
 // calculateTargetOptimizationLevel determines the appropriate optimization level
 func (ao *AdaptiveOptimizer) calculateTargetOptimizationLevel(metrics LatencyMetrics) int64 {
 	// Base calculation on current latency vs target
-	latencyRatio := float64(metrics.Current) / float64(GetConfig().AdaptiveOptimizerLatencyTarget) // 50ms target
+	latencyRatio := float64(metrics.Current) / float64(Config.AdaptiveOptimizerLatencyTarget) // 50ms target
 
 	// Adjust based on trend
 	switch metrics.Trend {
@@ -158,7 +158,7 @@ func (ao *AdaptiveOptimizer) calculateTargetOptimizationLevel(metrics LatencyMet
 	latencyRatio *= ao.config.Aggressiveness
 
 	// Convert to optimization level
-	targetLevel := int64(latencyRatio * GetConfig().LatencyScalingFactor) // Scale to 0-10 range
+	targetLevel := int64(latencyRatio * Config.LatencyScalingFactor) // Scale to 0-10 range
 	if targetLevel > int64(ao.config.MaxOptimizationLevel) {
 		targetLevel = int64(ao.config.MaxOptimizationLevel)
 	}

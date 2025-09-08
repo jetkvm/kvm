@@ -39,7 +39,7 @@ var (
 
 // MaxAudioFrameSize is now retrieved from centralized config
 func GetMaxAudioFrameSize() int {
-	return GetConfig().MaxAudioFrameSize
+	return Config.MaxAudioFrameSize
 }
 
 // AudioQuality represents different audio quality presets
@@ -74,17 +74,17 @@ type AudioMetrics struct {
 var (
 	currentConfig = AudioConfig{
 		Quality:    AudioQualityMedium,
-		Bitrate:    GetConfig().AudioQualityMediumOutputBitrate,
-		SampleRate: GetConfig().SampleRate,
-		Channels:   GetConfig().Channels,
-		FrameSize:  GetConfig().AudioQualityMediumFrameSize,
+		Bitrate:    Config.AudioQualityMediumOutputBitrate,
+		SampleRate: Config.SampleRate,
+		Channels:   Config.Channels,
+		FrameSize:  Config.AudioQualityMediumFrameSize,
 	}
 	currentMicrophoneConfig = AudioConfig{
 		Quality:    AudioQualityMedium,
-		Bitrate:    GetConfig().AudioQualityMediumInputBitrate,
-		SampleRate: GetConfig().SampleRate,
+		Bitrate:    Config.AudioQualityMediumInputBitrate,
+		SampleRate: Config.SampleRate,
 		Channels:   1,
-		FrameSize:  GetConfig().AudioQualityMediumFrameSize,
+		FrameSize:  Config.AudioQualityMediumFrameSize,
 	}
 	metrics AudioMetrics
 )
@@ -96,24 +96,24 @@ var qualityPresets = map[AudioQuality]struct {
 	frameSize                   time.Duration
 }{
 	AudioQualityLow: {
-		outputBitrate: GetConfig().AudioQualityLowOutputBitrate, inputBitrate: GetConfig().AudioQualityLowInputBitrate,
-		sampleRate: GetConfig().AudioQualityLowSampleRate, channels: GetConfig().AudioQualityLowChannels,
-		frameSize: GetConfig().AudioQualityLowFrameSize,
+		outputBitrate: Config.AudioQualityLowOutputBitrate, inputBitrate: Config.AudioQualityLowInputBitrate,
+		sampleRate: Config.AudioQualityLowSampleRate, channels: Config.AudioQualityLowChannels,
+		frameSize: Config.AudioQualityLowFrameSize,
 	},
 	AudioQualityMedium: {
-		outputBitrate: GetConfig().AudioQualityMediumOutputBitrate, inputBitrate: GetConfig().AudioQualityMediumInputBitrate,
-		sampleRate: GetConfig().AudioQualityMediumSampleRate, channels: GetConfig().AudioQualityMediumChannels,
-		frameSize: GetConfig().AudioQualityMediumFrameSize,
+		outputBitrate: Config.AudioQualityMediumOutputBitrate, inputBitrate: Config.AudioQualityMediumInputBitrate,
+		sampleRate: Config.AudioQualityMediumSampleRate, channels: Config.AudioQualityMediumChannels,
+		frameSize: Config.AudioQualityMediumFrameSize,
 	},
 	AudioQualityHigh: {
-		outputBitrate: GetConfig().AudioQualityHighOutputBitrate, inputBitrate: GetConfig().AudioQualityHighInputBitrate,
-		sampleRate: GetConfig().SampleRate, channels: GetConfig().AudioQualityHighChannels,
-		frameSize: GetConfig().AudioQualityHighFrameSize,
+		outputBitrate: Config.AudioQualityHighOutputBitrate, inputBitrate: Config.AudioQualityHighInputBitrate,
+		sampleRate: Config.SampleRate, channels: Config.AudioQualityHighChannels,
+		frameSize: Config.AudioQualityHighFrameSize,
 	},
 	AudioQualityUltra: {
-		outputBitrate: GetConfig().AudioQualityUltraOutputBitrate, inputBitrate: GetConfig().AudioQualityUltraInputBitrate,
-		sampleRate: GetConfig().SampleRate, channels: GetConfig().AudioQualityUltraChannels,
-		frameSize: GetConfig().AudioQualityUltraFrameSize,
+		outputBitrate: Config.AudioQualityUltraOutputBitrate, inputBitrate: Config.AudioQualityUltraInputBitrate,
+		sampleRate: Config.SampleRate, channels: Config.AudioQualityUltraChannels,
+		frameSize: Config.AudioQualityUltraFrameSize,
 	},
 }
 
@@ -142,7 +142,7 @@ func GetMicrophoneQualityPresets() map[AudioQuality]AudioConfig {
 			Bitrate: preset.inputBitrate,
 			SampleRate: func() int {
 				if quality == AudioQualityLow {
-					return GetConfig().AudioQualityMicLowSampleRate
+					return Config.AudioQualityMicLowSampleRate
 				}
 				return preset.sampleRate
 			}(),
@@ -172,36 +172,36 @@ func SetAudioQuality(quality AudioQuality) {
 		var complexity, vbr, signalType, bandwidth, dtx int
 		switch quality {
 		case AudioQualityLow:
-			complexity = GetConfig().AudioQualityLowOpusComplexity
-			vbr = GetConfig().AudioQualityLowOpusVBR
-			signalType = GetConfig().AudioQualityLowOpusSignalType
-			bandwidth = GetConfig().AudioQualityLowOpusBandwidth
-			dtx = GetConfig().AudioQualityLowOpusDTX
+			complexity = Config.AudioQualityLowOpusComplexity
+			vbr = Config.AudioQualityLowOpusVBR
+			signalType = Config.AudioQualityLowOpusSignalType
+			bandwidth = Config.AudioQualityLowOpusBandwidth
+			dtx = Config.AudioQualityLowOpusDTX
 		case AudioQualityMedium:
-			complexity = GetConfig().AudioQualityMediumOpusComplexity
-			vbr = GetConfig().AudioQualityMediumOpusVBR
-			signalType = GetConfig().AudioQualityMediumOpusSignalType
-			bandwidth = GetConfig().AudioQualityMediumOpusBandwidth
-			dtx = GetConfig().AudioQualityMediumOpusDTX
+			complexity = Config.AudioQualityMediumOpusComplexity
+			vbr = Config.AudioQualityMediumOpusVBR
+			signalType = Config.AudioQualityMediumOpusSignalType
+			bandwidth = Config.AudioQualityMediumOpusBandwidth
+			dtx = Config.AudioQualityMediumOpusDTX
 		case AudioQualityHigh:
-			complexity = GetConfig().AudioQualityHighOpusComplexity
-			vbr = GetConfig().AudioQualityHighOpusVBR
-			signalType = GetConfig().AudioQualityHighOpusSignalType
-			bandwidth = GetConfig().AudioQualityHighOpusBandwidth
-			dtx = GetConfig().AudioQualityHighOpusDTX
+			complexity = Config.AudioQualityHighOpusComplexity
+			vbr = Config.AudioQualityHighOpusVBR
+			signalType = Config.AudioQualityHighOpusSignalType
+			bandwidth = Config.AudioQualityHighOpusBandwidth
+			dtx = Config.AudioQualityHighOpusDTX
 		case AudioQualityUltra:
-			complexity = GetConfig().AudioQualityUltraOpusComplexity
-			vbr = GetConfig().AudioQualityUltraOpusVBR
-			signalType = GetConfig().AudioQualityUltraOpusSignalType
-			bandwidth = GetConfig().AudioQualityUltraOpusBandwidth
-			dtx = GetConfig().AudioQualityUltraOpusDTX
+			complexity = Config.AudioQualityUltraOpusComplexity
+			vbr = Config.AudioQualityUltraOpusVBR
+			signalType = Config.AudioQualityUltraOpusSignalType
+			bandwidth = Config.AudioQualityUltraOpusBandwidth
+			dtx = Config.AudioQualityUltraOpusDTX
 		default:
 			// Use medium quality as fallback
-			complexity = GetConfig().AudioQualityMediumOpusComplexity
-			vbr = GetConfig().AudioQualityMediumOpusVBR
-			signalType = GetConfig().AudioQualityMediumOpusSignalType
-			bandwidth = GetConfig().AudioQualityMediumOpusBandwidth
-			dtx = GetConfig().AudioQualityMediumOpusDTX
+			complexity = Config.AudioQualityMediumOpusComplexity
+			vbr = Config.AudioQualityMediumOpusVBR
+			signalType = Config.AudioQualityMediumOpusSignalType
+			bandwidth = Config.AudioQualityMediumOpusBandwidth
+			dtx = Config.AudioQualityMediumOpusDTX
 		}
 
 		// Restart audio output subprocess with new OPUS configuration
@@ -256,7 +256,7 @@ func SetAudioQuality(quality AudioQuality) {
 			}
 		} else {
 			// Fallback to dynamic update if supervisor is not available
-			vbrConstraint := GetConfig().CGOOpusVBRConstraint
+			vbrConstraint := Config.CGOOpusVBRConstraint
 			if err := updateOpusEncoderParams(config.Bitrate*1000, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx); err != nil {
 				logging.GetDefaultLogger().Error().Err(err).Msg("Failed to update OPUS encoder parameters")
 			}
@@ -287,36 +287,36 @@ func SetMicrophoneQuality(quality AudioQuality) {
 		var complexity, vbr, signalType, bandwidth, dtx int
 		switch quality {
 		case AudioQualityLow:
-			complexity = GetConfig().AudioQualityLowOpusComplexity
-			vbr = GetConfig().AudioQualityLowOpusVBR
-			signalType = GetConfig().AudioQualityLowOpusSignalType
-			bandwidth = GetConfig().AudioQualityLowOpusBandwidth
-			dtx = GetConfig().AudioQualityLowOpusDTX
+			complexity = Config.AudioQualityLowOpusComplexity
+			vbr = Config.AudioQualityLowOpusVBR
+			signalType = Config.AudioQualityLowOpusSignalType
+			bandwidth = Config.AudioQualityLowOpusBandwidth
+			dtx = Config.AudioQualityLowOpusDTX
 		case AudioQualityMedium:
-			complexity = GetConfig().AudioQualityMediumOpusComplexity
-			vbr = GetConfig().AudioQualityMediumOpusVBR
-			signalType = GetConfig().AudioQualityMediumOpusSignalType
-			bandwidth = GetConfig().AudioQualityMediumOpusBandwidth
-			dtx = GetConfig().AudioQualityMediumOpusDTX
+			complexity = Config.AudioQualityMediumOpusComplexity
+			vbr = Config.AudioQualityMediumOpusVBR
+			signalType = Config.AudioQualityMediumOpusSignalType
+			bandwidth = Config.AudioQualityMediumOpusBandwidth
+			dtx = Config.AudioQualityMediumOpusDTX
 		case AudioQualityHigh:
-			complexity = GetConfig().AudioQualityHighOpusComplexity
-			vbr = GetConfig().AudioQualityHighOpusVBR
-			signalType = GetConfig().AudioQualityHighOpusSignalType
-			bandwidth = GetConfig().AudioQualityHighOpusBandwidth
-			dtx = GetConfig().AudioQualityHighOpusDTX
+			complexity = Config.AudioQualityHighOpusComplexity
+			vbr = Config.AudioQualityHighOpusVBR
+			signalType = Config.AudioQualityHighOpusSignalType
+			bandwidth = Config.AudioQualityHighOpusBandwidth
+			dtx = Config.AudioQualityHighOpusDTX
 		case AudioQualityUltra:
-			complexity = GetConfig().AudioQualityUltraOpusComplexity
-			vbr = GetConfig().AudioQualityUltraOpusVBR
-			signalType = GetConfig().AudioQualityUltraOpusSignalType
-			bandwidth = GetConfig().AudioQualityUltraOpusBandwidth
-			dtx = GetConfig().AudioQualityUltraOpusDTX
+			complexity = Config.AudioQualityUltraOpusComplexity
+			vbr = Config.AudioQualityUltraOpusVBR
+			signalType = Config.AudioQualityUltraOpusSignalType
+			bandwidth = Config.AudioQualityUltraOpusBandwidth
+			dtx = Config.AudioQualityUltraOpusDTX
 		default:
 			// Use medium quality as fallback
-			complexity = GetConfig().AudioQualityMediumOpusComplexity
-			vbr = GetConfig().AudioQualityMediumOpusVBR
-			signalType = GetConfig().AudioQualityMediumOpusSignalType
-			bandwidth = GetConfig().AudioQualityMediumOpusBandwidth
-			dtx = GetConfig().AudioQualityMediumOpusDTX
+			complexity = Config.AudioQualityMediumOpusComplexity
+			vbr = Config.AudioQualityMediumOpusVBR
+			signalType = Config.AudioQualityMediumOpusSignalType
+			bandwidth = Config.AudioQualityMediumOpusBandwidth
+			dtx = Config.AudioQualityMediumOpusDTX
 		}
 
 		// Update audio input subprocess configuration dynamically without restart

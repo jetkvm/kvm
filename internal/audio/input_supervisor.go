@@ -73,7 +73,7 @@ func (ais *AudioInputSupervisor) supervisionLoop() {
 	// Configure supervision parameters (no restart for input supervisor)
 	config := SupervisionConfig{
 		ProcessType:        "audio input server",
-		Timeout:            GetConfig().InputSupervisorTimeout,
+		Timeout:            Config.InputSupervisorTimeout,
 		EnableRestart:      false, // Input supervisor doesn't restart
 		MaxRestartAttempts: 0,
 		RestartWindow:      0,
@@ -164,7 +164,7 @@ func (ais *AudioInputSupervisor) Stop() {
 	select {
 	case <-ais.processDone:
 		ais.logger.Info().Str("component", "audio-input-supervisor").Msg("component stopped gracefully")
-	case <-time.After(GetConfig().InputSupervisorTimeout):
+	case <-time.After(Config.InputSupervisorTimeout):
 		ais.logger.Warn().Str("component", "audio-input-supervisor").Msg("component did not stop gracefully, forcing termination")
 		ais.forceKillProcess("audio input server")
 	}
@@ -190,7 +190,7 @@ func (ais *AudioInputSupervisor) GetClient() *AudioInputClient {
 // connectClient attempts to connect the client to the server
 func (ais *AudioInputSupervisor) connectClient() {
 	// Wait briefly for the server to start and create socket
-	time.Sleep(GetConfig().DefaultSleepDuration)
+	time.Sleep(Config.DefaultSleepDuration)
 
 	// Additional small delay to ensure socket is ready after restart
 	time.Sleep(20 * time.Millisecond)

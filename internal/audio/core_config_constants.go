@@ -313,6 +313,15 @@ type AudioConfigConstants struct {
 	AudioProcessorQueueSize  int
 	AudioReaderQueueSize     int
 	WorkerMaxIdleTime        time.Duration
+
+	// Connection Retry Configuration
+	MaxConnectionAttempts   int           // Maximum connection retry attempts
+	ConnectionRetryDelay    time.Duration // Initial connection retry delay
+	MaxConnectionRetryDelay time.Duration // Maximum connection retry delay
+	ConnectionBackoffFactor float64       // Connection retry backoff factor
+	ConnectionTimeoutDelay  time.Duration // Connection timeout for each attempt
+	ReconnectionInterval    time.Duration // Interval for automatic reconnection attempts
+	HealthCheckInterval     time.Duration // Health check interval for connections
 }
 
 // DefaultAudioConfig returns the default configuration constants
@@ -424,11 +433,11 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Buffer Management
 		PreallocSize:         1024 * 1024, // 1MB buffer preallocation
 		MaxPoolSize:          100,         // Maximum object pool size
-		MessagePoolSize:      256,         // Message pool size for IPC
+		MessagePoolSize:      512,         // Increased message pool for quality change bursts
 		OptimalSocketBuffer:  262144,      // 256KB optimal socket buffer
 		MaxSocketBuffer:      1048576,     // 1MB maximum socket buffer
 		MinSocketBuffer:      8192,        // 8KB minimum socket buffer
-		ChannelBufferSize:    500,         // Inter-goroutine channel buffer size
+		ChannelBufferSize:    1000,        // Increased channel buffer for quality change bursts
 		AudioFramePoolSize:   1500,        // Audio frame object pool size
 		PageSize:             4096,        // Memory page size for alignment
 		InitialBufferFrames:  500,         // Initial buffer size during startup
@@ -436,17 +445,17 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		MinReadEncodeBuffer:  1276,        // Minimum CGO read/encode buffer
 		MaxDecodeWriteBuffer: 4096,        // Maximum CGO decode/write buffer
 
-		// IPC Configuration
+		// IPC Configuration - Balanced for stability
 		MagicNumber:  0xDEADBEEF,             // IPC message validation header
 		MaxFrameSize: 4096,                   // Maximum audio frame size (4KB)
-		WriteTimeout: 100 * time.Millisecond, // IPC write operation timeout
+		WriteTimeout: 500 * time.Millisecond, // Increased timeout to handle quality change bursts
 		HeaderSize:   8,                      // IPC message header size
 
-		// Monitoring and Metrics
-		MetricsUpdateInterval: 1000 * time.Millisecond, // Metrics collection frequency
-		WarmupSamples:         10,                      // Warmup samples for metrics accuracy
-		MetricsChannelBuffer:  100,                     // Metrics data channel buffer size
-		LatencyHistorySize:    100,                     // Number of latency measurements to keep
+		// Monitoring and Metrics - Balanced for stability
+		MetricsUpdateInterval: 1000 * time.Millisecond, // Stable metrics collection frequency
+		WarmupSamples:         10,                      // Adequate warmup samples for accuracy
+		MetricsChannelBuffer:  100,                     // Adequate metrics data channel buffer
+		LatencyHistorySize:    100,                     // Adequate latency measurements to keep
 
 		// Process Monitoring Constants
 		MaxCPUPercent:          100.0, // Maximum CPU percentage
@@ -470,41 +479,50 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		BackoffMultiplier:    2.0,                    // Exponential backoff multiplier
 		MaxConsecutiveErrors: 5,                      // Consecutive error threshold
 
-		// Timing Constants
-		DefaultSleepDuration:       100 * time.Millisecond, // Standard polling interval
-		ShortSleepDuration:         10 * time.Millisecond,  // High-frequency polling
-		LongSleepDuration:          200 * time.Millisecond, // Background tasks
-		DefaultTickerInterval:      100 * time.Millisecond, // Periodic task interval
-		BufferUpdateInterval:       500 * time.Millisecond, // Buffer status updates
+		// Connection Retry Configuration
+		MaxConnectionAttempts:   15,                    // Maximum connection retry attempts
+		ConnectionRetryDelay:    50 * time.Millisecond, // Initial connection retry delay
+		MaxConnectionRetryDelay: 2 * time.Second,       // Maximum connection retry delay
+		ConnectionBackoffFactor: 1.5,                   // Connection retry backoff factor
+		ConnectionTimeoutDelay:  5 * time.Second,       // Connection timeout for each attempt
+		ReconnectionInterval:    30 * time.Second,      // Interval for automatic reconnection attempts
+		HealthCheckInterval:     10 * time.Second,      // Health check interval for connections
+
+		// Timing Constants - Optimized for quality change stability
+		DefaultSleepDuration:       100 * time.Millisecond, // Balanced polling interval
+		ShortSleepDuration:         10 * time.Millisecond,  // Balanced high-frequency polling
+		LongSleepDuration:          200 * time.Millisecond, // Balanced background task delay
+		DefaultTickerInterval:      100 * time.Millisecond, // Balanced periodic task interval
+		BufferUpdateInterval:       300 * time.Millisecond, // Faster buffer updates for quality changes
 		InputSupervisorTimeout:     5 * time.Second,        // Input monitoring timeout
 		OutputSupervisorTimeout:    5 * time.Second,        // Output monitoring timeout
-		BatchProcessingDelay:       10 * time.Millisecond,  // Batch processing delay
-		AdaptiveOptimizerStability: 10 * time.Second,       // Adaptive stability period
+		BatchProcessingDelay:       5 * time.Millisecond,   // Reduced batch processing delay
+		AdaptiveOptimizerStability: 5 * time.Second,        // Faster adaptive stability period
 
-		LatencyMonitorTarget: 50 * time.Millisecond, // Target latency for monitoring
+		LatencyMonitorTarget: 50 * time.Millisecond, // Balanced target latency for monitoring
 
-		// Adaptive Buffer Configuration
-		LowCPUThreshold:             0.20,
-		HighCPUThreshold:            0.60,
-		LowMemoryThreshold:          0.50,
-		HighMemoryThreshold:         0.75,
-		AdaptiveBufferTargetLatency: 20 * time.Millisecond,
+		// Adaptive Buffer Configuration - Optimized for low latency
+		LowCPUThreshold:             0.30,
+		HighCPUThreshold:            0.70,
+		LowMemoryThreshold:          0.60,
+		HighMemoryThreshold:         0.80,
+		AdaptiveBufferTargetLatency: 15 * time.Millisecond, // Reduced target latency
 
-		// Adaptive Buffer Size Configuration
-		AdaptiveMinBufferSize:     3,  // Minimum 3 frames for stability
-		AdaptiveMaxBufferSize:     20, // Maximum 20 frames for high load
-		AdaptiveDefaultBufferSize: 6,  // Balanced buffer size (6 frames)
+		// Adaptive Buffer Size Configuration - Optimized for quality change bursts
+		AdaptiveMinBufferSize:     16, // Higher minimum to handle bursts
+		AdaptiveMaxBufferSize:     64, // Higher maximum for quality changes
+		AdaptiveDefaultBufferSize: 32, // Higher default for stability
 
-		// Adaptive Optimizer Configuration
-		CooldownPeriod:                 30 * time.Second,
-		RollbackThreshold:              300 * time.Millisecond,
-		AdaptiveOptimizerLatencyTarget: 50 * time.Millisecond,
+		// Adaptive Optimizer Configuration - Faster response
+		CooldownPeriod:                 15 * time.Second,       // Reduced cooldown period
+		RollbackThreshold:              200 * time.Millisecond, // Lower rollback threshold
+		AdaptiveOptimizerLatencyTarget: 30 * time.Millisecond,  // Reduced latency target
 
-		// Latency Monitor Configuration
-		MaxLatencyThreshold:         200 * time.Millisecond,
-		JitterThreshold:             20 * time.Millisecond,
-		LatencyOptimizationInterval: 5 * time.Second,
-		LatencyAdaptiveThreshold:    0.8,
+		// Latency Monitor Configuration - More aggressive monitoring
+		MaxLatencyThreshold:         150 * time.Millisecond, // Lower max latency threshold
+		JitterThreshold:             15 * time.Millisecond,  // Reduced jitter threshold
+		LatencyOptimizationInterval: 3 * time.Second,        // More frequent optimization
+		LatencyAdaptiveThreshold:    0.7,                    // More aggressive adaptive threshold
 
 		// Microphone Contention Configuration
 		MicContentionTimeout: 200 * time.Millisecond,
@@ -532,12 +550,12 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		LatencyScalingFactor:    2.0, // Latency ratio scaling factor
 		OptimizerAggressiveness: 0.7, // Optimizer aggressiveness factor
 
-		// CGO Audio Processing Constants
-		CGOUsleepMicroseconds:   1000,         // 1000 microseconds (1ms) for CGO usleep calls
+		// CGO Audio Processing Constants - Balanced for stability
+		CGOUsleepMicroseconds:   1000,         // 1000 microseconds (1ms) for stable CGO usleep calls
 		CGOPCMBufferSize:        1920,         // 1920 samples for PCM buffer (max 2ch*960)
 		CGONanosecondsPerSecond: 1000000000.0, // 1000000000.0 for nanosecond conversions
 
-		// Frontend Constants
+		// Frontend Constants - Balanced for stability
 		FrontendOperationDebounceMS: 1000,  // 1000ms debounce for frontend operations
 		FrontendSyncDebounceMS:      1000,  // 1000ms debounce for sync operations
 		FrontendSampleRate:          48000, // 48000Hz sample rate for frontend audio
@@ -560,20 +578,20 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		ProcessMonitorFallbackClockHz: 1000.0, // 1000.0 Hz fallback clock
 		ProcessMonitorTraditionalHz:   100.0,  // 100.0 Hz traditional clock
 
-		// Batch Processing Constants
-		BatchProcessorFramesPerBatch:         4,                    // 4 frames per batch
-		BatchProcessorTimeout:                5 * time.Millisecond, // 5ms timeout
-		BatchProcessorMaxQueueSize:           16,                   // 16 max queue size for balanced memory/performance
-		BatchProcessorAdaptiveThreshold:      0.8,                  // 0.8 threshold for adaptive batching (80% queue full)
-		BatchProcessorThreadPinningThreshold: 8,                    // 8 frames minimum for thread pinning optimization
+		// Batch Processing Constants - Optimized for quality change bursts
+		BatchProcessorFramesPerBatch:         16,                    // Larger batches for quality changes
+		BatchProcessorTimeout:                20 * time.Millisecond, // Longer timeout for bursts
+		BatchProcessorMaxQueueSize:           64,                    // Larger queue for quality changes
+		BatchProcessorAdaptiveThreshold:      0.6,                   // Lower threshold for faster adaptation
+		BatchProcessorThreadPinningThreshold: 8,                     // Lower threshold for better performance
 
-		// Output Streaming Constants
-		OutputStreamingFrameIntervalMS: 20, // 20ms frame interval (50 FPS)
+		// Output Streaming Constants - Balanced for stability
+		OutputStreamingFrameIntervalMS: 20, // 20ms frame interval (50 FPS) for stability
 
 		// IPC Constants
 		IPCInitialBufferFrames: 500, // 500 frames for initial buffer
 
-		// Event Constants
+		// Event Constants - Balanced for stability
 		EventTimeoutSeconds:      2,                          // 2 seconds for event timeout
 		EventTimeFormatString:    "2006-01-02T15:04:05.000Z", // "2006-01-02T15:04:05.000Z" time format
 		EventSubscriptionDelayMS: 100,                        // 100ms subscription delay
@@ -585,7 +603,7 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		AudioReaderQueueSize:     32,               // 32 tasks queue size for reader pool
 		WorkerMaxIdleTime:        60 * time.Second, // 60s maximum idle time before worker termination
 
-		// Input Processing Constants
+		// Input Processing Constants - Balanced for stability
 		InputProcessingTimeoutMS: 10, // 10ms processing timeout threshold
 
 		// Adaptive Buffer Constants
@@ -670,7 +688,7 @@ func DefaultAudioConfig() *AudioConfigConstants {
 }
 
 // Global configuration instance
-var audioConfigInstance = DefaultAudioConfig()
+var Config = DefaultAudioConfig()
 
 // UpdateConfig allows runtime configuration updates
 func UpdateConfig(newConfig *AudioConfigConstants) {
@@ -682,12 +700,12 @@ func UpdateConfig(newConfig *AudioConfigConstants) {
 		return
 	}
 
-	audioConfigInstance = newConfig
+	Config = newConfig
 	logger := logging.GetDefaultLogger().With().Str("component", "AudioConfig").Logger()
 	logger.Info().Msg("Audio configuration updated successfully")
 }
 
 // GetConfig returns the current configuration
 func GetConfig() *AudioConfigConstants {
-	return audioConfigInstance
+	return Config
 }

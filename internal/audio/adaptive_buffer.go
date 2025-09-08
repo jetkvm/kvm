@@ -57,25 +57,25 @@ type AdaptiveBufferConfig struct {
 func DefaultAdaptiveBufferConfig() AdaptiveBufferConfig {
 	return AdaptiveBufferConfig{
 		// Conservative buffer sizes for 256MB RAM constraint
-		MinBufferSize:     GetConfig().AdaptiveMinBufferSize,
-		MaxBufferSize:     GetConfig().AdaptiveMaxBufferSize,
-		DefaultBufferSize: GetConfig().AdaptiveDefaultBufferSize,
+		MinBufferSize:     Config.AdaptiveMinBufferSize,
+		MaxBufferSize:     Config.AdaptiveMaxBufferSize,
+		DefaultBufferSize: Config.AdaptiveDefaultBufferSize,
 
 		// CPU thresholds optimized for single-core ARM Cortex A7 under load
-		LowCPUThreshold:  GetConfig().LowCPUThreshold * 100,  // Below 20% CPU
-		HighCPUThreshold: GetConfig().HighCPUThreshold * 100, // Above 60% CPU (lowered to be more responsive)
+		LowCPUThreshold:  Config.LowCPUThreshold * 100,  // Below 20% CPU
+		HighCPUThreshold: Config.HighCPUThreshold * 100, // Above 60% CPU (lowered to be more responsive)
 
 		// Memory thresholds for 256MB total RAM
-		LowMemoryThreshold:  GetConfig().LowMemoryThreshold * 100,  // Below 35% memory usage
-		HighMemoryThreshold: GetConfig().HighMemoryThreshold * 100, // Above 75% memory usage (lowered for earlier response)
+		LowMemoryThreshold:  Config.LowMemoryThreshold * 100,  // Below 35% memory usage
+		HighMemoryThreshold: Config.HighMemoryThreshold * 100, // Above 75% memory usage (lowered for earlier response)
 
 		// Latency targets
-		TargetLatency: GetConfig().AdaptiveBufferTargetLatency, // Target 20ms latency
-		MaxLatency:    GetConfig().LatencyMonitorTarget,        // Max acceptable latency
+		TargetLatency: Config.AdaptiveBufferTargetLatency, // Target 20ms latency
+		MaxLatency:    Config.LatencyMonitorTarget,        // Max acceptable latency
 
 		// Adaptation settings
-		AdaptationInterval: GetConfig().BufferUpdateInterval, // Check every 500ms
-		SmoothingFactor:    GetConfig().SmoothingFactor,      // Moderate responsiveness
+		AdaptationInterval: Config.BufferUpdateInterval, // Check every 500ms
+		SmoothingFactor:    Config.SmoothingFactor,      // Moderate responsiveness
 	}
 }
 
@@ -273,7 +273,7 @@ func (abm *AdaptiveBufferManager) adaptBufferSizes() {
 	latencyFactor := abm.calculateLatencyFactor(currentLatency)
 
 	// Combine factors with weights (CPU has highest priority for KVM coexistence)
-	combinedFactor := GetConfig().CPUMemoryWeight*cpuFactor + GetConfig().MemoryWeight*memoryFactor + GetConfig().LatencyWeight*latencyFactor
+	combinedFactor := Config.CPUMemoryWeight*cpuFactor + Config.MemoryWeight*memoryFactor + Config.LatencyWeight*latencyFactor
 
 	// Apply adaptation with smoothing
 	currentInput := float64(atomic.LoadInt64(&abm.currentInputBufferSize))
@@ -437,8 +437,8 @@ func (abm *AdaptiveBufferManager) GetStats() map[string]interface{} {
 		"input_buffer_size":     abm.GetInputBufferSize(),
 		"output_buffer_size":    abm.GetOutputBufferSize(),
 		"average_latency_ms":    float64(atomic.LoadInt64(&abm.averageLatency)) / 1e6,
-		"system_cpu_percent":    float64(atomic.LoadInt64(&abm.systemCPUPercent)) / GetConfig().PercentageMultiplier,
-		"system_memory_percent": float64(atomic.LoadInt64(&abm.systemMemoryPercent)) / GetConfig().PercentageMultiplier,
+		"system_cpu_percent":    float64(atomic.LoadInt64(&abm.systemCPUPercent)) / Config.PercentageMultiplier,
+		"system_memory_percent": float64(atomic.LoadInt64(&abm.systemMemoryPercent)) / Config.PercentageMultiplier,
 		"adaptation_count":      atomic.LoadInt64(&abm.adaptationCount),
 		"last_adaptation":       lastAdaptation,
 	}

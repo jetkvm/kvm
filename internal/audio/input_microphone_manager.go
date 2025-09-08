@@ -108,7 +108,7 @@ func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 	processingTime := time.Since(startTime)
 
 	// Log high latency warnings
-	if processingTime > time.Duration(GetConfig().InputProcessingTimeoutMS)*time.Millisecond {
+	if processingTime > time.Duration(Config.InputProcessingTimeoutMS)*time.Millisecond {
 		latencyMs := float64(processingTime.Milliseconds())
 		aim.logger.Warn().
 			Float64("latency_ms", latencyMs).
@@ -149,7 +149,7 @@ func (aim *AudioInputManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFrame) 
 	processingTime := time.Since(startTime)
 
 	// Log high latency warnings
-	if processingTime > time.Duration(GetConfig().InputProcessingTimeoutMS)*time.Millisecond {
+	if processingTime > time.Duration(Config.InputProcessingTimeoutMS)*time.Millisecond {
 		latencyMs := float64(processingTime.Milliseconds())
 		aim.logger.Warn().
 			Float64("latency_ms", latencyMs).

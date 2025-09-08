@@ -24,7 +24,7 @@ const (
 // Methods are now inherited from UnifiedIPCMessage
 
 // Global shared message pool for output IPC client header reading
-var globalOutputClientMessagePool = NewGenericMessagePool(GetConfig().OutputMessagePoolSize)
+var globalOutputClientMessagePool = NewGenericMessagePool(Config.OutputMessagePoolSize)
 
 // AudioOutputServer is now an alias for UnifiedAudioServer
 type AudioOutputServer = UnifiedAudioServer
@@ -95,7 +95,7 @@ func (c *AudioOutputClient) ReceiveFrame() ([]byte, error) {
 	}
 
 	size := binary.LittleEndian.Uint32(optMsg.header[5:9])
-	maxFrameSize := GetConfig().OutputMaxFrameSize
+	maxFrameSize := Config.OutputMaxFrameSize
 	if int(size) > maxFrameSize {
 		return nil, fmt.Errorf("received frame size validation failed: got %d bytes, maximum allowed %d bytes", size, maxFrameSize)
 	}

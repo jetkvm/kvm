@@ -255,7 +255,7 @@ func GetAudioProcessorPool() *GoroutinePool {
 	}
 
 	globalAudioProcessorInitOnce.Do(func() {
-		config := GetConfig()
+		config := Config
 		newPool := NewGoroutinePool(
 			"audio-processor",
 			config.MaxAudioProcessorWorkers,
@@ -277,7 +277,7 @@ func GetAudioReaderPool() *GoroutinePool {
 	}
 
 	globalAudioReaderInitOnce.Do(func() {
-		config := GetConfig()
+		config := Config
 		newPool := NewGoroutinePool(
 			"audio-reader",
 			config.MaxAudioReaderWorkers,
