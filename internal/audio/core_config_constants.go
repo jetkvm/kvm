@@ -433,14 +433,14 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Buffer Management
 		PreallocSize:         1024 * 1024, // 1MB buffer preallocation
 		MaxPoolSize:          100,         // Maximum object pool size
-		MessagePoolSize:      512,         // Increased message pool for quality change bursts
+		MessagePoolSize:      1024,        // Significantly increased message pool for quality change bursts
 		OptimalSocketBuffer:  262144,      // 256KB optimal socket buffer
 		MaxSocketBuffer:      1048576,     // 1MB maximum socket buffer
 		MinSocketBuffer:      8192,        // 8KB minimum socket buffer
-		ChannelBufferSize:    1000,        // Increased channel buffer for quality change bursts
+		ChannelBufferSize:    2048,        // Significantly increased channel buffer for quality change bursts
 		AudioFramePoolSize:   1500,        // Audio frame object pool size
 		PageSize:             4096,        // Memory page size for alignment
-		InitialBufferFrames:  500,         // Initial buffer size during startup
+		InitialBufferFrames:  1000,        // Increased initial buffer size during startup
 		BytesToMBDivisor:     1024 * 1024, // Byte to megabyte conversion
 		MinReadEncodeBuffer:  1276,        // Minimum CGO read/encode buffer
 		MaxDecodeWriteBuffer: 4096,        // Maximum CGO decode/write buffer
@@ -448,7 +448,7 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// IPC Configuration - Balanced for stability
 		MagicNumber:  0xDEADBEEF,             // IPC message validation header
 		MaxFrameSize: 4096,                   // Maximum audio frame size (4KB)
-		WriteTimeout: 500 * time.Millisecond, // Increased timeout to handle quality change bursts
+		WriteTimeout: 1000 * time.Millisecond, // Further increased timeout to handle quality change bursts
 		HeaderSize:   8,                      // IPC message header size
 
 		// Monitoring and Metrics - Balanced for stability
@@ -493,7 +493,7 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		ShortSleepDuration:         10 * time.Millisecond,  // Balanced high-frequency polling
 		LongSleepDuration:          200 * time.Millisecond, // Balanced background task delay
 		DefaultTickerInterval:      100 * time.Millisecond, // Balanced periodic task interval
-		BufferUpdateInterval:       300 * time.Millisecond, // Faster buffer updates for quality changes
+		BufferUpdateInterval:       250 * time.Millisecond, // Faster buffer size update frequency
 		InputSupervisorTimeout:     5 * time.Second,        // Input monitoring timeout
 		OutputSupervisorTimeout:    5 * time.Second,        // Output monitoring timeout
 		BatchProcessingDelay:       5 * time.Millisecond,   // Reduced batch processing delay
@@ -506,12 +506,12 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		HighCPUThreshold:            0.70,
 		LowMemoryThreshold:          0.60,
 		HighMemoryThreshold:         0.80,
-		AdaptiveBufferTargetLatency: 15 * time.Millisecond, // Reduced target latency
+		AdaptiveBufferTargetLatency: 10 * time.Millisecond, // Aggressive target latency for responsiveness
 
 		// Adaptive Buffer Size Configuration - Optimized for quality change bursts
-		AdaptiveMinBufferSize:     16, // Higher minimum to handle bursts
-		AdaptiveMaxBufferSize:     64, // Higher maximum for quality changes
-		AdaptiveDefaultBufferSize: 32, // Higher default for stability
+		AdaptiveMinBufferSize:     128, // Significantly increased minimum to handle bursts
+		AdaptiveMaxBufferSize:     512, // Much higher maximum for quality changes
+		AdaptiveDefaultBufferSize: 256, // Higher default for stability
 
 		// Adaptive Optimizer Configuration - Faster response
 		CooldownPeriod:                 15 * time.Second,       // Reduced cooldown period
