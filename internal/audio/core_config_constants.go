@@ -530,7 +530,7 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Graceful Degradation Configuration
 		CongestionMildReductionFactor:     0.75,            // Buffer reduction factor for mild congestion (0.75)
 		CongestionModerateReductionFactor: 0.5,             // Buffer reduction factor for moderate congestion (0.5)
-		CongestionThresholdMultiplier:     1.5,             // Multiplier for congestion threshold calculations (increased to reduce false emergency mode triggers)
+		CongestionThresholdMultiplier:     10.0,            // Multiplier for congestion threshold calculations (increased to reduce false emergency mode triggers)
 		CongestionRecoveryTimeout:         5 * time.Second, // Timeout for congestion recovery (5 seconds)
 
 		// Buffer Pool Cache Configuration
