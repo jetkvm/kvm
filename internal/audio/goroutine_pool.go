@@ -65,6 +65,42 @@ func (p *GoroutinePool) Submit(task Task) bool {
 	}
 }
 
+// SubmitWithBackpressure adds a task to the pool with backpressure handling
+// Returns true if task was accepted, false if dropped due to backpressure
+func (p *GoroutinePool) SubmitWithBackpressure(task Task) bool {
+	select {
+	case <-p.shutdown:
+		return false // Pool is shutting down
+	case p.taskQueue <- task:
+		// Task accepted, ensure we have a worker to process it
+		p.ensureWorkerAvailable()
+		return true
+	default:
+		// Queue is full - apply backpressure
+		// Check if we're in a high-load situation
+		queueLen := len(p.taskQueue)
+		queueCap := cap(p.taskQueue)
+		workerCount := atomic.LoadInt64(&p.workerCount)
+
+		// If queue is >90% full and we're at max workers, drop the task
+		if queueLen > int(float64(queueCap)*0.9) && workerCount >= int64(p.maxWorkers) {
+			p.logger.Warn().Int("queue_len", queueLen).Int("queue_cap", queueCap).Msg("Dropping task due to backpressure")
+			return false
+		}
+
+		// Try one more time with a short timeout
+		select {
+		case p.taskQueue <- task:
+			p.ensureWorkerAvailable()
+			return true
+		case <-time.After(1 * time.Millisecond):
+			// Still can't submit after timeout - drop task
+			p.logger.Debug().Msg("Task dropped after backpressure timeout")
+			return false
+		}
+	}
+}
+
 // ensureWorkerAvailable makes sure at least one worker is available to process tasks
 func (p *GoroutinePool) ensureWorkerAvailable() {
 	// Check if we already have enough workers
@@ -263,6 +299,16 @@ func SubmitAudioProcessorTask(task Task) bool {
 // SubmitAudioReaderTask submits a task to the audio reader pool
 func SubmitAudioReaderTask(task Task) bool {
 	return GetAudioReaderPool().Submit(task)
+}
+
+// SubmitAudioProcessorTaskWithBackpressure submits a task with backpressure handling
+func SubmitAudioProcessorTaskWithBackpressure(task Task) bool {
+	return GetAudioProcessorPool().SubmitWithBackpressure(task)
+}
+
+// SubmitAudioReaderTaskWithBackpressure submits a task with backpressure handling
+func SubmitAudioReaderTaskWithBackpressure(task Task) bool {
+	return GetAudioReaderPool().SubmitWithBackpressure(task)
 }
 
 // ShutdownAudioPools shuts down all audio goroutine pools

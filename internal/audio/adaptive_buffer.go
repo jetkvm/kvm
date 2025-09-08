@@ -152,6 +152,29 @@ func (abm *AdaptiveBufferManager) GetOutputBufferSize() int {
 
 // UpdateLatency updates the current latency measurement
 func (abm *AdaptiveBufferManager) UpdateLatency(latency time.Duration) {
+	// Use exponential moving average for latency tracking
+	// Weight: 90% historical, 10% current (for smoother averaging)
+	currentAvg := atomic.LoadInt64(&abm.averageLatency)
+	newLatencyNs := latency.Nanoseconds()
+
+	if currentAvg == 0 {
+		// First measurement
+		atomic.StoreInt64(&abm.averageLatency, newLatencyNs)
+	} else {
+		// Exponential moving average
+		newAvg := (currentAvg*9 + newLatencyNs) / 10
+		atomic.StoreInt64(&abm.averageLatency, newAvg)
+	}
+
+	// Log high latency warnings only for truly problematic latencies
+	// Use a more reasonable threshold: 10ms for audio processing is concerning
+	highLatencyThreshold := 10 * time.Millisecond
+	if latency > highLatencyThreshold {
+		abm.logger.Debug().
+			Dur("latency_ms", latency/time.Millisecond).
+			Dur("threshold_ms", highLatencyThreshold/time.Millisecond).
+			Msg("High audio processing latency detected")
+	}
 }
 
 // adaptationLoop is the main loop that adjusts buffer sizes
