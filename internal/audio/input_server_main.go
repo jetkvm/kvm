@@ -19,6 +19,28 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 )
 
+// Global audio input server instance
+var globalAudioInputServer *AudioInputServer
+
+// GetGlobalAudioInputServer returns the global audio input server instance
+func GetGlobalAudioInputServer() *AudioInputServer {
+	return globalAudioInputServer
+}
+
+// ResetGlobalAudioInputServerStats resets the global audio input server stats
+func ResetGlobalAudioInputServerStats() {
+	if globalAudioInputServer != nil {
+		globalAudioInputServer.ResetServerStats()
+	}
+}
+
+// RecoverGlobalAudioInputServer attempts to recover from dropped frames
+func RecoverGlobalAudioInputServer() {
+	if globalAudioInputServer != nil {
+		globalAudioInputServer.RecoverFromDroppedFrames()
+	}
+}
+
 // getEnvInt reads an integer from environment variable with a default value
 
 // RunAudioInputServer runs the audio input server subprocess
@@ -55,6 +77,9 @@ func RunAudioInputServer() error {
 		return err
 	}
 	defer server.Close()
+
+	// Store globally for access by other functions
+	globalAudioInputServer = server
 
 	err = server.Start()
 	if err != nil {

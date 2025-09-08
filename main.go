@@ -77,19 +77,31 @@ func startAudioSubprocess() error {
 		func(pid int) {
 			logger.Info().Int("pid", pid).Msg("audio server process started")
 
-			// Start audio relay system for main process
-			// If there's an active WebRTC session, use its audio track
-			var audioTrack *webrtc.TrackLocalStaticSample
-			if currentSession != nil && currentSession.AudioTrack != nil {
-				audioTrack = currentSession.AudioTrack
-				logger.Info().Msg("restarting audio relay with existing WebRTC audio track")
-			} else {
-				logger.Info().Msg("starting audio relay without WebRTC track (will be updated when session is created)")
-			}
+			// Wait for audio output server to be fully ready before starting relay
+			// This prevents "no client connected" errors during quality changes
+			go func() {
+				// Give the audio output server time to initialize and start listening
+				time.Sleep(500 * time.Millisecond)
 
-			if err := audio.StartAudioRelay(audioTrack); err != nil {
-				logger.Error().Err(err).Msg("failed to start audio relay")
-			}
+				// Start audio relay system for main process
+				// If there's an active WebRTC session, use its audio track
+				var audioTrack *webrtc.TrackLocalStaticSample
+				if currentSession != nil && currentSession.AudioTrack != nil {
+					audioTrack = currentSession.AudioTrack
+					logger.Info().Msg("restarting audio relay with existing WebRTC audio track")
+				} else {
+					logger.Info().Msg("starting audio relay without WebRTC track (will be updated when session is created)")
+				}
+
+				if err := audio.StartAudioRelay(audioTrack); err != nil {
+					logger.Error().Err(err).Msg("failed to start audio relay")
+					// Retry once after additional delay if initial attempt fails
+					time.Sleep(1 * time.Second)
+					if err := audio.StartAudioRelay(audioTrack); err != nil {
+						logger.Error().Err(err).Msg("failed to start audio relay after retry")
+					}
+				}
+			}()
 		},
 		// onProcessExit
 		func(pid int, exitCode int, crashed bool) {

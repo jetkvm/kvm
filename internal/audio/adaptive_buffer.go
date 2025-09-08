@@ -177,6 +177,19 @@ func (abm *AdaptiveBufferManager) UpdateLatency(latency time.Duration) {
 	}
 }
 
+// BoostBuffersForQualityChange immediately increases buffer sizes to handle quality change bursts
+// This bypasses the normal adaptive algorithm for emergency situations
+func (abm *AdaptiveBufferManager) BoostBuffersForQualityChange() {
+	// Immediately set buffers to maximum size to handle quality change frame bursts
+	maxSize := int64(abm.config.MaxBufferSize)
+	atomic.StoreInt64(&abm.currentInputBufferSize, maxSize)
+	atomic.StoreInt64(&abm.currentOutputBufferSize, maxSize)
+
+	abm.logger.Info().
+		Int("buffer_size", int(maxSize)).
+		Msg("Boosted buffers to maximum size for quality change")
+}
+
 // adaptationLoop is the main loop that adjusts buffer sizes
 func (abm *AdaptiveBufferManager) adaptationLoop() {
 	defer abm.wg.Done()
