@@ -14,12 +14,15 @@ import (
 /*
 #cgo CFLAGS: -I$HOME/.jetkvm/audio-libs/alsa-lib-$ALSA_VERSION/include -I$HOME/.jetkvm/audio-libs/opus-$OPUS_VERSION/include -I$HOME/.jetkvm/audio-libs/opus-$OPUS_VERSION/celt
 #cgo LDFLAGS: -L$HOME/.jetkvm/audio-libs/alsa-lib-$ALSA_VERSION/src/.libs -lasound -L$HOME/.jetkvm/audio-libs/opus-$OPUS_VERSION/.libs -lopus -lm -ldl -static
+
 #include <alsa/asoundlib.h>
 #include <opus.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 #include <unistd.h>
+#include <errno.h>
+#include <sys/mman.h>
 
 // C state for ALSA/Opus with safety flags
 static snd_pcm_t *pcm_handle = NULL;
@@ -45,6 +48,14 @@ static int max_backoff_us_global = 500000; // Will be set from GetConfig().CGOMa
 // Hardware optimization flags for constrained environments
 static int use_mmap_access = 0;         // Disable MMAP for compatibility (was 1)
 static int optimized_buffer_size = 0;   // Disable optimized buffer sizing for stability (was 1)
+
+// C function declarations (implementations are below)
+int jetkvm_audio_init();
+void jetkvm_audio_close();
+int jetkvm_audio_read_encode(void *opus_buf);
+int jetkvm_audio_decode_write(void *opus_buf, int opus_size);
+int jetkvm_audio_playback_init();
+void jetkvm_audio_playback_close();
 
 // Function to update constants from Go configuration
 void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constraint,
@@ -1099,6 +1110,7 @@ func DecodeWriteWithPooledBuffer(data []byte) (int, error) {
 }
 
 // BatchReadEncode reads and encodes multiple audio frames in a single batch
+// with optimized zero-copy frame management and batch reference counting
 func BatchReadEncode(batchSize int) ([][]byte, error) {
 	cache := GetCachedConfig()
 	updateCacheIfNeeded(cache)
@@ -1111,17 +1123,25 @@ func BatchReadEncode(batchSize int) ([][]byte, error) {
 	batchBuffer := GetBufferFromPool(totalSize)
 	defer ReturnBufferToPool(batchBuffer)
 
-	// Pre-allocate frame result buffers from pool to avoid allocations in loop
-	frameBuffers := make([][]byte, 0, batchSize)
+	// Pre-allocate zero-copy frames for batch processing
+	zeroCopyFrames := make([]*ZeroCopyAudioFrame, 0, batchSize)
 	for i := 0; i < batchSize; i++ {
-		frameBuffers = append(frameBuffers, GetBufferFromPool(frameSize))
+		frame := GetZeroCopyFrame()
+		zeroCopyFrames = append(zeroCopyFrames, frame)
 	}
+	// Use batch reference counting for efficient cleanup
 	defer func() {
-		// Return all frame buffers to pool
-		for _, buf := range frameBuffers {
-			ReturnBufferToPool(buf)
+		if _, err := BatchReleaseFrames(zeroCopyFrames); err != nil {
+			// Log release error but don't fail the operation
+			_ = err
 		}
 	}()
+
+	// Batch AddRef all frames at once to reduce atomic operation overhead
+	err := BatchAddRefFrames(zeroCopyFrames)
+	if err != nil {
+		return nil, err
+	}
 
 	// Track batch processing statistics - only if enabled
 	var startTime time.Time
@@ -1132,7 +1152,7 @@ func BatchReadEncode(batchSize int) ([][]byte, error) {
 	}
 	batchProcessingCount.Add(1)
 
-	// Process frames in batch
+	// Process frames in batch using zero-copy frames
 	frames := make([][]byte, 0, batchSize)
 	for i := 0; i < batchSize; i++ {
 		// Calculate offset for this frame in the batch buffer
@@ -1153,10 +1173,10 @@ func BatchReadEncode(batchSize int) ([][]byte, error) {
 			return nil, err
 		}
 
-		// Reuse pre-allocated buffer instead of make([]byte, n)
-		frameCopy := frameBuffers[i][:n] // Slice to actual size
-		copy(frameCopy, frameBuf[:n])
-		frames = append(frames, frameCopy)
+		// Use zero-copy frame for efficient memory management
+		frame := zeroCopyFrames[i]
+		frame.SetDataDirect(frameBuf[:n]) // Direct assignment without copy
+		frames = append(frames, frame.Data())
 	}
 
 	// Update statistics
@@ -1170,10 +1190,37 @@ func BatchReadEncode(batchSize int) ([][]byte, error) {
 
 // BatchDecodeWrite decodes and writes multiple audio frames in a single batch
 // This reduces CGO call overhead by processing multiple frames at once
+// with optimized zero-copy frame management and batch reference counting
 func BatchDecodeWrite(frames [][]byte) error {
 	// Validate input
 	if len(frames) == 0 {
 		return nil
+	}
+
+	// Convert to zero-copy frames for optimized processing
+	zeroCopyFrames := make([]*ZeroCopyAudioFrame, 0, len(frames))
+	for _, frameData := range frames {
+		if len(frameData) > 0 {
+			frame := GetZeroCopyFrame()
+			frame.SetDataDirect(frameData) // Direct assignment without copy
+			zeroCopyFrames = append(zeroCopyFrames, frame)
+		}
+	}
+
+	// Use batch reference counting for efficient management
+	if len(zeroCopyFrames) > 0 {
+		// Batch AddRef all frames at once
+		err := BatchAddRefFrames(zeroCopyFrames)
+		if err != nil {
+			return err
+		}
+		// Ensure cleanup with batch release
+		defer func() {
+			if _, err := BatchReleaseFrames(zeroCopyFrames); err != nil {
+				// Log release error but don't fail the operation
+				_ = err
+			}
+		}()
 	}
 
 	// Get cached config
@@ -1204,16 +1251,17 @@ func BatchDecodeWrite(frames [][]byte) error {
 	pcmBuffer := GetBufferFromPool(cache.GetMaxPCMBufferSize())
 	defer ReturnBufferToPool(pcmBuffer)
 
-	// Process each frame
+	// Process each zero-copy frame with optimized batch processing
 	frameCount := 0
-	for _, frame := range frames {
-		// Skip empty frames
-		if len(frame) == 0 {
+	for _, zcFrame := range zeroCopyFrames {
+		// Get frame data from zero-copy frame
+		frameData := zcFrame.Data()[:zcFrame.Length()]
+		if len(frameData) == 0 {
 			continue
 		}
 
 		// Process this frame using optimized implementation
-		_, err := CGOAudioDecodeWrite(frame, pcmBuffer)
+		_, err := CGOAudioDecodeWrite(frameData, pcmBuffer)
 		if err != nil {
 			// Update statistics before returning error
 			batchFrameCount.Add(int64(frameCount))
