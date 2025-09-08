@@ -22,6 +22,14 @@ func initAudioControlService() {
 		audio.SetCurrentSessionCallback(func() audio.AudioTrackWriter {
 			return GetCurrentSessionAudioTrack()
 		})
+
+		// Set up callback for audio relay to replace WebRTC audio track
+		audio.SetTrackReplacementCallback(func(newTrack audio.AudioTrackWriter) error {
+			if track, ok := newTrack.(*webrtc.TrackLocalStaticSample); ok {
+				return ReplaceCurrentSessionAudioTrack(track)
+			}
+			return nil
+		})
 	}
 }
 
@@ -90,6 +98,60 @@ func ConnectRelayToCurrentSession() error {
 	}
 	logger.Warn().Msg("no current session audio track found")
 	return nil
+}
+
+// ReplaceCurrentSessionAudioTrack replaces the audio track in the current WebRTC session
+func ReplaceCurrentSessionAudioTrack(newTrack *webrtc.TrackLocalStaticSample) error {
+	if currentSession == nil {
+		return nil // No session to update
+	}
+
+	err := currentSession.ReplaceAudioTrack(newTrack)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to replace audio track in current session")
+		return err
+	}
+
+	logger.Info().Msg("successfully replaced audio track in current session")
+	return nil
+}
+
+// SetAudioQuality is a global helper to set audio output quality
+func SetAudioQuality(quality audio.AudioQuality) error {
+	initAudioControlService()
+	audioControlService.SetAudioQuality(quality)
+	return nil
+}
+
+// SetMicrophoneQuality is a global helper to set microphone quality
+func SetMicrophoneQuality(quality audio.AudioQuality) error {
+	initAudioControlService()
+	audioControlService.SetMicrophoneQuality(quality)
+	return nil
+}
+
+// GetAudioQualityPresets is a global helper to get available audio quality presets
+func GetAudioQualityPresets() map[audio.AudioQuality]audio.AudioConfig {
+	initAudioControlService()
+	return audioControlService.GetAudioQualityPresets()
+}
+
+// GetMicrophoneQualityPresets is a global helper to get available microphone quality presets
+func GetMicrophoneQualityPresets() map[audio.AudioQuality]audio.AudioConfig {
+	initAudioControlService()
+	return audioControlService.GetMicrophoneQualityPresets()
+}
+
+// GetCurrentAudioQuality is a global helper to get current audio quality configuration
+func GetCurrentAudioQuality() audio.AudioConfig {
+	initAudioControlService()
+	return audioControlService.GetCurrentAudioQuality()
+}
+
+// GetCurrentMicrophoneQuality is a global helper to get current microphone quality configuration
+func GetCurrentMicrophoneQuality() audio.AudioConfig {
+	initAudioControlService()
+	return audioControlService.GetCurrentMicrophoneQuality()
 }
 
 // handleAudioMute handles POST /audio/mute requests
@@ -202,10 +264,8 @@ func handleAudioStatus(c *gin.Context) {
 
 // handleAudioQuality handles GET requests for audio quality presets
 func handleAudioQuality(c *gin.Context) {
-	initAudioControlService()
-
-	presets := audioControlService.GetAudioQualityPresets()
-	current := audioControlService.GetCurrentAudioQuality()
+	presets := GetAudioQualityPresets()
+	current := GetCurrentAudioQuality()
 
 	c.JSON(200, gin.H{
 		"presets": presets,
@@ -224,16 +284,17 @@ func handleSetAudioQuality(c *gin.Context) {
 		return
 	}
 
-	initAudioControlService()
-
 	// Convert int to AudioQuality type
 	quality := audio.AudioQuality(req.Quality)
 
-	// Set the audio quality
-	audioControlService.SetAudioQuality(quality)
+	// Set the audio quality using global convenience function
+	if err := SetAudioQuality(quality); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
 
 	// Return the updated configuration
-	current := audioControlService.GetCurrentAudioQuality()
+	current := GetCurrentAudioQuality()
 	c.JSON(200, gin.H{
 		"success": true,
 		"config":  current,
@@ -242,9 +303,9 @@ func handleSetAudioQuality(c *gin.Context) {
 
 // handleMicrophoneQuality handles GET requests for microphone quality presets
 func handleMicrophoneQuality(c *gin.Context) {
-	initAudioControlService()
-	presets := audioControlService.GetMicrophoneQualityPresets()
-	current := audioControlService.GetCurrentMicrophoneQuality()
+	presets := GetMicrophoneQualityPresets()
+	current := GetCurrentMicrophoneQuality()
+
 	c.JSON(200, gin.H{
 		"presets": presets,
 		"current": current,
@@ -258,21 +319,22 @@ func handleSetMicrophoneQuality(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
-	initAudioControlService()
 
 	// Convert int to AudioQuality type
 	quality := audio.AudioQuality(req.Quality)
 
-	// Set the microphone quality
-	audioControlService.SetMicrophoneQuality(quality)
+	// Set the microphone quality using global convenience function
+	if err := SetMicrophoneQuality(quality); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
 
 	// Return the updated configuration
-	current := audioControlService.GetCurrentMicrophoneQuality()
-	c.JSON(http.StatusOK, gin.H{
+	current := GetCurrentMicrophoneQuality()
+	c.JSON(200, gin.H{
 		"success": true,
 		"config":  current,
 	})

@@ -209,15 +209,50 @@ func SetAudioQuality(quality AudioQuality) {
 			logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
 			logger.Info().Int("quality", int(quality)).Msg("restarting audio output subprocess with new quality settings")
 
+			// Immediately boost adaptive buffer sizes to handle quality change frame burst
+			// This prevents "Message channel full, dropping frame" warnings during transitions
+			adaptiveManager := GetAdaptiveBufferManager()
+			if adaptiveManager != nil {
+				// Immediately set buffers to maximum size for quality change
+				adaptiveManager.BoostBuffersForQualityChange()
+				logger.Debug().Msg("boosted adaptive buffers for quality change")
+			}
+
 			// Set new OPUS configuration
 			supervisor.SetOpusConfig(config.Bitrate*1000, complexity, vbr, signalType, bandwidth, dtx)
 
 			// Stop current subprocess
 			supervisor.Stop()
 
+			// Wait for supervisor to fully stop before starting again
+			// This prevents race conditions and audio breakage
+			for i := 0; i < 50; i++ { // Wait up to 5 seconds
+				if !supervisor.IsRunning() {
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			if supervisor.IsRunning() {
+				logger.Warn().Msg("supervisor did not stop within timeout, proceeding anyway")
+			}
+
 			// Start subprocess with new configuration
 			if err := supervisor.Start(); err != nil {
 				logger.Error().Err(err).Msg("failed to restart audio output subprocess")
+			} else {
+				logger.Info().Int("quality", int(quality)).Msg("audio output subprocess restarted successfully with new quality")
+
+				// Reset audio input server stats after quality change
+				// Allow adaptive buffer manager to naturally adjust buffer sizes
+				go func() {
+					time.Sleep(2 * time.Second) // Wait for quality change to settle
+					// Reset audio input server stats to clear persistent warnings
+					ResetGlobalAudioInputServerStats()
+					// Attempt recovery if microphone is still having issues
+					time.Sleep(1 * time.Second)
+					RecoverGlobalAudioInputServer()
+				}()
 			}
 		} else {
 			// Fallback to dynamic update if supervisor is not available
@@ -289,6 +324,15 @@ func SetMicrophoneQuality(quality AudioQuality) {
 			logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
 			logger.Info().Int("quality", int(quality)).Msg("updating audio input subprocess quality settings dynamically")
 
+			// Immediately boost adaptive buffer sizes to handle quality change frame burst
+			// This prevents "Message channel full, dropping frame" warnings during transitions
+			adaptiveManager := GetAdaptiveBufferManager()
+			if adaptiveManager != nil {
+				// Immediately set buffers to maximum size for quality change
+				adaptiveManager.BoostBuffersForQualityChange()
+				logger.Debug().Msg("boosted adaptive buffers for quality change")
+			}
+
 			// Set new OPUS configuration for future restarts
 			supervisor.SetOpusConfig(config.Bitrate*1000, complexity, vbr, signalType, bandwidth, dtx)
 
@@ -317,6 +361,17 @@ func SetMicrophoneQuality(quality AudioQuality) {
 					}
 				} else {
 					logger.Info().Msg("audio input quality updated dynamically with complete Opus configuration")
+
+					// Reset audio input server stats after config update
+					// Allow adaptive buffer manager to naturally adjust buffer sizes
+					go func() {
+						time.Sleep(2 * time.Second) // Wait for quality change to settle
+						// Reset audio input server stats to clear persistent warnings
+						ResetGlobalAudioInputServerStats()
+						// Attempt recovery if microphone is still having issues
+						time.Sleep(1 * time.Second)
+						RecoverGlobalAudioInputServer()
+					}()
 				}
 			} else {
 				logger.Info().Bool("supervisor_running", supervisor.IsRunning()).Msg("audio input subprocess not connected, configuration will apply on next start")

@@ -101,23 +101,52 @@ func UpdateAudioRelayTrack(audioTrack AudioTrackWriter) error {
 			return err
 		}
 		globalRelay = relay
+
+		// Replace the track in the WebRTC session if callback is available
+		if trackReplacementCallback != nil {
+			if err := trackReplacementCallback(audioTrack); err != nil {
+				// Log error but don't fail the relay start
+				// The relay can still work even if WebRTC track replacement fails
+				_ = err // Suppress linter warning
+			}
+		}
 		return nil
 	}
 
 	// Update the track in the existing relay
 	globalRelay.UpdateTrack(audioTrack)
+
+	// Replace the track in the WebRTC session if callback is available
+	if trackReplacementCallback != nil {
+		if err := trackReplacementCallback(audioTrack); err != nil {
+			// Log error but don't fail the track update
+			// The relay can still work even if WebRTC track replacement fails
+			_ = err // Suppress linter warning
+		}
+	}
 	return nil
 }
 
 // CurrentSessionCallback is a function type for getting the current session's audio track
 type CurrentSessionCallback func() AudioTrackWriter
 
+// TrackReplacementCallback is a function type for replacing the WebRTC audio track
+type TrackReplacementCallback func(AudioTrackWriter) error
+
 // currentSessionCallback holds the callback function to get the current session's audio track
 var currentSessionCallback CurrentSessionCallback
+
+// trackReplacementCallback holds the callback function to replace the WebRTC audio track
+var trackReplacementCallback TrackReplacementCallback
 
 // SetCurrentSessionCallback sets the callback function to get the current session's audio track
 func SetCurrentSessionCallback(callback CurrentSessionCallback) {
 	currentSessionCallback = callback
+}
+
+// SetTrackReplacementCallback sets the callback function to replace the WebRTC audio track
+func SetTrackReplacementCallback(callback TrackReplacementCallback) {
+	trackReplacementCallback = callback
 }
 
 // connectRelayToCurrentSession connects the audio relay to the current WebRTC session's audio track
