@@ -30,21 +30,21 @@ static snd_pcm_t *pcm_playback_handle = NULL;
 static OpusEncoder *encoder = NULL;
 static OpusDecoder *decoder = NULL;
 // Opus encoder settings - initialized from Go configuration
-static int opus_bitrate = 96000;        // Will be set from GetConfig().CGOOpusBitrate
-static int opus_complexity = 3;         // Will be set from GetConfig().CGOOpusComplexity
-static int opus_vbr = 1;                // Will be set from GetConfig().CGOOpusVBR
-static int opus_vbr_constraint = 1;     // Will be set from GetConfig().CGOOpusVBRConstraint
-static int opus_signal_type = 3;        // Will be set from GetConfig().CGOOpusSignalType
+static int opus_bitrate = 96000;        // Will be set from Config.CGOOpusBitrate
+static int opus_complexity = 3;         // Will be set from Config.CGOOpusComplexity
+static int opus_vbr = 1;                // Will be set from Config.CGOOpusVBR
+static int opus_vbr_constraint = 1;     // Will be set from Config.CGOOpusVBRConstraint
+static int opus_signal_type = 3;        // Will be set from Config.CGOOpusSignalType
 static int opus_bandwidth = 1105;       // OPUS_BANDWIDTH_WIDEBAND for compatibility (was 1101)
-static int opus_dtx = 0;                // Will be set from GetConfig().CGOOpusDTX
+static int opus_dtx = 0;                // Will be set from Config.CGOOpusDTX
 static int opus_lsb_depth = 16;         // LSB depth for improved bit allocation on constrained hardware
-static int sample_rate = 48000;         // Will be set from GetConfig().CGOSampleRate
-static int channels = 2;                // Will be set from GetConfig().CGOChannels
-static int frame_size = 960;            // Will be set from GetConfig().CGOFrameSize
-static int max_packet_size = 1500;      // Will be set from GetConfig().CGOMaxPacketSize
-static int sleep_microseconds = 1000;   // Will be set from GetConfig().CGOUsleepMicroseconds
-static int max_attempts_global = 5;     // Will be set from GetConfig().CGOMaxAttempts
-static int max_backoff_us_global = 500000; // Will be set from GetConfig().CGOMaxBackoffMicroseconds
+static int sample_rate = 48000;         // Will be set from Config.CGOSampleRate
+static int channels = 2;                // Will be set from Config.CGOChannels
+static int frame_size = 960;            // Will be set from Config.CGOFrameSize
+static int max_packet_size = 1500;      // Will be set from Config.CGOMaxPacketSize
+static int sleep_microseconds = 1000;   // Will be set from Config.CGOUsleepMicroseconds
+static int max_attempts_global = 5;     // Will be set from Config.CGOMaxAttempts
+static int max_backoff_us_global = 500000; // Will be set from Config.CGOMaxBackoffMicroseconds
 // Hardware optimization flags for constrained environments
 static int use_mmap_access = 0;         // Disable MMAP for compatibility (was 1)
 static int optimized_buffer_size = 0;   // Disable optimized buffer sizing for stability (was 1)
@@ -709,9 +709,9 @@ func cgoAudioInit() error {
 		C.int(cache.channels.Load()),
 		C.int(cache.frameSize.Load()),
 		C.int(cache.maxPacketSize.Load()),
-		C.int(GetConfig().CGOUsleepMicroseconds),
-		C.int(GetConfig().CGOMaxAttempts),
-		C.int(GetConfig().CGOMaxBackoffMicroseconds),
+		C.int(Config.CGOUsleepMicroseconds),
+		C.int(Config.CGOMaxAttempts),
+		C.int(Config.CGOMaxBackoffMicroseconds),
 	)
 
 	result := C.jetkvm_audio_init()
@@ -726,7 +726,6 @@ func cgoAudioClose() {
 }
 
 // AudioConfigCache provides a comprehensive caching system for audio configuration
-// to minimize GetConfig() calls in the hot path
 type AudioConfigCache struct {
 	// Atomic int64 fields MUST be first for ARM32 alignment (8-byte alignment required)
 	minFrameDuration         atomic.Int64 // Store as nanoseconds
@@ -815,52 +814,50 @@ func (c *AudioConfigCache) Update() {
 
 	// Double-check after acquiring lock
 	if !c.initialized.Load() || time.Since(c.lastUpdate) > c.cacheExpiry {
-		config := GetConfig() // Call GetConfig() only once
-
 		// Update atomic values for lock-free access - CGO values
-		c.minReadEncodeBuffer.Store(int32(config.MinReadEncodeBuffer))
-		c.maxDecodeWriteBuffer.Store(int32(config.MaxDecodeWriteBuffer))
-		c.maxPacketSize.Store(int32(config.CGOMaxPacketSize))
-		c.maxPCMBufferSize.Store(int32(config.MaxPCMBufferSize))
-		c.opusBitrate.Store(int32(config.CGOOpusBitrate))
-		c.opusComplexity.Store(int32(config.CGOOpusComplexity))
-		c.opusVBR.Store(int32(config.CGOOpusVBR))
-		c.opusVBRConstraint.Store(int32(config.CGOOpusVBRConstraint))
-		c.opusSignalType.Store(int32(config.CGOOpusSignalType))
-		c.opusBandwidth.Store(int32(config.CGOOpusBandwidth))
-		c.opusDTX.Store(int32(config.CGOOpusDTX))
-		c.sampleRate.Store(int32(config.CGOSampleRate))
-		c.channels.Store(int32(config.CGOChannels))
-		c.frameSize.Store(int32(config.CGOFrameSize))
+		c.minReadEncodeBuffer.Store(int32(Config.MinReadEncodeBuffer))
+		c.maxDecodeWriteBuffer.Store(int32(Config.MaxDecodeWriteBuffer))
+		c.maxPacketSize.Store(int32(Config.CGOMaxPacketSize))
+		c.maxPCMBufferSize.Store(int32(Config.MaxPCMBufferSize))
+		c.opusBitrate.Store(int32(Config.CGOOpusBitrate))
+		c.opusComplexity.Store(int32(Config.CGOOpusComplexity))
+		c.opusVBR.Store(int32(Config.CGOOpusVBR))
+		c.opusVBRConstraint.Store(int32(Config.CGOOpusVBRConstraint))
+		c.opusSignalType.Store(int32(Config.CGOOpusSignalType))
+		c.opusBandwidth.Store(int32(Config.CGOOpusBandwidth))
+		c.opusDTX.Store(int32(Config.CGOOpusDTX))
+		c.sampleRate.Store(int32(Config.CGOSampleRate))
+		c.channels.Store(int32(Config.CGOChannels))
+		c.frameSize.Store(int32(Config.CGOFrameSize))
 
 		// Update additional validation values
-		c.maxAudioFrameSize.Store(int32(config.MaxAudioFrameSize))
-		c.maxChannels.Store(int32(config.MaxChannels))
-		c.minFrameDuration.Store(int64(config.MinFrameDuration))
-		c.maxFrameDuration.Store(int64(config.MaxFrameDuration))
-		c.minOpusBitrate.Store(int32(config.MinOpusBitrate))
-		c.maxOpusBitrate.Store(int32(config.MaxOpusBitrate))
+		c.maxAudioFrameSize.Store(int32(Config.MaxAudioFrameSize))
+		c.maxChannels.Store(int32(Config.MaxChannels))
+		c.minFrameDuration.Store(int64(Config.MinFrameDuration))
+		c.maxFrameDuration.Store(int64(Config.MaxFrameDuration))
+		c.minOpusBitrate.Store(int32(Config.MinOpusBitrate))
+		c.maxOpusBitrate.Store(int32(Config.MaxOpusBitrate))
 
 		// Update batch processing related values
 		c.BatchProcessingTimeout = 100 * time.Millisecond // Fixed timeout for batch processing
-		c.BatchProcessorFramesPerBatch = config.BatchProcessorFramesPerBatch
-		c.BatchProcessorTimeout = config.BatchProcessorTimeout
-		c.BatchProcessingDelay = config.BatchProcessingDelay
-		c.MinBatchSizeForThreadPinning = config.MinBatchSizeForThreadPinning
-		c.BatchProcessorMaxQueueSize = config.BatchProcessorMaxQueueSize
-		c.BatchProcessorAdaptiveThreshold = config.BatchProcessorAdaptiveThreshold
-		c.BatchProcessorThreadPinningThreshold = config.BatchProcessorThreadPinningThreshold
+		c.BatchProcessorFramesPerBatch = Config.BatchProcessorFramesPerBatch
+		c.BatchProcessorTimeout = Config.BatchProcessorTimeout
+		c.BatchProcessingDelay = Config.BatchProcessingDelay
+		c.MinBatchSizeForThreadPinning = Config.MinBatchSizeForThreadPinning
+		c.BatchProcessorMaxQueueSize = Config.BatchProcessorMaxQueueSize
+		c.BatchProcessorAdaptiveThreshold = Config.BatchProcessorAdaptiveThreshold
+		c.BatchProcessorThreadPinningThreshold = Config.BatchProcessorThreadPinningThreshold
 
 		// Pre-allocate common errors
-		c.bufferTooSmallReadEncode = newBufferTooSmallError(0, config.MinReadEncodeBuffer)
-		c.bufferTooLargeDecodeWrite = newBufferTooLargeError(config.MaxDecodeWriteBuffer+1, config.MaxDecodeWriteBuffer)
+		c.bufferTooSmallReadEncode = newBufferTooSmallError(0, Config.MinReadEncodeBuffer)
+		c.bufferTooLargeDecodeWrite = newBufferTooLargeError(Config.MaxDecodeWriteBuffer+1, Config.MaxDecodeWriteBuffer)
 
 		c.lastUpdate = time.Now()
 		c.initialized.Store(true)
 
 		// Update the global validation cache as well
 		if cachedMaxFrameSize != 0 {
-			cachedMaxFrameSize = config.MaxAudioFrameSize
+			cachedMaxFrameSize = Config.MaxAudioFrameSize
 		}
 	}
 }
