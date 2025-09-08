@@ -878,6 +878,28 @@ func (aic *AudioInputClient) ResetStats() {
 	ResetFrameStats(&aic.totalFrames, &aic.droppedFrames)
 }
 
+// ResetServerStats resets server frame statistics
+func (ais *AudioInputServer) ResetServerStats() {
+	atomic.StoreInt64(&ais.totalFrames, 0)
+	atomic.StoreInt64(&ais.droppedFrames, 0)
+}
+
+// RecoverFromDroppedFrames attempts to recover when too many frames are dropped
+func (ais *AudioInputServer) RecoverFromDroppedFrames() {
+	total := atomic.LoadInt64(&ais.totalFrames)
+	dropped := atomic.LoadInt64(&ais.droppedFrames)
+
+	// If more than 50% of frames are dropped, attempt recovery
+	if total > 100 && dropped > total/2 {
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
+		logger.Warn().Int64("total", total).Int64("dropped", dropped).Msg("high drop rate detected, attempting recovery")
+
+		// Reset stats and update buffer size from adaptive manager
+		ais.ResetServerStats()
+		ais.UpdateBufferSize()
+	}
+}
+
 // startReaderGoroutine starts the message reader using the goroutine pool
 func (ais *AudioInputServer) startReaderGoroutine() {
 	ais.wg.Add(1)

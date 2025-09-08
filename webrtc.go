@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net"
 	"runtime"
 	"strings"
@@ -24,6 +25,7 @@ type Session struct {
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
 	AudioTrack               *webrtc.TrackLocalStaticSample
+	AudioRtpSender           *webrtc.RTPSender
 	ControlChannel           *webrtc.DataChannel
 	RPCChannel               *webrtc.DataChannel
 	HidChannel               *webrtc.DataChannel
@@ -261,6 +263,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 	audioRtpSender := audioTransceiver.Sender()
+	session.AudioRtpSender = audioRtpSender
 
 	// Handle incoming audio track (microphone from browser)
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
@@ -408,6 +411,22 @@ func (s *Session) startAudioProcessor(logger zerolog.Logger) {
 func (s *Session) stopAudioProcessor() {
 	close(s.audioStopChan)
 	s.audioWg.Wait()
+}
+
+// ReplaceAudioTrack replaces the current audio track with a new one
+func (s *Session) ReplaceAudioTrack(newTrack *webrtc.TrackLocalStaticSample) error {
+	if s.AudioRtpSender == nil {
+		return fmt.Errorf("audio RTP sender not available")
+	}
+
+	// Replace the track using the RTP sender
+	if err := s.AudioRtpSender.ReplaceTrack(newTrack); err != nil {
+		return fmt.Errorf("failed to replace audio track: %w", err)
+	}
+
+	// Update the session's audio track reference
+	s.AudioTrack = newTrack
+	return nil
 }
 
 func drainRtpSender(rtpSender *webrtc.RTPSender) {
