@@ -530,7 +530,7 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		// Graceful Degradation Configuration
 		CongestionMildReductionFactor:     0.75,            // Buffer reduction factor for mild congestion (0.75)
 		CongestionModerateReductionFactor: 0.5,             // Buffer reduction factor for moderate congestion (0.5)
-		CongestionThresholdMultiplier:     0.8,             // Multiplier for congestion threshold calculations (0.8)
+		CongestionThresholdMultiplier:     1.5,             // Multiplier for congestion threshold calculations (increased to reduce false emergency mode triggers)
 		CongestionRecoveryTimeout:         5 * time.Second, // Timeout for congestion recovery (5 seconds)
 
 		// Buffer Pool Cache Configuration
@@ -567,11 +567,11 @@ func DefaultAudioConfig() *AudioConfigConstants {
 
 		LatencyMonitorTarget: 50 * time.Millisecond, // Balanced target latency for monitoring
 
-		// Adaptive Buffer Configuration - Optimized for low latency
-		LowCPUThreshold:             0.30,
-		HighCPUThreshold:            0.70,
+		// Adaptive Buffer Configuration - Optimized for single-core RV1106G3
+		LowCPUThreshold:             0.40, // Adjusted for single-core ARM system
+		HighCPUThreshold:            0.75, // Adjusted for single-core RV1106G3 (current load ~64%)
 		LowMemoryThreshold:          0.60,
-		HighMemoryThreshold:         0.80,
+		HighMemoryThreshold:         0.85,                  // Adjusted for 200MB total memory system
 		AdaptiveBufferTargetLatency: 10 * time.Millisecond, // Aggressive target latency for responsiveness
 
 		// Adaptive Buffer Size Configuration - Optimized for quality change bursts
