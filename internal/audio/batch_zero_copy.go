@@ -73,7 +73,7 @@ func GetBatchZeroCopyProcessor() *BatchZeroCopyProcessor {
 
 // NewBatchZeroCopyProcessor creates a new batch zero-copy processor
 func NewBatchZeroCopyProcessor() *BatchZeroCopyProcessor {
-	cache := GetCachedConfig()
+	cache := Config
 	return &BatchZeroCopyProcessor{
 		maxBatchSize:      cache.BatchProcessorFramesPerBatch,
 		batchTimeout:      cache.BatchProcessorTimeout,

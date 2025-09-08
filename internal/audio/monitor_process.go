@@ -16,26 +16,26 @@ import (
 // Variables for process monitoring (using configuration)
 var (
 	// System constants
-	maxCPUPercent     = GetConfig().MaxCPUPercent
-	minCPUPercent     = GetConfig().MinCPUPercent
-	defaultClockTicks = GetConfig().DefaultClockTicks
-	defaultMemoryGB   = GetConfig().DefaultMemoryGB
+	maxCPUPercent     = Config.MaxCPUPercent
+	minCPUPercent     = Config.MinCPUPercent
+	defaultClockTicks = Config.DefaultClockTicks
+	defaultMemoryGB   = Config.DefaultMemoryGB
 
 	// Monitoring thresholds
-	maxWarmupSamples = GetConfig().MaxWarmupSamples
-	warmupCPUSamples = GetConfig().WarmupCPUSamples
+	maxWarmupSamples = Config.MaxWarmupSamples
+	warmupCPUSamples = Config.WarmupCPUSamples
 
 	// Channel buffer size
-	metricsChannelBuffer = GetConfig().MetricsChannelBuffer
+	metricsChannelBuffer = Config.MetricsChannelBuffer
 
 	// Clock tick detection ranges
-	minValidClockTicks = float64(GetConfig().MinValidClockTicks)
-	maxValidClockTicks = float64(GetConfig().MaxValidClockTicks)
+	minValidClockTicks = float64(Config.MinValidClockTicks)
+	maxValidClockTicks = float64(Config.MaxValidClockTicks)
 )
 
 // Variables for process monitoring
 var (
-	pageSize = GetConfig().PageSize
+	pageSize = Config.PageSize
 )
 
 // ProcessMetrics represents CPU and memory usage metrics for a process
@@ -233,7 +233,7 @@ func (pm *ProcessMonitor) collectMetrics(pid int, state *processState) (ProcessM
 
 	// Calculate memory percentage (RSS / total system memory)
 	if totalMem := pm.getTotalMemory(); totalMem > 0 {
-		metric.MemoryPercent = float64(metric.MemoryRSS) / float64(totalMem) * GetConfig().PercentageMultiplier
+		metric.MemoryPercent = float64(metric.MemoryRSS) / float64(totalMem) * Config.PercentageMultiplier
 	}
 
 	// Update state for next calculation
@@ -283,7 +283,7 @@ func (pm *ProcessMonitor) calculateCPUPercent(totalCPUTime int64, state *process
 		// Convert from clock ticks to seconds using actual system clock ticks
 		clockTicks := pm.getClockTicks()
 		cpuSeconds := cpuDelta / clockTicks
-		cpuPercent := (cpuSeconds / timeDelta) * GetConfig().PercentageMultiplier
+		cpuPercent := (cpuSeconds / timeDelta) * Config.PercentageMultiplier
 
 		// Apply bounds
 		if cpuPercent > maxCPUPercent {
@@ -335,7 +335,7 @@ func (pm *ProcessMonitor) getClockTicks() float64 {
 					if len(fields) >= 2 {
 						if period, err := strconv.ParseInt(fields[1], 10, 64); err == nil && period > 0 {
 							// Convert nanoseconds to Hz
-							hz := GetConfig().CGONanosecondsPerSecond / float64(period)
+							hz := Config.CGONanosecondsPerSecond / float64(period)
 							if hz >= minValidClockTicks && hz <= maxValidClockTicks {
 								pm.clockTicks = hz
 								return
@@ -363,7 +363,7 @@ func (pm *ProcessMonitor) getTotalMemory() int64 {
 	pm.memoryOnce.Do(func() {
 		file, err := os.Open("/proc/meminfo")
 		if err != nil {
-			pm.totalMemory = int64(defaultMemoryGB) * int64(GetConfig().ProcessMonitorKBToBytes) * int64(GetConfig().ProcessMonitorKBToBytes) * int64(GetConfig().ProcessMonitorKBToBytes)
+			pm.totalMemory = int64(defaultMemoryGB) * int64(Config.ProcessMonitorKBToBytes) * int64(Config.ProcessMonitorKBToBytes) * int64(Config.ProcessMonitorKBToBytes)
 			return
 		}
 		defer file.Close()
@@ -375,14 +375,14 @@ func (pm *ProcessMonitor) getTotalMemory() int64 {
 				fields := strings.Fields(line)
 				if len(fields) >= 2 {
 					if kb, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
-						pm.totalMemory = kb * int64(GetConfig().ProcessMonitorKBToBytes)
+						pm.totalMemory = kb * int64(Config.ProcessMonitorKBToBytes)
 						return
 					}
 				}
 				break
 			}
 		}
-		pm.totalMemory = int64(defaultMemoryGB) * int64(GetConfig().ProcessMonitorKBToBytes) * int64(GetConfig().ProcessMonitorKBToBytes) * int64(GetConfig().ProcessMonitorKBToBytes) // Fallback
+		pm.totalMemory = int64(defaultMemoryGB) * int64(Config.ProcessMonitorKBToBytes) * int64(Config.ProcessMonitorKBToBytes) * int64(Config.ProcessMonitorKBToBytes) // Fallback
 	})
 	return pm.totalMemory
 }

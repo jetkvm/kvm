@@ -81,7 +81,7 @@ const (
 
 // DefaultLatencyConfig returns a sensible default configuration
 func DefaultLatencyConfig() LatencyConfig {
-	config := GetConfig()
+	config := Config
 	return LatencyConfig{
 		TargetLatency:        config.LatencyMonitorTarget,
 		MaxLatency:           config.MaxLatencyThreshold,

@@ -57,9 +57,9 @@ func (aom *AudioOutputIPCManager) Start() error {
 
 	// Send initial configuration
 	config := OutputIPCConfig{
-		SampleRate: GetConfig().SampleRate,
-		Channels:   GetConfig().Channels,
-		FrameSize:  int(GetConfig().AudioQualityMediumFrameSize.Milliseconds()),
+		SampleRate: Config.SampleRate,
+		Channels:   Config.Channels,
+		FrameSize:  int(Config.AudioQualityMediumFrameSize.Milliseconds()),
 	}
 
 	if err := aom.SendConfig(config); err != nil {

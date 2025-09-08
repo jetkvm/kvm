@@ -49,7 +49,7 @@ func NewGenericMessagePool(size int) *GenericMessagePool {
 	pool.preallocated = make([]*OptimizedMessage, pool.preallocSize)
 	for i := 0; i < pool.preallocSize; i++ {
 		pool.preallocated[i] = &OptimizedMessage{
-			data: make([]byte, 0, GetConfig().MaxFrameSize),
+			data: make([]byte, 0, Config.MaxFrameSize),
 		}
 	}
 
@@ -57,7 +57,7 @@ func NewGenericMessagePool(size int) *GenericMessagePool {
 	for i := 0; i < size-pool.preallocSize; i++ {
 		select {
 		case pool.pool <- &OptimizedMessage{
-			data: make([]byte, 0, GetConfig().MaxFrameSize),
+			data: make([]byte, 0, Config.MaxFrameSize),
 		}:
 		default:
 			break
@@ -89,7 +89,7 @@ func (mp *GenericMessagePool) Get() *OptimizedMessage {
 		// Pool empty, create new message
 		atomic.AddInt64(&mp.missCount, 1)
 		return &OptimizedMessage{
-			data: make([]byte, 0, GetConfig().MaxFrameSize),
+			data: make([]byte, 0, Config.MaxFrameSize),
 		}
 	}
 }
@@ -149,7 +149,7 @@ func WriteIPCMessage(conn net.Conn, msg IPCMessage, pool *GenericMessagePool, dr
 	binary.LittleEndian.PutUint64(optMsg.header[9:17], uint64(msg.GetTimestamp()))
 
 	// Set write deadline for timeout handling (more efficient than goroutines)
-	if deadline := time.Now().Add(GetConfig().WriteTimeout); deadline.After(time.Now()) {
+	if deadline := time.Now().Add(Config.WriteTimeout); deadline.After(time.Now()) {
 		if err := conn.SetWriteDeadline(deadline); err != nil {
 			// If we can't set deadline, proceed without it
 			// This maintains compatibility with connections that don't support deadlines

@@ -84,9 +84,9 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 		buffer := make([]byte, GetMaxAudioFrameSize())
 
 		consecutiveErrors := 0
-		maxConsecutiveErrors := GetConfig().MaxConsecutiveErrors
-		errorBackoffDelay := GetConfig().RetryDelay
-		maxErrorBackoff := GetConfig().MaxRetryDelay
+		maxConsecutiveErrors := Config.MaxConsecutiveErrors
+		errorBackoffDelay := Config.RetryDelay
+		maxErrorBackoff := Config.MaxRetryDelay
 
 		for {
 			select {
@@ -123,18 +123,18 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 								Err(initErr).
 								Msg("Failed to reinitialize audio system")
 							// Exponential backoff for reinitialization failures
-							errorBackoffDelay = time.Duration(float64(errorBackoffDelay) * GetConfig().BackoffMultiplier)
+							errorBackoffDelay = time.Duration(float64(errorBackoffDelay) * Config.BackoffMultiplier)
 							if errorBackoffDelay > maxErrorBackoff {
 								errorBackoffDelay = maxErrorBackoff
 							}
 						} else {
 							getOutputStreamingLogger().Info().Msg("Audio system reinitialized successfully")
 							consecutiveErrors = 0
-							errorBackoffDelay = GetConfig().RetryDelay // Reset backoff
+							errorBackoffDelay = Config.RetryDelay // Reset backoff
 						}
 					} else {
 						// Brief delay for transient errors
-						time.Sleep(GetConfig().ShortSleepDuration)
+						time.Sleep(Config.ShortSleepDuration)
 					}
 					continue
 				}
@@ -142,7 +142,7 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 				// Success - reset error counters
 				if consecutiveErrors > 0 {
 					consecutiveErrors = 0
-					errorBackoffDelay = GetConfig().RetryDelay
+					errorBackoffDelay = Config.RetryDelay
 				}
 
 				if n > 0 {
@@ -164,7 +164,7 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 					RecordFrameReceived(n)
 				}
 				// Small delay to prevent busy waiting
-				time.Sleep(GetConfig().ShortSleepDuration)
+				time.Sleep(Config.ShortSleepDuration)
 			}
 		}
 	}()
@@ -185,6 +185,6 @@ func StopAudioOutputStreaming() {
 
 	// Wait for streaming to stop
 	for atomic.LoadInt32(&outputStreamingRunning) == 1 {
-		time.Sleep(GetConfig().ShortSleepDuration)
+		time.Sleep(Config.ShortSleepDuration)
 	}
 }

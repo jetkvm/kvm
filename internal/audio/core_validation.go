@@ -55,12 +55,11 @@ func ValidateZeroCopyFrame(frame *ZeroCopyAudioFrame) error {
 	maxFrameSize := cachedMaxFrameSize
 	if maxFrameSize == 0 {
 		// Fallback: get from cache
-		cache := GetCachedConfig()
-		maxFrameSize = int(cache.maxAudioFrameSize.Load())
+		cache := Config
+		maxFrameSize = cache.MaxAudioFrameSize
 		if maxFrameSize == 0 {
-			// Last resort: update cache
-			cache.Update()
-			maxFrameSize = int(cache.maxAudioFrameSize.Load())
+			// Last resort: use default
+			maxFrameSize = cache.MaxAudioFrameSize
 		}
 		// Cache globally for next calls
 		cachedMaxFrameSize = maxFrameSize
@@ -80,8 +79,8 @@ func ValidateBufferSize(size int) error {
 	}
 
 	// Fast path: Check against cached max frame size
-	cache := GetCachedConfig()
-	maxFrameSize := int(cache.maxAudioFrameSize.Load())
+	cache := Config
+	maxFrameSize := cache.MaxAudioFrameSize
 
 	// Most common case: validating a buffer that's sized for audio frames
 	if maxFrameSize > 0 && size <= maxFrameSize {
@@ -89,7 +88,7 @@ func ValidateBufferSize(size int) error {
 	}
 
 	// Slower path: full validation against SocketMaxBuffer
-	config := GetConfig()
+	config := Config
 	// Use SocketMaxBuffer as the upper limit for general buffer validation
 	// This allows for socket buffers while still preventing extremely large allocations
 	if size > config.SocketMaxBuffer {
@@ -107,8 +106,8 @@ func ValidateLatency(latency time.Duration) error {
 	}
 
 	// Fast path: check against cached max latency
-	cache := GetCachedConfig()
-	maxLatency := time.Duration(cache.maxLatency.Load())
+	cache := Config
+	maxLatency := time.Duration(cache.MaxLatency)
 
 	// If we have a valid cached value, use it
 	if maxLatency > 0 {
@@ -125,7 +124,7 @@ func ValidateLatency(latency time.Duration) error {
 	}
 
 	// Slower path: full validation with GetConfig()
-	config := GetConfig()
+	config := Config
 	minLatency := time.Millisecond // Minimum reasonable latency
 	if latency > 0 && latency < minLatency {
 		return fmt.Errorf("%w: latency %v below minimum %v",
@@ -142,9 +141,9 @@ func ValidateLatency(latency time.Duration) error {
 // Optimized to use AudioConfigCache for frequently accessed values
 func ValidateMetricsInterval(interval time.Duration) error {
 	// Fast path: check against cached values
-	cache := GetCachedConfig()
-	minInterval := time.Duration(cache.minMetricsUpdateInterval.Load())
-	maxInterval := time.Duration(cache.maxMetricsUpdateInterval.Load())
+	cache := Config
+	minInterval := time.Duration(cache.MinMetricsUpdateInterval)
+	maxInterval := time.Duration(cache.MaxMetricsUpdateInterval)
 
 	// If we have valid cached values, use them
 	if minInterval > 0 && maxInterval > 0 {
@@ -160,7 +159,7 @@ func ValidateMetricsInterval(interval time.Duration) error {
 	}
 
 	// Slower path: full validation with GetConfig()
-	config := GetConfig()
+	config := Config
 	minInterval = config.MinMetricsUpdateInterval
 	maxInterval = config.MaxMetricsUpdateInterval
 	if interval < minInterval {
@@ -184,7 +183,7 @@ func ValidateAdaptiveBufferConfig(minSize, maxSize, defaultSize int) error {
 		return ErrInvalidBufferSize
 	}
 	// Validate against global limits
-	maxBuffer := GetConfig().SocketMaxBuffer
+	maxBuffer := Config.SocketMaxBuffer
 	if maxSize > maxBuffer {
 		return ErrInvalidBufferSize
 	}
@@ -194,7 +193,7 @@ func ValidateAdaptiveBufferConfig(minSize, maxSize, defaultSize int) error {
 // ValidateInputIPCConfig validates input IPC configuration
 func ValidateInputIPCConfig(sampleRate, channels, frameSize int) error {
 	// Use config values
-	config := GetConfig()
+	config := Config
 	minSampleRate := config.MinSampleRate
 	maxSampleRate := config.MaxSampleRate
 	maxChannels := config.MaxChannels
@@ -213,7 +212,7 @@ func ValidateInputIPCConfig(sampleRate, channels, frameSize int) error {
 // ValidateOutputIPCConfig validates output IPC configuration
 func ValidateOutputIPCConfig(sampleRate, channels, frameSize int) error {
 	// Use config values
-	config := GetConfig()
+	config := Config
 	minSampleRate := config.MinSampleRate
 	maxSampleRate := config.MaxSampleRate
 	maxChannels := config.MaxChannels
@@ -263,8 +262,8 @@ func ValidateSampleRate(sampleRate int) error {
 	}
 
 	// Fast path: Check against cached sample rate first
-	cache := GetCachedConfig()
-	cachedRate := int(cache.sampleRate.Load())
+	cache := Config
+	cachedRate := cache.SampleRate
 
 	// Most common case: validating against the current sample rate
 	if sampleRate == cachedRate {
@@ -272,7 +271,7 @@ func ValidateSampleRate(sampleRate int) error {
 	}
 
 	// Slower path: check against all valid rates
-	config := GetConfig()
+	config := Config
 	validRates := config.ValidSampleRates
 	for _, rate := range validRates {
 		if sampleRate == rate {
@@ -291,8 +290,8 @@ func ValidateChannelCount(channels int) error {
 	}
 
 	// Fast path: Check against cached channels first
-	cache := GetCachedConfig()
-	cachedChannels := int(cache.channels.Load())
+	cache := Config
+	cachedChannels := cache.Channels
 
 	// Most common case: validating against the current channel count
 	if channels == cachedChannels {
@@ -300,14 +299,13 @@ func ValidateChannelCount(channels int) error {
 	}
 
 	// Fast path: Check against cached max channels
-	cachedMaxChannels := int(cache.maxChannels.Load())
+	cachedMaxChannels := cache.MaxChannels
 	if cachedMaxChannels > 0 && channels <= cachedMaxChannels {
 		return nil
 	}
 
-	// Slow path: Update cache and validate
-	cache.Update()
-	updatedMaxChannels := int(cache.maxChannels.Load())
+	// Slow path: Use current config values
+	updatedMaxChannels := cache.MaxChannels
 	if channels > updatedMaxChannels {
 		return fmt.Errorf("%w: channel count %d exceeds maximum %d",
 			ErrInvalidChannels, channels, updatedMaxChannels)
@@ -323,9 +321,9 @@ func ValidateBitrate(bitrate int) error {
 	}
 
 	// Fast path: Check against cached bitrate values
-	cache := GetCachedConfig()
-	minBitrate := int(cache.minOpusBitrate.Load())
-	maxBitrate := int(cache.maxOpusBitrate.Load())
+	cache := Config
+	minBitrate := cache.MinOpusBitrate
+	maxBitrate := cache.MaxOpusBitrate
 
 	// If we have valid cached values, use them
 	if minBitrate > 0 && maxBitrate > 0 {
@@ -343,7 +341,7 @@ func ValidateBitrate(bitrate int) error {
 	}
 
 	// Slower path: full validation with GetConfig()
-	config := GetConfig()
+	config := Config
 	// Convert kbps to bps for comparison with config limits
 	bitrateInBps := bitrate * 1000
 	if bitrateInBps < config.MinOpusBitrate {
@@ -365,11 +363,11 @@ func ValidateFrameDuration(duration time.Duration) error {
 	}
 
 	// Fast path: Check against cached frame size first
-	cache := GetCachedConfig()
+	cache := Config
 
 	// Convert frameSize (samples) to duration for comparison
-	cachedFrameSize := int(cache.frameSize.Load())
-	cachedSampleRate := int(cache.sampleRate.Load())
+	cachedFrameSize := cache.FrameSize
+	cachedSampleRate := cache.SampleRate
 
 	// Only do this calculation if we have valid cached values
 	if cachedFrameSize > 0 && cachedSampleRate > 0 {
@@ -382,8 +380,8 @@ func ValidateFrameDuration(duration time.Duration) error {
 	}
 
 	// Fast path: Check against cached min/max frame duration
-	cachedMinDuration := time.Duration(cache.minFrameDuration.Load())
-	cachedMaxDuration := time.Duration(cache.maxFrameDuration.Load())
+	cachedMinDuration := time.Duration(cache.MinFrameDuration)
+	cachedMaxDuration := time.Duration(cache.MaxFrameDuration)
 
 	if cachedMinDuration > 0 && cachedMaxDuration > 0 {
 		if duration < cachedMinDuration {
@@ -397,10 +395,9 @@ func ValidateFrameDuration(duration time.Duration) error {
 		return nil
 	}
 
-	// Slow path: Update cache and validate
-	cache.Update()
-	updatedMinDuration := time.Duration(cache.minFrameDuration.Load())
-	updatedMaxDuration := time.Duration(cache.maxFrameDuration.Load())
+	// Slow path: Use current config values
+	updatedMinDuration := time.Duration(cache.MinFrameDuration)
+	updatedMaxDuration := time.Duration(cache.MaxFrameDuration)
 
 	if duration < updatedMinDuration {
 		return fmt.Errorf("%w: frame duration %v below minimum %v",
@@ -417,11 +414,11 @@ func ValidateFrameDuration(duration time.Duration) error {
 // Uses optimized validation functions that leverage AudioConfigCache
 func ValidateAudioConfigComplete(config AudioConfig) error {
 	// Fast path: Check if all values match the current cached configuration
-	cache := GetCachedConfig()
-	cachedSampleRate := int(cache.sampleRate.Load())
-	cachedChannels := int(cache.channels.Load())
-	cachedBitrate := int(cache.opusBitrate.Load()) / 1000 // Convert from bps to kbps
-	cachedFrameSize := int(cache.frameSize.Load())
+	cache := Config
+	cachedSampleRate := cache.SampleRate
+	cachedChannels := cache.Channels
+	cachedBitrate := cache.OpusBitrate / 1000 // Convert from bps to kbps
+	cachedFrameSize := cache.FrameSize
 
 	// Only do this calculation if we have valid cached values
 	if cachedSampleRate > 0 && cachedChannels > 0 && cachedBitrate > 0 && cachedFrameSize > 0 {
@@ -481,11 +478,11 @@ var cachedMaxFrameSize int
 // InitValidationCache initializes cached validation values with actual config
 func InitValidationCache() {
 	// Initialize the global cache variable for backward compatibility
-	config := GetConfig()
+	config := Config
 	cachedMaxFrameSize = config.MaxAudioFrameSize
 
-	// Update the global audio config cache
-	GetCachedConfig().Update()
+	// Initialize the global audio config cache
+	cachedMaxFrameSize = Config.MaxAudioFrameSize
 }
 
 // ValidateAudioFrame validates audio frame data with cached max size for performance
@@ -502,12 +499,11 @@ func ValidateAudioFrame(data []byte) error {
 	maxSize := cachedMaxFrameSize
 	if maxSize == 0 {
 		// Fallback: get from cache only if global cache not initialized
-		cache := GetCachedConfig()
-		maxSize = int(cache.maxAudioFrameSize.Load())
+		cache := Config
+		maxSize = cache.MaxAudioFrameSize
 		if maxSize == 0 {
-			// Last resort: update cache and get fresh value
-			cache.Update()
-			maxSize = int(cache.maxAudioFrameSize.Load())
+			// Last resort: get fresh value
+			maxSize = cache.MaxAudioFrameSize
 		}
 		// Cache the value globally for next calls
 		cachedMaxFrameSize = maxSize

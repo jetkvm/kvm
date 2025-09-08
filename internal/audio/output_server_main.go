@@ -70,7 +70,7 @@ func RunAudioOutputServer() error {
 	StopNonBlockingAudioStreaming()
 
 	// Give some time for cleanup
-	time.Sleep(GetConfig().DefaultSleepDuration)
+	time.Sleep(Config.DefaultSleepDuration)
 
 	return nil
 }

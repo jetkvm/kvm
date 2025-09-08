@@ -18,8 +18,8 @@ type SocketBufferConfig struct {
 // DefaultSocketBufferConfig returns the default socket buffer configuration
 func DefaultSocketBufferConfig() SocketBufferConfig {
 	return SocketBufferConfig{
-		SendBufferSize: GetConfig().SocketOptimalBuffer,
-		RecvBufferSize: GetConfig().SocketOptimalBuffer,
+		SendBufferSize: Config.SocketOptimalBuffer,
+		RecvBufferSize: Config.SocketOptimalBuffer,
 		Enabled:        true,
 	}
 }
@@ -27,8 +27,8 @@ func DefaultSocketBufferConfig() SocketBufferConfig {
 // HighLoadSocketBufferConfig returns configuration for high-load scenarios
 func HighLoadSocketBufferConfig() SocketBufferConfig {
 	return SocketBufferConfig{
-		SendBufferSize: GetConfig().SocketMaxBuffer,
-		RecvBufferSize: GetConfig().SocketMaxBuffer,
+		SendBufferSize: Config.SocketMaxBuffer,
+		RecvBufferSize: Config.SocketMaxBuffer,
 		Enabled:        true,
 	}
 }
@@ -123,8 +123,8 @@ func ValidateSocketBufferConfig(config SocketBufferConfig) error {
 		return nil
 	}
 
-	minBuffer := GetConfig().SocketMinBuffer
-	maxBuffer := GetConfig().SocketMaxBuffer
+	minBuffer := Config.SocketMinBuffer
+	maxBuffer := Config.SocketMaxBuffer
 
 	if config.SendBufferSize < minBuffer {
 		return fmt.Errorf("send buffer size validation failed: got %d bytes, minimum required %d bytes (configured range: %d-%d)",

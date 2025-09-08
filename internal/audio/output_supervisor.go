@@ -19,19 +19,19 @@ const (
 
 // Restart configuration is now retrieved from centralized config
 func getMaxRestartAttempts() int {
-	return GetConfig().MaxRestartAttempts
+	return Config.MaxRestartAttempts
 }
 
 func getRestartWindow() time.Duration {
-	return GetConfig().RestartWindow
+	return Config.RestartWindow
 }
 
 func getRestartDelay() time.Duration {
-	return GetConfig().RestartDelay
+	return Config.RestartDelay
 }
 
 func getMaxRestartDelay() time.Duration {
-	return GetConfig().MaxRestartDelay
+	return Config.MaxRestartDelay
 }
 
 // AudioOutputSupervisor manages the audio output server subprocess lifecycle
@@ -145,7 +145,7 @@ func (s *AudioOutputSupervisor) Stop() {
 	select {
 	case <-s.processDone:
 		s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component stopped gracefully")
-	case <-time.After(GetConfig().OutputSupervisorTimeout):
+	case <-time.After(Config.OutputSupervisorTimeout):
 		s.logger.Warn().Str("component", AudioOutputSupervisorComponent).Msg("component did not stop gracefully, forcing termination")
 		s.forceKillProcess("audio output server")
 	}
@@ -158,7 +158,7 @@ func (s *AudioOutputSupervisor) supervisionLoop() {
 	// Configure supervision parameters
 	config := SupervisionConfig{
 		ProcessType:        "audio output server",
-		Timeout:            GetConfig().OutputSupervisorTimeout,
+		Timeout:            Config.OutputSupervisorTimeout,
 		EnableRestart:      true,
 		MaxRestartAttempts: getMaxRestartAttempts(),
 		RestartWindow:      getRestartWindow(),
