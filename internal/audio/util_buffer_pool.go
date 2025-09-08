@@ -354,12 +354,12 @@ type AudioBufferPool struct {
 	// Memory optimization fields
 	preallocated []*[]byte // Pre-allocated buffers for immediate use
 	preallocSize int       // Number of pre-allocated buffers
-	
+
 	// Chunk-based allocation optimization
-	chunkSize     int      // Size of each memory chunk
-	chunks        [][]byte // Pre-allocated memory chunks
-	chunkOffsets  []int    // Current offset in each chunk
-	chunkMutex    sync.Mutex // Protects chunk allocation
+	chunkSize    int        // Size of each memory chunk
+	chunks       [][]byte   // Pre-allocated memory chunks
+	chunkOffsets []int      // Current offset in each chunk
+	chunkMutex   sync.Mutex // Protects chunk allocation
 }
 
 func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
@@ -432,7 +432,7 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 func (p *AudioBufferPool) allocateFromChunk() []byte {
 	p.chunkMutex.Lock()
 	defer p.chunkMutex.Unlock()
-	
+
 	// Try to allocate from existing chunks
 	for i := 0; i < len(p.chunks); i++ {
 		if p.chunkOffsets[i]+p.bufferSize <= len(p.chunks[i]) {
@@ -444,12 +444,12 @@ func (p *AudioBufferPool) allocateFromChunk() []byte {
 			return buf[:0] // Return with zero length but correct capacity
 		}
 	}
-	
+
 	// Need to allocate a new chunk
 	newChunk := make([]byte, p.chunkSize)
 	p.chunks = append(p.chunks, newChunk)
 	p.chunkOffsets = append(p.chunkOffsets, p.bufferSize)
-	
+
 	// Return buffer from the new chunk
 	buf := newChunk[0:p.bufferSize:p.bufferSize]
 	return buf[:0] // Return with zero length but correct capacity
