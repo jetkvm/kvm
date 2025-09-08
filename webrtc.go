@@ -245,10 +245,9 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 
-	// Update the audio relay with the new WebRTC audio track
-	if err := audio.UpdateAudioRelayTrack(session.AudioTrack); err != nil {
-		scopedLogger.Warn().Err(err).Msg("Failed to update audio relay track")
-	}
+	// Update the audio relay with the new WebRTC audio track asynchronously
+	// This prevents blocking during session creation and avoids mutex deadlocks
+	audio.UpdateAudioRelayTrackAsync(session.AudioTrack)
 
 	videoRtpSender, err := peerConnection.AddTrack(session.VideoTrack)
 	if err != nil {
