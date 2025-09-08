@@ -103,7 +103,7 @@ export default function DashboardNavbar({
                     <hr className="h-[20px] w-px self-center border-none bg-slate-800/20 dark:bg-slate-300/20" />
                     <div className="relative inline-block text-left">
                       <Menu>
-                        <MenuButton className="h-full">
+                        <MenuButton as="div" className="h-full">
                           <Button className="flex h-full items-center gap-x-3 rounded-md border border-slate-800/20 bg-white px-2 py-1.5 dark:border-slate-600 dark:bg-slate-800 dark:text-white">
                             {picture ? (
                               <img
