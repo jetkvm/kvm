@@ -99,16 +99,8 @@ type lockFreeBufferCache struct {
 	buffers [8]*[]byte // Increased from 4 to 8 buffers per goroutine cache for better hit rates
 }
 
-const (
-	// Enhanced cache configuration for per-goroutine optimization
-	cacheSize = 8                // Increased from 4 to 8 buffers per goroutine cache for better hit rates
-	cacheTTL  = 10 * time.Second // Increased from 5s to 10s for better cache retention
-	// Additional cache constants for enhanced performance
-	maxCacheEntries      = 256              // Maximum number of goroutine cache entries to prevent memory bloat
-	cacheCleanupInterval = 30 * time.Second // How often to clean up stale cache entries
-	cacheWarmupThreshold = 50               // Number of requests before enabling cache warmup
-	cacheHitRateTarget   = 0.85             // Target cache hit rate for optimization
-)
+// Buffer pool constants are now configured via Config
+// See core_config_constants.go for default values
 
 // TTL tracking for goroutine cache entries
 type cacheEntry struct {
@@ -120,10 +112,8 @@ type cacheEntry struct {
 // Per-goroutine buffer cache using goroutine-local storage
 var goroutineBufferCache = make(map[int64]*lockFreeBufferCache)
 var goroutineCacheMutex sync.RWMutex
-var lastCleanupTime int64        // Unix timestamp of last cleanup
-const maxCacheSize = 500         // Maximum number of goroutine caches (reduced from 1000)
-const cleanupInterval int64 = 30 // Cleanup interval in seconds (30 seconds, reduced from 60)
-const bufferTTL int64 = 60       // Time-to-live for cached buffers in seconds (1 minute, reduced from 2)
+var goroutineCacheWithTTL = make(map[int64]*cacheEntry)
+var lastCleanupTime int64 // Unix timestamp of last cleanup
 
 // getGoroutineID extracts goroutine ID from runtime stack for cache key
 func getGoroutineID() int64 {
@@ -144,8 +134,7 @@ func getGoroutineID() int64 {
 	return 0
 }
 
-// Map of goroutine ID to cache entry with TTL tracking
-var goroutineCacheWithTTL = make(map[int64]*cacheEntry)
+// Map of goroutine ID to cache entry with TTL tracking (declared above)
 
 // cleanupChannel is used for asynchronous cleanup requests
 var cleanupChannel = make(chan struct{}, 1)
@@ -199,9 +188,9 @@ func performCleanup(forced bool) {
 	}
 
 	// Only cleanup if enough time has passed (less time if high latency) or if forced
-	interval := cleanupInterval
+	interval := Config.BufferPoolCleanupInterval
 	if isHighLatency {
-		interval = cleanupInterval / 2 // More frequent cleanup under high latency
+		interval = Config.BufferPoolCleanupInterval / 2 // More frequent cleanup under high latency
 	}
 
 	if !forced && now-lastCleanup < interval {
@@ -255,10 +244,10 @@ func doCleanupGoroutineCache() {
 
 	// Enhanced cleanup with size limits and better TTL management
 	entriesToRemove := make([]int64, 0)
-	ttl := bufferTTL
+	ttl := Config.BufferPoolBufferTTL
 	if isHighLatency {
 		// Under high latency, use a much shorter TTL
-		ttl = bufferTTL / 4
+		ttl = Config.BufferPoolBufferTTL / 4
 	}
 
 	// Remove entries older than enhanced TTL
@@ -270,7 +259,7 @@ func doCleanupGoroutineCache() {
 	}
 
 	// If we have too many cache entries, remove the oldest ones
-	if len(goroutineCacheWithTTL) > maxCacheEntries {
+	if len(goroutineCacheWithTTL) > Config.BufferPoolMaxCacheEntries {
 		// Sort by last access time and remove oldest entries
 		type cacheEntryWithGID struct {
 			gid        int64
@@ -285,7 +274,7 @@ func doCleanupGoroutineCache() {
 			return entries[i].lastAccess < entries[j].lastAccess
 		})
 		// Mark oldest entries for removal
-		excessCount := len(goroutineCacheWithTTL) - maxCacheEntries
+		excessCount := len(goroutineCacheWithTTL) - Config.BufferPoolMaxCacheEntries
 		for i := 0; i < excessCount && i < len(entries); i++ {
 			entriesToRemove = append(entriesToRemove, entries[i].gid)
 		}
@@ -293,13 +282,13 @@ func doCleanupGoroutineCache() {
 
 	// If cache is still too large after TTL cleanup, remove oldest entries
 	// Under high latency, use a more aggressive target size
-	targetSize := maxCacheSize
-	targetReduction := maxCacheSize / 2
+	targetSize := Config.BufferPoolMaxCacheSize
+	targetReduction := Config.BufferPoolMaxCacheSize / 2
 
 	if isHighLatency {
 		// Under high latency, target a much smaller cache size
-		targetSize = maxCacheSize / 4
-		targetReduction = maxCacheSize / 8
+		targetSize = Config.BufferPoolMaxCacheSize / 4
+		targetReduction = Config.BufferPoolMaxCacheSize / 8
 	}
 
 	if len(goroutineCacheWithTTL) > targetSize {
@@ -372,33 +361,32 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 	// Enhanced preallocation strategy based on buffer size and system capacity
 	var preallocSize int
 	if bufferSize <= Config.AudioFramePoolSize {
-		// For smaller pools, use enhanced preallocation (40% instead of 20%)
+		// For smaller pools, use enhanced preallocation
 		preallocSize = Config.PreallocPercentage * 2
 	} else {
-		// For larger pools, use standard enhanced preallocation (30% instead of 10%)
+		// For larger pools, use standard enhanced preallocation
 		preallocSize = (Config.PreallocPercentage * 3) / 2
 	}
 
 	// Ensure minimum preallocation for better performance
-	minPrealloc := 50 // Minimum 50 buffers for startup performance
-	if preallocSize < minPrealloc {
-		preallocSize = minPrealloc
+	if preallocSize < Config.BufferPoolMinPreallocBuffers {
+		preallocSize = Config.BufferPoolMinPreallocBuffers
 	}
 
 	// Calculate max pool size based on buffer size to prevent memory bloat
-	maxPoolSize := 256 // Default
+	maxPoolSize := Config.BufferPoolMaxPoolSize // Default
 	if bufferSize > 8192 {
-		maxPoolSize = 64 // Much smaller for very large buffers
+		maxPoolSize = Config.BufferPoolMaxPoolSize / 4 // Much smaller for very large buffers
 	} else if bufferSize > 4096 {
-		maxPoolSize = 128 // Smaller for large buffers
+		maxPoolSize = Config.BufferPoolMaxPoolSize / 2 // Smaller for large buffers
 	} else if bufferSize > 1024 {
-		maxPoolSize = 192 // Medium for medium buffers
+		maxPoolSize = (Config.BufferPoolMaxPoolSize * 3) / 4 // Medium for medium buffers
 	}
 
 	// Calculate chunk size - allocate larger chunks to reduce allocation frequency
-	chunkSize := bufferSize * 64 // Each chunk holds 64 buffers worth of memory
-	if chunkSize < 64*1024 {
-		chunkSize = 64 * 1024 // Minimum 64KB chunks
+	chunkSize := bufferSize * Config.BufferPoolChunkBufferCount // Each chunk holds multiple buffers worth of memory
+	if chunkSize < Config.BufferPoolMinChunkSize {
+		chunkSize = Config.BufferPoolMinChunkSize // Minimum chunk size
 	}
 
 	p := &AudioBufferPool{
@@ -407,8 +395,8 @@ func NewAudioBufferPool(bufferSize int) *AudioBufferPool {
 		preallocated: make([]*[]byte, 0, preallocSize),
 		preallocSize: preallocSize,
 		chunkSize:    chunkSize,
-		chunks:       make([][]byte, 0, 4), // Start with capacity for 4 chunks
-		chunkOffsets: make([]int, 0, 4),
+		chunks:       make([][]byte, 0, Config.BufferPoolInitialChunkCapacity), // Start with capacity for initial chunks
+		chunkOffsets: make([]int, 0, Config.BufferPoolInitialChunkCapacity),
 	}
 
 	// Configure sync.Pool with optimized allocation
@@ -596,7 +584,7 @@ var (
 	// Main audio frame pool with enhanced capacity
 	audioFramePool = NewAudioBufferPool(Config.AudioFramePoolSize)
 	// Control message pool with enhanced capacity for better throughput
-	audioControlPool = NewAudioBufferPool(512) // Increased from Config.OutputHeaderSize to 512 for better control message handling
+	audioControlPool = NewAudioBufferPool(Config.BufferPoolControlSize) // Control message buffer size
 )
 
 func GetAudioFrameBuffer() []byte {
@@ -703,15 +691,15 @@ func (p *AudioBufferPool) AdaptiveResize() {
 	missCount := atomic.LoadInt64(&p.missCount)
 	totalRequests := hitCount + missCount
 
-	if totalRequests < 100 {
+	if totalRequests < int64(Config.BufferPoolAdaptiveResizeThreshold) {
 		return // Not enough data for meaningful adaptation
 	}
 
 	hitRate := float64(hitCount) / float64(totalRequests)
 	currentSize := atomic.LoadInt64(&p.currentSize)
 
-	// If hit rate is low (< 80%), consider increasing pool size
-	if hitRate < 0.8 && currentSize < int64(p.maxPoolSize) {
+	// If hit rate is low, consider increasing pool size
+	if hitRate < Config.BufferPoolCacheHitRateTarget && currentSize < int64(p.maxPoolSize) {
 		// Increase preallocation by 25% up to max pool size
 		newPreallocSize := int(float64(len(p.preallocated)) * 1.25)
 		if newPreallocSize > p.maxPoolSize {
@@ -725,8 +713,8 @@ func (p *AudioBufferPool) AdaptiveResize() {
 		}
 	}
 
-	// If hit rate is very high (> 95%) and pool is large, consider shrinking
-	if hitRate > 0.95 && len(p.preallocated) > p.preallocSize {
+	// If hit rate is very high and pool is large, consider shrinking
+	if hitRate > Config.BufferPoolHighHitRateThreshold && len(p.preallocated) > p.preallocSize {
 		// Reduce preallocation by 10% but not below original size
 		newSize := int(float64(len(p.preallocated)) * 0.9)
 		if newSize < p.preallocSize {
@@ -747,7 +735,7 @@ func (p *AudioBufferPool) WarmupCache() {
 	missCount := atomic.LoadInt64(&p.missCount)
 	totalRequests := hitCount + missCount
 
-	if totalRequests < int64(cacheWarmupThreshold) {
+	if totalRequests < int64(Config.BufferPoolCacheWarmupThreshold) {
 		return
 	}
 
@@ -776,7 +764,7 @@ func (p *AudioBufferPool) WarmupCache() {
 	if cache != nil {
 		// Fill cache to optimal level based on hit rate
 		hitRate := float64(hitCount) / float64(totalRequests)
-		optimalCacheSize := int(float64(cacheSize) * hitRate)
+		optimalCacheSize := int(float64(Config.BufferPoolCacheSize) * hitRate)
 		if optimalCacheSize < 2 {
 			optimalCacheSize = 2
 		}
@@ -800,19 +788,19 @@ func (p *AudioBufferPool) OptimizeCache() {
 	missCount := atomic.LoadInt64(&p.missCount)
 	totalRequests := hitCount + missCount
 
-	if totalRequests < 100 {
+	if totalRequests < int64(Config.BufferPoolOptimizeCacheThreshold) {
 		return
 	}
 
 	hitRate := float64(hitCount) / float64(totalRequests)
 
 	// If hit rate is below target, trigger cache warmup
-	if hitRate < cacheHitRateTarget {
+	if hitRate < Config.BufferPoolCacheHitRateTarget {
 		p.WarmupCache()
 	}
 
 	// Reset counters periodically to avoid overflow and get fresh metrics
-	if totalRequests > 10000 {
+	if totalRequests > int64(Config.BufferPoolCounterResetThreshold) {
 		atomic.StoreInt64(&p.hitCount, hitCount/2)
 		atomic.StoreInt64(&p.missCount, missCount/2)
 	}

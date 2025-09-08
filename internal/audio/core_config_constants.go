@@ -322,6 +322,39 @@ type AudioConfigConstants struct {
 	ConnectionTimeoutDelay  time.Duration // Connection timeout for each attempt
 	ReconnectionInterval    time.Duration // Interval for automatic reconnection attempts
 	HealthCheckInterval     time.Duration // Health check interval for connections
+
+	// Quality Change Timeout Configuration
+	QualityChangeSupervisorTimeout time.Duration // Timeout for supervisor stop during quality changes
+	QualityChangeTickerInterval    time.Duration // Ticker interval for supervisor stop polling
+	QualityChangeSettleDelay       time.Duration // Delay for quality change to settle
+	QualityChangeRecoveryDelay     time.Duration // Delay before attempting recovery
+
+	// Graceful Degradation Configuration
+	CongestionMildReductionFactor     float64       // Buffer reduction factor for mild congestion (0.75)
+	CongestionModerateReductionFactor float64       // Buffer reduction factor for moderate congestion (0.5)
+	CongestionThresholdMultiplier     float64       // Multiplier for congestion threshold calculations (0.8)
+	CongestionRecoveryTimeout         time.Duration // Timeout for congestion recovery (5 seconds)
+
+	// Buffer Pool Cache Configuration
+	BufferPoolCacheSize               int           // Buffers per goroutine cache (4)
+	BufferPoolCacheTTL                time.Duration // Cache TTL for aggressive cleanup (5s)
+	BufferPoolMaxCacheEntries         int           // Maximum cache entries to prevent memory bloat (128)
+	BufferPoolCacheCleanupInterval    time.Duration // Cleanup interval for frequent cleanup (15s)
+	BufferPoolCacheWarmupThreshold    int           // Warmup threshold for faster startup (25)
+	BufferPoolCacheHitRateTarget      float64       // Target hit rate for balanced performance (0.80)
+	BufferPoolMaxCacheSize            int           // Maximum goroutine caches (256)
+	BufferPoolCleanupInterval         int64         // Cleanup interval in seconds (15)
+	BufferPoolBufferTTL               int64         // Buffer TTL in seconds (30)
+	BufferPoolControlSize             int           // Control pool buffer size (512)
+	BufferPoolMinPreallocBuffers      int           // Minimum preallocation buffers
+	BufferPoolMaxPoolSize             int           // Maximum pool size
+	BufferPoolChunkBufferCount        int           // Buffers per chunk
+	BufferPoolMinChunkSize            int           // Minimum chunk size (64KB)
+	BufferPoolInitialChunkCapacity    int           // Initial chunk capacity
+	BufferPoolAdaptiveResizeThreshold int           // Threshold for adaptive resize
+	BufferPoolHighHitRateThreshold    float64       // High hit rate threshold
+	BufferPoolOptimizeCacheThreshold  int           // Threshold for cache optimization
+	BufferPoolCounterResetThreshold   int           // Counter reset threshold
 }
 
 // DefaultAudioConfig returns the default configuration constants
@@ -446,10 +479,10 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		MaxDecodeWriteBuffer: 4096,        // Maximum CGO decode/write buffer
 
 		// IPC Configuration - Balanced for stability
-		MagicNumber:  0xDEADBEEF,             // IPC message validation header
-		MaxFrameSize: 4096,                   // Maximum audio frame size (4KB)
+		MagicNumber:  0xDEADBEEF,              // IPC message validation header
+		MaxFrameSize: 4096,                    // Maximum audio frame size (4KB)
 		WriteTimeout: 1000 * time.Millisecond, // Further increased timeout to handle quality change bursts
-		HeaderSize:   8,                      // IPC message header size
+		HeaderSize:   8,                       // IPC message header size
 
 		// Monitoring and Metrics - Balanced for stability
 		MetricsUpdateInterval: 1000 * time.Millisecond, // Stable metrics collection frequency
@@ -488,6 +521,39 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		ReconnectionInterval:    30 * time.Second,      // Interval for automatic reconnection attempts
 		HealthCheckInterval:     10 * time.Second,      // Health check interval for connections
 
+		// Quality Change Timeout Configuration
+		QualityChangeSupervisorTimeout: 5 * time.Second,        // Timeout for supervisor stop during quality changes
+		QualityChangeTickerInterval:    100 * time.Millisecond, // Ticker interval for supervisor stop polling
+		QualityChangeSettleDelay:       2 * time.Second,        // Delay for quality change to settle
+		QualityChangeRecoveryDelay:     1 * time.Second,        // Delay before attempting recovery
+
+		// Graceful Degradation Configuration
+		CongestionMildReductionFactor:     0.75,            // Buffer reduction factor for mild congestion (0.75)
+		CongestionModerateReductionFactor: 0.5,             // Buffer reduction factor for moderate congestion (0.5)
+		CongestionThresholdMultiplier:     0.8,             // Multiplier for congestion threshold calculations (0.8)
+		CongestionRecoveryTimeout:         5 * time.Second, // Timeout for congestion recovery (5 seconds)
+
+		// Buffer Pool Cache Configuration
+		BufferPoolCacheSize:               4,                // Buffers per goroutine cache
+		BufferPoolCacheTTL:                5 * time.Second,  // Cache TTL for aggressive cleanup
+		BufferPoolMaxCacheEntries:         128,              // Maximum cache entries to prevent memory bloat
+		BufferPoolCacheCleanupInterval:    15 * time.Second, // Cleanup interval for frequent cleanup
+		BufferPoolCacheWarmupThreshold:    25,               // Warmup threshold for faster startup
+		BufferPoolCacheHitRateTarget:      0.80,             // Target hit rate for balanced performance
+		BufferPoolMaxCacheSize:            256,              // Maximum goroutine caches
+		BufferPoolCleanupInterval:         15,               // Cleanup interval in seconds
+		BufferPoolBufferTTL:               30,               // Buffer TTL in seconds
+		BufferPoolControlSize:             512,              // Control pool buffer size
+		BufferPoolMinPreallocBuffers:      16,               // Minimum preallocation buffers (reduced from 50)
+		BufferPoolMaxPoolSize:             128,              // Maximum pool size (reduced from 256)
+		BufferPoolChunkBufferCount:        8,                // Buffers per chunk (reduced from 64 to prevent large allocations)
+		BufferPoolMinChunkSize:            8192,             // Minimum chunk size (8KB, reduced from 64KB)
+		BufferPoolInitialChunkCapacity:    4,                // Initial chunk capacity
+		BufferPoolAdaptiveResizeThreshold: 100,              // Threshold for adaptive resize
+		BufferPoolHighHitRateThreshold:    0.95,             // High hit rate threshold
+		BufferPoolOptimizeCacheThreshold:  100,              // Threshold for cache optimization
+		BufferPoolCounterResetThreshold:   10000,            // Counter reset threshold
+
 		// Timing Constants - Optimized for quality change stability
 		DefaultSleepDuration:       100 * time.Millisecond, // Balanced polling interval
 		ShortSleepDuration:         10 * time.Millisecond,  // Balanced high-frequency polling
@@ -509,9 +575,9 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		AdaptiveBufferTargetLatency: 10 * time.Millisecond, // Aggressive target latency for responsiveness
 
 		// Adaptive Buffer Size Configuration - Optimized for quality change bursts
-		AdaptiveMinBufferSize:     128, // Significantly increased minimum to handle bursts
-		AdaptiveMaxBufferSize:     512, // Much higher maximum for quality changes
-		AdaptiveDefaultBufferSize: 256, // Higher default for stability
+		AdaptiveMinBufferSize:     256,  // Further increased minimum to prevent emergency mode
+		AdaptiveMaxBufferSize:     1024, // Much higher maximum for quality changes
+		AdaptiveDefaultBufferSize: 512,  // Higher default for stability during bursts
 
 		// Adaptive Optimizer Configuration - Faster response
 		CooldownPeriod:                 15 * time.Second,       // Reduced cooldown period
