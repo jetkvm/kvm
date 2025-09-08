@@ -192,8 +192,8 @@ type AudioInputServer struct {
 	wg          sync.WaitGroup        // Wait group for goroutine coordination
 
 	// Channel resizing support
-	channelMutex    sync.RWMutex // Protects channel recreation
-	lastBufferSize  int64        // Last known buffer size for change detection
+	channelMutex   sync.RWMutex // Protects channel recreation
+	lastBufferSize int64        // Last known buffer size for change detection
 
 	// Socket buffer configuration
 	socketBufferConfig SocketBufferConfig
@@ -234,7 +234,7 @@ func NewAudioInputServer() (*AudioInputServer, error) {
 	// Get initial buffer size from adaptive buffer manager
 	adaptiveManager := GetAdaptiveBufferManager()
 	initialBufferSize := int64(adaptiveManager.GetInputBufferSize())
-	
+
 	// Ensure minimum buffer size to prevent immediate overflow
 	// Use at least 50 frames to handle burst traffic
 	minBufferSize := int64(50)
@@ -966,7 +966,7 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 			ais.channelMutex.RLock()
 			messageChan := ais.messageChan
 			ais.channelMutex.RUnlock()
-			
+
 			select {
 			case messageChan <- msg:
 				atomic.AddInt64(&ais.totalFrames, 1)
@@ -1111,7 +1111,7 @@ func (ais *AudioInputServer) processMessageWithRecovery(msg *InputIPCMessage, lo
 	ais.channelMutex.RLock()
 	processChan := ais.processChan
 	ais.channelMutex.RUnlock()
-	
+
 	select {
 	case processChan <- msg:
 		return nil
@@ -1234,7 +1234,7 @@ func (ais *AudioInputServer) UpdateBufferSize() {
 	adaptiveManager := GetAdaptiveBufferManager()
 	newSize := int64(adaptiveManager.GetInputBufferSize())
 	oldSize := atomic.LoadInt64(&ais.bufferSize)
-	
+
 	// Only recreate channels if size changed significantly (>25% difference)
 	if oldSize > 0 {
 		diff := float64(newSize-oldSize) / float64(oldSize)
@@ -1242,9 +1242,9 @@ func (ais *AudioInputServer) UpdateBufferSize() {
 			return // Size change not significant enough
 		}
 	}
-	
+
 	atomic.StoreInt64(&ais.bufferSize, newSize)
-	
+
 	// Recreate channels with new buffer size if server is running
 	if ais.running {
 		ais.recreateChannels(int(newSize))
@@ -1255,15 +1255,15 @@ func (ais *AudioInputServer) UpdateBufferSize() {
 func (ais *AudioInputServer) recreateChannels(newSize int) {
 	ais.channelMutex.Lock()
 	defer ais.channelMutex.Unlock()
-	
+
 	// Create new channels with updated buffer size
 	newMessageChan := make(chan *InputIPCMessage, newSize)
 	newProcessChan := make(chan *InputIPCMessage, newSize)
-	
+
 	// Drain old channels and transfer messages to new channels
 	ais.drainAndTransferChannel(ais.messageChan, newMessageChan)
 	ais.drainAndTransferChannel(ais.processChan, newProcessChan)
-	
+
 	// Replace channels atomically
 	ais.messageChan = newMessageChan
 	ais.processChan = newProcessChan
