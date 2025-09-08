@@ -82,19 +82,16 @@ type batchWriteResult struct {
 
 // NewBatchAudioProcessor creates a new batch audio processor
 func NewBatchAudioProcessor(batchSize int, batchDuration time.Duration) *BatchAudioProcessor {
-	// Get cached config to avoid GetConfig() calls
-	cache := Config
-
 	// Validate input parameters with minimal overhead
 	if batchSize <= 0 || batchSize > 1000 {
-		batchSize = cache.BatchProcessorFramesPerBatch
+		batchSize = Config.BatchProcessorFramesPerBatch
 	}
 	if batchDuration <= 0 {
-		batchDuration = cache.BatchProcessingDelay
+		batchDuration = Config.BatchProcessingDelay
 	}
 
 	// Use optimized queue sizes from configuration
-	queueSize := cache.BatchProcessorMaxQueueSize
+	queueSize := Config.BatchProcessorMaxQueueSize
 	if queueSize <= 0 {
 		queueSize = batchSize * 2 // Fallback to double batch size
 	}
@@ -103,8 +100,7 @@ func NewBatchAudioProcessor(batchSize int, batchDuration time.Duration) *BatchAu
 	// Pre-allocate logger to avoid repeated allocations
 	logger := logging.GetDefaultLogger().With().Str("component", "batch-audio").Logger()
 
-	// Pre-calculate frame size to avoid repeated GetConfig() calls
-	frameSize := cache.MinReadEncodeBuffer
+	frameSize := Config.MinReadEncodeBuffer
 	if frameSize == 0 {
 		frameSize = 1500 // Safe fallback
 	}
@@ -119,13 +115,11 @@ func NewBatchAudioProcessor(batchSize int, batchDuration time.Duration) *BatchAu
 		writeQueue:    make(chan batchWriteRequest, queueSize),
 		readBufPool: &sync.Pool{
 			New: func() interface{} {
-				// Use pre-calculated frame size to avoid GetConfig() calls
 				return make([]byte, 0, frameSize)
 			},
 		},
 		writeBufPool: &sync.Pool{
 			New: func() interface{} {
-				// Use pre-calculated frame size to avoid GetConfig() calls
 				return make([]byte, 0, frameSize)
 			},
 		},
@@ -172,9 +166,6 @@ func (bap *BatchAudioProcessor) Stop() {
 
 // BatchReadEncode performs batched audio read and encode operations
 func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
-	// Get cached config to avoid GetConfig() calls in hot path
-	cache := Config
-
 	// Validate buffer before processing
 	if err := ValidateBufferSize(len(buffer)); err != nil {
 		// Only log validation errors in debug mode to reduce overhead
@@ -219,7 +210,7 @@ func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
 	select {
 	case result := <-resultChan:
 		return result.length, result.err
-	case <-time.After(cache.BatchProcessorTimeout):
+	case <-time.After(Config.BatchProcessorTimeout):
 		// Timeout, fallback to single operation
 		// Use sampling to reduce atomic operations overhead
 		if atomic.LoadInt64(&bap.stats.SingleReads)%10 == 0 {
@@ -233,9 +224,6 @@ func (bap *BatchAudioProcessor) BatchReadEncode(buffer []byte) (int, error) {
 // BatchDecodeWrite performs batched audio decode and write operations
 // This is the legacy version that uses a single buffer
 func (bap *BatchAudioProcessor) BatchDecodeWrite(buffer []byte) (int, error) {
-	// Get cached config to avoid GetConfig() calls in hot path
-	cache := Config
-
 	// Validate buffer before processing
 	if err := ValidateBufferSize(len(buffer)); err != nil {
 		// Only log validation errors in debug mode to reduce overhead
@@ -280,7 +268,7 @@ func (bap *BatchAudioProcessor) BatchDecodeWrite(buffer []byte) (int, error) {
 	select {
 	case result := <-resultChan:
 		return result.length, result.err
-	case <-time.After(cache.BatchProcessorTimeout):
+	case <-time.After(Config.BatchProcessorTimeout):
 		// Use sampling to reduce atomic operations overhead
 		if atomic.LoadInt64(&bap.stats.SingleWrites)%10 == 0 {
 			atomic.AddInt64(&bap.stats.SingleWrites, 10)
@@ -292,9 +280,6 @@ func (bap *BatchAudioProcessor) BatchDecodeWrite(buffer []byte) (int, error) {
 
 // BatchDecodeWriteWithBuffers performs batched audio decode and write operations with separate opus and PCM buffers
 func (bap *BatchAudioProcessor) BatchDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, error) {
-	// Get cached config to avoid GetConfig() calls in hot path
-	cache := Config
-
 	// Validate buffers before processing
 	if len(opusData) == 0 {
 		return 0, fmt.Errorf("empty opus data buffer")
@@ -335,7 +320,7 @@ func (bap *BatchAudioProcessor) BatchDecodeWriteWithBuffers(opusData []byte, pcm
 	select {
 	case result := <-resultChan:
 		return result.length, result.err
-	case <-time.After(cache.BatchProcessorTimeout):
+	case <-time.After(Config.BatchProcessorTimeout):
 		atomic.AddInt64(&bap.stats.SingleWrites, 1)
 		atomic.AddInt64(&bap.stats.WriteFrames, 1)
 		// Use the optimized function with separate buffers
@@ -422,11 +407,9 @@ func (bap *BatchAudioProcessor) processBatchRead(batch []batchReadRequest) {
 		return
 	}
 
-	// Get cached config once - avoid repeated calls
-	cache := Config
-	threadPinningThreshold := cache.BatchProcessorThreadPinningThreshold
+	threadPinningThreshold := Config.BatchProcessorThreadPinningThreshold
 	if threadPinningThreshold == 0 {
-		threadPinningThreshold = cache.MinBatchSizeForThreadPinning // Fallback
+		threadPinningThreshold = Config.MinBatchSizeForThreadPinning // Fallback
 	}
 
 	// Only pin to OS thread for large batches to reduce thread contention
@@ -475,11 +458,9 @@ func (bap *BatchAudioProcessor) processBatchWrite(batch []batchWriteRequest) {
 		return
 	}
 
-	// Get cached config to avoid GetConfig() calls in hot path
-	cache := Config
-	threadPinningThreshold := cache.BatchProcessorThreadPinningThreshold
+	threadPinningThreshold := Config.BatchProcessorThreadPinningThreshold
 	if threadPinningThreshold == 0 {
-		threadPinningThreshold = cache.MinBatchSizeForThreadPinning // Fallback
+		threadPinningThreshold = Config.MinBatchSizeForThreadPinning // Fallback
 	}
 
 	// Only pin to OS thread for large batches to reduce thread contention
@@ -581,10 +562,7 @@ func GetBatchAudioProcessor() *BatchAudioProcessor {
 
 	// Initialize on first use
 	if atomic.CompareAndSwapInt32(&batchProcessorInitialized, 0, 1) {
-		// Get cached config to avoid GetConfig() calls
-		cache := Config
-
-		processor := NewBatchAudioProcessor(cache.BatchProcessorFramesPerBatch, cache.BatchProcessorTimeout)
+		processor := NewBatchAudioProcessor(Config.BatchProcessorFramesPerBatch, Config.BatchProcessorTimeout)
 		atomic.StorePointer(&globalBatchProcessor, unsafe.Pointer(processor))
 		return processor
 	}
@@ -596,8 +574,7 @@ func GetBatchAudioProcessor() *BatchAudioProcessor {
 	}
 
 	// Fallback: create a new processor (should rarely happen)
-	config := Config
-	return NewBatchAudioProcessor(config.BatchProcessorFramesPerBatch, config.BatchProcessorTimeout)
+	return NewBatchAudioProcessor(Config.BatchProcessorFramesPerBatch, Config.BatchProcessorTimeout)
 }
 
 // EnableBatchAudioProcessing enables the global batch processor
