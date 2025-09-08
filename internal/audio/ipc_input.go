@@ -191,6 +191,10 @@ type AudioInputServer struct {
 	stopChan    chan struct{}         // Stop signal for all goroutines
 	wg          sync.WaitGroup        // Wait group for goroutine coordination
 
+	// Channel resizing support
+	channelMutex   sync.RWMutex // Protects channel recreation
+	lastBufferSize int64        // Last known buffer size for change detection
+
 	// Socket buffer configuration
 	socketBufferConfig SocketBufferConfig
 }
@@ -231,6 +235,13 @@ func NewAudioInputServer() (*AudioInputServer, error) {
 	adaptiveManager := GetAdaptiveBufferManager()
 	initialBufferSize := int64(adaptiveManager.GetInputBufferSize())
 
+	// Ensure minimum buffer size to prevent immediate overflow
+	// Use at least 50 frames to handle burst traffic
+	minBufferSize := int64(50)
+	if initialBufferSize < minBufferSize {
+		initialBufferSize = minBufferSize
+	}
+
 	// Initialize socket buffer configuration
 	socketBufferConfig := DefaultSocketBufferConfig()
 
@@ -240,6 +251,7 @@ func NewAudioInputServer() (*AudioInputServer, error) {
 		processChan:        make(chan *InputIPCMessage, initialBufferSize),
 		stopChan:           make(chan struct{}),
 		bufferSize:         initialBufferSize,
+		lastBufferSize:     initialBufferSize,
 		socketBufferConfig: socketBufferConfig,
 	}, nil
 }
@@ -950,9 +962,13 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 				}
 			}
 
-			// Send to message channel with non-blocking write
+			// Send to message channel with non-blocking write (use read lock for channel access)
+			ais.channelMutex.RLock()
+			messageChan := ais.messageChan
+			ais.channelMutex.RUnlock()
+
 			select {
-			case ais.messageChan <- msg:
+			case messageChan <- msg:
 				atomic.AddInt64(&ais.totalFrames, 1)
 			default:
 				// Channel full, drop message
@@ -966,16 +982,16 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 		}
 	}
 
-	// Submit the reader task to the audio reader pool
+	// Submit the reader task to the audio reader pool with backpressure
 	logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-	if !SubmitAudioReaderTask(readerTask) {
-		// If the pool is full or shutting down, fall back to direct goroutine creation
-		// Only log if warn level enabled - avoid sampling logic in critical path
-		if logger.GetLevel() <= zerolog.WarnLevel {
-			logger.Warn().Msg("Audio reader pool full or shutting down, falling back to direct goroutine creation")
-		}
+	if !SubmitAudioReaderTaskWithBackpressure(readerTask) {
+		// Task was dropped due to backpressure - this is expected under high load
+		// Log at debug level to avoid spam, but track the drop
+		logger.Debug().Msg("Audio reader task dropped due to backpressure")
 
-		go readerTask()
+		// Don't fall back to unlimited goroutine creation
+		// Instead, let the system recover naturally
+		ais.wg.Done() // Decrement the wait group since we're not starting the task
 	}
 }
 
@@ -1011,7 +1027,7 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 			select {
 			case <-ais.stopChan:
 				return
-			case msg := <-ais.messageChan:
+			case msg := <-ais.getMessageChan():
 				// Process message with error handling
 				start := time.Now()
 				err := ais.processMessageWithRecovery(msg, logger)
@@ -1032,9 +1048,10 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 					// If too many processing errors, drop frames more aggressively
 					if processingErrors >= maxProcessingErrors {
 						// Clear processing queue to recover
-						for len(ais.processChan) > 0 {
+						processChan := ais.getProcessChan()
+						for len(processChan) > 0 {
 							select {
-							case <-ais.processChan:
+							case <-processChan:
 								atomic.AddInt64(&ais.droppedFrames, 1)
 							default:
 								break
@@ -1057,13 +1074,16 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 		}
 	}
 
-	// Submit the processor task to the audio processor pool
+	// Submit the processor task to the audio processor pool with backpressure
 	logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-	if !SubmitAudioProcessorTask(processorTask) {
-		// If the pool is full or shutting down, fall back to direct goroutine creation
-		logger.Warn().Msg("Audio processor pool full or shutting down, falling back to direct goroutine creation")
+	if !SubmitAudioProcessorTaskWithBackpressure(processorTask) {
+		// Task was dropped due to backpressure - this is expected under high load
+		// Log at debug level to avoid spam, but track the drop
+		logger.Debug().Msg("Audio processor task dropped due to backpressure")
 
-		go processorTask()
+		// Don't fall back to unlimited goroutine creation
+		// Instead, let the system recover naturally
+		ais.wg.Done() // Decrement the wait group since we're not starting the task
 	}
 }
 
@@ -1072,13 +1092,14 @@ func (ais *AudioInputServer) processMessageWithRecovery(msg *InputIPCMessage, lo
 	// Intelligent frame dropping: prioritize recent frames
 	if msg.Type == InputMessageTypeOpusFrame {
 		// Check if processing queue is getting full
-		queueLen := len(ais.processChan)
+		processChan := ais.getProcessChan()
+		queueLen := len(processChan)
 		bufferSize := int(atomic.LoadInt64(&ais.bufferSize))
 
 		if queueLen > bufferSize*3/4 {
 			// Drop oldest frames, keep newest
 			select {
-			case <-ais.processChan: // Remove oldest
+			case <-processChan: // Remove oldest
 				atomic.AddInt64(&ais.droppedFrames, 1)
 				logger.Debug().Msg("Dropped oldest frame to make room")
 			default:
@@ -1086,9 +1107,13 @@ func (ais *AudioInputServer) processMessageWithRecovery(msg *InputIPCMessage, lo
 		}
 	}
 
-	// Send to processing queue with timeout
+	// Send to processing queue with timeout (use read lock for channel access)
+	ais.channelMutex.RLock()
+	processChan := ais.processChan
+	ais.channelMutex.RUnlock()
+
 	select {
-	case ais.processChan <- msg:
+	case processChan <- msg:
 		return nil
 	case <-time.After(GetConfig().WriteTimeout):
 		// Processing queue full and timeout reached, drop frame
@@ -1135,7 +1160,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 				// Process frames from processing queue
 				for {
 					select {
-					case msg := <-ais.processChan:
+					case msg := <-ais.getProcessChan():
 						start := time.Now()
 						err := ais.processMessage(msg)
 						processingTime := time.Since(start)
@@ -1183,13 +1208,16 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 		}
 	}
 
-	// Submit the monitor task to the audio processor pool
+	// Submit the monitor task to the audio processor pool with backpressure
 	logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-	if !SubmitAudioProcessorTask(monitorTask) {
-		// If the pool is full or shutting down, fall back to direct goroutine creation
-		logger.Warn().Msg("Audio processor pool full or shutting down, falling back to direct goroutine creation")
+	if !SubmitAudioProcessorTaskWithBackpressure(monitorTask) {
+		// Task was dropped due to backpressure - this is expected under high load
+		// Log at debug level to avoid spam, but track the drop
+		logger.Debug().Msg("Audio monitor task dropped due to backpressure")
 
-		go monitorTask()
+		// Don't fall back to unlimited goroutine creation
+		// Instead, let the system recover naturally
+		ais.wg.Done() // Decrement the wait group since we're not starting the task
 	}
 }
 
@@ -1205,7 +1233,61 @@ func (ais *AudioInputServer) GetServerStats() (total, dropped int64, avgProcessi
 func (ais *AudioInputServer) UpdateBufferSize() {
 	adaptiveManager := GetAdaptiveBufferManager()
 	newSize := int64(adaptiveManager.GetInputBufferSize())
+	oldSize := atomic.LoadInt64(&ais.bufferSize)
+
+	// Only recreate channels if size changed significantly (>25% difference)
+	if oldSize > 0 {
+		diff := float64(newSize-oldSize) / float64(oldSize)
+		if diff < 0.25 && diff > -0.25 {
+			return // Size change not significant enough
+		}
+	}
+
 	atomic.StoreInt64(&ais.bufferSize, newSize)
+
+	// Recreate channels with new buffer size if server is running
+	if ais.running {
+		ais.recreateChannels(int(newSize))
+	}
+}
+
+// recreateChannels recreates the message channels with new buffer size
+func (ais *AudioInputServer) recreateChannels(newSize int) {
+	ais.channelMutex.Lock()
+	defer ais.channelMutex.Unlock()
+
+	// Create new channels with updated buffer size
+	newMessageChan := make(chan *InputIPCMessage, newSize)
+	newProcessChan := make(chan *InputIPCMessage, newSize)
+
+	// Drain old channels and transfer messages to new channels
+	ais.drainAndTransferChannel(ais.messageChan, newMessageChan)
+	ais.drainAndTransferChannel(ais.processChan, newProcessChan)
+
+	// Replace channels atomically
+	ais.messageChan = newMessageChan
+	ais.processChan = newProcessChan
+	ais.lastBufferSize = int64(newSize)
+}
+
+// drainAndTransferChannel drains the old channel and transfers messages to new channel
+func (ais *AudioInputServer) drainAndTransferChannel(oldChan, newChan chan *InputIPCMessage) {
+	for {
+		select {
+		case msg := <-oldChan:
+			// Try to transfer to new channel, drop if full
+			select {
+			case newChan <- msg:
+				// Successfully transferred
+			default:
+				// New channel full, drop message
+				atomic.AddInt64(&ais.droppedFrames, 1)
+			}
+		default:
+			// Old channel empty
+			return
+		}
+	}
 }
 
 // ReportLatency reports processing latency to adaptive buffer manager
@@ -1257,6 +1339,20 @@ type MessagePoolStats struct {
 // GetGlobalMessagePoolStats returns statistics for the global message pool
 func GetGlobalMessagePoolStats() MessagePoolStats {
 	return globalMessagePool.GetMessagePoolStats()
+}
+
+// getMessageChan safely returns the current message channel
+func (ais *AudioInputServer) getMessageChan() chan *InputIPCMessage {
+	ais.channelMutex.RLock()
+	defer ais.channelMutex.RUnlock()
+	return ais.messageChan
+}
+
+// getProcessChan safely returns the current process channel
+func (ais *AudioInputServer) getProcessChan() chan *InputIPCMessage {
+	ais.channelMutex.RLock()
+	defer ais.channelMutex.RUnlock()
+	return ais.processChan
 }
 
 // Helper functions
