@@ -24,6 +24,14 @@ var (
 	headerSize               = 17 // Fixed header size: 4+1+4+8 bytes
 )
 
+// Header buffer pool to reduce allocation overhead
+var headerBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, headerSize)
+		return &buf
+	},
+}
+
 // UnifiedMessageType represents the type of IPC message for both input and output
 type UnifiedMessageType uint8
 
@@ -283,8 +291,11 @@ func (s *UnifiedAudioServer) startProcessorGoroutine() {
 
 // readMessage reads a message from the connection
 func (s *UnifiedAudioServer) readMessage(conn net.Conn) (*UnifiedIPCMessage, error) {
-	// Read header
-	header := make([]byte, headerSize)
+	// Get header buffer from pool
+	headerPtr := headerBufferPool.Get().(*[]byte)
+	header := *headerPtr
+	defer headerBufferPool.Put(headerPtr)
+
 	if _, err := io.ReadFull(conn, header); err != nil {
 		return nil, fmt.Errorf("failed to read header: %w", err)
 	}
@@ -361,8 +372,11 @@ func (s *UnifiedAudioServer) SendFrame(frame []byte) error {
 
 // writeMessage writes a message to the connection
 func (s *UnifiedAudioServer) writeMessage(conn net.Conn, msg *UnifiedIPCMessage) error {
-	// Write header
-	header := make([]byte, headerSize)
+	// Get header buffer from pool
+	headerPtr := headerBufferPool.Get().(*[]byte)
+	header := *headerPtr
+	defer headerBufferPool.Put(headerPtr)
+
 	binary.LittleEndian.PutUint32(header[0:4], msg.Magic)
 	header[4] = uint8(msg.Type)
 	binary.LittleEndian.PutUint32(header[5:9], msg.Length)
