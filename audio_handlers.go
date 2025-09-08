@@ -284,6 +284,13 @@ func handleSetAudioQuality(c *gin.Context) {
 		return
 	}
 
+	// Check if audio output is active before attempting quality change
+	// This prevents race conditions where quality changes are attempted before initialization
+	if !IsAudioOutputActive() {
+		c.JSON(503, gin.H{"error": "audio output not active - please wait for initialization to complete"})
+		return
+	}
+
 	// Convert int to AudioQuality type
 	quality := audio.AudioQuality(req.Quality)
 
