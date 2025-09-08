@@ -116,6 +116,7 @@ if (isOnDevice) {
       path: "/",
       errorElement: <ErrorBoundary />,
       element: <DeviceRoute />,
+      HydrateFallback: () => <div className="p-4">Loading...</div>,
       loader: DeviceRoute.loader,
       children: [
         {
