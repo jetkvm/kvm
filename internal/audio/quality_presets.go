@@ -204,69 +204,49 @@ func SetAudioQuality(quality AudioQuality) {
 			dtx = Config.AudioQualityMediumOpusDTX
 		}
 
-		// Restart audio output subprocess with new OPUS configuration
+		// Update audio output subprocess configuration dynamically without restart
+		logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
+		logger.Info().Int("quality", int(quality)).Msg("updating audio output quality settings dynamically")
+
+		// Immediately boost adaptive buffer sizes to handle quality change frame burst
+		// This prevents "Message channel full, dropping frame" warnings during transitions
+		adaptiveManager := GetAdaptiveBufferManager()
+		if adaptiveManager != nil {
+			// Immediately set buffers to maximum size for quality change
+			adaptiveManager.BoostBuffersForQualityChange()
+			logger.Debug().Msg("boosted adaptive buffers for quality change")
+		}
+
+		// Set new OPUS configuration for future restarts
 		if supervisor := GetAudioOutputSupervisor(); supervisor != nil {
-			logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
-			logger.Info().Int("quality", int(quality)).Msg("restarting audio output subprocess with new quality settings")
-
-			// Immediately boost adaptive buffer sizes to handle quality change frame burst
-			// This prevents "Message channel full, dropping frame" warnings during transitions
-			adaptiveManager := GetAdaptiveBufferManager()
-			if adaptiveManager != nil {
-				// Immediately set buffers to maximum size for quality change
-				adaptiveManager.BoostBuffersForQualityChange()
-				logger.Debug().Msg("boosted adaptive buffers for quality change")
-			}
-
-			// Set new OPUS configuration
 			supervisor.SetOpusConfig(config.Bitrate*1000, complexity, vbr, signalType, bandwidth, dtx)
+		}
 
-			// Stop current subprocess
-			supervisor.Stop()
-
-			// Wait for supervisor to fully stop before starting again with timeout
-			// This prevents race conditions and audio breakage
-			stopTimeout := time.After(Config.QualityChangeSupervisorTimeout)
-			ticker := time.NewTicker(Config.QualityChangeTickerInterval)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-stopTimeout:
-					logger.Warn().Msg("supervisor did not stop within 5s timeout, proceeding anyway")
-					goto startSupervisor
-				case <-ticker.C:
-					if !supervisor.IsRunning() {
-						goto startSupervisor
-					}
+		// Send dynamic configuration update to running audio output
+		vbrConstraint := Config.CGOOpusVBRConstraint
+		if err := updateOpusEncoderParams(config.Bitrate*1000, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx); err != nil {
+			logger.Warn().Err(err).Msg("failed to update OPUS encoder parameters dynamically")
+			// Fallback to subprocess restart if dynamic update fails
+			if supervisor := GetAudioOutputSupervisor(); supervisor != nil {
+				logger.Info().Msg("falling back to subprocess restart")
+				supervisor.Stop()
+				if err := supervisor.Start(); err != nil {
+					logger.Error().Err(err).Msg("failed to restart audio output subprocess after dynamic update failure")
 				}
 			}
-
-		startSupervisor:
-
-			// Start subprocess with new configuration
-			if err := supervisor.Start(); err != nil {
-				logger.Error().Err(err).Msg("failed to restart audio output subprocess")
-			} else {
-				logger.Info().Int("quality", int(quality)).Msg("audio output subprocess restarted successfully with new quality")
-
-				// Reset audio input server stats after quality change
-				// Allow adaptive buffer manager to naturally adjust buffer sizes
-				go func() {
-					time.Sleep(Config.QualityChangeSettleDelay) // Wait for quality change to settle
-					// Reset audio input server stats to clear persistent warnings
-					ResetGlobalAudioInputServerStats()
-					// Attempt recovery if microphone is still having issues
-					time.Sleep(1 * time.Second)
-					RecoverGlobalAudioInputServer()
-				}()
-			}
 		} else {
-			// Fallback to dynamic update if supervisor is not available
-			vbrConstraint := Config.CGOOpusVBRConstraint
-			if err := updateOpusEncoderParams(config.Bitrate*1000, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx); err != nil {
-				logging.GetDefaultLogger().Error().Err(err).Msg("Failed to update OPUS encoder parameters")
-			}
+			logger.Info().Msg("audio output quality updated dynamically")
+
+			// Reset audio output stats after config update
+			// Allow adaptive buffer manager to naturally adjust buffer sizes
+			go func() {
+				time.Sleep(Config.QualityChangeSettleDelay) // Wait for quality change to settle
+				// Reset audio input server stats to clear persistent warnings
+				ResetGlobalAudioInputServerStats()
+				// Attempt recovery if there are still issues
+				time.Sleep(1 * time.Second)
+				RecoverGlobalAudioInputServer()
+			}()
 		}
 	}
 }

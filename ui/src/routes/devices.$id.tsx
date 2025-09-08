@@ -54,6 +54,7 @@ import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { FeatureFlagProvider } from "@/providers/FeatureFlagProvider";
 import { DeviceStatus } from "@routes/welcome-local";
 import { SystemVersionInfo } from "@routes/devices.$id.settings.general.update";
+import audioQualityService from "@/services/audioQualityService";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -532,6 +533,11 @@ export default function KvmIdRoute() {
       setPeerConnection(null);
     };
   }, [clearCandidatePairStats, clearInboundRtpStats, setPeerConnection, setSidebarView]);
+
+  // Register callback with audioQualityService
+  useEffect(() => {
+    audioQualityService.setReconnectionCallback(setupPeerConnection);
+  }, [setupPeerConnection]);
 
   // TURN server usage detection
   useEffect(() => {

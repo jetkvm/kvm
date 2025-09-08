@@ -24,6 +24,7 @@ class AudioQualityService {
     2: 'High',
     3: 'Ultra'
   };
+  private reconnectionCallback: (() => Promise<void>) | null = null;
 
   /**
    * Fetch audio quality presets from the backend
@@ -96,12 +97,34 @@ class AudioQualityService {
   }
 
   /**
-   * Set audio quality
+   * Set reconnection callback for WebRTC reset
+   */
+  setReconnectionCallback(callback: () => Promise<void>): void {
+    this.reconnectionCallback = callback;
+  }
+
+  /**
+   * Trigger audio track replacement using backend's track replacement mechanism
+   */
+  private async replaceAudioTrack(): Promise<void> {
+    if (this.reconnectionCallback) {
+      await this.reconnectionCallback();
+    }
+  }
+
+  /**
+   * Set audio quality with track replacement
    */
   async setAudioQuality(quality: number): Promise<boolean> {
     try {
       const response = await api.POST('/audio/quality', { quality });
-      return response.ok;
+      
+      if (!response.ok) {
+        return false;
+      }
+      
+      await this.replaceAudioTrack();
+      return true;
     } catch (error) {
       console.error('Failed to set audio quality:', error);
       return false;
