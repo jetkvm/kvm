@@ -126,7 +126,7 @@ func (gm *GoroutineMonitor) GetGoroutineStats() map[string]interface{} {
 // GetGoroutineMonitor returns the global goroutine monitor instance
 func GetGoroutineMonitor() *GoroutineMonitor {
 	if globalGoroutineMonitor == nil {
-		globalGoroutineMonitor = NewGoroutineMonitor(GetConfig().GoroutineMonitorInterval)
+		globalGoroutineMonitor = NewGoroutineMonitor(Config.GoroutineMonitorInterval)
 	}
 	return globalGoroutineMonitor
 }

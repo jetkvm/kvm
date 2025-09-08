@@ -58,7 +58,7 @@ func startAudioSubprocess() error {
 	audio.SetAudioInputSupervisor(audioInputSupervisor)
 
 	// Set default OPUS configuration for audio input supervisor (low quality for single-core RV1106)
-	config := audio.GetConfig()
+	config := audio.Config
 	audioInputSupervisor.SetOpusConfig(
 		config.AudioQualityLowInputBitrate*1000, // Convert kbps to bps
 		config.AudioQualityLowOpusComplexity,
@@ -81,7 +81,8 @@ func startAudioSubprocess() error {
 			// This prevents "no client connected" errors during quality changes
 			go func() {
 				// Give the audio output server time to initialize and start listening
-				time.Sleep(500 * time.Millisecond)
+				// Increased delay to reduce frame drops during connection establishment
+				time.Sleep(1 * time.Second)
 
 				// Start audio relay system for main process
 				// If there's an active WebRTC session, use its audio track

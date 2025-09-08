@@ -21,12 +21,12 @@ func getEnvInt(key string, defaultValue int) int {
 // with fallback to default config values
 func parseOpusConfig() (bitrate, complexity, vbr, signalType, bandwidth, dtx int) {
 	// Read configuration from environment variables with config defaults
-	bitrate = getEnvInt("JETKVM_OPUS_BITRATE", GetConfig().CGOOpusBitrate)
-	complexity = getEnvInt("JETKVM_OPUS_COMPLEXITY", GetConfig().CGOOpusComplexity)
-	vbr = getEnvInt("JETKVM_OPUS_VBR", GetConfig().CGOOpusVBR)
-	signalType = getEnvInt("JETKVM_OPUS_SIGNAL_TYPE", GetConfig().CGOOpusSignalType)
-	bandwidth = getEnvInt("JETKVM_OPUS_BANDWIDTH", GetConfig().CGOOpusBandwidth)
-	dtx = getEnvInt("JETKVM_OPUS_DTX", GetConfig().CGOOpusDTX)
+	bitrate = getEnvInt("JETKVM_OPUS_BITRATE", Config.CGOOpusBitrate)
+	complexity = getEnvInt("JETKVM_OPUS_COMPLEXITY", Config.CGOOpusComplexity)
+	vbr = getEnvInt("JETKVM_OPUS_VBR", Config.CGOOpusVBR)
+	signalType = getEnvInt("JETKVM_OPUS_SIGNAL_TYPE", Config.CGOOpusSignalType)
+	bandwidth = getEnvInt("JETKVM_OPUS_BANDWIDTH", Config.CGOOpusBandwidth)
+	dtx = getEnvInt("JETKVM_OPUS_DTX", Config.CGOOpusDTX)
 
 	return bitrate, complexity, vbr, signalType, bandwidth, dtx
 }
@@ -34,7 +34,7 @@ func parseOpusConfig() (bitrate, complexity, vbr, signalType, bandwidth, dtx int
 // applyOpusConfig applies OPUS configuration to the global config
 // with optional logging for the specified component
 func applyOpusConfig(bitrate, complexity, vbr, signalType, bandwidth, dtx int, component string, enableLogging bool) {
-	config := GetConfig()
+	config := Config
 	config.CGOOpusBitrate = bitrate
 	config.CGOOpusComplexity = complexity
 	config.CGOOpusVBR = vbr

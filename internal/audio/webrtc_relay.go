@@ -134,7 +134,7 @@ func (r *AudioRelay) relayLoop() {
 	defer r.wg.Done()
 	r.logger.Debug().Msg("Audio relay loop started")
 
-	var maxConsecutiveErrors = GetConfig().MaxConsecutiveErrors
+	var maxConsecutiveErrors = Config.MaxConsecutiveErrors
 	consecutiveErrors := 0
 
 	for {
@@ -153,7 +153,7 @@ func (r *AudioRelay) relayLoop() {
 					r.logger.Error().Int("consecutive_errors", consecutiveErrors).Int("max_errors", maxConsecutiveErrors).Msg("too many consecutive read errors, stopping audio relay")
 					return
 				}
-				time.Sleep(GetConfig().ShortSleepDuration)
+				time.Sleep(Config.ShortSleepDuration)
 				continue
 			}
 

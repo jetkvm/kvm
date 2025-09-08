@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -17,8 +18,8 @@ import (
 
 // Unified IPC constants
 var (
-	outputMagicNumber uint32 = GetConfig().OutputMagicNumber // "JKOU" (JetKVM Output)
-	inputMagicNumber  uint32 = GetConfig().InputMagicNumber  // "JKMI" (JetKVM Microphone Input)
+	outputMagicNumber uint32 = Config.OutputMagicNumber // "JKOU" (JetKVM Output)
+	inputMagicNumber  uint32 = Config.InputMagicNumber  // "JKMI" (JetKVM Microphone Input)
 	outputSocketName         = "audio_output.sock"
 	inputSocketName          = "audio_input.sock"
 	headerSize               = 17 // Fixed header size: 4+1+4+8 bytes
@@ -144,8 +145,8 @@ func NewUnifiedAudioServer(isInput bool) (*UnifiedAudioServer, error) {
 		logger:             logger,
 		socketPath:         socketPath,
 		magicNumber:        magicNumber,
-		messageChan:        make(chan *UnifiedIPCMessage, GetConfig().ChannelBufferSize),
-		processChan:        make(chan *UnifiedIPCMessage, GetConfig().ChannelBufferSize),
+		messageChan:        make(chan *UnifiedIPCMessage, Config.ChannelBufferSize),
+		processChan:        make(chan *UnifiedIPCMessage, Config.ChannelBufferSize),
 		socketBufferConfig: DefaultSocketBufferConfig(),
 		latencyMonitor:     nil,
 		adaptiveOptimizer:  nil,
@@ -311,7 +312,7 @@ func (s *UnifiedAudioServer) readMessage(conn net.Conn) (*UnifiedIPCMessage, err
 	timestamp := int64(binary.LittleEndian.Uint64(header[9:17]))
 
 	// Validate length
-	if length > uint32(GetConfig().MaxFrameSize) {
+	if length > uint32(Config.MaxFrameSize) {
 		return nil, fmt.Errorf("message too large: %d bytes", length)
 	}
 
@@ -339,7 +340,10 @@ func (s *UnifiedAudioServer) SendFrame(frame []byte) error {
 	defer s.mtx.Unlock()
 
 	if !s.running || s.conn == nil {
-		return fmt.Errorf("no client connected")
+		// Silently drop frames when no client is connected
+		// This prevents "no client connected" warnings during startup and quality changes
+		atomic.AddInt64(&s.droppedFrames, 1)
+		return nil // Return nil to avoid flooding logs with connection warnings
 	}
 
 	start := time.Now()
@@ -398,7 +402,7 @@ func (s *UnifiedAudioServer) writeMessage(conn net.Conn, msg *UnifiedIPCMessage)
 
 // UnifiedAudioClient provides common functionality for both input and output clients
 type UnifiedAudioClient struct {
-	// Atomic fields first for ARM32 alignment
+	// Atomic counters for frame statistics
 	droppedFrames int64 // Atomic counter for dropped frames
 	totalFrames   int64 // Atomic counter for total frames
 
@@ -409,6 +413,13 @@ type UnifiedAudioClient struct {
 	socketPath  string
 	magicNumber uint32
 	bufferPool  *AudioBufferPool // Buffer pool for memory optimization
+
+	// Connection health monitoring
+	lastHealthCheck   time.Time
+	connectionErrors  int64 // Atomic counter for connection errors
+	autoReconnect     bool  // Enable automatic reconnection
+	healthCheckTicker *time.Ticker
+	stopHealthCheck   chan struct{}
 }
 
 // NewUnifiedAudioClient creates a new unified audio client
@@ -430,10 +441,12 @@ func NewUnifiedAudioClient(isInput bool) *UnifiedAudioClient {
 	logger := logging.GetDefaultLogger().With().Str("component", componentName).Logger()
 
 	return &UnifiedAudioClient{
-		logger:      logger,
-		socketPath:  socketPath,
-		magicNumber: magicNumber,
-		bufferPool:  NewAudioBufferPool(GetConfig().MaxFrameSize),
+		logger:          logger,
+		socketPath:      socketPath,
+		magicNumber:     magicNumber,
+		bufferPool:      NewAudioBufferPool(Config.MaxFrameSize),
+		autoReconnect:   true, // Enable automatic reconnection by default
+		stopHealthCheck: make(chan struct{}),
 	}
 }
 
@@ -453,32 +466,46 @@ func (c *UnifiedAudioClient) Connect() error {
 	}
 
 	// Try connecting multiple times as the server might not be ready
-	// Reduced retry count and delay for faster startup
-	for i := 0; i < 10; i++ {
-		conn, err := net.Dial("unix", c.socketPath)
+	// Use configurable retry parameters for better control
+	maxAttempts := Config.MaxConnectionAttempts
+	initialDelay := Config.ConnectionRetryDelay
+	maxDelay := Config.MaxConnectionRetryDelay
+	backoffFactor := Config.ConnectionBackoffFactor
+
+	for i := 0; i < maxAttempts; i++ {
+		// Set connection timeout for each attempt
+		conn, err := net.DialTimeout("unix", c.socketPath, Config.ConnectionTimeoutDelay)
 		if err == nil {
 			c.conn = conn
 			c.running = true
 			// Reset frame counters on successful connection
 			atomic.StoreInt64(&c.totalFrames, 0)
 			atomic.StoreInt64(&c.droppedFrames, 0)
-			c.logger.Info().Str("socket_path", c.socketPath).Msg("Connected to server")
+			atomic.StoreInt64(&c.connectionErrors, 0)
+			c.lastHealthCheck = time.Now()
+			// Start health check monitoring if auto-reconnect is enabled
+			if c.autoReconnect {
+				c.startHealthCheck()
+			}
+			c.logger.Info().Str("socket_path", c.socketPath).Int("attempt", i+1).Msg("Connected to server")
 			return nil
 		}
-		// Exponential backoff starting from config
-		backoffStart := GetConfig().BackoffStart
-		delay := time.Duration(backoffStart.Nanoseconds()*(1<<uint(i/3))) * time.Nanosecond
-		maxDelay := GetConfig().MaxRetryDelay
-		if delay > maxDelay {
-			delay = maxDelay
+
+		// Log connection attempt failure
+		c.logger.Debug().Err(err).Str("socket_path", c.socketPath).Int("attempt", i+1).Int("max_attempts", maxAttempts).Msg("Connection attempt failed")
+
+		// Don't sleep after the last attempt
+		if i < maxAttempts-1 {
+			// Calculate adaptive delay based on connection failure patterns
+			delay := c.calculateAdaptiveDelay(i, initialDelay, maxDelay, backoffFactor)
+			time.Sleep(delay)
 		}
-		time.Sleep(delay)
 	}
 
 	// Ensure clean state on connection failure
 	c.conn = nil
 	c.running = false
-	return fmt.Errorf("failed to connect to audio server after 10 attempts")
+	return fmt.Errorf("failed to connect to audio server after %d attempts", Config.MaxConnectionAttempts)
 }
 
 // Disconnect disconnects the client from the server
@@ -491,6 +518,9 @@ func (c *UnifiedAudioClient) Disconnect() {
 	}
 
 	c.running = false
+
+	// Stop health check monitoring
+	c.stopHealthCheckMonitoring()
 
 	if c.conn != nil {
 		c.conn.Close()
@@ -511,7 +541,122 @@ func (c *UnifiedAudioClient) IsConnected() bool {
 func (c *UnifiedAudioClient) GetFrameStats() (total, dropped int64) {
 	total = atomic.LoadInt64(&c.totalFrames)
 	dropped = atomic.LoadInt64(&c.droppedFrames)
-	return total, dropped
+	return
+}
+
+// startHealthCheck starts the connection health monitoring
+func (c *UnifiedAudioClient) startHealthCheck() {
+	if c.healthCheckTicker != nil {
+		c.healthCheckTicker.Stop()
+	}
+
+	c.healthCheckTicker = time.NewTicker(Config.HealthCheckInterval)
+	go func() {
+		for {
+			select {
+			case <-c.healthCheckTicker.C:
+				c.performHealthCheck()
+			case <-c.stopHealthCheck:
+				return
+			}
+		}
+	}()
+}
+
+// stopHealthCheckMonitoring stops the health check monitoring
+func (c *UnifiedAudioClient) stopHealthCheckMonitoring() {
+	if c.healthCheckTicker != nil {
+		c.healthCheckTicker.Stop()
+		c.healthCheckTicker = nil
+	}
+	select {
+	case c.stopHealthCheck <- struct{}{}:
+	default:
+	}
+}
+
+// performHealthCheck checks the connection health and attempts reconnection if needed
+func (c *UnifiedAudioClient) performHealthCheck() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	if !c.running || c.conn == nil {
+		return
+	}
+
+	// Simple health check: try to get connection info
+	if tcpConn, ok := c.conn.(*net.UnixConn); ok {
+		if _, err := tcpConn.File(); err != nil {
+			// Connection is broken
+			atomic.AddInt64(&c.connectionErrors, 1)
+			c.logger.Warn().Err(err).Msg("Connection health check failed, attempting reconnection")
+
+			// Close the broken connection
+			c.conn.Close()
+			c.conn = nil
+			c.running = false
+
+			// Attempt reconnection
+			go func() {
+				time.Sleep(Config.ReconnectionInterval)
+				if err := c.Connect(); err != nil {
+					c.logger.Error().Err(err).Msg("Failed to reconnect during health check")
+				}
+			}()
+		}
+	}
+
+	c.lastHealthCheck = time.Now()
+}
+
+// SetAutoReconnect enables or disables automatic reconnection
+func (c *UnifiedAudioClient) SetAutoReconnect(enabled bool) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	c.autoReconnect = enabled
+	if !enabled {
+		c.stopHealthCheckMonitoring()
+	} else if c.running {
+		c.startHealthCheck()
+	}
+}
+
+// GetConnectionErrors returns the number of connection errors
+func (c *UnifiedAudioClient) GetConnectionErrors() int64 {
+	return atomic.LoadInt64(&c.connectionErrors)
+}
+
+// calculateAdaptiveDelay calculates retry delay based on system load and failure patterns
+func (c *UnifiedAudioClient) calculateAdaptiveDelay(attempt int, initialDelay, maxDelay time.Duration, backoffFactor float64) time.Duration {
+	// Base exponential backoff
+	baseDelay := time.Duration(float64(initialDelay.Nanoseconds()) * math.Pow(backoffFactor, float64(attempt)))
+
+	// Get connection error history for adaptive adjustment
+	errorCount := atomic.LoadInt64(&c.connectionErrors)
+
+	// Adjust delay based on recent connection errors
+	// More errors = longer delays to avoid overwhelming the server
+	adaptiveFactor := 1.0
+	if errorCount > 5 {
+		adaptiveFactor = 1.5 // 50% longer delays after many errors
+	} else if errorCount > 10 {
+		adaptiveFactor = 2.0 // Double delays after excessive errors
+	}
+
+	// Apply adaptive factor
+	adaptiveDelay := time.Duration(float64(baseDelay.Nanoseconds()) * adaptiveFactor)
+
+	// Ensure we don't exceed maximum delay
+	if adaptiveDelay > maxDelay {
+		adaptiveDelay = maxDelay
+	}
+
+	// Add small random jitter to avoid thundering herd
+	jitter := time.Duration(float64(adaptiveDelay.Nanoseconds()) * 0.1 * (0.5 + float64(attempt%3)/6.0))
+	adaptiveDelay += jitter
+
+	return adaptiveDelay
 }
 
 // Helper functions for socket paths

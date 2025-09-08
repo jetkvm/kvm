@@ -23,8 +23,8 @@ const (
 
 // Constants are now defined in unified_ipc.go
 var (
-	maxFrameSize    = GetConfig().MaxFrameSize    // Maximum Opus frame size
-	messagePoolSize = GetConfig().MessagePoolSize // Pre-allocated message pool size
+	maxFrameSize    = Config.MaxFrameSize    // Maximum Opus frame size
+	messagePoolSize = Config.MessagePoolSize // Pre-allocated message pool size
 )
 
 // Legacy aliases for backward compatibility
@@ -77,7 +77,7 @@ func initializeMessagePool() {
 	messagePoolInitOnce.Do(func() {
 		preallocSize := messagePoolSize / 4 // 25% pre-allocated for immediate use
 		globalMessagePool.preallocSize = preallocSize
-		globalMessagePool.maxPoolSize = messagePoolSize * GetConfig().PoolGrowthMultiplier // Allow growth up to 2x
+		globalMessagePool.maxPoolSize = messagePoolSize * Config.PoolGrowthMultiplier // Allow growth up to 2x
 		globalMessagePool.preallocated = make([]*OptimizedIPCMessage, 0, preallocSize)
 
 		// Pre-allocate messages for immediate use
@@ -378,7 +378,7 @@ func (ais *AudioInputServer) handleConnection(conn net.Conn) {
 			if ais.conn == nil {
 				return
 			}
-			time.Sleep(GetConfig().DefaultSleepDuration)
+			time.Sleep(Config.DefaultSleepDuration)
 		}
 	}
 }
@@ -499,11 +499,11 @@ func (ais *AudioInputServer) processOpusFrame(data []byte) error {
 	}
 
 	// Get cached config once - avoid repeated calls and locking
-	cache := GetCachedConfig()
+	cache := Config
 	// Skip cache expiry check in hotpath - background updates handle this
 
 	// Get a PCM buffer from the pool for optimized decode-write
-	pcmBuffer := GetBufferFromPool(cache.GetMaxPCMBufferSize())
+	pcmBuffer := GetBufferFromPool(cache.MaxPCMBufferSize)
 	defer ReturnBufferToPool(pcmBuffer)
 
 	// Direct CGO call - avoid wrapper function overhead
@@ -646,9 +646,9 @@ func (aic *AudioInputClient) Connect() error {
 			return nil
 		}
 		// Exponential backoff starting from config
-		backoffStart := GetConfig().BackoffStart
+		backoffStart := Config.BackoffStart
 		delay := time.Duration(backoffStart.Nanoseconds()*(1<<uint(i/3))) * time.Nanosecond
-		maxDelay := GetConfig().MaxRetryDelay
+		maxDelay := Config.MaxRetryDelay
 		if delay > maxDelay {
 			delay = maxDelay
 		}
@@ -911,10 +911,10 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 		// Enhanced error tracking and recovery
 		var consecutiveErrors int
 		var lastErrorTime time.Time
-		maxConsecutiveErrors := GetConfig().MaxConsecutiveErrors
-		errorResetWindow := GetConfig().RestartWindow // Use existing restart window
-		baseBackoffDelay := GetConfig().RetryDelay
-		maxBackoffDelay := GetConfig().MaxRetryDelay
+		maxConsecutiveErrors := Config.MaxConsecutiveErrors
+		errorResetWindow := Config.RestartWindow // Use existing restart window
+		baseBackoffDelay := Config.RetryDelay
+		maxBackoffDelay := Config.MaxRetryDelay
 
 		logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
 
@@ -1025,7 +1025,7 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 	processorTask := func() {
 		// Only lock OS thread and set priority for high-load scenarios
 		// This reduces interference with input processing threads
-		config := GetConfig()
+		config := Config
 		useThreadOptimizations := config.MaxAudioProcessorWorkers > 8
 
 		if useThreadOptimizations {
@@ -1137,7 +1137,7 @@ func (ais *AudioInputServer) processMessageWithRecovery(msg *InputIPCMessage, lo
 	select {
 	case processChan <- msg:
 		return nil
-	case <-time.After(GetConfig().WriteTimeout):
+	case <-time.After(Config.WriteTimeout):
 		// Processing queue full and timeout reached, drop frame
 		atomic.AddInt64(&ais.droppedFrames, 1)
 		return fmt.Errorf("processing queue timeout")
@@ -1156,7 +1156,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 	monitorTask := func() {
 		// Monitor goroutine doesn't need thread locking for most scenarios
 		// Only use thread optimizations for high-throughput scenarios
-		config := GetConfig()
+		config := Config
 		useThreadOptimizations := config.MaxAudioProcessorWorkers > 8
 
 		if useThreadOptimizations {
@@ -1167,11 +1167,11 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 		}
 
 		defer ais.wg.Done()
-		ticker := time.NewTicker(GetConfig().DefaultTickerInterval)
+		ticker := time.NewTicker(Config.DefaultTickerInterval)
 		defer ticker.Stop()
 
 		// Buffer size update ticker (less frequent)
-		bufferUpdateTicker := time.NewTicker(GetConfig().BufferUpdateInterval)
+		bufferUpdateTicker := time.NewTicker(Config.BufferUpdateInterval)
 		defer bufferUpdateTicker.Stop()
 
 		for {
@@ -1330,7 +1330,7 @@ func (mp *MessagePool) GetMessagePoolStats() MessagePoolStats {
 
 	var hitRate float64
 	if totalRequests > 0 {
-		hitRate = float64(hitCount) / float64(totalRequests) * GetConfig().PercentageMultiplier
+		hitRate = float64(hitCount) / float64(totalRequests) * Config.PercentageMultiplier
 	}
 
 	// Calculate channel pool size

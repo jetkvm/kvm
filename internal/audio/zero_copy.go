@@ -98,8 +98,8 @@ type ZeroCopyFramePool struct {
 // NewZeroCopyFramePool creates a new zero-copy frame pool
 func NewZeroCopyFramePool(maxFrameSize int) *ZeroCopyFramePool {
 	// Pre-allocate frames for immediate availability
-	preallocSizeBytes := GetConfig().PreallocSize
-	maxPoolSize := GetConfig().MaxPoolSize // Limit total pool size
+	preallocSizeBytes := Config.PreallocSize
+	maxPoolSize := Config.MaxPoolSize // Limit total pool size
 
 	// Calculate number of frames based on memory budget, not frame count
 	preallocFrameCount := preallocSizeBytes / maxFrameSize
@@ -327,7 +327,7 @@ func (p *ZeroCopyFramePool) GetZeroCopyPoolStats() ZeroCopyFramePoolStats {
 
 	var hitRate float64
 	if totalRequests > 0 {
-		hitRate = float64(hitCount) / float64(totalRequests) * GetConfig().PercentageMultiplier
+		hitRate = float64(hitCount) / float64(totalRequests) * Config.PercentageMultiplier
 	}
 
 	return ZeroCopyFramePoolStats{

@@ -224,7 +224,7 @@ func (aeb *AudioEventBroadcaster) sendToSubscriber(subscriber *AudioEventSubscri
 		return false
 	}
 
-	ctx, cancel := context.WithTimeout(subscriber.ctx, time.Duration(GetConfig().EventTimeoutSeconds)*time.Second)
+	ctx, cancel := context.WithTimeout(subscriber.ctx, time.Duration(Config.EventTimeoutSeconds)*time.Second)
 	defer cancel()
 
 	err := wsjson.Write(ctx, subscriber.conn, event)
