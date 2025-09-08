@@ -87,13 +87,11 @@ func ValidateBufferSize(size int) error {
 		return nil
 	}
 
-	// Slower path: full validation against SocketMaxBuffer
-	config := Config
 	// Use SocketMaxBuffer as the upper limit for general buffer validation
 	// This allows for socket buffers while still preventing extremely large allocations
-	if size > config.SocketMaxBuffer {
+	if size > Config.SocketMaxBuffer {
 		return fmt.Errorf("%w: buffer size %d exceeds maximum %d",
-			ErrInvalidBufferSize, size, config.SocketMaxBuffer)
+			ErrInvalidBufferSize, size, Config.SocketMaxBuffer)
 	}
 	return nil
 }
@@ -123,16 +121,14 @@ func ValidateLatency(latency time.Duration) error {
 		return nil
 	}
 
-	// Slower path: full validation with GetConfig()
-	config := Config
 	minLatency := time.Millisecond // Minimum reasonable latency
 	if latency > 0 && latency < minLatency {
 		return fmt.Errorf("%w: latency %v below minimum %v",
 			ErrInvalidLatency, latency, minLatency)
 	}
-	if latency > config.MaxLatency {
+	if latency > Config.MaxLatency {
 		return fmt.Errorf("%w: latency %v exceeds maximum %v",
-			ErrInvalidLatency, latency, config.MaxLatency)
+			ErrInvalidLatency, latency, Config.MaxLatency)
 	}
 	return nil
 }
@@ -158,10 +154,8 @@ func ValidateMetricsInterval(interval time.Duration) error {
 		return nil
 	}
 
-	// Slower path: full validation with GetConfig()
-	config := Config
-	minInterval = config.MinMetricsUpdateInterval
-	maxInterval = config.MaxMetricsUpdateInterval
+	minInterval = Config.MinMetricsUpdateInterval
+	maxInterval = Config.MaxMetricsUpdateInterval
 	if interval < minInterval {
 		return ErrInvalidMetricsInterval
 	}
@@ -192,11 +186,9 @@ func ValidateAdaptiveBufferConfig(minSize, maxSize, defaultSize int) error {
 
 // ValidateInputIPCConfig validates input IPC configuration
 func ValidateInputIPCConfig(sampleRate, channels, frameSize int) error {
-	// Use config values
-	config := Config
-	minSampleRate := config.MinSampleRate
-	maxSampleRate := config.MaxSampleRate
-	maxChannels := config.MaxChannels
+	minSampleRate := Config.MinSampleRate
+	maxSampleRate := Config.MaxSampleRate
+	maxChannels := Config.MaxChannels
 	if sampleRate < minSampleRate || sampleRate > maxSampleRate {
 		return ErrInvalidSampleRate
 	}
@@ -211,11 +203,9 @@ func ValidateInputIPCConfig(sampleRate, channels, frameSize int) error {
 
 // ValidateOutputIPCConfig validates output IPC configuration
 func ValidateOutputIPCConfig(sampleRate, channels, frameSize int) error {
-	// Use config values
-	config := Config
-	minSampleRate := config.MinSampleRate
-	maxSampleRate := config.MaxSampleRate
-	maxChannels := config.MaxChannels
+	minSampleRate := Config.MinSampleRate
+	maxSampleRate := Config.MaxSampleRate
+	maxChannels := Config.MaxChannels
 	if sampleRate < minSampleRate || sampleRate > maxSampleRate {
 		return ErrInvalidSampleRate
 	}
@@ -236,7 +226,7 @@ func ValidateLatencyConfig(config LatencyConfig) error {
 	if err := ValidateLatency(config.MaxLatency); err != nil {
 		return err
 	}
-	if config.TargetLatency >= config.MaxLatency {
+	if config.TargetLatency >= Config.MaxLatency {
 		return ErrInvalidLatency
 	}
 	if err := ValidateMetricsInterval(config.OptimizationInterval); err != nil {
@@ -271,8 +261,7 @@ func ValidateSampleRate(sampleRate int) error {
 	}
 
 	// Slower path: check against all valid rates
-	config := Config
-	validRates := config.ValidSampleRates
+	validRates := Config.ValidSampleRates
 	for _, rate := range validRates {
 		if sampleRate == rate {
 			return nil
@@ -340,17 +329,15 @@ func ValidateBitrate(bitrate int) error {
 		return nil
 	}
 
-	// Slower path: full validation with GetConfig()
-	config := Config
 	// Convert kbps to bps for comparison with config limits
 	bitrateInBps := bitrate * 1000
-	if bitrateInBps < config.MinOpusBitrate {
+	if bitrateInBps < Config.MinOpusBitrate {
 		return fmt.Errorf("%w: bitrate %d kbps (%d bps) below minimum %d bps",
-			ErrInvalidBitrate, bitrate, bitrateInBps, config.MinOpusBitrate)
+			ErrInvalidBitrate, bitrate, bitrateInBps, Config.MinOpusBitrate)
 	}
-	if bitrateInBps > config.MaxOpusBitrate {
+	if bitrateInBps > Config.MaxOpusBitrate {
 		return fmt.Errorf("%w: bitrate %d kbps (%d bps) exceeds maximum %d bps",
-			ErrInvalidBitrate, bitrate, bitrateInBps, config.MaxOpusBitrate)
+			ErrInvalidBitrate, bitrate, bitrateInBps, Config.MaxOpusBitrate)
 	}
 	return nil
 }
@@ -462,11 +449,11 @@ func ValidateAudioConfigConstants(config *AudioConfigConstants) error {
 	}
 	// Validate configuration values if config is provided
 	if config != nil {
-		if config.MaxFrameSize <= 0 {
-			return fmt.Errorf("invalid MaxFrameSize: %d", config.MaxFrameSize)
+		if Config.MaxFrameSize <= 0 {
+			return fmt.Errorf("invalid MaxFrameSize: %d", Config.MaxFrameSize)
 		}
-		if config.SampleRate <= 0 {
-			return fmt.Errorf("invalid SampleRate: %d", config.SampleRate)
+		if Config.SampleRate <= 0 {
+			return fmt.Errorf("invalid SampleRate: %d", Config.SampleRate)
 		}
 	}
 	return nil
@@ -478,8 +465,7 @@ var cachedMaxFrameSize int
 // InitValidationCache initializes cached validation values with actual config
 func InitValidationCache() {
 	// Initialize the global cache variable for backward compatibility
-	config := Config
-	cachedMaxFrameSize = config.MaxAudioFrameSize
+	cachedMaxFrameSize = Config.MaxAudioFrameSize
 
 	// Initialize the global audio config cache
 	cachedMaxFrameSize = Config.MaxAudioFrameSize
