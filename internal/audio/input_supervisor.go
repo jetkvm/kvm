@@ -230,7 +230,7 @@ func (ais *AudioInputSupervisor) SendFrameZeroCopy(frame *ZeroCopyAudioFrame) er
 }
 
 // SendConfig sends a configuration update to the subprocess (convenience method)
-func (ais *AudioInputSupervisor) SendConfig(config InputIPCConfig) error {
+func (ais *AudioInputSupervisor) SendConfig(config UnifiedIPCConfig) error {
 	if ais.client == nil {
 		return fmt.Errorf("client not initialized")
 	}
@@ -243,7 +243,7 @@ func (ais *AudioInputSupervisor) SendConfig(config InputIPCConfig) error {
 }
 
 // SendOpusConfig sends a complete Opus encoder configuration to the audio input server
-func (ais *AudioInputSupervisor) SendOpusConfig(config InputIPCOpusConfig) error {
+func (ais *AudioInputSupervisor) SendOpusConfig(config UnifiedIPCOpusConfig) error {
 	if ais.client == nil {
 		return fmt.Errorf("client not initialized")
 	}

@@ -62,7 +62,7 @@ func (aim *AudioInputIPCManager) Start() error {
 		return err
 	}
 
-	config := InputIPCConfig{
+	config := UnifiedIPCConfig{
 		SampleRate: Config.InputIPCSampleRate,
 		Channels:   Config.InputIPCChannels,
 		FrameSize:  Config.InputIPCFrameSize,
@@ -72,7 +72,7 @@ func (aim *AudioInputIPCManager) Start() error {
 	if err := ValidateInputIPCConfig(config.SampleRate, config.Channels, config.FrameSize); err != nil {
 		aim.logger.Warn().Err(err).Msg("invalid input IPC config from constants, using defaults")
 		// Use safe defaults if config validation fails
-		config = InputIPCConfig{
+		config = UnifiedIPCConfig{
 			SampleRate: 48000,
 			Channels:   2,
 			FrameSize:  960,

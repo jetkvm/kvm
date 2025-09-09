@@ -13,24 +13,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Legacy aliases for backward compatibility
-type OutputIPCConfig = UnifiedIPCConfig
-type OutputIPCOpusConfig = UnifiedIPCOpusConfig
-type OutputMessageType = UnifiedMessageType
-type OutputIPCMessage = UnifiedIPCMessage
-
-// Legacy constants for backward compatibility
-const (
-	OutputMessageTypeOpusFrame  = MessageTypeOpusFrame
-	OutputMessageTypeConfig     = MessageTypeConfig
-	OutputMessageTypeOpusConfig = MessageTypeOpusConfig
-	OutputMessageTypeStop       = MessageTypeStop
-	OutputMessageTypeHeartbeat  = MessageTypeHeartbeat
-	OutputMessageTypeAck        = MessageTypeAck
-)
-
-// Methods are now inherited from UnifiedIPCMessage
-
 // Global shared message pool for output IPC client header reading
 var globalOutputClientMessagePool = NewGenericMessagePool(Config.OutputMessagePoolSize)
 
@@ -48,9 +30,9 @@ type AudioOutputServer struct {
 	logger   zerolog.Logger
 
 	// Message channels
-	messageChan chan *OutputIPCMessage // Buffered channel for incoming messages
-	processChan chan *OutputIPCMessage // Buffered channel for processing queue
-	wg          sync.WaitGroup         // Wait group for goroutine coordination
+	messageChan chan *UnifiedIPCMessage // Buffered channel for incoming messages
+	processChan chan *UnifiedIPCMessage // Buffered channel for processing queue
+	wg          sync.WaitGroup          // Wait group for goroutine coordination
 
 	// Configuration
 	socketPath  string
@@ -65,8 +47,8 @@ func NewAudioOutputServer() (*AudioOutputServer, error) {
 		socketPath:  socketPath,
 		magicNumber: Config.OutputMagicNumber,
 		logger:      logger,
-		messageChan: make(chan *OutputIPCMessage, Config.ChannelBufferSize),
-		processChan: make(chan *OutputIPCMessage, Config.ChannelBufferSize),
+		messageChan: make(chan *UnifiedIPCMessage, Config.ChannelBufferSize),
+		processChan: make(chan *UnifiedIPCMessage, Config.ChannelBufferSize),
 	}
 
 	return server, nil
@@ -112,6 +94,7 @@ func (s *AudioOutputServer) Stop() {
 
 	if s.listener != nil {
 		s.listener.Close()
+		s.listener = nil
 	}
 
 	if s.conn != nil {
@@ -171,7 +154,7 @@ func (s *AudioOutputServer) handleConnection(conn net.Conn) {
 }
 
 // readMessage reads a message from the connection
-func (s *AudioOutputServer) readMessage(conn net.Conn) (*OutputIPCMessage, error) {
+func (s *AudioOutputServer) readMessage(conn net.Conn) (*UnifiedIPCMessage, error) {
 	header := make([]byte, 17)
 	if _, err := io.ReadFull(conn, header); err != nil {
 		return nil, fmt.Errorf("failed to read header: %w", err)
@@ -182,7 +165,7 @@ func (s *AudioOutputServer) readMessage(conn net.Conn) (*OutputIPCMessage, error
 		return nil, fmt.Errorf("invalid magic number: expected %d, got %d", s.magicNumber, magic)
 	}
 
-	msgType := OutputMessageType(header[4])
+	msgType := UnifiedMessageType(header[4])
 	length := binary.LittleEndian.Uint32(header[5:9])
 	timestamp := int64(binary.LittleEndian.Uint64(header[9:17]))
 
@@ -194,7 +177,7 @@ func (s *AudioOutputServer) readMessage(conn net.Conn) (*OutputIPCMessage, error
 		}
 	}
 
-	return &OutputIPCMessage{
+	return &UnifiedIPCMessage{
 		Magic:     magic,
 		Type:      msgType,
 		Length:    length,
@@ -204,14 +187,14 @@ func (s *AudioOutputServer) readMessage(conn net.Conn) (*OutputIPCMessage, error
 }
 
 // processMessage processes a received message
-func (s *AudioOutputServer) processMessage(msg *OutputIPCMessage) error {
+func (s *AudioOutputServer) processMessage(msg *UnifiedIPCMessage) error {
 	switch msg.Type {
-	case OutputMessageTypeOpusConfig:
+	case MessageTypeOpusConfig:
 		return s.processOpusConfig(msg.Data)
-	case OutputMessageTypeStop:
+	case MessageTypeStop:
 		s.logger.Info().Msg("Received stop message")
 		return nil
-	case OutputMessageTypeHeartbeat:
+	case MessageTypeHeartbeat:
 		s.logger.Debug().Msg("Received heartbeat")
 		return nil
 	default:
@@ -228,7 +211,7 @@ func (s *AudioOutputServer) processOpusConfig(data []byte) error {
 	}
 
 	// Decode Opus configuration
-	config := OutputIPCOpusConfig{
+	config := UnifiedIPCOpusConfig{
 		SampleRate: int(binary.LittleEndian.Uint32(data[0:4])),
 		Channels:   int(binary.LittleEndian.Uint32(data[4:8])),
 		FrameSize:  int(binary.LittleEndian.Uint32(data[8:12])),
@@ -282,9 +265,9 @@ func (s *AudioOutputServer) SendFrame(frame []byte) error {
 		return fmt.Errorf("no client connected")
 	}
 
-	msg := &OutputIPCMessage{
+	msg := &UnifiedIPCMessage{
 		Magic:     s.magicNumber,
-		Type:      OutputMessageTypeOpusFrame,
+		Type:      MessageTypeOpusFrame,
 		Length:    uint32(len(frame)),
 		Timestamp: time.Now().UnixNano(),
 		Data:      frame,
@@ -294,8 +277,9 @@ func (s *AudioOutputServer) SendFrame(frame []byte) error {
 }
 
 // writeMessage writes a message to the connection
-func (s *AudioOutputServer) writeMessage(conn net.Conn, msg *OutputIPCMessage) error {
-	header := EncodeMessageHeader(msg.Magic, uint8(msg.Type), msg.Length, msg.Timestamp)
+func (s *AudioOutputServer) writeMessage(conn net.Conn, msg *UnifiedIPCMessage) error {
+	header := make([]byte, 17)
+	EncodeMessageHeader(header, msg.Magic, uint8(msg.Type), msg.Length, msg.Timestamp)
 
 	if _, err := conn.Write(header); err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
@@ -415,8 +399,8 @@ func (c *AudioOutputClient) ReceiveFrame() ([]byte, error) {
 		return nil, fmt.Errorf("invalid magic number in IPC message: got 0x%x, expected 0x%x", magic, outputMagicNumber)
 	}
 
-	msgType := OutputMessageType(optMsg.header[4])
-	if msgType != OutputMessageTypeOpusFrame {
+	msgType := UnifiedMessageType(optMsg.header[4])
+	if msgType != MessageTypeOpusFrame {
 		return nil, fmt.Errorf("unexpected message type: %d", msgType)
 	}
 
@@ -443,7 +427,7 @@ func (c *AudioOutputClient) ReceiveFrame() ([]byte, error) {
 }
 
 // SendOpusConfig sends Opus configuration to the audio output server
-func (c *AudioOutputClient) SendOpusConfig(config OutputIPCOpusConfig) error {
+func (c *AudioOutputClient) SendOpusConfig(config UnifiedIPCOpusConfig) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -460,9 +444,9 @@ func (c *AudioOutputClient) SendOpusConfig(config OutputIPCOpusConfig) error {
 	// Serialize Opus configuration using common function
 	data := EncodeOpusConfig(config.SampleRate, config.Channels, config.FrameSize, config.Bitrate, config.Complexity, config.VBR, config.SignalType, config.Bandwidth, config.DTX)
 
-	msg := &OutputIPCMessage{
+	msg := &UnifiedIPCMessage{
 		Magic:     c.magicNumber,
-		Type:      OutputMessageTypeOpusConfig,
+		Type:      MessageTypeOpusConfig,
 		Length:    uint32(len(data)),
 		Timestamp: time.Now().UnixNano(),
 		Data:      data,
@@ -472,8 +456,9 @@ func (c *AudioOutputClient) SendOpusConfig(config OutputIPCOpusConfig) error {
 }
 
 // writeMessage writes a message to the connection
-func (c *AudioOutputClient) writeMessage(msg *OutputIPCMessage) error {
-	header := EncodeMessageHeader(msg.Magic, uint8(msg.Type), msg.Length, msg.Timestamp)
+func (c *AudioOutputClient) writeMessage(msg *UnifiedIPCMessage) error {
+	header := make([]byte, 17)
+	EncodeMessageHeader(header, msg.Magic, uint8(msg.Type), msg.Length, msg.Timestamp)
 
 	if _, err := c.conn.Write(header); err != nil {
 		return fmt.Errorf("failed to write header: %w", err)

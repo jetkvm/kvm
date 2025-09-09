@@ -56,7 +56,7 @@ func (aom *AudioOutputIPCManager) Start() error {
 	aom.logComponentStarted(AudioOutputIPCComponent)
 
 	// Send initial configuration
-	config := OutputIPCConfig{
+	config := UnifiedIPCConfig{
 		SampleRate: Config.SampleRate,
 		Channels:   Config.Channels,
 		FrameSize:  int(Config.AudioQualityMediumFrameSize.Milliseconds()),
@@ -202,7 +202,7 @@ func (aom *AudioOutputIPCManager) calculateFrameRate() float64 {
 }
 
 // SendConfig sends configuration to the IPC server
-func (aom *AudioOutputIPCManager) SendConfig(config OutputIPCConfig) error {
+func (aom *AudioOutputIPCManager) SendConfig(config UnifiedIPCConfig) error {
 	if aom.server == nil {
 		return fmt.Errorf("audio output server not initialized")
 	}
