@@ -562,14 +562,31 @@ func RunWebServer() {
 	r := setupRouter()
 
 	// Determine the binding address based on the config
-	bindAddress := ":80" // Default to all interfaces
+	var bindAddress string
+	listenPort := 80 // default port
+	useIPv4 := config.NetworkConfig.IPv4Mode.String != "disabled"
+	useIPv6 := config.NetworkConfig.IPv6Mode.String != "disabled"
+
 	if config.LocalLoopbackOnly {
-		bindAddress = "localhost:80" // Loopback only (both IPv4 and IPv6)
+		if useIPv4 && useIPv6 {
+			bindAddress = fmt.Sprintf("localhost:%d", listenPort)
+		} else if useIPv4 {
+			bindAddress = fmt.Sprintf("127.0.0.1:%d", listenPort)
+		} else if useIPv6 {
+			bindAddress = fmt.Sprintf("[::1]:%d", listenPort)
+		}
+	} else {
+		if useIPv4 && useIPv6 {
+			bindAddress = fmt.Sprintf(":%d", listenPort)
+		} else if useIPv4 {
+			bindAddress = fmt.Sprintf("0.0.0.0:%d", listenPort)
+		} else if useIPv6 {
+			bindAddress = fmt.Sprintf("[::]:%d", listenPort)
+		}
 	}
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
-	err := r.Run(bindAddress)
-	if err != nil {
+	if err := r.Run(bindAddress); err != nil {
 		panic(err)
 	}
 }
