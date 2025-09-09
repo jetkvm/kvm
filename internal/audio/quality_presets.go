@@ -211,33 +211,46 @@ func SetAudioQuality(quality AudioQuality) {
 		// Set new OPUS configuration for future restarts
 		if supervisor := GetAudioOutputSupervisor(); supervisor != nil {
 			supervisor.SetOpusConfig(config.Bitrate*1000, complexity, vbr, signalType, bandwidth, dtx)
-		}
 
-		// Send dynamic configuration update to running audio output
-		vbrConstraint := Config.CGOOpusVBRConstraint
-		if err := updateOpusEncoderParams(config.Bitrate*1000, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx); err != nil {
-			logger.Warn().Err(err).Msg("failed to update OPUS encoder parameters dynamically")
-			// Fallback to subprocess restart if dynamic update fails
-			if supervisor := GetAudioOutputSupervisor(); supervisor != nil {
-				logger.Info().Msg("falling back to subprocess restart")
-				supervisor.Stop()
-				if err := supervisor.Start(); err != nil {
-					logger.Error().Err(err).Msg("failed to restart audio output subprocess after dynamic update failure")
+			// Send dynamic configuration update to running subprocess via IPC
+			if supervisor.IsConnected() {
+				// Convert AudioConfig to OutputIPCOpusConfig with complete Opus parameters
+				opusConfig := OutputIPCOpusConfig{
+					SampleRate: config.SampleRate,
+					Channels:   config.Channels,
+					FrameSize:  int(config.FrameSize.Milliseconds() * int64(config.SampleRate) / 1000), // Convert ms to samples
+					Bitrate:    config.Bitrate * 1000,                                                  // Convert kbps to bps
+					Complexity: complexity,
+					VBR:        vbr,
+					SignalType: signalType,
+					Bandwidth:  bandwidth,
+					DTX:        dtx,
 				}
-			}
-		} else {
-			logger.Info().Msg("audio output quality updated dynamically")
 
-			// Reset audio output stats after config update
-			// Allow adaptive buffer manager to naturally adjust buffer sizes
-			go func() {
-				time.Sleep(Config.QualityChangeSettleDelay) // Wait for quality change to settle
-				// Reset audio input server stats to clear persistent warnings
-				ResetGlobalAudioInputServerStats()
-				// Attempt recovery if there are still issues
-				time.Sleep(1 * time.Second)
-				RecoverGlobalAudioInputServer()
-			}()
+				logger.Info().Interface("opusConfig", opusConfig).Msg("sending Opus configuration to audio output subprocess")
+				if err := supervisor.SendOpusConfig(opusConfig); err != nil {
+					logger.Warn().Err(err).Msg("failed to send dynamic Opus config update via IPC, falling back to subprocess restart")
+					// Fallback to subprocess restart if IPC update fails
+					supervisor.Stop()
+					if err := supervisor.Start(); err != nil {
+						logger.Error().Err(err).Msg("failed to restart audio output subprocess after IPC update failure")
+					}
+				} else {
+					logger.Info().Msg("audio output quality updated dynamically via IPC")
+
+					// Reset audio output stats after config update
+					go func() {
+						time.Sleep(Config.QualityChangeSettleDelay) // Wait for quality change to settle
+						// Reset audio input server stats to clear persistent warnings
+						ResetGlobalAudioInputServerStats()
+						// Attempt recovery if there are still issues
+						time.Sleep(1 * time.Second)
+						RecoverGlobalAudioInputServer()
+					}()
+				}
+			} else {
+				logger.Info().Bool("supervisor_running", supervisor.IsRunning()).Msg("audio output subprocess not connected, configuration will apply on next start")
+			}
 		}
 	}
 }

@@ -87,10 +87,10 @@ static volatile int playback_initialized = 0;
 // Function to dynamically update Opus encoder parameters
 int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_constraint,
                               int signal_type, int bandwidth, int dtx) {
-    // This function is specifically for audio OUTPUT encoder parameters
-    // Only require playback initialization for audio output quality changes
-    if (!encoder || !playback_initialized) {
-        return -1; // Audio output encoder not initialized
+    // This function works for both audio input and output encoder parameters
+    // Require either capture (output) or playback (input) initialization
+    if (!encoder || (!capture_initialized && !playback_initialized)) {
+        return -1; // Audio encoder not initialized
     }
 
     // Update the static variables
