@@ -532,19 +532,36 @@ func (ais *AudioInputServer) processOpusConfig(data []byte) error {
 
 	logger.Info().Interface("config", config).Msg("applying dynamic Opus encoder configuration")
 
-	// Apply the Opus encoder configuration dynamically
-	err := CGOUpdateOpusEncoderParams(
-		config.Bitrate,
-		config.Complexity,
-		config.VBR,
-		0, // VBR constraint - using default
-		config.SignalType,
-		config.Bandwidth,
-		config.DTX,
-	)
+	// Ensure capture is initialized before updating encoder parameters
+	// The C function requires both encoder and capture_initialized to be true
+	if err := CGOAudioInit(); err != nil {
+		logger.Debug().Err(err).Msg("Audio capture already initialized or initialization failed")
+		// Continue anyway - capture may already be initialized
+	}
+
+	// Apply the Opus encoder configuration dynamically with retry logic
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		err = CGOUpdateOpusEncoderParams(
+			config.Bitrate,
+			config.Complexity,
+			config.VBR,
+			0, // VBR constraint - using default
+			config.SignalType,
+			config.Bandwidth,
+			config.DTX,
+		)
+		if err == nil {
+			break
+		}
+		logger.Warn().Err(err).Int("attempt", attempt+1).Msg("Failed to update Opus encoder parameters, retrying")
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
+		}
+	}
 
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to apply Opus encoder configuration")
+		logger.Error().Err(err).Msg("failed to apply Opus encoder configuration after retries")
 		return fmt.Errorf("failed to apply Opus configuration: %w", err)
 	}
 

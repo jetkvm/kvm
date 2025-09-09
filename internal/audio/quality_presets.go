@@ -63,10 +63,10 @@ type AudioConfig struct {
 
 // AudioMetrics tracks audio performance metrics
 type AudioMetrics struct {
-	FramesReceived  int64
-	FramesDropped   int64
-	BytesProcessed  int64
-	ConnectionDrops int64
+	FramesReceived  uint64
+	FramesDropped   uint64
+	BytesProcessed  uint64
+	ConnectionDrops uint64
 	LastFrameTime   time.Time
 	AverageLatency  time.Duration
 }
@@ -398,16 +398,16 @@ func flushBatchedMetrics() {
 
 	// Update main metrics if we have any batched data
 	if framesReceived > 0 {
-		atomic.AddInt64(&metrics.FramesReceived, framesReceived)
+		atomic.AddUint64(&metrics.FramesReceived, uint64(framesReceived))
 	}
 	if bytesProcessed > 0 {
-		atomic.AddInt64(&metrics.BytesProcessed, bytesProcessed)
+		atomic.AddUint64(&metrics.BytesProcessed, uint64(bytesProcessed))
 	}
 	if framesDropped > 0 {
-		atomic.AddInt64(&metrics.FramesDropped, framesDropped)
+		atomic.AddUint64(&metrics.FramesDropped, uint64(framesDropped))
 	}
 	if connectionDrops > 0 {
-		atomic.AddInt64(&metrics.ConnectionDrops, connectionDrops)
+		atomic.AddUint64(&metrics.ConnectionDrops, uint64(connectionDrops))
 	}
 
 	// Update last flush time
