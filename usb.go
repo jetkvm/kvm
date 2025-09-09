@@ -51,8 +51,8 @@ func rpcKeypressReport(key byte, press bool) (usbgadget.KeysDownState, error) {
 	return gadget.KeypressReport(key, press)
 }
 
-func rpcAbsMouseReport(x int, y int, buttons uint8) error {
-	return gadget.AbsMouseReport(x, y, buttons)
+func rpcAbsMouseReport(x uint16, y uint16, buttons uint8) error {
+	return gadget.AbsMouseReport(int(x), int(y), buttons)
 }
 
 func rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
