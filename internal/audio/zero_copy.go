@@ -98,7 +98,7 @@ type ZeroCopyFramePool struct {
 // NewZeroCopyFramePool creates a new zero-copy frame pool
 func NewZeroCopyFramePool(maxFrameSize int) *ZeroCopyFramePool {
 	// Pre-allocate frames for immediate availability
-	preallocSizeBytes := Config.PreallocSize
+	preallocSizeBytes := Config.ZeroCopyPreallocSizeBytes
 	maxPoolSize := Config.MaxPoolSize // Limit total pool size
 
 	// Calculate number of frames based on memory budget, not frame count
@@ -106,8 +106,8 @@ func NewZeroCopyFramePool(maxFrameSize int) *ZeroCopyFramePool {
 	if preallocFrameCount > maxPoolSize {
 		preallocFrameCount = maxPoolSize
 	}
-	if preallocFrameCount < 1 {
-		preallocFrameCount = 1 // Always preallocate at least one frame
+	if preallocFrameCount < Config.ZeroCopyMinPreallocFrames {
+		preallocFrameCount = Config.ZeroCopyMinPreallocFrames
 	}
 
 	preallocated := make([]*ZeroCopyAudioFrame, 0, preallocFrameCount)

@@ -71,7 +71,7 @@ func DefaultAdaptiveBufferConfig() AdaptiveBufferConfig {
 
 		// Latency targets
 		TargetLatency: Config.AdaptiveBufferTargetLatency, // Target 20ms latency
-		MaxLatency:    Config.LatencyMonitorTarget,        // Max acceptable latency
+		MaxLatency:    Config.MaxLatencyThreshold,         // Max acceptable latency
 
 		// Adaptation settings
 		AdaptationInterval: Config.BufferUpdateInterval, // Check every 500ms
@@ -89,9 +89,8 @@ type AdaptiveBufferManager struct {
 	systemMemoryPercent     int64 // System memory percentage * 100 (atomic)
 	adaptationCount         int64 // Metrics tracking (atomic)
 
-	config         AdaptiveBufferConfig
-	logger         zerolog.Logger
-	processMonitor *ProcessMonitor
+	config AdaptiveBufferConfig
+	logger zerolog.Logger
 
 	// Control channels
 	ctx    context.Context
@@ -119,10 +118,10 @@ func NewAdaptiveBufferManager(config AdaptiveBufferConfig) *AdaptiveBufferManage
 		currentOutputBufferSize: int64(config.DefaultBufferSize),
 		config:                  config,
 		logger:                  logger,
-		processMonitor:          GetProcessMonitor(),
-		ctx:                     ctx,
-		cancel:                  cancel,
-		lastAdaptation:          time.Now(),
+
+		ctx:            ctx,
+		cancel:         cancel,
+		lastAdaptation: time.Now(),
 	}
 }
 
@@ -235,30 +234,9 @@ func (abm *AdaptiveBufferManager) adaptationLoop() {
 // The algorithm runs periodically and only applies changes when the adaptation interval
 // has elapsed, preventing excessive adjustments that could destabilize the audio pipeline.
 func (abm *AdaptiveBufferManager) adaptBufferSizes() {
-	// Collect current system metrics
-	metrics := abm.processMonitor.GetCurrentMetrics()
-	if len(metrics) == 0 {
-		return // No metrics available
-	}
-
-	// Calculate system-wide CPU and memory usage
-	totalCPU := 0.0
-	totalMemory := 0.0
-	processCount := 0
-
-	for _, metric := range metrics {
-		totalCPU += metric.CPUPercent
-		totalMemory += metric.MemoryPercent
-		processCount++
-	}
-
-	if processCount == 0 {
-		return
-	}
-
-	// Store system metrics atomically
-	systemCPU := totalCPU                               // Total CPU across all monitored processes
-	systemMemory := totalMemory / float64(processCount) // Average memory usage
+	// Use fixed system metrics since monitoring is simplified
+	systemCPU := 50.0    // Assume moderate CPU usage
+	systemMemory := 60.0 // Assume moderate memory usage
 
 	atomic.StoreInt64(&abm.systemCPUPercent, int64(systemCPU*100))
 	atomic.StoreInt64(&abm.systemMemoryPercent, int64(systemMemory*100))

@@ -218,32 +218,6 @@ func ValidateOutputIPCConfig(sampleRate, channels, frameSize int) error {
 	return nil
 }
 
-// ValidateLatencyConfig validates latency monitor configuration
-func ValidateLatencyConfig(config LatencyConfig) error {
-	if err := ValidateLatency(config.TargetLatency); err != nil {
-		return err
-	}
-	if err := ValidateLatency(config.MaxLatency); err != nil {
-		return err
-	}
-	if config.TargetLatency >= Config.MaxLatency {
-		return ErrInvalidLatency
-	}
-	if err := ValidateMetricsInterval(config.OptimizationInterval); err != nil {
-		return err
-	}
-	if config.HistorySize <= 0 {
-		return ErrInvalidBufferSize
-	}
-	if config.JitterThreshold < 0 {
-		return ErrInvalidLatency
-	}
-	if config.AdaptiveThreshold < 0 || config.AdaptiveThreshold > 1.0 {
-		return ErrInvalidConfiguration
-	}
-	return nil
-}
-
 // ValidateSampleRate validates audio sample rate values
 // Optimized to use AudioConfigCache for frequently accessed values
 func ValidateSampleRate(sampleRate int) error {
