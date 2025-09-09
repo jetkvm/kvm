@@ -51,8 +51,8 @@ func rpcKeypressReport(key byte, press bool) (usbgadget.KeysDownState, error) {
 	return gadget.KeypressReport(key, press)
 }
 
-func rpcAbsMouseReport(x uint16, y uint16, buttons uint8) error {
-	return gadget.AbsMouseReport(int(x), int(y), buttons)
+func rpcAbsMouseReport(x int, y int, buttons uint8) error {
+	return gadget.AbsMouseReport(x, y, buttons)
 }
 
 func rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
@@ -60,16 +60,10 @@ func rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
 }
 
 func rpcWheelReport(wheelY int8) error {
-	if gadget == nil {
-		return nil // Gracefully handle uninitialized gadget (e.g., in tests)
-	}
 	return gadget.AbsMouseWheelReport(wheelY)
 }
 
 func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {
-	if gadget == nil {
-		return usbgadget.KeyboardState{} // Return empty state for uninitialized gadget
-	}
 	return gadget.GetKeyboardState()
 }
 
