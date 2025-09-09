@@ -260,14 +260,14 @@ var (
 	lastMetricsUpdate  int64
 
 	// Counter value tracking (since prometheus counters don't have Get() method)
-	audioFramesReceivedValue  int64
-	audioFramesDroppedValue   int64
-	audioBytesProcessedValue  int64
-	audioConnectionDropsValue int64
-	micFramesSentValue        int64
-	micFramesDroppedValue     int64
-	micBytesProcessedValue    int64
-	micConnectionDropsValue   int64
+	audioFramesReceivedValue  uint64
+	audioFramesDroppedValue   uint64
+	audioBytesProcessedValue  uint64
+	audioConnectionDropsValue uint64
+	micFramesSentValue        uint64
+	micFramesDroppedValue     uint64
+	micBytesProcessedValue    uint64
+	micConnectionDropsValue   uint64
 
 	// Atomic counters for device health metrics - functionality removed, no longer used
 
@@ -277,11 +277,11 @@ var (
 
 // UnifiedAudioMetrics provides a common structure for both input and output audio streams
 type UnifiedAudioMetrics struct {
-	FramesReceived  int64         `json:"frames_received"`
-	FramesDropped   int64         `json:"frames_dropped"`
-	FramesSent      int64         `json:"frames_sent,omitempty"`
-	BytesProcessed  int64         `json:"bytes_processed"`
-	ConnectionDrops int64         `json:"connection_drops"`
+	FramesReceived  uint64        `json:"frames_received"`
+	FramesDropped   uint64        `json:"frames_dropped"`
+	FramesSent      uint64        `json:"frames_sent,omitempty"`
+	BytesProcessed  uint64        `json:"bytes_processed"`
+	ConnectionDrops uint64        `json:"connection_drops"`
 	LastFrameTime   time.Time     `json:"last_frame_time"`
 	AverageLatency  time.Duration `json:"average_latency"`
 }
@@ -303,10 +303,10 @@ func convertAudioMetricsToUnified(metrics AudioMetrics) UnifiedAudioMetrics {
 func convertAudioInputMetricsToUnified(metrics AudioInputMetrics) UnifiedAudioMetrics {
 	return UnifiedAudioMetrics{
 		FramesReceived:  0, // AudioInputMetrics doesn't have FramesReceived
-		FramesDropped:   metrics.FramesDropped,
-		FramesSent:      metrics.FramesSent,
-		BytesProcessed:  metrics.BytesProcessed,
-		ConnectionDrops: metrics.ConnectionDrops,
+		FramesDropped:   uint64(metrics.FramesDropped),
+		FramesSent:      uint64(metrics.FramesSent),
+		BytesProcessed:  uint64(metrics.BytesProcessed),
+		ConnectionDrops: uint64(metrics.ConnectionDrops),
 		LastFrameTime:   metrics.LastFrameTime,
 		AverageLatency:  metrics.AverageLatency,
 	}
@@ -314,22 +314,22 @@ func convertAudioInputMetricsToUnified(metrics AudioInputMetrics) UnifiedAudioMe
 
 // UpdateAudioMetrics updates Prometheus metrics with current audio data
 func UpdateAudioMetrics(metrics UnifiedAudioMetrics) {
-	oldReceived := atomic.SwapInt64(&audioFramesReceivedValue, metrics.FramesReceived)
+	oldReceived := atomic.SwapUint64(&audioFramesReceivedValue, metrics.FramesReceived)
 	if metrics.FramesReceived > oldReceived {
 		audioFramesReceivedTotal.Add(float64(metrics.FramesReceived - oldReceived))
 	}
 
-	oldDropped := atomic.SwapInt64(&audioFramesDroppedValue, metrics.FramesDropped)
+	oldDropped := atomic.SwapUint64(&audioFramesDroppedValue, metrics.FramesDropped)
 	if metrics.FramesDropped > oldDropped {
 		audioFramesDroppedTotal.Add(float64(metrics.FramesDropped - oldDropped))
 	}
 
-	oldBytes := atomic.SwapInt64(&audioBytesProcessedValue, metrics.BytesProcessed)
+	oldBytes := atomic.SwapUint64(&audioBytesProcessedValue, metrics.BytesProcessed)
 	if metrics.BytesProcessed > oldBytes {
 		audioBytesProcessedTotal.Add(float64(metrics.BytesProcessed - oldBytes))
 	}
 
-	oldDrops := atomic.SwapInt64(&audioConnectionDropsValue, metrics.ConnectionDrops)
+	oldDrops := atomic.SwapUint64(&audioConnectionDropsValue, metrics.ConnectionDrops)
 	if metrics.ConnectionDrops > oldDrops {
 		audioConnectionDropsTotal.Add(float64(metrics.ConnectionDrops - oldDrops))
 	}
@@ -345,22 +345,22 @@ func UpdateAudioMetrics(metrics UnifiedAudioMetrics) {
 
 // UpdateMicrophoneMetrics updates Prometheus metrics with current microphone data
 func UpdateMicrophoneMetrics(metrics UnifiedAudioMetrics) {
-	oldSent := atomic.SwapInt64(&micFramesSentValue, metrics.FramesSent)
+	oldSent := atomic.SwapUint64(&micFramesSentValue, metrics.FramesSent)
 	if metrics.FramesSent > oldSent {
 		microphoneFramesSentTotal.Add(float64(metrics.FramesSent - oldSent))
 	}
 
-	oldDropped := atomic.SwapInt64(&micFramesDroppedValue, metrics.FramesDropped)
+	oldDropped := atomic.SwapUint64(&micFramesDroppedValue, metrics.FramesDropped)
 	if metrics.FramesDropped > oldDropped {
 		microphoneFramesDroppedTotal.Add(float64(metrics.FramesDropped - oldDropped))
 	}
 
-	oldBytes := atomic.SwapInt64(&micBytesProcessedValue, metrics.BytesProcessed)
+	oldBytes := atomic.SwapUint64(&micBytesProcessedValue, metrics.BytesProcessed)
 	if metrics.BytesProcessed > oldBytes {
 		microphoneBytesProcessedTotal.Add(float64(metrics.BytesProcessed - oldBytes))
 	}
 
-	oldDrops := atomic.SwapInt64(&micConnectionDropsValue, metrics.ConnectionDrops)
+	oldDrops := atomic.SwapUint64(&micConnectionDropsValue, metrics.ConnectionDrops)
 	if metrics.ConnectionDrops > oldDrops {
 		microphoneConnectionDropsTotal.Add(float64(metrics.ConnectionDrops - oldDrops))
 	}
