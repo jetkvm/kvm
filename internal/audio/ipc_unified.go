@@ -98,7 +98,6 @@ type UnifiedIPCOpusConfig struct {
 // UnifiedAudioServer provides common functionality for both input and output servers
 type UnifiedAudioServer struct {
 	// Atomic counters for performance monitoring
-	bufferSize    int64 // Current buffer size (atomic)
 	droppedFrames int64 // Dropped frames counter (atomic)
 	totalFrames   int64 // Total frames counter (atomic)
 
