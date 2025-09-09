@@ -28,7 +28,6 @@ type BaseSupervisor struct {
 	processPID int
 
 	// Process monitoring
-	processMonitor *ProcessMonitor
 
 	// Exit tracking
 	lastExitCode int
@@ -45,10 +44,10 @@ type BaseSupervisor struct {
 func NewBaseSupervisor(componentName string) *BaseSupervisor {
 	logger := logging.GetDefaultLogger().With().Str("component", componentName).Logger()
 	return &BaseSupervisor{
-		logger:         &logger,
-		processMonitor: GetProcessMonitor(),
-		stopChan:       make(chan struct{}),
-		processDone:    make(chan struct{}),
+		logger: &logger,
+
+		stopChan:    make(chan struct{}),
+		processDone: make(chan struct{}),
 	}
 }
 
@@ -211,7 +210,6 @@ func (bs *BaseSupervisor) waitForProcessExit(processType string) {
 	bs.mutex.Unlock()
 
 	// Remove process from monitoring
-	bs.processMonitor.RemoveProcess(pid)
 
 	if exitCode != 0 {
 		bs.logger.Error().Int("pid", pid).Int("exit_code", exitCode).Msgf("%s process exited with error", processType)

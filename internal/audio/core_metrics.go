@@ -158,78 +158,6 @@ var (
 		},
 	)
 
-	// Audio subprocess process metrics
-	audioProcessCpuPercent = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_process_cpu_percent",
-			Help: "CPU usage percentage of audio output subprocess",
-		},
-	)
-
-	audioProcessMemoryPercent = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_process_memory_percent",
-			Help: "Memory usage percentage of audio output subprocess",
-		},
-	)
-
-	audioProcessMemoryRssBytes = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_process_memory_rss_bytes",
-			Help: "RSS memory usage in bytes of audio output subprocess",
-		},
-	)
-
-	audioProcessMemoryVmsBytes = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_process_memory_vms_bytes",
-			Help: "VMS memory usage in bytes of audio output subprocess",
-		},
-	)
-
-	audioProcessRunning = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_process_running",
-			Help: "Whether audio output subprocess is running (1=running, 0=stopped)",
-		},
-	)
-
-	// Microphone subprocess process metrics
-	microphoneProcessCpuPercent = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_microphone_process_cpu_percent",
-			Help: "CPU usage percentage of microphone input subprocess",
-		},
-	)
-
-	microphoneProcessMemoryPercent = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_microphone_process_memory_percent",
-			Help: "Memory usage percentage of microphone input subprocess",
-		},
-	)
-
-	microphoneProcessMemoryRssBytes = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_microphone_process_memory_rss_bytes",
-			Help: "RSS memory usage in bytes of microphone input subprocess",
-		},
-	)
-
-	microphoneProcessMemoryVmsBytes = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_microphone_process_memory_vms_bytes",
-			Help: "VMS memory usage in bytes of microphone input subprocess",
-		},
-	)
-
-	microphoneProcessRunning = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_microphone_process_running",
-			Help: "Whether microphone input subprocess is running (1=running, 0=stopped)",
-		},
-	)
-
 	// Device health metrics
 	// Removed device health metrics - functionality not used
 
@@ -441,42 +369,6 @@ func UpdateMicrophoneMetrics(metrics UnifiedAudioMetrics) {
 	microphoneAverageLatencyMilliseconds.Set(float64(metrics.AverageLatency.Nanoseconds()) / 1e6)
 	if !metrics.LastFrameTime.IsZero() {
 		microphoneLastFrameTimestamp.Set(float64(metrics.LastFrameTime.Unix()))
-	}
-
-	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
-}
-
-// UpdateAudioProcessMetrics updates Prometheus metrics with audio subprocess data
-func UpdateAudioProcessMetrics(metrics ProcessMetrics, isRunning bool) {
-	metricsUpdateMutex.Lock()
-	defer metricsUpdateMutex.Unlock()
-
-	audioProcessCpuPercent.Set(metrics.CPUPercent)
-	audioProcessMemoryPercent.Set(metrics.MemoryPercent)
-	audioProcessMemoryRssBytes.Set(float64(metrics.MemoryRSS))
-	audioProcessMemoryVmsBytes.Set(float64(metrics.MemoryVMS))
-	if isRunning {
-		audioProcessRunning.Set(1)
-	} else {
-		audioProcessRunning.Set(0)
-	}
-
-	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
-}
-
-// UpdateMicrophoneProcessMetrics updates Prometheus metrics with microphone subprocess data
-func UpdateMicrophoneProcessMetrics(metrics ProcessMetrics, isRunning bool) {
-	metricsUpdateMutex.Lock()
-	defer metricsUpdateMutex.Unlock()
-
-	microphoneProcessCpuPercent.Set(metrics.CPUPercent)
-	microphoneProcessMemoryPercent.Set(metrics.MemoryPercent)
-	microphoneProcessMemoryRssBytes.Set(float64(metrics.MemoryRSS))
-	microphoneProcessMemoryVmsBytes.Set(float64(metrics.MemoryVMS))
-	if isRunning {
-		microphoneProcessRunning.Set(1)
-	} else {
-		microphoneProcessRunning.Set(0)
 	}
 
 	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())

@@ -35,9 +35,6 @@ func startAudioSubprocess() error {
 	// Initialize validation cache for optimal performance
 	audio.InitValidationCache()
 
-	// Start goroutine monitoring to detect and prevent leaks
-	audio.StartGoroutineMonitoring()
-
 	// Enable batch audio processing to reduce CGO call overhead
 	if err := audio.EnableBatchAudioProcessing(); err != nil {
 		logger.Warn().Err(err).Msg("failed to enable batch audio processing")
@@ -112,8 +109,6 @@ func startAudioSubprocess() error {
 			// Stop audio relay when process exits
 			audio.StopAudioRelay()
 
-			// Stop goroutine monitoring
-			audio.StopGoroutineMonitoring()
 			// Disable batch audio processing
 			audio.DisableBatchAudioProcessing()
 		},
