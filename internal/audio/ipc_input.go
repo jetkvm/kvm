@@ -688,32 +688,28 @@ func (aic *AudioInputClient) Disconnect() {
 
 // SendFrame sends an Opus frame to the audio input server
 func (aic *AudioInputClient) SendFrame(frame []byte) error {
+	// Fast path validation
+	if len(frame) == 0 {
+		return nil
+	}
+
 	aic.mtx.Lock()
-	defer aic.mtx.Unlock()
-
 	if !aic.running || aic.conn == nil {
-		return fmt.Errorf("not connected to audio input server")
+		aic.mtx.Unlock()
+		return fmt.Errorf("not connected")
 	}
 
-	frameLen := len(frame)
-	if frameLen == 0 {
-		return nil // Empty frame, ignore
-	}
-
-	// Inline frame validation to reduce function call overhead
-	if frameLen > maxFrameSize {
-		return ErrFrameDataTooLarge
-	}
-
+	// Direct message creation without timestamp overhead
 	msg := &InputIPCMessage{
-		Magic:     inputMagicNumber,
-		Type:      InputMessageTypeOpusFrame,
-		Length:    uint32(frameLen),
-		Timestamp: time.Now().UnixNano(),
-		Data:      frame,
+		Magic:  inputMagicNumber,
+		Type:   InputMessageTypeOpusFrame,
+		Length: uint32(len(frame)),
+		Data:   frame,
 	}
 
-	return aic.writeMessage(msg)
+	err := aic.writeMessage(msg)
+	aic.mtx.Unlock()
+	return err
 }
 
 // SendFrameZeroCopy sends a zero-copy Opus frame to the audio input server

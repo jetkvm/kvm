@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
@@ -118,9 +119,7 @@ func (r *AudioRelay) IsMuted() bool {
 
 // GetStats returns relay statistics
 func (r *AudioRelay) GetStats() (framesRelayed, framesDropped int64) {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-	return r.framesRelayed, r.framesDropped
+	return atomic.LoadInt64(&r.framesRelayed), atomic.LoadInt64(&r.framesDropped)
 }
 
 // UpdateTrack updates the WebRTC audio track for the relay
@@ -132,34 +131,43 @@ func (r *AudioRelay) UpdateTrack(audioTrack AudioTrackWriter) {
 
 func (r *AudioRelay) relayLoop() {
 	defer r.wg.Done()
-	r.logger.Debug().Msg("Audio relay loop started")
 
 	var maxConsecutiveErrors = Config.MaxConsecutiveErrors
 	consecutiveErrors := 0
+	backoffDelay := time.Millisecond * 10
+	maxBackoff := time.Second * 5
 
 	for {
 		select {
 		case <-r.ctx.Done():
-			r.logger.Debug().Msg("audio relay loop stopping")
 			return
 		default:
 			frame, err := r.client.ReceiveFrame()
 			if err != nil {
 				consecutiveErrors++
-				r.logger.Error().Err(err).Int("consecutive_errors", consecutiveErrors).Msg("error reading frame from audio output server")
 				r.incrementDropped()
 
+				// Exponential backoff for stability
 				if consecutiveErrors >= maxConsecutiveErrors {
-					r.logger.Error().Int("consecutive_errors", consecutiveErrors).Int("max_errors", maxConsecutiveErrors).Msg("too many consecutive read errors, stopping audio relay")
+					// Attempt reconnection
+					if r.attemptReconnection() {
+						consecutiveErrors = 0
+						backoffDelay = time.Millisecond * 10
+						continue
+					}
 					return
 				}
-				time.Sleep(Config.ShortSleepDuration)
+
+				time.Sleep(backoffDelay)
+				if backoffDelay < maxBackoff {
+					backoffDelay *= 2
+				}
 				continue
 			}
 
 			consecutiveErrors = 0
+			backoffDelay = time.Millisecond * 10
 			if err := r.forwardToWebRTC(frame); err != nil {
-				r.logger.Warn().Err(err).Msg("failed to forward frame to webrtc")
 				r.incrementDropped()
 			} else {
 				r.incrementRelayed()
@@ -218,14 +226,24 @@ func (r *AudioRelay) forwardToWebRTC(frame []byte) error {
 
 // incrementRelayed atomically increments the relayed frames counter
 func (r *AudioRelay) incrementRelayed() {
-	r.mutex.Lock()
-	r.framesRelayed++
-	r.mutex.Unlock()
+	atomic.AddInt64(&r.framesRelayed, 1)
 }
 
 // incrementDropped atomically increments the dropped frames counter
 func (r *AudioRelay) incrementDropped() {
-	r.mutex.Lock()
-	r.framesDropped++
-	r.mutex.Unlock()
+	atomic.AddInt64(&r.framesDropped, 1)
+}
+
+// attemptReconnection tries to reconnect the audio client for stability
+func (r *AudioRelay) attemptReconnection() bool {
+	if r.client == nil {
+		return false
+	}
+
+	// Disconnect and reconnect
+	r.client.Disconnect()
+	time.Sleep(time.Millisecond * 100)
+
+	err := r.client.Connect()
+	return err == nil
 }
