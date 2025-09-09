@@ -363,10 +363,10 @@ func GetGlobalAudioMetrics() AudioMetrics {
 
 // Batched metrics to reduce atomic operations frequency
 var (
-	batchedFramesReceived  int64
-	batchedBytesProcessed  int64
-	batchedFramesDropped   int64
-	batchedConnectionDrops int64
+	batchedFramesReceived  uint64
+	batchedBytesProcessed  uint64
+	batchedFramesDropped   uint64
+	batchedConnectionDrops uint64
 
 	lastFlushTime int64 // Unix timestamp in nanoseconds
 )
@@ -374,7 +374,7 @@ var (
 // RecordFrameReceived increments the frames received counter with batched updates
 func RecordFrameReceived(bytes int) {
 	// Use local batching to reduce atomic operations frequency
-	atomic.AddInt64(&batchedBytesProcessed, int64(bytes))
+	atomic.AddUint64(&batchedBytesProcessed, uint64(bytes))
 
 	// Update timestamp immediately for accurate tracking
 	metrics.LastFrameTime = time.Now()
@@ -391,23 +391,23 @@ func RecordConnectionDrop() {
 // flushBatchedMetrics flushes accumulated metrics to the main counters
 func flushBatchedMetrics() {
 	// Atomically move batched metrics to main metrics
-	framesReceived := atomic.SwapInt64(&batchedFramesReceived, 0)
-	bytesProcessed := atomic.SwapInt64(&batchedBytesProcessed, 0)
-	framesDropped := atomic.SwapInt64(&batchedFramesDropped, 0)
-	connectionDrops := atomic.SwapInt64(&batchedConnectionDrops, 0)
+	framesReceived := atomic.SwapUint64(&batchedFramesReceived, 0)
+	bytesProcessed := atomic.SwapUint64(&batchedBytesProcessed, 0)
+	framesDropped := atomic.SwapUint64(&batchedFramesDropped, 0)
+	connectionDrops := atomic.SwapUint64(&batchedConnectionDrops, 0)
 
 	// Update main metrics if we have any batched data
 	if framesReceived > 0 {
-		atomic.AddUint64(&metrics.FramesReceived, uint64(framesReceived))
+		atomic.AddUint64(&metrics.FramesReceived, framesReceived)
 	}
 	if bytesProcessed > 0 {
-		atomic.AddUint64(&metrics.BytesProcessed, uint64(bytesProcessed))
+		atomic.AddUint64(&metrics.BytesProcessed, bytesProcessed)
 	}
 	if framesDropped > 0 {
-		atomic.AddUint64(&metrics.FramesDropped, uint64(framesDropped))
+		atomic.AddUint64(&metrics.FramesDropped, framesDropped)
 	}
 	if connectionDrops > 0 {
-		atomic.AddUint64(&metrics.ConnectionDrops, uint64(connectionDrops))
+		atomic.AddUint64(&metrics.ConnectionDrops, connectionDrops)
 	}
 
 	// Update last flush time
