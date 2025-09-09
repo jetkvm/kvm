@@ -406,8 +406,7 @@ func UpdateSocketBufferMetrics(component, bufferType string, size, utilization f
 	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
 
-// UpdateDeviceHealthMetrics - Device health monitoring functionality has been removed
-// This function is no longer used as device health monitoring is not implemented
+// UpdateDeviceHealthMetrics - Placeholder for future device health metrics
 
 // UpdateMemoryMetrics updates memory metrics
 func UpdateMemoryMetrics() {

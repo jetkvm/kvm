@@ -1046,7 +1046,7 @@ func updateOpusEncoderParams(bitrate, complexity, vbr, vbrConstraint, signalType
 // Buffer pool for reusing buffers in CGO functions
 var (
 	// Using SizedBufferPool for better memory management
-	// Track buffer pool usage for monitoring
+	// Track buffer pool usage
 	cgoBufferPoolGets atomic.Int64
 	cgoBufferPoolPuts atomic.Int64
 	// Batch processing statistics - only enabled in debug builds

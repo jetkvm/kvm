@@ -767,11 +767,8 @@ func (aic *AudioInputClient) SendConfig(config InputIPCConfig) error {
 		return fmt.Errorf("input configuration validation failed: %w", err)
 	}
 
-	// Serialize config (simple binary format)
-	data := make([]byte, 12) // 3 * int32
-	binary.LittleEndian.PutUint32(data[0:4], uint32(config.SampleRate))
-	binary.LittleEndian.PutUint32(data[4:8], uint32(config.Channels))
-	binary.LittleEndian.PutUint32(data[8:12], uint32(config.FrameSize))
+	// Serialize config using common function
+	data := EncodeAudioConfig(config.SampleRate, config.Channels, config.FrameSize)
 
 	msg := &InputIPCMessage{
 		Magic:     inputMagicNumber,
@@ -799,17 +796,8 @@ func (aic *AudioInputClient) SendOpusConfig(config InputIPCOpusConfig) error {
 			config.SampleRate, config.Channels, config.FrameSize, config.Bitrate)
 	}
 
-	// Serialize Opus configuration (9 * int32 = 36 bytes)
-	data := make([]byte, 36)
-	binary.LittleEndian.PutUint32(data[0:4], uint32(config.SampleRate))
-	binary.LittleEndian.PutUint32(data[4:8], uint32(config.Channels))
-	binary.LittleEndian.PutUint32(data[8:12], uint32(config.FrameSize))
-	binary.LittleEndian.PutUint32(data[12:16], uint32(config.Bitrate))
-	binary.LittleEndian.PutUint32(data[16:20], uint32(config.Complexity))
-	binary.LittleEndian.PutUint32(data[20:24], uint32(config.VBR))
-	binary.LittleEndian.PutUint32(data[24:28], uint32(config.SignalType))
-	binary.LittleEndian.PutUint32(data[28:32], uint32(config.Bandwidth))
-	binary.LittleEndian.PutUint32(data[32:36], uint32(config.DTX))
+	// Serialize Opus configuration using common function
+	data := EncodeOpusConfig(config.SampleRate, config.Channels, config.FrameSize, config.Bitrate, config.Complexity, config.VBR, config.SignalType, config.Bandwidth, config.DTX)
 
 	msg := &InputIPCMessage{
 		Magic:     inputMagicNumber,
