@@ -32,7 +32,7 @@ type AudioInputIPCManager struct {
 // NewAudioInputIPCManager creates a new IPC-based audio input manager
 func NewAudioInputIPCManager() *AudioInputIPCManager {
 	return &AudioInputIPCManager{
-		supervisor: NewAudioInputSupervisor(),
+		supervisor: GetAudioInputSupervisor(), // Use global shared supervisor
 		logger:     logging.GetDefaultLogger().With().Str("component", AudioInputIPCComponent).Logger(),
 	}
 }

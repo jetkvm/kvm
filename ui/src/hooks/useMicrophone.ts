@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useRTCStore } from "@/hooks/stores";
+import { useRTCStore, useSettingsStore } from "@/hooks/stores";
 import api from "@/api";
 import { devLog, devInfo, devWarn, devError, devOnly } from "@/utils/debug";
 import { AUDIO_CONFIG } from "@/config/constants";
@@ -22,6 +22,8 @@ export function useMicrophone() {
     isMicrophoneMuted,
     setMicrophoneMuted,
   } = useRTCStore();
+
+  const { microphoneWasEnabled, setMicrophoneWasEnabled } = useSettingsStore();
 
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   
@@ -61,7 +63,7 @@ export function useMicrophone() {
     // Cleaning up microphone stream
     
     if (microphoneStreamRef.current) {
-      microphoneStreamRef.current.getTracks().forEach(track => {
+      microphoneStreamRef.current.getTracks().forEach((track: MediaStreamTrack) => {
         track.stop();
       });
       microphoneStreamRef.current = null;
@@ -193,7 +195,7 @@ export function useMicrophone() {
         
         // Find the audio transceiver (should already exist with sendrecv direction)
         const transceivers = peerConnection.getTransceivers();
-        devLog("Available transceivers:", transceivers.map(t => ({
+        devLog("Available transceivers:", transceivers.map((t: RTCRtpTransceiver) => ({
           direction: t.direction,
           mid: t.mid,
           senderTrack: t.sender.track?.kind,
@@ -201,7 +203,7 @@ export function useMicrophone() {
         })));
         
         // Look for an audio transceiver that can send (has sendrecv or sendonly direction)
-        const audioTransceiver = transceivers.find(transceiver => {
+        const audioTransceiver = transceivers.find((transceiver: RTCRtpTransceiver) => {
           // Check if this transceiver is for audio and can send
           const canSend = transceiver.direction === 'sendrecv' || transceiver.direction === 'sendonly';
           
@@ -389,6 +391,9 @@ export function useMicrophone() {
       setMicrophoneActive(true);
       setMicrophoneMuted(false);
       
+      // Save microphone enabled state for auto-restore on page reload
+      setMicrophoneWasEnabled(true);
+      
       devLog("Microphone state set to active. Verifying state:", {
         streamInRef: !!microphoneStreamRef.current,
         streamInStore: !!microphoneStream,
@@ -447,7 +452,7 @@ export function useMicrophone() {
       setIsStarting(false);
       return { success: false, error: micError };
     }
-  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, stopMicrophoneStream, isMicrophoneActive, isMicrophoneMuted, microphoneStream, isStarting, isStopping, isToggling]);
+  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, setMicrophoneWasEnabled, stopMicrophoneStream, isMicrophoneActive, isMicrophoneMuted, microphoneStream, isStarting, isStopping, isToggling]);
 
 
 
@@ -475,6 +480,9 @@ export function useMicrophone() {
       // Update frontend state immediately
       setMicrophoneActive(false);
       setMicrophoneMuted(false);
+      
+      // Save microphone disabled state for persistence
+      setMicrophoneWasEnabled(false);
 
       // Sync state after stopping to ensure consistency (with longer delay)
       setTimeout(() => syncMicrophoneState(), 500);
@@ -492,7 +500,7 @@ export function useMicrophone() {
         }
       };
     }
-  }, [stopMicrophoneStream, syncMicrophoneState, setMicrophoneActive, setMicrophoneMuted, isStarting, isStopping, isToggling]);
+  }, [stopMicrophoneStream, syncMicrophoneState, setMicrophoneActive, setMicrophoneMuted, setMicrophoneWasEnabled, isStarting, isStopping, isToggling]);
 
   // Toggle microphone mute
   const toggleMicrophoneMute = useCallback(async (): Promise<{ success: boolean; error?: MicrophoneError }> => {
@@ -560,7 +568,7 @@ export function useMicrophone() {
       const newMutedState = !isMicrophoneMuted;
       
       // Mute/unmute the audio track
-      audioTracks.forEach(track => {
+      audioTracks.forEach((track: MediaStreamTrack) => {
         track.enabled = !newMutedState;
         devLog(`Audio track ${track.id} enabled: ${track.enabled}`);
       });
@@ -607,10 +615,30 @@ export function useMicrophone() {
 
 
 
-  // Sync state on mount
+  // Sync state on mount and auto-restore microphone if it was enabled before page reload
   useEffect(() => {
-    syncMicrophoneState();
-  }, [syncMicrophoneState]);
+    const autoRestoreMicrophone = async () => {
+      // First sync the current state
+      await syncMicrophoneState();
+      
+      // If microphone was enabled before page reload and is not currently active, restore it
+      if (microphoneWasEnabled && !isMicrophoneActive && peerConnection) {
+        devLog("Auto-restoring microphone after page reload");
+        try {
+          const result = await startMicrophone();
+          if (result.success) {
+            devInfo("Microphone auto-restored successfully after page reload");
+          } else {
+            devWarn("Failed to auto-restore microphone:", result.error);
+          }
+        } catch (error) {
+          devWarn("Error during microphone auto-restoration:", error);
+        }
+      }
+    };
+    
+    autoRestoreMicrophone();
+  }, [syncMicrophoneState, microphoneWasEnabled, isMicrophoneActive, peerConnection, startMicrophone]);
 
   // Cleanup on unmount - use ref to avoid dependency on stopMicrophoneStream
   useEffect(() => {
@@ -619,7 +647,7 @@ export function useMicrophone() {
       const stream = microphoneStreamRef.current;
       if (stream) {
         devLog("Cleanup: stopping microphone stream on unmount");
-        stream.getAudioTracks().forEach(track => {
+        stream.getAudioTracks().forEach((track: MediaStreamTrack) => {
           track.stop();
           devLog(`Cleanup: stopped audio track ${track.id}`);
         });
