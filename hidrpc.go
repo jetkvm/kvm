@@ -1,7 +1,9 @@
 package kvm
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
@@ -143,6 +145,10 @@ func reportHidRPC(params any, session *Session) {
 	}
 
 	if err := session.HidChannel.Send(message); err != nil {
+		if errors.Is(err, io.ErrClosedPipe) {
+			logger.Debug().Err(err).Msg("HID RPC channel closed, skipping reportHidRPC")
+			return
+		}
 		logger.Warn().Err(err).Msg("failed to send HID RPC message")
 	}
 }

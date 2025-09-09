@@ -198,6 +198,10 @@ func handleWebRTCSession(c *gin.Context) {
 			_ = peerConn.Close()
 		}()
 	}
+
+	// Cancel any ongoing keyboard report multi when session changes
+	cancelKeyboardReportMulti()
+
 	currentSession = session
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }
