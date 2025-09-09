@@ -117,7 +117,6 @@ type AudioConfigConstants struct {
 
 	// Buffer Management
 
-	PreallocSize                 int
 	MaxPoolSize                  int
 	MessagePoolSize              int
 	OptimalSocketBuffer          int
@@ -131,27 +130,27 @@ type AudioConfigConstants struct {
 	MinReadEncodeBuffer          int
 	MaxDecodeWriteBuffer         int
 	MinBatchSizeForThreadPinning int
-	GoroutineMonitorInterval     time.Duration
-	MagicNumber                  uint32
-	MaxFrameSize                 int
-	WriteTimeout                 time.Duration
-	HeaderSize                   int
-	MetricsUpdateInterval        time.Duration
-	WarmupSamples                int
-	MetricsChannelBuffer         int
-	LatencyHistorySize           int
-	MaxCPUPercent                float64
-	MinCPUPercent                float64
-	DefaultClockTicks            float64
-	DefaultMemoryGB              int
-	MaxWarmupSamples             int
-	WarmupCPUSamples             int
-	LogThrottleIntervalSec       int
-	MinValidClockTicks           int
-	MaxValidClockTicks           int
-	CPUFactor                    float64
-	MemoryFactor                 float64
-	LatencyFactor                float64
+
+	MagicNumber            uint32
+	MaxFrameSize           int
+	WriteTimeout           time.Duration
+	HeaderSize             int
+	MetricsUpdateInterval  time.Duration
+	WarmupSamples          int
+	MetricsChannelBuffer   int
+	LatencyHistorySize     int
+	MaxCPUPercent          float64
+	MinCPUPercent          float64
+	DefaultClockTicks      float64
+	DefaultMemoryGB        int
+	MaxWarmupSamples       int
+	WarmupCPUSamples       int
+	LogThrottleIntervalSec int
+	MinValidClockTicks     int
+	MaxValidClockTicks     int
+	CPUFactor              float64
+	MemoryFactor           float64
+	LatencyFactor          float64
 
 	// Adaptive Buffer Configuration
 	AdaptiveMinBufferSize     int // Minimum buffer size in frames for adaptive buffering
@@ -172,28 +171,25 @@ type AudioConfigConstants struct {
 	OutputSupervisorTimeout time.Duration // 5s
 	BatchProcessingDelay    time.Duration // 10ms
 
-	AdaptiveOptimizerStability time.Duration // 10s
-	LatencyMonitorTarget       time.Duration // 50ms
-
 	// Adaptive Buffer Configuration
 	// LowCPUThreshold defines CPU usage threshold for buffer size reduction.
 	LowCPUThreshold float64 // 20% CPU threshold for buffer optimization
 
 	// HighCPUThreshold defines CPU usage threshold for buffer size increase.
-	HighCPUThreshold               float64       // 60% CPU threshold
-	LowMemoryThreshold             float64       // 50% memory threshold
-	HighMemoryThreshold            float64       // 75% memory threshold
-	AdaptiveBufferTargetLatency    time.Duration // 20ms target latency
-	CooldownPeriod                 time.Duration // 30s cooldown period
-	RollbackThreshold              time.Duration // 300ms rollback threshold
-	AdaptiveOptimizerLatencyTarget time.Duration // 50ms latency target
-	MaxLatencyThreshold            time.Duration // 200ms max latency
-	JitterThreshold                time.Duration // 20ms jitter threshold
-	LatencyOptimizationInterval    time.Duration // 5s optimization interval
-	LatencyAdaptiveThreshold       float64       // 0.8 adaptive threshold
-	MicContentionTimeout           time.Duration // 200ms contention timeout
-	PreallocPercentage             int           // 20% preallocation percentage
-	BackoffStart                   time.Duration // 50ms initial backoff
+	HighCPUThreshold            float64       // 60% CPU threshold
+	LowMemoryThreshold          float64       // 50% memory threshold
+	HighMemoryThreshold         float64       // 75% memory threshold
+	AdaptiveBufferTargetLatency time.Duration // 20ms target latency
+	CooldownPeriod              time.Duration // 30s cooldown period
+	RollbackThreshold           time.Duration // 300ms rollback threshold
+
+	MaxLatencyThreshold         time.Duration // 200ms max latency
+	JitterThreshold             time.Duration // 20ms jitter threshold
+	LatencyOptimizationInterval time.Duration // 5s optimization interval
+	LatencyAdaptiveThreshold    float64       // 0.8 adaptive threshold
+	MicContentionTimeout        time.Duration // 200ms contention timeout
+	PreallocPercentage          int           // 20% preallocation percentage
+	BackoffStart                time.Duration // 50ms initial backoff
 
 	InputMagicNumber uint32 // Magic number for input IPC messages (0x4A4B4D49 "JKMI")
 
@@ -214,29 +210,8 @@ type AudioConfigConstants struct {
 	// CGO Audio Processing Constants
 	CGOUsleepMicroseconds int // Sleep duration for CGO usleep calls (1000μs)
 
-	CGOPCMBufferSize            int     // PCM buffer size for CGO audio processing
-	CGONanosecondsPerSecond     float64 // Nanoseconds per second conversion
-	FrontendOperationDebounceMS int     // Frontend operation debounce delay
-	FrontendSyncDebounceMS      int     // Frontend sync debounce delay
-	FrontendSampleRate          int     // Frontend sample rate
-	FrontendRetryDelayMS        int     // Frontend retry delay
-	FrontendShortDelayMS        int     // Frontend short delay
-	FrontendLongDelayMS         int     // Frontend long delay
-	FrontendSyncDelayMS         int     // Frontend sync delay
-	FrontendMaxRetryAttempts    int     // Frontend max retry attempts
-	FrontendAudioLevelUpdateMS  int     // Frontend audio level update interval
-	FrontendFFTSize             int     // Frontend FFT size
-	FrontendAudioLevelMax       int     // Frontend max audio level
-	FrontendReconnectIntervalMS int     // Frontend reconnect interval
-	FrontendSubscriptionDelayMS int     // Frontend subscription delay
-	FrontendDebugIntervalMS     int     // Frontend debug interval
-
-	// Process Monitoring Constants
-	ProcessMonitorDefaultMemoryGB int     // Default memory size for fallback (4GB)
-	ProcessMonitorKBToBytes       int     // KB to bytes conversion factor (1024)
-	ProcessMonitorDefaultClockHz  float64 // Default system clock frequency (250.0 Hz)
-	ProcessMonitorFallbackClockHz float64 // Fallback clock frequency (1000.0 Hz)
-	ProcessMonitorTraditionalHz   float64 // Traditional system clock frequency (100.0 Hz)
+	CGOPCMBufferSize        int     // PCM buffer size for CGO audio processing
+	CGONanosecondsPerSecond float64 // Nanoseconds per second conversion
 
 	// Batch Processing Constants
 	BatchProcessorFramesPerBatch         int           // Frames processed per batch (4)
@@ -272,14 +247,21 @@ type AudioConfigConstants struct {
 	LatencyPercentile50        int
 	LatencyPercentile95        int
 	LatencyPercentile99        int
-	BufferPoolMaxOperations    int
-	HitRateCalculationBase     float64
-	MaxLatency                 time.Duration
-	MinMetricsUpdateInterval   time.Duration
-	MaxMetricsUpdateInterval   time.Duration
-	MinSampleRate              int
-	MaxSampleRate              int
-	MaxChannels                int
+
+	// Buffer Pool Configuration
+	BufferPoolDefaultSize     int     // Default buffer pool size when MaxPoolSize is invalid
+	BufferPoolControlSize     int     // Control buffer pool size
+	ZeroCopyPreallocSizeBytes int     // Zero-copy frame pool preallocation size in bytes
+	ZeroCopyMinPreallocFrames int     // Minimum preallocated frames for zero-copy pool
+	BufferPoolHitRateBase     float64 // Base for hit rate percentage calculation
+
+	HitRateCalculationBase   float64
+	MaxLatency               time.Duration
+	MinMetricsUpdateInterval time.Duration
+	MaxMetricsUpdateInterval time.Duration
+	MinSampleRate            int
+	MaxSampleRate            int
+	MaxChannels              int
 
 	// CGO Constants
 	CGOMaxBackoffMicroseconds int // Maximum CGO backoff time (500ms)
@@ -329,26 +311,6 @@ type AudioConfigConstants struct {
 	QualityChangeSettleDelay       time.Duration // Delay for quality change to settle
 	QualityChangeRecoveryDelay     time.Duration // Delay before attempting recovery
 
-	// Buffer Pool Cache Configuration
-	BufferPoolCacheSize               int           // Buffers per goroutine cache (4)
-	BufferPoolCacheTTL                time.Duration // Cache TTL for aggressive cleanup (5s)
-	BufferPoolMaxCacheEntries         int           // Maximum cache entries to prevent memory bloat (128)
-	BufferPoolCacheCleanupInterval    time.Duration // Cleanup interval for frequent cleanup (15s)
-	BufferPoolCacheWarmupThreshold    int           // Warmup threshold for faster startup (25)
-	BufferPoolCacheHitRateTarget      float64       // Target hit rate for balanced performance (0.80)
-	BufferPoolMaxCacheSize            int           // Maximum goroutine caches (256)
-	BufferPoolCleanupInterval         int64         // Cleanup interval in seconds (15)
-	BufferPoolBufferTTL               int64         // Buffer TTL in seconds (30)
-	BufferPoolControlSize             int           // Control pool buffer size (512)
-	BufferPoolMinPreallocBuffers      int           // Minimum preallocation buffers
-	BufferPoolMaxPoolSize             int           // Maximum pool size
-	BufferPoolChunkBufferCount        int           // Buffers per chunk
-	BufferPoolMinChunkSize            int           // Minimum chunk size (64KB)
-	BufferPoolInitialChunkCapacity    int           // Initial chunk capacity
-	BufferPoolAdaptiveResizeThreshold int           // Threshold for adaptive resize
-	BufferPoolHighHitRateThreshold    float64       // High hit rate threshold
-	BufferPoolOptimizeCacheThreshold  int           // Threshold for cache optimization
-	BufferPoolCounterResetThreshold   int           // Counter reset threshold
 }
 
 // DefaultAudioConfig returns the default configuration constants
@@ -458,7 +420,7 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		MaxRestartDelay: 30 * time.Second, // Maximum delay for exponential backoff
 
 		// Buffer Management
-		PreallocSize:         1024 * 1024, // 1MB buffer preallocation
+
 		MaxPoolSize:          100,         // Maximum object pool size
 		MessagePoolSize:      1024,        // Significantly increased message pool for quality change bursts
 		OptimalSocketBuffer:  262144,      // 256KB optimal socket buffer
@@ -521,39 +483,15 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		QualityChangeSettleDelay:       2 * time.Second,        // Delay for quality change to settle
 		QualityChangeRecoveryDelay:     1 * time.Second,        // Delay before attempting recovery
 
-		// Buffer Pool Cache Configuration
-		BufferPoolCacheSize:               4,                // Buffers per goroutine cache
-		BufferPoolCacheTTL:                5 * time.Second,  // Cache TTL for aggressive cleanup
-		BufferPoolMaxCacheEntries:         128,              // Maximum cache entries to prevent memory bloat
-		BufferPoolCacheCleanupInterval:    15 * time.Second, // Cleanup interval for frequent cleanup
-		BufferPoolCacheWarmupThreshold:    25,               // Warmup threshold for faster startup
-		BufferPoolCacheHitRateTarget:      0.80,             // Target hit rate for balanced performance
-		BufferPoolMaxCacheSize:            256,              // Maximum goroutine caches
-		BufferPoolCleanupInterval:         15,               // Cleanup interval in seconds
-		BufferPoolBufferTTL:               30,               // Buffer TTL in seconds
-		BufferPoolControlSize:             512,              // Control pool buffer size
-		BufferPoolMinPreallocBuffers:      16,               // Minimum preallocation buffers (reduced from 50)
-		BufferPoolMaxPoolSize:             128,              // Maximum pool size (reduced from 256)
-		BufferPoolChunkBufferCount:        8,                // Buffers per chunk (reduced from 64 to prevent large allocations)
-		BufferPoolMinChunkSize:            8192,             // Minimum chunk size (8KB, reduced from 64KB)
-		BufferPoolInitialChunkCapacity:    4,                // Initial chunk capacity
-		BufferPoolAdaptiveResizeThreshold: 100,              // Threshold for adaptive resize
-		BufferPoolHighHitRateThreshold:    0.95,             // High hit rate threshold
-		BufferPoolOptimizeCacheThreshold:  100,              // Threshold for cache optimization
-		BufferPoolCounterResetThreshold:   10000,            // Counter reset threshold
-
 		// Timing Constants - Optimized for quality change stability
-		DefaultSleepDuration:       100 * time.Millisecond, // Balanced polling interval
-		ShortSleepDuration:         10 * time.Millisecond,  // Balanced high-frequency polling
-		LongSleepDuration:          200 * time.Millisecond, // Balanced background task delay
-		DefaultTickerInterval:      100 * time.Millisecond, // Balanced periodic task interval
-		BufferUpdateInterval:       250 * time.Millisecond, // Faster buffer size update frequency
-		InputSupervisorTimeout:     5 * time.Second,        // Input monitoring timeout
-		OutputSupervisorTimeout:    5 * time.Second,        // Output monitoring timeout
-		BatchProcessingDelay:       5 * time.Millisecond,   // Reduced batch processing delay
-		AdaptiveOptimizerStability: 5 * time.Second,        // Faster adaptive stability period
-
-		LatencyMonitorTarget: 50 * time.Millisecond, // Balanced target latency for monitoring
+		DefaultSleepDuration:    100 * time.Millisecond, // Balanced polling interval
+		ShortSleepDuration:      10 * time.Millisecond,  // Balanced high-frequency polling
+		LongSleepDuration:       200 * time.Millisecond, // Balanced background task delay
+		DefaultTickerInterval:   100 * time.Millisecond, // Balanced periodic task interval
+		BufferUpdateInterval:    250 * time.Millisecond, // Faster buffer size update frequency
+		InputSupervisorTimeout:  5 * time.Second,        // Input monitoring timeout
+		OutputSupervisorTimeout: 5 * time.Second,        // Output monitoring timeout
+		BatchProcessingDelay:    5 * time.Millisecond,   // Reduced batch processing delay
 
 		// Adaptive Buffer Configuration - Optimized for single-core RV1106G3
 		LowCPUThreshold:             0.40, // Adjusted for single-core ARM system
@@ -568,9 +506,8 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		AdaptiveDefaultBufferSize: 512,  // Higher default for stability during bursts
 
 		// Adaptive Optimizer Configuration - Faster response
-		CooldownPeriod:                 15 * time.Second,       // Reduced cooldown period
-		RollbackThreshold:              200 * time.Millisecond, // Lower rollback threshold
-		AdaptiveOptimizerLatencyTarget: 30 * time.Millisecond,  // Reduced latency target
+		CooldownPeriod:    15 * time.Second,       // Reduced cooldown period
+		RollbackThreshold: 200 * time.Millisecond, // Lower rollback threshold
 
 		// Latency Monitor Configuration - More aggressive monitoring
 		MaxLatencyThreshold:         150 * time.Millisecond, // Lower max latency threshold
@@ -608,29 +545,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		CGOUsleepMicroseconds:   1000,         // 1000 microseconds (1ms) for stable CGO usleep calls
 		CGOPCMBufferSize:        1920,         // 1920 samples for PCM buffer (max 2ch*960)
 		CGONanosecondsPerSecond: 1000000000.0, // 1000000000.0 for nanosecond conversions
-
-		// Frontend Constants - Balanced for stability
-		FrontendOperationDebounceMS: 1000,  // 1000ms debounce for frontend operations
-		FrontendSyncDebounceMS:      1000,  // 1000ms debounce for sync operations
-		FrontendSampleRate:          48000, // 48000Hz sample rate for frontend audio
-		FrontendRetryDelayMS:        500,   // 500ms retry delay
-		FrontendShortDelayMS:        200,   // 200ms short delay
-		FrontendLongDelayMS:         300,   // 300ms long delay
-		FrontendSyncDelayMS:         500,   // 500ms sync delay
-		FrontendMaxRetryAttempts:    3,     // 3 maximum retry attempts
-		FrontendAudioLevelUpdateMS:  100,   // 100ms audio level update interval
-		FrontendFFTSize:             256,   // 256 FFT size for audio analysis
-		FrontendAudioLevelMax:       100,   // 100 maximum audio level
-		FrontendReconnectIntervalMS: 3000,  // 3000ms reconnect interval
-		FrontendSubscriptionDelayMS: 100,   // 100ms subscription delay
-		FrontendDebugIntervalMS:     5000,  // 5000ms debug interval
-
-		// Process Monitor Constants
-		ProcessMonitorDefaultMemoryGB: 4,      // 4GB default memory for fallback
-		ProcessMonitorKBToBytes:       1024,   // 1024 conversion factor
-		ProcessMonitorDefaultClockHz:  250.0,  // 250.0 Hz default for ARM systems
-		ProcessMonitorFallbackClockHz: 1000.0, // 1000.0 Hz fallback clock
-		ProcessMonitorTraditionalHz:   100.0,  // 100.0 Hz traditional clock
 
 		// Batch Processing Constants - Optimized for quality change bursts
 		BatchProcessorFramesPerBatch:         16,                    // Larger batches for quality changes
@@ -686,9 +600,15 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		LatencyPercentile95:        95,   // 95th percentile calculation factor
 		LatencyPercentile99:        99,   // 99th percentile calculation factor
 
+		// Buffer Pool Configuration
+		BufferPoolDefaultSize:     64,          // Default buffer pool size when MaxPoolSize is invalid
+		BufferPoolControlSize:     512,         // Control buffer pool size
+		ZeroCopyPreallocSizeBytes: 1024 * 1024, // Zero-copy frame pool preallocation size in bytes (1MB)
+		ZeroCopyMinPreallocFrames: 1,           // Minimum preallocated frames for zero-copy pool
+		BufferPoolHitRateBase:     100.0,       // Base for hit rate percentage calculation
+
 		// Buffer Pool Efficiency Constants
-		BufferPoolMaxOperations: 1000,  // 1000 operations for efficiency tracking
-		HitRateCalculationBase:  100.0, // 100.0 base for hit rate percentage calculation
+		HitRateCalculationBase: 100.0, // 100.0 base for hit rate percentage calculation
 
 		// Validation Constants
 		MaxLatency:               500 * time.Millisecond, // 500ms maximum allowed latency
@@ -732,9 +652,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 
 		// Batch Audio Processing Configuration
 		MinBatchSizeForThreadPinning: 5, // Minimum batch size to pin thread
-
-		// Goroutine Monitoring Configuration
-		GoroutineMonitorInterval: 30 * time.Second, // 30s monitoring interval
 
 		// Performance Configuration Flags - Production optimizations
 

@@ -135,7 +135,6 @@ func (ais *AudioInputSupervisor) startProcess() error {
 	ais.logger.Info().Int("pid", ais.processPID).Strs("args", args).Strs("opus_env", ais.opusEnv).Msg("audio input server process started")
 
 	// Add process to monitoring
-	ais.processMonitor.AddProcess(ais.processPID, "audio-input-server")
 
 	// Connect client to the server
 	go ais.connectClient()

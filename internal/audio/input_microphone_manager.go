@@ -115,7 +115,6 @@ func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 			Msg("High audio processing latency detected")
 
 		// Record latency for goroutine cleanup optimization
-		RecordAudioLatency(latencyMs)
 	}
 
 	if err != nil {
@@ -156,7 +155,6 @@ func (aim *AudioInputManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFrame) 
 			Msg("High audio processing latency detected")
 
 		// Record latency for goroutine cleanup optimization
-		RecordAudioLatency(latencyMs)
 	}
 
 	if err != nil {

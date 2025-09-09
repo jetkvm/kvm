@@ -117,10 +117,6 @@ type UnifiedAudioServer struct {
 	socketPath         string
 	magicNumber        uint32
 	socketBufferConfig SocketBufferConfig
-
-	// Performance monitoring
-	latencyMonitor    *LatencyMonitor
-	adaptiveOptimizer *AdaptiveOptimizer
 }
 
 // NewUnifiedAudioServer creates a new unified audio server
@@ -148,8 +144,6 @@ func NewUnifiedAudioServer(isInput bool) (*UnifiedAudioServer, error) {
 		messageChan:        make(chan *UnifiedIPCMessage, Config.ChannelBufferSize),
 		processChan:        make(chan *UnifiedIPCMessage, Config.ChannelBufferSize),
 		socketBufferConfig: DefaultSocketBufferConfig(),
-		latencyMonitor:     nil,
-		adaptiveOptimizer:  nil,
 	}
 
 	return server, nil
@@ -365,10 +359,6 @@ func (s *UnifiedAudioServer) SendFrame(frame []byte) error {
 	}
 
 	// Record latency for monitoring
-	if s.latencyMonitor != nil {
-		writeLatency := time.Since(start)
-		s.latencyMonitor.RecordLatency(writeLatency, "ipc_write")
-	}
 
 	atomic.AddInt64(&s.totalFrames, 1)
 	return nil

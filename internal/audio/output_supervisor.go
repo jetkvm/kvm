@@ -213,7 +213,6 @@ func (s *AudioOutputSupervisor) startProcess() error {
 	s.logger.Info().Int("pid", s.processPID).Strs("args", args).Strs("opus_env", s.opusEnv).Msg("audio server process started")
 
 	// Add process to monitoring
-	s.processMonitor.AddProcess(s.processPID, "audio-output-server")
 
 	if s.onProcessStart != nil {
 		s.onProcessStart(s.processPID)
