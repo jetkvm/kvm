@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/pion/webrtc/v4"
@@ -1049,6 +1050,101 @@ func rpcSetLocalLoopbackOnly(enabled bool) error {
 	return nil
 }
 
+// cancelKeyboardReportMulti cancels any ongoing keyboard report multi execution
+func cancelKeyboardReportMulti() {
+	keyboardReportMultiLock.Lock()
+	defer keyboardReportMultiLock.Unlock()
+
+	if keyboardReportMultiCancel != nil {
+		keyboardReportMultiCancel()
+		logger.Info().Msg("canceled keyboard report multi")
+		keyboardReportMultiCancel = nil
+	}
+}
+
+func rpcKeyboardReportMultiWrapper(macro []map[string]any) (usbgadget.KeysDownState, error) {
+	keyboardReportMultiLock.Lock()
+	defer keyboardReportMultiLock.Unlock()
+
+	if keyboardReportMultiCancel != nil {
+		keyboardReportMultiCancel()
+		logger.Info().Msg("canceled previous keyboard report multi")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	keyboardReportMultiCancel = cancel
+
+	result, err := rpcKeyboardReportMulti(ctx, macro)
+
+	keyboardReportMultiCancel = nil
+
+	return result, err
+}
+
+var (
+	keyboardReportMultiCancel context.CancelFunc
+	keyboardReportMultiLock   sync.Mutex
+)
+
+func rpcKeyboardReportMulti(ctx context.Context, macro []map[string]any) (usbgadget.KeysDownState, error) {
+	var last usbgadget.KeysDownState
+	var err error
+
+	logger.Debug().Interface("macro", macro).Msg("Executing keyboard report multi")
+
+	for i, step := range macro {
+		// Check for cancellation before each step
+		select {
+		case <-ctx.Done():
+			logger.Debug().Msg("Keyboard report multi context cancelled")
+			return last, ctx.Err()
+		default:
+		}
+
+		var modifier byte
+		if m, ok := step["modifier"].(float64); ok {
+			modifier = byte(int(m))
+		} else if mi, ok := step["modifier"].(int); ok {
+			modifier = byte(mi)
+		} else if mb, ok := step["modifier"].(uint8); ok {
+			modifier = mb
+		}
+
+		var keys []byte
+		if arr, ok := step["keys"].([]any); ok {
+			keys = make([]byte, 0, len(arr))
+			for _, v := range arr {
+				if f, ok := v.(float64); ok {
+					keys = append(keys, byte(int(f)))
+				} else if i, ok := v.(int); ok {
+					keys = append(keys, byte(i))
+				} else if b, ok := v.(uint8); ok {
+					keys = append(keys, b)
+				}
+			}
+		} else if bs, ok := step["keys"].([]byte); ok {
+			keys = bs
+		}
+
+		// Use context-aware sleep that can be cancelled
+		select {
+		case <-time.After(100 * time.Millisecond):
+			// Sleep completed normally
+		case <-ctx.Done():
+			logger.Debug().Int("step", i).Msg("Keyboard report multi cancelled during sleep")
+			return last, ctx.Err()
+		}
+
+		last, err = rpcKeyboardReport(modifier, keys)
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to execute keyboard report multi")
+			return last, err
+		}
+	}
+
+	return last, nil
+}
+
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"reboot":                 {Func: rpcReboot, Params: []string{"force"}},
@@ -1060,6 +1156,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setNetworkSettings":     {Func: rpcSetNetworkSettings, Params: []string{"settings"}},
 	"renewDHCPLease":         {Func: rpcRenewDHCPLease},
 	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
+	"keyboardReportMulti":    {Func: rpcKeyboardReportMultiWrapper, Params: []string{"macro"}},
 	"getKeyboardLedState":    {Func: rpcGetKeyboardLedState},
 	"keypressReport":         {Func: rpcKeypressReport, Params: []string{"key", "press"}},
 	"getKeyDownState":        {Func: rpcGetKeysDownState},

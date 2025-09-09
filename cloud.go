@@ -475,6 +475,10 @@ func handleSessionRequest(
 
 	cloudLogger.Info().Interface("session", session).Msg("new session accepted")
 	cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
+
+	// Cancel any ongoing keyboard report multi when session changes
+	cancelKeyboardReportMulti()
+
 	currentSession = session
 	_ = wsjson.Write(context.Background(), c, gin.H{"type": "answer", "data": sd})
 	return nil
