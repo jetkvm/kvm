@@ -125,6 +125,12 @@ func (s *AudioOutputSupervisor) Start() error {
 	// Start the supervision loop
 	go s.supervisionLoop()
 
+	// Establish IPC connection to subprocess after a brief delay
+	go func() {
+		time.Sleep(500 * time.Millisecond) // Wait for subprocess to start
+		s.connectClient()
+	}()
+
 	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component started successfully")
 	return nil
 }
@@ -273,4 +279,44 @@ func (s *AudioOutputSupervisor) calculateRestartDelay() time.Duration {
 	}
 
 	return delay
+}
+
+// client holds the IPC client for communicating with the subprocess
+var outputClient *AudioOutputClient
+
+// IsConnected returns whether the supervisor has an active connection to the subprocess
+func (s *AudioOutputSupervisor) IsConnected() bool {
+	return outputClient != nil && outputClient.IsConnected()
+}
+
+// GetClient returns the IPC client for the subprocess
+func (s *AudioOutputSupervisor) GetClient() *AudioOutputClient {
+	return outputClient
+}
+
+// connectClient establishes connection to the audio output subprocess
+func (s *AudioOutputSupervisor) connectClient() {
+	if outputClient == nil {
+		outputClient = NewAudioOutputClient()
+	}
+
+	// Try to connect to the subprocess
+	if err := outputClient.Connect(); err != nil {
+		s.logger.Warn().Err(err).Msg("Failed to connect to audio output subprocess")
+	} else {
+		s.logger.Info().Msg("Connected to audio output subprocess")
+	}
+}
+
+// SendOpusConfig sends Opus configuration to the audio output subprocess
+func (s *AudioOutputSupervisor) SendOpusConfig(config OutputIPCOpusConfig) error {
+	if outputClient == nil {
+		return fmt.Errorf("client not initialized")
+	}
+
+	if !outputClient.IsConnected() {
+		return fmt.Errorf("client not connected")
+	}
+
+	return outputClient.SendOpusConfig(config)
 }

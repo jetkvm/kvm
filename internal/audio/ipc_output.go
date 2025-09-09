@@ -15,16 +15,18 @@ import (
 
 // Legacy aliases for backward compatibility
 type OutputIPCConfig = UnifiedIPCConfig
+type OutputIPCOpusConfig = UnifiedIPCOpusConfig
 type OutputMessageType = UnifiedMessageType
 type OutputIPCMessage = UnifiedIPCMessage
 
 // Legacy constants for backward compatibility
 const (
-	OutputMessageTypeOpusFrame = MessageTypeOpusFrame
-	OutputMessageTypeConfig    = MessageTypeConfig
-	OutputMessageTypeStop      = MessageTypeStop
-	OutputMessageTypeHeartbeat = MessageTypeHeartbeat
-	OutputMessageTypeAck       = MessageTypeAck
+	OutputMessageTypeOpusFrame  = MessageTypeOpusFrame
+	OutputMessageTypeConfig     = MessageTypeConfig
+	OutputMessageTypeOpusConfig = MessageTypeOpusConfig
+	OutputMessageTypeStop       = MessageTypeStop
+	OutputMessageTypeHeartbeat  = MessageTypeHeartbeat
+	OutputMessageTypeAck        = MessageTypeAck
 )
 
 // Methods are now inherited from UnifiedIPCMessage
@@ -142,12 +144,132 @@ func (s *AudioOutputServer) acceptConnections() {
 		s.mtx.Unlock()
 
 		s.logger.Info().Msg("Client connected to audio output server")
-		// Only handle one connection at a time for simplicity
-		for s.running && s.conn != nil {
-			// Keep connection alive until stopped or disconnected
-			time.Sleep(100 * time.Millisecond)
+		// Start message processing for this connection
+		s.wg.Add(1)
+		go s.handleConnection(conn)
+	}
+}
+
+// handleConnection processes messages from a client connection
+func (s *AudioOutputServer) handleConnection(conn net.Conn) {
+	defer s.wg.Done()
+	defer conn.Close()
+
+	for s.running {
+		msg, err := s.readMessage(conn)
+		if err != nil {
+			if s.running {
+				s.logger.Error().Err(err).Msg("Failed to read message from client")
+			}
+			return
+		}
+
+		if err := s.processMessage(msg); err != nil {
+			s.logger.Error().Err(err).Msg("Failed to process message")
 		}
 	}
+}
+
+// readMessage reads a message from the connection
+func (s *AudioOutputServer) readMessage(conn net.Conn) (*OutputIPCMessage, error) {
+	header := make([]byte, 17)
+	if _, err := io.ReadFull(conn, header); err != nil {
+		return nil, fmt.Errorf("failed to read header: %w", err)
+	}
+
+	magic := binary.LittleEndian.Uint32(header[0:4])
+	if magic != s.magicNumber {
+		return nil, fmt.Errorf("invalid magic number: expected %d, got %d", s.magicNumber, magic)
+	}
+
+	msgType := OutputMessageType(header[4])
+	length := binary.LittleEndian.Uint32(header[5:9])
+	timestamp := int64(binary.LittleEndian.Uint64(header[9:17]))
+
+	var data []byte
+	if length > 0 {
+		data = make([]byte, length)
+		if _, err := io.ReadFull(conn, data); err != nil {
+			return nil, fmt.Errorf("failed to read data: %w", err)
+		}
+	}
+
+	return &OutputIPCMessage{
+		Magic:     magic,
+		Type:      msgType,
+		Length:    length,
+		Timestamp: timestamp,
+		Data:      data,
+	}, nil
+}
+
+// processMessage processes a received message
+func (s *AudioOutputServer) processMessage(msg *OutputIPCMessage) error {
+	switch msg.Type {
+	case OutputMessageTypeOpusConfig:
+		return s.processOpusConfig(msg.Data)
+	case OutputMessageTypeStop:
+		s.logger.Info().Msg("Received stop message")
+		return nil
+	case OutputMessageTypeHeartbeat:
+		s.logger.Debug().Msg("Received heartbeat")
+		return nil
+	default:
+		s.logger.Warn().Int("type", int(msg.Type)).Msg("Unknown message type")
+		return nil
+	}
+}
+
+// processOpusConfig processes Opus configuration updates
+func (s *AudioOutputServer) processOpusConfig(data []byte) error {
+	// Validate configuration data size (9 * int32 = 36 bytes)
+	if len(data) != 36 {
+		return fmt.Errorf("invalid Opus configuration data size: expected 36 bytes, got %d", len(data))
+	}
+
+	// Decode Opus configuration
+	config := OutputIPCOpusConfig{
+		SampleRate: int(binary.LittleEndian.Uint32(data[0:4])),
+		Channels:   int(binary.LittleEndian.Uint32(data[4:8])),
+		FrameSize:  int(binary.LittleEndian.Uint32(data[8:12])),
+		Bitrate:    int(binary.LittleEndian.Uint32(data[12:16])),
+		Complexity: int(binary.LittleEndian.Uint32(data[16:20])),
+		VBR:        int(binary.LittleEndian.Uint32(data[20:24])),
+		SignalType: int(binary.LittleEndian.Uint32(data[24:28])),
+		Bandwidth:  int(binary.LittleEndian.Uint32(data[28:32])),
+		DTX:        int(binary.LittleEndian.Uint32(data[32:36])),
+	}
+
+	s.logger.Info().Interface("config", config).Msg("Received Opus configuration update")
+
+	// Ensure we're running in the audio server subprocess
+	if !isAudioServerProcess() {
+		s.logger.Warn().Msg("Opus configuration update ignored - not running in audio server subprocess")
+		return nil
+	}
+
+	// Check if audio output streaming is currently active
+	if atomic.LoadInt32(&outputStreamingRunning) == 0 {
+		s.logger.Info().Msg("Audio output streaming not active, configuration will be applied when streaming starts")
+		return nil
+	}
+
+	// Ensure capture is initialized before updating encoder parameters
+	// The C function requires both encoder and capture_initialized to be true
+	if err := cgoAudioInit(); err != nil {
+		s.logger.Debug().Err(err).Msg("Audio capture already initialized or initialization failed")
+		// Continue anyway - capture may already be initialized
+	}
+
+	// Apply configuration using CGO function (only if audio system is running)
+	vbrConstraint := Config.CGOOpusVBRConstraint
+	if err := updateOpusEncoderParams(config.Bitrate, config.Complexity, config.VBR, vbrConstraint, config.SignalType, config.Bandwidth, config.DTX); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to update Opus encoder parameters - encoder may not be initialized")
+		return err
+	}
+
+	s.logger.Info().Msg("Opus encoder parameters updated successfully")
+	return nil
 }
 
 // SendFrame sends an audio frame to the client
@@ -318,6 +440,53 @@ func (c *AudioOutputClient) ReceiveFrame() ([]byte, error) {
 
 	atomic.AddInt64(&c.totalFrames, 1)
 	return frame, nil
+}
+
+// SendOpusConfig sends Opus configuration to the audio output server
+func (c *AudioOutputClient) SendOpusConfig(config OutputIPCOpusConfig) error {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	if !c.running || c.conn == nil {
+		return fmt.Errorf("not connected to audio output server")
+	}
+
+	// Validate configuration parameters
+	if config.SampleRate <= 0 || config.Channels <= 0 || config.FrameSize <= 0 || config.Bitrate <= 0 {
+		return fmt.Errorf("invalid Opus configuration: SampleRate=%d, Channels=%d, FrameSize=%d, Bitrate=%d",
+			config.SampleRate, config.Channels, config.FrameSize, config.Bitrate)
+	}
+
+	// Serialize Opus configuration using common function
+	data := EncodeOpusConfig(config.SampleRate, config.Channels, config.FrameSize, config.Bitrate, config.Complexity, config.VBR, config.SignalType, config.Bandwidth, config.DTX)
+
+	msg := &OutputIPCMessage{
+		Magic:     c.magicNumber,
+		Type:      OutputMessageTypeOpusConfig,
+		Length:    uint32(len(data)),
+		Timestamp: time.Now().UnixNano(),
+		Data:      data,
+	}
+
+	return c.writeMessage(msg)
+}
+
+// writeMessage writes a message to the connection
+func (c *AudioOutputClient) writeMessage(msg *OutputIPCMessage) error {
+	header := EncodeMessageHeader(msg.Magic, uint8(msg.Type), msg.Length, msg.Timestamp)
+
+	if _, err := c.conn.Write(header); err != nil {
+		return fmt.Errorf("failed to write header: %w", err)
+	}
+
+	if msg.Length > 0 && msg.Data != nil {
+		if _, err := c.conn.Write(msg.Data); err != nil {
+			return fmt.Errorf("failed to write data: %w", err)
+		}
+	}
+
+	atomic.AddInt64(&c.totalFrames, 1)
+	return nil
 }
 
 // GetClientStats returns client performance statistics
