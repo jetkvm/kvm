@@ -214,8 +214,8 @@ func SetAudioQuality(quality AudioQuality) {
 
 			// Send dynamic configuration update to running subprocess via IPC
 			if supervisor.IsConnected() {
-				// Convert AudioConfig to OutputIPCOpusConfig with complete Opus parameters
-				opusConfig := OutputIPCOpusConfig{
+				// Convert AudioConfig to UnifiedIPCOpusConfig with complete Opus parameters
+				opusConfig := UnifiedIPCOpusConfig{
 					SampleRate: config.SampleRate,
 					Channels:   config.Channels,
 					FrameSize:  int(config.FrameSize.Milliseconds() * int64(config.SampleRate) / 1000), // Convert ms to samples
@@ -311,8 +311,8 @@ func SetMicrophoneQuality(quality AudioQuality) {
 
 			// Send dynamic configuration update to running subprocess via IPC
 			if supervisor.IsConnected() {
-				// Convert AudioConfig to InputIPCOpusConfig with complete Opus parameters
-				opusConfig := InputIPCOpusConfig{
+				// Convert AudioConfig to UnifiedIPCOpusConfig with complete Opus parameters
+				opusConfig := UnifiedIPCOpusConfig{
 					SampleRate: config.SampleRate,
 					Channels:   config.Channels,
 					FrameSize:  int(config.FrameSize.Milliseconds() * int64(config.SampleRate) / 1000), // Convert ms to samples

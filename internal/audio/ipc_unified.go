@@ -389,7 +389,8 @@ func (s *UnifiedAudioServer) SendFrame(frame []byte) error {
 
 // writeMessage writes a message to the connection
 func (s *UnifiedAudioServer) writeMessage(conn net.Conn, msg *UnifiedIPCMessage) error {
-	header := EncodeMessageHeader(msg.Magic, uint8(msg.Type), msg.Length, msg.Timestamp)
+	header := make([]byte, 17)
+	EncodeMessageHeader(header, msg.Magic, uint8(msg.Type), msg.Length, msg.Timestamp)
 
 	// Optimize: Use single write for header+data to reduce system calls
 	if msg.Length > 0 && msg.Data != nil {

@@ -134,14 +134,12 @@ func (mp *GenericMessagePool) GetStats() (hitCount, missCount int64, hitRate flo
 
 // Helper functions
 
-// EncodeMessageHeader encodes a message header into a byte slice
-func EncodeMessageHeader(magic uint32, msgType uint8, length uint32, timestamp int64) []byte {
-	header := make([]byte, 17)
+// EncodeMessageHeader encodes a message header into a provided byte slice
+func EncodeMessageHeader(header []byte, magic uint32, msgType uint8, length uint32, timestamp int64) {
 	binary.LittleEndian.PutUint32(header[0:4], magic)
 	header[4] = msgType
 	binary.LittleEndian.PutUint32(header[5:9], length)
 	binary.LittleEndian.PutUint64(header[9:17], uint64(timestamp))
-	return header
 }
 
 // EncodeAudioConfig encodes basic audio configuration to binary format
@@ -179,14 +177,12 @@ func WriteIPCMessage(conn net.Conn, msg IPCMessage, pool *GenericMessagePool, dr
 	defer pool.Put(optMsg)
 
 	// Prepare header in pre-allocated buffer
-	header := EncodeMessageHeader(msg.GetMagic(), msg.GetType(), msg.GetLength(), msg.GetTimestamp())
-	copy(optMsg.header[:], header)
+	EncodeMessageHeader(optMsg.header[:], msg.GetMagic(), msg.GetType(), msg.GetLength(), msg.GetTimestamp())
 
 	// Set write deadline for timeout handling (more efficient than goroutines)
 	if deadline := time.Now().Add(Config.WriteTimeout); deadline.After(time.Now()) {
 		if err := conn.SetWriteDeadline(deadline); err != nil {
 			// If we can't set deadline, proceed without it
-			// This maintains compatibility with connections that don't support deadlines
 			_ = err // Explicitly ignore error for linter
 		}
 	}
