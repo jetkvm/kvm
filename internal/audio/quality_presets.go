@@ -312,7 +312,6 @@ func SetMicrophoneQuality(quality AudioQuality) {
 
 		// Update audio input subprocess configuration dynamically without restart
 		logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
-		logger.Info().Int("quality", int(quality)).Msg("updating audio input quality settings dynamically")
 
 		// Set new OPUS configuration for future restarts
 		if supervisor := GetAudioInputSupervisor(); supervisor != nil {
@@ -321,12 +320,11 @@ func SetMicrophoneQuality(quality AudioQuality) {
 			// Check if microphone is active but IPC control is broken
 			inputManager := getAudioInputManager()
 			if inputManager.IsRunning() && !supervisor.IsConnected() {
-				logger.Info().Msg("microphone active but IPC disconnected, attempting to reconnect control channel")
 				// Reconnect the IPC control channel
 				supervisor.Stop()
 				time.Sleep(50 * time.Millisecond)
 				if err := supervisor.Start(); err != nil {
-					logger.Warn().Err(err).Msg("failed to reconnect IPC control channel")
+					logger.Debug().Err(err).Msg("failed to reconnect IPC control channel")
 				}
 			}
 
@@ -345,9 +343,8 @@ func SetMicrophoneQuality(quality AudioQuality) {
 					DTX:        dtx,
 				}
 
-				logger.Info().Interface("opusConfig", opusConfig).Msg("sending Opus configuration to audio input subprocess")
 				if err := supervisor.SendOpusConfig(opusConfig); err != nil {
-					logger.Warn().Err(err).Msg("failed to send dynamic Opus config update via IPC, falling back to subprocess restart")
+					logger.Debug().Err(err).Msg("failed to send dynamic Opus config update via IPC")
 					// Fallback to subprocess restart if IPC update fails
 					supervisor.Stop()
 					if err := supervisor.Start(); err != nil {

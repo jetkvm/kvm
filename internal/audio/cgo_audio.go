@@ -911,46 +911,28 @@ func updateCacheIfNeeded(cache *AudioConfigCache) {
 }
 
 func cgoAudioReadEncode(buf []byte) (int, error) {
-	cache := GetCachedConfig()
-	updateCacheIfNeeded(cache)
-
-	// Fast validation with cached values - avoid lock with atomic access
-	minRequired := cache.GetMinReadEncodeBuffer()
-
-	// Buffer validation - use pre-allocated error for common case
-	if len(buf) < minRequired {
-		// Use pre-allocated error for common case, only create custom error for edge cases
-		if len(buf) > 0 {
-			return 0, newBufferTooSmallError(len(buf), minRequired)
-		}
-		return 0, cache.GetBufferTooSmallError()
+	// Minimal buffer validation - assume caller provides correct size
+	if len(buf) == 0 {
+		return 0, errEmptyBuffer
 	}
 
-	// Skip initialization check for now to avoid CGO compilation issues
-
-	// Direct CGO call with minimal overhead - unsafe.Pointer(&slice[0]) is safe for validated non-empty buffers
+	// Direct CGO call - hotpath optimization
 	n := C.jetkvm_audio_read_encode(unsafe.Pointer(&buf[0]))
 
-	// Fast path for success case
+	// Fast path for success
 	if n > 0 {
 		return int(n), nil
 	}
 
-	// Handle error cases - use static error codes to reduce allocations
+	// Error handling with static errors
 	if n < 0 {
-		// Common error cases
-		switch n {
-		case -1:
+		if n == -1 {
 			return 0, errAudioInitFailed
-		case -2:
-			return 0, errAudioReadEncode
-		default:
-			return 0, newAudioReadEncodeError(int(n))
 		}
+		return 0, errAudioReadEncode
 	}
 
-	// n == 0 case
-	return 0, nil // No data available
+	return 0, nil
 }
 
 // Audio playback functions
@@ -972,58 +954,25 @@ func cgoAudioPlaybackClose() {
 	C.jetkvm_audio_playback_close()
 }
 
-func cgoAudioDecodeWrite(buf []byte) (n int, err error) {
-	// Fast validation with AudioConfigCache
-	cache := GetCachedConfig()
-	// Only update cache if expired - avoid unnecessary overhead
-	// Use proper locking to avoid race condition
-	if cache.initialized.Load() {
-		cache.mutex.RLock()
-		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
-		cache.mutex.RUnlock()
-		if cacheExpired {
-			cache.Update()
-		}
-	} else {
-		cache.Update()
-	}
-
-	// Optimized buffer validation
+func cgoAudioDecodeWrite(buf []byte) (int, error) {
+	// Minimal validation - assume caller provides correct size
 	if len(buf) == 0 {
 		return 0, errEmptyBuffer
 	}
 
-	// Use cached max buffer size with atomic access
-	maxAllowed := cache.GetMaxDecodeWriteBuffer()
-	if len(buf) > maxAllowed {
-		// Use pre-allocated error for common case
-		if len(buf) == maxAllowed+1 {
-			return 0, cache.GetBufferTooLargeError()
-		}
-		return 0, newBufferTooLargeError(len(buf), maxAllowed)
-	}
+	// Direct CGO call - hotpath optimization
+	n := int(C.jetkvm_audio_decode_write(unsafe.Pointer(&buf[0]), C.int(len(buf))))
 
-	// Direct CGO call with minimal overhead - unsafe.Pointer(&slice[0]) is safe for validated non-empty buffers
-	n = int(C.jetkvm_audio_decode_write(unsafe.Pointer(&buf[0]), C.int(len(buf))))
-
-	// Fast path for success case
+	// Fast path for success
 	if n >= 0 {
 		return n, nil
 	}
 
-	// Handle error cases with static error codes
-	switch n {
-	case -1:
-		n = 0
-		err = errAudioInitFailed
-	case -2:
-		n = 0
-		err = errAudioDecodeWrite
-	default:
-		n = 0
-		err = newAudioDecodeWriteError(n)
+	// Error handling with static errors
+	if n == -1 {
+		return 0, errAudioInitFailed
 	}
-	return
+	return 0, errAudioDecodeWrite
 }
 
 // updateOpusEncoderParams dynamically updates OPUS encoder parameters
@@ -1111,77 +1060,22 @@ func DecodeWriteWithPooledBuffer(data []byte) (int, error) {
 // BatchReadEncode reads and encodes multiple audio frames in a single batch
 // with optimized zero-copy frame management and batch reference counting
 func BatchReadEncode(batchSize int) ([][]byte, error) {
-	cache := GetCachedConfig()
-	updateCacheIfNeeded(cache)
-
-	// Calculate total buffer size needed for batch
-	frameSize := cache.GetMinReadEncodeBuffer()
-	totalSize := frameSize * batchSize
-
-	// Get a single large buffer for all frames
-	batchBuffer := GetBufferFromPool(totalSize)
-	defer ReturnBufferToPool(batchBuffer)
-
-	// Pre-allocate zero-copy frames for batch processing
-	zeroCopyFrames := make([]*ZeroCopyAudioFrame, 0, batchSize)
-	for i := 0; i < batchSize; i++ {
-		frame := GetZeroCopyFrame()
-		zeroCopyFrames = append(zeroCopyFrames, frame)
-	}
-	// Use batch reference counting for efficient cleanup
-	defer func() {
-		if _, err := BatchReleaseFrames(zeroCopyFrames); err != nil {
-			// Log release error but don't fail the operation
-			_ = err
-		}
-	}()
-
-	// Batch AddRef all frames at once to reduce atomic operation overhead
-	err := BatchAddRefFrames(zeroCopyFrames)
-	if err != nil {
-		return nil, err
-	}
-
-	// Track batch processing statistics - only if enabled
-	var startTime time.Time
-	// Batch time tracking removed
-	trackTime := false
-	if trackTime {
-		startTime = time.Now()
-	}
-	batchProcessingCount.Add(1)
-
-	// Process frames in batch using zero-copy frames
+	// Simple batch processing without complex overhead
 	frames := make([][]byte, 0, batchSize)
-	for i := 0; i < batchSize; i++ {
-		// Calculate offset for this frame in the batch buffer
-		offset := i * frameSize
-		frameBuf := batchBuffer[offset : offset+frameSize]
+	frameSize := 4096 // Fixed frame size for performance
 
-		// Process this frame
-		n, err := cgoAudioReadEncode(frameBuf)
+	for i := 0; i < batchSize; i++ {
+		buf := make([]byte, frameSize)
+		n, err := cgoAudioReadEncode(buf)
 		if err != nil {
-			// Return partial batch on error
 			if i > 0 {
-				batchFrameCount.Add(int64(i))
-				if trackTime {
-					batchProcessingTime.Add(time.Since(startTime).Microseconds())
-				}
-				return frames, nil
+				return frames, nil // Return partial batch
 			}
 			return nil, err
 		}
-
-		// Use zero-copy frame for efficient memory management
-		frame := zeroCopyFrames[i]
-		frame.SetDataDirect(frameBuf[:n]) // Direct assignment without copy
-		frames = append(frames, frame.Data())
-	}
-
-	// Update statistics
-	batchFrameCount.Add(int64(len(frames)))
-	if trackTime {
-		batchProcessingTime.Add(time.Since(startTime).Microseconds())
+		if n > 0 {
+			frames = append(frames, buf[:n])
+		}
 	}
 
 	return frames, nil

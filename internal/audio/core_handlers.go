@@ -29,11 +29,9 @@ func (s *AudioControlService) MuteAudio(muted bool) error {
 		supervisor := GetAudioOutputSupervisor()
 		if supervisor != nil {
 			supervisor.Stop()
-			s.logger.Info().Msg("audio output supervisor stopped")
 		}
 		StopAudioRelay()
 		SetAudioMuted(true)
-		s.logger.Info().Msg("audio output muted (subprocess and relay stopped)")
 	} else {
 		// Unmute: Start audio output subprocess and relay
 		if !s.sessionProvider.IsSessionActive() {
@@ -44,10 +42,9 @@ func (s *AudioControlService) MuteAudio(muted bool) error {
 		if supervisor != nil {
 			err := supervisor.Start()
 			if err != nil {
-				s.logger.Error().Err(err).Msg("failed to start audio output supervisor during unmute")
+				s.logger.Debug().Err(err).Msg("failed to start audio output supervisor")
 				return err
 			}
-			s.logger.Info().Msg("audio output supervisor started")
 		}
 
 		// Start audio relay
