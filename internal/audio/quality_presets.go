@@ -208,15 +208,6 @@ func SetAudioQuality(quality AudioQuality) {
 		logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
 		logger.Info().Int("quality", int(quality)).Msg("updating audio output quality settings dynamically")
 
-		// Immediately boost adaptive buffer sizes to handle quality change frame burst
-		// This prevents "Message channel full, dropping frame" warnings during transitions
-		adaptiveManager := GetAdaptiveBufferManager()
-		if adaptiveManager != nil {
-			// Immediately set buffers to maximum size for quality change
-			adaptiveManager.BoostBuffersForQualityChange()
-			logger.Debug().Msg("boosted adaptive buffers for quality change")
-		}
-
 		// Set new OPUS configuration for future restarts
 		if supervisor := GetAudioOutputSupervisor(); supervisor != nil {
 			supervisor.SetOpusConfig(config.Bitrate*1000, complexity, vbr, signalType, bandwidth, dtx)
@@ -310,15 +301,6 @@ func SetMicrophoneQuality(quality AudioQuality) {
 		if supervisor := GetAudioInputSupervisor(); supervisor != nil {
 			logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
 			logger.Info().Int("quality", int(quality)).Msg("updating audio input subprocess quality settings dynamically")
-
-			// Immediately boost adaptive buffer sizes to handle quality change frame burst
-			// This prevents "Message channel full, dropping frame" warnings during transitions
-			adaptiveManager := GetAdaptiveBufferManager()
-			if adaptiveManager != nil {
-				// Immediately set buffers to maximum size for quality change
-				adaptiveManager.BoostBuffersForQualityChange()
-				logger.Debug().Msg("boosted adaptive buffers for quality change")
-			}
 
 			// Set new OPUS configuration for future restarts
 			supervisor.SetOpusConfig(config.Bitrate*1000, complexity, vbr, signalType, bandwidth, dtx)

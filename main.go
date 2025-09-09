@@ -35,9 +35,6 @@ func startAudioSubprocess() error {
 	// Initialize validation cache for optimal performance
 	audio.InitValidationCache()
 
-	// Start adaptive buffer management for optimal performance
-	audio.StartAdaptiveBuffering()
-
 	// Start goroutine monitoring to detect and prevent leaks
 	audio.StartGoroutineMonitoring()
 
@@ -114,8 +111,7 @@ func startAudioSubprocess() error {
 
 			// Stop audio relay when process exits
 			audio.StopAudioRelay()
-			// Stop adaptive buffering
-			audio.StopAdaptiveBuffering()
+
 			// Stop goroutine monitoring
 			audio.StopGoroutineMonitoring()
 			// Disable batch audio processing
