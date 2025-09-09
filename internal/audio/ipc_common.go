@@ -132,6 +132,42 @@ func (mp *GenericMessagePool) GetStats() (hitCount, missCount int64, hitRate flo
 	return hits, misses, hitRate
 }
 
+// Helper functions
+
+// EncodeMessageHeader encodes a message header into a byte slice
+func EncodeMessageHeader(magic uint32, msgType uint8, length uint32, timestamp int64) []byte {
+	header := make([]byte, 17)
+	binary.LittleEndian.PutUint32(header[0:4], magic)
+	header[4] = msgType
+	binary.LittleEndian.PutUint32(header[5:9], length)
+	binary.LittleEndian.PutUint64(header[9:17], uint64(timestamp))
+	return header
+}
+
+// EncodeAudioConfig encodes basic audio configuration to binary format
+func EncodeAudioConfig(sampleRate, channels, frameSize int) []byte {
+	data := make([]byte, 12) // 3 * int32
+	binary.LittleEndian.PutUint32(data[0:4], uint32(sampleRate))
+	binary.LittleEndian.PutUint32(data[4:8], uint32(channels))
+	binary.LittleEndian.PutUint32(data[8:12], uint32(frameSize))
+	return data
+}
+
+// EncodeOpusConfig encodes complete Opus configuration to binary format
+func EncodeOpusConfig(sampleRate, channels, frameSize, bitrate, complexity, vbr, signalType, bandwidth, dtx int) []byte {
+	data := make([]byte, 36) // 9 * int32
+	binary.LittleEndian.PutUint32(data[0:4], uint32(sampleRate))
+	binary.LittleEndian.PutUint32(data[4:8], uint32(channels))
+	binary.LittleEndian.PutUint32(data[8:12], uint32(frameSize))
+	binary.LittleEndian.PutUint32(data[12:16], uint32(bitrate))
+	binary.LittleEndian.PutUint32(data[16:20], uint32(complexity))
+	binary.LittleEndian.PutUint32(data[20:24], uint32(vbr))
+	binary.LittleEndian.PutUint32(data[24:28], uint32(signalType))
+	binary.LittleEndian.PutUint32(data[28:32], uint32(bandwidth))
+	binary.LittleEndian.PutUint32(data[32:36], uint32(dtx))
+	return data
+}
+
 // Common write message function
 func WriteIPCMessage(conn net.Conn, msg IPCMessage, pool *GenericMessagePool, droppedFramesCounter *int64) error {
 	if conn == nil {
@@ -143,10 +179,8 @@ func WriteIPCMessage(conn net.Conn, msg IPCMessage, pool *GenericMessagePool, dr
 	defer pool.Put(optMsg)
 
 	// Prepare header in pre-allocated buffer
-	binary.LittleEndian.PutUint32(optMsg.header[0:4], msg.GetMagic())
-	optMsg.header[4] = msg.GetType()
-	binary.LittleEndian.PutUint32(optMsg.header[5:9], msg.GetLength())
-	binary.LittleEndian.PutUint64(optMsg.header[9:17], uint64(msg.GetTimestamp()))
+	header := EncodeMessageHeader(msg.GetMagic(), msg.GetType(), msg.GetLength(), msg.GetTimestamp())
+	copy(optMsg.header[:], header)
 
 	// Set write deadline for timeout handling (more efficient than goroutines)
 	if deadline := time.Now().Add(Config.WriteTimeout); deadline.After(time.Now()) {

@@ -48,8 +48,6 @@ func getOutputStreamingLogger() *zerolog.Logger {
 
 // StartAudioOutputStreaming starts audio output streaming (capturing system audio)
 func StartAudioOutputStreaming(send func([]byte)) error {
-	// Initialize audio monitoring (latency tracking and cache cleanup)
-
 	if !atomic.CompareAndSwapInt32(&outputStreamingRunning, 0, 1) {
 		return ErrAudioAlreadyRunning
 	}
