@@ -294,7 +294,7 @@ func (abm *AdaptiveBufferManager) ActivateGracefulDegradation(level int) {
 		atomic.StoreInt64(&abm.currentInputBufferSize, minSize)
 		atomic.StoreInt64(&abm.currentOutputBufferSize, minSize)
 
-		abm.logger.Error().
+		abm.logger.Warn().
 			Int("level", level).
 			Int64("buffer_size", minSize).
 			Msg("Activated severe graceful degradation - emergency mode")

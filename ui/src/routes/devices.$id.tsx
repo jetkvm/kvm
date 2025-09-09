@@ -475,8 +475,27 @@ export default function KvmIdRoute() {
       }
     };
 
-    pc.ontrack = function (event) {
-      setMediaStream(event.streams[0]);
+    pc.ontrack = function (event: RTCTrackEvent) {
+      // Handle separate MediaStreams for audio and video tracks
+      const track = event.track;
+      const streams = event.streams;
+      
+      if (streams && streams.length > 0) {
+        // Get existing MediaStream or create a new one
+        const existingStream = useRTCStore.getState().mediaStream;
+        let combinedStream: MediaStream;
+        
+        if (existingStream) {
+          combinedStream = existingStream;
+          // Add the new track to the existing stream
+          combinedStream.addTrack(track);
+        } else {
+          // Create a new MediaStream with the track
+          combinedStream = new MediaStream([track]);
+        }
+        
+        setMediaStream(combinedStream);
+      }
     };
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
