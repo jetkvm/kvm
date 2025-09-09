@@ -35,18 +35,19 @@ type InputRPCRequest struct {
 	Method  string `json:"method"`
 	ID      any    `json:"id,omitempty"`
 	// Union of all possible input parameters - only relevant fields are populated
+	// Fields ordered for optimal 32-bit alignment: slice pointers, 2-byte fields, 1-byte fields
 	Params struct {
-		// Keyboard parameters
-		Modifier *uint8   `json:"modifier,omitempty"`
-		Keys     *[]uint8 `json:"keys,omitempty"`
-		// Mouse parameters
-		X       *int   `json:"x,omitempty"`
-		Y       *int   `json:"y,omitempty"`
-		Dx      *int8  `json:"dx,omitempty"`
-		Dy      *int8  `json:"dy,omitempty"`
-		Buttons *uint8 `json:"buttons,omitempty"`
-		// Wheel parameters
-		WheelY *int8 `json:"wheelY,omitempty"`
+		// Slice pointers (4 bytes on 32-bit ARM)
+		Keys *[]uint8 `json:"keys,omitempty"`
+		// 2-byte fields grouped together
+		X *uint16 `json:"x,omitempty"`
+		Y *uint16 `json:"y,omitempty"`
+		// 1-byte fields grouped together for optimal packing
+		Modifier *uint8 `json:"modifier,omitempty"`
+		Dx       *int8  `json:"dx,omitempty"`
+		Dy       *int8  `json:"dy,omitempty"`
+		Buttons  *uint8 `json:"buttons,omitempty"`
+		WheelY   *int8  `json:"wheelY,omitempty"`
 	} `json:"params,omitempty"`
 }
 
@@ -77,15 +78,7 @@ func validateKeysArray(params map[string]interface{}, methodName string) ([]uint
 			keys[i] = uint8(intVal)
 			continue
 		}
-		// Fallback to float64 for compatibility with existing clients
-		if floatVal, ok := keyInterface.(float64); ok {
-			intVal := int(floatVal)
-			if floatVal != float64(intVal) || intVal < 0 || intVal > 255 {
-				return nil, fmt.Errorf("%s: key at index %d value %v invalid for uint8 (must be integer 0-255)", methodName, i, floatVal)
-			}
-			keys[i] = uint8(intVal)
-			continue
-		}
+
 		return nil, fmt.Errorf("%s: key at index %d must be a number, got %T", methodName, i, keyInterface)
 	}
 	return keys, nil
@@ -103,11 +96,11 @@ type KeyboardReportParams struct {
 }
 
 // AbsMouseReportParams represents parameters for absolute mouse positioning
-// Matches rpcAbsMouseReport(x, y int, buttons uint8)
+// Matches rpcAbsMouseReport(x, y uint16, buttons uint8)
 type AbsMouseReportParams struct {
-	X       int   `json:"x"`       // Absolute X coordinate (0-32767)
-	Y       int   `json:"y"`       // Absolute Y coordinate (0-32767)
-	Buttons uint8 `json:"buttons"` // Mouse button state bitmask
+	X       uint16 `json:"x"`       // Absolute X coordinate (0-32767)
+	Y       uint16 `json:"y"`       // Absolute Y coordinate (0-32767)
+	Buttons uint8  `json:"buttons"` // Mouse button state bitmask
 }
 
 // RelMouseReportParams represents parameters for relative mouse movement
@@ -150,7 +143,7 @@ func handleInputRPCUltraFast(data []byte) (interface{}, error) {
 			return nil, fmt.Errorf("absMouseReport: missing required parameters")
 		}
 		x, y, buttons := *request.Params.X, *request.Params.Y, *request.Params.Buttons
-		if x < 0 || x > 32767 || y < 0 || y > 32767 {
+		if x > 32767 || y > 32767 {
 			return nil, fmt.Errorf("absMouseReport: coordinates out of range")
 		}
 		return nil, rpcAbsMouseReport(x, y, buttons)
@@ -183,11 +176,10 @@ func handleKeyboardReportDirect(params map[string]interface{}) (interface{}, err
 		}
 		modifier = uint8(intVal)
 	} else if floatVal, ok := params["modifier"].(float64); ok {
-		intVal := int(floatVal)
-		if floatVal != float64(intVal) || intVal < 0 || intVal > 255 {
+		if floatVal != float64(int(floatVal)) || floatVal < 0 || floatVal > 255 {
 			return nil, fmt.Errorf("keyboardReport: modifier value %v invalid", floatVal)
 		}
-		modifier = uint8(intVal)
+		modifier = uint8(floatVal)
 	} else {
 		return nil, fmt.Errorf("keyboardReport: modifier must be a number")
 	}
@@ -205,36 +197,34 @@ func handleKeyboardReportDirect(params map[string]interface{}) (interface{}, err
 // Direct handler for absolute mouse reports
 // Ultra-optimized path with inlined validation for maximum performance
 func handleAbsMouseReportDirect(params map[string]interface{}) (interface{}, error) {
-	// Inline x coordinate validation
-	var x int
-	if intVal, ok := params["x"].(int); ok {
+	// Inline x coordinate validation - check float64 first (most common JSON number type)
+	var x uint16
+	if floatVal, ok := params["x"].(float64); ok {
+		if floatVal != float64(int(floatVal)) || floatVal < 0 || floatVal > 32767 {
+			return nil, fmt.Errorf("absMouseReport: x value %v invalid", floatVal)
+		}
+		x = uint16(floatVal)
+	} else if intVal, ok := params["x"].(int); ok {
 		if intVal < 0 || intVal > 32767 {
 			return nil, fmt.Errorf("absMouseReport: x value %d out of range [0-32767]", intVal)
 		}
-		x = intVal
-	} else if floatVal, ok := params["x"].(float64); ok {
-		intVal := int(floatVal)
-		if floatVal != float64(intVal) || intVal < 0 || intVal > 32767 {
-			return nil, fmt.Errorf("absMouseReport: x value %v invalid", floatVal)
-		}
-		x = intVal
+		x = uint16(intVal)
 	} else {
 		return nil, fmt.Errorf("absMouseReport: x must be a number")
 	}
 
-	// Inline y coordinate validation
-	var y int
-	if intVal, ok := params["y"].(int); ok {
+	// Inline y coordinate validation - check float64 first (most common JSON number type)
+	var y uint16
+	if floatVal, ok := params["y"].(float64); ok {
+		if floatVal != float64(int(floatVal)) || floatVal < 0 || floatVal > 32767 {
+			return nil, fmt.Errorf("absMouseReport: y value %v invalid", floatVal)
+		}
+		y = uint16(floatVal)
+	} else if intVal, ok := params["y"].(int); ok {
 		if intVal < 0 || intVal > 32767 {
 			return nil, fmt.Errorf("absMouseReport: y value %d out of range [0-32767]", intVal)
 		}
-		y = intVal
-	} else if floatVal, ok := params["y"].(float64); ok {
-		intVal := int(floatVal)
-		if floatVal != float64(intVal) || intVal < 0 || intVal > 32767 {
-			return nil, fmt.Errorf("absMouseReport: y value %v invalid", floatVal)
-		}
-		y = intVal
+		y = uint16(intVal)
 	} else {
 		return nil, fmt.Errorf("absMouseReport: y must be a number")
 	}
@@ -247,11 +237,10 @@ func handleAbsMouseReportDirect(params map[string]interface{}) (interface{}, err
 		}
 		buttons = uint8(intVal)
 	} else if floatVal, ok := params["buttons"].(float64); ok {
-		intVal := int(floatVal)
-		if floatVal != float64(intVal) || intVal < 0 || intVal > 255 {
+		if floatVal != float64(int(floatVal)) || floatVal < 0 || floatVal > 255 {
 			return nil, fmt.Errorf("absMouseReport: buttons value %v invalid", floatVal)
 		}
-		buttons = uint8(intVal)
+		buttons = uint8(floatVal)
 	} else {
 		return nil, fmt.Errorf("absMouseReport: buttons must be a number")
 	}
@@ -262,51 +251,48 @@ func handleAbsMouseReportDirect(params map[string]interface{}) (interface{}, err
 // Direct handler for relative mouse reports
 // Ultra-optimized path with inlined validation for maximum performance
 func handleRelMouseReportDirect(params map[string]interface{}) (interface{}, error) {
-	// Inline dx validation
+	// Inline dx validation - check float64 first (most common JSON number type)
 	var dx int8
-	if intVal, ok := params["dx"].(int); ok {
+	if floatVal, ok := params["dx"].(float64); ok {
+		if floatVal != float64(int(floatVal)) || floatVal < -128 || floatVal > 127 {
+			return nil, fmt.Errorf("relMouseReport: dx value %v invalid", floatVal)
+		}
+		dx = int8(floatVal)
+	} else if intVal, ok := params["dx"].(int); ok {
 		if intVal < -128 || intVal > 127 {
 			return nil, fmt.Errorf("relMouseReport: dx value %d out of range [-128 to 127]", intVal)
-		}
-		dx = int8(intVal)
-	} else if floatVal, ok := params["dx"].(float64); ok {
-		intVal := int(floatVal)
-		if floatVal != float64(intVal) || intVal < -128 || intVal > 127 {
-			return nil, fmt.Errorf("relMouseReport: dx value %v invalid", floatVal)
 		}
 		dx = int8(intVal)
 	} else {
 		return nil, fmt.Errorf("relMouseReport: dx must be a number")
 	}
 
-	// Inline dy validation
+	// Inline dy validation - check float64 first (most common JSON number type)
 	var dy int8
-	if intVal, ok := params["dy"].(int); ok {
+	if floatVal, ok := params["dy"].(float64); ok {
+		if floatVal != float64(int(floatVal)) || floatVal < -128 || floatVal > 127 {
+			return nil, fmt.Errorf("relMouseReport: dy value %v invalid", floatVal)
+		}
+		dy = int8(floatVal)
+	} else if intVal, ok := params["dy"].(int); ok {
 		if intVal < -128 || intVal > 127 {
 			return nil, fmt.Errorf("relMouseReport: dy value %d out of range [-128 to 127]", intVal)
-		}
-		dy = int8(intVal)
-	} else if floatVal, ok := params["dy"].(float64); ok {
-		intVal := int(floatVal)
-		if floatVal != float64(intVal) || intVal < -128 || intVal > 127 {
-			return nil, fmt.Errorf("relMouseReport: dy value %v invalid", floatVal)
 		}
 		dy = int8(intVal)
 	} else {
 		return nil, fmt.Errorf("relMouseReport: dy must be a number")
 	}
 
-	// Inline buttons validation
+	// Inline buttons validation - check float64 first (most common JSON number type)
 	var buttons uint8
-	if intVal, ok := params["buttons"].(int); ok {
+	if floatVal, ok := params["buttons"].(float64); ok {
+		if floatVal != float64(int(floatVal)) || floatVal < 0 || floatVal > 255 {
+			return nil, fmt.Errorf("relMouseReport: buttons value %v invalid", floatVal)
+		}
+		buttons = uint8(floatVal)
+	} else if intVal, ok := params["buttons"].(int); ok {
 		if intVal < 0 || intVal > 255 {
 			return nil, fmt.Errorf("relMouseReport: buttons value %d out of range [0-255]", intVal)
-		}
-		buttons = uint8(intVal)
-	} else if floatVal, ok := params["buttons"].(float64); ok {
-		intVal := int(floatVal)
-		if floatVal != float64(intVal) || intVal < 0 || intVal > 255 {
-			return nil, fmt.Errorf("relMouseReport: buttons value %v invalid", floatVal)
 		}
 		buttons = uint8(intVal)
 	} else {
@@ -327,11 +313,10 @@ func handleWheelReportDirect(params map[string]interface{}) (interface{}, error)
 		}
 		wheelY = int8(intVal)
 	} else if floatVal, ok := params["wheelY"].(float64); ok {
-		intVal := int(floatVal)
-		if floatVal != float64(intVal) || intVal < -128 || intVal > 127 {
+		if floatVal != float64(int(floatVal)) || floatVal < -128 || floatVal > 127 {
 			return nil, fmt.Errorf("wheelReport: wheelY value %v invalid", floatVal)
 		}
-		wheelY = int8(intVal)
+		wheelY = int8(floatVal)
 	} else {
 		return nil, fmt.Errorf("wheelReport: wheelY must be a number")
 	}
