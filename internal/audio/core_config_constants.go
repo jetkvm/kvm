@@ -329,12 +329,6 @@ type AudioConfigConstants struct {
 	QualityChangeSettleDelay       time.Duration // Delay for quality change to settle
 	QualityChangeRecoveryDelay     time.Duration // Delay before attempting recovery
 
-	// Graceful Degradation Configuration
-	CongestionMildReductionFactor     float64       // Buffer reduction factor for mild congestion (0.75)
-	CongestionModerateReductionFactor float64       // Buffer reduction factor for moderate congestion (0.5)
-	CongestionThresholdMultiplier     float64       // Multiplier for congestion threshold calculations (0.8)
-	CongestionRecoveryTimeout         time.Duration // Timeout for congestion recovery (5 seconds)
-
 	// Buffer Pool Cache Configuration
 	BufferPoolCacheSize               int           // Buffers per goroutine cache (4)
 	BufferPoolCacheTTL                time.Duration // Cache TTL for aggressive cleanup (5s)
@@ -526,12 +520,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		QualityChangeTickerInterval:    100 * time.Millisecond, // Ticker interval for supervisor stop polling
 		QualityChangeSettleDelay:       2 * time.Second,        // Delay for quality change to settle
 		QualityChangeRecoveryDelay:     1 * time.Second,        // Delay before attempting recovery
-
-		// Graceful Degradation Configuration
-		CongestionMildReductionFactor:     0.75,            // Buffer reduction factor for mild congestion (0.75)
-		CongestionModerateReductionFactor: 0.5,             // Buffer reduction factor for moderate congestion (0.5)
-		CongestionThresholdMultiplier:     36.0,            // Multiplier for congestion threshold calculations (increased to reduce false emergency mode triggers)
-		CongestionRecoveryTimeout:         5 * time.Second, // Timeout for congestion recovery (5 seconds)
 
 		// Buffer Pool Cache Configuration
 		BufferPoolCacheSize:               4,                // Buffers per goroutine cache
