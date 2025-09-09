@@ -195,12 +195,6 @@ export function useMicrophone() {
         
         // Find the audio transceiver (should already exist with sendrecv direction)
         const transceivers = peerConnection.getTransceivers();
-        devLog("Available transceivers:", transceivers.map((t: RTCRtpTransceiver) => ({
-          direction: t.direction,
-          mid: t.mid,
-          senderTrack: t.sender.track?.kind,
-          receiverTrack: t.receiver.track?.kind
-        })));
         
         // Look for an audio transceiver that can send (has sendrecv or sendonly direction)
         const audioTransceiver = transceivers.find((transceiver: RTCRtpTransceiver) => {
