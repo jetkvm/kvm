@@ -260,6 +260,16 @@ func GetAudioConfig() AudioConfig {
 	return currentConfig
 }
 
+// Simplified OPUS parameter lookup table
+var opusParams = map[AudioQuality]struct {
+	complexity, vbr, signalType, bandwidth, dtx int
+}{
+	AudioQualityLow:    {Config.AudioQualityLowOpusComplexity, Config.AudioQualityLowOpusVBR, Config.AudioQualityLowOpusSignalType, Config.AudioQualityLowOpusBandwidth, Config.AudioQualityLowOpusDTX},
+	AudioQualityMedium: {Config.AudioQualityMediumOpusComplexity, Config.AudioQualityMediumOpusVBR, Config.AudioQualityMediumOpusSignalType, Config.AudioQualityMediumOpusBandwidth, Config.AudioQualityMediumOpusDTX},
+	AudioQualityHigh:   {Config.AudioQualityHighOpusComplexity, Config.AudioQualityHighOpusVBR, Config.AudioQualityHighOpusSignalType, Config.AudioQualityHighOpusBandwidth, Config.AudioQualityHighOpusDTX},
+	AudioQualityUltra:  {Config.AudioQualityUltraOpusComplexity, Config.AudioQualityUltraOpusVBR, Config.AudioQualityUltraOpusSignalType, Config.AudioQualityUltraOpusBandwidth, Config.AudioQualityUltraOpusDTX},
+}
+
 // SetMicrophoneQuality updates the current microphone quality configuration
 func SetMicrophoneQuality(quality AudioQuality) {
 	// Validate audio quality parameter
@@ -274,40 +284,11 @@ func SetMicrophoneQuality(quality AudioQuality) {
 	if config, exists := presets[quality]; exists {
 		currentMicrophoneConfig = config
 
-		// Get OPUS parameters for the selected quality
-		var complexity, vbr, signalType, bandwidth, dtx int
-		switch quality {
-		case AudioQualityLow:
-			complexity = Config.AudioQualityLowOpusComplexity
-			vbr = Config.AudioQualityLowOpusVBR
-			signalType = Config.AudioQualityLowOpusSignalType
-			bandwidth = Config.AudioQualityLowOpusBandwidth
-			dtx = Config.AudioQualityLowOpusDTX
-		case AudioQualityMedium:
-			complexity = Config.AudioQualityMediumOpusComplexity
-			vbr = Config.AudioQualityMediumOpusVBR
-			signalType = Config.AudioQualityMediumOpusSignalType
-			bandwidth = Config.AudioQualityMediumOpusBandwidth
-			dtx = Config.AudioQualityMediumOpusDTX
-		case AudioQualityHigh:
-			complexity = Config.AudioQualityHighOpusComplexity
-			vbr = Config.AudioQualityHighOpusVBR
-			signalType = Config.AudioQualityHighOpusSignalType
-			bandwidth = Config.AudioQualityHighOpusBandwidth
-			dtx = Config.AudioQualityHighOpusDTX
-		case AudioQualityUltra:
-			complexity = Config.AudioQualityUltraOpusComplexity
-			vbr = Config.AudioQualityUltraOpusVBR
-			signalType = Config.AudioQualityUltraOpusSignalType
-			bandwidth = Config.AudioQualityUltraOpusBandwidth
-			dtx = Config.AudioQualityUltraOpusDTX
-		default:
-			// Use medium quality as fallback
-			complexity = Config.AudioQualityMediumOpusComplexity
-			vbr = Config.AudioQualityMediumOpusVBR
-			signalType = Config.AudioQualityMediumOpusSignalType
-			bandwidth = Config.AudioQualityMediumOpusBandwidth
-			dtx = Config.AudioQualityMediumOpusDTX
+		// Get OPUS parameters using lookup table
+		params, exists := opusParams[quality]
+		if !exists {
+			// Fallback to medium quality
+			params = opusParams[AudioQualityMedium]
 		}
 
 		// Update audio input subprocess configuration dynamically without restart
@@ -315,7 +296,7 @@ func SetMicrophoneQuality(quality AudioQuality) {
 
 		// Set new OPUS configuration for future restarts
 		if supervisor := GetAudioInputSupervisor(); supervisor != nil {
-			supervisor.SetOpusConfig(config.Bitrate*1000, complexity, vbr, signalType, bandwidth, dtx)
+			supervisor.SetOpusConfig(config.Bitrate*1000, params.complexity, params.vbr, params.signalType, params.bandwidth, params.dtx)
 
 			// Check if microphone is active but IPC control is broken
 			inputManager := getAudioInputManager()
@@ -336,11 +317,11 @@ func SetMicrophoneQuality(quality AudioQuality) {
 					Channels:   config.Channels,
 					FrameSize:  int(config.FrameSize.Milliseconds() * int64(config.SampleRate) / 1000), // Convert ms to samples
 					Bitrate:    config.Bitrate * 1000,                                                  // Convert kbps to bps
-					Complexity: complexity,
-					VBR:        vbr,
-					SignalType: signalType,
-					Bandwidth:  bandwidth,
-					DTX:        dtx,
+					Complexity: params.complexity,
+					VBR:        params.vbr,
+					SignalType: params.signalType,
+					Bandwidth:  params.bandwidth,
+					DTX:        params.dtx,
 				}
 
 				if err := supervisor.SendOpusConfig(opusConfig); err != nil {
