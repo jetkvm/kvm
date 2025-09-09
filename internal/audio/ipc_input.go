@@ -532,12 +532,9 @@ func (ais *AudioInputServer) processOpusConfig(data []byte) error {
 
 	logger.Info().Interface("config", config).Msg("applying dynamic Opus encoder configuration")
 
-	// Ensure capture is initialized before updating encoder parameters
-	// The C function requires both encoder and capture_initialized to be true
-	if err := CGOAudioInit(); err != nil {
-		logger.Debug().Err(err).Msg("Audio capture already initialized or initialization failed")
-		// Continue anyway - capture may already be initialized
-	}
+	// Note: We don't call CGOAudioInit() here as it would destroy and recreate the encoder,
+	// causing temporary unavailability. The encoder should already be initialized when
+	// the audio input server starts.
 
 	// Apply the Opus encoder configuration dynamically with retry logic
 	var err error
