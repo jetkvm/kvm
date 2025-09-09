@@ -118,6 +118,7 @@ var defaultConfig = &Config{
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes
+	JigglerEnabled:       false,
 	// This is the "Standard" jiggler option in the UI
 	JigglerConfig: &JigglerConfig{
 		InactivityLimitSeconds: 60,
@@ -205,6 +206,15 @@ func LoadConfig() {
 		loadedConfig.NetworkConfig = defaultConfig.NetworkConfig
 	}
 
+	if loadedConfig.JigglerConfig == nil {
+		loadedConfig.JigglerConfig = defaultConfig.JigglerConfig
+	}
+
+	// fixup old keyboard layout value
+	if loadedConfig.KeyboardLayout == "en_US" {
+		loadedConfig.KeyboardLayout = "en-US"
+	}
+
 	config = &loadedConfig
 
 	logging.GetRootLogger().UpdateLogLevel(config.DefaultLogLevel)
@@ -221,6 +231,11 @@ func SaveConfig() error {
 
 	logger.Trace().Str("path", configPath).Msg("Saving config")
 
+	// fixup old keyboard layout value
+	if config.KeyboardLayout == "en_US" {
+		config.KeyboardLayout = "en-US"
+	}
+
 	file, err := os.Create(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
@@ -233,6 +248,11 @@ func SaveConfig() error {
 		return fmt.Errorf("failed to encode config: %w", err)
 	}
 
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("failed to wite config: %w", err)
+	}
+
+	logger.Info().Str("path", configPath).Msg("config saved")
 	return nil
 }
 
