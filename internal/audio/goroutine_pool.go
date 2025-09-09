@@ -196,7 +196,7 @@ func (p *GoroutinePool) supervisor() {
 			tasks := atomic.LoadInt64(&p.taskCount)
 			queueLen := len(p.taskQueue)
 
-			p.logger.Info().
+			p.logger.Debug().
 				Int64("workers", workers).
 				Int64("tasks_processed", tasks).
 				Int("queue_length", queueLen).
@@ -215,7 +215,7 @@ func (p *GoroutinePool) Shutdown(wait bool) {
 		if wait {
 			// Wait for all tasks to be processed
 			if len(p.taskQueue) > 0 {
-				p.logger.Info().Int("remaining_tasks", len(p.taskQueue)).Msg("Waiting for tasks to complete")
+				p.logger.Debug().Int("remaining_tasks", len(p.taskQueue)).Msg("Waiting for tasks to complete")
 			}
 
 			// Close the task queue to signal no more tasks
