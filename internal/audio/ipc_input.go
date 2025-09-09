@@ -231,9 +231,8 @@ func NewAudioInputServer() (*AudioInputServer, error) {
 		return nil, fmt.Errorf("failed to create unix socket after 3 attempts: %w", err)
 	}
 
-	// Get initial buffer size from adaptive buffer manager
-	adaptiveManager := GetAdaptiveBufferManager()
-	initialBufferSize := int64(adaptiveManager.GetInputBufferSize())
+	// Get initial buffer size from config
+	initialBufferSize := int64(Config.AdaptiveDefaultBufferSize)
 
 	// Ensure minimum buffer size to prevent immediate overflow
 	// Use at least 50 frames to handle burst traffic
@@ -1221,8 +1220,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 				// Check if we need to update buffer size
 				select {
 				case <-bufferUpdateTicker.C:
-					// Update buffer size from adaptive buffer manager
-					ais.UpdateBufferSize()
+					// Buffer size is now fixed from config
 				default:
 					// No buffer update needed
 				}
@@ -1251,71 +1249,16 @@ func (ais *AudioInputServer) GetServerStats() (total, dropped int64, avgProcessi
 		atomic.LoadInt64(&ais.bufferSize)
 }
 
-// UpdateBufferSize updates the buffer size from adaptive buffer manager
+// UpdateBufferSize updates the buffer size (now using fixed config values)
 func (ais *AudioInputServer) UpdateBufferSize() {
-	adaptiveManager := GetAdaptiveBufferManager()
-	newSize := int64(adaptiveManager.GetInputBufferSize())
-	oldSize := atomic.LoadInt64(&ais.bufferSize)
-
-	// Only recreate channels if size changed significantly (>25% difference)
-	if oldSize > 0 {
-		diff := float64(newSize-oldSize) / float64(oldSize)
-		if diff < 0.25 && diff > -0.25 {
-			return // Size change not significant enough
-		}
-	}
-
+	// Buffer size is now fixed from config
+	newSize := int64(Config.AdaptiveDefaultBufferSize)
 	atomic.StoreInt64(&ais.bufferSize, newSize)
-
-	// Recreate channels with new buffer size if server is running
-	if ais.running {
-		ais.recreateChannels(int(newSize))
-	}
 }
 
-// recreateChannels recreates the message channels with new buffer size
-func (ais *AudioInputServer) recreateChannels(newSize int) {
-	ais.channelMutex.Lock()
-	defer ais.channelMutex.Unlock()
-
-	// Create new channels with updated buffer size
-	newMessageChan := make(chan *InputIPCMessage, newSize)
-	newProcessChan := make(chan *InputIPCMessage, newSize)
-
-	// Drain old channels and transfer messages to new channels
-	ais.drainAndTransferChannel(ais.messageChan, newMessageChan)
-	ais.drainAndTransferChannel(ais.processChan, newProcessChan)
-
-	// Replace channels atomically
-	ais.messageChan = newMessageChan
-	ais.processChan = newProcessChan
-	ais.lastBufferSize = int64(newSize)
-}
-
-// drainAndTransferChannel drains the old channel and transfers messages to new channel
-func (ais *AudioInputServer) drainAndTransferChannel(oldChan, newChan chan *InputIPCMessage) {
-	for {
-		select {
-		case msg := <-oldChan:
-			// Try to transfer to new channel, drop if full
-			select {
-			case newChan <- msg:
-				// Successfully transferred
-			default:
-				// New channel full, drop message
-				atomic.AddInt64(&ais.droppedFrames, 1)
-			}
-		default:
-			// Old channel empty
-			return
-		}
-	}
-}
-
-// ReportLatency reports processing latency to adaptive buffer manager
+// ReportLatency reports processing latency (now a no-op with fixed buffers)
 func (ais *AudioInputServer) ReportLatency(latency time.Duration) {
-	adaptiveManager := GetAdaptiveBufferManager()
-	adaptiveManager.UpdateLatency(latency)
+	// Latency reporting is now a no-op with fixed buffer sizes
 }
 
 // GetMessagePoolStats returns detailed statistics about the message pool

@@ -55,10 +55,6 @@ func RunAudioInputServer() error {
 	// Initialize validation cache for optimal performance
 	InitValidationCache()
 
-	// Start adaptive buffer management for optimal performance
-	StartAdaptiveBuffering()
-	defer StopAdaptiveBuffering()
-
 	// Initialize CGO audio playback (optional for input server)
 	// This is used for audio loopback/monitoring features
 	err := CGOAudioPlaybackInit()

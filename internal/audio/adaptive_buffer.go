@@ -88,10 +88,6 @@ type AdaptiveBufferManager struct {
 	systemCPUPercent        int64 // System CPU percentage * 100 (atomic)
 	systemMemoryPercent     int64 // System memory percentage * 100 (atomic)
 	adaptationCount         int64 // Metrics tracking (atomic)
-	// Graceful degradation fields
-	congestionLevel    int64 // Current congestion level (0-3, atomic)
-	degradationActive  int64 // Whether degradation is active (0/1, atomic)
-	lastCongestionTime int64 // Last congestion detection time (unix nano, atomic)
 
 	config         AdaptiveBufferConfig
 	logger         zerolog.Logger
@@ -194,139 +190,6 @@ func (abm *AdaptiveBufferManager) BoostBuffersForQualityChange() {
 		Msg("Boosted buffers to maximum size for quality change")
 }
 
-// DetectCongestion analyzes system state to detect audio channel congestion
-// Returns congestion level: 0=none, 1=mild, 2=moderate, 3=severe
-func (abm *AdaptiveBufferManager) DetectCongestion() int {
-	cpuPercent := float64(atomic.LoadInt64(&abm.systemCPUPercent)) / 100.0
-	memoryPercent := float64(atomic.LoadInt64(&abm.systemMemoryPercent)) / 100.0
-	latencyNs := atomic.LoadInt64(&abm.averageLatency)
-	latency := time.Duration(latencyNs)
-
-	// Calculate congestion score based on multiple factors
-	congestionScore := 0.0
-
-	// CPU factor (weight: 0.4)
-	if cpuPercent > abm.config.HighCPUThreshold {
-		congestionScore += 0.4 * (cpuPercent - abm.config.HighCPUThreshold) / (100.0 - abm.config.HighCPUThreshold)
-	}
-
-	// Memory factor (weight: 0.3)
-	if memoryPercent > abm.config.HighMemoryThreshold {
-		congestionScore += 0.3 * (memoryPercent - abm.config.HighMemoryThreshold) / (100.0 - abm.config.HighMemoryThreshold)
-	}
-
-	// Latency factor (weight: 0.3)
-	latencyMs := float64(latency.Milliseconds())
-	latencyThreshold := float64(abm.config.TargetLatency.Milliseconds())
-	if latencyMs > latencyThreshold {
-		congestionScore += 0.3 * (latencyMs - latencyThreshold) / latencyThreshold
-	}
-
-	// Determine congestion level using configured threshold multiplier
-	if congestionScore > Config.CongestionThresholdMultiplier {
-		return 3 // Severe congestion
-	} else if congestionScore > Config.CongestionThresholdMultiplier*0.625 { // 0.8 * 0.625 = 0.5
-		return 2 // Moderate congestion
-	} else if congestionScore > Config.CongestionThresholdMultiplier*0.25 { // 0.8 * 0.25 = 0.2
-		return 1 // Mild congestion
-	}
-	return 0 // No congestion
-}
-
-// ActivateGracefulDegradation implements emergency measures when congestion is detected
-func (abm *AdaptiveBufferManager) ActivateGracefulDegradation(level int) {
-	atomic.StoreInt64(&abm.congestionLevel, int64(level))
-	atomic.StoreInt64(&abm.degradationActive, 1)
-	atomic.StoreInt64(&abm.lastCongestionTime, time.Now().UnixNano())
-
-	switch level {
-	case 1: // Mild congestion
-		// Reduce buffers by configured factor
-		currentInput := atomic.LoadInt64(&abm.currentInputBufferSize)
-		currentOutput := atomic.LoadInt64(&abm.currentOutputBufferSize)
-		newInput := int64(float64(currentInput) * Config.CongestionMildReductionFactor)
-		newOutput := int64(float64(currentOutput) * Config.CongestionMildReductionFactor)
-
-		// Ensure minimum buffer size
-		if newInput < int64(abm.config.MinBufferSize) {
-			newInput = int64(abm.config.MinBufferSize)
-		}
-		if newOutput < int64(abm.config.MinBufferSize) {
-			newOutput = int64(abm.config.MinBufferSize)
-		}
-
-		atomic.StoreInt64(&abm.currentInputBufferSize, newInput)
-		atomic.StoreInt64(&abm.currentOutputBufferSize, newOutput)
-
-		abm.logger.Warn().
-			Int("level", level).
-			Int64("input_buffer", newInput).
-			Int64("output_buffer", newOutput).
-			Msg("Activated mild graceful degradation")
-
-	case 2: // Moderate congestion
-		// Reduce buffers by configured factor and trigger quality reduction
-		currentInput := atomic.LoadInt64(&abm.currentInputBufferSize)
-		currentOutput := atomic.LoadInt64(&abm.currentOutputBufferSize)
-		newInput := int64(float64(currentInput) * Config.CongestionModerateReductionFactor)
-		newOutput := int64(float64(currentOutput) * Config.CongestionModerateReductionFactor)
-
-		// Ensure minimum buffer size
-		if newInput < int64(abm.config.MinBufferSize) {
-			newInput = int64(abm.config.MinBufferSize)
-		}
-		if newOutput < int64(abm.config.MinBufferSize) {
-			newOutput = int64(abm.config.MinBufferSize)
-		}
-
-		atomic.StoreInt64(&abm.currentInputBufferSize, newInput)
-		atomic.StoreInt64(&abm.currentOutputBufferSize, newOutput)
-
-		abm.logger.Warn().
-			Int("level", level).
-			Int64("input_buffer", newInput).
-			Int64("output_buffer", newOutput).
-			Msg("Activated moderate graceful degradation")
-
-	case 3: // Severe congestion
-		// Emergency: Set buffers to minimum and force lowest quality
-		minSize := int64(abm.config.MinBufferSize)
-		atomic.StoreInt64(&abm.currentInputBufferSize, minSize)
-		atomic.StoreInt64(&abm.currentOutputBufferSize, minSize)
-
-		abm.logger.Warn().
-			Int("level", level).
-			Int64("buffer_size", minSize).
-			Msg("Activated severe graceful degradation - emergency mode")
-	}
-}
-
-// CheckRecoveryConditions determines if degradation can be deactivated
-func (abm *AdaptiveBufferManager) CheckRecoveryConditions() bool {
-	if atomic.LoadInt64(&abm.degradationActive) == 0 {
-		return false // Not in degradation mode
-	}
-
-	// Check if congestion has been resolved for the configured timeout
-	lastCongestion := time.Unix(0, atomic.LoadInt64(&abm.lastCongestionTime))
-	if time.Since(lastCongestion) < Config.CongestionRecoveryTimeout {
-		return false
-	}
-
-	// Check current system state
-	currentCongestion := abm.DetectCongestion()
-	if currentCongestion == 0 {
-		// Deactivate degradation
-		atomic.StoreInt64(&abm.degradationActive, 0)
-		atomic.StoreInt64(&abm.congestionLevel, 0)
-
-		abm.logger.Info().Msg("Deactivated graceful degradation - system recovered")
-		return true
-	}
-
-	return false
-}
-
 // adaptationLoop is the main loop that adjusts buffer sizes
 func (abm *AdaptiveBufferManager) adaptationLoop() {
 	defer abm.wg.Done()
@@ -372,16 +235,6 @@ func (abm *AdaptiveBufferManager) adaptationLoop() {
 // The algorithm runs periodically and only applies changes when the adaptation interval
 // has elapsed, preventing excessive adjustments that could destabilize the audio pipeline.
 func (abm *AdaptiveBufferManager) adaptBufferSizes() {
-	// Check for congestion and activate graceful degradation if needed
-	congestionLevel := abm.DetectCongestion()
-	if congestionLevel > 0 {
-		abm.ActivateGracefulDegradation(congestionLevel)
-		return // Skip normal adaptation during degradation
-	}
-
-	// Check if we can recover from degradation
-	abm.CheckRecoveryConditions()
-
 	// Collect current system metrics
 	metrics := abm.processMonitor.GetCurrentMetrics()
 	if len(metrics) == 0 {
@@ -588,9 +441,6 @@ func (abm *AdaptiveBufferManager) GetStats() map[string]interface{} {
 		"system_memory_percent": float64(atomic.LoadInt64(&abm.systemMemoryPercent)) / Config.PercentageMultiplier,
 		"adaptation_count":      atomic.LoadInt64(&abm.adaptationCount),
 		"last_adaptation":       lastAdaptation,
-		"congestion_level":      atomic.LoadInt64(&abm.congestionLevel),
-		"degradation_active":    atomic.LoadInt64(&abm.degradationActive) == 1,
-		"last_congestion_time":  time.Unix(0, atomic.LoadInt64(&abm.lastCongestionTime)),
 	}
 }
 
