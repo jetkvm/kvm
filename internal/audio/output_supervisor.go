@@ -156,6 +156,15 @@ func (s *AudioOutputSupervisor) Stop() {
 		s.forceKillProcess("audio output server")
 	}
 
+	// Ensure socket file cleanup even if subprocess didn't clean up properly
+	// This prevents "address already in use" errors on restart
+	outputSocketPath := getOutputSocketPath()
+	if err := os.Remove(outputSocketPath); err != nil && !os.IsNotExist(err) {
+		s.logger.Warn().Err(err).Str("socket_path", outputSocketPath).Msg("failed to remove output socket file during supervisor stop")
+	} else if err == nil {
+		s.logger.Debug().Str("socket_path", outputSocketPath).Msg("cleaned up output socket file")
+	}
+
 	s.logger.Info().Str("component", AudioOutputSupervisorComponent).Msg("component stopped")
 }
 
