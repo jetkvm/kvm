@@ -166,11 +166,11 @@ export default function SettingsNetworkRoute() {
   }, [getNetworkState, getNetworkSettings]);
 
   const handleIpv4ModeChange = (value: IPv4Mode | string) => {
-    setNetworkSettings({ ...networkSettings, ipv4_mode: value as IPv4Mode });
+    setNetworkSettingsRemote({ ...networkSettings, ipv4_mode: value as IPv4Mode });
   };
 
   const handleIpv6ModeChange = (value: IPv6Mode | string) => {
-    setNetworkSettings({ ...networkSettings, ipv6_mode: value as IPv6Mode });
+    setNetworkSettingsRemote({ ...networkSettings, ipv6_mode: value as IPv6Mode });
   };
 
   const handleLldpModeChange = (value: LLDPMode | string) => {
