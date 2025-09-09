@@ -30,13 +30,34 @@ func StartAudioRelay(audioTrack AudioTrackWriter) error {
 	// Get current audio config
 	config := GetAudioConfig()
 
-	// Start the relay (audioTrack can be nil initially)
-	if err := relay.Start(audioTrack, config); err != nil {
-		return err
+	// Retry starting the relay with exponential backoff
+	// This handles cases where the subprocess hasn't created its socket yet
+	maxAttempts := 5
+	baseDelay := 200 * time.Millisecond
+	maxDelay := 2 * time.Second
+
+	var lastErr error
+	for i := 0; i < maxAttempts; i++ {
+		if err := relay.Start(audioTrack, config); err != nil {
+			lastErr = err
+			if i < maxAttempts-1 {
+				// Calculate exponential backoff delay
+				delay := time.Duration(float64(baseDelay) * (1.5 * float64(i+1)))
+				if delay > maxDelay {
+					delay = maxDelay
+				}
+				time.Sleep(delay)
+				continue
+			}
+			return fmt.Errorf("failed to start audio relay after %d attempts: %w", maxAttempts, lastErr)
+		}
+
+		// Success
+		globalRelay = relay
+		return nil
 	}
 
-	globalRelay = relay
-	return nil
+	return fmt.Errorf("failed to start audio relay after %d attempts: %w", maxAttempts, lastErr)
 }
 
 // StopAudioRelay stops the audio relay system
