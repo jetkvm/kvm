@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -157,15 +158,38 @@ func (s *UnifiedAudioServer) Start() error {
 		return fmt.Errorf("server already running")
 	}
 
-	// Remove existing socket file
-	if err := os.Remove(s.socketPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove existing socket: %w", err)
+	// Remove existing socket file with retry logic
+	for i := 0; i < 3; i++ {
+		if err := os.Remove(s.socketPath); err != nil && !os.IsNotExist(err) {
+			s.logger.Warn().Err(err).Int("attempt", i+1).Msg("failed to remove existing socket file, retrying")
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		break
 	}
 
-	// Create listener
-	listener, err := net.Listen("unix", s.socketPath)
+	// Create listener with retry on address already in use
+	var listener net.Listener
+	var err error
+	for i := 0; i < 3; i++ {
+		listener, err = net.Listen("unix", s.socketPath)
+		if err == nil {
+			break
+		}
+
+		// If address is still in use, try to remove socket file again
+		if strings.Contains(err.Error(), "address already in use") {
+			s.logger.Warn().Err(err).Int("attempt", i+1).Msg("socket address in use, attempting cleanup and retry")
+			os.Remove(s.socketPath)
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+
+		return fmt.Errorf("failed to create unix socket: %w", err)
+	}
+
 	if err != nil {
-		return fmt.Errorf("failed to create listener: %w", err)
+		return fmt.Errorf("failed to create unix socket after retries: %w", err)
 	}
 
 	s.listener = listener
@@ -367,14 +391,18 @@ func (s *UnifiedAudioServer) SendFrame(frame []byte) error {
 func (s *UnifiedAudioServer) writeMessage(conn net.Conn, msg *UnifiedIPCMessage) error {
 	header := EncodeMessageHeader(msg.Magic, uint8(msg.Type), msg.Length, msg.Timestamp)
 
-	if _, err := conn.Write(header); err != nil {
-		return fmt.Errorf("failed to write header: %w", err)
-	}
-
-	// Write data if present
+	// Optimize: Use single write for header+data to reduce system calls
 	if msg.Length > 0 && msg.Data != nil {
-		if _, err := conn.Write(msg.Data); err != nil {
-			return fmt.Errorf("failed to write data: %w", err)
+		// Pre-allocate combined buffer to avoid copying
+		combined := make([]byte, len(header)+len(msg.Data))
+		copy(combined, header)
+		copy(combined[len(header):], msg.Data)
+		if _, err := conn.Write(combined); err != nil {
+			return fmt.Errorf("failed to write message: %w", err)
+		}
+	} else {
+		if _, err := conn.Write(header); err != nil {
+			return fmt.Errorf("failed to write header: %w", err)
 		}
 	}
 
@@ -642,9 +670,9 @@ func (c *UnifiedAudioClient) calculateAdaptiveDelay(attempt int, initialDelay, m
 
 // Helper functions for socket paths
 func getInputSocketPath() string {
-	return filepath.Join(os.TempDir(), inputSocketName)
+	return filepath.Join("/var/run", inputSocketName)
 }
 
 func getOutputSocketPath() string {
-	return filepath.Join(os.TempDir(), outputSocketName)
+	return filepath.Join("/var/run", outputSocketName)
 }

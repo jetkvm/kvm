@@ -72,23 +72,12 @@ func ValidateZeroCopyFrame(frame *ZeroCopyAudioFrame) error {
 }
 
 // ValidateBufferSize validates buffer size parameters with enhanced boundary checks
-// Optimized to use AudioConfigCache for frequently accessed values
+// Optimized for minimal overhead in hotpath
 func ValidateBufferSize(size int) error {
 	if size <= 0 {
 		return fmt.Errorf("%w: buffer size %d must be positive", ErrInvalidBufferSize, size)
 	}
-
-	// Fast path: Check against cached max frame size
-	cache := Config
-	maxFrameSize := cache.MaxAudioFrameSize
-
-	// Most common case: validating a buffer that's sized for audio frames
-	if maxFrameSize > 0 && size <= maxFrameSize {
-		return nil
-	}
-
-	// Use SocketMaxBuffer as the upper limit for general buffer validation
-	// This allows for socket buffers while still preventing extremely large allocations
+	// Single boundary check using pre-cached value
 	if size > Config.SocketMaxBuffer {
 		return fmt.Errorf("%w: buffer size %d exceeds maximum %d",
 			ErrInvalidBufferSize, size, Config.SocketMaxBuffer)
@@ -219,91 +208,42 @@ func ValidateOutputIPCConfig(sampleRate, channels, frameSize int) error {
 }
 
 // ValidateSampleRate validates audio sample rate values
-// Optimized to use AudioConfigCache for frequently accessed values
+// Optimized for minimal overhead in hotpath
 func ValidateSampleRate(sampleRate int) error {
 	if sampleRate <= 0 {
 		return fmt.Errorf("%w: sample rate %d must be positive", ErrInvalidSampleRate, sampleRate)
 	}
-
-	// Fast path: Check against cached sample rate first
-	cache := Config
-	cachedRate := cache.SampleRate
-
-	// Most common case: validating against the current sample rate
-	if sampleRate == cachedRate {
-		return nil
-	}
-
-	// Slower path: check against all valid rates
-	validRates := Config.ValidSampleRates
-	for _, rate := range validRates {
+	// Direct validation against valid rates
+	for _, rate := range Config.ValidSampleRates {
 		if sampleRate == rate {
 			return nil
 		}
 	}
-	return fmt.Errorf("%w: sample rate %d not in supported rates %v",
-		ErrInvalidSampleRate, sampleRate, validRates)
+	return fmt.Errorf("%w: sample rate %d not in valid rates %v",
+		ErrInvalidSampleRate, sampleRate, Config.ValidSampleRates)
 }
 
 // ValidateChannelCount validates audio channel count
-// Optimized to use AudioConfigCache for frequently accessed values
+// Optimized for minimal overhead in hotpath
 func ValidateChannelCount(channels int) error {
 	if channels <= 0 {
 		return fmt.Errorf("%w: channel count %d must be positive", ErrInvalidChannels, channels)
 	}
-
-	// Fast path: Check against cached channels first
-	cache := Config
-	cachedChannels := cache.Channels
-
-	// Most common case: validating against the current channel count
-	if channels == cachedChannels {
-		return nil
-	}
-
-	// Fast path: Check against cached max channels
-	cachedMaxChannels := cache.MaxChannels
-	if cachedMaxChannels > 0 && channels <= cachedMaxChannels {
-		return nil
-	}
-
-	// Slow path: Use current config values
-	updatedMaxChannels := cache.MaxChannels
-	if channels > updatedMaxChannels {
+	// Direct boundary check
+	if channels > Config.MaxChannels {
 		return fmt.Errorf("%w: channel count %d exceeds maximum %d",
-			ErrInvalidChannels, channels, updatedMaxChannels)
+			ErrInvalidChannels, channels, Config.MaxChannels)
 	}
 	return nil
 }
 
 // ValidateBitrate validates audio bitrate values (expects kbps)
-// Optimized to use AudioConfigCache for frequently accessed values
+// Optimized for minimal overhead in hotpath
 func ValidateBitrate(bitrate int) error {
 	if bitrate <= 0 {
 		return fmt.Errorf("%w: bitrate %d must be positive", ErrInvalidBitrate, bitrate)
 	}
-
-	// Fast path: Check against cached bitrate values
-	cache := Config
-	minBitrate := cache.MinOpusBitrate
-	maxBitrate := cache.MaxOpusBitrate
-
-	// If we have valid cached values, use them
-	if minBitrate > 0 && maxBitrate > 0 {
-		// Convert kbps to bps for comparison with config limits
-		bitrateInBps := bitrate * 1000
-		if bitrateInBps < minBitrate {
-			return fmt.Errorf("%w: bitrate %d kbps (%d bps) below minimum %d bps",
-				ErrInvalidBitrate, bitrate, bitrateInBps, minBitrate)
-		}
-		if bitrateInBps > maxBitrate {
-			return fmt.Errorf("%w: bitrate %d kbps (%d bps) exceeds maximum %d bps",
-				ErrInvalidBitrate, bitrate, bitrateInBps, maxBitrate)
-		}
-		return nil
-	}
-
-	// Convert kbps to bps for comparison with config limits
+	// Direct boundary check with single conversion
 	bitrateInBps := bitrate * 1000
 	if bitrateInBps < Config.MinOpusBitrate {
 		return fmt.Errorf("%w: bitrate %d kbps (%d bps) below minimum %d bps",
