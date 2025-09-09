@@ -16,8 +16,8 @@ var microphoneMuteState struct {
 
 func SetAudioMuted(muted bool) {
 	audioMuteState.mu.Lock()
+	defer audioMuteState.mu.Unlock()
 	audioMuteState.muted = muted
-	audioMuteState.mu.Unlock()
 }
 
 func IsAudioMuted() bool {
@@ -28,8 +28,8 @@ func IsAudioMuted() bool {
 
 func SetMicrophoneMuted(muted bool) {
 	microphoneMuteState.mu.Lock()
+	defer microphoneMuteState.mu.Unlock()
 	microphoneMuteState.muted = muted
-	microphoneMuteState.mu.Unlock()
 }
 
 func IsMicrophoneMuted() bool {
