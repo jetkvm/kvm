@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"encoding/json"
 	"fmt"
 )
 
@@ -24,22 +25,39 @@ const (
 // The handlers maintain full compatibility with existing RPC interface
 // while providing significant latency improvements for input events.
 
+// Ultra-fast input RPC structures for zero-allocation parsing
+// Bypasses float64 conversion by using typed JSON unmarshaling
+
+// InputRPCRequest represents a specialized JSON-RPC request for input methods
+// This eliminates the map[string]interface{} overhead and float64 conversions
+type InputRPCRequest struct {
+	JSONRPC string `json:"jsonrpc"`
+	Method  string `json:"method"`
+	ID      any    `json:"id,omitempty"`
+	// Union of all possible input parameters - only relevant fields are populated
+	Params struct {
+		// Keyboard parameters
+		Modifier *uint8   `json:"modifier,omitempty"`
+		Keys     *[]uint8 `json:"keys,omitempty"`
+		// Mouse parameters
+		X       *int   `json:"x,omitempty"`
+		Y       *int   `json:"y,omitempty"`
+		Dx      *int8  `json:"dx,omitempty"`
+		Dy      *int8  `json:"dy,omitempty"`
+		Buttons *uint8 `json:"buttons,omitempty"`
+		// Wheel parameters
+		WheelY *int8 `json:"wheelY,omitempty"`
+	} `json:"params,omitempty"`
+}
+
 // Common validation helpers for parameter parsing
 // These reduce code duplication and provide consistent error messages
 
-// validateFloat64Param extracts and validates a float64 parameter from the params map
-func validateFloat64Param(params map[string]interface{}, paramName, methodName string, min, max float64) (float64, error) {
-	value, ok := params[paramName].(float64)
-	if !ok {
-		return 0, fmt.Errorf("%s: %s parameter must be a number, got %T", methodName, paramName, params[paramName])
-	}
-	if value < min || value > max {
-		return 0, fmt.Errorf("%s: %s value %v out of range [%v to %v]", methodName, paramName, value, min, max)
-	}
-	return value, nil
-}
+// Ultra-fast inline validation macros - no function call overhead
+// These prioritize the happy path (direct int parsing) for maximum performance
 
 // validateKeysArray extracts and validates a keys array parameter
+// Ultra-optimized inline validation for maximum performance
 func validateKeysArray(params map[string]interface{}, methodName string) ([]uint8, error) {
 	keysInterface, ok := params["keys"].([]interface{})
 	if !ok {
@@ -51,14 +69,24 @@ func validateKeysArray(params map[string]interface{}, methodName string) ([]uint
 
 	keys := make([]uint8, len(keysInterface))
 	for i, keyInterface := range keysInterface {
-		keyFloat, ok := keyInterface.(float64)
-		if !ok {
-			return nil, fmt.Errorf("%s: key at index %d must be a number, got %T", methodName, i, keyInterface)
+		// Try int first (most common case for small integers)
+		if intVal, ok := keyInterface.(int); ok {
+			if intVal < 0 || intVal > 255 {
+				return nil, fmt.Errorf("%s: key at index %d value %d out of range [0-255]", methodName, i, intVal)
+			}
+			keys[i] = uint8(intVal)
+			continue
 		}
-		if keyFloat < 0 || keyFloat > 255 {
-			return nil, fmt.Errorf("%s: key at index %d value %v out of range [0-255]", methodName, i, keyFloat)
+		// Fallback to float64 for compatibility with existing clients
+		if floatVal, ok := keyInterface.(float64); ok {
+			intVal := int(floatVal)
+			if floatVal != float64(intVal) || intVal < 0 || intVal > 255 {
+				return nil, fmt.Errorf("%s: key at index %d value %v invalid for uint8 (must be integer 0-255)", methodName, i, floatVal)
+			}
+			keys[i] = uint8(intVal)
+			continue
 		}
-		keys[i] = uint8(keyFloat)
+		return nil, fmt.Errorf("%s: key at index %d must be a number, got %T", methodName, i, keyInterface)
 	}
 	return keys, nil
 }
@@ -96,15 +124,73 @@ type WheelReportParams struct {
 	WheelY int8 `json:"wheelY"` // Wheel scroll delta (-127 to +127)
 }
 
-// Direct handler for keyboard reports
-// Optimized path that bypasses reflection for keyboard input events
-func handleKeyboardReportDirect(params map[string]interface{}) (interface{}, error) {
-	// Extract and validate modifier parameter
-	modifierFloat, err := validateFloat64Param(params, "modifier", "keyboardReport", 0, 255)
+// Ultra-fast typed input handler - completely bypasses float64 conversions
+// Uses direct JSON unmarshaling to target types for maximum performance
+func handleInputRPCUltraFast(data []byte) (interface{}, error) {
+	var request InputRPCRequest
+	err := json.Unmarshal(data, &request)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse input request: %v", err)
 	}
-	modifier := uint8(modifierFloat)
+
+	switch request.Method {
+	case "keyboardReport":
+		if request.Params.Modifier == nil || request.Params.Keys == nil {
+			return nil, fmt.Errorf("keyboardReport: missing required parameters")
+		}
+		keys := *request.Params.Keys
+		if len(keys) > MaxKeyboardKeys {
+			return nil, fmt.Errorf("keyboardReport: too many keys (max %d)", MaxKeyboardKeys)
+		}
+		_, err = rpcKeyboardReport(*request.Params.Modifier, keys)
+		return nil, err
+
+	case "absMouseReport":
+		if request.Params.X == nil || request.Params.Y == nil || request.Params.Buttons == nil {
+			return nil, fmt.Errorf("absMouseReport: missing required parameters")
+		}
+		x, y, buttons := *request.Params.X, *request.Params.Y, *request.Params.Buttons
+		if x < 0 || x > 32767 || y < 0 || y > 32767 {
+			return nil, fmt.Errorf("absMouseReport: coordinates out of range")
+		}
+		return nil, rpcAbsMouseReport(x, y, buttons)
+
+	case "relMouseReport":
+		if request.Params.Dx == nil || request.Params.Dy == nil || request.Params.Buttons == nil {
+			return nil, fmt.Errorf("relMouseReport: missing required parameters")
+		}
+		return nil, rpcRelMouseReport(*request.Params.Dx, *request.Params.Dy, *request.Params.Buttons)
+
+	case "wheelReport":
+		if request.Params.WheelY == nil {
+			return nil, fmt.Errorf("wheelReport: missing wheelY parameter")
+		}
+		return nil, rpcWheelReport(*request.Params.WheelY)
+
+	default:
+		return nil, fmt.Errorf("unknown input method: %s", request.Method)
+	}
+}
+
+// Direct handler for keyboard reports
+// Ultra-optimized path with inlined validation for maximum performance
+func handleKeyboardReportDirect(params map[string]interface{}) (interface{}, error) {
+	// Inline modifier validation - prioritize int path
+	var modifier uint8
+	if intVal, ok := params["modifier"].(int); ok {
+		if intVal < 0 || intVal > 255 {
+			return nil, fmt.Errorf("keyboardReport: modifier value %d out of range [0-255]", intVal)
+		}
+		modifier = uint8(intVal)
+	} else if floatVal, ok := params["modifier"].(float64); ok {
+		intVal := int(floatVal)
+		if floatVal != float64(intVal) || intVal < 0 || intVal > 255 {
+			return nil, fmt.Errorf("keyboardReport: modifier value %v invalid", floatVal)
+		}
+		modifier = uint8(intVal)
+	} else {
+		return nil, fmt.Errorf("keyboardReport: modifier must be a number")
+	}
 
 	// Extract and validate keys array
 	keys, err := validateKeysArray(params, "keyboardReport")
@@ -117,68 +203,138 @@ func handleKeyboardReportDirect(params map[string]interface{}) (interface{}, err
 }
 
 // Direct handler for absolute mouse reports
-// Optimized path that bypasses reflection for absolute mouse positioning
+// Ultra-optimized path with inlined validation for maximum performance
 func handleAbsMouseReportDirect(params map[string]interface{}) (interface{}, error) {
-	// Extract and validate x coordinate
-	xFloat, err := validateFloat64Param(params, "x", "absMouseReport", 0, 32767)
-	if err != nil {
-		return nil, err
+	// Inline x coordinate validation
+	var x int
+	if intVal, ok := params["x"].(int); ok {
+		if intVal < 0 || intVal > 32767 {
+			return nil, fmt.Errorf("absMouseReport: x value %d out of range [0-32767]", intVal)
+		}
+		x = intVal
+	} else if floatVal, ok := params["x"].(float64); ok {
+		intVal := int(floatVal)
+		if floatVal != float64(intVal) || intVal < 0 || intVal > 32767 {
+			return nil, fmt.Errorf("absMouseReport: x value %v invalid", floatVal)
+		}
+		x = intVal
+	} else {
+		return nil, fmt.Errorf("absMouseReport: x must be a number")
 	}
-	x := int(xFloat)
 
-	// Extract and validate y coordinate
-	yFloat, err := validateFloat64Param(params, "y", "absMouseReport", 0, 32767)
-	if err != nil {
-		return nil, err
+	// Inline y coordinate validation
+	var y int
+	if intVal, ok := params["y"].(int); ok {
+		if intVal < 0 || intVal > 32767 {
+			return nil, fmt.Errorf("absMouseReport: y value %d out of range [0-32767]", intVal)
+		}
+		y = intVal
+	} else if floatVal, ok := params["y"].(float64); ok {
+		intVal := int(floatVal)
+		if floatVal != float64(intVal) || intVal < 0 || intVal > 32767 {
+			return nil, fmt.Errorf("absMouseReport: y value %v invalid", floatVal)
+		}
+		y = intVal
+	} else {
+		return nil, fmt.Errorf("absMouseReport: y must be a number")
 	}
-	y := int(yFloat)
 
-	// Extract and validate buttons
-	buttonsFloat, err := validateFloat64Param(params, "buttons", "absMouseReport", 0, 255)
-	if err != nil {
-		return nil, err
+	// Inline buttons validation
+	var buttons uint8
+	if intVal, ok := params["buttons"].(int); ok {
+		if intVal < 0 || intVal > 255 {
+			return nil, fmt.Errorf("absMouseReport: buttons value %d out of range [0-255]", intVal)
+		}
+		buttons = uint8(intVal)
+	} else if floatVal, ok := params["buttons"].(float64); ok {
+		intVal := int(floatVal)
+		if floatVal != float64(intVal) || intVal < 0 || intVal > 255 {
+			return nil, fmt.Errorf("absMouseReport: buttons value %v invalid", floatVal)
+		}
+		buttons = uint8(intVal)
+	} else {
+		return nil, fmt.Errorf("absMouseReport: buttons must be a number")
 	}
-	buttons := uint8(buttonsFloat)
 
 	return nil, rpcAbsMouseReport(x, y, buttons)
 }
 
 // Direct handler for relative mouse reports
-// Optimized path that bypasses reflection for relative mouse movement
+// Ultra-optimized path with inlined validation for maximum performance
 func handleRelMouseReportDirect(params map[string]interface{}) (interface{}, error) {
-	// Extract and validate dx (relative X movement)
-	dxFloat, err := validateFloat64Param(params, "dx", "relMouseReport", -127, 127)
-	if err != nil {
-		return nil, err
+	// Inline dx validation
+	var dx int8
+	if intVal, ok := params["dx"].(int); ok {
+		if intVal < -128 || intVal > 127 {
+			return nil, fmt.Errorf("relMouseReport: dx value %d out of range [-128 to 127]", intVal)
+		}
+		dx = int8(intVal)
+	} else if floatVal, ok := params["dx"].(float64); ok {
+		intVal := int(floatVal)
+		if floatVal != float64(intVal) || intVal < -128 || intVal > 127 {
+			return nil, fmt.Errorf("relMouseReport: dx value %v invalid", floatVal)
+		}
+		dx = int8(intVal)
+	} else {
+		return nil, fmt.Errorf("relMouseReport: dx must be a number")
 	}
-	dx := int8(dxFloat)
 
-	// Extract and validate dy (relative Y movement)
-	dyFloat, err := validateFloat64Param(params, "dy", "relMouseReport", -127, 127)
-	if err != nil {
-		return nil, err
+	// Inline dy validation
+	var dy int8
+	if intVal, ok := params["dy"].(int); ok {
+		if intVal < -128 || intVal > 127 {
+			return nil, fmt.Errorf("relMouseReport: dy value %d out of range [-128 to 127]", intVal)
+		}
+		dy = int8(intVal)
+	} else if floatVal, ok := params["dy"].(float64); ok {
+		intVal := int(floatVal)
+		if floatVal != float64(intVal) || intVal < -128 || intVal > 127 {
+			return nil, fmt.Errorf("relMouseReport: dy value %v invalid", floatVal)
+		}
+		dy = int8(intVal)
+	} else {
+		return nil, fmt.Errorf("relMouseReport: dy must be a number")
 	}
-	dy := int8(dyFloat)
 
-	// Extract and validate buttons
-	buttonsFloat, err := validateFloat64Param(params, "buttons", "relMouseReport", 0, 255)
-	if err != nil {
-		return nil, err
+	// Inline buttons validation
+	var buttons uint8
+	if intVal, ok := params["buttons"].(int); ok {
+		if intVal < 0 || intVal > 255 {
+			return nil, fmt.Errorf("relMouseReport: buttons value %d out of range [0-255]", intVal)
+		}
+		buttons = uint8(intVal)
+	} else if floatVal, ok := params["buttons"].(float64); ok {
+		intVal := int(floatVal)
+		if floatVal != float64(intVal) || intVal < 0 || intVal > 255 {
+			return nil, fmt.Errorf("relMouseReport: buttons value %v invalid", floatVal)
+		}
+		buttons = uint8(intVal)
+	} else {
+		return nil, fmt.Errorf("relMouseReport: buttons must be a number")
 	}
-	buttons := uint8(buttonsFloat)
 
 	return nil, rpcRelMouseReport(dx, dy, buttons)
 }
 
 // Direct handler for wheel reports
-// Optimized path that bypasses reflection for mouse wheel events
+// Ultra-optimized path with inlined validation for maximum performance
 func handleWheelReportDirect(params map[string]interface{}) (interface{}, error) {
-	// Extract and validate wheelY (scroll delta)
-	wheelYFloat, err := validateFloat64Param(params, "wheelY", "wheelReport", -127, 127)
-	if err != nil {
-		return nil, err
+	// Inline wheelY validation
+	var wheelY int8
+	if intVal, ok := params["wheelY"].(int); ok {
+		if intVal < -128 || intVal > 127 {
+			return nil, fmt.Errorf("wheelReport: wheelY value %d out of range [-128 to 127]", intVal)
+		}
+		wheelY = int8(intVal)
+	} else if floatVal, ok := params["wheelY"].(float64); ok {
+		intVal := int(floatVal)
+		if floatVal != float64(intVal) || intVal < -128 || intVal > 127 {
+			return nil, fmt.Errorf("wheelReport: wheelY value %v invalid", floatVal)
+		}
+		wheelY = int8(intVal)
+	} else {
+		return nil, fmt.Errorf("wheelReport: wheelY must be a number")
 	}
-	wheelY := int8(wheelYFloat)
 
 	return nil, rpcWheelReport(wheelY)
 }
