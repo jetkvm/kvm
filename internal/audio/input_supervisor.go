@@ -136,8 +136,8 @@ func (ais *AudioInputSupervisor) startProcess() error {
 
 	// Add process to monitoring
 
-	// Connect client to the server
-	go ais.connectClient()
+	// Connect client to the server synchronously to avoid race condition
+	ais.connectClient()
 
 	return nil
 }
