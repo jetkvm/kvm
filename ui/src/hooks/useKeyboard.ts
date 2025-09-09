@@ -122,6 +122,14 @@ export default function useKeyboard() {
     });
   };
 
+  const cancelExecuteMacro = useCallback(async () => {
+    send("cancelKeyboardReportMulti", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        console.error(`Failed to cancel keyboard report multi`, resp.error);
+      }
+    });
+  }, [send]);
+
   // handleKeyPress is used to handle a key press or release event.
   // This function handle both key press and key release events.
   // It checks if the keyPressReport API is available and sends the key press event.
@@ -231,5 +239,5 @@ export default function useKeyboard() {
     return { modifier: modifiers, keys };
   }
 
-  return { handleKeyPress, resetKeyboardState, executeMacro };
+  return { handleKeyPress, resetKeyboardState, executeMacro, cancelExecuteMacro };
 }

@@ -15,11 +15,11 @@ import notifications from "@/notifications";
 
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
-  const { setPasteModeEnabled } = useHidStore();
+  const { isPasteModeEnabled } = useHidStore();
   const { setDisableVideoFocusTrap } = useUiStore();
 
   const { send } = useJsonRpc();
-  const { executeMacro } = useKeyboard();
+  const { executeMacro, cancelExecuteMacro } = useKeyboard();
 
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
   const close = useClose();
@@ -35,10 +35,10 @@ export default function PasteModal() {
   }, [send, setKeyboardLayout]);
 
   const onCancelPasteMode = useCallback(() => {
-    setPasteModeEnabled(false);
+    cancelExecuteMacro();
     setDisableVideoFocusTrap(false);
     setInvalidChars([]);
-  }, [setDisableVideoFocusTrap, setPasteModeEnabled]);
+  }, [setDisableVideoFocusTrap, cancelExecuteMacro]);
 
   const onConfirmPaste = useCallback(async () => {
     // setPasteModeEnabled(false);
@@ -201,6 +201,7 @@ export default function PasteModal() {
             size="SM"
             theme="primary"
             text="Confirm Paste"
+            disabled={isPasteModeEnabled}
             onClick={onConfirmPaste}
             LeadingIcon={LuCornerDownLeft}
           />
