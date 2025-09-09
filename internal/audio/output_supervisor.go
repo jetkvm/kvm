@@ -318,7 +318,7 @@ func (s *AudioOutputSupervisor) connectClient() {
 }
 
 // SendOpusConfig sends Opus configuration to the audio output subprocess
-func (s *AudioOutputSupervisor) SendOpusConfig(config OutputIPCOpusConfig) error {
+func (aos *AudioOutputSupervisor) SendOpusConfig(config UnifiedIPCOpusConfig) error {
 	if outputClient == nil {
 		return fmt.Errorf("client not initialized")
 	}

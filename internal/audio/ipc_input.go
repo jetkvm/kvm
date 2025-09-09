@@ -27,27 +27,11 @@ var (
 	messagePoolSize = Config.MessagePoolSize // Pre-allocated message pool size
 )
 
-// Legacy aliases for backward compatibility
-type InputMessageType = UnifiedMessageType
-type InputIPCMessage = UnifiedIPCMessage
-
-// Legacy constants for backward compatibility
-const (
-	InputMessageTypeOpusFrame  = MessageTypeOpusFrame
-	InputMessageTypeConfig     = MessageTypeConfig
-	InputMessageTypeOpusConfig = MessageTypeOpusConfig
-	InputMessageTypeStop       = MessageTypeStop
-	InputMessageTypeHeartbeat  = MessageTypeHeartbeat
-	InputMessageTypeAck        = MessageTypeAck
-)
-
-// Methods are now inherited from UnifiedIPCMessage
-
 // OptimizedIPCMessage represents an optimized message with pre-allocated buffers
 type OptimizedIPCMessage struct {
-	header [17]byte        // Pre-allocated header buffer (headerSize = 17)
-	data   []byte          // Reusable data buffer
-	msg    InputIPCMessage // Embedded message
+	header [17]byte          // Pre-allocated header buffer (headerSize = 17)
+	data   []byte            // Reusable data buffer
+	msg    UnifiedIPCMessage // Embedded message
 }
 
 // MessagePool manages a pool of reusable messages to reduce allocations
@@ -109,7 +93,7 @@ func (mp *MessagePool) Get() *OptimizedIPCMessage {
 		atomic.AddInt64(&mp.hitCount, 1)
 		// Reset message for reuse
 		msg.data = msg.data[:0]
-		msg.msg = InputIPCMessage{}
+		msg.msg = UnifiedIPCMessage{}
 		return msg
 	}
 	mp.mutex.Unlock()
@@ -120,7 +104,7 @@ func (mp *MessagePool) Get() *OptimizedIPCMessage {
 		atomic.AddInt64(&mp.hitCount, 1)
 		// Reset message for reuse and ensure proper capacity
 		msg.data = msg.data[:0]
-		msg.msg = InputIPCMessage{}
+		msg.msg = UnifiedIPCMessage{}
 		// Ensure data buffer has sufficient capacity
 		if cap(msg.data) < maxFrameSize {
 			msg.data = make([]byte, 0, maxFrameSize)
@@ -148,7 +132,7 @@ func (mp *MessagePool) Put(msg *OptimizedIPCMessage) {
 
 	// Reset the message for reuse
 	msg.data = msg.data[:0]
-	msg.msg = InputIPCMessage{}
+	msg.msg = UnifiedIPCMessage{}
 
 	// First try to return to pre-allocated pool for fastest reuse
 	mp.mutex.Lock()
@@ -168,10 +152,6 @@ func (mp *MessagePool) Put(msg *OptimizedIPCMessage) {
 	}
 }
 
-// Legacy aliases for backward compatibility
-type InputIPCConfig = UnifiedIPCConfig
-type InputIPCOpusConfig = UnifiedIPCOpusConfig
-
 // AudioInputServer handles IPC communication for audio input processing
 type AudioInputServer struct {
 	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
@@ -186,10 +166,10 @@ type AudioInputServer struct {
 	running  bool
 
 	// Triple-goroutine architecture
-	messageChan chan *InputIPCMessage // Buffered channel for incoming messages
-	processChan chan *InputIPCMessage // Buffered channel for processing queue
-	stopChan    chan struct{}         // Stop signal for all goroutines
-	wg          sync.WaitGroup        // Wait group for goroutine coordination
+	messageChan chan *UnifiedIPCMessage // Buffered channel for incoming messages
+	processChan chan *UnifiedIPCMessage // Buffered channel for processing queue
+	stopChan    chan struct{}           // Stop signal for all goroutines
+	wg          sync.WaitGroup          // Wait group for goroutine coordination
 
 	// Channel resizing support
 	channelMutex   sync.RWMutex // Protects channel recreation
@@ -246,8 +226,8 @@ func NewAudioInputServer() (*AudioInputServer, error) {
 
 	return &AudioInputServer{
 		listener:           listener,
-		messageChan:        make(chan *InputIPCMessage, initialBufferSize),
-		processChan:        make(chan *InputIPCMessage, initialBufferSize),
+		messageChan:        make(chan *UnifiedIPCMessage, initialBufferSize),
+		processChan:        make(chan *UnifiedIPCMessage, initialBufferSize),
 		stopChan:           make(chan struct{}),
 		bufferSize:         initialBufferSize,
 		lastBufferSize:     initialBufferSize,
@@ -405,7 +385,7 @@ func (ais *AudioInputServer) handleConnection(conn net.Conn) {
 //
 // The function uses pooled buffers for efficient memory management and
 // ensures all messages conform to the JetKVM audio protocol specification.
-func (ais *AudioInputServer) readMessage(conn net.Conn) (*InputIPCMessage, error) {
+func (ais *AudioInputServer) readMessage(conn net.Conn) (*UnifiedIPCMessage, error) {
 	// Get optimized message from pool
 	optMsg := globalMessagePool.Get()
 	defer globalMessagePool.Put(optMsg)
@@ -419,7 +399,7 @@ func (ais *AudioInputServer) readMessage(conn net.Conn) (*InputIPCMessage, error
 	// Parse header using optimized access
 	msg := &optMsg.msg
 	msg.Magic = binary.LittleEndian.Uint32(optMsg.header[0:4])
-	msg.Type = InputMessageType(optMsg.header[4])
+	msg.Type = UnifiedMessageType(optMsg.header[4])
 	msg.Length = binary.LittleEndian.Uint32(optMsg.header[5:9])
 	msg.Timestamp = int64(binary.LittleEndian.Uint64(optMsg.header[9:17]))
 
@@ -450,7 +430,7 @@ func (ais *AudioInputServer) readMessage(conn net.Conn) (*InputIPCMessage, error
 	}
 
 	// Return a copy of the message (data will be copied by caller if needed)
-	result := &InputIPCMessage{
+	result := &UnifiedIPCMessage{
 		Magic:     msg.Magic,
 		Type:      msg.Type,
 		Length:    msg.Length,
@@ -467,17 +447,17 @@ func (ais *AudioInputServer) readMessage(conn net.Conn) (*InputIPCMessage, error
 }
 
 // processMessage processes a received message
-func (ais *AudioInputServer) processMessage(msg *InputIPCMessage) error {
+func (ais *AudioInputServer) processMessage(msg *UnifiedIPCMessage) error {
 	switch msg.Type {
-	case InputMessageTypeOpusFrame:
+	case MessageTypeOpusFrame:
 		return ais.processOpusFrame(msg.Data)
-	case InputMessageTypeConfig:
+	case MessageTypeConfig:
 		return ais.processConfig(msg.Data)
-	case InputMessageTypeOpusConfig:
+	case MessageTypeOpusConfig:
 		return ais.processOpusConfig(msg.Data)
-	case InputMessageTypeStop:
+	case MessageTypeStop:
 		return fmt.Errorf("stop message received")
-	case InputMessageTypeHeartbeat:
+	case MessageTypeHeartbeat:
 		return ais.sendAck()
 	default:
 		return fmt.Errorf("unknown message type: %d", msg.Type)
@@ -538,7 +518,7 @@ func (ais *AudioInputServer) processOpusConfig(data []byte) error {
 	}
 
 	// Deserialize Opus configuration
-	config := InputIPCOpusConfig{
+	config := UnifiedIPCOpusConfig{
 		SampleRate: int(binary.LittleEndian.Uint32(data[0:4])),
 		Channels:   int(binary.LittleEndian.Uint32(data[4:8])),
 		FrameSize:  int(binary.LittleEndian.Uint32(data[8:12])),
@@ -581,9 +561,9 @@ func (ais *AudioInputServer) sendAck() error {
 		return fmt.Errorf("no connection")
 	}
 
-	msg := &InputIPCMessage{
+	msg := &UnifiedIPCMessage{
 		Magic:     inputMagicNumber,
-		Type:      InputMessageTypeAck,
+		Type:      MessageTypeAck,
 		Length:    0,
 		Timestamp: time.Now().UnixNano(),
 	}
@@ -595,7 +575,7 @@ func (ais *AudioInputServer) sendAck() error {
 var globalInputServerMessagePool = NewGenericMessagePool(messagePoolSize)
 
 // writeMessage writes a message to the connection using shared common utilities
-func (ais *AudioInputServer) writeMessage(conn net.Conn, msg *InputIPCMessage) error {
+func (ais *AudioInputServer) writeMessage(conn net.Conn, msg *UnifiedIPCMessage) error {
 	// Use shared WriteIPCMessage function with global message pool
 	return WriteIPCMessage(conn, msg, globalInputServerMessagePool, &ais.droppedFrames)
 }
@@ -673,9 +653,9 @@ func (aic *AudioInputClient) Disconnect() {
 
 	if aic.conn != nil {
 		// Send stop message
-		msg := &InputIPCMessage{
+		msg := &UnifiedIPCMessage{
 			Magic:     inputMagicNumber,
-			Type:      InputMessageTypeStop,
+			Type:      MessageTypeStop,
 			Length:    0,
 			Timestamp: time.Now().UnixNano(),
 		}
@@ -700,9 +680,9 @@ func (aic *AudioInputClient) SendFrame(frame []byte) error {
 	}
 
 	// Direct message creation without timestamp overhead
-	msg := &InputIPCMessage{
+	msg := &UnifiedIPCMessage{
 		Magic:  inputMagicNumber,
-		Type:   InputMessageTypeOpusFrame,
+		Type:   MessageTypeOpusFrame,
 		Length: uint32(len(frame)),
 		Data:   frame,
 	}
@@ -736,9 +716,9 @@ func (aic *AudioInputClient) SendFrameZeroCopy(frame *ZeroCopyAudioFrame) error 
 	}
 
 	// Use zero-copy data directly
-	msg := &InputIPCMessage{
+	msg := &UnifiedIPCMessage{
 		Magic:     inputMagicNumber,
-		Type:      InputMessageTypeOpusFrame,
+		Type:      MessageTypeOpusFrame,
 		Length:    uint32(frameLen),
 		Timestamp: time.Now().UnixNano(),
 		Data:      frame.Data(), // Zero-copy data access
@@ -748,7 +728,7 @@ func (aic *AudioInputClient) SendFrameZeroCopy(frame *ZeroCopyAudioFrame) error 
 }
 
 // SendConfig sends a configuration update to the audio input server
-func (aic *AudioInputClient) SendConfig(config InputIPCConfig) error {
+func (aic *AudioInputClient) SendConfig(config UnifiedIPCConfig) error {
 	aic.mtx.Lock()
 	defer aic.mtx.Unlock()
 
@@ -766,9 +746,9 @@ func (aic *AudioInputClient) SendConfig(config InputIPCConfig) error {
 	// Serialize config using common function
 	data := EncodeAudioConfig(config.SampleRate, config.Channels, config.FrameSize)
 
-	msg := &InputIPCMessage{
+	msg := &UnifiedIPCMessage{
 		Magic:     inputMagicNumber,
-		Type:      InputMessageTypeConfig,
+		Type:      MessageTypeConfig,
 		Length:    uint32(len(data)),
 		Timestamp: time.Now().UnixNano(),
 		Data:      data,
@@ -778,7 +758,7 @@ func (aic *AudioInputClient) SendConfig(config InputIPCConfig) error {
 }
 
 // SendOpusConfig sends a complete Opus encoder configuration update to the audio input server
-func (aic *AudioInputClient) SendOpusConfig(config InputIPCOpusConfig) error {
+func (aic *AudioInputClient) SendOpusConfig(config UnifiedIPCOpusConfig) error {
 	aic.mtx.Lock()
 	defer aic.mtx.Unlock()
 
@@ -795,9 +775,9 @@ func (aic *AudioInputClient) SendOpusConfig(config InputIPCOpusConfig) error {
 	// Serialize Opus configuration using common function
 	data := EncodeOpusConfig(config.SampleRate, config.Channels, config.FrameSize, config.Bitrate, config.Complexity, config.VBR, config.SignalType, config.Bandwidth, config.DTX)
 
-	msg := &InputIPCMessage{
+	msg := &UnifiedIPCMessage{
 		Magic:     inputMagicNumber,
-		Type:      InputMessageTypeOpusConfig,
+		Type:      MessageTypeOpusConfig,
 		Length:    uint32(len(data)),
 		Timestamp: time.Now().UnixNano(),
 		Data:      data,
@@ -815,9 +795,9 @@ func (aic *AudioInputClient) SendHeartbeat() error {
 		return fmt.Errorf("not connected to audio input server")
 	}
 
-	msg := &InputIPCMessage{
+	msg := &UnifiedIPCMessage{
 		Magic:     inputMagicNumber,
-		Type:      InputMessageTypeHeartbeat,
+		Type:      MessageTypeHeartbeat,
 		Length:    0,
 		Timestamp: time.Now().UnixNano(),
 	}
@@ -829,7 +809,7 @@ func (aic *AudioInputClient) SendHeartbeat() error {
 // Global shared message pool for input IPC clients
 var globalInputMessagePool = NewGenericMessagePool(messagePoolSize)
 
-func (aic *AudioInputClient) writeMessage(msg *InputIPCMessage) error {
+func (aic *AudioInputClient) writeMessage(msg *UnifiedIPCMessage) error {
 	// Increment total frames counter
 	atomic.AddInt64(&aic.totalFrames, 1)
 
@@ -1093,9 +1073,9 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 }
 
 // processMessageWithRecovery processes a message with enhanced error recovery
-func (ais *AudioInputServer) processMessageWithRecovery(msg *InputIPCMessage, logger zerolog.Logger) error {
+func (ais *AudioInputServer) processMessageWithRecovery(msg *UnifiedIPCMessage, logger zerolog.Logger) error {
 	// Intelligent frame dropping: prioritize recent frames
-	if msg.Type == InputMessageTypeOpusFrame {
+	if msg.Type == MessageTypeOpusFrame {
 		// Check if processing queue is getting full
 		processChan := ais.getProcessChan()
 		queueLen := len(processChan)
@@ -1172,7 +1152,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 
 						// Calculate end-to-end latency using message timestamp
 						var latency time.Duration
-						if msg.Type == InputMessageTypeOpusFrame && msg.Timestamp > 0 {
+						if msg.Type == MessageTypeOpusFrame && msg.Timestamp > 0 {
 							msgTime := time.Unix(0, msg.Timestamp)
 							latency = time.Since(msgTime)
 							// Use exponential moving average for end-to-end latency tracking
@@ -1291,14 +1271,14 @@ func GetGlobalMessagePoolStats() MessagePoolStats {
 }
 
 // getMessageChan safely returns the current message channel
-func (ais *AudioInputServer) getMessageChan() chan *InputIPCMessage {
+func (ais *AudioInputServer) getMessageChan() chan *UnifiedIPCMessage {
 	ais.channelMutex.RLock()
 	defer ais.channelMutex.RUnlock()
 	return ais.messageChan
 }
 
 // getProcessChan safely returns the current process channel
-func (ais *AudioInputServer) getProcessChan() chan *InputIPCMessage {
+func (ais *AudioInputServer) getProcessChan() chan *UnifiedIPCMessage {
 	ais.channelMutex.RLock()
 	defer ais.channelMutex.RUnlock()
 	return ais.processChan
