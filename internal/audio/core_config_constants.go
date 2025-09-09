@@ -505,11 +505,9 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		AdaptiveMaxBufferSize:     1024, // Much higher maximum for quality changes
 		AdaptiveDefaultBufferSize: 512,  // Higher default for stability during bursts
 
-		// Adaptive Optimizer Configuration - Faster response
 		CooldownPeriod:    15 * time.Second,       // Reduced cooldown period
 		RollbackThreshold: 200 * time.Millisecond, // Lower rollback threshold
 
-		// Latency Monitor Configuration - More aggressive monitoring
 		MaxLatencyThreshold:         150 * time.Millisecond, // Lower max latency threshold
 		JitterThreshold:             15 * time.Millisecond,  // Reduced jitter threshold
 		LatencyOptimizationInterval: 3 * time.Second,        // More frequent optimization
@@ -637,8 +635,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		MaxValidationTime:  5 * time.Second, // 5s maximum validation timeout
 		MinFrameSize:       1,               // 1 byte minimum frame size (allow small frames)
 		FrameSizeTolerance: 512,             // 512 bytes frame size tolerance
-
-		// Removed device health monitoring configuration - functionality not used
 
 		// Latency Histogram Bucket Configuration
 		LatencyBucket10ms:  10 * time.Millisecond,  // 10ms latency bucket

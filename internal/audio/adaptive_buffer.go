@@ -234,7 +234,7 @@ func (abm *AdaptiveBufferManager) adaptationLoop() {
 // The algorithm runs periodically and only applies changes when the adaptation interval
 // has elapsed, preventing excessive adjustments that could destabilize the audio pipeline.
 func (abm *AdaptiveBufferManager) adaptBufferSizes() {
-	// Use fixed system metrics since monitoring is simplified
+	// Use fixed system metrics for stability
 	systemCPU := 50.0    // Assume moderate CPU usage
 	systemMemory := 60.0 // Assume moderate memory usage
 

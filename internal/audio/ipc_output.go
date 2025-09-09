@@ -173,11 +173,7 @@ func (s *AudioOutputServer) SendFrame(frame []byte) error {
 
 // writeMessage writes a message to the connection
 func (s *AudioOutputServer) writeMessage(conn net.Conn, msg *OutputIPCMessage) error {
-	header := make([]byte, 17)
-	binary.LittleEndian.PutUint32(header[0:4], msg.Magic)
-	header[4] = uint8(msg.Type)
-	binary.LittleEndian.PutUint32(header[5:9], msg.Length)
-	binary.LittleEndian.PutUint64(header[9:17], uint64(msg.Timestamp))
+	header := EncodeMessageHeader(msg.Magic, uint8(msg.Type), msg.Length, msg.Timestamp)
 
 	if _, err := conn.Write(header); err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
