@@ -233,13 +233,13 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	})
 
-	session.VideoTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "kvm")
+	session.VideoTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "kvm-video")
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("Failed to create VideoTrack")
 		return nil, err
 	}
 
-	session.AudioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", "kvm")
+	session.AudioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", "kvm-audio")
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("Failed to add VideoTrack to PeerConnection")
 		return nil, err

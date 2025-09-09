@@ -345,8 +345,13 @@ export default function WebRTCVideo({ microphone }: WebRTCVideoProps) {
 
       peerConnection.addEventListener(
         "track",
-        (e: RTCTrackEvent) => {
-          addStreamToVideoElm(e.streams[0]);
+        (_e: RTCTrackEvent) => {
+          // The combined MediaStream is now managed in the main component
+          // We'll use the mediaStream from the store instead of individual track streams
+          const { mediaStream } = useRTCStore.getState();
+          if (mediaStream) {
+            addStreamToVideoElm(mediaStream);
+          }
         },
         { signal },
       );
