@@ -18,6 +18,8 @@ const (
 	TypeKindArray TypeKind = "array"
 	// TypeKindPointer represents a pointer type
 	TypeKindPointer TypeKind = "pointer"
+	// TypeKindExtension represents a struct that extends another struct
+	TypeKindExtension TypeKind = "extension"
 )
 
 // APIType represents a type used in the JSON-RPC API
@@ -26,6 +28,7 @@ type APIType struct {
 	Package      string     `json:"package"`
 	Kind         TypeKind   `json:"kind"`
 	Fields       []APIField `json:"fields,omitempty"`
+	Extends      string     `json:"extends,omitempty"`
 	IsPointer    bool       `json:"is_pointer"`
 	IsSlice      bool       `json:"is_slice"`
 	IsMap        bool       `json:"is_map"`

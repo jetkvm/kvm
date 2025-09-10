@@ -174,6 +174,11 @@ func extractMapType(t reflect.Type, schema *APISchema) *APIType {
 
 // extractStructType handles struct types
 func extractStructType(t reflect.Type, schema *APISchema) *APIType {
+	// Skip null.* structs as they are handled as optional properties
+	if strings.HasPrefix(t.String(), "null.") {
+		return nil
+	}
+
 	apiType := &APIType{
 		Name:   t.String(),
 		Kind:   TypeKindStruct,
@@ -186,6 +191,9 @@ func extractStructType(t reflect.Type, schema *APISchema) *APIType {
 	}
 
 	// Extract fields
+	embeddedStructs := make([]string, 0)
+	regularFields := make([]APIField, 0)
+
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 
@@ -194,15 +202,34 @@ func extractStructType(t reflect.Type, schema *APISchema) *APIType {
 			continue
 		}
 
-		apiField := buildAPIField(field)
-		apiType.Fields = append(apiType.Fields, apiField)
+		// Check if this is an embedded struct (anonymous field)
+		if field.Anonymous && field.Type.Kind() == reflect.Struct {
+			embeddedStructs = append(embeddedStructs, field.Type.String())
+			// Recursively extract nested struct types from embedded structs
+			if nestedType := extractAPIType(field.Type, schema); nestedType != nil {
+				if nestedType.Kind == TypeKindStruct {
+					schema.Types[nestedType.Name] = *nestedType
+				}
+			}
+		} else {
+			apiField := buildAPIField(field)
+			regularFields = append(regularFields, apiField)
 
-		// Recursively extract nested struct types from field types
-		if nestedType := extractAPIType(field.Type, schema); nestedType != nil {
-			if nestedType.Kind == TypeKindStruct {
-				schema.Types[nestedType.Name] = *nestedType
+			// Recursively extract nested struct types from field types
+			if nestedType := extractAPIType(field.Type, schema); nestedType != nil {
+				if nestedType.Kind == TypeKindStruct {
+					schema.Types[nestedType.Name] = *nestedType
+				}
 			}
 		}
+	}
+
+	// If we have exactly one embedded struct and no regular fields, mark it as an extension
+	if len(embeddedStructs) == 1 && len(regularFields) == 0 {
+		apiType.Kind = TypeKindExtension
+		apiType.Extends = embeddedStructs[0]
+	} else {
+		apiType.Fields = regularFields
 	}
 
 	return apiType
@@ -310,7 +337,7 @@ func getAllReferencedStructs(schema *APISchema) []APIType {
 
 	// Also add all structs from the complete schema that might be referenced
 	for name, apiType := range schema.Types {
-		if apiType.Kind == TypeKindStruct {
+		if apiType.Kind == TypeKindStruct || apiType.Kind == TypeKindExtension {
 			allStructs[name] = apiType
 		}
 	}
