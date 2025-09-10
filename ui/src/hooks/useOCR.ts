@@ -9,7 +9,9 @@ async function ocrImage(
   image: ImageLike,
   options?: Partial<WorkerOptions>,
 ) {
-  const { createWorker } = await import('tesseract.js')
+  const tesseract = await import('tesseract.js')
+  const createWorker = tesseract.createWorker || tesseract.default.createWorker
+
   const worker = await createWorker(language, undefined, options)
   const { data: { text } } = await worker.recognize(image)
   await worker.terminate()
