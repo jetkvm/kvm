@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuCornerDownLeft } from "react-icons/lu";
 import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
 import { useClose } from "@headlessui/react";
@@ -12,6 +12,7 @@ import { useHidStore, useSettingsStore, useUiStore } from "@/hooks/stores";
 import useKeyboard from "@/hooks/useKeyboard";
 import useKeyboardLayout from "@/hooks/useKeyboardLayout";
 import notifications from "@/notifications";
+import { InputFieldWithLabel } from "@components/InputField";
 
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -22,6 +23,13 @@ export default function PasteModal() {
   const { executeMacro, cancelExecuteMacro } = useKeyboard();
 
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
+  const [delayValue, setDelayValue] = useState(100);
+  const delay = useMemo(() => {
+    if (delayValue < 50 || delayValue > 65534) {
+      return 100;
+    }
+    return delayValue;
+  }, [delayValue]);
   const close = useClose();
 
   const { setKeyboardLayout } = useSettingsStore();
@@ -68,7 +76,7 @@ export default function PasteModal() {
           macroSteps.push({
             keys: [String(accentKey.key)],
             modifiers: accentModifiers.length > 0 ? accentModifiers : null,
-            delay: 100,
+            delay,
           });
         }
 
@@ -80,12 +88,12 @@ export default function PasteModal() {
         macroSteps.push({
           keys: [String(key)],
           modifiers: modifiers.length > 0 ? modifiers : null,
-          delay: 100,
+          delay
         });
 
         // if what was requested was a dead key, we need to send an unmodified space to emit
         // just the accent character
-        if (deadKey) macroSteps.push({ keys: ["Space"], modifiers: null, delay: 100 });
+        if (deadKey) macroSteps.push({ keys: ["Space"], modifiers: null, delay });
       }
 
       if (macroSteps.length > 0) {
@@ -95,7 +103,7 @@ export default function PasteModal() {
       console.error("Failed to paste text:", error);
       notifications.error("Failed to paste text");
     }
-  }, [selectedKeyboard, executeMacro]);
+  }, [selectedKeyboard, executeMacro, delay]);
 
   useEffect(() => {
     if (TextAreaRef.current) {
@@ -167,6 +175,27 @@ export default function PasteModal() {
                       </div>
                     )}
                   </div>
+                </div>
+                <div className="text-xs text-slate-600 dark:text-slate-400">
+                  <InputFieldWithLabel
+                    type="number"
+                    label="Delay between keys"
+                    placeholder="Delay between keys"
+                    min={50}
+                    max={65534}
+                    value={delayValue}
+                    onChange={e => {
+                      setDelayValue(parseInt(e.target.value, 10));
+                    }}
+                  />
+                  {delayValue < 50 || delayValue > 65534 && (
+                    <div className="mt-2 flex items-center gap-x-2">
+                      <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
+                      <span className="text-xs text-red-500 dark:text-red-400">
+                        Delay must be between 50 and 65534
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">

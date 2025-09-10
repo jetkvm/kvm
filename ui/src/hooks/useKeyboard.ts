@@ -117,7 +117,7 @@ export default function useKeyboard() {
       // If the step has keys and/or modifiers, press them and hold for the delay
       if (keyValues.length > 0 || modifierMask > 0) {
         macro.push({ keys: keyValues, modifier: modifierMask, delay: 20 });
-        macro.push({ ...MACRO_RESET_KEYBOARD_STATE, delay: 100 });
+        macro.push({ ...MACRO_RESET_KEYBOARD_STATE, delay: step.delay || 100 });
       }
     }
 
