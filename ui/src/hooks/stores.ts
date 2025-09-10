@@ -131,6 +131,9 @@ export interface RTCState {
   appendInboundRtpStats: (stats: RTCInboundRtpStreamStats) => void;
   clearInboundRtpStats: () => void;
 
+  codecInfo: RTCRtpCodec | null;
+  setCodecInfo: (info: RTCRtpCodec) => void;
+
   candidatePairStats: Map<number, RTCIceCandidatePairStats>;
   appendCandidatePairStats: (stats: RTCIceCandidatePairStats) => void;
   clearCandidatePairStats: () => void;
@@ -178,6 +181,9 @@ export const useRTCStore = create<RTCState>(set => ({
 
   isTurnServerInUse: false,
   setTurnServerInUse: (inUse: boolean)  => set({ isTurnServerInUse: inUse }),
+
+  codecInfo: null,
+  setCodecInfo: (info: RTCRtpCodec) => set({ codecInfo: info }),
 
   inboundRtpStats: new Map(),
   appendInboundRtpStats: (stats: RTCInboundRtpStreamStats) => {

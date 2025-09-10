@@ -19,6 +19,8 @@ export default function ConnectionStatsSidebar() {
     appendLocalCandidateStats,
     appendRemoteCandidateStats,
     appendDiskDataChannelStats,
+    setCodecInfo,
+    codecInfo,
   } = useRTCStore();
 
   useInterval(function collectWebRTCStats() {
@@ -52,6 +54,8 @@ export default function ConnectionStatsSidebar() {
           }
         } else if (report.type === "data-channel" && report.label === "disk") {
           appendDiskDataChannelStats(report);
+        } else if (report.type === "codec") {
+          setCodecInfo(report);
         }
       });
     })();
@@ -124,7 +128,18 @@ export default function ConnectionStatsSidebar() {
               <div className="space-y-3">
                 <SettingsSectionHeader
                   title="Video"
-                  description="The video stream from the JetKVM to the client."
+                  description={<>
+                    The video stream from the JetKVM to the client.
+                    {codecInfo && <div className="text-xs text-slate-700 dark:text-slate-300 mt-1 flex flex-col">
+                      <div>
+                        Current codec: <strong>{codecInfo.mimeType}</strong>
+                      </div>
+                      <div>
+                        Clock Rate: <strong>{codecInfo.clockRate}</strong>
+                      </div>
+                    </div>}
+                  </>
+                  }
                 />
 
                 {/* RTP Jitter */}
