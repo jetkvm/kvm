@@ -1049,6 +1049,24 @@ func rpcSetLocalLoopbackOnly(enabled bool) error {
 	return nil
 }
 
+// JSONRPCHandler represents a JSON-RPC handler
+type JSONRPCHandler struct {
+	Type   reflect.Type
+	Params []string
+}
+
+// GetJSONRPCHandlers returns the JSON-RPC handlers
+func GetJSONRPCHandlers() map[string]JSONRPCHandler {
+	ret := make(map[string]JSONRPCHandler)
+	for name, handler := range rpcHandlers {
+		ret[name] = JSONRPCHandler{
+			Type:   reflect.ValueOf(handler.Func).Type(),
+			Params: handler.Params,
+		}
+	}
+	return ret
+}
+
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"reboot":                 {Func: rpcReboot, Params: []string{"force"}},
