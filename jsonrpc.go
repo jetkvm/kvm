@@ -1115,7 +1115,6 @@ func rpcKeyboardReportMulti(ctx context.Context, macro []hidrpc.KeyboardMacro) (
 		}
 
 		delay := time.Duration(step.Delay) * time.Millisecond
-		logger.Info().Int("step", i).Uint16("delay", step.Delay).Msg("Keyboard report multi delay")
 
 		last, err = rpcKeyboardReport(step.Modifier, step.Keys)
 		if err != nil {
