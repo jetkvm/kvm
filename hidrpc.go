@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -31,6 +32,13 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			session.reportHidRPCKeysDownState(*keysDownState)
 		}
 		rpcErr = err
+	case hidrpc.TypeKeyboardMacroReport:
+		keyboardMacroReport, err := message.KeyboardMacroReport()
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to get keyboard macro report")
+			return
+		}
+		_, rpcErr = rpcKeyboardReportMulti(context.Background(), keyboardMacroReport.Macro)
 	case hidrpc.TypePointerReport:
 		pointerReport, err := message.PointerReport()
 		if err != nil {

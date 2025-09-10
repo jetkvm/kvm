@@ -1,6 +1,7 @@
 package hidrpc
 
 import (
+	"encoding/binary"
 	"fmt"
 )
 
@@ -43,6 +44,11 @@ func (m *Message) String() string {
 			return fmt.Sprintf("MouseReport{Malformed: %v}", m.d)
 		}
 		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
+	case TypeKeyboardMacroReport:
+		if len(m.d) < 5 {
+			return fmt.Sprintf("KeyboardMacroReport{Malformed: %v}", m.d)
+		}
+		return fmt.Sprintf("KeyboardMacroReport{IsPaste: %v, Length: %d}", m.d[0] == uint8(1), binary.BigEndian.Uint32(m.d[1:5]))
 	default:
 		return fmt.Sprintf("Unknown{Type: %d, Data: %v}", m.t, m.d)
 	}
@@ -81,6 +87,51 @@ func (m *Message) KeyboardReport() (KeyboardReport, error) {
 	return KeyboardReport{
 		Modifier: m.d[0],
 		Keys:     m.d[1:],
+	}, nil
+}
+
+// Macro ..
+type KeyboardMacro struct {
+	Modifier byte   // 1 byte
+	Keys     []byte // 6 bytes, to make things easier, the keys length is fixed to 6
+	Delay    uint16 // 2 bytes
+}
+type KeyboardMacroReport struct {
+	IsPaste bool
+	Length  uint32
+	Macro   []KeyboardMacro
+}
+
+// KeyboardMacroReport returns the keyboard macro report from the message.
+func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
+	if m.t != TypeKeyboardMacroReport {
+		return KeyboardMacroReport{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	isPaste := m.d[0] == uint8(1)
+	length := binary.BigEndian.Uint32(m.d[1:5])
+
+	// check total length
+	expectedLength := int(length)*9 + 5
+	if len(m.d) != expectedLength {
+		return KeyboardMacroReport{}, fmt.Errorf("invalid length: %d, expected: %d", len(m.d), expectedLength)
+	}
+
+	macro := make([]KeyboardMacro, 0, int(length))
+	for i := 0; i < int(length); i++ {
+		offset := 5 + i*9
+
+		macro = append(macro, KeyboardMacro{
+			Modifier: m.d[offset],
+			Keys:     m.d[offset+1 : offset+7],
+			Delay:    binary.BigEndian.Uint16(m.d[offset+7 : offset+9]),
+		})
+	}
+
+	return KeyboardMacroReport{
+		IsPaste: isPaste,
+		Macro:   macro,
+		Length:  length,
 	}, nil
 }
 

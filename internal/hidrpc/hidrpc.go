@@ -10,14 +10,17 @@ import (
 type MessageType byte
 
 const (
-	TypeHandshake        MessageType = 0x01
-	TypeKeyboardReport   MessageType = 0x02
-	TypePointerReport    MessageType = 0x03
-	TypeWheelReport      MessageType = 0x04
-	TypeKeypressReport   MessageType = 0x05
-	TypeMouseReport      MessageType = 0x06
-	TypeKeyboardLedState MessageType = 0x32
-	TypeKeydownState     MessageType = 0x33
+	TypeHandshake                 MessageType = 0x01
+	TypeKeyboardReport            MessageType = 0x02
+	TypePointerReport             MessageType = 0x03
+	TypeWheelReport               MessageType = 0x04
+	TypeKeypressReport            MessageType = 0x05
+	TypeMouseReport               MessageType = 0x06
+	TypeKeyboardMacroReport       MessageType = 0x07
+	TypeCancelKeyboardMacroReport MessageType = 0x08
+	TypeKeyboardLedState          MessageType = 0x32
+	TypeKeydownState              MessageType = 0x33
+	TypeKeyboardMacroStateReport  MessageType = 0x34
 )
 
 const (
@@ -29,7 +32,7 @@ func GetQueueIndex(messageType MessageType) int {
 	switch messageType {
 	case TypeHandshake:
 		return 0
-	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardLedState, TypeKeydownState:
+	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroStateReport:
 		return 1
 	case TypePointerReport, TypeMouseReport, TypeWheelReport:
 		return 2

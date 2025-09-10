@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 import {
   hidErrorRollOver,
@@ -9,7 +9,7 @@ import {
 } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidRpc } from "@/hooks/useHidRpc";
-import { KeyboardLedStateMessage, KeysDownStateMessage } from "@/hooks/hidRpc";
+import { KeyboardLedStateMessage, KeyboardMacro, KeysDownStateMessage } from "@/hooks/hidRpc";
 import { hidKeyToModifierMask, keys, modifiers } from "@/keyboardMappings";
 
 export default function useKeyboard() {
@@ -32,6 +32,7 @@ export default function useKeyboard() {
   const {
     reportKeyboardEvent: sendKeyboardEventHidRpc,
     reportKeypressEvent: sendKeypressEventHidRpc,
+    reportKeyboardMacroEvent: sendKeyboardMacroEventHidRpc,
     rpcHidReady,
   } = useHidRpc(message => {
     switch (message.constructor) {
@@ -77,16 +78,19 @@ export default function useKeyboard() {
     [rpcDataChannel?.readyState, rpcHidReady, send, sendKeyboardEventHidRpc],
   );
 
+  const MACRO_RESET_KEYBOARD_STATE = useMemo(() => ({
+    keys: new Array(hidKeyBufferSize).fill(0),
+    modifier: 0,
+    delay: 0,
+  }), []);
+
   // resetKeyboardState is used to reset the keyboard state to no keys pressed and no modifiers.
   // This is useful for macros and when the browser loses focus to ensure that the keyboard state
   // is clean.
   const resetKeyboardState = useCallback(async () => {
     // Reset the keys buffer to zeros and the modifier state to zero
-    keysDownState.keys.length = hidKeyBufferSize;
-    keysDownState.keys.fill(0);
-    keysDownState.modifier = 0;
-    sendKeyboardEvent(keysDownState);
-  }, [keysDownState, sendKeyboardEvent]);
+    sendKeyboardEvent(MACRO_RESET_KEYBOARD_STATE);
+  }, [sendKeyboardEvent, MACRO_RESET_KEYBOARD_STATE]);
 
   // executeMacro is used to execute a macro consisting of multiple steps.
   // Each step can have multiple keys, multiple modifiers and a delay.
@@ -97,7 +101,7 @@ export default function useKeyboard() {
   const executeMacro = async (
     steps: { keys: string[] | null; modifiers: string[] | null; delay: number }[],
   ) => {
-    const macro: KeysDownState[] = [];
+    const macro: KeyboardMacro[] = [];
 
     for (const [_, step] of steps.entries()) {
       const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
@@ -107,19 +111,12 @@ export default function useKeyboard() {
 
       // If the step has keys and/or modifiers, press them and hold for the delay
       if (keyValues.length > 0 || modifierMask > 0) {
-        macro.push({ keys: keyValues, modifier: modifierMask });
-        keysDownState.keys.length = hidKeyBufferSize;
-        keysDownState.keys.fill(0);
-        keysDownState.modifier = 0;
-        macro.push(keysDownState);
+        macro.push({ keys: keyValues, modifier: modifierMask, delay: 50 });
+        macro.push({ ...MACRO_RESET_KEYBOARD_STATE, delay: 200 });
       }
     }
-    // KeyboardReportMessage
-    send("keyboardReportMulti", { macro }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        console.error(`Failed to send keyboard report ${macro}`, resp.error);
-      }
-    });
+
+    sendKeyboardMacroEventHidRpc(macro);
   };
 
   const cancelExecuteMacro = useCallback(async () => {

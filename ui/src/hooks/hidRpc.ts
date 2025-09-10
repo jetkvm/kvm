@@ -7,6 +7,7 @@ export const HID_RPC_MESSAGE_TYPES = {
     WheelReport: 0x04,
     KeypressReport: 0x05,
     MouseReport: 0x06,
+    KeyboardMacroReport: 0x07,
     KeyboardLedState: 0x32,
     KeysDownState: 0x33,
 }
@@ -22,6 +23,30 @@ const withinUint8Range = (value: number) => {
 const fromInt32toUint8 = (n: number) => {
     if (n !== n >> 0) {
         throw new Error(`Number ${n} is not within the int32 range`);
+    }
+
+    return new Uint8Array([
+        (n >> 24) & 0xFF,
+        (n >> 16) & 0xFF,
+        (n >> 8) & 0xFF,
+        (n >> 0) & 0xFF,
+    ]);
+};
+
+const fromUint16toUint8 = (n: number) => {
+    if (n > 65535 || n < 0) {
+        throw new Error(`Number ${n} is not within the uint16 range`);
+    }
+
+    return new Uint8Array([
+        (n >> 8) & 0xFF,
+        (n >> 0) & 0xFF,
+    ]);
+};
+
+const fromUint32toUint8 = (n: number) => {
+    if (n > 4294967295 || n < 0) {
+        throw new Error(`Number ${n} is not within the uint32 range`);
     }
 
     return new Uint8Array([
@@ -183,6 +208,64 @@ export class KeyboardReportMessage extends RpcMessage {
         }
 
         return new KeyboardReportMessage(Array.from(data.slice(1)), data[0]);
+    }
+}
+
+export interface KeyboardMacro extends KeysDownState {
+    delay: number;
+}
+
+export class KeyboardMacroReportMessage extends RpcMessage {
+    isPaste: boolean;
+    length: number;
+    macro: KeyboardMacro[];
+
+    KEYS_LENGTH = 6;
+
+    constructor(isPaste: boolean, length: number, macro: KeyboardMacro[]) {
+        super(HID_RPC_MESSAGE_TYPES.KeyboardMacroReport);
+        this.isPaste = isPaste;
+        this.length = length;
+        this.macro = macro;
+    }
+
+    marshal(): Uint8Array {
+        const dataHeader = new Uint8Array([
+            this.messageType,
+            this.isPaste ? 1 : 0,
+            ...fromUint32toUint8(this.length),
+        ]);
+
+        let dataBody = new Uint8Array();
+
+        for (const step of this.macro) {
+            if (!withinUint8Range(step.modifier)) {
+                throw new Error(`Modifier ${step.modifier} is not within the uint8 range`);
+            }
+
+            // Ensure the keys are within the KEYS_LENGTH range
+            const keys = step.keys;
+            if (keys.length > this.KEYS_LENGTH) {
+                throw new Error(`Keys ${keys} is not within the hidKeyBufferSize range`);
+            } else if (keys.length < this.KEYS_LENGTH) {
+                keys.push(...Array(this.KEYS_LENGTH - keys.length).fill(0));
+            }
+
+            for (const key of keys) {
+                if (!withinUint8Range(key)) {
+                    throw new Error(`Key ${key} is not within the uint8 range`);
+                }
+            }
+
+            const macroBinary = new Uint8Array([
+                step.modifier,
+                ...keys,
+                ...fromUint16toUint8(step.delay),
+            ]);
+
+            dataBody = new Uint8Array([...dataBody, ...macroBinary]);
+        }
+        return new Uint8Array([...dataHeader, ...dataBody]);
     }
 }
 

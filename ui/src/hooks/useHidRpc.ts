@@ -5,6 +5,8 @@ import { useRTCStore } from "@/hooks/stores";
 import {
   HID_RPC_VERSION,
   HandshakeMessage,
+  KeyboardMacro,
+  KeyboardMacroReportMessage,
   KeyboardReportMessage,
   KeypressReportMessage,
   MouseReportMessage,
@@ -64,6 +66,15 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
   const reportRelMouseEvent = useCallback(
     (dx: number, dy: number, buttons: number) => {
       sendMessage(new MouseReportMessage(dx, dy, buttons));
+    },
+    [sendMessage],
+  );
+
+  const reportKeyboardMacroEvent = useCallback(
+    (macro: KeyboardMacro[]) => {
+      const d = new KeyboardMacroReportMessage(false, macro.length, macro);
+      sendMessage(d);
+      console.log("Sent keyboard macro report", d, d.marshal());
     },
     [sendMessage],
   );
@@ -143,6 +154,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     reportKeypressEvent,
     reportAbsMouseEvent,
     reportRelMouseEvent,
+    reportKeyboardMacroEvent,
     rpcHidProtocolVersion,
     rpcHidReady,
     rpcHidStatus,
