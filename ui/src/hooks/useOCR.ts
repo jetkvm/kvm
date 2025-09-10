@@ -1,0 +1,23 @@
+import { type WorkerOptions } from "tesseract.js";
+
+export type ImageLike = string | HTMLImageElement | HTMLCanvasElement | HTMLVideoElement
+  | CanvasRenderingContext2D | File | Blob | OffscreenCanvas;
+
+// tesseract.js is h
+async function ocrImage(
+  language: string | string[],
+  image: ImageLike,
+  options?: Partial<WorkerOptions>,
+) {
+  const { createWorker } = await import('tesseract.js')
+  const worker = await createWorker(language, undefined, options)
+  const { data: { text } } = await worker.recognize(image)
+  await worker.terminate()
+  return text
+}
+
+export default function useOCR() {
+  return {
+    ocrImage,
+  }
+}

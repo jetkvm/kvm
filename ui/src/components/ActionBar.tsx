@@ -1,4 +1,4 @@
-import { MdOutlineContentPasteGo } from "react-icons/md";
+import { MdOutlineContentPasteGo, MdOutlineDocumentScanner } from "react-icons/md";
 import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
@@ -19,11 +19,14 @@ import WakeOnLanModal from "@/components/popovers/WakeOnLan/Index";
 import MountPopopover from "@/components/popovers/MountPopover";
 import ExtensionPopover from "@/components/popovers/ExtensionPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import OCRModal from "./popovers/OCRModal";
 
 export default function Actionbar({
   requestFullscreen,
+  videoElmRef,
 }: {
   requestFullscreen: () => Promise<void>;
+  videoElmRef?: React.RefObject<HTMLVideoElement | null>;
 }) {
   const { navigateTo } = useDeviceUiNavigation();
   const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
@@ -94,6 +97,36 @@ export default function Actionbar({
                 return (
                   <div className="mx-auto w-full max-w-xl">
                     <PasteModal />
+                  </div>
+                );
+              }}
+            </PopoverPanel>
+          </Popover>
+          <Popover>
+            <PopoverButton as={Fragment}>
+              <Button
+                size="XS"
+                theme="light"
+                text="OCR"
+                LeadingIcon={MdOutlineDocumentScanner}
+                onClick={() => {
+                  setDisableVideoFocusTrap(true);
+                }}
+              />
+            </PopoverButton>
+            <PopoverPanel
+              anchor="bottom start"
+              transition
+              className={cx(
+                "z-10 flex w-[420px] origin-top flex-col overflow-visible!",
+                "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
+              )}
+            >
+              {({ open }) => {
+                checkIfStateChanged(open);
+                return (
+                  <div className="mx-auto w-full max-w-xl">
+                    <OCRModal videoElmRef={videoElmRef} />
                   </div>
                 );
               }}
