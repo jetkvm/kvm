@@ -32,10 +32,13 @@ func GetQueueIndex(messageType MessageType) int {
 	switch messageType {
 	case TypeHandshake:
 		return 0
-	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroStateReport:
+	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardMacroReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroStateReport:
 		return 1
 	case TypePointerReport, TypeMouseReport, TypeWheelReport:
 		return 2
+	// we don't want to block the queue for this message
+	case TypeCancelKeyboardMacroReport:
+		return 3
 	default:
 		return 3
 	}
@@ -98,6 +101,22 @@ func NewKeydownStateMessage(state usbgadget.KeysDownState) *Message {
 
 	return &Message{
 		t: TypeKeydownState,
+		d: data,
+	}
+}
+
+// NewKeyboardMacroStateMessage creates a new keyboard macro state message.
+func NewKeyboardMacroStateMessage(state bool, isPaste bool) *Message {
+	data := make([]byte, 2)
+	if state {
+		data[0] = 1
+	}
+	if isPaste {
+		data[1] = 1
+	}
+
+	return &Message{
+		t: TypeKeyboardMacroStateReport,
 		d: data,
 	}
 }

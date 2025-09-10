@@ -200,7 +200,7 @@ func handleWebRTCSession(c *gin.Context) {
 	}
 
 	// Cancel any ongoing keyboard report multi when session changes
-	cancelKeyboardReportMulti()
+	cancelKeyboardMacro()
 
 	currentSession = session
 	c.JSON(http.StatusOK, gin.H{"sd": sd})

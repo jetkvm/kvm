@@ -3,9 +3,10 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useRTCStore } from "@/hooks/stores";
 
 import {
+  CancelKeyboardMacroReportMessage,
   HID_RPC_VERSION,
   HandshakeMessage,
-  KeyboardMacro,
+  KeyboardMacroStep,
   KeyboardMacroReportMessage,
   KeyboardReportMessage,
   KeypressReportMessage,
@@ -71,10 +72,17 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
   );
 
   const reportKeyboardMacroEvent = useCallback(
-    (macro: KeyboardMacro[]) => {
+    (macro: KeyboardMacroStep[]) => {
       const d = new KeyboardMacroReportMessage(false, macro.length, macro);
       sendMessage(d);
       console.log("Sent keyboard macro report", d, d.marshal());
+    },
+    [sendMessage],
+  );
+
+  const cancelOngoingKeyboardMacro = useCallback(
+    () => {
+      sendMessage(new CancelKeyboardMacroReportMessage());
     },
     [sendMessage],
   );
@@ -155,6 +163,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     reportAbsMouseEvent,
     reportRelMouseEvent,
     reportKeyboardMacroEvent,
+    cancelOngoingKeyboardMacro,
     rpcHidProtocolVersion,
     rpcHidReady,
     rpcHidStatus,

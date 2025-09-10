@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/pion/webrtc/v4"
@@ -1050,75 +1051,69 @@ func rpcSetLocalLoopbackOnly(enabled bool) error {
 	return nil
 }
 
-func cancelKeyboardReportMulti() {
+var (
+	keyboardMacroCancel context.CancelFunc
+	keyboardMacroLock   sync.Mutex
+)
 
+// cancelKeyboardMacro cancels any ongoing keyboard macro execution
+func cancelKeyboardMacro() {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
+
+	if keyboardMacroCancel != nil {
+		keyboardMacroCancel()
+		logger.Info().Msg("canceled keyboard macro")
+		keyboardMacroCancel = nil
+	}
 }
 
-// // cancelKeyboardReportMulti cancels any ongoing keyboard report multi execution
-// func cancelKeyboardReportMulti() {
-// 	keyboardReportMultiLock.Lock()
-// 	defer keyboardReportMultiLock.Unlock()
+func setKeyboardMacroCancel(cancel context.CancelFunc) {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
 
-// 	if keyboardReportMultiCancel != nil {
-// 		keyboardReportMultiCancel()
-// 		logger.Info().Msg("canceled keyboard report multi")
-// 		keyboardReportMultiCancel = nil
-// 	}
-// }
+	keyboardMacroCancel = cancel
+}
 
-// func setKeyboardReportMultiCancel(cancel context.CancelFunc) {
-// 	keyboardReportMultiLock.Lock()
-// 	defer keyboardReportMultiLock.Unlock()
+func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacro) (usbgadget.KeysDownState, error) {
+	cancelKeyboardMacro()
 
-// 	keyboardReportMultiCancel = cancel
-// }
+	ctx, cancel := context.WithCancel(context.Background())
+	setKeyboardMacroCancel(cancel)
 
-// func rpcKeyboardReportMultiWrapper(macro []map[string]any) (usbgadget.KeysDownState, error) {
-// 	// cancelKeyboardReportMulti()
+	s := hidrpc.KeyboardMacroStateReport{
+		State:   true,
+		IsPaste: true,
+	}
 
-// 	// ctx, cancel := context.WithCancel(context.Background())
-// 	// setKeyboardReportMultiCancel(cancel)
+	reportHidRPC(s, currentSession)
 
-// 	// writeJSONRPCEvent("keyboardReportMultiState", true, currentSession)
+	result, err := rpcDoExecuteKeyboardMacro(ctx, macro)
 
-// 	// result, err := rpcKeyboardReportMulti(ctx, macro)
+	setKeyboardMacroCancel(nil)
 
-// 	// setKeyboardReportMultiCancel(nil)
+	s.State = false
+	reportHidRPC(s, currentSession)
 
-// 	// writeJSONRPCEvent("keyboardReportMultiState", false, currentSession)
+	return result, err
+}
 
-// 	// return result, err
-// }
+func rpcCancelKeyboardMacro() {
+	cancelKeyboardMacro()
+}
 
-// var (
-// 	keyboardReportMultiCancel context.CancelFunc
-// 	keyboardReportMultiLock   sync.Mutex
-// )
-
-// func rpcCancelKeyboardReportMulti() {
-// 	cancelKeyboardReportMulti()
-// }
-
-func rpcKeyboardReportMulti(ctx context.Context, macro []hidrpc.KeyboardMacro) (usbgadget.KeysDownState, error) {
+func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro) (usbgadget.KeysDownState, error) {
 	var last usbgadget.KeysDownState
 	var err error
 
-	logger.Debug().Interface("macro", macro).Msg("Executing keyboard report multi")
+	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
 
 	for i, step := range macro {
-		// Check for cancellation before each step
-		select {
-		case <-ctx.Done():
-			logger.Debug().Msg("Keyboard report multi context cancelled")
-			return last, ctx.Err()
-		default:
-		}
-
 		delay := time.Duration(step.Delay) * time.Millisecond
 
 		last, err = rpcKeyboardReport(step.Modifier, step.Keys)
 		if err != nil {
-			logger.Warn().Err(err).Msg("failed to execute keyboard report multi")
+			logger.Warn().Err(err).Msg("failed to execute keyboard macro")
 			return last, err
 		}
 
@@ -1127,7 +1122,9 @@ func rpcKeyboardReportMulti(ctx context.Context, macro []hidrpc.KeyboardMacro) (
 		case <-time.After(delay):
 			// Sleep completed normally
 		case <-ctx.Done():
-			logger.Debug().Int("step", i).Msg("Keyboard report multi cancelled during sleep")
+			// make sure keyboard state is reset
+			rpcKeyboardReport(0, make([]byte, 6))
+			logger.Debug().Int("step", i).Msg("Keyboard macro cancelled during sleep")
 			return last, ctx.Err()
 		}
 	}
@@ -1136,18 +1133,16 @@ func rpcKeyboardReportMulti(ctx context.Context, macro []hidrpc.KeyboardMacro) (
 }
 
 var rpcHandlers = map[string]RPCHandler{
-	"ping":               {Func: rpcPing},
-	"reboot":             {Func: rpcReboot, Params: []string{"force"}},
-	"getDeviceID":        {Func: rpcGetDeviceID},
-	"deregisterDevice":   {Func: rpcDeregisterDevice},
-	"getCloudState":      {Func: rpcGetCloudState},
-	"getNetworkState":    {Func: rpcGetNetworkState},
-	"getNetworkSettings": {Func: rpcGetNetworkSettings},
-	"setNetworkSettings": {Func: rpcSetNetworkSettings, Params: []string{"settings"}},
-	"renewDHCPLease":     {Func: rpcRenewDHCPLease},
-	"keyboardReport":     {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
-	// "keyboardReportMulti":       {Func: rpcKeyboardReportMultiWrapper, Params: []string{"macro"}},
-	// "cancelKeyboardReportMulti": {Func: rpcCancelKeyboardReportMulti},
+	"ping":                   {Func: rpcPing},
+	"reboot":                 {Func: rpcReboot, Params: []string{"force"}},
+	"getDeviceID":            {Func: rpcGetDeviceID},
+	"deregisterDevice":       {Func: rpcDeregisterDevice},
+	"getCloudState":          {Func: rpcGetCloudState},
+	"getNetworkState":        {Func: rpcGetNetworkState},
+	"getNetworkSettings":     {Func: rpcGetNetworkSettings},
+	"setNetworkSettings":     {Func: rpcSetNetworkSettings, Params: []string{"settings"}},
+	"renewDHCPLease":         {Func: rpcRenewDHCPLease},
+	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
 	"getKeyboardLedState":    {Func: rpcGetKeyboardLedState},
 	"keypressReport":         {Func: rpcKeypressReport, Params: []string{"key", "press"}},
 	"getKeyDownState":        {Func: rpcGetKeysDownState},

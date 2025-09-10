@@ -182,3 +182,20 @@ func (m *Message) MouseReport() (MouseReport, error) {
 		Button: uint8(m.d[2]),
 	}, nil
 }
+
+type KeyboardMacroStateReport struct {
+	State   bool
+	IsPaste bool
+}
+
+// KeyboardMacroStateReport returns the keyboard macro state report from the message.
+func (m *Message) KeyboardMacroStateReport() (KeyboardMacroStateReport, error) {
+	if m.t != TypeKeyboardMacroStateReport {
+		return KeyboardMacroStateReport{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	return KeyboardMacroStateReport{
+		State:   m.d[0] == uint8(1),
+		IsPaste: m.d[1] == uint8(1),
+	}, nil
+}

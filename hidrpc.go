@@ -1,7 +1,6 @@
 package kvm
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -38,7 +37,10 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			logger.Warn().Err(err).Msg("failed to get keyboard macro report")
 			return
 		}
-		_, rpcErr = rpcKeyboardReportMulti(context.Background(), keyboardMacroReport.Macro)
+		_, rpcErr = rpcExecuteKeyboardMacro(keyboardMacroReport.Macro)
+	case hidrpc.TypeCancelKeyboardMacroReport:
+		rpcCancelKeyboardMacro()
+		return
 	case hidrpc.TypePointerReport:
 		pointerReport, err := message.PointerReport()
 		if err != nil {
@@ -138,6 +140,8 @@ func reportHidRPC(params any, session *Session) {
 		message, err = hidrpc.NewKeyboardLedMessage(params).Marshal()
 	case usbgadget.KeysDownState:
 		message, err = hidrpc.NewKeydownStateMessage(params).Marshal()
+	case hidrpc.KeyboardMacroStateReport:
+		message, err = hidrpc.NewKeyboardMacroStateMessage(params.State, params.IsPaste).Marshal()
 	default:
 		err = fmt.Errorf("unknown HID RPC message type: %T", params)
 	}
@@ -171,6 +175,13 @@ func (s *Session) reportHidRPCKeyboardLedState(state usbgadget.KeyboardState) {
 func (s *Session) reportHidRPCKeysDownState(state usbgadget.KeysDownState) {
 	if !s.hidRPCAvailable {
 		writeJSONRPCEvent("keysDownState", state, s)
+	}
+	reportHidRPC(state, s)
+}
+
+func (s *Session) reportHidRPCKeyboardMacroState(state hidrpc.KeyboardMacroStateReport) {
+	if !s.hidRPCAvailable {
+		writeJSONRPCEvent("keyboardMacroState", state, s)
 	}
 	reportHidRPC(state, s)
 }

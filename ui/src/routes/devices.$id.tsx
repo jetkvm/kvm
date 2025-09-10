@@ -580,7 +580,7 @@ export default function KvmIdRoute() {
   const { setNetworkState} = useNetworkStateStore();
   const { setHdmiState } = useVideoStore();
   const { 
-    keyboardLedState,  setKeyboardLedState, setPasteModeEnabled,
+    keyboardLedState,  setKeyboardLedState,
     keysDownState, setKeysDownState, setUsbState,
   } = useHidStore();
 
@@ -596,12 +596,6 @@ export default function KvmIdRoute() {
       const usbState = resp.params as unknown as USBStates;
       console.debug("Setting USB state", usbState);
       setUsbState(usbState);
-    }
-
-    if (resp.method === "keyboardReportMultiState") {
-      const reportMultiState = resp.params as unknown as boolean;
-      console.debug("Setting keyboard report multi state", reportMultiState);
-      setPasteModeEnabled(reportMultiState);
     }
 
     if (resp.method === "videoInputState") {

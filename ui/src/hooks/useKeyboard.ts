@@ -9,13 +9,13 @@ import {
 } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidRpc } from "@/hooks/useHidRpc";
-import { KeyboardLedStateMessage, KeyboardMacro, KeysDownStateMessage } from "@/hooks/hidRpc";
+import { KeyboardLedStateMessage, KeyboardMacroStateReportMessage, KeyboardMacroStep, KeysDownStateMessage } from "@/hooks/hidRpc";
 import { hidKeyToModifierMask, keys, modifiers } from "@/keyboardMappings";
 
 export default function useKeyboard() {
   const { send } = useJsonRpc();
   const { rpcDataChannel } = useRTCStore();
-  const { keysDownState, setKeysDownState, setKeyboardLedState } = useHidStore();
+  const { keysDownState, setKeysDownState, setKeyboardLedState, setPasteModeEnabled } = useHidStore();
 
   // INTRODUCTION: The earlier version of the JetKVM device shipped with all keyboard state
   // being tracked on the browser/client-side. When adding the keyPressReport API to the
@@ -33,6 +33,7 @@ export default function useKeyboard() {
     reportKeyboardEvent: sendKeyboardEventHidRpc,
     reportKeypressEvent: sendKeypressEventHidRpc,
     reportKeyboardMacroEvent: sendKeyboardMacroEventHidRpc,
+    cancelOngoingKeyboardMacro: cancelOngoingKeyboardMacroHidRpc,
     rpcHidReady,
   } = useHidRpc(message => {
     switch (message.constructor) {
@@ -42,6 +43,10 @@ export default function useKeyboard() {
       case KeyboardLedStateMessage:
         setKeyboardLedState((message as KeyboardLedStateMessage).keyboardLedState);
         break;
+      case KeyboardMacroStateReportMessage:
+        if (!(message as KeyboardMacroStateReportMessage).isPaste) break;
+        setPasteModeEnabled((message as KeyboardMacroStateReportMessage).state);
+        break;  
       default:
         break;
     }
@@ -101,7 +106,7 @@ export default function useKeyboard() {
   const executeMacro = async (
     steps: { keys: string[] | null; modifiers: string[] | null; delay: number }[],
   ) => {
-    const macro: KeyboardMacro[] = [];
+    const macro: KeyboardMacroStep[] = [];
 
     for (const [_, step] of steps.entries()) {
       const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
@@ -120,12 +125,9 @@ export default function useKeyboard() {
   };
 
   const cancelExecuteMacro = useCallback(async () => {
-    send("cancelKeyboardReportMulti", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        console.error(`Failed to cancel keyboard report multi`, resp.error);
-      }
-    });
-  }, [send]);
+    if (!rpcHidReady) return;
+    cancelOngoingKeyboardMacroHidRpc();
+  }, [rpcHidReady, cancelOngoingKeyboardMacroHidRpc]);
 
   // handleKeyPress is used to handle a key press or release event.
   // This function handle both key press and key release events.

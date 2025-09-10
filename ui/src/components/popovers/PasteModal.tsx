@@ -41,9 +41,6 @@ export default function PasteModal() {
   }, [setDisableVideoFocusTrap, cancelExecuteMacro]);
 
   const onConfirmPaste = useCallback(async () => {
-    // setPasteModeEnabled(false);
-    // setDisableVideoFocusTrap(false);
-
     if (!TextAreaRef.current || !selectedKeyboard) return;
 
     const text = TextAreaRef.current.value;

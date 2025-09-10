@@ -8,8 +8,10 @@ export const HID_RPC_MESSAGE_TYPES = {
     KeypressReport: 0x05,
     MouseReport: 0x06,
     KeyboardMacroReport: 0x07,
+    CancelKeyboardMacroReport: 0x08,
     KeyboardLedState: 0x32,
     KeysDownState: 0x33,
+    KeyboardMacroStateReport: 0x34,
 }
 
 export type HidRpcMessageType = typeof HID_RPC_MESSAGE_TYPES[keyof typeof HID_RPC_MESSAGE_TYPES];
@@ -211,22 +213,22 @@ export class KeyboardReportMessage extends RpcMessage {
     }
 }
 
-export interface KeyboardMacro extends KeysDownState {
+export interface KeyboardMacroStep extends KeysDownState {
     delay: number;
 }
 
 export class KeyboardMacroReportMessage extends RpcMessage {
     isPaste: boolean;
     length: number;
-    macro: KeyboardMacro[];
+    steps: KeyboardMacroStep[];
 
     KEYS_LENGTH = 6;
 
-    constructor(isPaste: boolean, length: number, macro: KeyboardMacro[]) {
+    constructor(isPaste: boolean, length: number, steps: KeyboardMacroStep[]) {
         super(HID_RPC_MESSAGE_TYPES.KeyboardMacroReport);
         this.isPaste = isPaste;
         this.length = length;
-        this.macro = macro;
+        this.steps = steps;
     }
 
     marshal(): Uint8Array {
@@ -238,7 +240,7 @@ export class KeyboardMacroReportMessage extends RpcMessage {
 
         let dataBody = new Uint8Array();
 
-        for (const step of this.macro) {
+        for (const step of this.steps) {
             if (!withinUint8Range(step.modifier)) {
                 throw new Error(`Modifier ${step.modifier} is not within the uint8 range`);
             }
@@ -266,6 +268,33 @@ export class KeyboardMacroReportMessage extends RpcMessage {
             dataBody = new Uint8Array([...dataBody, ...macroBinary]);
         }
         return new Uint8Array([...dataHeader, ...dataBody]);
+    }
+}
+
+export class KeyboardMacroStateReportMessage extends RpcMessage {
+    state: boolean;
+    isPaste: boolean;
+
+    constructor(state: boolean, isPaste: boolean) {
+        super(HID_RPC_MESSAGE_TYPES.KeyboardMacroStateReport);
+        this.state = state;
+        this.isPaste = isPaste;
+    }
+
+    marshal(): Uint8Array {
+        return new Uint8Array([
+            this.messageType,
+            this.state ? 1 : 0,
+            this.isPaste ? 1 : 0,
+        ]);
+    }
+
+    public static unmarshal(data: Uint8Array): KeyboardMacroStateReportMessage | undefined {
+        if (data.length < 1) {
+            throw new Error(`Invalid keyboard macro state report message length: ${data.length}`);
+        }
+
+        return new KeyboardMacroStateReportMessage(data[0] === 1, data[1] === 1);
     }
 }
 
@@ -339,6 +368,17 @@ export class PointerReportMessage extends RpcMessage {
     }
 }
 
+export class CancelKeyboardMacroReportMessage extends RpcMessage {
+
+    constructor() {
+        super(HID_RPC_MESSAGE_TYPES.CancelKeyboardMacroReport);
+    }
+
+    marshal(): Uint8Array {
+        return new Uint8Array([this.messageType]);
+    }
+}
+
 export class MouseReportMessage extends RpcMessage {
     dx: number;
     dy: number;
@@ -367,6 +407,9 @@ export const messageRegistry = {
     [HID_RPC_MESSAGE_TYPES.KeyboardLedState]: KeyboardLedStateMessage,
     [HID_RPC_MESSAGE_TYPES.KeyboardReport]: KeyboardReportMessage,
     [HID_RPC_MESSAGE_TYPES.KeypressReport]: KeypressReportMessage,
+    [HID_RPC_MESSAGE_TYPES.KeyboardMacroReport]: KeyboardMacroReportMessage,
+    [HID_RPC_MESSAGE_TYPES.CancelKeyboardMacroReport]: CancelKeyboardMacroReportMessage,
+    [HID_RPC_MESSAGE_TYPES.KeyboardMacroStateReport]: KeyboardMacroStateReportMessage,
 }
 
 export const unmarshalHidRpcMessage = (data: Uint8Array): RpcMessage | undefined => {
