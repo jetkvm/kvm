@@ -90,6 +90,7 @@ export default function SettingsMouseRoute() {
     send("getJigglerState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const isEnabled = resp.result as boolean;
+      console.log("Jiggler is enabled:", isEnabled);
 
       // If the jiggler is disabled, set the selected option to "disabled" and nothing else
       if (!isEnabled) return setSelectedJigglerOption("disabled");
