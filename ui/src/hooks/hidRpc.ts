@@ -232,15 +232,20 @@ export class KeyboardMacroReportMessage extends RpcMessage {
     }
 
     marshal(): Uint8Array {
-        const dataHeader = new Uint8Array([
+        // validate if length is correct
+        if (this.length !== this.steps.length) {
+            throw new Error(`Length ${this.length} is not equal to the number of steps ${this.steps.length}`);
+        }
+
+        const data = new Uint8Array(this.length * 9 + 6);
+        data.set(new Uint8Array([
             this.messageType,
             this.isPaste ? 1 : 0,
             ...fromUint32toUint8(this.length),
-        ]);
+        ]), 0);
 
-        let dataBody = new Uint8Array();
-
-        for (const step of this.steps) {
+        for (let i = 0; i < this.length; i++) {
+            const step = this.steps[i];
             if (!withinUint8Range(step.modifier)) {
                 throw new Error(`Modifier ${step.modifier} is not within the uint8 range`);
             }
@@ -264,10 +269,13 @@ export class KeyboardMacroReportMessage extends RpcMessage {
                 ...keys,
                 ...fromUint16toUint8(step.delay),
             ]);
+            const offset = 6 + i * 9;
 
-            dataBody = new Uint8Array([...dataBody, ...macroBinary]);
+            
+            data.set(macroBinary, offset);
         }
-        return new Uint8Array([...dataHeader, ...dataBody]);
+
+        return data;
     }
 }
 

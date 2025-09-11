@@ -75,7 +75,6 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     (macro: KeyboardMacroStep[]) => {
       const d = new KeyboardMacroReportMessage(false, macro.length, macro);
       sendMessage(d);
-      console.log("Sent keyboard macro report", d, d.marshal());
     },
     [sendMessage],
   );
