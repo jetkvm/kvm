@@ -9,12 +9,15 @@ import {
   KeyboardMacroStep,
   KeyboardMacroReportMessage,
   KeyboardReportMessage,
+  KeypressKeepAliveMessage,
   KeypressReportMessage,
   MouseReportMessage,
   PointerReportMessage,
   RpcMessage,
   unmarshalHidRpcMessage,
 } from "./hidRpc";
+
+const KEEPALIVE_MESSAGE = new KeypressKeepAliveMessage();
 
 export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
   const { rpcHidChannel, setRpcHidProtocolVersion, rpcHidProtocolVersion, hidRpcDisabled } = useRTCStore();
@@ -88,6 +91,10 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     },
     [sendMessage],
   );
+
+  const reportKeypressKeepAlive = useCallback(() => {
+    sendMessage(KEEPALIVE_MESSAGE);
+  }, [sendMessage]);
 
   const sendHandshake = useCallback(() => {
     if (hidRpcDisabled) return;
@@ -171,6 +178,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     reportRelMouseEvent,
     reportKeyboardMacroEvent,
     cancelOngoingKeyboardMacro,
+    reportKeypressKeepAlive,
     rpcHidProtocolVersion,
     rpcHidReady,
     rpcHidStatus,

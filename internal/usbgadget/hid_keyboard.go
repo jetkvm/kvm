@@ -173,33 +173,47 @@ func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 	u.onKeysDownChange = &f
 }
 
-const autoReleaseKeyboardInterval = time.Millisecond * 300
+const autoReleaseKeyboardInterval = time.Millisecond * 450
 
 func (u *UsbGadget) scheduleAutoRelease(key byte) {
-	u.keysAutoReleaseLock.Lock()
-	defer u.keysAutoReleaseLock.Unlock()
+	u.kbdAutoReleaseLock.Lock()
+	defer u.kbdAutoReleaseLock.Unlock()
 
-	if u.keysAutoReleaseTimer != nil {
-		u.keysAutoReleaseTimer.Stop()
+	if u.kbdAutoReleaseTimer != nil {
+		u.kbdAutoReleaseTimer.Stop()
 	}
 
-	u.keysAutoReleaseTimer = time.AfterFunc(autoReleaseKeyboardInterval, func() {
+	u.kbdAutoReleaseTimer = time.AfterFunc(autoReleaseKeyboardInterval, func() {
 		u.performAutoRelease(key)
 	})
 }
 
 func (u *UsbGadget) cancelAutoRelease() {
-	u.keysAutoReleaseLock.Lock()
-	defer u.keysAutoReleaseLock.Unlock()
+	u.kbdAutoReleaseLock.Lock()
+	defer u.kbdAutoReleaseLock.Unlock()
 
-	if u.keysAutoReleaseTimer != nil {
-		u.keysAutoReleaseTimer.Stop()
+	if u.kbdAutoReleaseTimer != nil {
+		u.kbdAutoReleaseTimer.Stop()
 	}
 }
 
+func (u *UsbGadget) DelayAutoRelease() {
+	u.kbdAutoReleaseLock.Lock()
+	defer u.kbdAutoReleaseLock.Unlock()
+
+	u.log.Info().Msg("delaying auto-release")
+
+	if u.kbdAutoReleaseTimer == nil {
+		return
+	}
+
+	u.log.Info().Msg("resetting auto-release timer")
+	u.kbdAutoReleaseTimer.Reset(autoReleaseKeyboardInterval)
+}
+
 func (u *UsbGadget) performAutoRelease(key byte) {
-	u.keysAutoReleaseLock.Lock()
-	defer u.keysAutoReleaseLock.Unlock()
+	u.kbdAutoReleaseLock.Lock()
+	defer u.kbdAutoReleaseLock.Unlock()
 
 	select {
 	case <-u.keyboardStateCtx.Done():
@@ -207,12 +221,12 @@ func (u *UsbGadget) performAutoRelease(key byte) {
 	default:
 	}
 
-	_, err := u.KeypressReport(key, false)
+	_, err := u.keypressReport(key, false, false)
 	if err != nil {
 		u.log.Warn().Uint8("key", key).Msg("failed to auto-release keyboard key")
 	}
 
-	u.keysAutoReleaseTimer = nil
+	u.kbdAutoReleaseTimer = nil
 
 	u.log.Trace().Uint8("key", key).Msg("auto release performed")
 }
@@ -375,10 +389,20 @@ var KeyCodeToMaskMap = map[byte]byte{
 	RightSuper:   ModifierMaskRightSuper,
 }
 
-func (u *UsbGadget) KeypressReport(key byte, press bool) (KeysDownState, error) {
+func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (KeysDownState, error) {
+	ll := u.log.Info().Str("component", "kbd")
+	ll.Uint8("key", key).Msg("locking keyboardLock")
+
 	u.keyboardLock.Lock()
-	defer u.keyboardLock.Unlock()
+	defer func() {
+		u.keyboardLock.Unlock()
+		ll.Uint8("key", key).Msg("unlocked keyboardLock")
+	}()
+
+	ll.Uint8("key", key).Msg("resetting user input time")
 	defer u.resetUserInputTime()
+
+	ll.Uint8("key", key).Msg("locked keyboardLock")
 
 	// IMPORTANT: This code parallels the logic in the kernel's hid-gadget driver
 	// for handling key presses and releases. It ensures that the USB gadget
@@ -437,16 +461,54 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) (KeysDownState, error) 
 		}
 	}
 
+	ll.Uint8("key", key).Msg("checking if auto-release is enabled")
+
+	// if autoRelease {
+	// 	u.kbdAutoReleaseLock.Lock()
+	// 	u.kbdAutoReleaseLock.Unlock()
+	// 	ll.Uint8("key", key).Msg("locking kbdAutoReleaseLock, autoReleasLastKey reset")
+
+	// 	defer func() {
+	// 		ll.Uint8("key", key).Msg("unlocked kbdAutoReleaseLock, autoReleasLastKey reset")
+	// 	}()
+
+	// 	if u.kbdAutoReleaseLastKey == key {
+	// 		ll.Uint8("key", key).Msg("key already released by auto-release, skipping")
+	// 		u.kbdAutoReleaseLastKey = 0
+
+	// 		return u.UpdateKeysDown(modifier, keys), nil
+	// 	}
+	// }
+
+	ll.Uint8("key", key).Msg("writing keypress report to hidg0")
+
 	err := u.keyboardWriteHidFile(modifier, keys)
 	if err != nil {
 		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keypress report to hidg0")
 	}
 
 	if press {
-		u.scheduleAutoRelease(key)
+		{
+			u.kbdAutoReleaseLock.Lock()
+			u.kbdAutoReleaseLastKey = key
+			u.kbdAutoReleaseLock.Unlock()
+		}
+
+		if autoRelease {
+			ll.Uint8("key", key).Msg("scheduling auto-release")
+			u.scheduleAutoRelease(key)
+		}
 	} else {
-		u.cancelAutoRelease()
+		if autoRelease {
+			ll.Uint8("key", key).Msg("canceling auto-release")
+			u.cancelAutoRelease()
+			ll.Uint8("key", key).Msg("auto-release canceled")
+		}
 	}
 
 	return u.UpdateKeysDown(modifier, keys), err
+}
+
+func (u *UsbGadget) KeypressReport(key byte, press bool) (KeysDownState, error) {
+	return u.keypressReport(key, press, true)
 }

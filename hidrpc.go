@@ -41,6 +41,8 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 	case hidrpc.TypeCancelKeyboardMacroReport:
 		rpcCancelKeyboardMacro()
 		return
+	case hidrpc.TypeKeypressKeepAliveReport:
+		gadget.DelayAutoRelease()
 	case hidrpc.TypePointerReport:
 		pointerReport, err := message.PointerReport()
 		if err != nil {

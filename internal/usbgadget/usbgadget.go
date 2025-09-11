@@ -68,8 +68,9 @@ type UsbGadget struct {
 	keyboardState byte          // keyboard latched state (NumLock, CapsLock, ScrollLock, Compose, Kana)
 	keysDownState KeysDownState // keyboard dynamic state (modifier keys and pressed keys)
 
-	keysAutoReleaseLock  sync.Mutex
-	keysAutoReleaseTimer *time.Timer
+	kbdAutoReleaseLock    sync.Mutex
+	kbdAutoReleaseTimer   *time.Timer
+	kbdAutoReleaseLastKey byte
 
 	keyboardStateLock   sync.Mutex
 	keyboardStateCtx    context.Context
@@ -161,12 +162,12 @@ func (u *UsbGadget) Close() error {
 	}
 
 	// Stop auto-release timer
-	u.keysAutoReleaseLock.Lock()
-	if u.keysAutoReleaseTimer != nil {
-		u.keysAutoReleaseTimer.Stop()
-		u.keysAutoReleaseTimer = nil
+	u.kbdAutoReleaseLock.Lock()
+	if u.kbdAutoReleaseTimer != nil {
+		u.kbdAutoReleaseTimer.Stop()
+		u.kbdAutoReleaseTimer = nil
 	}
-	u.keysAutoReleaseLock.Unlock()
+	u.kbdAutoReleaseLock.Unlock()
 
 	// Close HID files
 	if u.keyboardHidFile != nil {

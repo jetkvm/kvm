@@ -6,6 +6,7 @@ export const HID_RPC_MESSAGE_TYPES = {
     PointerReport: 0x03,
     WheelReport: 0x04,
     KeypressReport: 0x05,
+    KeypressKeepAliveReport: 0x09,
     MouseReport: 0x06,
     KeyboardMacroReport: 0x07,
     CancelKeyboardMacroReport: 0x08,
@@ -409,6 +410,16 @@ export class MouseReportMessage extends RpcMessage {
     }
 }
 
+export class KeypressKeepAliveMessage extends RpcMessage {
+    constructor() {
+        super(HID_RPC_MESSAGE_TYPES.KeypressKeepAliveReport);
+    }
+
+    marshal(): Uint8Array {
+        return new Uint8Array([this.messageType]);
+    }
+}
+
 export const messageRegistry = {
     [HID_RPC_MESSAGE_TYPES.Handshake]: HandshakeMessage,
     [HID_RPC_MESSAGE_TYPES.KeysDownState]: KeysDownStateMessage,
@@ -418,6 +429,7 @@ export const messageRegistry = {
     [HID_RPC_MESSAGE_TYPES.KeyboardMacroReport]: KeyboardMacroReportMessage,
     [HID_RPC_MESSAGE_TYPES.CancelKeyboardMacroReport]: CancelKeyboardMacroReportMessage,
     [HID_RPC_MESSAGE_TYPES.KeyboardMacroState]: KeyboardMacroStateMessage,
+    [HID_RPC_MESSAGE_TYPES.KeypressKeepAliveReport]: KeypressKeepAliveMessage,
 }
 
 export const unmarshalHidRpcMessage = (data: Uint8Array): RpcMessage | undefined => {

@@ -44,6 +44,9 @@ export default function useKeyboard() {
     abortController.current = ac;
   }, []);
 
+  // Keepalive timer management
+  const keepAliveTimerRef = useRef<number | null>(null);
+
   // INTRODUCTION: The earlier version of the JetKVM device shipped with all keyboard state
   // being tracked on the browser/client-side. When adding the keyPressReport API to the
   // device-side code, we have to still support the situation where the browser/client-side code
@@ -61,6 +64,7 @@ export default function useKeyboard() {
     reportKeypressEvent: sendKeypressEventHidRpc,
     reportKeyboardMacroEvent: sendKeyboardMacroEventHidRpc,
     cancelOngoingKeyboardMacro: cancelOngoingKeyboardMacroHidRpc,
+    reportKeypressKeepAlive: sendKeypressKeepAliveHidRpc,
     rpcHidReady,
   } = useHidRpc(message => {
     switch (message.constructor) {
@@ -223,6 +227,20 @@ export default function useKeyboard() {
   // If the keyPressReport API is not available, it simulates the device-side key
   // handling for legacy devices and updates the keysDownState accordingly.
   // It then sends the full keyboard state to the device.
+
+  const sendKeypress = useCallback(
+    (key: number, press: boolean) => {
+      cancelKeepAlive();
+
+      sendKeypressEventHidRpc(key, press);
+
+      if (press) {
+        scheduleKeepAlive();
+      }
+    },
+    [sendKeypressEventHidRpc, scheduleKeepAlive, cancelKeepAlive],
+  );
+
   const handleKeyPress = useCallback(
     async (key: number, press: boolean) => {
       if (rpcDataChannel?.readyState !== "open" && !rpcHidReady) return;
@@ -235,7 +253,7 @@ export default function useKeyboard() {
         // Older device version doesn't support this API, so we will switch to local key handling
         // In that case we will switch to local key handling and update the keysDownState
         // in client/browser-side code using simulateDeviceSideKeyHandlingForLegacyDevices.
-        sendKeypressEventHidRpc(key, press);
+        sendKeypress(key, press);
       } else {
         // Older backends don't support the hidRpc API, so we need:
         // 1. Calculate the state
@@ -261,6 +279,9 @@ export default function useKeyboard() {
       keysDownState,
       handleLegacyKeyboardReport,
       resetKeyboardState,
+      rpcDataChannel?.readyState,
+      sendKeyboardEvent,
+      sendKeypress,
     ],
   );
 
@@ -329,5 +350,10 @@ export default function useKeyboard() {
     return { modifier: modifiers, keys };
   }
 
-  return { handleKeyPress, resetKeyboardState, executeMacro, cancelExecuteMacro };
+  // Cleanup function to cancel keepalive timer
+  const cleanup = useCallback(() => {
+    cancelKeepAlive();
+  }, [cancelKeepAlive]);
+
+  return { handleKeyPress, resetKeyboardState, executeMacro, cleanup, cancelExecuteMacro };
 }
