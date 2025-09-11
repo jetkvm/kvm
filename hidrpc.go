@@ -66,8 +66,13 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 	}
 }
 
-func onHidMessage(data []byte, session *Session) {
-	scopedLogger := hidRPCLogger.With().Bytes("data", data).Logger()
+func onHidMessage(msg hidQueueMessage, session *Session) {
+	data := msg.Data
+
+	scopedLogger := hidRPCLogger.With().
+		Str("channel", msg.channel).
+		Bytes("data", data).
+		Logger()
 	scopedLogger.Debug().Msg("HID RPC message received")
 
 	if len(data) < 1 {

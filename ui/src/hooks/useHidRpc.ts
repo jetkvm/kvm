@@ -22,12 +22,14 @@ const KEEPALIVE_MESSAGE = new KeypressKeepAliveMessage();
 interface sendMessageParams {
   ignoreHandshakeState?: boolean;
   useUnreliableChannel?: boolean;
+  requireOrdered?: boolean;
 }
 
 export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
   const {
     rpcHidChannel,
     rpcHidUnreliableChannel,
+    rpcHidUnreliableNonOrderedChannel,
     setRpcHidProtocolVersion,
     rpcHidProtocolVersion, hidRpcDisabled,
   } = useRTCStore();
@@ -41,6 +43,10 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     return rpcHidUnreliableChannel?.readyState === "open" && rpcHidProtocolVersion !== null;
   }, [rpcHidUnreliableChannel, rpcHidProtocolVersion]);
 
+  const rpcHidUnreliableNonOrderedReady = useMemo(() => {
+    return rpcHidUnreliableNonOrderedChannel?.readyState === "open" && rpcHidProtocolVersion !== null;
+  }, [rpcHidUnreliableNonOrderedChannel, rpcHidProtocolVersion]);
+
   const rpcHidStatus = useMemo(() => {
     if (hidRpcDisabled) return "disabled";
 
@@ -50,7 +56,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     return `ready (v${rpcHidProtocolVersion}${rpcHidUnreliableReady ? "+u" : ""})`;
   }, [rpcHidChannel, rpcHidUnreliableReady, rpcHidProtocolVersion, hidRpcDisabled]);
 
-  const sendMessage = useCallback((message: RpcMessage, { ignoreHandshakeState, useUnreliableChannel }: sendMessageParams = {}) => {
+  const sendMessage = useCallback((message: RpcMessage, { ignoreHandshakeState, useUnreliableChannel, requireOrdered = true }: sendMessageParams = {}) => {
     if (hidRpcDisabled) return;
     if (rpcHidChannel?.readyState !== "open") return;
     if (!rpcHidReady && !ignoreHandshakeState) return;
@@ -63,12 +69,24 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     }
     if (!data) return;
 
-    if (useUnreliableChannel && rpcHidUnreliableReady) {
-      rpcHidUnreliableChannel?.send(data as unknown as ArrayBuffer);
-    } else {
-      rpcHidChannel?.send(data as unknown as ArrayBuffer);
+    if (useUnreliableChannel) {
+      if (requireOrdered && rpcHidUnreliableReady) {
+        rpcHidUnreliableChannel?.send(data as unknown as ArrayBuffer);
+      } else if (!requireOrdered && rpcHidUnreliableNonOrderedReady) {
+        rpcHidUnreliableNonOrderedChannel?.send(data as unknown as ArrayBuffer);
+      }
+      return;
     }
-  }, [rpcHidChannel, rpcHidReady, hidRpcDisabled, rpcHidUnreliableChannel, rpcHidUnreliableReady]);
+
+    rpcHidChannel?.send(data as unknown as ArrayBuffer);
+  }, [
+    rpcHidChannel,
+    rpcHidUnreliableChannel,
+    hidRpcDisabled, rpcHidUnreliableNonOrderedChannel,
+    rpcHidReady,
+    rpcHidUnreliableReady,
+    rpcHidUnreliableNonOrderedReady,
+  ]);
 
   const reportKeyboardEvent = useCallback(
     (keys: number[], modifier: number) => {
@@ -85,7 +103,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
 
   const reportAbsMouseEvent = useCallback(
     (x: number, y: number, buttons: number) => {
-      sendMessage(new PointerReportMessage(x, y, buttons));
+      sendMessage(new PointerReportMessage(x, y, buttons), { useUnreliableChannel: true });
     },
     [sendMessage],
   );
@@ -112,7 +130,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
   );
 
   const reportKeypressKeepAlive = useCallback(() => {
-    sendMessage(KEEPALIVE_MESSAGE, { useUnreliableChannel: true });
+    sendMessage(KEEPALIVE_MESSAGE, { useUnreliableChannel: true, requireOrdered: false });
   }, [sendMessage]);
 
   const sendHandshake = useCallback(() => {

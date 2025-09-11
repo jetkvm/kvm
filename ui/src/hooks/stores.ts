@@ -117,6 +117,9 @@ export interface RTCState {
   rpcHidUnreliableChannel: RTCDataChannel | null;
   setRpcHidUnreliableChannel: (channel: RTCDataChannel) => void;
 
+  rpcHidUnreliableNonOrderedChannel: RTCDataChannel | null;
+  setRpcHidUnreliableNonOrderedChannel: (channel: RTCDataChannel) => void;
+
   peerConnectionState: RTCPeerConnectionState | null;
   setPeerConnectionState: (state: RTCPeerConnectionState) => void;
 
@@ -174,6 +177,9 @@ export const useRTCStore = create<RTCState>(set => ({
 
   rpcHidUnreliableChannel: null,
   setRpcHidUnreliableChannel: (channel: RTCDataChannel) => set({ rpcHidUnreliableChannel: channel }),
+
+  rpcHidUnreliableNonOrderedChannel: null,
+  setRpcHidUnreliableNonOrderedChannel: (channel: RTCDataChannel) => set({ rpcHidUnreliableNonOrderedChannel: channel }),
 
   transceiver: null,
   setTransceiver: (transceiver: RTCRtpTransceiver) => set({ transceiver }),
