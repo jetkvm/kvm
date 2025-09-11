@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
+	"github.com/vearutop/statigz"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -66,6 +68,11 @@ type SetupRequest struct {
 	Password      string `json:"password,omitempty"`
 }
 
+var cachableFileExtensions = []string{
+	".jpg", ".jpeg", ".png", ".gif", ".webp", ".woff2",
+	".ico",
+}
+
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
@@ -75,23 +82,36 @@ func setupRouter() *gin.Engine {
 			return *ginLogger
 		}),
 	))
+
 	staticFS, _ := fs.Sub(staticFiles, "static")
+	staticFileServer := http.StripPrefix("/static", statigz.FileServer(
+		staticFS.(fs.ReadDirFS),
+	))
 
 	// Add a custom middleware to set cache headers for images
 	// This is crucial for optimizing the initial welcome screen load time
 	// By enabling caching, we ensure that pre-loaded images are stored in the browser cache
 	// This allows for a smoother enter animation and improved user experience on the welcome screen
 	r.Use(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/static/assets/immutable/") {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable") // Cache for 1 year
+			c.Next()
+			return
+		}
+
 		if strings.HasPrefix(c.Request.URL.Path, "/static/") {
 			ext := filepath.Ext(c.Request.URL.Path)
-			if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".webp" {
+			if slices.Contains(cachableFileExtensions, ext) {
 				c.Header("Cache-Control", "public, max-age=300") // Cache for 5 minutes
 			}
 		}
+
 		c.Next()
 	})
 
-	r.StaticFS("/static", http.FS(staticFS))
+	r.Any("/static/*w", func(c *gin.Context) {
+		staticFileServer.ServeHTTP(c.Writer, c.Request)
+	})
 	r.POST("/auth/login-local", handleLogin)
 
 	// We use this to determine if the device is setup

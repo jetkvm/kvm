@@ -17,16 +17,20 @@ type JigglerConfig struct {
 	Timezone               string `json:"timezone,omitempty"`
 }
 
-var jigglerEnabled = false
 var jobDelta time.Duration = 0
 var scheduler gocron.Scheduler = nil
 
-func rpcSetJigglerState(enabled bool) {
-	jigglerEnabled = enabled
+func rpcSetJigglerState(enabled bool) error {
+	config.JigglerEnabled = enabled
+	err := SaveConfig()
+	if err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+	return nil
 }
 
 func rpcGetJigglerState() bool {
-	return jigglerEnabled
+	return config.JigglerEnabled
 }
 
 func rpcGetTimezones() []string {
@@ -118,7 +122,7 @@ func runJigglerCronTab() error {
 }
 
 func runJiggler() {
-	if jigglerEnabled {
+	if config.JigglerEnabled {
 		if config.JigglerConfig.JitterPercentage != 0 {
 			jitter := calculateJitterDuration(jobDelta)
 			time.Sleep(jitter)
