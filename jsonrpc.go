@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1102,6 +1103,12 @@ func rpcCancelKeyboardMacro() {
 	cancelKeyboardMacro()
 }
 
+var keyboardClearStateKeys = make([]byte, 6)
+
+func isClearKeyStep(step hidrpc.KeyboardMacro) bool {
+	return step.Modifier == 0 && bytes.Equal(step.Keys, keyboardClearStateKeys)
+}
+
 func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro) (usbgadget.KeysDownState, error) {
 	var last usbgadget.KeysDownState
 	var err error
@@ -1117,13 +1124,20 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 			return last, err
 		}
 
+		// notify the device that the keyboard state is being cleared
+		if isClearKeyStep(step) {
+			gadget.UpdateKeysDown(0, keyboardClearStateKeys)
+		}
+
 		// Use context-aware sleep that can be cancelled
 		select {
 		case <-time.After(delay):
 			// Sleep completed normally
 		case <-ctx.Done():
 			// make sure keyboard state is reset
-			rpcKeyboardReport(0, make([]byte, 6))
+			rpcKeyboardReport(0, keyboardClearStateKeys)
+			gadget.UpdateKeysDown(0, keyboardClearStateKeys)
+
 			logger.Debug().Int("step", i).Msg("Keyboard macro cancelled during sleep")
 			return last, ctx.Err()
 		}
