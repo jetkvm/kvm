@@ -390,19 +390,10 @@ var KeyCodeToMaskMap = map[byte]byte{
 }
 
 func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (KeysDownState, error) {
-	ll := u.log.Info().Str("component", "kbd")
-	ll.Uint8("key", key).Msg("locking keyboardLock")
-
 	u.keyboardLock.Lock()
-	defer func() {
-		u.keyboardLock.Unlock()
-		ll.Uint8("key", key).Msg("unlocked keyboardLock")
-	}()
+	defer u.keyboardLock.Unlock()
 
-	ll.Uint8("key", key).Msg("resetting user input time")
 	defer u.resetUserInputTime()
-
-	ll.Uint8("key", key).Msg("locked keyboardLock")
 
 	// IMPORTANT: This code parallels the logic in the kernel's hid-gadget driver
 	// for handling key presses and releases. It ensures that the USB gadget
@@ -461,8 +452,6 @@ func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (Keys
 		}
 	}
 
-	ll.Uint8("key", key).Msg("checking if auto-release is enabled")
-
 	// if autoRelease {
 	// 	u.kbdAutoReleaseLock.Lock()
 	// 	u.kbdAutoReleaseLock.Unlock()
@@ -480,8 +469,6 @@ func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (Keys
 	// 	}
 	// }
 
-	ll.Uint8("key", key).Msg("writing keypress report to hidg0")
-
 	err := u.keyboardWriteHidFile(modifier, keys)
 	if err != nil {
 		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keypress report to hidg0")
@@ -495,14 +482,11 @@ func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (Keys
 		}
 
 		if autoRelease {
-			ll.Uint8("key", key).Msg("scheduling auto-release")
 			u.scheduleAutoRelease(key)
 		}
 	} else {
 		if autoRelease {
-			ll.Uint8("key", key).Msg("canceling auto-release")
 			u.cancelAutoRelease()
-			ll.Uint8("key", key).Msg("auto-release canceled")
 		}
 	}
 
