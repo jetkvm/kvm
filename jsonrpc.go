@@ -1087,14 +1087,18 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacro) (usbgadget.KeysDownSt
 		IsPaste: true,
 	}
 
-	reportHidRPC(s, currentSession)
+	if currentSession != nil {
+		currentSession.reportHidRPCKeyboardMacroState(s)
+	}
 
 	result, err := rpcDoExecuteKeyboardMacro(ctx, macro)
 
 	setKeyboardMacroCancel(nil)
 
 	s.State = false
-	reportHidRPC(s, currentSession)
+	if currentSession != nil {
+		currentSession.reportHidRPCKeyboardMacroState(s)
+	}
 
 	return result, err
 }
