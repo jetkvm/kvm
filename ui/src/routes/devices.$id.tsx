@@ -136,6 +136,7 @@ export default function KvmIdRoute() {
     rpcDataChannel,
     setTransceiver,
     setRpcHidChannel,
+    setRpcHidUnreliableChannel,
   } = useRTCStore();
 
   const location = useLocation();
@@ -488,6 +489,16 @@ export default function KvmIdRoute() {
       setRpcHidChannel(rpcHidChannel);
     };
 
+    const rpcHidUnreliableChannel = pc.createDataChannel("hidrpc-unreliable", {
+      // We don't need to be ordered, as we're using the unreliable channel for keepalive messages
+      ordered: false,
+      maxRetransmits: 0,
+    });
+    rpcHidUnreliableChannel.binaryType = "arraybuffer";
+    rpcHidUnreliableChannel.onopen = () => {
+      setRpcHidUnreliableChannel(rpcHidUnreliableChannel);
+    };
+
     setPeerConnection(pc);
   }, [
     cleanupAndStopReconnecting,
@@ -499,6 +510,7 @@ export default function KvmIdRoute() {
     setPeerConnectionState,
     setRpcDataChannel,
     setRpcHidChannel,
+    setRpcHidUnreliableChannel,
     setTransceiver,
   ]);
 

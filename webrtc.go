@@ -145,6 +145,41 @@ func newSession(config SessionConfig) (*Session, error) {
 		go session.handleQueues(i)
 	}
 
+	onHidMessage := func(msg webrtc.DataChannelMessage) {
+		l := scopedLogger.With().Int("length", len(msg.Data)).Logger()
+		// only log data if the log level is debug or lower
+		if scopedLogger.GetLevel() > zerolog.DebugLevel {
+			l = l.With().Str("data", string(msg.Data)).Logger()
+		}
+
+		if msg.IsString {
+			l.Warn().Msg("received string data in HID RPC message handler")
+			return
+		}
+
+		if len(msg.Data) < 1 {
+			l.Warn().Msg("received empty data in HID RPC message handler")
+			return
+		}
+
+		l.Trace().Msg("received data in HID RPC message handler")
+
+		// Enqueue to ensure ordered processing
+		queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
+		if queueIndex >= len(session.hidQueue) || queueIndex < 0 {
+			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue index not found")
+			queueIndex = 3
+		}
+
+		queue := session.hidQueue[queueIndex]
+		if queue != nil {
+			queue <- msg
+		} else {
+			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue is nil")
+			return
+		}
+	}
+
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -157,40 +192,10 @@ func newSession(config SessionConfig) (*Session, error) {
 		switch d.Label() {
 		case "hidrpc":
 			session.HidChannel = d
-			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				l := scopedLogger.With().Int("length", len(msg.Data)).Logger()
-				// only log data if the log level is debug or lower
-				if scopedLogger.GetLevel() > zerolog.DebugLevel {
-					l = l.With().Str("data", string(msg.Data)).Logger()
-				}
-
-				if msg.IsString {
-					l.Warn().Msg("received string data in HID RPC message handler")
-					return
-				}
-
-				if len(msg.Data) < 1 {
-					l.Warn().Msg("received empty data in HID RPC message handler")
-					return
-				}
-
-				l.Trace().Msg("received data in HID RPC message handler")
-
-				// Enqueue to ensure ordered processing
-				queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
-				if queueIndex >= len(session.hidQueue) || queueIndex < 0 {
-					l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue index not found")
-					queueIndex = 3
-				}
-
-				queue := session.hidQueue[queueIndex]
-				if queue != nil {
-					queue <- msg
-				} else {
-					l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue is nil")
-					return
-				}
-			})
+			d.OnMessage(onHidMessage)
+		// we won't send anything over the unreliable channel
+		case "hidrpc-unreliable":
+			d.OnMessage(onHidMessage)
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
