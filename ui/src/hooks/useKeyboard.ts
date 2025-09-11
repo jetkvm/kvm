@@ -220,6 +220,42 @@ export default function useKeyboard() {
     // we don't need to cancel it actually
     cancelOngoingKeyboardMacroHidRpc();
   }, [rpcHidReady, cancelOngoingKeyboardMacroHidRpc, abortController]);
+  };
+
+  const KEEPALIVE_INTERVAL = 75; // 200ms interval
+
+  const cancelKeepAlive = useCallback(() => {
+    if (keepAliveTimerRef.current) {
+      clearInterval(keepAliveTimerRef.current);
+      keepAliveTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleKeepAlive = useCallback(() => {
+    // Clear existing timer if it exists
+    if (keepAliveTimerRef.current) {
+      clearInterval(keepAliveTimerRef.current);
+    }
+
+    // Create new interval timer
+    keepAliveTimerRef.current = setInterval(() => {
+      sendKeypressKeepAliveHidRpc();
+    }, KEEPALIVE_INTERVAL);
+  }, [sendKeypressKeepAliveHidRpc]);
+
+  // resetKeyboardState is used to reset the keyboard state to no keys pressed and no modifiers.
+  // This is useful for macros and when the browser loses focus to ensure that the keyboard state
+  // is clean.
+  const resetKeyboardState = useCallback(async () => {
+    // Cancel keepalive since we're resetting the keyboard state
+    cancelKeepAlive();
+
+    // Reset the keys buffer to zeros and the modifier state to zero
+    keysDownState.keys.length = hidKeyBufferSize;
+    keysDownState.keys.fill(0);
+    keysDownState.modifier = 0;
+    sendKeyboardEvent(keysDownState);
+  }, [keysDownState, sendKeyboardEvent, cancelKeepAlive]);
 
   // handleKeyPress is used to handle a key press or release event.
   // This function handle both key press and key release events.

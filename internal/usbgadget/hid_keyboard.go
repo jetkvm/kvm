@@ -22,6 +22,11 @@ var keyboardConfig = gadgetConfigItem{
 	reportDesc: keyboardReportDesc,
 }
 
+// macOS default: 15 * 15 = 225ms https://discussions.apple.com/thread/1316947?sortBy=rank
+// Linux default: 250ms https://man.archlinux.org/man/kbdrate.8.en
+// Windows default: 1ms `HKEY_CURRENT_USER\Control Panel\Accessibility\Keyboard Response\AutoRepeatDelay`
+const autoReleaseKeyboardInterval = time.Millisecond * 225
+
 // Source: https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt
 var keyboardReportDesc = []byte{
 	0x05, 0x01, /* USAGE_PAGE (Generic Desktop)	          */
@@ -173,8 +178,6 @@ func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 	u.onKeysDownChange = &f
 }
 
-const autoReleaseKeyboardInterval = time.Millisecond * 450
-
 func (u *UsbGadget) scheduleAutoRelease(key byte) {
 	u.kbdAutoReleaseLock.Lock()
 	defer u.kbdAutoReleaseLock.Unlock()
@@ -222,7 +225,8 @@ func (u *UsbGadget) performAutoRelease(key byte) {
 	default:
 	}
 
-	_, err := u.keypressReport(key, false, false)
+	// we just reset the keyboard state to 0 no matter what
+	_, err := u.keypressReport(0, false, false)
 	if err != nil {
 		u.log.Warn().Uint8("key", key).Msg("failed to auto-release keyboard key")
 	}
@@ -452,23 +456,6 @@ func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (Keys
 			}
 		}
 	}
-
-	// if autoRelease {
-	// 	u.kbdAutoReleaseLock.Lock()
-	// 	u.kbdAutoReleaseLock.Unlock()
-	// 	ll.Uint8("key", key).Msg("locking kbdAutoReleaseLock, autoReleasLastKey reset")
-
-	// 	defer func() {
-	// 		ll.Uint8("key", key).Msg("unlocked kbdAutoReleaseLock, autoReleasLastKey reset")
-	// 	}()
-
-	// 	if u.kbdAutoReleaseLastKey == key {
-	// 		ll.Uint8("key", key).Msg("key already released by auto-release, skipping")
-	// 		u.kbdAutoReleaseLastKey = 0
-
-	// 		return u.UpdateKeysDown(modifier, keys), nil
-	// 	}
-	// }
 
 	err := u.keyboardWriteHidFile(modifier, keys)
 	if err != nil {
