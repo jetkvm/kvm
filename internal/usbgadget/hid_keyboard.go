@@ -173,6 +173,50 @@ func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 	u.onKeysDownChange = &f
 }
 
+const autoReleaseKeyboardInterval = time.Millisecond * 300
+
+func (u *UsbGadget) scheduleAutoRelease(key byte) {
+	u.keysAutoReleaseLock.Lock()
+	defer u.keysAutoReleaseLock.Unlock()
+
+	if u.keysAutoReleaseTimer != nil {
+		u.keysAutoReleaseTimer.Stop()
+	}
+
+	u.keysAutoReleaseTimer = time.AfterFunc(autoReleaseKeyboardInterval, func() {
+		u.performAutoRelease(key)
+	})
+}
+
+func (u *UsbGadget) cancelAutoRelease() {
+	u.keysAutoReleaseLock.Lock()
+	defer u.keysAutoReleaseLock.Unlock()
+
+	if u.keysAutoReleaseTimer != nil {
+		u.keysAutoReleaseTimer.Stop()
+	}
+}
+
+func (u *UsbGadget) performAutoRelease(key byte) {
+	u.keysAutoReleaseLock.Lock()
+	defer u.keysAutoReleaseLock.Unlock()
+
+	select {
+	case <-u.keyboardStateCtx.Done():
+		return
+	default:
+	}
+
+	_, err := u.KeypressReport(key, false)
+	if err != nil {
+		u.log.Warn().Uint8("key", key).Msg("failed to auto-release keyboard key")
+	}
+
+	u.keysAutoReleaseTimer = nil
+
+	u.log.Trace().Uint8("key", key).Msg("auto release performed")
+}
+
 func (u *UsbGadget) listenKeyboardEvents() {
 	var path string
 	if u.keyboardHidFile != nil {
@@ -396,6 +440,12 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) (KeysDownState, error) 
 	err := u.keyboardWriteHidFile(modifier, keys)
 	if err != nil {
 		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keypress report to hidg0")
+	}
+
+	if press {
+		u.scheduleAutoRelease(key)
+	} else {
+		u.cancelAutoRelease()
 	}
 
 	return u.UpdateKeysDown(modifier, keys), err

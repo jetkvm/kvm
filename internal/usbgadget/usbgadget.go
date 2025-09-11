@@ -68,6 +68,9 @@ type UsbGadget struct {
 	keyboardState byte          // keyboard latched state (NumLock, CapsLock, ScrollLock, Compose, Kana)
 	keysDownState KeysDownState // keyboard dynamic state (modifier keys and pressed keys)
 
+	keysAutoReleaseLock  sync.Mutex
+	keysAutoReleaseTimer *time.Timer
+
 	keyboardStateLock   sync.Mutex
 	keyboardStateCtx    context.Context
 	keyboardStateCancel context.CancelFunc
@@ -148,4 +151,36 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 	}
 
 	return g
+}
+
+// Close cleans up resources used by the USB gadget
+func (u *UsbGadget) Close() error {
+	// Cancel keyboard state context
+	if u.keyboardStateCancel != nil {
+		u.keyboardStateCancel()
+	}
+
+	// Stop auto-release timer
+	u.keysAutoReleaseLock.Lock()
+	if u.keysAutoReleaseTimer != nil {
+		u.keysAutoReleaseTimer.Stop()
+		u.keysAutoReleaseTimer = nil
+	}
+	u.keysAutoReleaseLock.Unlock()
+
+	// Close HID files
+	if u.keyboardHidFile != nil {
+		u.keyboardHidFile.Close()
+		u.keyboardHidFile = nil
+	}
+	if u.absMouseHidFile != nil {
+		u.absMouseHidFile.Close()
+		u.absMouseHidFile = nil
+	}
+	if u.relMouseHidFile != nil {
+		u.relMouseHidFile.Close()
+		u.relMouseHidFile = nil
+	}
+
+	return nil
 }
