@@ -31,20 +31,35 @@ export default defineConfig(({ mode, command }) => {
     esbuild: {
       pure: ["console.debug"],
     },
-    build: { outDir: isCloud ? "dist" : "../static" },
+    build: {
+      outDir: isCloud ? "dist" : "../static",
+      rollupOptions: {
+        output: {
+          manualChunks: (id) => {
+            if (id.includes("node_modules")) {
+              return "vendor";
+            }
+            return null;
+          },
+          assetFileNames: "assets/immutable/[name]-[hash][extname]",
+          chunkFileNames: "assets/immutable/[name]-[hash].js",
+          entryFileNames: "assets/immutable/[name]-[hash].js",
+        },
+      },
+    },
     server: {
       host: "0.0.0.0",
       https: useSSL,
       proxy: JETKVM_PROXY_URL
         ? {
-            "/me": JETKVM_PROXY_URL,
-            "/device": JETKVM_PROXY_URL,
-            "/webrtc": JETKVM_PROXY_URL,
-            "/auth": JETKVM_PROXY_URL,
-            "/storage": JETKVM_PROXY_URL,
-            "/cloud": JETKVM_PROXY_URL,
-            "/developer": JETKVM_PROXY_URL,
-          }
+          "/me": JETKVM_PROXY_URL,
+          "/device": JETKVM_PROXY_URL,
+          "/webrtc": JETKVM_PROXY_URL,
+          "/auth": JETKVM_PROXY_URL,
+          "/storage": JETKVM_PROXY_URL,
+          "/cloud": JETKVM_PROXY_URL,
+          "/developer": JETKVM_PROXY_URL,
+        }
         : undefined,
     },
     base: onDevice && command === "build" ? "/static" : "/",

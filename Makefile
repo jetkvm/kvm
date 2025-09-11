@@ -62,7 +62,19 @@ build_dev_test: build_test2json build_gotestsum
 	tar czfv device-tests.tar.gz -C $(BIN_DIR)/tests .
 
 frontend:
-	cd ui && npm ci && npm run build:device
+	cd ui && npm ci && npm run build:device && \
+	find ../static/assets \
+		-type f \
+		\( -name '*.js' \
+		-o -name '*.css' \
+		-o -name '*.png' \
+		-o -name '*.jpg' \
+		-o -name '*.jpeg' \
+		-o -name '*.gif' \
+		-o -name '*.webp' \
+		-o -name '*.woff2' \
+		\) \
+		-exec sh -c 'gzip -9 -kfv {}' \;
 
 dev_release: frontend build_dev
 	@echo "Uploading release..."
