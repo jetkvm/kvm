@@ -201,14 +201,15 @@ func (u *UsbGadget) DelayAutoRelease() {
 	u.kbdAutoReleaseLock.Lock()
 	defer u.kbdAutoReleaseLock.Unlock()
 
-	u.log.Info().Msg("delaying auto-release")
+	u.log.Trace().Msg("delaying auto-release")
 
 	if u.kbdAutoReleaseTimer == nil {
 		return
 	}
 
-	u.log.Info().Msg("resetting auto-release timer")
 	u.kbdAutoReleaseTimer.Reset(autoReleaseKeyboardInterval)
+
+	u.log.Trace().Msg("auto-release timer reset")
 }
 
 func (u *UsbGadget) performAutoRelease(key byte) {

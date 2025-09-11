@@ -44,6 +44,8 @@ func (m *Message) String() string {
 			return fmt.Sprintf("MouseReport{Malformed: %v}", m.d)
 		}
 		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
+	case TypeKeypressKeepAliveReport:
+		return "KeypressKeepAliveReport"
 	case TypeKeyboardMacroReport:
 		if len(m.d) < 5 {
 			return fmt.Sprintf("KeyboardMacroReport{Malformed: %v}", m.d)
