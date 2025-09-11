@@ -125,7 +125,13 @@ func TestValidateSSHKey(t *testing.T) {
 }
 
 func TestValidSSHKeyTypes(t *testing.T) {
-	expectedTypes := []string{"ssh-rsa", "ssh-ed25519", "ssh-ecdsa"}
+	expectedTypes := []string{
+		"ssh-rsa",
+		"ssh-ed25519",
+		"ecdsa-sha2-nistp256",
+		"ecdsa-sha2-nistp384",
+		"ecdsa-sha2-nistp521",
+	}
 
 	if len(ValidSSHKeyTypes) != len(expectedTypes) {
 		t.Errorf("ValidSSHKeyTypes length = %d, expected %d", len(ValidSSHKeyTypes), len(expectedTypes))
