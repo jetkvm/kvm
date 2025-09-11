@@ -17,6 +17,7 @@ import (
 	"go.bug.st/serial"
 
 	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/jetkvm/kvm/internal/utils"
 )
 
 type JSONRPCRequest struct {
@@ -429,21 +430,27 @@ func rpcGetSSHKeyState() (string, error) {
 }
 
 func rpcSetSSHKeyState(sshKey string) error {
-	if sshKey != "" {
-		// Create directory if it doesn't exist
-		if err := os.MkdirAll(sshKeyDir, 0700); err != nil {
-			return fmt.Errorf("failed to create SSH key directory: %w", err)
-		}
-
-		// Write SSH key to file
-		if err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600); err != nil {
-			return fmt.Errorf("failed to write SSH key: %w", err)
-		}
-	} else {
+	if sshKey == "" {
 		// Remove SSH key file if empty string is provided
 		if err := os.Remove(sshKeyFile); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove SSH key file: %w", err)
 		}
+		return nil
+	}
+
+	// Validate SSH key
+	if err := utils.ValidateSSHKey(sshKey); err != nil {
+		return err
+	}
+
+	// Create directory if it doesn't exist
+	if err := os.MkdirAll(sshKeyDir, 0700); err != nil {
+		return fmt.Errorf("failed to create SSH key directory: %w", err)
+	}
+
+	// Write SSH key to file
+	if err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600); err != nil {
+		return fmt.Errorf("failed to write SSH key: %w", err)
 	}
 
 	return nil
