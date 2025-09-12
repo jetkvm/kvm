@@ -86,6 +86,7 @@ func TestUsbGadgetHardwareInit(t *testing.T) {
 
 	// Validate gadget state
 	assert.NotNil(t, gadget, "USB gadget should not be nil")
+	validateHardwareState(t, gadget)
 
 	// Test UDC binding state
 	bound, err := gadget.IsUDCBound()
@@ -144,6 +145,7 @@ func TestUsbGadgetHardwareReconfiguration(t *testing.T) {
 	}()
 
 	assert.NotNil(t, gadget2, "Second USB gadget should be initialized")
+	validateHardwareState(t, gadget2)
 
 	// Validate UDC binding after reconfiguration
 	udcs := getUdcs()
@@ -187,6 +189,7 @@ func TestUsbGadgetHardwareStressTest(t *testing.T) {
 
 		// Validate gadget
 		assert.NotNil(t, gadget, "USB gadget should be created in iteration %d", i+1)
+		validateHardwareState(t, gadget)
 
 		// Test basic operations
 		bound, err := gadget.IsUDCBound()

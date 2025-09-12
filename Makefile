@@ -18,9 +18,6 @@ JETKVM_HOME ?= $(HOME)/.jetkvm
 TOOLCHAIN_DIR ?= $(JETKVM_HOME)/rv1106-system
 AUDIO_LIBS_DIR ?= $(JETKVM_HOME)/audio-libs
 
-# Set PKG_CONFIG_PATH globally for all targets that use CGO with audio libraries
-export PKG_CONFIG_PATH := $(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/utils:$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)
-
 BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE ?= $(shell date -u +%FT%T%z)
 BUILDTS   ?= $(shell date -u +%s)
@@ -32,8 +29,20 @@ VERSION ?= 0.4.6
 ALSA_VERSION ?= 1.2.14
 OPUS_VERSION ?= 1.5.2
 
+# Set PKG_CONFIG_PATH globally for all targets that use CGO with audio libraries
+export PKG_CONFIG_PATH := $(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/utils:$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)
+
 # Optimization flags for ARM Cortex-A7 with NEON
 OPTIM_CFLAGS := -O3 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops
+
+# Cross-compilation environment for ARM - exported globally
+export GOOS := linux
+export GOARCH := arm
+export GOARM := 7
+export CC := $(TOOLCHAIN_DIR)/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc
+export CGO_ENABLED := 1
+export CGO_CFLAGS := $(OPTIM_CFLAGS) -I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt
+export CGO_LDFLAGS := -L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
@@ -57,11 +66,6 @@ hash_resource:
 
 build_dev: build_audio_deps hash_resource
 	@echo "Building..."
-	GOOS=linux GOARCH=arm GOARM=7 \
-	CC=$(TOOLCHAIN_DIR)/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc \
-	CGO_ENABLED=1 \
-	CGO_CFLAGS="$(OPTIM_CFLAGS) -I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
-	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
 	go build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
 		$(GO_RELEASE_BUILD_ARGS) \
@@ -85,11 +89,6 @@ build_dev_test: build_audio_deps build_test2json build_gotestsum
 		test_pkg_name=$$(echo $$test | sed 's/^.\///g'); \
 		test_pkg_full_name=$(KVM_PKG_NAME)/$$(echo $$test | sed 's/^.\///g'); \
 		test_filename=$$(echo $$test_pkg_name | sed 's/\//__/g')_test; \
-		GOOS=linux GOARCH=arm GOARM=7 \
-		CC=$(TOOLCHAIN_DIR)/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc \
-		CGO_ENABLED=1 \
-		CGO_CFLAGS="$(OPTIM_CFLAGS) -I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
-		CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
 		go test -v \
 			-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
 			$(GO_BUILD_ARGS) \
@@ -124,11 +123,6 @@ dev_release: frontend build_dev
 
 build_release: frontend build_audio_deps hash_resource
 	@echo "Building release..."
-	GOOS=linux GOARCH=arm GOARM=7 \
-	CC=$(TOOLCHAIN_DIR)/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc \
-	CGO_ENABLED=1 \
-	CGO_CFLAGS="$(OPTIM_CFLAGS) -I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
-	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
 	go build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION)" \
 		$(GO_RELEASE_BUILD_ARGS) \
@@ -153,9 +147,6 @@ lint: lint-go lint-ui
 lint-go: build_audio_deps
 	@echo "Running golangci-lint..."
 	@mkdir -p static && touch static/.gitkeep
-	CGO_ENABLED=1 \
-	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
-	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
 	golangci-lint run --verbose
 
 # Run both Go and UI linting with auto-fix
@@ -166,9 +157,6 @@ lint-fix: lint-go-fix lint-ui-fix
 lint-go-fix: build_audio_deps
 	@echo "Running golangci-lint with auto-fix..."
 	@mkdir -p static && touch static/.gitkeep
-	CGO_ENABLED=1 \
-	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
-	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
 	golangci-lint run --fix --verbose
 
 # Run UI linting locally (mirrors GitHub workflow ui-lint.yml)
