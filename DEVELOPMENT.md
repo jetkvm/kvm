@@ -301,13 +301,14 @@ export JETKVM_PROXY_URL="ws://<IP>"
 
 ### Performance Profiling
 
-```bash
-# Enable profiling
-go build -o bin/jetkvm_app -ldflags="-X main.enableProfiling=true" cmd/main.go
+1. Enable `Developer Mode` on your JetKVM device
+2. Add a password on the `Access` tab
 
+```bash
 # Access profiling
-curl http://<IP>:6060/debug/pprof/
+curl http://api:$JETKVM_PASSWORD@YOUR_DEVICE_IP/developer/pprof/
 ```
+
 ### Advanced Environment Variables
 
 ```bash
