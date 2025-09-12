@@ -17,6 +17,10 @@ dev_env: build_audio_deps
 JETKVM_HOME ?= $(HOME)/.jetkvm
 TOOLCHAIN_DIR ?= $(JETKVM_HOME)/rv1106-system
 AUDIO_LIBS_DIR ?= $(JETKVM_HOME)/audio-libs
+
+# Set PKG_CONFIG_PATH globally for all targets that use CGO with audio libraries
+export PKG_CONFIG_PATH := $(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/utils:$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)
+
 BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE ?= $(shell date -u +%FT%T%z)
 BUILDTS   ?= $(shell date -u +%s)
@@ -149,7 +153,6 @@ lint: lint-go lint-ui
 lint-go: build_audio_deps
 	@echo "Running golangci-lint..."
 	@mkdir -p static && touch static/.gitkeep
-	PKG_CONFIG_PATH="$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/utils:$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)" \
 	CGO_ENABLED=1 \
 	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
 	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
@@ -163,7 +166,6 @@ lint-fix: lint-go-fix lint-ui-fix
 lint-go-fix: build_audio_deps
 	@echo "Running golangci-lint with auto-fix..."
 	@mkdir -p static && touch static/.gitkeep
-	PKG_CONFIG_PATH="$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/utils:$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)" \
 	CGO_ENABLED=1 \
 	CGO_CFLAGS="-I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt" \
 	CGO_LDFLAGS="-L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static" \
