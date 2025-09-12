@@ -192,10 +192,24 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
       onHidRpcMessage?.(message);
     };
 
+    const openHandler = () => {
+      console.warn("HID RPC channel opened");
+      sendHandshake();
+    };
+
+    const closeHandler = () => {
+      console.warn("HID RPC channel closed");
+      setRpcHidProtocolVersion(null);
+    };
+
     rpcHidChannel.addEventListener("message", messageHandler);
+    rpcHidChannel.addEventListener("close", closeHandler);
+    rpcHidChannel.addEventListener("open", openHandler);
 
     return () => {
       rpcHidChannel.removeEventListener("message", messageHandler);
+      rpcHidChannel.removeEventListener("close", closeHandler);
+      rpcHidChannel.removeEventListener("open", openHandler);
     };
   },
     [

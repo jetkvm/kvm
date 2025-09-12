@@ -134,7 +134,10 @@ func reportHidRPC(params any, session *Session) {
 	}
 
 	if !session.hidRPCAvailable || session.HidChannel == nil {
-		logger.Warn().Msg("HID RPC is not available, skipping reportHidRPC")
+		logger.Warn().
+			Bool("hidRPCAvailable", session.hidRPCAvailable).
+			Bool("HidChannel", session.HidChannel != nil).
+			Msg("HID RPC is not available, skipping reportHidRPC")
 		return
 	}
 
