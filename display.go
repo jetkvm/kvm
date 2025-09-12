@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -110,12 +111,6 @@ func clearDisplayState() {
 	currentScreen = "ui_Boot_Screen"
 }
 
-var (
-	cloudBlinkLock    sync.Mutex = sync.Mutex{}
-	cloudBlinkStopped bool
-	cloudBlinkTicker  *time.Ticker
-)
-
 func updateDisplay() {
 	updateLabelIfChanged("ui_Home_Content_Ip", networkState.IPv4String())
 	if usbState == "configured" {
@@ -152,48 +147,81 @@ func updateDisplay() {
 		stopCloudBlink()
 	case CloudConnectionStateConnecting:
 		_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
-		startCloudBlink()
+		restartCloudBlink()
 	case CloudConnectionStateConnected:
 		_, _ = lvImgSetSrc("ui_Home_Header_Cloud_Status_Icon", "cloud.png")
 		stopCloudBlink()
 	}
 }
 
-func startCloudBlink() {
-	if cloudBlinkTicker == nil {
-		cloudBlinkTicker = time.NewTicker(2 * time.Second)
-	} else {
-		// do nothing if the blink isn't stopped
-		if cloudBlinkStopped {
-			cloudBlinkLock.Lock()
-			defer cloudBlinkLock.Unlock()
+const (
+	cloudBlinkInterval = 2 * time.Second
+	cloudBlinkDuration = 1 * time.Second
+)
 
-			cloudBlinkStopped = false
-			cloudBlinkTicker.Reset(2 * time.Second)
+var (
+	cloudBlinkTicker *time.Ticker
+	cloudBlinkCancel context.CancelFunc
+	cloudBlinkLock   = sync.Mutex{}
+)
+
+func doCloudBlink(ctx context.Context) {
+	for range cloudBlinkTicker.C {
+		if cloudConnectionState != CloudConnectionStateConnecting {
+			continue
+		}
+
+		_, _ = lvObjFadeOut("ui_Home_Header_Cloud_Status_Icon", uint32(cloudBlinkDuration.Milliseconds()))
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(cloudBlinkDuration):
+		}
+
+		_, _ = lvObjFadeIn("ui_Home_Header_Cloud_Status_Icon", uint32(cloudBlinkDuration.Milliseconds()))
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(cloudBlinkDuration):
 		}
 	}
+}
 
-	go func() {
-		for range cloudBlinkTicker.C {
-			if cloudConnectionState != CloudConnectionStateConnecting {
-				continue
-			}
-			_, _ = lvObjFadeOut("ui_Home_Header_Cloud_Status_Icon", 1000)
-			time.Sleep(1000 * time.Millisecond)
-			_, _ = lvObjFadeIn("ui_Home_Header_Cloud_Status_Icon", 1000)
-			time.Sleep(1000 * time.Millisecond)
-		}
-	}()
+func restartCloudBlink() {
+	stopCloudBlink()
+	startCloudBlink()
+}
+
+func startCloudBlink() {
+	cloudBlinkLock.Lock()
+	defer cloudBlinkLock.Unlock()
+
+	if cloudBlinkTicker == nil {
+		cloudBlinkTicker = time.NewTicker(cloudBlinkInterval)
+	} else {
+		cloudBlinkTicker.Reset(cloudBlinkInterval)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cloudBlinkCancel = cancel
+
+	go doCloudBlink(ctx)
 }
 
 func stopCloudBlink() {
+	cloudBlinkLock.Lock()
+	defer cloudBlinkLock.Unlock()
+
+	if cloudBlinkCancel != nil {
+		cloudBlinkCancel()
+		cloudBlinkCancel = nil
+	}
+
 	if cloudBlinkTicker != nil {
 		cloudBlinkTicker.Stop()
 	}
-
-	cloudBlinkLock.Lock()
-	defer cloudBlinkLock.Unlock()
-	cloudBlinkStopped = true
 }
 
 var (
