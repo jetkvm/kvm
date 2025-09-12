@@ -222,7 +222,7 @@ export default function useKeyboard() {
   }, [rpcHidReady, cancelOngoingKeyboardMacroHidRpc, abortController]);
   };
 
-  const KEEPALIVE_INTERVAL = 75; // 200ms interval
+  const KEEPALIVE_INTERVAL = 75; // TODO: use an adaptive interval based on RTT later
 
   const cancelKeepAlive = useCallback(() => {
     if (keepAliveTimerRef.current) {
