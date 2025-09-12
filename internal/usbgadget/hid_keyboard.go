@@ -25,7 +25,7 @@ var keyboardConfig = gadgetConfigItem{
 // macOS default: 15 * 15 = 225ms https://discussions.apple.com/thread/1316947?sortBy=rank
 // Linux default: 250ms https://man.archlinux.org/man/kbdrate.8.en
 // Windows default: 1ms `HKEY_CURRENT_USER\Control Panel\Accessibility\Keyboard Response\AutoRepeatDelay`
-const autoReleaseKeyboardInterval = time.Millisecond * 225
+const autoReleaseKeyboardInterval = time.Millisecond * 100
 
 // Source: https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt
 var keyboardReportDesc = []byte{
@@ -473,11 +473,11 @@ func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (Keys
 		}
 
 		if autoRelease {
-			u.scheduleAutoRelease(key)
+			u.cancelAutoRelease()
 		}
 	} else {
 		if autoRelease {
-			u.cancelAutoRelease()
+			u.scheduleAutoRelease(key)
 		}
 	}
 
