@@ -396,10 +396,7 @@ var KeyCodeToMaskMap = map[byte]byte{
 	RightSuper:   ModifierMaskRightSuper,
 }
 
-func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (KeysDownState, error) {
-	u.keyboardLock.Lock()
-	defer u.keyboardLock.Unlock()
-
+func (u *UsbGadget) keypressReportNonThreadSafe(key byte, press bool, autoRelease bool) (KeysDownState, error) {
 	defer u.resetUserInputTime()
 
 	// IMPORTANT: This code parallels the logic in the kernel's hid-gadget driver
@@ -482,6 +479,31 @@ func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (Keys
 	}
 
 	return u.UpdateKeysDown(modifier, keys), err
+}
+
+type keypressReportResult struct {
+	KeysDownState KeysDownState
+	Error         error
+}
+
+func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (KeysDownState, error) {
+	u.keyboardLock.Lock()
+	defer u.keyboardLock.Unlock()
+
+	r := make(chan keypressReportResult)
+	go func() {
+		state, err := u.keypressReportNonThreadSafe(key, press, autoRelease)
+		r <- keypressReportResult{KeysDownState: state, Error: err}
+	}()
+
+	select {
+	case <-time.After(1 * time.Second):
+		u.log.Warn().Msg("keypressReport timed out, possibly stuck")
+		return u.keysDownState, fmt.Errorf("keypressReport timed out, possibly stuck")
+	case ret := <-r:
+		u.log.Debug().Msg("keypressReport handled")
+		return ret.KeysDownState, ret.Error
+	}
 }
 
 func (u *UsbGadget) KeypressReport(key byte, press bool) (KeysDownState, error) {
