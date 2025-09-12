@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -110,10 +111,14 @@ func clearDisplayState() {
 	currentScreen = "ui_Boot_Screen"
 }
 
+const (
+	cloudBlinkInterval = 2 * time.Second
+	cloudBlinkDuration = 1 * time.Second
+)
+
 var (
-	cloudBlinkLock    sync.Mutex = sync.Mutex{}
-	cloudBlinkStopped bool
-	cloudBlinkTicker  *time.Ticker
+	cloudBlinkTicker *time.Ticker
+	cloudBlinkCancel context.CancelFunc
 )
 
 func updateDisplay() {
@@ -160,40 +165,48 @@ func updateDisplay() {
 }
 
 func startCloudBlink() {
-	if cloudBlinkTicker == nil {
-		cloudBlinkTicker = time.NewTicker(2 * time.Second)
-	} else {
-		// do nothing if the blink isn't stopped
-		if cloudBlinkStopped {
-			cloudBlinkLock.Lock()
-			defer cloudBlinkLock.Unlock()
+	// Stop any existing blink animation
+	stopCloudBlink()
 
-			cloudBlinkStopped = false
-			cloudBlinkTicker.Reset(2 * time.Second)
-		}
+	// Create new ticker and context
+	if cloudBlinkTicker == nil {
+		cloudBlinkTicker = time.NewTicker(cloudBlinkInterval)
+	} else {
+		cloudBlinkTicker.Reset(cloudBlinkInterval)
 	}
 
-	go func() {
-		for range cloudBlinkTicker.C {
+	ctx, cancel := context.WithCancel(context.Background())
+	cloudBlinkCancel = cancel
+
+	go doCloudBlink(ctx)
+}
+
+func doCloudBlink(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-cloudBlinkTicker.C:
 			if cloudConnectionState != CloudConnectionStateConnecting {
 				continue
 			}
-			_, _ = lvObjFadeOut("ui_Home_Header_Cloud_Status_Icon", 1000)
-			time.Sleep(1000 * time.Millisecond)
-			_, _ = lvObjFadeIn("ui_Home_Header_Cloud_Status_Icon", 1000)
-			time.Sleep(1000 * time.Millisecond)
+			_, _ = lvObjFadeOut("ui_Home_Header_Cloud_Status_Icon", uint32(cloudBlinkDuration.Milliseconds()))
+			time.Sleep(cloudBlinkDuration)
+			_, _ = lvObjFadeIn("ui_Home_Header_Cloud_Status_Icon", uint32(cloudBlinkDuration.Milliseconds()))
+			time.Sleep(cloudBlinkDuration)
 		}
-	}()
+	}
 }
 
 func stopCloudBlink() {
+	if cloudBlinkCancel != nil {
+		cloudBlinkCancel()
+		cloudBlinkCancel = nil
+	}
+
 	if cloudBlinkTicker != nil {
 		cloudBlinkTicker.Stop()
 	}
-
-	cloudBlinkLock.Lock()
-	defer cloudBlinkLock.Unlock()
-	cloudBlinkStopped = true
 }
 
 var (
