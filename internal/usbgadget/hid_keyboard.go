@@ -179,8 +179,9 @@ func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 }
 
 func (u *UsbGadget) scheduleAutoRelease(key byte) {
+	u.log.Trace().Msg("scheduling autoRelease")
 	u.kbdAutoReleaseLock.Lock()
-	defer u.kbdAutoReleaseLock.Unlock()
+	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease scheduled")
 
 	if u.kbdAutoReleaseTimer != nil {
 		u.kbdAutoReleaseTimer.Stop()
@@ -192,8 +193,9 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 }
 
 func (u *UsbGadget) cancelAutoRelease() {
+	u.log.Trace().Msg("cancelling autoRelease")
 	u.kbdAutoReleaseLock.Lock()
-	defer u.kbdAutoReleaseLock.Unlock()
+	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease cancelled")
 
 	if u.kbdAutoReleaseTimer != nil {
 		u.kbdAutoReleaseTimer.Stop()
@@ -201,10 +203,9 @@ func (u *UsbGadget) cancelAutoRelease() {
 }
 
 func (u *UsbGadget) DelayAutoRelease() {
+	u.log.Trace().Msg("delaying autoRelease")
 	u.kbdAutoReleaseLock.Lock()
-	defer u.kbdAutoReleaseLock.Unlock()
-
-	u.log.Trace().Msg("delaying auto-release")
+	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease delayed")
 
 	if u.kbdAutoReleaseTimer == nil {
 		return
@@ -216,8 +217,9 @@ func (u *UsbGadget) DelayAutoRelease() {
 }
 
 func (u *UsbGadget) performAutoRelease(key byte) {
+	u.log.Trace().Msg("performing autoRelease")
 	u.kbdAutoReleaseLock.Lock()
-	defer u.kbdAutoReleaseLock.Unlock()
+	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease performed")
 
 	select {
 	case <-u.keyboardStateCtx.Done():
@@ -464,9 +466,10 @@ func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (Keys
 
 	if press {
 		{
+			u.log.Trace().Msg("acquiring kbdAutoReleaseLock to update last key")
 			u.kbdAutoReleaseLock.Lock()
 			u.kbdAutoReleaseLastKey = key
-			u.kbdAutoReleaseLock.Unlock()
+			unlockWithLog(&u.kbdAutoReleaseLock, u.log, "last key updated")
 		}
 
 		if autoRelease {

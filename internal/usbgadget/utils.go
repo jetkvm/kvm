@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -163,4 +164,9 @@ func (u *UsbGadget) resetLogSuppressionCounter(counterName string) {
 	if _, ok := u.logSuppressionCounter[counterName]; !ok {
 		u.logSuppressionCounter[counterName] = 0
 	}
+}
+
+func unlockWithLog(lock *sync.Mutex, logger *zerolog.Logger, msg string, args ...any) {
+	logger.Trace().Msgf(msg, args...)
+	lock.Unlock()
 }
