@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/rs/xid"
+	"github.com/rs/zerolog"
 )
 
 var keyboardConfig = gadgetConfigItem{
@@ -188,7 +191,7 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 	}
 
 	u.kbdAutoReleaseTimer = time.AfterFunc(autoReleaseKeyboardInterval, func() {
-		u.performAutoRelease(key)
+		u.performAutoRelease()
 	})
 }
 
@@ -216,10 +219,12 @@ func (u *UsbGadget) DelayAutoRelease() {
 	u.log.Trace().Msg("auto-release timer reset")
 }
 
-func (u *UsbGadget) performAutoRelease(key byte) {
+func (u *UsbGadget) performAutoRelease() {
 	u.log.Trace().Msg("performing autoRelease")
 	u.kbdAutoReleaseLock.Lock()
-	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease performed")
+	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease unlocked")
+
+	key := u.kbdAutoReleaseLastKey
 
 	select {
 	case <-u.keyboardStateCtx.Done():
@@ -228,7 +233,8 @@ func (u *UsbGadget) performAutoRelease(key byte) {
 	}
 
 	// we just reset the keyboard state to 0 no matter what
-	_, err := u.keypressReport(0, false, false)
+	u.log.Trace().Uint8("key", key).Msg("auto-releasing keyboard key")
+	_, err := u.keypressReport(key, false, false)
 	if err != nil {
 		u.log.Warn().Uint8("key", key).Msg("failed to auto-release keyboard key")
 	}
@@ -399,12 +405,20 @@ var KeyCodeToMaskMap = map[byte]byte{
 func (u *UsbGadget) keypressReportNonThreadSafe(key byte, press bool, autoRelease bool) (KeysDownState, error) {
 	defer u.resetUserInputTime()
 
+	l := u.log.With().Uint8("key", key).Bool("press", press).Bool("autoRelease", autoRelease).Logger()
+	if l.GetLevel() <= zerolog.DebugLevel {
+		requestID := xid.New()
+		l = l.With().Str("requestID", requestID.String()).Logger()
+	}
+
 	// IMPORTANT: This code parallels the logic in the kernel's hid-gadget driver
 	// for handling key presses and releases. It ensures that the USB gadget
 	// behaves similarly to a real USB HID keyboard. This logic is paralleled
 	// in the client/browser-side code in useKeyboard.ts so make sure to keep
 	// them in sync.
-	var state = u.keysDownState
+	var state = u.GetKeysDownState()
+	l.Trace().Interface("state", state).Msg("got keys down state")
+
 	modifier := state.Modifier
 	keys := append([]byte(nil), state.Keys...)
 
@@ -444,37 +458,45 @@ func (u *UsbGadget) keypressReportNonThreadSafe(key byte, press bool, autoReleas
 		// If we reach here it means we didn't find an empty slot or the key in the buffer
 		if overrun {
 			if press {
-				u.log.Error().Uint8("key", key).Msg("keyboard buffer overflow, key not added")
+				l.Error().Msg("keyboard buffer overflow, key not added")
 				// Fill all key slots with ErrorRollOver (0x01) to indicate overflow
 				for i := range keys {
 					keys[i] = hidErrorRollOver
 				}
 			} else {
 				// If we are releasing a key, and we didn't find it in a slot, who cares?
-				u.log.Warn().Uint8("key", key).Msg("key not found in buffer, nothing to release")
+				l.Warn().Msg("key not found in buffer, nothing to release")
 			}
 		}
 	}
 
+	if l.GetLevel() <= zerolog.DebugLevel {
+		l = l.With().Uint8("modifier", modifier).Uints8("keys", keys).Logger()
+	}
+
+	l.Trace().Msg("writing keypress report to hidg0")
+
 	err := u.keyboardWriteHidFile(modifier, keys)
 	if err != nil {
-		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keypress report to hidg0")
+		l.Warn().Msg("Could not write keypress report to hidg0")
 	}
+
+	l.Trace().Msg("keypress report written to hidg0")
 
 	if press {
 		{
-			u.log.Trace().Msg("acquiring kbdAutoReleaseLock to update last key")
+			l.Trace().Msg("acquiring kbdAutoReleaseLock to update last key")
 			u.kbdAutoReleaseLock.Lock()
 			u.kbdAutoReleaseLastKey = key
 			unlockWithLog(&u.kbdAutoReleaseLock, u.log, "last key updated")
 		}
 
 		if autoRelease {
-			u.cancelAutoRelease()
+			u.scheduleAutoRelease(key)
 		}
 	} else {
 		if autoRelease {
-			u.scheduleAutoRelease(key)
+			u.cancelAutoRelease()
 		}
 	}
 

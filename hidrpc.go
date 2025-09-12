@@ -8,6 +8,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/rs/zerolog"
 )
 
 func handleHidRPCMessage(message hidrpc.Message, session *Session) {
@@ -87,7 +88,9 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 		return
 	}
 
-	scopedLogger = scopedLogger.With().Str("descr", message.String()).Logger()
+	if scopedLogger.GetLevel() <= zerolog.DebugLevel {
+		scopedLogger = scopedLogger.With().Str("descr", message.String()).Logger()
+	}
 
 	t := time.Now()
 
@@ -184,8 +187,10 @@ func (s *Session) reportHidRPCKeyboardLedState(state usbgadget.KeyboardState) {
 
 func (s *Session) reportHidRPCKeysDownState(state usbgadget.KeysDownState) {
 	if !s.hidRPCAvailable {
+		usbLogger.Debug().Interface("state", state).Msg("reporting keys down state")
 		writeJSONRPCEvent("keysDownState", state, s)
 	}
+	usbLogger.Debug().Interface("state", state).Msg("reporting keys down state, calling reportHidRPC")
 	reportHidRPC(state, s)
 }
 
