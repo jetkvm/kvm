@@ -31,6 +31,7 @@ export default defineConfig(({ mode, command }) => {
     esbuild: {
       pure: ["console.debug"],
     },
+    assetsInclude: ["**/*.woff2"],
     build: {
       outDir: isCloud ? "dist" : "../static",
       rollupOptions: {

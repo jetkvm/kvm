@@ -6,27 +6,34 @@
     <!-- These are the fonts used in the app -->
     <link
       rel="preload"
-      href="/fonts/CircularXXWeb-Medium.woff2"
+      href="./public/fonts/CircularXXWeb-Medium.woff2"
       as="font"
       type="font/woff2"
       crossorigin
     />
     <link
       rel="preload"
-      href="/fonts/CircularXXWeb-Book.woff2"
+      href="./public/fonts/CircularXXWeb-Book.woff2"
       as="font"
       type="font/woff2"
       crossorigin
     />
     <link
       rel="preload"
-      href="/fonts/CircularXXWeb-Regular.woff2"
+      href="./public/fonts/CircularXXWeb-Regular.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="./public/fonts/CircularXXWeb-Black.woff2"
       as="font"
       type="font/woff2"
       crossorigin
     />
     <title>JetKVM</title>
-    <link rel="stylesheet" href="/fonts/fonts.css" />
+    <link rel="stylesheet" href="./public/fonts/fonts.css" />
     <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="shortcut icon" href="/favicon.ico" />
@@ -36,23 +43,21 @@
     <meta name="theme-color" content="#051946" />
     <meta name="description" content="A web-based KVM console for managing remote servers." />
     <script>
-      // Initial theme setup
-      document.documentElement.classList.toggle(
-        "dark",
-        localStorage.theme === "dark" ||
+      function applyThemeFromPreference() {
+        // dark theme setup
+        var darkDesired = localStorage.theme === "dark" ||
           (!("theme" in localStorage) &&
-            window.matchMedia("(prefers-color-scheme: dark)").matches),
-      );
+            window.matchMedia("(prefers-color-scheme: dark)").matches)
+
+        document.documentElement.classList.toggle("dark", darkDesired)
+      }
+
+      // initial theme application
+      applyThemeFromPreference();
 
       // Listen for system theme changes
-      window
-        .matchMedia("(prefers-color-scheme: dark)")
-        .addEventListener("change", ({ matches }) => {
-          if (!("theme" in localStorage)) {
-            // Only auto-switch if user hasn't manually set a theme
-            document.documentElement.classList.toggle("dark", matches);
-          }
-        });
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyThemeFromPreference);
+      window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyThemeFromPreference);
     </script>
   </head>
   <body

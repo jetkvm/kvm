@@ -63,14 +63,17 @@ build_dev_test: build_test2json build_gotestsum
 
 frontend:
 	cd ui && npm ci && npm run build:device && \
-	find ../static/assets \
+	find ../static/ \
 		-type f \
 		\( -name '*.js' \
 		-o -name '*.css' \
+		-o -name '*.html' \
+		-o -name '*.ico' \
 		-o -name '*.png' \
 		-o -name '*.jpg' \
 		-o -name '*.jpeg' \
 		-o -name '*.gif' \
+		-o -name '*.svg' \
 		-o -name '*.webp' \
 		-o -name '*.woff2' \
 		\) \
