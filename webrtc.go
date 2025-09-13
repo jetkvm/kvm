@@ -274,6 +274,17 @@ func newSession(config SessionConfig) (*Session, error) {
 				session.rpcQueue = nil
 			}
 
+			// Best-effort: clear any potentially stuck keys on channel close
+			if gadget != nil {
+				go func() {
+					zeros := make([]byte, 6)
+					_, err := rpcKeyboardReport(0x00, zeros)
+					if err != nil {
+						scopedLogger.Debug().Err(err).Msg("failed to auto-release keys on channel close")
+					}
+				}()
+			}
+
 			// Stop HID RPC processor
 			for i := 0; i < len(session.hidQueue); i++ {
 				close(session.hidQueue[i])

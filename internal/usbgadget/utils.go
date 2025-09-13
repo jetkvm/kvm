@@ -116,23 +116,22 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 	}
 
 	n, err = file.Write(data)
-	if err == nil {
-		return
+	if err != nil {
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			// Promote visibility of timeouts and allow callers to recover by
+			// reopening the file. Do not swallow the error.
+			u.logWithSuppression(
+				fmt.Sprintf("writeWithTimeout_%s", file.Name()),
+				100,
+				u.log,
+				err,
+				"write timed out: %s",
+				file.Name(),
+			)
+		}
+		return n, err
 	}
-
-	if errors.Is(err, os.ErrDeadlineExceeded) {
-		u.logWithSuppression(
-			fmt.Sprintf("writeWithTimeout_%s", file.Name()),
-			1000,
-			u.log,
-			err,
-			"write timed out: %s",
-			file.Name(),
-		)
-		err = nil
-	}
-
-	return
+	return n, nil
 }
 
 func (u *UsbGadget) logWithSuppression(counterName string, every int, logger *zerolog.Logger, err error, msg string, args ...any) {

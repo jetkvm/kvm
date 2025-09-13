@@ -163,9 +163,16 @@ func (u *UsbGadget) updateKeyDownState(state KeysDownState) {
 	}
 
 	if u.onKeysDownChange != nil {
-		u.log.Trace().Interface("state", state).Msg("calling onKeysDownChange")
-		(*u.onKeysDownChange)(state)
-		u.log.Trace().Interface("state", state).Msg("onKeysDownChange called")
+		// Call the callback asynchronously to avoid blocking the HID RPC handler path
+		// and to prevent timeouts when the network is slow or the channel back-pressures.
+		st := state
+		// make a copy of the slice to avoid data races
+		st.Keys = append([]byte(nil), state.Keys...)
+		go func(s KeysDownState) {
+			u.log.Trace().Interface("state", s).Msg("calling onKeysDownChange")
+			(*u.onKeysDownChange)(s)
+			u.log.Trace().Interface("state", s).Msg("onKeysDownChange called")
+		}(st)
 	}
 }
 
@@ -234,6 +241,8 @@ func (u *UsbGadget) openKeyboardHidFile() error {
 
 	u.keyboardStateCtx, u.keyboardStateCancel = context.WithCancel(context.Background())
 	u.listenKeyboardEvents()
+	// Start auto-release monitor to clear stuck keys after inactivity
+	u.listenKeyboardAutoRelease()
 
 	return nil
 }
@@ -399,4 +408,60 @@ func (u *UsbGadget) KeypressReport(key byte, press bool) (KeysDownState, error) 
 	}
 
 	return u.UpdateKeysDown(modifier, keys), err
+}
+
+// listenKeyboardAutoRelease starts a background monitor that automatically
+// releases all keys if no input has been successfully written to the HID device
+// for a period of time. This acts as a safety net to avoid stuck keys when
+// key-up events are lost due to network issues.
+func (u *UsbGadget) listenKeyboardAutoRelease() {
+	var path string
+	if u.keyboardHidFile != nil {
+		path = u.keyboardHidFile.Name()
+	}
+	l := u.log.With().Str("listener", "keyboardAutoRelease").Str("path", path).Logger()
+	l.Trace().Msg("starting")
+
+	go func() {
+		ticker := time.NewTicker(keyAutoReleaseCheckInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-u.keyboardStateCtx.Done():
+				l.Info().Msg("context done")
+				return
+			case <-ticker.C:
+				// Fast path: if nothing is currently down, skip work
+				u.keyboardStateLock.Lock()
+				modifier := u.keysDownState.Modifier
+				keys := append([]byte(nil), u.keysDownState.Keys...)
+				u.keyboardStateLock.Unlock()
+
+				allZero := modifier == 0
+				if allZero {
+					for _, k := range keys {
+						if k != 0 {
+							allZero = false
+							break
+						}
+					}
+				}
+				if allZero {
+					continue
+				}
+
+				// If we have any key/modifier down and we've been idle long enough, clear state
+				if time.Since(u.GetLastUserInputTime()) >= keyAutoReleaseAfter {
+					l.Debug().Dur("idle", time.Since(u.GetLastUserInputTime())).Msg("auto-releasing stuck keys")
+					zeros := make([]byte, hidKeyBufferSize)
+					_, err := u.KeyboardReport(0x00, zeros)
+					if err != nil {
+						u.logWithSuppression("keyboardAutoReleaseWrite", 100, &l, err, "failed to auto-release keys")
+					} else {
+						u.resetLogSuppressionCounter("keyboardAutoReleaseWrite")
+					}
+				}
+			}
+		}
+	}()
 }
