@@ -69,8 +69,7 @@ type SetupRequest struct {
 }
 
 var cachableFileExtensions = []string{
-	".jpg", ".jpeg", ".png", ".gif", ".webp", ".woff2",
-	".ico",
+	".jpg", ".jpeg", ".png", ".svg", ".gif", ".webp", ".ico", ".woff2",
 }
 
 func setupRouter() *gin.Engine {
@@ -83,7 +82,10 @@ func setupRouter() *gin.Engine {
 		}),
 	))
 
-	staticFS, _ := fs.Sub(staticFiles, "static")
+	staticFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to get rooted static files subdirectory")
+	}
 	staticFileServer := http.StripPrefix("/static", statigz.FileServer(
 		staticFS.(fs.ReadDirFS),
 	))
@@ -109,9 +111,17 @@ func setupRouter() *gin.Engine {
 		c.Next()
 	})
 
+	r.GET("/robots.txt", func(c *gin.Context) {
+		c.Header("Content-Type", "text/plain")
+		c.Header("Cache-Control", "public, max-age=31536000, immutable") // Cache for 1 year
+		c.String(http.StatusOK, "User-agent: *\nDisallow: /")
+	})
+
 	r.Any("/static/*w", func(c *gin.Context) {
 		staticFileServer.ServeHTTP(c.Writer, c.Request)
 	})
+
+	// Public routes (no authentication required)
 	r.POST("/auth/login-local", handleLogin)
 
 	// We use this to determine if the device is setup
