@@ -256,15 +256,37 @@ func (u *UsbGadget) keyboardWriteHidFile(modifier byte, keys []byte) error {
 		return err
 	}
 
-	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
-	if err != nil {
-		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
-		u.keyboardHidFile.Close()
-		u.keyboardHidFile = nil
-		return err
+	data := append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...)
+	file := u.keyboardHidFile
+	done := make(chan error, 1)
+	go func(f *os.File, payload []byte) {
+		_, err := f.Write(payload)
+		done <- err
+	}(file, data)
+
+	t := time.NewTimer(hidWriteTimeout)
+	defer t.Stop()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
+			_ = file.Close()
+			if u.keyboardHidFile == file {
+				u.keyboardHidFile = nil
+			}
+			return err
+		}
+		u.resetLogSuppressionCounter("keyboardWriteHidFile")
+		return nil
+	case <-t.C:
+		u.logWithSuppression("keyboardWriteHidFileTimeout", 100, u.log, fmt.Errorf("deadline exceeded"), "write timed out: %s", file.Name())
+		_ = file.Close()
+		if u.keyboardHidFile == file {
+			u.keyboardHidFile = nil
+		}
+		return fmt.Errorf("keyboard write timeout")
 	}
-	u.resetLogSuppressionCounter("keyboardWriteHidFile")
-	return nil
 }
 
 func (u *UsbGadget) UpdateKeysDown(modifier byte, keys []byte) KeysDownState {
