@@ -8,7 +8,7 @@
 #include <sys/mman.h>
 
 // C state for ALSA/Opus with safety flags
-static snd_pcm_t *pcm_handle = NULL;
+static snd_pcm_t *pcm_capture_handle = NULL;
 static snd_pcm_t *pcm_playback_handle = NULL;
 static OpusEncoder *encoder = NULL;
 static OpusDecoder *decoder = NULL;
@@ -29,8 +29,8 @@ static int sleep_microseconds = 1000;   // Will be set from Config.CGOUsleepMicr
 static int max_attempts_global = 5;     // Will be set from Config.CGOMaxAttempts
 static int max_backoff_us_global = 500000; // Will be set from Config.CGOMaxBackoffMicroseconds
 // Hardware optimization flags for constrained environments
-static int use_mmap_access = 0;         // Disable MMAP for compatibility (was 1)
-static int optimized_buffer_size = 0;   // Disable optimized buffer sizing for stability (was 1)
+static const int use_mmap_access = 1;         // Enable MMAP for improved performance
+static const int optimized_buffer_size = 0;   // Disable optimized buffer sizing for stability (was 1)
 
 // C function declarations (implementations are below)
 int jetkvm_audio_init();
@@ -242,23 +242,23 @@ int jetkvm_audio_init() {
 		opus_encoder_destroy(encoder);
 		encoder = NULL;
 	}
-	if (pcm_handle) {
-		snd_pcm_close(pcm_handle);
-		pcm_handle = NULL;
+	if (pcm_capture_handle) {
+		snd_pcm_close(pcm_capture_handle);
+		pcm_capture_handle = NULL;
 	}
 
 	// Try to open ALSA capture device
-	err = safe_alsa_open(&pcm_handle, "hw:1,0", SND_PCM_STREAM_CAPTURE);
+	err = safe_alsa_open(&pcm_capture_handle, "hw:1,0", SND_PCM_STREAM_CAPTURE);
 	if (err < 0) {
 		capture_initializing = 0;
 		return -1;
 	}
 
 	// Configure the device
-	err = configure_alsa_device(pcm_handle, "capture");
+	err = configure_alsa_device(pcm_capture_handle, "capture");
 	if (err < 0) {
-		snd_pcm_close(pcm_handle);
-		pcm_handle = NULL;
+		snd_pcm_close(pcm_capture_handle);
+		pcm_capture_handle = NULL;
 		capture_initializing = 0;
 		return -1;
 	}
@@ -267,7 +267,7 @@ int jetkvm_audio_init() {
 	int opus_err = 0;
 	encoder = opus_encoder_create(sample_rate, channels, OPUS_APPLICATION_AUDIO, &opus_err);
 	if (!encoder || opus_err != OPUS_OK) {
-		if (pcm_handle) { snd_pcm_close(pcm_handle); pcm_handle = NULL; }
+		if (pcm_capture_handle) { snd_pcm_close(pcm_capture_handle); pcm_capture_handle = NULL; }
 		capture_initializing = 0;
 		return -2;
 	}
@@ -303,13 +303,12 @@ int jetkvm_audio_read_encode(void *opus_buf) {
 	const int max_recovery_attempts = 3;
 
 	// Safety checks
-	if (!capture_initialized || !pcm_handle || !encoder || !opus_buf) {
+	if (!capture_initialized || !pcm_capture_handle || !encoder || !opus_buf) {
 		return -1;
 	}
 
 retry_read:
-	;
-	int pcm_rc = snd_pcm_readi(pcm_handle, pcm_buffer, frame_size);
+	int pcm_rc = snd_pcm_readi(pcm_capture_handle, pcm_buffer, frame_size);
 
 	// Handle ALSA errors with robust recovery strategies
 	if (pcm_rc < 0) {
@@ -321,11 +320,11 @@ retry_read:
 			}
 
 			// Try to recover with prepare
-			err = snd_pcm_prepare(pcm_handle);
+			err = snd_pcm_prepare(pcm_capture_handle);
 			if (err < 0) {
 				// If prepare fails, try drop and prepare
-				snd_pcm_drop(pcm_handle);
-				err = snd_pcm_prepare(pcm_handle);
+				snd_pcm_drop(pcm_capture_handle);
+				err = snd_pcm_prepare(pcm_capture_handle);
 				if (err < 0) return -1;
 			}
 
@@ -344,17 +343,16 @@ retry_read:
 
 			// Try to resume with timeout
 			int resume_attempts = 0;
-			while ((err = snd_pcm_resume(pcm_handle)) == -EAGAIN && resume_attempts < 10) {
+			while ((err = snd_pcm_resume(pcm_capture_handle)) == -EAGAIN && resume_attempts < 10) {
 				usleep(sleep_microseconds);
 				resume_attempts++;
 			}
 			if (err < 0) {
 				// Resume failed, try prepare as fallback
-				err = snd_pcm_prepare(pcm_handle);
+				err = snd_pcm_prepare(pcm_capture_handle);
 				if (err < 0) return -1;
 			}
-			// Wait before retry to allow device to stabilize
-			usleep(sleep_microseconds * recovery_attempts);
+
 			return 0; // Skip this frame but don't fail
 		} else if (pcm_rc == -ENODEV) {
 			// Device disconnected - critical error
@@ -363,10 +361,9 @@ retry_read:
 			// I/O error - try recovery once
 			recovery_attempts++;
 			if (recovery_attempts <= max_recovery_attempts) {
-				snd_pcm_drop(pcm_handle);
-				err = snd_pcm_prepare(pcm_handle);
+				snd_pcm_drop(pcm_capture_handle);
+				err = snd_pcm_prepare(pcm_capture_handle);
 				if (err >= 0) {
-					usleep(sleep_microseconds);
 					goto retry_read;
 				}
 			}
@@ -374,8 +371,14 @@ retry_read:
 		} else {
 			// Other errors - limited retry for transient issues
 			recovery_attempts++;
-			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY)) {
-				usleep(sleep_microseconds / 2);
+			if (recovery_attempts <= 1) {
+				if (pcm_rc == -EINTR) {
+					// Signal interrupted - wait for device readiness
+					snd_pcm_wait(pcm_capture_handle, sleep_microseconds / 1000);
+				} else if (pcm_rc == -EBUSY) {
+					// Device busy - brief sleep to let conflict resolve
+					usleep(sleep_microseconds / 2);
+				}
 				goto retry_read;
 			}
 			return -1;
@@ -470,11 +473,15 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 		return -1;
 	}
 
-	// Decode Opus to PCM with error handling
-	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
+	/**
+	 * @note Passing NULL for data and 0 for len is the documented way to indicate 
+	 *       packet loss according to the Opus API documentation.
+	 * @see https://www.opus-codec.org/docs/html_api/group__opusdecoder.html#ga1a8b923c1041ad4976ceada237e117ba
+	 */
+	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 1);
 	if (pcm_frames < 0) {
 		// Try packet loss concealment on decode error
-		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 0);
+		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 1);
 		if (pcm_frames < 0) return -1;
 	}
 
@@ -500,7 +507,7 @@ retry_write:
 			}
 
 			// Wait before retry to allow device to stabilize
-			usleep(sleep_microseconds * recovery_attempts);
+			snd_pcm_wait(pcm_playback_handle, sleep_microseconds * recovery_attempts / 1000);
 			goto retry_write;
 		} else if (pcm_rc == -ESTRPIPE) {
 			// Device suspended, implement robust resume logic
@@ -520,8 +527,6 @@ retry_write:
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err < 0) return -2;
 			}
-			// Wait before retry to allow device to stabilize
-			usleep(sleep_microseconds * recovery_attempts);
 			return 0; // Skip this frame but don't fail
 		} else if (pcm_rc == -ENODEV) {
 			// Device disconnected - critical error
@@ -533,7 +538,6 @@ retry_write:
 				snd_pcm_drop(pcm_playback_handle);
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err >= 0) {
-					usleep(sleep_microseconds);
 					goto retry_write;
 				}
 			}
@@ -542,7 +546,6 @@ retry_write:
 			// Device not ready - brief wait and retry
 			recovery_attempts++;
 			if (recovery_attempts <= max_recovery_attempts) {
-				usleep(sleep_microseconds / 4);
 				goto retry_write;
 			}
 			return -2;
@@ -550,7 +553,13 @@ retry_write:
 			// Other errors - limited retry for transient issues
 			recovery_attempts++;
 			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY)) {
-				usleep(sleep_microseconds / 2);
+				if (pcm_rc == -EINTR) {
+					// Signal interrupted - wait for device readiness
+					snd_pcm_wait(pcm_playback_handle, sleep_microseconds / 1000);
+				} else if (pcm_rc == -EBUSY) {
+					// Device busy - brief sleep to let conflict resolve
+					usleep(sleep_microseconds / 2);
+				}
 				goto retry_write;
 			}
 			return -2;
@@ -599,9 +608,9 @@ void jetkvm_audio_close() {
 		opus_encoder_destroy(encoder);
 		encoder = NULL;
 	}
-	if (pcm_handle) {
-		snd_pcm_drain(pcm_handle);
-		snd_pcm_close(pcm_handle);
-		pcm_handle = NULL;
+	if (pcm_capture_handle) {
+		snd_pcm_drain(pcm_capture_handle);
+		snd_pcm_close(pcm_capture_handle);
+		pcm_capture_handle = NULL;
 	}
 }
