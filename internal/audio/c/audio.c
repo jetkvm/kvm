@@ -5,7 +5,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include <sys/mman.h>
 
 // C state for ALSA/Opus with safety flags
 static snd_pcm_t *pcm_capture_handle = NULL;
@@ -29,12 +28,11 @@ static int sleep_microseconds = 1000;   // Will be set from Config.CGOUsleepMicr
 static int max_attempts_global = 5;     // Will be set from Config.CGOMaxAttempts
 static int max_backoff_us_global = 500000; // Will be set from Config.CGOMaxBackoffMicroseconds
 // Hardware optimization flags for constrained environments
-static const int use_mmap_access = 1;         // Enable MMAP for improved performance
-static const int optimized_buffer_size = 0;   // Disable optimized buffer sizing for stability (was 1)
+static int optimized_buffer_size = 1;   // Disable optimized buffer sizing for stability (was 1)
 
 // C function declarations (implementations are below)
 int jetkvm_audio_init();
-void jetkvm_audio_close();
+void jetkvm_audio_capture_close();
 int jetkvm_audio_read_encode(void *opus_buf);
 int jetkvm_audio_decode_write(void *opus_buf, int opus_size);
 int jetkvm_audio_playback_init();
@@ -152,16 +150,8 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 	err = snd_pcm_hw_params_any(handle, params);
 	if (err < 0) return err;
 
-	// Use MMAP access for direct hardware memory access if enabled
-	if (use_mmap_access) {
-		err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_MMAP_INTERLEAVED);
-		if (err < 0) {
-			// Fallback to RW access if MMAP fails
-			err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
-		}
-	} else {
-		err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
-	}
+	// Use RW access for compatibility
+	err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
 	if (err < 0) return err;
 
 	err = snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_S16_LE);
@@ -260,7 +250,7 @@ int jetkvm_audio_init() {
 		snd_pcm_close(pcm_capture_handle);
 		pcm_capture_handle = NULL;
 		capture_initializing = 0;
-		return -1;
+		return -2;
 	}
 
 	// Initialize Opus encoder with optimized settings
@@ -269,7 +259,7 @@ int jetkvm_audio_init() {
 	if (!encoder || opus_err != OPUS_OK) {
 		if (pcm_capture_handle) { snd_pcm_close(pcm_capture_handle); pcm_capture_handle = NULL; }
 		capture_initializing = 0;
-		return -2;
+		return -3;
 	}
 
 	// Apply optimized Opus encoder settings for constrained hardware
@@ -278,10 +268,10 @@ int jetkvm_audio_init() {
 	opus_encoder_ctl(encoder, OPUS_SET_VBR(opus_vbr));
 	opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(opus_vbr_constraint));
 	opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(opus_signal_type));
-	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth));
+	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth)); // WIDEBAND for compatibility
 	opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
        // Set LSB depth for improved bit allocation on constrained hardware (disabled for compatibility)
-       // opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(opus_lsb_depth));
+		opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(opus_lsb_depth));
 	// Enable packet loss concealment for better resilience
 	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(5));
 	// Set prediction disabled for lower latency
@@ -308,6 +298,7 @@ int jetkvm_audio_read_encode(void *opus_buf) {
 	}
 
 retry_read:
+	;
 	int pcm_rc = snd_pcm_readi(pcm_capture_handle, pcm_buffer, frame_size);
 
 	// Handle ALSA errors with robust recovery strategies
@@ -329,7 +320,7 @@ retry_read:
 			}
 
 			// Wait before retry to allow device to stabilize
-			usleep(sleep_microseconds * recovery_attempts);
+			snd_pcm_wait(pcm_capture_handle, sleep_microseconds * recovery_attempts / 1000);
 			goto retry_read;
 		} else if (pcm_rc == -EAGAIN) {
 			// No data available - return 0 to indicate no frame
@@ -352,7 +343,8 @@ retry_read:
 				err = snd_pcm_prepare(pcm_capture_handle);
 				if (err < 0) return -1;
 			}
-
+			// Wait before retry to allow device to stabilize
+			snd_pcm_wait(pcm_capture_handle, sleep_microseconds * recovery_attempts / 1000);
 			return 0; // Skip this frame but don't fail
 		} else if (pcm_rc == -ENODEV) {
 			// Device disconnected - critical error
@@ -364,6 +356,7 @@ retry_read:
 				snd_pcm_drop(pcm_capture_handle);
 				err = snd_pcm_prepare(pcm_capture_handle);
 				if (err >= 0) {
+					snd_pcm_wait(pcm_capture_handle, sleep_microseconds / 1000);
 					goto retry_read;
 				}
 			}
@@ -371,14 +364,8 @@ retry_read:
 		} else {
 			// Other errors - limited retry for transient issues
 			recovery_attempts++;
-			if (recovery_attempts <= 1) {
-				if (pcm_rc == -EINTR) {
-					// Signal interrupted - wait for device readiness
-					snd_pcm_wait(pcm_capture_handle, sleep_microseconds / 1000);
-				} else if (pcm_rc == -EBUSY) {
-					// Device busy - brief sleep to let conflict resolve
-					usleep(sleep_microseconds / 2);
-				}
+			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY)) {
+				snd_pcm_wait(pcm_capture_handle, sleep_microseconds / 2000);
 				goto retry_read;
 			}
 			return -1;
@@ -473,15 +460,11 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 		return -1;
 	}
 
-	/**
-	 * @note Passing NULL for data and 0 for len is the documented way to indicate 
-	 *       packet loss according to the Opus API documentation.
-	 * @see https://www.opus-codec.org/docs/html_api/group__opusdecoder.html#ga1a8b923c1041ad4976ceada237e117ba
-	 */
-	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 1);
+	// Decode Opus to PCM with error handling
+	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
 	if (pcm_frames < 0) {
 		// Try packet loss concealment on decode error
-		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 1);
+		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 0);
 		if (pcm_frames < 0) return -1;
 	}
 
@@ -527,6 +510,8 @@ retry_write:
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err < 0) return -2;
 			}
+			// Wait before retry to allow device to stabilize
+			snd_pcm_wait(pcm_playback_handle, sleep_microseconds * recovery_attempts / 1000);
 			return 0; // Skip this frame but don't fail
 		} else if (pcm_rc == -ENODEV) {
 			// Device disconnected - critical error
@@ -538,6 +523,7 @@ retry_write:
 				snd_pcm_drop(pcm_playback_handle);
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err >= 0) {
+					snd_pcm_wait(pcm_playback_handle, sleep_microseconds / 1000);
 					goto retry_write;
 				}
 			}
@@ -546,6 +532,7 @@ retry_write:
 			// Device not ready - brief wait and retry
 			recovery_attempts++;
 			if (recovery_attempts <= max_recovery_attempts) {
+				usleep(sleep_microseconds / 4);
 				goto retry_write;
 			}
 			return -2;
@@ -553,13 +540,7 @@ retry_write:
 			// Other errors - limited retry for transient issues
 			recovery_attempts++;
 			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY)) {
-				if (pcm_rc == -EINTR) {
-					// Signal interrupted - wait for device readiness
-					snd_pcm_wait(pcm_playback_handle, sleep_microseconds / 1000);
-				} else if (pcm_rc == -EBUSY) {
-					// Device busy - brief sleep to let conflict resolve
-					usleep(sleep_microseconds / 2);
-				}
+				usleep(sleep_microseconds / 2);
 				goto retry_write;
 			}
 			return -2;
@@ -593,7 +574,7 @@ void jetkvm_audio_playback_close() {
 }
 
 // Safe capture cleanup
-void jetkvm_audio_close() {
+void jetkvm_audio_capture_close() {
 	// Wait for any ongoing operations to complete
 	while (capture_initializing) {
 		usleep(sleep_microseconds);
