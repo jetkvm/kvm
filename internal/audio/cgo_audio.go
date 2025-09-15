@@ -161,16 +161,6 @@ type AudioConfigCache struct {
 	inputProcessingTimeoutMS atomic.Int32
 	maxRestartAttempts       atomic.Int32
 
-	// Batch processing related values
-	BatchProcessingTimeout               time.Duration
-	BatchProcessorFramesPerBatch         int
-	BatchProcessorTimeout                time.Duration
-	BatchProcessingDelay                 time.Duration
-	MinBatchSizeForThreadPinning         int
-	BatchProcessorMaxQueueSize           int
-	BatchProcessorAdaptiveThreshold      float64
-	BatchProcessorThreadPinningThreshold int
-
 	// Mutex for updating the cache
 	mutex       sync.RWMutex
 	lastUpdate  time.Time
@@ -234,19 +224,12 @@ func (c *AudioConfigCache) Update() {
 		c.minOpusBitrate.Store(int32(Config.MinOpusBitrate))
 		c.maxOpusBitrate.Store(int32(Config.MaxOpusBitrate))
 
-		// Update batch processing related values
-		c.BatchProcessingTimeout = 100 * time.Millisecond // Fixed timeout for batch processing
-		c.BatchProcessorFramesPerBatch = Config.BatchProcessorFramesPerBatch
-		c.BatchProcessorTimeout = Config.BatchProcessorTimeout
-		c.BatchProcessingDelay = Config.BatchProcessingDelay
-		c.MinBatchSizeForThreadPinning = Config.MinBatchSizeForThreadPinning
-		c.BatchProcessorMaxQueueSize = Config.BatchProcessorMaxQueueSize
-		c.BatchProcessorAdaptiveThreshold = Config.BatchProcessorAdaptiveThreshold
-		c.BatchProcessorThreadPinningThreshold = Config.BatchProcessorThreadPinningThreshold
-
 		// Pre-allocate common errors
 		c.bufferTooSmallReadEncode = newBufferTooSmallError(0, Config.MinReadEncodeBuffer)
 		c.bufferTooLargeDecodeWrite = newBufferTooLargeError(Config.MaxDecodeWriteBuffer+1, Config.MaxDecodeWriteBuffer)
+
+		c.lastUpdate = time.Now()
+		c.initialized.Store(true)
 
 		c.lastUpdate = time.Now()
 		c.initialized.Store(true)
@@ -388,7 +371,9 @@ func updateOpusEncoderParams(bitrate, complexity, vbr, vbrConstraint, signalType
 
 // Buffer pool for reusing buffers in CGO functions
 var (
-	// Using SizedBufferPool for better memory management
+	// Simple buffer pool for PCM data
+	pcmBufferPool = NewAudioBufferPool(Config.MaxPCMBufferSize)
+
 	// Track buffer pool usage
 	cgoBufferPoolGets atomic.Int64
 	cgoBufferPoolPuts atomic.Int64
@@ -402,13 +387,14 @@ var (
 // GetBufferFromPool gets a buffer from the pool with at least the specified capacity
 func GetBufferFromPool(minCapacity int) []byte {
 	cgoBufferPoolGets.Add(1)
-	return GetOptimalBuffer(minCapacity)
+	// Use simple fixed-size buffer for PCM data
+	return pcmBufferPool.Get()
 }
 
 // ReturnBufferToPool returns a buffer to the pool
 func ReturnBufferToPool(buf []byte) {
 	cgoBufferPoolPuts.Add(1)
-	ReturnOptimalBuffer(buf)
+	pcmBufferPool.Put(buf)
 }
 
 // ReadEncodeWithPooledBuffer reads audio data and encodes it using a buffer from the pool
@@ -449,125 +435,6 @@ func DecodeWriteWithPooledBuffer(data []byte) (int, error) {
 	defer ReturnBufferToPool(pcmBuffer)
 
 	return CGOAudioDecodeWrite(data, pcmBuffer)
-}
-
-// BatchReadEncode reads and encodes multiple audio frames in a single batch
-// with optimized zero-copy frame management and batch reference counting
-func BatchReadEncode(batchSize int) ([][]byte, error) {
-	// Simple batch processing without complex overhead
-	frames := make([][]byte, 0, batchSize)
-	frameSize := 4096 // Fixed frame size for performance
-
-	for i := 0; i < batchSize; i++ {
-		buf := make([]byte, frameSize)
-		n, err := cgoAudioReadEncode(buf)
-		if err != nil {
-			if i > 0 {
-				return frames, nil // Return partial batch
-			}
-			return nil, err
-		}
-		if n > 0 {
-			frames = append(frames, buf[:n])
-		}
-	}
-
-	return frames, nil
-}
-
-// BatchDecodeWrite decodes and writes multiple audio frames in a single batch
-// This reduces CGO call overhead by processing multiple frames at once
-// with optimized zero-copy frame management and batch reference counting
-func BatchDecodeWrite(frames [][]byte) error {
-	// Validate input
-	if len(frames) == 0 {
-		return nil
-	}
-
-	// Convert to zero-copy frames for optimized processing
-	zeroCopyFrames := make([]*ZeroCopyAudioFrame, 0, len(frames))
-	for _, frameData := range frames {
-		if len(frameData) > 0 {
-			frame := GetZeroCopyFrame()
-			frame.SetDataDirect(frameData) // Direct assignment without copy
-			zeroCopyFrames = append(zeroCopyFrames, frame)
-		}
-	}
-
-	// Use batch reference counting for efficient management
-	if len(zeroCopyFrames) > 0 {
-		// Batch AddRef all frames at once
-		err := BatchAddRefFrames(zeroCopyFrames)
-		if err != nil {
-			return err
-		}
-		// Ensure cleanup with batch release
-		defer func() {
-			if _, err := BatchReleaseFrames(zeroCopyFrames); err != nil {
-				// Log release error but don't fail the operation
-				_ = err
-			}
-		}()
-	}
-
-	// Get cached config
-	cache := GetCachedConfig()
-	// Only update cache if expired - avoid unnecessary overhead
-	// Use proper locking to avoid race condition
-	if cache.initialized.Load() {
-		cache.mutex.RLock()
-		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
-		cache.mutex.RUnlock()
-		if cacheExpired {
-			cache.Update()
-		}
-	} else {
-		cache.Update()
-	}
-
-	// Track batch processing statistics - only if enabled
-	var startTime time.Time
-	// Batch time tracking removed
-	trackTime := false
-	if trackTime {
-		startTime = time.Now()
-	}
-	batchProcessingCount.Add(1)
-
-	// Get a PCM buffer from the pool for optimized decode-write
-	pcmBuffer := GetBufferFromPool(cache.GetMaxPCMBufferSize())
-	defer ReturnBufferToPool(pcmBuffer)
-
-	// Process each zero-copy frame with optimized batch processing
-	frameCount := 0
-	for _, zcFrame := range zeroCopyFrames {
-		// Get frame data from zero-copy frame
-		frameData := zcFrame.Data()[:zcFrame.Length()]
-		if len(frameData) == 0 {
-			continue
-		}
-
-		// Process this frame using optimized implementation
-		_, err := CGOAudioDecodeWrite(frameData, pcmBuffer)
-		if err != nil {
-			// Update statistics before returning error
-			batchFrameCount.Add(int64(frameCount))
-			if trackTime {
-				batchProcessingTime.Add(time.Since(startTime).Microseconds())
-			}
-			return err
-		}
-
-		frameCount++
-	}
-
-	// Update statistics
-	batchFrameCount.Add(int64(frameCount))
-	if trackTime {
-		batchProcessingTime.Add(time.Since(startTime).Microseconds())
-	}
-
-	return nil
 }
 
 // GetBatchProcessingStats returns statistics about batch processing
