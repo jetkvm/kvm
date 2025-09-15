@@ -45,23 +45,6 @@ class AudioQualityService {
   }
 
   /**
-   * Fetch microphone quality presets from the backend
-   */
-  async fetchMicrophoneQualityPresets(): Promise<AudioQualityResponse | null> {
-    try {
-      const response = await api.GET('/microphone/quality');
-      if (response.ok) {
-        const data = await response.json();
-        this.microphonePresets = data.presets;
-        return data;
-      }
-    } catch (error) {
-      console.error('Failed to fetch microphone quality presets:', error);
-    }
-    return null;
-  }
-
-  /**
    * Update quality labels with actual bitrates from presets
    */
   private updateQualityLabels(presets: QualityPresets): void {
@@ -132,31 +115,16 @@ class AudioQualityService {
   }
 
   /**
-   * Set microphone quality
-   */
-  async setMicrophoneQuality(quality: number): Promise<boolean> {
-    try {
-      const response = await api.POST('/microphone/quality', { quality });
-      return response.ok;
-    } catch (error) {
-      console.error('Failed to set microphone quality:', error);
-      return false;
-    }
-  }
-
-  /**
    * Load both audio and microphone configurations
    */
   async loadAllConfigurations(): Promise<{
     audio: AudioQualityResponse | null;
-    microphone: AudioQualityResponse | null;
   }> {
-    const [audio, microphone] = await Promise.all([
+    const [audio ] = await Promise.all([
       this.fetchAudioQualityPresets(),
-      this.fetchMicrophoneQualityPresets()
     ]);
 
-    return { audio, microphone };
+    return { audio };
   }
 }
 
