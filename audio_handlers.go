@@ -123,35 +123,16 @@ func SetAudioQuality(quality audio.AudioQuality) error {
 	return nil
 }
 
-// SetMicrophoneQuality is a global helper to set microphone quality
-func SetMicrophoneQuality(quality audio.AudioQuality) error {
-	initAudioControlService()
-	audioControlService.SetMicrophoneQuality(quality)
-	return nil
-}
-
 // GetAudioQualityPresets is a global helper to get available audio quality presets
 func GetAudioQualityPresets() map[audio.AudioQuality]audio.AudioConfig {
 	initAudioControlService()
 	return audioControlService.GetAudioQualityPresets()
 }
 
-// GetMicrophoneQualityPresets is a global helper to get available microphone quality presets
-func GetMicrophoneQualityPresets() map[audio.AudioQuality]audio.AudioConfig {
-	initAudioControlService()
-	return audioControlService.GetMicrophoneQualityPresets()
-}
-
 // GetCurrentAudioQuality is a global helper to get current audio quality configuration
 func GetCurrentAudioQuality() audio.AudioConfig {
 	initAudioControlService()
 	return audioControlService.GetCurrentAudioQuality()
-}
-
-// GetCurrentMicrophoneQuality is a global helper to get current microphone quality configuration
-func GetCurrentMicrophoneQuality() audio.AudioConfig {
-	initAudioControlService()
-	return audioControlService.GetCurrentMicrophoneQuality()
 }
 
 // handleAudioMute handles POST /audio/mute requests
