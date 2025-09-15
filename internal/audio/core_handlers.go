@@ -242,9 +242,9 @@ func (s *AudioControlService) SetAudioQuality(quality AudioQuality) {
 }
 
 // SetMicrophoneQuality sets the microphone input quality
-func (s *AudioControlService) SetMicrophoneQuality(quality AudioQuality) {
-	SetMicrophoneQuality(quality)
-}
+// func (s *AudioControlService) SetMicrophoneQuality(quality AudioQuality) {
+// 	SetMicrophoneQuality(quality)
+// }
 
 // GetAudioQualityPresets returns available audio quality presets
 func (s *AudioControlService) GetAudioQualityPresets() map[AudioQuality]AudioConfig {
