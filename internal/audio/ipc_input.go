@@ -211,8 +211,8 @@ func NewAudioInputServer() (*AudioInputServer, error) {
 		return nil, fmt.Errorf("failed to create unix socket after 3 attempts: %w", err)
 	}
 
-	// Get initial buffer size from config
-	initialBufferSize := int64(Config.AdaptiveDefaultBufferSize)
+	// Get initial buffer size (512 frames for stability)
+	initialBufferSize := int64(512)
 
 	// Ensure minimum buffer size to prevent immediate overflow
 	// Use at least 50 frames to handle burst traffic
@@ -1182,7 +1182,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 							atomic.StoreInt64(&ais.processingTime, newAvg)
 						}
 
-						// Report latency to adaptive buffer manager
+						// Report latency for metrics
 						ais.ReportLatency(latency)
 
 						if err != nil {
@@ -1227,10 +1227,10 @@ func (ais *AudioInputServer) GetServerStats() (total, dropped int64, avgProcessi
 		atomic.LoadInt64(&ais.bufferSize)
 }
 
-// UpdateBufferSize updates the buffer size (now using fixed config values)
+// UpdateBufferSize updates the buffer size (now using fixed values)
 func (ais *AudioInputServer) UpdateBufferSize() {
-	// Buffer size is now fixed from config
-	newSize := int64(Config.AdaptiveDefaultBufferSize)
+	// Buffer size is now fixed at 512 frames for stability
+	newSize := int64(512)
 	atomic.StoreInt64(&ais.bufferSize, newSize)
 }
 
