@@ -364,8 +364,13 @@ retry_read:
 		} else {
 			// Other errors - limited retry for transient issues
 			recovery_attempts++;
-			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY)) {
+			if (recovery_attempts <= 1 && pcm_rc == -EINTR) {
+				// Interrupted system call - use device-aware wait
 				snd_pcm_wait(pcm_capture_handle, sleep_microseconds / 2000);
+				goto retry_read;
+			} else if (recovery_attempts <= 1 && pcm_rc == -EBUSY) {
+				// Device busy - simple sleep to allow other operations to complete
+				usleep(sleep_microseconds / 2);
 				goto retry_read;
 			}
 			return -1;
