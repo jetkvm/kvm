@@ -1,18 +1,19 @@
+import { useClose } from "@headlessui/react";
+import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuCornerDownLeft } from "react-icons/lu";
-import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
-import { useClose } from "@headlessui/react";
 
-import { Button } from "@components/Button";
-import { GridCard } from "@components/Card";
-import { TextAreaWithLabel } from "@components/TextArea";
-import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { cx } from "@/cva.config";
 import { useHidStore, useSettingsStore, useUiStore } from "@/hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import useKeyboard from "@/hooks/useKeyboard";
 import useKeyboardLayout from "@/hooks/useKeyboardLayout";
 import notifications from "@/notifications";
+import { Button } from "@components/Button";
+import { GridCard } from "@components/Card";
 import { InputFieldWithLabel } from "@components/InputField";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { TextAreaWithLabel } from "@components/TextArea";
 
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -31,6 +32,9 @@ export default function PasteModal() {
     return delayValue;
   }, [delayValue]);
   const close = useClose();
+
+  const debugMode = useSettingsStore(state => state.debugMode);
+  const delayClassName = useMemo(() => debugMode ? "" : "hidden", [debugMode]);
 
   const { setKeyboardLayout } = useSettingsStore();
   const { selectedKeyboard } = useKeyboardLayout();
@@ -176,7 +180,7 @@ export default function PasteModal() {
                     )}
                   </div>
                 </div>
-                <div className="text-xs text-slate-600 dark:text-slate-400">
+                <div className={cx("text-xs text-slate-600 dark:text-slate-400", delayClassName)}>
                   <InputFieldWithLabel
                     type="number"
                     label="Delay between keys"
