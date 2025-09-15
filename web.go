@@ -190,8 +190,6 @@ func setupRouter() *gin.Engine {
 		protected.POST("/audio/mute", handleAudioMute)
 		protected.GET("/audio/quality", handleAudioQuality)
 		protected.POST("/audio/quality", handleSetAudioQuality)
-		protected.GET("/microphone/quality", handleMicrophoneQuality)
-		protected.POST("/microphone/quality", handleSetMicrophoneQuality)
 		protected.POST("/microphone/start", handleMicrophoneStart)
 		protected.POST("/microphone/stop", handleMicrophoneStop)
 		protected.POST("/microphone/mute", handleMicrophoneMute)
