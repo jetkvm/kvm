@@ -118,7 +118,7 @@ func cgoAudioInit() error {
 }
 
 func cgoAudioClose() {
-	C.jetkvm_audio_close()
+	C.jetkvm_audio_capture_close()
 }
 
 // AudioConfigCache provides a comprehensive caching system for audio configuration

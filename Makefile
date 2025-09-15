@@ -11,6 +11,7 @@ build_audio_deps: setup_toolchain
 
 # Prepare everything needed for local development (toolchain + audio deps + Go tools)
 dev_env: build_audio_deps
+	$(CLEAN_GO_CACHE)
 	@echo "Installing Go development tools..."
 	go install golang.org/x/tools/cmd/goimports@latest
 	@echo "Development environment ready."
@@ -31,6 +32,9 @@ OPUS_VERSION ?= 1.5.2
 
 # Set PKG_CONFIG_PATH globally for all targets that use CGO with audio libraries
 export PKG_CONFIG_PATH := $(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/utils:$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)
+
+# Common command to clean Go cache with verbose output for all Go builds
+CLEAN_GO_CACHE := @echo "Cleaning Go cache..."; go clean -cache -v
 
 # Optimization flags for ARM Cortex-A7 with NEON
 OPTIM_CFLAGS := -O3 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops
@@ -65,6 +69,7 @@ hash_resource:
 	@shasum -a 256 resource/jetkvm_native | cut -d ' ' -f 1 > resource/jetkvm_native.sha256
 
 build_dev: build_audio_deps hash_resource
+	$(CLEAN_GO_CACHE)
 	@echo "Building..."
 	go build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
@@ -72,14 +77,17 @@ build_dev: build_audio_deps hash_resource
 		-o $(BIN_DIR)/jetkvm_app cmd/main.go
 
 build_test2json:
+	$(CLEAN_GO_CACHE)
 	$(GO_CMD) build -o $(BIN_DIR)/test2json cmd/test2json
 
 build_gotestsum:
+	$(CLEAN_GO_CACHE)
 	@echo "Building gotestsum..."
 	$(GO_CMD) install gotest.tools/gotestsum@latest
 	cp $(shell $(GO_CMD) env GOPATH)/bin/linux_arm/gotestsum $(BIN_DIR)/gotestsum
 
 build_dev_test: build_audio_deps build_test2json build_gotestsum
+	$(CLEAN_GO_CACHE)
 # collect all directories that contain tests
 	@echo "Building tests for devices ..."
 	@rm -rf $(BIN_DIR)/tests && mkdir -p $(BIN_DIR)/tests
@@ -125,6 +133,7 @@ dev_release: frontend build_dev
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256
 
 build_release: frontend build_audio_deps hash_resource
+	$(CLEAN_GO_CACHE)
 	@echo "Building release..."
 	go build \
 		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION)" \
