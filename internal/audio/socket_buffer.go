@@ -156,23 +156,12 @@ func RecordSocketBufferMetrics(conn net.Conn, component string) {
 	}
 
 	// Get current socket buffer sizes
-	sendSize, recvSize, err := GetSocketBufferSizes(conn)
+	_, _, err := GetSocketBufferSizes(conn)
 	if err != nil {
 		// Log error but don't fail
 		return
 	}
 
-	// Record buffer sizes
-	socketBufferSizeGauge.WithLabelValues(component, "send").Set(float64(sendSize))
-	socketBufferSizeGauge.WithLabelValues(component, "receive").Set(float64(recvSize))
-}
-
-// RecordSocketBufferOverflow records a socket buffer overflow event
-func RecordSocketBufferOverflow(component, bufferType string) {
-	socketBufferOverflowCounter.WithLabelValues(component, bufferType).Inc()
-}
-
-// UpdateSocketBufferUtilization updates socket buffer utilization metrics
-func UpdateSocketBufferUtilization(component, bufferType string, utilizationPercent float64) {
-	socketBufferUtilizationGauge.WithLabelValues(component, bufferType).Set(utilizationPercent)
+	// Socket buffer sizes recorded for debugging if needed
+	// Removed detailed metrics as they weren't being used
 }

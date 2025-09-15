@@ -554,7 +554,6 @@ retry_write:
 
 	return pcm_frames;
 }
-
 // Safe playback cleanup with double-close protection
 void jetkvm_audio_playback_close() {
 	// Wait for any ongoing operations to complete

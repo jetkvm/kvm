@@ -256,11 +256,8 @@ func (ais *AudioInputServer) Start() error {
 	ais.startProcessorGoroutine()
 	ais.startMonitorGoroutine()
 
-	// Submit the connection acceptor to the audio reader pool
-	if !SubmitAudioReaderTask(ais.acceptConnections) {
-		// If the pool is full or shutting down, fall back to direct goroutine creation
-		go ais.acceptConnections()
-	}
+	// Submit the connection acceptor directly
+	go ais.acceptConnections()
 
 	return nil
 }
@@ -335,10 +332,8 @@ func (ais *AudioInputServer) acceptConnections() {
 		ais.mtx.Unlock()
 
 		// Handle this connection using the goroutine pool
-		if !SubmitAudioReaderTask(func() { ais.handleConnection(conn) }) {
-			// If the pool is full or shutting down, fall back to direct goroutine creation
-			go ais.handleConnection(conn)
-		}
+		// Handle the connection directly
+		go ais.handleConnection(conn)
 	}
 }
 
@@ -981,17 +976,8 @@ func (ais *AudioInputServer) startReaderGoroutine() {
 		}
 	}
 
-	// Submit the reader task to the audio reader pool with backpressure
-	logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-	if !SubmitAudioReaderTaskWithBackpressure(readerTask) {
-		// Task was dropped due to backpressure - this is expected under high load
-		// Log at debug level to avoid spam, but track the drop
-		logger.Debug().Msg("Audio reader task dropped due to backpressure")
-
-		// Don't fall back to unlimited goroutine creation
-		// Instead, let the system recover naturally
-		ais.wg.Done() // Decrement the wait group since we're not starting the task
-	}
+	// Handle the reader task directly
+	go readerTask()
 }
 
 // startProcessorGoroutine starts the message processor using the goroutine pool
@@ -1073,17 +1059,8 @@ func (ais *AudioInputServer) startProcessorGoroutine() {
 		}
 	}
 
-	// Submit the processor task to the audio processor pool with backpressure
-	logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-	if !SubmitAudioProcessorTaskWithBackpressure(processorTask) {
-		// Task was dropped due to backpressure - this is expected under high load
-		// Log at debug level to avoid spam, but track the drop
-		logger.Debug().Msg("Audio processor task dropped due to backpressure")
-
-		// Don't fall back to unlimited goroutine creation
-		// Instead, let the system recover naturally
-		ais.wg.Done() // Decrement the wait group since we're not starting the task
-	}
+	// Submit the processor task directly
+	go processorTask()
 }
 
 // processMessageWithRecovery processes a message with enhanced error recovery
@@ -1206,17 +1183,8 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 		}
 	}
 
-	// Submit the monitor task to the audio processor pool with backpressure
-	logger := logging.GetDefaultLogger().With().Str("component", AudioInputClientComponent).Logger()
-	if !SubmitAudioProcessorTaskWithBackpressure(monitorTask) {
-		// Task was dropped due to backpressure - this is expected under high load
-		// Log at debug level to avoid spam, but track the drop
-		logger.Debug().Msg("Audio monitor task dropped due to backpressure")
-
-		// Don't fall back to unlimited goroutine creation
-		// Instead, let the system recover naturally
-		ais.wg.Done() // Decrement the wait group since we're not starting the task
-	}
+	// Submit the monitor task directly
+	go monitorTask()
 }
 
 // GetServerStats returns server performance statistics

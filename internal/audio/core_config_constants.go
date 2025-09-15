@@ -202,13 +202,6 @@ type AudioConfigConstants struct {
 	CGOPCMBufferSize        int     // PCM buffer size for CGO audio processing
 	CGONanosecondsPerSecond float64 // Nanoseconds per second conversion
 
-	// Batch Processing Constants
-	BatchProcessorFramesPerBatch         int           // Frames processed per batch (4)
-	BatchProcessorTimeout                time.Duration // Batch processing timeout (5ms)
-	BatchProcessorMaxQueueSize           int           // Maximum batch queue size (16)
-	BatchProcessorAdaptiveThreshold      float64       // Adaptive batch sizing threshold (0.8)
-	BatchProcessorThreadPinningThreshold int           // Thread pinning threshold (8 frames)
-
 	// Output Streaming Constants
 	OutputStreamingFrameIntervalMS int // Output frame interval (20ms for 50 FPS)
 
@@ -522,12 +515,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		CGOUsleepMicroseconds:   1000,         // 1000 microseconds (1ms) for stable CGO usleep calls
 		CGOPCMBufferSize:        1920,         // 1920 samples for PCM buffer (max 2ch*960)
 		CGONanosecondsPerSecond: 1000000000.0, // 1000000000.0 for nanosecond conversions
-
-		// Batch Processing Constants - Optimized for quality change bursts
-		BatchProcessorFramesPerBatch:         16,                    // Larger batches for quality changes
-		BatchProcessorTimeout:                20 * time.Millisecond, // Longer timeout for bursts
-		BatchProcessorMaxQueueSize:           64,                    // Larger queue for quality changes
-		BatchProcessorThreadPinningThreshold: 8,                     // Lower threshold for better performance
 
 		// Output Streaming Constants - Balanced for stability
 		OutputStreamingFrameIntervalMS: 20, // 20ms frame interval (50 FPS) for stability

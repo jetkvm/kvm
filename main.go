@@ -35,11 +35,6 @@ func startAudioSubprocess() error {
 	// Initialize validation cache for optimal performance
 	audio.InitValidationCache()
 
-	// Enable batch audio processing to reduce CGO call overhead
-	if err := audio.EnableBatchAudioProcessing(); err != nil {
-		logger.Warn().Err(err).Msg("failed to enable batch audio processing")
-	}
-
 	// Create audio server supervisor
 	audioSupervisor = audio.NewAudioOutputSupervisor()
 
@@ -108,9 +103,6 @@ func startAudioSubprocess() error {
 
 			// Stop audio relay when process exits
 			audio.StopAudioRelay()
-
-			// Disable batch audio processing
-			audio.DisableBatchAudioProcessing()
 		},
 		// onRestart
 		func(attempt int, delay time.Duration) {
