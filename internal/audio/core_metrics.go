@@ -2,7 +2,6 @@ package audio
 
 import (
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -11,31 +10,6 @@ import (
 )
 
 var (
-	// Socket buffer metrics
-	socketBufferSizeGauge = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_socket_buffer_size_bytes",
-			Help: "Current socket buffer size in bytes",
-		},
-		[]string{"component", "buffer_type"}, // buffer_type: send, receive
-	)
-
-	socketBufferUtilizationGauge = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_socket_buffer_utilization_percent",
-			Help: "Socket buffer utilization percentage",
-		},
-		[]string{"component", "buffer_type"}, // buffer_type: send, receive
-	)
-
-	socketBufferOverflowCounter = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "jetkvm_audio_socket_buffer_overflow_total",
-			Help: "Total number of socket buffer overflows",
-		},
-		[]string{"component", "buffer_type"}, // buffer_type: send, receive
-	)
-
 	// Audio output metrics
 	audioFramesReceivedTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
@@ -122,28 +96,11 @@ var (
 		},
 	)
 
-	// Device health metrics
-	// Removed device health metrics - functionality not used
-
-	// Memory metrics
+	// Memory metrics (basic monitoring)
 	memoryHeapAllocBytes = promauto.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "jetkvm_audio_memory_heap_alloc_bytes",
 			Help: "Current heap allocation in bytes",
-		},
-	)
-
-	memoryHeapSysBytes = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_memory_heap_sys_bytes",
-			Help: "Total heap system memory in bytes",
-		},
-	)
-
-	memoryHeapObjects = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_memory_heap_objects",
-			Help: "Number of heap objects",
 		},
 	)
 
@@ -154,74 +111,8 @@ var (
 		},
 	)
 
-	memoryGCCPUFraction = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_memory_gc_cpu_fraction",
-			Help: "Fraction of CPU time spent in garbage collection",
-		},
-	)
-
-	// Buffer pool efficiency metrics
-	bufferPoolHitRate = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_buffer_pool_hit_rate_percent",
-			Help: "Buffer pool hit rate percentage",
-		},
-		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
-	)
-
-	bufferPoolMissRate = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_buffer_pool_miss_rate_percent",
-			Help: "Buffer pool miss rate percentage",
-		},
-		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
-	)
-
-	bufferPoolUtilization = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_buffer_pool_utilization_percent",
-			Help: "Buffer pool utilization percentage",
-		},
-		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
-	)
-
-	bufferPoolThroughput = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_buffer_pool_throughput_ops_per_sec",
-			Help: "Buffer pool throughput in operations per second",
-		},
-		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
-	)
-
-	bufferPoolGetLatency = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_buffer_pool_get_latency_seconds",
-			Help: "Average buffer pool get operation latency in seconds",
-		},
-		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
-	)
-
-	bufferPoolPutLatency = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_buffer_pool_put_latency_seconds",
-			Help: "Average buffer pool put operation latency in seconds",
-		},
-		[]string{"pool_name"}, // pool_name: frame_pool, control_pool, zero_copy_pool
-	)
-
-	// Latency percentile metrics
-	latencyPercentile = promauto.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "jetkvm_audio_latency_percentile_milliseconds",
-			Help: "Audio latency percentiles in milliseconds",
-		},
-		[]string{"source", "percentile"}, // source: input, output, processing; percentile: p50, p95, p99, min, max, avg
-	)
-
 	// Metrics update tracking
-	metricsUpdateMutex sync.RWMutex
-	lastMetricsUpdate  int64
+	lastMetricsUpdate int64
 
 	// Counter value tracking (since prometheus counters don't have Get() method)
 	audioFramesReceivedValue  uint64
@@ -232,8 +123,6 @@ var (
 	micFramesDroppedValue     uint64
 	micBytesProcessedValue    uint64
 	micConnectionDropsValue   uint64
-
-	// Atomic counters for device health metrics - functionality removed, no longer used
 
 	// Atomic counter for memory GC
 	memoryGCCountValue uint32
@@ -338,32 +227,12 @@ func UpdateMicrophoneMetrics(metrics UnifiedAudioMetrics) {
 	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
 
-// UpdateSocketBufferMetrics updates socket buffer metrics
-func UpdateSocketBufferMetrics(component, bufferType string, size, utilization float64, overflowOccurred bool) {
-	metricsUpdateMutex.Lock()
-	defer metricsUpdateMutex.Unlock()
-
-	socketBufferSizeGauge.WithLabelValues(component, bufferType).Set(size)
-	socketBufferUtilizationGauge.WithLabelValues(component, bufferType).Set(utilization)
-
-	if overflowOccurred {
-		socketBufferOverflowCounter.WithLabelValues(component, bufferType).Inc()
-	}
-
-	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
-}
-
-// UpdateDeviceHealthMetrics - Placeholder for future device health metrics
-
-// UpdateMemoryMetrics updates memory metrics
+// UpdateMemoryMetrics updates basic memory metrics
 func UpdateMemoryMetrics() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
 	memoryHeapAllocBytes.Set(float64(m.HeapAlloc))
-	memoryHeapSysBytes.Set(float64(m.HeapSys))
-	memoryHeapObjects.Set(float64(m.HeapObjects))
-	memoryGCCPUFraction.Set(m.GCCPUFraction)
 
 	// Update GC count with delta calculation
 	currentGCCount := uint32(m.NumGC)
@@ -371,31 +240,6 @@ func UpdateMemoryMetrics() {
 	if prevGCCount > 0 && currentGCCount > prevGCCount {
 		memoryGCCount.Add(float64(currentGCCount - prevGCCount))
 	}
-
-	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
-}
-
-// UpdateBufferPoolMetrics updates buffer pool efficiency metrics
-func UpdateBufferPoolMetrics(poolName string, hitRate, missRate, utilization, throughput, getLatency, putLatency float64) {
-	metricsUpdateMutex.Lock()
-	defer metricsUpdateMutex.Unlock()
-
-	bufferPoolHitRate.WithLabelValues(poolName).Set(hitRate * 100)
-	bufferPoolMissRate.WithLabelValues(poolName).Set(missRate * 100)
-	bufferPoolUtilization.WithLabelValues(poolName).Set(utilization * 100)
-	bufferPoolThroughput.WithLabelValues(poolName).Set(throughput)
-	bufferPoolGetLatency.WithLabelValues(poolName).Set(getLatency)
-	bufferPoolPutLatency.WithLabelValues(poolName).Set(putLatency)
-
-	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
-}
-
-// UpdateLatencyMetrics updates latency percentile metrics
-func UpdateLatencyMetrics(source, percentile string, latencyMilliseconds float64) {
-	metricsUpdateMutex.Lock()
-	defer metricsUpdateMutex.Unlock()
-
-	latencyPercentile.WithLabelValues(source, percentile).Set(latencyMilliseconds)
 
 	atomic.StoreInt64(&lastMetricsUpdate, time.Now().Unix())
 }
