@@ -278,8 +278,8 @@ int jetkvm_audio_init() {
 	opus_encoder_ctl(encoder, OPUS_SET_VBR(opus_vbr));
 	opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(opus_vbr_constraint));
 	opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(opus_signal_type));
-	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth)); // WIDEBAND for compatibility
-       opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
+	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth));
+	opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
        // Set LSB depth for improved bit allocation on constrained hardware (disabled for compatibility)
        // opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(opus_lsb_depth));
 	// Enable packet loss concealment for better resilience
