@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
@@ -30,6 +31,8 @@ type Session struct {
 	hidRPCAvailable bool
 	hidQueueLock    sync.Mutex
 	hidQueue        []chan hidQueueMessage
+
+	keysDownStateQueue chan usbgadget.KeysDownState
 }
 
 type hidQueueMessage struct {
@@ -93,6 +96,32 @@ func (s *Session) initQueues() {
 func (s *Session) handleQueues(index int) {
 	for msg := range s.hidQueue[index] {
 		onHidMessage(msg, s)
+	}
+}
+
+const keysDownStateQueueSize = 256
+
+func (s *Session) initKeysDownStateQueue() {
+	// serialise outbound key state reports so unreliable links can't stall input handling
+	s.keysDownStateQueue = make(chan usbgadget.KeysDownState, keysDownStateQueueSize)
+	go s.handleKeysDownStateQueue()
+}
+
+func (s *Session) handleKeysDownStateQueue() {
+	for state := range s.keysDownStateQueue {
+		s.reportHidRPCKeysDownState(state)
+	}
+}
+
+func (s *Session) enqueueKeysDownState(state usbgadget.KeysDownState) {
+	if s == nil || s.keysDownStateQueue == nil {
+		return
+	}
+
+	select {
+	case s.keysDownStateQueue <- state:
+	default:
+		hidRPCLogger.Warn().Msg("dropping keys down state update; queue full")
 	}
 }
 
@@ -181,6 +210,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	session := &Session{peerConnection: peerConnection}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	session.initQueues()
+	session.initKeysDownStateQueue()
 
 	go func() {
 		for msg := range session.rpcQueue {

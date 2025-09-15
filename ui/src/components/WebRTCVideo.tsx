@@ -190,7 +190,7 @@ export default function WebRTCVideo() {
     if (!isFullscreenEnabled || !videoElm.current) return;
 
     // per https://wicg.github.io/keyboard-lock/#system-key-press-handler
-    // If keyboard lock is activated after fullscreen is already in effect, then the user my 
+    // If keyboard lock is activated after fullscreen is already in effect, then the user my
     // see multiple messages about how to exit fullscreen. For this reason, we recommend that
     // developers call lock() before they enter fullscreen:
     await requestKeyboardLock();
@@ -237,6 +237,7 @@ export default function WebRTCVideo() {
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       e.preventDefault();
+      if (e.repeat) return;
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
 

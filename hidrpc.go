@@ -27,11 +27,7 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 		}
 		session.hidRPCAvailable = true
 	case hidrpc.TypeKeypressReport, hidrpc.TypeKeyboardReport:
-		keysDownState, err := handleHidRPCKeyboardInput(message)
-		if keysDownState != nil {
-			session.reportHidRPCKeysDownState(*keysDownState)
-		}
-		rpcErr = err
+		rpcErr = handleHidRPCKeyboardInput(message)
 	case hidrpc.TypeKeyboardMacroReport:
 		keyboardMacroReport, err := message.KeyboardMacroReport()
 		if err != nil {
@@ -107,27 +103,25 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 	}
 }
 
-func handleHidRPCKeyboardInput(message hidrpc.Message) (*usbgadget.KeysDownState, error) {
+func handleHidRPCKeyboardInput(message hidrpc.Message) error {
 	switch message.Type() {
 	case hidrpc.TypeKeypressReport:
 		keypressReport, err := message.KeypressReport()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get keypress report")
-			return nil, err
+			return err
 		}
-		keysDownState, rpcError := rpcKeypressReport(keypressReport.Key, keypressReport.Press)
-		return &keysDownState, rpcError
+		return rpcKeypressReport(keypressReport.Key, keypressReport.Press)
 	case hidrpc.TypeKeyboardReport:
 		keyboardReport, err := message.KeyboardReport()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get keyboard report")
-			return nil, err
+			return err
 		}
-		keysDownState, rpcError := rpcKeyboardReport(keyboardReport.Modifier, keyboardReport.Keys)
-		return &keysDownState, rpcError
+		return rpcKeyboardReport(keyboardReport.Modifier, keyboardReport.Keys)
 	}
 
-	return nil, fmt.Errorf("unknown HID RPC message type: %d", message.Type())
+	return fmt.Errorf("unknown HID RPC message type: %d", message.Type())
 }
 
 func reportHidRPC(params any, session *Session) {

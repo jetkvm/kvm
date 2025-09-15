@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/rs/xid"
@@ -153,36 +154,11 @@ func (u *UsbGadget) GetKeysDownState() KeysDownState {
 	return u.keysDownState
 }
 
-func (u *UsbGadget) updateKeyDownState(state KeysDownState) {
-	u.log.Trace().Interface("old", u.keysDownState).Interface("new", state).Msg("acquiring keyboardStateLock for updateKeyDownState")
-
-	// this is intentional to unlock keyboard state lock before onKeysDownChange callback
-	{
-		u.keyboardStateLock.Lock()
-		defer u.keyboardStateLock.Unlock()
-
-		if u.keysDownState.Modifier == state.Modifier &&
-			bytes.Equal(u.keysDownState.Keys, state.Keys) {
-			return // No change in key down state
-		}
-
-		u.log.Trace().Interface("old", u.keysDownState).Interface("new", state).Msg("keysDownState updated")
-		u.keysDownState = state
-	}
-
-	if u.onKeysDownChange != nil {
-		u.log.Trace().Interface("state", state).Msg("calling onKeysDownChange")
-		(*u.onKeysDownChange)(state)
-		u.log.Trace().Interface("state", state).Msg("onKeysDownChange called")
-	}
-}
-
 func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 	u.onKeysDownChange = &f
 }
 
-func (u *UsbGadget) scheduleAutoRelease(key byte) {
-	u.log.Trace().Msg("scheduling autoRelease")
+func (u *UsbGadget) scheduleAutoRelease() {
 	u.kbdAutoReleaseLock.Lock()
 	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease scheduled")
 
@@ -196,7 +172,6 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 }
 
 func (u *UsbGadget) cancelAutoRelease() {
-	u.log.Trace().Msg("cancelling autoRelease")
 	u.kbdAutoReleaseLock.Lock()
 	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease cancelled")
 
@@ -206,7 +181,6 @@ func (u *UsbGadget) cancelAutoRelease() {
 }
 
 func (u *UsbGadget) DelayAutoRelease() {
-	u.log.Trace().Msg("delaying autoRelease")
 	u.kbdAutoReleaseLock.Lock()
 	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease delayed")
 
@@ -215,33 +189,37 @@ func (u *UsbGadget) DelayAutoRelease() {
 	}
 
 	u.kbdAutoReleaseTimer.Reset(autoReleaseKeyboardInterval)
-
-	u.log.Trace().Msg("auto-release timer reset")
 }
 
 func (u *UsbGadget) performAutoRelease() {
-	u.log.Trace().Msg("performing autoRelease")
-	u.kbdAutoReleaseLock.Lock()
-	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease unlocked")
-
-	key := u.kbdAutoReleaseLastKey
-
 	select {
 	case <-u.keyboardStateCtx.Done():
 		return
 	default:
 	}
 
-	// we just reset the keyboard state to 0 no matter what
-	u.log.Trace().Uint8("key", key).Msg("auto-releasing keyboard key")
-	_, err := u.keypressReport(key, false, false)
-	if err != nil {
-		u.log.Warn().Uint8("key", key).Msg("failed to auto-release keyboard key")
+	u.kbdAutoReleaseLock.Lock()
+
+	key := u.kbdAutoReleaseLastKey
+
+	// Skip if already released
+	state := u.GetKeysDownState()
+	alreadyReleased := true
+	for i := range state.Keys {
+		if state.Keys[i] == key {
+			alreadyReleased = false
+			break
+		}
+	}
+
+	if alreadyReleased {
+		return
 	}
 
 	u.kbdAutoReleaseTimer = nil
+	u.kbdAutoReleaseLock.Unlock()
 
-	u.log.Trace().Uint8("key", key).Msg("auto release performed")
+	u.keypressReport(key, false) // autoRelease the ket
 }
 
 func (u *UsbGadget) listenKeyboardEvents() {
@@ -313,7 +291,11 @@ func (u *UsbGadget) OpenKeyboardHidFile() error {
 	return u.openKeyboardHidFile()
 }
 
+var keyboardWriteHidFileLock sync.Mutex
+
 func (u *UsbGadget) keyboardWriteHidFile(modifier byte, keys []byte) error {
+	keyboardWriteHidFileLock.Lock()
+	defer keyboardWriteHidFileLock.Unlock()
 	if err := u.openKeyboardHidFile(); err != nil {
 		return err
 	}
@@ -329,7 +311,7 @@ func (u *UsbGadget) keyboardWriteHidFile(modifier byte, keys []byte) error {
 	return nil
 }
 
-func (u *UsbGadget) UpdateKeysDown(modifier byte, keys []byte) KeysDownState {
+func (u *UsbGadget) UpdateKeysDown(modifier byte, keys []byte) {
 	// if we just reported an error roll over, we should clear the keys
 	if keys[0] == hidErrorRollOver {
 		for i := range keys {
@@ -337,17 +319,29 @@ func (u *UsbGadget) UpdateKeysDown(modifier byte, keys []byte) KeysDownState {
 		}
 	}
 
-	downState := KeysDownState{
+	state := KeysDownState{
 		Modifier: modifier,
 		Keys:     []byte(keys[:]),
 	}
-	u.updateKeyDownState(downState)
-	return downState
+
+	u.keyboardStateLock.Lock()
+
+	if u.keysDownState.Modifier == state.Modifier &&
+		bytes.Equal(u.keysDownState.Keys, state.Keys) {
+		u.keyboardStateLock.Unlock()
+		return // No change in key down state
+	}
+
+	u.keysDownState = state
+	u.keyboardStateLock.Unlock()
+
+	if u.onKeysDownChange != nil {
+		(*u.onKeysDownChange)(state) // this enques to the outgoing hidrpc queue via usb.go → currentSession.enqueueKeysDownState(...)
+	}
+	return
 }
 
-func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) (KeysDownState, error) {
-	u.keyboardLock.Lock()
-	defer u.keyboardLock.Unlock()
+func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 	defer u.resetUserInputTime()
 
 	if len(keys) > hidKeyBufferSize {
@@ -362,7 +356,8 @@ func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) (KeysDownState, e
 		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keyboard report to hidg0")
 	}
 
-	return u.UpdateKeysDown(modifier, keys), err
+	u.UpdateKeysDown(modifier, keys)
+	return err
 }
 
 const (
@@ -402,10 +397,10 @@ var KeyCodeToMaskMap = map[byte]byte{
 	RightSuper:   ModifierMaskRightSuper,
 }
 
-func (u *UsbGadget) keypressReportNonThreadSafe(key byte, press bool, autoRelease bool) (KeysDownState, error) {
+func (u *UsbGadget) keypressReport(key byte, press bool) error {
 	defer u.resetUserInputTime()
 
-	l := u.log.With().Uint8("key", key).Bool("press", press).Bool("autoRelease", autoRelease).Logger()
+	l := u.log.With().Uint8("key", key).Bool("press", press).Logger()
 	if l.GetLevel() <= zerolog.DebugLevel {
 		requestID := xid.New()
 		l = l.With().Str("requestID", requestID.String()).Logger()
@@ -470,64 +465,22 @@ func (u *UsbGadget) keypressReportNonThreadSafe(key byte, press bool, autoReleas
 		}
 	}
 
-	if l.GetLevel() <= zerolog.DebugLevel {
-		l = l.With().Uint8("modifier", modifier).Uints8("keys", keys).Logger()
-	}
-
-	l.Trace().Msg("writing keypress report to hidg0")
-
 	err := u.keyboardWriteHidFile(modifier, keys)
-	if err != nil {
-		l.Warn().Msg("Could not write keypress report to hidg0")
-	}
+	u.UpdateKeysDown(modifier, keys)
+	return err
+}
 
-	l.Trace().Msg("keypress report written to hidg0")
+func (u *UsbGadget) KeypressReport(key byte, press bool) error {
+	u.kbdAutoReleaseLock.Lock()
+	u.kbdAutoReleaseLastKey = key
+	u.kbdAutoReleaseLock.Unlock()
 
 	if press {
-		{
-			l.Trace().Msg("acquiring kbdAutoReleaseLock to update last key")
-			u.kbdAutoReleaseLock.Lock()
-			u.kbdAutoReleaseLastKey = key
-			unlockWithLog(&u.kbdAutoReleaseLock, u.log, "last key updated")
-		}
-
-		if autoRelease {
-			u.scheduleAutoRelease(key)
-		}
+		u.scheduleAutoRelease()
 	} else {
-		if autoRelease {
-			u.cancelAutoRelease()
-		}
+		u.cancelAutoRelease()
 	}
 
-	return u.UpdateKeysDown(modifier, keys), err
-}
-
-type keypressReportResult struct {
-	KeysDownState KeysDownState
-	Error         error
-}
-
-func (u *UsbGadget) keypressReport(key byte, press bool, autoRelease bool) (KeysDownState, error) {
-	u.keyboardLock.Lock()
-	defer u.keyboardLock.Unlock()
-
-	r := make(chan keypressReportResult)
-	go func() {
-		state, err := u.keypressReportNonThreadSafe(key, press, autoRelease)
-		r <- keypressReportResult{KeysDownState: state, Error: err}
-	}()
-
-	select {
-	case <-time.After(1 * time.Second):
-		u.log.Warn().Msg("keypressReport timed out, possibly stuck")
-		return u.keysDownState, fmt.Errorf("keypressReport timed out, possibly stuck")
-	case ret := <-r:
-		u.log.Debug().Msg("keypressReport handled")
-		return ret.KeysDownState, ret.Error
-	}
-}
-
-func (u *UsbGadget) KeypressReport(key byte, press bool) (KeysDownState, error) {
-	return u.keypressReport(key, press, true)
+	err := u.keypressReport(key, press)
+	return err
 }
