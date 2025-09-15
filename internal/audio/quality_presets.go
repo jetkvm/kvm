@@ -3,7 +3,7 @@
 
 // Package audio provides real-time audio processing for JetKVM with low-latency streaming.
 //
-// Key components: output/input pipelines with Opus codec, adaptive buffer management,
+// Key components: output/input pipelines with Opus codec, buffer management,
 // zero-copy frame pools, IPC communication, and process supervision.
 //
 // Supports four quality presets (Low/Medium/High/Ultra) with configurable bitrates.

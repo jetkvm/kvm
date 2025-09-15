@@ -152,11 +152,6 @@ type AudioConfigConstants struct {
 	MemoryFactor           float64
 	LatencyFactor          float64
 
-	// Adaptive Buffer Configuration
-	AdaptiveMinBufferSize     int // Minimum buffer size in frames for adaptive buffering
-	AdaptiveMaxBufferSize     int // Maximum buffer size in frames for adaptive buffering
-	AdaptiveDefaultBufferSize int // Default buffer size in frames for adaptive buffering
-
 	// Timing Configuration
 	RetryDelay              time.Duration // Retry delay
 	MaxRetryDelay           time.Duration // Maximum retry delay
@@ -171,22 +166,17 @@ type AudioConfigConstants struct {
 	OutputSupervisorTimeout time.Duration // 5s
 	BatchProcessingDelay    time.Duration // 10ms
 
-	// Adaptive Buffer Configuration
-	// LowCPUThreshold defines CPU usage threshold for buffer size reduction.
-	LowCPUThreshold float64 // 20% CPU threshold for buffer optimization
-
-	// HighCPUThreshold defines CPU usage threshold for buffer size increase.
-	HighCPUThreshold            float64       // 60% CPU threshold
-	LowMemoryThreshold          float64       // 50% memory threshold
-	HighMemoryThreshold         float64       // 75% memory threshold
-	AdaptiveBufferTargetLatency time.Duration // 20ms target latency
-	CooldownPeriod              time.Duration // 30s cooldown period
-	RollbackThreshold           time.Duration // 300ms rollback threshold
+	// System threshold configuration for buffer management
+	LowCPUThreshold     float64       // CPU usage threshold for performance optimization
+	HighCPUThreshold    float64       // CPU usage threshold for performance limits
+	LowMemoryThreshold  float64       // 50% memory threshold
+	HighMemoryThreshold float64       // 75% memory threshold
+	CooldownPeriod      time.Duration // 30s cooldown period
+	RollbackThreshold   time.Duration // 300ms rollback threshold
 
 	MaxLatencyThreshold         time.Duration // 200ms max latency
 	JitterThreshold             time.Duration // 20ms jitter threshold
 	LatencyOptimizationInterval time.Duration // 5s optimization interval
-	LatencyAdaptiveThreshold    float64       // 0.8 adaptive threshold
 	MicContentionTimeout        time.Duration // 200ms contention timeout
 	PreallocPercentage          int           // 20% preallocation percentage
 	BackoffStart                time.Duration // 50ms initial backoff
@@ -199,7 +189,6 @@ type AudioConfigConstants struct {
 	PercentageMultiplier    float64 // Multiplier for percentage calculations (100.0)
 	AveragingWeight         float64 // Weight for weighted averaging (0.7)
 	ScalingFactor           float64 // General scaling factor (1.5)
-	SmoothingFactor         float64 // Smoothing factor for adaptive buffers (0.3)
 	CPUMemoryWeight         float64 // Weight for CPU factor in calculations (0.5)
 	MemoryWeight            float64 // Weight for memory factor (0.3)
 	LatencyWeight           float64 // Weight for latency factor (0.2)
@@ -226,19 +215,17 @@ type AudioConfigConstants struct {
 	// IPC Constants
 	IPCInitialBufferFrames int // Initial IPC buffer size (500 frames)
 
-	EventTimeoutSeconds            int
-	EventTimeFormatString          string
-	EventSubscriptionDelayMS       int
-	InputProcessingTimeoutMS       int
-	AdaptiveBufferCPUMultiplier    int
-	AdaptiveBufferMemoryMultiplier int
-	InputSocketName                string
-	OutputSocketName               string
-	AudioInputComponentName        string
-	AudioOutputComponentName       string
-	AudioServerComponentName       string
-	AudioRelayComponentName        string
-	AudioEventsComponentName       string
+	EventTimeoutSeconds      int
+	EventTimeFormatString    string
+	EventSubscriptionDelayMS int
+	InputProcessingTimeoutMS int
+	InputSocketName          string
+	OutputSocketName         string
+	AudioInputComponentName  string
+	AudioOutputComponentName string
+	AudioServerComponentName string
+	AudioRelayComponentName  string
+	AudioEventsComponentName string
 
 	TestSocketTimeout          time.Duration
 	TestBufferSize             int
@@ -493,17 +480,11 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		OutputSupervisorTimeout: 5 * time.Second,        // Output monitoring timeout
 		BatchProcessingDelay:    5 * time.Millisecond,   // Reduced batch processing delay
 
-		// Adaptive Buffer Configuration - Optimized for single-core RV1106G3
-		LowCPUThreshold:             0.40, // Adjusted for single-core ARM system
-		HighCPUThreshold:            0.75, // Adjusted for single-core RV1106G3 (current load ~64%)
-		LowMemoryThreshold:          0.60,
-		HighMemoryThreshold:         0.85,                  // Adjusted for 200MB total memory system
-		AdaptiveBufferTargetLatency: 10 * time.Millisecond, // Aggressive target latency for responsiveness
-
-		// Adaptive Buffer Size Configuration - Optimized for quality change bursts
-		AdaptiveMinBufferSize:     256,  // Further increased minimum to prevent emergency mode
-		AdaptiveMaxBufferSize:     1024, // Much higher maximum for quality changes
-		AdaptiveDefaultBufferSize: 512,  // Higher default for stability during bursts
+		// System Load Configuration - Optimized for single-core RV1106G3
+		LowCPUThreshold:     0.40, // Adjusted for single-core ARM system
+		HighCPUThreshold:    0.75, // Adjusted for single-core RV1106G3 (current load ~64%)
+		LowMemoryThreshold:  0.60,
+		HighMemoryThreshold: 0.85, // Adjusted for 200MB total memory system
 
 		CooldownPeriod:    15 * time.Second,       // Reduced cooldown period
 		RollbackThreshold: 200 * time.Millisecond, // Lower rollback threshold
@@ -511,7 +492,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		MaxLatencyThreshold:         150 * time.Millisecond, // Lower max latency threshold
 		JitterThreshold:             15 * time.Millisecond,  // Reduced jitter threshold
 		LatencyOptimizationInterval: 3 * time.Second,        // More frequent optimization
-		LatencyAdaptiveThreshold:    0.7,                    // More aggressive adaptive threshold
 
 		// Microphone Contention Configuration
 		MicContentionTimeout: 200 * time.Millisecond,
@@ -531,7 +511,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		AveragingWeight:      0.7,   // Weight for smoothing values (70% recent, 30% historical)
 		ScalingFactor:        1.5,   // General scaling factor for adaptive adjustments
 
-		SmoothingFactor:         0.3, // For adaptive buffer smoothing
 		CPUMemoryWeight:         0.5, // CPU factor weight in combined calculations
 		MemoryWeight:            0.3, // Memory factor weight in combined calculations
 		LatencyWeight:           0.2, // Latency factor weight in combined calculations
@@ -548,7 +527,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		BatchProcessorFramesPerBatch:         16,                    // Larger batches for quality changes
 		BatchProcessorTimeout:                20 * time.Millisecond, // Longer timeout for bursts
 		BatchProcessorMaxQueueSize:           64,                    // Larger queue for quality changes
-		BatchProcessorAdaptiveThreshold:      0.6,                   // Lower threshold for faster adaptation
 		BatchProcessorThreadPinningThreshold: 8,                     // Lower threshold for better performance
 
 		// Output Streaming Constants - Balanced for stability
@@ -571,10 +549,6 @@ func DefaultAudioConfig() *AudioConfigConstants {
 
 		// Input Processing Constants - Balanced for stability
 		InputProcessingTimeoutMS: 10, // 10ms processing timeout threshold
-
-		// Adaptive Buffer Constants
-		AdaptiveBufferCPUMultiplier:    100, // 100 multiplier for CPU percentage
-		AdaptiveBufferMemoryMultiplier: 100, // 100 multiplier for memory percentage
 
 		// Socket Names
 		InputSocketName:  "audio_input.sock",  // Socket name for audio input IPC

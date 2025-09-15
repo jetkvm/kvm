@@ -154,25 +154,6 @@ func ValidateMetricsInterval(interval time.Duration) error {
 	return nil
 }
 
-// ValidateAdaptiveBufferConfig validates adaptive buffer configuration
-func ValidateAdaptiveBufferConfig(minSize, maxSize, defaultSize int) error {
-	if minSize <= 0 || maxSize <= 0 || defaultSize <= 0 {
-		return ErrInvalidBufferSize
-	}
-	if minSize >= maxSize {
-		return ErrInvalidBufferSize
-	}
-	if defaultSize < minSize || defaultSize > maxSize {
-		return ErrInvalidBufferSize
-	}
-	// Validate against global limits
-	maxBuffer := Config.SocketMaxBuffer
-	if maxSize > maxBuffer {
-		return ErrInvalidBufferSize
-	}
-	return nil
-}
-
 // ValidateInputIPCConfig validates input IPC configuration
 func ValidateInputIPCConfig(sampleRate, channels, frameSize int) error {
 	minSampleRate := Config.MinSampleRate
