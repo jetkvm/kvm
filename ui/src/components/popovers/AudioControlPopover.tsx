@@ -47,7 +47,6 @@ interface AudioControlPopoverProps {
 
 export default function AudioControlPopover({ microphone }: AudioControlPopoverProps) {
   const [currentConfig, setCurrentConfig] = useState<AudioConfig | null>(null);
-  const [currentMicrophoneConfig, setCurrentMicrophoneConfig] = useState<AudioConfig | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   
@@ -123,14 +122,10 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   const loadAudioConfigurations = async () => {
     try {
       // Use centralized audio quality service
-      const { audio, microphone } = await audioQualityService.loadAllConfigurations();
+      const { audio } = await audioQualityService.loadAllConfigurations();
 
       if (audio) {
         setCurrentConfig(audio.current);
-      }
-
-      if (microphone) {
-        setCurrentMicrophoneConfig(microphone.current);
       }
       
       setConfigsLoaded(true);
@@ -186,18 +181,6 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
       // Failed to change audio quality
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleMicrophoneQualityChange = async (quality: number) => {
-    try {
-      const resp = await api.POST("/microphone/quality", { quality });
-      if (resp.ok) {
-        const data = await resp.json();
-        setCurrentMicrophoneConfig(data.config);
-      }
-    } catch {
-      // Failed to change microphone quality
     }
   };
 
@@ -416,45 +399,6 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
           </button>
         </div>
 
-        {/* Microphone Quality Settings */}
-        {isMicrophoneActiveFromHook && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <MdMic className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-              <span className="font-medium text-slate-900 dark:text-slate-100">
-                Microphone Quality
-              </span>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-2">
-              {Object.entries(getQualityLabels()).map(([quality, label]) => (
-                <button
-                  key={`mic-${quality}`}
-                  onClick={() => handleMicrophoneQualityChange(parseInt(quality))}
-                  disabled={isLoading}
-                  className={cx(
-                    "rounded-md border px-3 py-2 text-sm font-medium transition-colors",
-                    currentMicrophoneConfig?.Quality === parseInt(quality)
-                      ? "border-green-500 bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300"
-                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600",
-                    isLoading && "opacity-50 cursor-not-allowed"
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {currentMicrophoneConfig && (
-              <div className="text-xs text-slate-600 dark:text-slate-400 mt-2">
-                Quality: {currentMicrophoneConfig.Quality} | 
-                Bitrate: {currentMicrophoneConfig.Bitrate}kbps | 
-                Sample Rate: {currentMicrophoneConfig.SampleRate}Hz
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Quality Settings */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
@@ -485,7 +429,6 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
 
           {currentConfig && (
             <div className="text-xs text-slate-600 dark:text-slate-400 mt-2">
-              Quality: {currentConfig.Quality} | 
               Bitrate: {currentConfig.Bitrate}kbps | 
               Sample Rate: {currentConfig.SampleRate}Hz
             </div>
