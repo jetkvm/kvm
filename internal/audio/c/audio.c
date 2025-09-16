@@ -457,20 +457,32 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 
 	// Safety checks
 	if (!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0) {
+		printf("[AUDIO] jetkvm_audio_decode_write: Failed safety checks - playback_initialized=%d, pcm_playback_handle=%p, decoder=%p, opus_buf=%p, opus_size=%d\n", 
+			playback_initialized, pcm_playback_handle, decoder, opus_buf, opus_size);
 		return -1;
 	}
 
 	// Additional bounds checking
 	if (opus_size > max_packet_size) {
+		printf("[AUDIO] jetkvm_audio_decode_write: Opus packet too large - size=%d, max=%d\n", opus_size, max_packet_size);
 		return -1;
 	}
+
+	printf("[AUDIO] jetkvm_audio_decode_write: Processing Opus packet - size=%d bytes\n", opus_size);
 
 	// Decode Opus to PCM with error handling
 	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
 	if (pcm_frames < 0) {
+		printf("[AUDIO] jetkvm_audio_decode_write: Opus decode failed with error %d, attempting packet loss concealment\n", pcm_frames);
 		// Try packet loss concealment on decode error
 		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 0);
-		if (pcm_frames < 0) return -1;
+		if (pcm_frames < 0) {
+			printf("[AUDIO] jetkvm_audio_decode_write: Packet loss concealment also failed with error %d\n", pcm_frames);
+			return -1;
+		}
+		printf("[AUDIO] jetkvm_audio_decode_write: Packet loss concealment succeeded, recovered %d frames\n", pcm_frames);
+	} else {
+		printf("[AUDIO] jetkvm_audio_decode_write: Opus decode successful - decoded %d PCM frames\n", pcm_frames);
 	}
 
 retry_write:
@@ -478,32 +490,44 @@ retry_write:
 	// Write PCM to playback device with robust recovery
 	int pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
 	if (pcm_rc < 0) {
+		printf("[AUDIO] jetkvm_audio_decode_write: ALSA write failed with error %d (%s), attempt %d/%d\n", 
+			pcm_rc, snd_strerror(pcm_rc), recovery_attempts + 1, max_recovery_attempts);
+		
 		if (pcm_rc == -EPIPE) {
 			// Buffer underrun - implement progressive recovery
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
+				printf("[AUDIO] jetkvm_audio_decode_write: Buffer underrun recovery failed after %d attempts\n", max_recovery_attempts);
 				return -2;
 			}
 
+			printf("[AUDIO] jetkvm_audio_decode_write: Buffer underrun detected, attempting recovery (attempt %d)\n", recovery_attempts);
 			// Try to recover with prepare
 			err = snd_pcm_prepare(pcm_playback_handle);
 			if (err < 0) {
+				printf("[AUDIO] jetkvm_audio_decode_write: snd_pcm_prepare failed (%s), trying drop+prepare\n", snd_strerror(err));
 				// If prepare fails, try drop and prepare
 				snd_pcm_drop(pcm_playback_handle);
 				err = snd_pcm_prepare(pcm_playback_handle);
-				if (err < 0) return -2;
+				if (err < 0) {
+					printf("[AUDIO] jetkvm_audio_decode_write: drop+prepare recovery failed (%s)\n", snd_strerror(err));
+					return -2;
+				}
 			}
 
 			// Wait before retry to allow device to stabilize
 			snd_pcm_wait(pcm_playback_handle, sleep_microseconds * recovery_attempts / 1000);
+			printf("[AUDIO] jetkvm_audio_decode_write: Buffer underrun recovery successful, retrying write\n");
 			goto retry_write;
 		} else if (pcm_rc == -ESTRPIPE) {
 			// Device suspended, implement robust resume logic
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
+				printf("[AUDIO] jetkvm_audio_decode_write: Device suspend recovery failed after %d attempts\n", max_recovery_attempts);
 				return -2;
 			}
 
+			printf("[AUDIO] jetkvm_audio_decode_write: Device suspended, attempting resume (attempt %d)\n", recovery_attempts);
 			// Try to resume with timeout
 			int resume_attempts = 0;
 			while ((err = snd_pcm_resume(pcm_playback_handle)) == -EAGAIN && resume_attempts < 10) {
@@ -511,47 +535,61 @@ retry_write:
 				resume_attempts++;
 			}
 			if (err < 0) {
+				printf("[AUDIO] jetkvm_audio_decode_write: Device resume failed (%s), trying prepare fallback\n", snd_strerror(err));
 				// Resume failed, try prepare as fallback
 				err = snd_pcm_prepare(pcm_playback_handle);
-				if (err < 0) return -2;
+				if (err < 0) {
+					printf("[AUDIO] jetkvm_audio_decode_write: Prepare fallback failed (%s)\n", snd_strerror(err));
+					return -2;
+				}
 			}
 			// Wait before retry to allow device to stabilize
 			snd_pcm_wait(pcm_playback_handle, sleep_microseconds * recovery_attempts / 1000);
+			printf("[AUDIO] jetkvm_audio_decode_write: Device suspend recovery successful, skipping frame\n");
 			return 0; // Skip this frame but don't fail
 		} else if (pcm_rc == -ENODEV) {
 			// Device disconnected - critical error
+			printf("[AUDIO] jetkvm_audio_decode_write: Device disconnected (ENODEV) - critical error\n");
 			return -2;
 		} else if (pcm_rc == -EIO) {
 			// I/O error - try recovery once
 			recovery_attempts++;
 			if (recovery_attempts <= max_recovery_attempts) {
+				printf("[AUDIO] jetkvm_audio_decode_write: I/O error detected, attempting recovery\n");
 				snd_pcm_drop(pcm_playback_handle);
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err >= 0) {
 					snd_pcm_wait(pcm_playback_handle, sleep_microseconds / 1000);
+					printf("[AUDIO] jetkvm_audio_decode_write: I/O error recovery successful, retrying write\n");
 					goto retry_write;
 				}
+				printf("[AUDIO] jetkvm_audio_decode_write: I/O error recovery failed (%s)\n", snd_strerror(err));
 			}
 			return -2;
 		} else if (pcm_rc == -EAGAIN) {
 			// Device not ready - brief wait and retry
 			recovery_attempts++;
 			if (recovery_attempts <= max_recovery_attempts) {
+				printf("[AUDIO] jetkvm_audio_decode_write: Device not ready (EAGAIN), waiting and retrying\n");
 				usleep(sleep_microseconds / 4);
 				goto retry_write;
 			}
+			printf("[AUDIO] jetkvm_audio_decode_write: Device not ready recovery failed after %d attempts\n", max_recovery_attempts);
 			return -2;
 		} else {
 			// Other errors - limited retry for transient issues
 			recovery_attempts++;
 			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY)) {
+				printf("[AUDIO] jetkvm_audio_decode_write: Transient error %d (%s), retrying once\n", pcm_rc, snd_strerror(pcm_rc));
 				usleep(sleep_microseconds / 2);
 				goto retry_write;
 			}
+			printf("[AUDIO] jetkvm_audio_decode_write: Unrecoverable error %d (%s)\n", pcm_rc, snd_strerror(pcm_rc));
 			return -2;
 		}
 	}
 
+	printf("[AUDIO] jetkvm_audio_decode_write: Successfully wrote %d PCM frames to USB Gadget audio device\n", pcm_frames);
 	return pcm_frames;
 }
 // Safe playback cleanup with double-close protection
