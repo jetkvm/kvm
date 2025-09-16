@@ -331,9 +331,44 @@ func cgoAudioPlaybackClose() {
 	C.jetkvm_audio_playback_close()
 }
 
+// Audio decode/write metrics for monitoring USB Gadget audio success
+var (
+	audioDecodeWriteTotal     atomic.Int64 // Total decode/write attempts
+	audioDecodeWriteSuccess   atomic.Int64 // Successful decode/write operations
+	audioDecodeWriteFailures  atomic.Int64 // Failed decode/write operations
+	audioDecodeWriteRecovery  atomic.Int64 // Recovery attempts
+	audioDecodeWriteLastError atomic.Value // Last error (string)
+	audioDecodeWriteLastTime  atomic.Int64 // Last operation timestamp (unix nano)
+)
+
+// GetAudioDecodeWriteStats returns current audio decode/write statistics
+func GetAudioDecodeWriteStats() (total, success, failures, recovery int64, lastError string, lastTime time.Time) {
+	total = audioDecodeWriteTotal.Load()
+	success = audioDecodeWriteSuccess.Load()
+	failures = audioDecodeWriteFailures.Load()
+	recovery = audioDecodeWriteRecovery.Load()
+
+	if err := audioDecodeWriteLastError.Load(); err != nil {
+		lastError = err.(string)
+	}
+
+	lastTimeNano := audioDecodeWriteLastTime.Load()
+	if lastTimeNano > 0 {
+		lastTime = time.Unix(0, lastTimeNano)
+	}
+
+	return
+}
+
 func cgoAudioDecodeWrite(buf []byte) (int, error) {
+	start := time.Now()
+	audioDecodeWriteTotal.Add(1)
+	audioDecodeWriteLastTime.Store(start.UnixNano())
+
 	// Minimal validation - assume caller provides correct size
 	if len(buf) == 0 {
+		audioDecodeWriteFailures.Add(1)
+		audioDecodeWriteLastError.Store("empty buffer")
 		return 0, errEmptyBuffer
 	}
 
@@ -342,14 +377,31 @@ func cgoAudioDecodeWrite(buf []byte) (int, error) {
 
 	// Fast path for success
 	if n >= 0 {
+		audioDecodeWriteSuccess.Add(1)
 		return n, nil
 	}
 
 	// Error handling with static errors
-	if n == -1 {
-		return 0, errAudioInitFailed
+	audioDecodeWriteFailures.Add(1)
+	var errMsg string
+	var err error
+
+	switch n {
+	case -1:
+		errMsg = "audio system not initialized"
+		err = errAudioInitFailed
+	case -2:
+		errMsg = "audio device error or recovery failed"
+		err = errAudioDecodeWrite
+		audioDecodeWriteRecovery.Add(1)
+	default:
+		errMsg = fmt.Sprintf("unknown error code %d", n)
+		err = errAudioDecodeWrite
 	}
-	return 0, errAudioDecodeWrite
+
+	audioDecodeWriteLastError.Store(errMsg)
+
+	return 0, err
 }
 
 // updateOpusEncoderParams dynamically updates OPUS encoder parameters
@@ -454,11 +506,19 @@ func GetBatchProcessingStats() (count, frames, avgTimeUs int64) {
 // cgoAudioDecodeWriteWithBuffers decodes opus data and writes to PCM buffer
 // This implementation uses separate buffers for opus data and PCM output
 func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, error) {
+	start := time.Now()
+	audioDecodeWriteTotal.Add(1)
+	audioDecodeWriteLastTime.Store(start.UnixNano())
+
 	// Validate input
 	if len(opusData) == 0 {
+		audioDecodeWriteFailures.Add(1)
+		audioDecodeWriteLastError.Store("empty opus data")
 		return 0, errEmptyBuffer
 	}
-	if len(pcmBuffer) == 0 {
+	if cap(pcmBuffer) == 0 {
+		audioDecodeWriteFailures.Add(1)
+		audioDecodeWriteLastError.Store("empty pcm buffer capacity")
 		return 0, errEmptyBuffer
 	}
 
@@ -480,26 +540,44 @@ func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, err
 	// Ensure data doesn't exceed max packet size
 	maxPacketSize := cache.GetMaxPacketSize()
 	if len(opusData) > maxPacketSize {
+		audioDecodeWriteFailures.Add(1)
+		errMsg := fmt.Sprintf("opus packet too large: %d > %d", len(opusData), maxPacketSize)
+		audioDecodeWriteLastError.Store(errMsg)
 		return 0, newBufferTooLargeError(len(opusData), maxPacketSize)
 	}
+
+	// Metrics tracking only - detailed logging handled at application level
 
 	// Direct CGO call with minimal overhead - unsafe.Pointer(&slice[0]) is never nil for non-empty slices
 	n := int(C.jetkvm_audio_decode_write(unsafe.Pointer(&opusData[0]), C.int(len(opusData))))
 
 	// Fast path for success case
 	if n >= 0 {
+		audioDecodeWriteSuccess.Add(1)
 		return n, nil
 	}
 
 	// Handle error cases with static error codes to reduce allocations
+	audioDecodeWriteFailures.Add(1)
+	var errMsg string
+	var err error
+
 	switch n {
 	case -1:
-		return 0, errAudioInitFailed
+		errMsg = "audio system not initialized"
+		err = errAudioInitFailed
 	case -2:
-		return 0, errAudioDecodeWrite
+		errMsg = "audio device error or recovery failed"
+		err = errAudioDecodeWrite
+		audioDecodeWriteRecovery.Add(1)
 	default:
-		return 0, newAudioDecodeWriteError(n)
+		errMsg = fmt.Sprintf("unknown error code %d", n)
+		err = newAudioDecodeWriteError(n)
 	}
+
+	audioDecodeWriteLastError.Store(errMsg)
+
+	return 0, err
 }
 
 // Optimized CGO function aliases - use direct function calls to reduce overhead

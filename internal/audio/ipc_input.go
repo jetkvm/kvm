@@ -461,13 +461,9 @@ func (ais *AudioInputServer) processMessage(msg *UnifiedIPCMessage) error {
 
 // processOpusFrame processes an Opus audio frame
 func (ais *AudioInputServer) processOpusFrame(data []byte) error {
-	// Fast path: skip empty frame check - caller should handle this
-	dataLen := len(data)
-	if dataLen == 0 {
-		return nil
-	}
-
 	// Inline validation for critical audio path - avoid function call overhead
+	dataLen := len(data)
+	cachedMaxFrameSize := maxFrameSize
 	if dataLen > cachedMaxFrameSize {
 		return ErrFrameDataTooLarge
 	}
@@ -480,8 +476,85 @@ func (ais *AudioInputServer) processOpusFrame(data []byte) error {
 	pcmBuffer := GetBufferFromPool(cache.MaxPCMBufferSize)
 	defer ReturnBufferToPool(pcmBuffer)
 
+	// Log audio processing details periodically for monitoring
+	totalFrames := atomic.AddInt64(&ais.totalFrames, 1)
+
+	// Zero-cost debug logging for buffer allocation (first few operations)
+	// Only perform computations if trace logging is actually enabled
+	if totalFrames <= 5 {
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
+		if logger.GetLevel() <= zerolog.TraceLevel {
+			logger.Trace().
+				Int("requested_buffer_size", cache.MaxPCMBufferSize).
+				Int("pcm_buffer_length", len(pcmBuffer)).
+				Int("pcm_buffer_capacity", cap(pcmBuffer)).
+				Msg("PCM buffer allocated from pool")
+		}
+	}
+	if totalFrames <= 5 || totalFrames%500 == 1 {
+		logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
+		if logger.GetLevel() <= zerolog.TraceLevel {
+			logger.Trace().
+				Int("opus_frame_size", dataLen).
+				Int("pcm_buffer_size", len(pcmBuffer)).
+				Int64("total_frames_processed", totalFrames).
+				Msg("Processing audio frame for USB Gadget output")
+		}
+	}
+
 	// Direct CGO call - avoid wrapper function overhead
-	_, err := CGOAudioDecodeWrite(data, pcmBuffer)
+	start := time.Now()
+	framesWritten, err := CGOAudioDecodeWrite(data, pcmBuffer)
+	duration := time.Since(start)
+
+	// Log the result with detailed context
+	logger := logging.GetDefaultLogger().With().Str("component", AudioInputServerComponent).Logger()
+
+	if err != nil {
+		// Log error with detailed context for debugging
+		atomic.AddInt64(&ais.droppedFrames, 1)
+
+		// Get current statistics for context
+		total, success, failures, recovery, lastError, _ := GetAudioDecodeWriteStats()
+		successRate := float64(success) / float64(total) * 100
+
+		logger.Error().
+			Err(err).
+			Int("opus_frame_size", dataLen).
+			Dur("processing_duration", duration).
+			Int64("frames_written", int64(framesWritten)).
+			Int64("total_operations", total).
+			Int64("successful_operations", success).
+			Int64("failed_operations", failures).
+			Int64("recovery_attempts", recovery).
+			Float64("success_rate_percent", successRate).
+			Str("last_error", lastError).
+			Int64("total_frames_processed", totalFrames).
+			Int64("dropped_frames", atomic.LoadInt64(&ais.droppedFrames)).
+			Msg("Failed to decode/write audio frame to USB Gadget")
+
+		return err
+	}
+
+	// Log successful operations periodically to monitor health (zero-cost when trace disabled)
+	if (totalFrames <= 5 || totalFrames%1000 == 1) && logger.GetLevel() <= zerolog.TraceLevel {
+		// Get current statistics for context (only when trace is enabled)
+		total, success, failures, recovery, _, _ := GetAudioDecodeWriteStats()
+		successRate := float64(success) / float64(total) * 100
+
+		logger.Trace().
+			Int("opus_frame_size", dataLen).
+			Int64("frames_written", int64(framesWritten)).
+			Int64("total_operations", total).
+			Int64("successful_operations", success).
+			Int64("failed_operations", failures).
+			Int64("recovery_attempts", recovery).
+			Float64("success_rate_percent", successRate).
+			Int64("total_frames_processed", totalFrames).
+			Int64("dropped_frames", atomic.LoadInt64(&ais.droppedFrames)).
+			Msg("Successfully decoded/wrote audio frame to USB Gadget")
+	}
+
 	return err
 }
 
