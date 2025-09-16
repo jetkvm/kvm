@@ -104,18 +104,10 @@ func (aom *AudioOutputIPCManager) WriteOpusFrame(frame *ZeroCopyAudioFrame) erro
 		return fmt.Errorf("output frame validation failed: %w", err)
 	}
 
-	start := time.Now()
-
 	// Send frame to IPC server
 	if err := aom.server.SendFrame(frame.Data()); err != nil {
-		aom.recordFrameDropped()
 		return err
 	}
-
-	// Update metrics
-	processingTime := time.Since(start)
-	aom.recordFrameProcessed(frame.Length())
-	aom.updateLatency(processingTime)
 
 	return nil
 }
@@ -130,21 +122,13 @@ func (aom *AudioOutputIPCManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFra
 		return fmt.Errorf("audio output server not initialized")
 	}
 
-	start := time.Now()
-
 	// Extract frame data
 	frameData := frame.Data()
 
 	// Send frame to IPC server (zero-copy not available, use regular send)
 	if err := aom.server.SendFrame(frameData); err != nil {
-		aom.recordFrameDropped()
 		return err
 	}
-
-	// Update metrics
-	processingTime := time.Since(start)
-	aom.recordFrameProcessed(len(frameData))
-	aom.updateLatency(processingTime)
 
 	return nil
 }
