@@ -59,12 +59,6 @@ func (bam *BaseAudioManager) resetMetrics() {
 	bam.metrics.AverageLatency = 0
 }
 
-// flushPendingMetrics is now a no-op since we use direct atomic updates
-func (bam *BaseAudioManager) flushPendingMetrics() {
-	// No-op: metrics are now updated directly without local buffering
-	// This function is kept for API compatibility
-}
-
 // getBaseMetrics returns a copy of the base metrics
 func (bam *BaseAudioManager) getBaseMetrics() BaseAudioMetrics {
 	return BaseAudioMetrics{
@@ -76,8 +70,6 @@ func (bam *BaseAudioManager) getBaseMetrics() BaseAudioMetrics {
 		AverageLatency:  bam.metrics.AverageLatency,
 	}
 }
-
-
 
 // logComponentStart logs component start with consistent format
 func (bam *BaseAudioManager) logComponentStart(component string) {

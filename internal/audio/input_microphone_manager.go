@@ -70,9 +70,6 @@ func (aim *AudioInputManager) Stop() {
 
 	aim.logComponentStop(AudioInputManagerComponent)
 
-	// Flush any pending sampled metrics before stopping
-	aim.flushPendingMetrics()
-
 	// Stop the IPC-based audio input
 	aim.ipcManager.Stop()
 
@@ -120,8 +117,6 @@ func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 	if err != nil {
 		return err
 	}
-	aim.recordFrameProcessed(len(frame))
-	aim.updateLatency(processingTime)
 
 	return nil
 }
@@ -164,8 +159,6 @@ func (aim *AudioInputManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFrame) 
 
 	// Update metrics
 	atomic.AddInt64(&aim.framesSent, 1)
-	aim.recordFrameProcessed(frame.Length())
-	aim.updateLatency(processingTime)
 
 	return nil
 }

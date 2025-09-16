@@ -17,8 +17,6 @@ const (
 	AudioOutputSupervisorComponent = "audio-output-supervisor"
 )
 
-
-
 // AudioOutputSupervisor manages the audio output server subprocess lifecycle
 type AudioOutputSupervisor struct {
 	*BaseSupervisor
