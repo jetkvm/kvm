@@ -5,10 +5,15 @@ package audio
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 )
 
 /*
@@ -19,9 +24,7 @@ import (
 */
 import "C"
 
-// Optimized Go wrappers with reduced overhead
 var (
-	// Base error types for wrapping with context
 	errAudioInitFailed   = errors.New("failed to init ALSA/Opus")
 	errAudioReadEncode   = errors.New("audio read/encode error")
 	errAudioDecodeWrite  = errors.New("audio decode/write error")
@@ -90,6 +93,30 @@ func cgoAudioInit() error {
 	// Get cached config and ensure it's updated
 	cache := GetCachedConfig()
 	cache.Update()
+
+	// Enable C trace logging if Go audio scope trace level is active
+
+	// Enable C trace logging if Go audio scope trace level is active
+	audioLogger := logging.GetSubsystemLogger("audio")
+	loggerTraceEnabled := audioLogger.GetLevel() <= zerolog.TraceLevel
+
+	// Manual check for audio scope in PION_LOG_TRACE (workaround for logging system bug)
+	manualTraceEnabled := false
+	pionTrace := os.Getenv("PION_LOG_TRACE")
+	if pionTrace != "" {
+		scopes := strings.Split(strings.ToLower(pionTrace), ",")
+		for _, scope := range scopes {
+			if strings.TrimSpace(scope) == "audio" {
+				manualTraceEnabled = true
+				break
+			}
+		}
+	}
+
+	// Use manual check as fallback if logging system fails
+	traceEnabled := loggerTraceEnabled || manualTraceEnabled
+
+	CGOSetTraceLogging(traceEnabled)
 
 	// Update C constants from cached config (atomic access, no locks)
 	C.update_audio_constants(
@@ -174,7 +201,7 @@ type AudioConfigCache struct {
 
 // Global audio config cache instance
 var globalAudioConfigCache = &AudioConfigCache{
-	cacheExpiry: 30 * time.Second, // Increased from 10s to 30s to further reduce cache updates
+	cacheExpiry: 30 * time.Second,
 }
 
 // GetCachedConfig returns the global audio config cache instance
@@ -318,6 +345,10 @@ func cgoAudioPlaybackInit() error {
 	cache := GetCachedConfig()
 	cache.Update()
 
+	// Enable C trace logging if Go audio scope trace level is active
+	audioLogger := logging.GetSubsystemLogger("audio")
+	CGOSetTraceLogging(audioLogger.GetLevel() <= zerolog.TraceLevel)
+
 	// No need to update C constants here as they're already set in cgoAudioInit
 
 	ret := C.jetkvm_audio_playback_init()
@@ -333,12 +364,12 @@ func cgoAudioPlaybackClose() {
 
 // Audio decode/write metrics for monitoring USB Gadget audio success
 var (
-	audioDecodeWriteTotal     atomic.Int64 // Total decode/write attempts
-	audioDecodeWriteSuccess   atomic.Int64 // Successful decode/write operations
-	audioDecodeWriteFailures  atomic.Int64 // Failed decode/write operations
-	audioDecodeWriteRecovery  atomic.Int64 // Recovery attempts
-	audioDecodeWriteLastError atomic.Value // Last error (string)
-	audioDecodeWriteLastTime  atomic.Int64 // Last operation timestamp (unix nano)
+	audioDecodeWriteTotal     atomic.Int64
+	audioDecodeWriteSuccess   atomic.Int64
+	audioDecodeWriteFailures  atomic.Int64
+	audioDecodeWriteRecovery  atomic.Int64
+	audioDecodeWriteLastError atomic.Value
+	audioDecodeWriteLastTime  atomic.Int64
 )
 
 // GetAudioDecodeWriteStats returns current audio decode/write statistics
@@ -593,4 +624,14 @@ func CGOAudioDecodeWrite(opusData []byte, pcmBuffer []byte) (int, error) {
 }
 func CGOUpdateOpusEncoderParams(bitrate, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx int) error {
 	return updateOpusEncoderParams(bitrate, complexity, vbr, vbrConstraint, signalType, bandwidth, dtx)
+}
+
+func CGOSetTraceLogging(enabled bool) {
+	var cEnabled C.int
+	if enabled {
+		cEnabled = 1
+	} else {
+		cEnabled = 0
+	}
+	C.set_trace_logging(cEnabled)
 }

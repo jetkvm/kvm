@@ -217,7 +217,13 @@ func (s *AudioOutputSupervisor) startProcess() error {
 	s.cmd.Stderr = os.Stderr
 
 	// Set environment variables for OPUS configuration
-	s.cmd.Env = append(os.Environ(), s.opusEnv...)
+	env := append(os.Environ(), s.opusEnv...)
+
+	// Pass logging environment variables directly to subprocess
+	// The subprocess will inherit all PION_LOG_* variables from os.Environ()
+	// This ensures the audio scope gets the correct trace level
+
+	s.cmd.Env = env
 
 	// Start the process
 	if err := s.cmd.Start(); err != nil {

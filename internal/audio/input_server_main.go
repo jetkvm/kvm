@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 )
 
 // Global audio input server instance
@@ -46,7 +47,7 @@ func RecoverGlobalAudioInputServer() {
 // RunAudioInputServer runs the audio input server subprocess
 // This should be called from main() when the subprocess is detected
 func RunAudioInputServer() error {
-	logger := logging.GetDefaultLogger().With().Str("component", "audio-input-server").Logger()
+	logger := logging.GetSubsystemLogger("audio").With().Str("component", "audio-input-server").Logger()
 
 	// Parse OPUS configuration from environment variables
 	bitrate, complexity, vbr, signalType, bandwidth, dtx := parseOpusConfig()
@@ -84,6 +85,10 @@ func RunAudioInputServer() error {
 	}
 
 	logger.Info().Msg("audio input server started, waiting for connections")
+
+	// Update C trace logging based on current audio scope log level (after environment variables are processed)
+	traceEnabled := logger.GetLevel() <= zerolog.TraceLevel
+	CGOSetTraceLogging(traceEnabled)
 
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
