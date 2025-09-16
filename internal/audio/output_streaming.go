@@ -14,8 +14,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Removed unused AudioOutputStreamer struct - actual streaming uses direct functions
-
 var (
 	outputStreamingRunning int32
 	outputStreamingCancel  context.CancelFunc

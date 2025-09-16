@@ -163,5 +163,4 @@ func RecordSocketBufferMetrics(conn net.Conn, component string) {
 	}
 
 	// Socket buffer sizes recorded for debugging if needed
-	// Removed detailed metrics as they weren't being used
 }

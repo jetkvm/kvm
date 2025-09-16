@@ -298,8 +298,6 @@ func (c *AudioConfigCache) GetBufferTooLargeError() error {
 	return c.bufferTooLargeDecodeWrite
 }
 
-// Removed duplicate config caching system - using AudioConfigCache instead
-
 // updateCacheIfNeeded updates cache only if expired to avoid overhead
 func updateCacheIfNeeded(cache *AudioConfigCache) {
 	if cache.initialized.Load() {
@@ -464,7 +462,6 @@ var (
 	batchProcessingCount atomic.Int64
 	batchFrameCount      atomic.Int64
 	batchProcessingTime  atomic.Int64
-	// Batch time tracking removed
 )
 
 // GetBufferFromPool gets a buffer from the pool with at least the specified capacity
@@ -613,12 +610,12 @@ func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, err
 
 // Optimized CGO function aliases - use direct function calls to reduce overhead
 // These are now direct function aliases instead of variable assignments
-func CGOAudioInit() error                               { return cgoAudioInit() }
-func CGOAudioClose()                                    { cgoAudioClose() }
-func CGOAudioReadEncode(buf []byte) (int, error)        { return cgoAudioReadEncode(buf) }
-func CGOAudioPlaybackInit() error                       { return cgoAudioPlaybackInit() }
-func CGOAudioPlaybackClose()                            { cgoAudioPlaybackClose() }
-func CGOAudioDecodeWriteLegacy(buf []byte) (int, error) { return cgoAudioDecodeWrite(buf) }
+func CGOAudioInit() error                        { return cgoAudioInit() }
+func CGOAudioClose()                             { cgoAudioClose() }
+func CGOAudioReadEncode(buf []byte) (int, error) { return cgoAudioReadEncode(buf) }
+func CGOAudioPlaybackInit() error                { return cgoAudioPlaybackInit() }
+func CGOAudioPlaybackClose()                     { cgoAudioPlaybackClose() }
+
 func CGOAudioDecodeWrite(opusData []byte, pcmBuffer []byte) (int, error) {
 	return cgoAudioDecodeWriteWithBuffers(opusData, pcmBuffer)
 }
