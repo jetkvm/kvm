@@ -480,34 +480,26 @@ retry_write:
 	// Write PCM to playback device with robust recovery
 	int pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
 	if (pcm_rc < 0) {
-		printf("[AUDIO] jetkvm_audio_decode_write: ALSA write failed with error %d (%s), attempt %d/%d\n", 
-			pcm_rc, snd_strerror(pcm_rc), recovery_attempts + 1, max_recovery_attempts);
-		
 		if (pcm_rc == -EPIPE) {
 			// Buffer underrun - implement progressive recovery
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
-				printf("[AUDIO] jetkvm_audio_decode_write: Buffer underrun recovery failed after %d attempts\n", max_recovery_attempts);
 				return -2;
 			}
 
-			printf("[AUDIO] jetkvm_audio_decode_write: Buffer underrun detected, attempting recovery (attempt %d)\n", recovery_attempts);
 			// Try to recover with prepare
 			err = snd_pcm_prepare(pcm_playback_handle);
 			if (err < 0) {
-				printf("[AUDIO] jetkvm_audio_decode_write: snd_pcm_prepare failed (%s), trying drop+prepare\n", snd_strerror(err));
 				// If prepare fails, try drop and prepare
 				snd_pcm_drop(pcm_playback_handle);
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err < 0) {
-					printf("[AUDIO] jetkvm_audio_decode_write: drop+prepare recovery failed (%s)\n", snd_strerror(err));
 					return -2;
 				}
 			}
 
 			// Wait before retry to allow device to stabilize
 			snd_pcm_wait(pcm_playback_handle, sleep_microseconds * recovery_attempts / 1000);
-			printf("[AUDIO] jetkvm_audio_decode_write: Buffer underrun recovery successful, retrying write\n");
 			goto retry_write;
 		} else if (pcm_rc == -ESTRPIPE) {
 			// Device suspended, implement robust resume logic
