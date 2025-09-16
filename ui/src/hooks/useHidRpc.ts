@@ -214,12 +214,12 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     };
 
     const openHandler = () => {
-      console.warn("HID RPC channel opened");
+      console.info("HID RPC channel opened");
       sendHandshake();
     };
 
     const closeHandler = () => {
-      console.warn("HID RPC channel closed");
+      console.info("HID RPC channel closed");
       setRpcHidProtocolVersion(null);
     };
 
