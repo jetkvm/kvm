@@ -119,6 +119,11 @@ func (ais *AudioInputSupervisor) startProcess() error {
 	// Set environment variables for IPC and OPUS configuration
 	env := append(os.Environ(), "JETKVM_AUDIO_INPUT_IPC=true") // Enable IPC mode
 	env = append(env, ais.opusEnv...)                          // Add OPUS configuration
+
+	// Pass logging environment variables directly to subprocess
+	// The subprocess will inherit all PION_LOG_* variables from os.Environ()
+	// This ensures the audio scope gets the correct trace level
+
 	ais.cmd.Env = env
 
 	// Set process group to allow clean termination

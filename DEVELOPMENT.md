@@ -409,7 +409,7 @@ npm install
 
 ```bash
 # Enable debug logging
-export LOG_TRACE_SCOPES="jetkvm,cloud,websocket,native,jsonrpc"
+export LOG_TRACE_SCOPES="jetkvm,cloud,websocket,native,jsonrpc,audio"
 
 # Frontend development
 export JETKVM_PROXY_URL="ws://<IP>"
@@ -461,7 +461,7 @@ curl http://api:$JETKVM_PASSWORD@YOUR_DEVICE_IP/developer/pprof/
 
 ```bash
 # Enable trace logging (useful for debugging)
-export LOG_TRACE_SCOPES="jetkvm,cloud,websocket,native,jsonrpc"
+export LOG_TRACE_SCOPES="jetkvm,cloud,websocket,native,jsonrpc,audio"
 
 # For frontend development
 export JETKVM_PROXY_URL="ws://<JETKVM_IP>"

@@ -1,3 +1,11 @@
+/*
+ * JetKVM Audio Processing Module
+ * 
+ * This module handles bidirectional audio processing for JetKVM:
+ * - Audio INPUT: Client microphone → Device speakers (decode Opus → ALSA playback)
+ * - Audio OUTPUT: Device microphone → Client speakers (ALSA capture → encode Opus)
+ */
+
 #include <alsa/asoundlib.h>
 #include <opus.h>
 #include <stdio.h>
@@ -6,39 +14,74 @@
 #include <unistd.h>
 #include <errno.h>
 
-// C state for ALSA/Opus with safety flags
-static snd_pcm_t *pcm_capture_handle = NULL;
-static snd_pcm_t *pcm_playback_handle = NULL;
-static OpusEncoder *encoder = NULL;
-static OpusDecoder *decoder = NULL;
-// Opus encoder settings - initialized from Go configuration
-static int opus_bitrate = 96000;        // Will be set from Config.CGOOpusBitrate
-static int opus_complexity = 3;         // Will be set from Config.CGOOpusComplexity
-static int opus_vbr = 1;                // Will be set from Config.CGOOpusVBR
-static int opus_vbr_constraint = 1;     // Will be set from Config.CGOOpusVBRConstraint
-static int opus_signal_type = 3;        // Will be set from Config.CGOOpusSignalType
-static int opus_bandwidth = 1105;       // OPUS_BANDWIDTH_WIDEBAND for compatibility (was 1101)
-static int opus_dtx = 0;                // Will be set from Config.CGOOpusDTX
-static int opus_lsb_depth = 16;         // LSB depth for improved bit allocation on constrained hardware
-static int sample_rate = 48000;         // Will be set from Config.CGOSampleRate
-static int channels = 2;                // Will be set from Config.CGOChannels
-static int frame_size = 960;            // Will be set from Config.CGOFrameSize
-static int max_packet_size = 1500;      // Will be set from Config.CGOMaxPacketSize
-static int sleep_microseconds = 1000;   // Will be set from Config.CGOUsleepMicroseconds
-static int max_attempts_global = 5;     // Will be set from Config.CGOMaxAttempts
-static int max_backoff_us_global = 500000; // Will be set from Config.CGOMaxBackoffMicroseconds
-// Hardware optimization flags for constrained environments
-static int optimized_buffer_size = 1;   // Disable optimized buffer sizing for stability (was 1)
+// ============================================================================
+// GLOBAL STATE VARIABLES
+// ============================================================================
 
-// C function declarations (implementations are below)
-int jetkvm_audio_capture_init();
-void jetkvm_audio_capture_close();
-int jetkvm_audio_read_encode(void *opus_buf);
-int jetkvm_audio_decode_write(void *opus_buf, int opus_size);
-int jetkvm_audio_playback_init();
-void jetkvm_audio_playback_close();
+// ALSA device handles
+static snd_pcm_t *pcm_capture_handle = NULL;  // Device microphone (OUTPUT path)
+static snd_pcm_t *pcm_playback_handle = NULL; // Device speakers (INPUT path)
 
-// Function to update constants from Go configuration
+// Opus codec instances
+static OpusEncoder *encoder = NULL; // For OUTPUT path (device mic → client)
+static OpusDecoder *decoder = NULL; // For INPUT path (client → device speakers)
+// Audio format configuration
+static int sample_rate = 48000;    // Sample rate in Hz
+static int channels = 2;           // Number of audio channels (stereo)
+static int frame_size = 960;       // Frames per Opus packet
+
+// Opus encoder configuration
+static int opus_bitrate = 96000;        // Bitrate in bits/second
+static int opus_complexity = 3;         // Encoder complexity (0-10)
+static int opus_vbr = 1;                // Variable bitrate enabled
+static int opus_vbr_constraint = 1;     // Constrained VBR
+static int opus_signal_type = 3;        // Audio signal type
+static int opus_bandwidth = 1105;       // Bandwidth setting
+static int opus_dtx = 0;                // Discontinuous transmission
+static int opus_lsb_depth = 16;         // LSB depth for bit allocation
+
+// Network and buffer configuration
+static int max_packet_size = 1500;      // Maximum Opus packet size
+
+// Error handling and retry configuration
+static int sleep_microseconds = 1000;   // Base sleep time for retries
+static int max_attempts_global = 5;     // Maximum retry attempts
+static int max_backoff_us_global = 500000; // Maximum backoff time
+
+// Performance optimization flags
+static int optimized_buffer_size = 1;   // Use optimized buffer sizing
+static int trace_logging_enabled = 0;   // Enable detailed trace logging
+
+// ============================================================================
+// FUNCTION DECLARATIONS
+// ============================================================================
+
+// Audio OUTPUT path functions (device microphone → client speakers)
+int jetkvm_audio_capture_init();           // Initialize capture device and Opus encoder
+void jetkvm_audio_capture_close();         // Cleanup capture resources
+int jetkvm_audio_read_encode(void *opus_buf); // Read PCM, encode to Opus
+
+// Audio INPUT path functions (client microphone → device speakers)  
+int jetkvm_audio_playback_init();          // Initialize playback device and Opus decoder
+void jetkvm_audio_playback_close();        // Cleanup playback resources
+int jetkvm_audio_decode_write(void *opus_buf, int opus_size); // Decode Opus, write PCM
+
+// Configuration and utility functions
+void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constraint,
+                           int signal_type, int bandwidth, int dtx, int lsb_depth, int sr, int ch,
+                           int fs, int max_pkt, int sleep_us, int max_attempts, int max_backoff);
+void set_trace_logging(int enabled);
+int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_constraint,
+                              int signal_type, int bandwidth, int dtx);
+
+// ============================================================================
+// CONFIGURATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Update audio configuration constants from Go
+ * Called during initialization to sync C variables with Go config
+ */
 void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constraint,
                            int signal_type, int bandwidth, int dtx, int lsb_depth, int sr, int ch,
                            int fs, int max_pkt, int sleep_us, int max_attempts, int max_backoff) {
@@ -59,22 +102,38 @@ void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constr
     max_backoff_us_global = max_backoff;
 }
 
-// State tracking to prevent race conditions during rapid start/stop
-static volatile int capture_initializing = 0;
-static volatile int capture_initialized = 0;
-static volatile int playback_initializing = 0;
-static volatile int playback_initialized = 0;
+/**
+ * Enable or disable trace logging
+ * When enabled, detailed debug information is printed to stdout
+ * Zero overhead when disabled - no function calls or string formatting occur
+ */
+void set_trace_logging(int enabled) {
+    trace_logging_enabled = enabled;
+}
 
-// Function to dynamically update Opus encoder parameters
+// ============================================================================
+// INITIALIZATION STATE TRACKING
+// ============================================================================
+
+// Thread-safe initialization state tracking to prevent race conditions
+static volatile int capture_initializing = 0;  // OUTPUT path init in progress
+static volatile int capture_initialized = 0;   // OUTPUT path ready
+static volatile int playback_initializing = 0; // INPUT path init in progress  
+static volatile int playback_initialized = 0;  // INPUT path ready
+
+/**
+ * Update Opus encoder parameters dynamically
+ * Used for OUTPUT path (device microphone → client speakers)
+ * 
+ * @return 0 on success, -1 if encoder not initialized, >0 if some settings failed
+ */
 int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_constraint,
                               int signal_type, int bandwidth, int dtx) {
-    // This function updates encoder parameters for audio input (capture)
-    // Only capture uses the encoder; playback uses a separate decoder
     if (!encoder || !capture_initialized) {
-        return -1; // Audio encoder not initialized
+        return -1;
     }
 
-    // Update the static variables
+    // Update local configuration
     opus_bitrate = bitrate;
     opus_complexity = complexity;
     opus_vbr = vbr;
@@ -83,7 +142,7 @@ int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_con
     opus_bandwidth = bandwidth;
     opus_dtx = dtx;
 
-    // Apply the new settings to the encoder
+    // Apply settings to Opus encoder
     int result = 0;
     result |= opus_encoder_ctl(encoder, OPUS_SET_BITRATE(opus_bitrate));
     result |= opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(opus_complexity));
@@ -93,10 +152,22 @@ int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_con
     result |= opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth));
     result |= opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
 
-    return result; // 0 on success, non-zero on error
+    return result;
 }
 
-// Enhanced ALSA device opening with exponential backoff retry logic
+// ============================================================================
+// ALSA UTILITY FUNCTIONS
+// ============================================================================
+
+/**
+ * Safely open ALSA device with exponential backoff retry logic
+ * Handles common device busy/unavailable scenarios with appropriate retry strategies
+ * 
+ * @param handle Pointer to PCM handle to be set
+ * @param device ALSA device name (e.g., "hw:1,0")
+ * @param stream Stream direction (capture or playback)
+ * @return 0 on success, negative error code on failure
+ */
 static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream_t stream) {
 	int attempt = 0;
 	int err;
@@ -134,7 +205,14 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 	return err;
 }
 
-// Optimized ALSA configuration with stack allocation and performance tuning
+/**
+ * Configure ALSA device with optimized parameters
+ * Sets up hardware and software parameters for optimal performance on constrained hardware
+ * 
+ * @param handle ALSA PCM handle
+ * @param device_name Device name for debugging (not used in current implementation)
+ * @return 0 on success, negative error code on failure
+ */
 static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 	snd_pcm_hw_params_t *params;
 	snd_pcm_sw_params_t *sw_params;
@@ -212,7 +290,22 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 	return snd_pcm_prepare(handle);
 }
 
-// Initialize ALSA and Opus encoder with improved safety
+// ============================================================================
+// AUDIO OUTPUT PATH FUNCTIONS (Device Microphone → Client Speakers)
+// ============================================================================
+
+/**
+ * Initialize audio OUTPUT path: device microphone capture and Opus encoder
+ * This enables sending device audio to the client
+ * 
+ * Thread-safe with atomic operations to prevent concurrent initialization
+ * 
+ * @return 0 on success, negative error codes on failure:
+ *         -EBUSY: Already initializing
+ *         -1: ALSA device open failed
+ *         -2: ALSA device configuration failed  
+ *         -3: Opus encoder creation failed
+ */
 int jetkvm_audio_capture_init() {
 	int err;
 
@@ -282,9 +375,26 @@ int jetkvm_audio_capture_init() {
 	return 0;
 }
 
-// jetkvm_audio_read_encode captures audio from ALSA, encodes with Opus, and handles errors.
-// Implements robust error recovery for buffer underruns and device suspension.
-// Returns: >0 (bytes written), -1 (init error), -2 (unrecoverable error)
+/**
+ * Capture audio from device microphone and encode to Opus (OUTPUT path)
+ * 
+ * This function:
+ * 1. Reads PCM audio from device microphone via ALSA
+ * 2. Handles ALSA errors with robust recovery strategies
+ * 3. Encodes PCM to Opus format for network transmission
+ * 4. Provides zero-overhead trace logging when enabled
+ * 
+ * Error recovery includes handling:
+ * - Buffer underruns (-EPIPE)
+ * - Device suspension (-ESTRPIPE) 
+ * - I/O errors (-EIO)
+ * - Device busy conditions (-EBUSY, -EAGAIN)
+ * 
+ * @param opus_buf Buffer to store encoded Opus data (must be at least max_packet_size)
+ * @return >0: Number of Opus bytes written
+ *         0: No audio data available (not an error)
+ *         -1: Initialization error or unrecoverable failure
+ */
 int jetkvm_audio_read_encode(void *opus_buf) {
 	short pcm_buffer[1920]; // max 2ch*960
 	unsigned char *out = (unsigned char*)opus_buf;
@@ -294,6 +404,10 @@ int jetkvm_audio_read_encode(void *opus_buf) {
 
 	// Safety checks
 	if (!capture_initialized || !pcm_capture_handle || !encoder || !opus_buf) {
+		if (trace_logging_enabled) {
+			printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Failed safety checks - capture_initialized=%d, pcm_capture_handle=%p, encoder=%p, opus_buf=%p\n", 
+				capture_initialized, pcm_capture_handle, encoder, opus_buf);
+		}
 		return -1;
 	}
 
@@ -383,10 +497,29 @@ retry_read:
 	}
 
 	int nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
+	
+	if (trace_logging_enabled && nb_bytes > 0) {
+		printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Successfully encoded %d PCM frames to %d Opus bytes\n", pcm_rc, nb_bytes);
+	}
+	
 	return nb_bytes;
 }
 
-// Initialize ALSA playback with improved safety
+// ============================================================================
+// AUDIO INPUT PATH FUNCTIONS (Client Microphone → Device Speakers)
+// ============================================================================
+
+/**
+ * Initialize audio INPUT path: ALSA playback device and Opus decoder
+ * This enables playing client audio through device speakers
+ * 
+ * Thread-safe with atomic operations to prevent concurrent initialization
+ * 
+ * @return 0 on success, negative error codes on failure:
+ *         -EBUSY: Already initializing
+ *         -1: ALSA device open failed or configuration failed
+ *         -2: Opus decoder creation failed
+ */
 int jetkvm_audio_playback_init() {
 	int err;
 
@@ -446,8 +579,30 @@ int jetkvm_audio_playback_init() {
 	return 0;
 }
 
-// jetkvm_audio_decode_write decodes Opus data and writes PCM to ALSA playback device
-// with error recovery and packet loss concealment
+/**
+ * Decode Opus audio and play through device speakers (INPUT path)
+ * 
+ * This function:
+ * 1. Validates input parameters and Opus packet size
+ * 2. Decodes Opus data to PCM format
+ * 3. Implements packet loss concealment for network issues
+ * 4. Writes PCM to device speakers via ALSA
+ * 5. Handles ALSA playback errors with recovery strategies
+ * 6. Provides zero-overhead trace logging when enabled
+ * 
+ * Error recovery includes handling:
+ * - Buffer underruns (-EPIPE) with progressive recovery
+ * - Device suspension (-ESTRPIPE) with resume logic
+ * - I/O errors (-EIO) with device reset
+ * - Device not ready (-EAGAIN) with retry logic
+ * 
+ * @param opus_buf Buffer containing Opus-encoded audio data
+ * @param opus_size Size of Opus data in bytes
+ * @return >0: Number of PCM frames written to speakers
+ *         0: Frame skipped (not an error)
+ *         -1: Invalid input or decode failure
+ *         -2: Unrecoverable ALSA error
+ */
 int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 	short pcm_buffer[1920]; // max 2ch*960
 	unsigned char *in = (unsigned char*)opus_buf;
@@ -457,22 +612,44 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 
 	// Safety checks
 	if (!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0) {
+		if (trace_logging_enabled) {
+			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Failed safety checks - playback_initialized=%d, pcm_playback_handle=%p, decoder=%p, opus_buf=%p, opus_size=%d\n", 
+				playback_initialized, pcm_playback_handle, decoder, opus_buf, opus_size);
+		}
 		return -1;
 	}
 
 	// Additional bounds checking
 	if (opus_size > max_packet_size) {
+		if (trace_logging_enabled) {
+			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus packet too large - size=%d, max=%d\n", opus_size, max_packet_size);
+		}
 		return -1;
+	}
+
+	if (trace_logging_enabled) {
+		printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Processing Opus packet - size=%d bytes\n", opus_size);
 	}
 
 	// Decode Opus to PCM with error handling
 	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
 	if (pcm_frames < 0) {
+		if (trace_logging_enabled) {
+			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus decode failed with error %d, attempting packet loss concealment\n", pcm_frames);
+		}
 		// Try packet loss concealment on decode error
 		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 0);
 		if (pcm_frames < 0) {
+			if (trace_logging_enabled) {
+				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Packet loss concealment also failed with error %d\n", pcm_frames);
+			}
 			return -1;
 		}
+		if (trace_logging_enabled) {
+			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Packet loss concealment succeeded, recovered %d frames\n", pcm_frames);
+		}
+	} else if (trace_logging_enabled) {
+		printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus decode successful - decoded %d PCM frames\n", pcm_frames);
 	}
 
 retry_write:
@@ -480,36 +657,60 @@ retry_write:
 	// Write PCM to playback device with robust recovery
 	int pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
 	if (pcm_rc < 0) {
+		if (trace_logging_enabled) {
+			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: ALSA write failed with error %d (%s), attempt %d/%d\n", 
+				pcm_rc, snd_strerror(pcm_rc), recovery_attempts + 1, max_recovery_attempts);
+		}
+		
 		if (pcm_rc == -EPIPE) {
 			// Buffer underrun - implement progressive recovery
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
+				if (trace_logging_enabled) {
+					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun recovery failed after %d attempts\n", max_recovery_attempts);
+				}
 				return -2;
 			}
 
+			if (trace_logging_enabled) {
+				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun detected, attempting recovery (attempt %d)\n", recovery_attempts);
+			}
 			// Try to recover with prepare
 			err = snd_pcm_prepare(pcm_playback_handle);
 			if (err < 0) {
+				if (trace_logging_enabled) {
+					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: snd_pcm_prepare failed (%s), trying drop+prepare\n", snd_strerror(err));
+				}
 				// If prepare fails, try drop and prepare
 				snd_pcm_drop(pcm_playback_handle);
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err < 0) {
+					if (trace_logging_enabled) {
+						printf("[AUDIO_INPUT] jetkvm_audio_decode_write: drop+prepare recovery failed (%s)\n", snd_strerror(err));
+					}
 					return -2;
 				}
 			}
 
 			// Wait before retry to allow device to stabilize
 			snd_pcm_wait(pcm_playback_handle, sleep_microseconds * recovery_attempts / 1000);
+			if (trace_logging_enabled) {
+				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun recovery successful, retrying write\n");
+			}
 			goto retry_write;
 		} else if (pcm_rc == -ESTRPIPE) {
 			// Device suspended, implement robust resume logic
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
-				printf("[AUDIO] jetkvm_audio_decode_write: Device suspend recovery failed after %d attempts\n", max_recovery_attempts);
+				if (trace_logging_enabled) {
+					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspend recovery failed after %d attempts\n", max_recovery_attempts);
+				}
 				return -2;
 			}
 
-			printf("[AUDIO] jetkvm_audio_decode_write: Device suspended, attempting resume (attempt %d)\n", recovery_attempts);
+			if (trace_logging_enabled) {
+				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspended, attempting resume (attempt %d)\n", recovery_attempts);
+			}
 			// Try to resume with timeout
 			int resume_attempts = 0;
 			while ((err = snd_pcm_resume(pcm_playback_handle)) == -EAGAIN && resume_attempts < 10) {
@@ -517,64 +718,98 @@ retry_write:
 				resume_attempts++;
 			}
 			if (err < 0) {
-				printf("[AUDIO] jetkvm_audio_decode_write: Device resume failed (%s), trying prepare fallback\n", snd_strerror(err));
+				if (trace_logging_enabled) {
+					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device resume failed (%s), trying prepare fallback\n", snd_strerror(err));
+				}
 				// Resume failed, try prepare as fallback
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err < 0) {
-					printf("[AUDIO] jetkvm_audio_decode_write: Prepare fallback failed (%s)\n", snd_strerror(err));
+					if (trace_logging_enabled) {
+						printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Prepare fallback failed (%s)\n", snd_strerror(err));
+					}
 					return -2;
 				}
 			}
 			// Wait before retry to allow device to stabilize
 			snd_pcm_wait(pcm_playback_handle, sleep_microseconds * recovery_attempts / 1000);
-			printf("[AUDIO] jetkvm_audio_decode_write: Device suspend recovery successful, skipping frame\n");
+			if (trace_logging_enabled) {
+				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspend recovery successful, skipping frame\n");
+			}
 			return 0; // Skip this frame but don't fail
 		} else if (pcm_rc == -ENODEV) {
 			// Device disconnected - critical error
-			printf("[AUDIO] jetkvm_audio_decode_write: Device disconnected (ENODEV) - critical error\n");
+			if (trace_logging_enabled) {
+				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device disconnected (ENODEV) - critical error\n");
+			}
 			return -2;
 		} else if (pcm_rc == -EIO) {
 			// I/O error - try recovery once
 			recovery_attempts++;
 			if (recovery_attempts <= max_recovery_attempts) {
-				printf("[AUDIO] jetkvm_audio_decode_write: I/O error detected, attempting recovery\n");
+				if (trace_logging_enabled) {
+					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error detected, attempting recovery\n");
+				}
 				snd_pcm_drop(pcm_playback_handle);
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err >= 0) {
 					snd_pcm_wait(pcm_playback_handle, sleep_microseconds / 1000);
-					printf("[AUDIO] jetkvm_audio_decode_write: I/O error recovery successful, retrying write\n");
+					if (trace_logging_enabled) {
+						printf("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error recovery successful, retrying write\n");
+					}
 					goto retry_write;
 				}
-				printf("[AUDIO] jetkvm_audio_decode_write: I/O error recovery failed (%s)\n", snd_strerror(err));
+				if (trace_logging_enabled) {
+					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error recovery failed (%s)\n", snd_strerror(err));
+				}
 			}
 			return -2;
 		} else if (pcm_rc == -EAGAIN) {
 			// Device not ready - brief wait and retry
 			recovery_attempts++;
 			if (recovery_attempts <= max_recovery_attempts) {
-				printf("[AUDIO] jetkvm_audio_decode_write: Device not ready (EAGAIN), waiting and retrying\n");
+				if (trace_logging_enabled) {
+					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device not ready (EAGAIN), waiting and retrying\n");
+				}
 				usleep(sleep_microseconds / 4);
 				goto retry_write;
 			}
-			printf("[AUDIO] jetkvm_audio_decode_write: Device not ready recovery failed after %d attempts\n", max_recovery_attempts);
+			if (trace_logging_enabled) {
+				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device not ready recovery failed after %d attempts\n", max_recovery_attempts);
+			}
 			return -2;
 		} else {
 			// Other errors - limited retry for transient issues
 			recovery_attempts++;
 			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY)) {
-				printf("[AUDIO] jetkvm_audio_decode_write: Transient error %d (%s), retrying once\n", pcm_rc, snd_strerror(pcm_rc));
+				if (trace_logging_enabled) {
+					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Transient error %d (%s), retrying once\n", pcm_rc, snd_strerror(pcm_rc));
+				}
 				usleep(sleep_microseconds / 2);
 				goto retry_write;
 			}
-			printf("[AUDIO] jetkvm_audio_decode_write: Unrecoverable error %d (%s)\n", pcm_rc, snd_strerror(pcm_rc));
+			if (trace_logging_enabled) {
+				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Unrecoverable error %d (%s)\n", pcm_rc, snd_strerror(pcm_rc));
+			}
 			return -2;
 		}
 	}
 
-	printf("[AUDIO] jetkvm_audio_decode_write: Successfully wrote %d PCM frames to USB Gadget audio device\n", pcm_frames);
+	if (trace_logging_enabled) {
+		printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Successfully wrote %d PCM frames to USB Gadget audio device\n", pcm_frames);
+	}
 	return pcm_frames;
 }
-// Safe playback cleanup with double-close protection
+
+// ============================================================================
+// CLEANUP FUNCTIONS
+// ============================================================================
+
+/**
+ * Cleanup audio INPUT path resources (client microphone → device speakers)
+ * 
+ * Thread-safe cleanup with atomic operations to prevent double-cleanup
+ * Properly drains ALSA buffers before closing to avoid audio artifacts
+ */
 void jetkvm_audio_playback_close() {
 	// Wait for any ongoing operations to complete
 	while (playback_initializing) {
@@ -597,7 +832,12 @@ void jetkvm_audio_playback_close() {
 	}
 }
 
-// Safe capture cleanup
+/**
+ * Cleanup audio OUTPUT path resources (device microphone → client speakers)
+ * 
+ * Thread-safe cleanup with atomic operations to prevent double-cleanup
+ * Properly drains ALSA buffers before closing to avoid audio artifacts
+ */
 void jetkvm_audio_capture_close() {
 	// Wait for any ongoing operations to complete
 	while (capture_initializing) {
