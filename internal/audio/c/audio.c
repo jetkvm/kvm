@@ -349,7 +349,10 @@ int jetkvm_audio_capture_init() {
 	int opus_err = 0;
 	encoder = opus_encoder_create(sample_rate, channels, OPUS_APPLICATION_AUDIO, &opus_err);
 	if (!encoder || opus_err != OPUS_OK) {
-		if (pcm_capture_handle) { snd_pcm_close(pcm_capture_handle); pcm_capture_handle = NULL; }
+		if (pcm_capture_handle) {
+			snd_pcm_close(pcm_capture_handle);
+			pcm_capture_handle = NULL;
+		}
 		capture_initializing = 0;
 		return -3;
 	}
