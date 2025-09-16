@@ -14,6 +14,34 @@
 #include <unistd.h>
 #include <errno.h>
 
+// ARM NEON SIMD support for Cortex-A7
+#ifdef __ARM_NEON
+#include <arm_neon.h>
+#define SIMD_ENABLED 1
+#else
+#define SIMD_ENABLED 0
+#endif
+
+// Performance optimization flags
+static int trace_logging_enabled = 0;   // Enable detailed trace logging
+
+// SIMD feature detection and optimization macros
+#if SIMD_ENABLED
+#define SIMD_ALIGN __attribute__((aligned(16)))
+#define SIMD_PREFETCH(addr, rw, locality) __builtin_prefetch(addr, rw, locality)
+#else
+#define SIMD_ALIGN
+#define SIMD_PREFETCH(addr, rw, locality)
+#endif
+
+// SIMD initialization and feature detection
+static int simd_initialized = 0;
+
+static void simd_init_once(void) {
+    if (simd_initialized) return;
+    simd_initialized = 1;
+}
+
 // ============================================================================
 // GLOBAL STATE VARIABLES
 // ============================================================================
@@ -50,7 +78,7 @@ static int max_backoff_us_global = 500000; // Maximum backoff time
 
 // Performance optimization flags
 static const int optimized_buffer_size = 1;   // Use optimized buffer sizing
-static int trace_logging_enabled = 0;   // Enable detailed trace logging
+
 
 // ============================================================================
 // FUNCTION DECLARATIONS
@@ -110,6 +138,360 @@ void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constr
 void set_trace_logging(int enabled) {
     trace_logging_enabled = enabled;
 }
+
+// ============================================================================
+// SIMD-OPTIMIZED BUFFER OPERATIONS
+// ============================================================================
+
+#if SIMD_ENABLED
+/**
+ * SIMD-optimized buffer clearing for 16-bit audio samples
+ * Uses ARM NEON to clear 8 samples (16 bytes) per iteration
+ * 
+ * @param buffer Pointer to 16-bit sample buffer (must be 16-byte aligned)
+ * @param samples Number of samples to clear
+ */
+static inline void simd_clear_samples_s16(short *buffer, int samples) {
+    simd_init_once();
+    
+    const int16x8_t zero = vdupq_n_s16(0);
+    int simd_samples = samples & ~7; // Round down to multiple of 8
+    
+    // Process 8 samples at a time with NEON
+    for (int i = 0; i < simd_samples; i += 8) {
+        vst1q_s16(&buffer[i], zero);
+    }
+    
+    // Handle remaining samples with scalar operations
+    for (int i = simd_samples; i < samples; i++) {
+        buffer[i] = 0;
+    }
+}
+
+/**
+ * SIMD-optimized stereo sample interleaving
+ * Combines left and right channel data using NEON zip operations
+ * 
+ * @param left Left channel samples
+ * @param right Right channel samples  
+ * @param output Interleaved stereo output
+ * @param frames Number of frames to process
+ */
+static inline void simd_interleave_stereo_s16(const short *left, const short *right, 
+                                             short *output, int frames) {
+    simd_init_once();
+    
+    int simd_frames = frames & ~7; // Process 8 frames at a time
+    
+    for (int i = 0; i < simd_frames; i += 8) {
+        int16x8_t left_vec = vld1q_s16(&left[i]);
+        int16x8_t right_vec = vld1q_s16(&right[i]);
+        
+        // Interleave using zip operations
+        int16x8x2_t interleaved = vzipq_s16(left_vec, right_vec);
+        
+        // Store interleaved data
+        vst1q_s16(&output[i * 2], interleaved.val[0]);
+        vst1q_s16(&output[i * 2 + 8], interleaved.val[1]);
+    }
+    
+    // Handle remaining frames
+    for (int i = simd_frames; i < frames; i++) {
+        output[i * 2] = left[i];
+        output[i * 2 + 1] = right[i];
+    }
+}
+
+/**
+ * SIMD-optimized volume scaling for 16-bit samples
+ * Applies volume scaling using NEON multiply operations
+ * 
+ * @param samples Input/output sample buffer
+ * @param count Number of samples to scale
+ * @param volume Volume factor (0.0 to 1.0, converted to fixed-point)
+ */
+static inline void simd_scale_volume_s16(short *samples, int count, float volume) {
+    simd_init_once();
+    
+    // Convert volume to fixed-point (Q15 format)
+    int16_t vol_fixed = (int16_t)(volume * 32767.0f);
+    int16x8_t vol_vec = vdupq_n_s16(vol_fixed);
+    
+    int simd_count = count & ~7;
+    
+    for (int i = 0; i < simd_count; i += 8) {
+        int16x8_t samples_vec = vld1q_s16(&samples[i]);
+        
+        // Multiply and shift right by 15 to maintain Q15 format
+        int32x4_t low_result = vmull_s16(vget_low_s16(samples_vec), vget_low_s16(vol_vec));
+        int32x4_t high_result = vmull_s16(vget_high_s16(samples_vec), vget_high_s16(vol_vec));
+        
+        // Shift right by 15 and narrow back to 16-bit
+        int16x4_t low_narrow = vshrn_n_s32(low_result, 15);
+        int16x4_t high_narrow = vshrn_n_s32(high_result, 15);
+        
+        int16x8_t result = vcombine_s16(low_narrow, high_narrow);
+        vst1q_s16(&samples[i], result);
+    }
+    
+    // Handle remaining samples
+    for (int i = simd_count; i < count; i++) {
+        samples[i] = (short)((samples[i] * vol_fixed) >> 15);
+    }
+}
+
+/**
+ * SIMD-optimized endianness conversion for 16-bit samples
+ * Swaps byte order using NEON reverse operations
+ */
+static inline void simd_swap_endian_s16(short *samples, int count) {
+    int simd_count = count & ~7;
+    
+    for (int i = 0; i < simd_count; i += 8) {
+        uint16x8_t samples_vec = vld1q_u16((uint16_t*)&samples[i]);
+        
+        // Reverse bytes within each 16-bit element
+        uint8x16_t samples_u8 = vreinterpretq_u8_u16(samples_vec);
+        uint8x16_t swapped_u8 = vrev16q_u8(samples_u8);
+        uint16x8_t swapped = vreinterpretq_u16_u8(swapped_u8);
+        
+        vst1q_u16((uint16_t*)&samples[i], swapped);
+    }
+    
+    // Handle remaining samples
+    for (int i = simd_count; i < count; i++) {
+        samples[i] = __builtin_bswap16(samples[i]);
+    }
+}
+
+/**
+ * Convert 16-bit signed samples to 32-bit float samples using NEON
+ */
+static inline void simd_s16_to_float(const short *input, float *output, int count) {
+    const float scale = 1.0f / 32768.0f;
+    float32x4_t scale_vec = vdupq_n_f32(scale);
+    
+    // Process 4 samples at a time
+    int simd_count = count & ~3;
+    for (int i = 0; i < simd_count; i += 4) {
+        int16x4_t s16_data = vld1_s16(input + i);
+        int32x4_t s32_data = vmovl_s16(s16_data);
+        float32x4_t float_data = vcvtq_f32_s32(s32_data);
+        float32x4_t scaled = vmulq_f32(float_data, scale_vec);
+        vst1q_f32(output + i, scaled);
+    }
+    
+    // Handle remaining samples
+    for (int i = simd_count; i < count; i++) {
+        output[i] = (float)input[i] * scale;
+    }
+}
+
+/**
+ * Convert 32-bit float samples to 16-bit signed samples using NEON
+ */
+static inline void simd_float_to_s16(const float *input, short *output, int count) {
+    const float scale = 32767.0f;
+    float32x4_t scale_vec = vdupq_n_f32(scale);
+    
+    // Process 4 samples at a time
+    int simd_count = count & ~3;
+    for (int i = 0; i < simd_count; i += 4) {
+        float32x4_t float_data = vld1q_f32(input + i);
+        float32x4_t scaled = vmulq_f32(float_data, scale_vec);
+        int32x4_t s32_data = vcvtq_s32_f32(scaled);
+        int16x4_t s16_data = vqmovn_s32(s32_data);
+        vst1_s16(output + i, s16_data);
+    }
+    
+    // Handle remaining samples
+    for (int i = simd_count; i < count; i++) {
+        float scaled = input[i] * scale;
+        output[i] = (short)__builtin_fmaxf(__builtin_fminf(scaled, 32767.0f), -32768.0f);
+    }
+}
+
+/**
+ * Convert mono to stereo by duplicating samples using NEON
+ */
+static inline void simd_mono_to_stereo_s16(const short *mono, short *stereo, int frames) {
+	// Process 4 frames at a time
+	int simd_frames = frames & ~3;
+	for (int i = 0; i < simd_frames; i += 4) {
+		int16x4_t mono_data = vld1_s16(mono + i);
+		int16x4x2_t stereo_data = {mono_data, mono_data};
+		vst2_s16(stereo + i * 2, stereo_data);
+	}
+	
+	// Handle remaining frames
+	for (int i = simd_frames; i < frames; i++) {
+		stereo[i * 2] = mono[i];
+		stereo[i * 2 + 1] = mono[i];
+	}
+}
+
+/**
+ * Convert stereo to mono by averaging channels using NEON
+ */
+static inline void simd_stereo_to_mono_s16(const short *stereo, short *mono, int frames) {
+	// Process 4 frames at a time
+	int simd_frames = frames & ~3;
+	for (int i = 0; i < simd_frames; i += 4) {
+		int16x4x2_t stereo_data = vld2_s16(stereo + i * 2);
+		int32x4_t left_wide = vmovl_s16(stereo_data.val[0]);
+		int32x4_t right_wide = vmovl_s16(stereo_data.val[1]);
+		int32x4_t sum = vaddq_s32(left_wide, right_wide);
+		int32x4_t avg = vshrq_n_s32(sum, 1);
+		int16x4_t mono_data = vqmovn_s32(avg);
+		vst1_s16(mono + i, mono_data);
+	}
+	
+	// Handle remaining frames
+	for (int i = simd_frames; i < frames; i++) {
+		mono[i] = (stereo[i * 2] + stereo[i * 2 + 1]) / 2;
+	}
+}
+
+/**
+ * Apply stereo balance adjustment using NEON
+ */
+static inline void simd_apply_stereo_balance_s16(short *stereo, int frames, float balance) {
+	// Balance: -1.0 = full left, 0.0 = center, 1.0 = full right
+	float left_gain = balance <= 0.0f ? 1.0f : 1.0f - balance;
+	float right_gain = balance >= 0.0f ? 1.0f : 1.0f + balance;
+	
+	float32x4_t left_gain_vec = vdupq_n_f32(left_gain);
+	float32x4_t right_gain_vec = vdupq_n_f32(right_gain);
+	
+	// Process 4 frames at a time
+	int simd_frames = frames & ~3;
+	for (int i = 0; i < simd_frames; i += 4) {
+		int16x4x2_t stereo_data = vld2_s16(stereo + i * 2);
+		
+		// Convert to float for processing
+		int32x4_t left_wide = vmovl_s16(stereo_data.val[0]);
+		int32x4_t right_wide = vmovl_s16(stereo_data.val[1]);
+		float32x4_t left_float = vcvtq_f32_s32(left_wide);
+		float32x4_t right_float = vcvtq_f32_s32(right_wide);
+		
+		// Apply balance
+		left_float = vmulq_f32(left_float, left_gain_vec);
+		right_float = vmulq_f32(right_float, right_gain_vec);
+		
+		// Convert back to int16
+		int32x4_t left_result = vcvtq_s32_f32(left_float);
+		int32x4_t right_result = vcvtq_s32_f32(right_float);
+		stereo_data.val[0] = vqmovn_s32(left_result);
+		stereo_data.val[1] = vqmovn_s32(right_result);
+		
+		vst2_s16(stereo + i * 2, stereo_data);
+	}
+	
+	// Handle remaining frames
+	for (int i = simd_frames; i < frames; i++) {
+		stereo[i * 2] = (short)(stereo[i * 2] * left_gain);
+		stereo[i * 2 + 1] = (short)(stereo[i * 2 + 1] * right_gain);
+	}
+}
+
+/**
+ * Deinterleave stereo samples into separate left/right channels using NEON
+ */
+static inline void simd_deinterleave_stereo_s16(const short *interleaved, short *left, 
+                                               short *right, int frames) {
+	// Process 4 frames at a time
+	int simd_frames = frames & ~3;
+	for (int i = 0; i < simd_frames; i += 4) {
+		int16x4x2_t stereo_data = vld2_s16(interleaved + i * 2);
+		vst1_s16(left + i, stereo_data.val[0]);
+		vst1_s16(right + i, stereo_data.val[1]);
+	}
+	
+	// Handle remaining frames
+	for (int i = simd_frames; i < frames; i++) {
+		left[i] = interleaved[i * 2];
+		right[i] = interleaved[i * 2 + 1];
+	}
+}
+
+#else
+// Fallback implementations for non-SIMD builds
+static inline void simd_clear_samples_s16(short *buffer, int samples) {
+    simd_init_once();
+    
+    memset(buffer, 0, samples * sizeof(short));
+}
+
+static inline void simd_interleave_stereo_s16(const short *left, const short *right, 
+                                             short *output, int frames) {
+    simd_init_once();
+    
+    for (int i = 0; i < frames; i++) {
+        output[i * 2] = left[i];
+        output[i * 2 + 1] = right[i];
+    }
+}
+
+static inline void simd_scale_volume_s16(short *samples, int count, float volume) {
+    simd_init_once();
+    
+    for (int i = 0; i < count; i++) {
+        samples[i] = (short)(samples[i] * volume);
+    }
+}
+
+static inline void simd_swap_endian_s16(short *samples, int count) {
+	for (int i = 0; i < count; i++) {
+		samples[i] = __builtin_bswap16(samples[i]);
+	}
+}
+
+static inline void simd_s16_to_float(const short *input, float *output, int count) {
+	const float scale = 1.0f / 32768.0f;
+	for (int i = 0; i < count; i++) {
+		output[i] = (float)input[i] * scale;
+	}
+}
+
+static inline void simd_float_to_s16(const float *input, short *output, int count) {
+	const float scale = 32767.0f;
+	for (int i = 0; i < count; i++) {
+		float scaled = input[i] * scale;
+		output[i] = (short)__builtin_fmaxf(__builtin_fminf(scaled, 32767.0f), -32768.0f);
+	}
+}
+
+static inline void simd_mono_to_stereo_s16(const short *mono, short *stereo, int frames) {
+	for (int i = 0; i < frames; i++) {
+		stereo[i * 2] = mono[i];
+		stereo[i * 2 + 1] = mono[i];
+	}
+}
+
+static inline void simd_stereo_to_mono_s16(const short *stereo, short *mono, int frames) {
+	for (int i = 0; i < frames; i++) {
+		mono[i] = (stereo[i * 2] + stereo[i * 2 + 1]) / 2;
+	}
+}
+
+static inline void simd_apply_stereo_balance_s16(short *stereo, int frames, float balance) {
+	float left_gain = balance <= 0.0f ? 1.0f : 1.0f - balance;
+	float right_gain = balance >= 0.0f ? 1.0f : 1.0f + balance;
+	
+	for (int i = 0; i < frames; i++) {
+		stereo[i * 2] = (short)(stereo[i * 2] * left_gain);
+		stereo[i * 2 + 1] = (short)(stereo[i * 2 + 1] * right_gain);
+	}
+}
+
+static inline void simd_deinterleave_stereo_s16(const short *interleaved, short *left, 
+                                               short *right, int frames) {
+	for (int i = 0; i < frames; i++) {
+		left[i] = interleaved[i * 2];
+		right[i] = interleaved[i * 2 + 1];
+	}
+}
+#endif
 
 // ============================================================================
 // INITIALIZATION STATE TRACKING
@@ -300,6 +682,9 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 int jetkvm_audio_capture_init() {
 	int err;
 
+	// Initialize SIMD capabilities early
+	simd_init_once();
+
 	// Prevent concurrent initialization
 	if (__sync_bool_compare_and_swap(&capture_initializing, 0, 1) == 0) {
 		return -EBUSY; // Already initializing
@@ -390,11 +775,12 @@ int jetkvm_audio_capture_init() {
  *         -1: Initialization error or unrecoverable failure
  */
 __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) {
-	static short __attribute__((aligned(16))) pcm_buffer[1920]; // max 2ch*960, aligned for SIMD
+	static short SIMD_ALIGN pcm_buffer[1920]; // max 2ch*960, aligned for SIMD
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
 	
-	// Prefetch output buffer for better cache performance
-	__builtin_prefetch(out, 1, 3);
+	// Prefetch output buffer and PCM buffer for better cache performance
+	SIMD_PREFETCH(out, 1, 3);
+	SIMD_PREFETCH(pcm_buffer, 0, 3);
 	int err = 0;
 	int recovery_attempts = 0;
 	const int max_recovery_attempts = 3;
@@ -479,9 +865,10 @@ retry_read:
 		}
 	}
 
-	// If we got fewer frames than expected, pad with silence
+	// If we got fewer frames than expected, pad with silence using SIMD
 	if (__builtin_expect(pcm_rc < frame_size, 0)) {
-		__builtin_memset(&pcm_buffer[pcm_rc * channels], 0, (frame_size - pcm_rc) * channels * sizeof(short));
+		int remaining_samples = (frame_size - pcm_rc) * channels;
+		simd_clear_samples_s16(&pcm_buffer[pcm_rc * channels], remaining_samples);
 	}
 
 	int nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
@@ -510,6 +897,9 @@ retry_read:
  */
 int jetkvm_audio_playback_init() {
 	int err;
+
+	// Initialize SIMD capabilities early
+	simd_init_once();
 
 	// Prevent concurrent initialization
 	if (__sync_bool_compare_and_swap(&playback_initializing, 0, 1) == 0) {
@@ -596,7 +986,7 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 	unsigned char * __restrict__ in = (unsigned char*)opus_buf;
 	
 	// Prefetch input buffer for better cache performance
-	__builtin_prefetch(in, 0, 3);
+	SIMD_PREFETCH(in, 0, 3);
 	int err = 0;
 	int recovery_attempts = 0;
 	const int max_recovery_attempts = 3;
