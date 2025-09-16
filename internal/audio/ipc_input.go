@@ -29,24 +29,22 @@ var (
 
 // OptimizedIPCMessage represents an optimized message with pre-allocated buffers
 type OptimizedIPCMessage struct {
-	header [17]byte          // Pre-allocated header buffer (headerSize = 17)
-	data   []byte            // Reusable data buffer
-	msg    UnifiedIPCMessage // Embedded message
+	header [17]byte
+	data   []byte
+	msg    UnifiedIPCMessage
 }
 
 // MessagePool manages a pool of reusable messages to reduce allocations
 type MessagePool struct {
-	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
-	hitCount  int64 // Pool hit counter (atomic)
-	missCount int64 // Pool miss counter (atomic)
+	hitCount  int64
+	missCount int64
 
-	// Other fields
 	pool chan *OptimizedIPCMessage
-	// Memory optimization fields
-	preallocated []*OptimizedIPCMessage // Pre-allocated messages for immediate use
-	preallocSize int                    // Number of pre-allocated messages
-	maxPoolSize  int                    // Maximum pool size to prevent memory bloat
-	mutex        sync.RWMutex           // Protects preallocated slice
+
+	preallocated []*OptimizedIPCMessage
+	preallocSize int
+	maxPoolSize  int
+	mutex        sync.RWMutex
 }
 
 // Global message pool instance
@@ -152,30 +150,25 @@ func (mp *MessagePool) Put(msg *OptimizedIPCMessage) {
 	}
 }
 
-// AudioInputServer handles IPC communication for audio input processing
 type AudioInputServer struct {
-	// Atomic fields MUST be first for ARM32 alignment (int64 fields need 8-byte alignment)
-	bufferSize     int64 // Current buffer size (atomic)
-	processingTime int64 // Average processing time in nanoseconds (atomic)
-	droppedFrames  int64 // Dropped frames counter (atomic)
-	totalFrames    int64 // Total frames counter (atomic)
+	bufferSize     int64
+	processingTime int64
+	droppedFrames  int64
+	totalFrames    int64
 
 	listener net.Listener
 	conn     net.Conn
 	mtx      sync.Mutex
 	running  bool
 
-	// Triple-goroutine architecture
-	messageChan chan *UnifiedIPCMessage // Buffered channel for incoming messages
-	processChan chan *UnifiedIPCMessage // Buffered channel for processing queue
-	stopChan    chan struct{}           // Stop signal for all goroutines
-	wg          sync.WaitGroup          // Wait group for goroutine coordination
+	messageChan chan *UnifiedIPCMessage
+	processChan chan *UnifiedIPCMessage
+	stopChan    chan struct{}
+	wg          sync.WaitGroup
 
-	// Channel resizing support
-	channelMutex   sync.RWMutex // Protects channel recreation
-	lastBufferSize int64        // Last known buffer size for change detection
+	channelMutex   sync.RWMutex
+	lastBufferSize int64
 
-	// Socket buffer configuration
 	socketBufferConfig SocketBufferConfig
 }
 

@@ -18,10 +18,9 @@ var globalOutputClientMessagePool = NewGenericMessagePool(Config.OutputMessagePo
 
 // AudioOutputServer provides audio output IPC functionality
 type AudioOutputServer struct {
-	// Atomic counters
-	bufferSize    int64 // Current buffer size (atomic)
-	droppedFrames int64 // Dropped frames counter (atomic)
-	totalFrames   int64 // Total frames counter (atomic)
+	bufferSize    int64
+	droppedFrames int64
+	totalFrames   int64
 
 	listener net.Listener
 	conn     net.Conn
@@ -29,12 +28,10 @@ type AudioOutputServer struct {
 	running  bool
 	logger   zerolog.Logger
 
-	// Message channels
-	messageChan chan *UnifiedIPCMessage // Buffered channel for incoming messages
-	processChan chan *UnifiedIPCMessage // Buffered channel for processing queue
-	wg          sync.WaitGroup          // Wait group for goroutine coordination
+	messageChan chan *UnifiedIPCMessage
+	processChan chan *UnifiedIPCMessage
+	wg          sync.WaitGroup
 
-	// Configuration
 	socketPath  string
 	magicNumber uint32
 }
@@ -265,6 +262,17 @@ func (s *AudioOutputServer) SendFrame(frame []byte) error {
 		return fmt.Errorf("no client connected")
 	}
 
+	// Zero-cost trace logging for frame transmission
+	if s.logger.GetLevel() <= zerolog.TraceLevel {
+		totalFrames := atomic.LoadInt64(&s.totalFrames)
+		if totalFrames <= 5 || totalFrames%1000 == 1 {
+			s.logger.Trace().
+				Int("frame_size", len(frame)).
+				Int64("total_frames_sent", totalFrames).
+				Msg("Sending audio frame to output client")
+		}
+	}
+
 	msg := &UnifiedIPCMessage{
 		Magic:     s.magicNumber,
 		Type:      MessageTypeOpusFrame,
@@ -301,9 +309,8 @@ func (s *AudioOutputServer) GetServerStats() (total, dropped int64, bufferSize i
 
 // AudioOutputClient provides audio output IPC client functionality
 type AudioOutputClient struct {
-	// Atomic counters
-	droppedFrames int64 // Atomic counter for dropped frames
-	totalFrames   int64 // Atomic counter for total frames
+	droppedFrames int64
+	totalFrames   int64
 
 	conn        net.Conn
 	mtx         sync.Mutex
@@ -311,10 +318,9 @@ type AudioOutputClient struct {
 	logger      zerolog.Logger
 	socketPath  string
 	magicNumber uint32
-	bufferPool  *AudioBufferPool // Buffer pool for memory optimization
+	bufferPool  *AudioBufferPool
 
-	// Health monitoring
-	autoReconnect bool // Enable automatic reconnection
+	autoReconnect bool
 }
 
 func NewAudioOutputClient() *AudioOutputClient {
@@ -405,6 +411,7 @@ func (c *AudioOutputClient) ReceiveFrame() ([]byte, error) {
 	}
 
 	size := binary.LittleEndian.Uint32(optMsg.header[5:9])
+	timestamp := int64(binary.LittleEndian.Uint64(optMsg.header[9:17]))
 	maxFrameSize := Config.OutputMaxFrameSize
 	if int(size) > maxFrameSize {
 		return nil, fmt.Errorf("received frame size validation failed: got %d bytes, maximum allowed %d bytes", size, maxFrameSize)
@@ -423,6 +430,19 @@ func (c *AudioOutputClient) ReceiveFrame() ([]byte, error) {
 	// Note: Caller is responsible for returning frame to pool via PutAudioFrameBuffer()
 
 	atomic.AddInt64(&c.totalFrames, 1)
+
+	// Zero-cost trace logging for frame reception
+	if c.logger.GetLevel() <= zerolog.TraceLevel {
+		totalFrames := atomic.LoadInt64(&c.totalFrames)
+		if totalFrames <= 5 || totalFrames%1000 == 1 {
+			c.logger.Trace().
+				Int("frame_size", int(size)).
+				Int64("timestamp", timestamp).
+				Int64("total_frames_received", totalFrames).
+				Msg("Received audio frame from output server")
+		}
+	}
+
 	return frame, nil
 }
 

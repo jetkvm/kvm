@@ -30,22 +30,6 @@ func getOutputStreamingLogger() *zerolog.Logger {
 	return outputStreamingLogger
 }
 
-// Removed unused NewAudioOutputStreamer function
-
-// Removed unused AudioOutputStreamer.Start method
-
-// Removed unused AudioOutputStreamer.Stop method
-
-// Removed unused AudioOutputStreamer.streamLoop method
-
-// Removed unused AudioOutputStreamer.processingLoop method
-
-// Removed unused AudioOutputStreamer.statisticsLoop method
-
-// Removed unused AudioOutputStreamer.reportStatistics method
-
-// Removed all unused AudioOutputStreamer methods
-
 // StartAudioOutputStreaming starts audio output streaming (capturing system audio)
 func StartAudioOutputStreaming(send func([]byte)) error {
 	if !atomic.CompareAndSwapInt32(&outputStreamingRunning, 0, 1) {
@@ -84,6 +68,7 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 		maxConsecutiveErrors := Config.MaxConsecutiveErrors
 		errorBackoffDelay := Config.RetryDelay
 		maxErrorBackoff := Config.MaxRetryDelay
+		var frameCount int64
 
 		for {
 			select {
@@ -143,10 +128,24 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 				}
 
 				if n > 0 {
+					frameCount++
+
 					// Get frame buffer from pool to reduce allocations
 					frame := GetAudioFrameBuffer()
 					frame = frame[:n] // Resize to actual frame size
 					copy(frame, buffer[:n])
+
+					// Zero-cost trace logging for output frame processing
+					logger := getOutputStreamingLogger()
+					if logger.GetLevel() <= zerolog.TraceLevel {
+						if frameCount <= 5 || frameCount%1000 == 1 {
+							logger.Trace().
+								Int("frame_size", n).
+								Int("buffer_capacity", cap(frame)).
+								Int64("total_frames_sent", frameCount).
+								Msg("Audio output frame captured and buffered")
+						}
+					}
 
 					// Validate frame before sending
 					if err := ValidateAudioFrame(frame); err != nil {
@@ -159,6 +158,16 @@ func StartAudioOutputStreaming(send func([]byte)) error {
 					// Return buffer to pool after sending
 					PutAudioFrameBuffer(frame)
 					RecordFrameReceived(n)
+
+					// Zero-cost trace logging for successful frame transmission
+					if logger.GetLevel() <= zerolog.TraceLevel {
+						if frameCount <= 5 || frameCount%1000 == 1 {
+							logger.Trace().
+								Int("frame_size", n).
+								Int64("total_frames_sent", frameCount).
+								Msg("Audio output frame sent successfully")
+						}
+					}
 				}
 				// Small delay to prevent busy waiting
 				time.Sleep(Config.ShortSleepDuration)
