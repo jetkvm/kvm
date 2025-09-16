@@ -77,17 +77,7 @@ func (bam *BaseAudioManager) getBaseMetrics() BaseAudioMetrics {
 	}
 }
 
-// recordFrameProcessed records a processed frame with simplified tracking
-func (bam *BaseAudioManager) recordFrameProcessed(bytes int) {
-}
 
-// recordFrameDropped records a dropped frame with simplified tracking
-func (bam *BaseAudioManager) recordFrameDropped() {
-}
-
-// updateLatency updates the average latency
-func (bam *BaseAudioManager) updateLatency(latency time.Duration) {
-}
 
 // logComponentStart logs component start with consistent format
 func (bam *BaseAudioManager) logComponentStart(component string) {
