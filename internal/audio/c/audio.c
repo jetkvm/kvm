@@ -246,25 +246,17 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 		if (err < 0) return err;
 	}
 
-	// Optimize buffer sizes for constrained hardware
-	snd_pcm_uframes_t period_size = frame_size;
-	if (optimized_buffer_size) {
-		// Use smaller periods for lower latency on constrained hardware
-		period_size = frame_size / 2;
-		if (period_size < 64) period_size = 64; // Minimum safe period size
-	}
+	// Optimize buffer sizes for constrained hardware, using smaller periods for lower latency on
+	// constrained hardware
+	snd_pcm_uframes_t period_size = optimized_buffer_size ? frame_size : frame_size / 2;
+	if (period_size < 64) period_size = 64; // Minimum safe period size
+
 	err = snd_pcm_hw_params_set_period_size_near(handle, params, &period_size, 0);
 	if (err < 0) return err;
 
-	// Optimize buffer size based on hardware constraints
-	snd_pcm_uframes_t buffer_size;
-	if (optimized_buffer_size) {
-		// Use 2 periods for ultra-low latency on constrained hardware
-		buffer_size = period_size * 2;
-	} else {
-		// Standard 4 periods for good latency/stability balance
-		buffer_size = period_size * 4;
-	}
+	// Optimize buffer size based on hardware constraints, using 2 periods for ultra-low latency on 
+	// constrained hardware or 4 periods for good latency/stability balance
+	snd_pcm_uframes_t buffer_size = optimized_buffer_size ? buffer_size = period_size * 2 : period_size * 4;
 	err = snd_pcm_hw_params_set_buffer_size_near(handle, params, &buffer_size);
 	if (err < 0) return err;
 
