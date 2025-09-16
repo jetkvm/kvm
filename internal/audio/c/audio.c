@@ -45,8 +45,8 @@ static int max_packet_size = 1500;      // Maximum Opus packet size
 
 // Error handling and retry configuration
 static int sleep_microseconds = 1000;   // Base sleep time for retries
-static const int max_attempts_global = 5;     // Maximum retry attempts
-static const int max_backoff_us_global = 500000; // Maximum backoff time
+static int max_attempts_global = 5;     // Maximum retry attempts
+static int max_backoff_us_global = 500000; // Maximum backoff time
 
 // Performance optimization flags
 static const int optimized_buffer_size = 1;   // Use optimized buffer sizing
