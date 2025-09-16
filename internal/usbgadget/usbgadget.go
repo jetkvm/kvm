@@ -68,9 +68,8 @@ type UsbGadget struct {
 	keyboardState byte          // keyboard latched state (NumLock, CapsLock, ScrollLock, Compose, Kana)
 	keysDownState KeysDownState // keyboard dynamic state (modifier keys and pressed keys)
 
-	kbdAutoReleaseLock    sync.Mutex
-	kbdAutoReleaseTimer   *time.Timer
-	kbdAutoReleaseLastKey byte
+	kbdAutoReleaseLock   sync.Mutex
+	kbdAutoReleaseTimers map[byte]*time.Timer
 
 	keyboardStateLock   sync.Mutex
 	keyboardStateCtx    context.Context
@@ -122,23 +121,24 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 	keyboardCtx, keyboardCancel := context.WithCancel(context.Background())
 
 	g := &UsbGadget{
-		name:                name,
-		kvmGadgetPath:       path.Join(gadgetPath, name),
-		configC1Path:        path.Join(gadgetPath, name, "configs/c.1"),
-		configMap:           configMap,
-		customConfig:        *config,
-		configLock:          sync.Mutex{},
-		keyboardLock:        sync.Mutex{},
-		absMouseLock:        sync.Mutex{},
-		relMouseLock:        sync.Mutex{},
-		txLock:              sync.Mutex{},
-		keyboardStateCtx:    keyboardCtx,
-		keyboardStateCancel: keyboardCancel,
-		keyboardState:       0,
-		keysDownState:       KeysDownState{Modifier: 0, Keys: []byte{0, 0, 0, 0, 0, 0}}, // must be initialized to hidKeyBufferSize (6) zero bytes
-		enabledDevices:      *enabledDevices,
-		lastUserInput:       time.Now(),
-		log:                 logger,
+		name:                 name,
+		kvmGadgetPath:        path.Join(gadgetPath, name),
+		configC1Path:         path.Join(gadgetPath, name, "configs/c.1"),
+		configMap:            configMap,
+		customConfig:         *config,
+		configLock:           sync.Mutex{},
+		keyboardLock:         sync.Mutex{},
+		absMouseLock:         sync.Mutex{},
+		relMouseLock:         sync.Mutex{},
+		txLock:               sync.Mutex{},
+		keyboardStateCtx:     keyboardCtx,
+		keyboardStateCancel:  keyboardCancel,
+		keyboardState:        0,
+		keysDownState:        KeysDownState{Modifier: 0, Keys: []byte{0, 0, 0, 0, 0, 0}}, // must be initialized to hidKeyBufferSize (6) zero bytes
+		kbdAutoReleaseTimers: make(map[byte]*time.Timer),
+		enabledDevices:       *enabledDevices,
+		lastUserInput:        time.Now(),
+		log:                  logger,
 
 		strictMode: config.strictMode,
 
@@ -163,10 +163,10 @@ func (u *UsbGadget) Close() error {
 
 	// Stop auto-release timer
 	u.kbdAutoReleaseLock.Lock()
-	if u.kbdAutoReleaseTimer != nil {
-		u.kbdAutoReleaseTimer.Stop()
-		u.kbdAutoReleaseTimer = nil
+	for _, timer := range u.kbdAutoReleaseTimers {
+		timer.Stop()
 	}
+	u.kbdAutoReleaseTimers = make(map[byte]*time.Timer)
 	u.kbdAutoReleaseLock.Unlock()
 
 	// Close HID files

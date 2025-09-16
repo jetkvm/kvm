@@ -40,7 +40,7 @@ export default function PasteModal() {
   const delayClassName = useMemo(() => debugMode ? "" : "hidden", [debugMode]);
 
   const { setKeyboardLayout } = useSettingsStore();
-  const { selectedKeyboard } = useKeyboardLayout();
+  const { selectedKeyboard }  = useKeyboardLayout();
 
   useEffect(() => {
     send("getKeyboardLayout", {}, (resp: JsonRpcResponse) => {
