@@ -762,7 +762,7 @@ retry_write:
 				if (trace_logging_enabled) {
 					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device not ready (EAGAIN), waiting and retrying\n");
 				}
-				usleep(sleep_microseconds / 4);
+				snd_pcm_wait(pcm_playback_handle, sleep_microseconds / 4000); // Convert to milliseconds
 				goto retry_write;
 			}
 			if (trace_logging_enabled) {
