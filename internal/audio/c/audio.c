@@ -396,14 +396,13 @@ int jetkvm_audio_capture_init() {
  *         -1: Initialization error or unrecoverable failure
  */
 int jetkvm_audio_read_encode(void *opus_buf) {
-	short pcm_buffer[1920]; // max 2ch*960
+	static short pcm_buffer[1920]; // max 2ch*960
 	unsigned char *out = (unsigned char*)opus_buf;
 	int err = 0;
 	int recovery_attempts = 0;
 	const int max_recovery_attempts = 3;
 
-	// Safety checks
-	if (!capture_initialized || !pcm_capture_handle || !encoder || !opus_buf) {
+	if (__builtin_expect(!capture_initialized || !pcm_capture_handle || !encoder || !opus_buf, 0)) {
 		if (trace_logging_enabled) {
 			printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Failed safety checks - capture_initialized=%d, pcm_capture_handle=%p, encoder=%p, opus_buf=%p\n", 
 				capture_initialized, pcm_capture_handle, encoder, opus_buf);
@@ -416,7 +415,7 @@ retry_read:
 	int pcm_rc = snd_pcm_readi(pcm_capture_handle, pcm_buffer, frame_size);
 
 	// Handle ALSA errors with robust recovery strategies
-	if (pcm_rc < 0) {
+	if (__builtin_expect(pcm_rc < 0, 0)) {
 		if (pcm_rc == -EPIPE) {
 			// Buffer underrun - implement progressive recovery
 			recovery_attempts++;
@@ -432,9 +431,6 @@ retry_read:
 				err = snd_pcm_prepare(pcm_capture_handle);
 				if (err < 0) return -1;
 			}
-
-			// Wait before retry to allow device to stabilize
-			snd_pcm_wait(pcm_capture_handle, sleep_microseconds * recovery_attempts / 1000);
 			goto retry_read;
 		} else if (pcm_rc == -EAGAIN) {
 			// No data available - return 0 to indicate no frame
@@ -457,9 +453,7 @@ retry_read:
 				err = snd_pcm_prepare(pcm_capture_handle);
 				if (err < 0) return -1;
 			}
-			// Wait before retry to allow device to stabilize
-			snd_pcm_wait(pcm_capture_handle, sleep_microseconds * recovery_attempts / 1000);
-			return 0; // Skip this frame but don't fail
+			return 0;
 		} else if (pcm_rc == -ENODEV) {
 			// Device disconnected - critical error
 			return -1;
@@ -470,7 +464,6 @@ retry_read:
 				snd_pcm_drop(pcm_capture_handle);
 				err = snd_pcm_prepare(pcm_capture_handle);
 				if (err >= 0) {
-					snd_pcm_wait(pcm_capture_handle, sleep_microseconds / 1000);
 					goto retry_read;
 				}
 			}
@@ -479,8 +472,6 @@ retry_read:
 			// Other errors - limited retry for transient issues
 			recovery_attempts++;
 			if (recovery_attempts <= 1 && pcm_rc == -EINTR) {
-				// Interrupted system call - use device-aware wait
-				snd_pcm_wait(pcm_capture_handle, sleep_microseconds / 2000);
 				goto retry_read;
 			} else if (recovery_attempts <= 1 && pcm_rc == -EBUSY) {
 				// Device busy - simple sleep to allow other operations to complete
@@ -604,14 +595,14 @@ int jetkvm_audio_playback_init() {
  *         -2: Unrecoverable ALSA error
  */
 int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
-	short pcm_buffer[1920]; // max 2ch*960
+	static short pcm_buffer[1920]; // max 2ch*960
 	unsigned char *in = (unsigned char*)opus_buf;
 	int err = 0;
 	int recovery_attempts = 0;
 	const int max_recovery_attempts = 3;
 
 	// Safety checks
-	if (!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0) {
+	if (__builtin_expect(!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0, 0)) {
 		if (trace_logging_enabled) {
 			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Failed safety checks - playback_initialized=%d, pcm_playback_handle=%p, decoder=%p, opus_buf=%p, opus_size=%d\n", 
 				playback_initialized, pcm_playback_handle, decoder, opus_buf, opus_size);
@@ -633,7 +624,7 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 
 	// Decode Opus to PCM with error handling
 	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
-	if (pcm_frames < 0) {
+	if (__builtin_expect(pcm_frames < 0, 0)) {
 		if (trace_logging_enabled) {
 			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus decode failed with error %d, attempting packet loss concealment\n", pcm_frames);
 		}
@@ -656,7 +647,7 @@ retry_write:
 	;
 	// Write PCM to playback device with robust recovery
 	int pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
-	if (pcm_rc < 0) {
+	if (__builtin_expect(pcm_rc < 0, 0)) {
 		if (trace_logging_enabled) {
 			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: ALSA write failed with error %d (%s), attempt %d/%d\n", 
 				pcm_rc, snd_strerror(pcm_rc), recovery_attempts + 1, max_recovery_attempts);
@@ -692,8 +683,6 @@ retry_write:
 				}
 			}
 
-			// Wait before retry to allow device to stabilize
-			snd_pcm_wait(pcm_playback_handle, sleep_microseconds * recovery_attempts / 1000);
 			if (trace_logging_enabled) {
 				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun recovery successful, retrying write\n");
 			}
@@ -730,8 +719,6 @@ retry_write:
 					return -2;
 				}
 			}
-			// Wait before retry to allow device to stabilize
-			snd_pcm_wait(pcm_playback_handle, sleep_microseconds * recovery_attempts / 1000);
 			if (trace_logging_enabled) {
 				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspend recovery successful, skipping frame\n");
 			}
@@ -752,7 +739,6 @@ retry_write:
 				snd_pcm_drop(pcm_playback_handle);
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err >= 0) {
-					snd_pcm_wait(pcm_playback_handle, sleep_microseconds / 1000);
 					if (trace_logging_enabled) {
 						printf("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error recovery successful, retrying write\n");
 					}
