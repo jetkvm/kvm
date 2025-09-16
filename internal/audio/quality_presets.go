@@ -382,10 +382,12 @@ func RecordFrameReceived(bytes int) {
 
 // RecordFrameDropped increments the frames dropped counter with batched updates
 func RecordFrameDropped() {
+	atomic.AddUint64(&batchedFramesDropped, 1)
 }
 
 // RecordConnectionDrop increments the connection drops counter with batched updates
 func RecordConnectionDrop() {
+	atomic.AddUint64(&batchedConnectionDrops, 1)
 }
 
 // flushBatchedMetrics flushes accumulated metrics to the main counters
