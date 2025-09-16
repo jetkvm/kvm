@@ -17,22 +17,7 @@ const (
 	AudioOutputSupervisorComponent = "audio-output-supervisor"
 )
 
-// Restart configuration is now retrieved from centralized config
-func getMaxRestartAttempts() int {
-	return Config.MaxRestartAttempts
-}
 
-func getRestartWindow() time.Duration {
-	return Config.RestartWindow
-}
-
-func getRestartDelay() time.Duration {
-	return Config.RestartDelay
-}
-
-func getMaxRestartDelay() time.Duration {
-	return Config.MaxRestartDelay
-}
 
 // AudioOutputSupervisor manages the audio output server subprocess lifecycle
 type AudioOutputSupervisor struct {
@@ -175,10 +160,10 @@ func (s *AudioOutputSupervisor) supervisionLoop() {
 		ProcessType:        "audio output server",
 		Timeout:            Config.OutputSupervisorTimeout,
 		EnableRestart:      true,
-		MaxRestartAttempts: getMaxRestartAttempts(),
-		RestartWindow:      getRestartWindow(),
-		RestartDelay:       getRestartDelay(),
-		MaxRestartDelay:    getMaxRestartDelay(),
+		MaxRestartAttempts: Config.MaxRestartAttempts,
+		RestartWindow:      Config.RestartWindow,
+		RestartDelay:       Config.RestartDelay,
+		MaxRestartDelay:    Config.MaxRestartDelay,
 	}
 
 	// Configure callbacks
@@ -255,13 +240,13 @@ func (s *AudioOutputSupervisor) shouldRestart() bool {
 	now := time.Now()
 	var recentAttempts []time.Time
 	for _, attempt := range s.restartAttempts {
-		if now.Sub(attempt) < getRestartWindow() {
+		if now.Sub(attempt) < Config.RestartWindow {
 			recentAttempts = append(recentAttempts, attempt)
 		}
 	}
 	s.restartAttempts = recentAttempts
 
-	return len(s.restartAttempts) < getMaxRestartAttempts()
+	return len(s.restartAttempts) < Config.MaxRestartAttempts
 }
 
 // recordRestartAttempt records a restart attempt
@@ -280,17 +265,17 @@ func (s *AudioOutputSupervisor) calculateRestartDelay() time.Duration {
 	// Exponential backoff based on recent restart attempts
 	attempts := len(s.restartAttempts)
 	if attempts == 0 {
-		return getRestartDelay()
+		return Config.RestartDelay
 	}
 
 	// Calculate exponential backoff: 2^attempts * base delay
-	delay := getRestartDelay()
-	for i := 0; i < attempts && delay < getMaxRestartDelay(); i++ {
+	delay := Config.RestartDelay
+	for i := 0; i < attempts && delay < Config.MaxRestartDelay; i++ {
 		delay *= 2
 	}
 
-	if delay > getMaxRestartDelay() {
-		delay = getMaxRestartDelay()
+	if delay > Config.MaxRestartDelay {
+		delay = Config.MaxRestartDelay
 	}
 
 	return delay
