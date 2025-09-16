@@ -11,3 +11,4 @@ tmp/
 
 device-tests.tar.gz
 CLAUDE.md
+.claude/

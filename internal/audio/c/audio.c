@@ -49,7 +49,7 @@ static int max_attempts_global = 5;     // Maximum retry attempts
 static int max_backoff_us_global = 500000; // Maximum backoff time
 
 // Performance optimization flags
-static int optimized_buffer_size = 1;   // Use optimized buffer sizing
+static const int optimized_buffer_size = 1;   // Use optimized buffer sizing
 static int trace_logging_enabled = 0;   // Enable detailed trace logging
 
 // ============================================================================
@@ -395,9 +395,12 @@ int jetkvm_audio_capture_init() {
  *         0: No audio data available (not an error)
  *         -1: Initialization error or unrecoverable failure
  */
-int jetkvm_audio_read_encode(void *opus_buf) {
-	static short pcm_buffer[1920]; // max 2ch*960
-	unsigned char *out = (unsigned char*)opus_buf;
+__attribute__((hot)) int jetkvm_audio_read_encode(void *opus_buf) {
+	static short __attribute__((aligned(16))) pcm_buffer[1920]; // max 2ch*960, aligned for SIMD
+	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
+	
+	// Prefetch output buffer for better cache performance
+	__builtin_prefetch(out, 1, 3);
 	int err = 0;
 	int recovery_attempts = 0;
 	const int max_recovery_attempts = 3;
@@ -483,8 +486,8 @@ retry_read:
 	}
 
 	// If we got fewer frames than expected, pad with silence
-	if (pcm_rc < frame_size) {
-		memset(&pcm_buffer[pcm_rc * channels], 0, (frame_size - pcm_rc) * channels * sizeof(short));
+	if (__builtin_expect(pcm_rc < frame_size, 0)) {
+		__builtin_memset(&pcm_buffer[pcm_rc * channels], 0, (frame_size - pcm_rc) * channels * sizeof(short));
 	}
 
 	int nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
@@ -594,9 +597,12 @@ int jetkvm_audio_playback_init() {
  *         -1: Invalid input or decode failure
  *         -2: Unrecoverable ALSA error
  */
-int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
-	static short pcm_buffer[1920]; // max 2ch*960
-	unsigned char *in = (unsigned char*)opus_buf;
+__attribute__((hot)) int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
+	static short __attribute__((aligned(16))) pcm_buffer[1920]; // max 2ch*960, aligned for SIMD
+	unsigned char * __restrict__ in = (unsigned char*)opus_buf;
+	
+	// Prefetch input buffer for better cache performance
+	__builtin_prefetch(in, 0, 3);
 	int err = 0;
 	int recovery_attempts = 0;
 	const int max_recovery_attempts = 3;
