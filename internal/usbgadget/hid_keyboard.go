@@ -481,6 +481,9 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 
 func (u *UsbGadget) KeypressReport(key byte, press bool) error {
 	state, err := u.keypressReport(key, press)
+	if err != nil {
+		u.log.Warn().Uint8("key", key).Bool("press", press).Msg("failed to report key")
+	}
 	isRolledOver := state.Keys[0] == hidErrorRollOver
 
 	if isRolledOver {
