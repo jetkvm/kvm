@@ -1225,8 +1225,7 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 							atomic.StoreInt64(&ais.processingTime, newAvg)
 						}
 
-						// Report latency for metrics
-						ais.ReportLatency(latency)
+
 
 						if err != nil {
 							atomic.AddInt64(&ais.droppedFrames, 1)
@@ -1268,10 +1267,7 @@ func (ais *AudioInputServer) UpdateBufferSize() {
 	atomic.StoreInt64(&ais.bufferSize, newSize)
 }
 
-// ReportLatency reports processing latency (now a no-op with fixed buffers)
-func (ais *AudioInputServer) ReportLatency(latency time.Duration) {
-	// Latency reporting is now a no-op with fixed buffer sizes
-}
+
 
 // GetMessagePoolStats returns detailed statistics about the message pool
 func (mp *MessagePool) GetMessagePoolStats() MessagePoolStats {
