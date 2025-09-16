@@ -31,7 +31,7 @@ static int max_backoff_us_global = 500000; // Will be set from Config.CGOMaxBack
 static int optimized_buffer_size = 1;   // Disable optimized buffer sizing for stability (was 1)
 
 // C function declarations (implementations are below)
-int jetkvm_audio_init();
+int jetkvm_audio_capture_init();
 void jetkvm_audio_capture_close();
 int jetkvm_audio_read_encode(void *opus_buf);
 int jetkvm_audio_decode_write(void *opus_buf, int opus_size);
@@ -213,7 +213,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 }
 
 // Initialize ALSA and Opus encoder with improved safety
-int jetkvm_audio_init() {
+int jetkvm_audio_capture_init() {
 	int err;
 
 	// Prevent concurrent initialization
