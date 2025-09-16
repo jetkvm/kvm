@@ -28,7 +28,7 @@ var keyboardConfig = gadgetConfigItem{
 
 // macOS default: 15 * 15 = 225ms https://discussions.apple.com/thread/1316947?sortBy=rank
 // Linux default: 250ms https://man.archlinux.org/man/kbdrate.8.en
-// Windows default: 1ms `HKEY_CURRENT_USER\Control Panel\Accessibility\Keyboard Response\AutoRepeatDelay`
+// Windows default: 1s `HKEY_CURRENT_USER\Control Panel\Accessibility\Keyboard Response\AutoRepeatDelay`
 const autoReleaseKeyboardInterval = time.Millisecond * 100
 
 // Source: https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt
