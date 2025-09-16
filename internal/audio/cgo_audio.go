@@ -110,7 +110,7 @@ func cgoAudioInit() error {
 		C.int(Config.CGOMaxBackoffMicroseconds),
 	)
 
-	result := C.jetkvm_audio_init()
+	result := C.jetkvm_audio_capture_init()
 	if result != 0 {
 		return newAudioInitError(int(result))
 	}
