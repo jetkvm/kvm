@@ -45,8 +45,8 @@ static int max_packet_size = 1500;      // Maximum Opus packet size
 
 // Error handling and retry configuration
 static int sleep_microseconds = 1000;   // Base sleep time for retries
-static int max_attempts_global = 5;     // Maximum retry attempts
-static int max_backoff_us_global = 500000; // Maximum backoff time
+static const int max_attempts_global = 5;     // Maximum retry attempts
+static const int max_backoff_us_global = 500000; // Maximum backoff time
 
 // Performance optimization flags
 static const int optimized_buffer_size = 1;   // Use optimized buffer sizing
@@ -182,7 +182,6 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 		}
 
 		attempt++;
-		if (attempt >= max_attempts_global) break;
 
 		// Enhanced error handling with specific retry strategies
 		if (err == -EBUSY || err == -EAGAIN) {
@@ -363,8 +362,8 @@ int jetkvm_audio_capture_init() {
 	opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(opus_signal_type));
 	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth)); // WIDEBAND for compatibility
 	opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
-       // Set LSB depth for improved bit allocation on constrained hardware (disabled for compatibility)
-		opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(opus_lsb_depth));
+	// Set LSB depth for improved bit allocation on constrained hardware
+	opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(opus_lsb_depth));
 	// Enable packet loss concealment for better resilience
 	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(5));
 	// Set prediction disabled for lower latency
@@ -395,7 +394,7 @@ int jetkvm_audio_capture_init() {
  *         0: No audio data available (not an error)
  *         -1: Initialization error or unrecoverable failure
  */
-__attribute__((hot)) int jetkvm_audio_read_encode(void *opus_buf) {
+__attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) {
 	static short __attribute__((aligned(16))) pcm_buffer[1920]; // max 2ch*960, aligned for SIMD
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
 	
@@ -597,7 +596,7 @@ int jetkvm_audio_playback_init() {
  *         -1: Invalid input or decode failure
  *         -2: Unrecoverable ALSA error
  */
-__attribute__((hot)) int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
+__attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf, int opus_size) {
 	static short __attribute__((aligned(16))) pcm_buffer[1920]; // max 2ch*960, aligned for SIMD
 	unsigned char * __restrict__ in = (unsigned char*)opus_buf;
 	
