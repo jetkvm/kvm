@@ -226,7 +226,10 @@ func (u *UsbGadget) performAutoRelease(key byte) {
 		return
 	}
 
-	u.keypressReport(key, false)
+	_, err := u.keypressReport(key, false)
+	if err != nil {
+		u.log.Warn().Uint8("key", key).Msg("failed to release key")
+	}
 }
 
 func (u *UsbGadget) listenKeyboardEvents() {
