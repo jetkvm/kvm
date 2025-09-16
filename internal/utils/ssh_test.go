@@ -28,6 +28,16 @@ func TestValidateSSHKey(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name:        "valid SK-backed ED25519 key",
+			sshKey:      "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIHHSRVC3qISk/mOorf24au6esimA9Uu1/BkEnVKJ+4bFAAAABHNzaDo= test@example.com",
+			expectError: false,
+		},
+		{
+			name:        "valid SK-backed ECDSA key",
+			sshKey:      "sk-ecdsa-sha2-nistp256@openssh.com AAAAInNrLWVjZHNhLXNoYTItbmlzdHAyNTZAb3BlbnNzaC5jb20AAAAIbmlzdHAyNTYAAABBBL/CFBZksvs+gJODMB9StxnkY6xRKH73npOzJBVb0UEGCPTAhDrvzW1PE5X5GDYXmZw1s7c/nS+GH0LF0OFCpwAAAAAEc3NoOg== test@example.com",
+			expectError: false,
+		},
+		{
 			name:        "multiple valid keys",
 			sshKey:      "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDiYUb9Fy2vlPfO+HwubnshimpVrWPoePyvyN+jPC5gWqZSycjMy6Is2vFVn7oQc72bkY0wZalspT5wUOwKtltSoLpL7vcqGL9zHVw4yjYXtPGIRd3zLpU9wdngevnepPQWTX3LvZTZfmOsrGoMDKIG+Lbmiq/STMuWYecIqMp7tUKRGS8vfAmpu6MsrN9/4UTcdWWXYWJQQn+2nCyMz28jYlWRsKtqFK6owrdZWt8WQnPN+9Upcf2ByQje+0NLnpNrnh+yd2ocuVW9wQYKAZXy7IaTfEJwd5m34sLwkqlZTaBBcmWJU+3RfpYXE763cf3rUoPIGQ8eUEBJ8IdM4vhp test@example.com\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBSbM8wuD5ab0nHsXaYOqaD3GLLUwmDzSk79Xi/N+H2j test@example.com",
 			expectError: false,
@@ -131,6 +141,8 @@ func TestValidSSHKeyTypes(t *testing.T) {
 		"ecdsa-sha2-nistp256",
 		"ecdsa-sha2-nistp384",
 		"ecdsa-sha2-nistp521",
+		"sk-ecdsa-sha2-nistp256@openssh.com",
+		"sk-ssh-ed25519@openssh.com",
 	}
 
 	if len(ValidSSHKeyTypes) != len(expectedTypes) {
