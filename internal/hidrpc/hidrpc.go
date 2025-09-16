@@ -121,11 +121,3 @@ func NewKeyboardMacroStateMessage(state bool, isPaste bool) *Message {
 		d: data,
 	}
 }
-
-// NewKeypressKeepAliveMessage creates a new keypress keep alive message.
-func NewKeypressKeepAliveMessage() *Message {
-	return &Message{
-		t: TypeKeypressKeepAliveReport,
-		d: []byte{},
-	}
-}
