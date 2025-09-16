@@ -84,7 +84,10 @@ jobs:
           version: v2.0.2
         env:
           CGO_ENABLED: 1
-          ALSA_VERSION: ${{ env.ALSA_VERSION }}
-          OPUS_VERSION: ${{ env.OPUS_VERSION }}
-          CGO_CFLAGS: "-I${{ steps.build-env.outputs.cache_path }}/alsa-lib-${{ steps.build-env.outputs.alsa_version }}/include -I${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}/include -I${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}/celt"
+          GOOS: linux
+          GOARCH: arm
+          GOARM: 7
+          CC: ${{ steps.build-env.outputs.cache_path }}/../rv1106-system/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc
+          PKG_CONFIG_PATH: ${{ steps.build-env.outputs.cache_path }}/alsa-lib-${{ steps.build-env.outputs.alsa_version }}/utils:${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}
+          CGO_CFLAGS: "-O3 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops -mvectorize-with-neon-quad -marm -D__ARM_NEON -I${{ steps.build-env.outputs.cache_path }}/alsa-lib-${{ steps.build-env.outputs.alsa_version }}/include -I${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}/include -I${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}/celt"
           CGO_LDFLAGS: "-L${{ steps.build-env.outputs.cache_path }}/alsa-lib-${{ steps.build-env.outputs.alsa_version }}/src/.libs -lasound -L${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}/.libs -lopus -lm -ldl -static"
