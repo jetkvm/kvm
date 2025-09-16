@@ -96,16 +96,25 @@ func Main() {
 			if !config.AutoUpdateEnabled {
 				return
 			}
+
+			if isTimeSyncNeeded() || !timeSync.IsSyncSuccess() {
+				logger.Debug().Msg("system time is not synced, will retry in 30 seconds")
+				time.Sleep(30 * time.Second)
+				continue
+			}
+
 			if currentSession != nil {
 				logger.Debug().Msg("skipping update since a session is active")
 				time.Sleep(1 * time.Minute)
 				continue
 			}
+
 			includePreRelease := config.IncludePreRelease
 			err = TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
 			if err != nil {
 				logger.Warn().Err(err).Msg("failed to auto update")
 			}
+
 			time.Sleep(1 * time.Hour)
 		}
 	}()
