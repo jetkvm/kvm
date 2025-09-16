@@ -36,8 +36,8 @@ export PKG_CONFIG_PATH := $(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/utils:$(AUD
 # Common command to clean Go cache with verbose output for all Go builds
 CLEAN_GO_CACHE := @echo "Cleaning Go cache..."; go clean -cache -v
 
-# Optimization flags for ARM Cortex-A7 with NEON
-OPTIM_CFLAGS := -O3 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops
+# Optimization flags for ARM Cortex-A7 with NEON SIMD
+OPTIM_CFLAGS := -O3 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops -mvectorize-with-neon-quad -marm -D__ARM_NEON
 
 # Cross-compilation environment for ARM - exported globally
 export GOOS := linux
