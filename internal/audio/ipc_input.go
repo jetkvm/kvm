@@ -1225,8 +1225,6 @@ func (ais *AudioInputServer) startMonitorGoroutine() {
 							atomic.StoreInt64(&ais.processingTime, newAvg)
 						}
 
-
-
 						if err != nil {
 							atomic.AddInt64(&ais.droppedFrames, 1)
 						}
@@ -1266,8 +1264,6 @@ func (ais *AudioInputServer) UpdateBufferSize() {
 	newSize := int64(512)
 	atomic.StoreInt64(&ais.bufferSize, newSize)
 }
-
-
 
 // GetMessagePoolStats returns detailed statistics about the message pool
 func (mp *MessagePool) GetMessagePoolStats() MessagePoolStats {
