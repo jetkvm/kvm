@@ -457,32 +457,22 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size) {
 
 	// Safety checks
 	if (!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0) {
-		printf("[AUDIO] jetkvm_audio_decode_write: Failed safety checks - playback_initialized=%d, pcm_playback_handle=%p, decoder=%p, opus_buf=%p, opus_size=%d\n", 
-			playback_initialized, pcm_playback_handle, decoder, opus_buf, opus_size);
 		return -1;
 	}
 
 	// Additional bounds checking
 	if (opus_size > max_packet_size) {
-		printf("[AUDIO] jetkvm_audio_decode_write: Opus packet too large - size=%d, max=%d\n", opus_size, max_packet_size);
 		return -1;
 	}
-
-	printf("[AUDIO] jetkvm_audio_decode_write: Processing Opus packet - size=%d bytes\n", opus_size);
 
 	// Decode Opus to PCM with error handling
 	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
 	if (pcm_frames < 0) {
-		printf("[AUDIO] jetkvm_audio_decode_write: Opus decode failed with error %d, attempting packet loss concealment\n", pcm_frames);
 		// Try packet loss concealment on decode error
 		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 0);
 		if (pcm_frames < 0) {
-			printf("[AUDIO] jetkvm_audio_decode_write: Packet loss concealment also failed with error %d\n", pcm_frames);
 			return -1;
 		}
-		printf("[AUDIO] jetkvm_audio_decode_write: Packet loss concealment succeeded, recovered %d frames\n", pcm_frames);
-	} else {
-		printf("[AUDIO] jetkvm_audio_decode_write: Opus decode successful - decoded %d PCM frames\n", pcm_frames);
 	}
 
 retry_write:
