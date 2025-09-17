@@ -157,6 +157,9 @@ func (u *UsbGadget) SetOnKeepAliveReset(f func()) {
 	u.onKeepAliveReset = &f
 }
 
+// DefaultAutoReleaseDuration is the default duration for auto-release of a key.
+const DefaultAutoReleaseDuration = 100 * time.Millisecond
+
 func (u *UsbGadget) scheduleAutoRelease(key byte) {
 	u.kbdAutoReleaseLock.Lock()
 	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease scheduled")
@@ -165,10 +168,14 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 		u.kbdAutoReleaseTimers[key].Stop()
 	}
 
-	// TODO: This shouldn't use the global autoReleaseKeyboardStartInterval
-	// but rather the baseExtension from the keepalive jitter compensation logic.
-	// Make them global as they will in the future likely be variable.
-	u.kbdAutoReleaseTimers[key] = time.AfterFunc(100*time.Millisecond, func() {
+	duration := u.kbdAutoReleaseTimerExtension
+	if duration == 0 {
+		duration = DefaultAutoReleaseDuration
+	}
+
+	u.log.Debug().Dur("duration", duration).Msg("autoRelease scheduled with duration")
+
+	u.kbdAutoReleaseTimers[key] = time.AfterFunc(duration, func() {
 		u.performAutoRelease(key)
 	})
 }
@@ -196,6 +203,8 @@ func (u *UsbGadget) DelayAutoReleaseWithDuration(resetDuration time.Duration) {
 	if u.kbdAutoReleaseTimers == nil {
 		return
 	}
+
+	u.kbdAutoReleaseTimerExtension = resetDuration
 
 	u.log.Debug().Dur("reset_duration", resetDuration).Msg("delaying auto-release with dynamic duration")
 
