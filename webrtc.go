@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -28,11 +29,21 @@ type Session struct {
 
 	rpcQueue chan webrtc.DataChannelMessage
 
-	hidRPCAvailable bool
-	hidQueueLock    sync.Mutex
-	hidQueue        []chan hidQueueMessage
+	hidRPCAvailable           bool
+	lastKeepAliveArrivalTime  time.Time  // Track when last keep-alive packet arrived
+	lastTimerResetTime        time.Time  // Track when auto-release timer was last reset
+	keepAliveJitterLock       sync.Mutex // Protect jitter compensation timing state
+	hidQueueLock         sync.Mutex
+	hidQueue             []chan hidQueueMessage
 
 	keysDownStateQueue chan usbgadget.KeysDownState
+}
+
+func (s *Session) resetKeepAliveTime() {
+	s.keepAliveJitterLock.Lock()
+	defer s.keepAliveJitterLock.Unlock()
+	s.lastKeepAliveArrivalTime = time.Time{} // Reset keep-alive timing tracking
+	s.lastTimerResetTime = time.Time{}       // Reset auto-release timer tracking
 }
 
 type hidQueueMessage struct {
@@ -147,6 +158,7 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 		}
 
 		l.Trace().Msg("received data in HID RPC message handler")
+
 
 		// Enqueue to ensure ordered processing
 		queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))

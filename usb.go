@@ -8,6 +8,10 @@ import (
 
 var gadget *usbgadget.UsbGadget
 
+func getUsbGadget() *usbgadget.UsbGadget {
+	return gadget
+}
+
 // initUsbGadget initializes the USB gadget.
 // call it only after the config is loaded.
 func initUsbGadget() {
@@ -34,6 +38,12 @@ func initUsbGadget() {
 	gadget.SetOnKeysDownChange(func(state usbgadget.KeysDownState) {
 		if currentSession != nil {
 			currentSession.enqueueKeysDownState(state)
+		}
+	})
+
+	gadget.SetOnKeepAliveReset(func() {
+		if currentSession != nil {
+			currentSession.resetKeepAliveTime()
 		}
 	})
 

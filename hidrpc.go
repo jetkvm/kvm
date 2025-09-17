@@ -39,7 +39,63 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 		rpcCancelKeyboardMacro()
 		return
 	case hidrpc.TypeKeypressKeepAliveReport:
-		gadget.DelayAutoRelease()
+		session.keepAliveJitterLock.Lock()
+		defer session.keepAliveJitterLock.Unlock()
+
+		now := time.Now()
+
+		// Tunables
+		// Keep in mind
+		// macOS default: 15 * 15 = 225ms https://discussions.apple.com/thread/1316947?sortBy=rank
+		// Linux default: 250ms https://man.archlinux.org/man/kbdrate.8.en
+		// Windows default: 1s `HKEY_CURRENT_USER\Control Panel\Accessibility\Keyboard Response\AutoRepeatDelay`
+
+		const expectedRate = 50 * time.Millisecond       // expected keepalive interval
+		const maxLateness = 50 * time.Millisecond        // max jitter we'll tolerate OR jitter budget
+		const baseExtension = expectedRate + maxLateness // 100ms extension on perfect tick
+
+		const maxStaleness = 225 * time.Millisecond // discard ancient packets outright
+
+		// 1) Staleness guard: ensures packets that arrive far beyond the life of a valid key hold
+		// (e.g. after a network stall, retransmit burst, or machine sleep) are ignored outright.
+		// This prevents “zombie” keepalives from reviving a key that should already be released.
+		if !session.lastTimerResetTime.IsZero() && now.Sub(session.lastTimerResetTime) > maxStaleness {
+			return
+		}
+
+		validTick := true
+		timerExtension := baseExtension
+
+		if !session.lastKeepAliveArrivalTime.IsZero() {
+			timeSinceLastTick := now.Sub(session.lastKeepAliveArrivalTime)
+			lateness := timeSinceLastTick - expectedRate
+
+			if lateness > 0 {
+				if lateness <= maxLateness {
+					// --- Small lateness (within jitterBudget) ---
+					// This is normal jitter (e.g., Wi-Fi contention).
+					// We still accept the tick, but *reduce the extension*
+					// so that the total hold time stays aligned with REAL client side intent.
+					timerExtension -= lateness
+				} else {
+					// --- Large lateness (beyond jitterBudget) ---
+					// This is likely a retransmit stall or ordering delay.
+					// We reject the tick entirely and DO NOT extend,
+					// so the auto-release still fires on time.
+					validTick = false
+				}
+			}
+		}
+
+		if validTick {
+			// Only valid ticks update our state and extend the timer.
+			session.lastKeepAliveArrivalTime = now
+			session.lastTimerResetTime = now
+			if ug := getUsbGadget(); ug != nil {
+				ug.DelayAutoReleaseWithDuration(timerExtension)
+			}
+		}
+		// On a miss: do not advance any state — keeps baseline stable.
 	case hidrpc.TypePointerReport:
 		pointerReport, err := message.PointerReport()
 		if err != nil {

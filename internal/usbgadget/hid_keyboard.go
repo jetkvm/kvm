@@ -26,11 +26,6 @@ var keyboardConfig = gadgetConfigItem{
 	reportDesc: keyboardReportDesc,
 }
 
-// macOS default: 15 * 15 = 225ms https://discussions.apple.com/thread/1316947?sortBy=rank
-// Linux default: 250ms https://man.archlinux.org/man/kbdrate.8.en
-// Windows default: 1s `HKEY_CURRENT_USER\Control Panel\Accessibility\Keyboard Response\AutoRepeatDelay`
-const autoReleaseKeyboardInterval = time.Millisecond * 225
-
 // Source: https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt
 var keyboardReportDesc = []byte{
 	0x05, 0x01, /* USAGE_PAGE (Generic Desktop)	          */
@@ -158,6 +153,10 @@ func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 	u.onKeysDownChange = &f
 }
 
+func (u *UsbGadget) SetOnKeepAliveReset(f func()) {
+	u.onKeepAliveReset = &f
+}
+
 func (u *UsbGadget) scheduleAutoRelease(key byte) {
 	u.kbdAutoReleaseLock.Lock()
 	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease scheduled")
@@ -166,7 +165,10 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 		u.kbdAutoReleaseTimers[key].Stop()
 	}
 
-	u.kbdAutoReleaseTimers[key] = time.AfterFunc(autoReleaseKeyboardInterval, func() {
+	// TODO: This shouldn't use the global autoReleaseKeyboardStartInterval
+	// but rather the baseExtension from the keepalive jitter compensation logic.
+	// Make them global as they will in the future likely be variable.
+	u.kbdAutoReleaseTimers[key] = time.AfterFunc(100*time.Millisecond, func() {
 		u.performAutoRelease(key)
 	})
 }
@@ -179,10 +181,15 @@ func (u *UsbGadget) cancelAutoRelease(key byte) {
 		timer.Stop()
 		u.kbdAutoReleaseTimers[key] = nil
 		delete(u.kbdAutoReleaseTimers, key)
+
+		// Reset keep-alive timing when key is released
+		if u.onKeepAliveReset != nil {
+			(*u.onKeepAliveReset)()
+		}
 	}
 }
 
-func (u *UsbGadget) DelayAutoRelease() {
+func (u *UsbGadget) DelayAutoReleaseWithDuration(resetDuration time.Duration) {
 	u.kbdAutoReleaseLock.Lock()
 	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease delayed")
 
@@ -190,9 +197,11 @@ func (u *UsbGadget) DelayAutoRelease() {
 		return
 	}
 
+	u.log.Debug().Dur("reset_duration", resetDuration).Msg("delaying auto-release with dynamic duration")
+
 	for _, timer := range u.kbdAutoReleaseTimers {
 		if timer != nil {
-			timer.Reset(autoReleaseKeyboardInterval)
+			timer.Reset(resetDuration)
 		}
 	}
 }
