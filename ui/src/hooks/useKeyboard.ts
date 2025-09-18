@@ -11,7 +11,7 @@ import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidRpc } from "@/hooks/useHidRpc";
 import {
   KeyboardLedStateMessage,
-  KeyboardMacroStateReportMessage,
+  KeyboardMacroStateMessage,
   KeyboardMacroStep,
   KeysDownStateMessage,
 } from "@/hooks/hidRpc";
@@ -70,9 +70,9 @@ export default function useKeyboard() {
       case KeyboardLedStateMessage:
         setKeyboardLedState((message as KeyboardLedStateMessage).keyboardLedState);
         break;
-      case KeyboardMacroStateReportMessage:
-        if (!(message as KeyboardMacroStateReportMessage).isPaste) break;
-        setPasteModeEnabled((message as KeyboardMacroStateReportMessage).state);
+      case KeyboardMacroStateMessage:
+        if (!(message as KeyboardMacroStateMessage).isPaste) break;
+        setPasteModeEnabled((message as KeyboardMacroStateMessage).state);
         break;
       default:
         break;

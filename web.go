@@ -199,7 +199,7 @@ func handleWebRTCSession(c *gin.Context) {
 		}()
 	}
 
-	// Cancel any ongoing keyboard report multi when session changes
+	// Cancel any ongoing keyboard macro when session changes
 	cancelKeyboardMacro()
 
 	currentSession = session

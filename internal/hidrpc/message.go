@@ -91,16 +91,18 @@ func (m *Message) KeyboardReport() (KeyboardReport, error) {
 }
 
 // Macro ..
-type KeyboardMacro struct {
+type KeyboardMacroStep struct {
 	Modifier byte   // 1 byte
-	Keys     []byte // 6 bytes, to make things easier, the keys length is fixed to 6
+	Keys     []byte // 6 bytes: hidKeyBufferSize
 	Delay    uint16 // 2 bytes
 }
 type KeyboardMacroReport struct {
-	IsPaste bool
-	Length  uint32
-	Macro   []KeyboardMacro
+	IsPaste   bool
+	StepCount uint32
+	Steps     []KeyboardMacroStep
 }
+
+const hidKeyBufferSize = 6
 
 // KeyboardMacroReport returns the keyboard macro report from the message.
 func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
@@ -109,29 +111,30 @@ func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
 	}
 
 	isPaste := m.d[0] == uint8(1)
-	length := binary.BigEndian.Uint32(m.d[1:5])
+	stepCount := binary.BigEndian.Uint32(m.d[1:5])
 
 	// check total length
-	expectedLength := int(length)*9 + 5
+	expectedLength := int(stepCount)*9 + 5
 	if len(m.d) != expectedLength {
 		return KeyboardMacroReport{}, fmt.Errorf("invalid length: %d, expected: %d", len(m.d), expectedLength)
 	}
 
-	macro := make([]KeyboardMacro, 0, int(length))
-	for i := 0; i < int(length); i++ {
-		offset := 5 + i*9
-
-		macro = append(macro, KeyboardMacro{
+	steps := make([]KeyboardMacroStep, 0, int(stepCount))
+	offset := 5
+	for i := 0; i < int(stepCount); i++ {
+		steps = append(steps, KeyboardMacroStep{
 			Modifier: m.d[offset],
 			Keys:     m.d[offset+1 : offset+7],
 			Delay:    binary.BigEndian.Uint16(m.d[offset+7 : offset+9]),
 		})
+
+		offset += 1 + hidKeyBufferSize + 2
 	}
 
 	return KeyboardMacroReport{
-		IsPaste: isPaste,
-		Macro:   macro,
-		Length:  length,
+		IsPaste:   isPaste,
+		Steps:     steps,
+		StepCount: stepCount,
 	}, nil
 }
 

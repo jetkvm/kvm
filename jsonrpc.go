@@ -1076,7 +1076,7 @@ func setKeyboardMacroCancel(cancel context.CancelFunc) {
 	keyboardMacroCancel = cancel
 }
 
-func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacro) (usbgadget.KeysDownState, error) {
+func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) (usbgadget.KeysDownState, error) {
 	cancelKeyboardMacro()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1109,11 +1109,11 @@ func rpcCancelKeyboardMacro() {
 
 var keyboardClearStateKeys = make([]byte, 6)
 
-func isClearKeyStep(step hidrpc.KeyboardMacro) bool {
+func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 	return step.Modifier == 0 && bytes.Equal(step.Keys, keyboardClearStateKeys)
 }
 
-func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro) (usbgadget.KeysDownState, error) {
+func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) (usbgadget.KeysDownState, error) {
 	var last usbgadget.KeysDownState
 	var err error
 
