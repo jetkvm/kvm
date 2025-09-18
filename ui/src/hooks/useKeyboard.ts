@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useRef } from "react";
 
 import {
   hidErrorRollOver,
@@ -9,13 +9,40 @@ import {
 } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { useHidRpc } from "@/hooks/useHidRpc";
-import { KeyboardLedStateMessage, KeyboardMacroStateReportMessage, KeyboardMacroStep, KeysDownStateMessage } from "@/hooks/hidRpc";
+import {
+  KeyboardLedStateMessage,
+  KeyboardMacroStateReportMessage,
+  KeyboardMacroStep,
+  KeysDownStateMessage,
+} from "@/hooks/hidRpc";
 import { hidKeyToModifierMask, keys, modifiers } from "@/keyboardMappings";
+
+const MACRO_RESET_KEYBOARD_STATE = {
+  keys: new Array(hidKeyBufferSize).fill(0),
+  modifier: 0,
+  delay: 0,
+};
+
+export interface MacroStep {
+  keys: string[] | null;
+  modifiers: string[] | null;
+  delay: number;
+}
+
+export type MacroSteps = MacroStep[];
+
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function useKeyboard() {
   const { send } = useJsonRpc();
   const { rpcDataChannel } = useRTCStore();
-  const { keysDownState, setKeysDownState, setKeyboardLedState, setPasteModeEnabled } = useHidStore();
+  const { keysDownState, setKeysDownState, setKeyboardLedState, setPasteModeEnabled } =
+    useHidStore();
+
+  const abortController = useRef<AbortController | null>(null);
+  const setAbortController = useCallback((ac: AbortController | null) => {
+    abortController.current = ac;
+  }, []);
 
   // INTRODUCTION: The earlier version of the JetKVM device shipped with all keyboard state
   // being tracked on the browser/client-side. When adding the keyPressReport API to the
@@ -46,56 +73,58 @@ export default function useKeyboard() {
       case KeyboardMacroStateReportMessage:
         if (!(message as KeyboardMacroStateReportMessage).isPaste) break;
         setPasteModeEnabled((message as KeyboardMacroStateReportMessage).state);
-        break;  
+        break;
       default:
         break;
     }
   });
 
-  // sendKeyboardEvent is used to send the full keyboard state to the device for macro handling
-  // and resetting keyboard state. It sends the keys currently pressed and the modifier state.
-  // The device will respond with the keysDownState if it supports the keyPressReport API
-  // or just accept the state if it does not support (returning no result)
-  const sendKeyboardEvent = useCallback(
-    async (state: KeysDownState) => {
-      if (rpcDataChannel?.readyState !== "open" && !rpcHidReady) return;
+  const handleLegacyKeyboardReport = useCallback(
+    async (keys: number[], modifier: number) => {
+      send("keyboardReport", { keys, modifier }, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          console.error(`Failed to send keyboard report ${keys} ${modifier}`, resp.error);
+        }
 
-      console.debug(
-        `Send keyboardReport keys: ${state.keys}, modifier: ${state.modifier}`,
-      );
+        // On older backends, we need to set the keysDownState manually since without the hidRpc API, the state doesn't trickle down from the backend
+        setKeysDownState(MACRO_RESET_KEYBOARD_STATE);
+      });
+    },
+    [send, setKeysDownState],
+  );
+  const sendKeystrokeLegacy = useCallback(async (keys: number[], modifier: number, ac?: AbortController) => {
+    return await new Promise<void>((resolve, reject) => {
+      const abortListener = () => {
+        reject(new Error("Keyboard report aborted"));
+      };
 
-      if (rpcHidReady) {
-        console.debug("Sending keyboard report via HidRPC");
-        sendKeyboardEventHidRpc(state.keys, state.modifier);
-        return;
-      }
+      ac?.signal?.addEventListener("abort", abortListener);
 
       send(
         "keyboardReport",
-        { keys: state.keys, modifier: state.modifier },
-        (resp: JsonRpcResponse) => {
-          if ("error" in resp) {
-            console.error(`Failed to send keyboard report ${state}`, resp.error);
-          }
+        { keys, modifier },
+        params => {
+          if ("error" in params) return reject(params.error);
+          resolve();
         },
       );
-    },
-    [rpcDataChannel?.readyState, rpcHidReady, send, sendKeyboardEventHidRpc],
-  );
-
-  const MACRO_RESET_KEYBOARD_STATE = useMemo(() => ({
-    keys: new Array(hidKeyBufferSize).fill(0),
-    modifier: 0,
-    delay: 0,
-  }), []);
+    });
+  }, [send]);
 
   // resetKeyboardState is used to reset the keyboard state to no keys pressed and no modifiers.
   // This is useful for macros and when the browser loses focus to ensure that the keyboard state
   // is clean.
   const resetKeyboardState = useCallback(async () => {
     // Reset the keys buffer to zeros and the modifier state to zero
-    sendKeyboardEvent(MACRO_RESET_KEYBOARD_STATE);
-  }, [sendKeyboardEvent, MACRO_RESET_KEYBOARD_STATE]);
+    const { keys, modifier } = MACRO_RESET_KEYBOARD_STATE;
+    if (rpcHidReady) {
+      sendKeyboardEventHidRpc(keys, modifier);
+    } else {
+      // Older backends don't support the hidRpc API, so we send the full reset state
+      handleLegacyKeyboardReport(keys, modifier);
+    }
+  }, [rpcHidReady, sendKeyboardEventHidRpc, handleLegacyKeyboardReport]);
+
 
   // executeMacro is used to execute a macro consisting of multiple steps.
   // Each step can have multiple keys, multiple modifiers and a delay.
@@ -103,9 +132,7 @@ export default function useKeyboard() {
   // After the delay, the keys and modifiers are released and the next step is executed.
   // If a step has no keys or modifiers, it is treated as a delay-only step.
   // A small pause is added between steps to ensure that the device can process the events.
-  const executeMacro = async (
-    steps: { keys: string[] | null; modifiers: string[] | null; delay: number }[],
-  ) => {
+  const executeMacroRemote = useCallback(async (steps: MacroSteps) => {
     const macro: KeyboardMacroStep[] = [];
 
     for (const [_, step] of steps.entries()) {
@@ -122,12 +149,73 @@ export default function useKeyboard() {
     }
 
     sendKeyboardMacroEventHidRpc(macro);
-  };
+  }, [sendKeyboardMacroEventHidRpc]);
+  const executeMacroClientSide = useCallback(async (steps: MacroSteps) => {
+    const promises: (() => Promise<void>)[] = [];
+
+    const ac = new AbortController();
+    setAbortController(ac);
+    
+    for (const [_, step] of steps.entries()) {
+      const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
+      const modifierMask: number = (step.modifiers || [])
+        .map(mod => modifiers[mod])
+        .reduce((acc, val) => acc + val, 0);
+
+      // If the step has keys and/or modifiers, press them and hold for the delay
+      if (keyValues.length > 0 || modifierMask > 0) {
+        promises.push(() => sendKeystrokeLegacy(keyValues, modifierMask, ac));
+        promises.push(() => resetKeyboardState());
+        promises.push(() => sleep(step.delay || 100));
+      } 
+    }
+
+    const runAll = async () => {
+      for (const promise of promises) {
+        // Check if we've been aborted before executing each promise
+        if (ac.signal.aborted) {
+          throw new Error("Macro execution aborted");
+        }
+        await promise();
+      }
+    }
+
+    return await new Promise<void>((resolve, reject) => {
+      // Set up abort listener
+      const abortListener = () => {
+        reject(new Error("Macro execution aborted"));
+      };
+      
+      ac.signal.addEventListener("abort", abortListener);
+      
+      runAll()
+        .then(() => {
+          ac.signal.removeEventListener("abort", abortListener);
+          resolve();
+        })
+        .catch((error) => {
+          ac.signal.removeEventListener("abort", abortListener);
+          reject(error);
+        });
+    });
+  }, [sendKeystrokeLegacy, resetKeyboardState, setAbortController]);
+  const executeMacro = useCallback(async (steps: MacroSteps) => {
+    if (rpcHidReady) {
+      return executeMacroRemote(steps);
+    }
+    return executeMacroClientSide(steps);
+  }, [rpcHidReady, executeMacroRemote, executeMacroClientSide]);
 
   const cancelExecuteMacro = useCallback(async () => {
+    if (abortController.current) {
+      abortController.current.abort();
+    }
     if (!rpcHidReady) return;
+    // older versions don't support this API,
+    // and all paste actions are pure-frontend,
+    // we don't need to cancel it actually
     cancelOngoingKeyboardMacroHidRpc();
-  }, [rpcHidReady, cancelOngoingKeyboardMacroHidRpc]);
+  }, [rpcHidReady, cancelOngoingKeyboardMacroHidRpc, abortController]);
 
   // handleKeyPress is used to handle a key press or release event.
   // This function handle both key press and key release events.
@@ -149,13 +237,16 @@ export default function useKeyboard() {
         // in client/browser-side code using simulateDeviceSideKeyHandlingForLegacyDevices.
         sendKeypressEventHidRpc(key, press);
       } else {
-        // if the keyPress api is not available, we need to handle the key locally
+        // Older backends don't support the hidRpc API, so we need:
+        // 1. Calculate the state
+        // 2. Send the newly calculated state to the device
         const downState = simulateDeviceSideKeyHandlingForLegacyDevices(
           keysDownState,
           key,
           press,
         );
-        sendKeyboardEvent(downState); // then we send the full state
+
+        handleLegacyKeyboardReport(downState.keys, downState.modifier);
 
         // if we just sent ErrorRollOver, reset to empty state
         if (downState.keys[0] === hidErrorRollOver) {
@@ -164,12 +255,12 @@ export default function useKeyboard() {
       }
     },
     [
-      rpcHidReady,
-      keysDownState,
-      resetKeyboardState,
       rpcDataChannel?.readyState,
-      sendKeyboardEvent,
+      rpcHidReady,
       sendKeypressEventHidRpc,
+      keysDownState,
+      handleLegacyKeyboardReport,
+      resetKeyboardState,
     ],
   );
 

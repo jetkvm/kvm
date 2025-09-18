@@ -17,19 +17,23 @@ import {
 } from "./hidRpc";
 
 export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
-  const { rpcHidChannel, setRpcHidProtocolVersion, rpcHidProtocolVersion } = useRTCStore();
+  const { rpcHidChannel, setRpcHidProtocolVersion, rpcHidProtocolVersion, hidRpcDisabled } = useRTCStore();
   const rpcHidReady = useMemo(() => {
+    if (hidRpcDisabled) return false;
     return rpcHidChannel?.readyState === "open" && rpcHidProtocolVersion !== null;
-  }, [rpcHidChannel, rpcHidProtocolVersion]);
+  }, [rpcHidChannel, rpcHidProtocolVersion, hidRpcDisabled]);
 
   const rpcHidStatus = useMemo(() => {
+    if (hidRpcDisabled) return "disabled";
+
     if (!rpcHidChannel) return "N/A";
     if (rpcHidChannel.readyState !== "open") return rpcHidChannel.readyState;
     if (!rpcHidProtocolVersion) return "handshaking";
     return `ready (v${rpcHidProtocolVersion})`;
-  }, [rpcHidChannel, rpcHidProtocolVersion]);
+  }, [rpcHidChannel, rpcHidProtocolVersion, hidRpcDisabled]);
 
   const sendMessage = useCallback((message: RpcMessage, ignoreHandshakeState = false) => {
+    if (hidRpcDisabled) return;
     if (rpcHidChannel?.readyState !== "open") return;
     if (!rpcHidReady && !ignoreHandshakeState) return;
 
@@ -42,7 +46,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     if (!data) return;
 
     rpcHidChannel?.send(data as unknown as ArrayBuffer);
-  }, [rpcHidChannel, rpcHidReady]);
+  }, [rpcHidChannel, rpcHidReady, hidRpcDisabled]);
 
   const reportKeyboardEvent = useCallback(
     (keys: number[], modifier: number) => {
@@ -87,13 +91,16 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
   );
 
   const sendHandshake = useCallback(() => {
+    if (hidRpcDisabled) return;
     if (rpcHidProtocolVersion) return;
     if (!rpcHidChannel) return;
 
     sendMessage(new HandshakeMessage(HID_RPC_VERSION), true);
-  }, [rpcHidChannel, rpcHidProtocolVersion, sendMessage]);
+  }, [rpcHidChannel, rpcHidProtocolVersion, sendMessage, hidRpcDisabled]);
 
   const handleHandshake = useCallback((message: HandshakeMessage) => {
+    if (hidRpcDisabled) return;
+
     if (!message.version) {
       console.error("Received handshake message without version", message);
       return;
@@ -108,10 +115,11 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     }
 
     setRpcHidProtocolVersion(message.version);
-  }, [setRpcHidProtocolVersion]);
+  }, [setRpcHidProtocolVersion, hidRpcDisabled]);
 
   useEffect(() => {
     if (!rpcHidChannel) return;
+    if (hidRpcDisabled) return;
 
     // send handshake message
     sendHandshake();
@@ -153,6 +161,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
       setRpcHidProtocolVersion,
       sendHandshake,
       handleHandshake,
+      hidRpcDisabled,
     ],
   );
 

@@ -6,7 +6,7 @@ import { LuCornerDownLeft } from "react-icons/lu";
 import { cx } from "@/cva.config";
 import { useHidStore, useSettingsStore, useUiStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import useKeyboard from "@/hooks/useKeyboard";
+import useKeyboard, { type MacroStep } from "@/hooks/useKeyboard";
 import useKeyboardLayout from "@/hooks/useKeyboardLayout";
 import notifications from "@/notifications";
 import { Button } from "@components/Button";
@@ -58,11 +58,7 @@ export default function PasteModal() {
     const text = TextAreaRef.current.value;
 
     try {
-      const macroSteps: {
-        keys: string[] | null;
-        modifiers: string[] | null;
-        delay: number;
-      }[] = [];
+      const macroSteps: MacroStep[] = [];
 
       for (const char of text) {
         const keyprops = selectedKeyboard.chars[char];
