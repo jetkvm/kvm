@@ -43,14 +43,14 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     return (
       rpcHidUnreliableChannel?.readyState === "open" && rpcHidProtocolVersion !== null
     );
-  }, [rpcHidUnreliableChannel, rpcHidProtocolVersion]);
+  }, [rpcHidProtocolVersion, rpcHidUnreliableChannel?.readyState]);
 
   const rpcHidUnreliableNonOrderedReady = useMemo(() => {
     return (
       rpcHidUnreliableNonOrderedChannel?.readyState === "open" &&
       rpcHidProtocolVersion !== null
     );
-  }, [rpcHidUnreliableNonOrderedChannel, rpcHidProtocolVersion]);
+  }, [rpcHidProtocolVersion, rpcHidUnreliableNonOrderedChannel?.readyState]);
 
   const rpcHidStatus = useMemo(() => {
     if (hidRpcDisabled) return "disabled";
@@ -59,7 +59,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     if (rpcHidChannel.readyState !== "open") return rpcHidChannel.readyState;
     if (!rpcHidProtocolVersion) return "handshaking";
     return `ready (v${rpcHidProtocolVersion}${rpcHidUnreliableReady ? "+u" : ""})`;
-  }, [rpcHidChannel, rpcHidUnreliableReady, rpcHidProtocolVersion, hidRpcDisabled]);
+  }, [rpcHidChannel, rpcHidProtocolVersion, rpcHidUnreliableReady, hidRpcDisabled]);
 
   const sendMessage = useCallback(
     (
