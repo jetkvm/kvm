@@ -343,6 +343,9 @@ func newSession(config SessionConfig) (*Session, error) {
 				session.hidQueue[i] = nil
 			}
 
+			close(session.keysDownStateQueue)
+			session.keysDownStateQueue = nil
+
 			if session.shouldUmountVirtualMedia {
 				if err := rpcUnmountImage(); err != nil {
 					scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")
