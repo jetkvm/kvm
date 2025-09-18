@@ -34,7 +34,7 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			logger.Warn().Err(err).Msg("failed to get keyboard macro report")
 			return
 		}
-		_, rpcErr = rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
+		rpcErr = rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
 	case hidrpc.TypeCancelKeyboardMacroReport:
 		rpcCancelKeyboardMacro()
 		return

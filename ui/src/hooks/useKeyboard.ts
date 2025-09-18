@@ -115,102 +115,6 @@ export default function useKeyboard() {
     });
   }, [send]);
 
-
-  // executeMacro is used to execute a macro consisting of multiple steps.
-  // Each step can have multiple keys, multiple modifiers and a delay.
-  // The keys and modifiers are pressed together and held for the delay duration.
-  // After the delay, the keys and modifiers are released and the next step is executed.
-  // If a step has no keys or modifiers, it is treated as a delay-only step.
-  // A small pause is added between steps to ensure that the device can process the events.
-  const executeMacroRemote = useCallback(async (
-    steps: MacroSteps,
-  ) => {
-    const macro: KeyboardMacroStep[] = [];
-
-    for (const [_, step] of steps.entries()) {
-      const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
-      const modifierMask: number = (step.modifiers || [])
-
-        .map(mod => modifiers[mod])
-
-        .reduce((acc, val) => acc + val, 0);
-
-      // If the step has keys and/or modifiers, press them and hold for the delay
-      if (keyValues.length > 0 || modifierMask > 0) {
-        macro.push({ keys: keyValues, modifier: modifierMask, delay: 20 });
-        macro.push({ ...MACRO_RESET_KEYBOARD_STATE, delay: step.delay || 100 });
-      }
-    }
-
-    sendKeyboardMacroEventHidRpc(macro);
-  }, [sendKeyboardMacroEventHidRpc]);
-  const executeMacroClientSide = useCallback(async (steps: MacroSteps) => {
-    const promises: (() => Promise<void>)[] = [];
-
-    const ac = new AbortController();
-    setAbortController(ac);
-
-    for (const [_, step] of steps.entries()) {
-      const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
-      const modifierMask: number = (step.modifiers || [])
-        .map(mod => modifiers[mod])
-        .reduce((acc, val) => acc + val, 0);
-
-      // If the step has keys and/or modifiers, press them and hold for the delay
-      if (keyValues.length > 0 || modifierMask > 0) {
-        promises.push(() => sendKeystrokeLegacy(keyValues, modifierMask, ac));
-        promises.push(() => resetKeyboardState());
-        promises.push(() => sleep(step.delay || 100));
-      }
-    }
-
-    const runAll = async () => {
-      for (const promise of promises) {
-        // Check if we've been aborted before executing each promise
-        if (ac.signal.aborted) {
-          throw new Error("Macro execution aborted");
-        }
-        await promise();
-      }
-    }
-
-    return await new Promise<void>((resolve, reject) => {
-      // Set up abort listener
-      const abortListener = () => {
-        reject(new Error("Macro execution aborted"));
-      };
-
-      ac.signal.addEventListener("abort", abortListener);
-
-      runAll()
-        .then(() => {
-          ac.signal.removeEventListener("abort", abortListener);
-          resolve();
-        })
-        .catch((error) => {
-          ac.signal.removeEventListener("abort", abortListener);
-          reject(error);
-        });
-    });
-  }, [sendKeystrokeLegacy, resetKeyboardState, setAbortController]);
-  const executeMacro = useCallback(async (steps: MacroSteps) => {
-    if (rpcHidReady) {
-      return executeMacroRemote(steps);
-    }
-    return executeMacroClientSide(steps);
-  }, [rpcHidReady, executeMacroRemote, executeMacroClientSide]);
-
-  const cancelExecuteMacro = useCallback(async () => {
-    if (abortController.current) {
-      abortController.current.abort();
-    }
-    if (!rpcHidReady) return;
-    // older versions don't support this API,
-    // and all paste actions are pure-frontend,
-    // we don't need to cancel it actually
-    cancelOngoingKeyboardMacroHidRpc();
-  }, [rpcHidReady, cancelOngoingKeyboardMacroHidRpc, abortController]);
-
   const KEEPALIVE_INTERVAL = 50;
 
   const cancelKeepAlive = useCallback(() => {
@@ -372,6 +276,102 @@ export default function useKeyboard() {
   const cleanup = useCallback(() => {
     cancelKeepAlive();
   }, [cancelKeepAlive]);
+
+
+  // executeMacro is used to execute a macro consisting of multiple steps.
+  // Each step can have multiple keys, multiple modifiers and a delay.
+  // The keys and modifiers are pressed together and held for the delay duration.
+  // After the delay, the keys and modifiers are released and the next step is executed.
+  // If a step has no keys or modifiers, it is treated as a delay-only step.
+  // A small pause is added between steps to ensure that the device can process the events.
+  const executeMacroRemote = useCallback(async (
+    steps: MacroSteps,
+  ) => {
+    const macro: KeyboardMacroStep[] = [];
+
+    for (const [_, step] of steps.entries()) {
+      const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
+      const modifierMask: number = (step.modifiers || [])
+
+        .map(mod => modifiers[mod])
+
+        .reduce((acc, val) => acc + val, 0);
+
+      // If the step has keys and/or modifiers, press them and hold for the delay
+      if (keyValues.length > 0 || modifierMask > 0) {
+        macro.push({ keys: keyValues, modifier: modifierMask, delay: 20 });
+        macro.push({ ...MACRO_RESET_KEYBOARD_STATE, delay: step.delay || 100 });
+      }
+    }
+
+    sendKeyboardMacroEventHidRpc(macro);
+  }, [sendKeyboardMacroEventHidRpc]);
+  const executeMacroClientSide = useCallback(async (steps: MacroSteps) => {
+    const promises: (() => Promise<void>)[] = [];
+
+    const ac = new AbortController();
+    setAbortController(ac);
+
+    for (const [_, step] of steps.entries()) {
+      const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
+      const modifierMask: number = (step.modifiers || [])
+        .map(mod => modifiers[mod])
+        .reduce((acc, val) => acc + val, 0);
+
+      // If the step has keys and/or modifiers, press them and hold for the delay
+      if (keyValues.length > 0 || modifierMask > 0) {
+        promises.push(() => sendKeystrokeLegacy(keyValues, modifierMask, ac));
+        promises.push(() => resetKeyboardState());
+        promises.push(() => sleep(step.delay || 100));
+      }
+    }
+
+    const runAll = async () => {
+      for (const promise of promises) {
+        // Check if we've been aborted before executing each promise
+        if (ac.signal.aborted) {
+          throw new Error("Macro execution aborted");
+        }
+        await promise();
+      }
+    }
+
+    return await new Promise<void>((resolve, reject) => {
+      // Set up abort listener
+      const abortListener = () => {
+        reject(new Error("Macro execution aborted"));
+      };
+
+      ac.signal.addEventListener("abort", abortListener);
+
+      runAll()
+        .then(() => {
+          ac.signal.removeEventListener("abort", abortListener);
+          resolve();
+        })
+        .catch((error) => {
+          ac.signal.removeEventListener("abort", abortListener);
+          reject(error);
+        });
+    });
+  }, [sendKeystrokeLegacy, resetKeyboardState, setAbortController]);
+  const executeMacro = useCallback(async (steps: MacroSteps) => {
+    if (rpcHidReady) {
+      return executeMacroRemote(steps);
+    }
+    return executeMacroClientSide(steps);
+  }, [rpcHidReady, executeMacroRemote, executeMacroClientSide]);
+
+  const cancelExecuteMacro = useCallback(async () => {
+    if (abortController.current) {
+      abortController.current.abort();
+    }
+    if (!rpcHidReady) return;
+    // older versions don't support this API,
+    // and all paste actions are pure-frontend,
+    // we don't need to cancel it actually
+    cancelOngoingKeyboardMacroHidRpc();
+  }, [rpcHidReady, cancelOngoingKeyboardMacroHidRpc, abortController]);
 
   return { handleKeyPress, resetKeyboardState, executeMacro, cleanup, cancelExecuteMacro };
 }
