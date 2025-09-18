@@ -281,8 +281,7 @@ export default function useKeyboard() {
   }, [cancelKeepAlive, sendKeypressKeepAliveHidRpc]);
 
   // resetKeyboardState is used to reset the keyboard state to no keys pressed and no modifiers.
-  // This is useful for macros and when the browser loses focus to ensure that the keyboard state
-  // is clean.
+  // This is useful for macros, in case of client-side rollover, and when the browser loses focus
   const resetKeyboardState = useCallback(async () => {
     // Cancel keepalive since we're resetting the keyboard state
     cancelKeepAlive();
