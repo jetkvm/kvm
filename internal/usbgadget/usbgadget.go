@@ -165,7 +165,9 @@ func (u *UsbGadget) Close() error {
 	// Stop auto-release timer
 	u.kbdAutoReleaseLock.Lock()
 	for _, timer := range u.kbdAutoReleaseTimers {
-		timer.Stop()
+		if timer != nil {
+			timer.Stop()
+		}
 	}
 	u.kbdAutoReleaseTimers = make(map[byte]*time.Timer)
 	u.kbdAutoReleaseLock.Unlock()
