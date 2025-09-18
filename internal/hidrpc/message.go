@@ -102,7 +102,8 @@ type KeyboardMacroReport struct {
 	Steps     []KeyboardMacroStep
 }
 
-const hidKeyBufferSize = 6
+// HidKeyBufferSize is the size of the keys buffer in the keyboard report.
+const HidKeyBufferSize = 6
 
 // KeyboardMacroReport returns the keyboard macro report from the message.
 func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
@@ -128,7 +129,7 @@ func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
 			Delay:    binary.BigEndian.Uint16(m.d[offset+7 : offset+9]),
 		})
 
-		offset += 1 + hidKeyBufferSize + 2
+		offset += 1 + HidKeyBufferSize + 2
 	}
 
 	return KeyboardMacroReport{
@@ -186,18 +187,18 @@ func (m *Message) MouseReport() (MouseReport, error) {
 	}, nil
 }
 
-type KeyboardMacroStateReport struct {
+type KeyboardMacroState struct {
 	State   bool
 	IsPaste bool
 }
 
-// KeyboardMacroStateReport returns the keyboard macro state report from the message.
-func (m *Message) KeyboardMacroStateReport() (KeyboardMacroStateReport, error) {
-	if m.t != TypeKeyboardMacroStateReport {
-		return KeyboardMacroStateReport{}, fmt.Errorf("invalid message type: %d", m.t)
+// KeyboardMacroState returns the keyboard macro state report from the message.
+func (m *Message) KeyboardMacroState() (KeyboardMacroState, error) {
+	if m.t != TypeKeyboardMacroState {
+		return KeyboardMacroState{}, fmt.Errorf("invalid message type: %d", m.t)
 	}
 
-	return KeyboardMacroStateReport{
+	return KeyboardMacroState{
 		State:   m.d[0] == uint8(1),
 		IsPaste: m.d[1] == uint8(1),
 	}, nil

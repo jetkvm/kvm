@@ -20,7 +20,7 @@ const (
 	TypeCancelKeyboardMacroReport MessageType = 0x08
 	TypeKeyboardLedState          MessageType = 0x32
 	TypeKeydownState              MessageType = 0x33
-	TypeKeyboardMacroStateReport  MessageType = 0x34
+	TypeKeyboardMacroState        MessageType = 0x34
 )
 
 const (
@@ -32,7 +32,7 @@ func GetQueueIndex(messageType MessageType) int {
 	switch messageType {
 	case TypeHandshake:
 		return 0
-	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardMacroReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroStateReport:
+	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardMacroReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroState:
 		return 1
 	case TypePointerReport, TypeMouseReport, TypeWheelReport:
 		return 2
@@ -116,7 +116,7 @@ func NewKeyboardMacroStateMessage(state bool, isPaste bool) *Message {
 	}
 
 	return &Message{
-		t: TypeKeyboardMacroStateReport,
+		t: TypeKeyboardMacroState,
 		d: data,
 	}
 }

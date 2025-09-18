@@ -470,7 +470,7 @@ export interface HidState {
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
 
-  isPasteModeEnabled: boolean;
+  isPasteInProgress: boolean;
   setPasteModeEnabled: (enabled: boolean) => void;
 
   usbState: USBStates;
@@ -487,8 +487,8 @@ export const useHidStore = create<HidState>(set => ({
   isVirtualKeyboardEnabled: false,
   setVirtualKeyboardEnabled: (enabled: boolean): void => set({ isVirtualKeyboardEnabled: enabled }),
 
-  isPasteModeEnabled: false,
-  setPasteModeEnabled: (enabled: boolean): void => set({ isPasteModeEnabled: enabled }),
+  isPasteInProgress: false,
+  setPasteModeEnabled: (enabled: boolean): void => set({ isPasteInProgress: enabled }),
 
   // Add these new properties for USB state
   usbState: "not attached",

@@ -140,7 +140,7 @@ func reportHidRPC(params any, session *Session) {
 		message, err = hidrpc.NewKeyboardLedMessage(params).Marshal()
 	case usbgadget.KeysDownState:
 		message, err = hidrpc.NewKeydownStateMessage(params).Marshal()
-	case hidrpc.KeyboardMacroStateReport:
+	case hidrpc.KeyboardMacroState:
 		message, err = hidrpc.NewKeyboardMacroStateMessage(params.State, params.IsPaste).Marshal()
 	default:
 		err = fmt.Errorf("unknown HID RPC message type: %T", params)
@@ -179,7 +179,7 @@ func (s *Session) reportHidRPCKeysDownState(state usbgadget.KeysDownState) {
 	reportHidRPC(state, s)
 }
 
-func (s *Session) reportHidRPCKeyboardMacroState(state hidrpc.KeyboardMacroStateReport) {
+func (s *Session) reportHidRPCKeyboardMacroState(state hidrpc.KeyboardMacroState) {
 	if !s.hidRPCAvailable {
 		writeJSONRPCEvent("keyboardMacroState", state, s)
 	}

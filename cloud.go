@@ -476,7 +476,7 @@ func handleSessionRequest(
 	cloudLogger.Info().Interface("session", session).Msg("new session accepted")
 	cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
 
-	// Cancel any ongoing keyboard report multi when session changes
+	// Cancel any ongoing keyboard macro when session changes
 	cancelKeyboardMacro()
 
 	currentSession = session

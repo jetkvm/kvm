@@ -27,7 +27,7 @@ export default function InfoBar() {
 
   const { rpcDataChannel } = useRTCStore();
   const { debugMode, mouseMode, showPressedKeys } = useSettingsStore();
-  const { isPasteModeEnabled } = useHidStore();
+  const { isPasteInProgress } = useHidStore();
 
   useEffect(() => {
     if (!rpcDataChannel) return;
@@ -109,7 +109,7 @@ export default function InfoBar() {
                 <span className="text-xs">{rpcHidStatus}</span>
               </div>
             )}
-            {isPasteModeEnabled && (
+            {isPasteInProgress && (
               <div className="flex w-[156px] items-center gap-x-1">
                 <span className="text-xs font-semibold">Paste Mode:</span>
                 <span className="text-xs">Enabled</span>

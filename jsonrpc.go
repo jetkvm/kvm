@@ -1082,7 +1082,7 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) (usbgadget.KeysDo
 	ctx, cancel := context.WithCancel(context.Background())
 	setKeyboardMacroCancel(cancel)
 
-	s := hidrpc.KeyboardMacroStateReport{
+	s := hidrpc.KeyboardMacroState{
 		State:   true,
 		IsPaste: true,
 	}
@@ -1107,7 +1107,7 @@ func rpcCancelKeyboardMacro() {
 	cancelKeyboardMacro()
 }
 
-var keyboardClearStateKeys = make([]byte, 6)
+var keyboardClearStateKeys = make([]byte, hidrpc.HidKeyBufferSize)
 
 func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 	return step.Modifier == 0 && bytes.Equal(step.Keys, keyboardClearStateKeys)

@@ -1,4 +1,4 @@
-import { KeyboardLedState, KeysDownState } from "./stores";
+import { hidKeyBufferSize, KeyboardLedState, KeysDownState } from "./stores";
 
 export const HID_RPC_MESSAGE_TYPES = {
     Handshake: 0x01,
@@ -11,7 +11,7 @@ export const HID_RPC_MESSAGE_TYPES = {
     CancelKeyboardMacroReport: 0x08,
     KeyboardLedState: 0x32,
     KeysDownState: 0x33,
-    KeyboardMacroStateReport: 0x34,
+    KeyboardMacroState: 0x34,
 }
 
 export type HidRpcMessageType = typeof HID_RPC_MESSAGE_TYPES[keyof typeof HID_RPC_MESSAGE_TYPES];
@@ -31,7 +31,7 @@ const fromInt32toUint8 = (n: number) => {
         (n >> 24) & 0xFF,
         (n >> 16) & 0xFF,
         (n >> 8) & 0xFF,
-        (n >> 0) & 0xFF,
+        n & 0xFF,
     ]);
 };
 
@@ -42,7 +42,7 @@ const fromUint16toUint8 = (n: number) => {
 
     return new Uint8Array([
         (n >> 8) & 0xFF,
-        (n >> 0) & 0xFF,
+        n & 0xFF,
     ]);
 };
 
@@ -55,7 +55,7 @@ const fromUint32toUint8 = (n: number) => {
         (n >> 24) & 0xFF,
         (n >> 16) & 0xFF,
         (n >> 8) & 0xFF,
-        (n >> 0) & 0xFF,
+        n & 0xFF,
     ]);
 };
 
@@ -64,7 +64,7 @@ const fromInt8ToUint8 = (n: number) => {
         throw new Error(`Number ${n} is not within the int8 range`);
     }
 
-    return (n >> 0) & 0xFF;
+    return n & 0xFF;
 };
 
 const keyboardLedStateMasks = {
@@ -222,7 +222,7 @@ export class KeyboardMacroReportMessage extends RpcMessage {
     stepCount: number;
     steps: KeyboardMacroStep[];
 
-    KEYS_LENGTH = 6;
+    KEYS_LENGTH = hidKeyBufferSize;
 
     constructor(isPaste: boolean, stepCount: number, steps: KeyboardMacroStep[]) {
         super(HID_RPC_MESSAGE_TYPES.KeyboardMacroReport);
@@ -284,7 +284,7 @@ export class KeyboardMacroStateMessage extends RpcMessage {
     isPaste: boolean;
 
     constructor(state: boolean, isPaste: boolean) {
-        super(HID_RPC_MESSAGE_TYPES.KeyboardMacroStateReport);
+        super(HID_RPC_MESSAGE_TYPES.KeyboardMacroState);
         this.state = state;
         this.isPaste = isPaste;
     }
@@ -417,7 +417,7 @@ export const messageRegistry = {
     [HID_RPC_MESSAGE_TYPES.KeypressReport]: KeypressReportMessage,
     [HID_RPC_MESSAGE_TYPES.KeyboardMacroReport]: KeyboardMacroReportMessage,
     [HID_RPC_MESSAGE_TYPES.CancelKeyboardMacroReport]: CancelKeyboardMacroReportMessage,
-    [HID_RPC_MESSAGE_TYPES.KeyboardMacroStateReport]: KeyboardMacroStateMessage,
+    [HID_RPC_MESSAGE_TYPES.KeyboardMacroState]: KeyboardMacroStateMessage,
 }
 
 export const unmarshalHidRpcMessage = (data: Uint8Array): RpcMessage | undefined => {

@@ -17,7 +17,7 @@ import { TextAreaWithLabel } from "@components/TextArea";
 
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
-  const { isPasteModeEnabled } = useHidStore();
+  const { isPasteInProgress } = useHidStore();
   const { setDisableVideoFocusTrap } = useUiStore();
 
   const { send } = useJsonRpc();
@@ -133,7 +133,8 @@ export default function PasteModal() {
                   <div
                     className="w-full"
                     onKeyUp={e => e.stopPropagation()}
-                    onKeyDown={e => e.stopPropagation()}
+                    onKeyDown={e => e.stopPropagation()}                    onKeyDownCapture={e => e.stopPropagation()}
+                    onKeyUpCapture={e => e.stopPropagation()}
                   >
                     <TextAreaWithLabel
                       ref={TextAreaRef}
@@ -227,7 +228,7 @@ export default function PasteModal() {
             size="SM"
             theme="primary"
             text="Confirm Paste"
-            disabled={isPasteModeEnabled}
+            disabled={isPasteInProgress}
             onClick={onConfirmPaste}
             LeadingIcon={LuCornerDownLeft}
           />
