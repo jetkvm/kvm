@@ -583,6 +583,7 @@ export default function KvmIdRoute() {
     keyboardLedState,  setKeyboardLedState,
     keysDownState, setKeysDownState, setUsbState,
   } = useHidStore();
+  const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
@@ -695,6 +696,7 @@ export default function KvmIdRoute() {
         if (resp.error.code === -32601) {
           // if we don't support key down state, we know key press is also not available
           console.warn("Failed to get key down state, switching to old-school", resp.error);
+          setHidRpcDisabled(true);
         } else {
           console.error("Failed to get key down state", resp.error);
         }
@@ -705,7 +707,7 @@ export default function KvmIdRoute() {
       }
       setNeedKeyDownState(false);
     });
-  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState]);
+  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState, setHidRpcDisabled]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {

@@ -10,14 +10,17 @@ import (
 type MessageType byte
 
 const (
-	TypeHandshake        MessageType = 0x01
-	TypeKeyboardReport   MessageType = 0x02
-	TypePointerReport    MessageType = 0x03
-	TypeWheelReport      MessageType = 0x04
-	TypeKeypressReport   MessageType = 0x05
-	TypeMouseReport      MessageType = 0x06
-	TypeKeyboardLedState MessageType = 0x32
-	TypeKeydownState     MessageType = 0x33
+	TypeHandshake                 MessageType = 0x01
+	TypeKeyboardReport            MessageType = 0x02
+	TypePointerReport             MessageType = 0x03
+	TypeWheelReport               MessageType = 0x04
+	TypeKeypressReport            MessageType = 0x05
+	TypeMouseReport               MessageType = 0x06
+	TypeKeyboardMacroReport       MessageType = 0x07
+	TypeCancelKeyboardMacroReport MessageType = 0x08
+	TypeKeyboardLedState          MessageType = 0x32
+	TypeKeydownState              MessageType = 0x33
+	TypeKeyboardMacroState        MessageType = 0x34
 )
 
 const (
@@ -29,10 +32,13 @@ func GetQueueIndex(messageType MessageType) int {
 	switch messageType {
 	case TypeHandshake:
 		return 0
-	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardLedState, TypeKeydownState:
+	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardMacroReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroState:
 		return 1
 	case TypePointerReport, TypeMouseReport, TypeWheelReport:
 		return 2
+	// we don't want to block the queue for this message
+	case TypeCancelKeyboardMacroReport:
+		return 3
 	default:
 		return 3
 	}
@@ -95,6 +101,22 @@ func NewKeydownStateMessage(state usbgadget.KeysDownState) *Message {
 
 	return &Message{
 		t: TypeKeydownState,
+		d: data,
+	}
+}
+
+// NewKeyboardMacroStateMessage creates a new keyboard macro state message.
+func NewKeyboardMacroStateMessage(state bool, isPaste bool) *Message {
+	data := make([]byte, 2)
+	if state {
+		data[0] = 1
+	}
+	if isPaste {
+		data[1] = 1
+	}
+
+	return &Message{
+		t: TypeKeyboardMacroState,
 		d: data,
 	}
 }

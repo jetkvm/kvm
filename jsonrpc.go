@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,12 +11,14 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 
+	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
@@ -1054,6 +1057,106 @@ func rpcSetLocalLoopbackOnly(enabled bool) error {
 	}
 
 	return nil
+}
+
+var (
+	keyboardMacroCancel context.CancelFunc
+	keyboardMacroLock   sync.Mutex
+)
+
+// cancelKeyboardMacro cancels any ongoing keyboard macro execution
+func cancelKeyboardMacro() {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
+
+	if keyboardMacroCancel != nil {
+		keyboardMacroCancel()
+		logger.Info().Msg("canceled keyboard macro")
+		keyboardMacroCancel = nil
+	}
+}
+
+func setKeyboardMacroCancel(cancel context.CancelFunc) {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
+
+	keyboardMacroCancel = cancel
+}
+
+func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) (usbgadget.KeysDownState, error) {
+	cancelKeyboardMacro()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	setKeyboardMacroCancel(cancel)
+
+	s := hidrpc.KeyboardMacroState{
+		State:   true,
+		IsPaste: true,
+	}
+
+	if currentSession != nil {
+		currentSession.reportHidRPCKeyboardMacroState(s)
+	}
+
+	result, err := rpcDoExecuteKeyboardMacro(ctx, macro)
+
+	setKeyboardMacroCancel(nil)
+
+	s.State = false
+	if currentSession != nil {
+		currentSession.reportHidRPCKeyboardMacroState(s)
+	}
+
+	return result, err
+}
+
+func rpcCancelKeyboardMacro() {
+	cancelKeyboardMacro()
+}
+
+var keyboardClearStateKeys = make([]byte, hidrpc.HidKeyBufferSize)
+
+func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
+	return step.Modifier == 0 && bytes.Equal(step.Keys, keyboardClearStateKeys)
+}
+
+func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) (usbgadget.KeysDownState, error) {
+	var last usbgadget.KeysDownState
+	var err error
+
+	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
+
+	for i, step := range macro {
+		delay := time.Duration(step.Delay) * time.Millisecond
+
+		last, err = rpcKeyboardReport(step.Modifier, step.Keys)
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to execute keyboard macro")
+			return last, err
+		}
+
+		// notify the device that the keyboard state is being cleared
+		if isClearKeyStep(step) {
+			gadget.UpdateKeysDown(0, keyboardClearStateKeys)
+		}
+
+		// Use context-aware sleep that can be cancelled
+		select {
+		case <-time.After(delay):
+			// Sleep completed normally
+		case <-ctx.Done():
+			// make sure keyboard state is reset
+			_, err := rpcKeyboardReport(0, keyboardClearStateKeys)
+			if err != nil {
+				logger.Warn().Err(err).Msg("failed to reset keyboard state")
+			}
+
+			logger.Debug().Int("step", i).Msg("Keyboard macro cancelled during sleep")
+			return last, ctx.Err()
+		}
+	}
+
+	return last, nil
 }
 
 var rpcHandlers = map[string]RPCHandler{

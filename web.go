@@ -228,6 +228,10 @@ func handleWebRTCSession(c *gin.Context) {
 			_ = peerConn.Close()
 		}()
 	}
+
+	// Cancel any ongoing keyboard macro when session changes
+	cancelKeyboardMacro()
+
 	currentSession = session
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }

@@ -105,6 +105,9 @@ export interface RTCState {
   setRpcDataChannel: (channel: RTCDataChannel) => void;
   rpcDataChannel: RTCDataChannel | null;
 
+  hidRpcDisabled: boolean;
+  setHidRpcDisabled: (disabled: boolean) => void;
+
   rpcHidProtocolVersion: number | null;
   setRpcHidProtocolVersion: (version: number) => void;
 
@@ -156,6 +159,9 @@ export const useRTCStore = create<RTCState>(set => ({
 
   rpcDataChannel: null,
   setRpcDataChannel: (channel: RTCDataChannel) => set({ rpcDataChannel: channel }),
+
+  hidRpcDisabled: false,
+  setHidRpcDisabled: (disabled: boolean) => set({ hidRpcDisabled: disabled }),
 
   rpcHidProtocolVersion: null,
   setRpcHidProtocolVersion: (version: number) => set({ rpcHidProtocolVersion: version }),
@@ -464,7 +470,7 @@ export interface HidState {
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
 
-  isPasteModeEnabled: boolean;
+  isPasteInProgress: boolean;
   setPasteModeEnabled: (enabled: boolean) => void;
 
   usbState: USBStates;
@@ -481,8 +487,8 @@ export const useHidStore = create<HidState>(set => ({
   isVirtualKeyboardEnabled: false,
   setVirtualKeyboardEnabled: (enabled: boolean): void => set({ isVirtualKeyboardEnabled: enabled }),
 
-  isPasteModeEnabled: false,
-  setPasteModeEnabled: (enabled: boolean): void => set({ isPasteModeEnabled: enabled }),
+  isPasteInProgress: false,
+  setPasteModeEnabled: (enabled: boolean): void => set({ isPasteInProgress: enabled }),
 
   // Add these new properties for USB state
   usbState: "not attached",

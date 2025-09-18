@@ -1,6 +1,7 @@
 package hidrpc
 
 import (
+	"encoding/binary"
 	"fmt"
 )
 
@@ -43,6 +44,11 @@ func (m *Message) String() string {
 			return fmt.Sprintf("MouseReport{Malformed: %v}", m.d)
 		}
 		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
+	case TypeKeyboardMacroReport:
+		if len(m.d) < 5 {
+			return fmt.Sprintf("KeyboardMacroReport{Malformed: %v}", m.d)
+		}
+		return fmt.Sprintf("KeyboardMacroReport{IsPaste: %v, Length: %d}", m.d[0] == uint8(1), binary.BigEndian.Uint32(m.d[1:5]))
 	default:
 		return fmt.Sprintf("Unknown{Type: %d, Data: %v}", m.t, m.d)
 	}
@@ -81,6 +87,55 @@ func (m *Message) KeyboardReport() (KeyboardReport, error) {
 	return KeyboardReport{
 		Modifier: m.d[0],
 		Keys:     m.d[1:],
+	}, nil
+}
+
+// Macro ..
+type KeyboardMacroStep struct {
+	Modifier byte   // 1 byte
+	Keys     []byte // 6 bytes: hidKeyBufferSize
+	Delay    uint16 // 2 bytes
+}
+type KeyboardMacroReport struct {
+	IsPaste   bool
+	StepCount uint32
+	Steps     []KeyboardMacroStep
+}
+
+// HidKeyBufferSize is the size of the keys buffer in the keyboard report.
+const HidKeyBufferSize = 6
+
+// KeyboardMacroReport returns the keyboard macro report from the message.
+func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
+	if m.t != TypeKeyboardMacroReport {
+		return KeyboardMacroReport{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	isPaste := m.d[0] == uint8(1)
+	stepCount := binary.BigEndian.Uint32(m.d[1:5])
+
+	// check total length
+	expectedLength := int(stepCount)*9 + 5
+	if len(m.d) != expectedLength {
+		return KeyboardMacroReport{}, fmt.Errorf("invalid length: %d, expected: %d", len(m.d), expectedLength)
+	}
+
+	steps := make([]KeyboardMacroStep, 0, int(stepCount))
+	offset := 5
+	for i := 0; i < int(stepCount); i++ {
+		steps = append(steps, KeyboardMacroStep{
+			Modifier: m.d[offset],
+			Keys:     m.d[offset+1 : offset+7],
+			Delay:    binary.BigEndian.Uint16(m.d[offset+7 : offset+9]),
+		})
+
+		offset += 1 + HidKeyBufferSize + 2
+	}
+
+	return KeyboardMacroReport{
+		IsPaste:   isPaste,
+		Steps:     steps,
+		StepCount: stepCount,
 	}, nil
 }
 
@@ -129,5 +184,22 @@ func (m *Message) MouseReport() (MouseReport, error) {
 		DX:     int8(m.d[0]),
 		DY:     int8(m.d[1]),
 		Button: uint8(m.d[2]),
+	}, nil
+}
+
+type KeyboardMacroState struct {
+	State   bool
+	IsPaste bool
+}
+
+// KeyboardMacroState returns the keyboard macro state report from the message.
+func (m *Message) KeyboardMacroState() (KeyboardMacroState, error) {
+	if m.t != TypeKeyboardMacroState {
+		return KeyboardMacroState{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	return KeyboardMacroState{
+		State:   m.d[0] == uint8(1),
+		IsPaste: m.d[1] == uint8(1),
 	}, nil
 }

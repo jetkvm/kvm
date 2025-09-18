@@ -1,7 +1,9 @@
 package kvm
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
@@ -29,6 +31,16 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			session.reportHidRPCKeysDownState(*keysDownState)
 		}
 		rpcErr = err
+	case hidrpc.TypeKeyboardMacroReport:
+		keyboardMacroReport, err := message.KeyboardMacroReport()
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to get keyboard macro report")
+			return
+		}
+		_, rpcErr = rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
+	case hidrpc.TypeCancelKeyboardMacroReport:
+		rpcCancelKeyboardMacro()
+		return
 	case hidrpc.TypePointerReport:
 		pointerReport, err := message.PointerReport()
 		if err != nil {
@@ -128,6 +140,8 @@ func reportHidRPC(params any, session *Session) {
 		message, err = hidrpc.NewKeyboardLedMessage(params).Marshal()
 	case usbgadget.KeysDownState:
 		message, err = hidrpc.NewKeydownStateMessage(params).Marshal()
+	case hidrpc.KeyboardMacroState:
+		message, err = hidrpc.NewKeyboardMacroStateMessage(params.State, params.IsPaste).Marshal()
 	default:
 		err = fmt.Errorf("unknown HID RPC message type: %T", params)
 	}
@@ -143,6 +157,10 @@ func reportHidRPC(params any, session *Session) {
 	}
 
 	if err := session.HidChannel.Send(message); err != nil {
+		if errors.Is(err, io.ErrClosedPipe) {
+			logger.Debug().Err(err).Msg("HID RPC channel closed, skipping reportHidRPC")
+			return
+		}
 		logger.Warn().Err(err).Msg("failed to send HID RPC message")
 	}
 }
@@ -157,6 +175,13 @@ func (s *Session) reportHidRPCKeyboardLedState(state usbgadget.KeyboardState) {
 func (s *Session) reportHidRPCKeysDownState(state usbgadget.KeysDownState) {
 	if !s.hidRPCAvailable {
 		writeJSONRPCEvent("keysDownState", state, s)
+	}
+	reportHidRPC(state, s)
+}
+
+func (s *Session) reportHidRPCKeyboardMacroState(state hidrpc.KeyboardMacroState) {
+	if !s.hidRPCAvailable {
+		writeJSONRPCEvent("keyboardMacroState", state, s)
 	}
 	reportHidRPC(state, s)
 }
