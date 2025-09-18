@@ -1,27 +1,20 @@
 import { useCallback, useRef } from "react";
 
 import {
-  hidErrorRollOver,
-  hidKeyBufferSize,
-  KeysDownState,
-  useHidStore,
-  useRTCStore,
-} from "@/hooks/stores";
-import {
-  hidErrorRollOver,
-  hidKeyBufferSize,
-  KeysDownState,
-  useHidStore,
-  useRTCStore,
-} from "@/hooks/stores";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import { useHidRpc } from "@/hooks/useHidRpc";
-import {
   KeyboardLedStateMessage,
   KeyboardMacroStateMessage,
   KeyboardMacroStep,
   KeysDownStateMessage,
 } from "@/hooks/hidRpc";
+import {
+  hidErrorRollOver,
+  hidKeyBufferSize,
+  KeysDownState,
+  useHidStore,
+  useRTCStore,
+} from "@/hooks/stores";
+import { useHidRpc } from "@/hooks/useHidRpc";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { hidKeyToModifierMask, keys, modifiers } from "@/keyboardMappings";
 
 const MACRO_RESET_KEYBOARD_STATE = {
@@ -73,7 +66,6 @@ export default function useKeyboard() {
     reportKeypressKeepAlive: sendKeypressKeepAliveHidRpc,
     rpcHidReady,
   } = useHidRpc(message => {
-  } = useHidRpc(message => {
     switch (message.constructor) {
       case KeysDownStateMessage:
         setKeysDownState((message as KeysDownStateMessage).keysDownState);
@@ -100,36 +92,10 @@ export default function useKeyboard() {
         // On older backends, we need to set the keysDownState manually since without the hidRpc API, the state doesn't trickle down from the backend
         setKeysDownState({ modifier, keys });
       });
-  // sendKeyboardEvent is used to send the full keyboard state to the device for macro handling
-  // and resetting keyboard state. It sends the keys currently pressed and the modifier state.
-  // The device will respond with the keysDownState if it supports the keyPressReport API
-  // or just accept the state if it does not support (returning no result)
-  const sendKeyboardEvent = useCallback(
-    async (state: KeysDownState) => {
-      if (rpcDataChannel?.readyState !== "open" && !rpcHidReady) return;
-
-      console.debug(
-        `Send keyboardReport keys: ${state.keys}, modifier: ${state.modifier}`,
-      );
-
-      if (rpcHidReady) {
-        console.debug("Sending keyboard report via HidRPC");
-        sendKeyboardEventHidRpc(state.keys, state.modifier);
-        return;
-      }
-
-      send(
-        "keyboardReport",
-        { keys: state.keys, modifier: state.modifier },
-        (resp: JsonRpcResponse) => {
-          if ("error" in resp) {
-            console.error(`Failed to send keyboard report ${state}`, resp.error);
-          }
-        },
-      );
     },
     [send, setKeysDownState],
   );
+
   const sendKeystrokeLegacy = useCallback(async (keys: number[], modifier: number, ac?: AbortController) => {
     return await new Promise<void>((resolve, reject) => {
       const abortListener = () => {
@@ -149,22 +115,6 @@ export default function useKeyboard() {
     });
   }, [send]);
 
-  // resetKeyboardState is used to reset the keyboard state to no keys pressed and no modifiers.
-  // This is useful for macros and when the browser loses focus to ensure that the keyboard state
-  // is clean.
-  const resetKeyboardState = useCallback(async () => {
-    // Reset the keys buffer to zeros and the modifier state to zero
-    const { keys, modifier } = MACRO_RESET_KEYBOARD_STATE;
-    if (rpcHidReady) {
-      sendKeyboardEventHidRpc(keys, modifier);
-    } else {
-      // Older backends don't support the hidRpc API, so we send the full reset state
-      handleLegacyKeyboardReport(keys, modifier);
-    }
-  }, [rpcHidReady, sendKeyboardEventHidRpc, handleLegacyKeyboardReport]);
-
-    [rpcDataChannel?.readyState, rpcHidReady, send, sendKeyboardEventHidRpc],
-  );
 
   // executeMacro is used to execute a macro consisting of multiple steps.
   // Each step can have multiple keys, multiple modifiers and a delay.
@@ -180,9 +130,9 @@ export default function useKeyboard() {
     for (const [_, step] of steps.entries()) {
       const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
       const modifierMask: number = (step.modifiers || [])
-        
+
         .map(mod => modifiers[mod])
-        
+
         .reduce((acc, val) => acc + val, 0);
 
       // If the step has keys and/or modifiers, press them and hold for the delay
@@ -260,7 +210,6 @@ export default function useKeyboard() {
     // we don't need to cancel it actually
     cancelOngoingKeyboardMacroHidRpc();
   }, [rpcHidReady, cancelOngoingKeyboardMacroHidRpc, abortController]);
-  };
 
   const KEEPALIVE_INTERVAL = 50;
 
@@ -285,13 +234,15 @@ export default function useKeyboard() {
   const resetKeyboardState = useCallback(async () => {
     // Cancel keepalive since we're resetting the keyboard state
     cancelKeepAlive();
-
     // Reset the keys buffer to zeros and the modifier state to zero
-    keysDownState.keys.length = hidKeyBufferSize;
-    keysDownState.keys.fill(0);
-    keysDownState.modifier = 0;
-    sendKeyboardEvent(keysDownState);
-  }, [keysDownState, sendKeyboardEvent, cancelKeepAlive]);
+    const { keys, modifier } = MACRO_RESET_KEYBOARD_STATE;
+    if (rpcHidReady) {
+      sendKeyboardEventHidRpc(keys, modifier);
+    } else {
+      // Older backends don't support the hidRpc API, so we send the full reset state
+      handleLegacyKeyboardReport(keys, modifier);
+    }
+  }, [rpcHidReady, sendKeyboardEventHidRpc, handleLegacyKeyboardReport, cancelKeepAlive]);
 
   // handleKeyPress is used to handle a key press or release event.
   // This function handle both key press and key release events.
@@ -331,13 +282,9 @@ export default function useKeyboard() {
         // 1. Calculate the state
         // 2. Send the newly calculated state to the device
         const downState = simulateDeviceSideKeyHandlingForLegacyDevices(
-          
           keysDownState,
-         
           key,
-         
           press,
-        ,
         );
 
         handleLegacyKeyboardReport(downState.keys, downState.modifier);
@@ -351,25 +298,18 @@ export default function useKeyboard() {
     [
       rpcDataChannel?.readyState,
       rpcHidReady,
-      sendKeypressEventHidRpc,
       keysDownState,
       handleLegacyKeyboardReport,
       resetKeyboardState,
-      rpcDataChannel?.readyState,
-      sendKeyboardEvent,
       sendKeypress,
     ],
   );
 
   // IMPORTANT: See the keyPressReportApiAvailable comment above for the reason this exists
   function simulateDeviceSideKeyHandlingForLegacyDevices(
-    
     state: KeysDownState,
-   
     key: number,
-   
     press: boolean,
-  ,
   ): KeysDownState {
     // IMPORTANT: This code parallels the logic in the kernel's hid-gadget driver
     // for handling key presses and releases. It ensures that the USB gadget
@@ -415,17 +355,13 @@ export default function useKeyboard() {
       // If we reach here it means we didn't find an empty slot or the key in the buffer
       if (overrun) {
         if (press) {
-          console.warn(
-            
-            `keyboard buffer overflow current keys ${keys}, key: ${key} not added`,
-          ,
-          );
+          console.warn(`keyboard buffer overflow current keys ${keys}, key: ${key} not added`);
           // Fill all key slots with ErrorRollOver (0x01) to indicate overflow
           keys.length = hidKeyBufferSize;
           keys.fill(hidErrorRollOver);
         } else {
           // If we are releasing a key, and we didn't find it in a slot, who cares?
-          console.debug(`key ${key} not found in buffer, nothing to release`);;
+          console.debug(`key ${key} not found in buffer, nothing to release`);
         }
       }
     }
