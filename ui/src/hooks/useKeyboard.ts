@@ -87,7 +87,7 @@ export default function useKeyboard() {
         }
 
         // On older backends, we need to set the keysDownState manually since without the hidRpc API, the state doesn't trickle down from the backend
-        setKeysDownState(MACRO_RESET_KEYBOARD_STATE);
+        setKeysDownState({ modifier, keys });
       });
     },
     [send, setKeysDownState],
@@ -155,7 +155,7 @@ export default function useKeyboard() {
 
     const ac = new AbortController();
     setAbortController(ac);
-    
+
     for (const [_, step] of steps.entries()) {
       const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
       const modifierMask: number = (step.modifiers || [])
@@ -167,7 +167,7 @@ export default function useKeyboard() {
         promises.push(() => sendKeystrokeLegacy(keyValues, modifierMask, ac));
         promises.push(() => resetKeyboardState());
         promises.push(() => sleep(step.delay || 100));
-      } 
+      }
     }
 
     const runAll = async () => {
@@ -185,9 +185,9 @@ export default function useKeyboard() {
       const abortListener = () => {
         reject(new Error("Macro execution aborted"));
       };
-      
+
       ac.signal.addEventListener("abort", abortListener);
-      
+
       runAll()
         .then(() => {
           ac.signal.removeEventListener("abort", abortListener);
