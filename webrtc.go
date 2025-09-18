@@ -110,7 +110,7 @@ func (s *Session) handleQueues(index int) {
 	}
 }
 
-const keysDownStateQueueSize = 256
+const keysDownStateQueueSize = 64
 
 func (s *Session) initKeysDownStateQueue() {
 	// serialise outbound key state reports so unreliable links can't stall input handling
