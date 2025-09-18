@@ -272,15 +272,13 @@ export default function useKeyboard() {
   }, []);
 
   const scheduleKeepAlive = useCallback(() => {
-    // Clear existing timer if it exists
-    if (keepAliveTimerRef.current) {
-      clearInterval(keepAliveTimerRef.current);
-    }
+    // Clears existing keepalive timer
+    cancelKeepAlive();
 
     keepAliveTimerRef.current = setInterval(() => {
       sendKeypressKeepAliveHidRpc();
     }, KEEPALIVE_INTERVAL);
-  }, [sendKeypressKeepAliveHidRpc]);
+  }, [cancelKeepAlive, sendKeypressKeepAliveHidRpc]);
 
   // resetKeyboardState is used to reset the keyboard state to no keys pressed and no modifiers.
   // This is useful for macros and when the browser loses focus to ensure that the keyboard state
