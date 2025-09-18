@@ -1143,7 +1143,6 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 			if err != nil {
 				logger.Warn().Err(err).Msg("failed to reset keyboard state")
 			}
-			gadget.UpdateKeysDown(0, keyboardClearStateKeys)
 
 			logger.Debug().Int("step", i).Msg("Keyboard macro cancelled during sleep")
 			return last, ctx.Err()
