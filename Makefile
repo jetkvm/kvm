@@ -1,9 +1,9 @@
-BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD)
-BUILDDATE ?= $(shell date -u +%FT%T%z)
-BUILDTS   ?= $(shell date -u +%s)
-REVISION  ?= $(shell git rev-parse HEAD)
-VERSION_DEV ?= 0.4.8-dev$(shell date +%Y%m%d%H%M)
-VERSION ?= 0.4.7
+BRANCH    := $(shell git rev-parse --abbrev-ref HEAD)
+BUILDDATE := $(shell date -u +%FT%T%z)
+BUILDTS   := $(shell date -u +%s)
+REVISION  := $(shell git rev-parse HEAD)
+VERSION_DEV := 0.4.8-dev$(shell date +%Y%m%d%H%M)
+VERSION := 0.4.7
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
@@ -80,7 +80,7 @@ frontend:
 		-exec sh -c 'gzip -9 -kfv {}' \;
 
 dev_release: frontend build_dev
-	@echo "Uploading release..."
+	@echo "Uploading release... $(VERSION_DEV)"
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256
