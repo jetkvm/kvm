@@ -196,10 +196,6 @@ func (u *UsbGadget) DelayAutoReleaseWithDuration(resetDuration time.Duration) {
 	u.kbdAutoReleaseLock.Lock()
 	defer unlockWithLog(&u.kbdAutoReleaseLock, u.log, "autoRelease delayed")
 
-	if u.kbdAutoReleaseTimers == nil {
-		return
-	}
-
 	u.log.Debug().Dur("reset_duration", resetDuration).Msg("delaying auto-release with dynamic duration")
 
 	for _, timer := range u.kbdAutoReleaseTimers {
