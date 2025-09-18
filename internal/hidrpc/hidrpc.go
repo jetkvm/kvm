@@ -15,6 +15,7 @@ const (
 	TypePointerReport             MessageType = 0x03
 	TypeWheelReport               MessageType = 0x04
 	TypeKeypressReport            MessageType = 0x05
+	TypeKeypressKeepAliveReport   MessageType = 0x09
 	TypeMouseReport               MessageType = 0x06
 	TypeKeyboardMacroReport       MessageType = 0x07
 	TypeCancelKeyboardMacroReport MessageType = 0x08

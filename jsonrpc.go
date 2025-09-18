@@ -1083,7 +1083,7 @@ func setKeyboardMacroCancel(cancel context.CancelFunc) {
 	keyboardMacroCancel = cancel
 }
 
-func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) (usbgadget.KeysDownState, error) {
+func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 	cancelKeyboardMacro()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1098,7 +1098,7 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) (usbgadget.KeysDo
 		currentSession.reportHidRPCKeyboardMacroState(s)
 	}
 
-	result, err := rpcDoExecuteKeyboardMacro(ctx, macro)
+	err := rpcDoExecuteKeyboardMacro(ctx, macro)
 
 	setKeyboardMacroCancel(nil)
 
@@ -1107,7 +1107,7 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) (usbgadget.KeysDo
 		currentSession.reportHidRPCKeyboardMacroState(s)
 	}
 
-	return result, err
+	return err
 }
 
 func rpcCancelKeyboardMacro() {
@@ -1120,19 +1120,16 @@ func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 	return step.Modifier == 0 && bytes.Equal(step.Keys, keyboardClearStateKeys)
 }
 
-func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) (usbgadget.KeysDownState, error) {
-	var last usbgadget.KeysDownState
-	var err error
-
+func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
 	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
 
 	for i, step := range macro {
 		delay := time.Duration(step.Delay) * time.Millisecond
 
-		last, err = rpcKeyboardReport(step.Modifier, step.Keys)
+		err := rpcKeyboardReport(step.Modifier, step.Keys)
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to execute keyboard macro")
-			return last, err
+			return err
 		}
 
 		// notify the device that the keyboard state is being cleared
@@ -1146,17 +1143,17 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 			// Sleep completed normally
 		case <-ctx.Done():
 			// make sure keyboard state is reset
-			_, err := rpcKeyboardReport(0, keyboardClearStateKeys)
+			err := rpcKeyboardReport(0, keyboardClearStateKeys)
 			if err != nil {
 				logger.Warn().Err(err).Msg("failed to reset keyboard state")
 			}
 
 			logger.Debug().Int("step", i).Msg("Keyboard macro cancelled during sleep")
-			return last, ctx.Err()
+			return ctx.Err()
 		}
 	}
 
-	return last, nil
+	return nil
 }
 
 var rpcHandlers = map[string]RPCHandler{
@@ -1169,9 +1166,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getNetworkSettings":     {Func: rpcGetNetworkSettings},
 	"setNetworkSettings":     {Func: rpcSetNetworkSettings, Params: []string{"settings"}},
 	"renewDHCPLease":         {Func: rpcRenewDHCPLease},
-	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
 	"getKeyboardLedState":    {Func: rpcGetKeyboardLedState},
-	"keypressReport":         {Func: rpcKeypressReport, Params: []string{"key", "press"}},
 	"getKeyDownState":        {Func: rpcGetKeysDownState},
 	"absMouseReport":         {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
 	"relMouseReport":         {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},

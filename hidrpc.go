@@ -8,6 +8,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/rs/zerolog"
 )
 
 func handleHidRPCMessage(message hidrpc.Message, session *Session) {
@@ -26,21 +27,19 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 		}
 		session.hidRPCAvailable = true
 	case hidrpc.TypeKeypressReport, hidrpc.TypeKeyboardReport:
-		keysDownState, err := handleHidRPCKeyboardInput(message)
-		if keysDownState != nil {
-			session.reportHidRPCKeysDownState(*keysDownState)
-		}
-		rpcErr = err
+		rpcErr = handleHidRPCKeyboardInput(message)
 	case hidrpc.TypeKeyboardMacroReport:
 		keyboardMacroReport, err := message.KeyboardMacroReport()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get keyboard macro report")
 			return
 		}
-		_, rpcErr = rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
+		rpcErr = rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
 	case hidrpc.TypeCancelKeyboardMacroReport:
 		rpcCancelKeyboardMacro()
 		return
+	case hidrpc.TypeKeypressKeepAliveReport:
+		rpcErr = handleHidRPCKeypressKeepAlive(session)
 	case hidrpc.TypePointerReport:
 		pointerReport, err := message.PointerReport()
 		if err != nil {
@@ -64,8 +63,13 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 	}
 }
 
-func onHidMessage(data []byte, session *Session) {
-	scopedLogger := hidRPCLogger.With().Bytes("data", data).Logger()
+func onHidMessage(msg hidQueueMessage, session *Session) {
+	data := msg.Data
+
+	scopedLogger := hidRPCLogger.With().
+		Str("channel", msg.channel).
+		Bytes("data", data).
+		Logger()
 	scopedLogger.Debug().Msg("HID RPC message received")
 
 	if len(data) < 1 {
@@ -80,7 +84,9 @@ func onHidMessage(data []byte, session *Session) {
 		return
 	}
 
-	scopedLogger = scopedLogger.With().Str("descr", message.String()).Logger()
+	if scopedLogger.GetLevel() <= zerolog.DebugLevel {
+		scopedLogger = scopedLogger.With().Str("descr", message.String()).Logger()
+	}
 
 	t := time.Now()
 
@@ -97,27 +103,88 @@ func onHidMessage(data []byte, session *Session) {
 	}
 }
 
-func handleHidRPCKeyboardInput(message hidrpc.Message) (*usbgadget.KeysDownState, error) {
+// Tunables
+// Keep in mind
+// macOS default: 15 * 15 = 225ms https://discussions.apple.com/thread/1316947?sortBy=rank
+// Linux default: 250ms https://man.archlinux.org/man/kbdrate.8.en
+// Windows default: 1s `HKEY_CURRENT_USER\Control Panel\Accessibility\Keyboard Response\AutoRepeatDelay`
+
+const expectedRate = 50 * time.Millisecond       // expected keepalive interval
+const maxLateness = 50 * time.Millisecond        // max jitter we'll tolerate OR jitter budget
+const baseExtension = expectedRate + maxLateness // 100ms extension on perfect tick
+
+const maxStaleness = 225 * time.Millisecond // discard ancient packets outright
+
+func handleHidRPCKeypressKeepAlive(session *Session) error {
+	session.keepAliveJitterLock.Lock()
+	defer session.keepAliveJitterLock.Unlock()
+
+	now := time.Now()
+
+	// 1) Staleness guard: ensures packets that arrive far beyond the life of a valid key hold
+	// (e.g. after a network stall, retransmit burst, or machine sleep) are ignored outright.
+	// This prevents “zombie” keepalives from reviving a key that should already be released.
+	if !session.lastTimerResetTime.IsZero() && now.Sub(session.lastTimerResetTime) > maxStaleness {
+		return nil
+	}
+
+	validTick := true
+	timerExtension := baseExtension
+
+	if !session.lastKeepAliveArrivalTime.IsZero() {
+		timeSinceLastTick := now.Sub(session.lastKeepAliveArrivalTime)
+		lateness := timeSinceLastTick - expectedRate
+
+		if lateness > 0 {
+			if lateness <= maxLateness {
+				// --- Small lateness (within jitterBudget) ---
+				// This is normal jitter (e.g., Wi-Fi contention).
+				// We still accept the tick, but *reduce the extension*
+				// so that the total hold time stays aligned with REAL client side intent.
+				timerExtension -= lateness
+			} else {
+				// --- Large lateness (beyond jitterBudget) ---
+				// This is likely a retransmit stall or ordering delay.
+				// We reject the tick entirely and DO NOT extend,
+				// so the auto-release still fires on time.
+				validTick = false
+			}
+		}
+	}
+
+	if !validTick {
+		return nil
+	}
+	// Only valid ticks update our state and extend the timer.
+	session.lastKeepAliveArrivalTime = now
+	session.lastTimerResetTime = now
+	if gadget != nil {
+		gadget.DelayAutoReleaseWithDuration(timerExtension)
+	}
+
+	// On a miss: do not advance any state — keeps baseline stable.
+	return nil
+}
+
+func handleHidRPCKeyboardInput(message hidrpc.Message) error {
 	switch message.Type() {
 	case hidrpc.TypeKeypressReport:
 		keypressReport, err := message.KeypressReport()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get keypress report")
-			return nil, err
+			return err
 		}
-		keysDownState, rpcError := rpcKeypressReport(keypressReport.Key, keypressReport.Press)
-		return &keysDownState, rpcError
+		return rpcKeypressReport(keypressReport.Key, keypressReport.Press)
 	case hidrpc.TypeKeyboardReport:
 		keyboardReport, err := message.KeyboardReport()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get keyboard report")
-			return nil, err
+			return err
 		}
-		keysDownState, rpcError := rpcKeyboardReport(keyboardReport.Modifier, keyboardReport.Keys)
-		return &keysDownState, rpcError
+		return rpcKeyboardReport(keyboardReport.Modifier, keyboardReport.Keys)
 	}
 
-	return nil, fmt.Errorf("unknown HID RPC message type: %d", message.Type())
+	return fmt.Errorf("unknown HID RPC message type: %d", message.Type())
 }
 
 func reportHidRPC(params any, session *Session) {
@@ -127,7 +194,10 @@ func reportHidRPC(params any, session *Session) {
 	}
 
 	if !session.hidRPCAvailable || session.HidChannel == nil {
-		logger.Warn().Msg("HID RPC is not available, skipping reportHidRPC")
+		logger.Warn().
+			Bool("hidRPCAvailable", session.hidRPCAvailable).
+			Bool("HidChannel", session.HidChannel != nil).
+			Msg("HID RPC is not available, skipping reportHidRPC")
 		return
 	}
 
@@ -174,8 +244,10 @@ func (s *Session) reportHidRPCKeyboardLedState(state usbgadget.KeyboardState) {
 
 func (s *Session) reportHidRPCKeysDownState(state usbgadget.KeysDownState) {
 	if !s.hidRPCAvailable {
+		usbLogger.Debug().Interface("state", state).Msg("reporting keys down state")
 		writeJSONRPCEvent("keysDownState", state, s)
 	}
+	usbLogger.Debug().Interface("state", state).Msg("reporting keys down state, calling reportHidRPC")
 	reportHidRPC(state, s)
 }
 

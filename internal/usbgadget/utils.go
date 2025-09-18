@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -120,6 +121,12 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 		return
 	}
 
+	u.log.Trace().
+		Str("file", file.Name()).
+		Bytes("data", data).
+		Err(err).
+		Msg("write failed")
+
 	if errors.Is(err, os.ErrDeadlineExceeded) {
 		u.logWithSuppression(
 			fmt.Sprintf("writeWithTimeout_%s", file.Name()),
@@ -163,4 +170,9 @@ func (u *UsbGadget) resetLogSuppressionCounter(counterName string) {
 	if _, ok := u.logSuppressionCounter[counterName]; !ok {
 		u.logSuppressionCounter[counterName] = 0
 	}
+}
+
+func unlockWithLog(lock *sync.Mutex, logger *zerolog.Logger, msg string, args ...any) {
+	logger.Trace().Msgf(msg, args...)
+	lock.Unlock()
 }

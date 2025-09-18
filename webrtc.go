@@ -7,12 +7,14 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 )
@@ -27,9 +29,26 @@ type Session struct {
 
 	rpcQueue chan webrtc.DataChannelMessage
 
-	hidRPCAvailable bool
-	hidQueueLock    sync.Mutex
-	hidQueue        []chan webrtc.DataChannelMessage
+	hidRPCAvailable          bool
+	lastKeepAliveArrivalTime time.Time  // Track when last keep-alive packet arrived
+	lastTimerResetTime       time.Time  // Track when auto-release timer was last reset
+	keepAliveJitterLock      sync.Mutex // Protect jitter compensation timing state
+	hidQueueLock             sync.Mutex
+	hidQueue                 []chan hidQueueMessage
+
+	keysDownStateQueue chan usbgadget.KeysDownState
+}
+
+func (s *Session) resetKeepAliveTime() {
+	s.keepAliveJitterLock.Lock()
+	defer s.keepAliveJitterLock.Unlock()
+	s.lastKeepAliveArrivalTime = time.Time{} // Reset keep-alive timing tracking
+	s.lastTimerResetTime = time.Time{}       // Reset auto-release timer tracking
+}
+
+type hidQueueMessage struct {
+	webrtc.DataChannelMessage
+	channel string
 }
 
 type SessionConfig struct {
@@ -78,16 +97,85 @@ func (s *Session) initQueues() {
 	s.hidQueueLock.Lock()
 	defer s.hidQueueLock.Unlock()
 
-	s.hidQueue = make([]chan webrtc.DataChannelMessage, 0)
+	s.hidQueue = make([]chan hidQueueMessage, 0)
 	for i := 0; i < 4; i++ {
-		q := make(chan webrtc.DataChannelMessage, 256)
+		q := make(chan hidQueueMessage, 256)
 		s.hidQueue = append(s.hidQueue, q)
 	}
 }
 
 func (s *Session) handleQueues(index int) {
 	for msg := range s.hidQueue[index] {
-		onHidMessage(msg.Data, s)
+		onHidMessage(msg, s)
+	}
+}
+
+const keysDownStateQueueSize = 64
+
+func (s *Session) initKeysDownStateQueue() {
+	// serialise outbound key state reports so unreliable links can't stall input handling
+	s.keysDownStateQueue = make(chan usbgadget.KeysDownState, keysDownStateQueueSize)
+	go s.handleKeysDownStateQueue()
+}
+
+func (s *Session) handleKeysDownStateQueue() {
+	for state := range s.keysDownStateQueue {
+		s.reportHidRPCKeysDownState(state)
+	}
+}
+
+func (s *Session) enqueueKeysDownState(state usbgadget.KeysDownState) {
+	if s == nil || s.keysDownStateQueue == nil {
+		return
+	}
+
+	select {
+	case s.keysDownStateQueue <- state:
+	default:
+		hidRPCLogger.Warn().Msg("dropping keys down state update; queue full")
+	}
+}
+
+func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, channel string) func(msg webrtc.DataChannelMessage) {
+	return func(msg webrtc.DataChannelMessage) {
+		l := scopedLogger.With().
+			Str("channel", channel).
+			Int("length", len(msg.Data)).
+			Logger()
+		// only log data if the log level is debug or lower
+		if scopedLogger.GetLevel() > zerolog.DebugLevel {
+			l = l.With().Str("data", string(msg.Data)).Logger()
+		}
+
+		if msg.IsString {
+			l.Warn().Msg("received string data in HID RPC message handler")
+			return
+		}
+
+		if len(msg.Data) < 1 {
+			l.Warn().Msg("received empty data in HID RPC message handler")
+			return
+		}
+
+		l.Trace().Msg("received data in HID RPC message handler")
+
+		// Enqueue to ensure ordered processing
+		queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
+		if queueIndex >= len(session.hidQueue) || queueIndex < 0 {
+			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue index not found")
+			queueIndex = 3
+		}
+
+		queue := session.hidQueue[queueIndex]
+		if queue != nil {
+			queue <- hidQueueMessage{
+				DataChannelMessage: msg,
+				channel:            channel,
+			}
+		} else {
+			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue is nil")
+			return
+		}
 	}
 }
 
@@ -133,6 +221,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	session := &Session{peerConnection: peerConnection}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	session.initQueues()
+	session.initKeysDownStateQueue()
 
 	go func() {
 		for msg := range session.rpcQueue {
@@ -157,40 +246,12 @@ func newSession(config SessionConfig) (*Session, error) {
 		switch d.Label() {
 		case "hidrpc":
 			session.HidChannel = d
-			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				l := scopedLogger.With().Int("length", len(msg.Data)).Logger()
-				// only log data if the log level is debug or lower
-				if scopedLogger.GetLevel() > zerolog.DebugLevel {
-					l = l.With().Str("data", string(msg.Data)).Logger()
-				}
-
-				if msg.IsString {
-					l.Warn().Msg("received string data in HID RPC message handler")
-					return
-				}
-
-				if len(msg.Data) < 1 {
-					l.Warn().Msg("received empty data in HID RPC message handler")
-					return
-				}
-
-				l.Trace().Msg("received data in HID RPC message handler")
-
-				// Enqueue to ensure ordered processing
-				queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
-				if queueIndex >= len(session.hidQueue) || queueIndex < 0 {
-					l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue index not found")
-					queueIndex = 3
-				}
-
-				queue := session.hidQueue[queueIndex]
-				if queue != nil {
-					queue <- msg
-				} else {
-					l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue is nil")
-					return
-				}
-			})
+			d.OnMessage(getOnHidMessageHandler(session, scopedLogger, "hidrpc"))
+		// we won't send anything over the unreliable channels
+		case "hidrpc-unreliable-ordered":
+			d.OnMessage(getOnHidMessageHandler(session, scopedLogger, "hidrpc-unreliable-ordered"))
+		case "hidrpc-unreliable-nonordered":
+			d.OnMessage(getOnHidMessageHandler(session, scopedLogger, "hidrpc-unreliable-nonordered"))
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
@@ -281,6 +342,9 @@ func newSession(config SessionConfig) (*Session, error) {
 				close(session.hidQueue[i])
 				session.hidQueue[i] = nil
 			}
+
+			close(session.keysDownStateQueue)
+			session.keysDownStateQueue = nil
 
 			if session.shouldUmountVirtualMedia {
 				if err := rpcUnmountImage(); err != nil {
