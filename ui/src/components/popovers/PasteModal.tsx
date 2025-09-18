@@ -15,6 +15,9 @@ import { InputFieldWithLabel } from "@components/InputField";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { TextAreaWithLabel } from "@components/TextArea";
 
+// uint32 max value / 4
+const pasteMaxLength = 1073741824;
+
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
   const { isPasteInProgress } = useHidStore();
@@ -141,6 +144,7 @@ export default function PasteModal() {
                       label="Paste from host"
                       rows={4}
                       onKeyUp={e => e.stopPropagation()}
+                      maxLength={pasteMaxLength}
                       onKeyDown={e => {
                         e.stopPropagation();
                         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
