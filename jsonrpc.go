@@ -1168,6 +1168,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"renewDHCPLease":         {Func: rpcRenewDHCPLease},
 	"getKeyboardLedState":    {Func: rpcGetKeyboardLedState},
 	"getKeyDownState":        {Func: rpcGetKeysDownState},
+	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
+	"keypressReport":         {Func: rpcKeypressReport, Params: []string{"key", "press"}},
 	"absMouseReport":         {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
 	"relMouseReport":         {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
 	"wheelReport":            {Func: rpcWheelReport, Params: []string{"wheelY"}},
