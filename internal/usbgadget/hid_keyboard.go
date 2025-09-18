@@ -168,14 +168,10 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 		u.kbdAutoReleaseTimers[key].Stop()
 	}
 
-	duration := u.kbdAutoReleaseTimerExtension
-	if duration == 0 {
-		duration = DefaultAutoReleaseDuration
-	}
-
-	u.log.Debug().Dur("duration", duration).Msg("autoRelease scheduled with duration")
-
-	u.kbdAutoReleaseTimers[key] = time.AfterFunc(duration, func() {
+	// TODO: make this configurable
+	// We currently hardcode the duration to 100ms
+	// However, it should be the same as the duration of the keep-alive reset called baseExtension.
+	u.kbdAutoReleaseTimers[key] = time.AfterFunc(100*time.Millisecond, func() {
 		u.performAutoRelease(key)
 	})
 }
@@ -203,8 +199,6 @@ func (u *UsbGadget) DelayAutoReleaseWithDuration(resetDuration time.Duration) {
 	if u.kbdAutoReleaseTimers == nil {
 		return
 	}
-
-	u.kbdAutoReleaseTimerExtension = resetDuration
 
 	u.log.Debug().Dur("reset_duration", resetDuration).Msg("delaying auto-release with dynamic duration")
 
