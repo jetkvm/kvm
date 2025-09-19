@@ -158,6 +158,7 @@ func (t *TimeSync) Sync() error {
 	var (
 		now    *time.Time
 		offset *time.Duration
+		log    zerolog.Logger
 	)
 
 	metricTimeSyncCount.Inc()
@@ -166,54 +167,54 @@ func (t *TimeSync) Sync() error {
 
 Orders:
 	for _, mode := range syncMode.Ordering {
+		log = t.l.With().Str("mode", mode).Logger()
 		switch mode {
 		case "ntp_user_provided":
 			if syncMode.Ntp {
-				t.l.Info().Msg("using NTP custom servers")
+				log.Info().Msg("using NTP custom servers")
 				now, offset = t.queryNetworkTime(t.networkConfig.TimeSyncNTPServers)
 				if now != nil {
-					t.l.Info().Str("source", "NTP").Time("now", *now).Msg("time obtained")
 					break Orders
 				}
 			}
 		case "ntp_dhcp":
 			if syncMode.Ntp {
-				t.l.Info().Msg("using NTP servers from DHCP")
+				log.Info().Msg("using NTP servers from DHCP")
 				now, offset = t.queryNetworkTime(t.dhcpNtpAddresses)
 				if now != nil {
-					t.l.Info().Str("source", "NTP DHCP").Time("now", *now).Msg("time obtained")
 					break Orders
 				}
 			}
 		case "ntp":
 			if syncMode.Ntp && syncMode.NtpUseFallback {
-				t.l.Info().Msg("using NTP fallback")
-				now, offset = t.queryNetworkTime(defaultNTPServers)
+				log.Info().Msg("using NTP fallback IPs")
+				now, offset = t.queryNetworkTime(defaultNTPServerIPs)
+				if now == nil {
+					log.Info().Msg("using NTP fallback hostnames")
+					now, offset = t.queryNetworkTime(defaultNTPServerHostnames)
+				}
 				if now != nil {
-					t.l.Info().Str("source", "NTP fallback").Time("now", *now).Msg("time obtained")
 					break Orders
 				}
 			}
 		case "http_user_provided":
 			if syncMode.Http {
-				t.l.Info().Msg("using HTTP custom URLs")
+				log.Info().Msg("using HTTP custom URLs")
 				now = t.queryAllHttpTime(t.networkConfig.TimeSyncHTTPUrls)
 				if now != nil {
-					t.l.Info().Str("source", "HTTP").Time("now", *now).Msg("time obtained")
 					break Orders
 				}
 			}
 		case "http":
 			if syncMode.Http && syncMode.HttpUseFallback {
-				t.l.Info().Msg("using HTTP fallback")
+				log.Info().Msg("using HTTP fallback")
 				now = t.queryAllHttpTime(defaultHTTPUrls)
 				if now != nil {
-					t.l.Info().Str("source", "HTTP fallback").Time("now", *now).Msg("time obtained")
 					break Orders
 				}
 			}
 		default:
-			t.l.Warn().Str("mode", mode).Msg("unknown time sync mode, skipping")
+			log.Warn().Msg("unknown time sync mode, skipping")
 		}
 	}
 
@@ -225,6 +226,8 @@ Orders:
 		newNow := time.Now().Add(*offset)
 		now = &newNow
 	}
+
+	log.Info().Time("now", *now).Msg("time obtained")
 
 	err := t.setSystemTime(*now)
 	if err != nil {

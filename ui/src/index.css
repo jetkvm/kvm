@@ -239,7 +239,7 @@ video::-webkit-media-controls {
 }
 
 .simple-keyboard-arrows .hg-button {
-  @apply flex w-[50px] grow-0 items-center justify-center;
+  @apply flex w-[50px] items-center justify-center;
 }
 
 .controlArrows {
@@ -264,7 +264,7 @@ video::-webkit-media-controls {
 }
 
 .simple-keyboard-control .hg-button {
-  @apply flex w-[50px] grow-0 items-center justify-center;
+  @apply flex w-[50px] items-center justify-center;
 }
 
 .numPad {
@@ -332,7 +332,7 @@ video::-webkit-media-controls {
 
 .keyboard-detached .simple-keyboard.hg-theme-default div.hg-button {
   text-wrap: auto;
-  text-align: center; 
+  text-align: center;
   min-width: 6ch;
 }
 .keyboard-detached .simple-keyboard.hg-theme-default .hg-button span {

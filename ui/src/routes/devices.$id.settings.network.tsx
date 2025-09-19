@@ -166,11 +166,11 @@ export default function SettingsNetworkRoute() {
   }, [getNetworkState, getNetworkSettings]);
 
   const handleIpv4ModeChange = (value: IPv4Mode | string) => {
-    setNetworkSettings({ ...networkSettings, ipv4_mode: value as IPv4Mode });
+    setNetworkSettingsRemote({ ...networkSettings, ipv4_mode: value as IPv4Mode });
   };
 
   const handleIpv6ModeChange = (value: IPv6Mode | string) => {
-    setNetworkSettings({ ...networkSettings, ipv6_mode: value as IPv6Mode });
+    setNetworkSettingsRemote({ ...networkSettings, ipv6_mode: value as IPv6Mode });
   };
 
   const handleLldpModeChange = (value: LLDPMode | string) => {
@@ -419,7 +419,7 @@ export default function SettingsNetworkRoute() {
               value={networkSettings.ipv6_mode}
               onChange={e => handleIpv6ModeChange(e.target.value)}
               options={filterUnknown([
-                // { value: "disabled", label: "Disabled" },
+                { value: "disabled", label: "Disabled" },
                 { value: "slaac", label: "SLAAC" },
                 // { value: "dhcpv6", label: "DHCPv6" },
                 // { value: "slaac_and_dhcpv6", label: "SLAAC and DHCPv6" },

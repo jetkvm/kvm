@@ -33,7 +33,13 @@ func initUsbGadget() {
 
 	gadget.SetOnKeysDownChange(func(state usbgadget.KeysDownState) {
 		if currentSession != nil {
-			currentSession.reportHidRPCKeysDownState(state)
+			currentSession.enqueueKeysDownState(state)
+		}
+	})
+
+	gadget.SetOnKeepAliveReset(func() {
+		if currentSession != nil {
+			currentSession.resetKeepAliveTime()
 		}
 	})
 
@@ -43,11 +49,11 @@ func initUsbGadget() {
 	}
 }
 
-func rpcKeyboardReport(modifier byte, keys []byte) (usbgadget.KeysDownState, error) {
+func rpcKeyboardReport(modifier byte, keys []byte) error {
 	return gadget.KeyboardReport(modifier, keys)
 }
 
-func rpcKeypressReport(key byte, press bool) (usbgadget.KeysDownState, error) {
+func rpcKeypressReport(key byte, press bool) error {
 	return gadget.KeypressReport(key, press)
 }
 
