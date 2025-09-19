@@ -1,5 +1,3 @@
-.PHONY: setup_toolchain build_audio_deps dev_env lint lint-go lint-ui lint-fix lint-go-fix lint-ui-fix ui-lint
-
 # Clone the rv1106-system toolchain to $HOME/.jetkvm/rv1106-system
 setup_toolchain:
 	bash tools/setup_rv1106_toolchain.sh
