@@ -15,6 +15,9 @@ import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
 import useWebSocket from "react-use-websocket";
 
+import WebRTCVideo from "@components/WebRTCVideo";
+import DashboardNavbar from "@components/Header";
+import { DeviceStatus } from "@routes/welcome-local";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
@@ -36,11 +39,6 @@ import {
 } from "@/hooks/stores";
 import { useMicrophone } from "@/hooks/useMicrophone";
 import { useAudioEvents } from "@/hooks/useAudioEvents";
-import WebRTCVideo from "@components/WebRTCVideo";
-import DashboardNavbar from "@components/Header";
-const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectionStats'));
-const Terminal = lazy(() => import('@components/Terminal'));
-const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
 import Modal from "@/components/Modal";
 import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
 import {
@@ -50,9 +48,11 @@ import {
 } from "@/components/VideoOverlay";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { FeatureFlagProvider } from "@/providers/FeatureFlagProvider";
-import { DeviceStatus } from "@routes/welcome-local";
-import audioQualityService from "@/services/audioQualityService";
 import { useVersion } from "@/hooks/useVersion";
+
+const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectionStats'));
+const Terminal = lazy(() => import('@components/Terminal'));
+const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -572,11 +572,6 @@ export default function KvmIdRoute() {
       setPeerConnection(null);
     };
   }, [clearCandidatePairStats, clearInboundRtpStats, setPeerConnection, setSidebarView]);
-
-  // Register callback with audioQualityService
-  useEffect(() => {
-    audioQualityService.setReconnectionCallback(setupPeerConnection);
-  }, [setupPeerConnection]);
 
   // TURN server usage detection
   useEffect(() => {

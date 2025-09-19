@@ -1,14 +1,15 @@
 import { useCallback, useEffect } from "react";
 
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useSettingsStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import useKeyboardLayout from "@/hooks/useKeyboardLayout";
-import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { Checkbox } from "@/components/Checkbox";
 import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import notifications from "@/notifications";
 
 import { SettingsItem } from "./devices.$id.settings";
+
 
 export default function SettingsKeyboardRoute() {
   const { setKeyboardLayout } = useSettingsStore();

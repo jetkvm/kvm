@@ -1339,6 +1339,43 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 	return nil
 }
 
+// Audio control RPC handlers - delegated to audio package
+func rpcAudioMute(muted bool) error {
+	return audio.RPCAudioMute(muted)
+}
+
+func rpcAudioQuality(quality int) (map[string]any, error) {
+	return audio.RPCAudioQuality(quality)
+}
+
+func rpcMicrophoneStart() error {
+	return audio.RPCMicrophoneStart()
+}
+
+func rpcMicrophoneStop() error {
+	return audio.RPCMicrophoneStop()
+}
+
+func rpcAudioStatus() (map[string]interface{}, error) {
+	return audio.RPCAudioStatus()
+}
+
+func rpcAudioQualityPresets() (map[string]any, error) {
+	return audio.RPCAudioQualityPresets()
+}
+
+func rpcMicrophoneStatus() (map[string]interface{}, error) {
+	return audio.RPCMicrophoneStatus()
+}
+
+func rpcMicrophoneReset() error {
+	return audio.RPCMicrophoneReset()
+}
+
+func rpcMicrophoneMute(muted bool) error {
+	return audio.RPCMicrophoneMute(muted)
+}
+
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"reboot":                 {Func: rpcReboot, Params: []string{"force"}},
@@ -1388,6 +1425,15 @@ var rpcHandlers = map[string]RPCHandler{
 	"isUpdatePending":        {Func: rpcIsUpdatePending},
 	"getUsbEmulationState":   {Func: rpcGetUsbEmulationState},
 	"setUsbEmulationState":   {Func: rpcSetUsbEmulationState, Params: []string{"enabled"}},
+	"audioMute":              {Func: rpcAudioMute, Params: []string{"muted"}},
+	"audioQuality":           {Func: rpcAudioQuality, Params: []string{"quality"}},
+	"audioStatus":            {Func: rpcAudioStatus},
+	"audioQualityPresets":    {Func: rpcAudioQualityPresets},
+	"microphoneStart":        {Func: rpcMicrophoneStart},
+	"microphoneStop":         {Func: rpcMicrophoneStop},
+	"microphoneStatus":       {Func: rpcMicrophoneStatus},
+	"microphoneReset":        {Func: rpcMicrophoneReset},
+	"microphoneMute":         {Func: rpcMicrophoneMute, Params: []string{"muted"}},
 	"getUsbConfig":           {Func: rpcGetUsbConfig},
 	"setUsbConfig":           {Func: rpcSetUsbConfig, Params: []string{"usbConfig"}},
 	"checkMountUrl":          {Func: rpcCheckMountUrl, Params: []string{"url"}},

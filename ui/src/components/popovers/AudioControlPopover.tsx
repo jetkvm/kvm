@@ -5,7 +5,8 @@ import { Button } from "@components/Button";
 import { cx } from "@/cva.config";
 import { useAudioDevices } from "@/hooks/useAudioDevices";
 import { useAudioEvents } from "@/hooks/useAudioEvents";
-import api from "@/api";
+import { useJsonRpc, JsonRpcResponse } from "@/hooks/useJsonRpc";
+import { useRTCStore } from "@/hooks/stores";
 import notifications from "@/notifications";
 import audioQualityService from "@/services/audioQualityService";
 
@@ -63,6 +64,17 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     // microphoneState - now using hook state instead
     isConnected: wsConnected 
   } = useAudioEvents();
+  
+  // RPC for device communication (works both locally and via cloud)
+  const { rpcDataChannel } = useRTCStore();
+  const { send } = useJsonRpc();
+  
+  // Initialize audio quality service with RPC for cloud compatibility
+  useEffect(() => {
+    if (send) {
+      audioQualityService.setRpcSend(send);
+    }
+  }, [send]);
   
   // WebSocket-only implementation - no fallback polling
   
@@ -146,21 +158,22 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     setIsLoading(true);
     
     try {
-      if (isMuted) {
-        // Unmute: Start audio output process and notify backend
-        const resp = await api.POST("/audio/mute", { muted: false });
-        if (!resp.ok) {
-          throw new Error(`Failed to unmute audio: ${resp.status}`);
-        }
-        // WebSocket will handle the state update automatically
-      } else {
-        // Mute: Stop audio output process and notify backend
-        const resp = await api.POST("/audio/mute", { muted: true });
-        if (!resp.ok) {
-          throw new Error(`Failed to mute audio: ${resp.status}`);
-        }
-        // WebSocket will handle the state update automatically
+      // Use RPC for device communication - works for both local and cloud
+      if (rpcDataChannel?.readyState !== "open") {
+        throw new Error("Device connection not available");
       }
+
+      await new Promise<void>((resolve, reject) => {
+        send("audioMute", { muted: !isMuted }, (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            reject(new Error(resp.error.message));
+          } else {
+            resolve();
+          }
+        });
+      });
+      
+      // WebSocket will handle the state update automatically
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to toggle audio mute";
       notifications.error(errorMessage);
@@ -172,13 +185,27 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   const handleQualityChange = async (quality: number) => {
     setIsLoading(true);
     try {
-      const resp = await api.POST("/audio/quality", { quality });
-      if (resp.ok) {
-        const data = await resp.json();
-        setCurrentConfig(data.config);
+      // Use RPC for device communication - works for both local and cloud
+      if (rpcDataChannel?.readyState !== "open") {
+        throw new Error("Device connection not available");
       }
-    } catch {
-      // Failed to change audio quality
+
+      await new Promise<void>((resolve, reject) => {
+        send("audioQuality", { quality }, (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            reject(new Error(resp.error.message));
+          } else {
+            // Update local state with response
+            if ("result" in resp && resp.result && typeof resp.result === 'object' && 'config' in resp.result) {
+              setCurrentConfig(resp.result.config as AudioConfig);
+            }
+            resolve();
+          }
+        });
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to change audio quality";
+      notifications.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -196,17 +223,44 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     setIsLoading(true);
     
     try {
+      // Use RPC for device communication - works for both local and cloud
+      if (rpcDataChannel?.readyState !== "open") {
+        throw new Error("Device connection not available");
+      }
+
       if (isMicrophoneActiveFromHook) {
-        // Disable: Stop microphone subprocess AND remove WebRTC tracks
+        // Disable: Stop microphone subprocess via RPC AND remove WebRTC tracks locally
+        await new Promise<void>((resolve, reject) => {
+          send("microphoneStop", {}, (resp: JsonRpcResponse) => {
+            if ("error" in resp) {
+              reject(new Error(resp.error.message));
+            } else {
+              resolve();
+            }
+          });
+        });
+        
+        // Also stop local WebRTC stream
         const result = await stopMicrophone();
         if (!result.success) {
-          throw new Error(result.error?.message || "Failed to stop microphone");
+          console.warn("Local microphone stop failed:", result.error?.message);
         }
       } else {
-        // Enable: Start microphone subprocess AND add WebRTC tracks
+        // Enable: Start microphone subprocess via RPC AND add WebRTC tracks locally
+        await new Promise<void>((resolve, reject) => {
+          send("microphoneStart", {}, (resp: JsonRpcResponse) => {
+            if ("error" in resp) {
+              reject(new Error(resp.error.message));
+            } else {
+              resolve();
+            }
+          });
+        });
+        
+        // Also start local WebRTC stream
         const result = await startMicrophone();
         if (!result.success) {
-          throw new Error(result.error?.message || "Failed to start microphone");
+          throw new Error(result.error?.message || "Failed to start local microphone");
         }
       }
     } catch (error) {

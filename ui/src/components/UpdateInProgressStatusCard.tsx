@@ -1,3 +1,4 @@
+
 import { cx } from "@/cva.config";
 
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
@@ -5,6 +6,7 @@ import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 import { Button } from "./Button";
 import { GridCard } from "./Card";
 import LoadingSpinner from "./LoadingSpinner";
+
 
 export default function UpdateInProgressStatusCard() {
   const { navigateTo } = useDeviceUiNavigation();

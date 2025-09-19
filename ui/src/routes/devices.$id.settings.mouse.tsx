@@ -1,19 +1,19 @@
 import { CheckCircleIcon } from "@heroicons/react/16/solid";
 import { useCallback, useEffect, useState } from "react";
 
-import MouseIcon from "@/assets/mouse-icon.svg";
-import PointingFinger from "@/assets/pointing-finger.svg";
-import { GridCard } from "@/components/Card";
-import { Checkbox } from "@/components/Checkbox";
-import { useSettingsStore } from "@/hooks/stores";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { JigglerSetting } from "@components/JigglerSetting";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { useSettingsStore } from "@/hooks/stores";
+import { Checkbox } from "@/components/Checkbox";
+import { GridCard } from "@/components/Card";
+import PointingFinger from "@/assets/pointing-finger.svg";
+import MouseIcon from "@/assets/mouse-icon.svg";
 
-import { cx } from "../cva.config";
-import notifications from "../notifications";
 import SettingsNestedSection from "../components/SettingsNestedSection";
+import notifications from "../notifications";
+import { cx } from "../cva.config";
 
 import { SettingsItem } from "./devices.$id.settings";
 

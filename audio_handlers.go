@@ -2,10 +2,8 @@ package kvm
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/coder/websocket"
-	"github.com/gin-gonic/gin"
 	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
@@ -30,6 +28,16 @@ func ensureAudioControlService() *audio.AudioControlService {
 			}
 			return nil
 		})
+
+		// Set up RPC callback functions for the audio package
+		audio.SetRPCCallbacks(
+			func() *audio.AudioControlService { return audioControlService },
+			func() audio.AudioConfig { return audioControlService.GetCurrentAudioQuality() },
+			func(quality audio.AudioQuality) error {
+				audioControlService.SetAudioQuality(quality)
+				return nil
+			},
+		)
 	}
 	return audioControlService
 }
@@ -129,94 +137,6 @@ func GetCurrentAudioQuality() audio.AudioConfig {
 	return audioControlService.GetCurrentAudioQuality()
 }
 
-// handleAudioMute handles POST /audio/mute requests
-func handleAudioMute(c *gin.Context) {
-	type muteReq struct {
-		Muted bool `json:"muted"`
-	}
-	var req muteReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": "invalid request"})
-		return
-	}
-
-	var err error
-	if req.Muted {
-		err = MuteAudioOutput()
-	} else {
-		err = UnmuteAudioOutput()
-	}
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"status": "audio mute state updated",
-		"muted":  req.Muted,
-	})
-}
-
-// handleMicrophoneStart handles POST /microphone/start requests
-func handleMicrophoneStart(c *gin.Context) {
-	err := StartMicrophone()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
-
-// handleMicrophoneStop handles POST /microphone/stop requests
-func handleMicrophoneStop(c *gin.Context) {
-	err := StopMicrophone()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
-
-// handleMicrophoneMute handles POST /microphone/mute requests
-func handleMicrophoneMute(c *gin.Context) {
-	var req struct {
-		Muted bool `json:"muted"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	var err error
-	if req.Muted {
-		err = StopMicrophone()
-	} else {
-		err = StartMicrophone()
-	}
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
-
-// handleMicrophoneReset handles POST /microphone/reset requests
-func handleMicrophoneReset(c *gin.Context) {
-	err := ResetMicrophone()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
-
 // handleSubscribeAudioEvents handles WebSocket audio event subscription
 func handleSubscribeAudioEvents(connectionID string, wsCon *websocket.Conn, runCtx context.Context, l *zerolog.Logger) {
 	ensureAudioControlService()
@@ -227,58 +147,4 @@ func handleSubscribeAudioEvents(connectionID string, wsCon *websocket.Conn, runC
 func handleUnsubscribeAudioEvents(connectionID string, l *zerolog.Logger) {
 	ensureAudioControlService()
 	audioControlService.UnsubscribeFromAudioEvents(connectionID, l)
-}
-
-// handleAudioStatus handles GET requests for audio status
-func handleAudioStatus(c *gin.Context) {
-	ensureAudioControlService()
-
-	status := audioControlService.GetAudioStatus()
-	c.JSON(200, status)
-}
-
-// handleAudioQuality handles GET requests for audio quality presets
-func handleAudioQuality(c *gin.Context) {
-	presets := GetAudioQualityPresets()
-	current := GetCurrentAudioQuality()
-
-	c.JSON(200, gin.H{
-		"presets": presets,
-		"current": current,
-	})
-}
-
-// handleSetAudioQuality handles POST requests to set audio quality
-func handleSetAudioQuality(c *gin.Context) {
-	var req struct {
-		Quality int `json:"quality"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Check if audio output is active before attempting quality change
-	// This prevents race conditions where quality changes are attempted before initialization
-	if !IsAudioOutputActive() {
-		c.JSON(503, gin.H{"error": "audio output not active - please wait for initialization to complete"})
-		return
-	}
-
-	// Convert int to AudioQuality type
-	quality := audio.AudioQuality(req.Quality)
-
-	// Set the audio quality using global convenience function
-	if err := SetAudioQuality(quality); err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Return the updated configuration
-	current := GetCurrentAudioQuality()
-	c.JSON(200, gin.H{
-		"success": true,
-		"config":  current,
-	})
 }

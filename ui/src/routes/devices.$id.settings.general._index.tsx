@@ -1,6 +1,7 @@
 
 import { useState , useEffect } from "react";
 
+
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 
 import { SettingsPageHeader } from "../components/SettingsPageheader";
@@ -11,6 +12,7 @@ import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 import { useDeviceStore } from "../hooks/stores";
 
 import { SettingsItem } from "./devices.$id.settings";
+
 
 export default function SettingsGeneralRoute() {
   const { send } = useJsonRpc();

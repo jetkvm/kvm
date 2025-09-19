@@ -8,10 +8,12 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 
+
 import { cx } from "@/cva.config";
 import { AvailableTerminalTypes, useUiStore } from "@/hooks/stores";
 
 import { Button } from "./Button";
+
 
 const isWebGl2Supported = !!document.createElement("canvas").getContext("webgl2");
 
