@@ -29,6 +29,8 @@ export interface JsonRpcErrorResponse {
 
 export type JsonRpcResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse;
 
+export const RpcMethodNotFound = -32601;
+
 const callbackStore = new Map<number | string, (resp: JsonRpcResponse) => void>();
 let requestCounter = 0;
 

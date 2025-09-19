@@ -3,12 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 
 import Card from "@/components/Card";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
-import { UpdateState, useDeviceStore, useUpdateStore } from "@/hooks/stores";
-import notifications from "@/notifications";
+import { UpdateState, useUpdateStore } from "@/hooks/stores";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import { SystemVersionInfo, useVersion } from "@/hooks/useVersion";
 
 export default function SettingsGeneralUpdateRoute() {
   const navigate = useNavigate();
@@ -41,13 +41,7 @@ export default function SettingsGeneralUpdateRoute() {
   return <Dialog onClose={() => navigate("..")} onConfirmUpdate={onConfirmUpdate} />;
 }
 
-export interface SystemVersionInfo {
-  local: { appVersion: string; systemVersion: string };
-  remote?: { appVersion: string; systemVersion: string };
-  systemUpdateAvailable: boolean;
-  appUpdateAvailable: boolean;
-  error?: string;
-}
+
 
 export function Dialog({
   onClose,
@@ -134,30 +128,8 @@ function LoadingState({
 }) {
   const [progressWidth, setProgressWidth] = useState("0%");
   const abortControllerRef = useRef<AbortController | null>(null);
-  const { setAppVersion, setSystemVersion } = useDeviceStore();
-  const { send } = useJsonRpc();
 
-  const getVersionInfo = useCallback(() => {
-    return new Promise<SystemVersionInfo>((resolve, reject) => {
-      send("getUpdateStatus", {}, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          notifications.error(`Failed to check for updates: ${resp.error}`);
-          reject(new Error("Failed to check for updates"));
-        } else {
-          const result = resp.result as SystemVersionInfo;
-          setAppVersion(result.local.appVersion);
-          setSystemVersion(result.local.systemVersion);
-
-          if (result.error) {
-            notifications.error(`Failed to check for updates: ${result.error}`);
-            reject(new Error("Failed to check for updates"));
-          } else {
-            resolve(result);
-          }
-        }
-      });
-    });
-  }, [send, setAppVersion, setSystemVersion]);
+  const { getVersionInfo } = useVersion();
 
   const progressBarRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
