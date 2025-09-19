@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { useUiStore } from "@/hooks/stores";
-import { SelectMenuBasic } from "@components/SelectMenuBasic";
 
 interface SerialSettings {
   baudRate: string;

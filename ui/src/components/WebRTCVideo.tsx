@@ -3,8 +3,8 @@ import { useResizeObserver } from "usehooks-ts";
 
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
-import MacroBar from "@/components/MacroBar";
 import InfoBar from "@components/InfoBar";
+import MacroBar from "@/components/MacroBar";
 import notifications from "@/notifications";
 import useKeyboard from "@/hooks/useKeyboard";
 import { cx } from "@/cva.config";
@@ -22,6 +22,7 @@ import {
   NoAutoplayPermissionsOverlay,
   PointerLockBar,
 } from "./VideoOverlay";
+
 
 // Type for microphone error
 interface MicrophoneError {

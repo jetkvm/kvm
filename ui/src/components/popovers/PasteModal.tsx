@@ -3,17 +3,17 @@ import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuCornerDownLeft } from "react-icons/lu";
 
+import { Button } from "@components/Button";
+import { GridCard } from "@components/Card";
+import { InputFieldWithLabel } from "@components/InputField";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { TextAreaWithLabel } from "@components/TextArea";
 import { cx } from "@/cva.config";
 import { useHidStore, useSettingsStore, useUiStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import useKeyboard, { type MacroStep } from "@/hooks/useKeyboard";
 import useKeyboardLayout from "@/hooks/useKeyboardLayout";
 import notifications from "@/notifications";
-import { Button } from "@components/Button";
-import { GridCard } from "@components/Card";
-import { InputFieldWithLabel } from "@components/InputField";
-import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { TextAreaWithLabel } from "@components/TextArea";
 
 // uint32 max value / 4
 const pasteMaxLength = 1073741824;

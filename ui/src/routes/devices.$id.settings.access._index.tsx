@@ -3,8 +3,9 @@ import type { LoaderFunction } from "react-router";
 import { ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useState } from "react";
 
-import api from "@/api";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { TextAreaWithLabel } from "@components/TextArea";
+import api from "@/api";
 import { GridCard } from "@/components/Card";
 import { Button, LinkButton } from "@/components/Button";
 import { InputFieldWithLabel } from "@/components/InputField";
@@ -15,11 +16,12 @@ import notifications from "@/notifications";
 import { DEVICE_API } from "@/ui.config";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { isOnDevice } from "@/main";
-import { TextAreaWithLabel } from "@components/TextArea";
 
-import { LocalDevice } from "./devices.$id";
-import { SettingsItem } from "./devices.$id.settings";
 import { CloudState } from "./adopt";
+import { SettingsItem } from "./devices.$id.settings";
+import { LocalDevice } from "./devices.$id";
+
+
 
 export interface TLSState {
   mode: "self-signed" | "custom" | "disabled";

@@ -4,6 +4,9 @@ import useWebSocket, { ReadyState } from 'react-use-websocket';
 import { devError, devWarn } from '../utils/debug';
 import { NETWORK_CONFIG } from '../config/constants';
 
+import { JsonRpcResponse, useJsonRpc } from './useJsonRpc';
+import { useRTCStore } from './stores';
+
 // Audio event types matching the backend
 export type AudioEventType = 
   | 'audio-mute-changed'
@@ -63,18 +66,34 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
   const [audioMuted, setAudioMuted] = useState<boolean | null>(null);
   const [microphoneState, setMicrophoneState] = useState<MicrophoneStateData | null>(null);
   
-  // Fetch initial audio status
+  // Get RTC store and JSON RPC functionality
+  const { rpcDataChannel } = useRTCStore();
+  const { send } = useJsonRpc();
+  
+  // Fetch initial audio status using RPC for cloud compatibility
   const fetchInitialAudioStatus = useCallback(async () => {
-    try {
-      const response = await fetch('/audio/status');
-      if (response.ok) {
-        const data = await response.json();
-        setAudioMuted(data.muted);
-      }
-    } catch (error) {
-      devError('Failed to fetch initial audio status:', error);
+    // Early return if RPC data channel is not open
+    if (rpcDataChannel?.readyState !== "open") {
+      devWarn('RPC connection not available for initial audio status, skipping');
+      return;
     }
-  }, []);
+
+    try {
+      await new Promise<void>((resolve) => {
+        send("audioStatus", {}, (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            devError('RPC audioStatus failed:', resp.error);
+          } else if ("result" in resp) {
+            const data = resp.result as { muted: boolean };
+            setAudioMuted(data.muted);
+          }
+          resolve(); // Continue regardless of result
+        });
+      });
+    } catch (error) {
+      devError('Failed to fetch initial audio status via RPC:', error);
+    }
+  }, [rpcDataChannel?.readyState, send]);
   
   // Local subscription state
   const [isLocallySubscribed, setIsLocallySubscribed] = useState(false);
@@ -253,10 +272,13 @@ export function useAudioEvents(onAudioDeviceChanged?: (data: AudioDeviceChangedD
     }
   }, [readyState]);
 
-  // Fetch initial audio status on component mount
+  // Fetch initial audio status on component mount - but only when RPC is ready
   useEffect(() => {
-    fetchInitialAudioStatus();
-  }, [fetchInitialAudioStatus]);
+    // Only fetch when RPC data channel is open and ready
+    if (rpcDataChannel?.readyState === "open") {
+      fetchInitialAudioStatus();
+    }
+  }, [fetchInitialAudioStatus, rpcDataChannel?.readyState]);
 
   // Cleanup on component unmount
   useEffect(() => {

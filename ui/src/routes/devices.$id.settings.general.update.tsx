@@ -2,9 +2,9 @@ import { useLocation, useNavigate } from "react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 
+import { Button } from "@components/Button";
 import Card from "@/components/Card";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { Button } from "@components/Button";
 import { UpdateState, useUpdateStore } from "@/hooks/stores";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";

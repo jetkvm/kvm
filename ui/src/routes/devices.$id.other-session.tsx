@@ -1,7 +1,7 @@
 import { useNavigate, useOutletContext } from "react-router";
 
-import { GridCard } from "@/components/Card";
 import { Button } from "@components/Button";
+import { GridCard } from "@/components/Card";
 import LogoBlue from "@/assets/logo-blue.svg";
 import LogoWhite from "@/assets/logo-white.svg";
 

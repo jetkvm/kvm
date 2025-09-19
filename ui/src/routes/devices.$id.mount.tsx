@@ -9,12 +9,12 @@ import { PlusCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/sol
 import { TrashIcon } from "@heroicons/react/16/solid";
 import { useNavigate } from "react-router";
 
-import Card, { GridCard } from "@/components/Card";
 import { Button } from "@components/Button";
+import AutoHeight from "@components/AutoHeight";
+import Card, { GridCard } from "@/components/Card";
 import LogoBlueIcon from "@/assets/logo-blue.svg";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
 import { formatters } from "@/utils";
-import AutoHeight from "@components/AutoHeight";
 import { InputFieldWithLabel } from "@/components/InputField";
 import DebianIcon from "@/assets/debian-icon.png";
 import UbuntuIcon from "@/assets/ubuntu-icon.png";
@@ -25,16 +25,17 @@ import NetBootIcon from "@/assets/netboot-icon.svg";
 import Fieldset from "@/components/Fieldset";
 import { DEVICE_API } from "@/ui.config";
 
-import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
-import notifications from "../notifications";
-import { isOnDevice } from "../main";
-import { cx } from "../cva.config";
 import {
   MountMediaState,
   RemoteVirtualMediaState,
   useMountMediaStore,
   useRTCStore,
 } from "../hooks/stores";
+import { cx } from "../cva.config";
+import { isOnDevice } from "../main";
+import notifications from "../notifications";
+import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
+
 
 export default function MountRoute() {
   const navigate = useNavigate();
