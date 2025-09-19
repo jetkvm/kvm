@@ -4,36 +4,35 @@ import (
 	"sync"
 )
 
-var audioMuteState struct {
-	muted bool
-	mu    sync.RWMutex
+// AudioState holds all audio-related state with a single mutex
+type AudioState struct {
+	mu              sync.RWMutex
+	audioMuted      bool
+	microphoneMuted bool
 }
 
-var microphoneMuteState struct {
-	muted bool
-	mu    sync.RWMutex
-}
+var globalAudioState = &AudioState{}
 
 func SetAudioMuted(muted bool) {
-	audioMuteState.mu.Lock()
-	defer audioMuteState.mu.Unlock()
-	audioMuteState.muted = muted
+	globalAudioState.mu.Lock()
+	defer globalAudioState.mu.Unlock()
+	globalAudioState.audioMuted = muted
 }
 
 func IsAudioMuted() bool {
-	audioMuteState.mu.RLock()
-	defer audioMuteState.mu.RUnlock()
-	return audioMuteState.muted
+	globalAudioState.mu.RLock()
+	defer globalAudioState.mu.RUnlock()
+	return globalAudioState.audioMuted
 }
 
 func SetMicrophoneMuted(muted bool) {
-	microphoneMuteState.mu.Lock()
-	defer microphoneMuteState.mu.Unlock()
-	microphoneMuteState.muted = muted
+	globalAudioState.mu.Lock()
+	defer globalAudioState.mu.Unlock()
+	globalAudioState.microphoneMuted = muted
 }
 
 func IsMicrophoneMuted() bool {
-	microphoneMuteState.mu.RLock()
-	defer microphoneMuteState.mu.RUnlock()
-	return microphoneMuteState.muted
+	globalAudioState.mu.RLock()
+	defer globalAudioState.mu.RUnlock()
+	return globalAudioState.microphoneMuted
 }
