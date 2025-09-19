@@ -95,26 +95,23 @@ func cgoAudioInit() error {
 	cache.Update()
 
 	// Enable C trace logging if Go audio scope trace level is active
-
-	// Enable C trace logging if Go audio scope trace level is active
 	audioLogger := logging.GetSubsystemLogger("audio")
 	loggerTraceEnabled := audioLogger.GetLevel() <= zerolog.TraceLevel
 
 	// Manual check for audio scope in PION_LOG_TRACE (workaround for logging system bug)
-	manualTraceEnabled := false
-	pionTrace := os.Getenv("PION_LOG_TRACE")
-	if pionTrace != "" {
-		scopes := strings.Split(strings.ToLower(pionTrace), ",")
-		for _, scope := range scopes {
-			if strings.TrimSpace(scope) == "audio" {
-				manualTraceEnabled = true
-				break
+	traceEnabled := loggerTraceEnabled
+	if !loggerTraceEnabled {
+		pionTrace := os.Getenv("PION_LOG_TRACE")
+		if pionTrace != "" {
+			scopes := strings.Split(strings.ToLower(pionTrace), ",")
+			for _, scope := range scopes {
+				if strings.TrimSpace(scope) == "audio" {
+					traceEnabled = true
+					break
+				}
 			}
 		}
 	}
-
-	// Use manual check as fallback if logging system fails
-	traceEnabled := loggerTraceEnabled || manualTraceEnabled
 
 	CGOSetTraceLogging(traceEnabled)
 
@@ -150,15 +147,17 @@ func cgoAudioClose() {
 
 // AudioConfigCache provides a comprehensive caching system for audio configuration
 type AudioConfigCache struct {
-	// Atomic int64 fields MUST be first for ARM32 alignment (8-byte alignment required)
-	minFrameDuration         atomic.Int64 // Store as nanoseconds
-	maxFrameDuration         atomic.Int64 // Store as nanoseconds
-	maxLatency               atomic.Int64 // Store as nanoseconds
-	minMetricsUpdateInterval atomic.Int64 // Store as nanoseconds
-	maxMetricsUpdateInterval atomic.Int64 // Store as nanoseconds
-	restartWindow            atomic.Int64 // Store as nanoseconds
-	restartDelay             atomic.Int64 // Store as nanoseconds
-	maxRestartDelay          atomic.Int64 // Store as nanoseconds
+	// All duration fields use int32 by storing as milliseconds for optimal ARM NEON performance
+	maxMetricsUpdateInterval atomic.Int32 // Store as milliseconds (10s = 10K ms < int32 max)
+	restartWindow            atomic.Int32 // Store as milliseconds (5min = 300K ms < int32 max)
+	restartDelay             atomic.Int32 // Store as milliseconds
+	maxRestartDelay          atomic.Int32 // Store as milliseconds
+
+	// Short-duration fields stored as milliseconds with int32
+	minFrameDuration         atomic.Int32 // Store as milliseconds (10ms = 10 ms < int32 max)
+	maxFrameDuration         atomic.Int32 // Store as milliseconds (100ms = 100 ms < int32 max)
+	maxLatency               atomic.Int32 // Store as milliseconds (500ms = 500 ms < int32 max)
+	minMetricsUpdateInterval atomic.Int32 // Store as milliseconds (100ms = 100 ms < int32 max)
 
 	// Atomic int32 fields for lock-free access to frequently used values
 	minReadEncodeBuffer  atomic.Int32
@@ -246,8 +245,16 @@ func (c *AudioConfigCache) Update() {
 		// Update additional validation values
 		c.maxAudioFrameSize.Store(int32(Config.MaxAudioFrameSize))
 		c.maxChannels.Store(int32(Config.MaxChannels))
-		c.minFrameDuration.Store(int64(Config.MinFrameDuration))
-		c.maxFrameDuration.Store(int64(Config.MaxFrameDuration))
+
+		// Store duration fields as milliseconds for int32 optimization
+		c.minFrameDuration.Store(int32(Config.MinFrameDuration / time.Millisecond))
+		c.maxFrameDuration.Store(int32(Config.MaxFrameDuration / time.Millisecond))
+		c.maxLatency.Store(int32(Config.MaxLatency / time.Millisecond))
+		c.minMetricsUpdateInterval.Store(int32(Config.MinMetricsUpdateInterval / time.Millisecond))
+		c.maxMetricsUpdateInterval.Store(int32(Config.MaxMetricsUpdateInterval / time.Millisecond))
+		c.restartWindow.Store(int32(Config.RestartWindow / time.Millisecond))
+		c.restartDelay.Store(int32(Config.RestartDelay / time.Millisecond))
+		c.maxRestartDelay.Store(int32(Config.MaxRestartDelay / time.Millisecond))
 		c.minOpusBitrate.Store(int32(Config.MinOpusBitrate))
 		c.maxOpusBitrate.Store(int32(Config.MaxOpusBitrate))
 
@@ -296,20 +303,6 @@ func (c *AudioConfigCache) GetBufferTooSmallError() error {
 // GetBufferTooLargeError returns the pre-allocated buffer too large error
 func (c *AudioConfigCache) GetBufferTooLargeError() error {
 	return c.bufferTooLargeDecodeWrite
-}
-
-// updateCacheIfNeeded updates cache only if expired to avoid overhead
-func updateCacheIfNeeded(cache *AudioConfigCache) {
-	if cache.initialized.Load() {
-		cache.mutex.RLock()
-		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
-		cache.mutex.RUnlock()
-		if cacheExpired {
-			cache.Update()
-		}
-	} else {
-		cache.Update()
-	}
 }
 
 func cgoAudioReadEncode(buf []byte) (int, error) {
@@ -410,7 +403,6 @@ func cgoAudioDecodeWrite(buf []byte) (int, error) {
 		return n, nil
 	}
 
-	// Error handling with static errors
 	audioDecodeWriteFailures.Add(1)
 	var errMsg string
 	var err error
@@ -480,7 +472,7 @@ func ReturnBufferToPool(buf []byte) {
 // ReadEncodeWithPooledBuffer reads audio data and encodes it using a buffer from the pool
 func ReadEncodeWithPooledBuffer() ([]byte, int, error) {
 	cache := GetCachedConfig()
-	updateCacheIfNeeded(cache)
+	cache.Update()
 
 	bufferSize := cache.GetMinReadEncodeBuffer()
 	if bufferSize == 0 {
@@ -504,7 +496,7 @@ func DecodeWriteWithPooledBuffer(data []byte) (int, error) {
 	}
 
 	cache := GetCachedConfig()
-	updateCacheIfNeeded(cache)
+	cache.Update()
 
 	maxPacketSize := cache.GetMaxPacketSize()
 	if len(data) > maxPacketSize {
@@ -552,18 +544,7 @@ func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, err
 
 	// Get cached config
 	cache := GetCachedConfig()
-	// Only update cache if expired - avoid unnecessary overhead
-	// Use proper locking to avoid race condition
-	if cache.initialized.Load() {
-		cache.mutex.RLock()
-		cacheExpired := time.Since(cache.lastUpdate) > cache.cacheExpiry
-		cache.mutex.RUnlock()
-		if cacheExpired {
-			cache.Update()
-		}
-	} else {
-		cache.Update()
-	}
+	cache.Update()
 
 	// Ensure data doesn't exceed max packet size
 	maxPacketSize := cache.GetMaxPacketSize()
@@ -574,8 +555,6 @@ func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, err
 		return 0, newBufferTooLargeError(len(opusData), maxPacketSize)
 	}
 
-	// Metrics tracking only - detailed logging handled at application level
-
 	// Direct CGO call with minimal overhead - unsafe.Pointer(&slice[0]) is never nil for non-empty slices
 	n := int(C.jetkvm_audio_decode_write(unsafe.Pointer(&opusData[0]), C.int(len(opusData))))
 
@@ -585,7 +564,6 @@ func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, err
 		return n, nil
 	}
 
-	// Handle error cases with static error codes to reduce allocations
 	audioDecodeWriteFailures.Add(1)
 	var errMsg string
 	var err error
@@ -608,8 +586,6 @@ func cgoAudioDecodeWriteWithBuffers(opusData []byte, pcmBuffer []byte) (int, err
 	return 0, err
 }
 
-// Optimized CGO function aliases - use direct function calls to reduce overhead
-// These are now direct function aliases instead of variable assignments
 func CGOAudioInit() error                        { return cgoAudioInit() }
 func CGOAudioClose()                             { cgoAudioClose() }
 func CGOAudioReadEncode(buf []byte) (int, error) { return cgoAudioReadEncode(buf) }
