@@ -56,13 +56,12 @@ type NetworkConfig struct {
 }
 
 func (c *NetworkConfig) GetMDNSMode() *mdns.MDNSListenOptions {
-	mode := c.MDNSMode.String
 	listenOptions := &mdns.MDNSListenOptions{
-		IPv4: true,
-		IPv6: true,
+		IPv4: c.IPv4Mode.String != "disabled",
+		IPv6: c.IPv6Mode.String != "disabled",
 	}
 
-	switch mode {
+	switch c.MDNSMode.String {
 	case "ipv4_only":
 		listenOptions.IPv6 = false
 	case "ipv6_only":

@@ -12,6 +12,7 @@ require (
 	github.com/gin-contrib/logger v1.2.6
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-co-op/gocron/v2 v2.16.5
+	github.com/google/flatbuffers v25.2.10+incompatible
 	github.com/google/uuid v1.6.0
 	github.com/guregu/null/v6 v6.0.0
 	github.com/gwatts/rootcerts v0.0.0-20250901182336-dc5ae18bd79f
@@ -23,6 +24,7 @@ require (
 	github.com/prometheus/common v0.66.0
 	github.com/prometheus/procfs v0.17.0
 	github.com/psanford/httpreadat v0.1.0
+	github.com/rs/xid v1.6.0
 	github.com/rs/zerolog v1.34.0
 	github.com/sourcegraph/tf-dag v0.2.2-0.20250131204052-3e8ff1477b4f
 	github.com/stretchr/testify v1.11.1

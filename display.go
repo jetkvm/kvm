@@ -64,11 +64,11 @@ func lvObjSetOpacity(objName string, opacity int) (*CtrlResponse, error) { // no
 }
 
 func lvObjFadeIn(objName string, duration uint32) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_fade_in", map[string]any{"obj": objName, "time": duration})
+	return CallCtrlAction("lv_obj_fade_in", map[string]any{"obj": objName, "duration": duration})
 }
 
 func lvObjFadeOut(objName string, duration uint32) (*CtrlResponse, error) {
-	return CallCtrlAction("lv_obj_fade_out", map[string]any{"obj": objName, "time": duration})
+	return CallCtrlAction("lv_obj_fade_out", map[string]any{"obj": objName, "duration": duration})
 }
 
 func lvLabelSetText(objName string, text string) (*CtrlResponse, error) {
