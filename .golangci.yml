@@ -1,7 +1,4 @@
 version: "2"
-run:
-  build-tags:
-    - nolint
 linters:
   enable:
     - forbidigo
@@ -45,3 +42,4 @@ formatters:
       - third_party$
       - builtin$
       - examples$
+
