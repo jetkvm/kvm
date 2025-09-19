@@ -184,16 +184,6 @@ func setupRouter() *gin.Engine {
 		protected.PUT("/auth/password-local", handleUpdatePassword)
 		protected.DELETE("/auth/local-password", handleDeletePassword)
 		protected.POST("/storage/upload", handleUploadHttp)
-
-		// Audio handlers
-		protected.GET("/audio/status", handleAudioStatus)
-		protected.POST("/audio/mute", handleAudioMute)
-		protected.GET("/audio/quality", handleAudioQuality)
-		protected.POST("/audio/quality", handleSetAudioQuality)
-		protected.POST("/microphone/start", handleMicrophoneStart)
-		protected.POST("/microphone/stop", handleMicrophoneStop)
-		protected.POST("/microphone/mute", handleMicrophoneMute)
-		protected.POST("/microphone/reset", handleMicrophoneReset)
 	}
 
 	// Catch-all route for SPA

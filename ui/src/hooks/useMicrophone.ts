@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useRTCStore, useSettingsStore } from "@/hooks/stores";
-import api from "@/api";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { devLog, devInfo, devWarn, devError, devOnly } from "@/utils/debug";
 import { AUDIO_CONFIG } from "@/config/constants";
 
@@ -21,9 +21,29 @@ export function useMicrophone() {
     setMicrophoneActive,
     isMicrophoneMuted,
     setMicrophoneMuted,
+    rpcDataChannel,
   } = useRTCStore();
 
   const { microphoneWasEnabled, setMicrophoneWasEnabled } = useSettingsStore();
+  const { send } = useJsonRpc();
+
+  // RPC helper functions to replace HTTP API calls
+  const rpcMicrophoneStart = useCallback((): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (rpcDataChannel?.readyState !== "open") {
+        reject(new Error("Device connection not available"));
+        return;
+      }
+      
+      send("microphoneStart", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          reject(new Error(resp.error.message));
+        } else {
+          resolve();
+        }
+      });
+    });
+  }, [rpcDataChannel?.readyState, send]);
 
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   
@@ -60,8 +80,6 @@ export function useMicrophone() {
 
   // Cleanup function to stop microphone stream
   const stopMicrophoneStream = useCallback(async () => {
-    // Cleaning up microphone stream
-    
     if (microphoneStreamRef.current) {
       microphoneStreamRef.current.getTracks().forEach((track: MediaStreamTrack) => {
         track.stop();
@@ -106,37 +124,52 @@ export function useMicrophone() {
       return;
     }
     
-    try {
-      const response = await api.GET("/microphone/status", {});
-      if (response.ok) {
-        const data = await response.json();
-        const backendRunning = data.running;
-        
-        // Only sync if there's a significant state difference and we're not in a transition
-        if (backendRunning !== isMicrophoneActive) {
-          devInfo(`Syncing microphone state: backend=${backendRunning}, frontend=${isMicrophoneActive}`);
-          
-          // If backend is running but frontend thinks it's not, just update frontend state
-          if (backendRunning && !isMicrophoneActive) {
-            devLog("Backend running, updating frontend state to active");
-            setMicrophoneActive(true);
-          }
-          // If backend is not running but frontend thinks it is, clean up and update state
-          else if (!backendRunning && isMicrophoneActive) {
-            devLog("Backend not running, cleaning up frontend state");
-            setMicrophoneActive(false);
-            // Only clean up stream if we actually have one
-            if (microphoneStreamRef.current) {
-              devLog("Cleaning up orphaned stream");
-              await stopMicrophoneStream();
-            }
-          }
-        }
-      }
-    } catch (error) {
-      devWarn("Failed to sync microphone state:", error);
+    // Early return if RPC data channel is not ready
+    if (rpcDataChannel?.readyState !== "open") {
+      devWarn("RPC connection not available for microphone sync, skipping");
+      return;
     }
-  }, [isMicrophoneActive, setMicrophoneActive, stopMicrophoneStream]);
+    
+    try {
+      await new Promise<void>((resolve, reject) => {
+        send("microphoneStatus", {}, (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            devError("RPC microphone status failed:", resp.error);
+            reject(new Error(resp.error.message));
+          } else if ("result" in resp) {
+            const data = resp.result as { running: boolean };
+            const backendRunning = data.running;
+            
+            // Only sync if there's a significant state difference and we're not in a transition
+            if (backendRunning !== isMicrophoneActive) {
+              devInfo(`Syncing microphone state: backend=${backendRunning}, frontend=${isMicrophoneActive}`);
+              
+              // If backend is running but frontend thinks it's not, just update frontend state
+              if (backendRunning && !isMicrophoneActive) {
+                devLog("Backend running, updating frontend state to active");
+                setMicrophoneActive(true);
+              }
+              // If backend is not running but frontend thinks it is, clean up and update state
+              else if (!backendRunning && isMicrophoneActive) {
+                devLog("Backend not running, cleaning up frontend state");
+                setMicrophoneActive(false);
+                // Only clean up stream if we actually have one
+                if (microphoneStreamRef.current) {
+                  stopMicrophoneStream();
+                }
+                setMicrophoneMuted(false);
+              }
+            }
+            resolve();
+          } else {
+            reject(new Error("Invalid response"));
+          }
+        });
+      });
+    } catch (error) {
+      devError("Error syncing microphone state:", error);
+    }
+  }, [isMicrophoneActive, setMicrophoneActive, setMicrophoneMuted, stopMicrophoneStream, rpcDataChannel?.readyState, send]);
 
   // Start microphone stream
   const startMicrophone = useCallback(async (deviceId?: string): Promise<{ success: boolean; error?: MicrophoneError }> => {
@@ -168,8 +201,6 @@ export function useMicrophone() {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints
       });
-
-      // Microphone stream created successfully
 
       // Store the stream in both ref and store
       microphoneStreamRef.current = stream;
@@ -286,78 +317,54 @@ export function useMicrophone() {
       // Notify backend that microphone is started
       devLog("Notifying backend about microphone start...");
       
-      // Retry logic for backend failures
+            // Retry logic for backend failures
       let backendSuccess = false;
       let lastError: Error | string | null = null;
       
       for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          // If this is a retry, first try to reset the backend microphone state
-          if (attempt > 1) {
-            devLog(`Backend start attempt ${attempt}, first trying to reset backend state...`);
-            try {
-              // Try the new reset endpoint first
-              const resetResp = await api.POST("/microphone/reset", {});
-              if (resetResp.ok) {
-                devLog("Backend reset successful");
-              } else {
-                // Fallback to stop
-                await api.POST("/microphone/stop", {});
-              }
+        // If this is a retry, first try to reset the backend microphone state
+        if (attempt > 1) {
+          devLog(`Backend start attempt ${attempt}, first trying to reset backend state...`);
+          try {
+            // Use RPC for reset (cloud-compatible)
+            if (rpcDataChannel?.readyState === "open") {
+              await new Promise<void>((resolve) => {
+                send("microphoneReset", {}, (resp: JsonRpcResponse) => {
+                  if ("error" in resp) {
+                    devWarn("RPC microphone reset failed:", resp.error);
+                    // Try stop as fallback
+                    send("microphoneStop", {}, (stopResp: JsonRpcResponse) => {
+                      if ("error" in stopResp) {
+                        devWarn("RPC microphone stop also failed:", stopResp.error);
+                      }
+                      resolve(); // Continue even if both fail
+                    });
+                  } else {
+                    devLog("RPC microphone reset successful");
+                    resolve();
+                  }
+                });
+              });
               // Wait a bit for the backend to reset
               await new Promise(resolve => setTimeout(resolve, 200));
-            } catch (resetError) {
-              devWarn("Failed to reset backend state:", resetError);
+            } else {
+              devWarn("RPC connection not available for reset");
             }
+          } catch (resetError) {
+            devWarn("Failed to reset backend state:", resetError);
           }
+        }
+        
+        try {
+          await rpcMicrophoneStart();
+          devLog(`Backend RPC microphone start successful (attempt ${attempt})`);
+          backendSuccess = true;
+          break; // Exit the retry loop on success
+        } catch (rpcError) {
+          lastError = `Backend RPC error: ${rpcError instanceof Error ? rpcError.message : 'Unknown error'}`;
+          devError(`Backend microphone start failed with RPC error: ${lastError} (attempt ${attempt})`);
           
-          const backendResp = await api.POST("/microphone/start", {});
-          devLog(`Backend response status (attempt ${attempt}):`, backendResp.status, "ok:", backendResp.ok);
-          
-          if (!backendResp.ok) {
-            lastError = `Backend returned status ${backendResp.status}`;
-            devError(`Backend microphone start failed with status: ${backendResp.status} (attempt ${attempt})`);
-            
-            // For 500 errors, try again after a short delay
-            if (backendResp.status === 500 && attempt < 3) {
-              devLog(`Retrying backend start in 500ms (attempt ${attempt + 1}/3)...`);
-              await new Promise(resolve => setTimeout(resolve, 500));
-              continue;
-            }
-          } else {
-            // Success!
-            const responseData = await backendResp.json();
-            devLog("Backend response data:", responseData);
-            if (responseData.status === "already running") {
-              devInfo("Backend microphone was already running");
-              
-              // If we're on the first attempt and backend says "already running",
-              // but frontend thinks it's not active, this might be a stuck state
-              if (attempt === 1 && !isMicrophoneActive) {
-                devWarn("Backend reports 'already running' but frontend is not active - possible stuck state");
-                devLog("Attempting to reset backend state and retry...");
-                
-                try {
-                  const resetResp = await api.POST("/microphone/reset", {});
-                  if (resetResp.ok) {
-                    devLog("Backend reset successful, retrying start...");
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                    continue; // Retry the start
-                  }
-                } catch (resetError) {
-                  devWarn("Failed to reset stuck backend state:", resetError);
-                }
-              }
-            }
-            devLog("Backend microphone start successful");
-            backendSuccess = true;
-            break;
-          }
-        } catch (error) {
-          lastError = error instanceof Error ? error : String(error);
-          devError(`Backend microphone start threw error (attempt ${attempt}):`, error);
-          
-          // For network errors, try again after a short delay
+          // For RPC errors, try again after a short delay
           if (attempt < 3) {
             devLog(`Retrying backend start in 500ms (attempt ${attempt + 1}/3)...`);
             await new Promise(resolve => setTimeout(resolve, 500));
@@ -414,8 +421,6 @@ export function useMicrophone() {
       setIsStarting(false);
       return { success: true };
     } catch (error) {
-      // Failed to start microphone
-      
       let micError: MicrophoneError;
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
@@ -446,7 +451,7 @@ export function useMicrophone() {
       setIsStarting(false);
       return { success: false, error: micError };
     }
-  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, setMicrophoneWasEnabled, stopMicrophoneStream, isMicrophoneActive, isMicrophoneMuted, microphoneStream, isStarting, isStopping, isToggling]);
+  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, setMicrophoneWasEnabled, stopMicrophoneStream, isMicrophoneActive, isMicrophoneMuted, microphoneStream, isStarting, isStopping, isToggling, rpcMicrophoneStart, rpcDataChannel?.readyState, send]);
 
 
 
@@ -463,10 +468,22 @@ export function useMicrophone() {
       // First stop the stream
       await stopMicrophoneStream();
 
-      // Then notify backend that microphone is stopped
+      // Then notify backend that microphone is stopped using RPC
       try {
-        await api.POST("/microphone/stop", {});
-        devLog("Backend notified about microphone stop");
+        if (rpcDataChannel?.readyState === "open") {
+          await new Promise<void>((resolve) => {
+            send("microphoneStop", {}, (resp: JsonRpcResponse) => {
+              if ("error" in resp) {
+                devWarn("RPC microphone stop failed:", resp.error);
+              } else {
+                devLog("Backend notified about microphone stop via RPC");
+              }
+              resolve(); // Continue regardless of result
+            });
+          });
+        } else {
+          devWarn("RPC connection not available for microphone stop");
+        }
       } catch (error) {
         devWarn("Failed to notify backend about microphone stop:", error);
       }
@@ -494,7 +511,7 @@ export function useMicrophone() {
         }
       };
     }
-  }, [stopMicrophoneStream, syncMicrophoneState, setMicrophoneActive, setMicrophoneMuted, setMicrophoneWasEnabled, isStarting, isStopping, isToggling]);
+  }, [stopMicrophoneStream, syncMicrophoneState, setMicrophoneActive, setMicrophoneMuted, setMicrophoneWasEnabled, isStarting, isStopping, isToggling, rpcDataChannel?.readyState, send]);
 
   // Toggle microphone mute
   const toggleMicrophoneMute = useCallback(async (): Promise<{ success: boolean; error?: MicrophoneError }> => {
@@ -569,9 +586,22 @@ export function useMicrophone() {
 
       setMicrophoneMuted(newMutedState);
 
-      // Notify backend about mute state
+      // Notify backend about mute state using RPC
       try {
-        await api.POST("/microphone/mute", { muted: newMutedState });
+        if (rpcDataChannel?.readyState === "open") {
+          await new Promise<void>((resolve) => {
+            send("microphoneMute", { muted: newMutedState }, (resp: JsonRpcResponse) => {
+              if ("error" in resp) {
+                devWarn("RPC microphone mute failed:", resp.error);
+              } else {
+                devLog("Backend notified about microphone mute via RPC");
+              }
+              resolve(); // Continue regardless of result
+            });
+          });
+        } else {
+          devWarn("RPC connection not available for microphone mute");
+        }
       } catch (error) {
         devWarn("Failed to notify backend about microphone mute:", error);
       }
@@ -589,7 +619,7 @@ export function useMicrophone() {
         }
       };
     }
-  }, [microphoneStream, isMicrophoneActive, isMicrophoneMuted, setMicrophoneMuted, isStarting, isStopping, isToggling]);
+  }, [microphoneStream, isMicrophoneActive, isMicrophoneMuted, setMicrophoneMuted, isStarting, isStopping, isToggling, rpcDataChannel?.readyState, send]);
 
 
 
@@ -612,6 +642,12 @@ export function useMicrophone() {
   // Sync state on mount and auto-restore microphone if it was enabled before page reload
   useEffect(() => {
     const autoRestoreMicrophone = async () => {
+      // Wait for RPC connection to be ready before attempting any operations
+      if (rpcDataChannel?.readyState !== "open") {
+        devLog("RPC connection not ready for microphone auto-restore, skipping");
+        return;
+      }
+      
       // First sync the current state
       await syncMicrophoneState();
       
@@ -631,8 +667,10 @@ export function useMicrophone() {
       }
     };
     
-    autoRestoreMicrophone();
-  }, [syncMicrophoneState, microphoneWasEnabled, isMicrophoneActive, peerConnection, startMicrophone]);
+    // Add a delay to ensure RTC connection is fully established
+    const timer = setTimeout(autoRestoreMicrophone, 1000);
+    return () => clearTimeout(timer);
+  }, [syncMicrophoneState, microphoneWasEnabled, isMicrophoneActive, peerConnection, startMicrophone, rpcDataChannel?.readyState]);
 
   // Cleanup on unmount - use ref to avoid dependency on stopMicrophoneStream
   useEffect(() => {

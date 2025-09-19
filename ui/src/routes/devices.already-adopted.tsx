@@ -1,7 +1,7 @@
+import GridBackground from "@components/GridBackground";
 import { LinkButton } from "@/components/Button";
 import SimpleNavbar from "@/components/SimpleNavbar";
 import Container from "@/components/Container";
-import GridBackground from "@components/GridBackground";
 
 export default function DevicesAlreadyAdopted() {
   return (

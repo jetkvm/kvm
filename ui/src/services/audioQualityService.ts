@@ -1,4 +1,4 @@
-import api from '@/api';
+import { JsonRpcResponse } from '@/hooks/useJsonRpc';
 
 interface AudioConfig {
   Quality: number;
@@ -15,6 +15,8 @@ interface AudioQualityResponse {
   presets: QualityPresets;
 }
 
+type RpcSendFunction = (method: string, params: Record<string, unknown>, callback: (resp: JsonRpcResponse) => void) => void;
+
 class AudioQualityService {
   private audioPresets: QualityPresets | null = null;
   private microphonePresets: QualityPresets | null = null;
@@ -24,24 +26,44 @@ class AudioQualityService {
     2: 'High',
     3: 'Ultra'
   };
-  private reconnectionCallback: (() => Promise<void>) | null = null;
+  private rpcSend: RpcSendFunction | null = null;
 
   /**
-   * Fetch audio quality presets from the backend
+   * Set RPC send function for cloud compatibility
+   */
+  setRpcSend(rpcSend: RpcSendFunction): void {
+    this.rpcSend = rpcSend;
+  }
+
+  /**
+   * Fetch audio quality presets using RPC (cloud-compatible)
    */
   async fetchAudioQualityPresets(): Promise<AudioQualityResponse | null> {
+    if (!this.rpcSend) {
+      console.error('RPC not available for audio quality presets');
+      return null;
+    }
+
     try {
-      const response = await api.GET('/audio/quality');
-      if (response.ok) {
-        const data = await response.json();
-        this.audioPresets = data.presets;
-        this.updateQualityLabels(data.presets);
-        return data;
-      }
+      return await new Promise<AudioQualityResponse | null>((resolve) => {
+        this.rpcSend!("audioQualityPresets", {}, (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            console.error('RPC audio quality presets failed:', resp.error);
+            resolve(null);
+          } else if ("result" in resp) {
+            const data = resp.result as AudioQualityResponse;
+            this.audioPresets = data.presets;
+            this.updateQualityLabels(data.presets);
+            resolve(data);
+          } else {
+            resolve(null);
+          }
+        });
+      });
     } catch (error) {
       console.error('Failed to fetch audio quality presets:', error);
+      return null;
     }
-    return null;
   }
 
   /**
@@ -80,34 +102,25 @@ class AudioQualityService {
   }
 
   /**
-   * Set reconnection callback for WebRTC reset
-   */
-  setReconnectionCallback(callback: () => Promise<void>): void {
-    this.reconnectionCallback = callback;
-  }
-
-  /**
-   * Trigger audio track replacement using backend's track replacement mechanism
-   */
-  private async replaceAudioTrack(): Promise<void> {
-    if (this.reconnectionCallback) {
-      await this.reconnectionCallback();
-    }
-  }
-
-  /**
-   * Set audio quality with track replacement
+   * Set audio quality using RPC (cloud-compatible)
    */
   async setAudioQuality(quality: number): Promise<boolean> {
+    if (!this.rpcSend) {
+      console.error('RPC not available for audio quality change');
+      return false;
+    }
+
     try {
-      const response = await api.POST('/audio/quality', { quality });
-      
-      if (!response.ok) {
-        return false;
-      }
-      
-      await this.replaceAudioTrack();
-      return true;
+      return await new Promise<boolean>((resolve) => {
+        this.rpcSend!("audioQuality", { quality }, (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            console.error('RPC audio quality change failed:', resp.error);
+            resolve(false);
+          } else {
+            resolve(true);
+          }
+        });
+      });
     } catch (error) {
       console.error('Failed to set audio quality:', error);
       return false;

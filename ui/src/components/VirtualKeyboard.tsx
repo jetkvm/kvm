@@ -4,12 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Keyboard from "react-simple-keyboard";
 import { LuKeyboard } from "react-icons/lu";
 
-import Card from "@components/Card";
-// eslint-disable-next-line import/order
-import { Button, LinkButton } from "@components/Button";
-
 import "react-simple-keyboard/build/css/index.css";
 
+import Card from "@components/Card";
+import { Button, LinkButton } from "@components/Button";
 import DetachIconRaw from "@/assets/detach-icon.svg";
 import { cx } from "@/cva.config";
 import { useHidStore, useUiStore } from "@/hooks/stores";

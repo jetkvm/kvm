@@ -14,6 +14,7 @@ import { DEVICE_API } from "@/ui.config";
 
 import api from "../api";
 
+
 export interface DeviceStatus {
   isSetup: boolean;
 }

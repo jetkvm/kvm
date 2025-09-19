@@ -5,15 +5,16 @@ import { useState } from "react";
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
 import { Button } from "@components/Button";
-import LogoBlueIcon from "@/assets/logo-blue.png";
-import LogoWhiteIcon from "@/assets/logo-white.svg";
 import { DEVICE_API } from "@/ui.config";
+import LogoWhiteIcon from "@/assets/logo-white.svg";
+import LogoBlueIcon from "@/assets/logo-blue.png";
 
 import { GridCard } from "../components/Card";
 import { cx } from "../cva.config";
 import api from "../api";
 
 import { DeviceStatus } from "./welcome-local";
+
 
 const loader: LoaderFunction = async () => {
   const res = await api

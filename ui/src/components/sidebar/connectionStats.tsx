@@ -1,11 +1,13 @@
 import { useInterval } from "usehooks-ts";
 
+
 import SidebarHeader from "@/components/SidebarHeader";
 import { useRTCStore, useUiStore } from "@/hooks/stores";
 import { someIterable } from "@/utils";
 
-import { createChartArray, Metric } from "../Metric";
 import { SettingsSectionHeader } from "../SettingsSectionHeader";
+import { createChartArray, Metric } from "../Metric";
+
 
 export default function ConnectionStatsSidebar() {
   const { sidebarView, setSidebarView } = useUiStore();
