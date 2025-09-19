@@ -13,10 +13,7 @@ func initMdns() error {
 			networkState.GetHostname(),
 			networkState.GetFQDN(),
 		},
-		ListenOptions: &mdns.MDNSListenOptions{
-			IPv4: true,
-			IPv6: true,
-		},
+		ListenOptions: config.NetworkConfig.GetMDNSMode(),
 	})
 	if err != nil {
 		return err

@@ -9,17 +9,32 @@ import (
 	"github.com/beevik/ntp"
 )
 
-var defaultNTPServers = []string{
+var defaultNTPServerIPs = []string{
+	// These servers are known by static IP and as such don't need DNS lookups
+	// These are from Google and Cloudflare since if they're down, the internet
+	// is broken anyway
+	"162.159.200.1",      // time.cloudflare.com IPv4
+	"162.159.200.123",    // time.cloudflare.com IPv4
+	"2606:4700:f1::1",    // time.cloudflare.com IPv6
+	"2606:4700:f1::123",  // time.cloudflare.com IPv6
+	"216.239.35.0",       // time.google.com IPv4
+	"216.239.35.4",       // time.google.com IPv4
+	"216.239.35.8",       // time.google.com IPv4
+	"216.239.35.12",      // time.google.com IPv4
+	"2001:4860:4806::",   // time.google.com IPv6
+	"2001:4860:4806:4::", // time.google.com IPv6
+	"2001:4860:4806:8::", // time.google.com IPv6
+	"2001:4860:4806:c::", // time.google.com IPv6
+}
+
+var defaultNTPServerHostnames = []string{
+	// should use something from https://github.com/jauderho/public-ntp-servers
 	"time.apple.com",
 	"time.aws.com",
 	"time.windows.com",
 	"time.google.com",
-	"162.159.200.123",   // time.cloudflare.com IPv4
-	"2606:4700:f1::123", // time.cloudflare.com IPv6
-	"0.pool.ntp.org",
-	"1.pool.ntp.org",
-	"2.pool.ntp.org",
-	"3.pool.ntp.org",
+	"time.cloudflare.com",
+	"pool.ntp.org",
 }
 
 func (t *TimeSync) queryNetworkTime(ntpServers []string) (now *time.Time, offset *time.Duration) {

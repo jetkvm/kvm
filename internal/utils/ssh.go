@@ -20,6 +20,8 @@ var ValidSSHKeyTypes = []string{
 	ssh.KeyAlgoECDSA256,
 	ssh.KeyAlgoECDSA384,
 	ssh.KeyAlgoECDSA521,
+	ssh.KeyAlgoSKED25519,
+	ssh.KeyAlgoSKECDSA256,
 }
 
 // ValidateSSHKey validates authorized_keys file content

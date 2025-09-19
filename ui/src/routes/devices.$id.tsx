@@ -19,14 +19,12 @@ import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import { cx } from "@/cva.config";
-import notifications from "@/notifications";
 import {
   KeyboardLedState,
   KeysDownState,
   NetworkState,
   OtaState,
   USBStates,
-  useDeviceStore,
   useHidStore,
   useNetworkStateStore,
   User,
@@ -44,7 +42,7 @@ const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectio
 const Terminal = lazy(() => import('@components/Terminal'));
 const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
 import Modal from "@/components/Modal";
-import { JsonRpcRequest, JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
 import {
   ConnectionFailedOverlay,
   LoadingConnectionOverlay,
@@ -53,8 +51,8 @@ import {
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { FeatureFlagProvider } from "@/providers/FeatureFlagProvider";
 import { DeviceStatus } from "@routes/welcome-local";
-import { SystemVersionInfo } from "@routes/devices.$id.settings.general.update";
 import audioQualityService from "@/services/audioQualityService";
+import { useVersion } from "@/hooks/useVersion";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -139,6 +137,8 @@ export default function KvmIdRoute() {
     rpcDataChannel,
     setTransceiver,
     setRpcHidChannel,
+    setRpcHidUnreliableNonOrderedChannel,
+    setRpcHidUnreliableChannel,
   } = useRTCStore();
 
   const location = useLocation();
@@ -513,6 +513,24 @@ export default function KvmIdRoute() {
       setRpcHidChannel(rpcHidChannel);
     };
 
+    const rpcHidUnreliableChannel = pc.createDataChannel("hidrpc-unreliable-ordered", {
+      ordered: true,
+      maxRetransmits: 0,
+    });
+    rpcHidUnreliableChannel.binaryType = "arraybuffer";
+    rpcHidUnreliableChannel.onopen = () => {
+      setRpcHidUnreliableChannel(rpcHidUnreliableChannel);
+    };
+
+    const rpcHidUnreliableNonOrderedChannel = pc.createDataChannel("hidrpc-unreliable-nonordered", {
+      ordered: false,
+      maxRetransmits: 0,
+    });
+    rpcHidUnreliableNonOrderedChannel.binaryType = "arraybuffer";
+    rpcHidUnreliableNonOrderedChannel.onopen = () => {
+      setRpcHidUnreliableNonOrderedChannel(rpcHidUnreliableNonOrderedChannel);
+    };
+
     setPeerConnection(pc);
   }, [
     cleanupAndStopReconnecting,
@@ -524,6 +542,8 @@ export default function KvmIdRoute() {
     setPeerConnectionState,
     setRpcDataChannel,
     setRpcHidChannel,
+    setRpcHidUnreliableNonOrderedChannel,
+    setRpcHidUnreliableChannel,
     setTransceiver,
   ]);
 
@@ -613,6 +633,7 @@ export default function KvmIdRoute() {
     keyboardLedState,  setKeyboardLedState,
     keysDownState, setKeysDownState, setUsbState,
   } = useHidStore();
+  const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
@@ -741,9 +762,10 @@ export default function KvmIdRoute() {
     send("getKeyDownState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         // -32601 means the method is not supported
-        if (resp.error.code === -32601) {
+        if (resp.error.code === RpcMethodNotFound) {
           // if we don't support key down state, we know key press is also not available
           console.warn("Failed to get key down state, switching to old-school", resp.error);
+          setHidRpcDisabled(true);
         } else {
           console.error("Failed to get key down state", resp.error);
         }
@@ -754,7 +776,7 @@ export default function KvmIdRoute() {
       }
       setNeedKeyDownState(false);
     });
-  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState]);
+  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState, setHidRpcDisabled]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {
@@ -783,26 +805,13 @@ export default function KvmIdRoute() {
     if (location.pathname !== "/other-session") navigateTo("/");
   }, [navigateTo, location.pathname]);
 
-  const { appVersion, setAppVersion, setSystemVersion}  = useDeviceStore();
+  const { appVersion, getLocalVersion}  = useVersion();
 
   useEffect(() => {
     if (appVersion) return;
 
-    send("getUpdateStatus", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(`Failed to get device version: ${resp.error}`);
-        return
-      }
-
-      const result = resp.result as SystemVersionInfo;
-      if (result.error) {
-        notifications.error(`Failed to get device version: ${result.error}`);
-      }
-
-      setAppVersion(result.local.appVersion);
-      setSystemVersion(result.local.systemVersion);
-    });
-  }, [appVersion, send, setAppVersion, setSystemVersion]);
+    getLocalVersion();
+  }, [appVersion, getLocalVersion]);
 
   const ConnectionStatusElement = useMemo(() => {
     const hasConnectionFailed =
