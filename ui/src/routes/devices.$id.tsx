@@ -19,14 +19,12 @@ import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import { cx } from "@/cva.config";
-import notifications from "@/notifications";
 import {
   KeyboardLedState,
   KeysDownState,
   NetworkState,
   OtaState,
   USBStates,
-  useDeviceStore,
   useHidStore,
   useNetworkStateStore,
   User,
@@ -42,7 +40,7 @@ const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectio
 const Terminal = lazy(() => import('@components/Terminal'));
 const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
 import Modal from "@/components/Modal";
-import { JsonRpcRequest, JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
 import {
   ConnectionFailedOverlay,
   LoadingConnectionOverlay,
@@ -51,7 +49,7 @@ import {
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { FeatureFlagProvider } from "@/providers/FeatureFlagProvider";
 import { DeviceStatus } from "@routes/welcome-local";
-import { SystemVersionInfo } from "@routes/devices.$id.settings.general.update";
+import { useVersion } from "@/hooks/useVersion";
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -715,7 +713,7 @@ export default function KvmIdRoute() {
     send("getKeyDownState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         // -32601 means the method is not supported
-        if (resp.error.code === -32601) {
+        if (resp.error.code === RpcMethodNotFound) {
           // if we don't support key down state, we know key press is also not available
           console.warn("Failed to get key down state, switching to old-school", resp.error);
           setHidRpcDisabled(true);
@@ -758,26 +756,13 @@ export default function KvmIdRoute() {
     if (location.pathname !== "/other-session") navigateTo("/");
   }, [navigateTo, location.pathname]);
 
-  const { appVersion, setAppVersion, setSystemVersion}  = useDeviceStore();
+  const { appVersion, getLocalVersion}  = useVersion();
 
   useEffect(() => {
     if (appVersion) return;
 
-    send("getUpdateStatus", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(`Failed to get device version: ${resp.error}`);
-        return
-      }
-
-      const result = resp.result as SystemVersionInfo;
-      if (result.error) {
-        notifications.error(`Failed to get device version: ${result.error}`);
-      }
-
-      setAppVersion(result.local.appVersion);
-      setSystemVersion(result.local.systemVersion);
-    });
-  }, [appVersion, send, setAppVersion, setSystemVersion]);
+    getLocalVersion();
+  }, [appVersion, getLocalVersion]);
 
   const ConnectionStatusElement = useMemo(() => {
     const hasConnectionFailed =

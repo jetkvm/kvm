@@ -282,6 +282,17 @@ func rpcGetUpdateStatus() (*UpdateStatus, error) {
 	return updateStatus, nil
 }
 
+func rpcGetLocalVersion() (*LocalMetadata, error) {
+	systemVersion, appVersion, err := GetLocalVersion()
+	if err != nil {
+		return nil, fmt.Errorf("error getting local version: %w", err)
+	}
+	return &LocalMetadata{
+		AppVersion:    appVersion.String(),
+		SystemVersion: systemVersion.String(),
+	}, nil
+}
+
 func rpcTryUpdate() error {
 	includePreRelease := config.IncludePreRelease
 	go func() {
@@ -1191,6 +1202,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setEDID":                {Func: rpcSetEDID, Params: []string{"edid"}},
 	"getDevChannelState":     {Func: rpcGetDevChannelState},
 	"setDevChannelState":     {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
+	"getLocalVersion":        {Func: rpcGetLocalVersion},
 	"getUpdateStatus":        {Func: rpcGetUpdateStatus},
 	"tryUpdate":              {Func: rpcTryUpdate},
 	"getDevModeState":        {Func: rpcGetDevModeState},
