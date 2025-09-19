@@ -13,7 +13,7 @@
 
 
 
-JetKVM is a high-performance, open-source KVM over IP (Keyboard, Video, Mouse, **Audio**) solution designed for efficient remote management of computers, servers, and workstations. Whether you're dealing with boot failures, installing a new operating system, adjusting BIOS settings, or simply taking control of a machine from afar, JetKVM provides the tools to get it done effectively.
+JetKVM is a high-performance, open-source KVM over IP (Keyboard, Video, Mouse, Audio) solution designed for efficient remote management of computers, servers, and workstations. Whether you're dealing with boot failures, installing a new operating system, adjusting BIOS settings, or simply taking control of a machine from afar, JetKVM provides the tools to get it done effectively.
 
 
 
@@ -22,7 +22,7 @@ JetKVM is a high-performance, open-source KVM over IP (Keyboard, Video, Mouse, *
 ## Features
 
 - **Ultra-low Latency** - 1080p@60FPS video with 30-60ms latency using H.264 encoding. Smooth mouse, keyboard, and audio for responsive remote control.
-- **First-Class Audio Support** - JetKVM now supports bidirectional, low-latency audio streaming using a dual-subprocess architecture with ALSA and Opus integration via CGO. Features both audio output (PC→Browser) and audio input (Browser→PC) with dedicated subprocesses for optimal performance and isolation.
+- **First-Class Audio Support** - JetKVM supports bidirectional, low-latency audio streaming using a dual-subprocess architecture with ALSA and Opus integration via CGO. Features both audio output (PC→Browser) and audio input (Browser→PC) with dedicated subprocesses for optimal performance and isolation.
 - **Free & Optional Remote Access** - Remote management via JetKVM Cloud using WebRTC.
 - **Open-source software** - Written in Golang (with CGO for audio) on Linux. Easily customizable through SSH access to the JetKVM device.
 
@@ -38,11 +38,9 @@ The best place to search for answers is our [Documentation](https://jetkvm.com/d
 
 If you've found an issue and want to report it, please check our [Issues](https://github.com/jetkvm/kvm/issues) page. Make sure the description contains information about the firmware version you're using, your platform, and a clear explanation of the steps to reproduce the issue.
 
-
-
 # Development
 
-JetKVM is written in Go & TypeScript, with some C for low-level integration. **Audio support uses a sophisticated dual-subprocess architecture with CGO, ALSA, and Opus integration for bidirectional streaming with complete process isolation.**
+JetKVM is written in Go & TypeScript, with some C for low-level integration
 
 The project contains two main parts: the backend software (Go, CGO) that runs on the KVM device, and the frontend software (React/TypeScript) that is served by the KVM device and the cloud.
 
