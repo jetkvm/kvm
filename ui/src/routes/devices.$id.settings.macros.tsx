@@ -23,12 +23,31 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import useKeyboardLayout from "@/hooks/useKeyboardLayout";
 
-const normalizeSortOrders = (macros: KeySequence[]): KeySequence[] => {
-  return macros.map((macro, index) => ({
-    ...macro,
-    sortOrder: index + 1,
-  }));
+const normalizeSortOrders = (macros: KeySequence[]): KeySequence[] => macros.map((m, i) => ({ ...m, sortOrder: i + 1 }));
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+const buildMacroDownloadFilename = (macro: KeySequence) => {
+  const safeName = (macro.name || macro.id).replace(/[^a-z0-9-_]+/gi, "-").toLowerCase();
+  const now = new Date();
+  const ts = `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`;
+  return `jetkvm-macro-${safeName}-${ts}.json`;
 };
+
+const sanitizeImportedStep = (raw: any) => ({
+  keys: Array.isArray(raw?.keys) ? raw.keys.filter((k: any) => typeof k === "string") : [],
+  modifiers: Array.isArray(raw?.modifiers) ? raw.modifiers.filter((m: any) => typeof m === "string") : [],
+  delay: typeof raw?.delay === "number" ? raw.delay : DEFAULT_DELAY,
+  text: typeof raw?.text === "string" ? raw.text : undefined,
+  wait: typeof raw?.wait === "boolean" ? raw.wait : false,
+});
+
+const sanitizeImportedMacro = (raw: any, sortOrder: number): KeySequence => ({
+  id: generateMacroId(),
+  name: (typeof raw?.name === "string" && raw.name.trim() ? raw.name : "Imported Macro").slice(0, 50),
+  steps: Array.isArray(raw?.steps) ? raw.steps.map(sanitizeImportedStep) : [],
+  sortOrder,
+});
 
 export default function SettingsMacrosRoute() {
   const { macros, loading, initialized, loadMacros, saveMacros } = useMacrosStore();
@@ -119,6 +138,17 @@ export default function SettingsMacrosRoute() {
       setActionLoadingId(null);
     }
   }, [macroToDelete, macros, saveMacros]);
+
+  const handleDownloadMacro = useCallback((macro: KeySequence) => {
+    const data = JSON.stringify(macro, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = buildMacroDownloadFilename(macro);
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
 
   const MacroList = useMemo(
     () => (
@@ -244,27 +274,7 @@ export default function SettingsMacrosRoute() {
                   disabled={actionLoadingId === macro.id}
                   aria-label={`Duplicate macro ${macro.name}`}
                 />
-                <Button
-                  size="XS"
-                  theme="light"
-                  LeadingIcon={LuDownload}
-                  onClick={() => {
-                    const data = JSON.stringify(macro, null, 2);
-                    const blob = new Blob([data], { type: "application/json" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    const safeName = macro.name.replace(/[^a-z0-9-_]+/gi, "-").toLowerCase();
-                    const now = new Date();
-                    const pad = (n: number) => String(n).padStart(2, "0");
-                    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-                    a.href = url;
-                    a.download = `jetkvm-macro-${safeName || macro.id}-${ts}.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                  aria-label={`Download macro ${macro.name}`}
-                  disabled={actionLoadingId === macro.id}
-                />
+                <Button size="XS" theme="light" LeadingIcon={LuDownload} onClick={() => handleDownloadMacro(macro)} aria-label={`Download macro ${macro.name}`} disabled={actionLoadingId === macro.id} />
                 <Button
                   size="XS"
                   theme="light"
@@ -294,19 +304,7 @@ export default function SettingsMacrosRoute() {
         />
       </div>
     ),
-    [
-      macros,
-      showDeleteConfirm,
-      macroToDelete?.name,
-      macroToDelete?.id,
-      actionLoadingId,
-      handleDeleteMacro,
-      handleMoveMacro,
-      selectedKeyboard.modifierDisplayMap,
-      selectedKeyboard.keyDisplayMap,
-      handleDuplicateMacro,
-      navigate
-    ],
+    [macros, showDeleteConfirm, macroToDelete?.name, macroToDelete?.id, actionLoadingId, handleDeleteMacro, handleMoveMacro, selectedKeyboard.modifierDisplayMap, selectedKeyboard.keyDisplayMap, handleDuplicateMacro, navigate, handleDownloadMacro],
   );
 
   return (
@@ -326,57 +324,39 @@ export default function SettingsMacrosRoute() {
             aria-label="Add new macro"
           />
           <div className="ml-2 flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json"
-              multiple
-              className="hidden"
-              onChange={async e => {
-                const files = e.target.files;
-                if (!files || files.length === 0) return;
-                let working = [...macros];
-                const imported: string[] = [];
-                let errors = 0;
-                let skipped = 0;
-                for (const f of Array.from(files)) {
-                  if (working.length >= MAX_TOTAL_MACROS) { skipped++; continue; }
-                  try {
-                    const raw = await f.text();
-                    const parsed = JSON.parse(raw);
-                    const candidates = Array.isArray(parsed) ? parsed : [parsed];
-                    for (const c of candidates) {
-                      if (working.length >= MAX_TOTAL_MACROS) { skipped += (candidates.length); break; }
-                      if (!c || typeof c !== 'object') { errors++; continue; }
-                      const sanitized: KeySequence = {
-                        id: generateMacroId(),
-                        name: (c.name || 'Imported Macro').slice(0,50),
-                        steps: Array.isArray(c.steps) ? c.steps.map((s:any) => ({
-                          keys: Array.isArray(s.keys) ? s.keys : [],
-                          modifiers: Array.isArray(s.modifiers) ? s.modifiers : [],
-                          delay: typeof s.delay === 'number' ? s.delay : DEFAULT_DELAY,
-                          text: typeof s.text === 'string' ? s.text : undefined,
-                          wait: typeof s.wait === 'boolean' ? s.wait : false,
-                        })) : [],
-                        sortOrder: working.length + 1,
-                      };
-                      working.push(sanitized);
-                      imported.push(sanitized.name);
-                    }
-                  } catch { errors++; }
-                }
+            <input ref={fileInputRef} type="file" accept="application/json" multiple className="hidden" onChange={async e => {
+              const fl = e.target.files;
+              if (!fl || fl.length === 0) return;
+              let working = [...macros];
+              const imported: string[] = [];
+              let errors = 0;
+              let skipped = 0;
+              for (const f of Array.from(fl)) {
+                if (working.length >= MAX_TOTAL_MACROS) { skipped++; continue; }
                 try {
-                  if (imported.length) {
-                    await saveMacros(normalizeSortOrders(working));
-                    notifications.success(`Imported ${imported.length} macro${imported.length===1?'':'s'}`);
+                  const raw = await f.text();
+                  const parsed = JSON.parse(raw);
+                  const candidates = Array.isArray(parsed) ? parsed : [parsed];
+                  for (const c of candidates) {
+                    if (working.length >= MAX_TOTAL_MACROS) { skipped += (candidates.length - candidates.indexOf(c)); break; }
+                    if (!c || typeof c !== "object") { errors++; continue; }
+                    const sanitized = sanitizeImportedMacro(c, working.length + 1);
+                    working.push(sanitized);
+                    imported.push(sanitized.name);
                   }
-                  if (errors) notifications.error(`${errors} file${errors===1?'':'s'} failed`);
-                  if (skipped) notifications.error(`${skipped} macro${skipped===1?'':'s'} skipped (limit ${MAX_TOTAL_MACROS})`);
-                } finally {
-                  if (fileInputRef.current) fileInputRef.current.value = '';
+                } catch { errors++; }
+              }
+              try {
+                if (imported.length) {
+                  await saveMacros(normalizeSortOrders(working));
+                  notifications.success(`Imported ${imported.length} macro${imported.length === 1 ? '' : 's'}`);
                 }
-              }}
-            />
+                if (errors) notifications.error(`${errors} file${errors === 1 ? '' : 's'} failed`);
+                if (skipped) notifications.error(`${skipped} macro${skipped === 1 ? '' : 's'} skipped (limit ${MAX_TOTAL_MACROS})`);
+              } finally {
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }
+            }} />
             <Button
               size="SM"
               theme="light"
