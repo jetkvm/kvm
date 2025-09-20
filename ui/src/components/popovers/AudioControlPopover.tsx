@@ -39,9 +39,6 @@ interface AudioConfig {
   FrameSize: string;
 }
 
-// Quality labels will be managed by the audio quality service
-const getQualityLabels = () => audioQualityService.getQualityLabels();
-
 interface AudioControlPopoverProps {
   microphone: MicrophoneHookReturn;
 }
@@ -93,9 +90,6 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   // Use WebSocket data exclusively - no polling fallback
   const isMuted = audioMuted ?? false;
   const isConnected = wsConnected;
-  
-  // Note: We now use hook state instead of WebSocket state for microphone Enable/Disable
-  // const isMicrophoneActiveFromWS = microphoneState?.running ?? false;
   
 
   
@@ -463,7 +457,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
           </div>
           
           <div className="grid grid-cols-2 gap-2">
-            {Object.entries(getQualityLabels()).map(([quality, label]) => (
+            {Object.entries(audioQualityService.getQualityLabels()).map(([quality, label]) => (
               <button
                 key={quality}
                 onClick={() => handleQualityChange(parseInt(quality))}
