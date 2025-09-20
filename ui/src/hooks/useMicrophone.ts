@@ -205,24 +205,10 @@ export function useMicrophone() {
       // Store the stream in both ref and store
       microphoneStreamRef.current = stream;
       setMicrophoneStream(stream);
-      
-      // Verify the stream was stored correctly
-      devLog("Stream storage verification:", {
-        refSet: !!microphoneStreamRef.current,
-        refId: microphoneStreamRef.current?.id,
-        storeWillBeSet: true // Store update is async
-      });
 
       // Add audio track to peer connection if available
-      devLog("Peer connection state:", peerConnection ? {
-        connectionState: peerConnection.connectionState,
-        iceConnectionState: peerConnection.iceConnectionState,
-        signalingState: peerConnection.signalingState
-      } : "No peer connection");
-      
       if (peerConnection && stream.getAudioTracks().length > 0) {
         const audioTrack = stream.getAudioTracks()[0];
-        devLog("Starting microphone with audio track:", audioTrack.id, "kind:", audioTrack.kind);
         
         // Find the audio transceiver (should already exist with sendrecv direction)
         const transceivers = peerConnection.getTransceivers();
@@ -246,64 +232,28 @@ export function useMicrophone() {
           return false;
         });
 
-        devLog("Found audio transceiver:", audioTransceiver ? {
-          direction: audioTransceiver.direction,
-          mid: audioTransceiver.mid,
-          senderTrack: audioTransceiver.sender.track?.kind,
-          receiverTrack: audioTransceiver.receiver.track?.kind
-        } : null);
-
         let sender: RTCRtpSender;
         if (audioTransceiver && audioTransceiver.sender) {
           // Use the existing audio transceiver's sender
           await audioTransceiver.sender.replaceTrack(audioTrack);
           sender = audioTransceiver.sender;
-          devLog("Replaced audio track on existing transceiver");
-          
-          // Verify the track was set correctly
-          devLog("Transceiver after track replacement:", {
-            direction: audioTransceiver.direction,
-            senderTrack: audioTransceiver.sender.track?.id,
-            senderTrackKind: audioTransceiver.sender.track?.kind,
-            senderTrackEnabled: audioTransceiver.sender.track?.enabled,
-            senderTrackReadyState: audioTransceiver.sender.track?.readyState
-          });
         } else {
           // Fallback: add new track if no transceiver found
           sender = peerConnection.addTrack(audioTrack, stream);
-          devLog("Added new audio track to peer connection");
-          
-          // Find the transceiver that was created for this track
-          const newTransceiver = peerConnection.getTransceivers().find(t => t.sender === sender);
-          devLog("New transceiver created:", newTransceiver ? {
-            direction: newTransceiver.direction,
-            senderTrack: newTransceiver.sender.track?.id,
-            senderTrackKind: newTransceiver.sender.track?.kind
-          } : "Not found");
         }
         
         setMicrophoneSender(sender);
-        devLog("Microphone sender set:", {
-          senderId: sender,
-          track: sender.track?.id,
-          trackKind: sender.track?.kind,
-          trackEnabled: sender.track?.enabled,
-          trackReadyState: sender.track?.readyState
-        });
         
         // Check sender stats to verify audio is being transmitted
         devOnly(() => {
           setTimeout(async () => {
             try {
               const stats = await sender.getStats();
-              devLog("Sender stats after 2 seconds:");
-              stats.forEach((report, id) => {
+              stats.forEach((report) => {
                 if (report.type === 'outbound-rtp' && report.kind === 'audio') {
-                  devLog("Outbound audio RTP stats:", {
-                    id,
+                  devLog("Audio RTP stats:", {
                     packetsSent: report.packetsSent,
-                    bytesSent: report.bytesSent,
-                    timestamp: report.timestamp
+                    bytesSent: report.bytesSent
                   });
                 }
               });
@@ -357,7 +307,6 @@ export function useMicrophone() {
         
         try {
           await rpcMicrophoneStart();
-          devLog(`Backend RPC microphone start successful (attempt ${attempt})`);
           backendSuccess = true;
           break; // Exit the retry loop on success
         } catch (rpcError) {
@@ -394,27 +343,6 @@ export function useMicrophone() {
       
       // Save microphone enabled state for auto-restore on page reload
       setMicrophoneWasEnabled(true);
-      
-      devLog("Microphone state set to active. Verifying state:", {
-        streamInRef: !!microphoneStreamRef.current,
-        streamInStore: !!microphoneStream,
-        isActive: true,
-        isMuted: false
-      });
-
-      // Don't sync immediately after starting - it causes race conditions
-      // The sync will happen naturally through other triggers
-      devOnly(() => {
-        setTimeout(() => {
-          // Just verify state after a delay for debugging
-          devLog("State check after delay:", {
-            streamInRef: !!microphoneStreamRef.current,
-            streamInStore: !!microphoneStream,
-            isActive: isMicrophoneActive,
-            isMuted: isMicrophoneMuted
-          });
-        }, AUDIO_CONFIG.AUDIO_TEST_TIMEOUT);
-      });
 
       // Clear the starting flag
       isStartingRef.current = false;
@@ -451,7 +379,7 @@ export function useMicrophone() {
       setIsStarting(false);
       return { success: false, error: micError };
     }
-  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, setMicrophoneWasEnabled, stopMicrophoneStream, isMicrophoneActive, isMicrophoneMuted, microphoneStream, isStarting, isStopping, isToggling, rpcMicrophoneStart, rpcDataChannel?.readyState, send]);
+  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, setMicrophoneWasEnabled, stopMicrophoneStream, isStarting, isStopping, isToggling, rpcMicrophoneStart, rpcDataChannel?.readyState, send]);
 
 
 
@@ -475,8 +403,6 @@ export function useMicrophone() {
             send("microphoneStop", {}, (resp: JsonRpcResponse) => {
               if ("error" in resp) {
                 devWarn("RPC microphone stop failed:", resp.error);
-              } else {
-                devLog("Backend notified about microphone stop via RPC");
               }
               resolve(); // Continue regardless of result
             });
@@ -526,21 +452,10 @@ export function useMicrophone() {
       // Use the ref instead of store value to avoid race conditions
       const currentStream = microphoneStreamRef.current || microphoneStream;
       
-      devLog("Toggle microphone mute - current state:", {
-        hasRefStream: !!microphoneStreamRef.current,
-        hasStoreStream: !!microphoneStream,
-        isActive: isMicrophoneActive,
-        isMuted: isMicrophoneMuted,
-        streamId: currentStream?.id,
-        audioTracks: currentStream?.getAudioTracks().length || 0
-      });
-      
       if (!currentStream || !isMicrophoneActive) {
         const errorDetails = {
           hasStream: !!currentStream,
           isActive: isMicrophoneActive,
-          storeStream: !!microphoneStream,
-          refStream: !!microphoneStreamRef.current,
           streamId: currentStream?.id,
           audioTracks: currentStream?.getAudioTracks().length || 0
         };
@@ -581,7 +496,6 @@ export function useMicrophone() {
       // Mute/unmute the audio track
       audioTracks.forEach((track: MediaStreamTrack) => {
         track.enabled = !newMutedState;
-        devLog(`Audio track ${track.id} enabled: ${track.enabled}`);
       });
 
       setMicrophoneMuted(newMutedState);
@@ -593,8 +507,6 @@ export function useMicrophone() {
             send("microphoneMute", { muted: newMutedState }, (resp: JsonRpcResponse) => {
               if ("error" in resp) {
                 devWarn("RPC microphone mute failed:", resp.error);
-              } else {
-                devLog("Backend notified about microphone mute via RPC");
               }
               resolve(); // Continue regardless of result
             });
@@ -678,10 +590,8 @@ export function useMicrophone() {
       // Clean up stream directly without depending on the callback
       const stream = microphoneStreamRef.current;
       if (stream) {
-        devLog("Cleanup: stopping microphone stream on unmount");
         stream.getAudioTracks().forEach((track: MediaStreamTrack) => {
           track.stop();
-          devLog(`Cleanup: stopped audio track ${track.id}`);
         });
         microphoneStreamRef.current = null;
       }
