@@ -1024,6 +1024,15 @@ func setKeyboardMacros(params KeyboardMacrosParams) (any, error) {
 					step.Delay = int(delay)
 				}
 
+				// Optional text field for advanced steps
+				if txt, ok := stepMap["text"].(string); ok {
+					step.Text = txt
+				}
+
+				if wv, ok := stepMap["wait"].(bool); ok {
+					step.Wait = wv
+				}
+
 				steps = append(steps, step)
 			}
 		}

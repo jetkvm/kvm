@@ -1,4 +1,4 @@
-import { useEffect, Fragment, useMemo, useState, useCallback } from "react";
+import { useEffect, Fragment, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router";
 import {
   LuPenLine,
@@ -9,6 +9,7 @@ import {
   LuArrowDown,
   LuTrash2,
   LuCommand,
+  LuDownload,
 } from "react-icons/lu";
 
 import { KeySequence, useMacrosStore, generateMacroId } from "@/hooks/stores";
@@ -36,6 +37,7 @@ export default function SettingsMacrosRoute() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [macroToDelete, setMacroToDelete] = useState<KeySequence | null>(null);
   const { selectedKeyboard }  = useKeyboardLayout();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isMaxMacrosReached = useMemo(
     () => macros.length >= MAX_TOTAL_MACROS,
@@ -48,74 +50,52 @@ export default function SettingsMacrosRoute() {
     }
   }, [initialized, loadMacros]);
 
-  const handleDuplicateMacro = useCallback(
-    async (macro: KeySequence) => {
-      if (!macro?.id || !macro?.name) {
-        notifications.error("Invalid macro data");
-        return;
-      }
+  const handleDuplicateMacro = useCallback(async (macro: KeySequence) => {
+    if (!macro?.id || !macro?.name) {
+      notifications.error("Invalid macro data");
+      return;
+    }
+    if (isMaxMacrosReached) {
+      notifications.error(`Maximum of ${MAX_TOTAL_MACROS} macros allowed`);
+      return;
+    }
+    setActionLoadingId(macro.id);
+    const newMacroCopy: KeySequence = {
+      ...JSON.parse(JSON.stringify(macro)),
+      id: generateMacroId(),
+      name: `${macro.name} ${COPY_SUFFIX}`,
+      sortOrder: macros.length + 1,
+    };
+    try {
+      await saveMacros(normalizeSortOrders([...macros, newMacroCopy]));
+      notifications.success(`Macro "${newMacroCopy.name}" duplicated successfully`);
+    } catch (e: any) {
+      notifications.error(`Failed to duplicate macro: ${e?.message || 'error'}`);
+    } finally {
+      setActionLoadingId(null);
+    }
+  }, [macros, saveMacros, isMaxMacrosReached]);
 
-      if (isMaxMacrosReached) {
-        notifications.error(`Maximum of ${MAX_TOTAL_MACROS} macros allowed`);
-        return;
-      }
-
-      setActionLoadingId(macro.id);
-
-      const newMacroCopy: KeySequence = {
-        ...JSON.parse(JSON.stringify(macro)),
-        id: generateMacroId(),
-        name: `${macro.name} ${COPY_SUFFIX}`,
-        sortOrder: macros.length + 1,
-      };
-
-      try {
-        await saveMacros(normalizeSortOrders([...macros, newMacroCopy]));
-        notifications.success(`Macro "${newMacroCopy.name}" duplicated successfully`);
-      } catch (error: unknown) {
-        if (error instanceof Error) {
-          notifications.error(`Failed to duplicate macro: ${error.message}`);
-        } else {
-          notifications.error("Failed to duplicate macro");
-        }
-      } finally {
-        setActionLoadingId(null);
-      }
-    },
-    [isMaxMacrosReached, macros, saveMacros, setActionLoadingId],
-  );
-
-  const handleMoveMacro = useCallback(
-    async (index: number, direction: "up" | "down", macroId: string) => {
-      if (!Array.isArray(macros) || macros.length === 0) {
-        notifications.error("No macros available");
-        return;
-      }
-
-      const newIndex = direction === "up" ? index - 1 : index + 1;
-      if (newIndex < 0 || newIndex >= macros.length) return;
-
-      setActionLoadingId(macroId);
-
-      try {
-        const newMacros = [...macros];
-        [newMacros[index], newMacros[newIndex]] = [newMacros[newIndex], newMacros[index]];
-        const updatedMacros = normalizeSortOrders(newMacros);
-
-        await saveMacros(updatedMacros);
-        notifications.success("Macro order updated successfully");
-      } catch (error: unknown) {
-        if (error instanceof Error) {
-          notifications.error(`Failed to reorder macros: ${error.message}`);
-        } else {
-          notifications.error("Failed to reorder macros");
-        }
-      } finally {
-        setActionLoadingId(null);
-      }
-    },
-    [macros, saveMacros, setActionLoadingId],
-  );
+  const handleMoveMacro = useCallback(async (index: number, direction: "up" | "down", macroId: string) => {
+    if (!Array.isArray(macros) || macros.length === 0) {
+      notifications.error("No macros available");
+      return;
+    }
+    const newIndex = direction === "up" ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= macros.length) return;
+    setActionLoadingId(macroId);
+    try {
+      const newMacros = [...macros];
+      [newMacros[index], newMacros[newIndex]] = [newMacros[newIndex], newMacros[index]];
+      const updatedMacros = normalizeSortOrders(newMacros);
+      await saveMacros(updatedMacros);
+      notifications.success("Macro order updated successfully");
+    } catch (e: any) {
+      notifications.error(`Failed to reorder macros: ${e?.message || 'error'}`);
+    } finally {
+      setActionLoadingId(null);
+    }
+  }, [macros, saveMacros]);
 
   const handleDeleteMacro = useCallback(async () => {
     if (!macroToDelete?.id) return;
@@ -178,9 +158,12 @@ export default function SettingsMacrosRoute() {
                         <span key={stepIndex} className="inline-flex items-center">
                           <StepIcon className="mr-1 h-3 w-3 shrink-0 text-slate-400 dark:text-slate-500" />
                           <span className="rounded-md border border-slate-200/50 bg-slate-50 px-2 py-0.5 dark:border-slate-700/50 dark:bg-slate-800">
-                            {(Array.isArray(step.modifiers) &&
-                              step.modifiers.length > 0) ||
-                            (Array.isArray(step.keys) && step.keys.length > 0) ? (
+                            {step.text && step.text.length > 0 ? (
+                              <span className="font-medium text-emerald-700 dark:text-emerald-300">Text: "{step.text}"</span>
+                            ) : step.wait ? (
+                              <span className="font-medium text-amber-600 dark:text-amber-300">Wait</span>
+                            ) : (Array.isArray(step.modifiers) && step.modifiers.length > 0) ||
+                              (Array.isArray(step.keys) && step.keys.length > 0) ? (
                               <>
                                 {Array.isArray(step.modifiers) &&
                                   step.modifiers.map((modifier, idx) => (
@@ -224,7 +207,7 @@ export default function SettingsMacrosRoute() {
                               </>
                             ) : (
                               <span className="font-medium text-slate-500 dark:text-slate-400">
-                                Delay only
+                                Pause only
                               </span>
                             )}
                             {step.delay !== DEFAULT_DELAY && (
@@ -260,6 +243,27 @@ export default function SettingsMacrosRoute() {
                   onClick={() => handleDuplicateMacro(macro)}
                   disabled={actionLoadingId === macro.id}
                   aria-label={`Duplicate macro ${macro.name}`}
+                />
+                <Button
+                  size="XS"
+                  theme="light"
+                  LeadingIcon={LuDownload}
+                  onClick={() => {
+                    const data = JSON.stringify(macro, null, 2);
+                    const blob = new Blob([data], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    const safeName = macro.name.replace(/[^a-z0-9-_]+/gi, "-").toLowerCase();
+                    const now = new Date();
+                    const pad = (n: number) => String(n).padStart(2, "0");
+                    const ts = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+                    a.href = url;
+                    a.download = `jetkvm-macro-${safeName || macro.id}-${ts}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  aria-label={`Download macro ${macro.name}`}
+                  disabled={actionLoadingId === macro.id}
                 />
                 <Button
                   size="XS"
@@ -312,18 +316,75 @@ export default function SettingsMacrosRoute() {
           title="Keyboard Macros"
           description={`Combine keystrokes into a single action for faster workflows.`}
         />
-        {macros.length > 0 && (
-          <div className="flex items-center pl-2">
+        <div className="flex items-center pl-2">
+          <Button
+            size="SM"
+            theme="primary"
+            text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
+            onClick={() => navigate("add")}
+            disabled={isMaxMacrosReached}
+            aria-label="Add new macro"
+          />
+          <div className="ml-2 flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json"
+              multiple
+              className="hidden"
+              onChange={async e => {
+                const files = e.target.files;
+                if (!files || files.length === 0) return;
+                let working = [...macros];
+                const imported: string[] = [];
+                let errors = 0;
+                let skipped = 0;
+                for (const f of Array.from(files)) {
+                  if (working.length >= MAX_TOTAL_MACROS) { skipped++; continue; }
+                  try {
+                    const raw = await f.text();
+                    const parsed = JSON.parse(raw);
+                    const candidates = Array.isArray(parsed) ? parsed : [parsed];
+                    for (const c of candidates) {
+                      if (working.length >= MAX_TOTAL_MACROS) { skipped += (candidates.length); break; }
+                      if (!c || typeof c !== 'object') { errors++; continue; }
+                      const sanitized: KeySequence = {
+                        id: generateMacroId(),
+                        name: (c.name || 'Imported Macro').slice(0,50),
+                        steps: Array.isArray(c.steps) ? c.steps.map((s:any) => ({
+                          keys: Array.isArray(s.keys) ? s.keys : [],
+                          modifiers: Array.isArray(s.modifiers) ? s.modifiers : [],
+                          delay: typeof s.delay === 'number' ? s.delay : DEFAULT_DELAY,
+                          text: typeof s.text === 'string' ? s.text : undefined,
+                          wait: typeof s.wait === 'boolean' ? s.wait : false,
+                        })) : [],
+                        sortOrder: working.length + 1,
+                      };
+                      working.push(sanitized);
+                      imported.push(sanitized.name);
+                    }
+                  } catch { errors++; }
+                }
+                try {
+                  if (imported.length) {
+                    await saveMacros(normalizeSortOrders(working));
+                    notifications.success(`Imported ${imported.length} macro${imported.length===1?'':'s'}`);
+                  }
+                  if (errors) notifications.error(`${errors} file${errors===1?'':'s'} failed`);
+                  if (skipped) notifications.error(`${skipped} macro${skipped===1?'':'s'} skipped (limit ${MAX_TOTAL_MACROS})`);
+                } finally {
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }
+              }}
+            />
             <Button
               size="SM"
-              theme="primary"
-              text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
-              onClick={() => navigate("add")}
-              disabled={isMaxMacrosReached}
-              aria-label="Add new macro"
+              theme="light"
+              text="Import Macro"
+              onClick={() => fileInputRef.current?.click()}
             />
           </div>
-        )}
+        </div>
       </div>
 
       <div className="space-y-4">

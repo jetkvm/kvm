@@ -66,7 +66,7 @@ export function MacroForm({
       newErrors.steps = { 0: { keys: "At least one step is required" } };
     } else {
       const hasKeyOrModifier = macro.steps.some(
-        step => (step.keys?.length || 0) > 0 || (step.modifiers?.length || 0) > 0,
+        step => (step.text && step.text.length > 0) || (step.keys?.length || 0) > 0 || (step.modifiers?.length || 0) > 0,
       );
 
       if (!hasKeyOrModifier) {
@@ -163,6 +163,40 @@ export function MacroForm({
     setMacro({ ...macro, steps: newSteps });
   };
 
+  const handleStepTypeChange = (stepIndex: number, type: "keys" | "text" | "wait") => {
+    const newSteps = [...(macro.steps || [])];
+    const prev = newSteps[stepIndex] || { keys: [], modifiers: [], delay: DEFAULT_DELAY };
+    if (type === "text") {
+      newSteps[stepIndex] = { keys: [], modifiers: [], delay: prev.delay, text: prev.text || "" } as any;
+    } else if (type === "wait") {
+      newSteps[stepIndex] = { keys: [], modifiers: [], delay: prev.delay, wait: true } as any;
+    } else {
+      // switch back to keys; drop text
+      const { text, wait, ...rest } = prev as any;
+      newSteps[stepIndex] = { ...rest } as any;
+    }
+    setMacro({ ...macro, steps: newSteps });
+  };
+
+  const handleTextChange = (stepIndex: number, text: string) => {
+    const newSteps = [...(macro.steps || [])];
+    // Ensure this step is of text type
+    newSteps[stepIndex] = { ...(newSteps[stepIndex] || { keys: [], modifiers: [], delay: DEFAULT_DELAY }), text } as any;
+    setMacro({ ...macro, steps: newSteps });
+  };
+
+  const insertStepAfter = (index: number) => {
+    if (isMaxStepsReached) {
+      showTemporaryError(
+        `You can only add a maximum of ${MAX_STEPS_PER_MACRO} steps per macro.`,
+      );
+      return;
+    }
+    const newSteps = [...(macro.steps || [])];
+    newSteps.splice(index + 1, 0, { keys: [], modifiers: [], delay: DEFAULT_DELAY });
+    setMacro(prev => ({ ...prev, steps: newSteps }));
+  };
+
   const handleStepMove = (stepIndex: number, direction: "up" | "down") => {
     const newSteps = [...(macro.steps || [])];
     const newIndex = direction === "up" ? stepIndex - 1 : stepIndex + 1;
@@ -213,31 +247,46 @@ export function MacroForm({
           <Fieldset>
             <div className="mt-2 space-y-4">
               {(macro.steps || []).map((step, stepIndex) => (
-                <MacroStepCard
-                  key={stepIndex}
-                  step={step}
-                  stepIndex={stepIndex}
-                  onDelete={
-                    macro.steps && macro.steps.length > 1
-                      ? () => {
-                          const newSteps = [...(macro.steps || [])];
-                          newSteps.splice(stepIndex, 1);
-                          setMacro(prev => ({ ...prev, steps: newSteps }));
-                        }
-                      : undefined
-                  }
-                  onMoveUp={() => handleStepMove(stepIndex, "up")}
-                  onMoveDown={() => handleStepMove(stepIndex, "down")}
-                  onKeySelect={option => handleKeySelect(stepIndex, option)}
-                  onKeyQueryChange={query => handleKeyQueryChange(stepIndex, query)}
-                  keyQuery={keyQueries[stepIndex] || ""}
-                  onModifierChange={modifiers =>
-                    handleModifierChange(stepIndex, modifiers)
-                  }
-                  onDelayChange={delay => handleDelayChange(stepIndex, delay)}
-                  isLastStep={stepIndex === (macro.steps?.length || 0) - 1}
-                  keyboard={selectedKeyboard}
-                />
+                <div key={stepIndex} className="space-y-3">
+                  <MacroStepCard
+                    step={step}
+                    stepIndex={stepIndex}
+                    onDelete={
+                      macro.steps && macro.steps.length > 1
+                        ? () => {
+                            const newSteps = [...(macro.steps || [])];
+                            newSteps.splice(stepIndex, 1);
+                            setMacro(prev => ({ ...prev, steps: newSteps }));
+                          }
+                        : undefined
+                    }
+                    onMoveUp={() => handleStepMove(stepIndex, "up")}
+                    onMoveDown={() => handleStepMove(stepIndex, "down")}
+                    onKeySelect={option => handleKeySelect(stepIndex, option)}
+                    onKeyQueryChange={query => handleKeyQueryChange(stepIndex, query)}
+                    keyQuery={keyQueries[stepIndex] || ""}
+                    onModifierChange={modifiers =>
+                      handleModifierChange(stepIndex, modifiers)
+                    }
+                    onDelayChange={delay => handleDelayChange(stepIndex, delay)}
+                    isLastStep={stepIndex === (macro.steps?.length || 0) - 1}
+                    keyboard={selectedKeyboard}
+                    onStepTypeChange={type => handleStepTypeChange(stepIndex, type)}
+                    onTextChange={text => handleTextChange(stepIndex, text)}
+                  />
+                  {stepIndex < (macro.steps?.length || 0) - 1 && (
+                    <div className="flex justify-center">
+                      <Button
+                        size="XS"
+                        theme="light"
+                        LeadingIcon={LuPlus}
+                        text="Insert step here"
+                        onClick={() => insertStepAfter(stepIndex)}
+                        disabled={isMaxStepsReached}
+                      />
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </Fieldset>

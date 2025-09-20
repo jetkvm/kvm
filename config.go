@@ -23,7 +23,7 @@ const (
 	MaxMacrosPerDevice = 25
 	MaxStepsPerMacro   = 10
 	MaxKeysPerStep     = 10
-	MinStepDelay       = 50
+	MinStepDelay       = 10
 	MaxStepDelay       = 2000
 )
 
@@ -31,6 +31,10 @@ type KeyboardMacroStep struct {
 	Keys      []string `json:"keys"`
 	Modifiers []string `json:"modifiers"`
 	Delay     int      `json:"delay"`
+	// Optional: when set, this step types the given text using the configured keyboard layout.
+	// The delay value is treated as the per-character delay.
+	Text      string   `json:"text,omitempty"`
+	Wait      bool     `json:"wait,omitempty"`
 }
 
 func (s *KeyboardMacroStep) Validate() error {

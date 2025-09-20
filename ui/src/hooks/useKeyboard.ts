@@ -16,6 +16,7 @@ import {
 import { useHidRpc } from "@/hooks/useHidRpc";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { hidKeyToModifierMask, keys, modifiers } from "@/keyboardMappings";
+import useKeyboardLayout from "@/hooks/useKeyboardLayout";
 
 const MACRO_RESET_KEYBOARD_STATE = {
   keys: new Array(hidKeyBufferSize).fill(0),
@@ -27,6 +28,8 @@ export interface MacroStep {
   keys: string[] | null;
   modifiers: string[] | null;
   delay: number;
+  text?: string | undefined;
+  wait?: boolean | undefined;
 }
 
 export type MacroSteps = MacroStep[];
@@ -34,6 +37,7 @@ export type MacroSteps = MacroStep[];
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function useKeyboard() {
+  const { selectedKeyboard } = useKeyboardLayout();
   const { send } = useJsonRpc();
   const { rpcDataChannel } = useRTCStore();
   const { keysDownState, setKeysDownState, setKeyboardLedState, setPasteModeEnabled } =
@@ -284,9 +288,38 @@ export default function useKeyboard() {
   // After the delay, the keys and modifiers are released and the next step is executed.
   // If a step has no keys or modifiers, it is treated as a delay-only step.
   // A small pause is added between steps to ensure that the device can process the events.
+  const expandTextSteps = useCallback((steps: MacroSteps): MacroSteps => {
+    const expanded: MacroSteps = [];
+    for (const step of steps) {
+      if (step.text && step.text.length > 0 && selectedKeyboard) {
+        for (const char of step.text) {
+          const keyprops = selectedKeyboard.chars[char];
+          if (!keyprops) continue;
+          const { key, shift, altRight, deadKey, accentKey } = keyprops;
+          if (!key) continue;
+          if (accentKey) {
+            const accentModifiers: string[] = [];
+            if (accentKey.shift) accentModifiers.push("ShiftLeft");
+            if (accentKey.altRight) accentModifiers.push("AltRight");
+            expanded.push({ keys: [String(accentKey.key)], modifiers: accentModifiers, delay: step.delay });
+          }
+          const mods: string[] = [];
+          if (shift) mods.push("ShiftLeft");
+          if (altRight) mods.push("AltRight");
+          expanded.push({ keys: [String(key)], modifiers: mods, delay: step.delay });
+          if (deadKey) expanded.push({ keys: ["Space"], modifiers: null, delay: step.delay });
+        }
+      } else {
+        expanded.push(step);
+      }
+    }
+    return expanded;
+  }, [selectedKeyboard]);
+
   const executeMacroRemote = useCallback(async (
-    steps: MacroSteps,
+    stepsIn: MacroSteps,
   ) => {
+    const steps = expandTextSteps(stepsIn);
     const macro: KeyboardMacroStep[] = [];
 
     for (const [_, step] of steps.entries()) {
@@ -297,16 +330,22 @@ export default function useKeyboard() {
 
         .reduce((acc, val) => acc + val, 0);
 
-      // If the step has keys and/or modifiers, press them and hold for the delay
-      if (keyValues.length > 0 || modifierMask > 0) {
+      if (step.wait) {
+        // pure wait: send a no-op clear state with desired delay
+        macro.push({ ...MACRO_RESET_KEYBOARD_STATE, delay: step.delay || 100 });
+      } else if (keyValues.length > 0 || modifierMask > 0) {
         macro.push({ keys: keyValues, modifier: modifierMask, delay: 20 });
+        macro.push({ ...MACRO_RESET_KEYBOARD_STATE, delay: step.delay || 100 });
+      } else {
+        // empty step (pause only)
         macro.push({ ...MACRO_RESET_KEYBOARD_STATE, delay: step.delay || 100 });
       }
     }
 
     sendKeyboardMacroEventHidRpc(macro);
-  }, [sendKeyboardMacroEventHidRpc]);
-  const executeMacroClientSide = useCallback(async (steps: MacroSteps) => {
+  }, [sendKeyboardMacroEventHidRpc, expandTextSteps]);
+  const executeMacroClientSide = useCallback(async (stepsIn: MacroSteps) => {
+    const steps = expandTextSteps(stepsIn);
     const promises: (() => Promise<void>)[] = [];
 
     const ac = new AbortController();
@@ -318,10 +357,13 @@ export default function useKeyboard() {
         .map(mod => modifiers[mod])
         .reduce((acc, val) => acc + val, 0);
 
-      // If the step has keys and/or modifiers, press them and hold for the delay
-      if (keyValues.length > 0 || modifierMask > 0) {
+      if (step.wait) {
+        promises.push(() => sleep(step.delay || 100));
+      } else if (keyValues.length > 0 || modifierMask > 0) {
         promises.push(() => sendKeystrokeLegacy(keyValues, modifierMask, ac));
         promises.push(() => resetKeyboardState());
+        promises.push(() => sleep(step.delay || 100));
+      } else {
         promises.push(() => sleep(step.delay || 100));
       }
     }
@@ -354,7 +396,7 @@ export default function useKeyboard() {
           reject(error);
         });
     });
-  }, [sendKeystrokeLegacy, resetKeyboardState, setAbortController]);
+  }, [sendKeystrokeLegacy, resetKeyboardState, setAbortController, expandTextSteps]);
   const executeMacro = useCallback(async (steps: MacroSteps) => {
     if (rpcHidReady) {
       return executeMacroRemote(steps);

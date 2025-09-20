@@ -763,6 +763,8 @@ export interface KeySequenceStep {
   keys: string[];
   modifiers: string[];
   delay: number;
+  text?: string; // optional: when set, type this text with per-character delay
+  wait?: boolean; // optional: when true, this is a pure wait step (pause for delay ms)
 }
 
 export interface KeySequence {

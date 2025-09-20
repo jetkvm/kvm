@@ -38,16 +38,22 @@ const basePresetDelays = [
 ];
 
 const PRESET_DELAYS = basePresetDelays.map(delay => {
-  if (parseInt(delay.value, 10) === DEFAULT_DELAY) {
-    return { ...delay, label: "Default" };
-  }
+  if (parseInt(delay.value, 10) === DEFAULT_DELAY) return { ...delay, label: "Default" };
   return delay;
 });
+
+const TEXT_EXTRA_DELAYS = [
+  { value: "10", label: "10ms" },
+  { value: "20", label: "20ms" },
+  { value: "30", label: "30ms" },
+];
 
 interface MacroStep {
   keys: string[];
   modifiers: string[];
   delay: number;
+  text?: string;
+  wait?: boolean;
 }
 
 interface MacroStepCardProps {
@@ -62,7 +68,9 @@ interface MacroStepCardProps {
   onModifierChange: (modifiers: string[]) => void;
   onDelayChange: (delay: number) => void;
   isLastStep: boolean;
-  keyboard: KeyboardLayout
+  keyboard: KeyboardLayout;
+  onStepTypeChange: (type: "keys" | "text" | "wait") => void;
+  onTextChange: (text: string) => void;
 }
 
 const ensureArray = <T,>(arr: T[] | null | undefined): T[] => {
@@ -81,7 +89,9 @@ export function MacroStepCard({
   onModifierChange,
   onDelayChange,
   isLastStep,
-  keyboard
+  keyboard,
+  onStepTypeChange,
+  onTextChange,
 }: MacroStepCardProps) {
   const { keyDisplayMap } = keyboard;
 
@@ -105,6 +115,8 @@ export function MacroStepCard({
       return availableKeys.filter(option => option.label.toLowerCase().includes(keyQuery.toLowerCase()));
     }
   }, [keyOptions, keyQuery, step.keys]);
+
+  const stepType: "keys" | "text" | "wait" = step.wait ? "wait" : (step.text !== undefined ? "text" : "keys");
 
   return (
     <Card className="p-4">
@@ -147,6 +159,46 @@ export function MacroStepCard({
 
       <div className="space-y-4 mt-2">
         <div className="w-full flex flex-col gap-2">
+          <FieldLabel label="Step Type" />
+          <div className="inline-flex gap-2">
+            <Button
+              size="XS"
+              theme={stepType === "keys" ? "primary" : "light"}
+              text="Keys/Modifiers"
+              onClick={() => onStepTypeChange("keys")}
+            />
+            <Button
+              size="XS"
+              theme={stepType === "text" ? "primary" : "light"}
+              text="Text"
+              onClick={() => onStepTypeChange("text")}
+            />
+            <Button
+              size="XS"
+              theme={stepType === "wait" ? "primary" : "light"}
+              text="Wait"
+              onClick={() => onStepTypeChange("wait")}
+            />
+          </div>
+        </div>
+        {stepType === "text" ? (
+          <div className="w-full flex flex-col gap-1">
+            <FieldLabel label="Text to type" description="Will be typed with this step's delay per character" />
+            <input
+              type="text"
+              className="w-full rounded-md border border-slate-200 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-800"
+              value={step.text || ""}
+              onChange={e => onTextChange(e.target.value)}
+              placeholder="Enter text..."
+            />
+          </div>
+        ) : stepType === "wait" ? (
+          <div className="w-full flex flex-col gap-1">
+            <FieldLabel label="Wait" description="Pause execution for the specified duration." />
+            <p className="text-xs text-slate-500 dark:text-slate-400">This step waits for the configured duration, no keys are sent.</p>
+          </div>
+        ) : (
+        <div className="w-full flex flex-col gap-2">
           <FieldLabel label="Modifiers" />
           <div className="inline-flex flex-wrap gap-3">
             {Object.entries(groupedModifiers).map(([group, mods]) => (
@@ -176,7 +228,8 @@ export function MacroStepCard({
             ))}
           </div>
         </div>
-        
+        )}
+        {stepType === "keys" && (
         <div className="w-full flex flex-col gap-1">
           <div className="flex items-center gap-1">
             <FieldLabel label="Keys" description={`Maximum ${MAX_KEYS_PER_STEP} keys per step.`} />
@@ -223,10 +276,10 @@ export function MacroStepCard({
             />
           </div>
         </div>
-        
+        )}
         <div className="w-full flex flex-col gap-1">
           <div className="flex items-center gap-1">
-            <FieldLabel label="Step Duration" description="Time to wait before executing the next step." />
+            <FieldLabel label="Step Duration" description={stepType === "text" ? "Delay per character when typing text" : stepType === "wait" ? "How long to pause before the next step" : "Time to wait before executing the next step."} />
           </div>
           <div className="flex items-center gap-3">
             <SelectMenuBasic
@@ -234,10 +287,11 @@ export function MacroStepCard({
               fullWidth
               value={step.delay.toString()}
               onChange={(e) => onDelayChange(parseInt(e.target.value, 10))}
-              options={PRESET_DELAYS}
+              options={stepType === 'text' ? [...TEXT_EXTRA_DELAYS, ...PRESET_DELAYS] : PRESET_DELAYS}
             />
           </div>
         </div>
+
       </div>
     </Card>
   );
