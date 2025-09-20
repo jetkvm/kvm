@@ -21,16 +21,6 @@ var (
 	audioSupervisor  *audio.AudioOutputSupervisor
 )
 
-// runAudioServer is now handled by audio.RunAudioOutputServer
-// This function is kept for backward compatibility but delegates to the audio package
-func runAudioServer() {
-	err := audio.RunAudioOutputServer()
-	if err != nil {
-		logger.Error().Err(err).Msg("audio output server failed")
-		os.Exit(1)
-	}
-}
-
 func startAudioSubprocess() error {
 	// Initialize validation cache for optimal performance
 	audio.InitValidationCache()
@@ -47,14 +37,14 @@ func startAudioSubprocess() error {
 	audio.SetAudioInputSupervisor(audioInputSupervisor)
 
 	// Set default OPUS configuration for audio input supervisor (low quality for single-core RV1106)
-	config := audio.Config
+	audioConfig := audio.Config
 	audioInputSupervisor.SetOpusConfig(
-		config.AudioQualityLowInputBitrate*1000, // Convert kbps to bps
-		config.AudioQualityLowOpusComplexity,
-		config.AudioQualityLowOpusVBR,
-		config.AudioQualityLowOpusSignalType,
-		config.AudioQualityLowOpusBandwidth,
-		config.AudioQualityLowOpusDTX,
+		audioConfig.AudioQualityLowInputBitrate*1000, // Convert kbps to bps
+		audioConfig.AudioQualityLowOpusComplexity,
+		audioConfig.AudioQualityLowOpusVBR,
+		audioConfig.AudioQualityLowOpusSignalType,
+		audioConfig.AudioQualityLowOpusBandwidth,
+		audioConfig.AudioQualityLowOpusDTX,
 	)
 
 	// Note: Audio input supervisor is NOT started here - it will be started on-demand
@@ -110,6 +100,12 @@ func startAudioSubprocess() error {
 		},
 	)
 
+	// Check if USB audio device is enabled before starting audio processes
+	if config.UsbDevices == nil || !config.UsbDevices.Audio {
+		logger.Info().Msg("USB audio device disabled - skipping audio supervisor startup")
+		return nil
+	}
+
 	// Start the supervisor
 	if err := audioSupervisor.Start(); err != nil {
 		return fmt.Errorf("failed to start audio supervisor: %w", err)
@@ -137,7 +133,11 @@ func Main(audioServer bool, audioInputServer bool) {
 
 	// If running as audio server, only initialize audio processing
 	if isAudioServer {
-		runAudioServer()
+		err := audio.RunAudioOutputServer()
+		if err != nil {
+			logger.Error().Err(err).Msg("audio output server failed")
+			os.Exit(1)
+		}
 		return
 	}
 
