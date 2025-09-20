@@ -113,14 +113,12 @@ export function useMicrophone() {
     // Debounce sync calls to prevent race conditions
     const now = Date.now();
     if (now - lastSyncRef.current < AUDIO_CONFIG.SYNC_DEBOUNCE_MS) {
-      devLog("Skipping sync - too frequent");
       return;
     }
     lastSyncRef.current = now;
     
     // Don't sync if we're in the middle of starting the microphone
     if (isStartingRef.current) {
-      devLog("Skipping sync - microphone is starting");
       return;
     }
     
@@ -197,7 +195,6 @@ export function useMicrophone() {
         audioConstraints.deviceId = { exact: deviceId };
       }
       
-      devLog("Requesting microphone with constraints:", audioConstraints);
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints
       });
@@ -265,7 +262,6 @@ export function useMicrophone() {
       }
 
       // Notify backend that microphone is started
-      devLog("Notifying backend about microphone start...");
       
             // Retry logic for backend failures
       let backendSuccess = false;
@@ -274,7 +270,6 @@ export function useMicrophone() {
       for (let attempt = 1; attempt <= 3; attempt++) {
         // If this is a retry, first try to reset the backend microphone state
         if (attempt > 1) {
-          devLog(`Backend start attempt ${attempt}, first trying to reset backend state...`);
           try {
             // Use RPC for reset (cloud-compatible)
             if (rpcDataChannel?.readyState === "open") {
@@ -290,7 +285,6 @@ export function useMicrophone() {
                       resolve(); // Continue even if both fail
                     });
                   } else {
-                    devLog("RPC microphone reset successful");
                     resolve();
                   }
                 });
@@ -315,7 +309,6 @@ export function useMicrophone() {
           
           // For RPC errors, try again after a short delay
           if (attempt < 3) {
-            devLog(`Retrying backend start in 500ms (attempt ${attempt + 1}/3)...`);
             await new Promise(resolve => setTimeout(resolve, 500));
             continue;
           }
@@ -556,7 +549,6 @@ export function useMicrophone() {
     const autoRestoreMicrophone = async () => {
       // Wait for RPC connection to be ready before attempting any operations
       if (rpcDataChannel?.readyState !== "open") {
-        devLog("RPC connection not ready for microphone auto-restore, skipping");
         return;
       }
       
@@ -565,7 +557,6 @@ export function useMicrophone() {
       
       // If microphone was enabled before page reload and is not currently active, restore it
       if (microphoneWasEnabled && !isMicrophoneActive && peerConnection) {
-        devLog("Auto-restoring microphone after page reload");
         try {
           const result = await startMicrophone();
           if (result.success) {

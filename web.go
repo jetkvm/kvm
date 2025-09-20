@@ -20,6 +20,7 @@ import (
 	gin_logger "github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pion/webrtc/v4"
 	"github.com/prometheus/client_golang/prometheus"
@@ -233,6 +234,16 @@ func handleWebRTCSession(c *gin.Context) {
 	cancelKeyboardMacro()
 
 	currentSession = session
+
+	// Set up audio relay callback to get current session's audio track
+	// This is needed for audio output to work after enable/disable cycles
+	audio.SetCurrentSessionCallback(func() audio.AudioTrackWriter {
+		if currentSession != nil {
+			return currentSession.AudioTrack
+		}
+		return nil
+	})
+
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }
 
