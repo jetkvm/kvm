@@ -86,8 +86,9 @@ export default function Actionbar({
   const isMuted = audioMuted ?? false; // Default to false if WebSocket data not available yet
   
   // Get USB device configuration to check if audio is enabled
-  const { usbDeviceConfig } = useUsbDeviceConfig();
-  const isAudioEnabledInUsb = usbDeviceConfig?.audio ?? true; // Default to true while loading
+  const { usbDeviceConfig, loading: usbConfigLoading } = useUsbDeviceConfig();
+  // Default to false while loading to prevent premature access when audio hasn't been enabled yet
+  const isAudioEnabledInUsb = usbDeviceConfig?.audio ?? false;
 
   return (
     <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">
@@ -320,27 +321,39 @@ export default function Actionbar({
             />
           </div>
           <Popover>
-            <PopoverButton as={Fragment} disabled={!isAudioEnabledInUsb}>
-              <div title={!isAudioEnabledInUsb ? "Audio needs to be enabled in USB device settings" : undefined}>
+            <PopoverButton as={Fragment} disabled={!isAudioEnabledInUsb || usbConfigLoading}>
+              <div title={
+                usbConfigLoading 
+                  ? "Loading audio configuration..." 
+                  : !isAudioEnabledInUsb 
+                    ? "Audio needs to be enabled in USB device settings" 
+                    : undefined
+              }>
                 <Button
                   size="XS"
                   theme="light"
                   text="Audio"
-                  disabled={!isAudioEnabledInUsb}
+                  disabled={!isAudioEnabledInUsb || usbConfigLoading}
                   LeadingIcon={({ className }) => (
                     <div className="flex items-center">
-                      {!isAudioEnabledInUsb ? (
+                      {usbConfigLoading ? (
+                        <div className={cx(className, "animate-spin rounded-full border border-gray-400 border-t-gray-600")} />
+                      ) : !isAudioEnabledInUsb ? (
                         <MdVolumeOff className={cx(className, "text-gray-400")} />
                       ) : isMuted ? (
                         <MdVolumeOff className={cx(className, "text-red-500")} />
                       ) : (
                         <MdVolumeUp className={cx(className, "text-green-500")} />
                       )}
-                      <MdGraphicEq className={cx(className, "ml-1", !isAudioEnabledInUsb ? "text-gray-400" : "text-blue-500")} />
+                      <MdGraphicEq className={cx(className, "ml-1", 
+                        usbConfigLoading ? "text-gray-400" : 
+                        !isAudioEnabledInUsb ? "text-gray-400" : 
+                        "text-blue-500"
+                      )} />
                     </div>
                   )}
                   onClick={() => {
-                    if (isAudioEnabledInUsb) {
+                    if (isAudioEnabledInUsb && !usbConfigLoading) {
                       setDisableVideoFocusTrap(true);
                     }
                   }}
