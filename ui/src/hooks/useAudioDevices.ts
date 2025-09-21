@@ -33,31 +33,55 @@ export function useAudioDevices(): UseAudioDevicesReturn {
     setError(null);
     
     try {
-      // Check if getUserMedia is available (requires HTTPS in most browsers)
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        // Set placeholder devices when HTTPS is required
+      // Check if we're on HTTP (microphone requires HTTPS, but speakers can work)
+      const isHttp = window.location.protocol === 'http:';
+      const hasMediaDevices = !!navigator.mediaDevices;
+      const hasGetUserMedia = !!navigator.mediaDevices?.getUserMedia;
+      const hasEnumerateDevices = !!navigator.mediaDevices?.enumerateDevices;
+      
+      if (isHttp || !hasMediaDevices || !hasGetUserMedia) {
+        // Set placeholder devices when HTTPS is required for microphone
         setAudioInputDevices([
           { deviceId: 'https-required', label: 'HTTPS Required for Microphone Access', kind: 'audioinput' }
         ]);
-        // Speakers still work on HTTP, so enumerate them normally
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const outputDevices: AudioDevice[] = [
-          { deviceId: 'default', label: 'Default Speaker', kind: 'audiooutput' }
-        ];
         
-        devices.forEach(device => {
-          if (device.kind === 'audiooutput' && device.deviceId !== 'default') {
-            outputDevices.push({
-              deviceId: device.deviceId,
-              label: device.label || `Speaker ${device.deviceId.slice(0, 8)}`,
-              kind: 'audiooutput'
+        // Try to enumerate speakers if possible, otherwise provide defaults
+        if (hasMediaDevices && hasEnumerateDevices) {
+          try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const outputDevices: AudioDevice[] = [
+              { deviceId: 'default', label: 'Default Speaker', kind: 'audiooutput' }
+            ];
+            
+            devices.forEach(device => {
+              if (device.kind === 'audiooutput' && device.deviceId !== 'default') {
+                outputDevices.push({
+                  deviceId: device.deviceId,
+                  label: device.label || `Speaker ${device.deviceId.slice(0, 8)}`,
+                  kind: 'audiooutput'
+                });
+              }
             });
+            
+            setAudioOutputDevices(outputDevices);
+          } catch {
+            // Fallback to default speakers if enumeration fails
+            setAudioOutputDevices([
+              { deviceId: 'default', label: 'Default Speaker', kind: 'audiooutput' },
+              { deviceId: 'system-default', label: 'System Default Audio Output', kind: 'audiooutput' }
+            ]);
           }
-        });
+        } else {
+          // No enumeration available, use defaults
+          setAudioOutputDevices([
+            { deviceId: 'default', label: 'Default Speaker', kind: 'audiooutput' },
+            { deviceId: 'system-default', label: 'System Default Audio Output', kind: 'audiooutput' }
+          ]);
+        }
         
-        setAudioOutputDevices(outputDevices);
         setSelectedInputDevice('https-required');
-        throw new Error('Microphone access requires HTTPS connection. Please use HTTPS to access audio features.');
+        setSelectedOutputDevice('default');
+        return; // Exit gracefully without throwing error on HTTP
       }
       
       // Request permissions first to get device labels
@@ -95,7 +119,12 @@ export function useAudioDevices(): UseAudioDevicesReturn {
       // Audio devices enumerated
       
     } catch (err) {
-      devError('Failed to enumerate audio devices:', err);
+      // Only log errors on HTTPS where we expect full device access
+      const isHttp = window.location.protocol === 'http:';
+      if (!isHttp) {
+        devError('Failed to enumerate audio devices:', err);
+      }
+      
       let errorMessage = 'Failed to access audio devices';
       
       if (err instanceof Error) {
@@ -112,7 +141,10 @@ export function useAudioDevices(): UseAudioDevicesReturn {
         }
       }
       
-      setError(errorMessage);
+      // Only set error state on HTTPS where we expect device access to work
+      if (!isHttp) {
+        setError(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }

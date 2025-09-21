@@ -14,7 +14,15 @@ export interface MicrophoneError {
 
 // Helper function to check if HTTPS is required for microphone access
 export function isHttpsRequired(): boolean {
-  return !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia;
+  // Check if we're on HTTP (not HTTPS)
+  const isHttp = window.location.protocol === 'http:';
+  
+  // Check if media devices are available
+  const hasMediaDevices = !!navigator.mediaDevices;
+  const hasGetUserMedia = !!navigator.mediaDevices?.getUserMedia;
+  
+  // HTTPS is required if we're on HTTP OR if media devices aren't available
+  return isHttp || !hasMediaDevices || !hasGetUserMedia;
 }
 
 export function useMicrophone() {
