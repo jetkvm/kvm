@@ -39,11 +39,24 @@ export function useAudioDevices(): UseAudioDevicesReturn {
         setAudioInputDevices([
           { deviceId: 'https-required', label: 'HTTPS Required for Microphone Access', kind: 'audioinput' }
         ]);
-        setAudioOutputDevices([
-          { deviceId: 'https-required', label: 'HTTPS Required for Speaker Selection', kind: 'audiooutput' }
-        ]);
+        // Speakers still work on HTTP, so enumerate them normally
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const outputDevices: AudioDevice[] = [
+          { deviceId: 'default', label: 'Default Speaker', kind: 'audiooutput' }
+        ];
+        
+        devices.forEach(device => {
+          if (device.kind === 'audiooutput' && device.deviceId !== 'default') {
+            outputDevices.push({
+              deviceId: device.deviceId,
+              label: device.label || `Speaker ${device.deviceId.slice(0, 8)}`,
+              kind: 'audiooutput'
+            });
+          }
+        });
+        
+        setAudioOutputDevices(outputDevices);
         setSelectedInputDevice('https-required');
-        setSelectedOutputDevice('https-required');
         throw new Error('Microphone access requires HTTPS connection. Please use HTTPS to access audio features.');
       }
       
