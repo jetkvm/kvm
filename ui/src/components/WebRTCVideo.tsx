@@ -43,6 +43,8 @@ interface MicrophoneHookReturn {
   isStarting: boolean;
   isStopping: boolean;
   isToggling: boolean;
+  // HTTP/HTTPS detection
+  isHttpsRequired: boolean;
 }
 
 interface WebRTCVideoProps {
