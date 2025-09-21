@@ -217,44 +217,17 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     setIsLoading(true);
     
     try {
-      // Use RPC for device communication - works for both local and cloud
-      if (rpcDataChannel?.readyState !== "open") {
-        throw new Error("Device connection not available");
-      }
-
       if (isMicrophoneActiveFromHook) {
-        // Disable: Stop microphone subprocess via RPC AND remove WebRTC tracks locally
-        await new Promise<void>((resolve, reject) => {
-          send("microphoneStop", {}, (resp: JsonRpcResponse) => {
-            if ("error" in resp) {
-              reject(new Error(resp.error.message));
-            } else {
-              resolve();
-            }
-          });
-        });
-        
-        // Also stop local WebRTC stream
+        // Disable: Use the hook's stopMicrophone which handles both RPC and local cleanup
         const result = await stopMicrophone();
         if (!result.success) {
-          console.warn("Local microphone stop failed:", result.error?.message);
+          throw new Error(result.error?.message || "Failed to stop microphone");
         }
       } else {
-        // Enable: Start microphone subprocess via RPC AND add WebRTC tracks locally
-        await new Promise<void>((resolve, reject) => {
-          send("microphoneStart", {}, (resp: JsonRpcResponse) => {
-            if ("error" in resp) {
-              reject(new Error(resp.error.message));
-            } else {
-              resolve();
-            }
-          });
-        });
-        
-        // Also start local WebRTC stream
+        // Enable: Use the hook's startMicrophone which handles both RPC and local setup
         const result = await startMicrophone();
         if (!result.success) {
-          throw new Error(result.error?.message || "Failed to start local microphone");
+          throw new Error(result.error?.message || "Failed to start microphone");
         }
       }
     } catch (error) {

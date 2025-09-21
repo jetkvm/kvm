@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useRTCStore, useSettingsStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { useUsbDeviceConfig } from "@/hooks/useUsbDeviceConfig";
+import { useAudioEvents, AudioDeviceChangedData } from "@/hooks/useAudioEvents";
 import { devLog, devInfo, devWarn, devError, devOnly } from "@/utils/debug";
 import { AUDIO_CONFIG } from "@/config/constants";
 
@@ -26,6 +28,16 @@ export function useMicrophone() {
 
   const { microphoneWasEnabled, setMicrophoneWasEnabled } = useSettingsStore();
   const { send } = useJsonRpc();
+
+  // Check USB audio status and handle microphone restoration when USB audio is re-enabled
+  const { usbDeviceConfig } = useUsbDeviceConfig();
+  const isUsbAudioEnabled = usbDeviceConfig?.audio ?? true;
+  
+  // Track microphone state when USB audio gets disabled, so we can restore it when re-enabled
+  const [microphoneWasActiveBeforeUsbDisable, setMicrophoneWasActiveBeforeUsbDisable] = useState<boolean>(false);
+  
+  // Track previous USB audio state to detect changes
+  const prevUsbAudioEnabled = useRef<boolean | null>(null);
 
   // RPC helper functions to replace HTTP API calls
   const rpcMicrophoneStart = useCallback((): Promise<void> => {
@@ -261,9 +273,19 @@ export function useMicrophone() {
         });
       }
 
-      // Notify backend that microphone is started
+      // Notify backend that microphone is started - only if USB audio is enabled
+      if (!isUsbAudioEnabled) {
+        devInfo("USB audio is disabled, skipping backend microphone start");
+        // Still set frontend state as active since the stream was successfully created
+        setMicrophoneActive(true);
+        setMicrophoneMuted(false);
+        setMicrophoneWasEnabled(true);
+        isStartingRef.current = false;
+        setIsStarting(false);
+        return { success: true };
+      }
       
-            // Retry logic for backend failures
+      // Retry logic for backend failures
       let backendSuccess = false;
       let lastError: Error | string | null = null;
       
@@ -372,7 +394,7 @@ export function useMicrophone() {
       setIsStarting(false);
       return { success: false, error: micError };
     }
-  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, setMicrophoneWasEnabled, stopMicrophoneStream, isStarting, isStopping, isToggling, rpcMicrophoneStart, rpcDataChannel?.readyState, send]);
+  }, [peerConnection, setMicrophoneStream, setMicrophoneSender, setMicrophoneActive, setMicrophoneMuted, setMicrophoneWasEnabled, stopMicrophoneStream, isStarting, isStopping, isToggling, rpcMicrophoneStart, rpcDataChannel?.readyState, send, isUsbAudioEnabled]);
 
 
 
@@ -574,6 +596,53 @@ export function useMicrophone() {
     const timer = setTimeout(autoRestoreMicrophone, 1000);
     return () => clearTimeout(timer);
   }, [syncMicrophoneState, microphoneWasEnabled, isMicrophoneActive, peerConnection, startMicrophone, rpcDataChannel?.readyState]);
+
+  // Handle USB audio enable/disable changes
+  useEffect(() => {
+    // If this is the first run, just store the current state
+    if (prevUsbAudioEnabled.current === null) {
+      prevUsbAudioEnabled.current = isUsbAudioEnabled;
+      return;
+    }
+    
+    // USB audio was just disabled
+    if (prevUsbAudioEnabled.current && !isUsbAudioEnabled) {
+      devInfo("USB audio disabled - storing microphone state");
+      setMicrophoneWasActiveBeforeUsbDisable(isMicrophoneActive);
+      // Clear the enabled flag to prevent auto-restore attempts
+      if (isMicrophoneActive) {
+        setMicrophoneWasEnabled(false);
+      }
+    }
+    
+    // USB audio was just re-enabled
+    else if (!prevUsbAudioEnabled.current && isUsbAudioEnabled) {
+      devInfo("USB audio re-enabled - checking if microphone should be restored");
+      
+      // If microphone was active before USB was disabled, restore it
+      if (microphoneWasActiveBeforeUsbDisable && !isMicrophoneActive && rpcDataChannel?.readyState === "open") {
+        devInfo("Restoring microphone after USB audio re-enabled");
+        setTimeout(async () => {
+          try {
+            const result = await startMicrophone();
+            if (result.success) {
+              devInfo("Microphone successfully restored after USB audio re-enable");
+              setMicrophoneWasEnabled(true);
+            } else {
+              devWarn("Failed to restore microphone after USB audio re-enable:", result.error);
+            }
+          } catch (error) {
+            devWarn("Error restoring microphone after USB audio re-enable:", error);
+          }
+        }, 500); // Small delay to ensure USB device reconfiguration is complete
+      }
+      
+      // Clear the stored state
+      setMicrophoneWasActiveBeforeUsbDisable(false);
+    }
+    
+    prevUsbAudioEnabled.current = isUsbAudioEnabled;
+  }, [isUsbAudioEnabled, isMicrophoneActive, microphoneWasActiveBeforeUsbDisable, startMicrophone, setMicrophoneWasEnabled, rpcDataChannel?.readyState]);
 
   // Cleanup on unmount - use ref to avoid dependency on stopMicrophoneStream
   useEffect(() => {
