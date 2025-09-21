@@ -244,6 +244,11 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
 
   // Handle microphone device change
   const handleMicrophoneDeviceChange = async (deviceId: string) => {
+    // Don't process device changes for HTTPS-required placeholder
+    if (deviceId === 'https-required') {
+      return;
+    }
+    
     setSelectedInputDevice(deviceId);
     
     // If microphone is currently active, restart it with the new device
@@ -402,11 +407,15 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
                 </option>
               ))}
             </select>
-            {isMicrophoneActiveFromHook && (
+            {isHttpsRequired ? (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                HTTPS connection required for microphone device selection
+              </p>
+            ) : isMicrophoneActiveFromHook ? (
                <p className="text-xs text-slate-500 dark:text-slate-400">
                  Changing device will restart the microphone
                </p>
-             )}
+             ) : null}
           </div>
           
           {/* Speaker Selection */}
