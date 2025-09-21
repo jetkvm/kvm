@@ -12,6 +12,11 @@ export interface MicrophoneError {
   message: string;
 }
 
+// Helper function to check if HTTPS is required for microphone access
+export function isHttpsRequired(): boolean {
+  return !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia;
+}
+
 export function useMicrophone() {
   const {
     peerConnection,
@@ -187,6 +192,20 @@ export function useMicrophone() {
     try {
       // Set flag to prevent sync during startup
       isStartingRef.current = true;
+      
+      // Check if getUserMedia is available (requires HTTPS in most browsers)
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setIsStarting(false);
+        isStartingRef.current = false;
+        return {
+          success: false,
+          error: {
+            type: 'permission',
+            message: 'Microphone access requires HTTPS connection. Please use HTTPS to use audio input.'
+          }
+        };
+      }
+      
       // Request microphone permission and get stream
       const audioConstraints: MediaTrackConstraints = {
         echoCancellation: true,
@@ -666,5 +685,8 @@ export function useMicrophone() {
     isStarting,
     isStopping,
     isToggling,
+    
+    // HTTP/HTTPS detection
+    isHttpsRequired: isHttpsRequired(),
   };
 }

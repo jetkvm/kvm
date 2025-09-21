@@ -908,38 +908,7 @@ func updateUsbRelatedConfig() error {
 	return nil
 }
 
-// validateAudioConfiguration checks if audio functionality can be enabled
-func validateAudioConfiguration(enabled bool) error {
-	if !enabled {
-		return nil // Disabling audio is always allowed
-	}
-
-	// Check if audio supervisor is available
-	if audioSupervisor == nil {
-		return fmt.Errorf("audio supervisor not initialized - audio functionality not available")
-	}
-
-	// Check if ALSA devices are available by attempting to list them
-	// This is a basic check to ensure the system has audio capabilities
-	if _, err := os.Stat("/proc/asound/cards"); os.IsNotExist(err) {
-		return fmt.Errorf("no ALSA sound cards detected - audio hardware not available")
-	}
-
-	// Check if USB gadget audio function is supported
-	if _, err := os.Stat("/sys/kernel/config/usb_gadget"); os.IsNotExist(err) {
-		return fmt.Errorf("USB gadget configfs not available - cannot enable USB audio")
-	}
-
-	return nil
-}
-
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
-	// Validate audio configuration before proceeding
-	if err := validateAudioConfiguration(usbDevices.Audio); err != nil {
-		logger.Warn().Err(err).Msg("audio configuration validation failed")
-		return fmt.Errorf("audio validation failed: %w", err)
-	}
-
 	// Check if audio state is changing
 	previousAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
 	newAudioEnabled := usbDevices.Audio
@@ -1034,11 +1003,6 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 	case "massStorage":
 		config.UsbDevices.MassStorage = enabled
 	case "audio":
-		// Validate audio configuration before proceeding
-		if err := validateAudioConfiguration(enabled); err != nil {
-			logger.Warn().Err(err).Msg("audio device state validation failed")
-			return fmt.Errorf("audio validation failed: %w", err)
-		}
 		// Handle audio process management
 		if !enabled {
 			// Stop audio processes when audio is disabled

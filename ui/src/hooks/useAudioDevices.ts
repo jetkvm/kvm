@@ -33,6 +33,11 @@ export function useAudioDevices(): UseAudioDevicesReturn {
     setError(null);
     
     try {
+      // Check if getUserMedia is available (requires HTTPS in most browsers)
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Microphone access requires HTTPS connection. Please use HTTPS to access audio features.');
+      }
+      
       // Request permissions first to get device labels
       await navigator.mediaDevices.getUserMedia({ audio: true });
       
@@ -69,7 +74,23 @@ export function useAudioDevices(): UseAudioDevicesReturn {
       
     } catch (err) {
       devError('Failed to enumerate audio devices:', err);
-      setError(err instanceof Error ? err.message : 'Failed to access audio devices');
+      let errorMessage = 'Failed to access audio devices';
+      
+      if (err instanceof Error) {
+        if (err.message.includes('HTTPS')) {
+          errorMessage = err.message;
+        } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorMessage = 'Microphone permission denied. Please allow microphone access.';
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          errorMessage = 'No microphone devices found.';
+        } else if (err.name === 'NotSupportedError') {
+          errorMessage = 'Audio devices are not supported on this connection. Please use HTTPS.';
+        } else {
+          errorMessage = err.message || errorMessage;
+        }
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -82,13 +103,19 @@ export function useAudioDevices(): UseAudioDevicesReturn {
       refreshDevices();
     };
 
-    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+    // Check if navigator.mediaDevices exists and supports addEventListener
+    if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
+      navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+    }
     
     // Initial load
     refreshDevices();
 
     return () => {
-      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+      // Check if navigator.mediaDevices exists and supports removeEventListener
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.removeEventListener === 'function') {
+        navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+      }
     };
   }, [refreshDevices]);
 
