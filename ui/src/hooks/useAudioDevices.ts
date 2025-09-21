@@ -35,6 +35,15 @@ export function useAudioDevices(): UseAudioDevicesReturn {
     try {
       // Check if getUserMedia is available (requires HTTPS in most browsers)
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        // Set placeholder devices when HTTPS is required
+        setAudioInputDevices([
+          { deviceId: 'https-required', label: 'HTTPS Required for Microphone Access', kind: 'audioinput' }
+        ]);
+        setAudioOutputDevices([
+          { deviceId: 'https-required', label: 'HTTPS Required for Speaker Selection', kind: 'audiooutput' }
+        ]);
+        setSelectedInputDevice('https-required');
+        setSelectedOutputDevice('https-required');
         throw new Error('Microphone access requires HTTPS connection. Please use HTTPS to access audio features.');
       }
       
