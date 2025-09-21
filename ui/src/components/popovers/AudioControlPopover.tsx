@@ -87,6 +87,8 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     isStarting,
     isStopping,
     isToggling,
+    // HTTP/HTTPS detection
+    isHttpsRequired,
   } = microphone;
   
   // Use WebSocket data exclusively - no polling fallback
@@ -344,10 +346,24 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
               theme={isMicrophoneActiveFromHook ? "danger" : "primary"}
               text={isMicrophoneActiveFromHook ? "Disable" : "Enable"}
               onClick={handleToggleMicrophoneEnable}
-              disabled={isLoading}
+              disabled={isLoading || isHttpsRequired}
             />
           </div>
           
+          {/* HTTPS requirement notice */}
+          {isHttpsRequired && (
+            <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-md">
+              <p className="font-medium mb-1">HTTPS Required for Microphone</p>
+              <p>
+                Microphone access requires a secure connection. Please access this device using HTTPS instead of HTTP to enable audio input features.
+              </p>
+              <p className="mt-1">
+                <span className="font-medium">Current:</span> {window.location.protocol + '//' + window.location.host}
+                <br />
+                <span className="font-medium">Secure:</span> {'https://' + window.location.host}
+              </p>
+            </div>
+          )}
 
         </div>
 
@@ -377,7 +393,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
             <select
                value={selectedInputDevice}
                onChange={(e) => handleMicrophoneDeviceChange(e.target.value)}
-               disabled={devicesLoading}
+               disabled={devicesLoading || isHttpsRequired}
               className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:focus:border-blue-400 dark:disabled:bg-slate-800"
             >
               {audioInputDevices.map((device) => (
@@ -401,7 +417,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
             <select
               value={selectedOutputDevice}
               onChange={(e) => handleAudioOutputDeviceChange(e.target.value)}
-              disabled={devicesLoading}
+              disabled={devicesLoading || isHttpsRequired}
               className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:focus:border-blue-400 dark:disabled:bg-slate-800"
             >
               {audioOutputDevices.map((device) => (
@@ -414,7 +430,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
           
           <button
             onClick={refreshDevices}
-            disabled={devicesLoading}
+            disabled={devicesLoading || isHttpsRequired}
             className="flex w-full items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
           >
             <MdRefresh className={cx("h-4 w-4", devicesLoading && "animate-spin")} />
