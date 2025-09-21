@@ -32,9 +32,6 @@ export function useMicrophone() {
   // Check USB audio status and handle microphone restoration when USB audio is re-enabled
   const { usbDeviceConfig } = useUsbDeviceConfig();
   const isUsbAudioEnabled = usbDeviceConfig?.audio ?? true;
-  
-  // Track microphone state when USB audio gets disabled, so we can restore it when re-enabled
-  const [microphoneWasActiveBeforeUsbDisable, setMicrophoneWasActiveBeforeUsbDisable] = useState<boolean>(false);
 
   // RPC helper functions to replace HTTP API calls
   const rpcMicrophoneStart = useCallback((): Promise<void> => {
@@ -597,30 +594,32 @@ export function useMicrophone() {
   // Handle audio device changes (USB audio enable/disable) via WebSocket events
   const handleAudioDeviceChanged = useCallback((data: AudioDeviceChangedData) => {
     devInfo("Audio device changed:", data);
+    devInfo("Current microphone state:", { isMicrophoneActive, microphoneWasEnabled });
     
     // USB audio was just disabled
     if (!data.enabled && data.reason === "usb_reconfiguration") {
-      devInfo("USB audio disabled via device change event - storing microphone state");
-      setMicrophoneWasActiveBeforeUsbDisable(isMicrophoneActive);
-      // Clear the enabled flag to prevent auto-restore attempts
-      if (isMicrophoneActive) {
-        setMicrophoneWasEnabled(false);
-      }
+      devInfo(`USB audio disabled via device change event - microphone was ${isMicrophoneActive ? 'active' : 'inactive'}`);
+      
+      // The microphoneWasEnabled flag is already being managed by the microphone start/stop functions
+      // We don't need to do anything special here - it will be preserved for restoration
+      devInfo(`Current microphoneWasEnabled flag: ${microphoneWasEnabled}`);
     }
     
     // USB audio was just re-enabled
     else if (data.enabled && data.reason === "usb_reconfiguration") {
       devInfo("USB audio re-enabled via device change event - checking if microphone should be restored");
+      devInfo(`microphoneWasEnabled: ${microphoneWasEnabled}`);
+      devInfo(`Current microphone active: ${isMicrophoneActive}`);
+      devInfo(`RPC ready: ${rpcDataChannel?.readyState === "open"}`);
       
-      // If microphone was active before USB was disabled, restore it
-      if (microphoneWasActiveBeforeUsbDisable && !isMicrophoneActive && rpcDataChannel?.readyState === "open") {
-        devInfo("Restoring microphone after USB audio re-enabled");
+      // If microphone was enabled before (using the same logic as page reload restore), restore it
+      if (microphoneWasEnabled && !isMicrophoneActive && rpcDataChannel?.readyState === "open") {
+        devInfo("Restoring microphone after USB audio re-enabled (using microphoneWasEnabled flag)");
         setTimeout(async () => {
           try {
             const result = await startMicrophone();
             if (result.success) {
               devInfo("Microphone successfully restored after USB audio re-enable");
-              setMicrophoneWasEnabled(true);
             } else {
               devWarn("Failed to restore microphone after USB audio re-enable:", result.error);
             }
@@ -628,12 +627,11 @@ export function useMicrophone() {
             devWarn("Error restoring microphone after USB audio re-enable:", error);
           }
         }, 500); // Small delay to ensure USB device reconfiguration is complete
+      } else {
+        devInfo("Not restoring microphone - conditions not met or microphone was not previously enabled");
       }
-      
-      // Clear the stored state
-      setMicrophoneWasActiveBeforeUsbDisable(false);
     }
-  }, [isMicrophoneActive, microphoneWasActiveBeforeUsbDisable, startMicrophone, setMicrophoneWasEnabled, rpcDataChannel?.readyState]);
+  }, [isMicrophoneActive, microphoneWasEnabled, startMicrophone, rpcDataChannel?.readyState]);
 
   // Subscribe to audio device change events
   useAudioEvents(handleAudioDeviceChanged);
