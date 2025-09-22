@@ -872,6 +872,62 @@ func rpcSetSerialSettings(settings SerialSettings) error {
 	return nil
 }
 
+type QuickButton struct {
+	Id      string `json:"id"`      // uuid-ish
+	Label   string `json:"label"`   // shown on the button
+	Command string `json:"command"` // raw command to send (without auto-terminator)
+	Sort    int    `json:"sort"`    // for stable ordering
+}
+
+type SerialButtonConfig struct {
+	Buttons            []QuickButton `json:"buttons"`            // slice of QuickButton
+	Terminator         string        `json:"terminator"`         // CR/CRLF/None
+	HideSerialSettings bool          `json:"hideSerialSettings"` // lowercase `bool`
+}
+
+func rpcGetSerialButtonConfig() (SerialButtonConfig, error) {
+	config := SerialButtonConfig{
+		Buttons:            []QuickButton{},
+		Terminator:         "\r",
+		HideSerialSettings: false,
+	}
+
+	file, err := os.Open("/userdata/serialButtons_config.json")
+	if err != nil {
+		logger.Debug().Msg("SerialButtons config file doesn't exist, using default")
+		return config, nil
+	}
+	defer file.Close()
+
+	// load and merge the default config with the user config
+	var loadedConfig SerialButtonConfig
+	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
+		logger.Warn().Err(err).Msg("SerialButtons config file JSON parsing failed")
+		return config, nil
+	}
+
+	return loadedConfig, nil
+}
+
+func rpcSetSerialButtonConfig(config SerialButtonConfig) error {
+
+	logger.Trace().Str("path", "/userdata/serialButtons_config.json").Msg("Saving config")
+
+	file, err := os.Create("/userdata/serialButtons_config.json")
+	if err != nil {
+		return fmt.Errorf("failed to create SerialButtons config file: %w", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(config); err != nil {
+		return fmt.Errorf("failed to encode SerialButtons config: %w", err)
+	}
+
+	return nil
+}
+
 func rpcGetUsbDevices() (usbgadget.Devices, error) {
 	return *config.UsbDevices, nil
 }
@@ -1123,6 +1179,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setATXPowerAction":      {Func: rpcSetATXPowerAction, Params: []string{"action"}},
 	"getSerialSettings":      {Func: rpcGetSerialSettings},
 	"setSerialSettings":      {Func: rpcSetSerialSettings, Params: []string{"settings"}},
+	"getSerialButtonConfig":  {Func: rpcGetSerialButtonConfig},
+	"setSerialButtonConfig":  {Func: rpcSetSerialButtonConfig, Params: []string{"config"}},
 	"getUsbDevices":          {Func: rpcGetUsbDevices},
 	"setUsbDevices":          {Func: rpcSetUsbDevices, Params: []string{"devices"}},
 	"setUsbDeviceState":      {Func: rpcSetUsbDeviceState, Params: []string{"device", "enabled"}},
