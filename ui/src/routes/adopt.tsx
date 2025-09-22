@@ -1,8 +1,8 @@
-import { LoaderFunctionArgs, redirect } from "react-router-dom";
+import { redirect } from "react-router";
+import type { LoaderFunction, LoaderFunctionArgs } from "react-router";
 
 import { DEVICE_API } from "@/ui.config";
-
-import api from "../api";
+import api from "@/api";
 
 export interface CloudState {
   connected: boolean;
@@ -10,7 +10,7 @@ export interface CloudState {
   appUrl: string;
 }
 
-const loader = async ({ request }: LoaderFunctionArgs) => {
+const loader: LoaderFunction = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const searchParams = url.searchParams;
 
@@ -37,7 +37,7 @@ const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function AdoptRoute() {
-  return <></>;
+  return (<></>);
 }
 
 AdoptRoute.loader = loader;

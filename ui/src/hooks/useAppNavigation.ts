@@ -1,4 +1,5 @@
-import { useNavigate, useParams, NavigateOptions } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
+import type { NavigateOptions } from "react-router";
 import { useCallback, useMemo } from "react";
 
 import { isOnDevice } from "../main";

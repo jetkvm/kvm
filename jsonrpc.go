@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,13 +11,16 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/pion/webrtc/v4"
 	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 
+	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/jetkvm/kvm/internal/utils"
 )
 
 type JSONRPCRequest struct {
@@ -83,7 +87,7 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 		Str("data", requestString).
 		Logger()
 
-	scopedLogger.Info().Msg("sending JSONRPC event")
+	scopedLogger.Trace().Msg("sending JSONRPC event")
 
 	err = session.RPCChannel.SendText(requestString)
 	if err != nil {
@@ -278,6 +282,17 @@ func rpcGetUpdateStatus() (*UpdateStatus, error) {
 	return updateStatus, nil
 }
 
+func rpcGetLocalVersion() (*LocalMetadata, error) {
+	systemVersion, appVersion, err := GetLocalVersion()
+	if err != nil {
+		return nil, fmt.Errorf("error getting local version: %w", err)
+	}
+	return &LocalMetadata{
+		AppVersion:    appVersion.String(),
+		SystemVersion: systemVersion.String(),
+	}, nil
+}
+
 func rpcTryUpdate() error {
 	includePreRelease := config.IncludePreRelease
 	go func() {
@@ -429,21 +444,27 @@ func rpcGetSSHKeyState() (string, error) {
 }
 
 func rpcSetSSHKeyState(sshKey string) error {
-	if sshKey != "" {
-		// Create directory if it doesn't exist
-		if err := os.MkdirAll(sshKeyDir, 0700); err != nil {
-			return fmt.Errorf("failed to create SSH key directory: %w", err)
-		}
-
-		// Write SSH key to file
-		if err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600); err != nil {
-			return fmt.Errorf("failed to write SSH key: %w", err)
-		}
-	} else {
+	if sshKey == "" {
 		// Remove SSH key file if empty string is provided
 		if err := os.Remove(sshKeyFile); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove SSH key file: %w", err)
 		}
+		return nil
+	}
+
+	// Validate SSH key
+	if err := utils.ValidateSSHKey(sshKey); err != nil {
+		return err
+	}
+
+	// Create directory if it doesn't exist
+	if err := os.MkdirAll(sshKeyDir, 0700); err != nil {
+		return fmt.Errorf("failed to create SSH key directory: %w", err)
+	}
+
+	// Write SSH key to file
+	if err := os.WriteFile(sshKeyFile, []byte(sshKey), 0600); err != nil {
+		return fmt.Errorf("failed to write SSH key: %w", err)
 	}
 
 	return nil
@@ -1105,6 +1126,103 @@ func rpcSetLocalLoopbackOnly(enabled bool) error {
 	return nil
 }
 
+var (
+	keyboardMacroCancel context.CancelFunc
+	keyboardMacroLock   sync.Mutex
+)
+
+// cancelKeyboardMacro cancels any ongoing keyboard macro execution
+func cancelKeyboardMacro() {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
+
+	if keyboardMacroCancel != nil {
+		keyboardMacroCancel()
+		logger.Info().Msg("canceled keyboard macro")
+		keyboardMacroCancel = nil
+	}
+}
+
+func setKeyboardMacroCancel(cancel context.CancelFunc) {
+	keyboardMacroLock.Lock()
+	defer keyboardMacroLock.Unlock()
+
+	keyboardMacroCancel = cancel
+}
+
+func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
+	cancelKeyboardMacro()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	setKeyboardMacroCancel(cancel)
+
+	s := hidrpc.KeyboardMacroState{
+		State:   true,
+		IsPaste: true,
+	}
+
+	if currentSession != nil {
+		currentSession.reportHidRPCKeyboardMacroState(s)
+	}
+
+	err := rpcDoExecuteKeyboardMacro(ctx, macro)
+
+	setKeyboardMacroCancel(nil)
+
+	s.State = false
+	if currentSession != nil {
+		currentSession.reportHidRPCKeyboardMacroState(s)
+	}
+
+	return err
+}
+
+func rpcCancelKeyboardMacro() {
+	cancelKeyboardMacro()
+}
+
+var keyboardClearStateKeys = make([]byte, hidrpc.HidKeyBufferSize)
+
+func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
+	return step.Modifier == 0 && bytes.Equal(step.Keys, keyboardClearStateKeys)
+}
+
+func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
+	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
+
+	for i, step := range macro {
+		delay := time.Duration(step.Delay) * time.Millisecond
+
+		err := rpcKeyboardReport(step.Modifier, step.Keys)
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to execute keyboard macro")
+			return err
+		}
+
+		// notify the device that the keyboard state is being cleared
+		if isClearKeyStep(step) {
+			gadget.UpdateKeysDown(0, keyboardClearStateKeys)
+		}
+
+		// Use context-aware sleep that can be cancelled
+		select {
+		case <-time.After(delay):
+			// Sleep completed normally
+		case <-ctx.Done():
+			// make sure keyboard state is reset
+			err := rpcKeyboardReport(0, keyboardClearStateKeys)
+			if err != nil {
+				logger.Warn().Err(err).Msg("failed to reset keyboard state")
+			}
+
+			logger.Debug().Int("step", i).Msg("Keyboard macro cancelled during sleep")
+			return ctx.Err()
+		}
+	}
+
+	return nil
+}
+
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"reboot":                 {Func: rpcReboot, Params: []string{"force"}},
@@ -1115,10 +1233,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"getNetworkSettings":     {Func: rpcGetNetworkSettings},
 	"setNetworkSettings":     {Func: rpcSetNetworkSettings, Params: []string{"settings"}},
 	"renewDHCPLease":         {Func: rpcRenewDHCPLease},
-	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
 	"getKeyboardLedState":    {Func: rpcGetKeyboardLedState},
-	"keypressReport":         {Func: rpcKeypressReport, Params: []string{"key", "press"}},
 	"getKeyDownState":        {Func: rpcGetKeysDownState},
+	"keyboardReport":         {Func: rpcKeyboardReport, Params: []string{"modifier", "keys"}},
+	"keypressReport":         {Func: rpcKeypressReport, Params: []string{"key", "press"}},
 	"absMouseReport":         {Func: rpcAbsMouseReport, Params: []string{"x", "y", "buttons"}},
 	"relMouseReport":         {Func: rpcRelMouseReport, Params: []string{"dx", "dy", "buttons"}},
 	"wheelReport":            {Func: rpcWheelReport, Params: []string{"wheelY"}},
@@ -1140,6 +1258,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setEDID":                {Func: rpcSetEDID, Params: []string{"edid"}},
 	"getDevChannelState":     {Func: rpcGetDevChannelState},
 	"setDevChannelState":     {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
+	"getLocalVersion":        {Func: rpcGetLocalVersion},
 	"getUpdateStatus":        {Func: rpcGetUpdateStatus},
 	"tryUpdate":              {Func: rpcTryUpdate},
 	"getDevModeState":        {Func: rpcGetDevModeState},

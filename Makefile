@@ -1,9 +1,9 @@
-BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD)
-BUILDDATE ?= $(shell date -u +%FT%T%z)
-BUILDTS   ?= $(shell date -u +%s)
-REVISION  ?= $(shell git rev-parse HEAD)
-VERSION_DEV ?= 0.4.7-dev$(shell date +%Y%m%d%H%M)
-VERSION ?= 0.4.6
+BRANCH    := $(shell git rev-parse --abbrev-ref HEAD)
+BUILDDATE := $(shell date -u +%FT%T%z)
+BUILDTS   := $(shell date -u +%s)
+REVISION  := $(shell git rev-parse HEAD)
+VERSION_DEV := 0.4.9-dev$(shell date +%Y%m%d%H%M)
+VERSION := 0.4.8
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
@@ -62,10 +62,25 @@ build_dev_test: build_test2json build_gotestsum
 	tar czfv device-tests.tar.gz -C $(BIN_DIR)/tests .
 
 frontend:
-	cd ui && npm ci && npm run build:device
+	cd ui && npm ci && npm run build:device && \
+	find ../static/ \
+		-type f \
+		\( -name '*.js' \
+		-o -name '*.css' \
+		-o -name '*.html' \
+		-o -name '*.ico' \
+		-o -name '*.png' \
+		-o -name '*.jpg' \
+		-o -name '*.jpeg' \
+		-o -name '*.gif' \
+		-o -name '*.svg' \
+		-o -name '*.webp' \
+		-o -name '*.woff2' \
+		\) \
+		-exec sh -c 'gzip -9 -kfv {}' \;
 
 dev_release: frontend build_dev
-	@echo "Uploading release..."
+	@echo "Uploading release... $(VERSION_DEV)"
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256

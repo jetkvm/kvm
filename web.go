@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
+	"github.com/vearutop/statigz"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -66,6 +68,10 @@ type SetupRequest struct {
 	Password      string `json:"password,omitempty"`
 }
 
+var cachableFileExtensions = []string{
+	".jpg", ".jpeg", ".png", ".svg", ".gif", ".webp", ".ico", ".woff2",
+}
+
 func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
@@ -75,23 +81,47 @@ func setupRouter() *gin.Engine {
 			return *ginLogger
 		}),
 	))
-	staticFS, _ := fs.Sub(staticFiles, "static")
+
+	staticFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to get rooted static files subdirectory")
+	}
+	staticFileServer := http.StripPrefix("/static", statigz.FileServer(
+		staticFS.(fs.ReadDirFS),
+	))
 
 	// Add a custom middleware to set cache headers for images
 	// This is crucial for optimizing the initial welcome screen load time
 	// By enabling caching, we ensure that pre-loaded images are stored in the browser cache
 	// This allows for a smoother enter animation and improved user experience on the welcome screen
 	r.Use(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/static/assets/immutable/") {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable") // Cache for 1 year
+			c.Next()
+			return
+		}
+
 		if strings.HasPrefix(c.Request.URL.Path, "/static/") {
 			ext := filepath.Ext(c.Request.URL.Path)
-			if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".webp" {
+			if slices.Contains(cachableFileExtensions, ext) {
 				c.Header("Cache-Control", "public, max-age=300") // Cache for 5 minutes
 			}
 		}
+
 		c.Next()
 	})
 
-	r.StaticFS("/static", http.FS(staticFS))
+	r.GET("/robots.txt", func(c *gin.Context) {
+		c.Header("Content-Type", "text/plain")
+		c.Header("Cache-Control", "public, max-age=31536000, immutable") // Cache for 1 year
+		c.String(http.StatusOK, "User-agent: *\nDisallow: /")
+	})
+
+	r.Any("/static/*w", func(c *gin.Context) {
+		staticFileServer.ServeHTTP(c.Writer, c.Request)
+	})
+
+	// Public routes (no authentication required)
 	r.POST("/auth/login-local", handleLogin)
 
 	// We use this to determine if the device is setup
@@ -198,6 +228,10 @@ func handleWebRTCSession(c *gin.Context) {
 			_ = peerConn.Close()
 		}()
 	}
+
+	// Cancel any ongoing keyboard macro when session changes
+	cancelKeyboardMacro()
+
 	currentSession = session
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
 }
@@ -532,14 +566,31 @@ func RunWebServer() {
 	r := setupRouter()
 
 	// Determine the binding address based on the config
-	bindAddress := ":80" // Default to all interfaces
+	var bindAddress string
+	listenPort := 80 // default port
+	useIPv4 := config.NetworkConfig.IPv4Mode.String != "disabled"
+	useIPv6 := config.NetworkConfig.IPv6Mode.String != "disabled"
+
 	if config.LocalLoopbackOnly {
-		bindAddress = "localhost:80" // Loopback only (both IPv4 and IPv6)
+		if useIPv4 && useIPv6 {
+			bindAddress = fmt.Sprintf("localhost:%d", listenPort)
+		} else if useIPv4 {
+			bindAddress = fmt.Sprintf("127.0.0.1:%d", listenPort)
+		} else if useIPv6 {
+			bindAddress = fmt.Sprintf("[::1]:%d", listenPort)
+		}
+	} else {
+		if useIPv4 && useIPv6 {
+			bindAddress = fmt.Sprintf(":%d", listenPort)
+		} else if useIPv4 {
+			bindAddress = fmt.Sprintf("0.0.0.0:%d", listenPort)
+		} else if useIPv6 {
+			bindAddress = fmt.Sprintf("[::]:%d", listenPort)
+		}
 	}
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
-	err := r.Run(bindAddress)
-	if err != nil {
+	if err := r.Run(bindAddress); err != nil {
 		panic(err)
 	}
 }

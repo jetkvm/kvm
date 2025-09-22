@@ -7,7 +7,7 @@ import {
 } from "react-icons/lu";
 import { PlusCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { TrashIcon } from "@heroicons/react/16/solid";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 
 import Card, { GridCard } from "@/components/Card";
 import { Button } from "@components/Button";
@@ -355,7 +355,7 @@ function UrlView({
   const popularImages = [
     {
       name: "Ubuntu 24.04 LTS",
-      url: "https://releases.ubuntu.com/24.04.2/ubuntu-24.04.2-desktop-amd64.iso",
+      url: "https://releases.ubuntu.com/24.04.3/ubuntu-24.04.3-desktop-amd64.iso",
       icon: UbuntuIcon,
     },
     {
@@ -369,8 +369,8 @@ function UrlView({
       icon: DebianIcon,
     },
     {
-      name: "Fedora 41",
-      url: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Workstation/x86_64/iso/Fedora-Workstation-Live-x86_64-41-1.4.iso",
+      name: "Fedora 42",
+      url: "https://download.fedoraproject.org/pub/fedora/linux/releases/42/Workstation/x86_64/iso/Fedora-Workstation-Live-42-1.1.x86_64.iso",
       icon: FedoraIcon,
     },
     {
@@ -385,7 +385,7 @@ function UrlView({
     },
     {
       name: "Arch Linux",
-      url: "https://archlinux.doridian.net/iso/2025.02.01/archlinux-2025.02.01-x86_64.iso",
+      url: "https://archlinux.doridian.net/iso/latest/archlinux-x86_64.iso",
       icon: ArchIcon,
     },
     {

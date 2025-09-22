@@ -239,7 +239,7 @@ video::-webkit-media-controls {
 }
 
 .simple-keyboard-arrows .hg-button {
-  @apply flex w-[50px] grow-0 items-center justify-center;
+  @apply flex w-[50px] items-center justify-center;
 }
 
 .controlArrows {
@@ -264,7 +264,7 @@ video::-webkit-media-controls {
 }
 
 .simple-keyboard-control .hg-button {
-  @apply flex w-[50px] grow-0 items-center justify-center;
+  @apply flex w-[50px] items-center justify-center;
 }
 
 .numPad {
@@ -323,6 +323,20 @@ video::-webkit-media-controls {
 .hg-theme-default .hg-row .hg-button-container,
 .hg-theme-default .hg-row .hg-button:not(:last-child) {
   @apply mr-[2px]! md:mr-[5px]!;
+}
+
+/* Reduce font size for selected keys when keyboard is detached */
+.keyboard-detached .simple-keyboard-main.simple-keyboard {
+  min-width: calc(14 * 7ch);
+}
+
+.keyboard-detached .simple-keyboard.hg-theme-default div.hg-button {
+  text-wrap: auto;
+  text-align: center;
+  min-width: 6ch;
+}
+.keyboard-detached .simple-keyboard.hg-theme-default .hg-button span {
+  font-size: 50%;
 }
 
 /* Hide the scrollbar by setting the scrollbar color to the background color */

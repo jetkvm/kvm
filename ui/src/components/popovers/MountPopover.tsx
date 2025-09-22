@@ -6,7 +6,7 @@ import {
   LuRadioReceiver,
 } from "react-icons/lu";
 import { useClose } from "@headlessui/react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 
 import { Button } from "@components/Button";
 import Card, { GridCard } from "@components/Card";

@@ -105,6 +105,21 @@ export interface RTCState {
   setRpcDataChannel: (channel: RTCDataChannel) => void;
   rpcDataChannel: RTCDataChannel | null;
 
+  hidRpcDisabled: boolean;
+  setHidRpcDisabled: (disabled: boolean) => void;
+
+  rpcHidProtocolVersion: number | null;
+  setRpcHidProtocolVersion: (version: number | null) => void;
+
+  rpcHidChannel: RTCDataChannel | null;
+  setRpcHidChannel: (channel: RTCDataChannel) => void;
+
+  rpcHidUnreliableChannel: RTCDataChannel | null;
+  setRpcHidUnreliableChannel: (channel: RTCDataChannel) => void;
+
+  rpcHidUnreliableNonOrderedChannel: RTCDataChannel | null;
+  setRpcHidUnreliableNonOrderedChannel: (channel: RTCDataChannel) => void;
+
   peerConnectionState: RTCPeerConnectionState | null;
   setPeerConnectionState: (state: RTCPeerConnectionState) => void;
 
@@ -150,6 +165,21 @@ export const useRTCStore = create<RTCState>(set => ({
 
   rpcDataChannel: null,
   setRpcDataChannel: (channel: RTCDataChannel) => set({ rpcDataChannel: channel }),
+
+  hidRpcDisabled: false,
+  setHidRpcDisabled: (disabled: boolean) => set({ hidRpcDisabled: disabled }),
+
+  rpcHidProtocolVersion: null,
+  setRpcHidProtocolVersion: (version: number | null) => set({ rpcHidProtocolVersion: version }),
+
+  rpcHidChannel: null,
+  setRpcHidChannel: (channel: RTCDataChannel) => set({ rpcHidChannel: channel }),
+
+  rpcHidUnreliableChannel: null,
+  setRpcHidUnreliableChannel: (channel: RTCDataChannel) => set({ rpcHidUnreliableChannel: channel }),
+
+  rpcHidUnreliableNonOrderedChannel: null,
+  setRpcHidUnreliableNonOrderedChannel: (channel: RTCDataChannel) => set({ rpcHidUnreliableNonOrderedChannel: channel }),
 
   transceiver: null,
   setTransceiver: (transceiver: RTCRtpTransceiver) => set({ transceiver }),
@@ -449,13 +479,10 @@ export interface HidState {
   keysDownState: KeysDownState;
   setKeysDownState: (state: KeysDownState) => void;
 
-  keyPressReportApiAvailable: boolean;
-  setkeyPressReportApiAvailable: (available: boolean) => void;
-
   isVirtualKeyboardEnabled: boolean;
   setVirtualKeyboardEnabled: (enabled: boolean) => void;
 
-  isPasteModeEnabled: boolean;
+  isPasteInProgress: boolean;
   setPasteModeEnabled: (enabled: boolean) => void;
 
   usbState: USBStates;
@@ -463,20 +490,17 @@ export interface HidState {
 }
 
 export const useHidStore = create<HidState>(set => ({
-  keyboardLedState: {} as KeyboardLedState,
+  keyboardLedState: { num_lock: false, caps_lock: false, scroll_lock: false, compose: false, kana: false, shift: false } as KeyboardLedState,
   setKeyboardLedState: (ledState: KeyboardLedState): void => set({ keyboardLedState: ledState }),
 
   keysDownState: { modifier: 0, keys: [0,0,0,0,0,0] } as KeysDownState,
   setKeysDownState: (state: KeysDownState): void => set({ keysDownState: state }),
 
-  keyPressReportApiAvailable: true,
-  setkeyPressReportApiAvailable: (available: boolean) => set({ keyPressReportApiAvailable: available }),
-
   isVirtualKeyboardEnabled: false,
   setVirtualKeyboardEnabled: (enabled: boolean): void => set({ isVirtualKeyboardEnabled: enabled }),
 
-  isPasteModeEnabled: false,
-  setPasteModeEnabled: (enabled: boolean): void => set({ isPasteModeEnabled: enabled }),
+  isPasteInProgress: false,
+  setPasteModeEnabled: (enabled: boolean): void => set({ isPasteInProgress: enabled }),
 
   // Add these new properties for USB state
   usbState: "not attached",

@@ -1,6 +1,6 @@
 import { MdConnectWithoutContact } from "react-icons/md";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { LuEllipsisVertical } from "react-icons/lu";
 
 import Card from "@components/Card";
@@ -100,15 +100,12 @@ export default function KvmCard({
             )}
           </div>
           <Menu as="div" className="relative inline-block text-left">
-            <div>
-              <MenuButton
-                as={Button}
-                theme="light"
-                TrailingIcon={LuEllipsisVertical}
-                size="MD"
-              ></MenuButton>
-            </div>
-
+            <MenuButton
+              as={Button}
+              theme="light"
+              TrailingIcon={LuEllipsisVertical}
+              size="MD"
+            ></MenuButton>
             <MenuItems
               transition
               className="data-closed:scale-95 data-closed:transform data-closed:opacity-0 data-enter:duration-100 data-leave:duration-75 data-enter:ease-out data-leave:ease-in"

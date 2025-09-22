@@ -65,7 +65,7 @@ func (s *NetworkInterfaceState) IPv6LinkLocalAddress() string {
 func (s *NetworkInterfaceState) RpcGetNetworkState() RpcNetworkState {
 	ipv6Addresses := make([]RpcIPv6Address, 0)
 
-	if s.ipv6Addresses != nil {
+	if s.ipv6Addresses != nil && s.config.IPv6Mode.String != "disabled" {
 		for _, addr := range s.ipv6Addresses {
 			ipv6Addresses = append(ipv6Addresses, RpcIPv6Address{
 				Address:           addr.Prefix.String(),

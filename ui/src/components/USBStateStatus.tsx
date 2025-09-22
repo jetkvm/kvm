@@ -22,6 +22,39 @@ const USBStateMap: Record<USBStates, string> = {
   "not attached": "Disconnected",
   suspended: "Low power mode",
 };
+const StatusCardProps: StatusProps = {
+  configured: {
+    icon: ({ className }) => (
+      <img className={cx(className)} src={KeyboardAndMouseConnectedIcon} alt="" />
+    ),
+    iconClassName: "h-5 w-5 shrink-0",
+    statusIndicatorClassName: "bg-green-500 border-green-600",
+  },
+  attached: {
+    icon: ({ className }) => <LoadingSpinner className={cx(className)} />,
+    iconClassName: "h-5 w-5 text-blue-500",
+    statusIndicatorClassName: "bg-slate-300 border-slate-400",
+  },
+  addressed: {
+    icon: ({ className }) => <LoadingSpinner className={cx(className)} />,
+    iconClassName: "h-5 w-5 text-blue-500",
+    statusIndicatorClassName: "bg-slate-300 border-slate-400",
+  },
+  "not attached": {
+    icon: ({ className }) => (
+      <img className={cx(className)} src={KeyboardAndMouseConnectedIcon} alt="" />
+    ),
+    iconClassName: "h-5 w-5 opacity-50 grayscale filter",
+    statusIndicatorClassName: "bg-slate-300 border-slate-400",
+  },
+  suspended: {
+    icon: ({ className }) => (
+      <img className={cx(className)} src={KeyboardAndMouseConnectedIcon} alt="" />
+    ),
+    iconClassName: "h-5 w-5 opacity-50 grayscale filter",
+    statusIndicatorClassName: "bg-green-500 border-green-600",
+  },
+};
 
 export default function USBStateStatus({
   state,
@@ -30,39 +63,7 @@ export default function USBStateStatus({
   state: USBStates;
   peerConnectionState?: RTCPeerConnectionState | null;
 }) {
-  const StatusCardProps: StatusProps = {
-    configured: {
-      icon: ({ className }) => (
-        <img className={cx(className)} src={KeyboardAndMouseConnectedIcon} alt="" />
-      ),
-      iconClassName: "h-5 w-5 shrink-0",
-      statusIndicatorClassName: "bg-green-500 border-green-600",
-    },
-    attached: {
-      icon: ({ className }) => <LoadingSpinner className={cx(className)} />,
-      iconClassName: "h-5 w-5 text-blue-500",
-      statusIndicatorClassName: "bg-slate-300 border-slate-400",
-    },
-    addressed: {
-      icon: ({ className }) => <LoadingSpinner className={cx(className)} />,
-      iconClassName: "h-5 w-5 text-blue-500",
-      statusIndicatorClassName: "bg-slate-300 border-slate-400",
-    },
-    "not attached": {
-      icon: ({ className }) => (
-        <img className={cx(className)} src={KeyboardAndMouseConnectedIcon} alt="" />
-      ),
-      iconClassName: "h-5 w-5 opacity-50 grayscale filter",
-      statusIndicatorClassName: "bg-slate-300 border-slate-400",
-    },
-    suspended: {
-      icon: ({ className }) => (
-        <img className={cx(className)} src={KeyboardAndMouseConnectedIcon} alt="" />
-      ),
-      iconClassName: "h-5 w-5 opacity-50 grayscale filter",
-      statusIndicatorClassName: "bg-green-500 border-green-600",
-    },
-  };
+
   const props = StatusCardProps[state];
   if (!props) {
     console.warn("Unsupported USB state: ", state);
