@@ -2,6 +2,7 @@ package kvm
 
 import (
 	"bufio"
+	"encoding/base64"
 	"io"
 	"strconv"
 	"strings"
@@ -253,17 +254,67 @@ func setDCRestoreState(state int) error {
 
 func mountSerialButtons() error {
 	_ = port.SetMode(defaultMode)
-
+	startSerialButtonsRxLoop(currentSession)
 	return nil
 }
 
 func unmountSerialButtons() error {
+	stopSerialButtonsRxLoop()
 	_ = reopenSerialPort()
 	return nil
 }
 
+// ---- Serial Buttons RX fan-out (JSON-RPC events) ----
+var serialButtonsRXStopCh chan struct{}
+
+func startSerialButtonsRxLoop(session *Session) {
+	scopedLogger := serialLogger.With().Str("service", "custom_buttons_rx").Logger()
+	scopedLogger.Debug().Msg("Attempting to start RX reader.")
+	// Stop previous loop if running
+	if serialButtonsRXStopCh != nil {
+		close(serialButtonsRXStopCh)
+	}
+	serialButtonsRXStopCh = make(chan struct{})
+
+	go func() {
+		buf := make([]byte, 4096)
+		scopedLogger.Debug().Msg("Starting loop")
+
+		for {
+			select {
+			case <-serialButtonsRXStopCh:
+				return
+			default:
+				n, err := port.Read(buf)
+				if err != nil {
+					if err != io.EOF {
+						scopedLogger.Debug().Err(err).Msg("serial RX read error")
+					}
+					time.Sleep(50 * time.Millisecond)
+					continue
+				}
+				if n == 0 || currentSession == nil {
+					continue
+				}
+				// Safe for any bytes: wrap in Base64
+				b64 := base64.StdEncoding.EncodeToString(buf[:n])
+				writeJSONRPCEvent("serial.rx", map[string]any{
+					"base64": b64,
+				}, currentSession)
+			}
+		}
+	}()
+}
+
+func stopSerialButtonsRxLoop() {
+	if serialButtonsRXStopCh != nil {
+		close(serialButtonsRXStopCh)
+		serialButtonsRXStopCh = nil
+	}
+}
+
 func sendCustomCommand(command string) error {
-	scopedLogger := serialLogger.With().Str("service", "custom-buttons").Logger()
+	scopedLogger := serialLogger.With().Str("service", "custom_buttons_tx").Logger()
 	scopedLogger.Info().Str("Command", command).Msg("Sending custom command.")
 	_, err := port.Write([]byte("\n"))
 	if err != nil {

@@ -807,10 +807,10 @@ func rpcGetATXState() (ATXState, error) {
 }
 
 func rpcSendCustomCommand(command string) error {
-	logger.Info().Str("Command", command).Msg("JSONRPC: Sending custom serial command")
+	logger.Debug().Str("Command", command).Msg("JSONRPC: Sending custom serial command")
 	err := sendCustomCommand(command)
 	if err != nil {
-		return fmt.Errorf("failed to set DC power state: %w", err)
+		return fmt.Errorf("failed to send custom command in jsonrpc: %w", err)
 	}
 	return nil
 }
@@ -917,6 +917,7 @@ type SerialButtonConfig struct {
 	Buttons            []QuickButton `json:"buttons"`            // slice of QuickButton
 	Terminator         string        `json:"terminator"`         // CR/CRLF/None
 	HideSerialSettings bool          `json:"hideSerialSettings"` // lowercase `bool`
+	HideSerialResponse bool          `json:"hideSerialResponse"` // lowercase `bool`
 }
 
 func rpcGetSerialButtonConfig() (SerialButtonConfig, error) {
@@ -924,6 +925,7 @@ func rpcGetSerialButtonConfig() (SerialButtonConfig, error) {
 		Buttons:            []QuickButton{},
 		Terminator:         "\r",
 		HideSerialSettings: false,
+		HideSerialResponse: true,
 	}
 
 	file, err := os.Open("/userdata/serialButtons_config.json")

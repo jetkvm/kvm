@@ -1,5 +1,5 @@
-import { LuPlus, LuTrash2, LuPencil, LuSettings2, LuEye, LuEyeOff, LuSave } from "react-icons/lu";
-import { useEffect, useMemo, useState } from "react";
+import { LuPlus, LuTrash2, LuPencil, LuSettings2, LuEye, LuEyeOff, LuSave, LuArrowBigUp, LuArrowBigDown, LuCirclePause, LuCirclePlay } from "react-icons/lu";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@components/Button";
 import Card from "@components/Card";
@@ -8,6 +8,7 @@ import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { InputFieldWithLabel } from "@components/InputField";
+import { TextAreaWithLabel } from "@components/TextArea";
 
 /** ============== Types ============== */
 
@@ -29,12 +30,42 @@ interface ButtonConfig {
   buttons: QuickButton[];
   terminator: string;   // CR/CRLF/None
   hideSerialSettings: boolean;
+  hideSerialResponse: boolean;
 }
 
 /** ============== Component ============== */
 
 export function SerialButtons() {
-  const { send } = useJsonRpc();
+  // This will receive all JSON-RPC notifications (method + no id)
+  const { send } = useJsonRpc((payload) => {
+    if (payload.method !== "serial.rx") return;
+    if (paused) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const p = payload.params as any;
+    let chunk = "";
+
+    if (typeof p?.base64 === "string") {
+      try {
+        chunk = atob(p.base64);
+      } catch {
+        // ignore malformed base64
+      }
+    } else if (typeof p?.data === "string") {
+      // fallback if you ever send plain text
+      chunk = p.data;
+    }
+
+    if (!chunk) return;
+
+    // Normalize CRLF for display
+    chunk = chunk.replace(/\r\n/g, "\n");
+
+    setSerialResponse(prev => (prev + chunk).slice(-MAX_CHARS));
+  });
+
+
+  const MAX_CHARS = 50_000;
 
   // serial settings (same as SerialConsole)
   const [serialSettings, setSerialSettings] = useState<SerialSettings>({
@@ -49,12 +80,16 @@ export function SerialButtons() {
   buttons: [],
   terminator: "",
   hideSerialSettings: false,
+  hideSerialResponse: true,
 });
 
   // editor modal state
   const [editorOpen, setEditorOpen] = useState<null | { id?: string }>(null);
   const [draftLabel, setDraftLabel] = useState("");
   const [draftCmd, setDraftCmd] = useState("");
+  const [serialResponse, setSerialResponse] = useState("");
+  const [paused, setPaused] = useState(false);
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
   // load serial settings like SerialConsole
   useEffect(() => {
@@ -101,7 +136,14 @@ export function SerialButtons() {
       }
       setButtonConfig(newButtonConfig);
     });
+    setButtonConfig(newButtonConfig);
   };
+
+  useEffect(() => {
+    if (buttonConfig.hideSerialResponse) return;
+    const el = taRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [serialResponse, buttonConfig.hideSerialResponse]);
 
   const onClickButton = (btn: QuickButton) => {
 
@@ -141,6 +183,48 @@ export function SerialButtons() {
     setEditorOpen(null);
   };
 
+  const moveUpBtn = (id: string) => {
+    // Make a copy so we don't mutate state directly
+    const newButtons = [...buttonConfig.buttons];
+
+    // Find the index of the button to move
+    const index = newButtons.findIndex(b => b.id === id);
+
+    if (index > 0) {
+      // Swap with the previous element
+      [newButtons[index - 1], newButtons[index]] = [
+        newButtons[index],
+        newButtons[index - 1],
+      ];
+    }
+
+    // Re-assign sort values
+    const nextButtons = newButtons.map((b, i) => ({ ...b, sort: i }));
+    handleSerialButtonConfigChange("buttons", stableSort(nextButtons) );
+    setEditorOpen(null);
+  };
+
+  const moveDownBtn = (id: string) => {
+    // Make a copy so we don't mutate state directly
+    const newButtons = [...buttonConfig.buttons];
+
+    // Find the index of the button to move
+    const index = newButtons.findIndex(b => b.id === id);
+
+    if (index >= 0 && index < newButtons.length - 1) {
+      // Swap with the next element
+      [newButtons[index], newButtons[index + 1]] = [
+        newButtons[index + 1],
+        newButtons[index],
+      ];
+    }
+
+    // Re-assign sort values
+    const nextButtons = newButtons.map((b, i) => ({ ...b, sort: i }));
+    handleSerialButtonConfigChange("buttons", stableSort(nextButtons) );
+    setEditorOpen(null);
+  };
+
   const saveDraft = () => {
     const label = draftLabel.trim() || "Unnamed";
     const command = draftCmd.trim();
@@ -176,7 +260,7 @@ export function SerialButtons() {
               size="SM"
               theme="primary"
               LeadingIcon={buttonConfig.hideSerialSettings ? LuEye : LuEyeOff}
-              text={buttonConfig.hideSerialSettings ? "Show Serial Settings" : "Hide Serial Settings"}
+              text={buttonConfig.hideSerialSettings ? "Show Settings" : "Hide Settings"}
               onClick={() => handleSerialButtonConfigChange("hideSerialSettings", !buttonConfig.hideSerialSettings )}
             />
             <Button
@@ -186,12 +270,19 @@ export function SerialButtons() {
               text="Add Button"
               onClick={addNew}
             />
+            <Button
+              size="SM"
+              theme="primary"
+              LeadingIcon={buttonConfig.hideSerialResponse ? LuEye : LuEyeOff}
+              text={buttonConfig.hideSerialResponse ? "View RX" : "Hide RX"}
+              onClick={() => handleSerialButtonConfigChange("hideSerialResponse", !buttonConfig.hideSerialResponse )}
+            />
           </div>
+          <hr className="border-slate-700/30 dark:border-slate-600/30" />
 
           {/* Serial settings (collapsible) */}
           {!buttonConfig.hideSerialSettings && (
             <>
-              <hr className="border-slate-700/30 dark:border-slate-600/30" />
               <div className="grid grid-cols-2 gap-4">
                 <SelectMenuBasic
                   label="Baud Rate"
@@ -244,7 +335,7 @@ export function SerialButtons() {
               <SelectMenuBasic
                   label="Line ending"
                   options={[
-                    { label: "None", value: "none" },
+                    { label: "None", value: "" },
                     { label: "CR (\\r)", value: "\r" },
                     { label: "CRLF (\\r\\n)", value: "\r\n" },
                   ]}
@@ -315,24 +406,73 @@ export function SerialButtons() {
                       setDraftCmd(e.target.value);
                     }}
                   />
-                  <div className="text-xs text-white opacity-70 mt-1">
+                  {buttonConfig.terminator != "" && (
+                    <div className="text-xs text-white opacity-70 mt-1">
                     The selected line ending ({pretty(buttonConfig.terminator)}) will be appended when sent.
                   </div>
+                  )}
                 </div>
               </div>
               <div className="flex gap-2 mt-3">
                 <Button size="SM" theme="primary" LeadingIcon={LuSave} text="Save" onClick={saveDraft} />
                 <Button size="SM" theme="primary" text="Cancel" onClick={() => setEditorOpen(null)} />
-                {editorOpen.id &&(<Button
-                  size="SM"
-                  theme="danger"
-                  LeadingIcon={LuTrash2}
-                  text="Delete"
-                  onClick={() => removeBtn(editorOpen.id!)}
-                  aria-label={`Delete ${draftLabel}`}
-                />)}
+                {editorOpen.id && (
+                  <>
+                    <Button
+                      size="SM"
+                      theme="danger"
+                      LeadingIcon={LuTrash2}
+                      text="Delete"
+                      onClick={() => removeBtn(editorOpen.id!)}
+                      aria-label={`Delete ${draftLabel}`}
+                    />
+                    <Button
+                      size="SM"
+                      theme="primary"
+                      LeadingIcon={LuArrowBigUp}
+                      onClick={() => moveUpBtn(editorOpen.id!)}
+                    />
+                    <Button
+                      size="SM"
+                      theme="primary"
+                      LeadingIcon={LuArrowBigDown}
+                      onClick={() => moveDownBtn(editorOpen.id!)}
+                    />
+                  </>
+                )}
               </div>
             </div>
+          )}
+          {/* Serial response (collapsible) */}
+          {!buttonConfig.hideSerialResponse && (
+            <>
+              <hr className="border-slate-700/30 dark:border-slate-600/30" />
+              <TextAreaWithLabel
+                ref={taRef}
+                readOnly
+                label="RX response from serial connection"
+                value={serialResponse|| ""}
+                rows={3}
+                onChange={e => setSerialResponse(e.target.value)}
+                placeholder="Will show the response recieved from the serial port."
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  size="XS"
+                  theme="primary"
+                  text={paused ? "Resume" : "Pause"}
+                  LeadingIcon={paused ? LuCirclePlay : LuCirclePause}
+                  onClick={() => setPaused(p => !p)}
+                />
+                <Button
+                  size="XS"
+                  theme="primary"
+                  text="Clear"
+                  LeadingIcon={LuTrash2}
+                  onClick={() => setSerialResponse("")}
+                />
+              </div>
+            </>
           )}
         </div>
       </Card>
