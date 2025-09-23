@@ -251,6 +251,33 @@ func setDCRestoreState(state int) error {
 	return nil
 }
 
+func mountSerialButtons() error {
+	_ = port.SetMode(defaultMode)
+
+	return nil
+}
+
+func unmountSerialButtons() error {
+	_ = reopenSerialPort()
+	return nil
+}
+
+func sendCustomCommand(command string) error {
+	scopedLogger := serialLogger.With().Str("service", "custom-buttons").Logger()
+	scopedLogger.Info().Str("Command", command).Msg("Sending custom command.")
+	_, err := port.Write([]byte("\n"))
+	if err != nil {
+		scopedLogger.Warn().Err(err).Msg("Failed to send serial output \\n")
+		return err
+	}
+	_, err = port.Write([]byte(command))
+	if err != nil {
+		scopedLogger.Warn().Err(err).Str("line", command).Msg("Failed to send serial output")
+		return err
+	}
+	return nil
+}
+
 var defaultMode = &serial.Mode{
 	BaudRate: 115200,
 	DataBits: 8,

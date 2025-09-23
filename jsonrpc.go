@@ -758,6 +758,8 @@ func rpcSetActiveExtension(extensionId string) error {
 		_ = unmountATXControl()
 	case "dc-power":
 		_ = unmountDCControl()
+	case "serial-buttons":
+		_ = unmountSerialButtons()
 	}
 	config.ActiveExtension = extensionId
 	if err := SaveConfig(); err != nil {
@@ -768,6 +770,8 @@ func rpcSetActiveExtension(extensionId string) error {
 		_ = mountATXControl()
 	case "dc-power":
 		_ = mountDCControl()
+	case "serial-buttons":
+		_ = mountSerialButtons()
 	}
 	return nil
 }
@@ -800,6 +804,15 @@ func rpcGetATXState() (ATXState, error) {
 		HDD:   ledHDDState,
 	}
 	return state, nil
+}
+
+func rpcSendCustomCommand(command string) error {
+	logger.Info().Str("Command", command).Msg("JSONRPC: Sending custom serial command")
+	err := sendCustomCommand(command)
+	if err != nil {
+		return fmt.Errorf("failed to set DC power state: %w", err)
+	}
+	return nil
 }
 
 type SerialSettings struct {
@@ -1296,6 +1309,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setActiveExtension":     {Func: rpcSetActiveExtension, Params: []string{"extensionId"}},
 	"getATXState":            {Func: rpcGetATXState},
 	"setATXPowerAction":      {Func: rpcSetATXPowerAction, Params: []string{"action"}},
+	"sendCustomCommand":      {Func: rpcSendCustomCommand, Params: []string{"command"}},
 	"getSerialSettings":      {Func: rpcGetSerialSettings},
 	"setSerialSettings":      {Func: rpcSetSerialSettings, Params: []string{"settings"}},
 	"getSerialButtonConfig":  {Func: rpcGetSerialButtonConfig},

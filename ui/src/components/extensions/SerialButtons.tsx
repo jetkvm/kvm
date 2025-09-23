@@ -76,15 +76,10 @@ export function SerialButtons() {
         return;
       }
 
-      const cfg = resp.result as ButtonConfig;
-      console.log("loaded button config: ");
-      console.log(cfg);
       setButtonConfig(resp.result as ButtonConfig);
     });
 
-  console.log("loaded loaded settings through effect.");
-
-  }, [send]);
+  });
 
   const handleSerialSettingChange = (setting: keyof SerialSettings, value: string) => {
     const newSettings = { ...serialSettings, [setting]: value };
@@ -104,21 +99,27 @@ export function SerialButtons() {
         notifications.error(`Failed to update button config: ${resp.error.data || "Unknown error"}`);
         return;
       }
-      // setButtonConfig(newButtonConfig);
+      setButtonConfig(newButtonConfig);
     });
   };
 
-  /** build final string to send:
-   *  if the user's button command already contains a terminator, we don't append the selected terminator safely
-   */
-  const buildOutgoing = (raw: string): string => {
-    const t = buttonConfig.terminator ?? "";
-    return raw.endsWith("\r") || raw.endsWith("\n") ? raw : raw + t;
-  };
+  const onClickButton = (btn: QuickButton) => {
 
-  const onClickButton = async (btn: QuickButton) => {
-    buildOutgoing(btn.command);
-      // Try to send via backend method
+    /** build final string to send:
+     *  if the user's button command already contains a terminator, we don't append the selected terminator safely
+     */
+    const raw = btn.command;
+    const t = buttonConfig.terminator ?? "";
+    const command = raw.endsWith("\r") || raw.endsWith("\n") ? raw : raw + t;
+
+    send("sendCustomCommand", { command }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to send ATX power action: ${resp.error.data || "Unknown error"}`,
+        );
+      }
+    });
+
   };
 
   /** CRUD helpers */
@@ -134,11 +135,11 @@ export function SerialButtons() {
     setDraftCmd(btn.command);
   };
 
-  // const removeBtn = async (id: string) => {
-  //   const next = { ...buttonConfig, buttons: buttonConfig.buttons.filter(b => b.id !== id).map((b, i) => ({ ...b, sort: i })) };
-  //   // await setButtonConfig(next);
-  //   setEditorOpen(null);
-  // };
+  const removeBtn = (id: string) => {
+    const nextButtons = buttonConfig.buttons.filter(b => b.id !== id).map((b, i) => ({ ...b, sort: i })) ;
+    handleSerialButtonConfigChange("buttons", stableSort(nextButtons) );
+    setEditorOpen(null);
+  };
 
   const saveDraft = () => {
     const label = draftLabel.trim() || "Unnamed";
@@ -327,7 +328,7 @@ export function SerialButtons() {
                   theme="danger"
                   LeadingIcon={LuTrash2}
                   text="Delete"
-                  // onClick={() => removeBtn(editorOpen!.id)}
+                  onClick={() => removeBtn(editorOpen.id!)}
                   aria-label={`Delete ${draftLabel}`}
                 />)}
               </div>
