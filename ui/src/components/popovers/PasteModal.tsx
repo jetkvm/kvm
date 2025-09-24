@@ -137,7 +137,8 @@ export default function PasteModal() {
                   <div
                     className="w-full"
                     onKeyUp={e => e.stopPropagation()}
-                    onKeyDown={e => e.stopPropagation()} onKeyDownCapture={e => e.stopPropagation()}
+                    onKeyDown={e => e.stopPropagation()}
+                    onKeyDownCapture={e => e.stopPropagation()}
                     onKeyUpCapture={e => e.stopPropagation()}
                   >
                     <TextAreaWithLabel
