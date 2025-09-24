@@ -1,15 +1,1 @@
-<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path
-            d="M2 7C2 5.89543 2.89543 5 4 5H20C21.1046 5 22 5.89543 22 7V19C22 20.1046 21.1046 21 20 21H4C2.89543 21 2 20.1046 2 19V7Z"
-            fill="transparent" />
-      <path fill-rule="evenodd" clip-rule="evenodd"
-            d="M20 7H4V19H20V7ZM4 5C2.89543 5 2 5.89543 2 7V19C2 20.1046 2.89543 21 4 21H20C21.1046 21 22 20.1046 22 19V7C22 5.89543 21.1046 5 20 5H4Z"
-            fill="currentColor" />
-      <path d="M12 3H24V15H12V3Z" fill="transparent" />
-      <path
-            d="M14 6C14 5.44772 14.4477 5 15 5H21C21.5523 5 22 5.44772 22 6V12C22 12.5523 21.5523 13 21 13H15C14.4477 13 14 12.5523 14 12V6Z"
-            fill="transparent" />
-      <path fill-rule="evenodd" clip-rule="evenodd"
-            d="M16 7V11H20V7H16ZM15 5C14.4477 5 14 5.44772 14 6V12C14 12.5523 14.4477 13 15 13H21C21.5523 13 22 12.5523 22 12V6C22 5.44772 21.5523 5 21 5H15Z"
-            fill="currentColor" />
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><path fill="transparent" d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7Z"/><path fill="currentColor" fill-rule="evenodd" d="M20 7H4v12h16V7ZM4 5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H4Z" clip-rule="evenodd"/><path fill="transparent" d="M12 3h12v12H12V3Z"/><path fill="transparent" d="M14 6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1V6Z"/><path fill="currentColor" fill-rule="evenodd" d="M16 7v4h4V7h-4Zm-1-2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-6Z" clip-rule="evenodd"/></svg>
