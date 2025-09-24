@@ -542,7 +542,7 @@ export default function WebRTCVideo() {
                           style={{ animationDuration: "500ms" }}
                           className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center"
                         >
-                          <div className="relative h-full w-full rounded-md">
+                          <div className="relative h-full w-full rounded-md" onClick={requestPointerLock}>
                             <LoadingVideoOverlay show={isVideoLoading} />
                             <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
                             <NoAutoplayPermissionsOverlay
