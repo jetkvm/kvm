@@ -544,7 +544,7 @@ export default function WebRTCVideo() {
                         >
                           <div className="relative h-full w-full rounded-md" onClick={requestPointerLock}>
                             <LoadingVideoOverlay show={isVideoLoading} />
-                            <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
+                            <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} requestFullscreen={requestFullscreen}/>
                             <NoAutoplayPermissionsOverlay
                               show={hasNoAutoPlayPermissions}
                               onPlayClick={() => {

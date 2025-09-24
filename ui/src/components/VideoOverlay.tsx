@@ -2,7 +2,7 @@ import React from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
-import { LuPlay } from "react-icons/lu";
+import { LuMaximize, LuPlay } from "react-icons/lu";
 import { BsMouseFill } from "react-icons/bs";
 
 import { Button, LinkButton } from "@components/Button";
@@ -209,9 +209,10 @@ export function PeerConnectionDisconnectedOverlay({
 interface HDMIErrorOverlayProps {
   readonly show: boolean;
   readonly hdmiState: string;
+  readonly requestFullscreen: () => void;
 }
 
-export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
+export function HDMIErrorOverlay({ show, hdmiState, requestFullscreen }: HDMIErrorOverlayProps) {
   const isNoSignal = hdmiState === "no_signal";
   const isOtherError = hdmiState === "no_lock" || hdmiState === "out_of_range";
 
@@ -247,14 +248,25 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                         </li>
                       </ul>
                     </div>
-                    <div>
-                      <LinkButton
-                        to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
-                        theme="light"
-                        text="Learn more"
-                        TrailingIcon={ArrowRightIcon}
-                        size="SM"
-                      />
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-1.5">
+                      <div className="relative flex flex-wrap items-center gap-x-2 gap-y-2">
+                        <LinkButton
+                          to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
+                          theme="light"
+                          text="Learn more"
+                          TrailingIcon={ArrowRightIcon}
+                          size="SM"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-right gap-x-2 gap-y-2">
+                        <Button
+                          size="XS"
+                          theme="light"
+                          text="Fullscreen"
+                          LeadingIcon={LuMaximize}
+                          onClick={() => requestFullscreen()}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
