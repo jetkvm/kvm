@@ -196,7 +196,7 @@ export default function PasteModal() {
                       setDelayValue(parseInt(e.target.value, 10));
                     }}
                   />
-                  {delayValue < 50 || delayValue > 65534 && (
+                  {(delayValue < defaultDelay || delayValue > 65534) && (
                     <div className="mt-2 flex items-center gap-x-2">
                       <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
                       <span className="text-xs text-red-500 dark:text-red-400">

@@ -31,6 +31,8 @@ var keyboardReportDesc = []byte{
 	0x05, 0x01, /* USAGE_PAGE (Generic Desktop)	          */
 	0x09, 0x06, /* USAGE (Keyboard)                       */
 	0xa1, 0x01, /* COLLECTION (Application)               */
+
+	/* 8 modifier bits */
 	0x05, 0x07, /*   USAGE_PAGE (Keyboard)                */
 	0x19, 0xe0, /*   USAGE_MINIMUM (Keyboard LeftControl) */
 	0x29, 0xe7, /*   USAGE_MAXIMUM (Keyboard Right GUI)   */
@@ -39,27 +41,47 @@ var keyboardReportDesc = []byte{
 	0x75, 0x01, /*   REPORT_SIZE (1)                      */
 	0x95, 0x08, /*   REPORT_COUNT (8)                     */
 	0x81, 0x02, /*   INPUT (Data,Var,Abs)                 */
+
+	/* 8 bits of padding */
 	0x95, 0x01, /*   REPORT_COUNT (1)                     */
 	0x75, 0x08, /*   REPORT_SIZE (8)                      */
 	0x81, 0x03, /*   INPUT (Cnst,Var,Abs)                 */
+
+	/* 6 key codes for the 104 key keyboard */
+	0x95, 0x06, /*   REPORT_COUNT (6)                     */
+	0x75, 0x08, /*   REPORT_SIZE (8)                      */
+	0x15, 0x00, /*   LOGICAL_MINIMUM (0)                  */
+	0x25, 0xE7, /*   LOGICAL_MAXIMUM (104-key HID)        */
+	0x05, 0x07, /*   USAGE_PAGE (Keyboard)                */
+	0x19, 0x00, /*   USAGE_MINIMUM (Reserved)             */
+	0x29, 0xE7, /*   USAGE_MAXIMUM (Keyboard Right GUI)   */
+	0x81, 0x00, /*   INPUT (Data,Ary,Abs)                 */
+
+	/* LED report 5 bits for Num Lock through Kana */
 	0x95, 0x05, /*   REPORT_COUNT (5)                     */
 	0x75, 0x01, /*   REPORT_SIZE (1)                      */
-
 	0x05, 0x08, /*   USAGE_PAGE (LEDs)                    */
 	0x19, 0x01, /*   USAGE_MINIMUM (Num Lock)             */
 	0x29, 0x05, /*   USAGE_MAXIMUM (Kana)                 */
 	0x91, 0x02, /*   OUTPUT (Data,Var,Abs)                */
+
+	/* 1 bit of padding for the Power LED (ignored) */
 	0x95, 0x01, /*   REPORT_COUNT (1)                     */
 	0x75, 0x03, /*   REPORT_SIZE (3)                      */
 	0x91, 0x03, /*   OUTPUT (Cnst,Var,Abs)                */
-	0x95, 0x06, /*   REPORT_COUNT (6)                     */
-	0x75, 0x08, /*   REPORT_SIZE (8)                      */
-	0x15, 0x00, /*   LOGICAL_MINIMUM (0)                  */
-	0x25, 0x65, /*   LOGICAL_MAXIMUM (101)                */
-	0x05, 0x07, /*   USAGE_PAGE (Keyboard)                */
-	0x19, 0x00, /*   USAGE_MINIMUM (Reserved)             */
-	0x29, 0x65, /*   USAGE_MAXIMUM (Keyboard Application) */
-	0x81, 0x00, /*   INPUT (Data,Ary,Abs)                 */
+
+	/* LED report 1 bit for Shift */
+	0x95, 0x01, /*   REPORT_COUNT (1)                     */
+	0x75, 0x01, /*   REPORT_SIZE (1)                      */
+	0x05, 0x08, /*   USAGE_PAGE (LEDs)                    */
+	0x19, 0x07, /*   USAGE_MINIMUM (Shift)                */
+	0x29, 0x07, /*   USAGE_MAXIMUM (Shift)                */
+	0x91, 0x02, /*   OUTPUT (Data,Var,Abs)                */
+
+	/* 1 bit of padding for the rest of the byte */
+	0x95, 0x01, /*   REPORT_COUNT (1)                     */
+	0x75, 0x03, /*   REPORT_SIZE (3)                      */
+	0x91, 0x03, /*   OUTPUT (Cnst,Var,Abs)                */
 	0xc0, /* END_COLLECTION                         */
 }
 
@@ -153,6 +175,16 @@ func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 	u.onKeysDownChange = &f
 }
 
+var suspendedKeyDownMessages bool = false
+
+func (u *UsbGadget) SuspendKeyDownMessages() {
+	suspendedKeyDownMessages = true
+}
+
+func (u *UsbGadget) ResumeSuspendKeyDownMessages() {
+	suspendedKeyDownMessages = false
+}
+
 func (u *UsbGadget) SetOnKeepAliveReset(f func()) {
 	u.onKeepAliveReset = &f
 }
@@ -169,9 +201,9 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 	}
 
 	// TODO: make this configurable
-	// We currently hardcode the duration to 100ms
+	// We currently hardcode the duration to the default of 100ms
 	// However, it should be the same as the duration of the keep-alive reset called baseExtension.
-	u.kbdAutoReleaseTimers[key] = time.AfterFunc(100*time.Millisecond, func() {
+	u.kbdAutoReleaseTimers[key] = time.AfterFunc(DefaultAutoReleaseDuration, func() {
 		u.performAutoRelease(key)
 	})
 }
@@ -314,6 +346,7 @@ var keyboardWriteHidFileLock sync.Mutex
 func (u *UsbGadget) keyboardWriteHidFile(modifier byte, keys []byte) error {
 	keyboardWriteHidFileLock.Lock()
 	defer keyboardWriteHidFileLock.Unlock()
+
 	if err := u.openKeyboardHidFile(); err != nil {
 		return err
 	}
@@ -353,7 +386,7 @@ func (u *UsbGadget) UpdateKeysDown(modifier byte, keys []byte) KeysDownState {
 	u.keysDownState = state
 	u.keyboardStateLock.Unlock()
 
-	if u.onKeysDownChange != nil {
+	if u.onKeysDownChange != nil && !suspendedKeyDownMessages {
 		(*u.onKeysDownChange)(state) // this enques to the outgoing hidrpc queue via usb.go → currentSession.enqueueKeysDownState(...)
 	}
 	return state
@@ -484,6 +517,10 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 	}
 
 	err := u.keyboardWriteHidFile(modifier, keys)
+	if err != nil {
+		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keyboard report to hidg0")
+	}
+
 	return u.UpdateKeysDown(modifier, keys), err
 }
 

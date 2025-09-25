@@ -142,7 +142,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
 
   const cancelOngoingKeyboardMacro = useCallback(
     () => {
-      sendMessage(new CancelKeyboardMacroReportMessage());
+      sendMessage(new CancelKeyboardMacroReportMessage(""));
     },
     [sendMessage],
   );

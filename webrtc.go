@@ -34,7 +34,7 @@ type Session struct {
 	lastTimerResetTime       time.Time  // Track when auto-release timer was last reset
 	keepAliveJitterLock      sync.Mutex // Protect jitter compensation timing state
 	hidQueueLock             sync.Mutex
-	hidQueue                 []chan hidQueueMessage
+	hidQueues                []chan hidQueueMessage
 
 	keysDownStateQueue chan usbgadget.KeysDownState
 }
@@ -76,7 +76,8 @@ func (s *Session) resetKeepAliveTime() {
 
 type hidQueueMessage struct {
 	webrtc.DataChannelMessage
-	channel string
+	channel   string
+	timelimit time.Duration
 }
 
 type SessionConfig struct {
@@ -121,19 +122,20 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 	return base64.StdEncoding.EncodeToString(localDescription), nil
 }
 
-func (s *Session) initQueues() {
+func (s *Session) initHidQueues() {
 	s.hidQueueLock.Lock()
 	defer s.hidQueueLock.Unlock()
 
-	s.hidQueue = make([]chan hidQueueMessage, 0)
-	for i := 0; i < 4; i++ {
-		q := make(chan hidQueueMessage, 256)
-		s.hidQueue = append(s.hidQueue, q)
-	}
+	s.hidQueues = make([]chan hidQueueMessage, hidrpc.OtherQueue+1)
+	s.hidQueues[hidrpc.HandshakeQueue] = make(chan hidQueueMessage, 2) // we don't really want to queue many handshake messages
+	s.hidQueues[hidrpc.KeyboardQueue] = make(chan hidQueueMessage, 256)
+	s.hidQueues[hidrpc.MouseQueue] = make(chan hidQueueMessage, 256)
+	s.hidQueues[hidrpc.MacroQueue] = make(chan hidQueueMessage, 10) // macros can be long, but we don't want to queue too many
+	s.hidQueues[hidrpc.OtherQueue] = make(chan hidQueueMessage, 256)
 }
 
-func (s *Session) handleQueues(index int) {
-	for msg := range s.hidQueue[index] {
+func (s *Session) handleQueue(queue chan hidQueueMessage) {
+	for msg := range queue {
 		onHidMessage(msg, s)
 	}
 }
@@ -188,17 +190,18 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 		l.Trace().Msg("received data in HID RPC message handler")
 
 		// Enqueue to ensure ordered processing
-		queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
-		if queueIndex >= len(session.hidQueue) || queueIndex < 0 {
+		queueIndex, timelimit := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
+		if queueIndex >= len(session.hidQueues) || queueIndex < 0 {
 			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue index not found")
-			queueIndex = 3
+			queueIndex = hidrpc.OtherQueue
 		}
 
-		queue := session.hidQueue[queueIndex]
+		queue := session.hidQueues[queueIndex]
 		if queue != nil {
 			queue <- hidQueueMessage{
 				DataChannelMessage: msg,
 				channel:            channel,
+				timelimit:          timelimit,
 			}
 		} else {
 			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue is nil")
@@ -248,7 +251,7 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	session := &Session{peerConnection: peerConnection}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
-	session.initQueues()
+	session.initHidQueues()
 	session.initKeysDownStateQueue()
 
 	go func() {
@@ -258,8 +261,8 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	}()
 
-	for i := 0; i < len(session.hidQueue); i++ {
-		go session.handleQueues(i)
+	for queue := range session.hidQueues {
+		go session.handleQueue(session.hidQueues[queue])
 	}
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
@@ -284,7 +287,11 @@ func newSession(config SessionConfig) (*Session, error) {
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
 				// Enqueue to ensure ordered processing
-				session.rpcQueue <- msg
+				if session.rpcQueue != nil {
+					session.rpcQueue <- msg
+				} else {
+					scopedLogger.Warn().Msg("RPC message received but rpcQueue is nil")
+				}
 			})
 			triggerOTAStateUpdate()
 			triggerVideoStateUpdate()
@@ -352,22 +359,23 @@ func newSession(config SessionConfig) (*Session, error) {
 			_ = peerConnection.Close()
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
-			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
+			scopedLogger.Debug().Msg("ICE Connection State is closed, tearing down session")
 			if session == currentSession {
 				// Cancel any ongoing keyboard report multi when session closes
-				cancelKeyboardMacro()
+				cancelAllRunningKeyboardMacros()
 				currentSession = nil
 			}
+
 			// Stop RPC processor
 			if session.rpcQueue != nil {
 				close(session.rpcQueue)
 				session.rpcQueue = nil
 			}
 
-			// Stop HID RPC processor
-			for i := 0; i < len(session.hidQueue); i++ {
-				close(session.hidQueue[i])
-				session.hidQueue[i] = nil
+			// Stop HID RPC processors
+			for i := 0; i < len(session.hidQueues); i++ {
+				close(session.hidQueues[i])
+				session.hidQueues[i] = nil
 			}
 
 			close(session.keysDownStateQueue)

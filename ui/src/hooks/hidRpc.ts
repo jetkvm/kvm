@@ -1,3 +1,5 @@
+import { parse as uuidParse , stringify as uuidStringify } from "uuid";
+
 import { hidKeyBufferSize, KeyboardLedState, KeysDownState } from "./stores";
 
 export const HID_RPC_MESSAGE_TYPES = {
@@ -13,6 +15,7 @@ export const HID_RPC_MESSAGE_TYPES = {
     KeyboardLedState: 0x32,
     KeysDownState: 0x33,
     KeyboardMacroState: 0x34,
+    CancelKeyboardMacroByTokenReport: 0x35,
 }
 
 export type HidRpcMessageType = typeof HID_RPC_MESSAGE_TYPES[keyof typeof HID_RPC_MESSAGE_TYPES];
@@ -300,7 +303,7 @@ export class KeyboardMacroStateMessage extends RpcMessage {
     }
 
     public static unmarshal(data: Uint8Array): KeyboardMacroStateMessage | undefined {
-        if (data.length < 1) {
+        if (data.length < 2) {
             throw new Error(`Invalid keyboard macro state report message length: ${data.length}`);
         }
 
@@ -379,13 +382,30 @@ export class PointerReportMessage extends RpcMessage {
 }
 
 export class CancelKeyboardMacroReportMessage extends RpcMessage {
+    token: string;
 
-    constructor() {
+    constructor(token: string) {
         super(HID_RPC_MESSAGE_TYPES.CancelKeyboardMacroReport);
+        this.token = (token == null || token === undefined || token === "")
+            ? "00000000-0000-0000-0000-000000000000"
+            : token;
     }
 
     marshal(): Uint8Array {
-        return new Uint8Array([this.messageType]);
+        const tokenBytes = uuidParse(this.token);
+        return new Uint8Array([this.messageType, ...tokenBytes]);
+    }
+
+    public static unmarshal(data: Uint8Array): CancelKeyboardMacroReportMessage | undefined {
+        if (data.length == 0) {
+            return new CancelKeyboardMacroReportMessage("00000000-0000-0000-0000-000000000000");
+        }
+
+        if (data.length != 16) {
+            throw new Error(`Invalid cancel message length: ${data.length}`);
+        }
+
+        return new CancelKeyboardMacroReportMessage(uuidStringify(data.slice(0, 16)));
     }
 }
 
@@ -431,6 +451,7 @@ export const messageRegistry = {
     [HID_RPC_MESSAGE_TYPES.CancelKeyboardMacroReport]: CancelKeyboardMacroReportMessage,
     [HID_RPC_MESSAGE_TYPES.KeyboardMacroState]: KeyboardMacroStateMessage,
     [HID_RPC_MESSAGE_TYPES.KeypressKeepAliveReport]: KeypressKeepAliveMessage,
+    [HID_RPC_MESSAGE_TYPES.CancelKeyboardMacroByTokenReport]: CancelKeyboardMacroReportMessage,
 }
 
 export const unmarshalHidRpcMessage = (data: Uint8Array): RpcMessage | undefined => {
