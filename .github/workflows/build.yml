@@ -49,3 +49,23 @@ jobs:
           path: |
             bin/jetkvm_app
             device-tests.tar.gz
+  release:
+    runs-on: ubuntu-latest
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+      - name: Draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          # need review before making a real release
+          draft: true
+          files: bin/jetkvm_app
+          fail_on_unmatched_files: true
+          tag_name: ${{ github.ref }}
+          name: ${{ github.ref }}
+          generate_release_notes: true
