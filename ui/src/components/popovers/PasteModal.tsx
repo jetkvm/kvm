@@ -17,6 +17,7 @@ import { TextAreaWithLabel } from "@components/TextArea";
 
 // uint32 max value / 4
 const pasteMaxLength = 1073741824;
+const defaultDelay = 20;
 
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -27,10 +28,10 @@ export default function PasteModal() {
   const { executeMacro, cancelExecuteMacro } = useKeyboard();
 
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
-  const [delayValue, setDelayValue] = useState(100);
+  const [delayValue, setDelayValue] = useState(defaultDelay);
   const delay = useMemo(() => {
-    if (delayValue < 50 || delayValue > 65534) {
-      return 100;
+    if (delayValue < 0 || delayValue > 65534) {
+      return defaultDelay;
     }
     return delayValue;
   }, [delayValue]);
@@ -40,7 +41,7 @@ export default function PasteModal() {
   const delayClassName = useMemo(() => debugMode ? "" : "hidden", [debugMode]);
 
   const { setKeyboardLayout } = useSettingsStore();
-  const { selectedKeyboard }  = useKeyboardLayout();
+  const { selectedKeyboard } = useKeyboardLayout();
 
   useEffect(() => {
     send("getKeyboardLayout", {}, (resp: JsonRpcResponse) => {
@@ -136,7 +137,8 @@ export default function PasteModal() {
                   <div
                     className="w-full"
                     onKeyUp={e => e.stopPropagation()}
-                    onKeyDown={e => e.stopPropagation()}                    onKeyDownCapture={e => e.stopPropagation()}
+                    onKeyDown={e => e.stopPropagation()}
+                    onKeyDownCapture={e => e.stopPropagation()}
                     onKeyUpCapture={e => e.stopPropagation()}
                   >
                     <TextAreaWithLabel
