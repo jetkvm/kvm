@@ -111,3 +111,8 @@ func (n *Native) DoNotUseThisIsForCrashTestingOnly() {
 
 	crash()
 }
+
+// GetLVGLVersion returns the LVGL version
+func GetLVGLVersion() string {
+	return uiGetLVGLVersion()
+}

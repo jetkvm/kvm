@@ -16,6 +16,7 @@ show_help() {
     echo "      --run-go-tests-only    Run go tests and exit"
     echo "      --skip-ui-build        Skip frontend/UI build"
     echo "      --skip-native-build    Skip native build"
+    echo "      --disable-docker       Disable docker build"
     echo "  -i, --install              Build for release and install the app"
     echo "      --help                 Display this help message"
     echo
@@ -36,7 +37,7 @@ LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
 RUN_GO_TESTS=false
 RUN_GO_TESTS_ONLY=false
 INSTALL_APP=false
-BUILD_IN_DOCKER=false
+BUILD_IN_DOCKER=true
 DOCKER_BUILD_DEBUG=false
 DOCKER_BUILD_TAG=ghcr.io/jetkvm/buildkit:latest
 
@@ -63,8 +64,8 @@ while [[ $# -gt 0 ]]; do
             RESET_USB_HID_DEVICE=true
             shift
             ;;
-        --build-in-docker)
-            BUILD_IN_DOCKER=true
+        --disable-docker)
+            BUILD_IN_DOCKER=false
             shift
             ;;
         --docker-build-debug)

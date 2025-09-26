@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"html/template"
 	"runtime"
+	"strings"
 
+	"github.com/jetkvm/kvm/internal/native"
 	"github.com/prometheus/common/version"
 )
 
@@ -32,11 +34,9 @@ func GetVersionData(isJson bool) ([]byte, error) {
 		"platform":  runtime.GOOS + "/" + runtime.GOARCH,
 	}
 
-	if nativeInstance != nil {
-		lvglVersion, err := nativeInstance.GetLVGLVersion()
-		if err == nil {
-			m["lvglVersion"] = lvglVersion
-		}
+	lvglVersion := native.GetLVGLVersion()
+	if lvglVersion != "" {
+		m["lvglVersion"] = lvglVersion
 	}
 
 	if isJson {
@@ -47,7 +47,11 @@ func GetVersionData(isJson bool) ([]byte, error) {
 		return jsonData, nil
 	}
 
-	t := template.Must(template.New("version").Parse(versionInfoTmpl))
+	t := template.Must(
+		template.New("version").Parse(
+			strings.TrimSpace(versionInfoTmpl),
+		),
+	)
 
 	var buf bytes.Buffer
 	if err := t.ExecuteTemplate(&buf, "version", m); err != nil {
