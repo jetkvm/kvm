@@ -115,6 +115,7 @@ void create_screen_no_network_screen() {
             lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_radius(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_clear_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_scrollbar_mode(obj, LV_SCROLLBAR_MODE_OFF);
             add_style_flex_start(obj);
             {
                 lv_obj_t *parent_obj = obj;
@@ -151,8 +152,8 @@ void create_screen_no_network_screen() {
                     // NoNetworkContentContainer
                     lv_obj_t *obj = lv_obj_create(parent_obj);
                     objects.no_network_content_container = obj;
-                    lv_obj_set_pos(obj, 0, 0);
-                    lv_obj_set_size(obj, LV_PCT(100), LV_PCT(60));
+                    lv_obj_set_pos(obj, 0, 20);
+                    lv_obj_set_size(obj, LV_PCT(100), LV_PCT(75));
                     lv_obj_set_style_pad_left(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
                     lv_obj_set_style_pad_top(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
                     lv_obj_set_style_pad_right(obj, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -166,6 +167,7 @@ void create_screen_no_network_screen() {
                     lv_obj_set_style_flex_main_place(obj, LV_FLEX_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                     lv_obj_set_style_flex_cross_place(obj, LV_FLEX_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                     lv_obj_set_style_flex_track_place(obj, LV_FLEX_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+                    lv_obj_set_style_margin_top(obj, 200, LV_PART_MAIN | LV_STATE_CHECKED);
                     {
                         lv_obj_t *parent_obj = obj;
                         {
@@ -327,6 +329,7 @@ void create_screen_home_screen() {
                             lv_obj_set_pos(obj, LV_PCT(0), LV_PCT(0));
                             lv_obj_set_size(obj, LV_PCT(98), 17);
                             lv_label_set_long_mode(obj, LV_LABEL_LONG_DOT);
+                            lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
                             add_style_label_font16(obj);
                             lv_obj_set_style_text_align(obj, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN | LV_STATE_DEFAULT);
                             lv_label_set_text(obj, "fe80::ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff");

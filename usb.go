@@ -103,11 +103,15 @@ func checkUSBState() {
 
 	newState := gadget.GetUsbState()
 
+	usbLogger.Trace().Str("old", usbState).Str("new", newState).Msg("Checking USB state")
+
 	if newState == usbState {
 		return
 	}
+
 	usbState = newState
 	usbLogger.Info().Str("from", usbState).Str("to", newState).Msg("USB state changed")
+
 	requestDisplayUpdate(true, "usb_state_changed")
 	triggerUSBStateUpdate()
 }
