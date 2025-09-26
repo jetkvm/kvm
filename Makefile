@@ -20,8 +20,9 @@ BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE ?= $(shell date -u +%FT%T%z)
 BUILDTS   ?= $(shell date -u +%s)
 REVISION  ?= $(shell git rev-parse HEAD)
-VERSION_DEV := 0.4.8-dev$(shell date +%Y%m%d%H%M)
-VERSION := 0.4.7
+VERSION_DEV := 0.4.9-dev$(shell date +%Y%m%d%H%M)
+VERSION := 0.4.8
+
 
 # Audio library versions
 ALSA_VERSION ?= 1.2.14
@@ -48,7 +49,7 @@ export CGO_LDFLAGS := -L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -la
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
 
-GO_BUILD_ARGS := -tags netgo -tags timetzdata
+GO_BUILD_ARGS := -tags netgo,timetzdata,nomsgpack
 GO_RELEASE_BUILD_ARGS := -trimpath $(GO_BUILD_ARGS)
 GO_LDFLAGS := \
   -s -w \
