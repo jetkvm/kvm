@@ -412,3 +412,9 @@ int jetkvm_video_init() {
 void jetkvm_video_shutdown() {
     video_shutdown();
 }
+
+void jetkvm_crash() {
+    // let's call a function that will crash the program
+    int* p = 0;
+    *p = 0;
+}

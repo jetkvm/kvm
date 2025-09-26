@@ -122,3 +122,7 @@ func videoSetEDID(edid string) error {
 	panicPlatformNotSupported()
 	return nil
 }
+
+func crash() {
+	panicPlatformNotSupported()
+}

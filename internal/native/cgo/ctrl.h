@@ -26,6 +26,7 @@ void jetkvm_set_indev_handler(jetkvm_indev_handler_t *handler);
 void jetkvm_set_rpc_handler(jetkvm_rpc_handler_t *handler);
 void jetkvm_call_rpc_handler(const char *method, const char *params);
 void jetkvm_set_video_state_handler(jetkvm_video_state_handler_t *handler);
+void jetkvm_crash();
 
 void jetkvm_ui_set_var(const char *name, const char *value);
 const char *jetkvm_ui_get_var(const char *name);

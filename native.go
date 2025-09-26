@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"os"
 	"sync"
 	"time"
 
@@ -56,4 +57,8 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		},
 	})
 	nativeInstance.Start()
+
+	if os.Getenv("JETKVM_CRASH_TESTING") == "1" {
+		nativeInstance.DoNotUseThisIsForCrashTestingOnly()
+	}
 }

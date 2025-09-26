@@ -99,3 +99,15 @@ func (n *Native) Start() {
 
 	close(n.ready)
 }
+
+// DoNotUseThisIsForCrashTestingOnly
+// will crash the program in cgo code
+func (n *Native) DoNotUseThisIsForCrashTestingOnly() {
+	defer func() {
+		if r := recover(); r != nil {
+			n.l.Error().Msg("recovered from crash")
+		}
+	}()
+
+	crash()
+}

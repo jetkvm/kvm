@@ -389,3 +389,9 @@ func videoSetEDID(edid string) error {
 	C.jetkvm_video_set_edid(edidCStr)
 	return nil
 }
+
+// DO NOT USE THIS FUNCTION IN PRODUCTION
+// This is only for testing purposes
+func crash() {
+	C.jetkvm_crash()
+}
