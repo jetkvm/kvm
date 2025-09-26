@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"sync"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/usbgadget"
@@ -77,7 +78,10 @@ func rpcGetKeysDownState() (state usbgadget.KeysDownState) {
 	return gadget.GetKeysDownState()
 }
 
-var usbState = "unknown"
+var (
+	usbState     = "unknown"
+	usbStateLock sync.Mutex
+)
 
 func rpcGetUSBState() (state string) {
 	return gadget.GetUsbState()
@@ -94,7 +98,11 @@ func triggerUSBStateUpdate() {
 }
 
 func checkUSBState() {
+	usbStateLock.Lock()
+	defer usbStateLock.Unlock()
+
 	newState := gadget.GetUsbState()
+
 	if newState == usbState {
 		return
 	}
