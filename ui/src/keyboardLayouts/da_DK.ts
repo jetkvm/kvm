@@ -1,6 +1,9 @@
-import { KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
+
+import { en_US } from "./en_US" // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
 
 export const name = "Dansk";
+const isoCode = "da-DK";
 
 const keyTrema = { key: "BracketRight" }
 const keyAcute = { key: "Equal", altRight: true } 
