@@ -212,7 +212,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
 Button.displayName = "Button";
 
 type LinkPropsType = Pick<LinkProps, "to"> &
-  React.ComponentProps<typeof ButtonContent> & { disabled?: boolean };
+  React.ComponentProps<typeof ButtonContent> & { disabled?: boolean, reloadDocument?: boolean };
 export const LinkButton = ({ to, ...props }: LinkPropsType) => {
   const classes = cx(
     "group outline-hidden",
@@ -230,7 +230,7 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
     );
   } else {
     return (
-      <Link to={to} className={classes}>
+      <Link to={to} reloadDocument={props.reloadDocument} className={classes}>
         <ButtonContent {...props} />
       </Link>
     );

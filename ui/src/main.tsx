@@ -86,7 +86,7 @@ export async function checkDeviceAuth() {
 }
 
 export async function checkAuth() {
-  return import.meta.env.MODE === "device" ? checkDeviceAuth() : checkCloudAuth();
+  return isOnDevice ? checkDeviceAuth() : checkCloudAuth();
 }
 
 let router;
