@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
+import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { SettingsItem } from "@routes/devices.$id.settings";
 import { BacklightSettings, useSettingsStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";

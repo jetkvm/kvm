@@ -1,12 +1,11 @@
 import { useMemo , useCallback , useEffect, useState } from "react";
 
 import { Button } from "@components/Button";
-
+import { SettingsItem } from "@components/SettingsItem";
 
 import { UsbConfigState } from "../hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
-import { SettingsItem } from "../routes/devices.$id.settings";
 
 import { InputFieldWithLabel } from "./InputField";
 import { SelectMenuBasic } from "./SelectMenuBasic";

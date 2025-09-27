@@ -7,6 +7,7 @@ import { GridCard } from "@/components/Card";
 import { Checkbox } from "@/components/Checkbox";
 import { useSettingsStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { JigglerSetting } from "@components/JigglerSetting";
@@ -14,8 +15,6 @@ import { JigglerSetting } from "@components/JigglerSetting";
 import { cx } from "../cva.config";
 import notifications from "../notifications";
 import SettingsNestedSection from "../components/SettingsNestedSection";
-
-import { SettingsItem } from "./devices.$id.settings";
 
 export interface JigglerConfig {
   inactivity_limit_seconds: number;
