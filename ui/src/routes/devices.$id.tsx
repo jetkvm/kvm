@@ -243,7 +243,7 @@ export default function KvmIdRoute() {
 
       shouldReconnect(event: WebSocketEventMap['close']) {
         console.debug("[Websocket] shouldReconnect", event);
-        return !isLegacySignalingEnabled.current;
+        return !isLegacySignalingEnabled.current && !connectionFailed;
       },
 
       onClose(event: WebSocketEventMap['close']) {
