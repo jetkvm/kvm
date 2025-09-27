@@ -167,4 +167,18 @@ export const chars = {
   "\n": { key: "Enter" },
   Enter: { key: "Enter" },
   Tab: { key: "Tab" },
+
 } as Record<string, KeyCombo>;
+
+export const da_DK: KeyboardLayout = {
+  isoCode: isoCode,
+  name: name,
+  chars: chars,
+  // TODO need to localize these maps and layouts
+  keyDisplayMap: en_US.keyDisplayMap, 
+  modifierDisplayMap: en_US.modifierDisplayMap,
+  virtualKeyboard: en_US.virtualKeyboard
+};
+
+
+
