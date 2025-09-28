@@ -2,6 +2,7 @@ import { Form, redirect, useActionData } from "react-router";
 import type { ActionFunction, ActionFunctionArgs, LoaderFunction } from "react-router";
 import { useState, useRef, useEffect } from "react";
 import { LuEye, LuEyeOff } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
 
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
@@ -26,12 +27,13 @@ const loader: LoaderFunction = async () => {
 };
 
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
+  const { t } = useTranslation();
   const formData = await request.formData();
   const password = formData.get("password");
   const confirmPassword = formData.get("confirmPassword");
 
   if (password !== confirmPassword) {
-    return { error: "Passwords do not match" };
+    return { error: t('Passwords_do_not_match') };
   }
 
   try {
@@ -43,15 +45,16 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
     if (response.ok) {
       return redirect("/");
     } else {
-      return { error: "Failed to set password" };
+      return { error: t('Failed_to_set_password') };
     }
   } catch (error) {
     console.error("Error setting password:", error);
-    return { error: "An error occurred while setting the password" };
+    return { error: t('An_error_occurred_while_setting_the_password') };
   }
 };
 
 export default function WelcomeLocalPasswordRoute() {
+  const { t } = useTranslation();
   const actionData = useActionData() as { error?: string };
   const [showPassword, setShowPassword] = useState(false);
   const passwordInputRef = useRef<HTMLInputElement>(null);
@@ -86,10 +89,10 @@ export default function WelcomeLocalPasswordRoute() {
                 style={{ animationDelay: "200ms" }}
               >
                 <h1 className="text-4xl font-semibold text-black dark:text-white">
-                  Set a Password
+                    {t('Set_a_Password')}
                 </h1>
                 <p className="font-medium text-slate-600 dark:text-slate-400">
-                  Create a strong password to secure your JetKVM device locally.
+                    {t('Create_a_strong_password_to_secure_your_JetKVM_device_locally')}
                 </p>
               </div>
 
@@ -101,10 +104,10 @@ export default function WelcomeLocalPasswordRoute() {
                       style={{ animationDelay: "400ms" }}
                     >
                       <InputFieldWithLabel
-                        label="Password"
+                        label={t('Password')}
                         type={showPassword ? "text" : "password"}
                         name="password"
-                        placeholder="Enter a password"
+                        placeholder={t('Enter_a_password')}
                         autoComplete="new-password"
                         ref={passwordInputRef}
                         TrailingElm={
@@ -131,11 +134,11 @@ export default function WelcomeLocalPasswordRoute() {
                       style={{ animationDelay: "400ms" }}
                     >
                       <InputFieldWithLabel
-                        label="Confirm Password"
+                        label={t('Confirm_Password')}
                         autoComplete="new-password"
                         type={showPassword ? "text" : "password"}
                         name="confirmPassword"
-                        placeholder="Confirm your password"
+                        placeholder={t('Confirm_your_password')}
                         error={actionData?.error}
                       />
                     </div>
@@ -152,7 +155,7 @@ export default function WelcomeLocalPasswordRoute() {
                       theme="primary"
                       fullWidth
                       type="submit"
-                      text="Set Password"
+                      text={t('Set_Password')}
                       textAlign="center"
                     />
                   </div>
@@ -163,9 +166,8 @@ export default function WelcomeLocalPasswordRoute() {
                 className="animate-fadeIn max-w-md text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
                 style={{ animationDelay: "800ms" }}
               >
-                This password will be used to secure your device data and protect against
-                unauthorized access.{" "}
-                <span className="font-bold">All data remains on your local device.</span>
+                  {t('This_password_will_be_used_to_secure_your_device_data_and_protect_against_unauthorized_access')}
+                <span className="font-bold">{t('All_data_remains_on_your_local_device')}</span>
               </p>
             </div>
           </div>

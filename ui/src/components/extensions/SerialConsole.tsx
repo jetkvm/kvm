@@ -1,5 +1,6 @@
 import { LuTerminal } from "react-icons/lu";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@components/Button";
 import Card from "@components/Card";
@@ -18,6 +19,7 @@ interface SerialSettings {
 
 export function SerialConsole() {
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<SerialSettings>({
     baudRate: "9600",
     dataBits: "8",
@@ -29,7 +31,7 @@ export function SerialConsole() {
     send("getSerialSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to get serial settings: ${resp.error.data || "Unknown error"}`,
+          t('Failed_to_get_serial_settings_msg',{msg:resp.error.data || t('Unknown_error')})
         );
         return;
       }
@@ -42,7 +44,7 @@ export function SerialConsole() {
     send("setSerialSettings", { settings: newSettings }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to update serial settings: ${resp.error.data || "Unknown error"}`,
+          t('Failed_to_update_serial_settings_msg',{msg:resp.error.data || t('Unknown_error')})
         );
         return;
       }
@@ -54,8 +56,8 @@ export function SerialConsole() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Serial Console"
-        description="Configure your serial console settings"
+        title={t('Serial_Console')}
+        description={t('Configure_your_serial_console_settings')}
       />
 
       <Card className="animate-fadeIn opacity-0">
@@ -66,7 +68,7 @@ export function SerialConsole() {
               size="SM"
               theme="primary"
               LeadingIcon={LuTerminal}
-              text="Open Console"
+              text={t('Open_Console')}
               onClick={() => {
                 setTerminalType("serial");
                 console.log("Opening serial console with settings: ", settings);
@@ -77,7 +79,7 @@ export function SerialConsole() {
           {/* Settings */}
           <div className="grid grid-cols-2 gap-4">
             <SelectMenuBasic
-              label="Baud Rate"
+              label={t('Baud_Rate')}
               options={[
                 { label: "1200", value: "1200" },
                 { label: "2400", value: "2400" },
@@ -93,7 +95,7 @@ export function SerialConsole() {
             />
 
             <SelectMenuBasic
-              label="Data Bits"
+              label={t('Data_Bits')}
               options={[
                 { label: "8", value: "8" },
                 { label: "7", value: "7" },
@@ -103,7 +105,7 @@ export function SerialConsole() {
             />
 
             <SelectMenuBasic
-              label="Stop Bits"
+              label={t('Stop_Bits')}
               options={[
                 { label: "1", value: "1" },
                 { label: "1.5", value: "1.5" },
@@ -114,11 +116,11 @@ export function SerialConsole() {
             />
 
             <SelectMenuBasic
-              label="Parity"
+              label={t('Parity')}
               options={[
-                { label: "None", value: "none" },
-                { label: "Even", value: "even" },
-                { label: "Odd", value: "odd" },
+                { label: t("None"), value: "none" },
+                { label: t("Even"), value: "even" },
+                { label: t("Odd"), value: "odd" },
               ]}
               value={settings.parity}
               onChange={e => handleSettingChange("parity", e.target.value)}

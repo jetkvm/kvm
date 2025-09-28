@@ -1,5 +1,6 @@
 import { PlusCircleIcon } from "@heroicons/react/16/solid";
 import { LuPlus } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
 
 import Card from "@/components/Card";
 import { Button } from "@/components/Button";
@@ -11,6 +12,7 @@ export default function EmptyStateCard({
   onCancelWakeOnLanModal: () => void;
   setShowAddForm: (show: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="select-none space-y-4">
       <Card className="animate-fadeIn opacity-0">
@@ -25,10 +27,10 @@ export default function EmptyStateCard({
                 </Card>
               </div>
               <h3 className="text-sm font-semibold leading-none text-black dark:text-white">
-                No devices added
+                  {t('No_devices_added')}
               </h3>
               <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
-                Add a device to start using Wake-on-LAN
+                  {t('Add_a_device_to_start_using_Wake-on-LAN')}
               </p>
             </div>
           </div>
@@ -41,11 +43,11 @@ export default function EmptyStateCard({
           animationDelay: "0.2s",
         }}
       >
-        <Button size="SM" theme="blank" text="Close" onClick={onCancelWakeOnLanModal} />
+        <Button size="SM" theme="blank" text={t('Close')} onClick={onCancelWakeOnLanModal} />
         <Button
           size="SM"
           theme="primary"
-          text="Add New Device"
+          text={t('Add_New_Device')}
           onClick={() => setShowAddForm(true)}
           LeadingIcon={LuPlus}
         />

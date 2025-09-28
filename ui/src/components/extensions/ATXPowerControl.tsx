@@ -1,5 +1,6 @@
 import { LuHardDrive, LuPower, LuRotateCcw } from "react-icons/lu";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@components/Button";
 import Card from "@components/Card";
@@ -7,8 +8,7 @@ import { SettingsPageHeader } from "@components/SettingsPageheader";
 import notifications from "@/notifications";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
-import { JsonRpcResponse, useJsonRpc } from "../../hooks/useJsonRpc";
-
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 const LONG_PRESS_DURATION = 3000; // 3 seconds for long press
 
 interface ATXState {
@@ -28,13 +28,14 @@ export function ATXPowerControl() {
       setAtxState(resp.params as ATXState);
     }
   });
+  const { t } = useTranslation();
 
   // Request initial state
   useEffect(() => {
     send("getATXState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to get ATX state: ${resp.error.data || "Unknown error"}`,
+          t('Failed_to_get_ATX_state_msg',{msg:resp.error.data || t('Unknown_error')})
         );
         return;
       }
@@ -57,7 +58,7 @@ export function ATXPowerControl() {
         send("setATXPowerAction", { action: "power-long" }, (resp: JsonRpcResponse) => {
           if ("error" in resp) {
             notifications.error(
-              `Failed to send ATX power action: ${resp.error.data || "Unknown error"}`,
+              t('Failed_to_send_ATX_power_action_msg',{msg:resp.error.data || t('Unknown_error')})
             );
           }
           setIsPowerPressed(false);
@@ -78,7 +79,7 @@ export function ATXPowerControl() {
         send("setATXPowerAction", { action: "power-short" }, (resp: JsonRpcResponse) => {
           if ("error" in resp) {
             notifications.error(
-              `Failed to send ATX power action: ${resp.error.data || "Unknown error"}`,
+                t('Failed_to_send_ATX_power_action_msg',{msg:resp.error.data || t('Unknown_error')})
             );
           }
         });
@@ -98,8 +99,8 @@ export function ATXPowerControl() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="ATX Power Control"
-        description="Control your ATX power settings"
+        title={t('ATX_Power_Control')}
+        description={t('Control_your_ATX_power_settings')}
       />
 
       {atxState === null ? (
@@ -115,7 +116,7 @@ export function ATXPowerControl() {
                 size="SM"
                 theme="light"
                 LeadingIcon={LuPower}
-                text="Power"
+                text={t('Power')}
                 onMouseDown={() => handlePowerPress(true)}
                 onMouseUp={() => handlePowerPress(false)}
                 onMouseLeave={() => handlePowerPress(false)}
@@ -125,12 +126,12 @@ export function ATXPowerControl() {
                 size="SM"
                 theme="light"
                 LeadingIcon={LuRotateCcw}
-                text="Reset"
+                text={t('Reset')}
                 onClick={() => {
                   send("setATXPowerAction", { action: "reset" }, (resp: JsonRpcResponse) => {
                     if ("error" in resp) {
                       notifications.error(
-                        `Failed to send ATX power action: ${resp.error.data || "Unknown error"}`,
+                          t('Failed_to_send_ATX_power_action_msg',{msg:resp.error.data || t('Unknown_error')})
                       );
                       return;
                     }
@@ -150,7 +151,7 @@ export function ATXPowerControl() {
                       atxState?.power ? "text-green-600" : "text-slate-300"
                     }`}
                   />
-                  Power LED
+                    {t('Power_LED')}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
@@ -161,7 +162,7 @@ export function ATXPowerControl() {
                       atxState?.hdd ? "text-blue-400" : "text-slate-300"
                     }`}
                   />
-                  HDD LED
+                    {t('HDD_LED')}
                 </span>
               </div>
             </div>

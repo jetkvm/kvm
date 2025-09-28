@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import { cx } from "@/cva.config";
 import {
@@ -51,6 +52,7 @@ export default function InfoBar() {
 
     return [...modifierNames, ...keyNames].join(", ");
   }, [keysDownState, showPressedKeys]);
+  const { t } = useTranslation();
 
   return (
     <div className="bg-white border-t border-t-slate-800/30 text-slate-800 dark:border-t-slate-300/20 dark:bg-slate-900 dark:text-slate-300">
@@ -59,21 +61,21 @@ export default function InfoBar() {
           <div className="flex flex-wrap items-center pl-2 gap-x-4">
             {debugMode ? (
               <div className="flex">
-                <span className="text-xs font-semibold">Resolution:</span>{" "}
+                <span className="text-xs font-semibold">{t('Resolution')}:</span>{" "}
                 <span className="text-xs">{videoSize}</span>
               </div>
             ) : null}
 
             {debugMode ? (
               <div className="flex">
-                <span className="text-xs font-semibold">Video Size: </span>
+                <span className="text-xs font-semibold">{t('Video_Size')}: </span>
                 <span className="text-xs">{videoClientSize}</span>
               </div>
             ) : null}
 
             {(debugMode && mouseMode == "absolute") ? (
-              <div className="flex w-[118px] items-center gap-x-1">
-                <span className="text-xs font-semibold">Pointer:</span>
+              <div className="flex w-[140px] items-center gap-x-1">
+                <span className="text-xs font-semibold">{t('Pointer')}:</span>
                 <span className="text-xs">
                   {mouseX},{mouseY}
                 </span>
@@ -81,8 +83,8 @@ export default function InfoBar() {
             ) : null}
 
             {(debugMode && mouseMode == "relative") ? (
-              <div className="flex w-[118px] items-center gap-x-1">
-                <span className="text-xs font-semibold">Last Move:</span>
+              <div className="flex w-[156px] items-center gap-x-1">
+                <span className="text-xs font-semibold">{t('Last_Move')}:</span>
                 <span className="text-xs">
                   {mouseMove ?
                     `${mouseMove.x},${mouseMove.y} ${mouseMove.buttons ? `(${mouseMove.buttons})` : ""}` :
@@ -93,31 +95,31 @@ export default function InfoBar() {
 
             {debugMode && (
               <div className="flex w-[156px] items-center gap-x-1">
-                <span className="text-xs font-semibold">USB State:</span>
-                <span className="text-xs">{usbState}</span>
+                <span className="text-xs font-semibold">{t('USB_State')}:</span>
+                <span className="text-xs">{t(usbState.replace(' ','_').toString())}</span>
               </div>
             )}
             {debugMode && (
               <div className="flex w-[156px] items-center gap-x-1">
-                <span className="text-xs font-semibold">HDMI State:</span>
-                <span className="text-xs">{hdmiState}</span>
+                <span className="text-xs font-semibold">{t('HDMI_State')}:</span>
+                <span className="text-xs">{t(hdmiState.toString())}</span>
               </div>
             )}
             {debugMode && (
-              <div className="flex w-[156px] items-center gap-x-1">
-                <span className="text-xs font-semibold">HidRPC State:</span>
-                <span className="text-xs">{rpcHidStatus}</span>
+              <div className="flex w-[168px] items-center gap-x-1">
+                <span className="text-xs font-semibold">{t('HidRPC_State')}:</span>
+                <span className="text-xs">{t(rpcHidStatus.toString().replace(' ','_'))}</span>
               </div>
             )}
             {isPasteInProgress && (
               <div className="flex w-[156px] items-center gap-x-1">
-                <span className="text-xs font-semibold">Paste Mode:</span>
-                <span className="text-xs">Enabled</span>
+                <span className="text-xs font-semibold">{t('Paste_Mode')}:</span>
+                <span className="text-xs">{t('Enabled')}</span>
               </div>
             )}
             {showPressedKeys && (
               <div className="flex items-center gap-x-1">
-                <span className="text-xs font-semibold">Keys:</span>
+                <span className="text-xs font-semibold">{t('Keys')}:</span>
                 <h2 className="text-xs">
                   {displayKeys}
                 </h2>
@@ -128,7 +130,7 @@ export default function InfoBar() {
         <div className="flex items-center divide-x first:divide-l divide-slate-800/20 dark:divide-slate-300/20">
           {isTurnServerInUse && (
             <div className="shrink-0 p-1 px-1.5 text-xs text-black dark:text-white">
-              Relayed by Cloudflare
+                {t('Relayed_by_Cloudflare')}
             </div>
           )}
 

@@ -27,7 +27,7 @@ interface NavbarProps {
   kvmName?: string;
 }
 
-export default function DashboardNavbar({
+export default function  DashboardNavbar({
   primaryLinks = [],
   isLoggedIn,
   showConnectionStatus,
@@ -47,9 +47,7 @@ export default function DashboardNavbar({
     // The root route will redirect to appropriate login page, be it the local one or the cloud one
     navigate("/");
   }, [navigate, setUser]);
-
   const { usbState } = useHidStore();
-
   // for testing
   //userEmail = "user@example.org";
   //picture = "https://placehold.co/32x32"

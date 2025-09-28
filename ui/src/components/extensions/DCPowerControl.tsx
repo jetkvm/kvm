@@ -1,5 +1,6 @@
 import { LuPower } from "react-icons/lu";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@components/Button";
 import Card from "@components/Card";
@@ -17,16 +18,16 @@ interface DCPowerState {
   power: number;
   restoreState: number;
 }
-
 export function DCPowerControl() {
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
   const [powerState, setPowerState] = useState<DCPowerState | null>(null);
 
   const getDCPowerState = useCallback(() => {
     send("getDCPowerState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to get DC power state: ${resp.error.data || "Unknown error"}`,
+          t('Failed_to_get_DC_power_state_msg',{msg:resp.error.data||t('Unknown_error')})
         );
         return;
       }
@@ -38,7 +39,7 @@ export function DCPowerControl() {
     send("setDCPowerState", { enabled }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to set DC power state: ${resp.error.data || "Unknown error"}`,
+          t('Failed_to_set_DC_power_state_msg',{msg:resp.error.data || t('Unknown_error')})
         );
         return;
       }
@@ -50,7 +51,7 @@ export function DCPowerControl() {
     send("setDCRestoreState", { state }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to set DC power state: ${resp.error.data || "Unknown error"}`,
+            t('Failed_to_set_DC_power_state_msg',{msg:resp.error.data || t('Unknown_error')})
         );
         return;
       }
@@ -70,8 +71,8 @@ export function DCPowerControl() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="DC Power Control"
-        description="Control your DC power settings"
+        title={t('DC_Power_Control')}
+        description={t('Control_your_DC_power_settings')}
       />
 
       {powerState === null ? (
@@ -87,7 +88,7 @@ export function DCPowerControl() {
                 size="SM"
                 theme="light"
                 LeadingIcon={LuPower}
-                text="Power On"
+                text={t('Power_On')}
                 onClick={() => handlePowerToggle(true)}
                 disabled={powerState.isOn}
               />
@@ -95,7 +96,7 @@ export function DCPowerControl() {
                 size="SM"
                 theme="light"
                 LeadingIcon={LuPower}
-                text="Power Off"
+                text={t('Power_Off')}
                 disabled={!powerState.isOn}
                 onClick={() => handlePowerToggle(false)}
               />
@@ -104,13 +105,13 @@ export function DCPowerControl() {
               <div className="flex items-center">
                 <SelectMenuBasic
                     size="SM"
-                    label="Restore Power Loss"
+                    label={t('Restore_Power_Loss')}
                     value={powerState.restoreState}
                     onChange={e => handleRestoreChange(parseInt(e.target.value))}
                     options={[
-                      { value: '0', label: "Power OFF" },
-                      { value: '1', label: "Power ON" },
-                      { value: '2', label: "Last State" },
+                      { value: '0', label: t('Power_Off') },
+                      { value: '1', label: t('Power_On') },
+                      { value: '2', label: t('Last_State') },
                     ]}
                 />
               </div>
@@ -120,19 +121,19 @@ export function DCPowerControl() {
             {/* Status Display */}
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1">
-                <FieldLabel label="Voltage" />
+                <FieldLabel label={t('Voltage')} />
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
                   {powerState.voltage.toFixed(1)}V
                 </p>
               </div>
               <div className="space-y-1">
-                <FieldLabel label="Current" />
+                <FieldLabel label={t('Current')} />
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
                   {powerState.current.toFixed(1)}A
                 </p>
               </div>
               <div className="space-y-1">
-                <FieldLabel label="Power" />
+                <FieldLabel label={t('Power_Watt')} />
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
                   {powerState.power.toFixed(1)}W
                 </p>

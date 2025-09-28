@@ -1,6 +1,7 @@
 import { lazy } from "react";
 import ReactDOM from "react-dom/client";
-import "./index.css";
+import '@/i18n';
+import "@/index.css";
 import {
   createBrowserRouter,
   isRouteErrorResponse,
@@ -9,6 +10,7 @@ import {
   useRouteError,
 } from "react-router";
 import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
+import { useTranslation } from "react-i18next";
 
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import api from "@/api";
@@ -390,7 +392,7 @@ document.addEventListener("DOMContentLoaded", () => {
 // eslint-disable-next-line react-refresh/only-export-components
 function ErrorBoundary() {
   const error = useRouteError();
-
+  const { t } = useTranslation();
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-expect-error
   const errorMessage = error?.data?.error?.message || error?.message;
@@ -404,8 +406,8 @@ function ErrorBoundary() {
         <div className="w-full max-w-2xl">
           <EmptyCard
             IconElm={ExclamationTriangleIcon}
-            headline="Oh no!"
-            description="Something went wrong. Please try again later or contact support"
+            headline={t('Oh_no!')}
+            description={t('Something_went_wrong_Please_try_again_later_or_contact_support')}
             BtnElm={
               errorMessage && (
                 <Card>

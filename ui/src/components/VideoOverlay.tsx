@@ -4,6 +4,7 @@ import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
 import { LuPlay } from "react-icons/lu";
 import { BsMouseFill } from "react-icons/bs";
+import { useTranslation } from "react-i18next";
 
 import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
@@ -27,6 +28,7 @@ interface LoadingOverlayProps {
 }
 
 export function LoadingVideoOverlay({ show }: LoadingOverlayProps) {
+  const { t } = useTranslation();
   return (
     <AnimatePresence>
       {show && (
@@ -46,7 +48,7 @@ export function LoadingVideoOverlay({ show }: LoadingOverlayProps) {
                 <LoadingSpinner className="h-8 w-8 text-blue-800 dark:text-blue-200" />
               </div>
               <p className="text-center text-sm text-slate-700 dark:text-slate-300">
-                Loading video stream...
+                  {t('Loading_video_stream')}...
               </p>
             </div>
           </OverlayContent>
@@ -99,6 +101,7 @@ export function ConnectionFailedOverlay({
   show,
   setupPeerConnection,
 }: ConnectionErrorOverlayProps) {
+  const { t } = useTranslation();
   return (
     <AnimatePresence>
       {show && (
@@ -118,26 +121,26 @@ export function ConnectionFailedOverlay({
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">Connection Issue Detected</h2>
+                    <h2 className="text-xl font-bold">{t('Connection_Issue_Detected')}</h2>
                     <ul className="list-disc space-y-2 pl-4 text-left">
-                      <li>Verify that the device is powered on and properly connected</li>
-                      <li>Check all cable connections for any loose or damaged wires</li>
-                      <li>Ensure your network connection is stable and active</li>
-                      <li>Try restarting both the device and your computer</li>
+                      <li>{t('Verify_device_powered_and_connected')}</li>
+                      <li>{t('Check_cable_loose_damaged')}</li>
+                      <li>{t('Verify_device_powered_and_connected')}</li>
+                      <li>{t('Try_restarting_both_device_computer')}</li>
                     </ul>
                   </div>
                   <div className="flex items-center gap-x-2">
                     <LinkButton
                       to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
                       theme="primary"
-                      text="Troubleshooting Guide"
+                      text={t('Troubleshooting_Guide')}
                       TrailingIcon={ArrowRightIcon}
                       size="SM"
                     />
                     <Button
                       onClick={() => setupPeerConnection()}
                       LeadingIcon={ArrowPathIcon}
-                      text="Try again"
+                      text={t('Try_again')}
                       size="SM"
                       theme="light"
                     />
@@ -159,6 +162,7 @@ interface PeerConnectionDisconnectedOverlay {
 export function PeerConnectionDisconnectedOverlay({
   show,
 }: PeerConnectionDisconnectedOverlay) {
+  const { t } = useTranslation();
   return (
     <AnimatePresence>
       {show && (
@@ -179,11 +183,12 @@ export function PeerConnectionDisconnectedOverlay({
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
                     <h2 className="text-xl font-bold">Connection Issue Detected</h2>
+                    <h2 className="text-xl font-bold">{t('Connection_Issue_Detected')}</h2>
                     <ul className="list-disc space-y-2 pl-4 text-left">
-                      <li>Verify that the device is powered on and properly connected</li>
-                      <li>Check all cable connections for any loose or damaged wires</li>
-                      <li>Ensure your network connection is stable and active</li>
-                      <li>Try restarting both the device and your computer</li>
+                       <li>{t('Verify_device_powered_and_connected')}</li>
+                       <li>{t('Check_cable_loose_damaged')}</li>
+                       <li>{t('Verify_device_powered_and_connected')}</li>
+                       <li>{t('Try_restarting_both_device_computer')}</li>
                     </ul>
                   </div>
                   <div className="flex items-center gap-x-2">
@@ -191,7 +196,7 @@ export function PeerConnectionDisconnectedOverlay({
                       <div className="flex items-center gap-x-2 p-4">
                         <LoadingSpinner className="h-4 w-4 text-blue-800 dark:text-blue-200" />
                         <p className="text-sm text-slate-700 dark:text-slate-300">
-                          Retrying connection...
+                            {t('Retrying_connection')}...
                         </p>
                       </div>
                     </Card>
@@ -214,7 +219,7 @@ interface HDMIErrorOverlayProps {
 export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
   const isNoSignal = hdmiState === "no_signal";
   const isOtherError = hdmiState === "no_lock" || hdmiState === "out_of_range";
-
+  const { t } = useTranslation();
   return (
     <>
       <AnimatePresence>
@@ -235,15 +240,14 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                 <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                   <div className="space-y-4">
                     <div className="space-y-2 text-black dark:text-white">
-                      <h2 className="text-xl font-bold">No HDMI signal detected.</h2>
+                      <h2 className="text-xl font-bold">{t('No_HDMI_signal_detected')}</h2>
                       <ul className="list-disc space-y-2 pl-4 text-left">
-                        <li>Ensure the HDMI cable securely connected at both ends</li>
+                        <li>{t('Ensure_the_HDMI_cable_securely_connected_at_both_ends')}</li>
                         <li>
-                          Ensure source device is powered on and outputting a signal
+                            {t('Ensure_source_device_is_powered_on_and_outputting_a_signal')}
                         </li>
                         <li>
-                          If using an adapter, ensure it&apos;s compatible and functioning
-                          correctly
+                            {t('If_using_an_adapter')}
                         </li>
                       </ul>
                     </div>
@@ -251,7 +255,7 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                       <LinkButton
                         to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
                         theme="light"
-                        text="Learn more"
+                        text={t('Learn_more')}
                         TrailingIcon={ArrowRightIcon}
                         size="SM"
                       />
@@ -282,18 +286,18 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                 <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                   <div className="space-y-4">
                     <div className="space-y-2 text-black dark:text-white">
-                      <h2 className="text-xl font-bold">HDMI signal error detected.</h2>
+                      <h2 className="text-xl font-bold">{t('HDMI_signal_error_detected')}</h2>
                       <ul className="list-disc space-y-2 pl-4 text-left">
-                        <li>A loose or faulty HDMI connection</li>
-                        <li>Incompatible resolution or refresh rate settings</li>
-                        <li>Issues with the source device&apos;s HDMI output</li>
+                        <li>{t('A_loose_or_faulty_HDMI_connection')}</li>
+                        <li>{t('Incompatible_resolution_or_refresh_rate_settings')}</li>
+                        <li>{t('Issues_with_the_source_devices_HDMI_output')}</li>
                       </ul>
                     </div>
                     <div>
                       <LinkButton
                         to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
                         theme="light"
-                        text="Learn more"
+                        text={t('Learn_more')}
                         TrailingIcon={ArrowRightIcon}
                         size="SM"
                       />
@@ -318,6 +322,7 @@ export function NoAutoplayPermissionsOverlay({
   show,
   onPlayClick,
 }: NoAutoplayPermissionsOverlayProps) {
+  const { t } = useTranslation();
   return (
     <AnimatePresence>
       {show && (
@@ -334,7 +339,7 @@ export function NoAutoplayPermissionsOverlay({
           <OverlayContent>
             <div className="space-y-4">
               <h2 className="text-2xl font-extrabold text-black dark:text-white">
-                Autoplay permissions required
+                  {t('Autoplay_permissions_required')}
               </h2>
 
               <div className="space-y-2 text-center">
@@ -343,13 +348,13 @@ export function NoAutoplayPermissionsOverlay({
                     size="MD"
                     theme="primary"
                     LeadingIcon={LuPlay}
-                    text="Manually start stream"
+                    text={t('Manually_start_stream')}
                     onClick={onPlayClick}
                   />
                 </div>
 
                 <div className="text-xs text-slate-600 dark:text-slate-400">
-                  Please adjust browser settings to enable autoplay
+                    {t('Please_adjust_browser_settings_to_enable_autoplay')}
                 </div>
               </div>
             </div>
@@ -365,6 +370,7 @@ interface PointerLockBarProps {
 }
 
 export function PointerLockBar({ show }: PointerLockBarProps) {
+  const { t } = useTranslation();
   return (
     <AnimatePresence mode="wait">
       {show ? (
@@ -381,7 +387,7 @@ export function PointerLockBar({ show }: PointerLockBarProps) {
                 <div className="flex items-center space-x-2">
                   <BsMouseFill className="h-4 w-4 text-blue-700 dark:text-blue-500" />
                   <span className="text-sm text-black dark:text-white">
-                    Click on the video to enable mouse control
+                    {t('Click_video_enable_mouse_control')}
                   </span>
                 </div>
               </div>

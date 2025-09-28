@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { cx } from "@/cva.config";
 
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
@@ -8,7 +9,7 @@ import LoadingSpinner from "./LoadingSpinner";
 
 export default function UpdateInProgressStatusCard() {
   const { navigateTo } = useDeviceUiNavigation();
-
+  const { t } = useTranslation();
   return (
     <div className="w-full select-none opacity-100 transition-all duration-300 ease-in-out">
       <GridCard cardClassName="shadow-xl!">
@@ -17,12 +18,12 @@ export default function UpdateInProgressStatusCard() {
             <LoadingSpinner className={cx("h-5 w-5", "shrink-0 text-blue-700")} />
             <div className="space-y-1">
               <div className="text-ellipsis text-sm font-semibold leading-none transition">
-                Update in Progress
+                  {t('Update_in_Progress')}
               </div>
               <div className="text-sm leading-none">
                 <div className="flex items-center gap-x-1">
                   <span className={cx("transition")}>
-                    Please don{"'"}t turn off your device...
+                    {t('Please_dont_turn_off_your_device')}
                   </span>
                 </div>
               </div>
@@ -32,7 +33,7 @@ export default function UpdateInProgressStatusCard() {
             size="SM"
             className="pointer-events-auto"
             theme="light"
-            text="View Details"
+            text={t('View_Details')}
             onClick={() => navigateTo("/settings/general/update")}
           />
         </div>

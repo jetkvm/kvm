@@ -2,6 +2,7 @@ import { MdConnectWithoutContact } from "react-icons/md";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { Link } from "react-router";
 import { LuEllipsisVertical } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
 
 import Card from "@components/Card";
 import { Button, LinkButton } from "@components/Button";
@@ -50,6 +51,7 @@ export default function KvmCard({
   online: boolean;
   lastSeen: Date | null;
 }) {
+  const { t } = useTranslation();
   return (
     <Card>
       <div className="px-5 py-5 space-y-3">
@@ -69,9 +71,9 @@ export default function KvmCard({
                 <div className="h-2.5 w-2.5 rounded-full border border-slate-400/60 dark:border-slate-500 bg-slate-200 dark:bg-slate-600" />
                 <div className="text-sm text-black dark:text-white">
                   {lastSeen ? (
-                    <>Last online {getRelativeTimeString(lastSeen)}</>
+                    <>{t('Last_online')} {getRelativeTimeString(lastSeen)}</>
                   ) : (
-                    <>Never seen online</>
+                    <>{t('Never_seen_online')}</>
                   )}
                 </div>
               </div>
@@ -85,7 +87,7 @@ export default function KvmCard({
               <LinkButton
                 size="MD"
                 theme="light"
-                text="Connect to KVM"
+                text={t('Connect_to_KVM')}
                 LeadingIcon={MdConnectWithoutContact}
                 textAlign="center"
                 to={`/devices/${id}`}
@@ -94,7 +96,7 @@ export default function KvmCard({
               <Button
                 size="MD"
                 theme="light"
-                text="Troubleshoot Connection"
+                text={t('Troubleshoot_Connection')}
                 textAlign="center"
               />
             )}
@@ -120,7 +122,7 @@ export default function KvmCard({
                             className="block w-full py-1.5 text-black dark:text-white"
                             to={`./${id}/rename`}
                           >
-                            Rename
+                              {t('Rename')}
                           </Link>
                         </div>
                       </div>
@@ -134,7 +136,7 @@ export default function KvmCard({
                             className="block w-full py-1.5 text-black dark:text-white"
                             to={`./${id}/deregister`}
                           >
-                            Deregister from cloud
+                              {t('Deregister_from_Cloud')}
                           </Link>
                         </div>
                       </div>

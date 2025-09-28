@@ -1,5 +1,6 @@
 import { Form, redirect, useActionData, useParams, useSearchParams } from "react-router";
 import type { ActionFunction, ActionFunctionArgs, LoaderFunction, LoaderFunctionArgs } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import SimpleNavbar from "@components/SimpleNavbar";
 import GridBackground from "@components/GridBackground";
@@ -41,6 +42,7 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function SetupRoute() {
+  const { t } = useTranslation();
   const action = useActionData() as { error?: string };
   const { id } = useParams() as { id: string };
   const [sp] = useSearchParams();
@@ -59,20 +61,19 @@ export default function SetupRoute() {
               </div>
 
               <div className="space-y-2 text-center">
-                <h1 className="text-4xl font-semibold text-black dark:text-white">Let&apos;s name your device</h1>
+                <h1 className="text-4xl font-semibold text-black dark:text-white">{t('Lets_name_your_device')}</h1>
                 <p className="text-slate-600 dark:text-slate-400">
-                  Name your device so you can easily identify it later. You can change
-                  this name at any time.
+                    {t('Name_your_device_so_you_can_easily_identify_it_later_You_can_change_this_name_at_any_time')}
                 </p>
               </div>
 
               <Fieldset className="space-y-12">
                 <Form method="POST" className="max-w-sm mx-auto space-y-4">
                   <InputFieldWithLabel
-                    label="Device Name"
+                    label={t('Device_Name')}
                     type="text"
                     name="name"
-                    placeholder="Plex Media Server"
+                    placeholder={t('Plex_Media_Server')}
                     autoFocus
                     data-1p-ignore
                     autoComplete="organization"
@@ -86,7 +87,7 @@ export default function SetupRoute() {
                     theme="primary"
                     fullWidth
                     type="submit"
-                    text="Finish Setup"
+                    text={t('Finish_Setup')}
                     textAlign="center"
                   />
                 </Form>

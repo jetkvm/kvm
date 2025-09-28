@@ -1,8 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
 import { ComponentProps } from "react";
 import { cva, cx } from "cva";
+import { useTranslation } from "react-i18next";
 
-import { someIterable } from "../utils";
+import { someIterable } from "@/utils";
 
 import { GridCard } from "./Card";
 import MetricsChart from "./MetricsChart";
@@ -92,7 +93,6 @@ interface SettingsItemProps {
 export function MetricHeader(props: SettingsItemProps) {
   const { title, description, badge } = props;
   const badgeVariants = cva({ variants: { theme: theme } });
-
   return (
     <div className="space-y-0.5">
       <div className="flex items-center gap-x-2">
@@ -143,7 +143,7 @@ export function Metric<T, K extends keyof T>({
 
   // Compute the average value of the metric.
   const referenceValue = computeReferenceValue(dataFinal);
-
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
       <MetricHeader
@@ -159,7 +159,7 @@ export function Metric<T, K extends keyof T>({
         >
           {!ready ? (
             <div className="flex flex-col items-center space-y-1">
-              <p className="text-slate-700">Waiting for data...</p>
+              <p className="text-slate-700">{t('Waiting_for_data')}</p>
             </div>
           ) : supportedFinal ? (
             <MetricsChart
@@ -170,7 +170,7 @@ export function Metric<T, K extends keyof T>({
             />
           ) : (
             <div className="flex flex-col items-center space-y-1">
-              <p className="text-black">Metric not supported</p>
+              <p className="text-black">{t('Metric_not_supported')}</p>
             </div>
           )}
         </div>

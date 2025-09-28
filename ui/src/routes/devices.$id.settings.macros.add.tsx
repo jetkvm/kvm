@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { KeySequence, useMacrosStore, generateMacroId } from "@/hooks/stores";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
@@ -8,6 +9,7 @@ import { DEFAULT_DELAY } from "@/constants/macros";
 import notifications from "@/notifications";
 
 export default function SettingsMacrosAddRoute() {
+  const { t } = useTranslation();
   const { macros, saveMacros } = useMacrosStore();
   const [isSaving, setIsSaving] = useState(false);
   const navigate = useNavigate();
@@ -30,13 +32,13 @@ export default function SettingsMacrosAddRoute() {
       };
 
       await saveMacros(normalizeSortOrders([...macros, newMacro]));
-      notifications.success(`Macro "${newMacro.name}" created successfully`);
+      notifications.success(t('Macro_name_created_successfully',{name:newMacro.name}));
       navigate("../");
     } catch (error: unknown) {
       if (error instanceof Error) {
-        notifications.error(`Failed to create macro: ${error.message}`);
+        notifications.error(t('Failed_to_create_macro_msg',{msg:error.message}));
       } else {
-        notifications.error("Failed to create macro");
+        notifications.error(t('Failed_to_create_macro'));
       }
     } finally {
       setIsSaving(false);
@@ -46,8 +48,8 @@ export default function SettingsMacrosAddRoute() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Add New Macro"
-        description="Create a new keyboard macro"
+        title={t('Add_New_Macro')}
+        description={t('Create_a_new_keyboard_macro')}
       />
       <MacroForm
         initialData={{

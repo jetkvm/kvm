@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, useRevalidator } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@components/Button";
 import { InputFieldWithLabel } from "@/components/InputField";
@@ -28,18 +29,19 @@ export default function SecurityAccessLocalAuthRoute() {
 }
 
 export function Dialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const { modalView, setModalView } = useLocalAuthModalStore();
   const [error, setError] = useState<string | null>(null);
   const revalidator = useRevalidator();
 
   const handleCreatePassword = async (password: string, confirmPassword: string) => {
     if (password === "") {
-      setError("Please enter a password");
+      setError(t('Please_enter_a_password'));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t('Passwords_do_not_match'));
       return;
     }
 
@@ -51,11 +53,11 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         revalidator.revalidate();
       } else {
         const data = await res.json();
-        setError(data.error || "An error occurred while setting the password");
+        setError(data.error || t('An_error_occurred_while_setting_the_password'));
       }
     } catch (error) {
       console.error(error);
-      setError("An error occurred while setting the password");
+      setError(t('An_error_occurred_while_setting_the_password'));
     }
   };
 
@@ -65,17 +67,17 @@ export function Dialog({ onClose }: { onClose: () => void }) {
     confirmNewPassword: string,
   ) => {
     if (newPassword !== confirmNewPassword) {
-      setError("Passwords do not match");
+      setError(t('Passwords_do_not_match'));
       return;
     }
 
     if (oldPassword === "") {
-      setError("Please enter your old password");
+      setError(t('Please_enter_your_old_password'));
       return;
     }
 
     if (newPassword === "") {
-      setError("Please enter a new password");
+      setError(t('Please_enter_a_new_password'));
       return;
     }
 
@@ -91,17 +93,17 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         revalidator.revalidate();
       } else {
         const data = await res.json();
-        setError(data.error || "An error occurred while changing the password");
+        setError(data.error || t('An_error_occurred_while_changing_the_password'));
       }
     } catch (error) {
       console.error(error);
-      setError("An error occurred while changing the password");
+      setError(t('An_error_occurred_while_changing_the_password'));
     }
   };
 
   const handleDeletePassword = async (password: string) => {
     if (password === "") {
-      setError("Please enter your current password");
+      setError(t('Please_enter_your_current_password'));
       return;
     }
 
@@ -113,11 +115,11 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         revalidator.revalidate();
       } else {
         const data = await res.json();
-        setError(data.error || "An error occurred while disabling the password");
+        setError(data.error || t('An_error_occurred_while_disabling_the_password'));
       }
     } catch (error) {
       console.error(error);
-      setError("An error occurred while disabling the password");
+      setError(t('An_error_occurred_while_disabling_the_password'));
     }
   };
 
@@ -150,24 +152,24 @@ export function Dialog({ onClose }: { onClose: () => void }) {
 
         {modalView === "creationSuccess" && (
           <SuccessModal
-            headline="Password Set Successfully"
-            description="You've successfully set up local device protection. Your device is now secure against unauthorized local access."
+            headline={t('Password_Set_Successfully')}
+            description={t('You_ve_successfully_set_up_local_device_protection_Your_device_is_now_secure_against_unauthorized_local_access')}
             onClose={onClose}
           />
         )}
 
         {modalView === "deleteSuccess" && (
           <SuccessModal
-            headline="Password Protection Disabled"
-            description="You've successfully disabled the password protection for local access. Remember, your device is now less secure."
+            headline={t('Password_Protection_Disabled')}
+            description={t('You_ve_successfully_disabled_the_password_protection_for_local_access_Remember_your_device_is_now_less_secure')}
             onClose={onClose}
           />
         )}
 
         {modalView === "updateSuccess" && (
           <SuccessModal
-            headline="Password Updated Successfully"
-            description="You've successfully changed your local device protection password. Make sure to remember your new password for future access."
+            headline={t('Password_Updated_Successfully')}
+            description={t('You_ve_successfully_changed_your_local_device_protection_password_Make_sure_to_remember_your_new_password_for_future_access')}
             onClose={onClose}
           />
         )}
@@ -185,6 +187,7 @@ function CreatePasswordModal({
   onCancel: () => void;
   error: string | null;
 }) {
+  const { t } = useTranslation();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -198,24 +201,24 @@ function CreatePasswordModal({
       >
         <div>
           <h2 className="text-lg font-semibold dark:text-white">
-            Local Device Protection
+              {t('Local_Device_Protection')}
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Create a password to protect your device from unauthorized local access.
+              {t('Create_a_password_to_protect_your_device_from_unauthorized_local_access')}
           </p>
         </div>
         <InputFieldWithLabel
-          label="New Password"
+          label={t('New_Password')}
           type="password"
-          placeholder="Enter a strong password"
+          placeholder={t('Enter_a_strong_password')}
           value={password}
           autoFocus
           onChange={e => setPassword(e.target.value)}
         />
         <InputFieldWithLabel
-          label="Confirm New Password"
+          label={t('Confirm_New_Password')}
           type="password"
-          placeholder="Re-enter your password"
+          placeholder={t('Re-enter_your_password')}
           value={confirmPassword}
           onChange={e => setConfirmPassword(e.target.value)}
         />
@@ -224,10 +227,10 @@ function CreatePasswordModal({
           <Button
             size="SM"
             theme="primary"
-            text="Secure Device"
+            text={t('Secure_Device')}
             onClick={() => onSetPassword(password, confirmPassword)}
           />
-          <Button size="SM" theme="light" text="Not Now" onClick={onCancel} />
+          <Button size="SM" theme="light" text={t('Not_Now')} onClick={onCancel} />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
@@ -244,6 +247,7 @@ function DeletePasswordModal({
   onCancel: () => void;
   error: string | null;
 }) {
+  const { t } = useTranslation();
   const [password, setPassword] = useState("");
 
   return (
@@ -251,16 +255,16 @@ function DeletePasswordModal({
       <div className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold dark:text-white">
-            Disable Local Device Protection
+              {t('Disable_Local_Device_Protection')}
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Enter your current password to disable local device protection.
+              {t('Enter_your_current_password_to_disable_local_device_protection')}
           </p>
         </div>
         <InputFieldWithLabel
-          label="Current Password"
+          label={t('Current_Password')}
           type="password"
-          placeholder="Enter your current password"
+          placeholder={t('Please_enter_your_current_password')}
           value={password}
           onChange={e => setPassword(e.target.value)}
         />
@@ -268,10 +272,10 @@ function DeletePasswordModal({
           <Button
             size="SM"
             theme="danger"
-            text="Disable Protection"
+            text={t('Disable_Protection')}
             onClick={() => onDeletePassword(password)}
           />
-          <Button size="SM" theme="light" text="Cancel" onClick={onCancel} />
+          <Button size="SM" theme="light" text={t('Cancel')} onClick={onCancel} />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
       </div>
@@ -292,6 +296,7 @@ function UpdatePasswordModal({
   onCancel: () => void;
   error: string | null;
 }) {
+  const { t } = useTranslation();
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
@@ -306,31 +311,30 @@ function UpdatePasswordModal({
       >
         <div>
           <h2 className="text-lg font-semibold dark:text-white">
-            Change Local Device Password
+              {t('Change_Local_Device_Password')}
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Enter your current password and a new password to update your local device
-            protection.
+              {t('Enter_your_current_password_and_a_new_password_to_update_your_local_device_protection')}
           </p>
         </div>
         <InputFieldWithLabel
-          label="Current Password"
+          label={t('Current_Password')}
           type="password"
-          placeholder="Enter your current password"
+          placeholder={t('Please_enter_your_current_password')}
           value={oldPassword}
           onChange={e => setOldPassword(e.target.value)}
         />
         <InputFieldWithLabel
-          label="New Password"
+          label={t('New_Password')}
           type="password"
-          placeholder="Enter a new strong password"
+          placeholder={t('Enter_a_new_strong_password')}
           value={newPassword}
           onChange={e => setNewPassword(e.target.value)}
         />
         <InputFieldWithLabel
-          label="Confirm New Password"
+          label={t('Confirm_New_Password')}
           type="password"
-          placeholder="Re-enter your new password"
+          placeholder={t('Re-enter_your_new_password')}
           value={confirmNewPassword}
           onChange={e => setConfirmNewPassword(e.target.value)}
         />
@@ -338,10 +342,10 @@ function UpdatePasswordModal({
           <Button
             size="SM"
             theme="primary"
-            text="Update Password"
+            text={t('Update_Password')}
             onClick={() => onUpdatePassword(oldPassword, newPassword, confirmNewPassword)}
           />
-          <Button size="SM" theme="light" text="Cancel" onClick={onCancel} />
+          <Button size="SM" theme="light" text={t('Cancel')} onClick={onCancel} />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
@@ -358,6 +362,7 @@ function SuccessModal({
   description: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex w-full max-w-lg flex-col items-start justify-start space-y-4 text-left">
       <div className="space-y-4">
@@ -365,7 +370,7 @@ function SuccessModal({
           <h2 className="text-lg font-semibold dark:text-white">{headline}</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">{description}</p>
         </div>
-        <Button size="SM" theme="primary" text="Close" onClick={onClose} />
+        <Button size="SM" theme="primary" text={t('Close')} onClick={onClose} />
       </div>
     </div>
   );

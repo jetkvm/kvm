@@ -21,6 +21,7 @@ import notifications from "@/notifications";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import useKeyboardLayout from "@/hooks/useKeyboardLayout";
+import {useTranslation} from "react-i18next";
 
 const normalizeSortOrders = (macros: KeySequence[]): KeySequence[] => {
   return macros.map((macro, index) => ({
@@ -36,7 +37,7 @@ export default function SettingsMacrosRoute() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [macroToDelete, setMacroToDelete] = useState<KeySequence | null>(null);
   const { selectedKeyboard }  = useKeyboardLayout();
-
+  const { t } = useTranslation();
   const isMaxMacrosReached = useMemo(
     () => macros.length >= MAX_TOTAL_MACROS,
     [macros.length],
@@ -51,12 +52,12 @@ export default function SettingsMacrosRoute() {
   const handleDuplicateMacro = useCallback(
     async (macro: KeySequence) => {
       if (!macro?.id || !macro?.name) {
-        notifications.error("Invalid macro data");
+        notifications.error(t('Invalid_macro_data'));
         return;
       }
 
       if (isMaxMacrosReached) {
-        notifications.error(`Maximum of ${MAX_TOTAL_MACROS} macros allowed`);
+        notifications.error(t('Maximum_of_max_macros_allowed',{max:MAX_TOTAL_MACROS}));
         return;
       }
 
@@ -71,12 +72,12 @@ export default function SettingsMacrosRoute() {
 
       try {
         await saveMacros(normalizeSortOrders([...macros, newMacroCopy]));
-        notifications.success(`Macro "${newMacroCopy.name}" duplicated successfully`);
+        notifications.success(t('Macro_name_duplicated_successfully',{name:newMacroCopy.name}));
       } catch (error: unknown) {
         if (error instanceof Error) {
-          notifications.error(`Failed to duplicate macro: ${error.message}`);
+          notifications.error(t('Failed_to_duplicate_macro_msg',{msg:error.message}));
         } else {
-          notifications.error("Failed to duplicate macro");
+          notifications.error(t('Failed_to_duplicate_macro'));
         }
       } finally {
         setActionLoadingId(null);
@@ -88,7 +89,7 @@ export default function SettingsMacrosRoute() {
   const handleMoveMacro = useCallback(
     async (index: number, direction: "up" | "down", macroId: string) => {
       if (!Array.isArray(macros) || macros.length === 0) {
-        notifications.error("No macros available");
+        notifications.error(t('No_macros_available'));
         return;
       }
 
@@ -103,12 +104,12 @@ export default function SettingsMacrosRoute() {
         const updatedMacros = normalizeSortOrders(newMacros);
 
         await saveMacros(updatedMacros);
-        notifications.success("Macro order updated successfully");
+        notifications.success(t('Macro_order_updated_successfully'));
       } catch (error: unknown) {
         if (error instanceof Error) {
-          notifications.error(`Failed to reorder macros: ${error.message}`);
+          notifications.error(t('Failed_to_reorder_macros_msg',{msg:error.message}));
         } else {
-          notifications.error("Failed to reorder macros");
+          notifications.error(t('Failed_to_reorder_macros'));
         }
       } finally {
         setActionLoadingId(null);
@@ -126,14 +127,14 @@ export default function SettingsMacrosRoute() {
         macros.filter(m => m.id !== macroToDelete.id),
       );
       await saveMacros(updatedMacros);
-      notifications.success(`Macro "${macroToDelete.name}" deleted successfully`);
+      notifications.success(t('Macro_name_deleted_successfully',{name:macroToDelete.name}));
       setShowDeleteConfirm(false);
       setMacroToDelete(null);
     } catch (error: unknown) {
       if (error instanceof Error) {
-        notifications.error(`Failed to delete macro: ${error.message}`);
+        notifications.error(t('Failed_to_delete_macro_msg',{msg:error.message}));
       } else {
-        notifications.error("Failed to delete macro");
+        notifications.error(t('Failed_to_delete_macro'));
       }
     } finally {
       setActionLoadingId(null);
@@ -153,7 +154,7 @@ export default function SettingsMacrosRoute() {
                   onClick={() => handleMoveMacro(index, "up", macro.id)}
                   disabled={index === 0 || actionLoadingId === macro.id}
                   LeadingIcon={LuArrowUp}
-                  aria-label={`Move ${macro.name} up`}
+                  aria-label={t('Move_name_up',{name:macro.name})}
                 />
                 <Button
                   size="XS"
@@ -161,7 +162,7 @@ export default function SettingsMacrosRoute() {
                   onClick={() => handleMoveMacro(index, "down", macro.id)}
                   disabled={index === macros.length - 1 || actionLoadingId === macro.id}
                   LeadingIcon={LuArrowDown}
-                  aria-label={`Move ${macro.name} down`}
+                  aria-label={t('Move_name_down',{name:macro.name})}
                 />
               </div>
 
@@ -251,7 +252,7 @@ export default function SettingsMacrosRoute() {
                     setShowDeleteConfirm(true);
                   }}
                   disabled={actionLoadingId === macro.id}
-                  aria-label={`Delete macro ${macro.name}`}
+                  aria-label={t('Delete_macro_name',{name:macro.name})}
                 />
                 <Button
                   size="XS"
@@ -259,16 +260,16 @@ export default function SettingsMacrosRoute() {
                   LeadingIcon={LuCopy}
                   onClick={() => handleDuplicateMacro(macro)}
                   disabled={actionLoadingId === macro.id}
-                  aria-label={`Duplicate macro ${macro.name}`}
+                  aria-label={t('Duplicate_macro_name',{name:macro.name})}
                 />
                 <Button
                   size="XS"
                   theme="light"
                   LeadingIcon={LuPenLine}
-                  text="Edit"
+                  text={t('Edit')}
                   onClick={() => navigate(`${macro.id}/edit`)}
                   disabled={actionLoadingId === macro.id}
-                  aria-label={`Edit macro ${macro.name}`}
+                  aria-label={t('Edit_macro_name',{name:macro.name})}
                 />
               </div>
             </div>
@@ -281,10 +282,10 @@ export default function SettingsMacrosRoute() {
             setShowDeleteConfirm(false);
             setMacroToDelete(null);
           }}
-          title="Delete Macro"
-          description={`Are you sure you want to delete "${macroToDelete?.name}"? This action cannot be undone.`}
+          title={t('Delete_Macro')}
+          description={t('Are_you_sure_you_want_to_delete_name_This_action_cannot_be_undone',{name:macroToDelete?.name})}
           variant="danger"
-          confirmText={actionLoadingId === macroToDelete?.id ? "Deleting..." : "Delete"}
+          confirmText={actionLoadingId === macroToDelete?.id ? t('Deleting...') : t('Delete')}
           onConfirm={handleDeleteMacro}
           isConfirming={actionLoadingId === macroToDelete?.id}
         />
@@ -309,18 +310,18 @@ export default function SettingsMacrosRoute() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <SettingsPageHeader
-          title="Keyboard Macros"
-          description={`Combine keystrokes into a single action for faster workflows.`}
+          title={t('Keyboard_Macros')}
+          description={t('Combine_keystrokes_into_a_single_action_for_faster_workflows')}
         />
         {macros.length > 0 && (
           <div className="flex items-center pl-2">
             <Button
               size="SM"
               theme="primary"
-              text={isMaxMacrosReached ? `Max Reached` : "Add New Macro"}
+              text={isMaxMacrosReached ? t('Max_Reached') : t('Add_New_Macro')}
               onClick={() => navigate("add")}
               disabled={isMaxMacrosReached}
-              aria-label="Add new macro"
+              aria-label={t('Add_New_Macro')}
             />
           </div>
         )}
@@ -330,7 +331,7 @@ export default function SettingsMacrosRoute() {
         {loading && macros.length === 0 ? (
           <EmptyCard
             IconElm={LuCommand}
-            headline="Loading macros..."
+            headline={t("Loading macros...")}
             BtnElm={
               <div className="my-2 flex flex-col items-center space-y-2 text-center">
                 <LoadingSpinner className="h-6 w-6 text-blue-700 dark:text-blue-500" />
@@ -340,16 +341,16 @@ export default function SettingsMacrosRoute() {
         ) : macros.length === 0 ? (
           <EmptyCard
             IconElm={LuCommand}
-            headline="Create Your First Macro"
-            description="Combine keystrokes into a single action"
+            headline={t('Create_Your_First_Macro')}
+            description={t('Combine_keystrokes_into_a_single_action')}
             BtnElm={
               <Button
                 size="SM"
                 theme="primary"
-                text="Add New Macro"
+                text={t('Add_New_Macro')}
                 onClick={() => navigate("add")}
                 disabled={isMaxMacrosReached}
-                aria-label="Add new macro"
+                aria-label={t('Add_New_Macro')}
               />
             }
           />

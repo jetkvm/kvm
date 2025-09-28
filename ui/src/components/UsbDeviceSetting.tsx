@@ -1,4 +1,5 @@
 import { useCallback , useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
@@ -31,35 +32,35 @@ const defaultUsbDeviceConfig: UsbDeviceConfig = {
   mass_storage: true,
 };
 
-const usbPresets = [
-  {
-    label: "Keyboard, Mouse and Mass Storage",
-    value: "default",
-    config: {
-      keyboard: true,
-      absolute_mouse: true,
-      relative_mouse: true,
-      mass_storage: true,
-    },
-  },
-  {
-    label: "Keyboard Only",
-    value: "keyboard_only",
-    config: {
-      keyboard: true,
-      absolute_mouse: false,
-      relative_mouse: false,
-      mass_storage: false,
-    },
-  },
-  {
-    label: "Custom",
-    value: "custom",
-  },
-];
-
 export function UsbDeviceSetting() {
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
+  const usbPresets = [
+        {
+            label: t('Keyboard_Mouse_and_MassStorage'),
+            value: "default",
+            config: {
+                keyboard: true,
+                absolute_mouse: true,
+                relative_mouse: true,
+                mass_storage: true,
+            },
+        },
+        {
+            label: t('Keyboard_Only'),
+            value: "keyboard_only",
+            config: {
+                keyboard: true,
+                absolute_mouse: false,
+                relative_mouse: false,
+                mass_storage: false,
+            },
+        },
+        {
+            label: t('Custom'),
+            value: "custom",
+        },
+  ];
   const [loading, setLoading] = useState(false);
 
   const [usbDeviceConfig, setUsbDeviceConfig] =
@@ -71,7 +72,7 @@ export function UsbDeviceSetting() {
       if ("error" in resp) {
         console.error("Failed to load USB devices:", resp.error);
         notifications.error(
-          `Failed to load USB devices: ${resp.error.data || "Unknown error"}`,
+          t('Failed_to_load_USB_devices_msg',{msg:resp.error.data || t('Unknown_error')})
         );
       } else {
         const usbConfigState = resp.result as UsbDeviceConfig;
@@ -100,7 +101,7 @@ export function UsbDeviceSetting() {
       send("setUsbDevices", { devices }, async (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to set usb devices: ${resp.error.data || "Unknown error"}`,
+            t('Failed_to_set_USB_devices_msg',{msg: resp.error.data || t('Unknown_error')})
           );
           setLoading(false);
           return;
@@ -110,7 +111,7 @@ export function UsbDeviceSetting() {
         await new Promise(resolve => setTimeout(resolve, 2000));
         setLoading(false);
         syncUsbDeviceConfig();
-        notifications.success(`USB Devices updated`);
+        notifications.success(t('USB_Devices_updated'));
       });
     },
     [send, syncUsbDeviceConfig],
@@ -153,14 +154,14 @@ export function UsbDeviceSetting() {
       <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
 
       <SettingsSectionHeader
-        title="USB Device"
-        description="USB devices to emulate on the target computer"
+        title={t('USB_Device')}
+        description={t('USB_devices_to_emulate_on_the_target_computer')}
       />
 
       <SettingsItem
         loading={loading}
-        title="Classes"
-        description="USB device classes in the composite device"
+        title={t('Classes')}
+        description={t('USB_device_classes_in_the_composite_device')}
       >
         <SelectMenuBasic
           size="SM"
@@ -177,7 +178,7 @@ export function UsbDeviceSetting() {
         <div className="ml-2 border-l border-slate-800/10 pl-4 dark:border-slate-300/20 ">
           <div className="space-y-4">
             <div className="space-y-4">
-              <SettingsItem title="Enable Keyboard" description="Enable Keyboard">
+              <SettingsItem title={t('Enable_Keyboard')} description={t('Enable_Keyboard')}>
                 <Checkbox
                   checked={usbDeviceConfig.keyboard}
                   onChange={onUsbConfigItemChange("keyboard")}
@@ -186,8 +187,8 @@ export function UsbDeviceSetting() {
             </div>
             <div className="space-y-4">
               <SettingsItem
-                title="Enable Absolute Mouse (Pointer)"
-                description="Enable Absolute Mouse (Pointer)"
+                title={t('Enable_Absolute_Mouse_Pointer')}
+                description={t('Enable_Absolute_Mouse_Pointer')}
               >
                 <Checkbox
                   checked={usbDeviceConfig.absolute_mouse}
@@ -197,8 +198,8 @@ export function UsbDeviceSetting() {
             </div>
             <div className="space-y-4">
               <SettingsItem
-                title="Enable Relative Mouse"
-                description="Enable Relative Mouse"
+                title={t('Enable_Relative_Mouse')}
+                description={t('Enable_Relative_Mouse')}
               >
                 <Checkbox
                   checked={usbDeviceConfig.relative_mouse}
@@ -208,8 +209,8 @@ export function UsbDeviceSetting() {
             </div>
             <div className="space-y-4">
               <SettingsItem
-                title="Enable USB Mass Storage"
-                description="Sometimes it might need to be disabled to prevent issues with certain devices"
+                title={t('Enable_USBMassStorage')}
+                description={t('Sometimes_it_might_need_to_be_disabled_to_prevent_issues_with_certain_devices')}
               >
                 <Checkbox
                   checked={usbDeviceConfig.mass_storage}
@@ -223,13 +224,13 @@ export function UsbDeviceSetting() {
               size="SM"
               loading={loading}
               theme="primary"
-              text="Update USB Classes"
+              text={t('Update_USB_Classes')}
               onClick={() => handleUsbConfigChange(usbDeviceConfig)}
             />
             <Button
               size="SM"
               theme="light"
-              text="Restore to Default"
+              text={t('Restore_to_Default')}
               onClick={() => handleUsbConfigChange(defaultUsbDeviceConfig)}
             />
           </div>

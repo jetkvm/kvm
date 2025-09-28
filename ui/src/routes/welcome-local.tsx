@@ -13,6 +13,7 @@ import LogoMark from "@/assets/logo-mark.png";
 import { DEVICE_API } from "@/ui.config";
 
 import api from "../api";
+import {useTranslation} from "react-i18next";
 
 export interface DeviceStatus {
   isSetup: boolean;
@@ -35,7 +36,7 @@ export default function WelcomeRoute() {
     img.src = DeviceImage;
     img.onload = () => setImageLoaded(true);
   }, []);
-
+  const { t } = useTranslation();
   return (
     <>
       <GridBackground />
@@ -61,10 +62,10 @@ export default function WelcomeRoute() {
 
                     <div className="animate-fadeIn animation-delay-1500 space-y-1 opacity-0">
                       <h1 className="text-4xl font-semibold text-black dark:text-white">
-                        Welcome to JetKVM
+                          {t('Welcome_to_JetKVM')}
                       </h1>
                       <p className="text-lg font-medium text-slate-600 dark:text-slate-400">
-                        Control any computer remotely
+                          {t('Control_any_computer_remotely')}
                       </p>
                     </div>
                   </div>
@@ -72,7 +73,7 @@ export default function WelcomeRoute() {
                   <div className="-mt-2! -ml-6 flex items-center justify-center">
                     <img
                       src={DeviceImage}
-                      alt="JetKVM Device"
+                      alt={t('JetKVM_Device')}
                       className="animation-delay-300 animate-fadeInScaleFloat max-w-md scale-[0.98] opacity-0 transition-all duration-1000 ease-out"
                     />
                   </div>
@@ -82,14 +83,13 @@ export default function WelcomeRoute() {
                     style={{ animationDelay: "2000ms" }}
                     className="animate-fadeIn mx-auto max-w-lg text-lg text-slate-700 opacity-0 dark:text-slate-300"
                   >
-                    JetKVM combines powerful hardware with intuitive software to provide a
-                    seamless remote control experience.
+                      {t('JetKVM_combines_powerful_hardware_with_intuitive_software_to_provide_a_seamless_remote_control_experience')}
                   </p>
                   <div className="animate-fadeIn animation-delay-2300 opacity-0">
                     <LinkButton
                       size="LG"
                       theme="light"
-                      text="Set up your JetKVM"
+                      text={t('Set_up_your_JetKVM')}
                       LeadingIcon={({ className }) => (
                         <img src={LogoMark} className={cx(className, "mr-1.5 h-5!")} />
                       )}

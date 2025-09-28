@@ -1,4 +1,5 @@
 import { useNavigate, useOutletContext } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import { GridCard } from "@/components/Card";
 import { Button } from "@components/Button";
@@ -13,7 +14,7 @@ interface ContextType {
 export default function OtherSessionRoute() {
   const outletContext = useOutletContext<ContextType>();
   const navigate = useNavigate();
-
+  const { t } = useTranslation();
   // Function to handle closing the modal
   const handleClose = () => {
     outletContext?.setupPeerConnection().then(() => navigate(".."));
@@ -30,14 +31,13 @@ export default function OtherSessionRoute() {
 
           <div className="text-left">
             <p className="text-base font-semibold dark:text-white">
-              Another Active Session Detected
+                {t('Another_Active_Session_Detected')}
             </p>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
-              Only one active session is supported at a time. Would you like to take over
-              this session?
+                {t('Only_one_active_session_is_supported_at_a_time_Would_you_like_to_take_over_this_session')}
             </p>
             <div className="flex items-center justify-start space-x-4">
-              <Button size="SM" theme="primary" text="Use Here" onClick={handleClose} />
+              <Button size="SM" theme="primary" text={t('Use_Here')} onClick={handleClose} />
             </div>
           </div>
         </div>

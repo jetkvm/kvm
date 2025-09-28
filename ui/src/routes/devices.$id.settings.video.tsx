@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/Button";
 import { TextAreaWithLabel } from "@/components/TextArea";
@@ -48,6 +49,7 @@ const streamQualityOptions = [
 
 export default function SettingsVideoRoute() {
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
   const [streamQuality, setStreamQuality] = useState("1");
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
@@ -73,7 +75,7 @@ export default function SettingsVideoRoute() {
     send("getEDID", {}, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
       if ("error" in resp) {
-        notifications.error(`Failed to get EDID: ${resp.error.data || "Unknown error"}`);
+        notifications.error(t('Failed_to_get_EDID_msg',{msg:resp.error.data || t('Unknown_error')}))
         return;
       }
 
@@ -102,13 +104,13 @@ export default function SettingsVideoRoute() {
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to set stream quality: ${resp.error.data || "Unknown error"}`,
+            t('Failed_to_set_stream_quality_msg',{msg:resp.error.data || t('Unknown_error')})
           );
           return;
         }
 
         notifications.success(
-          `Stream quality set to ${streamQualityOptions.find(x => x.value === factor)?.label}`,
+          t('Stream_quality_set_to_msg',{msg:streamQualityOptions.find(x => x.value === factor)?.label})
         );
         setStreamQuality(factor);
       },
@@ -120,12 +122,12 @@ export default function SettingsVideoRoute() {
     send("setEDID", { edid: newEdid }, (resp: JsonRpcResponse) => {
       setEdidLoading(false);
       if ("error" in resp) {
-        notifications.error(`Failed to set EDID: ${resp.error.data || "Unknown error"}`);
+        notifications.error(t('Failed_to_set_EDID_msg',{msg:resp.error.data || t('Unknown_error')}))
         return;
       }
 
       notifications.success(
-        `EDID set successfully to ${edids.find(x => x.value === newEdid)?.label ?? "the custom EDID"}`,
+        t('EDID_set_successfully_to_msg',edids.find(x => x.value === newEdid)?.label ?? t('the_custom_EDID'))
       );
       // Update the EDID value in the UI
       setEdid(newEdid);
@@ -136,15 +138,15 @@ export default function SettingsVideoRoute() {
     <div className="space-y-3">
       <div className="space-y-4">
         <SettingsPageHeader
-          title="Video"
-          description="Configure display settings and EDID for optimal compatibility"
+          title={t('Video')}
+          description={t('Configure_display_settings_and_EDID_for_optimal_compatibility')}
         />
 
         <div className="space-y-4">
           <div className="space-y-4">
             <SettingsItem
-              title="Stream Quality"
-              description="Adjust the quality of the video stream"
+              title={t('Stream_Quality')}
+              description={t('Adjust_the_quality_of_the_video_stream')}
             >
               <SelectMenuBasic
                 size="SM"
@@ -157,14 +159,14 @@ export default function SettingsVideoRoute() {
 
             {/* Video Enhancement Settings */}
             <SettingsItem
-              title="Video Enhancement"
-              description="Adjust color settings to make the video output more vibrant and colorful"
+              title={t('Video_Enhancement')}
+              description={t('Adjust_color_settings_to_make_the_video_output_more_vibrant_and_colorful')}
             />
 
             <div className="space-y-4 pl-4">
               <SettingsItem
-                title="Saturation"
-                description={`Color saturation (${videoSaturation.toFixed(1)}x)`}
+                title={t('Saturation')}
+                description={t('Color_saturation_sat_x',{sat:videoSaturation.toFixed(1)})}
               >
                 <input
                   type="range"
@@ -178,8 +180,8 @@ export default function SettingsVideoRoute() {
               </SettingsItem>
 
               <SettingsItem
-                title="Brightness"
-                description={`Brightness level (${videoBrightness.toFixed(1)}x)`}
+                title={t('Brightness')}
+                description={t('Brightness_level_brightness',{brightness:videoBrightness.toFixed(1)})}
               >
                 <input
                   type="range"
@@ -193,8 +195,8 @@ export default function SettingsVideoRoute() {
               </SettingsItem>
 
               <SettingsItem
-                title="Contrast"
-                description={`Contrast level (${videoContrast.toFixed(1)}x)`}
+                title={t('Contrast')}
+                description={t('Contrast_level_contrast',{contrast:videoContrast.toFixed(1)})}
               >
                 <input
                   type="range"
@@ -211,7 +213,7 @@ export default function SettingsVideoRoute() {
                 <Button
                   size="SM"
                   theme="light"
-                  text="Reset to Default"
+                  text={t('Reset_to_Default')}
                   onClick={() => {
                     setVideoSaturation(1.0);
                     setVideoBrightness(1.0);
@@ -223,7 +225,7 @@ export default function SettingsVideoRoute() {
             <Fieldset disabled={edidLoading} className="space-y-2">
               <SettingsItem
                 title="EDID"
-                description="Adjust the EDID settings for the display"
+                description={t('Adjust_the_EDID_settings_for_the_display')}
                 loading={edidLoading}
               >
                 <SelectMenuBasic
@@ -240,17 +242,17 @@ export default function SettingsVideoRoute() {
                       handleEDIDChange(e.target.value as string);
                     }
                   }}
-                  options={[...edids, { value: "custom", label: "Custom" }]}
+                  options={[...edids, { value: "custom", label: t('Custom') }]}
                 />
               </SettingsItem>
               {customEdidValue !== null && (
                 <>
                   <SettingsItem
-                    title="Custom EDID"
-                    description="EDID details video mode compatibility. Default settings works in most cases, but unique UEFI/BIOS might need adjustments."
+                    title={t('Custom_EDID')}
+                    description={t('EDID_details_video_mode_compatibility_Default_settings_works_in_most_cases')}
                   />
                   <TextAreaWithLabel
-                    label="EDID File"
+                    label={t('EDID_File')}
                     placeholder="00F..."
                     rows={3}
                     value={customEdidValue}
@@ -260,14 +262,14 @@ export default function SettingsVideoRoute() {
                     <Button
                       size="SM"
                       theme="primary"
-                      text="Set Custom EDID"
+                      text={t('Set_Custom_EDID')}
                       loading={edidLoading}
                       onClick={() => handleEDIDChange(customEdidValue)}
                     />
                     <Button
                       size="SM"
                       theme="light"
-                      text="Restore to default"
+                      text={t('Restore_to_Default')}
                       loading={edidLoading}
                       onClick={() => {
                         setCustomEdidValue(null);

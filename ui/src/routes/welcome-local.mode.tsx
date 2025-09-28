@@ -1,6 +1,7 @@
 import { Form, redirect, useActionData } from "react-router";
 import type { ActionFunction, ActionFunctionArgs, LoaderFunction } from "react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import GridBackground from "@components/GridBackground";
 import Container from "@components/Container";
@@ -25,9 +26,10 @@ const loader: LoaderFunction = async () => {
 };
 
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
+  const { t } = useTranslation();
   const formData = await request.formData();
   const localAuthMode = formData.get("localAuthMode");
-  if (!localAuthMode) return { error: "Please select an authentication mode" };
+  if (!localAuthMode) return { error: t('Please_select_an_authentication_mode') };
 
   if (localAuthMode === "password") {
     return redirect("/welcome/password");
@@ -41,14 +43,15 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
       return redirect("/");
     } catch (error) {
       console.error("Error setting authentication mode:", error);
-      return { error: "An error occurred while setting the authentication mode" };
+      return { error: t('An_error_occurred_while_setting_the_authentication_mode') };
     }
   }
 
-  return { error: "Invalid authentication mode" };
+  return { error: t('Invalid_authentication_mode') };
 };
 
 export default function WelcomeLocalModeRoute() {
+  const { t } = useTranslation();
   const actionData = useActionData() as { error?: string };
   const [selectedMode, setSelectedMode] = useState<"password" | "noPassword" | null>(
     null,
@@ -75,10 +78,10 @@ export default function WelcomeLocalModeRoute() {
                 style={{ animationDelay: "200ms" }}
               >
                 <h1 className="text-4xl font-semibold text-black dark:text-white">
-                  Local Authentication Method
+                    {t('Local_Authentication_Method')}
                 </h1>
                 <p className="font-medium text-slate-600 dark:text-slate-400">
-                  Select how you{"'"}d like to secure your JetKVM device locally.
+                    {t('Select_how_you_d_like_to_secure_your_JetKVM_device_locally')}
                 </p>
               </div>
 
@@ -101,12 +104,12 @@ export default function WelcomeLocalModeRoute() {
                       >
                         <div className="space-y-0 text-center">
                           <h3 className="text-base font-bold text-black dark:text-white">
-                            {mode === "password" ? "Password protected" : "No Password"}
+                            {mode === "password" ? t('Password_protected') : t('No_password')}
                           </h3>
                           <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
                             {mode === "password"
-                              ? "Secure your device with a password for added protection."
-                              : "Quick access without password authentication."}
+                              ? t('Secure_your_device_with_a_password_for_added_protection')
+                              : t('Quick_access_without_password_authentication')}
                           </p>
                         </div>
                         <input
@@ -142,7 +145,7 @@ export default function WelcomeLocalModeRoute() {
                     theme="primary"
                     fullWidth
                     type="submit"
-                    text="Continue"
+                    text={t('Continue')}
                     textAlign="center"
                     disabled={!selectedMode}
                   />
@@ -153,7 +156,7 @@ export default function WelcomeLocalModeRoute() {
                 className="animate-fadeIn mx-auto max-w-md text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
                 style={{ animationDelay: "600ms" }}
               >
-                You can always change your authentication method later in the settings.
+                  {t('You_can_always_change_your_authentication_method_later_in_the_settings')}
               </p>
             </div>
           </div>

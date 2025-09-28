@@ -1,4 +1,5 @@
 import { useInterval } from "usehooks-ts";
+import { useTranslation } from "react-i18next";
 
 import SidebarHeader from "@/components/SidebarHeader";
 import { useRTCStore, useUiStore } from "@/hooks/stores";
@@ -92,10 +93,10 @@ export default function ConnectionStatsSidebar() {
     const valueMs = Math.round((deltaDelay / deltaEmitted) * 1000);
     return { date: d.date, metric: valueMs };
   });
-
+  const { t } = useTranslation();
   return (
     <div className="grid h-full grid-rows-(--grid-headerBody) shadow-xs">
-      <SidebarHeader title="Connection Stats" setSidebarView={setSidebarView} />
+      <SidebarHeader title={t('Connection_Stats')} setSidebarView={setSidebarView} />
       <div className="h-full space-y-4 overflow-y-scroll bg-white px-4 py-2 pb-8 dark:bg-slate-900">
         <div className="space-y-4">
           {sidebarView === "connection-stats" && (
@@ -103,12 +104,12 @@ export default function ConnectionStatsSidebar() {
               {/* Connection Group */}
               <div className="space-y-3">
                 <SettingsSectionHeader
-                  title="Connection"
-                  description="The connection between the client and the JetKVM."
+                  title={t('Connection')}
+                  description={t('The_connection_between_the_client_and_the_JetKVM')}
                 />
                 <Metric
-                  title="Round-Trip Time"
-                  description="Round-trip time for the active ICE candidate pair between peers."
+                  title={t('Round-Trip_Time')}
+                  description={t('Round-trip_time_for_the_active_ICE_candidate_pair_between_peers')}
                   stream={iceCandidatePairStats}
                   metric="currentRoundTripTime"
                   map={x => ({
@@ -123,16 +124,16 @@ export default function ConnectionStatsSidebar() {
               {/* Video Group */}
               <div className="space-y-3">
                 <SettingsSectionHeader
-                  title="Video"
-                  description="The video stream from the JetKVM to the client."
+                  title={t('Video')}
+                  description={t('The_video_stream_from_the_JetKVM_to_the_client')}
                 />
 
                 {/* RTP Jitter */}
                 <Metric
-                  title="Network Stability"
-                  badge="Jitter"
+                  title={t('Network_Stability')}
+                  badge={t('Jitter')}
                   badgeTheme="light"
-                  description="How steady the flow of inbound video packets is across the network."
+                  description={t('How_steady_the_flow_of_inbound_video_packets_is_across_the_network')}
                   stream={inboundVideoRtpStats}
                   metric="jitter"
                   map={x => ({
@@ -140,14 +141,14 @@ export default function ConnectionStatsSidebar() {
                     metric: x.metric != null ? Math.round(x.metric * 1000) : null,
                   })}
                   domain={[0, 10]}
-                  unit=" ms"
+                  unit={t('ms')}
                 />
 
                 {/* Playback Delay */}
                 <Metric
-                  title="Playback Delay"
-                  description="Delay added by the jitter buffer to smooth playback when frames arrive unevenly."
-                  badge="Jitter Buffer Avg. Delay"
+                  title={t('Playback_Delay')}
+                  description={t('Delay_added_by_the_jitter_buffer_to_smooth_playback_when_frames_arrive_unevenly')}
+                  badge={t('Jitter_Buffer_Avg_Delay')}
                   badgeTheme="light"
                   data={jitterBufferAvgDelayData}
                   gate={inboundVideoRtpStats}
@@ -162,27 +163,27 @@ export default function ConnectionStatsSidebar() {
                     )
                   }
                   domain={[0, 30]}
-                  unit=" ms"
+                  unit={t('ms')}
                 />
 
                 {/* Packets Lost */}
                 <Metric
-                  title="Packets Lost"
-                  description="Count of lost inbound video RTP packets."
+                  title={t('Packets_Lost')}
+                  description={t('Count_of_lost_inbound_video_RTP_packets')}
                   stream={inboundVideoRtpStats}
                   metric="packetsLost"
                   domain={[0, 100]}
-                  unit=" packets"
+                  unit={t('packets')}
                 />
 
                 {/* Frames Per Second */}
                 <Metric
-                  title="Frames per second"
-                  description="Number of inbound video frames displayed per second."
+                  title={t('Frames_per_second')}
+                  description={t('Number_of_inbound_video_frames_displayed_per_second')}
                   stream={inboundVideoRtpStats}
                   metric="framesPerSecond"
                   domain={[0, 80]}
-                  unit=" fps"
+                  unit={t('fps')}
                 />
               </div>
             </div>

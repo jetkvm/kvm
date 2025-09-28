@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useClose } from "@headlessui/react";
+import { useTranslation } from "react-i18next";
 
 import { GridCard } from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
@@ -20,7 +21,7 @@ export default function WakeOnLanModal() {
   const close = useClose();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [addDeviceErrorMessage, setAddDeviceErrorMessage] = useState<string | null>(null);
-
+  const { t } = useTranslation();
   const onCancelWakeOnLanModal = useCallback(() => {
     setDisableVideoFocusTrap(false);
     close();
@@ -35,12 +36,12 @@ export default function WakeOnLanModal() {
         if ("error" in resp) {
           const isInvalid = resp.error.data?.includes("invalid MAC address");
           if (isInvalid) {
-            setErrorMessage("Invalid MAC address");
+            setErrorMessage(t('Invalid_MAC_address'));
           } else {
-            setErrorMessage("Failed to send Magic Packet");
+            setErrorMessage(t('Failed_to_send_Magic_Packet'));
           }
         } else {
-          notifications.success("Magic Packet sent successfully");
+          notifications.success(t('Magic_Packet_sent_successfully'));
           setDisableVideoFocusTrap(false);
           close();
         }
@@ -87,7 +88,7 @@ export default function WakeOnLanModal() {
       send("setWakeOnLanDevices", { params: { devices: updatedDevices } }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           console.error("Failed to add Wake-on-LAN device:", resp.error);
-          setAddDeviceErrorMessage("Failed to add device");
+          setAddDeviceErrorMessage(t('Failed_to_add_device'));
         } else {
           setShowAddForm(false);
           syncStoredDevices();
@@ -96,15 +97,14 @@ export default function WakeOnLanModal() {
     },
     [send, storedDevices, syncStoredDevices],
   );
-
   return (
     <GridCard>
       <div className="space-y-4 p-4 py-3">
         <div className="grid h-full grid-rows-(--grid-headerBody)">
           <div className="space-y-4">
             <SettingsPageHeader
-              title="Wake On LAN"
-              description="Send a Magic Packet to wake up a remote device."
+              title={t('Wake_on_LAN')}
+              description={t('Send_a_Magic_Packet_to_wake_up_a_remote_device')}
             />
 
             {showAddForm ? (

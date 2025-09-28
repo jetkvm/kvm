@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import { NetworkState } from "../hooks/stores";
 import { LifeTimeLabel } from "../routes/devices.$id.settings.network";
 
@@ -8,19 +10,20 @@ export default function Ipv6NetworkCard({
 }: {
   networkState: NetworkState;
 }) {
+  const { t } = useTranslation();
   return (
     <GridCard>
       <div className="animate-fadeIn p-4 text-black opacity-0 animation-duration-500 dark:text-white">
         <div className="space-y-4">
           <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            IPv6 Information
+              {t('IPv6_Information')}
           </h3>
 
           <div className="grid grid-cols-2 gap-x-6 gap-y-2">
             {networkState?.ipv6_link_local && (
               <div className="flex flex-col justify-between">
                 <span className="text-sm text-slate-600 dark:text-slate-400">
-                  Link-local
+                  {t('Link-local')}
                 </span>
                 <span className="text-sm font-medium">
                   {networkState?.ipv6_link_local}
@@ -32,7 +35,7 @@ export default function Ipv6NetworkCard({
           <div className="space-y-3 pt-2">
             {networkState?.ipv6_addresses && networkState?.ipv6_addresses.length > 0 && (
               <div className="space-y-3">
-                <h4 className="text-sm font-semibold">IPv6 Addresses</h4>
+                <h4 className="text-sm font-semibold">{t('IPv6_Addresses')}</h4>
                 {networkState.ipv6_addresses.map(
                   addr => (
                     <div
@@ -42,7 +45,7 @@ export default function Ipv6NetworkCard({
                       <div className="grid grid-cols-2 gap-x-8 gap-y-4">
                         <div className="col-span-2 flex flex-col justify-between">
                           <span className="text-sm text-slate-600 dark:text-slate-400">
-                            Address
+                            {t('Address')}
                           </span>
                           <span className="text-sm font-medium">{addr.address}</span>
                         </div>
@@ -50,7 +53,7 @@ export default function Ipv6NetworkCard({
                         {addr.valid_lifetime && (
                           <div className="flex flex-col justify-between">
                             <span className="text-sm text-slate-600 dark:text-slate-400">
-                              Valid Lifetime
+                              {t('Valid_Lifetime')}
                             </span>
                             <span className="text-sm font-medium">
                               {addr.valid_lifetime === "" ? (
@@ -66,7 +69,7 @@ export default function Ipv6NetworkCard({
                         {addr.preferred_lifetime && (
                           <div className="flex flex-col justify-between">
                             <span className="text-sm text-slate-600 dark:text-slate-400">
-                              Preferred Lifetime
+                              {t('Valid_Lifetime')}
                             </span>
                             <span className="text-sm font-medium">
                               {addr.preferred_lifetime === "" ? (

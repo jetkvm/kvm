@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 
 import { cx } from "@/cva.config";
 import KeyboardAndMouseConnectedIcon from "@/assets/keyboard-and-mouse-connected.png";
@@ -14,14 +15,6 @@ type StatusProps = Record<
     statusIndicatorClassName: string;
   }
 >;
-
-const USBStateMap: Record<USBStates, string> = {
-  configured: "Connected",
-  attached: "Connecting",
-  addressed: "Connecting",
-  "not attached": "Disconnected",
-  suspended: "Low power mode",
-};
 const StatusCardProps: StatusProps = {
   configured: {
     icon: ({ className }) => (
@@ -63,7 +56,14 @@ export default function USBStateStatus({
   state: USBStates;
   peerConnectionState?: RTCPeerConnectionState | null;
 }) {
-
+  const { t } = useTranslation();
+  const USBStateMap: Record<USBStates, string> = {
+        configured: t('Connected'),
+        attached: t('Connecting'),
+        addressed: t('Connecting'),
+        "not attached": t('Disconnected'),
+        suspended: t('Low_power_mode'),
+  };
   const props = StatusCardProps[state];
   if (!props) {
     console.warn("Unsupported USB state: ", state);
@@ -81,7 +81,7 @@ export default function USBStateStatus({
     return (
       <StatusCard
         title="USB"
-        status="Disconnected"
+        status={t('Disconnected')}
         icon={Icon}
         iconClassName={iconClassName}
         statusIndicatorClassName={statusIndicatorClassName}

@@ -4,6 +4,7 @@ import { Button } from "@/components/Button";
 import { GridCard } from "@/components/Card";
 import { LifeTimeLabel } from "@/routes/devices.$id.settings.network";
 import { NetworkState } from "@/hooks/stores";
+import { useTranslation } from "react-i18next";
 
 export default function DhcpLeaseCard({
   networkState,
@@ -12,12 +13,13 @@ export default function DhcpLeaseCard({
   networkState: NetworkState;
   setShowRenewLeaseConfirm: (show: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <GridCard>
       <div className="animate-fadeIn p-4 opacity-0 animation-duration-500 text-black dark:text-white">
         <div className="space-y-3">
           <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            DHCP Lease Information
+              {t('DHCP_Lease_Information')}
           </h3>
 
           <div className="flex gap-x-6 gap-y-2">
@@ -25,7 +27,7 @@ export default function DhcpLeaseCard({
               {networkState?.dhcp_lease?.ip && (
                 <div className="flex justify-between border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    IP Address
+                    {t('IP_Address')}
                   </span>
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.ip}
@@ -36,7 +38,7 @@ export default function DhcpLeaseCard({
               {networkState?.dhcp_lease?.netmask && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    Subnet Mask
+                    {t('Subnet_Mask')}
                   </span>
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.netmask}
@@ -47,7 +49,7 @@ export default function DhcpLeaseCard({
               {networkState?.dhcp_lease?.dns && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    DNS Servers
+                    {t('DNS_Servers')}
                   </span>
                   <span className="text-right text-sm font-medium">
                     {networkState?.dhcp_lease?.dns.map(dns => <div key={dns}>{dns}</div>)}
@@ -58,7 +60,7 @@ export default function DhcpLeaseCard({
               {networkState?.dhcp_lease?.broadcast && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    Broadcast
+                    {t('Broadcast')}
                   </span>
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.broadcast}
@@ -69,7 +71,7 @@ export default function DhcpLeaseCard({
               {networkState?.dhcp_lease?.domain && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    Domain
+                    {t('Domain')}
                   </span>
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.domain}
@@ -81,7 +83,7 @@ export default function DhcpLeaseCard({
                 networkState?.dhcp_lease?.ntp_servers.length > 0 && (
                   <div className="flex justify-between gap-x-8 border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                     <div className="w-full grow text-sm text-slate-600 dark:text-slate-400">
-                      NTP Servers
+                        {t('NTP_Servers')}
                     </div>
                     <div className="shrink text-right text-sm font-medium">
                       {networkState?.dhcp_lease?.ntp_servers.map(server => (
@@ -94,7 +96,7 @@ export default function DhcpLeaseCard({
               {networkState?.dhcp_lease?.hostname && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    Hostname
+                    {t('Hostname')}
                   </span>
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.hostname}
@@ -108,7 +110,7 @@ export default function DhcpLeaseCard({
                 networkState?.dhcp_lease?.routers.length > 0 && (
                   <div className="flex justify-between pt-2">
                     <span className="text-sm text-slate-600 dark:text-slate-400">
-                      Gateway
+                      {t('Gateway')}
                     </span>
                     <span className="text-right text-sm font-medium">
                       {networkState?.dhcp_lease?.routers.map(router => (
@@ -121,7 +123,7 @@ export default function DhcpLeaseCard({
               {networkState?.dhcp_lease?.server_id && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    DHCP Server
+                    {t('DHCP_Server')}
                   </span>
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.server_id}
@@ -132,7 +134,7 @@ export default function DhcpLeaseCard({
               {networkState?.dhcp_lease?.lease_expiry && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    Lease Expires
+                    {t('Lease_Expires')}
                   </span>
                   <span className="text-sm font-medium">
                     <LifeTimeLabel
@@ -163,7 +165,7 @@ export default function DhcpLeaseCard({
               {networkState?.dhcp_lease?.bootp_next_server && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    Boot Next Server
+                    {t('Boot_Next_Server')}
                   </span>
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.bootp_next_server}
@@ -174,7 +176,7 @@ export default function DhcpLeaseCard({
               {networkState?.dhcp_lease?.bootp_server_name && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    Boot Server Name
+                    {t('Boot_Next_Server')}
                   </span>
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.bootp_server_name}
@@ -185,7 +187,7 @@ export default function DhcpLeaseCard({
               {networkState?.dhcp_lease?.bootp_file && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    Boot File
+                    {t('Boot_File')}
                   </span>
                   <span className="text-sm font-medium">
                     {networkState?.dhcp_lease?.bootp_file}
@@ -200,7 +202,7 @@ export default function DhcpLeaseCard({
               size="SM"
               theme="light"
               className="text-red-500"
-              text="Renew DHCP Lease"
+              text={t('Renew_DHCP_Lease')}
               LeadingIcon={LuRefreshCcw}
               onClick={() => setShowRenewLeaseConfirm(true)}
             />

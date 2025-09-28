@@ -4,6 +4,7 @@ import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { Fragment, useCallback, useRef } from "react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@components/Button";
 import {
@@ -17,7 +18,7 @@ import { cx } from "@/cva.config";
 import PasteModal from "@/components/popovers/PasteModal";
 import WakeOnLanModal from "@/components/popovers/WakeOnLan/Index";
 import MountPopopover from "@/components/popovers/MountPopover";
-import ExtensionPopover from "@/components/popovers/ExtensionPopover";
+import {ExtensionPopover} from "@/components/popovers/ExtensionPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 
 export default function Actionbar({
@@ -33,7 +34,7 @@ export default function Actionbar({
     state => state.remoteVirtualMediaState,
   );
   const { developerMode } = useSettingsStore();
-
+  const { t } = useTranslation();
   // This is the only way to get a reliable state change for the popover
   // at time of writing this there is no mount, or unmount event for the popover
   const isOpen = useRef<boolean>(false);
@@ -64,7 +65,7 @@ export default function Actionbar({
             <Button
               size="XS"
               theme="light"
-              text="Web Terminal"
+              text={t('Web_Terminal')}
               LeadingIcon={({ className }) => <CommandLineIcon className={className} />}
               onClick={() => setTerminalType(terminalType === "kvm" ? "none" : "kvm")}
             />
@@ -74,7 +75,7 @@ export default function Actionbar({
               <Button
                 size="XS"
                 theme="light"
-                text="Paste text"
+                text={t('Paste_text')}
                 LeadingIcon={MdOutlineContentPasteGo}
                 onClick={() => {
                   setDisableVideoFocusTrap(true);
@@ -105,7 +106,7 @@ export default function Actionbar({
                 <Button
                   size="XS"
                   theme="light"
-                  text="Virtual Media"
+                  text={t('Virtual_Media')}
                   LeadingIcon={({ className }) => {
                     return (
                       <>
@@ -148,7 +149,7 @@ export default function Actionbar({
                 <Button
                   size="XS"
                   theme="light"
-                  text="Wake on LAN"
+                  text={t("Wake_on_LAN")}
                   onClick={() => {
                     setDisableVideoFocusTrap(true);
                   }}
@@ -198,7 +199,7 @@ export default function Actionbar({
             <Button
               size="XS"
               theme="light"
-              text="Virtual Keyboard"
+              text={t('Virtual_Keyboard')}
               LeadingIcon={FaKeyboard}
               onClick={() => setVirtualKeyboardEnabled(!isVirtualKeyboardEnabled)}
             />
@@ -211,7 +212,7 @@ export default function Actionbar({
               <Button
                 size="XS"
                 theme="light"
-                text="Extension"
+                text={t('Extension')}
                 LeadingIcon={LuCable}
                 onClick={() => {
                   setDisableVideoFocusTrap(true);
@@ -237,7 +238,7 @@ export default function Actionbar({
             <Button
               size="XS"
               theme="light"
-              text="Virtual Keyboard"
+              text={t('Virtual_Keyboard')}
               LeadingIcon={FaKeyboard}
               onClick={() => setVirtualKeyboardEnabled(!isVirtualKeyboardEnabled)}
             />
@@ -246,7 +247,7 @@ export default function Actionbar({
             <Button
               size="XS"
               theme="light"
-              text="Connection Stats"
+              text={t('Connection_Stats')}
               LeadingIcon={({ className }) => (
                 <LuSignal
                   className={cx(className, "mb-0.5 text-green-500")}
@@ -262,7 +263,7 @@ export default function Actionbar({
             <Button
               size="XS"
               theme="light"
-              text="Settings"
+              text={t('Settings')}
               LeadingIcon={LuSettings}
               onClick={() => {
                   setDisableVideoFocusTrap(true);
@@ -276,7 +277,7 @@ export default function Actionbar({
             <Button
               size="XS"
               theme="light"
-              text="Fullscreen"
+              text={t('Fullscreen')}
               LeadingIcon={LuMaximize}
               onClick={() => requestFullscreen()}
             />

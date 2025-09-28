@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -56,20 +58,20 @@ const variantConfig = {
     buttonTheme: "danger" | "primary" | "blank" | "light" | "lightDanger";
   }
 >;
-
+// @ts-ignore
 export function ConfirmDialog({
   open,
   onClose,
   title,
   description,
   variant = "info",
-  confirmText = "Confirm",
-  cancelText = "Cancel",
+  confirmText = useTranslation('Confirm').toString(),
+  cancelText = useTranslation('Cancel').toString(),
   onConfirm,
   isConfirming = false,
 }: ConfirmDialogProps) {
   const { icon: Icon, iconClass, iconBgClass, buttonTheme } = variantConfig[variant];
-
+  const { t } = useTranslation();
   return (
     <Modal open={open} onClose={onClose}>
       <div className="mx-auto max-w-xl px-4 transition-all duration-300 ease-in-out">
@@ -96,7 +98,7 @@ export function ConfirmDialog({
 
             <div className="flex justify-end gap-x-2">
               {cancelText && (
-                <Button size="SM" theme="blank" text={cancelText} onClick={onClose} />
+                <Button size="SM" theme="blank" text={t('Cancel')} onClick={onClose} />
               )}
               <Button
                 size="SM"

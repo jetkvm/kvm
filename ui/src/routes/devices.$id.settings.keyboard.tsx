@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useSettingsStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
@@ -16,6 +17,7 @@ export default function SettingsKeyboardRoute() {
   const { selectedKeyboard, keyboardOptions } = useKeyboardLayout();
 
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
 
   useEffect(() => {
     send("getKeyboardLayout", {}, (resp: JsonRpcResponse) => {
@@ -34,10 +36,10 @@ export default function SettingsKeyboardRoute() {
       send("setKeyboardLayout", { layout: isoCode }, resp => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to set keyboard layout: ${resp.error.data || "Unknown error"}`,
+            t('Failed_to_set_keyboard_layout_msg',{msg:resp.error.data || t('Unknown_error')})
           );
         }
-        notifications.success("Keyboard layout set successfully to " + isoCode);
+        notifications.success(t('Keyboard_layout_set_successfully_to_code',{code:isoCode}));
         setKeyboardLayout(isoCode);
       });
     },
@@ -47,14 +49,14 @@ export default function SettingsKeyboardRoute() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Keyboard"
-        description="Configure keyboard settings for your device"
+        title={t('Keyboard')}
+        description={t('Configure_keyboard_settings_for_your_device')}
       />
 
       <div className="space-y-4">
         <SettingsItem
-          title="Keyboard Layout"
-          description="Keyboard layout of target operating system"
+          title={t('Keyboard_Layout')}
+          description={t('Keyboard_layout_of_target_operating_system')}
         >
           <SelectMenuBasic
             size="SM"
@@ -66,14 +68,14 @@ export default function SettingsKeyboardRoute() {
           />
         </SettingsItem>
         <p className="text-xs text-slate-600 dark:text-slate-400">
-          The virtual keyboard, paste text, and keyboard macros send individual key strokes to the target device. The keyboard layout determines which key codes are being sent. Ensure that the keyboard layout in JetKVM matches the settings in the operating system.
+            {t('keyboard_layout_notice')}
         </p>
       </div>
 
       <div className="space-y-4">
         <SettingsItem
-          title="Show Pressed Keys"
-          description="Display currently pressed keys in the status bar"
+          title={t('Show_Pressed_Keys')}
+          description={t('Display_currently_pressed_keys_in_the_status_bar')}
         >
           <Checkbox
             checked={showPressedKeys}

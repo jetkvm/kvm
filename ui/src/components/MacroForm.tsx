@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { LuPlus } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/Button";
 import FieldLabel from "@/components/FieldLabel";
@@ -41,6 +42,7 @@ export function MacroForm({
   isSubmitting = false,
   submitText = "Save Macro",
 }: MacroFormProps) {
+  const { t } = useTranslation();
   const [macro, setMacro] = useState<Partial<KeySequence>>(initialData);
   const [keyQueries, setKeyQueries] = useState<Record<number, string>>({});
   const [errors, setErrors] = useState<ValidationErrors>({});
@@ -57,13 +59,13 @@ export function MacroForm({
 
     // Name validation
     if (!macro.name?.trim()) {
-      newErrors.name = "Name is required";
+      newErrors.name = t('Name_is_required');
     } else if (macro.name.trim().length > 50) {
-      newErrors.name = "Name must be less than 50 characters";
+      newErrors.name = t('Name_must_be_less_than_50_characters');
     }
 
     if (!macro.steps?.length) {
-      newErrors.steps = { 0: { keys: "At least one step is required" } };
+      newErrors.steps = { 0: { keys: t('At_least_one_step_is_required') } };
     } else {
       const hasKeyOrModifier = macro.steps.some(
         step => (step.keys?.length || 0) > 0 || (step.modifiers?.length || 0) > 0,
@@ -71,7 +73,7 @@ export function MacroForm({
 
       if (!hasKeyOrModifier) {
         newErrors.steps = {
-          0: { keys: "At least one step must have keys or modifiers" },
+          0: { keys: t('At_least_one_step_must_have_keys_or_modifiers') },
         };
       }
     }
@@ -82,7 +84,7 @@ export function MacroForm({
 
   const handleSubmit = async () => {
     if (!validateForm()) {
-      showTemporaryError("Please fix the validation errors");
+      showTemporaryError(t('Please_fix_the_validation_errors'));
       return;
     }
 
@@ -92,7 +94,7 @@ export function MacroForm({
       if (error instanceof Error) {
         showTemporaryError(error.message);
       } else {
-        showTemporaryError("An error occurred while saving");
+        showTemporaryError(t('An_error_occurred_while_saving'));
       }
     }
   };
@@ -114,7 +116,7 @@ export function MacroForm({
         ? newSteps[stepIndex].keys
         : [];
       if (keysArray.length >= MAX_KEYS_PER_STEP) {
-        showTemporaryError(`Maximum of ${MAX_KEYS_PER_STEP} keys per step allowed`);
+        showTemporaryError(t('Maximum_of_keys_per_step_allowed',{max_key:MAX_KEYS_PER_STEP}));
         return;
       }
       newSteps[stepIndex].keys = [...keysArray, option.value];
@@ -178,8 +180,8 @@ export function MacroForm({
         <Fieldset>
           <InputFieldWithLabel
             type="text"
-            label="Macro Name"
-            placeholder="Macro Name"
+            label={t('Macro_Name')}
+            placeholder={t('Macro_Name')}
             value={macro.name}
             error={errors.name}
             onChange={e => {
@@ -197,12 +199,12 @@ export function MacroForm({
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-1">
               <FieldLabel
-                label="Steps"
-                description={`Keys/modifiers executed in sequence with a delay between each step.`}
+                label={t('Steps')}
+                description={t('Keys_modifiers_executed_in_sequence_with_a_delay_between_each_step')}
               />
             </div>
             <span className="text-slate-500 dark:text-slate-400">
-              {macro.steps?.length || 0}/{MAX_STEPS_PER_MACRO} steps
+              {macro.steps?.length || 0}/{MAX_STEPS_PER_MACRO} {t('Steps')}
             </span>
           </div>
           {errors.steps && errors.steps[0]?.keys && (
@@ -248,11 +250,11 @@ export function MacroForm({
               theme="light"
               fullWidth
               LeadingIcon={LuPlus}
-              text={`Add Step ${isMaxStepsReached ? `(${MAX_STEPS_PER_MACRO} max)` : ""}`}
+              text={t('Add_Step_max',{max:(isMaxStepsReached ? `(${MAX_STEPS_PER_MACRO} max)` : "")})}
               onClick={() => {
                 if (isMaxStepsReached) {
                   showTemporaryError(
-                    `You can only add a maximum of ${MAX_STEPS_PER_MACRO} steps per macro.`,
+                    t('You_can_only_add_a_maximum_of_steps_per_macro',{max_step:MAX_STEPS_PER_MACRO})
                   );
                   return;
                 }
@@ -280,11 +282,11 @@ export function MacroForm({
             <Button
               size="SM"
               theme="primary"
-              text={isSubmitting ? "Saving..." : submitText}
+              text={isSubmitting ? t('Saving...') : t(submitText?.replace(' ','_'))}
               onClick={handleSubmit}
               disabled={isSubmitting}
             />
-            <Button size="SM" theme="light" text="Cancel" onClick={onCancel} />
+            <Button size="SM" theme="light" text={t('Cancel')} onClick={onCancel} />
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { SettingsPageHeader } from "../components/SettingsPageheader";
 import { SelectMenuBasic } from "../components/SelectMenuBasic";
@@ -6,6 +7,7 @@ import { SelectMenuBasic } from "../components/SelectMenuBasic";
 import { SettingsItem } from "./devices.$id.settings";
 
 export default function SettingsAppearanceRoute() {
+  const { t } = useTranslation();
   const [currentTheme, setCurrentTheme] = useState(() => {
     return localStorage.theme || "system";
   });
@@ -31,18 +33,18 @@ export default function SettingsAppearanceRoute() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Appearance"
-        description="Customize the look and feel of your JetKVM interface"
+        title={t('Appearance')}
+        description={t('Customize_the_look_and_feel_of_your_JetKVM_interface')}
       />
-      <SettingsItem title="Theme" description="Choose your preferred color theme">
+      <SettingsItem title={t('Theme')} description={t('Choose_your_preferred_color_theme')}>
         <SelectMenuBasic
           size="SM"
           label=""
           value={currentTheme}
           options={[
-            { value: "system", label: "System" },
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
+            { value: "system", label: t('System_default') },
+            { value: "light", label: t('Light') },
+            { value: "dark", label: t('Dark') },
           ]}
           onChange={e => {
             setCurrentTheme(e.target.value);

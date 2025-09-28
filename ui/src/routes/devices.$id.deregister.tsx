@@ -1,6 +1,7 @@
 import { Form, redirect, useActionData, useLoaderData } from "react-router";
 import type { ActionFunction, ActionFunctionArgs, LoaderFunction, LoaderFunctionArgs } from "react-router";
 import { ChevronLeftIcon } from "@heroicons/react/16/solid";
+import { useTranslation } from "react-i18next";
 
 import { Button, LinkButton } from "@components/Button";
 import Card from "@components/Card";
@@ -15,10 +16,10 @@ interface LoaderData {
   device: { id: string; name: string; user: { googleId: string } };
   user: User;
 }
-
+// eslint-disable-next-line react-hooks/rules-of-hooks
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   const { deviceId } = Object.fromEntries(await request.formData());
-
+  const { t } = useTranslation();
   try {
     const res = await fetch(`${CLOUD_API}/devices/${deviceId}`, {
       method: "DELETE",
@@ -28,11 +29,11 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
     });
 
     if (!res.ok) {
-      return { message: "There was an error deregistering your device. Please try again." };
+      return { message: t('There_was_an_error_deregistering_your_device_Please_try_again') };
     }
   } catch (e) {
     console.error(e);
-    return { message: "There was an error deregistering your device. Please try again." };
+    return { message: t('There_was_an_error_deregistering_your_device_Please_try_again') };
   }
 
   return redirect("/devices");
@@ -63,12 +64,12 @@ const loader: LoaderFunction = async ({ params }: LoaderFunctionArgs) => {
 export default function DevicesIdDeregister() {
   const { device, user } = useLoaderData() as LoaderData;
   const error = useActionData() as { message: string };
-
+  const { t } = useTranslation();
   return (
     <div className="grid min-h-screen grid-rows-(--grid-layout)">
       <DashboardNavbar
         isLoggedIn={!!user}
-        primaryLinks={[{ title: "Cloud Devices", to: "/devices" }]}
+        primaryLinks={[{ title: t('Cloud_Devices'), to: "/devices" }]}
         userEmail={user?.email}
         picture={user?.picture}
         kvmName={device?.name}
@@ -82,7 +83,7 @@ export default function DevicesIdDeregister() {
                 size="SM"
                 theme="blank"
                 LeadingIcon={ChevronLeftIcon}
-                text="Back to Devices"
+                text={t('Back_to_Devices')}
                 to="/devices"
               />
               <Card className="max-w-3xl p-6">
@@ -91,10 +92,9 @@ export default function DevicesIdDeregister() {
                     headline={`Deregister ${device.name || device.id} from your cloud account`}
                     description={
                       <>
-                        This will remove the device from your cloud account and revoke
-                        remote access to it.
+                          {t('This_will_remove_the_device_from_your_cloud_account_and_revoke_remote_access_to_it')}
                         <br />
-                        Please note that local access will still be possible
+                          {t('Please_note_that_local_access_will_still_be_possible')})
                       </>
                     }
                   />
@@ -107,14 +107,14 @@ export default function DevicesIdDeregister() {
                           size="MD"
                           theme="light"
                           to="/devices"
-                          text="Cancel"
+                          text={t('Cancel')}
                           textAlign="center"
                         />
                         <Button
                           size="MD"
                           theme="danger"
                           type="submit"
-                          text="Deregister from Cloud"
+                          text={t('Deregister_from_Cloud')}
                           textAlign="center"
                         />
                       </div>

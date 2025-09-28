@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router";
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
@@ -46,19 +47,20 @@ function ConfirmationBox({
   onYes: () => void;
   onNo: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
         <p className="text-base font-semibold text-black dark:text-white">
-          Reboot JetKVM
+            {t('重启JetKVM')}
         </p>
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          Do you want to proceed with rebooting the system?
+            {t('Do_you_want_to_proceed_with_rebooting_the_system')}
         </p>
 
         <div className="mt-4 flex gap-x-2">
-          <Button size="SM" theme="light" text="Yes" onClick={onYes} />
-          <Button size="SM" theme="blank" text="No" onClick={onNo} />
+          <Button size="SM" theme="light" text={t('Yes')} onClick={onYes} />
+          <Button size="SM" theme="blank" text={t('No')} onClick={onNo} />
         </div>
       </div>
     </div>

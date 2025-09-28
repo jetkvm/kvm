@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
+import { useTranslation } from "react-i18next";
 
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
@@ -165,13 +166,13 @@ export default function WebRTCVideo() {
 
   useEffect(() => {
     if (!isPointerLockPossible || !videoElm.current) return;
-
+    const { t } = useTranslation();
     const handlePointerLockChange = () => {
       if (document.pointerLockElement) {
-        notifications.success("Pointer lock Enabled, press escape to unlock");
+        notifications.success(t('Pointer_lock_Enabled_press_escape_to_unlock'));
         setIsPointerLockActive(true);
       } else {
-        notifications.success("Pointer lock Disabled");
+        notifications.success(t('Pointer_lock_Disabled'));
         setIsPointerLockActive(false);
       }
     };
@@ -479,7 +480,6 @@ export default function WebRTCVideo() {
     }
     return code;
   }
-
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">
       <div className="flex min-h-[39.5px] flex-col">

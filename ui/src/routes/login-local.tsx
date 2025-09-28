@@ -2,6 +2,7 @@ import { Form, redirect, useActionData } from "react-router";
 import type { ActionFunction, ActionFunctionArgs, LoaderFunction } from "react-router";
 import { useState } from "react";
 import { LuEye, LuEyeOff } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
 
 import SimpleNavbar from "@components/SimpleNavbar";
 import GridBackground from "@components/GridBackground";
@@ -31,6 +32,7 @@ const loader: LoaderFunction = async () => {
 };
 
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
+  const { t } = useTranslation();
   const formData = await request.formData();
   const password = formData.get("password");
 
@@ -42,15 +44,16 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
     if (response.ok) {
       return redirect("/");
     } else {
-      return { error: "Invalid password" };
+      return { error: t('Invalid_password') };
     }
   } catch (error) {
     console.error(error);
-    return { error: "An error occurred while logging in" };
+    return { error: t('An_error_occurred_while_logging_in') };
   }
 };
 
 export default function LoginLocalRoute() {
+  const { t } = useTranslation();
   const actionData = useActionData() as { error?: string; success?: boolean };
   const [showPassword, setShowPassword] = useState(false);
 
@@ -73,10 +76,10 @@ export default function LoginLocalRoute() {
 
               <div className="space-y-2 text-center">
                 <h1 className="text-4xl font-semibold text-black dark:text-white">
-                  Welcome back to JetKVM
+                    {t('Welcome_back_to_JetKVM')}
                 </h1>
                 <p className="font-medium text-slate-600 dark:text-slate-400">
-                  Enter your password to access your JetKVM.
+                    {t('Enter_your_password_to_access_your_JetKVM')}
                 </p>
               </div>
 
@@ -84,11 +87,11 @@ export default function LoginLocalRoute() {
                 <Form method="POST" className="mx-auto max-w-sm space-y-4">
                   <div className="space-y-4">
                     <InputFieldWithLabel
-                      label="Password"
+                      label={t('Password')}
                       type={showPassword ? "text" : "password"}
                       name="password"
                       autoComplete="current-password"
-                      placeholder="Enter your password"
+                      placeholder={t('Enter_your_password')}
                       autoFocus
                       error={actionData?.error}
                       TrailingElm={
@@ -116,7 +119,7 @@ export default function LoginLocalRoute() {
                     theme="primary"
                     fullWidth
                     type="submit"
-                    text="Log In"
+                    text={t('Log_In')}
                     textAlign="center"
                   />
 
@@ -125,7 +128,7 @@ export default function LoginLocalRoute() {
                       href="https://jetkvm.com/docs/networking/local-access#reset-password"
                       className="hover:underline"
                     >
-                      Forgot password?
+                        {t('Forgot_password')}
                     </ExtLink>
                   </div>
                 </Form>

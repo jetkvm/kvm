@@ -53,7 +53,6 @@ export function Combobox({
 }: ComboboxProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const classes = comboboxVariants({ size });
-
   return (
     <HeadlessCombobox onChange={onChange} {...otherProps}>
       {() => (

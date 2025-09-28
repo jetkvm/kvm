@@ -14,6 +14,7 @@ import { useInterval } from "usehooks-ts";
 import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
 import useWebSocket from "react-use-websocket";
+import { useTranslation } from "react-i18next";
 
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import api from "@/api";
@@ -114,6 +115,7 @@ const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
 };
 
 export default function KvmIdRoute() {
+  const { t } = useTranslation();
   const loaderResp = useLoaderData() as LocalLoaderResp | CloudLoaderResp;
   // Depending on the mode, we set the appropriate variables
   const user = "user" in loaderResp ? loaderResp.user : null;
@@ -145,7 +147,7 @@ export default function KvmIdRoute() {
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
 
-  const [loadingMessage, setLoadingMessage] = useState("Connecting to device...");
+  const [loadingMessage, setLoadingMessage] = useState(t("Connecting_to_device"));
   const cleanupAndStopReconnecting = useCallback(
     function cleanupAndStopReconnecting() {
       console.log("Closing peer connection");
@@ -182,12 +184,12 @@ export default function KvmIdRoute() {
       pc: RTCPeerConnection,
       remoteDescription: RTCSessionDescriptionInit,
     ) {
-      setLoadingMessage("Setting remote description");
+      setLoadingMessage(t('Setting_remote_description'));
 
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(remoteDescription));
         console.log("[setRemoteSessionDescription] Remote description set successfully");
-        setLoadingMessage("Establishing secure connection...");
+        setLoadingMessage(t('Establishing_secure_connection'));
       } catch (error) {
         console.error(
           "[setRemoteSessionDescription] Failed to set remote description:",
@@ -206,7 +208,7 @@ export default function KvmIdRoute() {
         if (pc.sctp?.state === "connected") {
           console.log("[setRemoteSessionDescription] Remote description set");
           clearInterval(checkInterval);
-          setLoadingMessage("Connection established");
+          setLoadingMessage(t('Connection_established'));
         } else if (attempts >= 10) {
           console.warn(
             "[setRemoteSessionDescription] Failed to establish connection after 10 attempts",
@@ -365,8 +367,10 @@ export default function KvmIdRoute() {
 
       console.log("Trying to get remote session description");
       setLoadingMessage(
-        `Getting remote session description...  ${signalingAttempts.current > 0 ? `(attempt ${signalingAttempts.current + 1})` : ""}`,
-      );
+          t('Getting_remote_session_description',{
+            attempt:signalingAttempts.current > 0 ? t('attempt_num',{num:signalingAttempts.current + 1}) : ''
+        })
+      );//Getting remote session description...  ${signalingAttempts.current > 0 ? `(attempt ${signalingAttempts.current + 1})` : ""}`,
       const res = await api.POST(sessionUrl, {
         sd,
         // When on device, we don't need to specify the device id, as it's already known
@@ -382,7 +386,7 @@ export default function KvmIdRoute() {
       }
 
       console.debug("Successfully got Remote Session Description. Setting.");
-      setLoadingMessage("Setting remote session description...");
+      setLoadingMessage(t('Setting_remote_session_description'));
 
       const decodedSd = atob(json.sd);
       const parsedSd = JSON.parse(decodedSd);
@@ -394,12 +398,12 @@ export default function KvmIdRoute() {
   const setupPeerConnection = useCallback(async () => {
     console.debug("[setupPeerConnection] Setting up peer connection");
     setConnectionFailed(false);
-    setLoadingMessage("Connecting to device...");
+    setLoadingMessage(t('Connecting_to_device'));
 
     let pc: RTCPeerConnection;
     try {
       console.debug("[setupPeerConnection] Creating peer connection");
-      setLoadingMessage("Creating peer connection...");
+      setLoadingMessage(t('Creating_peer_connection'));
       pc = new RTCPeerConnection({
         // We only use STUN or TURN servers if we're in the cloud
         ...(isInCloud && iceConfig?.iceServers
@@ -409,7 +413,7 @@ export default function KvmIdRoute() {
 
       setPeerConnectionState(pc.connectionState);
       console.debug("[setupPeerConnection] Peer connection created", pc);
-      setLoadingMessage("Setting up connection to device...");
+      setLoadingMessage(t('Setting_up_connection_to_device'));
     } catch (e) {
       console.error(`[setupPeerConnection] Error creating peer connection: ${e}`);
       setTimeout(() => {
@@ -459,7 +463,7 @@ export default function KvmIdRoute() {
       const pc = event.currentTarget as RTCPeerConnection;
       if (pc.iceGatheringState === "complete") {
         console.debug("ICE Gathering completed");
-        setLoadingMessage("ICE Gathering completed");
+        setLoadingMessage(t('ICE_Gathering_completed').toString());
 
         if (isLegacySignalingEnabled.current) {
           // We can now start the https/ws connection to get the remote session description from the KVM device
@@ -467,7 +471,7 @@ export default function KvmIdRoute() {
         }
       } else if (pc.iceGatheringState === "gathering") {
         console.debug("ICE Gathering Started");
-        setLoadingMessage("Gathering ICE candidates...");
+        setLoadingMessage(t('Gathering_ICE_candidates').toString());
       }
     };
 
@@ -832,12 +836,12 @@ export default function KvmIdRoute() {
 
         <div className="grid h-full grid-rows-(--grid-headerBody) select-none">
           <DashboardNavbar
-            primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
+            primaryLinks={isOnDevice ? [] : [{ title: t('Cloud_Devices'), to: "/devices" }]}
             showConnectionStatus={true}
             isLoggedIn={authMode === "password" || !!user}
             userEmail={user?.email}
             picture={user?.picture}
-            kvmName={deviceName ?? "JetKVM Device"}
+            kvmName={deviceName ?? t('JetKVM_Device')}
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
@@ -873,11 +877,11 @@ export default function KvmIdRoute() {
       </div>
 
       {kvmTerminal && (
-        <Terminal type="kvm" dataChannel={kvmTerminal} title="KVM Terminal" />
+        <Terminal type="kvm" dataChannel={kvmTerminal} title={t('KVM_Terminal')} />
       )}
 
       {serialConsole && (
-        <Terminal type="serial" dataChannel={serialConsole} title="Serial Console" />
+        <Terminal type="serial" dataChannel={serialConsole} title={t('Serial_Console')} />
       )}
     </FeatureFlagProvider>
   );

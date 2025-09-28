@@ -2,6 +2,7 @@ import { useClose } from "@headlessui/react";
 import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuCornerDownLeft } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
 
 import { cx } from "@/cva.config";
 import { useHidStore, useSettingsStore, useUiStore } from "@/hooks/stores";
@@ -24,6 +25,7 @@ export default function PasteModal() {
   const { setDisableVideoFocusTrap } = useUiStore();
 
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
   const { executeMacro, cancelExecuteMacro } = useKeyboard();
 
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
@@ -104,7 +106,7 @@ export default function PasteModal() {
       }
     } catch (error) {
       console.error("Failed to paste text:", error);
-      notifications.error("Failed to paste text");
+      notifications.error(t('Failed_to_paste_text'));
     }
   }, [selectedKeyboard, executeMacro, delay]);
 
@@ -121,8 +123,8 @@ export default function PasteModal() {
           <div className="h-full space-y-4">
             <div className="space-y-4">
               <SettingsPageHeader
-                title="Paste text"
-                description="Paste text from your client to the remote host"
+                title={t('Paste_text')}
+                description={t('Paste_text_from_your_client_to_the_remote_host')}
               />
 
               <div
@@ -141,7 +143,7 @@ export default function PasteModal() {
                   >
                     <TextAreaWithLabel
                       ref={TextAreaRef}
-                      label="Paste from host"
+                      label={t('Paste_from_host')}
                       rows={4}
                       onKeyUp={e => e.stopPropagation()}
                       maxLength={pasteMaxLength}
@@ -184,8 +186,8 @@ export default function PasteModal() {
                 <div className={cx("text-xs text-slate-600 dark:text-slate-400", delayClassName)}>
                   <InputFieldWithLabel
                     type="number"
-                    label="Delay between keys"
-                    placeholder="Delay between keys"
+                    label={t('Delay_between_keys')}
+                    placeholder={t('Delay_between_keys')}
                     min={50}
                     max={65534}
                     value={delayValue}
@@ -197,14 +199,14 @@ export default function PasteModal() {
                     <div className="mt-2 flex items-center gap-x-2">
                       <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
                       <span className="text-xs text-red-500 dark:text-red-400">
-                        Delay must be between 50 and 65534
+                        {t('Delay_must_be_between_50_and_65534')}
                       </span>
                     </div>
                   )}
                 </div>
                 <div className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Sending text using keyboard layout: {selectedKeyboard.isoCode}-
+                      {t('Sending_text_using_keyboard_layout')}: {selectedKeyboard.isoCode}-
                     {selectedKeyboard.name}
                   </p>
                 </div>
@@ -222,7 +224,7 @@ export default function PasteModal() {
           <Button
             size="SM"
             theme="blank"
-            text="Cancel"
+            text={t('Cancel')}
             onClick={() => {
               onCancelPasteMode();
               close();
@@ -231,7 +233,7 @@ export default function PasteModal() {
           <Button
             size="SM"
             theme="primary"
-            text="Confirm Paste"
+            text={t('Confirm_Paste')}
             disabled={isPasteInProgress}
             onClick={onConfirmPaste}
             LeadingIcon={LuCornerDownLeft}

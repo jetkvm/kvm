@@ -2,6 +2,7 @@ import "react-simple-keyboard/build/css/index.css";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
 import { useEffect, useMemo } from "react";
 import { useXTerm } from "react-xtermjs";
+import { useTranslation } from "react-i18next";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -160,7 +161,7 @@ function Terminal({
       window.removeEventListener("resize", handleResize);
     };
   }, [instance]);
-
+  const { t } = useTranslation();
   return (
     <div
       onKeyDown={e => e.stopPropagation()}
@@ -191,7 +192,7 @@ function Terminal({
                 <Button
                   size="XS"
                   theme="light"
-                  text="Hide"
+                  text={t('Hide')}
                   LeadingIcon={ChevronDownIcon}
                   onClick={() => setTerminalType("none")}
                 />

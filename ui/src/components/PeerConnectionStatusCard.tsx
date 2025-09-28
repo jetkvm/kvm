@@ -1,4 +1,5 @@
 import StatusCard from "@components/StatusCards";
+import {useTranslation} from "react-i18next";
 
 const PeerConnectionStatusMap = {
   connected: "Connected",
@@ -27,7 +28,8 @@ export default function PeerConnectionStatusCard({
   state?: RTCPeerConnectionState | null;
   title?: string;
 }) {
-  if (!state) return null;
+  if (!state) return <></>;
+  const { t } = useTranslation();
   const StatusCardProps: StatusProps = {
     connected: {
       statusIndicatorClassName: "bg-green-500 border-green-600",
@@ -55,12 +57,11 @@ export default function PeerConnectionStatusCard({
     },
   };
   const props = StatusCardProps[state];
-  if (!props) return;
-
+  if (!props) return (<div></div>);
   return (
     <StatusCard
       title={title || "JetKVM Device"}
-      status={PeerConnectionStatusMap[state]}
+      status={t(PeerConnectionStatusMap[state])}
       {...StatusCardProps[state]}
     />
   );

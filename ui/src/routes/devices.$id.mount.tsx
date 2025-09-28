@@ -8,6 +8,7 @@ import {
 import { PlusCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { TrashIcon } from "@heroicons/react/16/solid";
 import { useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import Card, { GridCard } from "@/components/Card";
 import { Button } from "@components/Button";
@@ -61,6 +62,7 @@ export function Dialog({ onClose }: { onClose: () => void }) {
   }
 
   const { send } = useJsonRpc();
+
   async function syncRemoteVirtualMediaState() {
     return new Promise((resolve, reject) => {
       send("getVirtualMediaState", {}, (resp: JsonRpcResponse) => {
@@ -233,31 +235,31 @@ function ModeSelectionView({
   setSelectedMode: (mode: "url" | "device") => void;
 }) {
   const { setModalView } = useMountMediaStore();
-
+  const { t } = useTranslation();
   return (
     <div className="w-full space-y-4">
       <div className="animate-fadeIn space-y-0 opacity-0">
         <h2 className="text-lg leading-tight font-bold dark:text-white">
-          Virtual Media Source
+            {t('Virtual_Media_Source')}
         </h2>
         <div className="text-sm leading-snug text-slate-600 dark:text-slate-400">
-          Choose how you want to mount your virtual media
+            {t('Choose_how_you_want_to_mount_your_virtual_media')}
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         {[
           {
-            label: "URL Mount",
+            label: t('URL_Mount'),
             value: "url",
-            description: "Mount files from any public web address",
+            description: t('Mount_files_from_any_public_web_address'),
             icon: LuLink,
-            tag: "Experimental",
+            tag: t('Experimental'),
             disabled: false,
           },
           {
-            label: "JetKVM Storage Mount",
+            label: t('JetKVM_Storage_Mount'),
             value: "device",
-            description: "Mount previously uploaded files from the JetKVM storage",
+            description: t('Mount_previously_uploaded_files_from_the_JetKVM_storage'),
             icon: LuRadioReceiver,
             tag: null,
             disabled: false,
@@ -273,7 +275,7 @@ function ModeSelectionView({
           >
             <Card
               className={cx(
-                "w-full min-w-[250px] cursor-pointer bg-white shadow-xs transition-all duration-100 hover:shadow-md dark:bg-slate-800",
+                "w-full min-w-[250px] h-[145px] cursor-pointer bg-white shadow-xs transition-all duration-100 hover:shadow-md dark:bg-slate-800",
                 {
                   "ring-2 ring-blue-700": selectedMode === mode,
                   "hover:ring-2 hover:ring-blue-500": selectedMode !== mode && !disabled,
@@ -325,14 +327,14 @@ function ModeSelectionView({
         }}
       >
         <div className="flex gap-x-2 pt-2">
-          <Button size="MD" theme="blank" onClick={onClose} text="Cancel" />
+          <Button size="MD" theme="blank" onClick={onClose} text={t('Cancel')} />
           <Button
             size="MD"
             theme="primary"
             onClick={() => {
               setModalView(selectedMode);
             }}
-            text="Continue"
+            text={t('Continue')}
           />
         </div>
       </div>
@@ -351,7 +353,7 @@ function UrlView({
 }) {
   const [usbMode, setUsbMode] = useState<RemoteVirtualMediaState["mode"]>("CDROM");
   const [url, setUrl] = useState<string>("");
-
+  const { t } = useTranslation();
   const popularImages = [
     {
       name: "Ubuntu 24.04 LTS",
@@ -410,8 +412,8 @@ function UrlView({
   return (
     <div className="w-full space-y-4">
       <ViewHeader
-        title="Mount from URL"
-        description="Enter an URL to the image file to mount"
+        title={t('Mount_from_URL')}
+        description={t('Enter_an_URL_to_the_image_file_to_mount')}
       />
 
       <div
@@ -423,7 +425,7 @@ function UrlView({
         <InputFieldWithLabel
           placeholder="https://example.com/image.iso"
           type="url"
-          label="Image URL"
+          label={t('Image_URL')}
           ref={urlRef}
           value={url}
           onChange={e => handleUrlChange(e.target.value)}
@@ -440,12 +442,12 @@ function UrlView({
           <UsbModeSelector usbMode={usbMode} setUsbMode={setUsbMode} />
         </Fieldset>
         <div className="flex space-x-2">
-          <Button size="MD" theme="blank" text="Back" onClick={onBack} />
+          <Button size="MD" theme="blank" text={t('Back')} onClick={onBack} />
           <Button
             size="MD"
             theme="primary"
             loading={mountInProgress}
-            text="Mount URL"
+            text={t('Mount_URL')}
             onClick={() => onMount(url, usbMode)}
             disabled={
               mountInProgress || !urlRef.current?.validity.valid || url.length === 0
@@ -463,7 +465,7 @@ function UrlView({
         }}
       >
         <h2 className="mb-2 text-sm font-semibold text-black dark:text-white">
-          Popular images
+            {t('Popular_images')}
         </h2>
         <Card className="w-full divide-y divide-slate-800/20 dark:divide-slate-300/20">
           {popularImages.map((image, index) => (
@@ -487,7 +489,7 @@ function UrlView({
               <Button
                 size="XS"
                 theme="light"
-                text="Select"
+                text={t('Select')}
                 onClick={() => handleUrlChange(image.url)}
               />
             </div>
@@ -523,6 +525,7 @@ function DeviceFileView({
   const filesPerPage = 5;
 
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
 
   interface StorageSpace {
     bytesUsed: number;
@@ -553,7 +556,7 @@ function DeviceFileView({
   const syncStorage = useCallback(() => {
     send("listStorageFiles", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(`Error listing storage files: ${resp.error}`);
+        notifications.error(t('Error_listing_storage_files_msg',{msg:resp.error}));
         return;
       }
       const { files } = resp.result as StorageFiles;
@@ -568,7 +571,7 @@ function DeviceFileView({
 
     send("getStorageSpace", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(`Error getting storage space: ${resp.error}`);
+          notifications.error(t('Error_getting_storage_space_msg',{msg:resp.error}));
         return;
       }
 
@@ -597,7 +600,7 @@ function DeviceFileView({
     console.log("Deleting file:", file);
     send("deleteStorageFile", { filename: file.name }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(`Error deleting file: ${resp.error}`);
+        notifications.error(t('Error_deleting_file_msg',{msg:resp.error}));
         return;
       }
 
@@ -630,8 +633,8 @@ function DeviceFileView({
   return (
     <div className="w-full space-y-4">
       <ViewHeader
-        title="Mount from JetKVM Storage"
-        description="Select an image to mount from the JetKVM storage"
+        title={t('Mount_from_JetKVM_Storage')}
+        description={t('Select_an_image_to_mount_from_the_JetKVM_storage')}
       />
       <div
         className="w-full animate-fadeIn opacity-0"
@@ -647,17 +650,17 @@ function DeviceFileView({
                 <div className="space-y-1">
                   <PlusCircleIcon className="mx-auto h-6 w-6 text-blue-700 dark:text-blue-500" />
                   <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
-                    No images available
+                      {t('No_images_available')}
                   </h3>
                   <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
-                    Upload an image to start virtual media mounting.
+                      {t('Upload_an_image_to_start_virtual_media_mounting')}
                   </p>
                 </div>
                 <div>
                   <Button
                     size="SM"
                     theme="primary"
-                    text="Upload a new image"
+                    text={t('Upload_a_new_image')}
                     onClick={() => onNewImageClick()}
                   />
                 </div>
@@ -678,7 +681,7 @@ function DeviceFileView({
                     if (!selectedFile) return;
                     if (
                       window.confirm(
-                        "Are you sure you want to delete " + selectedFile.name + "?",
+                          t('Are_you_sure_you_want_to_delete',{file:selectedFile.name}),
                       )
                     ) {
                       handleDeleteFile(selectedFile);
@@ -692,24 +695,24 @@ function DeviceFileView({
               {onStorageFiles.length > filesPerPage && (
                 <div className="flex items-center justify-between px-3 py-2">
                   <p className="text-sm text-slate-700 dark:text-slate-300">
-                    Showing <span className="font-bold">{indexOfFirstFile + 1}</span> to{" "}
+                      {t('Showing')} <span className="font-bold">{indexOfFirstFile + 1}</span> {t('to')}
                     <span className="font-bold">
                       {Math.min(indexOfLastFile, onStorageFiles.length)}
                     </span>{" "}
-                    of <span className="font-bold">{onStorageFiles.length}</span> results
+                    of <span className="font-bold">{onStorageFiles.length}</span> {t('results')}
                   </p>
                   <div className="flex items-center gap-x-2">
                     <Button
                       size="XS"
                       theme="light"
-                      text="Previous"
+                      text={t('Previous')}
                       onClick={handlePreviousPage}
                       disabled={currentPage === 1}
                     />
                     <Button
                       size="XS"
                       theme="light"
-                      text="Next"
+                      text={t('Next')}
                       onClick={handleNextPage}
                       disabled={currentPage === totalPages}
                     />
@@ -733,12 +736,12 @@ function DeviceFileView({
             <UsbModeSelector usbMode={usbMode} setUsbMode={setUsbMode} />
           </Fieldset>
           <div className="flex items-center gap-x-2">
-            <Button size="MD" theme="blank" text="Back" onClick={() => onBack()} />
+            <Button size="MD" theme="blank" text={t('Back')} onClick={() => onBack()} />
             <Button
               size="MD"
               disabled={selected === null || mountInProgress}
               theme="primary"
-              text="Mount File"
+              text={t('Mount_File')}
               loading={mountInProgress}
               onClick={() =>
                 onMountStorageFile(
@@ -758,7 +761,7 @@ function DeviceFileView({
           }}
         >
           <div className="flex items-center gap-x-2">
-            <Button size="MD" theme="light" text="Back" onClick={() => onBack()} />
+            <Button size="MD" theme="light" text={t('Back')} onClick={() => onBack()} />
           </div>
         </div>
       )}
@@ -772,10 +775,10 @@ function DeviceFileView({
       >
         <div className="flex justify-between text-sm">
           <span className="font-medium text-black dark:text-white">
-            Available Storage
+            {t('Available_Storage')}
           </span>
           <span className="text-slate-700 dark:text-slate-300">
-            {percentageUsed}% used
+            {percentageUsed}% {t('used')}
           </span>
         </div>
         <div className="h-3.5 w-full overflow-hidden rounded-xs bg-slate-200 dark:bg-slate-700">
@@ -786,10 +789,10 @@ function DeviceFileView({
         </div>
         <div className="flex justify-between text-sm text-slate-600">
           <span className="text-slate-700 dark:text-slate-300">
-            {formatters.bytes(bytesUsed)} used
+            {formatters.bytes(bytesUsed)} {t('used')}
           </span>
           <span className="text-slate-700 dark:text-slate-300">
-            {formatters.bytes(bytesFree)} free
+            {formatters.bytes(bytesFree)} {t('free')}
           </span>
         </div>
       </div>
@@ -806,7 +809,7 @@ function DeviceFileView({
             size="MD"
             theme="light"
             fullWidth
-            text="Upload a new image"
+            text={t('Upload_a_new_image')}
             onClick={() => onNewImageClick()}
           />
         </div>
@@ -835,6 +838,7 @@ function UploadFileView({
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
   const rtcDataChannelRef = useRef<RTCDataChannel | null>(null);
 
   useEffect(() => {
@@ -862,7 +866,7 @@ function UploadFileView({
 
     if (!rtcDataChannel) {
       console.error("Failed to create data channel for file upload");
-      notifications.error("Failed to create data channel for file upload");
+      notifications.error(t('Failed_to_create_data_channel_for_file_upload'));
       setUploadState("idle");
       console.log("Upload state set to 'idle'");
 
@@ -952,7 +956,7 @@ function UploadFileView({
 
     rtcDataChannel.onerror = error => {
       console.error("RTC Data channel error:", error);
-      notifications.error(`Upload failed: ${error}`);
+      notifications.error(t('Upload_failed_msg',{msg:error}));
       setUploadState("idle");
       console.log("Upload state set to 'idle'");
     };
@@ -1080,11 +1084,11 @@ function UploadFileView({
   return (
     <div className="w-full space-y-4">
       <ViewHeader
-        title="Upload New Image"
+        title={t('Upload_New_Image')}
         description={
           incompleteFileName
-            ? `Continue uploading "${incompleteFileName}"`
-            : "Select an image file to upload to JetKVM storage"
+            ? t('Continue_uploading_fille',{file:incompleteFileName})
+            : t('Select_an_image_file_to_upload_to_JetKVM_storage')
         }
       />
       <div
@@ -1121,11 +1125,11 @@ function UploadFileView({
                       </div>
                       <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
                         {incompleteFileName
-                          ? `Click to select "${incompleteFileName.replace(".incomplete", "")}"`
-                          : "Click to select a file"}
+                          ? `${t('Click_to_select')} "${incompleteFileName.replace(".incomplete", "")}"`
+                          : t('Click_to_select_a_file')}
                       </h3>
                       <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
-                        Supported formats: ISO, IMG
+                          {t('Supported_formats')}: ISO, IMG
                       </p>
                     </div>
                   )}
@@ -1140,7 +1144,7 @@ function UploadFileView({
                         </Card>
                       </div>
                       <h3 className="leading-non text-lg font-semibold text-black dark:text-white">
-                        Uploading {formatters.truncateMiddle(uploadedFileName, 30)}
+                          {t('Uploading')} {formatters.truncateMiddle(uploadedFileName, 30)}
                       </h3>
                       <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
                         {formatters.bytes(uploadedFileSize || 0)}
@@ -1153,11 +1157,11 @@ function UploadFileView({
                           ></div>
                         </div>
                         <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
-                          <span>Uploading...</span>
+                          <span>{t('Uploading...')}</span>
                           <span>
                             {uploadSpeed !== null
                               ? `${formatters.bytes(uploadSpeed)}/s`
-                              : "Calculating..."}
+                              : t('Calculating...')}
                           </span>
                         </div>
                       </div>
@@ -1174,11 +1178,10 @@ function UploadFileView({
                         </Card>
                       </div>
                       <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
-                        Upload successful
+                          {t('Upload_successful')}
                       </h3>
                       <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
-                        {formatters.truncateMiddle(uploadedFileName, 40)} has been
-                        uploaded
+                        {formatters.truncateMiddle(uploadedFileName, 40)} {t('has_been_uploaded')}
                       </p>
                     </div>
                   )}
@@ -1221,7 +1224,7 @@ function UploadFileView({
             <Button
               size="MD"
               theme="light"
-              text="Cancel Upload"
+              text={t('Cancel_Upload')}
               onClick={() => {
                 onCancelUpload();
                 setUploadState("idle");
@@ -1235,7 +1238,7 @@ function UploadFileView({
             <Button
               size="MD"
               theme={uploadState === "success" ? "primary" : "light"}
-              text="Back to Overview"
+              text={t('Back_to_Overview')}
               onClick={onBack}
             />
           )}
@@ -1254,15 +1257,16 @@ function ErrorView({
   onClose: () => void;
   onRetry: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="w-full space-y-4">
       <div className="space-y-2">
         <div className="flex items-center space-x-2 text-red-600">
           <ExclamationTriangleIcon className="h-6 w-6" />
-          <h2 className="text-lg leading-tight font-bold">Mount Error</h2>
+          <h2 className="text-lg leading-tight font-bold">{t('Mount_Error')}</h2>
         </div>
         <p className="text-sm leading-snug text-slate-600">
-          An error occurred while attempting to mount the media. Please try again.
+            {t('An_error_occurred_while_attempting_to_mount_the_media_Please_try_again')}
         </p>
       </div>
       {errorMessage && (
@@ -1271,8 +1275,8 @@ function ErrorView({
         </Card>
       )}
       <div className="flex justify-end space-x-2">
-        <Button size="SM" theme="light" text="Close" onClick={onClose} />
-        <Button size="SM" theme="primary" text="Back to Overview" onClick={onRetry} />
+        <Button size="SM" theme="light" text={t('Close')} onClick={onClose} />
+        <Button size="SM" theme="primary" text={t('Back_to_Overview')} onClick={onRetry} />
       </div>
     </div>
   );
@@ -1298,6 +1302,7 @@ function PreUploadedImageItem({
   onContinueUpload: () => void;
 }) {
   const [isHovering, setIsHovering] = useState(false);
+  const { t } = useTranslation();
   return (
     <label
       htmlFor={name}
@@ -1341,7 +1346,7 @@ function PreUploadedImageItem({
             size="XS"
             theme="light"
             LeadingIcon={TrashIcon}
-            text="Delete"
+            text={t('Delete')}
             onClick={e => {
               e.stopPropagation();
               onDelete();
@@ -1362,7 +1367,7 @@ function PreUploadedImageItem({
           <Button
             size="XS"
             theme="light"
-            text="Continue uploading"
+            text={t('Continue_uploading')}
             onClick={e => {
               e.stopPropagation();
               onContinueUpload();
@@ -1394,9 +1399,10 @@ function UsbModeSelector({
   usbMode: RemoteVirtualMediaState["mode"];
   setUsbMode: (mode: RemoteVirtualMediaState["mode"]) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-start space-y-1 select-none">
-      <label className="text-sm font-semibold text-black dark:text-white">Mount as</label>
+      <label className="text-sm font-semibold text-black dark:text-white">{t('Mount_as')}</label>
       <div className="flex space-x-4">
         <label htmlFor="cdrom" className="flex items-center">
           <input
@@ -1408,7 +1414,7 @@ function UsbModeSelector({
             className="form-radio h-3 w-3 rounded-full border-slate-800/30 bg-white text-blue-700 transition-opacity focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
           />
           <span className="ml-2 text-sm font-medium text-slate-900 dark:text-white">
-            CD/DVD
+            {t('CD/DVD')}
           </span>
         </label>
         <label htmlFor="disk" className="flex items-center">
@@ -1421,7 +1427,7 @@ function UsbModeSelector({
             className="form-radio h-3 w-3 rounded-full border-slate-800/30 bg-white text-blue-700 transition-opacity focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
           />
           <span className="ml-2 text-sm font-medium text-slate-900 dark:text-white">
-            Disk
+            {t('Disk')}
           </span>
         </label>
       </div>

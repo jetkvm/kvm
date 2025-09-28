@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsItem } from "@routes/devices.$id.settings";
@@ -13,6 +14,7 @@ import { FeatureFlag } from "../components/FeatureFlag";
 
 export default function SettingsHardwareRoute() {
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
   const settings = useSettingsStore();
   const { setDisplayRotation } = useSettingsStore();
 
@@ -25,11 +27,11 @@ export default function SettingsHardwareRoute() {
     send("setDisplayRotation", { params: { rotation: settings.displayRotation } }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to set display orientation: ${resp.error.data || "Unknown error"}`,
+          t('Failed_to_set_display_orientation_msg',{msg:resp.error.data || t('Unknown_error')})
         );
         return;
       }
-      notifications.success("Display orientation updated successfully");
+      notifications.success(t('Display_orientation_updated_successfully'));
     });
   };
 
@@ -50,11 +52,11 @@ export default function SettingsHardwareRoute() {
     send("setBacklightSettings", { params: settings.backlightSettings }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to set backlight settings: ${resp.error.data || "Unknown error"}`,
+          t('Failed_to_set_backlight_settings_msg',{msg:resp.error.data || t('Unknown_error')})
         );
         return;
       }
-      notifications.success("Backlight settings updated successfully");
+      notifications.success(t('Backlight_settings_updated_successfully'));
     });
   };
 
@@ -62,7 +64,7 @@ export default function SettingsHardwareRoute() {
     send("getBacklightSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         return notifications.error(
-          `Failed to get backlight settings: ${resp.error.data || "Unknown error"}`,
+          t('Failed_to_get_backlight_settings_msg',{msg:resp.error.data || t('Unknown_error')})
         );
       }
       const result = resp.result as BacklightSettings;
@@ -73,21 +75,21 @@ export default function SettingsHardwareRoute() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Hardware"
-        description="Configure display settings and hardware options for your JetKVM device"
+        title={t('Hardware')}
+        description={t('Configure_display_settings_and_hardware_options_for_your_JetKVM_device')}
       />
       <div className="space-y-4">
         <SettingsItem
-          title="Display Orientation"
-          description="Set the orientation of the display"
+          title={t('Display_Orientation')}
+          description={t('Set_the_orientation_of_the_display')}
         >
           <SelectMenuBasic
             size="SM"
             label=""
             value={settings.displayRotation.toString()}
             options={[
-              { value: "270", label: "Normal" },
-              { value: "90", label: "Inverted" },
+              { value: "270", label: t('Normal') },
+              { value: "90", label: t('Inverted') },
             ]}
             onChange={e => {
               settings.displayRotation = e.target.value;
@@ -96,18 +98,18 @@ export default function SettingsHardwareRoute() {
           />
         </SettingsItem>
         <SettingsItem
-          title="Display Brightness"
-          description="Set the brightness of the display"
+          title={t('Display_Brightness')}
+          description={t('Set_the_brightness_of_the_display')}
         >
           <SelectMenuBasic
             size="SM"
             label=""
             value={settings.backlightSettings.max_brightness.toString()}
             options={[
-              { value: "0", label: "Off" },
-              { value: "10", label: "Low" },
-              { value: "35", label: "Medium" },
-              { value: "64", label: "High" },
+              { value: "0", label: t('Off') },
+              { value: "10", label: t('Low') },
+              { value: "35", label: t('Medium') },
+              { value: "64", label: t('High') },
             ]}
             onChange={e => {
               settings.backlightSettings.max_brightness = parseInt(e.target.value);
@@ -118,20 +120,20 @@ export default function SettingsHardwareRoute() {
         {settings.backlightSettings.max_brightness != 0 && (
           <>
             <SettingsItem
-              title="Dim Display After"
-              description="Set how long to wait before dimming the display"
+              title={t('Dim_Display_After')}
+              description={t('Set_how_long_to_wait_before_dimming_the_display')}
             >
               <SelectMenuBasic
                 size="SM"
                 label=""
                 value={settings.backlightSettings.dim_after.toString()}
                 options={[
-                  { value: "0", label: "Never" },
-                  { value: "60", label: "1 Minute" },
-                  { value: "300", label: "5 Minutes" },
-                  { value: "600", label: "10 Minutes" },
-                  { value: "1800", label: "30 Minutes" },
-                  { value: "3600", label: "1 Hour" },
+                  { value: "0", label: t('Never') },
+                  { value: "60", label: t('num_minute',{num:1}) },
+                  { value: "300", label: t('num_minute',{num:5}) },
+                  { value: "600", label: t('num_minute',{num:10}) },
+                  { value: "1800", label: t('num_minute',{num:30}) },
+                  { value: "3600", label: t('1Hour') },
                 ]}
                 onChange={e => {
                   settings.backlightSettings.dim_after = parseInt(e.target.value);
@@ -140,19 +142,19 @@ export default function SettingsHardwareRoute() {
               />
             </SettingsItem>
             <SettingsItem
-              title="Turn off Display After"
-              description="Period of inactivity before display automatically turns off"
+              title={t('Turn_off_Display_After')}
+              description={t('Period_of_inactivity_before_display_automatically_turns_off')}
             >
               <SelectMenuBasic
                 size="SM"
                 label=""
                 value={settings.backlightSettings.off_after.toString()}
                 options={[
-                  { value: "0", label: "Never" },
-                  { value: "300", label: "5 Minutes" },
-                  { value: "600", label: "10 Minutes" },
-                  { value: "1800", label: "30 Minutes" },
-                  { value: "3600", label: "1 Hour" },
+                  { value: "0", label: t('Never') },
+                  { value: "300", label: t('num_minute',{num:5}) },
+                  { value: "600", label: t('num_minute',{num:10}) },
+                  { value: "1800", label: t('num_minute',{num:30}) },
+                  { value: "3600", label: t('1Hour') },
                 ]}
                 onChange={e => {
                   settings.backlightSettings.off_after = parseInt(e.target.value);
@@ -163,7 +165,7 @@ export default function SettingsHardwareRoute() {
           </>
         )}
         <p className="text-xs text-slate-600 dark:text-slate-400">
-          The display will wake up when the connection state changes, or when touched.
+            {t('The_display_will_wake_up_when_the_connection_state_changes_or_when_touched')}
         </p>
       </div>
 

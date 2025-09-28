@@ -1,6 +1,8 @@
 import { Form, redirect, useActionData, useLoaderData } from "react-router";
 import type { ActionFunction, ActionFunctionArgs, LoaderFunction, LoaderFunctionArgs } from "react-router";
 import { ChevronLeftIcon } from "@heroicons/react/16/solid";
+import { useTranslation } from "react-i18next";
+
 
 import { Button, LinkButton } from "@components/Button";
 import Card from "@components/Card";
@@ -18,13 +20,13 @@ interface LoaderData {
   device: { id: string; name: string; user: { googleId: string } };
   user: User;
 }
-
+// eslint-disable-next-line react-hooks/rules-of-hooks
 const action: ActionFunction = async ({ params, request }: ActionFunctionArgs) => {
   const { id } = params;
   const { name } = Object.fromEntries(await request.formData());
-
+  const { t } = useTranslation();
   if (!name || name === "") {
-    return { message: "Please specify a name" };
+    return { message: t('Please_specify_a_name') };
   }
 
   try {
@@ -32,11 +34,11 @@ const action: ActionFunction = async ({ params, request }: ActionFunctionArgs) =
       name,
     });
     if (!res.ok) {
-      return { message: "There was an error renaming your device. Please try again." };
+      return { message: t('There_was_an_error_renaming_your_device_Please_try_again') };
     }
   } catch (e) {
     console.error(e);
-    return { message: "There was an error renaming your device. Please try again." };
+    return { message: t('There_was_an_error_renaming_your_device_Please_try_again') };
   }
 
   return redirect("/devices");
@@ -67,7 +69,7 @@ const loader: LoaderFunction = async ({ params }: LoaderFunctionArgs) => {
 export default function DeviceIdRename() {
   const { device, user } = useLoaderData() as LoaderData;
   const error = useActionData() as { message: string };
-
+  const { t } = useTranslation();
   return (
     <div className="grid min-h-screen grid-rows-(--grid-layout)">
       <DashboardNavbar
@@ -86,24 +88,24 @@ export default function DeviceIdRename() {
                 size="SM"
                 theme="blank"
                 LeadingIcon={ChevronLeftIcon}
-                text="Back to Devices"
+                text={t('Back_to_Devices')}
                 to="/devices"
               />
               <Card className="max-w-3xl p-6">
                 <div className="space-y-4">
                   <CardHeader
                     headline={`Rename ${device.name || device.id}`}
-                    description="Properly name your device to easily identify it."
+                    description={t('Properly_name_your_device_to_easily_identify_it')}
                   />
 
                   <Fieldset>
                     <Form method="POST" className="max-w-sm space-y-4">
                       <div className="group relative">
                         <InputFieldWithLabel
-                          label="New device name"
+                          label={t('New_device_name')}
                           type="text"
                           name="name"
-                          placeholder="Plex Media Server"
+                          placeholder={t('Plex_Media_Server')}
                           size="MD"
                           autoFocus
                           error={error?.message.toString()}
@@ -114,7 +116,7 @@ export default function DeviceIdRename() {
                         size="MD"
                         theme="primary"
                         type="submit"
-                        text="Rename Device"
+                        text={t('Rename_Device')}
                         textAlign="center"
                       />
                     </Form>

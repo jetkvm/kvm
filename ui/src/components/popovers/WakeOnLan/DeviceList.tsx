@@ -1,4 +1,5 @@
 import { LuPlus, LuSend, LuTrash2 } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/Button";
 import Card from "@/components/Card";
@@ -26,6 +27,7 @@ export default function DeviceList({
   onCancelWakeOnLanModal,
   setShowAddForm,
 }: DeviceListProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       <Card className="animate-fadeIn opacity-0">
@@ -46,7 +48,7 @@ export default function DeviceList({
                 <Button
                   size="XS"
                   theme="light"
-                  text="Wake"
+                  text={t('Wake')}
                   LeadingIcon={LuSend}
                   onClick={() => onSendMagicPacket(device.macAddress)}
                 />
@@ -55,7 +57,7 @@ export default function DeviceList({
                   theme="danger"
                   LeadingIcon={LuTrash2}
                   onClick={() => onDeleteDevice(index)}
-                  aria-label="Delete device"
+                  aria-label={t('Delete_device')}
                 />
               </div>
             </div>
@@ -69,11 +71,11 @@ export default function DeviceList({
           animationDelay: "0.2s",
         }}
       >
-        <Button size="SM" theme="blank" text="Close" onClick={onCancelWakeOnLanModal} />
+        <Button size="SM" theme="blank" text={t('Close')} onClick={onCancelWakeOnLanModal} />
         <Button
           size="SM"
           theme="primary"
-          text="Add New Device"
+          text={t('Add_New_Device')}
           onClick={() => setShowAddForm(true)}
           LeadingIcon={LuPlus}
         />

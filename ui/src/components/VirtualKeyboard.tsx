@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Keyboard from "react-simple-keyboard";
 import { LuKeyboard } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
 
 import Card from "@components/Card";
 // eslint-disable-next-line import/order
@@ -200,7 +201,7 @@ function KeyboardWrapper() {
     },
     [executeMacro, handleKeyPress, keyNamesForDownKeys],
   );
-
+  const { t } = useTranslation();
   return (
     <div
       className="transition-all duration-500 ease-in-out"
@@ -244,20 +245,20 @@ function KeyboardWrapper() {
                       <Button
                         size="XS"
                         theme="light"
-                        text="Detach"
+                        text={t('Detach')}
                         onClick={() => setAttachedVirtualKeyboardVisibility(false)}
                       />
                     ) : (
                       <Button
                         size="XS"
                         theme="light"
-                        text="Attach"
+                        text={t('Attach')}
                         onClick={() => setAttachedVirtualKeyboardVisibility(true)}
                       />
                     )}
                   </div>
                   <h2 className="self-center font-sans text-sm leading-none font-medium text-slate-700 select-none dark:text-slate-300">
-                    Virtual Keyboard
+                      {t('Virtual_Keyboard')}
                   </h2>
                   <div className="absolute right-2 flex items-center gap-x-2">
                     <div className="hidden md:flex gap-x-2 items-center">
@@ -274,7 +275,7 @@ function KeyboardWrapper() {
                     <Button
                       size="XS"
                       theme="light"
-                      text="Hide"
+                      text={t('Hide')}
                       LeadingIcon={ChevronDownIcon}
                       onClick={() => setVirtualKeyboardEnabled(false)}
                     />

@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { LuPlus, LuArrowLeft } from "react-icons/lu";
+import { useTranslation } from "react-i18next";
 
 import { InputFieldWithLabel } from "@/components/InputField";
 import { Button } from "@/components/Button";
@@ -22,7 +23,7 @@ export default function AddDeviceForm({
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const macInputRef = useRef<HTMLInputElement>(null);
-
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       <div
@@ -34,8 +35,8 @@ export default function AddDeviceForm({
       >
         <InputFieldWithLabel
           ref={nameInputRef}
-          placeholder="Plex Media Server"
-          label="Device Name"
+          placeholder={t('Plex_Media_Server')}
+          label={t('Device_Name')}
           required
           onChange={e => {
             setIsDeviceNameValid(e.target.validity.valid);
@@ -46,7 +47,7 @@ export default function AddDeviceForm({
         <InputFieldWithLabel
           ref={macInputRef}
           placeholder="00:b0:d0:63:c2:26"
-          label="MAC Address"
+          label={t('MAC_Address')}
           onKeyUp={e => e.stopPropagation()}
           required
           pattern="^([0-9a-fA-F][0-9a-fA-F]:){5}([0-9a-fA-F][0-9a-fA-F])$"
@@ -82,14 +83,14 @@ export default function AddDeviceForm({
         <Button
           size="SM"
           theme="light"
-          text="Back"
+          text={t('Back')}
           LeadingIcon={LuArrowLeft}
           onClick={() => setShowAddForm(false)}
         />
         <Button
           size="SM"
           theme="primary"
-          text="Save Device"
+          text={t('Save_Device')}
           disabled={!isDeviceNameValid || !isMacAddressValid}
           onClick={() => {
             const deviceName = nameInputRef.current?.value || "";

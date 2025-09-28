@@ -5,64 +5,65 @@ import tsconfigPaths from "vite-tsconfig-paths";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 
 declare const process: {
-  env: {
-    JETKVM_PROXY_URL: string;
-    USE_SSL: string;
-  };
+    env: {
+        JETKVM_PROXY_URL: string;
+        USE_SSL: string;
+    };
 };
 
+// @ts-ignore
 export default defineConfig(({ mode, command }) => {
-  const isCloud = mode.indexOf("cloud") !== -1;
-  const onDevice = mode === "device";
-  const { JETKVM_PROXY_URL, USE_SSL } = process.env;
-  const useSSL = USE_SSL === "true";
+    const isCloud = mode.indexOf("cloud") !== -1;
+    const onDevice = mode === "device";
+    const { JETKVM_PROXY_URL, USE_SSL } = process.env;
+    const useSSL = USE_SSL === "true";
 
-  const plugins = [
-    tailwindcss(),
-    tsconfigPaths(),
-    react()
-  ];
-  if (useSSL) {
-    plugins.push(basicSsl());
-  }
+    const plugins = [
+        tailwindcss(),
+        tsconfigPaths(),
+        react()
+    ];
+    if (useSSL) {
+        plugins.push(basicSsl());
+    }
 
-  return {
-    plugins,
-    esbuild: {
-      pure: ["console.debug"],
-    },
-    assetsInclude: ["**/*.woff2"],
-    build: {
-      outDir: isCloud ? "dist" : "../static",
-      rollupOptions: {
-        output: {
-          manualChunks: (id) => {
-            if (id.includes("node_modules")) {
-              return "vendor";
-            }
-            return null;
-          },
-          assetFileNames: "assets/immutable/[name]-[hash][extname]",
-          chunkFileNames: "assets/immutable/[name]-[hash].js",
-          entryFileNames: "assets/immutable/[name]-[hash].js",
+    return {
+        plugins,
+        esbuild: {
+            pure: ["console.debug"],
         },
-      },
-    },
-    server: {
-      host: "0.0.0.0",
-      https: useSSL,
-      proxy: JETKVM_PROXY_URL
-        ? {
-          "/me": JETKVM_PROXY_URL,
-          "/device": JETKVM_PROXY_URL,
-          "/webrtc": JETKVM_PROXY_URL,
-          "/auth": JETKVM_PROXY_URL,
-          "/storage": JETKVM_PROXY_URL,
-          "/cloud": JETKVM_PROXY_URL,
-          "/developer": JETKVM_PROXY_URL,
-        }
-        : undefined,
-    },
-    base: onDevice && command === "build" ? "/static" : "/",
-  };
+        assetsInclude: ["**/*.woff2","**/*.json"],
+        build: {
+            outDir: isCloud ? "dist" : "../static",
+            rollupOptions: {
+                output: {
+                    manualChunks: (id) => {
+                        if (id.includes("node_modules")) {
+                            return "vendor";
+                        }
+                        return null;
+                    },
+                    assetFileNames: "assets/immutable/[name]-[hash][extname]",
+                    chunkFileNames: "assets/immutable/[name]-[hash].js",
+                    entryFileNames: "assets/immutable/[name]-[hash].js",
+                },
+            },
+        },
+        server: {
+            host: "0.0.0.0",
+            https: useSSL,
+            proxy: JETKVM_PROXY_URL
+                ? {
+                    "/me": JETKVM_PROXY_URL,
+                    "/device": JETKVM_PROXY_URL,
+                    "/webrtc": JETKVM_PROXY_URL,
+                    "/auth": JETKVM_PROXY_URL,
+                    "/storage": JETKVM_PROXY_URL,
+                    "/cloud": JETKVM_PROXY_URL,
+                    "/developer": JETKVM_PROXY_URL,
+                }
+                : undefined,
+        },
+        base: onDevice && command === "build" ? "/static" : "/",
+    };
 });

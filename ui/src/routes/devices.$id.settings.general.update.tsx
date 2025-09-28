@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from "react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 
 import Card from "@/components/Card";
@@ -163,16 +164,16 @@ function LoadingState({
       abortControllerRef.current?.abort();
     };
   }, [getVersionInfo, onFinished]);
-
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="space-y-4">
         <div className="space-y-0">
           <p className="text-base font-semibold text-black dark:text-white">
-            Checking for updates...
+              {t('Checking_for_updates')}
           </p>
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            We{"'"}re ensuring your device has the latest features and improvements.
+              {t('We_re_ensuring_your_device_has_the_latest_features_and_improvements')}
           </p>
         </div>
         <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-300">
@@ -183,7 +184,7 @@ function LoadingState({
           ></div>
         </div>
         <div className="mt-4">
-          <Button size="SM" theme="light" text="Cancel" onClick={onCancelCheck} />
+          <Button size="SM" theme="light" text={t('Cancel')} onClick={onCancelCheck} />
         </div>
       </div>
     </div>
@@ -197,6 +198,7 @@ function UpdatingDeviceState({
   otaState: UpdateState["otaState"];
   onMinimizeUpgradeDialog: () => void;
 }) {
+  const { t } = useTranslation();
   const formatProgress = (progress: number) => `${Math.round(progress)}%`;
 
   const calculateOverallProgress = (type: "system" | "app") => {
@@ -238,15 +240,15 @@ function UpdatingDeviceState({
     const updatedAt = otaState[`${type}UpdatedAt`];
 
     if (!otaState.metadataFetchedAt) {
-      return "Fetching update information...";
+      return t('Fetching_update_information');
     } else if (!downloadFinishedAt) {
-      return `Downloading ${type} update...`;
+      return t('Downloading_type_update',{type:t(type)});
     } else if (!verfiedAt) {
-      return `Verifying ${type} update...`;
+      return t('Verifying_type_update',{type:t(type)});
     } else if (!updatedAt) {
-      return `Installing ${type} update...`;
+      return t('Installing_type_update',{type:t(type)});
     } else {
-      return `Awaiting reboot`;
+      return t('Awaiting_reboot');
     }
   };
 
@@ -269,10 +271,10 @@ function UpdatingDeviceState({
       <div className="w-full max-w-sm space-y-4">
         <div className="space-y-0">
           <p className="text-base font-semibold text-black dark:text-white">
-            Updating your device
+              {t('Updating_your_device')}
           </p>
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            Please don{"'"}t turn off your device. This process may take a few minutes.
+              {t('Please_dont_turn_off_your_device_This_process_may_take_a_few_minutes')}
           </p>
         </div>
         <Card className="space-y-4 p-4">
@@ -281,7 +283,7 @@ function UpdatingDeviceState({
               <LoadingSpinner className="h-6 w-6 text-blue-700 dark:text-blue-500" />
               <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
                 <span className="font-medium text-black dark:text-white">
-                  Rebooting to complete the update...
+                  {t('Rebooting_to_complete_the_update')}
                 </span>
               </div>
             </div>
@@ -297,7 +299,7 @@ function UpdatingDeviceState({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-black dark:text-white">
-                      Linux System Update
+                        {t('Linux_System_Update')}
                     </p>
                     {calculateOverallProgress("system") < 100 ? (
                       <LoadingSpinner className="h-4 w-4 text-blue-700 dark:text-blue-500" />
@@ -329,7 +331,7 @@ function UpdatingDeviceState({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-semibold text-black dark:text-white">
-                        App Update
+                          {t('App_Update')}
                       </p>
                       {calculateOverallProgress("app") < 100 ? (
                         <LoadingSpinner className="h-4 w-4 text-blue-700 dark:text-blue-500" />
@@ -361,7 +363,7 @@ function UpdatingDeviceState({
           <Button
             size="XS"
             theme="light"
-            text="Update in Background"
+            text={t('Update_in_Background')}
             onClick={onMinimizeUpgradeDialog}
           />
         </div>
@@ -377,19 +379,20 @@ function SystemUpToDateState({
   checkUpdate: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
         <p className="text-base font-semibold text-black dark:text-white">
-          System is up to date
+            {t('System_is_up_to_date')}
         </p>
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          Your system is running the latest version. No updates are currently available.
+            {t('Your_system_is_running_the_latest_version_No_updates_are_currently_available')}
         </p>
 
         <div className="mt-4 flex gap-x-2">
-          <Button size="SM" theme="light" text="Check Again" onClick={checkUpdate} />
-          <Button size="SM" theme="blank" text="Back" onClick={onClose} />
+          <Button size="SM" theme="light" text={t('Check_Again')} onClick={checkUpdate} />
+          <Button size="SM" theme="blank" text={t('Back')} onClick={onClose} />
         </div>
       </div>
     </div>
@@ -405,34 +408,34 @@ function UpdateAvailableState({
   onConfirmUpdate: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
         <p className="text-base font-semibold text-black dark:text-white">
-          Update available
+            {t('Update_available')}
         </p>
         <p className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-          A new update is available to enhance system performance and improve
-          compatibility. We recommend updating to ensure everything runs smoothly.
+            {t('A_new_update_is_available_to_enhance_system_performance_and_improve_compatibility_We_recommend_updating_to_ensure_everything_runs_smoothly')}
         </p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
           {versionInfo?.systemUpdateAvailable ? (
             <>
-              <span className="font-semibold">System:</span>{" "}
+              <span className="font-semibold">{t('System')}:</span>{" "}
               {versionInfo?.remote?.systemVersion}
               <br />
             </>
           ) : null}
           {versionInfo?.appUpdateAvailable ? (
             <>
-              <span className="font-semibold">App:</span>{" "}
+              <span className="font-semibold">{t('App')}:</span>{" "}
               {versionInfo?.remote?.appVersion}
             </>
           ) : null}
         </p>
         <div className="flex items-center justify-start gap-x-2">
-          <Button size="SM" theme="primary" text="Update Now" onClick={onConfirmUpdate} />
-          <Button size="SM" theme="light" text="Do it later" onClick={onClose} />
+          <Button size="SM" theme="primary" text={t('Update_Now')} onClick={onConfirmUpdate} />
+          <Button size="SM" theme="light" text={t('Do_it_later')} onClick={onClose} />
         </div>
       </div>
     </div>
@@ -440,18 +443,18 @@ function UpdateAvailableState({
 }
 
 function UpdateCompletedState({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
         <p className="text-base font-semibold dark:text-white">
-          Update Completed Successfully
+            {t('Update_Completed_Successfully')}
         </p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
-          Your device has been successfully updated to the latest version. Enjoy the new
-          features and improvements!
+            {t('Your_device_has_been_successfully_updated_to_the_latest_version_Enjoy_the_new_features_and_improvements')}
         </p>
         <div className="flex items-center justify-start">
-          <Button size="SM" theme="primary" text="Back" onClick={onClose} />
+          <Button size="SM" theme="primary" text={t('Back')} onClick={onClose} />
         </div>
       </div>
     </div>
@@ -467,21 +470,22 @@ function UpdateErrorState({
   onClose: () => void;
   onRetryUpdate: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
-        <p className="text-base font-semibold dark:text-white">Update Error</p>
+        <p className="text-base font-semibold dark:text-white">{t('Update_Error')}</p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
-          An error occurred while updating your device. Please try again later.
+            {t('An_error_occurred_while_updating_your_device_Please_try_again_later')}
         </p>
         {errorMessage && (
           <p className="mb-4 text-sm font-medium text-red-600 dark:text-red-400">
-            Error details: {errorMessage}
+              {t('Error_details_msg',{msg:errorMessage})}
           </p>
         )}
         <div className="flex items-center justify-start gap-x-2">
-          <Button size="SM" theme="light" text="Back" onClick={onClose} />
-          <Button size="SM" theme="blank" text="Retry" onClick={onRetryUpdate} />
+          <Button size="SM" theme="light" text={t('Back')} onClick={onClose} />
+          <Button size="SM" theme="blank" text={t('Retry')} onClick={onRetryUpdate} />
         </div>
       </div>
     </div>

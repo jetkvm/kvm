@@ -7,6 +7,7 @@ import {
 } from "react-icons/lu";
 import { useClose } from "@headlessui/react";
 import { useLocation } from "react-router";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@components/Button";
 import Card, { GridCard } from "@components/Card";
@@ -19,6 +20,7 @@ import notifications from "@/notifications";
 
 const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
   const { remoteVirtualMediaState, setModalView, setRemoteVirtualMediaState } =
     useMountMediaStore();
 
@@ -26,7 +28,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
     send("getVirtualMediaState", {}, (response: JsonRpcResponse) => {
       if ("error" in response) {
         notifications.error(
-          `Failed to get virtual media state: ${response.error.message}`,
+          t('Failed_to_get_virtual_media_state_msg',{msg:response.error.message})
         );
       } else {
         setRemoteVirtualMediaState(response.result as unknown as RemoteVirtualMediaState);
@@ -37,7 +39,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
   const handleUnmount = () => {
     send("unmountImage", {}, (response: JsonRpcResponse) => {
       if ("error" in response) {
-        notifications.error(`Failed to unmount image: ${response.error.message}`);
+        notifications.error(t('Failed_to_unmount_image_msg',{msg:response.error.message}));
       } else {
         syncRemoteVirtualMediaState();
       }
@@ -57,10 +59,10 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
           </div>
           <div className="space-y-1">
             <h3 className="text-sm font-semibold leading-none text-black dark:text-white">
-              No mounted media
+                {t('No_mounted_media')}
             </h3>
             <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
-              Add a file to get started
+                {t('Add_a_file_to_get_started')}
             </p>
           </div>
         </div>
@@ -81,7 +83,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
               </Card>
             </div>
             <h3 className="text-base font-semibold text-black dark:text-white">
-              Streaming from URL
+                {t('Streaming_from_URL')}
             </h3>
             <p className="truncate text-sm text-slate-900 dark:text-slate-100">
               {formatters.truncateMiddle(url, 55)}
@@ -105,7 +107,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
               </Card>
             </div>
             <h3 className="text-base font-semibold text-black dark:text-white">
-              Mounted from JetKVM Storage
+                {t('Mounted_from_JetKVM_Storage')}
             </h3>
             <p className="text-sm text-slate-900 dark:text-slate-100">
               {formatters.truncateMiddle(path, 50)}
@@ -138,8 +140,8 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
           <div className="h-full space-y-4">
             <div className="space-y-4">
               <SettingsPageHeader
-                title="Virtual Media"
-                description="Mount an image to boot from or install an operating system."
+                title={t('Virtual_Media')}
+                description={t('Mount_an_image_to_boot_from_or_install_an_operating_system')}
               />
 
             <div
@@ -163,7 +165,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
                 {remoteVirtualMediaState ? (
                   <div className="flex select-none items-center justify-between text-xs">
                     <div className="select-none text-white dark:text-slate-300">
-                      <span>Mounted as</span>{" "}
+                      <span>{t('Mounted_as')}</span>{" "}
                       <span className="font-semibold">
                         {remoteVirtualMediaState.mode === "Disk" ? "Disk" : "CD-ROM"}
                       </span>
@@ -173,7 +175,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
                       <Button
                         size="SM"
                         theme="blank"
-                        text="Close"
+                        text={t('Close')}
                         onClick={() => {
                           close();
                         }}
@@ -181,7 +183,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
                       <Button
                         size="SM"
                         theme="light"
-                        text="Unmount"
+                        text={t('Unmount')}
                         LeadingIcon={({ className }) => (
                           <svg
                             className={`${className} h-2.5 w-2.5 shrink-0`}
@@ -227,7 +229,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
             <Button
               size="SM"
               theme="blank"
-              text="Close"
+              text={t('Close')}
               onClick={() => {
                 close();
               }}
@@ -235,7 +237,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
             <Button
               size="SM"
               theme="primary"
-              text="Add New Media"
+              text={t('Add_New_Media')}
               onClick={() => {
                 setModalView("mode");
                 navigateTo("/mount");

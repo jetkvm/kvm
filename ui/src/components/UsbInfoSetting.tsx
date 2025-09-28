@@ -1,4 +1,5 @@
 import { useMemo , useCallback , useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@components/Button";
 
@@ -32,33 +33,33 @@ export interface USBConfig {
   product: string;
 }
 
-const usbConfigs = [
-  {
-    label: "JetKVM Default",
-    value: "USB Emulation Device",
-  },
-  {
-    label: "Logitech Universal Adapter",
-    value: "Logitech USB Input Device",
-  },
-  {
-    label: "Microsoft Wireless MultiMedia Keyboard",
-    value: "Wireless MultiMedia Keyboard",
-  },
-  {
-    label: "Dell Multimedia Pro Keyboard",
-    value: "Multimedia Pro Keyboard",
-  },
-];
-
 type UsbConfigMap = Record<string, USBConfig>;
 
 export function UsbInfoSetting() {
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
 
   const [usbConfigProduct, setUsbConfigProduct] = useState("");
   const [deviceId, setDeviceId] = useState("");
+  const usbConfigs = [
+        {
+            label: t('JetKVM_Default'),
+            value: "USB Emulation Device",
+        },
+        {
+            label: t('Logitech_Universal_Adapter'),
+            value: "Logitech USB Input Device",
+        },
+        {
+            label: t('Microsoft_Wireless_MultiMedia_Keyboard'),
+            value: "Wireless MultiMedia Keyboard",
+        },
+        {
+            label: t('Dell_Multimedia_Pro_Keyboard'),
+            value: "Multimedia Pro Keyboard",
+        },
+  ];
   const usbConfigData: UsbConfigMap = useMemo(
     () => ({
       "USB Emulation Device": {
@@ -98,7 +99,7 @@ export function UsbInfoSetting() {
       if ("error" in resp) {
         console.error("Failed to load USB Config:", resp.error);
         notifications.error(
-          `Failed to load USB Config: ${resp.error.data || "Unknown error"}`,
+          t('Failed_to_load_USB_Config_msg',{msg:resp.error.data || t('Unknown_error')})
         );
       } else {
         const usbConfigState = resp.result as UsbConfigState;
@@ -117,7 +118,7 @@ export function UsbInfoSetting() {
       send("setUsbConfig", { usbConfig }, async (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to set usb config: ${resp.error.data || "Unknown error"}`,
+            t('Failed_to_set_USB_Config_msg',{msg:resp.error.data || t('Unknown_error')})
           );
           setLoading(false);
           return;
@@ -127,7 +128,7 @@ export function UsbInfoSetting() {
         await new Promise(resolve => setTimeout(resolve, 2000));
         setLoading(false);
         notifications.success(
-          `USB Config set to ${usbConfig.manufacturer} ${usbConfig.product}`,
+          t('USB_Config_set_to_msg',{m:usbConfig.manufacturer,p:usbConfig.product})
         );
 
         syncUsbConfigProduct();
@@ -140,7 +141,7 @@ export function UsbInfoSetting() {
     send("getDeviceID", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         return notifications.error(
-          `Failed to get device ID: ${resp.error.data || "Unknown error"}`,
+          t('Failed_to_get_device_ID_msg',{msg: resp.error.data || t('Unknown_error')})
         );
       }
       setDeviceId(resp.result as string);
@@ -153,8 +154,8 @@ export function UsbInfoSetting() {
     <Fieldset disabled={loading} className="space-y-4">
       <SettingsItem
         loading={loading}
-        title="Identifiers"
-        description="USB device identifiers exposed to the target computer"
+        title={t('Identifiers')}
+        description={t('USB_device_identifiers_exposed_to_the_target_computer')}
       >
         <SelectMenuBasic
           size="SM"
@@ -206,6 +207,7 @@ function USBConfigDialog({
   });
 
   const { send } = useJsonRpc();
+  const { t } = useTranslation();
 
   const syncUsbConfig = useCallback(() => {
     send("getUsbConfig", {}, (resp: JsonRpcResponse) => {
@@ -247,38 +249,38 @@ function USBConfigDialog({
       <div className="grid grid-cols-2 gap-4">
         <InputFieldWithLabel
           required
-          label="Vendor ID"
-          placeholder="Enter Vendor ID"
+          label={t('Vendor_ID')}
+          placeholder={t('Enter_Vendor_ID')}
           pattern="^0[xX][\da-fA-F]{4}$"
           defaultValue={usbConfigState?.vendor_id}
           onChange={e => handleUsbVendorIdChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
-          label="Product ID"
-          placeholder="Enter Product ID"
+          label={t('Product_ID')}
+          placeholder={t('Enter_Product_ID')}
           pattern="^0[xX][\da-fA-F]{4}$"
           defaultValue={usbConfigState?.product_id}
           onChange={e => handleUsbProductIdChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
-          label="Serial Number"
-          placeholder="Enter Serial Number"
+          label={t('Serial_Number')}
+          placeholder={t('Enter_Serial_Number')}
           defaultValue={usbConfigState?.serial_number}
           onChange={e => handleUsbSerialChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
-          label="Manufacturer"
-          placeholder="Enter Manufacturer"
+          label={t('Manufacturer')}
+          placeholder={t('Enter_Manufacturer')}
           defaultValue={usbConfigState?.manufacturer}
           onChange={e => handleUsbManufacturer(e.target.value)}
         />
         <InputFieldWithLabel
           required
-          label="Product Name"
-          placeholder="Enter Product Name"
+          label={t('Product_Name')}
+          placeholder={t('Enter_Product_Name')}
           defaultValue={usbConfigState?.product}
           onChange={e => handleUsbProduct(e.target.value)}
         />
@@ -288,13 +290,13 @@ function USBConfigDialog({
           loading={loading}
           size="SM"
           theme="primary"
-          text="Update USB Identifiers"
+          text={t('Update_USB_Identifiers')}
           onClick={() => onSetUsbConfig(usbConfigState)}
         />
         <Button
           size="SM"
           theme="light"
-          text="Restore to Default"
+          text={t('Restore_to_Default')}
           onClick={onRestoreToDefault}
         />
       </div>

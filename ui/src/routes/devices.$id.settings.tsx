@@ -14,6 +14,7 @@ import {
 } from "react-icons/lu";
 import React, { useEffect, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
+import { useTranslation } from "react-i18next";
 
 import Card from "@/components/Card";
 import { LinkButton } from "@/components/Button";
@@ -70,7 +71,7 @@ export default function SettingsRoute() {
       setDisableVideoFocusTrap(false);
     };
   }, [setDisableVideoFocusTrap]);
-
+  const { t } = useTranslation();
   return (
     <div className="pointer-events-auto relative mx-auto max-w-4xl translate-x-0 transform text-left dark:text-white">
       <div className="h-full">
@@ -82,7 +83,7 @@ export default function SettingsRoute() {
                   to=".."
                   size="SM"
                   theme="blank"
-                  text="Back to KVM"
+                  text={t('Back_to_KVM')}
                   LeadingIcon={LuArrowLeft}
                   textAlign="left"
                 />
@@ -92,7 +93,7 @@ export default function SettingsRoute() {
                   to=".."
                   size="SM"
                   theme="blank"
-                  text="Back to KVM"
+                  text={t('Back_to_KVM')}
                   LeadingIcon={LuArrowLeft}
                   textAlign="left"
                   fullWidth
@@ -131,7 +132,7 @@ export default function SettingsRoute() {
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuSettings className="h-4 w-4 shrink-0" />
-                      <h1>General</h1>
+                      <h1>{t('General')}</h1>
                     </div>
                   </NavLink>
                 </div>
@@ -142,7 +143,7 @@ export default function SettingsRoute() {
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuMouse className="h-4 w-4 shrink-0" />
-                      <h1>Mouse</h1>
+                      <h1>{t('Mouse')}</h1>
                     </div>
                   </NavLink>
                 </div>
@@ -154,7 +155,7 @@ export default function SettingsRoute() {
                     >
                       <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                         <LuKeyboard className="h-4 w-4 shrink-0" />
-                        <h1>Keyboard</h1>
+                        <h1>{t('Keyboard')}</h1>
                       </div>
                     </NavLink>
                   </div>
@@ -166,7 +167,7 @@ export default function SettingsRoute() {
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuVideo className="h-4 w-4 shrink-0" />
-                      <h1>Video</h1>
+                      <h1>{t('Video')}</h1>
                     </div>
                   </NavLink>
                 </div>
@@ -177,7 +178,7 @@ export default function SettingsRoute() {
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuCpu className="h-4 w-4 shrink-0" />
-                      <h1>Hardware</h1>
+                      <h1>{t('Hardware')}</h1>
                     </div>
                   </NavLink>
                 </div>
@@ -188,7 +189,7 @@ export default function SettingsRoute() {
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuShieldCheck className="h-4 w-4 shrink-0" />
-                      <h1>Access</h1>
+                      <h1>{t('Access')}</h1>
                     </div>
                   </NavLink>
                 </div>
@@ -199,7 +200,7 @@ export default function SettingsRoute() {
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuPalette className="h-4 w-4 shrink-0" />
-                      <h1>Appearance</h1>
+                      <h1>{t('Appearance')}</h1>
                     </div>
                   </NavLink>
                 </div>
@@ -210,7 +211,7 @@ export default function SettingsRoute() {
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuCommand className="h-4 w-4 shrink-0" />
-                      <h1>Keyboard Macros</h1>
+                      <h1>{t('Keyboard_Macros')}</h1>
                     </div>
                   </NavLink>
                 </div>
@@ -221,7 +222,7 @@ export default function SettingsRoute() {
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuNetwork className="h-4 w-4 shrink-0" />
-                      <h1>Network</h1>
+                      <h1>{t('Network')}</h1>
                     </div>
                   </NavLink>
                 </div>
@@ -232,7 +233,7 @@ export default function SettingsRoute() {
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuWrench className="h-4 w-4 shrink-0" />
-                      <h1>Advanced</h1>
+                      <h1>{t('Advanced')}</h1>
                     </div>
                   </NavLink>
                 </div>
