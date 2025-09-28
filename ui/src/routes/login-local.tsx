@@ -32,7 +32,6 @@ const loader: LoaderFunction = async () => {
 };
 
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
-  const { t } = useTranslation();
   const formData = await request.formData();
   const password = formData.get("password");
 
@@ -44,11 +43,11 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
     if (response.ok) {
       return redirect("/");
     } else {
-      return { error: t('Invalid_password') };
+      return { error: "Invalid password" };
     }
   } catch (error) {
     console.error(error);
-    return { error: t('An_error_occurred_while_logging_in') };
+    return { error: "An error occurred while logging in" };
   }
 };
 

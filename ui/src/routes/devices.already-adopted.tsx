@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+
 import { LinkButton } from "@/components/Button";
 import SimpleNavbar from "@/components/SimpleNavbar";
 import Container from "@/components/Container";
