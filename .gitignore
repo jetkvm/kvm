@@ -3,4 +3,13 @@ static/*
 .idea
 .DS_Store
 
+.cache
+.vite
+.pnpm-store
+
 device-tests.tar.gz
+node_modules
+
+# generated during the build process
+#internal/native/include
+#internal/native/lib

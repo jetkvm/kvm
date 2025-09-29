@@ -16,6 +16,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+      - name: Set up docker image context
+        run: |
+          ./scripts/ci_helper.sh prepare
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.DOCKER_BUILD_CONTEXT_DIR }}
+          file: ${{ env.DOCKER_BUILD_CONTEXT_DIR }}/Dockerfile.build
+          tags: ${{ env.DOCKER_BUILD_TAG }}
+          push: false
+          load: true
+      - name: Set up Cmake cache
+        uses: actions/cache@v4
+        with:
+          path: internal/native/cgo/build
+          key: jetkvm-cgo-${{ hashFiles('internal/native/cgo/**/*.c', 'internal/native/cgo/**/*.h', 'internal/native/cgo/**/*.patch', 'internal/native/cgo/**/*.txt', 'internal/native/cgo/**/*.sh', '!internal/native/cgo/build/**') }}
+          restore-keys: |
+            jetkvm-cgo-${{ hashFiles('internal/native/cgo/**/*.c', 'internal/native/cgo/**/*.h', 'internal/native/cgo/**/*.patch', 'internal/native/cgo/**/*.txt', 'internal/native/cgo/**/*.sh', '!internal/native/cgo/build/**') }}
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
@@ -23,21 +43,21 @@ jobs:
           cache: "npm"
           cache-dependency-path: "**/package-lock.json"
       - name: Set up Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6.0.0
         with:
-          go-version: "1.24.4"
+          go-version: "^1.25.1"
       - name: Build frontend
         run: |
           make frontend
-      - name: Build application
+      - name: Build application inside Docker container
         run: |
-          make build_dev
+          ./scripts/ci_helper.sh make build_dev
       - name: Run tests
         run: |
           go test ./... -json > testreport.json
       - name: Make test cases
         run: |
-          make build_dev_test
+          ./scripts/ci_helper.sh make build_dev_test
       - name: Golang Test Report
         uses: becheran/go-testreport@v0.3.2
         with:
