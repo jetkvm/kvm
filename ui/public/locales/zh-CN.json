@@ -421,6 +421,7 @@
   "Manually_start_stream": "手动启动视频流",
   "Manufacturer": "制造商",
   "Max_Reached": "已达到最大值",
+  "Max_Step": "(最多{{max}}条)",
   "Max_keys_reached": "已达按键数量最大限制",
   "Maximum_of_keys_per_step_allowed": "每一步骤中允许最多{{max_key}}个按键配置",
   "Maximum_of_max_macros_allowed": "最多允许创建{{max}}条宏",

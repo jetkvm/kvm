@@ -421,6 +421,7 @@
   "Manually_start_stream": "Manually start stream",
   "Manufacturer": "Manufacturer",
   "Max_Reached": "Max Reached",
+  "Max_Step": "({{max}} max)",
   "Max_keys_reached": "Max keys reached",
   "Maximum_of_keys_per_step_allowed": "Maximum of {{max_key}} keys per step allowed",
   "Maximum_of_max_macros_allowed": "Maximum of {{max}} macros allowed",

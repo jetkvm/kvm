@@ -182,7 +182,6 @@ export function PeerConnectionDisconnectedOverlay({
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">Connection Issue Detected</h2>
                     <h2 className="text-xl font-bold">{t('Connection_Issue_Detected')}</h2>
                     <ul className="list-disc space-y-2 pl-4 text-left">
                        <li>{t('Verify_device_powered_and_connected')}</li>

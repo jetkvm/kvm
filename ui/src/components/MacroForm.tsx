@@ -250,7 +250,7 @@ export function MacroForm({
               theme="light"
               fullWidth
               LeadingIcon={LuPlus}
-              text={t('Add_Step_max',{max:(isMaxStepsReached ? `(${MAX_STEPS_PER_MACRO} max)` : "")})}
+              text={t('Add_Step_max',{max:(isMaxStepsReached ? t('Max_Step',{max:MAX_STEPS_PER_MACRO}) : "")})}
               onClick={() => {
                 if (isMaxStepsReached) {
                   showTemporaryError(
