@@ -179,6 +179,3 @@ export const da_DK: KeyboardLayout = {
   modifierDisplayMap: en_US.modifierDisplayMap,
   virtualKeyboard: en_US.virtualKeyboard
 };
-
-
-
