@@ -14,27 +14,13 @@
 #include <unistd.h>
 #include <errno.h>
 
-// ARM NEON SIMD support for Cortex-A7
-#ifdef __ARM_NEON
+// ARM NEON SIMD support (always available on JetKVM's ARM Cortex-A7)
 #include <arm_neon.h>
-#define SIMD_ENABLED 1
-#else
-#define SIMD_ENABLED 0
-#endif
 
-// Performance optimization flags
-static int trace_logging_enabled = 0;   // Enable detailed trace logging
-
-// SIMD feature detection and optimization macros
-#if SIMD_ENABLED
 #define SIMD_ALIGN __attribute__((aligned(16)))
 #define SIMD_PREFETCH(addr, rw, locality) __builtin_prefetch(addr, rw, locality)
-#else
-#define SIMD_ALIGN
-#define SIMD_PREFETCH(addr, rw, locality)
-#endif
 
-// SIMD initialization and feature detection
+static int trace_logging_enabled = 0;
 static int simd_initialized = 0;
 
 static void simd_init_once(void) {
@@ -140,14 +126,13 @@ void set_trace_logging(int enabled) {
 }
 
 // ============================================================================
-// SIMD-OPTIMIZED BUFFER OPERATIONS
+// SIMD-OPTIMIZED BUFFER OPERATIONS (ARM NEON)
 // ============================================================================
 
-#if SIMD_ENABLED
 /**
  * SIMD-optimized buffer clearing for 16-bit audio samples
  * Uses ARM NEON to clear 8 samples (16 bytes) per iteration
- * 
+ *
  * @param buffer Pointer to 16-bit sample buffer (must be 16-byte aligned)
  * @param samples Number of samples to clear
  */
@@ -397,7 +382,7 @@ static inline void simd_apply_stereo_balance_s16(short *stereo, int frames, floa
 /**
  * Deinterleave stereo samples into separate left/right channels using NEON
  */
-static inline void simd_deinterleave_stereo_s16(const short *interleaved, short *left, 
+static inline void simd_deinterleave_stereo_s16(const short *interleaved, short *left,
                                                short *right, int frames) {
 	// Process 4 frames at a time
 	int simd_frames = frames & ~3;
@@ -406,7 +391,7 @@ static inline void simd_deinterleave_stereo_s16(const short *interleaved, short 
 		vst1_s16(left + i, stereo_data.val[0]);
 		vst1_s16(right + i, stereo_data.val[1]);
 	}
-	
+
 	// Handle remaining frames
 	for (int i = simd_frames; i < frames; i++) {
 		left[i] = interleaved[i * 2];
@@ -414,84 +399,37 @@ static inline void simd_deinterleave_stereo_s16(const short *interleaved, short 
 	}
 }
 
-#else
-// Fallback implementations for non-SIMD builds
-static inline void simd_clear_samples_s16(short *buffer, int samples) {
-    simd_init_once();
-    
-    memset(buffer, 0, samples * sizeof(short));
-}
+/**
+ * SIMD-optimized max absolute value finder for silence detection
+ * Returns the maximum absolute sample value in the buffer
+ */
+static inline short simd_find_max_abs_s16(const short *samples, int count) {
+	int16x8_t max_vec = vdupq_n_s16(0);
+	int simd_count = count & ~7;
 
-static inline void simd_interleave_stereo_s16(const short *left, const short *right, 
-                                             short *output, int frames) {
-    simd_init_once();
-    
-    for (int i = 0; i < frames; i++) {
-        output[i * 2] = left[i];
-        output[i * 2 + 1] = right[i];
-    }
-}
-
-static inline void simd_scale_volume_s16(short *samples, int count, float volume) {
-    simd_init_once();
-    
-    for (int i = 0; i < count; i++) {
-        samples[i] = (short)(samples[i] * volume);
-    }
-}
-
-static inline void simd_swap_endian_s16(short *samples, int count) {
-	for (int i = 0; i < count; i++) {
-		samples[i] = __builtin_bswap16(samples[i]);
+	// Process 8 samples at a time
+	for (int i = 0; i < simd_count; i += 8) {
+		int16x8_t samples_vec = vld1q_s16(&samples[i]);
+		int16x8_t abs_vec = vabsq_s16(samples_vec);
+		max_vec = vmaxq_s16(max_vec, abs_vec);
 	}
-}
 
-static inline void simd_s16_to_float(const short *input, float *output, int count) {
-	const float scale = 1.0f / 32768.0f;
-	for (int i = 0; i < count; i++) {
-		output[i] = (float)input[i] * scale;
-	}
-}
+	// Find maximum in vector (horizontal max)
+	int16x4_t max_half = vmax_s16(vget_low_s16(max_vec), vget_high_s16(max_vec));
+	int16x4_t max_folded = vpmax_s16(max_half, max_half);
+	max_folded = vpmax_s16(max_folded, max_folded);
+	short max_sample = vget_lane_s16(max_folded, 0);
 
-static inline void simd_float_to_s16(const float *input, short *output, int count) {
-	const float scale = 32767.0f;
-	for (int i = 0; i < count; i++) {
-		float scaled = input[i] * scale;
-		output[i] = (short)__builtin_fmaxf(__builtin_fminf(scaled, 32767.0f), -32768.0f);
+	// Handle remaining samples
+	for (int i = simd_count; i < count; i++) {
+		short abs_sample = samples[i] < 0 ? -samples[i] : samples[i];
+		if (abs_sample > max_sample) {
+			max_sample = abs_sample;
+		}
 	}
-}
 
-static inline void simd_mono_to_stereo_s16(const short *mono, short *stereo, int frames) {
-	for (int i = 0; i < frames; i++) {
-		stereo[i * 2] = mono[i];
-		stereo[i * 2 + 1] = mono[i];
-	}
+	return max_sample;
 }
-
-static inline void simd_stereo_to_mono_s16(const short *stereo, short *mono, int frames) {
-	for (int i = 0; i < frames; i++) {
-		mono[i] = (stereo[i * 2] + stereo[i * 2 + 1]) / 2;
-	}
-}
-
-static inline void simd_apply_stereo_balance_s16(short *stereo, int frames, float balance) {
-	float left_gain = balance <= 0.0f ? 1.0f : 1.0f - balance;
-	float right_gain = balance >= 0.0f ? 1.0f : 1.0f + balance;
-	
-	for (int i = 0; i < frames; i++) {
-		stereo[i * 2] = (short)(stereo[i * 2] * left_gain);
-		stereo[i * 2 + 1] = (short)(stereo[i * 2 + 1] * right_gain);
-	}
-}
-
-static inline void simd_deinterleave_stereo_s16(const short *interleaved, short *left, 
-                                               short *right, int frames) {
-	for (int i = 0; i < frames; i++) {
-		left[i] = interleaved[i * 2];
-		right[i] = interleaved[i * 2 + 1];
-	}
-}
-#endif
 
 // ============================================================================
 // INITIALIZATION STATE TRACKING
@@ -870,29 +808,23 @@ retry_read:
 		simd_clear_samples_s16(&pcm_buffer[pcm_rc * channels], remaining_samples);
 	}
 
-	// Silence detection: check if all samples are below threshold
-	// Threshold: 100 = ~0.3% of max volume (very quiet)
-	const short silence_threshold = 100;
+	// Silence detection using SIMD-optimized max peak detection
+	// Find the maximum absolute sample value in the frame
 	int total_samples = frame_size * channels;
-	int is_silence = 1;
-	for (int i = 0; i < total_samples; i++) {
-		short abs_sample = pcm_buffer[i] < 0 ? -pcm_buffer[i] : pcm_buffer[i];
-		if (abs_sample > silence_threshold) {
-			is_silence = 0;
-			break;
-		}
-	}
+	short max_sample = simd_find_max_abs_s16(pcm_buffer, total_samples);
 
-	// If silence detected, return 0 to skip sending this frame
-	if (is_silence) {
+	// If max peak is below threshold, consider it silence
+	// Threshold: 50 = ~0.15% of max volume (very quiet background noise)
+	if (max_sample < 50) {
 		if (trace_logging_enabled) {
-			printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Silence detected, skipping frame\n");
+			printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Silence detected (max=%d), skipping frame\n", max_sample);
 		}
 		return 0;
 	}
 
-	// Apply 4x gain boost to fix quantization noise on transients at normal volumes to prevent crackling issues
-	simd_scale_volume_s16(pcm_buffer, frame_size * channels, 4.0f);
+	// Apply 5x gain boost to fix quantization noise on transients at normal volumes to prevent crackling issues
+	// This allows comfortable listening at low remote volumes (10-40% range)
+	simd_scale_volume_s16(pcm_buffer, frame_size * channels, 5.0f);
 
 	int nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
 	
