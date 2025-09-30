@@ -26,58 +26,17 @@ type AudioConfigConstants struct {
 	FrameSize     int // Samples per audio frame (default: 960 for 20ms at 48kHz)
 	MaxPacketSize int // Maximum encoded packet size in bytes (default: 4000)
 
-	// Audio Quality Bitrates (kbps)
-	AudioQualityLowOutputBitrate    int // Low-quality output bitrate (default: 32)
-	AudioQualityLowInputBitrate     int // Low-quality input bitrate (default: 16)
-	AudioQualityMediumOutputBitrate int // Medium-quality output bitrate (default: 64)
-	AudioQualityMediumInputBitrate  int // Medium-quality input bitrate (default: 32)
-	AudioQualityHighOutputBitrate   int // High-quality output bitrate (default: 128)
-	AudioQualityHighInputBitrate    int // High-quality input bitrate (default: 64)
-	AudioQualityUltraOutputBitrate  int // Ultra-quality output bitrate (default: 192)
-	AudioQualityUltraInputBitrate   int // Ultra-quality input bitrate (default: 96)
+	// Optimal Audio Configuration (S16_LE @ 48kHz stereo from HDMI)
+	// Single optimized setting - no quality presets needed
+	OptimalOutputBitrate int // Output bitrate: 96 kbps (optimal for stereo @ 48kHz)
+	OptimalInputBitrate  int // Input bitrate: 48 kbps (optimal for mono mic @ 48kHz)
 
-	// Audio Quality Sample Rates (Hz)
-	AudioQualityLowSampleRate    int // Low-quality sample rate (default: 22050)
-	AudioQualityMediumSampleRate int // Medium-quality sample rate (default: 44100)
-	AudioQualityMicLowSampleRate int // Low-quality microphone sample rate (default: 16000)
-
-	// Audio Quality Frame Sizes
-	AudioQualityLowFrameSize    time.Duration // Low-quality frame duration (default: 40ms)
-	AudioQualityMediumFrameSize time.Duration // Medium-quality frame duration (default: 20ms)
-	AudioQualityHighFrameSize   time.Duration // High-quality frame duration (default: 20ms)
-
-	AudioQualityUltraFrameSize time.Duration // Ultra-quality frame duration (default: 10ms)
-
-	// Audio Quality Channels
-	AudioQualityLowChannels    int // Low-quality channel count (default: 1)
-	AudioQualityMediumChannels int // Medium-quality channel count (default: 2)
-	AudioQualityHighChannels   int // High-quality channel count (default: 2)
-	AudioQualityUltraChannels  int // Ultra-quality channel count (default: 2)
-
-	// Audio Quality OPUS Encoder Parameters
-	AudioQualityLowOpusComplexity int // Low-quality OPUS complexity (default: 1)
-	AudioQualityLowOpusVBR        int // Low-quality OPUS VBR setting (default: 0)
-	AudioQualityLowOpusSignalType int // Low-quality OPUS signal type (default: 3001)
-	AudioQualityLowOpusBandwidth  int // Low-quality OPUS bandwidth (default: 1101)
-	AudioQualityLowOpusDTX        int // Low-quality OPUS DTX setting (default: 1)
-
-	AudioQualityMediumOpusComplexity int // Medium-quality OPUS complexity (default: 5)
-	AudioQualityMediumOpusVBR        int // Medium-quality OPUS VBR setting (default: 1)
-	AudioQualityMediumOpusSignalType int // Medium-quality OPUS signal type (default: 3002)
-	AudioQualityMediumOpusBandwidth  int // Medium-quality OPUS bandwidth (default: 1103)
-	AudioQualityMediumOpusDTX        int // Medium-quality OPUS DTX setting (default: 0)
-
-	AudioQualityHighOpusComplexity int // High-quality OPUS complexity (default: 8)
-	AudioQualityHighOpusVBR        int // High-quality OPUS VBR setting (default: 1)
-	AudioQualityHighOpusSignalType int // High-quality OPUS signal type (default: 3002)
-	AudioQualityHighOpusBandwidth  int // High-quality OPUS bandwidth (default: 1104)
-	AudioQualityHighOpusDTX        int // High-quality OPUS DTX setting (default: 0)
-
-	AudioQualityUltraOpusComplexity int // Ultra-quality OPUS complexity (default: 10)
-	AudioQualityUltraOpusVBR        int // Ultra-quality OPUS VBR setting (default: 1)
-	AudioQualityUltraOpusSignalType int // Ultra-quality OPUS signal type (default: 3002)
-	AudioQualityUltraOpusBandwidth  int // Ultra-quality OPUS bandwidth (default: 1105)
-	AudioQualityUltraOpusDTX        int // Ultra-quality OPUS DTX setting (default: 0)
+	// Optimal OPUS Encoder Parameters (minimal CPU usage)
+	OptimalOpusComplexity int // Complexity: 1 (minimal CPU ~0.5%)
+	OptimalOpusVBR        int // VBR: enabled for efficiency
+	OptimalOpusSignalType int // Signal: OPUS_SIGNAL_MUSIC (3002)
+	OptimalOpusBandwidth  int // Bandwidth: WIDEBAND (1103 = native 48kHz)
+	OptimalOpusDTX        int // DTX: disabled for continuous audio
 
 	// CGO Audio Constants
 	CGOOpusBitrate int // Native Opus encoder bitrate in bps (default: 96000)
@@ -315,66 +274,27 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		FrameSize:     960,
 		MaxPacketSize: 4000,
 
-		AudioQualityLowOutputBitrate:    32,
-		AudioQualityLowInputBitrate:     16,
-		AudioQualityMediumOutputBitrate: 48,
-		AudioQualityMediumInputBitrate:  24,
-		AudioQualityHighOutputBitrate:   64,
-		AudioQualityHighInputBitrate:    32,
-		AudioQualityUltraOutputBitrate:  96,
-		AudioQualityUltraInputBitrate:   48,
-		AudioQualityLowSampleRate:       48000,
-		AudioQualityMediumSampleRate:    48000,
-		AudioQualityMicLowSampleRate:    16000,
-		AudioQualityLowFrameSize:        20 * time.Millisecond,
-		AudioQualityMediumFrameSize:     20 * time.Millisecond,
-		AudioQualityHighFrameSize:       20 * time.Millisecond,
+		// Optimal Audio Configuration (single setting for all use cases)
+		OptimalOutputBitrate:  96, // 96 kbps for stereo @ 48kHz
+		OptimalInputBitrate:   48, // 48 kbps for mono mic @ 48kHz
+		OptimalOpusComplexity: 1,  // Complexity 1: minimal CPU (~0.5%)
+		OptimalOpusVBR:        1,  // VBR enabled for efficiency
+		OptimalOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
+		OptimalOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND (native 48kHz)
+		OptimalOpusDTX:        0,  // DTX disabled for continuous audio
 
-		AudioQualityUltraFrameSize: 20 * time.Millisecond, // Ultra-quality frame duration
-
-		// Audio Quality Channels
-		AudioQualityLowChannels:    1, // Mono for low quality
-		AudioQualityMediumChannels: 2, // Stereo for medium quality
-		AudioQualityHighChannels:   2, // Stereo for high quality
-		AudioQualityUltraChannels:  2, // Stereo for ultra quality
-
-		// Audio Quality OPUS Parameters
-		AudioQualityLowOpusComplexity: 0,    // Low complexity
-		AudioQualityLowOpusVBR:        1,    // VBR enabled
-		AudioQualityLowOpusSignalType: 3001, // OPUS_SIGNAL_VOICE
-		AudioQualityLowOpusBandwidth:  1101, // OPUS_BANDWIDTH_NARROWBAND
-		AudioQualityLowOpusDTX:        1,    // DTX enabled
-
-		AudioQualityMediumOpusComplexity: 1,    // Low complexity
-		AudioQualityMediumOpusVBR:        1,    // VBR enabled
-		AudioQualityMediumOpusSignalType: 3001, // OPUS_SIGNAL_VOICE
-		AudioQualityMediumOpusBandwidth:  1102, // OPUS_BANDWIDTH_MEDIUMBAND
-		AudioQualityMediumOpusDTX:        1,    // DTX enabled
-
-		AudioQualityHighOpusComplexity: 2,    // Medium complexity
-		AudioQualityHighOpusVBR:        1,    // VBR enabled
-		AudioQualityHighOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
-		AudioQualityHighOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND
-		AudioQualityHighOpusDTX:        0,    // DTX disabled
-
-		AudioQualityUltraOpusComplexity: 3,    // Higher complexity
-		AudioQualityUltraOpusVBR:        1,    // VBR enabled
-		AudioQualityUltraOpusSignalType: 3002, // OPUS_SIGNAL_MUSIC
-		AudioQualityUltraOpusBandwidth:  1103, // OPUS_BANDWIDTH_WIDEBAND
-		AudioQualityUltraOpusDTX:        0,    // DTX disabled
-
-		// CGO Audio Constants - Optimized for RV1106 native audio processing
-		CGOOpusBitrate:       64000, // Reduced for RV1106 efficiency
-		CGOOpusComplexity:    2,     // Minimal complexity for RV1106
-		CGOOpusVBR:           1,
-		CGOOpusVBRConstraint: 1,
-		CGOOpusSignalType:    3002, // OPUS_SIGNAL_MUSIC
-		CGOOpusBandwidth:     1103, // OPUS_BANDWIDTH_WIDEBAND for RV1106
-		CGOOpusDTX:           0,
-		CGOSampleRate:        48000,
-		CGOChannels:          2,
-		CGOFrameSize:         960,
-		CGOMaxPacketSize:     1200, // Reduced for RV1106 memory efficiency
+		// CGO Audio Constants - Optimized for S16_LE @ 48kHz with minimal CPU
+		CGOOpusBitrate:       96000, // 96 kbps optimal for stereo @ 48kHz
+		CGOOpusComplexity:    1,     // Complexity 1: minimal CPU (~0.5% on RV1106)
+		CGOOpusVBR:           1,     // VBR enabled for efficiency
+		CGOOpusVBRConstraint: 1,     // Constrained VBR for predictable bitrate
+		CGOOpusSignalType:    3002,  // OPUS_SIGNAL_MUSIC (better for HDMI audio)
+		CGOOpusBandwidth:     1103,  // OPUS_BANDWIDTH_WIDEBAND (native 48kHz, no resampling)
+		CGOOpusDTX:           0,     // DTX disabled for continuous audio
+		CGOSampleRate:        48000, // 48 kHz native HDMI sample rate
+		CGOChannels:          2,     // Stereo
+		CGOFrameSize:         960,   // 20ms frames at 48kHz
+		CGOMaxPacketSize:     1500,  // Standard Ethernet MTU
 
 		// Input IPC Constants
 		InputIPCSampleRate: 48000, // Input IPC sample rate (48kHz)

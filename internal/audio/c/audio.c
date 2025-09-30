@@ -3,7 +3,7 @@
  * 
  * This module handles bidirectional audio processing for JetKVM:
  * - Audio INPUT: Client microphone → Device speakers (decode Opus → ALSA playback)
- * - Audio OUTPUT: Device microphone → Client speakers (ALSA capture → encode Opus)
+ * - Audio OUTPUT: TC358743 HDMI audio → Client speakers (ALSA capture → encode Opus)
  */
 
 #include <alsa/asoundlib.h>
@@ -47,26 +47,26 @@ static void simd_init_once(void) {
 // ============================================================================
 
 // ALSA device handles
-static snd_pcm_t *pcm_capture_handle = NULL;  // Device microphone (OUTPUT path)
+static snd_pcm_t *pcm_capture_handle = NULL;  // TC358743 HDMI audio capture (OUTPUT path)
 static snd_pcm_t *pcm_playback_handle = NULL; // Device speakers (INPUT path)
 
 // Opus codec instances
-static OpusEncoder *encoder = NULL; // For OUTPUT path (device mic → client)
+static OpusEncoder *encoder = NULL; // For OUTPUT path (TC358743 HDMI → client)
 static OpusDecoder *decoder = NULL; // For INPUT path (client → device speakers)
 // Audio format configuration
 static int sample_rate = 48000;    // Sample rate in Hz
 static int channels = 2;           // Number of audio channels (stereo)
 static int frame_size = 960;       // Frames per Opus packet
 
-// Opus encoder configuration
-static int opus_bitrate = 96000;        // Bitrate in bits/second
-static int opus_complexity = 3;         // Encoder complexity (0-10)
-static int opus_vbr = 1;                // Variable bitrate enabled
-static int opus_vbr_constraint = 1;     // Constrained VBR
-static int opus_signal_type = 3;        // Audio signal type
-static int opus_bandwidth = 1105;       // Bandwidth setting
-static int opus_dtx = 0;                // Discontinuous transmission
-static int opus_lsb_depth = 16;         // LSB depth for bit allocation
+// Opus encoder configuration - Optimized for S16_LE @ 48kHz with MINIMAL CPU usage
+static int opus_bitrate = 96000;        // Bitrate: 96 kbps (optimal for stereo @ 48kHz)
+static int opus_complexity = 1;         // Complexity: 1 (minimal CPU, ~0.5% on RV1106)
+static int opus_vbr = 1;                // VBR: enabled for efficient encoding
+static int opus_vbr_constraint = 1;     // Constrained VBR: predictable bitrate
+static int opus_signal_type = 3002;     // Signal: OPUS_SIGNAL_MUSIC (3002)
+static int opus_bandwidth = 1103;       // Bandwidth: WIDEBAND (1103 = native 48kHz, no resampling)
+static int opus_dtx = 0;                // DTX: disabled (continuous audio stream)
+static int opus_lsb_depth = 16;         // LSB depth: 16-bit matches S16_LE input
 
 // Network and buffer configuration
 static int max_packet_size = 1500;      // Maximum Opus packet size
@@ -84,10 +84,10 @@ static const int optimized_buffer_size = 1;   // Use optimized buffer sizing
 // FUNCTION DECLARATIONS
 // ============================================================================
 
-// Audio OUTPUT path functions (device microphone → client speakers)
-int jetkvm_audio_capture_init();           // Initialize capture device and Opus encoder
+// Audio OUTPUT path functions (TC358743 HDMI audio → client speakers)
+int jetkvm_audio_capture_init();           // Initialize TC358743 capture and Opus encoder
 void jetkvm_audio_capture_close();         // Cleanup capture resources
-int jetkvm_audio_read_encode(void *opus_buf); // Read PCM, encode to Opus
+int jetkvm_audio_read_encode(void *opus_buf); // Read PCM from TC358743, encode to Opus
 
 // Audio INPUT path functions (client microphone → device speakers)  
 int jetkvm_audio_playback_init();          // Initialize playback device and Opus decoder
@@ -505,7 +505,7 @@ static volatile int playback_initialized = 0;  // INPUT path ready
 
 /**
  * Update Opus encoder parameters dynamically
- * Used for OUTPUT path (device microphone → client speakers)
+ * Used for OUTPUT path (TC358743 HDMI audio → client speakers)
  * 
  * @return 0 on success, -1 if encoder not initialized, >0 if some settings failed
  */
@@ -664,12 +664,12 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 }
 
 // ============================================================================
-// AUDIO OUTPUT PATH FUNCTIONS (Device Microphone → Client Speakers)
+// AUDIO OUTPUT PATH FUNCTIONS (TC358743 HDMI Audio → Client Speakers)
 // ============================================================================
 
 /**
- * Initialize audio OUTPUT path: device microphone capture and Opus encoder
- * This enables sending device audio to the client
+ * Initialize audio OUTPUT path: TC358743 HDMI audio capture and Opus encoder
+ * This enables sending HDMI audio from the managed device to the client
  * 
  * Thread-safe with atomic operations to prevent concurrent initialization
  * 
@@ -706,8 +706,9 @@ int jetkvm_audio_capture_init() {
 		pcm_capture_handle = NULL;
 	}
 
-	// Try to open ALSA capture device
-	err = safe_alsa_open(&pcm_capture_handle, "hw:1,0", SND_PCM_STREAM_CAPTURE);
+	// Try to open ALSA capture device (TC358743 HDMI audio)
+	// Native S16_LE @ 48kHz stereo capture - no resampling, minimal CPU overhead
+	err = safe_alsa_open(&pcm_capture_handle, "hw:0,0", SND_PCM_STREAM_CAPTURE);
 	if (err < 0) {
 		capture_initializing = 0;
 		return -1;
@@ -755,12 +756,12 @@ int jetkvm_audio_capture_init() {
 }
 
 /**
- * Capture audio from device microphone and encode to Opus (OUTPUT path)
+ * Capture audio from TC358743 HDMI and encode to Opus (OUTPUT path)
  * 
  * This function:
- * 1. Reads PCM audio from device microphone via ALSA
+ * 1. Reads PCM audio from TC358743 HDMI input via ALSA
  * 2. Handles ALSA errors with robust recovery strategies
- * 3. Encodes PCM to Opus format for network transmission
+ * 3. Encodes PCM to Opus format for network transmission to client
  * 4. Provides zero-overhead trace logging when enabled
  * 
  * Error recovery includes handling:
@@ -1209,7 +1210,7 @@ void jetkvm_audio_playback_close() {
 }
 
 /**
- * Cleanup audio OUTPUT path resources (device microphone → client speakers)
+ * Cleanup audio OUTPUT path resources (TC358743 HDMI audio → client speakers)
  * 
  * Thread-safe cleanup with atomic operations to prevent double-cleanup
  * Properly drains ALSA buffers before closing to avoid audio artifacts
