@@ -587,6 +587,8 @@ int jetkvm_audio_capture_init() {
  */
 __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) {
 	static short SIMD_ALIGN pcm_buffer[1920];
+	static short prev_max_sample = 0;  // Track previous frame's peak for discontinuity detection
+	static int silence_count = 0;       // Count consecutive silent frames
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
 
 	SIMD_PREFETCH(out, 1, 3);
@@ -671,11 +673,38 @@ retry_read:
 	short max_sample = simd_find_max_abs_s16(pcm_buffer, total_samples);
 
 	if (max_sample < 50) {
+		silence_count++;
+		if (silence_count > 2) {
+			prev_max_sample = 0;  // Reset after extended silence
+		}
 		if (trace_logging_enabled) {
 			printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Silence detected (max=%d), skipping frame\n", max_sample);
 		}
 		return 0;
 	}
+
+	// Detect audio discontinuity (video seek): sudden level change after silence
+	// If audio level jumps >4x after 2+ silent frames, likely a seek occurred
+	if (silence_count >= 2 && prev_max_sample > 0) {
+		int level_ratio = (max_sample > prev_max_sample) ?
+			(max_sample / (prev_max_sample + 1)) :
+			(prev_max_sample / (max_sample + 1));
+
+		if (level_ratio > 4) {
+			if (trace_logging_enabled) {
+				printf("[AUDIO_OUTPUT] Discontinuity detected (level jump %dx: %d→%d), resetting encoder\n",
+					level_ratio, prev_max_sample, max_sample);
+			}
+			// Reset Opus encoder state to prevent mixing old/new audio context
+			opus_encoder_ctl(encoder, OPUS_RESET_STATE);
+			// Drop and reprepare ALSA to flush any buffered old audio
+			snd_pcm_drop(pcm_capture_handle);
+			snd_pcm_prepare(pcm_capture_handle);
+		}
+	}
+
+	silence_count = 0;
+	prev_max_sample = max_sample;
 
 	// Apply moderate 2.5x gain to prevent quantization noise on transients
 	// Balances between being audible at low volumes and not overdriving at high volumes
