@@ -15,14 +15,9 @@ func ensureAudioControlService() *audio.AudioControlService {
 		sessionProvider := &SessionProviderImpl{}
 		audioControlService = audio.NewAudioControlService(sessionProvider, logger)
 
-		// Set up RPC callback functions for the audio package
+		// Set up RPC callback function for the audio package
 		audio.SetRPCCallbacks(
 			func() *audio.AudioControlService { return audioControlService },
-			func() audio.AudioConfig { return audioControlService.GetCurrentAudioQuality() },
-			func(quality audio.AudioQuality) error {
-				audioControlService.SetAudioQuality(quality)
-				return nil
-			},
 		)
 	}
 	return audioControlService

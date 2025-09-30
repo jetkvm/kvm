@@ -6,7 +6,7 @@
 // Key components: output/input pipelines with Opus codec, buffer management,
 // zero-copy frame pools, IPC communication, and process supervision.
 //
-// Supports four quality presets (Low/Medium/High/Ultra) with configurable bitrates.
+// Optimized for S16_LE @ 48kHz stereo HDMI audio with minimal CPU usage.
 // All APIs are thread-safe with comprehensive error handling and metrics collection.
 //
 // # Performance Characteristics
@@ -14,13 +14,12 @@
 // Designed for embedded ARM systems with limited resources:
 //   - Sub-50ms end-to-end latency under normal conditions
 //   - Memory usage scales with buffer configuration
-//   - CPU usage optimized through zero-copy operations
-//   - Network bandwidth adapts to quality settings
+//   - CPU usage optimized through zero-copy operations and complexity=1 Opus
+//   - Fixed optimal configuration (96 kbps output, 48 kbps input)
 //
 // # Usage Example
 //
 //	config := GetAudioConfig()
-//	SetAudioQuality(AudioQualityHigh)
 //
 //	// Audio output will automatically start when frames are received
 package audio
@@ -42,23 +41,13 @@ func GetMaxAudioFrameSize() int {
 	return Config.MaxAudioFrameSize
 }
 
-// AudioQuality represents different audio quality presets
-type AudioQuality int
-
-const (
-	AudioQualityLow AudioQuality = iota
-	AudioQualityMedium
-	AudioQualityHigh
-	AudioQualityUltra
-)
-
-// AudioConfig holds configuration for audio processing
+// AudioConfig holds the optimal audio configuration
+// All settings are fixed for S16_LE @ 48kHz HDMI audio
 type AudioConfig struct {
-	Quality    AudioQuality
-	Bitrate    int // kbps
-	SampleRate int // Hz
-	Channels   int
-	FrameSize  time.Duration // ms
+	Bitrate    int // kbps (96 for output, 48 for input)
+	SampleRate int // Hz (always 48000)
+	Channels   int // 2 for output (stereo), 1 for input (mono)
+	FrameSize  time.Duration // ms (always 20ms)
 }
 
 // AudioMetrics tracks audio performance metrics
@@ -72,195 +61,29 @@ type AudioMetrics struct {
 }
 
 var (
+	// Optimal configuration for audio output (HDMI → client)
 	currentConfig = AudioConfig{
-		Quality:    AudioQualityMedium,
-		Bitrate:    Config.AudioQualityMediumOutputBitrate,
+		Bitrate:    Config.OptimalOutputBitrate,
 		SampleRate: Config.SampleRate,
 		Channels:   Config.Channels,
-		FrameSize:  Config.AudioQualityMediumFrameSize,
+		FrameSize:  20 * time.Millisecond,
 	}
+	// Optimal configuration for microphone input (client → target)
 	currentMicrophoneConfig = AudioConfig{
-		Quality:    AudioQualityMedium,
-		Bitrate:    Config.AudioQualityMediumInputBitrate,
+		Bitrate:    Config.OptimalInputBitrate,
 		SampleRate: Config.SampleRate,
 		Channels:   1,
-		FrameSize:  Config.AudioQualityMediumFrameSize,
+		FrameSize:  20 * time.Millisecond,
 	}
 	metrics AudioMetrics
 )
 
-// qualityPresets defines the base quality configurations
-var qualityPresets = map[AudioQuality]struct {
-	outputBitrate, inputBitrate int
-	sampleRate, channels        int
-	frameSize                   time.Duration
-}{
-	AudioQualityLow: {
-		outputBitrate: Config.AudioQualityLowOutputBitrate, inputBitrate: Config.AudioQualityLowInputBitrate,
-		sampleRate: Config.AudioQualityLowSampleRate, channels: Config.AudioQualityLowChannels,
-		frameSize: Config.AudioQualityLowFrameSize,
-	},
-	AudioQualityMedium: {
-		outputBitrate: Config.AudioQualityMediumOutputBitrate, inputBitrate: Config.AudioQualityMediumInputBitrate,
-		sampleRate: Config.AudioQualityMediumSampleRate, channels: Config.AudioQualityMediumChannels,
-		frameSize: Config.AudioQualityMediumFrameSize,
-	},
-	AudioQualityHigh: {
-		outputBitrate: Config.AudioQualityHighOutputBitrate, inputBitrate: Config.AudioQualityHighInputBitrate,
-		sampleRate: Config.SampleRate, channels: Config.AudioQualityHighChannels,
-		frameSize: Config.AudioQualityHighFrameSize,
-	},
-	AudioQualityUltra: {
-		outputBitrate: Config.AudioQualityUltraOutputBitrate, inputBitrate: Config.AudioQualityUltraInputBitrate,
-		sampleRate: Config.SampleRate, channels: Config.AudioQualityUltraChannels,
-		frameSize: Config.AudioQualityUltraFrameSize,
-	},
-}
-
-// GetAudioQualityPresets returns predefined quality configurations for audio output
-func GetAudioQualityPresets() map[AudioQuality]AudioConfig {
-	result := make(map[AudioQuality]AudioConfig)
-	for quality, preset := range qualityPresets {
-		config := AudioConfig{
-			Quality:    quality,
-			Bitrate:    preset.outputBitrate,
-			SampleRate: preset.sampleRate,
-			Channels:   preset.channels,
-			FrameSize:  preset.frameSize,
-		}
-		result[quality] = config
-	}
-	return result
-}
-
-// GetMicrophoneQualityPresets returns predefined quality configurations for microphone input
-func GetMicrophoneQualityPresets() map[AudioQuality]AudioConfig {
-	result := make(map[AudioQuality]AudioConfig)
-	for quality, preset := range qualityPresets {
-		config := AudioConfig{
-			Quality: quality,
-			Bitrate: preset.inputBitrate,
-			SampleRate: func() int {
-				if quality == AudioQualityLow {
-					return Config.AudioQualityMicLowSampleRate
-				}
-				return preset.sampleRate
-			}(),
-			Channels:  1, // Microphone is always mono
-			FrameSize: preset.frameSize,
-		}
-		result[quality] = config
-	}
-	return result
-}
-
-// SetAudioQuality updates the current audio quality configuration
-func SetAudioQuality(quality AudioQuality) {
-	// Validate audio quality parameter
-	if err := ValidateAudioQuality(quality); err != nil {
-		// Log validation error but don't fail - maintain backward compatibility
-		logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
-		logger.Warn().Err(err).Int("quality", int(quality)).Msg("invalid audio quality, using current config")
-		return
-	}
-
-	presets := GetAudioQualityPresets()
-	if config, exists := presets[quality]; exists {
-		currentConfig = config
-
-		// Get OPUS encoder parameters based on quality
-		var complexity, vbr, signalType, bandwidth, dtx int
-		switch quality {
-		case AudioQualityLow:
-			complexity = Config.AudioQualityLowOpusComplexity
-			vbr = Config.AudioQualityLowOpusVBR
-			signalType = Config.AudioQualityLowOpusSignalType
-			bandwidth = Config.AudioQualityLowOpusBandwidth
-			dtx = Config.AudioQualityLowOpusDTX
-		case AudioQualityMedium:
-			complexity = Config.AudioQualityMediumOpusComplexity
-			vbr = Config.AudioQualityMediumOpusVBR
-			signalType = Config.AudioQualityMediumOpusSignalType
-			bandwidth = Config.AudioQualityMediumOpusBandwidth
-			dtx = Config.AudioQualityMediumOpusDTX
-		case AudioQualityHigh:
-			complexity = Config.AudioQualityHighOpusComplexity
-			vbr = Config.AudioQualityHighOpusVBR
-			signalType = Config.AudioQualityHighOpusSignalType
-			bandwidth = Config.AudioQualityHighOpusBandwidth
-			dtx = Config.AudioQualityHighOpusDTX
-		case AudioQualityUltra:
-			complexity = Config.AudioQualityUltraOpusComplexity
-			vbr = Config.AudioQualityUltraOpusVBR
-			signalType = Config.AudioQualityUltraOpusSignalType
-			bandwidth = Config.AudioQualityUltraOpusBandwidth
-			dtx = Config.AudioQualityUltraOpusDTX
-		default:
-			// Use medium quality as fallback
-			complexity = Config.AudioQualityMediumOpusComplexity
-			vbr = Config.AudioQualityMediumOpusVBR
-			signalType = Config.AudioQualityMediumOpusSignalType
-			bandwidth = Config.AudioQualityMediumOpusBandwidth
-			dtx = Config.AudioQualityMediumOpusDTX
-		}
-
-		// Update audio output subprocess configuration dynamically without restart
-		logger := logging.GetDefaultLogger().With().Str("component", "audio").Logger()
-		logger.Info().Int("quality", int(quality)).Msg("updating audio output quality settings dynamically")
-
-		// Set new OPUS configuration for future restarts
-		if supervisor := GetAudioOutputSupervisor(); supervisor != nil {
-			supervisor.SetOpusConfig(config.Bitrate*1000, complexity, vbr, signalType, bandwidth, dtx)
-
-			// Send dynamic configuration update to running subprocess via IPC
-			if supervisor.IsConnected() {
-				// Convert AudioConfig to UnifiedIPCOpusConfig with complete Opus parameters
-				opusConfig := UnifiedIPCOpusConfig{
-					SampleRate: config.SampleRate,
-					Channels:   config.Channels,
-					FrameSize:  int(config.FrameSize.Milliseconds() * int64(config.SampleRate) / 1000), // Convert ms to samples
-					Bitrate:    config.Bitrate * 1000,                                                  // Convert kbps to bps
-					Complexity: complexity,
-					VBR:        vbr,
-					SignalType: signalType,
-					Bandwidth:  bandwidth,
-					DTX:        dtx,
-				}
-
-				logger.Info().Interface("opusConfig", opusConfig).Msg("sending Opus configuration to audio output subprocess")
-				if err := supervisor.SendOpusConfig(opusConfig); err != nil {
-					logger.Warn().Err(err).Msg("failed to send dynamic Opus config update via IPC, falling back to subprocess restart")
-					// Fallback to subprocess restart if IPC update fails
-					supervisor.Stop()
-					if err := supervisor.Start(); err != nil {
-						logger.Error().Err(err).Msg("failed to restart audio output subprocess after IPC update failure")
-					}
-				} else {
-					logger.Info().Msg("audio output quality updated dynamically via IPC")
-
-					// Reset audio output stats after config update
-					go func() {
-						time.Sleep(Config.QualityChangeSettleDelay) // Wait for quality change to settle
-						// Reset audio input server stats to clear persistent warnings
-						ResetGlobalAudioInputServerStats()
-						// Attempt recovery if there are still issues
-						time.Sleep(1 * time.Second)
-						RecoverGlobalAudioInputServer()
-					}()
-				}
-			} else {
-				logger.Info().Bool("supervisor_running", supervisor.IsRunning()).Msg("audio output subprocess not connected, configuration will apply on next start")
-			}
-		}
-	}
-}
-
-// GetAudioConfig returns the current audio configuration
+// GetAudioConfig returns the current optimal audio configuration
 func GetAudioConfig() AudioConfig {
 	return currentConfig
 }
 
-// GetMicrophoneConfig returns the current microphone configuration
+// GetMicrophoneConfig returns the current optimal microphone configuration
 func GetMicrophoneConfig() AudioConfig {
 	return currentMicrophoneConfig
 }
