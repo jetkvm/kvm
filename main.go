@@ -36,15 +36,15 @@ func startAudioSubprocess() error {
 	audioInputSupervisor := audio.NewAudioInputSupervisor()
 	audio.SetAudioInputSupervisor(audioInputSupervisor)
 
-	// Set default OPUS configuration for audio input supervisor (low quality for single-core RV1106)
+	// Set optimal OPUS configuration for audio input supervisor (48 kbps mono mic)
 	audioConfig := audio.Config
 	audioInputSupervisor.SetOpusConfig(
-		audioConfig.AudioQualityLowInputBitrate*1000, // Convert kbps to bps
-		audioConfig.AudioQualityLowOpusComplexity,
-		audioConfig.AudioQualityLowOpusVBR,
-		audioConfig.AudioQualityLowOpusSignalType,
-		audioConfig.AudioQualityLowOpusBandwidth,
-		audioConfig.AudioQualityLowOpusDTX,
+		audioConfig.OptimalInputBitrate*1000, // Convert kbps to bps (48 kbps)
+		audioConfig.OptimalOpusComplexity,    // Complexity 1 for minimal CPU
+		audioConfig.OptimalOpusVBR,           // VBR enabled
+		audioConfig.OptimalOpusSignalType,    // MUSIC signal type
+		audioConfig.OptimalOpusBandwidth,     // WIDEBAND for 48kHz
+		audioConfig.OptimalOpusDTX,           // DTX disabled
 	)
 
 	// Note: Audio input supervisor is NOT started here - it will be started on-demand
