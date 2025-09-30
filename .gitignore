@@ -9,6 +9,13 @@ tmp/
 *.tmp
 *.code-workspace
 
+.cache
+.vite
+.pnpm-store
+
 device-tests.tar.gz
-CLAUDE.md
-.claude/
+node_modules
+
+# generated during the build process
+#internal/native/include
+#internal/native/lib
