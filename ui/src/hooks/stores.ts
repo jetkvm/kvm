@@ -468,7 +468,7 @@ export interface KeysDownState {
 export type USBStates = 
   | "configured"
   | "attached"
-  | "not attached"
+  | "not_attached"
   | "suspended"
   | "addressed";
 
@@ -503,7 +503,7 @@ export const useHidStore = create<HidState>(set => ({
   setPasteModeEnabled: (enabled: boolean): void => set({ isPasteInProgress: enabled }),
 
   // Add these new properties for USB state
-  usbState: "not attached",
+  usbState: "not_attached",
   setUsbState: (state: USBStates) => set({ usbState: state }),
 }));
 

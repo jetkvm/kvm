@@ -366,11 +366,7 @@ export default function KvmIdRoute() {
       const sessionUrl = `${CLOUD_API}/webrtc/session`;
 
       console.log("Trying to get remote session description");
-      setLoadingMessage(
-          t('Getting_remote_session_description',{
-            attempt:signalingAttempts.current > 0 ? t('attempt_num',{num:signalingAttempts.current + 1}) : ''
-        })
-      );//Getting remote session description...  ${signalingAttempts.current > 0 ? `(attempt ${signalingAttempts.current + 1})` : ""}`,
+      setLoadingMessage(t('Getting_remote_session_description',{ attempt: signalingAttempts.current > 0 ? t('attempt_num', { num:signalingAttempts.current + 1 }) : '' }));
       const res = await api.POST(sessionUrl, {
         sd,
         // When on device, we don't need to specify the device id, as it's already known

@@ -171,7 +171,7 @@ export function UsbInfoSetting() {
               handleUsbConfigChange(usbConfig);
             }
           }}
-          options={[...usbConfigs, { value: "custom", label: "Custom" }]}
+          options={[...usbConfigs, { value: "custom", label: t('Custom') }]}
         />
       </SettingsItem>
       {usbConfigProduct === "custom" && (

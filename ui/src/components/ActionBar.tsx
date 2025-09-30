@@ -18,7 +18,7 @@ import { cx } from "@/cva.config";
 import PasteModal from "@/components/popovers/PasteModal";
 import WakeOnLanModal from "@/components/popovers/WakeOnLan/Index";
 import MountPopopover from "@/components/popovers/MountPopover";
-import {ExtensionPopover} from "@/components/popovers/ExtensionPopover";
+import { ExtensionPopover } from "@/components/popovers/ExtensionPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 
 export default function Actionbar({

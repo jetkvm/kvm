@@ -1,13 +1,15 @@
-import StatusCard from "@components/StatusCards";
 import {useTranslation} from "react-i18next";
+
+import StatusCard from "@components/StatusCards";
+
 
 const PeerConnectionStatusMap = {
   connected: "Connected",
   connecting: "Connecting",
   disconnected: "Disconnected",
-  error: "Connection error",
+  error: "Connection_error",
   closing: "Closing",
-  failed: "Connection failed",
+  failed: "Connection_failed",
   closed: "Closed",
   new: "Connecting",
 } as Record<RTCPeerConnectionState | "error" | "closing", string>;
@@ -28,7 +30,8 @@ export default function PeerConnectionStatusCard({
   state?: RTCPeerConnectionState | null;
   title?: string;
 }) {
-  if (!state) return <></>;
+  if (!state) return;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const { t } = useTranslation();
   const StatusCardProps: StatusProps = {
     connected: {
@@ -57,7 +60,7 @@ export default function PeerConnectionStatusCard({
     },
   };
   const props = StatusCardProps[state];
-  if (!props) return (<div></div>);
+  if (!props) return;
   return (
     <StatusCard
       title={title || "JetKVM Device"}

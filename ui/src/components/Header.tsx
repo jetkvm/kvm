@@ -27,7 +27,7 @@ interface NavbarProps {
   kvmName?: string;
 }
 
-export default function  DashboardNavbar({
+export default function DashboardNavbar({
   primaryLinks = [],
   isLoggedIn,
   showConnectionStatus,

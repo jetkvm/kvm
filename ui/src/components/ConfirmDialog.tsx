@@ -1,5 +1,4 @@
 import { useTranslation } from "react-i18next";
-
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -58,15 +57,15 @@ const variantConfig = {
     buttonTheme: "danger" | "primary" | "blank" | "light" | "lightDanger";
   }
 >;
-// @ts-ignore
+
 export function ConfirmDialog({
   open,
   onClose,
   title,
   description,
   variant = "info",
-  confirmText = useTranslation('Confirm').toString(),
-  cancelText = useTranslation('Cancel').toString(),
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
   onConfirm,
   isConfirming = false,
 }: ConfirmDialogProps) {

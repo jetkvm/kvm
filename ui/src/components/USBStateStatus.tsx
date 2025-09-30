@@ -33,7 +33,7 @@ const StatusCardProps: StatusProps = {
     iconClassName: "h-5 w-5 text-blue-500",
     statusIndicatorClassName: "bg-slate-300 border-slate-400",
   },
-  "not attached": {
+  "not_attached": {
     icon: ({ className }) => (
       <img className={cx(className)} src={KeyboardAndMouseConnectedIcon} alt="" />
     ),
@@ -61,7 +61,7 @@ export default function USBStateStatus({
         configured: t('Connected'),
         attached: t('Connecting'),
         addressed: t('Connecting'),
-        "not attached": t('Disconnected'),
+        "not_attached": t('Disconnected'),
         suspended: t('Low_power_mode'),
   };
   const props = StatusCardProps[state];
@@ -76,7 +76,7 @@ export default function USBStateStatus({
       icon: Icon,
       iconClassName,
       statusIndicatorClassName,
-    } = StatusCardProps["not attached"];
+    } = StatusCardProps["not_attached"];
 
     return (
       <StatusCard

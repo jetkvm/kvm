@@ -96,19 +96,19 @@ export default function InfoBar() {
             {debugMode && (
               <div className="flex w-[156px] items-center gap-x-1">
                 <span className="text-xs font-semibold">{t('USB_State')}:</span>
-                <span className="text-xs">{t(usbState.replace(' ','_').toString())}</span>
+                <span className="text-xs">{t(usbState)}</span>
               </div>
             )}
             {debugMode && (
               <div className="flex w-[156px] items-center gap-x-1">
                 <span className="text-xs font-semibold">{t('HDMI_State')}:</span>
-                <span className="text-xs">{t(hdmiState.toString())}</span>
+                <span className="text-xs">{t(hdmiState)}</span>
               </div>
             )}
             {debugMode && (
               <div className="flex w-[168px] items-center gap-x-1">
                 <span className="text-xs font-semibold">{t('HidRPC_State')}:</span>
-                <span className="text-xs">{t(rpcHidStatus.toString().replace(' ','_'))}</span>
+                <span className="text-xs">{t(rpcHidStatus)}</span>
               </div>
             )}
             {isPasteInProgress && (
