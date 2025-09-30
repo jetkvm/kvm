@@ -4,7 +4,7 @@
   "version": "2025.09.23.0000",
   "type": "module",
   "engines": {
-    "node": "22.15.0"
+    "node": "^22.15.0"
   },
   "scripts": {
     "dev": "./dev_device.sh",

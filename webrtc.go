@@ -367,13 +367,13 @@ func newSession(config SessionConfig) (*Session, error) {
 var actionSessions = 0
 
 func onActiveSessionsChanged() {
-	requestDisplayUpdate(true)
+	requestDisplayUpdate(true, "active_sessions_changed")
 }
 
 func onFirstSessionConnected() {
-	_ = writeCtrlAction("start_video")
+	_ = nativeInstance.VideoStart()
 }
 
 func onLastSessionDisconnected() {
-	_ = writeCtrlAction("stop_video")
+	_ = nativeInstance.VideoStop()
 }
