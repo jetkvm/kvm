@@ -7,22 +7,14 @@ import (
 // RPC wrapper functions for audio control
 // These functions bridge the RPC layer to the AudioControlService
 
-// These variables will be set by the main package to provide access to the global service
+// This variable will be set by the main package to provide access to the global service
 var (
 	getAudioControlServiceFunc func() *AudioControlService
-	getAudioQualityFunc        func() AudioConfig
-	setAudioQualityFunc        func(AudioQuality) error
 )
 
-// SetRPCCallbacks sets the callback functions for RPC operations
-func SetRPCCallbacks(
-	getService func() *AudioControlService,
-	getQuality func() AudioConfig,
-	setQuality func(AudioQuality) error,
-) {
+// SetRPCCallbacks sets the callback function for RPC operations
+func SetRPCCallbacks(getService func() *AudioControlService) {
 	getAudioControlServiceFunc = getService
-	getAudioQualityFunc = getQuality
-	setAudioQualityFunc = setQuality
 }
 
 // RPCAudioMute handles audio mute/unmute RPC requests
@@ -37,30 +29,11 @@ func RPCAudioMute(muted bool) error {
 	return service.MuteAudio(muted)
 }
 
-// RPCAudioQuality handles audio quality change RPC requests
+// RPCAudioQuality is deprecated - quality is now fixed at optimal settings
+// Returns current config for backward compatibility
 func RPCAudioQuality(quality int) (map[string]any, error) {
-	if getAudioQualityFunc == nil || setAudioQualityFunc == nil {
-		return nil, fmt.Errorf("audio quality functions not available")
-	}
-
-	// Convert int to AudioQuality type
-	audioQuality := AudioQuality(quality)
-
-	// Get current audio quality configuration
-	currentConfig := getAudioQualityFunc()
-
-	// Set new quality if different
-	if currentConfig.Quality != audioQuality {
-		err := setAudioQualityFunc(audioQuality)
-		if err != nil {
-			return nil, fmt.Errorf("failed to set audio quality: %w", err)
-		}
-		// Get updated config after setting
-		newConfig := getAudioQualityFunc()
-		return map[string]any{"config": newConfig}, nil
-	}
-
-	// Return current config if no change needed
+	// Quality is now fixed - return current optimal configuration
+	currentConfig := GetAudioConfig()
 	return map[string]any{"config": currentConfig}, nil
 }
 
@@ -100,21 +73,15 @@ func RPCAudioStatus() (map[string]interface{}, error) {
 	return service.GetAudioStatus(), nil
 }
 
-// RPCAudioQualityPresets handles audio quality presets RPC requests (read-only)
+// RPCAudioQualityPresets is deprecated - returns single optimal configuration
+// Kept for backward compatibility with UI
 func RPCAudioQualityPresets() (map[string]any, error) {
-	if getAudioControlServiceFunc == nil || getAudioQualityFunc == nil {
-		return nil, fmt.Errorf("audio control service not available")
-	}
-	service := getAudioControlServiceFunc()
-	if service == nil {
-		return nil, fmt.Errorf("audio control service not initialized")
-	}
+	// Return single optimal configuration as both preset and current
+	current := GetAudioConfig()
 
-	presets := service.GetAudioQualityPresets()
-	current := getAudioQualityFunc()
-
+	// Return empty presets map (UI will handle this gracefully)
 	return map[string]any{
-		"presets": presets,
+		"presets": map[string]any{},
 		"current": current,
 	}, nil
 }

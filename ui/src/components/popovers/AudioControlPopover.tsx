@@ -180,34 +180,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
     }
   };
 
-  const handleQualityChange = async (quality: number) => {
-    setIsLoading(true);
-    try {
-      // Use RPC for device communication - works for both local and cloud
-      if (rpcDataChannel?.readyState !== "open") {
-        throw new Error("Device connection not available");
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        send("audioQuality", { quality }, (resp: JsonRpcResponse) => {
-          if ("error" in resp) {
-            reject(new Error(resp.error.message));
-          } else {
-            // Update local state with response
-            if ("result" in resp && resp.result && typeof resp.result === 'object' && 'config' in resp.result) {
-              setCurrentConfig(resp.result.config as AudioConfig);
-            }
-            resolve();
-          }
-        });
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to change audio quality";
-      notifications.error(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Quality change handler removed - quality is now fixed at optimal settings
 
   const handleToggleMicrophoneEnable = async () => {
     const now = Date.now();
@@ -447,41 +420,23 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
           </button>
         </div>
 
-        {/* Quality Settings */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <MdGraphicEq className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-            <span className="font-medium text-slate-900 dark:text-slate-100">
-              Audio Output Quality
-            </span>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-2">
-            {Object.entries(audioQualityService.getQualityLabels()).map(([quality, label]) => (
-              <button
-                key={quality}
-                onClick={() => handleQualityChange(parseInt(quality))}
-                disabled={isLoading}
-                className={cx(
-                  "rounded-md border px-3 py-2 text-sm font-medium transition-colors",
-                  currentConfig?.Quality === parseInt(quality)
-                    ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
-                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600",
-                  isLoading && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {currentConfig && (
-            <div className="text-xs text-slate-600 dark:text-slate-400 mt-2">
-              Bitrate: {currentConfig.Bitrate}kbps | 
-              Sample Rate: {currentConfig.SampleRate}Hz
+        {/* Audio Quality Info (fixed optimal configuration) */}
+        {currentConfig && (
+          <div className="space-y-2 rounded-md bg-slate-50 p-3 dark:bg-slate-800">
+            <div className="flex items-center gap-2">
+              <MdGraphicEq className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+              <span className="font-medium text-slate-900 dark:text-slate-100">
+                Audio Configuration
+              </span>
             </div>
-          )}
-        </div>
+            <div className="text-sm text-slate-600 dark:text-slate-400">
+              Optimized for S16_LE @ 48kHz stereo HDMI audio
+            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-500">
+              Bitrate: {currentConfig.Bitrate} kbps | Sample Rate: {currentConfig.SampleRate} Hz | Channels: {currentConfig.Channels}
+            </div>
+          </div>
+        )}
 
 
 
