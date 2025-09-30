@@ -126,7 +126,7 @@ export default function SettingsVideoRoute() {
       }
 
       notifications.success(
-        t('EDID_set_successfully_to_msg',edids.find(x => x.value === newEdid)?.label ?? t('the_custom_EDID'))
+        t('EDID_set_successfully_to_msg',{msg:edids.find(x => x.value === newEdid)?.label ?? t('the_custom_EDID')})
       );
       // Update the EDID value in the UI
       setEdid(newEdid);
