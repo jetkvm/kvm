@@ -11,7 +11,6 @@ import (
 
 // Validation errors
 var (
-	ErrInvalidAudioQuality = errors.New("invalid audio quality level")
 	ErrInvalidFrameSize    = errors.New("invalid frame size")
 	ErrInvalidFrameData    = errors.New("invalid frame data")
 	ErrFrameDataEmpty      = errors.New("invalid frame data: frame data is empty")
@@ -30,13 +29,9 @@ var (
 	ErrInvalidLength          = errors.New("invalid length")
 )
 
-// ValidateAudioQuality validates audio quality enum values with enhanced checks
-func ValidateAudioQuality(quality AudioQuality) error {
-	// Validate enum range
-	if quality < AudioQualityLow || quality > AudioQualityUltra {
-		return fmt.Errorf("%w: quality value %d outside valid range [%d, %d]",
-			ErrInvalidAudioQuality, int(quality), int(AudioQualityLow), int(AudioQualityUltra))
-	}
+// ValidateAudioQuality is deprecated - quality is now fixed at optimal settings
+func ValidateAudioQuality(quality int) error {
+	// Quality validation removed - using fixed optimal configuration
 	return nil
 }
 
@@ -316,9 +311,6 @@ func ValidateAudioConfigComplete(config AudioConfig) error {
 	}
 
 	// Slower path: validate each parameter individually
-	if err := ValidateAudioQuality(config.Quality); err != nil {
-		return fmt.Errorf("quality validation failed: %w", err)
-	}
 	if err := ValidateBitrate(config.Bitrate); err != nil {
 		return fmt.Errorf("bitrate validation failed: %w", err)
 	}
@@ -336,12 +328,7 @@ func ValidateAudioConfigComplete(config AudioConfig) error {
 
 // ValidateAudioConfigConstants validates audio configuration constants
 func ValidateAudioConfigConstants(config *AudioConfigConstants) error {
-	// Validate that audio quality constants are within valid ranges
-	for _, quality := range []AudioQuality{AudioQualityLow, AudioQualityMedium, AudioQualityHigh, AudioQualityUltra} {
-		if err := ValidateAudioQuality(quality); err != nil {
-			return fmt.Errorf("invalid audio quality constant %v: %w", quality, err)
-		}
-	}
+	// Quality validation removed - using fixed optimal configuration
 	// Validate configuration values if config is provided
 	if config != nil {
 		if Config.MaxFrameSize <= 0 {

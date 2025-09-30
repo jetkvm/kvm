@@ -28,8 +28,6 @@ import (
 	"errors"
 	"sync/atomic"
 	"time"
-
-	"github.com/jetkvm/kvm/internal/logging"
 )
 
 var (

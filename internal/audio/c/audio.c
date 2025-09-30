@@ -62,7 +62,7 @@ static int frame_size = 960;       // Frames per Opus packet
 static int opus_bitrate = 96000;        // Bitrate: 96 kbps (optimal for stereo @ 48kHz)
 static int opus_complexity = 1;         // Complexity: 1 (minimal CPU, ~0.5% on RV1106)
 static int opus_vbr = 1;                // VBR: enabled for efficient encoding
-static int opus_vbr_constraint = 1;     // Constrained VBR: predictable bitrate
+static int opus_vbr_constraint = 0;     // Unconstrained VBR: allows bitrate spikes for transients (beeps/sharp sounds)
 static int opus_signal_type = 3002;     // Signal: OPUS_SIGNAL_MUSIC (3002)
 static int opus_bandwidth = 1103;       // Bandwidth: WIDEBAND (1103 = native 48kHz, no resampling)
 static int opus_dtx = 0;                // DTX: disabled (continuous audio stream)
@@ -745,10 +745,8 @@ int jetkvm_audio_capture_init() {
 	opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
 	// Set LSB depth for improved bit allocation on constrained hardware
 	opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(opus_lsb_depth));
-	// Enable packet loss concealment for better resilience
-	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(5));
-	// Set prediction disabled for lower latency
-	opus_encoder_ctl(encoder, OPUS_SET_PREDICTION_DISABLED(1));
+	// Packet loss concealment removed - causes artifacts on transients in LAN environment
+	// Prediction enabled (default) for better transient handling (beeps, sharp sounds)
 
 	capture_initialized = 1;
 	capture_initializing = 0;
