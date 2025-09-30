@@ -1,9 +1,18 @@
 /*
  * JetKVM Audio Processing Module
- * 
- * This module handles bidirectional audio processing for JetKVM:
- * - Audio INPUT: Client microphone → Device speakers (decode Opus → ALSA playback)
- * - Audio OUTPUT: TC358743 HDMI audio → Client speakers (ALSA capture → encode Opus)
+ *
+ * Bidirectional audio processing optimized for ARM NEON SIMD:
+ * - OUTPUT PATH: TC358743 HDMI audio → Client speakers
+ *   Pipeline: ALSA hw:0,0 capture → 2.5x gain → Opus encode (96kbps, FEC enabled)
+ *
+ * - INPUT PATH: Client microphone → Device speakers
+ *   Pipeline: Opus decode (with FEC) → ALSA hw:1,0 playback
+ *
+ * Key features:
+ * - ARM NEON SIMD optimization for all audio operations
+ * - Opus in-band FEC for packet loss resilience
+ * - Ultra-low CPU usage (~0.5% on RV1106)
+ * - S16_LE @ 48kHz stereo, 20ms frames (960 samples)
  */
 
 #include <alsa/asoundlib.h>
@@ -46,14 +55,14 @@ static int channels = 2;
 static int frame_size = 960;  // 20ms frames at 48kHz
 
 // Opus encoder settings (optimized for minimal CPU ~0.5% on RV1106)
-static int opus_bitrate = 96000;        // 96 kbps
-static int opus_complexity = 1;         // Complexity 1 (minimal CPU)
+static int opus_bitrate = 96000;        // 96 kbps - good quality/bandwidth balance
+static int opus_complexity = 1;         // Complexity 1 - minimal CPU usage
 static int opus_vbr = 1;                // Variable bitrate enabled
-static int opus_vbr_constraint = 1;     // Constrained VBR for predictable bandwidth
-static int opus_signal_type = -1000;    // OPUS_AUTO (-1000)
-static int opus_bandwidth = 1103;       // OPUS_BANDWIDTH_WIDEBAND (1103)
-static int opus_dtx = 0;                // DTX disabled
-static int opus_lsb_depth = 16;         // 16-bit depth matches S16_LE
+static int opus_vbr_constraint = 1;     // Constrained VBR - predictable bandwidth
+static int opus_signal_type = -1000;    // OPUS_AUTO - automatic signal type detection
+static int opus_bandwidth = 1103;       // OPUS_BANDWIDTH_WIDEBAND (50-8000 Hz)
+static int opus_dtx = 0;                // DTX disabled - no discontinuous transmission
+static int opus_lsb_depth = 16;         // 16-bit depth - matches S16_LE format
 
 // Network configuration
 static int max_packet_size = 1500;
@@ -63,7 +72,7 @@ static int sleep_microseconds = 1000;
 static int max_attempts_global = 5;
 static int max_backoff_us_global = 500000;
 
-// Buffer optimization (1 = use 2-period ultra-low latency, 0 = use 4-period balanced)
+// ALSA buffer configuration (not currently used - kept for future optimization)
 static const int optimized_buffer_size = 1;
 
 
@@ -443,7 +452,8 @@ static volatile int playback_initializing = 0;
 static volatile int playback_initialized = 0;
 
 /**
- * Update Opus encoder settings at runtime
+ * Update Opus encoder settings at runtime (does NOT modify FEC settings)
+ * Note: FEC configuration remains unchanged - set at initialization
  * @return 0 on success, -1 if not initialized, >0 if some settings failed
  */
 int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_constraint,
@@ -452,6 +462,7 @@ int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_con
         return -1;
     }
 
+    // Update global configuration variables
     opus_bitrate = bitrate;
     opus_complexity = complexity;
     opus_vbr = vbr;
@@ -460,6 +471,7 @@ int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_con
     opus_bandwidth = bandwidth;
     opus_dtx = dtx;
 
+    // Apply settings to encoder (FEC settings not modified)
     int result = 0;
     result |= opus_encoder_ctl(encoder, OPUS_SET_BITRATE(opus_bitrate));
     result |= opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(opus_complexity));
@@ -630,6 +642,7 @@ int jetkvm_audio_capture_init() {
 		return -3;
 	}
 
+	// Configure encoder with optimized settings
 	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(opus_bitrate));
 	opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(opus_complexity));
 	opus_encoder_ctl(encoder, OPUS_SET_VBR(opus_vbr));
@@ -639,9 +652,10 @@ int jetkvm_audio_capture_init() {
 	opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
 	opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(opus_lsb_depth));
 
-	// Enable in-band FEC for packet loss resilience (adds ~2-5% bitrate)
+	// Enable in-band FEC (Forward Error Correction) for network resilience
+	// Embeds redundant data in packets to recover from packet loss (adds ~2-5% bitrate overhead)
 	opus_encoder_ctl(encoder, OPUS_SET_INBAND_FEC(1));
-	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(10));
+	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(10));  // Optimize for 10% expected loss
 
 	capture_initialized = 1;
 	capture_initializing = 0;
@@ -650,14 +664,13 @@ int jetkvm_audio_capture_init() {
 
 /**
  * Read HDMI audio, encode to Opus (OUTPUT path hot function)
- * Processing pipeline: ALSA capture → silence detection → discontinuity detection → 2.5x gain → Opus encode
+ * Processing pipeline: ALSA capture → 2.5x gain → Opus encode
  * @param opus_buf Output buffer for encoded Opus packet
- * @return >0 = Opus packet size in bytes, 0 = silence/no data, -1 = error
+ * @return >0 = Opus packet size in bytes, -1 = error
  */
 __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) {
 	// Static buffers persist across calls for better cache locality
 	static short SIMD_ALIGN pcm_buffer[1920];  // 960 frames × 2 channels
-	static short prev_max_sample = 0;          // Previous frame peak for discontinuity detection
 
 	// Local variables
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
@@ -665,8 +678,6 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	int err = 0;
 	int recovery_attempts = 0;
 	const int max_recovery_attempts = 3;
-	int total_samples;
-	short max_sample;
 	int nb_bytes;
 
 	// Prefetch output buffer for write
@@ -744,31 +755,6 @@ retry_read:
 		int remaining_samples = (frame_size - pcm_rc) * channels;
 		simd_clear_samples_s16(&pcm_buffer[pcm_rc * channels], remaining_samples);
 	}
-
-	// Silence detection: skip frames below ~0.15% of maximum volume
-	total_samples = frame_size * channels;
-	max_sample = simd_find_max_abs_s16(pcm_buffer, total_samples);
-
-	if (max_sample < 50) {
-		prev_max_sample = 0;  // Reset discontinuity tracker on silence
-		if (trace_logging_enabled) {
-			printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Silence detected (max=%d), skipping frame\n", max_sample);
-		}
-		return 0;
-	}
-
-	// Discontinuity detection: reset encoder on abrupt level changes (video seeks)
-	// Prevents crackling when audio stream jumps due to video seeking
-	if (prev_max_sample > 0) {
-		int level_ratio = (max_sample > prev_max_sample * 5) || (prev_max_sample > max_sample * 5);
-		if (level_ratio) {
-			if (trace_logging_enabled) {
-				printf("[AUDIO_OUTPUT] Discontinuity detected (%d→%d), resetting encoder\n", prev_max_sample, max_sample);
-			}
-			opus_encoder_ctl(encoder, OPUS_RESET_STATE);
-		}
-	}
-	prev_max_sample = max_sample;
 
 	// Apply 2.5x gain boost to prevent quantization noise at low volumes
 	// HDMI audio typically transmitted at -6 to -12dB; boost prevents Opus noise floor artifacts
