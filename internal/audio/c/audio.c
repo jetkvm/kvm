@@ -62,8 +62,8 @@ static int frame_size = 960;       // Frames per Opus packet
 static int opus_bitrate = 96000;        // Bitrate: 96 kbps (optimal for stereo @ 48kHz)
 static int opus_complexity = 1;         // Complexity: 1 (minimal CPU, ~0.5% on RV1106)
 static int opus_vbr = 1;                // VBR: enabled for efficient encoding
-static int opus_vbr_constraint = 0;     // Unconstrained VBR: allows bitrate spikes for transients (beeps/sharp sounds)
-static int opus_signal_type = 3002;     // Signal: OPUS_SIGNAL_MUSIC (3002)
+static int opus_vbr_constraint = 1;     // Constrained VBR: predictable bitrate
+static int opus_signal_type = -1000;    // Signal: OPUS_AUTO (automatic voice/music detection)
 static int opus_bandwidth = 1103;       // Bandwidth: WIDEBAND (1103 = native 48kHz, no resampling)
 static int opus_dtx = 0;                // DTX: disabled (continuous audio stream)
 static int opus_lsb_depth = 16;         // LSB depth: 16-bit matches S16_LE input
@@ -869,6 +869,30 @@ retry_read:
 		int remaining_samples = (frame_size - pcm_rc) * channels;
 		simd_clear_samples_s16(&pcm_buffer[pcm_rc * channels], remaining_samples);
 	}
+
+	// Silence detection: check if all samples are below threshold
+	// Threshold: 100 = ~0.3% of max volume (very quiet)
+	const short silence_threshold = 100;
+	int total_samples = frame_size * channels;
+	int is_silence = 1;
+	for (int i = 0; i < total_samples; i++) {
+		short abs_sample = pcm_buffer[i] < 0 ? -pcm_buffer[i] : pcm_buffer[i];
+		if (abs_sample > silence_threshold) {
+			is_silence = 0;
+			break;
+		}
+	}
+
+	// If silence detected, return 0 to skip sending this frame
+	if (is_silence) {
+		if (trace_logging_enabled) {
+			printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Silence detected, skipping frame\n");
+		}
+		return 0;
+	}
+
+	// Apply 4x gain boost to fix quantization noise on transients at normal volumes to prevent crackling issues
+	simd_scale_volume_s16(pcm_buffer, frame_size * channels, 4.0f);
 
 	int nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
 	
