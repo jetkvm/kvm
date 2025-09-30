@@ -1,3 +1,7 @@
 {
-  "tailwindCSS.classFunctions": ["cva", "cx"]
+  "tailwindCSS.classFunctions": [
+    "cva",
+    "cx"
+  ],
+  "git.ignoreLimitWarning": true
 }

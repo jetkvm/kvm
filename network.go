@@ -17,7 +17,7 @@ var (
 
 func networkStateChanged(isOnline bool) {
 	// do not block the main thread
-	go waitCtrlAndRequestDisplayUpdate(true)
+	go waitCtrlAndRequestDisplayUpdate(true, "network_state_changed")
 
 	if timeSync != nil {
 		if networkState != nil {

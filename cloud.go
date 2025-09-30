@@ -171,6 +171,7 @@ func setCloudConnectionState(state CloudConnectionState) {
 
 	go waitCtrlAndRequestDisplayUpdate(
 		previousState != state,
+		"set_cloud_connection_state",
 	)
 }
 

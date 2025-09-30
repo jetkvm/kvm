@@ -176,6 +176,8 @@ func rpcGetDeviceID() (string, error) {
 func rpcReboot(force bool) error {
 	logger.Info().Msg("Got reboot request from JSONRPC, rebooting...")
 
+	nativeInstance.SwitchToScreenIfDifferent("rebooting_screen")
+
 	args := []string{}
 	if force {
 		args = append(args, "-f")
@@ -185,6 +187,7 @@ func rpcReboot(force bool) error {
 	err := cmd.Start()
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to reboot")
+		switchToMainScreen()
 		return fmt.Errorf("failed to reboot: %w", err)
 	}
 
@@ -205,7 +208,7 @@ func rpcGetStreamQualityFactor() (float64, error) {
 
 func rpcSetStreamQualityFactor(factor float64) error {
 	logger.Info().Float64("factor", factor).Msg("Setting stream quality factor")
-	var _, err = CallCtrlAction("set_video_quality_factor", map[string]any{"quality_factor": factor})
+	err := nativeInstance.VideoSetQualityFactor(factor)
 	if err != nil {
 		return err
 	}
@@ -227,15 +230,11 @@ func rpcSetAutoUpdateState(enabled bool) (bool, error) {
 }
 
 func rpcGetEDID() (string, error) {
-	resp, err := CallCtrlAction("get_edid", nil)
+	resp, err := nativeInstance.VideoGetEDID()
 	if err != nil {
 		return "", err
 	}
-	edid, ok := resp.Result["edid"]
-	if ok {
-		return edid.(string), nil
-	}
-	return "", errors.New("EDID not found in response")
+	return resp, nil
 }
 
 func rpcSetEDID(edid string) error {
@@ -245,7 +244,7 @@ func rpcSetEDID(edid string) error {
 	} else {
 		logger.Info().Str("edid", edid).Msg("Setting EDID")
 	}
-	_, err := CallCtrlAction("set_edid", map[string]any{"edid": edid})
+	err := nativeInstance.VideoSetEDID(edid)
 	if err != nil {
 		return err
 	}
@@ -254,6 +253,10 @@ func rpcSetEDID(edid string) error {
 	config.EdidString = edid
 	_ = SaveConfig()
 	return nil
+}
+
+func rpcGetVideoLogStatus() (string, error) {
+	return nativeInstance.VideoLogStatus()
 }
 
 func rpcGetDevChannelState() (bool, error) {
@@ -306,14 +309,25 @@ func rpcTryUpdate() error {
 }
 
 func rpcSetDisplayRotation(params DisplayRotationSettings) error {
-	var err error
-	_, err = lvDispSetRotation(params.Rotation)
-	if err == nil {
-		config.DisplayRotation = params.Rotation
-		if err := SaveConfig(); err != nil {
-			return fmt.Errorf("failed to save config: %w", err)
-		}
+	currentRotation := config.DisplayRotation
+	if currentRotation == params.Rotation {
+		return nil
 	}
+
+	err := config.SetDisplayRotation(params.Rotation)
+	if err != nil {
+		return err
+	}
+
+	_, err = nativeInstance.DisplaySetRotation(config.GetDisplayRotation())
+	if err != nil {
+		return err
+	}
+
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
 	return err
 }
 
@@ -357,7 +371,7 @@ func rpcSetBacklightSettings(params BacklightSettings) error {
 	// are reset to the new settings, and will bring the display up to maxBrightness.
 	// Calling with force set to true, to ignore the current state of the display, and force
 	// it to reset the tickers.
-	wakeDisplay(true)
+	wakeDisplay(true, "backlight_settings_changed")
 	return nil
 }
 
@@ -1373,6 +1387,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setAutoUpdateState":     {Func: rpcSetAutoUpdateState, Params: []string{"enabled"}},
 	"getEDID":                {Func: rpcGetEDID},
 	"setEDID":                {Func: rpcSetEDID, Params: []string{"edid"}},
+	"getVideoLogStatus":      {Func: rpcGetVideoLogStatus},
 	"getDevChannelState":     {Func: rpcGetDevChannelState},
 	"setDevChannelState":     {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":        {Func: rpcGetLocalVersion},
