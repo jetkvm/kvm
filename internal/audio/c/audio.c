@@ -126,17 +126,21 @@ void set_trace_logging(int enabled) {
 
 /**
  * Clear audio buffer using NEON (8 samples/iteration)
+ * @param buffer Audio buffer to clear
+ * @param samples Number of samples to zero out
  */
 static inline void simd_clear_samples_s16(short *buffer, int samples) {
     simd_init_once();
 
-    const int16x8_t zero = vdupq_n_s16(0);
     int simd_samples = samples & ~7;
+    const int16x8_t zero = vdupq_n_s16(0);
 
+    // SIMD path: zero 8 samples per iteration
     for (int i = 0; i < simd_samples; i += 8) {
         vst1q_s16(&buffer[i], zero);
     }
 
+    // Scalar path: handle remaining samples
     for (int i = simd_samples; i < samples; i++) {
         buffer[i] = 0;
     }
@@ -144,12 +148,19 @@ static inline void simd_clear_samples_s16(short *buffer, int samples) {
 
 /**
  * Interleave L/R channels using NEON (8 frames/iteration)
+ * Converts separate left/right buffers to interleaved stereo (LRLRLR...)
+ * @param left Left channel samples
+ * @param right Right channel samples
+ * @param output Interleaved stereo output buffer
+ * @param frames Number of stereo frames to process
  */
 static inline void simd_interleave_stereo_s16(const short *left, const short *right,
                                              short *output, int frames) {
     simd_init_once();
+
     int simd_frames = frames & ~7;
 
+    // SIMD path: interleave 8 frames (16 samples) per iteration
     for (int i = 0; i < simd_frames; i += 8) {
         int16x8_t left_vec = vld1q_s16(&left[i]);
         int16x8_t right_vec = vld1q_s16(&right[i]);
@@ -158,6 +169,7 @@ static inline void simd_interleave_stereo_s16(const short *left, const short *ri
         vst1q_s16(&output[i * 2 + 8], interleaved.val[1]);
     }
 
+    // Scalar path: handle remaining frames
     for (int i = simd_frames; i < frames; i++) {
         output[i * 2] = left[i];
         output[i * 2 + 1] = right[i];
@@ -166,21 +178,28 @@ static inline void simd_interleave_stereo_s16(const short *left, const short *ri
 
 /**
  * Apply gain using NEON Q15 fixed-point math (8 samples/iteration)
- * Uses vqrdmulhq_s16: single-instruction saturating rounded multiply-high
+ * Uses vqrdmulhq_s16 for single-instruction saturating rounded multiply-high
+ * @param samples Audio buffer to scale in-place
+ * @param count Number of samples to process
+ * @param volume Gain multiplier (e.g., 2.5 for 2.5x gain)
  */
 static inline void simd_scale_volume_s16(short *samples, int count, float volume) {
     simd_init_once();
-    // For vqrdmulhq_s16, multiply volume by 2 since it extracts bits [30:15] not [31:16]
+
+    // Convert float gain to Q14 fixed-point for vqrdmulhq_s16
+    // vqrdmulhq_s16 extracts bits [30:15], so multiply by 16384 (2^14) instead of 32768 (2^15)
     int16_t vol_fixed = (int16_t)(volume * 16384.0f);
     int16x8_t vol_vec = vdupq_n_s16(vol_fixed);
     int simd_count = count & ~7;
 
+    // SIMD path: process 8 samples per iteration
     for (int i = 0; i < simd_count; i += 8) {
         int16x8_t samples_vec = vld1q_s16(&samples[i]);
         int16x8_t result = vqrdmulhq_s16(samples_vec, vol_vec);
         vst1q_s16(&samples[i], result);
     }
 
+    // Scalar path: handle remaining samples
     for (int i = simd_count; i < count; i++) {
         samples[i] = (short)((samples[i] * vol_fixed) >> 14);
     }
@@ -188,10 +207,14 @@ static inline void simd_scale_volume_s16(short *samples, int count, float volume
 
 /**
  * Byte-swap 16-bit samples using NEON (8 samples/iteration)
+ * Converts between little-endian and big-endian formats
+ * @param samples Audio buffer to byte-swap in-place
+ * @param count Number of samples to process
  */
 static inline void simd_swap_endian_s16(short *samples, int count) {
     int simd_count = count & ~7;
 
+    // SIMD path: swap 8 samples per iteration
     for (int i = 0; i < simd_count; i += 8) {
         uint16x8_t samples_vec = vld1q_u16((uint16_t*)&samples[i]);
         uint8x16_t samples_u8 = vreinterpretq_u8_u16(samples_vec);
@@ -200,6 +223,7 @@ static inline void simd_swap_endian_s16(short *samples, int count) {
         vst1q_u16((uint16_t*)&samples[i], swapped);
     }
 
+    // Scalar path: handle remaining samples
     for (int i = simd_count; i < count; i++) {
         samples[i] = __builtin_bswap16(samples[i]);
     }
@@ -207,12 +231,17 @@ static inline void simd_swap_endian_s16(short *samples, int count) {
 
 /**
  * Convert S16 to float using NEON (4 samples/iteration)
+ * Converts 16-bit signed integers to normalized float [-1.0, 1.0]
+ * @param input S16 audio samples
+ * @param output Float output buffer
+ * @param count Number of samples to convert
  */
 static inline void simd_s16_to_float(const short *input, float *output, int count) {
     const float scale = 1.0f / 32768.0f;
-    float32x4_t scale_vec = vdupq_n_f32(scale);
     int simd_count = count & ~3;
+    float32x4_t scale_vec = vdupq_n_f32(scale);
 
+    // SIMD path: convert 4 samples per iteration
     for (int i = 0; i < simd_count; i += 4) {
         int16x4_t s16_data = vld1_s16(input + i);
         int32x4_t s32_data = vmovl_s16(s16_data);
@@ -221,6 +250,7 @@ static inline void simd_s16_to_float(const short *input, float *output, int coun
         vst1q_f32(output + i, scaled);
     }
 
+    // Scalar path: handle remaining samples
     for (int i = simd_count; i < count; i++) {
         output[i] = (float)input[i] * scale;
     }
@@ -228,12 +258,17 @@ static inline void simd_s16_to_float(const short *input, float *output, int coun
 
 /**
  * Convert float to S16 using NEON (4 samples/iteration)
+ * Converts normalized float [-1.0, 1.0] to 16-bit signed integers with saturation
+ * @param input Float audio samples
+ * @param output S16 output buffer
+ * @param count Number of samples to convert
  */
 static inline void simd_float_to_s16(const float *input, short *output, int count) {
     const float scale = 32767.0f;
-    float32x4_t scale_vec = vdupq_n_f32(scale);
     int simd_count = count & ~3;
+    float32x4_t scale_vec = vdupq_n_f32(scale);
 
+    // SIMD path: convert 4 samples per iteration with saturation
     for (int i = 0; i < simd_count; i += 4) {
         float32x4_t float_data = vld1q_f32(input + i);
         float32x4_t scaled = vmulq_f32(float_data, scale_vec);
@@ -242,6 +277,7 @@ static inline void simd_float_to_s16(const float *input, short *output, int coun
         vst1_s16(output + i, s16_data);
     }
 
+    // Scalar path: handle remaining samples with clamping
     for (int i = simd_count; i < count; i++) {
         float scaled = input[i] * scale;
         output[i] = (short)__builtin_fmaxf(__builtin_fminf(scaled, 32767.0f), -32768.0f);
@@ -250,15 +286,22 @@ static inline void simd_float_to_s16(const float *input, short *output, int coun
 
 /**
  * Mono → stereo (duplicate samples) using NEON (4 frames/iteration)
+ * Duplicates mono samples to both L and R channels
+ * @param mono Mono input buffer
+ * @param stereo Stereo output buffer
+ * @param frames Number of frames to process
  */
 static inline void simd_mono_to_stereo_s16(const short *mono, short *stereo, int frames) {
 	int simd_frames = frames & ~3;
+
+	// SIMD path: duplicate 4 frames (8 samples) per iteration
 	for (int i = 0; i < simd_frames; i += 4) {
 		int16x4_t mono_data = vld1_s16(mono + i);
 		int16x4x2_t stereo_data = {mono_data, mono_data};
 		vst2_s16(stereo + i * 2, stereo_data);
 	}
 
+	// Scalar path: handle remaining frames
 	for (int i = simd_frames; i < frames; i++) {
 		stereo[i * 2] = mono[i];
 		stereo[i * 2 + 1] = mono[i];
@@ -267,9 +310,15 @@ static inline void simd_mono_to_stereo_s16(const short *mono, short *stereo, int
 
 /**
  * Stereo → mono (average L+R) using NEON (4 frames/iteration)
+ * Downmixes stereo to mono by averaging left and right channels
+ * @param stereo Interleaved stereo input buffer
+ * @param mono Mono output buffer
+ * @param frames Number of frames to process
  */
 static inline void simd_stereo_to_mono_s16(const short *stereo, short *mono, int frames) {
 	int simd_frames = frames & ~3;
+
+	// SIMD path: average 4 stereo frames per iteration
 	for (int i = 0; i < simd_frames; i += 4) {
 		int16x4x2_t stereo_data = vld2_s16(stereo + i * 2);
 		int32x4_t left_wide = vmovl_s16(stereo_data.val[0]);
@@ -280,6 +329,7 @@ static inline void simd_stereo_to_mono_s16(const short *stereo, short *mono, int
 		vst1_s16(mono + i, mono_data);
 	}
 
+	// Scalar path: handle remaining frames
 	for (int i = simd_frames; i < frames; i++) {
 		mono[i] = (stereo[i * 2] + stereo[i * 2 + 1]) / 2;
 	}
@@ -287,14 +337,19 @@ static inline void simd_stereo_to_mono_s16(const short *stereo, short *mono, int
 
 /**
  * Apply L/R balance using NEON (4 frames/iteration)
+ * Adjusts stereo balance: negative = more left, positive = more right
+ * @param stereo Interleaved stereo buffer to modify in-place
+ * @param frames Number of stereo frames to process
+ * @param balance Balance factor [-1.0 = full left, 0.0 = center, 1.0 = full right]
  */
 static inline void simd_apply_stereo_balance_s16(short *stereo, int frames, float balance) {
+	int simd_frames = frames & ~3;
 	float left_gain = balance <= 0.0f ? 1.0f : 1.0f - balance;
 	float right_gain = balance >= 0.0f ? 1.0f : 1.0f + balance;
 	float32x4_t left_gain_vec = vdupq_n_f32(left_gain);
 	float32x4_t right_gain_vec = vdupq_n_f32(right_gain);
-	int simd_frames = frames & ~3;
 
+	// SIMD path: apply balance to 4 stereo frames per iteration
 	for (int i = 0; i < simd_frames; i += 4) {
 		int16x4x2_t stereo_data = vld2_s16(stereo + i * 2);
 		int32x4_t left_wide = vmovl_s16(stereo_data.val[0]);
@@ -310,6 +365,7 @@ static inline void simd_apply_stereo_balance_s16(short *stereo, int frames, floa
 		vst2_s16(stereo + i * 2, stereo_data);
 	}
 
+	// Scalar path: handle remaining frames
 	for (int i = simd_frames; i < frames; i++) {
 		stereo[i * 2] = (short)(stereo[i * 2] * left_gain);
 		stereo[i * 2 + 1] = (short)(stereo[i * 2 + 1] * right_gain);
@@ -318,16 +374,24 @@ static inline void simd_apply_stereo_balance_s16(short *stereo, int frames, floa
 
 /**
  * Deinterleave stereo → L/R channels using NEON (4 frames/iteration)
+ * Separates interleaved stereo (LRLRLR...) into separate L and R buffers
+ * @param interleaved Interleaved stereo input buffer
+ * @param left Left channel output buffer
+ * @param right Right channel output buffer
+ * @param frames Number of stereo frames to process
  */
 static inline void simd_deinterleave_stereo_s16(const short *interleaved, short *left,
                                                short *right, int frames) {
 	int simd_frames = frames & ~3;
+
+	// SIMD path: deinterleave 4 frames (8 samples) per iteration
 	for (int i = 0; i < simd_frames; i += 4) {
 		int16x4x2_t stereo_data = vld2_s16(interleaved + i * 2);
 		vst1_s16(left + i, stereo_data.val[0]);
 		vst1_s16(right + i, stereo_data.val[1]);
 	}
 
+	// Scalar path: handle remaining frames
 	for (int i = simd_frames; i < frames; i++) {
 		left[i] = interleaved[i * 2];
 		right[i] = interleaved[i * 2 + 1];
@@ -336,23 +400,29 @@ static inline void simd_deinterleave_stereo_s16(const short *interleaved, short 
 
 /**
  * Find max absolute sample value for silence detection using NEON (8 samples/iteration)
- * Used to detect silence (threshold < 50 = ~0.15% max volume)
+ * Used to detect silence (threshold < 50 = ~0.15% max volume) and audio discontinuities
+ * @param samples Audio buffer to analyze
+ * @param count Number of samples to process
+ * @return Maximum absolute sample value in the buffer
  */
 static inline short simd_find_max_abs_s16(const short *samples, int count) {
-	int16x8_t max_vec = vdupq_n_s16(0);
 	int simd_count = count & ~7;
+	int16x8_t max_vec = vdupq_n_s16(0);
 
+	// SIMD path: find max of 8 samples per iteration
 	for (int i = 0; i < simd_count; i += 8) {
 		int16x8_t samples_vec = vld1q_s16(&samples[i]);
 		int16x8_t abs_vec = vabsq_s16(samples_vec);
 		max_vec = vmaxq_s16(max_vec, abs_vec);
 	}
 
+	// Horizontal reduction: extract single max value from vector
 	int16x4_t max_half = vmax_s16(vget_low_s16(max_vec), vget_high_s16(max_vec));
 	int16x4_t max_folded = vpmax_s16(max_half, max_half);
 	max_folded = vpmax_s16(max_folded, max_folded);
 	short max_sample = vget_lane_s16(max_folded, 0);
 
+	// Scalar path: handle remaining samples
 	for (int i = simd_count; i < count; i++) {
 		short abs_sample = samples[i] < 0 ? -samples[i] : samples[i];
 		if (abs_sample > max_sample) {
@@ -580,19 +650,28 @@ int jetkvm_audio_capture_init() {
 
 /**
  * Read HDMI audio, encode to Opus (OUTPUT path hot function)
- * Process: ALSA capture → silence detection → 2.5x gain → Opus encode
- * @return >0 = Opus bytes, 0 = silence/no data, -1 = error
+ * Processing pipeline: ALSA capture → silence detection → discontinuity detection → 2.5x gain → Opus encode
+ * @param opus_buf Output buffer for encoded Opus packet
+ * @return >0 = Opus packet size in bytes, 0 = silence/no data, -1 = error
  */
 __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) {
-	static short SIMD_ALIGN pcm_buffer[1920];
-	static short prev_max_sample = 0;  // Track previous frame's peak for discontinuity detection
-	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
+	// Static buffers persist across calls for better cache locality
+	static short SIMD_ALIGN pcm_buffer[1920];  // 960 frames × 2 channels
+	static short prev_max_sample = 0;          // Previous frame peak for discontinuity detection
 
-	SIMD_PREFETCH(out, 1, 3);
-	SIMD_PREFETCH(pcm_buffer, 0, 3);
+	// Local variables
+	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
+	int pcm_rc;
 	int err = 0;
 	int recovery_attempts = 0;
 	const int max_recovery_attempts = 3;
+	int total_samples;
+	short max_sample;
+	int nb_bytes;
+
+	// Prefetch output buffer for write
+	SIMD_PREFETCH(out, 1, 3);
+	SIMD_PREFETCH(pcm_buffer, 0, 3);
 
 	if (__builtin_expect(!capture_initialized || !pcm_capture_handle || !encoder || !opus_buf, 0)) {
 		if (trace_logging_enabled) {
@@ -603,8 +682,8 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	}
 
 retry_read:
-	;
-	int pcm_rc = snd_pcm_readi(pcm_capture_handle, pcm_buffer, frame_size);
+	// Read 960 frames (20ms) from ALSA capture device
+	pcm_rc = snd_pcm_readi(pcm_capture_handle, pcm_buffer, frame_size);
 
 	if (__builtin_expect(pcm_rc < 0, 0)) {
 		if (pcm_rc == -EPIPE) {
@@ -660,24 +739,26 @@ retry_read:
 		}
 	}
 
+	// Zero-pad if we got a short read
 	if (__builtin_expect(pcm_rc < frame_size, 0)) {
 		int remaining_samples = (frame_size - pcm_rc) * channels;
 		simd_clear_samples_s16(&pcm_buffer[pcm_rc * channels], remaining_samples);
 	}
 
-	// Silence detection: only skip true silence (< 50 = ~0.15% of max volume)
-	int total_samples = frame_size * channels;
-	short max_sample = simd_find_max_abs_s16(pcm_buffer, total_samples);
+	// Silence detection: skip frames below ~0.15% of maximum volume
+	total_samples = frame_size * channels;
+	max_sample = simd_find_max_abs_s16(pcm_buffer, total_samples);
 
 	if (max_sample < 50) {
-		prev_max_sample = 0;  // Reset on silence
+		prev_max_sample = 0;  // Reset discontinuity tracker on silence
 		if (trace_logging_enabled) {
 			printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Silence detected (max=%d), skipping frame\n", max_sample);
 		}
 		return 0;
 	}
 
-	// Detect discontinuity (video seek): abrupt level change >5x
+	// Discontinuity detection: reset encoder on abrupt level changes (video seeks)
+	// Prevents crackling when audio stream jumps due to video seeking
 	if (prev_max_sample > 0) {
 		int level_ratio = (max_sample > prev_max_sample * 5) || (prev_max_sample > max_sample * 5);
 		if (level_ratio) {
@@ -689,11 +770,12 @@ retry_read:
 	}
 	prev_max_sample = max_sample;
 
-	// Apply moderate 2.5x gain to prevent quantization noise on transients
-	// Balances between being audible at low volumes and not overdriving at high volumes
+	// Apply 2.5x gain boost to prevent quantization noise at low volumes
+	// HDMI audio typically transmitted at -6 to -12dB; boost prevents Opus noise floor artifacts
 	simd_scale_volume_s16(pcm_buffer, frame_size * channels, 2.5f);
 
-	int nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
+	// Encode PCM to Opus (20ms frame → ~200 bytes at 96kbps)
+	nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
 
 	if (trace_logging_enabled && nb_bytes > 0) {
 		printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Successfully encoded %d PCM frames to %d Opus bytes\n", pcm_rc, nb_bytes);
@@ -767,17 +849,25 @@ int jetkvm_audio_playback_init() {
 
 /**
  * Decode Opus, write to device speakers (INPUT path hot function)
- * Process: Opus decode → ALSA write with packet loss concealment
+ * Processing pipeline: Opus decode (with FEC) → ALSA playback with error recovery
+ * @param opus_buf Encoded Opus packet from client
+ * @param opus_size Size of Opus packet in bytes
  * @return >0 = PCM frames written, 0 = frame skipped, -1/-2 = error
  */
 __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf, int opus_size) {
-	static short __attribute__((aligned(16))) pcm_buffer[1920];
-	unsigned char * __restrict__ in = (unsigned char*)opus_buf;
+	// Static buffer persists across calls for better cache locality
+	static short SIMD_ALIGN pcm_buffer[1920];  // 960 frames × 2 channels
 
-	SIMD_PREFETCH(in, 0, 3);
+	// Local variables
+	unsigned char * __restrict__ in = (unsigned char*)opus_buf;
+	int pcm_frames;
+	int pcm_rc;
 	int err = 0;
 	int recovery_attempts = 0;
 	const int max_recovery_attempts = 3;
+
+	// Prefetch input buffer for read
+	SIMD_PREFETCH(in, 0, 3);
 
 	if (__builtin_expect(!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0, 0)) {
 		if (trace_logging_enabled) {
@@ -798,13 +888,17 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 		printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Processing Opus packet - size=%d bytes\n", opus_size);
 	}
 
-	// Decode normally (FEC is automatically used if available in the packet)
-	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
+	// Decode Opus packet to PCM (FEC automatically applied if embedded in packet)
+	// decode_fec=0 means normal decode (FEC data is used automatically when present)
+	pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
+
 	if (__builtin_expect(pcm_frames < 0, 0)) {
+		// Decode failed - attempt packet loss concealment using FEC from previous packet
 		if (trace_logging_enabled) {
 			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus decode failed with error %d, attempting packet loss concealment\n", pcm_frames);
 		}
-		// Packet loss concealment: decode using FEC from next packet (if available)
+
+		// decode_fec=1 means use FEC data from the NEXT packet to reconstruct THIS lost packet
 		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 1);
 		if (pcm_frames < 0) {
 			if (trace_logging_enabled) {
@@ -812,6 +906,7 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 			}
 			return -1;
 		}
+
 		if (trace_logging_enabled) {
 			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Packet loss concealment succeeded, recovered %d frames\n", pcm_frames);
 		}
@@ -820,8 +915,8 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 	}
 
 retry_write:
-	;
-	int pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
+	// Write decoded PCM to ALSA playback device
+	pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
 	if (__builtin_expect(pcm_rc < 0, 0)) {
 		if (trace_logging_enabled) {
 			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: ALSA write failed with error %d (%s), attempt %d/%d\n",
