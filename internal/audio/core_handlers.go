@@ -236,19 +236,19 @@ func (s *AudioControlService) GetMicrophoneStatus() map[string]interface{} {
 	}
 }
 
-// SetAudioQuality sets the audio output quality
-func (s *AudioControlService) SetAudioQuality(quality AudioQuality) {
-	SetAudioQuality(quality)
+// SetAudioQuality is deprecated - audio quality is now fixed at optimal settings
+func (s *AudioControlService) SetAudioQuality(quality int) {
+	// No-op: quality is fixed at optimal configuration
 }
 
-// GetAudioQualityPresets returns available audio quality presets
-func (s *AudioControlService) GetAudioQualityPresets() map[AudioQuality]AudioConfig {
-	return GetAudioQualityPresets()
+// GetAudioQualityPresets is deprecated - returns empty map
+func (s *AudioControlService) GetAudioQualityPresets() map[int]AudioConfig {
+	return map[int]AudioConfig{}
 }
 
-// GetMicrophoneQualityPresets returns available microphone quality presets
-func (s *AudioControlService) GetMicrophoneQualityPresets() map[AudioQuality]AudioConfig {
-	return GetMicrophoneQualityPresets()
+// GetMicrophoneQualityPresets is deprecated - returns empty map
+func (s *AudioControlService) GetMicrophoneQualityPresets() map[int]AudioConfig {
+	return map[int]AudioConfig{}
 }
 
 // GetCurrentAudioQuality returns the current audio quality configuration

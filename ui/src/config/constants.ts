@@ -89,17 +89,8 @@ export const AUDIO_CONFIG = {
   SYNC_DEBOUNCE_MS: 1000, // debounce state synchronization
   AUDIO_TEST_TIMEOUT: 100, // ms - timeout for audio testing
   
-  // NOTE: Audio quality presets (bitrates, sample rates, channels, frame sizes)
-  // are now fetched dynamically from the backend API via audioQualityService
-  // to eliminate duplication with backend config_constants.go
-  
-  // Default Quality Labels - will be updated dynamically by audioQualityService
-  DEFAULT_QUALITY_LABELS: {
-    0: "Low",
-    1: "Medium",
-    2: "High",
-    3: "Ultra",
-  } as const,
+  // Audio quality is fixed at optimal settings (96 kbps @ 48kHz stereo)
+  // No quality presets needed - single optimal configuration for all use cases
   
   // Audio Analysis
   ANALYSIS_FFT_SIZE: 256, // for detailed audio analysis

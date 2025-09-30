@@ -59,7 +59,7 @@ func (aom *AudioOutputIPCManager) Start() error {
 	config := UnifiedIPCConfig{
 		SampleRate: Config.SampleRate,
 		Channels:   Config.Channels,
-		FrameSize:  int(Config.AudioQualityMediumFrameSize.Milliseconds()),
+		FrameSize:  20, // Fixed 20ms frame size for optimal audio
 	}
 
 	if err := aom.SendConfig(config); err != nil {
