@@ -571,6 +571,10 @@ int jetkvm_audio_capture_init() {
 	opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
 	opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(opus_lsb_depth));
 
+	// Enable in-band FEC for packet loss resilience (adds ~2-5% bitrate)
+	opus_encoder_ctl(encoder, OPUS_SET_INBAND_FEC(1));
+	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(10));
+
 	capture_initialized = 1;
 	capture_initializing = 0;
 	return 0;
@@ -578,7 +582,7 @@ int jetkvm_audio_capture_init() {
 
 /**
  * Read HDMI audio, encode to Opus (OUTPUT path hot function)
- * Process: ALSA capture → silence detection → 5x gain → Opus encode
+ * Process: ALSA capture → silence detection → 2.5x gain → Opus encode
  * @return >0 = Opus bytes, 0 = silence/no data, -1 = error
  */
 __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) {
@@ -782,12 +786,14 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 		printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Processing Opus packet - size=%d bytes\n", opus_size);
 	}
 
+	// Decode normally (FEC is automatically used if available in the packet)
 	int pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
 	if (__builtin_expect(pcm_frames < 0, 0)) {
 		if (trace_logging_enabled) {
 			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus decode failed with error %d, attempting packet loss concealment\n", pcm_frames);
 		}
-		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 0);
+		// Packet loss concealment: decode using FEC from next packet (if available)
+		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 1);
 		if (pcm_frames < 0) {
 			if (trace_logging_enabled) {
 				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Packet loss concealment also failed with error %d\n", pcm_frames);
