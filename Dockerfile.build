@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+FROM --platform=${BUILDPLATFORM} golang:1.25.1-trixie AS builder
+
+ENV GOTOOLCHAIN=local
+ENV GOPATH=/go
+ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
+
+COPY install-deps.sh /install-deps.sh
+RUN /install-deps.sh
+
+# Create build directory
+RUN mkdir -p /build/
+
+# Copy go.mod and go.sum
+COPY go.mod go.sum /build/
+
+WORKDIR /build
+
+RUN go mod download && go mod verify
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT [ "/entrypoint.sh" ]
