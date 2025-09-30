@@ -166,25 +166,23 @@ static inline void simd_interleave_stereo_s16(const short *left, const short *ri
 
 /**
  * Apply gain using NEON Q15 fixed-point math (8 samples/iteration)
+ * Uses vqrdmulhq_s16: single-instruction saturating rounded multiply-high
  */
 static inline void simd_scale_volume_s16(short *samples, int count, float volume) {
     simd_init_once();
-    int16_t vol_fixed = (int16_t)(volume * 32767.0f);
+    // For vqrdmulhq_s16, multiply volume by 2 since it extracts bits [30:15] not [31:16]
+    int16_t vol_fixed = (int16_t)(volume * 16384.0f);
     int16x8_t vol_vec = vdupq_n_s16(vol_fixed);
     int simd_count = count & ~7;
 
     for (int i = 0; i < simd_count; i += 8) {
         int16x8_t samples_vec = vld1q_s16(&samples[i]);
-        int32x4_t low_result = vmull_s16(vget_low_s16(samples_vec), vget_low_s16(vol_vec));
-        int32x4_t high_result = vmull_s16(vget_high_s16(samples_vec), vget_high_s16(vol_vec));
-        int16x4_t low_narrow = vshrn_n_s32(low_result, 15);
-        int16x4_t high_narrow = vshrn_n_s32(high_result, 15);
-        int16x8_t result = vcombine_s16(low_narrow, high_narrow);
+        int16x8_t result = vqrdmulhq_s16(samples_vec, vol_vec);
         vst1q_s16(&samples[i], result);
     }
 
     for (int i = simd_count; i < count; i++) {
-        samples[i] = (short)((samples[i] * vol_fixed) >> 15);
+        samples[i] = (short)((samples[i] * vol_fixed) >> 14);
     }
 }
 
