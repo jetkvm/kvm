@@ -33,6 +33,8 @@ func Main() {
 	go runWatchdog()
 	go confirmCurrentSystem()
 
+	initNative(systemVersionLocal, appVersionLocal)
+
 	http.DefaultClient.Timeout = 1 * time.Minute
 
 	err = rootcerts.UpdateDefaultTransport()
@@ -59,21 +61,7 @@ func Main() {
 		os.Exit(1)
 	}
 
-	// Initialize native ctrl socket server
-	StartNativeCtrlSocketServer()
-
-	// Initialize native video socket server
-	StartNativeVideoSocketServer()
-
 	initPrometheus()
-
-	go func() {
-		err = ExtractAndRunNativeBin()
-		if err != nil {
-			logger.Warn().Err(err).Msg("failed to extract and run native bin")
-			//TODO: prepare an error message screen buffer to show on kvm screen
-		}
-	}()
 
 	// initialize usb gadget
 	initUsbGadget()

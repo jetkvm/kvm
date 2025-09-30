@@ -99,7 +99,6 @@ func NewNetworkInterfaceState(opts *NetworkInterfaceOptions) (*NetworkInterfaceS
 	})
 
 	s.dhcpClient = dhcpClient
-
 	return s, nil
 }
 
@@ -339,9 +338,9 @@ func (s *NetworkInterfaceState) update() (DhcpTargetState, error) {
 	}
 
 	if initialCheck {
-		s.onInitialCheck(s)
+		s.handleInitialCheck()
 	} else if changed {
-		s.onStateChange(s)
+		s.handleStateChange()
 	}
 
 	return dhcpTargetState, nil
@@ -364,6 +363,16 @@ func (s *NetworkInterfaceState) updateNtpServersFromLease(lease *udhcpc.Lease) e
 	}
 
 	return nil
+}
+
+func (s *NetworkInterfaceState) handleInitialCheck() {
+	// if s.IsUp() {}
+	s.onInitialCheck(s)
+}
+
+func (s *NetworkInterfaceState) handleStateChange() {
+	// if s.IsUp() {} else {}
+	s.onStateChange(s)
 }
 
 func (s *NetworkInterfaceState) CheckAndUpdateDhcp() error {

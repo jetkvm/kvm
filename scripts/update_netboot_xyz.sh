@@ -3,18 +3,8 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-C_RST="$(tput sgr0)"
-C_ERR="$(tput setaf 1)"
-C_OK="$(tput setaf 2)"
-C_WARN="$(tput setaf 3)"
-C_INFO="$(tput setaf 5)"
-
-msg() { printf '%s%s%s\n' $2 "$1" $C_RST; }
-
-msg_info() { msg "$1" $C_INFO; }
-msg_ok() { msg "$1" $C_OK; }
-msg_err() { msg "$1" $C_ERR; }
-msg_warn() { msg "$1" $C_WARN; }
+SCRIPT_PATH=$(realpath "$(dirname $(realpath "${BASH_SOURCE[0]}"))")
+source ${SCRIPT_PATH}/build_utils.sh
 
 # Get the latest release information
 msg_info "Getting latest release information ..."

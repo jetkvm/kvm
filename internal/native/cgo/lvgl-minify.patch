@@ -1,0 +1,289 @@
+diff --git a/env_support/cmake/os_desktop.cmake b/env_support/cmake/os_desktop.cmake
+index 5c6b05ed8..a18044d64 100644
+--- a/env_support/cmake/os_desktop.cmake
++++ b/env_support/cmake/os_desktop.cmake
+@@ -60,8 +60,6 @@ get_directory_property(HAS_PARENT_SCOPE PARENT_DIRECTORY)
+ # Set sources used for LVGL components
+ file(GLOB_RECURSE SOURCES ${LVGL_ROOT_DIR}/src/*.c
+                           ${LVGL_ROOT_DIR}/src/*.S)
+-file(GLOB_RECURSE EXAMPLE_SOURCES ${LVGL_ROOT_DIR}/examples/*.c)
+-file(GLOB_RECURSE DEMO_SOURCES ${LVGL_ROOT_DIR}/demos/*.c)
+ file(GLOB_RECURSE THORVG_SOURCES ${LVGL_ROOT_DIR}/src/libs/thorvg/*.cpp
+                                  ${LVGL_ROOT_DIR}/src/others/vg_lite_tvg/*.cpp)
+ 
+@@ -229,51 +227,6 @@ if(NOT (CMAKE_C_COMPILER_ID STREQUAL "MSVC"))
+         PROPERTIES COMPILE_FLAGS -Wunused-parameter)
+ endif()
+ 
+-# Build LVGL example library
+-if(CONFIG_LV_BUILD_EXAMPLES)
+-
+-    message(STATUS "Enabling the building of examples")
+-
+-    add_library(lvgl_examples ${EXAMPLE_SOURCES})
+-    add_library(lvgl::examples ALIAS lvgl_examples)
+-    target_include_directories(lvgl_examples SYSTEM PUBLIC ${LVGL_ROOT_DIR}/examples)
+-    set_target_properties(lvgl_examples PROPERTIES COMPILE_DEFINITIONS "${COMP_DEF}")
+-
+-    # This tells cmake to link lvgl with lvgl_examples
+-    # PUBLIC allows code linking with LVGL to also use the library
+-    # The linker will resolve all dependencies when dynamic linking 
+-    target_link_libraries(lvgl PUBLIC lvgl_examples)
+-
+-    # During static linking, we need to create a cyclic dependency as the examples also needs lvgl
+-    if (NOT BUILD_SHARED_LIBS)
+-        target_link_libraries(lvgl_examples PRIVATE lvgl)
+-    endif()
+-
+-endif()
+-
+-# Build LVGL demos library
+-if(CONFIG_LV_BUILD_DEMOS)
+-
+-    message(STATUS "Enabling the building of demos")
+-
+-    add_library(lvgl_demos ${DEMO_SOURCES})
+-    add_library(lvgl::demos ALIAS lvgl_demos)
+-    target_include_directories(lvgl_demos SYSTEM PUBLIC ${LVGL_ROOT_DIR}/demos)
+-    set_target_properties(lvgl_demos PROPERTIES COMPILE_DEFINITIONS "${COMP_DEF}")
+-
+-    # This tells cmake to link lvgl with lvgl_examples
+-    # PUBLIC allows code linking with LVGL to also use the library
+-    # The linker will resolve all dependencies when dynamic linking 
+-    target_link_libraries(lvgl PUBLIC lvgl_demos)
+-
+-    # During static linking, we need to create a cyclic dependency as the demos also needs lvgl
+-    if (NOT BUILD_SHARED_LIBS)
+-        # If static linking - demos depends on fonts defined in lvgl
+-        # During dynamic linking, the linker is able to resolve everything
+-        target_link_libraries(lvgl_demos PRIVATE lvgl)
+-    endif()
+-
+-endif()
+ 
+ ############################## INSTALLATION ######################################
+ 
+@@ -373,58 +326,6 @@ if(CONFIG_LV_USE_THORVG_INTERNAL)
+ 
+ endif()
+ 
+-if(CONFIG_LV_BUILD_DEMOS)
+-
+-    install(
+-        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/demos"
+-        DESTINATION "${INC_INSTALL_DIR}"
+-        FILES_MATCHING
+-        PATTERN "*.h")
+-
+-    set_target_properties(
+-        lvgl_demos
+-        PROPERTIES OUTPUT_NAME lvgl_demos
+-        VERSION ${LVGL_VERSION}
+-        SOVERSION ${LVGL_SOVERSION}
+-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
+-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
+-        PUBLIC_HEADER "${LVGL_PUBLIC_HEADERS}")
+-
+-    install(
+-        TARGETS lvgl_demos
+-        ARCHIVE DESTINATION "${LIB_INSTALL_DIR}"
+-        LIBRARY DESTINATION "${LIB_INSTALL_DIR}"
+-        RUNTIME DESTINATION "${RUNTIME_INSTALL_DIR}"
+-        PUBLIC_HEADER DESTINATION "${INC_INSTALL_DIR}")
+-
+-endif()
+-
+-if(CONFIG_LV_BUILD_EXAMPLES)
+-
+-    install(
+-        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/examples"
+-        DESTINATION "${INC_INSTALL_DIR}"
+-        FILES_MATCHING
+-        PATTERN "*.h")
+-
+-    set_target_properties(
+-        lvgl_examples
+-        PROPERTIES OUTPUT_NAME lvgl_examples
+-        VERSION ${LVGL_VERSION}
+-        SOVERSION ${LVGL_SOVERSION}
+-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
+-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
+-        PUBLIC_HEADER "${LVGL_PUBLIC_HEADERS}")
+-
+-    install(
+-        TARGETS lvgl_examples
+-        ARCHIVE DESTINATION "${LIB_INSTALL_DIR}"
+-        LIBRARY DESTINATION "${LIB_INSTALL_DIR}"
+-        RUNTIME DESTINATION "${RUNTIME_INSTALL_DIR}"
+-        PUBLIC_HEADER DESTINATION "${INC_INSTALL_DIR}")
+-
+-endif()
+-
+ ############################## SET GLOBAL VARIABLES ######################################
+ 
+ if (HAS_PARENT_SCOPE)
+diff --git a/src/drivers/lv_drivers.h b/src/drivers/lv_drivers.h
+index 085010813..6e93deab1 100644
+--- a/src/drivers/lv_drivers.h
++++ b/src/drivers/lv_drivers.h
+@@ -31,33 +31,12 @@ extern "C" {
+ #include "display/st7789/lv_st7789.h"
+ #include "display/st7796/lv_st7796.h"
+ 
+-#include "display/renesas_glcdc/lv_renesas_glcdc.h"
+ #include "display/st_ltdc/lv_st_ltdc.h"
+ #include "display/ft81x/lv_ft81x.h"
+ 
+-#include "nuttx/lv_nuttx_entry.h"
+-#include "nuttx/lv_nuttx_fbdev.h"
+-#include "nuttx/lv_nuttx_touchscreen.h"
+-#include "nuttx/lv_nuttx_lcd.h"
+-#include "nuttx/lv_nuttx_libuv.h"
+-
+ #include "evdev/lv_evdev.h"
+ #include "libinput/lv_libinput.h"
+ 
+-#include "windows/lv_windows_input.h"
+-#include "windows/lv_windows_display.h"
+-
+-#include "glfw/lv_glfw_window.h"
+-#include "glfw/lv_opengles_texture.h"
+-#include "glfw/lv_opengles_driver.h"
+-
+-#include "qnx/lv_qnx.h"
+-
+-#include "wayland/lv_wayland.h"
+-
+-#include "uefi/lv_uefi_context.h"
+-#include "uefi/lv_uefi_indev.h"
+-#include "uefi/lv_uefi_display.h"
+ 
+ /*********************
+  *      DEFINES
+diff --git a/src/font/lv_font.h b/src/font/lv_font.h
+index 180891832..b66c30eaa 100644
+--- a/src/font/lv_font.h
++++ b/src/font/lv_font.h
+@@ -230,122 +230,10 @@ bool lv_font_has_static_bitmap(const lv_font_t * font);
+ 
+ #define LV_FONT_DECLARE(font_name) LV_ATTRIBUTE_EXTERN_DATA extern const lv_font_t font_name;
+ 
+-#if LV_FONT_MONTSERRAT_8
+-LV_FONT_DECLARE(lv_font_montserrat_8)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_10
+-LV_FONT_DECLARE(lv_font_montserrat_10)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_12
+-LV_FONT_DECLARE(lv_font_montserrat_12)
+-#endif
+-
+ #if LV_FONT_MONTSERRAT_14
+ LV_FONT_DECLARE(lv_font_montserrat_14)
+ #endif
+ 
+-#if LV_FONT_MONTSERRAT_16
+-LV_FONT_DECLARE(lv_font_montserrat_16)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_18
+-LV_FONT_DECLARE(lv_font_montserrat_18)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_20
+-LV_FONT_DECLARE(lv_font_montserrat_20)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_22
+-LV_FONT_DECLARE(lv_font_montserrat_22)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_24
+-LV_FONT_DECLARE(lv_font_montserrat_24)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_26
+-LV_FONT_DECLARE(lv_font_montserrat_26)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_28
+-LV_FONT_DECLARE(lv_font_montserrat_28)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_30
+-LV_FONT_DECLARE(lv_font_montserrat_30)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_32
+-LV_FONT_DECLARE(lv_font_montserrat_32)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_34
+-LV_FONT_DECLARE(lv_font_montserrat_34)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_36
+-LV_FONT_DECLARE(lv_font_montserrat_36)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_38
+-LV_FONT_DECLARE(lv_font_montserrat_38)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_40
+-LV_FONT_DECLARE(lv_font_montserrat_40)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_42
+-LV_FONT_DECLARE(lv_font_montserrat_42)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_44
+-LV_FONT_DECLARE(lv_font_montserrat_44)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_46
+-LV_FONT_DECLARE(lv_font_montserrat_46)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_48
+-LV_FONT_DECLARE(lv_font_montserrat_48)
+-#endif
+-
+-#if LV_FONT_MONTSERRAT_28_COMPRESSED
+-LV_FONT_DECLARE(lv_font_montserrat_28_compressed)
+-#endif
+-
+-#if LV_FONT_DEJAVU_16_PERSIAN_HEBREW
+-LV_FONT_DECLARE(lv_font_dejavu_16_persian_hebrew)
+-#endif
+-
+-#if LV_FONT_SIMSUN_14_CJK
+-LV_FONT_DECLARE(lv_font_simsun_14_cjk)
+-#endif
+-
+-#if LV_FONT_SIMSUN_16_CJK
+-LV_FONT_DECLARE(lv_font_simsun_16_cjk)
+-#endif
+-
+-#if LV_FONT_SOURCE_HAN_SANS_SC_14_CJK
+-LV_FONT_DECLARE(lv_font_source_han_sans_sc_14_cjk)
+-#endif
+-
+-#if LV_FONT_SOURCE_HAN_SANS_SC_16_CJK
+-LV_FONT_DECLARE(lv_font_source_han_sans_sc_16_cjk)
+-#endif
+-
+-#if LV_FONT_UNSCII_8
+-LV_FONT_DECLARE(lv_font_unscii_8)
+-#endif
+-
+-#if LV_FONT_UNSCII_16
+-LV_FONT_DECLARE(lv_font_unscii_16)
+-#endif
+-
+ /*Declare the custom (user defined) fonts*/
+ #ifdef LV_FONT_CUSTOM_DECLARE
+ LV_FONT_CUSTOM_DECLARE

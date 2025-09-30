@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"sync"
 
 	"github.com/jetkvm/kvm/internal/logging"
@@ -103,6 +104,25 @@ type Config struct {
 	UsbDevices           *usbgadget.Devices     `json:"usb_devices"`
 	NetworkConfig        *network.NetworkConfig `json:"network_config"`
 	DefaultLogLevel      string                 `json:"default_log_level"`
+}
+
+func (c *Config) GetDisplayRotation() uint16 {
+	rotationInt, err := strconv.ParseUint(c.DisplayRotation, 10, 16)
+	if err != nil {
+		logger.Warn().Err(err).Msg("invalid display rotation, using default")
+		return 270
+	}
+	return uint16(rotationInt)
+}
+
+func (c *Config) SetDisplayRotation(rotation string) error {
+	_, err := strconv.ParseUint(rotation, 10, 16)
+	if err != nil {
+		logger.Warn().Err(err).Msg("invalid display rotation, using default")
+		return err
+	}
+	c.DisplayRotation = rotation
+	return nil
 }
 
 const configPath = "/userdata/kvm_config.json"
