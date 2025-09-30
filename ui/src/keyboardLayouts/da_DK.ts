@@ -115,7 +115,7 @@ export const chars = {
   x: { key: "KeyX" },
   y: { key: "KeyY" },   // <-- corrected
   z: { key: "KeyZ" },   // <-- corrected
-  "|": { key: "Backquote" }, 
+  "½":: { key: "Backquote" }, 
   "§": { key: "Backquote", shift: true },
   1: { key: "Digit1" },
   "!": { key: "Digit1", shift: true },
