@@ -287,7 +287,7 @@ func DefaultAudioConfig() *AudioConfigConstants {
 		CGOOpusBitrate:       96000, // 96 kbps optimal for stereo @ 48kHz
 		CGOOpusComplexity:    1,     // Complexity 1: minimal CPU (~0.5% on RV1106)
 		CGOOpusVBR:           1,     // VBR enabled for efficiency
-		CGOOpusVBRConstraint: 1,     // Constrained VBR for predictable bitrate
+		CGOOpusVBRConstraint: 0,     // Unconstrained VBR: allows bitrate spikes for transients (beeps/sharp sounds)
 		CGOOpusSignalType:    3002,  // OPUS_SIGNAL_MUSIC (better for HDMI audio)
 		CGOOpusBandwidth:     1103,  // OPUS_BANDWIDTH_WIDEBAND (native 48kHz, no resampling)
 		CGOOpusDTX:           0,     // DTX disabled for continuous audio

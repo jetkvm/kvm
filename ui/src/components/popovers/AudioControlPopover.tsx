@@ -8,7 +8,6 @@ import { useAudioEvents } from "@/hooks/useAudioEvents";
 import { useJsonRpc, JsonRpcResponse } from "@/hooks/useJsonRpc";
 import { useRTCStore } from "@/hooks/stores";
 import notifications from "@/notifications";
-import audioQualityService from "@/services/audioQualityService";
 
 // Type for microphone error
 interface MicrophoneError {
@@ -69,11 +68,7 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
   const { send } = useJsonRpc();
   
   // Initialize audio quality service with RPC for cloud compatibility
-  useEffect(() => {
-    if (send) {
-      audioQualityService.setRpcSend(send);
-    }
-  }, [send]);
+  // Audio quality service removed - using fixed optimal configuration
   
   // WebSocket-only implementation - no fallback polling
   
@@ -131,12 +126,24 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
 
   const loadAudioConfigurations = async () => {
     try {
-      // Use centralized audio quality service
-      const { audio } = await audioQualityService.loadAllConfigurations();
+      // Load audio configuration directly via RPC
+      if (!send) return;
 
-      if (audio) {
-        setCurrentConfig(audio.current);
-      }
+      await new Promise<void>((resolve, reject) => {
+        send("audioStatus", {}, (resp: JsonRpcResponse) => {
+          if ("error" in resp) {
+            reject(new Error(resp.error.message));
+          } else if ("result" in resp && resp.result) {
+            const result = resp.result as any;
+            if (result.config) {
+              setCurrentConfig(result.config);
+            }
+            resolve();
+          } else {
+            resolve();
+          }
+        });
+      });
       
       setConfigsLoaded(true);
     } catch {
@@ -437,9 +444,6 @@ export default function AudioControlPopover({ microphone }: AudioControlPopoverP
             </div>
           </div>
         )}
-
-
-
       </div>
     </div>
   );
