@@ -16,6 +16,7 @@ show_help() {
     echo "      --run-go-tests-only    Run go tests and exit"
     echo "      --skip-ui-build        Skip frontend/UI build"
     echo "      --skip-native-build    Skip native build"
+    echo "      --skip-audio-binaries  Skip audio binaries build if they exist"
     echo "      --disable-docker       Disable docker build (auto-detected if Docker unavailable)"
     echo "  -i, --install              Build for release and install the app"
     echo "      --help                 Display this help message"
@@ -32,6 +33,7 @@ REMOTE_PATH="/userdata/jetkvm/bin"
 SKIP_UI_BUILD=false
 SKIP_UI_BUILD_RELEASE=0
 SKIP_NATIVE_BUILD=0
+SKIP_AUDIO_BINARIES=0
 RESET_USB_HID_DEVICE=false
 LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc,audio}"
 RUN_GO_TESTS=false
@@ -58,6 +60,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-native-build)
             SKIP_NATIVE_BUILD=1
+            shift
+            ;;
+        --skip-audio-binaries)
+            SKIP_AUDIO_BINARIES=1
             shift
             ;;
         --reset-usb-hid)
@@ -148,9 +154,12 @@ if [[ "$SKIP_UI_BUILD" = true && ! -f "static/index.html" ]]; then
     SKIP_UI_BUILD=false
 fi
 
-if [[ "$SKIP_UI_BUILD" = false && "$JETKVM_INSIDE_DOCKER" != 1 ]]; then 
+if [[ "$SKIP_UI_BUILD" = false && "$JETKVM_INSIDE_DOCKER" != 1 ]]; then
     msg_info "▶ Building frontend"
     make frontend SKIP_UI_BUILD=0
+    SKIP_UI_BUILD_RELEASE=1
+elif [[ "$SKIP_UI_BUILD" = true ]]; then
+    # User explicitly requested to skip UI build and static files exist
     SKIP_UI_BUILD_RELEASE=1
 fi
 
@@ -204,16 +213,16 @@ fi
 if [ "$INSTALL_APP" = true ]
 then
 	msg_info "▶ Building release binary"
-	do_make build_release SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE}
-	
+	do_make build_release SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} SKIP_AUDIO_BINARIES_IF_EXISTS=${SKIP_AUDIO_BINARIES}
+
 	# Copy the binary to the remote host as if we were the OTA updater.
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
-	
+
 	# Reboot the device, the new app will be deployed by the startup process.
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "reboot"
 else
 	msg_info "▶ Building development binary"
-	do_make build_dev SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE}
+	do_make build_dev SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} SKIP_AUDIO_BINARIES_IF_EXISTS=${SKIP_AUDIO_BINARIES}
 	
 	# Kill any existing instances of the application
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
