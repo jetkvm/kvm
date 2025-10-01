@@ -69,6 +69,9 @@ export interface UIState {
 
   terminalType: AvailableTerminalTypes;
   setTerminalType: (type: UIState["terminalType"]) => void;
+
+  terminalLineMode: boolean;
+  setTerminalLineMode: (enabled: boolean) => void;
 }
 
 export const useUiStore = create<UIState>(set => ({
@@ -96,6 +99,9 @@ export const useUiStore = create<UIState>(set => ({
   isAttachedVirtualKeyboardVisible: true,
   setAttachedVirtualKeyboardVisibility: (enabled: boolean) =>
     set({ isAttachedVirtualKeyboardVisible: enabled }),
+
+  terminalLineMode: true,
+  setTerminalLineMode: (enabled: boolean) => set({ terminalLineMode: enabled }),
 }));
 
 export interface RTCState {
@@ -465,7 +471,7 @@ export interface KeysDownState {
 	keys: number[];
 }
 
-export type USBStates = 
+export type USBStates =
   | "configured"
   | "attached"
   | "not attached"

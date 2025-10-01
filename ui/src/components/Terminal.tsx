@@ -1,6 +1,6 @@
 import "react-simple-keyboard/build/css/index.css";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import { useXTerm } from "react-xtermjs";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -10,8 +10,10 @@ import { ClipboardAddon } from "@xterm/addon-clipboard";
 
 import { cx } from "@/cva.config";
 import { AvailableTerminalTypes, useUiStore } from "@/hooks/stores";
+import { CommandInput } from "@/components/CommandInput";
 
 import { Button } from "./Button";
+
 
 const isWebGl2Supported = !!document.createElement("canvas").getContext("webgl2");
 
@@ -65,12 +67,19 @@ function Terminal({
   readonly dataChannel: RTCDataChannel;
   readonly type: AvailableTerminalTypes;
 }) {
-  const { terminalType, setTerminalType, setDisableVideoFocusTrap } = useUiStore();
+  const { terminalLineMode, terminalType, setTerminalType, setDisableVideoFocusTrap } = useUiStore();
   const { instance, ref } = useXTerm({ options: TERMINAL_CONFIG });
 
   const isTerminalTypeEnabled = useMemo(() => {
+    console.log("Terminal type:", terminalType, "Checking against:", type);
     return terminalType == type;
   }, [terminalType, type]);
+
+  useEffect(() => {
+    if (!instance) return;
+    instance.options.disableStdin = !terminalLineMode;
+    instance.options.cursorStyle = terminalLineMode ? "bar" : "block";
+  }, [instance, terminalLineMode]);
 
   useEffect(() => {
     setTimeout(() => {
@@ -161,6 +170,11 @@ function Terminal({
     };
   }, [instance]);
 
+  const sendLine = useCallback((line: string) => {
+    // Just send; echo/normalization handled elsewhere as you planned
+    dataChannel.send(line + "\r\n"); // adjust CR/LF to taste
+  }, [dataChannel]);
+
   return (
     <div
       onKeyDown={e => e.stopPropagation()}
@@ -199,7 +213,14 @@ function Terminal({
             </div>
 
             <div className="h-[calc(100%-36px)] p-3">
-              <div ref={ref} style={{ height: "100%", width: "100%" }} />
+              <div key="serial" ref={ref} style={{height: (terminalType === "serial" && terminalLineMode) ? "90%" : "100%", width: "100%" }} />
+              {terminalType == "serial" && terminalLineMode && (
+                <CommandInput
+                  placeholder="Type serial command…  (Enter to send • ↑/↓ history • Ctrl+R search)"
+                  onSend={sendLine}
+                  className="mt-2"
+                />
+              )}
             </div>
           </div>
         </div>

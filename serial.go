@@ -3,7 +3,10 @@ package kvm
 import (
 	"bufio"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -272,7 +275,7 @@ func startSerialButtonsRxLoop(session *Session) {
 	scopedLogger.Debug().Msg("Attempting to start RX reader.")
 	// Stop previous loop if running
 	if serialButtonsRXStopCh != nil {
-		close(serialButtonsRXStopCh)
+		stopSerialButtonsRxLoop()
 	}
 	serialButtonsRXStopCh = make(chan struct{})
 
@@ -285,6 +288,10 @@ func startSerialButtonsRxLoop(session *Session) {
 			case <-serialButtonsRXStopCh:
 				return
 			default:
+				if currentSession == nil {
+					time.Sleep(500 * time.Millisecond)
+					continue
+				}
 				n, err := port.Read(buf)
 				if err != nil {
 					if err != io.EOF {
@@ -293,7 +300,7 @@ func startSerialButtonsRxLoop(session *Session) {
 					time.Sleep(50 * time.Millisecond)
 					continue
 				}
-				if n == 0 || currentSession == nil {
+				if n == 0 {
 					continue
 				}
 				// Safe for any bytes: wrap in Base64
@@ -307,23 +314,25 @@ func startSerialButtonsRxLoop(session *Session) {
 }
 
 func stopSerialButtonsRxLoop() {
+	scopedLogger := serialLogger.With().Str("service", "custom_buttons_rx").Logger()
+	scopedLogger.Debug().Msg("Stopping RX reader.")
 	if serialButtonsRXStopCh != nil {
 		close(serialButtonsRXStopCh)
 		serialButtonsRXStopCh = nil
 	}
 }
 
-func sendCustomCommand(command string) error {
+func sendCustomCommand(command string, terminator string) error {
 	scopedLogger := serialLogger.With().Str("service", "custom_buttons_tx").Logger()
 	scopedLogger.Info().Str("Command", command).Msg("Sending custom command.")
-	_, err := port.Write([]byte("\n"))
+	_, err := port.Write([]byte(terminator))
 	if err != nil {
-		scopedLogger.Warn().Err(err).Msg("Failed to send serial output \\n")
+		scopedLogger.Warn().Err(err).Msg("Failed to send terminator")
 		return err
 	}
 	_, err = port.Write([]byte(command))
 	if err != nil {
-		scopedLogger.Warn().Err(err).Str("line", command).Msg("Failed to send serial output")
+		scopedLogger.Warn().Err(err).Str("Command", command).Msg("Failed to send serial command")
 		return err
 	}
 	return nil
@@ -334,6 +343,149 @@ var defaultMode = &serial.Mode{
 	DataBits: 8,
 	Parity:   serial.NoParity,
 	StopBits: serial.OneStopBit,
+}
+
+const serialSettingsPath = "/userdata/serialSettings.json"
+
+type Terminator struct {
+	Label string `json:"label"` // Terminator label
+	Value string `json:"value"` // Terminator value
+}
+
+type QuickButton struct {
+	Id         string     `json:"id"`         // Unique identifier
+	Label      string     `json:"label"`      // Button label
+	Command    string     `json:"command"`    // Command to send, raw command to send (without auto-terminator)
+	Terminator Terminator `json:"terminator"` // Terminator to use: None/CR/LF/CRLF/LFCR
+	Sort       int        `json:"sort"`       // Sort order
+}
+
+// Mode describes a serial port configuration.
+type CustomButtonSettings struct {
+	BaudRate           string        `json:"baudRate"`           // The serial port bitrate (aka Baudrate)
+	DataBits           string        `json:"dataBits"`           // Size of the character (must be 5, 6, 7 or 8)
+	Parity             string        `json:"parity"`             // Parity (see Parity type for more info)
+	StopBits           string        `json:"stopBits"`           // Stop bits (see StopBits type for more info)
+	Terminator         Terminator    `json:"terminator"`         // Terminator to send after each command
+	LineMode           bool          `json:"lineMode"`           // Whether to send each line when Enter is pressed, or each character immediately
+	HideSerialSettings bool          `json:"hideSerialSettings"` // Whether to hide the serial settings in the UI
+	EnableEcho         bool          `json:"enableEcho"`         // Whether to echo received characters back to the sender
+	Buttons            []QuickButton `json:"buttons"`            // Custom quick buttons
+}
+
+func getSerialSettings() (CustomButtonSettings, error) {
+	config := CustomButtonSettings{
+		BaudRate:           strconv.Itoa(defaultMode.BaudRate),
+		DataBits:           strconv.Itoa(defaultMode.DataBits),
+		Parity:             "none",
+		StopBits:           "1",
+		Terminator:         Terminator{Label: "CR (\\r)", Value: "\r"},
+		LineMode:           true,
+		HideSerialSettings: false,
+		EnableEcho:         false,
+		Buttons:            []QuickButton{},
+	}
+
+	switch defaultMode.StopBits {
+	case serial.OneStopBit:
+		config.StopBits = "1"
+	case serial.OnePointFiveStopBits:
+		config.StopBits = "1.5"
+	case serial.TwoStopBits:
+		config.StopBits = "2"
+	}
+
+	switch defaultMode.Parity {
+	case serial.NoParity:
+		config.Parity = "none"
+	case serial.OddParity:
+		config.Parity = "odd"
+	case serial.EvenParity:
+		config.Parity = "even"
+	case serial.MarkParity:
+		config.Parity = "mark"
+	case serial.SpaceParity:
+		config.Parity = "space"
+	}
+
+	file, err := os.Open(serialSettingsPath)
+	if err != nil {
+		logger.Debug().Msg("SerialButtons config file doesn't exist, using default")
+		return config, err
+	}
+	defer file.Close()
+
+	// load and merge the default config with the user config
+	var loadedConfig CustomButtonSettings
+	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
+		logger.Warn().Err(err).Msg("SerialButtons config file JSON parsing failed")
+		return config, nil
+	}
+
+	return loadedConfig, nil
+}
+
+func setSerialSettings(newSettings CustomButtonSettings) error {
+	logger.Trace().Str("path", serialSettingsPath).Msg("Saving config")
+
+	file, err := os.Create(serialSettingsPath)
+	if err != nil {
+		return fmt.Errorf("failed to create SerialButtons config file: %w", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(newSettings); err != nil {
+		return fmt.Errorf("failed to encode SerialButtons config: %w", err)
+	}
+
+	baudRate, err := strconv.Atoi(newSettings.BaudRate)
+	if err != nil {
+		return fmt.Errorf("invalid baud rate: %v", err)
+	}
+	dataBits, err := strconv.Atoi(newSettings.DataBits)
+	if err != nil {
+		return fmt.Errorf("invalid data bits: %v", err)
+	}
+
+	var stopBits serial.StopBits
+	switch newSettings.StopBits {
+	case "1":
+		stopBits = serial.OneStopBit
+	case "1.5":
+		stopBits = serial.OnePointFiveStopBits
+	case "2":
+		stopBits = serial.TwoStopBits
+	default:
+		return fmt.Errorf("invalid stop bits: %s", newSettings.StopBits)
+	}
+
+	var parity serial.Parity
+	switch newSettings.Parity {
+	case "none":
+		parity = serial.NoParity
+	case "odd":
+		parity = serial.OddParity
+	case "even":
+		parity = serial.EvenParity
+	case "mark":
+		parity = serial.MarkParity
+	case "space":
+		parity = serial.SpaceParity
+	default:
+		return fmt.Errorf("invalid parity: %s", newSettings.Parity)
+	}
+	serialPortMode = &serial.Mode{
+		BaudRate: baudRate,
+		DataBits: dataBits,
+		StopBits: stopBits,
+		Parity:   parity,
+	}
+
+	_ = port.SetMode(serialPortMode)
+
+	return nil
 }
 
 func initSerialPort() {

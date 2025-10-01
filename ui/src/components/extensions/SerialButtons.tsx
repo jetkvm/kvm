@@ -1,5 +1,5 @@
-import { LuPlus, LuTrash2, LuPencil, LuSettings2, LuEye, LuEyeOff, LuSave, LuArrowBigUp, LuArrowBigDown, LuCirclePause, LuCirclePlay } from "react-icons/lu";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { LuPlus, LuTrash2, LuPencil, LuSettings2, LuEye, LuEyeOff, LuSave, LuArrowBigUp, LuArrowBigDown, LuCircleX, LuTerminal } from "react-icons/lu";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@components/Button";
 import Card from "@components/Card";
@@ -8,38 +8,43 @@ import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { InputFieldWithLabel } from "@components/InputField";
-import { TextAreaWithLabel } from "@components/TextArea";
+import { useUiStore } from "@/hooks/stores";
+
+import Checkbox from "../../components/Checkbox";
+import { SettingsItem } from "../../routes/devices.$id.settings";
+
+
 
 /** ============== Types ============== */
-
-interface SerialSettings {
-  baudRate: string;
-  dataBits: string;
-  stopBits: string;
-  parity: string;
-}
-
 interface QuickButton {
   id: string;         // uuid-ish
   label: string;      // shown on the button
   command: string;    // raw command to send (without auto-terminator)
+  terminator: {label: string, value: string}; // None/CR/LF/CRLF/LFCR
   sort: number;       // for stable ordering
 }
 
-interface ButtonConfig {
-  buttons: QuickButton[];
-  terminator: string;   // CR/CRLF/None
+interface CustomButtonSettings {
+  baudRate: string;
+  dataBits: string;
+  stopBits: string;
+  parity: string;
+  terminator: {label: string, value: string}; // None/CR/LF/CRLF/LFCR
+  lineMode: boolean;
   hideSerialSettings: boolean;
-  hideSerialResponse: boolean;
+  enableEcho: boolean; // future use
+  buttons: QuickButton[];
 }
 
 /** ============== Component ============== */
 
 export function SerialButtons() {
+  const { setTerminalType, setTerminalLineMode } = useUiStore();
+
   // This will receive all JSON-RPC notifications (method + no id)
   const { send } = useJsonRpc((payload) => {
     if (payload.method !== "serial.rx") return;
-    if (paused) return;
+    // if (paused) return;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const p = payload.params as any;
@@ -61,48 +66,30 @@ export function SerialButtons() {
     // Normalize CRLF for display
     chunk = chunk.replace(/\r\n/g, "\n");
 
-    setSerialResponse(prev => (prev + chunk).slice(-MAX_CHARS));
+    // setSerialResponse(prev => (prev + chunk).slice(-MAX_CHARS));
   });
 
-
-  const MAX_CHARS = 50_000;
-
-  // serial settings (same as SerialConsole)
-  const [serialSettings, setSerialSettings] = useState<SerialSettings>({
+  // extension config (buttons + prefs)
+  const [buttonConfig, setButtonConfig] = useState<CustomButtonSettings>({
     baudRate: "9600",
     dataBits: "8",
     stopBits: "1",
     parity: "none",
+    terminator: {label: "CR (\\r)", value: "\r"},
+    lineMode: true,
+    hideSerialSettings: false,
+    enableEcho: false,
+    buttons: [],
   });
-
-  // extension config (buttons + prefs)
-  const [buttonConfig, setButtonConfig] = useState<ButtonConfig>({
-  buttons: [],
-  terminator: "",
-  hideSerialSettings: false,
-  hideSerialResponse: true,
-});
 
   // editor modal state
   const [editorOpen, setEditorOpen] = useState<null | { id?: string }>(null);
   const [draftLabel, setDraftLabel] = useState("");
   const [draftCmd, setDraftCmd] = useState("");
-  const [serialResponse, setSerialResponse] = useState("");
-  const [paused, setPaused] = useState(false);
-  const taRef = useRef<HTMLTextAreaElement>(null);
+  const [draftTerminator, setDraftTerminator] = useState({label: "CR (\\r)", value: "\r"});
 
   // load serial settings like SerialConsole
   useEffect(() => {
-    send("getSerialSettings", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to get serial settings: ${resp.error.data || "Unknown error"}`,
-        );
-        return;
-      }
-      setSerialSettings(resp.result as SerialSettings);
-    });
-
     send("getSerialButtonConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
@@ -111,57 +98,35 @@ export function SerialButtons() {
         return;
       }
 
-      setButtonConfig(resp.result as ButtonConfig);
+      setButtonConfig(resp.result as CustomButtonSettings);
+      setTerminalLineMode((resp.result as CustomButtonSettings).lineMode);
     });
 
-  });
+  }, [send, setTerminalLineMode]);
 
-  const handleSerialSettingChange = (setting: keyof SerialSettings, value: string) => {
-    const newSettings = { ...serialSettings, [setting]: value };
-    send("setSerialSettings", { settings: newSettings }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(`Failed to update serial settings: ${resp.error.data || "Unknown error"}`);
-        return;
-      }
-      setSerialSettings(newSettings);
-    });
-  };
-
-  const handleSerialButtonConfigChange = (config: keyof ButtonConfig, value: unknown) => {
+  const handleSerialButtonConfigChange = (config: keyof CustomButtonSettings, value: unknown) => {
     const newButtonConfig = { ...buttonConfig, [config]: value };
     send("setSerialButtonConfig", { config: newButtonConfig }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(`Failed to update button config: ${resp.error.data || "Unknown error"}`);
         return;
       }
-      setButtonConfig(newButtonConfig);
     });
     setButtonConfig(newButtonConfig);
   };
 
-  useEffect(() => {
-    if (buttonConfig.hideSerialResponse) return;
-    const el = taRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [serialResponse, buttonConfig.hideSerialResponse]);
-
   const onClickButton = (btn: QuickButton) => {
 
-    /** build final string to send:
-     *  if the user's button command already contains a terminator, we don't append the selected terminator safely
-     */
-    const raw = btn.command;
-    const t = buttonConfig.terminator ?? "";
-    const command = raw.endsWith("\r") || raw.endsWith("\n") ? raw : raw + t;
+    const command = btn.command + btn.terminator.value;
+    const terminator = btn.terminator.value;
 
-    send("sendCustomCommand", { command }, (resp: JsonRpcResponse) => {
+    send("sendCustomCommand", { command, terminator }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to send ATX power action: ${resp.error.data || "Unknown error"}`,
+          `Failed to send custom command: ${resp.error.data || "Unknown error"}`,
         );
       }
     });
-
   };
 
   /** CRUD helpers */
@@ -169,12 +134,14 @@ export function SerialButtons() {
     setEditorOpen({ id: undefined });
     setDraftLabel("");
     setDraftCmd("");
+    setDraftTerminator({label: "CR (\\r)", value: "\r"});
   };
 
   const editBtn = (btn: QuickButton) => {
     setEditorOpen({ id: btn.id });
     setDraftLabel(btn.label);
     setDraftCmd(btn.command);
+    setDraftTerminator(btn.terminator);
   };
 
   const removeBtn = (id: string) => {
@@ -227,23 +194,29 @@ export function SerialButtons() {
 
   const saveDraft = () => {
     const label = draftLabel.trim() || "Unnamed";
-    const command = draftCmd.trim();
+    const command = draftCmd;
     if (!command) {
       notifications.error("Command cannot be empty.");
       return;
     }
+    const terminator = draftTerminator;
 
-    const isEdit = editorOpen?.id;
-    const nextButtons = isEdit
-      ? buttonConfig.buttons.map(b => (b.id === isEdit ? { ...b, label, command } : b))
-      : [...buttonConfig.buttons, { id: genId(), label, command, sort: buttonConfig.buttons.length }];
+    // if editing, get current id, otherwise undefined => new button
+    const currentID = editorOpen?.id;
+
+    // either update existing or add new
+    // if new, assign next sort index
+    // if existing, keep sort index
+    const nextButtons = currentID
+      ? buttonConfig.buttons.map(b => (b.id === currentID ? { ...b, label, command } : b))
+      : [...buttonConfig.buttons, { id: genId(), label, command, terminator, sort: buttonConfig.buttons.length }];
 
     handleSerialButtonConfigChange("buttons", stableSort(nextButtons) );
     setEditorOpen(null);
   };
 
   /** simple reordering: alphabetical by sort, then label */
-  const sortedButtons = useMemo(() => stableSort(buttonConfig.buttons), [buttonConfig.buttons]);
+  const sortedButtons = useMemo(() => buttonConfig.buttons, [buttonConfig.buttons]);
 
   return (
     <div className="space-y-4">
@@ -257,25 +230,28 @@ export function SerialButtons() {
           {/* Top actions */}
           <div className="flex flex-wrap justify-around items-center gap-3">
             <Button
-              size="SM"
+              size="XS"
               theme="primary"
               LeadingIcon={buttonConfig.hideSerialSettings ? LuEye : LuEyeOff}
               text={buttonConfig.hideSerialSettings ? "Show Settings" : "Hide Settings"}
               onClick={() => handleSerialButtonConfigChange("hideSerialSettings", !buttonConfig.hideSerialSettings )}
             />
             <Button
-              size="SM"
+              size="XS"
               theme="primary"
               LeadingIcon={LuPlus}
               text="Add Button"
               onClick={addNew}
             />
             <Button
-              size="SM"
+              size="XS"
               theme="primary"
-              LeadingIcon={buttonConfig.hideSerialResponse ? LuEye : LuEyeOff}
-              text={buttonConfig.hideSerialResponse ? "View RX" : "Hide RX"}
-              onClick={() => handleSerialButtonConfigChange("hideSerialResponse", !buttonConfig.hideSerialResponse )}
+              LeadingIcon={LuTerminal}
+              text="Open Console"
+              onClick={() => {
+                setTerminalType("serial");
+                console.log("Opening serial console with settings: ", buttonConfig);
+              }}
             />
           </div>
           <hr className="border-slate-700/30 dark:border-slate-600/30" />
@@ -296,8 +272,8 @@ export function SerialButtons() {
                     { label: "57600", value: "57600" },
                     { label: "115200", value: "115200" },
                   ]}
-                  value={serialSettings.baudRate}
-                  onChange={(e) => handleSerialSettingChange("baudRate", e.target.value)}
+                  value={buttonConfig.baudRate}
+                  onChange={(e) => handleSerialButtonConfigChange("baudRate", e.target.value)}
                 />
 
                 <SelectMenuBasic
@@ -306,8 +282,8 @@ export function SerialButtons() {
                     { label: "8", value: "8" },
                     { label: "7", value: "7" },
                   ]}
-                  value={serialSettings.dataBits}
-                  onChange={(e) => handleSerialSettingChange("dataBits", e.target.value)}
+                  value={buttonConfig.dataBits}
+                  onChange={(e) => handleSerialButtonConfigChange("dataBits", e.target.value)}
                 />
 
                 <SelectMenuBasic
@@ -317,8 +293,8 @@ export function SerialButtons() {
                     { label: "1.5", value: "1.5" },
                     { label: "2", value: "2" },
                   ]}
-                  value={serialSettings.stopBits}
-                  onChange={(e) => handleSerialSettingChange("stopBits", e.target.value)}
+                  value={buttonConfig.stopBits}
+                  onChange={(e) => handleSerialButtonConfigChange("stopBits", e.target.value)}
                 />
 
                 <SelectMenuBasic
@@ -328,20 +304,61 @@ export function SerialButtons() {
                     { label: "Even", value: "even" },
                     { label: "Odd", value: "odd" },
                   ]}
-                  value={serialSettings.parity}
-                  onChange={(e) => handleSerialSettingChange("parity", e.target.value)}
+                  value={buttonConfig.parity}
+                  onChange={(e) => handleSerialButtonConfigChange("parity", e.target.value)}
                 />
+                <div>
+                  <SelectMenuBasic
+                    className="mb-1"
+                    label="Line ending"
+                    options={[
+                      { label: "None", value: "" },
+                      { label: "CR (\\r)", value: "\r" },
+                      { label: "LF (\\n)", value: "\n" },
+                      { label: "CRLF (\\r\\n)", value: "\r\n" },
+                      { label: "LFCR (\\n\\r)", value: "\n\r" },
+                    ]}
+                    value={buttonConfig.terminator.value}
+                    onChange={(e) => handleSerialButtonConfigChange("terminator", {label: e.target.selectedOptions[0].text, value: e.target.value})}
+                  />
+                  <div className="text-xs text-white opacity-70 mt-0 ml-2">
+                    When sent, the selected line ending ({buttonConfig.terminator.label}) will be appended.
+                  </div>
+                </div>
+                <div>
+                  <SelectMenuBasic
+                    className="mb-1"
+                    label="Terminal Mode"
+                    options={[
+                      { label: "Raw Mode", value: "raw" },
+                      { label: "Line Mode", value: "line" },
+                    ]}
+                    value={buttonConfig.lineMode ? "line" : "raw"}
+                    onChange={(e) => {
+                      handleSerialButtonConfigChange("lineMode", e.target.value === "line")
+                      setTerminalLineMode(e.target.value === "line");
+                    }}
+                  />
+                  <div className="text-xs text-white opacity-70 mt-0 ml-2">
+                    {buttonConfig.lineMode
+                      ? "In Line Mode, input is sent when you press Enter in the input field."
+                      : "In Raw Mode, input is sent immediately as you type in the console."}
+                  </div>
+                </div>
               </div>
-              <SelectMenuBasic
-                  label="Line ending"
-                  options={[
-                    { label: "None", value: "" },
-                    { label: "CR (\\r)", value: "\r" },
-                    { label: "CRLF (\\r\\n)", value: "\r\n" },
-                  ]}
-                  value={buttonConfig.terminator}
-                  onChange={(e) => handleSerialButtonConfigChange("terminator", e.target.value)}
-                />
+              <div className="space-y-4 m-2">
+                <SettingsItem
+                  title="Local Echo"
+                  description="Whether to echo received characters back to the sender"
+                >
+                  <Checkbox
+                    checked={buttonConfig.enableEcho}
+                    onChange={e => {
+                      handleSerialButtonConfigChange("enableEcho", e.target.checked);
+                    }}
+                  />
+                </SettingsItem>
+              </div>
               <hr className="border-slate-700/30 dark:border-slate-600/30" />
             </>
           )}
@@ -382,7 +399,7 @@ export function SerialButtons() {
                 <LuSettings2 className="h-3.5 text-white shrink-0 justify-start" />
                 <div className="font-medium text-black dark:text-white">{editorOpen.id ? "Edit Button" : "New Button"}</div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 h-23">
                 <div>
                   <InputFieldWithLabel
                     size="SM"
@@ -406,16 +423,34 @@ export function SerialButtons() {
                       setDraftCmd(e.target.value);
                     }}
                   />
-                  {buttonConfig.terminator != "" && (
+                  {draftTerminator.value != "" && (
                     <div className="text-xs text-white opacity-70 mt-1">
-                    The selected line ending ({pretty(buttonConfig.terminator)}) will be appended when sent.
+                      When sent, the selected line ending ({draftTerminator.label}) will be appended.
                   </div>
                   )}
                 </div>
               </div>
-              <div className="flex gap-2 mt-3">
-                <Button size="SM" theme="primary" LeadingIcon={LuSave} text="Save" onClick={saveDraft} />
-                <Button size="SM" theme="primary" text="Cancel" onClick={() => setEditorOpen(null)} />
+              <div className="flex justify-around items-end">
+                <SelectMenuBasic
+                  label="Line ending"
+                  options={[
+                    { label: "None", value: "" },
+                    { label: "CR (\\r)", value: "\r" },
+                    { label: "LF (\\n)", value: "\n" },
+                    { label: "CRLF (\\r\\n)", value: "\r\n" },
+                    { label: "LFCR (\\n\\r)", value: "\n\r" },
+                  ]}
+                  value={draftTerminator.value}
+                  onChange={(e) => setDraftTerminator({label: e.target.selectedOptions[0].text, value: e.target.value})}
+                />
+                <div className="pb-[3px]">
+                  <Button size="SM" theme="primary" LeadingIcon={LuSave} text="Save" onClick={saveDraft} />
+                </div>
+                <div className="pb-[3px]">
+                  <Button size="SM" theme="primary" LeadingIcon={LuCircleX} text="Cancel" onClick={() => setEditorOpen(null)} />
+                </div>
+              </div>
+              <div className="flex justify-around mt-3">
                 {editorOpen.id && (
                   <>
                     <Button
@@ -430,49 +465,24 @@ export function SerialButtons() {
                       size="SM"
                       theme="primary"
                       LeadingIcon={LuArrowBigUp}
+                      text="Move Up"
+                      aria-label={`Move ${draftLabel} up`}
+                      disabled={sortedButtons.findIndex(b => b.id === editorOpen.id) === 0}
                       onClick={() => moveUpBtn(editorOpen.id!)}
                     />
                     <Button
                       size="SM"
                       theme="primary"
                       LeadingIcon={LuArrowBigDown}
+                      text="Move Down"
+                      aria-label={`Move ${draftLabel} down`}
+                      disabled={sortedButtons.findIndex(b => b.id === editorOpen.id)+1 === sortedButtons.length}
                       onClick={() => moveDownBtn(editorOpen.id!)}
                     />
                   </>
                 )}
               </div>
             </div>
-          )}
-          {/* Serial response (collapsible) */}
-          {!buttonConfig.hideSerialResponse && (
-            <>
-              <hr className="border-slate-700/30 dark:border-slate-600/30" />
-              <TextAreaWithLabel
-                ref={taRef}
-                readOnly
-                label="RX response from serial connection"
-                value={serialResponse|| ""}
-                rows={3}
-                onChange={e => setSerialResponse(e.target.value)}
-                placeholder="Will show the response recieved from the serial port."
-              />
-              <div className="flex items-center gap-2">
-                <Button
-                  size="XS"
-                  theme="primary"
-                  text={paused ? "Resume" : "Pause"}
-                  LeadingIcon={paused ? LuCirclePlay : LuCirclePause}
-                  onClick={() => setPaused(p => !p)}
-                />
-                <Button
-                  size="XS"
-                  theme="primary"
-                  text="Clear"
-                  LeadingIcon={LuTrash2}
-                  onClick={() => setSerialResponse("")}
-                />
-              </div>
-            </>
           )}
         </div>
       </Card>
@@ -481,10 +491,6 @@ export function SerialButtons() {
 }
 
 /** ============== helpers ============== */
-
-function pretty(s: string) {
-  return s.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
-}
 function genId() {
   return "b_" + Math.random().toString(36).slice(2, 10);
 }
