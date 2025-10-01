@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { GridCard } from "@components/Card";
+import { SettingsItem } from "@components/SettingsItem";
 
 import { Button } from "../components/Button";
 import Checkbox from "../components/Checkbox";
@@ -11,8 +12,6 @@ import { useSettingsStore } from "../hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
 import { isOnDevice } from "../main";
 import notifications from "../notifications";
-
-import { SettingsItem } from "./devices.$id.settings";
 
 export default function SettingsAdvancedRoute() {
   const { send } = useJsonRpc();

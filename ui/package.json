@@ -1,7 +1,7 @@
 {
   "name": "kvm-ui",
   "private": true,
-  "version": "2025.09.23.0000",
+  "version": "2025.09.26.01300",
   "type": "module",
   "engines": {
     "node": "^22.15.0"
@@ -19,7 +19,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@headlessui/react": "^2.2.8",
+    "@headlessui/react": "^2.2.9",
     "@headlessui/tailwindcss": "^0.2.2",
     "@heroicons/react": "^2.2.0",
     "@vitejs/plugin-basic-ssl": "^2.1.0",
@@ -33,7 +33,7 @@
     "dayjs": "^1.11.18",
     "eslint-import-resolver-alias": "^1.1.2",
     "focus-trap-react": "^11.0.4",
-    "framer-motion": "^12.23.18",
+    "framer-motion": "^12.23.22",
     "lodash.throttle": "^4.1.1",
     "mini-svg-data-uri": "^1.4.4",
     "react": "^19.1.1",
@@ -41,7 +41,7 @@
     "react-dom": "^19.1.1",
     "react-hot-toast": "^2.6.0",
     "react-icons": "^5.5.0",
-    "react-router": "^7.9.1",
+    "react-router": "^7.9.3",
     "react-simple-keyboard": "^3.8.122",
     "react-use-websocket": "^4.13.0",
     "react-xtermjs": "^1.0.10",
@@ -57,9 +57,9 @@
     "@eslint/js": "^9.36.0",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/postcss": "^4.1.13",
-    "@tailwindcss/typography": "^0.5.18",
+    "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.13",
-    "@types/react": "^19.1.13",
+    "@types/react": "^19.1.14",
     "@types/react-dom": "^19.1.9",
     "@types/semver": "^7.7.1",
     "@types/validator": "^13.15.3",
@@ -72,7 +72,7 @@
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.21",
+    "eslint-plugin-react-refresh": "^0.4.22",
     "globals": "^16.4.0",
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",

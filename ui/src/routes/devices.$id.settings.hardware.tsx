@@ -1,16 +1,15 @@
 import { useEffect } from "react";
 
+import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { SettingsItem } from "@routes/devices.$id.settings";
+import { BacklightSettings, useSettingsStore } from "@/hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { UsbDeviceSetting } from "@components/UsbDeviceSetting";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import { BacklightSettings, useSettingsStore } from "@/hooks/stores";
 
 import notifications from "../notifications";
 import { UsbInfoSetting } from "../components/UsbInfoSetting";
 import { FeatureFlag } from "../components/FeatureFlag";
-
 
 export default function SettingsHardwareRoute() {
   const { send } = useJsonRpc();

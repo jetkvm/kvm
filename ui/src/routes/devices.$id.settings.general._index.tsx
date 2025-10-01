@@ -1,7 +1,7 @@
 
 import { useState , useEffect } from "react";
 
-
+import { SettingsItem } from "@components/SettingsItem";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 
 import { SettingsPageHeader } from "../components/SettingsPageheader";
@@ -10,8 +10,6 @@ import notifications from "../notifications";
 import Checkbox from "../components/Checkbox";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 import { useDeviceStore } from "../hooks/stores";
-
-import { SettingsItem } from "./devices.$id.settings";
 
 
 export default function SettingsGeneralRoute() {

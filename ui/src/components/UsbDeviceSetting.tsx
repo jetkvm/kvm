@@ -1,8 +1,9 @@
 import { useCallback , useEffect, useState } from "react";
 
+import { SettingsItem } from "@components/SettingsItem";
+
 import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
 import notifications from "../notifications";
-import { SettingsItem } from "../routes/devices.$id.settings";
 
 import Checkbox from "./Checkbox";
 import { Button } from "./Button";
