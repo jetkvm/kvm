@@ -40,8 +40,8 @@ export GOARCH := arm
 export GOARM := 7
 export CC := $(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-gcc
 export CGO_ENABLED := 1
-export CGO_CFLAGS := $(OPTIM_CFLAGS) -I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt
-export CGO_LDFLAGS := -L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static
+export CGO_CFLAGS := $(OPTIM_CFLAGS) -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include -I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt
+export CGO_LDFLAGS := -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -lrockit -lrockchip_mpp -lrga -lpthread -L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm

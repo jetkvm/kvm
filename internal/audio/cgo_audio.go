@@ -17,9 +17,6 @@ import (
 )
 
 /*
-#cgo CFLAGS: -I/opt/jetkvm-audio-libs/alsa-lib-$ALSA_VERSION/include -I/opt/jetkvm-audio-libs/opus-$OPUS_VERSION/include -I/opt/jetkvm-audio-libs/opus-$OPUS_VERSION/celt
-#cgo LDFLAGS: -L/opt/jetkvm-audio-libs/alsa-lib-$ALSA_VERSION/src/.libs -lasound -L/opt/jetkvm-audio-libs/opus-$OPUS_VERSION/.libs -lopus -lm -ldl -static
-
 #include "c/audio.c"
 */
 import "C"
