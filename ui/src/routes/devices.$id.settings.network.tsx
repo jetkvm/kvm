@@ -21,14 +21,13 @@ import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
 import Fieldset from "@/components/Fieldset";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { SettingsItem } from "@components/SettingsItem";
 import notifications from "@/notifications";
 
 import Ipv6NetworkCard from "../components/Ipv6NetworkCard";
 import EmptyCard from "../components/EmptyCard";
 import AutoHeight from "../components/AutoHeight";
 import DhcpLeaseCard from "../components/DhcpLeaseCard";
-
-import { SettingsItem } from "./devices.$id.settings";
 
 dayjs.extend(relativeTime);
 
