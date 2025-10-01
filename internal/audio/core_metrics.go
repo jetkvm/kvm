@@ -139,19 +139,6 @@ type UnifiedAudioMetrics struct {
 	AverageLatency  time.Duration `json:"average_latency"`
 }
 
-// convertAudioMetricsToUnified converts AudioMetrics to UnifiedAudioMetrics
-func convertAudioMetricsToUnified(metrics AudioMetrics) UnifiedAudioMetrics {
-	return UnifiedAudioMetrics{
-		FramesReceived:  metrics.FramesReceived,
-		FramesDropped:   metrics.FramesDropped,
-		FramesSent:      0, // AudioMetrics doesn't have FramesSent
-		BytesProcessed:  metrics.BytesProcessed,
-		ConnectionDrops: metrics.ConnectionDrops,
-		LastFrameTime:   metrics.LastFrameTime,
-		AverageLatency:  metrics.AverageLatency,
-	}
-}
-
 // convertAudioInputMetricsToUnified converts AudioInputMetrics to UnifiedAudioMetrics
 func convertAudioInputMetricsToUnified(metrics AudioInputMetrics) UnifiedAudioMetrics {
 	return UnifiedAudioMetrics{

@@ -16,7 +16,6 @@ import (
 
 var (
 	appCtx           context.Context
-	isAudioServer    bool
 	audioProcessDone chan struct{}
 	audioSupervisor  *audio.AudioOutputSupervisor
 )
@@ -126,30 +125,8 @@ func startAudioSubprocess() error {
 	return nil
 }
 
-func Main(audioServer bool, audioInputServer bool) {
-	// Initialize channel and set audio server flag
-	isAudioServer = audioServer
+func Main() {
 	audioProcessDone = make(chan struct{})
-
-	// If running as audio server, only initialize audio processing
-	if isAudioServer {
-		err := audio.RunAudioOutputServer()
-		if err != nil {
-			logger.Error().Err(err).Msg("audio output server failed")
-			os.Exit(1)
-		}
-		return
-	}
-
-	// If running as audio input server, only initialize audio input processing
-	if audioInputServer {
-		err := audio.RunAudioInputServer()
-		if err != nil {
-			logger.Error().Err(err).Msg("audio input server failed")
-			os.Exit(1)
-		}
-		return
-	}
 	LoadConfig()
 
 	var cancel context.CancelFunc
@@ -274,16 +251,12 @@ func Main(audioServer bool, audioInputServer bool) {
 	<-sigs
 	logger.Info().Msg("JetKVM Shutting Down")
 
-	// Stop audio subprocess and wait for cleanup
-	if !isAudioServer {
-		if audioSupervisor != nil {
-			logger.Info().Msg("stopping audio supervisor")
-			audioSupervisor.Stop()
-		}
-		<-audioProcessDone
-	} else {
-		audio.StopNonBlockingAudioStreaming()
+	// Stop audio supervisor and wait for cleanup
+	if audioSupervisor != nil {
+		logger.Info().Msg("stopping audio supervisor")
+		audioSupervisor.Stop()
 	}
+	<-audioProcessDone
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")
 	//	if err != nil {

@@ -26,7 +26,6 @@ type AudioInputMetrics struct {
 // AudioInputManager manages microphone input stream using IPC mode only
 type AudioInputManager struct {
 	*BaseAudioManager
-	ipcManager *AudioInputIPCManager
 	framesSent int64 // Input-specific metric
 }
 
@@ -35,8 +34,16 @@ func NewAudioInputManager() *AudioInputManager {
 	logger := logging.GetDefaultLogger().With().Str("component", AudioInputManagerComponent).Logger()
 	return &AudioInputManager{
 		BaseAudioManager: NewBaseAudioManager(logger),
-		ipcManager:       NewAudioInputIPCManager(),
 	}
+}
+
+// getClient returns the audio input client from the global supervisor
+func (aim *AudioInputManager) getClient() *AudioInputClient {
+	supervisor := GetAudioInputSupervisor()
+	if supervisor == nil {
+		return nil
+	}
+	return supervisor.GetClient()
 }
 
 // Start begins processing microphone input
@@ -47,15 +54,22 @@ func (aim *AudioInputManager) Start() error {
 
 	aim.logComponentStart(AudioInputManagerComponent)
 
-	// Start the IPC-based audio input
-	err := aim.ipcManager.Start()
-	if err != nil {
-		aim.logComponentError(AudioInputManagerComponent, err, "failed to start component")
-		// Ensure proper cleanup on error
+	// Ensure supervisor and client are available
+	supervisor := GetAudioInputSupervisor()
+	if supervisor == nil {
 		aim.setRunning(false)
-		// Reset metrics on failed start
-		aim.resetMetrics()
-		return err
+		return fmt.Errorf("audio input supervisor not available")
+	}
+
+	// Start the supervisor if not already running
+	if !supervisor.IsRunning() {
+		err := supervisor.Start()
+		if err != nil {
+			aim.logComponentError(AudioInputManagerComponent, err, "failed to start supervisor")
+			aim.setRunning(false)
+			aim.resetMetrics()
+			return err
+		}
 	}
 
 	aim.logComponentStarted(AudioInputManagerComponent)
@@ -70,8 +84,8 @@ func (aim *AudioInputManager) Stop() {
 
 	aim.logComponentStop(AudioInputManagerComponent)
 
-	// Stop the IPC-based audio input
-	aim.ipcManager.Stop()
+	// Note: We don't stop the supervisor here as it may be shared
+	// The supervisor lifecycle is managed by the main process
 
 	aim.logComponentStopped(AudioInputManagerComponent)
 }
@@ -99,9 +113,15 @@ func (aim *AudioInputManager) WriteOpusFrame(frame []byte) error {
 		return fmt.Errorf("input frame validation failed: %w", err)
 	}
 
+	// Get client from supervisor
+	client := aim.getClient()
+	if client == nil {
+		return fmt.Errorf("audio input client not available")
+	}
+
 	// Track end-to-end latency from WebRTC to IPC
 	startTime := time.Now()
-	err := aim.ipcManager.WriteOpusFrame(frame)
+	err := client.SendFrame(frame)
 	processingTime := time.Since(startTime)
 
 	// Log high latency warnings
@@ -135,9 +155,16 @@ func (aim *AudioInputManager) WriteOpusFrameZeroCopy(frame *ZeroCopyAudioFrame) 
 		return nil
 	}
 
+	// Get client from supervisor
+	client := aim.getClient()
+	if client == nil {
+		atomic.AddInt64(&aim.metrics.FramesDropped, 1)
+		return fmt.Errorf("audio input client not available")
+	}
+
 	// Track end-to-end latency from WebRTC to IPC
 	startTime := time.Now()
-	err := aim.ipcManager.WriteOpusFrameZeroCopy(frame)
+	err := client.SendFrameZeroCopy(frame)
 	processingTime := time.Since(startTime)
 
 	// Log high latency warnings
@@ -172,8 +199,21 @@ func (aim *AudioInputManager) GetComprehensiveMetrics() map[string]interface{} {
 	// Get base metrics
 	baseMetrics := aim.GetMetrics()
 
-	// Get detailed IPC metrics
-	ipcMetrics, detailedStats := aim.ipcManager.GetDetailedMetrics()
+	// Get client stats if available
+	var clientStats map[string]interface{}
+	client := aim.getClient()
+	if client != nil {
+		total, dropped := client.GetFrameStats()
+		clientStats = map[string]interface{}{
+			"frames_sent":    total,
+			"frames_dropped": dropped,
+		}
+	} else {
+		clientStats = map[string]interface{}{
+			"frames_sent":    0,
+			"frames_dropped": 0,
+		}
+	}
 
 	comprehensiveMetrics := map[string]interface{}{
 		"manager": map[string]interface{}{
@@ -184,14 +224,7 @@ func (aim *AudioInputManager) GetComprehensiveMetrics() map[string]interface{} {
 			"last_frame_time":    baseMetrics.LastFrameTime,
 			"running":            aim.IsRunning(),
 		},
-		"ipc": map[string]interface{}{
-			"frames_sent":        ipcMetrics.FramesSent,
-			"frames_dropped":     ipcMetrics.FramesDropped,
-			"bytes_processed":    ipcMetrics.BytesProcessed,
-			"average_latency_ms": float64(ipcMetrics.AverageLatency.Nanoseconds()) / 1e6,
-			"last_frame_time":    ipcMetrics.LastFrameTime,
-		},
-		"detailed": detailedStats,
+		"client": clientStats,
 	}
 
 	return comprehensiveMetrics
@@ -205,17 +238,14 @@ func (aim *AudioInputManager) IsRunning() bool {
 		return true
 	}
 
-	// If internal state says not running, check for existing system processes
-	// This prevents duplicate subprocess creation when a process already exists
-	if aim.ipcManager != nil {
-		supervisor := aim.ipcManager.GetSupervisor()
-		if supervisor != nil {
-			if existingPID, exists := supervisor.HasExistingProcess(); exists {
-				aim.logger.Info().Int("existing_pid", existingPID).Msg("Found existing audio input server process")
-				// Update internal state to reflect reality
-				aim.setRunning(true)
-				return true
-			}
+	// If internal state says not running, check supervisor
+	supervisor := GetAudioInputSupervisor()
+	if supervisor != nil {
+		if existingPID, exists := supervisor.HasExistingProcess(); exists {
+			aim.logger.Info().Int("existing_pid", existingPID).Msg("Found existing audio input server process")
+			// Update internal state to reflect reality
+			aim.setRunning(true)
+			return true
 		}
 	}
 
@@ -228,5 +258,12 @@ func (aim *AudioInputManager) IsReady() bool {
 	if !aim.IsRunning() {
 		return false
 	}
-	return aim.ipcManager.IsReady()
+
+	// Check if client is connected
+	client := aim.getClient()
+	if client == nil {
+		return false
+	}
+
+	return client.IsConnected()
 }
