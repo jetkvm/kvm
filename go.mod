@@ -5,7 +5,7 @@ go 1.24.4
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/beevik/ntp v1.4.3
-	github.com/coder/websocket v1.8.13
+	github.com/coder/websocket v1.8.14
 	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/creack/pty v1.1.24
 	github.com/erikdubbelboer/gspt v0.0.0-20210805194459-ce36a5128377
