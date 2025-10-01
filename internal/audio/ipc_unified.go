@@ -114,9 +114,10 @@ type UnifiedAudioServer struct {
 	wg          sync.WaitGroup          // Wait group for goroutine coordination
 
 	// Configuration
-	socketPath         string
-	magicNumber        uint32
-	socketBufferConfig SocketBufferConfig
+	socketPath     string
+	magicNumber    uint32
+	sendBufferSize int
+	recvBufferSize int
 }
 
 // NewUnifiedAudioServer creates a new unified audio server
@@ -143,7 +144,8 @@ func NewUnifiedAudioServer(isInput bool) (*UnifiedAudioServer, error) {
 		magicNumber:        magicNumber,
 		messageChan:        make(chan *UnifiedIPCMessage, Config.ChannelBufferSize),
 		processChan:        make(chan *UnifiedIPCMessage, Config.ChannelBufferSize),
-		socketBufferConfig: DefaultSocketBufferConfig(),
+		sendBufferSize:     Config.SocketOptimalBuffer,
+		recvBufferSize:     Config.SocketOptimalBuffer,
 	}
 
 	return server, nil

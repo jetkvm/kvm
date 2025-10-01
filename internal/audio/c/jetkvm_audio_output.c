@@ -8,6 +8,7 @@
  */
 
 #include "ipc_protocol.h"
+#include "audio_common.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,85 +53,30 @@ typedef struct {
 } audio_config_t;
 
 // ============================================================================
-// SIGNAL HANDLERS
-// ============================================================================
-
-static void signal_handler(int signo) {
-    if (signo == SIGTERM || signo == SIGINT) {
-        printf("Audio output server: Received signal %d, shutting down...\n", signo);
-        g_running = 0;
-    }
-}
-
-static void setup_signal_handlers(void) {
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = signal_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-
-    sigaction(SIGTERM, &sa, NULL);
-    sigaction(SIGINT, &sa, NULL);
-
-    // Ignore SIGPIPE (write to closed socket should return error, not crash)
-    signal(SIGPIPE, SIG_IGN);
-}
-
-// ============================================================================
 // CONFIGURATION PARSING
 // ============================================================================
 
-static int parse_env_int(const char *name, int default_value) {
-    const char *str = getenv(name);
-    if (str == NULL || str[0] == '\0') {
-        return default_value;
-    }
-    return atoi(str);
-}
-
-static const char* parse_env_string(const char *name, const char *default_value) {
-    const char *str = getenv(name);
-    if (str == NULL || str[0] == '\0') {
-        return default_value;
-    }
-    return str;
-}
-
-static int is_trace_enabled(void) {
-    const char *pion_trace = getenv("PION_LOG_TRACE");
-    if (pion_trace == NULL) {
-        return 0;
-    }
-
-    // Check if "audio" is in comma-separated list
-    if (strstr(pion_trace, "audio") != NULL) {
-        return 1;
-    }
-
-    return 0;
-}
-
 static void load_audio_config(audio_config_t *config) {
     // ALSA device configuration
-    config->alsa_device = parse_env_string("ALSA_CAPTURE_DEVICE", "hw:0,0");
+    config->alsa_device = audio_common_parse_env_string("ALSA_CAPTURE_DEVICE", "hw:0,0");
 
     // Opus encoder configuration
-    config->opus_bitrate = parse_env_int("OPUS_BITRATE", 96000);
-    config->opus_complexity = parse_env_int("OPUS_COMPLEXITY", 1);
-    config->opus_vbr = parse_env_int("OPUS_VBR", 1);
-    config->opus_vbr_constraint = parse_env_int("OPUS_VBR_CONSTRAINT", 1);
-    config->opus_signal_type = parse_env_int("OPUS_SIGNAL_TYPE", -1000);
-    config->opus_bandwidth = parse_env_int("OPUS_BANDWIDTH", 1103);
-    config->opus_dtx = parse_env_int("OPUS_DTX", 0);
-    config->opus_lsb_depth = parse_env_int("OPUS_LSB_DEPTH", 16);
+    config->opus_bitrate = audio_common_parse_env_int("OPUS_BITRATE", 96000);
+    config->opus_complexity = audio_common_parse_env_int("OPUS_COMPLEXITY", 1);
+    config->opus_vbr = audio_common_parse_env_int("OPUS_VBR", 1);
+    config->opus_vbr_constraint = audio_common_parse_env_int("OPUS_VBR_CONSTRAINT", 1);
+    config->opus_signal_type = audio_common_parse_env_int("OPUS_SIGNAL_TYPE", -1000);
+    config->opus_bandwidth = audio_common_parse_env_int("OPUS_BANDWIDTH", 1103);
+    config->opus_dtx = audio_common_parse_env_int("OPUS_DTX", 0);
+    config->opus_lsb_depth = audio_common_parse_env_int("OPUS_LSB_DEPTH", 16);
 
     // Audio format
-    config->sample_rate = parse_env_int("AUDIO_SAMPLE_RATE", 48000);
-    config->channels = parse_env_int("AUDIO_CHANNELS", 2);
-    config->frame_size = parse_env_int("AUDIO_FRAME_SIZE", 960);
+    config->sample_rate = audio_common_parse_env_int("AUDIO_SAMPLE_RATE", 48000);
+    config->channels = audio_common_parse_env_int("AUDIO_CHANNELS", 2);
+    config->frame_size = audio_common_parse_env_int("AUDIO_FRAME_SIZE", 960);
 
     // Logging
-    config->trace_logging = is_trace_enabled();
+    config->trace_logging = audio_common_is_trace_enabled();
 
     // Log configuration
     printf("Audio Output Server Configuration:\n");
@@ -310,7 +256,7 @@ int main(int argc, char **argv) {
     printf("JetKVM Audio Output Server Starting...\n");
 
     // Setup signal handlers
-    setup_signal_handlers();
+    audio_common_setup_signal_handlers(&g_running);
 
     // Load configuration from environment
     audio_config_t config;

@@ -12,7 +12,7 @@ var audioControlService *audio.AudioControlService
 
 func ensureAudioControlService() *audio.AudioControlService {
 	if audioControlService == nil {
-		sessionProvider := &SessionProviderImpl{}
+		sessionProvider := &KVMSessionProvider{}
 		audioControlService = audio.NewAudioControlService(sessionProvider, logger)
 
 		// Set up RPC callback function for the audio package

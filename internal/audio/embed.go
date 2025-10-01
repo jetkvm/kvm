@@ -82,36 +82,6 @@ func GetAudioInputBinaryPath() string {
 	return audioInputBinPath
 }
 
-// CleanupBinaries removes extracted audio binaries (useful for cleanup/testing)
-func CleanupBinaries() error {
-	var errs []error
-
-	if err := os.Remove(audioOutputBinPath); err != nil && !os.IsNotExist(err) {
-		errs = append(errs, fmt.Errorf("failed to remove audio output binary: %w", err))
-	}
-
-	if err := os.Remove(audioInputBinPath); err != nil && !os.IsNotExist(err) {
-		errs = append(errs, fmt.Errorf("failed to remove audio input binary: %w", err))
-	}
-
-	// Try to remove directory (will only succeed if empty)
-	os.Remove(audioBinDir)
-
-	if len(errs) > 0 {
-		return fmt.Errorf("cleanup errors: %v", errs)
-	}
-
-	return nil
-}
-
-// GetBinaryInfo returns information about embedded binaries
-func GetBinaryInfo() map[string]int {
-	return map[string]int{
-		"audio_output_size": len(audioOutputBinary),
-		"audio_input_size":  len(audioInputBinary),
-	}
-}
-
 // init ensures binaries are extracted when package is imported
 func init() {
 	// Extract binaries on package initialization
