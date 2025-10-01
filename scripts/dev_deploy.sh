@@ -16,7 +16,7 @@ show_help() {
     echo "      --run-go-tests-only    Run go tests and exit"
     echo "      --skip-ui-build        Skip frontend/UI build"
     echo "      --skip-native-build    Skip native build"
-    echo "      --disable-docker       Disable docker build"
+    echo "      --disable-docker       Disable docker build (auto-detected if Docker unavailable)"
     echo "  -i, --install              Build for release and install the app"
     echo "      --help                 Display this help message"
     echo
@@ -106,14 +106,38 @@ if [ -z "$REMOTE_HOST" ]; then
     exit 1
 fi
 
+# Auto-detect architecture requirements
 # check if the current CPU architecture is x86_64
 if [ "$(uname -m)" != "x86_64" ]; then
     msg_warn "Warning: This script is only supported on x86_64 architecture"
     BUILD_IN_DOCKER=true
 fi
 
+# Auto-detect Docker availability and fallback if not available
+# This is especially useful in devcontainers where Docker-in-Docker might not be available
 if [ "$BUILD_IN_DOCKER" = true ]; then
-    build_docker_image
+    # Check if Docker is available and accessible
+    if ! command -v docker &> /dev/null; then
+        msg_warn "Docker command not found, disabling Docker build"
+        msg_info "Building on host instead (equivalent to --disable-docker)"
+        BUILD_IN_DOCKER=false
+    elif ! docker info &> /dev/null; then
+        msg_warn "Docker daemon not accessible (possibly in devcontainer without Docker socket), disabling Docker build"
+        msg_info "Building on host instead (equivalent to --disable-docker)"
+        BUILD_IN_DOCKER=false
+    else
+        msg_info "Docker is available and accessible"
+    fi
+fi
+
+if [ "$BUILD_IN_DOCKER" = true ]; then
+    # Double-check Docker availability before building image
+    if ! docker info &> /dev/null; then
+        msg_warn "Docker daemon became unavailable, switching to host build"
+        BUILD_IN_DOCKER=false
+    else
+        build_docker_image
+    fi
 fi
 
 # Build the development version on the host

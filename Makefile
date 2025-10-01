@@ -1,10 +1,6 @@
-# Clone the rv1106-system toolchain to $HOME/.jetkvm/rv1106-system
-setup_toolchain:
-	bash tools/setup_rv1106_toolchain.sh
-
-# Build ALSA and Opus static libs for ARM in $HOME/.jetkvm/audio-libs
-build_audio_deps: setup_toolchain
-	bash tools/build_audio_deps.sh $(ALSA_VERSION) $(OPUS_VERSION)
+# Build ALSA and Opus static libs for ARM in /opt/jetkvm-audio-libs
+build_audio_deps:
+	bash .devcontainer/install_audio_deps.sh $(ALSA_VERSION) $(OPUS_VERSION)
 
 # Prepare everything needed for local development (toolchain + audio deps + Go tools)
 dev_env: build_audio_deps
@@ -13,8 +9,9 @@ dev_env: build_audio_deps
 	go install golang.org/x/tools/cmd/goimports@latest
 	@echo "Development environment ready."
 JETKVM_HOME ?= $(HOME)/.jetkvm
-TOOLCHAIN_DIR ?= $(JETKVM_HOME)/rv1106-system
-AUDIO_LIBS_DIR ?= $(JETKVM_HOME)/audio-libs
+BUILDKIT_PATH ?= /opt/jetkvm-native-buildkit
+BUILDKIT_FLAVOR ?= arm-rockchip830-linux-uclibcgnueabihf
+AUDIO_LIBS_DIR ?= /opt/jetkvm-audio-libs
 
 BRANCH    ?= $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE ?= $(shell date -u +%FT%T%z)
@@ -41,7 +38,7 @@ OPTIM_CFLAGS := -O3 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard -ftree-vectoriz
 export GOOS := linux
 export GOARCH := arm
 export GOARM := 7
-export CC := $(TOOLCHAIN_DIR)/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc
+export CC := $(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-gcc
 export CGO_ENABLED := 1
 export CGO_CFLAGS := $(OPTIM_CFLAGS) -I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt
 export CGO_LDFLAGS := -L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl -static

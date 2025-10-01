@@ -3,5 +3,6 @@
     "cva",
     "cx"
   ],
-  "git.ignoreLimitWarning": true
+  "git.ignoreLimitWarning": true,
+  "cmake.ignoreCMakeListsMissing": true
 }

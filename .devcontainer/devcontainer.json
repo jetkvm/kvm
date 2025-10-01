@@ -1,6 +1,10 @@
 {
 	"name": "JetKVM",
 	"image": "mcr.microsoft.com/devcontainers/go:1.25-trixie",
+	"runArgs": [
+		"--platform=linux/amd64"
+	],
+	"onCreateCommand": ".devcontainer/install-deps.sh",
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {
 			// Should match what is defined in ui/package.json
@@ -10,7 +14,6 @@
 	"mounts": [
 		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
 	],
-	"onCreateCommand": ".devcontainer/install-deps.sh",
 	"customizations": {
 		"vscode": {
 			"extensions": [
