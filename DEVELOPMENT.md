@@ -26,7 +26,7 @@ Welcome to JetKVM development! This guide will help you get started quickly, whe
 - **[Git](https://git-scm.com/downloads)** for version control
 - **[SSH access](https://jetkvm.com/docs/advanced-usage/developing#developer-mode)** to your JetKVM device
 - **Audio build dependencies:**
-   - **New:** The audio system uses a dual-subprocess architecture with CGO, ALSA, and Opus integration. You must run the provided scripts in `tools/` to set up the cross-compiler and build static ALSA/Opus libraries for ARM. See below.
+   - **New:** The audio system uses a dual-subprocess architecture with CGO, ALSA, and Opus integration. The audio dependencies are automatically installed by the devcontainer or can be manually built using `.devcontainer/install_audio_deps.sh`.
 
 
 ### Development Environment
@@ -37,11 +37,15 @@ Welcome to JetKVM development! This guide will help you get started quickly, whe
 
 If you are developing on an Apple Silicon Mac, you should use a devcontainer to ensure compatibility with the JetKVM build environment (which targets linux/amd64 and ARM). There are two main options:
 
-- **VS Code Dev Containers**: Open the project in VS Code and use the built-in Dev Containers support. The configuration is in `.devcontainer/devcontainer.json`.
+- **VS Code Dev Containers**: Open the project in VS Code and use the built-in Dev Containers support. The configuration in `.devcontainer/devcontainer.json` is set to use `linux/amd64` platform.
 - **Devpod**: [Devpod](https://devpod.sh/) is a fast, open-source tool for running devcontainers anywhere. If you use Devpod, go to **Settings → Experimental → Additional Environmental Variables** and add:
    - `DOCKER_DEFAULT_PLATFORM=linux/amd64`
    This ensures all builds run in the correct architecture.
 - **devcontainer CLI**: You can also use the [devcontainer CLI](https://github.com/devcontainers/cli) to launch the devcontainer from the terminal.
+
+**Important:** If you're switching from an ARM64 devcontainer or updating the platform settings, you'll need to rebuild the devcontainer completely:
+- In VS Code: Run "Dev Containers: Rebuild Container" from the command palette
+- With devcontainer CLI: Use `devcontainer up --build`
 
 This approach ensures compatibility with all shell scripts, build tools, and cross-compilation steps used in the project.
 
@@ -68,8 +72,8 @@ This ensures compatibility with shell scripts and build tools used in the projec
 3. **Set up the cross-compiler and audio dependencies:**
    ```bash
    make dev_env
-   # This will run tools/setup_rv1106_toolchain.sh and tools/build_audio_deps.sh
-   # It will clone the cross-compiler and build ALSA/Opus static libs in $HOME/.jetkvm
+   # This will install audio dependencies using .devcontainer/install_audio_deps.sh
+   # It will build ALSA/Opus static libs in /opt/jetkvm-audio-libs using the buildkit from /opt/jetkvm-native-buildkit
    #
    # **Note:** This is required for the audio subprocess architecture. If you skip this step, builds will not succeed.
    ```
@@ -249,15 +253,12 @@ The project includes several essential Makefile targets for development environm
 ```bash
 # Set up complete development environment (recommended first step)
 make dev_env
-# This runs setup_toolchain + build_audio_deps + installs Go tools
-# - Clones rv1106-system toolchain to $HOME/.jetkvm/rv1106-system
-# - Builds ALSA and Opus static libraries for ARM
+# This runs build_audio_deps + installs Go tools
+# - Uses buildkit from /opt/jetkvm-native-buildkit for cross-compilation
+# - Builds ALSA and Opus static libraries for ARM in /opt/jetkvm-audio-libs
 # - Installs goimports and other Go development tools
 
-# Set up only the cross-compiler toolchain
-make setup_toolchain
-
-# Build only the audio dependencies (requires setup_toolchain)
+# Build only the audio dependencies
 make build_audio_deps
 ```
 
@@ -267,7 +268,7 @@ make build_audio_deps
 # Build development version with debug symbols
 make build_dev
 # Builds jetkvm_app with version like 0.4.7-dev20241222
-# Requires: make dev_env (for toolchain and audio dependencies)
+# Requires: make dev_env (for buildkit and audio dependencies)
 
 # Build release version (production)
 make build_release
@@ -334,7 +335,7 @@ The `dev_deploy.sh` script is the primary tool for deploying your development ch
 
 **Requirements:**
 - SSH access to your JetKVM device
-- `make dev_env` must be run first (for toolchain and audio dependencies)
+- `make dev_env` must be run first (for buildkit and audio dependencies)
 - Device IP address or hostname
 
 ### API Testing
@@ -381,7 +382,7 @@ ssh root@<IP> echo "Connection OK"
 ```bash
 # Make sure you have run:
 make dev_env
-# If you see errors about ALSA/Opus, check logs and re-run the setup scripts in tools/.
+# # If you see errors about ALSA/Opus, check logs and re-run: make build_audio_deps
 ```
 
 ### "Frontend not updating"
