@@ -32,7 +32,7 @@ require (
 	github.com/vishvananda/netlink v1.3.1
 	go.bug.st/serial v1.6.4
 	golang.org/x/crypto v0.42.0
-	golang.org/x/net v0.43.0
+	golang.org/x/net v0.44.0
 	golang.org/x/sys v0.36.0
 )
 
