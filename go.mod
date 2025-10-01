@@ -21,7 +21,7 @@ require (
 	github.com/pion/webrtc/v4 v4.1.4
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/prometheus/client_golang v1.23.0
-	github.com/prometheus/common v0.66.0
+	github.com/prometheus/common v0.66.1
 	github.com/prometheus/procfs v0.17.0
 	github.com/psanford/httpreadat v0.1.0
 	github.com/rs/xid v1.6.0
@@ -53,7 +53,6 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.26.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
-	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
@@ -86,10 +85,10 @@ require (
 	github.com/ugorji/go/codec v1.3.0 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
+	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/arch v0.18.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
