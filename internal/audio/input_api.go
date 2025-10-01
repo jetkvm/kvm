@@ -21,7 +21,7 @@ type AudioInputInterface interface {
 
 // GetSupervisor returns the audio input supervisor for advanced management
 func (m *AudioInputManager) GetSupervisor() *AudioInputSupervisor {
-	return m.ipcManager.GetSupervisor()
+	return GetAudioInputSupervisor()
 }
 
 // getAudioInputManager returns the audio input manager

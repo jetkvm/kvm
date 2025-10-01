@@ -287,45 +287,6 @@ func ValidateFrameDuration(duration time.Duration) error {
 	return nil
 }
 
-// ValidateAudioConfigComplete performs comprehensive audio configuration validation
-// Uses optimized validation functions that leverage AudioConfigCache
-func ValidateAudioConfigComplete(config AudioConfig) error {
-	// Fast path: Check if all values match the current cached configuration
-	cache := Config
-	cachedSampleRate := cache.SampleRate
-	cachedChannels := cache.Channels
-	cachedBitrate := cache.OpusBitrate / 1000 // Convert from bps to kbps
-	cachedFrameSize := cache.FrameSize
-
-	// Only do this calculation if we have valid cached values
-	if cachedSampleRate > 0 && cachedChannels > 0 && cachedBitrate > 0 && cachedFrameSize > 0 {
-		cachedDuration := time.Duration(cachedFrameSize) * time.Second / time.Duration(cachedSampleRate)
-
-		// Most common case: validating the current configuration
-		if config.SampleRate == cachedSampleRate &&
-			config.Channels == cachedChannels &&
-			config.Bitrate == cachedBitrate &&
-			config.FrameSize == cachedDuration {
-			return nil
-		}
-	}
-
-	// Slower path: validate each parameter individually
-	if err := ValidateBitrate(config.Bitrate); err != nil {
-		return fmt.Errorf("bitrate validation failed: %w", err)
-	}
-	if err := ValidateSampleRate(config.SampleRate); err != nil {
-		return fmt.Errorf("sample rate validation failed: %w", err)
-	}
-	if err := ValidateChannelCount(config.Channels); err != nil {
-		return fmt.Errorf("channel count validation failed: %w", err)
-	}
-	if err := ValidateFrameDuration(config.FrameSize); err != nil {
-		return fmt.Errorf("frame duration validation failed: %w", err)
-	}
-	return nil
-}
-
 // ValidateAudioConfigConstants validates audio configuration constants
 func ValidateAudioConfigConstants(config *AudioConfigConstants) error {
 	// Quality validation removed - using fixed optimal configuration

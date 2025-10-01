@@ -236,31 +236,6 @@ func (s *AudioControlService) GetMicrophoneStatus() map[string]interface{} {
 	}
 }
 
-// SetAudioQuality is deprecated - audio quality is now fixed at optimal settings
-func (s *AudioControlService) SetAudioQuality(quality int) {
-	// No-op: quality is fixed at optimal configuration
-}
-
-// GetAudioQualityPresets is deprecated - returns empty map
-func (s *AudioControlService) GetAudioQualityPresets() map[int]AudioConfig {
-	return map[int]AudioConfig{}
-}
-
-// GetMicrophoneQualityPresets is deprecated - returns empty map
-func (s *AudioControlService) GetMicrophoneQualityPresets() map[int]AudioConfig {
-	return map[int]AudioConfig{}
-}
-
-// GetCurrentAudioQuality returns the current audio quality configuration
-func (s *AudioControlService) GetCurrentAudioQuality() AudioConfig {
-	return GetAudioConfig()
-}
-
-// GetCurrentMicrophoneQuality returns the current microphone quality configuration
-func (s *AudioControlService) GetCurrentMicrophoneQuality() AudioConfig {
-	return GetMicrophoneConfig()
-}
-
 // SubscribeToAudioEvents subscribes to audio events via WebSocket
 func (s *AudioControlService) SubscribeToAudioEvents(connectionID string, wsCon *websocket.Conn, runCtx context.Context, logger *zerolog.Logger) {
 	logger.Info().Msg("client subscribing to audio events")
