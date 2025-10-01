@@ -30,7 +30,6 @@ func program() {
 func main() {
 	versionPtr := flag.Bool("version", false, "print version and exit")
 	versionJSONPtr := flag.Bool("version-json", false, "print version as json and exit")
-
 	flag.Parse()
 
 	if *versionPtr || *versionJSONPtr {
