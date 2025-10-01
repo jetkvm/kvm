@@ -42,11 +42,17 @@ AUDIO_DEPS_SCRIPT="${PROJECT_ROOT}/install_audio_deps.sh"
 
 if [ -f "${AUDIO_DEPS_SCRIPT}" ]; then
     echo "Running audio dependencies installation..."
-    sudo bash "${AUDIO_DEPS_SCRIPT}"
+    # Pre-create audio libs directory with proper permissions
+    sudo mkdir -p /opt/jetkvm-audio-libs
+    sudo chmod 777 /opt/jetkvm-audio-libs
+    # Run installation script (now it can write without sudo)
+    bash "${AUDIO_DEPS_SCRIPT}"
     echo "Audio dependencies installation completed."
     if [ -d "/opt/jetkvm-audio-libs" ]; then
         echo "Audio libraries installed in /opt/jetkvm-audio-libs"
-        sudo chmod -R o+rw /opt/jetkvm-audio-libs
+        # Set recursive permissions for all subdirectories and files
+        sudo chmod -R 777 /opt/jetkvm-audio-libs
+        echo "Permissions set to allow all users access to audio libraries"
     else
         echo "Error: /opt/jetkvm-audio-libs directory not found after installation."
         exit 1
