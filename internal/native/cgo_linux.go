@@ -118,6 +118,8 @@ func uiInit(rotation uint16) {
 	defer cgoLock.Unlock()
 
 	cRotation := C.u_int16_t(rotation)
+	defer C.free(unsafe.Pointer(&cRotation))
+
 	C.jetkvm_ui_init(cRotation)
 }
 
@@ -348,6 +350,8 @@ func uiDispSetRotation(rotation uint16) (bool, error) {
 	nativeLogger.Info().Uint16("rotation", rotation).Msg("setting rotation")
 
 	cRotation := C.u_int16_t(rotation)
+	defer C.free(unsafe.Pointer(&cRotation))
+
 	C.jetkvm_ui_set_rotation(cRotation)
 	return true, nil
 }
