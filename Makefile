@@ -99,6 +99,7 @@ build_audio_output: build_audio_deps
 			-o $(BIN_DIR)/jetkvm_audio_output \
 			internal/audio/c/jetkvm_audio_output.c \
 			internal/audio/c/ipc_protocol.c \
+			internal/audio/c/audio_common.c \
 			internal/audio/c/audio.c \
 			$(CGO_LDFLAGS); \
 	fi
@@ -114,6 +115,7 @@ build_audio_input: build_audio_deps
 			-o $(BIN_DIR)/jetkvm_audio_input \
 			internal/audio/c/jetkvm_audio_input.c \
 			internal/audio/c/ipc_protocol.c \
+			internal/audio/c/audio_common.c \
 			internal/audio/c/audio.c \
 			$(CGO_LDFLAGS); \
 	fi
