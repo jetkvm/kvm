@@ -321,7 +321,8 @@ func (u *UsbGadget) keyboardWriteHidFile(modifier byte, keys []byte) error {
 	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
 	if err != nil {
 		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
-		// Keep file open on write errors to reduce I/O overhead
+		u.keyboardHidFile.Close()
+		u.keyboardHidFile = nil
 		return err
 	}
 	u.resetLogSuppressionCounter("keyboardWriteHidFile")
