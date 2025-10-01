@@ -31,9 +31,9 @@ require (
 	github.com/vearutop/statigz v1.5.0
 	github.com/vishvananda/netlink v1.3.1
 	go.bug.st/serial v1.6.4
-	golang.org/x/crypto v0.41.0
+	golang.org/x/crypto v0.42.0
 	golang.org/x/net v0.43.0
-	golang.org/x/sys v0.35.0
+	golang.org/x/sys v0.36.0
 )
 
 replace github.com/pojntfx/go-nbd v0.3.2 => github.com/chemhack/go-nbd v0.0.0-20241006125820-59e45f5b1e7b
@@ -88,7 +88,7 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/arch v0.18.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/text v0.28.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
