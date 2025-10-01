@@ -31,7 +31,6 @@ type AudioRelay struct {
 
 	// WebRTC integration
 	audioTrack AudioTrackWriter
-	config     AudioConfig
 	muted      bool
 }
 
@@ -49,12 +48,12 @@ func NewAudioRelay() *AudioRelay {
 		ctx:        ctx,
 		cancel:     cancel,
 		logger:     &logger,
-		bufferPool: NewAudioBufferPool(GetMaxAudioFrameSize()),
+		bufferPool: NewAudioBufferPool(Config.MaxAudioFrameSize),
 	}
 }
 
 // Start begins the audio relay process
-func (r *AudioRelay) Start(audioTrack AudioTrackWriter, config AudioConfig) error {
+func (r *AudioRelay) Start(audioTrack AudioTrackWriter) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -66,7 +65,6 @@ func (r *AudioRelay) Start(audioTrack AudioTrackWriter, config AudioConfig) erro
 	client := NewAudioOutputClient()
 	r.client = client
 	r.audioTrack = audioTrack
-	r.config = config
 
 	// Connect to the audio output server
 	if err := client.Connect(); err != nil {
@@ -189,7 +187,6 @@ func (r *AudioRelay) forwardToWebRTC(frame []byte) error {
 	defer r.mutex.RUnlock()
 
 	audioTrack := r.audioTrack
-	config := r.config
 	muted := r.muted
 
 	// Comprehensive nil check for audioTrack to prevent panic
@@ -218,9 +215,10 @@ func (r *AudioRelay) forwardToWebRTC(frame []byte) error {
 	}
 
 	// Write sample to WebRTC track while holding the read lock
+	// Frame size is fixed at 20ms for HDMI audio
 	return audioTrack.WriteSample(media.Sample{
 		Data:     sampleData,
-		Duration: config.FrameSize,
+		Duration: 20 * time.Millisecond,
 	})
 }
 

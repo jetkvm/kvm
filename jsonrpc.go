@@ -1322,10 +1322,6 @@ func rpcAudioMute(muted bool) error {
 	return audio.RPCAudioMute(muted)
 }
 
-func rpcAudioQuality(quality int) (map[string]any, error) {
-	return audio.RPCAudioQuality(quality)
-}
-
 func rpcMicrophoneStart() error {
 	return audio.RPCMicrophoneStart()
 }
@@ -1336,10 +1332,6 @@ func rpcMicrophoneStop() error {
 
 func rpcAudioStatus() (map[string]interface{}, error) {
 	return audio.RPCAudioStatus()
-}
-
-func rpcAudioQualityPresets() (map[string]any, error) {
-	return audio.RPCAudioQualityPresets()
 }
 
 func rpcMicrophoneStatus() (map[string]interface{}, error) {
@@ -1405,9 +1397,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getUsbEmulationState":   {Func: rpcGetUsbEmulationState},
 	"setUsbEmulationState":   {Func: rpcSetUsbEmulationState, Params: []string{"enabled"}},
 	"audioMute":              {Func: rpcAudioMute, Params: []string{"muted"}},
-	"audioQuality":           {Func: rpcAudioQuality, Params: []string{"quality"}},
 	"audioStatus":            {Func: rpcAudioStatus},
-	"audioQualityPresets":    {Func: rpcAudioQualityPresets},
 	"microphoneStart":        {Func: rpcMicrophoneStart},
 	"microphoneStop":         {Func: rpcMicrophoneStop},
 	"microphoneStatus":       {Func: rpcMicrophoneStatus},

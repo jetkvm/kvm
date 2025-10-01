@@ -357,7 +357,7 @@ type ZeroCopyFramePoolStats struct {
 }
 
 var (
-	globalZeroCopyPool = NewZeroCopyFramePool(GetMaxAudioFrameSize())
+	globalZeroCopyPool = NewZeroCopyFramePool(Config.MaxAudioFrameSize)
 )
 
 // GetZeroCopyFrame gets a frame from the global pool
@@ -375,36 +375,3 @@ func PutZeroCopyFrame(frame *ZeroCopyAudioFrame) {
 	globalZeroCopyPool.Put(frame)
 }
 
-// ZeroCopyAudioReadEncode performs audio read and encode with zero-copy optimization
-func ZeroCopyAudioReadEncode() (*ZeroCopyAudioFrame, error) {
-	frame := GetZeroCopyFrame()
-
-	maxFrameSize := GetMaxAudioFrameSize()
-	// Ensure frame has enough capacity
-	if frame.Capacity() < maxFrameSize {
-		// Reallocate if needed
-		frame.data = make([]byte, maxFrameSize)
-		frame.capacity = maxFrameSize
-		frame.pooled = false
-	}
-
-	// Use unsafe pointer for direct CGO call
-	n, err := CGOAudioReadEncode(frame.data[:maxFrameSize])
-	if err != nil {
-		PutZeroCopyFrame(frame)
-		return nil, err
-	}
-
-	if n == 0 {
-		PutZeroCopyFrame(frame)
-		return nil, nil
-	}
-
-	// Set the actual data length
-	frame.mutex.Lock()
-	frame.length = n
-	frame.data = frame.data[:n]
-	frame.mutex.Unlock()
-
-	return frame, nil
-}

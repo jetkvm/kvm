@@ -29,14 +29,6 @@ func RPCAudioMute(muted bool) error {
 	return service.MuteAudio(muted)
 }
 
-// RPCAudioQuality is deprecated - quality is now fixed at optimal settings
-// Returns current config for backward compatibility
-func RPCAudioQuality(quality int) (map[string]any, error) {
-	// Quality is now fixed - return current optimal configuration
-	currentConfig := GetAudioConfig()
-	return map[string]any{"config": currentConfig}, nil
-}
-
 // RPCMicrophoneStart handles microphone start RPC requests
 func RPCMicrophoneStart() error {
 	if getAudioControlServiceFunc == nil {
@@ -71,19 +63,6 @@ func RPCAudioStatus() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("audio control service not initialized")
 	}
 	return service.GetAudioStatus(), nil
-}
-
-// RPCAudioQualityPresets is deprecated - returns single optimal configuration
-// Kept for backward compatibility with UI
-func RPCAudioQualityPresets() (map[string]any, error) {
-	// Return single optimal configuration as both preset and current
-	current := GetAudioConfig()
-
-	// Return empty presets map (UI will handle this gracefully)
-	return map[string]any{
-		"presets": map[string]any{},
-		"current": current,
-	}, nil
 }
 
 // RPCMicrophoneStatus handles microphone status RPC requests (read-only)

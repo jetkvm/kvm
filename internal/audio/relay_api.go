@@ -27,9 +27,6 @@ func StartAudioRelay(audioTrack AudioTrackWriter) error {
 	// Create new relay
 	relay := NewAudioRelay()
 
-	// Get current audio config
-	config := GetAudioConfig()
-
 	// Retry starting the relay with exponential backoff
 	// This handles cases where the subprocess hasn't created its socket yet
 	maxAttempts := 5
@@ -38,7 +35,7 @@ func StartAudioRelay(audioTrack AudioTrackWriter) error {
 
 	var lastErr error
 	for i := 0; i < maxAttempts; i++ {
-		if err := relay.Start(audioTrack, config); err != nil {
+		if err := relay.Start(audioTrack); err != nil {
 			lastErr = err
 			if i < maxAttempts-1 {
 				// Calculate exponential backoff delay
@@ -122,8 +119,7 @@ func UpdateAudioRelayTrack(audioTrack AudioTrackWriter) error {
 	if globalRelay == nil {
 		// No relay running, start one with the provided track
 		relay := NewAudioRelay()
-		config := GetAudioConfig()
-		if err := relay.Start(audioTrack, config); err != nil {
+		if err := relay.Start(audioTrack); err != nil {
 			relayMutex.Unlock()
 			return err
 		}

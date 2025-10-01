@@ -22,16 +22,14 @@ const (
 	errorDumpTemplate  = "jetkvm-%s.log"
 )
 
-func program(audioOutputServer, audioInputServer *bool) {
+func program() {
 	gspt.SetProcTitle(os.Args[0] + " [app]")
-	kvm.Main(*audioOutputServer, *audioInputServer)
+	kvm.Main()
 }
 
 func main() {
 	versionPtr := flag.Bool("version", false, "print version and exit")
 	versionJSONPtr := flag.Bool("version-json", false, "print version as json and exit")
-	audioOutputServerPtr := flag.Bool("audio-output-server", false, "Run as audio server subprocess")
-	audioInputServerPtr := flag.Bool("audio-input-server", false, "Run as audio input server subprocess")
 
 	flag.Parse()
 
@@ -50,7 +48,7 @@ func main() {
 	case "":
 		doSupervise()
 	case kvm.GetBuiltAppVersion():
-		program(audioOutputServerPtr, audioInputServerPtr)
+		program()
 	default:
 		fmt.Printf("Invalid build version: %s != %s\n", childID, kvm.GetBuiltAppVersion())
 		os.Exit(1)
