@@ -1,15 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/Button";
 import { TextAreaWithLabel } from "@/components/TextArea";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useSettingsStore } from "@/hooks/stores";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import Fieldset from "@components/Fieldset";
 import notifications from "@/notifications";
-
-import { SettingsItem } from "./devices.$id.settings";
 
 const defaultEdid =
   "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b";
@@ -52,7 +51,7 @@ export default function SettingsVideoRoute() {
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
   const [edidLoading, setEdidLoading] = useState(false);
-
+  const { debugMode } = useSettingsStore();
   // Video enhancement settings from store
   const {
     videoSaturation,
@@ -131,6 +130,26 @@ export default function SettingsVideoRoute() {
       setEdid(newEdid);
     });
   };
+
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
+  const [debugInfoLoading, setDebugInfoLoading] = useState(false);
+  const getDebugInfo = useCallback(() => {
+    setDebugInfoLoading(true);
+    send("getVideoLogStatus", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(`Failed to get debug info: ${resp.error.data || "Unknown error"}`);
+        setDebugInfoLoading(false);
+        return;
+      }
+      const data = resp.result as string;
+      setDebugInfo(data
+        .split("\n")
+        .map(line => line.trim().replace(/^\[\s*\d+\.\d+\]\s*/, ""))
+        .join("\n")
+      );
+      setDebugInfoLoading(false);
+    });
+  }, [send]);
 
   return (
     <div className="space-y-3">
@@ -279,6 +298,30 @@ export default function SettingsVideoRoute() {
               )}
             </Fieldset>
           </div>
+
+
+          {debugMode && (
+            <div className="space-y-4">
+              <SettingsItem
+                title="Debugging Info"
+                description="Debugging information for video"
+              >
+                <Button size="SM" theme="primary" text="Get Debugging Info"
+                  loading={debugInfoLoading}
+                  disabled={debugInfoLoading}
+                  onClick={() => {
+                    getDebugInfo();
+                  }} />
+              </SettingsItem>
+              {debugInfo && (
+                <div className="font-mono bg-gray-100 dark:bg-gray-800 p-2 rounded-md text-xs max-h-64 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap">
+                    {debugInfo}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

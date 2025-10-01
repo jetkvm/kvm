@@ -153,13 +153,13 @@ body {
 
 @property --grid-color-start {
   syntax: "<color>";
-  initial-value: var(--color-blue-50/10);
+  initial-value: oklch(97% 0.014 254.604 / 10); /* var(--color-blue-50/10) */
   inherits: false;
 }
 
 @property --grid-color-end {
   syntax: "<color>";
-  initial-value: var(--color-blue-50/100);
+  initial-value: oklch(97% 0.014 254.604 / 100); /* var(--color-blue-50/100) */
   inherits: false;
 }
 
@@ -175,8 +175,8 @@ body {
 }
 
 .group:hover .grid-card {
-  --grid-color-start: var(--color-blue-100/50);
-  --grid-color-end: var(--color-blue-50/50);
+  --grid-color-start: oklch(from var(--color-blue-100) l c h / 50);
+  --grid-color-end: oklch(from var(--color-blue-50) l c h / 50);
 }
 
 video::-webkit-media-controls {
