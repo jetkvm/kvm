@@ -3,6 +3,18 @@
 # Build ALSA and Opus static libs for ARM in /opt/jetkvm-audio-libs
 set -e
 
+# Sudo wrapper function
+SUDO_PATH=$(which sudo 2>/dev/null || echo "")
+function use_sudo() {
+  if [ "$UID" -eq 0 ]; then
+    "$@"
+  elif [ -n "$SUDO_PATH" ]; then
+    ${SUDO_PATH} -E "$@"
+  else
+    "$@"
+  fi
+}
+
 # Accept version parameters or use defaults
 ALSA_VERSION="${1:-1.2.14}"
 OPUS_VERSION="${2:-1.5.2}"
@@ -12,7 +24,9 @@ BUILDKIT_PATH="/opt/jetkvm-native-buildkit"
 BUILDKIT_FLAVOR="arm-rockchip830-linux-uclibcgnueabihf"
 CROSS_PREFIX="$BUILDKIT_PATH/bin/$BUILDKIT_FLAVOR"
 
-mkdir -p "$AUDIO_LIBS_DIR"
+# Create directory with proper permissions
+use_sudo mkdir -p "$AUDIO_LIBS_DIR"
+use_sudo chmod 777 "$AUDIO_LIBS_DIR"
 cd "$AUDIO_LIBS_DIR"
 
 # Download sources

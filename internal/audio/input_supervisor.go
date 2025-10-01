@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -38,14 +37,15 @@ func (ais *AudioInputSupervisor) SetOpusConfig(bitrate, complexity, vbr, signalT
 	ais.mutex.Lock()
 	defer ais.mutex.Unlock()
 
-	// Store OPUS parameters as environment variables
+	// Store OPUS parameters as environment variables for C binary
 	ais.opusEnv = []string{
-		"JETKVM_OPUS_BITRATE=" + strconv.Itoa(bitrate),
-		"JETKVM_OPUS_COMPLEXITY=" + strconv.Itoa(complexity),
-		"JETKVM_OPUS_VBR=" + strconv.Itoa(vbr),
-		"JETKVM_OPUS_SIGNAL_TYPE=" + strconv.Itoa(signalType),
-		"JETKVM_OPUS_BANDWIDTH=" + strconv.Itoa(bandwidth),
-		"JETKVM_OPUS_DTX=" + strconv.Itoa(dtx),
+		"OPUS_BITRATE=" + strconv.Itoa(bitrate),
+		"OPUS_COMPLEXITY=" + strconv.Itoa(complexity),
+		"OPUS_VBR=" + strconv.Itoa(vbr),
+		"OPUS_SIGNAL_TYPE=" + strconv.Itoa(signalType),
+		"OPUS_BANDWIDTH=" + strconv.Itoa(bandwidth),
+		"OPUS_DTX=" + strconv.Itoa(dtx),
+		"ALSA_PLAYBACK_DEVICE=hw:1,0", // USB Gadget audio playback
 	}
 }
 
@@ -100,25 +100,19 @@ func (ais *AudioInputSupervisor) supervisionLoop() {
 
 // startProcess starts the audio input server process
 func (ais *AudioInputSupervisor) startProcess() error {
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get executable path: %w", err)
-	}
+	// Use embedded C binary path
+	binaryPath := GetAudioInputBinaryPath()
 
 	ais.mutex.Lock()
 	defer ais.mutex.Unlock()
 
-	// Build command arguments (only subprocess flag)
-	args := []string{"--audio-input-server"}
-
-	// Create new command
-	ais.cmd = exec.CommandContext(ais.ctx, execPath, args...)
+	// Create new command (no args needed for C binary)
+	ais.cmd = exec.CommandContext(ais.ctx, binaryPath)
 	ais.cmd.Stdout = os.Stdout
 	ais.cmd.Stderr = os.Stderr
 
-	// Set environment variables for IPC and OPUS configuration
-	env := append(os.Environ(), "JETKVM_AUDIO_INPUT_IPC=true") // Enable IPC mode
-	env = append(env, ais.opusEnv...)                          // Add OPUS configuration
+	// Set environment variables for OPUS configuration
+	env := append(os.Environ(), ais.opusEnv...)
 
 	// Pass logging environment variables directly to subprocess
 	// The subprocess will inherit all PION_LOG_* variables from os.Environ()
@@ -137,7 +131,7 @@ func (ais *AudioInputSupervisor) startProcess() error {
 	}
 
 	ais.processPID = ais.cmd.Process.Pid
-	ais.logger.Info().Int("pid", ais.processPID).Strs("args", args).Strs("opus_env", ais.opusEnv).Msg("audio input server process started")
+	ais.logger.Info().Int("pid", ais.processPID).Str("binary", binaryPath).Strs("opus_env", ais.opusEnv).Msg("audio input server process started")
 
 	// Connect client to the server synchronously to avoid race condition
 	ais.connectClient()
@@ -260,15 +254,10 @@ func (ais *AudioInputSupervisor) SendOpusConfig(config UnifiedIPCOpusConfig) err
 
 // findExistingAudioInputProcess checks if there's already an audio input server process running
 func (ais *AudioInputSupervisor) findExistingAudioInputProcess() (int, error) {
-	// Get current executable path
-	execPath, err := os.Executable()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get executable path: %w", err)
-	}
+	// Look for the C binary name
+	binaryName := "jetkvm_audio_input"
 
-	execName := filepath.Base(execPath)
-
-	// Use ps to find processes with our executable name and audio-input-server argument
+	// Use ps to find processes with C binary name
 	cmd := exec.Command("ps", "aux")
 	output, err := cmd.Output()
 	if err != nil {
@@ -278,7 +267,7 @@ func (ais *AudioInputSupervisor) findExistingAudioInputProcess() (int, error) {
 	// Parse ps output to find audio input server processes
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
-		if strings.Contains(line, execName) && strings.Contains(line, "--audio-input-server") {
+		if strings.Contains(line, binaryName) {
 			// Extract PID from ps output (second column)
 			fields := strings.Fields(line)
 			if len(fields) >= 2 {

@@ -77,14 +77,15 @@ func (s *AudioOutputSupervisor) SetOpusConfig(bitrate, complexity, vbr, signalTy
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Store OPUS parameters as environment variables
+	// Store OPUS parameters as environment variables for C binary
 	s.opusEnv = []string{
-		"JETKVM_OPUS_BITRATE=" + strconv.Itoa(bitrate),
-		"JETKVM_OPUS_COMPLEXITY=" + strconv.Itoa(complexity),
-		"JETKVM_OPUS_VBR=" + strconv.Itoa(vbr),
-		"JETKVM_OPUS_SIGNAL_TYPE=" + strconv.Itoa(signalType),
-		"JETKVM_OPUS_BANDWIDTH=" + strconv.Itoa(bandwidth),
-		"JETKVM_OPUS_DTX=" + strconv.Itoa(dtx),
+		"OPUS_BITRATE=" + strconv.Itoa(bitrate),
+		"OPUS_COMPLEXITY=" + strconv.Itoa(complexity),
+		"OPUS_VBR=" + strconv.Itoa(vbr),
+		"OPUS_SIGNAL_TYPE=" + strconv.Itoa(signalType),
+		"OPUS_BANDWIDTH=" + strconv.Itoa(bandwidth),
+		"OPUS_DTX=" + strconv.Itoa(dtx),
+		"ALSA_CAPTURE_DEVICE=hw:0,0", // TC358743 HDMI audio capture
 	}
 }
 
@@ -183,19 +184,14 @@ func (s *AudioOutputSupervisor) supervisionLoop() {
 
 // startProcess starts the audio server process
 func (s *AudioOutputSupervisor) startProcess() error {
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get executable path: %w", err)
-	}
+	// Use embedded C binary path
+	binaryPath := GetAudioOutputBinaryPath()
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// Build command arguments (only subprocess flag)
-	args := []string{"--audio-output-server"}
-
-	// Create new command
-	s.cmd = exec.CommandContext(s.ctx, execPath, args...)
+	// Create new command (no args needed for C binary)
+	s.cmd = exec.CommandContext(s.ctx, binaryPath)
 	s.cmd.Stdout = os.Stdout
 	s.cmd.Stderr = os.Stderr
 
@@ -214,7 +210,7 @@ func (s *AudioOutputSupervisor) startProcess() error {
 	}
 
 	s.processPID = s.cmd.Process.Pid
-	s.logger.Info().Int("pid", s.processPID).Strs("args", args).Strs("opus_env", s.opusEnv).Msg("audio server process started")
+	s.logger.Info().Int("pid", s.processPID).Str("binary", binaryPath).Strs("opus_env", s.opusEnv).Msg("audio server process started")
 
 	// Add process to monitoring
 
