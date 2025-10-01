@@ -58,7 +58,7 @@
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/postcss": "^4.1.13",
     "@tailwindcss/typography": "^0.5.19",
-    "@tailwindcss/vite": "^4.1.13",
+    "@tailwindcss/vite": "^4.1.14",
     "@types/react": "^19.1.14",
     "@types/react-dom": "^19.1.9",
     "@types/semver": "^7.7.1",
