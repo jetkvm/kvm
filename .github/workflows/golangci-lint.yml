@@ -34,34 +34,37 @@ jobs:
           ALSA_VERSION=$(grep '^ALSA_VERSION' Makefile | cut -d'=' -f2 | tr -d ' ')
           OPUS_VERSION=$(grep '^OPUS_VERSION' Makefile | cut -d'=' -f2 | tr -d ' ')
           
-          # Get rv1106-system latest commit
-          RV1106_COMMIT=$(git ls-remote https://github.com/jetkvm/rv1106-system.git HEAD | cut -f1)
+          # Define buildkit path
+          BUILDKIT_PATH="/opt/jetkvm-native-buildkit"
+          BUILDKIT_FLAVOR="arm-rockchip830-linux-uclibcgnueabihf"
           
           # Set environment variables
           echo "ALSA_VERSION=$ALSA_VERSION" >> $GITHUB_ENV
           echo "OPUS_VERSION=$OPUS_VERSION" >> $GITHUB_ENV
-          echo "RV1106_COMMIT=$RV1106_COMMIT" >> $GITHUB_ENV
+          echo "BUILDKIT_PATH=$BUILDKIT_PATH" >> $GITHUB_ENV
+          echo "BUILDKIT_FLAVOR=$BUILDKIT_FLAVOR" >> $GITHUB_ENV
           
           # Set outputs for use in other steps
           echo "alsa_version=$ALSA_VERSION" >> $GITHUB_OUTPUT
           echo "opus_version=$OPUS_VERSION" >> $GITHUB_OUTPUT
-          echo "rv1106_commit=$RV1106_COMMIT" >> $GITHUB_OUTPUT
+          echo "buildkit_path=$BUILDKIT_PATH" >> $GITHUB_OUTPUT
+          echo "buildkit_flavor=$BUILDKIT_FLAVOR" >> $GITHUB_OUTPUT
           
           # Set resolved cache path
-          CACHE_PATH="$HOME/.jetkvm/audio-libs"
+          CACHE_PATH="/opt/jetkvm-audio-libs"
           echo "CACHE_PATH=$CACHE_PATH" >> $GITHUB_ENV
           echo "cache_path=$CACHE_PATH" >> $GITHUB_OUTPUT
           
           echo "Extracted ALSA version: $ALSA_VERSION"
           echo "Extracted Opus version: $OPUS_VERSION"
-          echo "Latest rv1106-system commit: $RV1106_COMMIT"
+          echo "Buildkit path: $BUILDKIT_PATH"
           echo "Cache path: $CACHE_PATH"
       - name: Restore audio dependencies cache
         id: cache-audio-deps
         uses: actions/cache/restore@v4
         with:
           path: ${{ steps.build-env.outputs.cache_path }}
-          key: audio-deps-${{ runner.os }}-alsa-${{ steps.build-env.outputs.alsa_version }}-opus-${{ steps.build-env.outputs.opus_version }}-rv1106-${{ steps.build-env.outputs.rv1106_commit }}
+          key: audio-deps-${{ runner.os }}-alsa-${{ steps.build-env.outputs.alsa_version }}-opus-${{ steps.build-env.outputs.opus_version }}-buildkit
       - name: Setup development environment
         if: steps.cache-audio-deps.outputs.cache-hit != 'true'
         run: make dev_env
@@ -87,7 +90,7 @@ jobs:
           GOOS: linux
           GOARCH: arm
           GOARM: 7
-          CC: ${{ steps.build-env.outputs.cache_path }}/../rv1106-system/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf/bin/arm-rockchip830-linux-uclibcgnueabihf-gcc
+          CC: ${{ steps.build-env.outputs.buildkit_path }}/bin/${{ steps.build-env.outputs.buildkit_flavor }}-gcc
           PKG_CONFIG_PATH: ${{ steps.build-env.outputs.cache_path }}/alsa-lib-${{ steps.build-env.outputs.alsa_version }}/utils:${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}
           CGO_CFLAGS: "-O3 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard -ftree-vectorize -ffast-math -funroll-loops -mvectorize-with-neon-quad -marm -D__ARM_NEON -I${{ steps.build-env.outputs.cache_path }}/alsa-lib-${{ steps.build-env.outputs.alsa_version }}/include -I${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}/include -I${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}/celt"
           CGO_LDFLAGS: "-L${{ steps.build-env.outputs.cache_path }}/alsa-lib-${{ steps.build-env.outputs.alsa_version }}/src/.libs -lasound -L${{ steps.build-env.outputs.cache_path }}/opus-${{ steps.build-env.outputs.opus_version }}/.libs -lopus -lm -ldl -static"

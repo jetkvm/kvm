@@ -6,6 +6,8 @@ ENV GOPATH=/go
 ENV PATH=$GOPATH/bin:/usr/local/go/bin:$PATH
 
 COPY install-deps.sh /install-deps.sh
+COPY install_audio_deps.sh /install_audio_deps.sh
+
 RUN /install-deps.sh
 
 # Create build directory
