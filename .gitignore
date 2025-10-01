@@ -20,3 +20,10 @@ node_modules
 #internal/native/include
 #internal/native/lib
 internal/audio/bin/
+
+# backup files
+*.bak
+
+# core dumps
+core
+core.*
