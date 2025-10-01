@@ -5,7 +5,7 @@ function sudo() {
   if [ "$UID" -eq 0 ]; then
     "$@"
   else
-    ${SUDO_PATH} "$@"
+    ${SUDO_PATH} -E "$@"
   fi
 }
 
@@ -42,8 +42,15 @@ AUDIO_DEPS_SCRIPT="${PROJECT_ROOT}/install_audio_deps.sh"
 
 if [ -f "${AUDIO_DEPS_SCRIPT}" ]; then
     echo "Running audio dependencies installation..."
-    bash "${AUDIO_DEPS_SCRIPT}"
+    sudo bash "${AUDIO_DEPS_SCRIPT}"
     echo "Audio dependencies installation completed."
+    if [ -d "/opt/jetkvm-audio-libs" ]; then
+        echo "Audio libraries installed in /opt/jetkvm-audio-libs"
+        sudo chmod -R o+rw /opt/jetkvm-audio-libs
+    else
+        echo "Error: /opt/jetkvm-audio-libs directory not found after installation."
+        exit 1
+    fi
 else
     echo "Warning: Audio dependencies script not found at ${AUDIO_DEPS_SCRIPT}"
     echo "Skipping audio dependencies installation."
