@@ -171,8 +171,8 @@ function Terminal({
   }, [instance]);
 
   const sendLine = useCallback((line: string) => {
-    // Just send; echo/normalization handled elsewhere as you planned
-    dataChannel.send(line + "\r\n"); // adjust CR/LF to taste
+    // Just send; line ending/echo/normalization handled in serial.go
+    dataChannel.send(line);
   }, [dataChannel]);
 
   return (

@@ -820,9 +820,9 @@ func rpcGetATXState() (ATXState, error) {
 	return state, nil
 }
 
-func rpcSendCustomCommand(command string, terminator string) error {
+func rpcSendCustomCommand(command string) error {
 	logger.Debug().Str("Command", command).Msg("JSONRPC: Sending custom serial command")
-	err := sendCustomCommand(command, terminator)
+	err := sendCustomCommand(command)
 	if err != nil {
 		return fmt.Errorf("failed to send custom command in jsonrpc: %w", err)
 	}
@@ -1316,10 +1316,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"setActiveExtension":      {Func: rpcSetActiveExtension, Params: []string{"extensionId"}},
 	"getATXState":             {Func: rpcGetATXState},
 	"setATXPowerAction":       {Func: rpcSetATXPowerAction, Params: []string{"action"}},
-  "sendCustomCommand":       {Func: rpcSendCustomCommand, Params: []string{"command", "terminator"}},
+	"sendCustomCommand":       {Func: rpcSendCustomCommand, Params: []string{"command"}},
 	"getSerialSettings":       {Func: rpcGetSerialSettings},
 	"setSerialSettings":       {Func: rpcSetSerialSettings, Params: []string{"settings"}},
-  "getSerialButtonConfig":   {Func: rpcGetSerialButtonConfig},
+	"getSerialButtonConfig":   {Func: rpcGetSerialButtonConfig},
 	"setSerialButtonConfig":   {Func: rpcSetSerialButtonConfig, Params: []string{"config"}},
 	"getSerialCommandHistory": {Func: rpcGetSerialCommandHistory},
 	"setSerialCommandHistory": {Func: rpcSetSerialCommandHistory, Params: []string{"commandHistory"}},

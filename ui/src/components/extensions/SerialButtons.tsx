@@ -9,9 +9,8 @@ import notifications from "@/notifications";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { InputFieldWithLabel } from "@components/InputField";
 import { useUiStore } from "@/hooks/stores";
-
-import Checkbox from "../../components/Checkbox";
-import { SettingsItem } from "../../routes/devices.$id.settings";
+import Checkbox from "@components/Checkbox";
+import {SettingsItem} from "@components/SettingsItem";
 
 
 
@@ -25,8 +24,8 @@ interface QuickButton {
 }
 
 interface CustomButtonSettings {
-  baudRate: string;
-  dataBits: string;
+  baudRate: number;
+  dataBits: number;
   stopBits: string;
   parity: string;
   terminator: {label: string, value: string}; // None/CR/LF/CRLF/LFCR
@@ -42,37 +41,12 @@ export function SerialButtons() {
   const { setTerminalType, setTerminalLineMode } = useUiStore();
 
   // This will receive all JSON-RPC notifications (method + no id)
-  const { send } = useJsonRpc((payload) => {
-    if (payload.method !== "serial.rx") return;
-    // if (paused) return;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const p = payload.params as any;
-    let chunk = "";
-
-    if (typeof p?.base64 === "string") {
-      try {
-        chunk = atob(p.base64);
-      } catch {
-        // ignore malformed base64
-      }
-    } else if (typeof p?.data === "string") {
-      // fallback if you ever send plain text
-      chunk = p.data;
-    }
-
-    if (!chunk) return;
-
-    // Normalize CRLF for display
-    chunk = chunk.replace(/\r\n/g, "\n");
-
-    // setSerialResponse(prev => (prev + chunk).slice(-MAX_CHARS));
-  });
+  const { send } = useJsonRpc();
 
   // extension config (buttons + prefs)
   const [buttonConfig, setButtonConfig] = useState<CustomButtonSettings>({
-    baudRate: "9600",
-    dataBits: "8",
+    baudRate: 9600,
+    dataBits: 8,
     stopBits: "1",
     parity: "none",
     terminator: {label: "CR (\\r)", value: "\r"},
@@ -118,9 +92,8 @@ export function SerialButtons() {
   const onClickButton = (btn: QuickButton) => {
 
     const command = btn.command + btn.terminator.value;
-    const terminator = btn.terminator.value;
 
-    send("sendCustomCommand", { command, terminator }, (resp: JsonRpcResponse) => {
+    send("sendCustomCommand", { command }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to send custom command: ${resp.error.data || "Unknown error"}`,
@@ -273,7 +246,7 @@ export function SerialButtons() {
                     { label: "115200", value: "115200" },
                   ]}
                   value={buttonConfig.baudRate}
-                  onChange={(e) => handleSerialButtonConfigChange("baudRate", e.target.value)}
+                  onChange={(e) => handleSerialButtonConfigChange("baudRate", Number(e.target.value))}
                 />
 
                 <SelectMenuBasic
@@ -283,7 +256,7 @@ export function SerialButtons() {
                     { label: "7", value: "7" },
                   ]}
                   value={buttonConfig.dataBits}
-                  onChange={(e) => handleSerialButtonConfigChange("dataBits", e.target.value)}
+                  onChange={(e) => handleSerialButtonConfigChange("dataBits", Number(e.target.value))}
                 />
 
                 <SelectMenuBasic
