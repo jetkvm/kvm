@@ -307,7 +307,7 @@ Or if you want to manually create the symlink use:
    rem Windows
    cd internal/native/cgo
    del ui
-   mklink /d ui ../eez/src/ui
+   mklink /d ui ..\eez\src\ui
 ```
 
 ---
