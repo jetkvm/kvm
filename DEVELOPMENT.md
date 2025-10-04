@@ -301,7 +301,7 @@ Or if you want to manually create the symlink use:
    # linux
    cd internal/native/cgo
    rm ui
-   ln -s ui ../eez/src/ui
+   ln -s ../eez/src/ui ui
 ```
 ```dos
    rem Windows
