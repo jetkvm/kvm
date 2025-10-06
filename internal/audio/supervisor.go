@@ -21,12 +21,12 @@ type Supervisor struct {
 	socketPath string
 	env        []string
 
-	cmd        *exec.Cmd
-	ctx        context.Context
-	cancel     context.CancelFunc
-	running    atomic.Bool
-	done       chan struct{} // Closed when supervision loop exits
-	logger     zerolog.Logger
+	cmd     *exec.Cmd
+	ctx     context.Context
+	cancel  context.CancelFunc
+	running atomic.Bool
+	done    chan struct{} // Closed when supervision loop exits
+	logger  zerolog.Logger
 
 	// Restart state
 	restartCount   uint8
@@ -81,7 +81,7 @@ func (s *Supervisor) Stop() {
 
 	// Kill process if running
 	if s.cmd != nil && s.cmd.Process != nil {
-		s.cmd.Process.Kill()
+		_ = s.cmd.Process.Kill() // Ignore error, process may already be dead
 	}
 
 	// Wait for supervision loop to exit

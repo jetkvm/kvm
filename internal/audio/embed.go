@@ -15,10 +15,10 @@ var audioOutputBinary []byte
 var audioInputBinary []byte
 
 const (
-	audioBinDir         = "/userdata/jetkvm/bin"
-	audioOutputBinPath  = audioBinDir + "/jetkvm_audio_output"
-	audioInputBinPath   = audioBinDir + "/jetkvm_audio_input"
-	binaryFileMode      = 0755 // rwxr-xr-x
+	audioBinDir        = "/userdata/jetkvm/bin"
+	audioOutputBinPath = audioBinDir + "/jetkvm_audio_output"
+	audioInputBinPath  = audioBinDir + "/jetkvm_audio_input"
+	binaryFileMode     = 0755 // rwxr-xr-x
 )
 
 // ExtractEmbeddedBinaries extracts the embedded C audio binaries to disk
@@ -77,14 +77,4 @@ func GetAudioOutputBinaryPath() string {
 // GetAudioInputBinaryPath returns the path to the audio input binary
 func GetAudioInputBinaryPath() string {
 	return audioInputBinPath
-}
-
-// init ensures binaries are extracted when package is imported
-func init() {
-	// Extract binaries on package initialization
-	// This ensures binaries are available before supervisors start
-	if err := ExtractEmbeddedBinaries(); err != nil {
-		// Log error but don't panic - let caller handle initialization failure
-		fmt.Fprintf(os.Stderr, "Warning: Failed to extract embedded audio binaries: %v\n", err)
-	}
 }

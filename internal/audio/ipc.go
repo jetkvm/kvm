@@ -22,15 +22,15 @@ var writeBufferPool = sync.Pool{
 
 // IPC Protocol constants (matches C implementation in ipc_protocol.h)
 const (
-	ipcMagicOutput    = 0x4A4B4F55 // "JKOU" - Output (device → browser)
-	ipcMagicInput     = 0x4A4B4D49 // "JKMI" - Input (browser → device)
-	ipcHeaderSize     = 9          // Reduced from 17 (removed 8-byte timestamp)
-	ipcMaxFrameSize   = 1024       // 128kbps @ 20ms = ~600 bytes worst case with VBR+FEC
-	ipcMsgTypeOpus    = 0
-	ipcMsgTypeConfig  = 1
-	ipcMsgTypeStop    = 3
-	connectTimeout    = 5 * time.Second
-	readTimeout       = 2 * time.Second
+	ipcMagicOutput   = 0x4A4B4F55 // "JKOU" - Output (device → browser)
+	ipcMagicInput    = 0x4A4B4D49 // "JKMI" - Input (browser → device)
+	ipcHeaderSize    = 9          // Reduced from 17 (removed 8-byte timestamp)
+	ipcMaxFrameSize  = 1024       // 128kbps @ 20ms = ~600 bytes worst case with VBR+FEC
+	ipcMsgTypeOpus   = 0
+	ipcMsgTypeConfig = 1
+	ipcMsgTypeStop   = 3
+	connectTimeout   = 5 * time.Second
+	readTimeout      = 2 * time.Second
 )
 
 // IPCClient manages Unix socket communication with audio subprocess
@@ -109,7 +109,9 @@ func (c *IPCClient) ReadMessage() (uint8, []byte, error) {
 	}
 
 	// Set read deadline
-	c.conn.SetReadDeadline(time.Now().Add(readTimeout))
+	if err := c.conn.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
+		return 0, nil, fmt.Errorf("failed to set read deadline: %w", err)
+	}
 
 	// Read 9-byte header
 	var header [ipcHeaderSize]byte
