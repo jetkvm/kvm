@@ -55,14 +55,14 @@ static uint8_t channels = 2;
 static uint16_t frame_size = 960;  // 20ms frames at 48kHz
 
 static uint32_t opus_bitrate = 128000;
-static uint8_t opus_complexity = 2;
+static uint8_t opus_complexity = 5;  // Higher complexity for better quality on RV1106
 static uint16_t max_packet_size = 1500;
 
 // Opus encoder constants (hardcoded for production)
 #define OPUS_VBR 1                      // VBR enabled
 #define OPUS_VBR_CONSTRAINT 0           // Unconstrained VBR (better for low-volume signals)
 #define OPUS_SIGNAL_TYPE 3002           // OPUS_SIGNAL_MUSIC (better transient handling)
-#define OPUS_BANDWIDTH 1105             // OPUS_BANDWIDTH_FULLBAND (20kHz, enabled by 128kbps bitrate)
+#define OPUS_BANDWIDTH 1104             // OPUS_BANDWIDTH_SUPERWIDEBAND (16kHz, better quality at 128kbps)
 #define OPUS_DTX 0                      // DTX disabled (prevents audio drops)
 #define OPUS_LSB_DEPTH 16               // 16-bit depth
 
@@ -283,7 +283,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 	err = snd_pcm_hw_params_set_period_size_near(handle, params, &period_size, 0);
 	if (err < 0) return err;
 
-	snd_pcm_uframes_t buffer_size = period_size * 2;  // Optimized: minimal buffer for low latency
+	snd_pcm_uframes_t buffer_size = period_size * 4;  // 4 periods = 80ms buffer for stability
 	err = snd_pcm_hw_params_set_buffer_size_near(handle, params, &buffer_size);
 	if (err < 0) return err;
 
@@ -373,7 +373,7 @@ int jetkvm_audio_capture_init() {
 	opus_encoder_ctl(encoder, OPUS_SET_DTX(OPUS_DTX));
 	opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(OPUS_LSB_DEPTH));
 
-	opus_encoder_ctl(encoder, OPUS_SET_INBAND_FEC(1));
+	opus_encoder_ctl(encoder, OPUS_SET_INBAND_FEC(0));
 	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(20));
 
 	capture_initialized = 1;
@@ -469,72 +469,6 @@ retry_read:
 	if (__builtin_expect(pcm_rc < frame_size, 0)) {
 		uint32_t remaining_samples = (frame_size - pcm_rc) * channels;
 		simd_clear_samples_s16(&pcm_buffer[pcm_rc * channels], remaining_samples);
-	}
-
-	// Find peak amplitude with NEON SIMD
-	uint32_t total_samples = frame_size * channels;
-	int16x8_t vmax = vdupq_n_s16(0);
-
-	uint32_t i;
-	for (i = 0; i + 8 <= total_samples; i += 8) {
-		int16x8_t v = vld1q_s16(&pcm_buffer[i]);
-		int16x8_t vabs = vabsq_s16(v);
-		vmax = vmaxq_s16(vmax, vabs);
-	}
-
-	// Horizontal max reduction (manual for ARMv7)
-	int16x4_t vmax_low = vget_low_s16(vmax);
-	int16x4_t vmax_high = vget_high_s16(vmax);
-	int16x4_t vmax_reduced = vmax_s16(vmax_low, vmax_high);
-	vmax_reduced = vpmax_s16(vmax_reduced, vmax_reduced);
-	vmax_reduced = vpmax_s16(vmax_reduced, vmax_reduced);
-	int16_t peak = vget_lane_s16(vmax_reduced, 0);
-
-	// Handle remaining samples
-	for (; i < total_samples; i++) {
-		int16_t abs_val = (pcm_buffer[i] < 0) ? -pcm_buffer[i] : pcm_buffer[i];
-		if (abs_val > peak) peak = abs_val;
-	}
-
-	// Apply gain if signal is weak (below -18dB = 4096) but above noise floor
-	// Noise gate: only apply gain if peak > 256 (below this is likely just noise)
-	// Target: boost to ~50% of range (16384) to improve SNR
-	if (peak > 256 && peak < 4096) {
-		float gain = 16384.0f / peak;
-		if (gain > 8.0f) gain = 8.0f;  // Max 18dB boost
-
-		// Apply gain with NEON and saturation
-		float32x4_t vgain = vdupq_n_f32(gain);
-		for (i = 0; i + 8 <= total_samples; i += 8) {
-			int16x8_t v = vld1q_s16(&pcm_buffer[i]);
-
-			// Convert to float, apply gain, saturate back to int16
-			int32x4_t v_low = vmovl_s16(vget_low_s16(v));
-			int32x4_t v_high = vmovl_s16(vget_high_s16(v));
-
-			float32x4_t f_low = vcvtq_f32_s32(v_low);
-			float32x4_t f_high = vcvtq_f32_s32(v_high);
-
-			f_low = vmulq_f32(f_low, vgain);
-			f_high = vmulq_f32(f_high, vgain);
-
-			v_low = vcvtq_s32_f32(f_low);
-			v_high = vcvtq_s32_f32(f_high);
-
-			// Saturate to int16 range
-			int16x4_t result_low = vqmovn_s32(v_low);
-			int16x4_t result_high = vqmovn_s32(v_high);
-
-			vst1q_s16(&pcm_buffer[i], vcombine_s16(result_low, result_high));
-		}
-
-		// Handle remaining samples
-		for (; i < total_samples; i++) {
-			int32_t boosted = (int32_t)(pcm_buffer[i] * gain);
-			if (boosted > 32767) boosted = 32767;
-			if (boosted < -32768) boosted = -32768;
-			pcm_buffer[i] = (int16_t)boosted;
-		}
 	}
 
 	nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
