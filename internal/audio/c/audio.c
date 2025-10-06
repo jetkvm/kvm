@@ -496,11 +496,12 @@ retry_read:
 		if (abs_val > peak) peak = abs_val;
 	}
 
-	// Apply gain if signal is weak (below -18dB = 4096) for best quality
+	// Apply gain if signal is weak (below -18dB = 4096) but above noise floor
+	// Noise gate: only apply gain if peak > 256 (below this is likely just noise)
 	// Target: boost to ~50% of range (16384) to improve SNR
-	if (peak > 0 && peak < 4096) {
+	if (peak > 256 && peak < 4096) {
 		float gain = 16384.0f / peak;
-		if (gain > 8.0f) gain = 8.0f;  // Max 18dB boost for best quality
+		if (gain > 8.0f) gain = 8.0f;  // Max 18dB boost
 
 		// Apply gain with NEON and saturation
 		float32x4_t vgain = vdupq_n_f32(gain);
