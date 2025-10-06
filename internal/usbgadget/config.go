@@ -66,14 +66,14 @@ var defaultGadgetConfig = map[string]gadgetConfigItem{
 		path:       []string{"functions", "uac1.usb0"},
 		configPath: []string{"uac1.usb0"},
 		attrs: gadgetAttributes{
-			"p_chmask":         "3",      // Playback: stereo (2 channels)
-			"p_srate":          "48000",  // Playback: 48kHz sample rate
-			"p_ssize":          "2",      // Playback: 16-bit (2 bytes)
-			"p_volume_present": "0",      // Playback: no volume control
-			"c_chmask":         "3",      // Capture: stereo (2 channels)
-			"c_srate":          "48000",  // Capture: 48kHz sample rate
-			"c_ssize":          "2",      // Capture: 16-bit (2 bytes)
-			"c_volume_present": "0",      // Capture: no volume control
+			"p_chmask":         "3",     // Playback: stereo (2 channels)
+			"p_srate":          "48000", // Playback: 48kHz sample rate
+			"p_ssize":          "2",     // Playback: 16-bit (2 bytes)
+			"p_volume_present": "0",     // Playback: no volume control
+			"c_chmask":         "3",     // Capture: stereo (2 channels)
+			"c_srate":          "48000", // Capture: 48kHz sample rate
+			"c_ssize":          "2",     // Capture: 16-bit (2 bytes)
+			"c_volume_present": "0",     // Capture: no volume control
 		},
 	},
 }
