@@ -128,7 +128,7 @@ export default function AudioPopover() {
                 size="SM"
                 theme={audioOutputEnabled ? "light" : "primary"}
                 text={audioOutputEnabled ? "Disable" : "Enable"}
-                onClick={() => handleAudioOutputEnabledToggle({ target: { checked: !audioOutputEnabled } } as any)}
+                onClick={() => handleAudioOutputEnabledToggle({ target: { checked: !audioOutputEnabled } } as React.ChangeEvent<HTMLInputElement>)}
               />
             </SettingsItem>
 
@@ -169,7 +169,7 @@ export default function AudioPopover() {
                     size="SM"
                     theme={audioInputEnabled ? "light" : "primary"}
                     text={audioInputEnabled ? "Disable" : "Enable"}
-                    onClick={() => handleAudioInputEnabledToggle({ target: { checked: !audioInputEnabled } } as any)}
+                    onClick={() => handleAudioInputEnabledToggle({ target: { checked: !audioInputEnabled } } as React.ChangeEvent<HTMLInputElement>)}
                   />
                 </SettingsItem>
               </>
