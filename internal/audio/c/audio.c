@@ -55,20 +55,20 @@ static uint8_t channels = 2;
 static uint16_t frame_size = 960;  // 20ms frames at 48kHz
 
 static uint32_t opus_bitrate = 128000;
-static uint8_t opus_complexity = 5;  // Higher complexity for better quality on RV1106
+static uint8_t opus_complexity = 5;  // Higher complexity for better quality
 static uint16_t max_packet_size = 1500;
 
 // Opus encoder constants (hardcoded for production)
 #define OPUS_VBR 1                      // VBR enabled
-#define OPUS_VBR_CONSTRAINT 0           // Unconstrained VBR (better for low-volume signals)
+#define OPUS_VBR_CONSTRAINT 1           // Constrained VBR (prevents bitrate starvation at low volumes)
 #define OPUS_SIGNAL_TYPE 3002           // OPUS_SIGNAL_MUSIC (better transient handling)
-#define OPUS_BANDWIDTH 1104             // OPUS_BANDWIDTH_SUPERWIDEBAND (16kHz, better quality at 128kbps)
-#define OPUS_DTX 0                      // DTX disabled (prevents audio drops)
+#define OPUS_BANDWIDTH 1104             // OPUS_BANDWIDTH_SUPERWIDEBAND (16kHz)
+#define OPUS_DTX 1                      // DTX enabled (bandwidth optimization)
 #define OPUS_LSB_DEPTH 16               // 16-bit depth
 
 // ALSA retry configuration
 static uint32_t sleep_microseconds = 1000;
-static uint32_t sleep_milliseconds = 1;  // Precomputed: sleep_microseconds / 1000
+static uint32_t sleep_milliseconds = 1;
 static uint8_t max_attempts_global = 5;
 static uint32_t max_backoff_us_global = 500000;
 
@@ -373,7 +373,7 @@ int jetkvm_audio_capture_init() {
 	opus_encoder_ctl(encoder, OPUS_SET_DTX(OPUS_DTX));
 	opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(OPUS_LSB_DEPTH));
 
-	opus_encoder_ctl(encoder, OPUS_SET_INBAND_FEC(0));
+	opus_encoder_ctl(encoder, OPUS_SET_INBAND_FEC(1));
 	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(20));
 
 	capture_initialized = 1;
