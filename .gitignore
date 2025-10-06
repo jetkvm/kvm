@@ -1,13 +1,7 @@
 bin/*
 static/*
-.vscode/
-tmp/
-.devcontainer/devcontainer-lock.json
 .idea
 .DS_Store
-*.log
-*.tmp
-*.code-workspace
 
 .cache
 .vite
@@ -20,10 +14,3 @@ node_modules
 #internal/native/include
 #internal/native/lib
 internal/audio/bin/
-
-# backup files
-*.bak
-
-# core dumps
-core
-core.*

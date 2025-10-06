@@ -14,9 +14,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-// ============================================================================
 // PROTOCOL CONSTANTS
-// ============================================================================
 
 // Magic numbers (ASCII representation when read as little-endian)
 #define IPC_MAGIC_OUTPUT 0x4A4B4F55  // "JKOU" - JetKVM Output (device → browser)
@@ -31,34 +29,32 @@
 #define IPC_MSG_TYPE_ACK         5  // Acknowledgment
 
 // Size constraints
-#define IPC_HEADER_SIZE 17        // Fixed header size
-#define IPC_MAX_FRAME_SIZE 4096   // Maximum payload size (matches Go Config.MaxFrameSize)
+#define IPC_HEADER_SIZE 9         // Fixed header size (reduced from 17)
+#define IPC_MAX_FRAME_SIZE 1024   // Maximum payload size (128kbps @ 20ms = ~600 bytes worst case with VBR+FEC)
 
 // Socket paths
 #define IPC_SOCKET_OUTPUT "/var/run/audio_output.sock"
 #define IPC_SOCKET_INPUT  "/var/run/audio_input.sock"
 
-// ============================================================================
 // WIRE FORMAT STRUCTURES
-// ============================================================================
 
 /**
- * IPC message header (17 bytes, little-endian)
+ * IPC message header (9 bytes, little-endian)
  *
  * Byte layout:
  * [0-3]   magic      uint32_t LE  Magic number (0x4A4B4F55 or 0x4A4B4D49)
  * [4]     type       uint8_t      Message type (0-5)
  * [5-8]   length     uint32_t LE  Payload size in bytes
- * [9-16]  timestamp  int64_t LE   Unix nanoseconds (time.Now().UnixNano())
- * [17+]   data       uint8_t[]    Variable payload
+ * [9+]    data       uint8_t[]    Variable payload
  *
  * CRITICAL: Must use __attribute__((packed)) to prevent padding.
+ *
+ * NOTE: Timestamp removed (was unused, saved 8 bytes per message)
  */
 typedef struct __attribute__((packed)) {
     uint32_t magic;      // Magic number (LE)
     uint8_t  type;       // Message type
     uint32_t length;     // Payload length in bytes (LE)
-    int64_t  timestamp;  // Unix nanoseconds (LE)
 } ipc_header_t;
 
 /**
@@ -83,12 +79,12 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
     uint32_t sample_rate;  // Samples per second (48000)
     uint32_t channels;     // Number of channels (2)
-    uint32_t frame_size;   // Samples per frame (960)
-    uint32_t bitrate;      // Bits per second (96000)
-    uint32_t complexity;   // Encoder complexity 0-10 (1=fast, 10=best quality)
+    uint32_t frame_size;   // Samples per frame per channel (960 = 20ms @ 48kHz)
+    uint32_t bitrate;      // Bits per second (128000)
+    uint32_t complexity;   // Encoder complexity 0-10 (2=balanced quality/speed)
     uint32_t vbr;          // Variable bitrate: 0=disabled, 1=enabled
-    uint32_t signal_type;  // Signal type: -1000=auto, 3001=music, 3002=voice
-    uint32_t bandwidth;    // Bandwidth: 1101=narrowband, 1102=mediumband, 1103=wideband
+    uint32_t signal_type;  // Signal type: -1000=auto, 3001=voice, 3002=music
+    uint32_t bandwidth;    // Bandwidth: 1101=narrowband, 1102=mediumband, 1103=wideband, 1104=superwideband, 1105=fullband
     uint32_t dtx;          // Discontinuous transmission: 0=disabled, 1=enabled
 } ipc_opus_config_t;
 
@@ -100,15 +96,12 @@ typedef struct {
     uint8_t *data;         // Dynamically allocated payload (NULL if length=0)
 } ipc_message_t;
 
-// ============================================================================
-// FUNCTION DECLARATIONS
-// ============================================================================
 
 /**
  * Read a complete IPC message from socket.
  *
  * This function:
- * 1. Reads exactly 17 bytes (header)
+ * 1. Reads exactly 9 bytes (header)
  * 2. Validates magic number
  * 3. Validates length <= IPC_MAX_FRAME_SIZE
  * 4. Allocates and reads payload if length > 0
@@ -124,10 +117,24 @@ typedef struct {
 int ipc_read_message(int sock, ipc_message_t *msg, uint32_t expected_magic);
 
 /**
+ * Read a complete IPC message using pre-allocated buffer (zero-copy).
+ *
+ * @param sock Socket file descriptor
+ * @param msg Message structure to fill
+ * @param expected_magic Expected magic number for validation
+ * @param buffer Pre-allocated buffer for message data
+ * @param buffer_size Size of pre-allocated buffer
+ * @return 0 on success, -1 on error
+ *
+ * msg->data will point to buffer (no allocation). Caller does NOT need to free.
+ */
+int ipc_read_message_zerocopy(int sock, ipc_message_t *msg, uint32_t expected_magic,
+                               uint8_t *buffer, uint32_t buffer_size);
+
+/**
  * Write a complete IPC message to socket.
  *
  * This function writes header + payload atomically (if possible via writev).
- * Sets timestamp to current time.
  *
  * @param sock Socket file descriptor
  * @param magic Magic number (IPC_MAGIC_OUTPUT or IPC_MAGIC_INPUT)
@@ -166,12 +173,6 @@ int ipc_parse_config(const uint8_t *data, uint32_t length, ipc_config_t *config)
  */
 void ipc_free_message(ipc_message_t *msg);
 
-/**
- * Get current time in nanoseconds (Unix epoch).
- *
- * @return Time in nanoseconds (compatible with Go time.Now().UnixNano())
- */
-int64_t ipc_get_time_ns(void);
 
 /**
  * Create Unix domain socket server.

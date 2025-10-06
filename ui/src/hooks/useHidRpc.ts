@@ -17,8 +17,6 @@ import {
   unmarshalHidRpcMessage,
 } from "./hidRpc";
 
-
-
 const KEEPALIVE_MESSAGE = new KeypressKeepAliveMessage();
 
 interface sendMessageParams {

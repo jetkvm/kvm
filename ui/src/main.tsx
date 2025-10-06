@@ -10,6 +10,9 @@ import {
 } from "react-router";
 import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
 
+import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import api from "@/api";
+import Root from "@/root";
 import Card from "@components/Card";
 import EmptyCard from "@components/EmptyCard";
 import NotFoundPage from "@components/NotFoundPage";
@@ -25,9 +28,6 @@ import DeviceIdRename from "@routes/devices.$id.rename";
 import DevicesRoute from "@routes/devices";
 import SettingsIndexRoute from "@routes/devices.$id.settings._index";
 import SettingsAccessIndexRoute from "@routes/devices.$id.settings.access._index";
-import Root from "@/root";
-import api from "@/api";
-import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import Notifications  from "@/notifications";
 const SignupRoute = lazy(() => import("@routes/signup"));
 const LoginRoute = lazy(() => import("@routes/login"));

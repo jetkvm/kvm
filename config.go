@@ -104,6 +104,7 @@ type Config struct {
 	UsbDevices           *usbgadget.Devices     `json:"usb_devices"`
 	NetworkConfig        *network.NetworkConfig `json:"network_config"`
 	DefaultLogLevel      string                 `json:"default_log_level"`
+	AudioOutputSource    string                 `json:"audio_output_source"` // "hdmi" or "usb"
 }
 
 func (c *Config) GetDisplayRotation() uint16 {
@@ -159,10 +160,10 @@ var defaultConfig = &Config{
 		RelativeMouse: true,
 		Keyboard:      true,
 		MassStorage:   true,
-		Audio:         true,
 	},
-	NetworkConfig:   &network.NetworkConfig{},
-	DefaultLogLevel: "INFO",
+	NetworkConfig:     &network.NetworkConfig{},
+	DefaultLogLevel:   "INFO",
+	AudioOutputSource: "hdmi",
 }
 
 var (

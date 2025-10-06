@@ -20,7 +20,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
-	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/rs/zerolog"
 )
 
@@ -482,16 +481,6 @@ func handleSessionRequest(
 	cancelKeyboardMacro()
 
 	currentSession = session
-
-	// Set up audio relay callback to get current session's audio track
-	// This is needed for audio output to work after enable/disable cycles
-	audio.SetCurrentSessionCallback(func() audio.AudioTrackWriter {
-		if currentSession != nil {
-			return currentSession.AudioTrack
-		}
-		return nil
-	})
-
 	_ = wsjson.Write(context.Background(), c, gin.H{"type": "answer", "data": sd})
 	return nil
 }

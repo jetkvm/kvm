@@ -1,9 +1,9 @@
 import React from "react";
 
-import LoadingSpinner from "@components/LoadingSpinner";
-import StatusCard from "@components/StatusCards";
 import { cx } from "@/cva.config";
 import KeyboardAndMouseConnectedIcon from "@/assets/keyboard-and-mouse-connected.png";
+import LoadingSpinner from "@components/LoadingSpinner";
+import StatusCard from "@components/StatusCards";
 import { USBStates } from "@/hooks/stores";
 
 type StatusProps = Record<

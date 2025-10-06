@@ -129,16 +129,6 @@ export interface RTCState {
   mediaStream: MediaStream | null;
   setMediaStream: (stream: MediaStream) => void;
 
-  // Microphone stream management
-  microphoneStream: MediaStream | null;
-  setMicrophoneStream: (stream: MediaStream | null) => void;
-  microphoneSender: RTCRtpSender | null;
-  setMicrophoneSender: (sender: RTCRtpSender | null) => void;
-  isMicrophoneActive: boolean;
-  setMicrophoneActive: (active: boolean) => void;
-  isMicrophoneMuted: boolean;
-  setMicrophoneMuted: (muted: boolean) => void;
-
   videoStreamStats: RTCInboundRtpStreamStats | null;
   appendVideoStreamStats: (stats: RTCInboundRtpStreamStats) => void;
   videoStreamStatsHistory: Map<number, RTCInboundRtpStreamStats>;
@@ -199,16 +189,6 @@ export const useRTCStore = create<RTCState>(set => ({
 
   mediaStream: null,
   setMediaStream: (stream: MediaStream) => set({ mediaStream: stream }),
-
-  // Microphone stream management
-  microphoneStream: null,
-  setMicrophoneStream: stream => set({ microphoneStream: stream }),
-  microphoneSender: null,
-  setMicrophoneSender: sender => set({ microphoneSender: sender }),
-  isMicrophoneActive: false,
-  setMicrophoneActive: active => set({ isMicrophoneActive: active }),
-  isMicrophoneMuted: false,
-  setMicrophoneMuted: muted => set({ isMicrophoneMuted: muted }),
 
   videoStreamStats: null,
   appendVideoStreamStats: (stats: RTCInboundRtpStreamStats) => set({ videoStreamStats: stats }),
@@ -371,10 +351,6 @@ export interface SettingsState {
   setVideoBrightness: (value: number) => void;
   videoContrast: number;
   setVideoContrast: (value: number) => void;
-
-  // Microphone persistence settings
-  microphoneWasEnabled: boolean;
-  setMicrophoneWasEnabled: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create(
@@ -420,10 +396,6 @@ export const useSettingsStore = create(
       setVideoBrightness: (value: number) => set({ videoBrightness: value }),
       videoContrast: 1.0,
       setVideoContrast: (value: number) => set({ videoContrast: value }),
-
-      // Microphone persistence settings
-      microphoneWasEnabled: false,
-      setMicrophoneWasEnabled: (enabled: boolean) => set({ microphoneWasEnabled: enabled }),
     }),
     {
       name: "settings",

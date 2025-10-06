@@ -13,7 +13,6 @@ import { CLOUD_API } from "@/ui.config";
 
 import api from "../api";
 
-
 const loader: LoaderFunction = async ({ params }: LoaderFunctionArgs) => {
   await checkAuth();
   const res = await fetch(`${CLOUD_API}/devices/${params.id}`, {

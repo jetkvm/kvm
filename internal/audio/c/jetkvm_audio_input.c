@@ -14,161 +14,76 @@
 #include "audio_common.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 #include <signal.h>
 #include <errno.h>
-#include <fcntl.h>
 
 // Forward declarations from audio.c
 extern int jetkvm_audio_playback_init(void);
 extern void jetkvm_audio_playback_close(void);
 extern int jetkvm_audio_decode_write(void *opus_buf, int opus_size);
-extern void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constraint,
-                                   int signal_type, int bandwidth, int dtx, int lsb_depth,
-                                   int sr, int ch, int fs, int max_pkt,
-                                   int sleep_us, int max_attempts, int max_backoff);
-extern void set_trace_logging(int enabled);
+extern void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
+                                           uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff);
 
-// Note: Input server uses decoder, not encoder, so no update_opus_encoder_params
 
-// ============================================================================
-// GLOBAL STATE
-// ============================================================================
+static volatile sig_atomic_t g_running = 1;
 
-static volatile sig_atomic_t g_running = 1;  // Shutdown flag
-
-// Audio configuration (from environment variables)
-typedef struct {
-    const char *alsa_device;     // ALSA playback device (default: "hw:1,0")
-    int opus_bitrate;            // Opus bitrate (informational for decoder)
-    int opus_complexity;         // Opus complexity (decoder ignores this)
-    int sample_rate;             // Sample rate (default: 48000)
-    int channels;                // Channels (default: 2)
-    int frame_size;              // Frame size in samples (default: 960)
-    int trace_logging;           // Enable trace logging (default: 0)
-} audio_config_t;
-
-// ============================================================================
-// CONFIGURATION PARSING
-// ============================================================================
-
-static void load_audio_config(audio_config_t *config) {
-    // ALSA device configuration
-    config->alsa_device = audio_common_parse_env_string("ALSA_PLAYBACK_DEVICE", "hw:1,0");
-
-    // Opus configuration (informational only for decoder)
-    config->opus_bitrate = audio_common_parse_env_int("OPUS_BITRATE", 96000);
-    config->opus_complexity = audio_common_parse_env_int("OPUS_COMPLEXITY", 1);
-
-    // Audio format
-    config->sample_rate = audio_common_parse_env_int("AUDIO_SAMPLE_RATE", 48000);
-    config->channels = audio_common_parse_env_int("AUDIO_CHANNELS", 2);
-    config->frame_size = audio_common_parse_env_int("AUDIO_FRAME_SIZE", 960);
-
-    // Logging
-    config->trace_logging = audio_common_is_trace_enabled();
-
-    // Log configuration
-    printf("Audio Input Server Configuration:\n");
-    printf("  ALSA Device:    %s\n", config->alsa_device);
-    printf("  Sample Rate:    %d Hz\n", config->sample_rate);
-    printf("  Channels:       %d\n", config->channels);
-    printf("  Frame Size:     %d samples\n", config->frame_size);
-    printf("  Trace Logging:  %s\n", config->trace_logging ? "enabled" : "disabled");
-}
-
-// ============================================================================
-// MESSAGE HANDLING
-// ============================================================================
-
-/**
- * Handle OpusConfig message: informational only for decoder.
- * Decoder config updates are less critical than encoder.
- * Returns 0 on success.
- */
-static int handle_opus_config(const uint8_t *data, uint32_t length) {
-    ipc_opus_config_t config;
-
-    if (ipc_parse_opus_config(data, length, &config) != 0) {
-        fprintf(stderr, "Failed to parse Opus config\n");
-        return -1;
-    }
-
-    printf("Received Opus config (informational): bitrate=%u, complexity=%u\n",
-           config.bitrate, config.complexity);
-
-    // Note: Decoder doesn't need most of these parameters.
-    // Opus decoder automatically adapts to encoder settings embedded in stream.
-    // FEC (Forward Error Correction) is enabled automatically when present in packets.
-
-    return 0;
-}
 
 /**
  * Send ACK response for heartbeat messages.
  */
-static int send_ack(int client_sock) {
+static inline int32_t send_ack(int32_t client_sock) {
     return ipc_write_message(client_sock, IPC_MAGIC_INPUT, IPC_MSG_TYPE_ACK, NULL, 0);
 }
 
-// ============================================================================
-// MAIN LOOP
-// ============================================================================
 
 /**
  * Main audio decode and playback loop.
  * Receives Opus frames via IPC, decodes, writes to ALSA.
  */
-static int run_audio_loop(int client_sock) {
-    int consecutive_errors = 0;
-    const int max_consecutive_errors = 10;
-    int frame_count = 0;
+static int run_audio_loop(int client_sock, volatile sig_atomic_t *running) {
+    audio_error_tracker_t tracker;
+    audio_error_tracker_init(&tracker);
+
+    // Static buffer for zero-copy IPC (no malloc/free per frame)
+    static uint8_t frame_buffer[IPC_MAX_FRAME_SIZE] __attribute__((aligned(64)));
 
     printf("Starting audio input loop...\n");
 
-    while (g_running) {
+    while (*running) {
         ipc_message_t msg;
 
-        // Read message from client (blocking)
-        if (ipc_read_message(client_sock, &msg, IPC_MAGIC_INPUT) != 0) {
-            if (g_running) {
+        if (ipc_read_message_zerocopy(client_sock, &msg, IPC_MAGIC_INPUT,
+                                      frame_buffer, sizeof(frame_buffer)) != 0) {
+            if (*running) {
                 fprintf(stderr, "Failed to read message from client\n");
             }
-            break;  // Client disconnected or error
+            break;
         }
 
-        // Process message based on type
         switch (msg.header.type) {
             case IPC_MSG_TYPE_OPUS_FRAME: {
                 if (msg.header.length == 0 || msg.data == NULL) {
                     fprintf(stderr, "Warning: Empty Opus frame received\n");
-                    ipc_free_message(&msg);
                     continue;
                 }
 
-                // Decode Opus and write to ALSA
                 int frames_written = jetkvm_audio_decode_write(msg.data, msg.header.length);
 
                 if (frames_written < 0) {
-                    consecutive_errors++;
                     fprintf(stderr, "Audio decode/write failed (error %d/%d)\n",
-                            consecutive_errors, max_consecutive_errors);
+                            tracker.consecutive_errors + 1, AUDIO_MAX_CONSECUTIVE_ERRORS);
 
-                    if (consecutive_errors >= max_consecutive_errors) {
+                    if (audio_error_tracker_record_error(&tracker)) {
                         fprintf(stderr, "Too many consecutive errors, giving up\n");
-                        ipc_free_message(&msg);
                         return -1;
                     }
                 } else {
-                    // Success - reset error counter
-                    consecutive_errors = 0;
-                    frame_count++;
+                    audio_error_tracker_record_success(&tracker);
 
-                    // Trace logging (periodic)
-                    if (frame_count % 1000 == 1) {
-                        printf("Processed frame %d (opus_size=%u, pcm_frames=%d)\n",
-                               frame_count, msg.header.length, frames_written);
+                    if (audio_error_tracker_should_trace(&tracker)) {
+                        printf("Processed frame %u (opus_size=%u, pcm_frames=%d)\n",
+                               tracker.frame_count, msg.header.length, frames_written);
                     }
                 }
 
@@ -181,14 +96,13 @@ static int run_audio_loop(int client_sock) {
                 break;
 
             case IPC_MSG_TYPE_OPUS_CONFIG:
-                handle_opus_config(msg.data, msg.header.length);
+                audio_common_handle_opus_config(msg.data, msg.header.length, 0);
                 send_ack(client_sock);
                 break;
 
             case IPC_MSG_TYPE_STOP:
                 printf("Received stop message\n");
-                ipc_free_message(&msg);
-                g_running = 0;
+                *running = 0;
                 return 0;
 
             case IPC_MSG_TYPE_HEARTBEAT:
@@ -199,48 +113,32 @@ static int run_audio_loop(int client_sock) {
                 printf("Warning: Unknown message type: %u\n", msg.header.type);
                 break;
         }
-
-        ipc_free_message(&msg);
     }
 
-    printf("Audio input loop ended after %d frames\n", frame_count);
+    printf("Audio input loop ended after %u frames\n", tracker.frame_count);
     return 0;
 }
 
-// ============================================================================
-// MAIN
-// ============================================================================
 
 int main(int argc, char **argv) {
-    printf("JetKVM Audio Input Server Starting...\n");
+    audio_common_print_startup("Audio Input Server");
 
     // Setup signal handlers
     audio_common_setup_signal_handlers(&g_running);
 
     // Load configuration from environment
     audio_config_t config;
-    load_audio_config(&config);
+    audio_common_load_config(&config, 0);  // 0 = input server
 
-    // Set trace logging
-    set_trace_logging(config.trace_logging);
-
-    // Apply audio constants to audio.c
-    update_audio_constants(
-        config.opus_bitrate,
-        config.opus_complexity,
-        1,         // vbr
-        1,         // vbr_constraint
-        -1000,     // signal_type (auto)
-        1103,      // bandwidth (wideband)
-        0,         // dtx
-        16,        // lsb_depth
+    // Apply decoder constants to audio.c (encoder params not needed)
+    update_audio_decoder_constants(
         config.sample_rate,
         config.channels,
         config.frame_size,
-        1500,      // max_packet_size
-        1000,      // sleep_microseconds
-        5,         // max_attempts
-        500000     // max_backoff_us
+        AUDIO_MAX_PACKET_SIZE,
+        AUDIO_SLEEP_MICROSECONDS,
+        AUDIO_MAX_ATTEMPTS,
+        AUDIO_MAX_BACKOFF_US
     );
 
     // Initialize audio playback (Opus decoder + ALSA playback)
@@ -259,32 +157,9 @@ int main(int argc, char **argv) {
     }
 
     // Main connection loop
-    while (g_running) {
-        printf("Waiting for client connection...\n");
+    audio_common_server_loop(server_sock, &g_running, run_audio_loop);
 
-        int client_sock = ipc_accept_client(server_sock);
-        if (client_sock < 0) {
-            if (g_running) {
-                fprintf(stderr, "Failed to accept client, retrying...\n");
-                sleep(1);
-                continue;
-            }
-            break;  // Shutting down
-        }
-
-        // Run audio loop with this client
-        run_audio_loop(client_sock);
-
-        // Close client connection
-        close(client_sock);
-
-        if (g_running) {
-            printf("Client disconnected, waiting for next client...\n");
-        }
-    }
-
-    // Cleanup
-    printf("Shutting down audio input server...\n");
+    audio_common_print_shutdown("audio input server");
     close(server_sock);
     unlink(IPC_SOCKET_INPUT);
     jetkvm_audio_playback_close();

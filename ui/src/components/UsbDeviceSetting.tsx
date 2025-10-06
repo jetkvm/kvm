@@ -47,17 +47,6 @@ const usbPresets = [
     },
   },
   {
-    label: "Keyboard, Mouse and Mass Storage",
-    value: "no_audio",
-    config: {
-      keyboard: true,
-      absolute_mouse: true,
-      relative_mouse: true,
-      mass_storage: true,
-      audio: false,
-    },
-  },
-  {
     label: "Keyboard Only",
     value: "keyboard_only",
     config: {
@@ -235,8 +224,8 @@ export function UsbDeviceSetting() {
             </div>
             <div className="space-y-4">
               <SettingsItem
-                title="Enable Audio Input/Output"
-                description="Enable USB audio input and output devices"
+                title="Enable USB Audio"
+                description="Enable bidirectional audio (HDMI capture and microphone input)"
               >
                 <Checkbox
                   checked={usbDeviceConfig.audio}

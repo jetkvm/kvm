@@ -11,8 +11,6 @@ import EmptyStateCard from "./EmptyStateCard";
 import DeviceList, { StoredDevice } from "./DeviceList";
 import AddDeviceForm from "./AddDeviceForm";
 
-
-
 export default function WakeOnLanModal() {
   const [storedDevices, setStoredDevices] = useState<StoredDevice[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);

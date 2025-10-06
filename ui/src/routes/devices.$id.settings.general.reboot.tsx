@@ -1,8 +1,8 @@
 import { useNavigate } from "react-router";
 import { useCallback } from "react";
 
-import { Button } from "@components/Button";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { Button } from "@components/Button";
 
 export default function SettingsGeneralRebootRoute() {
   const navigate = useNavigate();
