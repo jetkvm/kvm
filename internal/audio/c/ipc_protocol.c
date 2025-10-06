@@ -18,9 +18,7 @@
 #include <sys/uio.h>
 #include <endian.h>
 
-// ============================================================================
 // HELPER FUNCTIONS
-// ============================================================================
 
 /**
  * Read exactly N bytes from socket (loops until complete or error).
@@ -37,11 +35,11 @@ int ipc_read_full(int sock, void *buf, size_t len) {
             if (errno == EINTR) {
                 continue;  // Interrupted by signal, retry
             }
-            return -1;  // Read error
+            return -1;
         }
 
         if (n == 0) {
-            return -1;  // EOF (connection closed)
+            return -1;  // Connection closed
         }
 
         ptr += n;
@@ -51,21 +49,8 @@ int ipc_read_full(int sock, void *buf, size_t len) {
     return 0;  // Success
 }
 
-/**
- * Get current time in nanoseconds (Unix epoch).
- * Compatible with Go time.Now().UnixNano().
- */
-int64_t ipc_get_time_ns(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
-        return 0;  // Fallback on error
-    }
-    return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
-}
 
-// ============================================================================
 // MESSAGE READ/WRITE
-// ============================================================================
 
 /**
  * Read a complete IPC message from socket.
@@ -80,7 +65,7 @@ int ipc_read_message(int sock, ipc_message_t *msg, uint32_t expected_magic) {
     // Initialize message
     memset(msg, 0, sizeof(ipc_message_t));
 
-    // 1. Read header (17 bytes)
+    // 1. Read header (9 bytes)
     if (ipc_read_full(sock, &msg->header, IPC_HEADER_SIZE) != 0) {
         return -1;
     }
@@ -88,8 +73,6 @@ int ipc_read_message(int sock, ipc_message_t *msg, uint32_t expected_magic) {
     // 2. Convert from little-endian (required on big-endian systems)
     msg->header.magic = le32toh(msg->header.magic);
     msg->header.length = le32toh(msg->header.length);
-    msg->header.timestamp = le64toh(msg->header.timestamp);
-    // Note: type is uint8_t, no conversion needed
 
     // 3. Validate magic number
     if (msg->header.magic != expected_magic) {
@@ -125,6 +108,48 @@ int ipc_read_message(int sock, ipc_message_t *msg, uint32_t expected_magic) {
 }
 
 /**
+ * Read a complete IPC message using pre-allocated buffer (zero-copy).
+ */
+int ipc_read_message_zerocopy(int sock, ipc_message_t *msg, uint32_t expected_magic,
+                               uint8_t *buffer, uint32_t buffer_size) {
+    if (msg == NULL || buffer == NULL) {
+        return -1;
+    }
+
+    // Initialize message
+    memset(msg, 0, sizeof(ipc_message_t));
+
+    // 1. Read header (9 bytes)
+    if (ipc_read_full(sock, &msg->header, IPC_HEADER_SIZE) != 0) {
+        return -1;
+    }
+
+    // 2. Convert from little-endian
+    msg->header.magic = le32toh(msg->header.magic);
+    msg->header.length = le32toh(msg->header.length);
+
+    // 3. Validate magic number
+    if (msg->header.magic != expected_magic) {
+        return -1;
+    }
+
+    // 4. Validate length
+    if (msg->header.length > IPC_MAX_FRAME_SIZE || msg->header.length > buffer_size) {
+        return -1;
+    }
+
+    // 5. Read payload directly into provided buffer (zero-copy)
+    if (msg->header.length > 0) {
+        if (ipc_read_full(sock, buffer, msg->header.length) != 0) {
+            return -1;
+        }
+        msg->data = buffer;  // Point to provided buffer, no allocation
+    }
+
+    return 0;  // Success
+}
+
+/**
  * Write a complete IPC message to socket.
  * Uses writev() for atomic header+payload write.
  * Returns 0 on success, -1 on error.
@@ -143,7 +168,6 @@ int ipc_write_message(int sock, uint32_t magic, uint8_t type,
     header.magic = htole32(magic);
     header.type = type;
     header.length = htole32(length);
-    header.timestamp = htole64(ipc_get_time_ns());
 
     // Use writev for atomic write (if possible)
     struct iovec iov[2];
@@ -177,9 +201,6 @@ int ipc_write_message(int sock, uint32_t magic, uint8_t type,
     return 0;  // Success
 }
 
-// ============================================================================
-// CONFIGURATION PARSING
-// ============================================================================
 
 /**
  * Parse Opus configuration from message data (36 bytes, little-endian).
@@ -241,9 +262,7 @@ void ipc_free_message(ipc_message_t *msg) {
     }
 }
 
-// ============================================================================
 // SOCKET MANAGEMENT
-// ============================================================================
 
 /**
  * Create Unix domain socket server.

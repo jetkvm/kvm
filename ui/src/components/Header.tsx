@@ -4,21 +4,19 @@ import { ArrowLeftEndOnRectangleIcon, ChevronDownIcon } from "@heroicons/react/1
 import { Button, Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { LuMonitorSmartphone } from "react-icons/lu";
 
-import USBStateStatus from "@components/USBStateStatus";
-import PeerConnectionStatusCard from "@components/PeerConnectionStatusCard";
 import Container from "@/components/Container";
 import Card from "@/components/Card";
 import { useHidStore, useRTCStore, useUserStore } from "@/hooks/stores";
 import LogoBlueIcon from "@/assets/logo-blue.svg";
 import LogoWhiteIcon from "@/assets/logo-white.svg";
+import USBStateStatus from "@components/USBStateStatus";
+import PeerConnectionStatusCard from "@components/PeerConnectionStatusCard";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
 
-import { isOnDevice } from "../main";
 import api from "../api";
+import { isOnDevice } from "../main";
 
 import { LinkButton } from "./Button";
-
-
 
 interface NavbarProps {
   isLoggedIn: boolean;

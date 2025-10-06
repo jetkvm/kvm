@@ -2,7 +2,6 @@ package kvm
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,123 +9,11 @@ import (
 	"time"
 
 	"github.com/gwatts/rootcerts"
-	"github.com/jetkvm/kvm/internal/audio"
-	"github.com/pion/webrtc/v4"
 )
 
-var (
-	appCtx           context.Context
-	audioProcessDone chan struct{}
-	audioSupervisor  *audio.AudioOutputSupervisor
-)
-
-func startAudioSubprocess() error {
-	// Initialize validation cache for optimal performance
-	audio.InitValidationCache()
-
-	// Create audio server supervisor
-	audioSupervisor = audio.NewAudioOutputSupervisor()
-
-	// Set the global supervisor for access from audio package
-	audio.SetAudioOutputSupervisor(audioSupervisor)
-
-	// Create and register audio input supervisor (but don't start it)
-	// Audio input will be started on-demand through the UI
-	audioInputSupervisor := audio.NewAudioInputSupervisor()
-	audio.SetAudioInputSupervisor(audioInputSupervisor)
-
-	// Set optimal OPUS configuration for audio input supervisor (48 kbps mono mic)
-	audioConfig := audio.Config
-	audioInputSupervisor.SetOpusConfig(
-		audioConfig.OptimalInputBitrate*1000, // Convert kbps to bps (48 kbps)
-		audioConfig.OptimalOpusComplexity,    // Complexity 1 for minimal CPU
-		audioConfig.OptimalOpusVBR,           // VBR enabled
-		audioConfig.OptimalOpusSignalType,    // MUSIC signal type
-		audioConfig.OptimalOpusBandwidth,     // WIDEBAND for 48kHz
-		audioConfig.OptimalOpusDTX,           // DTX disabled
-	)
-
-	// Note: Audio input supervisor is NOT started here - it will be started on-demand
-	// when the user activates microphone input through the UI
-
-	// Set up callbacks for process lifecycle events
-	audioSupervisor.SetCallbacks(
-		// onProcessStart
-		func(pid int) {
-			logger.Info().Int("pid", pid).Msg("audio server process started")
-
-			// Wait for audio output server to be fully ready before starting relay
-			// This prevents "no client connected" errors during quality changes
-			go func() {
-				// Give the audio output server time to initialize and start listening
-				// Increased delay to reduce frame drops during connection establishment
-				time.Sleep(1 * time.Second)
-
-				// Start audio relay system for main process
-				// If there's an active WebRTC session, use its audio track
-				var audioTrack *webrtc.TrackLocalStaticSample
-				if currentSession != nil && currentSession.AudioTrack != nil {
-					audioTrack = currentSession.AudioTrack
-					logger.Info().Msg("restarting audio relay with existing WebRTC audio track")
-				} else {
-					logger.Info().Msg("starting audio relay without WebRTC track (will be updated when session is created)")
-				}
-
-				if err := audio.StartAudioRelay(audioTrack); err != nil {
-					logger.Error().Err(err).Msg("failed to start audio relay")
-					// Retry once after additional delay if initial attempt fails
-					time.Sleep(1 * time.Second)
-					if err := audio.StartAudioRelay(audioTrack); err != nil {
-						logger.Error().Err(err).Msg("failed to start audio relay after retry")
-					}
-				}
-			}()
-		},
-		// onProcessExit
-		func(pid int, exitCode int, crashed bool) {
-			if crashed {
-				logger.Error().Int("pid", pid).Int("exit_code", exitCode).Msg("audio server process crashed")
-			} else {
-				logger.Info().Int("pid", pid).Msg("audio server process exited gracefully")
-			}
-
-			// Stop audio relay when process exits
-			audio.StopAudioRelay()
-		},
-		// onRestart
-		func(attempt int, delay time.Duration) {
-			logger.Warn().Int("attempt", attempt).Dur("delay", delay).Msg("restarting audio server process")
-		},
-	)
-
-	// Check if USB audio device is enabled before starting audio processes
-	if config.UsbDevices == nil || !config.UsbDevices.Audio {
-		logger.Info().Msg("USB audio device disabled - skipping audio supervisor startup")
-		return nil
-	}
-
-	// Start the supervisor
-	if err := audioSupervisor.Start(); err != nil {
-		return fmt.Errorf("failed to start audio supervisor: %w", err)
-	}
-
-	// Monitor supervisor and handle cleanup
-	go func() {
-		defer close(audioProcessDone)
-
-		// Wait for supervisor to stop
-		for audioSupervisor.IsRunning() {
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		logger.Info().Msg("audio supervisor stopped")
-	}()
-
-	return nil
-}
+var appCtx context.Context
 
 func Main() {
-	audioProcessDone = make(chan struct{})
 	LoadConfig()
 
 	var cancel context.CancelFunc
@@ -147,6 +34,7 @@ func Main() {
 	go confirmCurrentSystem()
 
 	initNative(systemVersionLocal, appVersionLocal)
+	initAudio()
 
 	http.DefaultClient.Timeout = 1 * time.Minute
 
@@ -178,20 +66,6 @@ func Main() {
 
 	// initialize usb gadget
 	initUsbGadget()
-
-	// Start audio subprocess
-	err = startAudioSubprocess()
-	if err != nil {
-		logger.Warn().Err(err).Msg("failed to start audio subprocess")
-	}
-
-	// Initialize session provider for audio events
-	initializeAudioSessionProvider()
-
-	// Initialize audio event broadcaster for WebSocket-based real-time updates
-	audio.InitializeAudioEventBroadcaster()
-	logger.Info().Msg("audio event broadcaster initialized")
-
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
 	}
@@ -251,12 +125,8 @@ func Main() {
 	<-sigs
 	logger.Info().Msg("JetKVM Shutting Down")
 
-	// Stop audio supervisor and wait for cleanup
-	if audioSupervisor != nil {
-		logger.Info().Msg("stopping audio supervisor")
-		audioSupervisor.Stop()
-	}
-	<-audioProcessDone
+	stopAudioSubprocesses()
+
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")
 	//	if err != nil {

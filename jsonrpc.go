@@ -18,7 +18,6 @@ import (
 	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 
-	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
@@ -701,7 +700,8 @@ func rpcSetUsbConfig(usbConfig usbgadget.Config) error {
 	LoadConfig()
 	config.UsbConfig = &usbConfig
 	gadget.SetGadgetConfig(config.UsbConfig)
-	return updateUsbRelatedConfig()
+	wasAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+	return updateUsbRelatedConfig(wasAudioEnabled)
 }
 
 func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
@@ -912,101 +912,67 @@ func rpcGetUsbDevices() (usbgadget.Devices, error) {
 	return *config.UsbDevices, nil
 }
 
-func updateUsbRelatedConfig() error {
+func updateUsbRelatedConfig(wasAudioEnabled bool) error {
+	ensureConfigLoaded()
+
+	audioSourceChanged := false
+
+	// If USB audio is being disabled and audio output source is USB, switch to HDMI
+	if config.UsbDevices != nil && !config.UsbDevices.Audio && config.AudioOutputSource == "usb" {
+		audioMutex.Lock()
+		config.AudioOutputSource = "hdmi"
+		useUSBForAudioOutput = false
+		audioSourceChanged = true
+		audioMutex.Unlock()
+	}
+
+	// If USB audio is being enabled (was disabled, now enabled), switch to USB
+	if config.UsbDevices != nil && config.UsbDevices.Audio && !wasAudioEnabled {
+		audioMutex.Lock()
+		config.AudioOutputSource = "usb"
+		useUSBForAudioOutput = true
+		audioSourceChanged = true
+		audioMutex.Unlock()
+	}
+
+	// Stop audio subprocesses before USB reconfiguration
+	// Input always uses USB, output depends on audioSourceChanged
+	audioMutex.Lock()
+	stopInputSubprocessLocked()
+	if audioSourceChanged {
+		stopOutputSubprocessLocked()
+	}
+	audioMutex.Unlock()
+
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to write gadget config: %w", err)
 	}
+
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
+
+	// Restart audio if source changed or USB audio is enabled with active connections
+	// The subprocess supervisor and relay handle device readiness via retry logic
+	if activeConnections.Load() > 0 && (audioSourceChanged || (config.UsbDevices != nil && config.UsbDevices.Audio)) {
+		if err := startAudioSubprocesses(); err != nil {
+			logger.Warn().Err(err).Msg("Failed to restart audio after USB reconfiguration")
+		}
+	}
+
 	return nil
 }
 
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
-	// Check if audio state is changing
-	previousAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
-	newAudioEnabled := usbDevices.Audio
-
-	// Handle audio process management if state is changing
-	if previousAudioEnabled != newAudioEnabled {
-		if !newAudioEnabled {
-			// Stop audio processes when audio is disabled
-			logger.Info().Msg("stopping audio processes due to audio device being disabled")
-
-			// Stop audio input manager if active
-			if currentSession != nil && currentSession.AudioInputManager != nil && currentSession.AudioInputManager.IsRunning() {
-				logger.Info().Msg("stopping audio input manager")
-				currentSession.AudioInputManager.Stop()
-				// Wait for audio input to fully stop
-				for i := 0; i < 50; i++ { // Wait up to 5 seconds
-					if !currentSession.AudioInputManager.IsRunning() {
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
-				logger.Info().Msg("audio input manager stopped")
-			}
-
-			// Stop audio output supervisor
-			if audioSupervisor != nil && audioSupervisor.IsRunning() {
-				logger.Info().Msg("stopping audio output supervisor")
-				audioSupervisor.Stop()
-				// Wait for audio processes to fully stop before proceeding
-				for i := 0; i < 50; i++ { // Wait up to 5 seconds
-					if !audioSupervisor.IsRunning() {
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
-				logger.Info().Msg("audio output supervisor stopped")
-			}
-
-			logger.Info().Msg("audio processes stopped, proceeding with USB gadget reconfiguration")
-		} else if newAudioEnabled && audioSupervisor != nil && !audioSupervisor.IsRunning() {
-			// Start audio processes when audio is enabled (after USB reconfiguration)
-			logger.Info().Msg("audio will be started after USB gadget reconfiguration")
-		}
-	}
-
+	wasAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
 	config.UsbDevices = &usbDevices
 	gadget.SetGadgetDevices(config.UsbDevices)
-
-	// Apply USB gadget configuration changes
-	err := updateUsbRelatedConfig()
-	if err != nil {
-		return err
-	}
-
-	// Start audio processes after successful USB reconfiguration if needed
-	if previousAudioEnabled != newAudioEnabled && newAudioEnabled && audioSupervisor != nil {
-		// Ensure supervisor is fully stopped before starting
-		for i := 0; i < 50; i++ { // Wait up to 5 seconds
-			if !audioSupervisor.IsRunning() {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		logger.Info().Msg("starting audio processes after USB gadget reconfiguration")
-		if err := audioSupervisor.Start(); err != nil {
-			logger.Error().Err(err).Msg("failed to start audio supervisor")
-			// Don't return error here as USB reconfiguration was successful
-		} else {
-			// Broadcast audio device change event to notify WebRTC session
-			broadcaster := audio.GetAudioEventBroadcaster()
-			broadcaster.BroadcastAudioDeviceChanged(true, "usb_reconfiguration")
-			logger.Info().Msg("broadcasted audio device change event after USB reconfiguration")
-		}
-	} else if previousAudioEnabled != newAudioEnabled {
-		// Broadcast audio device change event for disabling audio
-		broadcaster := audio.GetAudioEventBroadcaster()
-		broadcaster.BroadcastAudioDeviceChanged(newAudioEnabled, "usb_reconfiguration")
-		logger.Info().Bool("enabled", newAudioEnabled).Msg("broadcasted audio device change event after USB reconfiguration")
-	}
-
-	return nil
+	return updateUsbRelatedConfig(wasAudioEnabled)
 }
 
 func rpcSetUsbDeviceState(device string, enabled bool) error {
+	wasAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+
 	switch device {
 	case "absoluteMouse":
 		config.UsbDevices.AbsoluteMouse = enabled
@@ -1017,67 +983,42 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 	case "massStorage":
 		config.UsbDevices.MassStorage = enabled
 	case "audio":
-		// Handle audio process management
-		if !enabled {
-			// Stop audio processes when audio is disabled
-			logger.Info().Msg("stopping audio processes due to audio device being disabled")
-
-			// Stop audio input manager if active
-			if currentSession != nil && currentSession.AudioInputManager != nil && currentSession.AudioInputManager.IsRunning() {
-				logger.Info().Msg("stopping audio input manager")
-				currentSession.AudioInputManager.Stop()
-				// Wait for audio input to fully stop
-				for i := 0; i < 50; i++ { // Wait up to 5 seconds
-					if !currentSession.AudioInputManager.IsRunning() {
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
-				logger.Info().Msg("audio input manager stopped")
-			}
-
-			// Stop audio output supervisor
-			if audioSupervisor != nil && audioSupervisor.IsRunning() {
-				logger.Info().Msg("stopping audio output supervisor")
-				audioSupervisor.Stop()
-				// Wait for audio processes to fully stop
-				for i := 0; i < 50; i++ { // Wait up to 5 seconds
-					if !audioSupervisor.IsRunning() {
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
-				logger.Info().Msg("audio output supervisor stopped")
-			}
-		} else if enabled && audioSupervisor != nil {
-			// Ensure supervisor is fully stopped before starting
-			for i := 0; i < 50; i++ { // Wait up to 5 seconds
-				if !audioSupervisor.IsRunning() {
-					break
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
-			// Start audio processes when audio is enabled
-			logger.Info().Msg("starting audio processes due to audio device being enabled")
-			if err := audioSupervisor.Start(); err != nil {
-				logger.Error().Err(err).Msg("failed to start audio supervisor")
-			} else {
-				// Broadcast audio device change event to notify WebRTC session
-				broadcaster := audio.GetAudioEventBroadcaster()
-				broadcaster.BroadcastAudioDeviceChanged(true, "device_enabled")
-				logger.Info().Msg("broadcasted audio device change event after enabling audio device")
-			}
-			// Always broadcast the audio device change event regardless of enable/disable
-			broadcaster := audio.GetAudioEventBroadcaster()
-			broadcaster.BroadcastAudioDeviceChanged(enabled, "device_state_changed")
-			logger.Info().Bool("enabled", enabled).Msg("broadcasted audio device state change event")
-		}
 		config.UsbDevices.Audio = enabled
 	default:
 		return fmt.Errorf("invalid device: %s", device)
 	}
 	gadget.SetGadgetDevices(config.UsbDevices)
-	return updateUsbRelatedConfig()
+	return updateUsbRelatedConfig(wasAudioEnabled)
+}
+
+func rpcGetAudioOutputSource() (string, error) {
+	ensureConfigLoaded()
+	return config.AudioOutputSource, nil
+}
+
+func rpcSetAudioOutputSource(source string) error {
+	if source != "hdmi" && source != "usb" {
+		return fmt.Errorf("invalid audio output source: %s (must be 'hdmi' or 'usb')", source)
+	}
+
+	useUSB := source == "usb"
+	return SetAudioOutputSource(useUSB)
+}
+
+func rpcGetAudioOutputEnabled() (bool, error) {
+	return audioOutputEnabled.Load(), nil
+}
+
+func rpcSetAudioOutputEnabled(enabled bool) error {
+	return SetAudioOutputEnabled(enabled)
+}
+
+func rpcGetAudioInputEnabled() (bool, error) {
+	return audioInputEnabled.Load(), nil
+}
+
+func rpcSetAudioInputEnabled(enabled bool) error {
+	return SetAudioInputEnabled(enabled)
 }
 
 func rpcSetCloudUrl(apiUrl string, appUrl string) error {
@@ -1317,35 +1258,6 @@ func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacro
 	return nil
 }
 
-// Audio control RPC handlers - delegated to audio package
-func rpcAudioMute(muted bool) error {
-	return audio.RPCAudioMute(muted)
-}
-
-func rpcMicrophoneStart() error {
-	return audio.RPCMicrophoneStart()
-}
-
-func rpcMicrophoneStop() error {
-	return audio.RPCMicrophoneStop()
-}
-
-func rpcAudioStatus() (map[string]interface{}, error) {
-	return audio.RPCAudioStatus()
-}
-
-func rpcMicrophoneStatus() (map[string]interface{}, error) {
-	return audio.RPCMicrophoneStatus()
-}
-
-func rpcMicrophoneReset() error {
-	return audio.RPCMicrophoneReset()
-}
-
-func rpcMicrophoneMute(muted bool) error {
-	return audio.RPCMicrophoneMute(muted)
-}
-
 var rpcHandlers = map[string]RPCHandler{
 	"ping":                   {Func: rpcPing},
 	"reboot":                 {Func: rpcReboot, Params: []string{"force"}},
@@ -1396,13 +1308,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"isUpdatePending":        {Func: rpcIsUpdatePending},
 	"getUsbEmulationState":   {Func: rpcGetUsbEmulationState},
 	"setUsbEmulationState":   {Func: rpcSetUsbEmulationState, Params: []string{"enabled"}},
-	"audioMute":              {Func: rpcAudioMute, Params: []string{"muted"}},
-	"audioStatus":            {Func: rpcAudioStatus},
-	"microphoneStart":        {Func: rpcMicrophoneStart},
-	"microphoneStop":         {Func: rpcMicrophoneStop},
-	"microphoneStatus":       {Func: rpcMicrophoneStatus},
-	"microphoneReset":        {Func: rpcMicrophoneReset},
-	"microphoneMute":         {Func: rpcMicrophoneMute, Params: []string{"muted"}},
 	"getUsbConfig":           {Func: rpcGetUsbConfig},
 	"setUsbConfig":           {Func: rpcSetUsbConfig, Params: []string{"usbConfig"}},
 	"checkMountUrl":          {Func: rpcCheckMountUrl, Params: []string{"url"}},
@@ -1432,6 +1337,12 @@ var rpcHandlers = map[string]RPCHandler{
 	"getUsbDevices":          {Func: rpcGetUsbDevices},
 	"setUsbDevices":          {Func: rpcSetUsbDevices, Params: []string{"devices"}},
 	"setUsbDeviceState":      {Func: rpcSetUsbDeviceState, Params: []string{"device", "enabled"}},
+	"getAudioOutputSource":   {Func: rpcGetAudioOutputSource},
+	"setAudioOutputSource":   {Func: rpcSetAudioOutputSource, Params: []string{"source"}},
+	"getAudioOutputEnabled":  {Func: rpcGetAudioOutputEnabled},
+	"setAudioOutputEnabled":  {Func: rpcSetAudioOutputEnabled, Params: []string{"enabled"}},
+	"getAudioInputEnabled":   {Func: rpcGetAudioInputEnabled},
+	"setAudioInputEnabled":   {Func: rpcSetAudioInputEnabled, Params: []string{"enabled"}},
 	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
 	"getKeyboardLayout":      {Func: rpcGetKeyboardLayout},
 	"setKeyboardLayout":      {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},

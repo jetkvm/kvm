@@ -18,9 +18,6 @@ import ExtLink from "../components/ExtLink";
 
 import { DeviceStatus } from "./welcome-local";
 
-
-
-
 const loader: LoaderFunction = async () => {
   const res = await api
     .GET(`${DEVICE_API}/device/status`)

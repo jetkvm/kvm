@@ -9,7 +9,6 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 
 import { JsonRpcResponse, useJsonRpc } from "../../hooks/useJsonRpc";
 
-
 const LONG_PRESS_DURATION = 3000; // 3 seconds for long press
 
 interface ATXState {

@@ -11,20 +11,13 @@
 
 </div>
 
-
-
-JetKVM is a high-performance, open-source KVM over IP (Keyboard, Video, Mouse, Audio) solution designed for efficient remote management of computers, servers, and workstations. Whether you're dealing with boot failures, installing a new operating system, adjusting BIOS settings, or simply taking control of a machine from afar, JetKVM provides the tools to get it done effectively.
-
-
-
-
+JetKVM is a high-performance, open-source KVM over IP (Keyboard, Video, Mouse) solution designed for efficient remote management of computers, servers, and workstations. Whether you're dealing with boot failures, installing a new operating system, adjusting BIOS settings, or simply taking control of a machine from afar, JetKVM provides the tools to get it done effectively.
 
 ## Features
 
-- **Ultra-low Latency** - 1080p@60FPS video with 30-60ms latency using H.264 encoding. Smooth mouse, keyboard, and audio for responsive remote control.
-- **First-Class Audio Support** - JetKVM supports bidirectional, low-latency audio streaming using a dual-subprocess architecture with ALSA and Opus integration via CGO. Features both audio output (PC→Browser) and audio input (Browser→PC) with dedicated subprocesses for optimal performance and isolation.
+- **Ultra-low Latency** - 1080p@60FPS video with 30-60ms latency using H.264 encoding. Smooth mouse and keyboard interaction for responsive remote control.
 - **Free & Optional Remote Access** - Remote management via JetKVM Cloud using WebRTC.
-- **Open-source software** - Written in Golang (with CGO for audio) on Linux. Easily customizable through SSH access to the JetKVM device.
+- **Open-source software** - Written in Golang on Linux. Easily customizable through SSH access to the JetKVM device.
 
 ## Contributing
 
@@ -40,19 +33,18 @@ If you've found an issue and want to report it, please check our [Issues](https:
 
 # Development
 
-JetKVM is written in Go & TypeScript, with some C for low-level integration
+JetKVM is written in Go & TypeScript. with some bits and pieces written in C. An intermediate level of Go & TypeScript knowledge is recommended for comfortable programming.
 
-The project contains two main parts: the backend software (Go, CGO) that runs on the KVM device, and the frontend software (React/TypeScript) that is served by the KVM device and the cloud.
+The project contains two main parts, the backend software that runs on the KVM device and the frontend software that is served by the KVM device, and also the cloud.
 
 For comprehensive development information, including setup, testing, debugging, and contribution guidelines, see **[DEVELOPMENT.md](DEVELOPMENT.md)**.
 
 For quick device development, use the `./dev_deploy.sh` script. It will build the frontend and backend and deploy them to the local KVM device. Run `./dev_deploy.sh --help` for more information.
 
-
 ## Backend
 
-The backend is written in Go and is responsible for KVM device management, audio/video streaming, the cloud API, and the cloud web. **Audio uses dedicated subprocesses for both output and input streams, with CGO-based ALSA and Opus processing, IPC communication via Unix sockets, and comprehensive process supervision for reliability.**
+The backend is written in Go and is responsible for the KVM device management, the cloud API and the cloud web.
 
 ## Frontend
 
-The frontend is written in React and TypeScript and is served by the KVM device. It has three build targets: `device`, `development`, and `production`. Development is used for the cloud version on your local machine, device is used for building the frontend for the KVM device, and production is used for building the frontend for the cloud.
+The frontend is written in React and TypeScript and is served by the KVM device. It has three build targets: `device`, `development` and `production`. Development is used for development of the cloud version on your local machine, device is used for building the frontend for the KVM device and production is used for building the frontend for the cloud.

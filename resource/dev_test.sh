@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 JSON_OUTPUT=false
 GET_COMMANDS=false
 if [ "$1" = "-json" ]; then

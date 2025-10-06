@@ -40,8 +40,12 @@ export GOARCH := arm
 export GOARM := 7
 export CC := $(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-gcc
 export CGO_ENABLED := 1
-export CGO_CFLAGS := $(OPTIM_CFLAGS) -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include -I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt
-export CGO_LDFLAGS := -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -lrockit -lrockchip_mpp -lrga -lpthread -L$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs -lasound -L$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs -lopus -lm -ldl
+export CGO_CFLAGS := $(OPTIM_CFLAGS) -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/include -I$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/include
+export CGO_LDFLAGS := -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/lib -L$(BUILDKIT_PATH)/$(BUILDKIT_FLAVOR)/sysroot/usr/lib -lrockit -lrockchip_mpp -lrga -lpthread -lm -ldl
+
+# Audio-specific flags (only used for audio C binaries, NOT for main Go app)
+AUDIO_CFLAGS := $(CGO_CFLAGS) -I$(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/include -I$(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/celt
+AUDIO_LDFLAGS := $(AUDIO_LIBS_DIR)/alsa-lib-$(ALSA_VERSION)/src/.libs/libasound.a $(AUDIO_LIBS_DIR)/opus-$(OPUS_VERSION)/.libs/libopus.a -lm -ldl -lpthread
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
@@ -93,15 +97,15 @@ build_audio_output: build_audio_deps
 	@if [ "$(SKIP_AUDIO_BINARIES_IF_EXISTS)" = "1" ] && [ -f "$(BIN_DIR)/jetkvm_audio_output" ]; then \
 		echo "jetkvm_audio_output already exists, skipping build..."; \
 	else \
-		echo "Building audio output binary..."; \
+		echo "Building audio output binary (100% static)..."; \
 		mkdir -p $(BIN_DIR); \
-		$(CC) $(CGO_CFLAGS) \
+		$(CC) $(AUDIO_CFLAGS) -static \
 			-o $(BIN_DIR)/jetkvm_audio_output \
 			internal/audio/c/jetkvm_audio_output.c \
 			internal/audio/c/ipc_protocol.c \
 			internal/audio/c/audio_common.c \
 			internal/audio/c/audio.c \
-			$(CGO_LDFLAGS); \
+			$(AUDIO_LDFLAGS); \
 	fi
 
 # Build audio input C binary (IPC → Opus decode → ALSA playback)
@@ -109,15 +113,15 @@ build_audio_input: build_audio_deps
 	@if [ "$(SKIP_AUDIO_BINARIES_IF_EXISTS)" = "1" ] && [ -f "$(BIN_DIR)/jetkvm_audio_input" ]; then \
 		echo "jetkvm_audio_input already exists, skipping build..."; \
 	else \
-		echo "Building audio input binary..."; \
+		echo "Building audio input binary (100% static)..."; \
 		mkdir -p $(BIN_DIR); \
-		$(CC) $(CGO_CFLAGS) \
+		$(CC) $(AUDIO_CFLAGS) -static \
 			-o $(BIN_DIR)/jetkvm_audio_input \
 			internal/audio/c/jetkvm_audio_input.c \
 			internal/audio/c/ipc_protocol.c \
 			internal/audio/c/audio_common.c \
 			internal/audio/c/audio.c \
-			$(CGO_LDFLAGS); \
+			$(AUDIO_LDFLAGS); \
 	fi
 
 # Build both audio binaries and copy to embed location
