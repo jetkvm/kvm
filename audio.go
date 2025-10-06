@@ -80,7 +80,7 @@ func startAudioSubprocesses() error {
 			[]string{
 				"ALSA_CAPTURE_DEVICE=" + alsaDevice,
 				"OPUS_BITRATE=128000",
-				"OPUS_COMPLEXITY=2",
+				"OPUS_COMPLEXITY=5",
 			},
 		)
 
