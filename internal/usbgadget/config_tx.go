@@ -95,7 +95,6 @@ func (u *UsbGadget) WithTransactionTimeout(fn func() error, timeout time.Duratio
 	case err := <-done:
 		return err
 	case <-ctx.Done():
-		u.log.Error().Dur("timeout", timeout).Msg("USB gadget transaction timed out")
 		return fmt.Errorf("USB gadget transaction timed out after %v: %w", timeout, ctx.Err())
 	}
 }

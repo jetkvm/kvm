@@ -1,58 +1,30 @@
-import { MdOutlineContentPasteGo, MdVolumeOff, MdVolumeUp, MdGraphicEq } from "react-icons/md";
-import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal } from "react-icons/lu";
+import { MdOutlineContentPasteGo } from "react-icons/md";
+import { LuCable, LuHardDrive, LuMaximize, LuSettings, LuSignal, LuVolume2 } from "react-icons/lu";
 import { FaKeyboard } from "react-icons/fa6";
 import { Popover, PopoverButton, PopoverPanel } from "@headlessui/react";
 import { Fragment, useCallback, useRef } from "react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 
 import { Button } from "@components/Button";
-import Container from "@components/Container";
 import {
   useHidStore,
   useMountMediaStore,
   useSettingsStore,
   useUiStore,
 } from "@/hooks/stores";
+import Container from "@components/Container";
 import { cx } from "@/cva.config";
 import PasteModal from "@/components/popovers/PasteModal";
 import WakeOnLanModal from "@/components/popovers/WakeOnLan/Index";
 import MountPopopover from "@/components/popovers/MountPopover";
 import ExtensionPopover from "@/components/popovers/ExtensionPopover";
-import AudioControlPopover from "@/components/popovers/AudioControlPopover";
+import AudioPopover from "@/components/popovers/AudioPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
-import { useAudioEvents } from "@/hooks/useAudioEvents";
-import { useUsbDeviceConfig } from "@/hooks/useUsbDeviceConfig";
-
-
-// Type for microphone error
-interface MicrophoneError {
-  type: 'permission' | 'device' | 'network' | 'unknown';
-  message: string;
-}
-
-// Type for microphone hook return value
-interface MicrophoneHookReturn {
-  isMicrophoneActive: boolean;
-  isMicrophoneMuted: boolean;
-  microphoneStream: MediaStream | null;
-  startMicrophone: (deviceId?: string) => Promise<{ success: boolean; error?: MicrophoneError }>;
-  stopMicrophone: () => Promise<{ success: boolean; error?: MicrophoneError }>;
-  toggleMicrophoneMute: () => Promise<{ success: boolean; error?: MicrophoneError }>;
-  syncMicrophoneState: () => Promise<void>;
-  // Loading states
-  isStarting: boolean;
-  isStopping: boolean;
-  isToggling: boolean;
-  // HTTP/HTTPS detection
-  isHttpsRequired: boolean;
-}
 
 export default function Actionbar({
   requestFullscreen,
-  microphone,
 }: {
   requestFullscreen: () => Promise<void>;
-  microphone: MicrophoneHookReturn;
 }) {
   const { navigateTo } = useDeviceUiNavigation();
   const { isVirtualKeyboardEnabled, setVirtualKeyboardEnabled } = useHidStore();
@@ -80,17 +52,6 @@ export default function Actionbar({
     },
     [setDisableVideoFocusTrap],
   );
-
-  // Use WebSocket-based audio events for real-time updates
-  const { audioMuted } = useAudioEvents();
-  
-  // Use WebSocket data exclusively - no polling fallback
-  const isMuted = audioMuted ?? false; // Default to false if WebSocket data not available yet
-  
-  // Get USB device configuration to check if audio is enabled
-  const { usbDeviceConfig, loading: usbConfigLoading } = useUsbDeviceConfig();
-  // Default to false while loading to prevent premature access when audio hasn't been enabled yet
-  const isAudioEnabledInUsb = usbDeviceConfig?.audio ?? false;
 
   return (
     <Container className="border-b border-b-slate-800/20 bg-white dark:border-b-slate-300/20 dark:bg-slate-900">
@@ -129,7 +90,7 @@ export default function Actionbar({
                 "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
               )}
             >
-              {({ open }: { open: boolean }) => {
+              {({ open }) => {
                 checkIfStateChanged(open);
                 return (
                   <div className="mx-auto w-full max-w-xl">
@@ -171,7 +132,7 @@ export default function Actionbar({
                   "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
                 )}
               >
-                {({ open }: { open: boolean }) => {
+                {({ open }) => {
                   checkIfStateChanged(open);
                   return (
                     <div className="mx-auto w-full max-w-xl">
@@ -223,7 +184,7 @@ export default function Actionbar({
                   "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
                 )}
               >
-                {({ open }: { open: boolean }) => {
+                {({ open }) => {
                   checkIfStateChanged(open);
                   return (
                     <div className="mx-auto w-full max-w-xl">
@@ -243,6 +204,36 @@ export default function Actionbar({
               onClick={() => setVirtualKeyboardEnabled(!isVirtualKeyboardEnabled)}
             />
           </div>
+          <Popover>
+            <PopoverButton as={Fragment}>
+              <Button
+                size="XS"
+                theme="light"
+                text="Audio"
+                LeadingIcon={LuVolume2}
+                onClick={() => {
+                  setDisableVideoFocusTrap(true);
+                }}
+              />
+            </PopoverButton>
+            <PopoverPanel
+              anchor="bottom start"
+              transition
+              className={cx(
+                "z-10 flex w-[420px] flex-col overflow-visible!",
+                "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
+              )}
+            >
+              {({ open }) => {
+                checkIfStateChanged(open);
+                return (
+                  <div className="mx-auto w-full max-w-xl">
+                    <AudioPopover />
+                  </div>
+                );
+              }}
+            </PopoverPanel>
+          </Popover>
         </div>
 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
@@ -266,7 +257,7 @@ export default function Actionbar({
                 "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
               )}
             >
-              {({ open }: { open: boolean }) => {
+              {({ open }) => {
                 checkIfStateChanged(open);
                 return <ExtensionPopover />;
               }}
@@ -298,7 +289,6 @@ export default function Actionbar({
               }}
             />
           </div>
-
           <div>
             <Button
               size="XS"
@@ -322,64 +312,6 @@ export default function Actionbar({
               onClick={() => requestFullscreen()}
             />
           </div>
-          <Popover>
-            <PopoverButton as={Fragment} disabled={!isAudioEnabledInUsb || usbConfigLoading}>
-              <div title={
-                usbConfigLoading 
-                  ? "Loading audio configuration..." 
-                  : !isAudioEnabledInUsb 
-                    ? "Audio needs to be enabled in USB device settings" 
-                    : undefined
-              }>
-                <Button
-                  size="XS"
-                  theme="light"
-                  text="Audio"
-                  disabled={!isAudioEnabledInUsb || usbConfigLoading}
-                  LeadingIcon={({ className }) => (
-                    <div className="flex items-center">
-                      {usbConfigLoading ? (
-                        <div className={cx(className, "animate-spin rounded-full border border-gray-400 border-t-gray-600")} />
-                      ) : !isAudioEnabledInUsb ? (
-                        <MdVolumeOff className={cx(className, "text-gray-400")} />
-                      ) : isMuted ? (
-                        <MdVolumeOff className={cx(className, "text-red-500")} />
-                      ) : (
-                        <MdVolumeUp className={cx(className, "text-green-500")} />
-                      )}
-                      <MdGraphicEq className={cx(className, "ml-1", 
-                        usbConfigLoading ? "text-gray-400" : 
-                        !isAudioEnabledInUsb ? "text-gray-400" : 
-                        "text-blue-500"
-                      )} />
-                    </div>
-                  )}
-                  onClick={() => {
-                    if (isAudioEnabledInUsb && !usbConfigLoading) {
-                      setDisableVideoFocusTrap(true);
-                    }
-                  }}
-                />
-              </div>
-            </PopoverButton>
-            <PopoverPanel
-              anchor="bottom end"
-              transition
-              className={cx(
-                "z-10 flex origin-top flex-col overflow-visible!",
-                "flex origin-top flex-col transition duration-300 ease-out data-closed:translate-y-8 data-closed:opacity-0",
-              )}
-            >
-              {({ open }: { open: boolean }) => {
-                checkIfStateChanged(open);
-                return (
-                  <div className="mx-auto">
-                    <AudioControlPopover microphone={microphone} />
-                  </div>
-                );
-              }}
-            </PopoverPanel>
-          </Popover>
         </div>
       </div>
     </Container>

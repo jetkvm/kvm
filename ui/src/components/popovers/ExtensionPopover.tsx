@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { LuPower, LuTerminal, LuPlugZap } from "react-icons/lu";
 
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import Card, { GridCard } from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { ATXPowerControl } from "@components/extensions/ATXPowerControl";
 import { DCPowerControl } from "@components/extensions/DCPowerControl";
 import { SerialConsole } from "@components/extensions/SerialConsole";
 import { Button } from "@components/Button";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 
 interface Extension {

@@ -11,50 +11,27 @@
 
 </div>
 
-
 # JetKVM Development Guide
-
 
 Welcome to JetKVM development! This guide will help you get started quickly, whether you're fixing bugs, adding features, or just exploring the codebase.
 
 ## Get Started
-
 
 ### Prerequisites
 - **A JetKVM device** (for full development)
 - **[Go 1.24.4+](https://go.dev/doc/install)** and **[Node.js 22.15.0](https://nodejs.org/en/download/)**
 - **[Git](https://git-scm.com/downloads)** for version control
 - **[SSH access](https://jetkvm.com/docs/advanced-usage/developing#developer-mode)** to your JetKVM device
-- **Audio build dependencies:**
-   - **New:** The audio system uses a dual-subprocess architecture with CGO, ALSA, and Opus integration. The audio dependencies are automatically installed by the devcontainer or can be manually built using `.devcontainer/install_audio_deps.sh`.
-
 
 ### Development Environment
 
-**Recommended:** Development is best done on **Linux** or **macOS**.
-
-#### Apple Silicon (M1/M2/M3) Mac Users
-
-If you are developing on an Apple Silicon Mac, you should use a devcontainer to ensure compatibility with the JetKVM build environment (which targets linux/amd64 and ARM). There are two main options:
-
-- **VS Code Dev Containers**: Open the project in VS Code and use the built-in Dev Containers support. The configuration in `.devcontainer/devcontainer.json` is set to use `linux/amd64` platform.
-- **Devpod**: [Devpod](https://devpod.sh/) is a fast, open-source tool for running devcontainers anywhere. If you use Devpod, go to **Settings → Experimental → Additional Environmental Variables** and add:
-   - `DOCKER_DEFAULT_PLATFORM=linux/amd64`
-   This ensures all builds run in the correct architecture.
-- **devcontainer CLI**: You can also use the [devcontainer CLI](https://github.com/devcontainers/cli) to launch the devcontainer from the terminal.
-
-**Important:** If you're switching from an ARM64 devcontainer or updating the platform settings, you'll need to rebuild the devcontainer completely:
-- In VS Code: Run "Dev Containers: Rebuild Container" from the command palette
-- With devcontainer CLI: Use `devcontainer up --build`
-
-This approach ensures compatibility with all shell scripts, build tools, and cross-compilation steps used in the project.
+**Recommended:** Development is best done on **Linux** or **macOS**. 
 
 If you're using Windows, we strongly recommend using **WSL (Windows Subsystem for Linux)** for the best development experience:
 - [Install WSL on Windows](https://docs.microsoft.com/en-us/windows/wsl/install)
 - [WSL Setup Guide](https://docs.microsoft.com/en-us/windows/wsl/setup/environment)
 
 This ensures compatibility with shell scripts and build tools used in the project.
-
 
 ### Project Setup
 
@@ -69,25 +46,16 @@ This ensures compatibility with shell scripts and build tools used in the projec
    go version && node --version
    ```
 
-3. **Set up the cross-compiler and audio dependencies:**
-   ```bash
-   make dev_env
-   # This will install audio dependencies using .devcontainer/install_audio_deps.sh
-   # It will build ALSA/Opus static libs in /opt/jetkvm-audio-libs using the buildkit from /opt/jetkvm-native-buildkit
-   #
-   # **Note:** This is required for the audio subprocess architecture. If you skip this step, builds will not succeed.
-   ```
+3. **Find your JetKVM IP address** (check your router or device screen)
 
-4. **Find your JetKVM IP address** (check your router or device screen)
-
-5. **Deploy and test:**
+4. **Deploy and test:**
    ```bash
    ./dev_deploy.sh -r 192.168.1.100  # Replace with your device IP
    ```
 
-6. **Open in browser:** `http://192.168.1.100`
+5. **Open in browser:** `http://192.168.1.100`
 
-That's it! You're now running your own development version of JetKVM, **with bidirectional audio streaming using the dual-subprocess architecture.**
+That's it! You're now running your own development version of JetKVM.
 
 ---
 
@@ -103,14 +71,12 @@ npm install
 
 Now edit files in `ui/src/` and see changes live in your browser!
 
-
-### Modify the backend (including audio)
+### Modify the backend
 
 ```bash
-# Edit Go files (config.go, web.go, internal/audio, etc.)
+# Edit Go files (config.go, web.go, etc.)
 ./dev_deploy.sh -r 192.168.1.100 --skip-ui-build
 ```
-
 
 ### Run tests
 
@@ -127,32 +93,46 @@ tail -f /var/log/jetkvm.log
 
 ---
 
-
 ## Project Layout
 
 ```
 /kvm/
-├── main.go              # App entry point
-├── config.go           # Settings & configuration
-├── web.go              # API endpoints
-├── ui/                 # React frontend
-│   ├── src/routes/     # Pages (login, settings, etc.)
-│   └── src/components/ # UI components
-├── internal/           # Internal Go packages
-│   └── audio/          # Audio Processing Layer (CGO, ALSA, Opus)
-│   ├── native/         # CGO / Native code glue layer
-│   ├── native/cgo/     # C files for the native library (HDMI, Touchscreen, etc.)
-│   ├── native/eez/     # EEZ Studio Project files (for Touchscreen)
-│   ├── hidrpc/         # HIDRPC implementation for HID devices (keyboard, mouse, etc.)
-│   ├── logging/        # Logging implementation
-│   ├── usbgadget/      # USB gadget 
-│   └── websecurity/    # TLS certificate management
-└── resource            # netboot iso and other resources
+├── main.go                  # App entry point
+├── config.go                # Settings & configuration
+├── display.go               # Device UI control
+├── web.go                   # API endpoints
+├── cmd/                     # Command line main
+├── internal/                # Internal Go packages
+│   ├── confparser/          # Configuration file implementation
+│   ├── hidrpc/              # HIDRPC implementation for HID devices (keyboard, mouse, etc.)
+│   ├── logging/             # Logging implementation
+│   ├── mdns/                # mDNS implementation
+│   ├── native/              # CGO / Native code glue layer (on-device hardware)
+│   │   ├── cgo/             # C files for the native library (HDMI, Touchscreen, etc.)
+│   │   └── eez/             # EEZ Studio Project files (for Touchscreen)
+│   ├── network/             # Network implementation
+│   ├── timesync/            # Time sync/NTP implementation
+│   ├── tzdata/              # Timezone data and generation
+│   ├── udhcpc/              # DHCP implementation
+│   ├── usbgadget/           # USB gadget
+│   ├── utils/               # SSH handling
+│   └── websecure/           # TLS certificate management
+├── resource/                # netboot iso and other resources
+├── scripts/                 # Bash shell scripts for building and deploying
+└── static/                  #  (react client build output)
+└── ui/                      # React frontend
+    ├── public/              # UI website static images and fonts
+    └── src/                 # Client React UI
+        ├── assets/          # UI in-page images
+        ├── components/      # UI components
+        ├── hooks/           # Hooks (stores, RPC handling, virtual devices)
+        ├── keyboardLayouts/ # Keyboard layout definitions
+        ├── providers/       # Feature flags
+        └── routes/          # Pages (login, settings, etc.)
 ```
 
 **Key files for beginners:**
 
-- `internal/audio/` - [NEW] Dual-subprocess audio architecture (CGO, ALSA, Opus)
 - `web.go` - Add new API endpoints here
 - `config.go` - Add new settings here
 - `ui/src/routes/` - Add new pages here
@@ -187,7 +167,7 @@ Please click the `Build` button in EEZ Studio then run `./dev_deploy.sh -r <YOUR
 
 ### Quick Backend Changes
 
-*Best for: API, backend, or audio logic changes (including audio subprocess architecture)*
+*Best for: API or backend logic changes*
 
 ```bash
 # Skip frontend build for faster deployment
@@ -244,100 +224,6 @@ systemctl restart jetkvm
 cd ui && npm run lint
 ```
 
-### Essential Makefile Targets
-
-The project includes several essential Makefile targets for development environment setup, building, and code quality:
-
-#### Development Environment Setup
-
-```bash
-# Set up complete development environment (recommended first step)
-make dev_env
-# This runs build_audio_deps + installs Go tools
-# - Uses buildkit from /opt/jetkvm-native-buildkit for cross-compilation
-# - Builds ALSA and Opus static libraries for ARM in /opt/jetkvm-audio-libs
-# - Installs goimports and other Go development tools
-
-# Build only the audio dependencies
-make build_audio_deps
-```
-
-#### Building
-
-```bash
-# Build development version with debug symbols
-make build_dev
-# Builds jetkvm_app with version like 0.4.7-dev20241222
-# Requires: make dev_env (for buildkit and audio dependencies)
-
-# Build release version (production)
-make build_release
-# Builds optimized release version
-# Requires: make dev_env and frontend build
-
-# Build test binaries for device testing
-make build_dev_test
-# Creates device-tests.tar.gz with all test binaries
-```
-
-#### Code Quality and Linting
-
-```bash
-# Run both Go and UI linting
-make lint
-
-# Run both Go and UI linting with auto-fix
-make lint-fix
-
-# Run only Go linting
-make lint-go
-
-# Run only Go linting with auto-fix
-make lint-go-fix
-
-# Run only UI linting
-make lint-ui
-
-# Run only UI linting with auto-fix
-make lint-ui-fix
-```
-
-**Note:** The Go linting targets (`lint-go`, `lint-go-fix`, and the combined `lint`/`lint-fix` targets) require audio dependencies. Run `make dev_env` first if you haven't already.
-
-### Development Deployment Script
-
-The `dev_deploy.sh` script is the primary tool for deploying your development changes to a JetKVM device:
-
-```bash
-# Basic deployment (builds and deploys everything)
-./dev_deploy.sh -r 192.168.1.100
-
-# Skip UI build for faster backend-only deployment
-./dev_deploy.sh -r 192.168.1.100 --skip-ui-build
-
-# Run Go tests on the device after deployment
-./dev_deploy.sh -r 192.168.1.100 --run-go-tests
-
-# Deploy with release build and install
-./dev_deploy.sh -r 192.168.1.100 -i
-
-# View all available options
-./dev_deploy.sh --help
-```
-
-**Key features:**
-- Automatically builds the Go backend with proper cross-compilation
-- Optionally builds the React frontend (unless `--skip-ui-build`)
-- Deploys binaries to the device via SSH/SCP
-- Restarts the JetKVM service
-- Can run tests on the device
-- Supports custom SSH user and various deployment options
-
-**Requirements:**
-- SSH access to your JetKVM device
-- `make dev_env` must be run first (for buildkit and audio dependencies)
-- Device IP address or hostname
-
 ### API Testing
 
 ```bash
@@ -349,8 +235,7 @@ curl -X POST http://<IP>/auth/password-local \
 
 ---
 
-
-### Common Issues & Solutions
+## Common Issues & Solutions
 
 ### "Build failed" or "Permission denied"
 
@@ -362,8 +247,6 @@ ssh root@<IP> chmod +x /userdata/jetkvm/bin/jetkvm_app_debug
 go clean -modcache
 go mod tidy
 make build_dev
-# If you see errors about missing ALSA/Opus or toolchain, run:
-make dev_env  # Required for audio subprocess architecture
 ```
 
 ### "Can't connect to device"
@@ -376,15 +259,6 @@ ping <IP>
 ssh root@<IP> echo "Connection OK"
 ```
 
-
-### "Audio not working"
-
-```bash
-# Make sure you have run:
-make dev_env
-# # If you see errors about ALSA/Opus, check logs and re-run: make build_audio_deps
-```
-
 ### "Frontend not updating"
 
 ```bash
@@ -395,31 +269,69 @@ rm -rf node_modules
 npm install
 ```
 
+### "Device UI Fails to Build"
+
+If while trying to build you run into an error message similar to :
+```plaintext
+In file included from /workspaces/kvm/internal/native/cgo/ctrl.c:15:
+/workspaces/kvm/internal/native/cgo/ui_index.h:4:10: fatal error: ui/ui.h: No such file or directory
+ #include "ui/ui.h"
+          ^~~~~~~~~
+compilation terminated.
+```
+This means that your system didn't create the directory-link to from _./internal/native/cgo/ui_ to ./internal/native/eez/src/ui when the repository was checked out. You can verify this is the case if _./internal/native/cgo/ui_ appears as a plain text file with only the textual contents:
+```plaintext
+../eez/src/ui
+```
+
+If this happens to you need to [enable git creation of symbolic links](https://stackoverflow.com/a/59761201/2076) either globally or for the KVM repository:
+```bash
+   # Globally enable git to create symlinks
+   git config --global core.symlinks true
+   git restore internal/native/cgo/ui
+```
+```bash
+   # Enable git to create symlinks only in this project
+   git config core.symlinks true
+   git restore internal/native/cgo/ui
+```
+
+Or if you want to manually create the symlink use:
+```bash
+   # linux
+   cd internal/native/cgo
+   rm ui
+   ln -s ../eez/src/ui ui
+```
+```dos
+   rem Windows
+   cd internal/native/cgo
+   del ui
+   mklink /d ui ..\eez\src\ui
+```
+
 ---
 
 ## Next Steps
 
-
 ### Adding a New Feature
 
-1. **Backend:** Add API endpoint in `web.go` or extend audio in `internal/audio/`
+1. **Backend:** Add API endpoint in `web.go`
 2. **Config:** Add settings in `config.go`
 3. **Frontend:** Add UI in `ui/src/routes/`
 4. **Test:** Deploy and test with `./dev_deploy.sh`
-
 
 ### Code Style
 
 - **Go:** Follow standard Go conventions
 - **TypeScript:** Use TypeScript for type safety
 - **React:** Keep components small and reusable
-- **Audio/CGO:** Keep C/Go integration minimal, robust, and well-documented. Use zerolog for all logging.
 
 ### Environment Variables
 
 ```bash
 # Enable debug logging
-export LOG_TRACE_SCOPES="jetkvm,cloud,websocket,native,jsonrpc,audio"
+export LOG_TRACE_SCOPES="jetkvm,cloud,websocket,native,jsonrpc"
 
 # Frontend development
 export JETKVM_PROXY_URL="ws://<IP>"
@@ -471,7 +383,7 @@ curl http://api:$JETKVM_PASSWORD@YOUR_DEVICE_IP/developer/pprof/
 
 ```bash
 # Enable trace logging (useful for debugging)
-export LOG_TRACE_SCOPES="jetkvm,cloud,websocket,native,jsonrpc,audio"
+export LOG_TRACE_SCOPES="jetkvm,cloud,websocket,native,jsonrpc"
 
 # For frontend development
 export JETKVM_PROXY_URL="ws://<JETKVM_IP>"

@@ -3,7 +3,7 @@
  *
  * Bidirectional audio processing optimized for ARM NEON SIMD:
  * - OUTPUT PATH: TC358743 HDMI audio → Client speakers
- *   Pipeline: ALSA hw:0,0 capture → 2.5x gain → Opus encode (96kbps, FEC enabled)
+ *   Pipeline: ALSA hw:0,0 capture → Opus encode (128kbps, FEC enabled)
  *
  * - INPUT PATH: Client microphone → Device speakers
  *   Pipeline: Opus decode (with FEC) → ALSA hw:1,0 playback
@@ -11,7 +11,6 @@
  * Key features:
  * - ARM NEON SIMD optimization for all audio operations
  * - Opus in-band FEC for packet loss resilience
- * - Ultra-low CPU usage (~0.5% on RV1106)
  * - S16_LE @ 48kHz stereo, 20ms frames (960 samples)
  */
 
@@ -22,63 +21,56 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sched.h>
+#include <time.h>
+#include <signal.h>
 
 // ARM NEON SIMD support (always available on JetKVM's ARM Cortex-A7)
 #include <arm_neon.h>
 
+// RV1106 (Cortex-A7) has 64-byte cache lines
+#define CACHE_LINE_SIZE 64
 #define SIMD_ALIGN __attribute__((aligned(16)))
+#define CACHE_ALIGN __attribute__((aligned(CACHE_LINE_SIZE)))
 #define SIMD_PREFETCH(addr, rw, locality) __builtin_prefetch(addr, rw, locality)
 
-static int trace_logging_enabled = 0;
-static int simd_initialized = 0;
-
-static void simd_init_once(void) {
-    if (simd_initialized) return;
-    simd_initialized = 1;
-}
-
-// ============================================================================
-// GLOBAL STATE VARIABLES
-// ============================================================================
+// Compile-time trace logging - disabled for production (zero overhead)
+#define TRACE_LOG(...) ((void)0)
 
 // ALSA device handles
 static snd_pcm_t *pcm_capture_handle = NULL;  // OUTPUT: TC358743 HDMI audio → client
 static snd_pcm_t *pcm_playback_handle = NULL; // INPUT: Client microphone → device speakers
+
+// ALSA device names
+static const char *alsa_capture_device = NULL;
+static const char *alsa_playback_device = NULL;
 
 // Opus codec instances
 static OpusEncoder *encoder = NULL;
 static OpusDecoder *decoder = NULL;
 
 // Audio format (S16_LE @ 48kHz stereo)
-static int sample_rate = 48000;
-static int channels = 2;
-static int frame_size = 960;  // 20ms frames at 48kHz
+static uint32_t sample_rate = 48000;
+static uint8_t channels = 2;
+static uint16_t frame_size = 960;  // 20ms frames at 48kHz
 
-// Opus encoder settings (optimized for minimal CPU ~0.5% on RV1106)
-static int opus_bitrate = 96000;        // 96 kbps - good quality/bandwidth balance
-static int opus_complexity = 1;         // Complexity 1 - minimal CPU usage
-static int opus_vbr = 1;                // Variable bitrate enabled
-static int opus_vbr_constraint = 1;     // Constrained VBR - predictable bandwidth
-static int opus_signal_type = -1000;    // OPUS_AUTO - automatic signal type detection
-static int opus_bandwidth = 1103;       // OPUS_BANDWIDTH_WIDEBAND (50-8000 Hz)
-static int opus_dtx = 0;                // DTX disabled - no discontinuous transmission
-static int opus_lsb_depth = 16;         // 16-bit depth - matches S16_LE format
+static uint32_t opus_bitrate = 128000;
+static uint8_t opus_complexity = 2;
+static uint16_t max_packet_size = 1500;
 
-// Network configuration
-static int max_packet_size = 1500;
+// Opus encoder constants (hardcoded for production)
+#define OPUS_VBR 1                      // VBR enabled
+#define OPUS_VBR_CONSTRAINT 0           // Unconstrained VBR (better for low-volume signals)
+#define OPUS_SIGNAL_TYPE 3002           // OPUS_SIGNAL_MUSIC (better transient handling)
+#define OPUS_BANDWIDTH 1105             // OPUS_BANDWIDTH_FULLBAND (20kHz, enabled by 128kbps bitrate)
+#define OPUS_DTX 0                      // DTX disabled (prevents audio drops)
+#define OPUS_LSB_DEPTH 16               // 16-bit depth
 
 // ALSA retry configuration
-static int sleep_microseconds = 1000;
-static int max_attempts_global = 5;
-static int max_backoff_us_global = 500000;
-
-// ALSA buffer configuration (not currently used - kept for future optimization)
-static const int optimized_buffer_size = 1;
-
-
-// ============================================================================
-// FUNCTION DECLARATIONS
-// ============================================================================
+static uint32_t sleep_microseconds = 1000;
+static uint32_t sleep_milliseconds = 1;  // Precomputed: sleep_microseconds / 1000
+static uint8_t max_attempts_global = 5;
+static uint32_t max_backoff_us_global = 500000;
 
 int jetkvm_audio_capture_init();
 void jetkvm_audio_capture_close();
@@ -88,156 +80,141 @@ int jetkvm_audio_playback_init();
 void jetkvm_audio_playback_close();
 int jetkvm_audio_decode_write(void *opus_buf, int opus_size);
 
-void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constraint,
-                           int signal_type, int bandwidth, int dtx, int lsb_depth, int sr, int ch,
-                           int fs, int max_pkt, int sleep_us, int max_attempts, int max_backoff);
-void set_trace_logging(int enabled);
-int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_constraint,
-                              int signal_type, int bandwidth, int dtx);
+void update_audio_constants(uint32_t bitrate, uint8_t complexity,
+                           uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
+                           uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff);
+void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
+                                    uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff);
+int update_opus_encoder_params(uint32_t bitrate, uint8_t complexity);
 
-// ============================================================================
-// CONFIGURATION FUNCTIONS
-// ============================================================================
 
 /**
- * Sync configuration from Go to C
+ * Sync encoder configuration from Go to C
  */
-void update_audio_constants(int bitrate, int complexity, int vbr, int vbr_constraint,
-                           int signal_type, int bandwidth, int dtx, int lsb_depth, int sr, int ch,
-                           int fs, int max_pkt, int sleep_us, int max_attempts, int max_backoff) {
+void update_audio_constants(uint32_t bitrate, uint8_t complexity,
+                           uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
+                           uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff) {
     opus_bitrate = bitrate;
     opus_complexity = complexity;
-    opus_vbr = vbr;
-    opus_vbr_constraint = vbr_constraint;
-    opus_signal_type = signal_type;
-    opus_bandwidth = bandwidth;
-    opus_dtx = dtx;
-    opus_lsb_depth = lsb_depth;
     sample_rate = sr;
     channels = ch;
     frame_size = fs;
     max_packet_size = max_pkt;
     sleep_microseconds = sleep_us;
+    sleep_milliseconds = sleep_us / 1000;  // Precompute for snd_pcm_wait
     max_attempts_global = max_attempts;
     max_backoff_us_global = max_backoff;
 }
 
 /**
- * Enable/disable trace logging (zero overhead when disabled)
+ * Sync decoder configuration from Go to C (no encoder-only params)
  */
-void set_trace_logging(int enabled) {
-    trace_logging_enabled = enabled;
+void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
+                                    uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff) {
+    sample_rate = sr;
+    channels = ch;
+    frame_size = fs;
+    max_packet_size = max_pkt;
+    sleep_microseconds = sleep_us;
+    sleep_milliseconds = sleep_us / 1000;  // Precompute for snd_pcm_wait
+    max_attempts_global = max_attempts;
+    max_backoff_us_global = max_backoff;
 }
 
-// ============================================================================
+/**
+ * Initialize ALSA device names from environment variables
+ * Must be called before jetkvm_audio_capture_init or jetkvm_audio_playback_init
+ */
+static void init_alsa_devices_from_env(void) {
+    if (alsa_capture_device == NULL) {
+        alsa_capture_device = getenv("ALSA_CAPTURE_DEVICE");
+        if (alsa_capture_device == NULL || alsa_capture_device[0] == '\0') {
+            alsa_capture_device = "hw:0,0"; // Default to HDMI
+        }
+    }
+    if (alsa_playback_device == NULL) {
+        alsa_playback_device = getenv("ALSA_PLAYBACK_DEVICE");
+        if (alsa_playback_device == NULL || alsa_playback_device[0] == '\0') {
+            alsa_playback_device = "hw:1,0"; // Default to USB gadget
+        }
+    }
+}
+
 // SIMD-OPTIMIZED BUFFER OPERATIONS (ARM NEON)
-// ============================================================================
 
 /**
- * Clear audio buffer using NEON (8 samples/iteration)
- * @param buffer Audio buffer to clear
- * @param samples Number of samples to zero out
+ * Clear audio buffer using NEON (16 samples/iteration with 2x unrolling)
  */
-static inline void simd_clear_samples_s16(short *buffer, int samples) {
-    simd_init_once();
-
-    int simd_samples = samples & ~7;
+static inline void simd_clear_samples_s16(short * __restrict__ buffer, uint32_t samples) {
     const int16x8_t zero = vdupq_n_s16(0);
+    uint32_t i = 0;
 
-    // SIMD path: zero 8 samples per iteration
-    for (int i = 0; i < simd_samples; i += 8) {
+    // Process 16 samples at a time (2x unrolled for better pipeline utilization)
+    uint32_t simd_samples = samples & ~15U;
+    for (; i < simd_samples; i += 16) {
         vst1q_s16(&buffer[i], zero);
+        vst1q_s16(&buffer[i + 8], zero);
     }
 
-    // Scalar path: handle remaining samples
-    for (int i = simd_samples; i < samples; i++) {
+    // Handle remaining 8 samples
+    if (i + 8 <= samples) {
+        vst1q_s16(&buffer[i], zero);
+        i += 8;
+    }
+
+    // Scalar: remaining samples
+    for (; i < samples; i++) {
         buffer[i] = 0;
     }
 }
 
-/**
- * Apply gain using NEON Q15 fixed-point math (8 samples/iteration)
- * Uses vqrdmulhq_s16 for single-instruction saturating rounded multiply-high
- * @param samples Audio buffer to scale in-place
- * @param count Number of samples to process
- * @param volume Gain multiplier (e.g., 2.5 for 2.5x gain)
- */
-static inline void simd_scale_volume_s16(short *samples, int count, float volume) {
-    simd_init_once();
-
-    // Convert float gain to Q14 fixed-point for vqrdmulhq_s16
-    // vqrdmulhq_s16 extracts bits [30:15], so multiply by 16384 (2^14) instead of 32768 (2^15)
-    int16_t vol_fixed = (int16_t)(volume * 16384.0f);
-    int16x8_t vol_vec = vdupq_n_s16(vol_fixed);
-    int simd_count = count & ~7;
-
-    // SIMD path: process 8 samples per iteration
-    for (int i = 0; i < simd_count; i += 8) {
-        int16x8_t samples_vec = vld1q_s16(&samples[i]);
-        int16x8_t result = vqrdmulhq_s16(samples_vec, vol_vec);
-        vst1q_s16(&samples[i], result);
-    }
-
-    // Scalar path: handle remaining samples
-    for (int i = simd_count; i < count; i++) {
-        samples[i] = (short)((samples[i] * vol_fixed) >> 14);
-    }
-}
-
-// ============================================================================
 // INITIALIZATION STATE TRACKING
-// ============================================================================
 
-static volatile int capture_initializing = 0;
-static volatile int capture_initialized = 0;
-static volatile int playback_initializing = 0;
-static volatile int playback_initialized = 0;
+static volatile sig_atomic_t capture_initializing = 0;
+static volatile sig_atomic_t capture_initialized = 0;
+static volatile sig_atomic_t playback_initializing = 0;
+static volatile sig_atomic_t playback_initialized = 0;
 
 /**
- * Update Opus encoder settings at runtime (does NOT modify FEC settings)
- * Note: FEC configuration remains unchanged - set at initialization
+ * Update Opus encoder settings at runtime (does NOT modify FEC or hardcoded settings)
  * @return 0 on success, -1 if not initialized, >0 if some settings failed
  */
-int update_opus_encoder_params(int bitrate, int complexity, int vbr, int vbr_constraint,
-                              int signal_type, int bandwidth, int dtx) {
+int update_opus_encoder_params(uint32_t bitrate, uint8_t complexity) {
     if (!encoder || !capture_initialized) {
         return -1;
     }
 
-    // Update global configuration variables
+    // Update runtime-configurable parameters
     opus_bitrate = bitrate;
     opus_complexity = complexity;
-    opus_vbr = vbr;
-    opus_vbr_constraint = vbr_constraint;
-    opus_signal_type = signal_type;
-    opus_bandwidth = bandwidth;
-    opus_dtx = dtx;
 
-    // Apply settings to encoder (FEC settings not modified)
+    // Apply settings to encoder
     int result = 0;
     result |= opus_encoder_ctl(encoder, OPUS_SET_BITRATE(opus_bitrate));
     result |= opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(opus_complexity));
-    result |= opus_encoder_ctl(encoder, OPUS_SET_VBR(opus_vbr));
-    result |= opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(opus_vbr_constraint));
-    result |= opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(opus_signal_type));
-    result |= opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth));
-    result |= opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
 
     return result;
 }
 
-// ============================================================================
 // ALSA UTILITY FUNCTIONS
-// ============================================================================
 
 /**
  * Open ALSA device with exponential backoff retry
  * @return 0 on success, negative error code on failure
  */
+// Helper: High-precision sleep using nanosleep (better than usleep)
+static inline void precise_sleep_us(uint32_t microseconds) {
+	struct timespec ts = {
+		.tv_sec = microseconds / 1000000,
+		.tv_nsec = (microseconds % 1000000) * 1000
+	};
+	nanosleep(&ts, NULL);
+}
+
 static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream_t stream) {
-	int attempt = 0;
+	uint8_t attempt = 0;
 	int err;
-	int backoff_us = sleep_microseconds;
+	uint32_t backoff_us = sleep_microseconds;
 
 	while (attempt < max_attempts_global) {
 		err = snd_pcm_open(handle, device, stream, SND_PCM_NONBLOCK);
@@ -248,17 +225,18 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 
 		attempt++;
 
+		// Exponential backoff with bit shift (faster than multiplication)
 		if (err == -EBUSY || err == -EAGAIN) {
-			usleep(backoff_us);
-			backoff_us = (backoff_us * 2 < max_backoff_us_global) ? backoff_us * 2 : max_backoff_us_global;
+			precise_sleep_us(backoff_us);
+			backoff_us = (backoff_us << 1 < max_backoff_us_global) ? (backoff_us << 1) : max_backoff_us_global;
 		} else if (err == -ENODEV || err == -ENOENT) {
-			usleep(backoff_us * 2);
-			backoff_us = (backoff_us * 2 < max_backoff_us_global) ? backoff_us * 2 : max_backoff_us_global;
+			precise_sleep_us(backoff_us << 1);
+			backoff_us = (backoff_us << 1 < max_backoff_us_global) ? (backoff_us << 1) : max_backoff_us_global;
 		} else if (err == -EPERM || err == -EACCES) {
-			usleep(backoff_us / 2);
+			precise_sleep_us(backoff_us >> 1);
 		} else {
-			usleep(backoff_us);
-			backoff_us = (backoff_us * 2 < max_backoff_us_global) ? backoff_us * 2 : max_backoff_us_global;
+			precise_sleep_us(backoff_us);
+			backoff_us = (backoff_us << 1 < max_backoff_us_global) ? (backoff_us << 1) : max_backoff_us_global;
 		}
 	}
 	return err;
@@ -299,13 +277,13 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 		if (err < 0) return err;
 	}
 
-	snd_pcm_uframes_t period_size = optimized_buffer_size ? frame_size : frame_size / 2;
+	snd_pcm_uframes_t period_size = frame_size;  // Optimized: use full frame as period
 	if (period_size < 64) period_size = 64;
 
 	err = snd_pcm_hw_params_set_period_size_near(handle, params, &period_size, 0);
 	if (err < 0) return err;
 
-	snd_pcm_uframes_t buffer_size = optimized_buffer_size ? period_size * 2 : period_size * 4;
+	snd_pcm_uframes_t buffer_size = period_size * 2;  // Optimized: minimal buffer for low latency
 	err = snd_pcm_hw_params_set_buffer_size_near(handle, params, &buffer_size);
 	if (err < 0) return err;
 
@@ -327,9 +305,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 	return snd_pcm_prepare(handle);
 }
 
-// ============================================================================
 // AUDIO OUTPUT PATH FUNCTIONS (TC358743 HDMI Audio → Client Speakers)
-// ============================================================================
 
 /**
  * Initialize OUTPUT path (TC358743 HDMI capture → Opus encoder)
@@ -339,7 +315,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 int jetkvm_audio_capture_init() {
 	int err;
 
-	simd_init_once();
+	init_alsa_devices_from_env();
 
 	if (__sync_bool_compare_and_swap(&capture_initializing, 0, 1) == 0) {
 		return -EBUSY;
@@ -359,8 +335,11 @@ int jetkvm_audio_capture_init() {
 		pcm_capture_handle = NULL;
 	}
 
-	err = safe_alsa_open(&pcm_capture_handle, "hw:0,0", SND_PCM_STREAM_CAPTURE);
+	err = safe_alsa_open(&pcm_capture_handle, alsa_capture_device, SND_PCM_STREAM_CAPTURE);
 	if (err < 0) {
+		fprintf(stderr, "Failed to open ALSA capture device %s: %s\n",
+		        alsa_capture_device, snd_strerror(err));
+		fflush(stderr);
 		capture_initializing = 0;
 		return -1;
 	}
@@ -387,17 +366,15 @@ int jetkvm_audio_capture_init() {
 	// Configure encoder with optimized settings
 	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(opus_bitrate));
 	opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(opus_complexity));
-	opus_encoder_ctl(encoder, OPUS_SET_VBR(opus_vbr));
-	opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(opus_vbr_constraint));
-	opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(opus_signal_type));
-	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(opus_bandwidth));
-	opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx));
-	opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(opus_lsb_depth));
+	opus_encoder_ctl(encoder, OPUS_SET_VBR(OPUS_VBR));
+	opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(OPUS_VBR_CONSTRAINT));
+	opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_TYPE));
+	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(OPUS_BANDWIDTH));
+	opus_encoder_ctl(encoder, OPUS_SET_DTX(OPUS_DTX));
+	opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(OPUS_LSB_DEPTH));
 
-	// Enable in-band FEC (Forward Error Correction) for network resilience
-	// Embeds redundant data in packets to recover from packet loss (adds ~2-5% bitrate overhead)
 	opus_encoder_ctl(encoder, OPUS_SET_INBAND_FEC(1));
-	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(10));  // Optimize for 10% expected loss
+	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(20));
 
 	capture_initialized = 1;
 	capture_initializing = 0;
@@ -406,31 +383,25 @@ int jetkvm_audio_capture_init() {
 
 /**
  * Read HDMI audio, encode to Opus (OUTPUT path hot function)
- * Processing pipeline: ALSA capture → 2.5x gain → Opus encode
  * @param opus_buf Output buffer for encoded Opus packet
  * @return >0 = Opus packet size in bytes, -1 = error
  */
 __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) {
-	// Static buffers persist across calls for better cache locality
-	static short SIMD_ALIGN pcm_buffer[1920];  // 960 frames × 2 channels
-
-	// Local variables
+	static short CACHE_ALIGN pcm_buffer[960 * 2];  // Cache-aligned
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
-	int pcm_rc;
-	int err = 0;
-	int recovery_attempts = 0;
-	const int max_recovery_attempts = 3;
-	int nb_bytes;
+	int32_t pcm_rc, nb_bytes;
+	int32_t err = 0;
+	uint8_t recovery_attempts = 0;
+	const uint8_t max_recovery_attempts = 3;
 
-	// Prefetch output buffer for write
-	SIMD_PREFETCH(out, 1, 3);
-	SIMD_PREFETCH(pcm_buffer, 0, 3);
+	// Prefetch for write (out) and read (pcm_buffer) - RV1106 has small L1 cache
+	SIMD_PREFETCH(out, 1, 0);  // Write, immediate use
+	SIMD_PREFETCH(pcm_buffer, 0, 0);  // Read, immediate use
+	SIMD_PREFETCH(pcm_buffer + 64, 0, 1);  // Prefetch next cache line
 
 	if (__builtin_expect(!capture_initialized || !pcm_capture_handle || !encoder || !opus_buf, 0)) {
-		if (trace_logging_enabled) {
-			printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Failed safety checks - capture_initialized=%d, pcm_capture_handle=%p, encoder=%p, opus_buf=%p\n",
+		TRACE_LOG("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Failed safety checks - capture_initialized=%d, pcm_capture_handle=%p, encoder=%p, opus_buf=%p\n",
 				capture_initialized, pcm_capture_handle, encoder, opus_buf);
-		}
 		return -1;
 	}
 
@@ -452,15 +423,17 @@ retry_read:
 			}
 			goto retry_read;
 		} else if (pcm_rc == -EAGAIN) {
-			return 0;
+			// Wait for data to be available
+			snd_pcm_wait(pcm_capture_handle, sleep_milliseconds);
+			goto retry_read;
 		} else if (pcm_rc == -ESTRPIPE) {
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
 				return -1;
 			}
-			int resume_attempts = 0;
+			uint8_t resume_attempts = 0;
 			while ((err = snd_pcm_resume(pcm_capture_handle)) == -EAGAIN && resume_attempts < 10) {
-				usleep(sleep_microseconds);
+				snd_pcm_wait(pcm_capture_handle, sleep_milliseconds);
 				resume_attempts++;
 			}
 			if (err < 0) {
@@ -485,7 +458,7 @@ retry_read:
 			if (recovery_attempts <= 1 && pcm_rc == -EINTR) {
 				goto retry_read;
 			} else if (recovery_attempts <= 1 && pcm_rc == -EBUSY) {
-				usleep(sleep_microseconds / 2);
+				snd_pcm_wait(pcm_capture_handle, 1); // Wait 1ms for device
 				goto retry_read;
 			}
 			return -1;
@@ -494,27 +467,80 @@ retry_read:
 
 	// Zero-pad if we got a short read
 	if (__builtin_expect(pcm_rc < frame_size, 0)) {
-		int remaining_samples = (frame_size - pcm_rc) * channels;
+		uint32_t remaining_samples = (frame_size - pcm_rc) * channels;
 		simd_clear_samples_s16(&pcm_buffer[pcm_rc * channels], remaining_samples);
 	}
 
-	// Apply 2.5x gain boost to prevent quantization noise at low volumes
-	// HDMI audio typically transmitted at -6 to -12dB; boost prevents Opus noise floor artifacts
-	simd_scale_volume_s16(pcm_buffer, frame_size * channels, 2.5f);
+	// Find peak amplitude with NEON SIMD
+	uint32_t total_samples = frame_size * channels;
+	int16x8_t vmax = vdupq_n_s16(0);
 
-	// Encode PCM to Opus (20ms frame → ~200 bytes at 96kbps)
-	nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
-
-	if (trace_logging_enabled && nb_bytes > 0) {
-		printf("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Successfully encoded %d PCM frames to %d Opus bytes\n", pcm_rc, nb_bytes);
+	uint32_t i;
+	for (i = 0; i + 8 <= total_samples; i += 8) {
+		int16x8_t v = vld1q_s16(&pcm_buffer[i]);
+		int16x8_t vabs = vabsq_s16(v);
+		vmax = vmaxq_s16(vmax, vabs);
 	}
 
+	// Horizontal max reduction (manual for ARMv7)
+	int16x4_t vmax_low = vget_low_s16(vmax);
+	int16x4_t vmax_high = vget_high_s16(vmax);
+	int16x4_t vmax_reduced = vmax_s16(vmax_low, vmax_high);
+	vmax_reduced = vpmax_s16(vmax_reduced, vmax_reduced);
+	vmax_reduced = vpmax_s16(vmax_reduced, vmax_reduced);
+	int16_t peak = vget_lane_s16(vmax_reduced, 0);
+
+	// Handle remaining samples
+	for (; i < total_samples; i++) {
+		int16_t abs_val = (pcm_buffer[i] < 0) ? -pcm_buffer[i] : pcm_buffer[i];
+		if (abs_val > peak) peak = abs_val;
+	}
+
+	// Apply gain if signal is weak (below -18dB = 4096) for best quality
+	// Target: boost to ~50% of range (16384) to improve SNR
+	if (peak > 0 && peak < 4096) {
+		float gain = 16384.0f / peak;
+		if (gain > 8.0f) gain = 8.0f;  // Max 18dB boost for best quality
+
+		// Apply gain with NEON and saturation
+		float32x4_t vgain = vdupq_n_f32(gain);
+		for (i = 0; i + 8 <= total_samples; i += 8) {
+			int16x8_t v = vld1q_s16(&pcm_buffer[i]);
+
+			// Convert to float, apply gain, saturate back to int16
+			int32x4_t v_low = vmovl_s16(vget_low_s16(v));
+			int32x4_t v_high = vmovl_s16(vget_high_s16(v));
+
+			float32x4_t f_low = vcvtq_f32_s32(v_low);
+			float32x4_t f_high = vcvtq_f32_s32(v_high);
+
+			f_low = vmulq_f32(f_low, vgain);
+			f_high = vmulq_f32(f_high, vgain);
+
+			v_low = vcvtq_s32_f32(f_low);
+			v_high = vcvtq_s32_f32(f_high);
+
+			// Saturate to int16 range
+			int16x4_t result_low = vqmovn_s32(v_low);
+			int16x4_t result_high = vqmovn_s32(v_high);
+
+			vst1q_s16(&pcm_buffer[i], vcombine_s16(result_low, result_high));
+		}
+
+		// Handle remaining samples
+		for (; i < total_samples; i++) {
+			int32_t boosted = (int32_t)(pcm_buffer[i] * gain);
+			if (boosted > 32767) boosted = 32767;
+			if (boosted < -32768) boosted = -32768;
+			pcm_buffer[i] = (int16_t)boosted;
+		}
+	}
+
+	nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
 	return nb_bytes;
 }
 
-// ============================================================================
 // AUDIO INPUT PATH FUNCTIONS (Client Microphone → Device Speakers)
-// ============================================================================
 
 /**
  * Initialize INPUT path (Opus decoder → device speakers)
@@ -524,7 +550,7 @@ retry_read:
 int jetkvm_audio_playback_init() {
 	int err;
 
-	simd_init_once();
+	init_alsa_devices_from_env();
 
 	if (__sync_bool_compare_and_swap(&playback_initializing, 0, 1) == 0) {
 		return -EBUSY;
@@ -544,8 +570,11 @@ int jetkvm_audio_playback_init() {
 		pcm_playback_handle = NULL;
 	}
 
-	err = safe_alsa_open(&pcm_playback_handle, "hw:1,0", SND_PCM_STREAM_PLAYBACK);
+	err = safe_alsa_open(&pcm_playback_handle, alsa_playback_device, SND_PCM_STREAM_PLAYBACK);
 	if (err < 0) {
+		fprintf(stderr, "Failed to open ALSA playback device %s: %s\n",
+		        alsa_playback_device, snd_strerror(err));
+		fflush(stderr);
 		err = safe_alsa_open(&pcm_playback_handle, "default", SND_PCM_STREAM_PLAYBACK);
 		if (err < 0) {
 			playback_initializing = 0;
@@ -582,39 +611,27 @@ int jetkvm_audio_playback_init() {
  * @param opus_size Size of Opus packet in bytes
  * @return >0 = PCM frames written, 0 = frame skipped, -1/-2 = error
  */
-__attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf, int opus_size) {
-	// Static buffer persists across calls for better cache locality
-	static short SIMD_ALIGN pcm_buffer[1920];  // 960 frames × 2 channels
-
-	// Local variables
+__attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf, int32_t opus_size) {
+	static short CACHE_ALIGN pcm_buffer[960 * 2];  // Cache-aligned
 	unsigned char * __restrict__ in = (unsigned char*)opus_buf;
-	int pcm_frames;
-	int pcm_rc;
-	int err = 0;
-	int recovery_attempts = 0;
-	const int max_recovery_attempts = 3;
+	int32_t pcm_frames, pcm_rc, err = 0;
+	uint8_t recovery_attempts = 0;
+	const uint8_t max_recovery_attempts = 3;
 
-	// Prefetch input buffer for read
-	SIMD_PREFETCH(in, 0, 3);
+	// Prefetch input buffer - locality 0 for immediate use
+	SIMD_PREFETCH(in, 0, 0);
 
 	if (__builtin_expect(!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0, 0)) {
-		if (trace_logging_enabled) {
-			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Failed safety checks - playback_initialized=%d, pcm_playback_handle=%p, decoder=%p, opus_buf=%p, opus_size=%d\n",
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Failed safety checks - playback_initialized=%d, pcm_playback_handle=%p, decoder=%p, opus_buf=%p, opus_size=%d\n",
 				playback_initialized, pcm_playback_handle, decoder, opus_buf, opus_size);
-		}
 		return -1;
 	}
 
 	if (opus_size > max_packet_size) {
-		if (trace_logging_enabled) {
-			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus packet too large - size=%d, max=%d\n", opus_size, max_packet_size);
-		}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus packet too large - size=%d, max=%d\n", opus_size, max_packet_size);
 		return -1;
 	}
-
-	if (trace_logging_enabled) {
-		printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Processing Opus packet - size=%d bytes\n", opus_size);
-	}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Processing Opus packet - size=%d bytes\n", opus_size);
 
 	// Decode Opus packet to PCM (FEC automatically applied if embedded in packet)
 	// decode_fec=0 means normal decode (FEC data is used automatically when present)
@@ -622,168 +639,114 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 
 	if (__builtin_expect(pcm_frames < 0, 0)) {
 		// Decode failed - attempt packet loss concealment using FEC from previous packet
-		if (trace_logging_enabled) {
-			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus decode failed with error %d, attempting packet loss concealment\n", pcm_frames);
-		}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus decode failed with error %d, attempting packet loss concealment\n", pcm_frames);
 
 		// decode_fec=1 means use FEC data from the NEXT packet to reconstruct THIS lost packet
 		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 1);
 		if (pcm_frames < 0) {
-			if (trace_logging_enabled) {
-				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Packet loss concealment also failed with error %d\n", pcm_frames);
-			}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Packet loss concealment also failed with error %d\n", pcm_frames);
 			return -1;
 		}
-
-		if (trace_logging_enabled) {
-			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Packet loss concealment succeeded, recovered %d frames\n", pcm_frames);
-		}
-	} else if (trace_logging_enabled) {
-		printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus decode successful - decoded %d PCM frames\n", pcm_frames);
-	}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Packet loss concealment succeeded, recovered %d frames\n", pcm_frames);
+	} else
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus decode successful - decoded %d PCM frames\n", pcm_frames);
 
 retry_write:
 	// Write decoded PCM to ALSA playback device
 	pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
 	if (__builtin_expect(pcm_rc < 0, 0)) {
-		if (trace_logging_enabled) {
-			printf("[AUDIO_INPUT] jetkvm_audio_decode_write: ALSA write failed with error %d (%s), attempt %d/%d\n",
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: ALSA write failed with error %d (%s), attempt %d/%d\n",
 				pcm_rc, snd_strerror(pcm_rc), recovery_attempts + 1, max_recovery_attempts);
-		}
 
 		if (pcm_rc == -EPIPE) {
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
-				if (trace_logging_enabled) {
-					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun recovery failed after %d attempts\n", max_recovery_attempts);
-				}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun recovery failed after %d attempts\n", max_recovery_attempts);
 				return -2;
 			}
-
-			if (trace_logging_enabled) {
-				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun detected, attempting recovery (attempt %d)\n", recovery_attempts);
-			}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun detected, attempting recovery (attempt %d)\n", recovery_attempts);
 			err = snd_pcm_prepare(pcm_playback_handle);
 			if (err < 0) {
-				if (trace_logging_enabled) {
-					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: snd_pcm_prepare failed (%s), trying drop+prepare\n", snd_strerror(err));
-				}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: snd_pcm_prepare failed (%s), trying drop+prepare\n", snd_strerror(err));
 				snd_pcm_drop(pcm_playback_handle);
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err < 0) {
-					if (trace_logging_enabled) {
-						printf("[AUDIO_INPUT] jetkvm_audio_decode_write: drop+prepare recovery failed (%s)\n", snd_strerror(err));
-					}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: drop+prepare recovery failed (%s)\n", snd_strerror(err));
 					return -2;
 				}
 			}
-
-			if (trace_logging_enabled) {
-				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun recovery successful, retrying write\n");
-			}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun recovery successful, retrying write\n");
 			goto retry_write;
 		} else if (pcm_rc == -ESTRPIPE) {
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
-				if (trace_logging_enabled) {
-					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspend recovery failed after %d attempts\n", max_recovery_attempts);
-				}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspend recovery failed after %d attempts\n", max_recovery_attempts);
 				return -2;
 			}
-
-			if (trace_logging_enabled) {
-				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspended, attempting resume (attempt %d)\n", recovery_attempts);
-			}
-			int resume_attempts = 0;
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspended, attempting resume (attempt %d)\n", recovery_attempts);
+			uint8_t resume_attempts = 0;
 			while ((err = snd_pcm_resume(pcm_playback_handle)) == -EAGAIN && resume_attempts < 10) {
-				usleep(sleep_microseconds);
+				snd_pcm_wait(pcm_playback_handle, sleep_milliseconds);
 				resume_attempts++;
 			}
 			if (err < 0) {
-				if (trace_logging_enabled) {
-					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device resume failed (%s), trying prepare fallback\n", snd_strerror(err));
-				}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device resume failed (%s), trying prepare fallback\n", snd_strerror(err));
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err < 0) {
-					if (trace_logging_enabled) {
-						printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Prepare fallback failed (%s)\n", snd_strerror(err));
-					}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Prepare fallback failed (%s)\n", snd_strerror(err));
 					return -2;
 				}
 			}
-			if (trace_logging_enabled) {
-				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspend recovery successful, skipping frame\n");
-			}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspend recovery successful, skipping frame\n");
 			return 0;
 		} else if (pcm_rc == -ENODEV) {
-			if (trace_logging_enabled) {
-				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device disconnected (ENODEV) - critical error\n");
-			}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device disconnected (ENODEV) - critical error\n");
 			return -2;
 		} else if (pcm_rc == -EIO) {
 			recovery_attempts++;
 			if (recovery_attempts <= max_recovery_attempts) {
-				if (trace_logging_enabled) {
-					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error detected, attempting recovery\n");
-				}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error detected, attempting recovery\n");
 				snd_pcm_drop(pcm_playback_handle);
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err >= 0) {
-					if (trace_logging_enabled) {
-						printf("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error recovery successful, retrying write\n");
-					}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error recovery successful, retrying write\n");
 					goto retry_write;
 				}
-				if (trace_logging_enabled) {
-					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error recovery failed (%s)\n", snd_strerror(err));
-				}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error recovery failed (%s)\n", snd_strerror(err));
 			}
 			return -2;
 		} else if (pcm_rc == -EAGAIN) {
 			recovery_attempts++;
 			if (recovery_attempts <= max_recovery_attempts) {
-				if (trace_logging_enabled) {
-					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device not ready (EAGAIN), waiting and retrying\n");
-				}
-				snd_pcm_wait(pcm_playback_handle, sleep_microseconds / 4000);
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device not ready (EAGAIN), waiting and retrying\n");
+				snd_pcm_wait(pcm_playback_handle, 1);  // Wait 1ms
 				goto retry_write;
 			}
-			if (trace_logging_enabled) {
-				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Device not ready recovery failed after %d attempts\n", max_recovery_attempts);
-			}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device not ready recovery failed after %d attempts\n", max_recovery_attempts);
 			return -2;
 		} else {
 			recovery_attempts++;
 			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY)) {
-				if (trace_logging_enabled) {
-					printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Transient error %d (%s), retrying once\n", pcm_rc, snd_strerror(pcm_rc));
-				}
-				usleep(sleep_microseconds / 2);
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Transient error %d (%s), retrying once\n", pcm_rc, snd_strerror(pcm_rc));
+				snd_pcm_wait(pcm_playback_handle, 1);  // Wait 1ms
 				goto retry_write;
 			}
-			if (trace_logging_enabled) {
-				printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Unrecoverable error %d (%s)\n", pcm_rc, snd_strerror(pcm_rc));
-			}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Unrecoverable error %d (%s)\n", pcm_rc, snd_strerror(pcm_rc));
 			return -2;
 		}
 	}
-
-	if (trace_logging_enabled) {
-		printf("[AUDIO_INPUT] jetkvm_audio_decode_write: Successfully wrote %d PCM frames to device\n", pcm_frames);
-	}
+		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Successfully wrote %d PCM frames to device\n", pcm_frames);
 	return pcm_frames;
 }
 
-// ============================================================================
 // CLEANUP FUNCTIONS
-// ============================================================================
 
 /**
  * Close INPUT path (thread-safe with drain)
  */
 void jetkvm_audio_playback_close() {
 	while (playback_initializing) {
-		usleep(sleep_microseconds);
+		sched_yield();
 	}
 
 	if (__sync_bool_compare_and_swap(&playback_initialized, 1, 0) == 0) {
@@ -806,7 +769,7 @@ void jetkvm_audio_playback_close() {
  */
 void jetkvm_audio_capture_close() {
 	while (capture_initializing) {
-		usleep(sleep_microseconds);
+		sched_yield();
 	}
 
 	if (__sync_bool_compare_and_swap(&capture_initialized, 1, 0) == 0) {

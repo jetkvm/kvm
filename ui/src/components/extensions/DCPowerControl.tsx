@@ -4,11 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@components/Button";
 import Card from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import notifications from "@/notifications";
 import FieldLabel from "@components/FieldLabel";
 import LoadingSpinner from "@components/LoadingSpinner";
 import {SelectMenuBasic} from "@components/SelectMenuBasic";
-import notifications from "@/notifications";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 
 interface DCPowerState {
   isOn: boolean;

@@ -7,7 +7,6 @@ import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { InputFieldWithLabel } from "./InputField";
 import { SelectMenuBasic } from "./SelectMenuBasic";
 
-
 export interface JigglerConfig {
   inactivity_limit_seconds: number;
   jitter_percentage: number;

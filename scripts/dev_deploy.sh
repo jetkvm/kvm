@@ -16,8 +16,7 @@ show_help() {
     echo "      --run-go-tests-only    Run go tests and exit"
     echo "      --skip-ui-build        Skip frontend/UI build"
     echo "      --skip-native-build    Skip native build"
-    echo "      --skip-audio-binaries  Skip audio binaries build if they exist"
-    echo "      --disable-docker       Disable docker build (auto-detected if Docker unavailable)"
+    echo "      --disable-docker       Disable docker build"
     echo "  -i, --install              Build for release and install the app"
     echo "      --help                 Display this help message"
     echo
@@ -33,9 +32,8 @@ REMOTE_PATH="/userdata/jetkvm/bin"
 SKIP_UI_BUILD=false
 SKIP_UI_BUILD_RELEASE=0
 SKIP_NATIVE_BUILD=0
-SKIP_AUDIO_BINARIES=0
 RESET_USB_HID_DEVICE=false
-LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc,audio}"
+LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
 RUN_GO_TESTS=false
 RUN_GO_TESTS_ONLY=false
 INSTALL_APP=false
@@ -60,10 +58,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-native-build)
             SKIP_NATIVE_BUILD=1
-            shift
-            ;;
-        --skip-audio-binaries)
-            SKIP_AUDIO_BINARIES=1
             shift
             ;;
         --reset-usb-hid)
@@ -112,38 +106,14 @@ if [ -z "$REMOTE_HOST" ]; then
     exit 1
 fi
 
-# Auto-detect architecture requirements
 # check if the current CPU architecture is x86_64
 if [ "$(uname -m)" != "x86_64" ]; then
     msg_warn "Warning: This script is only supported on x86_64 architecture"
     BUILD_IN_DOCKER=true
 fi
 
-# Auto-detect Docker availability and fallback if not available
-# This is especially useful in devcontainers where Docker-in-Docker might not be available
 if [ "$BUILD_IN_DOCKER" = true ]; then
-    # Check if Docker is available and accessible
-    if ! command -v docker &> /dev/null; then
-        msg_warn "Docker command not found, disabling Docker build"
-        msg_info "Building on host instead (equivalent to --disable-docker)"
-        BUILD_IN_DOCKER=false
-    elif ! docker info &> /dev/null; then
-        msg_warn "Docker daemon not accessible (possibly in devcontainer without Docker socket), disabling Docker build"
-        msg_info "Building on host instead (equivalent to --disable-docker)"
-        BUILD_IN_DOCKER=false
-    else
-        msg_info "Docker is available and accessible"
-    fi
-fi
-
-if [ "$BUILD_IN_DOCKER" = true ]; then
-    # Double-check Docker availability before building image
-    if ! docker info &> /dev/null; then
-        msg_warn "Docker daemon became unavailable, switching to host build"
-        BUILD_IN_DOCKER=false
-    else
-        build_docker_image
-    fi
+    build_docker_image
 fi
 
 # Build the development version on the host
@@ -154,12 +124,9 @@ if [[ "$SKIP_UI_BUILD" = true && ! -f "static/index.html" ]]; then
     SKIP_UI_BUILD=false
 fi
 
-if [[ "$SKIP_UI_BUILD" = false && "$JETKVM_INSIDE_DOCKER" != 1 ]]; then
+if [[ "$SKIP_UI_BUILD" = false && "$JETKVM_INSIDE_DOCKER" != 1 ]]; then 
     msg_info "▶ Building frontend"
     make frontend SKIP_UI_BUILD=0
-    SKIP_UI_BUILD_RELEASE=1
-elif [[ "$SKIP_UI_BUILD" = true ]]; then
-    # User explicitly requested to skip UI build and static files exist
     SKIP_UI_BUILD_RELEASE=1
 fi
 
@@ -213,16 +180,16 @@ fi
 if [ "$INSTALL_APP" = true ]
 then
 	msg_info "▶ Building release binary"
-	do_make build_release SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} SKIP_AUDIO_BINARIES_IF_EXISTS=${SKIP_AUDIO_BINARIES}
-
+	do_make build_release SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE}
+	
 	# Copy the binary to the remote host as if we were the OTA updater.
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
-
+	
 	# Reboot the device, the new app will be deployed by the startup process.
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "reboot"
 else
 	msg_info "▶ Building development binary"
-	do_make build_dev SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} SKIP_AUDIO_BINARIES_IF_EXISTS=${SKIP_AUDIO_BINARIES}
+	do_make build_dev SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE}
 	
 	# Kill any existing instances of the application
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"

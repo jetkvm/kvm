@@ -6,9 +6,9 @@ import { Button, LinkButton } from "@components/Button";
 import Card from "@components/Card";
 import { CardHeader } from "@components/CardHeader";
 import DashboardNavbar from "@components/Header";
-import Fieldset from "@components/Fieldset";
 import { User } from "@/hooks/stores";
 import { checkAuth } from "@/main";
+import Fieldset from "@components/Fieldset";
 import { CLOUD_API } from "@/ui.config";
 
 interface LoaderData {

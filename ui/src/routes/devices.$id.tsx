@@ -15,9 +15,6 @@ import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
 import useWebSocket from "react-use-websocket";
 
-import WebRTCVideo from "@components/WebRTCVideo";
-import DashboardNavbar from "@components/Header";
-import { DeviceStatus } from "@routes/welcome-local";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
@@ -37,8 +34,11 @@ import {
   useVideoStore,
   VideoState,
 } from "@/hooks/stores";
-import { useMicrophone } from "@/hooks/useMicrophone";
-import { useAudioEvents } from "@/hooks/useAudioEvents";
+import WebRTCVideo from "@components/WebRTCVideo";
+import DashboardNavbar from "@components/Header";
+const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectionStats'));
+const Terminal = lazy(() => import('@components/Terminal'));
+const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
 import Modal from "@/components/Modal";
 import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
 import {
@@ -48,11 +48,8 @@ import {
 } from "@/components/VideoOverlay";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { FeatureFlagProvider } from "@/providers/FeatureFlagProvider";
+import { DeviceStatus } from "@routes/welcome-local";
 import { useVersion } from "@/hooks/useVersion";
-
-const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectionStats'));
-const Terminal = lazy(() => import('@components/Terminal'));
-const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
 
 interface LocalLoaderResp {
   authMode: "password" | "noPassword" | null;
@@ -142,7 +139,6 @@ export default function KvmIdRoute() {
   } = useRTCStore();
 
   const location = useLocation();
-
   const isLegacySignalingEnabled = useRef(false);
   const [connectionFailed, setConnectionFailed] = useState(false);
 
@@ -187,6 +183,31 @@ export default function KvmIdRoute() {
       remoteDescription: RTCSessionDescriptionInit,
     ) {
       setLoadingMessage("Setting remote description");
+
+      // Enable stereo in remote answer SDP
+      if (remoteDescription.sdp) {
+        const opusMatch = remoteDescription.sdp.match(/a=rtpmap:(\d+)\s+opus\/48000\/2/i);
+        if (!opusMatch) {
+          console.warn("[SDP] Opus 48kHz stereo not found in answer - stereo may not work");
+        } else {
+          const pt = opusMatch[1];
+          const stereoParams = 'stereo=1;sprop-stereo=1;maxaveragebitrate=128000';
+          const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, 'i');
+          const fmtpMatch = remoteDescription.sdp.match(fmtpRegex);
+
+          if (fmtpMatch && !fmtpMatch[1].includes('stereo=')) {
+            remoteDescription.sdp = remoteDescription.sdp.replace(
+              fmtpRegex,
+              `a=fmtp:${pt} ${fmtpMatch[1]};${stereoParams}`
+            );
+          } else if (!fmtpMatch) {
+            remoteDescription.sdp = remoteDescription.sdp.replace(
+              opusMatch[0],
+              `${opusMatch[0]}\r\na=fmtp:${pt} ${stereoParams}`
+            );
+          }
+        }
+      }
 
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(remoteDescription));
@@ -434,6 +455,30 @@ export default function KvmIdRoute() {
         makingOffer.current = true;
 
         const offer = await pc.createOffer();
+
+        // Enable stereo for Opus audio codec
+        if (offer.sdp) {
+          const opusMatch = offer.sdp.match(/a=rtpmap:(\d+)\s+opus\/48000\/2/i);
+          if (!opusMatch) {
+            console.warn("[SDP] Opus 48kHz stereo not found in offer - stereo may not work");
+          } else {
+            const pt = opusMatch[1];
+            const stereoParams = 'stereo=1;sprop-stereo=1;maxaveragebitrate=128000';
+            const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, 'i');
+            const fmtpMatch = offer.sdp.match(fmtpRegex);
+
+            if (fmtpMatch) {
+              // Modify existing fmtp line
+              if (!fmtpMatch[1].includes('stereo=')) {
+                offer.sdp = offer.sdp.replace(fmtpRegex, `a=fmtp:${pt} ${fmtpMatch[1]};${stereoParams}`);
+              }
+            } else {
+              // Add new fmtp line after rtpmap
+              offer.sdp = offer.sdp.replace(opusMatch[0], `${opusMatch[0]}\r\na=fmtp:${pt} ${stereoParams}`);
+            }
+          }
+        }
+
         await pc.setLocalDescription(offer);
         const sd = btoa(JSON.stringify(pc.localDescription));
         const isNewSignalingEnabled = isLegacySignalingEnabled.current === false;
@@ -475,32 +520,32 @@ export default function KvmIdRoute() {
       }
     };
 
-    pc.ontrack = function (event: RTCTrackEvent) {
-      // Handle separate MediaStreams for audio and video tracks
-      const track = event.track;
-      const streams = event.streams;
-      
-      if (streams && streams.length > 0) {
-        // Get existing MediaStream or create a new one
-        const existingStream = useRTCStore.getState().mediaStream;
-        let combinedStream: MediaStream;
-        
-        if (existingStream) {
-          combinedStream = existingStream;
-          // Add the new track to the existing stream
-          combinedStream.addTrack(track);
-        } else {
-          // Create a new MediaStream with the track
-          combinedStream = new MediaStream([track]);
-        }
-        
-        setMediaStream(combinedStream);
+    pc.ontrack = function (event) {
+      if (event.track.kind === "video") {
+        setMediaStream(event.streams[0]);
       }
     };
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
-    // Add audio transceiver to receive audio from the server and send microphone audio
-    pc.addTransceiver("audio", { direction: "sendrecv" });
+
+    const audioTransceiver = pc.addTransceiver("audio", { direction: "sendrecv" });
+
+    navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 2, // Request stereo input if available
+      }
+    }).then((stream) => {
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack && audioTransceiver.sender) {
+        audioTransceiver.sender.replaceTrack(audioTrack);
+        console.debug("[setupPeerConnection] Audio track settings:", audioTrack.getSettings());
+      }
+    }).catch((err) => {
+      console.warn("Microphone access denied or unavailable:", err.message);
+    });
 
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onopen = () => {
@@ -695,25 +740,6 @@ export default function KvmIdRoute() {
 
   const { send } = useJsonRpc(onJsonRpcRequest);
 
-  // Initialize microphone hook
-  const microphoneHook = useMicrophone();
-  const { syncMicrophoneState } = microphoneHook;
-
-  // Handle audio device changes to sync microphone state
-  const handleAudioDeviceChanged = useCallback((data: { enabled: boolean; reason: string }) => {
-    console.log('[AudioDeviceChanged] Audio device changed:', data);
-    // Sync microphone state when audio device configuration changes
-    // This ensures the microphone state is properly synchronized after USB audio reconfiguration
-    if (syncMicrophoneState) {
-      setTimeout(() => {
-        syncMicrophoneState();
-      }, 500); // Small delay to ensure backend state is settled
-    }
-  }, [syncMicrophoneState]);
-
-  // Use audio events hook with device change handler
-  useAudioEvents(handleAudioDeviceChanged);
-
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     console.log("Requesting video state");
@@ -885,7 +911,7 @@ export default function KvmIdRoute() {
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
-            <WebRTCVideo microphone={microphoneHook} />
+            <WebRTCVideo />
             <div
               style={{ animationDuration: "500ms" }}
               className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
@@ -957,7 +983,6 @@ function SidebarContainer(props: SidebarContainerProps) {
               <ConnectionStatsSidebar />
             </motion.div>
           )}
-
         </AnimatePresence>
       </div>
     </div>

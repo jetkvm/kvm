@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -14,7 +12,6 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/gin-gonic/gin"
-	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
@@ -26,17 +23,10 @@ type Session struct {
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
 	AudioTrack               *webrtc.TrackLocalStaticSample
-	AudioRtpSender           *webrtc.RTPSender
 	ControlChannel           *webrtc.DataChannel
 	RPCChannel               *webrtc.DataChannel
 	HidChannel               *webrtc.DataChannel
-	DiskChannel              *webrtc.DataChannel
-	AudioInputManager        *audio.AudioInputManager
 	shouldUmountVirtualMedia bool
-	micCooldown              time.Duration
-	audioFrameChan           chan []byte
-	audioStopChan            chan struct{}
-	audioWg                  sync.WaitGroup
 
 	rpcQueue chan webrtc.DataChannelMessage
 
@@ -229,17 +219,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 
-	session := &Session{
-		peerConnection:    peerConnection,
-		AudioInputManager: audio.NewAudioInputManager(),
-		micCooldown:       100 * time.Millisecond,
-		audioFrameChan:    make(chan []byte, 1000),
-		audioStopChan:     make(chan struct{}),
-	}
-
-	// Start audio processing goroutine
-	session.startAudioProcessor(*logger)
-
+	session := &Session{peerConnection: peerConnection}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	session.initQueues()
 	session.initKeysDownStateQueue()
@@ -293,78 +273,61 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	})
 
-	session.VideoTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "kvm-video")
+	session.VideoTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "kvm")
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("Failed to create VideoTrack")
 		return nil, err
 	}
 
-	session.AudioTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus}, "audio", "kvm-audio")
+	rtpSender, err := peerConnection.AddTrack(session.VideoTrack)
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("Failed to add VideoTrack to PeerConnection")
 		return nil, err
 	}
 
-	// Update the audio relay with the new WebRTC audio track asynchronously
-	// This prevents blocking during session creation and avoids mutex deadlocks
-	audio.UpdateAudioRelayTrackAsync(session.AudioTrack)
-
-	videoRtpSender, err := peerConnection.AddTrack(session.VideoTrack)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add bidirectional audio transceiver for microphone input
-	audioTransceiver, err := peerConnection.AddTransceiverFromTrack(session.AudioTrack, webrtc.RTPTransceiverInit{
-		Direction: webrtc.RTPTransceiverDirectionSendrecv,
-	})
-	if err != nil {
-		return nil, err
-	}
-	audioRtpSender := audioTransceiver.Sender()
-	session.AudioRtpSender = audioRtpSender
-
-	// Handle incoming audio track (microphone from browser)
-	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		scopedLogger.Info().Str("codec", track.Codec().MimeType).Str("id", track.ID()).Msg("Got remote track")
-
-		if track.Kind() == webrtc.RTPCodecTypeAudio && track.Codec().MimeType == webrtc.MimeTypeOpus {
-			scopedLogger.Info().Msg("Processing incoming audio track for microphone input")
-
-			go func() {
-				// Lock to OS thread to isolate RTP processing
-				runtime.LockOSThread()
-				defer runtime.UnlockOSThread()
-
-				for {
-					rtpPacket, _, err := track.ReadRTP()
-					if err != nil {
-						scopedLogger.Debug().Err(err).Msg("Error reading RTP packet from audio track")
-						return
-					}
-
-					// Extract Opus payload from RTP packet
-					opusPayload := rtpPacket.Payload
-					if len(opusPayload) > 0 {
-						// Send to buffered channel for processing
-						select {
-						case session.audioFrameChan <- opusPayload:
-							// Frame sent successfully
-						default:
-							// Channel is full, drop the frame
-							scopedLogger.Warn().Msg("Audio frame channel full, dropping frame")
-						}
-					}
-				}
-			}()
-		}
-	})
-
 	// Read incoming RTCP packets
 	// Before these packets are returned they are processed by interceptors. For things
 	// like NACK this needs to be called.
-	go drainRtpSender(videoRtpSender)
-	go drainRtpSender(audioRtpSender)
+	go func() {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+				return
+			}
+		}
+	}()
+
+	session.AudioTrack, err = webrtc.NewTrackLocalStaticSample(
+		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeOpus},
+		"audio",
+		"kvm-audio",
+	)
+	if err != nil {
+		scopedLogger.Warn().Err(err).Msg("Failed to create AudioTrack (non-fatal)")
+	} else {
+		_, err = peerConnection.AddTransceiverFromTrack(session.AudioTrack, webrtc.RTPTransceiverInit{
+			Direction: webrtc.RTPTransceiverDirectionSendrecv,
+		})
+		if err != nil {
+			scopedLogger.Warn().Err(err).Msg("Failed to add AudioTrack transceiver (non-fatal)")
+			session.AudioTrack = nil
+		} else {
+			setAudioTrack(session.AudioTrack)
+
+			peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+				scopedLogger.Info().
+					Str("codec", track.Codec().MimeType).
+					Str("track_id", track.ID()).
+					Msg("Received incoming audio track from browser")
+
+				// Store track for connection when audio subprocesses start
+				// OnTrack fires during SDP exchange, before ICE connection completes
+				setPendingInputTrack(track)
+			})
+
+			scopedLogger.Info().Msg("Audio tracks configured successfully")
+		}
+	}
 
 	var isConnected bool
 
@@ -397,6 +360,8 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
 			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
+			// Only clear currentSession if this is actually the current session
+			// This prevents race condition where old session closes after new one connects
 			if session == currentSession {
 				// Cancel any ongoing keyboard report multi when session closes
 				cancelKeyboardMacro()
@@ -422,11 +387,6 @@ func newSession(config SessionConfig) (*Session, error) {
 					scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")
 				}
 			}
-			// Stop audio processing and input manager
-			session.stopAudioProcessor()
-			if session.AudioInputManager != nil {
-				session.AudioInputManager.Stop()
-			}
 			if isConnected {
 				isConnected = false
 				actionSessions--
@@ -440,72 +400,6 @@ func newSession(config SessionConfig) (*Session, error) {
 	return session, nil
 }
 
-// startAudioProcessor starts the dedicated audio processing goroutine
-func (s *Session) startAudioProcessor(logger zerolog.Logger) {
-	s.audioWg.Add(1)
-	go func() {
-		defer s.audioWg.Done()
-		logger.Debug().Msg("Audio processor goroutine started")
-
-		for {
-			select {
-			case frame := <-s.audioFrameChan:
-				if s.AudioInputManager != nil {
-					// Check if audio input manager is ready before processing frames
-					if s.AudioInputManager.IsReady() {
-						err := s.AudioInputManager.WriteOpusFrame(frame)
-						if err != nil {
-							logger.Warn().Err(err).Msg("Failed to write Opus frame to audio input manager")
-						}
-					} else {
-						// Audio input manager not ready, drop frame silently
-						// This prevents the "client not connected" errors during startup
-						logger.Debug().Msg("Audio input manager not ready, dropping frame")
-					}
-				}
-			case <-s.audioStopChan:
-				logger.Debug().Msg("Audio processor goroutine stopping")
-				return
-			}
-		}
-	}()
-}
-
-// stopAudioProcessor stops the audio processing goroutine
-func (s *Session) stopAudioProcessor() {
-	close(s.audioStopChan)
-	s.audioWg.Wait()
-}
-
-// ReplaceAudioTrack replaces the current audio track with a new one
-func (s *Session) ReplaceAudioTrack(newTrack *webrtc.TrackLocalStaticSample) error {
-	if s.AudioRtpSender == nil {
-		return fmt.Errorf("audio RTP sender not available")
-	}
-
-	// Replace the track using the RTP sender
-	if err := s.AudioRtpSender.ReplaceTrack(newTrack); err != nil {
-		return fmt.Errorf("failed to replace audio track: %w", err)
-	}
-
-	// Update the session's audio track reference
-	s.AudioTrack = newTrack
-	return nil
-}
-
-func drainRtpSender(rtpSender *webrtc.RTPSender) {
-	// Lock to OS thread to isolate RTCP processing
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	rtcpBuf := make([]byte, 1500)
-	for {
-		if _, _, err := rtpSender.Read(rtcpBuf); err != nil {
-			return
-		}
-	}
-}
-
 var actionSessions = 0
 
 func onActiveSessionsChanged() {
@@ -514,8 +408,10 @@ func onActiveSessionsChanged() {
 
 func onFirstSessionConnected() {
 	_ = nativeInstance.VideoStart()
+	onWebRTCConnect()
 }
 
 func onLastSessionDisconnected() {
 	_ = nativeInstance.VideoStop()
+	onWebRTCDisconnect()
 }

@@ -3,8 +3,8 @@ import { useResizeObserver } from "usehooks-ts";
 
 import VirtualKeyboard from "@components/VirtualKeyboard";
 import Actionbar from "@components/ActionBar";
-import InfoBar from "@components/InfoBar";
 import MacroBar from "@/components/MacroBar";
+import InfoBar from "@components/InfoBar";
 import notifications from "@/notifications";
 import useKeyboard from "@/hooks/useKeyboard";
 import { cx } from "@/cva.config";
@@ -23,35 +23,7 @@ import {
   PointerLockBar,
 } from "./VideoOverlay";
 
-
-// Type for microphone error
-interface MicrophoneError {
-  type: 'permission' | 'device' | 'network' | 'unknown';
-  message: string;
-}
-
-// Interface for microphone hook return type
-interface MicrophoneHookReturn {
-  isMicrophoneActive: boolean;
-  isMicrophoneMuted: boolean;
-  microphoneStream: MediaStream | null;
-  startMicrophone: (deviceId?: string) => Promise<{ success: boolean; error?: MicrophoneError }>;
-  stopMicrophone: () => Promise<{ success: boolean; error?: MicrophoneError }>;
-  toggleMicrophoneMute: () => Promise<{ success: boolean; error?: MicrophoneError }>;
-  syncMicrophoneState: () => Promise<void>;
-  // Loading states
-  isStarting: boolean;
-  isStopping: boolean;
-  isToggling: boolean;
-  // HTTP/HTTPS detection
-  isHttpsRequired: boolean;
-}
-
-interface WebRTCVideoProps {
-  microphone: MicrophoneHookReturn;
-}
-
-export default function WebRTCVideo({ microphone }: WebRTCVideoProps) {
+export default function WebRTCVideo() {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
   const { mediaStream, peerConnectionState } = useRTCStore();
@@ -346,15 +318,20 @@ export default function WebRTCVideo({ microphone }: WebRTCVideoProps) {
       if (!peerConnection) return;
       const abortController = new AbortController();
       const signal = abortController.signal;
+      const audioElements: HTMLAudioElement[] = [];
 
       peerConnection.addEventListener(
         "track",
-        (_e: RTCTrackEvent) => {
-          // The combined MediaStream is now managed in the main component
-          // We'll use the mediaStream from the store instead of individual track streams
-          const { mediaStream } = useRTCStore.getState();
-          if (mediaStream) {
-            addStreamToVideoElm(mediaStream);
+        (e: RTCTrackEvent) => {
+          if (e.track.kind === "video") {
+            addStreamToVideoElm(e.streams[0]);
+          } else if (e.track.kind === "audio") {
+            const audioElm = document.createElement("audio");
+            audioElm.autoplay = true;
+            audioElm.srcObject = e.streams[0];
+            audioElm.style.display = "none";
+            document.body.appendChild(audioElm);
+            audioElements.push(audioElm);
           }
         },
         { signal },
@@ -362,6 +339,10 @@ export default function WebRTCVideo({ microphone }: WebRTCVideoProps) {
 
       return () => {
         abortController.abort();
+        audioElements.forEach((audioElm) => {
+          audioElm.srcObject = null;
+          audioElm.remove();
+        });
       };
     },
     [addStreamToVideoElm, peerConnection],
@@ -521,7 +502,7 @@ export default function WebRTCVideo({ microphone }: WebRTCVideoProps) {
             disabled={peerConnection?.connectionState !== "connected"}
             className="contents"
           >
-            <Actionbar requestFullscreen={requestFullscreen} microphone={microphone} />
+            <Actionbar requestFullscreen={requestFullscreen} />
             <MacroBar />
           </fieldset>
         </div>
@@ -551,7 +532,6 @@ export default function WebRTCVideo({ microphone }: WebRTCVideoProps) {
                         controls={false}
                         onPlaying={onVideoPlaying}
                         onPlay={onVideoPlaying}
-                        muted={false}
                         playsInline
                         disablePictureInPicture
                         controlsList="nofullscreen"
