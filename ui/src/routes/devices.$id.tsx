@@ -191,7 +191,7 @@ export default function KvmIdRoute() {
           console.warn("[SDP] Opus 48kHz stereo not found in answer - stereo may not work");
         } else {
           const pt = opusMatch[1];
-          const stereoParams = 'stereo=1;sprop-stereo=1;maxaveragebitrate=128000';
+          const stereoParams = 'stereo=1;sprop-stereo=1;maxaveragebitrate=128000;usedtx=1;useinbandfec=1';
           const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, 'i');
           const fmtpMatch = remoteDescription.sdp.match(fmtpRegex);
 
@@ -463,7 +463,7 @@ export default function KvmIdRoute() {
             console.warn("[SDP] Opus 48kHz stereo not found in offer - stereo may not work");
           } else {
             const pt = opusMatch[1];
-            const stereoParams = 'stereo=1;sprop-stereo=1;maxaveragebitrate=128000';
+            const stereoParams = 'stereo=1;sprop-stereo=1;maxaveragebitrate=128000;usedtx=1;useinbandfec=1';
             const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, 'i');
             const fmtpMatch = offer.sdp.match(fmtpRegex);
 

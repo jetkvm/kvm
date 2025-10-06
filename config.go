@@ -160,10 +160,11 @@ var defaultConfig = &Config{
 		RelativeMouse: true,
 		Keyboard:      true,
 		MassStorage:   true,
+		Audio:         true,
 	},
 	NetworkConfig:     &network.NetworkConfig{},
 	DefaultLogLevel:   "INFO",
-	AudioOutputSource: "hdmi",
+	AudioOutputSource: "usb",
 }
 
 var (

@@ -10,7 +10,7 @@ import notifications from "@/notifications";
 
 export default function AudioPopover() {
   const { send } = useJsonRpc();
-  const [audioOutputSource, setAudioOutputSource] = useState<string>("hdmi");
+  const [audioOutputSource, setAudioOutputSource] = useState<string>("usb");
   const [audioOutputEnabled, setAudioOutputEnabled] = useState<boolean>(true);
   const [audioInputEnabled, setAudioInputEnabled] = useState<boolean>(true);
   const [usbAudioEnabled, setUsbAudioEnabled] = useState<boolean>(false);
