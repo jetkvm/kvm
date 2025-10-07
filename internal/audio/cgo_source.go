@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"unsafe"
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
