@@ -3,16 +3,17 @@
 package audio
 
 /*
-#cgo CFLAGS: -O3 -ffast-math
-#cgo LDFLAGS: -lasound -lopus -lm
+#cgo CFLAGS: -O3 -ffast-math -I/opt/jetkvm-audio-libs/alsa-lib-1.2.14/include -I/opt/jetkvm-audio-libs/opus-1.5.2/include
+#cgo LDFLAGS: /opt/jetkvm-audio-libs/alsa-lib-1.2.14/src/.libs/libasound.a /opt/jetkvm-audio-libs/opus-1.5.2/.libs/libopus.a -lm -ldl -lpthread
 
+#include <stdlib.h>
 #include "c/audio.c"
 */
 import "C"
 import (
 	"fmt"
+	"os"
 	"sync"
-	"unsafe"
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
@@ -62,12 +63,10 @@ func (c *CgoSource) Connect() error {
 		return nil
 	}
 
-	// Set ALSA device via environment for C code
+	// Set ALSA device via environment for C code to read via init_alsa_devices_from_env()
 	if c.direction == "output" {
-		// Set capture device for output path
-		cDevice := C.CString(c.alsaDevice)
-		defer C.free(unsafe.Pointer(cDevice))
-		C.alsa_capture_device = cDevice
+		// Set capture device for output path via environment variable
+		os.Setenv("ALSA_CAPTURE_DEVICE", c.alsaDevice)
 
 		// Initialize constants
 		C.update_audio_constants(
@@ -91,10 +90,8 @@ func (c *CgoSource) Connect() error {
 
 		c.logger.Debug().Str("device", c.alsaDevice).Msg("Audio capture initialized")
 	} else {
-		// Set playback device for input path
-		cDevice := C.CString(c.alsaDevice)
-		defer C.free(unsafe.Pointer(cDevice))
-		C.alsa_playback_device = cDevice
+		// Set playback device for input path via environment variable
+		os.Setenv("ALSA_PLAYBACK_DEVICE", c.alsaDevice)
 
 		// Initialize decoder constants
 		C.update_audio_decoder_constants(
