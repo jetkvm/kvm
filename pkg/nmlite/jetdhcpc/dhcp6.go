@@ -1,18 +1,18 @@
 package jetdhcpc
 
 import (
-	"log"
 	"net"
 	"time"
 
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
+	"github.com/rs/zerolog"
 	"github.com/vishvananda/netlink"
 )
 
 // isIPv6LinkReady returns true if the interface has a link-local address
 // which is not tentative.
-func isIPv6LinkReady(l netlink.Link) (bool, error) {
+func isIPv6LinkReady(l netlink.Link, logger *zerolog.Logger) (bool, error) {
 	addrs, err := netlink.AddrList(l, 10) // AF_INET6
 	if err != nil {
 		return false, err
@@ -20,7 +20,7 @@ func isIPv6LinkReady(l netlink.Link) (bool, error) {
 	for _, addr := range addrs {
 		if addr.IP.IsLinkLocalUnicast() && (addr.Flags&0x40 == 0) { // IFA_F_TENTATIVE
 			if addr.Flags&0x80 != 0 { // IFA_F_DADFAILED
-				log.Printf("DADFAILED for %v, continuing anyhow", addr.IP)
+				logger.Warn().Str("address", addr.IP.String()).Msg("DADFAILED for address, continuing anyhow")
 			}
 			return true, nil
 		}
@@ -30,7 +30,7 @@ func isIPv6LinkReady(l netlink.Link) (bool, error) {
 
 // isIPv6RouteReady returns true if serverAddr is reachable.
 func isIPv6RouteReady(serverAddr net.IP) waitForCondition {
-	return func(l netlink.Link) (bool, error) {
+	return func(l netlink.Link, logger *zerolog.Logger) (bool, error) {
 		if serverAddr.IsMulticast() {
 			return true, nil
 		}
