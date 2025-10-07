@@ -1,13 +1,10 @@
-import {
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  InformationCircleIcon,
-} from "@heroicons/react/24/outline";
+import { CheckCircleIcon } from "@heroicons/react/24/outline";
+import { CloseButton } from "@headlessui/react";
+import { LuInfo, LuOctagonAlert, LuTriangleAlert } from "react-icons/lu";
 
 import { Button } from "@/components/Button";
 import Modal from "@/components/Modal";
 import { cx } from "@/cva.config";
-
 type Variant = "danger" | "success" | "warning" | "info";
 
 interface ConfirmDialogProps {
@@ -24,27 +21,27 @@ interface ConfirmDialogProps {
 
 const variantConfig = {
   danger: {
-    icon: ExclamationTriangleIcon,
+    icon: LuOctagonAlert,
     iconClass: "text-red-600",
-    iconBgClass: "bg-red-100",
+    iconBgClass: "bg-red-100 border border-red-500/90",
     buttonTheme: "danger",
   },
   success: {
     icon: CheckCircleIcon,
     iconClass: "text-green-600",
-    iconBgClass: "bg-green-100",
+    iconBgClass: "bg-green-100 border border-green-500/90",
     buttonTheme: "primary",
   },
   warning: {
-    icon: ExclamationTriangleIcon,
+    icon: LuTriangleAlert,
     iconClass: "text-yellow-600",
-    iconBgClass: "bg-yellow-100",
-    buttonTheme: "lightDanger",
+    iconBgClass: "bg-yellow-100 border border-yellow-500/90",
+    buttonTheme: "primary",
   },
   info: {
-    icon: InformationCircleIcon,
+    icon: LuInfo,
     iconClass: "text-blue-600",
-    iconBgClass: "bg-blue-100",
+    iconBgClass: "bg-blue-100 border border-blue-500/90",
     buttonTheme: "primary",
   },
 } as Record<
@@ -94,12 +91,13 @@ export function ConfirmDialog({
               </div>
             </div>
 
-            <div className="flex justify-end gap-x-2">
+            <div className="flex justify-end gap-x-2" autoFocus>
               {cancelText && (
-                <Button size="SM" theme="blank" text={cancelText} onClick={onClose} />
+                <CloseButton as={Button} size="SM" theme="blank" text={cancelText} />
               )}
               <Button
                 size="SM"
+                type="button"
                 theme={buttonTheme}
                 text={isConfirming ? `${confirmText}...` : confirmText}
                 onClick={onConfirm}

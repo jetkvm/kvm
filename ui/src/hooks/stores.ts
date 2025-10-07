@@ -672,6 +672,7 @@ export interface DhcpLease {
   timezone?: string;
   routers?: string[];
   dns?: string[];
+  dns_servers?: string[];
   ntp_servers?: string[];
   lpr_servers?: string[];
   _time_servers?: string[];
@@ -732,12 +733,27 @@ export type TimeSyncMode =
   | "custom"
   | "unknown";
 
+export interface IPv4StaticConfig {
+  address: string;
+  netmask: string;
+  gateway: string;
+  dns: string[];
+}
+
+export interface IPv6StaticConfig {
+  prefix: string;
+  gateway: string;
+  dns: string[];
+}
+
 export interface NetworkSettings {
-  hostname: string;
-  domain: string;
-  http_proxy: string;
+  hostname: string | null;
+  domain: string | null;
+  http_proxy: string | null;
   ipv4_mode: IPv4Mode;
+  ipv4_static?: IPv4StaticConfig;
   ipv6_mode: IPv6Mode;
+  ipv6_static?: IPv6StaticConfig;
   lldp_mode: LLDPMode;
   lldp_tx_tlvs: string[];
   mdns_mode: mDNSMode;

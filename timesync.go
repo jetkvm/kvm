@@ -44,7 +44,7 @@ func initTimeSync() {
 		Logger:        timesyncLogger,
 		NetworkConfig: config.NetworkConfig,
 		PreCheckFunc: func() (bool, error) {
-			if !networkState.IsOnline() {
+			if !networkManager.IsOnline() {
 				return false, nil
 			}
 			return true, nil

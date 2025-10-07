@@ -27,7 +27,7 @@ const (
 )
 
 func switchToMainScreen() {
-	if networkState.IsUp() {
+	if networkManager.IsUp() {
 		nativeInstance.SwitchToScreenIfDifferent("home_screen")
 	} else {
 		nativeInstance.SwitchToScreenIfDifferent("no_network_screen")
@@ -35,13 +35,13 @@ func switchToMainScreen() {
 }
 
 func updateDisplay() {
-	nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkState.IPv4String())
-	nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv6_addr", networkState.IPv6String())
+	nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkManager.IPv4String())
+	nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv6_addr", networkManager.IPv6String())
 
 	_, _ = nativeInstance.UIObjHide("menu_btn_network")
 	_, _ = nativeInstance.UIObjHide("menu_btn_access")
 
-	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkState.MACString())
+	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
 
 	if usbState == "configured" {
 		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Connected")
@@ -59,7 +59,7 @@ func updateDisplay() {
 	}
 	nativeInstance.UpdateLabelIfChanged("cloud_status_label", fmt.Sprintf("%d active", actionSessions))
 
-	if networkState.IsUp() {
+	if networkManager.IsUp() {
 		nativeInstance.UISetVar("main_screen", "home_screen")
 		nativeInstance.SwitchToScreenIf("home_screen", []string{"no_network_screen", "boot_screen"})
 	} else {
@@ -190,7 +190,7 @@ func waitCtrlAndRequestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 
 func updateStaticContents() {
 	//contents that never change
-	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkState.MACString())
+	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
 
 	// get cpu info
 	if cpuInfo, err := os.ReadFile("/proc/cpuinfo"); err == nil {

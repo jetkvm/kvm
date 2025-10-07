@@ -9,7 +9,7 @@ import (
 	"github.com/beevik/ntp"
 )
 
-var defaultNTPServerIPs = []string{
+var DefaultNTPServerIPs = []string{
 	// These servers are known by static IP and as such don't need DNS lookups
 	// These are from Google and Cloudflare since if they're down, the internet
 	// is broken anyway
@@ -27,7 +27,7 @@ var defaultNTPServerIPs = []string{
 	"2001:4860:4806:c::", // time.google.com IPv6
 }
 
-var defaultNTPServerHostnames = []string{
+var DefaultNTPServerHostnames = []string{
 	// should use something from https://github.com/jauderho/public-ntp-servers
 	"time.apple.com",
 	"time.aws.com",

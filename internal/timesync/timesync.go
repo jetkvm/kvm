@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/network"
+	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/rs/zerolog"
 )
 
@@ -28,7 +28,7 @@ type TimeSync struct {
 	syncLock *sync.Mutex
 	l        *zerolog.Logger
 
-	networkConfig    *network.NetworkConfig
+	networkConfig    *types.NetworkConfig
 	dhcpNtpAddresses []string
 
 	rtcDevicePath string
@@ -43,7 +43,7 @@ type TimeSync struct {
 type TimeSyncOptions struct {
 	PreCheckFunc  func() (bool, error)
 	Logger        *zerolog.Logger
-	NetworkConfig *network.NetworkConfig
+	NetworkConfig *types.NetworkConfig
 }
 
 type SyncMode struct {
@@ -188,10 +188,10 @@ Orders:
 		case "ntp":
 			if syncMode.Ntp && syncMode.NtpUseFallback {
 				log.Info().Msg("using NTP fallback IPs")
-				now, offset = t.queryNetworkTime(defaultNTPServerIPs)
+				now, offset = t.queryNetworkTime(DefaultNTPServerIPs)
 				if now == nil {
 					log.Info().Msg("using NTP fallback hostnames")
-					now, offset = t.queryNetworkTime(defaultNTPServerHostnames)
+					now, offset = t.queryNetworkTime(DefaultNTPServerHostnames)
 				}
 				if now != nil {
 					break Orders

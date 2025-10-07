@@ -10,10 +10,14 @@ func initMdns() error {
 	m, err := mdns.NewMDNS(&mdns.MDNSOptions{
 		Logger: logger,
 		LocalNames: []string{
-			networkState.GetHostname(),
-			networkState.GetFQDN(),
+			"jetkvm", "jetkvm.local",
+			// networkManager.GetHostname(),
+			// networkManager.GetFQDN(),
 		},
-		ListenOptions: config.NetworkConfig.GetMDNSMode(),
+		ListenOptions: &mdns.MDNSListenOptions{
+			IPv4: config.NetworkConfig.MDNSMode.String != "disabled",
+			IPv6: config.NetworkConfig.MDNSMode.String != "disabled",
+		},
 	})
 	if err != nil {
 		return err

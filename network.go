@@ -1,10 +1,11 @@
 package kvm
 
 import (
-	"fmt"
+	"context"
 
-	"github.com/jetkvm/kvm/internal/network"
-	"github.com/jetkvm/kvm/internal/udhcpc"
+	"github.com/jetkvm/kvm/internal/mdns"
+	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/jetkvm/kvm/pkg/nmlite"
 )
 
 const (
@@ -12,16 +13,45 @@ const (
 )
 
 var (
-	networkState *network.NetworkInterfaceState
+	networkManager *nmlite.NetworkManager
 )
+
+type RpcNetworkSettings struct {
+	types.NetworkConfig
+}
+
+func (s *RpcNetworkSettings) ToNetworkConfig() *types.NetworkConfig {
+	return &s.NetworkConfig
+}
+
+func toRpcNetworkSettings(config *types.NetworkConfig) *RpcNetworkSettings {
+	return &RpcNetworkSettings{
+		NetworkConfig: *config,
+	}
+}
+
+func restartMdns() {
+	if mDNS == nil {
+		return
+	}
+
+	_ = mDNS.SetListenOptions(&mdns.MDNSListenOptions{
+		IPv4: config.NetworkConfig.MDNSMode.String != "disabled",
+		IPv6: config.NetworkConfig.MDNSMode.String != "disabled",
+	})
+	_ = mDNS.SetLocalNames([]string{
+		networkManager.GetHostname(),
+		networkManager.GetFQDN(),
+	}, true)
+}
 
 func networkStateChanged(isOnline bool) {
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(true, "network_state_changed")
 
 	if timeSync != nil {
-		if networkState != nil {
-			timeSync.SetDhcpNtpAddresses(networkState.NtpAddressesString())
+		if networkManager != nil {
+			timeSync.SetDhcpNtpAddresses(networkManager.NTPServerStrings())
 		}
 
 		if err := timeSync.Sync(); err != nil {
@@ -31,11 +61,7 @@ func networkStateChanged(isOnline bool) {
 
 	// always restart mDNS when the network state changes
 	if mDNS != nil {
-		_ = mDNS.SetListenOptions(config.NetworkConfig.GetMDNSMode())
-		_ = mDNS.SetLocalNames([]string{
-			networkState.GetHostname(),
-			networkState.GetFQDN(),
-		}, true)
+		restartMdns()
 	}
 
 	// if the network is now online, trigger an NTP sync if still needed
@@ -49,77 +75,47 @@ func networkStateChanged(isOnline bool) {
 func initNetwork() error {
 	ensureConfigLoaded()
 
-	state, err := network.NewNetworkInterfaceState(&network.NetworkInterfaceOptions{
-		DefaultHostname: GetDefaultHostname(),
-		InterfaceName:   NetIfName,
-		NetworkConfig:   config.NetworkConfig,
-		Logger:          networkLogger,
-		OnStateChange: func(state *network.NetworkInterfaceState) {
-			networkStateChanged(state.IsOnline())
-		},
-		OnInitialCheck: func(state *network.NetworkInterfaceState) {
-			networkStateChanged(state.IsOnline())
-		},
-		OnDhcpLeaseChange: func(lease *udhcpc.Lease, state *network.NetworkInterfaceState) {
-			networkStateChanged(state.IsOnline())
-
-			if currentSession == nil {
-				return
-			}
-
-			writeJSONRPCEvent("networkState", networkState.RpcGetNetworkState(), currentSession)
-		},
-		OnConfigChange: func(networkConfig *network.NetworkConfig) {
-			config.NetworkConfig = networkConfig
-			networkStateChanged(false)
-
-			if mDNS != nil {
-				_ = mDNS.SetListenOptions(networkConfig.GetMDNSMode())
-				_ = mDNS.SetLocalNames([]string{
-					networkState.GetHostname(),
-					networkState.GetFQDN(),
-				}, true)
-			}
-		},
-	})
-
-	if state == nil {
-		if err == nil {
-			return fmt.Errorf("failed to create NetworkInterfaceState")
-		}
-		return err
-	}
-
-	if err := state.Run(); err != nil {
-		return err
-	}
-
-	networkState = state
+	networkManager = nmlite.NewNetworkManager(context.Background(), networkLogger)
+	networkManager.AddInterface(NetIfName, config.NetworkConfig)
 
 	return nil
 }
 
-func rpcGetNetworkState() network.RpcNetworkState {
-	return networkState.RpcGetNetworkState()
+func rpcGetNetworkState() *types.InterfaceState {
+	state, _ := networkManager.GetInterfaceState(NetIfName)
+	return state
 }
 
-func rpcGetNetworkSettings() network.RpcNetworkSettings {
-	return networkState.RpcGetNetworkSettings()
+func rpcGetNetworkSettings() *RpcNetworkSettings {
+	return toRpcNetworkSettings(config.NetworkConfig)
 }
 
-func rpcSetNetworkSettings(settings network.RpcNetworkSettings) (*network.RpcNetworkSettings, error) {
-	s := networkState.RpcSetNetworkSettings(settings)
+func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, error) {
+	netConfig := settings.ToNetworkConfig()
+
+	networkLogger.Debug().Interface("newConfig", netConfig).Interface("config", settings).Msg("setting new config")
+
+	s := networkManager.SetInterfaceConfig(NetIfName, netConfig)
 	if s != nil {
 		return nil, s
 	}
+	networkLogger.Debug().Interface("newConfig", netConfig).Interface("config", settings).Msg("new config")
+
+	newConfig, err := networkManager.GetInterfaceConfig(NetIfName)
+	if err != nil {
+		return nil, err
+	}
+	config.NetworkConfig = newConfig
+
+	networkLogger.Debug().Interface("newConfig", newConfig).Interface("config", settings).Msg("saving config")
 
 	if err := SaveConfig(); err != nil {
 		return nil, err
 	}
 
-	return &network.RpcNetworkSettings{NetworkConfig: *config.NetworkConfig}, nil
+	return toRpcNetworkSettings(newConfig), nil
 }
 
 func rpcRenewDHCPLease() error {
-	return networkState.RpcRenewDHCPLease()
+	return networkManager.RenewDHCPLease(NetIfName)
 }
