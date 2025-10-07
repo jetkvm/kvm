@@ -207,26 +207,5 @@ func (dc *DHCPClient) convertLease(lease *dhclient.Lease, isIPv6 bool) *types.DH
 		return nil
 	}
 
-	// Convert the lease
-	convertedLease := &types.DHCPLease{
-		InterfaceName: dc.ifaceName,
-		Domain:        lease.Domain,
-		SearchList:    lease.SearchList,
-		NTPServers:    lease.NTPServers,
-	}
-
-	// Set IP address and related information
-	convertedLease.IPAddress = lease.IPAddress
-	convertedLease.Netmask = lease.Netmask
-	if len(lease.Routers) > 0 {
-		convertedLease.Gateway = lease.Routers[0]
-	}
-
-	// Set DNS servers
-	convertedLease.DNS = lease.DNS
-	// convertedLease.LeaseTime = lease.LeaseTime
-	// convertedLease.RenewalTime = lease.RenewalTime
-	// convertedLease.RebindingTime = lease.RebindingTime
-
-	return convertedLease
+	return lease.ToDHCPLease()
 }

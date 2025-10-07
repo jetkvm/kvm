@@ -169,6 +169,8 @@ func (im *InterfaceManager) GetState() *types.InterfaceState {
 	defer im.stateMu.RUnlock()
 
 	// Return a copy to avoid race conditions
+	im.logger.Debug().Interface("state", im.state).Msg("getting interface state")
+
 	state := *im.state
 	return &state
 }
@@ -453,6 +455,8 @@ func (im *InterfaceManager) getDomain() string {
 func (im *InterfaceManager) monitorInterfaceState() {
 	defer im.wg.Done()
 
+	im.logger.Debug().Msg("monitoring interface state")
+
 	// TODO: use netlink subscription instead of polling
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -464,6 +468,7 @@ func (im *InterfaceManager) monitorInterfaceState() {
 		case <-im.stopCh:
 			return
 		case <-ticker.C:
+			im.logger.Debug().Msg("checking interface state")
 			if err := im.updateInterfaceState(); err != nil {
 				im.logger.Error().Err(err).Msg("failed to update interface state")
 			}
@@ -482,7 +487,7 @@ func (im *InterfaceManager) updateInterfaceState() error {
 	isUp := attrs.OperState == netlink.OperUp
 
 	hasAddrs := false
-	addrs, err := nl.AddrList(link.AfInet)
+	addrs, err := nl.AddrList(link.AfUnspec)
 	if err != nil {
 		return fmt.Errorf("failed to get addresses: %w", err)
 	}
@@ -504,10 +509,10 @@ func (im *InterfaceManager) updateInterfaceState() error {
 		stateChanged = true
 	}
 
-	// if im.state.MACAddr != attrs.HardwareAddr {
-	// 	im.state.MACAddr = attrs.HardwareAddr
-	// 	stateChanged = true
-	// }
+	if im.state.MACAddress != attrs.HardwareAddr.String() {
+		im.state.MACAddress = attrs.HardwareAddr.String()
+		stateChanged = true
+	}
 
 	// Update IP addresses
 	if err := im.updateIPAddresses(nl); err != nil {
@@ -519,6 +524,7 @@ func (im *InterfaceManager) updateInterfaceState() error {
 	// Notify callback if state changed
 	if stateChanged && im.onStateChange != nil {
 		state := *im.state
+		im.logger.Debug().Interface("state", state).Msg("notifying state change")
 		im.onStateChange(&state)
 	}
 
@@ -538,6 +544,7 @@ func (im *InterfaceManager) updateIPAddresses(nl *link.Link) error {
 	var ipv6LinkLocal string
 
 	for _, addr := range addrs {
+		im.logger.Debug().Str("address", addr.IP.String()).Msg("checking address")
 		if addr.IP.To4() != nil {
 			// IPv4 address
 			ipv4Addresses = append(ipv4Addresses, addr.IPNet.String())

@@ -31,7 +31,7 @@ type NetworkManager struct {
 // NewNetworkManager creates a new network manager
 func NewNetworkManager(ctx context.Context, logger *zerolog.Logger) *NetworkManager {
 	if logger == nil {
-		logger = logging.GetSubsystemLogger("networkmgr")
+		logger = logging.GetSubsystemLogger("nm")
 	}
 
 	// Initialize the NetlinkManager singleton

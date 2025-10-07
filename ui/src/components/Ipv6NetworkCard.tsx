@@ -17,16 +17,14 @@ export default function Ipv6NetworkCard({
           </h3>
 
           <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-            {networkState?.dhcp_lease?.ip && (
-              <div className="flex flex-col justify-between">
-                <span className="text-sm text-slate-600 dark:text-slate-400">
-                  Link-local
-                </span>
-                <span className="text-sm font-medium">
-                  {networkState?.ipv6_link_local}
-                </span>
-              </div>
-            )}
+            <div className="flex flex-col justify-between">
+              <span className="text-sm text-slate-600 dark:text-slate-400">
+                Link-local
+              </span>
+              <span className="text-sm font-medium">
+                {networkState?.ipv6_link_local}
+              </span>
+            </div>
           </div>
 
           <div className="space-y-3 pt-2">

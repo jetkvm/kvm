@@ -45,7 +45,7 @@ func restartMdns() {
 	}, true)
 }
 
-func networkStateChanged(isOnline bool) {
+func networkStateChanged(iface string, state *types.InterfaceState) {
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(true, "network_state_changed")
 
@@ -65,7 +65,7 @@ func networkStateChanged(isOnline bool) {
 	}
 
 	// if the network is now online, trigger an NTP sync if still needed
-	if isOnline && timeSync != nil && (isTimeSyncNeeded() || !timeSync.IsSyncSuccess()) {
+	if state.Up && timeSync != nil && (isTimeSyncNeeded() || !timeSync.IsSyncSuccess()) {
 		if err := timeSync.Sync(); err != nil {
 			logger.Warn().Str("error", err.Error()).Msg("unable to sync time on network state change")
 		}
@@ -76,6 +76,7 @@ func initNetwork() error {
 	ensureConfigLoaded()
 
 	networkManager = nmlite.NewNetworkManager(context.Background(), networkLogger)
+	networkManager.SetOnInterfaceStateChange(networkStateChanged)
 	networkManager.AddInterface(NetIfName, config.NetworkConfig)
 
 	return nil
