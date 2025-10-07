@@ -152,30 +152,63 @@ func (im *InterfaceManager) link() (*link.Link, error) {
 
 // IsUp returns true if the interface is up
 func (im *InterfaceManager) IsUp() bool {
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
 	return im.state.Up
 }
 
 func (im *InterfaceManager) IsOnline() bool {
-	return im.IsUp()
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
+	return im.state.Online
+}
+
+func (im *InterfaceManager) IPv4Ready() bool {
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
+	return im.state.IPv4Ready
+}
+
+func (im *InterfaceManager) IPv6Ready() bool {
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
+	return im.state.IPv6Ready
 }
 
 func (im *InterfaceManager) GetIPv4Addresses() []string {
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
 	return im.state.IPv4Addresses
 }
 
 func (im *InterfaceManager) GetIPv4Address() string {
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
 	return im.state.IPv4Address
 }
 
 func (im *InterfaceManager) GetIPv6Address() string {
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
 	return im.state.IPv6Address
 }
 
 func (im *InterfaceManager) GetIPv6Addresses() []string {
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
 	addresses := []string{}
 	for _, addr := range im.state.IPv6Addresses {
 		addresses = append(addresses, addr.Address.String())
 	}
+
 	return []string{}
 }
 
@@ -569,11 +602,11 @@ func (im *InterfaceManager) updateInterfaceState() error {
 		hasAddrs = true
 	}
 
-	im.stateMu.Lock()
-	defer im.stateMu.Unlock()
-
 	// Check if state changed
 	stateChanged := false
+	// We should release the lock before calling the callbacks
+	// to avoid deadlocks
+	im.stateMu.Lock()
 	if im.state.Up != isUp {
 		im.state.Up = isUp
 		stateChanged = true
@@ -594,6 +627,7 @@ func (im *InterfaceManager) updateInterfaceState() error {
 	}
 
 	im.state.LastUpdated = time.Now()
+	im.stateMu.Unlock()
 
 	// Notify callback if state changed
 	if stateChanged && im.onStateChange != nil {
@@ -661,9 +695,8 @@ func (im *InterfaceManager) updateIPAddresses(nl *link.Link) error {
 // updateStateFromDHCPLease updates the state from a DHCP lease
 func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
 	im.stateMu.Lock()
-	defer im.stateMu.Unlock()
-
 	im.state.DHCPLease4 = lease
+	im.stateMu.Unlock()
 
 	// Update resolv.conf with DNS information
 	if im.resolvConf != nil {

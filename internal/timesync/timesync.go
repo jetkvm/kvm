@@ -24,6 +24,8 @@ var (
 	timeSyncRetryInterval = 0 * time.Second
 )
 
+type PreCheckFunc func() (bool, error)
+
 type TimeSync struct {
 	syncLock *sync.Mutex
 	l        *zerolog.Logger
@@ -37,11 +39,15 @@ type TimeSync struct {
 
 	syncSuccess bool
 
-	preCheckFunc func() (bool, error)
+	preCheckFunc PreCheckFunc
+	preCheckIPv4 PreCheckFunc
+	preCheckIPv6 PreCheckFunc
 }
 
 type TimeSyncOptions struct {
-	PreCheckFunc  func() (bool, error)
+	PreCheckFunc  PreCheckFunc
+	PreCheckIPv4  PreCheckFunc
+	PreCheckIPv6  PreCheckFunc
 	Logger        *zerolog.Logger
 	NetworkConfig *types.NetworkConfig
 }
@@ -69,6 +75,8 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 		rtcDevicePath:    rtcDevice,
 		rtcLock:          &sync.Mutex{},
 		preCheckFunc:     opts.PreCheckFunc,
+		preCheckIPv4:     opts.PreCheckIPv4,
+		preCheckIPv6:     opts.PreCheckIPv6,
 		networkConfig:    opts.NetworkConfig,
 	}
 
@@ -112,7 +120,13 @@ func (t *TimeSync) getSyncMode() SyncMode {
 		}
 	}
 
-	t.l.Debug().Strs("Ordering", syncMode.Ordering).Bool("Ntp", syncMode.Ntp).Bool("Http", syncMode.Http).Bool("NtpUseFallback", syncMode.NtpUseFallback).Bool("HttpUseFallback", syncMode.HttpUseFallback).Msg("sync mode")
+	t.l.Debug().
+		Strs("Ordering", syncMode.Ordering).
+		Bool("Ntp", syncMode.Ntp).
+		Bool("Http", syncMode.Http).
+		Bool("NtpUseFallback", syncMode.NtpUseFallback).
+		Bool("HttpUseFallback", syncMode.HttpUseFallback).
+		Msg("sync mode")
 
 	return syncMode
 }

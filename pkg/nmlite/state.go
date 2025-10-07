@@ -12,7 +12,12 @@ func (nm *NetworkManager) IsOnline() bool {
 }
 
 func (nm *NetworkManager) IsUp() bool {
-	return nm.IsOnline()
+	for _, iface := range nm.interfaces {
+		if iface.IsUp() {
+			return true
+		}
+	}
+	return false
 }
 
 func (nm *NetworkManager) GetHostname() string {
@@ -72,6 +77,20 @@ func (nm *NetworkManager) GetMACAddress() string {
 		return iface.GetMACAddress()
 	}
 	return ""
+}
+
+func (nm *NetworkManager) IPv4Ready() bool {
+	for _, iface := range nm.interfaces {
+		return iface.IPv4Ready()
+	}
+	return false
+}
+
+func (nm *NetworkManager) IPv6Ready() bool {
+	for _, iface := range nm.interfaces {
+		return iface.IPv6Ready()
+	}
+	return false
 }
 
 func (nm *NetworkManager) IPv4String() string {

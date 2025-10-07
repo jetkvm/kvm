@@ -3,6 +3,7 @@ package timesync
 import (
 	"context"
 	"math/rand/v2"
+	"net"
 	"strconv"
 	"time"
 
@@ -37,7 +38,47 @@ var DefaultNTPServerHostnames = []string{
 	"pool.ntp.org",
 }
 
+func (t *TimeSync) filterNTPServers(ntpServers []string) ([]string, error) {
+	if len(ntpServers) == 0 {
+		return nil, nil
+	}
+
+	hasIPv4, err := t.preCheckIPv4()
+	if err != nil {
+		t.l.Error().Err(err).Msg("failed to check IPv4")
+		return nil, err
+	}
+
+	hasIPv6, err := t.preCheckIPv6()
+	if err != nil {
+		t.l.Error().Err(err).Msg("failed to check IPv6")
+		return nil, err
+	}
+
+	filteredServers := []string{}
+	for _, server := range ntpServers {
+		ip := net.ParseIP(server)
+		t.l.Trace().Str("server", server).Interface("ip", ip).Msg("checking NTP server")
+		if ip == nil {
+			continue
+		}
+		if hasIPv4 && ip.To4() != nil {
+			filteredServers = append(filteredServers, server)
+		}
+		if hasIPv6 && ip.To16() != nil {
+			filteredServers = append(filteredServers, server)
+		}
+	}
+	return filteredServers, nil
+}
+
 func (t *TimeSync) queryNetworkTime(ntpServers []string) (now *time.Time, offset *time.Duration) {
+	ntpServers, err := t.filterNTPServers(ntpServers)
+	if err != nil {
+		t.l.Error().Err(err).Msg("failed to filter NTP servers")
+		return nil, nil
+	}
+
 	chunkSize := int(t.networkConfig.TimeSyncParallel.ValueOr(4))
 	t.l.Info().Strs("servers", ntpServers).Int("chunkSize", chunkSize).Msg("querying NTP servers")
 
