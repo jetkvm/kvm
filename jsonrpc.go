@@ -935,12 +935,12 @@ func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 		audioMutex.Unlock()
 	}
 
-	// Stop audio subprocesses before USB reconfiguration
+	// Stop audio before USB reconfiguration
 	// Input always uses USB, output depends on audioSourceChanged
 	audioMutex.Lock()
-	stopInputSubprocessLocked()
+	stopInputLocked()
 	if audioSourceChanged {
-		stopOutputSubprocessLocked()
+		stopOutputLocked()
 	}
 	audioMutex.Unlock()
 
@@ -953,9 +953,9 @@ func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 	}
 
 	// Restart audio if source changed or USB audio is enabled with active connections
-	// The subprocess supervisor and relay handle device readiness via retry logic
+	// The relay handles device readiness via retry logic
 	if activeConnections.Load() > 0 && (audioSourceChanged || (config.UsbDevices != nil && config.UsbDevices.Audio)) {
-		if err := startAudioSubprocesses(); err != nil {
+		if err := startAudio(); err != nil {
 			logger.Warn().Err(err).Msg("Failed to restart audio after USB reconfiguration")
 		}
 	}
@@ -1019,18 +1019,6 @@ func rpcGetAudioInputEnabled() (bool, error) {
 
 func rpcSetAudioInputEnabled(enabled bool) error {
 	return SetAudioInputEnabled(enabled)
-}
-
-func rpcGetAudioMode() (string, error) {
-	ensureConfigLoaded()
-	if config.AudioMode == "" {
-		return "subprocess", nil // Default
-	}
-	return config.AudioMode, nil
-}
-
-func rpcSetAudioMode(mode string) error {
-	return SetAudioMode(mode)
 }
 
 func rpcSetCloudUrl(apiUrl string, appUrl string) error {
@@ -1355,8 +1343,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"setAudioOutputEnabled":  {Func: rpcSetAudioOutputEnabled, Params: []string{"enabled"}},
 	"getAudioInputEnabled":   {Func: rpcGetAudioInputEnabled},
 	"setAudioInputEnabled":   {Func: rpcSetAudioInputEnabled, Params: []string{"enabled"}},
-	"getAudioMode":           {Func: rpcGetAudioMode},
-	"setAudioMode":           {Func: rpcSetAudioMode, Params: []string{"mode"}},
 	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
 	"getKeyboardLayout":      {Func: rpcGetKeyboardLayout},
 	"setKeyboardLayout":      {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},

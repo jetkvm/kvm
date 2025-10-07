@@ -132,29 +132,4 @@ static inline uint8_t audio_error_tracker_should_trace(audio_error_tracker_t *tr
     return ((tracker->frame_count & AUDIO_TRACE_MASK) == 1) ? 1 : 0;
 }
 
-
-/**
- * Parse Opus config message and optionally apply to encoder.
- * @param data Raw message data
- * @param length Message length
- * @param is_encoder If true, apply config to encoder (output server)
- * @return 0 on success, -1 on error
- */
-int audio_common_handle_opus_config(const uint8_t *data, uint32_t length, int is_encoder);
-
-// IPC MAIN LOOP HELPERS
-
-/**
- * Common server accept loop with signal handling.
- * Accepts clients and calls handler function for each connection.
- *
- * @param server_sock Server socket from ipc_create_server
- * @param running Pointer to running flag (set to 0 on shutdown)
- * @param handler Connection handler function
- * @return 0 on clean shutdown, -1 on error
- */
-typedef int (*connection_handler_t)(int client_sock, volatile sig_atomic_t *running);
-int audio_common_server_loop(int server_sock, volatile sig_atomic_t *running,
-                             connection_handler_t handler);
-
 #endif // JETKVM_AUDIO_COMMON_H

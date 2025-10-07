@@ -2,8 +2,9 @@
  * JetKVM Audio Processing Module
  *
  * Bidirectional audio processing optimized for ARM NEON SIMD:
- * - OUTPUT PATH: TC358743 HDMI audio → Client speakers
- *   Pipeline: ALSA hw:0,0 capture → Opus encode (128kbps, FEC enabled)
+* TODO: Remove USB Gadget audio once new system image release is made available
+ * - OUTPUT PATH: TC358743 HDMI or USB Gadget audio → Client speakers
+ *   Pipeline: ALSA hw:0,0 or hw:1,0 capture → Opus encode (128kbps, FEC enabled)
  *
  * - INPUT PATH: Client microphone → Device speakers
  *   Pipeline: Opus decode (with FEC) → ALSA hw:1,0 playback
@@ -126,17 +127,15 @@ void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16
  * Must be called before jetkvm_audio_capture_init or jetkvm_audio_playback_init
  */
 static void init_alsa_devices_from_env(void) {
-    if (alsa_capture_device == NULL) {
-        alsa_capture_device = getenv("ALSA_CAPTURE_DEVICE");
-        if (alsa_capture_device == NULL || alsa_capture_device[0] == '\0') {
-            alsa_capture_device = "hw:0,0"; // Default to HDMI
-        }
+    // Always read from environment to support device switching
+    alsa_capture_device = getenv("ALSA_CAPTURE_DEVICE");
+    if (alsa_capture_device == NULL || alsa_capture_device[0] == '\0') {
+        alsa_capture_device = "hw:1,0"; // Default to USB gadget
     }
-    if (alsa_playback_device == NULL) {
-        alsa_playback_device = getenv("ALSA_PLAYBACK_DEVICE");
-        if (alsa_playback_device == NULL || alsa_playback_device[0] == '\0') {
-            alsa_playback_device = "hw:1,0"; // Default to USB gadget
-        }
+
+    alsa_playback_device = getenv("ALSA_PLAYBACK_DEVICE");
+    if (alsa_playback_device == NULL || alsa_playback_device[0] == '\0') {
+        alsa_playback_device = "hw:1,0"; // Default to USB gadget
     }
 }
 
@@ -177,6 +176,12 @@ static volatile sig_atomic_t playback_initialized = 0;
 
 /**
  * Update Opus encoder settings at runtime (does NOT modify FEC or hardcoded settings)
+ *
+ * NOTE: Currently unused but kept for potential future runtime configuration updates.
+ * In the current CGO implementation, encoder params are set once via update_audio_constants()
+ * before initialization. This function would be useful if we add runtime bitrate/complexity
+ * adjustment without restarting the encoder.
+ *
  * @return 0 on success, -1 if not initialized, >0 if some settings failed
  */
 int update_opus_encoder_params(uint32_t bitrate, uint8_t complexity) {

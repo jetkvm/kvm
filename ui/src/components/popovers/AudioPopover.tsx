@@ -4,28 +4,17 @@ import { LuVolume2 } from "react-icons/lu";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { GridCard } from "@components/Card";
 import { SettingsItem } from "@components/SettingsItem";
-import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { Button } from "@components/Button";
 import notifications from "@/notifications";
 
 export default function AudioPopover() {
   const { send } = useJsonRpc();
-  const [audioOutputSource, setAudioOutputSource] = useState<string>("usb");
   const [audioOutputEnabled, setAudioOutputEnabled] = useState<boolean>(true);
   const [audioInputEnabled, setAudioInputEnabled] = useState<boolean>(true);
   const [usbAudioEnabled, setUsbAudioEnabled] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Load current audio settings
-    send("getAudioOutputSource", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        console.error("Failed to load audio output source:", resp.error);
-      } else {
-        setAudioOutputSource(resp.result as string);
-      }
-    });
-
     send("getAudioOutputEnabled", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         console.error("Failed to load audio output enabled:", resp.error);
@@ -52,62 +41,37 @@ export default function AudioPopover() {
     });
   }, [send]);
 
-  const handleAudioOutputSourceChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const newSource = e.target.value;
-      setLoading(true);
-      send("setAudioOutputSource", { source: newSource }, (resp: JsonRpcResponse) => {
-        setLoading(false);
-        if ("error" in resp) {
-          notifications.error(
-            `Failed to set audio output source: ${resp.error.data || "Unknown error"}`,
-          );
-        } else {
-          setAudioOutputSource(newSource);
-          notifications.success(`Audio output source set to ${newSource.toUpperCase()}`);
-        }
-      });
-    },
-    [send],
-  );
+  const handleAudioOutputEnabledToggle = useCallback(() => {
+    const enabled = !audioOutputEnabled;
+    setLoading(true);
+    send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
+      setLoading(false);
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to ${enabled ? "enable" : "disable"} audio output: ${resp.error.data || "Unknown error"}`,
+        );
+      } else {
+        setAudioOutputEnabled(enabled);
+        notifications.success(`Audio output ${enabled ? "enabled" : "disabled"}`);
+      }
+    });
+  }, [send, audioOutputEnabled]);
 
-  const handleAudioOutputEnabledToggle = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const enabled = e.target.checked;
-      setLoading(true);
-      send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
-        setLoading(false);
-        if ("error" in resp) {
-          notifications.error(
-            `Failed to ${enabled ? "enable" : "disable"} audio output: ${resp.error.data || "Unknown error"}`,
-          );
-        } else {
-          setAudioOutputEnabled(enabled);
-          notifications.success(`Audio output ${enabled ? "enabled" : "disabled"}`);
-        }
-      });
-    },
-    [send],
-  );
-
-  const handleAudioInputEnabledToggle = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const enabled = e.target.checked;
-      setLoading(true);
-      send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
-        setLoading(false);
-        if ("error" in resp) {
-          notifications.error(
-            `Failed to ${enabled ? "enable" : "disable"} audio input: ${resp.error.data || "Unknown error"}`,
-          );
-        } else {
-          setAudioInputEnabled(enabled);
-          notifications.success(`Audio input ${enabled ? "enabled" : "disabled"}`);
-        }
-      });
-    },
-    [send],
-  );
+  const handleAudioInputEnabledToggle = useCallback(() => {
+    const enabled = !audioInputEnabled;
+    setLoading(true);
+    send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
+      setLoading(false);
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to ${enabled ? "enable" : "disable"} audio input: ${resp.error.data || "Unknown error"}`,
+        );
+      } else {
+        setAudioInputEnabled(enabled);
+        notifications.success(`Audio input ${enabled ? "enabled" : "disabled"}`);
+      }
+    });
+  }, [send, audioInputEnabled]);
 
   return (
     <GridCard>
@@ -115,7 +79,7 @@ export default function AudioPopover() {
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
             <LuVolume2 className="h-5 w-5" />
-            <h3 className="font-semibold">Audio Settings</h3>
+            <h3 className="font-semibold">Audio</h3>
           </div>
 
           <div className="space-y-3">
@@ -128,31 +92,7 @@ export default function AudioPopover() {
                 size="SM"
                 theme={audioOutputEnabled ? "light" : "primary"}
                 text={audioOutputEnabled ? "Disable" : "Enable"}
-                onClick={() => handleAudioOutputEnabledToggle({ target: { checked: !audioOutputEnabled } } as React.ChangeEvent<HTMLInputElement>)}
-              />
-            </SettingsItem>
-
-            <SettingsItem
-              loading={loading}
-              title="Audio Output Source"
-              description={usbAudioEnabled ? "Select where to capture audio from" : "Enable USB Audio to use USB as source"}
-            >
-              <SelectMenuBasic
-                size="SM"
-                label=""
-                className="max-w-[180px]"
-                value={audioOutputSource}
-                fullWidth
-                disabled={!audioOutputEnabled}
-                onChange={handleAudioOutputSourceChange}
-                options={
-                  usbAudioEnabled
-                    ? [
-                        { label: "HDMI", value: "hdmi" },
-                        { label: "USB", value: "usb" },
-                      ]
-                    : [{ label: "HDMI", value: "hdmi" }]
-                }
+                onClick={handleAudioOutputEnabledToggle}
               />
             </SettingsItem>
 
@@ -169,7 +109,7 @@ export default function AudioPopover() {
                     size="SM"
                     theme={audioInputEnabled ? "light" : "primary"}
                     text={audioInputEnabled ? "Disable" : "Enable"}
-                    onClick={() => handleAudioInputEnabledToggle({ target: { checked: !audioInputEnabled } } as React.ChangeEvent<HTMLInputElement>)}
+                    onClick={handleAudioInputEnabledToggle}
                   />
                 </SettingsItem>
               </>
