@@ -539,7 +539,6 @@ export default function KvmIdRoute() {
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack && audioTransceiver.sender) {
         audioTransceiver.sender.replaceTrack(audioTrack);
-        console.debug("[setupPeerConnection] Audio track settings:", audioTrack.getSettings());
       }
     }).catch((err) => {
       console.warn("Microphone access denied or unavailable:", err.message);
