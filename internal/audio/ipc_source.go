@@ -33,8 +33,8 @@ const (
 	readTimeout      = 2 * time.Second
 )
 
-// IPCClient manages Unix socket communication with audio subprocess
-type IPCClient struct {
+// IPCSource implements AudioSource via Unix socket communication with audio subprocess
+type IPCSource struct {
 	socketPath  string
 	magicNumber uint32
 	conn        net.Conn
@@ -43,13 +43,13 @@ type IPCClient struct {
 	readBuf     []byte // Reusable buffer for reads (single reader per client)
 }
 
-// NewIPCClient creates a new IPC client
+// NewIPCSource creates a new IPC audio source
 // For output: socketPath="/var/run/audio_output.sock", magic=ipcMagicOutput
 // For input:  socketPath="/var/run/audio_input.sock", magic=ipcMagicInput
-func NewIPCClient(name, socketPath string, magicNumber uint32) *IPCClient {
+func NewIPCSource(name, socketPath string, magicNumber uint32) *IPCSource {
 	logger := logging.GetDefaultLogger().With().Str("component", name+"-ipc").Logger()
 
-	return &IPCClient{
+	return &IPCSource{
 		socketPath:  socketPath,
 		magicNumber: magicNumber,
 		logger:      logger,
@@ -58,7 +58,7 @@ func NewIPCClient(name, socketPath string, magicNumber uint32) *IPCClient {
 }
 
 // Connect establishes connection to the subprocess
-func (c *IPCClient) Connect() error {
+func (c *IPCSource) Connect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -78,7 +78,7 @@ func (c *IPCClient) Connect() error {
 }
 
 // Disconnect closes the connection
-func (c *IPCClient) Disconnect() {
+func (c *IPCSource) Disconnect() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -90,7 +90,7 @@ func (c *IPCClient) Disconnect() {
 }
 
 // IsConnected returns true if currently connected
-func (c *IPCClient) IsConnected() bool {
+func (c *IPCSource) IsConnected() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.conn != nil
@@ -100,7 +100,7 @@ func (c *IPCClient) IsConnected() bool {
 // Returns message type, payload data, and error
 // IMPORTANT: The returned payload slice is only valid until the next ReadMessage call.
 // Callers must use the data immediately or copy if retention is needed.
-func (c *IPCClient) ReadMessage() (uint8, []byte, error) {
+func (c *IPCSource) ReadMessage() (uint8, []byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -150,7 +150,7 @@ func (c *IPCClient) ReadMessage() (uint8, []byte, error) {
 }
 
 // WriteMessage writes a complete IPC message
-func (c *IPCClient) WriteMessage(msgType uint8, payload []byte) error {
+func (c *IPCSource) WriteMessage(msgType uint8, payload []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
