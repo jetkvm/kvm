@@ -47,7 +47,7 @@ export default function SettingsAudioRoute() {
   }, [send]);
 
   const handleAudioOutputSourceChange = (source: string) => {
-    send("setAudioOutputSource", { params: { source } }, (resp: JsonRpcResponse) => {
+    send("setAudioOutputSource", { source }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to set audio output source: ${resp.error.data || "Unknown error"}`,
@@ -60,7 +60,7 @@ export default function SettingsAudioRoute() {
   };
 
   const handleAudioModeChange = (mode: string) => {
-    send("setAudioMode", { params: { mode } }, (resp: JsonRpcResponse) => {
+    send("setAudioMode", { mode }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to set audio mode: ${resp.error.data || "Unknown error"}`,
@@ -73,7 +73,7 @@ export default function SettingsAudioRoute() {
   };
 
   const handleAudioOutputEnabledChange = (enabled: boolean) => {
-    send("setAudioOutputEnabled", { params: { enabled } }, (resp: JsonRpcResponse) => {
+    send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to ${enabled ? "enable" : "disable"} audio output: ${resp.error.data || "Unknown error"}`,
@@ -86,7 +86,7 @@ export default function SettingsAudioRoute() {
   };
 
   const handleAudioInputEnabledChange = (enabled: boolean) => {
-    send("setAudioInputEnabled", { params: { enabled } }, (resp: JsonRpcResponse) => {
+    send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           `Failed to ${enabled ? "enable" : "disable"} audio input: ${resp.error.data || "Unknown error"}`,
