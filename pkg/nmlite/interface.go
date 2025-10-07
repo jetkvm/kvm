@@ -163,6 +163,14 @@ func (im *InterfaceManager) GetIPv4Addresses() []string {
 	return im.state.IPv4Addresses
 }
 
+func (im *InterfaceManager) GetIPv4Address() string {
+	return im.state.IPv4Address
+}
+
+func (im *InterfaceManager) GetIPv6Address() string {
+	return im.state.IPv6Address
+}
+
 func (im *InterfaceManager) GetIPv6Addresses() []string {
 	addresses := []string{}
 	for _, addr := range im.state.IPv6Addresses {
@@ -585,7 +593,7 @@ func (im *InterfaceManager) updateInterfaceState() error {
 		im.logger.Error().Err(err).Msg("failed to update IP addresses")
 	}
 
-	// im.state.LastUpdated = time.Now() // TODO: remove this
+	im.state.LastUpdated = time.Now()
 
 	// Notify callback if state changed
 	if stateChanged && im.onStateChange != nil {
@@ -604,10 +612,13 @@ func (im *InterfaceManager) updateIPAddresses(nl *link.Link) error {
 		return fmt.Errorf("failed to get addresses: %w", err)
 	}
 
-	var ipv4Addresses []string
-	var ipv6Addresses []types.IPv6Address
-	var ipv4Addr, ipv6Addr string
-	var ipv6LinkLocal string
+	var (
+		ipv4Addresses        []string
+		ipv6Addresses        []types.IPv6Address
+		ipv4Addr, ipv6Addr   string
+		ipv6LinkLocal        string
+		ipv4Ready, ipv6Ready = false, false
+	)
 
 	for _, addr := range addrs {
 		im.logger.Debug().Str("address", addr.IP.String()).Msg("checking address")
@@ -616,6 +627,7 @@ func (im *InterfaceManager) updateIPAddresses(nl *link.Link) error {
 			ipv4Addresses = append(ipv4Addresses, addr.IPNet.String())
 			if ipv4Addr == "" {
 				ipv4Addr = addr.IP.String()
+				ipv4Ready = true
 			}
 		} else if addr.IP.To16() != nil {
 			// IPv6 address
@@ -629,6 +641,7 @@ func (im *InterfaceManager) updateIPAddresses(nl *link.Link) error {
 				})
 				if ipv6Addr == "" {
 					ipv6Addr = addr.IP.String()
+					ipv6Ready = true
 				}
 			}
 		}
@@ -637,6 +650,10 @@ func (im *InterfaceManager) updateIPAddresses(nl *link.Link) error {
 	im.state.IPv4Addresses = ipv4Addresses
 	im.state.IPv6Addresses = ipv6Addresses
 	im.state.IPv6LinkLocal = ipv6LinkLocal
+	im.state.IPv4Address = ipv4Addr
+	im.state.IPv6Address = ipv6Addr
+	im.state.IPv4Ready = ipv4Ready
+	im.state.IPv6Ready = ipv6Ready
 
 	return nil
 }
@@ -677,10 +694,12 @@ func (im *InterfaceManager) applyDHCPLease(lease *types.DHCPLease) error {
 
 // convertDHCPLeaseToIPv4Config converts a DHCP lease to IPv4Config
 func (im *InterfaceManager) convertDHCPLeaseToIPv4Config(lease *types.DHCPLease) *types.IPAddress {
+	mask := lease.Netmask
+
 	// Create IPNet from IP and netmask
 	ipNet := &net.IPNet{
 		IP:   lease.IPAddress,
-		Mask: net.IPMask(lease.Netmask),
+		Mask: net.IPv4Mask(mask[12], mask[13], mask[14], mask[15]),
 	}
 
 	// Create IPv4Address
@@ -691,7 +710,10 @@ func (im *InterfaceManager) convertDHCPLeaseToIPv4Config(lease *types.DHCPLease)
 		Permanent: false,
 	}
 
-	im.logger.Trace().Interface("ipv4Addr", ipv4Addr).Msg("converted DHCP lease to IPv4Config")
+	im.logger.Trace().
+		Interface("ipv4Addr", ipv4Addr).
+		Interface("lease", lease).
+		Msg("converted DHCP lease to IPv4Config")
 
 	// Create IPv4Config
 	return &ipv4Addr

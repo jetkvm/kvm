@@ -79,7 +79,9 @@ func (l *Lease) SetLeaseExpiry() (time.Time, error) {
 }
 
 // UnmarshalDHCPCLease unmarshals a lease from a string.
-func UnmarshalDHCPCLease(lease *Lease, str string) error {
+func UnmarshalDHCPCLease(obj *Lease, str string) error {
+	lease := &obj.DHCPLease
+
 	// parse the lease file as a map
 	data := make(map[string]string)
 	for line := range strings.SplitSeq(str, "\n") {
@@ -161,7 +163,7 @@ func UnmarshalDHCPCLease(lease *Lease, str string) error {
 		valuesParsed[key] = true
 	}
 
-	lease.setIsEmpty(valuesParsed)
+	obj.setIsEmpty(valuesParsed)
 
 	return nil
 }

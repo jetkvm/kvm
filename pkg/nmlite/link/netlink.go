@@ -419,6 +419,7 @@ func (nm *NetlinkManager) ReconcileLinkAddrs(link *Link, expected []*types.IPAdd
 
 	for _, addr := range expected {
 		ipCidr := addr.Address.IP.String() + "/" + addr.Address.Mask.String()
+		nm.logger.Trace().Str("address", ipCidr).Msg("adding expected address")
 		expectedAddrs[ipCidr] = true
 	}
 

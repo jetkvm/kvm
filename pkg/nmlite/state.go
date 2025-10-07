@@ -46,6 +46,20 @@ func (nm *NetworkManager) GetIPv4Addresses() []string {
 	return []string{}
 }
 
+func (nm *NetworkManager) GetIPv4Address() string {
+	for _, iface := range nm.interfaces {
+		return iface.GetIPv4Address()
+	}
+	return ""
+}
+
+func (nm *NetworkManager) GetIPv6Address() string {
+	for _, iface := range nm.interfaces {
+		return iface.GetIPv6Address()
+	}
+	return ""
+}
+
 func (nm *NetworkManager) GetIPv6Addresses() []string {
 	for _, iface := range nm.interfaces {
 		return iface.GetIPv6Addresses()
@@ -61,19 +75,11 @@ func (nm *NetworkManager) GetMACAddress() string {
 }
 
 func (nm *NetworkManager) IPv4String() string {
-	l := nm.GetIPv4Addresses()
-	if len(l) == 0 {
-		return ""
-	}
-	return l[0]
+	return nm.GetIPv4Address()
 }
 
 func (nm *NetworkManager) IPv6String() string {
-	l := nm.GetIPv6Addresses()
-	if len(l) == 0 {
-		return ""
-	}
-	return l[0]
+	return nm.GetIPv6Address()
 }
 
 func (nm *NetworkManager) MACString() string {
