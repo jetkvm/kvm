@@ -7,6 +7,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/pkg/nmlite/jetdhcpc"
+	"github.com/jetkvm/kvm/pkg/nmlite/udhcpc"
 	"github.com/rs/zerolog"
 	"github.com/vishvananda/netlink"
 )
@@ -68,17 +69,16 @@ func (dc *DHCPClient) SetOnLeaseChange(callback func(lease *types.DHCPLease)) {
 	dc.onLeaseChange = callback
 }
 
-// Start starts the DHCP client
-func (dc *DHCPClient) Start() error {
-	if dc.client != nil {
-		dc.logger.Warn().Msg("DHCP client already started")
-		return nil
+func (dc *DHCPClient) initClient() (types.DHCPClient, error) {
+	if false {
+		return dc.initJetDHCPC()
+	} else {
+		return dc.initUDHCPC()
 	}
+}
 
-	dc.logger.Info().Msg("starting DHCP client")
-
-	// Create the underlying DHCP client
-	client, err := jetdhcpc.NewClient(dc.ctx, []string{dc.ifaceName}, &jetdhcpc.Config{
+func (dc *DHCPClient) initJetDHCPC() (types.DHCPClient, error) {
+	return jetdhcpc.NewClient(dc.ctx, []string{dc.ifaceName}, &jetdhcpc.Config{
 		IPv4: dc.ipv4Enabled,
 		IPv6: dc.ipv6Enabled,
 		OnLease4Change: func(lease *types.DHCPLease) {
@@ -95,6 +95,31 @@ func (dc *DHCPClient) Start() error {
 			return nil
 		},
 	}, dc.logger)
+}
+
+func (dc *DHCPClient) initUDHCPC() (types.DHCPClient, error) {
+	c := udhcpc.NewDHCPClient(&udhcpc.DHCPClientOptions{
+		InterfaceName: dc.ifaceName,
+		PidFile:       "",
+		Logger:        dc.logger,
+		OnLeaseChange: func(lease *types.DHCPLease) {
+			dc.handleLeaseChange(lease, false)
+		},
+	})
+	return c, nil
+}
+
+// Start starts the DHCP client
+func (dc *DHCPClient) Start() error {
+	if dc.client != nil {
+		dc.logger.Warn().Msg("DHCP client already started")
+		return nil
+	}
+
+	dc.logger.Info().Msg("starting DHCP client")
+
+	// Create the underlying DHCP client
+	client, err := dc.initClient()
 
 	if err != nil {
 		return fmt.Errorf("failed to create DHCP client: %w", err)

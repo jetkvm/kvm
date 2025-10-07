@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -26,14 +27,15 @@ type DHCPClient struct {
 	lease         *Lease
 	logger        *zerolog.Logger
 	process       *os.Process
-	onLeaseChange func(lease *Lease)
+	runOnce       sync.Once
+	onLeaseChange func(lease *types.DHCPLease)
 }
 
 type DHCPClientOptions struct {
 	InterfaceName string
 	PidFile       string
 	Logger        *zerolog.Logger
-	OnLeaseChange func(lease *Lease)
+	OnLeaseChange func(lease *types.DHCPLease)
 }
 
 var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
@@ -69,8 +71,8 @@ func (c *DHCPClient) getWatchPaths() []string {
 }
 
 // Run starts the DHCP client and watches the lease file for changes.
-// this isn't a blocking call, and the lease file is reloaded when a change is detected.
-func (c *DHCPClient) Run() error {
+// this is a blocking call.
+func (c *DHCPClient) run() error {
 	err := c.loadLeaseFile()
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -127,7 +129,7 @@ func (c *DHCPClient) Run() error {
 	// 	c.logger.Error().Msg("udhcpc process not found")
 	// }
 
-	// block the goroutine until the lease file is updated
+	// block the goroutine
 	<-make(chan struct{})
 
 	return nil
@@ -184,7 +186,7 @@ func (c *DHCPClient) loadLeaseFile() error {
 			Msg("current dhcp lease expiry time calculated")
 	}
 
-	c.onLeaseChange(lease)
+	c.onLeaseChange(lease.ToDHCPLease())
 
 	c.logger.Info().
 		Str("ip", lease.IPAddress.String()).
@@ -203,12 +205,16 @@ func (c *DHCPClient) Domain() string {
 	return c.lease.Domain
 }
 
-func (c *DHCPClient) Lease4() *Lease {
-	return c.lease
+func (c *DHCPClient) Lease4() *types.DHCPLease {
+	if c.lease == nil {
+		return nil
+	}
+	return c.lease.ToDHCPLease()
 }
 
-func (c *DHCPClient) Lease6() *Lease {
-	return c.lease
+func (c *DHCPClient) Lease6() *types.DHCPLease {
+	// TODO: implement
+	return nil
 }
 
 func (c *DHCPClient) SetIPv4(enabled bool) {
@@ -219,12 +225,20 @@ func (c *DHCPClient) SetIPv6(enabled bool) {
 	// TODO: implement
 }
 
-func (c *DHCPClient) SetOnLeaseChange(callback func(lease *Lease)) {
+func (c *DHCPClient) SetOnLeaseChange(callback func(lease *types.DHCPLease)) {
 	c.onLeaseChange = callback
 }
 
 func (c *DHCPClient) Start() error {
-	return c.Run() // udhcpc already has Run()
+	c.runOnce.Do(func() {
+		go func() {
+			err := c.run()
+			if err != nil {
+				c.logger.Error().Err(err).Msg("failed to run udhcpc")
+			}
+		}()
+	})
+	return nil
 }
 
 func (c *DHCPClient) Stop() error {

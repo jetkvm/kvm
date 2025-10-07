@@ -493,6 +493,10 @@ func (im *InterfaceManager) handleLinkUp() {
 	im.logger.Info().Msg("link up")
 
 	im.applyConfiguration()
+
+	if im.config.IPv4Mode.String == "dhcp" {
+		im.dhcpClient.Renew()
+	}
 }
 
 func (im *InterfaceManager) handleLinkDown() {
