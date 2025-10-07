@@ -87,6 +87,9 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 
 	// Set up DHCP client callbacks
 	im.dhcpClient.SetOnLeaseChange(func(lease *types.DHCPLease) {
+		if err := im.applyDHCPLease(lease); err != nil {
+			im.logger.Error().Err(err).Msg("failed to apply DHCP lease")
+		}
 		im.updateStateFromDHCPLease(lease)
 		if im.onDHCPLeaseChange != nil {
 			im.onDHCPLeaseChange(lease)
@@ -588,44 +591,43 @@ func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
 	}
 }
 
-func (im *InterfaceManager) ReconcileLinkAddrs(ipv4Config *types.IPv4StaticConfig) error {
-	// nl := getNetlinkManager()
-	// return nl.ReconcileLinkAddrs(ipv4Config)
-	return nil
+func (im *InterfaceManager) ReconcileLinkAddrs(addrs []*types.IPAddress) error {
+	nl := getNetlinkManager()
+	link, err := im.link()
+	if err != nil {
+		return fmt.Errorf("failed to get interface: %w", err)
+	}
+	if link == nil {
+		return fmt.Errorf("failed to get interface: %w", err)
+	}
+	return nl.ReconcileLinkAddrs(link, addrs)
 }
 
 // applyDHCPLease applies DHCP lease configuration using ReconcileLinkAddrs
 func (im *InterfaceManager) applyDHCPLease(lease *types.DHCPLease) error {
 	// Convert DHCP lease to IPv4Config
-	// ipv4Config := im.convertDHCPLeaseToIPv4Config(lease)
+	ipv4Config := im.convertDHCPLeaseToIPv4Config(lease)
 
 	// Apply the configuration using ReconcileLinkAddrs
-	// return im.ReconcileLinkAddrs(ipv4Config)
-	return nil
+	return im.ReconcileLinkAddrs([]*types.IPAddress{ipv4Config})
 }
 
 // convertDHCPLeaseToIPv4Config converts a DHCP lease to IPv4Config
-// func (im *InterfaceManager) convertDHCPLeaseToIPv4Config(lease *types.DHCPLease) *netif.IPv4Config {
-// 	// Create IPNet from IP and netmask
-// 	ipNet := &net.IPNet{
-// 		IP:   lease.IPAddress,
-// 		Mask: net.IPMask(lease.Netmask),
-// 	}
+func (im *InterfaceManager) convertDHCPLeaseToIPv4Config(lease *types.DHCPLease) *types.IPAddress {
+	// Create IPNet from IP and netmask
+	ipNet := &net.IPNet{
+		IP:   lease.IPAddress,
+		Mask: net.IPMask(lease.Netmask),
+	}
 
-// 	// Create IPv4Address
-// 	ipv4Addr := netif.IPv4Address{
-// 		Address:   *ipNet,
-// 		Gateway:   lease.Gateway,
-// 		Secondary: false,
-// 		Permanent: false,
-// 	}
+	// Create IPv4Address
+	ipv4Addr := types.IPAddress{
+		Address:   *ipNet,
+		Gateway:   lease.Routers[0],
+		Secondary: false,
+		Permanent: false,
+	}
 
-// 	// Create IPv4Config
-// 	return &netif.IPv4Config{
-// 		Addresses:   []netif.IPv4Address{ipv4Addr},
-// 		Nameservers: lease.DNS,
-// 		SearchList:  lease.SearchList,
-// 		Domain:      lease.Domain,
-// 		Interface:   im.ifaceName,
-// 	}
-// }
+	// Create IPv4Config
+	return &ipv4Addr
+}

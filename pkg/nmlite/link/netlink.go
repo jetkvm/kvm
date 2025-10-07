@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/rs/zerolog"
 	"github.com/vishvananda/netlink"
 )
@@ -239,8 +240,6 @@ func (nm *NetlinkManager) RemoveNonLinkLocalIPv6Addresses(link *Link) error {
 	return nil
 }
 
-// Route operations
-
 // RouteList gets all routes
 func (nm *NetlinkManager) RouteList(link *Link, family int) ([]netlink.Route, error) {
 	nm.mu.RLock()
@@ -330,6 +329,42 @@ func (nm *NetlinkManager) RemoveDefaultRoute(family int) error {
 					nm.logger.Warn().Err(err).Msg("failed to remove IPv6 default route")
 				}
 			}
+		}
+	}
+
+	return nil
+}
+
+func (nm *NetlinkManager) ReconcileLinkAddrs(link *Link, expected []*types.IPAddress) error {
+	existingAddr := make(map[string]bool)
+
+	addrs, err := nm.AddrList(link, AfUnspec)
+	if err != nil {
+		return fmt.Errorf("failed to get addresses: %w", err)
+	}
+
+	for _, addr := range addrs {
+		ipCidr := addr.IP.String() + "/" + addr.IPNet.Mask.String()
+		existingAddr[ipCidr] = true
+	}
+
+	for _, addr := range expected {
+		ipCidr := addr.Address.IP.String() + "/" + addr.Address.Mask.String()
+		if ok := existingAddr[ipCidr]; ok {
+			continue
+		}
+
+		ipNet := &net.IPNet{
+			IP:   addr.Address.IP,
+			Mask: addr.Address.Mask,
+		}
+
+		addr := &netlink.Addr{
+			IPNet: ipNet,
+		}
+
+		if err := nm.AddrAdd(link, addr); err != nil {
+			return fmt.Errorf("failed to add address %s: %w", ipCidr, err)
 		}
 	}
 
