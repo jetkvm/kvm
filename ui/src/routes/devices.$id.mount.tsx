@@ -374,8 +374,8 @@ function UrlView({
       icon: FedoraIcon,
     },
     {
-      name: "openSUSE Leap 15.6",
-      url: "https://download.opensuse.org/distribution/leap/15.6/iso/openSUSE-Leap-15.6-NET-x86_64-Media.iso",
+      name: "openSUSE Leap 16.0",
+      url: "https://download.opensuse.org/distribution/leap/16.0/offline/Leap-16.0-online-installer-x86_64.install.iso",
       icon: OpenSUSEIcon,
     },
     {
