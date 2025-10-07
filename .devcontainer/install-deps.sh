@@ -61,3 +61,4 @@ else
     echo "Warning: Audio dependencies script not found at ${AUDIO_DEPS_SCRIPT}"
     echo "Skipping audio dependencies installation."
 fi
+rm -rf "${BUILDKIT_TMPDIR}"
