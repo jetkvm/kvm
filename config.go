@@ -105,6 +105,7 @@ type Config struct {
 	NetworkConfig        *network.NetworkConfig `json:"network_config"`
 	DefaultLogLevel      string                 `json:"default_log_level"`
 	AudioOutputSource    string                 `json:"audio_output_source"` // "hdmi" or "usb"
+	AudioMode            string                 `json:"audio_mode"`          // "subprocess" or "in-process"
 }
 
 func (c *Config) GetDisplayRotation() uint16 {
@@ -165,6 +166,7 @@ var defaultConfig = &Config{
 	NetworkConfig:     &network.NetworkConfig{},
 	DefaultLogLevel:   "INFO",
 	AudioOutputSource: "usb",
+	AudioMode:         "subprocess", // Default to subprocess mode for stability
 }
 
 var (
