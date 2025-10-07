@@ -221,6 +221,13 @@ export default function DhcpLeaseCard({
                   </span>
                 </div>
               )}
+
+              {networkState?.dhcp_lease?.dhcp_client && (
+                <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                  <span className="text-sm text-slate-600 dark:text-slate-400">DHCP Client</span>
+                  <span className="text-sm font-medium">{networkState?.dhcp_lease?.dhcp_client}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

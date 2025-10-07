@@ -169,6 +169,9 @@ func (t *TimeSync) doTimeSync() {
 }
 
 func (t *TimeSync) Sync() error {
+	t.syncLock.Lock()
+	defer t.syncLock.Unlock()
+
 	var (
 		now    *time.Time
 		offset *time.Duration

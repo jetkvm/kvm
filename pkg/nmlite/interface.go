@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sync"
+
 	"time"
+
+	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/logging"
@@ -78,7 +80,7 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 	}
 
 	// create the dhcp client
-	im.dhcpClient, err = NewDHCPClient(ctx, ifaceName, &scopedLogger)
+	im.dhcpClient, err = NewDHCPClient(ctx, ifaceName, &scopedLogger, config.DHCPClient.String)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DHCP client: %w", err)
 	}
@@ -562,7 +564,6 @@ func (im *InterfaceManager) monitorInterfaceState() {
 	defer im.wg.Done()
 
 	im.logger.Debug().Msg("monitoring interface state")
-
 	// TODO: use netlink subscription instead of polling
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -574,7 +575,6 @@ func (im *InterfaceManager) monitorInterfaceState() {
 		case <-im.stopCh:
 			return
 		case <-ticker.C:
-			im.logger.Debug().Msg("checking interface state")
 			if err := im.updateInterfaceState(); err != nil {
 				im.logger.Error().Err(err).Msg("failed to update interface state")
 			}
@@ -727,12 +727,9 @@ func (im *InterfaceManager) applyDHCPLease(lease *types.DHCPLease) error {
 
 // convertDHCPLeaseToIPv4Config converts a DHCP lease to IPv4Config
 func (im *InterfaceManager) convertDHCPLeaseToIPv4Config(lease *types.DHCPLease) *types.IPAddress {
-	mask := lease.Netmask
-
-	// Create IPNet from IP and netmask
-	ipNet := &net.IPNet{
-		IP:   lease.IPAddress,
-		Mask: net.IPv4Mask(mask[12], mask[13], mask[14], mask[15]),
+	ipNet := lease.IPNet()
+	if ipNet == nil {
+		return nil
 	}
 
 	// Create IPv4Address

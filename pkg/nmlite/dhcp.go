@@ -14,25 +14,23 @@ import (
 
 // DHCPClient wraps the dhclient package for use in the network manager
 type DHCPClient struct {
-	ctx       context.Context
-	ifaceName string
-	logger    *zerolog.Logger
-	client    types.DHCPClient
-	link      netlink.Link
+	ctx        context.Context
+	ifaceName  string
+	logger     *zerolog.Logger
+	client     types.DHCPClient
+	clientType string
+	link       netlink.Link
 
 	// Configuration
 	ipv4Enabled bool
 	ipv6Enabled bool
-
-	// State management
-	// stateManager *DHCPStateManager
 
 	// Callbacks
 	onLeaseChange func(lease *types.DHCPLease)
 }
 
 // NewDHCPClient creates a new DHCP client
-func NewDHCPClient(ctx context.Context, ifaceName string, logger *zerolog.Logger) (*DHCPClient, error) {
+func NewDHCPClient(ctx context.Context, ifaceName string, logger *zerolog.Logger, clientType string) (*DHCPClient, error) {
 	if ifaceName == "" {
 		return nil, fmt.Errorf("interface name cannot be empty")
 	}
@@ -42,9 +40,10 @@ func NewDHCPClient(ctx context.Context, ifaceName string, logger *zerolog.Logger
 	}
 
 	return &DHCPClient{
-		ctx:       ctx,
-		ifaceName: ifaceName,
-		logger:    logger,
+		ctx:        ctx,
+		ifaceName:  ifaceName,
+		logger:     logger,
+		clientType: clientType,
 	}, nil
 }
 
@@ -70,10 +69,13 @@ func (dc *DHCPClient) SetOnLeaseChange(callback func(lease *types.DHCPLease)) {
 }
 
 func (dc *DHCPClient) initClient() (types.DHCPClient, error) {
-	if false {
+	switch dc.clientType {
+	case "jetdhcpc":
 		return dc.initJetDHCPC()
-	} else {
+	case "udhcpc":
 		return dc.initUDHCPC()
+	default:
+		return nil, fmt.Errorf("invalid client type: %s", dc.clientType)
 	}
 }
 
@@ -204,8 +206,11 @@ func (dc *DHCPClient) handleLeaseChange(lease *types.DHCPLease, isIPv6 bool) {
 		Str("ip", lease.IPAddress.String()).
 		Msg("DHCP lease changed")
 
+	// copy the lease to avoid race conditions
+	leaseCopy := *lease
+
 	// Notify callback
 	if dc.onLeaseChange != nil {
-		dc.onLeaseChange(lease)
+		dc.onLeaseChange(&leaseCopy)
 	}
 }

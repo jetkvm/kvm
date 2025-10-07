@@ -690,6 +690,7 @@ export interface DhcpLease {
   message?: string;
   tftp?: string;
   bootfile?: string;
+  dhcp_client?: string;
 }
 
 export interface IPv6Address {

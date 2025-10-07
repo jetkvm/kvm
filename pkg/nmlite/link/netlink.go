@@ -10,8 +10,9 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/rs/zerolog"

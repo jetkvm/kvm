@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"slices"
-	"sync"
+
 	"time"
+
+	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/insomniacslk/dhcp/dhcpv4"

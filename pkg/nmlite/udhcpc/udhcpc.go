@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sync"
+
 	"time"
+
+	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/jetkvm/kvm/internal/network/types"

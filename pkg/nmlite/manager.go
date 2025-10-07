@@ -6,7 +6,8 @@ package nmlite
 import (
 	"context"
 	"fmt"
-	"sync"
+
+	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"

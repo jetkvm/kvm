@@ -45,6 +45,8 @@ type IPv6StaticConfig struct {
 
 // NetworkConfig represents the complete network configuration for an interface
 type NetworkConfig struct {
+	DHCPClient null.String `json:"dhcp_client,omitempty" one_of:"jetdhcpc,udhcpc" default:"jetdhcpc"`
+
 	Hostname  null.String `json:"hostname,omitempty" validate_type:"hostname"`
 	HTTPProxy null.String `json:"http_proxy,omitempty" validate_type:"proxy"`
 	Domain    null.String `json:"domain,omitempty" validate_type:"hostname"`
@@ -145,6 +147,7 @@ type DHCPLease struct {
 	LeaseExpiry       *time.Time    `json:"lease_expiry,omitempty"`                    // The expiry time of the lease
 
 	InterfaceName string `json:"interface_name,omitempty"` // The name of the interface
+	DHCPClient    string `json:"dhcp_client,omitempty"`    // The DHCP client that obtained the lease
 }
 
 // InterfaceState represents the current state of a network interface
@@ -173,6 +176,31 @@ type NetworkConfigInterface interface {
 	IPv6Addresses() []IPAddress
 }
 
+// IsIPv6 returns true if the DHCP lease is for an IPv6 address
 func (d *DHCPLease) IsIPv6() bool {
 	return d.IPAddress.To4() == nil
+}
+
+// IPMask returns the IP mask for the DHCP lease
+func (d *DHCPLease) IPMask() net.IPMask {
+	if d.IsIPv6() {
+		// TODO: not implemented
+		return nil
+	}
+
+	mask := net.ParseIP(d.Netmask.String())
+	return net.IPv4Mask(mask[12], mask[13], mask[14], mask[15])
+}
+
+// IPNet returns the IP net for the DHCP lease
+func (d *DHCPLease) IPNet() *net.IPNet {
+	if d.IsIPv6() {
+		// TODO: not implemented
+		return nil
+	}
+
+	return &net.IPNet{
+		IP:   d.IPAddress,
+		Mask: d.IPMask(),
+	}
 }

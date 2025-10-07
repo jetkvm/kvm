@@ -6,7 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"sync"
+
+	"github.com/jetkvm/kvm/internal/sync"
 
 	"github.com/rs/zerolog"
 	"golang.org/x/net/idna"

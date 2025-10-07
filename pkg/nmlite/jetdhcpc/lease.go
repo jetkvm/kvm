@@ -33,7 +33,9 @@ type Lease struct {
 
 // ToDHCPLease converts a lease to a DHCP lease.
 func (l *Lease) ToDHCPLease() *types.DHCPLease {
-	return &l.DHCPLease
+	lease := &l.DHCPLease
+	lease.DHCPClient = "jetdhcpc"
+	return lease
 }
 
 // fromNclient4Lease creates a lease from a nclient4.Lease.
@@ -45,9 +47,9 @@ func fromNclient4Lease(l *nclient4.Lease, iface string) *Lease {
 	// only the fields that we need are set
 	lease.Routers = l.ACK.Router()
 	lease.IPAddress = l.ACK.YourIPAddr
+
 	lease.Netmask = net.IP(l.ACK.SubnetMask())
 	lease.Broadcast = l.ACK.BroadcastAddress()
-	// lease.MTU = int(resp.Options.Get(dhcpv4.OptionInterfaceMTU))
 
 	lease.NTPServers = l.ACK.NTPServers()
 
