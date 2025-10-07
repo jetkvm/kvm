@@ -22,6 +22,7 @@ type InterfaceManager struct {
 	config    *types.NetworkConfig
 	logger    *zerolog.Logger
 	state     *types.InterfaceState
+	linkState *link.Link
 	stateMu   sync.RWMutex
 
 	// Network components
@@ -107,6 +108,14 @@ func (im *InterfaceManager) Start() error {
 	im.wg.Add(1)
 	go im.monitorInterfaceState()
 
+	nl := getNetlinkManager()
+	nl.AddLinkStateCallback(im.ifaceName, link.LinkStateCallback{
+		Async: true,
+		Func: func(link *link.Link) {
+			im.handleLinkStateChange(link)
+		},
+	})
+
 	// Apply initial configuration
 	if err := im.applyConfiguration(); err != nil {
 		im.logger.Error().Err(err).Msg("failed to apply initial configuration")
@@ -187,6 +196,10 @@ func (im *InterfaceManager) GetConfig() *types.NetworkConfig {
 	// Return a copy to avoid race conditions
 	config := *im.config
 	return &config
+}
+
+func (im *InterfaceManager) ApplyConfiguration() error {
+	return im.applyConfiguration()
 }
 
 // SetConfig updates the interface configuration
@@ -446,12 +459,57 @@ func (im *InterfaceManager) getDomain() string {
 
 	// Try to get domain from DHCP lease
 	if im.dhcpClient != nil {
-		if lease := im.dhcpClient.GetLease4(); lease != nil && lease.Domain != "" {
+		if lease := im.dhcpClient.Lease4(); lease != nil && lease.Domain != "" {
 			return lease.Domain
 		}
 	}
 
 	return "local"
+}
+
+func (im *InterfaceManager) handleLinkStateChange(link *link.Link) {
+	{
+		im.stateMu.Lock()
+		defer im.stateMu.Unlock()
+
+		if link.IsSame(im.linkState) {
+			return
+		}
+
+		im.linkState = link
+	}
+
+	im.logger.Info().Interface("link", link).Msg("link state changed")
+
+	operState := link.Attrs().OperState
+	if operState == netlink.OperUp {
+		im.handleLinkUp()
+	} else {
+		im.handleLinkDown()
+	}
+}
+
+func (im *InterfaceManager) handleLinkUp() {
+	im.logger.Info().Msg("link up")
+
+	im.applyConfiguration()
+}
+
+func (im *InterfaceManager) handleLinkDown() {
+	im.logger.Info().Msg("link down")
+
+	if im.config.IPv4Mode.String == "dhcp" {
+		im.dhcpClient.Stop()
+	}
+
+	netlinkMgr := getNetlinkManager()
+	if err := netlinkMgr.RemoveAllAddresses(im.linkState, link.AfInet); err != nil {
+		im.logger.Error().Err(err).Msg("failed to remove all IPv4 addresses")
+	}
+
+	if err := netlinkMgr.RemoveNonLinkLocalIPv6Addresses(im.linkState); err != nil {
+		im.logger.Error().Err(err).Msg("failed to remove non-link-local IPv6 addresses")
+	}
 }
 
 // monitorInterfaceState monitors the interface state and updates accordingly
@@ -477,6 +535,7 @@ func (im *InterfaceManager) monitorInterfaceState() {
 			}
 		}
 	}
+
 }
 
 // updateInterfaceState updates the current interface state

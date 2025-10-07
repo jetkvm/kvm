@@ -50,10 +50,18 @@ var (
 	ErrInterfaceUpCanceled = errors.New("context canceled while waiting for an interface to come up")
 )
 
+type LinkStateCallbackFunction func(link *Link)
+type LinkStateCallback struct {
+	Async bool
+	Func  LinkStateCallbackFunction
+}
+
 // NetlinkManager provides centralized netlink operations
 type NetlinkManager struct {
-	logger *zerolog.Logger
-	mu     sync.RWMutex
+	logger             *zerolog.Logger
+	linkStateCh        chan netlink.LinkUpdate
+	mu                 sync.RWMutex
+	linkStateCallbacks map[string][]LinkStateCallback
 }
 
 // Link is a wrapper around netlink.Link
@@ -70,12 +78,44 @@ func (l *Link) AddrList(family int) ([]netlink.Addr, error) {
 	return netlink.AddrList(l, family)
 }
 
+func (l *Link) IsSame(other *Link) bool {
+	if l == nil || other == nil {
+		return false
+	}
+
+	a := l.Attrs()
+	b := other.Attrs()
+	if a.OperState != b.OperState {
+		return false
+	}
+	if a.Index != b.Index {
+		return false
+	}
+	if a.MTU != b.MTU {
+		return false
+	}
+	if a.HardwareAddr.String() != b.HardwareAddr.String() {
+		return false
+	}
+	return true
+}
+
+func newNetlinkManager(logger *zerolog.Logger) *NetlinkManager {
+	if logger == nil {
+		logger = &zerolog.Logger{} // Default no-op logger
+	}
+	n := &NetlinkManager{
+		logger:             logger,
+		linkStateCallbacks: make(map[string][]LinkStateCallback),
+	}
+	n.monitorLinkState()
+	return n
+}
+
 // GetNetlinkManager returns the singleton NetlinkManager instance
 func GetNetlinkManager() *NetlinkManager {
 	netlinkManagerOnce.Do(func() {
-		netlinkManagerInstance = &NetlinkManager{
-			logger: &zerolog.Logger{}, // Default no-op logger
-		}
+		netlinkManagerInstance = newNetlinkManager(nil)
 	})
 	return netlinkManagerInstance
 }
@@ -83,18 +123,56 @@ func GetNetlinkManager() *NetlinkManager {
 // InitializeNetlinkManager initializes the singleton NetlinkManager with a logger
 func InitializeNetlinkManager(logger *zerolog.Logger) *NetlinkManager {
 	netlinkManagerOnce.Do(func() {
-		if logger == nil {
-			// Create a no-op logger if none provided
-			logger = &zerolog.Logger{}
-		}
-		netlinkManagerInstance = &NetlinkManager{
-			logger: logger,
-		}
+		netlinkManagerInstance = newNetlinkManager(logger)
 	})
 	return netlinkManagerInstance
 }
 
+func (nm *NetlinkManager) runCallbacks(update netlink.LinkUpdate) {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
+
+	ifname := update.Link.Attrs().Name
+	callbacks, ok := nm.linkStateCallbacks[ifname]
+
+	l := nm.logger.With().Str("interface", ifname).Logger()
+	if !ok {
+		l.Trace().Msg("no callbacks for interface")
+		return
+	}
+	for _, callback := range callbacks {
+		l.Trace().Interface("callback", callback).Msg("calling callback")
+
+		if callback.Async {
+			go callback.Func(&Link{Link: update.Link})
+		} else {
+			callback.Func(&Link{Link: update.Link})
+		}
+	}
+}
+
+// AddLinkStateCallback adds a callback for link state changes
+func (nm *NetlinkManager) AddLinkStateCallback(ifname string, callback LinkStateCallback) {
+	nm.mu.Lock()
+	defer nm.mu.Unlock()
+	nm.linkStateCallbacks[ifname] = append(nm.linkStateCallbacks[ifname], callback)
+}
+
 // Interface operations
+func (nm *NetlinkManager) monitorLinkState() {
+	updateCh := make(chan netlink.LinkUpdate)
+	// we don't need to stop the subscription, as it will be closed when the program exits
+	stopCh := make(chan struct{}) //nolint:unused
+	netlink.LinkSubscribe(updateCh, stopCh)
+
+	nm.logger.Info().Msg("link state monitoring started")
+
+	go func() {
+		for update := range updateCh {
+			nm.runCallbacks(update)
+		}
+	}()
+}
 
 // GetLinkByName gets a network link by name
 func (nm *NetlinkManager) GetLinkByName(name string) (*Link, error) {

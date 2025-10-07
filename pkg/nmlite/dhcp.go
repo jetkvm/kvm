@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jetkvm/kvm/internal/network/types"
-	"github.com/jetkvm/kvm/pkg/nmlite/dhclient"
+	"github.com/jetkvm/kvm/pkg/nmlite/jetdhcpc"
 	"github.com/rs/zerolog"
 	"github.com/vishvananda/netlink"
 )
@@ -16,7 +16,7 @@ type DHCPClient struct {
 	ctx       context.Context
 	ifaceName string
 	logger    *zerolog.Logger
-	client    *dhclient.Client
+	client    types.DHCPClient
 	link      netlink.Link
 
 	// Configuration
@@ -39,9 +39,6 @@ func NewDHCPClient(ctx context.Context, ifaceName string, logger *zerolog.Logger
 	if logger == nil {
 		return nil, fmt.Errorf("logger cannot be nil")
 	}
-
-	// Create state manager
-	// stateManager := NewDHCPStateManager("", logger)
 
 	return &DHCPClient{
 		ctx:       ctx,
@@ -81,13 +78,13 @@ func (dc *DHCPClient) Start() error {
 	dc.logger.Info().Msg("starting DHCP client")
 
 	// Create the underlying DHCP client
-	client, err := dhclient.NewClient(dc.ctx, []string{dc.ifaceName}, &dhclient.Config{
+	client, err := jetdhcpc.NewClient(dc.ctx, []string{dc.ifaceName}, &jetdhcpc.Config{
 		IPv4: dc.ipv4Enabled,
 		IPv6: dc.ipv6Enabled,
-		OnLease4Change: func(lease *dhclient.Lease) {
+		OnLease4Change: func(lease *types.DHCPLease) {
 			dc.handleLeaseChange(lease, false)
 		},
-		OnLease6Change: func(lease *dhclient.Lease) {
+		OnLease6Change: func(lease *types.DHCPLease) {
 			dc.handleLeaseChange(lease, true)
 		},
 		UpdateResolvConf: func(nameservers []string) error {
@@ -113,6 +110,27 @@ func (dc *DHCPClient) Start() error {
 
 	dc.logger.Info().Msg("DHCP client started")
 	return nil
+}
+
+func (dc *DHCPClient) Domain() string {
+	if dc.client == nil {
+		return ""
+	}
+	return dc.client.Domain()
+}
+
+func (dc *DHCPClient) Lease4() *types.DHCPLease {
+	if dc.client == nil {
+		return nil
+	}
+	return dc.client.Lease4()
+}
+
+func (dc *DHCPClient) Lease6() *types.DHCPLease {
+	if dc.client == nil {
+		return nil
+	}
+	return dc.client.Lease6()
 }
 
 // Stop stops the DHCP client
@@ -150,62 +168,19 @@ func (dc *DHCPClient) Release() error {
 	return nil
 }
 
-// GetLease4 returns the current IPv4 lease
-func (dc *DHCPClient) GetLease4() *types.DHCPLease {
-	if dc.client == nil {
-		return nil
-	}
-
-	lease := dc.client.Lease4()
-	if lease == nil {
-		return nil
-	}
-
-	return dc.convertLease(lease, false)
-}
-
-// GetLease6 returns the current IPv6 lease
-func (dc *DHCPClient) GetLease6() *types.DHCPLease {
-	if dc.client == nil {
-		return nil
-	}
-
-	lease := dc.client.Lease6()
-	if lease == nil {
-		return nil
-	}
-
-	return dc.convertLease(lease, true)
-}
-
 // handleLeaseChange handles lease changes from the underlying DHCP client
-func (dc *DHCPClient) handleLeaseChange(lease *dhclient.Lease, isIPv6 bool) {
+func (dc *DHCPClient) handleLeaseChange(lease *types.DHCPLease, isIPv6 bool) {
 	if lease == nil {
-		return
-	}
-
-	convertedLease := dc.convertLease(lease, isIPv6)
-	if convertedLease == nil {
-		dc.logger.Error().Msg("failed to convert lease")
 		return
 	}
 
 	dc.logger.Info().
 		Bool("ipv6", isIPv6).
-		Str("ip", convertedLease.IPAddress.String()).
+		Str("ip", lease.IPAddress.String()).
 		Msg("DHCP lease changed")
 
 	// Notify callback
 	if dc.onLeaseChange != nil {
-		dc.onLeaseChange(convertedLease)
+		dc.onLeaseChange(lease)
 	}
-}
-
-// convertLease converts a dhclient.Lease to types.DHCPLease
-func (dc *DHCPClient) convertLease(lease *dhclient.Lease, isIPv6 bool) *types.DHCPLease {
-	if lease == nil {
-		return nil
-	}
-
-	return lease.ToDHCPLease()
 }

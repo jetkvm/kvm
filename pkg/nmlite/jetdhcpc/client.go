@@ -1,4 +1,4 @@
-package dhclient
+package jetdhcpc
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv6"
+	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
 	"github.com/rs/zerolog"
 )
@@ -27,7 +28,7 @@ var (
 	ErrInterfaceUpCanceled = errors.New("context canceled while waiting for an interface to come up")
 )
 
-type LeaseChangeHandler func(lease *Lease)
+type LeaseChangeHandler func(lease *types.DHCPLease)
 
 // Config is a DHCP client configuration.
 type Config struct {
@@ -81,6 +82,7 @@ type Config struct {
 }
 
 type Client struct {
+	types.DHCPClient
 	ifaces []string
 	cfg    Config
 	l      *zerolog.Logger
@@ -153,6 +155,34 @@ func (c *Client) sendInitialRequests() chan interface{} {
 	return c.sendRequests(c.cfg.IPv4, c.cfg.IPv6)
 }
 
+func (c *Client) sendRequestsFamily(
+	family int,
+	wg *sync.WaitGroup,
+	r *chan interface{},
+	l *zerolog.Logger,
+	iface *link.Link,
+) {
+	wg.Add(1)
+	go func(iface *link.Link) {
+		defer wg.Done()
+		var (
+			lease *Lease
+			err   error
+		)
+		switch family {
+		case link.AfInet:
+			lease, err = c.requestLease4(iface)
+		case link.AfInet6:
+			lease, err = c.requestLease6(iface)
+		}
+		if err != nil {
+			l.Error().Err(err).Msg("Could not get lease")
+			return
+		}
+		(*r) <- lease
+	}(iface)
+}
+
 func (c *Client) sendRequests(ipv4, ipv6 bool) chan interface{} {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -175,30 +205,11 @@ func (c *Client) sendRequests(ipv4, ipv6 bool) chan interface{} {
 			}
 
 			if ipv4 {
-				wg.Add(1)
-				go func(iface *link.Link) {
-					defer wg.Done()
-					lease, err := c.requestLease4(iface)
-					if err != nil {
-						l.Error().Err(err).Msg("Could not get IPv4 lease")
-						return
-					}
-					r <- lease
-				}(iface)
+				c.sendRequestsFamily(link.AfInet, &wg, &r, &l, iface)
 			}
 
 			if ipv6 {
-				return // TODO: implement DHCP6
-				wg.Add(1)
-				go func(iface *link.Link) {
-					defer wg.Done()
-					lease, err := c.requestLease6(iface)
-					if err != nil {
-						l.Error().Err(err).Msg("Could not get IPv6 lease")
-						return
-					}
-					r <- lease
-				}(iface)
+				c.sendRequestsFamily(link.AfInet6, &wg, &r, &l, iface)
 			}
 		}(iface)
 	}
@@ -210,18 +221,26 @@ func (c *Client) sendRequests(ipv4, ipv6 bool) chan interface{} {
 	return r
 }
 
-func (c *Client) Lease4() *Lease {
+func (c *Client) Lease4() *types.DHCPLease {
 	c.lease4Mu.Lock()
 	defer c.lease4Mu.Unlock()
 
-	return c.currentLease4
+	if c.currentLease4 == nil {
+		return nil
+	}
+
+	return c.currentLease4.ToDHCPLease()
 }
 
-func (c *Client) Lease6() *Lease {
+func (c *Client) Lease6() *types.DHCPLease {
 	c.lease6Mu.Lock()
 	defer c.lease6Mu.Unlock()
 
-	return c.currentLease6
+	if c.currentLease6 == nil {
+		return nil
+	}
+
+	return c.currentLease6.ToDHCPLease()
 }
 
 func (c *Client) Domain() string {
@@ -288,11 +307,11 @@ func (c *Client) handleLeaseChange(lease *Lease) {
 
 	// TODO: handle lease expiration
 	if c.cfg.OnLease4Change != nil && ipv4 {
-		c.cfg.OnLease4Change(lease)
+		c.cfg.OnLease4Change(lease.ToDHCPLease())
 	}
 
 	if c.cfg.OnLease6Change != nil && !ipv4 {
-		c.cfg.OnLease6Change(lease)
+		c.cfg.OnLease6Change(lease.ToDHCPLease())
 	}
 }
 
@@ -304,12 +323,14 @@ func (c *Client) renew() {
 	}
 }
 
-func (c *Client) Renew() {
+func (c *Client) Renew() error {
 	go c.renew()
+	return nil
 }
 
-func (c *Client) Release() {
+func (c *Client) Release() error {
 	// TODO: implement
+	return nil
 }
 
 func (c *Client) SetIPv4(ipv4 bool) {

@@ -1,5 +1,4 @@
-// Package nmlite provides DHCP state persistence for the network manager.
-package dhclient
+package jetdhcpc
 
 import (
 	"encoding/json"

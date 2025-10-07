@@ -1,4 +1,4 @@
-package dhclient
+package jetdhcpc
 
 import (
 	"github.com/insomniacslk/dhcp/dhcpv4"

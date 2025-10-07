@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/rs/zerolog"
 )
 
@@ -18,6 +19,7 @@ const (
 )
 
 type DHCPClient struct {
+	types.DHCPClient
 	InterfaceName string
 	leaseFile     string
 	pidFile       string
@@ -195,4 +197,36 @@ func (c *DHCPClient) loadLeaseFile() error {
 
 func (c *DHCPClient) GetLease() *Lease {
 	return c.lease
+}
+
+func (c *DHCPClient) Domain() string {
+	return c.lease.Domain
+}
+
+func (c *DHCPClient) Lease4() *Lease {
+	return c.lease
+}
+
+func (c *DHCPClient) Lease6() *Lease {
+	return c.lease
+}
+
+func (c *DHCPClient) SetIPv4(enabled bool) {
+	// TODO: implement
+}
+
+func (c *DHCPClient) SetIPv6(enabled bool) {
+	// TODO: implement
+}
+
+func (c *DHCPClient) SetOnLeaseChange(callback func(lease *Lease)) {
+	c.onLeaseChange = callback
+}
+
+func (c *DHCPClient) Start() error {
+	return c.Run() // udhcpc already has Run()
+}
+
+func (c *DHCPClient) Stop() error {
+	return c.KillProcess() // udhcpc already has KillProcess()
 }
