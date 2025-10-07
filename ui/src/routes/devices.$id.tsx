@@ -15,7 +15,7 @@ import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
 import useWebSocket from "react-use-websocket";
 
-import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import { CLOUD_API, DEVICE_API, OPUS_STEREO_PARAMS } from "@/ui.config";
 import api from "@/api";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import { cx } from "@/cva.config";
@@ -191,19 +191,18 @@ export default function KvmIdRoute() {
           console.warn("[SDP] Opus 48kHz stereo not found in answer - stereo may not work");
         } else {
           const pt = opusMatch[1];
-          const stereoParams = 'stereo=1;sprop-stereo=1;maxaveragebitrate=128000;usedtx=1;useinbandfec=1';
           const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, 'i');
           const fmtpMatch = remoteDescription.sdp.match(fmtpRegex);
 
           if (fmtpMatch && !fmtpMatch[1].includes('stereo=')) {
             remoteDescription.sdp = remoteDescription.sdp.replace(
               fmtpRegex,
-              `a=fmtp:${pt} ${fmtpMatch[1]};${stereoParams}`
+              `a=fmtp:${pt} ${fmtpMatch[1]};${OPUS_STEREO_PARAMS}`
             );
           } else if (!fmtpMatch) {
             remoteDescription.sdp = remoteDescription.sdp.replace(
               opusMatch[0],
-              `${opusMatch[0]}\r\na=fmtp:${pt} ${stereoParams}`
+              `${opusMatch[0]}\r\na=fmtp:${pt} ${OPUS_STEREO_PARAMS}`
             );
           }
         }
@@ -463,18 +462,17 @@ export default function KvmIdRoute() {
             console.warn("[SDP] Opus 48kHz stereo not found in offer - stereo may not work");
           } else {
             const pt = opusMatch[1];
-            const stereoParams = 'stereo=1;sprop-stereo=1;maxaveragebitrate=128000;usedtx=1;useinbandfec=1';
             const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+(.+)`, 'i');
             const fmtpMatch = offer.sdp.match(fmtpRegex);
 
             if (fmtpMatch) {
               // Modify existing fmtp line
               if (!fmtpMatch[1].includes('stereo=')) {
-                offer.sdp = offer.sdp.replace(fmtpRegex, `a=fmtp:${pt} ${fmtpMatch[1]};${stereoParams}`);
+                offer.sdp = offer.sdp.replace(fmtpRegex, `a=fmtp:${pt} ${fmtpMatch[1]};${OPUS_STEREO_PARAMS}`);
               }
             } else {
               // Add new fmtp line after rtpmap
-              offer.sdp = offer.sdp.replace(opusMatch[0], `${opusMatch[0]}\r\na=fmtp:${pt} ${stereoParams}`);
+              offer.sdp = offer.sdp.replace(opusMatch[0], `${opusMatch[0]}\r\na=fmtp:${pt} ${OPUS_STEREO_PARAMS}`);
             }
           }
         }
