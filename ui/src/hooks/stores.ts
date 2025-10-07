@@ -351,6 +351,12 @@ export interface SettingsState {
   setVideoBrightness: (value: number) => void;
   videoContrast: number;
   setVideoContrast: (value: number) => void;
+
+  // Audio settings
+  audioOutputSource: string;
+  audioMode: string;
+  audioOutputEnabled: boolean;
+  audioInputEnabled: boolean;
 }
 
 export const useSettingsStore = create(
@@ -396,6 +402,12 @@ export const useSettingsStore = create(
       setVideoBrightness: (value: number) => set({ videoBrightness: value }),
       videoContrast: 1.0,
       setVideoContrast: (value: number) => set({ videoContrast: value }),
+
+      // Audio settings with defaults
+      audioOutputSource: "usb",
+      audioMode: "subprocess",
+      audioOutputEnabled: true,
+      audioInputEnabled: true,
     }),
     {
       name: "settings",

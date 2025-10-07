@@ -5,6 +5,7 @@ import {
   LuMouse,
   LuKeyboard,
   LuVideo,
+  LuVolume2,
   LuCpu,
   LuShieldCheck,
   LuWrench,
@@ -165,6 +166,17 @@ export default function SettingsRoute() {
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuVideo className="h-4 w-4 shrink-0" />
                       <h1>Video</h1>
+                    </div>
+                  </NavLink>
+                </div>
+                <div className="shrink-0">
+                  <NavLink
+                    to="audio"
+                    className={({ isActive }) => (isActive ? "active" : "")}
+                  >
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
+                      <LuVolume2 className="h-4 w-4 shrink-0" />
+                      <h1>Audio</h1>
                     </div>
                   </NavLink>
                 </div>
