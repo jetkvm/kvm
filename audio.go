@@ -1,7 +1,6 @@
 package kvm
 
 import (
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -12,15 +11,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const (
-	socketPathOutput = "/var/run/audio_output.sock"
-	socketPathInput  = "/var/run/audio_input.sock"
-)
-
 var (
 	audioMutex           sync.Mutex
-	outputSupervisor     *audio.Supervisor
-	inputSupervisor      *audio.Supervisor
 	outputSource         audio.AudioSource
 	inputSource          audio.AudioSource
 	outputRelay          *audio.OutputRelay
@@ -38,11 +30,6 @@ var (
 func initAudio() {
 	audioLogger = logging.GetDefaultLogger().With().Str("component", "audio-manager").Logger()
 
-	if err := audio.ExtractEmbeddedBinaries(); err != nil {
-		audioLogger.Error().Err(err).Msg("Failed to extract audio binaries")
-		return
-	}
-
 	// Load audio output source from config
 	ensureConfigLoaded()
 	useUSBForAudioOutput = config.AudioOutputSource == "usb"
@@ -57,13 +44,13 @@ func initAudio() {
 	audioInitialized = true
 }
 
-// startAudioSubprocesses starts audio subprocesses and relays (skips already running ones)
-func startAudioSubprocesses() error {
+// startAudio starts audio sources and relays (skips already running ones)
+func startAudio() error {
 	audioMutex.Lock()
 	defer audioMutex.Unlock()
 
 	if !audioInitialized {
-		audioLogger.Warn().Msg("Audio not initialized, skipping subprocess start")
+		audioLogger.Warn().Msg("Audio not initialized, skipping start")
 		return nil
 	}
 
@@ -74,44 +61,8 @@ func startAudioSubprocesses() error {
 			alsaDevice = "hw:1,0" // USB
 		}
 
-		ensureConfigLoaded()
-		audioMode := config.AudioMode
-		if audioMode == "" {
-			audioMode = "subprocess" // Default to subprocess
-		}
-
-		if audioMode == "in-process" {
-			// In-process CGO mode
-			outputSource = audio.NewCgoOutputSource(alsaDevice)
-			audioLogger.Debug().
-				Str("mode", "in-process").
-				Str("device", alsaDevice).
-				Msg("Audio output configured for in-process mode")
-		} else {
-			// Subprocess mode (default)
-			outputSupervisor = audio.NewSupervisor(
-				"audio-output",
-				audio.GetAudioOutputBinaryPath(),
-				socketPathOutput,
-				[]string{
-					"ALSA_CAPTURE_DEVICE=" + alsaDevice,
-					"OPUS_BITRATE=128000",
-					"OPUS_COMPLEXITY=5",
-				},
-			)
-
-			if err := outputSupervisor.Start(); err != nil {
-				audioLogger.Error().Err(err).Msg("Failed to start audio output supervisor")
-				outputSupervisor = nil
-				return err
-			}
-
-			outputSource = audio.NewIPCSource("audio-output", socketPathOutput, 0x4A4B4F55)
-			audioLogger.Debug().
-				Str("mode", "subprocess").
-				Str("device", alsaDevice).
-				Msg("Audio output configured for subprocess mode")
-		}
+		// Create CGO audio source
+		outputSource = audio.NewCgoOutputSource(alsaDevice)
 
 		if currentAudioTrack != nil {
 			outputRelay = audio.NewOutputRelay(outputSource, currentAudioTrack)
@@ -126,42 +77,8 @@ func startAudioSubprocesses() error {
 	if inputSource == nil && audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
 		alsaPlaybackDevice := "hw:1,0" // USB speakers
 
-		audioMode := config.AudioMode
-		if audioMode == "" {
-			audioMode = "subprocess" // Default to subprocess
-		}
-
-		if audioMode == "in-process" {
-			// In-process CGO mode
-			inputSource = audio.NewCgoInputSource(alsaPlaybackDevice)
-			audioLogger.Debug().
-				Str("mode", "in-process").
-				Str("device", alsaPlaybackDevice).
-				Msg("Audio input configured for in-process mode")
-		} else {
-			// Subprocess mode (default)
-			inputSupervisor = audio.NewSupervisor(
-				"audio-input",
-				audio.GetAudioInputBinaryPath(),
-				socketPathInput,
-				[]string{
-					"ALSA_PLAYBACK_DEVICE=hw:1,0",
-					"OPUS_BITRATE=128000",
-				},
-			)
-
-			if err := inputSupervisor.Start(); err != nil {
-				audioLogger.Error().Err(err).Msg("Failed to start input supervisor")
-				inputSupervisor = nil
-				return err
-			}
-
-			inputSource = audio.NewIPCSource("audio-input", socketPathInput, 0x4A4B4D49)
-			audioLogger.Debug().
-				Str("mode", "subprocess").
-				Str("device", alsaPlaybackDevice).
-				Msg("Audio input configured for subprocess mode")
-		}
+		// Create CGO audio source
+		inputSource = audio.NewCgoInputSource(alsaPlaybackDevice)
 
 		inputRelay = audio.NewInputRelay(inputSource)
 		if err := inputRelay.Start(); err != nil {
@@ -172,8 +89,8 @@ func startAudioSubprocesses() error {
 	return nil
 }
 
-// stopOutputSubprocessLocked stops output subprocess (assumes mutex is held)
-func stopOutputSubprocessLocked() {
+// stopOutputLocked stops output audio (assumes mutex is held)
+func stopOutputLocked() {
 	if outputRelay != nil {
 		outputRelay.Stop()
 		outputRelay = nil
@@ -182,14 +99,10 @@ func stopOutputSubprocessLocked() {
 		outputSource.Disconnect()
 		outputSource = nil
 	}
-	if outputSupervisor != nil {
-		outputSupervisor.Stop()
-		outputSupervisor = nil
-	}
 }
 
-// stopInputSubprocessLocked stops input subprocess (assumes mutex is held)
-func stopInputSubprocessLocked() {
+// stopInputLocked stops input audio (assumes mutex is held)
+func stopInputLocked() {
 	if inputRelay != nil {
 		inputRelay.Stop()
 		inputRelay = nil
@@ -198,30 +111,26 @@ func stopInputSubprocessLocked() {
 		inputSource.Disconnect()
 		inputSource = nil
 	}
-	if inputSupervisor != nil {
-		inputSupervisor.Stop()
-		inputSupervisor = nil
-	}
 }
 
-// stopAudioSubprocessesLocked stops all audio subprocesses (assumes mutex is held)
-func stopAudioSubprocessesLocked() {
-	stopOutputSubprocessLocked()
-	stopInputSubprocessLocked()
+// stopAudioLocked stops all audio (assumes mutex is held)
+func stopAudioLocked() {
+	stopOutputLocked()
+	stopInputLocked()
 }
 
-// stopAudioSubprocesses stops all audio subprocesses
-func stopAudioSubprocesses() {
+// stopAudio stops all audio
+func stopAudio() {
 	audioMutex.Lock()
 	defer audioMutex.Unlock()
-	stopAudioSubprocessesLocked()
+	stopAudioLocked()
 }
 
 func onWebRTCConnect() {
 	count := activeConnections.Add(1)
 	if count == 1 {
-		if err := startAudioSubprocesses(); err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to start audio subprocesses")
+		if err := startAudio(); err != nil {
+			audioLogger.Error().Err(err).Msg("Failed to start audio")
 		}
 	}
 }
@@ -230,7 +139,7 @@ func onWebRTCDisconnect() {
 	count := activeConnections.Add(-1)
 	if count == 0 {
 		// Stop audio immediately to release HDMI audio device which shares hardware with video device
-		stopAudioSubprocesses()
+		stopAudio()
 	}
 }
 
@@ -262,6 +171,11 @@ func SetAudioOutputSource(useUSB bool) error {
 		return nil
 	}
 
+	audioLogger.Info().
+		Bool("old_usb", useUSBForAudioOutput).
+		Bool("new_usb", useUSB).
+		Msg("Switching audio output source")
+
 	useUSBForAudioOutput = useUSB
 
 	ensureConfigLoaded()
@@ -275,12 +189,12 @@ func SetAudioOutputSource(useUSB bool) error {
 		return err
 	}
 
-	stopOutputSubprocessLocked()
+	stopOutputLocked()
 
 	// Restart if there are active connections
 	if activeConnections.Load() > 0 {
 		audioMutex.Unlock()
-		err := startAudioSubprocesses()
+		err := startAudio()
 		audioMutex.Lock()
 		if err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to restart audio output")
@@ -288,50 +202,6 @@ func SetAudioOutputSource(useUSB bool) error {
 		}
 	}
 
-	return nil
-}
-
-// SetAudioMode switches between subprocess and in-process audio modes
-func SetAudioMode(mode string) error {
-	if mode != "subprocess" && mode != "in-process" {
-		return fmt.Errorf("invalid audio mode: %s (must be 'subprocess' or 'in-process')", mode)
-	}
-
-	audioMutex.Lock()
-	defer audioMutex.Unlock()
-
-	ensureConfigLoaded()
-	if config.AudioMode == mode {
-		return nil // Already in desired mode
-	}
-
-	audioLogger.Info().
-		Str("old_mode", config.AudioMode).
-		Str("new_mode", mode).
-		Msg("Switching audio mode")
-
-	// Save new mode to config
-	config.AudioMode = mode
-	if err := SaveConfig(); err != nil {
-		audioLogger.Error().Err(err).Msg("Failed to save config")
-		return err
-	}
-
-	// Stop all audio (both output and input)
-	stopAudioSubprocessesLocked()
-
-	// Restart if there are active connections
-	if activeConnections.Load() > 0 {
-		audioMutex.Unlock()
-		err := startAudioSubprocesses()
-		audioMutex.Lock()
-		if err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to restart audio with new mode")
-			return err
-		}
-	}
-
-	audioLogger.Info().Str("mode", mode).Msg("Audio mode switch completed")
 	return nil
 }
 
@@ -353,11 +223,11 @@ func SetAudioOutputEnabled(enabled bool) error {
 
 	if enabled {
 		if activeConnections.Load() > 0 {
-			return startAudioSubprocesses()
+			return startAudio()
 		}
 	} else {
 		audioMutex.Lock()
-		stopOutputSubprocessLocked()
+		stopOutputLocked()
 		audioMutex.Unlock()
 	}
 
@@ -372,11 +242,11 @@ func SetAudioInputEnabled(enabled bool) error {
 
 	if enabled {
 		if activeConnections.Load() > 0 {
-			return startAudioSubprocesses()
+			return startAudio()
 		}
 	} else {
 		audioMutex.Lock()
-		stopInputSubprocessLocked()
+		stopInputLocked()
 		audioMutex.Unlock()
 	}
 

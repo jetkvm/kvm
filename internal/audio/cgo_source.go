@@ -20,6 +20,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+const (
+	ipcMaxFrameSize = 1024 // Max Opus frame size: 128kbps @ 20ms = ~600 bytes
+	ipcMsgTypeOpus  = 0    // Message type for Opus audio data
+)
+
 // CgoSource implements AudioSource via direct CGO calls to C audio functions (in-process)
 type CgoSource struct {
 	direction   string // "output" or "input"
@@ -36,7 +41,7 @@ func NewCgoOutputSource(alsaDevice string) *CgoSource {
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-output-cgo").Logger()
 
 	return &CgoSource{
-		direction: "output",
+		direction:  "output",
 		alsaDevice: alsaDevice,
 		logger:     logger,
 		opusBuf:    make([]byte, ipcMaxFrameSize),
@@ -48,7 +53,7 @@ func NewCgoInputSource(alsaDevice string) *CgoSource {
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-input-cgo").Logger()
 
 	return &CgoSource{
-		direction: "input",
+		direction:  "input",
 		alsaDevice: alsaDevice,
 		logger:     logger,
 		opusBuf:    make([]byte, ipcMaxFrameSize),
@@ -71,15 +76,15 @@ func (c *CgoSource) Connect() error {
 
 		// Initialize constants
 		C.update_audio_constants(
-			C.uint(128000),  // bitrate
-			C.uchar(5),      // complexity
-			C.uint(48000),   // sample_rate
-			C.uchar(2),      // channels
-			C.ushort(960),   // frame_size
-			C.ushort(1500),  // max_packet_size
-			C.uint(1000),    // sleep_us
-			C.uchar(5),      // max_attempts
-			C.uint(500000),  // max_backoff_us
+			C.uint(128000), // bitrate
+			C.uchar(5),     // complexity
+			C.uint(48000),  // sample_rate
+			C.uchar(2),     // channels
+			C.ushort(960),  // frame_size
+			C.ushort(1500), // max_packet_size
+			C.uint(1000),   // sleep_us
+			C.uchar(5),     // max_attempts
+			C.uint(500000), // max_backoff_us
 		)
 
 		// Initialize capture (HDMI/USB → browser)
@@ -88,21 +93,19 @@ func (c *CgoSource) Connect() error {
 			c.logger.Error().Int("rc", int(rc)).Msg("Failed to initialize audio capture")
 			return fmt.Errorf("jetkvm_audio_capture_init failed: %d", rc)
 		}
-
-		c.logger.Debug().Str("device", c.alsaDevice).Msg("Audio capture initialized")
 	} else {
 		// Set playback device for input path via environment variable
 		os.Setenv("ALSA_PLAYBACK_DEVICE", c.alsaDevice)
 
 		// Initialize decoder constants
 		C.update_audio_decoder_constants(
-			C.uint(48000),   // sample_rate
-			C.uchar(2),      // channels
-			C.ushort(960),   // frame_size
-			C.ushort(1500),  // max_packet_size
-			C.uint(1000),    // sleep_us
-			C.uchar(5),      // max_attempts
-			C.uint(500000),  // max_backoff_us
+			C.uint(48000),  // sample_rate
+			C.uchar(2),     // channels
+			C.ushort(960),  // frame_size
+			C.ushort(1500), // max_packet_size
+			C.uint(1000),   // sleep_us
+			C.uchar(5),     // max_attempts
+			C.uint(500000), // max_backoff_us
 		)
 
 		// Initialize playback (browser → USB speakers)
@@ -111,8 +114,6 @@ func (c *CgoSource) Connect() error {
 			c.logger.Error().Int("rc", int(rc)).Msg("Failed to initialize audio playback")
 			return fmt.Errorf("jetkvm_audio_playback_init failed: %d", rc)
 		}
-
-		c.logger.Debug().Str("device", c.alsaDevice).Msg("Audio playback initialized")
 	}
 
 	c.connected = true
@@ -131,10 +132,8 @@ func (c *CgoSource) Disconnect() {
 
 	if c.direction == "output" {
 		C.jetkvm_audio_capture_close()
-		c.logger.Debug().Msg("Audio capture closed")
 	} else {
 		C.jetkvm_audio_playback_close()
-		c.logger.Debug().Msg("Audio playback closed")
 	}
 
 	c.connected = false

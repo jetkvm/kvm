@@ -12,7 +12,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// OutputRelay forwards audio from any AudioSource (CGO or IPC) to WebRTC (browser)
+// OutputRelay forwards audio from AudioSource (CGO) to WebRTC (browser)
 type OutputRelay struct {
 	source     AudioSource
 	audioTrack *webrtc.TrackLocalStaticSample
@@ -109,7 +109,7 @@ func (r *OutputRelay) relayLoop() {
 	}
 }
 
-// InputRelay forwards audio from WebRTC (browser microphone) to subprocess (USB audio)
+// InputRelay forwards audio from WebRTC (browser microphone) to AudioSource (USB audio)
 type InputRelay struct {
 	source  AudioSource
 	ctx     context.Context
