@@ -1021,6 +1021,18 @@ func rpcSetAudioInputEnabled(enabled bool) error {
 	return SetAudioInputEnabled(enabled)
 }
 
+func rpcGetAudioMode() (string, error) {
+	ensureConfigLoaded()
+	if config.AudioMode == "" {
+		return "subprocess", nil // Default
+	}
+	return config.AudioMode, nil
+}
+
+func rpcSetAudioMode(mode string) error {
+	return SetAudioMode(mode)
+}
+
 func rpcSetCloudUrl(apiUrl string, appUrl string) error {
 	currentCloudURL := config.CloudURL
 	config.CloudURL = apiUrl
@@ -1343,6 +1355,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"setAudioOutputEnabled":  {Func: rpcSetAudioOutputEnabled, Params: []string{"enabled"}},
 	"getAudioInputEnabled":   {Func: rpcGetAudioInputEnabled},
 	"setAudioInputEnabled":   {Func: rpcSetAudioInputEnabled, Params: []string{"enabled"}},
+	"getAudioMode":           {Func: rpcGetAudioMode},
+	"setAudioMode":           {Func: rpcSetAudioMode, Params: []string{"mode"}},
 	"setCloudUrl":            {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
 	"getKeyboardLayout":      {Func: rpcGetKeyboardLayout},
 	"setKeyboardLayout":      {Func: rpcSetKeyboardLayout, Params: []string{"layout"}},
