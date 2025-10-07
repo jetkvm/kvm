@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { LuPower, LuTerminal, LuPlugZap } from "react-icons/lu";
 
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { m } from "@localizations/messages.js";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import Card, { GridCard } from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { ATXPowerControl } from "@components/extensions/ATXPowerControl";
@@ -20,20 +21,20 @@ interface Extension {
 const AVAILABLE_EXTENSIONS: Extension[] = [
   {
     id: "atx-power",
-    name: "ATX Power Control",
-    description: "Control your ATX Power extension",
+    name: m.extensions_atx_power_control(),
+    description: m.extensions_atx_power_control_description(),
     icon: LuPower,
   },
   {
     id: "dc-power",
-    name: "DC Power Control",
-    description: "Control your DC Power extension",
+    name: m.extensions_dc_power_control(),
+    description: m.extensions_dc_power_control(),
     icon: LuPlugZap,
   },
   {
     id: "serial-console",
-    name: "Serial Console",
-    description: "Access your serial console extension",
+    name: m.extension_serial_console(),
+    description: m.extension_serial_console_description(),
     icon: LuTerminal,
   },
 ];
@@ -60,7 +61,7 @@ export default function ExtensionPopover() {
     send("setActiveExtension", { extensionId: extension?.id || "" }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to set active extension: ${resp.error.data || "Unknown error"}`,
+          m.extension_popover_set_error_notification({ error: resp.error.data || m.unknown_error() }),
         );
         return;
       }
@@ -101,7 +102,7 @@ export default function ExtensionPopover() {
                   <Button
                     size="SM"
                     theme="light"
-                    text="Unload Extension"
+                    text={m.extension_popover_unload_extension()}
                     onClick={() => handleSetActiveExtension(null)}
                   />
                 </div>
@@ -110,8 +111,8 @@ export default function ExtensionPopover() {
               // Extensions List View
               <div className="space-y-4">
                 <SettingsPageHeader
-                  title="Extensions"
-                  description="Load and manage your extensions"
+                  title={m.extensions_popover_extensions()}
+                  description={m.extension_popover_load_and_manage_extensions()}
                 />
                 <Card className="animate-fadeIn opacity-0" >
                   <div className="w-full divide-y divide-slate-700/30 dark:divide-slate-600/30">
@@ -131,7 +132,7 @@ export default function ExtensionPopover() {
                         <Button
                           size="XS"
                           theme="light"
-                          text="Load"
+                          text={m.load()}
                           onClick={() => handleSetActiveExtension(extension)}
                         />
                       </div>

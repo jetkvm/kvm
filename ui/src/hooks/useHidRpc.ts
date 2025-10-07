@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
 
-import { useRTCStore } from "@/hooks/stores";
+import { useRTCStore } from "@hooks/stores";
 
 import {
   CancelKeyboardMacroReportMessage,
@@ -71,7 +71,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
       }: sendMessageParams = {},
     ) => {
       if (hidRpcDisabled) return;
-    if (rpcHidChannel?.readyState !== "open") return;
+      if (rpcHidChannel?.readyState !== "open") return;
       if (!rpcHidReady && !ignoreHandshakeState) return;
 
       let data: Uint8Array | undefined;
@@ -163,7 +163,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     (message: HandshakeMessage) => {
       if (hidRpcDisabled) return;
 
-    if (!message.version) {
+      if (!message.version) {
         console.error("Received handshake message without version", message);
         return;
       }
@@ -238,7 +238,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
     setRpcHidProtocolVersion,
     sendHandshake,
     handleHandshake,
-      hidRpcDisabled,
+    hidRpcDisabled,
   ]);
 
   return {

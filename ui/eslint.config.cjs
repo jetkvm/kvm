@@ -9,8 +9,6 @@ const {
     fixupConfigRules,
 } = require("@eslint/compat");
 
-const tsParser = require("@typescript-eslint/parser");
-const reactRefresh = require("eslint-plugin-react-refresh");
 const js = require("@eslint/js");
 
 const {
@@ -22,6 +20,9 @@ const compat = new FlatCompat({
     recommendedConfig: js.configs.recommended,
     allConfig: js.configs.all
 });
+
+const tsParser = require("@typescript-eslint/parser");
+const reactRefresh = require("eslint-plugin-react-refresh");
 
 module.exports = defineConfig([{
     languageOptions: {
@@ -66,7 +67,7 @@ module.exports = defineConfig([{
             groups: ["builtin", "external", "internal", "parent", "sibling"],
             "newlines-between": "always",
         }],
-    
+
         "@typescript-eslint/no-unused-vars": ["warn", {
             "argsIgnorePattern": "^_", "varsIgnorePattern": "^_"
         }],
@@ -81,7 +82,10 @@ module.exports = defineConfig([{
                 map: [
                     ["@components", "./src/components"],
                     ["@routes", "./src/routes"],
+                    ["@hooks", "./src/hooks"],
+                    ["@providers", "./src/providers"],
                     ["@assets", "./src/assets"],
+                    ["@localizations", "./localization/paraglide"],
                     ["@", "./src"],
                 ],
 

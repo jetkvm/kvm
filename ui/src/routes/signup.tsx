@@ -1,6 +1,7 @@
 import { useLocation, useSearchParams } from "react-router";
 
 import AuthLayout from "@components/AuthLayout";
+import { m } from "@localizations/messages.js";
 
 export default function SignupRoute() {
   const [sq] = useSearchParams();
@@ -11,10 +12,10 @@ export default function SignupRoute() {
     return (
       <AuthLayout
         showCounter={true}
-        title="Connect your JetKVM to the cloud"
-        description="Unlock remote access and advanced features for your device."
-        action="Signup & Connect device"
-        cta="Already have an account?"
+        title={m.auth_connect_to_cloud()}
+        description={m.auth_connect_to_cloud_description()}
+        action={m.auth_signup_connect_to_cloud_action()}
+        cta={m.auth_header_cta_already_have_account()}
         ctaHref={`/login?${sq.toString()}`}
       />
     );
@@ -22,11 +23,11 @@ export default function SignupRoute() {
 
   return (
     <AuthLayout
-      title="Create your JetKVM account"
-      description="Create your account and start managing your devices with ease."
-      action="Create Account"
+      title={m.auth_signup_create_account()}
+      description={m.auth_signup_create_account_description()}
+      action={m.auth_signup_create_account_action()}
       // Header CTA
-      cta="Already have an account?"
+      cta={m.auth_header_cta_already_have_account()}
       ctaHref={`/login?${sq.toString()}`}
     />
   );

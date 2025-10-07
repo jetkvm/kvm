@@ -1,17 +1,17 @@
+import { useState } from "react";
 import { Form, redirect, useActionData } from "react-router";
 import type { ActionFunction, ActionFunctionArgs, LoaderFunction } from "react-router";
-import { useState } from "react";
 
-import GridBackground from "@components/GridBackground";
-import Container from "@components/Container";
+import { cx } from "@/cva.config";
+import LogoBlueIcon from "@assets/logo-blue.png";
+import LogoWhiteIcon from "@assets/logo-white.svg";
 import { Button } from "@components/Button";
-import LogoBlueIcon from "@/assets/logo-blue.png";
-import LogoWhiteIcon from "@/assets/logo-white.svg";
+import Container from "@components/Container";
+import GridBackground from "@components/GridBackground";
+import { GridCard } from "@components/Card";
 import { DEVICE_API } from "@/ui.config";
-
-import { GridCard } from "../components/Card";
-import { cx } from "../cva.config";
-import api from "../api";
+import api from "@/api";
+import { m } from "@localizations/messages.js";
 
 import { DeviceStatus } from "./welcome-local";
 
@@ -27,7 +27,7 @@ const loader: LoaderFunction = async () => {
 const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const localAuthMode = formData.get("localAuthMode");
-  if (!localAuthMode) return { error: "Please select an authentication mode" };
+  if (!localAuthMode) return { error: m.auth_authentication_mode() };
 
   if (localAuthMode === "password") {
     return redirect("/welcome/password");
@@ -41,11 +41,11 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
       return redirect("/");
     } catch (error) {
       console.error("Error setting authentication mode:", error);
-      return { error: "An error occurred while setting the authentication mode" };
+      return { error: m.auth_authentication_mode_error() };
     }
   }
 
-  return { error: "Invalid authentication mode" };
+  return { error: m.auth_authentication_mode_invalid() };
 };
 
 export default function WelcomeLocalModeRoute() {
@@ -75,10 +75,10 @@ export default function WelcomeLocalModeRoute() {
                 style={{ animationDelay: "200ms" }}
               >
                 <h1 className="text-4xl font-semibold text-black dark:text-white">
-                  Local Authentication Method
+                  {m.auth_mode_local()}
                 </h1>
                 <p className="font-medium text-slate-600 dark:text-slate-400">
-                  Select how you{"'"}d like to secure your JetKVM device locally.
+                  {m.auth_mode_local_description()}
                 </p>
               </div>
 
@@ -98,15 +98,17 @@ export default function WelcomeLocalModeRoute() {
                       <div
                         className="relative flex cursor-pointer flex-col items-center p-6 select-none"
                         onClick={() => setSelectedMode(mode as "password" | "noPassword")}
+                        role="switch"
+                        aria-checked={selectedMode === "password"}
                       >
                         <div className="space-y-0 text-center">
                           <h3 className="text-base font-bold text-black dark:text-white">
-                            {mode === "password" ? "Password protected" : "No Password"}
+                            {mode === "password" ? m.auth_mode_local_password() : m.auth_mode_local_no_password()}
                           </h3>
                           <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
                             {mode === "password"
-                              ? "Secure your device with a password for added protection."
-                              : "Quick access without password authentication."}
+                              ? m.auth_mode_local_password_description()
+                              : m.auth_mode_local_no_password_description()}
                           </p>
                         </div>
                         <input
@@ -142,7 +144,7 @@ export default function WelcomeLocalModeRoute() {
                     theme="primary"
                     fullWidth
                     type="submit"
-                    text="Continue"
+                    text={m.continue()}
                     textAlign="center"
                     disabled={!selectedMode}
                   />
@@ -153,7 +155,7 @@ export default function WelcomeLocalModeRoute() {
                 className="animate-fadeIn mx-auto max-w-md text-center text-xs text-slate-500 opacity-0 dark:text-slate-400"
                 style={{ animationDelay: "600ms" }}
               >
-                You can always change your authentication method later in the settings.
+                {m.auth_mode_local_change_later()}
               </p>
             </div>
           </div>

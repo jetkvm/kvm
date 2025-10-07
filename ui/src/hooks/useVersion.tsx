@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { useDeviceStore } from "@/hooks/stores";
 import { type JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
+import { m } from "@localizations/messages.js";
 
 export interface VersionInfo {
   appVersion: string;
@@ -29,7 +30,7 @@ export function useVersion() {
     return new Promise<SystemVersionInfo>((resolve, reject) => {
       send("getUpdateStatus", {}, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
-          notifications.error(`Failed to check for updates: ${resp.error}`);
+          notifications.error(m.updates_failed_check({ error: String(resp.error) }));
           reject(new Error("Failed to check for updates"));
         } else {
           const result = resp.result as SystemVersionInfo;
@@ -37,7 +38,7 @@ export function useVersion() {
           setSystemVersion(result.local.systemVersion);
 
           if (result.error) {
-            notifications.error(`Failed to check for updates: ${result.error}`);
+            notifications.error(m.updates_failed_check({ error: String(result.error) }));
             reject(new Error("Failed to check for updates"));
           } else {
             resolve(result);
@@ -57,7 +58,7 @@ export function useVersion() {
             return getVersionInfo().then(result => resolve(result.local)).catch(reject);
           }
           console.error("Failed to get device version N", resp.error);
-          notifications.error(`Failed to get device version: ${resp.error}`);
+          notifications.error(m.updates_failed_get_device_version({ error: String(resp.error) }));
           reject(new Error("Failed to get device version"));
         } else {
           const result = resp.result as VersionInfo;

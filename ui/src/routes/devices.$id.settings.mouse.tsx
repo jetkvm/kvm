@@ -1,20 +1,20 @@
-import { CheckCircleIcon } from "@heroicons/react/16/solid";
 import { useCallback, useEffect, useState } from "react";
+import { CheckCircleIcon } from "@heroicons/react/16/solid";
 
-import MouseIcon from "@/assets/mouse-icon.svg";
-import PointingFinger from "@/assets/pointing-finger.svg";
-import { GridCard } from "@/components/Card";
-import { Checkbox } from "@/components/Checkbox";
-import { useSettingsStore } from "@/hooks/stores";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import { SettingsItem } from "@components/SettingsItem";
-import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { cx } from "@/cva.config";
+import MouseIcon from "@assets/mouse-icon.svg";
+import PointingFinger from "@assets/pointing-finger.svg";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { useSettingsStore } from "@hooks/stores";
+import { GridCard } from "@components/Card";
+import { Checkbox } from "@components/Checkbox";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
+import { SettingsItem } from "@components/SettingsItem";
+import SettingsNestedSection from "@components/SettingsNestedSection";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { JigglerSetting } from "@components/JigglerSetting";
-
-import { cx } from "../cva.config";
-import notifications from "../notifications";
-import SettingsNestedSection from "../components/SettingsNestedSection";
+import notifications from "@/notifications";
+import { m } from "@localizations/messages.js";
 
 export interface JigglerConfig {
   inactivity_limit_seconds: number;
@@ -24,10 +24,10 @@ export interface JigglerConfig {
 }
 
 const jigglerOptions = [
-  { value: "disabled", label: "Disabled", config: null },
+  { value: "disabled", label: m.mouse_jiggler_disabled(), config: null },
   {
     value: "frequent",
-    label: "Frequent - 30s",
+    label: m.mouse_jiggler_frequent(),
     config: {
       inactivity_limit_seconds: 30,
       jitter_percentage: 25,
@@ -38,7 +38,7 @@ const jigglerOptions = [
   },
   {
     value: "standard",
-    label: "Standard - 1m",
+    label: m.mouse_jiggler_standard(),
     config: {
       inactivity_limit_seconds: 60,
       jitter_percentage: 25,
@@ -49,7 +49,7 @@ const jigglerOptions = [
   },
   {
     value: "light",
-    label: "Light - 5m",
+    label: m.mouse_jiggler_light(),
     config: {
       inactivity_limit_seconds: 300,
       jitter_percentage: 25,
@@ -76,11 +76,11 @@ export default function SettingsMouseRoute() {
   );
 
   const scrollThrottlingOptions = [
-    { value: "0", label: "Off" },
-    { value: "10", label: "Low" },
-    { value: "25", label: "Medium" },
-    { value: "50", label: "High" },
-    { value: "100", label: "Very High" },
+    { value: "0", label: m.mouse_scroll_off() },
+    { value: "10", label: m.mouse_scroll_low() },
+    { value: "25", label: m.mouse_scroll_medium() },
+    { value: "50", label: m.mouse_scroll_high() },
+    { value: "100", label: m.mouse_scroll_very_high() },
   ];
 
   const { send } = useJsonRpc();
@@ -120,15 +120,13 @@ export default function SettingsMouseRoute() {
       // We assume the jiggler should be set to enabled if the config is being updated
       send("setJigglerState", { enabled: true }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
-          return notifications.error(
-            `Failed to set jiggler state: ${resp.error.data || "Unknown error"}`,
-          );
+          return notifications.error(m.mouse_jiggler_failed_state({ error: resp.error.data || m.unknown_error() }));
         }
       });
 
       send("setJigglerConfig", { jigglerConfig }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
-          const errorMsg = resp.error.data || "Unknown error";
+          const errorMsg = resp.error.data || m.unknown_error();
 
           // Check for cron syntax errors and provide user-friendly message
           if (
@@ -136,15 +134,13 @@ export default function SettingsMouseRoute() {
             errorMsg.includes("parse failure") ||
             errorMsg.includes("invalid cron")
           ) {
-            return notifications.error(
-              "Invalid cron expression. Please check your schedule format (e.g., '0 * * * * *' for every minute).",
-            );
+            return notifications.error(m.mouse_jiggler_invalid_cron());
           }
 
-          return notifications.error(`Failed to set jiggler config: ${errorMsg}`);
+          return notifications.error(m.mouse_jiggler_error_config({ error: errorMsg }));
         }
 
-        notifications.success(`Jiggler Config successfully updated`);
+        notifications.success(m.mouse_jiggler_config_updated());
         syncJigglerSettings();
       });
     },
@@ -162,19 +158,17 @@ export default function SettingsMouseRoute() {
     if (option === "disabled") {
       send("setJigglerState", { enabled: false }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
-          return notifications.error(
-            `Failed to set jiggler state: ${resp.error.data || "Unknown error"}`,
-          );
+          return notifications.error(m.mouse_jiggler_failed_state({ error: resp.error.data || m.unknown_error() }));
         }
       });
 
-      notifications.success(`Jiggler Config successfully updated`);
+      notifications.success(m.mouse_jiggler_config_updated());
       return setSelectedJigglerOption("disabled");
     }
 
     const jigglerConfig = jigglerOptions.find(o => o.value === option)?.config;
     if (!jigglerConfig) {
-      return notifications.error("There was an error setting the jiggler config");
+      return notifications.error(m.mouse_jiggler_error_config());
     }
 
     saveJigglerConfig(jigglerConfig);
@@ -183,14 +177,14 @@ export default function SettingsMouseRoute() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Mouse"
-        description="Configure cursor behavior and interaction settings for your device"
+        title={m.mouse_title()}
+        description={m.mouse_description()}
       />
 
       <div className="space-y-4">
         <SettingsItem
-          title="Hide Cursor"
-          description="Hide the cursor when sending mouse movements"
+          title={m.mouse_hide_cursor_title()}
+          description={m.mouse_hide_cursor_description()}
         >
           <Checkbox
             checked={isCursorHidden}
@@ -199,8 +193,8 @@ export default function SettingsMouseRoute() {
         </SettingsItem>
 
         <SettingsItem
-          title="Scroll Throttling"
-          description="Reduce the frequency of scroll events"
+          title={m.mouse_scroll_throttling_title()}
+          description={m.mouse_scroll_throttling_description()}
         >
           <SelectMenuBasic
             size="SM"
@@ -213,7 +207,7 @@ export default function SettingsMouseRoute() {
           />
         </SettingsItem>
 
-        <SettingsItem title="Jiggler" description="Simulate movement of a computer mouse">
+        <SettingsItem title={m.mouse_jiggler_title()} description={m.mouse_jiggler_description()}>
           <SelectMenuBasic
             size="SM"
             label=""
@@ -223,7 +217,7 @@ export default function SettingsMouseRoute() {
                 value: option.value,
                 label: option.label,
               })),
-              { value: "custom", label: "Custom" },
+              { value: "custom", label: m.mouse_jiggler_custom() },
             ]}
             onChange={e => {
               handleJigglerChange(
@@ -242,7 +236,7 @@ export default function SettingsMouseRoute() {
           </SettingsNestedSection>
         )}
         <div className="space-y-4">
-          <SettingsItem title="Modes" description="Choose the mouse input mode" />
+          <SettingsItem title={m.mouse_modes_title()} description={m.mouse_modes_description()} />
           <div className="flex items-center gap-4">
             <button
               className="group block grow"
@@ -255,15 +249,15 @@ export default function SettingsMouseRoute() {
                   <img
                     className="w-6 shrink-0 dark:invert"
                     src={PointingFinger}
-                    alt="Finger touching a screen"
+                    alt={m.mouse_alt_finger()}
                   />
                   <div className="flex grow items-center justify-between">
                     <div className="text-left">
                       <h3 className="text-sm font-semibold text-black dark:text-white">
-                        Absolute
+                        {m.mouse_mode_absolute()}
                       </h3>
                       <p className="text-xs leading-none text-slate-800 dark:text-slate-300">
-                        Most convenient
+                        {m.mouse_mode_absolute_description()}
                       </p>
                     </div>
                     <CheckCircleIcon
@@ -287,15 +281,15 @@ export default function SettingsMouseRoute() {
                   <img
                     className="w-6 shrink-0 dark:invert"
                     src={MouseIcon}
-                    alt="Mouse icon"
+                    alt={m.mouse_alt_mouse()}
                   />
                   <div className="flex grow items-center justify-between">
                     <div className="text-left">
                       <h3 className="text-sm font-semibold text-black dark:text-white">
-                        Relative
+                        {m.mouse_mode_relative()}
                       </h3>
                       <p className="text-xs leading-none text-slate-800 dark:text-slate-300">
-                        Most Compatible
+                        {m.mouse_mode_relative_description()}
                       </p>
                     </div>
                     <CheckCircleIcon

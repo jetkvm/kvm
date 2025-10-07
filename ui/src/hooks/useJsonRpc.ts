@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 
-import { useRTCStore } from "@/hooks/stores";
+import { useRTCStore } from "@hooks/stores";
 
 export interface JsonRpcRequest {
   jsonrpc: string;
@@ -79,7 +79,7 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
       rpcDataChannel.removeEventListener("message", messageHandler);
     };
   },
-  [rpcDataChannel, onRequest]);
+    [rpcDataChannel, onRequest]);
 
   return { send };
 }

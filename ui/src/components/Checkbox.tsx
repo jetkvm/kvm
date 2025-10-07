@@ -2,7 +2,7 @@ import type { Ref } from "react";
 import React, { forwardRef, JSX } from "react";
 import clsx from "clsx";
 
-import FieldLabel from "@/components/FieldLabel";
+import FieldLabel from "@components/FieldLabel";
 import { cva, cx } from "@/cva.config";
 
 const sizes = {

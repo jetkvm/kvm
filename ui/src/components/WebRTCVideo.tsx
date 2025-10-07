@@ -1,27 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
 
-import VirtualKeyboard from "@components/VirtualKeyboard";
-import Actionbar from "@components/ActionBar";
-import MacroBar from "@/components/MacroBar";
-import InfoBar from "@components/InfoBar";
-import notifications from "@/notifications";
-import useKeyboard from "@/hooks/useKeyboard";
 import { cx } from "@/cva.config";
-import { keys } from "@/keyboardMappings";
+import useKeyboard from "@hooks/useKeyboard";
+import useMouse from "@hooks/useMouse";
 import {
   useRTCStore,
   useSettingsStore,
   useVideoStore,
-} from "@/hooks/stores";
-import useMouse from "@/hooks/useMouse";
-
+} from "@hooks/stores";
+import VirtualKeyboard from "@components/VirtualKeyboard";
+import Actionbar from "@components/ActionBar";
+import MacroBar from "@components/MacroBar";
+import InfoBar from "@components/InfoBar";
 import {
   HDMIErrorOverlay,
   LoadingVideoOverlay,
   NoAutoplayPermissionsOverlay,
   PointerLockBar,
-} from "./VideoOverlay";
+} from "@components/VideoOverlay";
+import { keys } from "@/keyboardMappings";
+import notifications from "@/notifications";
+import { m } from "@localizations/messages.js";
 
 export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssues: boolean }) {
   // Video and stream related refs and states
@@ -168,10 +168,10 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
 
     const handlePointerLockChange = () => {
       if (document.pointerLockElement) {
-        notifications.success("Pointer lock Enabled, press escape to unlock");
+        notifications.success(m.video_pointer_lock_enabled());
         setIsPointerLockActive(true);
       } else {
-        notifications.success("Pointer lock Disabled");
+        notifications.success(m.video_pointer_lock_disabled());
         setIsPointerLockActive(false);
       }
     };
@@ -233,6 +233,18 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     () => getMouseWheelHandler(),
     [getMouseWheelHandler],
   );
+
+  function getAdjustedKeyCode(e: KeyboardEvent) {
+    const key = e.key;
+    let code = e.code;
+
+    if (code == "IntlBackslash" && ["`", "~"].includes(key)) {
+      code = "Backquote";
+    } else if (code == "Backquote" && ["§", "±"].includes(key)) {
+      code = "IntlBackslash";
+    }
+    return code;
+  }
 
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
@@ -468,17 +480,6 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
       };
   }, [videoSaturation, videoBrightness, videoContrast]);
 
-  function getAdjustedKeyCode(e: KeyboardEvent) {
-    const key = e.key;
-    let code = e.code;
-
-    if (code == "IntlBackslash" && ["`", "~"].includes(key)) {
-      code = "Backquote";
-    } else if (code == "Backquote" && ["§", "±"].includes(key)) {
-      code = "IntlBackslash";
-    }
-    return code;
-  }
 
   return (
     <div className="grid h-full w-full grid-rows-(--grid-layout)">

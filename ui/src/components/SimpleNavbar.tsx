@@ -1,9 +1,9 @@
-import { Link } from "react-router";
 import React from "react";
+import { Link } from "react-router";
 
-import Container from "@/components/Container";
-import LogoBlueIcon from "@/assets/logo-blue.png";
-import LogoWhiteIcon from "@/assets/logo-white.svg";
+import LogoBlueIcon from "@assets/logo-blue.png";
+import LogoWhiteIcon from "@assets/logo-white.svg";
+import Container from "@components/Container";
 
 interface Props { logoHref?: string; actionElement?: React.ReactNode }
 

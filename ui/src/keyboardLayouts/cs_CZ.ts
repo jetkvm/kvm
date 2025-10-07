@@ -197,7 +197,7 @@ const chars = {
   z: { key: "KeyZ" },
   "ż": { key: "KeyZ", accentKey: keyOverdot },
   ";": { key: "Backquote" },
-  "°": { key: "Backquote", shift: true, deadKey: true }, 
+  "°": { key: "Backquote", shift: true, deadKey: true },
   "+": { key: "Digit1" },
   1: { key: "Digit1", shift: true },
   "ě": { key: "Digit2" },
@@ -251,7 +251,7 @@ export const cs_CZ: KeyboardLayout = {
   name: name,
   chars: chars,
   // TODO need to localize these maps and layouts
-  keyDisplayMap: en_US.keyDisplayMap, 
+  keyDisplayMap: en_US.keyDisplayMap,
   modifierDisplayMap: en_US.modifierDisplayMap,
   virtualKeyboard: en_US.virtualKeyboard
 };
