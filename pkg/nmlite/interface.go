@@ -628,6 +628,8 @@ func (im *InterfaceManager) convertDHCPLeaseToIPv4Config(lease *types.DHCPLease)
 		Permanent: false,
 	}
 
+	im.logger.Trace().Interface("ipv4Addr", ipv4Addr).Msg("converted DHCP lease to IPv4Config")
+
 	// Create IPv4Config
 	return &ipv4Addr
 }

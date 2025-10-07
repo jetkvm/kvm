@@ -336,7 +336,13 @@ func (nm *NetlinkManager) RemoveDefaultRoute(family int) error {
 }
 
 func (nm *NetlinkManager) ReconcileLinkAddrs(link *Link, expected []*types.IPAddress) error {
-	existingAddr := make(map[string]bool)
+	expectedAddrs := make(map[string]bool)
+	existingAddrs := make(map[string]bool)
+
+	for _, addr := range expected {
+		ipCidr := addr.Address.IP.String() + "/" + addr.Address.Mask.String()
+		expectedAddrs[ipCidr] = true
+	}
 
 	addrs, err := nm.AddrList(link, AfUnspec)
 	if err != nil {
@@ -345,26 +351,36 @@ func (nm *NetlinkManager) ReconcileLinkAddrs(link *Link, expected []*types.IPAdd
 
 	for _, addr := range addrs {
 		ipCidr := addr.IP.String() + "/" + addr.IPNet.Mask.String()
-		existingAddr[ipCidr] = true
+		existingAddrs[ipCidr] = true
 	}
 
 	for _, addr := range expected {
+		family := AfUnspec
+		if addr.Address.IP.To4() != nil {
+			family = AfInet
+		} else if addr.Address.IP.To16() != nil {
+			family = AfInet6
+		}
+
 		ipCidr := addr.Address.IP.String() + "/" + addr.Address.Mask.String()
-		if ok := existingAddr[ipCidr]; ok {
-			continue
+		if ok := existingAddrs[ipCidr]; !ok {
+			ipNet := &net.IPNet{
+				IP:   addr.Address.IP,
+				Mask: addr.Address.Mask,
+			}
+
+			if err := nm.AddrAdd(link, &netlink.Addr{IPNet: ipNet}); err != nil {
+				return fmt.Errorf("failed to add address %s: %w", ipCidr, err)
+			}
+
+			nm.logger.Info().Str("address", ipCidr).Msg("added address")
 		}
 
-		ipNet := &net.IPNet{
-			IP:   addr.Address.IP,
-			Mask: addr.Address.Mask,
-		}
-
-		addr := &netlink.Addr{
-			IPNet: ipNet,
-		}
-
-		if err := nm.AddrAdd(link, addr); err != nil {
-			return fmt.Errorf("failed to add address %s: %w", ipCidr, err)
+		if addr.Gateway != nil {
+			nm.logger.Trace().Str("address", ipCidr).Str("gateway", addr.Gateway.String()).Msg("adding default route for address")
+			if err := nm.AddDefaultRoute(link, addr.Gateway, family); err != nil {
+				return fmt.Errorf("failed to add default route for address %s: %w", ipCidr, err)
+			}
 		}
 	}
 
