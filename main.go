@@ -125,7 +125,7 @@ func Main() {
 	<-sigs
 	logger.Info().Msg("JetKVM Shutting Down")
 
-	stopAudioSubprocesses()
+	stopAudio()
 
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")

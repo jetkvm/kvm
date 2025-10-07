@@ -320,7 +320,7 @@ func newSession(config SessionConfig) (*Session, error) {
 					Str("track_id", track.ID()).
 					Msg("Received incoming audio track from browser")
 
-				// Store track for connection when audio subprocesses start
+				// Store track for connection when audio starts
 				// OnTrack fires during SDP exchange, before ICE connection completes
 				setPendingInputTrack(track)
 			})

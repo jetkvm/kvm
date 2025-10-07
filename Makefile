@@ -53,7 +53,6 @@ KVM_PKG_NAME := github.com/jetkvm/kvm
 BUILDKIT_FLAVOR := arm-rockchip830-linux-uclibcgnueabihf
 BUILDKIT_PATH ?= /opt/jetkvm-native-buildkit
 SKIP_NATIVE_IF_EXISTS ?= 0
-SKIP_AUDIO_BINARIES_IF_EXISTS ?= 0
 SKIP_UI_BUILD ?= 0
 GO_BUILD_ARGS := -tags netgo,timetzdata,nomsgpack
 GO_RELEASE_BUILD_ARGS := -trimpath $(GO_BUILD_ARGS)
@@ -92,48 +91,7 @@ build_native:
 			./scripts/build_cgo.sh; \
 	fi
 
-# Build audio output C binary (ALSA capture → Opus encode → IPC)
-build_audio_output: build_audio_deps
-	@if [ "$(SKIP_AUDIO_BINARIES_IF_EXISTS)" = "1" ] && [ -f "$(BIN_DIR)/jetkvm_audio_output" ]; then \
-		echo "jetkvm_audio_output already exists, skipping build..."; \
-	else \
-		echo "Building audio output binary (100% static)..."; \
-		mkdir -p $(BIN_DIR); \
-		$(CC) $(AUDIO_CFLAGS) -static \
-			-o $(BIN_DIR)/jetkvm_audio_output \
-			internal/audio/c/jetkvm_audio_output.c \
-			internal/audio/c/ipc_protocol.c \
-			internal/audio/c/audio_common.c \
-			internal/audio/c/audio.c \
-			$(AUDIO_LDFLAGS); \
-	fi
-
-# Build audio input C binary (IPC → Opus decode → ALSA playback)
-build_audio_input: build_audio_deps
-	@if [ "$(SKIP_AUDIO_BINARIES_IF_EXISTS)" = "1" ] && [ -f "$(BIN_DIR)/jetkvm_audio_input" ]; then \
-		echo "jetkvm_audio_input already exists, skipping build..."; \
-	else \
-		echo "Building audio input binary (100% static)..."; \
-		mkdir -p $(BIN_DIR); \
-		$(CC) $(AUDIO_CFLAGS) -static \
-			-o $(BIN_DIR)/jetkvm_audio_input \
-			internal/audio/c/jetkvm_audio_input.c \
-			internal/audio/c/ipc_protocol.c \
-			internal/audio/c/audio_common.c \
-			internal/audio/c/audio.c \
-			$(AUDIO_LDFLAGS); \
-	fi
-
-# Build both audio binaries and copy to embed location
-build_audio_binaries: build_audio_output build_audio_input
-	@echo "Audio binaries built successfully"
-	@echo "Copying binaries to embed location..."
-	@mkdir -p internal/audio/bin
-	@cp $(BIN_DIR)/jetkvm_audio_output internal/audio/bin/
-	@cp $(BIN_DIR)/jetkvm_audio_input internal/audio/bin/
-	@echo "Binaries ready for embedding"
-
-build_dev: build_native build_audio_deps build_audio_binaries
+build_dev: build_native build_audio_deps
 	$(CLEAN_GO_CACHE)
 	@echo "Building..."
 	go build \
@@ -199,7 +157,7 @@ dev_release: frontend build_dev
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256
 
-build_release: frontend build_native build_audio_deps build_audio_binaries
+build_release: frontend build_native build_audio_deps
 	$(CLEAN_GO_CACHE)
 	@echo "Building release..."
 	go build \

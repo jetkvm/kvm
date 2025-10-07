@@ -354,9 +354,11 @@ export interface SettingsState {
 
   // Audio settings
   audioOutputSource: string;
-  audioMode: string;
+  setAudioOutputSource: (source: string) => void;
   audioOutputEnabled: boolean;
+  setAudioOutputEnabled: (enabled: boolean) => void;
   audioInputEnabled: boolean;
+  setAudioInputEnabled: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create(
@@ -405,9 +407,11 @@ export const useSettingsStore = create(
 
       // Audio settings with defaults
       audioOutputSource: "usb",
-      audioMode: "subprocess",
+      setAudioOutputSource: (source: string) => set({ audioOutputSource: source }),
       audioOutputEnabled: true,
+      setAudioOutputEnabled: (enabled: boolean) => set({ audioOutputEnabled: enabled }),
       audioInputEnabled: true,
+      setAudioInputEnabled: (enabled: boolean) => set({ audioInputEnabled: enabled }),
     }),
     {
       name: "settings",

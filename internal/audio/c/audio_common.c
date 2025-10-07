@@ -1,21 +1,16 @@
 /*
  * JetKVM Audio Common Utilities
  *
- * Shared functions used by both audio input and output servers
+ * Shared functions for audio processing
  */
 
 #include "audio_common.h"
-#include "ipc_protocol.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
-#include <sys/socket.h>
 #include <time.h>
-
-// Forward declarations for encoder update (only in output server)
-extern int update_opus_encoder_params(uint32_t bitrate, uint8_t complexity);
 
 // GLOBAL STATE FOR SIGNAL HANDLER
 
@@ -71,7 +66,7 @@ const char* audio_common_parse_env_string(const char *name, const char *default_
 void audio_common_load_config(audio_config_t *config, int is_output) {
     // ALSA device configuration
     if (is_output) {
-        config->alsa_device = audio_common_parse_env_string("ALSA_CAPTURE_DEVICE", "hw:0,0");
+        config->alsa_device = audio_common_parse_env_string("ALSA_CAPTURE_DEVICE", "hw:1,0");
     } else {
         config->alsa_device = audio_common_parse_env_string("ALSA_PLAYBACK_DEVICE", "hw:1,0");
     }
@@ -103,67 +98,4 @@ void audio_common_print_startup(const char *server_name) {
 
 void audio_common_print_shutdown(const char *server_name) {
     printf("Shutting down %s...\n", server_name);
-}
-
-
-int audio_common_handle_opus_config(const uint8_t *data, uint32_t length, int is_encoder) {
-    ipc_opus_config_t config;
-
-    if (ipc_parse_opus_config(data, length, &config) != 0) {
-        fprintf(stderr, "Failed to parse Opus config\n");
-        return -1;
-    }
-
-    if (is_encoder) {
-        printf("Received Opus config: bitrate=%u, complexity=%u\n",
-               config.bitrate, config.complexity);
-
-        int result = update_opus_encoder_params(
-            config.bitrate,
-            config.complexity
-        );
-
-        if (result != 0) {
-            fprintf(stderr, "Warning: Failed to apply Opus encoder parameters\n");
-        }
-    } else {
-        printf("Received Opus config (informational): bitrate=%u, complexity=%u\n",
-               config.bitrate, config.complexity);
-    }
-
-    return 0;
-}
-
-// IPC MAIN LOOP HELPERS
-
-int audio_common_server_loop(int server_sock, volatile sig_atomic_t *running,
-                             connection_handler_t handler) {
-    while (*running) {
-        printf("Waiting for client connection...\n");
-
-        int client_sock = accept(server_sock, NULL, NULL);
-        if (client_sock < 0) {
-            if (*running) {
-                fprintf(stderr, "Failed to accept client, retrying...\n");
-                struct timespec ts = {1, 0};  // 1 second
-                nanosleep(&ts, NULL);
-                continue;
-            }
-            break;
-        }
-
-        printf("Client connected (fd=%d)\n", client_sock);
-
-        // Run handler with this client
-        handler(client_sock, running);
-
-        // Close client connection
-        close(client_sock);
-
-        if (*running) {
-            printf("Client disconnected, waiting for next client...\n");
-        }
-    }
-
-    return 0;
 }

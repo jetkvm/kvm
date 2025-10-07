@@ -19,31 +19,23 @@ export default function SettingsAudioRoute() {
       if ("error" in resp) {
         return;
       }
-      const source = resp.result as string;
-      settings.audioOutputSource = source;
-    });
-
-    send("getAudioMode", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        return;
-      }
-      const mode = resp.result as string;
-      settings.audioMode = mode;
+      settings.setAudioOutputSource(resp.result as string);
     });
 
     send("getAudioOutputEnabled", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         return;
       }
-      settings.audioOutputEnabled = resp.result as boolean;
+      settings.setAudioOutputEnabled(resp.result as boolean);
     });
 
     send("getAudioInputEnabled", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         return;
       }
-      settings.audioInputEnabled = resp.result as boolean;
+      settings.setAudioInputEnabled(resp.result as boolean);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [send]);
 
   const handleAudioOutputSourceChange = (source: string) => {
@@ -54,21 +46,8 @@ export default function SettingsAudioRoute() {
         );
         return;
       }
-      settings.audioOutputSource = source;
+      settings.setAudioOutputSource(source);
       notifications.success("Audio output source updated successfully");
-    });
-  };
-
-  const handleAudioModeChange = (mode: string) => {
-    send("setAudioMode", { mode }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to set audio mode: ${resp.error.data || "Unknown error"}`,
-        );
-        return;
-      }
-      settings.audioMode = mode;
-      notifications.success("Audio mode updated successfully. Changes will take effect on next connection.");
     });
   };
 
@@ -80,7 +59,7 @@ export default function SettingsAudioRoute() {
         );
         return;
       }
-      settings.audioOutputEnabled = enabled;
+      settings.setAudioOutputEnabled(enabled);
       notifications.success(`Audio output ${enabled ? "enabled" : "disabled"} successfully`);
     });
   };
@@ -93,7 +72,7 @@ export default function SettingsAudioRoute() {
         );
         return;
       }
-      settings.audioInputEnabled = enabled;
+      settings.setAudioInputEnabled(enabled);
       notifications.success(`Audio input ${enabled ? "enabled" : "disabled"} successfully`);
     });
   };
@@ -144,30 +123,6 @@ export default function SettingsAudioRoute() {
             onChange={(e) => handleAudioInputEnabledChange(e.target.checked)}
           />
         </SettingsItem>
-
-        <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
-          <h3 className="mb-2 text-sm font-medium">Advanced</h3>
-          <SettingsItem
-            title="Audio Processing Mode"
-            description="In-process mode uses less CPU but subprocess mode provides better isolation"
-          >
-            <SelectMenuBasic
-              size="SM"
-              label=""
-              value={settings.audioMode || "subprocess"}
-              options={[
-                { value: "subprocess", label: "Subprocess (Recommended)" },
-                { value: "in-process", label: "In-Process" },
-              ]}
-              onChange={e => {
-                handleAudioModeChange(e.target.value);
-              }}
-            />
-          </SettingsItem>
-          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-            Changing the audio mode will take effect when the next WebRTC connection is established.
-          </p>
-        </div>
       </div>
     </div>
   );
