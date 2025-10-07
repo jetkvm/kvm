@@ -12,9 +12,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// OutputRelay forwards audio from subprocess (HDMI) to WebRTC (browser)
+// OutputRelay forwards audio from any AudioSource (CGO or IPC) to WebRTC (browser)
 type OutputRelay struct {
-	client     *IPCClient
+	source     AudioSource
 	audioTrack *webrtc.TrackLocalStaticSample
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -28,12 +28,12 @@ type OutputRelay struct {
 }
 
 // NewOutputRelay creates a relay for output audio (device → browser)
-func NewOutputRelay(client *IPCClient, audioTrack *webrtc.TrackLocalStaticSample) *OutputRelay {
+func NewOutputRelay(source AudioSource, audioTrack *webrtc.TrackLocalStaticSample) *OutputRelay {
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-output-relay").Logger()
 
 	return &OutputRelay{
-		client:     client,
+		source:     source,
 		audioTrack: audioTrack,
 		ctx:        ctx,
 		cancel:     cancel,
@@ -68,27 +68,27 @@ func (r *OutputRelay) Stop() {
 		Msg("output relay stopped")
 }
 
-// relayLoop continuously reads from IPC and writes to WebRTC
+// relayLoop continuously reads from audio source and writes to WebRTC
 func (r *OutputRelay) relayLoop() {
 	const reconnectDelay = 1 * time.Second
 
 	for r.running.Load() {
 		// Ensure connected
-		if !r.client.IsConnected() {
-			if err := r.client.Connect(); err != nil {
+		if !r.source.IsConnected() {
+			if err := r.source.Connect(); err != nil {
 				r.logger.Debug().Err(err).Msg("failed to connect, will retry")
 				time.Sleep(reconnectDelay)
 				continue
 			}
 		}
 
-		// Read message from subprocess
-		msgType, payload, err := r.client.ReadMessage()
+		// Read message from audio source
+		msgType, payload, err := r.source.ReadMessage()
 		if err != nil {
 			// Connection error - reconnect
 			if r.running.Load() {
 				r.logger.Warn().Err(err).Msg("read error, reconnecting")
-				r.client.Disconnect()
+				r.source.Disconnect()
 				time.Sleep(reconnectDelay)
 			}
 			continue
@@ -111,7 +111,7 @@ func (r *OutputRelay) relayLoop() {
 
 // InputRelay forwards audio from WebRTC (browser microphone) to subprocess (USB audio)
 type InputRelay struct {
-	client  *IPCClient
+	source  AudioSource
 	ctx     context.Context
 	cancel  context.CancelFunc
 	logger  zerolog.Logger
@@ -119,12 +119,12 @@ type InputRelay struct {
 }
 
 // NewInputRelay creates a relay for input audio (browser → device)
-func NewInputRelay(client *IPCClient) *InputRelay {
+func NewInputRelay(source AudioSource) *InputRelay {
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-input-relay").Logger()
 
 	return &InputRelay{
-		client: client,
+		source: source,
 		ctx:    ctx,
 		cancel: cancel,
 		logger: logger,
