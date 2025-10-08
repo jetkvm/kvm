@@ -175,7 +175,7 @@ func requestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 			wakeDisplay(false, reason)
 		}
 		displayLogger.Debug().Msg("display updating")
-		//TODO: only run once regardless how many pending updates
+		// TODO: only run once regardless how many pending updates
 		updateDisplay()
 	}()
 }
@@ -184,7 +184,6 @@ func waitCtrlAndRequestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 	waitDisplayUpdate.Lock()
 	defer waitDisplayUpdate.Unlock()
 
-	// nativeInstance.WaitCtrlClientConnected()
 	requestDisplayUpdate(shouldWakeDisplay, reason)
 }
 

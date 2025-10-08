@@ -35,6 +35,9 @@ func Main() {
 
 	initNative(systemVersionLocal, appVersionLocal)
 
+	// initialize display
+	initDisplay()
+
 	http.DefaultClient.Timeout = 1 * time.Minute
 
 	err = rootcerts.UpdateDefaultTransport()
@@ -73,9 +76,6 @@ func Main() {
 		logger.Warn().Err(err).Msg("failed to init images folder")
 	}
 	initJiggler()
-
-	// initialize display
-	initDisplay()
 
 	go func() {
 		time.Sleep(15 * time.Minute)
