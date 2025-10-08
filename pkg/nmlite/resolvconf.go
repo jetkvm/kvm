@@ -133,7 +133,7 @@ func (rcm *ResolvConfManager) generateResolvConf(iface string, nameservers []net
 	}
 
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, map[string]interface{}{
+	if err := tmpl.Execute(&buf, map[string]any{
 		"iface":       iface,
 		"nameservers": nameservers,
 		"searchList":  searchList,

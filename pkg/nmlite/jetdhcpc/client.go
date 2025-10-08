@@ -153,14 +153,14 @@ func (c *Client) ensureInterfaceUp(ifname string) (*link.Link, error) {
 	return nlm.EnsureInterfaceUpWithTimeout(c.ctx, iface, c.cfg.LinkUpTimeout)
 }
 
-func (c *Client) sendInitialRequests() chan interface{} {
+func (c *Client) sendInitialRequests() chan any {
 	return c.sendRequests(c.cfg.IPv4, c.cfg.IPv6)
 }
 
 func (c *Client) sendRequestsFamily(
 	family int,
 	wg *sync.WaitGroup,
-	r *chan interface{},
+	r *chan any,
 	l *zerolog.Logger,
 	iface *link.Link,
 ) {
@@ -185,12 +185,12 @@ func (c *Client) sendRequestsFamily(
 	}(iface)
 }
 
-func (c *Client) sendRequests(ipv4, ipv6 bool) chan interface{} {
+func (c *Client) sendRequests(ipv4, ipv6 bool) chan any {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// Yeah, this is a hack, until we can cancel all leases in progress.
-	r := make(chan interface{}, 3*len(c.ifaces))
+	r := make(chan any, 3*len(c.ifaces))
 
 	var wg sync.WaitGroup
 	for _, iface := range c.ifaces {
