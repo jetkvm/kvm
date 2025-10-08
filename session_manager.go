@@ -888,6 +888,17 @@ func (sm *SessionManager) UpdateLastActive(sessionID string) {
 func (sm *SessionManager) validateSinglePrimary() {
 	primarySessions := make([]*Session, 0)
 
+	sm.logger.Debug().
+		Int("sm.sessions_len", len(sm.sessions)).
+		Interface("sm.sessions_keys", func() []string {
+			keys := make([]string, 0, len(sm.sessions))
+			for k := range sm.sessions {
+				keys = append(keys, k)
+			}
+			return keys
+		}()).
+		Msg("validateSinglePrimary: checking sm.sessions map")
+
 	// Find all sessions that think they're primary
 	for _, session := range sm.sessions {
 		if session.Mode == SessionModePrimary {
@@ -952,35 +963,16 @@ func (sm *SessionManager) validateSinglePrimary() {
 	}
 
 	// Check if there's an active grace period for any primary session
-	// BUT: if grace period just started (within 2 seconds), allow immediate promotion
 	hasActivePrimaryGracePeriod := false
 	for sessionID, graceTime := range sm.reconnectGrace {
 		if time.Now().Before(graceTime) {
 			if reconnectInfo, hasInfo := sm.reconnectInfo[sessionID]; hasInfo {
 				if reconnectInfo.Mode == SessionModePrimary {
-					// Calculate how long ago the grace period started
-					gracePeriod := 10
-					if currentSessionSettings != nil && currentSessionSettings.ReconnectGrace > 0 {
-						gracePeriod = currentSessionSettings.ReconnectGrace
-					}
-					graceStartTime := graceTime.Add(-time.Duration(gracePeriod) * time.Second)
-					timeSinceGraceStart := time.Since(graceStartTime)
-
-					// If grace period just started (within 2 seconds), allow immediate promotion
-					// This enables instant promotion on logout while still protecting against network blips
-					if timeSinceGraceStart > 2*time.Second {
-						hasActivePrimaryGracePeriod = true
-						sm.logger.Debug().
-							Str("gracePrimaryID", sessionID).
-							Dur("remainingGrace", time.Until(graceTime)).
-							Dur("timeSinceGraceStart", timeSinceGraceStart).
-							Msg("Active grace period detected for primary session - blocking auto-promotion")
-					} else {
-						sm.logger.Debug().
-							Str("gracePrimaryID", sessionID).
-							Dur("timeSinceGraceStart", timeSinceGraceStart).
-							Msg("Grace period just started - allowing immediate promotion")
-					}
+					hasActivePrimaryGracePeriod = true
+					sm.logger.Debug().
+						Str("gracePrimaryID", sessionID).
+						Dur("remainingGrace", time.Until(graceTime)).
+						Msg("Active grace period detected for primary session - blocking auto-promotion")
 					break
 				}
 			}
