@@ -21,24 +21,24 @@ import (
 
 // Predefined browser string constants for memory efficiency
 var (
-	BrowserChrome   = "chrome"
-	BrowserFirefox  = "firefox"
-	BrowserSafari   = "safari"
-	BrowserEdge     = "edge"
-	BrowserOpera    = "opera"
-	BrowserUnknown  = "user"
+	BrowserChrome  = "chrome"
+	BrowserFirefox = "firefox"
+	BrowserSafari  = "safari"
+	BrowserEdge    = "edge"
+	BrowserOpera   = "opera"
+	BrowserUnknown = "user"
 )
 
 type Session struct {
-	ID           string
-	Mode         SessionMode
-	Source       string
-	Identity     string
-	Nickname     string
-	Browser      *string      // Pointer to predefined browser string constant for memory efficiency
-	CreatedAt    time.Time
-	LastActive   time.Time
-	LastBroadcast time.Time  // Per-session broadcast throttle
+	ID            string
+	Mode          SessionMode
+	Source        string
+	Identity      string
+	Nickname      string
+	Browser       *string // Pointer to predefined browser string constant for memory efficiency
+	CreatedAt     time.Time
+	LastActive    time.Time
+	LastBroadcast time.Time // Per-session broadcast throttle
 
 	// RPC rate limiting (DoS protection)
 	rpcRateLimitMu  sync.Mutex // Protects rate limit fields
@@ -105,7 +105,7 @@ type SessionConfig struct {
 	ICEServers []string
 	LocalIP    string
 	IsCloud    bool
-	UserAgent  string  // User agent for browser detection and nickname generation
+	UserAgent  string // User agent for browser detection and nickname generation
 	ws         *websocket.Conn
 	Logger     *zerolog.Logger
 }
@@ -278,7 +278,7 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	session := &Session{
 		peerConnection: peerConnection,
-		Browser:       extractBrowserFromUserAgent(config.UserAgent),
+		Browser:        extractBrowserFromUserAgent(config.UserAgent),
 	}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	session.initQueues()

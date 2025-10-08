@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogPanel, DialogBackdrop } from "@headlessui/react";
 import { UserIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Button } from "./Button";
-import { useSettingsStore } from "@/hooks/stores";
+
+import { useSettingsStore , useRTCStore } from "@/hooks/stores";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { useRTCStore } from "@/hooks/stores";
 import { generateNickname } from "@/utils/nicknameGenerator";
+
+import { Button } from "./Button";
 
 type SessionRole = "primary" | "observer" | "queued" | "pending";
 
@@ -128,8 +129,8 @@ export default function NicknameModal({
       await onSubmit(trimmedNickname);
       setNickname("");
       setGeneratedNickname(""); // Reset generated nickname after successful submit
-    } catch (error: any) {
-      setError(error.message || "Failed to set nickname");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to set nickname");
       setIsSubmitting(false);
     }
   };

@@ -1,11 +1,14 @@
 import { useEffect, useRef } from "react";
-import { useSessionStore } from "@/stores/sessionStore";
+
+import { useSessionStore, SessionInfo } from "@/stores/sessionStore";
 import { useRTCStore } from "@/hooks/stores";
 import { sessionApi } from "@/api/sessionApi";
 import { notify } from "@/notifications";
 
+type RpcSendFunction = (method: string, params: Record<string, unknown>, callback: (response: { result?: unknown; error?: { message: string } }) => void) => void;
+
 interface SessionEventData {
-  sessions: any[];
+  sessions: SessionInfo[];
   yourMode: string;
 }
 
@@ -13,7 +16,7 @@ interface ModeChangedData {
   mode: string;
 }
 
-export function useSessionEvents(sendFn: Function | null) {
+export function useSessionEvents(sendFn: RpcSendFunction | null) {
   const {
     currentMode,
     setSessions,
@@ -25,7 +28,7 @@ export function useSessionEvents(sendFn: Function | null) {
   sendFnRef.current = sendFn;
 
   // Handle session-related RPC events
-  const handleSessionEvent = (method: string, params: any) => {
+  const handleSessionEvent = (method: string, params: unknown) => {
     switch (method) {
       case "sessionsUpdated":
         handleSessionsUpdated(params as SessionEventData);
@@ -52,7 +55,7 @@ export function useSessionEvents(sendFn: Function | null) {
     // CRITICAL: Only update mode, never show notifications from sessionsUpdated
     // Notifications are exclusively handled by handleModeChanged to prevent duplicates
     if (data.yourMode && data.yourMode !== currentMode) {
-      updateSessionMode(data.yourMode as any);
+      updateSessionMode(data.yourMode as "primary" | "observer" | "queued" | "pending");
     }
   };
 
@@ -64,7 +67,7 @@ export function useSessionEvents(sendFn: Function | null) {
       // Get the most current mode from the store to avoid race conditions
       const { currentMode: currentModeFromStore } = useSessionStore.getState();
       const previousMode = currentModeFromStore;
-      updateSessionMode(data.mode as any);
+      updateSessionMode(data.mode as "primary" | "observer" | "queued" | "pending");
 
       // Clear requesting state when mode changes from queued
       if (previousMode === "queued" && data.mode !== "queued") {
@@ -139,7 +142,7 @@ export function useSessionEvents(sendFn: Function | null) {
       try {
         const sessions = await sessionApi.getSessions(sendFnRef.current);
         setSessions(sessions);
-      } catch (error) {
+      } catch {
         // Silently fail on refresh errors
       }
     }, 30000); // Refresh every 30 seconds

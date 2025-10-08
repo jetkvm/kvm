@@ -1,8 +1,11 @@
 import { useEffect, useCallback, useState } from "react";
+
 import { useSessionStore } from "@/stores/sessionStore";
 import { useSessionEvents } from "@/hooks/useSessionEvents";
 import { useSettingsStore } from "@/hooks/stores";
 import { usePermissions, Permission } from "@/hooks/usePermissions";
+
+type RpcSendFunction = (method: string, params: Record<string, unknown>, callback: (response: { result?: unknown; error?: { message: string } }) => void) => void;
 
 interface SessionResponse {
   sessionId?: string;
@@ -23,7 +26,7 @@ interface NewSessionRequest {
   nickname?: string;
 }
 
-export function useSessionManagement(sendFn: Function | null) {
+export function useSessionManagement(sendFn: RpcSendFunction | null) {
   const {
     setCurrentSession,
     clearSession
@@ -39,7 +42,7 @@ export function useSessionManagement(sendFn: Function | null) {
   // Handle session info from WebRTC answer
   const handleSessionResponse = useCallback((response: SessionResponse) => {
     if (response.sessionId && response.mode) {
-      setCurrentSession(response.sessionId, response.mode as any);
+      setCurrentSession(response.sessionId, response.mode as "primary" | "observer" | "queued" | "pending");
     }
   }, [setCurrentSession]);
 
@@ -48,7 +51,7 @@ export function useSessionManagement(sendFn: Function | null) {
     if (!sendFn) return;
 
     return new Promise<void>((resolve, reject) => {
-      sendFn("approvePrimaryRequest", { requesterID: requestId }, (response: any) => {
+      sendFn("approvePrimaryRequest", { requesterID: requestId }, (response: { result?: unknown; error?: { message: string } }) => {
         if (response.error) {
           console.error("Failed to approve primary request:", response.error);
           reject(new Error(response.error.message || "Failed to approve"));
@@ -65,7 +68,7 @@ export function useSessionManagement(sendFn: Function | null) {
     if (!sendFn) return;
 
     return new Promise<void>((resolve, reject) => {
-      sendFn("denyPrimaryRequest", { requesterID: requestId }, (response: any) => {
+      sendFn("denyPrimaryRequest", { requesterID: requestId }, (response: { result?: unknown; error?: { message: string } }) => {
         if (response.error) {
           console.error("Failed to deny primary request:", response.error);
           reject(new Error(response.error.message || "Failed to deny"));
@@ -82,7 +85,7 @@ export function useSessionManagement(sendFn: Function | null) {
     if (!sendFn) return;
 
     return new Promise<void>((resolve, reject) => {
-      sendFn("approveNewSession", { sessionId }, (response: any) => {
+      sendFn("approveNewSession", { sessionId }, (response: { result?: unknown; error?: { message: string } }) => {
         if (response.error) {
           console.error("Failed to approve new session:", response.error);
           reject(new Error(response.error.message || "Failed to approve"));
@@ -99,7 +102,7 @@ export function useSessionManagement(sendFn: Function | null) {
     if (!sendFn) return;
 
     return new Promise<void>((resolve, reject) => {
-      sendFn("denyNewSession", { sessionId }, (response: any) => {
+      sendFn("denyNewSession", { sessionId }, (response: { result?: unknown; error?: { message: string } }) => {
         if (response.error) {
           console.error("Failed to deny new session:", response.error);
           reject(new Error(response.error.message || "Failed to deny"));
@@ -112,7 +115,7 @@ export function useSessionManagement(sendFn: Function | null) {
   }, [sendFn]);
 
   // Handle RPC events
-  const handleRpcEvent = useCallback((method: string, params: any) => {
+  const handleRpcEvent = useCallback((method: string, params: unknown) => {
     // Pass session events to the session event handler
     if (method === "sessionsUpdated" ||
         method === "modeChanged" ||
@@ -122,12 +125,12 @@ export function useSessionManagement(sendFn: Function | null) {
 
     // Handle new session approval request (only if approval is required and user has permission)
     if (method === "newSessionPending" && requireSessionApproval && hasPermission(Permission.SESSION_APPROVE)) {
-      setNewSessionRequest(params);
+      setNewSessionRequest(params as NewSessionRequest);
     }
 
     // Handle primary control request
     if (method === "primaryControlRequested") {
-      setPrimaryControlRequest(params);
+      setPrimaryControlRequest(params as PrimaryControlRequest);
     }
 
     // Handle approval/denial responses
@@ -147,13 +150,14 @@ export function useSessionManagement(sendFn: Function | null) {
     // Handle session access denial (when your new session is denied)
     if (method === "sessionAccessDenied") {
       const { clearSession, setSessionError } = useSessionStore.getState();
-      setSessionError(params.message || "Session access was denied by the primary session");
+      const errorParams = params as { message?: string };
+      setSessionError(errorParams.message || "Session access was denied by the primary session");
       // Clear session data as we're being disconnected
       setTimeout(() => {
         clearSession();
       }, 3000); // Give user time to see the error
     }
-  }, [handleSessionEvent]);
+  }, [handleSessionEvent, hasPermission, requireSessionApproval]);
 
   // Cleanup on unmount
   useEffect(() => {

@@ -58,28 +58,28 @@ type TransferBlacklistEntry struct {
 
 // Broadcast throttling to prevent DoS
 var (
-	lastBroadcast   time.Time
-	broadcastMutex  sync.Mutex
-	broadcastDelay  = 100 * time.Millisecond // Min time between broadcasts
+	lastBroadcast  time.Time
+	broadcastMutex sync.Mutex
+	broadcastDelay = 100 * time.Millisecond // Min time between broadcasts
 
 	// Pre-allocated event maps to reduce allocations
-	modePrimaryEvent   = map[string]string{"mode": "primary"}
-	modeObserverEvent  = map[string]string{"mode": "observer"}
+	modePrimaryEvent  = map[string]string{"mode": "primary"}
+	modeObserverEvent = map[string]string{"mode": "observer"}
 )
 
 type SessionManager struct {
-	mu               sync.RWMutex  // 24 bytes - place first for better alignment
-	primaryTimeout   time.Duration  // 8 bytes
-	logger           *zerolog.Logger  // 8 bytes
-	sessions         map[string]*Session  // 8 bytes
-	reconnectGrace   map[string]time.Time  // 8 bytes
-	reconnectInfo    map[string]*SessionData  // 8 bytes
-	transferBlacklist []TransferBlacklistEntry  // Prevent demoted sessions from immediate re-promotion
-	queueOrder       []string  // 24 bytes (slice header)
-	primarySessionID string  // 16 bytes
-	lastPrimaryID    string  // 16 bytes
-	maxSessions      int  // 8 bytes
-	cleanupCancel    context.CancelFunc // For stopping cleanup goroutine
+	mu                sync.RWMutex             // 24 bytes - place first for better alignment
+	primaryTimeout    time.Duration            // 8 bytes
+	logger            *zerolog.Logger          // 8 bytes
+	sessions          map[string]*Session      // 8 bytes
+	reconnectGrace    map[string]time.Time     // 8 bytes
+	reconnectInfo     map[string]*SessionData  // 8 bytes
+	transferBlacklist []TransferBlacklistEntry // Prevent demoted sessions from immediate re-promotion
+	queueOrder        []string                 // 24 bytes (slice header)
+	primarySessionID  string                   // 16 bytes
+	lastPrimaryID     string                   // 16 bytes
+	maxSessions       int                      // 8 bytes
+	cleanupCancel     context.CancelFunc       // For stopping cleanup goroutine
 
 	// Emergency promotion tracking for safety
 	lastEmergencyPromotion         time.Time
@@ -107,14 +107,14 @@ func NewSessionManager(logger *zerolog.Logger) *SessionManager {
 	}
 
 	sm := &SessionManager{
-		sessions:         make(map[string]*Session),
-		reconnectGrace:   make(map[string]time.Time),
-		reconnectInfo:    make(map[string]*SessionData),
+		sessions:          make(map[string]*Session),
+		reconnectGrace:    make(map[string]time.Time),
+		reconnectInfo:     make(map[string]*SessionData),
 		transferBlacklist: make([]TransferBlacklistEntry, 0),
-		queueOrder:       make([]string, 0),
-		logger:           logger,
-		maxSessions:      maxSessions,
-		primaryTimeout:   primaryTimeout,
+		queueOrder:        make([]string, 0),
+		logger:            logger,
+		maxSessions:       maxSessions,
+		primaryTimeout:    primaryTimeout,
 	}
 
 	// Start background cleanup of inactive sessions
@@ -200,8 +200,8 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 			if sm.lastPrimaryID == session.ID && !isBlacklisted {
 				// This is the rightful primary reconnecting within grace period
 				sm.primarySessionID = session.ID
-				sm.lastPrimaryID = ""  // Clear since primary successfully reconnected
-				delete(sm.reconnectGrace, session.ID)  // Clear grace period
+				sm.lastPrimaryID = ""                 // Clear since primary successfully reconnected
+				delete(sm.reconnectGrace, session.ID) // Clear grace period
 				sm.logger.Debug().
 					Str("sessionID", session.ID).
 					Msg("Primary session successfully reconnected within grace period")
@@ -290,7 +290,7 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 			// we can always promote to primary when no primary exists
 			session.Mode = SessionModePrimary
 			sm.primarySessionID = session.ID
-			sm.lastPrimaryID = ""  // Clear since we have a new primary
+			sm.lastPrimaryID = "" // Clear since we have a new primary
 
 			// Clear all existing grace periods when a new primary is established
 			// This prevents multiple sessions from fighting for primary status via grace period
@@ -389,7 +389,7 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 	}
 
 	// Limit grace period entries to prevent memory exhaustion (DoS protection)
-	const maxGraceEntries = 10  // Reduced from 20 to limit memory usage
+	const maxGraceEntries = 10 // Reduced from 20 to limit memory usage
 	for len(sm.reconnectGrace) >= maxGraceEntries {
 		// Find and remove the oldest grace period entry
 		var oldestID string
@@ -422,8 +422,8 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 
 	// If this was the primary session, clear primary slot and track for grace period
 	if wasPrimary {
-		sm.lastPrimaryID = sessionID    // Remember this was the primary for grace period
-		sm.primarySessionID = ""        // Clear primary slot so other sessions can be promoted
+		sm.lastPrimaryID = sessionID // Remember this was the primary for grace period
+		sm.primarySessionID = ""     // Clear primary slot so other sessions can be promoted
 		sm.logger.Info().
 			Str("sessionID", sessionID).
 			Dur("gracePeriod", time.Duration(gracePeriod)*time.Second).
@@ -970,7 +970,7 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 	toSession.Mode = SessionModePrimary
 	toSession.hidRPCAvailable = false // Force re-handshake
 	sm.primarySessionID = toSessionID
-	sm.lastPrimaryID = toSessionID  // Set to new primary so grace period works on refresh
+	sm.lastPrimaryID = toSessionID // Set to new primary so grace period works on refresh
 
 	// Clear input state
 	sm.clearInputState()
@@ -1038,9 +1038,9 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 			// Send connection reset signal to the promoted session
 			writeJSONRPCEvent("connectionModeChanged", map[string]interface{}{
 				"sessionId": toSessionID,
-				"newMode": string(toSession.Mode),
-				"reason": "session_promotion",
-				"action": "reconnect_required",
+				"newMode":   string(toSession.Mode),
+				"reason":    "session_promotion",
+				"action":    "reconnect_required",
 				"timestamp": time.Now().Unix(),
 			}, toSession)
 
@@ -1113,7 +1113,7 @@ func (sm *SessionManager) removeFromQueue(sessionID string) {
 func (sm *SessionManager) clearInputState() {
 	// Clear keyboard state
 	if gadget != nil {
-		gadget.KeyboardReport(0, []byte{0, 0, 0, 0, 0, 0})
+		_ = gadget.KeyboardReport(0, []byte{0, 0, 0, 0, 0, 0})
 	}
 }
 
@@ -1185,8 +1185,8 @@ func (sm *SessionManager) findMostTrustedSessionForEmergency() string {
 	for sessionID, session := range sm.sessions {
 		// Skip if blacklisted, primary, or not eligible modes
 		if sm.isSessionBlacklisted(sessionID) ||
-		   session.Mode == SessionModePrimary ||
-		   (session.Mode != SessionModeObserver && session.Mode != SessionModeQueued) {
+			session.Mode == SessionModePrimary ||
+			(session.Mode != SessionModeObserver && session.Mode != SessionModeQueued) {
 			continue
 		}
 
@@ -1377,11 +1377,11 @@ func (sm *SessionManager) Shutdown() {
 }
 
 func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Second)  // Check every second for grace periods
+	ticker := time.NewTicker(1 * time.Second) // Check every second for grace periods
 	defer ticker.Stop()
 
-	pendingTimeout := 1 * time.Minute  // Reduced from 5 minutes to prevent DoS
-	validationCounter := 0             // Counter for periodic validateSinglePrimary calls
+	pendingTimeout := 1 * time.Minute // Reduced from 5 minutes to prevent DoS
+	validationCounter := 0            // Counter for periodic validateSinglePrimary calls
 
 	for {
 		select {
@@ -1508,7 +1508,7 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 			// Clean up pending sessions that have timed out (DoS protection)
 			for id, session := range sm.sessions {
 				if session.Mode == SessionModePending &&
-				   now.Sub(session.CreatedAt) > pendingTimeout {
+					now.Sub(session.CreatedAt) > pendingTimeout {
 					websocketLogger.Info().
 						Str("sessionId", id).
 						Dur("age", now.Sub(session.CreatedAt)).
@@ -1549,8 +1549,8 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 							bestScore := -1
 							for id, session := range sm.sessions {
 								if id != timedOutSessionID &&
-								   !sm.isSessionBlacklisted(id) &&
-								   (session.Mode == SessionModeObserver || session.Mode == SessionModeQueued) {
+									!sm.isSessionBlacklisted(id) &&
+									(session.Mode == SessionModeObserver || session.Mode == SessionModeQueued) {
 									score := sm.getSessionTrustScore(id)
 									if score > bestScore {
 										bestScore = score

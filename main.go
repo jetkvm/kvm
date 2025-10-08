@@ -19,12 +19,12 @@ func Main() {
 	// Initialize currentSessionSettings to use config's persistent SessionSettings
 	if config.SessionSettings == nil {
 		config.SessionSettings = &SessionSettings{
-			RequireApproval: false,
-			RequireNickname: false,
-			ReconnectGrace:  10,
+			RequireApproval:   false,
+			RequireNickname:   false,
+			ReconnectGrace:    10,
 			PrivateKeystrokes: false,
 		}
-		SaveConfig()
+		_ = SaveConfig()
 	}
 	currentSessionSettings = config.SessionSettings
 

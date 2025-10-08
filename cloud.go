@@ -535,11 +535,11 @@ func handleSessionRequest(
 	}
 
 	err = wsjson.Write(context.Background(), c, gin.H{
-		"type": "answer",
-		"data": sd,
-		"sessionId": session.ID,
-		"mode": session.Mode,
-		"nickname": session.Nickname,
+		"type":            "answer",
+		"data":            sd,
+		"sessionId":       session.ID,
+		"mode":            session.Mode,
+		"nickname":        session.Nickname,
 		"requireNickname": requireNickname,
 		"requireApproval": requireApproval,
 	})

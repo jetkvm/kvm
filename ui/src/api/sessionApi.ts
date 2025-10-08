@@ -1,45 +1,52 @@
 import { SessionInfo } from "@/stores/sessionStore";
 
+interface JsonRpcResponse {
+  result?: unknown;
+  error?: { message: string };
+}
+
+type RpcSendFunction = (method: string, params: Record<string, unknown>, callback: (response: JsonRpcResponse) => void) => void;
+
 export const sessionApi = {
-  getSessions: async (sendFn: Function): Promise<SessionInfo[]> => {
+  getSessions: async (sendFn: RpcSendFunction): Promise<SessionInfo[]> => {
     return new Promise((resolve, reject) => {
-      sendFn("getSessions", {}, (response: any) => {
+      sendFn("getSessions", {}, (response: JsonRpcResponse) => {
         if (response.error) {
           reject(new Error(response.error.message));
         } else {
-          resolve(response.result || []);
+          resolve((response.result as SessionInfo[]) || []);
         }
       });
     });
   },
 
-  getSessionInfo: async (sendFn: Function, sessionId: string): Promise<SessionInfo> => {
+  getSessionInfo: async (sendFn: RpcSendFunction, sessionId: string): Promise<SessionInfo> => {
     return new Promise((resolve, reject) => {
-      sendFn("getSessionInfo", { sessionId }, (response: any) => {
+      sendFn("getSessionInfo", { sessionId }, (response: JsonRpcResponse) => {
         if (response.error) {
           reject(new Error(response.error.message));
         } else {
-          resolve(response.result);
+          resolve(response.result as SessionInfo);
         }
       });
     });
   },
 
-  requestPrimary: async (sendFn: Function, sessionId: string): Promise<{ status: string; mode?: string; message?: string }> => {
+  requestPrimary: async (sendFn: RpcSendFunction, sessionId: string): Promise<{ status: string; mode?: string; message?: string }> => {
     return new Promise((resolve, reject) => {
-      sendFn("requestPrimary", { sessionId }, (response: any) => {
+      sendFn("requestPrimary", { sessionId }, (response: JsonRpcResponse) => {
         if (response.error) {
           reject(new Error(response.error.message));
         } else {
-          resolve(response.result);
+          resolve(response.result as { status: string; mode?: string; message?: string });
         }
       });
     });
   },
 
-  releasePrimary: async (sendFn: Function, sessionId: string): Promise<void> => {
+  releasePrimary: async (sendFn: RpcSendFunction, sessionId: string): Promise<void> => {
     return new Promise((resolve, reject) => {
-      sendFn("releasePrimary", { sessionId }, (response: any) => {
+      sendFn("releasePrimary", { sessionId }, (response: JsonRpcResponse) => {
         if (response.error) {
           reject(new Error(response.error.message));
         } else {
@@ -50,12 +57,12 @@ export const sessionApi = {
   },
 
   transferPrimary: async (
-    sendFn: Function,
+    sendFn: RpcSendFunction,
     fromId: string,
     toId: string
   ): Promise<void> => {
     return new Promise((resolve, reject) => {
-      sendFn("transferPrimary", { fromId, toId }, (response: any) => {
+      sendFn("transferPrimary", { fromId, toId }, (response: JsonRpcResponse) => {
         if (response.error) {
           reject(new Error(response.error.message));
         } else {
@@ -66,12 +73,12 @@ export const sessionApi = {
   },
 
   updateNickname: async (
-    sendFn: Function,
+    sendFn: RpcSendFunction,
     sessionId: string,
     nickname: string
   ): Promise<void> => {
     return new Promise((resolve, reject) => {
-      sendFn("updateSessionNickname", { sessionId, nickname }, (response: any) => {
+      sendFn("updateSessionNickname", { sessionId, nickname }, (response: JsonRpcResponse) => {
         if (response.error) {
           reject(new Error(response.error.message));
         } else {
@@ -82,11 +89,11 @@ export const sessionApi = {
   },
 
   approveNewSession: async (
-    sendFn: Function,
+    sendFn: RpcSendFunction,
     sessionId: string
   ): Promise<void> => {
     return new Promise((resolve, reject) => {
-      sendFn("approveNewSession", { sessionId }, (response: any) => {
+      sendFn("approveNewSession", { sessionId }, (response: JsonRpcResponse) => {
         if (response.error) {
           reject(new Error(response.error.message));
         } else {
@@ -97,11 +104,11 @@ export const sessionApi = {
   },
 
   denyNewSession: async (
-    sendFn: Function,
+    sendFn: RpcSendFunction,
     sessionId: string
   ): Promise<void> => {
     return new Promise((resolve, reject) => {
-      sendFn("denyNewSession", { sessionId }, (response: any) => {
+      sendFn("denyNewSession", { sessionId }, (response: JsonRpcResponse) => {
         if (response.error) {
           reject(new Error(response.error.message));
         } else {

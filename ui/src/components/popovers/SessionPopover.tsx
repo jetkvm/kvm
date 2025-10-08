@@ -1,12 +1,13 @@
-import { useState, useEffect } from "react";
-import { useSessionStore, useSharedSessionStore } from "@/stores/sessionStore";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { useState, useEffect, useCallback } from "react";
 import {
   UserGroupIcon,
   ArrowPathIcon,
   PencilIcon,
 } from "@heroicons/react/20/solid";
 import clsx from "clsx";
+
+import { useSessionStore, useSharedSessionStore } from "@/stores/sessionStore";
+import { useJsonRpc } from "@/hooks/useJsonRpc";
 import SessionControlPanel from "@/components/SessionControlPanel";
 import NicknameModal from "@/components/NicknameModal";
 import SessionsList, { SessionModeBadge } from "@/components/SessionsList";
@@ -29,11 +30,11 @@ export default function SessionPopover() {
   const { send } = useJsonRpc();
 
   // Adapter function to match existing callback pattern
-  const sendRpc = (method: string, params: any, callback?: (response: any) => void) => {
+  const sendRpc = useCallback((method: string, params: Record<string, unknown>, callback?: (response: { result?: unknown; error?: { message: string } }) => void) => {
     send(method, params, (response) => {
       if (callback) callback(response);
     });
-  };
+  }, [send]);
 
   const handleRefresh = async () => {
     if (isRefreshing) return;
@@ -56,7 +57,7 @@ export default function SessionPopover() {
         .then(sessions => setSessions(sessions))
         .catch(error => console.error("Failed to fetch sessions:", error));
     }
-  }, []);
+  }, [sendRpc, sessions.length, setSessions]);
 
   return (
     <div className="w-full rounded-lg bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700">
@@ -141,7 +142,7 @@ export default function SessionPopover() {
               setShowNicknameModal(true);
             }}
             onApprove={(sessionId) => {
-              sendRpc("approveNewSession", { sessionId }, (response: any) => {
+              sendRpc("approveNewSession", { sessionId }, (response) => {
                 if (response.error) {
                   console.error("Failed to approve session:", response.error);
                 } else {
@@ -150,7 +151,7 @@ export default function SessionPopover() {
               });
             }}
             onDeny={(sessionId) => {
-              sendRpc("denyNewSession", { sessionId }, (response: any) => {
+              sendRpc("denyNewSession", { sessionId }, (response) => {
                 if (response.error) {
                   console.error("Failed to deny session:", response.error);
                 } else {

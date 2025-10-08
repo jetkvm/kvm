@@ -1,7 +1,9 @@
 // Nickname generation using backend API for consistency
 
+type RpcSendFunction = (method: string, params: Record<string, unknown>, callback: (response: { result?: unknown; error?: { message: string } }) => void) => void;
+
 // Main function that uses backend generation
-export async function generateNickname(sendFn?: Function): Promise<string> {
+export async function generateNickname(sendFn?: RpcSendFunction): Promise<string> {
   // Require backend function - no fallback
   if (!sendFn) {
     throw new Error('Backend connection required for nickname generation');
@@ -9,9 +11,10 @@ export async function generateNickname(sendFn?: Function): Promise<string> {
 
   return new Promise((resolve, reject) => {
     try {
-      const result = sendFn('generateNickname', { userAgent: navigator.userAgent }, (response: any) => {
-        if (response && !response.error && response.result?.nickname) {
-          resolve(response.result.nickname);
+      const result = sendFn('generateNickname', { userAgent: navigator.userAgent }, (response: { result?: unknown; error?: { message: string } }) => {
+        const result = response.result as { nickname?: string } | undefined;
+        if (response && !response.error && result?.nickname) {
+          resolve(result.nickname);
         } else {
           reject(new Error('Failed to generate nickname from backend'));
         }

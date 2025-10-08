@@ -1,5 +1,6 @@
 import { PencilIcon, CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import clsx from "clsx";
+
 import { formatters } from "@/utils";
 import { usePermissions, Permission } from "@/hooks/usePermissions";
 

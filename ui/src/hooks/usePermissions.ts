@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
+
+import { useJsonRpc, JsonRpcRequest } from "@/hooks/useJsonRpc";
 import { useSessionStore } from "@/stores/sessionStore";
 import { useRTCStore } from "@/hooks/stores";
+
+type RpcSendFunction = (method: string, params: Record<string, unknown>, callback: (response: { result?: unknown; error?: { message: string } }) => void) => void;
 
 // Permission types matching backend
 export enum Permission {
@@ -65,11 +68,11 @@ export function usePermissions() {
   const previousCanControl = useRef<boolean>(false);
 
   // Function to poll permissions
-  const pollPermissions = useCallback((send: any) => {
+  const pollPermissions = useCallback((send: RpcSendFunction) => {
     if (!send) return;
 
     setIsLoading(true);
-    send("getPermissions", {}, (response: any) => {
+    send("getPermissions", {}, (response: { result?: unknown; error?: { message: string } }) => {
       if (!response.error && response.result) {
         const result = response.result as PermissionsResponse;
         setPermissions(result.permissions);
@@ -79,13 +82,14 @@ export function usePermissions() {
   }, []);
 
   // Handle connectionModeChanged events that require WebRTC reconnection
-  const handleRpcRequest = useCallback((request: any) => {
+  const handleRpcRequest = useCallback((request: JsonRpcRequest) => {
     if (request.method === "connectionModeChanged") {
       console.info("Connection mode changed, WebRTC reconnection required", request.params);
 
       // For session promotion that requires reconnection, refresh the page
       // This ensures WebRTC connection is re-established with proper mode
-      if (request.params?.action === "reconnect_required" && request.params?.reason === "session_promotion") {
+      const params = request.params as { action?: string; reason?: string };
+      if (params.action === "reconnect_required" && params.reason === "session_promotion") {
         console.info("Session promoted, refreshing page to re-establish WebRTC connection");
         // Small delay to ensure all state updates are processed
         setTimeout(() => {
@@ -132,7 +136,8 @@ export function usePermissions() {
     }
 
     previousCanControl.current = currentCanControl;
-  }, [permissions, rpcHidChannel, setRpcHidProtocolVersion]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissions, rpcHidChannel, setRpcHidProtocolVersion]); // hasPermission depends on permissions which is already in deps
 
   const hasPermission = (permission: Permission): boolean => {
     return permissions[permission] === true;

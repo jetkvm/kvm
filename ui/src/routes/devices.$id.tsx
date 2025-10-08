@@ -230,7 +230,6 @@ export default function KvmIdRoute() {
           );
           cleanupAndStopReconnecting();
           clearInterval(checkInterval);
-        } else {
         }
       }, 1000);
     },
@@ -270,6 +269,7 @@ export default function KvmIdRoute() {
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
       onOpen() {
+        // Connection established, message handling will begin
       },
 
       onMessage: message => {
@@ -572,7 +572,7 @@ export default function KvmIdRoute() {
                 setRequireSessionNickname(response.result.requireNickname);
               }
             }
-          } catch (error) {
+          } catch {
             // Ignore parse errors
           }
         };
@@ -627,6 +627,9 @@ export default function KvmIdRoute() {
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
     setTransceiver,
+    hasPermission,
+    setRequireSessionApproval,
+    setRequireSessionNickname,
   ]);
 
   useEffect(() => {

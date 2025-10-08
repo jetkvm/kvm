@@ -15,9 +15,9 @@ const (
 	PermissionPaste         Permission = "clipboard.paste"
 
 	// Session management permissions
-	PermissionSessionTransfer      Permission = "session.transfer"
-	PermissionSessionApprove       Permission = "session.approve"
-	PermissionSessionKick          Permission = "session.kick"
+	PermissionSessionTransfer       Permission = "session.transfer"
+	PermissionSessionApprove        Permission = "session.approve"
+	PermissionSessionKick           Permission = "session.kick"
 	PermissionSessionRequestPrimary Permission = "session.request_primary"
 	PermissionSessionReleasePrimary Permission = "session.release_primary"
 	PermissionSessionManage         Permission = "session.manage"
@@ -35,8 +35,8 @@ const (
 	PermissionExtensionManage Permission = "extension.manage"
 
 	// Terminal/Serial permissions
-	PermissionTerminalAccess Permission = "terminal.access"
-	PermissionSerialAccess   Permission = "serial.access"
+	PermissionTerminalAccess  Permission = "terminal.access"
+	PermissionSerialAccess    Permission = "serial.access"
 	PermissionExtensionATX    Permission = "extension.atx"
 	PermissionExtensionDC     Permission = "extension.dc"
 	PermissionExtensionSerial Permission = "extension.serial"
@@ -78,7 +78,7 @@ var RolePermissions = map[SessionMode]PermissionSet{
 		PermissionExtensionWOL:          true,
 		PermissionSettingsRead:          true,
 		PermissionSettingsWrite:         true,
-		PermissionSettingsAccess:        true,  // Only primary can access settings UI
+		PermissionSettingsAccess:        true, // Only primary can access settings UI
 		PermissionSystemReboot:          true,
 		PermissionSystemUpdate:          true,
 		PermissionSystemNetwork:         true,
@@ -140,20 +140,20 @@ func RequirePermissionForMode(mode SessionMode, perm Permission) error {
 
 // GetPermissionsResponse is the response structure for getPermissions RPC
 type GetPermissionsResponse struct {
-	Mode        string            `json:"mode"`
-	Permissions map[string]bool   `json:"permissions"`
+	Mode        string          `json:"mode"`
+	Permissions map[string]bool `json:"permissions"`
 }
 
 // MethodPermissions maps RPC methods to required permissions
 var MethodPermissions = map[string]Permission{
 	// Power/hardware control
-	"setATXPowerAction":      PermissionPowerControl,
-	"setDCPowerState":        PermissionPowerControl,
-	"setDCRestoreState":      PermissionPowerControl,
+	"setATXPowerAction": PermissionPowerControl,
+	"setDCPowerState":   PermissionPowerControl,
+	"setDCRestoreState": PermissionPowerControl,
 
 	// USB device control
-	"setUsbDeviceState":      PermissionUSBControl,
-	"setUsbDevices":          PermissionUSBControl,
+	"setUsbDeviceState": PermissionUSBControl,
+	"setUsbDevices":     PermissionUSBControl,
 
 	// Mount operations
 	"mountUsb":               PermissionMountMedia,
@@ -196,43 +196,43 @@ var MethodPermissions = map[string]Permission{
 	"setBacklightSettings":   PermissionSettingsWrite,
 
 	// USB/HID settings
-	"setUsbEmulationState":   PermissionSettingsWrite,
-	"setUsbConfig":           PermissionSettingsWrite,
-	"setKeyboardLayout":      PermissionSettingsWrite,
-	"setJigglerState":        PermissionSettingsWrite,
-	"setJigglerConfig":       PermissionSettingsWrite,
-	"setMassStorageMode":     PermissionSettingsWrite,
-	"setKeyboardMacros":      PermissionSettingsWrite,
-	"setWakeOnLanDevices":    PermissionSettingsWrite,
+	"setUsbEmulationState": PermissionSettingsWrite,
+	"setUsbConfig":         PermissionSettingsWrite,
+	"setKeyboardLayout":    PermissionSettingsWrite,
+	"setJigglerState":      PermissionSettingsWrite,
+	"setJigglerConfig":     PermissionSettingsWrite,
+	"setMassStorageMode":   PermissionSettingsWrite,
+	"setKeyboardMacros":    PermissionSettingsWrite,
+	"setWakeOnLanDevices":  PermissionSettingsWrite,
 
 	// Cloud settings
-	"setCloudUrl":            PermissionSettingsWrite,
-	"deregisterDevice":       PermissionSettingsWrite,
+	"setCloudUrl":      PermissionSettingsWrite,
+	"deregisterDevice": PermissionSettingsWrite,
 
 	// Active extension control
-	"setActiveExtension":     PermissionExtensionManage,
+	"setActiveExtension": PermissionExtensionManage,
 
 	// Input operations (already handled in other places but for consistency)
-	"keyboardReport":         PermissionKeyboardInput,
-	"keypressReport":         PermissionKeyboardInput,
-	"absMouseReport":         PermissionMouseInput,
-	"relMouseReport":         PermissionMouseInput,
-	"wheelReport":            PermissionMouseInput,
-	"executeKeyboardMacro":   PermissionPaste,
-	"cancelKeyboardMacro":    PermissionPaste,
+	"keyboardReport":       PermissionKeyboardInput,
+	"keypressReport":       PermissionKeyboardInput,
+	"absMouseReport":       PermissionMouseInput,
+	"relMouseReport":       PermissionMouseInput,
+	"wheelReport":          PermissionMouseInput,
+	"executeKeyboardMacro": PermissionPaste,
+	"cancelKeyboardMacro":  PermissionPaste,
 
 	// Session operations
-	"approveNewSession":      PermissionSessionApprove,
-	"denyNewSession":         PermissionSessionApprove,
-	"transferSession":        PermissionSessionTransfer,
-	"transferPrimary":        PermissionSessionTransfer,
-	"requestPrimary":         PermissionSessionRequestPrimary,
-	"releasePrimary":         PermissionSessionReleasePrimary,
+	"approveNewSession": PermissionSessionApprove,
+	"denyNewSession":    PermissionSessionApprove,
+	"transferSession":   PermissionSessionTransfer,
+	"transferPrimary":   PermissionSessionTransfer,
+	"requestPrimary":    PermissionSessionRequestPrimary,
+	"releasePrimary":    PermissionSessionReleasePrimary,
 
 	// Extension operations
-	"activateExtension":      PermissionExtensionManage,
-	"deactivateExtension":    PermissionExtensionManage,
-	"sendWOLMagicPacket":     PermissionExtensionWOL,
+	"activateExtension":   PermissionExtensionManage,
+	"deactivateExtension": PermissionExtensionManage,
+	"sendWOLMagicPacket":  PermissionExtensionWOL,
 
 	// Read operations - require appropriate read permissions
 	"getSessionSettings":     PermissionSettingsRead,
@@ -266,37 +266,37 @@ var MethodPermissions = map[string]Permission{
 	"getNetworkState":        PermissionSettingsRead,
 
 	// Mount/media read operations
-	"getMassStorageMode":     PermissionMountList,
-	"getUsbState":            PermissionMountList,
-	"getUSBState":            PermissionMountList,
-	"listStorageFiles":       PermissionMountList,
-	"getStorageSpace":        PermissionMountList,
+	"getMassStorageMode": PermissionMountList,
+	"getUsbState":        PermissionMountList,
+	"getUSBState":        PermissionMountList,
+	"listStorageFiles":   PermissionMountList,
+	"getStorageSpace":    PermissionMountList,
 
 	// Extension read operations
-	"getActiveExtension":     PermissionSettingsRead,
+	"getActiveExtension": PermissionSettingsRead,
 
 	// Power state reads
-	"getATXState":            PermissionSettingsRead,
-	"getDCPowerState":        PermissionSettingsRead,
-	"getDCRestoreState":      PermissionSettingsRead,
+	"getATXState":       PermissionSettingsRead,
+	"getDCPowerState":   PermissionSettingsRead,
+	"getDCRestoreState": PermissionSettingsRead,
 
 	// Device info reads (these should be accessible to all)
-	"getDeviceID":            PermissionVideoView,
-	"getLocalVersion":        PermissionVideoView,
-	"getVideoState":          PermissionVideoView,
-	"getKeyboardLedState":    PermissionVideoView,
-	"getKeyDownState":        PermissionVideoView,
-	"ping":                   PermissionVideoView,
-	"getTimezones":           PermissionVideoView,
-	"getSessions":            PermissionVideoView,
-	"getUpdateStatus":        PermissionSettingsRead,
-	"isUpdatePending":        PermissionSettingsRead,
-	"getUsbEmulationState":   PermissionSettingsRead,
-	"getUsbConfig":           PermissionSettingsRead,
-	"getUsbDevices":          PermissionSettingsRead,
-	"getKeyboardMacros":      PermissionSettingsRead,
-	"getWakeOnLanDevices":    PermissionSettingsRead,
-	"getVirtualMediaState":   PermissionMountList,
+	"getDeviceID":          PermissionVideoView,
+	"getLocalVersion":      PermissionVideoView,
+	"getVideoState":        PermissionVideoView,
+	"getKeyboardLedState":  PermissionVideoView,
+	"getKeyDownState":      PermissionVideoView,
+	"ping":                 PermissionVideoView,
+	"getTimezones":         PermissionVideoView,
+	"getSessions":          PermissionVideoView,
+	"getUpdateStatus":      PermissionSettingsRead,
+	"isUpdatePending":      PermissionSettingsRead,
+	"getUsbEmulationState": PermissionSettingsRead,
+	"getUsbConfig":         PermissionSettingsRead,
+	"getUsbDevices":        PermissionSettingsRead,
+	"getKeyboardMacros":    PermissionSettingsRead,
+	"getWakeOnLanDevices":  PermissionSettingsRead,
+	"getVirtualMediaState": PermissionMountList,
 }
 
 // GetMethodPermission returns the required permission for an RPC method

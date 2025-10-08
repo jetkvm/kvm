@@ -56,7 +56,6 @@ type DisplayRotationSettings struct {
 	Rotation string `json:"rotation"`
 }
 
-
 type BacklightSettings struct {
 	MaxBrightness int `json:"max_brightness"`
 	DimAfter      int `json:"dim_after"`
@@ -1330,7 +1329,7 @@ func rpcRequestPrimary(sessionId string) map[string]interface{} {
 	err := sessionManager.RequestPrimary(sessionId)
 	if err != nil {
 		return map[string]interface{}{
-			"status": "error",
+			"status":  "error",
 			"message": err.Error(),
 		}
 	}
@@ -1339,14 +1338,14 @@ func rpcRequestPrimary(sessionId string) map[string]interface{} {
 	session := sessionManager.GetSession(sessionId)
 	if session == nil {
 		return map[string]interface{}{
-			"status": "error",
+			"status":  "error",
 			"message": "session not found",
 		}
 	}
 
 	return map[string]interface{}{
 		"status": "success",
-		"mode": string(session.Mode),
+		"mode":   string(session.Mode),
 	}
 }
 
@@ -1357,7 +1356,6 @@ func rpcReleasePrimary(sessionId string) error {
 func rpcTransferPrimary(fromId string, toId string) error {
 	return sessionManager.TransferPrimary(fromId, toId)
 }
-
 
 func rpcGetSessionConfig() (map[string]interface{}, error) {
 	maxSessions := 10
@@ -1373,25 +1371,11 @@ func rpcGetSessionConfig() (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"enabled":           true,
-		"maxSessions":       maxSessions,
-		"primaryTimeout":    primaryTimeout,
+		"enabled":            true,
+		"maxSessions":        maxSessions,
+		"primaryTimeout":     primaryTimeout,
 		"allowCloudOverride": true,
 	}, nil
-}
-
-func (s *Session) rpcApprovePrimaryRequest(requesterID string) error {
-	if s == nil || s.ID == "" {
-		return errors.New("invalid session")
-	}
-	return sessionManager.ApprovePrimaryRequest(s.ID, requesterID)
-}
-
-func (s *Session) rpcDenyPrimaryRequest(requesterID string) error {
-	if s == nil || s.ID == "" {
-		return errors.New("invalid session")
-	}
-	return sessionManager.DenyPrimaryRequest(s.ID, requesterID)
 }
 
 var (

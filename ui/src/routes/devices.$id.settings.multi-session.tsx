@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import {
+  UserGroupIcon,
+} from "@heroicons/react/16/solid";
+
 import { useJsonRpc, JsonRpcResponse } from "@/hooks/useJsonRpc";
 import { usePermissions, Permission } from "@/hooks/usePermissions";
 import { useSettingsStore } from "@/hooks/stores";
@@ -7,9 +11,6 @@ import Card from "@/components/Card";
 import Checkbox from "@/components/Checkbox";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
 import { SettingsItem } from "@/components/SettingsItem";
-import {
-  UserGroupIcon,
-} from "@heroicons/react/16/solid";
 
 export default function SessionsSettings() {
   const { send } = useJsonRpc();

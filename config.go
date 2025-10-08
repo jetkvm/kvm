@@ -79,10 +79,10 @@ func (m *KeyboardMacro) Validate() error {
 
 // MultiSessionConfig defines settings for multi-session support
 type MultiSessionConfig struct {
-	Enabled            bool `json:"enabled"`
-	MaxSessions        int  `json:"max_sessions"`
-	PrimaryTimeout     int  `json:"primary_timeout_seconds"`
-	AllowCloudOverride bool `json:"allow_cloud_override"`
+	Enabled             bool `json:"enabled"`
+	MaxSessions         int  `json:"max_sessions"`
+	PrimaryTimeout      int  `json:"primary_timeout_seconds"`
+	AllowCloudOverride  bool `json:"allow_cloud_override"`
 	RequireAuthTransfer bool `json:"require_auth_transfer"`
 }
 
@@ -139,15 +139,15 @@ func (c *Config) SetDisplayRotation(rotation string) error {
 const configPath = "/userdata/kvm_config.json"
 
 var defaultConfig = &Config{
-	CloudURL:             "https://api.jetkvm.com",
-	CloudAppURL:          "https://app.jetkvm.com",
-	AutoUpdateEnabled:    true, // Set a default value
-	ActiveExtension:      "",
+	CloudURL:          "https://api.jetkvm.com",
+	CloudAppURL:       "https://app.jetkvm.com",
+	AutoUpdateEnabled: true, // Set a default value
+	ActiveExtension:   "",
 	MultiSession: &MultiSessionConfig{
-		Enabled:            true,  // Enable by default for new features
-		MaxSessions:        10,    // Reasonable default
-		PrimaryTimeout:     300,   // 5 minutes
-		AllowCloudOverride: true,  // Cloud sessions can take control
+		Enabled:             true,  // Enable by default for new features
+		MaxSessions:         10,    // Reasonable default
+		PrimaryTimeout:      300,   // 5 minutes
+		AllowCloudOverride:  true,  // Cloud sessions can take control
 		RequireAuthTransfer: false, // Don't require auth by default
 	},
 	KeyboardMacros:       []KeyboardMacro{},
@@ -157,12 +157,12 @@ var defaultConfig = &Config{
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes
 	SessionSettings: &SessionSettings{
-		RequireApproval: false,
-		RequireNickname: false,
-		ReconnectGrace:  10,           // 10 seconds default
-		PrivateKeystrokes: false,      // By default, share keystrokes with observers
+		RequireApproval:   false,
+		RequireNickname:   false,
+		ReconnectGrace:    10,    // 10 seconds default
+		PrivateKeystrokes: false, // By default, share keystrokes with observers
 	},
-	JigglerEnabled:       false,
+	JigglerEnabled: false,
 	// This is the "Standard" jiggler option in the UI
 	JigglerConfig: &JigglerConfig{
 		InactivityLimitSeconds: 60,

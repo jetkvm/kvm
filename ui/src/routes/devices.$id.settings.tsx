@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { NavLink, Outlet, useLocation , useNavigate } from "react-router";
 import {
   LuSettings,
   LuMouse,
@@ -15,7 +15,6 @@ import {
   LuUsers,
 } from "react-icons/lu";
 import { useResizeObserver } from "usehooks-ts";
-import { useNavigate } from "react-router";
 
 import { cx } from "@/cva.config";
 import Card from "@components/Card";

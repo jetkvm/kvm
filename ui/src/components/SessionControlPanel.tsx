@@ -1,16 +1,19 @@
-import { useSessionStore } from "@/stores/sessionStore";
-import { sessionApi } from "@/api/sessionApi";
-import { Button } from "@/components/Button";
 import {
   LockClosedIcon,
   LockOpenIcon,
   ClockIcon
 } from "@heroicons/react/16/solid";
 import clsx from "clsx";
+
+import { useSessionStore } from "@/stores/sessionStore";
+import { sessionApi } from "@/api/sessionApi";
+import { Button } from "@/components/Button";
 import { usePermissions, Permission } from "@/hooks/usePermissions";
 
+type RpcSendFunction = (method: string, params: Record<string, unknown>, callback: (response: { result?: unknown; error?: { message: string } }) => void) => void;
+
 interface SessionControlPanelProps {
-  sendFn: Function;
+  sendFn: RpcSendFunction;
   className?: string;
 }
 
@@ -48,8 +51,8 @@ export default function SessionControlPanel({ sendFn, className }: SessionContro
         setSessionError(result.message || "Failed to request primary control");
         setRequestingPrimary(false);
       }
-    } catch (error: any) {
-      setSessionError(error.message);
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : "Unknown error");
       console.error("Failed to request primary control:", error);
       setRequestingPrimary(false);
     }
@@ -60,8 +63,8 @@ export default function SessionControlPanel({ sendFn, className }: SessionContro
 
     try {
       await sessionApi.releasePrimary(sendFn, currentSessionId);
-    } catch (error: any) {
-      setSessionError(error.message);
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : "Unknown error");
       console.error("Failed to release primary control:", error);
     }
   };

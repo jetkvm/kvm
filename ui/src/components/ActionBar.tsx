@@ -11,7 +11,7 @@ import {
   useMountMediaStore,
   useSettingsStore,
   useUiStore,
-} from "@/hooks/stores";
+ useRTCStore } from "@/hooks/stores";
 import Container from "@components/Container";
 import { cx } from "@/cva.config";
 import PasteModal from "@/components/popovers/PasteModal";
@@ -21,7 +21,6 @@ import ExtensionPopover from "@/components/popovers/ExtensionPopover";
 import SessionPopover from "@/components/popovers/SessionPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { useSessionStore } from "@/stores/sessionStore";
-import { useRTCStore } from "@/hooks/stores";
 import { usePermissions, Permission } from "@/hooks/usePermissions";
 
 export default function Actionbar({
@@ -54,7 +53,7 @@ export default function Actionbar({
             setSessions(response.result);
             rpcDataChannel.removeEventListener("message", handler);
           }
-        } catch (error) {
+        } catch {
           // Ignore parse errors for non-JSON messages
         }
       };
@@ -67,7 +66,7 @@ export default function Actionbar({
         rpcDataChannel.removeEventListener("message", handler);
       }, 5000);
     }
-  }, [rpcDataChannel?.readyState]);
+  }, [rpcDataChannel, sessions.length, setSessions]);
 
   // This is the only way to get a reliable state change for the popover
   // at time of writing this there is no mount, or unmount event for the popover

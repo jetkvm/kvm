@@ -34,22 +34,22 @@ import (
 var staticFiles embed.FS
 
 type WebRTCSessionRequest struct {
-	Sd         string   `json:"sd"`
-	SessionId  string   `json:"sessionId,omitempty"`
-	OidcGoogle string   `json:"OidcGoogle,omitempty"`
-	IP         string   `json:"ip,omitempty"`
-	ICEServers []string `json:"iceServers,omitempty"`
-	UserAgent  string   `json:"userAgent,omitempty"`  // Browser user agent for nickname generation
+	Sd              string           `json:"sd"`
+	SessionId       string           `json:"sessionId,omitempty"`
+	OidcGoogle      string           `json:"OidcGoogle,omitempty"`
+	IP              string           `json:"ip,omitempty"`
+	ICEServers      []string         `json:"iceServers,omitempty"`
+	UserAgent       string           `json:"userAgent,omitempty"` // Browser user agent for nickname generation
 	SessionSettings *SessionSettings `json:"sessionSettings,omitempty"`
 }
 
 type SessionSettings struct {
-	RequireApproval bool   `json:"requireApproval"`
-	RequireNickname bool   `json:"requireNickname"`
-	ReconnectGrace  int    `json:"reconnectGrace,omitempty"`  // Grace period in seconds for primary reconnection
-	PrimaryTimeout  int    `json:"primaryTimeout,omitempty"` // Inactivity timeout in seconds for primary session
-	Nickname        string `json:"nickname,omitempty"`
-	PrivateKeystrokes bool `json:"privateKeystrokes,omitempty"` // If true, only primary session sees keystroke events
+	RequireApproval   bool   `json:"requireApproval"`
+	RequireNickname   bool   `json:"requireNickname"`
+	ReconnectGrace    int    `json:"reconnectGrace,omitempty"` // Grace period in seconds for primary reconnection
+	PrimaryTimeout    int    `json:"primaryTimeout,omitempty"` // Inactivity timeout in seconds for primary session
+	Nickname          string `json:"nickname,omitempty"`
+	PrivateKeystrokes bool   `json:"privateKeystrokes,omitempty"` // If true, only primary session sees keystroke events
 }
 
 type SetPasswordRequest struct {
@@ -483,7 +483,7 @@ func handleLogout(c *gin.Context) {
 	// Only clear the cookies for this session, don't invalidate the token
 	// The token should remain valid for other sessions
 	c.SetCookie("authToken", "", -1, "/", "", false, true)
-	c.SetCookie("sessionId", "", -1, "/", "", false, true)  // Clear session ID cookie too
+	c.SetCookie("sessionId", "", -1, "/", "", false, true) // Clear session ID cookie too
 	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
 

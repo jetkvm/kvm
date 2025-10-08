@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { XCircleIcon } from "@heroicons/react/24/outline";
-import { Button } from "./Button";
+
 import { DEVICE_API, CLOUD_API } from "@/ui.config";
 import { isOnDevice } from "@/main";
 import { useUserStore } from "@/hooks/stores";
 import { useSessionStore, useSharedSessionStore } from "@/stores/sessionStore";
 import api from "@/api";
+
+import { Button } from "./Button";
 
 interface AccessDeniedOverlayProps {
   show: boolean;
@@ -25,7 +27,7 @@ export default function AccessDeniedOverlay({
   const { clearNickname } = useSharedSessionStore();
   const [countdown, setCountdown] = useState(10);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       const logoutUrl = isOnDevice ? `${DEVICE_API}/auth/logout` : `${CLOUD_API}/logout`;
       const res = await api.POST(logoutUrl);
@@ -41,7 +43,7 @@ export default function AccessDeniedOverlay({
     clearSession();
     clearNickname();
     navigate("/");
-  };
+  }, [navigate, setUser, clearSession, clearNickname]);
 
   useEffect(() => {
     if (!show) return;
@@ -59,7 +61,7 @@ export default function AccessDeniedOverlay({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [show]);
+  }, [show, handleLogout]);
 
   if (!show) return null;
 

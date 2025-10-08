@@ -14,7 +14,6 @@ import {
   useSettingsStore,
   useVideoStore,
 } from "@/hooks/stores";
-import { useSessionStore } from "@/stores/sessionStore";
 import { usePermissions, Permission } from "@/hooks/usePermissions";
 import useMouse from "@/hooks/useMouse";
 
@@ -37,7 +36,6 @@ export default function WebRTCVideo() {
 
   // Store hooks
   const settings = useSettingsStore();
-  const { currentMode } = useSessionStore();
   const { hasPermission } = usePermissions();
   const { handleKeyPress, resetKeyboardState } = useKeyboard();
   const {
@@ -230,7 +228,7 @@ export default function WebRTCVideo() {
       if (!hasPermission(Permission.MOUSE_INPUT)) return;
       handler(e);
     };
-  }, [currentMode, getAbsMouseMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight]);
+  }, [getAbsMouseMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight, hasPermission]);
 
   const relMouseMoveHandler = useMemo(() => {
     const handler = getRelMouseMoveHandler();
@@ -239,7 +237,7 @@ export default function WebRTCVideo() {
       if (!hasPermission(Permission.MOUSE_INPUT)) return;
       handler(e);
     };
-  }, [currentMode, getRelMouseMoveHandler]);
+  }, [getRelMouseMoveHandler, hasPermission]);
 
   const mouseWheelHandler = useMemo(() => {
     const handler = getMouseWheelHandler();
@@ -248,7 +246,7 @@ export default function WebRTCVideo() {
       if (!hasPermission(Permission.MOUSE_INPUT)) return;
       handler(e);
     };
-  }, [currentMode, getMouseWheelHandler]);
+  }, [getMouseWheelHandler, hasPermission]);
 
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
@@ -288,7 +286,7 @@ export default function WebRTCVideo() {
         }, 100);
       }
     },
-    [currentMode, handleKeyPress, isKeyboardLockActive],
+    [handleKeyPress, isKeyboardLockActive, hasPermission],
   );
 
   const keyUpHandler = useCallback(
@@ -310,7 +308,7 @@ export default function WebRTCVideo() {
 
       handleKeyPress(hidKey, false);
     },
-    [currentMode, handleKeyPress],
+    [handleKeyPress, hasPermission],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {

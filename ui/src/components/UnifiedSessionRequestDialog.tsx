@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { XMarkIcon, UserIcon, GlobeAltIcon, ComputerDesktopIcon } from "@heroicons/react/20/solid";
+
 import { Button } from "./Button";
 
 type RequestType = "session_approval" | "primary_control";
@@ -55,7 +56,8 @@ export default function UnifiedSessionRequestDialog({
 
       return () => clearInterval(timer);
     }
-  }, [request?.id, request?.type]); // Only depend on stable properties
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.id, request?.type]); // Only depend on stable properties to avoid unnecessary re-renders
 
   // Handle auto-deny when timeout occurs
   useEffect(() => {
