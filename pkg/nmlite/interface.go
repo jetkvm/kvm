@@ -111,7 +111,7 @@ func (im *InterfaceManager) Start() error {
 	go im.monitorInterfaceState()
 
 	nl := getNetlinkManager()
-	nl.AddLinkStateCallback(im.ifaceName, link.LinkStateCallback{
+	nl.AddStateChangeCallback(im.ifaceName, link.StateChangeCallback{
 		Async: true,
 		Func: func(link *link.Link) {
 			im.handleLinkStateChange(link)
@@ -160,6 +160,7 @@ func (im *InterfaceManager) IsUp() bool {
 	return im.state.Up
 }
 
+// IsOnline returns true if the interface is online
 func (im *InterfaceManager) IsOnline() bool {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
@@ -167,6 +168,7 @@ func (im *InterfaceManager) IsOnline() bool {
 	return im.state.Online
 }
 
+// IPv4Ready returns true if the interface has an IPv4 address
 func (im *InterfaceManager) IPv4Ready() bool {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
@@ -174,6 +176,7 @@ func (im *InterfaceManager) IPv4Ready() bool {
 	return im.state.IPv4Ready
 }
 
+// IPv6Ready returns true if the interface has an IPv6 address
 func (im *InterfaceManager) IPv6Ready() bool {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
@@ -181,6 +184,7 @@ func (im *InterfaceManager) IPv6Ready() bool {
 	return im.state.IPv6Ready
 }
 
+// GetIPv4Addresses returns the IPv4 addresses of the interface
 func (im *InterfaceManager) GetIPv4Addresses() []string {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
@@ -188,6 +192,7 @@ func (im *InterfaceManager) GetIPv4Addresses() []string {
 	return im.state.IPv4Addresses
 }
 
+// GetIPv4Address returns the IPv4 address of the interface
 func (im *InterfaceManager) GetIPv4Address() string {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
@@ -195,6 +200,7 @@ func (im *InterfaceManager) GetIPv4Address() string {
 	return im.state.IPv4Address
 }
 
+// GetIPv6Address returns the IPv6 address of the interface
 func (im *InterfaceManager) GetIPv6Address() string {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
@@ -202,6 +208,7 @@ func (im *InterfaceManager) GetIPv6Address() string {
 	return im.state.IPv6Address
 }
 
+// GetIPv6Addresses returns the IPv6 addresses of the interface
 func (im *InterfaceManager) GetIPv6Addresses() []string {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
@@ -214,6 +221,7 @@ func (im *InterfaceManager) GetIPv6Addresses() []string {
 	return []string{}
 }
 
+// GetMACAddress returns the MAC address of the interface
 func (im *InterfaceManager) GetMACAddress() string {
 	return im.state.MACAddress
 }
@@ -230,7 +238,11 @@ func (im *InterfaceManager) GetState() *types.InterfaceState {
 	return &state
 }
 
+// NTPServers returns the NTP servers of the interface
 func (im *InterfaceManager) NTPServers() []net.IP {
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
 	return im.state.NTPServers
 }
 
@@ -241,6 +253,7 @@ func (im *InterfaceManager) GetConfig() *types.NetworkConfig {
 	return &config
 }
 
+// ApplyConfiguration applies the current configuration to the interface
 func (im *InterfaceManager) ApplyConfiguration() error {
 	return im.applyConfiguration()
 }
@@ -641,6 +654,10 @@ func (im *InterfaceManager) updateInterfaceState() error {
 
 // updateIPAddresses updates the IP addresses in the state
 func (im *InterfaceManager) updateIPAddresses(nl *link.Link) error {
+	if err := nl.Refresh(); err != nil {
+		return fmt.Errorf("failed to refresh link: %w", err)
+	}
+
 	addrs, err := nl.AddrList(link.AfUnspec)
 	if err != nil {
 		return fmt.Errorf("failed to get addresses: %w", err)
@@ -713,7 +730,7 @@ func (im *InterfaceManager) ReconcileLinkAddrs(addrs []*types.IPAddress) error {
 	if link == nil {
 		return fmt.Errorf("failed to get interface: %w", err)
 	}
-	return nl.ReconcileLinkAddrs(link, addrs)
+	return nl.ReconcileLink(link, addrs)
 }
 
 // applyDHCPLease applies DHCP lease configuration using ReconcileLinkAddrs

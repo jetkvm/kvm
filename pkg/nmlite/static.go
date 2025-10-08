@@ -176,8 +176,7 @@ func (scm *StaticConfigManager) parseIPv4Config(config *types.IPv4StaticConfig) 
 	}
 
 	// Parse IP address and netmask
-	netlinkMgr := getNetlinkManager()
-	ipNet, err := netlinkMgr.ParseIPv4Netmask(config.Address.String, config.Netmask.String)
+	ipNet, err := link.ParseIPv4Netmask(config.Address.String, config.Netmask.String)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +191,7 @@ func (scm *StaticConfigManager) parseIPv4Config(config *types.IPv4StaticConfig) 
 	// Parse DNS servers
 	var dns []net.IP
 	for _, dnsStr := range config.DNS {
-		if err := netlinkMgr.ValidateIPAddress(dnsStr, false); err != nil {
+		if err := link.ValidateIPAddress(dnsStr, false); err != nil {
 			return nil, fmt.Errorf("invalid DNS server: %w", err)
 		}
 		dns = append(dns, net.ParseIP(dnsStr))
@@ -212,8 +211,7 @@ func (scm *StaticConfigManager) parseIPv6Config(config *types.IPv6StaticConfig) 
 	}
 
 	// Parse IP address and prefix
-	netlinkMgr := getNetlinkManager()
-	ipNet, err := netlinkMgr.ParseIPv6Prefix(config.Prefix.String, 64) // Default to /64 if not specified
+	ipNet, err := link.ParseIPv6Prefix(config.Prefix.String, 64) // Default to /64 if not specified
 	if err != nil {
 		return nil, err
 	}

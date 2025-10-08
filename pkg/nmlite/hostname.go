@@ -18,13 +18,10 @@ const (
 	hostsPath    = "/etc/hosts"
 )
 
-var (
-	hostnameLock sync.Mutex
-)
-
 // HostnameManager manages system hostname and /etc/hosts
 type HostnameManager struct {
 	logger *zerolog.Logger
+	mu     sync.Mutex
 }
 
 // NewHostnameManager creates a new hostname manager
@@ -41,8 +38,8 @@ func NewHostnameManager(logger *zerolog.Logger) *HostnameManager {
 
 // SetHostname sets the system hostname and updates /etc/hosts
 func (hm *HostnameManager) SetHostname(hostname, fqdn string) error {
-	hostnameLock.Lock()
-	defer hostnameLock.Unlock()
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
 
 	hostname = ToValidHostname(strings.TrimSpace(hostname))
 	fqdn = ToValidHostname(strings.TrimSpace(fqdn))
