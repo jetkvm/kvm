@@ -147,15 +147,10 @@ export function useSessionManagement(sendFn: RpcSendFunction | null) {
       setSessionError("Your primary control request was denied");
     }
 
-    // Handle session access denial (when your new session is denied)
     if (method === "sessionAccessDenied") {
-      const { clearSession, setSessionError } = useSessionStore.getState();
+      const { setSessionError } = useSessionStore.getState();
       const errorParams = params as { message?: string };
       setSessionError(errorParams.message || "Session access was denied by the primary session");
-      // Clear session data as we're being disconnected
-      setTimeout(() => {
-        clearSession();
-      }, 3000); // Give user time to see the error
     }
   }, [handleSessionEvent, hasPermission, requireSessionApproval]);
 

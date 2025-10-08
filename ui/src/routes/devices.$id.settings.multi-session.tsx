@@ -21,7 +21,9 @@ export default function SessionsSettings() {
     requireSessionNickname,
     setRequireSessionNickname,
     requireSessionApproval,
-    setRequireSessionApproval
+    setRequireSessionApproval,
+    maxRejectionAttempts,
+    setMaxRejectionAttempts
   } = useSettingsStore();
 
   const [reconnectGrace, setReconnectGrace] = useState(10);
@@ -38,7 +40,8 @@ export default function SessionsSettings() {
           requireNickname: boolean;
           reconnectGrace?: number;
           primaryTimeout?: number;
-          privateKeystrokes?: boolean
+          privateKeystrokes?: boolean;
+          maxRejectionAttempts?: number;
         };
         setRequireSessionApproval(settings.requireApproval);
         setRequireSessionNickname(settings.requireNickname);
@@ -51,9 +54,12 @@ export default function SessionsSettings() {
         if (settings.privateKeystrokes !== undefined) {
           setPrivateKeystrokes(settings.privateKeystrokes);
         }
+        if (settings.maxRejectionAttempts !== undefined) {
+          setMaxRejectionAttempts(settings.maxRejectionAttempts);
+        }
       }
     });
-  }, [send, setRequireSessionApproval, setRequireSessionNickname]);
+  }, [send, setRequireSessionApproval, setRequireSessionNickname, setMaxRejectionAttempts]);
 
   const updateSessionSettings = (updates: Partial<{
     requireApproval: boolean;
@@ -61,6 +67,7 @@ export default function SessionsSettings() {
     reconnectGrace: number;
     primaryTimeout: number;
     privateKeystrokes: boolean;
+    maxRejectionAttempts: number;
   }>) => {
     if (!canModifySettings) {
       notify.error("Only the primary session can change this setting");
@@ -74,6 +81,7 @@ export default function SessionsSettings() {
         reconnectGrace: reconnectGrace,
         primaryTimeout: primaryTimeout,
         privateKeystrokes: privateKeystrokes,
+        maxRejectionAttempts: maxRejectionAttempts,
         ...updates
       }
     }, (response: JsonRpcResponse) => {
@@ -147,6 +155,35 @@ export default function SessionsSettings() {
                 );
               }}
             />
+          </SettingsItem>
+
+          <SettingsItem
+            title="Maximum Rejection Attempts"
+            description="Number of times a denied session can re-request approval before the modal is hidden"
+          >
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={maxRejectionAttempts}
+                disabled={!canModifySettings}
+                onChange={e => {
+                  const newValue = parseInt(e.target.value) || 3;
+                  if (newValue < 1 || newValue > 10) {
+                    notify.error("Maximum attempts must be between 1 and 10");
+                    return;
+                  }
+                  setMaxRejectionAttempts(newValue);
+                  updateSessionSettings({ maxRejectionAttempts: newValue });
+                  notify.success(
+                    `Denied sessions can now retry up to ${newValue} time${newValue === 1 ? '' : 's'}`
+                  );
+                }}
+                className="w-20 px-2 py-1.5 border rounded-md bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              />
+              <span className="text-sm text-slate-600 dark:text-slate-400">attempts</span>
+            </div>
           </SettingsItem>
 
           <SettingsItem

@@ -116,5 +116,17 @@ export const sessionApi = {
         }
       });
     });
+  },
+
+  requestSessionApproval: async (sendFn: RpcSendFunction): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      sendFn("requestSessionApproval", {}, (response: JsonRpcResponse) => {
+        if (response.error) {
+          reject(new Error(response.error.message));
+        } else {
+          resolve();
+        }
+      });
+    });
   }
 };

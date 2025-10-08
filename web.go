@@ -44,12 +44,13 @@ type WebRTCSessionRequest struct {
 }
 
 type SessionSettings struct {
-	RequireApproval   bool   `json:"requireApproval"`
-	RequireNickname   bool   `json:"requireNickname"`
-	ReconnectGrace    int    `json:"reconnectGrace,omitempty"` // Grace period in seconds for primary reconnection
-	PrimaryTimeout    int    `json:"primaryTimeout,omitempty"` // Inactivity timeout in seconds for primary session
-	Nickname          string `json:"nickname,omitempty"`
-	PrivateKeystrokes bool   `json:"privateKeystrokes,omitempty"` // If true, only primary session sees keystroke events
+	RequireApproval      bool   `json:"requireApproval"`
+	RequireNickname      bool   `json:"requireNickname"`
+	ReconnectGrace       int    `json:"reconnectGrace,omitempty"` // Grace period in seconds for primary reconnection
+	PrimaryTimeout       int    `json:"primaryTimeout,omitempty"` // Inactivity timeout in seconds for primary session
+	Nickname             string `json:"nickname,omitempty"`
+	PrivateKeystrokes    bool   `json:"privateKeystrokes,omitempty"` // If true, only primary session sees keystroke events
+	MaxRejectionAttempts int    `json:"maxRejectionAttempts,omitempty"`
 }
 
 type SetPasswordRequest struct {

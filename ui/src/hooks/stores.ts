@@ -335,6 +335,9 @@ export interface SettingsState {
   requireSessionApproval: boolean;
   setRequireSessionApproval: (required: boolean) => void;
 
+  maxRejectionAttempts: number;
+  setMaxRejectionAttempts: (attempts: number) => void;
+
   displayRotation: string;
   setDisplayRotation: (rotation: string) => void;
 
@@ -380,6 +383,9 @@ export const useSettingsStore = create(
 
       requireSessionApproval: true,
       setRequireSessionApproval: (required: boolean) => set({ requireSessionApproval: required }),
+
+      maxRejectionAttempts: 3,
+      setMaxRejectionAttempts: (attempts: number) => set({ maxRejectionAttempts: attempts }),
 
       displayRotation: "270",
       setDisplayRotation: (rotation: string) => set({ displayRotation: rotation }),

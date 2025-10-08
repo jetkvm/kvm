@@ -147,16 +147,17 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Check if this session ID is within grace period for reconnection
 	wasWithinGracePeriod := false
 	wasPreviouslyPrimary := false
+	wasPreviouslyPending := false
 	if graceTime, exists := sm.reconnectGrace[session.ID]; exists {
 		if time.Now().Before(graceTime) {
 			wasWithinGracePeriod = true
-			// Check if this was specifically the primary
 			wasPreviouslyPrimary = (sm.lastPrimaryID == session.ID)
+			if reconnectInfo, hasInfo := sm.reconnectInfo[session.ID]; hasInfo {
+				wasPreviouslyPending = (reconnectInfo.Mode == SessionModePending)
+			}
 		}
-		// Clean up grace period entry
 		delete(sm.reconnectGrace, session.ID)
 	}
 
@@ -265,6 +266,7 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		Int("totalSessions", len(sm.sessions)).
 		Bool("wasWithinGracePeriod", wasWithinGracePeriod).
 		Bool("wasPreviouslyPrimary", wasPreviouslyPrimary).
+		Bool("wasPreviouslyPending", wasPreviouslyPending).
 		Bool("isBlacklisted", isBlacklisted).
 		Msg("AddSession state analysis")
 
@@ -313,12 +315,11 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 			// Reset HID availability to force re-handshake for input functionality
 			session.hidRPCAvailable = false
 		} else {
-			// Someone else became primary in the meantime, become observer
 			session.Mode = SessionModeObserver
 		}
+	} else if wasPreviouslyPending {
+		session.Mode = SessionModePending
 	} else if globalSettings != nil && globalSettings.RequireApproval && primaryExists && !wasWithinGracePeriod {
-		// New session requires approval from primary (but only if there IS a primary to approve)
-		// Skip approval for sessions reconnecting within grace period
 		session.Mode = SessionModePending
 		// Notify primary about the pending session, but only if nickname is not required OR already provided
 		if primary := sm.sessions[sm.primarySessionID]; primary != nil {

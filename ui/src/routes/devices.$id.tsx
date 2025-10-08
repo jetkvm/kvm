@@ -1075,6 +1075,11 @@ export default function KvmIdRoute() {
               ? handleDenyPrimaryRequest
               : handleDenyNewSession
           }
+          onDismiss={
+            primaryControlRequest
+              ? closePrimaryControlRequest
+              : closeNewSessionRequest
+          }
           onClose={
             primaryControlRequest
               ? closePrimaryControlRequest
@@ -1086,10 +1091,14 @@ export default function KvmIdRoute() {
       <AccessDeniedOverlay
         show={accessDenied}
         message="Your session access was denied by the primary session"
-        onRetry={() => {
-          setAccessDenied(false);
-          // Attempt to reconnect
-          window.location.reload();
+        onRequestApproval={async () => {
+          if (!send) return;
+          try {
+            await sessionApi.requestSessionApproval(send);
+            setAccessDenied(false);
+          } catch (error) {
+            console.error("Failed to re-request approval:", error);
+          }
         }}
       />
 

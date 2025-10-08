@@ -24,6 +24,7 @@ export interface SessionState {
   // UI state
   isRequestingPrimary: boolean;
   sessionError: string | null;
+  rejectionCount: number;
 
   // Actions
   setCurrentSession: (id: string, mode: SessionMode) => void;
@@ -32,6 +33,8 @@ export interface SessionState {
   setSessionError: (error: string | null) => void;
   updateSessionMode: (mode: SessionMode) => void;
   clearSession: () => void;
+  incrementRejectionCount: () => number;
+  resetRejectionCount: () => void;
 
   // Computed getters
   isPrimary: () => boolean;
@@ -52,6 +55,7 @@ export const useSessionStore = create<SessionState>()(
   sessions: [],
   isRequestingPrimary: false,
   sessionError: null,
+  rejectionCount: 0,
 
   // Actions
   setCurrentSession: (id: string, mode: SessionMode) => {
@@ -84,8 +88,19 @@ export const useSessionStore = create<SessionState>()(
       currentMode: null,
       sessions: [],
       sessionError: null,
-      isRequestingPrimary: false
+      isRequestingPrimary: false,
+      rejectionCount: 0
     });
+  },
+
+  incrementRejectionCount: () => {
+    const newCount = get().rejectionCount + 1;
+    set({ rejectionCount: newCount });
+    return newCount;
+  },
+
+  resetRejectionCount: () => {
+    set({ rejectionCount: 0 });
   },
 
   // Computed getters

@@ -69,10 +69,14 @@ export function useSessionEvents(sendFn: RpcSendFunction | null) {
       const previousMode = currentModeFromStore;
       updateSessionMode(data.mode as "primary" | "observer" | "queued" | "pending");
 
-      // Clear requesting state when mode changes from queued
       if (previousMode === "queued" && data.mode !== "queued") {
         const { setRequestingPrimary } = useSessionStore.getState();
         setRequestingPrimary(false);
+      }
+
+      if (previousMode === "pending" && data.mode === "observer") {
+        const { resetRejectionCount } = useSessionStore.getState();
+        resetRejectionCount();
       }
 
       // HID re-initialization is now handled automatically by permission changes in usePermissions

@@ -157,10 +157,11 @@ var defaultConfig = &Config{
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes
 	SessionSettings: &SessionSettings{
-		RequireApproval:   false,
-		RequireNickname:   false,
-		ReconnectGrace:    10,    // 10 seconds default
-		PrivateKeystrokes: false, // By default, share keystrokes with observers
+		RequireApproval:      false,
+		RequireNickname:      false,
+		ReconnectGrace:       10,
+		PrivateKeystrokes:    false,
+		MaxRejectionAttempts: 3,
 	},
 	JigglerEnabled: false,
 	// This is the "Standard" jiggler option in the UI

@@ -210,13 +210,33 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 				writeJSONRPCEvent("sessionAccessDenied", map[string]interface{}{
 					"message": "Access denied by primary session",
 				}, targetSession)
-				sessionManager.RemoveSession(sessionID)
+				sessionManager.broadcastSessionListUpdate()
 				result = map[string]interface{}{"status": "denied"}
 			} else {
 				handlerErr = errors.New("session not found or not pending")
 			}
 		} else {
 			handlerErr = errors.New("invalid sessionId parameter")
+		}
+	case "requestSessionApproval":
+		if session.Mode != SessionModePending {
+			handlerErr = errors.New("only pending sessions can request approval")
+		} else if currentSessionSettings != nil && currentSessionSettings.RequireApproval {
+			if primary := sessionManager.GetPrimarySession(); primary != nil {
+				go func() {
+					writeJSONRPCEvent("newSessionPending", map[string]interface{}{
+						"sessionId": session.ID,
+						"source":    session.Source,
+						"identity":  session.Identity,
+						"nickname":  session.Nickname,
+					}, primary)
+				}()
+				result = map[string]interface{}{"status": "requested"}
+			} else {
+				handlerErr = errors.New("no primary session available")
+			}
+		} else {
+			handlerErr = errors.New("session approval not required")
 		}
 	case "updateSessionNickname":
 		sessionID, _ := request.Params["sessionId"].(string)

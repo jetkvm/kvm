@@ -17,6 +17,7 @@ interface UnifiedSessionRequestDialogProps {
   request: UnifiedSessionRequest | null;
   onApprove: (id: string) => void | Promise<void>;
   onDeny: (id: string) => void | Promise<void>;
+  onDismiss?: () => void;
   onClose: () => void;
 }
 
@@ -24,6 +25,7 @@ export default function UnifiedSessionRequestDialog({
   request,
   onApprove,
   onDeny,
+  onDismiss,
   onClose
 }: UnifiedSessionRequestDialogProps) {
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -200,43 +202,58 @@ export default function UnifiedSessionRequestDialog({
             </div>
           )}
 
-          <div className="flex gap-3">
-            <Button
-              onClick={async () => {
-                if (isProcessing) return;
-                setIsProcessing(true);
-                try {
-                  await onApprove(request.id);
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-3">
+              <Button
+                onClick={async () => {
+                  if (isProcessing) return;
+                  setIsProcessing(true);
+                  try {
+                    await onApprove(request.id);
+                    onClose();
+                  } catch (error) {
+                    console.error("Failed to approve request:", error);
+                    setIsProcessing(false);
+                  }
+                }}
+                theme="primary"
+                size="MD"
+                text="Approve"
+                fullWidth
+                disabled={isProcessing}
+              />
+              <Button
+                onClick={async () => {
+                  if (isProcessing) return;
+                  setIsProcessing(true);
+                  try {
+                    await onDeny(request.id);
+                    onClose();
+                  } catch (error) {
+                    console.error("Failed to deny request:", error);
+                    setIsProcessing(false);
+                  }
+                }}
+                theme="light"
+                size="MD"
+                text="Deny"
+                fullWidth
+                disabled={isProcessing}
+              />
+            </div>
+            {onDismiss && (
+              <Button
+                onClick={() => {
+                  onDismiss();
                   onClose();
-                } catch (error) {
-                  console.error("Failed to approve request:", error);
-                  setIsProcessing(false);
-                }
-              }}
-              theme="primary"
-              size="MD"
-              text="Approve"
-              fullWidth
-              disabled={isProcessing}
-            />
-            <Button
-              onClick={async () => {
-                if (isProcessing) return;
-                setIsProcessing(true);
-                try {
-                  await onDeny(request.id);
-                  onClose();
-                } catch (error) {
-                  console.error("Failed to deny request:", error);
-                  setIsProcessing(false);
-                }
-              }}
-              theme="light"
-              size="MD"
-              text="Deny"
-              fullWidth
-              disabled={isProcessing}
-            />
+                }}
+                theme="light"
+                size="MD"
+                text="Dismiss (Hide Request)"
+                fullWidth
+                disabled={isProcessing}
+              />
+            )}
           </div>
         </div>
       </div>

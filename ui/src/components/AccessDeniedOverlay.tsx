@@ -4,7 +4,7 @@ import { XCircleIcon } from "@heroicons/react/24/outline";
 
 import { DEVICE_API, CLOUD_API } from "@/ui.config";
 import { isOnDevice } from "@/main";
-import { useUserStore } from "@/hooks/stores";
+import { useUserStore, useSettingsStore } from "@/hooks/stores";
 import { useSessionStore, useSharedSessionStore } from "@/stores/sessionStore";
 import api from "@/api";
 
@@ -14,18 +14,22 @@ interface AccessDeniedOverlayProps {
   show: boolean;
   message?: string;
   onRetry?: () => void;
+  onRequestApproval?: () => void;
 }
 
 export default function AccessDeniedOverlay({
   show,
   message = "Your session access was denied",
-  onRetry
+  onRetry,
+  onRequestApproval
 }: AccessDeniedOverlayProps) {
   const navigate = useNavigate();
   const setUser = useUserStore(state => state.setUser);
-  const { clearSession } = useSessionStore();
+  const { clearSession, rejectionCount, incrementRejectionCount } = useSessionStore();
   const { clearNickname } = useSharedSessionStore();
+  const { maxRejectionAttempts } = useSettingsStore();
   const [countdown, setCountdown] = useState(10);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -48,11 +52,17 @@ export default function AccessDeniedOverlay({
   useEffect(() => {
     if (!show) return;
 
+    const newCount = incrementRejectionCount();
+
+    if (newCount >= maxRejectionAttempts) {
+      const hideTimer = setTimeout(() => {}, 3000);
+      return () => clearTimeout(hideTimer);
+    }
+
     const timer = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) {
           clearInterval(timer);
-          // Auto-redirect with proper logout
           handleLogout();
           return 0;
         }
@@ -61,9 +71,13 @@ export default function AccessDeniedOverlay({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [show, handleLogout]);
+  }, [show, handleLogout, incrementRejectionCount, maxRejectionAttempts]);
 
   if (!show) return null;
+
+  if (rejectionCount >= maxRejectionAttempts) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
@@ -88,17 +102,41 @@ export default function AccessDeniedOverlay({
             </p>
           </div>
 
+          {rejectionCount < maxRejectionAttempts && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                <strong>Attempt {rejectionCount} of {maxRejectionAttempts}:</strong> {rejectionCount === maxRejectionAttempts - 1
+                  ? "This is your last attempt. Further rejections will hide this dialog."
+                  : `You have ${maxRejectionAttempts - rejectionCount} attempt${maxRejectionAttempts - rejectionCount === 1 ? '' : 's'} remaining.`
+                }
+              </p>
+            </div>
+          )}
+
           <p className="text-center text-sm text-slate-500 dark:text-slate-400">
             Redirecting in <span className="font-mono font-bold">{countdown}</span> seconds...
           </p>
 
           <div className="flex gap-3">
-            {onRetry && (
+            {(onRequestApproval || onRetry) && rejectionCount < maxRejectionAttempts && (
               <Button
-                onClick={onRetry}
+                onClick={async () => {
+                  if (isRetrying) return;
+                  setIsRetrying(true);
+                  try {
+                    if (onRequestApproval) {
+                      await onRequestApproval();
+                    } else if (onRetry) {
+                      await onRetry();
+                    }
+                  } finally {
+                    setIsRetrying(false);
+                  }
+                }}
                 theme="primary"
                 size="MD"
-                text="Try Again"
+                text={isRetrying ? "Requesting..." : "Request Access Again"}
+                disabled={isRetrying}
                 fullWidth
               />
             )}
