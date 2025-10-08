@@ -24,7 +24,7 @@ type NetworkManager struct {
 	cancel     context.CancelFunc
 
 	// Callback functions for state changes
-	onInterfaceStateChange func(iface string, state *types.InterfaceState)
+	onInterfaceStateChange func(iface string, state types.InterfaceState)
 	onConfigChange         func(iface string, config *types.NetworkConfig)
 	onDHCPLeaseChange      func(iface string, lease *types.DHCPLease)
 }
@@ -63,7 +63,7 @@ func (nm *NetworkManager) AddInterface(iface string, config *types.NetworkConfig
 	}
 
 	// Set up callbacks
-	im.SetOnStateChange(func(state *types.InterfaceState) {
+	im.SetOnStateChange(func(state types.InterfaceState) {
 		if nm.onInterfaceStateChange != nil {
 			nm.onInterfaceStateChange(iface, state)
 		}
@@ -179,7 +179,7 @@ func (nm *NetworkManager) RenewDHCPLease(iface string) error {
 }
 
 // SetOnInterfaceStateChange sets the callback for interface state changes
-func (nm *NetworkManager) SetOnInterfaceStateChange(callback func(iface string, state *types.InterfaceState)) {
+func (nm *NetworkManager) SetOnInterfaceStateChange(callback func(iface string, state types.InterfaceState)) {
 	nm.onInterfaceStateChange = callback
 }
 

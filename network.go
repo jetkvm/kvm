@@ -47,30 +47,34 @@ func restartMdns() {
 	}, true)
 }
 
-func networkStateChanged(iface string, state *types.InterfaceState) {
+func triggerTimeSyncOnNetworkStateChange() {
+	if timeSync == nil {
+		return
+	}
+
+	// set the NTP servers from the network manager
+	if networkManager != nil {
+		timeSync.SetDhcpNtpAddresses(networkManager.NTPServerStrings())
+	}
+
+	// sync time
+	if err := timeSync.Sync(); err != nil {
+		networkLogger.Error().Err(err).Msg("failed to sync time after network state change")
+	}
+}
+
+func networkStateChanged(_ string, state types.InterfaceState) {
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(true, "network_state_changed")
 
-	if timeSync != nil {
-		if networkManager != nil {
-			timeSync.SetDhcpNtpAddresses(networkManager.NTPServerStrings())
-		}
-
-		if err := timeSync.Sync(); err != nil {
-			networkLogger.Error().Err(err).Msg("failed to sync time after network state change")
-		}
+	if state.Online {
+		networkLogger.Info().Msg("network state changed to online, triggering time sync")
+		triggerTimeSyncOnNetworkStateChange()
 	}
 
 	// always restart mDNS when the network state changes
 	if mDNS != nil {
 		restartMdns()
-	}
-
-	// if the network is now online, trigger an NTP sync if still needed
-	if state.Up && timeSync != nil && (isTimeSyncNeeded() || !timeSync.IsSyncSuccess()) {
-		if err := timeSync.Sync(); err != nil {
-			logger.Warn().Str("error", err.Error()).Msg("unable to sync time on network state change")
-		}
 	}
 }
 

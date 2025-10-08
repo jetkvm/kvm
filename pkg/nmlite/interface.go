@@ -36,7 +36,7 @@ type InterfaceManager struct {
 	hostname     *HostnameManager
 
 	// Callbacks
-	onStateChange     func(state *types.InterfaceState)
+	onStateChange     func(state types.InterfaceState)
 	onConfigChange    func(config *types.NetworkConfig)
 	onDHCPLeaseChange func(lease *types.DHCPLease)
 
@@ -321,7 +321,7 @@ func (im *InterfaceManager) RenewDHCPLease() error {
 }
 
 // SetOnStateChange sets the callback for state changes
-func (im *InterfaceManager) SetOnStateChange(callback func(state *types.InterfaceState)) {
+func (im *InterfaceManager) SetOnStateChange(callback func(state types.InterfaceState)) {
 	im.onStateChange = callback
 }
 
@@ -693,13 +693,17 @@ func (im *InterfaceManager) updateInterfaceState() error {
 	attrs := nl.Attrs()
 	isUp := attrs.OperState == netlink.OperUp
 
+	// check if the interface has unicast addresses
 	hasAddrs := false
 	addrs, err := nl.AddrList(link.AfUnspec)
 	if err != nil {
 		return fmt.Errorf("failed to get addresses: %w", err)
 	}
-	if len(addrs) > 0 {
-		hasAddrs = true
+	for _, addr := range addrs {
+		if addr.IP.IsGlobalUnicast() {
+			hasAddrs = true
+			break
+		}
 	}
 
 	// Check if state changed
@@ -731,9 +735,8 @@ func (im *InterfaceManager) updateInterfaceState() error {
 
 	// Notify callback if state changed
 	if stateChanged && im.onStateChange != nil {
-		state := *im.state
-		im.logger.Debug().Interface("state", state).Msg("notifying state change")
-		im.onStateChange(&state)
+		im.logger.Debug().Interface("state", im.state).Msg("notifying state change")
+		im.onStateChange(*im.state)
 	}
 
 	return nil
