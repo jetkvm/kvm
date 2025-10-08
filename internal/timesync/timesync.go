@@ -38,6 +38,7 @@ type TimeSync struct {
 	rtcLock       *sync.Mutex
 
 	syncSuccess bool
+	timer       *time.Timer
 
 	preCheckFunc PreCheckFunc
 	preCheckIPv4 PreCheckFunc
@@ -78,6 +79,7 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 		preCheckIPv4:     opts.PreCheckIPv4,
 		preCheckIPv6:     opts.PreCheckIPv6,
 		networkConfig:    opts.NetworkConfig,
+		timer:            time.NewTimer(timeSyncWaitNetUpInt),
 	}
 
 	if t.rtcDevicePath != "" {
@@ -130,45 +132,51 @@ func (t *TimeSync) getSyncMode() SyncMode {
 
 	return syncMode
 }
-func (t *TimeSync) doTimeSync() {
+func (t *TimeSync) timeSyncLoop() {
 	metricTimeSyncStatus.Set(0)
-	for {
+
+	// use a timer here instead of sleep
+
+	for range t.timer.C {
 		if ok, err := t.preCheckFunc(); !ok {
 			if err != nil {
 				t.l.Error().Err(err).Msg("pre-check failed")
 			}
-			time.Sleep(timeSyncWaitNetChkInt)
+			t.timer.Reset(timeSyncWaitNetChkInt)
 			continue
 		}
 
 		t.l.Info().Msg("syncing system time")
 		start := time.Now()
-		err := t.Sync()
+		err := t.sync()
 		if err != nil {
 			t.l.Error().Str("error", err.Error()).Msg("failed to sync system time")
 
 			// retry after a delay
 			timeSyncRetryInterval += timeSyncRetryStep
-			time.Sleep(timeSyncRetryInterval)
+			t.timer.Reset(timeSyncRetryInterval)
 			// reset the retry interval if it exceeds the max interval
 			if timeSyncRetryInterval > timeSyncRetryMaxInt {
 				timeSyncRetryInterval = 0
 			}
-
 			continue
 		}
+
+		isInitialSync := !t.syncSuccess
 		t.syncSuccess = true
+
 		t.l.Info().Str("now", time.Now().Format(time.RFC3339)).
 			Str("time_taken", time.Since(start).String()).
+			Bool("is_initial_sync", isInitialSync).
 			Msg("time sync successful")
 
 		metricTimeSyncStatus.Set(1)
 
-		time.Sleep(timeSyncInterval) // after the first sync is done
+		t.timer.Reset(timeSyncInterval) // after the first sync is done
 	}
 }
 
-func (t *TimeSync) Sync() error {
+func (t *TimeSync) sync() error {
 	t.syncLock.Lock()
 	defer t.syncLock.Unlock()
 
@@ -256,12 +264,25 @@ Orders:
 	return nil
 }
 
+// Sync triggers a manual time sync
+func (t *TimeSync) Sync() error {
+	if !t.syncLock.TryLock() {
+		t.l.Warn().Msg("sync already in progress, skipping")
+		return nil
+	}
+	t.syncLock.Unlock()
+
+	return t.sync()
+}
+
+// IsSyncSuccess returns true if the system time is synchronized
 func (t *TimeSync) IsSyncSuccess() bool {
 	return t.syncSuccess
 }
 
+// Start starts the time sync
 func (t *TimeSync) Start() {
-	go t.doTimeSync()
+	go t.timeSyncLoop()
 }
 
 func (t *TimeSync) setSystemTime(now time.Time) error {
