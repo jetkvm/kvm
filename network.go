@@ -2,6 +2,7 @@ package kvm
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jetkvm/kvm/internal/mdns"
 	"github.com/jetkvm/kvm/internal/network/types"
@@ -77,7 +78,9 @@ func initNetwork() error {
 
 	networkManager = nmlite.NewNetworkManager(context.Background(), networkLogger)
 	networkManager.SetOnInterfaceStateChange(networkStateChanged)
-	networkManager.AddInterface(NetIfName, config.NetworkConfig)
+	if err := networkManager.AddInterface(NetIfName, config.NetworkConfig); err != nil {
+		return fmt.Errorf("failed to add interface: %w", err)
+	}
 
 	return nil
 }
