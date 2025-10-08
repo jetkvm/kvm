@@ -123,9 +123,9 @@ export default function KvmIdRoute() {
 
   const params = useParams() as { id: string };
   const { sidebarView, setSidebarView, disableVideoFocusTrap } = useUiStore();
-  const [ queryParams, setQueryParams ] = useSearchParams();
+  const [queryParams, setQueryParams] = useSearchParams();
 
-  const { 
+  const {
     peerConnection, setPeerConnection,
     peerConnectionState, setPeerConnectionState,
     setMediaStream,
@@ -597,10 +597,10 @@ export default function KvmIdRoute() {
     });
   }, 10000);
 
-  const { setNetworkState} = useNetworkStateStore();
+  const { setNetworkState } = useNetworkStateStore();
   const { setHdmiState } = useVideoStore();
-  const { 
-    keyboardLedState,  setKeyboardLedState,
+  const {
+    keyboardLedState, setKeyboardLedState,
     keysDownState, setKeysDownState, setUsbState,
   } = useHidStore();
   const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
@@ -756,7 +756,7 @@ export default function KvmIdRoute() {
     if (location.pathname !== "/other-session") navigateTo("/");
   }, [navigateTo, location.pathname]);
 
-  const { appVersion, getLocalVersion}  = useVersion();
+  const { appVersion, getLocalVersion } = useVersion();
 
   useEffect(() => {
     if (appVersion) return;

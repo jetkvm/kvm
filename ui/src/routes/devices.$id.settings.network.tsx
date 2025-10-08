@@ -8,7 +8,7 @@ import validator from "validator";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import { SettingsPageHeader } from "@/components/SettingsPageheader";
-import { NetworkSettings, NetworkState, useRTCStore } from "@/hooks/stores";
+import { NetworkSettings, NetworkState, useNetworkStateStore, useRTCStore } from "@/hooks/stores";
 import notifications from "@/notifications";
 import { getNetworkSettings, getNetworkState } from "@/utils/jsonrpc";
 import { Button } from "@components/Button";
@@ -75,7 +75,8 @@ export function LifeTimeLabel({ lifetime }: { lifetime: string }) {
 export default function SettingsNetworkRoute() {
   const { send } = useJsonRpc();
 
-  const [networkState, setNetworkState] = useState<NetworkState | null>(null);
+  const networkState = useNetworkStateStore(state => state);
+  const setNetworkState = useNetworkStateStore(state => state.setNetworkState);
 
   // Some input needs direct state management. Mostly options that open more details
   const [customDomain, setCustomDomain] = useState<string>("");

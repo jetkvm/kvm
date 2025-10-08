@@ -67,6 +67,10 @@ func networkStateChanged(_ string, state types.InterfaceState) {
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(true, "network_state_changed")
 
+	if currentSession != nil {
+		writeJSONRPCEvent("networkState", state.ToRpcInterfaceState(), currentSession)
+	}
+
 	if state.Online {
 		networkLogger.Info().Msg("network state changed to online, triggering time sync")
 		triggerTimeSyncOnNetworkStateChange()
@@ -108,9 +112,9 @@ func initNetwork() error {
 	return nil
 }
 
-func rpcGetNetworkState() *types.InterfaceState {
+func rpcGetNetworkState() *types.RpcInterfaceState {
 	state, _ := networkManager.GetInterfaceState(NetIfName)
-	return state
+	return state.ToRpcInterfaceState()
 }
 
 func rpcGetNetworkSettings() *RpcNetworkSettings {
