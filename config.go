@@ -246,17 +246,25 @@ func LoadConfig() {
 }
 
 func SaveConfig() error {
+	return saveConfig(configPath)
+}
+
+func SaveBackupConfig() error {
+	return saveConfig(configPath + ".bak")
+}
+
+func saveConfig(path string) error {
 	configLock.Lock()
 	defer configLock.Unlock()
 
-	logger.Trace().Str("path", configPath).Msg("Saving config")
+	logger.Trace().Str("path", path).Msg("Saving config")
 
 	// fixup old keyboard layout value
 	if config.KeyboardLayout == "en_US" {
 		config.KeyboardLayout = "en-US"
 	}
 
-	file, err := os.Create(configPath)
+	file, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
@@ -272,7 +280,7 @@ func SaveConfig() error {
 		return fmt.Errorf("failed to wite config: %w", err)
 	}
 
-	logger.Info().Str("path", configPath).Msg("config saved")
+	logger.Info().Str("path", path).Msg("config saved")
 	return nil
 }
 

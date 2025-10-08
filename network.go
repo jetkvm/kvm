@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/mdns"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/pkg/nmlite"
@@ -73,8 +74,26 @@ func networkStateChanged(iface string, state *types.InterfaceState) {
 	}
 }
 
+func validateNetworkConfig() {
+	err := confparser.SetDefaultsAndValidate(config.NetworkConfig)
+	if err == nil {
+		return
+	}
+
+	networkLogger.Error().Err(err).Msg("failed to validate config, reverting to default config")
+	SaveBackupConfig()
+
+	// do not use a pointer to the default config
+	// it has been already changed during LoadConfig
+	config.NetworkConfig = &(types.NetworkConfig{})
+	SaveConfig()
+}
+
 func initNetwork() error {
 	ensureConfigLoaded()
+
+	// validate the config, if it's invalid, revert to the default config and save the backup
+	validateNetworkConfig()
 
 	networkManager = nmlite.NewNetworkManager(context.Background(), networkLogger)
 	networkManager.SetOnInterfaceStateChange(networkStateChanged)
@@ -97,13 +116,18 @@ func rpcGetNetworkSettings() *RpcNetworkSettings {
 func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, error) {
 	netConfig := settings.ToNetworkConfig()
 
-	networkLogger.Debug().Interface("newConfig", netConfig).Interface("config", settings).Msg("setting new config")
+	l := networkLogger.With().
+		Str("interface", NetIfName).
+		Interface("newConfig", netConfig).
+		Logger()
+
+	l.Debug().Msg("setting new config")
 
 	s := networkManager.SetInterfaceConfig(NetIfName, netConfig)
 	if s != nil {
 		return nil, s
 	}
-	networkLogger.Debug().Interface("newConfig", netConfig).Interface("config", settings).Msg("new config")
+	l.Debug().Msg("new config applied")
 
 	newConfig, err := networkManager.GetInterfaceConfig(NetIfName)
 	if err != nil {
@@ -111,8 +135,7 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 	}
 	config.NetworkConfig = newConfig
 
-	networkLogger.Debug().Interface("newConfig", newConfig).Interface("config", settings).Msg("saving config")
-
+	l.Debug().Msg("saving new config")
 	if err := SaveConfig(); err != nil {
 		return nil, err
 	}
