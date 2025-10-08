@@ -222,9 +222,8 @@ export default function SettingsNetworkRoute() {
             description="Configure the network settings for the device"
             action={
               <>
-              
+
                 {(formState.isDirty || formState.isSubmitting) && (
-                  // <div className="animate-fadeInStill opacity-1 animation-duration-300">
                   <div>
                     <Button
                       size="SM"
@@ -256,6 +255,7 @@ export default function SettingsNetworkRoute() {
             <SettingsItem title="Hostname" description="Set the device hostname">
               <InputField
                 size="SM"
+                placeholder="jetkvm"
                 {...register("hostname")}
                 error={formState.errors.hostname?.message}
               />
