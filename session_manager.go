@@ -255,6 +255,20 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 	// and assign primary status atomically to prevent race conditions
 	primaryExists := sm.primarySessionID != "" && sm.sessions[sm.primarySessionID] != nil
 
+	// Check if there's an active grace period for a primary session (different from this session)
+	hasActivePrimaryGracePeriod := false
+	if sm.lastPrimaryID != "" && sm.lastPrimaryID != session.ID {
+		if graceTime, exists := sm.reconnectGrace[sm.lastPrimaryID]; exists {
+			if time.Now().Before(graceTime) {
+				if reconnectInfo, hasInfo := sm.reconnectInfo[sm.lastPrimaryID]; hasInfo {
+					if reconnectInfo.Mode == SessionModePrimary {
+						hasActivePrimaryGracePeriod = true
+					}
+				}
+			}
+		}
+	}
+
 	// Check if this session was recently demoted via transfer
 	isBlacklisted := sm.isSessionBlacklisted(session.ID)
 
@@ -263,6 +277,7 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		Str("nickname", session.Nickname).
 		Str("currentPrimarySessionID", sm.primarySessionID).
 		Bool("primaryExists", primaryExists).
+		Bool("hasActivePrimaryGracePeriod", hasActivePrimaryGracePeriod).
 		Int("totalSessions", len(sm.sessions)).
 		Bool("wasWithinGracePeriod", wasWithinGracePeriod).
 		Bool("wasPreviouslyPrimary", wasPreviouslyPrimary).
@@ -271,10 +286,10 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		Msg("AddSession state analysis")
 
 	// Become primary only if:
-	// 1. Was previously primary (within grace) AND no current primary, OR
-	// 2. There's no primary at all AND not recently transferred away
-	// Never allow primary promotion if already restored within grace period
-	shouldBecomePrimary := !wasWithinGracePeriod && ((wasPreviouslyPrimary && !primaryExists) || (!primaryExists && !isBlacklisted))
+	// 1. Was previously primary (within grace) AND no current primary AND no other session has grace period, OR
+	// 2. There's no primary at all AND not recently transferred away AND no active grace period
+	// Never allow primary promotion if already restored within grace period or another session has grace period
+	shouldBecomePrimary := !wasWithinGracePeriod && !hasActivePrimaryGracePeriod && ((wasPreviouslyPrimary && !primaryExists) || (!primaryExists && !isBlacklisted))
 
 	if wasWithinGracePeriod {
 		sm.logger.Debug().
@@ -354,6 +369,12 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 	// This ensures that primary existence checks work correctly during restoration
 	sm.sessions[session.ID] = session
 
+	sm.logger.Info().
+		Str("sessionID", session.ID).
+		Str("mode", string(session.Mode)).
+		Int("totalSessions", len(sm.sessions)).
+		Msg("Session added to manager")
+
 	// Ensure session has auto-generated nickname if needed
 	sm.ensureNickname(session)
 
@@ -373,11 +394,20 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 
 	session, exists := sm.sessions[sessionID]
 	if !exists {
+		sm.logger.Debug().
+			Str("sessionID", sessionID).
+			Msg("RemoveSession called but session not found in map")
 		return
 	}
 
 	wasPrimary := session.Mode == SessionModePrimary
 	delete(sm.sessions, sessionID)
+
+	sm.logger.Info().
+		Str("sessionID", sessionID).
+		Bool("wasPrimary", wasPrimary).
+		Int("remainingSessions", len(sm.sessions)).
+		Msg("Session removed from manager")
 
 	// Remove from queue if present
 	sm.removeFromQueue(sessionID)
@@ -428,10 +458,18 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 		sm.logger.Info().
 			Str("sessionID", sessionID).
 			Dur("gracePeriod", time.Duration(gracePeriod)*time.Second).
-			Msg("Primary session removed, grace period active - auto-promotion will occur after grace expires")
+			Int("remainingSessions", len(sm.sessions)).
+			Msg("Primary session removed, grace period active")
 
-		// NOTE: Do NOT call validateSinglePrimary() here - let grace period expire naturally
-		// The cleanupInactiveSessions() function will handle promotion after grace period expires
+		// Immediate promotion check: if there are observers waiting, trigger validation
+		// This allows immediate promotion while still respecting grace period protection
+		if len(sm.sessions) > 0 {
+			sm.logger.Debug().
+				Str("removedPrimaryID", sessionID).
+				Int("remainingSessions", len(sm.sessions)).
+				Msg("Triggering immediate validation for potential promotion")
+			sm.validateSinglePrimary()
+		}
 	}
 
 	// Notify remaining sessions
@@ -704,6 +742,20 @@ func (sm *SessionManager) TransferPrimary(fromID, toID string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
+	// SECURITY: Verify fromID is the actual current primary
+	if sm.primarySessionID != fromID {
+		return fmt.Errorf("transfer denied: %s is not the current primary (current primary: %s)", fromID, sm.primarySessionID)
+	}
+
+	fromSession, exists := sm.sessions[fromID]
+	if !exists {
+		return ErrSessionNotFound
+	}
+
+	if fromSession.Mode != SessionModePrimary {
+		return errors.New("transfer denied: from session is not in primary mode")
+	}
+
 	// Use centralized transfer method
 	err := sm.transferPrimaryRole(fromID, toID, "direct_transfer", "manual transfer request")
 	if err != nil {
@@ -899,20 +951,64 @@ func (sm *SessionManager) validateSinglePrimary() {
 		sm.primarySessionID = ""
 	}
 
+	// Check if there's an active grace period for any primary session
+	// BUT: if grace period just started (within 2 seconds), allow immediate promotion
+	hasActivePrimaryGracePeriod := false
+	for sessionID, graceTime := range sm.reconnectGrace {
+		if time.Now().Before(graceTime) {
+			if reconnectInfo, hasInfo := sm.reconnectInfo[sessionID]; hasInfo {
+				if reconnectInfo.Mode == SessionModePrimary {
+					// Calculate how long ago the grace period started
+					gracePeriod := 10
+					if currentSessionSettings != nil && currentSessionSettings.ReconnectGrace > 0 {
+						gracePeriod = currentSessionSettings.ReconnectGrace
+					}
+					graceStartTime := graceTime.Add(-time.Duration(gracePeriod) * time.Second)
+					timeSinceGraceStart := time.Since(graceStartTime)
+
+					// If grace period just started (within 2 seconds), allow immediate promotion
+					// This enables instant promotion on logout while still protecting against network blips
+					if timeSinceGraceStart > 2*time.Second {
+						hasActivePrimaryGracePeriod = true
+						sm.logger.Debug().
+							Str("gracePrimaryID", sessionID).
+							Dur("remainingGrace", time.Until(graceTime)).
+							Dur("timeSinceGraceStart", timeSinceGraceStart).
+							Msg("Active grace period detected for primary session - blocking auto-promotion")
+					} else {
+						sm.logger.Debug().
+							Str("gracePrimaryID", sessionID).
+							Dur("timeSinceGraceStart", timeSinceGraceStart).
+							Msg("Grace period just started - allowing immediate promotion")
+					}
+					break
+				}
+			}
+		}
+	}
+
+	// Build session IDs list for debugging
+	sessionIDs := make([]string, 0, len(sm.sessions))
+	for id := range sm.sessions {
+		sessionIDs = append(sessionIDs, id)
+	}
+
 	sm.logger.Debug().
 		Int("primarySessionCount", len(primarySessions)).
 		Str("primarySessionID", sm.primarySessionID).
 		Int("totalSessions", len(sm.sessions)).
+		Strs("sessionIDs", sessionIDs).
+		Bool("hasActivePrimaryGracePeriod", hasActivePrimaryGracePeriod).
 		Msg("validateSinglePrimary state check")
 
-	// Auto-promote if there are NO primary sessions at all
-	if len(primarySessions) == 0 && sm.primarySessionID == "" && len(sm.sessions) > 0 {
+	// Auto-promote if there are NO primary sessions at all AND no active grace period
+	if len(primarySessions) == 0 && sm.primarySessionID == "" && len(sm.sessions) > 0 && !hasActivePrimaryGracePeriod {
 		// Find a session to promote to primary
 		nextSessionID := sm.findNextSessionToPromote()
 		if nextSessionID != "" {
 			sm.logger.Info().
 				Str("promotedSessionID", nextSessionID).
-				Msg("Auto-promoting observer to primary - no primary sessions exist")
+				Msg("Auto-promoting observer to primary - no primary sessions exist and no grace period active")
 
 			// Use the centralized promotion logic
 			err := sm.transferPrimaryRole("", nextSessionID, "emergency_auto_promotion", "no primary sessions detected")
@@ -931,6 +1027,7 @@ func (sm *SessionManager) validateSinglePrimary() {
 			Int("primarySessions", len(primarySessions)).
 			Str("primarySessionID", sm.primarySessionID).
 			Bool("hasSessions", len(sm.sessions) > 0).
+			Bool("hasActivePrimaryGracePeriod", hasActivePrimaryGracePeriod).
 			Msg("Emergency auto-promotion conditions not met")
 	}
 }
@@ -942,6 +1039,15 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 	toSession, toExists := sm.sessions[toSessionID]
 	if !toExists {
 		return ErrSessionNotFound
+	}
+
+	// SECURITY: Prevent promoting a session that's already primary
+	if toSession.Mode == SessionModePrimary {
+		sm.logger.Warn().
+			Str("sessionID", toSessionID).
+			Str("transferType", transferType).
+			Msg("Attempted to promote session that is already primary")
+		return errors.New("target session is already primary")
 	}
 
 	var fromSession *Session
@@ -965,6 +1071,18 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 			Str("transferType", transferType).
 			Str("context", context).
 			Msg("Demoted existing primary session")
+	}
+
+	// SECURITY: Before promoting, verify there are no other primary sessions
+	for id, sess := range sm.sessions {
+		if id != toSessionID && sess.Mode == SessionModePrimary {
+			sm.logger.Error().
+				Str("existingPrimaryID", id).
+				Str("targetPromotionID", toSessionID).
+				Str("transferType", transferType).
+				Msg("CRITICAL: Attempted to create second primary - blocking promotion")
+			return fmt.Errorf("cannot promote: another primary session exists (%s)", id)
+		}
 	}
 
 	// Promote target session
