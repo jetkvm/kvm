@@ -690,24 +690,15 @@ func (im *InterfaceManager) updateInterfaceState() error {
 		return fmt.Errorf("failed to get interface: %w", err)
 	}
 
+	// Check if state changed
+	stateChanged := false
+
 	attrs := nl.Attrs()
 	isUp := attrs.OperState == netlink.OperUp
 
 	// check if the interface has unicast addresses
-	hasAddrs := false
-	addrs, err := nl.AddrList(link.AfUnspec)
-	if err != nil {
-		return fmt.Errorf("failed to get addresses: %w", err)
-	}
-	for _, addr := range addrs {
-		if addr.IP.IsGlobalUnicast() {
-			hasAddrs = true
-			break
-		}
-	}
+	isOnline := isUp && nl.HasGlobalUnicastAddress()
 
-	// Check if state changed
-	stateChanged := false
 	// We should release the lock before calling the callbacks
 	// to avoid deadlocks
 	im.stateMu.Lock()
@@ -715,8 +706,9 @@ func (im *InterfaceManager) updateInterfaceState() error {
 		im.state.Up = isUp
 		stateChanged = true
 	}
-	if im.state.Online != hasAddrs {
-		im.state.Online = hasAddrs
+
+	if im.state.Online != isOnline {
+		im.state.Online = isOnline
 		stateChanged = true
 	}
 
@@ -762,7 +754,9 @@ func (im *InterfaceManager) updateIPAddresses(nl *link.Link) error {
 	)
 
 	for _, addr := range addrs {
-		im.logger.Debug().Str("address", addr.IP.String()).Msg("checking address")
+		im.logger.Debug().
+			IPAddr("address", addr.IP).
+			Msg("checking address")
 		if addr.IP.To4() != nil {
 			// IPv4 address
 			ipv4Addresses = append(ipv4Addresses, addr.IPNet.String())
@@ -811,6 +805,7 @@ func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
 	}
 }
 
+// ReconcileLinkAddrs reconciles the link addresses
 func (im *InterfaceManager) ReconcileLinkAddrs(addrs []*types.IPAddress) error {
 	nl := getNetlinkManager()
 	link, err := im.link()

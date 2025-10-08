@@ -118,6 +118,21 @@ func (l *Link) AddrList(family int) ([]netlink.Addr, error) {
 	return netlink.AddrList(l.Link, family)
 }
 
+// HasGlobalUnicastAddress returns true if the link has a global unicast address
+func (l *Link) HasGlobalUnicastAddress() bool {
+	addrs, err := l.AddrList(AfUnspec)
+	if err != nil {
+		return false
+	}
+
+	for _, addr := range addrs {
+		if addr.IP.IsGlobalUnicast() {
+			return true
+		}
+	}
+	return false
+}
+
 // IsSame checks if the link is the same as another link
 func (l *Link) IsSame(other *Link) bool {
 	if l == nil || other == nil {
