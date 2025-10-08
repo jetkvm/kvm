@@ -1,0 +1,262 @@
+import { useEffect, useState } from "react";
+import { useJsonRpc, JsonRpcResponse } from "@/hooks/useJsonRpc";
+import { usePermissions, Permission } from "@/hooks/usePermissions";
+import { useSettingsStore } from "@/hooks/stores";
+import { notify } from "@/notifications";
+import Card from "@/components/Card";
+import Checkbox from "@/components/Checkbox";
+import { SettingsPageHeader } from "@/components/SettingsPageheader";
+import { SettingsItem } from "@/components/SettingsItem";
+import {
+  UserGroupIcon,
+} from "@heroicons/react/16/solid";
+
+export default function SessionsSettings() {
+  const { send } = useJsonRpc();
+  const { hasPermission } = usePermissions();
+  const canModifySettings = hasPermission(Permission.SETTINGS_WRITE);
+
+  const {
+    requireSessionNickname,
+    setRequireSessionNickname,
+    requireSessionApproval,
+    setRequireSessionApproval
+  } = useSettingsStore();
+
+  const [reconnectGrace, setReconnectGrace] = useState(10);
+  const [primaryTimeout, setPrimaryTimeout] = useState(300);
+  const [privateKeystrokes, setPrivateKeystrokes] = useState(false);
+
+  useEffect(() => {
+    send("getSessionSettings", {}, (response: JsonRpcResponse) => {
+      if ("error" in response) {
+        console.error("Failed to get session settings:", response.error);
+      } else {
+        const settings = response.result as {
+          requireApproval: boolean;
+          requireNickname: boolean;
+          reconnectGrace?: number;
+          primaryTimeout?: number;
+          privateKeystrokes?: boolean
+        };
+        setRequireSessionApproval(settings.requireApproval);
+        setRequireSessionNickname(settings.requireNickname);
+        if (settings.reconnectGrace !== undefined) {
+          setReconnectGrace(settings.reconnectGrace);
+        }
+        if (settings.primaryTimeout !== undefined) {
+          setPrimaryTimeout(settings.primaryTimeout);
+        }
+        if (settings.privateKeystrokes !== undefined) {
+          setPrivateKeystrokes(settings.privateKeystrokes);
+        }
+      }
+    });
+  }, [send, setRequireSessionApproval, setRequireSessionNickname]);
+
+  const updateSessionSettings = (updates: Partial<{
+    requireApproval: boolean;
+    requireNickname: boolean;
+    reconnectGrace: number;
+    primaryTimeout: number;
+    privateKeystrokes: boolean;
+  }>) => {
+    if (!canModifySettings) {
+      notify.error("Only the primary session can change this setting");
+      return;
+    }
+
+    send("setSessionSettings", {
+      settings: {
+        requireApproval: requireSessionApproval,
+        requireNickname: requireSessionNickname,
+        reconnectGrace: reconnectGrace,
+        primaryTimeout: primaryTimeout,
+        privateKeystrokes: privateKeystrokes,
+        ...updates
+      }
+    }, (response: JsonRpcResponse) => {
+      if ("error" in response) {
+        console.error("Failed to update session settings:", response.error);
+        notify.error("Failed to update session settings");
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <SettingsPageHeader
+        title="Multi-Session Access"
+        description="Configure multi-session access and control settings"
+      />
+
+      {!canModifySettings && (
+        <Card className="border-amber-500/20 bg-amber-50 dark:bg-amber-900/10">
+          <div className="p-4 text-sm text-amber-700 dark:text-amber-400">
+            <strong>Note:</strong> Only the primary session can modify these settings.
+            Request primary control to change settings.
+          </div>
+        </Card>
+      )}
+
+      <Card>
+        <div className="p-6 space-y-6">
+          <div className="flex items-center gap-3 mb-4">
+            <UserGroupIcon className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+              Access Control
+            </h3>
+          </div>
+
+          <SettingsItem
+            title="Require Session Approval"
+            description="New sessions must be approved by the primary session before gaining access"
+          >
+            <Checkbox
+              checked={requireSessionApproval}
+              disabled={!canModifySettings}
+              onChange={e => {
+                const newValue = e.target.checked;
+                setRequireSessionApproval(newValue);
+                updateSessionSettings({ requireApproval: newValue });
+                notify.success(
+                  newValue
+                    ? "New sessions will require approval"
+                    : "New sessions will be automatically approved"
+                );
+              }}
+            />
+          </SettingsItem>
+
+          <SettingsItem
+            title="Require Session Nicknames"
+            description="All sessions must provide a nickname for identification"
+          >
+            <Checkbox
+              checked={requireSessionNickname}
+              disabled={!canModifySettings}
+              onChange={e => {
+                const newValue = e.target.checked;
+                setRequireSessionNickname(newValue);
+                updateSessionSettings({ requireNickname: newValue });
+                notify.success(
+                  newValue
+                    ? "Session nicknames are now required"
+                    : "Session nicknames are now optional"
+                );
+              }}
+            />
+          </SettingsItem>
+
+          <SettingsItem
+            title="Reconnect Grace Period"
+            description="Time to wait for a session to reconnect before reassigning control"
+          >
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="5"
+                max="60"
+                value={reconnectGrace}
+                disabled={!canModifySettings}
+                onChange={e => {
+                  const newValue = parseInt(e.target.value) || 10;
+                  if (newValue < 5 || newValue > 60) {
+                    notify.error("Grace period must be between 5 and 60 seconds");
+                    return;
+                  }
+                  setReconnectGrace(newValue);
+                  updateSessionSettings({ reconnectGrace: newValue });
+                  notify.success(
+                    `Session will have ${newValue} seconds to reconnect`
+                  );
+                }}
+                className="w-20 px-2 py-1.5 border rounded-md bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              />
+              <span className="text-sm text-slate-600 dark:text-slate-400">seconds</span>
+            </div>
+          </SettingsItem>
+
+          <SettingsItem
+            title="Primary Session Timeout"
+            description="Time of inactivity before the primary session loses control (0 = disabled)"
+          >
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                max="3600"
+                step="60"
+                value={primaryTimeout}
+                disabled={!canModifySettings}
+                onChange={e => {
+                  const newValue = parseInt(e.target.value) || 0;
+                  if (newValue < 0 || newValue > 3600) {
+                    notify.error("Timeout must be between 0 and 3600 seconds");
+                    return;
+                  }
+                  setPrimaryTimeout(newValue);
+                  updateSessionSettings({ primaryTimeout: newValue });
+                  notify.success(
+                    newValue === 0
+                      ? "Primary session timeout disabled"
+                      : `Primary session will timeout after ${Math.round(newValue / 60)} minutes of inactivity`
+                  );
+                }}
+                className="w-24 px-2 py-1.5 border rounded-md bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              />
+              <span className="text-sm text-slate-600 dark:text-slate-400">seconds</span>
+            </div>
+          </SettingsItem>
+
+          <SettingsItem
+            title="Private Keystrokes"
+            description="When enabled, only the primary session can see keystroke events"
+          >
+            <Checkbox
+              checked={privateKeystrokes}
+              disabled={!canModifySettings}
+              onChange={e => {
+                const newValue = e.target.checked;
+                setPrivateKeystrokes(newValue);
+                updateSessionSettings({ privateKeystrokes: newValue });
+                notify.success(
+                  newValue
+                    ? "Keystrokes are now private to primary session"
+                    : "Keystrokes are visible to all authorized sessions"
+                );
+              }}
+            />
+          </SettingsItem>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="p-6">
+          <div className="space-y-4">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+              How Multi-Session Access Works
+            </h3>
+            <div className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
+              <div className="flex items-start gap-2">
+                <span className="font-medium text-slate-700 dark:text-slate-300">Primary:</span>
+                <span>Full control over the KVM device including keyboard, mouse, and settings</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="font-medium text-slate-700 dark:text-slate-300">Observer:</span>
+                <span>View-only access to monitor activity without control capabilities</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="font-medium text-slate-700 dark:text-slate-300">Pending:</span>
+                <span>Awaiting approval from the primary session (when approval is required)</span>
+              </div>
+            </div>
+            <div className="pt-2 text-sm text-slate-500 dark:text-slate-400">
+              Use the Sessions panel in the top navigation bar to view and manage active sessions.
+            </div>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}

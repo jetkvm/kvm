@@ -16,9 +16,16 @@ type TerminalSize struct {
 	Cols int `json:"cols"`
 }
 
-func handleTerminalChannel(d *webrtc.DataChannel) {
+func handleTerminalChannel(d *webrtc.DataChannel, session *Session) {
 	scopedLogger := terminalLogger.With().
-		Uint16("data_channel_id", *d.ID()).Logger()
+		Uint16("data_channel_id", *d.ID()).
+		Str("session_id", session.ID).Logger()
+
+	// Check terminal access permission
+	if !session.HasPermission(PermissionTerminalAccess) {
+		handlePermissionDeniedChannel(d, "Terminal access denied: Permission required")
+		return
+	}
 
 	var ptmx *os.File
 	var cmd *exec.Cmd

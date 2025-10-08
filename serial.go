@@ -57,12 +57,10 @@ func runATXControl() {
 		newBtnRSTState := line[2] == '1'
 		newBtnPWRState := line[3] == '1'
 
-		if currentSession != nil {
-			writeJSONRPCEvent("atxState", ATXState{
-				Power: newLedPWRState,
-				HDD:   newLedHDDState,
-			}, currentSession)
-		}
+		broadcastJSONRPCEvent("atxState", ATXState{
+			Power: newLedPWRState,
+			HDD:   newLedHDDState,
+		})
 
 		if newLedHDDState != ledHDDState ||
 			newLedPWRState != ledPWRState ||
@@ -210,9 +208,7 @@ func runDCControl() {
 		// Update Prometheus metrics
 		updateDCMetrics(dcState)
 
-		if currentSession != nil {
-			writeJSONRPCEvent("dcState", dcState, currentSession)
-		}
+		broadcastJSONRPCEvent("dcState", dcState)
 	}
 }
 
@@ -284,9 +280,16 @@ func reopenSerialPort() error {
 	return nil
 }
 
-func handleSerialChannel(d *webrtc.DataChannel) {
+func handleSerialChannel(d *webrtc.DataChannel, session *Session) {
 	scopedLogger := serialLogger.With().
-		Uint16("data_channel_id", *d.ID()).Logger()
+		Uint16("data_channel_id", *d.ID()).
+		Str("session_id", session.ID).Logger()
+
+	// Check serial access permission
+	if !session.HasPermission(PermissionSerialAccess) {
+		handlePermissionDeniedChannel(d, "Serial port access denied: Permission required")
+		return
+	}
 
 	d.OnOpen(func() {
 		go func() {

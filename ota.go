@@ -302,11 +302,7 @@ var otaState = OTAState{}
 
 func triggerOTAStateUpdate() {
 	go func() {
-		if currentSession == nil {
-			logger.Info().Msg("No active RPC session, skipping update state update")
-			return
-		}
-		writeJSONRPCEvent("otaState", otaState, currentSession)
+		broadcastJSONRPCEvent("otaState", otaState)
 	}()
 }
 

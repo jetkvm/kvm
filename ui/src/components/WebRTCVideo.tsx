@@ -14,6 +14,8 @@ import {
   useSettingsStore,
   useVideoStore,
 } from "@/hooks/stores";
+import { useSessionStore } from "@/stores/sessionStore";
+import { usePermissions, Permission } from "@/hooks/usePermissions";
 import useMouse from "@/hooks/useMouse";
 
 import {
@@ -35,6 +37,8 @@ export default function WebRTCVideo() {
 
   // Store hooks
   const settings = useSettingsStore();
+  const { currentMode } = useSessionStore();
+  const { hasPermission } = usePermissions();
   const { handleKeyPress, resetKeyboardState } = useKeyboard();
   const {
     getRelMouseMoveHandler,
@@ -214,29 +218,47 @@ export default function WebRTCVideo() {
     document.addEventListener("fullscreenchange", handleFullscreenChange);
   }, [releaseKeyboardLock]);
 
-  const absMouseMoveHandler = useMemo(
-    () => getAbsMouseMoveHandler({
+  const absMouseMoveHandler = useMemo(() => {
+    const handler = getAbsMouseMoveHandler({
       videoClientWidth,
       videoClientHeight,
       videoWidth,
       videoHeight,
-    }),
-    [getAbsMouseMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight],
-  );
+    });
+    return (e: MouseEvent) => {
+      // Only allow input if user has mouse permission
+      if (!hasPermission(Permission.MOUSE_INPUT)) return;
+      handler(e);
+    };
+  }, [currentMode, getAbsMouseMoveHandler, videoClientWidth, videoClientHeight, videoWidth, videoHeight]);
 
-  const relMouseMoveHandler = useMemo(
-    () => getRelMouseMoveHandler(),
-    [getRelMouseMoveHandler],
-  );
+  const relMouseMoveHandler = useMemo(() => {
+    const handler = getRelMouseMoveHandler();
+    return (e: MouseEvent) => {
+      // Only allow input if user has mouse permission
+      if (!hasPermission(Permission.MOUSE_INPUT)) return;
+      handler(e);
+    };
+  }, [currentMode, getRelMouseMoveHandler]);
 
-  const mouseWheelHandler = useMemo(
-    () => getMouseWheelHandler(),
-    [getMouseWheelHandler],
-  );
+  const mouseWheelHandler = useMemo(() => {
+    const handler = getMouseWheelHandler();
+    return (e: WheelEvent) => {
+      // Only allow input if user has mouse permission
+      if (!hasPermission(Permission.MOUSE_INPUT)) return;
+      handler(e);
+    };
+  }, [currentMode, getMouseWheelHandler]);
 
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       e.preventDefault();
+
+      // Only allow input if user has keyboard permission
+      if (!hasPermission(Permission.KEYBOARD_INPUT)) {
+        return;
+      }
+
       if (e.repeat) return;
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
@@ -252,11 +274,9 @@ export default function WebRTCVideo() {
       // https://bugzilla.mozilla.org/show_bug.cgi?id=1299553
       if (e.metaKey && hidKey < 0xE0) {
         setTimeout(() => {
-          console.debug(`Forcing the meta key release of associated key: ${hidKey}`);
           handleKeyPress(hidKey, false);
         }, 10);
       }
-      console.debug(`Key down: ${hidKey}`);
       handleKeyPress(hidKey, true);
 
       if (!isKeyboardLockActive && hidKey === keys.MetaLeft) {
@@ -264,17 +284,22 @@ export default function WebRTCVideo() {
         // we'll never see the keyup event because the browser is going to lose
         // focus so set a deferred keyup after a short delay
         setTimeout(() => {
-          console.debug(`Forcing the left meta key release`);
           handleKeyPress(hidKey, false);
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive],
+    [currentMode, handleKeyPress, isKeyboardLockActive],
   );
 
   const keyUpHandler = useCallback(
     async (e: KeyboardEvent) => {
       e.preventDefault();
+
+      // Only allow input if user has keyboard permission
+      if (!hasPermission(Permission.KEYBOARD_INPUT)) {
+        return;
+      }
+
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
 
@@ -283,10 +308,9 @@ export default function WebRTCVideo() {
         return;
       }
 
-      console.debug(`Key up: ${hidKey}`);
       handleKeyPress(hidKey, false);
     },
-    [handleKeyPress],
+    [currentMode, handleKeyPress],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
@@ -297,7 +321,6 @@ export default function WebRTCVideo() {
     // Fix only works in chrome based browsers.
     if (e.code === "Space") {
       if (videoElm.current.paused) {
-        console.debug("Force playing video");
         videoElm.current.play();
       }
     }
@@ -556,7 +579,7 @@ export default function WebRTCVideo() {
                       )}
                     </div>
                   </div>
-                  <VirtualKeyboard />
+                  {hasPermission(Permission.KEYBOARD_INPUT) && <VirtualKeyboard />}
                 </div>
               </div>
             </div>

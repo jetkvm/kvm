@@ -77,11 +77,21 @@ func (m *KeyboardMacro) Validate() error {
 	return nil
 }
 
+// MultiSessionConfig defines settings for multi-session support
+type MultiSessionConfig struct {
+	Enabled            bool `json:"enabled"`
+	MaxSessions        int  `json:"max_sessions"`
+	PrimaryTimeout     int  `json:"primary_timeout_seconds"`
+	AllowCloudOverride bool `json:"allow_cloud_override"`
+	RequireAuthTransfer bool `json:"require_auth_transfer"`
+}
+
 type Config struct {
 	CloudURL             string                 `json:"cloud_url"`
 	CloudAppURL          string                 `json:"cloud_app_url"`
 	CloudToken           string                 `json:"cloud_token"`
 	GoogleIdentity       string                 `json:"google_identity"`
+	MultiSession         *MultiSessionConfig    `json:"multi_session"`
 	JigglerEnabled       bool                   `json:"jiggler_enabled"`
 	JigglerConfig        *JigglerConfig         `json:"jiggler_config"`
 	AutoUpdateEnabled    bool                   `json:"auto_update_enabled"`
@@ -104,6 +114,7 @@ type Config struct {
 	UsbDevices           *usbgadget.Devices     `json:"usb_devices"`
 	NetworkConfig        *network.NetworkConfig `json:"network_config"`
 	DefaultLogLevel      string                 `json:"default_log_level"`
+	SessionSettings      *SessionSettings       `json:"session_settings"`
 }
 
 func (c *Config) GetDisplayRotation() uint16 {
@@ -132,12 +143,25 @@ var defaultConfig = &Config{
 	CloudAppURL:          "https://app.jetkvm.com",
 	AutoUpdateEnabled:    true, // Set a default value
 	ActiveExtension:      "",
+	MultiSession: &MultiSessionConfig{
+		Enabled:            true,  // Enable by default for new features
+		MaxSessions:        10,    // Reasonable default
+		PrimaryTimeout:     300,   // 5 minutes
+		AllowCloudOverride: true,  // Cloud sessions can take control
+		RequireAuthTransfer: false, // Don't require auth by default
+	},
 	KeyboardMacros:       []KeyboardMacro{},
 	DisplayRotation:      "270",
 	KeyboardLayout:       "en-US",
 	DisplayMaxBrightness: 64,
 	DisplayDimAfterSec:   120,  // 2 minutes
 	DisplayOffAfterSec:   1800, // 30 minutes
+	SessionSettings: &SessionSettings{
+		RequireApproval: false,
+		RequireNickname: false,
+		ReconnectGrace:  10,           // 10 seconds default
+		PrivateKeystrokes: false,      // By default, share keystrokes with observers
+	},
 	JigglerEnabled:       false,
 	// This is the "Standard" jiggler option in the UI
 	JigglerConfig: &JigglerConfig{

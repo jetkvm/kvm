@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -22,6 +23,14 @@ import (
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
+
+// nicknameRegex defines the valid pattern for nicknames (matching frontend validation)
+var nicknameRegex = regexp.MustCompile(`^[a-zA-Z0-9\s\-_.@]+$`)
+
+// isValidNickname checks if a nickname contains only valid characters
+func isValidNickname(nickname string) bool {
+	return nicknameRegex.MatchString(nickname)
+}
 
 type JSONRPCRequest struct {
 	JSONRPC string         `json:"jsonrpc"`
@@ -47,6 +56,7 @@ type DisplayRotationSettings struct {
 	Rotation string `json:"rotation"`
 }
 
+
 type BacklightSettings struct {
 	MaxBrightness int `json:"max_brightness"`
 	DimAfter      int `json:"dim_after"`
@@ -54,11 +64,16 @@ type BacklightSettings struct {
 }
 
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
+	if session == nil || session.RPCChannel == nil {
+		return
+	}
+
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
 		jsonRpcLogger.Warn().Err(err).Msg("Error marshalling JSONRPC response")
 		return
 	}
+
 	err = session.RPCChannel.SendText(string(responseBytes))
 	if err != nil {
 		jsonRpcLogger.Warn().Err(err).Msg("Error sending JSONRPC response")
@@ -96,7 +111,30 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 	}
 }
 
+func broadcastJSONRPCEvent(event string, params any) {
+	sessionManager.ForEachSession(func(s *Session) {
+		writeJSONRPCEvent(event, params, s)
+	})
+}
+
 func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
+	// Rate limit check (DoS protection)
+	if !session.CheckRPCRateLimit() {
+		jsonRpcLogger.Warn().
+			Str("sessionId", session.ID).
+			Msg("RPC rate limit exceeded")
+		errorResponse := JSONRPCResponse{
+			JSONRPC: "2.0",
+			Error: map[string]any{
+				"code":    -32000,
+				"message": "Rate limit exceeded",
+			},
+			ID: 0,
+		}
+		writeJSONRPCResponse(errorResponse, session)
+		return
+	}
+
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
 	if err != nil {
@@ -124,21 +162,206 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 
 	scopedLogger.Trace().Msg("Received RPC request")
 
-	handler, ok := rpcHandlers[request.Method]
-	if !ok {
-		errorResponse := JSONRPCResponse{
-			JSONRPC: "2.0",
-			Error: map[string]any{
-				"code":    -32601,
-				"message": "Method not found",
-			},
-			ID: request.ID,
+	// Handle session-specific RPC methods first
+	var result any
+	var handlerErr error
+
+	switch request.Method {
+	case "approvePrimaryRequest":
+		if err := RequirePermission(session, PermissionSessionTransfer); err != nil {
+			handlerErr = err
+		} else if requesterID, ok := request.Params["requesterID"].(string); ok {
+			handlerErr = sessionManager.ApprovePrimaryRequest(session.ID, requesterID)
+			if handlerErr == nil {
+				result = map[string]interface{}{"status": "approved"}
+			}
+		} else {
+			handlerErr = errors.New("invalid requesterID parameter")
 		}
-		writeJSONRPCResponse(errorResponse, session)
-		return
+	case "denyPrimaryRequest":
+		if err := RequirePermission(session, PermissionSessionTransfer); err != nil {
+			handlerErr = err
+		} else if requesterID, ok := request.Params["requesterID"].(string); ok {
+			handlerErr = sessionManager.DenyPrimaryRequest(session.ID, requesterID)
+			if handlerErr == nil {
+				result = map[string]interface{}{"status": "denied"}
+			}
+		} else {
+			handlerErr = errors.New("invalid requesterID parameter")
+		}
+	case "approveNewSession":
+		if err := RequirePermission(session, PermissionSessionApprove); err != nil {
+			handlerErr = err
+		} else if sessionID, ok := request.Params["sessionId"].(string); ok {
+			if targetSession := sessionManager.GetSession(sessionID); targetSession != nil && targetSession.Mode == SessionModePending {
+				targetSession.Mode = SessionModeObserver
+				sessionManager.broadcastSessionListUpdate()
+				result = map[string]interface{}{"status": "approved"}
+			} else {
+				handlerErr = errors.New("session not found or not pending")
+			}
+		} else {
+			handlerErr = errors.New("invalid sessionId parameter")
+		}
+	case "denyNewSession":
+		if err := RequirePermission(session, PermissionSessionApprove); err != nil {
+			handlerErr = err
+		} else if sessionID, ok := request.Params["sessionId"].(string); ok {
+			if targetSession := sessionManager.GetSession(sessionID); targetSession != nil && targetSession.Mode == SessionModePending {
+				writeJSONRPCEvent("sessionAccessDenied", map[string]interface{}{
+					"message": "Access denied by primary session",
+				}, targetSession)
+				sessionManager.RemoveSession(sessionID)
+				result = map[string]interface{}{"status": "denied"}
+			} else {
+				handlerErr = errors.New("session not found or not pending")
+			}
+		} else {
+			handlerErr = errors.New("invalid sessionId parameter")
+		}
+	case "updateSessionNickname":
+		sessionID, _ := request.Params["sessionId"].(string)
+		nickname, _ := request.Params["nickname"].(string)
+		// Validate nickname to match frontend validation
+		if len(nickname) < 2 {
+			handlerErr = errors.New("nickname must be at least 2 characters")
+		} else if len(nickname) > 30 {
+			handlerErr = errors.New("nickname must be 30 characters or less")
+		} else if !isValidNickname(nickname) {
+			handlerErr = errors.New("nickname can only contain letters, numbers, spaces, and - _ . @")
+		} else if targetSession := sessionManager.GetSession(sessionID); targetSession != nil {
+			// Users can update their own nickname, or admins can update any
+			if targetSession.ID == session.ID || session.HasPermission(PermissionSessionManage) {
+				targetSession.Nickname = nickname
+
+				// If session is pending and approval is required, send the approval request now that we have a nickname
+				if targetSession.Mode == SessionModePending && currentSessionSettings != nil && currentSessionSettings.RequireApproval {
+					if primary := sessionManager.GetPrimarySession(); primary != nil {
+						go func() {
+							writeJSONRPCEvent("newSessionPending", map[string]interface{}{
+								"sessionId": targetSession.ID,
+								"source":    targetSession.Source,
+								"identity":  targetSession.Identity,
+								"nickname":  targetSession.Nickname,
+							}, primary)
+						}()
+					}
+				}
+
+				sessionManager.broadcastSessionListUpdate()
+				result = map[string]interface{}{"status": "updated"}
+			} else {
+				handlerErr = errors.New("permission denied: can only update own nickname")
+			}
+		} else {
+			handlerErr = errors.New("session not found")
+		}
+	case "getSessions":
+		sessions := sessionManager.GetAllSessions()
+		result = sessions
+	case "getPermissions":
+		permissions := session.GetPermissions()
+		permMap := make(map[string]bool)
+		for perm, allowed := range permissions {
+			permMap[string(perm)] = allowed
+		}
+		result = GetPermissionsResponse{
+			Mode:        string(session.Mode),
+			Permissions: permMap,
+		}
+	case "getSessionSettings":
+		if err := RequirePermission(session, PermissionSettingsRead); err != nil {
+			handlerErr = err
+		} else {
+			result = currentSessionSettings
+		}
+	case "setSessionSettings":
+		if err := RequirePermission(session, PermissionSessionManage); err != nil {
+			handlerErr = err
+		} else {
+			if settings, ok := request.Params["settings"].(map[string]interface{}); ok {
+				if requireApproval, ok := settings["requireApproval"].(bool); ok {
+					currentSessionSettings.RequireApproval = requireApproval
+				}
+				if requireNickname, ok := settings["requireNickname"].(bool); ok {
+					currentSessionSettings.RequireNickname = requireNickname
+				}
+				if reconnectGrace, ok := settings["reconnectGrace"].(float64); ok {
+					currentSessionSettings.ReconnectGrace = int(reconnectGrace)
+				}
+				if primaryTimeout, ok := settings["primaryTimeout"].(float64); ok {
+					currentSessionSettings.PrimaryTimeout = int(primaryTimeout)
+				}
+				if privateKeystrokes, ok := settings["privateKeystrokes"].(bool); ok {
+					currentSessionSettings.PrivateKeystrokes = privateKeystrokes
+				}
+
+				// Trigger nickname auto-generation for sessions when RequireNickname changes
+				if sessionManager != nil {
+					sessionManager.updateAllSessionNicknames()
+				}
+
+				// Save to persistent config
+				if err := SaveConfig(); err != nil {
+					handlerErr = errors.New("failed to save session settings")
+				}
+				result = currentSessionSettings
+			} else {
+				handlerErr = errors.New("invalid settings parameter")
+			}
+		}
+	case "generateNickname":
+		// Generate a nickname based on user agent (no permissions required)
+		userAgent := ""
+		if request.Params != nil {
+			if ua, ok := request.Params["userAgent"].(string); ok {
+				userAgent = ua
+			}
+		}
+
+		// Use browser as fallback if no user agent provided
+		if userAgent == "" {
+			userAgent = "Mozilla/5.0 (Unknown) Browser"
+		}
+
+		result = map[string]string{
+			"nickname": generateNicknameFromUserAgent(userAgent),
+		}
+	default:
+		// Check method permissions using centralized permission system
+		if requiredPerm, exists := GetMethodPermission(request.Method); exists {
+			if !session.HasPermission(requiredPerm) {
+				errorResponse := JSONRPCResponse{
+					JSONRPC: "2.0",
+					Error: map[string]any{
+						"code":    -32603,
+						"message": fmt.Sprintf("Permission denied: %s required", requiredPerm),
+					},
+					ID: request.ID,
+				}
+				writeJSONRPCResponse(errorResponse, session)
+				return
+			}
+		}
+
+		// Fall back to regular handlers
+		handler, ok := rpcHandlers[request.Method]
+		if !ok {
+			errorResponse := JSONRPCResponse{
+				JSONRPC: "2.0",
+				Error: map[string]any{
+					"code":    -32601,
+					"message": "Method not found",
+				},
+				ID: request.ID,
+			}
+			writeJSONRPCResponse(errorResponse, session)
+			return
+		}
+		result, handlerErr = callRPCHandler(scopedLogger, handler, request.Params)
 	}
 
-	result, err := callRPCHandler(scopedLogger, handler, request.Params)
+	err = handlerErr
 	if err != nil {
 		scopedLogger.Error().Err(err).Msg("Error calling RPC handler")
 		errorResponse := JSONRPCResponse{
@@ -154,7 +377,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	scopedLogger.Trace().Interface("result", result).Msg("RPC handler returned")
+	scopedLogger.Info().Interface("result", result).Msg("RPC handler returned successfully")
 
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
@@ -1084,6 +1307,93 @@ func rpcSetLocalLoopbackOnly(enabled bool) error {
 	return nil
 }
 
+func rpcGetSessions() ([]SessionData, error) {
+	return sessionManager.GetAllSessions(), nil
+}
+
+func rpcGetSessionData(sessionId string) (SessionData, error) {
+	session := sessionManager.GetSession(sessionId)
+	if session == nil {
+		return SessionData{}, ErrSessionNotFound
+	}
+	return SessionData{
+		ID:         session.ID,
+		Mode:       session.Mode,
+		Source:     session.Source,
+		Identity:   session.Identity,
+		CreatedAt:  session.CreatedAt,
+		LastActive: session.LastActive,
+	}, nil
+}
+
+func rpcRequestPrimary(sessionId string) map[string]interface{} {
+	err := sessionManager.RequestPrimary(sessionId)
+	if err != nil {
+		return map[string]interface{}{
+			"status": "error",
+			"message": err.Error(),
+		}
+	}
+
+	// Check if the session was immediately promoted or queued
+	session := sessionManager.GetSession(sessionId)
+	if session == nil {
+		return map[string]interface{}{
+			"status": "error",
+			"message": "session not found",
+		}
+	}
+
+	return map[string]interface{}{
+		"status": "success",
+		"mode": string(session.Mode),
+	}
+}
+
+func rpcReleasePrimary(sessionId string) error {
+	return sessionManager.ReleasePrimary(sessionId)
+}
+
+func rpcTransferPrimary(fromId string, toId string) error {
+	return sessionManager.TransferPrimary(fromId, toId)
+}
+
+
+func rpcGetSessionConfig() (map[string]interface{}, error) {
+	maxSessions := 10
+	primaryTimeout := 300
+
+	if config != nil && config.MultiSession != nil {
+		if config.MultiSession.MaxSessions > 0 {
+			maxSessions = config.MultiSession.MaxSessions
+		}
+		if config.MultiSession.PrimaryTimeout > 0 {
+			primaryTimeout = config.MultiSession.PrimaryTimeout
+		}
+	}
+
+	return map[string]interface{}{
+		"enabled":           true,
+		"maxSessions":       maxSessions,
+		"primaryTimeout":    primaryTimeout,
+		"allowCloudOverride": true,
+	}, nil
+}
+
+func (s *Session) rpcApprovePrimaryRequest(requesterID string) error {
+	if s == nil || s.ID == "" {
+		return errors.New("invalid session")
+	}
+	return sessionManager.ApprovePrimaryRequest(s.ID, requesterID)
+}
+
+func (s *Session) rpcDenyPrimaryRequest(requesterID string) error {
+	if s == nil || s.ID == "" {
+		return errors.New("invalid session")
+	}
+	return sessionManager.DenyPrimaryRequest(s.ID, requesterID)
+}
+
 var (
 	keyboardMacroCancel context.CancelFunc
 	keyboardMacroLock   sync.Mutex
@@ -1119,8 +1429,9 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 		IsPaste: true,
 	}
 
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
+	// Report to primary session if exists
+	if primarySession := sessionManager.GetPrimarySession(); primarySession != nil {
+		primarySession.reportHidRPCKeyboardMacroState(s)
 	}
 
 	err := rpcDoExecuteKeyboardMacro(ctx, macro)
@@ -1128,8 +1439,8 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 	setKeyboardMacroCancel(nil)
 
 	s.State = false
-	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
+	if primarySession := sessionManager.GetPrimarySession(); primarySession != nil {
+		primarySession.reportHidRPCKeyboardMacroState(s)
 	}
 
 	return err
@@ -1267,4 +1578,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"setKeyboardMacros":      {Func: setKeyboardMacros, Params: []string{"params"}},
 	"getLocalLoopbackOnly":   {Func: rpcGetLocalLoopbackOnly},
 	"setLocalLoopbackOnly":   {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
+	"getSessions":            {Func: rpcGetSessions},
+	"getSessionData":         {Func: rpcGetSessionData, Params: []string{"sessionId"}},
+	"getSessionConfig":       {Func: rpcGetSessionConfig},
+	"requestPrimary":         {Func: rpcRequestPrimary, Params: []string{"sessionId"}},
+	"releasePrimary":         {Func: rpcReleasePrimary, Params: []string{"sessionId"}},
+	"transferPrimary":        {Func: rpcTransferPrimary, Params: []string{"fromId", "toId"}},
 }

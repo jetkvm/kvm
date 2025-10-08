@@ -6,21 +6,25 @@ import Container from "@components/Container";
 import { useMacrosStore } from "@/hooks/stores";
 import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
+import { usePermissions, Permission } from "@/hooks/usePermissions";
 
 export default function MacroBar() {
   const { macros, initialized, loadMacros, setSendFn } = useMacrosStore();
   const { executeMacro } = useKeyboard();
   const { send } = useJsonRpc();
+  const { permissions, hasPermission } = usePermissions();
 
   useEffect(() => {
     setSendFn(send);
-    
-    if (!initialized) {
+
+    // Only load macros if user has permission to read settings
+    if (!initialized && permissions[Permission.SETTINGS_READ] === true) {
       loadMacros();
     }
-  }, [initialized, loadMacros, setSendFn, send]);
+  }, [initialized, send, loadMacros, setSendFn, permissions]);
 
-  if (macros.length === 0) {
+  // Don't show macros if user can't provide keyboard input or if no macros exist
+  if (macros.length === 0 || !hasPermission(Permission.KEYBOARD_INPUT)) {
     return null;
   }
 

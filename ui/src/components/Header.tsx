@@ -12,6 +12,7 @@ import LogoWhiteIcon from "@/assets/logo-white.svg";
 import USBStateStatus from "@components/USBStateStatus";
 import PeerConnectionStatusCard from "@components/PeerConnectionStatusCard";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import { useSessionStore, useSharedSessionStore } from "@/stores/sessionStore";
 
 import api from "../api";
 import { isOnDevice } from "../main";
@@ -37,6 +38,8 @@ export default function DashboardNavbar({
 }: NavbarProps) {
   const peerConnectionState = useRTCStore(state => state.peerConnectionState);
   const setUser = useUserStore(state => state.setUser);
+  const { clearSession } = useSessionStore();
+  const { clearNickname } = useSharedSessionStore();
   const navigate = useNavigate();
   const onLogout = useCallback(async () => {
     const logoutUrl = isOnDevice ? `${DEVICE_API}/auth/logout` : `${CLOUD_API}/logout`;
@@ -44,9 +47,12 @@ export default function DashboardNavbar({
     if (!res.ok) return;
 
     setUser(null);
+    // Clear the stored session data via zustand
+    clearNickname();
+    clearSession();
     // The root route will redirect to appropriate login page, be it the local one or the cloud one
     navigate("/");
-  }, [navigate, setUser]);
+  }, [navigate, setUser, clearNickname, clearSession]);
 
   const { usbState } = useHidStore();
 

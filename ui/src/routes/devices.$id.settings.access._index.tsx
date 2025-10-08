@@ -201,6 +201,7 @@ export default function SettingsAccessIndexRoute() {
       if ("error" in resp) return console.error(resp.error);
       setDeviceId(resp.result as string);
     });
+
   }, [send, getCloudState, getTLSState]);
 
   return (
@@ -326,6 +327,7 @@ export default function SettingsAccessIndexRoute() {
           <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
         </>
       )}
+
 
       <div className="space-y-4">
         <SettingsSectionHeader

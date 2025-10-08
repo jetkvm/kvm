@@ -12,19 +12,33 @@ import {
   LuPalette,
   LuCommand,
   LuNetwork,
+  LuUsers,
 } from "react-icons/lu";
 import { useResizeObserver } from "usehooks-ts";
+import { useNavigate } from "react-router";
 
 import { cx } from "@/cva.config";
 import Card from "@components/Card";
 import { LinkButton } from "@components/Button";
 import { FeatureFlag } from "@components/FeatureFlag";
 import { useUiStore } from "@/hooks/stores";
+import { useSessionStore } from "@/stores/sessionStore";
+import { usePermissions, Permission } from "@/hooks/usePermissions";
 
 /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
 export default function SettingsRoute() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { setDisableVideoFocusTrap } = useUiStore();
+  const { currentMode } = useSessionStore();
+  const { hasPermission, isLoading, permissions } = usePermissions();
+
+  useEffect(() => {
+    if (!isLoading && !permissions[Permission.SETTINGS_ACCESS] && currentMode !== null) {
+      navigate("/devices/local", { replace: true });
+    }
+  }, [permissions, isLoading, currentMode, navigate]);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(false);
@@ -68,6 +82,21 @@ export default function SettingsRoute() {
       setDisableVideoFocusTrap(false);
     };
   }, [setDisableVideoFocusTrap]);
+
+  // Check permissions first - return early to prevent any content flash
+  // Show loading state while permissions are being checked
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-slate-500">Checking permissions...</div>
+      </div>
+    );
+  }
+
+  // Don't render settings content if user doesn't have permission
+  if (!hasPermission(Permission.SETTINGS_ACCESS)) {
+    return null;
+  }
 
   return (
     <div className="pointer-events-auto relative mx-auto max-w-4xl translate-x-0 transform text-left dark:text-white">
@@ -220,6 +249,17 @@ export default function SettingsRoute() {
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuNetwork className="h-4 w-4 shrink-0" />
                       <h1>Network</h1>
+                    </div>
+                  </NavLink>
+                </div>
+                <div className="shrink-0">
+                  <NavLink
+                    to="sessions"
+                    className={({ isActive }) => (isActive ? "active" : "")}
+                  >
+                    <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
+                      <LuUsers className="h-4 w-4 shrink-0" />
+                      <h1>Multi-Session Access</h1>
                     </div>
                   </NavLink>
                 </div>

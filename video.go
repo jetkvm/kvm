@@ -8,7 +8,7 @@ var lastVideoState native.VideoState
 
 func triggerVideoStateUpdate() {
 	go func() {
-		writeJSONRPCEvent("videoInputState", lastVideoState, currentSession)
+		broadcastJSONRPCEvent("videoInputState", lastVideoState)
 	}()
 
 	nativeLogger.Info().Interface("state", lastVideoState).Msg("video state updated")

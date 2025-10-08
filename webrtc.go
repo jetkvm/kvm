@@ -19,13 +19,39 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// Predefined browser string constants for memory efficiency
+var (
+	BrowserChrome   = "chrome"
+	BrowserFirefox  = "firefox"
+	BrowserSafari   = "safari"
+	BrowserEdge     = "edge"
+	BrowserOpera    = "opera"
+	BrowserUnknown  = "user"
+)
+
 type Session struct {
+	ID           string
+	Mode         SessionMode
+	Source       string
+	Identity     string
+	Nickname     string
+	Browser      *string      // Pointer to predefined browser string constant for memory efficiency
+	CreatedAt    time.Time
+	LastActive   time.Time
+	LastBroadcast time.Time  // Per-session broadcast throttle
+
+	// RPC rate limiting (DoS protection)
+	rpcRateLimitMu  sync.Mutex // Protects rate limit fields
+	rpcRateLimit    int        // Count of RPCs in current window
+	rpcRateLimitWin time.Time  // Start of current rate limit window
+
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
 	ControlChannel           *webrtc.DataChannel
 	RPCChannel               *webrtc.DataChannel
 	HidChannel               *webrtc.DataChannel
 	shouldUmountVirtualMedia bool
+	flushCandidates          func() // Callback to flush buffered ICE candidates
 
 	rpcQueue chan webrtc.DataChannelMessage
 
@@ -37,6 +63,30 @@ type Session struct {
 	hidQueue                 []chan hidQueueMessage
 
 	keysDownStateQueue chan usbgadget.KeysDownState
+}
+
+// CheckRPCRateLimit checks if the session has exceeded RPC rate limits (DoS protection)
+func (s *Session) CheckRPCRateLimit() bool {
+	const (
+		maxRPCPerSecond = 20
+		rateLimitWindow = time.Second
+	)
+
+	s.rpcRateLimitMu.Lock()
+	defer s.rpcRateLimitMu.Unlock()
+
+	now := time.Now()
+	// Reset window if it has expired
+	if now.Sub(s.rpcRateLimitWin) > rateLimitWindow {
+		s.rpcRateLimit = 0
+		s.rpcRateLimitWin = now
+	}
+
+	s.rpcRateLimit++
+	if s.rpcRateLimit > maxRPCPerSecond {
+		return false // Rate limit exceeded
+	}
+	return true // Within limits
 }
 
 func (s *Session) resetKeepAliveTime() {
@@ -55,6 +105,7 @@ type SessionConfig struct {
 	ICEServers []string
 	LocalIP    string
 	IsCloud    bool
+	UserAgent  string  // User agent for browser detection and nickname generation
 	ws         *websocket.Conn
 	Logger     *zerolog.Logger
 }
@@ -106,7 +157,14 @@ func (s *Session) initQueues() {
 
 func (s *Session) handleQueues(index int) {
 	for msg := range s.hidQueue[index] {
-		onHidMessage(msg, s)
+		// Get current session from manager to ensure we have the latest state
+		currentSession := sessionManager.GetSession(s.ID)
+		if currentSession != nil {
+			onHidMessage(msg, currentSession)
+		} else {
+			// Session was removed, use original to avoid nil panic
+			onHidMessage(msg, s)
+		}
 	}
 }
 
@@ -218,7 +276,10 @@ func newSession(config SessionConfig) (*Session, error) {
 		return nil, err
 	}
 
-	session := &Session{peerConnection: peerConnection}
+	session := &Session{
+		peerConnection: peerConnection,
+		Browser:       extractBrowserFromUserAgent(config.UserAgent),
+	}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	session.initQueues()
 	session.initKeysDownStateQueue()
@@ -226,7 +287,16 @@ func newSession(config SessionConfig) (*Session, error) {
 	go func() {
 		for msg := range session.rpcQueue {
 			// TODO: only use goroutine if the task is asynchronous
-			go onRPCMessage(msg, session)
+			go func(m webrtc.DataChannelMessage) {
+				// Get current session from manager to ensure we have the latest state
+				currentSession := sessionManager.GetSession(session.ID)
+				if currentSession != nil {
+					onRPCMessage(m, currentSession)
+				} else {
+					// Session was removed, use original to avoid nil panic
+					onRPCMessage(m, session)
+				}
+			}(msg)
 		}
 	}()
 
@@ -262,9 +332,9 @@ func newSession(config SessionConfig) (*Session, error) {
 			triggerVideoStateUpdate()
 			triggerUSBStateUpdate()
 		case "terminal":
-			handleTerminalChannel(d)
+			handleTerminalChannel(d, session)
 		case "serial":
-			handleSerialChannel(d)
+			handleSerialChannel(d, session)
 		default:
 			if strings.HasPrefix(d.Label(), uploadIdPrefix) {
 				go handleUploadChannel(d)
@@ -297,9 +367,23 @@ func newSession(config SessionConfig) (*Session, error) {
 	}()
 	var isConnected bool
 
+	// Buffer to hold ICE candidates until answer is sent
+	var candidateBuffer []webrtc.ICECandidateInit
+	var candidateBufferMutex sync.Mutex
+	var answerSent bool
+
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		scopedLogger.Info().Interface("candidate", candidate).Msg("WebRTC peerConnection has a new ICE candidate")
 		if candidate != nil {
+			candidateBufferMutex.Lock()
+			if !answerSent {
+				// Buffer the candidate until answer is sent
+				candidateBuffer = append(candidateBuffer, candidate.ToJSON())
+				candidateBufferMutex.Unlock()
+				return
+			}
+			candidateBufferMutex.Unlock()
+
 			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
 			if err != nil {
 				scopedLogger.Warn().Err(err).Msg("failed to write new-ice-candidate to WebRTC signaling channel")
@@ -307,8 +391,88 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	})
 
+	// Store the callback to flush buffered candidates
+	session.flushCandidates = func() {
+		candidateBufferMutex.Lock()
+		answerSent = true
+		// Send all buffered candidates
+		for _, candidate := range candidateBuffer {
+			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate})
+			if err != nil {
+				scopedLogger.Warn().Err(err).Msg("failed to write buffered new-ice-candidate to WebRTC signaling channel")
+			}
+		}
+		candidateBuffer = nil
+		candidateBufferMutex.Unlock()
+	}
+
+	// Track cleanup state to prevent double cleanup
+	var cleanedUp bool
+	var cleanupMutex sync.Mutex
+
+	cleanupSession := func(reason string) {
+		cleanupMutex.Lock()
+		defer cleanupMutex.Unlock()
+
+		if cleanedUp {
+			return
+		}
+		cleanedUp = true
+
+		scopedLogger.Info().
+			Str("sessionID", session.ID).
+			Str("reason", reason).
+			Msg("Cleaning up session")
+
+		// Remove from session manager
+		sessionManager.RemoveSession(session.ID)
+
+		// Cancel any ongoing keyboard macro if session has permission
+		if session.HasPermission(PermissionPaste) {
+			cancelKeyboardMacro()
+		}
+
+		// Stop RPC processor
+		if session.rpcQueue != nil {
+			close(session.rpcQueue)
+			session.rpcQueue = nil
+		}
+
+		// Stop HID RPC processor
+		for i := 0; i < len(session.hidQueue); i++ {
+			if session.hidQueue[i] != nil {
+				close(session.hidQueue[i])
+				session.hidQueue[i] = nil
+			}
+		}
+
+		if session.keysDownStateQueue != nil {
+			close(session.keysDownStateQueue)
+			session.keysDownStateQueue = nil
+		}
+
+		if session.shouldUmountVirtualMedia {
+			if err := rpcUnmountImage(); err != nil {
+				scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")
+			}
+		}
+
+		if isConnected {
+			isConnected = false
+			actionSessions--
+			onActiveSessionsChanged()
+			if actionSessions == 0 {
+				onLastSessionDisconnected()
+			}
+		}
+	}
+
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		scopedLogger.Info().Str("connectionState", connectionState.String()).Msg("ICE Connection State has changed")
+		scopedLogger.Info().
+			Str("sessionID", session.ID).
+			Str("connectionState", connectionState.String()).
+			Msg("ICE Connection State has changed")
+
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			if !isConnected {
 				isConnected = true
@@ -319,46 +483,27 @@ func newSession(config SessionConfig) (*Session, error) {
 				}
 			}
 		}
-		//state changes on closing browser tab disconnected->failed, we need to manually close it
+
+		// Handle disconnection and failure states
+		if connectionState == webrtc.ICEConnectionStateDisconnected {
+			scopedLogger.Info().
+				Str("sessionID", session.ID).
+				Msg("ICE Connection State is disconnected, connection may recover")
+		}
+
 		if connectionState == webrtc.ICEConnectionStateFailed {
-			scopedLogger.Debug().Msg("ICE Connection State is failed, closing peerConnection")
+			scopedLogger.Info().
+				Str("sessionID", session.ID).
+				Msg("ICE Connection State is failed, closing peerConnection and cleaning up")
+			cleanupSession("ice-failed")
 			_ = peerConnection.Close()
 		}
+
 		if connectionState == webrtc.ICEConnectionStateClosed {
-			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
-			if session == currentSession {
-				// Cancel any ongoing keyboard report multi when session closes
-				cancelKeyboardMacro()
-				currentSession = nil
-			}
-			// Stop RPC processor
-			if session.rpcQueue != nil {
-				close(session.rpcQueue)
-				session.rpcQueue = nil
-			}
-
-			// Stop HID RPC processor
-			for i := 0; i < len(session.hidQueue); i++ {
-				close(session.hidQueue[i])
-				session.hidQueue[i] = nil
-			}
-
-			close(session.keysDownStateQueue)
-			session.keysDownStateQueue = nil
-
-			if session.shouldUmountVirtualMedia {
-				if err := rpcUnmountImage(); err != nil {
-					scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")
-				}
-			}
-			if isConnected {
-				isConnected = false
-				actionSessions--
-				onActiveSessionsChanged()
-				if actionSessions == 0 {
-					onLastSessionDisconnected()
-				}
-			}
+			scopedLogger.Info().
+				Str("sessionID", session.ID).
+				Msg("ICE Connection State is closed, cleaning up")
+			cleanupSession("ice-closed")
 		}
 	})
 	return session, nil

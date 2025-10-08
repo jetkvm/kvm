@@ -48,12 +48,21 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			}
 		},
 		OnVideoFrameReceived: func(frame []byte, duration time.Duration) {
-			if currentSession != nil {
-				err := currentSession.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration})
-				if err != nil {
-					nativeLogger.Warn().Err(err).Msg("error writing sample")
+			sessionManager.ForEachSession(func(s *Session) {
+				if !sessionManager.CanReceiveVideo(s, currentSessionSettings) {
+					return
 				}
-			}
+
+				if s.VideoTrack != nil {
+					err := s.VideoTrack.WriteSample(media.Sample{Data: frame, Duration: duration})
+					if err != nil {
+						nativeLogger.Warn().
+							Str("sessionID", s.ID).
+							Err(err).
+							Msg("error writing sample to session")
+					}
+				}
+			})
 		},
 	})
 	nativeInstance.Start()

@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { useRTCStore } from "@/hooks/stores";
 
@@ -36,6 +36,12 @@ let requestCounter = 0;
 
 export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
   const { rpcDataChannel } = useRTCStore();
+  const onRequestRef = useRef(onRequest);
+
+  // Update ref when callback changes
+  useEffect(() => {
+    onRequestRef.current = onRequest;
+  }, [onRequest]);
 
   const send = useCallback(
     async (method: string, params: unknown, callback?: (resp: JsonRpcResponse) => void) => {
@@ -59,7 +65,7 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
       // The "API" can also "request" data from the client
       // If the payload has a method, it's a request
       if ("method" in payload) {
-        if (onRequest) onRequest(payload);
+        if (onRequestRef.current) onRequestRef.current(payload);
         return;
       }
 
@@ -79,7 +85,7 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
       rpcDataChannel.removeEventListener("message", messageHandler);
     };
   },
-  [rpcDataChannel, onRequest]);
+  [rpcDataChannel]); // Remove onRequest from dependencies
 
   return { send };
 }

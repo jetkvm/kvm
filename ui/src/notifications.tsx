@@ -1,6 +1,11 @@
 import toast, { Toast, Toaster, useToasterStore } from "react-hot-toast";
 import React, { useEffect } from "react";
-import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/20/solid";
+import {
+  CheckCircleIcon,
+  XCircleIcon,
+  InformationCircleIcon,
+  ExclamationTriangleIcon
+} from "@heroicons/react/20/solid";
 
 import Card from "@/components/Card";
 
@@ -57,6 +62,32 @@ const notifications = {
       { duration: 2000, ...options },
     );
   },
+
+  info: (message: string, options?: NotificationOptions) => {
+    return toast.custom(
+      t => (
+        <ToastContent
+          icon={<InformationCircleIcon className="w-5 h-5 text-blue-500 dark:text-blue-400" />}
+          message={message}
+          t={t}
+        />
+      ),
+      { duration: 2000, ...options },
+    );
+  },
+
+  warning: (message: string, options?: NotificationOptions) => {
+    return toast.custom(
+      t => (
+        <ToastContent
+          icon={<ExclamationTriangleIcon className="w-5 h-5 text-yellow-500 dark:text-yellow-400" />}
+          message={message}
+          t={t}
+        />
+      ),
+      { duration: 3000, ...options },
+    );
+  },
 };
 
 function useMaxToasts(max: number) {
@@ -82,7 +113,12 @@ export function Notifications({
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
-export default Object.assign(Notifications, {
+export const notify = {
   success: notifications.success,
   error: notifications.error,
-});
+  info: notifications.info,
+  warning: notifications.warning,
+};
+
+// eslint-disable-next-line react-refresh/only-export-components
+export default Object.assign(Notifications, notify);

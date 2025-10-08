@@ -35,9 +35,21 @@ var staticFiles embed.FS
 
 type WebRTCSessionRequest struct {
 	Sd         string   `json:"sd"`
+	SessionId  string   `json:"sessionId,omitempty"`
 	OidcGoogle string   `json:"OidcGoogle,omitempty"`
 	IP         string   `json:"ip,omitempty"`
 	ICEServers []string `json:"iceServers,omitempty"`
+	UserAgent  string   `json:"userAgent,omitempty"`  // Browser user agent for nickname generation
+	SessionSettings *SessionSettings `json:"sessionSettings,omitempty"`
+}
+
+type SessionSettings struct {
+	RequireApproval bool   `json:"requireApproval"`
+	RequireNickname bool   `json:"requireNickname"`
+	ReconnectGrace  int    `json:"reconnectGrace,omitempty"`  // Grace period in seconds for primary reconnection
+	PrimaryTimeout  int    `json:"primaryTimeout,omitempty"` // Inactivity timeout in seconds for primary session
+	Nickname        string `json:"nickname,omitempty"`
+	PrivateKeystrokes bool `json:"privateKeystrokes,omitempty"` // If true, only primary session sees keystroke events
 }
 
 type SetPasswordRequest struct {
@@ -158,32 +170,16 @@ func setupRouter() *gin.Engine {
 	protected := r.Group("/")
 	protected.Use(protectedMiddleware())
 	{
-		/*
-		 * Legacy WebRTC session endpoint
-		 *
-		 * This endpoint is maintained for backward compatibility when users upgrade from a version
-		 * using the legacy HTTP-based signaling method to the new WebSocket-based signaling method.
-		 *
-		 * During the upgrade process, when the "Rebooting device after update..." message appears,
-		 * the browser still runs the previous JavaScript code which polls this endpoint to establish
-		 * a new WebRTC session. Once the session is established, the page will automatically reload
-		 * with the updated code.
-		 *
-		 * Without this endpoint, the stale JavaScript would fail to establish a connection,
-		 * causing users to see the "Rebooting device after update..." message indefinitely
-		 * until they manually refresh the page, leading to a confusing user experience.
-		 */
-		protected.POST("/webrtc/session", handleWebRTCSession)
 		protected.GET("/webrtc/signaling/client", handleLocalWebRTCSignal)
 		protected.POST("/cloud/register", handleCloudRegister)
 		protected.GET("/cloud/state", handleCloudState)
 		protected.GET("/device", handleDevice)
 		protected.POST("/auth/logout", handleLogout)
 
-		protected.POST("/auth/password-local", handleCreatePassword)
-		protected.PUT("/auth/password-local", handleUpdatePassword)
-		protected.DELETE("/auth/local-password", handleDeletePassword)
-		protected.POST("/storage/upload", handleUploadHttp)
+		protected.POST("/auth/password-local", requirePermissionMiddleware(PermissionSettingsWrite), handleCreatePassword)
+		protected.PUT("/auth/password-local", requirePermissionMiddleware(PermissionSettingsWrite), handleUpdatePassword)
+		protected.DELETE("/auth/local-password", requirePermissionMiddleware(PermissionSettingsWrite), handleDeletePassword)
+		protected.POST("/storage/upload", requirePermissionMiddleware(PermissionMountMedia), handleUploadHttp)
 	}
 
 	// Catch-all route for SPA
@@ -198,44 +194,6 @@ func setupRouter() *gin.Engine {
 	return r
 }
 
-// TODO: support multiple sessions?
-var currentSession *Session
-
-func handleWebRTCSession(c *gin.Context) {
-	var req WebRTCSessionRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	session, err := newSession(SessionConfig{})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
-	}
-
-	sd, err := session.ExchangeOffer(req.Sd)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		return
-	}
-	if currentSession != nil {
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		peerConn := currentSession.peerConnection
-		go func() {
-			time.Sleep(1 * time.Second)
-			_ = peerConn.Close()
-		}()
-	}
-
-	// Cancel any ongoing keyboard macro when session changes
-	cancelKeyboardMacro()
-
-	currentSession = session
-	c.JSON(http.StatusOK, gin.H{"sd": sd})
-}
-
 var (
 	pingMessage = []byte("ping")
 	pongMessage = []byte("pong")
@@ -244,7 +202,15 @@ var (
 func handleLocalWebRTCSignal(c *gin.Context) {
 	// get the source from the request
 	source := c.ClientIP()
-	connectionID := uuid.New().String()
+
+	// Try to get existing session ID from cookie for session persistence
+	sessionID, _ := c.Cookie("sessionId")
+	if sessionID == "" {
+		sessionID = uuid.New().String()
+		// Set session ID cookie with same expiry as auth token (7 days)
+		c.SetCookie("sessionId", sessionID, 7*24*60*60, "/", "", false, true)
+	}
+	connectionID := sessionID
 
 	scopedLogger := websocketLogger.With().
 		Str("component", "websocket").
@@ -276,7 +242,17 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 	// Now use conn for websocket operations
 	defer wsCon.Close(websocket.StatusNormalClosure, "")
 
-	err = wsjson.Write(context.Background(), wsCon, gin.H{"type": "device-metadata", "data": gin.H{"deviceVersion": builtAppVersion}})
+	// Include session settings in device metadata so client knows requirements upfront
+	sessionSettingsData := gin.H{
+		"deviceVersion": builtAppVersion,
+	}
+	if currentSessionSettings != nil {
+		sessionSettingsData["sessionSettings"] = gin.H{
+			"requireNickname": currentSessionSettings.RequireNickname,
+			"requireApproval": currentSessionSettings.RequireApproval,
+		}
+	}
+	err = wsjson.Write(context.Background(), wsCon, gin.H{"type": "device-metadata", "data": sessionSettingsData})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -412,14 +388,17 @@ func handleWebRTCSignalWsMessages(
 			continue
 		}
 
+		l.Info().Str("type", message.Type).Str("dataLen", fmt.Sprintf("%d", len(message.Data))).Msg("received WebSocket message")
+
 		if message.Type == "offer" {
-			l.Info().Msg("new session request received")
+			l.Info().Str("dataRaw", string(message.Data)).Msg("new session request received with raw data")
 			var req WebRTCSessionRequest
 			err = json.Unmarshal(message.Data, &req)
 			if err != nil {
-				l.Warn().Str("error", err.Error()).Msg("unable to parse session request data")
+				l.Warn().Str("error", err.Error()).Str("dataRaw", string(message.Data)).Msg("unable to parse session request data")
 				continue
 			}
+			l.Info().Str("sd", req.Sd[:50]).Msg("parsed session request")
 
 			if req.OidcGoogle != "" {
 				l.Info().Str("oidcGoogle", req.OidcGoogle).Msg("new session request with OIDC Google")
@@ -427,7 +406,7 @@ func handleWebRTCSignalWsMessages(
 
 			metricConnectionSessionRequestCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastSessionRequestTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
-			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source, &l)
+			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source, connectionID, &l)
 			if err != nil {
 				l.Warn().Str("error", err.Error()).Msg("error starting new session")
 				continue
@@ -449,14 +428,16 @@ func handleWebRTCSignalWsMessages(
 
 			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("unmarshalled incoming ICE candidate")
 
-			if currentSession == nil {
-				l.Warn().Msg("no current session, skipping incoming ICE candidate")
+			// Find the session this ICE candidate belongs to using the connectionID
+			session := sessionManager.GetSession(connectionID)
+			if session == nil {
+				l.Warn().Str("connectionID", connectionID).Msg("no session found for connection ID, skipping incoming ICE candidate")
 				continue
 			}
 
-			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("adding incoming ICE candidate to current session")
-			if err = currentSession.peerConnection.AddICECandidate(candidate); err != nil {
-				l.Warn().Str("error", err.Error()).Msg("failed to add incoming ICE candidate to our peer connection")
+			l.Info().Str("sessionID", session.ID).Str("data", fmt.Sprintf("%v", candidate)).Msg("adding incoming ICE candidate to correct session")
+			if err = session.peerConnection.AddICECandidate(candidate); err != nil {
+				l.Warn().Str("error", err.Error()).Str("sessionID", session.ID).Msg("failed to add incoming ICE candidate to peer connection")
 			}
 		}
 	}
@@ -481,7 +462,16 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	config.LocalAuthToken = uuid.New().String()
+	// Don't generate a new token - use the existing one
+	// This ensures all sessions can share the same auth token
+	if config.LocalAuthToken == "" {
+		// Only generate if we don't have one (shouldn't happen in normal operation)
+		config.LocalAuthToken = uuid.New().String()
+		if err := SaveConfig(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
+			return
+		}
+	}
 
 	// Set the cookie
 	c.SetCookie("authToken", config.LocalAuthToken, 7*24*60*60, "/", "", false, true)
@@ -490,14 +480,10 @@ func handleLogin(c *gin.Context) {
 }
 
 func handleLogout(c *gin.Context) {
-	config.LocalAuthToken = ""
-	if err := SaveConfig(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save configuration"})
-		return
-	}
-
-	// Clear the auth cookie
+	// Only clear the cookies for this session, don't invalidate the token
+	// The token should remain valid for other sessions
 	c.SetCookie("authToken", "", -1, "/", "", false, true)
+	c.SetCookie("sessionId", "", -1, "/", "", false, true)  // Clear session ID cookie too
 	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
 
@@ -515,6 +501,38 @@ func protectedMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		c.Next()
+	}
+}
+
+// requirePermissionMiddleware creates a middleware that enforces specific permissions
+func requirePermissionMiddleware(permission Permission) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Get session ID from cookie
+		sessionID, err := c.Cookie("sessionId")
+		if err != nil || sessionID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "No session ID found"})
+			c.Abort()
+			return
+		}
+
+		// Get session from manager
+		session := sessionManager.GetSession(sessionID)
+		if session == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Session not found"})
+			c.Abort()
+			return
+		}
+
+		// Check permission
+		if !session.HasPermission(permission) {
+			c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("Permission denied: %s required", permission)})
+			c.Abort()
+			return
+		}
+
+		// Store session in context for use by handlers
+		c.Set("session", session)
 		c.Next()
 	}
 }
@@ -591,7 +609,7 @@ func RunWebServer() {
 
 	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
 	if err := r.Run(bindAddress); err != nil {
-		panic(err)
+		logger.Fatal().Err(err).Msg("failed to start web server")
 	}
 }
 

@@ -27,8 +27,14 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 		}
 		session.hidRPCAvailable = true
 	case hidrpc.TypeKeypressReport, hidrpc.TypeKeyboardReport:
+		if !session.HasPermission(PermissionKeyboardInput) {
+			return
+		}
 		rpcErr = handleHidRPCKeyboardInput(message)
 	case hidrpc.TypeKeyboardMacroReport:
+		if !session.HasPermission(PermissionPaste) {
+			return
+		}
 		keyboardMacroReport, err := message.KeyboardMacroReport()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get keyboard macro report")
@@ -36,18 +42,30 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 		}
 		rpcErr = rpcExecuteKeyboardMacro(keyboardMacroReport.Steps)
 	case hidrpc.TypeCancelKeyboardMacroReport:
+		if !session.HasPermission(PermissionPaste) {
+			return
+		}
 		rpcCancelKeyboardMacro()
 		return
 	case hidrpc.TypeKeypressKeepAliveReport:
+		if !session.HasPermission(PermissionKeyboardInput) {
+			return
+		}
 		rpcErr = handleHidRPCKeypressKeepAlive(session)
 	case hidrpc.TypePointerReport:
+		if !session.HasPermission(PermissionMouseInput) {
+			return
+		}
 		pointerReport, err := message.PointerReport()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get pointer report")
 			return
 		}
-		rpcErr = rpcAbsMouseReport(pointerReport.X, pointerReport.Y, pointerReport.Button)
+		rpcErr = rpcAbsMouseReport(int16(pointerReport.X), int16(pointerReport.Y), pointerReport.Button)
 	case hidrpc.TypeMouseReport:
+		if !session.HasPermission(PermissionMouseInput) {
+			return
+		}
 		mouseReport, err := message.MouseReport()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to get mouse report")

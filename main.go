@@ -16,6 +16,18 @@ var appCtx context.Context
 func Main() {
 	LoadConfig()
 
+	// Initialize currentSessionSettings to use config's persistent SessionSettings
+	if config.SessionSettings == nil {
+		config.SessionSettings = &SessionSettings{
+			RequireApproval: false,
+			RequireNickname: false,
+			ReconnectGrace:  10,
+			PrivateKeystrokes: false,
+		}
+		SaveConfig()
+	}
+	currentSessionSettings = config.SessionSettings
+
 	var cancel context.CancelFunc
 	appCtx, cancel = context.WithCancel(context.Background())
 	defer cancel()
@@ -91,7 +103,8 @@ func Main() {
 				continue
 			}
 
-			if currentSession != nil {
+			// Skip update if there's an active primary session
+			if primarySession := sessionManager.GetPrimarySession(); primarySession != nil {
 				logger.Debug().Msg("skipping update since a session is active")
 				time.Sleep(1 * time.Minute)
 				continue

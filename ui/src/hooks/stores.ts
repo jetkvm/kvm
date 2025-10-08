@@ -329,6 +329,12 @@ export interface SettingsState {
   developerMode: boolean;
   setDeveloperMode: (enabled: boolean) => void;
 
+  requireSessionNickname: boolean;
+  setRequireSessionNickname: (required: boolean) => void;
+
+  requireSessionApproval: boolean;
+  setRequireSessionApproval: (required: boolean) => void;
+
   displayRotation: string;
   setDisplayRotation: (rotation: string) => void;
 
@@ -368,6 +374,12 @@ export const useSettingsStore = create(
       // Add developer mode with default value
       developerMode: false,
       setDeveloperMode: (enabled: boolean) => set({ developerMode: enabled }),
+
+      requireSessionNickname: false,
+      setRequireSessionNickname: (required: boolean) => set({ requireSessionNickname: required }),
+
+      requireSessionApproval: true,
+      setRequireSessionApproval: (required: boolean) => set({ requireSessionApproval: required }),
 
       displayRotation: "270",
       setDisplayRotation: (rotation: string) => set({ displayRotation: rotation }),

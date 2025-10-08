@@ -49,6 +49,7 @@ const SecurityAccessLocalAuthRoute = lazy(() => import("@routes/devices.$id.sett
 const SettingsMacrosRoute = lazy(() => import("@routes/devices.$id.settings.macros"));
 const SettingsMacrosAddRoute = lazy(() => import("@routes/devices.$id.settings.macros.add"));
 const SettingsMacrosEditRoute = lazy(() => import("@routes/devices.$id.settings.macros.edit"));
+const SettingsMultiSessionsRoute = lazy(() => import("@routes/devices.$id.settings.multi-session"));
 
 export const isOnDevice = import.meta.env.MODE === "device";
 export const isInCloud = !isOnDevice;
@@ -211,6 +212,10 @@ if (isOnDevice) {
                 },
               ],
             },
+            {
+              path: "sessions",
+              element: <SettingsMultiSessionsRoute />,
+            },
           ],
         },
       ],
@@ -343,6 +348,10 @@ if (isOnDevice) {
                           element: <SettingsMacrosEditRoute />,
                         },
                       ],
+                    },
+                    {
+                      path: "sessions",
+                      element: <SettingsMultiSessionsRoute />,
                     },
                   ],
                 },

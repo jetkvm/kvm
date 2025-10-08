@@ -6,6 +6,7 @@ import { BacklightSettings, useSettingsStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { UsbDeviceSetting } from "@components/UsbDeviceSetting";
+import { usePermissions, Permission } from "@/hooks/usePermissions";
 
 import notifications from "../notifications";
 import { UsbInfoSetting } from "../components/UsbInfoSetting";
@@ -15,6 +16,7 @@ export default function SettingsHardwareRoute() {
   const { send } = useJsonRpc();
   const settings = useSettingsStore();
   const { setDisplayRotation } = useSettingsStore();
+  const { hasPermission, isLoading, permissions } = usePermissions();
 
   const handleDisplayRotationChange = (rotation: string) => {
     setDisplayRotation(rotation);
@@ -58,17 +60,39 @@ export default function SettingsHardwareRoute() {
     });
   };
 
+  // Check permissions before fetching settings data
   useEffect(() => {
-    send("getBacklightSettings", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        return notifications.error(
-          `Failed to get backlight settings: ${resp.error.data || "Unknown error"}`,
-        );
-      }
-      const result = resp.result as BacklightSettings;
-      setBacklightSettings(result);
-    });
-  }, [send, setBacklightSettings]);
+    // Only fetch settings if user has permission
+    if (!isLoading && permissions[Permission.SETTINGS_READ] === true) {
+      send("getBacklightSettings", {}, (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          return notifications.error(
+            `Failed to get backlight settings: ${resp.error.data || "Unknown error"}`,
+          );
+        }
+        const result = resp.result as BacklightSettings;
+        setBacklightSettings(result);
+      });
+    }
+  }, [send, setBacklightSettings, isLoading, permissions]);
+
+  // Return early if permissions are loading
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-slate-500">Loading...</div>
+      </div>
+    );
+  }
+
+  // Return early if no permission
+  if (!hasPermission(Permission.SETTINGS_READ)) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-red-500">Access Denied: You do not have permission to view these settings.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

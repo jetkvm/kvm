@@ -197,6 +197,20 @@ func wsResetMetrics(established bool, sourceType string, source string) {
 }
 
 func handleCloudRegister(c *gin.Context) {
+	sessionID, _ := c.Cookie("sessionId")
+	authToken, _ := c.Cookie("authToken")
+
+	if sessionID != "" && authToken != "" && authToken == config.LocalAuthToken {
+		session := sessionManager.GetSession(sessionID)
+		if session != nil && !session.HasPermission(PermissionSettingsWrite) {
+			c.JSON(403, gin.H{"error": "Permission denied: settings modify permission required"})
+			return
+		}
+	} else if sessionID != "" {
+		c.JSON(401, gin.H{"error": "Authentication required"})
+		return
+	}
+
 	var req CloudRegisterRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -426,8 +440,15 @@ func handleSessionRequest(
 	req WebRTCSessionRequest,
 	isCloudConnection bool,
 	source string,
+	connectionID string,
 	scopedLogger *zerolog.Logger,
-) error {
+) (returnErr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			websocketLogger.Error().Interface("panic", r).Msg("PANIC in handleSessionRequest")
+			returnErr = fmt.Errorf("panic: %v", r)
+		}
+	}()
 	var sourceType string
 	if isCloudConnection {
 		sourceType = "cloud"
@@ -453,6 +474,7 @@ func handleSessionRequest(
 		IsCloud:    isCloudConnection,
 		LocalIP:    req.IP,
 		ICEServers: req.ICEServers,
+		UserAgent:  req.UserAgent,
 		Logger:     scopedLogger,
 	})
 	if err != nil {
@@ -462,26 +484,72 @@ func handleSessionRequest(
 
 	sd, err := session.ExchangeOffer(req.Sd)
 	if err != nil {
+		scopedLogger.Warn().Err(err).Msg("failed to exchange offer")
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})
 		return err
 	}
-	if currentSession != nil {
-		writeJSONRPCEvent("otherSessionConnected", nil, currentSession)
-		peerConn := currentSession.peerConnection
-		go func() {
-			time.Sleep(1 * time.Second)
-			_ = peerConn.Close()
-		}()
+	session.Source = source
+
+	if isCloudConnection && req.OidcGoogle != "" {
+		session.Identity = config.GoogleIdentity
+
+		// Use client-provided sessionId for reconnection, otherwise generate new one
+		// This enables multi-tab support while preserving reconnection on refresh
+		if req.SessionId != "" {
+			session.ID = req.SessionId
+			scopedLogger.Info().Str("sessionId", session.ID).Msg("Cloud session reconnecting with client-provided ID")
+		} else {
+			session.ID = connectionID
+			scopedLogger.Info().Str("sessionId", session.ID).Msg("New cloud session established")
+		}
+	} else {
+		session.ID = connectionID
+		scopedLogger.Info().Str("sessionId", session.ID).Msg("Local session established")
 	}
 
-	cloudLogger.Info().Interface("session", session).Msg("new session accepted")
-	cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
+	if sessionManager == nil {
+		scopedLogger.Error().Msg("sessionManager is nil")
+		_ = wsjson.Write(context.Background(), c, gin.H{"error": "session manager not initialized"})
+		return fmt.Errorf("session manager not initialized")
+	}
+	err = sessionManager.AddSession(session, req.SessionSettings)
+	if err != nil {
+		scopedLogger.Warn().Err(err).Msg("failed to add session to session manager")
+		if err == ErrMaxSessionsReached {
+			_ = wsjson.Write(context.Background(), c, gin.H{"error": "maximum sessions reached"})
+		} else {
+			_ = wsjson.Write(context.Background(), c, gin.H{"error": err.Error()})
+		}
+		return err
+	}
 
-	// Cancel any ongoing keyboard macro when session changes
-	cancelKeyboardMacro()
+	if session.HasPermission(PermissionPaste) {
+		cancelKeyboardMacro()
+	}
 
-	currentSession = session
-	_ = wsjson.Write(context.Background(), c, gin.H{"type": "answer", "data": sd})
+	requireNickname := false
+	requireApproval := false
+	if currentSessionSettings != nil {
+		requireNickname = currentSessionSettings.RequireNickname
+		requireApproval = currentSessionSettings.RequireApproval
+	}
+
+	err = wsjson.Write(context.Background(), c, gin.H{
+		"type": "answer",
+		"data": sd,
+		"sessionId": session.ID,
+		"mode": session.Mode,
+		"nickname": session.Nickname,
+		"requireNickname": requireNickname,
+		"requireApproval": requireApproval,
+	})
+	if err != nil {
+		return err
+	}
+
+	if session.flushCandidates != nil {
+		session.flushCandidates()
+	}
 	return nil
 }
 

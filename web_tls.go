@@ -184,7 +184,7 @@ func runWebSecureServer() {
 
 	err := server.ListenAndServeTLS("", "")
 	if !errors.Is(err, http.ErrServerClosed) {
-		panic(err)
+		websecureLogger.Fatal().Err(err).Msg("failed to start websecure server")
 	}
 }
 

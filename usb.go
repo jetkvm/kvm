@@ -27,20 +27,43 @@ func initUsbGadget() {
 	}()
 
 	gadget.SetOnKeyboardStateChange(func(state usbgadget.KeyboardState) {
-		if currentSession != nil {
-			currentSession.reportHidRPCKeyboardLedState(state)
+		// Check if keystrokes should be private
+		if currentSessionSettings != nil && currentSessionSettings.PrivateKeystrokes {
+			// Report to primary session only
+			if primary := sessionManager.GetPrimarySession(); primary != nil {
+				primary.reportHidRPCKeyboardLedState(state)
+			}
+		} else {
+			// Report to all authorized sessions (primary and observers, but not pending)
+			sessionManager.ForEachSession(func(s *Session) {
+				if s.Mode == SessionModePrimary || s.Mode == SessionModeObserver {
+					s.reportHidRPCKeyboardLedState(state)
+				}
+			})
 		}
 	})
 
 	gadget.SetOnKeysDownChange(func(state usbgadget.KeysDownState) {
-		if currentSession != nil {
-			currentSession.enqueueKeysDownState(state)
+		// Check if keystrokes should be private
+		if currentSessionSettings != nil && currentSessionSettings.PrivateKeystrokes {
+			// Report to primary session only
+			if primary := sessionManager.GetPrimarySession(); primary != nil {
+				primary.enqueueKeysDownState(state)
+			}
+		} else {
+			// Report to all authorized sessions (primary and observers, but not pending)
+			sessionManager.ForEachSession(func(s *Session) {
+				if s.Mode == SessionModePrimary || s.Mode == SessionModeObserver {
+					s.enqueueKeysDownState(state)
+				}
+			})
 		}
 	})
 
 	gadget.SetOnKeepAliveReset(func() {
-		if currentSession != nil {
-			currentSession.resetKeepAliveTime()
+		// Reset keep-alive for primary session
+		if primary := sessionManager.GetPrimarySession(); primary != nil {
+			primary.resetKeepAliveTime()
 		}
 	})
 
@@ -50,24 +73,80 @@ func initUsbGadget() {
 	}
 }
 
-func rpcKeyboardReport(modifier byte, keys []byte) error {
+func (s *Session) rpcKeyboardReport(modifier byte, keys []byte) error {
+	if s == nil || !s.HasPermission(PermissionKeyboardInput) {
+		return ErrPermissionDeniedKeyboard
+	}
+	sessionManager.UpdateLastActive(s.ID)
 	return gadget.KeyboardReport(modifier, keys)
 }
 
-func rpcKeypressReport(key byte, press bool) error {
+func (s *Session) rpcKeypressReport(key byte, press bool) error {
+	if s == nil || !s.HasPermission(PermissionKeyboardInput) {
+		return ErrPermissionDeniedKeyboard
+	}
+	sessionManager.UpdateLastActive(s.ID)
 	return gadget.KeypressReport(key, press)
 }
 
-func rpcAbsMouseReport(x int, y int, buttons uint8) error {
+func (s *Session) rpcAbsMouseReport(x int16, y int16, buttons uint8) error {
+	if s == nil || !s.HasPermission(PermissionMouseInput) {
+		return ErrPermissionDeniedMouse
+	}
+	sessionManager.UpdateLastActive(s.ID)
 	return gadget.AbsMouseReport(x, y, buttons)
 }
 
-func rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
+func (s *Session) rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
+	if s == nil || !s.HasPermission(PermissionMouseInput) {
+		return ErrPermissionDeniedMouse
+	}
+	sessionManager.UpdateLastActive(s.ID)
 	return gadget.RelMouseReport(dx, dy, buttons)
 }
 
-func rpcWheelReport(wheelY int8) error {
+func (s *Session) rpcWheelReport(wheelY int8) error {
+	if s == nil || !s.HasPermission(PermissionMouseInput) {
+		return ErrPermissionDeniedMouse
+	}
+	sessionManager.UpdateLastActive(s.ID)
 	return gadget.AbsMouseWheelReport(wheelY)
+}
+
+// RPC functions that route to the primary session
+func rpcKeyboardReport(modifier byte, keys []byte) error {
+	if primary := sessionManager.GetPrimarySession(); primary != nil {
+		return primary.rpcKeyboardReport(modifier, keys)
+	}
+	return ErrNotPrimarySession
+}
+
+func rpcKeypressReport(key byte, press bool) error {
+	if primary := sessionManager.GetPrimarySession(); primary != nil {
+		return primary.rpcKeypressReport(key, press)
+	}
+	return ErrNotPrimarySession
+}
+
+func rpcAbsMouseReport(x int16, y int16, buttons uint8) error {
+	if primary := sessionManager.GetPrimarySession(); primary != nil {
+		return primary.rpcAbsMouseReport(x, y, buttons)
+	}
+	return ErrNotPrimarySession
+}
+
+func rpcRelMouseReport(dx int8, dy int8, buttons uint8) error {
+	if primary := sessionManager.GetPrimarySession(); primary != nil {
+		return primary.rpcRelMouseReport(dx, dy, buttons)
+	}
+	return ErrNotPrimarySession
+}
+
+func rpcWheelReport(wheelY int8) error {
+	if primary := sessionManager.GetPrimarySession(); primary != nil {
+		return primary.rpcWheelReport(wheelY)
+	}
+	return ErrNotPrimarySession
 }
 
 func rpcGetKeyboardLedState() (state usbgadget.KeyboardState) {
@@ -89,11 +168,7 @@ func rpcGetUSBState() (state string) {
 
 func triggerUSBStateUpdate() {
 	go func() {
-		if currentSession == nil {
-			usbLogger.Info().Msg("No active RPC session, skipping USB state update")
-			return
-		}
-		writeJSONRPCEvent("usbState", usbState, currentSession)
+		broadcastJSONRPCEvent("usbState", usbState)
 	}()
 }
 
