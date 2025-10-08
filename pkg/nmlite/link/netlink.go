@@ -37,6 +37,7 @@ type Link struct {
 	netlink.Link
 }
 
+// Refresh refreshes the link
 func (l *Link) Refresh() error {
 	linkName := l.Link.Attrs().Name
 	link, err := netlink.LinkByName(linkName)
@@ -48,6 +49,28 @@ func (l *Link) Refresh() error {
 	}
 	l.Link = link
 	return nil
+}
+
+// Interface returns the interface of the link
+func (l *Link) Interface() *net.Interface {
+	attrs := l.Attrs()
+	if attrs.Name == "" {
+		return nil
+	}
+	iface, err := net.InterfaceByName(attrs.Name)
+	if err != nil {
+		return nil
+	}
+	return iface
+}
+
+// HardwareAddr returns the hardware address of the link
+func (l *Link) HardwareAddr() net.HardwareAddr {
+	attrs := l.Attrs()
+	if attrs.HardwareAddr == nil {
+		return nil
+	}
+	return attrs.HardwareAddr
 }
 
 // Attrs returns the attributes of the link

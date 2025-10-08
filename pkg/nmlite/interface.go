@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
+	"github.com/mdlayher/ndp"
 	"github.com/rs/zerolog"
 	"github.com/vishvananda/netlink"
 )
@@ -453,6 +455,10 @@ func (im *InterfaceManager) applyIPv6SLAAC() error {
 		return fmt.Errorf("failed to remove non-link-local IPv6 addresses: %w", err)
 	}
 
+	if err := im.SendRouterSolicitation(); err != nil {
+		return fmt.Errorf("failed to send router solicitation: %w", err)
+	}
+
 	// Enable SLAAC
 	return im.staticConfig.EnableIPv6SLAAC()
 }
@@ -545,6 +551,48 @@ func (im *InterfaceManager) handleLinkStateChange(link *link.Link) {
 	}
 }
 
+// SendRouterSolicitation sends a router solicitation
+func (im *InterfaceManager) SendRouterSolicitation() error {
+	im.logger.Info().Msg("sending router solicitation")
+	m := &ndp.RouterSolicitation{}
+
+	l, err := im.link()
+	if err != nil {
+		return fmt.Errorf("failed to get interface: %w", err)
+	}
+
+	iface := l.Interface()
+	if iface == nil {
+		return fmt.Errorf("failed to get net.Interface for %s", im.ifaceName)
+	}
+
+	hwAddr := l.HardwareAddr()
+	if hwAddr == nil {
+		return fmt.Errorf("failed to get hardware address for %s", im.ifaceName)
+	}
+
+	c, _, err := ndp.Listen(iface, ndp.LinkLocal)
+	defer c.Close()
+	if err != nil {
+		return fmt.Errorf("failed to create NDP listener on %s: %w", im.ifaceName, err)
+	}
+
+	m.Options = append(m.Options, &ndp.LinkLayerAddress{
+		Addr:      hwAddr,
+		Direction: ndp.Source,
+	})
+
+	targetAddr := netip.MustParseAddr("ff02::2")
+
+	if err := c.WriteTo(m, nil, targetAddr); err != nil {
+		return fmt.Errorf("failed to write to %s: %w", targetAddr.String(), err)
+	}
+
+	im.logger.Info().Msg("router solicitation sent")
+
+	return nil
+}
+
 func (im *InterfaceManager) handleLinkUp() {
 	im.logger.Info().Msg("link up")
 
@@ -552,6 +600,11 @@ func (im *InterfaceManager) handleLinkUp() {
 
 	if im.config.IPv4Mode.String == "dhcp" {
 		im.dhcpClient.Renew()
+	}
+
+	if im.config.IPv6Mode.String == "slaac" {
+		im.staticConfig.EnableIPv6SLAAC()
+		im.SendRouterSolicitation()
 	}
 }
 
