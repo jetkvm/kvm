@@ -163,21 +163,39 @@ func (nm *NetlinkManager) EnsureInterfaceUpWithTimeout(ctx context.Context, ifac
 		}
 
 		state := link.Attrs().OperState
+
+		l = l.With().
+			Int("attempt", attempt).
+			Dur("duration", time.Since(start)).
+			Str("state", state.String()).
+			Logger()
 		if state == netlink.OperUp || state == netlink.OperUnknown {
+			if attempt > 0 {
+				l.Info().Int("attempt", attempt-1).Msg("interface is up")
+			}
 			return link, nil
 		}
 
-		l.Info().Str("state", state.String()).Msg("bringing up interface")
+		l.Info().Msg("bringing up interface")
 
+		// bring up the interface
 		if err = nm.LinkSetUp(link); err != nil {
 			l.Error().Err(err).Msg("interface can't make it up")
 		}
 
-		l = l.With().Int("attempt", attempt).Dur("duration", time.Since(start)).Logger()
-
-		if attempt > 0 {
-			l.Info().Msg("interface up")
+		// refresh the link attributes
+		if err = link.Refresh(); err != nil {
+			l.Error().Err(err).Msg("failed to refresh link attributes")
 		}
+
+		// check the state again
+		state = link.Attrs().OperState
+		l = l.With().Str("new_state", state.String()).Logger()
+		if state == netlink.OperUp {
+			l.Info().Msg("interface is up")
+			return link, nil
+		}
+		l.Warn().Msg("interface is still down, retrying")
 
 		select {
 		case <-time.After(500 * time.Millisecond):
@@ -381,24 +399,29 @@ func (nm *NetlinkManager) ReconcileLink(link *Link, expected []*types.IPAddress)
 		}
 
 		ipCidr := addr.Address.IP.String() + "/" + addr.Address.Mask.String()
+		ipNet := &net.IPNet{
+			IP:   addr.Address.IP,
+			Mask: addr.Address.Mask,
+		}
+
+		l := nm.logger.With().Str("address", ipNet.String()).Logger()
 		if ok := existingAddrs[ipCidr]; !ok {
-			ipNet := &net.IPNet{
-				IP:   addr.Address.IP,
-				Mask: addr.Address.Mask,
-			}
+			l.Trace().Msg("adding address")
 
 			if err := nm.AddrAdd(link, &netlink.Addr{IPNet: ipNet}); err != nil {
 				return fmt.Errorf("failed to add address %s: %w", ipCidr, err)
 			}
 
-			nm.logger.Info().Str("address", ipCidr).Msg("added address")
+			l.Info().Msg("address added")
 		}
 
 		if addr.Gateway != nil {
-			nm.logger.Trace().Str("address", ipCidr).Str("gateway", addr.Gateway.String()).Msg("adding default route for address")
+			gl := l.With().Str("gateway", addr.Gateway.String()).Logger()
+			gl.Trace().Msg("adding default route")
 			if err := nm.AddDefaultRoute(link, addr.Gateway, family); err != nil {
 				return fmt.Errorf("failed to add default route for address %s: %w", ipCidr, err)
 			}
+			gl.Info().Msg("default route added")
 		}
 	}
 

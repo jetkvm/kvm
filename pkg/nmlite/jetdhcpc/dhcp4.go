@@ -1,6 +1,8 @@
 package jetdhcpc
 
 import (
+	"fmt"
+
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
 	"github.com/vishvananda/netlink"
@@ -46,7 +48,11 @@ func (c *Client) requestLease4(iface netlink.Link) (*Lease, error) {
 		return nil, err
 	}
 
-	l.Info().Msgf("DHCPv4 lease acquired: %s", lease.ACK.Summary())
+	if lease == nil || lease.ACK == nil {
+		return nil, fmt.Errorf("failed to acquire DHCPv4 lease")
+	}
+
+	summaryStructured(lease.ACK, &l).Info().Msgf("DHCPv4 lease acquired: %s", lease.ACK.String())
 
 	return fromNclient4Lease(lease, ifname), nil
 }

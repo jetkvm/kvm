@@ -21,11 +21,35 @@ func (s dhcpLogger) Printf(format string, v ...interface{}) {
 
 // PrintMessage prints a DHCP message in the short format via predefined Printfer
 func (s dhcpLogger) PrintMessage(prefix string, message *dhcpv4.DHCPv4) {
-	s.l.Info().Str("prefix", prefix).Str("message", message.String()).Msg("DHCP message")
+	s.l.Info().Msgf("%s: %s", prefix, message.String())
+}
+
+func summaryStructured(d *dhcpv4.DHCPv4, l *zerolog.Logger) *zerolog.Logger {
+	logger := l.With().
+		Str("opCode", d.OpCode.String()).
+		Str("hwType", d.HWType.String()).
+		Int("hopCount", int(d.HopCount)).
+		Str("transactionID", d.TransactionID.String()).
+		Int("numSeconds", int(d.NumSeconds)).
+		Str("flagsString", d.FlagsToString()).
+		Int("flags", int(d.Flags)).
+		Str("clientIP", d.ClientIPAddr.String()).
+		Str("yourIP", d.YourIPAddr.String()).
+		Str("serverIP", d.ServerIPAddr.String()).
+		Str("gatewayIP", d.GatewayIPAddr.String()).
+		Str("clientMAC", d.ClientHWAddr.String()).
+		Str("serverHostname", d.ServerHostName).
+		Str("bootFileName", d.BootFileName).
+		Str("options", d.Options.Summary(nil)).
+		Logger()
+	return &logger
 }
 
 func (c *Client) getDHCP4Logger(ifname string) nclient4.ClientOpt {
-	logger := c.l.With().Str("interface", ifname).Logger()
+	logger := c.l.With().
+		Str("interface", ifname).
+		Str("source", "dhcp4").
+		Logger()
 
 	return nclient4.WithLogger(dhcpLogger{
 		l: &logger,

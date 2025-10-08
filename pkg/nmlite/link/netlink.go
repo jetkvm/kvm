@@ -35,11 +35,14 @@ var (
 // Link is a wrapper around netlink.Link
 type Link struct {
 	netlink.Link
+	mu sync.Mutex
 }
 
-// Refresh refreshes the link
-func (l *Link) Refresh() error {
-	linkName := l.Link.Attrs().Name
+// All lock actions should be done in external functions
+// and the internal functions should not be called directly
+
+func (l *Link) refresh() error {
+	linkName := l.ifName()
 	link, err := netlink.LinkByName(linkName)
 	if err != nil {
 		return err
@@ -51,13 +54,44 @@ func (l *Link) Refresh() error {
 	return nil
 }
 
+func (l *Link) attrs() *netlink.LinkAttrs {
+	return l.Link.Attrs()
+}
+
+func (l *Link) ifName() string {
+	attrs := l.attrs()
+	if attrs.Name == "" {
+		return ""
+	}
+	return attrs.Name
+}
+
+// Refresh refreshes the link
+func (l *Link) Refresh() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.refresh()
+}
+
+// Attrs returns the attributes of the link
+func (l *Link) Attrs() *netlink.LinkAttrs {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.attrs()
+}
+
 // Interface returns the interface of the link
 func (l *Link) Interface() *net.Interface {
-	attrs := l.Attrs()
-	if attrs.Name == "" {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	ifname := l.ifName()
+	if ifname == "" {
 		return nil
 	}
-	iface, err := net.InterfaceByName(attrs.Name)
+	iface, err := net.InterfaceByName(ifname)
 	if err != nil {
 		return nil
 	}
@@ -66,20 +100,22 @@ func (l *Link) Interface() *net.Interface {
 
 // HardwareAddr returns the hardware address of the link
 func (l *Link) HardwareAddr() net.HardwareAddr {
-	attrs := l.Attrs()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	attrs := l.attrs()
 	if attrs.HardwareAddr == nil {
 		return nil
 	}
 	return attrs.HardwareAddr
 }
 
-// Attrs returns the attributes of the link
-func (l *Link) Attrs() *netlink.LinkAttrs {
-	return l.Link.Attrs()
-}
-
+// AddrList returns the addresses of the link
 func (l *Link) AddrList(family int) ([]netlink.Addr, error) {
-	return netlink.AddrList(l, family)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return netlink.AddrList(l.Link, family)
 }
 
 func (l *Link) IsSame(other *Link) bool {

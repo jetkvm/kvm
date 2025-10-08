@@ -106,6 +106,9 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 
 // Start starts managing the interface
 func (im *InterfaceManager) Start() error {
+	im.stateMu.Lock()
+	defer im.stateMu.Unlock()
+
 	im.logger.Info().Msg("starting interface manager")
 
 	// Start monitoring interface state
@@ -113,6 +116,22 @@ func (im *InterfaceManager) Start() error {
 	go im.monitorInterfaceState()
 
 	nl := getNetlinkManager()
+
+	// Set the link state
+	linkState, err := nl.GetLinkByName(im.ifaceName)
+	if err != nil {
+		return fmt.Errorf("failed to get interface: %w", err)
+	}
+	im.linkState = linkState
+
+	// Bring the interface up
+	_, linkUpErr := nl.EnsureInterfaceUpWithTimeout(
+		im.ctx,
+		im.linkState,
+		30*time.Second,
+	)
+
+	// Set callback after the interface is up
 	nl.AddStateChangeCallback(im.ifaceName, link.StateChangeCallback{
 		Async: true,
 		Func: func(link *link.Link) {
@@ -120,10 +139,14 @@ func (im *InterfaceManager) Start() error {
 		},
 	})
 
-	// Apply initial configuration
-	if err := im.applyConfiguration(); err != nil {
-		im.logger.Error().Err(err).Msg("failed to apply initial configuration")
-		return err
+	if linkUpErr != nil {
+		im.logger.Error().Err(linkUpErr).Msg("failed to bring interface up, continuing anyway")
+	} else {
+		// Apply initial configuration
+		if err := im.applyConfiguration(); err != nil {
+			im.logger.Error().Err(err).Msg("failed to apply initial configuration")
+			return err
+		}
 	}
 
 	im.logger.Info().Msg("interface manager started")
@@ -451,12 +474,18 @@ func (im *InterfaceManager) applyIPv6SLAAC() error {
 	}
 
 	netlinkMgr := getNetlinkManager()
+
+	// Ensure interface is up
+	if err := netlinkMgr.EnsureInterfaceUp(l); err != nil {
+		return fmt.Errorf("failed to bring interface up: %w", err)
+	}
+
 	if err := netlinkMgr.RemoveNonLinkLocalIPv6Addresses(l); err != nil {
 		return fmt.Errorf("failed to remove non-link-local IPv6 addresses: %w", err)
 	}
 
 	if err := im.SendRouterSolicitation(); err != nil {
-		return fmt.Errorf("failed to send router solicitation: %w", err)
+		im.logger.Error().Err(err).Msg("failed to send router solicitation, continuing anyway")
 	}
 
 	// Enable SLAAC
@@ -561,6 +590,10 @@ func (im *InterfaceManager) SendRouterSolicitation() error {
 		return fmt.Errorf("failed to get interface: %w", err)
 	}
 
+	if l.Attrs().OperState != netlink.OperUp {
+		return fmt.Errorf("interface %s is not up", im.ifaceName)
+	}
+
 	iface := l.Interface()
 	if iface == nil {
 		return fmt.Errorf("failed to get net.Interface for %s", im.ifaceName)
@@ -572,7 +605,6 @@ func (im *InterfaceManager) SendRouterSolicitation() error {
 	}
 
 	c, _, err := ndp.Listen(iface, ndp.LinkLocal)
-	defer c.Close()
 	if err != nil {
 		return fmt.Errorf("failed to create NDP listener on %s: %w", im.ifaceName, err)
 	}
@@ -585,10 +617,12 @@ func (im *InterfaceManager) SendRouterSolicitation() error {
 	targetAddr := netip.MustParseAddr("ff02::2")
 
 	if err := c.WriteTo(m, nil, targetAddr); err != nil {
+		c.Close()
 		return fmt.Errorf("failed to write to %s: %w", targetAddr.String(), err)
 	}
 
 	im.logger.Info().Msg("router solicitation sent")
+	c.Close()
 
 	return nil
 }
