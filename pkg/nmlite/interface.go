@@ -403,13 +403,23 @@ func (im *InterfaceManager) applyIPv4Static() error {
 		return fmt.Errorf("IPv4 static configuration is nil")
 	}
 
+	im.logger.Info().Msg("stopping DHCP")
+
 	// Disable DHCP
 	if im.dhcpClient != nil {
 		im.dhcpClient.SetIPv4(false)
 	}
 
-	// Apply static configuration
-	return im.staticConfig.ApplyIPv4Static(im.config.IPv4Static)
+	im.logger.Info().Interface("config", im.config.IPv4Static).Msg("applying IPv4 static configuration")
+
+	config, err := im.staticConfig.ToIPv4Static(im.config.IPv4Static)
+	if err != nil {
+		return fmt.Errorf("failed to convert IPv4 static configuration: %w", err)
+	}
+
+	im.logger.Info().Interface("config", config).Msg("converted IPv4 static configuration")
+
+	return im.ReconcileLinkAddrs(config.Addresses, link.AfInet)
 }
 
 // applyIPv4DHCP applies DHCP IPv4 configuration
@@ -440,13 +450,20 @@ func (im *InterfaceManager) applyIPv6Static() error {
 		return fmt.Errorf("IPv6 static configuration is nil")
 	}
 
+	im.logger.Info().Msg("stopping DHCPv6")
 	// Disable DHCPv6
 	if im.dhcpClient != nil {
 		im.dhcpClient.SetIPv6(false)
 	}
 
 	// Apply static configuration
-	return im.staticConfig.ApplyIPv6Static(im.config.IPv6Static)
+	config, err := im.staticConfig.ToIPv6Static(im.config.IPv6Static)
+	if err != nil {
+		return fmt.Errorf("failed to convert IPv6 static configuration: %w", err)
+	}
+	im.logger.Info().Interface("config", config).Msg("converted IPv6 static configuration")
+
+	return im.ReconcileLinkAddrs(config.Addresses, link.AfInet6)
 }
 
 // applyIPv6DHCP applies DHCPv6 configuration
@@ -696,7 +713,7 @@ func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
 }
 
 // ReconcileLinkAddrs reconciles the link addresses
-func (im *InterfaceManager) ReconcileLinkAddrs(addrs []*types.IPAddress) error {
+func (im *InterfaceManager) ReconcileLinkAddrs(addrs []types.IPAddress, family int) error {
 	nl := getNetlinkManager()
 	link, err := im.link()
 	if err != nil {
@@ -705,7 +722,7 @@ func (im *InterfaceManager) ReconcileLinkAddrs(addrs []*types.IPAddress) error {
 	if link == nil {
 		return fmt.Errorf("failed to get interface: %w", err)
 	}
-	return nl.ReconcileLink(link, addrs)
+	return nl.ReconcileLink(link, addrs, family)
 }
 
 // applyDHCPLease applies DHCP lease configuration using ReconcileLinkAddrs
@@ -714,7 +731,7 @@ func (im *InterfaceManager) applyDHCPLease(lease *types.DHCPLease) error {
 	ipv4Config := im.convertDHCPLeaseToIPv4Config(lease)
 
 	// Apply the configuration using ReconcileLinkAddrs
-	return im.ReconcileLinkAddrs([]*types.IPAddress{ipv4Config})
+	return im.ReconcileLinkAddrs([]types.IPAddress{*ipv4Config}, link.AfInet)
 }
 
 // convertDHCPLeaseToIPv4Config converts a DHCP lease to IPv4Config

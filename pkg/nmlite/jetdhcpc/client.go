@@ -279,7 +279,7 @@ func (c *Client) handleLeaseChange(lease *Lease) {
 	}
 
 	// clear all current jobs with the same tags
-	c.scheduler.RemoveByTags(version)
+	// c.scheduler.RemoveByTags(version)
 
 	// add scheduler job to renew the lease
 	if lease.RenewalTime > 0 {
@@ -357,6 +357,9 @@ func (c *Client) SetIPv4(ipv4 bool) {
 }
 
 func (c *Client) SetIPv6(ipv6 bool) {
+	c.cfgMu.Lock()
+	defer c.cfgMu.Unlock()
+
 	c.cfg.IPv6 = ipv6
 }
 

@@ -709,6 +709,7 @@ export interface NetworkState {
   ipv6?: string;
   ipv6_addresses?: IPv6Address[];
   ipv6_link_local?: string;
+  ipv6_gateway?: string;
   dhcp_lease?: DhcpLease;
 
   setNetworkState: (state: NetworkState) => void;

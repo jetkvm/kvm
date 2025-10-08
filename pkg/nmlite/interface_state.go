@@ -65,6 +65,8 @@ func (im *InterfaceManager) updateInterfaceState() error {
 
 // updateIPAddresses updates the IP addresses in the state
 func (im *InterfaceManager) updateInterfaceStateAddresses(nl *link.Link) (bool, error) {
+	mgr := getNetlinkManager()
+
 	addrs, err := nl.AddrList(link.AfUnspec)
 	if err != nil {
 		return false, fmt.Errorf("failed to get addresses: %w", err)
@@ -75,14 +77,17 @@ func (im *InterfaceManager) updateInterfaceStateAddresses(nl *link.Link) (bool, 
 		ipv6Addresses        []types.IPv6Address
 		ipv4Addr, ipv6Addr   string
 		ipv6LinkLocal        string
+		ipv6Gateway          string
 		ipv4Ready, ipv6Ready = false, false
 		stateChanged         = false
 	)
 
+	routes, _ := mgr.ListDefaultRoutes(link.AfInet6)
+	if len(routes) > 0 {
+		ipv6Gateway = routes[0].Gw.String()
+	}
+
 	for _, addr := range addrs {
-		im.logger.Debug().
-			IPAddr("address", addr.IP).
-			Msg("checking address")
 		if addr.IP.To4() != nil {
 			// IPv4 address
 			ipv4Addresses = append(ipv4Addresses, addr.IPNet.String())
@@ -135,6 +140,11 @@ func (im *InterfaceManager) updateInterfaceStateAddresses(nl *link.Link) (bool, 
 	}
 	if im.state.IPv6LinkLocal != ipv6LinkLocal {
 		im.state.IPv6LinkLocal = ipv6LinkLocal
+		stateChanged = true
+	}
+
+	if im.state.IPv6Gateway != ipv6Gateway {
+		im.state.IPv6Gateway = ipv6Gateway
 		stateChanged = true
 	}
 

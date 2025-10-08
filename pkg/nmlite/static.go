@@ -7,7 +7,6 @@ import (
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
 	"github.com/rs/zerolog"
-	"github.com/vishvananda/netlink"
 )
 
 // StaticConfigManager manages static network configuration
@@ -32,81 +31,90 @@ func NewStaticConfigManager(ifaceName string, logger *zerolog.Logger) (*StaticCo
 	}, nil
 }
 
-// ApplyIPv4Static applies static IPv4 configuration
-func (scm *StaticConfigManager) ApplyIPv4Static(config *types.IPv4StaticConfig) error {
-	scm.logger.Info().Msg("applying static IPv4 configuration")
+// ToIPv4Static applies static IPv4 configuration
+func (scm *StaticConfigManager) ToIPv4Static(config *types.IPv4StaticConfig) (*types.ParsedIPConfig, error) {
+	if config == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
 
-	// Parse and validate configuration
-	ipv4Config, err := scm.parseIPv4Config(config)
+	// Parse IP address and netmask
+	ipNet, err := link.ParseIPv4Netmask(config.Address.String, config.Netmask.String)
 	if err != nil {
-		return fmt.Errorf("failed to parse IPv4 config: %w", err)
+		return nil, err
+	}
+	scm.logger.Info().Str("ipNet", ipNet.String()).Interface("ipc", config).Msg("parsed IPv4 address and netmask")
+
+	// Parse gateway
+	gateway := net.ParseIP(config.Gateway.String)
+	if gateway == nil {
+		return nil, fmt.Errorf("invalid gateway: %s", config.Gateway.String)
 	}
 
-	// Get interface
-	netlinkMgr := getNetlinkManager()
-	link, err := netlinkMgr.GetLinkByName(scm.ifaceName)
-	if err != nil {
-		return fmt.Errorf("failed to get interface: %w", err)
+	// Parse DNS servers
+	var dns []net.IP
+	for _, dnsStr := range config.DNS {
+		if err := link.ValidateIPAddress(dnsStr, false); err != nil {
+			return nil, fmt.Errorf("invalid DNS server: %w", err)
+		}
+		dns = append(dns, net.ParseIP(dnsStr))
 	}
 
-	// Ensure interface is up
-	if err := netlinkMgr.EnsureInterfaceUp(link); err != nil {
-		return fmt.Errorf("failed to bring interface up: %w", err)
+	address := types.IPAddress{
+		Family:    link.AfInet,
+		Address:   *ipNet,
+		Gateway:   gateway,
+		Secondary: false,
+		Permanent: true,
 	}
 
-	// Apply IP address
-	if err := scm.applyIPv4Address(link, ipv4Config); err != nil {
-		return fmt.Errorf("failed to apply IPv4 address: %w", err)
-	}
-
-	// Apply default route
-	if err := scm.applyIPv4Route(link, ipv4Config); err != nil {
-		return fmt.Errorf("failed to apply IPv4 route: %w", err)
-	}
-
-	scm.logger.Info().Msg("static IPv4 configuration applied successfully")
-	return nil
+	return &types.ParsedIPConfig{
+		Addresses:   []types.IPAddress{address},
+		Nameservers: dns,
+		Interface:   scm.ifaceName,
+	}, nil
 }
 
-// ApplyIPv6Static applies static IPv6 configuration
-func (scm *StaticConfigManager) ApplyIPv6Static(config *types.IPv6StaticConfig) error {
-	scm.logger.Info().Msg("applying static IPv6 configuration")
+// ToIPv6Static applies static IPv6 configuration
+func (scm *StaticConfigManager) ToIPv6Static(config *types.IPv6StaticConfig) (*types.ParsedIPConfig, error) {
+	if config == nil {
+		return nil, fmt.Errorf("config is nil")
+	}
 
-	// Parse and validate configuration
-	ipv6Config, err := scm.parseIPv6Config(config)
+	// Parse IP address and prefix
+	ipNet, err := link.ParseIPv6Prefix(config.Prefix.String, 64) // Default to /64 if not specified
 	if err != nil {
-		return fmt.Errorf("failed to parse IPv6 config: %w", err)
+		return nil, err
 	}
 
-	// Get interface
-	netlinkMgr := getNetlinkManager()
-	link, err := netlinkMgr.GetLinkByName(scm.ifaceName)
-	if err != nil {
-		return fmt.Errorf("failed to get interface: %w", err)
+	// Parse gateway
+	gateway := net.ParseIP(config.Gateway.String)
+	if gateway == nil {
+		return nil, fmt.Errorf("invalid gateway: %s", config.Gateway.String)
 	}
 
-	// Enable IPv6
-	if err := scm.enableIPv6(); err != nil {
-		return fmt.Errorf("failed to enable IPv6: %w", err)
+	// Parse DNS servers
+	var dns []net.IP
+	for _, dnsStr := range config.DNS {
+		dnsIP := net.ParseIP(dnsStr)
+		if dnsIP == nil {
+			return nil, fmt.Errorf("invalid DNS server: %s", dnsStr)
+		}
+		dns = append(dns, dnsIP)
 	}
 
-	// Ensure interface is up
-	if err := netlinkMgr.EnsureInterfaceUp(link); err != nil {
-		return fmt.Errorf("failed to bring interface up: %w", err)
+	address := types.IPAddress{
+		Family:    link.AfInet6,
+		Address:   *ipNet,
+		Gateway:   gateway,
+		Secondary: false,
+		Permanent: true,
 	}
 
-	// Apply IP address
-	if err := scm.applyIPv6Address(link, ipv6Config); err != nil {
-		return fmt.Errorf("failed to apply IPv6 address: %w", err)
-	}
-
-	// Apply default route
-	if err := scm.applyIPv6Route(link, ipv6Config); err != nil {
-		return fmt.Errorf("failed to apply IPv6 route: %w", err)
-	}
-
-	scm.logger.Info().Msg("static IPv6 configuration applied successfully")
-	return nil
+	return &types.ParsedIPConfig{
+		Addresses:   []types.IPAddress{address},
+		Nameservers: dns,
+		Interface:   scm.ifaceName,
+	}, nil
 }
 
 // DisableIPv4 disables IPv4 on the interface
@@ -169,156 +177,6 @@ func (scm *StaticConfigManager) EnableIPv6LinkLocal() error {
 	return netlinkMgr.EnsureInterfaceUp(link)
 }
 
-// parseIPv4Config parses and validates IPv4 static configuration
-func (scm *StaticConfigManager) parseIPv4Config(config *types.IPv4StaticConfig) (*parsedIPv4Config, error) {
-	if config == nil {
-		return nil, fmt.Errorf("config is nil")
-	}
-
-	// Parse IP address and netmask
-	ipNet, err := link.ParseIPv4Netmask(config.Address.String, config.Netmask.String)
-	if err != nil {
-		return nil, err
-	}
-	scm.logger.Info().Str("ipNet", ipNet.String()).Interface("ipc", config).Msg("parsed IPv4 address and netmask")
-
-	// Parse gateway
-	gateway := net.ParseIP(config.Gateway.String)
-	if gateway == nil {
-		return nil, fmt.Errorf("invalid gateway: %s", config.Gateway.String)
-	}
-
-	// Parse DNS servers
-	var dns []net.IP
-	for _, dnsStr := range config.DNS {
-		if err := link.ValidateIPAddress(dnsStr, false); err != nil {
-			return nil, fmt.Errorf("invalid DNS server: %w", err)
-		}
-		dns = append(dns, net.ParseIP(dnsStr))
-	}
-
-	return &parsedIPv4Config{
-		network: *ipNet,
-		gateway: gateway,
-		dns:     dns,
-	}, nil
-}
-
-// parseIPv6Config parses and validates IPv6 static configuration
-func (scm *StaticConfigManager) parseIPv6Config(config *types.IPv6StaticConfig) (*parsedIPv6Config, error) {
-	if config == nil {
-		return nil, fmt.Errorf("config is nil")
-	}
-
-	// Parse IP address and prefix
-	ipNet, err := link.ParseIPv6Prefix(config.Prefix.String, 64) // Default to /64 if not specified
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse gateway
-	gateway := net.ParseIP(config.Gateway.String)
-	if gateway == nil {
-		return nil, fmt.Errorf("invalid gateway: %s", config.Gateway.String)
-	}
-
-	// Parse DNS servers
-	var dns []net.IP
-	for _, dnsStr := range config.DNS {
-		dnsIP := net.ParseIP(dnsStr)
-		if dnsIP == nil {
-			return nil, fmt.Errorf("invalid DNS server: %s", dnsStr)
-		}
-		dns = append(dns, dnsIP)
-	}
-
-	return &parsedIPv6Config{
-		prefix:  *ipNet,
-		gateway: gateway,
-		dns:     dns,
-	}, nil
-}
-
-// applyIPv4Address applies IPv4 address to interface
-func (scm *StaticConfigManager) applyIPv4Address(iface *link.Link, config *parsedIPv4Config) error {
-	netlinkMgr := getNetlinkManager()
-
-	// Remove existing IPv4 addresses
-	if err := netlinkMgr.RemoveAllAddresses(iface, link.AfInet); err != nil {
-		return fmt.Errorf("failed to remove existing IPv4 addresses: %w", err)
-	}
-
-	// Add new address
-	addr := &netlink.Addr{
-		IPNet: &config.network,
-	}
-	if err := netlinkMgr.AddrAdd(iface, addr); err != nil {
-		return fmt.Errorf("failed to add IPv4 address: %w", err)
-	}
-
-	scm.logger.Info().Str("address", config.network.String()).Msg("IPv4 address applied")
-	return nil
-}
-
-// applyIPv6Address applies IPv6 address to interface
-func (scm *StaticConfigManager) applyIPv6Address(iface *link.Link, config *parsedIPv6Config) error {
-	netlinkMgr := getNetlinkManager()
-
-	// Remove existing global IPv6 addresses
-	if err := netlinkMgr.RemoveNonLinkLocalIPv6Addresses(iface); err != nil {
-		return fmt.Errorf("failed to remove existing IPv6 addresses: %w", err)
-	}
-
-	// Add new address
-	addr := &netlink.Addr{
-		IPNet: &config.prefix,
-	}
-	if err := netlinkMgr.AddrAdd(iface, addr); err != nil {
-		return fmt.Errorf("failed to add IPv6 address: %w", err)
-	}
-
-	scm.logger.Info().Str("address", config.prefix.String()).Msg("IPv6 address applied")
-	return nil
-}
-
-// applyIPv4Route applies IPv4 default route
-func (scm *StaticConfigManager) applyIPv4Route(iface *link.Link, config *parsedIPv4Config) error {
-	netlinkMgr := getNetlinkManager()
-
-	// Check if default route already exists
-	if netlinkMgr.HasDefaultRoute(link.AfInet) {
-		scm.logger.Info().Msg("IPv4 default route already exists")
-		return nil
-	}
-
-	// Add default route
-	if err := netlinkMgr.AddDefaultRoute(iface, config.gateway, link.AfInet); err != nil {
-		return fmt.Errorf("failed to add IPv4 default route: %w", err)
-	}
-
-	scm.logger.Info().Str("gateway", config.gateway.String()).Msg("IPv4 default route applied")
-	return nil
-}
-
-// applyIPv6Route applies IPv6 default route
-func (scm *StaticConfigManager) applyIPv6Route(iface *link.Link, config *parsedIPv6Config) error {
-	netlinkMgr := getNetlinkManager()
-
-	// Check if default route already exists
-	if netlinkMgr.HasDefaultRoute(link.AfInet6) {
-		scm.logger.Info().Msg("IPv6 default route already exists")
-		return nil
-	}
-
-	// Add default route
-	if err := netlinkMgr.AddDefaultRoute(iface, config.gateway, link.AfInet6); err != nil {
-		return fmt.Errorf("failed to add IPv6 default route: %w", err)
-	}
-
-	scm.logger.Info().Str("gateway", config.gateway.String()).Msg("IPv6 default route applied")
-	return nil
-}
-
 // removeIPv4DefaultRoute removes IPv4 default route
 func (scm *StaticConfigManager) removeIPv4DefaultRoute() error {
 	netlinkMgr := getNetlinkManager()
@@ -329,18 +187,4 @@ func (scm *StaticConfigManager) removeIPv4DefaultRoute() error {
 func (scm *StaticConfigManager) enableIPv6() error {
 	netlinkMgr := getNetlinkManager()
 	return netlinkMgr.EnableIPv6(scm.ifaceName)
-}
-
-// parsedIPv4Config represents parsed IPv4 configuration
-type parsedIPv4Config struct {
-	network net.IPNet
-	gateway net.IP
-	dns     []net.IP
-}
-
-// parsedIPv6Config represents parsed IPv6 configuration
-type parsedIPv6Config struct {
-	prefix  net.IPNet
-	gateway net.IP
-	dns     []net.IP
 }
