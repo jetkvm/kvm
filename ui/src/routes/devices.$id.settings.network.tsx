@@ -222,19 +222,16 @@ export default function SettingsNetworkRoute() {
             description="Configure the network settings for the device"
             action={
               <>
-
-                {(formState.isDirty || formState.isSubmitting) && (
-                  <div>
-                    <Button
-                      size="SM"
-                      theme="primary"
-                      disabled={formState.isSubmitting}
-                      loading={formState.isSubmitting}
-                      type="submit"
-                      text={formState.isSubmitting ? "Saving..." : "Save Settings"}
-                    />
-                  </div>
-                )}
+                <div>
+                  <Button
+                    size="SM"
+                    theme="primary"
+                    disabled={!(formState.isDirty || formState.isSubmitting)}
+                    loading={formState.isSubmitting}
+                    type="submit"
+                    text={formState.isSubmitting ? "Saving..." : "Save Settings"}
+                  />
+                </div>
               </>
             }
           />
@@ -420,21 +417,18 @@ export default function SettingsNetworkRoute() {
                 )}
               </AutoHeight>
             </div>
-            {(formState.isDirty || formState.isSubmitting) && (
-              <>
-                <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
-                <div className="animate-fadeInStill opacity-0 animation-duration-300">
-                  <Button
-                    size="SM"
-                    theme="primary"
-                    disabled={formState.isSubmitting}
-                    loading={formState.isSubmitting}
-                    type="submit"
-                    text={formState.isSubmitting ? "Saving..." : "Save Settings"}
-                  />
-                </div>
-              </>
-            )}
+            <>
+              <div className="animate-fadeInStill animation-duration-300">
+                <Button
+                  size="SM"
+                  theme="primary"
+                  disabled={!(formState.isDirty || formState.isSubmitting)}
+                  loading={formState.isSubmitting}
+                  type="submit"
+                  text={formState.isSubmitting ? "Saving..." : "Save Settings"}
+                />
+              </div>
+            </>
           </div>
         </form>
       </FormProvider>
