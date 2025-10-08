@@ -101,8 +101,8 @@ var RolePermissions = map[SessionMode]PermissionSet{
 		PermissionSessionRequestPrimary: true,
 	},
 	SessionModePending: {
-		// Pending sessions have minimal permissions
-		PermissionVideoView: true,
+		// Pending sessions have NO permissions until approved
+		// This prevents unauthorized video access
 	},
 }
 
