@@ -889,9 +889,10 @@ export default function KvmIdRoute() {
 
   useEffect(() => {
     if (appVersion) return;
+    if (!hasPermission(Permission.VIDEO_VIEW)) return;
 
     getLocalVersion();
-  }, [appVersion, getLocalVersion]);
+  }, [appVersion, getLocalVersion, hasPermission]);
 
   const ConnectionStatusElement = useMemo(() => {
     const hasConnectionFailed =

@@ -55,8 +55,7 @@ export default function AccessDeniedOverlay({
     const newCount = incrementRejectionCount();
 
     if (newCount >= maxRejectionAttempts) {
-      const hideTimer = setTimeout(() => {}, 3000);
-      return () => clearTimeout(hideTimer);
+      return;
     }
 
     const timer = setInterval(() => {
