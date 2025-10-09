@@ -68,7 +68,7 @@ type Session struct {
 // CheckRPCRateLimit checks if the session has exceeded RPC rate limits (DoS protection)
 func (s *Session) CheckRPCRateLimit() bool {
 	const (
-		maxRPCPerSecond = 20
+		maxRPCPerSecond = 100 // Increased from 20 to accommodate multi-session polling and reconnections
 		rateLimitWindow = time.Second
 	)
 
