@@ -17,10 +17,7 @@ type VideoState struct {
 
 func isSleepModeSupported() bool {
 	_, err := os.Stat(sleepModeFile)
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 func (n *Native) setSleepMode(enabled bool) error {
