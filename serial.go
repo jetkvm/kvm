@@ -326,7 +326,9 @@ type SerialSettings struct {
 	EnableEcho         bool          `json:"enableEcho"`         // Whether to echo received characters back to the sender
 	NormalizeMode      string        `json:"normalizeMode"`      // Normalization mode: "carret", "names", "hex"
 	NormalizeLineEnd   string        `json:"normalizeLineEnd"`   // Line ending normalization: "keep", "lf", "cr", "crlf"
+	TabRender          string        `json:"tabRender"`          // How to render tabs: "spaces", "arrow", "pipe"
 	PreserveANSI       bool          `json:"preserveANSI"`       // Whether to preserve ANSI escape codes
+	ShowNLTag          bool          `json:"showNLTag"`          // Whether to show a special tag for new lines
 	Buttons            []QuickButton `json:"buttons"`            // Custom quick buttons
 }
 
@@ -438,7 +440,7 @@ func getSerialSettings() (SerialSettings, error) {
 
 	if consoleBroker != nil {
 		norm := NormOptions{
-			Mode: normalizeMode, CRLF: crlfMode, TabRender: "", PreserveANSI: serialConfig.PreserveANSI,
+			Mode: normalizeMode, CRLF: crlfMode, TabRender: serialConfig.TabRender, PreserveANSI: serialConfig.PreserveANSI, ShowNLTag: serialConfig.ShowNLTag,
 		}
 		consoleBroker.SetNormOptions(norm)
 	}
@@ -533,7 +535,7 @@ func setSerialSettings(newSettings SerialSettings) error {
 
 	if consoleBroker != nil {
 		norm := NormOptions{
-			Mode: normalizeMode, CRLF: crlfMode, TabRender: "", PreserveANSI: serialConfig.PreserveANSI,
+			Mode: normalizeMode, CRLF: crlfMode, TabRender: serialConfig.TabRender, PreserveANSI: serialConfig.PreserveANSI, ShowNLTag: serialConfig.ShowNLTag,
 		}
 		consoleBroker.SetNormOptions(norm)
 	}

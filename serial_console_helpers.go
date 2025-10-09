@@ -46,6 +46,7 @@ type NormOptions struct {
 	CRLF         CRLFMode
 	TabRender    string // e.g. "    " or "" to keep '\t'
 	PreserveANSI bool
+	ShowNLTag    bool // <- NEW: also print a visible tag for CR/LF
 }
 
 func normalize(in []byte, opt NormOptions) string {
@@ -88,42 +89,68 @@ func normalize(in []byte, opt NormOptions) string {
 			}
 		}
 
-		// CR/LF normalization
+		// CR/LF normalization (emit real newline(s), optionally tag them visibly)
 		if b == '\r' || b == '\n' {
+			// detect pair (CRLF or LFCR)
+			isPair := i+1 < len(in) &&
+				((b == '\r' && in[i+1] == '\n') || (b == '\n' && in[i+1] == '\r'))
+
+			// optional visible tag of what we *saw*
+			if opt.ShowNLTag {
+				if isPair {
+					if b == '\r' { // saw CRLF
+						out.WriteString("<CRLF>")
+					} else { // saw LFCR
+						out.WriteString("<LFCR>")
+					}
+				} else {
+					if b == '\r' {
+						out.WriteString("<CR>")
+					} else {
+						out.WriteString("<LF>")
+					}
+				}
+			}
+
+			// now emit the actual newline(s) per the normalization mode
 			switch opt.CRLF {
 			case CRLFAsIs:
-				out.WriteByte(b)
-				i++
+				if isPair {
+					out.WriteByte(b)
+					out.WriteByte(in[i+1])
+					i += 2
+				} else {
+					out.WriteByte(b)
+					i++
+				}
 			case CRLF_LF:
-				if i+1 < len(in) && ((b == '\r' && in[i+1] == '\n') || (b == '\n' && in[i+1] == '\r')) {
+				if isPair {
 					i += 2
 				} else {
 					i++
 				}
 				out.WriteByte('\n')
 			case CRLF_CR:
-				if i+1 < len(in) && ((b == '\r' && in[i+1] == '\n') || (b == '\n' && in[i+1] == '\r')) {
+				if isPair {
 					i += 2
 				} else {
 					i++
 				}
 				out.WriteByte('\r')
 			case CRLF_CRLF:
-				if i+1 < len(in) && ((b == '\r' && in[i+1] == '\n') || (b == '\n' && in[i+1] == '\r')) {
-					out.WriteString("\n")
+				if isPair {
 					i += 2
 				} else {
-					out.WriteString("\n")
 					i++
 				}
+				out.WriteString("\r\n") // (fixed to actually write CRLF)
 			case CRLF_LFCR:
-				if i+1 < len(in) && ((b == '\r' && in[i+1] == '\n') || (b == '\n' && in[i+1] == '\r')) {
-					out.WriteString("\r")
+				if isPair {
 					i += 2
 				} else {
-					out.WriteString("\r")
 					i++
 				}
+				out.WriteString("\n\r")
 			}
 			continue
 		}

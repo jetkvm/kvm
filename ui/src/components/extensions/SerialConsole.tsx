@@ -33,7 +33,9 @@ interface SerialSettings {
   enableEcho: boolean; // future use
   normalizeMode: string; // future use
   normalizeLineEnd: string; // future use
+  tabRender: string; // future use
   preserveANSI: boolean; // future use
+  showNLTag: boolean; // future use
   buttons: QuickButton[];
 }
 
@@ -56,7 +58,9 @@ export function SerialConsole() {
     enableEcho: false,
     normalizeMode: "names",
     normalizeLineEnd: "keep",
+    tabRender: "",
     preserveANSI: true,
+    showNLTag: true,
     buttons: [],
   });
 
@@ -247,7 +251,7 @@ export function SerialConsole() {
           {/* Serial settings (collapsible) */}
           {!buttonConfig.hideSerialSettings && (
             <>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 mb-1">
                 <SelectMenuBasic
                   label="Baud Rate"
                   options={[
@@ -364,6 +368,35 @@ export function SerialConsole() {
                       handleSerialSettingsChange("preserveANSI", e.target.value === "keep")
                     }}
                   />
+                </div>
+                <div>
+                  <SelectMenuBasic
+                    className="mb-1"
+                    label="Show newline tag"
+                    options={[
+                      { label: "Hide <LF> tag", value: "hide" },
+                      { label: "Show <LF> tag", value: "show" },
+                    ]}
+                    value={buttonConfig.showNLTag ? "show" : "hide"}
+                    onChange={(e) => {
+                      handleSerialSettingsChange("showNLTag", e.target.value === "show")
+                    }}
+                  />
+                </div>
+                <div>
+                  <InputFieldWithLabel
+                    size="MD"
+                    type="text"
+                    label="Tab replacement"
+                    placeholder="ex. spaces, →, |"
+                    value={buttonConfig.tabRender}
+                    onChange={e => {
+                      handleSerialSettingsChange("tabRender", e.target.value)
+                    }}
+                  />
+                  <div className="text-xs text-white opacity-70 mt-1">
+                    Empty for no replacement
+                  </div>
                 </div>
               </div>
               <div className="space-y-4 m-2">
