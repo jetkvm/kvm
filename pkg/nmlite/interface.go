@@ -727,6 +727,20 @@ func (im *InterfaceManager) ReconcileLinkAddrs(addrs []types.IPAddress, family i
 
 // applyDHCPLease applies DHCP lease configuration using ReconcileLinkAddrs
 func (im *InterfaceManager) applyDHCPLease(lease *types.DHCPLease) error {
+	if lease == nil {
+		return fmt.Errorf("DHCP lease is nil")
+	}
+
+	if lease.DHCPClient != "jetdhcpc" {
+		im.logger.Warn().Str("dhcp_client", lease.DHCPClient).Msg("ignoring DHCP lease, not implemented yet")
+		return nil
+	}
+
+	if lease.IsIPv6() {
+		im.logger.Warn().Msg("ignoring IPv6 DHCP lease, not implemented yet")
+		return nil
+	}
+
 	// Convert DHCP lease to IPv4Config
 	ipv4Config := im.convertDHCPLeaseToIPv4Config(lease)
 

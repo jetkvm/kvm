@@ -55,9 +55,13 @@ func isIPv6RouteReady(serverAddr net.IP) waitForCondition {
 	}
 }
 
-func (c *Client) requestLease6(iface netlink.Link) (*Lease, error) {
-	ifname := iface.Attrs().Name
+func (c *Client) requestLease6(ifname string) (*Lease, error) {
 	l := c.l.With().Str("interface", ifname).Logger()
+
+	iface, err := netlink.LinkByName(ifname)
+	if err != nil {
+		return nil, err
+	}
 
 	clientPort := dhcpv6.DefaultClientPort
 	if c.cfg.V6ClientPort != nil {

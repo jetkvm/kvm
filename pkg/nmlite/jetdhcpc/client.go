@@ -3,19 +3,17 @@ package jetdhcpc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"slices"
 
 	"time"
 
 	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/jetkvm/kvm/pkg/nmlite/link"
 
-	"github.com/go-co-op/gocron/v2"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/jetkvm/kvm/internal/network/types"
-	"github.com/jetkvm/kvm/pkg/nmlite/link"
 	"github.com/rs/zerolog"
 )
 
@@ -83,8 +81,10 @@ type Config struct {
 	UpdateResolvConf func([]string) error
 }
 
+// Client is a DHCP client.
 type Client struct {
 	types.DHCPClient
+
 	ifaces []string
 	cfg    Config
 	l      *zerolog.Logger
@@ -101,24 +101,28 @@ type Client struct {
 	lease4Mu sync.Mutex
 	lease6Mu sync.Mutex
 
-	scheduler gocron.Scheduler
-	stateDir  string
+	timer4   *time.Timer
+	timer6   *time.Timer
+	stateDir string
 }
+
+var (
+	defaultTimerDuration = 1 * time.Second
+	defaultLinkUpTimeout = 30 * time.Second
+)
 
 // NewClient creates a new DHCP client for the given interface.
 func NewClient(ctx context.Context, ifaces []string, c *Config, l *zerolog.Logger) (*Client, error) {
-	scheduler, err := gocron.NewScheduler()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create scheduler: %w", err)
-	}
+	timer4 := time.NewTimer(defaultTimerDuration)
+	timer6 := time.NewTimer(defaultTimerDuration)
 
 	cfg := *c
 	if cfg.LinkUpTimeout == 0 {
-		cfg.LinkUpTimeout = 30 * time.Second
+		cfg.LinkUpTimeout = defaultLinkUpTimeout
 	}
 
 	if cfg.Timeout == 0 {
-		cfg.Timeout = 30 * time.Second
+		cfg.Timeout = defaultLinkUpTimeout
 	}
 
 	if cfg.Retries == 0 {
@@ -126,12 +130,11 @@ func NewClient(ctx context.Context, ifaces []string, c *Config, l *zerolog.Logge
 	}
 
 	return &Client{
-		ctx:       ctx,
-		ifaces:    ifaces,
-		cfg:       cfg,
-		l:         l,
-		scheduler: scheduler,
-		stateDir:  "/run/jetkvm-dhcp",
+		ctx:      ctx,
+		ifaces:   ifaces,
+		cfg:      cfg,
+		l:        l,
+		stateDir: "/run/jetkvm-dhcp",
 
 		currentLease4: nil,
 		currentLease6: nil,
@@ -141,7 +144,43 @@ func NewClient(ctx context.Context, ifaces []string, c *Config, l *zerolog.Logge
 
 		mu:    sync.Mutex{},
 		cfgMu: sync.Mutex{},
+
+		timer4: timer4,
+		timer6: timer6,
 	}, nil
+}
+
+func resetTimer(t *time.Timer, l *zerolog.Logger) {
+	l.Debug().Dur("delay", defaultTimerDuration).Msg("will retry later")
+	t.Reset(defaultTimerDuration)
+}
+
+func (c *Client) requestLoop(t *time.Timer, family int, ifname string) {
+	for range t.C {
+		if _, err := c.ensureInterfaceUp(ifname); err != nil {
+			c.l.Error().Err(err).Msg("failed to ensure interface up")
+			resetTimer(t, c.l)
+			continue
+		}
+
+		var (
+			lease *Lease
+			err   error
+		)
+		switch family {
+		case link.AfInet:
+			lease, err = c.requestLease4(ifname)
+		case link.AfInet6:
+			lease, err = c.requestLease6(ifname)
+		}
+		if err != nil {
+			c.l.Error().Err(err).Msg("failed to request lease")
+			resetTimer(t, c.l)
+			continue
+		}
+
+		c.handleLeaseChange(lease)
+	}
 }
 
 func (c *Client) ensureInterfaceUp(ifname string) (*link.Link, error) {
@@ -153,76 +192,77 @@ func (c *Client) ensureInterfaceUp(ifname string) (*link.Link, error) {
 	return nlm.EnsureInterfaceUpWithTimeout(c.ctx, iface, c.cfg.LinkUpTimeout)
 }
 
-func (c *Client) sendInitialRequests() chan any {
-	return c.sendRequests(c.cfg.IPv4, c.cfg.IPv6)
-}
+// func (c *Client) sendInitialRequests() chan any {
+// 	return c.sendRequests(c.cfg.IPv4, c.cfg.IPv6)
+// }
 
-func (c *Client) sendRequestsFamily(
-	family int,
-	wg *sync.WaitGroup,
-	r *chan any,
-	l *zerolog.Logger,
-	iface *link.Link,
-) {
-	wg.Add(1)
-	go func(iface *link.Link) {
-		defer wg.Done()
-		var (
-			lease *Lease
-			err   error
-		)
-		switch family {
-		case link.AfInet:
-			lease, err = c.requestLease4(iface)
-		case link.AfInet6:
-			lease, err = c.requestLease6(iface)
-		}
-		if err != nil {
-			l.Error().Err(err).Msg("Could not get lease")
-			return
-		}
-		(*r) <- lease
-	}(iface)
-}
+// func (c *Client) sendRequestsFamily(
+// 	family int,
+// 	wg *sync.WaitGroup,
+// 	r *chan any,
+// 	l *zerolog.Logger,
+// 	iface *link.Link,
+// ) {
+// 	wg.Add(1)
+// 	go func(iface *link.Link) {
+// 		defer wg.Done()
+// 		var (
+// 			lease *Lease
+// 			err   error
+// 		)
+// 		switch family {
+// 		case link.AfInet:
+// 			lease, err = c.requestLease4(iface)
+// 		case link.AfInet6:
+// 			lease, err = c.requestLease6(iface)
+// 		}
+// 		if err != nil {
+// 			l.Error().Err(err).Msg("Could not get lease")
+// 			return
+// 		}
+// 		(*r) <- lease
+// 	}(iface)
+// }
 
-func (c *Client) sendRequests(ipv4, ipv6 bool) chan any {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+// func (c *Client) sendRequests(ipv4, ipv6 bool) chan any {
+// 	c.mu.Lock()
+// 	defer c.mu.Unlock()
 
-	// Yeah, this is a hack, until we can cancel all leases in progress.
-	r := make(chan any, 3*len(c.ifaces))
+// 	// Yeah, this is a hack, until we can cancel all leases in progress.
+// 	r := make(chan any, 3*len(c.ifaces))
 
-	var wg sync.WaitGroup
-	for _, iface := range c.ifaces {
-		wg.Add(1)
-		go func(ifname string) {
-			defer wg.Done()
+// 	var wg sync.WaitGroup
+// 	for _, iface := range c.ifaces {
+// 		wg.Add(1)
+// 		go func(ifname string) {
+// 			defer wg.Done()
 
-			l := c.l.With().Str("interface", ifname).Logger()
+// 			l := c.l.With().Str("interface", ifname).Logger()
 
-			iface, err := c.ensureInterfaceUp(ifname)
-			if err != nil {
-				l.Error().Err(err).Msg("Could not bring up interface")
-				return
-			}
+// 			iface, err := c.ensureInterfaceUp(ifname)
+// 			if err != nil {
+// 				l.Error().Err(err).Msg("Could not bring up interface")
+// 				return
+// 			}
 
-			if ipv4 {
-				c.sendRequestsFamily(link.AfInet, &wg, &r, &l, iface)
-			}
+// 			if ipv4 {
+// 				c.sendRequestsFamily(link.AfInet, &wg, &r, &l, iface)
+// 			}
 
-			if ipv6 {
-				c.sendRequestsFamily(link.AfInet6, &wg, &r, &l, iface)
-			}
-		}(iface)
-	}
+// 			if ipv6 {
+// 				c.sendRequestsFamily(link.AfInet6, &wg, &r, &l, iface)
+// 			}
+// 		}(iface)
+// 	}
 
-	go func() {
-		wg.Wait()
-		close(r)
-	}()
-	return r
-}
+// 	go func() {
+// 		wg.Wait()
+// 		close(r)
+// 	}()
+// 	return r
+// }
 
+// Lease4 returns the current IPv4 lease
 func (c *Client) Lease4() *types.DHCPLease {
 	c.lease4Mu.Lock()
 	defer c.lease4Mu.Unlock()
@@ -234,6 +274,7 @@ func (c *Client) Lease4() *types.DHCPLease {
 	return c.currentLease4.ToDHCPLease()
 }
 
+// Lease6 returns the current IPv6 lease
 func (c *Client) Lease6() *types.DHCPLease {
 	c.lease6Mu.Lock()
 	defer c.lease6Mu.Unlock()
@@ -245,6 +286,7 @@ func (c *Client) Lease6() *types.DHCPLease {
 	return c.currentLease6.ToDHCPLease()
 }
 
+// Domain returns the current domain
 func (c *Client) Domain() string {
 	c.lease4Mu.Lock()
 	defer c.lease4Mu.Unlock()
@@ -263,49 +305,22 @@ func (c *Client) Domain() string {
 	return ""
 }
 
+// handleLeaseChange handles lease changes
 func (c *Client) handleLeaseChange(lease *Lease) {
 	// do not use defer here, because we need to unlock the mutex before returning
-
 	ipv4 := lease.p4 != nil
-	version := "ipv4"
 
 	if ipv4 {
 		c.lease4Mu.Lock()
 		c.currentLease4 = lease
+		c.lease4Mu.Unlock()
 	} else {
-		version = "ipv6"
 		c.lease6Mu.Lock()
 		c.currentLease6 = lease
-	}
-
-	// clear all current jobs with the same tags
-	// c.scheduler.RemoveByTags(version)
-
-	// add scheduler job to renew the lease
-	if lease.RenewalTime > 0 {
-		c.scheduler.NewJob(
-			gocron.DurationJob(time.Duration(lease.RenewalTime)*time.Second),
-			gocron.NewTask(func() {
-				c.l.Info().Msg("renewing lease")
-				for lease := range c.sendRequests(ipv4, !ipv4) {
-					if lease, ok := lease.(*Lease); ok {
-						c.handleLeaseChange(lease)
-					}
-				}
-			}),
-			gocron.WithName(fmt.Sprintf("renew-%s", version)),
-			gocron.WithSingletonMode(gocron.LimitModeWait),
-			gocron.WithTags(version),
-		)
+		c.lease6Mu.Unlock()
 	}
 
 	c.apply()
-
-	if ipv4 {
-		c.lease4Mu.Unlock()
-	} else {
-		c.lease6Mu.Unlock()
-	}
 
 	// TODO: handle lease expiration
 	if c.cfg.OnLease4Change != nil && ipv4 {
@@ -317,12 +332,21 @@ func (c *Client) handleLeaseChange(lease *Lease) {
 	}
 }
 
-func (c *Client) renew() {
-	for lease := range c.sendRequests(c.cfg.IPv4, c.cfg.IPv6) {
-		if lease, ok := lease.(*Lease); ok {
-			c.handleLeaseChange(lease)
-		}
+func (c *Client) doRenewLoop() {
+	timer := time.NewTimer(time.Duration(c.currentLease4.RenewalTime) * time.Second)
+	defer timer.Stop()
+
+	for range timer.C {
+		c.renew()
 	}
+}
+
+func (c *Client) renew() {
+	// for lease := range c.sendRequests(c.cfg.IPv4, c.cfg.IPv6) {
+	// 	if lease, ok := lease.(*Lease); ok {
+	// 		c.handleLeaseChange(lease)
+	// 	}
+	// }
 }
 
 func (c *Client) Renew() error {
@@ -350,17 +374,29 @@ func (c *Client) SetIPv4(ipv4 bool) {
 		c.lease4Mu.Lock()
 		c.currentLease4 = nil
 		c.lease4Mu.Unlock()
-		c.scheduler.RemoveByTags("ipv4")
 	}
 
-	c.sendRequests(ipv4, c.cfg.IPv6)
+	c.timer4.Stop()
 }
 
 func (c *Client) SetIPv6(ipv6 bool) {
 	c.cfgMu.Lock()
 	defer c.cfgMu.Unlock()
 
+	currentIPv6 := c.cfg.IPv6
 	c.cfg.IPv6 = ipv6
+
+	if currentIPv6 == ipv6 {
+		return
+	}
+
+	if !ipv6 {
+		c.lease6Mu.Lock()
+		c.currentLease6 = nil
+		c.lease4Mu.Unlock()
+	}
+
+	c.timer6.Stop()
 }
 
 func (c *Client) Start() error {
@@ -368,15 +404,14 @@ func (c *Client) Start() error {
 		c.l.Warn().Err(err).Msg("failed to kill udhcpc processes, continuing anyway")
 	}
 
-	c.scheduler.Start()
-
-	go func() {
-		for lease := range c.sendInitialRequests() {
-			if lease, ok := lease.(*Lease); ok {
-				c.handleLeaseChange(lease)
-			}
+	for _, iface := range c.ifaces {
+		if c.cfg.IPv4 {
+			go c.requestLoop(c.timer4, link.AfInet, iface)
 		}
-	}()
+		if c.cfg.IPv6 {
+			go c.requestLoop(c.timer6, link.AfInet6, iface)
+		}
+	}
 
 	return nil
 }

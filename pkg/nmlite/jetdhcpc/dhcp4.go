@@ -8,8 +8,12 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-func (c *Client) requestLease4(iface netlink.Link) (*Lease, error) {
-	ifname := iface.Attrs().Name
+func (c *Client) requestLease4(ifname string) (*Lease, error) {
+	iface, err := netlink.LinkByName(ifname)
+	if err != nil {
+		return nil, err
+	}
+
 	l := c.l.With().Str("interface", ifname).Logger()
 
 	mods := []nclient4.ClientOpt{
