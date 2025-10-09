@@ -488,10 +488,30 @@ func handleLogin(c *gin.Context) {
 }
 
 func handleLogout(c *gin.Context) {
-	// Only clear the cookies for this session, don't invalidate the token
+	// Get session ID from cookie before clearing
+	sessionID, _ := c.Cookie("sessionId")
+
+	// Close the WebRTC session immediately for intentional logout
+	if sessionID != "" {
+		if session := sessionManager.GetSession(sessionID); session != nil {
+			websocketLogger.Info().
+				Str("sessionID", sessionID).
+				Msg("Closing session due to intentional logout - no grace period")
+
+			// Close peer connection (will trigger cleanupSession)
+			if session.peerConnection != nil {
+				_ = session.peerConnection.Close()
+			}
+
+			// Clear grace period for intentional logout - observer should be promoted immediately
+			sessionManager.ClearGracePeriod(sessionID)
+		}
+	}
+
+	// Clear the cookies for this session, don't invalidate the token
 	// The token should remain valid for other sessions
 	c.SetCookie("authToken", "", -1, "/", "", false, true)
-	c.SetCookie("sessionId", "", -1, "/", "", false, true) // Clear session ID cookie too
+	c.SetCookie("sessionId", "", -1, "/", "", false, true)
 	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
 
