@@ -97,21 +97,38 @@ tail -f /var/log/jetkvm.log
 
 ```
 /kvm/
-├── main.go              # App entry point
-├── config.go           # Settings & configuration
-├── web.go              # API endpoints
-├── ui/                 # React frontend
-│   ├── src/routes/     # Pages (login, settings, etc.)
-│   └── src/components/ # UI components
-├── internal/           # Internal Go packages
-│   ├── native/         # CGO / Native code glue layer
-│   ├── native/cgo/     # C files for the native library (HDMI, Touchscreen, etc.)
-│   ├── native/eez/     # EEZ Studio Project files (for Touchscreen)
-│   ├── hidrpc/         # HIDRPC implementation for HID devices (keyboard, mouse, etc.)
-│   ├── logging/        # Logging implementation
-│   ├── usbgadget/      # USB gadget 
-│   └── websecurity/    # TLS certificate management
-└── resource            # netboot iso and other resources
+├── main.go                  # App entry point
+├── config.go                # Settings & configuration
+├── display.go               # Device UI control
+├── web.go                   # API endpoints
+├── cmd/                     # Command line main
+├── internal/                # Internal Go packages
+│   ├── confparser/          # Configuration file implementation
+│   ├── hidrpc/              # HIDRPC implementation for HID devices (keyboard, mouse, etc.)
+│   ├── logging/             # Logging implementation
+│   ├── mdns/                # mDNS implementation
+│   ├── native/              # CGO / Native code glue layer (on-device hardware)
+│   │   ├── cgo/             # C files for the native library (HDMI, Touchscreen, etc.)
+│   │   └── eez/             # EEZ Studio Project files (for Touchscreen)
+│   ├── network/             # Network implementation
+│   ├── timesync/            # Time sync/NTP implementation
+│   ├── tzdata/              # Timezone data and generation
+│   ├── udhcpc/              # DHCP implementation
+│   ├── usbgadget/           # USB gadget
+│   ├── utils/               # SSH handling
+│   └── websecure/           # TLS certificate management
+├── resource/                # netboot iso and other resources
+├── scripts/                 # Bash shell scripts for building and deploying
+└── static/                  #  (react client build output)
+└── ui/                      # React frontend
+    ├── public/              # UI website static images and fonts
+    └── src/                 # Client React UI
+        ├── assets/          # UI in-page images
+        ├── components/      # UI components
+        ├── hooks/           # Hooks (stores, RPC handling, virtual devices)
+        ├── keyboardLayouts/ # Keyboard layout definitions
+        ├── providers/       # Feature flags
+        └── routes/          # Pages (login, settings, etc.)
 ```
 
 **Key files for beginners:**
@@ -250,6 +267,47 @@ cd ui
 npm cache clean --force
 rm -rf node_modules
 npm install
+```
+
+### "Device UI Fails to Build"
+
+If while trying to build you run into an error message similar to :
+```plaintext
+In file included from /workspaces/kvm/internal/native/cgo/ctrl.c:15:
+/workspaces/kvm/internal/native/cgo/ui_index.h:4:10: fatal error: ui/ui.h: No such file or directory
+ #include "ui/ui.h"
+          ^~~~~~~~~
+compilation terminated.
+```
+This means that your system didn't create the directory-link to from _./internal/native/cgo/ui_ to ./internal/native/eez/src/ui when the repository was checked out. You can verify this is the case if _./internal/native/cgo/ui_ appears as a plain text file with only the textual contents:
+```plaintext
+../eez/src/ui
+```
+
+If this happens to you need to [enable git creation of symbolic links](https://stackoverflow.com/a/59761201/2076) either globally or for the KVM repository:
+```bash
+   # Globally enable git to create symlinks
+   git config --global core.symlinks true
+   git restore internal/native/cgo/ui
+```
+```bash
+   # Enable git to create symlinks only in this project
+   git config core.symlinks true
+   git restore internal/native/cgo/ui
+```
+
+Or if you want to manually create the symlink use:
+```bash
+   # linux
+   cd internal/native/cgo
+   rm ui
+   ln -s ../eez/src/ui ui
+```
+```dos
+   rem Windows
+   cd internal/native/cgo
+   del ui
+   mklink /d ui ..\eez\src\ui
 ```
 
 ---
