@@ -1215,6 +1215,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"getEDID":                {Func: rpcGetEDID},
 	"setEDID":                {Func: rpcSetEDID, Params: []string{"edid"}},
 	"getVideoLogStatus":      {Func: rpcGetVideoLogStatus},
+	"getVideoSleepMode":      {Func: rpcGetVideoSleepMode},
+	"setVideoSleepMode":      {Func: rpcSetVideoSleepMode, Params: []string{"duration"}},
 	"getDevChannelState":     {Func: rpcGetDevChannelState},
 	"setDevChannelState":     {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":        {Func: rpcGetLocalVersion},

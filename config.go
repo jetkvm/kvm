@@ -104,6 +104,7 @@ type Config struct {
 	UsbDevices           *usbgadget.Devices     `json:"usb_devices"`
 	NetworkConfig        *network.NetworkConfig `json:"network_config"`
 	DefaultLogLevel      string                 `json:"default_log_level"`
+	VideoSleepAfterSec   int                    `json:"video_sleep_after_sec"`
 }
 
 func (c *Config) GetDisplayRotation() uint16 {
