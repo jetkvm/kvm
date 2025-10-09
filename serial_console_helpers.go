@@ -355,14 +355,45 @@ func (b *ConsoleBroker) handleRX(data []byte) {
 	if b.sink == nil || len(data) == 0 {
 		return
 	}
-	text := normalize(data, b.norm)
-	if text != "" {
-		scopedLogger.Info().Msg("Emitting RX data to sink")
-		b.emitToTerminal(fmt.Sprintf("%s: %s", b.labelRX, text))
+
+	// If we’re mid TX line, end it before RX
+	if b.txLineActive {
+		b.emitToTerminal(b.lineSep())
+		b.txLineActive = false
 	}
 
-	last := data[len(data)-1]
-	b.rxAtLineEnd = (last == '\r' || last == '\n')
+	text := normalize(data, b.norm)
+	if text == "" {
+		return
+	}
+
+	scopedLogger.Info().Msg("Emitting RX data to sink (with per-line prefixes)")
+
+	// Prefix every line, regardless of how the EOLs look
+	lines := splitAfterAnyEOL(text, b.norm.CRLF)
+
+	// Start from the broker's current RX line state
+	atLineEnd := b.rxAtLineEnd
+
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		if atLineEnd {
+			// New physical line -> prefix with RX:
+			b.emitToTerminal(fmt.Sprintf("%s: %s", b.labelRX, line))
+		} else {
+			// Continuation of previous RX line -> no extra RX: prefix
+			b.emitToTerminal(line)
+		}
+
+		// Update line-end state based on this piece
+		atLineEnd = endsWithEOL(line, b.norm.CRLF)
+	}
+
+	// Persist state for next RX chunk
+	b.rxAtLineEnd = atLineEnd
 
 	if b.pendingTX != nil && b.rxAtLineEnd {
 		b.flushPendingTX()
@@ -427,12 +458,77 @@ func (b *ConsoleBroker) lineSep() string {
 	switch b.norm.CRLF {
 	case CRLF_CRLF:
 		return "\r\n"
+	case CRLF_LFCR:
+		return "\n\r"
 	case CRLF_CR:
 		return "\r"
 	case CRLF_LF:
 		return "\n"
 	default:
 		return "\n"
+	}
+}
+
+// splitAfterAnyEOL splits text into lines keeping the EOL with each piece.
+// For CRLFAsIs it treats \r, \n, \r\n, and \n\r as EOLs.
+// For other modes it uses the normalized separator.
+func splitAfterAnyEOL(text string, mode CRLFMode) []string {
+	if text == "" {
+		return nil
+	}
+
+	// Fast path for normalized modes
+	switch mode {
+	case CRLF_LF:
+		return strings.SplitAfter(text, "\n")
+	case CRLF_CR:
+		return strings.SplitAfter(text, "\r")
+	case CRLF_CRLF:
+		return strings.SplitAfter(text, "\r\n")
+	case CRLF_LFCR:
+		return strings.SplitAfter(text, "\n\r")
+	}
+
+	// CRLFAsIs: scan bytes and treat \r, \n, \r\n, \n\r as one boundary
+	b := []byte(text)
+	var parts []string
+	start := 0
+	for i := 0; i < len(b); i++ {
+		if b[i] == '\r' || b[i] == '\n' {
+			j := i + 1
+			// coalesce pair if the next is the "other" newline
+			if j < len(b) && ((b[i] == '\r' && b[j] == '\n') || (b[i] == '\n' && b[j] == '\r')) {
+				j++
+			}
+			parts = append(parts, string(b[start:j]))
+			start = j
+			i = j - 1 // advance past the EOL (or pair)
+		}
+	}
+	if start < len(b) {
+		parts = append(parts, string(b[start:]))
+	}
+	return parts
+}
+
+func endsWithEOL(s string, mode CRLFMode) bool {
+	if s == "" {
+		return false
+	}
+	switch mode {
+	case CRLF_CRLF:
+		return strings.HasSuffix(s, "\r\n")
+	case CRLF_LFCR:
+		return strings.HasSuffix(s, "\n\r")
+	case CRLF_LF:
+		return strings.HasSuffix(s, "\n")
+	case CRLF_CR:
+		return strings.HasSuffix(s, "\r")
+	default: // AsIs: any of \r, \n, \r\n, \n\r
+		return strings.HasSuffix(s, "\r\n") ||
+			strings.HasSuffix(s, "\n\r") ||
+			strings.HasSuffix(s, "\n") ||
+			strings.HasSuffix(s, "\r")
 	}
 }
 
