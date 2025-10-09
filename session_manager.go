@@ -428,60 +428,101 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 	// Remove from queue if present
 	sm.removeFromQueue(sessionID)
 
-	// Add a grace period for reconnection for all sessions
-	// Use configured grace period or default to 10 seconds
+	// Check if this session was marked for immediate removal (intentional logout)
+	isIntentionalLogout := false
+	if graceTime, exists := sm.reconnectGrace[sessionID]; exists {
+		// If grace period is already expired, this was intentional logout
+		if time.Now().After(graceTime) {
+			isIntentionalLogout = true
+			sm.logger.Info().
+				Str("sessionID", sessionID).
+				Msg("Detected intentional logout - skipping grace period")
+			delete(sm.reconnectGrace, sessionID)
+			delete(sm.reconnectInfo, sessionID)
+		}
+	}
+
+	// Determine grace period duration (used for logging even if intentional logout)
 	gracePeriod := 10
 	if currentSessionSettings != nil && currentSessionSettings.ReconnectGrace > 0 {
 		gracePeriod = currentSessionSettings.ReconnectGrace
 	}
 
-	// Limit grace period entries to prevent memory exhaustion (DoS protection)
-	const maxGraceEntries = 10 // Reduced from 20 to limit memory usage
-	for len(sm.reconnectGrace) >= maxGraceEntries {
-		// Find and remove the oldest grace period entry
-		var oldestID string
-		var oldestTime time.Time
-		for id, graceTime := range sm.reconnectGrace {
-			if oldestTime.IsZero() || graceTime.Before(oldestTime) {
-				oldestID = id
-				oldestTime = graceTime
+	// Only add grace period if this is NOT an intentional logout
+	if !isIntentionalLogout {
+		// Add a grace period for reconnection for all sessions
+
+		// Limit grace period entries to prevent memory exhaustion (DoS protection)
+		const maxGraceEntries = 10 // Reduced from 20 to limit memory usage
+		for len(sm.reconnectGrace) >= maxGraceEntries {
+			// Find and remove the oldest grace period entry
+			var oldestID string
+			var oldestTime time.Time
+			for id, graceTime := range sm.reconnectGrace {
+				if oldestTime.IsZero() || graceTime.Before(oldestTime) {
+					oldestID = id
+					oldestTime = graceTime
+				}
+			}
+			if oldestID != "" {
+				delete(sm.reconnectGrace, oldestID)
+				delete(sm.reconnectInfo, oldestID)
+			} else {
+				break // Safety check to prevent infinite loop
 			}
 		}
-		if oldestID != "" {
-			delete(sm.reconnectGrace, oldestID)
-			delete(sm.reconnectInfo, oldestID)
-		} else {
-			break // Safety check to prevent infinite loop
+
+		sm.reconnectGrace[sessionID] = time.Now().Add(time.Duration(gracePeriod) * time.Second)
+
+		// Store session info for potential reconnection
+		sm.reconnectInfo[sessionID] = &SessionData{
+			ID:        session.ID,
+			Mode:      session.Mode,
+			Source:    session.Source,
+			Identity:  session.Identity,
+			Nickname:  session.Nickname,
+			CreatedAt: session.CreatedAt,
 		}
-	}
-
-	sm.reconnectGrace[sessionID] = time.Now().Add(time.Duration(gracePeriod) * time.Second)
-
-	// Store session info for potential reconnection
-	sm.reconnectInfo[sessionID] = &SessionData{
-		ID:        session.ID,
-		Mode:      session.Mode,
-		Source:    session.Source,
-		Identity:  session.Identity,
-		Nickname:  session.Nickname,
-		CreatedAt: session.CreatedAt,
 	}
 
 	// If this was the primary session, clear primary slot and track for grace period
 	if wasPrimary {
-		sm.lastPrimaryID = sessionID // Remember this was the primary for grace period
-		sm.primarySessionID = ""     // Clear primary slot so other sessions can be promoted
-		sm.logger.Info().
-			Str("sessionID", sessionID).
-			Dur("gracePeriod", time.Duration(gracePeriod)*time.Second).
-			Int("remainingSessions", len(sm.sessions)).
-			Msg("Primary session removed, grace period active")
+		if isIntentionalLogout {
+			// Intentional logout: clear immediately and promote right away
+			sm.primarySessionID = ""
+			sm.lastPrimaryID = ""
+			sm.logger.Info().
+				Str("sessionID", sessionID).
+				Int("remainingSessions", len(sm.sessions)).
+				Msg("Primary session removed via intentional logout - immediate promotion")
+		} else {
+			// Accidental disconnect: use grace period
+			sm.lastPrimaryID = sessionID // Remember this was the primary for grace period
+			sm.primarySessionID = ""     // Clear primary slot so other sessions can be promoted
 
-		// Immediate promotion check: if there are observers waiting, trigger validation
-		// This allows immediate promotion while still respecting grace period protection
+			// Clear all blacklists to allow emergency promotion after grace period expires
+			// The blacklist is meant to prevent immediate re-promotion during manual transfers,
+			// but should not block emergency promotion after accidental disconnects
+			if len(sm.transferBlacklist) > 0 {
+				sm.logger.Info().
+					Int("clearedBlacklistEntries", len(sm.transferBlacklist)).
+					Str("disconnectedPrimaryID", sessionID).
+					Msg("Clearing transfer blacklist to allow grace period promotion")
+				sm.transferBlacklist = make([]TransferBlacklistEntry, 0)
+			}
+
+			sm.logger.Info().
+				Str("sessionID", sessionID).
+				Dur("gracePeriod", time.Duration(gracePeriod)*time.Second).
+				Int("remainingSessions", len(sm.sessions)).
+				Msg("Primary session removed, grace period active")
+		}
+
+		// Trigger validation for potential promotion
 		if len(sm.sessions) > 0 {
 			sm.logger.Debug().
 				Str("removedPrimaryID", sessionID).
+				Bool("intentionalLogout", isIntentionalLogout).
 				Int("remainingSessions", len(sm.sessions)).
 				Msg("Triggering immediate validation for potential promotion")
 			sm.validateSinglePrimary()
@@ -523,6 +564,28 @@ func (sm *SessionManager) IsInGracePeriod(sessionID string) bool {
 		return time.Now().Before(graceTime)
 	}
 	return false
+}
+
+// ClearGracePeriod removes the grace period for a session (for intentional logout/disconnect)
+// This marks the session for immediate removal without grace period protection
+// Actual promotion will happen in RemoveSession when it detects no grace period
+func (sm *SessionManager) ClearGracePeriod(sessionID string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Clear grace period and reconnect info to prevent grace period from being added
+	delete(sm.reconnectGrace, sessionID)
+	delete(sm.reconnectInfo, sessionID)
+
+	// Mark this session with a special "immediate removal" grace period (already expired)
+	// This signals to RemoveSession that this was intentional and should skip grace period
+	sm.reconnectGrace[sessionID] = time.Now().Add(-1 * time.Second) // Already expired
+
+	sm.logger.Info().
+		Str("sessionID", sessionID).
+		Str("lastPrimaryID", sm.lastPrimaryID).
+		Str("primarySessionID", sm.primarySessionID).
+		Msg("Marked session for immediate removal (intentional logout)")
 }
 
 // isSessionBlacklisted checks if a session was recently demoted via transfer and should not become primary
@@ -1309,6 +1372,7 @@ func (sm *SessionManager) findMostTrustedSessionForEmergency() string {
 	bestSessionID := ""
 	bestScore := -1
 
+	// First pass: try to find observers or queued sessions (preferred)
 	for sessionID, session := range sm.sessions {
 		// Skip if blacklisted, primary, or not eligible modes
 		if sm.isSessionBlacklisted(sessionID) ||
@@ -1321,6 +1385,23 @@ func (sm *SessionManager) findMostTrustedSessionForEmergency() string {
 		if score > bestScore {
 			bestScore = score
 			bestSessionID = sessionID
+		}
+	}
+
+	// If no observers/queued found, try pending sessions as last resort
+	if bestSessionID == "" {
+		for sessionID, session := range sm.sessions {
+			if sm.isSessionBlacklisted(sessionID) || session.Mode == SessionModePrimary {
+				continue
+			}
+
+			if session.Mode == SessionModePending {
+				score := sm.getSessionTrustScore(sessionID)
+				if score > bestScore {
+					bestScore = score
+					bestSessionID = sessionID
+				}
+			}
 		}
 	}
 
