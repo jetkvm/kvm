@@ -33,3 +33,4 @@ wget https://github.com/jetkvm/rv1106-system/releases/download/${BUILDKIT_VERSIO
     sudo tar --use-compress-program="unzstd --long=31" -xvf buildkit.tar.zst -C /opt/jetkvm-native-buildkit && \
     rm buildkit.tar.zst
 popd
+rm -rf "${BUILDKIT_TMPDIR}"
