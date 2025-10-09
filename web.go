@@ -357,6 +357,13 @@ func handleWebRTCSignalWsMessages(
 		typ, msg, err := wsCon.Read(runCtx)
 		if err != nil {
 			l.Warn().Str("error", err.Error()).Msg("websocket read error")
+			// Clean up session when websocket closes
+			if session := sessionManager.GetSession(connectionID); session != nil && session.peerConnection != nil {
+				l.Info().
+					Str("sessionID", session.ID).
+					Msg("Closing peer connection due to websocket error")
+				_ = session.peerConnection.Close()
+			}
 			return err
 		}
 		if typ != websocket.MessageText {

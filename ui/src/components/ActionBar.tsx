@@ -93,7 +93,7 @@ export default function Actionbar({
         className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-1.5"
       >
         <div className="relative flex flex-wrap items-center gap-x-2 gap-y-2">
-          {developerMode && (
+          {developerMode && hasPermission(Permission.TERMINAL_ACCESS) && (
             <Button
               size="XS"
               theme="light"

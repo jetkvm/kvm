@@ -1520,9 +1520,11 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 			needsBroadcast := false
 
 			// Check for expired grace periods and promote if needed
+			gracePeriodExpired := false
 			for sessionID, graceTime := range sm.reconnectGrace {
 				if now.After(graceTime) {
 					delete(sm.reconnectGrace, sessionID)
+					gracePeriodExpired = true
 
 					wasHoldingPrimarySlot := (sm.lastPrimaryID == sessionID)
 
@@ -1735,12 +1737,18 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 				}
 			}
 
-			// Periodic validateSinglePrimary to catch deadlock states
-			validationCounter++
-			if validationCounter >= 10 { // Every 10 seconds
-				validationCounter = 0
-				sm.logger.Debug().Msg("Running periodic session validation to catch deadlock states")
+			// Run validation immediately if a grace period expired, otherwise run periodically
+			if gracePeriodExpired {
+				sm.logger.Debug().Msg("Running immediate validation after grace period expiration")
 				sm.validateSinglePrimary()
+			} else {
+				// Periodic validateSinglePrimary to catch deadlock states
+				validationCounter++
+				if validationCounter >= 10 { // Every 10 seconds
+					validationCounter = 0
+					sm.logger.Debug().Msg("Running periodic session validation to catch deadlock states")
+					sm.validateSinglePrimary()
+				}
 			}
 
 			sm.mu.Unlock()
