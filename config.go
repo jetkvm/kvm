@@ -105,6 +105,7 @@ type Config struct {
 	NetworkConfig        *network.NetworkConfig `json:"network_config"`
 	DefaultLogLevel      string                 `json:"default_log_level"`
 	AudioOutputSource    string                 `json:"audio_output_source"` // "hdmi" or "usb"
+	VideoSleepAfterSec   int                    `json:"video_sleep_after_sec"`
 }
 
 func (c *Config) GetDisplayRotation() uint16 {
