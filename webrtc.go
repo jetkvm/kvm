@@ -40,6 +40,34 @@ type Session struct {
 	keysDownStateQueue chan usbgadget.KeysDownState
 }
 
+var (
+	actionSessions      int = 0
+	activeSessionsMutex     = &sync.Mutex{}
+)
+
+func incrActiveSessions() int {
+	activeSessionsMutex.Lock()
+	defer activeSessionsMutex.Unlock()
+
+	actionSessions++
+	return actionSessions
+}
+
+func decrActiveSessions() int {
+	activeSessionsMutex.Lock()
+	defer activeSessionsMutex.Unlock()
+
+	actionSessions--
+	return actionSessions
+}
+
+func getActiveSessions() int {
+	activeSessionsMutex.Lock()
+	defer activeSessionsMutex.Unlock()
+
+	return actionSessions
+}
+
 func (s *Session) resetKeepAliveTime() {
 	s.keepAliveJitterLock.Lock()
 	defer s.keepAliveJitterLock.Unlock()
@@ -346,9 +374,8 @@ func newSession(config SessionConfig) (*Session, error) {
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			if !isConnected {
 				isConnected = true
-				actionSessions++
 				onActiveSessionsChanged()
-				if actionSessions == 1 {
+				if incrActiveSessions() == 1 {
 					onFirstSessionConnected()
 				}
 			}
@@ -389,9 +416,8 @@ func newSession(config SessionConfig) (*Session, error) {
 			}
 			if isConnected {
 				isConnected = false
-				actionSessions--
 				onActiveSessionsChanged()
-				if actionSessions == 0 {
+				if decrActiveSessions() == 0 {
 					onLastSessionDisconnected()
 				}
 			}
@@ -400,8 +426,6 @@ func newSession(config SessionConfig) (*Session, error) {
 	return session, nil
 }
 
-var actionSessions = 0
-
 func onActiveSessionsChanged() {
 	requestDisplayUpdate(true, "active_sessions_changed")
 }
@@ -409,9 +433,11 @@ func onActiveSessionsChanged() {
 func onFirstSessionConnected() {
 	_ = nativeInstance.VideoStart()
 	onWebRTCConnect()
+	stopVideoSleepModeTicker()
 }
 
 func onLastSessionDisconnected() {
 	_ = nativeInstance.VideoStop()
 	onWebRTCDisconnect()
+	startVideoSleepModeTicker()
 }
