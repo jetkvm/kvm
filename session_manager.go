@@ -126,15 +126,15 @@ func NewSessionManager(logger *zerolog.Logger) *SessionManager {
 }
 
 func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSettings) error {
-	sm.logger.Debug().
-		Str("sessionID", session.ID).
-		Msg("AddSession ENTRY")
-
 	// Basic input validation
 	if session == nil {
 		sm.logger.Error().Msg("AddSession: session is nil")
 		return errors.New("session cannot be nil")
 	}
+
+	sm.logger.Debug().
+		Str("sessionID", session.ID).
+		Msg("AddSession ENTRY")
 	// Validate nickname if provided (matching frontend validation)
 	if session.Nickname != "" {
 		if len(session.Nickname) < 2 {
