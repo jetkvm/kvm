@@ -19,6 +19,7 @@ type Native struct {
 	onVideoFrameReceived func(frame []byte, duration time.Duration)
 	onIndevEvent         func(event string)
 	onRpcEvent           func(event string)
+	sleepModeSupported   bool
 	videoLock            sync.Mutex
 	screenLock           sync.Mutex
 }
@@ -62,6 +63,8 @@ func NewNative(opts NativeOptions) *Native {
 		}
 	}
 
+	sleepModeSupported := isSleepModeSupported()
+
 	return &Native{
 		ready:                make(chan struct{}),
 		l:                    nativeLogger,
@@ -73,6 +76,7 @@ func NewNative(opts NativeOptions) *Native {
 		onVideoFrameReceived: onVideoFrameReceived,
 		onIndevEvent:         onIndevEvent,
 		onRpcEvent:           onRpcEvent,
+		sleepModeSupported:   sleepModeSupported,
 		videoLock:            sync.Mutex{},
 		screenLock:           sync.Mutex{},
 	}
