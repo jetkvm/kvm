@@ -77,6 +77,9 @@ func Main() {
 	// initialize display
 	initDisplay()
 
+	// start video sleep mode timer
+	startVideoSleepModeTicker()
+
 	go func() {
 		time.Sleep(15 * time.Minute)
 		for {
