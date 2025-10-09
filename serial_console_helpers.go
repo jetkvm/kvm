@@ -17,9 +17,9 @@ type Sink interface {
 	SendText(s string) error
 }
 
-type dataChannelSink struct{ d *webrtc.DataChannel }
+type dataChannelSink struct{ dataChannel *webrtc.DataChannel }
 
-func (s dataChannelSink) SendText(str string) error { return s.d.SendText(str) }
+func (sink dataChannelSink) SendText(str string) error { return sink.dataChannel.SendText(str) }
 
 /* ---------- NORMALIZATION (applies to RX & TX) ---------- */
 
@@ -35,9 +35,10 @@ type CRLFMode int
 
 const (
 	CRLFAsIs CRLFMode = iota
-	CRLF_CRLF
 	CRLF_LF
 	CRLF_CR
+	CRLF_CRLF
+	CRLF_LFCR
 )
 
 type NormOptions struct {
@@ -93,14 +94,6 @@ func normalize(in []byte, opt NormOptions) string {
 			case CRLFAsIs:
 				out.WriteByte(b)
 				i++
-			case CRLF_CRLF:
-				if i+1 < len(in) && ((b == '\r' && in[i+1] == '\n') || (b == '\n' && in[i+1] == '\r')) {
-					out.WriteString("\r\n")
-					i += 2
-				} else {
-					out.WriteString("\r\n")
-					i++
-				}
 			case CRLF_LF:
 				if i+1 < len(in) && ((b == '\r' && in[i+1] == '\n') || (b == '\n' && in[i+1] == '\r')) {
 					i += 2
@@ -115,6 +108,22 @@ func normalize(in []byte, opt NormOptions) string {
 					i++
 				}
 				out.WriteByte('\r')
+			case CRLF_CRLF:
+				if i+1 < len(in) && ((b == '\r' && in[i+1] == '\n') || (b == '\n' && in[i+1] == '\r')) {
+					out.WriteString("\n")
+					i += 2
+				} else {
+					out.WriteString("\n")
+					i++
+				}
+			case CRLF_LFCR:
+				if i+1 < len(in) && ((b == '\r' && in[i+1] == '\n') || (b == '\n' && in[i+1] == '\r')) {
+					out.WriteString("\r")
+					i += 2
+				} else {
+					out.WriteString("\r")
+					i++
+				}
 			}
 			continue
 		}
@@ -184,11 +193,22 @@ type ConsoleBroker struct {
 	in   chan consoleEvent
 	done chan struct{}
 
+	// pause control
+	terminalPaused bool
+	pauseCh        chan bool
+
+	// buffered output while paused
+	bufLines    []string
+	bufBytes    int
+	maxBufLines int
+	maxBufBytes int
+
 	// line-aware echo
-	rxAtLineEnd bool
-	pendingTX   *consoleEvent
-	quietTimer  *time.Timer
-	quietAfter  time.Duration
+	rxAtLineEnd  bool
+	txLineActive bool // true if we’re mid-line (prefix already written)
+	pendingTX    *consoleEvent
+	quietTimer   *time.Timer
+	quietAfter   time.Duration
 
 	// normalization
 	norm NormOptions
@@ -200,42 +220,78 @@ type ConsoleBroker struct {
 
 func NewConsoleBroker(s Sink, norm NormOptions) *ConsoleBroker {
 	return &ConsoleBroker{
-		sink:        s,
-		in:          make(chan consoleEvent, 256),
-		done:        make(chan struct{}),
-		rxAtLineEnd: true,
-		quietAfter:  120 * time.Millisecond,
-		norm:        norm,
-		labelRX:     "RX",
-		labelTX:     "TX",
+		sink:           s,
+		in:             make(chan consoleEvent, 256),
+		done:           make(chan struct{}),
+		pauseCh:        make(chan bool, 8),
+		terminalPaused: false,
+		rxAtLineEnd:    true,
+		txLineActive:   false,
+		quietAfter:     120 * time.Millisecond,
+		norm:           norm,
+		labelRX:        "RX",
+		labelTX:        "TX",
+		// reasonable defaults; tweak as you like
+		maxBufLines: 5000,
+		maxBufBytes: 1 << 20, // 1 MiB
 	}
 }
 
-func (b *ConsoleBroker) Start()         { go b.loop() }
-func (b *ConsoleBroker) Close()         { close(b.done) }
-func (b *ConsoleBroker) SetSink(s Sink) { b.sink = s }
+func (b *ConsoleBroker) Start()                          { go b.loop() }
+func (b *ConsoleBroker) Close()                          { close(b.done) }
+func (b *ConsoleBroker) SetSink(s Sink)                  { b.sink = s }
+func (b *ConsoleBroker) SetNormOptions(norm NormOptions) { b.norm = norm }
+func (b *ConsoleBroker) SetTerminalPaused(v bool) {
+	if b == nil {
+		return
+	}
+	// send to broker loop to avoid data races
+	select {
+	case b.pauseCh <- v:
+	default:
+		b.pauseCh <- v
+	}
+}
 
 func (b *ConsoleBroker) Enqueue(ev consoleEvent) {
 	b.in <- ev // blocking is fine; adjust if you want drop semantics
 }
 
 func (b *ConsoleBroker) loop() {
+	scopedLogger := serialLogger.With().Str("service", "Serial Console Broker").Logger()
 	for {
 		select {
 		case <-b.done:
 			return
+
+		case v := <-b.pauseCh:
+			// apply pause state
+			was := b.terminalPaused
+			b.terminalPaused = v
+			if was && !v {
+				// we just unpaused: flush buffered output in order
+				scopedLogger.Info().Msg("Terminal unpaused; flushing buffered output")
+				b.flushBuffer()
+			} else if !was && v {
+				scopedLogger.Info().Msg("Terminal paused; buffering output")
+			}
+
 		case ev := <-b.in:
 			switch ev.kind {
 			case evRX:
+				scopedLogger.Info().Msg("Processing RX data from serial port")
 				b.handleRX(ev.data)
 			case evTX:
+				scopedLogger.Info().Msg("Processing TX echo request")
 				b.handleTX(ev.data)
 			}
+
 		case <-b.quietCh():
 			if b.pendingTX != nil {
-				_ = b.sink.SendText("\r\n")
+				b.emitToTerminal(b.lineSep()) // use CRLF policy
 				b.flushPendingTX()
 				b.rxAtLineEnd = true
+				b.txLineActive = false
 			}
 		}
 	}
@@ -268,12 +324,14 @@ func (b *ConsoleBroker) stopQuietTimer() {
 }
 
 func (b *ConsoleBroker) handleRX(data []byte) {
+	scopedLogger := serialLogger.With().Str("service", "Serial Console Broker RX handler").Logger()
 	if b.sink == nil || len(data) == 0 {
 		return
 	}
 	text := normalize(data, b.norm)
 	if text != "" {
-		_ = b.sink.SendText(fmt.Sprintf("%s: %s", b.labelRX, text))
+		scopedLogger.Info().Msg("Emitting RX data to sink")
+		b.emitToTerminal(fmt.Sprintf("%s: %s", b.labelRX, text))
 	}
 
 	last := data[len(data)-1]
@@ -286,23 +344,46 @@ func (b *ConsoleBroker) handleRX(data []byte) {
 }
 
 func (b *ConsoleBroker) handleTX(data []byte) {
+	scopedLogger := serialLogger.With().Str("service", "Serial Console Broker TX handler").Logger()
 	if b.sink == nil || len(data) == 0 {
 		return
 	}
 	if b.rxAtLineEnd && b.pendingTX == nil {
-		_ = b.sink.SendText("\r\n")
+		scopedLogger.Info().Msg("Emitting TX data to sink immediately")
 		b.emitTX(data)
-		b.rxAtLineEnd = true
 		return
 	}
+	scopedLogger.Info().Msg("Queuing TX data to emit after RX line completion or quiet period")
 	b.pendingTX = &consoleEvent{kind: evTX, data: append([]byte(nil), data...)}
 	b.startQuietTimer()
 }
 
 func (b *ConsoleBroker) emitTX(data []byte) {
+	scopedLogger := serialLogger.With().Str("service", "Serial Console Broker TX emiter").Logger()
+	if len(data) == 0 {
+		return
+	}
+
 	text := normalize(data, b.norm)
-	if text != "" {
-		_ = b.sink.SendText(fmt.Sprintf("%s: %s\r\n", b.labelTX, text))
+	if text == "" {
+		return
+	}
+
+	// Check if we’re in the middle of a TX line
+	if !b.txLineActive {
+		// Start new TX line with prefix
+		scopedLogger.Info().Msg("Emitting TX data to sink with prefix")
+		b.emitToTerminal(fmt.Sprintf("%s: %s", b.labelTX, text))
+		b.txLineActive = true
+	} else {
+		// Continue current line (no prefix)
+		scopedLogger.Info().Msg("Emitting TX data to sink without prefix")
+		b.emitToTerminal(text)
+	}
+
+	// If the data ends with a newline, mark TX line as complete
+	if strings.HasSuffix(text, "\r") || strings.HasSuffix(text, "\n") {
+		b.txLineActive = false
 	}
 }
 
@@ -312,6 +393,57 @@ func (b *ConsoleBroker) flushPendingTX() {
 	}
 	b.emitTX(b.pendingTX.data)
 	b.pendingTX = nil
+	b.txLineActive = false
+}
+
+func (b *ConsoleBroker) lineSep() string {
+	switch b.norm.CRLF {
+	case CRLF_CRLF:
+		return "\r\n"
+	case CRLF_CR:
+		return "\r"
+	case CRLF_LF:
+		return "\n"
+	default:
+		return "\n"
+	}
+}
+
+func (b *ConsoleBroker) emitToTerminal(s string) {
+	if b.sink == nil || s == "" {
+		return
+	}
+	if b.terminalPaused {
+		b.enqueueBuffered(s)
+		return
+	}
+	_ = b.sink.SendText(s)
+}
+
+func (b *ConsoleBroker) enqueueBuffered(s string) {
+	b.bufLines = append(b.bufLines, s)
+	b.bufBytes += len(s)
+	// trim if over limits (drop oldest)
+	for b.bufBytes > b.maxBufBytes || len(b.bufLines) > b.maxBufLines {
+		if len(b.bufLines) == 0 {
+			break
+		}
+		b.bufBytes -= len(b.bufLines[0])
+		b.bufLines = b.bufLines[1:]
+	}
+}
+
+func (b *ConsoleBroker) flushBuffer() {
+	if b.sink == nil || len(b.bufLines) == 0 {
+		b.bufLines = nil
+		b.bufBytes = 0
+		return
+	}
+	for _, s := range b.bufLines {
+		_ = b.sink.SendText(s)
+	}
+	b.bufLines = nil
+	b.bufBytes = 0
 }
 
 /* ---------- SERIAL MUX (single reader/writer, emits to broker) ---------- */
@@ -351,10 +483,12 @@ func (m *SerialMux) Close() { close(m.done) }
 func (m *SerialMux) SetEchoEnabled(v bool) { m.echoEnabled.Store(v) }
 
 func (m *SerialMux) Enqueue(payload []byte, source string, requestEcho bool) {
+	serialLogger.Info().Str("src", source).Bool("echo", requestEcho).Msg("Enqueuing TX data to serial port")
 	m.txQ <- txFrame{payload: append([]byte(nil), payload...), source: source, echo: requestEcho}
 }
 
 func (m *SerialMux) reader() {
+	scopedLogger := serialLogger.With().Str("service", "SerialMux reader").Logger()
 	buf := make([]byte, 4096)
 	for {
 		select {
@@ -370,6 +504,7 @@ func (m *SerialMux) reader() {
 				continue
 			}
 			if n > 0 && m.broker != nil {
+				scopedLogger.Info().Msg("Sending RX data to console broker")
 				m.broker.Enqueue(consoleEvent{kind: evRX, data: append([]byte(nil), buf[:n]...)})
 			}
 		}
@@ -377,17 +512,20 @@ func (m *SerialMux) reader() {
 }
 
 func (m *SerialMux) writer() {
+	scopedLogger := serialLogger.With().Str("service", "SerialMux writer").Logger()
 	for {
 		select {
 		case <-m.done:
 			return
 		case f := <-m.txQ:
+			scopedLogger.Info().Msg("Writing TX data to serial port")
 			if _, err := m.port.Write(f.payload); err != nil {
-				serialLogger.Warn().Err(err).Str("src", f.source).Msg("serial write failed")
+				scopedLogger.Warn().Err(err).Str("src", f.source).Msg("serial write failed")
 				continue
 			}
 			// echo (if requested AND globally enabled)
 			if f.echo && m.echoEnabled.Load() && m.broker != nil {
+				scopedLogger.Info().Msg("Sending TX echo to console broker")
 				m.broker.Enqueue(consoleEvent{kind: evTX, data: append([]byte(nil), f.payload...)})
 			}
 		}

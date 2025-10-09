@@ -13,6 +13,20 @@ function useCommandHistory(max = 300) {
     const { send } = useJsonRpc();
     const [items, setItems] = useState<string[]>([]);
 
+    const deleteHistory = useCallback(() => {
+        console.log("Deleting serial command history");
+        send("deleteSerialCommandHistory", {}, (resp: JsonRpcResponse) => {
+            if ("error" in resp) {
+                notifications.error(
+                    `Failed to delete serial command history: ${resp.error.data || "Unknown error"}`,
+                );
+            } else {
+                setItems([]);
+                notifications.success("Serial command history deleted");
+            }
+        });
+    }, [send]);
+
     useEffect(() => {
         send("getSerialCommandHistory", {}, (resp: JsonRpcResponse) => {
             if ("error" in resp) {
@@ -90,7 +104,7 @@ function useCommandHistory(max = 300) {
             .reverse(); // newest first
     }, [items]);
 
-    return { push, up, down, resetTraversal, search };
+    return { push, up, down, resetTraversal, search, deleteHistory };
 }
 
 function Portal({ children }: { children: React.ReactNode }) {
@@ -102,7 +116,7 @@ function Portal({ children }: { children: React.ReactNode }) {
 
 // ---------- reverse search popup ----------
 function ReverseSearch({
-    open, results, sel, setSel, onPick, onClose,
+    open, results, sel, setSel, onPick, onClose, onDeleteHistory
 }: {
     open: boolean;
     results: Hit[];
@@ -110,6 +124,7 @@ function ReverseSearch({
     setSel: (i: number) => void;
     onPick: (val: string) => void;
     onClose: () => void;
+    onDeleteHistory: () => void;
 }) {
     const listRef = React.useRef<HTMLDivElement>(null);
 
@@ -151,7 +166,10 @@ function ReverseSearch({
                 </div>
                 <div className="mt-1 flex justify-between text-s text-slate-400">
                     <span>↑/↓ select • Enter accept • Esc close</span>
-                    <button className="underline" onClick={onClose}>Close</button>
+                    <div>
+                        <button className="underline mr-2" onClick={onClose}>Close</button>
+                        <button className="underline mr-2" onClick={onDeleteHistory}>Delete history</button>
+                    </div>
                 </div>
             </div>
         </Portal>
@@ -177,7 +195,7 @@ export function CommandInput({
     const [revOpen, setRevOpen] = useState(false);
     const [revQuery, setRevQuery] = useState("");
     const [sel, setSel] = useState(0);
-    const { push, up, down, resetTraversal, search } = useCommandHistory();
+    const { push, up, down, resetTraversal, search, deleteHistory } = useCommandHistory();
 
     const results = useMemo(() => search(revQuery), [revQuery, search]);
 
@@ -280,6 +298,7 @@ export function CommandInput({
                         setSel={setSel}
                         onPick={(v) => { setCmd(v); setRevOpen(false); requestAnimationFrame(() => cmdInputRef.current?.focus()); }}
                         onClose={() => {setRevOpen(false); requestAnimationFrame(() => cmdInputRef.current?.focus());}}
+                        onDeleteHistory={deleteHistory}
                     />
                 </div>
             )}

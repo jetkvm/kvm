@@ -1,6 +1,6 @@
 import "react-simple-keyboard/build/css/index.css";
-import { ChevronDownIcon } from "@heroicons/react/16/solid";
-import { useEffect, useMemo, useCallback } from "react";
+import { ChevronDownIcon, PauseCircleIcon, PlayCircleIcon } from "@heroicons/react/16/solid";
+import { useEffect, useMemo, useCallback, useState } from "react";
 import { useXTerm } from "react-xtermjs";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -9,8 +9,10 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 
 import { cx } from "@/cva.config";
-import { AvailableTerminalTypes, useUiStore } from "@/hooks/stores";
+import { AvailableTerminalTypes, useUiStore, useTerminalStore } from "@/hooks/stores";
 import { CommandInput } from "@/components/CommandInput";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import notifications from "@/notifications";
 
 import { Button } from "./Button";
 
@@ -67,19 +69,15 @@ function Terminal({
   readonly dataChannel: RTCDataChannel;
   readonly type: AvailableTerminalTypes;
 }) {
-  const { terminalLineMode, terminalType, setTerminalType, setDisableVideoFocusTrap } = useUiStore();
+  const { terminalType, setTerminalType, setDisableVideoFocusTrap } = useUiStore();
+  const { terminator } = useTerminalStore();
   const { instance, ref } = useXTerm({ options: TERMINAL_CONFIG });
+  const [ terminalPaused, setTerminalPaused ] = useState(false)
 
   const isTerminalTypeEnabled = useMemo(() => {
     console.log("Terminal type:", terminalType, "Checking against:", type);
     return terminalType == type;
   }, [terminalType, type]);
-
-  useEffect(() => {
-    if (!instance) return;
-    instance.options.disableStdin = !terminalLineMode;
-    instance.options.cursorStyle = terminalLineMode ? "bar" : "block";
-  }, [instance, terminalLineMode]);
 
   useEffect(() => {
     setTimeout(() => {
@@ -92,6 +90,18 @@ function Terminal({
   }, [setDisableVideoFocusTrap, isTerminalTypeEnabled]);
 
   const readyState = dataChannel.readyState;
+
+  const { send } = useJsonRpc();
+
+  const handleTerminalPauseChange = () => {
+    send("setTerminalPaused", { terminalPaused: !terminalPaused }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(`Failed to update terminal pause state: ${resp.error.data || "Unknown error"}`);
+        return;
+      }
+      setTerminalPaused(!terminalPaused);
+    });
+  };
   useEffect(() => {
     if (!instance) return;
     if (readyState !== "open") return;
@@ -101,6 +111,11 @@ function Terminal({
     dataChannel.addEventListener(
       "message",
       e => {
+        if (typeof e.data === "string") {
+          instance.write(e.data);     // text path
+          return;
+        }
+        // binary path (if the server ever sends bytes)
         // Handle binary data differently based on browser implementation
         // Firefox sends data as blobs, chrome sends data as arraybuffer
         if (binaryType === "arraybuffer") {
@@ -118,7 +133,12 @@ function Terminal({
     );
 
     const onDataHandler = instance.onData(data => {
-      dataChannel.send(data);
+      if (data === "\r") {
+        // Intercept enter key to add terminator
+        dataChannel.send(terminator ?? "");
+      } else {
+        dataChannel.send(data);
+      }
     });
 
     // Setup escape key handler
@@ -141,7 +161,7 @@ function Terminal({
       onDataHandler.dispose();
       onKeyHandler.dispose();
     };
-  }, [dataChannel, instance, readyState, setDisableVideoFocusTrap, setTerminalType]);
+  }, [dataChannel, instance, readyState, setDisableVideoFocusTrap, setTerminalType, terminator]);
 
   useEffect(() => {
     if (!instance) return;
@@ -172,8 +192,8 @@ function Terminal({
 
   const sendLine = useCallback((line: string) => {
     // Just send; line ending/echo/normalization handled in serial.go
-    dataChannel.send(line);
-  }, [dataChannel]);
+    dataChannel.send(line + terminator);
+  }, [dataChannel, terminator]);
 
   return (
     <div
@@ -202,6 +222,17 @@ function Terminal({
                 {title}
               </h2>
               <div className="absolute right-2">
+                {terminalType == "serial" && (
+                  <Button
+                    size="XS"
+                    theme="light"
+                    text={terminalPaused ? "Resume" : "Pause"}
+                    LeadingIcon={terminalPaused ? PlayCircleIcon : PauseCircleIcon}
+                    onClick={() => {
+                      handleTerminalPauseChange();
+                    }}
+                  />
+                )}
                 <Button
                   size="XS"
                   theme="light"
@@ -213,8 +244,8 @@ function Terminal({
             </div>
 
             <div className="h-[calc(100%-36px)] p-3">
-              <div key="serial" ref={ref} style={{height: (terminalType === "serial" && terminalLineMode) ? "90%" : "100%", width: "100%" }} />
-              {terminalType == "serial" && terminalLineMode && (
+              <div key="serial" ref={ref} style={{height: terminalType === "serial" ? "90%" : "100%", width: "100%" }} />
+              {terminalType == "serial" && (
                 <CommandInput
                   placeholder="Type serial command…  (Enter to send • ↑/↓ history • Ctrl+R search)"
                   onSend={sendLine}

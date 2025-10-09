@@ -69,9 +69,6 @@ export interface UIState {
 
   terminalType: AvailableTerminalTypes;
   setTerminalType: (type: UIState["terminalType"]) => void;
-
-  terminalLineMode: boolean;
-  setTerminalLineMode: (enabled: boolean) => void;
 }
 
 export const useUiStore = create<UIState>(set => ({
@@ -99,9 +96,6 @@ export const useUiStore = create<UIState>(set => ({
   isAttachedVirtualKeyboardVisible: true,
   setAttachedVirtualKeyboardVisibility: (enabled: boolean) =>
     set({ isAttachedVirtualKeyboardVisible: enabled }),
-
-  terminalLineMode: true,
-  setTerminalLineMode: (enabled: boolean) => set({ terminalLineMode: enabled }),
 }));
 
 export interface RTCState {
@@ -662,6 +656,18 @@ export const useDeviceStore = create<DeviceState>(set => ({
 
   setAppVersion: (version: string) => set({ appVersion: version }),
   setSystemVersion: (version: string) => set({ systemVersion: version }),
+}));
+
+export interface TerminalState {
+  terminator: string | null;
+
+  setTerminator: (version: string) => void;
+}
+
+export const useTerminalStore = create<TerminalState>(set => ({
+  terminator: null,
+
+  setTerminator: (version: string) => set({ terminator: version }),
 }));
 
 export interface DhcpLease {

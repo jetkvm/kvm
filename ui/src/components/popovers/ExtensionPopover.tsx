@@ -7,7 +7,6 @@ import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { ATXPowerControl } from "@components/extensions/ATXPowerControl";
 import { DCPowerControl } from "@components/extensions/DCPowerControl";
 import { SerialConsole } from "@components/extensions/SerialConsole";
-import { SerialButtons } from "@components/extensions/SerialButtons";
 import { Button } from "@components/Button";
 import notifications from "@/notifications";
 
@@ -35,12 +34,6 @@ const AVAILABLE_EXTENSIONS: Extension[] = [
     id: "serial-console",
     name: "Serial Console",
     description: "Access your serial console extension",
-    icon: LuTerminal,
-  },
-  {
-    id: "serial-buttons",
-    name: "Serial Buttons",
-    description: "Send custom serial signals by buttons",
     icon: LuTerminal,
   },
 ];
@@ -83,8 +76,6 @@ export default function ExtensionPopover() {
         return <DCPowerControl />;
       case "serial-console":
         return <SerialConsole />;
-      case "serial-buttons":
-        return <SerialButtons />;
       default:
         return null;
     }
