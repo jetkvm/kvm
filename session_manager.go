@@ -126,8 +126,13 @@ func NewSessionManager(logger *zerolog.Logger) *SessionManager {
 }
 
 func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSettings) error {
+	sm.logger.Debug().
+		Str("sessionID", session.ID).
+		Msg("AddSession ENTRY")
+
 	// Basic input validation
 	if session == nil {
+		sm.logger.Error().Msg("AddSession: session is nil")
 		return errors.New("session cannot be nil")
 	}
 	// Validate nickname if provided (matching frontend validation)
@@ -163,6 +168,10 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 
 	// Check if a session with this ID already exists (reconnection)
 	if existing, exists := sm.sessions[session.ID]; exists {
+		sm.logger.Debug().
+			Str("sessionID", session.ID).
+			Msg("AddSession: session ID already exists - RECONNECTION PATH")
+
 		// SECURITY: Verify identity matches to prevent session hijacking
 		if existing.Identity != session.Identity || existing.Source != session.Source {
 			return fmt.Errorf("session ID already in use by different user (identity mismatch)")
@@ -220,11 +229,18 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		// NOTE: Skip validation during reconnection to preserve grace period
 		// validateSinglePrimary() would clear primary slot during reconnection window
 
+		sm.logger.Debug().
+			Str("sessionID", session.ID).
+			Msg("AddSession: RETURNING from reconnection path")
 		go sm.broadcastSessionListUpdate()
 		return nil
 	}
 
 	if len(sm.sessions) >= sm.maxSessions {
+		sm.logger.Warn().
+			Int("currentSessions", len(sm.sessions)).
+			Int("maxSessions", sm.maxSessions).
+			Msg("AddSession: MAX SESSIONS REACHED")
 		return ErrMaxSessionsReached
 	}
 
