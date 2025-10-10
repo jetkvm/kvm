@@ -4,7 +4,8 @@ import {
 } from "@heroicons/react/16/solid";
 
 import { useJsonRpc, JsonRpcResponse } from "@/hooks/useJsonRpc";
-import { usePermissions, Permission } from "@/hooks/usePermissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/types/permissions";
 import { useSettingsStore } from "@/hooks/stores";
 import { notify } from "@/notifications";
 import Card from "@/components/Card";

@@ -16,6 +16,10 @@ interface ModeChangedData {
   mode: string;
 }
 
+interface ConnectionModeChangedData {
+  newMode: string;
+}
+
 export function useSessionEvents(sendFn: RpcSendFunction | null) {
   const {
     currentMode,
@@ -27,7 +31,6 @@ export function useSessionEvents(sendFn: RpcSendFunction | null) {
   const sendFnRef = useRef(sendFn);
   sendFnRef.current = sendFn;
 
-  // Handle session-related RPC events
   const handleSessionEvent = (method: string, params: unknown) => {
     switch (method) {
       case "sessionsUpdated":
@@ -35,6 +38,9 @@ export function useSessionEvents(sendFn: RpcSendFunction | null) {
         break;
       case "modeChanged":
         handleModeChanged(params as ModeChangedData);
+        break;
+      case "connectionModeChanged":
+        handleConnectionModeChanged(params as ConnectionModeChangedData);
         break;
       case "hidReadyForPrimary":
         handleHidReadyForPrimary();
@@ -103,23 +109,25 @@ export function useSessionEvents(sendFn: RpcSendFunction | null) {
     }
   };
 
+  const handleConnectionModeChanged = (data: ConnectionModeChangedData) => {
+    if (data.newMode) {
+      handleModeChanged({ mode: data.newMode });
+    }
+  };
+
   const handleHidReadyForPrimary = () => {
-    // Backend signals that HID system is ready for primary session re-initialization
     const { rpcHidChannel } = useRTCStore.getState();
     if (rpcHidChannel?.readyState === "open") {
-      // Trigger HID re-handshake
       rpcHidChannel.dispatchEvent(new Event("open"));
     }
   };
 
   const handleOtherSessionConnected = () => {
-    // Another session is trying to connect
     notify.warning("Another session is connecting", {
       duration: 5000
     });
   };
 
-  // Fetch initial sessions when component mounts
   useEffect(() => {
     if (!sendFnRef.current) return;
 
@@ -136,7 +144,6 @@ export function useSessionEvents(sendFn: RpcSendFunction | null) {
     fetchSessions();
   }, [setSessions, setSessionError]);
 
-  // Set up periodic session refresh
   useEffect(() => {
     if (!sendFnRef.current) return;
 

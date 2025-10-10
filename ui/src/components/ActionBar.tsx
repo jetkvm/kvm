@@ -21,7 +21,8 @@ import ExtensionPopover from "@/components/popovers/ExtensionPopover";
 import SessionPopover from "@/components/popovers/SessionPopover";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { useSessionStore } from "@/stores/sessionStore";
-import { usePermissions, Permission } from "@/hooks/usePermissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/types/permissions";
 
 export default function Actionbar({
   requestFullscreen,

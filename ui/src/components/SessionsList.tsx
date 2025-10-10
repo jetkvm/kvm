@@ -2,7 +2,8 @@ import { PencilIcon, CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import clsx from "clsx";
 
 import { formatters } from "@/utils";
-import { usePermissions, Permission } from "@/hooks/usePermissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/types/permissions";
 
 interface Session {
   id: string;

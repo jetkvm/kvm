@@ -6,7 +6,8 @@ import { BacklightSettings, useSettingsStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { UsbDeviceSetting } from "@components/UsbDeviceSetting";
-import { usePermissions, Permission } from "@/hooks/usePermissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/types/permissions";
 
 import notifications from "../notifications";
 import { UsbInfoSetting } from "../components/UsbInfoSetting";

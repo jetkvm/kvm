@@ -22,7 +22,8 @@ import { LinkButton } from "@components/Button";
 import { FeatureFlag } from "@components/FeatureFlag";
 import { useUiStore } from "@/hooks/stores";
 import { useSessionStore } from "@/stores/sessionStore";
-import { usePermissions, Permission } from "@/hooks/usePermissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/types/permissions";
 
 /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
 export default function SettingsRoute() {
@@ -34,7 +35,7 @@ export default function SettingsRoute() {
 
   useEffect(() => {
     if (!isLoading && !permissions[Permission.SETTINGS_ACCESS] && currentMode !== null) {
-      navigate("/devices/local", { replace: true });
+      navigate("/", { replace: true });
     }
   }, [permissions, isLoading, currentMode, navigate]);
 

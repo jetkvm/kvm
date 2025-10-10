@@ -18,7 +18,6 @@ import useWebSocket from "react-use-websocket";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
-import { usePermissions, Permission } from "@/hooks/usePermissions";
 import { cx } from "@/cva.config";
 import {
   KeyboardLedState,
@@ -54,6 +53,7 @@ import {
 } from "@/components/VideoOverlay";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { FeatureFlagProvider } from "@/providers/FeatureFlagProvider";
+import { PermissionsProvider } from "@/providers/PermissionsProvider";
 import { DeviceStatus } from "@routes/welcome-local";
 import { useVersion } from "@/hooks/useVersion";
 import { useSessionManagement } from "@/hooks/useSessionManagement";
@@ -159,7 +159,6 @@ export default function KvmIdRoute() {
   const { nickname, setNickname } = useSharedSessionStore();
   const { setRequireSessionApproval, setRequireSessionNickname } = useSettingsStore();
   const [globalSessionSettings, setGlobalSessionSettings] = useState<{requireApproval: boolean, requireNickname: boolean} | null>(null);
-  const { hasPermission } = usePermissions();
 
   const [loadingMessage, setLoadingMessage] = useState("Connecting to device...");
   const cleanupAndStopReconnecting = useCallback(
@@ -549,44 +548,6 @@ export default function KvmIdRoute() {
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onopen = () => {
       setRpcDataChannel(rpcDataChannel);
-
-      // Fetch global session settings
-      const fetchSettings = () => {
-        // Only fetch settings if user has permission to read settings
-        if (!hasPermission(Permission.SETTINGS_READ)) {
-          return;
-        }
-
-        const id = Math.random().toString(36).substring(2);
-        const message = JSON.stringify({ jsonrpc: "2.0", method: "getSessionSettings", params: {}, id });
-
-        const handler = (event: MessageEvent) => {
-          try {
-            const response = JSON.parse(event.data);
-            if (response.id === id) {
-              rpcDataChannel.removeEventListener("message", handler);
-              if (response.result) {
-                setGlobalSessionSettings(response.result);
-                // Also update the settings store for approval handling
-                setRequireSessionApproval(response.result.requireApproval);
-                setRequireSessionNickname(response.result.requireNickname);
-              }
-            }
-          } catch {
-            // Ignore parse errors
-          }
-        };
-
-        rpcDataChannel.addEventListener("message", handler);
-        rpcDataChannel.send(message);
-
-        // Clean up after timeout
-        setTimeout(() => {
-          rpcDataChannel.removeEventListener("message", handler);
-        }, 5000);
-      };
-
-      fetchSettings();
     };
 
     const rpcHidChannel = pc.createDataChannel("hidrpc");
@@ -627,9 +588,6 @@ export default function KvmIdRoute() {
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
     setTransceiver,
-    hasPermission,
-    setRequireSessionApproval,
-    setRequireSessionNickname,
   ]);
 
   useEffect(() => {
@@ -722,6 +680,7 @@ export default function KvmIdRoute() {
     // Handle session-related events
     if (resp.method === "sessionsUpdated" ||
         resp.method === "modeChanged" ||
+        resp.method === "connectionModeChanged" ||
         resp.method === "otherSessionConnected" ||
         resp.method === "primaryControlRequested" ||
         resp.method === "primaryControlApproved" ||
@@ -735,7 +694,6 @@ export default function KvmIdRoute() {
         setAccessDenied(true);
       }
 
-      // Keep legacy behavior for otherSessionConnected
       if (resp.method === "otherSessionConnected") {
         navigateTo("/other-session");
       }
@@ -807,13 +765,11 @@ export default function KvmIdRoute() {
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
-    if (!hasPermission(Permission.VIDEO_VIEW)) return;
     send("getVideoState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const hdmiState = resp.result as Parameters<VideoState["setHdmiState"]>[0];
       setHdmiState(hdmiState);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
 
   const [needLedState, setNeedLedState] = useState(true);
@@ -822,7 +778,6 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     if (!needLedState) return;
-    if (!hasPermission(Permission.VIDEO_VIEW)) return;
 
     send("getKeyboardLedState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
@@ -834,7 +789,6 @@ export default function KvmIdRoute() {
       }
       setNeedLedState(false);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rpcDataChannel?.readyState, send, setKeyboardLedState, keyboardLedState, needLedState]);
 
   const [needKeyDownState, setNeedKeyDownState] = useState(true);
@@ -843,7 +797,6 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     if (!needKeyDownState) return;
-    if (!hasPermission(Permission.VIDEO_VIEW)) return;
 
     send("getKeyDownState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
@@ -861,7 +814,6 @@ export default function KvmIdRoute() {
       }
       setNeedKeyDownState(false);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState, setHidRpcDisabled]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
@@ -895,7 +847,6 @@ export default function KvmIdRoute() {
 
   useEffect(() => {
     if (appVersion) return;
-    if (!hasPermission(Permission.VIDEO_VIEW)) return;
 
     getLocalVersion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -939,8 +890,9 @@ export default function KvmIdRoute() {
   ]);
 
   return (
-    <FeatureFlagProvider appVersion={appVersion}>
-      {!outlet && otaState.updating && (
+    <PermissionsProvider>
+      <FeatureFlagProvider appVersion={appVersion}>
+        {!outlet && otaState.updating && (
         <AnimatePresence>
           <motion.div
             className="pointer-events-none fixed inset-0 top-16 z-10 mx-auto flex h-full w-full max-w-xl translate-y-8 items-start justify-center"
@@ -1113,7 +1065,8 @@ export default function KvmIdRoute() {
       <PendingApprovalOverlay
         show={currentMode === "pending"}
       />
-    </FeatureFlagProvider>
+      </FeatureFlagProvider>
+    </PermissionsProvider>
   );
 }
 

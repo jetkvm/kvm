@@ -6,7 +6,8 @@ import Container from "@components/Container";
 import { useMacrosStore } from "@/hooks/stores";
 import useKeyboard from "@/hooks/useKeyboard";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
-import { usePermissions, Permission } from "@/hooks/usePermissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/types/permissions";
 
 export default function MacroBar() {
   const { macros, initialized, loadMacros, setSendFn } = useMacrosStore();

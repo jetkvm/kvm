@@ -8,7 +8,8 @@ import clsx from "clsx";
 import { useSessionStore } from "@/stores/sessionStore";
 import { sessionApi } from "@/api/sessionApi";
 import { Button } from "@/components/Button";
-import { usePermissions, Permission } from "@/hooks/usePermissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/types/permissions";
 
 type RpcSendFunction = (method: string, params: Record<string, unknown>, callback: (response: { result?: unknown; error?: { message: string } }) => void) => void;
 

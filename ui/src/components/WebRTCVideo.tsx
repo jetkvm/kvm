@@ -14,7 +14,8 @@ import {
   useSettingsStore,
   useVideoStore,
 } from "@/hooks/stores";
-import { usePermissions, Permission } from "@/hooks/usePermissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/types/permissions";
 import useMouse from "@/hooks/useMouse";
 
 import {
