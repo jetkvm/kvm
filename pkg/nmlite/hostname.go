@@ -83,7 +83,7 @@ func (hm *ResolvConfManager) getDomain() string {
 		}
 	}
 
-	return ""
+	return "local"
 }
 
 func (hm *ResolvConfManager) reconcileHostname() error {

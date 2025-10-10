@@ -163,7 +163,10 @@ func (nm *NetworkManager) GetInterfaceState(iface string) (*types.InterfaceState
 		return nil, err
 	}
 
-	return im.GetState(), nil
+	state := im.GetState()
+	state.Hostname = nm.Hostname()
+
+	return state, nil
 }
 
 // GetInterfaceConfig returns the current configuration of a specific interface

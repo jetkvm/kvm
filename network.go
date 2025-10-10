@@ -32,19 +32,47 @@ func toRpcNetworkSettings(config *types.NetworkConfig) *RpcNetworkSettings {
 	}
 }
 
+func getMdnsOptions() *mdns.MDNSOptions {
+	if networkManager == nil {
+		return nil
+	}
+
+	var ipv4, ipv6 bool
+	switch config.NetworkConfig.MDNSMode.String {
+	case "auto":
+		ipv4 = true
+		ipv6 = true
+	case "ipv4_only":
+		ipv4 = true
+	case "ipv6_only":
+		ipv6 = true
+	}
+
+	return &mdns.MDNSOptions{
+		LocalNames: []string{
+			networkManager.Hostname(),
+			networkManager.FQDN(),
+		},
+		ListenOptions: &mdns.MDNSListenOptions{
+			IPv4: ipv4,
+			IPv6: ipv6,
+		},
+	}
+}
+
 func restartMdns() {
 	if mDNS == nil {
 		return
 	}
 
-	_ = mDNS.SetListenOptions(&mdns.MDNSListenOptions{
-		IPv4: config.NetworkConfig.MDNSMode.String != "disabled",
-		IPv6: config.NetworkConfig.MDNSMode.String != "disabled",
-	})
-	_ = mDNS.SetLocalNames([]string{
-		networkManager.Hostname(),
-		networkManager.FQDN(),
-	}, true)
+	options := getMdnsOptions()
+	if options == nil {
+		return
+	}
+
+	if err := mDNS.SetOptions(options); err != nil {
+		networkLogger.Error().Err(err).Msg("failed to restart mDNS")
+	}
 }
 
 func triggerTimeSyncOnNetworkStateChange() {
@@ -115,6 +143,7 @@ func initNetwork() error {
 	nc := config.NetworkConfig
 
 	nm := nmlite.NewNetworkManager(context.Background(), networkLogger)
+	networkLogger.Info().Interface("networkConfig", nc).Str("hostname", nc.Hostname.String).Str("domain", nc.Domain.String).Msg("initializing network manager")
 	_ = setHostname(nm, nc.Hostname.String, nc.Domain.String)
 	nm.SetOnInterfaceStateChange(networkStateChanged)
 	if err := nm.AddInterface(NetIfName, nc); err != nil {
