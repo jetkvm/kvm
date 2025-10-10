@@ -9,7 +9,6 @@ import (
 	"github.com/jetkvm/kvm/pkg/nmlite/jetdhcpc"
 	"github.com/jetkvm/kvm/pkg/nmlite/udhcpc"
 	"github.com/rs/zerolog"
-	"github.com/vishvananda/netlink"
 )
 
 // DHCPClient wraps the dhclient package for use in the network manager
@@ -19,7 +18,6 @@ type DHCPClient struct {
 	logger     *zerolog.Logger
 	client     types.DHCPClient
 	clientType string
-	link       netlink.Link
 
 	// Configuration
 	ipv4Enabled bool
@@ -181,7 +179,9 @@ func (dc *DHCPClient) Renew() error {
 	}
 
 	dc.logger.Info().Msg("renewing DHCP lease")
-	dc.client.Renew()
+	if err := dc.client.Renew(); err != nil {
+		return fmt.Errorf("failed to renew DHCP lease: %w", err)
+	}
 	return nil
 }
 
@@ -192,7 +192,9 @@ func (dc *DHCPClient) Release() error {
 	}
 
 	dc.logger.Info().Msg("releasing DHCP lease")
-	dc.client.Release()
+	if err := dc.client.Release(); err != nil {
+		return fmt.Errorf("failed to release DHCP lease: %w", err)
+	}
 	return nil
 }
 

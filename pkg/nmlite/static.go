@@ -182,9 +182,3 @@ func (scm *StaticConfigManager) removeIPv4DefaultRoute() error {
 	netlinkMgr := getNetlinkManager()
 	return netlinkMgr.RemoveDefaultRoute(link.AfInet)
 }
-
-// enableIPv6 enables IPv6 on the interface
-func (scm *StaticConfigManager) enableIPv6() error {
-	netlinkMgr := getNetlinkManager()
-	return netlinkMgr.EnableIPv6(scm.ifaceName)
-}

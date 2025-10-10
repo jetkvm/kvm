@@ -79,7 +79,9 @@ func (rcm *ResolvConfManager) SetInterfaceConfig(iface string, family int, confi
 	}
 	rcm.mu.Unlock()
 
-	rcm.reconcileHostname()
+	if err := rcm.reconcileHostname(); err != nil {
+		return fmt.Errorf("failed to reconcile hostname: %w", err)
+	}
 
 	return rcm.update()
 }
@@ -99,7 +101,9 @@ func (rcm *ResolvConfManager) SetConfig(resolvConf *types.ResolvConf) error {
 
 // Reconcile reconciles the resolv.conf configuration
 func (rcm *ResolvConfManager) Reconcile() error {
-	rcm.reconcileHostname()
+	if err := rcm.reconcileHostname(); err != nil {
+		return fmt.Errorf("failed to reconcile hostname: %w", err)
+	}
 	return rcm.update()
 }
 

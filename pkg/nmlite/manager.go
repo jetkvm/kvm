@@ -96,8 +96,7 @@ func (nm *NetworkManager) AddInterface(iface string, config *types.NetworkConfig
 	})
 
 	im.SetOnResolvConfChange(func(family int, resolvConf *types.InterfaceResolvConf) error {
-		nm.resolvConf.SetInterfaceConfig(iface, family, *resolvConf)
-		return nil
+		return nm.resolvConf.SetInterfaceConfig(iface, family, *resolvConf)
 	})
 
 	nm.interfaces[iface] = im

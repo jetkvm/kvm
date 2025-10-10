@@ -160,7 +160,9 @@ func (im *InterfaceManager) Stop() error {
 
 	// Stop DHCP client
 	if im.dhcpClient != nil {
-		im.dhcpClient.Stop()
+		if err := im.dhcpClient.Stop(); err != nil {
+			return fmt.Errorf("failed to stop DHCP client: %w", err)
+		}
 	}
 
 	im.logger.Info().Msg("interface manager stopped")
@@ -241,7 +243,7 @@ func (im *InterfaceManager) GetIPv6Addresses() []string {
 		addresses = append(addresses, addr.Address.String())
 	}
 
-	return []string{}
+	return addresses
 }
 
 // GetMACAddress returns the MAC address of the interface
@@ -544,7 +546,9 @@ func (im *InterfaceManager) applyIPv6SLAACAndDHCP() error {
 	// Enable both SLAAC and DHCPv6
 	if im.dhcpClient != nil {
 		im.dhcpClient.SetIPv6(true)
-		im.dhcpClient.Start()
+		if err := im.dhcpClient.Start(); err != nil {
+			return fmt.Errorf("failed to start DHCP client: %w", err)
+		}
 	}
 
 	return im.staticConfig.EnableIPv6SLAAC()
@@ -644,15 +648,23 @@ func (im *InterfaceManager) SendRouterSolicitation() error {
 func (im *InterfaceManager) handleLinkUp() {
 	im.logger.Info().Msg("link up")
 
-	im.applyConfiguration()
+	if err := im.applyConfiguration(); err != nil {
+		im.logger.Error().Err(err).Msg("failed to apply configuration")
+	}
 
 	if im.config.IPv4Mode.String == "dhcp" {
-		im.dhcpClient.Renew()
+		if err := im.dhcpClient.Renew(); err != nil {
+			im.logger.Error().Err(err).Msg("failed to renew DHCP lease")
+		}
 	}
 
 	if im.config.IPv6Mode.String == "slaac" {
-		im.staticConfig.EnableIPv6SLAAC()
-		im.SendRouterSolicitation()
+		if err := im.staticConfig.EnableIPv6SLAAC(); err != nil {
+			im.logger.Error().Err(err).Msg("failed to enable IPv6 SLAAC")
+		}
+		if err := im.SendRouterSolicitation(); err != nil {
+			im.logger.Error().Err(err).Msg("failed to send router solicitation")
+		}
 	}
 }
 
@@ -660,7 +672,9 @@ func (im *InterfaceManager) handleLinkDown() {
 	im.logger.Info().Msg("link down")
 
 	if im.config.IPv4Mode.String == "dhcp" {
-		im.dhcpClient.Stop()
+		if err := im.dhcpClient.Stop(); err != nil {
+			im.logger.Error().Err(err).Msg("failed to stop DHCP client")
+		}
 	}
 
 	netlinkMgr := getNetlinkManager()
@@ -694,7 +708,6 @@ func (im *InterfaceManager) monitorInterfaceState() {
 			}
 		}
 	}
-
 }
 
 // updateStateFromDHCPLease updates the state from a DHCP lease
@@ -707,7 +720,6 @@ func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
 		family = link.AfInet6
 	} else {
 		im.state.DHCPLease4 = lease
-		family = link.AfInet
 	}
 	im.stateMu.Unlock()
 

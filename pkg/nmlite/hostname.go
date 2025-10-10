@@ -256,38 +256,6 @@ func ToValidHostname(hostname string) string {
 
 // ValidateHostname validates a hostname
 func ValidateHostname(hostname string) error {
-	if hostname == "" {
-		return fmt.Errorf("hostname cannot be empty")
-	}
-
-	validHostname := ToValidHostname(hostname)
-	if validHostname != hostname {
-		return fmt.Errorf("hostname contains invalid characters: %s", hostname)
-	}
-
-	if len(hostname) > 253 {
-		return fmt.Errorf("hostname too long: %d characters (max 253)", len(hostname))
-	}
-
-	// Check for valid characters (alphanumeric, hyphens, dots)
-	for _, char := range hostname {
-		if !((char >= 'a' && char <= 'z') ||
-			(char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') ||
-			char == '-' || char == '.') {
-			return fmt.Errorf("hostname contains invalid character: %c", char)
-		}
-	}
-
-	// Check that it doesn't start or end with hyphen
-	if strings.HasPrefix(hostname, "-") || strings.HasSuffix(hostname, "-") {
-		return fmt.Errorf("hostname cannot start or end with hyphen")
-	}
-
-	// Check that it doesn't start or end with dot
-	if strings.HasPrefix(hostname, ".") || strings.HasSuffix(hostname, ".") {
-		return fmt.Errorf("hostname cannot start or end with dot")
-	}
-
-	return nil
+	_, err := idna.Lookup.ToASCII(hostname)
+	return err
 }
