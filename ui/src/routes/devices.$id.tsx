@@ -898,7 +898,8 @@ export default function KvmIdRoute() {
     if (!hasPermission(Permission.VIDEO_VIEW)) return;
 
     getLocalVersion();
-  }, [appVersion, getLocalVersion, hasPermission]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appVersion]);
 
   const ConnectionStatusElement = useMemo(() => {
     const hasConnectionFailed =
