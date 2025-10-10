@@ -184,7 +184,7 @@ func createErrorDump(logFile *os.File) {
 
 	fmt.Printf("error dump created: %s\n", filePath)
 
-	ensureSymlink(filePath, filepath.Join(errorDumpDir, "last-crash.log"))
+	_ = ensureSymlink(filePath, filepath.Join(errorDumpDir, "last-crash.log"))
 }
 
 func doSupervise() {

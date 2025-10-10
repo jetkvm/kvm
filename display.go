@@ -27,6 +27,11 @@ const (
 )
 
 func switchToMainScreen() {
+	if networkManager == nil {
+		nativeInstance.SwitchToScreenIfDifferent("no_network_screen")
+		return
+	}
+
 	if networkManager.IsUp() {
 		nativeInstance.SwitchToScreenIfDifferent("home_screen")
 	} else {
