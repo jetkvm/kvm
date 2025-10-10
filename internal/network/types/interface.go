@@ -10,6 +10,7 @@ import (
 // InterfaceState represents the current state of a network interface
 type InterfaceState struct {
 	InterfaceName string        `json:"interface_name"`
+	Hostname      string        `json:"hostname"`
 	MACAddress    string        `json:"mac_address"`
 	Up            bool          `json:"up"`
 	Online        bool          `json:"online"`

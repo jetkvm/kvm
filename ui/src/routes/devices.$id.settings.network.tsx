@@ -253,7 +253,7 @@ export default function SettingsNetworkRoute() {
             <SettingsItem title="Hostname" description="Set the device hostname">
               <InputField
                 size="SM"
-                placeholder="jetkvm"
+                placeholder={networkState?.hostname || "jetkvm"}
                 {...register("hostname")}
                 error={formState.errors.hostname?.message}
               />

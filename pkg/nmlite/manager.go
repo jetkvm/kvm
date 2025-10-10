@@ -78,6 +78,7 @@ func (nm *NetworkManager) AddInterface(iface string, config *types.NetworkConfig
 	// Set up callbacks
 	im.SetOnStateChange(func(state types.InterfaceState) {
 		if nm.onInterfaceStateChange != nil {
+			state.Hostname = nm.Hostname()
 			nm.onInterfaceStateChange(iface, state)
 		}
 	})
