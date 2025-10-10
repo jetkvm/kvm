@@ -196,7 +196,9 @@ func waitCtrlAndRequestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 
 func updateStaticContents() {
 	//contents that never change
-	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
+	if networkManager != nil {
+		nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
+	}
 
 	// get cpu info
 	if cpuInfo, err := os.ReadFile("/proc/cpuinfo"); err == nil {
