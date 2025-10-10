@@ -192,12 +192,10 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		if err := RequirePermission(session, PermissionSessionApprove); err != nil {
 			handlerErr = err
 		} else if sessionID, ok := request.Params["sessionId"].(string); ok {
-			if targetSession := sessionManager.GetSession(sessionID); targetSession != nil && targetSession.Mode == SessionModePending {
-				targetSession.Mode = SessionModeObserver
-				sessionManager.broadcastSessionListUpdate()
+			handlerErr = sessionManager.ApproveSession(sessionID)
+			if handlerErr == nil {
+				go sessionManager.broadcastSessionListUpdate()
 				result = map[string]interface{}{"status": "approved"}
-			} else {
-				handlerErr = errors.New("session not found or not pending")
 			}
 		} else {
 			handlerErr = errors.New("invalid sessionId parameter")
@@ -206,14 +204,18 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		if err := RequirePermission(session, PermissionSessionApprove); err != nil {
 			handlerErr = err
 		} else if sessionID, ok := request.Params["sessionId"].(string); ok {
-			if targetSession := sessionManager.GetSession(sessionID); targetSession != nil && targetSession.Mode == SessionModePending {
-				writeJSONRPCEvent("sessionAccessDenied", map[string]interface{}{
-					"message": "Access denied by primary session",
-				}, targetSession)
-				sessionManager.broadcastSessionListUpdate()
+			handlerErr = sessionManager.DenySession(sessionID)
+			if handlerErr == nil {
+				// Notify the denied session
+				if targetSession := sessionManager.GetSession(sessionID); targetSession != nil {
+					go func() {
+						writeJSONRPCEvent("sessionAccessDenied", map[string]interface{}{
+							"message": "Access denied by primary session",
+						}, targetSession)
+						sessionManager.broadcastSessionListUpdate()
+					}()
+				}
 				result = map[string]interface{}{"status": "denied"}
-			} else {
-				handlerErr = errors.New("session not found or not pending")
 			}
 		} else {
 			handlerErr = errors.New("invalid sessionId parameter")
@@ -251,24 +253,35 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		} else if targetSession := sessionManager.GetSession(sessionID); targetSession != nil {
 			// Users can update their own nickname, or admins can update any
 			if targetSession.ID == session.ID || session.HasPermission(PermissionSessionManage) {
-				targetSession.Nickname = nickname
-
-				// If session is pending and approval is required, send the approval request now that we have a nickname
-				if targetSession.Mode == SessionModePending && currentSessionSettings != nil && currentSessionSettings.RequireApproval {
-					if primary := sessionManager.GetPrimarySession(); primary != nil {
-						go func() {
-							writeJSONRPCEvent("newSessionPending", map[string]interface{}{
-								"sessionId": targetSession.ID,
-								"source":    targetSession.Source,
-								"identity":  targetSession.Identity,
-								"nickname":  targetSession.Nickname,
-							}, primary)
-						}()
+				// Check nickname uniqueness
+				allSessions := sessionManager.GetAllSessions()
+				for _, existingSession := range allSessions {
+					if existingSession.ID != sessionID && existingSession.Nickname == nickname {
+						handlerErr = fmt.Errorf("nickname '%s' is already in use by another session", nickname)
+						break
 					}
 				}
 
-				sessionManager.broadcastSessionListUpdate()
-				result = map[string]interface{}{"status": "updated"}
+				if handlerErr == nil {
+					targetSession.Nickname = nickname
+
+					// If session is pending and approval is required, send the approval request now that we have a nickname
+					if targetSession.Mode == SessionModePending && currentSessionSettings != nil && currentSessionSettings.RequireApproval {
+						if primary := sessionManager.GetPrimarySession(); primary != nil {
+							go func() {
+								writeJSONRPCEvent("newSessionPending", map[string]interface{}{
+									"sessionId": targetSession.ID,
+									"source":    targetSession.Source,
+									"identity":  targetSession.Identity,
+									"nickname":  targetSession.Nickname,
+								}, primary)
+							}()
+						}
+					}
+
+					sessionManager.broadcastSessionListUpdate()
+					result = map[string]interface{}{"status": "updated"}
+				}
 			} else {
 				handlerErr = errors.New("permission denied: can only update own nickname")
 			}

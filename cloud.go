@@ -512,12 +512,8 @@ func handleSessionRequest(
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": "session manager not initialized"})
 		return fmt.Errorf("session manager not initialized")
 	}
-	scopedLogger.Debug().Msg("About to call AddSession")
+
 	err = sessionManager.AddSession(session, req.SessionSettings)
-	scopedLogger.Debug().
-		Bool("addSessionSucceeded", err == nil).
-		Str("error", fmt.Sprintf("%v", err)).
-		Msg("AddSession returned")
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("failed to add session to session manager")
 		if err == ErrMaxSessionsReached {
@@ -527,7 +523,6 @@ func handleSessionRequest(
 		}
 		return err
 	}
-	scopedLogger.Debug().Msg("AddSession completed successfully, continuing")
 
 	if session.HasPermission(PermissionPaste) {
 		cancelKeyboardMacro()

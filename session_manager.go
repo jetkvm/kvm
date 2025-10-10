@@ -149,6 +149,15 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
+	// Check nickname uniqueness (only for non-empty nicknames)
+	if session.Nickname != "" {
+		for id, existingSession := range sm.sessions {
+			if id != session.ID && existingSession.Nickname == session.Nickname {
+				return fmt.Errorf("nickname '%s' is already in use by another session", session.Nickname)
+			}
+		}
+	}
+
 	wasWithinGracePeriod := false
 	wasPreviouslyPrimary := false
 	wasPreviouslyPending := false
@@ -195,12 +204,14 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		// If this was the primary, try to restore primary status
 		if existing.Mode == SessionModePrimary {
 			isBlacklisted := sm.isSessionBlacklisted(session.ID)
-			if sm.lastPrimaryID == session.ID && !isBlacklisted {
+			// SECURITY: Prevent dual-primary window - only restore if no other primary exists
+			primaryExists := sm.primarySessionID != "" && sm.sessions[sm.primarySessionID] != nil
+			if sm.lastPrimaryID == session.ID && !isBlacklisted && !primaryExists {
 				sm.primarySessionID = session.ID
 				sm.lastPrimaryID = ""
 				delete(sm.reconnectGrace, session.ID)
 			} else {
-				// Grace period expired or another session took over
+				// Grace period expired, another session took over, or primary already exists
 				session.Mode = SessionModeObserver
 			}
 		}
@@ -781,6 +792,23 @@ func (sm *SessionManager) ApprovePrimaryRequest(currentPrimaryID, requesterID st
 		return errors.New("not the primary session")
 	}
 
+	// SECURITY: Verify requester session exists and is in Queued mode
+	requesterSession, exists := sm.sessions[requesterID]
+	if !exists {
+		sm.logger.Error().
+			Str("requesterID", requesterID).
+			Msg("Requester session not found")
+		return errors.New("requester session not found")
+	}
+
+	if requesterSession.Mode != SessionModeQueued {
+		sm.logger.Error().
+			Str("requesterID", requesterID).
+			Str("actualMode", string(requesterSession.Mode)).
+			Msg("Requester session is not in queued mode")
+		return fmt.Errorf("requester session is not in queued mode (current mode: %s)", requesterSession.Mode)
+	}
+
 	// Remove requester from queue
 	sm.removeFromQueue(requesterID)
 
@@ -834,6 +862,51 @@ func (sm *SessionManager) DenyPrimaryRequest(currentPrimaryID, requesterID strin
 		writeJSONRPCEvent("primaryControlDenied", map[string]interface{}{}, requester)
 		sm.broadcastSessionListUpdate()
 	}()
+
+	return nil
+}
+
+// ApproveSession approves a pending session (thread-safe)
+func (sm *SessionManager) ApproveSession(sessionID string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, exists := sm.sessions[sessionID]
+	if !exists {
+		return ErrSessionNotFound
+	}
+
+	if session.Mode != SessionModePending {
+		return errors.New("session is not in pending mode")
+	}
+
+	// Promote session to observer
+	session.Mode = SessionModeObserver
+
+	sm.logger.Info().
+		Str("sessionID", sessionID).
+		Msg("Session approved and promoted to observer")
+
+	return nil
+}
+
+// DenySession denies a pending session (thread-safe)
+func (sm *SessionManager) DenySession(sessionID string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, exists := sm.sessions[sessionID]
+	if !exists {
+		return ErrSessionNotFound
+	}
+
+	if session.Mode != SessionModePending {
+		return errors.New("session is not in pending mode")
+	}
+
+	sm.logger.Info().
+		Str("sessionID", sessionID).
+		Msg("Session denied - notifying session")
 
 	return nil
 }
