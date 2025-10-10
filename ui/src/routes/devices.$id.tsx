@@ -54,6 +54,8 @@ import {
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { FeatureFlagProvider } from "@/providers/FeatureFlagProvider";
 import { PermissionsProvider } from "@/providers/PermissionsProvider";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Permission } from "@/types/permissions";
 import { DeviceStatus } from "@routes/welcome-local";
 import { useVersion } from "@/hooks/useVersion";
 import { useSessionManagement } from "@/hooks/useSessionManagement";
@@ -763,23 +765,25 @@ export default function KvmIdRoute() {
     closeNewSessionRequest
   } = useSessionManagement(send);
 
+  const { hasPermission, isLoading: isLoadingPermissions } = usePermissions();
+
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
-    if (currentMode === "pending" || currentMode === "queued") return;
+    if (isLoadingPermissions || !hasPermission(Permission.VIDEO_VIEW)) return;
 
     send("getVideoState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const hdmiState = resp.result as Parameters<VideoState["setHdmiState"]>[0];
       setHdmiState(hdmiState);
     });
-  }, [rpcDataChannel?.readyState, currentMode, send, setHdmiState]);
+  }, [rpcDataChannel?.readyState, hasPermission, isLoadingPermissions, send, setHdmiState]);
 
   const [needLedState, setNeedLedState] = useState(true);
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     if (!needLedState) return;
-    if (currentMode === "pending" || currentMode === "queued") return;
+    if (isLoadingPermissions || !hasPermission(Permission.KEYBOARD_INPUT)) return;
 
     send("getKeyboardLedState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
@@ -791,14 +795,14 @@ export default function KvmIdRoute() {
       }
       setNeedLedState(false);
     });
-  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, keyboardLedState, needLedState, currentMode]);
+  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, keyboardLedState, needLedState, hasPermission, isLoadingPermissions]);
 
   const [needKeyDownState, setNeedKeyDownState] = useState(true);
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     if (!needKeyDownState) return;
-    if (currentMode === "pending" || currentMode === "queued") return;
+    if (isLoadingPermissions || !hasPermission(Permission.KEYBOARD_INPUT)) return;
 
     send("getKeyDownState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
@@ -814,7 +818,7 @@ export default function KvmIdRoute() {
       }
       setNeedKeyDownState(false);
     });
-  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState, setHidRpcDisabled, currentMode]);
+  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState, setHidRpcDisabled, hasPermission, isLoadingPermissions]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {
