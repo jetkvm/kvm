@@ -31,7 +31,7 @@ func (c *Client) requestLease4(ifname string) (*Lease, error) {
 	}
 	defer client.Close()
 
-	// Prepend modifiers with default options, so they can be overriden.
+	// Prepend modifiers with default options, so they can be overridden.
 	reqmods := append(
 		[]dhcpv4.Modifier{
 			dhcpv4.WithOption(dhcpv4.OptClassIdentifier(VendorIdentifier)),

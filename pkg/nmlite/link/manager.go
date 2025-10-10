@@ -74,7 +74,9 @@ func (nm *NetlinkManager) monitorStateChange() {
 	updateCh := make(chan netlink.LinkUpdate)
 	// we don't need to stop the subscription, as it will be closed when the program exits
 	stopCh := make(chan struct{}) //nolint:unused
-	netlink.LinkSubscribe(updateCh, stopCh)
+	if err := netlink.LinkSubscribe(updateCh, stopCh); err != nil {
+		nm.logger.Error().Err(err).Msg("failed to subscribe to link state changes")
+	}
 
 	nm.logger.Info().Msg("state change monitoring started")
 
@@ -153,7 +155,7 @@ func (nm *NetlinkManager) EnsureInterfaceUpWithTimeout(ctx context.Context, ifac
 
 	linkUpTimeout := time.After(timeout)
 
-	attempt := 0
+	var attempt int
 	start := time.Now()
 
 	for {

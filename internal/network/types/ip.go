@@ -26,7 +26,7 @@ func (a *IPAddress) Compare(n netlink.Addr) bool {
 	if !a.Address.IP.Equal(n.IP) {
 		return false
 	}
-	if slices.Compare(a.Address.Mask, n.IPNet.Mask) != 0 {
+	if slices.Compare(a.Address.Mask, n.Mask) != 0 {
 		return false
 	}
 	return true

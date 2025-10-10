@@ -117,7 +117,7 @@ func (c *Client) requestLease6(ifname string) (*Lease, error) {
 	}
 	defer client.Close()
 
-	// Prepend modifiers with default options, so they can be overriden.
+	// Prepend modifiers with default options, so they can be overridden.
 	reqmods := append(
 		[]dhcpv6.Modifier{
 			dhcpv6.WithNetboot,
