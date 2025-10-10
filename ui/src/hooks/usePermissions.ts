@@ -62,7 +62,7 @@ interface PermissionsResponse {
 
 export function usePermissions() {
   const { currentMode } = useSessionStore();
-  const { setRpcHidProtocolVersion, rpcHidChannel } = useRTCStore();
+  const { setRpcHidProtocolVersion, rpcHidChannel, rpcDataChannel } = useRTCStore();
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
   const previousCanControl = useRef<boolean>(false);
@@ -102,8 +102,10 @@ export function usePermissions() {
   const { send } = useJsonRpc(handleRpcRequest);
 
   useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open") return;
     pollPermissions(send);
-  }, [send, currentMode, pollPermissions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentMode, rpcDataChannel?.readyState]);
 
   // Monitor permission changes and re-initialize HID when gaining control
   useEffect(() => {
