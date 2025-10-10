@@ -893,7 +893,7 @@ void create_screen_menu_advanced_screen() {
                                     objects.menu_btn_dhcp_client = obj;
                                     lv_obj_set_pos(obj, 0, 0);
                                     lv_obj_set_size(obj, LV_PCT(100), 50);
-                                    lv_obj_add_event_cb(obj, action_switch_to_reboot, LV_EVENT_PRESSED, (void *)0);
+                                    lv_obj_add_event_cb(obj, action_switch_to_dhcpc, LV_EVENT_PRESSED, (void *)0);
                                     lv_obj_clear_flag(obj, LV_OBJ_FLAG_SNAPPABLE);
                                     add_style_menu_button(obj);
                                     {
@@ -2278,7 +2278,7 @@ void create_screen_switch_dhcp_client_screen() {
                             lv_obj_set_pos(obj, LV_PCT(0), LV_PCT(0));
                             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
                             add_style_header_link(obj);
-                            lv_label_set_text(obj, "Reset Config");
+                            lv_label_set_text(obj, "DHCP Client");
                         }
                     }
                 }

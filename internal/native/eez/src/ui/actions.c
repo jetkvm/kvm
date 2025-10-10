@@ -48,6 +48,10 @@ void action_switch_to_reset_config(lv_event_t *e) {
     loadScreen(SCREEN_ID_RESET_CONFIG_SCREEN);
 }
 
+void action_switch_to_dhcpc(lv_event_t *e) {
+    loadScreen(SCREEN_ID_SWITCH_DHCP_CLIENT_SCREEN);
+}
+
 void action_switch_to_reboot(lv_event_t *e) {
     loadScreen(SCREEN_ID_REBOOT_SCREEN);
 }
