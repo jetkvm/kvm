@@ -157,7 +157,7 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 
 	l.Debug().Msg("setting new config")
 
-	rebootRequired := false
+	var rebootRequired bool
 	if netConfig.DHCPClient.String != config.NetworkConfig.DHCPClient.String {
 		rebootRequired = true
 	}
@@ -182,7 +182,9 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 	}
 
 	if rebootRequired {
-		rpcReboot(false)
+		if err := rpcReboot(false); err != nil {
+			return nil, err
+		}
 	}
 
 	return toRpcNetworkSettings(newConfig), nil

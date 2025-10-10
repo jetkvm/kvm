@@ -210,7 +210,9 @@ func (nm *NetlinkManager) EnsureInterfaceUpWithTimeout(ctx context.Context, ifac
 			return nil, ErrInterfaceUpCanceled
 		case <-linkUpTimeout:
 			attempt++
-			l.Error().Msg("interface is still down after timeout")
+			l.Error().
+				Int("attempt", attempt).
+				Msg("interface is still down after timeout")
 			if err != nil {
 				return nil, err
 			}
