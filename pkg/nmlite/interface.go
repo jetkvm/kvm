@@ -182,6 +182,10 @@ func (im *InterfaceManager) IsUp() bool {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
 
+	if im.state == nil {
+		return false
+	}
+
 	return im.state.Up
 }
 
@@ -189,6 +193,10 @@ func (im *InterfaceManager) IsUp() bool {
 func (im *InterfaceManager) IsOnline() bool {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
+
+	if im.state == nil {
+		return false
+	}
 
 	return im.state.Online
 }
@@ -198,6 +206,10 @@ func (im *InterfaceManager) IPv4Ready() bool {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
 
+	if im.state == nil {
+		return false
+	}
+
 	return im.state.IPv4Ready
 }
 
@@ -205,6 +217,10 @@ func (im *InterfaceManager) IPv4Ready() bool {
 func (im *InterfaceManager) IPv6Ready() bool {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
+
+	if im.state == nil {
+		return false
+	}
 
 	return im.state.IPv6Ready
 }
@@ -214,6 +230,10 @@ func (im *InterfaceManager) GetIPv4Addresses() []string {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
 
+	if im.state == nil {
+		return []string{}
+	}
+
 	return im.state.IPv4Addresses
 }
 
@@ -222,6 +242,10 @@ func (im *InterfaceManager) GetIPv4Address() string {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
 
+	if im.state == nil {
+		return ""
+	}
+
 	return im.state.IPv4Address
 }
 
@@ -229,6 +253,10 @@ func (im *InterfaceManager) GetIPv4Address() string {
 func (im *InterfaceManager) GetIPv6Address() string {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
+
+	if im.state == nil {
+		return ""
+	}
 
 	return im.state.IPv6Address
 }
@@ -239,6 +267,11 @@ func (im *InterfaceManager) GetIPv6Addresses() []string {
 	defer im.stateMu.RUnlock()
 
 	addresses := []string{}
+
+	if im.state == nil {
+		return addresses
+	}
+
 	for _, addr := range im.state.IPv6Addresses {
 		addresses = append(addresses, addr.Address.String())
 	}
@@ -250,6 +283,10 @@ func (im *InterfaceManager) GetIPv6Addresses() []string {
 func (im *InterfaceManager) GetMACAddress() string {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
+
+	if im.state == nil {
+		return ""
+	}
 
 	return im.state.MACAddress
 }
@@ -271,12 +308,20 @@ func (im *InterfaceManager) NTPServers() []net.IP {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
 
+	if im.state == nil {
+		return []net.IP{}
+	}
+
 	return im.state.NTPServers
 }
 
 func (im *InterfaceManager) Domain() string {
 	im.stateMu.RLock()
 	defer im.stateMu.RUnlock()
+
+	if im.state == nil {
+		return ""
+	}
 
 	if im.state.DHCPLease4 != nil {
 		return im.state.DHCPLease4.Domain
