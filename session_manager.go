@@ -88,12 +88,6 @@ type SessionManager struct {
 
 // NewSessionManager creates a new session manager
 func NewSessionManager(logger *zerolog.Logger) *SessionManager {
-	// DEBUG: Log every time a new SessionManager is created
-	if logger != nil {
-		logger.Warn().
-			Msg("CREATING NEW SESSION MANAGER - This should only happen once at startup!")
-	}
-
 	// Use configuration values if available
 	maxSessions := 10
 	primaryTimeout := 5 * time.Minute
@@ -138,9 +132,6 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		return errors.New("session cannot be nil")
 	}
 
-	sm.logger.Debug().
-		Str("sessionID", session.ID).
-		Msg("AddSession ENTRY")
 	// Validate nickname if provided (matching frontend validation)
 	if session.Nickname != "" {
 		if len(session.Nickname) < 2 {
@@ -169,25 +160,17 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 				wasPreviouslyPending = (reconnectInfo.Mode == SessionModePending)
 			}
 		}
-		delete(sm.reconnectGrace, session.ID)
 	}
 
 	// Check if a session with this ID already exists (reconnection)
 	if existing, exists := sm.sessions[session.ID]; exists {
-		sm.logger.Debug().
-			Str("sessionID", session.ID).
-			Msg("AddSession: session ID already exists - RECONNECTION PATH")
-
 		// SECURITY: Verify identity matches to prevent session hijacking
 		if existing.Identity != session.Identity || existing.Source != session.Source {
 			return fmt.Errorf("session ID already in use by different user (identity mismatch)")
 		}
 
-		// CRITICAL: Close old connection to prevent multiple active connections for same session ID
+		// Close old connection to prevent multiple active connections for same session ID
 		if existing.peerConnection != nil {
-			sm.logger.Info().
-				Str("sessionID", session.ID).
-				Msg("Closing old peer connection for session reconnection")
 			existing.peerConnection.Close()
 		}
 
@@ -211,57 +194,28 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 
 		// If this was the primary, try to restore primary status
 		if existing.Mode == SessionModePrimary {
-			// Check if this session is still the reserved primary AND not blacklisted
 			isBlacklisted := sm.isSessionBlacklisted(session.ID)
 			if sm.lastPrimaryID == session.ID && !isBlacklisted {
-				// This is the rightful primary reconnecting within grace period
 				sm.primarySessionID = session.ID
-				sm.lastPrimaryID = ""                 // Clear since primary successfully reconnected
-				delete(sm.reconnectGrace, session.ID) // Clear grace period
-				sm.logger.Debug().
-					Str("sessionID", session.ID).
-					Msg("Primary session successfully reconnected within grace period")
+				sm.lastPrimaryID = ""
+				delete(sm.reconnectGrace, session.ID)
 			} else {
-				// This session was primary but grace period expired, another took over, or is blacklisted
+				// Grace period expired or another session took over
 				session.Mode = SessionModeObserver
-				sm.logger.Debug().
-					Str("sessionID", session.ID).
-					Str("currentPrimaryID", sm.primarySessionID).
-					Bool("isBlacklisted", isBlacklisted).
-					Msg("Former primary session reconnected but grace period expired, another took over, or session is blacklisted - demoting to observer")
 			}
 		}
 
-		// NOTE: Skip validation during reconnection to preserve grace period
-		// validateSinglePrimary() would clear primary slot during reconnection window
-
-		sm.logger.Debug().
-			Str("sessionID", session.ID).
-			Msg("AddSession: RETURNING from reconnection path")
 		go sm.broadcastSessionListUpdate()
 		return nil
 	}
 
 	if len(sm.sessions) >= sm.maxSessions {
-		sm.logger.Warn().
-			Int("currentSessions", len(sm.sessions)).
-			Int("maxSessions", sm.maxSessions).
-			Msg("AddSession: MAX SESSIONS REACHED")
 		return ErrMaxSessionsReached
 	}
 
 	// Generate ID if not set
 	if session.ID == "" {
 		session.ID = uuid.New().String()
-	}
-
-	// Clean up any grace period entries for this session since it's reconnecting
-	if wasWithinGracePeriod {
-		delete(sm.reconnectGrace, session.ID)
-		delete(sm.reconnectInfo, session.ID)
-		sm.logger.Info().
-			Str("sessionID", session.ID).
-			Msg("Session reconnected within grace period - cleaned up grace period entries")
 	}
 
 	// Set nickname from client settings if provided
@@ -272,9 +226,6 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 	// Use global settings for requirements (not client-provided)
 	globalSettings := currentSessionSettings
 
-	// Set mode based on current state and global settings
-	// ATOMIC CHECK AND ASSIGN: Check if there's currently no primary session
-	// and assign primary status atomically to prevent race conditions
 	primaryExists := sm.primarySessionID != "" && sm.sessions[sm.primarySessionID] != nil
 
 	// Check if there's an active grace period for a primary session (different from this session)
@@ -291,65 +242,28 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		}
 	}
 
-	// Check if this session was recently demoted via transfer
 	isBlacklisted := sm.isSessionBlacklisted(session.ID)
 
-	sm.logger.Debug().
-		Str("newSessionID", session.ID).
-		Str("nickname", session.Nickname).
-		Str("currentPrimarySessionID", sm.primarySessionID).
-		Bool("primaryExists", primaryExists).
-		Bool("hasActivePrimaryGracePeriod", hasActivePrimaryGracePeriod).
-		Int("totalSessions", len(sm.sessions)).
-		Bool("wasWithinGracePeriod", wasWithinGracePeriod).
-		Bool("wasPreviouslyPrimary", wasPreviouslyPrimary).
-		Bool("wasPreviouslyPending", wasPreviouslyPending).
-		Bool("isBlacklisted", isBlacklisted).
-		Msg("AddSession state analysis")
-
-	// Become primary only if:
-	// 1. Was previously primary (within grace) AND no current primary AND no other session has grace period, OR
-	// 2. There's no primary at all AND not recently transferred away AND no active grace period
-	// Never allow primary promotion if already restored within grace period or another session has grace period
-	shouldBecomePrimary := !wasWithinGracePeriod && !hasActivePrimaryGracePeriod && ((wasPreviouslyPrimary && !primaryExists) || (!primaryExists && !isBlacklisted))
-
-	if wasWithinGracePeriod {
-		sm.logger.Debug().
-			Str("sessionID", session.ID).
-			Bool("wasPreviouslyPrimary", wasPreviouslyPrimary).
-			Bool("primaryExists", primaryExists).
-			Str("currentPrimarySessionID", sm.primarySessionID).
-			Msg("Session within grace period - skipping primary promotion logic")
-	}
+	// Determine if this session should become primary
+	// If there's no primary AND this is the ONLY session, ALWAYS promote regardless of blacklist
+	isOnlySession := len(sm.sessions) == 0
+	shouldBecomePrimary := (wasWithinGracePeriod && wasPreviouslyPrimary && !primaryExists && !hasActivePrimaryGracePeriod) ||
+		(!wasWithinGracePeriod && !hasActivePrimaryGracePeriod && !primaryExists && (!isBlacklisted || isOnlySession))
 
 	if shouldBecomePrimary {
-		// Double-check primary doesn't exist (race condition prevention)
 		if sm.primarySessionID == "" || sm.sessions[sm.primarySessionID] == nil {
-			// Since we now generate nicknames automatically when required,
-			// we can always promote to primary when no primary exists
 			session.Mode = SessionModePrimary
 			sm.primarySessionID = session.ID
-			sm.lastPrimaryID = "" // Clear since we have a new primary
+			sm.lastPrimaryID = ""
 
 			// Clear all existing grace periods when a new primary is established
-			// This prevents multiple sessions from fighting for primary status via grace period
-			if len(sm.reconnectGrace) > 0 || len(sm.reconnectInfo) > 0 {
-				sm.logger.Debug().
-					Int("clearedGracePeriods", len(sm.reconnectGrace)).
-					Int("clearedReconnectInfo", len(sm.reconnectInfo)).
-					Str("newPrimarySessionID", session.ID).
-					Msg("Clearing all existing grace periods for new primary session in AddSession")
-
-				// Clear all existing grace periods and reconnect info
-				for oldSessionID := range sm.reconnectGrace {
-					delete(sm.reconnectGrace, oldSessionID)
-				}
-				for oldSessionID := range sm.reconnectInfo {
-					delete(sm.reconnectInfo, oldSessionID)
-				}
+			for oldSessionID := range sm.reconnectGrace {
+				delete(sm.reconnectGrace, oldSessionID)
+			}
+			for oldSessionID := range sm.reconnectInfo {
+				delete(sm.reconnectInfo, oldSessionID)
 			}
 
-			// Reset HID availability to force re-handshake for input functionality
 			session.hidRPCAvailable = false
 		} else {
 			session.Mode = SessionModeObserver
@@ -387,23 +301,24 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 	session.CreatedAt = time.Now()
 	session.LastActive = time.Now()
 
-	// Add session to sessions map BEFORE primary checks
-	// This ensures that primary existence checks work correctly during restoration
 	sm.sessions[session.ID] = session
 
 	sm.logger.Info().
 		Str("sessionID", session.ID).
 		Str("mode", string(session.Mode)).
 		Int("totalSessions", len(sm.sessions)).
-		Str("sm_pointer", fmt.Sprintf("%p", sm)).
-		Str("sm.sessions_pointer", fmt.Sprintf("%p", sm.sessions)).
 		Msg("Session added to manager")
 
 	// Ensure session has auto-generated nickname if needed
 	sm.ensureNickname(session)
 
-	// Validate sessions but respect grace periods
 	sm.validateSinglePrimary()
+
+	// Clean up grace period after validation completes
+	if wasWithinGracePeriod {
+		delete(sm.reconnectGrace, session.ID)
+		delete(sm.reconnectInfo, session.ID)
+	}
 
 	// Notify all sessions about the new connection
 	go sm.broadcastSessionListUpdate()
@@ -418,9 +333,6 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 
 	session, exists := sm.sessions[sessionID]
 	if !exists {
-		sm.logger.Debug().
-			Str("sessionID", sessionID).
-			Msg("RemoveSession called but session not found in map")
 		return
 	}
 
@@ -439,12 +351,8 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 	// Check if this session was marked for immediate removal (intentional logout)
 	isIntentionalLogout := false
 	if graceTime, exists := sm.reconnectGrace[sessionID]; exists {
-		// If grace period is already expired, this was intentional logout
 		if time.Now().After(graceTime) {
 			isIntentionalLogout = true
-			sm.logger.Info().
-				Str("sessionID", sessionID).
-				Msg("Detected intentional logout - skipping grace period")
 			delete(sm.reconnectGrace, sessionID)
 			delete(sm.reconnectInfo, sessionID)
 		}
@@ -458,12 +366,9 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 
 	// Only add grace period if this is NOT an intentional logout
 	if !isIntentionalLogout {
-		// Add a grace period for reconnection for all sessions
-
-		// Limit grace period entries to prevent memory exhaustion (DoS protection)
-		const maxGraceEntries = 10 // Reduced from 20 to limit memory usage
+		// Limit grace period entries to prevent memory exhaustion
+		const maxGraceEntries = 10
 		for len(sm.reconnectGrace) >= maxGraceEntries {
-			// Find and remove the oldest grace period entry
 			var oldestID string
 			var oldestTime time.Time
 			for id, graceTime := range sm.reconnectGrace {
@@ -476,7 +381,7 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 				delete(sm.reconnectGrace, oldestID)
 				delete(sm.reconnectInfo, oldestID)
 			} else {
-				break // Safety check to prevent infinite loop
+				break
 			}
 		}
 
@@ -508,14 +413,8 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 			sm.lastPrimaryID = sessionID // Remember this was the primary for grace period
 			sm.primarySessionID = ""     // Clear primary slot so other sessions can be promoted
 
-			// Clear all blacklists to allow emergency promotion after grace period expires
-			// The blacklist is meant to prevent immediate re-promotion during manual transfers,
-			// but should not block emergency promotion after accidental disconnects
+			// Clear all blacklists to allow promotion after grace period expires
 			if len(sm.transferBlacklist) > 0 {
-				sm.logger.Info().
-					Int("clearedBlacklistEntries", len(sm.transferBlacklist)).
-					Str("disconnectedPrimaryID", sessionID).
-					Msg("Clearing transfer blacklist to allow grace period promotion")
 				sm.transferBlacklist = make([]TransferBlacklistEntry, 0)
 			}
 
@@ -528,11 +427,6 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 
 		// Trigger validation for potential promotion
 		if len(sm.sessions) > 0 {
-			sm.logger.Debug().
-				Str("removedPrimaryID", sessionID).
-				Bool("intentionalLogout", isIntentionalLogout).
-				Int("remainingSessions", len(sm.sessions)).
-				Msg("Triggering immediate validation for potential promotion")
 			sm.validateSinglePrimary()
 		}
 	}
@@ -668,13 +562,6 @@ func (sm *SessionManager) GetAllSessions() []SessionData {
 	// Don't run validation on every getSessions call
 	// This was causing immediate demotion during transfers and page refreshes
 	// Validation should only run during state changes, not data queries
-
-	// DEBUG: Log pointer addresses to verify we're using the same instance
-	sm.logger.Debug().
-		Int("sessions_count", len(sm.sessions)).
-		Str("sm_pointer", fmt.Sprintf("%p", sm)).
-		Str("sm.sessions_pointer", fmt.Sprintf("%p", sm.sessions)).
-		Msg("GetAllSessions called")
 
 	infos := make([]SessionData, 0, len(sm.sessions))
 	for _, session := range sm.sessions {
@@ -980,27 +867,7 @@ func (sm *SessionManager) UpdateLastActive(sessionID string) {
 
 // validateSinglePrimary ensures there's only one primary session and fixes any inconsistencies
 func (sm *SessionManager) validateSinglePrimary() {
-	// CRITICAL DEBUG: Check if we actually hold the lock
-	// The caller should already hold sm.mu.Lock()
-
 	primarySessions := make([]*Session, 0)
-
-	// Capture session keys BEFORE logging to avoid lazy evaluation issues
-	sessionKeys := make([]string, 0, len(sm.sessions))
-	sessionPointers := make([]string, 0, len(sm.sessions))
-	for k, v := range sm.sessions {
-		sessionKeys = append(sessionKeys, k)
-		sessionPointers = append(sessionPointers, fmt.Sprintf("%s=%p", k[:8], v))
-	}
-
-	// DEBUG: Add pointer address to verify we're using the right manager instance
-	sm.logger.Debug().
-		Int("sm.sessions_len_before_loop", len(sm.sessions)).
-		Strs("sm.sessions_keys", sessionKeys).
-		Strs("sm.session_pointers", sessionPointers).
-		Str("sm_pointer", fmt.Sprintf("%p", sm)).
-		Str("sm.sessions_map_pointer", fmt.Sprintf("%p", sm.sessions)).
-		Msg("validateSinglePrimary: checking sm.sessions map")
 
 	// Find all sessions that think they're primary
 	for _, session := range sm.sessions {
@@ -1009,26 +876,18 @@ func (sm *SessionManager) validateSinglePrimary() {
 		}
 	}
 
-	// If we have multiple primaries, this is a critical bug - fix it
+	// If we have multiple primaries, fix it
 	if len(primarySessions) > 1 {
 		sm.logger.Error().
 			Int("primaryCount", len(primarySessions)).
-			Msg("CRITICAL BUG: Multiple primary sessions detected, fixing...")
+			Msg("Multiple primary sessions detected, fixing")
 
 		// Keep the first one as primary, demote the rest
 		for i, session := range primarySessions {
 			if i == 0 {
-				// Keep this as primary and update manager state
 				sm.primarySessionID = session.ID
-				sm.logger.Info().
-					Str("keptPrimaryID", session.ID).
-					Msg("Kept session as primary")
 			} else {
-				// Demote all others
 				session.Mode = SessionModeObserver
-				sm.logger.Info().
-					Str("demotedSessionID", session.ID).
-					Msg("Demoted duplicate primary session")
 			}
 		}
 	}
@@ -1043,25 +902,14 @@ func (sm *SessionManager) validateSinglePrimary() {
 	}
 
 	// Don't clear primary slot if there's a grace period active
-	// This prevents instant promotion during primary session reconnection
 	if len(primarySessions) == 0 && sm.primarySessionID != "" {
-		// Check if the current primary is in grace period waiting to reconnect
 		if sm.lastPrimaryID == sm.primarySessionID {
 			if graceTime, exists := sm.reconnectGrace[sm.primarySessionID]; exists {
 				if time.Now().Before(graceTime) {
-					// Primary is in grace period, DON'T clear the slot yet
-					sm.logger.Info().
-						Str("gracePrimaryID", sm.primarySessionID).
-						Msg("Primary slot preserved - session in grace period")
-					return // Exit validation, keep primary slot reserved
+					return // Keep primary slot reserved during grace period
 				}
 			}
 		}
-
-		// No grace period, safe to clear orphaned primary
-		sm.logger.Warn().
-			Str("orphanedPrimaryID", sm.primarySessionID).
-			Msg("Cleared orphaned primary ID")
 		sm.primarySessionID = ""
 	}
 
@@ -1072,29 +920,11 @@ func (sm *SessionManager) validateSinglePrimary() {
 			if reconnectInfo, hasInfo := sm.reconnectInfo[sessionID]; hasInfo {
 				if reconnectInfo.Mode == SessionModePrimary {
 					hasActivePrimaryGracePeriod = true
-					sm.logger.Debug().
-						Str("gracePrimaryID", sessionID).
-						Dur("remainingGrace", time.Until(graceTime)).
-						Msg("Active grace period detected for primary session - blocking auto-promotion")
 					break
 				}
 			}
 		}
 	}
-
-	// Build session IDs list for debugging
-	sessionIDs := make([]string, 0, len(sm.sessions))
-	for id := range sm.sessions {
-		sessionIDs = append(sessionIDs, id)
-	}
-
-	sm.logger.Debug().
-		Int("primarySessionCount", len(primarySessions)).
-		Str("primarySessionID", sm.primarySessionID).
-		Int("totalSessions", len(sm.sessions)).
-		Strs("sessionIDs", sessionIDs).
-		Bool("hasActivePrimaryGracePeriod", hasActivePrimaryGracePeriod).
-		Msg("validateSinglePrimary state check")
 
 	// Auto-promote if there are NO primary sessions at all AND no active grace period
 	if len(primarySessions) == 0 && sm.primarySessionID == "" && len(sm.sessions) > 0 && !hasActivePrimaryGracePeriod {
@@ -1117,13 +947,6 @@ func (sm *SessionManager) validateSinglePrimary() {
 			sm.logger.Warn().
 				Msg("No eligible session found for emergency auto-promotion")
 		}
-	} else {
-		sm.logger.Debug().
-			Int("primarySessions", len(primarySessions)).
-			Str("primarySessionID", sm.primarySessionID).
-			Bool("hasSessions", len(sm.sessions) > 0).
-			Bool("hasActivePrimaryGracePeriod", hasActivePrimaryGracePeriod).
-			Msg("Emergency auto-promotion conditions not met")
 	}
 }
 
@@ -1188,14 +1011,10 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 	toSession.hidRPCAvailable = false // Force re-handshake
 	sm.primarySessionID = toSessionID
 
-	// Only set lastPrimaryID for grace period scenarios, NOT for manual transfers
-	// Manual transfers should clear lastPrimaryID to prevent reconnection conflicts
-	if transferType == "emergency_auto_promotion" || transferType == "emergency_promotion_deadlock_prevention" ||
-	   transferType == "emergency_timeout_promotion" || transferType == "initial_promotion" {
-		sm.lastPrimaryID = toSessionID // Allow grace period recovery for emergency promotions
-	} else {
-		sm.lastPrimaryID = "" // Clear for manual transfers to prevent reconnection conflicts
-	}
+	// ALWAYS set lastPrimaryID to the new primary to support WebRTC reconnections
+	// This allows the newly promoted session to handle page refreshes correctly
+	// The blacklist system prevents unwanted takeovers during manual transfers
+	sm.lastPrimaryID = toSessionID
 
 	// Clear input state
 	sm.clearInputState()
@@ -1235,15 +1054,19 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 		}
 	}
 
-	// Clear all grace periods to prevent conflicts
-	if len(sm.reconnectGrace) > 0 || len(sm.reconnectInfo) > 0 {
-		for oldSessionID := range sm.reconnectGrace {
-			delete(sm.reconnectGrace, oldSessionID)
-		}
-		for oldSessionID := range sm.reconnectInfo {
-			delete(sm.reconnectInfo, oldSessionID)
-		}
-	}
+	// DON'T clear grace periods during transfers!
+	// Grace periods and blacklisting serve different purposes:
+	// - Grace periods: Allow disconnected sessions to reconnect and reclaim their role
+	// - Blacklisting: Prevent recently demoted sessions from immediately taking primary again
+	//
+	// When a primary session is transferred to another session:
+	// 1. The newly promoted session should be able to refresh its browser without losing primary
+	// 2. When it refreshes, RemoveSession is called, which adds a grace period
+	// 3. When it reconnects, it should find itself in lastPrimaryID and reclaim primary
+	//
+	// The blacklist prevents the OLD primary from immediately reclaiming control,
+	// while the grace period allows the NEW primary to safely refresh its browser.
+	// These mechanisms complement each other and should not interfere.
 
 	sm.logger.Info().
 		Str("fromSessionID", fromSessionID).
@@ -1880,14 +1703,12 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 
 			// Run validation immediately if a grace period expired, otherwise run periodically
 			if gracePeriodExpired {
-				sm.logger.Debug().Msg("Running immediate validation after grace period expiration")
 				sm.validateSinglePrimary()
 			} else {
 				// Periodic validateSinglePrimary to catch deadlock states
 				validationCounter++
 				if validationCounter >= 10 { // Every 10 seconds
 					validationCounter = 0
-					sm.logger.Debug().Msg("Running periodic session validation to catch deadlock states")
 					sm.validateSinglePrimary()
 				}
 			}
@@ -1911,11 +1732,6 @@ var (
 func initSessionManager() {
 	sessionManagerOnce.Do(func() {
 		sessionManager = NewSessionManager(websocketLogger)
-		if sessionManager != nil && websocketLogger != nil {
-			websocketLogger.Error().
-				Str("pointer", fmt.Sprintf("%p", sessionManager)).
-				Msg("!!! GLOBAL sessionManager VARIABLE INITIALIZED - THIS SHOULD ONLY HAPPEN ONCE !!!")
-		}
 	})
 }
 

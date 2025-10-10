@@ -78,14 +78,6 @@ func incrActiveSessions() int {
 	return actionSessions
 }
 
-func decrActiveSessions() int {
-	activeSessionsMutex.Lock()
-	defer activeSessionsMutex.Unlock()
-
-	actionSessions--
-	return actionSessions
-}
-
 func getActiveSessions() int {
 	activeSessionsMutex.Lock()
 	defer activeSessionsMutex.Unlock()
