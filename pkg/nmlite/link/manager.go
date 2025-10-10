@@ -444,11 +444,21 @@ func (nm *NetlinkManager) ReconcileLink(link *Link, expected []types.IPAddress, 
 
 	expectedGateways := make(map[string]net.IP)
 
+	mtu := link.Attrs().MTU
+	expectedMTU := mtu
 	// add all expected addresses to the map
 	for _, addr := range expected {
 		expectedAddrs[addr.String()] = &addr
 		if addr.Gateway != nil {
 			expectedGateways[addr.String()] = addr.Gateway
+		}
+		if addr.MTU != 0 {
+			mtu = addr.MTU
+		}
+	}
+	if expectedMTU != mtu {
+		if err := link.SetMTU(expectedMTU); err != nil {
+			nm.logger.Warn().Err(err).Int("expected_mtu", expectedMTU).Int("mtu", mtu).Msg("failed to set MTU")
 		}
 	}
 

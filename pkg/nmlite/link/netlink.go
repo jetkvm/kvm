@@ -118,6 +118,13 @@ func (l *Link) AddrList(family int) ([]netlink.Addr, error) {
 	return netlink.AddrList(l.Link, family)
 }
 
+func (l *Link) SetMTU(mtu int) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return netlink.LinkSetMTU(l.Link, mtu)
+}
+
 // HasGlobalUnicastAddress returns true if the link has a global unicast address
 func (l *Link) HasGlobalUnicastAddress() bool {
 	addrs, err := l.AddrList(AfUnspec)
