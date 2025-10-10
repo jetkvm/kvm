@@ -765,19 +765,21 @@ export default function KvmIdRoute() {
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
+    if (currentMode === "pending" || currentMode === "queued") return;
+
     send("getVideoState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const hdmiState = resp.result as Parameters<VideoState["setHdmiState"]>[0];
       setHdmiState(hdmiState);
     });
-  }, [rpcDataChannel?.readyState, send, setHdmiState]);
+  }, [rpcDataChannel?.readyState, currentMode, send, setHdmiState]);
 
   const [needLedState, setNeedLedState] = useState(true);
 
-  // request keyboard led state from the device
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     if (!needLedState) return;
+    if (currentMode === "pending" || currentMode === "queued") return;
 
     send("getKeyboardLedState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
@@ -789,20 +791,18 @@ export default function KvmIdRoute() {
       }
       setNeedLedState(false);
     });
-  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, keyboardLedState, needLedState]);
+  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, keyboardLedState, needLedState, currentMode]);
 
   const [needKeyDownState, setNeedKeyDownState] = useState(true);
 
-  // request keyboard key down state from the device
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     if (!needKeyDownState) return;
+    if (currentMode === "pending" || currentMode === "queued") return;
 
     send("getKeyDownState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        // -32601 means the method is not supported
         if (resp.error.code === RpcMethodNotFound) {
-          // if we don't support key down state, we know key press is also not available
           console.warn("Failed to get key down state, switching to old-school", resp.error);
           setHidRpcDisabled(true);
         } else {
@@ -814,7 +814,7 @@ export default function KvmIdRoute() {
       }
       setNeedKeyDownState(false);
     });
-  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState, setHidRpcDisabled]);
+  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState, setHidRpcDisabled, currentMode]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {
