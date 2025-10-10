@@ -720,7 +720,8 @@ func rpcSetWakeOnLanDevices(params SetWakeOnLanDevicesParams) error {
 }
 
 func rpcResetConfig() error {
-	config = defaultConfig
+	defaultConfig := getDefaultConfig()
+	config = &defaultConfig
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to reset config: %w", err)
 	}
