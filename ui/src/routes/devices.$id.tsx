@@ -807,11 +807,13 @@ export default function KvmIdRoute() {
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
+    if (!hasPermission(Permission.VIDEO_VIEW)) return;
     send("getVideoState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const hdmiState = resp.result as Parameters<VideoState["setHdmiState"]>[0];
       setHdmiState(hdmiState);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
 
   const [needLedState, setNeedLedState] = useState(true);
@@ -820,6 +822,7 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     if (!needLedState) return;
+    if (!hasPermission(Permission.VIDEO_VIEW)) return;
 
     send("getKeyboardLedState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
@@ -831,6 +834,7 @@ export default function KvmIdRoute() {
       }
       setNeedLedState(false);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rpcDataChannel?.readyState, send, setKeyboardLedState, keyboardLedState, needLedState]);
 
   const [needKeyDownState, setNeedKeyDownState] = useState(true);
@@ -839,6 +843,7 @@ export default function KvmIdRoute() {
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
     if (!needKeyDownState) return;
+    if (!hasPermission(Permission.VIDEO_VIEW)) return;
 
     send("getKeyDownState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
@@ -856,6 +861,7 @@ export default function KvmIdRoute() {
       }
       setNeedKeyDownState(false);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState, setHidRpcDisabled]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal

@@ -88,7 +88,7 @@ func getActiveSessions() int {
 // CheckRPCRateLimit checks if the session has exceeded RPC rate limits (DoS protection)
 func (s *Session) CheckRPCRateLimit() bool {
 	const (
-		maxRPCPerSecond = 100 // Increased from 20 to accommodate multi-session polling and reconnections
+		maxRPCPerSecond = 500 // Increased to support 10+ concurrent sessions with broadcasts and state updates
 		rateLimitWindow = time.Second
 	)
 
