@@ -381,28 +381,28 @@ func (f *FieldConfig) validateSingleValue(val string, index int) error {
 		switch validateType {
 		case "int":
 			if _, err := strconv.Atoi(val); err != nil {
-				return fmt.Errorf("field `%s` is not a valid integer: %s", f.Name, val)
+				return fmt.Errorf("field `%s` is not a valid integer: %s", fieldRef, val)
 			}
 		case "ipv6_prefix_length":
 			valInt, err := strconv.Atoi(val)
 			if err != nil {
-				return fmt.Errorf("field `%s` is not a valid IPv6 prefix length: %s", f.Name, val)
+				return fmt.Errorf("field `%s` is not a valid IPv6 prefix length: %s", fieldRef, val)
 			}
 			if valInt < 0 || valInt > 128 {
-				return fmt.Errorf("field `%s` is not a valid IPv6 prefix length: %s", f.Name, val)
+				return fmt.Errorf("field `%s` is not a valid IPv6 prefix length: %s", fieldRef, val)
 			}
 		case "ipv4":
 			if net.ParseIP(val).To4() == nil {
-				return fmt.Errorf("%s is not a valid IPv4 address: %s", fieldRef, val)
+				return fmt.Errorf("field `%s` is not a valid IPv4 address: %s", fieldRef, val)
 			}
 		case "ipv6":
 			if net.ParseIP(val).To16() == nil {
-				return fmt.Errorf("%s is not a valid IPv6 address: %s", fieldRef, val)
+				return fmt.Errorf("field `%s` is not a valid IPv6 address: %s", fieldRef, val)
 			}
 		case "ipv6_prefix":
 			if i, _, err := net.ParseCIDR(val); err != nil {
 				if i.To16() == nil {
-					return fmt.Errorf("%s is not a valid IPv6 prefix: %s", fieldRef, val)
+					return fmt.Errorf("field `%s` is not a valid IPv6 prefix: %s", fieldRef, val)
 				}
 			}
 		case "ipv4_or_ipv6":
@@ -430,7 +430,7 @@ func (f *FieldConfig) validateSingleValue(val string, index int) error {
 				return fmt.Errorf("%s is not a valid CIDR notation: %s", fieldRef, val)
 			}
 		default:
-			return fmt.Errorf("field `%s` cannot use validate_type: unsupported validator: %s", f.Name, validateType)
+			return fmt.Errorf("field `%s` cannot use validate_type: unsupported validator: %s", fieldRef, validateType)
 		}
 	}
 
