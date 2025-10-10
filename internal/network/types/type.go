@@ -65,6 +65,7 @@ type IPv6Address struct {
 	Prefix            net.IPNet  `json:"prefix"`
 	ValidLifetime     *time.Time `json:"valid_lifetime"`
 	PreferredLifetime *time.Time `json:"preferred_lifetime"`
+	Flags             int        `json:"flags"`
 	Scope             int        `json:"scope"`
 }
 

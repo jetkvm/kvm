@@ -110,6 +110,7 @@ func (im *InterfaceManager) updateInterfaceStateAddresses(nl *link.Link) (bool, 
 			Address:           addr.IP,
 			Prefix:            *addr.IPNet,
 			Scope:             addr.Scope,
+			Flags:             addr.Flags,
 			ValidLifetime:     lifetimeToTime(addr.ValidLft),
 			PreferredLifetime: lifetimeToTime(addr.PreferedLft),
 		})

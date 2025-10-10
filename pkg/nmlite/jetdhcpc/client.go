@@ -107,8 +107,9 @@ type Client struct {
 }
 
 var (
-	defaultTimerDuration = 1 * time.Second
-	defaultLinkUpTimeout = 30 * time.Second
+	defaultTimerDuration      = 1 * time.Second
+	defaultLinkUpTimeout      = 30 * time.Second
+	maxRenewalAttemptDuration = 2 * time.Hour
 )
 
 // NewClient creates a new DHCP client for the given interface.
@@ -155,10 +156,21 @@ func resetTimer(t *time.Timer, l *zerolog.Logger) {
 	t.Reset(defaultTimerDuration)
 }
 
+func getRenewalTime(lease *Lease) time.Duration {
+	if lease.RenewalTime <= 0 || lease.LeaseTime > maxRenewalAttemptDuration/2 {
+		return maxRenewalAttemptDuration
+	}
+
+	return lease.RenewalTime
+}
+
 func (c *Client) requestLoop(t *time.Timer, family int, ifname string) {
+	l := c.l.With().Str("interface", ifname).Int("family", family).Logger()
 	for range t.C {
+		l.Info().Msg("requesting lease")
+
 		if _, err := c.ensureInterfaceUp(ifname); err != nil {
-			c.l.Error().Err(err).Msg("failed to ensure interface up")
+			l.Error().Err(err).Msg("failed to ensure interface up")
 			resetTimer(t, c.l)
 			continue
 		}
@@ -174,12 +186,22 @@ func (c *Client) requestLoop(t *time.Timer, family int, ifname string) {
 			lease, err = c.requestLease6(ifname)
 		}
 		if err != nil {
-			c.l.Error().Err(err).Msg("failed to request lease")
+			l.Error().Err(err).Msg("failed to request lease")
 			resetTimer(t, c.l)
 			continue
 		}
 
 		c.handleLeaseChange(lease)
+
+		nextRenewal := getRenewalTime(lease)
+
+		l.Info().
+			Dur("nextRenewal", nextRenewal).
+			Dur("leaseTime", lease.LeaseTime).
+			Dur("rebindingTime", lease.RebindingTime).
+			Msg("sleeping until next renewal")
+
+		t.Reset(nextRenewal)
 	}
 }
 
@@ -262,25 +284,9 @@ func (c *Client) handleLeaseChange(lease *Lease) {
 	}
 }
 
-func (c *Client) doRenewLoop() {
-	timer := time.NewTimer(time.Duration(c.currentLease4.RenewalTime) * time.Second)
-	defer timer.Stop()
-
-	for range timer.C {
-		c.renew()
-	}
-}
-
-func (c *Client) renew() {
-	// for lease := range c.sendRequests(c.cfg.IPv4, c.cfg.IPv6) {
-	// 	if lease, ok := lease.(*Lease); ok {
-	// 		c.handleLeaseChange(lease)
-	// 	}
-	// }
-}
-
 func (c *Client) Renew() error {
-	go c.renew()
+	c.timer4.Reset(defaultTimerDuration)
+	c.timer6.Reset(defaultTimerDuration)
 	return nil
 }
 
@@ -304,9 +310,11 @@ func (c *Client) SetIPv4(ipv4 bool) {
 		c.lease4Mu.Lock()
 		c.currentLease4 = nil
 		c.lease4Mu.Unlock()
+
+		c.timer4.Stop()
 	}
 
-	c.timer4.Stop()
+	c.timer4.Reset(defaultTimerDuration)
 }
 
 func (c *Client) SetIPv6(ipv6 bool) {
@@ -323,10 +331,12 @@ func (c *Client) SetIPv6(ipv6 bool) {
 	if !ipv6 {
 		c.lease6Mu.Lock()
 		c.currentLease6 = nil
-		c.lease4Mu.Unlock()
+		c.lease6Mu.Unlock()
+
+		c.timer6.Stop()
 	}
 
-	c.timer6.Stop()
+	c.timer6.Reset(defaultTimerDuration)
 }
 
 func (c *Client) Start() error {

@@ -58,9 +58,15 @@ func compareIPv6AddressSlices(a, b []types.IPv6Address) bool {
 		if a[i].Address.String() != b[i].Address.String() {
 			return false
 		}
+
 		if a[i].Prefix.String() != b[i].Prefix.String() {
 			return false
 		}
+
+		if a[i].Flags != b[i].Flags {
+			return false
+		}
+
 		// we don't compare the lifetimes because they are not always same
 		if a[i].Scope != b[i].Scope {
 			return false

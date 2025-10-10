@@ -9,5 +9,6 @@
       "synctrace"
     ]
   },
-  "git.ignoreLimitWarning": true
+  "git.ignoreLimitWarning": true,
+  "cmake.sourceDirectory": "/workspaces/kvm-static-ip/internal/native/cgo"
 }

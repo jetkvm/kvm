@@ -47,9 +47,20 @@ func (c *Client) requestLease4(ifname string) (*Lease, error) {
 	}
 
 	l.Info().Msg("attempting to get DHCPv4 lease")
-	lease, err := client.Request(c.ctx, reqmods...)
-	if err != nil {
-		return nil, err
+	var (
+		lease  *nclient4.Lease
+		reqErr error
+	)
+	if c.currentLease4 != nil {
+		l.Info().Msg("current lease is not nil, renewing")
+		lease, reqErr = client.Renew(c.ctx, c.currentLease4.p4, reqmods...)
+	} else {
+		l.Info().Msg("current lease is nil, requesting new lease")
+		lease, reqErr = client.Request(c.ctx, reqmods...)
+	}
+
+	if reqErr != nil {
+		return nil, reqErr
 	}
 
 	if lease == nil || lease.ACK == nil {

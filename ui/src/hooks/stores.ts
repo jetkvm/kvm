@@ -699,6 +699,15 @@ export interface IPv6Address {
   valid_lifetime: string;
   preferred_lifetime: string;
   scope: string;
+  flags: number;
+  flag_secondary?: boolean;
+  flag_permanent?: boolean;
+  flag_temporary?: boolean;
+  flag_stable_privacy?: boolean;
+  flag_deprecated?: boolean;
+  flag_optimistic?: boolean;
+  flag_dad_failed?: boolean;
+  flag_tentative?: boolean;
 }
 
 export interface NetworkState {

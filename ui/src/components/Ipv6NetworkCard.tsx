@@ -1,7 +1,20 @@
+import { cx } from "@/cva.config";
 import { NetworkState } from "../hooks/stores";
 import { LifeTimeLabel } from "../routes/devices.$id.settings.network";
 
 import { GridCard } from "./Card";
+
+export function FlagLabel({ flag, className }: { flag: string, className?: string }) {
+  const classes = cx(
+    "ml-2 rounded-sm bg-red-500 px-2 py-1 text-[10px] font-medium leading-none text-white dark:border",
+    "bg-red-500 text-white dark:border-red-700 dark:bg-red-800 dark:text-red-50",
+    className,
+  );
+
+  return <span className={classes}>
+    {flag}
+  </span>
+}
 
 export default function Ipv6NetworkCard({
   networkState,
@@ -49,7 +62,13 @@ export default function Ipv6NetworkCard({
                         <span className="text-sm text-slate-600 dark:text-slate-400">
                           Address
                         </span>
-                        <span className="text-sm font-medium">{addr.address}</span>
+                        <span className="text-sm font-medium flex">
+                          <span className="flex-1">{addr.address}</span>
+                          <span className="text-sm font-medium flex gap-x-1">
+                            {addr.flag_deprecated ? <FlagLabel flag="Deprecated" /> : null}
+                            {addr.flag_dad_failed ? <FlagLabel flag="DAD Failed" /> : null}
+                          </span>
+                        </span>
                       </div>
 
                       {addr.valid_lifetime && (
