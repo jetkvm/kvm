@@ -137,7 +137,7 @@ func ensureSymlink(dst, src string) error {
 		return nil
 	}
 	_ = os.Remove(dst)
-	return os.Symlink(src, dst)
+	return os.Symlink(dst, src)
 }
 
 func renameFile(f *os.File, newName string) error {
