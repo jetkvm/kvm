@@ -117,31 +117,31 @@ func supervise() error {
 	return nil
 }
 
-func isSymlinkTo(dst, src string) bool {
-	file, err := os.Stat(dst)
+func isSymlinkTo(oldName, newName string) bool {
+	file, err := os.Stat(newName)
 	if err != nil {
 		return false
 	}
 	if file.Mode()&os.ModeSymlink != os.ModeSymlink {
 		return false
 	}
-	target, err := os.Readlink(dst)
+	target, err := os.Readlink(newName)
 	if err != nil {
 		return false
 	}
-	return target == src
+	return target == oldName
 }
 
-func ensureSymlink(dst, src string) error {
-	if isSymlinkTo(dst, src) {
+func ensureSymlink(oldName, newName string) error {
+	if isSymlinkTo(oldName, newName) {
 		return nil
 	}
-	_ = os.Remove(dst)
-	return os.Symlink(dst, src)
+	_ = os.Remove(newName)
+	return os.Symlink(oldName, newName)
 }
 
 func renameFile(f *os.File, newName string) error {
-	f.Close()
+	_ = f.Close()
 
 	// try to rename the file first
 	if err := os.Rename(f.Name(), newName); err == nil {
@@ -180,6 +180,8 @@ func renameFile(f *os.File, newName string) error {
 }
 
 func createErrorDump(logFile *os.File) {
+	fmt.Println()
+
 	fileName := fmt.Sprintf(
 		errorDumpTemplate,
 		time.Now().Format("20060102-150405"),
@@ -191,9 +193,11 @@ func createErrorDump(logFile *os.File) {
 		return
 	}
 
-	fmt.Printf("error dump copied: %s\n", fileName)
+	fmt.Printf("error dump copied: %s\n", filePath)
 
-	if err := ensureSymlink(filePath, filepath.Join(errorDumpDir, errorDumpLastFile)); err != nil {
+	lastFilePath := filepath.Join(errorDumpDir, errorDumpLastFile)
+
+	if err := ensureSymlink(filePath, lastFilePath); err != nil {
 		fmt.Printf("failed to create symlink: %v\n", err)
 		return
 	}
