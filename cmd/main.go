@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	envChildID         = "JETKVM_CHILD_ID"
-	errorDumpDir       = "/userdata/jetkvm/"
-	errorDumpStateFile = ".has_error_dump"
-	errorDumpTemplate  = "jetkvm-%s.log"
+	envChildID        = "JETKVM_CHILD_ID"
+	errorDumpDir      = "/userdata/jetkvm/"
+	errorDumpLastFile = "last-crash.log"
+	errorDumpTemplate = "jetkvm-%s.log"
 )
 
 func program() {
@@ -140,30 +140,24 @@ func ensureSymlink(dst, src string) error {
 	return os.Symlink(src, dst)
 }
 
-func createErrorDump(logFile *os.File) {
-	logFile.Close()
+func renameFile(f *os.File, newName string) error {
+	f.Close()
 
-	// touch the error dump state file
-	if err := os.WriteFile(filepath.Join(errorDumpDir, errorDumpStateFile), []byte{}, 0644); err != nil {
-		return
+	// try to rename the file first
+	if err := os.Rename(f.Name(), newName); err == nil {
+		return nil
 	}
 
-	fileName := fmt.Sprintf(errorDumpTemplate, time.Now().Format("20060102150405"))
-	filePath := filepath.Join(errorDumpDir, fileName)
-	if err := os.Rename(logFile.Name(), filePath); err == nil {
-		fmt.Printf("error dump created: %s\n", filePath)
-		return
-	}
-
-	fnSrc, err := os.Open(logFile.Name())
+	// copy the log file to the error dump directory
+	fnSrc, err := os.Open(f.Name())
 	if err != nil {
-		return
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer fnSrc.Close()
 
-	fnDst, err := os.Create(filePath)
+	fnDst, err := os.Create(newName)
 	if err != nil {
-		return
+		return fmt.Errorf("failed to create file: %w", err)
 	}
 	defer fnDst.Close()
 
@@ -171,20 +165,38 @@ func createErrorDump(logFile *os.File) {
 	for {
 		n, err := fnSrc.Read(buf)
 		if err != nil && err != io.EOF {
-			return
+			return fmt.Errorf("failed to read file: %w", err)
 		}
 		if n == 0 {
 			break
 		}
 
 		if _, err := fnDst.Write(buf[:n]); err != nil {
-			return
+			return fmt.Errorf("failed to write file: %w", err)
 		}
 	}
 
-	fmt.Printf("error dump created: %s\n", filePath)
+	return nil
+}
 
-	_ = ensureSymlink(filePath, filepath.Join(errorDumpDir, "last-crash.log"))
+func createErrorDump(logFile *os.File) {
+	fileName := fmt.Sprintf(
+		errorDumpTemplate,
+		time.Now().Format("20060102-150405"),
+	)
+
+	filePath := filepath.Join(errorDumpDir, fileName)
+	if err := renameFile(logFile, filePath); err != nil {
+		fmt.Printf("failed to rename file: %v\n", err)
+		return
+	}
+
+	fmt.Printf("error dump copied: %s\n", fileName)
+
+	if err := ensureSymlink(filePath, filepath.Join(errorDumpDir, errorDumpLastFile)); err != nil {
+		fmt.Printf("failed to create symlink: %v\n", err)
+		return
+	}
 }
 
 func doSupervise() {
