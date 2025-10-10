@@ -211,8 +211,7 @@ func (nm *NetlinkManager) EnsureInterfaceUpWithTimeout(ctx context.Context, ifac
 		case <-linkUpTimeout:
 			attempt++
 			l.Error().
-				Int("attempt", attempt).
-				Msg("interface is still down after timeout")
+				Int("attempt", attempt).Msg("interface is still down after timeout")
 			if err != nil {
 				return nil, err
 			}
@@ -518,6 +517,13 @@ func (nm *NetlinkManager) ReconcileLink(link *Link, expected []types.IPAddress, 
 	for _, netlinkAddr := range toRemove {
 		if err := nm.AddrDel(link, netlinkAddr); err != nil {
 			nm.logger.Warn().Err(err).Str("address", netlinkAddr.IP.String()).Msg("failed to remove address")
+		}
+	}
+
+	for _, addr := range toAdd {
+		netlinkAddr := addr.NetlinkAddr()
+		if err := nm.AddrAdd(link, &netlinkAddr); err != nil {
+			nm.logger.Warn().Err(err).Str("address", addr.Address.String()).Msg("failed to add address")
 		}
 	}
 
