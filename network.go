@@ -94,12 +94,16 @@ func validateNetworkConfig() {
 	}
 
 	networkLogger.Error().Err(err).Msg("failed to validate config, reverting to default config")
-	SaveBackupConfig()
+	if err := SaveBackupConfig(); err != nil {
+		networkLogger.Error().Err(err).Msg("failed to save backup config")
+	}
 
 	// do not use a pointer to the default config
 	// it has been already changed during LoadConfig
 	config.NetworkConfig = &(types.NetworkConfig{})
-	SaveConfig()
+	if err := SaveConfig(); err != nil {
+		networkLogger.Error().Err(err).Msg("failed to save config")
+	}
 }
 
 func initNetwork() error {
