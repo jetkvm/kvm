@@ -759,6 +759,7 @@ export interface IPv6StaticConfig {
 }
 
 export interface NetworkSettings {
+  dhcp_client: string;
   hostname: string | null;
   domain: string | null;
   http_proxy: string | null;

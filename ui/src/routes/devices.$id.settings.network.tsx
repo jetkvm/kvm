@@ -334,6 +334,17 @@ export default function SettingsNetworkRoute() {
               />
             </SettingsItem>
 
+            <SettingsItem title="DHCP client" description="Configure which DHCP client to use (reboot required)">
+              <SelectMenuBasic
+                size="SM"
+                options={[
+                  { value: "jetdhcpc", label: "JetKVM" },
+                  { value: "udhcpc", label: "udhcpc" },
+                ]}
+                {...register("dhcp_client")}
+              />
+            </SettingsItem>
+
             <SettingsItem title="IPv4 Mode" description="Configure the IPv4 mode">
               <SelectMenuBasic
                 size="SM"

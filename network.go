@@ -157,6 +157,11 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 
 	l.Debug().Msg("setting new config")
 
+	rebootRequired := false
+	if netConfig.DHCPClient.String != config.NetworkConfig.DHCPClient.String {
+		rebootRequired = true
+	}
+
 	_ = setHostname(networkManager, netConfig.Hostname.String, netConfig.Domain.String)
 
 	s := networkManager.SetInterfaceConfig(NetIfName, netConfig)
@@ -174,6 +179,10 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 	l.Debug().Msg("saving new config")
 	if err := SaveConfig(); err != nil {
 		return nil, err
+	}
+
+	if rebootRequired {
+		rpcReboot(false)
 	}
 
 	return toRpcNetworkSettings(newConfig), nil
