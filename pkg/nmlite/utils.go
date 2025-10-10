@@ -25,7 +25,7 @@ func lifetimeToTime(lifetime int) *time.Time {
 	return &t
 }
 
-func compareStringSlices(a, b []string) bool {
+func sortAndCompareStringSlices(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -42,7 +42,7 @@ func compareStringSlices(a, b []string) bool {
 	return true
 }
 
-func compareIPv6AddressSlices(a, b []types.IPv6Address) bool {
+func sortAndCompareIPv6AddressSlices(a, b []types.IPv6Address) bool {
 	if len(a) != len(b) {
 		return false
 	}

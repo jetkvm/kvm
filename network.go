@@ -91,9 +91,11 @@ func triggerTimeSyncOnNetworkStateChange() {
 	}
 
 	// sync time
-	if err := timeSync.Sync(); err != nil {
-		networkLogger.Error().Err(err).Msg("failed to sync time after network state change")
-	}
+	go func() {
+		if err := timeSync.Sync(); err != nil {
+			networkLogger.Error().Err(err).Msg("failed to sync time after network state change")
+		}
+	}()
 }
 
 func networkStateChanged(_ string, state types.InterfaceState) {

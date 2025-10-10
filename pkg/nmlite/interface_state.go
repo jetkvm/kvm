@@ -120,12 +120,12 @@ func (im *InterfaceManager) updateInterfaceStateAddresses(nl *link.Link) (bool, 
 		}
 	}
 
-	if !compareStringSlices(im.state.IPv4Addresses, ipv4Addresses) {
+	if !sortAndCompareStringSlices(im.state.IPv4Addresses, ipv4Addresses) {
 		im.state.IPv4Addresses = ipv4Addresses
 		stateChanged = true
 	}
 
-	if !compareIPv6AddressSlices(im.state.IPv6Addresses, ipv6Addresses) {
+	if !sortAndCompareIPv6AddressSlices(im.state.IPv6Addresses, ipv6Addresses) {
 		im.state.IPv6Addresses = ipv6Addresses
 		stateChanged = true
 	}
