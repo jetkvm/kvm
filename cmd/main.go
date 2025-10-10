@@ -117,6 +117,29 @@ func supervise() error {
 	return nil
 }
 
+func isSymlinkTo(dst, src string) bool {
+	file, err := os.Stat(dst)
+	if err != nil {
+		return false
+	}
+	if file.Mode()&os.ModeSymlink != os.ModeSymlink {
+		return false
+	}
+	target, err := os.Readlink(dst)
+	if err != nil {
+		return false
+	}
+	return target == src
+}
+
+func ensureSymlink(dst, src string) error {
+	if isSymlinkTo(dst, src) {
+		return nil
+	}
+	_ = os.Remove(dst)
+	return os.Symlink(src, dst)
+}
+
 func createErrorDump(logFile *os.File) {
 	logFile.Close()
 
@@ -160,6 +183,8 @@ func createErrorDump(logFile *os.File) {
 	}
 
 	fmt.Printf("error dump created: %s\n", filePath)
+
+	ensureSymlink(filePath, filepath.Join(errorDumpDir, "last-crash.log"))
 }
 
 func doSupervise() {
