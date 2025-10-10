@@ -35,7 +35,14 @@ func (c *Client) requestLease4(ifname string) (*Lease, error) {
 	reqmods := append(
 		[]dhcpv4.Modifier{
 			dhcpv4.WithOption(dhcpv4.OptClassIdentifier(VendorIdentifier)),
-			dhcpv4.WithRequestedOptions(dhcpv4.OptionSubnetMask),
+			dhcpv4.WithRequestedOptions(
+				dhcpv4.OptionSubnetMask,
+				dhcpv4.OptionInterfaceMTU,
+				dhcpv4.OptionNTPServers,
+				dhcpv4.OptionDomainName,
+				dhcpv4.OptionDomainNameServer,
+				dhcpv4.OptionDNSDomainSearchList,
+			),
 		},
 		c.cfg.Modifiers4...)
 
@@ -44,6 +51,10 @@ func (c *Client) requestLease4(ifname string) (*Lease, error) {
 		ident := []byte{0x01} // Type ethernet
 		ident = append(ident, iface.Attrs().HardwareAddr...)
 		reqmods = append(reqmods, dhcpv4.WithOption(dhcpv4.OptClientIdentifier(ident)))
+	}
+
+	if c.cfg.Hostname != "" {
+		reqmods = append(reqmods, dhcpv4.WithOption(dhcpv4.OptHostName(c.cfg.Hostname)))
 	}
 
 	l.Info().Msg("attempting to get DHCPv4 lease")
@@ -68,6 +79,7 @@ func (c *Client) requestLease4(ifname string) (*Lease, error) {
 	}
 
 	summaryStructured(lease.ACK, &l).Info().Msgf("DHCPv4 lease acquired: %s", lease.ACK.String())
+	l.Trace().Interface("options", lease.ACK.Options.String()).Msg("DHCPv4 lease options")
 
 	return fromNclient4Lease(lease, ifname), nil
 }

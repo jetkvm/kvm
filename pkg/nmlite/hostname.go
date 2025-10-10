@@ -7,9 +7,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/jetkvm/kvm/internal/sync"
-
-	"github.com/rs/zerolog"
 	"golang.org/x/net/idna"
 )
 
@@ -18,38 +15,89 @@ const (
 	hostsPath    = "/etc/hosts"
 )
 
-// HostnameManager manages system hostname and /etc/hosts
-type HostnameManager struct {
-	logger *zerolog.Logger
-	mu     sync.Mutex
-}
-
-// NewHostnameManager creates a new hostname manager
-func NewHostnameManager(logger *zerolog.Logger) *HostnameManager {
-	if logger == nil {
-		// Create a no-op logger if none provided
-		logger = &zerolog.Logger{}
-	}
-
-	return &HostnameManager{
-		logger: logger,
-	}
-}
-
 // SetHostname sets the system hostname and updates /etc/hosts
-func (hm *HostnameManager) SetHostname(hostname, fqdn string) error {
-	hm.mu.Lock()
-	defer hm.mu.Unlock()
-
+func (hm *ResolvConfManager) SetHostname(hostname, domain string) error {
 	hostname = ToValidHostname(strings.TrimSpace(hostname))
-	fqdn = ToValidHostname(strings.TrimSpace(fqdn))
+	domain = ToValidHostname(strings.TrimSpace(domain))
 
 	if hostname == "" {
 		return fmt.Errorf("invalid hostname: %s", hostname)
 	}
 
-	if fqdn == "" {
-		fqdn = hostname
+	hm.hostname = hostname
+	hm.domain = domain
+
+	return hm.reconcileHostname()
+}
+
+func (hm *ResolvConfManager) Domain() string {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+	return hm.getDomain()
+}
+
+func (hm *ResolvConfManager) Hostname() string {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+	return hm.getHostname()
+}
+
+func (hm *ResolvConfManager) FQDN() string {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+	return hm.getFQDN()
+}
+
+func (hm *ResolvConfManager) getFQDN() string {
+	hostname := hm.getHostname()
+	domain := hm.getDomain()
+
+	if domain == "" {
+		return hostname
+	}
+
+	return fmt.Sprintf("%s.%s", hostname, domain)
+}
+
+func (hm *ResolvConfManager) getHostname() string {
+	if hm.hostname != "" {
+		return hm.hostname
+	}
+	return "jetkvm"
+}
+
+func (hm *ResolvConfManager) getDomain() string {
+	if hm.domain != "" {
+		return hm.domain
+	}
+
+	for _, iface := range hm.conf.ConfigIPv4 {
+		if iface.Domain != "" {
+			return iface.Domain
+		}
+	}
+
+	for _, iface := range hm.conf.ConfigIPv6 {
+		if iface.Domain != "" {
+			return iface.Domain
+		}
+	}
+
+	return ""
+}
+
+func (hm *ResolvConfManager) reconcileHostname() error {
+	hm.mu.Lock()
+	domain := hm.getDomain()
+	hostname := hm.hostname
+	if hostname == "" {
+		hostname = "jetkvm"
+	}
+	hm.mu.Unlock()
+
+	fqdn := hostname
+	if fqdn != "" {
+		fqdn = fmt.Sprintf("%s.%s", hostname, domain)
 	}
 
 	hm.logger.Info().
@@ -81,12 +129,12 @@ func (hm *HostnameManager) SetHostname(hostname, fqdn string) error {
 }
 
 // GetCurrentHostname returns the current system hostname
-func (hm *HostnameManager) GetCurrentHostname() (string, error) {
+func (hm *ResolvConfManager) GetCurrentHostname() (string, error) {
 	return os.Hostname()
 }
 
 // GetCurrentFQDN returns the current FQDN
-func (hm *HostnameManager) GetCurrentFQDN() (string, error) {
+func (hm *ResolvConfManager) GetCurrentFQDN() (string, error) {
 	hostname, err := hm.GetCurrentHostname()
 	if err != nil {
 		return "", err
@@ -97,7 +145,7 @@ func (hm *HostnameManager) GetCurrentFQDN() (string, error) {
 }
 
 // updateEtcHostname updates the /etc/hostname file
-func (hm *HostnameManager) updateEtcHostname(hostname string) error {
+func (hm *ResolvConfManager) updateEtcHostname(hostname string) error {
 	if err := os.WriteFile(hostnamePath, []byte(hostname), 0644); err != nil {
 		return fmt.Errorf("failed to write %s: %w", hostnamePath, err)
 	}
@@ -107,7 +155,7 @@ func (hm *HostnameManager) updateEtcHostname(hostname string) error {
 }
 
 // updateEtcHosts updates the /etc/hosts file
-func (hm *HostnameManager) updateEtcHosts(hostname, fqdn string) error {
+func (hm *ResolvConfManager) updateEtcHosts(hostname, fqdn string) error {
 	// Open /etc/hosts for reading and writing
 	hostsFile, err := os.OpenFile(hostsPath, os.O_RDWR|os.O_SYNC, os.ModeExclusive)
 	if err != nil {
@@ -166,7 +214,7 @@ func (hm *HostnameManager) updateEtcHosts(hostname, fqdn string) error {
 }
 
 // setSystemHostname sets the system hostname using the hostname command
-func (hm *HostnameManager) setSystemHostname(hostname string) error {
+func (hm *ResolvConfManager) setSystemHostname(hostname string) error {
 	cmd := exec.Command("hostname", "-F", hostnamePath)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to run hostname command: %w", err)
@@ -177,7 +225,7 @@ func (hm *HostnameManager) setSystemHostname(hostname string) error {
 }
 
 // getFQDNFromHosts tries to get the FQDN from /etc/hosts
-func (hm *HostnameManager) getFQDNFromHosts(hostname string) (string, error) {
+func (hm *ResolvConfManager) getFQDNFromHosts(hostname string) (string, error) {
 	content, err := os.ReadFile(hostsPath)
 	if err != nil {
 		return hostname, nil // Return hostname as fallback

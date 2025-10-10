@@ -42,8 +42,8 @@ func restartMdns() {
 		IPv6: config.NetworkConfig.MDNSMode.String != "disabled",
 	})
 	_ = mDNS.SetLocalNames([]string{
-		networkManager.GetHostname(),
-		networkManager.GetFQDN(),
+		networkManager.Hostname(),
+		networkManager.FQDN(),
 	}, true)
 }
 
@@ -54,7 +54,12 @@ func triggerTimeSyncOnNetworkStateChange() {
 
 	// set the NTP servers from the network manager
 	if networkManager != nil {
-		timeSync.SetDhcpNtpAddresses(networkManager.NTPServerStrings())
+		ntpServers := make([]string, len(networkManager.NTPServers()))
+		for i, server := range networkManager.NTPServers() {
+			ntpServers[i] = server.String()
+		}
+		networkLogger.Info().Strs("ntpServers", ntpServers).Msg("setting NTP servers from network manager")
+		timeSync.SetDhcpNtpAddresses(ntpServers)
 	}
 
 	// sync time
@@ -103,13 +108,30 @@ func initNetwork() error {
 	// validate the config, if it's invalid, revert to the default config and save the backup
 	validateNetworkConfig()
 
-	networkManager = nmlite.NewNetworkManager(context.Background(), networkLogger)
-	networkManager.SetOnInterfaceStateChange(networkStateChanged)
-	if err := networkManager.AddInterface(NetIfName, config.NetworkConfig); err != nil {
+	nc := config.NetworkConfig
+
+	nm := nmlite.NewNetworkManager(context.Background(), networkLogger)
+	_ = setHostname(nm, nc.Hostname.String, nc.Domain.String)
+	nm.SetOnInterfaceStateChange(networkStateChanged)
+	if err := nm.AddInterface(NetIfName, nc); err != nil {
 		return fmt.Errorf("failed to add interface: %w", err)
 	}
 
+	networkManager = nm
+
 	return nil
+}
+
+func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
+	if nm == nil {
+		return nil
+	}
+
+	if hostname == "" {
+		hostname = GetDefaultHostname()
+	}
+
+	return nm.SetHostname(hostname, domain)
 }
 
 func rpcGetNetworkState() *types.RpcInterfaceState {
@@ -130,6 +152,8 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 		Logger()
 
 	l.Debug().Msg("setting new config")
+
+	_ = setHostname(networkManager, netConfig.Hostname.String, netConfig.Domain.String)
 
 	s := networkManager.SetInterfaceConfig(NetIfName, netConfig)
 	if s != nil {

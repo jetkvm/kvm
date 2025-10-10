@@ -19,6 +19,8 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+type ResolvConfChangeCallback func(family int, resolvConf *types.InterfaceResolvConf) error
+
 // InterfaceManager manages a single network interface
 type InterfaceManager struct {
 	ctx       context.Context
@@ -32,13 +34,12 @@ type InterfaceManager struct {
 	// Network components
 	staticConfig *StaticConfigManager
 	dhcpClient   *DHCPClient
-	resolvConf   *ResolvConfManager
-	hostname     *HostnameManager
 
 	// Callbacks
-	onStateChange     func(state types.InterfaceState)
-	onConfigChange    func(config *types.NetworkConfig)
-	onDHCPLeaseChange func(lease *types.DHCPLease)
+	onStateChange      func(state types.InterfaceState)
+	onConfigChange     func(config *types.NetworkConfig)
+	onDHCPLeaseChange  func(lease *types.DHCPLease)
+	onResolvConfChange ResolvConfChangeCallback
 
 	// Control
 	stopCh chan struct{}
@@ -86,9 +87,6 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DHCP client: %w", err)
 	}
-
-	im.resolvConf = NewResolvConfManager(&scopedLogger)
-	im.hostname = NewHostnameManager(&scopedLogger)
 
 	// Set up DHCP client callbacks
 	im.dhcpClient.SetOnLeaseChange(func(lease *types.DHCPLease) {
@@ -248,6 +246,9 @@ func (im *InterfaceManager) GetIPv6Addresses() []string {
 
 // GetMACAddress returns the MAC address of the interface
 func (im *InterfaceManager) GetMACAddress() string {
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
 	return im.state.MACAddress
 }
 
@@ -269,6 +270,21 @@ func (im *InterfaceManager) NTPServers() []net.IP {
 	defer im.stateMu.RUnlock()
 
 	return im.state.NTPServers
+}
+
+func (im *InterfaceManager) Domain() string {
+	im.stateMu.RLock()
+	defer im.stateMu.RUnlock()
+
+	if im.state.DHCPLease4 != nil {
+		return im.state.DHCPLease4.Domain
+	}
+
+	if im.state.DHCPLease6 != nil {
+		return im.state.DHCPLease6.Domain
+	}
+
+	return ""
 }
 
 // GetConfig returns the current interface configuration
@@ -335,6 +351,11 @@ func (im *InterfaceManager) SetOnDHCPLeaseChange(callback func(lease *types.DHCP
 	im.onDHCPLeaseChange = callback
 }
 
+// SetOnResolvConfChange sets the callback for resolv.conf changes
+func (im *InterfaceManager) SetOnResolvConfChange(callback ResolvConfChangeCallback) {
+	im.onResolvConfChange = callback
+}
+
 // applyConfiguration applies the current configuration to the interface
 func (im *InterfaceManager) applyConfiguration() error {
 	im.logger.Info().Msg("applying configuration")
@@ -347,11 +368,6 @@ func (im *InterfaceManager) applyConfiguration() error {
 	// Apply IPv6 configuration
 	if err := im.applyIPv6Config(); err != nil {
 		return fmt.Errorf("failed to apply IPv6 config: %w", err)
-	}
-
-	// Update hostname
-	if err := im.updateHostname(); err != nil {
-		im.logger.Warn().Err(err).Msg("failed to update hostname")
 	}
 
 	return nil
@@ -419,6 +435,13 @@ func (im *InterfaceManager) applyIPv4Static() error {
 
 	im.logger.Info().Interface("config", config).Msg("converted IPv4 static configuration")
 
+	if err := im.onResolvConfChange(link.AfInet, &types.InterfaceResolvConf{
+		NameServers: config.Nameservers,
+		Source:      "static",
+	}); err != nil {
+		im.logger.Warn().Err(err).Msg("failed to update resolv.conf")
+	}
+
 	return im.ReconcileLinkAddrs(config.Addresses, link.AfInet)
 }
 
@@ -462,6 +485,13 @@ func (im *InterfaceManager) applyIPv6Static() error {
 		return fmt.Errorf("failed to convert IPv6 static configuration: %w", err)
 	}
 	im.logger.Info().Interface("config", config).Msg("converted IPv6 static configuration")
+
+	if err := im.onResolvConfChange(link.AfInet6, &types.InterfaceResolvConf{
+		NameServers: config.Nameservers,
+		Source:      "static",
+	}); err != nil {
+		im.logger.Warn().Err(err).Msg("failed to update resolv.conf")
+	}
 
 	return im.ReconcileLinkAddrs(config.Addresses, link.AfInet6)
 }
@@ -540,39 +570,6 @@ func (im *InterfaceManager) disableIPv6() error {
 
 	// Disable IPv6
 	return im.staticConfig.DisableIPv6()
-}
-
-// updateHostname updates the system hostname
-func (im *InterfaceManager) updateHostname() error {
-	hostname := im.getHostname()
-	domain := im.getDomain()
-	fqdn := fmt.Sprintf("%s.%s", hostname, domain)
-
-	return im.hostname.SetHostname(hostname, fqdn)
-}
-
-// getHostname returns the configured hostname or default
-func (im *InterfaceManager) getHostname() string {
-	if im.config.Hostname.String != "" {
-		return im.config.Hostname.String
-	}
-	return "jetkvm"
-}
-
-// getDomain returns the configured domain or default
-func (im *InterfaceManager) getDomain() string {
-	if im.config.Domain.String != "" {
-		return im.config.Domain.String
-	}
-
-	// Try to get domain from DHCP lease
-	if im.dhcpClient != nil {
-		if lease := im.dhcpClient.Lease4(); lease != nil && lease.Domain != "" {
-			return lease.Domain
-		}
-	}
-
-	return "local"
 }
 
 func (im *InterfaceManager) handleLinkStateChange(link *link.Link) {
@@ -702,13 +699,34 @@ func (im *InterfaceManager) monitorInterfaceState() {
 
 // updateStateFromDHCPLease updates the state from a DHCP lease
 func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
+	family := link.AfInet
+
 	im.stateMu.Lock()
-	im.state.DHCPLease4 = lease
+	if lease.IsIPv6() {
+		im.state.DHCPLease6 = lease
+		family = link.AfInet6
+	} else {
+		im.state.DHCPLease4 = lease
+		family = link.AfInet
+	}
 	im.stateMu.Unlock()
 
 	// Update resolv.conf with DNS information
-	if im.resolvConf != nil {
-		im.resolvConf.UpdateFromLease(lease)
+	if im.onResolvConfChange == nil {
+		return
+	}
+
+	if im.ifaceName == "" {
+		im.logger.Warn().Msg("interface name is empty, skipping resolv.conf update")
+		return
+	}
+
+	if err := im.onResolvConfChange(family, &types.InterfaceResolvConf{
+		NameServers: lease.DNS,
+		SearchList:  lease.SearchList,
+		Source:      "dhcp",
+	}); err != nil {
+		im.logger.Warn().Err(err).Msg("failed to update resolv.conf")
 	}
 }
 

@@ -1,73 +1,11 @@
 package types
 
 import (
-	"net"
 	"net/http"
 	"net/url"
-	"slices"
-	"time"
 
 	"github.com/guregu/null/v6"
-	"github.com/vishvananda/netlink"
 )
-
-// IPAddress represents a network interface address
-type IPAddress struct {
-	Family    int
-	Address   net.IPNet
-	Gateway   net.IP
-	MTU       int
-	Secondary bool
-	Permanent bool
-}
-
-func (a *IPAddress) String() string {
-	return a.Address.String()
-}
-
-func (a *IPAddress) Compare(n netlink.Addr) bool {
-	if !a.Address.IP.Equal(n.IP) {
-		return false
-	}
-	if slices.Compare(a.Address.Mask, n.IPNet.Mask) != 0 {
-		return false
-	}
-	return true
-}
-
-func (a *IPAddress) NetlinkAddr() netlink.Addr {
-	return netlink.Addr{
-		IPNet: &a.Address,
-	}
-}
-
-func (a *IPAddress) DefaultRoute(linkIndex int) netlink.Route {
-	return netlink.Route{
-		Dst:       nil,
-		Gw:        a.Gateway,
-		LinkIndex: linkIndex,
-	}
-}
-
-// ParsedIPConfig represents the parsed IP configuration
-type ParsedIPConfig struct {
-	Addresses   []IPAddress
-	Nameservers []net.IP
-	SearchList  []string
-	Domain      string
-	MTU         int
-	Interface   string
-}
-
-// IPv6Address represents an IPv6 address with lifetime information
-type IPv6Address struct {
-	Address           net.IP     `json:"address"`
-	Prefix            net.IPNet  `json:"prefix"`
-	ValidLifetime     *time.Time `json:"valid_lifetime"`
-	PreferredLifetime *time.Time `json:"preferred_lifetime"`
-	Flags             int        `json:"flags"`
-	Scope             int        `json:"scope"`
-}
 
 // IPv4StaticConfig represents static IPv4 configuration
 type IPv4StaticConfig struct {
@@ -82,6 +20,12 @@ type IPv6StaticConfig struct {
 	Prefix  null.String `json:"prefix,omitempty" validate_type:"ipv6_prefix" required:"true"`
 	Gateway null.String `json:"gateway,omitempty" validate_type:"ipv6" required:"true"`
 	DNS     []string    `json:"dns,omitempty" validate_type:"ipv6" required:"true"`
+}
+
+// MDNSListenOptions represents MDNS listening options
+type MDNSListenOptions struct {
+	IPv4 bool
+	IPv6 bool
 }
 
 // NetworkConfig represents the complete network configuration for an interface
@@ -130,42 +74,16 @@ func (c *NetworkConfig) GetMDNSMode() *MDNSListenOptions {
 	return listenOptions
 }
 
-// MDNSListenOptions represents MDNS listening options
-type MDNSListenOptions struct {
-	IPv4 bool
-	IPv6 bool
-}
-
 // GetTransportProxyFunc returns a function for HTTP proxy configuration
 func (c *NetworkConfig) GetTransportProxyFunc() func(*http.Request) (*url.URL, error) {
 	return func(*http.Request) (*url.URL, error) {
 		if c.HTTPProxy.String == "" {
 			return nil, nil
 		} else {
-			proxyUrl, _ := url.Parse(c.HTTPProxy.String)
-			return proxyUrl, nil
+			proxyURL, _ := url.Parse(c.HTTPProxy.String)
+			return proxyURL, nil
 		}
 	}
-}
-
-// InterfaceState represents the current state of a network interface
-type InterfaceState struct {
-	InterfaceName string        `json:"interface_name"`
-	MACAddress    string        `json:"mac_address"`
-	Up            bool          `json:"up"`
-	Online        bool          `json:"online"`
-	IPv4Ready     bool          `json:"ipv4_ready"`
-	IPv6Ready     bool          `json:"ipv6_ready"`
-	IPv4Address   string        `json:"ipv4_address,omitempty"`
-	IPv6Address   string        `json:"ipv6_address,omitempty"`
-	IPv6LinkLocal string        `json:"ipv6_link_local,omitempty"`
-	IPv6Gateway   string        `json:"ipv6_gateway,omitempty"`
-	IPv4Addresses []string      `json:"ipv4_addresses,omitempty"`
-	IPv6Addresses []IPv6Address `json:"ipv6_addresses,omitempty"`
-	NTPServers    []net.IP      `json:"ntp_servers,omitempty"`
-	DHCPLease4    *DHCPLease    `json:"dhcp_lease,omitempty"`
-	DHCPLease6    *DHCPLease    `json:"dhcp_lease6,omitempty"`
-	LastUpdated   time.Time     `json:"last_updated"`
 }
 
 // NetworkConfig interface for backward compatibility

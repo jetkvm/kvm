@@ -81,8 +81,9 @@ func (dc *DHCPClient) initClient() (types.DHCPClient, error) {
 
 func (dc *DHCPClient) initJetDHCPC() (types.DHCPClient, error) {
 	return jetdhcpc.NewClient(dc.ctx, []string{dc.ifaceName}, &jetdhcpc.Config{
-		IPv4: dc.ipv4Enabled,
-		IPv6: dc.ipv6Enabled,
+		IPv4:               dc.ipv4Enabled,
+		IPv6:               dc.ipv6Enabled,
+		V4ClientIdentifier: true,
 		OnLease4Change: func(lease *types.DHCPLease) {
 			dc.handleLeaseChange(lease, false)
 		},

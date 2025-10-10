@@ -20,12 +20,12 @@ func (nm *NetworkManager) IsUp() bool {
 	return false
 }
 
-func (nm *NetworkManager) GetHostname() string {
-	return "jetkvm"
+func (nm *NetworkManager) Hostname() string {
+	return nm.resolvConf.Hostname()
 }
 
-func (nm *NetworkManager) GetFQDN() string {
-	return "jetkvm.local"
+func (nm *NetworkManager) FQDN() string {
+	return nm.resolvConf.FQDN()
 }
 
 func (nm *NetworkManager) NTPServers() []net.IP {

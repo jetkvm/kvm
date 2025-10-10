@@ -2,6 +2,7 @@ package jetdhcpc
 
 import (
 	"bufio"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/jetkvm/kvm/internal/network/types"
@@ -65,6 +67,11 @@ func fromNclient4Lease(l *nclient4.Lease, iface string) *Lease {
 
 	lease.ClassIdentifier = l.ACK.ClassIdentifier()
 	lease.ServerID = l.ACK.ServerIdentifier().String()
+
+	mtu := l.ACK.Options.Get(dhcpv4.OptionInterfaceMTU)
+	if mtu != nil {
+		lease.MTU = int(binary.BigEndian.Uint16(mtu))
+	}
 
 	lease.Message = l.ACK.Message()
 	lease.LeaseTime = l.ACK.IPAddressLeaseTime(defaultLeaseTime)

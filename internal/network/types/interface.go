@@ -1,27 +1,30 @@
 package types
 
 import (
+	"net"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
 
-// RpcIPv6Address is the RPC representation of an IPv6 address
-type RpcIPv6Address struct {
-	Address           string     `json:"address"`
-	Prefix            string     `json:"prefix"`
-	ValidLifetime     *time.Time `json:"valid_lifetime"`
-	PreferredLifetime *time.Time `json:"preferred_lifetime"`
-	Scope             int        `json:"scope"`
-	Flags             int        `json:"flags"`
-	FlagSecondary     bool       `json:"flag_secondary"`
-	FlagPermanent     bool       `json:"flag_permanent"`
-	FlagTemporary     bool       `json:"flag_temporary"`
-	FlagStablePrivacy bool       `json:"flag_stable_privacy"`
-	FlagDeprecated    bool       `json:"flag_deprecated"`
-	FlagOptimistic    bool       `json:"flag_optimistic"`
-	FlagDADFailed     bool       `json:"flag_dad_failed"`
-	FlagTentative     bool       `json:"flag_tentative"`
+// InterfaceState represents the current state of a network interface
+type InterfaceState struct {
+	InterfaceName string        `json:"interface_name"`
+	MACAddress    string        `json:"mac_address"`
+	Up            bool          `json:"up"`
+	Online        bool          `json:"online"`
+	IPv4Ready     bool          `json:"ipv4_ready"`
+	IPv6Ready     bool          `json:"ipv6_ready"`
+	IPv4Address   string        `json:"ipv4_address,omitempty"`
+	IPv6Address   string        `json:"ipv6_address,omitempty"`
+	IPv6LinkLocal string        `json:"ipv6_link_local,omitempty"`
+	IPv6Gateway   string        `json:"ipv6_gateway,omitempty"`
+	IPv4Addresses []string      `json:"ipv4_addresses,omitempty"`
+	IPv6Addresses []IPv6Address `json:"ipv6_addresses,omitempty"`
+	NTPServers    []net.IP      `json:"ntp_servers,omitempty"`
+	DHCPLease4    *DHCPLease    `json:"dhcp_lease,omitempty"`
+	DHCPLease6    *DHCPLease    `json:"dhcp_lease6,omitempty"`
+	LastUpdated   time.Time     `json:"last_updated"`
 }
 
 // RpcInterfaceState is the RPC representation of an interface state

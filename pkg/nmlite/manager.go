@@ -23,6 +23,8 @@ type NetworkManager struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 
+	resolvConf *ResolvConfManager
+
 	// Callback functions for state changes
 	onInterfaceStateChange func(iface string, state types.InterfaceState)
 	onConfigChange         func(iface string, config *types.NetworkConfig)
@@ -45,7 +47,18 @@ func NewNetworkManager(ctx context.Context, logger *zerolog.Logger) *NetworkMana
 		logger:     logger,
 		ctx:        ctx,
 		cancel:     cancel,
+		resolvConf: NewResolvConfManager(logger),
 	}
+}
+
+// SetHostname sets the hostname and domain for the network manager
+func (nm *NetworkManager) SetHostname(hostname string, domain string) error {
+	return nm.resolvConf.SetHostname(hostname, domain)
+}
+
+// Domain returns the effective domain for the network manager
+func (nm *NetworkManager) Domain() string {
+	return nm.resolvConf.Domain()
 }
 
 // AddInterface adds a new network interface to be managed
@@ -79,6 +92,11 @@ func (nm *NetworkManager) AddInterface(iface string, config *types.NetworkConfig
 		if nm.onDHCPLeaseChange != nil {
 			nm.onDHCPLeaseChange(iface, lease)
 		}
+	})
+
+	im.SetOnResolvConfChange(func(family int, resolvConf *types.InterfaceResolvConf) error {
+		nm.resolvConf.SetInterfaceConfig(iface, family, *resolvConf)
+		return nil
 	})
 
 	nm.interfaces[iface] = im

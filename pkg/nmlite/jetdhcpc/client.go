@@ -75,6 +75,8 @@ type Config struct {
 	// If true, add Client Identifier (61) option to the IPv4 request.
 	V4ClientIdentifier bool
 
+	Hostname string
+
 	OnLease4Change LeaseChangeHandler
 	OnLease6Change LeaseChangeHandler
 
