@@ -88,6 +88,12 @@ type SessionManager struct {
 
 // NewSessionManager creates a new session manager
 func NewSessionManager(logger *zerolog.Logger) *SessionManager {
+	// DEBUG: Log every time a new SessionManager is created
+	if logger != nil {
+		logger.Warn().
+			Msg("CREATING NEW SESSION MANAGER - This should only happen once at startup!")
+	}
+
 	// Use configuration values if available
 	maxSessions := 10
 	primaryTimeout := 5 * time.Minute
@@ -389,6 +395,8 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		Str("sessionID", session.ID).
 		Str("mode", string(session.Mode)).
 		Int("totalSessions", len(sm.sessions)).
+		Str("sm_pointer", fmt.Sprintf("%p", sm)).
+		Str("sm.sessions_pointer", fmt.Sprintf("%p", sm.sessions)).
 		Msg("Session added to manager")
 
 	// Ensure session has auto-generated nickname if needed
@@ -660,6 +668,13 @@ func (sm *SessionManager) GetAllSessions() []SessionData {
 	// Don't run validation on every getSessions call
 	// This was causing immediate demotion during transfers and page refreshes
 	// Validation should only run during state changes, not data queries
+
+	// DEBUG: Log pointer addresses to verify we're using the same instance
+	sm.logger.Debug().
+		Int("sessions_count", len(sm.sessions)).
+		Str("sm_pointer", fmt.Sprintf("%p", sm)).
+		Str("sm.sessions_pointer", fmt.Sprintf("%p", sm.sessions)).
+		Msg("GetAllSessions called")
 
 	infos := make([]SessionData, 0, len(sm.sessions))
 	for _, session := range sm.sessions {
@@ -965,17 +980,26 @@ func (sm *SessionManager) UpdateLastActive(sessionID string) {
 
 // validateSinglePrimary ensures there's only one primary session and fixes any inconsistencies
 func (sm *SessionManager) validateSinglePrimary() {
+	// CRITICAL DEBUG: Check if we actually hold the lock
+	// The caller should already hold sm.mu.Lock()
+
 	primarySessions := make([]*Session, 0)
 
+	// Capture session keys BEFORE logging to avoid lazy evaluation issues
+	sessionKeys := make([]string, 0, len(sm.sessions))
+	sessionPointers := make([]string, 0, len(sm.sessions))
+	for k, v := range sm.sessions {
+		sessionKeys = append(sessionKeys, k)
+		sessionPointers = append(sessionPointers, fmt.Sprintf("%s=%p", k[:8], v))
+	}
+
+	// DEBUG: Add pointer address to verify we're using the right manager instance
 	sm.logger.Debug().
-		Int("sm.sessions_len", len(sm.sessions)).
-		Interface("sm.sessions_keys", func() []string {
-			keys := make([]string, 0, len(sm.sessions))
-			for k := range sm.sessions {
-				keys = append(keys, k)
-			}
-			return keys
-		}()).
+		Int("sm.sessions_len_before_loop", len(sm.sessions)).
+		Strs("sm.sessions_keys", sessionKeys).
+		Strs("sm.session_pointers", sessionPointers).
+		Str("sm_pointer", fmt.Sprintf("%p", sm)).
+		Str("sm.sessions_map_pointer", fmt.Sprintf("%p", sm.sessions)).
 		Msg("validateSinglePrimary: checking sm.sessions map")
 
 	// Find all sessions that think they're primary
@@ -1134,6 +1158,9 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 	if fromExists && fromSession.Mode == SessionModePrimary {
 		fromSession.Mode = SessionModeObserver
 		fromSession.hidRPCAvailable = false
+
+		// Always delete grace period when demoting - no exceptions
+		// If a session times out or is manually transferred, it should not auto-reclaim primary
 		delete(sm.reconnectGrace, fromSessionID)
 		delete(sm.reconnectInfo, fromSessionID)
 
@@ -1160,7 +1187,15 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 	toSession.Mode = SessionModePrimary
 	toSession.hidRPCAvailable = false // Force re-handshake
 	sm.primarySessionID = toSessionID
-	sm.lastPrimaryID = toSessionID // Set to new primary so grace period works on refresh
+
+	// Only set lastPrimaryID for grace period scenarios, NOT for manual transfers
+	// Manual transfers should clear lastPrimaryID to prevent reconnection conflicts
+	if transferType == "emergency_auto_promotion" || transferType == "emergency_promotion_deadlock_prevention" ||
+	   transferType == "emergency_timeout_promotion" || transferType == "initial_promotion" {
+		sm.lastPrimaryID = toSessionID // Allow grace period recovery for emergency promotions
+	} else {
+		sm.lastPrimaryID = "" // Clear for manual transfers to prevent reconnection conflicts
+	}
 
 	// Clear input state
 	sm.clearInputState()
@@ -1171,27 +1206,32 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 	}
 
 	// Apply bidirectional blacklisting - protect newly promoted session
+	// Only apply blacklisting for MANUAL transfers, not emergency promotions
+	// Emergency promotions need to happen immediately without blacklist interference
+	isManualTransfer := (transferType == "direct_transfer" || transferType == "approval_transfer" || transferType == "release_transfer")
 	now := time.Now()
 	blacklistDuration := 60 * time.Second
 	blacklistedCount := 0
 
-	// First, clear any existing blacklist entries for the newly promoted session
-	cleanedBlacklist := make([]TransferBlacklistEntry, 0)
-	for _, entry := range sm.transferBlacklist {
-		if entry.SessionID != toSessionID { // Remove any old blacklist entries for the new primary
-			cleanedBlacklist = append(cleanedBlacklist, entry)
+	if isManualTransfer {
+		// First, clear any existing blacklist entries for the newly promoted session
+		cleanedBlacklist := make([]TransferBlacklistEntry, 0)
+		for _, entry := range sm.transferBlacklist {
+			if entry.SessionID != toSessionID { // Remove any old blacklist entries for the new primary
+				cleanedBlacklist = append(cleanedBlacklist, entry)
+			}
 		}
-	}
-	sm.transferBlacklist = cleanedBlacklist
+		sm.transferBlacklist = cleanedBlacklist
 
-	// Then blacklist all other sessions
-	for sessionID := range sm.sessions {
-		if sessionID != toSessionID { // Don't blacklist the newly promoted session
-			sm.transferBlacklist = append(sm.transferBlacklist, TransferBlacklistEntry{
-				SessionID: sessionID,
-				ExpiresAt: now.Add(blacklistDuration),
-			})
-			blacklistedCount++
+		// Then blacklist all other sessions
+		for sessionID := range sm.sessions {
+			if sessionID != toSessionID { // Don't blacklist the newly promoted session
+				sm.transferBlacklist = append(sm.transferBlacklist, TransferBlacklistEntry{
+					SessionID: sessionID,
+					ExpiresAt: now.Add(blacklistDuration),
+				})
+				blacklistedCount++
+			}
 		}
 	}
 
@@ -1214,8 +1254,9 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 		Dur("blacklistDuration", blacklistDuration).
 		Msg("Primary role transferred with bidirectional protection")
 
-	// Validate session consistency after role transfer
-	sm.validateSinglePrimary()
+	// DON'T validate here - causes recursive calls and map iteration issues
+	// The caller (AddSession, RemoveSession, etc.) will validate after we return
+	// sm.validateSinglePrimary()  // REMOVED to prevent recursion
 
 	// Handle WebRTC connection state for promoted sessions
 	// When a session changes from observer to primary, the existing WebRTC connection
@@ -1629,22 +1670,31 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 						if currentSessionSettings != nil && currentSessionSettings.RequireApproval {
 							isEmergencyPromotion = true
 
-							// Rate limiting for emergency promotions
-							if now.Sub(sm.lastEmergencyPromotion) < 30*time.Second {
-								sm.logger.Warn().
-									Str("expiredSessionID", sessionID).
-									Dur("timeSinceLastEmergency", now.Sub(sm.lastEmergencyPromotion)).
-									Msg("Emergency promotion rate limit exceeded - potential attack")
-								continue // Skip this grace period expiration
-							}
-
-							// Limit consecutive emergency promotions
-							if sm.consecutiveEmergencyPromotions >= 3 {
+							// CRITICAL: Ensure we ALWAYS have a primary session
+							// If there's NO primary, bypass rate limits entirely
+							hasPrimary := sm.primarySessionID != ""
+							if !hasPrimary {
 								sm.logger.Error().
 									Str("expiredSessionID", sessionID).
-									Int("consecutiveCount", sm.consecutiveEmergencyPromotions).
-									Msg("Too many consecutive emergency promotions - blocking for security")
-								continue // Skip this grace period expiration
+									Msg("CRITICAL: No primary session exists - bypassing all rate limits")
+							} else {
+								// Rate limiting for emergency promotions (only when we have a primary)
+								if now.Sub(sm.lastEmergencyPromotion) < 30*time.Second {
+									sm.logger.Warn().
+										Str("expiredSessionID", sessionID).
+										Dur("timeSinceLastEmergency", now.Sub(sm.lastEmergencyPromotion)).
+										Msg("Emergency promotion rate limit exceeded - potential attack")
+									continue // Skip this grace period expiration
+								}
+
+								// Limit consecutive emergency promotions
+								if sm.consecutiveEmergencyPromotions >= 3 {
+									sm.logger.Error().
+										Str("expiredSessionID", sessionID).
+										Int("consecutiveCount", sm.consecutiveEmergencyPromotions).
+										Msg("Too many consecutive emergency promotions - blocking for security")
+									continue // Skip this grace period expiration
+								}
 							}
 
 							promotedSessionID = sm.findMostTrustedSessionForEmergency()
@@ -1745,13 +1795,23 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 						if currentSessionSettings != nil && currentSessionSettings.RequireApproval {
 							isEmergencyPromotion = true
 
-							// Rate limiting for emergency promotions
-							if now.Sub(sm.lastEmergencyPromotion) < 30*time.Second {
-								sm.logger.Warn().
+							// CRITICAL: Ensure we ALWAYS have a primary session
+							// primarySessionID was just cleared above, so this will always be empty
+							// But check anyway for completeness
+							hasPrimary := sm.primarySessionID != ""
+							if !hasPrimary {
+								sm.logger.Error().
 									Str("timedOutSessionID", timedOutSessionID).
-									Dur("timeSinceLastEmergency", now.Sub(sm.lastEmergencyPromotion)).
-									Msg("Emergency promotion rate limit exceeded during timeout - potential attack")
-								continue // Skip this timeout
+									Msg("CRITICAL: No primary session after timeout - bypassing all rate limits")
+							} else {
+								// Rate limiting for emergency promotions (only when we have a primary)
+								if now.Sub(sm.lastEmergencyPromotion) < 30*time.Second {
+									sm.logger.Warn().
+										Str("timedOutSessionID", timedOutSessionID).
+										Dur("timeSinceLastEmergency", now.Sub(sm.lastEmergencyPromotion)).
+										Msg("Emergency promotion rate limit exceeded during timeout - potential attack")
+									continue // Skip this timeout
+								}
 							}
 
 							// Use trust-based selection but exclude the timed-out session
@@ -1843,7 +1903,21 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 }
 
 // Global session manager instance
-var sessionManager = NewSessionManager(websocketLogger)
+var (
+	sessionManager     *SessionManager
+	sessionManagerOnce sync.Once
+)
+
+func initSessionManager() {
+	sessionManagerOnce.Do(func() {
+		sessionManager = NewSessionManager(websocketLogger)
+		if sessionManager != nil && websocketLogger != nil {
+			websocketLogger.Error().
+				Str("pointer", fmt.Sprintf("%p", sessionManager)).
+				Msg("!!! GLOBAL sessionManager VARIABLE INITIALIZED - THIS SHOULD ONLY HAPPEN ONCE !!!")
+		}
+	})
+}
 
 // Global session settings - references config.SessionSettings for persistence
 var currentSessionSettings *SessionSettings

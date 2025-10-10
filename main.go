@@ -29,6 +29,9 @@ func Main() {
 	}
 	currentSessionSettings = config.SessionSettings
 
+	// Initialize global session manager (must be called after config and logger are ready)
+	initSessionManager()
+
 	var cancel context.CancelFunc
 	appCtx, cancel = context.WithCancel(context.Background())
 	defer cancel()
