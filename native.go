@@ -43,6 +43,8 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 				_ = rpcReboot(true)
 			case "reboot":
 				_ = rpcReboot(true)
+			case "toggleDHCPClient":
+				_ = rpcToggleDHCPClient()
 			default:
 				nativeLogger.Warn().Str("event", event).Msg("unknown rpc event received")
 			}

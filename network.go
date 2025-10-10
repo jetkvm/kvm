@@ -193,3 +193,14 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 func rpcRenewDHCPLease() error {
 	return networkManager.RenewDHCPLease(NetIfName)
 }
+
+func rpcToggleDHCPClient() error {
+	switch config.NetworkConfig.DHCPClient.String {
+	case "jetdhcpc":
+		config.NetworkConfig.DHCPClient.String = "udhcpc"
+	case "udhcpc":
+		config.NetworkConfig.DHCPClient.String = "jetdhcpc"
+	}
+
+	return rpcReboot(false)
+}

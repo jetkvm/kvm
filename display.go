@@ -43,6 +43,13 @@ func updateDisplay() {
 
 	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
 
+	switch config.NetworkConfig.DHCPClient.String {
+	case "jetdhcpc":
+		nativeInstance.UpdateLabelIfChanged("dhcp_client_change_label", "Change to udhcpc")
+	case "udhcpc":
+		nativeInstance.UpdateLabelIfChanged("dhcp_client_change_label", "Change to JetKVM")
+	}
+
 	if usbState == "configured" {
 		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Connected")
 		_, _ = nativeInstance.UIObjAddState("usb_status_label", "LV_STATE_CHECKED")
