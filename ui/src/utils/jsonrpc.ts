@@ -41,7 +41,7 @@ export function callJsonRpc(options: JsonRpcCallOptions): Promise<JsonRpcCallRes
     };
 
     const timeout = options.timeout || 5000;
-    let timeoutId: number | undefined;
+    let timeoutId: number | undefined; // eslint-disable-line prefer-const
 
     const messageHandler = (event: MessageEvent) => {
       try {

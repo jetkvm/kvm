@@ -127,7 +127,7 @@ export default function SettingsNetworkRoute() {
       notifications.error(err instanceof Error ? err.message : "Unknown error");
       throw err;
     }
-  }, []);
+  }, [setNetworkState]);
 
   const formMethods = useForm<NetworkSettings>({
     mode: "onBlur",
@@ -155,7 +155,7 @@ export default function SettingsNetworkRoute() {
   const { register, handleSubmit, watch, formState, reset } = formMethods;
 
   const onSubmit = async (settings: NetworkSettings) => {
-    send("setNetworkSettings", { settings }, async (resp: any) => {
+    send("setNetworkSettings", { settings }, async (resp) => {
       if ("error" in resp) {
         return notifications.error(
           resp.error.data ? resp.error.data : resp.error.message,
@@ -205,7 +205,7 @@ export default function SettingsNetworkRoute() {
   const ipv6mode = watch("ipv6_mode");
 
   const onDhcpLeaseRenew = () => {
-    send("renewDHCPLease", {}, (resp: any) => {
+    send("renewDHCPLease", {}, (resp) => {
       if ("error" in resp) {
         notifications.error("Failed to renew lease: " + resp.error.message);
       } else {
