@@ -30,6 +30,8 @@ export default function SessionsSettings() {
   const [reconnectGrace, setReconnectGrace] = useState(10);
   const [primaryTimeout, setPrimaryTimeout] = useState(300);
   const [privateKeystrokes, setPrivateKeystrokes] = useState(false);
+  const [maxSessions, setMaxSessions] = useState(10);
+  const [observerTimeout, setObserverTimeout] = useState(120);
 
   useEffect(() => {
     send("getSessionSettings", {}, (response: JsonRpcResponse) => {
@@ -43,6 +45,8 @@ export default function SessionsSettings() {
           primaryTimeout?: number;
           privateKeystrokes?: boolean;
           maxRejectionAttempts?: number;
+          maxSessions?: number;
+          observerTimeout?: number;
         };
         setRequireSessionApproval(settings.requireApproval);
         setRequireSessionNickname(settings.requireNickname);
@@ -58,6 +62,12 @@ export default function SessionsSettings() {
         if (settings.maxRejectionAttempts !== undefined) {
           setMaxRejectionAttempts(settings.maxRejectionAttempts);
         }
+        if (settings.maxSessions !== undefined) {
+          setMaxSessions(settings.maxSessions);
+        }
+        if (settings.observerTimeout !== undefined) {
+          setObserverTimeout(settings.observerTimeout);
+        }
       }
     });
   }, [send, setRequireSessionApproval, setRequireSessionNickname, setMaxRejectionAttempts]);
@@ -69,6 +79,8 @@ export default function SessionsSettings() {
     primaryTimeout: number;
     privateKeystrokes: boolean;
     maxRejectionAttempts: number;
+    maxSessions: number;
+    observerTimeout: number;
   }>) => {
     if (!canModifySettings) {
       notify.error("Only the primary session can change this setting");
@@ -83,6 +95,8 @@ export default function SessionsSettings() {
         primaryTimeout: primaryTimeout,
         privateKeystrokes: privateKeystrokes,
         maxRejectionAttempts: maxRejectionAttempts,
+        maxSessions: maxSessions,
+        observerTimeout: observerTimeout,
         ...updates
       }
     }, (response: JsonRpcResponse) => {
@@ -243,6 +257,65 @@ export default function SessionsSettings() {
                   );
                 }}
                 className="w-24 px-2 py-1.5 border rounded-md bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              />
+              <span className="text-sm text-slate-600 dark:text-slate-400">seconds</span>
+            </div>
+          </SettingsItem>
+
+          <SettingsItem
+            title="Maximum Concurrent Sessions"
+            description="Maximum number of sessions that can connect simultaneously"
+          >
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={maxSessions}
+                disabled={!canModifySettings}
+                onChange={e => {
+                  const newValue = parseInt(e.target.value) || 10;
+                  if (newValue < 1 || newValue > 20) {
+                    notify.error("Max sessions must be between 1 and 20");
+                    return;
+                  }
+                  setMaxSessions(newValue);
+                  updateSessionSettings({ maxSessions: newValue });
+                  notify.success(
+                    `Maximum concurrent sessions set to ${newValue}`
+                  );
+                }}
+                className="w-20 px-2 py-1.5 border rounded-md bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              />
+              <span className="text-sm text-slate-600 dark:text-slate-400">sessions</span>
+            </div>
+          </SettingsItem>
+
+          <SettingsItem
+            title="Observer Cleanup Timeout"
+            description="Time to wait before cleaning up inactive observer sessions with closed connections"
+          >
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="30"
+                max="600"
+                step="30"
+                value={observerTimeout}
+                disabled={!canModifySettings}
+                onChange={e => {
+                  const newValue = parseInt(e.target.value) || 120;
+                  if (newValue < 30 || newValue > 600) {
+                    notify.error("Timeout must be between 30 and 600 seconds");
+                    return;
+                  }
+                  setObserverTimeout(newValue);
+                  updateSessionSettings({ observerTimeout: newValue });
+                  notify.success(
+                    `Observer cleanup timeout set to ${Math.round(newValue / 60)} minute${Math.round(newValue / 60) === 1 ? '' : 's'}`
+                  );
+                }}
+                className="w-20 px-2 py-1.5 border rounded-md bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm"
               />
               <span className="text-sm text-slate-600 dark:text-slate-400">seconds</span>
             </div>

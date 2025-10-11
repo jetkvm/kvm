@@ -81,6 +81,11 @@ func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 }
 
 func writeJSONRPCEvent(event string, params any, session *Session) {
+	// Defensive checks: skip if session or RPC channel is not ready
+	if session == nil || session.RPCChannel == nil {
+		return // Channel not ready or already closed - this is expected during cleanup
+	}
+
 	request := JSONRPCEvent{
 		JSONRPC: "2.0",
 		Method:  event,
@@ -89,10 +94,6 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
 		jsonRpcLogger.Warn().Err(err).Msg("Error marshalling JSONRPC event")
-		return
-	}
-	if session == nil || session.RPCChannel == nil {
-		jsonRpcLogger.Info().Msg("RPC channel not available")
 		return
 	}
 
@@ -105,7 +106,8 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 
 	err = session.RPCChannel.SendText(requestString)
 	if err != nil {
-		scopedLogger.Warn().Err(err).Msg("error sending JSONRPC event")
+		// Only log at debug level - closed pipe errors are expected during reconnection
+		scopedLogger.Debug().Err(err).Str("event", event).Msg("Could not send JSONRPC event (channel may be closing)")
 		return
 	}
 }
@@ -326,6 +328,15 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 				}
 				if privateKeystrokes, ok := settings["privateKeystrokes"].(bool); ok {
 					currentSessionSettings.PrivateKeystrokes = privateKeystrokes
+				}
+				if maxRejectionAttempts, ok := settings["maxRejectionAttempts"].(float64); ok {
+					currentSessionSettings.MaxRejectionAttempts = int(maxRejectionAttempts)
+				}
+				if maxSessions, ok := settings["maxSessions"].(float64); ok {
+					currentSessionSettings.MaxSessions = int(maxSessions)
+				}
+				if observerTimeout, ok := settings["observerTimeout"].(float64); ok {
+					currentSessionSettings.ObserverTimeout = int(observerTimeout)
 				}
 
 				// Trigger nickname auto-generation for sessions when RequireNickname changes

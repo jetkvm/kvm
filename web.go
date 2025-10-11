@@ -49,8 +49,10 @@ type SessionSettings struct {
 	ReconnectGrace       int    `json:"reconnectGrace,omitempty"` // Grace period in seconds for primary reconnection
 	PrimaryTimeout       int    `json:"primaryTimeout,omitempty"` // Inactivity timeout in seconds for primary session
 	Nickname             string `json:"nickname,omitempty"`
-	PrivateKeystrokes    bool   `json:"privateKeystrokes,omitempty"` // If true, only primary session sees keystroke events
-	MaxRejectionAttempts int    `json:"maxRejectionAttempts,omitempty"`
+	PrivateKeystrokes    bool   `json:"privateKeystrokes,omitempty"`    // If true, only primary session sees keystroke events
+	MaxRejectionAttempts int    `json:"maxRejectionAttempts,omitempty"` // Number of times denied session can retry before modal hides
+	MaxSessions          int    `json:"maxSessions,omitempty"`          // Maximum number of concurrent sessions (default: 10)
+	ObserverTimeout      int    `json:"observerTimeout,omitempty"`      // Time in seconds to wait before cleaning up inactive observer sessions (default: 120)
 }
 
 type SetPasswordRequest struct {

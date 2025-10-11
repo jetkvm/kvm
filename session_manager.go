@@ -102,8 +102,13 @@ func NewSessionManager(logger *zerolog.Logger) *SessionManager {
 	}
 
 	// Override with session settings if available
-	if currentSessionSettings != nil && currentSessionSettings.PrimaryTimeout > 0 {
-		primaryTimeout = time.Duration(currentSessionSettings.PrimaryTimeout) * time.Second
+	if currentSessionSettings != nil {
+		if currentSessionSettings.PrimaryTimeout > 0 {
+			primaryTimeout = time.Duration(currentSessionSettings.PrimaryTimeout) * time.Second
+		}
+		if currentSessionSettings.MaxSessions > 0 {
+			maxSessions = currentSessionSettings.MaxSessions
+		}
 	}
 
 	sm := &SessionManager{
@@ -1671,6 +1676,27 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 						Msg("Removing timed-out pending session")
 					delete(sm.sessions, id)
 					needsBroadcast = true
+				}
+			}
+
+			// Clean up observer sessions with closed RPC channels (stale connections)
+			// This prevents accumulation of zombie observer sessions that are no longer connected
+			observerTimeout := 2 * time.Minute // Default: 2 minutes
+			if currentSessionSettings != nil && currentSessionSettings.ObserverTimeout > 0 {
+				observerTimeout = time.Duration(currentSessionSettings.ObserverTimeout) * time.Second
+			}
+			for id, session := range sm.sessions {
+				if session.Mode == SessionModeObserver {
+					// Check if RPC channel is nil/closed AND session has been inactive
+					if session.RPCChannel == nil && now.Sub(session.LastActive) > observerTimeout {
+						sm.logger.Info().
+							Str("sessionId", id).
+							Dur("inactiveFor", now.Sub(session.LastActive)).
+							Dur("observerTimeout", observerTimeout).
+							Msg("Removing inactive observer session with closed RPC channel")
+						delete(sm.sessions, id)
+						needsBroadcast = true
+					}
 				}
 			}
 
