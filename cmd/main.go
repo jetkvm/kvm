@@ -17,7 +17,7 @@ import (
 
 const (
 	envChildID        = "JETKVM_CHILD_ID"
-	errorDumpDir      = "/userdata/jetkvm/"
+	errorDumpDir      = "/userdata/jetkvm/crashdump"
 	errorDumpLastFile = "last-crash.log"
 	errorDumpTemplate = "jetkvm-%s.log"
 )
@@ -179,6 +179,18 @@ func renameFile(f *os.File, newName string) error {
 	return nil
 }
 
+func ensureErrorDumpDir() error {
+	// TODO: check if the directory is writable
+	f, err := os.Stat(errorDumpDir)
+	if err == nil && f.IsDir() {
+		return nil
+	}
+	if err := os.MkdirAll(errorDumpDir, 0755); err != nil {
+		return fmt.Errorf("failed to create error dump directory: %w", err)
+	}
+	return nil
+}
+
 func createErrorDump(logFile *os.File) {
 	fmt.Println()
 
@@ -186,6 +198,12 @@ func createErrorDump(logFile *os.File) {
 		errorDumpTemplate,
 		time.Now().Format("20060102-150405"),
 	)
+
+	// check if the directory exists
+	if err := ensureErrorDumpDir(); err != nil {
+		fmt.Printf("failed to ensure error dump directory: %v\n", err)
+		return
+	}
 
 	filePath := filepath.Join(errorDumpDir, fileName)
 	if err := renameFile(logFile, filePath); err != nil {
