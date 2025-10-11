@@ -177,7 +177,6 @@ func (m *MDNS) setLocalNames(localNames []string) {
 	}
 
 	m.localNames = localNames
-	return
 }
 
 func (m *MDNS) setListenOptions(listenOptions *MDNSListenOptions) {
