@@ -14,6 +14,7 @@ import { getNetworkSettings, getNetworkState } from "@/utils/jsonrpc";
 import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
 import InputField, { InputFieldWithLabel } from "@components/InputField";
+import { netMaskFromCidr4 } from "@/utils/ip";
 
 import AutoHeight from "../components/AutoHeight";
 import DhcpLeaseCard from "../components/DhcpLeaseCard";
@@ -155,6 +156,16 @@ export default function SettingsNetworkRoute() {
   const { register, handleSubmit, watch, formState, reset } = formMethods;
 
   const onSubmit = async (settings: NetworkSettings) => {
+    if (settings.ipv4_static?.address?.includes("/")) {
+      const parts = settings.ipv4_static.address.split("/");
+      const cidrNotation = parseInt(parts[1]);
+      if (isNaN(cidrNotation) || cidrNotation < 0 || cidrNotation > 32) {
+        return notifications.error("Invalid CIDR notation for IPv4 address");
+      }
+      settings.ipv4_static.netmask = netMaskFromCidr4(cidrNotation);
+      settings.ipv4_static.address = parts[0];
+    }
+
     send("setNetworkSettings", { settings }, async (resp) => {
       if ("error" in resp) {
         return notifications.error(

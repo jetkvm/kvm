@@ -2,19 +2,19 @@ import { LuPlus, LuX } from "react-icons/lu";
 import { useFieldArray, useFormContext } from "react-hook-form";
 import { useEffect } from "react";
 import validator from "validator";
+import { cx } from "cva";
 
 import { GridCard } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { InputFieldWithLabel } from "@/components/InputField";
 import { NetworkSettings } from "@/hooks/stores";
+import { netMaskFromCidr4 } from "@/utils/ip";
 
 export default function StaticIpv4Card() {
   const formMethods = useFormContext<NetworkSettings>();
-  const { register, formState, watch } = formMethods;
+  const { register, formState, watch, setValue } = formMethods;
 
   const { fields, append, remove } = useFieldArray({ name: "ipv4_static.dns" });
-
-  // TODO: set subnet mask if IP address is in CIDR notation
 
   useEffect(() => {
     if (fields.length === 0) append("");
@@ -22,8 +22,26 @@ export default function StaticIpv4Card() {
 
   const dns = watch("ipv4_static.dns");
 
+  const ipv4StaticAddress = watch("ipv4_static.address");
+  const hideSubnetMask = ipv4StaticAddress?.includes("/");
+  useEffect(() => {
+    const parts = ipv4StaticAddress?.split("/", 2);
+    if (parts.length !== 2) return;
+
+    const cidrNotation = parseInt(parts[1]);
+    if (isNaN(cidrNotation) || cidrNotation < 0 || cidrNotation > 32) return;
+
+    const mask = netMaskFromCidr4(cidrNotation);
+    setValue("ipv4_static.netmask", mask);
+  }, [ipv4StaticAddress, setValue]);
+
   const validate = (value: string) => {
     if (!validator.isIP(value)) return "Invalid IP address";
+    return true;
+  };
+
+  const validateIsIPOrCIDR4 = (value: string) => {
+    if (!validator.isIP(value, 4) && !validator.isIPRange(value, 4)) return "Invalid IP address or CIDR notation";
     return true;
   };
 
@@ -35,24 +53,25 @@ export default function StaticIpv4Card() {
             Static IPv4 Configuration
           </h3>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className={cx("grid grid-cols-1 gap-4", hideSubnetMask ? "md:grid-cols-1" : "md:grid-cols-2")}>
             <InputFieldWithLabel
               label="IP Address"
               type="text"
               size="SM"
               placeholder="192.168.1.100"
-              {...register("ipv4_static.address", { validate })}
+              {
+              ...register("ipv4_static.address", { validate: validateIsIPOrCIDR4 })}
               error={formState.errors.ipv4_static?.address?.message}
             />
 
-            <InputFieldWithLabel
+            {!hideSubnetMask && <InputFieldWithLabel
               label="Subnet Mask"
               type="text"
               size="SM"
               placeholder="255.255.255.0"
               {...register("ipv4_static.netmask", { validate })}
               error={formState.errors.ipv4_static?.netmask?.message}
-            />
+            />}
           </div>
 
           <InputFieldWithLabel
