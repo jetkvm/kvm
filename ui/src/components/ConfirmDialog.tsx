@@ -67,46 +67,55 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const { icon: Icon, iconClass, iconBgClass, buttonTheme } = variantConfig[variant];
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      onClose();
+    }
+  };
+
   return (
-    <Modal open={open} onClose={onClose}>
-      <div className="mx-auto max-w-xl px-4 transition-all duration-300 ease-in-out">
-        <div className="pointer-events-auto relative w-full overflow-hidden rounded-lg bg-white p-6 text-left align-middle shadow-xl transition-all dark:bg-slate-800">
-          <div className="space-y-4">
-            <div className="sm:flex sm:items-start">
-              <div
-                className={cx(
-                  "mx-auto flex size-12 shrink-0 items-center justify-center rounded-full sm:mx-0 sm:size-10",
-                  iconBgClass,
-                )}
-              >
-                <Icon aria-hidden="true" className={cx("size-6", iconClass)} />
-              </div>
-              <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                <h2 className="text-lg leading-tight font-bold text-black dark:text-white">
-                  {title}
-                </h2>
-                <div className="mt-2 text-sm leading-snug text-slate-600 dark:text-slate-400">
-                  {description}
+    <div onKeyDown={handleKeyDown}>
+      <Modal open={open} onClose={onClose}>
+        <div className="mx-auto max-w-xl px-4 transition-all duration-300 ease-in-out">
+          <div className="pointer-events-auto relative w-full overflow-hidden rounded-lg bg-white p-6 text-left align-middle shadow-xl transition-all dark:bg-slate-800">
+            <div className="space-y-4">
+              <div className="sm:flex sm:items-start">
+                <div
+                  className={cx(
+                    "mx-auto flex size-12 shrink-0 items-center justify-center rounded-full sm:mx-0 sm:size-10",
+                    iconBgClass,
+                  )}
+                >
+                  <Icon aria-hidden="true" className={cx("size-6", iconClass)} />
+                </div>
+                <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                  <h2 className="text-lg leading-tight font-bold text-black dark:text-white">
+                    {title}
+                  </h2>
+                  <div className="mt-2 text-sm leading-snug text-slate-600 dark:text-slate-400">
+                    {description}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="flex justify-end gap-x-2" autoFocus>
-              {cancelText && (
-                <CloseButton as={Button} size="SM" theme="blank" text={cancelText} />
-              )}
-              <Button
-                size="SM"
-                type="button"
-                theme={buttonTheme}
-                text={isConfirming ? `${confirmText}...` : confirmText}
-                onClick={onConfirm}
-                disabled={isConfirming}
-              />
+              <div className="flex justify-end gap-x-2" autoFocus>
+                {cancelText && (
+                  <CloseButton as={Button} size="SM" theme="blank" text={cancelText} />
+                )}
+                <Button
+                  size="SM"
+                  type="button"
+                  theme={buttonTheme}
+                  text={isConfirming ? `${confirmText}...` : confirmText}
+                  onClick={onConfirm}
+                  disabled={isConfirming}
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+    </div>
   );
 }
