@@ -2,7 +2,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FieldValues, FormProvider, useForm } from "react-hook-form";
-import { LuEthernetPort } from "react-icons/lu";
+import { LuCopy, LuEthernetPort } from "react-icons/lu";
 import validator from "validator";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -24,6 +24,7 @@ import StaticIpv4Card from "../components/StaticIpv4Card";
 import StaticIpv6Card from "../components/StaticIpv6Card";
 import { useJsonRpc } from "../hooks/useJsonRpc";
 import { SettingsItem } from "../components/SettingsItem";
+import { useCopyToClipboard } from "../components/useCopyToClipBoard";
 
 dayjs.extend(relativeTime);
 
@@ -225,6 +226,8 @@ export default function SettingsNetworkRoute() {
     });
   };
 
+  const { copy } = useCopyToClipboard();
+
   return (
     <>
       <FormProvider {...formMethods}>
@@ -248,19 +251,26 @@ export default function SettingsNetworkRoute() {
             }
           />
           <div className="space-y-4">
-            <SettingsItem
-              title="MAC Address"
-              description="Hardware identifier for the network interface"
-            >
-              <InputField
-                type="text"
-                size="SM"
-                value={networkState?.mac_address}
-                error={""}
-                readOnly={true}
-                className="dark:!text-opacity-60"
+            <div className="flex items-center justify-between">
+              <SettingsItem
+                title="MAC Address"
+                description="Hardware identifier for the network interface"
               />
-            </SettingsItem>
+              <div className="flex items-center">
+                <GridCard cardClassName="rounded-r-none">
+                  <div className=" h-[34px] flex items-center text-xs select-all text-black font-mono dark:text-white px-3 ">
+                    {networkState?.mac_address} {" "}
+                  </div>
+                </GridCard>
+                <Button className="rounded-l-none border-l-blue-900 dark:border-l-blue-600" size="SM" type="button" theme="primary" LeadingIcon={LuCopy} onClick={async () => {
+                  if (await copy(networkState?.mac_address || "")) {
+                    notifications.success("MAC address copied to clipboard");
+                  } else {
+                    notifications.error("Failed to copy MAC address");
+                  }
+                }} />
+              </div>
+            </div>
             <SettingsItem title="Hostname" description="Set the device hostname">
               <InputField
                 size="SM"
