@@ -2341,7 +2341,7 @@ void create_screen_switch_dhcp_client_screen() {
                                             lv_obj_set_size(obj, LV_PCT(100), LV_SIZE_CONTENT);
                                             add_style_info_content_label(obj);
                                             lv_obj_set_style_text_font(obj, &ui_font_font_book20, LV_PART_MAIN | LV_STATE_DEFAULT);
-                                            lv_label_set_text(obj, "Press and hold for\n10 seconds");
+                                            lv_label_set_text(obj, "Press and hold for\n5 seconds");
                                         }
                                     }
                                 }

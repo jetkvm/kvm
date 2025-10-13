@@ -8561,7 +8561,7 @@
                               },
                               "group": "",
                               "groupIndex": 0,
-                              "text": "Press and hold for\n10 seconds",
+                              "text": "Press and hold for\n5 seconds",
                               "textType": "literal",
                               "longMode": "WRAP",
                               "recolor": false,
