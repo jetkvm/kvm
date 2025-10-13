@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/rs/zerolog"
 )
 
 func readFileNoStat(filename string) ([]byte, error) {
@@ -36,7 +38,8 @@ func toCmdline(path string) ([]string, error) {
 	return strings.Split(string(bytes.TrimRight(data, "\x00")), "\x00"), nil
 }
 
-func (c *Client) killUdhcpc() error {
+// KillUdhcpC kills all udhcpc processes
+func KillUdhcpC(l *zerolog.Logger) error {
 	// read procfs for udhcpc processes
 	// we do not use procfs.AllProcs() because we want to avoid the overhead of reading the entire procfs
 	processes, err := os.ReadDir("/proc")
@@ -76,11 +79,11 @@ func (c *Client) killUdhcpc() error {
 	}
 
 	if len(matchedPids) == 0 {
-		c.l.Info().Msg("no udhcpc processes found")
+		l.Info().Msg("no udhcpc processes found")
 		return nil
 	}
 
-	c.l.Info().Ints("pids", matchedPids).Msg("found udhcpc processes, terminating")
+	l.Info().Ints("pids", matchedPids).Msg("found udhcpc processes, terminating")
 
 	for _, pid := range matchedPids {
 		err := syscall.Kill(pid, syscall.SIGTERM)
@@ -88,8 +91,12 @@ func (c *Client) killUdhcpc() error {
 			return err
 		}
 
-		c.l.Info().Int("pid", pid).Msg("terminated udhcpc process")
+		l.Info().Int("pid", pid).Msg("terminated udhcpc process")
 	}
 
 	return nil
+}
+
+func (c *Client) killUdhcpc() error {
+	return KillUdhcpC(c.l)
 }

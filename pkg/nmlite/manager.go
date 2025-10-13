@@ -11,6 +11,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/jetkvm/kvm/pkg/nmlite/jetdhcpc"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
 	"github.com/rs/zerolog"
 )
@@ -212,6 +213,32 @@ func (nm *NetworkManager) SetOnConfigChange(callback func(iface string, config *
 // SetOnDHCPLeaseChange sets the callback for DHCP lease changes
 func (nm *NetworkManager) SetOnDHCPLeaseChange(callback func(iface string, lease *types.DHCPLease)) {
 	nm.onDHCPLeaseChange = callback
+}
+
+func (nm *NetworkManager) shouldKillLegacyDHCPClients() bool {
+	nm.mu.RLock()
+	defer nm.mu.RUnlock()
+
+	// TODO: remove it when we need to support multiple interfaces
+	for _, im := range nm.interfaces {
+		if im.dhcpClient.clientType != "udhcpc" {
+			return true
+		}
+
+		if im.config.IPv4Mode.String != "dhcp" {
+			return true
+		}
+	}
+	return false
+}
+
+// CleanUpLegacyDHCPClients cleans up legacy DHCP clients
+func (nm *NetworkManager) CleanUpLegacyDHCPClients() error {
+	shouldKill := nm.shouldKillLegacyDHCPClients()
+	if shouldKill {
+		return jetdhcpc.KillUdhcpC(nm.logger)
+	}
+	return nil
 }
 
 // Stop stops the network manager and all managed interfaces

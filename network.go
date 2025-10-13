@@ -151,6 +151,7 @@ func initNetwork() error {
 	if err := nm.AddInterface(NetIfName, nc); err != nil {
 		return fmt.Errorf("failed to add interface: %w", err)
 	}
+	_ = nm.CleanUpLegacyDHCPClients()
 
 	networkManager = nm
 
