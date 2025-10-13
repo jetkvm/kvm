@@ -233,5 +233,9 @@ func rpcToggleDHCPClient() error {
 		config.NetworkConfig.DHCPClient.String = "jetdhcpc"
 	}
 
+	if err := SaveConfig(); err != nil {
+		return err
+	}
+
 	return rpcReboot(false)
 }
