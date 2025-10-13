@@ -191,6 +191,7 @@ export default function SettingsNetworkRoute() {
       // Label is for the UI, key is the internal key of the field
       { label: "IPv4 mode", key: "ipv4_mode" },
       { label: "IPv6 mode", key: "ipv6_mode" },
+      { label: "DHCP client", key: "dhcp_client" },
     ] as { label: string; key: keyof NetworkSettings }[];
 
     const criticalChanged = criticalFields.some(field => dirty[field.key]);
