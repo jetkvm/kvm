@@ -1159,28 +1159,26 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 	// The caller (AddSession, RemoveSession, etc.) will validate after we return
 	// sm.validateSinglePrimary()  // REMOVED to prevent recursion
 
-	// Handle WebRTC connection state for promoted sessions
-	// When a session changes from observer to primary, the existing WebRTC connection
-	// was established for observer mode and needs to be re-negotiated for primary mode
+	// Send reconnection signal for emergency promotions via WebSocket (more reliable than RPC when channel is stale)
 	if toExists && (transferType == "emergency_timeout_promotion" || transferType == "emergency_auto_promotion") {
 		go func() {
-			// Small delay to ensure session mode changes are committed
 			time.Sleep(100 * time.Millisecond)
 
-			// Send connection reset signal to the promoted session
-			writeJSONRPCEvent("connectionModeChanged", map[string]interface{}{
+			eventData := map[string]interface{}{
 				"sessionId": toSessionID,
 				"newMode":   string(toSession.Mode),
 				"reason":    "session_promotion",
 				"action":    "reconnect_required",
 				"timestamp": time.Now().Unix(),
-			}, toSession)
+			}
 
-			sm.logger.Info().
-				Str("sessionId", toSessionID).
-				Str("newMode", string(toSession.Mode)).
-				Str("transferType", transferType).
-				Msg("Sent WebRTC reconnection signal to promoted session")
+			err := toSession.sendWebSocketSignal("connectionModeChanged", eventData)
+			if err != nil {
+				sm.logger.Warn().Err(err).Str("sessionId", toSessionID).Msg("WebSocket signal failed, using RPC")
+				writeJSONRPCEvent("connectionModeChanged", eventData, toSession)
+			}
+
+			sm.logger.Info().Str("sessionId", toSessionID).Str("transferType", transferType).Msg("Sent reconnection signal")
 		}()
 	}
 

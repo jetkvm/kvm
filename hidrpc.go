@@ -134,14 +134,15 @@ const baseExtension = expectedRate + maxLateness // 100ms extension on perfect t
 const maxStaleness = 225 * time.Millisecond // discard ancient packets outright
 
 func handleHidRPCKeypressKeepAlive(session *Session) error {
+	// Update LastActive to prevent session timeout (jiggler sends every 50ms)
+	sessionManager.UpdateLastActive(session.ID)
+
 	session.keepAliveJitterLock.Lock()
 	defer session.keepAliveJitterLock.Unlock()
 
 	now := time.Now()
 
-	// 1) Staleness guard: ensures packets that arrive far beyond the life of a valid key hold
-	// (e.g. after a network stall, retransmit burst, or machine sleep) are ignored outright.
-	// This prevents “zombie” keepalives from reviving a key that should already be released.
+	// Staleness guard: discard ancient packets after network stall/machine sleep
 	if !session.lastTimerResetTime.IsZero() && now.Sub(session.lastTimerResetTime) > maxStaleness {
 		return nil
 	}

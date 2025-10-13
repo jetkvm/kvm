@@ -51,9 +51,9 @@ type Session struct {
 	RPCChannel               *webrtc.DataChannel
 	HidChannel               *webrtc.DataChannel
 	shouldUmountVirtualMedia bool
-	flushCandidates          func() // Callback to flush buffered ICE candidates
-
-	rpcQueue chan webrtc.DataChannelMessage
+	flushCandidates          func()          // Callback to flush buffered ICE candidates
+	ws                       *websocket.Conn // WebSocket for critical signaling when RPC unavailable
+	rpcQueue                 chan webrtc.DataChannelMessage
 
 	hidRPCAvailable          bool
 	lastKeepAliveArrivalTime time.Time  // Track when last keep-alive packet arrived
@@ -114,6 +114,22 @@ func (s *Session) resetKeepAliveTime() {
 	defer s.keepAliveJitterLock.Unlock()
 	s.lastKeepAliveArrivalTime = time.Time{} // Reset keep-alive timing tracking
 	s.lastTimerResetTime = time.Time{}       // Reset auto-release timer tracking
+}
+
+// sendWebSocketSignal sends critical state changes via WebSocket (fallback when RPC channel stale)
+func (s *Session) sendWebSocketSignal(messageType string, data map[string]interface{}) error {
+	if s == nil || s.ws == nil {
+		return nil
+	}
+
+	err := wsjson.Write(context.Background(), s.ws, gin.H{"type": messageType, "data": data})
+	if err != nil {
+		webrtcLogger.Debug().Err(err).Str("sessionId", s.ID).Msg("Failed to send WebSocket signal")
+		return err
+	}
+
+	webrtcLogger.Info().Str("sessionId", s.ID).Str("messageType", messageType).Msg("Sent WebSocket signal")
+	return nil
 }
 
 type hidQueueMessage struct {
@@ -299,6 +315,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	session := &Session{
 		peerConnection: peerConnection,
 		Browser:        extractBrowserFromUserAgent(config.UserAgent),
+		ws:             config.ws,
 	}
 	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
 	session.initQueues()

@@ -395,6 +395,24 @@ export default function KvmIdRoute() {
           peerConnection.addIceCandidate(candidate).catch(error => {
             console.warn("[Websocket] Failed to add ICE candidate:", error);
           });
+        } else if (parsedMessage.type === "connectionModeChanged") {
+          // Handle mode changes via WebSocket (fallback when RPC channel stale)
+          const { newMode, action } = parsedMessage.data;
+
+          if (action === "reconnect_required" && newMode) {
+            console.log(`[Websocket] Mode changed to ${newMode}, reconnecting...`);
+
+            if (currentSessionId) {
+              setCurrentSession(currentSessionId, newMode);
+            }
+
+            handleRpcEvent("connectionModeChanged", parsedMessage.data);
+
+            setTimeout(() => {
+              peerConnection?.close();
+              setupPeerConnection();
+            }, 500);
+          }
         }
       },
     },
