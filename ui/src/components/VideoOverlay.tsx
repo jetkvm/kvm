@@ -542,7 +542,7 @@ export function RebootingOverlay({ show, suggestedIp }: RebootingOverlayProps) {
                         </>
                       ) : (
                         <>
-                          Please wait while the device restarts. This usually takes 30-60 seconds.
+                          Please wait while the device restarts. This usually takes 20-30 seconds.
                             {suggestedIp && (
                               <>
                                 {" "}If reconnection fails, the device may be at{" "}
