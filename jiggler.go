@@ -129,18 +129,21 @@ func runJiggler() {
 		}
 		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
 		timeSinceLastInput := time.Since(gadget.GetLastUserInputTime())
-		logger.Debug().Msgf("Time since last user input %v", timeSinceLastInput)
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
-			logger.Debug().Msg("Jiggling mouse...")
-			//TODO: change to rel mouse
-			// Use direct hardware calls for jiggler - bypass session permissions
-			err := gadget.AbsMouseReport(1, 1, 0)
+			err := gadget.RelMouseReport(1, 0, 0)
 			if err != nil {
 				logger.Warn().Msgf("Failed to jiggle mouse: %v", err)
 			}
-			err = gadget.AbsMouseReport(0, 0, 0)
+			time.Sleep(50 * time.Millisecond)
+			err = gadget.RelMouseReport(-1, 0, 0)
 			if err != nil {
 				logger.Warn().Msgf("Failed to reset mouse position: %v", err)
+			}
+
+			if sessionManager != nil {
+				if primarySession := sessionManager.GetPrimarySession(); primarySession != nil {
+					sessionManager.UpdateLastActive(primarySession.ID)
+				}
 			}
 		}
 	}

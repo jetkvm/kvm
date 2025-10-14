@@ -400,18 +400,29 @@ export default function KvmIdRoute() {
           const { newMode, action } = parsedMessage.data;
 
           if (action === "reconnect_required" && newMode) {
-            console.log(`[Websocket] Mode changed to ${newMode}, reconnecting...`);
-
+            // Update session state immediately
             if (currentSessionId) {
               setCurrentSession(currentSessionId, newMode);
             }
 
+            // Trigger RPC event handler
             handleRpcEvent("connectionModeChanged", parsedMessage.data);
 
-            setTimeout(() => {
-              peerConnection?.close();
-              setupPeerConnection();
-            }, 500);
+            // Only reconnect if the peer connection is actually stale
+            // If already connected, the mode change via RPC is sufficient
+            const isConnectionHealthy =
+              peerConnection?.connectionState === "connected" &&
+              peerConnection?.iceConnectionState === "connected";
+
+            if (!isConnectionHealthy) {
+              console.log(`[Websocket] Mode changed to ${newMode}, connection unhealthy, reconnecting...`);
+              setTimeout(() => {
+                peerConnection?.close();
+                setupPeerConnection();
+              }, 500);
+            } else {
+              console.log(`[Websocket] Mode changed to ${newMode}, connection healthy, skipping reconnect`);
+            }
           }
         }
       },

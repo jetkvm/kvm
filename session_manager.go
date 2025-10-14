@@ -1087,6 +1087,7 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 	// Promote target session
 	toSession.Mode = SessionModePrimary
 	toSession.hidRPCAvailable = false // Force re-handshake
+	toSession.LastActive = time.Now() // Reset activity timestamp to prevent immediate timeout
 	sm.primarySessionID = toSessionID
 
 	// ALWAYS set lastPrimaryID to the new primary to support WebRTC reconnections
