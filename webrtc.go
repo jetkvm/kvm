@@ -193,14 +193,7 @@ func (s *Session) initQueues() {
 
 func (s *Session) handleQueues(index int) {
 	for msg := range s.hidQueue[index] {
-		// Get current session from manager to ensure we have the latest state
-		currentSession := sessionManager.GetSession(s.ID)
-		if currentSession != nil {
-			onHidMessage(msg, currentSession)
-		} else {
-			// Session was removed, use original to avoid nil panic
-			onHidMessage(msg, s)
-		}
+		onHidMessage(msg, s)
 	}
 }
 
@@ -324,16 +317,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	go func() {
 		for msg := range session.rpcQueue {
 			// TODO: only use goroutine if the task is asynchronous
-			go func(m webrtc.DataChannelMessage) {
-				// Get current session from manager to ensure we have the latest state
-				currentSession := sessionManager.GetSession(session.ID)
-				if currentSession != nil {
-					onRPCMessage(m, currentSession)
-				} else {
-					// Session was removed, use original to avoid nil panic
-					onRPCMessage(m, session)
-				}
-			}(msg)
+			go onRPCMessage(msg, session)
 		}
 	}()
 

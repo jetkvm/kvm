@@ -28,6 +28,10 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 		session.hidRPCAvailable = true
 	case hidrpc.TypeKeypressReport, hidrpc.TypeKeyboardReport:
 		if !session.HasPermission(PermissionKeyboardInput) {
+			logger.Debug().
+				Str("sessionID", session.ID).
+				Str("mode", string(session.Mode)).
+				Msg("keyboard input blocked: session lacks PermissionKeyboardInput")
 			return
 		}
 		rpcErr = handleHidRPCKeyboardInput(message)
@@ -54,6 +58,10 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 		rpcErr = handleHidRPCKeypressKeepAlive(session)
 	case hidrpc.TypePointerReport:
 		if !session.HasPermission(PermissionMouseInput) {
+			logger.Debug().
+				Str("sessionID", session.ID).
+				Str("mode", string(session.Mode)).
+				Msg("pointer report blocked: session lacks PermissionMouseInput")
 			return
 		}
 		pointerReport, err := message.PointerReport()
@@ -64,6 +72,10 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 		rpcErr = rpcAbsMouseReport(int16(pointerReport.X), int16(pointerReport.Y), pointerReport.Button)
 	case hidrpc.TypeMouseReport:
 		if !session.HasPermission(PermissionMouseInput) {
+			logger.Debug().
+				Str("sessionID", session.ID).
+				Str("mode", string(session.Mode)).
+				Msg("mouse report blocked: session lacks PermissionMouseInput")
 			return
 		}
 		mouseReport, err := message.MouseReport()
