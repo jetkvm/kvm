@@ -45,6 +45,7 @@ import {
   ConnectionFailedOverlay,
   LoadingConnectionOverlay,
   PeerConnectionDisconnectedOverlay,
+  RebootingOverlay,
 } from "@/components/VideoOverlay";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { FeatureFlagProvider } from "@/providers/FeatureFlagProvider";
@@ -122,7 +123,7 @@ export default function KvmIdRoute() {
   const authMode = "authMode" in loaderResp ? loaderResp.authMode : null;
 
   const params = useParams() as { id: string };
-  const { sidebarView, setSidebarView, disableVideoFocusTrap } = useUiStore();
+  const { sidebarView, setSidebarView, disableVideoFocusTrap, rebootState, setRebootState } = useUiStore();
   const [queryParams, setQueryParams] = useSearchParams();
 
   const {
@@ -241,7 +242,7 @@ export default function KvmIdRoute() {
     {
       heartbeat: true,
       retryOnError: true,
-      reconnectAttempts: 15,
+      reconnectAttempts: 2000,
       reconnectInterval: 1000,
       onReconnectStop: () => {
         console.debug("Reconnect stopped");
@@ -250,8 +251,7 @@ export default function KvmIdRoute() {
 
       shouldReconnect(event) {
         console.debug("[Websocket] shouldReconnect", event);
-        // TODO: Why true?
-        return true;
+        return isLegacySignalingEnabled.current;
       },
 
       onClose(event) {
@@ -265,6 +265,16 @@ export default function KvmIdRoute() {
       },
       onOpen() {
         console.debug("[Websocket] onOpen");
+        // We want to clear the reboot state when the websocket connection is opened
+        // Currently the flow is:
+        // 1. User clicks reboot
+        // 2. Device sends event 'willReboot'
+        // 3. We set the reboot state
+        // 4. Reboot modal is shown
+        // 5. WS tries to reconnect
+        // 6. WS reconnects
+        // 7. This function is called and now we clear the reboot state
+        setRebootState({ isRebooting: false, suggestedIp: null });
       },
 
       onMessage: message => {
@@ -340,10 +350,7 @@ export default function KvmIdRoute() {
           peerConnection.addIceCandidate(candidate);
         }
       },
-    },
-
-    // Don't even retry once we declare failure
-    !connectionFailed && isLegacySignalingEnabled.current === false,
+    }
   );
 
   const sendWebRTCSignal = useCallback(
@@ -594,6 +601,8 @@ export default function KvmIdRoute() {
     api.POST(`${CLOUD_API}/webrtc/turn_activity`, {
       bytesReceived: bytesReceivedDelta,
       bytesSent: bytesSentDelta,
+    }).catch(() => {
+      // we don't care about errors here, but we don't want unhandled promise rejections
     });
   }, 10000);
 
@@ -665,6 +674,12 @@ export default function KvmIdRoute() {
         currentUrl.searchParams.set("updateSuccess", "true");
         window.location.href = currentUrl.toString();
       }
+    }
+
+    if (resp.method === "willReboot") {
+      const suggestedIp = resp.params as unknown as string | null;
+      setRebootState({ isRebooting: true, suggestedIp });
+      navigateTo("/");
     }
   }
 
@@ -765,6 +780,14 @@ export default function KvmIdRoute() {
   }, [appVersion, getLocalVersion]);
 
   const ConnectionStatusElement = useMemo(() => {
+    const isOtherSession = location.pathname.includes("other-session");
+    if (isOtherSession) return null;
+
+    // Rebooting takes priority over connection status
+    if (rebootState?.isRebooting) {
+      return <RebootingOverlay show={true} suggestedIp={rebootState.suggestedIp} />;
+    }
+
     const hasConnectionFailed =
       connectionFailed || ["failed", "closed"].includes(peerConnectionState ?? "");
 
@@ -774,9 +797,6 @@ export default function KvmIdRoute() {
 
     const isDisconnected = peerConnectionState === "disconnected";
 
-    const isOtherSession = location.pathname.includes("other-session");
-
-    if (isOtherSession) return null;
     if (peerConnectionState === "connected") return null;
     if (isDisconnected) {
       return <PeerConnectionDisconnectedOverlay show={true} />;
@@ -792,14 +812,7 @@ export default function KvmIdRoute() {
     }
 
     return null;
-  }, [
-    connectionFailed,
-    loadingMessage,
-    location.pathname,
-    peerConnection,
-    peerConnectionState,
-    setupPeerConnection,
-  ]);
+  }, [location.pathname, rebootState?.isRebooting, rebootState?.suggestedIp, connectionFailed, peerConnectionState, peerConnection, setupPeerConnection, loadingMessage]);
 
   return (
     <FeatureFlagProvider appVersion={appVersion}>
@@ -841,7 +854,7 @@ export default function KvmIdRoute() {
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
-            <WebRTCVideo />
+            <WebRTCVideo hasConnectionIssues={!!ConnectionStatusElement} />
             <div
               style={{ animationDuration: "500ms" }}
               className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"

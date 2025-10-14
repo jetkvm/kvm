@@ -3,6 +3,7 @@ package kvm
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/mdns"
@@ -170,6 +171,54 @@ func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
 	return nm.SetHostname(hostname, domain)
 }
 
+func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (bool, *string) {
+	var rebootRequired bool
+	var suggestedIp *string
+
+	oldDhcpClient := oldConfig.DHCPClient.String
+
+	// DHCP client change always requires reboot
+	if newConfig.DHCPClient.String != oldDhcpClient {
+		rebootRequired = true
+		networkLogger.Info().Str("old", oldDhcpClient).Str("new", newConfig.DHCPClient.String).Msg("DHCP client changed, reboot required")
+	}
+
+	// IPv4 mode change requires reboot when using udhcpc
+	if newConfig.IPv4Mode.String != oldConfig.IPv4Mode.String && oldDhcpClient == "udhcpc" {
+		rebootRequired = true
+		networkLogger.Info().Str("old", oldConfig.IPv4Mode.String).Str("new", newConfig.IPv4Mode.String).Msg("IPv4 mode changed with udhcpc, reboot required")
+	}
+
+	// IPv4 static config changes require reboot
+	if newConfig.IPv4Static != nil && oldConfig.IPv4Static != nil {
+		if newConfig.IPv4Static.Address.String != oldConfig.IPv4Static.Address.String {
+			rebootRequired = true
+			suggestedIp = &newConfig.IPv4Static.Address.String
+			networkLogger.Info().Str("old", oldConfig.IPv4Static.Address.String).Str("new", newConfig.IPv4Static.Address.String).Msg("IPv4 address changed, reboot required")
+		}
+		if newConfig.IPv4Static.Netmask.String != oldConfig.IPv4Static.Netmask.String {
+			rebootRequired = true
+			networkLogger.Info().Str("old", oldConfig.IPv4Static.Netmask.String).Str("new", newConfig.IPv4Static.Netmask.String).Msg("IPv4 netmask changed, reboot required")
+		}
+		if newConfig.IPv4Static.Gateway.String != oldConfig.IPv4Static.Gateway.String {
+			rebootRequired = true
+			networkLogger.Info().Str("old", oldConfig.IPv4Static.Gateway.String).Str("new", newConfig.IPv4Static.Gateway.String).Msg("IPv4 gateway changed, reboot required")
+		}
+		if !reflect.DeepEqual(newConfig.IPv4Static.DNS, oldConfig.IPv4Static.DNS) {
+			rebootRequired = true
+			networkLogger.Info().Strs("old", oldConfig.IPv4Static.DNS).Strs("new", newConfig.IPv4Static.DNS).Msg("IPv4 DNS changed, reboot required")
+		}
+	}
+
+	// IPv6 mode change requires reboot when using udhcpc
+	if newConfig.IPv6Mode.String != oldConfig.IPv6Mode.String && oldDhcpClient == "udhcpc" {
+		rebootRequired = true
+		networkLogger.Info().Str("old", oldConfig.IPv6Mode.String).Str("new", newConfig.IPv6Mode.String).Msg("IPv6 mode changed with udhcpc, reboot required")
+	}
+
+	return rebootRequired, suggestedIp
+}
+
 func rpcGetNetworkState() *types.RpcInterfaceState {
 	state, _ := networkManager.GetInterfaceState(NetIfName)
 	return state.ToRpcInterfaceState()
@@ -189,9 +238,13 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 
 	l.Debug().Msg("setting new config")
 
-	var rebootRequired bool
-	if netConfig.DHCPClient.String != config.NetworkConfig.DHCPClient.String {
-		rebootRequired = true
+	// Check if reboot is needed
+	rebootRequired, suggestedIp := shouldRebootForNetworkChange(config.NetworkConfig, netConfig)
+
+	// If reboot required, send willReboot event before applying network config
+	if rebootRequired {
+		l.Info().Msg("Sending willReboot event before applying network config")
+		writeJSONRPCEvent("willReboot", suggestedIp, currentSession)
 	}
 
 	_ = setHostname(networkManager, netConfig.Hostname.String, netConfig.Domain.String)
@@ -238,5 +291,5 @@ func rpcToggleDHCPClient() error {
 		return err
 	}
 
-	return rpcReboot(false)
+	return rpcReboot(true)
 }
