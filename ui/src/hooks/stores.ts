@@ -69,11 +69,16 @@ export interface UIState {
 
   terminalType: AvailableTerminalTypes;
   setTerminalType: (type: UIState["terminalType"]) => void;
+
+  rebootState: { isRebooting: boolean; suggestedIp: string | null } | null;
+  setRebootState: (
+    state: { isRebooting: boolean; suggestedIp: string | null } | null,
+  ) => void;
 }
 
 export const useUiStore = create<UIState>(set => ({
   terminalType: "none",
-  setTerminalType: (type: UIState["terminalType"])  => set({ terminalType: type }),
+  setTerminalType: (type: UIState["terminalType"]) => set({ terminalType: type }),
 
   sidebarView: null,
   setSidebarView:  (view: AvailableSidebarViews | null) => set({ sidebarView: view }),
@@ -82,7 +87,8 @@ export const useUiStore = create<UIState>(set => ({
   setDisableVideoFocusTrap: (enabled: boolean) => set({ disableVideoFocusTrap: enabled }),
 
   isWakeOnLanModalVisible: false,
-  setWakeOnLanModalVisibility: (enabled: boolean) => set({ isWakeOnLanModalVisible: enabled }),
+  setWakeOnLanModalVisibility: (enabled: boolean) =>
+    set({ isWakeOnLanModalVisible: enabled }),
 
   toggleSidebarView: view =>
     set(state => {
@@ -96,6 +102,9 @@ export const useUiStore = create<UIState>(set => ({
   isAttachedVirtualKeyboardVisible: true,
   setAttachedVirtualKeyboardVisibility: (enabled: boolean) =>
     set({ isAttachedVirtualKeyboardVisible: enabled }),
+
+  rebootState: null,
+  setRebootState: state => set({ rebootState: state }),
 }));
 
 export interface RTCState {
@@ -465,7 +474,7 @@ export interface KeysDownState {
 	keys: number[];
 }
 
-export type USBStates = 
+export type USBStates =
   | "configured"
   | "attached"
   | "not attached"
