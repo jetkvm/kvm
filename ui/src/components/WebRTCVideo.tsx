@@ -538,7 +538,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                           },
                         )}
                       />
-                      {peerConnection?.connectionState == "connected" && (
+                      {peerConnection?.connectionState == "connected" && !hasConnectionIssues && (
                         <div
                           style={{ animationDuration: "500ms" }}
                           className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center"
