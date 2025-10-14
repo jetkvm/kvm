@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
@@ -8,6 +8,11 @@ import { BsMouseFill } from "react-icons/bs";
 import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import Card, { GridCard } from "@components/Card";
+import { useRTCStore } from "@/hooks/stores";
+import LogoBlue from "@/assets/logo-blue.svg";
+import LogoWhite from "@/assets/logo-white.svg";
+import { isOnDevice } from "@/main";
+
 
 interface OverlayContentProps {
   readonly children: React.ReactNode;
@@ -389,6 +394,200 @@ export function PointerLockBar({ show }: PointerLockBarProps) {
           </div>
         </motion.div>
       ) : null}
+    </AnimatePresence>
+  );
+}
+
+interface RebootingOverlayProps {
+  readonly show: boolean;
+  readonly suggestedIp: string | null;
+}
+
+export function RebootingOverlay({ show, suggestedIp }: RebootingOverlayProps) {
+  const { peerConnectionState } = useRTCStore();
+
+  // Check if we've already seen the connection drop (confirms reboot actually started)
+  const [hasSeenDisconnect, setHasSeenDisconnect] = useState(
+    ['disconnected', 'closed', 'failed'].includes(peerConnectionState ?? '')
+  );
+
+  // Track if we've timed out
+  const [hasTimedOut, setHasTimedOut] = useState(false);
+
+  // Monitor for disconnect after reboot is initiated
+  useEffect(() => {
+    if (!show) return;
+    if (hasSeenDisconnect) return;
+
+    if (['disconnected', 'closed', 'failed'].includes(peerConnectionState ?? '')) {
+      console.log('hasSeenDisconnect', hasSeenDisconnect);
+      setHasSeenDisconnect(true);
+    }
+  }, [show, peerConnectionState, hasSeenDisconnect]);
+
+  // Set timeout after 30 seconds
+  useEffect(() => {
+    if (!show) {
+      setHasTimedOut(false);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setHasTimedOut(true);
+    }, 30 * 1000);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [show]);
+
+
+  // Poll suggested IP in device mode to detect when it's available
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isFetchingRef = useRef(false);
+
+  useEffect(() => {
+    // Only run in device mode with a suggested IP
+    if (!isOnDevice || !suggestedIp || !show || !hasSeenDisconnect) {
+      return;
+    }
+
+    const checkSuggestedIp = async () => {
+      // Don't start a new fetch if one is already in progress
+      if (isFetchingRef.current) {
+        return;
+      }
+
+      // Cancel any pending fetch
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+
+      // Create new abort controller for this fetch
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+      isFetchingRef.current = true;
+
+      console.log('Checking suggested IP:', suggestedIp);
+      const timeoutId = window.setTimeout(() => abortController.abort(), 2000);
+      try {
+        const response = await fetch(
+          `${window.location.protocol}//${suggestedIp}/device/status`,
+          {
+            signal: abortController.signal,
+          }
+        );
+
+        if (response.ok) {
+          // Device is available at the new IP, redirect to it
+          console.log('Device is available at the new IP, redirecting to it');
+          window.location.href = `${window.location.protocol}//${suggestedIp}`;
+        }
+      } catch (err) {
+        // Ignore errors - they're expected while device is rebooting
+        // Only log if it's not an abort error
+        if (err instanceof Error && err.name !== 'AbortError') {
+          console.debug('Error checking suggested IP:', err);
+        }
+      } finally {
+        clearTimeout(timeoutId);
+        isFetchingRef.current = false;
+      }
+    };
+
+    // Start interval (check every 2 seconds)
+    const intervalId = setInterval(checkSuggestedIp, 2000);
+
+    // Also check immediately
+    checkSuggestedIp();
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      clearInterval(intervalId);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      isFetchingRef.current = false;
+    };
+  }, [show, suggestedIp, hasTimedOut, hasSeenDisconnect]);
+
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="aspect-video h-full w-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0 } }}
+          transition={{
+            duration: 0.4,
+            ease: "easeInOut",
+          }}
+        >
+          <OverlayContent>
+
+            <div className="flex flex-col items-start gap-y-4  w-full max-w-md">
+              <div className="h-[24px]">
+                <img src={LogoBlue} alt="" className="h-full dark:hidden" />
+                <img src={LogoWhite} alt="" className="hidden h-full dark:block" />
+              </div>
+              <div className="text-left text-sm text-slate-700 dark:text-slate-300">
+                <div className="space-y-4">
+                  <div className="space-y-2 text-black dark:text-white">
+                    <h2 className="text-xl font-bold">{hasTimedOut ? "Unable to Reconnect" : "Device is Rebooting"}</h2>
+                    <p className="text-sm text-slate-700 dark:text-slate-300">
+                      {hasTimedOut ? (
+                        <>
+                          The device may have restarted with a different IP address. Check the JetKVM&apos;s physical display to find the current IP address and reconnect.
+                        </>
+                      ) : (
+                        <>
+                          Please wait while the device restarts. This usually takes 30-60 seconds.
+                            {suggestedIp && (
+                              <>
+                                {" "}If reconnection fails, the device may be at{" "}
+                                <a
+                                  href={`${window.location.protocol}//${suggestedIp}`}
+                                  className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                >
+                                  {suggestedIp}
+                                </a>
+                                .
+                              </>
+                            )}
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-x-2">
+                    <Card>
+                      <div className="flex items-center gap-x-2 p-4">
+                        {!hasTimedOut ? (
+                          <>
+                            <LoadingSpinner className="h-4 w-4 text-blue-800 dark:text-blue-200" />
+                            <p className="text-sm text-slate-700 dark:text-slate-300">
+                              Waiting for device to restart...
+                            </p>
+                          </>
+                        ) : (
+                          <div className="flex flex-col gap-y-2">
+                            <div className="flex items-center gap-x-2">
+                              <ExclamationTriangleIcon className="h-5 w-5 text-yellow-500" />
+                              <p className="text-sm text-black dark:text-white">
+                                Automatic Reconnection Timed Out
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </OverlayContent>
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 }
