@@ -178,9 +178,8 @@ export default function SettingsNetworkRoute() {
 
         try {
           const networkData = await fetchNetworkData();
-          if (!networkData) {
-            return notifications.error("Failed to fetch network data");
-          }
+          if (!networkData) return
+
           reset(networkData.settings);
           notifications.success("Network settings saved");
 
