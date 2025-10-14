@@ -541,7 +541,7 @@ export default function SettingsNetworkRoute() {
               </div>
               <div className="space-y-2.5">
                 {criticalChanges.map((c, idx) => (
-                  <div key={idx + c.label} className="flex gap-x-2 flex-wrap space-y-1.5 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-800/10 dark:border-slate-300/20 rounded-md py-2 px-3">
+                  <div key={idx + c.label} className="flex items-center gap-x-2 flex-wrap space-y-1.5 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-800/10 dark:border-slate-300/20 rounded-md py-2 px-3">
                     <div className="text-xs text-slate-600 dark:text-slate-400">
                       <span>{c.label}</span>
                     </div>
