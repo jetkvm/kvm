@@ -26,9 +26,9 @@ export default function StaticIpv4Card() {
   const hideSubnetMask = ipv4StaticAddress?.includes("/");
   useEffect(() => {
     const parts = ipv4StaticAddress?.split("/", 2);
-    if (parts.length !== 2) return;
+    if (parts?.length !== 2) return;
 
-    const cidrNotation = parseInt(parts[1]);
+    const cidrNotation = parseInt(parts?.[1] ?? "");
     if (isNaN(cidrNotation) || cidrNotation < 0 || cidrNotation > 32) return;
 
     const mask = netMaskFromCidr4(cidrNotation);
@@ -60,7 +60,9 @@ export default function StaticIpv4Card() {
               size="SM"
               placeholder="192.168.1.100"
               {
-              ...register("ipv4_static.address", { validate: validateIsIPOrCIDR4 })}
+              ...register("ipv4_static.address", {
+                validate: (value: string | undefined) => validateIsIPOrCIDR4(value ?? "")
+              })}
               error={formState.errors.ipv4_static?.address?.message}
             />
 
@@ -69,7 +71,7 @@ export default function StaticIpv4Card() {
               type="text"
               size="SM"
               placeholder="255.255.255.0"
-              {...register("ipv4_static.netmask", { validate })}
+              {...register("ipv4_static.netmask", { validate: (value: string | undefined) => validate(value ?? "") })}
               error={formState.errors.ipv4_static?.netmask?.message}
             />}
           </div>
@@ -79,7 +81,7 @@ export default function StaticIpv4Card() {
             type="text"
             size="SM"
             placeholder="192.168.1.1"
-            {...register("ipv4_static.gateway", { validate })}
+            {...register("ipv4_static.gateway", { validate: (value: string | undefined) => validate(value ?? "") })}
             error={formState.errors.ipv4_static?.gateway?.message}
           />
 
@@ -95,7 +97,10 @@ export default function StaticIpv4Card() {
                         type="text"
                         size="SM"
                         placeholder="1.1.1.1"
-                        {...register(`ipv4_static.dns.${index}`, { validate })}
+                        {...register(
+                          `ipv4_static.dns.${index}`,
+                          { validate: (value: string | undefined) => validate(value ?? "") }
+                        )}
                         error={formState.errors.ipv4_static?.dns?.[index]?.message}
                       />
                     </div>
@@ -123,7 +128,7 @@ export default function StaticIpv4Card() {
             LeadingIcon={LuPlus}
             type="button"
             text="Add DNS Server"
-            disabled={dns[0] === ""}
+            disabled={dns?.[0] === ""}
           />
         </div>
       </div>

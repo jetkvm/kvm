@@ -55,7 +55,7 @@ export default function StaticIpv6Card() {
             type="text"
             size="SM"
             placeholder="2001:db8::1/64"
-            {...register("ipv6_static.prefix", { validate: cidrValidation })}
+            {...register("ipv6_static.prefix", { validate: (value: string | undefined) => cidrValidation(value ?? "") })}
             error={formState.errors.ipv6_static?.prefix?.message}
           />
 
@@ -64,7 +64,7 @@ export default function StaticIpv6Card() {
             type="text"
             size="SM"
             placeholder="2001:db8::1"
-            {...register("ipv6_static.gateway", { validate: ipv6Validation })}
+            {...register("ipv6_static.gateway", { validate: (value: string | undefined) => ipv6Validation(value ?? "") })}
             error={formState.errors.ipv6_static?.gateway?.message}
           />
 
@@ -80,9 +80,7 @@ export default function StaticIpv6Card() {
                         type="text"
                         size="SM"
                         placeholder="2001:4860:4860::8888"
-                        {...register(`ipv6_static.dns.${index}`, {
-                          validate: ipv6Validation,
-                        })}
+                        {...register(`ipv6_static.dns.${index}`, { validate: (value: string | undefined) => ipv6Validation(value ?? "") })}
                         error={formState.errors.ipv6_static?.dns?.[index]?.message}
                       />
                     </div>
@@ -110,7 +108,7 @@ export default function StaticIpv6Card() {
             LeadingIcon={LuPlus}
             type="button"
             text="Add DNS Server"
-            disabled={dns[0] === ""}
+            disabled={dns?.[0] === ""}
           />
         </div>
       </div>
