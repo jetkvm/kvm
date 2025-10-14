@@ -90,6 +90,11 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 
 	// Set up DHCP client callbacks
 	im.dhcpClient.SetOnLeaseChange(func(lease *types.DHCPLease) {
+		if im.config.IPv4Mode.String != "dhcp" {
+			im.logger.Warn().Str("mode", im.config.IPv4Mode.String).Msg("ignoring DHCP lease, current mode is not DHCP")
+			return
+		}
+
 		if err := im.applyDHCPLease(lease); err != nil {
 			im.logger.Error().Err(err).Msg("failed to apply DHCP lease")
 		}
