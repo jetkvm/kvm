@@ -186,31 +186,71 @@ export default function SettingsNetworkRoute() {
     const settings = prepareSettings(data);
     const dirty = formState.dirtyFields;
 
-    // These fields will prompt a confirm dialog, all else save immediately
-    const criticalFields = [
-      // Label is for the UI, key is the internal key of the field
-      { label: "IPv4 mode", key: "ipv4_mode" },
-      { label: "IPv6 mode", key: "ipv6_mode" },
-      { label: "DHCP client", key: "dhcp_client" },
-    ] as { label: string; key: keyof NetworkSettings }[];
+    // Build list of critical changes for display
+    const changes: { label: string; from: string; to: string }[] = [];
 
-    const criticalChanged = criticalFields.some(field => dirty[field.key]);
+    if (dirty.dhcp_client) {
+      changes.push({
+        label: "DHCP client",
+        from: initialSettingsRef.current?.dhcp_client as string,
+        to: data.dhcp_client as string,
+      });
+    }
+
+    if (dirty.ipv4_mode) {
+      changes.push({
+        label: "IPv4 mode",
+        from: initialSettingsRef.current?.ipv4_mode as string,
+        to: data.ipv4_mode as string,
+      });
+    }
+
+    if (dirty.ipv4_static?.address) {
+      changes.push({
+        label: "IPv4 address",
+        from: initialSettingsRef.current?.ipv4_static?.address as string,
+        to: data.ipv4_static?.address as string,
+      });
+    }
+
+    if (dirty.ipv4_static?.netmask) {
+      changes.push({
+        label: "IPv4 netmask",
+        from: initialSettingsRef.current?.ipv4_static?.netmask as string,
+        to: data.ipv4_static?.netmask as string,
+      });
+    }
+
+    if (dirty.ipv4_static?.gateway) {
+      changes.push({
+        label: "IPv4 gateway",
+        from: initialSettingsRef.current?.ipv4_static?.gateway as string,
+        to: data.ipv4_static?.gateway as string,
+      });
+    }
+
+    if (dirty.ipv4_static?.dns) {
+      changes.push({
+        label: "IPv4 DNS",
+        from: initialSettingsRef.current?.ipv4_static?.dns.join(", ").toString() ?? "",
+        to: data.ipv4_static?.dns.join(",").toString() ?? "",
+      });
+    }
+
+    if (dirty.ipv6_mode) {
+      changes.push({
+        label: "IPv6 mode",
+        from: initialSettingsRef.current?.ipv6_mode as string,
+        to: data.ipv6_mode as string,
+      });
+    }
 
     // If no critical fields are changed, save immediately
-    if (!criticalChanged) return onSubmit(settings);
+    if (changes.length === 0) return onSubmit(settings);
 
-    const changes = new Set<{ label: string; from: string; to: string }>();
-    criticalFields.forEach(field => {
-      const { key, label } = field;
-      if (dirty[key]) {
-        const from = initialSettingsRef?.current?.[key] as string;
-        const to = data[key] as string;
-        changes.add({ label, from, to });
-      }
-    });
-
+    // Show confirmation dialog for critical changes
     setStagedSettings(settings);
-    setCriticalChanges(Array.from(changes));
+    setCriticalChanges(changes);
     setShowCriticalSettingsConfirm(true);
   };
 
@@ -263,7 +303,7 @@ export default function SettingsNetworkRoute() {
                     {networkState?.mac_address} {" "}
                   </div>
                 </GridCard>
-                <Button className="rounded-l-none border-l-blue-900 dark:border-l-blue-600" size="SM" type="button" theme="primary" LeadingIcon={LuCopy} onClick={async () => {
+                <Button className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20" size="SM" type="button" theme="light" LeadingIcon={LuCopy} onClick={async () => {
                   if (await copy(networkState?.mac_address || "")) {
                     notifications.success("MAC address copied to clipboard");
                   } else {
@@ -356,7 +396,7 @@ export default function SettingsNetworkRoute() {
               />
             </SettingsItem>
 
-            <SettingsItem title="DHCP client" description="Configure which DHCP client to use (reboot required)">
+            <SettingsItem title="DHCP client" description="Configure which DHCP client to use">
               <SelectMenuBasic
                 size="SM"
                 options={[
@@ -484,52 +524,43 @@ export default function SettingsNetworkRoute() {
           }, 500);
         }}
         onClose={() => {
-          // close();
           setShowCriticalSettingsConfirm(false);
         }}
         isConfirming={formState.isSubmitting}
         description={
           <div className="space-y-4">
-            <p>
-              This will update the device&apos;s network configuration and may briefly
-              disconnect your session.
-            </p>
+            <div>
+              <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                The following network settings will be applied. These changes may require a reboot and cause brief disconnection.
+              </p>
+            </div>
 
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/40">
-              <div className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
-                Pending changes
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between text-[13px] font-medium text-slate-900 dark:text-white">
+                Configuration changes
               </div>
-              <dl className="grid grid-cols-1 gap-y-2">
+              <div className="space-y-2.5">
                 {criticalChanges.map((c, idx) => (
-                  <div key={idx} className="w-full not-last:pb-2">
-                    <div className="flex items-center gap-2 gap-x-8">
-                      <dt className="text-sm text-slate-500 dark:text-slate-400">
-                        {c.label}
-                      </dt>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-sm bg-slate-200 px-1.5 py-0.5 text-sm font-medium text-slate-900 dark:bg-slate-700 dark:text-slate-100">
-                          {c.from || "—"}
-                        </span>
-
-                        <span className="text-sm text-slate-500 dark:text-slate-400">
-                          →
-                        </span>
-
-                        <span className="rounded-sm bg-slate-200 px-1.5 py-0.5 text-sm font-medium text-slate-900 dark:bg-slate-700 dark:text-slate-100">
-                          {c.to}
-                        </span>
-                      </div>
+                  <div key={idx + c.label} className="flex gap-x-2 flex-wrap space-y-1.5 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-800/10 dark:border-slate-300/20 rounded-md py-2 px-3">
+                    <div className="text-xs text-slate-600 dark:text-slate-400">
+                      <span>{c.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <code className="rounded border border-slate-800/20 bg-slate-50 px-1.5 py-1 text-xs text-black font-mono dark:border-slate-300/20 dark:bg-slate-800 dark:text-slate-100">
+                        {c.from || "—"}
+                      </code>
+                      <svg className="size-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      </svg>
+                      <code className="rounded border border-slate-800/20 bg-slate-50 px-1.5 py-1 text-xs text-black font-mono dark:border-slate-300/20 dark:bg-slate-800 dark:text-slate-100">
+                        {c.to}
+                      </code>
                     </div>
                   </div>
                 ))}
-              </dl>
+              </div>
             </div>
 
-            <p className="text-sm">
-              If the network settings are invalid,{" "}
-              <strong>the device may become unreachable</strong> and require a factory
-              reset to restore connectivity.
-            </p>
           </div>
         }
       />
