@@ -23,7 +23,7 @@ import {
   PointerLockBar,
 } from "./VideoOverlay";
 
-export default function WebRTCVideo() {
+export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssues: boolean }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
   const { mediaStream, peerConnectionState } = useRTCStore();
@@ -527,9 +527,10 @@ export default function WebRTCVideo() {
                           "max-h-full min-h-[384px] max-w-full min-w-[512px] bg-black/50 object-contain transition-all duration-1000",
                           {
                             "cursor-none": settings.isCursorHidden,
-                            "opacity-0":
+                            "!opacity-0":
                               isVideoLoading ||
                               hdmiError ||
+                              hasConnectionIssues ||
                               peerConnectionState !== "connected",
                             "opacity-60!": showPointerLockBar,
                             "animate-slideUpFade border border-slate-800/30 shadow-xs dark:border-slate-300/20":
