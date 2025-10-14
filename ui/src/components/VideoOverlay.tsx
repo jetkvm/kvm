@@ -8,7 +8,7 @@ import { BsMouseFill } from "react-icons/bs";
 import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import Card, { GridCard } from "@components/Card";
-import { useRTCStore } from "@/hooks/stores";
+import { useRTCStore, PostRebootAction } from "@/hooks/stores";
 import LogoBlue from "@/assets/logo-blue.svg";
 import LogoWhite from "@/assets/logo-white.svg";
 import { isOnDevice } from "@/main";
@@ -400,10 +400,10 @@ export function PointerLockBar({ show }: PointerLockBarProps) {
 
 interface RebootingOverlayProps {
   readonly show: boolean;
-  readonly suggestedIp: string | null;
+  readonly postRebootAction: PostRebootAction;
 }
 
-export function RebootingOverlay({ show, suggestedIp }: RebootingOverlayProps) {
+export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayProps) {
   const { peerConnectionState } = useRTCStore();
 
   // Check if we've already seen the connection drop (confirms reboot actually started)
@@ -447,12 +447,12 @@ export function RebootingOverlay({ show, suggestedIp }: RebootingOverlayProps) {
   const isFetchingRef = useRef(false);
 
   useEffect(() => {
-    // Only run in device mode with a suggested IP
-    if (!isOnDevice || !suggestedIp || !show || !hasSeenDisconnect) {
+    // Only run in device mode with a postRebootAction
+    if (!isOnDevice || !postRebootAction || !show || !hasSeenDisconnect) {
       return;
     }
 
-    const checkSuggestedIp = async () => {
+    const checkPostRebootHealth = async () => {
       // Don't start a new fetch if one is already in progress
       if (isFetchingRef.current) {
         return;
@@ -468,26 +468,24 @@ export function RebootingOverlay({ show, suggestedIp }: RebootingOverlayProps) {
       abortControllerRef.current = abortController;
       isFetchingRef.current = true;
 
-      console.log('Checking suggested IP:', suggestedIp);
+      console.log('Checking post-reboot health endpoint:', postRebootAction.healthCheck);
       const timeoutId = window.setTimeout(() => abortController.abort(), 2000);
       try {
         const response = await fetch(
-          `${window.location.protocol}//${suggestedIp}/device/status`,
-          {
-            signal: abortController.signal,
-          }
+          postRebootAction.healthCheck,
+          { signal: abortController.signal, }
         );
 
         if (response.ok) {
-          // Device is available at the new IP, redirect to it
-          console.log('Device is available at the new IP, redirecting to it');
-          window.location.href = `${window.location.protocol}//${suggestedIp}`;
+          // Device is available, redirect to the specified URL
+          console.log('Device is available, redirecting to:', postRebootAction.redirectUrl);
+          window.location.href = postRebootAction.redirectUrl;
         }
       } catch (err) {
         // Ignore errors - they're expected while device is rebooting
         // Only log if it's not an abort error
         if (err instanceof Error && err.name !== 'AbortError') {
-          console.debug('Error checking suggested IP:', err);
+          console.debug('Error checking post-reboot health:', err);
         }
       } finally {
         clearTimeout(timeoutId);
@@ -496,10 +494,10 @@ export function RebootingOverlay({ show, suggestedIp }: RebootingOverlayProps) {
     };
 
     // Start interval (check every 2 seconds)
-    const intervalId = setInterval(checkSuggestedIp, 2000);
+    const intervalId = setInterval(checkPostRebootHealth, 2000);
 
     // Also check immediately
-    checkSuggestedIp();
+    checkPostRebootHealth();
 
     // Cleanup on unmount or when dependencies change
     return () => {
@@ -509,7 +507,7 @@ export function RebootingOverlay({ show, suggestedIp }: RebootingOverlayProps) {
       }
       isFetchingRef.current = false;
     };
-  }, [show, suggestedIp, hasTimedOut, hasSeenDisconnect]);
+  }, [show, postRebootAction, hasTimedOut, hasSeenDisconnect]);
 
   return (
     <AnimatePresence>
@@ -543,18 +541,7 @@ export function RebootingOverlay({ show, suggestedIp }: RebootingOverlayProps) {
                       ) : (
                         <>
                           Please wait while the device restarts. This usually takes 20-30 seconds.
-                            {suggestedIp && (
-                              <>
-                                {" "}If reconnection fails, the device may be at{" "}
-                                <a
-                                  href={`${window.location.protocol}//${suggestedIp}`}
-                                  className="font-medium text-blue-600 hover:underline dark:text-blue-400"
-                                >
-                                  {suggestedIp}
-                                </a>
-                                .
-                              </>
-                            )}
+
                         </>
                       )}
                     </p>

@@ -27,6 +27,11 @@ func (s *RpcNetworkSettings) ToNetworkConfig() *types.NetworkConfig {
 	return &s.NetworkConfig
 }
 
+type PostRebootAction struct {
+	HealthCheck string `json:"healthCheck"`
+	RedirectUrl string `json:"redirectUrl"`
+}
+
 func toRpcNetworkSettings(config *types.NetworkConfig) *RpcNetworkSettings {
 	return &RpcNetworkSettings{
 		NetworkConfig: *config,
@@ -171,9 +176,9 @@ func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
 	return nm.SetHostname(hostname, domain)
 }
 
-func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (bool, *string) {
+func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (bool, *PostRebootAction) {
 	var rebootRequired bool
-	var suggestedIp *string
+	var postRebootAction *PostRebootAction
 
 	oldDhcpClient := oldConfig.DHCPClient.String
 
@@ -183,8 +188,8 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (bo
 		networkLogger.Info().Str("old", oldDhcpClient).Str("new", newConfig.DHCPClient.String).Msg("DHCP client changed, reboot required")
 	}
 
-	// IPv4 mode change requires reboot when using udhcpc
-	if newConfig.IPv4Mode.String != oldConfig.IPv4Mode.String && oldDhcpClient == "udhcpc" {
+	// IPv4 mode change requires reboot
+	if newConfig.IPv4Mode.String != oldConfig.IPv4Mode.String {
 		rebootRequired = true
 		networkLogger.Info().Str("old", oldConfig.IPv4Mode.String).Str("new", newConfig.IPv4Mode.String).Msg("IPv4 mode changed with udhcpc, reboot required")
 	}
@@ -193,8 +198,13 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (bo
 	if newConfig.IPv4Static != nil && oldConfig.IPv4Static != nil {
 		if newConfig.IPv4Static.Address.String != oldConfig.IPv4Static.Address.String {
 			rebootRequired = true
-			suggestedIp = &newConfig.IPv4Static.Address.String
-			networkLogger.Info().Str("old", oldConfig.IPv4Static.Address.String).Str("new", newConfig.IPv4Static.Address.String).Msg("IPv4 address changed, reboot required")
+			newIP := newConfig.IPv4Static.Address.String
+			postRebootAction = &PostRebootAction{
+				// The user can be using self-signed certificates, so we use don't specify the protocol
+				HealthCheck: fmt.Sprintf("//%s/device/status", newIP),
+				RedirectUrl: fmt.Sprintf("//%s", newIP),
+			}
+			networkLogger.Info().Str("old", oldConfig.IPv4Static.Address.String).Str("new", newIP).Msg("IPv4 address changed, reboot required")
 		}
 		if newConfig.IPv4Static.Netmask.String != oldConfig.IPv4Static.Netmask.String {
 			rebootRequired = true
@@ -216,7 +226,7 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (bo
 		networkLogger.Info().Str("old", oldConfig.IPv6Mode.String).Str("new", newConfig.IPv6Mode.String).Msg("IPv6 mode changed with udhcpc, reboot required")
 	}
 
-	return rebootRequired, suggestedIp
+	return rebootRequired, postRebootAction
 }
 
 func rpcGetNetworkState() *types.RpcInterfaceState {
@@ -239,12 +249,12 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 	l.Debug().Msg("setting new config")
 
 	// Check if reboot is needed
-	rebootRequired, suggestedIp := shouldRebootForNetworkChange(config.NetworkConfig, netConfig)
+	rebootRequired, postRebootAction := shouldRebootForNetworkChange(config.NetworkConfig, netConfig)
 
 	// If reboot required, send willReboot event before applying network config
 	if rebootRequired {
 		l.Info().Msg("Sending willReboot event before applying network config")
-		writeJSONRPCEvent("willReboot", suggestedIp, currentSession)
+		writeJSONRPCEvent("willReboot", postRebootAction, currentSession)
 	}
 
 	_ = setHostname(networkManager, netConfig.Hostname.String, netConfig.Domain.String)

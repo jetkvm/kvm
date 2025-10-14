@@ -19,6 +19,11 @@ interface JsonRpcResponse {
   id: number | string | null;
 }
 
+export type PostRebootAction = {
+  healthCheck: string;
+  redirectUrl: string;
+} | null;
+
 // Utility function to append stats to a Map
 const appendStatToMap = <T extends { timestamp: number }>(
   stat: T,
@@ -70,9 +75,9 @@ export interface UIState {
   terminalType: AvailableTerminalTypes;
   setTerminalType: (type: UIState["terminalType"]) => void;
 
-  rebootState: { isRebooting: boolean; suggestedIp: string | null } | null;
+  rebootState: { isRebooting: boolean; postRebootAction: PostRebootAction } | null;
   setRebootState: (
-    state: { isRebooting: boolean; suggestedIp: string | null } | null,
+    state: { isRebooting: boolean; postRebootAction: PostRebootAction } | null,
   ) => void;
 }
 

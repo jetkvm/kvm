@@ -24,6 +24,7 @@ import {
   KeysDownState,
   NetworkState,
   OtaState,
+  PostRebootAction,
   USBStates,
   useHidStore,
   useNetworkStateStore,
@@ -274,7 +275,7 @@ export default function KvmIdRoute() {
         // 5. WS tries to reconnect
         // 6. WS reconnects
         // 7. This function is called and now we clear the reboot state
-        setRebootState({ isRebooting: false, suggestedIp: null });
+        setRebootState({ isRebooting: false, postRebootAction: null });
       },
 
       onMessage: message => {
@@ -677,8 +678,8 @@ export default function KvmIdRoute() {
     }
 
     if (resp.method === "willReboot") {
-      const suggestedIp = resp.params as unknown as string | null;
-      setRebootState({ isRebooting: true, suggestedIp });
+      const postRebootAction = resp.params as unknown as PostRebootAction;
+      setRebootState({ isRebooting: true, postRebootAction });
       navigateTo("/");
     }
   }
@@ -785,7 +786,7 @@ export default function KvmIdRoute() {
 
     // Rebooting takes priority over connection status
     if (rebootState?.isRebooting) {
-      return <RebootingOverlay show={true} suggestedIp={rebootState.suggestedIp} />;
+      return <RebootingOverlay show={true} postRebootAction={rebootState.postRebootAction} />;
     }
 
     const hasConnectionFailed =
@@ -812,7 +813,7 @@ export default function KvmIdRoute() {
     }
 
     return null;
-  }, [location.pathname, rebootState?.isRebooting, rebootState?.suggestedIp, connectionFailed, peerConnectionState, peerConnection, setupPeerConnection, loadingMessage]);
+  }, [location.pathname, rebootState?.isRebooting, rebootState?.postRebootAction, connectionFailed, peerConnectionState, peerConnection, setupPeerConnection, loadingMessage]);
 
   return (
     <FeatureFlagProvider appVersion={appVersion}>
