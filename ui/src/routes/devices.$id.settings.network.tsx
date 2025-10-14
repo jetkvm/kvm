@@ -175,9 +175,18 @@ export default function SettingsNetworkRoute() {
       } else {
         // If the settings are saved successfully, fetch the latest network data and reset the form
         // We do this so we get all the form state values, for stuff like is the form dirty, etc...
-        const networkData = await fetchNetworkData();
-        reset(networkData.settings);
-        notifications.success("Network settings saved");
+
+        try {
+          const networkData = await fetchNetworkData();
+          if (!networkData) {
+            return notifications.error("Failed to fetch network data");
+          }
+          reset(networkData.settings);
+          notifications.success("Network settings saved");
+
+        } catch (error) {
+          console.error("Failed to fetch network data:", error);
+        }
       }
     });
   };
