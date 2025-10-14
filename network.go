@@ -195,29 +195,22 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (bo
 	}
 
 	// IPv4 static config changes require reboot
-	if newConfig.IPv4Static != nil && oldConfig.IPv4Static != nil {
-		if newConfig.IPv4Static.Address.String != oldConfig.IPv4Static.Address.String {
-			rebootRequired = true
-			newIP := newConfig.IPv4Static.Address.String
+	if !reflect.DeepEqual(oldConfig.IPv4Static, newConfig.IPv4Static) {
+		rebootRequired = true
+
+		// Handle IP change for redirect (only if both are not nil and IP changed)
+		if newConfig.IPv4Static != nil && oldConfig.IPv4Static != nil &&
+			newConfig.IPv4Static.Address.String != oldConfig.IPv4Static.Address.String {
 			postRebootAction = &PostRebootAction{
-				// The user can be using self-signed certificates, so we use don't specify the protocol
-				HealthCheck: fmt.Sprintf("//%s/device/status", newIP),
-				RedirectUrl: fmt.Sprintf("//%s", newIP),
+				HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
+				RedirectUrl: fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
 			}
-			networkLogger.Info().Str("old", oldConfig.IPv4Static.Address.String).Str("new", newIP).Msg("IPv4 address changed, reboot required")
 		}
-		if newConfig.IPv4Static.Netmask.String != oldConfig.IPv4Static.Netmask.String {
-			rebootRequired = true
-			networkLogger.Info().Str("old", oldConfig.IPv4Static.Netmask.String).Str("new", newConfig.IPv4Static.Netmask.String).Msg("IPv4 netmask changed, reboot required")
-		}
-		if newConfig.IPv4Static.Gateway.String != oldConfig.IPv4Static.Gateway.String {
-			rebootRequired = true
-			networkLogger.Info().Str("old", oldConfig.IPv4Static.Gateway.String).Str("new", newConfig.IPv4Static.Gateway.String).Msg("IPv4 gateway changed, reboot required")
-		}
-		if !reflect.DeepEqual(newConfig.IPv4Static.DNS, oldConfig.IPv4Static.DNS) {
-			rebootRequired = true
-			networkLogger.Info().Strs("old", oldConfig.IPv4Static.DNS).Strs("new", newConfig.IPv4Static.DNS).Msg("IPv4 DNS changed, reboot required")
-		}
+
+		networkLogger.Info().
+			Interface("old", oldConfig.IPv4Static).
+			Interface("new", newConfig.IPv4Static).
+			Msg("IPv4 static config changed, reboot required")
 	}
 
 	// IPv6 mode change requires reboot when using udhcpc
