@@ -233,7 +233,7 @@ export default function SettingsNetworkRoute() {
       changes.push({
         label: "IPv4 DNS",
         from: initialSettingsRef.current?.ipv4_static?.dns.join(", ").toString() ?? "",
-        to: data.ipv4_static?.dns.join(",").toString() ?? "",
+        to: data.ipv4_static?.dns.join(", ").toString() ?? "",
       });
     }
 
@@ -541,10 +541,8 @@ export default function SettingsNetworkRoute() {
               </div>
               <div className="space-y-2.5">
                 {criticalChanges.map((c, idx) => (
-                  <div key={idx + c.label} className="flex items-center gap-x-2 flex-wrap space-y-1.5 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-800/10 dark:border-slate-300/20 rounded-md py-2 px-3">
-                    <div className="text-xs text-slate-600 dark:text-slate-400">
-                      <span>{c.label}</span>
-                    </div>
+                  <div key={idx + c.label} className="flex items-center gap-x-2 gap-y-1 flex-wrap bg-slate-100/50 dark:bg-slate-800/50 border border-slate-800/10 dark:border-slate-300/20 rounded-md py-2 px-3">
+                    <span className="text-xs text-slate-600 dark:text-slate-400">{c.label}</span>
                     <div className="flex items-center gap-2.5">
                       <code className="rounded border border-slate-800/20 bg-slate-50 px-1.5 py-1 text-xs text-black font-mono dark:border-slate-300/20 dark:bg-slate-800 dark:text-slate-100">
                         {c.from || "—"}
