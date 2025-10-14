@@ -145,18 +145,18 @@ export default function SettingsNetworkRoute() {
     },
   });
 
-  const prepareSettings = (data: FieldValues) => {
+  const prepareSettings = useCallback((data: FieldValues) => {
     return {
       ...data,
 
       // If custom domain option is selected, use the custom domain as value
       domain: data.domain === "custom" ? customDomain : data.domain,
     } as NetworkSettings;
-  };
+  }, [customDomain]);
 
   const { register, handleSubmit, watch, formState, reset } = formMethods;
 
-  const onSubmit = async (settings: NetworkSettings) => {
+  const onSubmit = useCallback(async (settings: NetworkSettings) => {
     if (settings.ipv4_static?.address?.includes("/")) {
       const parts = settings.ipv4_static.address.split("/");
       const cidrNotation = parseInt(parts[1]);
@@ -188,9 +188,9 @@ export default function SettingsNetworkRoute() {
         }
       }
     });
-  };
+  }, [fetchNetworkData, reset, send]);
 
-  const onSubmitGate = async (data: FieldValues) => {
+  const onSubmitGate = useCallback(async (data: FieldValues) => {
     const settings = prepareSettings(data);
     const dirty = formState.dirtyFields;
 
@@ -260,7 +260,7 @@ export default function SettingsNetworkRoute() {
     setStagedSettings(settings);
     setCriticalChanges(changes);
     setShowCriticalSettingsConfirm(true);
-  };
+  }, [prepareSettings, formState.dirtyFields, onSubmit]);
 
   const ipv4mode = watch("ipv4_mode");
   const ipv6mode = watch("ipv6_mode");
