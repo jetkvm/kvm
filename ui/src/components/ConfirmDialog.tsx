@@ -1,10 +1,10 @@
-import { CheckCircleIcon } from "@heroicons/react/24/outline";
 import { CloseButton } from "@headlessui/react";
-import { LuInfo, LuOctagonAlert, LuTriangleAlert } from "react-icons/lu";
+import { LuCircleAlert, LuInfo, LuTriangleAlert } from "react-icons/lu";
 
 import { Button } from "@/components/Button";
 import Modal from "@/components/Modal";
 import { cx } from "@/cva.config";
+
 type Variant = "danger" | "success" | "warning" | "info";
 
 interface ConfirmDialogProps {
@@ -21,27 +21,23 @@ interface ConfirmDialogProps {
 
 const variantConfig = {
   danger: {
-    icon: LuOctagonAlert,
-    iconClass: "text-red-600",
-    iconBgClass: "bg-red-100 border border-red-500/90",
+    icon: LuCircleAlert,
+    iconClass: "text-red-600 dark:text-red-400",
     buttonTheme: "danger",
   },
   success: {
-    icon: CheckCircleIcon,
-    iconClass: "text-green-600",
-    iconBgClass: "bg-green-100 border border-green-500/90",
+    icon: LuCircleAlert,
+    iconClass: "text-emerald-600 dark:text-emerald-400",
     buttonTheme: "primary",
   },
   warning: {
     icon: LuTriangleAlert,
-    iconClass: "text-yellow-600",
-    iconBgClass: "bg-yellow-100 border border-yellow-500/90",
+    iconClass: "text-amber-600 dark:text-amber-400",
     buttonTheme: "primary",
   },
   info: {
     icon: LuInfo,
-    iconClass: "text-blue-600",
-    iconBgClass: "bg-blue-100 border border-blue-500/90",
+    iconClass: "text-slate-700 dark:text-slate-300",
     buttonTheme: "primary",
   },
 } as Record<
@@ -49,7 +45,6 @@ const variantConfig = {
   {
     icon: React.ElementType;
     iconClass: string;
-    iconBgClass: string;
     buttonTheme: "danger" | "primary" | "blank" | "light" | "lightDanger";
   }
 >;
@@ -65,7 +60,7 @@ export function ConfirmDialog({
   onConfirm,
   isConfirming = false,
 }: ConfirmDialogProps) {
-  const { icon: Icon, iconClass, iconBgClass, buttonTheme } = variantConfig[variant];
+  const { icon: Icon, iconClass, buttonTheme } = variantConfig[variant];
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Escape") {
@@ -77,29 +72,22 @@ export function ConfirmDialog({
   return (
     <div onKeyDown={handleKeyDown}>
       <Modal open={open} onClose={onClose}>
-        <div className="mx-auto max-w-xl px-4 transition-all duration-300 ease-in-out">
-          <div className="pointer-events-auto relative w-full overflow-hidden rounded-lg bg-white p-6 text-left align-middle shadow-xl transition-all dark:bg-slate-800">
-            <div className="space-y-4">
-              <div className="sm:flex sm:items-start">
-                <div
-                  className={cx(
-                    "mx-auto flex size-12 shrink-0 items-center justify-center rounded-full sm:mx-0 sm:size-10",
-                    iconBgClass,
-                  )}
-                >
-                  <Icon aria-hidden="true" className={cx("size-6", iconClass)} />
-                </div>
-                <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                  <h2 className="text-lg leading-tight font-bold text-black dark:text-white">
+        <div className="mx-auto max-w-md px-4 transition-all duration-300 ease-in-out">
+          <div className="pointer-events-auto relative w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-all dark:border-slate-800 dark:bg-slate-900">
+            <div className="p-6">
+              <div className="flex items-start gap-3.5">
+                <Icon aria-hidden="true" className={cx("size-[18px] shrink-0 mt-[2px]", iconClass)} />
+                <div className="flex-1 min-w-0 space-y-2">
+                  <h2 className="font-semibold text-slate-950 dark:text-white">
                     {title}
                   </h2>
-                  <div className="mt-2 text-sm leading-snug text-slate-600 dark:text-slate-400">
+                  <div className="text-sm text-slate-700 dark:text-slate-300">
                     {description}
                   </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-x-2" autoFocus>
+              <div className="mt-6 flex justify-end gap-2">
                 {cancelText && (
                   <CloseButton as={Button} size="SM" theme="blank" text={cancelText} />
                 )}
