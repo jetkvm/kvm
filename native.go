@@ -60,7 +60,9 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 	})
 
 	nativeInstance.Start()
-	nativeInstance.VideoSetEDID(config.EdidString)
+	if err := nativeInstance.VideoSetEDID(config.EdidString); err != nil {
+		nativeLogger.Warn().Err(err).Msg("error setting EDID")
+	}
 
 	if os.Getenv("JETKVM_CRASH_TESTING") == "1" {
 		nativeInstance.DoNotUseThisIsForCrashTestingOnly()
