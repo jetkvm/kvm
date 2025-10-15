@@ -333,10 +333,28 @@ static void *venc_read_stream(void *arg)
 }
 
 uint32_t detected_width, detected_height;
-bool detected_signal = false, streaming_flag = false;
+bool detected_signal = false, streaming_flag = false, streaming_stopped = true;
 
 pthread_t *streaming_thread = NULL;
 pthread_mutex_t streaming_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+bool get_streaming_flag()
+{
+    log_info("getting streaming flag");
+    pthread_mutex_lock(&streaming_mutex);
+    bool flag = streaming_flag;
+    pthread_mutex_unlock(&streaming_mutex);
+    return flag;
+}
+
+void set_streaming_flag(bool flag)
+{
+    log_info("setting streaming flag to %d", flag);
+
+    pthread_mutex_lock(&streaming_mutex);
+    streaming_flag = flag;
+    pthread_mutex_unlock(&streaming_mutex);
+}
 
 void write_buffer_to_file(const uint8_t *buffer, size_t length, const char *filename)
 {
@@ -350,6 +368,8 @@ void *run_video_stream(void *arg)
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 
     log_info("running video stream");
+
+    streaming_stopped = false;
 
     while (streaming_flag)
     {
@@ -583,8 +603,11 @@ void *run_video_stream(void *arg)
         log_info("closing video capture device %s", VIDEO_DEV);
         close(video_dev_fd);
     }
-
+    
     log_info("video stream thread exiting");
+
+    streaming_stopped = true;
+
     return NULL;
 }
 
@@ -614,56 +637,75 @@ void video_shutdown()
     log_info("Destroyed streaming mutex");
 }
 
-
 void video_start_streaming()
 {
-    pthread_mutex_lock(&streaming_mutex);
+    log_info("starting video streaming");
     if (streaming_thread != NULL)
     {
+        if (streaming_stopped == true) {
+            log_error("video streaming already stopped but streaming_thread is not NULL");
+            assert(streaming_stopped == true);
+        }
         log_warn("video streaming already started");
-        goto cleanup;
+        return;
     }
     
     pthread_t *new_thread = malloc(sizeof(pthread_t));
     if (new_thread == NULL)
     {
         log_error("Failed to allocate memory for streaming thread");
-        goto cleanup;
+        return;
     }
     
-    streaming_flag = true;
+    set_streaming_flag(true);
     int result = pthread_create(new_thread, NULL, run_video_stream, NULL);
     if (result != 0)
     {
         log_error("Failed to create streaming thread: %s", strerror(result));
-        streaming_flag = false;
+        set_streaming_flag(false);
         free(new_thread);
-        goto cleanup;
+        return;
     }
     
-    // Only set streaming_thread after successful creation, and before unlocking the mutex
+    // Only set streaming_thread after successful creation
     streaming_thread = new_thread;
-cleanup:
-    pthread_mutex_unlock(&streaming_mutex);
-    return;
 }
 
 void video_stop_streaming()
 {
-    pthread_mutex_lock(&streaming_mutex);
-    if (streaming_thread != NULL)
-    {
-        streaming_flag = false;
-        log_info("stopping video streaming");
-        // wait 100ms for the thread to exit
-        usleep(1000000);
-        log_info("waiting for video streaming thread to exit");
-        pthread_join(*streaming_thread, NULL);
-        free(streaming_thread);
-        streaming_thread = NULL;
-        log_info("video streaming stopped");
+    if (streaming_thread == NULL) {
+        log_info("video streaming already stopped");
+        return;
     }
-    pthread_mutex_unlock(&streaming_mutex);
+    
+    log_info("stopping video streaming");
+    set_streaming_flag(false);
+
+    log_info("waiting for video streaming thread to exit");
+    int attempts = 0;
+    while (!streaming_stopped && attempts < 30) {
+        usleep(100000); // 100ms
+        attempts++;
+    }
+    if (!streaming_stopped) {
+        log_error("video streaming thread did not exit after 30s");
+    }
+
+    pthread_join(*streaming_thread, NULL);
+    free(streaming_thread);
+    streaming_thread = NULL;
+
+    log_info("video streaming stopped");    
+}
+
+void video_restart_streaming()
+{
+    if (get_streaming_flag() == true)
+    {
+        log_info("restarting video streaming");
+        video_stop_streaming();
+    }
+    video_start_streaming();
 }
 
 void *run_detect_format(void *arg)
@@ -727,18 +769,8 @@ void *run_detect_format(void *arg)
             detected_height = dv_timings.bt.height;
             detected_signal = true;
             video_report_format(true, NULL, detected_width, detected_height, frames_per_second);
-            pthread_mutex_lock(&streaming_mutex);
-            if (streaming_flag == true)
-            {
-                pthread_mutex_unlock(&streaming_mutex);
-                log_info("restarting on going video streaming");
-                video_stop_streaming();
-                video_start_streaming();
-            }
-            else
-            {
-                pthread_mutex_unlock(&streaming_mutex);
-            }
+
+            video_restart_streaming();
         }
 
         memset(&ev, 0, sizeof(ev));
@@ -765,19 +797,7 @@ void video_set_quality_factor(float factor)
     quality_factor = factor;
 
     // TODO: update venc bitrate without stopping streaming
-
-    pthread_mutex_lock(&streaming_mutex);
-    if (streaming_flag == true)
-    {
-        pthread_mutex_unlock(&streaming_mutex);
-        log_info("restarting on going video streaming due to quality factor change");
-        video_stop_streaming();
-        video_start_streaming();
-    }
-    else
-    {
-        pthread_mutex_unlock(&streaming_mutex);
-    }
+    video_restart_streaming();
 }
 
 float video_get_quality_factor() {

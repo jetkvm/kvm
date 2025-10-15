@@ -6,6 +6,9 @@ import (
 
 const sleepModeFile = "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mode"
 
+// DefaultEDID is the default EDID for the video stream.
+const DefaultEDID = "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b"
+
 // VideoState is the state of the video stream.
 type VideoState struct {
 	Ready          bool    `json:"ready"`
@@ -86,6 +89,10 @@ func (n *Native) VideoGetQualityFactor() (float64, error) {
 func (n *Native) VideoSetEDID(edid string) error {
 	n.videoLock.Lock()
 	defer n.videoLock.Unlock()
+
+	if edid == "" {
+		edid = DefaultEDID
+	}
 
 	return videoSetEDID(edid)
 }
