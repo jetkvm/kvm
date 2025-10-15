@@ -175,6 +175,10 @@ func rpcGetDeviceID() (string, error) {
 func rpcReboot(force bool) error {
 	logger.Info().Msg("Got reboot request from JSONRPC, rebooting...")
 
+	writeJSONRPCEvent("willReboot", nil, currentSession)
+
+	// Wait for the JSONRPCEvent to be sent
+	time.Sleep(1 * time.Second)
 	nativeInstance.SwitchToScreenIfDifferent("rebooting_screen")
 
 	args := []string{}
@@ -720,7 +724,8 @@ func rpcSetWakeOnLanDevices(params SetWakeOnLanDevicesParams) error {
 }
 
 func rpcResetConfig() error {
-	config = defaultConfig
+	defaultConfig := getDefaultConfig()
+	config = &defaultConfig
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to reset config: %w", err)
 	}

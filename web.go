@@ -725,6 +725,18 @@ func handleDeletePassword(c *gin.Context) {
 }
 
 func handleDeviceStatus(c *gin.Context) {
+	// Add CORS headers to allow cross-origin requests
+	// This is safe because device/status is a public endpoint
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+	c.Header("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle preflight requests
+	if c.Request.Method == "OPTIONS" {
+		c.AbortWithStatus(http.StatusNoContent)
+		return
+	}
+
 	response := DeviceStatus{
 		IsSetup: config.LocalAuthMode != "",
 	}

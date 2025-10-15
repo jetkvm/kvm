@@ -19,6 +19,11 @@ interface JsonRpcResponse {
   id: number | string | null;
 }
 
+export type PostRebootAction = {
+  healthCheck: string;
+  redirectUrl: string;
+} | null;
+
 // Utility function to append stats to a Map
 const appendStatToMap = <T extends { timestamp: number }>(
   stat: T,
@@ -69,11 +74,16 @@ export interface UIState {
 
   terminalType: AvailableTerminalTypes;
   setTerminalType: (type: UIState["terminalType"]) => void;
+
+  rebootState: { isRebooting: boolean; postRebootAction: PostRebootAction } | null;
+  setRebootState: (
+    state: { isRebooting: boolean; postRebootAction: PostRebootAction } | null,
+  ) => void;
 }
 
 export const useUiStore = create<UIState>(set => ({
   terminalType: "none",
-  setTerminalType: (type: UIState["terminalType"])  => set({ terminalType: type }),
+  setTerminalType: (type: UIState["terminalType"]) => set({ terminalType: type }),
 
   sidebarView: null,
   setSidebarView:  (view: AvailableSidebarViews | null) => set({ sidebarView: view }),
@@ -82,7 +92,8 @@ export const useUiStore = create<UIState>(set => ({
   setDisableVideoFocusTrap: (enabled: boolean) => set({ disableVideoFocusTrap: enabled }),
 
   isWakeOnLanModalVisible: false,
-  setWakeOnLanModalVisibility: (enabled: boolean) => set({ isWakeOnLanModalVisible: enabled }),
+  setWakeOnLanModalVisibility: (enabled: boolean) =>
+    set({ isWakeOnLanModalVisible: enabled }),
 
   toggleSidebarView: view =>
     set(state => {
@@ -96,6 +107,9 @@ export const useUiStore = create<UIState>(set => ({
   isAttachedVirtualKeyboardVisible: true,
   setAttachedVirtualKeyboardVisibility: (enabled: boolean) =>
     set({ isAttachedVirtualKeyboardVisible: enabled }),
+
+  rebootState: null,
+  setRebootState: state => set({ rebootState: state }),
 }));
 
 export interface RTCState {
@@ -465,7 +479,7 @@ export interface KeysDownState {
 	keys: number[];
 }
 
-export type USBStates = 
+export type USBStates =
   | "configured"
   | "attached"
   | "not attached"
@@ -672,6 +686,7 @@ export interface DhcpLease {
   timezone?: string;
   routers?: string[];
   dns?: string[];
+  dns_servers?: string[];
   ntp_servers?: string[];
   lpr_servers?: string[];
   _time_servers?: string[];
@@ -689,6 +704,7 @@ export interface DhcpLease {
   message?: string;
   tftp?: string;
   bootfile?: string;
+  dhcp_client?: string;
 }
 
 export interface IPv6Address {
@@ -697,6 +713,15 @@ export interface IPv6Address {
   valid_lifetime: string;
   preferred_lifetime: string;
   scope: string;
+  flags: number;
+  flag_secondary?: boolean;
+  flag_permanent?: boolean;
+  flag_temporary?: boolean;
+  flag_stable_privacy?: boolean;
+  flag_deprecated?: boolean;
+  flag_optimistic?: boolean;
+  flag_dad_failed?: boolean;
+  flag_tentative?: boolean;
 }
 
 export interface NetworkState {
@@ -707,7 +732,9 @@ export interface NetworkState {
   ipv6?: string;
   ipv6_addresses?: IPv6Address[];
   ipv6_link_local?: string;
+  ipv6_gateway?: string;
   dhcp_lease?: DhcpLease;
+  hostname?: string;
 
   setNetworkState: (state: NetworkState) => void;
   setDhcpLease: (lease: NetworkState["dhcp_lease"]) => void;
@@ -732,12 +759,28 @@ export type TimeSyncMode =
   | "custom"
   | "unknown";
 
+export interface IPv4StaticConfig {
+  address: string;
+  netmask: string;
+  gateway: string;
+  dns: string[];
+}
+
+export interface IPv6StaticConfig {
+  prefix: string;
+  gateway: string;
+  dns: string[];
+}
+
 export interface NetworkSettings {
-  hostname: string;
-  domain: string;
-  http_proxy: string;
+  dhcp_client: string;
+  hostname: string | null;
+  domain: string | null;
+  http_proxy: string | null;
   ipv4_mode: IPv4Mode;
+  ipv4_static?: IPv4StaticConfig;
   ipv6_mode: IPv6Mode;
+  ipv6_static?: IPv6StaticConfig;
   lldp_mode: LLDPMode;
   lldp_tx_tlvs: string[];
   mdns_mode: mDNSMode;

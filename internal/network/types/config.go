@@ -1,25 +1,13 @@
-package network
+package types
 
 import (
-	"fmt"
-	"net"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/guregu/null/v6"
-	"github.com/jetkvm/kvm/internal/mdns"
-	"golang.org/x/net/idna"
 )
 
-type IPv6Address struct {
-	Address           net.IP     `json:"address"`
-	Prefix            net.IPNet  `json:"prefix"`
-	ValidLifetime     *time.Time `json:"valid_lifetime"`
-	PreferredLifetime *time.Time `json:"preferred_lifetime"`
-	Scope             int        `json:"scope"`
-}
-
+// IPv4StaticConfig represents static IPv4 configuration
 type IPv4StaticConfig struct {
 	Address null.String `json:"address,omitempty" validate_type:"ipv4" required:"true"`
 	Netmask null.String `json:"netmask,omitempty" validate_type:"ipv4" required:"true"`
@@ -27,13 +15,23 @@ type IPv4StaticConfig struct {
 	DNS     []string    `json:"dns,omitempty" validate_type:"ipv4" required:"true"`
 }
 
+// IPv6StaticConfig represents static IPv6 configuration
 type IPv6StaticConfig struct {
-	Address null.String `json:"address,omitempty" validate_type:"ipv6" required:"true"`
-	Prefix  null.String `json:"prefix,omitempty" validate_type:"ipv6" required:"true"`
+	Prefix  null.String `json:"prefix,omitempty" validate_type:"ipv6_prefix" required:"true"`
 	Gateway null.String `json:"gateway,omitempty" validate_type:"ipv6" required:"true"`
 	DNS     []string    `json:"dns,omitempty" validate_type:"ipv6" required:"true"`
 }
+
+// MDNSListenOptions represents MDNS listening options
+type MDNSListenOptions struct {
+	IPv4 bool
+	IPv6 bool
+}
+
+// NetworkConfig represents the complete network configuration for an interface
 type NetworkConfig struct {
+	DHCPClient null.String `json:"dhcp_client,omitempty" one_of:"jetdhcpc,udhcpc" default:"jetdhcpc"`
+
 	Hostname  null.String `json:"hostname,omitempty" validate_type:"hostname"`
 	HTTPProxy null.String `json:"http_proxy,omitempty" validate_type:"proxy"`
 	Domain    null.String `json:"domain,omitempty" validate_type:"hostname"`
@@ -44,7 +42,7 @@ type NetworkConfig struct {
 	IPv6Mode   null.String       `json:"ipv6_mode,omitempty" one_of:"slaac,dhcpv6,slaac_and_dhcpv6,static,link_local,disabled" default:"slaac"`
 	IPv6Static *IPv6StaticConfig `json:"ipv6_static,omitempty" required_if:"IPv6Mode=static"`
 
-	LLDPMode                null.String `json:"lldp_mode,omitempty" one_of:"disabled,rx_only,tx_only,basic,all,enabled" default:"enabled"`
+	LLDPMode                null.String `json:"lldp_mode,omitempty" one_of:"disabled,basic,all" default:"basic"`
 	LLDPTxTLVs              []string    `json:"lldp_tx_tlvs,omitempty" one_of:"chassis,port,system,vlan" default:"chassis,port,system,vlan"`
 	MDNSMode                null.String `json:"mdns_mode,omitempty" one_of:"disabled,auto,ipv4_only,ipv6_only" default:"auto"`
 	TimeSyncMode            null.String `json:"time_sync_mode,omitempty" one_of:"ntp_only,ntp_and_http,http_only,custom" default:"ntp_and_http"`
@@ -55,13 +53,15 @@ type NetworkConfig struct {
 	TimeSyncHTTPUrls        []string    `json:"time_sync_http_urls,omitempty" validate_type:"url" required_if:"TimeSyncOrdering=http_user_provided"`
 }
 
-func (c *NetworkConfig) GetMDNSMode() *mdns.MDNSListenOptions {
-	listenOptions := &mdns.MDNSListenOptions{
-		IPv4: c.IPv4Mode.String != "disabled",
-		IPv6: c.IPv6Mode.String != "disabled",
+// GetMDNSMode returns the MDNS mode configuration
+func (c *NetworkConfig) GetMDNSMode() *MDNSListenOptions {
+	mode := c.MDNSMode.String
+	listenOptions := &MDNSListenOptions{
+		IPv4: true,
+		IPv6: true,
 	}
 
-	switch c.MDNSMode.String {
+	switch mode {
 	case "ipv4_only":
 		listenOptions.IPv6 = false
 	case "ipv6_only":
@@ -74,53 +74,21 @@ func (c *NetworkConfig) GetMDNSMode() *mdns.MDNSListenOptions {
 	return listenOptions
 }
 
-func (s *NetworkConfig) GetTransportProxyFunc() func(*http.Request) (*url.URL, error) {
+// GetTransportProxyFunc returns a function for HTTP proxy configuration
+func (c *NetworkConfig) GetTransportProxyFunc() func(*http.Request) (*url.URL, error) {
 	return func(*http.Request) (*url.URL, error) {
-		if s.HTTPProxy.String == "" {
+		if c.HTTPProxy.String == "" {
 			return nil, nil
 		} else {
-			proxyUrl, _ := url.Parse(s.HTTPProxy.String)
-			return proxyUrl, nil
+			proxyURL, _ := url.Parse(c.HTTPProxy.String)
+			return proxyURL, nil
 		}
 	}
 }
 
-func (s *NetworkInterfaceState) GetHostname() string {
-	hostname := ToValidHostname(s.config.Hostname.String)
-
-	if hostname == "" {
-		return s.defaultHostname
-	}
-
-	return hostname
-}
-
-func ToValidDomain(domain string) string {
-	ascii, err := idna.Lookup.ToASCII(domain)
-	if err != nil {
-		return ""
-	}
-
-	return ascii
-}
-
-func (s *NetworkInterfaceState) GetDomain() string {
-	domain := ToValidDomain(s.config.Domain.String)
-
-	if domain == "" {
-		lease := s.dhcpClient.GetLease()
-		if lease != nil && lease.Domain != "" {
-			domain = ToValidDomain(lease.Domain)
-		}
-	}
-
-	if domain == "" {
-		return "local"
-	}
-
-	return domain
-}
-
-func (s *NetworkInterfaceState) GetFQDN() string {
-	return fmt.Sprintf("%s.%s", s.GetHostname(), s.GetDomain())
+// NetworkConfig interface for backward compatibility
+type NetworkConfigInterface interface {
+	InterfaceName() string
+	IPv4Addresses() []IPAddress
+	IPv6Addresses() []IPAddress
 }

@@ -48,6 +48,10 @@ void action_switch_to_reset_config(lv_event_t *e) {
     loadScreen(SCREEN_ID_RESET_CONFIG_SCREEN);
 }
 
+void action_switch_to_dhcpc(lv_event_t *e) {
+    loadScreen(SCREEN_ID_SWITCH_DHCP_CLIENT_SCREEN);
+}
+
 void action_switch_to_reboot(lv_event_t *e) {
     loadScreen(SCREEN_ID_REBOOT_SCREEN);
 }
@@ -75,15 +79,19 @@ void action_about_screen_gesture(lv_event_t * e) {
 // user_data doesn't seem to be working, so we use a global variable here
 static uint32_t t_reset_config;
 static uint32_t t_reboot;
+static uint32_t t_dhcpc;
 
 static bool b_reboot = false;
 static bool b_reset_config = false;
+static bool b_dhcpc = false;
 
 static bool b_reboot_lock = false;
 static bool b_reset_config_lock = false;
+static bool b_dhcpc_lock = false;
 
 const int RESET_CONFIG_HOLD_TIME = 10;
 const int REBOOT_HOLD_TIME = 5;
+const int DHCPC_HOLD_TIME = 5;
 
 typedef struct {
     uint32_t *start_time;
@@ -148,6 +156,22 @@ void action_reset_config(lv_event_t * e) {
         .spinner_obj = objects.reset_config_spinner,
         .label_obj = objects.reset_config_label,
         .default_text = "Press and hold for\n10 seconds"
+    };
+    
+    handle_hold_action(e, &config);
+}
+
+void action_dhcpc(lv_event_t * e) {
+    hold_action_config_t config = {
+        .start_time = &t_dhcpc,
+        .completed = &b_dhcpc,
+        .lock = &b_dhcpc_lock,
+        .hold_time_seconds = DHCPC_HOLD_TIME,
+        .rpc_method = "toggleDHCPClient",
+        .button_obj = NULL,  // No button/spinner for reboot
+        .spinner_obj = NULL,
+        .label_obj = objects.dhcpc_label,
+        .default_text = "Press and hold for\n5 seconds"
     };
     
     handle_hold_action(e, &config);

@@ -33,6 +33,7 @@ func Main() {
 	go runWatchdog()
 	go confirmCurrentSystem()
 
+	initDisplay()
 	initNative(systemVersionLocal, appVersionLocal)
 
 	http.DefaultClient.Timeout = 1 * time.Minute
@@ -73,9 +74,6 @@ func Main() {
 		logger.Warn().Err(err).Msg("failed to init images folder")
 	}
 	initJiggler()
-
-	// initialize display
-	initDisplay()
 
 	// start video sleep mode timer
 	startVideoSleepModeTicker()
