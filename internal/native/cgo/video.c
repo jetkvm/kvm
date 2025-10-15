@@ -29,6 +29,7 @@
 
 #define VIDEO_DEV "/dev/video0"
 #define SUB_DEV "/dev/v4l-subdev2"
+#define SLEEP_MODE_FILE "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mode"
 
 #define RK_ALIGN(x, a) (((x) + (a)-1) & ~((a)-1))
 #define RK_ALIGN_2(x) RK_ALIGN(x, 2)
@@ -39,6 +40,7 @@ int sub_dev_fd = -1;
 #define VENC_CHANNEL 0
 MB_POOL memPool = MB_INVALID_POOLID;
 
+bool sleep_mode_available = false;
 bool should_exit = false;
 float quality_factor = 1.0f;
 
@@ -49,6 +51,34 @@ RK_U64 get_us()
     struct timespec time = {0, 0};
     clock_gettime(CLOCK_MONOTONIC, &time);
     return (RK_U64)time.tv_sec * 1000000 + (RK_U64)time.tv_nsec / 1000; /* microseconds */
+}
+
+static void ensure_sleep_mode_disabled()
+{
+    if (!sleep_mode_available)
+    {
+        return;
+    }
+
+    int fd = open(SLEEP_MODE_FILE, O_RDWR);
+    if (fd < 0)
+    {
+        log_error("Failed to open sleep mode file: %s", strerror(errno));
+        return;
+    }
+    write(fd, "0", 1);
+    close(fd);
+
+}
+
+static void detect_sleep_mode()
+{
+    if (access(SLEEP_MODE_FILE, F_OK) != 0) {
+        sleep_mode_available = false;
+        return;
+    }
+    sleep_mode_available = true;
+    ensure_sleep_mode_disabled();
 }
 
 double calculate_bitrate(float bitrate_factor, int width, int height)
@@ -192,6 +222,8 @@ pthread_t *format_thread = NULL;
 
 int video_init()
 {
+    detect_sleep_mode();
+
     if (RK_MPI_SYS_Init() != RK_SUCCESS)
     {
         log_error("RK_MPI_SYS_Init failed");
@@ -401,7 +433,7 @@ void *run_video_stream(void *arg)
             {
                 log_error("get mb blk failed!");
                 close(video_dev_fd);
-                return ;
+                return (void *)errno;
             }
             log_info("Got memory block for buffer %d", i);
 
@@ -650,6 +682,8 @@ void *run_detect_format(void *arg)
 
     while (!should_exit)
     {
+        ensure_sleep_mode_disabled();
+
         memset(&dv_timings, 0, sizeof(dv_timings));
         if (ioctl(sub_dev_fd, VIDIOC_QUERY_DV_TIMINGS, &dv_timings) != 0)
         {
