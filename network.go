@@ -194,6 +194,15 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (bo
 		networkLogger.Info().Str("old", oldConfig.IPv4Mode.String).Str("new", newConfig.IPv4Mode.String).Msg("IPv4 mode changed with udhcpc, reboot required")
 	}
 
+	if newConfig.IPv4Mode.String == "static" && oldConfig.IPv4Mode.String != "static" {
+		rebootRequired = true
+		networkLogger.Info().Str("old", oldConfig.IPv4Mode.String).Str("new", newConfig.IPv4Mode.String).Msg("IPv4 mode changed to static, reboot required")
+		postRebootAction = &PostRebootAction{
+			HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
+			RedirectUrl: fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
+		}
+	}
+
 	// IPv4 static config changes require reboot
 	if !reflect.DeepEqual(oldConfig.IPv4Static, newConfig.IPv4Static) {
 		rebootRequired = true
