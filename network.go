@@ -176,31 +176,37 @@ func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
 	return nm.SetHostname(hostname, domain)
 }
 
-func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (bool, *PostRebootAction) {
-	var rebootRequired bool
-	var postRebootAction *PostRebootAction
-
+func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (rebootRequired bool, postRebootAction *PostRebootAction) {
 	oldDhcpClient := oldConfig.DHCPClient.String
+
+	l := networkLogger.With().
+		Interface("old", oldConfig).
+		Interface("new", newConfig).
+		Logger()
 
 	// DHCP client change always requires reboot
 	if newConfig.DHCPClient.String != oldDhcpClient {
 		rebootRequired = true
-		networkLogger.Info().Str("old", oldDhcpClient).Str("new", newConfig.DHCPClient.String).Msg("DHCP client changed, reboot required")
+		l.Info().Msg("DHCP client changed, reboot required")
+		return rebootRequired, postRebootAction
 	}
 
+	oldIPv4Mode := oldConfig.IPv4Mode.String
+	newIPv4Mode := newConfig.IPv4Mode.String
 	// IPv4 mode change requires reboot
-	if newConfig.IPv4Mode.String != oldConfig.IPv4Mode.String {
+	if newIPv4Mode != oldIPv4Mode {
 		rebootRequired = true
-		networkLogger.Info().Str("old", oldConfig.IPv4Mode.String).Str("new", newConfig.IPv4Mode.String).Msg("IPv4 mode changed with udhcpc, reboot required")
-	}
+		l.Info().Msg("IPv4 mode changed with udhcpc, reboot required")
 
-	if newConfig.IPv4Mode.String == "static" && oldConfig.IPv4Mode.String != "static" {
-		rebootRequired = true
-		networkLogger.Info().Str("old", oldConfig.IPv4Mode.String).Str("new", newConfig.IPv4Mode.String).Msg("IPv4 mode changed to static, reboot required")
-		postRebootAction = &PostRebootAction{
-			HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
-			RedirectUrl: fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
+		if newIPv4Mode == "static" && oldIPv4Mode != "static" {
+			postRebootAction = &PostRebootAction{
+				HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
+				RedirectUrl: fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
+			}
+			l.Info().Interface("postRebootAction", postRebootAction).Msg("IPv4 mode changed to static, reboot required")
 		}
+
+		return rebootRequired, postRebootAction
 	}
 
 	// IPv4 static config changes require reboot
@@ -214,18 +220,17 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (bo
 				HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
 				RedirectUrl: fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
 			}
+
+			l.Info().Interface("postRebootAction", postRebootAction).Msg("IPv4 static config changed, reboot required")
 		}
 
-		networkLogger.Info().
-			Interface("old", oldConfig.IPv4Static).
-			Interface("new", newConfig.IPv4Static).
-			Msg("IPv4 static config changed, reboot required")
+		return rebootRequired, postRebootAction
 	}
 
 	// IPv6 mode change requires reboot when using udhcpc
 	if newConfig.IPv6Mode.String != oldConfig.IPv6Mode.String && oldDhcpClient == "udhcpc" {
 		rebootRequired = true
-		networkLogger.Info().Str("old", oldConfig.IPv6Mode.String).Str("new", newConfig.IPv6Mode.String).Msg("IPv6 mode changed with udhcpc, reboot required")
+		l.Info().Msg("IPv6 mode changed with udhcpc, reboot required")
 	}
 
 	return rebootRequired, postRebootAction
