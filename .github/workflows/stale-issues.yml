@@ -1,0 +1,100 @@
+name: Close stale issues and PRs (dry-run)
+on:
+  schedule:
+    - cron: '30 1 * * *'   # Runs daily at 01:30 UTC
+  workflow_dispatch:        # Allow manual runs from the Actions tab
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v10
+        with:
+          # ──────────────────────────────────────────────────────────────────────
+          # OVERVIEW — HOW THIS WORKS
+          # 1) The job scans issues/PRs once per run.
+          # 2) If an item has had no activity for `days-before-stale`, it’s labeled `Stale`
+          #    and receives the relevant “stale” comment.
+          # 3) If there’s still no activity for `days-before-close` AFTER being marked
+          #    stale, the item is closed and receives a closing comment.
+          # 4) Any new activity (comment, label change, commit, edit) clears `Stale`
+          #    and resets the timers if `remove-stale-when-updated` is true.
+          # ──────────────────────────────────────────────────────────────────────
+
+          # ── TIMING / BEHAVIOR ────────────────────────────────────────────────
+          # Number of idle days before applying the `Stale` label + stale comment.
+          days-before-stale: 60
+
+          # Number of days AFTER staling with no activity before auto-closing.
+          # (Measured from when `Stale` was added.) Set to -1 to never auto-close.
+          days-before-close: 14
+
+          # If someone comments/updates, automatically remove `Stale` and reset timers.
+          remove-stale-when-updated: true
+
+          # Don’t nag draft PRs; they are explicitly a work-in-progress stage.
+          exempt-draft-pr: true
+
+          # Fetch ordering when scanning items. `updated` helps focus on the most recently touched.
+          sort-by: updated
+
+          # ── MESSAGES (markdown) ──────────────────────────────────────────────
+          stale-issue-message: |
+            **This issue has been inactive for 60 days and is now marked as stale.**
+
+            To keep the tracker focused, older inactive issues are flagged.
+
+            If this still applies:
+            - Add a comment with **reproduction steps**, **environment details**, and **JetKVM version**.
+            - Verify whether it still occurs with the current build: see [OTA / Updates](https://jetkvm.com/docs/advanced-usage/ota-updates).
+            - Any new comment or update will remove the *Stale* label automatically.
+
+            Issues not updated within 14 days after being marked stale may be closed.
+
+          stale-pr-message: |
+            **This pull request has been inactive for 60 days and is now marked as stale.**
+
+            To continue:
+            - Push a commit or add a comment about next steps — this removes the *Stale* label automatically.
+            - Ensure the changes work with the current build: see [OTA / Updates](https://jetkvm.com/docs/advanced-usage/ota-updates).
+            - If this is blocked or awaiting review, mention that for visibility.
+
+            PRs not updated within 14 days after being marked stale may be closed.
+
+          close-issue-message: |
+            **Closing this issue due to extended inactivity.**
+
+            It has been 14 days since it was marked as stale without further updates.
+
+            If the problem persists:
+            - Reopen this issue, or open a new one with **reproduction steps**, **logs**, **environment**, and **JetKVM version**.
+            - Confirm behavior with the current build: [OTA / Updates](https://jetkvm.com/docs/advanced-usage/ota-updates).
+
+          close-pr-message: |
+            **Closing this pull request due to extended inactivity.**
+
+            It has been 14 days since it was marked as stale with no updates or commits.
+
+            If the changes are still relevant:
+            - Reopen this PR or submit a refreshed PR rebased on the latest code.
+            - Confirm that it builds and works with the current build: [OTA / Updates](https://jetkvm.com/docs/advanced-usage/ota-updates).
+
+          # ── SAFETY / ROLLOUT ────────────────────────────────────────────────
+          # DRY-RUN: log what would happen, but do NOT write labels/comments/close.
+          debug-only: true
+
+          # Print a summary of how many items were staled/closed (or would be, in dry-run).
+          enable-statistics: true
+
+          # Limit GitHub API operations per run (gentle start for large repos).
+          # Increase later (e.g., 200–1000) once you’re confident with behavior.
+          operations-per-run: 50
+
+          # ── LABELS ───────────────────────────────────────────────────────────
+          # Names of the labels applied when staling items. Defaults shown for clarity.
+          stale-issue-label: 'Stale'
+          stale-pr-label: 'Stale'
