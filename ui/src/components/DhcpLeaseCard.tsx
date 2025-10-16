@@ -5,20 +5,47 @@ import { GridCard } from "@/components/Card";
 import { LifeTimeLabel } from "@/routes/devices.$id.settings.network";
 import { NetworkState } from "@/hooks/stores";
 
+import EmptyCard from "./EmptyCard";
+
 export default function DhcpLeaseCard({
   networkState,
   setShowRenewLeaseConfirm,
 }: {
-  networkState: NetworkState;
+  networkState: NetworkState | null;
   setShowRenewLeaseConfirm: (show: boolean) => void;
 }) {
+  const isDhcpLeaseEmpty = Object.keys(networkState?.dhcp_lease || {}).length === 0;
+
+  if (isDhcpLeaseEmpty) {
+    return (
+      <EmptyCard
+        headline="No DHCP Lease information"
+        description="We haven't received any DHCP lease information from the device yet."
+      />
+    );
+  }
+
   return (
     <GridCard>
-      <div className="animate-fadeIn p-4 opacity-0 animation-duration-500 text-black dark:text-white">
+      <div className="animate-fadeIn p-4 text-black opacity-0 animation-duration-500 dark:text-white">
         <div className="space-y-3">
-          <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            DHCP Lease Information
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              DHCP Lease Information
+            </h3>
+
+            <div>
+              <Button
+                size="XS"
+                theme="light"
+                type="button"
+                className="text-red-500"
+                text="Renew DHCP Lease"
+                LeadingIcon={LuRefreshCcw}
+                onClick={() => setShowRenewLeaseConfirm(true)}
+              />
+            </div>
+          </div>
 
           <div className="flex gap-x-6 gap-y-2">
             <div className="flex-1 space-y-2">
@@ -44,24 +71,15 @@ export default function DhcpLeaseCard({
                 </div>
               )}
 
-              {networkState?.dhcp_lease?.dns && (
+              {networkState?.dhcp_lease?.dns_servers && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">
                     DNS Servers
                   </span>
                   <span className="text-right text-sm font-medium">
-                    {networkState?.dhcp_lease?.dns.map(dns => <div key={dns}>{dns}</div>)}
-                  </span>
-                </div>
-              )}
-
-              {networkState?.dhcp_lease?.broadcast && (
-                <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">
-                    Broadcast
-                  </span>
-                  <span className="text-sm font-medium">
-                    {networkState?.dhcp_lease?.broadcast}
+                    {networkState?.dhcp_lease?.dns_servers.map(dns => (
+                      <div key={dns}>{dns}</div>
+                    ))}
                   </span>
                 </div>
               )}
@@ -142,6 +160,17 @@ export default function DhcpLeaseCard({
                 </div>
               )}
 
+              {networkState?.dhcp_lease?.broadcast && (
+                <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                    Broadcast
+                  </span>
+                  <span className="text-sm font-medium">
+                    {networkState?.dhcp_lease?.broadcast}
+                  </span>
+                </div>
+              )}
+
               {networkState?.dhcp_lease?.mtu && (
                 <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
                   <span className="text-sm text-slate-600 dark:text-slate-400">MTU</span>
@@ -192,18 +221,14 @@ export default function DhcpLeaseCard({
                   </span>
                 </div>
               )}
-            </div>
-          </div>
 
-          <div>
-            <Button
-              size="SM"
-              theme="light"
-              className="text-red-500"
-              text="Renew DHCP Lease"
-              LeadingIcon={LuRefreshCcw}
-              onClick={() => setShowRenewLeaseConfirm(true)}
-            />
+              {networkState?.dhcp_lease?.dhcp_client && (
+                <div className="flex justify-between border-t border-slate-800/10 pt-2 dark:border-slate-300/20">
+                  <span className="text-sm text-slate-600 dark:text-slate-400">DHCP Client</span>
+                  <span className="text-sm font-medium">{networkState?.dhcp_lease?.dhcp_client}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

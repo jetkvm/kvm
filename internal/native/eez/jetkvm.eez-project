@@ -48,7 +48,7 @@
         {
           "objID": "58af3ebb-96b3-494c-f4e3-9c23852e3e42",
           "fileName": "actions.c",
-          "template": "#include \"actions.h\"\n#include \"screens.h\"\n#include <stdio.h>\n#include <string.h>\n#include \"ui.h\"\n#include \"vars.h\"\n\nint handle_gesture_screen_switch(lv_event_t *e, lv_dir_t direction, int screenId) {\n    lv_event_code_t event_code = lv_event_get_code(e);\n    if (event_code != LV_EVENT_GESTURE) {\n        return 0;\n    }\n\n    if (lv_indev_get_gesture_dir(lv_indev_get_act()) != direction) {\n        return 0;\n    }\n    lv_indev_wait_release(lv_indev_get_act());\n    loadScreen(screenId);\n    return 1;\n}\n\nvoid handle_gesture_main_screen_switch(lv_event_t *e, lv_dir_t direction) {\n    const char *main_screen = get_var_main_screen();\n    if (strcmp(main_screen, \"home_screen\") == 0) {   \n        loadScreen(SCREEN_ID_HOME_SCREEN);\n    } else if (strcmp(main_screen, \"no_network_screen\") == 0) {\n        loadScreen(SCREEN_ID_NO_NETWORK_SCREEN);\n    }\n}\n\nvoid action_switch_to_menu(lv_event_t *e) {\n    loadScreen(SCREEN_ID_MENU_SCREEN);\n}\n\nvoid action_switch_to_advanced_menu(lv_event_t *e) {\n    loadScreen(SCREEN_ID_MENU_ADVANCED_SCREEN);\n}\n\nvoid action_switch_to_status(lv_event_t *e) {\n    loadScreen(SCREEN_ID_STATUS_SCREEN);\n}\n\nvoid action_switch_to_about(lv_event_t *e) {\n    loadScreen(SCREEN_ID_ABOUT_SCREEN);\n}\n\nvoid action_switch_to_reset_config(lv_event_t *e) {\n    loadScreen(SCREEN_ID_RESET_CONFIG_SCREEN);\n}\n\nvoid action_switch_to_reboot(lv_event_t *e) {\n    loadScreen(SCREEN_ID_REBOOT_SCREEN);\n}\n\nvoid action_menu_screen_gesture(lv_event_t * e) {\n    handle_gesture_main_screen_switch(e, LV_DIR_RIGHT);\n}\n\nvoid action_menu_advanced_screen_gesture(lv_event_t * e) {\n    handle_gesture_screen_switch(e, LV_DIR_RIGHT, SCREEN_ID_MENU_SCREEN);\n}\n\nvoid action_reset_config_screen_gesture(lv_event_t * e) {\n    handle_gesture_screen_switch(e, LV_DIR_RIGHT, SCREEN_ID_MENU_SCREEN);\n}\n\nvoid action_home_screen_gesture(lv_event_t * e) {\n    handle_gesture_screen_switch(e, LV_DIR_LEFT, SCREEN_ID_MENU_SCREEN);\n}\n\nvoid action_about_screen_gesture(lv_event_t * e) {\n    handle_gesture_screen_switch(e, LV_DIR_RIGHT, SCREEN_ID_MENU_SCREEN);\n}\n\n// user_data doesn't seem to be working, so we use a global variable here\nstatic uint32_t t_reset_config;\nstatic uint32_t t_reboot;\n\nstatic bool b_reboot = false;\nstatic bool b_reset_config = false;\n\nstatic bool b_reboot_lock = false;\nstatic bool b_reset_config_lock = false;\n\nconst int RESET_CONFIG_HOLD_TIME = 10;\nconst int REBOOT_HOLD_TIME = 5;\n\ntypedef struct {\n    uint32_t *start_time;\n    bool *completed;\n    bool *lock;\n    int hold_time_seconds;\n    const char *rpc_method;\n    lv_obj_t *button_obj;\n    lv_obj_t *spinner_obj;\n    lv_obj_t *label_obj;\n    const char *default_text;\n} hold_action_config_t;\n\nstatic void handle_hold_action(lv_event_t *e, hold_action_config_t *config) {\n    lv_event_code_t event_code = lv_event_get_code(e);\n    \n    if (event_code == LV_EVENT_PRESSED) {\n        *(config->start_time) = lv_tick_get();\n    }\n    else if (event_code == LV_EVENT_PRESSING) {\n        int remaining_time = config->hold_time_seconds * 1000 - lv_tick_elaps(*(config->start_time));\n        if (remaining_time <= 0) {\n            if (*(config->lock)) {\n                return;\n            }\n            if (config->button_obj && config->spinner_obj) {\n                lv_obj_add_flag(config->button_obj, LV_OBJ_FLAG_HIDDEN);\n                lv_obj_clear_flag(config->spinner_obj, LV_OBJ_FLAG_HIDDEN);\n            }\n            ui_call_rpc_handler(config->rpc_method, NULL);\n            *(config->lock) = true;\n            *(config->completed) = true;\n        } else {\n            *(config->completed) = false;\n            char buf[100];\n            int remaining_time_seconds = remaining_time / 1000;\n            if (remaining_time_seconds <= 1) {\n                remaining_time_seconds = 1;\n            }\n            sprintf(buf, \"Press and hold for\\n%d seconds\", remaining_time_seconds);\n            lv_label_set_text(config->label_obj, buf);\n        }\n    } else if (event_code == LV_EVENT_RELEASED) {\n        if (*(config->lock)) {\n            *(config->lock) = false;\n        }\n\n        if (!*(config->completed)) {\n            lv_label_set_text(config->label_obj, config->default_text);\n        }\n    }\n}\n\nvoid action_reset_config(lv_event_t * e) {\n    hold_action_config_t config = {\n        .start_time = &t_reset_config,\n        .completed = &b_reset_config,\n        .lock = &b_reset_config_lock,\n        .hold_time_seconds = RESET_CONFIG_HOLD_TIME,\n        .rpc_method = \"resetConfig\",\n        .button_obj = objects.reset_config_button,\n        .spinner_obj = objects.reset_config_spinner,\n        .label_obj = objects.reset_config_label,\n        .default_text = \"Press and hold for\\n10 seconds\"\n    };\n    \n    handle_hold_action(e, &config);\n}\n\nvoid action_reboot(lv_event_t * e) {\n    hold_action_config_t config = {\n        .start_time = &t_reboot,\n        .completed = &b_reboot,\n        .lock = &b_reboot_lock,\n        .hold_time_seconds = REBOOT_HOLD_TIME,\n        .rpc_method = \"reboot\",\n        .button_obj = NULL,  // No button/spinner for reboot\n        .spinner_obj = NULL,\n        .label_obj = objects.reboot_label,\n        .default_text = \"Press and hold for\\n5 seconds\"\n    };\n    \n    handle_hold_action(e, &config);\n}"
+          "template": "#include \"actions.h\"\n#include \"screens.h\"\n#include <stdio.h>\n#include <string.h>\n#include \"ui.h\"\n#include \"vars.h\"\n\nint handle_gesture_screen_switch(lv_event_t *e, lv_dir_t direction, int screenId) {\n    lv_event_code_t event_code = lv_event_get_code(e);\n    if (event_code != LV_EVENT_GESTURE) {\n        return 0;\n    }\n\n    if (lv_indev_get_gesture_dir(lv_indev_get_act()) != direction) {\n        return 0;\n    }\n    lv_indev_wait_release(lv_indev_get_act());\n    loadScreen(screenId);\n    return 1;\n}\n\nvoid handle_gesture_main_screen_switch(lv_event_t *e, lv_dir_t direction) {\n    const char *main_screen = get_var_main_screen();\n    if (strcmp(main_screen, \"home_screen\") == 0) {   \n        loadScreen(SCREEN_ID_HOME_SCREEN);\n    } else if (strcmp(main_screen, \"no_network_screen\") == 0) {\n        loadScreen(SCREEN_ID_NO_NETWORK_SCREEN);\n    }\n}\n\nvoid action_switch_to_menu(lv_event_t *e) {\n    loadScreen(SCREEN_ID_MENU_SCREEN);\n}\n\nvoid action_switch_to_advanced_menu(lv_event_t *e) {\n    loadScreen(SCREEN_ID_MENU_ADVANCED_SCREEN);\n}\n\nvoid action_switch_to_status(lv_event_t *e) {\n    loadScreen(SCREEN_ID_STATUS_SCREEN);\n}\n\nvoid action_switch_to_about(lv_event_t *e) {\n    loadScreen(SCREEN_ID_ABOUT_SCREEN);\n}\n\nvoid action_switch_to_reset_config(lv_event_t *e) {\n    loadScreen(SCREEN_ID_RESET_CONFIG_SCREEN);\n}\n\nvoid action_switch_to_dhcpc(lv_event_t *e) {\n    loadScreen(SCREEN_ID_SWITCH_DHCP_CLIENT_SCREEN);\n}\n\nvoid action_switch_to_reboot(lv_event_t *e) {\n    loadScreen(SCREEN_ID_REBOOT_SCREEN);\n}\n\nvoid action_menu_screen_gesture(lv_event_t * e) {\n    handle_gesture_main_screen_switch(e, LV_DIR_RIGHT);\n}\n\nvoid action_menu_advanced_screen_gesture(lv_event_t * e) {\n    handle_gesture_screen_switch(e, LV_DIR_RIGHT, SCREEN_ID_MENU_SCREEN);\n}\n\nvoid action_reset_config_screen_gesture(lv_event_t * e) {\n    handle_gesture_screen_switch(e, LV_DIR_RIGHT, SCREEN_ID_MENU_SCREEN);\n}\n\nvoid action_home_screen_gesture(lv_event_t * e) {\n    handle_gesture_screen_switch(e, LV_DIR_LEFT, SCREEN_ID_MENU_SCREEN);\n}\n\nvoid action_about_screen_gesture(lv_event_t * e) {\n    handle_gesture_screen_switch(e, LV_DIR_RIGHT, SCREEN_ID_MENU_SCREEN);\n}\n\n// user_data doesn't seem to be working, so we use a global variable here\nstatic uint32_t t_reset_config;\nstatic uint32_t t_reboot;\nstatic uint32_t t_dhcpc;\n\nstatic bool b_reboot = false;\nstatic bool b_reset_config = false;\nstatic bool b_dhcpc = false;\n\nstatic bool b_reboot_lock = false;\nstatic bool b_reset_config_lock = false;\nstatic bool b_dhcpc_lock = false;\n\nconst int RESET_CONFIG_HOLD_TIME = 10;\nconst int REBOOT_HOLD_TIME = 5;\nconst int DHCPC_HOLD_TIME = 5;\n\ntypedef struct {\n    uint32_t *start_time;\n    bool *completed;\n    bool *lock;\n    int hold_time_seconds;\n    const char *rpc_method;\n    lv_obj_t *button_obj;\n    lv_obj_t *spinner_obj;\n    lv_obj_t *label_obj;\n    const char *default_text;\n} hold_action_config_t;\n\nstatic void handle_hold_action(lv_event_t *e, hold_action_config_t *config) {\n    lv_event_code_t event_code = lv_event_get_code(e);\n    \n    if (event_code == LV_EVENT_PRESSED) {\n        *(config->start_time) = lv_tick_get();\n    }\n    else if (event_code == LV_EVENT_PRESSING) {\n        int remaining_time = config->hold_time_seconds * 1000 - lv_tick_elaps(*(config->start_time));\n        if (remaining_time <= 0) {\n            if (*(config->lock)) {\n                return;\n            }\n            if (config->button_obj && config->spinner_obj) {\n                lv_obj_add_flag(config->button_obj, LV_OBJ_FLAG_HIDDEN);\n                lv_obj_clear_flag(config->spinner_obj, LV_OBJ_FLAG_HIDDEN);\n            }\n            ui_call_rpc_handler(config->rpc_method, NULL);\n            *(config->lock) = true;\n            *(config->completed) = true;\n        } else {\n            *(config->completed) = false;\n            char buf[100];\n            int remaining_time_seconds = remaining_time / 1000;\n            if (remaining_time_seconds <= 1) {\n                remaining_time_seconds = 1;\n            }\n            sprintf(buf, \"Press and hold for\\n%d seconds\", remaining_time_seconds);\n            lv_label_set_text(config->label_obj, buf);\n        }\n    } else if (event_code == LV_EVENT_RELEASED) {\n        if (*(config->lock)) {\n            *(config->lock) = false;\n        }\n\n        if (!*(config->completed)) {\n            lv_label_set_text(config->label_obj, config->default_text);\n        }\n    }\n}\n\nvoid action_reset_config(lv_event_t * e) {\n    hold_action_config_t config = {\n        .start_time = &t_reset_config,\n        .completed = &b_reset_config,\n        .lock = &b_reset_config_lock,\n        .hold_time_seconds = RESET_CONFIG_HOLD_TIME,\n        .rpc_method = \"resetConfig\",\n        .button_obj = objects.reset_config_button,\n        .spinner_obj = objects.reset_config_spinner,\n        .label_obj = objects.reset_config_label,\n        .default_text = \"Press and hold for\\n10 seconds\"\n    };\n    \n    handle_hold_action(e, &config);\n}\n\nvoid action_dhcpc(lv_event_t * e) {\n    hold_action_config_t config = {\n        .start_time = &t_dhcpc,\n        .completed = &b_dhcpc,\n        .lock = &b_dhcpc_lock,\n        .hold_time_seconds = DHCPC_HOLD_TIME,\n        .rpc_method = \"toggleDHCPClient\",\n        .button_obj = NULL,  // No button/spinner for reboot\n        .spinner_obj = NULL,\n        .label_obj = objects.dhcpc_label,\n        .default_text = \"Press and hold for\\n5 seconds\"\n    };\n    \n    handle_hold_action(e, &config);\n}\n\nvoid action_reboot(lv_event_t * e) {\n    hold_action_config_t config = {\n        .start_time = &t_reboot,\n        .completed = &b_reboot,\n        .lock = &b_reboot_lock,\n        .hold_time_seconds = REBOOT_HOLD_TIME,\n        .rpc_method = \"reboot\",\n        .button_obj = NULL,  // No button/spinner for reboot\n        .spinner_obj = NULL,\n        .label_obj = objects.reboot_label,\n        .default_text = \"Press and hold for\\n5 seconds\"\n    };\n    \n    handle_hold_action(e, &config);\n}"
         },
         {
           "objID": "1dbd1b7e-7270-47f0-ee02-e80bdae287cf",
@@ -273,6 +273,22 @@
       "localVariables": [],
       "userProperties": [],
       "name": "SwitchToReboot"
+    },
+    {
+      "objID": "3efa8142-0c2d-4b63-e75e-8ff57d132f5e",
+      "components": [],
+      "connectionLines": [],
+      "localVariables": [],
+      "userProperties": [],
+      "name": "DHCPC"
+    },
+    {
+      "objID": "1fbdb292-2b01-4dfe-a4ab-da889959259e",
+      "components": [],
+      "connectionLines": [],
+      "localVariables": [],
+      "userProperties": [],
+      "name": "SwitchToDHCPC"
     }
   ],
   "userPages": [
@@ -3038,7 +3054,7 @@
                       "left": 0,
                       "top": 0,
                       "width": 100,
-                      "height": 108,
+                      "height": 166,
                       "customInputs": [],
                       "customOutputs": [],
                       "style": {
@@ -3332,6 +3348,104 @@
                           "useStyle": "MenuButton",
                           "localStyles": {
                             "objID": "fff1eefd-0f3c-45de-9b2c-df13c8e3c74a"
+                          },
+                          "group": "",
+                          "groupIndex": 0
+                        },
+                        {
+                          "objID": "3a5c0243-2877-4e9f-f23f-8022eeb772cd",
+                          "type": "LVGLButtonWidget",
+                          "left": 0,
+                          "top": 0,
+                          "width": 100,
+                          "height": 50,
+                          "customInputs": [],
+                          "customOutputs": [],
+                          "style": {
+                            "objID": "31a3a5fe-d9e6-42ba-dffe-916f7d247168",
+                            "useStyle": "default",
+                            "conditionalStyles": [],
+                            "childStyles": []
+                          },
+                          "locked": false,
+                          "hiddenInEditor": false,
+                          "timeline": [],
+                          "eventHandlers": [
+                            {
+                              "objID": "6a730d9a-c11d-4800-9833-f4d7b5a8a40d",
+                              "eventName": "PRESSED",
+                              "handlerType": "action",
+                              "action": "SwitchToDHCPC",
+                              "userData": 0
+                            }
+                          ],
+                          "identifier": "MenuBtnDHCPClient",
+                          "leftUnit": "px",
+                          "topUnit": "px",
+                          "widthUnit": "%",
+                          "heightUnit": "px",
+                          "children": [
+                            {
+                              "objID": "929d0861-7f4d-43f0-ce71-07fafb9ac719",
+                              "type": "LVGLLabelWidget",
+                              "left": 0,
+                              "top": 0,
+                              "width": 115,
+                              "height": 20,
+                              "customInputs": [],
+                              "customOutputs": [],
+                              "style": {
+                                "objID": "704ef898-9f7c-43a8-ab11-c48b4af1e864",
+                                "useStyle": "default",
+                                "conditionalStyles": [],
+                                "childStyles": []
+                              },
+                              "hiddenInEditor": false,
+                              "timeline": [],
+                              "eventHandlers": [],
+                              "identifier": "",
+                              "leftUnit": "px",
+                              "topUnit": "px",
+                              "widthUnit": "content",
+                              "heightUnit": "content",
+                              "children": [],
+                              "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                              "hiddenFlagType": "literal",
+                              "clickableFlagType": "literal",
+                              "flagScrollbarMode": "",
+                              "flagScrollDirection": "",
+                              "scrollSnapX": "",
+                              "scrollSnapY": "",
+                              "checkedStateType": "literal",
+                              "disabledStateType": "literal",
+                              "states": "",
+                              "useStyle": "MenuButtonLabel",
+                              "localStyles": {
+                                "objID": "5144f730-9924-47ca-bfb9-c02449de88be"
+                              },
+                              "group": "",
+                              "groupIndex": 0,
+                              "text": "DHCP Client",
+                              "textType": "literal",
+                              "longMode": "WRAP",
+                              "recolor": false
+                            }
+                          ],
+                          "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_ON_FOCUS|SCROLL_WITH_ARROW",
+                          "hiddenFlag": false,
+                          "hiddenFlagType": "literal",
+                          "clickableFlag": true,
+                          "clickableFlagType": "literal",
+                          "flagScrollbarMode": "",
+                          "flagScrollDirection": "",
+                          "scrollSnapX": "",
+                          "scrollSnapY": "",
+                          "checkedStateType": "literal",
+                          "disabledStateType": "literal",
+                          "states": "",
+                          "useStyle": "MenuButton",
+                          "localStyles": {
+                            "objID": "2d17602a-58eb-4a21-9aff-c1f1a7d09bfe"
                           },
                           "group": "",
                           "groupIndex": 0
@@ -8087,6 +8201,750 @@
       "localVariables": [],
       "userProperties": [],
       "name": "RebootingScreen",
+      "left": 0,
+      "top": 0,
+      "width": 300,
+      "height": 240,
+      "isUsedAsUserWidget": false,
+      "createAtStart": true,
+      "deleteOnScreenUnload": false
+    },
+    {
+      "objID": "606eb261-e593-41e5-d86b-6487f467eea9",
+      "components": [
+        {
+          "objID": "61b8bea9-a21d-4498-c0ed-14a4bd2a4858",
+          "type": "LVGLScreenWidget",
+          "left": 0,
+          "top": 0,
+          "width": 300,
+          "height": 240,
+          "customInputs": [],
+          "customOutputs": [],
+          "style": {
+            "objID": "938e0598-29de-4807-b736-8bcda0e9d417",
+            "useStyle": "default",
+            "conditionalStyles": [],
+            "childStyles": []
+          },
+          "timeline": [],
+          "eventHandlers": [
+            {
+              "objID": "eeb49a6a-3cfe-4372-8706-b6734bbbceec",
+              "eventName": "GESTURE",
+              "handlerType": "action",
+              "action": "AboutScreenGesture",
+              "userData": 0
+            }
+          ],
+          "leftUnit": "px",
+          "topUnit": "px",
+          "widthUnit": "px",
+          "heightUnit": "px",
+          "children": [
+            {
+              "objID": "0f3e9d37-63ca-45b0-bd92-13fbf1ecf63f",
+              "type": "LVGLContainerWidget",
+              "left": 0,
+              "top": 0,
+              "width": 100,
+              "height": 100,
+              "customInputs": [],
+              "customOutputs": [],
+              "style": {
+                "objID": "e2636ce4-0cbd-4646-a676-26efc3cd3bed",
+                "useStyle": "default",
+                "conditionalStyles": [],
+                "childStyles": []
+              },
+              "timeline": [],
+              "eventHandlers": [],
+              "identifier": "",
+              "leftUnit": "px",
+              "topUnit": "px",
+              "widthUnit": "%",
+              "heightUnit": "%",
+              "children": [
+                {
+                  "objID": "fd6de3f1-da9d-4bf9-c789-ba4b4b7e6f98",
+                  "type": "LVGLContainerWidget",
+                  "left": 0,
+                  "top": 0,
+                  "width": 100,
+                  "height": 32,
+                  "customInputs": [],
+                  "customOutputs": [],
+                  "style": {
+                    "objID": "6138f675-e136-435f-890d-5841a1faa447",
+                    "useStyle": "default",
+                    "conditionalStyles": [],
+                    "childStyles": []
+                  },
+                  "timeline": [],
+                  "eventHandlers": [],
+                  "identifier": "DHCPClientHeader",
+                  "leftUnit": "px",
+                  "topUnit": "px",
+                  "widthUnit": "%",
+                  "heightUnit": "content",
+                  "children": [
+                    {
+                      "objID": "edd2bee0-2bfa-4db7-930c-2445899a3d7f",
+                      "type": "LVGLButtonWidget",
+                      "left": 0,
+                      "top": 0,
+                      "width": 32,
+                      "height": 32,
+                      "customInputs": [],
+                      "customOutputs": [],
+                      "style": {
+                        "objID": "34a0ab43-9134-405d-d30b-a60c487a18a0",
+                        "useStyle": "default",
+                        "conditionalStyles": [],
+                        "childStyles": []
+                      },
+                      "timeline": [],
+                      "eventHandlers": [
+                        {
+                          "objID": "cfbd687f-29e2-4c6a-de27-f8d10dceeeb8",
+                          "eventName": "CLICKED",
+                          "handlerType": "action",
+                          "action": "SwitchToMenu",
+                          "userData": 0
+                        }
+                      ],
+                      "leftUnit": "px",
+                      "topUnit": "px",
+                      "widthUnit": "px",
+                      "heightUnit": "px",
+                      "children": [
+                        {
+                          "objID": "9d5fdeca-711b-4c7d-e9ce-35f506095573",
+                          "type": "LVGLImageWidget",
+                          "left": -1,
+                          "top": 2,
+                          "width": 8,
+                          "height": 12,
+                          "customInputs": [],
+                          "customOutputs": [],
+                          "style": {
+                            "objID": "3dbbc13f-48bc-47d3-cfa1-865309068b4b",
+                            "useStyle": "default",
+                            "conditionalStyles": [],
+                            "childStyles": []
+                          },
+                          "timeline": [],
+                          "eventHandlers": [],
+                          "leftUnit": "px",
+                          "topUnit": "px",
+                          "widthUnit": "content",
+                          "heightUnit": "content",
+                          "children": [],
+                          "widgetFlags": "ADV_HITTEST|CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                          "hiddenFlagType": "literal",
+                          "clickableFlagType": "literal",
+                          "flagScrollbarMode": "",
+                          "flagScrollDirection": "",
+                          "scrollSnapX": "",
+                          "scrollSnapY": "",
+                          "checkedStateType": "literal",
+                          "disabledStateType": "literal",
+                          "states": "",
+                          "localStyles": {
+                            "objID": "3864abb7-e6ea-4188-cc23-99583e940dde"
+                          },
+                          "group": "",
+                          "groupIndex": 0,
+                          "image": "back-caret",
+                          "setPivot": false,
+                          "pivotX": 0,
+                          "pivotY": 0,
+                          "zoom": 256,
+                          "angle": 0,
+                          "innerAlign": "CENTER"
+                        }
+                      ],
+                      "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_ON_FOCUS|SCROLL_WITH_ARROW|SNAPPABLE",
+                      "hiddenFlagType": "literal",
+                      "clickableFlag": true,
+                      "clickableFlagType": "literal",
+                      "flagScrollbarMode": "",
+                      "flagScrollDirection": "",
+                      "scrollSnapX": "",
+                      "scrollSnapY": "",
+                      "checkedStateType": "literal",
+                      "disabledStateType": "literal",
+                      "states": "",
+                      "useStyle": "BackButton",
+                      "localStyles": {
+                        "objID": "04d66c1f-9518-4905-bd8f-25f99bb40708"
+                      },
+                      "group": "",
+                      "groupIndex": 0
+                    },
+                    {
+                      "objID": "bde5dd77-e61f-4398-f76c-b32d204a1532",
+                      "type": "LVGLLabelWidget",
+                      "left": 0,
+                      "top": 0,
+                      "width": 115,
+                      "height": 20,
+                      "customInputs": [],
+                      "customOutputs": [],
+                      "style": {
+                        "objID": "6cacf93f-877f-46b2-cc3a-85d25ed6725c",
+                        "useStyle": "default",
+                        "conditionalStyles": [],
+                        "childStyles": []
+                      },
+                      "timeline": [],
+                      "eventHandlers": [],
+                      "identifier": "",
+                      "leftUnit": "%",
+                      "topUnit": "%",
+                      "widthUnit": "content",
+                      "heightUnit": "content",
+                      "children": [],
+                      "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                      "hiddenFlagType": "literal",
+                      "clickableFlagType": "literal",
+                      "checkedStateType": "literal",
+                      "disabledStateType": "literal",
+                      "states": "",
+                      "useStyle": "HeaderLink",
+                      "localStyles": {
+                        "objID": "0ac01432-b282-41c4-b119-316fe81ad79b"
+                      },
+                      "groupIndex": 0,
+                      "text": "DHCP Client",
+                      "textType": "literal",
+                      "longMode": "WRAP",
+                      "recolor": false
+                    }
+                  ],
+                  "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                  "hiddenFlagType": "literal",
+                  "clickableFlag": true,
+                  "clickableFlagType": "literal",
+                  "flagScrollbarMode": "",
+                  "flagScrollDirection": "",
+                  "scrollSnapX": "",
+                  "scrollSnapY": "",
+                  "checkedStateType": "literal",
+                  "disabledStateType": "literal",
+                  "states": "",
+                  "useStyle": "FlowRowSpaceBetween",
+                  "localStyles": {
+                    "objID": "318d6e6f-47fc-43b2-d552-78044e89013b",
+                    "definition": {
+                      "MAIN": {
+                        "DEFAULT": {
+                          "pad_right": 4
+                        }
+                      }
+                    }
+                  },
+                  "group": "",
+                  "groupIndex": 0
+                },
+                {
+                  "objID": "be2e4477-a5c6-4fbf-b6ae-41781ba8beb3",
+                  "type": "LVGLContainerWidget",
+                  "left": 0,
+                  "top": 0,
+                  "width": 100,
+                  "height": 80,
+                  "customInputs": [],
+                  "customOutputs": [],
+                  "style": {
+                    "objID": "32002f2f-ef5d-4cb2-861b-64e6d5a7d579",
+                    "useStyle": "default",
+                    "conditionalStyles": [],
+                    "childStyles": []
+                  },
+                  "timeline": [],
+                  "eventHandlers": [],
+                  "identifier": "DHCPClientContainer",
+                  "leftUnit": "px",
+                  "topUnit": "px",
+                  "widthUnit": "%",
+                  "heightUnit": "%",
+                  "children": [
+                    {
+                      "objID": "b54678c4-4a2c-4cb3-f69f-1f5c2af56871",
+                      "type": "LVGLContainerWidget",
+                      "left": 0,
+                      "top": 0,
+                      "width": 100,
+                      "height": 118,
+                      "customInputs": [],
+                      "customOutputs": [],
+                      "style": {
+                        "objID": "e2990e43-732a-4333-fe6b-2ebce8595dbe",
+                        "useStyle": "default",
+                        "conditionalStyles": [],
+                        "childStyles": []
+                      },
+                      "timeline": [],
+                      "eventHandlers": [],
+                      "leftUnit": "px",
+                      "topUnit": "px",
+                      "widthUnit": "%",
+                      "heightUnit": "content",
+                      "children": [
+                        {
+                          "objID": "1eac7e05-d4ef-4f1d-fb76-6d5ed568080c",
+                          "type": "LVGLContainerWidget",
+                          "left": 0,
+                          "top": 0,
+                          "width": 100,
+                          "height": 60,
+                          "customInputs": [],
+                          "customOutputs": [],
+                          "style": {
+                            "objID": "bfe31228-f83e-4e4d-cc0b-a54b11ae977d",
+                            "useStyle": "default",
+                            "conditionalStyles": [],
+                            "childStyles": []
+                          },
+                          "timeline": [],
+                          "eventHandlers": [],
+                          "identifier": "DHCPClientLabelContainer",
+                          "leftUnit": "px",
+                          "topUnit": "px",
+                          "widthUnit": "%",
+                          "heightUnit": "content",
+                          "children": [
+                            {
+                              "objID": "6bc2314a-818b-4dda-bd0d-14fc9e95e335",
+                              "type": "LVGLLabelWidget",
+                              "left": 0,
+                              "top": 0,
+                              "width": 100,
+                              "height": 40,
+                              "customInputs": [],
+                              "customOutputs": [],
+                              "style": {
+                                "objID": "cddebe4d-3ea2-48c6-cd6e-6e9fb0b9b542",
+                                "useStyle": "default",
+                                "conditionalStyles": [],
+                                "childStyles": []
+                              },
+                              "timeline": [],
+                              "eventHandlers": [],
+                              "identifier": "DHCPC_Label",
+                              "leftUnit": "px",
+                              "topUnit": "px",
+                              "widthUnit": "%",
+                              "heightUnit": "content",
+                              "children": [],
+                              "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                              "hiddenFlagType": "literal",
+                              "clickableFlagType": "literal",
+                              "flagScrollbarMode": "",
+                              "flagScrollDirection": "",
+                              "scrollSnapX": "",
+                              "scrollSnapY": "",
+                              "checkedStateType": "literal",
+                              "disabledStateType": "literal",
+                              "states": "",
+                              "useStyle": "InfoContentLabel",
+                              "localStyles": {
+                                "objID": "120b38c1-a71d-4d16-9716-75f3bb8b6e1e",
+                                "definition": {
+                                  "MAIN": {
+                                    "DEFAULT": {
+                                      "text_font": "FontBook20"
+                                    }
+                                  }
+                                }
+                              },
+                              "group": "",
+                              "groupIndex": 0,
+                              "text": "Press and hold for\n5 seconds",
+                              "textType": "literal",
+                              "longMode": "WRAP",
+                              "recolor": false,
+                              "previewValue": "0.0.1"
+                            }
+                          ],
+                          "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                          "hiddenFlagType": "literal",
+                          "clickableFlag": true,
+                          "clickableFlagType": "literal",
+                          "flagScrollbarMode": "",
+                          "flagScrollDirection": "",
+                          "scrollSnapX": "",
+                          "scrollSnapY": "",
+                          "checkedStateType": "literal",
+                          "disabledStateType": "literal",
+                          "states": "",
+                          "useStyle": "FlexColumnStart",
+                          "localStyles": {
+                            "objID": "49877fd7-7428-4aa9-de03-7dcfcd6e9c3e",
+                            "definition": {
+                              "MAIN": {
+                                "DEFAULT": {
+                                  "pad_right": 10,
+                                  "pad_left": 10,
+                                  "pad_top": 10,
+                                  "pad_bottom": 10
+                                }
+                              }
+                            }
+                          },
+                          "group": "",
+                          "groupIndex": 0
+                        },
+                        {
+                          "objID": "080e4506-6708-4853-fe18-6fa783466f89",
+                          "type": "LVGLContainerWidget",
+                          "left": 0,
+                          "top": 0,
+                          "width": 100,
+                          "height": 80,
+                          "customInputs": [],
+                          "customOutputs": [],
+                          "style": {
+                            "objID": "433da4ef-fa5a-4d0e-9646-7e0cfb5ca8a1",
+                            "useStyle": "default",
+                            "conditionalStyles": [],
+                            "childStyles": []
+                          },
+                          "hiddenInEditor": false,
+                          "timeline": [],
+                          "eventHandlers": [],
+                          "identifier": "DHCPClientSpinner",
+                          "leftUnit": "px",
+                          "topUnit": "px",
+                          "widthUnit": "%",
+                          "heightUnit": "content",
+                          "children": [
+                            {
+                              "objID": "9ac3d644-13f9-4d1e-c5df-d30f77e060c9",
+                              "type": "LVGLSpinnerWidget",
+                              "left": 0,
+                              "top": 0,
+                              "width": 80,
+                              "height": 80,
+                              "customInputs": [],
+                              "customOutputs": [],
+                              "style": {
+                                "objID": "eecd876c-0d54-40b5-80c9-35b5fed54d49",
+                                "useStyle": "default",
+                                "conditionalStyles": [],
+                                "childStyles": []
+                              },
+                              "timeline": [],
+                              "eventHandlers": [],
+                              "leftUnit": "px",
+                              "topUnit": "px",
+                              "widthUnit": "px",
+                              "heightUnit": "px",
+                              "children": [],
+                              "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                              "hiddenFlagType": "literal",
+                              "clickableFlagType": "literal",
+                              "flagScrollbarMode": "",
+                              "flagScrollDirection": "",
+                              "scrollSnapX": "",
+                              "scrollSnapY": "",
+                              "checkedStateType": "literal",
+                              "disabledStateType": "literal",
+                              "states": "",
+                              "localStyles": {
+                                "objID": "3b02891a-1c25-4bb9-c452-992e29e1b522"
+                              },
+                              "group": "",
+                              "groupIndex": 0
+                            }
+                          ],
+                          "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                          "hiddenFlag": true,
+                          "hiddenFlagType": "literal",
+                          "clickableFlag": false,
+                          "clickableFlagType": "literal",
+                          "flagScrollbarMode": "",
+                          "flagScrollDirection": "",
+                          "scrollSnapX": "",
+                          "scrollSnapY": "",
+                          "checkedStateType": "literal",
+                          "disabledStateType": "literal",
+                          "states": "",
+                          "useStyle": "FlexColumnStart",
+                          "localStyles": {
+                            "objID": "0261577f-97e3-4b4b-b761-cbb127842798",
+                            "definition": {
+                              "MAIN": {
+                                "DEFAULT": {
+                                  "flex_main_place": "CENTER",
+                                  "flex_cross_place": "CENTER",
+                                  "flex_track_place": "CENTER"
+                                }
+                              }
+                            }
+                          },
+                          "group": "",
+                          "groupIndex": 0
+                        },
+                        {
+                          "objID": "3cd2081b-7f47-44da-ad46-0fec4d6c13af",
+                          "type": "LVGLContainerWidget",
+                          "left": 0,
+                          "top": 0,
+                          "width": 100,
+                          "height": 50,
+                          "customInputs": [],
+                          "customOutputs": [],
+                          "style": {
+                            "objID": "96ae878d-571b-4be0-e408-ba24a005a7c7",
+                            "useStyle": "default",
+                            "conditionalStyles": [],
+                            "childStyles": []
+                          },
+                          "hiddenInEditor": false,
+                          "timeline": [],
+                          "eventHandlers": [],
+                          "identifier": "DHCPClientButton",
+                          "leftUnit": "px",
+                          "topUnit": "px",
+                          "widthUnit": "%",
+                          "heightUnit": "content",
+                          "children": [
+                            {
+                              "objID": "ca25a750-c474-4994-eb13-b2ea9abeb1f1",
+                              "type": "LVGLButtonWidget",
+                              "left": 0,
+                              "top": 0,
+                              "width": 100,
+                              "height": 50,
+                              "customInputs": [],
+                              "customOutputs": [],
+                              "style": {
+                                "objID": "22a3e3ca-a02c-4e43-9b78-7de7d03a7879",
+                                "useStyle": "default",
+                                "conditionalStyles": [],
+                                "childStyles": []
+                              },
+                              "hiddenInEditor": false,
+                              "timeline": [],
+                              "eventHandlers": [
+                                {
+                                  "objID": "71ed231c-9bc3-4f0f-81f0-bf83c082974c",
+                                  "eventName": "PRESSED",
+                                  "handlerType": "action",
+                                  "action": "DHCPC",
+                                  "userData": 0
+                                },
+                                {
+                                  "objID": "677825fd-50cd-4d46-ef8e-4b296fef7c76",
+                                  "eventName": "PRESSING",
+                                  "handlerType": "action",
+                                  "action": "DHCPC",
+                                  "userData": 0
+                                },
+                                {
+                                  "objID": "f25e6fa7-45de-4d97-d892-3411d07f2df6",
+                                  "eventName": "RELEASED",
+                                  "handlerType": "action",
+                                  "action": "DHCPC",
+                                  "userData": 0
+                                }
+                              ],
+                              "leftUnit": "px",
+                              "topUnit": "px",
+                              "widthUnit": "%",
+                              "heightUnit": "px",
+                              "children": [
+                                {
+                                  "objID": "9370968e-29f3-411e-8e6e-28874fb3cdd8",
+                                  "type": "LVGLLabelWidget",
+                                  "left": 0,
+                                  "top": 0,
+                                  "width": 129,
+                                  "height": 16,
+                                  "customInputs": [],
+                                  "customOutputs": [],
+                                  "style": {
+                                    "objID": "e81bebce-db31-4a4e-e0d1-2c48865b9e5c",
+                                    "useStyle": "default",
+                                    "conditionalStyles": [],
+                                    "childStyles": []
+                                  },
+                                  "hiddenInEditor": false,
+                                  "timeline": [],
+                                  "eventHandlers": [],
+                                  "identifier": "DHCPClientChangeLabel",
+                                  "leftUnit": "px",
+                                  "topUnit": "px",
+                                  "widthUnit": "content",
+                                  "heightUnit": "content",
+                                  "children": [],
+                                  "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                                  "hiddenFlagType": "literal",
+                                  "clickableFlagType": "literal",
+                                  "flagScrollbarMode": "",
+                                  "flagScrollDirection": "",
+                                  "scrollSnapX": "",
+                                  "scrollSnapY": "",
+                                  "checkedStateType": "literal",
+                                  "disabledStateType": "literal",
+                                  "states": "",
+                                  "localStyles": {
+                                    "objID": "c7acc23d-631e-40ca-e8af-d73735a6b513",
+                                    "definition": {
+                                      "MAIN": {
+                                        "DEFAULT": {
+                                          "align": "CENTER",
+                                          "text_align": "LEFT"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "group": "",
+                                  "groupIndex": 0,
+                                  "text": "Switch to udhcpc",
+                                  "textType": "literal",
+                                  "longMode": "WRAP",
+                                  "recolor": false
+                                }
+                              ],
+                              "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_ON_FOCUS|SCROLL_WITH_ARROW|SNAPPABLE",
+                              "hiddenFlagType": "literal",
+                              "clickableFlag": true,
+                              "clickableFlagType": "literal",
+                              "flagScrollbarMode": "",
+                              "flagScrollDirection": "",
+                              "scrollSnapX": "",
+                              "scrollSnapY": "",
+                              "checkedStateType": "literal",
+                              "disabledStateType": "literal",
+                              "states": "",
+                              "useStyle": "",
+                              "localStyles": {
+                                "objID": "244a5188-9237-429c-ea0f-0892dffba39d",
+                                "definition": {
+                                  "MAIN": {
+                                    "DEFAULT": {
+                                      "bg_color": "DC2626",
+                                      "text_align": "LEFT",
+                                      "pad_right": 13
+                                    }
+                                  }
+                                }
+                              },
+                              "group": "",
+                              "groupIndex": 0
+                            }
+                          ],
+                          "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                          "hiddenFlagType": "literal",
+                          "clickableFlag": true,
+                          "clickableFlagType": "literal",
+                          "flagScrollbarMode": "",
+                          "flagScrollDirection": "",
+                          "scrollSnapX": "",
+                          "scrollSnapY": "",
+                          "checkedStateType": "literal",
+                          "disabledStateType": "literal",
+                          "states": "",
+                          "useStyle": "FlexColumnStart",
+                          "localStyles": {
+                            "objID": "98d255ea-498c-4bce-cbd9-5c58f4148905"
+                          },
+                          "group": "",
+                          "groupIndex": 0
+                        }
+                      ],
+                      "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                      "hiddenFlagType": "literal",
+                      "clickableFlag": true,
+                      "clickableFlagType": "literal",
+                      "flagScrollbarMode": "",
+                      "flagScrollDirection": "",
+                      "scrollSnapX": "",
+                      "scrollSnapY": "",
+                      "checkedStateType": "literal",
+                      "disabledStateType": "literal",
+                      "states": "",
+                      "useStyle": "FlexColumnStart",
+                      "localStyles": {
+                        "objID": "ac0d8cb4-7113-4ad6-f9b2-6d24553c6558",
+                        "definition": {
+                          "MAIN": {
+                            "DEFAULT": {
+                              "pad_right": 10
+                            }
+                          }
+                        }
+                      },
+                      "group": "",
+                      "groupIndex": 0
+                    }
+                  ],
+                  "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_VER|SNAPPABLE|SCROLL_ELASTIC|SCROLL_WITH_ARROW|SCROLL_MOMENTUM|SCROLL_CHAIN_HOR|SCROLLABLE",
+                  "hiddenFlagType": "literal",
+                  "clickableFlag": true,
+                  "clickableFlagType": "literal",
+                  "flagScrollbarMode": "auto",
+                  "flagScrollDirection": "ver",
+                  "scrollSnapX": "start",
+                  "scrollSnapY": "",
+                  "checkedStateType": "literal",
+                  "disabledStateType": "literal",
+                  "states": "",
+                  "useStyle": "FlexColumnStart",
+                  "localStyles": {
+                    "objID": "b4f4b1a5-fe3d-4114-bb43-68d4a39ff3c2",
+                    "definition": {
+                      "MAIN": {
+                        "DEFAULT": {
+                          "pad_right": 4
+                        }
+                      }
+                    }
+                  },
+                  "group": "",
+                  "groupIndex": 0
+                }
+              ],
+              "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE|SCROLL_ELASTIC",
+              "hiddenFlagType": "literal",
+              "clickableFlag": true,
+              "clickableFlagType": "literal",
+              "flagScrollbarMode": "",
+              "flagScrollDirection": "",
+              "scrollSnapX": "",
+              "scrollSnapY": "",
+              "checkedStateType": "literal",
+              "disabledStateType": "literal",
+              "states": "",
+              "useStyle": "FlexStart",
+              "localStyles": {
+                "objID": "34c01609-fb79-4d5a-943a-a28e67b73adf"
+              },
+              "group": "",
+              "groupIndex": 0
+            }
+          ],
+          "widgetFlags": "CLICKABLE|PRESS_LOCK|CLICK_FOCUSABLE|GESTURE_BUBBLE|SNAPPABLE|SCROLLABLE|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER",
+          "hiddenFlagType": "literal",
+          "clickableFlag": true,
+          "clickableFlagType": "literal",
+          "checkedStateType": "literal",
+          "disabledStateType": "literal",
+          "states": "",
+          "useStyle": "FlexScreenMenu",
+          "localStyles": {
+            "objID": "cd8e005a-54e3-4ed2-edfb-719d97a7ded8"
+          },
+          "groupIndex": 0
+        }
+      ],
+      "connectionLines": [],
+      "localVariables": [],
+      "userProperties": [],
+      "name": "SwitchDHCPClientScreen",
       "left": 0,
       "top": 0,
       "width": 300,

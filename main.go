@@ -33,6 +33,7 @@ func Main() {
 	go runWatchdog()
 	go confirmCurrentSystem()
 
+	initDisplay()
 	initNative(systemVersionLocal, appVersionLocal)
 	initAudio()
 
@@ -74,9 +75,6 @@ func Main() {
 		logger.Warn().Err(err).Msg("failed to init images folder")
 	}
 	initJiggler()
-
-	// initialize display
-	initDisplay()
 
 	// start video sleep mode timer
 	startVideoSleepModeTicker()

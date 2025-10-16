@@ -27,7 +27,12 @@ const (
 )
 
 func switchToMainScreen() {
-	if networkState.IsUp() {
+	if networkManager == nil {
+		nativeInstance.SwitchToScreenIfDifferent("no_network_screen")
+		return
+	}
+
+	if networkManager.IsUp() {
 		nativeInstance.SwitchToScreenIfDifferent("home_screen")
 	} else {
 		nativeInstance.SwitchToScreenIfDifferent("no_network_screen")
@@ -35,13 +40,21 @@ func switchToMainScreen() {
 }
 
 func updateDisplay() {
-	nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkState.IPv4String())
-	nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv6_addr", networkState.IPv6String())
+	if networkManager != nil {
+		nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkManager.IPv4String())
+		nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv6_addr", networkManager.IPv6String())
+		nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
+	}
 
 	_, _ = nativeInstance.UIObjHide("menu_btn_network")
 	_, _ = nativeInstance.UIObjHide("menu_btn_access")
 
-	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkState.MACString())
+	switch config.NetworkConfig.DHCPClient.String {
+	case "jetdhcpc":
+		nativeInstance.UpdateLabelIfChanged("dhcp_client_change_label", "Change to udhcpc")
+	case "udhcpc":
+		nativeInstance.UpdateLabelIfChanged("dhcp_client_change_label", "Change to JetKVM")
+	}
 
 	if usbState == "configured" {
 		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Connected")
@@ -59,7 +72,7 @@ func updateDisplay() {
 	}
 	nativeInstance.UpdateLabelIfChanged("cloud_status_label", fmt.Sprintf("%d active", actionSessions))
 
-	if networkState.IsUp() {
+	if networkManager != nil && networkManager.IsUp() {
 		nativeInstance.UISetVar("main_screen", "home_screen")
 		nativeInstance.SwitchToScreenIf("home_screen", []string{"no_network_screen", "boot_screen"})
 	} else {
@@ -175,7 +188,7 @@ func requestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 			wakeDisplay(false, reason)
 		}
 		displayLogger.Debug().Msg("display updating")
-		//TODO: only run once regardless how many pending updates
+		// TODO: only run once regardless how many pending updates
 		updateDisplay()
 	}()
 }
@@ -184,13 +197,14 @@ func waitCtrlAndRequestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 	waitDisplayUpdate.Lock()
 	defer waitDisplayUpdate.Unlock()
 
-	// nativeInstance.WaitCtrlClientConnected()
 	requestDisplayUpdate(shouldWakeDisplay, reason)
 }
 
 func updateStaticContents() {
 	//contents that never change
-	nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkState.MACString())
+	if networkManager != nil {
+		nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
+	}
 
 	// get cpu info
 	if cpuInfo, err := os.ReadFile("/proc/cpuinfo"); err == nil {
@@ -326,11 +340,8 @@ func startBacklightTickers() {
 		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
 
 		go func() {
-			for { //nolint:staticcheck
-				select {
-				case <-dimTicker.C:
-					tick_displayDim()
-				}
+			for range dimTicker.C {
+				tick_displayDim()
 			}
 		}()
 	}
@@ -340,11 +351,8 @@ func startBacklightTickers() {
 		offTicker = time.NewTicker(time.Duration(config.DisplayOffAfterSec) * time.Second)
 
 		go func() {
-			for { //nolint:staticcheck
-				select {
-				case <-offTicker.C:
-					tick_displayOff()
-				}
+			for range offTicker.C {
+				tick_displayOff()
 			}
 		}()
 	}

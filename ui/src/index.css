@@ -109,6 +109,15 @@
       transform: translateY(0);
     }
   }
+  
+  @keyframes fadeInStill {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
 
   @keyframes slideUpFade {
     0% {

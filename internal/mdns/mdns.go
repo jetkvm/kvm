@@ -146,14 +146,17 @@ func (m *MDNS) start(allowRestart bool) error {
 	return nil
 }
 
+// Start starts the mDNS server
 func (m *MDNS) Start() error {
 	return m.start(false)
 }
 
+// Restart restarts the mDNS server
 func (m *MDNS) Restart() error {
 	return m.start(true)
 }
 
+// Stop stops the mDNS server
 func (m *MDNS) Stop() error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
@@ -165,26 +168,45 @@ func (m *MDNS) Stop() error {
 	return m.conn.Close()
 }
 
-func (m *MDNS) SetLocalNames(localNames []string, always bool) error {
-	if reflect.DeepEqual(m.localNames, localNames) && !always {
-		return nil
+func (m *MDNS) setLocalNames(localNames []string) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if reflect.DeepEqual(m.localNames, localNames) {
+		return
 	}
 
 	m.localNames = localNames
-	_ = m.Restart()
-
-	return nil
 }
 
-func (m *MDNS) SetListenOptions(listenOptions *MDNSListenOptions) error {
+func (m *MDNS) setListenOptions(listenOptions *MDNSListenOptions) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
 	if m.listenOptions != nil &&
 		m.listenOptions.IPv4 == listenOptions.IPv4 &&
 		m.listenOptions.IPv6 == listenOptions.IPv6 {
-		return nil
+		return
 	}
 
 	m.listenOptions = listenOptions
-	_ = m.Restart()
+}
 
-	return nil
+// SetLocalNames sets the local names and restarts the mDNS server
+func (m *MDNS) SetLocalNames(localNames []string) error {
+	m.setLocalNames(localNames)
+	return m.Restart()
+}
+
+// SetListenOptions sets the listen options and restarts the mDNS server
+func (m *MDNS) SetListenOptions(listenOptions *MDNSListenOptions) error {
+	m.setListenOptions(listenOptions)
+	return m.Restart()
+}
+
+// SetOptions sets the local names and listen options and restarts the mDNS server
+func (m *MDNS) SetOptions(options *MDNSOptions) error {
+	m.setLocalNames(options.LocalNames)
+	m.setListenOptions(options.ListenOptions)
+	return m.Restart()
 }
