@@ -255,20 +255,9 @@ func setDCRestoreState(state int) error {
 	return nil
 }
 
-func mountSerialButtons() error {
-	_ = port.SetMode(defaultMode)
-	return nil
-}
-
-func unmountSerialButtons() error {
-	_ = reopenSerialPort()
-	return nil
-}
-
 func sendCustomCommand(command string) error {
 	scopedLogger := serialLogger.With().Str("service", "custom_buttons_tx").Logger()
-	scopedLogger.Info().Str("Command", command).Msg("Sending custom command.")
-	scopedLogger.Info().Msgf("Sending custom command: %q", command)
+	scopedLogger.Debug().Msgf("Sending custom command: %q", command)
 	if serialMux == nil {
 		return fmt.Errorf("serial mux not initialized")
 	}
@@ -325,7 +314,7 @@ type SerialSettings struct {
 	HideSerialSettings bool          `json:"hideSerialSettings"` // Whether to hide the serial settings in the UI
 	EnableEcho         bool          `json:"enableEcho"`         // Whether to echo received characters back to the sender
 	NormalizeMode      string        `json:"normalizeMode"`      // Normalization mode: "carret", "names", "hex"
-	NormalizeLineEnd   string        `json:"normalizeLineEnd"`   // Line ending normalization: "keep", "lf", "cr", "crlf"
+	NormalizeLineEnd   string        `json:"normalizeLineEnd"`   // Line ending normalization: "keep", "lf", "cr", "crlf", "lfcr"
 	TabRender          string        `json:"tabRender"`          // How to render tabs: "spaces", "arrow", "pipe"
 	PreserveANSI       bool          `json:"preserveANSI"`       // Whether to preserve ANSI escape codes
 	ShowNLTag          bool          `json:"showNLTag"`          // Whether to show a special tag for new lines
@@ -358,7 +347,7 @@ func getSerialSettings() (SerialSettings, error) {
 
 	file, err := os.Open(serialSettingsPath)
 	if err != nil {
-		logger.Debug().Msg("SerialButtons config file doesn't exist, using default")
+		logger.Info().Msg("SerialButtons config file doesn't exist, using default")
 		return serialConfig, err
 	}
 	defer file.Close()
@@ -412,7 +401,7 @@ func getSerialSettings() (SerialSettings, error) {
 
 	var normalizeMode NormalizeMode
 	switch serialConfig.NormalizeMode {
-	case "carret":
+	case "caret":
 		normalizeMode = ModeCaret
 	case "names":
 		normalizeMode = ModeNames
@@ -422,25 +411,25 @@ func getSerialSettings() (SerialSettings, error) {
 		normalizeMode = ModeNames
 	}
 
-	var crlfMode CRLFMode
+	var crlfMode LineEndingMode
 	switch serialConfig.NormalizeLineEnd {
 	case "keep":
-		crlfMode = CRLFAsIs
+		crlfMode = LineEnding_AsIs
 	case "lf":
-		crlfMode = CRLF_LF
+		crlfMode = LineEnding_LF
 	case "cr":
-		crlfMode = CRLF_CR
+		crlfMode = LineEnding_CR
 	case "crlf":
-		crlfMode = CRLF_CRLF
+		crlfMode = LineEnding_CRLF
 	case "lfcr":
-		crlfMode = CRLF_LFCR
+		crlfMode = LineEnding_LFCR
 	default:
-		crlfMode = CRLFAsIs
+		crlfMode = LineEnding_AsIs
 	}
 
 	if consoleBroker != nil {
-		norm := NormOptions{
-			Mode: normalizeMode, CRLF: crlfMode, TabRender: serialConfig.TabRender, PreserveANSI: serialConfig.PreserveANSI, ShowNLTag: serialConfig.ShowNLTag,
+		norm := NormalizationOptions{
+			Mode: normalizeMode, LineEnding: crlfMode, TabRender: serialConfig.TabRender, PreserveANSI: serialConfig.PreserveANSI, ShowNLTag: serialConfig.ShowNLTag,
 		}
 		consoleBroker.SetNormOptions(norm)
 	}
@@ -507,7 +496,7 @@ func setSerialSettings(newSettings SerialSettings) error {
 
 	var normalizeMode NormalizeMode
 	switch serialConfig.NormalizeMode {
-	case "carret":
+	case "caret":
 		normalizeMode = ModeCaret
 	case "names":
 		normalizeMode = ModeNames
@@ -517,25 +506,25 @@ func setSerialSettings(newSettings SerialSettings) error {
 		normalizeMode = ModeNames
 	}
 
-	var crlfMode CRLFMode
+	var crlfMode LineEndingMode
 	switch serialConfig.NormalizeLineEnd {
 	case "keep":
-		crlfMode = CRLFAsIs
+		crlfMode = LineEnding_AsIs
 	case "lf":
-		crlfMode = CRLF_LF
+		crlfMode = LineEnding_LF
 	case "cr":
-		crlfMode = CRLF_CR
+		crlfMode = LineEnding_CR
 	case "crlf":
-		crlfMode = CRLF_CRLF
+		crlfMode = LineEnding_CRLF
 	case "lfcr":
-		crlfMode = CRLF_LFCR
+		crlfMode = LineEnding_LFCR
 	default:
-		crlfMode = CRLFAsIs
+		crlfMode = LineEnding_AsIs
 	}
 
 	if consoleBroker != nil {
-		norm := NormOptions{
-			Mode: normalizeMode, CRLF: crlfMode, TabRender: serialConfig.TabRender, PreserveANSI: serialConfig.PreserveANSI, ShowNLTag: serialConfig.ShowNLTag,
+		norm := NormalizationOptions{
+			Mode: normalizeMode, LineEnding: crlfMode, TabRender: serialConfig.TabRender, PreserveANSI: serialConfig.PreserveANSI, ShowNLTag: serialConfig.ShowNLTag,
 		}
 		consoleBroker.SetNormOptions(norm)
 	}
@@ -575,8 +564,8 @@ func reopenSerialPort() error {
 	}
 
 	// new broker (no sink yet—set it in handleSerialChannel.OnOpen)
-	norm := NormOptions{
-		Mode: ModeNames, CRLF: CRLF_LF, TabRender: "", PreserveANSI: true,
+	norm := NormalizationOptions{
+		Mode: ModeNames, LineEnding: LineEnding_LF, TabRender: "", PreserveANSI: true,
 	}
 	if consoleBroker != nil {
 		consoleBroker.Close()
@@ -612,8 +601,7 @@ func handleSerialChannel(dataChannel *webrtc.DataChannel) {
 
 	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
 
-		scopedLogger.Info().Bytes("Data:", msg.Data).Msg("Sending data to serial mux")
-		scopedLogger.Info().Msgf("Sending data to serial mux: %q", msg.Data)
+		scopedLogger.Trace().Bytes("Data:", msg.Data).Msg("Sending data to serial mux")
 		if serialMux == nil {
 			return
 		}

@@ -31,25 +31,25 @@ const (
 	ModeHex                        // \x1B
 )
 
-type CRLFMode int
+type LineEndingMode int
 
 const (
-	CRLFAsIs CRLFMode = iota
-	CRLF_LF
-	CRLF_CR
-	CRLF_CRLF
-	CRLF_LFCR
+	LineEnding_AsIs LineEndingMode = iota
+	LineEnding_LF
+	LineEnding_CR
+	LineEnding_CRLF
+	LineEnding_LFCR
 )
 
-type NormOptions struct {
+type NormalizationOptions struct {
 	Mode         NormalizeMode
-	CRLF         CRLFMode
+	LineEnding   LineEndingMode
 	TabRender    string // e.g. "    " or "" to keep '\t'
 	PreserveANSI bool
-	ShowNLTag    bool // <- NEW: also print a visible tag for CR/LF
+	ShowNLTag    bool // print a visible tag for CR/LF like <CR>, <LF>, <CRLF>
 }
 
-func normalize(in []byte, opt NormOptions) string {
+func normalize(in []byte, opt NormalizationOptions) string {
 	var out strings.Builder
 	esc := byte(0x1B)
 	for i := 0; i < len(in); {
@@ -113,8 +113,8 @@ func normalize(in []byte, opt NormOptions) string {
 			}
 
 			// now emit the actual newline(s) per the normalization mode
-			switch opt.CRLF {
-			case CRLFAsIs:
+			switch opt.LineEnding {
+			case LineEnding_AsIs:
 				if isPair {
 					out.WriteByte(b)
 					out.WriteByte(in[i+1])
@@ -123,28 +123,28 @@ func normalize(in []byte, opt NormOptions) string {
 					out.WriteByte(b)
 					i++
 				}
-			case CRLF_LF:
+			case LineEnding_LF:
 				if isPair {
 					i += 2
 				} else {
 					i++
 				}
 				out.WriteByte('\n')
-			case CRLF_CR:
+			case LineEnding_CR:
 				if isPair {
 					i += 2
 				} else {
 					i++
 				}
 				out.WriteByte('\r')
-			case CRLF_CRLF:
+			case LineEnding_CRLF:
 				if isPair {
 					i += 2
 				} else {
 					i++
 				}
-				out.WriteString("\r\n") // (fixed to actually write CRLF)
-			case CRLF_LFCR:
+				out.WriteString("\r\n")
+			case LineEnding_LFCR:
 				if isPair {
 					i += 2
 				} else {
@@ -238,14 +238,14 @@ type ConsoleBroker struct {
 	quietAfter   time.Duration
 
 	// normalization
-	norm NormOptions
+	norm NormalizationOptions
 
 	// labels
 	labelRX string
 	labelTX string
 }
 
-func NewConsoleBroker(s Sink, norm NormOptions) *ConsoleBroker {
+func NewConsoleBroker(s Sink, norm NormalizationOptions) *ConsoleBroker {
 	return &ConsoleBroker{
 		sink:           s,
 		in:             make(chan consoleEvent, 256),
@@ -264,10 +264,10 @@ func NewConsoleBroker(s Sink, norm NormOptions) *ConsoleBroker {
 	}
 }
 
-func (b *ConsoleBroker) Start()                          { go b.loop() }
-func (b *ConsoleBroker) Close()                          { close(b.done) }
-func (b *ConsoleBroker) SetSink(s Sink)                  { b.sink = s }
-func (b *ConsoleBroker) SetNormOptions(norm NormOptions) { b.norm = norm }
+func (b *ConsoleBroker) Start()                                   { go b.loop() }
+func (b *ConsoleBroker) Close()                                   { close(b.done) }
+func (b *ConsoleBroker) SetSink(s Sink)                           { b.sink = s }
+func (b *ConsoleBroker) SetNormOptions(norm NormalizationOptions) { b.norm = norm }
 func (b *ConsoleBroker) SetTerminalPaused(v bool) {
 	if b == nil {
 		return
@@ -293,23 +293,23 @@ func (b *ConsoleBroker) loop() {
 
 		case v := <-b.pauseCh:
 			// apply pause state
-			was := b.terminalPaused
+			wasPaused := b.terminalPaused
 			b.terminalPaused = v
-			if was && !v {
+			if wasPaused && !v {
 				// we just unpaused: flush buffered output in order
-				scopedLogger.Info().Msg("Terminal unpaused; flushing buffered output")
+				scopedLogger.Trace().Msg("Terminal unpaused; flushing buffered output")
 				b.flushBuffer()
-			} else if !was && v {
-				scopedLogger.Info().Msg("Terminal paused; buffering output")
+			} else if !wasPaused && v {
+				scopedLogger.Trace().Msg("Terminal paused; buffering output")
 			}
 
 		case ev := <-b.in:
 			switch ev.kind {
 			case evRX:
-				scopedLogger.Info().Msg("Processing RX data from serial port")
+				scopedLogger.Trace().Msg("Processing RX data from serial port")
 				b.handleRX(ev.data)
 			case evTX:
-				scopedLogger.Info().Msg("Processing TX echo request")
+				scopedLogger.Trace().Msg("Processing TX echo request")
 				b.handleTX(ev.data)
 			}
 
@@ -367,10 +367,10 @@ func (b *ConsoleBroker) handleRX(data []byte) {
 		return
 	}
 
-	scopedLogger.Info().Msg("Emitting RX data to sink (with per-line prefixes)")
+	scopedLogger.Trace().Msg("Emitting RX data to sink (with per-line prefixes)")
 
 	// Prefix every line, regardless of how the EOLs look
-	lines := splitAfterAnyEOL(text, b.norm.CRLF)
+	lines := splitAfterAnyEOL(text, b.norm.LineEnding)
 
 	// Start from the broker's current RX line state
 	atLineEnd := b.rxAtLineEnd
@@ -389,7 +389,7 @@ func (b *ConsoleBroker) handleRX(data []byte) {
 		}
 
 		// Update line-end state based on this piece
-		atLineEnd = endsWithEOL(line, b.norm.CRLF)
+		atLineEnd = endsWithEOL(line, b.norm.LineEnding)
 	}
 
 	// Persist state for next RX chunk
@@ -407,11 +407,11 @@ func (b *ConsoleBroker) handleTX(data []byte) {
 		return
 	}
 	if b.rxAtLineEnd && b.pendingTX == nil {
-		scopedLogger.Info().Msg("Emitting TX data to sink immediately")
+		scopedLogger.Trace().Msg("Emitting TX data to sink immediately")
 		b.emitTX(data)
 		return
 	}
-	scopedLogger.Info().Msg("Queuing TX data to emit after RX line completion or quiet period")
+	scopedLogger.Trace().Msg("Queuing TX data to emit after RX line completion or quiet period")
 	b.pendingTX = &consoleEvent{kind: evTX, data: append([]byte(nil), data...)}
 	b.startQuietTimer()
 }
@@ -430,12 +430,12 @@ func (b *ConsoleBroker) emitTX(data []byte) {
 	// Check if we’re in the middle of a TX line
 	if !b.txLineActive {
 		// Start new TX line with prefix
-		scopedLogger.Info().Msg("Emitting TX data to sink with prefix")
+		scopedLogger.Trace().Msg("Emitting TX data to sink with prefix")
 		b.emitToTerminal(fmt.Sprintf("%s: %s", b.labelTX, text))
 		b.txLineActive = true
 	} else {
 		// Continue current line (no prefix)
-		scopedLogger.Info().Msg("Emitting TX data to sink without prefix")
+		scopedLogger.Trace().Msg("Emitting TX data to sink without prefix")
 		b.emitToTerminal(text)
 	}
 
@@ -455,14 +455,14 @@ func (b *ConsoleBroker) flushPendingTX() {
 }
 
 func (b *ConsoleBroker) lineSep() string {
-	switch b.norm.CRLF {
-	case CRLF_CRLF:
+	switch b.norm.LineEnding {
+	case LineEnding_CRLF:
 		return "\r\n"
-	case CRLF_LFCR:
+	case LineEnding_LFCR:
 		return "\n\r"
-	case CRLF_CR:
+	case LineEnding_CR:
 		return "\r"
-	case CRLF_LF:
+	case LineEnding_LF:
 		return "\n"
 	default:
 		return "\n"
@@ -470,26 +470,26 @@ func (b *ConsoleBroker) lineSep() string {
 }
 
 // splitAfterAnyEOL splits text into lines keeping the EOL with each piece.
-// For CRLFAsIs it treats \r, \n, \r\n, and \n\r as EOLs.
+// For LineEnding_AsIs it treats \r, \n, \r\n, and \n\r as EOLs.
 // For other modes it uses the normalized separator.
-func splitAfterAnyEOL(text string, mode CRLFMode) []string {
+func splitAfterAnyEOL(text string, mode LineEndingMode) []string {
 	if text == "" {
 		return nil
 	}
 
 	// Fast path for normalized modes
 	switch mode {
-	case CRLF_LF:
+	case LineEnding_LF:
 		return strings.SplitAfter(text, "\n")
-	case CRLF_CR:
+	case LineEnding_CR:
 		return strings.SplitAfter(text, "\r")
-	case CRLF_CRLF:
+	case LineEnding_CRLF:
 		return strings.SplitAfter(text, "\r\n")
-	case CRLF_LFCR:
+	case LineEnding_LFCR:
 		return strings.SplitAfter(text, "\n\r")
 	}
 
-	// CRLFAsIs: scan bytes and treat \r, \n, \r\n, \n\r as one boundary
+	// LineEnding_AsIs: scan bytes and treat \r, \n, \r\n, \n\r as one boundary
 	b := []byte(text)
 	var parts []string
 	start := 0
@@ -511,18 +511,18 @@ func splitAfterAnyEOL(text string, mode CRLFMode) []string {
 	return parts
 }
 
-func endsWithEOL(s string, mode CRLFMode) bool {
+func endsWithEOL(s string, mode LineEndingMode) bool {
 	if s == "" {
 		return false
 	}
 	switch mode {
-	case CRLF_CRLF:
+	case LineEnding_CRLF:
 		return strings.HasSuffix(s, "\r\n")
-	case CRLF_LFCR:
+	case LineEnding_LFCR:
 		return strings.HasSuffix(s, "\n\r")
-	case CRLF_LF:
+	case LineEnding_LF:
 		return strings.HasSuffix(s, "\n")
-	case CRLF_CR:
+	case LineEnding_CR:
 		return strings.HasSuffix(s, "\r")
 	default: // AsIs: any of \r, \n, \r\n, \n\r
 		return strings.HasSuffix(s, "\r\n") ||
@@ -606,7 +606,7 @@ func (m *SerialMux) Close() { close(m.done) }
 func (m *SerialMux) SetEchoEnabled(v bool) { m.echoEnabled.Store(v) }
 
 func (m *SerialMux) Enqueue(payload []byte, source string, requestEcho bool) {
-	serialLogger.Info().Str("src", source).Bool("echo", requestEcho).Msg("Enqueuing TX data to serial port")
+	serialLogger.Trace().Str("src", source).Bool("echo", requestEcho).Msg("Enqueuing TX data to serial port")
 	m.txQ <- txFrame{payload: append([]byte(nil), payload...), source: source, echo: requestEcho}
 }
 
@@ -627,7 +627,7 @@ func (m *SerialMux) reader() {
 				continue
 			}
 			if n > 0 && m.broker != nil {
-				scopedLogger.Info().Msg("Sending RX data to console broker")
+				scopedLogger.Trace().Msg("Sending RX data to console broker")
 				m.broker.Enqueue(consoleEvent{kind: evRX, data: append([]byte(nil), buf[:n]...)})
 			}
 		}
@@ -641,14 +641,14 @@ func (m *SerialMux) writer() {
 		case <-m.done:
 			return
 		case f := <-m.txQ:
-			scopedLogger.Info().Msg("Writing TX data to serial port")
+			scopedLogger.Trace().Msg("Writing TX data to serial port")
 			if _, err := m.port.Write(f.payload); err != nil {
 				scopedLogger.Warn().Err(err).Str("src", f.source).Msg("serial write failed")
 				continue
 			}
 			// echo (if requested AND globally enabled)
 			if f.echo && m.echoEnabled.Load() && m.broker != nil {
-				scopedLogger.Info().Msg("Sending TX echo to console broker")
+				scopedLogger.Trace().Msg("Sending TX echo to console broker")
 				m.broker.Enqueue(consoleEvent{kind: evTX, data: append([]byte(nil), f.payload...)})
 			}
 		}
