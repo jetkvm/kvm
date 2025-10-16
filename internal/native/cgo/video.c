@@ -66,9 +66,20 @@ static void ensure_sleep_mode_disabled()
         log_error("Failed to open sleep mode file: %s", strerror(errno));
         return;
     }
+    lseek(fd, 0, SEEK_SET);
+    char buffer[1];
+    read(fd, buffer, 1);
+    if (buffer[0] == '0') {
+        close(fd);
+        return;
+    }
+    log_warn("HDMI sleep mode is not disabled, disabling it");
+    lseek(fd, 0, SEEK_SET);
     write(fd, "0", 1);
     close(fd);
 
+    usleep(1000); // give some time to the system to disable the sleep mode
+    return;
 }
 
 static void detect_sleep_mode()
