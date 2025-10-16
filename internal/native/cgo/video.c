@@ -220,9 +220,14 @@ static int32_t buf_init()
 
 pthread_t *format_thread = NULL;
 
-int video_init()
+int video_init(float factor)
 {
     detect_sleep_mode();
+
+    if (factor < 0 || factor > 1) {
+        factor = 1.0f;
+    }
+    quality_factor = factor;
 
     if (RK_MPI_SYS_Init() != RK_SUCCESS)
     {
