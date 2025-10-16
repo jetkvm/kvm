@@ -19,6 +19,7 @@ typedef struct _objects_t {
     lv_obj_t *reset_config_screen;
     lv_obj_t *reboot_screen;
     lv_obj_t *rebooting_screen;
+    lv_obj_t *switch_dhcp_client_screen;
     lv_obj_t *boot_logo;
     lv_obj_t *boot_screen_version;
     lv_obj_t *no_network_header_container;
@@ -54,6 +55,7 @@ typedef struct _objects_t {
     lv_obj_t *menu_btn_advanced_developer_mode;
     lv_obj_t *menu_btn_advanced_usb_emulation;
     lv_obj_t *menu_btn_advanced_reboot;
+    lv_obj_t *menu_btn_dhcp_client;
     lv_obj_t *menu_btn_advanced_reset_config;
     lv_obj_t *menu_header_container_2;
     lv_obj_t *menu_items_container_2;
@@ -101,6 +103,14 @@ typedef struct _objects_t {
     lv_obj_t *obj1;
     lv_obj_t *reboot_in_progress_logo;
     lv_obj_t *reboot_in_progress_label;
+    lv_obj_t *dhcp_client_header;
+    lv_obj_t *dhcp_client_container;
+    lv_obj_t *dhcp_client_label_container;
+    lv_obj_t *dhcpc_label;
+    lv_obj_t *dhcp_client_spinner;
+    lv_obj_t *dhcp_client_button;
+    lv_obj_t *obj2;
+    lv_obj_t *dhcp_client_change_label;
 } objects_t;
 
 extern objects_t objects;
@@ -117,6 +127,7 @@ enum ScreensEnum {
     SCREEN_ID_RESET_CONFIG_SCREEN = 9,
     SCREEN_ID_REBOOT_SCREEN = 10,
     SCREEN_ID_REBOOTING_SCREEN = 11,
+    SCREEN_ID_SWITCH_DHCP_CLIENT_SCREEN = 12,
 };
 
 void create_screen_boot_screen();
@@ -151,6 +162,9 @@ void tick_screen_reboot_screen();
 
 void create_screen_rebooting_screen();
 void tick_screen_rebooting_screen();
+
+void create_screen_switch_dhcp_client_screen();
+void tick_screen_switch_dhcp_client_screen();
 
 void tick_screen_by_id(enum ScreensEnum screenId);
 void tick_screen(int screen_index);

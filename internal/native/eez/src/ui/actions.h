@@ -24,6 +24,8 @@ extern void action_handle_common_press_event(lv_event_t * e);
 extern void action_reset_config(lv_event_t * e);
 extern void action_reboot(lv_event_t * e);
 extern void action_switch_to_reboot(lv_event_t * e);
+extern void action_dhcpc(lv_event_t * e);
+extern void action_switch_to_dhcpc(lv_event_t * e);
 
 
 #ifdef __cplusplus

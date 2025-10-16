@@ -494,7 +494,7 @@ func RunWebsocketClient() {
 		}
 
 		// If the network is not up, well, we can't connect to the cloud.
-		if !networkState.IsOnline() {
+		if !networkManager.IsOnline() {
 			cloudLogger.Warn().Msg("waiting for network to be online, will retry in 3 seconds")
 			time.Sleep(3 * time.Second)
 			continue

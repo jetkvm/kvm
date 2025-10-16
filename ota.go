@@ -488,6 +488,15 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 
 	if rebootNeeded {
 		scopedLogger.Info().Msg("System Rebooting in 10s")
+
+		// TODO: Future enhancement - send postRebootAction to redirect to release notes
+		// Example:
+		//   postRebootAction := &PostRebootAction{
+		//     HealthCheck: "[..]/device/status",
+		//     RedirectUrl: "[..]/settings/general/update?version=X.Y.Z",
+		//   }
+		//   writeJSONRPCEvent("willReboot", postRebootAction, currentSession)
+
 		time.Sleep(10 * time.Second)
 		cmd := exec.Command("reboot")
 		err := cmd.Start()
