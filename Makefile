@@ -12,7 +12,13 @@ BUILDKIT_FLAVOR := arm-rockchip830-linux-uclibcgnueabihf
 BUILDKIT_PATH ?= /opt/jetkvm-native-buildkit
 SKIP_NATIVE_IF_EXISTS ?= 0
 SKIP_UI_BUILD ?= 0
+ENABLE_SYNC_TRACE ?= 0
+
 GO_BUILD_ARGS := -tags netgo,timetzdata,nomsgpack
+ifeq ($(ENABLE_SYNC_TRACE), 1)
+	GO_BUILD_ARGS := $(GO_BUILD_ARGS),synctrace
+endif
+
 GO_RELEASE_BUILD_ARGS := -trimpath $(GO_BUILD_ARGS)
 GO_LDFLAGS := \
   -s -w \
