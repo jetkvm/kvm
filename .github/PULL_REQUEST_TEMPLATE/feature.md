@@ -1,14 +1,14 @@
 Closes #<issue-number>
 
-Summary
+### Summary
 
 - What and why in 1–3 sentences.
 
-Screenshots/videos (UI changes)
+### UI Changes
 
 - Add before/after images or a short clip.
 
-Checklist
+### Checklist
 
 - [ ] Linked to issue(s) above by issue number (e.g. `Closes #<issue-number>`)
 - [ ] One problem per PR (no unrelated changes)
