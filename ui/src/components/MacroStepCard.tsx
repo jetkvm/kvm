@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { LuArrowUp, LuArrowDown, LuX, LuTrash2 } from "react-icons/lu";
 
 import { Button } from "@/components/Button";
-import { Combobox } from "@/components/Combobox";
+import { Combobox, ComboboxOption } from "@/components/Combobox";
 import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import Card from "@/components/Card";
 import FieldLabel from "@/components/FieldLabel";
@@ -94,11 +94,9 @@ export function MacroStepCard({
       })),
     [keyDisplayMap]
   );
-  
   const filteredKeys = useMemo(() => {
     const selectedKeys = ensureArray(step.keys);
     const availableKeys = keyOptions.filter(option => !selectedKeys.includes(option.value));
-    
     if (keyQuery === '') {
       return availableKeys;
     } else {
@@ -176,7 +174,6 @@ export function MacroStepCard({
             ))}
           </div>
         </div>
-        
         <div className="w-full flex flex-col gap-1">
           <div className="flex items-center gap-1">
             <FieldLabel label="Keys" description={`Maximum ${MAX_KEYS_PER_STEP} keys per step.`} />
@@ -207,8 +204,9 @@ export function MacroStepCard({
           )}
           <div className="relative w-full">
             <Combobox
-              onChange={(value) => {
-                onKeySelect({ value: value as string | null });
+              onChange={(option) => {
+                const selectedOption = option as ComboboxOption | null;
+                onKeySelect({ value: selectedOption?.value ?? null });
                 onKeyQueryChange('');
               }}
               displayValue={() => keyQuery}
@@ -223,7 +221,6 @@ export function MacroStepCard({
             />
           </div>
         </div>
-        
         <div className="w-full flex flex-col gap-1">
           <div className="flex items-center gap-1">
             <FieldLabel label="Step Duration" description="Time to wait before executing the next step." />
@@ -241,4 +238,4 @@ export function MacroStepCard({
       </div>
     </Card>
   );
-} 
+}

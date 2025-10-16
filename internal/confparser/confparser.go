@@ -16,22 +16,22 @@ import (
 type FieldConfig struct {
 	Name              string
 	Required          bool
-	RequiredIf        map[string]any
+	RequiredIf        map[string]interface{}
 	OneOf             []string
 	ValidateTypes     []string
-	Defaults          any
+	Defaults          interface{}
 	IsEmpty           bool
-	CurrentValue      any
+	CurrentValue      interface{}
 	TypeString        string
 	Delegated         bool
 	shouldUpdateValue bool
 }
 
-func SetDefaultsAndValidate(config any) error {
+func SetDefaultsAndValidate(config interface{}) error {
 	return setDefaultsAndValidate(config, true)
 }
 
-func setDefaultsAndValidate(config any, isRoot bool) error {
+func setDefaultsAndValidate(config interface{}, isRoot bool) error {
 	// first we need to check if the config is a pointer
 	if reflect.TypeOf(config).Kind() != reflect.Ptr {
 		return fmt.Errorf("config is not a pointer")
@@ -55,7 +55,7 @@ func setDefaultsAndValidate(config any, isRoot bool) error {
 			Name:          field.Name,
 			OneOf:         splitString(field.Tag.Get("one_of")),
 			ValidateTypes: splitString(field.Tag.Get("validate_type")),
-			RequiredIf:    make(map[string]any),
+			RequiredIf:    make(map[string]interface{}),
 			CurrentValue:  fieldValue.Interface(),
 			IsEmpty:       false,
 			TypeString:    fieldType,
@@ -142,8 +142,8 @@ func setDefaultsAndValidate(config any, isRoot bool) error {
 		// now check if the field has required_if
 		requiredIf := field.Tag.Get("required_if")
 		if requiredIf != "" {
-			requiredIfParts := strings.SplitSeq(requiredIf, ",")
-			for part := range requiredIfParts {
+			requiredIfParts := strings.Split(requiredIf, ",")
+			for _, part := range requiredIfParts {
 				partVal := strings.SplitN(part, "=", 2)
 				if len(partVal) != 2 {
 					return fmt.Errorf("invalid required_if for field `%s`: %s", field.Name, requiredIf)
@@ -168,7 +168,7 @@ func setDefaultsAndValidate(config any, isRoot bool) error {
 	return nil
 }
 
-func validateFields(config any, fields map[string]FieldConfig) error {
+func validateFields(config interface{}, fields map[string]FieldConfig) error {
 	// now we can start to validate the fields
 	for _, fieldConfig := range fields {
 		if err := fieldConfig.validate(fields); err != nil {
@@ -215,7 +215,7 @@ func (f *FieldConfig) validate(fields map[string]FieldConfig) error {
 	return nil
 }
 
-func (f *FieldConfig) populate(config any) {
+func (f *FieldConfig) populate(config interface{}) {
 	// update the field if it's not empty
 	if !f.shouldUpdateValue {
 		return
@@ -346,6 +346,17 @@ func (f *FieldConfig) validateField() error {
 		return nil
 	}
 
+	// Handle []string types, like dns servers, time sync ntp servers, etc.
+	if slice, ok := f.CurrentValue.([]string); ok {
+		for i, item := range slice {
+			if err := f.validateSingleValue(item, i); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// Handle single string types
 	val, err := toString(f.CurrentValue)
 	if err != nil {
 		return fmt.Errorf("field `%s` cannot use validate_type: %s", f.Name, err)
@@ -355,30 +366,71 @@ func (f *FieldConfig) validateField() error {
 		return nil
 	}
 
+	return f.validateSingleValue(val, -1)
+}
+
+func (f *FieldConfig) validateSingleValue(val string, index int) error {
 	for _, validateType := range f.ValidateTypes {
+		var fieldRef string
+		if index >= 0 {
+			fieldRef = fmt.Sprintf("field `%s[%d]`", f.Name, index)
+		} else {
+			fieldRef = fmt.Sprintf("field `%s`", f.Name)
+		}
+
 		switch validateType {
+		case "int":
+			if _, err := strconv.Atoi(val); err != nil {
+				return fmt.Errorf("field `%s` is not a valid integer: %s", fieldRef, val)
+			}
+		case "ipv6_prefix_length":
+			valInt, err := strconv.Atoi(val)
+			if err != nil {
+				return fmt.Errorf("field `%s` is not a valid IPv6 prefix length: %s", fieldRef, val)
+			}
+			if valInt < 0 || valInt > 128 {
+				return fmt.Errorf("field `%s` is not a valid IPv6 prefix length: %s", fieldRef, val)
+			}
 		case "ipv4":
 			if net.ParseIP(val).To4() == nil {
-				return fmt.Errorf("field `%s` is not a valid IPv4 address: %s", f.Name, val)
+				return fmt.Errorf("field `%s` is not a valid IPv4 address: %s", fieldRef, val)
 			}
 		case "ipv6":
 			if net.ParseIP(val).To16() == nil {
-				return fmt.Errorf("field `%s` is not a valid IPv6 address: %s", f.Name, val)
+				return fmt.Errorf("field `%s` is not a valid IPv6 address: %s", fieldRef, val)
+			}
+		case "ipv6_prefix":
+			if i, _, err := net.ParseCIDR(val); err != nil {
+				if i.To16() == nil {
+					return fmt.Errorf("field `%s` is not a valid IPv6 prefix: %s", fieldRef, val)
+				}
+			}
+		case "ipv4_or_ipv6":
+			if net.ParseIP(val) == nil {
+				return fmt.Errorf("%s is not a valid IPv4 or IPv6 address: %s", fieldRef, val)
 			}
 		case "hwaddr":
 			if _, err := net.ParseMAC(val); err != nil {
-				return fmt.Errorf("field `%s` is not a valid MAC address: %s", f.Name, val)
+				return fmt.Errorf("%s is not a valid MAC address: %s", fieldRef, val)
 			}
 		case "hostname":
 			if _, err := idna.Lookup.ToASCII(val); err != nil {
-				return fmt.Errorf("field `%s` is not a valid hostname: %s", f.Name, val)
+				return fmt.Errorf("%s is not a valid hostname: %s", fieldRef, val)
 			}
 		case "proxy":
 			if url, err := url.Parse(val); err != nil || (url.Scheme != "http" && url.Scheme != "https") || url.Host == "" {
-				return fmt.Errorf("field `%s` is not a valid HTTP proxy URL: %s", f.Name, val)
+				return fmt.Errorf("%s is not a valid HTTP proxy URL: %s", fieldRef, val)
+			}
+		case "url":
+			if _, err := url.Parse(val); err != nil {
+				return fmt.Errorf("%s is not a valid URL: %s", fieldRef, val)
+			}
+		case "cidr":
+			if _, _, err := net.ParseCIDR(val); err != nil {
+				return fmt.Errorf("%s is not a valid CIDR notation: %s", fieldRef, val)
 			}
 		default:
-			return fmt.Errorf("field `%s` cannot use validate_type: unsupported validator: %s", f.Name, validateType)
+			return fmt.Errorf("field `%s` cannot use validate_type: unsupported validator: %s", fieldRef, validateType)
 		}
 	}
 

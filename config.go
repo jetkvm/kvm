@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/jetkvm/kvm/internal/network"
+	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -102,7 +103,7 @@ type Config struct {
 	TLSMode              string                 `json:"tls_mode"` // options: "self-signed", "user-defined", ""
 	UsbConfig            *usbgadget.Config      `json:"usb_config"`
 	UsbDevices           *usbgadget.Devices     `json:"usb_devices"`
-	NetworkConfig        *network.NetworkConfig `json:"network_config"`
+	NetworkConfig        *types.NetworkConfig   `json:"network_config"`
 	DefaultLogLevel      string                 `json:"default_log_level"`
 	AudioOutputSource    string                 `json:"audio_output_source"` // "hdmi" or "usb"
 	VideoSleepAfterSec   int                    `json:"video_sleep_after_sec"`
@@ -129,43 +130,57 @@ func (c *Config) SetDisplayRotation(rotation string) error {
 
 const configPath = "/userdata/kvm_config.json"
 
-var defaultConfig = &Config{
-	CloudURL:             "https://api.jetkvm.com",
-	CloudAppURL:          "https://app.jetkvm.com",
-	AutoUpdateEnabled:    true, // Set a default value
-	ActiveExtension:      "",
-	KeyboardMacros:       []KeyboardMacro{},
-	DisplayRotation:      "270",
-	KeyboardLayout:       "en-US",
-	DisplayMaxBrightness: 64,
-	DisplayDimAfterSec:   120,  // 2 minutes
-	DisplayOffAfterSec:   1800, // 30 minutes
-	JigglerEnabled:       false,
-	// This is the "Standard" jiggler option in the UI
-	JigglerConfig: &JigglerConfig{
+// it's a temporary solution to avoid sharing the same pointer
+// we should migrate to a proper config solution in the future
+var (
+	defaultJigglerConfig = JigglerConfig{
 		InactivityLimitSeconds: 60,
 		JitterPercentage:       25,
 		ScheduleCronTab:        "0 * * * * *",
 		Timezone:               "UTC",
-	},
-	TLSMode: "",
-	UsbConfig: &usbgadget.Config{
+	}
+	defaultUsbConfig = usbgadget.Config{
 		VendorId:     "0x1d6b", //The Linux Foundation
 		ProductId:    "0x0104", //Multifunction Composite Gadget
 		SerialNumber: "",
 		Manufacturer: "JetKVM",
 		Product:      "USB Emulation Device",
-	},
-	UsbDevices: &usbgadget.Devices{
+	}
+	defaultUsbDevices = usbgadget.Devices{
 		AbsoluteMouse: true,
 		RelativeMouse: true,
 		Keyboard:      true,
 		MassStorage:   true,
 		Audio:         true,
-	},
-	NetworkConfig:     &network.NetworkConfig{},
-	DefaultLogLevel:   "INFO",
-	AudioOutputSource: "usb",
+	}
+)
+
+func getDefaultConfig() Config {
+	return Config{
+		CloudURL:             "https://api.jetkvm.com",
+		CloudAppURL:          "https://app.jetkvm.com",
+		AutoUpdateEnabled:    true, // Set a default value
+		ActiveExtension:      "",
+		KeyboardMacros:       []KeyboardMacro{},
+		DisplayRotation:      "270",
+		KeyboardLayout:       "en-US",
+		DisplayMaxBrightness: 64,
+		DisplayDimAfterSec:   120,  // 2 minutes
+		DisplayOffAfterSec:   1800, // 30 minutes
+		JigglerEnabled:       false,
+		// This is the "Standard" jiggler option in the UI
+		JigglerConfig: func() *JigglerConfig { c := defaultJigglerConfig; return &c }(),
+		TLSMode:       "",
+		UsbConfig:     func() *usbgadget.Config { c := defaultUsbConfig; return &c }(),
+		UsbDevices:    func() *usbgadget.Devices { c := defaultUsbDevices; return &c }(),
+		NetworkConfig: func() *types.NetworkConfig {
+			c := &types.NetworkConfig{}
+			_ = confparser.SetDefaultsAndValidate(c)
+			return c
+		}(),
+		DefaultLogLevel:   "INFO",
+		AudioOutputSource: "usb",
+	}
 }
 
 var (
@@ -198,7 +213,8 @@ func LoadConfig() {
 	}
 
 	// load the default config
-	config = defaultConfig
+	defaultConfig := getDefaultConfig()
+	config = &defaultConfig
 
 	file, err := os.Open(configPath)
 	if err != nil {
@@ -210,7 +226,7 @@ func LoadConfig() {
 	defer file.Close()
 
 	// load and merge the default config with the user config
-	loadedConfig := *defaultConfig
+	loadedConfig := defaultConfig
 	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
 		logger.Warn().Err(err).Msg("config file JSON parsing failed")
 		configSuccess.Set(0.0)
@@ -219,19 +235,19 @@ func LoadConfig() {
 
 	// merge the user config with the default config
 	if loadedConfig.UsbConfig == nil {
-		loadedConfig.UsbConfig = defaultConfig.UsbConfig
+		loadedConfig.UsbConfig = getDefaultConfig().UsbConfig
 	}
 
 	if loadedConfig.UsbDevices == nil {
-		loadedConfig.UsbDevices = defaultConfig.UsbDevices
+		loadedConfig.UsbDevices = getDefaultConfig().UsbDevices
 	}
 
 	if loadedConfig.NetworkConfig == nil {
-		loadedConfig.NetworkConfig = defaultConfig.NetworkConfig
+		loadedConfig.NetworkConfig = getDefaultConfig().NetworkConfig
 	}
 
 	if loadedConfig.JigglerConfig == nil {
-		loadedConfig.JigglerConfig = defaultConfig.JigglerConfig
+		loadedConfig.JigglerConfig = getDefaultConfig().JigglerConfig
 	}
 
 	// fixup old keyboard layout value
@@ -250,17 +266,25 @@ func LoadConfig() {
 }
 
 func SaveConfig() error {
+	return saveConfig(configPath)
+}
+
+func SaveBackupConfig() error {
+	return saveConfig(configPath + ".bak")
+}
+
+func saveConfig(path string) error {
 	configLock.Lock()
 	defer configLock.Unlock()
 
-	logger.Trace().Str("path", configPath).Msg("Saving config")
+	logger.Trace().Str("path", path).Msg("Saving config")
 
 	// fixup old keyboard layout value
 	if config.KeyboardLayout == "en_US" {
 		config.KeyboardLayout = "en-US"
 	}
 
-	file, err := os.Create(configPath)
+	file, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
@@ -276,7 +300,7 @@ func SaveConfig() error {
 		return fmt.Errorf("failed to wite config: %w", err)
 	}
 
-	logger.Info().Str("path", configPath).Msg("config saved")
+	logger.Info().Str("path", path).Msg("config saved")
 	return nil
 }
 
