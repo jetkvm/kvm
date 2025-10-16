@@ -14,5 +14,4 @@ Closes #<issue-number>
 - [ ] One problem per PR (no unrelated changes)
 - [ ] Lints pass; CI green
 - [ ] Tricky parts are commented in code
-- [ ] Internationalization (see `DEVELOPMENT.md` for details)
 - [ ] Backward compatible with existing device firmware (See `DEVELOPMENT.md` for details)
