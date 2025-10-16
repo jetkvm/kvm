@@ -9,13 +9,9 @@ export default function SettingsGeneralRebootRoute() {
   const { send } = useJsonRpc();
 
   const onConfirmUpdate = useCallback(() => {
-    // This is where we send the RPC to the golang binary
-    send("reboot", {force: true});
+    send("reboot", { force: true});
   }, [send]);
 
-  {
-    /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
-  }
   return <Dialog onClose={() => navigate("..")} onConfirmUpdate={onConfirmUpdate} />;
 }
 

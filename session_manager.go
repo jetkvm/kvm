@@ -14,6 +14,30 @@ import (
 
 // SessionMode and constants are now imported from internal/session via session_permissions.go
 
+// Session validation constants
+const (
+	minNicknameLength = 2
+	maxNicknameLength = 30
+	maxIdentityLength = 256
+)
+
+// Timing constants for session management
+const (
+	// Broadcast throttling (DoS protection)
+	globalBroadcastDelay  = 100 * time.Millisecond // Minimum time between global session broadcasts
+	sessionBroadcastDelay = 50 * time.Millisecond  // Minimum time between broadcasts to a single session
+
+	// Session timeout defaults
+	defaultPendingSessionTimeout  = 1 * time.Minute // Timeout for pending sessions (DoS protection)
+	defaultObserverSessionTimeout = 2 * time.Minute // Timeout for inactive observer sessions
+
+	// Transfer and blacklist settings
+	transferBlacklistDuration = 60 * time.Second // Duration to blacklist sessions after manual transfer
+
+	// Grace period limits
+	maxGracePeriodEntries = 10 // Maximum number of grace period entries to prevent memory exhaustion
+)
+
 var (
 	ErrMaxSessionsReached = errors.New("maximum number of sessions reached")
 )
@@ -56,11 +80,10 @@ type TransferBlacklistEntry struct {
 	ExpiresAt time.Time
 }
 
-// Broadcast throttling to prevent DoS
+// Broadcast throttling state (DoS protection)
 var (
 	lastBroadcast  time.Time
 	broadcastMutex sync.Mutex
-	broadcastDelay = 100 * time.Millisecond // Min time between broadcasts
 
 	// Pre-allocated event maps to reduce allocations
 	modePrimaryEvent  = map[string]string{"mode": "primary"}
@@ -139,16 +162,16 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 
 	// Validate nickname if provided (matching frontend validation)
 	if session.Nickname != "" {
-		if len(session.Nickname) < 2 {
-			return errors.New("nickname must be at least 2 characters")
+		if len(session.Nickname) < minNicknameLength {
+			return fmt.Errorf("nickname must be at least %d characters", minNicknameLength)
 		}
-		if len(session.Nickname) > 30 {
-			return errors.New("nickname must be 30 characters or less")
+		if len(session.Nickname) > maxNicknameLength {
+			return fmt.Errorf("nickname must be %d characters or less", maxNicknameLength)
 		}
 		// Note: Pattern validation is done in RPC layer, not here for performance
 	}
-	if len(session.Identity) > 256 {
-		return errors.New("identity too long")
+	if len(session.Identity) > maxIdentityLength {
+		return fmt.Errorf("identity too long (max %d characters)", maxIdentityLength)
 	}
 
 	sm.mu.Lock()
@@ -383,8 +406,7 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 	// Only add grace period if this is NOT an intentional logout
 	if !isIntentionalLogout {
 		// Limit grace period entries to prevent memory exhaustion
-		const maxGraceEntries = 10
-		for len(sm.reconnectGrace) >= maxGraceEntries {
+		for len(sm.reconnectGrace) >= maxGracePeriodEntries {
 			var oldestID string
 			var oldestTime time.Time
 			for id, graceTime := range sm.reconnectGrace {
@@ -1108,7 +1130,6 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 	// Emergency promotions need to happen immediately without blacklist interference
 	isManualTransfer := (transferType == "direct_transfer" || transferType == "approval_transfer" || transferType == "release_transfer")
 	now := time.Now()
-	blacklistDuration := 60 * time.Second
 	blacklistedCount := 0
 
 	if isManualTransfer {
@@ -1126,7 +1147,7 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 			if sessionID != toSessionID { // Don't blacklist the newly promoted session
 				sm.transferBlacklist = append(sm.transferBlacklist, TransferBlacklistEntry{
 					SessionID: sessionID,
-					ExpiresAt: now.Add(blacklistDuration),
+					ExpiresAt: now.Add(transferBlacklistDuration),
 				})
 				blacklistedCount++
 			}
@@ -1153,7 +1174,7 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 		Str("transferType", transferType).
 		Str("context", context).
 		Int("blacklistedSessions", blacklistedCount).
-		Dur("blacklistDuration", blacklistDuration).
+		Dur("blacklistDuration", transferBlacklistDuration).
 		Msg("Primary role transferred with bidirectional protection")
 
 	// DON'T validate here - causes recursive calls and map iteration issues
@@ -1461,7 +1482,7 @@ func (sm *SessionManager) updateAllSessionNicknames() {
 func (sm *SessionManager) broadcastSessionListUpdate() {
 	// Throttle broadcasts to prevent DoS
 	broadcastMutex.Lock()
-	if time.Since(lastBroadcast) < broadcastDelay {
+	if time.Since(lastBroadcast) < globalBroadcastDelay {
 		broadcastMutex.Unlock()
 		return // Skip this broadcast to prevent storm
 	}
@@ -1498,7 +1519,7 @@ func (sm *SessionManager) broadcastSessionListUpdate() {
 	// Now send events without holding lock
 	for _, session := range activeSessions {
 		// Per-session throttling to prevent broadcast storms
-		if time.Since(session.LastBroadcast) < 50*time.Millisecond {
+		if time.Since(session.LastBroadcast) < sessionBroadcastDelay {
 			continue
 		}
 		session.LastBroadcast = time.Now()
@@ -1529,8 +1550,7 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second) // Check every second for grace periods
 	defer ticker.Stop()
 
-	pendingTimeout := 1 * time.Minute // Reduced from 5 minutes to prevent DoS
-	validationCounter := 0            // Counter for periodic validateSinglePrimary calls
+	validationCounter := 0 // Counter for periodic validateSinglePrimary calls
 
 	for {
 		select {
@@ -1566,6 +1586,34 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 						isEmergencyPromotion := false
 						var promotedSessionID string
 
+						// === EMERGENCY PROMOTION ALGORITHM ===
+						//
+						// When RequireApproval is enabled, we face a potential deadlock scenario:
+						// - Primary session disconnects (grace period expires)
+						// - All other sessions are pending (waiting for approval from primary)
+						// - No primary exists to approve pending sessions
+						// - Result: System is stuck with no primary and no way to get one
+						//
+						// Solution: Emergency promotion bypasses approval requirement to select
+						// the most trustworthy pending/observer session as primary. This ensures
+						// the system ALWAYS has a primary session for KVM functionality.
+						//
+						// Security measures to prevent abuse:
+						// 1. Rate limiting: Max 1 emergency promotion per 30 seconds
+						// 2. Consecutive limit: Max 3 consecutive emergency promotions
+						// 3. Trust-based selection: Sessions scored on age, history, nickname
+						// 4. Audit logging: All emergency promotions logged at WARN level
+						//
+						// Trust scoring criteria (see getSessionTrustScore):
+						// - Session age: +1 point per minute (capped at 100)
+						// - Was previous primary: +50 points
+						// - Observer mode: +20 points (more trustworthy than queued/pending)
+						// - Queued mode: +10 points
+						// - Has required nickname: +15 points / missing: -30 points
+						//
+						// This algorithm prioritizes long-lived, previously-primary sessions
+						// with proper nicknames over newly-connected anonymous sessions.
+						//
 						// Check if this is an emergency scenario (RequireApproval enabled)
 						if currentSessionSettings != nil && currentSessionSettings.RequireApproval {
 							isEmergencyPromotion = true
@@ -1668,7 +1716,7 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 			// Clean up pending sessions that have timed out (DoS protection)
 			for id, session := range sm.sessions {
 				if session.Mode == SessionModePending &&
-					now.Sub(session.CreatedAt) > pendingTimeout {
+					now.Sub(session.CreatedAt) > defaultPendingSessionTimeout {
 					websocketLogger.Info().
 						Str("sessionId", id).
 						Dur("age", now.Sub(session.CreatedAt)).
@@ -1680,7 +1728,7 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 
 			// Clean up observer sessions with closed RPC channels (stale connections)
 			// This prevents accumulation of zombie observer sessions that are no longer connected
-			observerTimeout := 2 * time.Minute // Default: 2 minutes
+			observerTimeout := defaultObserverSessionTimeout
 			if currentSessionSettings != nil && currentSessionSettings.ObserverTimeout > 0 {
 				observerTimeout = time.Duration(currentSessionSettings.ObserverTimeout) * time.Second
 			}
@@ -1708,7 +1756,21 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 						primary.Mode = SessionModeObserver
 						sm.primarySessionID = ""
 
-						// Use enhanced emergency promotion system for timeout scenarios too
+						// === TIMEOUT-BASED EMERGENCY PROMOTION ===
+						//
+						// Similar to grace period expiration, primary session timeout can create
+						// a deadlock when RequireApproval is enabled. The timeout detection happens
+						// every 30 seconds (based on ticker iterations) and demotes inactive primaries.
+						//
+						// Without emergency promotion:
+						// - Primary becomes inactive and times out
+						// - Primary is demoted to observer
+						// - All other sessions are pending (awaiting approval)
+						// - No primary exists to approve them
+						// - System deadlocked with no KVM control
+						//
+						// This uses the same trust-based selection and security measures as
+						// grace period emergency promotion to ensure system availability.
 						isEmergencyPromotion := false
 						var promotedSessionID string
 

@@ -17,6 +17,7 @@ show_help() {
     echo "      --skip-ui-build        Skip frontend/UI build"
     echo "      --skip-native-build    Skip native build"
     echo "      --disable-docker       Disable docker build"
+    echo "      --enable-sync-trace    Enable sync trace (do not use in release builds)"
     echo "  -i, --install              Build for release and install the app"
     echo "      --help                 Display this help message"
     echo
@@ -32,6 +33,7 @@ REMOTE_PATH="/userdata/jetkvm/bin"
 SKIP_UI_BUILD=false
 SKIP_UI_BUILD_RELEASE=0
 SKIP_NATIVE_BUILD=0
+ENABLE_SYNC_TRACE=0
 RESET_USB_HID_DEVICE=false
 LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
 RUN_GO_TESTS=false
@@ -62,6 +64,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --reset-usb-hid)
             RESET_USB_HID_DEVICE=true
+            shift
+            ;;
+        --enable-sync-trace)
+            ENABLE_SYNC_TRACE=1
+            LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES},synctrace"
             shift
             ;;
         --disable-docker)
@@ -180,7 +187,10 @@ fi
 if [ "$INSTALL_APP" = true ]
 then
 	msg_info "▶ Building release binary"
-	do_make build_release SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE}
+	do_make build_release \
+    SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} \
+    SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} \
+    ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
 	
 	# Copy the binary to the remote host as if we were the OTA updater.
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
@@ -189,7 +199,10 @@ then
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "reboot"
 else
 	msg_info "▶ Building development binary"
-	do_make build_dev SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE}
+	do_make build_dev \
+    SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} \
+    SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} \
+    ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
 	
 	# Kill any existing instances of the application
 	ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
