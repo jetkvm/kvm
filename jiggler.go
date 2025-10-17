@@ -139,12 +139,6 @@ func runJiggler() {
 			if err != nil {
 				logger.Warn().Msgf("Failed to reset mouse position: %v", err)
 			}
-
-			if sessionManager != nil {
-				if primarySession := sessionManager.GetPrimarySession(); primarySession != nil {
-					sessionManager.UpdateLastActive(primarySession.ID)
-				}
-			}
 		}
 	}
 }

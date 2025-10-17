@@ -242,7 +242,7 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		existing.RPCChannel = session.RPCChannel
 		existing.HidChannel = session.HidChannel
 		existing.flushCandidates = session.flushCandidates
-		// Preserve existing mode and nickname
+		// Preserve mode and nickname
 		session.Mode = existing.Mode
 		session.Nickname = existing.Nickname
 		session.CreatedAt = existing.CreatedAt
@@ -1199,11 +1199,10 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 
 	// Promote target session
 	toSession.Mode = SessionModePrimary
-	toSession.hidRPCAvailable = false // Force re-handshake
-	// Only reset LastActive for emergency promotions to prevent immediate re-timeout
-	// For manual transfers, preserve existing LastActive to maintain timeout accuracy
+	toSession.hidRPCAvailable = false
+	// Reset LastActive only for emergency promotions to prevent immediate re-timeout
 	if transferType == "emergency_timeout_promotion" || transferType == "emergency_promotion_deadlock_prevention" {
-		toSession.LastActive = time.Now() // Reset for emergency promotions only
+		toSession.LastActive = time.Now()
 	}
 	sm.primarySessionID = toSessionID
 
