@@ -89,7 +89,7 @@ func (s *Session) rpcKeypressReport(key byte, press bool) error {
 	return gadget.KeypressReport(key, press)
 }
 
-func (s *Session) rpcAbsMouseReport(x int16, y int16, buttons uint8) error {
+func (s *Session) rpcAbsMouseReport(x int, y int, buttons uint8) error {
 	if s == nil || !s.HasPermission(PermissionMouseInput) {
 		return ErrPermissionDeniedMouse
 	}
@@ -128,7 +128,7 @@ func rpcKeypressReport(key byte, press bool) error {
 	return ErrNotPrimarySession
 }
 
-func rpcAbsMouseReport(x int16, y int16, buttons uint8) error {
+func rpcAbsMouseReport(x int, y int, buttons uint8) error {
 	if primary := sessionManager.GetPrimarySession(); primary != nil {
 		return primary.rpcAbsMouseReport(x, y, buttons)
 	}

@@ -85,7 +85,7 @@ func (u *UsbGadget) absMouseWriteHidFile(data []byte) error {
 	return nil
 }
 
-func (u *UsbGadget) AbsMouseReport(x int16, y int16, buttons uint8) error {
+func (u *UsbGadget) AbsMouseReport(x int, y int, buttons uint8) error {
 	u.absMouseLock.Lock()
 	defer u.absMouseLock.Unlock()
 

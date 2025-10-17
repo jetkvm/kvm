@@ -69,7 +69,7 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 			logger.Warn().Err(err).Msg("failed to get pointer report")
 			return
 		}
-		rpcErr = rpcAbsMouseReport(int16(pointerReport.X), int16(pointerReport.Y), pointerReport.Button)
+		rpcErr = rpcAbsMouseReport(pointerReport.X, pointerReport.Y, pointerReport.Button)
 	case hidrpc.TypeMouseReport:
 		if !session.HasPermission(PermissionMouseInput) {
 			logger.Debug().

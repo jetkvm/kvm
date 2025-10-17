@@ -354,7 +354,7 @@ func (u *UsbGadget) UpdateKeysDown(modifier byte, keys []byte) KeysDownState {
 	u.keyboardStateLock.Unlock()
 
 	if u.onKeysDownChange != nil {
-		(*u.onKeysDownChange)(state)
+		(*u.onKeysDownChange)(state) // this enques to the outgoing hidrpc queue via usb.go → currentSession.enqueueKeysDownState(...)
 	}
 	return state
 }
