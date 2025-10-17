@@ -163,213 +163,27 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 
 	scopedLogger.Trace().Msg("Received RPC request")
 
-	// Handle session-specific RPC methods first
 	var result any
 	var handlerErr error
 
+	// Handle session management RPC methods
 	switch request.Method {
-	case "approvePrimaryRequest":
-		if err := RequirePermission(session, PermissionSessionTransfer); err != nil {
-			handlerErr = err
-		} else if requesterID, ok := request.Params["requesterID"].(string); ok {
-			handlerErr = sessionManager.ApprovePrimaryRequest(session.ID, requesterID)
-			if handlerErr == nil {
-				result = map[string]interface{}{"status": "approved"}
-			}
-		} else {
-			handlerErr = errors.New("invalid requesterID parameter")
-		}
-	case "denyPrimaryRequest":
-		if err := RequirePermission(session, PermissionSessionTransfer); err != nil {
-			handlerErr = err
-		} else if requesterID, ok := request.Params["requesterID"].(string); ok {
-			handlerErr = sessionManager.DenyPrimaryRequest(session.ID, requesterID)
-			if handlerErr == nil {
-				result = map[string]interface{}{"status": "denied"}
-			}
-		} else {
-			handlerErr = errors.New("invalid requesterID parameter")
-		}
-	case "approveNewSession":
-		if err := RequirePermission(session, PermissionSessionApprove); err != nil {
-			handlerErr = err
-		} else if sessionID, ok := request.Params["sessionId"].(string); ok {
-			handlerErr = sessionManager.ApproveSession(sessionID)
-			if handlerErr == nil {
-				go sessionManager.broadcastSessionListUpdate()
-				result = map[string]interface{}{"status": "approved"}
-			}
-		} else {
-			handlerErr = errors.New("invalid sessionId parameter")
-		}
-	case "denyNewSession":
-		if err := RequirePermission(session, PermissionSessionApprove); err != nil {
-			handlerErr = err
-		} else if sessionID, ok := request.Params["sessionId"].(string); ok {
-			handlerErr = sessionManager.DenySession(sessionID)
-			if handlerErr == nil {
-				// Notify the denied session
-				if targetSession := sessionManager.GetSession(sessionID); targetSession != nil {
-					go func() {
-						writeJSONRPCEvent("sessionAccessDenied", map[string]interface{}{
-							"message": "Access denied by primary session",
-						}, targetSession)
-						sessionManager.broadcastSessionListUpdate()
-					}()
-				}
-				result = map[string]interface{}{"status": "denied"}
-			}
-		} else {
-			handlerErr = errors.New("invalid sessionId parameter")
-		}
+	case "approvePrimaryRequest", "denyPrimaryRequest":
+		result, handlerErr = handleSessionTransferRPC(request.Method, request.Params, session)
+	case "approveNewSession", "denyNewSession":
+		result, handlerErr = handleSessionApprovalRPC(request.Method, request.Params, session)
 	case "requestSessionApproval":
-		if session.Mode != SessionModePending {
-			handlerErr = errors.New("only pending sessions can request approval")
-		} else if currentSessionSettings != nil && currentSessionSettings.RequireApproval {
-			if primary := sessionManager.GetPrimarySession(); primary != nil {
-				go func() {
-					writeJSONRPCEvent("newSessionPending", map[string]interface{}{
-						"sessionId": session.ID,
-						"source":    session.Source,
-						"identity":  session.Identity,
-						"nickname":  session.Nickname,
-					}, primary)
-				}()
-				result = map[string]interface{}{"status": "requested"}
-			} else {
-				handlerErr = errors.New("no primary session available")
-			}
-		} else {
-			handlerErr = errors.New("session approval not required")
-		}
+		result, handlerErr = handleRequestSessionApprovalRPC(session)
 	case "updateSessionNickname":
-		sessionID, _ := request.Params["sessionId"].(string)
-		nickname, _ := request.Params["nickname"].(string)
-		// Validate nickname to match frontend validation
-		if len(nickname) < 2 {
-			handlerErr = errors.New("nickname must be at least 2 characters")
-		} else if len(nickname) > 30 {
-			handlerErr = errors.New("nickname must be 30 characters or less")
-		} else if !isValidNickname(nickname) {
-			handlerErr = errors.New("nickname can only contain letters, numbers, spaces, and - _ . @")
-		} else if targetSession := sessionManager.GetSession(sessionID); targetSession != nil {
-			// Users can update their own nickname, or admins can update any
-			if targetSession.ID == session.ID || session.HasPermission(PermissionSessionManage) {
-				// Check nickname uniqueness
-				allSessions := sessionManager.GetAllSessions()
-				for _, existingSession := range allSessions {
-					if existingSession.ID != sessionID && existingSession.Nickname == nickname {
-						handlerErr = fmt.Errorf("nickname '%s' is already in use by another session", nickname)
-						break
-					}
-				}
-
-				if handlerErr == nil {
-					targetSession.Nickname = nickname
-
-					// If session is pending and approval is required, send the approval request now that we have a nickname
-					if targetSession.Mode == SessionModePending && currentSessionSettings != nil && currentSessionSettings.RequireApproval {
-						if primary := sessionManager.GetPrimarySession(); primary != nil {
-							go func() {
-								writeJSONRPCEvent("newSessionPending", map[string]interface{}{
-									"sessionId": targetSession.ID,
-									"source":    targetSession.Source,
-									"identity":  targetSession.Identity,
-									"nickname":  targetSession.Nickname,
-								}, primary)
-							}()
-						}
-					}
-
-					sessionManager.broadcastSessionListUpdate()
-					result = map[string]interface{}{"status": "updated"}
-				}
-			} else {
-				handlerErr = errors.New("permission denied: can only update own nickname")
-			}
-		} else {
-			handlerErr = errors.New("session not found")
-		}
+		result, handlerErr = handleUpdateSessionNicknameRPC(request.Params, session)
 	case "getSessions":
-		sessions := sessionManager.GetAllSessions()
-		result = sessions
+		result = sessionManager.GetAllSessions()
 	case "getPermissions":
-		permissions := session.GetPermissions()
-		permMap := make(map[string]bool)
-		for perm, allowed := range permissions {
-			permMap[string(perm)] = allowed
-		}
-		result = GetPermissionsResponse{
-			Mode:        string(session.Mode),
-			Permissions: permMap,
-		}
-	case "getSessionSettings":
-		if err := RequirePermission(session, PermissionSettingsRead); err != nil {
-			handlerErr = err
-		} else {
-			result = currentSessionSettings
-		}
-	case "setSessionSettings":
-		if err := RequirePermission(session, PermissionSessionManage); err != nil {
-			handlerErr = err
-		} else {
-			if settings, ok := request.Params["settings"].(map[string]interface{}); ok {
-				if requireApproval, ok := settings["requireApproval"].(bool); ok {
-					currentSessionSettings.RequireApproval = requireApproval
-				}
-				if requireNickname, ok := settings["requireNickname"].(bool); ok {
-					currentSessionSettings.RequireNickname = requireNickname
-				}
-				if reconnectGrace, ok := settings["reconnectGrace"].(float64); ok {
-					currentSessionSettings.ReconnectGrace = int(reconnectGrace)
-				}
-				if primaryTimeout, ok := settings["primaryTimeout"].(float64); ok {
-					currentSessionSettings.PrimaryTimeout = int(primaryTimeout)
-				}
-				if privateKeystrokes, ok := settings["privateKeystrokes"].(bool); ok {
-					currentSessionSettings.PrivateKeystrokes = privateKeystrokes
-				}
-				if maxRejectionAttempts, ok := settings["maxRejectionAttempts"].(float64); ok {
-					currentSessionSettings.MaxRejectionAttempts = int(maxRejectionAttempts)
-				}
-				if maxSessions, ok := settings["maxSessions"].(float64); ok {
-					currentSessionSettings.MaxSessions = int(maxSessions)
-				}
-				if observerTimeout, ok := settings["observerTimeout"].(float64); ok {
-					currentSessionSettings.ObserverTimeout = int(observerTimeout)
-				}
-
-				// Trigger nickname auto-generation for sessions when RequireNickname changes
-				if sessionManager != nil {
-					sessionManager.updateAllSessionNicknames()
-				}
-
-				// Save to persistent config
-				if err := SaveConfig(); err != nil {
-					handlerErr = errors.New("failed to save session settings")
-				}
-				result = currentSessionSettings
-			} else {
-				handlerErr = errors.New("invalid settings parameter")
-			}
-		}
+		result, handlerErr = handleGetPermissionsRPC(session)
+	case "getSessionSettings", "setSessionSettings":
+		result, handlerErr = handleSessionSettingsRPC(request.Method, request.Params, session)
 	case "generateNickname":
-		// Generate a nickname based on user agent (no permissions required)
-		userAgent := ""
-		if request.Params != nil {
-			if ua, ok := request.Params["userAgent"].(string); ok {
-				userAgent = ua
-			}
-		}
-
-		// Use browser as fallback if no user agent provided
-		if userAgent == "" {
-			userAgent = "Mozilla/5.0 (Unknown) Browser"
-		}
-
-		result = map[string]string{
-			"nickname": generateNicknameFromUserAgent(userAgent),
-		}
+		result, handlerErr = handleGenerateNicknameRPC(request.Params)
 	default:
 		// Check method permissions using centralized permission system
 		if requiredPerm, exists := GetMethodPermission(request.Method); exists {

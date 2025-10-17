@@ -280,12 +280,14 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 	}
 
 	isBlacklisted := sm.isSessionBlacklisted(session.ID)
+	isOnlySession := len(sm.sessions) == 0
 
 	// Determine if this session should become primary
-	// If there's no primary AND this is the ONLY session, ALWAYS promote regardless of blacklist
-	isOnlySession := len(sm.sessions) == 0
-	shouldBecomePrimary := (wasWithinGracePeriod && wasPreviouslyPrimary && !primaryExists && !hasActivePrimaryGracePeriod) ||
-		(!wasWithinGracePeriod && !hasActivePrimaryGracePeriod && !primaryExists && (!isBlacklisted || isOnlySession))
+	canBecomePrimary := !primaryExists && !hasActivePrimaryGracePeriod
+	isReconnectingPrimary := wasWithinGracePeriod && wasPreviouslyPrimary
+	isNewEligibleSession := !wasWithinGracePeriod && (!isBlacklisted || isOnlySession)
+
+	shouldBecomePrimary := canBecomePrimary && (isReconnectingPrimary || isNewEligibleSession)
 
 	if shouldBecomePrimary {
 		if sm.primarySessionID == "" || sm.sessions[sm.primarySessionID] == nil {
@@ -1565,10 +1567,10 @@ func (sm *SessionManager) Shutdown() {
 }
 
 func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Second) // Check every second for grace periods
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	validationCounter := 0 // Counter for periodic validateSinglePrimary calls
+	validationCounter := 0
 
 	for {
 		select {
@@ -1579,313 +1581,33 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 			now := time.Now()
 			needsBroadcast := false
 
-			// Check for expired grace periods and promote if needed
-			gracePeriodExpired := false
-			for sessionID, graceTime := range sm.reconnectGrace {
-				if now.After(graceTime) {
-					delete(sm.reconnectGrace, sessionID)
-					gracePeriodExpired = true
-
-					wasHoldingPrimarySlot := (sm.lastPrimaryID == sessionID)
-
-					// Check if this expired session was the primary holding the slot
-					if wasHoldingPrimarySlot {
-						// The primary didn't reconnect in time, now we can clear the slot and promote
-						sm.primarySessionID = ""
-						sm.lastPrimaryID = ""
-						needsBroadcast = true
-
-						sm.logger.Info().
-							Str("expiredSessionID", sessionID).
-							Msg("Primary session grace period expired - slot now available")
-
-						// Always try to promote when possible - approval is only for new pending sessions
-						// Use enhanced emergency promotion system for better security
-						isEmergencyPromotion := false
-						var promotedSessionID string
-
-						// === EMERGENCY PROMOTION ALGORITHM ===
-						//
-						// When RequireApproval is enabled, we face a potential deadlock scenario:
-						// - Primary session disconnects (grace period expires)
-						// - All other sessions are pending (waiting for approval from primary)
-						// - No primary exists to approve pending sessions
-						// - Result: System is stuck with no primary and no way to get one
-						//
-						// Solution: Emergency promotion bypasses approval requirement to select
-						// the most trustworthy pending/observer session as primary. This ensures
-						// the system ALWAYS has a primary session for KVM functionality.
-						//
-						// Security measures to prevent abuse:
-						// 1. Rate limiting: Max 1 emergency promotion per 30 seconds
-						// 2. Consecutive limit: Max 3 consecutive emergency promotions
-						// 3. Trust-based selection: Sessions scored on age, history, nickname
-						// 4. Audit logging: All emergency promotions logged at WARN level
-						//
-						// Trust scoring criteria (see getSessionTrustScore):
-						// - Session age: +1 point per minute (capped at 100)
-						// - Was previous primary: +50 points
-						// - Observer mode: +20 points (more trustworthy than queued/pending)
-						// - Queued mode: +10 points
-						// - Has required nickname: +15 points / missing: -30 points
-						//
-						// This algorithm prioritizes long-lived, previously-primary sessions
-						// with proper nicknames over newly-connected anonymous sessions.
-						//
-						// Check if this is an emergency scenario (RequireApproval enabled)
-						if currentSessionSettings != nil && currentSessionSettings.RequireApproval {
-							isEmergencyPromotion = true
-
-							// CRITICAL: Ensure we ALWAYS have a primary session
-							// If there's NO primary, bypass rate limits entirely
-							hasPrimary := sm.primarySessionID != ""
-							if !hasPrimary {
-								sm.logger.Error().
-									Str("expiredSessionID", sessionID).
-									Msg("CRITICAL: No primary session exists - bypassing all rate limits")
-							} else {
-								// Rate limiting for emergency promotions (only when we have a primary)
-								if now.Sub(sm.lastEmergencyPromotion) < 30*time.Second {
-									sm.logger.Warn().
-										Str("expiredSessionID", sessionID).
-										Dur("timeSinceLastEmergency", now.Sub(sm.lastEmergencyPromotion)).
-										Msg("Emergency promotion rate limit exceeded - potential attack")
-									continue // Skip this grace period expiration
-								}
-
-								// Limit consecutive emergency promotions
-								if sm.consecutiveEmergencyPromotions >= 3 {
-									sm.logger.Error().
-										Str("expiredSessionID", sessionID).
-										Int("consecutiveCount", sm.consecutiveEmergencyPromotions).
-										Msg("Too many consecutive emergency promotions - blocking for security")
-									continue // Skip this grace period expiration
-								}
-							}
-
-							promotedSessionID = sm.findMostTrustedSessionForEmergency()
-						} else {
-							// Normal promotion - reset consecutive counter
-							sm.consecutiveEmergencyPromotions = 0
-							promotedSessionID = sm.findNextSessionToPromote()
-						}
-
-						if promotedSessionID != "" {
-							// Determine reason and log appropriately
-							reason := "grace_expiration_promotion"
-							if isEmergencyPromotion {
-								reason = "emergency_promotion_deadlock_prevention"
-								sm.lastEmergencyPromotion = now
-								sm.consecutiveEmergencyPromotions++
-
-								// Enhanced logging for emergency promotions
-								sm.logger.Warn().
-									Str("expiredSessionID", sessionID).
-									Str("promotedSessionID", promotedSessionID).
-									Bool("requireApproval", true).
-									Int("consecutiveEmergencyPromotions", sm.consecutiveEmergencyPromotions).
-									Int("trustScore", sm.getSessionTrustScore(promotedSessionID)).
-									Msg("EMERGENCY: Bypassing approval requirement to prevent deadlock")
-							}
-
-							err := sm.transferPrimaryRole("", promotedSessionID, reason, "primary grace period expired")
-							if err == nil {
-								logEvent := sm.logger.Info()
-								if isEmergencyPromotion {
-									logEvent = sm.logger.Warn()
-								}
-								logEvent.
-									Str("expiredSessionID", sessionID).
-									Str("promotedSessionID", promotedSessionID).
-									Str("reason", reason).
-									Bool("isEmergencyPromotion", isEmergencyPromotion).
-									Msg("Auto-promoted session after primary grace period expiration")
-							} else {
-								sm.logger.Error().
-									Err(err).
-									Str("expiredSessionID", sessionID).
-									Str("promotedSessionID", promotedSessionID).
-									Str("reason", reason).
-									Bool("isEmergencyPromotion", isEmergencyPromotion).
-									Msg("Failed to promote session after grace period expiration")
-							}
-						} else {
-							logLevel := sm.logger.Info()
-							if isEmergencyPromotion {
-								logLevel = sm.logger.Error() // Emergency with no eligible sessions is critical
-							}
-							logLevel.
-								Str("expiredSessionID", sessionID).
-								Bool("isEmergencyPromotion", isEmergencyPromotion).
-								Msg("Primary grace period expired but no eligible sessions to promote")
-						}
-					} else {
-						// Non-primary session grace period expired - just cleanup
-						sm.logger.Debug().
-							Str("expiredSessionID", sessionID).
-							Msg("Non-primary session grace period expired")
-					}
-
-					// Also clean up reconnect info for expired sessions
-					delete(sm.reconnectInfo, sessionID)
-				}
+			// Handle expired grace periods
+			gracePeriodExpired := sm.handleGracePeriodExpiration(now)
+			if gracePeriodExpired {
+				needsBroadcast = true
 			}
 
-			// Clean up pending sessions that have timed out (DoS protection)
-			for id, session := range sm.sessions {
-				if session.Mode == SessionModePending &&
-					now.Sub(session.CreatedAt) > defaultPendingSessionTimeout {
-					websocketLogger.Info().
-						Str("sessionId", id).
-						Dur("age", now.Sub(session.CreatedAt)).
-						Msg("Removing timed-out pending session")
-					delete(sm.sessions, id)
-					needsBroadcast = true
-				}
+			// Clean up timed-out pending sessions (DoS protection)
+			if sm.handlePendingSessionTimeout(now) {
+				needsBroadcast = true
 			}
 
-			// Clean up observer sessions with closed RPC channels (stale connections)
-			// This prevents accumulation of zombie observer sessions that are no longer connected
-			observerTimeout := defaultObserverSessionTimeout
-			if currentSessionSettings != nil && currentSessionSettings.ObserverTimeout > 0 {
-				observerTimeout = time.Duration(currentSessionSettings.ObserverTimeout) * time.Second
-			}
-			for id, session := range sm.sessions {
-				if session.Mode == SessionModeObserver {
-					// Check if RPC channel is nil/closed AND session has been inactive
-					if session.RPCChannel == nil && now.Sub(session.LastActive) > observerTimeout {
-						sm.logger.Info().
-							Str("sessionId", id).
-							Dur("inactiveFor", now.Sub(session.LastActive)).
-							Dur("observerTimeout", observerTimeout).
-							Msg("Removing inactive observer session with closed RPC channel")
-						delete(sm.sessions, id)
-						needsBroadcast = true
-					}
-				}
+			// Clean up inactive observer sessions
+			if sm.handleObserverSessionCleanup(now) {
+				needsBroadcast = true
 			}
 
-			// Check primary session timeout (every 30 iterations = 30 seconds)
-			if sm.primarySessionID != "" {
-				if primary, exists := sm.sessions[sm.primarySessionID]; exists {
-					currentTimeout := sm.getCurrentPrimaryTimeout()
-					if now.Sub(primary.LastActive) > currentTimeout {
-						timedOutSessionID := primary.ID
-						primary.Mode = SessionModeObserver
-						sm.primarySessionID = ""
-
-						// === TIMEOUT-BASED EMERGENCY PROMOTION ===
-						//
-						// Similar to grace period expiration, primary session timeout can create
-						// a deadlock when RequireApproval is enabled. The timeout detection happens
-						// every 30 seconds (based on ticker iterations) and demotes inactive primaries.
-						//
-						// Without emergency promotion:
-						// - Primary becomes inactive and times out
-						// - Primary is demoted to observer
-						// - All other sessions are pending (awaiting approval)
-						// - No primary exists to approve them
-						// - System deadlocked with no KVM control
-						//
-						// This uses the same trust-based selection and security measures as
-						// grace period emergency promotion to ensure system availability.
-						isEmergencyPromotion := false
-						var promotedSessionID string
-
-						// Check if this requires emergency promotion due to approval requirements
-						if currentSessionSettings != nil && currentSessionSettings.RequireApproval {
-							isEmergencyPromotion = true
-
-							// CRITICAL: Ensure we ALWAYS have a primary session
-							// primarySessionID was just cleared above, so this will always be empty
-							// But check anyway for completeness
-							hasPrimary := sm.primarySessionID != ""
-							if !hasPrimary {
-								sm.logger.Error().
-									Str("timedOutSessionID", timedOutSessionID).
-									Msg("CRITICAL: No primary session after timeout - bypassing all rate limits")
-							} else {
-								// Rate limiting for emergency promotions (only when we have a primary)
-								if now.Sub(sm.lastEmergencyPromotion) < 30*time.Second {
-									sm.logger.Warn().
-										Str("timedOutSessionID", timedOutSessionID).
-										Dur("timeSinceLastEmergency", now.Sub(sm.lastEmergencyPromotion)).
-										Msg("Emergency promotion rate limit exceeded during timeout - potential attack")
-									continue // Skip this timeout
-								}
-							}
-
-							// Use trust-based selection but exclude the timed-out session
-							bestSessionID := ""
-							bestScore := -1
-							for id, session := range sm.sessions {
-								if id != timedOutSessionID &&
-									!sm.isSessionBlacklisted(id) &&
-									(session.Mode == SessionModeObserver || session.Mode == SessionModeQueued) {
-									score := sm.getSessionTrustScore(id)
-									if score > bestScore {
-										bestScore = score
-										bestSessionID = id
-									}
-								}
-							}
-							promotedSessionID = bestSessionID
-						} else {
-							// Normal timeout promotion - find any observer except the timed-out one
-							for id, session := range sm.sessions {
-								if id != timedOutSessionID && session.Mode == SessionModeObserver && !sm.isSessionBlacklisted(id) {
-									promotedSessionID = id
-									break
-								}
-							}
-						}
-
-						// If found a session to promote
-						if promotedSessionID != "" {
-							reason := "timeout_promotion"
-							if isEmergencyPromotion {
-								reason = "emergency_timeout_promotion"
-								sm.lastEmergencyPromotion = now
-								sm.consecutiveEmergencyPromotions++
-
-								// Enhanced logging for emergency timeout promotions
-								sm.logger.Warn().
-									Str("timedOutSessionID", timedOutSessionID).
-									Str("promotedSessionID", promotedSessionID).
-									Bool("requireApproval", true).
-									Int("trustScore", sm.getSessionTrustScore(promotedSessionID)).
-									Msg("EMERGENCY: Timeout promotion bypassing approval requirement")
-							}
-
-							err := sm.transferPrimaryRole(timedOutSessionID, promotedSessionID, reason, "primary session timeout")
-							if err == nil {
-								needsBroadcast = true
-								logEvent := sm.logger.Info()
-								if isEmergencyPromotion {
-									logEvent = sm.logger.Warn()
-								}
-								logEvent.
-									Str("timedOutSessionID", timedOutSessionID).
-									Str("promotedSessionID", promotedSessionID).
-									Bool("isEmergencyPromotion", isEmergencyPromotion).
-									Msg("Auto-promoted session after primary timeout")
-							}
-						}
-					}
-				} else {
-					// Primary session no longer exists, clear it
-					sm.primarySessionID = ""
-					needsBroadcast = true
-				}
+			// Handle primary session timeout
+			if sm.handlePrimarySessionTimeout(now) {
+				needsBroadcast = true
 			}
 
-			// Run validation immediately if a grace period expired, otherwise run periodically
+			// Run validation immediately if grace period expired, otherwise periodically
 			if gracePeriodExpired {
 				sm.validateSinglePrimary()
 			} else {
-				// Periodic validateSinglePrimary to catch deadlock states
 				validationCounter++
-				if validationCounter >= 10 { // Every 10 seconds
+				if validationCounter >= 10 {
 					validationCounter = 0
 					sm.validateSinglePrimary()
 				}
@@ -1893,7 +1615,6 @@ func (sm *SessionManager) cleanupInactiveSessions(ctx context.Context) {
 
 			sm.mu.Unlock()
 
-			// Broadcast outside of lock if needed
 			if needsBroadcast {
 				go sm.broadcastSessionListUpdate()
 			}
