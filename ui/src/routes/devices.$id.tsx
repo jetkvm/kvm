@@ -898,10 +898,11 @@ export default function KvmIdRoute() {
 
   useEffect(() => {
     if (appVersion) return;
+    if (rpcDataChannel?.readyState !== "open") return;
 
     getLocalVersion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appVersion]);
+  }, [appVersion, rpcDataChannel?.readyState]);
 
   const ConnectionStatusElement = useMemo(() => {
     const isOtherSession = location.pathname.includes("other-session");
