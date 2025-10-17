@@ -129,13 +129,15 @@ func runJiggler() {
 		}
 		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
 		timeSinceLastInput := time.Since(gadget.GetLastUserInputTime())
+		logger.Debug().Msgf("Time since last user input %v", timeSinceLastInput)
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
-			err := gadget.RelMouseReport(1, 0, 0)
+			logger.Debug().Msg("Jiggling mouse...")
+			//TODO: change to rel mouse
+			err := rpcAbsMouseReport(1, 1, 0)
 			if err != nil {
 				logger.Warn().Msgf("Failed to jiggle mouse: %v", err)
 			}
-			time.Sleep(50 * time.Millisecond)
-			err = gadget.RelMouseReport(-1, 0, 0)
+			err = rpcAbsMouseReport(0, 0, 0)
 			if err != nil {
 				logger.Warn().Msgf("Failed to reset mouse position: %v", err)
 			}
