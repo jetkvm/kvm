@@ -129,11 +129,13 @@ func uiTick() {
 	C.jetkvm_ui_tick()
 }
 
-func videoInit() error {
+func videoInit(factor float64) error {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
-	ret := C.jetkvm_video_init()
+	factorC := C.float(factor)
+
+	ret := C.jetkvm_video_init(factorC)
 	if ret != 0 {
 		return fmt.Errorf("failed to initialize video: %d", ret)
 	}

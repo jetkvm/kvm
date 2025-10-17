@@ -117,6 +117,7 @@ type Config struct {
 	DefaultLogLevel      string               `json:"default_log_level"`
 	SessionSettings      *SessionSettings     `json:"session_settings"`
 	VideoSleepAfterSec   int                  `json:"video_sleep_after_sec"`
+	VideoQualityFactor   float64              `json:"video_quality_factor"`
 }
 
 func (c *Config) GetDisplayRotation() uint16 {

@@ -6,7 +6,7 @@
  *
  * @return int 0 on success, -1 on failure
  */
-int video_init();
+int video_init(float quality_factor);
 
 /**
  * @brief Shutdown the video subsystem
