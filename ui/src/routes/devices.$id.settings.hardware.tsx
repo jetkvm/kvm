@@ -95,7 +95,7 @@ export default function SettingsHardwareRoute() {
         return;
       }
       const result = resp.result as { enabled: boolean; duration: number };
-      setPowerSavingEnabled(result.duration > 0);
+      setPowerSavingEnabled(result.duration >= 0);
     });
   }, [send]);
 
