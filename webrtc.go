@@ -123,7 +123,10 @@ func (s *Session) sendWebSocketSignal(messageType string, data map[string]interf
 		return nil
 	}
 
-	err := wsjson.Write(context.Background(), s.ws, gin.H{"type": messageType, "data": data})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := wsjson.Write(ctx, s.ws, gin.H{"type": messageType, "data": data})
 	if err != nil {
 		webrtcLogger.Debug().Err(err).Str("sessionId", s.ID).Msg("Failed to send WebSocket signal")
 		return err
@@ -347,7 +350,13 @@ func newSession(config SessionConfig) (*Session, error) {
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
-				// Enqueue to ensure ordered processing
+				queueLen := len(session.rpcQueue)
+				if queueLen > 200 {
+					scopedLogger.Warn().
+						Str("sessionID", session.ID).
+						Int("queueLen", queueLen).
+						Msg("RPC queue approaching capacity")
+				}
 				session.rpcQueue <- msg
 			})
 			triggerOTAStateUpdate()
@@ -406,7 +415,9 @@ func newSession(config SessionConfig) (*Session, error) {
 			}
 			candidateBufferMutex.Unlock()
 
-			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			err := wsjson.Write(ctx, config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
 			if err != nil {
 				scopedLogger.Warn().Err(err).Msg("failed to write new-ice-candidate to WebRTC signaling channel")
 			}
@@ -419,7 +430,9 @@ func newSession(config SessionConfig) (*Session, error) {
 		answerSent = true
 		// Send all buffered candidates
 		for _, candidate := range candidateBuffer {
-			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate})
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := wsjson.Write(ctx, config.ws, gin.H{"type": "new-ice-candidate", "data": candidate})
+			cancel()
 			if err != nil {
 				scopedLogger.Warn().Err(err).Msg("failed to write buffered new-ice-candidate to WebRTC signaling channel")
 			}

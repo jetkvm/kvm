@@ -16,6 +16,13 @@ func handleHidRPCMessage(message hidrpc.Message, session *Session) {
 
 	switch message.Type() {
 	case hidrpc.TypeHandshake:
+		if !session.HasPermission(PermissionVideoView) {
+			logger.Debug().
+				Str("sessionID", session.ID).
+				Str("mode", string(session.Mode)).
+				Msg("handshake blocked: session lacks PermissionVideoView")
+			return
+		}
 		message, err := hidrpc.NewHandshakeMessage().Marshal()
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to marshal handshake message")

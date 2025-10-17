@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -87,23 +88,28 @@ var (
 )
 
 type SessionManager struct {
-	mu                sync.RWMutex             // 24 bytes - place first for better alignment
-	primaryTimeout    time.Duration            // 8 bytes
-	logger            *zerolog.Logger          // 8 bytes
-	sessions          map[string]*Session      // 8 bytes
-	nicknameIndex     map[string]*Session      // 8 bytes - O(1) nickname uniqueness lookups
-	reconnectGrace    map[string]time.Time     // 8 bytes
-	reconnectInfo     map[string]*SessionData  // 8 bytes
-	transferBlacklist []TransferBlacklistEntry // Prevent demoted sessions from immediate re-promotion
-	queueOrder        []string                 // 24 bytes (slice header)
-	primarySessionID  string                   // 16 bytes
-	lastPrimaryID     string                   // 16 bytes
-	maxSessions       int                      // 8 bytes
-	cleanupCancel     context.CancelFunc       // For stopping cleanup goroutine
+	mu                   sync.RWMutex
+	primaryPromotionLock sync.Mutex
+	primaryTimeout       time.Duration
+	logger               *zerolog.Logger
+	sessions             map[string]*Session
+	nicknameIndex        map[string]*Session
+	reconnectGrace       map[string]time.Time
+	reconnectInfo        map[string]*SessionData
+	transferBlacklist    []TransferBlacklistEntry
+	queueOrder           []string
+	primarySessionID     string
+	lastPrimaryID        string
+	maxSessions          int
+	cleanupCancel        context.CancelFunc
 
-	// Emergency promotion tracking for safety
 	lastEmergencyPromotion         time.Time
 	consecutiveEmergencyPromotions int
+	emergencyPromotionWindow       []time.Time
+	emergencyWindowMutex           sync.Mutex
+
+	broadcastQueue   chan struct{}
+	broadcastPending atomic.Bool
 }
 
 // NewSessionManager creates a new session manager
@@ -141,12 +147,13 @@ func NewSessionManager(logger *zerolog.Logger) *SessionManager {
 		logger:            logger,
 		maxSessions:       maxSessions,
 		primaryTimeout:    primaryTimeout,
+		broadcastQueue:    make(chan struct{}, 100),
 	}
 
-	// Start background cleanup of inactive sessions
 	ctx, cancel := context.WithCancel(context.Background())
 	sm.cleanupCancel = cancel
 	go sm.cleanupInactiveSessions(ctx)
+	go sm.broadcastWorker(ctx)
 
 	return sm
 }
@@ -175,13 +182,28 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Check nickname uniqueness using O(1) index (only for non-empty nicknames)
+	nicknameReserved := false
+	defer func() {
+		if r := recover(); r != nil || nicknameReserved {
+			if nicknameReserved && session.Nickname != "" {
+				if sm.nicknameIndex[session.Nickname] == session {
+					delete(sm.nicknameIndex, session.Nickname)
+				}
+			}
+			if r != nil {
+				panic(r)
+			}
+		}
+	}()
+
 	if session.Nickname != "" {
 		if existingSession, exists := sm.nicknameIndex[session.Nickname]; exists {
 			if existingSession.ID != session.ID {
 				return fmt.Errorf("nickname '%s' is already in use by another session", session.Nickname)
 			}
 		}
+		sm.nicknameIndex[session.Nickname] = session
+		nicknameReserved = true
 	}
 
 	wasWithinGracePeriod := false
@@ -348,11 +370,9 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		Int("totalSessions", len(sm.sessions)).
 		Msg("Session added to manager")
 
-	// Ensure session has auto-generated nickname if needed
 	sm.ensureNickname(session)
 
-	// Add to nickname index
-	if session.Nickname != "" {
+	if !nicknameReserved && session.Nickname != "" {
 		sm.nicknameIndex[session.Nickname] = session
 	}
 
@@ -383,13 +403,18 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 	wasPrimary := session.Mode == SessionModePrimary
 	delete(sm.sessions, sessionID)
 
+	if session.Nickname != "" {
+		if sm.nicknameIndex[session.Nickname] == session {
+			delete(sm.nicknameIndex, session.Nickname)
+		}
+	}
+
 	sm.logger.Info().
 		Str("sessionID", sessionID).
 		Bool("wasPrimary", wasPrimary).
 		Int("remainingSessions", len(sm.sessions)).
 		Msg("Session removed from manager")
 
-	// Remove from queue if present
 	sm.removeFromQueue(sessionID)
 
 	// Check if this session was marked for immediate removal (intentional logout)
@@ -1063,9 +1088,10 @@ func (sm *SessionManager) validateSinglePrimary() {
 	}
 }
 
-// transferPrimaryRole is the centralized method for all primary role transfers
-// It handles bidirectional blacklisting and logging consistently across all transfer types
 func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transferType, context string) error {
+	sm.primaryPromotionLock.Lock()
+	defer sm.primaryPromotionLock.Unlock()
+
 	// Validate sessions exist
 	toSession, toExists := sm.sessions[toSessionID]
 	if !toExists {
@@ -1107,16 +1133,65 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 			Msg("Demoted existing primary session")
 	}
 
-	// SECURITY: Before promoting, verify there are no other primary sessions
+	primaryCount := 0
+	var existingPrimaryID string
 	for id, sess := range sm.sessions {
-		if id != toSessionID && sess.Mode == SessionModePrimary {
-			sm.logger.Error().
-				Str("existingPrimaryID", id).
-				Str("targetPromotionID", toSessionID).
-				Str("transferType", transferType).
-				Msg("CRITICAL: Attempted to create second primary - blocking promotion")
-			return fmt.Errorf("cannot promote: another primary session exists (%s)", id)
+		if sess.Mode == SessionModePrimary {
+			primaryCount++
+			if id != toSessionID {
+				existingPrimaryID = id
+			}
 		}
+	}
+
+	if primaryCount > 1 || (primaryCount == 1 && existingPrimaryID != "" && existingPrimaryID != sm.primarySessionID) {
+		sm.logger.Error().
+			Int("primaryCount", primaryCount).
+			Str("existingPrimaryID", existingPrimaryID).
+			Str("targetPromotionID", toSessionID).
+			Str("managerPrimaryID", sm.primarySessionID).
+			Str("transferType", transferType).
+			Msg("CRITICAL: Dual-primary corruption detected - forcing fix")
+
+		for id, sess := range sm.sessions {
+			if sess.Mode == SessionModePrimary {
+				if id != sm.primarySessionID && id != toSessionID {
+					sess.Mode = SessionModeObserver
+					sm.logger.Warn().
+						Str("demotedSessionID", id).
+						Msg("Force-demoted session due to dual-primary corruption")
+				}
+			}
+		}
+
+		if sm.primarySessionID != "" && sm.sessions[sm.primarySessionID] != nil {
+			if sm.sessions[sm.primarySessionID].Mode != SessionModePrimary {
+				sm.primarySessionID = ""
+			}
+		}
+
+		existingPrimaryID = ""
+		for id, sess := range sm.sessions {
+			if id != toSessionID && sess.Mode == SessionModePrimary {
+				existingPrimaryID = id
+				break
+			}
+		}
+
+		if existingPrimaryID != "" {
+			sm.logger.Error().
+				Str("existingPrimaryID", existingPrimaryID).
+				Str("targetPromotionID", toSessionID).
+				Msg("CRITICAL: Cannot fix dual-primary corruption - blocking promotion")
+			return fmt.Errorf("cannot promote: dual-primary corruption detected and fix failed (%s)", existingPrimaryID)
+		}
+	} else if existingPrimaryID != "" {
+		sm.logger.Error().
+			Str("existingPrimaryID", existingPrimaryID).
+			Str("targetPromotionID", toSessionID).
+			Str("transferType", transferType).
+			Msg("CRITICAL: Attempted to create second primary - blocking promotion")
+		return fmt.Errorf("cannot promote: another primary session exists (%s)", existingPrimaryID)
 	}
 
 	// Promote target session
@@ -1492,21 +1567,37 @@ func (sm *SessionManager) updateAllSessionNicknames() {
 	}
 }
 
+func (sm *SessionManager) broadcastWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-sm.broadcastQueue:
+			sm.broadcastPending.Store(false)
+			sm.executeBroadcast()
+		}
+	}
+}
+
 func (sm *SessionManager) broadcastSessionListUpdate() {
-	// Throttle broadcasts to prevent DoS
+	if sm.broadcastPending.CompareAndSwap(false, true) {
+		select {
+		case sm.broadcastQueue <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (sm *SessionManager) executeBroadcast() {
 	broadcastMutex.Lock()
 	if time.Since(lastBroadcast) < globalBroadcastDelay {
 		broadcastMutex.Unlock()
-		return // Skip this broadcast to prevent storm
+		return
 	}
 	lastBroadcast = time.Now()
 	broadcastMutex.Unlock()
 
-	// Must be called in a goroutine to avoid deadlock
-	// Get all sessions first - use read lock only, no validation during broadcasts
 	sm.mu.RLock()
-
-	// Build session infos and collect active sessions in one pass
 	infos := make([]SessionData, 0, len(sm.sessions))
 	activeSessions := make([]*Session, 0, len(sm.sessions))
 
@@ -1521,17 +1612,13 @@ func (sm *SessionManager) broadcastSessionListUpdate() {
 			LastActive: session.LastActive,
 		})
 
-		// Only collect sessions ready for broadcast
 		if session.RPCChannel != nil {
 			activeSessions = append(activeSessions, session)
 		}
 	}
-
 	sm.mu.RUnlock()
 
-	// Now send events without holding lock
 	for _, session := range activeSessions {
-		// Per-session throttling to prevent broadcast storms
 		session.lastBroadcastMu.Lock()
 		shouldSkip := time.Since(session.LastBroadcast) < sessionBroadcastDelay
 		if !shouldSkip {

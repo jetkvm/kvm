@@ -22,30 +22,43 @@ func (sm *SessionManager) attemptEmergencyPromotion(ctx emergencyPromotionContex
 		return promotedID, false, false
 	}
 
-	// Emergency promotion path
-	hasPrimary := sm.primarySessionID != ""
-	if !hasPrimary {
+	sm.emergencyWindowMutex.Lock()
+	defer sm.emergencyWindowMutex.Unlock()
+
+	const slidingWindowDuration = 60 * time.Second
+	const maxEmergencyPromotionsPerMinute = 3
+
+	cutoff := ctx.now.Add(-slidingWindowDuration)
+	validEntries := make([]time.Time, 0, len(sm.emergencyPromotionWindow))
+	for _, t := range sm.emergencyPromotionWindow {
+		if t.After(cutoff) {
+			validEntries = append(validEntries, t)
+		}
+	}
+	sm.emergencyPromotionWindow = validEntries
+
+	if len(sm.emergencyPromotionWindow) >= maxEmergencyPromotionsPerMinute {
 		sm.logger.Error().
 			Str("triggerSessionID", ctx.triggerSessionID).
-			Msg("CRITICAL: No primary session exists - bypassing all rate limits")
-	} else {
-		// Rate limiting (only when we have a primary)
-		if ctx.now.Sub(sm.lastEmergencyPromotion) < 30*time.Second {
-			sm.logger.Warn().
-				Str("triggerSessionID", ctx.triggerSessionID).
-				Dur("timeSinceLastEmergency", ctx.now.Sub(sm.lastEmergencyPromotion)).
-				Msgf("Emergency promotion rate limit exceeded - potential attack (%s)", ctx.triggerReason)
-			return "", false, true // shouldSkip = true
-		}
+			Int("promotionsInLastMinute", len(sm.emergencyPromotionWindow)).
+			Msg("Emergency promotion rate limit exceeded - potential attack")
+		return "", false, true
+	}
 
-		// Limit consecutive emergency promotions
-		if sm.consecutiveEmergencyPromotions >= 3 {
-			sm.logger.Error().
-				Str("triggerSessionID", ctx.triggerSessionID).
-				Int("consecutiveCount", sm.consecutiveEmergencyPromotions).
-				Msgf("Too many consecutive emergency promotions - blocking for security (%s)", ctx.triggerReason)
-			return "", false, true // shouldSkip = true
-		}
+	if ctx.now.Sub(sm.lastEmergencyPromotion) < 10*time.Second {
+		sm.logger.Warn().
+			Str("triggerSessionID", ctx.triggerSessionID).
+			Dur("timeSinceLastEmergency", ctx.now.Sub(sm.lastEmergencyPromotion)).
+			Msg("Emergency promotion cooldown active")
+		return "", false, true
+	}
+
+	if sm.consecutiveEmergencyPromotions >= 3 {
+		sm.logger.Error().
+			Str("triggerSessionID", ctx.triggerSessionID).
+			Int("consecutiveCount", sm.consecutiveEmergencyPromotions).
+			Msg("Too many consecutive emergency promotions - blocking")
+		return "", false, true
 	}
 
 	// Find best session for emergency promotion
@@ -123,6 +136,9 @@ func (sm *SessionManager) promoteAfterGraceExpiration(expiredSessionID string, n
 		reason := "grace_expiration_promotion"
 		if isEmergency {
 			reason = "emergency_promotion_deadlock_prevention"
+			sm.emergencyWindowMutex.Lock()
+			sm.emergencyPromotionWindow = append(sm.emergencyPromotionWindow, now)
+			sm.emergencyWindowMutex.Unlock()
 			sm.lastEmergencyPromotion = now
 			sm.consecutiveEmergencyPromotions++
 
@@ -249,6 +265,9 @@ func (sm *SessionManager) handlePrimarySessionTimeout(now time.Time) bool {
 		reason := "timeout_promotion"
 		if isEmergency {
 			reason = "emergency_timeout_promotion"
+			sm.emergencyWindowMutex.Lock()
+			sm.emergencyPromotionWindow = append(sm.emergencyPromotionWindow, now)
+			sm.emergencyWindowMutex.Unlock()
 			sm.lastEmergencyPromotion = now
 			sm.consecutiveEmergencyPromotions++
 

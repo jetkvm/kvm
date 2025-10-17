@@ -95,19 +95,43 @@ func handleRequestSessionApprovalRPC(session *Session) (any, error) {
 	return map[string]interface{}{"status": "requested"}, nil
 }
 
-// handleUpdateSessionNicknameRPC handles nickname updates for sessions
+func validateNickname(nickname string) error {
+	if len(nickname) < 2 {
+		return errors.New("nickname must be at least 2 characters")
+	}
+	if len(nickname) > 30 {
+		return errors.New("nickname must be 30 characters or less")
+	}
+	if !isValidNickname(nickname) {
+		return errors.New("nickname can only contain letters, numbers, spaces, and - _ . @")
+	}
+
+	for i, r := range nickname {
+		if r < 32 || r == 127 {
+			return fmt.Errorf("nickname contains control character at position %d", i)
+		}
+		if r >= 0x200B && r <= 0x200D {
+			return errors.New("nickname contains zero-width character")
+		}
+	}
+
+	trimmed := ""
+	for _, r := range nickname {
+		trimmed += string(r)
+	}
+	if trimmed != nickname {
+		return errors.New("nickname contains disallowed unicode")
+	}
+
+	return nil
+}
+
 func handleUpdateSessionNicknameRPC(params map[string]any, session *Session) (any, error) {
 	sessionID, _ := params["sessionId"].(string)
 	nickname, _ := params["nickname"].(string)
 
-	if len(nickname) < 2 {
-		return nil, errors.New("nickname must be at least 2 characters")
-	}
-	if len(nickname) > 30 {
-		return nil, errors.New("nickname must be 30 characters or less")
-	}
-	if !isValidNickname(nickname) {
-		return nil, errors.New("nickname can only contain letters, numbers, spaces, and - _ . @")
+	if err := validateNickname(nickname); err != nil {
+		return nil, err
 	}
 
 	targetSession := sessionManager.GetSession(sessionID)

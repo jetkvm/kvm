@@ -32,6 +32,32 @@ func isValidNickname(nickname string) bool {
 	return nicknameRegex.MatchString(nickname)
 }
 
+// Global RPC rate limiting (protects against coordinated DoS from multiple sessions)
+var (
+	globalRPCRateLimitMu  sync.Mutex
+	globalRPCRateLimit    int
+	globalRPCRateLimitWin time.Time
+)
+
+func checkGlobalRPCRateLimit() bool {
+	const (
+		maxGlobalRPCPerSecond = 2000
+		rateLimitWindow       = time.Second
+	)
+
+	globalRPCRateLimitMu.Lock()
+	defer globalRPCRateLimitMu.Unlock()
+
+	now := time.Now()
+	if now.Sub(globalRPCRateLimitWin) > rateLimitWindow {
+		globalRPCRateLimit = 0
+		globalRPCRateLimitWin = now
+	}
+
+	globalRPCRateLimit++
+	return globalRPCRateLimit <= maxGlobalRPCPerSecond
+}
+
 type JSONRPCRequest struct {
 	JSONRPC string         `json:"jsonrpc"`
 	Method  string         `json:"method"`
@@ -119,7 +145,24 @@ func broadcastJSONRPCEvent(event string, params any) {
 }
 
 func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
-	// Rate limit check (DoS protection)
+	// Global rate limit check (protects against coordinated DoS from multiple sessions)
+	if !checkGlobalRPCRateLimit() {
+		jsonRpcLogger.Warn().
+			Str("sessionId", session.ID).
+			Msg("Global RPC rate limit exceeded")
+		errorResponse := JSONRPCResponse{
+			JSONRPC: "2.0",
+			Error: map[string]any{
+				"code":    -32000,
+				"message": "Global rate limit exceeded",
+			},
+			ID: 0,
+		}
+		writeJSONRPCResponse(errorResponse, session)
+		return
+	}
+
+	// Per-session rate limit check (DoS protection)
 	if !session.CheckRPCRateLimit() {
 		jsonRpcLogger.Warn().
 			Str("sessionId", session.ID).
