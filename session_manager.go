@@ -95,6 +95,7 @@ type SessionManager struct {
 	primaryTimeout    time.Duration            // 8 bytes
 	logger            *zerolog.Logger          // 8 bytes
 	sessions          map[string]*Session      // 8 bytes
+	nicknameIndex     map[string]*Session      // 8 bytes - O(1) nickname uniqueness lookups
 	reconnectGrace    map[string]time.Time     // 8 bytes
 	reconnectInfo     map[string]*SessionData  // 8 bytes
 	transferBlacklist []TransferBlacklistEntry // Prevent demoted sessions from immediate re-promotion
@@ -136,6 +137,7 @@ func NewSessionManager(logger *zerolog.Logger) *SessionManager {
 
 	sm := &SessionManager{
 		sessions:          make(map[string]*Session),
+		nicknameIndex:     make(map[string]*Session),
 		reconnectGrace:    make(map[string]time.Time),
 		reconnectInfo:     make(map[string]*SessionData),
 		transferBlacklist: make([]TransferBlacklistEntry, 0),
@@ -177,10 +179,10 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Check nickname uniqueness (only for non-empty nicknames)
+	// Check nickname uniqueness using O(1) index (only for non-empty nicknames)
 	if session.Nickname != "" {
-		for id, existingSession := range sm.sessions {
-			if id != session.ID && existingSession.Nickname == session.Nickname {
+		if existingSession, exists := sm.nicknameIndex[session.Nickname]; exists {
+			if existingSession.ID != session.ID {
 				return fmt.Errorf("nickname '%s' is already in use by another session", session.Nickname)
 			}
 		}
@@ -350,6 +352,11 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 
 	// Ensure session has auto-generated nickname if needed
 	sm.ensureNickname(session)
+
+	// Add to nickname index
+	if session.Nickname != "" {
+		sm.nicknameIndex[session.Nickname] = session
+	}
 
 	sm.validateSinglePrimary()
 
@@ -531,20 +538,26 @@ func (sm *SessionManager) ClearGracePeriod(sessionID string) {
 // isSessionBlacklisted checks if a session was recently demoted via transfer and should not become primary
 func (sm *SessionManager) isSessionBlacklisted(sessionID string) bool {
 	now := time.Now()
+	isBlacklisted := false
 
-	// Clean expired entries while we're here
-	validEntries := make([]TransferBlacklistEntry, 0, len(sm.transferBlacklist))
-	for _, entry := range sm.transferBlacklist {
+	// Clean expired entries in-place (zero allocations)
+	writeIndex := 0
+	for readIndex := 0; readIndex < len(sm.transferBlacklist); readIndex++ {
+		entry := sm.transferBlacklist[readIndex]
 		if now.Before(entry.ExpiresAt) {
-			validEntries = append(validEntries, entry)
+			// Keep this entry - still valid
+			sm.transferBlacklist[writeIndex] = entry
+			writeIndex++
 			if entry.SessionID == sessionID {
-				return true // Found active blacklist entry
+				isBlacklisted = true
 			}
 		}
+		// Expired entries are automatically skipped (not copied forward)
 	}
-	sm.transferBlacklist = validEntries // Update with only non-expired entries
+	// Truncate to only valid entries
+	sm.transferBlacklist = sm.transferBlacklist[:writeIndex]
 
-	return false
+	return isBlacklisted
 }
 
 // GetPrimarySession returns the current primary session
@@ -1519,10 +1532,17 @@ func (sm *SessionManager) broadcastSessionListUpdate() {
 	// Now send events without holding lock
 	for _, session := range activeSessions {
 		// Per-session throttling to prevent broadcast storms
-		if time.Since(session.LastBroadcast) < sessionBroadcastDelay {
+		session.lastBroadcastMu.Lock()
+		shouldSkip := time.Since(session.LastBroadcast) < sessionBroadcastDelay
+		if !shouldSkip {
+			session.LastBroadcast = time.Now()
+		}
+		session.lastBroadcastMu.Unlock()
+
+		if shouldSkip {
 			continue
 		}
-		session.LastBroadcast = time.Now()
+
 		event := SessionsUpdateEvent{
 			Sessions: infos,
 			YourMode: session.Mode,

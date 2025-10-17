@@ -44,6 +44,7 @@ type Session struct {
 	rpcRateLimitMu  sync.Mutex // Protects rate limit fields
 	rpcRateLimit    int        // Count of RPCs in current window
 	rpcRateLimitWin time.Time  // Start of current rate limit window
+	lastBroadcastMu sync.Mutex // Protects LastBroadcast field
 
 	peerConnection           *webrtc.PeerConnection
 	VideoTrack               *webrtc.TrackLocalStaticSample
