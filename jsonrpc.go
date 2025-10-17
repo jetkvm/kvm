@@ -775,8 +775,6 @@ func rpcSetActiveExtension(extensionId string) error {
 		_ = unmountATXControl()
 	case "dc-power":
 		_ = unmountDCControl()
-	case "serial-buttons":
-		_ = unmountSerialButtons()
 	}
 	config.ActiveExtension = extensionId
 	if err := SaveConfig(); err != nil {
@@ -787,8 +785,6 @@ func rpcSetActiveExtension(extensionId string) error {
 		_ = mountATXControl()
 	case "dc-power":
 		_ = mountDCControl()
-	case "serial-buttons":
-		_ = mountSerialButtons()
 	}
 	return nil
 }

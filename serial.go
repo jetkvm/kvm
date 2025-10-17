@@ -347,7 +347,7 @@ func getSerialSettings() (SerialSettings, error) {
 
 	file, err := os.Open(serialSettingsPath)
 	if err != nil {
-		logger.Info().Msg("SerialButtons config file doesn't exist, using default")
+		logger.Info().Msg("SerialSettings file doesn't exist, using default")
 		return serialConfig, err
 	}
 	defer file.Close()
@@ -355,7 +355,7 @@ func getSerialSettings() (SerialSettings, error) {
 	// load and merge the default config with the user config
 	var loadedConfig SerialSettings
 	if err := json.NewDecoder(file).Decode(&loadedConfig); err != nil {
-		logger.Warn().Err(err).Msg("SerialButtons config file JSON parsing failed")
+		logger.Warn().Err(err).Msg("SerialSettings file JSON parsing failed")
 		return serialConfig, nil
 	}
 
@@ -442,14 +442,14 @@ func setSerialSettings(newSettings SerialSettings) error {
 
 	file, err := os.Create(serialSettingsPath)
 	if err != nil {
-		return fmt.Errorf("failed to create SerialButtons config file: %w", err)
+		return fmt.Errorf("failed to create SerialSettings file: %w", err)
 	}
 	defer file.Close()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(newSettings); err != nil {
-		return fmt.Errorf("failed to encode SerialButtons config: %w", err)
+		return fmt.Errorf("failed to encode SerialSettings: %w", err)
 	}
 
 	var stopBits serial.StopBits
