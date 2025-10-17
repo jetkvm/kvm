@@ -94,6 +94,17 @@ export default function SettingsHardwareRoute() {
     }
   }, [send, setBacklightSettings, isLoading, permissions]);
 
+  useEffect(() => {
+    send("getVideoSleepMode", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        console.error("Failed to get power saving mode:", resp.error);
+        return;
+      }
+      const result = resp.result as { enabled: boolean; duration: number };
+      setPowerSavingEnabled(result.duration >= 0);
+    });
+  }, [send]);
+
   // Return early if permissions are loading
   if (isLoading) {
     return (
@@ -111,17 +122,6 @@ export default function SettingsHardwareRoute() {
       </div>
     );
   }
-
-  useEffect(() => {
-    send("getVideoSleepMode", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        console.error("Failed to get power saving mode:", resp.error);
-        return;
-      }
-      const result = resp.result as { enabled: boolean; duration: number };
-      setPowerSavingEnabled(result.duration >= 0);
-    });
-  }, [send]);
 
   return (
     <div className="space-y-4">
