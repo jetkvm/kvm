@@ -250,6 +250,10 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		// Ensure session has auto-generated nickname if needed
 		sm.ensureNickname(session)
 
+		if !nicknameReserved && session.Nickname != "" {
+			sm.nicknameIndex[session.Nickname] = session
+		}
+
 		sm.sessions[session.ID] = session
 
 		// If this was the primary, try to restore primary status
@@ -1200,8 +1204,8 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 	// Promote target session
 	toSession.Mode = SessionModePrimary
 	toSession.hidRPCAvailable = false
-	// Reset LastActive only for emergency promotions to prevent immediate re-timeout
-	if transferType == "emergency_timeout_promotion" || transferType == "emergency_promotion_deadlock_prevention" {
+	// Reset LastActive for all emergency promotions to prevent immediate re-timeout
+	if strings.HasPrefix(transferType, "emergency_") {
 		toSession.LastActive = time.Now()
 	}
 	sm.primarySessionID = toSessionID

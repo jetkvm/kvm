@@ -25,6 +25,18 @@ func (sm *SessionManager) attemptEmergencyPromotion(ctx emergencyPromotionContex
 	sm.emergencyWindowMutex.Lock()
 	defer sm.emergencyWindowMutex.Unlock()
 
+	// CRITICAL: Bypass all rate limits if no primary exists to prevent deadlock
+	// System availability takes priority over DoS protection
+	noPrimaryExists := (sm.primarySessionID == "")
+	if noPrimaryExists {
+		sm.logger.Info().
+			Str("triggerSessionID", ctx.triggerSessionID).
+			Str("triggerReason", ctx.triggerReason).
+			Msg("Bypassing emergency promotion rate limits - no primary exists")
+		promotedSessionID := sm.findMostTrustedSessionForEmergency()
+		return promotedSessionID, true, false
+	}
+
 	const slidingWindowDuration = 60 * time.Second
 	const maxEmergencyPromotionsPerMinute = 3
 
@@ -187,19 +199,21 @@ func (sm *SessionManager) promoteAfterGraceExpiration(expiredSessionID string, n
 // handlePendingSessionTimeout removes timed-out pending sessions (DoS protection)
 // Returns true if any pending session was removed
 func (sm *SessionManager) handlePendingSessionTimeout(now time.Time) bool {
-	needsCleanup := false
+	toDelete := make([]string, 0)
 	for id, session := range sm.sessions {
 		if session.Mode == SessionModePending &&
 			now.Sub(session.CreatedAt) > defaultPendingSessionTimeout {
-			websocketLogger.Info().
+			websocketLogger.Debug().
 				Str("sessionId", id).
 				Dur("age", now.Sub(session.CreatedAt)).
 				Msg("Removing timed-out pending session")
-			delete(sm.sessions, id)
-			needsCleanup = true
+			toDelete = append(toDelete, id)
 		}
 	}
-	return needsCleanup
+	for _, id := range toDelete {
+		delete(sm.sessions, id)
+	}
+	return len(toDelete) > 0
 }
 
 // handleObserverSessionCleanup removes inactive observer sessions with closed RPC channels
@@ -210,21 +224,23 @@ func (sm *SessionManager) handleObserverSessionCleanup(now time.Time) bool {
 		observerTimeout = time.Duration(currentSessionSettings.ObserverTimeout) * time.Second
 	}
 
-	needsCleanup := false
+	toDelete := make([]string, 0)
 	for id, session := range sm.sessions {
 		if session.Mode == SessionModeObserver {
 			if session.RPCChannel == nil && now.Sub(session.LastActive) > observerTimeout {
-				sm.logger.Info().
+				sm.logger.Debug().
 					Str("sessionId", id).
 					Dur("inactiveFor", now.Sub(session.LastActive)).
 					Dur("observerTimeout", observerTimeout).
 					Msg("Removing inactive observer session with closed RPC channel")
-				delete(sm.sessions, id)
-				needsCleanup = true
+				toDelete = append(toDelete, id)
 			}
 		}
 	}
-	return needsCleanup
+	for _, id := range toDelete {
+		delete(sm.sessions, id)
+	}
+	return len(toDelete) > 0
 }
 
 // handlePrimarySessionTimeout checks and handles primary session timeout

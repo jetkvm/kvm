@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -66,24 +67,14 @@ type Session struct {
 	keysDownStateQueue chan usbgadget.KeysDownState
 }
 
-var (
-	actionSessions      int = 0
-	activeSessionsMutex     = &sync.Mutex{}
-)
+var actionSessions atomic.Int32
 
-func incrActiveSessions() int {
-	activeSessionsMutex.Lock()
-	defer activeSessionsMutex.Unlock()
-
-	actionSessions++
-	return actionSessions
+func incrActiveSessions() int32 {
+	return actionSessions.Add(1)
 }
 
-func getActiveSessions() int {
-	activeSessionsMutex.Lock()
-	defer activeSessionsMutex.Unlock()
-
-	return actionSessions
+func getActiveSessions() int32 {
+	return actionSessions.Load()
 }
 
 // CheckRPCRateLimit checks if the session has exceeded RPC rate limits (DoS protection)
@@ -494,9 +485,9 @@ func newSession(config SessionConfig) (*Session, error) {
 
 		if isConnected {
 			isConnected = false
-			actionSessions--
+			newCount := actionSessions.Add(-1)
 			onActiveSessionsChanged()
-			if actionSessions == 0 {
+			if newCount == 0 {
 				onLastSessionDisconnected()
 			}
 		}
