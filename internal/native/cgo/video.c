@@ -793,12 +793,18 @@ void *run_detect_format(void *arg)
                                         (dv_timings.bt.width + dv_timings.bt.hfrontporch + dv_timings.bt.hsync +
                                          dv_timings.bt.hbackporch));
             log_info("Frames per second: %.2f fps", frames_per_second);
+
+            bool should_restart = dv_timings.bt.width != detected_width || dv_timings.bt.height != detected_height || !detected_signal;
+
             detected_width = dv_timings.bt.width;
             detected_height = dv_timings.bt.height;
             detected_signal = true;
             video_report_format(true, NULL, detected_width, detected_height, frames_per_second);
 
-            video_restart_streaming();
+            if (should_restart) {
+                log_info("restarting video streaming due to format change");
+                video_restart_streaming();
+            }
         }
 
         memset(&ev, 0, sizeof(ev));
