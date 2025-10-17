@@ -84,10 +84,6 @@ type TransferBlacklistEntry struct {
 var (
 	lastBroadcast  time.Time
 	broadcastMutex sync.Mutex
-
-	// Pre-allocated event maps to reduce allocations
-	modePrimaryEvent  = map[string]string{"mode": "primary"}
-	modeObserverEvent = map[string]string{"mode": "observer"}
 )
 
 type SessionManager struct {
@@ -413,18 +409,20 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 	// Only add grace period if this is NOT an intentional logout
 	if !isIntentionalLogout {
 		// Limit grace period entries to prevent memory exhaustion
+		// Evict the entry that will expire soonest (oldest expiration time)
 		for len(sm.reconnectGrace) >= maxGracePeriodEntries {
-			var oldestID string
-			var oldestTime time.Time
+			var evictID string
+			var earliestExpiration time.Time
 			for id, graceTime := range sm.reconnectGrace {
-				if oldestTime.IsZero() || graceTime.Before(oldestTime) {
-					oldestID = id
-					oldestTime = graceTime
+				// Find the grace period that expires first (earliest time)
+				if earliestExpiration.IsZero() || graceTime.Before(earliestExpiration) {
+					evictID = id
+					earliestExpiration = graceTime
 				}
 			}
-			if oldestID != "" {
-				delete(sm.reconnectGrace, oldestID)
-				delete(sm.reconnectInfo, oldestID)
+			if evictID != "" {
+				delete(sm.reconnectGrace, evictID)
+				delete(sm.reconnectInfo, evictID)
 			} else {
 				break
 			}
@@ -668,7 +666,7 @@ func (sm *SessionManager) RequestPrimary(sessionID string) error {
 		err := sm.transferPrimaryRole("", sessionID, "initial_promotion", "first session auto-promotion")
 		if err == nil {
 			// Send mode change event after promoting
-			writeJSONRPCEvent("modeChanged", modePrimaryEvent, session)
+			writeJSONRPCEvent("modeChanged", map[string]string{"mode": "primary"}, session)
 			go sm.broadcastSessionListUpdate()
 		}
 		return err
@@ -755,7 +753,7 @@ func (sm *SessionManager) ReleasePrimary(sessionID string) error {
 		// Send mode change event for promoted session
 		go func() {
 			if promotedSession := sessionManager.GetSession(promotedSessionID); promotedSession != nil {
-				writeJSONRPCEvent("modeChanged", modePrimaryEvent, promotedSession)
+				writeJSONRPCEvent("modeChanged", map[string]string{"mode": "primary"}, promotedSession)
 			}
 		}()
 	} else {
@@ -797,13 +795,13 @@ func (sm *SessionManager) TransferPrimary(fromID, toID string) error {
 	// Send events in goroutines to avoid holding lock
 	go func() {
 		if fromSession := sessionManager.GetSession(fromID); fromSession != nil {
-			writeJSONRPCEvent("modeChanged", modeObserverEvent, fromSession)
+			writeJSONRPCEvent("modeChanged", map[string]string{"mode": "observer"}, fromSession)
 		}
 	}()
 
 	go func() {
 		if toSession := sessionManager.GetSession(toID); toSession != nil {
-			writeJSONRPCEvent("modeChanged", modePrimaryEvent, toSession)
+			writeJSONRPCEvent("modeChanged", map[string]string{"mode": "primary"}, toSession)
 		}
 		sm.broadcastSessionListUpdate()
 	}()
@@ -861,13 +859,13 @@ func (sm *SessionManager) ApprovePrimaryRequest(currentPrimaryID, requesterID st
 	// Send events after releasing lock to avoid deadlock
 	go func() {
 		if demotedSession := sessionManager.GetSession(currentPrimaryID); demotedSession != nil {
-			writeJSONRPCEvent("modeChanged", modeObserverEvent, demotedSession)
+			writeJSONRPCEvent("modeChanged", map[string]string{"mode": "observer"}, demotedSession)
 		}
 	}()
 
 	go func() {
 		if promotedSession := sessionManager.GetSession(requesterID); promotedSession != nil {
-			writeJSONRPCEvent("modeChanged", modePrimaryEvent, promotedSession)
+			writeJSONRPCEvent("modeChanged", map[string]string{"mode": "primary"}, promotedSession)
 		}
 		sm.broadcastSessionListUpdate()
 	}()

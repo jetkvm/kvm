@@ -62,6 +62,9 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 							Str("sessionID", s.ID).
 							Err(err).
 							Msg("error writing sample to session")
+					} else {
+						// Update LastActive when video frame successfully sent (prevents observer timeout)
+						sessionManager.UpdateLastActive(s.ID)
 					}
 				}
 			})

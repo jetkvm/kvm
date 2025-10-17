@@ -52,7 +52,6 @@ export default function Actionbar({
           const response = JSON.parse(event.data);
           if (response.id === id && response.result) {
             setSessions(response.result);
-            rpcDataChannel.removeEventListener("message", handler);
           }
         } catch {
           // Ignore parse errors for non-JSON messages
@@ -62,10 +61,14 @@ export default function Actionbar({
       rpcDataChannel.addEventListener("message", handler);
       rpcDataChannel.send(message);
 
-      // Clean up after timeout
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         rpcDataChannel.removeEventListener("message", handler);
       }, 5000);
+
+      return () => {
+        clearTimeout(timeoutId);
+        rpcDataChannel.removeEventListener("message", handler);
+      };
     }
   }, [rpcDataChannel, sessions.length, setSessions]);
 

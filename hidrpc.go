@@ -146,8 +146,8 @@ const baseExtension = expectedRate + maxLateness // 100ms extension on perfect t
 const maxStaleness = 225 * time.Millisecond // discard ancient packets outright
 
 func handleHidRPCKeypressKeepAlive(session *Session) error {
-	// Update LastActive to prevent session timeout (jiggler sends every 50ms)
-	sessionManager.UpdateLastActive(session.ID)
+	// NOTE: Do NOT update LastActive here - jiggler keep-alives are automated,
+	// not human input. Only actual keyboard/mouse input should prevent timeout.
 
 	session.keepAliveJitterLock.Lock()
 	defer session.keepAliveJitterLock.Unlock()
