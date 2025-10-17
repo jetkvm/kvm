@@ -606,6 +606,18 @@ void *run_video_stream(void *arg)
             log_error("VIDIOC_STREAMOFF failed: %s", strerror(errno));
         }
 
+        // Explicitly free V4L2 buffer queue
+        struct v4l2_requestbuffers req_free;
+        memset(&req_free, 0, sizeof(req_free));
+        req_free.count = 0;
+        req_free.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+        req_free.memory = V4L2_MEMORY_DMABUF;
+
+        if (ioctl(video_dev_fd, VIDIOC_REQBUFS, &req_free) < 0)
+        {
+            log_error("Failed to free V4L2 buffers: %s", strerror(errno));
+        }
+
         venc_stop();
 
         for (int i = 0; i < input_buffer_count; i++)
@@ -619,7 +631,7 @@ void *run_video_stream(void *arg)
         log_info("closing video capture device %s", VIDEO_DEV);
         close(video_dev_fd);
     }
-    
+
     log_info("video stream thread exiting");
 
     streaming_stopped = true;
@@ -648,7 +660,7 @@ void video_shutdown()
         RK_MPI_MB_DestroyPool(memPool);
     }
     log_info("Destroyed memory pool");
-    
+
     pthread_mutex_destroy(&streaming_mutex);
     log_info("Destroyed streaming mutex");
 }
@@ -665,14 +677,14 @@ void video_start_streaming()
         log_warn("video streaming already started");
         return;
     }
-    
+
     pthread_t *new_thread = malloc(sizeof(pthread_t));
     if (new_thread == NULL)
     {
         log_error("Failed to allocate memory for streaming thread");
         return;
     }
-    
+
     set_streaming_flag(true);
     int result = pthread_create(new_thread, NULL, run_video_stream, NULL);
     if (result != 0)
@@ -682,7 +694,7 @@ void video_start_streaming()
         free(new_thread);
         return;
     }
-    
+
     // Only set streaming_thread after successful creation
     streaming_thread = new_thread;
 }
@@ -693,7 +705,7 @@ void video_stop_streaming()
         log_info("video streaming already stopped");
         return;
     }
-    
+
     log_info("stopping video streaming");
     set_streaming_flag(false);
 
@@ -711,7 +723,7 @@ void video_stop_streaming()
     free(streaming_thread);
     streaming_thread = NULL;
 
-    log_info("video streaming stopped");    
+    log_info("video streaming stopped");
 }
 
 void video_restart_streaming()
