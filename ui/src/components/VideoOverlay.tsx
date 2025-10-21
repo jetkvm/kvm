@@ -476,6 +476,7 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
           // Device is available, redirect to the specified URL
           console.log('Device is available, redirecting to:', postRebootAction.redirectUrl);
           window.location.href = postRebootAction.redirectUrl;
+          window.location.reload();
         }
       } catch (err) {
         // Ignore errors - they're expected while device is rebooting

@@ -37,14 +37,17 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			nativeLogger.Trace().Str("event", event).Msg("rpc event received")
 			switch event {
 			case "resetConfig":
+				nativeLogger.Info().Msg("Reset configuration request via native rpc event")
 				err := rpcResetConfig()
 				if err != nil {
 					nativeLogger.Warn().Err(err).Msg("error resetting config")
 				}
 				_ = rpcReboot(true)
 			case "reboot":
+				nativeLogger.Info().Msg("Reboot request via native rpc event")
 				_ = rpcReboot(true)
 			case "toggleDHCPClient":
+				nativeLogger.Info().Msg("Toggle DHCP request via native rpc event")
 				_ = rpcToggleDHCPClient()
 			default:
 				nativeLogger.Warn().Str("event", event).Msg("unknown rpc event received")

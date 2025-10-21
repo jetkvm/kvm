@@ -487,25 +487,15 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 	}
 
 	if rebootNeeded {
-		scopedLogger.Info().Msg("System Rebooting in 10s")
+		scopedLogger.Info().Msg("System Rebooting due to OTA update")
 
-		// TODO: Future enhancement - send postRebootAction to redirect to release notes
-		// Example:
-		//   postRebootAction := &PostRebootAction{
-		//     HealthCheck: "[..]/device/status",
-		//     RedirectUrl: "[..]/settings/general/update?version=X.Y.Z",
-		//   }
-		//   writeJSONRPCEvent("willReboot", postRebootAction, currentSession)
+		postRebootAction := &PostRebootAction{
+			HealthCheck: "/device/status",
+			RedirectUrl: "/settings/general/update?version=" + remote.SystemVersion,
+		}
 
-		time.Sleep(10 * time.Second)
-		cmd := exec.Command("reboot")
-		err := cmd.Start()
-		if err != nil {
-			otaState.Error = fmt.Sprintf("Failed to start reboot: %v", err)
-			scopedLogger.Error().Err(err).Msg("Failed to start reboot")
-			return fmt.Errorf("failed to start reboot: %w", err)
-		} else {
-			os.Exit(0)
+		if err := hwReboot(true, postRebootAction, 10*time.Second); err != nil {
+			return fmt.Errorf("error requesting reboot: %w", err)
 		}
 	}
 

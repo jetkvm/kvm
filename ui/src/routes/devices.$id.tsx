@@ -485,13 +485,15 @@ export default function KvmIdRoute() {
 
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onclose = () => console.log("rpcDataChannel has closed");
-    rpcDataChannel.onerror = (e: Event) => console.error(`Error on DataChannel '${rpcDataChannel.label}': ${e}`);
+    rpcDataChannel.onerror = (ev: Event) => console.error(`Error on DataChannel '${rpcDataChannel.label}': ${ev}`);
     rpcDataChannel.onopen = () => {
       setRpcDataChannel(rpcDataChannel);
     };
 
     const rpcHidChannel = pc.createDataChannel("hidrpc");
     rpcHidChannel.binaryType = "arraybuffer";
+    rpcHidChannel.onclose = () => console.log("rpcHidChannel has closed");
+    rpcHidChannel.onerror = (ev: Event) => console.error(`Error on rpcHidChannel '${rpcHidChannel.label}': ${ev}`);
     rpcHidChannel.onopen = () => {
       setRpcHidChannel(rpcHidChannel);
     };
@@ -501,6 +503,8 @@ export default function KvmIdRoute() {
       maxRetransmits: 0,
     });
     rpcHidUnreliableChannel.binaryType = "arraybuffer";
+    rpcHidUnreliableChannel.onclose = () => console.log("rpcHidUnreliableChannel has closed");
+    rpcHidUnreliableChannel.onerror = (ev: Event) => console.error(`Error on rpcHidUnreliableChannel '${rpcHidUnreliableChannel.label}': ${ev}`);
     rpcHidUnreliableChannel.onopen = () => {
       setRpcHidUnreliableChannel(rpcHidUnreliableChannel);
     };
@@ -510,6 +514,8 @@ export default function KvmIdRoute() {
       maxRetransmits: 0,
     });
     rpcHidUnreliableNonOrderedChannel.binaryType = "arraybuffer";
+    rpcHidUnreliableNonOrderedChannel.onclose = () => console.log("rpcHidUnreliableNonOrderedChannel has closed");
+    rpcHidUnreliableNonOrderedChannel.onerror = (ev: Event) => console.error(`Error on rpcHidUnreliableNonOrderedChannel '${rpcHidUnreliableNonOrderedChannel.label}': ${ev}`);
     rpcHidUnreliableNonOrderedChannel.onopen = () => {
       setRpcHidUnreliableNonOrderedChannel(rpcHidUnreliableNonOrderedChannel);
     };

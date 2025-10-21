@@ -173,34 +173,8 @@ func rpcGetDeviceID() (string, error) {
 }
 
 func rpcReboot(force bool) error {
-	logger.Info().Msg("Got reboot request from JSONRPC, rebooting...")
-
-	writeJSONRPCEvent("willReboot", nil, currentSession)
-
-	// Wait for the JSONRPCEvent to be sent
-	time.Sleep(1 * time.Second)
-	nativeInstance.SwitchToScreenIfDifferent("rebooting_screen")
-
-	args := []string{}
-	if force {
-		args = append(args, "-f")
-	}
-
-	cmd := exec.Command("reboot", args...)
-	err := cmd.Start()
-	if err != nil {
-		logger.Error().Err(err).Msg("failed to reboot")
-		switchToMainScreen()
-		return fmt.Errorf("failed to reboot: %w", err)
-	}
-
-	// If the reboot command is successful, exit the program after 5 seconds
-	go func() {
-		time.Sleep(5 * time.Second)
-		os.Exit(0)
-	}()
-
-	return nil
+	logger.Info().Msg("Got reboot request via RPC")
+	return hwReboot(force, nil, 0)
 }
 
 var streamFactor = 1.0

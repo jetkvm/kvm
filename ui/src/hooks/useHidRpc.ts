@@ -78,7 +78,7 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
       try {
         data = message.marshal();
       } catch (e) {
-        console.error("Failed to send HID RPC message", e);
+        console.error("Failed to marshal HID RPC message", e);
       }
       if (!data) return;
 
@@ -223,13 +223,19 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
       setRpcHidProtocolVersion(null);
     };
 
+    const errorHandler = (e: Event) => {
+      console.error(`Error on rpcHidChannel '${rpcHidChannel.label}': ${e}`)
+    };
+
     rpcHidChannel.addEventListener("message", messageHandler);
     rpcHidChannel.addEventListener("close", closeHandler);
+    rpcHidChannel.addEventListener("error", errorHandler);
     rpcHidChannel.addEventListener("open", openHandler);
 
     return () => {
       rpcHidChannel.removeEventListener("message", messageHandler);
       rpcHidChannel.removeEventListener("close", closeHandler);
+      rpcHidChannel.removeEventListener("error", errorHandler);
       rpcHidChannel.removeEventListener("open", openHandler);
     };
   }, [
