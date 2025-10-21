@@ -35,6 +35,7 @@ typedef struct _objects_t {
     lv_obj_t *home_info_ipv4_addr;
     lv_obj_t *home_info_ipv6_addr;
     lv_obj_t *home_info_mac_addr;
+    lv_obj_t *home_info_hostname;
     lv_obj_t *divider;
     lv_obj_t *home_status_container;
     lv_obj_t *usb_status;

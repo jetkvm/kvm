@@ -15,3 +15,4 @@ node_modules
 #internal/native/lib
 
 ui/reports
+*.eez-project-ui-state

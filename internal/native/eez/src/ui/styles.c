@@ -76,8 +76,6 @@ void remove_style_flex_center(lv_obj_t *obj) {
 void init_style_flex_start_MAIN_DEFAULT(lv_style_t *style) {
     init_style_flex_center_MAIN_DEFAULT(style);
     
-    lv_style_set_layout(style, LV_LAYOUT_FLEX);
-    lv_style_set_flex_flow(style, LV_FLEX_FLOW_COLUMN);
     lv_style_set_flex_main_place(style, LV_FLEX_ALIGN_START);
     lv_style_set_flex_cross_place(style, LV_FLEX_ALIGN_START);
     lv_style_set_flex_track_place(style, LV_FLEX_ALIGN_START);
@@ -110,10 +108,8 @@ void remove_style_flex_start(lv_obj_t *obj) {
 void init_style_flow_row_space_between_MAIN_DEFAULT(lv_style_t *style) {
     init_style_flex_center_MAIN_DEFAULT(style);
     
-    lv_style_set_layout(style, LV_LAYOUT_FLEX);
     lv_style_set_flex_flow(style, LV_FLEX_FLOW_ROW);
     lv_style_set_flex_main_place(style, LV_FLEX_ALIGN_SPACE_BETWEEN);
-    lv_style_set_flex_cross_place(style, LV_FLEX_ALIGN_CENTER);
     lv_style_set_flex_track_place(style, LV_FLEX_ALIGN_START);
 };
 
@@ -144,11 +140,7 @@ void remove_style_flow_row_space_between(lv_obj_t *obj) {
 void init_style_flow_row_start_center_MAIN_DEFAULT(lv_style_t *style) {
     init_style_flow_row_space_between_MAIN_DEFAULT(style);
     
-    lv_style_set_layout(style, LV_LAYOUT_FLEX);
-    lv_style_set_flex_flow(style, LV_FLEX_FLOW_ROW);
     lv_style_set_flex_main_place(style, LV_FLEX_ALIGN_START);
-    lv_style_set_flex_cross_place(style, LV_FLEX_ALIGN_CENTER);
-    lv_style_set_flex_track_place(style, LV_FLEX_ALIGN_START);
 };
 
 lv_style_t *get_style_flow_row_start_center_MAIN_DEFAULT() {
@@ -180,9 +172,9 @@ void init_style_flex_column_start_MAIN_DEFAULT(lv_style_t *style) {
     
     lv_style_set_layout(style, LV_LAYOUT_FLEX);
     lv_style_set_flex_flow(style, LV_FLEX_FLOW_COLUMN);
-    lv_style_set_flex_main_place(style, LV_FLEX_ALIGN_START);
-    lv_style_set_flex_cross_place(style, LV_FLEX_ALIGN_START);
     lv_style_set_flex_track_place(style, LV_FLEX_ALIGN_START);
+    lv_style_set_flex_cross_place(style, LV_FLEX_ALIGN_START);
+    lv_style_set_flex_main_place(style, LV_FLEX_ALIGN_SPACE_EVENLY);
 };
 
 lv_style_t *get_style_flex_column_start_MAIN_DEFAULT() {
@@ -303,6 +295,37 @@ void remove_style_label_font16(lv_obj_t *obj) {
 };
 
 //
+// Style: LabelFontBold24
+//
+
+void init_style_label_font_bold24_MAIN_DEFAULT(lv_style_t *style) {
+    init_style_label_font16_MAIN_DEFAULT(style);
+    
+    lv_style_set_text_font(style, &ui_font_font_bold24);
+    lv_style_set_length(style, 0);
+};
+
+lv_style_t *get_style_label_font_bold24_MAIN_DEFAULT() {
+    static lv_style_t *style;
+    if (!style) {
+        style = lv_malloc(sizeof(lv_style_t));
+        lv_style_init(style);
+        init_style_label_font_bold24_MAIN_DEFAULT(style);
+    }
+    return style;
+};
+
+void add_style_label_font_bold24(lv_obj_t *obj) {
+    (void)obj;
+    lv_obj_add_style(obj, get_style_label_font_bold24_MAIN_DEFAULT(), LV_PART_MAIN | LV_STATE_DEFAULT);
+};
+
+void remove_style_label_font_bold24(lv_obj_t *obj) {
+    (void)obj;
+    lv_obj_remove_style(obj, get_style_label_font_bold24_MAIN_DEFAULT(), LV_PART_MAIN | LV_STATE_DEFAULT);
+};
+
+//
 // Style: LabelFontBold30
 //
 
@@ -342,7 +365,6 @@ void init_style_header_link_MAIN_DEFAULT(lv_style_t *style) {
     lv_style_set_text_color(style, lv_color_hex(0xff1d4ed8));
     lv_style_set_text_opa(style, 255);
     lv_style_set_text_font(style, &ui_font_font_book20);
-    lv_style_set_text_align(style, LV_TEXT_ALIGN_CENTER);
 };
 
 lv_style_t *get_style_header_link_MAIN_DEFAULT() {
@@ -536,6 +558,7 @@ void add_style(lv_obj_t *obj, int32_t styleIndex) {
         add_style_flex_screen,
         add_style_flex_screen_menu,
         add_style_label_font16,
+        add_style_label_font_bold24,
         add_style_label_font_bold30,
         add_style_header_link,
         add_style_menu_button,
@@ -559,6 +582,7 @@ void remove_style(lv_obj_t *obj, int32_t styleIndex) {
         remove_style_flex_screen,
         remove_style_flex_screen_menu,
         remove_style_label_font16,
+        remove_style_label_font_bold24,
         remove_style_label_font_bold30,
         remove_style_header_link,
         remove_style_menu_button,
