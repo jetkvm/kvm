@@ -1252,19 +1252,11 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 		}
 	}
 
-	// DON'T clear grace periods during transfers!
-	// Grace periods and blacklisting serve different purposes:
-	// - Grace periods: Allow disconnected sessions to reconnect and reclaim their role
-	// - Blacklisting: Prevent recently demoted sessions from immediately taking primary again
-	//
-	// When a primary session is transferred to another session:
-	// 1. The newly promoted session should be able to refresh its browser without losing primary
-	// 2. When it refreshes, RemoveSession is called, which adds a grace period
-	// 3. When it reconnects, it should find itself in lastPrimaryID and reclaim primary
-	//
-	// The blacklist prevents the OLD primary from immediately reclaiming control,
-	// while the grace period allows the NEW primary to safely refresh its browser.
-	// These mechanisms complement each other and should not interfere.
+	// Grace periods are cleared for demoted sessions (line 519-520) to prevent them from
+	// auto-reclaiming primary after manual transfer. New grace periods are created when
+	// sessions reconnect via RemoveSession. The blacklist provides additional protection
+	// during the transfer window, while lastPrimaryID allows the newly promoted session
+	// to safely handle browser refreshes and reclaim primary if disconnected.
 
 	sm.logger.Info().
 		Str("fromSessionID", fromSessionID).
@@ -1573,6 +1565,11 @@ func (sm *SessionManager) broadcastSessionListUpdate() {
 		select {
 		case sm.broadcastQueue <- struct{}{}:
 		default:
+			sm.logger.Warn().
+				Int("queueLen", len(sm.broadcastQueue)).
+				Int("queueCap", cap(sm.broadcastQueue)).
+				Msg("Broadcast queue full, dropping update")
+			sm.broadcastPending.Store(false)
 		}
 	}
 }
