@@ -167,13 +167,11 @@ func NewSessionManager(logger *zerolog.Logger) *SessionManager {
 }
 
 func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSettings) error {
-	// Basic input validation
 	if session == nil {
 		sm.logger.Error().Msg("AddSession: session is nil")
 		return errors.New("session cannot be nil")
 	}
 
-	// Validate nickname if provided (matching frontend validation)
 	if session.Nickname != "" {
 		if len(session.Nickname) < minNicknameLength {
 			return fmt.Errorf("nickname must be at least %d characters", minNicknameLength)
@@ -181,7 +179,6 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		if len(session.Nickname) > maxNicknameLength {
 			return fmt.Errorf("nickname must be %d characters or less", maxNicknameLength)
 		}
-		// Note: Pattern validation is done in RPC layer, not here for performance
 	}
 	if len(session.Identity) > maxIdentityLength {
 		return fmt.Errorf("identity too long (max %d characters)", maxIdentityLength)
@@ -225,30 +222,25 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		}
 	}
 
-	// Check if a session with this ID already exists (reconnection)
 	if existing, exists := sm.sessions[session.ID]; exists {
 		if existing.Identity != session.Identity || existing.Source != session.Source {
 			return fmt.Errorf("session ID already in use by different user (identity mismatch)")
 		}
 
-		// Close old connection to prevent multiple active connections for same session ID
 		if existing.peerConnection != nil {
 			existing.peerConnection.Close()
 		}
 
-		// Update the existing session with new connection details
 		existing.peerConnection = session.peerConnection
 		existing.VideoTrack = session.VideoTrack
 		existing.ControlChannel = session.ControlChannel
 		existing.RPCChannel = session.RPCChannel
 		existing.HidChannel = session.HidChannel
 		existing.flushCandidates = session.flushCandidates
-		// Preserve mode and nickname
 		session.Mode = existing.Mode
 		session.Nickname = existing.Nickname
 		session.CreatedAt = existing.CreatedAt
 
-		// Ensure session has auto-generated nickname if needed
 		sm.ensureNickname(session)
 
 		if !nicknameReserved && session.Nickname != "" {
@@ -257,17 +249,15 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 
 		sm.sessions[session.ID] = session
 
-		// If this was the primary, try to restore primary status
 		if existing.Mode == SessionModePrimary {
 			isBlacklisted := sm.isSessionBlacklisted(session.ID)
-			// SECURITY: Prevent dual-primary window - only restore if no other primary exists
+			// SECURITY: Prevent dual-primary - only restore if no other primary exists
 			primaryExists := sm.primarySessionID != "" && sm.sessions[sm.primarySessionID] != nil
 			if sm.lastPrimaryID == session.ID && !isBlacklisted && !primaryExists {
 				sm.primarySessionID = session.ID
 				sm.lastPrimaryID = ""
 				delete(sm.reconnectGrace, session.ID)
 			} else {
-				// Grace period expired, another session took over, or primary already exists
 				session.Mode = SessionModeObserver
 			}
 		}
@@ -280,22 +270,18 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 		return ErrMaxSessionsReached
 	}
 
-	// Generate ID if not set
 	if session.ID == "" {
 		session.ID = uuid.New().String()
 	}
 
-	// Set nickname from client settings if provided
 	if clientSettings != nil && clientSettings.Nickname != "" {
 		session.Nickname = clientSettings.Nickname
 	}
 
-	// Use global settings for requirements (not client-provided)
 	globalSettings := currentSessionSettings
 
 	primaryExists := sm.primarySessionID != "" && sm.sessions[sm.primarySessionID] != nil
 
-	// Check if there's an active grace period for a primary session (different from this session)
 	hasActivePrimaryGracePeriod := false
 	if sm.lastPrimaryID != "" && sm.lastPrimaryID != session.ID {
 		if graceTime, exists := sm.reconnectGrace[sm.lastPrimaryID]; exists {
@@ -312,7 +298,6 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 	isBlacklisted := sm.isSessionBlacklisted(session.ID)
 	isOnlySession := len(sm.sessions) == 0
 
-	// Determine if this session should become primary
 	canBecomePrimary := !primaryExists && !hasActivePrimaryGracePeriod
 	isReconnectingPrimary := wasWithinGracePeriod && wasPreviouslyPrimary
 	isNewEligibleSession := !wasWithinGracePeriod && (!isBlacklisted || isOnlySession)
@@ -325,7 +310,7 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 			sm.primarySessionID = session.ID
 			sm.lastPrimaryID = ""
 
-			// Clear all existing grace periods when a new primary is established
+			// Clear grace periods when new primary is established
 			for oldSessionID := range sm.reconnectGrace {
 				delete(sm.reconnectGrace, oldSessionID)
 			}
@@ -347,7 +332,6 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 			requiresNickname := globalSettings.RequireNickname
 			hasNickname := session.Nickname != "" && len(session.Nickname) > 0
 
-			// Only send approval request if nickname is not required OR already provided
 			if !requiresNickname || hasNickname {
 				go func() {
 					writeJSONRPCEvent("newSessionPending", map[string]interface{}{
@@ -358,12 +342,8 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 					}, primary)
 				}()
 			}
-			// If nickname is required and missing, the approval request will be sent
-			// later when updateSessionNickname is called (see jsonrpc.go:232-242)
 		}
 	} else {
-		// No primary exists and approval is required, OR approval is not required
-		// In either case, this session becomes an observer
 		session.Mode = SessionModeObserver
 	}
 
@@ -625,12 +605,10 @@ func (sm *SessionManager) SetPrimarySession(sessionID string) error {
 // Sessions in pending state cannot receive video
 // Sessions that require nickname but don't have one also cannot receive video (if enforced)
 func (sm *SessionManager) CanReceiveVideo(session *Session, settings *SessionSettings) bool {
-	// Check if session has video view permission
 	if !session.HasPermission(PermissionVideoView) {
 		return false
 	}
 
-	// If nickname is required and session doesn't have one, block video
 	if settings != nil && settings.RequireNickname && session.Nickname == "" {
 		return false
 	}

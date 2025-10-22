@@ -42,11 +42,18 @@ import NicknameModal from "@components/NicknameModal";
 import AccessDeniedOverlay from "@components/AccessDeniedOverlay";
 import PendingApprovalOverlay from "@components/PendingApprovalOverlay";
 import DashboardNavbar from "@components/Header";
-const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectionStats'));
-const Terminal = lazy(() => import('@components/Terminal'));
-const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
+const ConnectionStatsSidebar = lazy(() => import("@/components/sidebar/connectionStats"));
+const Terminal = lazy(() => import("@components/Terminal"));
+const UpdateInProgressStatusCard = lazy(
+  () => import("@/components/UpdateInProgressStatusCard"),
+);
 import Modal from "@/components/Modal";
-import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
+import {
+  JsonRpcRequest,
+  JsonRpcResponse,
+  RpcMethodNotFound,
+  useJsonRpc,
+} from "@/hooks/useJsonRpc";
 import {
   ConnectionFailedOverlay,
   LoadingConnectionOverlay,
@@ -135,15 +142,25 @@ export default function KvmIdRoute() {
   const authMode = "authMode" in loaderResp ? loaderResp.authMode : null;
 
   const params = useParams() as { id: string };
-  const { sidebarView, setSidebarView, disableVideoFocusTrap, setDisableVideoFocusTrap, rebootState, setRebootState } = useUiStore();
+  const {
+    sidebarView,
+    setSidebarView,
+    disableVideoFocusTrap,
+    setDisableVideoFocusTrap,
+    rebootState,
+    setRebootState,
+  } = useUiStore();
   const [queryParams, setQueryParams] = useSearchParams();
 
   const {
-    peerConnection, setPeerConnection,
-    peerConnectionState, setPeerConnectionState,
+    peerConnection,
+    setPeerConnection,
+    peerConnectionState,
+    setPeerConnectionState,
     setMediaStream,
     setRpcDataChannel,
-    isTurnServerInUse, setTurnServerInUse,
+    isTurnServerInUse,
+    setTurnServerInUse,
     rpcDataChannel,
     setTransceiver,
     setRpcHidChannel,
@@ -162,12 +179,14 @@ export default function KvmIdRoute() {
   const { currentSessionId, currentMode, setCurrentSession } = useSessionStore();
   const { nickname, setNickname } = useSharedSessionStore();
   const { setRequireSessionApproval, setRequireSessionNickname } = useSettingsStore();
-  const [globalSessionSettings, setGlobalSessionSettings] = useState<{requireApproval: boolean, requireNickname: boolean} | null>(null);
+  const [globalSessionSettings, setGlobalSessionSettings] = useState<{
+    requireApproval: boolean;
+    requireNickname: boolean;
+  } | null>(null);
 
   const [loadingMessage, setLoadingMessage] = useState("Connecting to device...");
   const cleanupAndStopReconnecting = useCallback(
     function cleanupAndStopReconnecting() {
-
       setConnectionFailed(true);
       if (peerConnection) {
         setPeerConnectionState(peerConnection.connectionState);
@@ -264,7 +283,7 @@ export default function KvmIdRoute() {
       },
 
       onClose(_event) {
-        // We don't want to close everything down, we wait for the reconnect to stop instead
+        // Handled by onReconnectStop instead
       },
 
       onError(event) {
@@ -309,7 +328,7 @@ export default function KvmIdRoute() {
           if (sessionSettings) {
             setGlobalSessionSettings({
               requireNickname: sessionSettings.requireNickname || false,
-              requireApproval: sessionSettings.requireApproval || false
+              requireApproval: sessionSettings.requireApproval || false,
             });
             // Also update the settings store for approval handling
             setRequireSessionApproval(sessionSettings.requireApproval || false);
@@ -318,7 +337,6 @@ export default function KvmIdRoute() {
 
           // If the device version is not set, we can assume the device is using the legacy signaling
           if (!deviceVersion) {
-
             // Now we don't need the websocket connection anymore, as we've established that we need to use the legacy signaling
             // which does everything over HTTP(at least from the perspective of the client)
             isLegacySignalingEnabled.current = true;
@@ -342,7 +360,10 @@ export default function KvmIdRoute() {
         }
 
         if (!peerConnection) {
-          console.warn("[Websocket] Ignoring message because peerConnection is not ready:", parsedMessage.type);
+          console.warn(
+            "[Websocket] Ignoring message because peerConnection is not ready:",
+            parsedMessage.type,
+          );
           return;
         }
         if (parsedMessage.type === "answer") {
@@ -366,15 +387,18 @@ export default function KvmIdRoute() {
           if (parsedMessage.sessionId && parsedMessage.mode) {
             handleSessionResponse({
               sessionId: parsedMessage.sessionId,
-              mode: parsedMessage.mode
+              mode: parsedMessage.mode,
             });
 
             // Store sessionId via zustand (persists to sessionStorage for per-tab isolation)
             setCurrentSession(parsedMessage.sessionId, parsedMessage.mode);
-            if (parsedMessage.requireNickname !== undefined && parsedMessage.requireApproval !== undefined) {
+            if (
+              parsedMessage.requireNickname !== undefined &&
+              parsedMessage.requireApproval !== undefined
+            ) {
               setGlobalSessionSettings({
                 requireNickname: parsedMessage.requireNickname,
-                requireApproval: parsedMessage.requireApproval
+                requireApproval: parsedMessage.requireApproval,
               });
               // Also update the settings store for approval handling
               setRequireSessionApproval(parsedMessage.requireApproval);
@@ -385,8 +409,10 @@ export default function KvmIdRoute() {
             // 1. Nickname is required by backend settings
             // 2. We don't already have a nickname
             // This happens even for pending sessions so the nickname is included in approval
-            const hasNickname = parsedMessage.nickname && parsedMessage.nickname.length > 0;
-            const requiresNickname = parsedMessage.requireNickname || globalSessionSettings?.requireNickname;
+            const hasNickname =
+              parsedMessage.nickname && parsedMessage.nickname.length > 0;
+            const requiresNickname =
+              parsedMessage.requireNickname || globalSessionSettings?.requireNickname;
 
             if (requiresNickname && !hasNickname) {
               setShowNicknameModal(true);
@@ -427,18 +453,22 @@ export default function KvmIdRoute() {
               peerConnection?.iceConnectionState === "connected";
 
             if (!isConnectionHealthy) {
-              console.log(`[Websocket] Mode changed to ${newMode}, connection unhealthy, reconnecting...`);
+              console.log(
+                `[Websocket] Mode changed to ${newMode}, connection unhealthy, reconnecting...`,
+              );
               setTimeout(() => {
                 peerConnection?.close();
                 setupPeerConnection();
               }, 500);
             } else {
-              console.log(`[Websocket] Mode changed to ${newMode}, connection healthy, skipping reconnect`);
+              console.log(
+                `[Websocket] Mode changed to ${newMode}, connection healthy, skipping reconnect`,
+              );
             }
           }
         }
       },
-    }
+    },
   );
 
   const sendWebRTCSignal = useCallback(
@@ -540,8 +570,8 @@ export default function KvmIdRoute() {
             sessionId: storeSessionId || undefined,
             userAgent: navigator.userAgent,
             sessionSettings: {
-              nickname: storeNickname || undefined
-            }
+              nickname: storeNickname || undefined,
+            },
           });
         }
       } catch (e) {
@@ -605,10 +635,13 @@ export default function KvmIdRoute() {
       setRpcHidUnreliableChannel(rpcHidUnreliableChannel);
     };
 
-    const rpcHidUnreliableNonOrderedChannel = pc.createDataChannel("hidrpc-unreliable-nonordered", {
-      ordered: false,
-      maxRetransmits: 0,
-    });
+    const rpcHidUnreliableNonOrderedChannel = pc.createDataChannel(
+      "hidrpc-unreliable-nonordered",
+      {
+        ordered: false,
+        maxRetransmits: 0,
+      },
+    );
     rpcHidUnreliableNonOrderedChannel.binaryType = "arraybuffer";
     rpcHidUnreliableNonOrderedChannel.onopen = () => {
       setRpcHidUnreliableNonOrderedChannel(rpcHidUnreliableNonOrderedChannel);
@@ -699,19 +732,24 @@ export default function KvmIdRoute() {
     }
 
     // Fire and forget
-    api.POST(`${CLOUD_API}/webrtc/turn_activity`, {
-      bytesReceived: bytesReceivedDelta,
-      bytesSent: bytesSentDelta,
-    }).catch(() => {
-      // we don't care about errors here, but we don't want unhandled promise rejections
-    });
+    api
+      .POST(`${CLOUD_API}/webrtc/turn_activity`, {
+        bytesReceived: bytesReceivedDelta,
+        bytesSent: bytesSentDelta,
+      })
+      .catch(() => {
+        // we don't care about errors here, but we don't want unhandled promise rejections
+      });
   }, 10000);
 
   const { setNetworkState } = useNetworkStateStore();
   const { setHdmiState } = useVideoStore();
   const {
-    keyboardLedState, setKeyboardLedState,
-    keysDownState, setKeysDownState, setUsbState,
+    keyboardLedState,
+    setKeyboardLedState,
+    keysDownState,
+    setKeysDownState,
+    setUsbState,
   } = useHidStore();
   const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
 
@@ -720,15 +758,17 @@ export default function KvmIdRoute() {
 
   function onJsonRpcRequest(resp: JsonRpcRequest) {
     // Handle session-related events
-    if (resp.method === "sessionsUpdated" ||
-        resp.method === "modeChanged" ||
-        resp.method === "connectionModeChanged" ||
-        resp.method === "otherSessionConnected" ||
-        resp.method === "primaryControlRequested" ||
-        resp.method === "primaryControlApproved" ||
-        resp.method === "primaryControlDenied" ||
-        resp.method === "newSessionPending" ||
-        resp.method === "sessionAccessDenied") {
+    if (
+      resp.method === "sessionsUpdated" ||
+      resp.method === "modeChanged" ||
+      resp.method === "connectionModeChanged" ||
+      resp.method === "otherSessionConnected" ||
+      resp.method === "primaryControlRequested" ||
+      resp.method === "primaryControlApproved" ||
+      resp.method === "primaryControlDenied" ||
+      resp.method === "newSessionPending" ||
+      resp.method === "sessionAccessDenied"
+    ) {
       handleRpcEvent(resp.method, resp.params);
 
       // Show access denied overlay if our session was denied
@@ -809,7 +849,7 @@ export default function KvmIdRoute() {
     newSessionRequest,
     handleApproveNewSession,
     handleDenyNewSession,
-    closeNewSessionRequest
+    closeNewSessionRequest,
   } = useSessionManagement(send);
 
   const { hasPermission, isLoading: isLoadingPermissions } = usePermissions();
@@ -823,7 +863,13 @@ export default function KvmIdRoute() {
       const hdmiState = resp.result as Parameters<VideoState["setHdmiState"]>[0];
       setHdmiState(hdmiState);
     });
-  }, [rpcDataChannel?.readyState, hasPermission, isLoadingPermissions, send, setHdmiState]);
+  }, [
+    rpcDataChannel?.readyState,
+    hasPermission,
+    isLoadingPermissions,
+    send,
+    setHdmiState,
+  ]);
 
   const [needLedState, setNeedLedState] = useState(true);
 
@@ -842,7 +888,15 @@ export default function KvmIdRoute() {
       }
       setNeedLedState(false);
     });
-  }, [rpcDataChannel?.readyState, send, setKeyboardLedState, keyboardLedState, needLedState, hasPermission, isLoadingPermissions]);
+  }, [
+    rpcDataChannel?.readyState,
+    send,
+    setKeyboardLedState,
+    keyboardLedState,
+    needLedState,
+    hasPermission,
+    isLoadingPermissions,
+  ]);
 
   const [needKeyDownState, setNeedKeyDownState] = useState(true);
 
@@ -854,7 +908,10 @@ export default function KvmIdRoute() {
     send("getKeyDownState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         if (resp.error.code === RpcMethodNotFound) {
-          console.warn("Failed to get key down state, switching to old-school", resp.error);
+          console.warn(
+            "Failed to get key down state, switching to old-school",
+            resp.error,
+          );
           setHidRpcDisabled(true);
         } else {
           console.error("Failed to get key down state", resp.error);
@@ -865,7 +922,16 @@ export default function KvmIdRoute() {
       }
       setNeedKeyDownState(false);
     });
-  }, [keysDownState, needKeyDownState, rpcDataChannel?.readyState, send, setKeysDownState, setHidRpcDisabled, hasPermission, isLoadingPermissions]);
+  }, [
+    keysDownState,
+    needKeyDownState,
+    rpcDataChannel?.readyState,
+    send,
+    setKeysDownState,
+    setHidRpcDisabled,
+    hasPermission,
+    isLoadingPermissions,
+  ]);
 
   // When the update is successful, we need to refresh the client javascript and show a success modal
   useEffect(() => {
@@ -910,7 +976,9 @@ export default function KvmIdRoute() {
 
     // Rebooting takes priority over connection status
     if (rebootState?.isRebooting) {
-      return <RebootingOverlay show={true} postRebootAction={rebootState.postRebootAction} />;
+      return (
+        <RebootingOverlay show={true} postRebootAction={rebootState.postRebootAction} />
+      );
     }
 
     const hasConnectionFailed =
@@ -937,184 +1005,186 @@ export default function KvmIdRoute() {
     }
 
     return null;
-  }, [location.pathname, rebootState?.isRebooting, rebootState?.postRebootAction, connectionFailed, peerConnectionState, peerConnection, setupPeerConnection, loadingMessage]);
+  }, [
+    location.pathname,
+    rebootState?.isRebooting,
+    rebootState?.postRebootAction,
+    connectionFailed,
+    peerConnectionState,
+    peerConnection,
+    setupPeerConnection,
+    loadingMessage,
+  ]);
 
   return (
     <PermissionsProvider>
       <FeatureFlagProvider appVersion={appVersion}>
         {!outlet && otaState.updating && (
-        <AnimatePresence>
-          <motion.div
-            className="pointer-events-none fixed inset-0 top-16 z-10 mx-auto flex h-full w-full max-w-xl translate-y-8 items-start justify-center"
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
+          <AnimatePresence>
+            <motion.div
+              className="pointer-events-none fixed inset-0 top-16 z-10 mx-auto flex h-full w-full max-w-xl translate-y-8 items-start justify-center"
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+            >
+              <UpdateInProgressStatusCard />
+            </motion.div>
+          </AnimatePresence>
+        )}
+        <div className="relative h-full">
+          <FocusTrap
+            paused={disableVideoFocusTrap}
+            focusTrapOptions={{
+              allowOutsideClick: true,
+              escapeDeactivates: false,
+              fallbackFocus: "#videoFocusTrap",
+            }}
           >
-            <UpdateInProgressStatusCard />
-          </motion.div>
-        </AnimatePresence>
-      )}
-      <div className="relative h-full">
-        <FocusTrap
-          paused={disableVideoFocusTrap}
-          focusTrapOptions={{
-            allowOutsideClick: true,
-            escapeDeactivates: false,
-            fallbackFocus: "#videoFocusTrap",
-          }}
-        >
-          <div className="absolute top-0">
-            <button className="absolute top-0" tabIndex={-1} id="videoFocusTrap" />
-          </div>
-        </FocusTrap>
+            <div className="absolute top-0">
+              <button className="absolute top-0" tabIndex={-1} id="videoFocusTrap" />
+            </div>
+          </FocusTrap>
 
-        <div className="grid h-full grid-rows-(--grid-headerBody) select-none">
-          <DashboardNavbar
-            primaryLinks={isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]}
-            showConnectionStatus={true}
-            isLoggedIn={authMode === "password" || !!user}
-            userEmail={user?.email}
-            picture={user?.picture}
-            kvmName={deviceName ?? "JetKVM Device"}
-          />
+          <div className="grid h-full grid-rows-(--grid-headerBody) select-none">
+            <DashboardNavbar
+              primaryLinks={
+                isOnDevice ? [] : [{ title: "Cloud Devices", to: "/devices" }]
+              }
+              showConnectionStatus={true}
+              isLoggedIn={authMode === "password" || !!user}
+              userEmail={user?.email}
+              picture={user?.picture}
+              kvmName={deviceName ?? "JetKVM Device"}
+            />
 
-
-          <div className="relative flex h-full w-full overflow-hidden">
-            {/* Only show video feed if nickname is set (when required) and not pending approval */}
-            {(!showNicknameModal && currentMode !== "pending") ? (
-              <>
-                <WebRTCVideo hasConnectionIssues={!!ConnectionStatusElement} />
-                <div
-                  style={{ animationDuration: "500ms" }}
-                  className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
-                >
-                  <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
-                    {!!ConnectionStatusElement && ConnectionStatusElement}
+            <div className="relative flex h-full w-full overflow-hidden">
+              {/* Only show video feed if nickname is set (when required) and not pending approval */}
+              {!showNicknameModal && currentMode !== "pending" ? (
+                <>
+                  <WebRTCVideo hasConnectionIssues={!!ConnectionStatusElement} />
+                  <div
+                    style={{ animationDuration: "500ms" }}
+                    className="pointer-events-none absolute inset-0 flex animate-slideUpFade items-center justify-center p-4"
+                  >
+                    <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
+                      {!!ConnectionStatusElement && ConnectionStatusElement}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-1 items-center justify-center bg-slate-900">
+                  <div className="text-center text-slate-400">
+                    {showNicknameModal && <p>Please set your nickname to continue</p>}
+                    {currentMode === "pending" && <p>Waiting for session approval...</p>}
                   </div>
                 </div>
-              </>
-            ) : (
-              <div className="flex-1 bg-slate-900 flex items-center justify-center">
-                <div className="text-slate-400 text-center">
-                  {showNicknameModal && <p>Please set your nickname to continue</p>}
-                  {currentMode === "pending" && <p>Waiting for session approval...</p>}
-                </div>
-              </div>
-            )}
-            <SidebarContainer sidebarView={sidebarView} />
+              )}
+              <SidebarContainer sidebarView={sidebarView} />
+            </div>
           </div>
         </div>
-      </div>
 
-      <div
-        className="z-50"
-        onClick={e => e.stopPropagation()}
-        onMouseUp={e => e.stopPropagation()}
-        onMouseDown={e => e.stopPropagation()}
-        onKeyUp={e => e.stopPropagation()}
-        onKeyDown={e => {
-          e.stopPropagation();
-          if (e.key === "Escape") navigateTo("/");
-        }}
-      >
-        <Modal open={outlet !== null} onClose={onModalClose}>
-          {/* The 'used by other session' modal needs to have access to the connectWebRTC function */}
-          <Outlet context={{ setupPeerConnection }} />
-        </Modal>
+        <div
+          className="z-50"
+          onClick={e => e.stopPropagation()}
+          onMouseUp={e => e.stopPropagation()}
+          onMouseDown={e => e.stopPropagation()}
+          onKeyUp={e => e.stopPropagation()}
+          onKeyDown={e => {
+            e.stopPropagation();
+            if (e.key === "Escape") navigateTo("/");
+          }}
+        >
+          <Modal open={outlet !== null} onClose={onModalClose}>
+            {/* The 'used by other session' modal needs to have access to the connectWebRTC function */}
+            <Outlet context={{ setupPeerConnection }} />
+          </Modal>
 
-        <NicknameModal
-          isOpen={showNicknameModal}
-          onSubmit={async (nickname) => {
-            setNickname(nickname);
-            setShowNicknameModal(false);
-            setDisableVideoFocusTrap(false);
+          <NicknameModal
+            isOpen={showNicknameModal}
+            onSubmit={async nickname => {
+              setNickname(nickname);
+              setShowNicknameModal(false);
+              setDisableVideoFocusTrap(false);
 
-            if (currentSessionId && send) {
-              try {
-                await sessionApi.updateNickname(send, currentSessionId, nickname);
-              } catch (error) {
-                console.error("Failed to update nickname:", error);
+              if (currentSessionId && send) {
+                try {
+                  await sessionApi.updateNickname(send, currentSessionId, nickname);
+                } catch (error) {
+                  console.error("Failed to update nickname:", error);
+                }
               }
+            }}
+            onSkip={() => {
+              setShowNicknameModal(false);
+              setDisableVideoFocusTrap(false);
+            }}
+          />
+        </div>
+
+        {kvmTerminal && (
+          <Terminal type="kvm" dataChannel={kvmTerminal} title="KVM Terminal" />
+        )}
+
+        {serialConsole && (
+          <Terminal type="serial" dataChannel={serialConsole} title="Serial Console" />
+        )}
+
+        {/* Unified Session Request Dialog */}
+        {(primaryControlRequest || newSessionRequest) && (
+          <UnifiedSessionRequestDialog
+            request={
+              primaryControlRequest
+                ? {
+                    id: primaryControlRequest.requestId,
+                    type: "primary_control",
+                    source: primaryControlRequest.source,
+                    identity: primaryControlRequest.identity,
+                    nickname: primaryControlRequest.nickname,
+                  }
+                : newSessionRequest
+                  ? {
+                      id: newSessionRequest.sessionId,
+                      type: "session_approval",
+                      source: newSessionRequest.source,
+                      identity: newSessionRequest.identity,
+                      nickname: newSessionRequest.nickname,
+                    }
+                  : null
+            }
+            onApprove={
+              primaryControlRequest
+                ? handleApprovePrimaryRequest
+                : handleApproveNewSession
+            }
+            onDeny={
+              primaryControlRequest ? handleDenyPrimaryRequest : handleDenyNewSession
+            }
+            onDismiss={
+              primaryControlRequest ? closePrimaryControlRequest : closeNewSessionRequest
+            }
+            onClose={
+              primaryControlRequest ? closePrimaryControlRequest : closeNewSessionRequest
+            }
+          />
+        )}
+
+        <AccessDeniedOverlay
+          show={accessDenied}
+          message="Your session access was denied by the primary session"
+          onRequestApproval={async () => {
+            if (!send) return;
+            try {
+              await sessionApi.requestSessionApproval(send);
+              setAccessDenied(false);
+            } catch (error) {
+              console.error("Failed to re-request approval:", error);
             }
           }}
-          onSkip={() => {
-            setShowNicknameModal(false);
-            setDisableVideoFocusTrap(false);
-          }}
         />
-      </div>
 
-      {kvmTerminal && (
-        <Terminal type="kvm" dataChannel={kvmTerminal} title="KVM Terminal" />
-      )}
-
-      {serialConsole && (
-        <Terminal type="serial" dataChannel={serialConsole} title="Serial Console" />
-      )}
-
-      {/* Unified Session Request Dialog */}
-      {(primaryControlRequest || newSessionRequest) && (
-        <UnifiedSessionRequestDialog
-          request={
-            primaryControlRequest
-              ? {
-                  id: primaryControlRequest.requestId,
-                  type: "primary_control",
-                  source: primaryControlRequest.source,
-                  identity: primaryControlRequest.identity,
-                  nickname: primaryControlRequest.nickname,
-                }
-              : newSessionRequest
-              ? {
-                  id: newSessionRequest.sessionId,
-                  type: "session_approval",
-                  source: newSessionRequest.source,
-                  identity: newSessionRequest.identity,
-                  nickname: newSessionRequest.nickname,
-                }
-              : null
-          }
-          onApprove={
-            primaryControlRequest
-              ? handleApprovePrimaryRequest
-              : handleApproveNewSession
-          }
-          onDeny={
-            primaryControlRequest
-              ? handleDenyPrimaryRequest
-              : handleDenyNewSession
-          }
-          onDismiss={
-            primaryControlRequest
-              ? closePrimaryControlRequest
-              : closeNewSessionRequest
-          }
-          onClose={
-            primaryControlRequest
-              ? closePrimaryControlRequest
-              : closeNewSessionRequest
-          }
-        />
-      )}
-
-      <AccessDeniedOverlay
-        show={accessDenied}
-        message="Your session access was denied by the primary session"
-        onRequestApproval={async () => {
-          if (!send) return;
-          try {
-            await sessionApi.requestSessionApproval(send);
-            setAccessDenied(false);
-          } catch (error) {
-            console.error("Failed to re-request approval:", error);
-          }
-        }}
-      />
-
-      <PendingApprovalOverlay
-        show={currentMode === "pending"}
-      />
+        <PendingApprovalOverlay show={currentMode === "pending"} />
       </FeatureFlagProvider>
     </PermissionsProvider>
   );
