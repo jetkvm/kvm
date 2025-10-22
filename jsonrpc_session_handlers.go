@@ -96,11 +96,11 @@ func handleRequestSessionApprovalRPC(session *Session) (any, error) {
 }
 
 func validateNickname(nickname string) error {
-	if len(nickname) < 2 {
-		return errors.New("nickname must be at least 2 characters")
+	if len(nickname) < minNicknameLength {
+		return fmt.Errorf("nickname must be at least %d characters", minNicknameLength)
 	}
-	if len(nickname) > 30 {
-		return errors.New("nickname must be 30 characters or less")
+	if len(nickname) > maxNicknameLength {
+		return fmt.Errorf("nickname must be %d characters or less", maxNicknameLength)
 	}
 	if !isValidNickname(nickname) {
 		return errors.New("nickname can only contain letters, numbers, spaces, and - _ . @")

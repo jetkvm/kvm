@@ -25,8 +25,9 @@ const (
 // Timing constants for session management
 const (
 	// Broadcast throttling (DoS protection)
-	globalBroadcastDelay  = 100 * time.Millisecond // Minimum time between global session broadcasts
-	sessionBroadcastDelay = 50 * time.Millisecond  // Minimum time between broadcasts to a single session
+	globalBroadcastDelay   = 100 * time.Millisecond // Minimum time between global session broadcasts
+	sessionBroadcastDelay  = 50 * time.Millisecond  // Minimum time between broadcasts to a single session
+	broadcastQueueCapacity = 100                    // Maximum pending broadcasts before drops occur
 
 	// Session timeout defaults
 	defaultPendingSessionTimeout  = 1 * time.Minute // Timeout for pending sessions (DoS protection)
@@ -154,7 +155,7 @@ func NewSessionManager(logger *zerolog.Logger) *SessionManager {
 		logger:            logger,
 		maxSessions:       maxSessions,
 		primaryTimeout:    primaryTimeout,
-		broadcastQueue:    make(chan struct{}, 100),
+		broadcastQueue:    make(chan struct{}, broadcastQueueCapacity),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
