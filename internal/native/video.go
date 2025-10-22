@@ -1,10 +1,17 @@
 package native
 
 import (
+	"fmt"
 	"os"
+	"time"
 )
 
 const sleepModeFile = "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mode"
+
+// DefaultEDID is the default EDID for the video stream.
+const DefaultEDID = "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b"
+
+var extraLockTimeout = 5 * time.Second
 
 // VideoState is the state of the video stream.
 type VideoState struct {
@@ -66,12 +73,32 @@ func (n *Native) VideoSleepModeSupported() bool {
 	return n.sleepModeSupported
 }
 
+// useExtraLock uses the extra lock to execute a function.
+// if the lock is currently held by another goroutine, returns an error.
+//
+// it's used to ensure that only one change is made to the video stream at a time.
+// as the change usually requires to restart video streaming
+// TODO: check video streaming status instead of using a hardcoded timeout
+func (n *Native) useExtraLock(fn func() error) error {
+	if !n.extraLock.TryLock() {
+		return fmt.Errorf("the previous change hasn't been completed yet")
+	}
+	err := fn()
+	if err == nil {
+		time.Sleep(extraLockTimeout)
+	}
+	n.extraLock.Unlock()
+	return err
+}
+
 // VideoSetQualityFactor sets the quality factor for the video stream.
 func (n *Native) VideoSetQualityFactor(factor float64) error {
 	n.videoLock.Lock()
 	defer n.videoLock.Unlock()
 
-	return videoSetStreamQualityFactor(factor)
+	return n.useExtraLock(func() error {
+		return videoSetStreamQualityFactor(factor)
+	})
 }
 
 // VideoGetQualityFactor gets the quality factor for the video stream.
@@ -87,7 +114,13 @@ func (n *Native) VideoSetEDID(edid string) error {
 	n.videoLock.Lock()
 	defer n.videoLock.Unlock()
 
-	return videoSetEDID(edid)
+	if edid == "" {
+		edid = DefaultEDID
+	}
+
+	return n.useExtraLock(func() error {
+		return videoSetEDID(edid)
+	})
 }
 
 // VideoGetEDID gets the EDID for the video stream.
