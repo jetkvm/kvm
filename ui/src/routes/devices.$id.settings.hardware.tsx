@@ -1,11 +1,13 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
 import { BacklightSettings, useSettingsStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { UsbDeviceSetting } from "@components/UsbDeviceSetting";
+import { Checkbox } from "@components/Checkbox";
 
 import notifications from "../notifications";
 import { UsbInfoSetting } from "../components/UsbInfoSetting";
@@ -15,6 +17,7 @@ export default function SettingsHardwareRoute() {
   const { send } = useJsonRpc();
   const settings = useSettingsStore();
   const { setDisplayRotation } = useSettingsStore();
+  const [powerSavingEnabled, setPowerSavingEnabled] = useState(false);
 
   const handleDisplayRotationChange = (rotation: string) => {
     setDisplayRotation(rotation);
@@ -58,6 +61,21 @@ export default function SettingsHardwareRoute() {
     });
   };
 
+  const handlePowerSavingChange = (enabled: boolean) => {
+    setPowerSavingEnabled(enabled);
+    const duration = enabled ? 90 : -1;
+    send("setVideoSleepMode", { duration }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to set power saving mode: ${resp.error.data || "Unknown error"}`,
+        );
+        setPowerSavingEnabled(!enabled); // Revert on error
+        return;
+      }
+      notifications.success(`Power saving mode ${enabled ? "enabled" : "disabled"}`);
+    });
+  };
+
   useEffect(() => {
     send("getBacklightSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
@@ -69,6 +87,17 @@ export default function SettingsHardwareRoute() {
       setBacklightSettings(result);
     });
   }, [send, setBacklightSettings]);
+
+  useEffect(() => {
+    send("getVideoSleepMode", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        console.error("Failed to get power saving mode:", resp.error);
+        return;
+      }
+      const result = resp.result as { enabled: boolean; duration: number };
+      setPowerSavingEnabled(result.duration >= 0);
+    });
+  }, [send]);
 
   return (
     <div className="space-y-4">
@@ -166,6 +195,26 @@ export default function SettingsHardwareRoute() {
           The display will wake up when the connection state changes, or when touched.
         </p>
       </div>
+
+      <FeatureFlag minAppVersion="0.4.9">
+        <div className="space-y-4">
+          <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
+          <SettingsSectionHeader
+            title="Power Saving"
+            description="Reduce power consumption when not in use"
+          />
+          <SettingsItem
+            badge="Experimental"
+            title="HDMI Sleep Mode"
+            description="Turn off capture after 90 seconds of inactivity"
+          >
+            <Checkbox
+              checked={powerSavingEnabled}
+              onChange={(e) => handlePowerSavingChange(e.target.checked)}
+            />
+          </SettingsItem>
+        </div>
+      </FeatureFlag>
 
       <FeatureFlag minAppVersion="0.3.8">
         <UsbDeviceSetting />
