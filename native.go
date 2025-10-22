@@ -17,9 +17,10 @@ var (
 
 func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 	nativeInstance = native.NewNative(native.NativeOptions{
-		SystemVersion:   systemVersion,
-		AppVersion:      appVersion,
-		DisplayRotation: config.GetDisplayRotation(),
+		SystemVersion:        systemVersion,
+		AppVersion:           appVersion,
+		DisplayRotation:      config.GetDisplayRotation(),
+		DefaultQualityFactor: config.VideoQualityFactor,
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
 			triggerVideoStateUpdate()
@@ -58,7 +59,13 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			}
 		},
 	})
+
 	nativeInstance.Start()
+	go func() {
+		if err := nativeInstance.VideoSetEDID(config.EdidString); err != nil {
+			nativeLogger.Warn().Err(err).Msg("error setting EDID")
+		}
+	}()
 
 	if os.Getenv("JETKVM_CRASH_TESTING") == "1" {
 		nativeInstance.DoNotUseThisIsForCrashTestingOnly()

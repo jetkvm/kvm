@@ -405,8 +405,8 @@ char *jetkvm_video_log_status() {
     return (char *)videoc_log_status();
 }
 
-int jetkvm_video_init() {
-    return video_init();
+int jetkvm_video_init(float factor) {
+    return video_init(factor);
 }
 
 void jetkvm_video_shutdown() {

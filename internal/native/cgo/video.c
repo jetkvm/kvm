@@ -29,6 +29,7 @@
 
 #define VIDEO_DEV "/dev/video0"
 #define SUB_DEV "/dev/v4l-subdev2"
+#define SLEEP_MODE_FILE "/sys/devices/platform/ff470000.i2c/i2c-4/4-000f/sleep_mode"
 
 #define RK_ALIGN(x, a) (((x) + (a)-1) & ~((a)-1))
 #define RK_ALIGN_2(x) RK_ALIGN(x, 2)
@@ -39,6 +40,7 @@ int sub_dev_fd = -1;
 #define VENC_CHANNEL 0
 MB_POOL memPool = MB_INVALID_POOLID;
 
+bool sleep_mode_available = false;
 bool should_exit = false;
 float quality_factor = 1.0f;
 
@@ -49,6 +51,45 @@ RK_U64 get_us()
     struct timespec time = {0, 0};
     clock_gettime(CLOCK_MONOTONIC, &time);
     return (RK_U64)time.tv_sec * 1000000 + (RK_U64)time.tv_nsec / 1000; /* microseconds */
+}
+
+static void ensure_sleep_mode_disabled()
+{
+    if (!sleep_mode_available)
+    {
+        return;
+    }
+
+    int fd = open(SLEEP_MODE_FILE, O_RDWR);
+    if (fd < 0)
+    {
+        log_error("Failed to open sleep mode file: %s", strerror(errno));
+        return;
+    }
+    lseek(fd, 0, SEEK_SET);
+    char buffer[1];
+    read(fd, buffer, 1);
+    if (buffer[0] == '0') {
+        close(fd);
+        return;
+    }
+    log_warn("HDMI sleep mode is not disabled, disabling it");
+    lseek(fd, 0, SEEK_SET);
+    write(fd, "0", 1);
+    close(fd);
+
+    usleep(1000); // give some time to the system to disable the sleep mode
+    return;
+}
+
+static void detect_sleep_mode()
+{
+    if (access(SLEEP_MODE_FILE, F_OK) != 0) {
+        sleep_mode_available = false;
+        return;
+    }
+    sleep_mode_available = true;
+    ensure_sleep_mode_disabled();
 }
 
 double calculate_bitrate(float bitrate_factor, int width, int height)
@@ -190,8 +231,15 @@ static int32_t buf_init()
 
 pthread_t *format_thread = NULL;
 
-int video_init()
+int video_init(float factor)
 {
+    detect_sleep_mode();
+
+    if (factor < 0 || factor > 1) {
+        factor = 1.0f;
+    }
+    quality_factor = factor;
+
     if (RK_MPI_SYS_Init() != RK_SUCCESS)
     {
         log_error("RK_MPI_SYS_Init failed");
@@ -301,10 +349,28 @@ static void *venc_read_stream(void *arg)
 }
 
 uint32_t detected_width, detected_height;
-bool detected_signal = false, streaming_flag = false;
+bool detected_signal = false, streaming_flag = false, streaming_stopped = true;
 
 pthread_t *streaming_thread = NULL;
 pthread_mutex_t streaming_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+bool get_streaming_flag()
+{
+    log_info("getting streaming flag");
+    pthread_mutex_lock(&streaming_mutex);
+    bool flag = streaming_flag;
+    pthread_mutex_unlock(&streaming_mutex);
+    return flag;
+}
+
+void set_streaming_flag(bool flag)
+{
+    log_info("setting streaming flag to %d", flag);
+
+    pthread_mutex_lock(&streaming_mutex);
+    streaming_flag = flag;
+    pthread_mutex_unlock(&streaming_mutex);
+}
 
 void write_buffer_to_file(const uint8_t *buffer, size_t length, const char *filename)
 {
@@ -318,6 +384,8 @@ void *run_video_stream(void *arg)
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 
     log_info("running video stream");
+
+    streaming_stopped = false;
 
     while (streaming_flag)
     {
@@ -401,7 +469,7 @@ void *run_video_stream(void *arg)
             {
                 log_error("get mb blk failed!");
                 close(video_dev_fd);
-                return ;
+                return (void *)errno;
             }
             log_info("Got memory block for buffer %d", i);
 
@@ -538,6 +606,18 @@ void *run_video_stream(void *arg)
             log_error("VIDIOC_STREAMOFF failed: %s", strerror(errno));
         }
 
+        // Explicitly free V4L2 buffer queue
+        struct v4l2_requestbuffers req_free;
+        memset(&req_free, 0, sizeof(req_free));
+        req_free.count = 0;
+        req_free.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+        req_free.memory = V4L2_MEMORY_DMABUF;
+
+        if (ioctl(video_dev_fd, VIDIOC_REQBUFS, &req_free) < 0)
+        {
+            log_error("Failed to free V4L2 buffers: %s", strerror(errno));
+        }
+
         venc_stop();
 
         for (int i = 0; i < input_buffer_count; i++)
@@ -553,6 +633,9 @@ void *run_video_stream(void *arg)
     }
 
     log_info("video stream thread exiting");
+
+    streaming_stopped = true;
+
     return NULL;
 }
 
@@ -577,61 +660,80 @@ void video_shutdown()
         RK_MPI_MB_DestroyPool(memPool);
     }
     log_info("Destroyed memory pool");
-    
+
     pthread_mutex_destroy(&streaming_mutex);
     log_info("Destroyed streaming mutex");
 }
 
-
 void video_start_streaming()
 {
-    pthread_mutex_lock(&streaming_mutex);
+    log_info("starting video streaming");
     if (streaming_thread != NULL)
     {
+        if (streaming_stopped == true) {
+            log_error("video streaming already stopped but streaming_thread is not NULL");
+            assert(streaming_stopped == true);
+        }
         log_warn("video streaming already started");
-        goto cleanup;
+        return;
     }
-    
+
     pthread_t *new_thread = malloc(sizeof(pthread_t));
     if (new_thread == NULL)
     {
         log_error("Failed to allocate memory for streaming thread");
-        goto cleanup;
+        return;
     }
-    
-    streaming_flag = true;
+
+    set_streaming_flag(true);
     int result = pthread_create(new_thread, NULL, run_video_stream, NULL);
     if (result != 0)
     {
         log_error("Failed to create streaming thread: %s", strerror(result));
-        streaming_flag = false;
+        set_streaming_flag(false);
         free(new_thread);
-        goto cleanup;
+        return;
     }
-    
-    // Only set streaming_thread after successful creation, and before unlocking the mutex
+
+    // Only set streaming_thread after successful creation
     streaming_thread = new_thread;
-cleanup:
-    pthread_mutex_unlock(&streaming_mutex);
-    return;
 }
 
 void video_stop_streaming()
 {
-    pthread_mutex_lock(&streaming_mutex);
-    if (streaming_thread != NULL)
-    {
-        streaming_flag = false;
-        log_info("stopping video streaming");
-        // wait 100ms for the thread to exit
-        usleep(1000000);
-        log_info("waiting for video streaming thread to exit");
-        pthread_join(*streaming_thread, NULL);
-        free(streaming_thread);
-        streaming_thread = NULL;
-        log_info("video streaming stopped");
+    if (streaming_thread == NULL) {
+        log_info("video streaming already stopped");
+        return;
     }
-    pthread_mutex_unlock(&streaming_mutex);
+
+    log_info("stopping video streaming");
+    set_streaming_flag(false);
+
+    log_info("waiting for video streaming thread to exit");
+    int attempts = 0;
+    while (!streaming_stopped && attempts < 30) {
+        usleep(100000); // 100ms
+        attempts++;
+    }
+    if (!streaming_stopped) {
+        log_error("video streaming thread did not exit after 30s");
+    }
+
+    pthread_join(*streaming_thread, NULL);
+    free(streaming_thread);
+    streaming_thread = NULL;
+
+    log_info("video streaming stopped");
+}
+
+void video_restart_streaming()
+{
+    if (get_streaming_flag() == true)
+    {
+        log_info("restarting video streaming");
+        video_stop_streaming();
+    }
+    video_start_streaming();
 }
 
 void *run_detect_format(void *arg)
@@ -650,6 +752,8 @@ void *run_detect_format(void *arg)
 
     while (!should_exit)
     {
+        ensure_sleep_mode_disabled();
+
         memset(&dv_timings, 0, sizeof(dv_timings));
         if (ioctl(sub_dev_fd, VIDIOC_QUERY_DV_TIMINGS, &dv_timings) != 0)
         {
@@ -689,21 +793,17 @@ void *run_detect_format(void *arg)
                                         (dv_timings.bt.width + dv_timings.bt.hfrontporch + dv_timings.bt.hsync +
                                          dv_timings.bt.hbackporch));
             log_info("Frames per second: %.2f fps", frames_per_second);
+
+            bool should_restart = dv_timings.bt.width != detected_width || dv_timings.bt.height != detected_height || !detected_signal;
+
             detected_width = dv_timings.bt.width;
             detected_height = dv_timings.bt.height;
             detected_signal = true;
             video_report_format(true, NULL, detected_width, detected_height, frames_per_second);
-            pthread_mutex_lock(&streaming_mutex);
-            if (streaming_flag == true)
-            {
-                pthread_mutex_unlock(&streaming_mutex);
-                log_info("restarting on going video streaming");
-                video_stop_streaming();
-                video_start_streaming();
-            }
-            else
-            {
-                pthread_mutex_unlock(&streaming_mutex);
+
+            if (should_restart) {
+                log_info("restarting video streaming due to format change");
+                video_restart_streaming();
             }
         }
 
@@ -731,19 +831,7 @@ void video_set_quality_factor(float factor)
     quality_factor = factor;
 
     // TODO: update venc bitrate without stopping streaming
-
-    pthread_mutex_lock(&streaming_mutex);
-    if (streaming_flag == true)
-    {
-        pthread_mutex_unlock(&streaming_mutex);
-        log_info("restarting on going video streaming due to quality factor change");
-        video_stop_streaming();
-        video_start_streaming();
-    }
-    else
-    {
-        pthread_mutex_unlock(&streaming_mutex);
-    }
+    video_restart_streaming();
 }
 
 float video_get_quality_factor() {
