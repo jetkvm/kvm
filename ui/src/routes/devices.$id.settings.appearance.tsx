@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
 
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
-
-import { SettingsPageHeader } from "../components/SettingsPageheader";
-import { SelectMenuBasic } from "../components/SelectMenuBasic";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { m } from "@localizations/messages.js";
 
 export default function SettingsAppearanceRoute() {
   const [currentTheme, setCurrentTheme] = useState(() => {
@@ -28,22 +28,24 @@ export default function SettingsAppearanceRoute() {
     }
   }, []);
 
+  const themeOptions = [
+    { value: "system", label: m.appearance_theme_system() },
+    { value: "light", label: m.appearance_theme_light() },
+    { value: "dark", label: m.appearance_theme_dark() },
+  ];
+
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Appearance"
-        description="Customize the look and feel of your JetKVM interface"
+        title={m.appearance_title()}
+        description={m.appearance_page_description()}
       />
-      <SettingsItem title="Theme" description="Choose your preferred color theme">
+      <SettingsItem title={m.appearance_theme()} description={m.appearance_description()}>
         <SelectMenuBasic
           size="SM"
           label=""
           value={currentTheme}
-          options={[
-            { value: "system", label: "System" },
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
-          ]}
+          options={themeOptions}
           onChange={e => {
             setCurrentTheme(e.target.value);
             handleThemeChange(e.target.value);

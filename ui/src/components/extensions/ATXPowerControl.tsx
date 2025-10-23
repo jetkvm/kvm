@@ -1,13 +1,13 @@
-import { LuHardDrive, LuPower, LuRotateCcw } from "react-icons/lu";
 import { useEffect, useState } from "react";
+import { LuHardDrive, LuPower, LuRotateCcw } from "react-icons/lu";
 
+import { m } from "@localizations/messages.js";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { Button } from "@components/Button";
 import Card from "@components/Card";
+import LoadingSpinner from "@components/LoadingSpinner";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import notifications from "@/notifications";
-import LoadingSpinner from "@/components/LoadingSpinner";
-
-import { JsonRpcResponse, useJsonRpc } from "../../hooks/useJsonRpc";
 
 const LONG_PRESS_DURATION = 3000; // 3 seconds for long press
 
@@ -33,9 +33,7 @@ export function ATXPowerControl() {
   useEffect(() => {
     send("getATXState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(
-          `Failed to get ATX state: ${resp.error.data || "Unknown error"}`,
-        );
+        notifications.error(m.atx_power_control_get_state_error({ error: resp.error.data || m.unknown_error() }));
         return;
       }
       setAtxState(resp.result as ATXState);
@@ -56,9 +54,7 @@ export function ATXPowerControl() {
         console.log("Sending long press ATX power action");
         send("setATXPowerAction", { action: "power-long" }, (resp: JsonRpcResponse) => {
           if ("error" in resp) {
-            notifications.error(
-              `Failed to send ATX power action: ${resp.error.data || "Unknown error"}`,
-            );
+            notifications.error(m.atx_power_control_send_action_error({ action: m.atx_power_control_long_power_button(), error: resp.error.data || m.unknown_error() }));
           }
           setIsPowerPressed(false);
         });
@@ -77,9 +73,7 @@ export function ATXPowerControl() {
         console.log("Sending short press ATX power action");
         send("setATXPowerAction", { action: "power-short" }, (resp: JsonRpcResponse) => {
           if ("error" in resp) {
-            notifications.error(
-              `Failed to send ATX power action: ${resp.error.data || "Unknown error"}`,
-            );
+            notifications.error(m.atx_power_control_send_action_error({ action: m.atx_power_control_short_power_button(), error: resp.error.data || m.unknown_error() }));
           }
         });
       }
@@ -98,8 +92,8 @@ export function ATXPowerControl() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="ATX Power Control"
-        description="Control your ATX power settings"
+        title={m.extensions_atx_power_control()}
+        description={m.extensions_atx_power_control_description()}
       />
 
       {atxState === null ? (
@@ -115,7 +109,7 @@ export function ATXPowerControl() {
                 size="SM"
                 theme="light"
                 LeadingIcon={LuPower}
-                text="Power"
+                text={m.atx_power_control_power_button()}
                 onMouseDown={() => handlePowerPress(true)}
                 onMouseUp={() => handlePowerPress(false)}
                 onMouseLeave={() => handlePowerPress(false)}
@@ -125,13 +119,11 @@ export function ATXPowerControl() {
                 size="SM"
                 theme="light"
                 LeadingIcon={LuRotateCcw}
-                text="Reset"
+                text={m.atx_power_control_reset_button()}
                 onClick={() => {
                   send("setATXPowerAction", { action: "reset" }, (resp: JsonRpcResponse) => {
                     if ("error" in resp) {
-                      notifications.error(
-                        `Failed to send ATX power action: ${resp.error.data || "Unknown error"}`,
-                      );
+                      notifications.error(m.atx_power_control_send_action_error({ action: m.atx_power_control_reset_button(), error: resp.error.data || m.unknown_error() }));
                       return;
                     }
                   });
@@ -150,7 +142,7 @@ export function ATXPowerControl() {
                       atxState?.power ? "text-green-600" : "text-slate-300"
                     }`}
                   />
-                  Power LED
+                  {m.atx_power_control_power_led()}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
@@ -161,7 +153,7 @@ export function ATXPowerControl() {
                       atxState?.hdd ? "text-blue-400" : "text-slate-300"
                     }`}
                   />
-                  HDD LED
+                  {m.atx_power_control_hdd_led()}
                 </span>
               </div>
             </div>

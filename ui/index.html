@@ -45,31 +45,39 @@
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-title" content="JetKVM" />
-    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="manifest" href="/public/site.webmanifest" />
     <meta name="theme-color" content="#051946" />
-    <meta name="description" content="A web-based KVM console for managing remote servers." />
+    <meta
+      name="description"
+      content="A web-based KVM console for managing remote servers."
+    />
     <script>
       function applyThemeFromPreference() {
         // dark theme setup
-        var darkDesired = localStorage.theme === "dark" ||
+        var darkDesired =
+          localStorage.theme === "dark" ||
           (!("theme" in localStorage) &&
-            window.matchMedia("(prefers-color-scheme: dark)").matches)
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
 
-        document.documentElement.classList.toggle("dark", darkDesired)
+        document.documentElement.classList.toggle("dark", darkDesired);
       }
 
       // initial theme application
       applyThemeFromPreference();
 
       // Listen for system theme changes
-      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyThemeFromPreference);
-      window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyThemeFromPreference);
+      window
+        .matchMedia("(prefers-color-scheme: dark)")
+        .addEventListener("change", applyThemeFromPreference);
+      window
+        .matchMedia("(prefers-color-scheme: light)")
+        .addEventListener("change", applyThemeFromPreference);
     </script>
   </head>
   <body
-    class="h-full w-full bg-[#f3f9ff] font-sans text-sm antialiased dark:bg-slate-900 md:text-base"
+    class="h-full w-full bg-[#f3f9ff] font-sans text-sm antialiased md:text-base dark:bg-slate-900"
   >
-    <div id="root" class="w-full h-full"></div>
+    <div id="root" class="h-full w-full"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

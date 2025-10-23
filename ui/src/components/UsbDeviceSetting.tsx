@@ -1,15 +1,15 @@
-import { useCallback , useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { m } from "@localizations/messages.js";
 import { SettingsItem } from "@components/SettingsItem";
+import Checkbox from "@components/Checkbox";
+import { Button } from "@components/Button";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
+import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
+import Fieldset from "@components/Fieldset";
+import notifications from "@/notifications";
 
-import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
-import notifications from "../notifications";
-
-import Checkbox from "./Checkbox";
-import { Button } from "./Button";
-import { SelectMenuBasic } from "./SelectMenuBasic";
-import { SettingsSectionHeader } from "./SettingsSectionHeader";
-import Fieldset from "./Fieldset";
 export interface USBConfig {
   vendor_id: string;
   product_id: string;
@@ -36,7 +36,7 @@ const defaultUsbDeviceConfig: UsbDeviceConfig = {
 
 const usbPresets = [
   {
-    label: "Keyboard, Mouse, Mass Storage and Audio",
+    label: m.usb_device_keyboard_mouse_mass_storage_and_audio(),
     value: "default",
     config: {
       keyboard: true,
@@ -47,7 +47,18 @@ const usbPresets = [
     },
   },
   {
-    label: "Keyboard Only",
+    label: m.usb_device_keyboard_mouse_and_mass_storage(),
+    value: "keyboard_mouse_and_mass_storage",
+    config: {
+      keyboard: true,
+      absolute_mouse: true,
+      relative_mouse: true,
+      mass_storage: true,
+      audio: false,
+    },
+  },
+  {
+    label: m.usb_device_keyboard_only(),
     value: "keyboard_only",
     config: {
       keyboard: true,
@@ -58,7 +69,7 @@ const usbPresets = [
     },
   },
   {
-    label: "Custom",
+    label: m.usb_device_custom(),
     value: "custom",
   },
 ];
@@ -76,7 +87,7 @@ export function UsbDeviceSetting() {
       if ("error" in resp) {
         console.error("Failed to load USB devices:", resp.error);
         notifications.error(
-          `Failed to load USB devices: ${resp.error.data || "Unknown error"}`,
+          m.usb_device_failed_load({ error: String(resp.error.data || m.unknown_error()) }),
         );
       } else {
         const usbConfigState = resp.result as UsbDeviceConfig;
@@ -105,7 +116,7 @@ export function UsbDeviceSetting() {
       send("setUsbDevices", { devices }, async (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to set usb devices: ${resp.error.data || "Unknown error"}`,
+            m.usb_device_failed_set({ error: String(resp.error.data || m.unknown_error()) }),
           );
           setLoading(false);
           return;
@@ -115,7 +126,7 @@ export function UsbDeviceSetting() {
         await new Promise(resolve => setTimeout(resolve, 2000));
         setLoading(false);
         syncUsbDeviceConfig();
-        notifications.success(`USB Devices updated`);
+        notifications.success(m.usb_device_updated());
       });
     },
     [send, syncUsbDeviceConfig],
@@ -158,14 +169,14 @@ export function UsbDeviceSetting() {
       <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
 
       <SettingsSectionHeader
-        title="USB Device"
-        description="USB devices to emulate on the target computer"
+        title={m.usb_device_title()}
+        description={m.usb_device_description()}
       />
 
       <SettingsItem
         loading={loading}
-        title="Classes"
-        description="USB device classes in the composite device"
+        title={m.usb_device_classes_title()}
+        description={m.usb_device_classes_description()}
       >
         <SelectMenuBasic
           size="SM"
@@ -182,7 +193,7 @@ export function UsbDeviceSetting() {
         <div className="ml-2 border-l border-slate-800/10 pl-4 dark:border-slate-300/20 ">
           <div className="space-y-4">
             <div className="space-y-4">
-              <SettingsItem title="Enable Keyboard" description="Enable Keyboard">
+              <SettingsItem title={m.usb_device_enable_keyboard_title()} description={m.usb_device_enable_keyboard_description()}>
                 <Checkbox
                   checked={usbDeviceConfig.keyboard}
                   onChange={onUsbConfigItemChange("keyboard")}
@@ -191,8 +202,8 @@ export function UsbDeviceSetting() {
             </div>
             <div className="space-y-4">
               <SettingsItem
-                title="Enable Absolute Mouse (Pointer)"
-                description="Enable Absolute Mouse (Pointer)"
+                title={m.usb_device_enable_absolute_mouse_title()}
+                description={m.usb_device_enable_absolute_mouse_description()}
               >
                 <Checkbox
                   checked={usbDeviceConfig.absolute_mouse}
@@ -202,8 +213,8 @@ export function UsbDeviceSetting() {
             </div>
             <div className="space-y-4">
               <SettingsItem
-                title="Enable Relative Mouse"
-                description="Enable Relative Mouse"
+                title={m.usb_device_enable_relative_mouse_title()}
+                description={m.usb_device_enable_relative_mouse_description()}
               >
                 <Checkbox
                   checked={usbDeviceConfig.relative_mouse}
@@ -213,8 +224,8 @@ export function UsbDeviceSetting() {
             </div>
             <div className="space-y-4">
               <SettingsItem
-                title="Enable USB Mass Storage"
-                description="Sometimes it might need to be disabled to prevent issues with certain devices"
+                title={m.usb_device_enable_mass_storage_title()}
+                description={m.usb_device_enable_mass_storage_description()}
               >
                 <Checkbox
                   checked={usbDeviceConfig.mass_storage}
@@ -224,8 +235,8 @@ export function UsbDeviceSetting() {
             </div>
             <div className="space-y-4">
               <SettingsItem
-                title="Enable USB Audio"
-                description="Enable bidirectional audio (HDMI capture and microphone input)"
+                title={m.usb_device_enable_audio_title()}
+                description={m.usb_device_enable_audio_description()}
               >
                 <Checkbox
                   checked={usbDeviceConfig.audio}
@@ -239,13 +250,13 @@ export function UsbDeviceSetting() {
               size="SM"
               loading={loading}
               theme="primary"
-              text="Update USB Classes"
+              text={m.usb_device_update_classes()}
               onClick={() => handleUsbConfigChange(usbDeviceConfig)}
             />
             <Button
               size="SM"
               theme="light"
-              text="Restore to Default"
+              text={m.usb_device_restore_default()}
               onClick={() => handleUsbConfigChange(defaultUsbDeviceConfig)}
             />
           </div>

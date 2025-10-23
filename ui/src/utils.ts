@@ -1,6 +1,11 @@
+import { KeySequence } from "@hooks/stores";
+import { getLocale } from '@localizations/runtime.js';
+import { m } from "@localizations/messages.js";
+import { locales } from '@localizations/runtime.js';
+
 export const formatters = {
   date: (date: Date, options?: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat("en-US", {
+    new Intl.DateTimeFormat(getLocale() || "en-US", {
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -32,23 +37,24 @@ export const formatters = {
   },
 
   timeAgo: (date: Date, options?: Intl.RelativeTimeFormatOptions) => {
-    const relativeTimeFormat = new Intl.RelativeTimeFormat("en-US", {
+    const relativeTimeFormat = new Intl.RelativeTimeFormat(getLocale() || "en-US", {
       numeric: "auto",
       ...(options || {}),
     });
 
+    // Note, do not translate the unit names in DIVISIONS, as they must match Intl.RelativeTimeFormatUnit
     const DIVISIONS: {
       amount: number;
       name: Intl.RelativeTimeFormatUnit;
     }[] = [
-      { amount: 60, name: "seconds" },
-      { amount: 60, name: "minutes" },
-      { amount: 24, name: "hours" },
-      { amount: 7, name: "days" },
-      { amount: 4.34524, name: "weeks" },
-      { amount: 12, name: "months" },
-      { amount: Number.POSITIVE_INFINITY, name: "years" },
-    ];
+        { amount: 60, name: "seconds" },
+        { amount: 60, name: "minutes" },
+        { amount: 24, name: "hours" },
+        { amount: 7, name: "days" },
+        { amount: 4.34524, name: "weeks" },
+        { amount: 12, name: "months" },
+        { amount: Number.POSITIVE_INFINITY, name: "years" },
+      ];
 
     let duration = (date.valueOf() - new Date().valueOf()) / 1000;
 
@@ -77,7 +83,7 @@ export const formatters = {
       opts.minimumFractionDigits = 0;
     }
 
-    return new Intl.NumberFormat("en-US", opts).format(numericPrice);
+    return new Intl.NumberFormat(getLocale() || "en-US", opts).format(numericPrice);
   },
 
   truncateMiddle: (str: string | null | undefined, maxLength: number): string => {
@@ -242,4 +248,39 @@ export function isAndroid() {
 export function isChromeOS() {
   /* ChromeOS sets navigator.platform to Linux :/ */
   return !!navigator.userAgent.match(" CrOS ");
+}
+
+export function normalizeSortOrders(macros: KeySequence[]): KeySequence[] {
+  return macros.map((macro, index) => ({
+    ...macro,
+    sortOrder: index + 1,
+  }));
+};
+
+type LocaleCode = typeof locales[number];
+
+export function map_locale_code_to_name(currentLocale: LocaleCode, locale: string): [string, string] {
+    // the first is the name in the current app locale (e.g. Inglese),
+    // the second is the name in the language of the locale itself (e.g. English)
+    switch (locale) {
+      case '': return [m.locale_auto(), ""];
+      case 'en': return [m.locale_en({}, { locale: currentLocale }), m.locale_en({}, { locale })];
+      case 'da': return [m.locale_da({}, { locale: currentLocale }), m.locale_da({}, { locale })];
+      case 'de': return [m.locale_de({}, { locale: currentLocale }), m.locale_de({}, { locale })];
+      case 'es': return [m.locale_es({}, { locale: currentLocale }), m.locale_es({}, { locale })];
+      case 'fr': return [m.locale_fr({}, { locale: currentLocale }), m.locale_fr({}, { locale })];
+      case 'it': return [m.locale_it({}, { locale: currentLocale }), m.locale_it({}, { locale })];
+      case 'nb': return [m.locale_nb({}, { locale: currentLocale }), m.locale_nb({}, { locale })];
+      case 'sv': return [m.locale_sv({}, { locale: currentLocale }), m.locale_sv({}, { locale })];
+      case 'zh': return [m.locale_zh({}, { locale: currentLocale }), m.locale_zh({}, { locale })];
+      default: return [locale, ""];
+    }
+  }
+
+export function deleteCookie(name: string, domain?: string, path = "/") {
+  const domainPart = domain ? `; domain=${domain}` : "";
+  // max-age=0 removes the cookie immediately in modern browsers
+  document.cookie = `${name}=; path=${path}; max-age=0${domainPart}`;
+  // fallback: set an expires in the past for older agents
+  document.cookie = `${name}=; path=${path}; expires=Thu, 01 Jan 1970 00:00:00 GMT${domainPart}`;
 }

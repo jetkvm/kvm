@@ -54,7 +54,8 @@ export default function useKeyboard() {
   // support the keyPressReport API. In that case, we need to handle the key presses locally
   // and send the full state to the device, so it can behave like a real USB HID keyboard.
   // This flag indicates whether the keyPressReport API is available on the device which is
-  // dynamically set when the device responds to the first key press event or reports its  // keysDownState when queried since the keyPressReport was introduced together with the
+  // dynamically set when the device responds to the first key press event or reports its
+  // keysDownState when queried since the keyPressReport was introduced together with the
   // getKeysDownState API.
 
   // HidRPC is a binary format for exchanging keyboard and mouse events
@@ -148,66 +149,6 @@ export default function useKeyboard() {
     }
   }, [rpcHidReady, sendKeyboardEventHidRpc, handleLegacyKeyboardReport, cancelKeepAlive]);
 
-  // handleKeyPress is used to handle a key press or release event.
-  // This function handle both key press and key release events.
-  // It checks if the keyPressReport API is available and sends the key press event.
-  // If the keyPressReport API is not available, it simulates the device-side key
-  // handling for legacy devices and updates the keysDownState accordingly.
-  // It then sends the full keyboard state to the device.
-
-  const sendKeypress = useCallback(
-    (key: number, press: boolean) => {
-      cancelKeepAlive();
-
-      sendKeypressEventHidRpc(key, press);
-
-      if (press) {
-        scheduleKeepAlive();
-      }
-    },
-    [sendKeypressEventHidRpc, scheduleKeepAlive, cancelKeepAlive],
-  );
-
-  const handleKeyPress = useCallback(
-    async (key: number, press: boolean) => {
-      if (rpcDataChannel?.readyState !== "open" && !rpcHidReady) return;
-      if ((key || 0) === 0) return; // ignore zero key presses (they are bad mappings)
-
-      if (rpcHidReady) {
-        // if the keyPress api is available, we can just send the key press event
-        // sendKeypressEvent is used to send a single key press/release event to the device.
-        // It sends the key and whether it is pressed or released.
-        // Older device version doesn't support this API, so we will switch to local key handling
-        // In that case we will switch to local key handling and update the keysDownState
-        // in client/browser-side code using simulateDeviceSideKeyHandlingForLegacyDevices.
-        sendKeypress(key, press);
-      } else {
-        // Older backends don't support the hidRpc API, so we need:
-        // 1. Calculate the state
-        // 2. Send the newly calculated state to the device
-        const downState = simulateDeviceSideKeyHandlingForLegacyDevices(
-          keysDownState,
-          key,
-          press,
-        );
-
-        handleLegacyKeyboardReport(downState.keys, downState.modifier);
-
-        // if we just sent ErrorRollOver, reset to empty state
-        if (downState.keys[0] === hidErrorRollOver) {
-          resetKeyboardState();
-        }
-      }
-    },
-    [
-      rpcDataChannel?.readyState,
-      rpcHidReady,
-      keysDownState,
-      handleLegacyKeyboardReport,
-      resetKeyboardState,
-      sendKeypress,
-    ],
-  );
 
   // IMPORTANT: See the keyPressReportApiAvailable comment above for the reason this exists
   function simulateDeviceSideKeyHandlingForLegacyDevices(
@@ -272,11 +213,70 @@ export default function useKeyboard() {
     return { modifier: modifiers, keys };
   }
 
+  const sendKeypress = useCallback(
+    (key: number, press: boolean) => {
+      cancelKeepAlive();
+
+      sendKeypressEventHidRpc(key, press);
+
+      if (press) {
+        scheduleKeepAlive();
+      }
+    },
+    [sendKeypressEventHidRpc, scheduleKeepAlive, cancelKeepAlive],
+  );
+
+  // handleKeyPress is used to handle a key press or release event.
+  // This function handle both key press and key release events.
+  // It checks if the keyPressReport API is available and sends the key press event.
+  // If the keyPressReport API is not available, it simulates the device-side key
+  // handling for legacy devices and updates the keysDownState accordingly.
+  // It then sends the full keyboard state to the device.
+  const handleKeyPress = useCallback(
+    async (key: number, press: boolean) => {
+      if (rpcDataChannel?.readyState !== "open" && !rpcHidReady) return;
+      if ((key || 0) === 0) return; // ignore zero key presses (they are bad mappings)
+
+      if (rpcHidReady) {
+        // if the keyPress api is available, we can just send the key press event
+        // sendKeypressEvent is used to send a single key press/release event to the device.
+        // It sends the key and whether it is pressed or released.
+        // Older device version doesn't support this API, so we will switch to local key handling
+        // In that case we will switch to local key handling and update the keysDownState
+        // in client/browser-side code using simulateDeviceSideKeyHandlingForLegacyDevices.
+        sendKeypress(key, press);
+      } else {
+        // Older backends don't support the hidRpc API, so we need:
+        // 1. Calculate the state
+        // 2. Send the newly calculated state to the device
+        const downState = simulateDeviceSideKeyHandlingForLegacyDevices(
+          keysDownState,
+          key,
+          press,
+        );
+
+        handleLegacyKeyboardReport(downState.keys, downState.modifier);
+
+        // if we just sent ErrorRollOver, reset to empty state
+        if (downState.keys[0] === hidErrorRollOver) {
+          resetKeyboardState();
+        }
+      }
+    },
+    [
+      rpcDataChannel?.readyState,
+      rpcHidReady,
+      keysDownState,
+      handleLegacyKeyboardReport,
+      resetKeyboardState,
+      sendKeypress,
+    ],
+  );
+
   // Cleanup function to cancel keepalive timer
   const cleanup = useCallback(() => {
     cancelKeepAlive();
   }, [cancelKeepAlive]);
-
 
   // executeMacro is used to execute a macro consisting of multiple steps.
   // Each step can have multiple keys, multiple modifiers and a delay.
@@ -306,6 +306,7 @@ export default function useKeyboard() {
 
     sendKeyboardMacroEventHidRpc(macro);
   }, [sendKeyboardMacroEventHidRpc]);
+
   const executeMacroClientSide = useCallback(async (steps: MacroSteps) => {
     const promises: (() => Promise<void>)[] = [];
 
@@ -355,6 +356,7 @@ export default function useKeyboard() {
         });
     });
   }, [sendKeystrokeLegacy, resetKeyboardState, setAbortController]);
+
   const executeMacro = useCallback(async (steps: MacroSteps) => {
     if (rpcHidReady) {
       return executeMacroRemote(steps);
