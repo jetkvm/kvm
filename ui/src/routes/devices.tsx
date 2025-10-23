@@ -1,23 +1,22 @@
-import { useLoaderData, useRevalidator } from "react-router";
-import type { LoaderFunction } from "react-router";
+import { useLoaderData, useRevalidator, type LoaderFunction } from "react-router";
 import { LuMonitorSmartphone } from "react-icons/lu";
 import { ArrowRightIcon } from "@heroicons/react/16/solid";
 import { useInterval } from "usehooks-ts";
 
+import { User } from "@hooks/stores";
 import DashboardNavbar from "@components/Header";
 import EmptyCard from "@components/EmptyCard";
 import KvmCard from "@components/KvmCard";
 import { LinkButton } from "@components/Button";
-import { User } from "@/hooks/stores";
 import { checkAuth } from "@/main";
 import { CLOUD_API } from "@/ui.config";
+import { m } from "@localizations/messages";
 
 interface LoaderData {
   devices: { id: string; name: string; online: boolean; lastSeen: string }[];
   user: User;
 }
-
-const loader: LoaderFunction = async () => {
+const loader: LoaderFunction = async ()=> {
   const user = await checkAuth();
 
   try {
@@ -54,10 +53,10 @@ export default function DevicesRoute() {
             <div className="mt-8 flex items-center justify-between border-b border-b-slate-800/20 pb-4 dark:border-b-slate-300/20">
               <div>
                 <h1 className="text-xl font-bold text-black dark:text-white">
-                  Cloud KVMs
+                  {m.cloud_kvms()}
                 </h1>
                 <p className="text-base text-slate-700 dark:text-slate-400">
-                  Manage your cloud KVMs and connect to them securely.
+                  {m.cloud_kvms_description()}
                 </p>
               </div>
             </div>
@@ -66,35 +65,33 @@ export default function DevicesRoute() {
               <div className="max-w-3xl">
                 <EmptyCard
                   IconElm={LuMonitorSmartphone}
-                  headline="No devices found"
-                  description="You don't have any devices with enabled JetKVM Cloud yet."
+                  headline={m.cloud_kvms_no_devices()}
+                  description={m.cloud_kvms_no_devices_description()}
                   BtnElm={
                     <LinkButton
                       to="https://jetkvm.com/docs/networking/remote-access"
                       size="SM"
                       theme="primary"
                       TrailingIcon={ArrowRightIcon}
-                      text="Learn more"
+                      text={m.learn_more()}
                     />
                   }
                 />
               </div>
             ) : (
-              <>
-                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-                  {devices.map(x => {
-                    return (
-                      <KvmCard
-                        key={x.id}
-                        id={x.id}
-                        title={x.name ?? x.id}
-                        lastSeen={x.lastSeen ? new Date(x.lastSeen) : null}
-                        online={x.online}
-                      />
-                    );
-                  })}
-                </div>
-              </>
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                {devices.map(x => {
+                  return (
+                    <KvmCard
+                      key={x.id}
+                      id={x.id}
+                      title={x.name ?? x.id}
+                      lastSeen={x.lastSeen ? new Date(x.lastSeen) : null}
+                      online={x.online}
+                    />
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>

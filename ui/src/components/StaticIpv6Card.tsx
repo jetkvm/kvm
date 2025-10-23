@@ -1,12 +1,13 @@
+import { useEffect } from "react";
+import validator from "validator";
 import { LuPlus, LuX } from "react-icons/lu";
 import { useFieldArray, useFormContext } from "react-hook-form";
-import validator from "validator";
-import { useEffect } from "react";
 
-import { GridCard } from "@/components/Card";
-import { Button } from "@/components/Button";
-import { InputFieldWithLabel } from "@/components/InputField";
-import { NetworkSettings } from "@/hooks/stores";
+import { NetworkSettings } from "@hooks/stores";
+import { Button } from "@components/Button";
+import { GridCard } from "@components/Card";
+import { InputFieldWithLabel } from "@components/InputField";
+import { m } from "@localizations/messages.js";
 
 export default function StaticIpv6Card() {
   const formMethods = useFormContext<NetworkSettings>();
@@ -25,20 +26,20 @@ export default function StaticIpv6Card() {
 
     // Check if it's a valid IPv6 address with CIDR notation
     const parts = value.split("/");
-    if (parts.length !== 2) return "Please use CIDR notation (e.g., 2001:db8::1/64)";
+    if (parts.length !== 2) return m.network_ipv6_cidr_suggestion();
 
     const [address, prefix] = parts;
-    if (!validator.isIP(address, 6)) return "Invalid IPv6 address";
+    if (!validator.isIP(address, 6)) return m.network_ipv6_invalid();
     const prefixNum = parseInt(prefix);
     if (isNaN(prefixNum) || prefixNum < 0 || prefixNum > 128) {
-      return "Prefix must be between 0 and 128";
+      return m.network_ipv6_prefix_invalid();
     }
 
     return true;
   };
 
   const ipv6Validation = (value: string) => {
-    if (!validator.isIP(value, 6)) return "Invalid IPv6 address";
+    if (!validator.isIP(value, 6)) return m.network_ipv6_invalid()
     return true;
   };
 
@@ -47,11 +48,11 @@ export default function StaticIpv6Card() {
       <div className="animate-fadeIn p-4 text-black opacity-0 animation-duration-500 dark:text-white">
         <div className="space-y-4">
           <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            Static IPv6 Configuration
+            {m.network_static_ipv6_header()}
           </h3>
 
           <InputFieldWithLabel
-            label="IP Prefix"
+            label={m.network_ipv6_prefix()}
             type="text"
             size="SM"
             placeholder="2001:db8::1/64"
@@ -60,7 +61,7 @@ export default function StaticIpv6Card() {
           />
 
           <InputFieldWithLabel
-            label="Gateway"
+            label={m.network_ipv6_gateway()}
             type="text"
             size="SM"
             placeholder="2001:db8::1"
@@ -76,7 +77,7 @@ export default function StaticIpv6Card() {
                   <div className="flex items-start gap-x-2">
                     <div className="flex-1">
                       <InputFieldWithLabel
-                        label={index === 0 ? "DNS Server" : null}
+                        label={index === 0 ? m.network_ipv6_dns() : null}
                         type="text"
                         size="SM"
                         placeholder="2001:4860:4860::8888"
@@ -107,7 +108,7 @@ export default function StaticIpv6Card() {
             onClick={() => append("", { shouldFocus: true })}
             LeadingIcon={LuPlus}
             type="button"
-            text="Add DNS Server"
+            text={m.network_settings_add_dns()}
             disabled={dns?.[0] === ""}
           />
         </div>

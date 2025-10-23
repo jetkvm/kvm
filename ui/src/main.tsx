@@ -1,6 +1,5 @@
 import { lazy } from "react";
 import ReactDOM from "react-dom/client";
-import "./index.css";
 import {
   createBrowserRouter,
   isRouteErrorResponse,
@@ -8,11 +7,13 @@ import {
   RouterProvider,
   useRouteError,
 } from "react-router";
+import "./index.css";
 import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
 
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import Root from "@/root";
+import { m } from "@localizations/messages.js";
 import Card from "@components/Card";
 import EmptyCard from "@components/EmptyCard";
 import NotFoundPage from "@components/NotFoundPage";
@@ -28,12 +29,12 @@ import DeviceIdRename from "@routes/devices.$id.rename";
 import DevicesRoute from "@routes/devices";
 import SettingsIndexRoute from "@routes/devices.$id.settings._index";
 import SettingsAccessIndexRoute from "@routes/devices.$id.settings.access._index";
-import Notifications  from "@/notifications";
+import Notifications from "@/notifications";
 const SignupRoute = lazy(() => import("@routes/signup"));
 const LoginRoute = lazy(() => import("@routes/login"));
 const DevicesAlreadyAdopted = lazy(() => import("@routes/devices.already-adopted"));
 const OtherSessionRoute = lazy(() => import("@routes/devices.$id.other-session"));
-const MountRoute = lazy(() => import("./routes/devices.$id.mount"));
+const MountRoute = lazy(() => import("@routes/devices.$id.mount"));
 const SettingsRoute = lazy(() => import("@routes/devices.$id.settings"));
 const SettingsMouseRoute = lazy(() => import("@routes/devices.$id.settings.mouse"));
 const SettingsKeyboardRoute = lazy(() => import("@routes/devices.$id.settings.keyboard"));
@@ -116,7 +117,7 @@ if (isOnDevice) {
       path: "/",
       errorElement: <ErrorBoundary />,
       element: <DeviceRoute />,
-      HydrateFallback: () => <div className="p-4">Loading...</div>,
+      HydrateFallback: () => <div className="p-4">{m.loading()}</div>,
       loader: DeviceRoute.loader,
       children: [
         {
@@ -390,13 +391,37 @@ document.addEventListener("DOMContentLoaded", () => {
 // eslint-disable-next-line react-refresh/only-export-components
 function ErrorBoundary() {
   const error = useRouteError();
-
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-expect-error
-  const errorMessage = error?.data?.error?.message || error?.message;
   if (isRouteErrorResponse(error)) {
     if (error.status === 404) return <NotFoundPage />;
   }
+
+  const getErrorMessage = (err: unknown): string | null => {
+    // If it's a route error response, try to read a string at err.data.error.message or err.data.error safely
+    if (isRouteErrorResponse(err)) {
+      const data = (err as { data?: unknown }).data;
+      if (data && typeof data === "object") {
+        const maybeError = (data as Record<string, unknown>)["error"];
+        if (maybeError) {
+          if (typeof maybeError === "object") {
+            const msg = (maybeError as Record<string, unknown>)["message"];
+            if (typeof msg === "string") return msg;
+          } else if (typeof maybeError === "string") {
+            return maybeError;
+          }
+        }
+      }
+    }
+
+    // Fallback: check plain object message property
+    if (err && typeof err === "object") {
+      const maybeMsg = (err as Record<string, unknown>)["message"];
+      if (typeof maybeMsg === "string") return maybeMsg;
+    }
+
+    return null;
+  };
+
+  const errorMessage = getErrorMessage(error);
 
   return (
     <div className="h-full w-full">
@@ -404,8 +429,8 @@ function ErrorBoundary() {
         <div className="w-full max-w-2xl">
           <EmptyCard
             IconElm={ExclamationTriangleIcon}
-            headline="Oh no!"
-            description="Something went wrong. Please try again later or contact support"
+            headline={m.oh_no()}
+            description={m.something_went_wrong()}
             BtnElm={
               errorMessage && (
                 <Card>

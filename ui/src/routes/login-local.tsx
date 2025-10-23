@@ -1,22 +1,21 @@
+import { useState } from "react";
 import { Form, redirect, useActionData } from "react-router";
 import type { ActionFunction, ActionFunctionArgs, LoaderFunction } from "react-router";
-import { useState } from "react";
 import { LuEye, LuEyeOff } from "react-icons/lu";
 
-import SimpleNavbar from "@components/SimpleNavbar";
-import GridBackground from "@components/GridBackground";
-import Container from "@components/Container";
-import Fieldset from "@components/Fieldset";
-import { InputFieldWithLabel } from "@components/InputField";
+import LogoBlueIcon from "@assets/logo-blue.png";
+import LogoWhiteIcon from "@assets/logo-white.svg";
 import { Button } from "@components/Button";
-import LogoBlueIcon from "@/assets/logo-blue.png";
-import LogoWhiteIcon from "@/assets/logo-white.svg";
+import Container from "@components/Container";
+import ExtLink from "@components/ExtLink";
+import Fieldset from "@components/Fieldset";
+import GridBackground from "@components/GridBackground";
+import { InputFieldWithLabel } from "@components/InputField";
+import SimpleNavbar from "@components/SimpleNavbar";
+import { DeviceStatus } from "@routes/welcome-local";
 import { DEVICE_API } from "@/ui.config";
-
-import api from "../api";
-import ExtLink from "../components/ExtLink";
-
-import { DeviceStatus } from "./welcome-local";
+import api from "@/api";
+import { m } from "@localizations/messages.js";
 
 const loader: LoaderFunction = async () => {
   const res = await api
@@ -42,11 +41,11 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
     if (response.ok) {
       return redirect("/");
     } else {
-      return { error: "Invalid password" };
+      return { error: m.invalid_password() };
     }
   } catch (error) {
     console.error(error);
-    return { error: "An error occurred while logging in" };
+    return { error: m.login_error() };
   }
 };
 
@@ -73,10 +72,10 @@ export default function LoginLocalRoute() {
 
               <div className="space-y-2 text-center">
                 <h1 className="text-4xl font-semibold text-black dark:text-white">
-                  Welcome back to JetKVM
+                  {m.login_welcome_back()}
                 </h1>
                 <p className="font-medium text-slate-600 dark:text-slate-400">
-                  Enter your password to access your JetKVM.
+                  {m.login_enter_password_description()}
                 </p>
               </div>
 
@@ -84,11 +83,11 @@ export default function LoginLocalRoute() {
                 <Form method="POST" className="mx-auto max-w-sm space-y-4">
                   <div className="space-y-4">
                     <InputFieldWithLabel
-                      label="Password"
+                      label={m.login_password_label()}
                       type={showPassword ? "text" : "password"}
                       name="password"
                       autoComplete="current-password"
-                      placeholder="Enter your password"
+                      placeholder={m.login_enter_password()}
                       autoFocus
                       error={actionData?.error}
                       TrailingElm={
@@ -96,6 +95,8 @@ export default function LoginLocalRoute() {
                           <div
                             onClick={() => setShowPassword(false)}
                             className="pointer-events-auto"
+                            role="switch"
+                            aria-checked={showPassword}
                           >
                             <LuEye className="h-4 w-4 cursor-pointer text-slate-500 dark:text-slate-400" />
                           </div>
@@ -103,6 +104,8 @@ export default function LoginLocalRoute() {
                           <div
                             onClick={() => setShowPassword(true)}
                             className="pointer-events-auto"
+                            role="switch"
+                            aria-checked={!showPassword}
                           >
                             <LuEyeOff className="h-4 w-4 cursor-pointer text-slate-500 dark:text-slate-400" />
                           </div>
@@ -116,7 +119,7 @@ export default function LoginLocalRoute() {
                     theme="primary"
                     fullWidth
                     type="submit"
-                    text="Log In"
+                    text={m.log_in()}
                     textAlign="center"
                   />
 
@@ -125,7 +128,7 @@ export default function LoginLocalRoute() {
                       href="https://jetkvm.com/docs/networking/local-access#reset-password"
                       className="hover:underline"
                     >
-                      Forgot password?
+                      {m.login_forgot_password()}
                     </ExtLink>
                   </div>
                 </Form>

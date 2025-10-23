@@ -1,23 +1,18 @@
-import { useNavigate } from "react-router";
 import { useState } from "react";
+import { useNavigate } from "react-router";
 
-import { KeySequence, useMacrosStore, generateMacroId } from "@/hooks/stores";
-import { SettingsPageHeader } from "@/components/SettingsPageheader";
-import { MacroForm } from "@/components/MacroForm";
+import { KeySequence, useMacrosStore, generateMacroId } from "@hooks/stores";
+import { MacroForm } from "@components/MacroForm";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { DEFAULT_DELAY } from "@/constants/macros";
 import notifications from "@/notifications";
+import { normalizeSortOrders } from "@/utils";
+import { m } from "@localizations/messages.js";
 
 export default function SettingsMacrosAddRoute() {
   const { macros, saveMacros } = useMacrosStore();
   const [isSaving, setIsSaving] = useState(false);
   const navigate = useNavigate();
-
-  const normalizeSortOrders = (macros: KeySequence[]): KeySequence[] => {
-    return macros.map((macro, index) => ({
-      ...macro,
-      sortOrder: index + 1,
-    }));
-  };
 
   const handleAddMacro = async (macro: Partial<KeySequence>) => {
     setIsSaving(true);
@@ -30,13 +25,13 @@ export default function SettingsMacrosAddRoute() {
       };
 
       await saveMacros(normalizeSortOrders([...macros, newMacro]));
-      notifications.success(`Macro "${newMacro.name}" created successfully`);
+      notifications.success(m.macros_created_success({ name: newMacro.name }));
       navigate("../");
     } catch (error: unknown) {
       if (error instanceof Error) {
-        notifications.error(`Failed to create macro: ${error.message}`);
+        notifications.error(m.macros_failed_create_error({ error: error.message || m.unknown_error() }));
       } else {
-        notifications.error("Failed to create macro");
+        notifications.error(m.macros_failed_create());
       }
     } finally {
       setIsSaving(false);
@@ -46,8 +41,8 @@ export default function SettingsMacrosAddRoute() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Add New Macro"
-        description="Create a new keyboard macro"
+        title={m.macros_add_new()}
+        description={m.macros_add_description()}
       />
       <MacroForm
         initialData={{
@@ -60,4 +55,4 @@ export default function SettingsMacrosAddRoute() {
       />
     </div>
   );
-} 
+}

@@ -146,7 +146,7 @@ export const fr_FR: KeyboardLayout = {
   name: name,
   chars: chars,
   // TODO need to localize these maps and layouts
-  keyDisplayMap: en_US.keyDisplayMap, 
+  keyDisplayMap: en_US.keyDisplayMap,
   modifierDisplayMap: en_US.modifierDisplayMap,
   virtualKeyboard: en_US.virtualKeyboard
 };

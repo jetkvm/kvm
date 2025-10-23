@@ -113,7 +113,7 @@ export const chars = {
   "~": { key: "Backquote", shift: true },
   "§": { key: "IntlBackslash" },
   "±": { key: "IntlBackslash", shift: true },
-  " ": { key: "Space"  },
+  " ": { key: "Space" },
   "\n": { key: "Enter" },
   Enter: { key: "Enter" },
   Escape: { key: "Escape" },
@@ -264,13 +264,13 @@ export const virtualKeyboard = {
   },
   control: {
     default: [
-      "PrintScreen ScrollLock Pause", 
+      "PrintScreen ScrollLock Pause",
       "Insert Home PageUp",
       "Delete End PageDown"
     ],
     shift: [
       "(PrintScreen) ScrollLock (Pause)",
-      "Insert Home PageUp", 
+      "Insert Home PageUp",
       "Delete End PageDown"
     ],
   },
@@ -303,7 +303,7 @@ export const en_US: KeyboardLayout = {
   isoCode,
   name,
   chars,
-  keyDisplayMap, 
+  keyDisplayMap,
   modifierDisplayMap,
   virtualKeyboard
 };

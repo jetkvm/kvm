@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import basicSsl from "@vitejs/plugin-basic-ssl";
+import { paraglideVitePlugin } from "@inlang/paraglide-js";
 
 declare const process: {
   env: {
@@ -22,9 +23,18 @@ export default defineConfig(({ mode, command }) => {
     tsconfigPaths(),
     react()
   ];
+
   if (useSSL) {
     plugins.push(basicSsl());
   }
+
+  plugins.push(paraglideVitePlugin({
+    project: "./localization/jetKVM.UI.inlang",
+    outdir: "./localization/paraglide",
+    outputStructure: 'message-modules',
+    cookieName: 'JETKVM_LOCALE',
+    strategy: ['cookie', 'preferredLanguage', 'baseLocale'],
+  }))
 
   return {
     plugins,

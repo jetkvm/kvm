@@ -86,7 +86,7 @@ export const useUiStore = create<UIState>(set => ({
   setTerminalType: (type: UIState["terminalType"]) => set({ terminalType: type }),
 
   sidebarView: null,
-  setSidebarView:  (view: AvailableSidebarViews | null) => set({ sidebarView: view }),
+  setSidebarView: (view: AvailableSidebarViews | null) => set({ sidebarView: view }),
 
   disableVideoFocusTrap: false,
   setDisableVideoFocusTrap: (enabled: boolean) => set({ disableVideoFocusTrap: enabled }),
@@ -209,7 +209,7 @@ export const useRTCStore = create<RTCState>(set => ({
   videoStreamStatsHistory: new Map(),
 
   isTurnServerInUse: false,
-  setTurnServerInUse: (inUse: boolean)  => set({ isTurnServerInUse: inUse }),
+  setTurnServerInUse: (inUse: boolean) => set({ isTurnServerInUse: inUse }),
 
   inboundRtpStats: new Map(),
   appendInboundRtpStats: (stats: RTCInboundRtpStreamStats) => {
@@ -258,6 +258,7 @@ export interface MouseMove {
   y: number;
   buttons: number;
 }
+
 export interface MouseState {
   mouseX: number;
   mouseY: number;
@@ -361,8 +362,10 @@ export interface SettingsState {
   // Video enhancement settings
   videoSaturation: number;
   setVideoSaturation: (value: number) => void;
+
   videoBrightness: number;
   setVideoBrightness: (value: number) => void;
+
   videoContrast: number;
   setVideoContrast: (value: number) => void;
 }
@@ -406,8 +409,10 @@ export const useSettingsStore = create(
       // Video enhancement settings with default values (1.0 = normal)
       videoSaturation: 1.0,
       setVideoSaturation: (value: number) => set({ videoSaturation: value }),
+
       videoBrightness: 1.0,
       setVideoBrightness: (value: number) => set({ videoBrightness: value }),
+
       videoContrast: 1.0,
       setVideoContrast: (value: number) => set({ videoContrast: value }),
     }),
@@ -475,8 +480,8 @@ export const hidKeyBufferSize = 6;
 export const hidErrorRollOver = 0x01;
 
 export interface KeysDownState {
-	modifier: number;
-	keys: number[];
+  modifier: number;
+  keys: number[];
 }
 
 export type USBStates =
@@ -507,7 +512,7 @@ export const useHidStore = create<HidState>(set => ({
   keyboardLedState: { num_lock: false, caps_lock: false, scroll_lock: false, compose: false, kana: false, shift: false } as KeyboardLedState,
   setKeyboardLedState: (ledState: KeyboardLedState): void => set({ keyboardLedState: ledState }),
 
-  keysDownState: { modifier: 0, keys: [0,0,0,0,0,0] } as KeysDownState,
+  keysDownState: { modifier: 0, keys: [0, 0, 0, 0, 0, 0] } as KeysDownState,
   setKeysDownState: (state: KeysDownState): void => set({ keysDownState: state }),
 
   isVirtualKeyboardEnabled: false,
@@ -535,34 +540,34 @@ export type UpdateModalViews =
   | "error";
 
 export interface OtaState {
-    updating: boolean;
-    error: string | null;
+  updating: boolean;
+  error: string | null;
 
-    metadataFetchedAt: string | null;
+  metadataFetchedAt: string | null;
 
-    // App update
-    appUpdatePending: boolean;
+  // App update
+  appUpdatePending: boolean;
 
-    appDownloadProgress: number;
-    appDownloadFinishedAt: string | null;
+  appDownloadProgress: number;
+  appDownloadFinishedAt: string | null;
 
-    appVerificationProgress: number;
-    appVerifiedAt: string | null;
+  appVerificationProgress: number;
+  appVerifiedAt: string | null;
 
-    appUpdateProgress: number;
-    appUpdatedAt: string | null;
+  appUpdateProgress: number;
+  appUpdatedAt: string | null;
 
-    // System update
-    systemUpdatePending: boolean;
+  // System update
+  systemUpdatePending: boolean;
 
-    systemDownloadProgress: number;
-    systemDownloadFinishedAt: string | null;
+  systemDownloadProgress: number;
+  systemDownloadFinishedAt: string | null;
 
-    systemVerificationProgress: number;
-    systemVerifiedAt: string | null;
+  systemVerificationProgress: number;
+  systemVerifiedAt: string | null;
 
-    systemUpdateProgress: number;
-    systemUpdatedAt: string | null;
+  systemUpdateProgress: number;
+  systemUpdatedAt: string | null;
 };
 
 export interface UpdateState {
@@ -617,7 +622,7 @@ export type UsbConfigModalViews =
   | "updateUsbConfigSuccess";
 
 export interface UsbConfigModalState {
-  modalView: UsbConfigModalViews ;
+  modalView: UsbConfigModalViews;
   errorMessage: string | null;
   setModalView: (view: UsbConfigModalViews) => void;
   setErrorMessage: (message: string | null) => void;
@@ -634,7 +639,7 @@ export interface UsbConfigState {
 export const useUsbConfigModalStore = create<UsbConfigModalState>(set => ({
   modalView: "updateUsbConfig",
   errorMessage: null,
-  setModalView:  (view: UsbConfigModalViews) => set({ modalView: view }),
+  setModalView: (view: UsbConfigModalViews) => set({ modalView: view }),
   setErrorMessage: (message: string | null) => set({ errorMessage: message }),
 }));
 
@@ -647,13 +652,13 @@ export type LocalAuthModalViews =
   | "updateSuccess";
 
 export interface LocalAuthModalState {
-  modalView:LocalAuthModalViews;
-  setModalView: (view:LocalAuthModalViews) => void;
+  modalView: LocalAuthModalViews;
+  setModalView: (view: LocalAuthModalViews) => void;
 }
 
 export const useLocalAuthModalStore = create<LocalAuthModalState>(set => ({
   modalView: "createPassword",
-  setModalView: (view: LocalAuthModalViews)  => set({ modalView: view }),
+  setModalView: (view: LocalAuthModalViews) => set({ modalView: view }),
 }));
 
 export interface DeviceState {
@@ -822,12 +827,12 @@ export interface MacrosState {
   loadMacros: () => Promise<void>;
   saveMacros: (macros: KeySequence[]) => Promise<void>;
   sendFn:
-    | ((
-        method: string,
-        params: unknown,
-        callback?: ((resp: JsonRpcResponse) => void) | undefined,
-      ) => void)
-    | null;
+  | ((
+    method: string,
+    params: unknown,
+    callback?: ((resp: JsonRpcResponse) => void) | undefined,
+  ) => void)
+  | null;
   setSendFn: (
     sendFn: (
       method: string,

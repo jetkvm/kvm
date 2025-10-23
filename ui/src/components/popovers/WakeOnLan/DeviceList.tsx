@@ -1,8 +1,9 @@
 import { LuPlus, LuSend, LuTrash2 } from "react-icons/lu";
 
-import { Button } from "@/components/Button";
-import Card from "@/components/Card";
-import { FieldError } from "@/components/InputField";
+import { m } from "@localizations/messages.js";
+import { Button } from "@components/Button";
+import Card from "@components/Card";
+import { FieldError } from "@components/InputField";
 
 export interface StoredDevice {
   name: string;
@@ -46,7 +47,7 @@ export default function DeviceList({
                 <Button
                   size="XS"
                   theme="light"
-                  text="Wake"
+                  text={m.wake_on_lan_device_list_wake()}
                   LeadingIcon={LuSend}
                   onClick={() => onSendMagicPacket(device.macAddress)}
                 />
@@ -55,7 +56,7 @@ export default function DeviceList({
                   theme="danger"
                   LeadingIcon={LuTrash2}
                   onClick={() => onDeleteDevice(index)}
-                  aria-label="Delete device"
+                  aria-label={m.wake_on_lan_device_list_delete_device()}
                 />
               </div>
             </div>
@@ -69,11 +70,11 @@ export default function DeviceList({
           animationDelay: "0.2s",
         }}
       >
-        <Button size="SM" theme="blank" text="Close" onClick={onCancelWakeOnLanModal} />
+        <Button size="SM" theme="blank" text={m.close()} onClick={onCancelWakeOnLanModal} />
         <Button
           size="SM"
           theme="primary"
-          text="Add New Device"
+          text={m.wake_on_lan_device_list_add_new_device()}
           onClick={() => setShowAddForm(true)}
           LeadingIcon={LuPlus}
         />

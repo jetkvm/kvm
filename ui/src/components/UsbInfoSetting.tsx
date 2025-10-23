@@ -1,15 +1,14 @@
-import { useMemo , useCallback , useEffect, useState } from "react";
+import { useMemo, useCallback, useEffect, useState } from "react";
 
+import { UsbConfigState } from "@hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { Button } from "@components/Button";
+import Fieldset from "@components/Fieldset";
+import { InputFieldWithLabel } from "@components/InputField";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
-
-import { UsbConfigState } from "../hooks/stores";
-import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
-import notifications from "../notifications";
-
-import { InputFieldWithLabel } from "./InputField";
-import { SelectMenuBasic } from "./SelectMenuBasic";
-import Fieldset from "./Fieldset";
+import notifications from "@/notifications";
+import { m } from "@localizations/messages.js";
 
 const generatedSerialNumber = [generateNumber(1, 9), generateHex(7, 7), 0, 1].join("&");
 
@@ -31,21 +30,22 @@ export interface USBConfig {
   product: string;
 }
 
+
 const usbConfigs = [
   {
-    label: "JetKVM Default",
+    label: m.usb_config_default(),
     value: "USB Emulation Device",
   },
   {
-    label: "Logitech Universal Adapter",
+    label: m.usb_config_logitech(),
     value: "Logitech USB Input Device",
   },
   {
-    label: "Microsoft Wireless MultiMedia Keyboard",
+    label: m.usb_config_microsoft(),
     value: "Wireless MultiMedia Keyboard",
   },
   {
-    label: "Dell Multimedia Pro Keyboard",
+    label: m.usb_config_dell(),
     value: "Multimedia Pro Keyboard",
   },
 ];
@@ -97,7 +97,7 @@ export function UsbInfoSetting() {
       if ("error" in resp) {
         console.error("Failed to load USB Config:", resp.error);
         notifications.error(
-          `Failed to load USB Config: ${resp.error.data || "Unknown error"}`,
+          m.usb_config_failed_load({ error: String(resp.error.data || m.unknown_error()) }),
         );
       } else {
         const usbConfigState = resp.result as UsbConfigState;
@@ -116,7 +116,7 @@ export function UsbInfoSetting() {
       send("setUsbConfig", { usbConfig }, async (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to set usb config: ${resp.error.data || "Unknown error"}`,
+            m.usb_config_failed_set({ error: String(resp.error.data || m.unknown_error()) }),
           );
           setLoading(false);
           return;
@@ -126,7 +126,7 @@ export function UsbInfoSetting() {
         await new Promise(resolve => setTimeout(resolve, 2000));
         setLoading(false);
         notifications.success(
-          `USB Config set to ${usbConfig.manufacturer} ${usbConfig.product}`,
+          m.usb_config_set_success({ manufacturer: usbConfig.manufacturer, product: usbConfig.product }),
         );
 
         syncUsbConfigProduct();
@@ -139,7 +139,7 @@ export function UsbInfoSetting() {
     send("getDeviceID", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         return notifications.error(
-          `Failed to get device ID: ${resp.error.data || "Unknown error"}`,
+          `Failed to get device ID: ${resp.error.data || m.unknown_error()}`,
         );
       }
       setDeviceId(resp.result as string);
@@ -152,8 +152,8 @@ export function UsbInfoSetting() {
     <Fieldset disabled={loading} className="space-y-4">
       <SettingsItem
         loading={loading}
-        title="Identifiers"
-        description="USB device identifiers exposed to the target computer"
+        title={m.usb_config_identifiers_title()}
+        description={m.usb_config_identifiers_description()}
       >
         <SelectMenuBasic
           size="SM"
@@ -169,7 +169,7 @@ export function UsbInfoSetting() {
               handleUsbConfigChange(usbConfig);
             }
           }}
-          options={[...usbConfigs, { value: "custom", label: "Custom" }]}
+          options={[...usbConfigs, { value: "custom", label: m.usb_config_custom() }]}
         />
       </SettingsItem>
       {usbConfigProduct === "custom" && (
@@ -246,38 +246,38 @@ function USBConfigDialog({
       <div className="grid grid-cols-2 gap-4">
         <InputFieldWithLabel
           required
-          label="Vendor ID"
-          placeholder="Enter Vendor ID"
+          label={m.usb_config_vendor_id_label()}
+          placeholder={m.usb_config_vendor_id_placeholder()}
           pattern="^0[xX][\da-fA-F]{4}$"
           defaultValue={usbConfigState?.vendor_id}
           onChange={e => handleUsbVendorIdChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
-          label="Product ID"
-          placeholder="Enter Product ID"
+          label={m.usb_config_product_id_label()}
+          placeholder={m.usb_config_product_id_placeholder()}
           pattern="^0[xX][\da-fA-F]{4}$"
           defaultValue={usbConfigState?.product_id}
           onChange={e => handleUsbProductIdChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
-          label="Serial Number"
-          placeholder="Enter Serial Number"
+          label={m.usb_config_serial_number_label()}
+          placeholder={m.usb_config_serial_number_placeholder()}
           defaultValue={usbConfigState?.serial_number}
           onChange={e => handleUsbSerialChange(e.target.value)}
         />
         <InputFieldWithLabel
           required
-          label="Manufacturer"
-          placeholder="Enter Manufacturer"
+          label={m.usb_config_manufacturer_label()}
+          placeholder={m.usb_config_manufacturer_placeholder()}
           defaultValue={usbConfigState?.manufacturer}
           onChange={e => handleUsbManufacturer(e.target.value)}
         />
         <InputFieldWithLabel
           required
-          label="Product Name"
-          placeholder="Enter Product Name"
+          label={m.usb_config_product_name_label()}
+          placeholder={m.usb_config_product_name_placeholder()}
           defaultValue={usbConfigState?.product}
           onChange={e => handleUsbProduct(e.target.value)}
         />
@@ -287,13 +287,13 @@ function USBConfigDialog({
           loading={loading}
           size="SM"
           theme="primary"
-          text="Update USB Identifiers"
+          text={m.usb_config_update_identifiers()}
           onClick={() => onSetUsbConfig(usbConfigState)}
         />
         <Button
           size="SM"
           theme="light"
-          text="Restore to Default"
+          text={m.usb_config_restore_default()}
           onClick={onRestoreToDefault}
         />
       </div>

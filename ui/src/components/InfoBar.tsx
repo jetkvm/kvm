@@ -1,6 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
-import { cx } from "@/cva.config";
 import {
   useHidStore,
   useMouseStore,
@@ -8,9 +7,11 @@ import {
   useSettingsStore,
   useVideoStore,
   VideoState
-} from "@/hooks/stores";
+} from "@hooks/stores";
+import { useHidRpc } from "@hooks/useHidRpc";
 import { keys, modifiers } from "@/keyboardMappings";
-import { useHidRpc } from "@/hooks/useHidRpc";
+import { cx } from "@/cva.config";
+import { m } from "@localizations/messages.js";
 
 export default function InfoBar() {
   const { keysDownState } = useHidStore();
@@ -25,29 +26,23 @@ export default function InfoBar() {
     (state: VideoState) => `${Math.round(state.width)}x${Math.round(state.height)}`,
   );
 
-  const { rpcDataChannel } = useRTCStore();
   const { debugMode, mouseMode, showPressedKeys } = useSettingsStore();
   const { isPasteInProgress } = useHidStore();
-
-  useEffect(() => {
-    if (!rpcDataChannel) return;
-    rpcDataChannel.onclose = () => console.log("rpcDataChannel has closed");
-    rpcDataChannel.onerror = (e: Event) =>
-      console.error(`Error on DataChannel '${rpcDataChannel.label}': ${e}`);
-  }, [rpcDataChannel]);
-
   const { keyboardLedState, usbState } = useHidStore();
   const { isTurnServerInUse } = useRTCStore();
   const { hdmiState } = useVideoStore();
 
   const displayKeys = useMemo(() => {
-    if (!showPressedKeys)
-      return "";
+    if (!showPressedKeys) return "";
 
     const activeModifierMask = keysDownState.modifier || 0;
     const keysDown = keysDownState.keys || [];
-    const modifierNames = Object.entries(modifiers).filter(([_, mask]) => (activeModifierMask & mask) !== 0).map(([name, _]) => name);
-    const keyNames = Object.entries(keys).filter(([_, value]) => keysDown.includes(value)).map(([name, _]) => name);
+    const modifierNames = Object.entries(modifiers)
+      .filter(([_, mask]) => (activeModifierMask & mask) !== 0)
+      .map(([name]) => name);
+    const keyNames = Object.entries(keys)
+      .filter(([_, value]) => keysDown.includes(value))
+      .map(([name]) => name);
 
     return [...modifierNames, ...keyNames].join(", ");
   }, [keysDownState, showPressedKeys]);
@@ -59,76 +54,75 @@ export default function InfoBar() {
           <div className="flex flex-wrap items-center pl-2 gap-x-4">
             {debugMode ? (
               <div className="flex">
-                <span className="text-xs font-semibold">Resolution:</span>{" "}
+                <span className="text-xs font-semibold">{m.info_resolution()}</span>{" "}
                 <span className="text-xs">{videoSize}</span>
               </div>
             ) : null}
 
             {debugMode ? (
               <div className="flex">
-                <span className="text-xs font-semibold">Video Size: </span>
+                <span className="text-xs font-semibold">{m.info_video_size()}</span>
                 <span className="text-xs">{videoClientSize}</span>
               </div>
             ) : null}
 
             {(debugMode && mouseMode == "absolute") ? (
               <div className="flex w-[118px] items-center gap-x-1">
-                <span className="text-xs font-semibold">Pointer:</span>
-                <span className="text-xs">
-                  {mouseX},{mouseY}
-                </span>
+                <span className="text-xs font-semibold">{m.info_pointer()}</span>
+                <span className="text-xs">{mouseX},{mouseY}</span>
               </div>
             ) : null}
 
             {(debugMode && mouseMode == "relative") ? (
               <div className="flex w-[118px] items-center gap-x-1">
-                <span className="text-xs font-semibold">Last Move:</span>
+                <span className="text-xs font-semibold">{m.info_last_move()}</span>
                 <span className="text-xs">
-                  {mouseMove ?
-                    `${mouseMove.x},${mouseMove.y} ${mouseMove.buttons ? `(${mouseMove.buttons})` : ""}` :
-                    "N/A"}
+                  {mouseMove ? `${mouseMove.x},${mouseMove.y} ${mouseMove.buttons ? `(${mouseMove.buttons})` : ""}` : "N/A"}
                 </span>
               </div>
             ) : null}
 
             {debugMode && (
               <div className="flex w-[156px] items-center gap-x-1">
-                <span className="text-xs font-semibold">USB State:</span>
+                <span className="text-xs font-semibold">{m.info_usb_state()}</span>
                 <span className="text-xs">{usbState}</span>
               </div>
             )}
+
             {debugMode && (
               <div className="flex w-[156px] items-center gap-x-1">
-                <span className="text-xs font-semibold">HDMI State:</span>
+                <span className="text-xs font-semibold">{m.info_hdmi_state()}</span>
                 <span className="text-xs">{hdmiState}</span>
               </div>
             )}
+
             {debugMode && (
               <div className="flex w-[156px] items-center gap-x-1">
-                <span className="text-xs font-semibold">HidRPC State:</span>
+                <span className="text-xs font-semibold">{m.info_hidrpc_state()}</span>
                 <span className="text-xs">{rpcHidStatus}</span>
               </div>
             )}
+
             {isPasteInProgress && (
               <div className="flex w-[156px] items-center gap-x-1">
-                <span className="text-xs font-semibold">Paste Mode:</span>
-                <span className="text-xs">Enabled</span>
+                <span className="text-xs font-semibold">{m.info_paste_mode()}</span>
+                <span className="text-xs">{m.info_paste_enabled()}</span>
               </div>
             )}
+
             {showPressedKeys && (
               <div className="flex items-center gap-x-1">
-                <span className="text-xs font-semibold">Keys:</span>
-                <h2 className="text-xs">
-                  {displayKeys}
-                </h2>
+                <span className="text-xs font-semibold">{m.info_keys()}</span>
+                <h2 className="text-xs">{displayKeys}</h2>
               </div>
             )}
           </div>
         </div>
+
         <div className="flex items-center divide-x first:divide-l divide-slate-800/20 dark:divide-slate-300/20">
           {isTurnServerInUse && (
             <div className="shrink-0 p-1 px-1.5 text-xs text-black dark:text-white">
-              Relayed by Cloudflare
+              {m.info_relayed_by_cloudflare()}
             </div>
           )}
 
@@ -140,8 +134,9 @@ export default function InfoBar() {
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
           >
-            Caps Lock
+            {m.info_caps_lock()}
           </div>
+
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
@@ -150,8 +145,9 @@ export default function InfoBar() {
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
           >
-            Num Lock
+            {m.info_num_lock()}
           </div>
+
           <div
             className={cx(
               "shrink-0 p-1 px-1.5 text-xs",
@@ -160,22 +156,19 @@ export default function InfoBar() {
                 : "text-slate-800/20 dark:text-slate-300/20",
             )}
           >
-            Scroll Lock
+            {m.info_scroll_lock()}
           </div>
+
           {keyboardLedState.compose ? (
-            <div className="shrink-0 p-1 px-1.5 text-xs">
-              Compose
-            </div>
+            <div className="shrink-0 p-1 px-1.5 text-xs">{m.info_compose()}</div>
           ) : null}
+
           {keyboardLedState.kana ? (
-            <div className="shrink-0 p-1 px-1.5 text-xs">
-              Kana
-            </div>
+            <div className="shrink-0 p-1 px-1.5 text-xs">{m.info_kana()}</div>
           ) : null}
+
           {keyboardLedState.shift ? (
-            <div className="shrink-0 p-1 px-1.5 text-xs">
-              Shift
-            </div>
+            <div className="shrink-0 p-1 px-1.5 text-xs">{m.info_shift()}</div>
           ) : null}
         </div>
       </div>
