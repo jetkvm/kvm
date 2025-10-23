@@ -1223,11 +1223,11 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 		return fmt.Errorf("cannot promote: another primary session exists (%s)", existingPrimaryID)
 	}
 
-	// Promote target session
 	toSession.Mode = SessionModePrimary
 	toSession.hidRPCAvailable = false
-	// For manual transfers, preserve the session's actual LastActive timestamp
-	// Emergency promotions inherit the observer's activity state - no free time
+	if transferType == "emergency_timeout_promotion" {
+		toSession.LastActive = time.Now()
+	}
 	sm.primarySessionID = toSessionID
 
 	// ALWAYS set lastPrimaryID to the new primary to support WebRTC reconnections
