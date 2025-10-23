@@ -1,7 +1,6 @@
 import { KeySequence } from "@hooks/stores";
-import { getLocale } from '@localizations/runtime.js';
+import { getLocale , locales } from '@localizations/runtime.js';
 import { m } from "@localizations/messages.js";
-import { locales } from '@localizations/runtime.js';
 
 export const formatters = {
   date: (date: Date, options?: Intl.DateTimeFormatOptions) =>
