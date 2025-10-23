@@ -1226,10 +1226,8 @@ func (sm *SessionManager) transferPrimaryRole(fromSessionID, toSessionID, transf
 	// Promote target session
 	toSession.Mode = SessionModePrimary
 	toSession.hidRPCAvailable = false
-	// Reset LastActive for all emergency promotions to prevent immediate re-timeout
-	if strings.HasPrefix(transferType, "emergency_") {
-		toSession.LastActive = time.Now()
-	}
+	// For manual transfers, preserve the session's actual LastActive timestamp
+	// Emergency promotions inherit the observer's activity state - no free time
 	sm.primarySessionID = toSessionID
 
 	// ALWAYS set lastPrimaryID to the new primary to support WebRTC reconnections
@@ -1476,16 +1474,19 @@ func extractBrowserFromUserAgent(userAgent string) *string {
 	ua := strings.ToLower(userAgent)
 
 	// Check for common browsers (order matters - Chrome contains Safari, etc.)
+	// Optimize Safari check by caching Chrome detection
+	hasChrome := strings.Contains(ua, "chrome")
+
 	if strings.Contains(ua, "edg/") || strings.Contains(ua, "edge") {
 		return &BrowserEdge
 	}
 	if strings.Contains(ua, "firefox") {
 		return &BrowserFirefox
 	}
-	if strings.Contains(ua, "chrome") {
+	if hasChrome {
 		return &BrowserChrome
 	}
-	if strings.Contains(ua, "safari") && !strings.Contains(ua, "chrome") {
+	if strings.Contains(ua, "safari") {
 		return &BrowserSafari
 	}
 	if strings.Contains(ua, "opera") || strings.Contains(ua, "opr/") {

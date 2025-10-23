@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router";
 import { XCircleIcon } from "@heroicons/react/24/outline";
 
@@ -30,6 +30,7 @@ export default function AccessDeniedOverlay({
   const { maxRejectionAttempts } = useSettingsStore();
   const [countdown, setCountdown] = useState(10);
   const [isRetrying, setIsRetrying] = useState(false);
+  const hasCountedRef = useRef(false);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -50,7 +51,15 @@ export default function AccessDeniedOverlay({
   }, [navigate, setUser, clearSession, clearNickname]);
 
   useEffect(() => {
-    if (!show) return;
+    if (!show) {
+      hasCountedRef.current = false;
+      setCountdown(10);
+      return;
+    }
+
+    // Only count rejection once per showing
+    if (hasCountedRef.current) return;
+    hasCountedRef.current = true;
 
     const newCount = incrementRejectionCount();
 
