@@ -56,7 +56,21 @@ export default function SettingsAudioRoute() {
         );
         return;
       }
-      notifications.success(m.audio_settings_output_source_success());
+
+      // Verify the change was applied by fetching the actual value
+      send("getAudioOutputSource", {}, (getResp: JsonRpcResponse) => {
+        if ("result" in getResp) {
+          const actualSource = getResp.result as string;
+          settings.setAudioOutputSource(actualSource);
+          if (actualSource === source) {
+            notifications.success(m.audio_settings_output_source_success());
+          } else {
+            notifications.error(
+              m.audio_settings_output_source_failed({ error: `Expected ${source}, got ${actualSource}` }),
+            );
+          }
+        }
+      });
     });
   };
 
