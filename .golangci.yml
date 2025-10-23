@@ -1,4 +1,12 @@
 version: "2"
+run:
+  # JetKVM target: ARMv7 (Rockchip RK3308, Cortex-A7)
+  # NOTE: Run 'make lint-go' instead of 'golangci-lint run' directly
+  # Audio CGO code requires cross-compilation environment from Makefile
+  build-tags:
+    - netgo
+    - timetzdata
+    - nomsgpack
 linters:
   enable:
     - forbidigo
