@@ -1,5 +1,10 @@
 package audio
 
+// IPC message types
+const (
+	ipcMsgTypeOpus = 0 // Message type for Opus audio data
+)
+
 // AudioSource provides audio frames via CGO (in-process) C audio functions
 type AudioSource interface {
 	// ReadMessage reads the next audio message
