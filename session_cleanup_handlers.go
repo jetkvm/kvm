@@ -2,6 +2,8 @@ package kvm
 
 import (
 	"time"
+
+	"github.com/pion/webrtc/v4"
 )
 
 // emergencyPromotionContext holds context for emergency promotion attempts
@@ -216,18 +218,29 @@ func (sm *SessionManager) promoteAfterGraceExpiration(expiredSessionID string, n
 	}
 }
 
-// handlePendingSessionTimeout removes timed-out pending sessions (DoS protection)
-// Returns true if any pending session was removed
+// handlePendingSessionTimeout removes timed-out pending sessions only if disconnected
+// Connected pending sessions remain visible for approval (consistent UX)
+// This prevents resource leaks while maintaining good user experience
 func (sm *SessionManager) handlePendingSessionTimeout(now time.Time) bool {
 	toDelete := make([]string, 0)
 	for id, session := range sm.sessions {
 		if session.Mode == SessionModePending &&
 			now.Sub(session.CreatedAt) > defaultPendingSessionTimeout {
-			websocketLogger.Debug().
-				Str("sessionId", id).
-				Dur("age", now.Sub(session.CreatedAt)).
-				Msg("Removing timed-out pending session")
-			toDelete = append(toDelete, id)
+			// Only remove if the connection is closed/failed
+			// This prevents resource leaks while keeping connected sessions visible
+			if session.peerConnection != nil {
+				connectionState := session.peerConnection.ConnectionState()
+				if connectionState == webrtc.PeerConnectionStateClosed ||
+					connectionState == webrtc.PeerConnectionStateFailed ||
+					connectionState == webrtc.PeerConnectionStateDisconnected {
+					websocketLogger.Debug().
+						Str("sessionId", id).
+						Dur("age", now.Sub(session.CreatedAt)).
+						Str("connectionState", connectionState.String()).
+						Msg("Removing timed-out disconnected pending session")
+					toDelete = append(toDelete, id)
+				}
+			}
 		}
 	}
 	for _, id := range toDelete {
