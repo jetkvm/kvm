@@ -29,7 +29,7 @@ export const fr_CH: KeyboardLayout = {
   isoCode: isoCode,
   name: name,
   chars: chars,
-  keyDisplayMap: keyDisplayMap, 
+  keyDisplayMap: keyDisplayMap,
   // TODO need to localize these maps and layouts
   modifierDisplayMap: de_CH.modifierDisplayMap,
   virtualKeyboard: de_CH.virtualKeyboard

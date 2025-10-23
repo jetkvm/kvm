@@ -1,9 +1,8 @@
 import { cx } from "@/cva.config";
-
-import { NetworkState } from "../hooks/stores";
-import { LifeTimeLabel } from "../routes/devices.$id.settings.network";
-
-import { GridCard } from "./Card";
+import { NetworkState } from "@hooks/stores";
+import { GridCard } from "@components/Card";
+import { LifeTimeLabel } from "@routes/devices.$id.settings.network";
+import { m } from "@localizations/messages.js";
 
 export function FlagLabel({ flag, className }: { flag: string, className?: string }) {
   const classes = cx(
@@ -27,22 +26,23 @@ export default function Ipv6NetworkCard({
       <div className="animate-fadeIn p-4 text-black opacity-0 animation-duration-500 dark:text-white">
         <div className="space-y-4">
           <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            IPv6 Information
+            {m.ipv6_information()}
           </h3>
 
           <div className="grid grid-cols-2 gap-x-6 gap-y-2">
             <div className="flex flex-col justify-between">
               <span className="text-sm text-slate-600 dark:text-slate-400">
-                Link-local
-              </span>
+                {m.ipv6_link_local()}
+              </span>&nbsp;
               <span className="text-sm font-medium">
                 {networkState?.ipv6_link_local}
               </span>
             </div>
+
             <div className="flex flex-col justify-between">
               <span className="text-sm text-slate-600 dark:text-slate-400">
-                Gateway
-              </span>
+                {m.ipv6_gateway()}
+              </span>&nbsp;
               <span className="text-sm font-medium">
                 {networkState?.ipv6_gateway}
               </span>
@@ -52,7 +52,9 @@ export default function Ipv6NetworkCard({
           <div className="space-y-3 pt-2">
             {networkState?.ipv6_addresses && networkState?.ipv6_addresses.length > 0 && (
               <div className="space-y-3">
-                <h4 className="text-sm font-semibold">IPv6 Addresses</h4>
+                <h4 className="text-sm font-semibold">
+                  {m.network_ipv6_addresses_header()}
+                </h4>
                 {networkState.ipv6_addresses.map(addr => (
                   <div
                     key={addr.address}
@@ -61,13 +63,13 @@ export default function Ipv6NetworkCard({
                     <div className="grid grid-cols-2 gap-x-8 gap-y-4">
                       <div className="col-span-2 flex flex-col justify-between">
                         <span className="text-sm text-slate-600 dark:text-slate-400">
-                          Address
-                        </span>
+                          {m.ipv6_address_label()}
+                        </span>&nbsp;
                         <span className="text-sm font-medium flex">
-                          <span className="flex-1">{addr.address}</span>
+                          <span className="flex-1">{addr.address}</span>&nbsp;
                           <span className="text-sm font-medium flex gap-x-1">
-                            {addr.flag_deprecated ? <FlagLabel flag="Deprecated" /> : null}
-                            {addr.flag_dad_failed ? <FlagLabel flag="DAD Failed" /> : null}
+                            {addr.flag_deprecated ? <FlagLabel flag={m.network_ipv6_flag_deprecated()} /> : null}
+                            {addr.flag_dad_failed ? <FlagLabel flag={m.network_ipv6_flag_dad_failed()} /> : null}
                           </span>
                         </span>
                       </div>
@@ -75,12 +77,12 @@ export default function Ipv6NetworkCard({
                       {addr.valid_lifetime && (
                         <div className="flex flex-col justify-between">
                           <span className="text-sm text-slate-600 dark:text-slate-400">
-                            Valid Lifetime
-                          </span>
+                            {m.ipv6_valid_lifetime()}
+                          </span>&nbsp;
                           <span className="text-sm font-medium">
                             {addr.valid_lifetime === "" ? (
                               <span className="text-slate-400 dark:text-slate-600">
-                                N/A
+                                {m.not_applicable()}
                               </span>
                             ) : (
                               <LifeTimeLabel lifetime={`${addr.valid_lifetime}`} />
@@ -88,15 +90,16 @@ export default function Ipv6NetworkCard({
                           </span>
                         </div>
                       )}
+
                       {addr.preferred_lifetime && (
                         <div className="flex flex-col justify-between">
                           <span className="text-sm text-slate-600 dark:text-slate-400">
-                            Preferred Lifetime
-                          </span>
+                            {m.ipv6_preferred_lifetime()}
+                          </span>&nbsp;
                           <span className="text-sm font-medium">
                             {addr.preferred_lifetime === "" ? (
                               <span className="text-slate-400 dark:text-slate-600">
-                                N/A
+                                {m.not_applicable()}
                               </span>
                             ) : (
                               <LifeTimeLabel lifetime={`${addr.preferred_lifetime}`} />

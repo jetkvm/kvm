@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import {
   LuLink,
   LuRadioReceiver,
@@ -7,28 +8,28 @@ import {
 } from "react-icons/lu";
 import { PlusCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { TrashIcon } from "@heroicons/react/16/solid";
-import { useNavigate } from "react-router";
 
-import Card, { GridCard } from "@/components/Card";
-import { Button } from "@components/Button";
-import LogoBlueIcon from "@/assets/logo-blue.svg";
-import LogoWhiteIcon from "@/assets/logo-white.svg";
-import { formatters } from "@/utils";
+import DebianIcon from "@assets/debian-icon.png";
+import UbuntuIcon from "@assets/ubuntu-icon.png";
+import FedoraIcon from "@assets/fedora-icon.png";
+import OpenSUSEIcon from "@assets/opensuse-icon.png";
+import ArchIcon from "@assets/arch-icon.png";
+import NetBootIcon from "@assets/netboot-icon.svg";
+import LogoBlueIcon from "@assets/logo-blue.svg";
+import LogoWhiteIcon from "@assets/logo-white.svg";
+import { cx } from "@/cva.config";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
+import { Button } from "@components/Button";
+import Card, { GridCard } from "@components/Card";
+import Fieldset from "@components/Fieldset";
 import { InputFieldWithLabel } from "@/components/InputField";
-import DebianIcon from "@/assets/debian-icon.png";
-import UbuntuIcon from "@/assets/ubuntu-icon.png";
-import FedoraIcon from "@/assets/fedora-icon.png";
-import OpenSUSEIcon from "@/assets/opensuse-icon.png";
-import ArchIcon from "@/assets/arch-icon.png";
-import NetBootIcon from "@/assets/netboot-icon.svg";
-import Fieldset from "@/components/Fieldset";
+import { formatters } from "@/utils";
 import { DEVICE_API } from "@/ui.config";
+import { isOnDevice } from "@/main";
+import notifications from "@/notifications";
+import { m } from "@localizations/messages.js";
 
-import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
-import notifications from "../notifications";
-import { isOnDevice } from "../main";
-import { cx } from "../cva.config";
 import {
   MountMediaState,
   RemoteVirtualMediaState,
@@ -38,13 +39,10 @@ import {
 
 export default function MountRoute() {
   const navigate = useNavigate();
-  {
-    /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
-  }
   return <Dialog onClose={() => navigate("..")} />;
 }
 
-export function Dialog({ onClose }: { onClose: () => void }) {
+export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
   const {
     modalView,
     setModalView,
@@ -145,12 +143,12 @@ export function Dialog({ onClose }: { onClose: () => void }) {
             <div className="flex flex-col items-start justify-start space-y-4 text-left">
               <img
                 src={LogoBlueIcon}
-                alt="JetKVM Logo"
+                alt={m.jetkvm_logo()}
                 className="block h-[24px] dark:hidden"
               />
               <img
                 src={LogoWhiteIcon}
-                alt="JetKVM Logo"
+                alt={m.jetkvm_logo()}
                 className="hidden h-[24px] dark:mt-0! dark:block"
               />
               {modalView === "mode" && (
@@ -238,26 +236,26 @@ function ModeSelectionView({
     <div className="w-full space-y-4">
       <div className="animate-fadeIn space-y-0 opacity-0">
         <h2 className="text-lg leading-tight font-bold dark:text-white">
-          Virtual Media Source
+          {m.mount_virtual_media_source()}
         </h2>
         <div className="text-sm leading-snug text-slate-600 dark:text-slate-400">
-          Choose how you want to mount your virtual media
+          {m.mount_virtual_media_source_description()}
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         {[
           {
-            label: "URL Mount",
+            label: m.mount_url_mount(),
             value: "url",
-            description: "Mount files from any public web address",
+            description: m.mount_url_description(),
             icon: LuLink,
-            tag: "Experimental",
+            tag: m.experimental(),
             disabled: false,
           },
           {
-            label: "JetKVM Storage Mount",
+            label: m.mount_jetkvm_storage(),
             value: "device",
-            description: "Mount previously uploaded files from the JetKVM storage",
+            description: m.mount_jetkvm_storage_description(),
             icon: LuRadioReceiver,
             tag: null,
             disabled: false,
@@ -332,7 +330,7 @@ function ModeSelectionView({
             onClick={() => {
               setModalView(selectedMode);
             }}
-            text="Continue"
+            text={m.continue()}
           />
         </div>
       </div>
@@ -351,6 +349,7 @@ function UrlView({
 }) {
   const [usbMode, setUsbMode] = useState<RemoteVirtualMediaState["mode"]>("CDROM");
   const [url, setUrl] = useState<string>("");
+  const [isUrlValid, setIsUrlValid] = useState(false);
 
   const popularImages = [
     {
@@ -398,6 +397,12 @@ function UrlView({
 
   const urlRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (urlRef.current) {
+      setIsUrlValid(urlRef.current.validity.valid);
+    }
+  }, [url]);
+
   function handleUrlChange(url: string) {
     setUrl(url);
     if (url.endsWith(".iso")) {
@@ -410,8 +415,8 @@ function UrlView({
   return (
     <div className="w-full space-y-4">
       <ViewHeader
-        title="Mount from URL"
-        description="Enter an URL to the image file to mount"
+        title={m.mount_view_url_title()}
+        description={m.mount_view_url_description()}
       />
 
       <div
@@ -423,7 +428,7 @@ function UrlView({
         <InputFieldWithLabel
           placeholder="https://example.com/image.iso"
           type="url"
-          label="Image URL"
+          label={m.mount_url_input_label()}
           ref={urlRef}
           value={url}
           onChange={e => handleUrlChange(e.target.value)}
@@ -436,19 +441,19 @@ function UrlView({
           animationDelay: "0.1s",
         }}
       >
-        <Fieldset disabled={!urlRef.current?.validity.valid || url.length === 0}>
+        <Fieldset disabled={!isUrlValid || url.length === 0}>
           <UsbModeSelector usbMode={usbMode} setUsbMode={setUsbMode} />
         </Fieldset>
         <div className="flex space-x-2">
-          <Button size="MD" theme="blank" text="Back" onClick={onBack} />
+          <Button size="MD" theme="blank" text={m.back()} onClick={onBack} />
           <Button
             size="MD"
             theme="primary"
             loading={mountInProgress}
-            text="Mount URL"
+            text={m.mount_button_mount_url()}
             onClick={() => onMount(url, usbMode)}
             disabled={
-              mountInProgress || !urlRef.current?.validity.valid || url.length === 0
+              mountInProgress || !isUrlValid || url.length === 0
             }
           />
         </div>
@@ -463,7 +468,7 @@ function UrlView({
         }}
       >
         <h2 className="mb-2 text-sm font-semibold text-black dark:text-white">
-          Popular images
+          {m.mount_popular_images()}
         </h2>
         <Card className="w-full divide-y divide-slate-800/20 dark:divide-slate-300/20">
           {popularImages.map((image, index) => (
@@ -487,7 +492,7 @@ function UrlView({
               <Button
                 size="XS"
                 theme="light"
-                text="Select"
+                text={m.mount_button_select()}
                 onClick={() => handleUrlChange(image.url)}
               />
             </div>
@@ -553,7 +558,7 @@ function DeviceFileView({
   const syncStorage = useCallback(() => {
     send("listStorageFiles", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(`Error listing storage files: ${resp.error}`);
+        notifications.error(m.mount_error_list_storage({ error: resp.error }));
         return;
       }
       const { files } = resp.result as StorageFiles;
@@ -568,7 +573,7 @@ function DeviceFileView({
 
     send("getStorageSpace", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(`Error getting storage space: ${resp.error}`);
+        notifications.error(m.mount_error_get_storage_space({ error: resp.error }));
         return;
       }
 
@@ -597,7 +602,7 @@ function DeviceFileView({
     console.log("Deleting file:", file);
     send("deleteStorageFile", { filename: file.name }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(`Error deleting file: ${resp.error}`);
+        notifications.error(m.mount_error_delete_file({ error: resp.error }));
         return;
       }
 
@@ -630,8 +635,8 @@ function DeviceFileView({
   return (
     <div className="w-full space-y-4">
       <ViewHeader
-        title="Mount from JetKVM Storage"
-        description="Select an image to mount from the JetKVM storage"
+        title={m.mount_view_device_title()}
+        description={m.mount_view_device_description()}
       />
       <div
         className="w-full animate-fadeIn opacity-0"
@@ -647,17 +652,17 @@ function DeviceFileView({
                 <div className="space-y-1">
                   <PlusCircleIcon className="mx-auto h-6 w-6 text-blue-700 dark:text-blue-500" />
                   <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
-                    No images available
+                    {m.mount_no_images_title()}
                   </h3>
                   <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
-                    Upload an image to start virtual media mounting.
+                    {m.mount_no_images_description()}
                   </p>
                 </div>
                 <div>
                   <Button
                     size="SM"
                     theme="primary"
-                    text="Upload a new image"
+                    text={m.mount_upload_title()}
                     onClick={() => onNewImageClick()}
                   />
                 </div>
@@ -677,9 +682,7 @@ function DeviceFileView({
                     const selectedFile = onStorageFiles.find(f => f.name === file.name);
                     if (!selectedFile) return;
                     if (
-                      window.confirm(
-                        "Are you sure you want to delete " + selectedFile.name + "?",
-                      )
+                      window.confirm(m.mount_confirm_delete({ name: selectedFile.name }))
                     ) {
                       handleDeleteFile(selectedFile);
                     }
@@ -692,24 +695,24 @@ function DeviceFileView({
               {onStorageFiles.length > filesPerPage && (
                 <div className="flex items-center justify-between px-3 py-2">
                   <p className="text-sm text-slate-700 dark:text-slate-300">
-                    Showing <span className="font-bold">{indexOfFirstFile + 1}</span> to{" "}
-                    <span className="font-bold">
-                      {Math.min(indexOfLastFile, onStorageFiles.length)}
-                    </span>{" "}
-                    of <span className="font-bold">{onStorageFiles.length}</span> results
+                    {m.mount_button_showing_results({
+                      from: indexOfFirstFile + 1,
+                      to: Math.min(indexOfLastFile, onStorageFiles.length),
+                      total: onStorageFiles.length
+                    })}
                   </p>
                   <div className="flex items-center gap-x-2">
                     <Button
                       size="XS"
                       theme="light"
-                      text="Previous"
+                      text={m.previous()}
                       onClick={handlePreviousPage}
                       disabled={currentPage === 1}
                     />
                     <Button
                       size="XS"
                       theme="light"
-                      text="Next"
+                      text={m.next()}
                       onClick={handleNextPage}
                       disabled={currentPage === totalPages}
                     />
@@ -738,7 +741,7 @@ function DeviceFileView({
               size="MD"
               disabled={selected === null || mountInProgress}
               theme="primary"
-              text="Mount File"
+              text={m.mount_button_mount_file()}
               loading={mountInProgress}
               onClick={() =>
                 onMountStorageFile(
@@ -772,10 +775,10 @@ function DeviceFileView({
       >
         <div className="flex justify-between text-sm">
           <span className="font-medium text-black dark:text-white">
-            Available Storage
+            {m.mount_available_storage()}
           </span>
           <span className="text-slate-700 dark:text-slate-300">
-            {percentageUsed}% used
+            {m.mount_percentage_used({ percentageUsed })}
           </span>
         </div>
         <div className="h-3.5 w-full overflow-hidden rounded-xs bg-slate-200 dark:bg-slate-700">
@@ -786,10 +789,10 @@ function DeviceFileView({
         </div>
         <div className="flex justify-between text-sm text-slate-600">
           <span className="text-slate-700 dark:text-slate-300">
-            {formatters.bytes(bytesUsed)} used
+            {m.mount_bytes_used({ bytesUsed: formatters.bytes(bytesUsed) })}
           </span>
           <span className="text-slate-700 dark:text-slate-300">
-            {formatters.bytes(bytesFree)} free
+            {m.mount_bytes_free({ bytesFree: formatters.bytes(bytesFree) })}
           </span>
         </div>
       </div>
@@ -806,7 +809,7 @@ function DeviceFileView({
             size="MD"
             theme="light"
             fullWidth
-            text="Upload a new image"
+            text={m.mount_button_upload_new_image()}
             onClick={() => onNewImageClick()}
           />
         </div>
@@ -862,7 +865,7 @@ function UploadFileView({
 
     if (!rtcDataChannel) {
       console.error("Failed to create data channel for file upload");
-      notifications.error("Failed to create data channel for file upload");
+      notifications.error(m.mount_upload_failed_datachannel());
       setUploadState("idle");
       console.log("Upload state set to 'idle'");
 
@@ -952,7 +955,7 @@ function UploadFileView({
 
     rtcDataChannel.onerror = error => {
       console.error("RTC Data channel error:", error);
-      notifications.error(`Upload failed: ${error}`);
+      notifications.error(m.mount_upload_failed_rtc({ error: error }));
       setUploadState("idle");
       console.log("Upload state set to 'idle'");
     };
@@ -1037,7 +1040,7 @@ function UploadFileView({
         file.name !== incompleteFileName.replace(".incomplete", "")
       ) {
         setFileError(
-          `Please select the file "${incompleteFileName.replace(".incomplete", "")}" to continue the upload.`,
+          m.mount_please_select_file({ name: incompleteFileName.replace(".incomplete", "") }),
         );
         return;
       }
@@ -1080,11 +1083,11 @@ function UploadFileView({
   return (
     <div className="w-full space-y-4">
       <ViewHeader
-        title="Upload New Image"
+        title={m.mount_upload_title()}
         description={
           incompleteFileName
-            ? `Continue uploading "${incompleteFileName}"`
-            : "Select an image file to upload to JetKVM storage"
+            ? m.mount_continue_uploading_with_name({ name: incompleteFileName.replace(".incomplete", "") })
+            : m.mount_upload_description()
         }
       />
       <div
@@ -1121,11 +1124,11 @@ function UploadFileView({
                       </div>
                       <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
                         {incompleteFileName
-                          ? `Click to select "${incompleteFileName.replace(".incomplete", "")}"`
-                          : "Click to select a file"}
+                          ? m.mount_click_to_select_incomplete({ name: incompleteFileName.replace(".incomplete", "") })
+                          : m.mount_click_to_select_file()}
                       </h3>
                       <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
-                        Supported formats: ISO, IMG
+                        {m.mount_supported_formats()}
                       </p>
                     </div>
                   )}
@@ -1140,7 +1143,7 @@ function UploadFileView({
                         </Card>
                       </div>
                       <h3 className="leading-non text-lg font-semibold text-black dark:text-white">
-                        Uploading {formatters.truncateMiddle(uploadedFileName, 30)}
+                        {m.mount_uploading_with_name({ name: formatters.truncateMiddle(uploadedFileName, 30) })}
                       </h3>
                       <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
                         {formatters.bytes(uploadedFileSize || 0)}
@@ -1153,11 +1156,11 @@ function UploadFileView({
                           ></div>
                         </div>
                         <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
-                          <span>Uploading...</span>
+                          <span>{m.mount_uploading()}</span>{" "}
                           <span>
                             {uploadSpeed !== null
                               ? `${formatters.bytes(uploadSpeed)}/s`
-                              : "Calculating..."}
+                              : m.mount_calculating()}
                           </span>
                         </div>
                       </div>
@@ -1174,11 +1177,10 @@ function UploadFileView({
                         </Card>
                       </div>
                       <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
-                        Upload successful
+                        {m.mount_upload_successful()}
                       </h3>
                       <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
-                        {formatters.truncateMiddle(uploadedFileName, 40)} has been
-                        uploaded
+                        {m.mount_uploaded_has_been_uploaded({ name: formatters.truncateMiddle(uploadedFileName, 40) })}
                       </p>
                     </div>
                   )}
@@ -1205,7 +1207,7 @@ function UploadFileView({
           className="mt-2 animate-fadeIn truncate text-sm text-red-600 dark:text-red-400 opacity-0"
           style={{ animationDuration: "0.7s" }}
         >
-          Error: {uploadError}
+          {m.mount_upload_error({ error: String(uploadError) })}
         </div>
       )}
 
@@ -1221,7 +1223,7 @@ function UploadFileView({
             <Button
               size="MD"
               theme="light"
-              text="Cancel Upload"
+              text={m.mount_button_cancel_upload()}
               onClick={() => {
                 onCancelUpload();
                 setUploadState("idle");
@@ -1235,7 +1237,7 @@ function UploadFileView({
             <Button
               size="MD"
               theme={uploadState === "success" ? "primary" : "light"}
-              text="Back to Overview"
+              text={m.mount_button_back_to_overview()}
               onClick={onBack}
             />
           )}
@@ -1259,10 +1261,10 @@ function ErrorView({
       <div className="space-y-2">
         <div className="flex items-center space-x-2 text-red-600">
           <ExclamationTriangleIcon className="h-6 w-6" />
-          <h2 className="text-lg leading-tight font-bold">Mount Error</h2>
+          <h2 className="text-lg leading-tight font-bold">{m.mount_error_title()}</h2>
         </div>
         <p className="text-sm leading-snug text-slate-600">
-          An error occurred while attempting to mount the media. Please try again.
+          {m.mount_error_description()}
         </p>
       </div>
       {errorMessage && (
@@ -1271,8 +1273,8 @@ function ErrorView({
         </Card>
       )}
       <div className="flex justify-end space-x-2">
-        <Button size="SM" theme="light" text="Close" onClick={onClose} />
-        <Button size="SM" theme="primary" text="Back to Overview" onClick={onRetry} />
+        <Button size="SM" theme="light" text={m.close()} onClick={onClose} />
+        <Button size="SM" theme="primary" text={m.mount_button_back_to_overview()} onClick={onRetry} />
       </div>
     </div>
   );
@@ -1341,7 +1343,7 @@ function PreUploadedImageItem({
             size="XS"
             theme="light"
             LeadingIcon={TrashIcon}
-            text="Delete"
+            text={m.delete()}
             onClick={e => {
               e.stopPropagation();
               onDelete();
@@ -1362,7 +1364,7 @@ function PreUploadedImageItem({
           <Button
             size="XS"
             theme="light"
-            text="Continue uploading"
+            text={m.mount_button_continue_upload()}
             onClick={e => {
               e.stopPropagation();
               onContinueUpload();
@@ -1408,7 +1410,7 @@ function UsbModeSelector({
             className="form-radio h-3 w-3 rounded-full border-slate-800/30 bg-white text-blue-700 transition-opacity focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
           />
           <span className="ml-2 text-sm font-medium text-slate-900 dark:text-white">
-            CD/DVD
+            {m.mount_mode_cdrom()}
           </span>
         </label>
         <label htmlFor="disk" className="flex items-center">
@@ -1421,7 +1423,7 @@ function UsbModeSelector({
             className="form-radio h-3 w-3 rounded-full border-slate-800/30 bg-white text-blue-700 transition-opacity focus:ring-blue-500 disabled:opacity-30 dark:bg-slate-800"
           />
           <span className="ml-2 text-sm font-medium text-slate-900 dark:text-white">
-            Disk
+            {m.mount_mode_disk()}
           </span>
         </label>
       </div>

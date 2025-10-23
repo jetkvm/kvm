@@ -1,14 +1,15 @@
-import { LuPlus, LuX } from "react-icons/lu";
-import { useFieldArray, useFormContext } from "react-hook-form";
 import { useEffect } from "react";
 import validator from "validator";
+import { LuPlus, LuX } from "react-icons/lu";
+import { useFieldArray, useFormContext } from "react-hook-form";
 import { cx } from "cva";
 
-import { GridCard } from "@/components/Card";
-import { Button } from "@/components/Button";
-import { InputFieldWithLabel } from "@/components/InputField";
-import { NetworkSettings } from "@/hooks/stores";
+import { NetworkSettings } from "@hooks/stores";
+import { Button } from "@components/Button";
+import { GridCard } from "@components/Card";
+import { InputFieldWithLabel } from "@components/InputField";
 import { netMaskFromCidr4 } from "@/utils/ip";
+import { m } from "@localizations/messages.js";
 
 export default function StaticIpv4Card() {
   const formMethods = useFormContext<NetworkSettings>();
@@ -24,6 +25,7 @@ export default function StaticIpv4Card() {
 
   const ipv4StaticAddress = watch("ipv4_static.address");
   const hideSubnetMask = ipv4StaticAddress?.includes("/");
+  
   useEffect(() => {
     const parts = ipv4StaticAddress?.split("/", 2);
     if (parts?.length !== 2) return;
@@ -35,13 +37,13 @@ export default function StaticIpv4Card() {
     setValue("ipv4_static.netmask", mask);
   }, [ipv4StaticAddress, setValue]);
 
-  const validate = (value: string) => {
-    if (!validator.isIP(value)) return "Invalid IP address";
+  const ipv4Validation = (value: string) => {
+    if (!validator.isIP(value, 4)) return m.network_ipv4_invalid()
     return true;
   };
 
   const validateIsIPOrCIDR4 = (value: string) => {
-    if (!validator.isIP(value, 4) && !validator.isIPRange(value, 4)) return "Invalid IP address or CIDR notation";
+    if (!validator.isIP(value) && !validator.isIPRange(value, 4)) return m.network_ipv4_invalid_cidr();
     return true;
   };
 
@@ -50,12 +52,12 @@ export default function StaticIpv4Card() {
       <div className="animate-fadeIn p-4 text-black opacity-0 animation-duration-500 dark:text-white">
         <div className="space-y-4">
           <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            Static IPv4 Configuration
+            {m.network_static_ipv4_header()}
           </h3>
 
           <div className={cx("grid grid-cols-1 gap-4", hideSubnetMask ? "md:grid-cols-1" : "md:grid-cols-2")}>
             <InputFieldWithLabel
-              label="IP Address"
+              label={m.network_ipv4_address()}
               type="text"
               size="SM"
               placeholder="192.168.1.100"
@@ -67,21 +69,21 @@ export default function StaticIpv4Card() {
             />
 
             {!hideSubnetMask && <InputFieldWithLabel
-              label="Subnet Mask"
+              label={m.network_ipv4_netmask()}
               type="text"
               size="SM"
               placeholder="255.255.255.0"
-              {...register("ipv4_static.netmask", { validate: (value: string | undefined) => validate(value ?? "") })}
+              {...register("ipv4_static.netmask", { validate: (value: string | undefined) => ipv4Validation(value ?? "") })}
               error={formState.errors.ipv4_static?.netmask?.message}
             />}
           </div>
 
           <InputFieldWithLabel
-            label="Gateway"
+            label={m.network_ipv4_gateway()}
             type="text"
             size="SM"
             placeholder="192.168.1.1"
-            {...register("ipv4_static.gateway", { validate: (value: string | undefined) => validate(value ?? "") })}
+            {...register("ipv4_static.gateway", { validate: (value: string | undefined) => ipv4Validation(value ?? "") })}
             error={formState.errors.ipv4_static?.gateway?.message}
           />
 
@@ -93,13 +95,13 @@ export default function StaticIpv4Card() {
                   <div className="flex items-start gap-x-2">
                     <div className="flex-1">
                       <InputFieldWithLabel
-                        label={index === 0 ? "DNS Server" : null}
+                        label={index === 0 ? m.network_ipv4_dns() : null}
                         type="text"
                         size="SM"
                         placeholder="1.1.1.1"
                         {...register(
                           `ipv4_static.dns.${index}`,
-                          { validate: (value: string | undefined) => validate(value ?? "") }
+                          { validate: (value: string | undefined) => ipv4Validation(value ?? "") }
                         )}
                         error={formState.errors.ipv4_static?.dns?.[index]?.message}
                       />
@@ -127,7 +129,7 @@ export default function StaticIpv4Card() {
             onClick={() => append("", { shouldFocus: true })}
             LeadingIcon={LuPlus}
             type="button"
-            text="Add DNS Server"
+            text={m.network_settings_add_dns()}
             disabled={dns?.[0] === ""}
           />
         </div>

@@ -245,6 +245,8 @@ export class KeyboardMacroReportMessage extends RpcMessage {
             ...fromUint32toUint8(this.stepCount),
         ]), 0);
 
+        let offset = 6;
+
         for (let i = 0; i < this.stepCount; i++) {
             const step = this.steps[i];
             if (!withinUint8Range(step.modifier)) {
@@ -270,10 +272,9 @@ export class KeyboardMacroReportMessage extends RpcMessage {
                 ...keys,
                 ...fromUint16toUint8(step.delay),
             ]);
-            const offset = 6 + i * 9;
 
-            
             data.set(macroBinary, offset);
+            offset += 9;
         }
 
         return data;

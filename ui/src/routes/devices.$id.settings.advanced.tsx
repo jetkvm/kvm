@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { useSettingsStore } from "@hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { Button } from "@components/Button";
+import Checkbox from "@components/Checkbox";
+import { ConfirmDialog } from "@components/ConfirmDialog";
 import { GridCard } from "@components/Card";
 import { SettingsItem } from "@components/SettingsItem";
-
-import { Button } from "../components/Button";
-import Checkbox from "../components/Checkbox";
-import { ConfirmDialog } from "../components/ConfirmDialog";
-import { SettingsPageHeader } from "../components/SettingsPageheader";
-import { TextAreaWithLabel } from "../components/TextArea";
-import { useSettingsStore } from "../hooks/stores";
-import { JsonRpcResponse, useJsonRpc } from "../hooks/useJsonRpc";
-import { isOnDevice } from "../main";
-import notifications from "../notifications";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { TextAreaWithLabel } from "@components/TextArea";
+import { isOnDevice } from "@/main";
+import notifications from "@/notifications";
+import { m } from "@localizations/messages.js";
 
 export default function SettingsAdvancedRoute() {
   const { send } = useJsonRpc();
@@ -65,7 +65,9 @@ export default function SettingsAdvancedRoute() {
       send("setUsbEmulationState", { enabled: enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to ${enabled ? "enable" : "disable"} USB emulation: ${resp.error.data || "Unknown error"}`,
+            enabled
+              ? m.advanced_error_usb_emulation_enable({ error: resp.error.data || m.unknown_error() })
+              : m.advanced_error_usb_emulation_disable({ error: resp.error.data || m.unknown_error() })
           );
           return;
         }
@@ -80,11 +82,11 @@ export default function SettingsAdvancedRoute() {
     send("resetConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to reset configuration: ${resp.error.data || "Unknown error"}`,
+          m.advanced_error_reset_config({ error: resp.error.data || m.unknown_error() })
         );
         return;
       }
-      notifications.success("Configuration reset to default successfully");
+      notifications.success(m.advanced_success_reset_config());
     });
   }, [send]);
 
@@ -92,11 +94,11 @@ export default function SettingsAdvancedRoute() {
     send("setSSHKeyState", { sshKey }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to update SSH key: ${resp.error.data || "Unknown error"}`,
+          m.advanced_error_update_ssh_key({ error: resp.error.data || m.unknown_error() })
         );
         return;
       }
-      notifications.success("SSH key updated successfully");
+      notifications.success(m.advanced_success_update_ssh_key());
     });
   }, [send, sshKey]);
 
@@ -105,7 +107,7 @@ export default function SettingsAdvancedRoute() {
       send("setDevModeState", { enabled: developerMode }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to set dev mode: ${resp.error.data || "Unknown error"}`,
+            m.advanced_error_set_dev_mode({ error: resp.error.data || m.unknown_error() })
           );
           return;
         }
@@ -120,7 +122,7 @@ export default function SettingsAdvancedRoute() {
       send("setDevChannelState", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
+            m.advanced_error_set_dev_channel({ error: resp.error.data || m.unknown_error() })
           );
           return;
         }
@@ -135,19 +137,17 @@ export default function SettingsAdvancedRoute() {
       send("setLocalLoopbackOnly", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to ${enabled ? "enable" : "disable"} loopback-only mode: ${resp.error.data || "Unknown error"}`,
+            enabled
+              ? m.advanced_error_loopback_enable({ error: resp.error.data || m.unknown_error() })
+              : m.advanced_error_loopback_disable({ error: resp.error.data || m.unknown_error() })
           );
           return;
         }
         setLocalLoopbackOnly(enabled);
         if (enabled) {
-          notifications.success(
-            "Loopback-only mode enabled. Restart your device to apply.",
-          );
+          notifications.success(m.advanced_success_loopback_enabled());
         } else {
-          notifications.success(
-            "Loopback-only mode disabled. Restart your device to apply.",
-          );
+          notifications.success(m.advanced_success_loopback_disabled());
         }
       });
     },
@@ -175,14 +175,14 @@ export default function SettingsAdvancedRoute() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Advanced"
-        description="Access additional settings for troubleshooting and customization"
+        title={m.advanced_title()}
+        description={m.advanced_description()}
       />
 
       <div className="space-y-4">
         <SettingsItem
-          title="Dev Channel Updates"
-          description="Receive early updates from the development channel"
+          title={m.advanced_dev_channel_title()}
+          description={m.advanced_dev_channel_description()}
         >
           <Checkbox
             checked={devChannel}
@@ -192,8 +192,8 @@ export default function SettingsAdvancedRoute() {
           />
         </SettingsItem>
         <SettingsItem
-          title="Developer Mode"
-          description="Enable advanced features for developers"
+          title={m.advanced_developer_mode_title()}
+          description={m.advanced_developer_mode_description()}
         >
           <Checkbox
             checked={settings.developerMode}
@@ -219,18 +219,17 @@ export default function SettingsAdvancedRoute() {
               <div className="space-y-3">
                 <div className="space-y-2">
                   <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    Developer Mode Enabled
+                    {m.advanced_developer_mode_enabled_title()}
                   </h3>
                   <div>
                     <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
-                      <li>Security is weakened while active</li>
-                      <li>Only use if you understand the risks</li>
+                      <li>{m.advanced_developer_mode_warning_security()}</li>
+                      <li>{m.advanced_developer_mode_warning_risks()}</li>
                     </ul>
                   </div>
                 </div>
-
                 <div className="text-xs text-slate-700 dark:text-slate-300">
-                  For advanced users only. Not for production use.
+                  {m.advanced_developer_mode_warning_advanced()}
                 </div>
               </div>
             </div>
@@ -238,8 +237,8 @@ export default function SettingsAdvancedRoute() {
         )}
 
         <SettingsItem
-          title="Loopback-Only Mode"
-          description="Restrict web interface access to localhost only (127.0.0.1)"
+          title={m.advanced_loopback_only_title()}
+          description={m.advanced_loopback_only_description()}
         >
           <Checkbox
             checked={localLoopbackOnly}
@@ -250,25 +249,25 @@ export default function SettingsAdvancedRoute() {
         {isOnDevice && settings.developerMode && (
           <div className="space-y-4">
             <SettingsItem
-              title="SSH Access"
-              description="Add your SSH public key to enable secure remote access to the device"
+              title={m.advanced_ssh_access_title()}
+              description={m.advanced_ssh_access_description()}
             />
             <div className="space-y-4">
               <TextAreaWithLabel
-                label="SSH Public Key"
+                label={m.advanced_ssh_public_key_label()}
                 value={sshKey || ""}
                 rows={3}
                 onChange={e => setSSHKey(e.target.value)}
-                placeholder="Enter your SSH public key"
+                placeholder={m.advanced_ssh_public_key_placeholder()}
               />
               <p className="text-xs text-slate-600 dark:text-slate-400">
-                The default SSH user is <strong>root</strong>.
+                {m.advanced_ssh_default_user()}<strong>root</strong>.
               </p>
               <div className="flex items-center gap-x-2">
                 <Button
                   size="SM"
                   theme="primary"
-                  text="Update SSH Key"
+                  text={m.advanced_update_ssh_key_button()}
                   onClick={handleUpdateSSHKey}
                 />
               </div>
@@ -277,8 +276,8 @@ export default function SettingsAdvancedRoute() {
         )}
 
         <SettingsItem
-          title="Troubleshooting Mode"
-          description="Diagnostic tools and additional controls for troubleshooting and development purposes"
+          title={m.advanced_troubleshooting_mode_title()}
+          description={m.advanced_troubleshooting_mode_description()}
         >
           <Checkbox
             defaultChecked={settings.debugMode}
@@ -291,27 +290,27 @@ export default function SettingsAdvancedRoute() {
         {settings.debugMode && (
           <>
             <SettingsItem
-              title="USB Emulation"
-              description="Control the USB emulation state"
+              title={m.advanced_usb_emulation_title()}
+              description={m.advanced_usb_emulation_description()}
             >
               <Button
                 size="SM"
                 theme="light"
                 text={
-                  usbEmulationEnabled ? "Disable USB Emulation" : "Enable USB Emulation"
+                  usbEmulationEnabled ? m.advanced_disable_usb_emulation() : m.advanced_enable_usb_emulation()
                 }
                 onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
               />
             </SettingsItem>
 
             <SettingsItem
-              title="Reset Configuration"
-              description="Reset configuration to default. This will log you out."
+              title={m.advanced_reset_config_title()}
+              description={m.advanced_reset_config_description()}
             >
               <Button
                 size="SM"
                 theme="light"
-                text="Reset Config"
+                text={m.advanced_reset_config_button()}
                 onClick={() => {
                   handleResetConfig();
                   window.location.reload();
@@ -327,22 +326,23 @@ export default function SettingsAdvancedRoute() {
         onClose={() => {
           setShowLoopbackWarning(false);
         }}
-        title="Enable Loopback-Only Mode?"
+        title={m.advanced_loopback_warning_title()}
         description={
           <>
             <p>
-              WARNING: This will restrict web interface access to localhost (127.0.0.1)
-              only.
+              {m.advanced_loopback_warning_description()}
             </p>
-            <p>Before enabling this feature, make sure you have either:</p>
+            <p>
+              {m.advanced_loopback_warning_before()}
+            </p>
             <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
-              <li>SSH access configured and tested</li>
-              <li>Cloud access enabled and working</li>
+              <li>{m.advanced_loopback_warning_ssh()}</li>
+              <li>{m.advanced_loopback_warning_cloud()}</li>
             </ul>
           </>
         }
         variant="warning"
-        confirmText="I Understand, Enable Anyway"
+        confirmText={m.advanced_loopback_warning_confirm()}
         onConfirm={confirmLoopbackModeEnable}
       />
     </div>

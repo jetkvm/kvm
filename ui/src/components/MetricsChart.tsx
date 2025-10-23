@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 
+import { getLocale } from '@localizations/runtime.js';
 import CustomTooltip, { CustomTooltipProps } from "@components/CustomTooltip";
 
 export default function MetricsChart({
@@ -51,7 +52,7 @@ export default function MetricsChart({
           axisLine={{ stroke: "rgba(30, 41, 59, 0.3)" }}
           tickLine={{ stroke: "rgba(30, 41, 59, 0.3)" }}
           tickFormatter={date => {
-            return new Date(date * 1000).toLocaleString("en-US", {
+            return new Date(date * 1000).toLocaleString(getLocale() || "en-US", {
               hourCycle: "h23",
               hour: "numeric",
               minute: "2-digit",

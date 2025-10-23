@@ -1,6 +1,6 @@
+import { useEffect, useMemo } from "react";
 import "react-simple-keyboard/build/css/index.css";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
-import { useEffect, useMemo } from "react";
 import { useXTerm } from "react-xtermjs";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -9,9 +9,9 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 
 import { cx } from "@/cva.config";
-import { AvailableTerminalTypes, useUiStore } from "@/hooks/stores";
-
-import { Button } from "./Button";
+import { AvailableTerminalTypes, useUiStore } from "@hooks/stores";
+import { Button } from "@components/Button";
+import { m } from "@localizations/messages.js";
 
 const isWebGl2Supported = !!document.createElement("canvas").getContext("webgl2");
 
@@ -54,6 +54,7 @@ const TERMINAL_CONFIG = {
   // Add these configurations:
   cursorStyle: "block",
   rendererType: "canvas", // Ensure we're using the canvas renderer
+  unicode: { activeVersion: "11" }
 } as const;
 
 function Terminal({
@@ -144,7 +145,6 @@ function Terminal({
     instance.loadAddon(new ClipboardAddon());
     instance.loadAddon(new Unicode11Addon());
     instance.loadAddon(new WebLinksAddon());
-    instance.unicode.activeVersion = "11";
 
     if (isWebGl2Supported) {
       const webGl2Addon = new WebglAddon();
@@ -191,7 +191,7 @@ function Terminal({
                 <Button
                   size="XS"
                   theme="light"
-                  text="Hide"
+                  text={m.hide()}
                   LeadingIcon={ChevronDownIcon}
                   onClick={() => setTerminalType("none")}
                 />

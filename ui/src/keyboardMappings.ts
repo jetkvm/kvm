@@ -121,7 +121,7 @@ export const keys = {
   Hanja: 0x91,
   Katakana: 0x92,
   Hiragana: 0x93,
-  ZenkakuHankaku:0x94,
+  ZenkakuHankaku: 0x94,
   LockingCapsLock: 0x82,
   LockingNumLock: 0x83,
   LockingScrollLock: 0x84,
@@ -279,7 +279,7 @@ export const hidKeyToModifierMask = {
 export const latchingKeys = ["CapsLock", "ScrollLock", "NumLock", "Meta", "Compose", "Kana"];
 
 export function decodeModifiers(modifier: number) {
-  return { 
+  return {
     isShiftActive: (modifier & (modifiers.ShiftLeft | modifiers.ShiftRight)) !== 0,
     isControlActive: (modifier & (modifiers.ControlLeft | modifiers.ControlRight)) !== 0,
     isAltActive: (modifier & (modifiers.AltLeft | modifiers.AltRight)) !== 0,

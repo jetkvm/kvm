@@ -1,10 +1,9 @@
 import React, { JSX } from "react";
-import { Link, useNavigation } from "react-router";
-import type { FetcherWithComponents, LinkProps } from "react-router";
+import { Link, type FetcherWithComponents, type LinkProps, useNavigation } from "react-router";
 
-import ExtLink from "@/components/ExtLink";
-import LoadingSpinner from "@/components/LoadingSpinner";
 import { cva, cx } from "@/cva.config";
+import ExtLink from "@components/ExtLink";
+import LoadingSpinner from "@components/LoadingSpinner";
 
 const sizes = {
   XS: "h-[28px] px-2 text-xs",

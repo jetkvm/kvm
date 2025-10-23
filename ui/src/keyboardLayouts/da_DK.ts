@@ -6,10 +6,10 @@ export const name = "Dansk";
 const isoCode = "da-DK";
 
 const keyTrema = { key: "BracketRight" }
-const keyAcute = { key: "Equal", altRight: true } 
-const keyHat = { key: "BracketRight", shift: true } 
-const keyGrave = { key: "Equal", shift: true } 
-const keyTilde = { key: "BracketRight", altRight: true } 
+const keyAcute = { key: "Equal", altRight: true }
+const keyHat = { key: "BracketRight", shift: true }
+const keyGrave = { key: "Equal", shift: true }
+const keyTilde = { key: "BracketRight", altRight: true }
 
 export const chars = {
   A: { key: "KeyA", shift: true },
@@ -61,8 +61,8 @@ export const chars = {
   V: { key: "KeyV", shift: true },
   W: { key: "KeyW", shift: true },
   X: { key: "KeyX", shift: true },
-  Y: { key: "KeyY", shift: true },  
-  Z: { key: "KeyZ", shift: true },   
+  Y: { key: "KeyY", shift: true },
+  Z: { key: "KeyZ", shift: true },
   a: { key: "KeyA" },
   "ä": { key: "KeyA", accentKey: keyTrema },
   "á": { key: "KeyA", accentKey: keyAcute },
@@ -115,7 +115,7 @@ export const chars = {
   x: { key: "KeyX" },
   y: { key: "KeyY" },   // <-- corrected
   z: { key: "KeyZ" },   // <-- corrected
-  "½": { key: "Backquote" }, 
+  "½": { key: "Backquote" },
   "§": { key: "Backquote", shift: true },
   1: { key: "Digit1" },
   "!": { key: "Digit1", shift: true },
@@ -163,11 +163,11 @@ export const chars = {
   "_": { key: "Slash", shift: true },
   "<": { key: "IntlBackslash" },
   ">": { key: "IntlBackslash", shift: true },
-  "~": { key: "BracketRight", deadKey: true, altRight: true }, 
-  "^": { key: "BracketRight", deadKey: true, shift: true }, 
-  "¨": { key: "BracketRight", deadKey: true, }, 
-  "|": { key: "Equal", deadKey: true, altRight: true},
-  "`": { key: "Equal", deadKey: true, shift: true, }, 
+  "~": { key: "BracketRight", deadKey: true, altRight: true },
+  "^": { key: "BracketRight", deadKey: true, shift: true },
+  "¨": { key: "BracketRight", deadKey: true, },
+  "|": { key: "Equal", deadKey: true, altRight: true },
+  "`": { key: "Equal", deadKey: true, shift: true, },
   "´": { key: "Equal", deadKey: true, },
   " ": { key: "Space" },
   "\n": { key: "Enter" },
@@ -181,7 +181,7 @@ export const da_DK: KeyboardLayout = {
   name: name,
   chars: chars,
   // TODO need to localize these maps and layouts
-  keyDisplayMap: en_US.keyDisplayMap, 
+  keyDisplayMap: en_US.keyDisplayMap,
   modifierDisplayMap: en_US.modifierDisplayMap,
   virtualKeyboard: en_US.virtualKeyboard
 };

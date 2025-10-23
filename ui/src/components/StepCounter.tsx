@@ -1,7 +1,8 @@
 import { CheckIcon } from "@heroicons/react/16/solid";
 
+import Card from "@components/Card";
+import { m } from "@localizations/messages.js";
 import { cva, cx } from "@/cva.config";
-import Card from "@/components/Card";
 
 interface Props {
   nSteps: number;
@@ -49,7 +50,7 @@ export default function StepCounter({ nSteps, currStepIdx, size = "MD" }: Props)
               )}
               key={`${i}-${currStepIdx}`}
             >
-              Step {i + 1}
+              {m.step_counter_step({ step: i + 1 })}
             </div>
           );
         }

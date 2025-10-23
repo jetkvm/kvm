@@ -2,10 +2,10 @@
 import { ComponentProps } from "react";
 import { cva, cx } from "cva";
 
-import { someIterable } from "../utils";
-
-import { GridCard } from "./Card";
-import MetricsChart from "./MetricsChart";
+import { GridCard } from "@components/Card";
+import MetricsChart from "@components/MetricsChart";
+import { someIterable } from "@/utils";
+import { m } from "@localizations/messages.js";
 
 interface ChartPoint {
   date: number;
@@ -159,7 +159,7 @@ export function Metric<T, K extends keyof T>({
         >
           {!ready ? (
             <div className="flex flex-col items-center space-y-1">
-              <p className="text-slate-700">Waiting for data...</p>
+              <p className="text-slate-700">{m.metric_waiting_for_data()}</p>
             </div>
           ) : supportedFinal ? (
             <MetricsChart
@@ -170,7 +170,7 @@ export function Metric<T, K extends keyof T>({
             />
           ) : (
             <div className="flex flex-col items-center space-y-1">
-              <p className="text-black">Metric not supported</p>
+              <p className="text-black">{m.metric_not_supported()}</p>
             </div>
           )}
         </div>

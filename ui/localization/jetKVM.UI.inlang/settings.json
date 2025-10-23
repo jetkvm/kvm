@@ -1,0 +1,48 @@
+{
+  "$schema": "https://inlang.com/schema/project-settings",
+  "baseLocale": "en",
+  "sourceLanguageTag": "en",
+  "locales": [
+    "en",
+    "da",
+    "de",
+    "es",
+    "fr",
+    "it",
+    "nb",
+    "sv",
+    "zh"
+  ],
+  "languageTags": [
+    "en",
+    "da",
+    "de",
+    "es",
+    "fr",
+    "it",
+    "nb",
+    "sv",
+    "zh"
+  ],
+  "modules": [
+    "https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@latest/dist/index.js",
+    "https://cdn.jsdelivr.net/npm/@inlang/plugin-m-function-matcher@latest/dist/index.js"
+  ],
+  "plugin.inlang.messageFormat": {
+    "pathPattern": "./messages/{locale}.json"
+  },
+  "plugin.inlang.mFunctionMatcher": {
+    "matchers": [
+      {
+        "type": "m-function",
+        "function": "plural",
+        "parameter": "count"
+      }
+    ]
+  },
+  "strategy": [
+    "cookie",
+    "preferredLanguage",
+    "baseLocale"
+  ]
+}

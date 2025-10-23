@@ -1,9 +1,8 @@
-import type { Ref } from "react";
-import React, { forwardRef, JSX } from "react";
+import React, { forwardRef, JSX, type Ref } from "react";
 import clsx from "clsx";
 
-import FieldLabel from "@/components/FieldLabel";
-import Card from "@/components/Card";
+import FieldLabel from "@components/FieldLabel";
+import Card from "@components/Card";
 import { cva } from "@/cva.config";
 
 const sizes = {

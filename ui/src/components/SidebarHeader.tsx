@@ -1,6 +1,7 @@
+import { AvailableSidebarViews } from "@hooks/stores";
 import { Button } from "@components/Button";
 import { cx } from "@/cva.config";
-import { AvailableSidebarViews } from "@/hooks/stores";
+import { m } from "@localizations/messages.js";
 
 export default function SidebarHeader({
   title,
@@ -17,7 +18,7 @@ export default function SidebarHeader({
       <Button
         size="XS"
         theme="blank"
-        text="Hide"
+        text={m.hide()}
         LeadingIcon={({ className }) => (
           <svg
             className={cx(className, "rotate-180")}
