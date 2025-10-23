@@ -173,11 +173,8 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 	}
 
 	if session.Nickname != "" {
-		if len(session.Nickname) < minNicknameLength {
-			return fmt.Errorf("nickname must be at least %d characters", minNicknameLength)
-		}
-		if len(session.Nickname) > maxNicknameLength {
-			return fmt.Errorf("nickname must be %d characters or less", maxNicknameLength)
+		if err := sm.validateNickname(session.Nickname); err != nil {
+			return err
 		}
 	}
 	if len(session.Identity) > maxIdentityLength {
@@ -1529,6 +1526,37 @@ func generateNicknameFromUserAgent(userAgent string) string {
 }
 
 // ensureNickname ensures session has a nickname, auto-generating if needed
+func (sm *SessionManager) validateNickname(nickname string) error {
+	if len(nickname) < minNicknameLength {
+		return fmt.Errorf("nickname must be at least %d characters", minNicknameLength)
+	}
+	if len(nickname) > maxNicknameLength {
+		return fmt.Errorf("nickname must be %d characters or less", maxNicknameLength)
+	}
+	if !isValidNickname(nickname) {
+		return errors.New("nickname can only contain letters, numbers, spaces, and - _ . @")
+	}
+
+	for i, r := range nickname {
+		if r < 32 || r == 127 {
+			return fmt.Errorf("nickname contains control character at position %d", i)
+		}
+		if r >= 0x200B && r <= 0x200D {
+			return errors.New("nickname contains zero-width character")
+		}
+	}
+
+	trimmed := ""
+	for _, r := range nickname {
+		trimmed += string(r)
+	}
+	if trimmed != nickname {
+		return errors.New("nickname contains disallowed unicode")
+	}
+
+	return nil
+}
+
 func (sm *SessionManager) ensureNickname(session *Session) {
 	// Skip if session already has a nickname
 	if session.Nickname != "" {

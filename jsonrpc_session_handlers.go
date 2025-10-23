@@ -95,42 +95,11 @@ func handleRequestSessionApprovalRPC(session *Session) (any, error) {
 	return map[string]interface{}{"status": "requested"}, nil
 }
 
-func validateNickname(nickname string) error {
-	if len(nickname) < minNicknameLength {
-		return fmt.Errorf("nickname must be at least %d characters", minNicknameLength)
-	}
-	if len(nickname) > maxNicknameLength {
-		return fmt.Errorf("nickname must be %d characters or less", maxNicknameLength)
-	}
-	if !isValidNickname(nickname) {
-		return errors.New("nickname can only contain letters, numbers, spaces, and - _ . @")
-	}
-
-	for i, r := range nickname {
-		if r < 32 || r == 127 {
-			return fmt.Errorf("nickname contains control character at position %d", i)
-		}
-		if r >= 0x200B && r <= 0x200D {
-			return errors.New("nickname contains zero-width character")
-		}
-	}
-
-	trimmed := ""
-	for _, r := range nickname {
-		trimmed += string(r)
-	}
-	if trimmed != nickname {
-		return errors.New("nickname contains disallowed unicode")
-	}
-
-	return nil
-}
-
 func handleUpdateSessionNicknameRPC(params map[string]any, session *Session) (any, error) {
 	sessionID, _ := params["sessionId"].(string)
 	nickname, _ := params["nickname"].(string)
 
-	if err := validateNickname(nickname); err != nil {
+	if err := sessionManager.validateNickname(nickname); err != nil {
 		return nil, err
 	}
 
