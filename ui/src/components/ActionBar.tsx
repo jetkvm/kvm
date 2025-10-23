@@ -207,7 +207,7 @@ export default function Actionbar({
               <Button
                 size="XS"
                 theme="light"
-                text="Audio"
+                text={m.action_bar_audio()}
                 LeadingIcon={LuVolume2}
                 onClick={() => {
                   setDisableVideoFocusTrap(true);
