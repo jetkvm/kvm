@@ -7,9 +7,9 @@ import {
   ComboboxOptions,
 } from "@headlessui/react";
 
+import { m } from "@localizations/messages.js";
+import Card from "@components/Card";
 import { cva } from "@/cva.config";
-
-import Card from "./Card";
 
 export interface ComboboxOption {
   value: string;
@@ -44,11 +44,11 @@ export function Combobox({
   displayValue,
   options,
   disabled = false,
-  placeholder = "Search...",
-  emptyMessage = "No results found",
+  placeholder = m.search_placeholder(),
+  emptyMessage = m.no_results_found(),
   size = "MD",
   onChange,
-  disabledMessage = "Input disabled",
+  disabledMessage = m.input_disabled(),
   ...otherProps
 }: ComboboxProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -78,7 +78,7 @@ export function Combobox({
 
                 // Disabled
                 disabled &&
-                  "pointer-events-none select-none bg-slate-50 text-slate-500/80 disabled:hover:bg-white dark:bg-slate-800 dark:text-slate-400/80 dark:disabled:hover:bg-slate-800",
+                "pointer-events-none select-none bg-slate-50 text-slate-500/80 disabled:hover:bg-white dark:bg-slate-800 dark:text-slate-400/80 dark:disabled:hover:bg-slate-800",
               )}
               placeholder={disabled ? disabledMessage : placeholder}
               displayValue={displayValue}

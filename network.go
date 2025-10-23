@@ -193,6 +193,7 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 
 	oldIPv4Mode := oldConfig.IPv4Mode.String
 	newIPv4Mode := newConfig.IPv4Mode.String
+
 	// IPv4 mode change requires reboot
 	if newIPv4Mode != oldIPv4Mode {
 		rebootRequired = true
@@ -284,7 +285,8 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 	}
 
 	if rebootRequired {
-		if err := rpcReboot(false); err != nil {
+		l.Info().Msg("Rebooting due to network changes")
+		if err := hwReboot(true, postRebootAction, 0); err != nil {
 			return nil, err
 		}
 	}

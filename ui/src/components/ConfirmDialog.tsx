@@ -1,8 +1,9 @@
 import { CloseButton } from "@headlessui/react";
 import { LuCircleAlert, LuInfo, LuTriangleAlert } from "react-icons/lu";
 
-import { Button } from "@/components/Button";
-import Modal from "@/components/Modal";
+import { m } from "@localizations/messages.js";
+import { Button } from "@components/Button";
+import Modal from "@components/Modal";
 import { cx } from "@/cva.config";
 
 type Variant = "danger" | "success" | "warning" | "info";
@@ -55,8 +56,8 @@ export function ConfirmDialog({
   title,
   description,
   variant = "info",
-  confirmText = "Confirm",
-  cancelText = "Cancel",
+  confirmText = m.confirm(),
+  cancelText = m.cancel(),
   onConfirm,
   isConfirming = false,
 }: ConfirmDialogProps) {

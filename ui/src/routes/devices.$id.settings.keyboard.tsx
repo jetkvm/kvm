@@ -1,13 +1,14 @@
 import { useCallback, useEffect } from "react";
 
-import { useSettingsStore } from "@/hooks/stores";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import useKeyboardLayout from "@/hooks/useKeyboardLayout";
+import { useSettingsStore } from "@hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import useKeyboardLayout from "@hooks/useKeyboardLayout";
+import { Checkbox } from "@components/Checkbox";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
-import { Checkbox } from "@/components/Checkbox";
-import { SelectMenuBasic } from "@/components/SelectMenuBasic";
 import notifications from "@/notifications";
+import { m } from "@localizations/messages.js";
 
 export default function SettingsKeyboardRoute() {
   const { setKeyboardLayout } = useSettingsStore();
@@ -33,10 +34,10 @@ export default function SettingsKeyboardRoute() {
       send("setKeyboardLayout", { layout: isoCode }, resp => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to set keyboard layout: ${resp.error.data || "Unknown error"}`,
+            m.keyboard_layout_error({ error: resp.error.data || m.unknown_error() }),
           );
         }
-        notifications.success("Keyboard layout set successfully to " + isoCode);
+        notifications.success(m.keyboard_layout_success({ layout: isoCode }));
         setKeyboardLayout(isoCode);
       });
     },
@@ -46,14 +47,14 @@ export default function SettingsKeyboardRoute() {
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Keyboard"
-        description="Configure keyboard settings for your device"
+        title={m.keyboard_title()}
+        description={m.keyboard_description()}
       />
 
       <div className="space-y-4">
         <SettingsItem
-          title="Keyboard Layout"
-          description="Keyboard layout of target operating system"
+          title={m.keyboard_layout_title()}
+          description={m.keyboard_layout_description()}
         >
           <SelectMenuBasic
             size="SM"
@@ -65,14 +66,14 @@ export default function SettingsKeyboardRoute() {
           />
         </SettingsItem>
         <p className="text-xs text-slate-600 dark:text-slate-400">
-          The virtual keyboard, paste text, and keyboard macros send individual key strokes to the target device. The keyboard layout determines which key codes are being sent. Ensure that the keyboard layout in JetKVM matches the settings in the operating system.
+          {m.keyboard_layout_long_description()}
         </p>
       </div>
 
       <div className="space-y-4">
         <SettingsItem
-          title="Show Pressed Keys"
-          description="Display currently pressed keys in the status bar"
+          title={m.keyboard_show_pressed_keys_title()}
+          description={m.keyboard_show_pressed_keys_description()}
         >
           <Checkbox
             checked={showPressedKeys}

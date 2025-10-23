@@ -29,4 +29,4 @@ import { nb_NO } from "@/keyboardLayouts/nb_NO"
 import { sv_SE } from "@/keyboardLayouts/sv_SE"
 import { da_DK } from "@/keyboardLayouts/da_DK"
 
-export const keyboards: KeyboardLayout[] = [ cs_CZ, de_CH, de_DE, en_UK, en_US, es_ES, fr_BE, fr_CH, fr_FR, it_IT, nb_NO, sv_SE, da_DK ];
+export const keyboards: KeyboardLayout[] = [cs_CZ, de_CH, de_DE, en_UK, en_US, es_ES, fr_BE, fr_CH, fr_FR, it_IT, nb_NO, sv_SE, da_DK];

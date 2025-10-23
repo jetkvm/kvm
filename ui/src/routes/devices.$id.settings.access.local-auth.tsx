@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useLocation, useRevalidator } from "react-router";
 
+import { useLocalAuthModalStore } from "@hooks/stores";
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { Button } from "@components/Button";
 import { InputFieldWithLabel } from "@/components/InputField";
 import api from "@/api";
-import { useLocalAuthModalStore } from "@/hooks/stores";
-import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import { m } from "@localizations/messages.js";
 
 export default function SecurityAccessLocalAuthRoute() {
   const { setModalView } = useLocalAuthModalStore();
@@ -21,25 +22,22 @@ export default function SecurityAccessLocalAuthRoute() {
     }
   }, [init, navigateTo, setModalView]);
 
-  {
-    /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
-  }
   return <Dialog onClose={() => navigateTo("..")} />;
 }
 
-export function Dialog({ onClose }: { onClose: () => void }) {
+export function Dialog({ onClose }: Readonly<{ onClose: () => void }>) {
   const { modalView, setModalView } = useLocalAuthModalStore();
   const [error, setError] = useState<string | null>(null);
   const revalidator = useRevalidator();
 
   const handleCreatePassword = async (password: string, confirmPassword: string) => {
     if (password === "") {
-      setError("Please enter a password");
+      setError(m.local_auth_error_enter_password());
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(m.local_auth_error_passwords_not_match());
       return;
     }
 
@@ -51,11 +49,11 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         revalidator.revalidate();
       } else {
         const data = await res.json();
-        setError(data.error || "An error occurred while setting the password");
+        setError(data.error || m.local_auth_error_setting_password());
       }
     } catch (error) {
       console.error(error);
-      setError("An error occurred while setting the password");
+      setError(m.local_auth_error_setting_password());
     }
   };
 
@@ -65,17 +63,17 @@ export function Dialog({ onClose }: { onClose: () => void }) {
     confirmNewPassword: string,
   ) => {
     if (newPassword !== confirmNewPassword) {
-      setError("Passwords do not match");
+      setError(m.local_auth_error_passwords_not_match());
       return;
     }
 
     if (oldPassword === "") {
-      setError("Please enter your old password");
+      setError(m.local_auth_error_enter_old_password());
       return;
     }
 
     if (newPassword === "") {
-      setError("Please enter a new password");
+      setError(m.local_auth_error_enter_new_password());
       return;
     }
 
@@ -91,17 +89,17 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         revalidator.revalidate();
       } else {
         const data = await res.json();
-        setError(data.error || "An error occurred while changing the password");
+        setError(data.error || m.local_auth_error_changing_password());
       }
     } catch (error) {
       console.error(error);
-      setError("An error occurred while changing the password");
+      setError(m.local_auth_error_changing_password());
     }
   };
 
   const handleDeletePassword = async (password: string) => {
     if (password === "") {
-      setError("Please enter your current password");
+      setError(m.local_auth_error_enter_current_password());
       return;
     }
 
@@ -113,11 +111,11 @@ export function Dialog({ onClose }: { onClose: () => void }) {
         revalidator.revalidate();
       } else {
         const data = await res.json();
-        setError(data.error || "An error occurred while disabling the password");
+        setError(data.error || m.local_auth_error_disabling_password());
       }
     } catch (error) {
       console.error(error);
-      setError("An error occurred while disabling the password");
+      setError(m.local_auth_error_disabling_password());
     }
   };
 
@@ -150,24 +148,24 @@ export function Dialog({ onClose }: { onClose: () => void }) {
 
         {modalView === "creationSuccess" && (
           <SuccessModal
-            headline="Password Set Successfully"
-            description="You've successfully set up local device protection. Your device is now secure against unauthorized local access."
+            headline={m.local_auth_success_password_set_title()}
+            description={m.local_auth_success_password_set_description()}
             onClose={onClose}
           />
         )}
 
         {modalView === "deleteSuccess" && (
           <SuccessModal
-            headline="Password Protection Disabled"
-            description="You've successfully disabled the password protection for local access. Remember, your device is now less secure."
+            headline={m.local_auth_success_password_disabled_title()}
+            description={m.local_auth_success_password_disabled_description()}
             onClose={onClose}
           />
         )}
 
         {modalView === "updateSuccess" && (
           <SuccessModal
-            headline="Password Updated Successfully"
-            description="You've successfully changed your local device protection password. Make sure to remember your new password for future access."
+            headline={m.local_auth_success_password_updated_title()}
+            description={m.local_auth_success_password_updated_description()}
             onClose={onClose}
           />
         )}
@@ -198,24 +196,24 @@ function CreatePasswordModal({
       >
         <div>
           <h2 className="text-lg font-semibold dark:text-white">
-            Local Device Protection
+            {m.local_auth_create_title()}
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Create a password to protect your device from unauthorized local access.
+            {m.local_auth_create_description()}
           </p>
         </div>
         <InputFieldWithLabel
-          label="New Password"
+          label={m.local_auth_create_new_password_label()}
           type="password"
-          placeholder="Enter a strong password"
+          placeholder={m.local_auth_create_new_password_placeholder()}
           value={password}
           autoFocus
           onChange={e => setPassword(e.target.value)}
         />
         <InputFieldWithLabel
-          label="Confirm New Password"
+          label={m.local_auth_confirm_new_password_label()}
           type="password"
-          placeholder="Re-enter your password"
+          placeholder={m.local_auth_create_confirm_password_placeholder()}
           value={confirmPassword}
           onChange={e => setConfirmPassword(e.target.value)}
         />
@@ -224,10 +222,10 @@ function CreatePasswordModal({
           <Button
             size="SM"
             theme="primary"
-            text="Secure Device"
+            text={m.local_auth_create_secure_button()}
             onClick={() => onSetPassword(password, confirmPassword)}
           />
-          <Button size="SM" theme="light" text="Not Now" onClick={onCancel} />
+          <Button size="SM" theme="light" text={m.local_auth_create_not_now_button()} onClick={onCancel} />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
@@ -251,16 +249,16 @@ function DeletePasswordModal({
       <div className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold dark:text-white">
-            Disable Local Device Protection
+            {m.local_auth_disable_local_device_protection_title()}
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Enter your current password to disable local device protection.
+            {m.local_auth_disable_local_device_protection_description()}
           </p>
         </div>
         <InputFieldWithLabel
-          label="Current Password"
+          label={m.local_auth_current_password_label()}
           type="password"
-          placeholder="Enter your current password"
+          placeholder={m.local_auth_enter_current_password_placeholder()}
           value={password}
           onChange={e => setPassword(e.target.value)}
         />
@@ -268,10 +266,10 @@ function DeletePasswordModal({
           <Button
             size="SM"
             theme="danger"
-            text="Disable Protection"
+            text={m.local_auth_disable_protection_button()}
             onClick={() => onDeletePassword(password)}
           />
-          <Button size="SM" theme="light" text="Cancel" onClick={onCancel} />
+          <Button size="SM" theme="light" text={m.cancel()} onClick={onCancel} />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
       </div>
@@ -306,31 +304,30 @@ function UpdatePasswordModal({
       >
         <div>
           <h2 className="text-lg font-semibold dark:text-white">
-            Change Local Device Password
+            {m.local_auth_change_local_device_password_title()}
           </h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Enter your current password and a new password to update your local device
-            protection.
+            {m.local_auth_change_local_device_password_description()}
           </p>
         </div>
         <InputFieldWithLabel
-          label="Current Password"
+          label={m.local_auth_current_password_label()}
           type="password"
-          placeholder="Enter your current password"
+          placeholder={m.local_auth_enter_current_password_placeholder()}
           value={oldPassword}
           onChange={e => setOldPassword(e.target.value)}
         />
         <InputFieldWithLabel
-          label="New Password"
+          label={m.local_auth_new_password_label()}
           type="password"
-          placeholder="Enter a new strong password"
+          placeholder={m.local_auth_enter_new_password_placeholder()}
           value={newPassword}
           onChange={e => setNewPassword(e.target.value)}
         />
         <InputFieldWithLabel
-          label="Confirm New Password"
+          label={m.local_auth_confirm_new_password_label()}
           type="password"
-          placeholder="Re-enter your new password"
+          placeholder={m.local_auth_reenter_new_password_placeholder()}
           value={confirmNewPassword}
           onChange={e => setConfirmNewPassword(e.target.value)}
         />
@@ -338,10 +335,10 @@ function UpdatePasswordModal({
           <Button
             size="SM"
             theme="primary"
-            text="Update Password"
+            text={m.local_auth_update_password_button()}
             onClick={() => onUpdatePassword(oldPassword, newPassword, confirmNewPassword)}
           />
-          <Button size="SM" theme="light" text="Cancel" onClick={onCancel} />
+          <Button size="SM" theme="light" text={m.cancel()} onClick={onCancel} />
         </div>
         {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
@@ -365,7 +362,7 @@ function SuccessModal({
           <h2 className="text-lg font-semibold dark:text-white">{headline}</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">{description}</p>
         </div>
-        <Button size="SM" theme="primary" text="Close" onClick={onClose} />
+        <Button size="SM" theme="primary" text={m.close()} onClick={onClose} />
       </div>
     </div>
   );

@@ -1,0 +1,25 @@
+{
+    "recommendations": [
+        // coding styles
+        "chrislajoie.vscode-modelines",
+        "editorconfig.editorconfig",
+        // GitHub
+        "GitHub.vscode-pull-request-github",
+        "github.vscode-github-actions",
+        // Golang
+        "golang.go",
+        // C / C++
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack",
+        // CMake / Makefile
+        "ms-vscode.makefile-tools",
+        "ms-vscode.cmake-tools",
+        // Frontend
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss",
+        "codeandstuff.package-json-upgrade",
+        // Localization
+        "inlang.vs-code-extension"
+    ]
+}

@@ -2,14 +2,15 @@ import { Form, redirect, useActionData, useLoaderData } from "react-router";
 import type { ActionFunction, ActionFunctionArgs, LoaderFunction, LoaderFunctionArgs } from "react-router";
 import { ChevronLeftIcon } from "@heroicons/react/16/solid";
 
+import { User } from "@hooks/stores";
 import { Button, LinkButton } from "@components/Button";
 import Card from "@components/Card";
 import { CardHeader } from "@components/CardHeader";
 import DashboardNavbar from "@components/Header";
-import { User } from "@/hooks/stores";
-import { checkAuth } from "@/main";
 import Fieldset from "@components/Fieldset";
+import { checkAuth } from "@/main";
 import { CLOUD_API } from "@/ui.config";
+import { m } from "@localizations/messages.js";
 
 interface LoaderData {
   device: { id: string; name: string; user: { googleId: string } };
@@ -28,11 +29,12 @@ const action: ActionFunction = async ({ request }: ActionFunctionArgs) => {
     });
 
     if (!res.ok) {
-      return { message: "There was an error deregistering your device. Please try again." };
+      return { message: m.deregister_error({ status: res.statusText }) };
     }
   } catch (e) {
     console.error(e);
-    return { message: "There was an error deregistering your device. Please try again." };
+    const message = e instanceof Error ? e.message : String(e);
+    return { message: m.deregister_error({ status: message }) };
   }
 
   return redirect("/devices");
@@ -68,7 +70,7 @@ export default function DevicesIdDeregister() {
     <div className="grid min-h-screen grid-rows-(--grid-layout)">
       <DashboardNavbar
         isLoggedIn={!!user}
-        primaryLinks={[{ title: "Cloud Devices", to: "/devices" }]}
+        primaryLinks={[{ title: m.deregister_cloud_devices(), to: "/devices" }]}
         userEmail={user?.email}
         picture={user?.picture}
         kvmName={device?.name}
@@ -82,21 +84,14 @@ export default function DevicesIdDeregister() {
                 size="SM"
                 theme="blank"
                 LeadingIcon={ChevronLeftIcon}
-                text="Back to Devices"
+                text={m.back_to_devices()}
                 to="/devices"
               />
               <Card className="max-w-3xl p-6">
                 <div className="max-w-xl space-y-4">
                   <CardHeader
-                    headline={`Deregister ${device.name || device.id} from your cloud account`}
-                    description={
-                      <>
-                        This will remove the device from your cloud account and revoke
-                        remote access to it.
-                        <br />
-                        Please note that local access will still be possible
-                      </>
-                    }
+                    headline={m.deregister_headline({ device: device.name || device.id })}
+                    description={m.deregister_description()}
                   />
 
                   <Fieldset>
@@ -107,20 +102,20 @@ export default function DevicesIdDeregister() {
                           size="MD"
                           theme="light"
                           to="/devices"
-                          text="Cancel"
+                          text={m.cancel()}
                           textAlign="center"
                         />
                         <Button
                           size="MD"
                           theme="danger"
                           type="submit"
-                          text="Deregister from Cloud"
+                          text={m.deregister_from_cloud()}
                           textAlign="center"
                         />
                       </div>
                       {error?.message && (
                         <p className="text-sm text-red-500 dark:text-red-400">
-                          {error?.message}
+                          {m.deregister_error({ status: error.message })}
                         </p>
                       )}
                     </Form>

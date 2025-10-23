@@ -13,3 +13,5 @@ node_modules
 # generated during the build process
 #internal/native/include
 #internal/native/lib
+
+ui/reports

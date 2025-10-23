@@ -3,9 +3,14 @@
     "target": "ES2020",
     "useDefineForClassFields": true,
     "forceConsistentCasingInFileNames": true,
-    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2021",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "skipLibCheck": true,
+    "allowJs": true,
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": false,
@@ -18,16 +23,39 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["vite/client"],
+    "erasableSyntaxOnly": true,
+    "noUncheckedSideEffectImports": true,
+    "types": [
+      "vite/client"
+    ],
     /* Import Aliases */
     "paths": {
-      "@components/*": ["./src/components/*"],
-      "@routes/*": ["./src/routes/*"],
-      "@assets/*": ["./src/assets/*"],
-      "@/*": ["./src/*"]
+      "@components/*": [
+        "./src/components/*"
+      ],
+      "@routes/*": [
+        "./src/routes/*"
+      ],
+      "@hooks/*": [
+        "./src/hooks/*"
+      ],
+      "@providers/*": [
+        "./src/providers/*"
+      ],
+      "@assets/*": [
+        "./src/assets/*"
+      ],
+      "@localizations/*": [
+        "./localization/paraglide/*"
+      ],
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
     {
       "path": "./tsconfig.node.json"

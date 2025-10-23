@@ -5,26 +5,20 @@ import { ChevronLeftIcon } from "@heroicons/react/16/solid";
 import { Button, LinkButton } from "@components/Button";
 import Card from "@components/Card";
 import { CardHeader } from "@components/CardHeader";
-import { InputFieldWithLabel } from "@components/InputField";
 import DashboardNavbar from "@components/Header";
-import { User } from "@/hooks/stores";
-import { checkAuth } from "@/main";
 import Fieldset from "@components/Fieldset";
+import { InputFieldWithLabel } from "@components/InputField";
+import { checkAuth } from "@/main";
 import { CLOUD_API } from "@/ui.config";
-
-import api from "../api";
-
-interface LoaderData {
-  device: { id: string; name: string; user: { googleId: string } };
-  user: User;
-}
+import api from "@/api";
+import { m } from "@localizations/messages";
 
 const action: ActionFunction = async ({ params, request }: ActionFunctionArgs) => {
   const { id } = params;
   const { name } = Object.fromEntries(await request.formData());
 
   if (!name || name === "") {
-    return { message: "Please specify a name" };
+    return { message: m.rename_device_no_name() };
   }
 
   try {
@@ -32,11 +26,11 @@ const action: ActionFunction = async ({ params, request }: ActionFunctionArgs) =
       name,
     });
     if (!res.ok) {
-      return { message: "There was an error renaming your device. Please try again." };
+      return { message: m.rename_device_error({ error: res.statusText }) };
     }
   } catch (e) {
     console.error(e);
-    return { message: "There was an error renaming your device. Please try again." };
+    return { message: m.rename_device_error({ error: String(e) }) };
   }
 
   return redirect("/devices");
@@ -65,7 +59,7 @@ const loader: LoaderFunction = async ({ params }: LoaderFunctionArgs) => {
 };
 
 export default function DeviceIdRename() {
-  const { device, user } = useLoaderData() as LoaderData;
+  const { device, user } = useLoaderData();
   const error = useActionData() as { message: string };
 
   return (
@@ -86,24 +80,24 @@ export default function DeviceIdRename() {
                 size="SM"
                 theme="blank"
                 LeadingIcon={ChevronLeftIcon}
-                text="Back to Devices"
+                text={m.back_to_devices()}
                 to="/devices"
               />
               <Card className="max-w-3xl p-6">
                 <div className="space-y-4">
                   <CardHeader
-                    headline={`Rename ${device.name || device.id}`}
-                    description="Properly name your device to easily identify it."
+                    headline={m.rename_device_headline({ name: device.name || device.id })}
+                    description={m.rename_device_description()}
                   />
 
                   <Fieldset>
                     <Form method="POST" className="max-w-sm space-y-4">
                       <div className="group relative">
                         <InputFieldWithLabel
-                          label="New device name"
+                          label={m.rename_device_new_name_label()}
                           type="text"
                           name="name"
-                          placeholder="Plex Media Server"
+                          placeholder={m.rename_device_new_name_placeholder()}
                           size="MD"
                           autoFocus
                           error={error?.message.toString()}
@@ -114,7 +108,7 @@ export default function DeviceIdRename() {
                         size="MD"
                         theme="primary"
                         type="submit"
-                        text="Rename Device"
+                        text={m.rename_device()}
                         textAlign="center"
                       />
                     </Form>
