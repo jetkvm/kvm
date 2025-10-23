@@ -33,7 +33,27 @@ func (sm *SessionManager) attemptEmergencyPromotion(ctx emergencyPromotionContex
 			Str("triggerSessionID", ctx.triggerSessionID).
 			Str("triggerReason", ctx.triggerReason).
 			Msg("Bypassing emergency promotion rate limits - no primary exists")
-		promotedSessionID := sm.findMostTrustedSessionForEmergency()
+
+		// Find best session, excluding the specified session if provided
+		var promotedSessionID string
+		if excludeSessionID != "" {
+			bestSessionID := ""
+			bestScore := -1
+			for id, session := range sm.sessions {
+				if id != excludeSessionID &&
+					!sm.isSessionBlacklisted(id) &&
+					(session.Mode == SessionModeObserver || session.Mode == SessionModeQueued) {
+					score := sm.getSessionTrustScore(id)
+					if score > bestScore {
+						bestScore = score
+						bestSessionID = id
+					}
+				}
+			}
+			promotedSessionID = bestSessionID
+		} else {
+			promotedSessionID = sm.findMostTrustedSessionForEmergency()
+		}
 		return promotedSessionID, true, false
 	}
 
@@ -266,6 +286,12 @@ func (sm *SessionManager) handlePrimarySessionTimeout(now time.Time) bool {
 	primary.Mode = SessionModeObserver
 	sm.primarySessionID = ""
 
+	sm.logger.Info().
+		Str("sessionID", timedOutSessionID).
+		Dur("inactiveFor", now.Sub(primary.LastActive)).
+		Dur("timeout", currentTimeout).
+		Msg("Primary session timed out due to inactivity - demoted to observer")
+
 	ctx := emergencyPromotionContext{
 		triggerSessionID: timedOutSessionID,
 		triggerReason:    "timeout",
@@ -274,7 +300,8 @@ func (sm *SessionManager) handlePrimarySessionTimeout(now time.Time) bool {
 
 	promotedSessionID, isEmergency, shouldSkip := sm.attemptEmergencyPromotion(ctx, timedOutSessionID)
 	if shouldSkip {
-		return false
+		sm.logger.Info().Msg("Promotion skipped after timeout - session demoted but no promotion")
+		return true // Still need to broadcast the demotion
 	}
 
 	if promotedSessionID != "" {
@@ -307,8 +334,17 @@ func (sm *SessionManager) handlePrimarySessionTimeout(now time.Time) bool {
 				Bool("isEmergencyPromotion", isEmergency).
 				Msg("Auto-promoted session after primary timeout")
 			return true
+		} else {
+			sm.logger.Error().Err(err).
+				Str("timedOutSessionID", timedOutSessionID).
+				Str("promotedSessionID", promotedSessionID).
+				Msg("Failed to promote session after timeout - primary demoted")
+			return true // Still broadcast the demotion even if promotion failed
 		}
 	}
 
-	return false
+	sm.logger.Info().
+		Str("timedOutSessionID", timedOutSessionID).
+		Msg("Primary session timed out - demoted to observer, no eligible sessions to promote")
+	return true // Broadcast the demotion even if no promotion
 }

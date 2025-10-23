@@ -179,9 +179,6 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	// Update last active timestamp for any valid RPC activity
-	sessionManager.UpdateLastActive(session.ID)
-
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
 	if err != nil {
