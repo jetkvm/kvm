@@ -6,6 +6,7 @@ import { GridCard } from "@components/Card";
 import { SettingsItem } from "@components/SettingsItem";
 import { Button } from "@components/Button";
 import notifications from "@/notifications";
+import { m } from "@localizations/messages.js";
 
 export default function AudioPopover() {
   const { send } = useJsonRpc();
@@ -47,12 +48,14 @@ export default function AudioPopover() {
     send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
       setLoading(false);
       if ("error" in resp) {
-        notifications.error(
-          `Failed to ${enabled ? "enable" : "disable"} audio output: ${resp.error.data || "Unknown error"}`,
-        );
+        const errorMsg = enabled
+          ? m.audio_output_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
+          : m.audio_output_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
+        notifications.error(errorMsg);
       } else {
         setAudioOutputEnabled(enabled);
-        notifications.success(`Audio output ${enabled ? "enabled" : "disabled"}`);
+        const successMsg = enabled ? m.audio_output_enabled() : m.audio_output_disabled();
+        notifications.success(successMsg);
       }
     });
   }, [send, audioOutputEnabled]);
@@ -63,12 +66,14 @@ export default function AudioPopover() {
     send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
       setLoading(false);
       if ("error" in resp) {
-        notifications.error(
-          `Failed to ${enabled ? "enable" : "disable"} audio input: ${resp.error.data || "Unknown error"}`,
-        );
+        const errorMsg = enabled
+          ? m.audio_input_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
+          : m.audio_input_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
+        notifications.error(errorMsg);
       } else {
         setAudioInputEnabled(enabled);
-        notifications.success(`Audio input ${enabled ? "enabled" : "disabled"}`);
+        const successMsg = enabled ? m.audio_input_enabled() : m.audio_input_disabled();
+        notifications.success(successMsg);
       }
     });
   }, [send, audioInputEnabled]);
@@ -79,19 +84,19 @@ export default function AudioPopover() {
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
             <LuVolume2 className="h-5 w-5" />
-            <h3 className="font-semibold">Audio</h3>
+            <h3 className="font-semibold">{m.audio_popover_title()}</h3>
           </div>
 
           <div className="space-y-3">
             <SettingsItem
               loading={loading}
-              title="Audio Output"
-              description="Enable audio from target to speakers"
+              title={m.audio_output_title()}
+              description={m.audio_output_description()}
             >
               <Button
                 size="SM"
                 theme={audioOutputEnabled ? "light" : "primary"}
-                text={audioOutputEnabled ? "Disable" : "Enable"}
+                text={audioOutputEnabled ? m.audio_disable() : m.audio_enable()}
                 onClick={handleAudioOutputEnabledToggle}
               />
             </SettingsItem>
@@ -102,13 +107,13 @@ export default function AudioPopover() {
 
                 <SettingsItem
                   loading={loading}
-                  title="Audio Input (Microphone)"
-                  description="Enable microphone input to target"
+                  title={m.audio_input_title()}
+                  description={m.audio_input_description()}
                 >
                   <Button
                     size="SM"
                     theme={audioInputEnabled ? "light" : "primary"}
-                    text={audioInputEnabled ? "Disable" : "Enable"}
+                    text={audioInputEnabled ? m.audio_disable() : m.audio_enable()}
                     onClick={handleAudioInputEnabledToggle}
                   />
                 </SettingsItem>
