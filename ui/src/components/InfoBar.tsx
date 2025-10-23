@@ -31,9 +31,16 @@ export default function InfoBar() {
 
   useEffect(() => {
     if (!rpcDataChannel) return;
-    rpcDataChannel.onclose = () => console.log("rpcDataChannel has closed");
-    rpcDataChannel.onerror = (e: Event) =>
-      console.error(`Error on DataChannel '${rpcDataChannel.label}': ${e}`);
+    rpcDataChannel.onclose = () => {
+      if (rpcDataChannel.readyState === "closed") {
+        console.debug("rpcDataChannel closed");
+      }
+    };
+    rpcDataChannel.onerror = (e: Event) => {
+      if (rpcDataChannel.readyState === "open" || rpcDataChannel.readyState === "connecting") {
+        console.error(`Error on DataChannel '${rpcDataChannel.label}':`, e);
+      }
+    };
   }, [rpcDataChannel]);
 
   const { keyboardLedState, usbState } = useHidStore();
