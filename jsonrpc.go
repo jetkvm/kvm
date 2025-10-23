@@ -132,8 +132,14 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 
 	err = session.RPCChannel.SendText(requestString)
 	if err != nil {
-		// Only log at debug level - closed pipe errors are expected during reconnection
-		scopedLogger.Debug().Err(err).Str("event", event).Msg("Could not send JSONRPC event (channel may be closing)")
+		// Check if it's a closed/closing error (expected during reconnection)
+		errStr := err.Error()
+		if strings.Contains(errStr, "closed") || strings.Contains(errStr, "closing") {
+			scopedLogger.Debug().Err(err).Str("event", event).Msg("Could not send JSONRPC event (channel closing)")
+		} else {
+			// Other errors (buffer full, protocol errors) should be visible
+			scopedLogger.Warn().Err(err).Str("event", event).Msg("Failed to send JSONRPC event")
+		}
 		return
 	}
 }

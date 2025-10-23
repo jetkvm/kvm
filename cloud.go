@@ -200,15 +200,19 @@ func handleCloudRegister(c *gin.Context) {
 	sessionID, _ := c.Cookie("sessionId")
 	authToken, _ := c.Cookie("authToken")
 
-	if sessionID != "" && authToken != "" && authToken == config.LocalAuthToken {
+	// Require authentication for this endpoint
+	if authToken == "" || authToken != config.LocalAuthToken {
+		c.JSON(401, gin.H{"error": "Authentication required"})
+		return
+	}
+
+	// Check session permissions if session exists
+	if sessionID != "" {
 		session := sessionManager.GetSession(sessionID)
 		if session != nil && !session.HasPermission(PermissionSettingsWrite) {
 			c.JSON(403, gin.H{"error": "Permission denied: settings modify permission required"})
 			return
 		}
-	} else if sessionID != "" {
-		c.JSON(401, gin.H{"error": "Authentication required"})
-		return
 	}
 
 	var req CloudRegisterRequest

@@ -251,8 +251,13 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 
 		if existing.Mode == SessionModePrimary {
 			isBlacklisted := sm.isSessionBlacklisted(session.ID)
-			// SECURITY: Prevent dual-primary - only restore if no other primary exists
-			primaryExists := sm.primarySessionID != "" && sm.sessions[sm.primarySessionID] != nil
+			// SECURITY: Prevent dual-primary - check actual mode, not just existence
+			primaryExists := false
+			if sm.primarySessionID != "" {
+				if existingPrimary, ok := sm.sessions[sm.primarySessionID]; ok && existingPrimary.Mode == SessionModePrimary {
+					primaryExists = true
+				}
+			}
 			if sm.lastPrimaryID == session.ID && !isBlacklisted && !primaryExists {
 				sm.primarySessionID = session.ID
 				sm.lastPrimaryID = ""
@@ -424,8 +429,8 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 	// Only add grace period if this is NOT an intentional logout
 	if !isIntentionalLogout {
 		// Limit grace period entries to prevent memory exhaustion
-		// Evict the entry that will expire soonest (oldest expiration time)
-		for len(sm.reconnectGrace) >= maxGracePeriodEntries {
+		// Evict entries ONLY when full, and only evict one entry
+		if len(sm.reconnectGrace) >= maxGracePeriodEntries {
 			var evictID string
 			var earliestExpiration time.Time
 			for id, graceTime := range sm.reconnectGrace {
@@ -438,8 +443,15 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 			if evictID != "" {
 				delete(sm.reconnectGrace, evictID)
 				delete(sm.reconnectInfo, evictID)
+				sm.logger.Debug().
+					Str("evictedSessionID", evictID).
+					Msg("Evicted oldest grace period entry due to limit")
 			} else {
-				break
+				// Defensive: if we couldn't evict, don't add grace period
+				sm.logger.Error().
+					Int("graceCount", len(sm.reconnectGrace)).
+					Msg("Failed to evict grace period entry, skipping grace period for this session")
+				goto skipGracePeriod
 			}
 		}
 
@@ -455,6 +467,8 @@ func (sm *SessionManager) RemoveSession(sessionID string) {
 			CreatedAt: session.CreatedAt,
 		}
 	}
+
+skipGracePeriod:
 
 	// If this was the primary session, clear primary slot and track for grace period
 	if wasPrimary {
