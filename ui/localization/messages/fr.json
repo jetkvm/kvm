@@ -891,5 +891,11 @@
     "wake_on_lan_invalid_mac": "Adresse MAC invalide",
     "wake_on_lan_magic_sent_success": "Paquet magique envoyé avec succès",
     "welcome_to_jetkvm": "Bienvenue chez JetKVM",
-    "welcome_to_jetkvm_description": "Contrôlez n'importe quel ordinateur à distance"
+    "welcome_to_jetkvm_description": "Contrôlez n'importe quel ordinateur à distance",
+    "video_overlay_reboot_device_is_rebooting": "L'appareil redémarre",
+    "video_overlay_reboot_different_ip_message": "L'appareil a peut-être redémarré avec une adresse IP différente. Vérifiez l'écran physique du JetKVM pour trouver l'adresse IP actuelle et reconnectez-vous.",
+    "video_overlay_reboot_please_wait_message": "Veuillez patienter pendant le redémarrage de l'appareil. Cela prend généralement 20 à 30 secondes.",
+    "video_overlay_reboot_timeout_message": "Délai de reconnexion automatique expiré",
+    "video_overlay_reboot_unable_to_reconnect": "Impossible de se reconnecter",
+    "video_overlay_reboot_waiting_for_restart": "En attente du redémarrage de l'appareil…"
 }

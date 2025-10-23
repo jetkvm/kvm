@@ -891,5 +891,11 @@
     "wake_on_lan_invalid_mac": "Ugyldig MAC-adresse",
     "wake_on_lan_magic_sent_success": "Magisk pakke sendt",
     "welcome_to_jetkvm": "Velkommen til JetKVM",
-    "welcome_to_jetkvm_description": "Kontroller hvilken som helst datamaskin eksternt"
+    "welcome_to_jetkvm_description": "Kontroller hvilken som helst datamaskin eksternt",
+    "video_overlay_reboot_device_is_rebooting": "Enheten starter på nytt",
+    "video_overlay_reboot_different_ip_message": "Enheten kan ha startet på nytt med en annen IP-adresse. Sjekk JetKVM-ens fysiske skjerm for å finne den gjeldende IP-adressen, og koble til på nytt.",
+    "video_overlay_reboot_please_wait_message": "Vent mens enheten starter på nytt. Dette tar vanligvis 20–30 sekunder.",
+    "video_overlay_reboot_timeout_message": "Tidsavbrudd for automatisk gjenoppkobling",
+    "video_overlay_reboot_unable_to_reconnect": "Kan ikke koble til på nytt",
+    "video_overlay_reboot_waiting_for_restart": "Venter på at enheten skal starte på nytt …"
 }
