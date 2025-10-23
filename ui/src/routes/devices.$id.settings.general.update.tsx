@@ -4,12 +4,14 @@ import { useLocation, useNavigate } from "react-router";
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import { UpdateState, useUpdateStore } from "@hooks/stores";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
-import { SystemVersionInfo, useVersion } from "@hooks/useVersion";
+import { useVersion } from "@hooks/useVersion";
 import { Button } from "@components/Button";
 import Card from "@components/Card";
 import LoadingSpinner from "@components/LoadingSpinner";
-import UpdatingStatusCard, { type UpdatePart}  from "@components/UpdatingStatusCard";
+import UpdatingStatusCard, { type UpdatePart } from "@components/UpdatingStatusCard";
 import { m } from "@localizations/messages.js";
+
+import { SystemVersionInfo } from "../utils/jsonrpc";
 
 export default function SettingsGeneralUpdateRoute() {
   const navigate = useNavigate();
