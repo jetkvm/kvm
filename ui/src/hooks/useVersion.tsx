@@ -29,7 +29,10 @@ export function useVersion() {
     return new Promise<SystemVersionInfo>((resolve, reject) => {
       send("getUpdateStatus", {}, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
-          notifications.error(`Failed to check for updates: ${resp.error}`);
+          const errorMsg = typeof resp.error === 'object' && resp.error.message
+            ? resp.error.message
+            : String(resp.error);
+          notifications.error(`Failed to check for updates: ${errorMsg}`);
           reject(new Error("Failed to check for updates"));
         } else {
           const result = resp.result as SystemVersionInfo;
@@ -56,8 +59,11 @@ export function useVersion() {
             console.warn("Failed to get device version, using legacy version");
             return getVersionInfo().then(result => resolve(result.local)).catch(reject);
           }
-          console.error("Failed to get device version N", resp.error);
-          notifications.error(`Failed to get device version: ${resp.error}`);
+          console.error("Failed to get device version:", resp.error);
+          const errorMsg = typeof resp.error === 'object' && resp.error.message
+            ? resp.error.message
+            : String(resp.error);
+          notifications.error(`Failed to get device version: ${errorMsg}`);
           reject(new Error("Failed to get device version"));
         } else {
           const result = resp.result as VersionInfo;
