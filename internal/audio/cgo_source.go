@@ -22,7 +22,6 @@ import (
 
 const (
 	ipcMaxFrameSize = 1024 // Max Opus frame size: 128kbps @ 20ms = ~600 bytes
-	ipcMsgTypeOpus  = 0    // Message type for Opus audio data
 )
 
 // CgoSource implements AudioSource via direct CGO calls to C audio functions (in-process)
