@@ -490,7 +490,7 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		scopedLogger.Info().Msg("System Rebooting due to OTA update")
 
 		// Build redirect URL with conditional query parameters
-		redirectUrl := "/settings/general/update"
+		redirectTo := "/settings/general/update"
 		queryParams := url.Values{}
 		if systemUpdateAvailable {
 			queryParams.Set("systemVersion", remote.SystemVersion)
@@ -499,12 +499,12 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 			queryParams.Set("appVersion", remote.AppVersion)
 		}
 		if len(queryParams) > 0 {
-			redirectUrl += "?" + queryParams.Encode()
+			redirectTo += "?" + queryParams.Encode()
 		}
 
 		postRebootAction := &PostRebootAction{
 			HealthCheck: "/device/status",
-			RedirectUrl: redirectUrl,
+			RedirectTo:  redirectTo,
 		}
 
 		if err := hwReboot(true, postRebootAction, 10*time.Second); err != nil {

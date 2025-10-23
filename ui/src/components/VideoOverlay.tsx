@@ -474,13 +474,13 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
 
         if (response.ok) {
           // Device is available, redirect to the specified URL
-          console.log('Device is available, redirecting to:', postRebootAction.redirectUrl);
+          console.log('Device is available, redirecting to:', postRebootAction.redirectTo);
 
           // URL constructor handles all cases elegantly:
           // - Absolute paths: resolved against current origin
           // - Protocol-relative URLs: resolved with current protocol
           // - Fully qualified URLs: used as-is
-          const targetUrl = new URL(postRebootAction.redirectUrl, window.location.origin);
+          const targetUrl = new URL(postRebootAction.redirectTo, window.location.origin);
 
           window.location.href = targetUrl.href;
         }
