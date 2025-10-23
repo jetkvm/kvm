@@ -143,15 +143,9 @@ func handleUpdateSessionNicknameRPC(params map[string]any, session *Session) (an
 		return nil, errors.New("permission denied: can only update own nickname")
 	}
 
-	// Check nickname uniqueness
-	allSessions := sessionManager.GetAllSessions()
-	for _, existingSession := range allSessions {
-		if existingSession.ID != sessionID && existingSession.Nickname == nickname {
-			return nil, fmt.Errorf("nickname '%s' is already in use by another session", nickname)
-		}
+	if err := sessionManager.UpdateSessionNickname(sessionID, nickname); err != nil {
+		return nil, err
 	}
-
-	targetSession.Nickname = nickname
 
 	// If session is pending and approval is required, send the approval request now that we have a nickname
 	if targetSession.Mode == SessionModePending && currentSessionSettings != nil && currentSessionSettings.RequireApproval {

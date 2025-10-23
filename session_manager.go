@@ -195,7 +195,7 @@ func (sm *SessionManager) AddSession(session *Session, clientSettings *SessionSe
 					delete(sm.nicknameIndex, session.Nickname)
 				}
 			}
-			panic(r)
+			sm.logger.Error().Interface("panic", r).Str("sessionID", session.ID).Msg("Recovered from panic in AddSession")
 		}
 	}()
 
@@ -987,6 +987,35 @@ func (sm *SessionManager) UpdateLastActive(sessionID string) {
 	sm.mu.Unlock()
 }
 
+// UpdateSessionNickname atomically updates a session's nickname with uniqueness check
+func (sm *SessionManager) UpdateSessionNickname(sessionID, nickname string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	targetSession, exists := sm.sessions[sessionID]
+	if !exists {
+		return errors.New("session not found")
+	}
+
+	// Check nickname uniqueness under lock
+	if existingSession, nicknameInUse := sm.nicknameIndex[nickname]; nicknameInUse {
+		if existingSession.ID != sessionID {
+			return fmt.Errorf("nickname '%s' is already in use by another session", nickname)
+		}
+	}
+
+	// Remove old nickname from index
+	if targetSession.Nickname != "" {
+		delete(sm.nicknameIndex, targetSession.Nickname)
+	}
+
+	// Update nickname and index atomically
+	targetSession.Nickname = nickname
+	sm.nicknameIndex[nickname] = targetSession
+
+	return nil
+}
+
 // Internal helper methods
 
 // validateSinglePrimary ensures there's only one primary session and fixes any inconsistencies
@@ -1364,9 +1393,11 @@ func (sm *SessionManager) getSessionTrustScore(sessionID string) int {
 
 	// Longer session duration = more trust (up to 100 points for 100+ minutes)
 	sessionAge := now.Sub(session.CreatedAt)
-	score += int(sessionAge.Minutes())
-	if score > 100 {
-		score = 100 // Cap age bonus at 100 points
+	sessionAgeMinutes := sessionAge.Minutes()
+	if sessionAgeMinutes > 100 {
+		score += 100
+	} else {
+		score += int(sessionAgeMinutes)
 	}
 
 	// Recently successful primary sessions get higher trust
