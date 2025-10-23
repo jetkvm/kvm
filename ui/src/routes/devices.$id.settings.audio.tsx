@@ -6,6 +6,7 @@ import { useSettingsStore } from "@/hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import Checkbox from "@components/Checkbox";
+import { m } from "@localizations/messages.js";
 
 import notifications from "../notifications";
 
@@ -39,54 +40,66 @@ export default function SettingsAudioRoute() {
   }, [send]);
 
   const handleAudioOutputSourceChange = (source: string) => {
+    // Update UI immediately for better responsiveness
+    settings.setAudioOutputSource(source);
+
     send("setAudioOutputSource", { source }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
+        // Revert on error by fetching current value from backend
+        send("getAudioOutputSource", {}, (getResp: JsonRpcResponse) => {
+          if ("result" in getResp) {
+            settings.setAudioOutputSource(getResp.result as string);
+          }
+        });
         notifications.error(
-          `Failed to set audio output source: ${resp.error.data || "Unknown error"}`,
+          m.audio_settings_output_source_failed({ error: String(resp.error.data || m.unknown_error()) }),
         );
         return;
       }
-      settings.setAudioOutputSource(source);
-      notifications.success("Audio output source updated successfully");
+      notifications.success(m.audio_settings_output_source_success());
     });
   };
 
   const handleAudioOutputEnabledChange = (enabled: boolean) => {
     send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(
-          `Failed to ${enabled ? "enable" : "disable"} audio output: ${resp.error.data || "Unknown error"}`,
-        );
+        const errorMsg = enabled
+          ? m.audio_output_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
+          : m.audio_output_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
+        notifications.error(errorMsg);
         return;
       }
       settings.setAudioOutputEnabled(enabled);
-      notifications.success(`Audio output ${enabled ? "enabled" : "disabled"} successfully`);
+      const successMsg = enabled ? m.audio_output_enabled() : m.audio_output_disabled();
+      notifications.success(successMsg);
     });
   };
 
   const handleAudioInputEnabledChange = (enabled: boolean) => {
     send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(
-          `Failed to ${enabled ? "enable" : "disable"} audio input: ${resp.error.data || "Unknown error"}`,
-        );
+        const errorMsg = enabled
+          ? m.audio_input_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
+          : m.audio_input_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
+        notifications.error(errorMsg);
         return;
       }
       settings.setAudioInputEnabled(enabled);
-      notifications.success(`Audio input ${enabled ? "enabled" : "disabled"} successfully`);
+      const successMsg = enabled ? m.audio_input_enabled() : m.audio_input_disabled();
+      notifications.success(successMsg);
     });
   };
 
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Audio"
-        description="Configure audio input and output settings for your JetKVM device"
+        title={m.audio_settings_title()}
+        description={m.audio_settings_description()}
       />
       <div className="space-y-4">
         <SettingsItem
-          title="Audio Output"
-          description="Enable or disable audio from the remote computer"
+          title={m.audio_settings_output_title()}
+          description={m.audio_settings_output_description()}
         >
           <Checkbox
             checked={settings.audioOutputEnabled || false}
@@ -96,16 +109,16 @@ export default function SettingsAudioRoute() {
 
         {settings.audioOutputEnabled && (
           <SettingsItem
-            title="Audio Output Source"
-            description="Select the audio capture device (HDMI or USB)"
+            title={m.audio_settings_output_source_title()}
+            description={m.audio_settings_output_source_description()}
           >
             <SelectMenuBasic
               size="SM"
               label=""
               value={settings.audioOutputSource || "usb"}
               options={[
-                { value: "hdmi", label: "HDMI" },
-                { value: "usb", label: "USB" },
+                { value: "hdmi", label: m.audio_settings_hdmi_label() },
+                { value: "usb", label: m.audio_settings_usb_label() },
               ]}
               onChange={e => {
                 handleAudioOutputSourceChange(e.target.value);
@@ -115,8 +128,8 @@ export default function SettingsAudioRoute() {
         )}
 
         <SettingsItem
-          title="Audio Input"
-          description="Enable or disable microphone audio to the remote computer"
+          title={m.audio_settings_input_title()}
+          description={m.audio_settings_input_description()}
         >
           <Checkbox
             checked={settings.audioInputEnabled || false}
