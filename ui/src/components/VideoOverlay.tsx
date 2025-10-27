@@ -483,6 +483,7 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
           const targetUrl = new URL(postRebootAction.redirectTo, window.location.origin);
 
           window.location.href = targetUrl.href;
+          window.location.reload();
         }
       } catch (err) {
         // Ignore errors - they're expected while device is rebooting
