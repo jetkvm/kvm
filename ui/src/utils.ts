@@ -1,7 +1,6 @@
 import { KeySequence } from "@hooks/stores";
-import { getLocale } from '@localizations/runtime.js';
+import { getLocale , locales } from "@localizations/runtime.js";
 import { m } from "@localizations/messages.js";
-import { locales } from '@localizations/runtime.js';
 
 export const formatters = {
   date: (date: Date, options?: Intl.DateTimeFormatOptions) =>
@@ -47,14 +46,14 @@ export const formatters = {
       amount: number;
       name: Intl.RelativeTimeFormatUnit;
     }[] = [
-        { amount: 60, name: "seconds" },
-        { amount: 60, name: "minutes" },
-        { amount: 24, name: "hours" },
-        { amount: 7, name: "days" },
-        { amount: 4.34524, name: "weeks" },
-        { amount: 12, name: "months" },
-        { amount: Number.POSITIVE_INFINITY, name: "years" },
-      ];
+      { amount: 60, name: "seconds" },
+      { amount: 60, name: "minutes" },
+      { amount: 24, name: "hours" },
+      { amount: 7, name: "days" },
+      { amount: 4.34524, name: "weeks" },
+      { amount: 12, name: "months" },
+      { amount: Number.POSITIVE_INFINITY, name: "years" },
+    ];
 
     let duration = (date.valueOf() - new Date().valueOf()) / 1000;
 
@@ -255,27 +254,41 @@ export function normalizeSortOrders(macros: KeySequence[]): KeySequence[] {
     ...macro,
     sortOrder: index + 1,
   }));
-};
+}
 
-type LocaleCode = typeof locales[number];
+type LocaleCode = (typeof locales)[number];
 
-export function map_locale_code_to_name(currentLocale: LocaleCode, locale: string): [string, string] {
-    // the first is the name in the current app locale (e.g. Inglese),
-    // the second is the name in the language of the locale itself (e.g. English)
-    switch (locale) {
-      case '': return [m.locale_auto(), ""];
-      case 'en': return [m.locale_en({}, { locale: currentLocale }), m.locale_en({}, { locale })];
-      case 'da': return [m.locale_da({}, { locale: currentLocale }), m.locale_da({}, { locale })];
-      case 'de': return [m.locale_de({}, { locale: currentLocale }), m.locale_de({}, { locale })];
-      case 'es': return [m.locale_es({}, { locale: currentLocale }), m.locale_es({}, { locale })];
-      case 'fr': return [m.locale_fr({}, { locale: currentLocale }), m.locale_fr({}, { locale })];
-      case 'it': return [m.locale_it({}, { locale: currentLocale }), m.locale_it({}, { locale })];
-      case 'nb': return [m.locale_nb({}, { locale: currentLocale }), m.locale_nb({}, { locale })];
-      case 'sv': return [m.locale_sv({}, { locale: currentLocale }), m.locale_sv({}, { locale })];
-      case 'zh': return [m.locale_zh({}, { locale: currentLocale }), m.locale_zh({}, { locale })];
-      default: return [locale, ""];
-    }
+export function map_locale_code_to_name(
+  currentLocale: LocaleCode,
+  locale: string,
+): [string, string] {
+  // the first is the name in the current app locale (e.g. Inglese),
+  // the second is the name in the language of the locale itself (e.g. English)
+  switch (locale) {
+    case "":
+      return [m.locale_auto(), ""];
+    case "en":
+      return [m.locale_en({}, { locale: currentLocale }), m.locale_en({}, { locale })];
+    case "da":
+      return [m.locale_da({}, { locale: currentLocale }), m.locale_da({}, { locale })];
+    case "de":
+      return [m.locale_de({}, { locale: currentLocale }), m.locale_de({}, { locale })];
+    case "es":
+      return [m.locale_es({}, { locale: currentLocale }), m.locale_es({}, { locale })];
+    case "fr":
+      return [m.locale_fr({}, { locale: currentLocale }), m.locale_fr({}, { locale })];
+    case "it":
+      return [m.locale_it({}, { locale: currentLocale }), m.locale_it({}, { locale })];
+    case "nb":
+      return [m.locale_nb({}, { locale: currentLocale }), m.locale_nb({}, { locale })];
+    case "sv":
+      return [m.locale_sv({}, { locale: currentLocale }), m.locale_sv({}, { locale })];
+    case "zh":
+      return [m.locale_zh({}, { locale: currentLocale }), m.locale_zh({}, { locale })];
+    default:
+      return [locale, ""];
   }
+}
 
 export function deleteCookie(name: string, domain?: string, path = "/") {
   const domainPart = domain ? `; domain=${domain}` : "";
@@ -283,4 +296,8 @@ export function deleteCookie(name: string, domain?: string, path = "/") {
   document.cookie = `${name}=; path=${path}; max-age=0${domainPart}`;
   // fallback: set an expires in the past for older agents
   document.cookie = `${name}=; path=${path}; expires=Thu, 01 Jan 1970 00:00:00 GMT${domainPart}`;
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }

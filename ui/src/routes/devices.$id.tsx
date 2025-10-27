@@ -677,6 +677,13 @@ export default function KvmIdRoute() {
           return;
         }
 
+
+        // This is to prevent the otaState from handling page refreshes after an update
+        // We've recently implemented a new general rebooting flow, so we don't need to handle this specific ota-rebooting case
+        // However, with old devices, we wont get the `willReboot` message, so we need to keep this for backwards compatibility
+        // only for the cloud version with an old device
+        if (rebootState?.isRebooting) return;
+
         const currentUrl = new URL(window.location.href);
         currentUrl.search = "";
         currentUrl.searchParams.set("updateSuccess", "true");

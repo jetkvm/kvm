@@ -1,22 +1,10 @@
 import { useCallback } from "react";
 
 import { useDeviceStore } from "@/hooks/stores";
-import { type JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
+import { JsonRpcError, RpcMethodNotFound } from "@/hooks/useJsonRpc";
+import { getUpdateStatus, getLocalVersion as getLocalVersionRpc } from "@/utils/jsonrpc";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
-
-export interface VersionInfo {
-  appVersion: string;
-  systemVersion: string;
-}
-
-export interface SystemVersionInfo {
-  local: VersionInfo;
-  remote?: VersionInfo;
-  systemUpdateAvailable: boolean;
-  appUpdateAvailable: boolean;
-  error?: string;
-}
 
 export function useVersion() {
   const {
@@ -25,51 +13,40 @@ export function useVersion() {
     setAppVersion,
     setSystemVersion,
   } = useDeviceStore();
-  const { send } = useJsonRpc();
-  const getVersionInfo = useCallback(() => {
-    return new Promise<SystemVersionInfo>((resolve, reject) => {
-      send("getUpdateStatus", {}, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          notifications.error(m.updates_failed_check({ error: String(resp.error) }));
-          reject(new Error("Failed to check for updates"));
-        } else {
-          const result = resp.result as SystemVersionInfo;
-          setAppVersion(result.local.appVersion);
-          setSystemVersion(result.local.systemVersion);
 
-          if (result.error) {
-            notifications.error(m.updates_failed_check({ error: String(result.error) }));
-            reject(new Error("Failed to check for updates"));
-          } else {
-            resolve(result);
-          }
-        }
-      });
-    });
-  }, [send, setAppVersion, setSystemVersion]);
+  const getVersionInfo = useCallback(async () => {
+    try {
+      const result = await getUpdateStatus();
+      setAppVersion(result.local.appVersion);
+      setSystemVersion(result.local.systemVersion);
+      return result;
+    } catch (error) {
+      const jsonRpcError = error as JsonRpcError;
+      notifications.error(m.updates_failed_check({ error: jsonRpcError.message }));
+      throw jsonRpcError;
+    }
+  }, [setAppVersion, setSystemVersion]);
 
-  const getLocalVersion = useCallback(() => {
-    return new Promise<VersionInfo>((resolve, reject) => {
-      send("getLocalVersion", {}, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          console.log(resp.error)
-          if (resp.error.code === RpcMethodNotFound) {
-            console.warn("Failed to get device version, using legacy version");
-            return getVersionInfo().then(result => resolve(result.local)).catch(reject);
-          }
-          console.error("Failed to get device version N", resp.error);
-          notifications.error(m.updates_failed_get_device_version({ error: String(resp.error) }));
-          reject(new Error("Failed to get device version"));
-        } else {
-          const result = resp.result as VersionInfo;
+  const getLocalVersion = useCallback(async () => {
+    try {
+      const result = await getLocalVersionRpc();
+      setAppVersion(result.appVersion);
+      setSystemVersion(result.systemVersion);
+      return result;
+    } catch (error: unknown) {
+      const jsonRpcError = error as JsonRpcError;
 
-          setAppVersion(result.appVersion);
-          setSystemVersion(result.systemVersion);
-          resolve(result);
-        }
-      });
-    });
-  }, [send, setAppVersion, setSystemVersion, getVersionInfo]);
+      if (jsonRpcError.code === RpcMethodNotFound) {
+        console.error("Failed to get local version, using legacy remote version");
+        const result = await getVersionInfo();
+        return result.local;
+      }
+
+      console.error("Failed to get device version", jsonRpcError);
+      notifications.error(m.updates_failed_get_device_version({ error: jsonRpcError.message }));
+      throw jsonRpcError;
+    }
+  }, [setAppVersion, setSystemVersion, getVersionInfo]);
 
   return {
     getVersionInfo,

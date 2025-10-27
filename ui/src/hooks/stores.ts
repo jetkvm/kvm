@@ -21,7 +21,7 @@ interface JsonRpcResponse {
 
 export type PostRebootAction = {
   healthCheck: string;
-  redirectUrl: string;
+  redirectTo: string;
 } | null;
 
 // Utility function to append stats to a Map

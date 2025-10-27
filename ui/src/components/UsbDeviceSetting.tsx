@@ -9,6 +9,7 @@ import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
 import Fieldset from "@components/Fieldset";
 import notifications from "@/notifications";
+import { sleep } from "@/utils";
 
 export interface USBConfig {
   vendor_id: string;
@@ -108,7 +109,7 @@ export function UsbDeviceSetting() {
         }
 
         // We need some time to ensure the USB devices are updated
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await sleep(2000);
         setLoading(false);
         syncUsbDeviceConfig();
         notifications.success(m.usb_device_updated());
