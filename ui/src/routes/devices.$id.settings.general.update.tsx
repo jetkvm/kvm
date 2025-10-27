@@ -4,12 +4,14 @@ import { useLocation, useNavigate } from "react-router";
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import { UpdateState, useUpdateStore } from "@hooks/stores";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
-import { SystemVersionInfo, useVersion } from "@hooks/useVersion";
+import { useVersion } from "@hooks/useVersion";
 import { Button } from "@components/Button";
 import Card from "@components/Card";
 import LoadingSpinner from "@components/LoadingSpinner";
-import UpdatingStatusCard, { type UpdatePart}  from "@components/UpdatingStatusCard";
+import UpdatingStatusCard, { type UpdatePart } from "@components/UpdatingStatusCard";
 import { m } from "@localizations/messages.js";
+import { sleep } from "@/utils";
+import { SystemVersionInfo } from "@/utils/jsonrpc";
 
 export default function SettingsGeneralUpdateRoute() {
   const navigate = useNavigate();
@@ -134,13 +136,14 @@ function LoadingState({
     }, 0);
 
     getVersionInfo()
-      .then(versionInfo => {
+      .then(async versionInfo => {
         // Add a small delay to ensure it's not just flickering
-        return new Promise(resolve => setTimeout(() => resolve(versionInfo), 600));
+        await sleep(600);
+        return versionInfo
       })
       .then(versionInfo => {
         if (!signal.aborted) {
-          onFinished(versionInfo as SystemVersionInfo);
+          onFinished(versionInfo);
         }
       })
       .catch(error => {
