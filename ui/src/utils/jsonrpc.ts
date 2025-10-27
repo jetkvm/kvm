@@ -6,8 +6,8 @@ import { sleep } from "@/utils";
 export interface JsonRpcCallOptions {
   method: string;
   params?: unknown;
-  timeout?: number;
-  retriesOnError?: number;
+  attemptTimeoutMs?: number;
+  maxAttempts?: number;
 }
 
 export interface JsonRpcCallResponse<T = unknown> {
@@ -93,12 +93,15 @@ export function callJsonRpc(
 export async function callJsonRpc<T = unknown>(
   options: JsonRpcCallOptions,
 ): Promise<JsonRpcCallResponse<T>> {
-  const maxRetries = options.retriesOnError ?? 0;
-  const timeout = options.timeout || 5000;
+  const maxAttempts = options.maxAttempts ?? 1;
+  const timeout = options.attemptTimeoutMs || 5000;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), timeout);
+
+    // Exponential backoff for retries that starts at 500ms up to a maximum of 10 seconds
+    const backoffMs = Math.min(500 * Math.pow(2, attempt), 10000);
 
     try {
       // Wait for RTC readiness
@@ -114,8 +117,8 @@ export async function callJsonRpc<T = unknown>(
       clearTimeout(timeoutId);
 
       // Retry on error if attempts remain
-      if (response.error && attempt < maxRetries) {
-        await sleep(1000);
+      if (response.error && attempt < maxAttempts - 1) {
+        await sleep(backoffMs);
         continue;
       }
 
@@ -124,8 +127,8 @@ export async function callJsonRpc<T = unknown>(
       clearTimeout(timeoutId);
 
       // Retry on timeout/error if attempts remain
-      if (attempt < maxRetries) {
-        await sleep(1000);
+      if (attempt < maxAttempts - 1) {
+        await sleep(backoffMs);
         continue;
       }
 
@@ -194,8 +197,7 @@ export async function getUpdateStatus() {
     // This function calls our api server to see if there are any updates available.
     // It can be called on page load right after a restart, so we need to give it time to
     // establish a connection to the api server.
-    timeout: 10000,
-    retriesOnError: 5,
+    maxAttempts: 6,
   });
 
   if (response.error) throw response.error;
