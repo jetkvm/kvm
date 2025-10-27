@@ -752,7 +752,6 @@ void *run_detect_format(void *arg)
 
     while (!should_exit)
     {
-        ensure_sleep_mode_disabled();
 
         memset(&dv_timings, 0, sizeof(dv_timings));
         if (ioctl(sub_dev_fd, VIDIOC_QUERY_DV_TIMINGS, &dv_timings) != 0)
