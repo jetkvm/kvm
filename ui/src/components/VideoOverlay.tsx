@@ -536,15 +536,15 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">{hasTimedOut ? "Unable to Reconnect" : "Device is Rebooting"}</h2>
+                    <h2 className="text-xl font-bold">{hasTimedOut ? m.video_overlay_reboot_unable_to_reconnect() : m.video_overlay_reboot_device_is_rebooting()}</h2>
                     <p className="text-sm text-slate-700 dark:text-slate-300">
                       {hasTimedOut ? (
                         <>
-                          The device may have restarted with a different IP address. Check the JetKVM&apos;s physical display to find the current IP address and reconnect.
+                          {m.video_overlay_reboot_different_ip_message()}
                         </>
                       ) : (
                         <>
-                          Please wait while the device restarts. This usually takes 20-30 seconds.
+                          {m.video_overlay_reboot_please_wait_message()}
 
                         </>
                       )}
@@ -557,7 +557,7 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
                           <>
                             <LoadingSpinner className="h-4 w-4 text-blue-800 dark:text-blue-200" />
                             <p className="text-sm text-slate-700 dark:text-slate-300">
-                              Waiting for device to restart...
+                              {m.video_overlay_reboot_waiting_for_restart()}
                             </p>
                           </>
                         ) : (
@@ -565,7 +565,7 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
                             <div className="flex items-center gap-x-2">
                               <ExclamationTriangleIcon className="h-5 w-5 text-yellow-500" />
                               <p className="text-sm text-black dark:text-white">
-                                Automatic Reconnection Timed Out
+                                {m.video_overlay_reboot_timeout_message()}
                               </p>
                             </div>
                           </div>
