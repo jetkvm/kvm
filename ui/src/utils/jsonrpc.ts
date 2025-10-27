@@ -1,4 +1,5 @@
 import { useRTCStore } from "@/hooks/stores";
+import { sleep } from "@/utils";
 
 // JSON-RPC utility for use outside of React components
 
@@ -21,9 +22,6 @@ export interface JsonRpcCallResponse<T = unknown> {
 }
 
 let rpcCallCounter = 0;
-
-// Helper: sleep utility for retry delays
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Helper: wait for RTC data channel to be ready
 async function waitForRtcReady(signal: AbortSignal): Promise<RTCDataChannel> {

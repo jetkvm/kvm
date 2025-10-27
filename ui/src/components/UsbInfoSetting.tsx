@@ -9,6 +9,7 @@ import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
+import { sleep } from "@/utils";
 
 const generatedSerialNumber = [generateNumber(1, 9), generateHex(7, 7), 0, 1].join("&");
 
@@ -123,7 +124,7 @@ export function UsbInfoSetting() {
         }
 
         // We need some time to ensure the USB devices are updated
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await sleep(2000);
         setLoading(false);
         notifications.success(
           m.usb_config_set_success({ manufacturer: usbConfig.manufacturer, product: usbConfig.product }),
