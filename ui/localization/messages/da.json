@@ -855,6 +855,12 @@
     "video_overlay_no_hdmi_ensure_power": "Sørg for, at kildeenheden er tændt og sender et signal",
     "video_overlay_no_hdmi_signal": "Intet HDMI-signal registreret.",
     "video_overlay_pointerlock_click_to_enable": "Klik på videoen for at aktivere musestyring",
+    "video_overlay_reboot_device_is_rebooting": "Enheden genstarter",
+    "video_overlay_reboot_different_ip_message": "Enheden er muligvis genstartet med en anden IP-adresse. Tjek JetKVM'ens fysiske display for at finde den aktuelle IP-adresse, og genopret forbindelsen.",
+    "video_overlay_reboot_please_wait_message": "Vent venligst, mens enheden genstarter. Dette tager normalt 20-30 sekunder.",
+    "video_overlay_reboot_timeout_message": "Timeout for automatisk genoprettelse",
+    "video_overlay_reboot_unable_to_reconnect": "Kan ikke genoprette forbindelsen",
+    "video_overlay_reboot_waiting_for_restart": "Venter på, at enheden genstarter…",
     "video_overlay_retrying_connection": "Prøver at oprette forbindelse igen…",
     "video_overlay_troubleshooting_guide": "Fejlfindingsvejledning",
     "video_overlay_try_again": "Prøv igen",
@@ -891,11 +897,5 @@
     "wake_on_lan_invalid_mac": "Ugyldig MAC-adresse",
     "wake_on_lan_magic_sent_success": "Magisk pakke sendt",
     "welcome_to_jetkvm": "Velkommen til JetKVM",
-    "welcome_to_jetkvm_description": "Styr enhver computer eksternt",
-    "video_overlay_reboot_device_is_rebooting": "Enheden genstarter",
-    "video_overlay_reboot_different_ip_message": "Enheden er muligvis genstartet med en anden IP-adresse. Tjek JetKVM'ens fysiske display for at finde den aktuelle IP-adresse, og genopret forbindelsen.",
-    "video_overlay_reboot_please_wait_message": "Vent venligst, mens enheden genstarter. Dette tager normalt 20-30 sekunder.",
-    "video_overlay_reboot_timeout_message": "Timeout for automatisk genoprettelse",
-    "video_overlay_reboot_unable_to_reconnect": "Kan ikke genoprette forbindelsen",
-    "video_overlay_reboot_waiting_for_restart": "Venter på, at enheden genstarter…"
+    "welcome_to_jetkvm_description": "Styr enhver computer eksternt"
 }

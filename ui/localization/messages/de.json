@@ -855,6 +855,12 @@
     "video_overlay_no_hdmi_ensure_power": "Stellen Sie sicher, dass das Quellgerät eingeschaltet ist und ein Signal ausgibt",
     "video_overlay_no_hdmi_signal": "Kein HDMI-Signal erkannt.",
     "video_overlay_pointerlock_click_to_enable": "Klicken Sie auf das Video, um die Maussteuerung zu aktivieren",
+    "video_overlay_reboot_device_is_rebooting": "Das Gerät wird neu gestartet",
+    "video_overlay_reboot_different_ip_message": "Das Gerät wurde möglicherweise mit einer anderen IP-Adresse neu gestartet. Überprüfen Sie die physische Anzeige des JetKVM, um die aktuelle IP-Adresse zu ermitteln und die Verbindung wiederherzustellen.",
+    "video_overlay_reboot_please_wait_message": "Bitte warten Sie, während das Gerät neu gestartet wird. Dies dauert normalerweise 20–30 Sekunden.",
+    "video_overlay_reboot_timeout_message": "Zeitüberschreitung bei der automatischen Wiederverbindung",
+    "video_overlay_reboot_unable_to_reconnect": "Verbindung konnte nicht wiederhergestellt werden",
+    "video_overlay_reboot_waiting_for_restart": "Warten auf den Neustart des Geräts …",
     "video_overlay_retrying_connection": "Verbindung wird erneut versucht …",
     "video_overlay_troubleshooting_guide": "Handbuch zur Fehlerbehebung",
     "video_overlay_try_again": "Versuchen Sie es erneut",
@@ -891,11 +897,5 @@
     "wake_on_lan_invalid_mac": "Ungültige MAC-Adresse",
     "wake_on_lan_magic_sent_success": "Magic Packet erfolgreich gesendet",
     "welcome_to_jetkvm": "Willkommen bei JetKVM",
-    "welcome_to_jetkvm_description": "Steuern Sie jeden Computer aus der Ferne",
-    "video_overlay_reboot_device_is_rebooting": "Das Gerät wird neu gestartet",
-    "video_overlay_reboot_different_ip_message": "Das Gerät wurde möglicherweise mit einer anderen IP-Adresse neu gestartet. Überprüfen Sie die physische Anzeige des JetKVM, um die aktuelle IP-Adresse zu ermitteln und die Verbindung wiederherzustellen.",
-    "video_overlay_reboot_please_wait_message": "Bitte warten Sie, während das Gerät neu gestartet wird. Dies dauert normalerweise 20–30 Sekunden.",
-    "video_overlay_reboot_timeout_message": "Zeitüberschreitung bei der automatischen Wiederverbindung",
-    "video_overlay_reboot_unable_to_reconnect": "Verbindung konnte nicht wiederhergestellt werden",
-    "video_overlay_reboot_waiting_for_restart": "Warten auf den Neustart des Geräts …"
+    "welcome_to_jetkvm_description": "Steuern Sie jeden Computer aus der Ferne"
 }

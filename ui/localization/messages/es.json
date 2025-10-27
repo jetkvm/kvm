@@ -855,6 +855,12 @@
     "video_overlay_no_hdmi_ensure_power": "Asegúrese de que el dispositivo fuente esté encendido y emitiendo una señal",
     "video_overlay_no_hdmi_signal": "No se detectó señal HDMI.",
     "video_overlay_pointerlock_click_to_enable": "Haga clic en el vídeo para habilitar el control del mouse.",
+    "video_overlay_reboot_device_is_rebooting": "El dispositivo se está reiniciando",
+    "video_overlay_reboot_different_ip_message": "Es posible que el dispositivo se haya reiniciado con una dirección IP diferente. Revise la pantalla física del JetKVM para encontrar la dirección IP actual y volver a conectarlo.",
+    "video_overlay_reboot_please_wait_message": "Espere mientras el dispositivo se reinicia. Suele tardar entre 20 y 30 segundos.",
+    "video_overlay_reboot_timeout_message": "Tiempo de reconexión automática agotado",
+    "video_overlay_reboot_unable_to_reconnect": "No se puede reconectar",
+    "video_overlay_reboot_waiting_for_restart": "Esperando que el dispositivo se reinicie…",
     "video_overlay_retrying_connection": "Reintentando conexión…",
     "video_overlay_troubleshooting_guide": "Guía de solución de problemas",
     "video_overlay_try_again": "Intentar otra vez",
@@ -891,11 +897,5 @@
     "wake_on_lan_invalid_mac": "Dirección MAC no válida",
     "wake_on_lan_magic_sent_success": "Paquete mágico enviado con éxito",
     "welcome_to_jetkvm": "Bienvenido a JetKVM",
-    "welcome_to_jetkvm_description": "Controla cualquier computadora de forma remota",
-    "video_overlay_reboot_device_is_rebooting": "El dispositivo se está reiniciando",
-    "video_overlay_reboot_different_ip_message": "Es posible que el dispositivo se haya reiniciado con una dirección IP diferente. Revise la pantalla física del JetKVM para encontrar la dirección IP actual y volver a conectarlo.",
-    "video_overlay_reboot_please_wait_message": "Espere mientras el dispositivo se reinicia. Suele tardar entre 20 y 30 segundos.",
-    "video_overlay_reboot_timeout_message": "Tiempo de reconexión automática agotado",
-    "video_overlay_reboot_unable_to_reconnect": "No se puede reconectar",
-    "video_overlay_reboot_waiting_for_restart": "Esperando que el dispositivo se reinicie…"
+    "welcome_to_jetkvm_description": "Controla cualquier computadora de forma remota"
 }

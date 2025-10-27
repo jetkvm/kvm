@@ -855,6 +855,12 @@
     "video_overlay_no_hdmi_ensure_power": "Se till att källenheten är påslagen och matar ut en signal",
     "video_overlay_no_hdmi_signal": "Ingen HDMI-signal hittades.",
     "video_overlay_pointerlock_click_to_enable": "Klicka på videon för att aktivera muskontroll",
+    "video_overlay_reboot_device_is_rebooting": "Enheten startar om",
+    "video_overlay_reboot_different_ip_message": "Enheten kan ha startats om med en annan IP-adress. Kontrollera JetKVM:s fysiska skärm för att hitta den aktuella IP-adressen och anslut igen.",
+    "video_overlay_reboot_please_wait_message": "Vänta medan enheten startar om. Detta tar vanligtvis 20–30 sekunder.",
+    "video_overlay_reboot_timeout_message": "Automatisk återanslutning har nått tidsgränsen",
+    "video_overlay_reboot_unable_to_reconnect": "Det går inte att återansluta",
+    "video_overlay_reboot_waiting_for_restart": "Väntar på att enheten ska startas om…",
     "video_overlay_retrying_connection": "Försöker ansluta igen…",
     "video_overlay_troubleshooting_guide": "Felsökningsguide",
     "video_overlay_try_again": "Försök igen",
@@ -891,11 +897,5 @@
     "wake_on_lan_invalid_mac": "Ogiltig MAC-adress",
     "wake_on_lan_magic_sent_success": "Magiskt paket skickades",
     "welcome_to_jetkvm": "Välkommen till JetKVM",
-    "welcome_to_jetkvm_description": "Styr vilken dator som helst på distans",
-    "video_overlay_reboot_device_is_rebooting": "Enheten startar om",
-    "video_overlay_reboot_different_ip_message": "Enheten kan ha startats om med en annan IP-adress. Kontrollera JetKVM:s fysiska skärm för att hitta den aktuella IP-adressen och anslut igen.",
-    "video_overlay_reboot_please_wait_message": "Vänta medan enheten startar om. Detta tar vanligtvis 20–30 sekunder.",
-    "video_overlay_reboot_timeout_message": "Automatisk återanslutning har nått tidsgränsen",
-    "video_overlay_reboot_unable_to_reconnect": "Det går inte att återansluta",
-    "video_overlay_reboot_waiting_for_restart": "Väntar på att enheten ska startas om…"
+    "welcome_to_jetkvm_description": "Styr vilken dator som helst på distans"
 }

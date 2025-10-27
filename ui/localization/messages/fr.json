@@ -855,6 +855,12 @@
     "video_overlay_no_hdmi_ensure_power": "Assurez-vous que l'appareil source est sous tension et émet un signal",
     "video_overlay_no_hdmi_signal": "Aucun signal HDMI détecté.",
     "video_overlay_pointerlock_click_to_enable": "Cliquez sur la vidéo pour activer le contrôle de la souris",
+    "video_overlay_reboot_device_is_rebooting": "L'appareil redémarre",
+    "video_overlay_reboot_different_ip_message": "L'appareil a peut-être redémarré avec une adresse IP différente. Vérifiez l'écran physique du JetKVM pour trouver l'adresse IP actuelle et reconnectez-vous.",
+    "video_overlay_reboot_please_wait_message": "Veuillez patienter pendant le redémarrage de l'appareil. Cela prend généralement 20 à 30 secondes.",
+    "video_overlay_reboot_timeout_message": "Délai de reconnexion automatique expiré",
+    "video_overlay_reboot_unable_to_reconnect": "Impossible de se reconnecter",
+    "video_overlay_reboot_waiting_for_restart": "En attente du redémarrage de l'appareil…",
     "video_overlay_retrying_connection": "Nouvelle tentative de connexion…",
     "video_overlay_troubleshooting_guide": "Guide de dépannage",
     "video_overlay_try_again": "Essayer à nouveau",
@@ -891,11 +897,5 @@
     "wake_on_lan_invalid_mac": "Adresse MAC invalide",
     "wake_on_lan_magic_sent_success": "Paquet magique envoyé avec succès",
     "welcome_to_jetkvm": "Bienvenue chez JetKVM",
-    "welcome_to_jetkvm_description": "Contrôlez n'importe quel ordinateur à distance",
-    "video_overlay_reboot_device_is_rebooting": "L'appareil redémarre",
-    "video_overlay_reboot_different_ip_message": "L'appareil a peut-être redémarré avec une adresse IP différente. Vérifiez l'écran physique du JetKVM pour trouver l'adresse IP actuelle et reconnectez-vous.",
-    "video_overlay_reboot_please_wait_message": "Veuillez patienter pendant le redémarrage de l'appareil. Cela prend généralement 20 à 30 secondes.",
-    "video_overlay_reboot_timeout_message": "Délai de reconnexion automatique expiré",
-    "video_overlay_reboot_unable_to_reconnect": "Impossible de se reconnecter",
-    "video_overlay_reboot_waiting_for_restart": "En attente du redémarrage de l'appareil…"
+    "welcome_to_jetkvm_description": "Contrôlez n'importe quel ordinateur à distance"
 }
