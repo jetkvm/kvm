@@ -534,21 +534,25 @@ export default function KvmIdRoute() {
 
     const audioTransceiver = pc.addTransceiver("audio", { direction: "sendrecv" });
 
-    navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        channelCount: 2, // Request stereo input if available
-      }
-    }).then((stream) => {
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack && audioTransceiver.sender) {
-        audioTransceiver.sender.replaceTrack(audioTrack);
-      }
-    }).catch((err) => {
-      console.warn("Microphone access denied or unavailable:", err.message);
-    });
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 2, // Request stereo input if available
+        }
+      }).then((stream) => {
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack && audioTransceiver.sender) {
+          audioTransceiver.sender.replaceTrack(audioTrack);
+        }
+      }).catch((err) => {
+        console.warn("Microphone access denied or unavailable:", err.message);
+      });
+    } else {
+      console.warn("navigator.mediaDevices.getUserMedia is not available in this browser/context");
+    }
 
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onclose = () => console.log("rpcDataChannel has closed");
