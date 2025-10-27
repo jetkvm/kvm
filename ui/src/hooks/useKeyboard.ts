@@ -16,6 +16,7 @@ import {
 import { useHidRpc } from "@/hooks/useHidRpc";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { hidKeyToModifierMask, keys, modifiers } from "@/keyboardMappings";
+import { sleep } from "@/utils";
 
 const MACRO_RESET_KEYBOARD_STATE = {
   keys: new Array(hidKeyBufferSize).fill(0),
@@ -30,8 +31,6 @@ export interface MacroStep {
 }
 
 export type MacroSteps = MacroStep[];
-
-const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function useKeyboard() {
   const { send } = useJsonRpc();
@@ -97,24 +96,23 @@ export default function useKeyboard() {
     [send, setKeysDownState],
   );
 
-  const sendKeystrokeLegacy = useCallback(async (keys: number[], modifier: number, ac?: AbortController) => {
-    return await new Promise<void>((resolve, reject) => {
-      const abortListener = () => {
-        reject(new Error("Keyboard report aborted"));
-      };
+  const sendKeystrokeLegacy = useCallback(
+    async (keys: number[], modifier: number, ac?: AbortController) => {
+      return await new Promise<void>((resolve, reject) => {
+        const abortListener = () => {
+          reject(new Error("Keyboard report aborted"));
+        };
 
-      ac?.signal?.addEventListener("abort", abortListener);
+        ac?.signal?.addEventListener("abort", abortListener);
 
-      send(
-        "keyboardReport",
-        { keys, modifier },
-        params => {
+        send("keyboardReport", { keys, modifier }, params => {
           if ("error" in params) return reject(params.error);
           resolve();
-        },
-      );
-    });
-  }, [send]);
+        });
+      });
+    },
+    [send],
+  );
 
   const KEEPALIVE_INTERVAL = 50;
 
@@ -148,7 +146,6 @@ export default function useKeyboard() {
       handleLegacyKeyboardReport(keys, modifier);
     }
   }, [rpcHidReady, sendKeyboardEventHidRpc, handleLegacyKeyboardReport, cancelKeepAlive]);
-
 
   // IMPORTANT: See the keyPressReportApiAvailable comment above for the reason this exists
   function simulateDeviceSideKeyHandlingForLegacyDevices(
@@ -200,7 +197,9 @@ export default function useKeyboard() {
       // If we reach here it means we didn't find an empty slot or the key in the buffer
       if (overrun) {
         if (press) {
-          console.warn(`keyboard buffer overflow current keys ${keys}, key: ${key} not added`);
+          console.warn(
+            `keyboard buffer overflow current keys ${keys}, key: ${key} not added`,
+          );
           // Fill all key slots with ErrorRollOver (0x01) to indicate overflow
           keys.length = hidKeyBufferSize;
           keys.fill(hidErrorRollOver);
@@ -284,85 +283,92 @@ export default function useKeyboard() {
   // After the delay, the keys and modifiers are released and the next step is executed.
   // If a step has no keys or modifiers, it is treated as a delay-only step.
   // A small pause is added between steps to ensure that the device can process the events.
-  const executeMacroRemote = useCallback(async (
-    steps: MacroSteps,
-  ) => {
-    const macro: KeyboardMacroStep[] = [];
+  const executeMacroRemote = useCallback(
+    async (steps: MacroSteps) => {
+      const macro: KeyboardMacroStep[] = [];
 
-    for (const [_, step] of steps.entries()) {
-      const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
-      const modifierMask: number = (step.modifiers || [])
+      for (const [_, step] of steps.entries()) {
+        const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
+        const modifierMask: number = (step.modifiers || [])
 
-        .map(mod => modifiers[mod])
+          .map(mod => modifiers[mod])
 
-        .reduce((acc, val) => acc + val, 0);
+          .reduce((acc, val) => acc + val, 0);
 
-      // If the step has keys and/or modifiers, press them and hold for the delay
-      if (keyValues.length > 0 || modifierMask > 0) {
-        macro.push({ keys: keyValues, modifier: modifierMask, delay: 20 });
-        macro.push({ ...MACRO_RESET_KEYBOARD_STATE, delay: step.delay || 100 });
-      }
-    }
-
-    sendKeyboardMacroEventHidRpc(macro);
-  }, [sendKeyboardMacroEventHidRpc]);
-
-  const executeMacroClientSide = useCallback(async (steps: MacroSteps) => {
-    const promises: (() => Promise<void>)[] = [];
-
-    const ac = new AbortController();
-    setAbortController(ac);
-
-    for (const [_, step] of steps.entries()) {
-      const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
-      const modifierMask: number = (step.modifiers || [])
-        .map(mod => modifiers[mod])
-        .reduce((acc, val) => acc + val, 0);
-
-      // If the step has keys and/or modifiers, press them and hold for the delay
-      if (keyValues.length > 0 || modifierMask > 0) {
-        promises.push(() => sendKeystrokeLegacy(keyValues, modifierMask, ac));
-        promises.push(() => resetKeyboardState());
-        promises.push(() => sleep(step.delay || 100));
-      }
-    }
-
-    const runAll = async () => {
-      for (const promise of promises) {
-        // Check if we've been aborted before executing each promise
-        if (ac.signal.aborted) {
-          throw new Error("Macro execution aborted");
+        // If the step has keys and/or modifiers, press them and hold for the delay
+        if (keyValues.length > 0 || modifierMask > 0) {
+          macro.push({ keys: keyValues, modifier: modifierMask, delay: 20 });
+          macro.push({ ...MACRO_RESET_KEYBOARD_STATE, delay: step.delay || 100 });
         }
-        await promise();
       }
-    }
 
-    return await new Promise<void>((resolve, reject) => {
-      // Set up abort listener
-      const abortListener = () => {
-        reject(new Error("Macro execution aborted"));
+      sendKeyboardMacroEventHidRpc(macro);
+    },
+    [sendKeyboardMacroEventHidRpc],
+  );
+
+  const executeMacroClientSide = useCallback(
+    async (steps: MacroSteps) => {
+      const promises: (() => Promise<void>)[] = [];
+
+      const ac = new AbortController();
+      setAbortController(ac);
+
+      for (const [_, step] of steps.entries()) {
+        const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
+        const modifierMask: number = (step.modifiers || [])
+          .map(mod => modifiers[mod])
+          .reduce((acc, val) => acc + val, 0);
+
+        // If the step has keys and/or modifiers, press them and hold for the delay
+        if (keyValues.length > 0 || modifierMask > 0) {
+          promises.push(() => sendKeystrokeLegacy(keyValues, modifierMask, ac));
+          promises.push(() => resetKeyboardState());
+          promises.push(() => sleep(step.delay || 100));
+        }
+      }
+
+      const runAll = async () => {
+        for (const promise of promises) {
+          // Check if we've been aborted before executing each promise
+          if (ac.signal.aborted) {
+            throw new Error("Macro execution aborted");
+          }
+          await promise();
+        }
       };
 
-      ac.signal.addEventListener("abort", abortListener);
+      return await new Promise<void>((resolve, reject) => {
+        // Set up abort listener
+        const abortListener = () => {
+          reject(new Error("Macro execution aborted"));
+        };
 
-      runAll()
-        .then(() => {
-          ac.signal.removeEventListener("abort", abortListener);
-          resolve();
-        })
-        .catch((error) => {
-          ac.signal.removeEventListener("abort", abortListener);
-          reject(error);
-        });
-    });
-  }, [sendKeystrokeLegacy, resetKeyboardState, setAbortController]);
+        ac.signal.addEventListener("abort", abortListener);
 
-  const executeMacro = useCallback(async (steps: MacroSteps) => {
-    if (rpcHidReady) {
-      return executeMacroRemote(steps);
-    }
-    return executeMacroClientSide(steps);
-  }, [rpcHidReady, executeMacroRemote, executeMacroClientSide]);
+        runAll()
+          .then(() => {
+            ac.signal.removeEventListener("abort", abortListener);
+            resolve();
+          })
+          .catch(error => {
+            ac.signal.removeEventListener("abort", abortListener);
+            reject(error);
+          });
+      });
+    },
+    [sendKeystrokeLegacy, resetKeyboardState, setAbortController],
+  );
+
+  const executeMacro = useCallback(
+    async (steps: MacroSteps) => {
+      if (rpcHidReady) {
+        return executeMacroRemote(steps);
+      }
+      return executeMacroClientSide(steps);
+    },
+    [rpcHidReady, executeMacroRemote, executeMacroClientSide],
+  );
 
   const cancelExecuteMacro = useCallback(async () => {
     if (abortController.current) {
@@ -375,5 +381,11 @@ export default function useKeyboard() {
     cancelOngoingKeyboardMacroHidRpc();
   }, [rpcHidReady, cancelOngoingKeyboardMacroHidRpc, abortController]);
 
-  return { handleKeyPress, resetKeyboardState, executeMacro, cleanup, cancelExecuteMacro };
+  return {
+    handleKeyPress,
+    resetKeyboardState,
+    executeMacro,
+    cleanup,
+    cancelExecuteMacro,
+  };
 }

@@ -29,7 +29,7 @@ func (s *RpcNetworkSettings) ToNetworkConfig() *types.NetworkConfig {
 
 type PostRebootAction struct {
 	HealthCheck string `json:"healthCheck"`
-	RedirectUrl string `json:"redirectUrl"`
+	RedirectTo  string `json:"redirectTo"`
 }
 
 func toRpcNetworkSettings(config *types.NetworkConfig) *RpcNetworkSettings {
@@ -202,7 +202,7 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 		if newIPv4Mode == "static" && oldIPv4Mode != "static" {
 			postRebootAction = &PostRebootAction{
 				HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
-				RedirectUrl: fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
+				RedirectTo:  fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
 			}
 			l.Info().Interface("postRebootAction", postRebootAction).Msg("IPv4 mode changed to static, reboot required")
 		}
@@ -219,7 +219,7 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 			newConfig.IPv4Static.Address.String != oldConfig.IPv4Static.Address.String {
 			postRebootAction = &PostRebootAction{
 				HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
-				RedirectUrl: fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
+				RedirectTo:  fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
 			}
 
 			l.Info().Interface("postRebootAction", postRebootAction).Msg("IPv4 static config changed, reboot required")
