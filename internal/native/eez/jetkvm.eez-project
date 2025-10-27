@@ -1227,8 +1227,8 @@
                       "type": "LVGLLabelWidget",
                       "left": 0,
                       "top": 0,
-                      "width": 174,
-                      "height": 25,
+                      "width": 217,
+                      "height": 31,
                       "customInputs": [],
                       "customOutputs": [],
                       "style": {
@@ -1251,7 +1251,7 @@
                       "checkedStateType": "literal",
                       "disabledStateType": "literal",
                       "states": "",
-                      "useStyle": "LabelFontBold24",
+                      "useStyle": "LabelFontBold30",
                       "localStyles": {
                         "objID": "e584be1c-d434-4f13-fb87-00665e4a53a9"
                       },
@@ -1287,7 +1287,7 @@
                       "heightUnit": "content",
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
-                      "hiddenFlag": true,
+                      "hiddenFlag": false,
                       "hiddenFlagType": "literal",
                       "clickableFlagType": "literal",
                       "checkedStateType": "literal",
@@ -1335,6 +1335,7 @@
                       "heightUnit": "content",
                       "children": [],
                       "widgetFlags": "CLICK_FOCUSABLE|GESTURE_BUBBLE|PRESS_LOCK|SCROLLABLE|SCROLL_CHAIN_HOR|SCROLL_CHAIN_VER|SCROLL_ELASTIC|SCROLL_MOMENTUM|SCROLL_WITH_ARROW|SNAPPABLE",
+                      "hiddenFlag": false,
                       "hiddenFlagType": "literal",
                       "clickableFlagType": "literal",
                       "checkedStateType": "literal",
@@ -1362,8 +1363,8 @@
                       "type": "LVGLLabelWidget",
                       "left": 0,
                       "top": 0,
-                      "width": 60,
-                      "height": 18,
+                      "width": 74,
+                      "height": 21,
                       "customInputs": [],
                       "customOutputs": [],
                       "style": {
@@ -1393,7 +1394,8 @@
                           "MAIN": {
                             "DEFAULT": {
                               "pad_bottom": 2,
-                              "pad_top": -1
+                              "pad_top": -1,
+                              "text_font": "FontBook20"
                             }
                           }
                         }
