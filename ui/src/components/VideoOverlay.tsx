@@ -485,6 +485,7 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
           clearInterval(intervalId); // Stop polling before redirect
 
           window.location.href = targetUrl.href;
+          // Add 1s delay between setting location.href and calling reload() to prevent reload from interrupting the navigation.
           await sleep(1000);
           window.location.reload();
         }
