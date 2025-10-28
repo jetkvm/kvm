@@ -20,7 +20,8 @@ type OutputRelay struct {
 	cancel     context.CancelFunc
 	logger     zerolog.Logger
 	running    atomic.Bool
-	sample     media.Sample // Reusable sample for zero-allocation hot path
+	sample     media.Sample
+	stopped    chan struct{}
 
 	// Stats (Uint32: overflows after 2.7 years @ 50fps, faster atomics on 32-bit ARM)
 	framesRelayed atomic.Uint32
@@ -38,8 +39,9 @@ func NewOutputRelay(source AudioSource, audioTrack *webrtc.TrackLocalStaticSampl
 		ctx:        ctx,
 		cancel:     cancel,
 		logger:     logger,
+		stopped:    make(chan struct{}),
 		sample: media.Sample{
-			Duration: 20 * time.Millisecond, // Constant for all Opus frames
+			Duration: 20 * time.Millisecond,
 		},
 	}
 }
@@ -55,13 +57,15 @@ func (r *OutputRelay) Start() error {
 	return nil
 }
 
-// Stop stops the relay
+// Stop stops the relay and waits for goroutine to exit
 func (r *OutputRelay) Stop() {
 	if !r.running.Swap(false) {
 		return
 	}
 
 	r.cancel()
+	<-r.stopped
+
 	r.logger.Debug().
 		Uint32("frames_relayed", r.framesRelayed.Load()).
 		Uint32("frames_dropped", r.framesDropped.Load()).
@@ -70,6 +74,8 @@ func (r *OutputRelay) Stop() {
 
 // relayLoop continuously reads from audio source and writes to WebRTC
 func (r *OutputRelay) relayLoop() {
+	defer close(r.stopped)
+
 	const reconnectDelay = 1 * time.Second
 
 	for r.running.Load() {
