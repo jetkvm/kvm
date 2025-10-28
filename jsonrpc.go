@@ -899,7 +899,7 @@ func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 	if config.UsbDevices != nil && !config.UsbDevices.Audio && config.AudioOutputSource == "usb" {
 		audioMutex.Lock()
 		config.AudioOutputSource = "hdmi"
-		useUSBForAudioOutput = false
+		useUSBForAudioOutput.Store(false)
 		audioSourceChanged = true
 		audioMutex.Unlock()
 	}
@@ -908,7 +908,7 @@ func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 	if config.UsbDevices != nil && config.UsbDevices.Audio && !wasAudioEnabled {
 		audioMutex.Lock()
 		config.AudioOutputSource = "usb"
-		useUSBForAudioOutput = true
+		useUSBForAudioOutput.Store(true)
 		audioSourceChanged = true
 		audioMutex.Unlock()
 	}
@@ -970,10 +970,7 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 }
 
 func rpcGetAudioOutputSource() (string, error) {
-	audioMutex.Lock()
-	defer audioMutex.Unlock()
-
-	if useUSBForAudioOutput {
+	if useUSBForAudioOutput.Load() {
 		return "usb", nil
 	}
 	return "hdmi", nil
