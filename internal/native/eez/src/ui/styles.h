@@ -52,11 +52,6 @@ lv_style_t *get_style_label_font16_MAIN_DEFAULT();
 void add_style_label_font16(lv_obj_t *obj);
 void remove_style_label_font16(lv_obj_t *obj);
 
-// Style: LabelFontBold24
-lv_style_t *get_style_label_font_bold24_MAIN_DEFAULT();
-void add_style_label_font_bold24(lv_obj_t *obj);
-void remove_style_label_font_bold24(lv_obj_t *obj);
-
 // Style: LabelFontBold30
 lv_style_t *get_style_label_font_bold30_MAIN_DEFAULT();
 void add_style_label_font_bold30(lv_obj_t *obj);

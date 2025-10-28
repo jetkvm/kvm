@@ -10,8 +10,6 @@ void ui_call_rpc_handler(const char *method, const char *params);
 
 
 
-
-
 #if defined(EEZ_FOR_LVGL)
 #include <eez/flow/lvgl_api.h>
 #endif

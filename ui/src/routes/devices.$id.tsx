@@ -901,7 +901,7 @@ export default function KvmIdRoute() {
               style={{ animationDuration: "500ms" }}
               className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
             >
-              <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
+              <div className="relative h-full max-h-[720px] w-full max-w-7xl rounded-md">
                 {!!ConnectionStatusElement && ConnectionStatusElement}
               </div>
             </div>

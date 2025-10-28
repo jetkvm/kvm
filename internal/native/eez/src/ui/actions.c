@@ -56,6 +56,10 @@ void action_switch_to_reboot(lv_event_t *e) {
     loadScreen(SCREEN_ID_REBOOT_SCREEN);
 }
 
+void action_switch_to_network(lv_event_t *e) {
+    loadScreen(SCREEN_ID_MENU_NETWORK_SCREEN);
+}
+
 void action_menu_screen_gesture(lv_event_t * e) {
     handle_gesture_main_screen_switch(e, LV_DIR_RIGHT);
 }
@@ -75,6 +79,11 @@ void action_home_screen_gesture(lv_event_t * e) {
 void action_about_screen_gesture(lv_event_t * e) {
     handle_gesture_screen_switch(e, LV_DIR_RIGHT, SCREEN_ID_MENU_SCREEN);
 }
+
+void action_status_screen_gesture(lv_event_t *e) {
+    handle_gesture_screen_switch(e, LV_DIR_RIGHT, SCREEN_ID_MENU_SCREEN);
+}
+
 
 // user_data doesn't seem to be working, so we use a global variable here
 static uint32_t t_reset_config;
@@ -168,9 +177,9 @@ void action_dhcpc(lv_event_t * e) {
         .lock = &b_dhcpc_lock,
         .hold_time_seconds = DHCPC_HOLD_TIME,
         .rpc_method = "toggleDHCPClient",
-        .button_obj = NULL,  // No button/spinner for reboot
+        .button_obj = NULL,  // No button/spinner for dhcp client change
         .spinner_obj = NULL,
-        .label_obj = objects.dhcpc_label,
+        .label_obj = objects.dhcp_client_label,
         .default_text = "Press and hold for\n5 seconds"
     };
     

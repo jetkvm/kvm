@@ -109,6 +109,7 @@ func (n *Native) UpdateLabelIfChanged(objName string, newText string) {
 
 	if changed {
 		l.Msg("label changed")
+		uiTick()
 	} else {
 		l.Msg("label not changed")
 	}
@@ -130,6 +131,8 @@ func (n *Native) ChangeVisibility(objName string, show bool) {
 		_, _ = n.UIObjHide(objName)
 		_, _ = n.UIObjHide(containerName)
 	}
+
+	uiTick()
 }
 
 // SwitchToScreenIf switches to the screen if the screen name is different from the current screen and the screen name is in the shouldSwitch list

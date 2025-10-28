@@ -51,10 +51,16 @@ func updateDisplayUsbState() {
 
 func updateDisplay() {
 	if networkManager != nil {
-		nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv4_addr", networkManager.IPv4String())
-		nativeInstance.UpdateLabelAndChangeVisibility("home_info_ipv6_addr", networkManager.IPv6String())
-		nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
-		nativeInstance.UpdateLabelIfChanged("home_info_hostname", networkManager.Hostname())
+		ipv4 := networkManager.IPv4String()
+		nativeInstance.UISetVar("ip_v4_address", ipv4)
+		nativeInstance.ChangeVisibility("home_info_ipv4_addr", ipv4 != "")
+
+		ipv6 := networkManager.IPv6String()
+		nativeInstance.UISetVar("ip_v6_address", ipv6)
+		nativeInstance.ChangeVisibility("home_info_ipv6_addr", ipv6 != "")
+
+		nativeInstance.UISetVar("mac_address", networkManager.MACString())
+		nativeInstance.UISetVar("hostname", networkManager.Hostname())
 
 		// we either show the MAC address (if no IP yet) or the hostname (if either IPv4 or IPv6 are available)
 		hasIP := networkManager.IPv4Ready() || networkManager.IPv6Ready()
@@ -215,7 +221,8 @@ func waitCtrlAndRequestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 func updateStaticContents() {
 	//contents that never change
 	if networkManager != nil {
-		nativeInstance.UpdateLabelIfChanged("home_info_mac_addr", networkManager.MACString())
+		mac := networkManager.MACString()
+		nativeInstance.UISetVar("mac_address", mac)
 	}
 
 	// get cpu info
@@ -241,7 +248,7 @@ func updateStaticContents() {
 	nativeInstance.UpdateLabelAndChangeVisibility("build_date", version.BuildDate)
 	nativeInstance.UpdateLabelAndChangeVisibility("golang_version", version.GoVersion)
 
-	// nativeInstance.UpdateLabelAndChangeVisibility("boot_screen_device_id", GetDeviceID())
+	nativeInstance.UpdateLabelAndChangeVisibility("device_id", GetDeviceID())
 }
 
 // configureDisplayOnNativeRestart is called when the native process restarts
