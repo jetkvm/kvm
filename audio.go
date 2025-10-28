@@ -176,6 +176,7 @@ func SetAudioOutputSource(useUSB bool) error {
 		Bool("new_usb", useUSB).
 		Msg("Switching audio output source")
 
+	oldValue := useUSBForAudioOutput
 	useUSBForAudioOutput = useUSB
 
 	ensureConfigLoaded()
@@ -186,6 +187,7 @@ func SetAudioOutputSource(useUSB bool) error {
 	}
 	if err := SaveConfig(); err != nil {
 		audioLogger.Error().Err(err).Msg("Failed to save config")
+		useUSBForAudioOutput = oldValue
 		return err
 	}
 

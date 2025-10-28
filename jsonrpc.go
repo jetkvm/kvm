@@ -970,8 +970,13 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 }
 
 func rpcGetAudioOutputSource() (string, error) {
-	ensureConfigLoaded()
-	return config.AudioOutputSource, nil
+	audioMutex.Lock()
+	defer audioMutex.Unlock()
+
+	if useUSBForAudioOutput {
+		return "usb", nil
+	}
+	return "hdmi", nil
 }
 
 func rpcSetAudioOutputSource(source string) error {
