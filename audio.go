@@ -22,7 +22,7 @@ var (
 	audioLogger          zerolog.Logger
 	currentAudioTrack    *webrtc.TrackLocalStaticSample
 	inputTrackHandling   atomic.Bool
-	useUSBForAudioOutput bool
+	useUSBForAudioOutput atomic.Bool
 	audioOutputEnabled   atomic.Bool
 	audioInputEnabled    atomic.Bool
 )
@@ -32,7 +32,7 @@ func initAudio() {
 
 	// Load audio output source from config
 	ensureConfigLoaded()
-	useUSBForAudioOutput = config.AudioOutputSource == "usb"
+	useUSBForAudioOutput.Store(config.AudioOutputSource == "usb")
 
 	// Enable both by default
 	audioOutputEnabled.Store(true)
@@ -57,7 +57,7 @@ func startAudio() error {
 	// Start output audio if not running and enabled
 	if outputSource == nil && audioOutputEnabled.Load() {
 		alsaDevice := "hw:0,0" // HDMI
-		if useUSBForAudioOutput {
+		if useUSBForAudioOutput.Load() {
 			alsaDevice = "hw:1,0" // USB
 		}
 
@@ -167,17 +167,17 @@ func SetAudioOutputSource(useUSB bool) error {
 	audioMutex.Lock()
 	defer audioMutex.Unlock()
 
-	if useUSBForAudioOutput == useUSB {
+	if useUSBForAudioOutput.Load() == useUSB {
 		return nil
 	}
 
 	audioLogger.Info().
-		Bool("old_usb", useUSBForAudioOutput).
+		Bool("old_usb", useUSBForAudioOutput.Load()).
 		Bool("new_usb", useUSB).
 		Msg("Switching audio output source")
 
-	oldValue := useUSBForAudioOutput
-	useUSBForAudioOutput = useUSB
+	oldValue := useUSBForAudioOutput.Load()
+	useUSBForAudioOutput.Store(useUSB)
 
 	ensureConfigLoaded()
 	if useUSB {
@@ -187,7 +187,7 @@ func SetAudioOutputSource(useUSB bool) error {
 	}
 	if err := SaveConfig(); err != nil {
 		audioLogger.Error().Err(err).Msg("Failed to save config")
-		useUSBForAudioOutput = oldValue
+		useUSBForAudioOutput.Store(oldValue)
 		return err
 	}
 
