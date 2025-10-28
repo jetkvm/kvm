@@ -29,6 +29,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   const audioElementsRef = useRef<HTMLAudioElement[]>([]);
   const { mediaStream, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioAutoplayBlocked, setAudioAutoplayBlocked] = useState(false);
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
 
@@ -344,8 +345,11 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
             document.body.appendChild(audioElm);
             audioElementsRef.current.push(audioElm);
 
-            audioElm.play().catch(() => {
+            audioElm.play().then(() => {
+              setAudioAutoplayBlocked(false);
+            }).catch(() => {
               console.debug("[Audio] Autoplay blocked, will be started by user interaction");
+              setAudioAutoplayBlocked(true);
             });
           }
         },
@@ -359,6 +363,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
           audioElm.remove();
         });
         audioElementsRef.current = [];
+        setAudioAutoplayBlocked(false);
       };
     },
     [addStreamToVideoElm, peerConnection],
@@ -472,11 +477,12 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
 
   const hasNoAutoPlayPermissions = useMemo(() => {
     if (peerConnection?.connectionState !== "connected") return false;
-    if (isPlaying) return false;
     if (hdmiError) return false;
     if (videoHeight === 0 || videoWidth === 0) return false;
-    return true;
-  }, [hdmiError, isPlaying, peerConnection?.connectionState, videoHeight, videoWidth]);
+    if (!isPlaying) return true;
+    if (audioAutoplayBlocked) return true;
+    return false;
+  }, [audioAutoplayBlocked, hdmiError, isPlaying, peerConnection?.connectionState, videoHeight, videoWidth]);
 
   const showPointerLockBar = useMemo(() => {
     if (settings.mouseMode !== "relative") return false;
@@ -568,7 +574,11 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                               show={hasNoAutoPlayPermissions}
                               onPlayClick={() => {
                                 videoElm.current?.play();
-                                audioElementsRef.current.forEach(audioElm => audioElm.play().catch(() => undefined));
+                                audioElementsRef.current.forEach(audioElm => {
+                                  audioElm.play().then(() => {
+                                    setAudioAutoplayBlocked(false);
+                                  }).catch(() => undefined);
+                                });
                               }}
                             />
                           </div>
