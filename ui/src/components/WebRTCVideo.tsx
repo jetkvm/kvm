@@ -26,6 +26,7 @@ import { m } from "@localizations/messages.js";
 export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssues: boolean }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
+  const audioElementsRef = useRef<HTMLAudioElement[]>([]);
   const { mediaStream, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
@@ -330,7 +331,6 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
       if (!peerConnection) return;
       const abortController = new AbortController();
       const signal = abortController.signal;
-      const audioElements: HTMLAudioElement[] = [];
 
       peerConnection.addEventListener(
         "track",
@@ -339,11 +339,14 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
             addStreamToVideoElm(e.streams[0]);
           } else if (e.track.kind === "audio") {
             const audioElm = document.createElement("audio");
-            audioElm.autoplay = true;
             audioElm.srcObject = e.streams[0];
             audioElm.style.display = "none";
             document.body.appendChild(audioElm);
-            audioElements.push(audioElm);
+            audioElementsRef.current.push(audioElm);
+
+            audioElm.play().catch(() => {
+              console.debug("[Audio] Autoplay blocked, will be started by user interaction");
+            });
           }
         },
         { signal },
@@ -351,10 +354,11 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
 
       return () => {
         abortController.abort();
-        audioElements.forEach((audioElm) => {
+        audioElementsRef.current.forEach((audioElm) => {
           audioElm.srcObject = null;
           audioElm.remove();
         });
+        audioElementsRef.current = [];
       };
     },
     [addStreamToVideoElm, peerConnection],
@@ -564,6 +568,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                               show={hasNoAutoPlayPermissions}
                               onPlayClick={() => {
                                 videoElm.current?.play();
+                                audioElementsRef.current.forEach(audioElm => audioElm.play().catch(() => undefined));
                               }}
                             />
                           </div>
