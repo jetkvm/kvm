@@ -18,7 +18,7 @@ BUILDDATE ?= $(shell date -u +%FT%T%z)
 BUILDTS   ?= $(shell date -u +%s)
 REVISION  ?= $(shell git rev-parse HEAD)
 VERSION_DEV := 0.4.9-dev$(shell date +%Y%m%d%H%M)
-VERSION := 0.4.9
+VERSION := 0.4.8
 
 
 # Audio library versions
