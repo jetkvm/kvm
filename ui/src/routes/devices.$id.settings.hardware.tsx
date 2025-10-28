@@ -46,10 +46,10 @@ export default function SettingsHardwareRoute() {
     }
 
     setBacklightSettings(settings);
-    handleBacklightSettingsSave();
+    handleBacklightSettingsSave(settings);
   };
 
-  const handleBacklightSettingsSave = () => {
+  const handleBacklightSettingsSave = (backlightSettings: BacklightSettings) => {
     send("setBacklightSettings", { params: backlightSettings }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
@@ -81,7 +81,7 @@ export default function SettingsHardwareRoute() {
     const duration = enabled ? 90 : -1;
     send("setVideoSleepMode", { duration }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.hardware_power_saving_failed_error({ error: resp.error.data ||m.unknown_error() }));
+        notifications.error(m.hardware_power_saving_failed_error({ error: resp.error.data || m.unknown_error() }));
         setPowerSavingEnabled(!enabled); // Attempt to revert on error
         return;
       }
