@@ -19,6 +19,7 @@ import (
 	"go.bug.st/serial"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
+	"github.com/jetkvm/kvm/internal/ota"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
@@ -248,9 +249,8 @@ func rpcSetDevChannelState(enabled bool) error {
 	return nil
 }
 
-func rpcGetUpdateStatus() (*UpdateStatus, error) {
-	includePreRelease := config.IncludePreRelease
-	updateStatus, err := GetUpdateStatus(context.Background(), GetDeviceID(), includePreRelease)
+func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
+	updateStatus, err := otaState.GetUpdateStatus(context.Background(), GetDeviceID(), includePreRelease)
 	// to ensure backwards compatibility,
 	// if there's an error, we won't return an error, but we will set the error field
 	if err != nil {
@@ -260,15 +260,32 @@ func rpcGetUpdateStatus() (*UpdateStatus, error) {
 		updateStatus.Error = err.Error()
 	}
 
+	logger.Info().Interface("updateStatus", updateStatus).Msg("Update status")
+
 	return updateStatus, nil
 }
 
-func rpcGetLocalVersion() (*LocalMetadata, error) {
+func rpcGetUpdateStatus() (*ota.UpdateStatus, error) {
+	return getUpdateStatus(config.IncludePreRelease)
+}
+
+func rpcGetUpdateStatusChannel(channel string) (*ota.UpdateStatus, error) {
+	switch channel {
+	case "stable":
+		return getUpdateStatus(false)
+	case "dev":
+		return getUpdateStatus(true)
+	default:
+		return nil, fmt.Errorf("invalid channel: %s", channel)
+	}
+}
+
+func rpcGetLocalVersion() (*ota.LocalMetadata, error) {
 	systemVersion, appVersion, err := GetLocalVersion()
 	if err != nil {
 		return nil, fmt.Errorf("error getting local version: %w", err)
 	}
-	return &LocalMetadata{
+	return &ota.LocalMetadata{
 		AppVersion:    appVersion.String(),
 		SystemVersion: systemVersion.String(),
 	}, nil
@@ -277,7 +294,7 @@ func rpcGetLocalVersion() (*LocalMetadata, error) {
 func rpcTryUpdate() error {
 	includePreRelease := config.IncludePreRelease
 	go func() {
-		err := TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
+		err := otaState.TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
 		if err != nil {
 			logger.Warn().Err(err).Msg("failed to try update")
 		}
@@ -654,7 +671,7 @@ func rpcGetMassStorageMode() (string, error) {
 }
 
 func rpcIsUpdatePending() (bool, error) {
-	return IsUpdatePending(), nil
+	return otaState.IsUpdatePending(), nil
 }
 
 func rpcGetUsbEmulationState() (bool, error) {
@@ -1200,6 +1217,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setDevChannelState":     {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":        {Func: rpcGetLocalVersion},
 	"getUpdateStatus":        {Func: rpcGetUpdateStatus},
+	"getUpdateStatusChannel": {Func: rpcGetUpdateStatusChannel},
 	"tryUpdate":              {Func: rpcTryUpdate},
 	"getDevModeState":        {Func: rpcGetDevModeState},
 	"setDevModeState":        {Func: rpcSetDevModeState, Params: []string{"enabled"}},

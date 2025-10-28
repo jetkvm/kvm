@@ -242,6 +242,7 @@
     "general_auto_update_error": "Failed to set auto-update: {error}",
     "general_auto_update_title": "Auto Update",
     "general_check_for_updates": "Check for Updates",
+    "general_check_for_stable_updates": "Downgrade",
     "general_page_description": "Configure device settings and update preferences",
     "general_reboot_description": "Do you want to proceed with rebooting the system?",
     "general_reboot_device": "Reboot Device",

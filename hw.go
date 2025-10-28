@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/ota"
 )
 
 func extractSerialNumber() (string, error) {
@@ -37,7 +39,7 @@ func readOtpEntropy() ([]byte, error) { //nolint:unused
 	return content[0x17:0x1C], nil
 }
 
-func hwReboot(force bool, postRebootAction *PostRebootAction, delay time.Duration) error {
+func hwReboot(force bool, postRebootAction *ota.PostRebootAction, delay time.Duration) error { //nolint:unused
 	logger.Info().Msgf("Reboot requested, rebooting in %d seconds...", delay)
 
 	writeJSONRPCEvent("willReboot", postRebootAction, currentSession)

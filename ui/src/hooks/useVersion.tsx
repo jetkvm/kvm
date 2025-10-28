@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 import { useDeviceStore } from "@/hooks/stores";
 import { JsonRpcError, RpcMethodNotFound } from "@/hooks/useJsonRpc";
@@ -53,5 +53,6 @@ export function useVersion() {
     getLocalVersion,
     appVersion,
     systemVersion,
+    isOnDevVersion,
   };
 }

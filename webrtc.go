@@ -286,7 +286,7 @@ func newSession(config SessionConfig) (*Session, error) {
 				// Enqueue to ensure ordered processing
 				session.rpcQueue <- msg
 			})
-			triggerOTAStateUpdate()
+			triggerOTAStateUpdate(nil)
 			triggerVideoStateUpdate()
 			triggerUSBStateUpdate()
 		case "terminal":

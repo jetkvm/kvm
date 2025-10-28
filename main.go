@@ -32,12 +32,6 @@ func Main() {
 		Msg("starting JetKVM")
 
 	go runWatchdog()
-	go confirmCurrentSystem()
-
-	initDisplay()
-	initNative(systemVersionLocal, appVersionLocal)
-
-	http.DefaultClient.Timeout = 1 * time.Minute
 
 	err = rootcerts.UpdateDefaultTransport()
 	if err != nil {
@@ -46,6 +40,13 @@ func Main() {
 	logger.Info().
 		Int("ca_certs_loaded", len(rootcerts.Certs())).
 		Msg("loaded Root CA certificates")
+
+	initOta()
+
+	initDisplay()
+	initNative(systemVersionLocal, appVersionLocal)
+
+	http.DefaultClient.Timeout = 1 * time.Minute
 
 	// Initialize network
 	if err := initNetwork(); err != nil {
@@ -106,7 +107,7 @@ func Main() {
 			}
 
 			includePreRelease := config.IncludePreRelease
-			err = TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
+			err = otaState.TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
 			if err != nil {
 				logger.Warn().Err(err).Msg("failed to auto update")
 			}
