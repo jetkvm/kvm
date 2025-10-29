@@ -98,7 +98,7 @@ export default function SettingsAccessIndexRoute() {
       }
 
       getCloudState();
-      // In cloud mode, we need to navigate to the device overview page, as we don't a connection anymore
+      // In cloud mode, we need to navigate to the device overview page, as we don't have a connection anymore
       if (!isOnDevice) navigate("/");
       return;
     });

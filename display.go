@@ -305,11 +305,11 @@ func wakeDisplay(force bool, reason string) {
 		displayLogger.Warn().Err(err).Msg("failed to wake display")
 	}
 
-	if config.DisplayDimAfterSec != 0 {
+	if config.DisplayDimAfterSec != 0 && dimTicker != nil {
 		dimTicker.Reset(time.Duration(config.DisplayDimAfterSec) * time.Second)
 	}
 
-	if config.DisplayOffAfterSec != 0 {
+	if config.DisplayOffAfterSec != 0 && offTicker != nil {
 		offTicker.Reset(time.Duration(config.DisplayOffAfterSec) * time.Second)
 	}
 	backlightState = 0
