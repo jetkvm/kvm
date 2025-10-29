@@ -8,12 +8,18 @@ import { m } from "@localizations/messages.js";
 export default function SettingsGeneralRebootRoute() {
   const navigate = useNavigate();
   const { send } = useJsonRpc();
+  
+  const onClose = useCallback(() => {
+    navigate(".."); // back to the devices.$id.settings page
+    window.location.reload(); // force a full reload to ensure the current device/cloud UI version is loaded
+  }, [navigate]);
+
 
   const onConfirmUpdate = useCallback(() => {
     send("reboot", { force: true});
   }, [send]);
 
-  return <Dialog onClose={() => navigate("..")} onConfirmUpdate={onConfirmUpdate} />;
+  return <Dialog onClose={onClose} onConfirmUpdate={onConfirmUpdate} />;
 }
 
 export function Dialog({

@@ -26,6 +26,31 @@ show_help() {
     echo "  $0 -r 192.168.0.17 -u admin"
 }
 
+# Function to check if device is pingable
+check_ping() {
+    local host=$1
+    msg_info "▶ Checking if device is reachable at ${host}..."
+    if ! ping -c 3 -W 5 "${host}" > /dev/null 2>&1; then
+        msg_err "Error: Cannot reach device at ${host}"
+        msg_err "Please verify the IP address and network connectivity"
+        exit 1
+    fi
+    msg_info "✓ Device is reachable"
+}
+
+# Function to check if SSH is accessible
+check_ssh() {
+    local user=$1
+    local host=$2
+    msg_info "▶ Checking SSH connectivity to ${user}@${host}..."
+    if ! ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${user}@${host}" "echo 'SSH connection successful'" > /dev/null 2>&1; then
+        msg_err "Error: Cannot establish SSH connection to ${user}@${host}"
+        msg_err "Please verify SSH access and credentials"
+        exit 1
+    fi
+    msg_info "✓ SSH connection successful"
+}
+
 # Default values
 SCRIPT_PATH=$(realpath "$(dirname $(realpath "${BASH_SOURCE[0]}"))")
 REMOTE_USER="root"
@@ -113,6 +138,10 @@ if [ -z "$REMOTE_HOST" ]; then
     exit 1
 fi
 
+# Check device connectivity before proceeding
+check_ping "${REMOTE_HOST}"
+check_ssh "${REMOTE_USER}" "${REMOTE_HOST}"
+
 # check if the current CPU architecture is x86_64
 if [ "$(uname -m)" != "x86_64" ]; then
     msg_warn "Warning: This script is only supported on x86_64 architecture"
@@ -131,7 +160,7 @@ if [[ "$SKIP_UI_BUILD" = true && ! -f "static/index.html" ]]; then
     SKIP_UI_BUILD=false
 fi
 
-if [[ "$SKIP_UI_BUILD" = false && "$JETKVM_INSIDE_DOCKER" != 1 ]]; then 
+if [[ "$SKIP_UI_BUILD" = false && "$JETKVM_INSIDE_DOCKER" != 1 ]]; then
     msg_info "▶ Building frontend"
     make frontend SKIP_UI_BUILD=0
     SKIP_UI_BUILD_RELEASE=1
@@ -144,13 +173,13 @@ fi
 
 if [ "$RUN_GO_TESTS" = true ]; then
     msg_info "▶ Building go tests"
-    make build_dev_test  
+    make build_dev_test
 
     msg_info "▶ Copying device-tests.tar.gz to remote host"
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > /tmp/device-tests.tar.gz" < device-tests.tar.gz
+    ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "cat > /tmp/device-tests.tar.gz" < device-tests.tar.gz
 
     msg_info "▶ Running go tests"
-    ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << 'EOF'
+    ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" ash << 'EOF'
 set -e
 TMP_DIR=$(mktemp -d)
 cd ${TMP_DIR}
@@ -191,35 +220,35 @@ then
     SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} \
     SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} \
     ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
-	
+
 	# Copy the binary to the remote host as if we were the OTA updater.
-	ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
-	
+	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
+
 	# Reboot the device, the new app will be deployed by the startup process.
-	ssh "${REMOTE_USER}@${REMOTE_HOST}" "reboot"
+	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "reboot"
 else
 	msg_info "▶ Building development binary"
 	do_make build_dev \
     SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} \
     SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} \
     ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
-	
+
 	# Kill any existing instances of the application
-	ssh "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
-	
+	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
+
 	# Copy the binary to the remote host
-	ssh "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
-	
+	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
+
 	if [ "$RESET_USB_HID_DEVICE" = true ]; then
 	msg_info "▶ Resetting USB HID device"
 	msg_warn "The option has been deprecated and will be removed in a future version, as JetKVM will now reset USB gadget configuration when needed"
 	# Remove the old USB gadget configuration
-	ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -rf /sys/kernel/config/usb_gadget/jetkvm/configs/c.1/hid.usb*"
-	ssh "${REMOTE_USER}@${REMOTE_HOST}" "ls /sys/class/udc > /sys/kernel/config/usb_gadget/jetkvm/UDC"
+	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "rm -rf /sys/kernel/config/usb_gadget/jetkvm/configs/c.1/hid.usb*"
+	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "ls /sys/class/udc > /sys/kernel/config/usb_gadget/jetkvm/UDC"
 	fi
-	
+
 	# Deploy and run the application on the remote host
-	ssh "${REMOTE_USER}@${REMOTE_HOST}" ash << EOF
+	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" ash << EOF
 set -e
 
 # Set the library path to include the directory where librockit.so is located
@@ -228,6 +257,17 @@ export LD_LIBRARY_PATH=/oem/usr/lib:\$LD_LIBRARY_PATH
 # Kill any existing instances of the application
 killall jetkvm_app || true
 killall jetkvm_app_debug || true
+
+# Wait until both binaries are killed, max 10 seconds
+i=1
+while [ \$i -le 10 ]; do
+    echo "Waiting for jetkvm_app and jetkvm_app_debug to be killed, \$i/10 ..."
+    if ! pgrep -f "jetkvm_app" > /dev/null && ! pgrep -f "jetkvm_app_debug" > /dev/null; then
+        break
+    fi
+    sleep 1
+    i=\$((i + 1))
+done
 
 # Navigate to the directory where the binary will be stored
 cd "${REMOTE_PATH}"

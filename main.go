@@ -14,6 +14,7 @@ import (
 var appCtx context.Context
 
 func Main() {
+	logger.Log().Msg("JetKVM Starting Up")
 	LoadConfig()
 
 	var cancel context.CancelFunc
@@ -80,22 +81,28 @@ func Main() {
 	startVideoSleepModeTicker()
 
 	go func() {
+		// wait for 15 minutes before starting auto-update checks
+		// this is to avoid interfering with initial setup processes
+		// and to ensure the system is stable before checking for updates
 		time.Sleep(15 * time.Minute)
-		for {
-			logger.Debug().Bool("auto_update_enabled", config.AutoUpdateEnabled).Msg("UPDATING")
-			if !config.AutoUpdateEnabled {
-				return
-			}
 
-			if isTimeSyncNeeded() || !timeSync.IsSyncSuccess() {
-				logger.Debug().Msg("system time is not synced, will retry in 30 seconds")
-				time.Sleep(30 * time.Second)
+		for {
+			logger.Info().Bool("auto_update_enabled", config.AutoUpdateEnabled).Msg("auto-update check")
+			if !config.AutoUpdateEnabled {
+				logger.Debug().Msg("auto-update disabled")
+				time.Sleep(5 * time.Minute) // we'll check if auto-updates are enabled in five minutes
 				continue
 			}
 
 			if currentSession != nil {
 				logger.Debug().Msg("skipping update since a session is active")
 				time.Sleep(1 * time.Minute)
+				continue
+			}
+
+			if isTimeSyncNeeded() || !timeSync.IsSyncSuccess() {
+				logger.Debug().Msg("system time is not synced, will retry in 30 seconds")
+				time.Sleep(30 * time.Second)
 				continue
 			}
 
@@ -108,6 +115,7 @@ func Main() {
 			time.Sleep(1 * time.Hour)
 		}
 	}()
+
 	//go RunFuseServer()
 	go RunWebServer()
 
@@ -124,6 +132,7 @@ func Main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
+
 	logger.Info().Msg("JetKVM Shutting Down")
 
 	stopAudio()

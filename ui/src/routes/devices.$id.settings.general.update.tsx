@@ -21,6 +21,11 @@ export default function SettingsGeneralUpdateRoute() {
   const { setModalView, otaState } = useUpdateStore();
   const { send } = useJsonRpc();
 
+  const onClose = useCallback(() => {
+    navigate(".."); // back to the devices.$id.settings page
+    window.location.reload(); // force a full reload to ensure the current device/cloud UI version is loaded
+  }, [navigate]);
+
   const onConfirmUpdate = useCallback(() => {
     send("tryUpdate", {});
     setModalView("updating");
@@ -36,9 +41,9 @@ export default function SettingsGeneralUpdateRoute() {
     } else {
       setModalView("loading");
     }
-  }, [otaState.updating, otaState.error, setModalView, updateSuccess]);
+  }, [otaState.error, otaState.updating, setModalView, updateSuccess]);
 
-  return <Dialog onClose={() => navigate("..")} onConfirmUpdate={onConfirmUpdate} />;
+  return <Dialog onClose={onClose} onConfirmUpdate={onConfirmUpdate} />;
 }
 
 export function Dialog({
