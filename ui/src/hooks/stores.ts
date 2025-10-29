@@ -573,14 +573,18 @@ export interface OtaState {
 export interface UpdateState {
   isUpdatePending: boolean;
   setIsUpdatePending: (isPending: boolean) => void;
+
   updateDialogHasBeenMinimized: boolean;
+  setUpdateDialogHasBeenMinimized: (hasBeenMinimized: boolean) => void;
+
   otaState: OtaState;
   setOtaState: (state: OtaState) => void;
-  setUpdateDialogHasBeenMinimized: (hasBeenMinimized: boolean) => void;
+
   modalView: UpdateModalViews
   setModalView: (view: UpdateModalViews) => void;
-  setUpdateErrorMessage: (errorMessage: string) => void;
+
   updateErrorMessage: string | null;
+  setUpdateErrorMessage: (errorMessage: string) => void;
 }
 
 export const useUpdateStore = create<UpdateState>(set => ({
@@ -611,8 +615,10 @@ export const useUpdateStore = create<UpdateState>(set => ({
   updateDialogHasBeenMinimized: false,
   setUpdateDialogHasBeenMinimized: (hasBeenMinimized: boolean) =>
     set({ updateDialogHasBeenMinimized: hasBeenMinimized }),
+
   modalView: "loading",
   setModalView: (view: UpdateModalViews) => set({ modalView: view }),
+
   updateErrorMessage: null,
   setUpdateErrorMessage: (errorMessage: string) => set({ updateErrorMessage: errorMessage }),
 }));

@@ -1,7 +1,6 @@
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Outlet,
-  redirect,
   useLoaderData,
   useLocation,
   useNavigate,
@@ -16,7 +15,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import useWebSocket from "react-use-websocket";
 
 import { cx } from "@/cva.config";
-import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import { CLOUD_API } from "@/ui.config";
 import api from "@/api";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import {
@@ -51,8 +50,13 @@ import {
   RebootingOverlay,
 } from "@components/VideoOverlay";
 import { FeatureFlagProvider } from "@providers/FeatureFlagProvider";
-import { DeviceStatus } from "@routes/welcome-local";
 import { m } from "@localizations/messages.js";
+
+export type AuthMode = "password" | "noPassword" | null;
+
+interface LocalLoaderResp {
+  authMode: AuthMode;
+}
 
 interface CloudLoaderResp {
   deviceName: string;
@@ -62,35 +66,20 @@ interface CloudLoaderResp {
   } | null;
 }
 
-export type AuthMode = "password" | "noPassword" | null;
 export interface LocalDevice {
   authMode: AuthMode;
   deviceId: string;
 }
 
 const deviceLoader = async () => {
-  const res = await api
-    .GET(`${DEVICE_API}/device/status`)
-    .then(res => res.json() as Promise<DeviceStatus>);
-
-  if (!res.isSetup) return redirect("/welcome");
-
-  const deviceRes = await api.GET(`${DEVICE_API}/device`);
-  if (deviceRes.status === 401) return redirect("/login-local");
-  if (deviceRes.ok) {
-    const device = (await deviceRes.json()) as LocalDevice;
-    return { authMode: device.authMode };
-  }
-
-  throw new Error("Error fetching device");
+  const device = await checkAuth();
+  return { authMode: device.authMode } as LocalLoaderResp;
 };
 
 const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => {
   const user = await checkAuth();
-
   const iceResp = await api.POST(`${CLOUD_API}/webrtc/ice_config`);
   const iceConfig = await iceResp.json();
-
   const deviceResp = await api.GET(`${CLOUD_API}/devices/${params.id}`);
 
   if (!deviceResp.ok) {
@@ -105,11 +94,11 @@ const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => 
     device: { id: string; name: string; user: { googleId: string } };
   };
 
-  return { user, iceConfig, deviceName: device.name || device.id };
+  return { user, iceConfig, deviceName: device.name || device.id } as CloudLoaderResp;
 };
 
 const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
-  return import.meta.env.MODE === "device" ? deviceLoader() : cloudLoader(params);
+  return isOnDevice ? deviceLoader() : cloudLoader(params);
 };
 
 export default function KvmIdRoute() {
@@ -185,7 +174,7 @@ export default function KvmIdRoute() {
 
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(remoteDescription));
-        console.log("[setRemoteSessionDescription] Remote description set successfully");
+        console.log("[setRemoteSessionDescription] Remote description set successfully to: " + remoteDescription.sdp);
         setLoadingMessage(m.establishing_secure_connection());
       } catch (error) {
         console.error(
@@ -230,8 +219,13 @@ export default function KvmIdRoute() {
   const ignoreOffer = useRef(false);
   const isSettingRemoteAnswerPending = useRef(false);
   const makingOffer = useRef(false);
-
+  const reconnectAttemptsRef = useRef(2000);
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+
+  const reconnectInterval = (attempt: number) => {
+    // Exponential backoff with a max of 10 seconds between attempts
+    return Math.min(500 * 2 ** attempt, 10000);
+  }
 
   const { sendMessage, getWebSocket } = useWebSocket(
     isOnDevice
@@ -240,10 +234,10 @@ export default function KvmIdRoute() {
     {
       heartbeat: true,
       retryOnError: true,
-      reconnectAttempts: 2000,
-      reconnectInterval: 1000,
+      reconnectAttempts: reconnectAttemptsRef.current,
+      reconnectInterval: reconnectInterval,
       onReconnectStop: (numAttempts: number) => {
-        console.debug("Reconnect stopped", numAttempts);
+        console.debug("Reconnect stopped after ", numAttempts, "attempts");
         cleanupAndStopReconnecting();
       },
 
@@ -261,6 +255,7 @@ export default function KvmIdRoute() {
         console.error("[Websocket] onError", event);
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
+
       onOpen() {
         console.debug("[Websocket] onOpen");
         // We want to clear the reboot state when the websocket connection is opened
@@ -293,6 +288,7 @@ export default function KvmIdRoute() {
         */
 
         const parsedMessage = JSON.parse(message.data);
+
         if (parsedMessage.type === "device-metadata") {
           const { deviceVersion } = parsedMessage.data;
           console.debug("[Websocket] Received device-metadata message");
@@ -309,10 +305,12 @@ export default function KvmIdRoute() {
             console.log("[Websocket] Device is using new signaling");
             isLegacySignalingEnabled.current = false;
           }
+
           setupPeerConnection();
         }
 
         if (!peerConnection) return;
+
         if (parsedMessage.type === "answer") {
           console.debug("[Websocket] Received answer");
           const readyForOffer =

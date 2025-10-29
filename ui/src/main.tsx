@@ -73,10 +73,10 @@ export async function checkDeviceAuth() {
     .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);
 
-  if (!res.isSetup) return redirect("/welcome");
+  if (!res.isSetup) throw redirect("/welcome");
 
   const deviceRes = await api.GET(`${DEVICE_API}/device`);
-  if (deviceRes.status === 401) return redirect("/login-local");
+  if (deviceRes.status === 401) throw redirect("/login-local");
   if (deviceRes.ok) {
     const device = (await deviceRes.json()) as LocalDevice;
     return { authMode: device.authMode };
@@ -86,7 +86,7 @@ export async function checkDeviceAuth() {
 }
 
 export async function checkAuth() {
-  return import.meta.env.MODE === "device" ? checkDeviceAuth() : checkCloudAuth();
+  return isOnDevice ? checkDeviceAuth() : checkCloudAuth();
 }
 
 let router;
