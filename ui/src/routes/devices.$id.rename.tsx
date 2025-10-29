@@ -54,7 +54,7 @@ const loader: LoaderFunction = async ({ params }: LoaderFunctionArgs) => {
     return { device, user };
   } catch (e) {
     console.error(e);
-    return { devices: [] };
+    return { user };
   }
 };
 

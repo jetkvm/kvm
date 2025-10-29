@@ -16,7 +16,7 @@ interface LoaderData {
   devices: { id: string; name: string; online: boolean; lastSeen: string }[];
   user: User;
 }
-const loader: LoaderFunction = async ()=> {
+const loader: LoaderFunction = async () => {
   const user = await checkAuth();
 
   try {
@@ -30,7 +30,7 @@ const loader: LoaderFunction = async ()=> {
     return { devices, user };
   } catch (e) {
     console.error(e);
-    return { devices: [] };
+    return { devices: [], user };
   }
 };
 

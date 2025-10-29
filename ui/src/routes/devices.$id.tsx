@@ -78,10 +78,8 @@ const deviceLoader = async () => {
 
 const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => {
   const user = await checkAuth();
-
   const iceResp = await api.POST(`${CLOUD_API}/webrtc/ice_config`);
   const iceConfig = await iceResp.json();
-
   const deviceResp = await api.GET(`${CLOUD_API}/devices/${params.id}`);
 
   if (!deviceResp.ok) {
