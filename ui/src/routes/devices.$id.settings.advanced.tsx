@@ -8,6 +8,7 @@ import { ConfirmDialog } from "@components/ConfirmDialog";
 import { GridCard } from "@components/Card";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { NestedSettingsGroup } from "@components/NestedSettingsGroup";
 import { TextAreaWithLabel } from "@components/TextArea";
 import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
@@ -201,41 +202,69 @@ export default function SettingsAdvancedRoute() {
             onChange={e => handleDevModeChange(e.target.checked)}
           />
         </SettingsItem>
-
-        {settings.developerMode && (
-          <GridCard>
-            <div className="flex items-start gap-x-4 p-4 select-none">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className="mt-1 h-8 w-8 shrink-0 text-amber-600 dark:text-amber-500"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    {m.advanced_developer_mode_enabled_title()}
-                  </h3>
-                  <div>
-                    <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
-                      <li>{m.advanced_developer_mode_warning_security()}</li>
-                      <li>{m.advanced_developer_mode_warning_risks()}</li>
-                    </ul>
+        {settings.developerMode ? (
+          <NestedSettingsGroup>
+            <GridCard>
+              <div className="flex items-start gap-x-4 p-4 select-none">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="mt-1 h-8 w-8 shrink-0 text-amber-600 dark:text-amber-500"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      {m.advanced_developer_mode_enabled_title()}
+                    </h3>
+                    <div>
+                      <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
+                        <li>{m.advanced_developer_mode_warning_security()}</li>
+                        <li>{m.advanced_developer_mode_warning_risks()}</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-700 dark:text-slate-300">
+                    {m.advanced_developer_mode_warning_advanced()}
                   </div>
                 </div>
-                <div className="text-xs text-slate-700 dark:text-slate-300">
-                  {m.advanced_developer_mode_warning_advanced()}
+              </div>
+            </GridCard>
+
+            {isOnDevice && (
+              <div className="space-y-4">
+                <SettingsItem
+                  title={m.advanced_ssh_access_title()}
+                  description={m.advanced_ssh_access_description()}
+                />
+                <TextAreaWithLabel
+                  label={m.advanced_ssh_public_key_label()}
+                  value={sshKey || ""}
+                  rows={3}
+                  onChange={e => setSSHKey(e.target.value)}
+                  placeholder={m.advanced_ssh_public_key_placeholder()}
+                />
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  {m.advanced_ssh_default_user()}<strong>root</strong>.
+                </p>
+                <div className="flex items-center gap-x-2">
+                  <Button
+                    size="SM"
+                    theme="primary"
+                    text={m.advanced_update_ssh_key_button()}
+                    onClick={handleUpdateSSHKey}
+                  />
                 </div>
               </div>
-            </div>
-          </GridCard>
-        )}
+            )}
+          </NestedSettingsGroup>
+        ) : null}
 
         <SettingsItem
           title={m.advanced_loopback_only_title()}
@@ -247,34 +276,7 @@ export default function SettingsAdvancedRoute() {
           />
         </SettingsItem>
 
-        {isOnDevice && settings.developerMode && (
-          <div className="space-y-4">
-            <SettingsItem
-              title={m.advanced_ssh_access_title()}
-              description={m.advanced_ssh_access_description()}
-            />
-            <div className="space-y-4">
-              <TextAreaWithLabel
-                label={m.advanced_ssh_public_key_label()}
-                value={sshKey || ""}
-                rows={3}
-                onChange={e => setSSHKey(e.target.value)}
-                placeholder={m.advanced_ssh_public_key_placeholder()}
-              />
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                {m.advanced_ssh_default_user()}<strong>root</strong>.
-              </p>
-              <div className="flex items-center gap-x-2">
-                <Button
-                  size="SM"
-                  theme="primary"
-                  text={m.advanced_update_ssh_key_button()}
-                  onClick={handleUpdateSSHKey}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+
 
         <SettingsItem
           title={m.advanced_troubleshooting_mode_title()}
@@ -289,7 +291,7 @@ export default function SettingsAdvancedRoute() {
         </SettingsItem>
 
         {settings.debugMode && (
-          <>
+          <NestedSettingsGroup>
             <SettingsItem
               title={m.advanced_usb_emulation_title()}
               description={m.advanced_usb_emulation_description()}
@@ -320,7 +322,7 @@ export default function SettingsAdvancedRoute() {
                 }}
               />
             </SettingsItem>
-          </>
+          </NestedSettingsGroup>
         )}
       </div>
 

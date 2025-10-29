@@ -7,6 +7,7 @@ import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
+import { NestedSettingsGroup } from "@components/NestedSettingsGroup";
 import Fieldset from "@components/Fieldset";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
@@ -174,7 +175,7 @@ export default function SettingsVideoRoute() {
               description={m.video_enhancement_description()}
             />
 
-            <div className="space-y-4 pl-4">
+            <NestedSettingsGroup>
               <SettingsItem
                 title={m.video_saturation_title()}
                 description={m.video_saturation_description({ value: videoSaturation.toFixed(1) })}
@@ -232,7 +233,7 @@ export default function SettingsVideoRoute() {
                   }}
                 />
               </div>
-            </div>
+            </NestedSettingsGroup>
             <Fieldset disabled={edidLoading} className="space-y-2">
               <SettingsItem
                 title={m.video_edid_title()}

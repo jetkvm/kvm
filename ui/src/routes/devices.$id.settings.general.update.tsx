@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import { UpdateState, useUpdateStore } from "@hooks/stores";

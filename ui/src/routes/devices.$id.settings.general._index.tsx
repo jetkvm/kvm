@@ -12,13 +12,11 @@ import notifications from "@/notifications";
 import { getLocale, setLocale, locales, baseLocale } from '@localizations/runtime.js';
 import { m } from "@localizations/messages.js";
 import { deleteCookie, map_locale_code_to_name } from "@/utils";
-import { useVersion } from "@hooks/useVersion";
 
 export default function SettingsGeneralRoute() {
   const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
   const [autoUpdate, setAutoUpdate] = useState(true);
-  const { isOnDevVersion } = useVersion();
   const currentVersions = useDeviceStore(state => {
     const { appVersion, systemVersion } = state;
     if (!appVersion || !systemVersion) return null;
@@ -75,10 +73,6 @@ export default function SettingsGeneralRoute() {
     notifications.success(m.locale_change_success({ locale: validLocale || m.locale_auto() }));
   };
 
-  const downgradeAvailable = useMemo(() => {
-    return isOnDevVersion;
-  }, [isOnDevVersion]);
-
   return (
     <div className="space-y-4">
       <SettingsPageHeader
@@ -114,12 +108,6 @@ export default function SettingsGeneralRoute() {
               }
             />
             <div className="flex items-center justify-start gap-x-2">
-              {downgradeAvailable && <Button
-                size="SM"
-                theme="danger"
-                text={m.general_check_for_stable_updates()}
-                onClick={() => navigateTo("./update?channel=stable")}
-              />}
               <Button
                 size="SM"
                 theme="light"
