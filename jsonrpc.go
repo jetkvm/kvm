@@ -199,10 +199,8 @@ func rpcReboot(force bool) error {
 	return nil
 }
 
-var streamFactor = 1.0
-
 func rpcGetStreamQualityFactor() (float64, error) {
-	return streamFactor, nil
+	return config.VideoQualityFactor, nil
 }
 
 func rpcSetStreamQualityFactor(factor float64) error {
@@ -212,7 +210,10 @@ func rpcSetStreamQualityFactor(factor float64) error {
 		return err
 	}
 
-	streamFactor = factor
+	config.VideoQualityFactor = factor
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
 	return nil
 }
 

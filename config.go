@@ -161,9 +161,35 @@ var defaultConfig = &Config{
 		RelativeMouse: true,
 		Keyboard:      true,
 		MassStorage:   true,
-	},
-	NetworkConfig:   &network.NetworkConfig{},
-	DefaultLogLevel: "INFO",
+	}
+)
+
+func getDefaultConfig() Config {
+	return Config{
+		CloudURL:             "https://api.jetkvm.com",
+		CloudAppURL:          "https://app.jetkvm.com",
+		AutoUpdateEnabled:    true, // Set a default value
+		ActiveExtension:      "",
+		KeyboardMacros:       []KeyboardMacro{},
+		DisplayRotation:      "270",
+		KeyboardLayout:       "en-US",
+		DisplayMaxBrightness: 64,
+		DisplayDimAfterSec:   120,  // 2 minutes
+		DisplayOffAfterSec:   1800, // 30 minutes
+		JigglerEnabled:       false,
+		// This is the "Standard" jiggler option in the UI
+		JigglerConfig: func() *JigglerConfig { c := defaultJigglerConfig; return &c }(),
+		TLSMode:       "",
+		UsbConfig:     func() *usbgadget.Config { c := defaultUsbConfig; return &c }(),
+		UsbDevices:    func() *usbgadget.Devices { c := defaultUsbDevices; return &c }(),
+		NetworkConfig: func() *types.NetworkConfig {
+			c := &types.NetworkConfig{}
+			_ = confparser.SetDefaultsAndValidate(c)
+			return c
+		}(),
+		DefaultLogLevel:    "INFO",
+		VideoQualityFactor: 1.0,
+	}
 }
 
 var (
