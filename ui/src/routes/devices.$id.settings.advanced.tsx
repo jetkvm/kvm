@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useSettingsStore } from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { Button } from "@components/Button";
 import Checkbox from "@components/Checkbox";
 import { ConfirmDialog } from "@components/ConfirmDialog";
@@ -10,6 +11,8 @@ import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { NestedSettingsGroup } from "@components/NestedSettingsGroup";
 import { TextAreaWithLabel } from "@components/TextArea";
+import { InputFieldWithLabel } from "@components/InputField";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
@@ -17,6 +20,7 @@ import { sleep } from "@/utils";
 
 export default function SettingsAdvancedRoute() {
   const { send } = useJsonRpc();
+  const { navigateTo } = useDeviceUiNavigation();
 
   const [sshKey, setSSHKey] = useState<string>("");
   const { setDeveloperMode } = useSettingsStore();
@@ -24,6 +28,9 @@ export default function SettingsAdvancedRoute() {
   const [usbEmulationEnabled, setUsbEmulationEnabled] = useState(false);
   const [showLoopbackWarning, setShowLoopbackWarning] = useState(false);
   const [localLoopbackOnly, setLocalLoopbackOnly] = useState(false);
+  const [updateTarget, setUpdateTarget] = useState<string>("app");
+  const [appVersion, setAppVersion] = useState<string>("");
+  const [systemVersion, setSystemVersion] = useState<string>("");
 
   const settings = useSettingsStore();
 
@@ -174,6 +181,21 @@ export default function SettingsAdvancedRoute() {
     setShowLoopbackWarning(false);
   }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
 
+  const handleVersionUpdate = useCallback(() => {
+    // TODO: Add version params to tryUpdate
+    console.log("tryUpdate", updateTarget, appVersion, systemVersion);
+    send("tryUpdate", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          m.advanced_error_version_update({ error: resp.error.data || m.unknown_error() })
+        );
+        return;
+      }
+      // Navigate to update page
+      navigateTo("/settings/general/update");
+    });
+  }, [updateTarget, appVersion, systemVersion, send, navigateTo]);
+
   return (
     <div className="space-y-4">
       <SettingsPageHeader
@@ -263,6 +285,66 @@ export default function SettingsAdvancedRoute() {
                 </div>
               </div>
             )}
+
+            <div className="space-y-4">
+              <SettingsItem
+                title={m.advanced_version_update_title()}
+                description={m.advanced_version_update_description()}
+              />
+
+              <SelectMenuBasic
+                label={m.advanced_version_update_target_label()}
+                options={[
+                  { value: "app", label: m.advanced_version_update_target_app() },
+                  { value: "system", label: m.advanced_version_update_target_system() },
+                  { value: "both", label: m.advanced_version_update_target_both() },
+                ]}
+                value={updateTarget}
+                onChange={e => setUpdateTarget(e.target.value)}
+              />
+
+              {(updateTarget === "app" || updateTarget === "both") && (
+                <InputFieldWithLabel
+                  label={m.advanced_version_update_app_label()}
+                  placeholder="0.4.9"
+                  value={appVersion}
+                  onChange={e => setAppVersion(e.target.value)}
+                />
+              )}
+
+              {(updateTarget === "system" || updateTarget === "both") && (
+                <InputFieldWithLabel
+                  label={m.advanced_version_update_system_label()}
+                  placeholder="0.4.9"
+                  value={systemVersion}
+                  onChange={e => setSystemVersion(e.target.value)}
+                />
+              )}
+
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                {m.advanced_version_update_helper()}{" "}
+                <a
+                  href="https://github.com/jetkvm/kvm/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-blue-700 hover:underline dark:text-blue-500"
+                >
+                  {m.advanced_version_update_github_link()}
+                </a>
+              </p>
+
+              <Button
+                size="SM"
+                theme="primary"
+                text={m.advanced_version_update_button()}
+                disabled={
+                  (updateTarget === "app" && !appVersion) ||
+                  (updateTarget === "system" && !systemVersion) ||
+                  (updateTarget === "both" && (!appVersion || !systemVersion))
+                }
+                onClick={handleVersionUpdate}
+              />
+            </div>
           </NestedSettingsGroup>
         ) : null}
 
