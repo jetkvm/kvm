@@ -176,7 +176,7 @@ func downloadFile(ctx context.Context, path string, url string, downloadProgress
 		if nr > 0 {
 			nw, ew := file.Write(buf[0:nr])
 			if nw < nr {
-				return fmt.Errorf("short write: %d < %d", nw, nr)
+				return fmt.Errorf("short file write: %d < %d", nw, nr)
 			}
 			written += int64(nw)
 			if ew != nil {
@@ -240,7 +240,7 @@ func verifyFile(path string, expectedHash string, verifyProgress *float32, scope
 		if nr > 0 {
 			nw, ew := hash.Write(buf[0:nr])
 			if nw < nr {
-				return fmt.Errorf("short write: %d < %d", nw, nr)
+				return fmt.Errorf("short hash write: %d < %d", nw, nr)
 			}
 			verified += int64(nw)
 			if ew != nil {
@@ -260,11 +260,16 @@ func verifyFile(path string, expectedHash string, verifyProgress *float32, scope
 		}
 	}
 
-	hashSum := hash.Sum(nil)
-	scopedLogger.Info().Str("path", path).Str("hash", hex.EncodeToString(hashSum)).Msg("SHA256 hash of")
+	// close the file so we can rename below
+	if err := fileToHash.Close(); err != nil {
+		return fmt.Errorf("error closing file: %w", err)
+	}
 
-	if hex.EncodeToString(hashSum) != expectedHash {
-		return fmt.Errorf("hash mismatch: %x != %s", hashSum, expectedHash)
+	hashSum := hex.EncodeToString(hash.Sum(nil))
+	scopedLogger.Info().Str("path", path).Str("hash", hashSum).Msg("SHA256 hash of")
+
+	if hashSum != expectedHash {
+		return fmt.Errorf("hash mismatch: %s != %s", hashSum, expectedHash)
 	}
 
 	if err := os.Rename(unverifiedPath, path); err != nil {
@@ -313,7 +318,7 @@ func triggerOTAStateUpdate() {
 func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) error {
 	scopedLogger := otaLogger.With().
 		Str("deviceId", deviceId).
-		Str("includePreRelease", fmt.Sprintf("%v", includePreRelease)).
+		Bool("includePreRelease", includePreRelease).
 		Logger()
 
 	scopedLogger.Info().Msg("Trying to update...")
@@ -362,8 +367,9 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 			otaState.Error = fmt.Sprintf("Error downloading app update: %v", err)
 			scopedLogger.Error().Err(err).Msg("Error downloading app update")
 			triggerOTAStateUpdate()
-			return err
+			return fmt.Errorf("error downloading app update: %w", err)
 		}
+
 		downloadFinished := time.Now()
 		otaState.AppDownloadFinishedAt = &downloadFinished
 		otaState.AppDownloadProgress = 1
@@ -379,17 +385,21 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 			otaState.Error = fmt.Sprintf("Error verifying app update hash: %v", err)
 			scopedLogger.Error().Err(err).Msg("Error verifying app update hash")
 			triggerOTAStateUpdate()
-			return err
+			return fmt.Errorf("error verifying app update: %w", err)
 		}
+
 		verifyFinished := time.Now()
 		otaState.AppVerifiedAt = &verifyFinished
 		otaState.AppVerificationProgress = 1
+		triggerOTAStateUpdate()
+
 		otaState.AppUpdatedAt = &verifyFinished
 		otaState.AppUpdateProgress = 1
 		triggerOTAStateUpdate()
 
 		scopedLogger.Info().Msg("App update downloaded")
 		rebootNeeded = true
+		triggerOTAStateUpdate()
 	} else {
 		scopedLogger.Info().Msg("App is up to date")
 	}
@@ -405,8 +415,9 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 			otaState.Error = fmt.Sprintf("Error downloading system update: %v", err)
 			scopedLogger.Error().Err(err).Msg("Error downloading system update")
 			triggerOTAStateUpdate()
-			return err
+			return fmt.Errorf("error downloading system update: %w", err)
 		}
+
 		downloadFinished := time.Now()
 		otaState.SystemDownloadFinishedAt = &downloadFinished
 		otaState.SystemDownloadProgress = 1
@@ -422,8 +433,9 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 			otaState.Error = fmt.Sprintf("Error verifying system update hash: %v", err)
 			scopedLogger.Error().Err(err).Msg("Error verifying system update hash")
 			triggerOTAStateUpdate()
-			return err
+			return fmt.Errorf("error verifying system update: %w", err)
 		}
+
 		scopedLogger.Info().Msg("System update downloaded")
 		verifyFinished := time.Now()
 		otaState.SystemVerifiedAt = &verifyFinished
@@ -439,8 +451,10 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 		if err != nil {
 			otaState.Error = fmt.Sprintf("Error starting rk_ota command: %v", err)
 			scopedLogger.Error().Err(err).Msg("Error starting rk_ota command")
+			triggerOTAStateUpdate()
 			return fmt.Errorf("error starting rk_ota command: %w", err)
 		}
+
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -475,13 +489,15 @@ func TryUpdate(ctx context.Context, deviceId string, includePreRelease bool) err
 				Str("output", output).
 				Int("exitCode", cmd.ProcessState.ExitCode()).
 				Msg("Error executing rk_ota command")
+			triggerOTAStateUpdate()
 			return fmt.Errorf("error executing rk_ota command: %w\nOutput: %s", err, output)
 		}
+
 		scopedLogger.Info().Str("output", output).Msg("rk_ota success")
 		otaState.SystemUpdateProgress = 1
 		otaState.SystemUpdatedAt = &verifyFinished
-		triggerOTAStateUpdate()
 		rebootNeeded = true
+		triggerOTAStateUpdate()
 	} else {
 		scopedLogger.Info().Msg("System is up to date")
 	}

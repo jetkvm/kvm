@@ -69,7 +69,7 @@ func NewNative(opts NativeOptions) *Native {
 	sleepModeSupported := isSleepModeSupported()
 
 	defaultQualityFactor := opts.DefaultQualityFactor
-	if defaultQualityFactor < 0 || defaultQualityFactor > 1 {
+	if defaultQualityFactor <= 0 || defaultQualityFactor > 1 {
 		defaultQualityFactor = 1.0
 	}
 

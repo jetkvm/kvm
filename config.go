@@ -179,8 +179,9 @@ func getDefaultConfig() Config {
 			_ = confparser.SetDefaultsAndValidate(c)
 			return c
 		}(),
-		DefaultLogLevel:   "INFO",
-		AudioOutputSource: "usb",
+		DefaultLogLevel:    "INFO",
+		AudioOutputSource:  "usb",
+		VideoQualityFactor: 1.0,
 	}
 }
 
