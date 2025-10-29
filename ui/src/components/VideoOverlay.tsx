@@ -13,6 +13,7 @@ import { useRTCStore, PostRebootAction } from "@/hooks/stores";
 import LogoBlue from "@/assets/logo-blue.svg";
 import LogoWhite from "@/assets/logo-white.svg";
 import { isOnDevice } from "@/main";
+import { sleep } from "@/utils";
 
 
 interface OverlayContentProps {
@@ -481,8 +482,11 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
           // - Protocol-relative URLs: resolved with current protocol
           // - Fully qualified URLs: used as-is
           const targetUrl = new URL(postRebootAction.redirectTo, window.location.origin);
+          clearInterval(intervalId); // Stop polling before redirect
 
           window.location.href = targetUrl.href;
+          // Add 1s delay between setting location.href and calling reload() to prevent reload from interrupting the navigation.
+          await sleep(1000);
           window.location.reload();
         }
       } catch (err) {
