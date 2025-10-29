@@ -306,7 +306,7 @@ int jetkvm_ui_add_flag(const char *obj_name, const char *flag_name) {
     if (obj == NULL) {
         return -1;
     }
-    
+
     lv_obj_flag_t flag_val = str_to_lv_obj_flag(flag_name);
     if (flag_val == 0)
     {
@@ -368,7 +368,7 @@ void jetkvm_video_stop() {
 }
 
 int jetkvm_video_set_quality_factor(float quality_factor) {
-    if (quality_factor < 0 || quality_factor > 1) {
+    if (quality_factor <= 0 || quality_factor > 1) {
         return -1;
     }
     video_set_quality_factor(quality_factor);

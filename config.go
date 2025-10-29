@@ -177,7 +177,8 @@ func getDefaultConfig() Config {
 			_ = confparser.SetDefaultsAndValidate(c)
 			return c
 		}(),
-		DefaultLogLevel: "INFO",
+		DefaultLogLevel:    "INFO",
+		VideoQualityFactor: 1.0,
 	}
 }
 
