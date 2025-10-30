@@ -313,6 +313,8 @@ export default function SettingsAdvancedRoute() {
                 text={m.advanced_reset_config_button()}
                 onClick={() => {
                   handleResetConfig();
+                  // Add 2s delay between resetting the configuration and calling reload() to prevent reload from interrupting the RPC call to reset things.
+                  await sleep(2000);
                   window.location.reload();
                 }}
               />
