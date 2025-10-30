@@ -52,12 +52,18 @@ func updateDisplayUsbState() {
 func updateDisplay() {
 	if networkManager != nil {
 		ipv4 := networkManager.IPv4String()
+		if ipv4 == "" {
+			ipv4 = "--"
+		}
 		nativeInstance.UISetVar("ip_v4_address", ipv4)
 		nativeInstance.ChangeVisibility("home_info_ipv4_addr", ipv4 != "")
 
 		ipv6 := networkManager.IPv6String()
+		if ipv6 == "" {
+			ipv6 = "--"
+		}
 		nativeInstance.UISetVar("ip_v6_address", ipv6)
-		nativeInstance.ChangeVisibility("home_info_ipv6_addr", ipv6 != "")
+		nativeInstance.ChangeVisibility("home_info_ipv6_addr", ipv6 != "" && ipv6 != "--")
 
 		nativeInstance.UISetVar("mac_address", networkManager.MACString())
 		nativeInstance.UISetVar("hostname", networkManager.Hostname())

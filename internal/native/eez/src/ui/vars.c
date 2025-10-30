@@ -8,8 +8,8 @@ char system_version[100] = { 0 };
 char lvgl_version[32] = { 0 };
 char main_screen[32] = "home_screen";
 char mac_address[18] = { 0 };
-char ip_v4_address[22] = { 0 };
-char ip_v6_address[46] = { 0 };
+char ip_v4_address[22] = "--";
+char ip_v6_address[46] = "--";
 char hostname[262] = { 0 };
 
 const char *get_var_ip_v4_address() {
