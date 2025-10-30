@@ -405,7 +405,7 @@ export default function WebRTCVideo() {
       });
 
       if (isRelativeMouseMode) {
-        videoElmRefValue.addEventListener("click",
+        containerRef.current?.addEventListener("click",
           () => {
             if (isPointerLockPossible && !isPointerLockActive && !document.pointerLockElement) {
               requestPointerLock();
@@ -542,7 +542,7 @@ export default function WebRTCVideo() {
                           style={{ animationDuration: "500ms" }}
                           className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center"
                         >
-                          <div className="relative h-full w-full rounded-md" onClick={requestPointerLock}>
+                          <div className="relative h-full w-full rounded-md">
                             <LoadingVideoOverlay show={isVideoLoading} />
                             <HDMIErrorOverlay show={hdmiError} hdmiState={hdmiState} />
                             <NoAutoplayPermissionsOverlay
