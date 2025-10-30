@@ -1414,8 +1414,8 @@
                       "type": "LVGLLabelWidget",
                       "left": 0,
                       "top": 0,
-                      "width": 74,
-                      "height": 21,
+                      "width": 60,
+                      "height": 19,
                       "customInputs": [],
                       "customOutputs": [],
                       "style": {
@@ -1446,8 +1446,7 @@
                           "MAIN": {
                             "DEFAULT": {
                               "pad_bottom": 2,
-                              "pad_top": -1,
-                              "text_font": "FontBook20"
+                              "pad_top": 0
                             }
                           }
                         }
