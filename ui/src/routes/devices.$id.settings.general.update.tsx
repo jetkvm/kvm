@@ -46,6 +46,8 @@ export default function SettingsGeneralUpdateRoute() {
       },
       includePreRelease: true,
       checkOnly: false,
+      // TODO: implement this
+      resetConfig: false,
     });
     setModalView("updating");
   }, [send, setModalView, updateComponents]);

@@ -1153,7 +1153,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getUpdateStatus":        {Func: rpcGetUpdateStatus},
 	"getUpdateStatusChannel": {Func: rpcGetUpdateStatusChannel},
 	"tryUpdate":              {Func: rpcTryUpdate},
-	"tryUpdateComponents":    {Func: rpcTryUpdateComponents, Params: []string{"components", "includePreRelease", "checkOnly"}},
+	"tryUpdateComponents":    {Func: rpcTryUpdateComponents, Params: []string{"components", "includePreRelease", "checkOnly", "resetConfig"}},
 	"cancelDowngrade":        {Func: rpcCancelDowngrade},
 	"getDevModeState":        {Func: rpcGetDevModeState},
 	"setDevModeState":        {Func: rpcSetDevModeState, Params: []string{"enabled"}},

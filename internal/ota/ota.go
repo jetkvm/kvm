@@ -177,6 +177,13 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	if s.rebootNeeded {
 		scopedLogger.Info().Msg("System Rebooting due to OTA update")
 
+		if params.ResetConfig {
+			scopedLogger.Info().Msg("Resetting config")
+			if err := s.resetConfig(); err != nil {
+				return s.componentUpdateError("Error resetting config", err, &scopedLogger)
+			}
+		}
+
 		postRebootAction := &PostRebootAction{
 			HealthCheck: "/device/status",
 			RedirectUrl: fmt.Sprintf("/settings/general/update?version=%s", systemUpdate.version),
@@ -198,6 +205,7 @@ type UpdateParams struct {
 	Components          []string `json:"components,omitempty"`
 	IncludePreRelease   bool     `json:"includePreRelease"`
 	CheckOnly           bool     `json:"checkOnly"`
+	ResetConfig         bool     `json:"resetConfig"`
 }
 
 func (s *State) getUpdateStatus(

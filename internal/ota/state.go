@@ -91,6 +91,9 @@ type RPCState struct {
 // HwRebootFunc is a function that reboots the hardware
 type HwRebootFunc func(force bool, postRebootAction *PostRebootAction, delay time.Duration) error
 
+// ResetConfigFunc is a function that resets the config
+type ResetConfigFunc func() error
+
 // GetHTTPClientFunc is a function that returns the HTTP client
 type GetHTTPClientFunc func() *http.Client
 
@@ -117,6 +120,7 @@ type State struct {
 	reboot                  HwRebootFunc
 	getLocalVersion         GetLocalVersionFunc
 	onStateUpdate           OnStateUpdateFunc
+	resetConfig             ResetConfigFunc
 }
 
 // SetTargetVersion sets the target version for a component
@@ -199,6 +203,7 @@ type Options struct {
 	OnProgressUpdate   OnProgressUpdateFunc
 	HwReboot           HwRebootFunc
 	ReleaseAPIEndpoint string
+	ResetConfig        ResetConfigFunc
 }
 
 // NewState creates a new OTA state
@@ -215,6 +220,7 @@ func NewState(opts Options) *State {
 		getLocalVersion:         opts.GetLocalVersion,
 		componentUpdateStatuses: components,
 		releaseAPIEndpoint:      opts.ReleaseAPIEndpoint,
+		resetConfig:             opts.ResetConfig,
 	}
 	go s.confirmCurrentSystem()
 	return s

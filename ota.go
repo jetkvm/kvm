@@ -30,6 +30,7 @@ func initOta() {
 		},
 		GetLocalVersion: GetLocalVersion,
 		HwReboot:        hwReboot,
+		ResetConfig:     rpcResetConfig,
 		OnStateUpdate: func(state *ota.RPCState) {
 			triggerOTAStateUpdate(state)
 		},
@@ -144,14 +145,15 @@ func rpcTryUpdate() error {
 	return rpcTryUpdateComponents(tryUpdateComponents{
 		AppTargetVersion:    "",
 		SystemTargetVersion: "",
-	}, config.IncludePreRelease, false)
+	}, config.IncludePreRelease, false, false)
 }
 
-func rpcTryUpdateComponents(components tryUpdateComponents, includePreRelease bool, checkOnly bool) error {
+func rpcTryUpdateComponents(components tryUpdateComponents, includePreRelease bool, checkOnly bool, resetConfig bool) error {
 	updateParams := ota.UpdateParams{
 		DeviceID:          GetDeviceID(),
 		IncludePreRelease: includePreRelease,
 		CheckOnly:         checkOnly,
+		ResetConfig:       resetConfig,
 	}
 
 	logger.Info().Interface("components", components).Msg("components")

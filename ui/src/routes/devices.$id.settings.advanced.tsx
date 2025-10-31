@@ -189,6 +189,8 @@ export default function SettingsAdvancedRoute() {
       },
       includePreRelease: devChannel,
       checkOnly: true,
+      // no need to reset config for a check only update
+      resetConfig: false,
     };
     send("tryUpdateComponents", params, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
@@ -199,6 +201,8 @@ export default function SettingsAdvancedRoute() {
       }
       const pageParams = new URLSearchParams();
       pageParams.set("downgrade", "true");
+      // TODO: implement this
+      pageParams.set("resetConfig", "true");
       pageParams.set("components", updateTarget == "both" ? "app,system" : updateTarget);
 
       // Navigate to update page
