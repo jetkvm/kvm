@@ -177,16 +177,19 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	if s.rebootNeeded {
 		scopedLogger.Info().Msg("System Rebooting due to OTA update")
 
+		redirectUrl := fmt.Sprintf("/settings/general/update?version=%s", systemUpdate.version)
+
 		if params.ResetConfig {
 			scopedLogger.Info().Msg("Resetting config")
 			if err := s.resetConfig(); err != nil {
 				return s.componentUpdateError("Error resetting config", err, &scopedLogger)
 			}
+			redirectUrl = "/device/setup"
 		}
 
 		postRebootAction := &PostRebootAction{
 			HealthCheck: "/device/status",
-			RedirectUrl: fmt.Sprintf("/settings/general/update?version=%s", systemUpdate.version),
+			RedirectUrl: redirectUrl,
 		}
 
 		if err := s.reboot(true, postRebootAction, 10*time.Second); err != nil {

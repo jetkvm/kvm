@@ -25,6 +25,7 @@ export default function SettingsGeneralUpdateRoute() {
 
   const downgrade = useMemo(() => searchParams.get("downgrade") === "true", [searchParams]);
   const updateComponents = useMemo(() => searchParams.get("components") || "", [searchParams]);
+  const resetConfig = useMemo(() => searchParams.get("resetConfig") === "true", [searchParams]);
 
   const onClose = useCallback(async () => {
     navigate(".."); // back to the devices.$id.settings page
@@ -46,11 +47,10 @@ export default function SettingsGeneralUpdateRoute() {
       },
       includePreRelease: true,
       checkOnly: false,
-      // TODO: implement this
-      resetConfig: false,
+      resetConfig: resetConfig,
     });
     setModalView("updating");
-  }, [send, setModalView, updateComponents]);
+  }, [send, setModalView, updateComponents, resetConfig]);
 
   useEffect(() => {
     if (otaState.updating) {
