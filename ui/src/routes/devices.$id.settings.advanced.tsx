@@ -4,7 +4,7 @@ import { useSettingsStore } from "@hooks/stores";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { Button } from "@components/Button";
-import Checkbox from "@components/Checkbox";
+import Checkbox, { CheckboxWithLabel } from "@components/Checkbox";
 import { ConfirmDialog } from "@components/ConfirmDialog";
 import { GridCard } from "@components/Card";
 import { SettingsItem } from "@components/SettingsItem";
@@ -31,6 +31,7 @@ export default function SettingsAdvancedRoute() {
   const [updateTarget, setUpdateTarget] = useState<string>("app");
   const [appVersion, setAppVersion] = useState<string>("");
   const [systemVersion, setSystemVersion] = useState<string>("");
+  const [resetConfig, setResetConfig] = useState(false);
 
   const settings = useSettingsStore();
 
@@ -192,6 +193,7 @@ export default function SettingsAdvancedRoute() {
       // no need to reset config for a check only update
       resetConfig: false,
     };
+
     send("tryUpdateComponents", params, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
@@ -201,14 +203,13 @@ export default function SettingsAdvancedRoute() {
       }
       const pageParams = new URLSearchParams();
       pageParams.set("downgrade", "true");
-      // TODO: implement this
-      pageParams.set("resetConfig", "true");
+      pageParams.set("resetConfig", resetConfig.toString());
       pageParams.set("components", updateTarget == "both" ? "app,system" : updateTarget);
 
       // Navigate to update page
       navigateTo(`/settings/general/update?${pageParams.toString()}`);
     });
-  }, [updateTarget,appVersion, systemVersion, devChannel, send, navigateTo]);
+  }, [updateTarget, appVersion, systemVersion, devChannel, send, navigateTo, resetConfig]);
 
   return (
     <div className="space-y-4">
@@ -346,6 +347,15 @@ export default function SettingsAdvancedRoute() {
                   {m.advanced_version_update_github_link()}
                 </a>
               </p>
+
+              <div>
+                <CheckboxWithLabel
+                  label={m.advanced_version_update_reset_config_label()}
+                  description={m.advanced_version_update_reset_config_description()}
+                  checked={resetConfig}
+                  onChange={e => setResetConfig(e.target.checked)}
+                />
+                </div>
 
               <Button
                 size="SM"
