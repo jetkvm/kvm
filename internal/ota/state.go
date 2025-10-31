@@ -67,25 +67,25 @@ type componentUpdateStatus struct {
 
 // RPCState represents the current OTA state for the RPC API
 type RPCState struct {
-	Updating                   bool      `json:"updating"`
-	Error                      string    `json:"error,omitempty"`
-	MetadataFetchedAt          time.Time `json:"metadataFetchedAt,omitempty"`
-	AppUpdatePending           bool      `json:"appUpdatePending"`
-	SystemUpdatePending        bool      `json:"systemUpdatePending"`
-	AppDownloadProgress        float32   `json:"appDownloadProgress,omitempty"` //TODO: implement for progress bar
-	AppDownloadFinishedAt      time.Time `json:"appDownloadFinishedAt,omitempty"`
-	SystemDownloadProgress     float32   `json:"systemDownloadProgress,omitempty"` //TODO: implement for progress bar
-	SystemDownloadFinishedAt   time.Time `json:"systemDownloadFinishedAt,omitempty"`
-	AppVerificationProgress    float32   `json:"appVerificationProgress,omitempty"`
-	AppVerifiedAt              time.Time `json:"appVerifiedAt,omitempty"`
-	SystemVerificationProgress float32   `json:"systemVerificationProgress,omitempty"`
-	SystemVerifiedAt           time.Time `json:"systemVerifiedAt,omitempty"`
-	AppUpdateProgress          float32   `json:"appUpdateProgress,omitempty"` //TODO: implement for progress bar
-	AppUpdatedAt               time.Time `json:"appUpdatedAt,omitempty"`
-	SystemUpdateProgress       float32   `json:"systemUpdateProgress,omitempty"` //TODO: port rk_ota, then implement
-	SystemUpdatedAt            time.Time `json:"systemUpdatedAt,omitempty"`
-	SystemTargetVersion        string    `json:"systemTargetVersion,omitempty"`
-	AppTargetVersion           string    `json:"appTargetVersion,omitempty"`
+	Updating                   bool       `json:"updating"`
+	Error                      string     `json:"error,omitempty"`
+	MetadataFetchedAt          *time.Time `json:"metadataFetchedAt,omitempty"`
+	AppUpdatePending           bool       `json:"appUpdatePending"`
+	SystemUpdatePending        bool       `json:"systemUpdatePending"`
+	AppDownloadProgress        *float32   `json:"appDownloadProgress,omitempty"` //TODO: implement for progress bar
+	AppDownloadFinishedAt      *time.Time `json:"appDownloadFinishedAt,omitempty"`
+	SystemDownloadProgress     *float32   `json:"systemDownloadProgress,omitempty"` //TODO: implement for progress bar
+	SystemDownloadFinishedAt   *time.Time `json:"systemDownloadFinishedAt,omitempty"`
+	AppVerificationProgress    *float32   `json:"appVerificationProgress,omitempty"`
+	AppVerifiedAt              *time.Time `json:"appVerifiedAt,omitempty"`
+	SystemVerificationProgress *float32   `json:"systemVerificationProgress,omitempty"`
+	SystemVerifiedAt           *time.Time `json:"systemVerifiedAt,omitempty"`
+	AppUpdateProgress          *float32   `json:"appUpdateProgress,omitempty"` //TODO: implement for progress bar
+	AppUpdatedAt               *time.Time `json:"appUpdatedAt,omitempty"`
+	SystemUpdateProgress       *float32   `json:"systemUpdateProgress,omitempty"` //TODO: port rk_ota, then implement
+	SystemUpdatedAt            *time.Time `json:"systemUpdatedAt,omitempty"`
+	SystemTargetVersion        *string    `json:"systemTargetVersion,omitempty"`
+	AppTargetVersion           *string    `json:"appTargetVersion,omitempty"`
 }
 
 // HwRebootFunc is a function that reboots the hardware
@@ -221,35 +221,48 @@ func NewState(opts Options) *State {
 }
 
 // ToRPCState converts the State to the RPCState
+// probably we need a generator for this ...
 func (s *State) ToRPCState() *RPCState {
 	r := &RPCState{
 		Updating:          s.updating,
 		Error:             s.error,
-		MetadataFetchedAt: s.metadataFetchedAt,
+		MetadataFetchedAt: &s.metadataFetchedAt,
 	}
 
 	app, ok := s.componentUpdateStatuses["app"]
 	if ok {
 		r.AppUpdatePending = app.pending
-		r.AppDownloadProgress = app.downloadProgress
-		r.AppDownloadFinishedAt = app.downloadFinishedAt
-		r.AppVerificationProgress = app.verificationProgress
-		r.AppVerifiedAt = app.verifiedAt
-		r.AppUpdateProgress = app.updateProgress
-		r.AppUpdatedAt = app.updatedAt
-		r.AppTargetVersion = app.targetVersion
+		r.AppDownloadProgress = &app.downloadProgress
+		if !app.downloadFinishedAt.IsZero() {
+			r.AppDownloadFinishedAt = &app.downloadFinishedAt
+		}
+		r.AppVerificationProgress = &app.verificationProgress
+		if !app.verifiedAt.IsZero() {
+			r.AppVerifiedAt = &app.verifiedAt
+		}
+		r.AppUpdateProgress = &app.updateProgress
+		if !app.updatedAt.IsZero() {
+			r.AppUpdatedAt = &app.updatedAt
+		}
+		r.AppTargetVersion = &app.targetVersion
 	}
 
 	system, ok := s.componentUpdateStatuses["system"]
 	if ok {
 		r.SystemUpdatePending = system.pending
-		r.SystemDownloadProgress = system.downloadProgress
-		r.SystemDownloadFinishedAt = system.downloadFinishedAt
-		r.SystemVerificationProgress = system.verificationProgress
-		r.SystemVerifiedAt = system.verifiedAt
-		r.SystemUpdateProgress = system.updateProgress
-		r.SystemUpdatedAt = system.updatedAt
-		r.SystemTargetVersion = system.targetVersion
+		r.SystemDownloadProgress = &system.downloadProgress
+		if !system.downloadFinishedAt.IsZero() {
+			r.SystemDownloadFinishedAt = &system.downloadFinishedAt
+		}
+		r.SystemVerificationProgress = &system.verificationProgress
+		if !system.verifiedAt.IsZero() {
+			r.SystemVerifiedAt = &system.verifiedAt
+		}
+		r.SystemUpdateProgress = &system.updateProgress
+		if !system.updatedAt.IsZero() {
+			r.SystemUpdatedAt = &system.updatedAt
+		}
+		r.SystemTargetVersion = &system.targetVersion
 	}
 
 	return r

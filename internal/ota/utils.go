@@ -25,7 +25,14 @@ func syncFilesystem() error {
 	return nil
 }
 
-func (s *State) downloadFile(ctx context.Context, path string, url string, downloadProgress *float32) error {
+func (s *State) downloadFile(ctx context.Context, path string, url string, component string) error {
+	componentUpdate, ok := s.componentUpdateStatuses[component]
+	if !ok {
+		return fmt.Errorf("component %s not found", component)
+	}
+
+	downloadProgress := componentUpdate.downloadProgress
+
 	if _, err := os.Stat(path); err == nil {
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("error removing existing file: %w", err)
@@ -80,9 +87,9 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, downl
 				return fmt.Errorf("error writing to file: %w", ew)
 			}
 			progress := float32(written) / float32(totalSize)
-			if progress-*downloadProgress >= 0.01 {
-				*downloadProgress = progress
-				s.triggerStateUpdate()
+			if progress-downloadProgress >= 0.01 {
+				componentUpdate.downloadProgress = progress
+				s.triggerComponentUpdateState(component, &componentUpdate)
 			}
 		}
 		if er != nil {

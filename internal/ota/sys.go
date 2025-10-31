@@ -17,14 +17,14 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 
 	l := s.l.With().Str("path", systemUpdatePath).Logger()
 
-	if err := s.downloadFile(ctx, systemUpdatePath, systemUpdate.url, &systemUpdate.downloadProgress); err != nil {
+	if err := s.downloadFile(ctx, systemUpdatePath, systemUpdate.url, "system"); err != nil {
 		return s.componentUpdateError("Error downloading system update", err, &l)
 	}
 
 	downloadFinished := time.Now()
 	systemUpdate.downloadFinishedAt = downloadFinished
 	systemUpdate.downloadProgress = 1
-	s.triggerStateUpdate()
+	s.triggerComponentUpdateState("system", systemUpdate)
 
 	if err := s.verifyFile(
 		systemUpdatePath,
@@ -38,7 +38,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	systemUpdate.verificationProgress = 1
 	systemUpdate.updatedAt = verifyFinished
 	systemUpdate.updateProgress = 1
-	s.triggerStateUpdate()
+	s.triggerComponentUpdateState("system", systemUpdate)
 
 	l.Info().Msg("System update downloaded")
 
@@ -68,7 +68,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 				if systemUpdate.updateProgress > 0.99 {
 					systemUpdate.updateProgress = 0.99
 				}
-				s.triggerStateUpdate()
+				s.triggerComponentUpdateState("system", systemUpdate)
 			case <-ctx.Done():
 				return
 			}
@@ -86,7 +86,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	rkLogger.Info().Msg("rk_ota success")
 	systemUpdate.updateProgress = 1
 	systemUpdate.updatedAt = verifyFinished
-	s.triggerStateUpdate()
+	s.triggerComponentUpdateState("system", systemUpdate)
 
 	return nil
 }

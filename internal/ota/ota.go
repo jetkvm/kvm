@@ -92,6 +92,11 @@ func (s *State) triggerStateUpdate() {
 	s.onStateUpdate(s.ToRPCState())
 }
 
+func (s *State) triggerComponentUpdateState(component string, update *componentUpdateStatus) {
+	s.componentUpdateStatuses[component] = *update
+	s.triggerStateUpdate()
+}
+
 func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	scopedLogger := s.l.With().
 		Interface("params", params).
@@ -102,32 +107,35 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		return fmt.Errorf("update already in progress")
 	}
 
-	s.updating = true
-	s.triggerStateUpdate()
-
-	defer func() {
-		s.updating = false
+	if !params.CheckOnly {
+		s.updating = true
 		s.triggerStateUpdate()
-	}()
+		defer func() {
+			s.updating = false
+			s.triggerStateUpdate()
+		}()
+	}
 
 	appUpdate, systemUpdate, err := s.getUpdateStatus(ctx, params)
 	if err != nil {
 		return s.componentUpdateError("Error checking for updates", err, &scopedLogger)
 	}
 
+	s.metadataFetchedAt = time.Now()
+	s.triggerStateUpdate()
+
 	if params.CheckOnly {
 		return nil
 	}
 
-	s.metadataFetchedAt = time.Now()
-	s.triggerStateUpdate()
-
 	if appUpdate.available || appUpdate.downgradeAvailable {
 		appUpdate.pending = true
+		s.triggerComponentUpdateState("app", appUpdate)
 	}
 
 	if systemUpdate.available || systemUpdate.downgradeAvailable {
 		systemUpdate.pending = true
+		s.triggerComponentUpdateState("system", systemUpdate)
 	}
 
 	if appUpdate.pending {

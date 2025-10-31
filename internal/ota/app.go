@@ -27,14 +27,14 @@ func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus)
 
 	l := s.l.With().Str("path", appUpdatePath).Logger()
 
-	if err := s.downloadFile(ctx, appUpdatePath, appUpdate.url, &appUpdate.downloadProgress); err != nil {
+	if err := s.downloadFile(ctx, appUpdatePath, appUpdate.url, "app"); err != nil {
 		return s.componentUpdateError("Error downloading app update", err, &l)
 	}
 
 	downloadFinished := time.Now()
 	appUpdate.downloadFinishedAt = downloadFinished
 	appUpdate.downloadProgress = 1
-	s.triggerStateUpdate()
+	s.triggerComponentUpdateState("app", appUpdate)
 
 	if err := s.verifyFile(
 		appUpdatePath,
@@ -48,7 +48,7 @@ func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus)
 	appUpdate.verificationProgress = 1
 	appUpdate.updatedAt = verifyFinished
 	appUpdate.updateProgress = 1
-	s.triggerStateUpdate()
+	s.triggerComponentUpdateState("app", appUpdate)
 
 	l.Info().Msg("App update downloaded")
 

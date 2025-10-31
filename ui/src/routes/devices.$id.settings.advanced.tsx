@@ -200,7 +200,7 @@ export default function SettingsAdvancedRoute() {
       // Navigate to update page
       navigateTo("/settings/general/update");
     });
-  }, [updateTarget, appVersion, systemVersion, devChannel, send, navigateTo]);
+  }, [appVersion, systemVersion, devChannel, send, navigateTo]);
 
   return (
     <div className="space-y-4">
