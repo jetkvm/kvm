@@ -1,11 +1,11 @@
 import { useCallback, useMemo } from "react";
+import semver from "semver";
 
 import { useDeviceStore } from "@/hooks/stores";
 import { JsonRpcError, RpcMethodNotFound } from "@/hooks/useJsonRpc";
 import { getUpdateStatus, getLocalVersion as getLocalVersionRpc } from "@/utils/jsonrpc";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
-import semver from "semver";
 
 export interface VersionInfo {
   appVersion: string;

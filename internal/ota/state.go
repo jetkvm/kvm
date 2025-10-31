@@ -62,7 +62,7 @@ type componentUpdateStatus struct {
 	verifiedAt           time.Time
 	updateProgress       float32
 	updatedAt            time.Time
-	dependsOn            []string
+	dependsOn            []string //nolint:unused
 }
 
 // RPCState represents the current OTA state for the RPC API

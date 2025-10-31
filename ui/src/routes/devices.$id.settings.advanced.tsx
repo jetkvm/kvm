@@ -197,10 +197,14 @@ export default function SettingsAdvancedRoute() {
         );
         return;
       }
+      const pageParams = new URLSearchParams();
+      pageParams.set("downgrade", "true");
+      pageParams.set("components", updateTarget == "both" ? "app,system" : updateTarget);
+
       // Navigate to update page
-      navigateTo("/settings/general/update");
+      navigateTo(`/settings/general/update?${pageParams.toString()}`);
     });
-  }, [appVersion, systemVersion, devChannel, send, navigateTo]);
+  }, [updateTarget,appVersion, systemVersion, devChannel, send, navigateTo]);
 
   return (
     <div className="space-y-4">

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -59,6 +60,10 @@ func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*
 		return nil, fmt.Errorf("error getting update URL: %w", err)
 	}
 
+	s.l.Trace().
+		Str("url", url).
+		Msg("fetching update metadata")
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
@@ -107,6 +112,16 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		return fmt.Errorf("update already in progress")
 	}
 
+	if len(params.Components) == 0 {
+		params.Components = []string{"app", "system"}
+	}
+	shouldUpdateApp := slices.Contains(params.Components, "app")
+	shouldUpdateSystem := slices.Contains(params.Components, "system")
+
+	if !shouldUpdateApp && !shouldUpdateSystem {
+		return fmt.Errorf("no components to update")
+	}
+
 	if !params.CheckOnly {
 		s.updating = true
 		s.triggerStateUpdate()
@@ -128,12 +143,12 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		return nil
 	}
 
-	if appUpdate.available || appUpdate.downgradeAvailable {
+	if shouldUpdateApp && (appUpdate.available || appUpdate.downgradeAvailable) {
 		appUpdate.pending = true
 		s.triggerComponentUpdateState("app", appUpdate)
 	}
 
-	if systemUpdate.available || systemUpdate.downgradeAvailable {
+	if shouldUpdateSystem && (systemUpdate.available || systemUpdate.downgradeAvailable) {
 		systemUpdate.pending = true
 		s.triggerComponentUpdateState("system", systemUpdate)
 	}
@@ -177,11 +192,12 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 
 // UpdateParams represents the parameters for the update
 type UpdateParams struct {
-	DeviceID            string `json:"deviceID"`
-	AppTargetVersion    string `json:"appTargetVersion"`
-	SystemTargetVersion string `json:"systemTargetVersion"`
-	IncludePreRelease   bool   `json:"includePreRelease"`
-	CheckOnly           bool   `json:"checkOnly"`
+	DeviceID            string   `json:"deviceID"`
+	AppTargetVersion    string   `json:"appTargetVersion"`
+	SystemTargetVersion string   `json:"systemTargetVersion"`
+	Components          []string `json:"components,omitempty"`
+	IncludePreRelease   bool     `json:"includePreRelease"`
+	CheckOnly           bool     `json:"checkOnly"`
 }
 
 func (s *State) getUpdateStatus(

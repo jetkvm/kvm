@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import { UpdateState, useUpdateStore } from "@hooks/stores";
@@ -16,10 +16,15 @@ import { SystemVersionInfo } from "@/utils/jsonrpc";
 export default function SettingsGeneralUpdateRoute() {
   const navigate = useNavigate();
   const location = useLocation();
+  //@ts-ignore
+  const [searchParams, setSearchParams] = useSearchParams();
   const { updateSuccess } = location.state || {};
 
   const { setModalView, otaState } = useUpdateStore();
   const { send } = useJsonRpc();
+
+  const downgrade = useMemo(() => searchParams.get("downgrade") === "true", [searchParams]);
+  const updateComponents = useMemo(() => searchParams.get("components") || "", [searchParams]);
 
   const onClose = useCallback(async () => {
     navigate(".."); // back to the devices.$id.settings page
@@ -33,6 +38,18 @@ export default function SettingsGeneralUpdateRoute() {
     setModalView("updating");
   }, [send, setModalView]);
 
+  const onConfirmDowngrade = useCallback((system?: string, app?: string) => {
+    send("tryUpdateComponents", {
+      components: {
+        system, app,
+        components: updateComponents
+      },
+      includePreRelease: true,
+      checkOnly: false,
+    });
+    setModalView("updating");
+  }, [send, setModalView, updateComponents]);
+
   useEffect(() => {
     if (otaState.updating) {
       setModalView("updating");
@@ -45,15 +62,24 @@ export default function SettingsGeneralUpdateRoute() {
     }
   }, [otaState.error, otaState.updating, setModalView, updateSuccess]);
 
-  return <Dialog onClose={onClose} onConfirmUpdate={onConfirmUpdate} />;
+  return <Dialog
+  onClose={onClose}
+  onConfirmUpdate={onConfirmUpdate}
+  onConfirmDowngrade={onConfirmDowngrade}
+  downgrade={downgrade}
+  />;
 }
 
 export function Dialog({
   onClose,
   onConfirmUpdate,
+  onConfirmDowngrade,
+  downgrade,
 }: Readonly<{
+  downgrade: boolean;
   onClose: () => void;
   onConfirmUpdate: () => void;
+  onConfirmDowngrade: () => void;
 }>) {
   const { navigateTo } = useDeviceUiNavigation();
 
@@ -70,15 +96,15 @@ export function Dialog({
 
       setVersionInfo(versionInfo);
 
-      if (hasUpdate) {
-        setModalView("updateAvailable");
-      } else if (hasDowngrade) {
+      if (hasDowngrade && downgrade) {
         setModalView("updateDowngradeAvailable");
+      } else if (hasUpdate) {
+        setModalView("updateAvailable");
       } else {
         setModalView("upToDate");
       }
     },
-    [setModalView],
+    [setModalView, downgrade],
   );
 
   const onCancelDowngrade = useCallback(() => {
@@ -110,7 +136,7 @@ export function Dialog({
         )}
         {modalView === "updateDowngradeAvailable" && (
           <UpdateDowngradeAvailableState
-            onConfirmUpdate={onConfirmUpdate}
+            onConfirmDowngrade={onConfirmDowngrade}
             onCancelDowngrade={onCancelDowngrade}
             versionInfo={versionInfo!}
           />
@@ -429,13 +455,19 @@ function UpdateAvailableState({
 
 function UpdateDowngradeAvailableState({
   versionInfo,
-  onConfirmUpdate,
+  onConfirmDowngrade,
   onCancelDowngrade,
 }: {
   versionInfo: SystemVersionInfo;
-  onConfirmUpdate: () => void;
+  onConfirmDowngrade: (system?: string, app?: string) => void;
   onCancelDowngrade: () => void;
 }) {
+  const confirmDowngrade = useCallback(() => {
+    onConfirmDowngrade(
+      versionInfo?.remote?.systemVersion || undefined,
+      versionInfo?.remote?.appVersion || undefined,
+    );
+  }, [versionInfo, onConfirmDowngrade]);
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
@@ -459,7 +491,7 @@ function UpdateDowngradeAvailableState({
           ) : null}
         </p>
         <div className="flex items-center justify-start gap-x-2">
-          <Button size="SM" theme="primary" text={m.general_update_downgrade_button()} onClick={onConfirmUpdate} />
+          <Button size="SM" theme="primary" text={m.general_update_downgrade_button()} onClick={confirmDowngrade} />
           <Button size="SM" theme="light" text={m.general_update_keep_current_button()} onClick={onCancelDowngrade} />
         </div>
       </div>

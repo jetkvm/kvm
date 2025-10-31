@@ -84,6 +84,8 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 		return s.componentUpdateError("Error executing rk_ota command", err, &rkLogger)
 	}
 	rkLogger.Info().Msg("rk_ota success")
+
+	s.rebootNeeded = true
 	systemUpdate.updateProgress = 1
 	systemUpdate.updatedAt = verifyFinished
 	s.triggerComponentUpdateState("system", systemUpdate)
