@@ -5,6 +5,22 @@ import { JsonRpcError, RpcMethodNotFound } from "@/hooks/useJsonRpc";
 import { getUpdateStatus, getLocalVersion as getLocalVersionRpc } from "@/utils/jsonrpc";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
+import semver from "semver";
+
+export interface VersionInfo {
+  appVersion: string;
+  systemVersion: string;
+}
+
+export interface SystemVersionInfo {
+  local: VersionInfo;
+  remote?: VersionInfo;
+  systemUpdateAvailable: boolean;
+  systemDowngradeAvailable: boolean;
+  appUpdateAvailable: boolean;
+  appDowngradeAvailable: boolean;
+  error?: string;
+}
 
 export function useVersion() {
   const {

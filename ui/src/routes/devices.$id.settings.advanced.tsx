@@ -182,9 +182,15 @@ export default function SettingsAdvancedRoute() {
   }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
 
   const handleVersionUpdate = useCallback(() => {
-    // TODO: Add version params to tryUpdate
-    console.log("tryUpdate", updateTarget, appVersion, systemVersion);
-    send("tryUpdate", {}, (resp: JsonRpcResponse) => {
+    const params = {
+      components: {
+        app: appVersion,
+        system: systemVersion,
+      },
+      includePreRelease: devChannel,
+      checkOnly: true,
+    };
+    send("tryUpdateComponents", params, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
           m.advanced_error_version_update({ error: resp.error.data || m.unknown_error() })
@@ -194,7 +200,7 @@ export default function SettingsAdvancedRoute() {
       // Navigate to update page
       navigateTo("/settings/general/update");
     });
-  }, [updateTarget, appVersion, systemVersion, send, navigateTo]);
+  }, [updateTarget, appVersion, systemVersion, devChannel, send, navigateTo]);
 
   return (
     <div className="space-y-4">

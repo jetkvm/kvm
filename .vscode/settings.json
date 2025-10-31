@@ -10,5 +10,5 @@
     ]
   },
   "git.ignoreLimitWarning": true,
-  "cmake.sourceDirectory": "/workspaces/kvm-static-ip/internal/native/cgo"
+  "cmake.sourceDirectory": "/workspaces/kvm-sleep-mode/internal/native/cgo"
 }

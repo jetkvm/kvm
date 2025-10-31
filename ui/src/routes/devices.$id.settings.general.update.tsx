@@ -59,22 +59,32 @@ export function Dialog({
 
   const [versionInfo, setVersionInfo] = useState<null | SystemVersionInfo>(null);
   const { modalView, setModalView, otaState } = useUpdateStore();
+  const { send } = useJsonRpc();
 
   const onFinishedLoading = useCallback(
     (versionInfo: SystemVersionInfo) => {
       const hasUpdate =
         versionInfo?.systemUpdateAvailable || versionInfo?.appUpdateAvailable;
+      const hasDowngrade =
+        versionInfo?.systemDowngradeAvailable || versionInfo?.appDowngradeAvailable;
 
       setVersionInfo(versionInfo);
 
       if (hasUpdate) {
         setModalView("updateAvailable");
+      } else if (hasDowngrade) {
+        setModalView("updateDowngradeAvailable");
       } else {
         setModalView("upToDate");
       }
     },
     [setModalView],
   );
+
+  const onCancelDowngrade = useCallback(() => {
+    send("cancelDowngrade", {});
+    onClose();
+  }, [onClose, send]);
 
   return (
     <div className="pointer-events-auto relative mx-auto text-left">
@@ -95,6 +105,13 @@ export function Dialog({
           <UpdateAvailableState
             onConfirmUpdate={onConfirmUpdate}
             onClose={onClose}
+            versionInfo={versionInfo!}
+          />
+        )}
+        {modalView === "updateDowngradeAvailable" && (
+          <UpdateDowngradeAvailableState
+            onConfirmUpdate={onConfirmUpdate}
+            onCancelDowngrade={onCancelDowngrade}
             versionInfo={versionInfo!}
           />
         )}
@@ -404,6 +421,46 @@ function UpdateAvailableState({
         <div className="flex items-center justify-start gap-x-2">
           <Button size="SM" theme="primary" text={m.general_update_now_button()} onClick={onConfirmUpdate} />
           <Button size="SM" theme="light" text={m.general_update_later_button()} onClick={onClose} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UpdateDowngradeAvailableState({
+  versionInfo,
+  onConfirmUpdate,
+  onCancelDowngrade,
+}: {
+  versionInfo: SystemVersionInfo;
+  onConfirmUpdate: () => void;
+  onCancelDowngrade: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-start justify-start space-y-4 text-left">
+      <div className="text-left">
+        <p className="text-base font-semibold text-black dark:text-white">
+          {m.general_update_downgrade_available_title()}
+        </p>
+        <p className="mb-2 text-sm text-slate-600 dark:text-slate-300">
+          {m.general_update_downgrade_available_description()}
+        </p>
+        <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
+          {versionInfo?.systemDowngradeAvailable ? (
+            <>
+              <span className="font-semibold">{m.general_update_system_type()}</span>: {versionInfo?.remote?.systemVersion}
+              <br />
+            </>
+          ) : null}
+          {versionInfo?.appDowngradeAvailable ? (
+            <>
+              <span className="font-semibold">{m.general_update_application_type()}</span>: {versionInfo?.remote?.appVersion}
+            </>
+          ) : null}
+        </p>
+        <div className="flex items-center justify-start gap-x-2">
+          <Button size="SM" theme="primary" text={m.general_update_downgrade_button()} onClick={onConfirmUpdate} />
+          <Button size="SM" theme="light" text={m.general_update_keep_current_button()} onClick={onCancelDowngrade} />
         </div>
       </div>
     </div>

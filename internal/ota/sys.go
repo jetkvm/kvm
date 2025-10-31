@@ -24,7 +24,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	downloadFinished := time.Now()
 	systemUpdate.downloadFinishedAt = downloadFinished
 	systemUpdate.downloadProgress = 1
-	s.onProgressUpdate()
+	s.triggerStateUpdate()
 
 	if err := s.verifyFile(
 		systemUpdatePath,
@@ -38,7 +38,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	systemUpdate.verificationProgress = 1
 	systemUpdate.updatedAt = verifyFinished
 	systemUpdate.updateProgress = 1
-	s.onProgressUpdate()
+	s.triggerStateUpdate()
 
 	l.Info().Msg("System update downloaded")
 
@@ -68,7 +68,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 				if systemUpdate.updateProgress > 0.99 {
 					systemUpdate.updateProgress = 0.99
 				}
-				s.onProgressUpdate()
+				s.triggerStateUpdate()
 			case <-ctx.Done():
 				return
 			}
@@ -86,7 +86,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	rkLogger.Info().Msg("rk_ota success")
 	systemUpdate.updateProgress = 1
 	systemUpdate.updatedAt = verifyFinished
-	s.onProgressUpdate()
+	s.triggerStateUpdate()
 
 	return nil
 }

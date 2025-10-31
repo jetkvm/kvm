@@ -34,7 +34,7 @@ func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus)
 	downloadFinished := time.Now()
 	appUpdate.downloadFinishedAt = downloadFinished
 	appUpdate.downloadProgress = 1
-	s.onProgressUpdate()
+	s.triggerStateUpdate()
 
 	if err := s.verifyFile(
 		appUpdatePath,
@@ -48,7 +48,7 @@ func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus)
 	appUpdate.verificationProgress = 1
 	appUpdate.updatedAt = verifyFinished
 	appUpdate.updateProgress = 1
-	s.onProgressUpdate()
+	s.triggerStateUpdate()
 
 	l.Info().Msg("App update downloaded")
 

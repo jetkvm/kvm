@@ -82,7 +82,7 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, downl
 			progress := float32(written) / float32(totalSize)
 			if progress-*downloadProgress >= 0.01 {
 				*downloadProgress = progress
-				s.onProgressUpdate()
+				s.triggerStateUpdate()
 			}
 		}
 		if er != nil {
@@ -136,7 +136,7 @@ func (s *State) verifyFile(path string, expectedHash string, verifyProgress *flo
 			progress := float32(verified) / float32(totalSize)
 			if progress-*verifyProgress >= 0.01 {
 				*verifyProgress = progress
-				s.onProgressUpdate()
+				s.triggerStateUpdate()
 			}
 		}
 		if er != nil {

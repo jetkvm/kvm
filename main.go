@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gwatts/rootcerts"
+	"github.com/jetkvm/kvm/internal/ota"
 )
 
 var appCtx context.Context
@@ -107,7 +108,10 @@ func Main() {
 			}
 
 			includePreRelease := config.IncludePreRelease
-			err = otaState.TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
+			err = otaState.TryUpdate(context.Background(), ota.UpdateParams{
+				DeviceID:          GetDeviceID(),
+				IncludePreRelease: includePreRelease,
+			})
 			if err != nil {
 				logger.Warn().Err(err).Msg("failed to auto update")
 			}

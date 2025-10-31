@@ -21,22 +21,45 @@ func (s *State) GetReleaseAPIEndpoint() string {
 	return s.releaseAPIEndpoint
 }
 
-func (s *State) fetchUpdateMetadata(ctx context.Context, deviceID string, includePreRelease bool) (*UpdateMetadata, error) {
-	metadata := &UpdateMetadata{}
-
+// getUpdateURL returns the update URL for the given parameters
+func (s *State) getUpdateURL(params UpdateParams) (string, error) {
 	updateURL, err := url.Parse(s.releaseAPIEndpoint)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing update metadata URL: %w", err)
+		return "", fmt.Errorf("error parsing update metadata URL: %w", err)
+	}
+
+	appTargetVersion := s.GetTargetVersion("app")
+	if appTargetVersion != "" && params.AppTargetVersion == "" {
+		params.AppTargetVersion = appTargetVersion
+	}
+	systemTargetVersion := s.GetTargetVersion("system")
+	if systemTargetVersion != "" && params.SystemTargetVersion == "" {
+		params.SystemTargetVersion = systemTargetVersion
 	}
 
 	query := updateURL.Query()
-	query.Set("deviceId", deviceID)
-	query.Set("prerelease", fmt.Sprintf("%v", includePreRelease))
+	query.Set("deviceId", params.DeviceID)
+	query.Set("prerelease", fmt.Sprintf("%v", params.IncludePreRelease))
+	if params.AppTargetVersion != "" {
+		query.Set("appVersion", params.AppTargetVersion)
+	}
+	if params.SystemTargetVersion != "" {
+		query.Set("systemVersion", params.SystemTargetVersion)
+	}
 	updateURL.RawQuery = query.Encode()
 
-	logger.Info().Str("url", updateURL.String()).Msg("Checking for updates")
+	return updateURL.String(), nil
+}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", updateURL.String(), nil)
+func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*UpdateMetadata, error) {
+	metadata := &UpdateMetadata{}
+
+	url, err := s.getUpdateURL(params)
+	if err != nil {
+		return nil, fmt.Errorf("error getting update URL: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
@@ -61,38 +84,49 @@ func (s *State) fetchUpdateMetadata(ctx context.Context, deviceID string, includ
 	return metadata, nil
 }
 
-func (s *State) TryUpdate(ctx context.Context, deviceID string, includePreRelease bool) error {
+func (s *State) TryUpdate(ctx context.Context, params UpdateParams) error {
+	return s.doUpdate(ctx, params)
+}
+
+func (s *State) triggerStateUpdate() {
+	s.onStateUpdate(s.ToRPCState())
+}
+
+func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	scopedLogger := s.l.With().
-		Str("deviceID", deviceID).
-		Str("includePreRelease", fmt.Sprintf("%v", includePreRelease)).
+		Interface("params", params).
 		Logger()
 
-	scopedLogger.Info().Msg("Trying to update...")
+	scopedLogger.Info().Msg("checking for updates")
 	if s.updating {
 		return fmt.Errorf("update already in progress")
 	}
 
 	s.updating = true
-	s.onProgressUpdate()
+	s.triggerStateUpdate()
 
 	defer func() {
 		s.updating = false
-		s.onProgressUpdate()
+		s.triggerStateUpdate()
 	}()
 
-	appUpdate, systemUpdate, err := s.getUpdateStatus(ctx, deviceID, includePreRelease)
+	appUpdate, systemUpdate, err := s.getUpdateStatus(ctx, params)
 	if err != nil {
 		return s.componentUpdateError("Error checking for updates", err, &scopedLogger)
 	}
 
-	s.metadataFetchedAt = time.Now()
-	s.onProgressUpdate()
+	if params.CheckOnly {
+		return nil
+	}
 
-	if appUpdate.available {
+	s.metadataFetchedAt = time.Now()
+	s.triggerStateUpdate()
+
+	if appUpdate.available || appUpdate.downgradeAvailable {
 		appUpdate.pending = true
 	}
 
-	if systemUpdate.available {
+	if systemUpdate.available || systemUpdate.downgradeAvailable {
 		systemUpdate.pending = true
 	}
 
@@ -133,10 +167,18 @@ func (s *State) TryUpdate(ctx context.Context, deviceID string, includePreReleas
 	return nil
 }
 
+// UpdateParams represents the parameters for the update
+type UpdateParams struct {
+	DeviceID            string `json:"deviceID"`
+	AppTargetVersion    string `json:"appTargetVersion"`
+	SystemTargetVersion string `json:"systemTargetVersion"`
+	IncludePreRelease   bool   `json:"includePreRelease"`
+	CheckOnly           bool   `json:"checkOnly"`
+}
+
 func (s *State) getUpdateStatus(
 	ctx context.Context,
-	deviceID string,
-	includePreRelease bool,
+	params UpdateParams,
 ) (
 	appUpdate *componentUpdateStatus,
 	systemUpdate *componentUpdateStatus,
@@ -144,7 +186,14 @@ func (s *State) getUpdateStatus(
 ) {
 	appUpdate = &componentUpdateStatus{}
 	systemUpdate = &componentUpdateStatus{}
-	err = nil
+
+	if currentAppUpdate, ok := s.componentUpdateStatuses["app"]; ok {
+		appUpdate = &currentAppUpdate
+	}
+
+	if currentSystemUpdate, ok := s.componentUpdateStatuses["system"]; ok {
+		systemUpdate = &currentSystemUpdate
+	}
 
 	// Get local versions
 	systemVersionLocal, appVersionLocal, err := s.getLocalVersion()
@@ -155,7 +204,7 @@ func (s *State) getUpdateStatus(
 	systemUpdate.localVersion = systemVersionLocal.String()
 
 	// Get remote metadata
-	remoteMetadata, err := s.fetchUpdateMetadata(ctx, deviceID, includePreRelease)
+	remoteMetadata, err := s.fetchUpdateMetadata(ctx, params)
 	if err != nil {
 		err = fmt.Errorf("error checking for updates: %w", err)
 		return
@@ -175,6 +224,7 @@ func (s *State) getUpdateStatus(
 		return
 	}
 	systemUpdate.available = systemVersionRemote.GreaterThan(systemVersionLocal)
+	systemUpdate.downgradeAvailable = systemVersionRemote.LessThan(systemVersionLocal)
 
 	appVersionRemote, err := semver.NewVersion(remoteMetadata.AppVersion)
 	if err != nil {
@@ -182,15 +232,16 @@ func (s *State) getUpdateStatus(
 		return
 	}
 	appUpdate.available = appVersionRemote.GreaterThan(appVersionLocal)
+	appUpdate.downgradeAvailable = appVersionRemote.LessThan(appVersionLocal)
 
 	// Handle pre-release updates
 	isRemoteSystemPreRelease := systemVersionRemote.Prerelease() != ""
 	isRemoteAppPreRelease := appVersionRemote.Prerelease() != ""
 
-	if isRemoteSystemPreRelease && !includePreRelease {
+	if isRemoteSystemPreRelease && !params.IncludePreRelease {
 		systemUpdate.available = false
 	}
-	if isRemoteAppPreRelease && !includePreRelease {
+	if isRemoteAppPreRelease && !params.IncludePreRelease {
 		appUpdate.available = false
 	}
 
@@ -201,8 +252,8 @@ func (s *State) getUpdateStatus(
 }
 
 // GetUpdateStatus returns the current update status (for backwards compatibility)
-func (s *State) GetUpdateStatus(ctx context.Context, deviceID string, includePreRelease bool) (*UpdateStatus, error) {
-	_, _, err := s.getUpdateStatus(ctx, deviceID, includePreRelease)
+func (s *State) GetUpdateStatus(ctx context.Context, params UpdateParams) (*UpdateStatus, error) {
+	_, _, err := s.getUpdateStatus(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("error getting update status: %w", err)
 	}

@@ -19,7 +19,6 @@ import (
 	"go.bug.st/serial"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
-	"github.com/jetkvm/kvm/internal/ota"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
@@ -235,71 +234,6 @@ func rpcSetEDID(edid string) error {
 
 func rpcGetVideoLogStatus() (string, error) {
 	return nativeInstance.VideoLogStatus()
-}
-
-func rpcGetDevChannelState() (bool, error) {
-	return config.IncludePreRelease, nil
-}
-
-func rpcSetDevChannelState(enabled bool) error {
-	config.IncludePreRelease = enabled
-	if err := SaveConfig(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
-	}
-	return nil
-}
-
-func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
-	updateStatus, err := otaState.GetUpdateStatus(context.Background(), GetDeviceID(), includePreRelease)
-	// to ensure backwards compatibility,
-	// if there's an error, we won't return an error, but we will set the error field
-	if err != nil {
-		if updateStatus == nil {
-			return nil, fmt.Errorf("error checking for updates: %w", err)
-		}
-		updateStatus.Error = err.Error()
-	}
-
-	logger.Info().Interface("updateStatus", updateStatus).Msg("Update status")
-
-	return updateStatus, nil
-}
-
-func rpcGetUpdateStatus() (*ota.UpdateStatus, error) {
-	return getUpdateStatus(config.IncludePreRelease)
-}
-
-func rpcGetUpdateStatusChannel(channel string) (*ota.UpdateStatus, error) {
-	switch channel {
-	case "stable":
-		return getUpdateStatus(false)
-	case "dev":
-		return getUpdateStatus(true)
-	default:
-		return nil, fmt.Errorf("invalid channel: %s", channel)
-	}
-}
-
-func rpcGetLocalVersion() (*ota.LocalMetadata, error) {
-	systemVersion, appVersion, err := GetLocalVersion()
-	if err != nil {
-		return nil, fmt.Errorf("error getting local version: %w", err)
-	}
-	return &ota.LocalMetadata{
-		AppVersion:    appVersion.String(),
-		SystemVersion: systemVersion.String(),
-	}, nil
-}
-
-func rpcTryUpdate() error {
-	includePreRelease := config.IncludePreRelease
-	go func() {
-		err := otaState.TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
-		if err != nil {
-			logger.Warn().Err(err).Msg("failed to try update")
-		}
-	}()
-	return nil
 }
 
 func rpcSetDisplayRotation(params DisplayRotationSettings) error {
@@ -1219,6 +1153,8 @@ var rpcHandlers = map[string]RPCHandler{
 	"getUpdateStatus":        {Func: rpcGetUpdateStatus},
 	"getUpdateStatusChannel": {Func: rpcGetUpdateStatusChannel},
 	"tryUpdate":              {Func: rpcTryUpdate},
+	"tryUpdateComponents":    {Func: rpcTryUpdateComponents, Params: []string{"components", "includePreRelease", "checkOnly"}},
+	"cancelDowngrade":        {Func: rpcCancelDowngrade},
 	"getDevModeState":        {Func: rpcGetDevModeState},
 	"setDevModeState":        {Func: rpcSetDevModeState, Params: []string{"enabled"}},
 	"getSSHKeyState":         {Func: rpcGetSSHKeyState},

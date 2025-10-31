@@ -1,6 +1,7 @@
 package ota
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -27,10 +28,12 @@ type LocalMetadata struct {
 
 // UpdateStatus represents the current update status
 type UpdateStatus struct {
-	Local                 *LocalMetadata  `json:"local"`
-	Remote                *UpdateMetadata `json:"remote"`
-	SystemUpdateAvailable bool            `json:"systemUpdateAvailable"`
-	AppUpdateAvailable    bool            `json:"appUpdateAvailable"`
+	Local                    *LocalMetadata  `json:"local"`
+	Remote                   *UpdateMetadata `json:"remote"`
+	SystemUpdateAvailable    bool            `json:"systemUpdateAvailable"`
+	SystemDowngradeAvailable bool            `json:"systemDowngradeAvailable"`
+	AppUpdateAvailable       bool            `json:"appUpdateAvailable"`
+	AppDowngradeAvailable    bool            `json:"appDowngradeAvailable"`
 
 	// for backwards compatibility
 	Error string `json:"error,omitempty"`
@@ -47,8 +50,10 @@ type PostRebootAction struct {
 type componentUpdateStatus struct {
 	pending              bool
 	available            bool
+	downgradeAvailable   bool
 	version              string
 	localVersion         string
+	targetVersion        string
 	url                  string
 	hash                 string
 	downloadProgress     float32
@@ -79,6 +84,8 @@ type RPCState struct {
 	AppUpdatedAt               time.Time `json:"appUpdatedAt,omitempty"`
 	SystemUpdateProgress       float32   `json:"systemUpdateProgress,omitempty"` //TODO: port rk_ota, then implement
 	SystemUpdatedAt            time.Time `json:"systemUpdatedAt,omitempty"`
+	SystemTargetVersion        string    `json:"systemTargetVersion,omitempty"`
+	AppTargetVersion           string    `json:"appTargetVersion,omitempty"`
 }
 
 // HwRebootFunc is a function that reboots the hardware
@@ -109,6 +116,40 @@ type State struct {
 	client                  GetHTTPClientFunc
 	reboot                  HwRebootFunc
 	getLocalVersion         GetLocalVersionFunc
+	onStateUpdate           OnStateUpdateFunc
+}
+
+// SetTargetVersion sets the target version for a component
+func (s *State) SetTargetVersion(component string, version string) error {
+	parsedVersion := version
+	if version != "" {
+		// validate if it's a valid semver string first
+		semverVersion, err := semver.NewVersion(version)
+		if err != nil {
+			return fmt.Errorf("not a valid semantic version: %w", err)
+		}
+		parsedVersion = semverVersion.String()
+	}
+
+	// check if the component exists
+	componentUpdate, ok := s.componentUpdateStatuses[component]
+	if !ok {
+		return fmt.Errorf("component %s not found", component)
+	}
+
+	componentUpdate.targetVersion = parsedVersion
+	s.componentUpdateStatuses[component] = componentUpdate
+
+	return nil
+}
+
+// GetTargetVersion returns the target version for a component
+func (s *State) GetTargetVersion(component string) string {
+	componentUpdate, ok := s.componentUpdateStatuses[component]
+	if !ok {
+		return ""
+	}
+	return componentUpdate.targetVersion
 }
 
 // ToUpdateStatus converts the State to the UpdateStatus
@@ -136,9 +177,11 @@ func (s *State) ToUpdateStatus() *UpdateStatus {
 			SystemURL:     systemUpdate.url,
 			SystemHash:    systemUpdate.hash,
 		},
-		SystemUpdateAvailable: systemUpdate.available,
-		AppUpdateAvailable:    appUpdate.available,
-		Error:                 s.error,
+		SystemUpdateAvailable:    systemUpdate.available,
+		SystemDowngradeAvailable: systemUpdate.downgradeAvailable,
+		AppUpdateAvailable:       appUpdate.available,
+		AppDowngradeAvailable:    appUpdate.downgradeAvailable,
+		Error:                    s.error,
 	}
 }
 
@@ -160,12 +203,17 @@ type Options struct {
 
 // NewState creates a new OTA state
 func NewState(opts Options) *State {
+	components := make(map[string]componentUpdateStatus)
+	components["app"] = componentUpdateStatus{}
+	components["system"] = componentUpdateStatus{}
+
 	s := &State{
 		l:                       opts.Logger,
 		client:                  opts.GetHTTPClient,
 		reboot:                  opts.HwReboot,
+		onStateUpdate:           opts.OnStateUpdate,
 		getLocalVersion:         opts.GetLocalVersion,
-		componentUpdateStatuses: make(map[string]componentUpdateStatus),
+		componentUpdateStatuses: components,
 		releaseAPIEndpoint:      opts.ReleaseAPIEndpoint,
 	}
 	go s.confirmCurrentSystem()
@@ -189,6 +237,7 @@ func (s *State) ToRPCState() *RPCState {
 		r.AppVerifiedAt = app.verifiedAt
 		r.AppUpdateProgress = app.updateProgress
 		r.AppUpdatedAt = app.updatedAt
+		r.AppTargetVersion = app.targetVersion
 	}
 
 	system, ok := s.componentUpdateStatuses["system"]
@@ -200,10 +249,8 @@ func (s *State) ToRPCState() *RPCState {
 		r.SystemVerifiedAt = system.verifiedAt
 		r.SystemUpdateProgress = system.updateProgress
 		r.SystemUpdatedAt = system.updatedAt
+		r.SystemTargetVersion = system.targetVersion
 	}
 
 	return r
-}
-
-func (s *State) onProgressUpdate() {
 }
