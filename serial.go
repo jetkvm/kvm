@@ -285,7 +285,9 @@ var serialConfig = SerialSettings{
 	EnableEcho:         false,
 	NormalizeMode:      "names",
 	NormalizeLineEnd:   "keep",
+	TabRender:          "",
 	PreserveANSI:       true,
+	ShowNLTag:          false,
 	Buttons:            []QuickButton{},
 }
 

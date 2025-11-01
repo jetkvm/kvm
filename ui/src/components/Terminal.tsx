@@ -8,16 +8,13 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 
+import { m } from "@localizations/messages.js";
 import { cx } from "@/cva.config";
 import { AvailableTerminalTypes, useUiStore, useTerminalStore } from "@/hooks/stores";
 import { CommandInput } from "@/components/CommandInput";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
-
-import { Button } from "./Button";
 import { Button } from "@components/Button";
-import { m } from "@localizations/messages.js";
-
 
 const isWebGl2Supported = !!document.createElement("canvas").getContext("webgl2");
 
