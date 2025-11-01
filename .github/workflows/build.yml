@@ -63,7 +63,7 @@ jobs:
         with:
           input: "testreport.json"
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: jetkvm-app
           path: |
