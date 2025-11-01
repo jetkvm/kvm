@@ -37,7 +37,7 @@ jobs:
           restore-keys: |
             jetkvm-cgo-${{ hashFiles('internal/native/cgo/**/*.c', 'internal/native/cgo/**/*.h', 'internal/native/cgo/**/*.patch', 'internal/native/cgo/**/*.txt', 'internal/native/cgo/**/*.sh', '!internal/native/cgo/build/**') }}
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "npm"
