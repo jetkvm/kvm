@@ -63,7 +63,7 @@
   "devDependencies": {
     "@eslint/compat": "^1.4.0",
     "@eslint/eslintrc": "^3.3.1",
-    "@eslint/js": "^9.38.0",
+    "@eslint/js": "^9.39.0",
     "@inlang/cli": "^3.0.12",
     "@inlang/paraglide-js": "^2.4.0",
     "@inlang/plugin-m-function-matcher": "^2.1.0",
