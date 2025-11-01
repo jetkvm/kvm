@@ -473,7 +473,6 @@ export interface KeyboardLedState {
   scroll_lock: boolean;
   compose: boolean;
   kana: boolean;
-  shift: boolean; // Optional, as not all keyboards have a shift LED
 };
 
 export const hidKeyBufferSize = 6;
@@ -509,7 +508,7 @@ export interface HidState {
 }
 
 export const useHidStore = create<HidState>(set => ({
-  keyboardLedState: { num_lock: false, caps_lock: false, scroll_lock: false, compose: false, kana: false, shift: false } as KeyboardLedState,
+  keyboardLedState: { num_lock: false, caps_lock: false, scroll_lock: false, compose: false, kana: false } as KeyboardLedState,
   setKeyboardLedState: (ledState: KeyboardLedState): void => set({ keyboardLedState: ledState }),
 
   keysDownState: { modifier: 0, keys: [0, 0, 0, 0, 0, 0] } as KeysDownState,

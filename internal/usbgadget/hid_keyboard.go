@@ -28,61 +28,50 @@ var keyboardConfig = gadgetConfigItem{
 
 // Source: https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt
 var keyboardReportDesc = []byte{
-	0x05, 0x01, /* USAGE_PAGE (Generic Desktop)	          */
-	0x09, 0x06, /* USAGE (Keyboard)                       */
-	0xa1, 0x01, /* COLLECTION (Application)               */
+	/* boot mode descriptor */
+	0x05, 0x01, /* USAGE_PAGE-global (Generic Desktop)              */
+	0x09, 0x06, /* USAGE-local (Keyboard)                           */
+	0xA1, 0x01, /* COLLECTION-main (Application)                    */
 
 	/* 8 modifier bits */
-	0x05, 0x07, /*   USAGE_PAGE (Keyboard)                */
-	0x19, 0xe0, /*   USAGE_MINIMUM (Keyboard LeftControl) */
-	0x29, 0xe7, /*   USAGE_MAXIMUM (Keyboard Right GUI)   */
-	0x15, 0x00, /*   LOGICAL_MINIMUM (0)                  */
-	0x25, 0x01, /*   LOGICAL_MAXIMUM (1)                  */
-	0x75, 0x01, /*   REPORT_SIZE (1)                      */
-	0x95, 0x08, /*   REPORT_COUNT (8)                     */
-	0x81, 0x02, /*   INPUT (Data,Var,Abs)                 */
+	0x05, 0x07, /*   USAGE_PAGE-global (Keyboard)                    */
+	0x19, 0xe0, /*   USAGE_MINIMUM-local 0xE0 (Keyboard LeftControl) */
+	0x29, 0xe7, /*   USAGE_MAXIMUM-local 0xE7 (Keyboard Right GUI)   */
+	0x15, 0x00, /*   LOGICAL_MINIMUM-global (0) Modifier bit off)    */
+	0x25, 0x01, /*   LOGICAL_MAXIMUM-global (1) Modifier bit on)     */
+	0x75, 0x01, /*   REPORT_SIZE-global (1) one bit per modifier     */
+	0x95, 0x08, /*   REPORT_COUNT-global (8) 8 total bits            */
+	0x81, 0x02, /*   INPUT-main (Data,Var,Abs) Modifier bits 0-7     */
 
 	/* 8 bits of padding */
-	0x95, 0x01, /*   REPORT_COUNT (1)                     */
-	0x75, 0x08, /*   REPORT_SIZE (8)                      */
-	0x81, 0x03, /*   INPUT (Cnst,Var,Abs)                 */
+	0x95, 0x01, /*   REPORT_COUNT-global (1) one field               */
+	0x75, 0x08, /*   REPORT_SIZE-global (8)                          */
+	0x81, 0x03, /*   INPUT-main (Cnst,Var,Abs) reserved byte         */
 
 	/* 6 key codes for the 104 key keyboard */
-	0x95, 0x06, /*   REPORT_COUNT (6)                     */
-	0x75, 0x08, /*   REPORT_SIZE (8)                      */
-	0x15, 0x00, /*   LOGICAL_MINIMUM (0)                  */
-	0x25, 0xE7, /*   LOGICAL_MAXIMUM (104-key HID)        */
-	0x05, 0x07, /*   USAGE_PAGE (Keyboard)                */
-	0x19, 0x00, /*   USAGE_MINIMUM (Reserved)             */
-	0x29, 0xE7, /*   USAGE_MAXIMUM (Keyboard Right GUI)   */
-	0x81, 0x00, /*   INPUT (Data,Ary,Abs)                 */
+	0x95, 0x06, /*   REPORT_COUNT-global (6) keycodes                */
+	0x75, 0x08, /*   REPORT_SIZE-global (8) bits each (a byte)       */
+	0x15, 0x00, /*   LOGICAL_MINIMUM-global (0)                      */
+	0x25, 0xDF, /*   LOGICAL_MAXIMUM-global 0xDF (104-key HID codes) */
+	0x05, 0x07, /*   USAGE_PAGE-global (Keyboard)                    */
+	0x19, 0x00, /*   USAGE_MINIMUM-local (Reserved/0) no key         */
+	0x29, 0xE7, /*   USAGE_MAXIMUM-local (Keyboard Right GUI)        */
+	0x81, 0x00, /*   INPUT-main (Data,Ary,Abs) array of keycodes     */
 
 	/* LED report 5 bits for Num Lock through Kana */
-	0x95, 0x05, /*   REPORT_COUNT (5)                     */
-	0x75, 0x01, /*   REPORT_SIZE (1)                      */
-	0x05, 0x08, /*   USAGE_PAGE (LEDs)                    */
-	0x19, 0x01, /*   USAGE_MINIMUM (Num Lock)             */
-	0x29, 0x05, /*   USAGE_MAXIMUM (Kana)                 */
-	0x91, 0x02, /*   OUTPUT (Data,Var,Abs)                */
+	0x95, 0x05, /*   REPORT_COUNT-global (5) 5 LED bits             */
+	0x75, 0x01, /*   REPORT_SIZE-global (1) each 1 bit              */
+	0x05, 0x08, /*   USAGE_PAGE-global (LEDs)                       */
+	0x19, 0x01, /*   USAGE_MINIMUM-local (Num Lock)                 */
+	0x29, 0x05, /*   USAGE_MAXIMUM-local (Kana)                     */
+	0x91, 0x02, /*   OUTPUT-main (Data,Var,Abs) bits 0-4            */
 
-	/* 1 bit of padding for the Power LED (ignored) */
-	0x95, 0x01, /*   REPORT_COUNT (1)                     */
-	0x75, 0x03, /*   REPORT_SIZE (3)                      */
-	0x91, 0x03, /*   OUTPUT (Cnst,Var,Abs)                */
+	/* 3 bits of padding for the rest of the byte */
+	0x95, 0x01, /*   REPORT_COUNT-global (1) one field              */
+	0x75, 0x03, /*   REPORT_SIZE-global (3) of three bits           */
+	0x91, 0x03, /*   OUTPUT-main (Cnst,Var,Abs) bit 7 pad           */
 
-	/* LED report 1 bit for Shift */
-	0x95, 0x01, /*   REPORT_COUNT (1)                     */
-	0x75, 0x01, /*   REPORT_SIZE (1)                      */
-	0x05, 0x08, /*   USAGE_PAGE (LEDs)                    */
-	0x19, 0x07, /*   USAGE_MINIMUM (Shift)                */
-	0x29, 0x07, /*   USAGE_MAXIMUM (Shift)                */
-	0x91, 0x02, /*   OUTPUT (Data,Var,Abs)                */
-
-	/* 1 bit of padding for the rest of the byte */
-	0x95, 0x01, /*   REPORT_COUNT (1)                     */
-	0x75, 0x03, /*   REPORT_SIZE (3)                      */
-	0x91, 0x03, /*   OUTPUT (Cnst,Var,Abs)                */
-	0xc0, /* END_COLLECTION                         */
+	0xC0, /* END_COLLECTION */
 }
 
 const (
@@ -96,9 +85,7 @@ const (
 	KeyboardLedMaskScrollLock = 1 << 2
 	KeyboardLedMaskCompose    = 1 << 3
 	KeyboardLedMaskKana       = 1 << 4
-	// power on/off LED is 5
-	KeyboardLedMaskShift  = 1 << 6
-	ValidKeyboardLedMasks = KeyboardLedMaskNumLock | KeyboardLedMaskCapsLock | KeyboardLedMaskScrollLock | KeyboardLedMaskCompose | KeyboardLedMaskKana | KeyboardLedMaskShift
+	ValidKeyboardLedMasks     = KeyboardLedMaskNumLock | KeyboardLedMaskCapsLock | KeyboardLedMaskScrollLock | KeyboardLedMaskCompose | KeyboardLedMaskKana
 )
 
 // Synchronization between LED states and CAPS LOCK, NUM LOCK, SCROLL LOCK,
@@ -111,7 +98,6 @@ type KeyboardState struct {
 	ScrollLock bool `json:"scroll_lock"`
 	Compose    bool `json:"compose"`
 	Kana       bool `json:"kana"`
-	Shift      bool `json:"shift"` // This is not part of the main USB HID spec
 	raw        byte
 }
 
@@ -128,7 +114,6 @@ func getKeyboardState(b byte) KeyboardState {
 		ScrollLock: b&KeyboardLedMaskScrollLock != 0,
 		Compose:    b&KeyboardLedMaskCompose != 0,
 		Kana:       b&KeyboardLedMaskKana != 0,
-		Shift:      b&KeyboardLedMaskShift != 0,
 		raw:        b,
 	}
 }
@@ -295,12 +280,13 @@ func (u *UsbGadget) listenKeyboardEvents() {
 					time.Sleep(time.Second)
 					continue
 				}
-				// reset the counter
+				// reset the suppression counter
 				u.resetLogSuppressionCounter("keyboardHidFileNil")
 
 				n, err := u.keyboardHidFile.Read(buf)
 				if err != nil {
 					u.logWithSuppression("keyboardHidFileRead", 100, &l, err, "failed to read")
+					time.Sleep(100 * time.Millisecond) // Small backoff on read errors to avoid tight looping
 					continue
 				}
 				u.resetLogSuppressionCounter("keyboardHidFileRead")

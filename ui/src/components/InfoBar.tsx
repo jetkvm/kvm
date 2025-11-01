@@ -166,10 +166,6 @@ export default function InfoBar() {
           {keyboardLedState.kana ? (
             <div className="shrink-0 p-1 px-1.5 text-xs">{m.info_kana()}</div>
           ) : null}
-
-          {keyboardLedState.shift ? (
-            <div className="shrink-0 p-1 px-1.5 text-xs">{m.info_shift()}</div>
-          ) : null}
         </div>
       </div>
     </div>

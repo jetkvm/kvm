@@ -3,12 +3,12 @@
 // [Universal Serial Bus HID Usage Tables: Section 10](https://www.usb.org/sites/default/files/documents/hut1_12v2.pdf)
 // These are all the key codes (not scan codes) that an 85/101/102 keyboard might have on it
 export const keys = {
-  Again: 0x79,
+  Again: 0x79,        // aka Clear
   AlternateErase: 0x9d,
   AltGr: 0xe6,        // aka AltRight
   AltLeft: 0xe2,
   AltRight: 0xe6,
-  Application: 0x65,
+  Application: 0x65,  // aka ContextMenu
   ArrowDown: 0x51,
   ArrowLeft: 0x50,
   ArrowRight: 0x4f,
@@ -25,11 +25,10 @@ export const keys = {
   ClearAgain: 0xa2,
   Comma: 0x36,
   Compose: 0xe3,
-  ContextMenu: 0x65,
   ControlLeft: 0xe0,
   ControlRight: 0xe4,
   Copy: 0x7c,
-  CrSel: 0xa3,
+  CrSel: 0xa3,       // aka Props
   CurrencySubunit: 0xb5,
   CurrencyUnit: 0xb4,
   Cut: 0x7b,
@@ -49,7 +48,7 @@ export const keys = {
   Enter: 0x28,
   Equal: 0x2e,
   Escape: 0x29,
-  Execute: 0x74,
+  Execute: 0x74,  // aka Open
   ExSel: 0xa4,
   F1: 0x3a,
   F2: 0x3b,
@@ -77,14 +76,14 @@ export const keys = {
   F24: 0x73,
   Find: 0x7e,
   Grave: 0x35,
-  HashTilde: 0x32,  // non-US # and ~
+  HashTilde: 0x32,  // non-US # and ~ (typically near Enter key)
   Help: 0x75,
   Home: 0x4a,
   Insert: 0x49,
   International7: 0x8d,
   International8: 0x8e,
   International9: 0x8f,
-  IntlBackslash: 0x64, // non-US \ and |
+  IntlBackslash: 0x64, // non-US \ and | (typically near Left Shift key)
   KeyA: 0x04,
   KeyB: 0x05,
   KeyC: 0x06,
@@ -111,17 +110,17 @@ export const keys = {
   KeyX: 0x1b,
   KeyY: 0x1c,
   KeyZ: 0x1d,
-  KeyRO: 0x87,
-  KatakanaHiragana: 0x88,
-  Yen: 0x89,
-  Henkan: 0x8a,
-  Muhenkan: 0x8b,
-  KPJPComma: 0x8c,
-  Hangeul: 0x90,
-  Hanja: 0x91,
-  Katakana: 0x92,
-  Hiragana: 0x93,
-  ZenkakuHankaku: 0x94,
+  RO: 0x87,               // aka International1
+  KatakanaHiragana: 0x88, // aka International2
+  Yen: 0x89,              // aka International3
+  Henkan: 0x8a,           // aka International4
+  Muhenkan: 0x8b,         // aka International5
+  KPJPComma: 0x8c,        // aka International6
+  Hangeul: 0x90,          // aka Lang1
+  Hanja: 0x91,            // aka Lang2
+  Katakana: 0x92,         // aka Lang3
+  Hiragana: 0x93,         // aka Lang4
+  ZenkakuHankaku: 0x94,   // aka Lang5
   LockingCapsLock: 0x82,
   LockingNumLock: 0x83,
   LockingScrollLock: 0x84,
@@ -129,9 +128,29 @@ export const keys = {
   Lang7: 0x96,
   Lang8: 0x97,
   Lang9: 0x98,
+  MediaBack: 0xF1,
+  MediaCalc: 0xFB,
+  MediaCoffee: 0xF9,
+  MediaEdit: 0xF7,
+  MediaEjectCD: 0xEC,
+  MediaFind: 0xF4,
+  MediaForward: 0xF2,
+  MediaMute: 0xEF,
+  MediaNextSong: 0xEB,
+  MediaPlayPause: 0xE8,
+  MediaPreviousSong: 0xEA,
+  MediaRefresh: 0xFA,
+  MediaScrollDown: 0xF6,
+  MediaScrollUp: 0xF5,
+  MediaSleep: 0xF8,
+  MediaStop: 0xF3,
+  MediaStopCD: 0xE9,
+  MediaVolumeDown: 0xEE,
+  MediaVolumeUp: 0xED,
+  MediaWWW: 0xF0,
   Menu: 0x76,
-  MetaLeft: 0xe3,
-  MetaRight: 0xe7,
+  MetaLeft: 0xe3,     // aka LeftGUI
+  MetaRight: 0xe7,    // aka RightGUI
   Minus: 0x2d,
   Mute: 0x7f,
   NumLock: 0x53,  // and Clear
@@ -157,9 +176,8 @@ export const keys = {
   NumpadClearEntry: 0xd9,
   NumpadColon: 0xcb,
   NumpadComma: 0x85,
-  NumpadDecimal: 0x63, // and Delete
+  NumpadDecimal: 0x63, // and NumpadDelete
   NumpadDecimalBase: 0xdc,
-  NumpadDelete: 0x63,
   NumpadDivide: 0x54,
   NumpadDownArrow: 0x5a,
   NumpadEnd: 0x59,
@@ -211,14 +229,14 @@ export const keys = {
   PageUp: 0x4b,
   Paste: 0x7d,
   Pause: 0x48,
-  Period: 0x37, // aka Dot
+  Period: 0x37,       // aka Dot
   Power: 0x66,
-  PrintScreen: 0x46,
+  PrintScreen: 0x46,  // aka SysRq
   Prior: 0x9d,
-  Quote: 0x34, // aka Single Quote or Apostrophe
+  Quote: 0x34,        // aka Single Quote or Apostrophe
   Return: 0x9e,
-  ScrollLock: 0x47,
-  Select: 0x77,
+  ScrollLock: 0x47,   // aka ScrLk
+  Select: 0x77,       // aka Front
   Semicolon: 0x33,
   Separator: 0x9f,
   ShiftLeft: 0xe1,
@@ -240,7 +258,7 @@ export const deadKeys = {
   Breve: 0x02d8,
   Caron: 0x02c7,
   Cedilla: 0x00b8,
-  Circumflex: 0x005e, // or 0x02c6?
+  Circumflex: 0x02c6,
   Comma: 0x002c,
   Dot: 0x00b7,
   DoubleAcute: 0x02dd,
