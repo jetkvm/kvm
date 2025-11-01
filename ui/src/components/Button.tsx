@@ -1,10 +1,9 @@
 import React, { JSX } from "react";
-import { Link, useNavigation } from "react-router";
-import type { FetcherWithComponents, LinkProps } from "react-router";
+import { Link, type FetcherWithComponents, type LinkProps, useNavigation } from "react-router";
 
-import ExtLink from "@/components/ExtLink";
-import LoadingSpinner from "@/components/LoadingSpinner";
 import { cva, cx } from "@/cva.config";
+import ExtLink from "@components/ExtLink";
+import LoadingSpinner from "@components/LoadingSpinner";
 
 const sizes = {
   XS: "h-[28px] px-2 text-xs",
@@ -213,7 +212,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
 Button.displayName = "Button";
 
 type LinkPropsType = Pick<LinkProps, "to"> &
-  React.ComponentProps<typeof ButtonContent> & { disabled?: boolean };
+  React.ComponentProps<typeof ButtonContent> & { disabled?: boolean, reloadDocument?: boolean };
 export const LinkButton = ({ to, ...props }: LinkPropsType) => {
   const classes = cx(
     "group outline-hidden",
@@ -231,7 +230,7 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
     );
   } else {
     return (
-      <Link to={to} className={classes}>
+      <Link to={to} reloadDocument={props.reloadDocument} className={classes}>
         <ButtonContent {...props} />
       </Link>
     );

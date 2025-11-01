@@ -171,40 +171,12 @@ func rpcGetDeviceID() (string, error) {
 }
 
 func rpcReboot(force bool) error {
-	logger.Info().Msg("Got reboot request from JSONRPC, rebooting...")
-
-	writeJSONRPCEvent("willReboot", nil, currentSession)
-
-	// Wait for the JSONRPCEvent to be sent
-	time.Sleep(1 * time.Second)
-	nativeInstance.SwitchToScreenIfDifferent("rebooting_screen")
-
-	args := []string{}
-	if force {
-		args = append(args, "-f")
-	}
-
-	cmd := exec.Command("reboot", args...)
-	err := cmd.Start()
-	if err != nil {
-		logger.Error().Err(err).Msg("failed to reboot")
-		switchToMainScreen()
-		return fmt.Errorf("failed to reboot: %w", err)
-	}
-
-	// If the reboot command is successful, exit the program after 5 seconds
-	go func() {
-		time.Sleep(5 * time.Second)
-		os.Exit(0)
-	}()
-
-	return nil
+	logger.Info().Msg("Got reboot request via RPC")
+	return hwReboot(force, nil, 0)
 }
 
-var streamFactor = 1.0
-
 func rpcGetStreamQualityFactor() (float64, error) {
-	return streamFactor, nil
+	return config.VideoQualityFactor, nil
 }
 
 func rpcSetStreamQualityFactor(factor float64) error {
@@ -214,7 +186,10 @@ func rpcSetStreamQualityFactor(factor float64) error {
 		return err
 	}
 
-	streamFactor = factor
+	config.VideoQualityFactor = factor
+	if err := SaveConfig(); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
 	return nil
 }
 
@@ -241,7 +216,6 @@ func rpcGetEDID() (string, error) {
 func rpcSetEDID(edid string) error {
 	if edid == "" {
 		logger.Info().Msg("Restoring EDID to default")
-		edid = "00ffffffffffff0052620188008888881c150103800000780a0dc9a05747982712484c00000001010101010101010101010101010101023a801871382d40582c4500c48e2100001e011d007251d01e206e285500c48e2100001e000000fc00543734392d6648443732300a20000000fd00147801ff1d000a202020202020017b"
 	} else {
 		logger.Info().Str("edid", edid).Msg("Setting EDID")
 	}

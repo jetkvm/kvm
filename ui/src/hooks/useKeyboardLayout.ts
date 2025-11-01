@@ -28,7 +28,7 @@ export default function useKeyboardLayout() {
   const selectedKeyboard = useMemo(() => {
     // fallback to original behaviour of en-US if no isoCode given or matching layout not found
     return keyboards.find(keyboard => keyboard.isoCode === isoCode)
-          ?? keyboards.find(keyboard => keyboard.isoCode === "en-US")!;
+      ?? keyboards.find(keyboard => keyboard.isoCode === "en-US")!;
   }, [isoCode]);
 
   return { keyboardOptions, isoCode, selectedKeyboard };

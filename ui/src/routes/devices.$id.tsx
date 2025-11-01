@@ -1,7 +1,6 @@
 import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Outlet,
-  redirect,
   useLoaderData,
   useLocation,
   useNavigate,
@@ -15,10 +14,10 @@ import { FocusTrap } from "focus-trap-react";
 import { motion, AnimatePresence } from "framer-motion";
 import useWebSocket from "react-use-websocket";
 
-import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import { cx } from "@/cva.config";
+import { CLOUD_API } from "@/ui.config";
 import api from "@/api";
 import { checkAuth, isInCloud, isOnDevice } from "@/main";
-import { cx } from "@/cva.config";
 import {
   KeyboardLedState,
   KeysDownState,
@@ -34,27 +33,29 @@ import {
   useUpdateStore,
   useVideoStore,
   VideoState,
-} from "@/hooks/stores";
+} from "@hooks/stores";
+import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@hooks/useJsonRpc";
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
+import { useVersion } from "@hooks/useVersion";
 import WebRTCVideo from "@components/WebRTCVideo";
 import DashboardNavbar from "@components/Header";
-const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectionStats'));
+const ConnectionStatsSidebar = lazy(() => import('@components/sidebar/connectionStats'));
 const Terminal = lazy(() => import('@components/Terminal'));
-const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
-import Modal from "@/components/Modal";
-import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
+const UpdateInProgressStatusCard = lazy(() => import("@components/UpdateInProgressStatusCard"));
+import Modal from "@components/Modal";
 import {
   ConnectionFailedOverlay,
   LoadingConnectionOverlay,
   PeerConnectionDisconnectedOverlay,
   RebootingOverlay,
-} from "@/components/VideoOverlay";
-import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
-import { FeatureFlagProvider } from "@/providers/FeatureFlagProvider";
-import { DeviceStatus } from "@routes/welcome-local";
-import { useVersion } from "@/hooks/useVersion";
+} from "@components/VideoOverlay";
+import { FeatureFlagProvider } from "@providers/FeatureFlagProvider";
+import { m } from "@localizations/messages.js";
+
+export type AuthMode = "password" | "noPassword" | null;
 
 interface LocalLoaderResp {
-  authMode: "password" | "noPassword" | null;
+  authMode: AuthMode;
 }
 
 interface CloudLoaderResp {
@@ -65,35 +66,20 @@ interface CloudLoaderResp {
   } | null;
 }
 
-export type AuthMode = "password" | "noPassword" | null;
 export interface LocalDevice {
   authMode: AuthMode;
   deviceId: string;
 }
 
 const deviceLoader = async () => {
-  const res = await api
-    .GET(`${DEVICE_API}/device/status`)
-    .then(res => res.json() as Promise<DeviceStatus>);
-
-  if (!res.isSetup) return redirect("/welcome");
-
-  const deviceRes = await api.GET(`${DEVICE_API}/device`);
-  if (deviceRes.status === 401) return redirect("/login-local");
-  if (deviceRes.ok) {
-    const device = (await deviceRes.json()) as LocalDevice;
-    return { authMode: device.authMode };
-  }
-
-  throw new Error("Error fetching device");
+  const device = await checkAuth();
+  return { authMode: device.authMode } as LocalLoaderResp;
 };
 
 const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => {
   const user = await checkAuth();
-
   const iceResp = await api.POST(`${CLOUD_API}/webrtc/ice_config`);
   const iceConfig = await iceResp.json();
-
   const deviceResp = await api.GET(`${CLOUD_API}/devices/${params.id}`);
 
   if (!deviceResp.ok) {
@@ -108,15 +94,15 @@ const cloudLoader = async (params: Params<string>): Promise<CloudLoaderResp> => 
     device: { id: string; name: string; user: { googleId: string } };
   };
 
-  return { user, iceConfig, deviceName: device.name || device.id };
+  return { user, iceConfig, deviceName: device.name || device.id } as CloudLoaderResp;
 };
 
 const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
-  return import.meta.env.MODE === "device" ? deviceLoader() : cloudLoader(params);
+  return isOnDevice ? deviceLoader() : cloudLoader(params);
 };
 
 export default function KvmIdRoute() {
-  const loaderResp = useLoaderData() as LocalLoaderResp | CloudLoaderResp;
+  const loaderResp = useLoaderData();
   // Depending on the mode, we set the appropriate variables
   const user = "user" in loaderResp ? loaderResp.user : null;
   const deviceName = "deviceName" in loaderResp ? loaderResp.deviceName : null;
@@ -147,7 +133,7 @@ export default function KvmIdRoute() {
   const navigate = useNavigate();
   const { otaState, setOtaState, setModalView } = useUpdateStore();
 
-  const [loadingMessage, setLoadingMessage] = useState("Connecting to device...");
+  const [loadingMessage, setLoadingMessage] = useState(m.connecting_to_device());
   const cleanupAndStopReconnecting = useCallback(
     function cleanupAndStopReconnecting() {
       console.log("Closing peer connection");
@@ -184,12 +170,12 @@ export default function KvmIdRoute() {
       pc: RTCPeerConnection,
       remoteDescription: RTCSessionDescriptionInit,
     ) {
-      setLoadingMessage("Setting remote description");
+      setLoadingMessage(m.setting_remote_description());
 
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(remoteDescription));
-        console.log("[setRemoteSessionDescription] Remote description set successfully");
-        setLoadingMessage("Establishing secure connection...");
+        console.log("[setRemoteSessionDescription] Remote description set successfully to: " + remoteDescription.sdp);
+        setLoadingMessage(m.establishing_secure_connection());
       } catch (error) {
         console.error(
           "[setRemoteSessionDescription] Failed to set remote description:",
@@ -208,7 +194,7 @@ export default function KvmIdRoute() {
         if (pc.sctp?.state === "connected") {
           console.log("[setRemoteSessionDescription] Remote description set");
           clearInterval(checkInterval);
-          setLoadingMessage("Connection established");
+          setLoadingMessage(m.connection_established());
         } else if (attempts >= 10) {
           console.warn(
             "[setRemoteSessionDescription] Failed to establish connection after 10 attempts",
@@ -233,8 +219,13 @@ export default function KvmIdRoute() {
   const ignoreOffer = useRef(false);
   const isSettingRemoteAnswerPending = useRef(false);
   const makingOffer = useRef(false);
-
+  const reconnectAttemptsRef = useRef(2000);
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+
+  const reconnectInterval = (attempt: number) => {
+    // Exponential backoff with a max of 10 seconds between attempts
+    return Math.min(500 * 2 ** attempt, 10000);
+  }
 
   const { sendMessage, getWebSocket } = useWebSocket(
     isOnDevice
@@ -243,27 +234,28 @@ export default function KvmIdRoute() {
     {
       heartbeat: true,
       retryOnError: true,
-      reconnectAttempts: 2000,
-      reconnectInterval: 1000,
-      onReconnectStop: () => {
-        console.debug("Reconnect stopped");
+      reconnectAttempts: reconnectAttemptsRef.current,
+      reconnectInterval: reconnectInterval,
+      onReconnectStop: (numAttempts: number) => {
+        console.debug("Reconnect stopped after ", numAttempts, "attempts");
         cleanupAndStopReconnecting();
       },
 
-      shouldReconnect(event) {
+      shouldReconnect(event: WebSocketEventMap['close']) {
         console.debug("[Websocket] shouldReconnect", event);
         return !isLegacySignalingEnabled.current;
       },
 
-      onClose(event) {
+      onClose(event: WebSocketEventMap['close']) {
         console.debug("[Websocket] onClose", event);
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
 
-      onError(event) {
+      onError(event: WebSocketEventMap['error']) {
         console.error("[Websocket] onError", event);
         // We don't want to close everything down, we wait for the reconnect to stop instead
       },
+
       onOpen() {
         console.debug("[Websocket] onOpen");
         // We want to clear the reboot state when the websocket connection is opened
@@ -278,7 +270,8 @@ export default function KvmIdRoute() {
         setRebootState({ isRebooting: false, postRebootAction: null });
       },
 
-      onMessage: message => {
+      onMessage(event: WebSocketEventMap['message']) {
+        const message = event;
         if (message.data === "pong") return;
 
         /*
@@ -295,6 +288,7 @@ export default function KvmIdRoute() {
         */
 
         const parsedMessage = JSON.parse(message.data);
+
         if (parsedMessage.type === "device-metadata") {
           const { deviceVersion } = parsedMessage.data;
           console.debug("[Websocket] Received device-metadata message");
@@ -311,10 +305,12 @@ export default function KvmIdRoute() {
             console.log("[Websocket] Device is using new signaling");
             isLegacySignalingEnabled.current = false;
           }
+
           setupPeerConnection();
         }
 
         if (!peerConnection) return;
+
         if (parsedMessage.type === "answer") {
           console.debug("[Websocket] Received answer");
           const readyForOffer =
@@ -368,12 +364,12 @@ export default function KvmIdRoute() {
       const sd = btoa(JSON.stringify(pc.localDescription));
 
       // Legacy mode == UI in cloud with updated code connecting to older device version.
-      // In device mode, old devices wont server this JS, and on newer devices legacy mode wont be enabled
+      // In device mode, old devices wont serve this JS, and on newer devices legacy mode wont be enabled
       const sessionUrl = `${CLOUD_API}/webrtc/session`;
 
       console.log("Trying to get remote session description");
       setLoadingMessage(
-        `Getting remote session description...  ${signalingAttempts.current > 0 ? `(attempt ${signalingAttempts.current + 1})` : ""}`,
+        m.getting_remote_session_description({ attempt: signalingAttempts.current + 1 }),
       );
       const res = await api.POST(sessionUrl, {
         sd,
@@ -390,7 +386,7 @@ export default function KvmIdRoute() {
       }
 
       console.debug("Successfully got Remote Session Description. Setting.");
-      setLoadingMessage("Setting remote session description...");
+      setLoadingMessage(m.setting_remote_session_description());
 
       const decodedSd = atob(json.sd);
       const parsedSd = JSON.parse(decodedSd);
@@ -402,12 +398,12 @@ export default function KvmIdRoute() {
   const setupPeerConnection = useCallback(async () => {
     console.debug("[setupPeerConnection] Setting up peer connection");
     setConnectionFailed(false);
-    setLoadingMessage("Connecting to device...");
+    setLoadingMessage(m.connecting_to_device());
 
     let pc: RTCPeerConnection;
     try {
       console.debug("[setupPeerConnection] Creating peer connection");
-      setLoadingMessage("Creating peer connection...");
+      setLoadingMessage(m.creating_peer_connection());
       pc = new RTCPeerConnection({
         // We only use STUN or TURN servers if we're in the cloud
         ...(isInCloud && iceConfig?.iceServers
@@ -417,7 +413,7 @@ export default function KvmIdRoute() {
 
       setPeerConnectionState(pc.connectionState);
       console.debug("[setupPeerConnection] Peer connection created", pc);
-      setLoadingMessage("Setting up connection to device...");
+      setLoadingMessage(m.setting_up_connection_to_device());
     } catch (e) {
       console.error(`[setupPeerConnection] Error creating peer connection: ${e}`);
       setTimeout(() => {
@@ -467,7 +463,7 @@ export default function KvmIdRoute() {
       const pc = event.currentTarget as RTCPeerConnection;
       if (pc.iceGatheringState === "complete") {
         console.debug("ICE Gathering completed");
-        setLoadingMessage("ICE Gathering completed");
+        setLoadingMessage(m.ice_gathering_completed());
 
         if (isLegacySignalingEnabled.current) {
           // We can now start the https/ws connection to get the remote session description from the KVM device
@@ -475,7 +471,7 @@ export default function KvmIdRoute() {
         }
       } else if (pc.iceGatheringState === "gathering") {
         console.debug("ICE Gathering Started");
-        setLoadingMessage("Gathering ICE candidates...");
+        setLoadingMessage(m.gathering_ice_candidates());
       }
     };
 
@@ -486,12 +482,16 @@ export default function KvmIdRoute() {
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
 
     const rpcDataChannel = pc.createDataChannel("rpc");
+    rpcDataChannel.onclose = () => console.log("rpcDataChannel has closed");
+    rpcDataChannel.onerror = (ev: Event) => console.error(`Error on DataChannel '${rpcDataChannel.label}': ${ev}`);
     rpcDataChannel.onopen = () => {
       setRpcDataChannel(rpcDataChannel);
     };
 
     const rpcHidChannel = pc.createDataChannel("hidrpc");
     rpcHidChannel.binaryType = "arraybuffer";
+    rpcHidChannel.onclose = () => console.log("rpcHidChannel has closed");
+    rpcHidChannel.onerror = (ev: Event) => console.error(`Error on rpcHidChannel '${rpcHidChannel.label}': ${ev}`);
     rpcHidChannel.onopen = () => {
       setRpcHidChannel(rpcHidChannel);
     };
@@ -501,6 +501,8 @@ export default function KvmIdRoute() {
       maxRetransmits: 0,
     });
     rpcHidUnreliableChannel.binaryType = "arraybuffer";
+    rpcHidUnreliableChannel.onclose = () => console.log("rpcHidUnreliableChannel has closed");
+    rpcHidUnreliableChannel.onerror = (ev: Event) => console.error(`Error on rpcHidUnreliableChannel '${rpcHidUnreliableChannel.label}': ${ev}`);
     rpcHidUnreliableChannel.onopen = () => {
       setRpcHidUnreliableChannel(rpcHidUnreliableChannel);
     };
@@ -510,6 +512,8 @@ export default function KvmIdRoute() {
       maxRetransmits: 0,
     });
     rpcHidUnreliableNonOrderedChannel.binaryType = "arraybuffer";
+    rpcHidUnreliableNonOrderedChannel.onclose = () => console.log("rpcHidUnreliableNonOrderedChannel has closed");
+    rpcHidUnreliableNonOrderedChannel.onerror = (ev: Event) => console.error(`Error on rpcHidUnreliableNonOrderedChannel '${rpcHidUnreliableNonOrderedChannel.label}': ${ev}`);
     rpcHidUnreliableNonOrderedChannel.onopen = () => {
       setRpcHidUnreliableNonOrderedChannel(rpcHidUnreliableNonOrderedChannel);
     };
@@ -611,9 +615,10 @@ export default function KvmIdRoute() {
   const { setHdmiState } = useVideoStore();
   const {
     keyboardLedState, setKeyboardLedState,
-    keysDownState, setKeysDownState, setUsbState,
+    keysDownState, setKeysDownState,
+    setUsbState,
   } = useHidStore();
-  const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
+  const { setHidRpcDisabled } = useRTCStore();
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
@@ -669,6 +674,13 @@ export default function KvmIdRoute() {
           navigateTo("/settings/general/update");
           return;
         }
+
+
+        // This is to prevent the otaState from handling page refreshes after an update
+        // We've recently implemented a new general rebooting flow, so we don't need to handle this specific ota-rebooting case
+        // However, with old devices, we wont get the `willReboot` message, so we need to keep this for backwards compatibility
+        // only for the cloud version with an old device
+        if (rebootState?.isRebooting) return;
 
         const currentUrl = new URL(window.location.href);
         currentUrl.search = "";
@@ -852,7 +864,7 @@ export default function KvmIdRoute() {
             isLoggedIn={authMode === "password" || !!user}
             userEmail={user?.email}
             picture={user?.picture}
-            kvmName={deviceName ?? "JetKVM Device"}
+            kvmName={deviceName ?? m.jetkvm_device()}
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
@@ -872,6 +884,7 @@ export default function KvmIdRoute() {
 
       <div
         className="z-50"
+        role="form"
         onClick={e => e.stopPropagation()}
         onMouseUp={e => e.stopPropagation()}
         onMouseDown={e => e.stopPropagation()}
@@ -888,11 +901,11 @@ export default function KvmIdRoute() {
       </div>
 
       {kvmTerminal && (
-        <Terminal type="kvm" dataChannel={kvmTerminal} title="KVM Terminal" />
+        <Terminal type="kvm" dataChannel={kvmTerminal} title={m.kvm_terminal()} />
       )}
 
       {serialConsole && (
-        <Terminal type="serial" dataChannel={serialConsole} title="Serial Console" />
+        <Terminal type="serial" dataChannel={serialConsole} title={m.serial_console()} />
       )}
     </FeatureFlagProvider>
   );

@@ -15,6 +15,8 @@ import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import notifications from "@/notifications";
 
 import { Button } from "./Button";
+import { Button } from "@components/Button";
+import { m } from "@localizations/messages.js";
 
 
 const isWebGl2Supported = !!document.createElement("canvas").getContext("webgl2");
@@ -58,6 +60,7 @@ const TERMINAL_CONFIG = {
   // Add these configurations:
   cursorStyle: "block",
   rendererType: "canvas", // Ensure we're using the canvas renderer
+  unicode: { activeVersion: "11" }
 } as const;
 
 function Terminal({
@@ -173,7 +176,6 @@ function Terminal({
     instance.loadAddon(new ClipboardAddon());
     instance.loadAddon(new Unicode11Addon());
     instance.loadAddon(new WebLinksAddon());
-    instance.unicode.activeVersion = "11";
 
     if (isWebGl2Supported) {
       const webGl2Addon = new WebglAddon();
@@ -236,7 +238,7 @@ function Terminal({
                 <Button
                   size="XS"
                   theme="light"
-                  text="Hide"
+                  text={m.hide()}
                   LeadingIcon={ChevronDownIcon}
                   onClick={() => setTerminalType("none")}
                 />

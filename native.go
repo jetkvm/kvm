@@ -17,9 +17,10 @@ var (
 
 func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 	nativeInstance = native.NewNative(native.NativeOptions{
-		SystemVersion:   systemVersion,
-		AppVersion:      appVersion,
-		DisplayRotation: config.GetDisplayRotation(),
+		SystemVersion:        systemVersion,
+		AppVersion:           appVersion,
+		DisplayRotation:      config.GetDisplayRotation(),
+		DefaultQualityFactor: config.VideoQualityFactor,
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
 			triggerVideoStateUpdate()
@@ -36,14 +37,17 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			nativeLogger.Trace().Str("event", event).Msg("rpc event received")
 			switch event {
 			case "resetConfig":
+				nativeLogger.Info().Msg("Reset configuration request via native rpc event")
 				err := rpcResetConfig()
 				if err != nil {
 					nativeLogger.Warn().Err(err).Msg("error resetting config")
 				}
 				_ = rpcReboot(true)
 			case "reboot":
+				nativeLogger.Info().Msg("Reboot request via native rpc event")
 				_ = rpcReboot(true)
 			case "toggleDHCPClient":
+				nativeLogger.Info().Msg("Toggle DHCP request via native rpc event")
 				_ = rpcToggleDHCPClient()
 			default:
 				nativeLogger.Warn().Str("event", event).Msg("unknown rpc event received")
@@ -58,7 +62,13 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			}
 		},
 	})
+
 	nativeInstance.Start()
+	go func() {
+		if err := nativeInstance.VideoSetEDID(config.EdidString); err != nil {
+			nativeLogger.Warn().Err(err).Msg("error setting EDID")
+		}
+	}()
 
 	if os.Getenv("JETKVM_CRASH_TESTING") == "1" {
 		nativeInstance.DoNotUseThisIsForCrashTestingOnly()

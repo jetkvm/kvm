@@ -2,6 +2,7 @@ import { LinkButton } from "@/components/Button";
 import SimpleNavbar from "@/components/SimpleNavbar";
 import Container from "@/components/Container";
 import GridBackground from "@components/GridBackground";
+import { m } from "@localizations/messages.js";
 
 export default function DevicesAlreadyAdopted() {
   return (
@@ -14,15 +15,12 @@ export default function DevicesAlreadyAdopted() {
           <div className="flex items-center justify-center w-full h-full isolate">
             <div className="max-w-2xl -mt-16 space-y-8">
               <div className="space-y-4 text-center">
-                <h1 className="text-4xl font-semibold text-black dark:text-white">Device Already Registered</h1>
+                <h1 className="text-4xl font-semibold text-black dark:text-white">{m.already_adopted_title()}</h1>
                 <p className="text-lg text-slate-600 dark:text-slate-400">
-                  This device is currently registered to another user in our cloud
-                  dashboard.
+                  {m.already_adopted_other_user()}
                 </p>
                 <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
-                  If you&apos;re the new owner, please ask the previous owner to de-register
-                  the device from their account in the cloud dashboard. If you believe
-                  this is an error, contact our support team for assistance.
+                  {m.already_adopted_new_owner()}
                 </p>
               </div>
 
@@ -31,7 +29,7 @@ export default function DevicesAlreadyAdopted() {
                   to="/devices"
                   size="LG"
                   theme="primary"
-                  text="Return to Dashboard"
+                  text={m.already_adopted_return_to_dashboard()}
                 />
               </div>
             </div>

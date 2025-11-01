@@ -1,10 +1,11 @@
 import React from "react";
 
 import { cx } from "@/cva.config";
-import KeyboardAndMouseConnectedIcon from "@/assets/keyboard-and-mouse-connected.png";
+import KeyboardAndMouseConnectedIcon from "@assets/keyboard-and-mouse-connected.png";
+import { USBStates } from "@hooks/stores";
+import { m } from "@localizations/messages.js";
 import LoadingSpinner from "@components/LoadingSpinner";
 import StatusCard from "@components/StatusCards";
-import { USBStates } from "@/hooks/stores";
 
 type StatusProps = Record<
   USBStates,
@@ -16,11 +17,11 @@ type StatusProps = Record<
 >;
 
 const USBStateMap: Record<USBStates, string> = {
-  configured: "Connected",
-  attached: "Connecting",
-  addressed: "Connecting",
-  "not attached": "Disconnected",
-  suspended: "Low power mode",
+  configured: m.usb_state_connected(),
+  attached: m.usb_state_connecting(),
+  addressed: m.usb_state_connecting(),
+  "not attached": m.usb_state_disconnected(),
+  suspended: m.usb_state_low_power_mode(),
 };
 const StatusCardProps: StatusProps = {
   configured: {
@@ -80,8 +81,8 @@ export default function USBStateStatus({
 
     return (
       <StatusCard
-        title="USB"
-        status="Disconnected"
+        title={m.usb()}
+        status={m.usb_state_disconnected()}
         icon={Icon}
         iconClassName={iconClassName}
         statusIndicatorClassName={statusIndicatorClassName}
@@ -90,6 +91,6 @@ export default function USBStateStatus({
   }
 
   return (
-    <StatusCard title="USB" status={USBStateMap[state]} {...StatusCardProps[state]} />
+    <StatusCard title={m.usb()} status={USBStateMap[state]} {...StatusCardProps[state]} />
   );
 }

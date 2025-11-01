@@ -111,6 +111,7 @@ type Client struct {
 var (
 	defaultTimerDuration      = 1 * time.Second
 	defaultLinkUpTimeout      = 30 * time.Second
+	defaultDHCPTimeout        = 5 * time.Second // DHCP request timeout (not link up timeout)
 	maxRenewalAttemptDuration = 2 * time.Hour
 )
 
@@ -125,11 +126,11 @@ func NewClient(ctx context.Context, ifaces []string, c *Config, l *zerolog.Logge
 	}
 
 	if cfg.Timeout == 0 {
-		cfg.Timeout = defaultLinkUpTimeout
+		cfg.Timeout = defaultDHCPTimeout
 	}
 
 	if cfg.Retries == 0 {
-		cfg.Retries = 3
+		cfg.Retries = 4
 	}
 
 	return &Client{
@@ -153,9 +154,15 @@ func NewClient(ctx context.Context, ifaces []string, c *Config, l *zerolog.Logge
 	}, nil
 }
 
-func resetTimer(t *time.Timer, l *zerolog.Logger) {
-	l.Debug().Dur("delay", defaultTimerDuration).Msg("will retry later")
-	t.Reset(defaultTimerDuration)
+func resetTimer(t *time.Timer, attempt int, l *zerolog.Logger) {
+	// Exponential backoff: 1s, 2s, 4s, 8s, max 8s
+	backoffAttempt := attempt
+	if backoffAttempt > 3 {
+		backoffAttempt = 3
+	}
+	delay := time.Duration(1<<backoffAttempt) * time.Second
+	l.Debug().Dur("delay", delay).Int("attempt", attempt).Msg("will retry later")
+	t.Reset(delay)
 }
 
 func getRenewalTime(lease *Lease) time.Duration {
@@ -168,12 +175,14 @@ func getRenewalTime(lease *Lease) time.Duration {
 
 func (c *Client) requestLoop(t *time.Timer, family int, ifname string) {
 	l := c.l.With().Str("interface", ifname).Int("family", family).Logger()
+	attempt := 0
 	for range t.C {
-		l.Info().Msg("requesting lease")
+		l.Info().Int("attempt", attempt).Msg("requesting lease")
 
 		if _, err := c.ensureInterfaceUp(ifname); err != nil {
-			l.Error().Err(err).Msg("failed to ensure interface up")
-			resetTimer(t, c.l)
+			l.Error().Err(err).Int("attempt", attempt).Msg("failed to ensure interface up")
+			resetTimer(t, attempt, c.l)
+			attempt++
 			continue
 		}
 
@@ -188,11 +197,14 @@ func (c *Client) requestLoop(t *time.Timer, family int, ifname string) {
 			lease, err = c.requestLease6(ifname)
 		}
 		if err != nil {
-			l.Error().Err(err).Msg("failed to request lease")
-			resetTimer(t, c.l)
+			l.Error().Err(err).Int("attempt", attempt).Msg("failed to request lease")
+			resetTimer(t, attempt, c.l)
+			attempt++
 			continue
 		}
 
+		// Successfully obtained lease, reset attempt counter
+		attempt = 0
 		c.handleLeaseChange(lease)
 
 		nextRenewal := getRenewalTime(lease)

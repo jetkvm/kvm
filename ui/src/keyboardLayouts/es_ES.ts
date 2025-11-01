@@ -116,8 +116,8 @@ const chars = {
   y: { key: "KeyY" },
   z: { key: "KeyZ" },
   "º": { key: "Backquote" },
-  "ª": { key: "Backquote", shift: true }, 
-  "\\": { key: "Backquote", altRight: true }, 
+  "ª": { key: "Backquote", shift: true },
+  "\\": { key: "Backquote", altRight: true },
   1: { key: "Digit1" },
   "!": { key: "Digit1", shift: true },
   "|": { key: "Digit1", altRight: true },
@@ -175,7 +175,7 @@ export const es_ES: KeyboardLayout = {
   name: name,
   chars: chars,
   // TODO need to localize these maps and layouts
-  keyDisplayMap: en_US.keyDisplayMap, 
+  keyDisplayMap: en_US.keyDisplayMap,
   modifierDisplayMap: en_US.modifierDisplayMap,
   virtualKeyboard: en_US.virtualKeyboard
 };

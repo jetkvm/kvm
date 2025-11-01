@@ -1,11 +1,11 @@
 import { useEffect } from "react";
 import { LuCommand } from "react-icons/lu";
 
+import { useMacrosStore } from "@hooks/stores";
+import useKeyboard from "@hooks/useKeyboard";
+import { useJsonRpc } from "@hooks/useJsonRpc";
 import { Button } from "@components/Button";
 import Container from "@components/Container";
-import { useMacrosStore } from "@/hooks/stores";
-import useKeyboard from "@/hooks/useKeyboard";
-import { useJsonRpc } from "@/hooks/useJsonRpc";
 
 export default function MacroBar() {
   const { macros, initialized, loadMacros, setSendFn } = useMacrosStore();
@@ -14,7 +14,7 @@ export default function MacroBar() {
 
   useEffect(() => {
     setSendFn(send);
-    
+
     if (!initialized) {
       loadMacros();
     }

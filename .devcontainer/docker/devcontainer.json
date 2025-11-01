@@ -1,38 +1,41 @@
 {
-	"name": "JetKVM docker devcontainer",
-	"image": "mcr.microsoft.com/devcontainers/go:1.25-trixie",
-	"features": {
-		"ghcr.io/devcontainers/features/node:1": {
-			// Should match what is defined in ui/package.json
-			"version": "22.19.0"
-		}
-	},
-	"mounts": [
-		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
-	],
-	"onCreateCommand": ".devcontainer/install-deps.sh",
-	"customizations": {
-		"vscode": {
-			"extensions": [
-				// coding styles
-				"chrislajoie.vscode-modelines",
-				"editorconfig.editorconfig",
-				// GitHub
-				"GitHub.vscode-pull-request-github",
-				"github.vscode-github-actions",
-				// Golang
-				"golang.go",
-				// C / C++
-				"ms-vscode.cpptools",
-				"ms-vscode.cpptools-extension-pack",
-				// CMake / Makefile
-				"ms-vscode.makefile-tools",
-				"ms-vscode.cmake-tools",
-				// Frontend
-				"esbenp.prettier-vscode",
-				"dbaeumer.vscode-eslint",
-				"bradlc.vscode-tailwindcss"
-			]
-		}
-	}
+  "name": "JetKVM docker devcontainer",
+  "image": "mcr.microsoft.com/devcontainers/go:1.25-trixie",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      // Should match what is defined in ui/package.json
+      "version": "22.20.0"
+    }
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+  ],
+  "onCreateCommand": ".devcontainer/install-deps.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // coding styles
+        "chrislajoie.vscode-modelines",
+        "editorconfig.editorconfig",
+        // GitHub
+        "GitHub.vscode-pull-request-github",
+        "github.vscode-github-actions",
+        // Golang
+        "golang.go",
+        // C / C++
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack",
+        // CMake / Makefile
+        "ms-vscode.makefile-tools",
+        "ms-vscode.cmake-tools",
+        // Frontend
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss",
+        "codeandstuff.package-json-upgrade",
+        // Localization
+        "inlang.vs-code-extension"
+      ]
+    }
+  }
 }

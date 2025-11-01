@@ -1,11 +1,9 @@
 import React, { JSX } from "react";
 import clsx from "clsx";
 
-import FieldLabel from "@/components/FieldLabel";
+import Card from "@components/Card";
+import FieldLabel from "@components/FieldLabel";
 import { cva } from "@/cva.config";
-
-import Card from "./Card";
-
 
 type SelectMenuProps = Pick<
   JSX.IntrinsicElements["select"],

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { LuPlay } from "react-icons/lu";
 import { BsMouseFill } from "react-icons/bs";
 
+import { m } from "@localizations/messages.js";
 import { Button, LinkButton } from "@components/Button";
 import LoadingSpinner from "@components/LoadingSpinner";
 import Card, { GridCard } from "@components/Card";
@@ -12,6 +13,7 @@ import { useRTCStore, PostRebootAction } from "@/hooks/stores";
 import LogoBlue from "@/assets/logo-blue.svg";
 import LogoWhite from "@/assets/logo-white.svg";
 import { isOnDevice } from "@/main";
+import { sleep } from "@/utils";
 
 
 interface OverlayContentProps {
@@ -51,7 +53,7 @@ export function LoadingVideoOverlay({ show }: LoadingOverlayProps) {
                 <LoadingSpinner className="h-8 w-8 text-blue-800 dark:text-blue-200" />
               </div>
               <p className="text-center text-sm text-slate-700 dark:text-slate-300">
-                Loading video stream...
+                {m.video_overlay_loading_stream()}
               </p>
             </div>
           </OverlayContent>
@@ -123,26 +125,26 @@ export function ConnectionFailedOverlay({
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">Connection Issue Detected</h2>
+                    <h2 className="text-xl font-bold">{m.video_overlay_connection_issue_title()}</h2>
                     <ul className="list-disc space-y-2 pl-4 text-left">
-                      <li>Verify that the device is powered on and properly connected</li>
-                      <li>Check all cable connections for any loose or damaged wires</li>
-                      <li>Ensure your network connection is stable and active</li>
-                      <li>Try restarting both the device and your computer</li>
+                      <li>{m.video_overlay_conn_verify_power()}</li>
+                      <li>{m.video_overlay_conn_check_cables()}</li>
+                      <li>{m.video_overlay_conn_ensure_network()}</li>
+                      <li>{m.video_overlay_conn_restart()}</li>
                     </ul>
                   </div>
                   <div className="flex items-center gap-x-2">
                     <LinkButton
                       to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
                       theme="primary"
-                      text="Troubleshooting Guide"
+                      text={m.video_overlay_troubleshooting_guide()}
                       TrailingIcon={ArrowRightIcon}
                       size="SM"
                     />
                     <Button
                       onClick={() => setupPeerConnection()}
                       LeadingIcon={ArrowPathIcon}
-                      text="Try again"
+                      text={m.video_overlay_try_again()}
                       size="SM"
                       theme="light"
                     />
@@ -183,12 +185,12 @@ export function PeerConnectionDisconnectedOverlay({
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">Connection Issue Detected</h2>
+                    <h2 className="text-xl font-bold">{m.video_overlay_connection_issue_title()}</h2>
                     <ul className="list-disc space-y-2 pl-4 text-left">
-                      <li>Verify that the device is powered on and properly connected</li>
-                      <li>Check all cable connections for any loose or damaged wires</li>
-                      <li>Ensure your network connection is stable and active</li>
-                      <li>Try restarting both the device and your computer</li>
+                      <li>{m.video_overlay_conn_verify_power()}</li>
+                      <li>{m.video_overlay_conn_check_cables()}</li>
+                      <li>{m.video_overlay_conn_ensure_network()}</li>
+                      <li>{m.video_overlay_conn_restart()}</li>
                     </ul>
                   </div>
                   <div className="flex items-center gap-x-2">
@@ -196,7 +198,7 @@ export function PeerConnectionDisconnectedOverlay({
                       <div className="flex items-center gap-x-2 p-4">
                         <LoadingSpinner className="h-4 w-4 text-blue-800 dark:text-blue-200" />
                         <p className="text-sm text-slate-700 dark:text-slate-300">
-                          Retrying connection...
+                          {m.video_overlay_retrying_connection()}
                         </p>
                       </div>
                     </Card>
@@ -240,23 +242,18 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                 <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                   <div className="space-y-4">
                     <div className="space-y-2 text-black dark:text-white">
-                      <h2 className="text-xl font-bold">No HDMI signal detected.</h2>
+                      <h2 className="text-xl font-bold">{m.video_overlay_no_hdmi_signal()}</h2>
                       <ul className="list-disc space-y-2 pl-4 text-left">
-                        <li>Ensure the HDMI cable securely connected at both ends</li>
-                        <li>
-                          Ensure source device is powered on and outputting a signal
-                        </li>
-                        <li>
-                          If using an adapter, ensure it&apos;s compatible and functioning
-                          correctly
-                        </li>
+                        <li>{m.video_overlay_no_hdmi_ensure_cable()}</li>
+                        <li>{m.video_overlay_no_hdmi_ensure_power()}</li>
+                        <li>{m.video_overlay_no_hdmi_adapter_compat()}</li>
                       </ul>
                     </div>
                     <div>
                       <LinkButton
                         to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
                         theme="light"
-                        text="Learn more"
+                        text={m.video_overlay_learn_more()}
                         TrailingIcon={ArrowRightIcon}
                         size="SM"
                       />
@@ -287,18 +284,18 @@ export function HDMIErrorOverlay({ show, hdmiState }: HDMIErrorOverlayProps) {
                 <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                   <div className="space-y-4">
                     <div className="space-y-2 text-black dark:text-white">
-                      <h2 className="text-xl font-bold">HDMI signal error detected.</h2>
+                      <h2 className="text-xl font-bold">{m.video_overlay_hdmi_error_title()}</h2>
                       <ul className="list-disc space-y-2 pl-4 text-left">
-                        <li>A loose or faulty HDMI connection</li>
-                        <li>Incompatible resolution or refresh rate settings</li>
-                        <li>Issues with the source device&apos;s HDMI output</li>
+                        <li>{m.video_overlay_hdmi_loose_faulty()}</li>
+                        <li>{m.video_overlay_hdmi_incompatible_resolution()}</li>
+                        <li>{m.video_overlay_hdmi_source_issue()}</li>
                       </ul>
                     </div>
                     <div>
                       <LinkButton
                         to={"https://jetkvm.com/docs/getting-started/troubleshooting"}
                         theme="light"
-                        text="Learn more"
+                        text={m.video_overlay_learn_more()}
                         TrailingIcon={ArrowRightIcon}
                         size="SM"
                       />
@@ -339,7 +336,7 @@ export function NoAutoplayPermissionsOverlay({
           <OverlayContent>
             <div className="space-y-4">
               <h2 className="text-2xl font-extrabold text-black dark:text-white">
-                Autoplay permissions required
+                {m.video_overlay_autoplay_permissions_required()}
               </h2>
 
               <div className="space-y-2 text-center">
@@ -348,13 +345,13 @@ export function NoAutoplayPermissionsOverlay({
                     size="MD"
                     theme="primary"
                     LeadingIcon={LuPlay}
-                    text="Manually start stream"
+                    text={m.video_overlay_manually_start_stream()}
                     onClick={onPlayClick}
                   />
                 </div>
 
                 <div className="text-xs text-slate-600 dark:text-slate-400">
-                  Please adjust browser settings to enable autoplay
+                  {m.video_overlay_enable_autoplay_settings()}
                 </div>
               </div>
             </div>
@@ -386,7 +383,7 @@ export function PointerLockBar({ show }: PointerLockBarProps) {
                 <div className="flex items-center space-x-2">
                   <BsMouseFill className="h-4 w-4 text-blue-700 dark:text-blue-500" />
                   <span className="text-sm text-black dark:text-white">
-                    Click on the video to enable mouse control
+                    {m.video_overlay_pointerlock_click_to_enable()}
                   </span>
                 </div>
               </div>
@@ -478,8 +475,19 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
 
         if (response.ok) {
           // Device is available, redirect to the specified URL
-          console.log('Device is available, redirecting to:', postRebootAction.redirectUrl);
-          window.location.href = postRebootAction.redirectUrl;
+          console.log('Device is available, redirecting to:', postRebootAction.redirectTo);
+
+          // URL constructor handles all cases elegantly:
+          // - Absolute paths: resolved against current origin
+          // - Protocol-relative URLs: resolved with current protocol
+          // - Fully qualified URLs: used as-is
+          const targetUrl = new URL(postRebootAction.redirectTo, window.location.origin);
+          clearInterval(intervalId); // Stop polling before redirect
+
+          window.location.href = targetUrl.href;
+          // Add 1s delay between setting location.href and calling reload() to prevent reload from interrupting the navigation.
+          await sleep(1000);
+          window.location.reload();
         }
       } catch (err) {
         // Ignore errors - they're expected while device is rebooting
@@ -532,15 +540,15 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
               <div className="text-left text-sm text-slate-700 dark:text-slate-300">
                 <div className="space-y-4">
                   <div className="space-y-2 text-black dark:text-white">
-                    <h2 className="text-xl font-bold">{hasTimedOut ? "Unable to Reconnect" : "Device is Rebooting"}</h2>
+                    <h2 className="text-xl font-bold">{hasTimedOut ? m.video_overlay_reboot_unable_to_reconnect() : m.video_overlay_reboot_device_is_rebooting()}</h2>
                     <p className="text-sm text-slate-700 dark:text-slate-300">
                       {hasTimedOut ? (
                         <>
-                          The device may have restarted with a different IP address. Check the JetKVM&apos;s physical display to find the current IP address and reconnect.
+                          {m.video_overlay_reboot_different_ip_message()}
                         </>
                       ) : (
                         <>
-                          Please wait while the device restarts. This usually takes 20-30 seconds.
+                          {m.video_overlay_reboot_please_wait_message()}
 
                         </>
                       )}
@@ -553,7 +561,7 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
                           <>
                             <LoadingSpinner className="h-4 w-4 text-blue-800 dark:text-blue-200" />
                             <p className="text-sm text-slate-700 dark:text-slate-300">
-                              Waiting for device to restart...
+                              {m.video_overlay_reboot_waiting_for_restart()}
                             </p>
                           </>
                         ) : (
@@ -561,7 +569,7 @@ export function RebootingOverlay({ show, postRebootAction }: RebootingOverlayPro
                             <div className="flex items-center gap-x-2">
                               <ExclamationTriangleIcon className="h-5 w-5 text-yellow-500" />
                               <p className="text-sm text-black dark:text-white">
-                                Automatic Reconnection Timed Out
+                                {m.video_overlay_reboot_timeout_message()}
                               </p>
                             </div>
                           </div>

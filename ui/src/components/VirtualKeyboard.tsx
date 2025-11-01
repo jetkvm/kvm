@@ -1,21 +1,19 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDownIcon } from "@heroicons/react/16/solid";
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Keyboard from "react-simple-keyboard";
 import { LuKeyboard } from "react-icons/lu";
 
-import Card from "@components/Card";
-// eslint-disable-next-line import/order
-import { Button, LinkButton } from "@components/Button";
-
 import "react-simple-keyboard/build/css/index.css";
-
 import DetachIconRaw from "@/assets/detach-icon.svg";
 import { cx } from "@/cva.config";
-import { useHidStore, useUiStore } from "@/hooks/stores";
-import useKeyboard from "@/hooks/useKeyboard";
-import useKeyboardLayout from "@/hooks/useKeyboardLayout";
+import { useHidStore, useUiStore } from "@hooks/stores";
+import useKeyboard from "@hooks/useKeyboard";
+import useKeyboardLayout from "@hooks/useKeyboardLayout";
+import { Button, LinkButton } from "@components/Button";
+import Card from "@components/Card";
 import { decodeModifiers, keys, latchingKeys, modifiers } from "@/keyboardMappings";
+import { m } from "@localizations/messages.js";
 
 export const DetachIcon = ({ className }: { className?: string }) => {
   return <img src={DetachIconRaw} alt="Detach Icon" className={className} />;
@@ -244,20 +242,20 @@ function KeyboardWrapper() {
                       <Button
                         size="XS"
                         theme="light"
-                        text="Detach"
+                        text={m.detach()}
                         onClick={() => setAttachedVirtualKeyboardVisibility(false)}
                       />
                     ) : (
                       <Button
                         size="XS"
                         theme="light"
-                        text="Attach"
+                        text={m.attach()}
                         onClick={() => setAttachedVirtualKeyboardVisibility(true)}
                       />
                     )}
                   </div>
                   <h2 className="self-center font-sans text-sm leading-none font-medium text-slate-700 select-none dark:text-slate-300">
-                    Virtual Keyboard
+                    {m.virtual_keyboard_header()}
                   </h2>
                   <div className="absolute right-2 flex items-center gap-x-2">
                     <div className="hidden md:flex gap-x-2 items-center">
@@ -274,7 +272,7 @@ function KeyboardWrapper() {
                     <Button
                       size="XS"
                       theme="light"
-                      text="Hide"
+                      text={m.hide()}
                       LeadingIcon={ChevronDownIcon}
                       onClick={() => setVirtualKeyboardEnabled(false)}
                     />

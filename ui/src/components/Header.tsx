@@ -4,19 +4,18 @@ import { ArrowLeftEndOnRectangleIcon, ChevronDownIcon } from "@heroicons/react/1
 import { Button, Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { LuMonitorSmartphone } from "react-icons/lu";
 
-import Container from "@/components/Container";
-import Card from "@/components/Card";
-import { useHidStore, useRTCStore, useUserStore } from "@/hooks/stores";
-import LogoBlueIcon from "@/assets/logo-blue.svg";
-import LogoWhiteIcon from "@/assets/logo-white.svg";
-import USBStateStatus from "@components/USBStateStatus";
+import LogoBlueIcon from "@assets/logo-blue.svg";
+import LogoWhiteIcon from "@assets/logo-white.svg";
+import { useHidStore, useRTCStore, useUserStore } from "@hooks/stores";
+import Card from "@components/Card";
+import Container from "@components/Container";
+import { LinkButton } from "@components/Button";
 import PeerConnectionStatusCard from "@components/PeerConnectionStatusCard";
+import USBStateStatus from "@components/USBStateStatus";
 import { CLOUD_API, DEVICE_API } from "@/ui.config";
-
-import api from "../api";
-import { isOnDevice } from "../main";
-
-import { LinkButton } from "./Button";
+import api from "@/api";
+import { isOnDevice } from "@/main";
+import { m } from "@localizations/messages.js";
 
 interface NavbarProps {
   isLoggedIn: boolean;
@@ -131,7 +130,7 @@ export default function DashboardNavbar({
                                   <div className="border-b border-b-slate-800/20 dark:border-slate-300/20">
                                     <div className="p-2">
                                       <div className="font-display text-xs">
-                                        Logged in as
+                                        {m.logged_in_as()}
                                       </div>
                                       <div className="font-display max-w-[200px] truncate text-sm font-semibold">
                                         {userEmail}
@@ -146,7 +145,7 @@ export default function DashboardNavbar({
                               >
                                 <button className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700">
                                   <ArrowLeftEndOnRectangleIcon className="size-4" />
-                                  <div className="font-display">Log out</div>
+                                  <div className="font-display">{m.log_out()}</div>
                                 </button>
                               </div>
                             </Card>

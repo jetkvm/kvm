@@ -1,17 +1,18 @@
 import { useMemo } from "react";
 import { LuArrowUp, LuArrowDown, LuX, LuTrash2 } from "react-icons/lu";
 
-import { Button } from "@/components/Button";
-import { Combobox, ComboboxOption } from "@/components/Combobox";
-import { SelectMenuBasic } from "@/components/SelectMenuBasic";
-import Card from "@/components/Card";
-import FieldLabel from "@/components/FieldLabel";
+import { Button } from "@components/Button";
+import { Combobox, ComboboxOption } from "@components/Combobox";
+import Card from "@components/Card";
+import FieldLabel from "@components/FieldLabel";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { MAX_KEYS_PER_STEP, DEFAULT_DELAY } from "@/constants/macros";
 import { KeyboardLayout } from "@/keyboardLayouts";
 import { keys, modifiers } from "@/keyboardMappings";
+import { m } from "@localizations/messages.js";
 
 // Filter out modifier keys since they're handled in the modifiers section
-const modifierKeyPrefixes = ['Alt', 'Control', 'Shift', 'Meta'];
+const modifierKeyPrefixes = ["Alt", "Control", "Shift", "Meta"];
 
 const modifierOptions = Object.keys(modifiers).map(modifier => ({
   value: modifier,
@@ -19,12 +20,13 @@ const modifierOptions = Object.keys(modifiers).map(modifier => ({
 }));
 
 const groupedModifiers: Record<string, typeof modifierOptions> = {
-  Control: modifierOptions.filter(mod => mod.value.startsWith('Control')),
-  Shift: modifierOptions.filter(mod => mod.value.startsWith('Shift')),
-  Alt: modifierOptions.filter(mod => mod.value.startsWith('Alt')),
-  Meta: modifierOptions.filter(mod => mod.value.startsWith('Meta')),
+  Control: modifierOptions.filter(mod => mod.value.startsWith("Control")),
+  Shift: modifierOptions.filter(mod => mod.value.startsWith("Shift")),
+  Alt: modifierOptions.filter(mod => mod.value.startsWith("Alt")),
+  Meta: modifierOptions.filter(mod => mod.value.startsWith("Meta")),
 };
 
+// not going to localize these since they're short time intervals
 const basePresetDelays = [
   { value: "50", label: "50ms" },
   { value: "100", label: "100ms" },
@@ -38,7 +40,7 @@ const basePresetDelays = [
 ];
 
 const PRESET_DELAYS = basePresetDelays.map(delay => {
-  if (parseInt(delay.value, 10) === DEFAULT_DELAY) {
+  if (Number.parseInt(delay.value, 10) === DEFAULT_DELAY) {
     return { ...delay, label: "Default" };
   }
   return delay;
@@ -62,11 +64,15 @@ interface MacroStepCardProps {
   onModifierChange: (modifiers: string[]) => void;
   onDelayChange: (delay: number) => void;
   isLastStep: boolean;
-  keyboard: KeyboardLayout
+  keyboard: KeyboardLayout;
 }
 
 const ensureArray = <T,>(arr: T[] | null | undefined): T[] => {
   return Array.isArray(arr) ? arr : [];
+};
+
+const keyDisplay = (keyDisplayMap: Record<string, string>, key: string): string => {
+   return keyDisplayMap[key] || key
 };
 
 export function MacroStepCard({
@@ -81,26 +87,42 @@ export function MacroStepCard({
   onModifierChange,
   onDelayChange,
   isLastStep,
-  keyboard
-}: MacroStepCardProps) {
+  keyboard,
+}: Readonly<MacroStepCardProps>) {
   const { keyDisplayMap } = keyboard;
 
-  const keyOptions = useMemo(() =>
-    Object.keys(keys)
-      .filter(key => !modifierKeyPrefixes.some(prefix => key.startsWith(prefix)))
-      .map(key => ({
-        value: key,
-        label: keyDisplayMap[key] || key,
-      })),
-    [keyDisplayMap]
+  const keyOptions = useMemo(
+    () =>
+      Object.keys(keys)
+        .filter(key => !modifierKeyPrefixes.some(prefix => key.startsWith(prefix)))
+        .map(key => ({
+          value: key,
+          label: keyDisplay(keyDisplayMap, key),
+        })),
+    [keyDisplayMap],
   );
+
+  const handleModifierToggle = (optionValue: string) => {
+    const modifiersArray = ensureArray(step.modifiers);
+    const isSelected = modifiersArray.includes(optionValue);
+    const newModifiers = isSelected
+      ? modifiersArray.filter(m => m !== optionValue)
+      : [...modifiersArray, optionValue];
+    onModifierChange(newModifiers);
+  };
+
   const filteredKeys = useMemo(() => {
     const selectedKeys = ensureArray(step.keys);
-    const availableKeys = keyOptions.filter(option => !selectedKeys.includes(option.value));
-    if (keyQuery === '') {
+    const availableKeys = keyOptions.filter(
+      option => !selectedKeys.includes(option.value),
+    );
+
+    if (keyQuery === "") {
       return availableKeys;
     } else {
-      return availableKeys.filter(option => option.label.toLowerCase().includes(keyQuery.toLowerCase()));
+      return availableKeys.filter(option =>
+        option.label.toLowerCase().includes(keyQuery.toLowerCase()),
+      );
     }
   }, [keyOptions, keyQuery, step.keys]);
 
@@ -135,7 +157,7 @@ export function MacroStepCard({
               size="XS"
               theme="light"
               className="text-red-500 dark:text-red-400"
-              text="Delete"
+              text={m.delete()}
               LeadingIcon={LuTrash2}
               onClick={onDelete}
             />
@@ -143,13 +165,19 @@ export function MacroStepCard({
         </div>
       </div>
 
-      <div className="space-y-4 mt-2">
-        <div className="w-full flex flex-col gap-2">
-          <FieldLabel label="Modifiers" />
+      <div className="mt-2 space-y-4">
+        <div className="flex w-full flex-col gap-2">
+          <FieldLabel
+            label={m.macro_step_modifiers_label()}
+            description={m.macro_step_modifiers_description()}
+          />
           <div className="inline-flex flex-wrap gap-3">
             {Object.entries(groupedModifiers).map(([group, mods]) => (
-              <div key={group} className="relative min-w-[120px] rounded-md border border-slate-200 dark:border-slate-700 p-2">
-                <span className="absolute -top-2.5 left-2 px-1 text-xs font-medium bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+              <div
+                key={group}
+                className="relative min-w-[120px] rounded-md border border-slate-200 p-2 dark:border-slate-700"
+              >
+                <span className="absolute -top-2.5 left-2 bg-white px-1 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                   {group}
                 </span>
                 <div className="flex flex-wrap gap-4 pt-1">
@@ -157,16 +185,13 @@ export function MacroStepCard({
                     <Button
                       key={option.value}
                       size="XS"
-                      theme={ensureArray(step.modifiers).includes(option.value) ? "primary" : "light"}
-                      text={option.label.split(' ')[1] || option.label}
-                      onClick={() => {
-                        const modifiersArray = ensureArray(step.modifiers);
-                        const isSelected = modifiersArray.includes(option.value);
-                        const newModifiers = isSelected
-                          ? modifiersArray.filter(m => m !== option.value)
-                          : [...modifiersArray, option.value];
-                        onModifierChange(newModifiers);
-                      }}
+                      theme={
+                        ensureArray(step.modifiers).includes(option.value)
+                          ? "primary"
+                          : "light"
+                      }
+                      text={option.label.split(" ")[1] || option.label}
+                      onClick={() => handleModifierToggle(option.value)}
                     />
                   ))}
                 </div>
@@ -174,26 +199,31 @@ export function MacroStepCard({
             ))}
           </div>
         </div>
-        <div className="w-full flex flex-col gap-1">
+
+        <div className="flex w-full flex-col gap-1">
           <div className="flex items-center gap-1">
-            <FieldLabel label="Keys" description={`Maximum ${MAX_KEYS_PER_STEP} keys per step.`} />
+            <FieldLabel
+              label={m.macro_step_keys_label()}
+              description={m.macro_step_keys_description({ max: MAX_KEYS_PER_STEP })}
+            />
           </div>
-          {ensureArray(step.keys) && step.keys.length > 0 && (
+
+          {step.keys?.length > 0 && (
             <div className="flex flex-wrap gap-1 pb-2">
               {step.keys.map((key, keyIndex) => (
                 <span
-                  key={keyIndex}
-                  className="inline-flex items-center py-0.5 rounded-md bg-blue-100 px-1 text-xs font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
+                  key={`key-${keyIndex}`}
+                  className="inline-flex items-center rounded-md bg-blue-100 px-1 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-200"
                 >
-                  <span className="px-1">
-                    {keyDisplayMap[key] || key}
-                  </span>
+                  <span className="px-1">{keyDisplay(keyDisplayMap, key)}</span>
                   <Button
                     size="XS"
                     className=""
                     theme="blank"
                     onClick={() => {
-                      const newKeys = ensureArray(step.keys).filter((_, i) => i !== keyIndex);
+                      const newKeys = step.keys.filter(
+                        (_, i) => i !== keyIndex,
+                      );
                       onKeySelect({ value: null, keys: newKeys });
                     }}
                     LeadingIcon={LuX}
@@ -204,33 +234,41 @@ export function MacroStepCard({
           )}
           <div className="relative w-full">
             <Combobox
-              onChange={(option) => {
+              onChange={option => {
                 const selectedOption = option as ComboboxOption | null;
                 onKeySelect({ value: selectedOption?.value ?? null });
-                onKeyQueryChange('');
+                onKeyQueryChange("");
               }}
               displayValue={() => keyQuery}
               onInputChange={onKeyQueryChange}
               options={() => filteredKeys}
-              disabledMessage="Max keys reached"
+              disabledMessage={m.macro_step_max_keys_reached({ max: MAX_KEYS_PER_STEP })}
               size="SM"
               immediate
               disabled={ensureArray(step.keys).length >= MAX_KEYS_PER_STEP}
-              placeholder={ensureArray(step.keys).length >= MAX_KEYS_PER_STEP ? "Max keys reached" : "Search for key..."}
-              emptyMessage="No matching keys found"
+              placeholder={
+                ensureArray(step.keys).length >= MAX_KEYS_PER_STEP
+                  ? m.macro_step_max_keys_reached()
+                  : m.macro_step_search_for_key()
+              }
+              emptyMessage={m.macro_step_no_matching_keys_found()}
             />
           </div>
         </div>
-        <div className="w-full flex flex-col gap-1">
+
+        <div className="flex w-full flex-col gap-1">
           <div className="flex items-center gap-1">
-            <FieldLabel label="Step Duration" description="Time to wait before executing the next step." />
+            <FieldLabel
+              label={m.macro_step_duration_label()}
+              description={m.macro_step_duration_description()}
+            />
           </div>
           <div className="flex items-center gap-3">
             <SelectMenuBasic
               size="SM"
               fullWidth
               value={step.delay.toString()}
-              onChange={(e) => onDelayChange(parseInt(e.target.value, 10))}
+              onChange={e => onDelayChange(Number.parseInt(e.target.value, 10))}
               options={PRESET_DELAYS}
             />
           </div>
