@@ -4,7 +4,7 @@ go 1.24.4
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
-	github.com/beevik/ntp v1.4.3
+	github.com/beevik/ntp v1.5.0
 	github.com/coder/websocket v1.8.14
 	github.com/coreos/go-oidc/v3 v3.15.0
 	github.com/creack/pty v1.1.24
@@ -17,6 +17,7 @@ require (
 	github.com/guregu/null/v6 v6.0.0
 	github.com/gwatts/rootcerts v0.0.0-20250901182336-dc5ae18bd79f
 	github.com/insomniacslk/dhcp v0.0.0-20250919081422-f80a1952f48e
+	github.com/mdlayher/ndp v1.1.0
 	github.com/pion/logging v0.2.4
 	github.com/pion/mdns/v2 v2.0.7
 	github.com/pion/webrtc/v4 v4.1.4
@@ -61,7 +62,6 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mdlayher/ndp v1.1.0 // indirect
 	github.com/mdlayher/packet v1.1.2 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
