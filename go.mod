@@ -12,7 +12,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-contrib/logger v1.2.6
 	github.com/gin-gonic/gin v1.10.1
-	github.com/go-co-op/gocron/v2 v2.16.6
+	github.com/go-co-op/gocron/v2 v2.17.0
 	github.com/google/uuid v1.6.0
 	github.com/guregu/null/v6 v6.0.0
 	github.com/gwatts/rootcerts v0.0.0-20250901182336-dc5ae18bd79f
