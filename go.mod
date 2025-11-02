@@ -24,7 +24,7 @@ require (
 	github.com/pojntfx/go-nbd v0.3.2
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.66.1
-	github.com/prometheus/procfs v0.17.0
+	github.com/prometheus/procfs v0.19.2
 	github.com/psanford/httpreadat v0.1.0
 	github.com/rs/xid v1.6.0
 	github.com/rs/zerolog v1.34.0
@@ -35,7 +35,7 @@ require (
 	go.bug.st/serial v1.6.4
 	golang.org/x/crypto v0.42.0
 	golang.org/x/net v0.44.0
-	golang.org/x/sys v0.36.0
+	golang.org/x/sys v0.37.0
 )
 
 replace github.com/pojntfx/go-nbd v0.3.2 => github.com/chemhack/go-nbd v0.0.0-20241006125820-59e45f5b1e7b
