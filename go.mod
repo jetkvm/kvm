@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/beevik/ntp v1.5.0
 	github.com/coder/websocket v1.8.14
-	github.com/coreos/go-oidc/v3 v3.15.0
+	github.com/coreos/go-oidc/v3 v3.16.0
 	github.com/creack/pty v1.1.24
 	github.com/erikdubbelboer/gspt v0.0.0-20210805194459-ce36a5128377
 	github.com/fsnotify/fsnotify v1.9.0
@@ -50,7 +50,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.9 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.0 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.27.0 // indirect
