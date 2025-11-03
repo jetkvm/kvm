@@ -82,6 +82,8 @@
     "audio_settings_output_title": "Ljudutgång",
     "audio_settings_title": "Ljud",
     "audio_settings_usb_label": "USB",
+    "audio_settings_auto_enable_microphone_title": "Aktivera mikrofon automatiskt",
+    "audio_settings_auto_enable_microphone_description": "Aktivera automatiskt webbläsarmikrofon vid anslutning (annars måste du aktivera den manuellt varje session)",
     "action_bar_extension": "Förlängning",
     "action_bar_fullscreen": "Helskärm",
     "action_bar_settings": "Inställningar",

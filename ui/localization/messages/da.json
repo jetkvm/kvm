@@ -82,6 +82,8 @@
     "audio_settings_output_title": "Lydudgang",
     "audio_settings_title": "Lyd",
     "audio_settings_usb_label": "USB",
+    "audio_settings_auto_enable_microphone_title": "Aktiver mikrofon automatisk",
+    "audio_settings_auto_enable_microphone_description": "Aktiver automatisk browsermikrofon ved tilslutning (ellers skal du aktivere det manuelt ved hver session)",
     "action_bar_extension": "Udvidelse",
     "action_bar_fullscreen": "Fuldskærm",
     "action_bar_settings": "Indstillinger",

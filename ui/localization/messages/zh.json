@@ -82,6 +82,8 @@
     "audio_settings_output_title": "音频输出",
     "audio_settings_title": "音频",
     "audio_settings_usb_label": "USB",
+    "audio_settings_auto_enable_microphone_title": "自动启用麦克风",
+    "audio_settings_auto_enable_microphone_description": "连接时自动启用浏览器麦克风（否则您必须在每次会话中手动启用）",
     "action_bar_extension": "扩展",
     "action_bar_fullscreen": "全屏",
     "action_bar_settings": "设置",
