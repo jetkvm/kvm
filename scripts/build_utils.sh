@@ -41,6 +41,7 @@ BUILD_IN_DOCKER=${BUILD_IN_DOCKER:-false}
 function prepare_docker_build_context() {
     msg_info "▶ Preparing docker build context ..."
     cp .devcontainer/install-deps.sh \
+        .devcontainer/install_audio_deps.sh \
         go.mod \
         go.sum \
         Dockerfile.build \
