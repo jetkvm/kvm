@@ -301,3 +301,7 @@ export function deleteCookie(name: string, domain?: string, path = "/") {
 export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+export function isSecureContext(): boolean {
+  return window.location.protocol === "https:" || window.location.hostname === "localhost";
+}

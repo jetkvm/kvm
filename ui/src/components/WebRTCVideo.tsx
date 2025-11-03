@@ -22,6 +22,7 @@ import {
 import { keys } from "@/keyboardMappings";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
+import { isSecureContext } from "@/utils";
 
 export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssues: boolean }) {
   // Video and stream related refs and states
@@ -33,7 +34,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
   const [isKeyboardLockActive, setIsKeyboardLockActive] = useState(false);
 
-  const isPointerLockPossible = window.location.protocol === "https:" || window.location.hostname === "localhost";
+  const isPointerLockPossible = isSecureContext();
 
   // Store hooks
   const settings = useSettingsStore();

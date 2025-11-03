@@ -82,6 +82,8 @@
     "audio_settings_output_title": "Audioausgang",
     "audio_settings_title": "Audio",
     "audio_settings_usb_label": "USB",
+    "audio_settings_auto_enable_microphone_title": "Mikrofon automatisch aktivieren",
+    "audio_settings_auto_enable_microphone_description": "Browser-Mikrofon beim Verbinden automatisch aktivieren (andernfalls müssen Sie es in jeder Sitzung manuell aktivieren)",
     "action_bar_extension": "Erweiterung",
     "action_bar_fullscreen": "Vollbild",
     "action_bar_settings": "Einstellungen",
