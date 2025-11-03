@@ -370,8 +370,6 @@ export interface SettingsState {
   setVideoContrast: (value: number) => void;
 
   // Audio settings
-  audioOutputSource: string;
-  setAudioOutputSource: (source: string) => void;
   audioOutputEnabled: boolean;
   setAudioOutputEnabled: (enabled: boolean) => void;
   audioInputEnabled: boolean;
@@ -425,8 +423,6 @@ export const useSettingsStore = create(
       setVideoContrast: (value: number) => set({ videoContrast: value }),
 
       // Audio settings with defaults
-      audioOutputSource: "usb",
-      setAudioOutputSource: (source: string) => set({ audioOutputSource: source }),
       audioOutputEnabled: true,
       setAudioOutputEnabled: (enabled: boolean) => set({ audioOutputEnabled: enabled }),
       audioInputEnabled: true,
