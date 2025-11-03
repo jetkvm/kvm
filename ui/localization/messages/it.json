@@ -82,6 +82,8 @@
     "audio_settings_output_title": "Uscita audio",
     "audio_settings_title": "Audio",
     "audio_settings_usb_label": "USB",
+    "audio_settings_auto_enable_microphone_title": "Abilita automaticamente il microfono",
+    "audio_settings_auto_enable_microphone_description": "Abilita automaticamente il microfono del browser durante la connessione (altrimenti devi abilitarlo manualmente ad ogni sessione)",
     "action_bar_extension": "Estensione",
     "action_bar_fullscreen": "A schermo intero",
     "action_bar_settings": "Impostazioni",

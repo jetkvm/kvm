@@ -29,6 +29,7 @@ import {
   useNetworkStateStore,
   User,
   useRTCStore,
+  useSettingsStore,
   useUiStore,
   useUpdateStore,
   useVideoStore,
@@ -51,6 +52,7 @@ import {
 } from "@components/VideoOverlay";
 import { FeatureFlagProvider } from "@providers/FeatureFlagProvider";
 import { m } from "@localizations/messages.js";
+import { isSecureContext } from "@/utils";
 
 export type AuthMode = "password" | "noPassword" | null;
 
@@ -111,6 +113,7 @@ export default function KvmIdRoute() {
 
   const params = useParams() as { id: string };
   const { sidebarView, setSidebarView, disableVideoFocusTrap, rebootState, setRebootState } = useUiStore();
+  const { microphoneEnabled, setMicrophoneEnabled, audioInputAutoEnable, setAudioInputAutoEnable } = useSettingsStore();
   const [queryParams, setQueryParams] = useSearchParams();
 
   const {
@@ -121,6 +124,8 @@ export default function KvmIdRoute() {
     isTurnServerInUse, setTurnServerInUse,
     rpcDataChannel,
     setTransceiver,
+    setAudioTransceiver,
+    audioTransceiver,
     setRpcHidChannel,
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
@@ -530,26 +535,12 @@ export default function KvmIdRoute() {
 
     setTransceiver(pc.addTransceiver("video", { direction: "recvonly" }));
 
-    const audioTransceiver = pc.addTransceiver("audio", { direction: "sendrecv" });
+    const audioTrans = pc.addTransceiver("audio", { direction: "sendrecv" });
+    setAudioTransceiver(audioTrans);
 
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 2, // Request stereo input if available
-        }
-      }).then((stream) => {
-        const audioTrack = stream.getAudioTracks()[0];
-        if (audioTrack && audioTransceiver.sender) {
-          audioTransceiver.sender.replaceTrack(audioTrack);
-        }
-      }).catch((err) => {
-        console.warn("Microphone access denied or unavailable:", err.message);
-      });
-    } else {
-      console.warn("navigator.mediaDevices.getUserMedia is not available in this browser/context");
+    // Enable microphone if auto-enable is on (only works over HTTPS or localhost)
+    if (audioInputAutoEnable && isSecureContext()) {
+      setMicrophoneEnabled(true);
     }
 
     const rpcDataChannel = pc.createDataChannel("rpc");
@@ -603,6 +594,9 @@ export default function KvmIdRoute() {
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
     setTransceiver,
+    setAudioTransceiver,
+    audioInputAutoEnable,
+    setMicrophoneEnabled,
   ]);
 
   useEffect(() => {
@@ -611,6 +605,48 @@ export default function KvmIdRoute() {
       cleanupAndStopReconnecting();
     }
   }, [peerConnectionState, cleanupAndStopReconnecting]);
+
+  // Handle dynamic microphone enable/disable
+  useEffect(() => {
+    if (!audioTransceiver || !peerConnection) return;
+
+    if (microphoneEnabled) {
+      // Request microphone access
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 2,
+          }
+        }).then((stream) => {
+          const audioTrack = stream.getAudioTracks()[0];
+          if (audioTrack && audioTransceiver.sender) {
+            audioTransceiver.sender.replaceTrack(audioTrack);
+            console.log("Microphone enabled");
+          }
+        }).catch((err) => {
+          console.warn("Microphone access denied or unavailable:", err.message);
+          setMicrophoneEnabled(false);
+        });
+      }
+    } else {
+      // Disable microphone by removing the track
+      if (audioTransceiver.sender.track) {
+        audioTransceiver.sender.track.stop();
+        audioTransceiver.sender.replaceTrack(null);
+        console.log("Microphone disabled");
+      }
+    }
+  }, [microphoneEnabled, audioTransceiver, peerConnection, setMicrophoneEnabled]);
+
+  // Auto-enable microphone when setting is loaded from backend
+  useEffect(() => {
+    if (audioInputAutoEnable && audioTransceiver && peerConnection && !microphoneEnabled && isSecureContext()) {
+      setMicrophoneEnabled(true);
+    }
+  }, [audioInputAutoEnable, audioTransceiver, peerConnection, microphoneEnabled, setMicrophoneEnabled]);
 
   // Cleanup effect
   const { clearInboundRtpStats, clearCandidatePairStats } = useRTCStore();
@@ -769,6 +805,16 @@ export default function KvmIdRoute() {
   }
 
   const { send } = useJsonRpc(onJsonRpcRequest);
+
+  // Load audio input auto-enable setting from backend on mount
+  useEffect(() => {
+    send("getAudioInputEnabled", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        return;
+      }
+      setAudioInputAutoEnable(resp.result as boolean);
+    });
+  }, [send, setAudioInputAutoEnable]);
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;

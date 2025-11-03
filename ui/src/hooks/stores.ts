@@ -140,6 +140,9 @@ export interface RTCState {
   transceiver: RTCRtpTransceiver | null;
   setTransceiver: (transceiver: RTCRtpTransceiver) => void;
 
+  audioTransceiver: RTCRtpTransceiver | null;
+  setAudioTransceiver: (transceiver: RTCRtpTransceiver) => void;
+
   mediaStream: MediaStream | null;
   setMediaStream: (stream: MediaStream) => void;
 
@@ -197,6 +200,9 @@ export const useRTCStore = create<RTCState>(set => ({
 
   transceiver: null,
   setTransceiver: (transceiver: RTCRtpTransceiver) => set({ transceiver }),
+
+  audioTransceiver: null,
+  setAudioTransceiver: (transceiver: RTCRtpTransceiver) => set({ audioTransceiver: transceiver }),
 
   peerConnectionState: null,
   setPeerConnectionState: (state: RTCPeerConnectionState) => set({ peerConnectionState: state }),
@@ -372,8 +378,10 @@ export interface SettingsState {
   // Audio settings
   audioOutputEnabled: boolean;
   setAudioOutputEnabled: (enabled: boolean) => void;
-  audioInputEnabled: boolean;
-  setAudioInputEnabled: (enabled: boolean) => void;
+  microphoneEnabled: boolean;
+  setMicrophoneEnabled: (enabled: boolean) => void;
+  audioInputAutoEnable: boolean;
+  setAudioInputAutoEnable: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create(
@@ -425,8 +433,10 @@ export const useSettingsStore = create(
       // Audio settings with defaults
       audioOutputEnabled: true,
       setAudioOutputEnabled: (enabled: boolean) => set({ audioOutputEnabled: enabled }),
-      audioInputEnabled: true,
-      setAudioInputEnabled: (enabled: boolean) => set({ audioInputEnabled: enabled }),
+      microphoneEnabled: false,
+      setMicrophoneEnabled: (enabled: boolean) => set({ microphoneEnabled: enabled }),
+      audioInputAutoEnable: false,
+      setAudioInputAutoEnable: (enabled: boolean) => set({ audioInputAutoEnable: enabled }),
     }),
     {
       name: "settings",

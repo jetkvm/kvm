@@ -26,7 +26,7 @@ export default function SettingsAudioRoute() {
       if ("error" in resp) {
         return;
       }
-      settings.setAudioInputEnabled(resp.result as boolean);
+      settings.setAudioInputAutoEnable(resp.result as boolean);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [send]);
@@ -46,7 +46,7 @@ export default function SettingsAudioRoute() {
     });
   };
 
-  const handleAudioInputEnabledChange = (enabled: boolean) => {
+  const handleAudioInputAutoEnableChange = (enabled: boolean) => {
     send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         const errorMsg = enabled
@@ -55,7 +55,7 @@ export default function SettingsAudioRoute() {
         notifications.error(errorMsg);
         return;
       }
-      settings.setAudioInputEnabled(enabled);
+      settings.setAudioInputAutoEnable(enabled);
       const successMsg = enabled ? m.audio_input_enabled() : m.audio_input_disabled();
       notifications.success(successMsg);
     });
@@ -79,12 +79,12 @@ export default function SettingsAudioRoute() {
         </SettingsItem>
 
         <SettingsItem
-          title={m.audio_settings_input_title()}
-          description={m.audio_settings_input_description()}
+          title={m.audio_settings_auto_enable_microphone_title()}
+          description={m.audio_settings_auto_enable_microphone_description()}
         >
           <Checkbox
-            checked={settings.audioInputEnabled || false}
-            onChange={(e) => handleAudioInputEnabledChange(e.target.checked)}
+            checked={settings.audioInputAutoEnable || false}
+            onChange={(e) => handleAudioInputAutoEnableChange(e.target.checked)}
           />
         </SettingsItem>
       </div>
