@@ -894,33 +894,9 @@ func rpcGetUsbDevices() (usbgadget.Devices, error) {
 func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 	ensureConfigLoaded()
 
-	audioSourceChanged := false
-
-	// If USB audio is being disabled and audio output source is USB, switch to HDMI
-	if config.UsbDevices != nil && !config.UsbDevices.Audio && config.AudioOutputSource == "usb" {
-		audioMutex.Lock()
-		config.AudioOutputSource = "hdmi"
-		useUSBForAudioOutput.Store(false)
-		audioSourceChanged = true
-		audioMutex.Unlock()
-	}
-
-	// If USB audio is being enabled (was disabled, now enabled), switch to USB
-	if config.UsbDevices != nil && config.UsbDevices.Audio && !wasAudioEnabled {
-		audioMutex.Lock()
-		config.AudioOutputSource = "usb"
-		useUSBForAudioOutput.Store(true)
-		audioSourceChanged = true
-		audioMutex.Unlock()
-	}
-
-	// Stop audio before USB reconfiguration
-	// Input always uses USB, output depends on audioSourceChanged
+	// Stop input audio before USB reconfiguration (input uses USB)
 	audioMutex.Lock()
 	stopInputLocked()
-	if audioSourceChanged {
-		stopOutputLocked()
-	}
 	audioMutex.Unlock()
 
 	if err := gadget.UpdateGadgetConfig(); err != nil {
@@ -931,9 +907,8 @@ func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	// Restart audio if source changed or USB audio is enabled with active connections
-	// The relay handles device readiness via retry logic
-	if activeConnections.Load() > 0 && (audioSourceChanged || (config.UsbDevices != nil && config.UsbDevices.Audio)) {
+	// Restart audio if USB audio is enabled with active connections
+	if activeConnections.Load() > 0 && config.UsbDevices != nil && config.UsbDevices.Audio {
 		if err := startAudio(); err != nil {
 			logger.Warn().Err(err).Msg("Failed to restart audio after USB reconfiguration")
 		}
@@ -968,22 +943,6 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 	}
 	gadget.SetGadgetDevices(config.UsbDevices)
 	return updateUsbRelatedConfig(wasAudioEnabled)
-}
-
-func rpcGetAudioOutputSource() (string, error) {
-	if useUSBForAudioOutput.Load() {
-		return "usb", nil
-	}
-	return "hdmi", nil
-}
-
-func rpcSetAudioOutputSource(source string) error {
-	if source != "hdmi" && source != "usb" {
-		return fmt.Errorf("invalid audio output source: %s (must be 'hdmi' or 'usb')", source)
-	}
-
-	useUSB := source == "usb"
-	return SetAudioOutputSource(useUSB)
 }
 
 func rpcGetAudioOutputEnabled() (bool, error) {
@@ -1320,8 +1279,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"getUsbDevices":          {Func: rpcGetUsbDevices},
 	"setUsbDevices":          {Func: rpcSetUsbDevices, Params: []string{"devices"}},
 	"setUsbDeviceState":      {Func: rpcSetUsbDeviceState, Params: []string{"device", "enabled"}},
-	"getAudioOutputSource":   {Func: rpcGetAudioOutputSource},
-	"setAudioOutputSource":   {Func: rpcSetAudioOutputSource, Params: []string{"source"}},
 	"getAudioOutputEnabled":  {Func: rpcGetAudioOutputEnabled},
 	"setAudioOutputEnabled":  {Func: rpcSetAudioOutputEnabled, Params: []string{"enabled"}},
 	"getAudioInputEnabled":   {Func: rpcGetAudioInputEnabled},

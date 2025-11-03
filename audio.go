@@ -12,35 +12,27 @@ import (
 )
 
 var (
-	audioMutex           sync.Mutex
-	outputSource         audio.AudioSource
-	inputSource          audio.AudioSource
-	outputRelay          *audio.OutputRelay
-	inputRelay           *audio.InputRelay
-	audioInitialized     bool
-	activeConnections    atomic.Int32
-	audioLogger          zerolog.Logger
-	currentAudioTrack    *webrtc.TrackLocalStaticSample
-	inputTrackHandling   atomic.Bool
-	useUSBForAudioOutput atomic.Bool
-	audioOutputEnabled   atomic.Bool
-	audioInputEnabled    atomic.Bool
+	audioMutex         sync.Mutex
+	outputSource       audio.AudioSource
+	inputSource        audio.AudioSource
+	outputRelay        *audio.OutputRelay
+	inputRelay         *audio.InputRelay
+	audioInitialized   bool
+	activeConnections  atomic.Int32
+	audioLogger        zerolog.Logger
+	currentAudioTrack  *webrtc.TrackLocalStaticSample
+	inputTrackHandling atomic.Bool
+	audioOutputEnabled atomic.Bool
+	audioInputEnabled  atomic.Bool
 )
 
 func initAudio() {
 	audioLogger = logging.GetDefaultLogger().With().Str("component", "audio-manager").Logger()
 
-	// Load audio output source from config
-	ensureConfigLoaded()
-	useUSBForAudioOutput.Store(config.AudioOutputSource == "usb")
-
-	// Enable both by default
 	audioOutputEnabled.Store(true)
 	audioInputEnabled.Store(true)
 
-	audioLogger.Debug().
-		Str("source", config.AudioOutputSource).
-		Msg("Audio subsystem initialized")
+	audioLogger.Debug().Msg("Audio subsystem initialized")
 	audioInitialized = true
 }
 
@@ -56,12 +48,8 @@ func startAudio() error {
 
 	// Start output audio if not running and enabled
 	if outputSource == nil && audioOutputEnabled.Load() {
-		alsaDevice := "hw:0,0" // HDMI
-		if useUSBForAudioOutput.Load() {
-			alsaDevice = "hw:1,0" // USB
-		}
+		alsaDevice := "hw:1,0" // USB audio
 
-		// Create CGO audio source
 		outputSource = audio.NewCgoOutputSource(alsaDevice)
 
 		if currentAudioTrack != nil {
@@ -160,51 +148,6 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 			audioLogger.Error().Err(err).Msg("Failed to start output relay")
 		}
 	}
-}
-
-// SetAudioOutputSource switches between HDMI and USB audio output
-func SetAudioOutputSource(useUSB bool) error {
-	audioMutex.Lock()
-	defer audioMutex.Unlock()
-
-	if useUSBForAudioOutput.Load() == useUSB {
-		return nil
-	}
-
-	audioLogger.Info().
-		Bool("old_usb", useUSBForAudioOutput.Load()).
-		Bool("new_usb", useUSB).
-		Msg("Switching audio output source")
-
-	oldValue := useUSBForAudioOutput.Load()
-	useUSBForAudioOutput.Store(useUSB)
-
-	ensureConfigLoaded()
-	if useUSB {
-		config.AudioOutputSource = "usb"
-	} else {
-		config.AudioOutputSource = "hdmi"
-	}
-	if err := SaveConfig(); err != nil {
-		audioLogger.Error().Err(err).Msg("Failed to save config")
-		useUSBForAudioOutput.Store(oldValue)
-		return err
-	}
-
-	stopOutputLocked()
-
-	// Restart if there are active connections
-	if activeConnections.Load() > 0 {
-		audioMutex.Unlock()
-		err := startAudio()
-		audioMutex.Lock()
-		if err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to restart audio output")
-			return err
-		}
-	}
-
-	return nil
 }
 
 func setPendingInputTrack(track *webrtc.TrackRemote) {

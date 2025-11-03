@@ -107,7 +107,6 @@ type Config struct {
 	DefaultLogLevel      string               `json:"default_log_level"`
 	VideoSleepAfterSec   int                  `json:"video_sleep_after_sec"`
 	VideoQualityFactor   float64              `json:"video_quality_factor"`
-	AudioOutputSource    string               `json:"audio_output_source"` // "hdmi" or "usb"
 }
 
 func (c *Config) GetDisplayRotation() uint16 {
@@ -180,7 +179,6 @@ func getDefaultConfig() Config {
 			return c
 		}(),
 		DefaultLogLevel:    "INFO",
-		AudioOutputSource:  "usb",
 		VideoQualityFactor: 1.0,
 	}
 }
