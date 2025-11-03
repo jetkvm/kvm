@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { LuVolume2 } from "react-icons/lu";
 
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { GridCard } from "@components/Card";
 import { SettingsItem } from "@components/SettingsItem";
-import { Button } from "@components/Button";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
+import Checkbox from "@components/Checkbox";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 
@@ -14,6 +14,7 @@ export default function AudioPopover() {
   const [audioInputEnabled, setAudioInputEnabled] = useState<boolean>(true);
   const [usbAudioEnabled, setUsbAudioEnabled] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
+  const isHttps = window.location.protocol === "https:" || window.location.hostname === "localhost";
 
   useEffect(() => {
     send("getAudioOutputEnabled", {}, (resp: JsonRpcResponse) => {
@@ -42,8 +43,7 @@ export default function AudioPopover() {
     });
   }, [send]);
 
-  const handleAudioOutputEnabledToggle = useCallback(() => {
-    const enabled = !audioOutputEnabled;
+  const handleAudioOutputEnabledToggle = useCallback((enabled: boolean) => {
     setLoading(true);
     send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
       setLoading(false);
@@ -58,10 +58,9 @@ export default function AudioPopover() {
         notifications.success(successMsg);
       }
     });
-  }, [send, audioOutputEnabled]);
+  }, [send]);
 
-  const handleAudioInputEnabledToggle = useCallback(() => {
-    const enabled = !audioInputEnabled;
+  const handleAudioInputEnabledToggle = useCallback((enabled: boolean) => {
     setLoading(true);
     send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
       setLoading(false);
@@ -76,28 +75,26 @@ export default function AudioPopover() {
         notifications.success(successMsg);
       }
     });
-  }, [send, audioInputEnabled]);
+  }, [send]);
 
   return (
     <GridCard>
       <div className="space-y-4 p-4 py-3">
         <div className="space-y-4">
-          <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
-            <LuVolume2 className="h-5 w-5" />
-            <h3 className="font-semibold">{m.audio_popover_title()}</h3>
-          </div>
+          <SettingsPageHeader
+            title={m.audio_popover_title()}
+            description={m.audio_popover_description()}
+          />
 
           <div className="space-y-3">
             <SettingsItem
               loading={loading}
-              title={m.audio_output_title()}
-              description={m.audio_output_description()}
+              title={m.audio_speakers_title()}
+              description={m.audio_speakers_description()}
             >
-              <Button
-                size="SM"
-                theme={audioOutputEnabled ? "light" : "primary"}
-                text={audioOutputEnabled ? m.audio_disable() : m.audio_enable()}
-                onClick={handleAudioOutputEnabledToggle}
+              <Checkbox
+                checked={audioOutputEnabled}
+                onChange={(e) => handleAudioOutputEnabledToggle(e.target.checked)}
               />
             </SettingsItem>
 
@@ -107,14 +104,16 @@ export default function AudioPopover() {
 
                 <SettingsItem
                   loading={loading}
-                  title={m.audio_input_title()}
-                  description={m.audio_input_description()}
+                  title={m.audio_microphone_title()}
+                  description={m.audio_microphone_description()}
+                  badge={!isHttps ? m.audio_https_only() : undefined}
+                  badgeVariant="info"
+                  badgeLink={!isHttps ? "settings/access" : undefined}
                 >
-                  <Button
-                    size="SM"
-                    theme={audioInputEnabled ? "light" : "primary"}
-                    text={audioInputEnabled ? m.audio_disable() : m.audio_enable()}
-                    onClick={handleAudioInputEnabledToggle}
+                  <Checkbox
+                    checked={audioInputEnabled}
+                    disabled={!isHttps}
+                    onChange={(e) => handleAudioInputEnabledToggle(e.target.checked)}
                   />
                 </SettingsItem>
               </>
