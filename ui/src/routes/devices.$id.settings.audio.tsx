@@ -48,6 +48,10 @@ export default function SettingsAudioRoute() {
         return;
       }
       settings.setAudioInputAutoEnable(enabled);
+      const successMsg = enabled
+        ? m.audio_input_auto_enable_enabled()
+        : m.audio_input_auto_enable_disabled();
+      notifications.success(successMsg);
     });
   };
 

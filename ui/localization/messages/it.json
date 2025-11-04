@@ -57,6 +57,8 @@
     "audio_input_failed_disable": "Impossibile disabilitare l'ingresso audio: {error}",
     "audio_input_failed_enable": "Impossibile abilitare l'ingresso audio: {error}",
     "audio_input_title": "Ingresso audio (Microfono)",
+    "audio_input_auto_enable_disabled": "Abilitazione automatica microfono disabilitata",
+    "audio_input_auto_enable_enabled": "Abilitazione automatica microfono abilitata",
     "audio_output_description": "Abilita l'audio dal target agli altoparlanti",
     "audio_output_disabled": "Uscita audio disabilitata",
     "audio_output_enabled": "Uscita audio abilitata",

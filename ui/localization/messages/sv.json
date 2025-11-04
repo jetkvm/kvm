@@ -57,6 +57,8 @@
     "audio_input_failed_disable": "Det gick inte att inaktivera ljudingången: {error}",
     "audio_input_failed_enable": "Det gick inte att aktivera ljudingången: {error}",
     "audio_input_title": "Ljudingång (Mikrofon)",
+    "audio_input_auto_enable_disabled": "Automatisk aktivering av mikrofon inaktiverad",
+    "audio_input_auto_enable_enabled": "Automatisk aktivering av mikrofon aktiverad",
     "audio_output_description": "Aktivera ljud från mål till högtalare",
     "audio_output_disabled": "Ljudutgång inaktiverad",
     "audio_output_enabled": "Ljudutgång aktiverad",
