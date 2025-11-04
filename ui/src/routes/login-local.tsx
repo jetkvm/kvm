@@ -16,8 +16,11 @@ import { DeviceStatus } from "@routes/welcome-local";
 import { DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import { m } from "@localizations/messages.js";
+import { useSettingsStore } from "@/hooks/stores";
 
 const loader: LoaderFunction = async () => {
+  useSettingsStore.getState().resetMicrophoneState();
+
   const res = await api
     .GET(`${DEVICE_API}/device/status`)
     .then(res => res.json() as Promise<DeviceStatus>);

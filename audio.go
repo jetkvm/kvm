@@ -29,7 +29,8 @@ var (
 func initAudio() {
 	audioLogger = logging.GetDefaultLogger().With().Str("component", "audio-manager").Logger()
 
-	audioOutputEnabled.Store(true)
+	ensureConfigLoaded()
+	audioOutputEnabled.Store(config.AudioOutputEnabled)
 	audioInputEnabled.Store(true)
 
 	audioLogger.Debug().Msg("Audio subsystem initialized")

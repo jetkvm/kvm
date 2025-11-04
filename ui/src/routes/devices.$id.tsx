@@ -538,11 +538,6 @@ export default function KvmIdRoute() {
     const audioTrans = pc.addTransceiver("audio", { direction: "sendrecv" });
     setAudioTransceiver(audioTrans);
 
-    // Enable microphone if auto-enable is on (only works over HTTPS or localhost)
-    if (audioInputAutoEnable && isSecureContext()) {
-      setMicrophoneEnabled(true);
-    }
-
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onclose = () => console.log("rpcDataChannel has closed");
     rpcDataChannel.onerror = (ev: Event) => console.error(`Error on DataChannel '${rpcDataChannel.label}': ${ev}`);
@@ -606,47 +601,39 @@ export default function KvmIdRoute() {
     }
   }, [peerConnectionState, cleanupAndStopReconnecting]);
 
-  // Handle dynamic microphone enable/disable
   useEffect(() => {
     if (!audioTransceiver || !peerConnection) return;
 
     if (microphoneEnabled) {
-      // Request microphone access
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 2,
-          }
-        }).then((stream) => {
-          const audioTrack = stream.getAudioTracks()[0];
-          if (audioTrack && audioTransceiver.sender) {
-            audioTransceiver.sender.replaceTrack(audioTrack);
-            console.log("Microphone enabled");
-          }
-        }).catch((err) => {
-          console.warn("Microphone access denied or unavailable:", err.message);
-          setMicrophoneEnabled(false);
-        });
-      }
+      navigator.mediaDevices?.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 2,
+        }
+      }).then((stream) => {
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack && audioTransceiver.sender) {
+          audioTransceiver.sender.replaceTrack(audioTrack);
+        }
+      }).catch(() => {
+        setMicrophoneEnabled(false);
+      });
     } else {
-      // Disable microphone by removing the track
       if (audioTransceiver.sender.track) {
         audioTransceiver.sender.track.stop();
         audioTransceiver.sender.replaceTrack(null);
-        console.log("Microphone disabled");
       }
     }
-  }, [microphoneEnabled, audioTransceiver, peerConnection, setMicrophoneEnabled]);
+  }, [microphoneEnabled, audioTransceiver, peerConnection]);
 
-  // Auto-enable microphone when setting is loaded from backend
   useEffect(() => {
-    if (audioInputAutoEnable && audioTransceiver && peerConnection && !microphoneEnabled && isSecureContext()) {
+    if (!audioTransceiver || !peerConnection || !audioInputAutoEnable || microphoneEnabled) return;
+    if (isSecureContext()) {
       setMicrophoneEnabled(true);
     }
-  }, [audioInputAutoEnable, audioTransceiver, peerConnection, microphoneEnabled, setMicrophoneEnabled]);
+  }, [audioInputAutoEnable, audioTransceiver, peerConnection, microphoneEnabled]);
 
   // Cleanup effect
   const { clearInboundRtpStats, clearCandidatePairStats } = useRTCStore();
@@ -806,15 +793,6 @@ export default function KvmIdRoute() {
 
   const { send } = useJsonRpc(onJsonRpcRequest);
 
-  // Load audio input auto-enable setting from backend on mount
-  useEffect(() => {
-    send("getAudioInputEnabled", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        return;
-      }
-      setAudioInputAutoEnable(resp.result as boolean);
-    });
-  }, [send, setAudioInputAutoEnable]);
 
   useEffect(() => {
     if (rpcDataChannel?.readyState !== "open") return;
@@ -826,6 +804,15 @@ export default function KvmIdRoute() {
       setHdmiState(hdmiState);
     });
   }, [rpcDataChannel?.readyState, send, setHdmiState]);
+
+  // Load audio input auto-enable preference from backend
+  useEffect(() => {
+    if (rpcDataChannel?.readyState !== "open") return;
+    send("getAudioInputAutoEnable", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
+      setAudioInputAutoEnable(resp.result as boolean);
+    });
+  }, [rpcDataChannel?.readyState, send, setAudioInputAutoEnable]);
 
   const [needLedState, setNeedLedState] = useState(true);
 
