@@ -57,6 +57,8 @@
     "audio_input_failed_disable": "禁用音频输入失败：{error}",
     "audio_input_failed_enable": "启用音频输入失败：{error}",
     "audio_input_title": "音频输入（麦克风）",
+    "audio_input_auto_enable_disabled": "自动启用麦克风已禁用",
+    "audio_input_auto_enable_enabled": "自动启用麦克风已启用",
     "audio_output_description": "启用从目标设备到扬声器的音频",
     "audio_output_disabled": "音频输出已禁用",
     "audio_output_enabled": "音频输出已启用",

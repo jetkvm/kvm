@@ -57,6 +57,8 @@
     "audio_input_failed_disable": "Kunne ikke deaktivere lydinngang: {error}",
     "audio_input_failed_enable": "Kunne ikke aktivere lydinngang: {error}",
     "audio_input_title": "Lydinngang (Mikrofon)",
+    "audio_input_auto_enable_disabled": "Automatisk aktivering av mikrofon deaktivert",
+    "audio_input_auto_enable_enabled": "Automatisk aktivering av mikrofon aktivert",
     "audio_output_description": "Aktiver lyd fra mål til høyttalere",
     "audio_output_disabled": "Lydutgang deaktivert",
     "audio_output_enabled": "Lydutgang aktivert",
