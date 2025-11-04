@@ -1,12 +1,18 @@
+import { useEffect } from "react";
 import { useLocation, useSearchParams } from "react-router";
 
 import { m } from "@localizations/messages.js";
 import AuthLayout from "@components/AuthLayout";
+import { useSettingsStore } from "@/hooks/stores";
 
 export default function LoginRoute() {
   const [sq] = useSearchParams();
   const location = useLocation();
   const deviceId = sq.get("deviceId") || location.state?.deviceId;
+
+  useEffect(() => {
+    useSettingsStore.getState().resetMicrophoneState();
+  }, []);
 
   if (deviceId) {
     return (

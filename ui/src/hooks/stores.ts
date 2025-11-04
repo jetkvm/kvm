@@ -382,6 +382,8 @@ export interface SettingsState {
   setMicrophoneEnabled: (enabled: boolean) => void;
   audioInputAutoEnable: boolean;
   setAudioInputAutoEnable: (enabled: boolean) => void;
+
+  resetMicrophoneState: () => void;
 }
 
 export const useSettingsStore = create(
@@ -430,13 +432,14 @@ export const useSettingsStore = create(
       videoContrast: 1.0,
       setVideoContrast: (value: number) => set({ videoContrast: value }),
 
-      // Audio settings with defaults
       audioOutputEnabled: true,
       setAudioOutputEnabled: (enabled: boolean) => set({ audioOutputEnabled: enabled }),
       microphoneEnabled: false,
       setMicrophoneEnabled: (enabled: boolean) => set({ microphoneEnabled: enabled }),
       audioInputAutoEnable: false,
       setAudioInputAutoEnable: (enabled: boolean) => set({ audioInputAutoEnable: enabled }),
+
+      resetMicrophoneState: () => set({ microphoneEnabled: false }),
     }),
     {
       name: "settings",

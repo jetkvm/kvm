@@ -16,20 +16,15 @@ export default function SettingsAudioRoute() {
 
   useEffect(() => {
     send("getAudioOutputEnabled", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        return;
-      }
+      if ("error" in resp) return;
       settings.setAudioOutputEnabled(resp.result as boolean);
     });
 
-    send("getAudioInputEnabled", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        return;
-      }
+    send("getAudioInputAutoEnable", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) return;
       settings.setAudioInputAutoEnable(resp.result as boolean);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [send]);
+  }, [send, settings]);
 
   const handleAudioOutputEnabledChange = (enabled: boolean) => {
     send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
@@ -47,17 +42,12 @@ export default function SettingsAudioRoute() {
   };
 
   const handleAudioInputAutoEnableChange = (enabled: boolean) => {
-    send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
+    send("setAudioInputAutoEnable", { enabled }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        const errorMsg = enabled
-          ? m.audio_input_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
-          : m.audio_input_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
-        notifications.error(errorMsg);
+        notifications.error(String(resp.error.data || m.unknown_error()));
         return;
       }
       settings.setAudioInputAutoEnable(enabled);
-      const successMsg = enabled ? m.audio_input_enabled() : m.audio_input_disabled();
-      notifications.success(successMsg);
     });
   };
 
