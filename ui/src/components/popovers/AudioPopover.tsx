@@ -16,6 +16,7 @@ export default function AudioPopover() {
   const [audioOutputEnabled, setAudioOutputEnabled] = useState<boolean>(true);
   const [usbAudioEnabled, setUsbAudioEnabled] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
+  const [micLoading, setMicLoading] = useState(false);
   const isHttps = isSecureContext();
 
   useEffect(() => {
@@ -54,6 +55,21 @@ export default function AudioPopover() {
     });
   }, [send]);
 
+  const handleMicrophoneToggle = useCallback((enabled: boolean) => {
+    setMicLoading(true);
+    send("setAudioInputEnabled", { enabled }, (resp: JsonRpcResponse) => {
+      setMicLoading(false);
+      if ("error" in resp) {
+        const errorMsg = enabled
+          ? m.audio_input_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
+          : m.audio_input_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
+        notifications.error(errorMsg);
+      } else {
+        setMicrophoneEnabled(enabled);
+      }
+    });
+  }, [send, setMicrophoneEnabled]);
+
   return (
     <GridCard>
       <div className="space-y-4 p-4 py-3">
@@ -80,6 +96,7 @@ export default function AudioPopover() {
                 <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
 
                 <SettingsItem
+                  loading={micLoading}
                   title={m.audio_microphone_title()}
                   description={m.audio_microphone_description()}
                   badge={!isHttps ? m.audio_https_only() : undefined}
@@ -89,7 +106,7 @@ export default function AudioPopover() {
                   <Checkbox
                     checked={microphoneEnabled}
                     disabled={!isHttps}
-                    onChange={(e) => setMicrophoneEnabled(e.target.checked)}
+                    onChange={(e) => handleMicrophoneToggle(e.target.checked)}
                   />
                 </SettingsItem>
               </>
