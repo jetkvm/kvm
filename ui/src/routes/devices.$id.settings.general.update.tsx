@@ -23,6 +23,8 @@ export default function SettingsGeneralUpdateRoute() {
 
   const onClose = useCallback(() => {
     navigate(".."); // back to the devices.$id.settings page
+    // Add 1s delay between navigation and calling reload() to prevent reload from interrupting the navigation.
+    await sleep(1000);
     window.location.reload(); // force a full reload to ensure the current device/cloud UI version is loaded
   }, [navigate]);
 
