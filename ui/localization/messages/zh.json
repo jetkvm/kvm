@@ -855,12 +855,6 @@
     "video_overlay_no_hdmi_ensure_power": "确保源设备已打开并输出信号",
     "video_overlay_no_hdmi_signal": "未检测到 HDMI 信号。",
     "video_overlay_pointerlock_click_to_enable": "点击视频即可启用鼠标控制",
-    "video_overlay_reboot_device_is_rebooting": "设备正在重启",
-    "video_overlay_reboot_different_ip_message": "设备可能已使用不同的 IP 地址重启。请检查 JetKVM 的物理显示器以找到当前 IP 地址并重新连接。",
-    "video_overlay_reboot_please_wait_message": "请等待设备重启。这通常需要 20-30 秒。",
-    "video_overlay_reboot_timeout_message": "自动重新连接超时",
-    "video_overlay_reboot_unable_to_reconnect": "无法重新连接",
-    "video_overlay_reboot_waiting_for_restart": "正在等待设备重启…",
     "video_overlay_retrying_connection": "正在重试连接…",
     "video_overlay_troubleshooting_guide": "故障排除指南",
     "video_overlay_try_again": "再试一次",
@@ -897,5 +891,11 @@
     "wake_on_lan_invalid_mac": "无效的 MAC 地址",
     "wake_on_lan_magic_sent_success": "魔包发送成功",
     "welcome_to_jetkvm": "欢迎来到 JetKVM",
-    "welcome_to_jetkvm_description": "远程控制任何计算机"
+    "welcome_to_jetkvm_description": "远程控制任何计算机",
+    "video_overlay_reboot_device_is_rebooting": "设备正在重启",
+    "video_overlay_reboot_different_ip_message": "设备可能已使用不同的 IP 地址重启。请检查 JetKVM 的物理显示器以找到当前 IP 地址并重新连接。",
+    "video_overlay_reboot_please_wait_message": "请等待设备重启。这通常需要 20-30 秒。",
+    "video_overlay_reboot_timeout_message": "自动重新连接超时",
+    "video_overlay_reboot_unable_to_reconnect": "无法重新连接",
+    "video_overlay_reboot_waiting_for_restart": "正在等待设备重启…"
 }
