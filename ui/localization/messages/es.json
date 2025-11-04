@@ -57,6 +57,8 @@
     "audio_input_failed_disable": "Error al desactivar la entrada de audio: {error}",
     "audio_input_failed_enable": "Error al activar la entrada de audio: {error}",
     "audio_input_title": "Entrada de audio (Micrófono)",
+    "audio_input_auto_enable_disabled": "Habilitación automática de micrófono desactivada",
+    "audio_input_auto_enable_enabled": "Habilitación automática de micrófono activada",
     "audio_output_description": "Habilitar audio del objetivo a los altavoces",
     "audio_output_disabled": "Salida de audio desactivada",
     "audio_output_enabled": "Salida de audio activada",

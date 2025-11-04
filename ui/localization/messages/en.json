@@ -57,6 +57,8 @@
     "audio_input_failed_disable": "Failed to disable audio input: {error}",
     "audio_input_failed_enable": "Failed to enable audio input: {error}",
     "audio_input_title": "Audio Input (Microphone)",
+    "audio_input_auto_enable_disabled": "Auto-enable microphone disabled",
+    "audio_input_auto_enable_enabled": "Auto-enable microphone enabled",
     "audio_output_description": "Enable audio from target to speakers",
     "audio_output_disabled": "Audio output disabled",
     "audio_output_enabled": "Audio output enabled",
