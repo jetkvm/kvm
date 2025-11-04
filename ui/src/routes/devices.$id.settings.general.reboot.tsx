@@ -4,12 +4,13 @@ import { useNavigate } from "react-router";
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import { Button } from "@components/Button";
 import { m } from "@localizations/messages.js";
+import { sleep } from "@/utils";
 
 export default function SettingsGeneralRebootRoute() {
   const navigate = useNavigate();
   const { send } = useJsonRpc();
   
-  const onClose = useCallback(() => {
+  const onClose = useCallback(async () => {
     navigate(".."); // back to the devices.$id.settings page
     // Add 1s delay between navigation and calling reload() to prevent reload from interrupting the navigation.
     await sleep(1000);

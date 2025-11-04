@@ -119,25 +119,25 @@ export default function ConnectionStatsSidebar() {
                 />
                 {remoteIPAddress && (
                   <div className="flex items-center justify-between">
-                  <div className="text-sm text-slate-600 dark:text-slate-400">
-                    {m.connection_stats_remote_ip_address()}
-                  </div>
-                <div className="flex items-center">
-                  <GridCard cardClassName="rounded-r-none">
-                    <div className="h-[34px] flex items-center text-xs select-all text-black font-mono dark:text-white px-3 ">
-                      {remoteIPAddress} {" "}
+                    <div className="text-sm text-slate-600 dark:text-slate-400">
+                      {m.connection_stats_remote_ip_address()}
                     </div>
-                  </GridCard>
-                  <Button className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20" size="SM" type="button" theme="light" LeadingIcon={LuCopy} onClick={async () => {
-                    const ip = remoteIPAddress || "";
-                    if (await copy(ip)) {
-                      notifications.success((m.connection_stats_remote_ip_address_copy_success({ ip })));
-                    } else {
-                      notifications.error(m.connection_stats_remote_ip_address_copy_error());
-                    }
-                  }} />
-                </div>
-                </div>
+                    <div className="flex items-center">
+                      <GridCard cardClassName="rounded-r-none">
+                        <div className="h-[34px] flex items-center text-xs select-all text-black font-mono dark:text-white px-3 ">
+                          {remoteIPAddress}
+                        </div>
+                      </GridCard>
+                      <Button className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20" size="SM" type="button" theme="light" LeadingIcon={LuCopy} onClick={async () => {
+                        const ip = remoteIPAddress || "";
+                        if (await copy(ip)) {
+                          notifications.success((m.connection_stats_remote_ip_address_copy_success({ ip })));
+                        } else {
+                          notifications.error(m.connection_stats_remote_ip_address_copy_error());
+                        }
+                      }} />
+                    </div>
+                  </div>
                 )}
                 <Metric
                   title={m.connection_stats_round_trip_time()}
