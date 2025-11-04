@@ -21,7 +21,7 @@ var (
 	activeConnections  atomic.Int32
 	audioLogger        zerolog.Logger
 	currentAudioTrack  *webrtc.TrackLocalStaticSample
-	inputTrackHandling atomic.Bool
+	currentInputTrack  atomic.Pointer[string]
 	audioOutputEnabled atomic.Bool
 	audioInputEnabled  atomic.Bool
 )
@@ -152,13 +152,9 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 }
 
 func setPendingInputTrack(track *webrtc.TrackRemote) {
-	audioMutex.Lock()
-	defer audioMutex.Unlock()
-
-	// Start input track handler only once per WebRTC session
-	if inputTrackHandling.CompareAndSwap(false, true) {
-		go handleInputTrackForSession(track)
-	}
+	trackID := track.ID()
+	currentInputTrack.Store(&trackID)
+	go handleInputTrackForSession(track)
 }
 
 // SetAudioOutputEnabled enables or disables audio output
@@ -202,22 +198,32 @@ func SetAudioInputEnabled(enabled bool) error {
 // handleInputTrackForSession runs for the entire WebRTC session lifetime
 // It continuously reads from the track and sends to whatever relay is currently active
 func handleInputTrackForSession(track *webrtc.TrackRemote) {
-	defer inputTrackHandling.Store(false)
+	myTrackID := track.ID()
 
 	audioLogger.Debug().
 		Str("codec", track.Codec().MimeType).
-		Str("track_id", track.ID()).
+		Str("track_id", myTrackID).
 		Msg("starting session-lifetime track handler")
 
 	for {
+		// Check if we've been superseded by a new track
+		currentTrackID := currentInputTrack.Load()
+		if currentTrackID != nil && *currentTrackID != myTrackID {
+			audioLogger.Debug().
+				Str("my_track_id", myTrackID).
+				Str("current_track_id", *currentTrackID).
+				Msg("audio track handler exiting - superseded by new track")
+			return
+		}
+
 		// Read RTP packet (must always read to keep track alive)
 		rtpPacket, _, err := track.ReadRTP()
 		if err != nil {
 			if err == io.EOF {
-				audioLogger.Debug().Msg("audio track ended")
+				audioLogger.Debug().Str("track_id", myTrackID).Msg("audio track ended")
 				return
 			}
-			audioLogger.Warn().Err(err).Msg("failed to read RTP packet")
+			audioLogger.Warn().Err(err).Str("track_id", myTrackID).Msg("failed to read RTP packet")
 			continue
 		}
 
