@@ -89,7 +89,7 @@ def main(argv):
             )
 
     report = {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.now().isoformat(),
         "en_json": str(en_path),
         "total_string_keys": total_keys,
         "duplicate_groups": sorted(

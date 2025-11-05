@@ -82,7 +82,7 @@ def main():
 
     print(f"Generating report for {len(usages)} usages ...")
     report = {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.now().isoformat(),
         "en_json": str(en_path),
         "src_root": args.src,
         "total_keys": len(keys),
