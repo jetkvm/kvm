@@ -66,7 +66,7 @@ func setMassStorageMode(cdrom bool) error {
 		return nil
 	}
 
-	return gadget.UpdateGadgetConfig()
+	return gadget.UpdateGadgetConfig(true)
 }
 
 func mountImage(imagePath string) error {

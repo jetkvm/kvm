@@ -678,7 +678,7 @@ func rpcSetUsbConfig(usbConfig usbgadget.Config) error {
 	LoadConfig()
 	config.UsbConfig = &usbConfig
 	gadget.SetGadgetConfig(config.UsbConfig)
-	return updateUsbRelatedConfig()
+	return updateUsbRelatedConfig(false)
 }
 
 func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
@@ -890,8 +890,8 @@ func rpcGetUsbDevices() (usbgadget.Devices, error) {
 	return *config.UsbDevices, nil
 }
 
-func updateUsbRelatedConfig() error {
-	if err := gadget.UpdateGadgetConfig(); err != nil {
+func updateUsbRelatedConfig(resetUsbIfNeeded bool) error {
+	if err := gadget.UpdateGadgetConfig(resetUsbIfNeeded); err != nil {
 		return fmt.Errorf("failed to write gadget config: %w", err)
 	}
 	if err := SaveConfig(); err != nil {
@@ -903,7 +903,7 @@ func updateUsbRelatedConfig() error {
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 	config.UsbDevices = &usbDevices
 	gadget.SetGadgetDevices(config.UsbDevices)
-	return updateUsbRelatedConfig()
+	return updateUsbRelatedConfig(false)
 }
 
 func rpcSetUsbDeviceState(device string, enabled bool) error {
@@ -920,7 +920,7 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 		return fmt.Errorf("invalid device: %s", device)
 	}
 	gadget.SetGadgetDevices(config.UsbDevices)
-	return updateUsbRelatedConfig()
+	return updateUsbRelatedConfig(false)
 }
 
 func rpcSetCloudUrl(apiUrl string, appUrl string) error {

@@ -177,7 +177,7 @@ func (u *UsbGadget) Init() error {
 
 	u.udc = udcs[0]
 
-	err := u.configureUsbGadget(false)
+	err := u.configureUsbGadget(false, true)
 	if err != nil {
 		return u.logError("unable to initialize USB stack", err)
 	}
@@ -185,13 +185,13 @@ func (u *UsbGadget) Init() error {
 	return nil
 }
 
-func (u *UsbGadget) UpdateGadgetConfig() error {
+func (u *UsbGadget) UpdateGadgetConfig(resetUsbIfNeeded bool) error {
 	u.configLock.Lock()
 	defer u.configLock.Unlock()
 
 	u.loadGadgetConfig()
 
-	err := u.configureUsbGadget(true)
+	err := u.configureUsbGadget(true, resetUsbIfNeeded)
 	if err != nil {
 		return u.logError("unable to update gadget config", err)
 	}
@@ -199,14 +199,28 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 	return nil
 }
 
-func (u *UsbGadget) configureUsbGadget(resetUsb bool) error {
-	return u.WithTransaction(func() error {
-		u.tx.MountConfigFS()
-		u.tx.CreateConfigPath()
-		u.tx.WriteGadgetConfig()
-		if resetUsb {
-			u.tx.RebindUsb(true)
+func (u *UsbGadget) configureUsbGadget(resetUsb bool, resetUsbIfNeeded bool) error {
+	f := func(resetUsbBefore bool, resetUsbAfter bool) func() error {
+		return func() error {
+			if resetUsbBefore {
+				u.tx.RebindUsb(true)
+			}
+			u.tx.MountConfigFS()
+			u.tx.CreateConfigPath()
+			u.tx.WriteGadgetConfig()
+			if resetUsbAfter {
+				u.tx.RebindUsb(true)
+			}
+			return nil
 		}
-		return nil
-	})
+	}
+
+	// initial attempt to configure the gadget
+	err := u.WithTransaction(f(false, resetUsb))
+	if err != nil && !resetUsbIfNeeded {
+		return err
+	}
+
+	// if the initial attempt failed, try to configure the gadget again with the resetUsb flag
+	return u.WithTransaction(f(true, resetUsb))
 }
