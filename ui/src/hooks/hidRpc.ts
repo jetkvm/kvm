@@ -386,7 +386,7 @@ export class CancelKeyboardMacroReportMessage extends RpcMessage {
 
     constructor(token: string) {
         super(HID_RPC_MESSAGE_TYPES.CancelKeyboardMacroReport);
-        this.token = (token == null || token === undefined || token === "")
+        this.token = (token == null || token === "")
             ? "00000000-0000-0000-0000-000000000000"
             : token;
     }
@@ -397,11 +397,11 @@ export class CancelKeyboardMacroReportMessage extends RpcMessage {
     }
 
     public static unmarshal(data: Uint8Array): CancelKeyboardMacroReportMessage | undefined {
-        if (data.length == 0) {
+        if (data.length === 0) {
             return new CancelKeyboardMacroReportMessage("00000000-0000-0000-0000-000000000000");
         }
 
-        if (data.length != 16) {
+        if (data.length !== 16) {
             throw new Error(`Invalid cancel message length: ${data.length}`);
         }
 

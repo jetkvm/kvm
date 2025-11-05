@@ -52,7 +52,6 @@ func GetQueueIndex(messageType MessageType) (int, time.Duration) {
 		return MacroQueue, 60 * time.Second
 	default:
 		return OtherQueue, 5 * time.Second
-
 	}
 }
 
