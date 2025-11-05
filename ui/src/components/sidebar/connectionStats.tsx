@@ -129,9 +129,8 @@ export default function ConnectionStatsSidebar() {
                         </div>
                       </GridCard>
                       <Button className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20" size="SM" type="button" theme="light" LeadingIcon={LuCopy} onClick={async () => {
-                        const ip = remoteIPAddress || "";
-                        if (await copy(ip)) {
-                          notifications.success((m.connection_stats_remote_ip_address_copy_success({ ip })));
+                        if (await copy(remoteIPAddress)) {
+                          notifications.success((m.connection_stats_remote_ip_address_copy_success({ ip: remoteIPAddress })));
                         } else {
                           notifications.error(m.connection_stats_remote_ip_address_copy_error());
                         }
