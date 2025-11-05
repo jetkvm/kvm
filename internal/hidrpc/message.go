@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
 // Message ..
@@ -135,17 +136,15 @@ func (m *Message) KeyboardReport() (KeyboardReport, error) {
 // Macro ..
 type KeyboardMacroStep struct {
 	Modifier byte   // 1 byte
-	Keys     []byte // 6 bytes: HidKeyBufferSize
+	Keys     []byte // 6 bytes: usbgadget.HidKeyBufferSize
 	Delay    uint16 // 2 bytes
 }
+
 type KeyboardMacroReport struct {
 	IsPaste   bool
 	StepCount uint32
 	Steps     []KeyboardMacroStep
 }
-
-// HidKeyBufferSize is the size of the keys buffer in the keyboard report.
-const HidKeyBufferSize int = 6
 
 // KeyboardMacroReport returns the keyboard macro report from the message.
 func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
@@ -171,7 +170,7 @@ func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
 			Delay:    binary.BigEndian.Uint16(m.d[offset+7 : offset+9]),
 		})
 
-		offset += 1 + HidKeyBufferSize + 2
+		offset += 1 + usbgadget.HidKeyBufferSize + 2
 	}
 
 	return KeyboardMacroReport{

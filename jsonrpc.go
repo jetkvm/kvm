@@ -1210,7 +1210,7 @@ func executeKeyboardMacro(ctx context.Context, isPaste bool, macro []hidrpc.Keyb
 		case <-ctx.Done():
 			// make sure keyboard state is reset and the client gets notified
 			gadget.ResumeSuspendKeyDownMessages()
-			err := rpcKeyboardReport(0, make([]byte, hidrpc.HidKeyBufferSize))
+			err := rpcKeyboardReport(0, make([]byte, usbgadget.HidKeyBufferSize))
 			if err != nil {
 				logger.Warn().Err(err).Msg("failed to reset keyboard state")
 			}

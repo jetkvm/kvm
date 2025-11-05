@@ -76,7 +76,7 @@ var keyboardReportDesc = []byte{
 
 const (
 	hidReadBufferSize = 8
-	hidKeyBufferSize  = 6
+	HidKeyBufferSize  = 6
 	hidErrorRollOver  = 0x01
 	// https://www.usb.org/sites/default/files/documents/hid1_11.pdf
 	// https://www.usb.org/sites/default/files/hut1_2.pdf
@@ -342,7 +342,7 @@ func (u *UsbGadget) keyboardWriteHidFile(modifier byte, keys []byte) error {
 		return err
 	}
 
-	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
+	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:HidKeyBufferSize]...))
 	if err != nil {
 		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
 		u.keyboardHidFile.Close()
@@ -386,11 +386,11 @@ func (u *UsbGadget) UpdateKeysDown(modifier byte, keys []byte) KeysDownState {
 func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 	defer u.resetUserInputTime()
 
-	if len(keys) > hidKeyBufferSize {
-		keys = keys[:hidKeyBufferSize]
+	if len(keys) > HidKeyBufferSize {
+		keys = keys[:HidKeyBufferSize]
 	}
-	if len(keys) < hidKeyBufferSize {
-		keys = append(keys, make([]byte, hidKeyBufferSize-len(keys))...)
+	if len(keys) < HidKeyBufferSize {
+		keys = append(keys, make([]byte, HidKeyBufferSize-len(keys))...)
 	}
 
 	err := u.keyboardWriteHidFile(modifier, keys)
@@ -473,7 +473,7 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 		// handle other keys that are not modifier keys by placing or removing them
 		// from the key buffer since the buffer tracks currently pressed keys
 		overrun := true
-		for i := range hidKeyBufferSize {
+		for i := range HidKeyBufferSize {
 			// If we find the key in the buffer the buffer, we either remove it (if press is false)
 			// or do nothing (if down is true) because the buffer tracks currently pressed keys
 			// and if we find a zero byte, we can place the key there (if press is true)
@@ -484,7 +484,7 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 					// we are releasing the key, remove it from the buffer
 					if keys[i] != 0 {
 						copy(keys[i:], keys[i+1:])
-						keys[hidKeyBufferSize-1] = 0 // Clear the last byte
+						keys[HidKeyBufferSize-1] = 0 // Clear the last byte
 					}
 				}
 				overrun = false // We found a slot for the key

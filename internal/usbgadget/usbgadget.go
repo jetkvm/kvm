@@ -135,7 +135,7 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		keyboardStateCtx:     keyboardCtx,
 		keyboardStateCancel:  keyboardCancel,
 		keyboardState:        0,
-		keysDownState:        KeysDownState{Modifier: 0, Keys: []byte{0, 0, 0, 0, 0, 0}}, // must be initialized to hidKeyBufferSize (6) zero bytes
+		keysDownState:        KeysDownState{Modifier: 0, Keys: []byte{0, 0, 0, 0, 0, 0}}, // must be initialized to usbgadget.HidKeyBufferSize (6) zero bytes
 		kbdAutoReleaseTimers: make(map[byte]*time.Timer),
 		enabledDevices:       *enabledDevices,
 		lastUserInput:        time.Now(),
