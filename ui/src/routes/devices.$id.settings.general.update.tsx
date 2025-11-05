@@ -21,7 +21,7 @@ export default function SettingsGeneralUpdateRoute() {
   const { setModalView, otaState } = useUpdateStore();
   const { send } = useJsonRpc();
 
-  const onClose = useCallback(() => {
+  const onClose = useCallback(async () => {
     navigate(".."); // back to the devices.$id.settings page
     // Add 1s delay between navigation and calling reload() to prevent reload from interrupting the navigation.
     await sleep(1000);
