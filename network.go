@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/jetkvm/kvm/internal/confparser"
+	"github.com/jetkvm/kvm/internal/lldp"
 	"github.com/jetkvm/kvm/internal/mdns"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/pkg/nmlite"
@@ -17,6 +18,7 @@ const (
 
 var (
 	networkManager *nmlite.NetworkManager
+	lldpService    *lldp.LLDP
 )
 
 type RpcNetworkSettings struct {
@@ -160,6 +162,18 @@ func initNetwork() error {
 	_ = nm.CleanUpLegacyDHCPClients()
 
 	networkManager = nm
+
+	lldpService = lldp.NewLLDP(&lldp.LLDPOptions{
+		InterfaceName: NetIfName,
+		EnableRx:      nc.LLDPMode.String != "disabled",
+		EnableTx:      nc.LLDPMode.String != "disabled",
+		OnChange: func(neighbors []lldp.Neighbor) {
+			writeJSONRPCEvent("lldpNeighbors", neighbors, currentSession)
+		},
+	})
+	if err := lldpService.Start(); err != nil {
+		networkLogger.Error().Err(err).Msg("failed to start LLDP service")
+	}
 
 	return nil
 }
@@ -311,4 +325,11 @@ func rpcToggleDHCPClient() error {
 	}
 
 	return rpcReboot(true)
+}
+
+func rpcGetLLDPNeighbors() []lldp.Neighbor {
+	if lldpService == nil {
+		return []lldp.Neighbor{}
+	}
+	return lldpService.GetNeighbors()
 }

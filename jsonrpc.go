@@ -1248,4 +1248,5 @@ var rpcHandlers = map[string]RPCHandler{
 	"setKeyboardMacros":      {Func: setKeyboardMacros, Params: []string{"params"}},
 	"getLocalLoopbackOnly":   {Func: rpcGetLocalLoopbackOnly},
 	"setLocalLoopbackOnly":   {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
+	"getLLDPNeighbors":       {Func: rpcGetLLDPNeighbors},
 }

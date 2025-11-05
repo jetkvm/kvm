@@ -6,7 +6,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import validator from "validator";
 
-import { NetworkSettings, NetworkState, useNetworkStateStore, useRTCStore } from "@hooks/stores";
+import { LLDPNeighbor, NetworkSettings, NetworkState, useNetworkStateStore, useRTCStore } from "@hooks/stores";
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
 import { Button } from "@components/Button";
@@ -23,9 +23,10 @@ import StaticIpv4Card from "@components/StaticIpv4Card";
 import StaticIpv6Card from "@components/StaticIpv6Card";
 import { useCopyToClipboard } from "@components/useCopyToClipBoard";
 import { netMaskFromCidr4 } from "@/utils/ip";
-import { getNetworkSettings, getNetworkState } from "@/utils/jsonrpc";
+import { callJsonRpc, getNetworkSettings, getNetworkState } from "@/utils/jsonrpc";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages";
+import LLDPNeighCard from "@components/LLDPNeigh";
 
 dayjs.extend(relativeTime);
 
@@ -96,6 +97,20 @@ export default function SettingsNetworkRoute() {
   const [criticalChanges, setCriticalChanges] = useState<
     { label: string; from: string; to: string }[]
   >([]);
+
+  const [lldpNeighbors, setLldpNeighbors] = useState<LLDPNeighbor[]>([]);
+  const fetchLLDPNeighbors = useCallback(async () => {
+    send("getLLDPNeighbors", {}, (resp) => {
+      if ("error" in resp) {
+        // notifications.error(m.network_lldp_neighbors_fetch_failed({ error: neighbors.error.message || m.unknown_error() }));
+      } else {
+        setLldpNeighbors(resp.result as LLDPNeighbor[]);
+      }
+    });
+  }, [setLldpNeighbors, send]);
+  useEffect(() => {
+    fetchLLDPNeighbors();
+  }, [fetchLLDPNeighbors]);
 
   const fetchNetworkData = useCallback(async () => {
     try {
@@ -459,6 +474,12 @@ export default function SettingsNetworkRoute() {
                   {...register("ipv4_mode")}
                 />
               </SettingsItem>
+
+              <div>
+                <AutoHeight>
+                  <LLDPNeighCard neighbors={lldpNeighbors} />
+                </AutoHeight>
+              </div>
 
               <div>
                 <AutoHeight>

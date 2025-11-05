@@ -29,6 +29,9 @@ linters:
       - linters:
           - gochecknoinits
         path: internal/logging/sse.go
+      - linters:
+          - govet
+        path: internal/lldp/bpf.go
     paths:
       - third_party$
       - builtin$
