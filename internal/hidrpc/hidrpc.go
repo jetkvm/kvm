@@ -42,16 +42,17 @@ const (
 func GetQueueIndex(messageType MessageType) (int, time.Duration) {
 	switch messageType {
 	case TypeHandshake:
-		return HandshakeQueue, 1
+		return HandshakeQueue, 1 * time.Second
 	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroState:
-		return KeyboardQueue, 1
+		return KeyboardQueue, 1 * time.Second
 	case TypePointerReport, TypeMouseReport, TypeWheelReport:
-		return MouseQueue, 1
+		return MouseQueue, 1 * time.Second
 	// we don't want to block the queue for these messages
 	case TypeKeyboardMacroReport, TypeCancelKeyboardMacroReport, TypeKeyboardMacroTokenState:
-		return MacroQueue, 60 // 1 minute timeout
+		return MacroQueue, 60 * time.Second
 	default:
-		return OtherQueue, 5
+		return OtherQueue, 5 * time.Second
+
 	}
 }
 
