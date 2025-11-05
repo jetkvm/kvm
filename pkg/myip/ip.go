@@ -141,6 +141,7 @@ func (ps *PublicIPState) Start() {
 	if ps.timer != nil {
 		ps.timer.Stop()
 	}
+
 	if ps.cancel != nil {
 		ps.cancel()
 	}
@@ -159,7 +160,9 @@ func (ps *PublicIPState) Stop() {
 
 	if ps.cancel != nil {
 		ps.cancel()
+		ps.cancel = nil
 	}
+
 	if ps.timer != nil {
 		ps.timer.Stop()
 		ps.timer = nil
