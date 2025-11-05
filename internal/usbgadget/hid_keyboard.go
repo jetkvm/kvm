@@ -161,13 +161,18 @@ func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 }
 
 var suspendedKeyDownMessages bool = false
+var suspendedKeyDownMessagesLock sync.Mutex
 
 func (u *UsbGadget) SuspendKeyDownMessages() {
+	suspendedKeyDownMessagesLock.Lock()
 	suspendedKeyDownMessages = true
+	suspendedKeyDownMessagesLock.Unlock()
 }
 
 func (u *UsbGadget) ResumeSuspendKeyDownMessages() {
+	suspendedKeyDownMessagesLock.Lock()
 	suspendedKeyDownMessages = false
+	suspendedKeyDownMessagesLock.Unlock()
 }
 
 func (u *UsbGadget) SetOnKeepAliveReset(f func()) {
