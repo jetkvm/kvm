@@ -261,8 +261,8 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 	}()
 
-	for queue := range session.hidQueues {
-		go session.handleQueue(session.hidQueues[queue])
+	for queueIndex := range session.hidQueues {
+		go session.handleQueue(session.hidQueues[queueIndex])
 	}
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
