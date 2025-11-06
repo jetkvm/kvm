@@ -2,8 +2,6 @@ package lldp
 
 import (
 	"fmt"
-	"sort"
-	"strings"
 	"time"
 )
 
@@ -50,8 +48,10 @@ func (l *LLDP) addNeighbor(neighbor *Neighbor, ttl time.Duration) {
 		}
 	}
 
-	logger.Info().Msg("adding neighbor")
+	logger.Trace().Msg("adding neighbor")
 	l.neighbors.Set(key, *neighbor, ttl)
+
+	l.onChange(l.GetNeighbors())
 }
 
 func (l *LLDP) deleteNeighbor(neighbor *Neighbor) {
@@ -61,6 +61,8 @@ func (l *LLDP) deleteNeighbor(neighbor *Neighbor) {
 
 	logger.Info().Msg("deleting neighbor")
 	l.neighbors.Delete(neighbor.cacheKey())
+
+	l.onChange(l.GetNeighbors())
 }
 
 func (l *LLDP) GetNeighbors() []Neighbor {
@@ -70,11 +72,6 @@ func (l *LLDP) GetNeighbors() []Neighbor {
 	for _, item := range items {
 		neighbors = append(neighbors, item.Value())
 	}
-
-	// sort based on MAC address
-	sort.Slice(neighbors, func(i, j int) bool {
-		return strings.Compare(neighbors[i].Mac, neighbors[j].Mac) > 0
-	})
 
 	return neighbors
 }

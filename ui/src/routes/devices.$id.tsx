@@ -21,11 +21,13 @@ import { checkAuth, isInCloud, isOnDevice } from "@/main";
 import {
   KeyboardLedState,
   KeysDownState,
+  LLDPNeighbor,
   NetworkState,
   OtaState,
   PostRebootAction,
   USBStates,
   useHidStore,
+  useLLDPNeighborsStore,
   useNetworkStateStore,
   User,
   useRTCStore,
@@ -612,6 +614,7 @@ export default function KvmIdRoute() {
   }, 10000);
 
   const { setNetworkState } = useNetworkStateStore();
+  const { setNeighbors } = useLLDPNeighborsStore();
   const { setHdmiState } = useVideoStore();
   const {
     keyboardLedState, setKeyboardLedState,
@@ -632,6 +635,12 @@ export default function KvmIdRoute() {
       const usbState = resp.params as unknown as USBStates;
       console.debug("Setting USB state", usbState);
       setUsbState(usbState);
+    }
+
+    if (resp.method === "lldpNeighbors") {
+      const neighbors = resp.params as LLDPNeighbor[];
+      console.debug("Setting LLDP neighbors", neighbors);
+      setNeighbors(neighbors);
     }
 
     if (resp.method === "videoInputState") {

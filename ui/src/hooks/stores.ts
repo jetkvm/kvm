@@ -761,7 +761,7 @@ export type IPv6Mode =
   | "link_local"
   | "unknown";
 export type IPv4Mode = "disabled" | "static" | "dhcp" | "unknown";
-export type LLDPMode = "disabled" | "basic" | "all" | "tx_only" | "rx_only" | "unknown";
+export type LLDPMode = "disabled" | "rx_only" | "tx_only" | "rx_and_tx" | "unknown";
 export type mDNSMode = "disabled" | "auto" | "ipv4_only" | "ipv6_only" | "unknown";
 export type TimeSyncMode =
   | "ntp_only"
@@ -833,6 +833,18 @@ export const useNetworkStateStore = create<NetworkState>((set, get) => ({
     lease.lease_expiry = expiry;
     set({ dhcp_lease: lease });
   },
+}));
+
+
+
+export interface LLDPNeighborsState {
+  neighbors: LLDPNeighbor[];
+  setNeighbors: (neighbors: LLDPNeighbor[]) => void;
+}
+
+export const useLLDPNeighborsStore = create<LLDPNeighborsState>((set) => ({
+  neighbors: [],
+  setNeighbors: (neighbors: LLDPNeighbor[]) => set({ neighbors }),
 }));
 
 export interface KeySequenceStep {

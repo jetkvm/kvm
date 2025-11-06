@@ -144,6 +144,15 @@ func validateNetworkConfig() {
 	}
 }
 
+func getLLDPAdvertiseOptions(nm *nmlite.NetworkManager) *lldp.AdvertiseOptions {
+	return &lldp.AdvertiseOptions{
+		SysName:             nm.Hostname(),
+		SysDescription:      toLLDPSysDescription(),
+		SysCapabilities:     []string{"other", "router", "wlanap"},
+		EnabledCapabilities: []string{"other"},
+	}
+}
+
 func initNetwork() error {
 	ensureConfigLoaded()
 
@@ -163,17 +172,11 @@ func initNetwork() error {
 
 	networkManager = nm
 
-	advertiseOptions := &lldp.AdvertiseOptions{
-		SysName:             networkManager.Hostname(),
-		SysDescription:      toLLDPSysDescription(nc),
-		SysCapabilities:     []string{"other", "router", "wlanap"},
-		EnabledCapabilities: []string{"other"},
-	}
-
+	advertiseOptions := getLLDPAdvertiseOptions(nm)
 	lldpService = lldp.NewLLDP(&lldp.Options{
 		InterfaceName:    NetIfName,
-		EnableRx:         nc.LLDPMode.String != "disabled",
-		EnableTx:         nc.LLDPMode.String != "disabled",
+		EnableRx:         nc.ShouldEnableLLDPReceive(),
+		EnableTx:         nc.ShouldEnableLLDPTransmit(),
 		AdvertiseOptions: advertiseOptions,
 		OnChange: func(neighbors []lldp.Neighbor) {
 			writeJSONRPCEvent("lldpNeighbors", neighbors, currentSession)
@@ -187,13 +190,28 @@ func initNetwork() error {
 	return nil
 }
 
-func toLLDPSysDescription(nc *types.NetworkConfig) string {
+func toLLDPSysDescription() string {
 	systemVersion, appVersion, err := GetLocalVersion()
 	if err == nil {
 		return fmt.Sprintf("JetKVM (app: %s)", GetBuiltAppVersion())
 	}
 
 	return fmt.Sprintf("JetKVM (app: %s, system: %s)", appVersion.String(), systemVersion.String())
+}
+
+func updateLLDPOptions(nc *types.NetworkConfig) {
+	if lldpService == nil {
+		return
+	}
+
+	if err := lldpService.SetRxAndTx(nc.ShouldEnableLLDPReceive(), nc.ShouldEnableLLDPTransmit()); err != nil {
+		networkLogger.Error().Err(err).Msg("failed to set LLDP RX and TX")
+	}
+
+	advertiseOptions := getLLDPAdvertiseOptions(networkManager)
+	if err := lldpService.SetAdvertiseOptions(advertiseOptions); err != nil {
+		networkLogger.Error().Err(err).Msg("failed to set LLDP advertise options")
+	}
 }
 
 func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
@@ -209,6 +227,12 @@ func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
 }
 
 func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (rebootRequired bool, postRebootAction *PostRebootAction) {
+	rebootReasons := []string{}
+	defer func() {
+		if len(rebootReasons) > 0 {
+			networkLogger.Info().Strs("reasons", rebootReasons).Msg("reboot required")
+		}
+	}()
 	oldDhcpClient := oldConfig.DHCPClient.String
 
 	l := networkLogger.With().
@@ -217,9 +241,10 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 		Logger()
 
 	// DHCP client change always requires reboot
-	if newConfig.DHCPClient.String != oldDhcpClient {
+	newDhcpClient := newConfig.DHCPClient.String
+	if newDhcpClient != oldDhcpClient {
 		rebootRequired = true
-		l.Info().Msg("DHCP client changed, reboot required")
+		rebootReasons = append(rebootReasons, fmt.Sprintf("DHCP client changed from %s to %s", oldDhcpClient, newDhcpClient))
 		return rebootRequired, postRebootAction
 	}
 
@@ -229,7 +254,7 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 	// IPv4 mode change requires reboot
 	if newIPv4Mode != oldIPv4Mode {
 		rebootRequired = true
-		l.Info().Msg("IPv4 mode changed with udhcpc, reboot required")
+		rebootReasons = append(rebootReasons, fmt.Sprintf("IPv4 mode changed from %s to %s", oldIPv4Mode, newIPv4Mode))
 
 		if newIPv4Mode == "static" && oldIPv4Mode != "static" {
 			postRebootAction = &PostRebootAction{
@@ -243,8 +268,11 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 	}
 
 	// IPv4 static config changes require reboot
-	if !reflect.DeepEqual(oldConfig.IPv4Static, newConfig.IPv4Static) {
+	// but if it's not activated, don't care about the changes
+	if !reflect.DeepEqual(oldConfig.IPv4Static, newConfig.IPv4Static) && newIPv4Mode == "static" {
 		rebootRequired = true
+		// TODO: do not restart if it's just the DNS servers that changed
+		rebootReasons = append(rebootReasons, "IPv4 static config changed")
 
 		// Handle IP change for redirect (only if both are not nil and IP changed)
 		if newConfig.IPv4Static != nil && oldConfig.IPv4Static != nil &&
@@ -253,17 +281,17 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 				HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
 				RedirectTo:  fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
 			}
-
-			l.Info().Interface("postRebootAction", postRebootAction).Msg("IPv4 static config changed, reboot required")
 		}
 
 		return rebootRequired, postRebootAction
 	}
 
 	// IPv6 mode change requires reboot when using udhcpc
+	oldIPv6Mode := oldConfig.IPv6Mode.String
+	newIPv6Mode := newConfig.IPv6Mode.String
 	if newConfig.IPv6Mode.String != oldConfig.IPv6Mode.String && oldDhcpClient == "udhcpc" {
 		rebootRequired = true
-		l.Info().Msg("IPv6 mode changed with udhcpc, reboot required")
+		rebootReasons = append(rebootReasons, fmt.Sprintf("IPv6 mode changed from %s to %s when using udhcpc", oldIPv6Mode, newIPv6Mode))
 	}
 
 	return rebootRequired, postRebootAction
@@ -288,6 +316,8 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 
 	l.Debug().Msg("setting new config")
 
+	// TODO: do not restart everything if it's just the LLDP mode that changed
+
 	// Check if reboot is needed
 	rebootRequired, postRebootAction := shouldRebootForNetworkChange(config.NetworkConfig, netConfig)
 
@@ -310,6 +340,9 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 		return nil, err
 	}
 	config.NetworkConfig = newConfig
+
+	// update the LLDP advertise options
+	updateLLDPOptions(newConfig)
 
 	l.Debug().Msg("saving new config")
 	if err := SaveConfig(); err != nil {

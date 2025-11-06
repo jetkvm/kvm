@@ -116,16 +116,6 @@ func (l *LLDP) startRx() error {
 	return l.startCapture()
 }
 
-// StopRx stops the LLDP receiver if running
-func (l *LLDP) StopRx() error {
-	return l.stopCapture()
-}
-
-// StopTx stops the LLDP transmitter if running
-func (l *LLDP) StopTx() error {
-	return l.stopTx()
-}
-
 // SetAdvertiseOptions updates the advertise options and resends LLDP packets if TX is running
 func (l *LLDP) SetAdvertiseOptions(opts *AdvertiseOptions) error {
 	l.mu.Lock()
@@ -139,6 +129,37 @@ func (l *LLDP) SetAdvertiseOptions(opts *AdvertiseOptions) error {
 			return fmt.Errorf("failed to resend LLDP packet with new options: %w", err)
 		}
 		l.l.Info().Msg("advertise options changed, resent LLDP packet")
+	}
+
+	return nil
+}
+
+func (l *LLDP) SetRxAndTx(rx, tx bool) error {
+	l.mu.Lock()
+	l.enableRx = rx
+	l.enableTx = tx
+	l.mu.Unlock()
+
+	// if rx is enabled, start the RX
+	if rx {
+		if err := l.startRx(); err != nil {
+			return fmt.Errorf("failed to start RX: %w", err)
+		}
+	} else {
+		if err := l.stopRx(); err != nil {
+			return fmt.Errorf("failed to stop RX: %w", err)
+		}
+	}
+
+	// if tx is enabled, start the TX
+	if tx {
+		if err := l.startTx(); err != nil {
+			return fmt.Errorf("failed to start TX: %w", err)
+		}
+	} else {
+		if err := l.stopTx(); err != nil {
+			return fmt.Errorf("failed to stop TX: %w", err)
+		}
 	}
 
 	return nil

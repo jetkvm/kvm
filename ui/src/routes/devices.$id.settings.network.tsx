@@ -564,8 +564,9 @@ export default function SettingsNetworkRoute() {
                           size="SM"
                           options={[
                             { value: "disabled", label: m.network_ll_dp_disabled() },
-                            { value: "basic", label: m.network_ll_dp_basic() },
-                            { value: "all", label: m.network_ll_dp_all() },
+                            { value: "rx_only", label: m.network_ll_dp_rx_only() },
+                            { value: "tx_only", label: m.network_ll_dp_tx_only() },
+                            { value: "rx_and_tx", label: m.network_ll_dp_rx_and_tx() },
                           ]}
                           {...register("lldp_mode")}
                         />

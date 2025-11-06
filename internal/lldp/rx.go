@@ -166,8 +166,7 @@ func (l *LLDP) handlePacket(packet gopacket.Packet, logger *zerolog.Logger) erro
 
 	lldpRaw := packet.Layer(layers.LayerTypeLinkLayerDiscovery)
 	if lldpRaw != nil {
-		logger.Trace().Msg("Found LLDP Frame")
-		l.l.Info().Hex("packet", packet.Data()).Msg("received packet")
+		l.l.Trace().Hex("packet", packet.Data()).Msg("received LLDP frame")
 
 		lldpInfo := packet.Layer(layers.LayerTypeLinkLayerDiscoveryInfo)
 		if lldpInfo == nil {
@@ -183,7 +182,7 @@ func (l *LLDP) handlePacket(packet gopacket.Packet, logger *zerolog.Logger) erro
 
 	cdpRaw := packet.Layer(layers.LayerTypeCiscoDiscovery)
 	if cdpRaw != nil {
-		logger.Trace().Msg("Found CDP Frame")
+		l.l.Trace().Hex("packet", packet.Data()).Msg("received CDP frame")
 
 		cdpInfo := packet.Layer(layers.LayerTypeCiscoDiscoveryInfo)
 		if cdpInfo == nil {
@@ -351,6 +350,9 @@ func (l *LLDP) stopCapture() error {
 		l.rxCancel = nil
 	}
 
+	// Wait a bit for goroutine to finish
+	time.Sleep(1000 * time.Millisecond)
+
 	if l.tPacketRx != nil {
 		l.tPacketRx.Close()
 		l.tPacketRx = nil
@@ -360,7 +362,17 @@ func (l *LLDP) stopCapture() error {
 		l.pktSourceRx = nil
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	return nil
+}
+
+func (l *LLDP) stopRx() error {
+	if err := l.stopCapture(); err != nil {
+		return err
+	}
+
+	// clean up the neighbors table
+	l.neighbors.DeleteAll()
+	l.onChange([]Neighbor{})
 
 	return nil
 }
