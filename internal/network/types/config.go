@@ -54,7 +54,8 @@ type NetworkConfig struct {
 }
 
 func (c *NetworkConfig) ShouldEnableLLDPTransmit() bool {
-	return c.LLDPMode.String != "rx_only" && c.LLDPMode.String != "disabled"
+	// backwards compatibility: `basic` mode will be `rx_only` due to privacy concerns
+	return c.LLDPMode.String != "rx_only" && c.LLDPMode.String != "disabled" && c.LLDPMode.String != "basic"
 }
 
 func (c *NetworkConfig) ShouldEnableLLDPReceive() bool {

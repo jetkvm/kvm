@@ -26,7 +26,6 @@ type LLDP struct {
 	enableRx bool
 	enableTx bool
 
-	packets          chan gopacket.Packet
 	interfaceName    string
 	advertiseOptions *AdvertiseOptions
 	onChange         func(neighbors []Neighbor)

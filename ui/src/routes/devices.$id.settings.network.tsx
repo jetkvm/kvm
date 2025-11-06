@@ -6,7 +6,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import validator from "validator";
 
-import { LLDPNeighbor, NetworkSettings, NetworkState, useNetworkStateStore, useRTCStore } from "@hooks/stores";
+import { NetworkSettings, NetworkState, useLLDPNeighborsStore, useNetworkStateStore, useRTCStore } from "@hooks/stores";
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
 import { Button } from "@components/Button";
@@ -98,11 +98,12 @@ export default function SettingsNetworkRoute() {
     { label: string; from: string; to: string }[]
   >([]);
 
-  const [lldpNeighbors, setLldpNeighbors] = useState<LLDPNeighbor[]>([]);
+  const setLLDPNeighbors = useLLDPNeighborsStore(state => state.setNeighbors);
+  const lldpNeighbors = useLLDPNeighborsStore(state => state.neighbors);
   const fetchLLDPNeighbors = useCallback(async () => {
     const neighbors = await getLLDPNeighbors();
-    setLldpNeighbors(neighbors);
-  }, [setLldpNeighbors]);
+    setLLDPNeighbors(neighbors);
+  }, [setLLDPNeighbors]);
 
   useEffect(() => {
     fetchLLDPNeighbors();
@@ -572,9 +573,9 @@ export default function SettingsNetworkRoute() {
                         />
                       </SettingsItem>
                     </div>
-                    <AutoHeight>
+                    {lldpNeighbors.length > 0 && <AutoHeight>
                       <LLDPNeighborsCard neighbors={lldpNeighbors} />
-                    </AutoHeight>
+                    </AutoHeight>}
                   </div>
                 )
               }

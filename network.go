@@ -179,6 +179,7 @@ func initNetwork() error {
 		EnableTx:         nc.ShouldEnableLLDPTransmit(),
 		AdvertiseOptions: advertiseOptions,
 		OnChange: func(neighbors []lldp.Neighbor) {
+			// TODO: send deltas instead of the whole list
 			writeJSONRPCEvent("lldpNeighbors", neighbors, currentSession)
 		},
 		Logger: networkLogger,

@@ -3,7 +3,10 @@ package lldp
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/gopacket"
@@ -41,13 +44,6 @@ func (l *LLDP) setUpCapture() error {
 		return err
 	}
 	logger.Info().Msg("created TPacketRx")
-
-	// Double-check: another goroutine might have set it up while we were creating
-	if l.tPacketRx != nil {
-		// Another goroutine already set it up, close our instance
-		tPacketRx.Close()
-		return nil
-	}
 
 	// set up multicast addresses
 	// otherwise the kernel might discard the packets
@@ -98,23 +94,44 @@ func (l *LLDP) doCapture(logger *zerolog.Logger, rxCtx context.Context) {
 		l.mu.Unlock()
 	}()
 
-	packetChan := l.pktSourceRx.Packets()
-	for {
-		select {
-		case packet, ok := <-packetChan:
-			if !ok {
-				logger.Info().Msg("packet source closed")
-				return
-			}
-			if err := l.handlePacket(packet, logger); err != nil {
+	// TODO: use a channel to handle the packets
+	// PacketSource.Packets() is not reliable and can cause panics and the upstream hasn't fixed it yet
+	for rxCtx.Err() == nil {
+		if l.pktSourceRx == nil || l.tPacketRx == nil {
+			logger.Error().Msg("packet source or TPacketRx not initialized")
+			break
+		}
+
+		packet, err := l.pktSourceRx.NextPacket()
+		if err == nil {
+			if handleErr := l.handlePacket(packet, logger); handleErr != nil {
 				logger.Error().
-					Err(err).
+					Err(handleErr).
 					Msg("error handling packet")
 			}
-		case <-rxCtx.Done():
-			logger.Info().Msg("LLDP receiver stopped")
-			return
+			continue
 		}
+
+		// Immediately retry for temporary network errors and EAGAIN
+		// temporary has been deprecated and most cases are timeouts
+		if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+			continue
+		}
+		if err == syscall.EAGAIN {
+			continue
+		}
+
+		// Immediately break for known unrecoverable errors
+		if err == io.EOF || err == io.ErrUnexpectedEOF ||
+			err == io.ErrNoProgress || err == io.ErrClosedPipe || err == io.ErrShortBuffer ||
+			err == syscall.EBADF ||
+			strings.Contains(err.Error(), "use of closed file") {
+			break
+		}
+
+		logger.Error().
+			Err(err).
+			Msg("error receiving LLDP packet")
 	}
 }
 
@@ -348,17 +365,21 @@ func (l *LLDP) stopCapture() error {
 	if rxCancel != nil {
 		rxCancel()
 		l.rxCancel = nil
+
+		logger.Info().Msg("cancelled RX context, waiting for goroutine to finish")
 	}
 
 	// Wait a bit for goroutine to finish
-	time.Sleep(1000 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	if l.tPacketRx != nil {
+		logger.Info().Msg("closing TPacketRx")
 		l.tPacketRx.Close()
 		l.tPacketRx = nil
 	}
 
 	if l.pktSourceRx != nil {
+		logger.Info().Msg("closing packet source")
 		l.pktSourceRx = nil
 	}
 
