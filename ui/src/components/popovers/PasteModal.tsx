@@ -54,10 +54,12 @@ export default function PasteModal() {
   }, [send, setKeyboardLayout]);
 
   const onCancelPasteMode = useCallback(() => {
-    cancelExecuteMacro();
+    if (isPasteInProgress) {
+      cancelExecuteMacro();
+    }
     setDisableVideoFocusTrap(false);
     setInvalidChars([]);
-  }, [setDisableVideoFocusTrap, cancelExecuteMacro]);
+  }, [isPasteInProgress, setDisableVideoFocusTrap, cancelExecuteMacro]);
 
   const onConfirmPaste = useCallback(async () => {
     if (!TextAreaRef.current || !selectedKeyboard) return;
@@ -226,7 +228,7 @@ export default function PasteModal() {
           <Button
             size="SM"
             theme="blank"
-            text={m.cancel()}
+            text={isPasteInProgress ? m.cancel() : m.close()}
             onClick={() => {
               onCancelPasteMode();
               close();
