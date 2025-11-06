@@ -1,7 +1,6 @@
 package lldp
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -27,22 +26,28 @@ type Neighbor struct {
 	Values            map[string]string  `json:"values"`
 }
 
-func (n *Neighbor) cacheKey() string {
-	return fmt.Sprintf("%s-%s", n.Mac, n.Source)
+type neighborCacheKey struct {
+	mac    string
+	source string
+}
+
+func (n *Neighbor) cacheKey() neighborCacheKey {
+	return neighborCacheKey{mac: n.Mac, source: n.Source}
 }
 
 func (l *LLDP) addNeighbor(neighbor *Neighbor, ttl time.Duration) {
 	logger := l.l.With().
+		Str("source", neighbor.Source).
 		Str("mac", neighbor.Mac).
 		Interface("neighbor", neighbor).
 		Logger()
 
 	key := neighbor.cacheKey()
 
-	current_neigh := l.neighbors.Get(key)
-	if current_neigh != nil {
-		current_source := current_neigh.Value().Source
-		if current_source == "lldp" && neighbor.Source != "lldp" {
+	currentNeighbor := l.neighbors.Get(key)
+	if currentNeighbor != nil {
+		currentSource := currentNeighbor.Value().Source
+		if currentSource == "lldp" && neighbor.Source != "lldp" {
 			logger.Info().Msg("skip updating neighbor, as LLDP has higher priority")
 			return
 		}
@@ -56,6 +61,7 @@ func (l *LLDP) addNeighbor(neighbor *Neighbor, ttl time.Duration) {
 
 func (l *LLDP) deleteNeighbor(neighbor *Neighbor) {
 	logger := l.l.With().
+		Str("source", neighbor.Source).
 		Str("mac", neighbor.Mac).
 		Logger()
 

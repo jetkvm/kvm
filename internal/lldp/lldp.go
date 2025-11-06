@@ -30,15 +30,17 @@ type LLDP struct {
 	advertiseOptions *AdvertiseOptions
 	onChange         func(neighbors []Neighbor)
 
-	neighbors *ttlcache.Cache[string, Neighbor]
+	neighbors *ttlcache.Cache[neighborCacheKey, Neighbor]
 
 	// State tracking
-	rxRunning bool
 	txRunning bool
 	txCtx     context.Context
 	txCancel  context.CancelFunc
-	rxCtx     context.Context
-	rxCancel  context.CancelFunc
+
+	rxRunning   bool
+	rxWaitGroup *sync.WaitGroup
+	rxCtx       context.Context
+	rxCancel    context.CancelFunc
 }
 
 type AdvertiseOptions struct {
@@ -72,8 +74,9 @@ func NewLLDP(opts *Options) *LLDP {
 		advertiseOptions: opts.AdvertiseOptions,
 		enableRx:         opts.EnableRx,
 		enableTx:         opts.EnableTx,
+		rxWaitGroup:      &sync.WaitGroup{},
 		l:                opts.Logger,
-		neighbors:        ttlcache.New(ttlcache.WithTTL[string, Neighbor](1 * time.Hour)),
+		neighbors:        ttlcache.New(ttlcache.WithTTL[neighborCacheKey, Neighbor](1 * time.Hour)),
 		onChange:         opts.OnChange,
 	}
 }

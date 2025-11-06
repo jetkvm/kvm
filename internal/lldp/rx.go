@@ -92,46 +92,40 @@ func (l *LLDP) doCapture(logger *zerolog.Logger, rxCtx context.Context) {
 		l.mu.Lock()
 		l.rxRunning = false
 		l.mu.Unlock()
+
+		logger.Info().Msg("RX goroutine finished")
+
+		l.rxWaitGroup.Done()
 	}()
+
+	l.rxWaitGroup.Add(1)
 
 	// TODO: use a channel to handle the packets
 	// PacketSource.Packets() is not reliable and can cause panics and the upstream hasn't fixed it yet
 	for rxCtx.Err() == nil {
-		if l.pktSourceRx == nil || l.tPacketRx == nil {
-			logger.Error().Msg("packet source or TPacketRx not initialized")
-			break
-		}
-
 		packet, err := l.pktSourceRx.NextPacket()
-		if err == nil {
-			if handleErr := l.handlePacket(packet, logger); handleErr != nil {
-				logger.Error().
-					Err(handleErr).
-					Msg("error handling packet")
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Msg("error getting next packet")
+
+			// Immediately break for known unrecoverable errors
+			if err == io.EOF || err == io.ErrUnexpectedEOF ||
+				err == io.ErrNoProgress || err == io.ErrClosedPipe || err == io.ErrShortBuffer ||
+				err == syscall.EBADF ||
+				strings.Contains(err.Error(), "use of closed file") {
+				return
 			}
+
 			continue
 		}
 
-		// Immediately retry for temporary network errors and EAGAIN
-		// temporary has been deprecated and most cases are timeouts
-		if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+		if err := l.handlePacket(packet, logger); err != nil {
+			logger.Error().
+				Err(err).
+				Msg("error handling packet")
 			continue
 		}
-		if err == syscall.EAGAIN {
-			continue
-		}
-
-		// Immediately break for known unrecoverable errors
-		if err == io.EOF || err == io.ErrUnexpectedEOF ||
-			err == io.ErrNoProgress || err == io.ErrClosedPipe || err == io.ErrShortBuffer ||
-			err == syscall.EBADF ||
-			strings.Contains(err.Error(), "use of closed file") {
-			break
-		}
-
-		logger.Error().
-			Err(err).
-			Msg("error receiving LLDP packet")
 	}
 }
 
@@ -369,8 +363,10 @@ func (l *LLDP) stopCapture() error {
 		logger.Info().Msg("cancelled RX context, waiting for goroutine to finish")
 	}
 
-	// Wait a bit for goroutine to finish
-	time.Sleep(500 * time.Millisecond)
+	// wait for the goroutine to finish
+	start := time.Now()
+	l.rxWaitGroup.Wait()
+	logger.Info().Dur("duration", time.Since(start)).Msg("RX goroutine finished")
 
 	if l.tPacketRx != nil {
 		logger.Info().Msg("closing TPacketRx")

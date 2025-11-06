@@ -60,10 +60,10 @@ var (
 func toLLDPCapabilitiesBytes(capabilities []string) uint16 {
 	r := uint16(0)
 	for _, capability := range capabilities {
-		if _, ok := capabilityMap[capability]; !ok {
-			continue
+		mask, ok := capabilityMap[capability]
+		if ok {
+			r |= mask
 		}
-		r |= capabilityMap[capability]
 	}
 	return r
 }
