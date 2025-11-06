@@ -248,14 +248,11 @@ func (l *LLDP) handlePacketLLDP(mac string, raw *layers.LinkLayerDiscovery, info
 		Source: "lldp",
 		Mac:    mac,
 	}
-	gotEnd := false
 
 	ttl := lldpDefaultTTL
 
 	for _, v := range raw.Values {
 		switch v.Type {
-		case layers.LLDPTLVEnd:
-			gotEnd = true
 		case layers.LLDPTLVChassisID:
 			n.ChassisID = string(raw.ChassisID.ID)
 			n.Values["chassis_id"] = n.ChassisID
@@ -292,7 +289,10 @@ func (l *LLDP) handlePacketLLDP(mac string, raw *layers.LinkLayerDiscovery, info
 		}
 	}
 
-	if gotEnd || ttl < 1*time.Second {
+	// delete the neighbor if the TTL is less than 1 second
+	// LLDP shutdown frame should have a TTL of 0 and contains mandatory TLVs only
+	// but we will simply ignore the TLVs check for now
+	if ttl < 1*time.Second {
 		l.deleteNeighbor(n)
 	} else {
 		l.addNeighbor(n, ttl)
