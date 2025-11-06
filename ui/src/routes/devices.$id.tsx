@@ -557,8 +557,9 @@ export default function KvmIdRoute() {
       clearCandidatePairStats();
       setSidebarView(null);
       setPeerConnection(null);
+      setRpcDataChannel(null);
     };
-  }, [clearCandidatePairStats, clearInboundRtpStats, setPeerConnection, setSidebarView]);
+  }, [clearCandidatePairStats, clearInboundRtpStats, setPeerConnection, setSidebarView, setRpcDataChannel]);
 
   // TURN server usage detection
   useEffect(() => {
