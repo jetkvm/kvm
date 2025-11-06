@@ -16,9 +16,15 @@ const (
 	afPacketSnaplen    = 9216
 )
 
+// afpacketComputeSize computes the block_size and the num_blocks in such a way that the
+// allocated mmap buffer is close to but smaller than targetSizeMb.
+// The restriction is that the blockSize must be divisible by both the
+// frameSize and pageSize.
+//
+// See also: https://github.com/google/gopacket/blob/master/examples/afpacket/afpacket.go#L118
 func afPacketComputeSize(
 	targetSizeMb int,
-	snaplen int,
+	snapLen int,
 	pageSize int,
 ) (
 	frameSize int,
@@ -26,10 +32,17 @@ func afPacketComputeSize(
 	numBlocks int,
 	err error,
 ) {
-	if snaplen < pageSize {
-		frameSize = pageSize / (pageSize / snaplen)
+	if snapLen < pageSize {
+		// When snapLen < pageSize, find the largest value <= pageSize that
+		// is a multiple of snapLen and divides evenly into pageSize.
+		// This ensures frameSize is a divisor of pageSize.
+		// Example: snapLen=512, pageSize=4096 -> frameSize=512
+		// Example: snapLen=1000, pageSize=4096 -> frameSize=1024
+		frameSize = pageSize / (pageSize / snapLen)
 	} else {
-		frameSize = (snaplen/pageSize + 1) * pageSize
+		// When snapLen >= pageSize, round up to the next multiple of pageSize.
+		// Example: snapLen=9216, pageSize=4096 -> frameSize=12288 (3 pages)
+		frameSize = ((snapLen / pageSize) + 1) * pageSize
 	}
 
 	// 128 is the default from the gopacket library so just use that
@@ -37,7 +50,7 @@ func afPacketComputeSize(
 	numBlocks = (targetSizeMb * 1024 * 1024) / blockSize
 
 	if numBlocks == 0 {
-		return 0, 0, 0, fmt.Errorf("interface buffersize is too small")
+		return 0, 0, 0, fmt.Errorf("interface bufferSize is too small")
 	}
 
 	return frameSize, blockSize, numBlocks, nil

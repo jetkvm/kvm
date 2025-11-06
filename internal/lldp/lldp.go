@@ -1,6 +1,9 @@
 package lldp
 
 import (
+	"context"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/gopacket"
@@ -13,30 +16,50 @@ import (
 var defaultLogger = logging.GetSubsystemLogger("lldp")
 
 type LLDP struct {
-	l         *zerolog.Logger
-	tPacket   *afpacket.TPacket
-	pktSource *gopacket.PacketSource
+	mu sync.RWMutex
+
+	l           *zerolog.Logger
+	tPacketRx   *afpacket.TPacket
+	tPacketTx   *afpacket.TPacket
+	pktSourceRx *gopacket.PacketSource
 
 	enableRx bool
 	enableTx bool
 
-	packets       chan gopacket.Packet
-	interfaceName string
-	stop          chan struct{}
-	onChange      func(neighbors []Neighbor)
+	packets          chan gopacket.Packet
+	interfaceName    string
+	advertiseOptions *AdvertiseOptions
+	onChange         func(neighbors []Neighbor)
 
 	neighbors *ttlcache.Cache[string, Neighbor]
+
+	// State tracking
+	rxRunning bool
+	txRunning bool
+	txCtx     context.Context
+	txCancel  context.CancelFunc
+	rxCtx     context.Context
+	rxCancel  context.CancelFunc
 }
 
-type LLDPOptions struct {
-	InterfaceName string
-	EnableRx      bool
-	EnableTx      bool
-	OnChange      func(neighbors []Neighbor)
-	Logger        *zerolog.Logger
+type AdvertiseOptions struct {
+	SysName             string
+	SysDescription      string
+	PortDescription     string
+	SysCapabilities     []string
+	EnabledCapabilities []string
 }
 
-func NewLLDP(opts *LLDPOptions) *LLDP {
+type Options struct {
+	InterfaceName    string
+	AdvertiseOptions *AdvertiseOptions
+	EnableRx         bool
+	EnableTx         bool
+	OnChange         func(neighbors []Neighbor)
+	Logger           *zerolog.Logger
+}
+
+func NewLLDP(opts *Options) *LLDP {
 	if opts.Logger == nil {
 		opts.Logger = defaultLogger
 	}
@@ -46,29 +69,77 @@ func NewLLDP(opts *LLDPOptions) *LLDP {
 	}
 
 	return &LLDP{
-		interfaceName: opts.InterfaceName,
-		enableRx:      opts.EnableRx,
-		enableTx:      opts.EnableTx,
-		l:             opts.Logger,
-		neighbors:     ttlcache.New(ttlcache.WithTTL[string, Neighbor](1 * time.Hour)),
+		interfaceName:    opts.InterfaceName,
+		advertiseOptions: opts.AdvertiseOptions,
+		enableRx:         opts.EnableRx,
+		enableTx:         opts.EnableTx,
+		l:                opts.Logger,
+		neighbors:        ttlcache.New(ttlcache.WithTTL[string, Neighbor](1 * time.Hour)),
+		onChange:         opts.OnChange,
 	}
 }
 
 func (l *LLDP) Start() error {
-	if l.enableRx {
-		l.l.Info().Msg("setting up AF_PACKET")
-		if err := l.setUpCapture(); err != nil {
-			l.l.Error().Err(err).Msg("unable to set up AF_PACKET")
-			return err
-		}
+	go l.neighbors.Start()
 
-		if err := l.startCapture(); err != nil {
-			l.l.Error().Err(err).Msg("unable to start capture")
-			return err
+	if l.enableRx {
+		if err := l.startRx(); err != nil {
+			return fmt.Errorf("failed to start RX: %w", err)
 		}
 	}
 
-	go l.neighbors.Start()
+	// Start TX if enabled
+	if l.enableTx {
+		if err := l.startTx(); err != nil {
+			return fmt.Errorf("failed to start TX: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// StartRx starts the LLDP receiver if not already running
+func (l *LLDP) startRx() error {
+	l.mu.Lock()
+	running := l.rxRunning
+	enabled := l.enableRx
+	l.mu.Unlock()
+
+	if running || !enabled {
+		return nil
+	}
+
+	if err := l.setUpCapture(); err != nil {
+		return fmt.Errorf("failed to set up capture: %w", err)
+	}
+
+	return l.startCapture()
+}
+
+// StopRx stops the LLDP receiver if running
+func (l *LLDP) StopRx() error {
+	return l.stopCapture()
+}
+
+// StopTx stops the LLDP transmitter if running
+func (l *LLDP) StopTx() error {
+	return l.stopTx()
+}
+
+// SetAdvertiseOptions updates the advertise options and resends LLDP packets if TX is running
+func (l *LLDP) SetAdvertiseOptions(opts *AdvertiseOptions) error {
+	l.mu.Lock()
+	txRunning := l.txRunning
+	l.advertiseOptions = opts
+	l.mu.Unlock()
+
+	if txRunning {
+		// Immediately resend with new options
+		if err := l.sendTxPackets(); err != nil {
+			return fmt.Errorf("failed to resend LLDP packet with new options: %w", err)
+		}
+		l.l.Info().Msg("advertise options changed, resent LLDP packet")
+	}
 
 	return nil
 }

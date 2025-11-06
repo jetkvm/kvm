@@ -163,19 +163,37 @@ func initNetwork() error {
 
 	networkManager = nm
 
-	lldpService = lldp.NewLLDP(&lldp.LLDPOptions{
-		InterfaceName: NetIfName,
-		EnableRx:      nc.LLDPMode.String != "disabled",
-		EnableTx:      nc.LLDPMode.String != "disabled",
+	advertiseOptions := &lldp.AdvertiseOptions{
+		SysName:             networkManager.Hostname(),
+		SysDescription:      toLLDPSysDescription(nc),
+		SysCapabilities:     []string{"other", "router", "wlanap"},
+		EnabledCapabilities: []string{"other"},
+	}
+
+	lldpService = lldp.NewLLDP(&lldp.Options{
+		InterfaceName:    NetIfName,
+		EnableRx:         nc.LLDPMode.String != "disabled",
+		EnableTx:         nc.LLDPMode.String != "disabled",
+		AdvertiseOptions: advertiseOptions,
 		OnChange: func(neighbors []lldp.Neighbor) {
 			writeJSONRPCEvent("lldpNeighbors", neighbors, currentSession)
 		},
+		Logger: networkLogger,
 	})
 	if err := lldpService.Start(); err != nil {
 		networkLogger.Error().Err(err).Msg("failed to start LLDP service")
 	}
 
 	return nil
+}
+
+func toLLDPSysDescription(nc *types.NetworkConfig) string {
+	systemVersion, appVersion, err := GetLocalVersion()
+	if err == nil {
+		return fmt.Sprintf("JetKVM (app: %s)", GetBuiltAppVersion())
+	}
+
+	return fmt.Sprintf("JetKVM (app: %s, system: %s)", appVersion.String(), systemVersion.String())
 }
 
 func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {

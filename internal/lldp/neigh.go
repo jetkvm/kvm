@@ -1,27 +1,47 @@
 package lldp
 
-import "time"
+import (
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+)
 
-type Neighbor struct {
-	Mac               string            `json:"mac"`
-	Source            string            `json:"source"`
-	ChassisID         string            `json:"chassis_id"`
-	PortID            string            `json:"port_id"`
-	PortDescription   string            `json:"port_description"`
-	SystemName        string            `json:"system_name"`
-	SystemDescription string            `json:"system_description"`
-	TTL               uint16            `json:"ttl"`
-	ManagementAddress string            `json:"management_address"`
-	Values            map[string]string `json:"values"`
+type ManagementAddress struct {
+	AddressFamily    string `json:"address_family"`
+	Address          string `json:"address"`
+	InterfaceSubtype string `json:"interface_subtype"`
+	InterfaceNumber  uint32 `json:"interface_number"`
+	OID              string `json:"oid,omitempty"`
 }
 
-func (l *LLDP) addNeighbor(mac string, neighbor Neighbor, ttl time.Duration) {
+type Neighbor struct {
+	Mac               string             `json:"mac"`
+	Source            string             `json:"source"`
+	ChassisID         string             `json:"chassis_id"`
+	PortID            string             `json:"port_id"`
+	PortDescription   string             `json:"port_description"`
+	SystemName        string             `json:"system_name"`
+	SystemDescription string             `json:"system_description"`
+	TTL               uint16             `json:"ttl"`
+	ManagementAddress *ManagementAddress `json:"management_address,omitempty"`
+	Capabilities      []string           `json:"capabilities"`
+	Values            map[string]string  `json:"values"`
+}
+
+func (n *Neighbor) cacheKey() string {
+	return fmt.Sprintf("%s-%s", n.Mac, n.Source)
+}
+
+func (l *LLDP) addNeighbor(neighbor *Neighbor, ttl time.Duration) {
 	logger := l.l.With().
-		Str("mac", mac).
+		Str("mac", neighbor.Mac).
 		Interface("neighbor", neighbor).
 		Logger()
 
-	current_neigh := l.neighbors.Get(mac)
+	key := neighbor.cacheKey()
+
+	current_neigh := l.neighbors.Get(key)
 	if current_neigh != nil {
 		current_source := current_neigh.Value().Source
 		if current_source == "lldp" && neighbor.Source != "lldp" {
@@ -31,16 +51,16 @@ func (l *LLDP) addNeighbor(mac string, neighbor Neighbor, ttl time.Duration) {
 	}
 
 	logger.Info().Msg("adding neighbor")
-	l.neighbors.Set(mac, neighbor, ttl)
+	l.neighbors.Set(key, *neighbor, ttl)
 }
 
-func (l *LLDP) deleteNeighbor(mac string) {
+func (l *LLDP) deleteNeighbor(neighbor *Neighbor) {
 	logger := l.l.With().
-		Str("mac", mac).
+		Str("mac", neighbor.Mac).
 		Logger()
 
 	logger.Info().Msg("deleting neighbor")
-	l.neighbors.Delete(mac)
+	l.neighbors.Delete(neighbor.cacheKey())
 }
 
 func (l *LLDP) GetNeighbors() []Neighbor {
@@ -50,6 +70,11 @@ func (l *LLDP) GetNeighbors() []Neighbor {
 	for _, item := range items {
 		neighbors = append(neighbors, item.Value())
 	}
+
+	// sort based on MAC address
+	sort.Slice(neighbors, func(i, j int) bool {
+		return strings.Compare(neighbors[i].Mac, neighbors[j].Mac) > 0
+	})
 
 	return neighbors
 }

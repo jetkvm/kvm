@@ -1,6 +1,7 @@
 package lldp
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"time"
@@ -27,12 +28,26 @@ var multicastAddrs = []string{
 }
 
 func (l *LLDP) setUpCapture() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.tPacketRx != nil {
+		return nil
+	}
+
 	logger := l.l.With().Str("interface", l.interfaceName).Logger()
-	tPacket, err := afPacketNewTPacket(l.interfaceName)
+	tPacketRx, err := afPacketNewTPacket(l.interfaceName)
 	if err != nil {
 		return err
 	}
-	logger.Info().Msg("created TPacket")
+	logger.Info().Msg("created TPacketRx")
+
+	// Double-check: another goroutine might have set it up while we were creating
+	if l.tPacketRx != nil {
+		// Another goroutine already set it up, close our instance
+		tPacketRx.Close()
+		return nil
+	}
 
 	// set up multicast addresses
 	// otherwise the kernel might discard the packets
@@ -40,52 +55,95 @@ func (l *LLDP) setUpCapture() error {
 	for _, mac := range multicastAddrs {
 		hwAddr, err := net.ParseMAC(mac)
 		if err != nil {
-			logger.Error().Msgf("unable to parse MAC address %s: %s", mac, err)
+			logger.Error().
+				Str("mac", mac).
+				MACAddr("hwaddr", hwAddr).
+				Err(err).
+				Msg("unable to parse MAC address")
 			continue
 		}
 
 		if err := addMulticastAddr(l.interfaceName, hwAddr); err != nil {
-			logger.Error().Msgf("unable to add multicast address %s: %s", mac, err)
+			logger.Error().
+				MACAddr("hwaddr", hwAddr).
+				Err(err).
+				Msg("unable to add multicast address")
 			continue
 		}
 
 		logger.Info().
 			MACAddr("hwaddr", hwAddr).
-			Msgf("added multicast address")
+			Msg("added multicast address")
 	}
 
-	if err = tPacket.SetBPF(bpfFilter); err != nil {
-		logger.Error().Msgf("unable to set BPF filter: %s", err)
-		tPacket.Close()
+	if err = tPacketRx.SetBPF(bpfFilter); err != nil {
+		logger.Error().
+			Err(err).
+			Msg("unable to set BPF filter")
+		tPacketRx.Close()
 		return err
 	}
 	logger.Info().Msg("BPF filter set")
 
-	l.pktSource = gopacket.NewPacketSource(tPacket, layers.LayerTypeEthernet)
-	l.tPacket = tPacket
+	l.pktSourceRx = gopacket.NewPacketSource(tPacketRx, layers.LayerTypeEthernet)
+	l.tPacketRx = tPacketRx
 
 	return nil
 }
 
+func (l *LLDP) doCapture(logger *zerolog.Logger, rxCtx context.Context) {
+	defer func() {
+		l.mu.Lock()
+		l.rxRunning = false
+		l.mu.Unlock()
+	}()
+
+	packetChan := l.pktSourceRx.Packets()
+	for {
+		select {
+		case packet, ok := <-packetChan:
+			if !ok {
+				logger.Info().Msg("packet source closed")
+				return
+			}
+			if err := l.handlePacket(packet, logger); err != nil {
+				logger.Error().
+					Err(err).
+					Msg("error handling packet")
+			}
+		case <-rxCtx.Done():
+			logger.Info().Msg("LLDP receiver stopped")
+			return
+		}
+	}
+}
+
 func (l *LLDP) startCapture() error {
-	logger := l.l.With().Str("interface", l.interfaceName).Logger()
-	if l.tPacket == nil {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.rxRunning {
+		return nil // Already running
+	}
+
+	if l.tPacketRx == nil {
 		return fmt.Errorf("AFPacket not initialized")
 	}
 
-	if l.pktSource == nil {
+	if l.pktSourceRx == nil {
 		return fmt.Errorf("packet source not initialized")
 	}
 
-	go func() {
-		logger.Info().Msg("starting capture LLDP ethernet frames")
+	logger := l.l.With().Str("interface", l.interfaceName).Logger()
+	logger.Info().Msg("starting capture LLDP ethernet frames")
 
-		for packet := range l.pktSource.Packets() {
-			if err := l.handlePacket(packet, &logger); err != nil {
-				logger.Error().Msgf("error handling packet: %s", err)
-			}
-		}
-	}()
+	// Create a new context for this instance
+	l.rxCtx, l.rxCancel = context.WithCancel(context.Background())
+	l.rxRunning = true
+
+	// Capture context in closure
+	rxCtx := l.rxCtx
+	go l.doCapture(&logger, rxCtx)
 
 	return nil
 }
@@ -108,7 +166,8 @@ func (l *LLDP) handlePacket(packet gopacket.Packet, logger *zerolog.Logger) erro
 
 	lldpRaw := packet.Layer(layers.LayerTypeLinkLayerDiscovery)
 	if lldpRaw != nil {
-		logger.Trace().Msgf("Found LLDP Frame")
+		logger.Trace().Msg("Found LLDP Frame")
+		l.l.Info().Hex("packet", packet.Data()).Msg("received packet")
 
 		lldpInfo := packet.Layer(layers.LayerTypeLinkLayerDiscoveryInfo)
 		if lldpInfo == nil {
@@ -124,7 +183,7 @@ func (l *LLDP) handlePacket(packet gopacket.Packet, logger *zerolog.Logger) erro
 
 	cdpRaw := packet.Layer(layers.LayerTypeCiscoDiscovery)
 	if cdpRaw != nil {
-		logger.Trace().Msgf("Found CDP Frame")
+		logger.Trace().Msg("Found CDP Frame")
 
 		cdpInfo := packet.Layer(layers.LayerTypeCiscoDiscoveryInfo)
 		if cdpInfo == nil {
@@ -139,6 +198,32 @@ func (l *LLDP) handlePacket(packet gopacket.Packet, logger *zerolog.Logger) erro
 	}
 
 	return nil
+}
+
+func capabilitiesToString(capabilities layers.LLDPCapabilities) []string {
+	capStr := []string{}
+	if capabilities.Other {
+		capStr = append(capStr, "other")
+	}
+	if capabilities.Repeater {
+		capStr = append(capStr, "repeater")
+	}
+	if capabilities.Bridge {
+		capStr = append(capStr, "bridge")
+	}
+	if capabilities.WLANAP {
+		capStr = append(capStr, "wlanap")
+	}
+	if capabilities.Router {
+		capStr = append(capStr, "router")
+	}
+	if capabilities.Phone {
+		capStr = append(capStr, "phone")
+	}
+	if capabilities.DocSis {
+		capStr = append(capStr, "docsis")
+	}
+	return capStr
 }
 
 func (l *LLDP) handlePacketLLDP(mac string, raw *layers.LinkLayerDiscovery, info *layers.LinkLayerDiscoveryInfo) error {
@@ -171,7 +256,15 @@ func (l *LLDP) handlePacketLLDP(mac string, raw *layers.LinkLayerDiscovery, info
 			n.SystemDescription = info.SysDescription
 			n.Values["system_description"] = n.SystemDescription
 		case layers.LLDPTLVMgmtAddress:
-			// n.ManagementAddress = info.MgmtAddress.Address
+			n.ManagementAddress = &ManagementAddress{
+				AddressFamily:    info.MgmtAddress.Subtype.String(),
+				Address:          net.IP(info.MgmtAddress.Address).String(),
+				InterfaceSubtype: info.MgmtAddress.InterfaceSubtype.String(),
+				InterfaceNumber:  info.MgmtAddress.InterfaceNumber,
+				OID:              info.MgmtAddress.OID,
+			}
+		case layers.LLDPTLVSysCapabilities:
+			n.Capabilities = capabilitiesToString(info.SysCapabilities.EnabledCap)
 		case layers.LLDPTLVTTL:
 			n.TTL = uint16(raw.TTL)
 			ttl = time.Duration(n.TTL) * time.Second
@@ -184,9 +277,9 @@ func (l *LLDP) handlePacketLLDP(mac string, raw *layers.LinkLayerDiscovery, info
 	}
 
 	if gotEnd || ttl < 1*time.Second {
-		l.deleteNeighbor(mac)
+		l.deleteNeighbor(n)
 	} else {
-		l.addNeighbor(mac, *n, ttl)
+		l.addNeighbor(n, ttl)
 	}
 
 	return nil
@@ -213,23 +306,61 @@ func (l *LLDP) handlePacketCDP(mac string, raw *layers.CiscoDiscovery, info *lay
 	}
 
 	if len(info.MgmtAddresses) > 0 {
-		n.ManagementAddress = string(info.MgmtAddresses[0])
+		ip := info.MgmtAddresses[0]
+		ipFamily := "ipv4"
+		if ip.To4() == nil {
+			ipFamily = "ipv6"
+		}
+
+		l.l.Info().
+			Str("ip", ip.String()).
+			Str("ip_family", ipFamily).
+			Interface("ip", ip).
+			Interface("info", info).
+			Msg("parsed IP address")
+
+		n.ManagementAddress = &ManagementAddress{
+			AddressFamily:    ipFamily,
+			Address:          ip.String(),
+			InterfaceSubtype: "if_name",
+			InterfaceNumber:  0,
+			OID:              "",
+		}
 	}
 
-	l.addNeighbor(mac, *n, ttl)
+	l.addNeighbor(n, ttl)
 
 	return nil
 }
 
-func (l *LLDP) shutdownCapture() error {
-	if l.tPacket != nil {
-		l.tPacket.Close()
-		l.tPacket = nil
+func (l *LLDP) stopCapture() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if !l.rxRunning {
+		return nil // Already stopped
 	}
 
-	if l.pktSource != nil {
-		l.pktSource = nil
+	logger := l.l.With().Str("interface", l.interfaceName).Logger()
+	logger.Info().Msg("stopping LLDP receiver")
+
+	// Cancel context to signal stop
+	rxCancel := l.rxCancel
+	if rxCancel != nil {
+		rxCancel()
+		l.rxCancel = nil
 	}
+
+	if l.tPacketRx != nil {
+		l.tPacketRx.Close()
+		l.tPacketRx = nil
+	}
+
+	if l.pktSourceRx != nil {
+		l.pktSourceRx = nil
+	}
+
+	time.Sleep(100 * time.Millisecond)
 
 	return nil
 }

@@ -783,6 +783,14 @@ export interface IPv6StaticConfig {
   dns: string[];
 }
 
+export interface LLDPManagementAddress {
+  address_family: string;
+  address: string;
+  interface_subtype: string;
+  interface_number: number;
+  oid: string;
+}
+
 export interface LLDPNeighbor {
   mac: string;
   source: string;
@@ -791,8 +799,9 @@ export interface LLDPNeighbor {
   port_description: string;
   system_name: string;
   system_description: string;
+  capabilities: string[];
   ttl: number | null;
-  management_address: string | null;
+  management_address: LLDPManagementAddress | null;
   values: Record<string, string>;
 }
 

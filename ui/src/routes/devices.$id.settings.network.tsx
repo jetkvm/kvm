@@ -23,14 +23,14 @@ import StaticIpv4Card from "@components/StaticIpv4Card";
 import StaticIpv6Card from "@components/StaticIpv6Card";
 import { useCopyToClipboard } from "@components/useCopyToClipBoard";
 import { netMaskFromCidr4 } from "@/utils/ip";
-import { callJsonRpc, getNetworkSettings, getNetworkState } from "@/utils/jsonrpc";
+import { getNetworkSettings, getNetworkState, getLLDPNeighbors } from "@/utils/jsonrpc";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages";
-import LLDPNeighCard from "@components/LLDPNeigh";
+import LLDPNeighborsCard from "@components/LLDPNeighborsCard";
 
 dayjs.extend(relativeTime);
 
-const isLLDPAvailable = false; // LLDP is not supported yet
+const isLLDPAvailable = true; // LLDP is now supported
 
 const resolveOnRtcReady = () => {
   return new Promise(resolve => {
@@ -100,14 +100,10 @@ export default function SettingsNetworkRoute() {
 
   const [lldpNeighbors, setLldpNeighbors] = useState<LLDPNeighbor[]>([]);
   const fetchLLDPNeighbors = useCallback(async () => {
-    send("getLLDPNeighbors", {}, (resp) => {
-      if ("error" in resp) {
-        // notifications.error(m.network_lldp_neighbors_fetch_failed({ error: neighbors.error.message || m.unknown_error() }));
-      } else {
-        setLldpNeighbors(resp.result as LLDPNeighbor[]);
-      }
-    });
-  }, [setLldpNeighbors, send]);
+    const neighbors = await getLLDPNeighbors();
+    setLldpNeighbors(neighbors);
+  }, [setLldpNeighbors]);
+
   useEffect(() => {
     fetchLLDPNeighbors();
   }, [fetchLLDPNeighbors]);
@@ -475,11 +471,6 @@ export default function SettingsNetworkRoute() {
                 />
               </SettingsItem>
 
-              <div>
-                <AutoHeight>
-                  <LLDPNeighCard neighbors={lldpNeighbors} />
-                </AutoHeight>
-              </div>
 
               <div>
                 <AutoHeight>
@@ -561,9 +552,10 @@ export default function SettingsNetworkRoute() {
                 </AutoHeight>
               </div>
 
-              { isLLDPAvailable &&
-                  (
-                    <div className="hidden space-y-4">
+              {isLLDPAvailable &&
+                (
+                  <div className="space-y-4">
+                    <div className="space-y-4">
                       <SettingsItem
                         title={m.network_ll_dp_title()}
                         description={m.network_ll_dp_description()}
@@ -579,7 +571,11 @@ export default function SettingsNetworkRoute() {
                         />
                       </SettingsItem>
                     </div>
-                  )
+                    <AutoHeight>
+                      <LLDPNeighborsCard neighbors={lldpNeighbors} />
+                    </AutoHeight>
+                  </div>
+                )
               }
 
               <div className="animate-fadeInStill animation-duration-300">

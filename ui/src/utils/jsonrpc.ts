@@ -1,4 +1,4 @@
-import { useRTCStore } from "@/hooks/stores";
+import { LLDPNeighbor, useRTCStore } from "@/hooks/stores";
 import { sleep } from "@/utils";
 
 // JSON-RPC utility for use outside of React components
@@ -164,6 +164,14 @@ export async function setNetworkSettings(settings: unknown) {
 
 export async function getNetworkState() {
   const response = await callJsonRpc({ method: "getNetworkState" });
+  if (response.error) {
+    throw new Error(response.error.message);
+  }
+  return response.result;
+}
+
+export async function getLLDPNeighbors() {
+  const response = await callJsonRpc<LLDPNeighbor[]>({ method: "getLLDPNeighbors" });
   if (response.error) {
     throw new Error(response.error.message);
   }

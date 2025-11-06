@@ -21,7 +21,7 @@ const LLDPDataLine = ({ label, value, className }: LLDPDataLineProps) => {
   );
 }
 
-export default function LLDPNeighCard({
+export default function LLDPNeighborsCard({
   neighbors,
 }: {
   neighbors: LLDPNeighbor[];
@@ -49,7 +49,7 @@ export default function LLDPNeighCard({
                     )}
 
                     {neighbor.system_description && (
-                      <LLDPDataLine label="System Description" value={neighbor.system_description} />
+                      <LLDPDataLine label="System Description" value={neighbor.system_description} className="col-span-2" />
                     )}
 
                     {neighbor.chassis_id && (
@@ -65,7 +65,7 @@ export default function LLDPNeighCard({
                     )}
 
                     {neighbor.management_address && (
-                      <LLDPDataLine label="Management Address" value={neighbor.management_address} />
+                      <LLDPDataLine label="Management Address" value={neighbor.management_address.address} />
                     )}
 
                     {neighbor.mac && (
