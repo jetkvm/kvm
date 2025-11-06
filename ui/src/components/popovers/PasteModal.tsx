@@ -19,7 +19,7 @@ import { TextAreaWithLabel } from "@components/TextArea";
 // uint32 max value / 4
 const pasteMaxLength = 1073741824;
 const defaultDelay = 20;
-const minimumDelay = 10;
+const minimumDelay = 5;
 const maximumDelay = 65534;
 
 export default function PasteModal() {
