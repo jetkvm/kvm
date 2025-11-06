@@ -204,7 +204,7 @@ export default function SettingsAdvancedRoute() {
       const pageParams = new URLSearchParams();
       pageParams.set("downgrade", "true");
       pageParams.set("resetConfig", resetConfig.toString());
-      pageParams.set("components", updateTarget == "both" ? "app,system" : updateTarget);
+      pageParams.set("components", updateTarget === "both" ? "app,system" : updateTarget);
 
       // Navigate to update page
       navigateTo(`/settings/general/update?${pageParams.toString()}`);
