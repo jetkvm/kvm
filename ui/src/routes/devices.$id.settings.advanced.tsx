@@ -32,6 +32,7 @@ export default function SettingsAdvancedRoute() {
   const [appVersion, setAppVersion] = useState<string>("");
   const [systemVersion, setSystemVersion] = useState<string>("");
   const [resetConfig, setResetConfig] = useState(false);
+  const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
 
   const settings = useSettingsStore();
 
@@ -355,7 +356,15 @@ export default function SettingsAdvancedRoute() {
                   checked={resetConfig}
                   onChange={e => setResetConfig(e.target.checked)}
                 />
-                </div>
+              </div>
+
+              <div>
+                <CheckboxWithLabel
+                  label="I understand version changes may break my device and require factory reset"
+                  checked={versionChangeAcknowledged}
+                  onChange={e => setVersionChangeAcknowledged(e.target.checked)}
+                />
+              </div>
 
               <Button
                 size="SM"
@@ -364,7 +373,8 @@ export default function SettingsAdvancedRoute() {
                 disabled={
                   (updateTarget === "app" && !appVersion) ||
                   (updateTarget === "system" && !systemVersion) ||
-                  (updateTarget === "both" && (!appVersion || !systemVersion))
+                  (updateTarget === "both" && (!appVersion || !systemVersion)) ||
+                  !versionChangeAcknowledged
                 }
                 onClick={handleVersionUpdate}
               />
