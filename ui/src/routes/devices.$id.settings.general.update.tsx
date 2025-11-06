@@ -16,8 +16,7 @@ import { SystemVersionInfo } from "@/utils/jsonrpc";
 export default function SettingsGeneralUpdateRoute() {
   const navigate = useNavigate();
   const location = useLocation();
-  //@ts-ignore
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const { updateSuccess } = location.state || {};
 
   const { setModalView, otaState } = useUpdateStore();
