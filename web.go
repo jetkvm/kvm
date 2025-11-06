@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"path/filepath"
@@ -184,6 +185,8 @@ func setupRouter() *gin.Engine {
 		protected.PUT("/auth/password-local", handleUpdatePassword)
 		protected.DELETE("/auth/local-password", handleDeletePassword)
 		protected.POST("/storage/upload", handleUploadHttp)
+
+		protected.POST("/device/send-wol/:mac-addr", handleSendWOLMagicPacket)
 	}
 
 	// Catch-all route for SPA
@@ -341,7 +344,6 @@ func handleWebRTCSignalWsMessages(
 
 			l.Trace().Msg("sending ping frame")
 			err := wsCon.Ping(runCtx)
-
 			if err != nil {
 				l.Warn().Str("error", err.Error()).Msg("websocket ping error")
 				cancelRun()
@@ -806,4 +808,24 @@ func handleSetup(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Device setup completed successfully"})
+}
+
+func handleSendWOLMagicPacket(c *gin.Context) {
+	inputMacAddr := c.Param("mac-addr")
+	macAddr, err := net.ParseMAC(inputMacAddr)
+	if err != nil {
+		logger.Warn().Err(err).Str("sendWol", inputMacAddr).Msg("Invalid mac address provided")
+		c.String(http.StatusBadRequest, "Invalid mac address provided")
+		return
+	}
+
+	macAddrString := macAddr.String()
+	err = rpcSendWOLMagicPacket(macAddrString)
+	if err != nil {
+		logger.Warn().Err(err).Str("sendWOL", macAddrString).Msg("Failed to send WOL magic packet")
+		c.String(http.StatusInternalServerError, "Failed to send WOL to %s: %v", macAddrString, err)
+		return
+	}
+
+	c.String(http.StatusOK, "WOL sent to %s ", macAddr)
 }
