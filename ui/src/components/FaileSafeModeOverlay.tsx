@@ -35,7 +35,6 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
   const { navigateTo } = useDeviceUiNavigation();
   const { appVersion } = useVersion();
   const { systemVersion } = useDeviceStore();
-  const [showRebootConfirm, setShowRebootConfirm] = useState(false);
   const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
 
   const getReasonCopy = () => {
@@ -54,19 +53,6 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
   };
 
   const { message } = getReasonCopy();
-
-  const handleReboot = () => {
-    if (!showRebootConfirm) {
-      setShowRebootConfirm(true);
-      return;
-    }
-
-    send("reboot", { force: true }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(`Failed to reboot: ${resp.error.message}`);
-      }
-    });
-  };
 
   const handleReportAndDownloadLogs = () => {
     setIsDownloadingLogs(true);
@@ -146,52 +132,30 @@ Please attach the recovery logs file that was downloaded to your computer:
                   <h2 className="text-xl font-bold">Fail safe mode activated</h2>
                   <p className="text-sm">{message}</p>
                 </div>
-                {showRebootConfirm ? (
-                  <div className="rounded-md bg-amber-50 p-3 dark:bg-amber-950/20">
-                    <p className="mb-3 text-sm text-amber-900 dark:text-amber-200">
-                      Rebooting will restart your device. This may resolve the issue. Continue?
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={handleReboot}
-                        theme="primary"
-                        size="SM"
-                        text="Confirm Reboot"
-                      />
-                      <Button
-                        onClick={() => setShowRebootConfirm(false)}
-                        theme="light"
-                        size="SM"
-                        text="Cancel"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      onClick={handleReportAndDownloadLogs}
-                      theme="primary"
-                      size="SM"
-                      disabled={isDownloadingLogs}
-                      LeadingIcon={GitHubIcon}
-                      text={isDownloadingLogs ? "Downloading Logs..." : "Report Issue & Download Logs"}
-                    />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    onClick={handleReportAndDownloadLogs}
+                    theme="primary"
+                    size="SM"
+                    disabled={isDownloadingLogs}
+                    LeadingIcon={GitHubIcon}
+                    text={isDownloadingLogs ? "Downloading Logs..." : "Report Issue & Download Logs"}
+                  />
 
-                    <Button
-                      onClick={handleReboot}
-                      theme="light"
-                      size="SM"
-                      text="Reboot Device"
-                    />
+                  <Button
+                    onClick={() => navigateTo("/settings/general/reboot")}
+                    theme="light"
+                    size="SM"
+                    text="Reboot Device"
+                  />
 
-                    <Button
-                      size="SM"
-                      onClick={handleDowngrade}
-                      theme="light"
-                      text="Downgrade to v0.4.8"
-                    />
-                  </div>
-                )}
+                  <Button
+                    size="SM"
+                    onClick={handleDowngrade}
+                    theme="light"
+                    text="Downgrade to v0.4.8"
+                  />
+                </div>
               </div>
             </div>
           </div>

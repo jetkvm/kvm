@@ -358,7 +358,7 @@ video::-webkit-media-controls {
 .diagonal-stripes {
   background: repeating-linear-gradient(
     135deg,
-    rgba(255, 0, 0, 0.2) 0 12px, /* red-50 with 20% opacity */
+    rgba(255, 0, 0, 0.1) 0 12px, /* red-50 with 20% opacity */
     transparent 12px 24px
   );
 }
