@@ -204,6 +204,7 @@ export default function SettingsAdvancedRoute() {
       setVersionUpdateLoading(true);
       versionInfo = await checkUpdateComponents({
         components: components.join(","),
+        // TODO: Rename to appTargetVersion and systemTargetVersion
         app: appVersion,
         system: systemVersion,
       }, devChannel);
@@ -211,11 +212,6 @@ export default function SettingsAdvancedRoute() {
     } catch (error: unknown) {
       const jsonRpcError = error as JsonRpcError;
       handleVersionUpdateError(jsonRpcError);
-      return ;
-    }
-
-    if (!versionInfo) {
-      handleVersionUpdateError();
       return;
     }
 

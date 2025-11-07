@@ -22,7 +22,6 @@ export default function SettingsGeneralUpdateRoute() {
   const { setModalView, otaState } = useUpdateStore();
   const { send } = useJsonRpc();
 
-  const downgrade = useMemo(() => searchParams.get("downgrade") === "true", [searchParams]);
   const customAppVersion = useMemo(() => searchParams.get("app") || "", [searchParams]);
   const customSystemVersion = useMemo(() => searchParams.get("system") || "", [searchParams]);
   const resetConfig = useMemo(() => searchParams.get("resetConfig") === "true", [searchParams]);
@@ -78,7 +77,6 @@ export default function SettingsGeneralUpdateRoute() {
     onClose={onClose}
     onConfirmUpdate={onConfirmUpdate}
     onConfirmDowngrade={onConfirmDowngrade}
-    downgrade={downgrade}
     customAppVersion={customAppVersion}
     customSystemVersion={customSystemVersion}
   />;
@@ -88,11 +86,9 @@ export function Dialog({
   onClose,
   onConfirmUpdate,
   onConfirmDowngrade,
-  downgrade,
   customAppVersion,
   customSystemVersion,
 }: Readonly<{
-  downgrade: boolean;
   onClose: () => void;
   onConfirmUpdate: () => void;
   onConfirmDowngrade: () => void;
@@ -109,19 +105,19 @@ export function Dialog({
     (versionInfo: SystemVersionInfo) => {
       const hasUpdate =
         versionInfo?.systemUpdateAvailable || versionInfo?.appUpdateAvailable;
-      const hasDowngrade = customSystemVersion !== undefined || customAppVersion !== undefined;
+      const forceCustomUpdate = customSystemVersion !== undefined || customAppVersion !== undefined;
 
       setVersionInfo(versionInfo);
 
-      if (hasDowngrade && downgrade) {
-        setModalView("updateDowngradeAvailable");
+      if (forceCustomUpdate) {
+        setModalView("confirmCustomUpdate");
       } else if (hasUpdate) {
         setModalView("updateAvailable");
       } else {
         setModalView("upToDate");
       }
     },
-    [setModalView, downgrade, customAppVersion, customSystemVersion],
+    [setModalView, customAppVersion, customSystemVersion],
   );
 
   const onCancelDowngrade = useCallback(() => {
@@ -151,12 +147,12 @@ export function Dialog({
             versionInfo={versionInfo!}
           />
         )}
-        {modalView === "updateDowngradeAvailable" && (
-          <UpdateDowngradeAvailableState
+        {modalView === "confirmCustomUpdate" && (
+          <ConfirmCustomUpdate
             appVersion={customAppVersion}
             systemVersion={customSystemVersion}
-            onConfirmDowngrade={onConfirmDowngrade}
-            onCancelDowngrade={onCancelDowngrade}
+            onConfirm={onConfirmDowngrade}
+            onCancel={onCancelDowngrade}
           />
         )}
 
@@ -203,6 +199,7 @@ function LoadingState({
       setProgressWidth("100%");
     }, 0);
 
+    // TODO: CHECK FOR QUERY PARAMS
     getVersionInfo()
       .then(async versionInfo => {
         // Add a small delay to ensure it's not just flickering
@@ -471,20 +468,17 @@ function UpdateAvailableState({
   );
 }
 
-function UpdateDowngradeAvailableState({
+function ConfirmCustomUpdate({
   appVersion,
   systemVersion,
-  onConfirmDowngrade,
-  onCancelDowngrade,
+  onConfirm,
+  onCancel,
 }: {
   appVersion?: string;
   systemVersion?: string;
-  onConfirmDowngrade: () => void;
-  onCancelDowngrade: () => void;
+  onConfirm: () => void;
+  onCancel: () => void;
 }) {
-  const confirmDowngrade = useCallback(() => {
-    onConfirmDowngrade();
-  }, [onConfirmDowngrade]);
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
@@ -508,8 +502,8 @@ function UpdateDowngradeAvailableState({
           ) : null}
         </p>
         <div className="flex items-center justify-start gap-x-2">
-          <Button size="SM" theme="primary" text={m.general_update_downgrade_button()} onClick={confirmDowngrade} />
-          <Button size="SM" theme="light" text={m.general_update_keep_current_button()} onClick={onCancelDowngrade} />
+          <Button size="SM" theme="primary" text={m.general_update_downgrade_button()} onClick={onConfirm} />
+          <Button size="SM" theme="light" text={m.general_update_keep_current_button()} onClick={onCancel} />
         </div>
       </div>
     </div>
