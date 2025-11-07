@@ -484,9 +484,9 @@ export default function KvmIdRoute() {
     rpcDataChannel.onopen = () => {
       setRpcDataChannel(rpcDataChannel);
 
-    setTimeout(() => {
-      useFailsafeModeStore.setState({ isFailsafeMode: true, reason: "video" });
-    }, 1000);
+    // setTimeout(() => {
+    //   useFailsafeModeStore.setState({ isFailsafeMode: true, reason: "video" });
+    // }, 1000);
     };
 
     const rpcHidChannel = pc.createDataChannel("hidrpc");
