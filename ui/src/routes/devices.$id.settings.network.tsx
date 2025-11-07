@@ -169,7 +169,10 @@ export default function SettingsNetworkRoute() {
 
   const { register, handleSubmit, watch, formState, reset } = formMethods;
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const onSubmit = useCallback(async (settings: NetworkSettings) => {
+
     if (settings.ipv4_static?.address?.includes("/")) {
       const parts = settings.ipv4_static.address.split("/");
       const cidrNotation = Number.parseInt(parts[1]);
@@ -180,6 +183,7 @@ export default function SettingsNetworkRoute() {
       settings.ipv4_static.address = parts[0];
     }
 
+    setIsSubmitting(true);
     send("setNetworkSettings", { settings }, async (resp) => {
       if ("error" in resp) {
         notifications.error(m.network_save_settings_failed({ error: resp.error.message || m.unknown_error() }));
@@ -197,10 +201,10 @@ export default function SettingsNetworkRoute() {
         } catch (error) {
           console.error("Failed to fetch network data:", error);
         }
-        notifications.success(m.network_dhcp_lease_renew_success());
+        setIsSubmitting(false);
       }
     });
-  }, [fetchNetworkData, reset, send]);
+  }, [fetchNetworkData, reset, send, setIsSubmitting]);
 
   const onSubmitGate = useCallback(async (data: FieldValues) => {
     const settings = prepareSettings(data);
@@ -326,7 +330,7 @@ export default function SettingsNetworkRoute() {
                   size="SM"
                   theme="primary"
                   disabled={!(formState.isDirty || formState.isSubmitting)}
-                  loading={formState.isSubmitting}
+                  loading={formState.isSubmitting || isSubmitting}
                   type="submit"
                   text={formState.isSubmitting ? m.saving() : m.network_save_settings()}
                 />
