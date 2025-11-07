@@ -14,6 +14,11 @@ import (
 var appCtx context.Context
 
 func Main() {
+	checkFailsafeReason()
+	if shouldActivateFailsafe {
+		logger.Warn().Str("reason", shouldActivateFailsafeReason).Msg("failsafe mode activated")
+	}
+
 	LoadConfig()
 
 	var cancel context.CancelFunc
