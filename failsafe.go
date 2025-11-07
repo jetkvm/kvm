@@ -54,7 +54,9 @@ func checkFailsafeReason() {
 		l := failsafeLogger.With().Str("path", lastCrashPath).Logger()
 		fi, err := os.Lstat(lastCrashPath)
 		if err != nil {
-			l.Warn().Err(err).Msg("failed to stat last crash log")
+			if !os.IsNotExist(err) {
+				l.Warn().Err(err).Msg("failed to stat last crash log")
+			}
 			return
 		}
 
