@@ -216,12 +216,12 @@ export default function SettingsAdvancedRoute() {
 
     const pageParams = new URLSearchParams();
     if (components.includes("app") && versionInfo.remote?.appVersion && versionInfo.appDowngradeAvailable) {
-      pageParams.set("app", versionInfo.remote?.appVersion);
+      pageParams.set("custom_app_version", versionInfo.remote?.appVersion);
     }
     if (components.includes("system") && versionInfo.remote?.systemVersion && versionInfo.systemDowngradeAvailable) {
-      pageParams.set("system", versionInfo.remote?.systemVersion);
+      pageParams.set("custom_system_version", versionInfo.remote?.systemVersion);
     }
-    pageParams.set("resetConfig", resetConfig.toString());
+    pageParams.set("reset_config", resetConfig.toString());
 
     // Navigate to update page
     navigateTo(`/settings/general/update?${pageParams.toString()}`);

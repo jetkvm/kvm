@@ -22,9 +22,9 @@ export default function SettingsGeneralUpdateRoute() {
   const { setModalView, otaState } = useUpdateStore();
   const { send } = useJsonRpc();
 
-  const customAppVersion = useMemo(() => searchParams.get("app") || "", [searchParams]);
-  const customSystemVersion = useMemo(() => searchParams.get("system") || "", [searchParams]);
-  const resetConfig = useMemo(() => searchParams.get("resetConfig") === "true", [searchParams]);
+  const customAppVersion = useMemo(() => searchParams.get("custom_app_version") || "", [searchParams]);
+  const customSystemVersion = useMemo(() => searchParams.get("custom_system_version") || "", [searchParams]);
+  const resetConfig = useMemo(() => searchParams.get("reset_config") === "true", [searchParams]);
 
   const onClose = useCallback(async () => {
     navigate(".."); // back to the devices.$id.settings page
