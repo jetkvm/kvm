@@ -22,8 +22,8 @@ export default function SettingsGeneralUpdateRoute() {
   const { setModalView, otaState } = useUpdateStore();
   const { send } = useJsonRpc();
 
-  const customAppVersion = useMemo(() => searchParams.get("custom_app_version") || "", [searchParams]);
-  const customSystemVersion = useMemo(() => searchParams.get("custom_system_version") || "", [searchParams]);
+  const customAppVersion = useMemo(() => searchParams.get("custom_app_version") || undefined, [searchParams]);
+  const customSystemVersion = useMemo(() => searchParams.get("custom_system_version") || undefined, [searchParams]);
   const resetConfig = useMemo(() => searchParams.get("reset_config") === "true", [searchParams]);
 
   const onClose = useCallback(async () => {
@@ -459,7 +459,7 @@ function UpdateAvailableState({
           {m.general_update_available_title()}
         </p>
         <p className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-          {forceCustomUpdate ? m.general_update_downgrade_available_description() : m.general_update_available_description()}
+          {m.general_update_available_description()}
         </p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
           {(forceCustomUpdate ? versionInfo?.systemDowngradeAvailable : versionInfo?.systemUpdateAvailable) ? (
@@ -475,7 +475,7 @@ function UpdateAvailableState({
           ) : null}
         </p>
         <div className="flex items-center justify-start gap-x-2">
-          <Button size="SM" theme={forceCustomUpdate ? "danger" : "primary"} text={forceCustomUpdate ? m.general_update_downgrade_button() : m.general_update_now_button()} onClick={onConfirm} />
+          <Button size="SM" theme="primary" text={m.general_update_now_button()} onClick={onConfirm} />
           <Button size="SM" theme="light" text={m.general_update_later_button()} onClick={onClose} />
         </div>
       </div>
