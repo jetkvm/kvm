@@ -53,6 +53,7 @@ func Main() {
 	// Initialize network
 	if err := initNetwork(); err != nil {
 		logger.Error().Err(err).Msg("failed to initialize network")
+		// TODO: reset config to default
 		os.Exit(1)
 	}
 
@@ -63,7 +64,6 @@ func Main() {
 	// Initialize mDNS
 	if err := initMdns(); err != nil {
 		logger.Error().Err(err).Msg("failed to initialize mDNS")
-		os.Exit(1)
 	}
 
 	initPrometheus()
