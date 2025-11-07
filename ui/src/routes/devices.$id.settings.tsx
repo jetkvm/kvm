@@ -161,7 +161,7 @@ export default function SettingsRoute() {
                   </div>
                 </FeatureFlag>
                 <div className={cx("shrink-0", {
-                  "opacity-50 cursor-not-allowed!": isVideoDisabled
+                  "opacity-50 cursor-not-allowed": isVideoDisabled
                 })}>
                   <NavLink
                     to="video"

@@ -50,7 +50,7 @@ const blockedMethodsByReason: Record<string, string[]> = {
 
 export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
   const { rpcDataChannel } = useRTCStore();
-  const { isFailsafeMode: isFailsafeMode, reason } = useFailsafeModeStore();
+  const { isFailsafeMode, reason } = useFailsafeModeStore();
 
   const send = useCallback(
     async (method: string, params: unknown, callback?: (resp: JsonRpcResponse) => void) => {

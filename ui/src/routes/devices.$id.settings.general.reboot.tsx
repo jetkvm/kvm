@@ -7,6 +7,9 @@ import { Button } from "@components/Button";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 
+// Time to wait after initiating reboot before redirecting to home
+const REBOOT_REDIRECT_DELAY_MS = 5000;
+
 export default function SettingsGeneralRebootRoute() {
   const navigate = useNavigate();
   const { send } = useJsonRpc();
@@ -18,7 +21,7 @@ export default function SettingsGeneralRebootRoute() {
     // This is where we send the RPC to the golang binary
     send("reboot", { force: true });
 
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, REBOOT_REDIRECT_DELAY_MS));
     navigateTo("/");
   }, [navigateTo, send]);
 

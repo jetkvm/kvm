@@ -41,7 +41,7 @@ const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectio
 const Terminal = lazy(() => import('@components/Terminal'));
 const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
 import Modal from "@/components/Modal";
-import { FailSafeModeOverlay } from "@components/FaileSafeModeOverlay";
+import { FailSafeModeOverlay } from "@components/FailSafeModeOverlay";
 import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
 import {
   ConnectionFailedOverlay,
