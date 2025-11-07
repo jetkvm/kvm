@@ -676,9 +676,9 @@ export default function KvmIdRoute() {
     }
 
     if (resp.method === "failsafeMode") {
-      const { enabled, reason } = resp.params as { enabled: boolean; reason: string };
-      console.debug("Setting failsafe mode", { enabled, reason });
-      setFailsafeMode(enabled, reason);
+      const { active, reason } = resp.params as { active: boolean; reason: string };
+      console.debug("Setting failsafe mode", { active, reason });
+      setFailsafeMode(active, reason);
     }
   }
 

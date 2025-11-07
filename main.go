@@ -15,8 +15,8 @@ var appCtx context.Context
 
 func Main() {
 	checkFailsafeReason()
-	if shouldActivateFailsafe {
-		logger.Warn().Str("reason", shouldActivateFailsafeReason).Msg("failsafe mode activated")
+	if failsafeModeActive {
+		logger.Warn().Str("reason", failsafeModeReason).Msg("failsafe mode activated")
 	}
 
 	LoadConfig()

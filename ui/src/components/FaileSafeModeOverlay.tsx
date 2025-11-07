@@ -108,7 +108,7 @@ Please attach the recovery logs file that was downloaded to your computer:
   };
 
   const handleDowngrade = () => {
-    navigateTo("/settings/general/update?appVersion=0.4.8");
+    navigateTo("/settings/general/update?app=0.4.8");
   };
 
   return (

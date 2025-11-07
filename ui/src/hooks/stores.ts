@@ -930,12 +930,12 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
 export interface FailsafeModeState {
   isFailsafeMode: boolean;
   reason: string | null; // "video", "network", etc.
-  setFailsafeMode: (enabled: boolean, reason: string | null) => void;
+  setFailsafeMode: (active: boolean, reason: string | null) => void;
 }
 
 export const useFailsafeModeStore = create<FailsafeModeState>(set => ({
   isFailsafeMode: false,
   reason: null,
-  setFailsafeMode: (enabled: boolean, reason: string | null) =>
-    set({ isFailsafeMode: enabled, reason }),
+  setFailsafeMode: (active: boolean, reason: string | null) =>
+    set({ isFailsafeMode: active, reason }),
 }));
