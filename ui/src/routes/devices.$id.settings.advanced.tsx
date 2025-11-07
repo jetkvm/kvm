@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useSettingsStore } from "@hooks/stores";
-import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { JsonRpcError, JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { Button } from "@components/Button";
 import Checkbox, { CheckboxWithLabel } from "@components/Checkbox";
@@ -17,6 +17,8 @@ import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 import { sleep } from "@/utils";
+import { checkUpdateComponents } from "@/utils/jsonrpc";
+import { SystemVersionInfo } from "@hooks/useVersion";
 
 export default function SettingsAdvancedRoute() {
   const { send } = useJsonRpc();
@@ -33,7 +35,7 @@ export default function SettingsAdvancedRoute() {
   const [systemVersion, setSystemVersion] = useState<string>("");
   const [resetConfig, setResetConfig] = useState(false);
   const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
-
+  const [versionUpdateLoading, setVersionUpdateLoading] = useState(false);
   const settings = useSettingsStore();
 
   useEffect(() => {
@@ -183,34 +185,57 @@ export default function SettingsAdvancedRoute() {
     setShowLoopbackWarning(false);
   }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
 
-  const handleVersionUpdate = useCallback(() => {
-    const params = {
-      components: {
+  const handleVersionUpdateError = useCallback((error?: JsonRpcError) => {
+    notifications.error(
+      m.advanced_error_version_update({
+        error: error?.data ?? error?.message ?? m.unknown_error()
+      }),
+      { duration: 1000 * 15 } // 15 seconds
+    );
+    setVersionUpdateLoading(false);
+  }, []);
+
+  const handleVersionUpdate = useCallback(async () => {
+    const components = updateTarget === "both" ? ["app", "system"] : [updateTarget];
+    let versionInfo: SystemVersionInfo | undefined;
+    try {
+      // we do not need to set it to false if check succeeds,
+      // because it will be redirected to the update page later
+      setVersionUpdateLoading(true);
+      versionInfo = await checkUpdateComponents({
+        components: components.join(","),
         app: appVersion,
         system: systemVersion,
-      },
-      includePreRelease: devChannel,
-      checkOnly: true,
-      // no need to reset config for a check only update
-      resetConfig: false,
-    };
+      }, devChannel);
+      console.log("versionInfo", versionInfo);
+    } catch (error: unknown) {
+      const jsonRpcError = error as JsonRpcError;
+      handleVersionUpdateError(jsonRpcError);
+      return ;
+    }
 
-    send("tryUpdateComponents", params, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(
-          m.advanced_error_version_update({ error: resp.error.data || m.unknown_error() })
-        );
-        return;
-      }
-      const pageParams = new URLSearchParams();
-      pageParams.set("downgrade", "true");
-      pageParams.set("resetConfig", resetConfig.toString());
-      pageParams.set("components", updateTarget === "both" ? "app,system" : updateTarget);
+    if (!versionInfo) {
+      handleVersionUpdateError();
+      return;
+    }
 
-      // Navigate to update page
-      navigateTo(`/settings/general/update?${pageParams.toString()}`);
-    });
-  }, [updateTarget, appVersion, systemVersion, devChannel, send, navigateTo, resetConfig]);
+    const pageParams = new URLSearchParams();
+    pageParams.set("downgrade", "true");
+    if (components.includes("app") && versionInfo.remote?.appVersion && versionInfo.appDowngradeAvailable) {
+      pageParams.set("app", versionInfo.remote?.appVersion);
+    }
+    if (components.includes("system") && versionInfo.remote?.systemVersion && versionInfo.systemDowngradeAvailable) {
+      pageParams.set("system", versionInfo.remote?.systemVersion);
+    }
+    pageParams.set("resetConfig", resetConfig.toString());
+
+    // Navigate to update page
+    navigateTo(`/settings/general/update?${pageParams.toString()}`);
+  }, [
+    updateTarget, appVersion, systemVersion, devChannel,
+    navigateTo, resetConfig, handleVersionUpdateError,
+    setVersionUpdateLoading
+  ]);
 
   return (
     <div className="space-y-4">
@@ -374,8 +399,10 @@ export default function SettingsAdvancedRoute() {
                   (updateTarget === "app" && !appVersion) ||
                   (updateTarget === "system" && !systemVersion) ||
                   (updateTarget === "both" && (!appVersion || !systemVersion)) ||
-                  !versionChangeAcknowledged
+                  !versionChangeAcknowledged ||
+                  versionUpdateLoading
                 }
+                loading={versionUpdateLoading}
                 onClick={handleVersionUpdate}
               />
             </div>

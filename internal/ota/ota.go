@@ -239,10 +239,29 @@ func (s *State) getUpdateStatus(
 		systemUpdate = &currentSystemUpdate
 	}
 
+	err = s.doGetUpdateStatus(ctx, params, appUpdate, systemUpdate)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	s.componentUpdateStatuses["app"] = *appUpdate
+	s.componentUpdateStatuses["system"] = *systemUpdate
+
+	return appUpdate, systemUpdate, nil
+}
+
+// doGetUpdateStatus is the internal function that gets the update status
+// it WON'T change the state of the OTA state
+func (s *State) doGetUpdateStatus(
+	ctx context.Context,
+	params UpdateParams,
+	appUpdate *componentUpdateStatus,
+	systemUpdate *componentUpdateStatus,
+) error {
 	// Get local versions
 	systemVersionLocal, appVersionLocal, err := s.getLocalVersion()
 	if err != nil {
-		return nil, nil, fmt.Errorf("error getting local version: %w", err)
+		return fmt.Errorf("error getting local version: %w", err)
 	}
 	appUpdate.localVersion = appVersionLocal.String()
 	systemUpdate.localVersion = systemVersionLocal.String()
@@ -255,7 +274,7 @@ func (s *State) getUpdateStatus(
 		} else {
 			err = fmt.Errorf("error checking for updates: %w", err)
 		}
-		return
+		return err
 	}
 	appUpdate.url = remoteMetadata.AppURL
 	appUpdate.hash = remoteMetadata.AppHash
@@ -269,7 +288,7 @@ func (s *State) getUpdateStatus(
 	systemVersionRemote, err := semver.NewVersion(remoteMetadata.SystemVersion)
 	if err != nil {
 		err = fmt.Errorf("error parsing remote system version: %w", err)
-		return
+		return err
 	}
 	systemUpdate.available = systemVersionRemote.GreaterThan(systemVersionLocal)
 	systemUpdate.downgradeAvailable = systemVersionRemote.LessThan(systemVersionLocal)
@@ -277,7 +296,7 @@ func (s *State) getUpdateStatus(
 	appVersionRemote, err := semver.NewVersion(remoteMetadata.AppVersion)
 	if err != nil {
 		err = fmt.Errorf("error parsing remote app version: %w, %s", err, remoteMetadata.AppVersion)
-		return
+		return err
 	}
 	appUpdate.available = appVersionRemote.GreaterThan(appVersionLocal)
 	appUpdate.downgradeAvailable = appVersionRemote.LessThan(appVersionLocal)
@@ -293,18 +312,17 @@ func (s *State) getUpdateStatus(
 		appUpdate.available = false
 	}
 
-	s.componentUpdateStatuses["app"] = *appUpdate
-	s.componentUpdateStatuses["system"] = *systemUpdate
-
-	return
+	return nil
 }
 
 // GetUpdateStatus returns the current update status (for backwards compatibility)
 func (s *State) GetUpdateStatus(ctx context.Context, params UpdateParams) (*UpdateStatus, error) {
-	_, _, err := s.getUpdateStatus(ctx, params)
+	appUpdate := &componentUpdateStatus{}
+	systemUpdate := &componentUpdateStatus{}
+	err := s.doGetUpdateStatus(ctx, params, appUpdate, systemUpdate)
 	if err != nil {
 		return nil, fmt.Errorf("error getting update status: %w", err)
 	}
 
-	return s.ToUpdateStatus(), nil
+	return toUpdateStatus(appUpdate, systemUpdate, ""), nil
 }

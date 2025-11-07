@@ -244,3 +244,21 @@ export async function getLocalVersion() {
   if (response.error) throw response.error;
   return response.result;
 }
+
+export interface updateParams {
+  app?: string;
+  system?: string;
+  components?: string;
+}
+
+export async function checkUpdateComponents(params: updateParams, includePreRelease: boolean) {
+  const response = await callJsonRpc<SystemVersionInfo>({
+    method: "checkUpdateComponents",
+    params: {
+      params,
+      includePreRelease,
+    },
+  });
+  if (response.error) throw response.error;
+  return response.result;
+}

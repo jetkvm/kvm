@@ -23,7 +23,8 @@ export default function SettingsGeneralUpdateRoute() {
   const { send } = useJsonRpc();
 
   const downgrade = useMemo(() => searchParams.get("downgrade") === "true", [searchParams]);
-  const updateComponents = useMemo(() => searchParams.get("components") || "", [searchParams]);
+  const customAppVersion = useMemo(() => searchParams.get("app") || "", [searchParams]);
+  const customSystemVersion = useMemo(() => searchParams.get("system") || "", [searchParams]);
   const resetConfig = useMemo(() => searchParams.get("resetConfig") === "true", [searchParams]);
 
   const onClose = useCallback(async () => {
@@ -38,18 +39,28 @@ export default function SettingsGeneralUpdateRoute() {
     setModalView("updating");
   }, [send, setModalView]);
 
-  const onConfirmDowngrade = useCallback((system?: string, app?: string) => {
+  const onConfirmDowngrade = useCallback(() => {
+    const components = [];
+    if (customSystemVersion) {
+      components.push("system");
+    }
+    if (customAppVersion) {
+      components.push("app");
+    }
+
     send("tryUpdateComponents", {
-      components: {
-        system, app,
-        components: updateComponents
+      params: {
+        components: components.join(","),
+        app: customAppVersion,
+        system: customSystemVersion,
       },
-      includePreRelease: true,
-      checkOnly: false,
-      resetConfig: resetConfig,
+      includePreRelease: false,
+      resetConfig,
+    }, (resp) => {
+      if ("error" in resp) return;
+      setModalView("updating");
     });
-    setModalView("updating");
-  }, [send, setModalView, updateComponents, resetConfig]);
+  }, [send, setModalView, customAppVersion, customSystemVersion, resetConfig]);
 
   useEffect(() => {
     if (otaState.updating) {
@@ -64,10 +75,12 @@ export default function SettingsGeneralUpdateRoute() {
   }, [otaState.error, otaState.updating, setModalView, updateSuccess]);
 
   return <Dialog
-  onClose={onClose}
-  onConfirmUpdate={onConfirmUpdate}
-  onConfirmDowngrade={onConfirmDowngrade}
-  downgrade={downgrade}
+    onClose={onClose}
+    onConfirmUpdate={onConfirmUpdate}
+    onConfirmDowngrade={onConfirmDowngrade}
+    downgrade={downgrade}
+    customAppVersion={customAppVersion}
+    customSystemVersion={customSystemVersion}
   />;
 }
 
@@ -76,11 +89,15 @@ export function Dialog({
   onConfirmUpdate,
   onConfirmDowngrade,
   downgrade,
+  customAppVersion,
+  customSystemVersion,
 }: Readonly<{
   downgrade: boolean;
   onClose: () => void;
   onConfirmUpdate: () => void;
   onConfirmDowngrade: () => void;
+  customAppVersion?: string;
+  customSystemVersion?: string;
 }>) {
   const { navigateTo } = useDeviceUiNavigation();
 
@@ -92,8 +109,7 @@ export function Dialog({
     (versionInfo: SystemVersionInfo) => {
       const hasUpdate =
         versionInfo?.systemUpdateAvailable || versionInfo?.appUpdateAvailable;
-      const hasDowngrade =
-        versionInfo?.systemDowngradeAvailable || versionInfo?.appDowngradeAvailable;
+      const hasDowngrade = customSystemVersion !== undefined || customAppVersion !== undefined;
 
       setVersionInfo(versionInfo);
 
@@ -105,7 +121,7 @@ export function Dialog({
         setModalView("upToDate");
       }
     },
-    [setModalView, downgrade],
+    [setModalView, downgrade, customAppVersion, customSystemVersion],
   );
 
   const onCancelDowngrade = useCallback(() => {
@@ -137,9 +153,10 @@ export function Dialog({
         )}
         {modalView === "updateDowngradeAvailable" && (
           <UpdateDowngradeAvailableState
+            appVersion={customAppVersion}
+            systemVersion={customSystemVersion}
             onConfirmDowngrade={onConfirmDowngrade}
             onCancelDowngrade={onCancelDowngrade}
-            versionInfo={versionInfo!}
           />
         )}
 
@@ -455,20 +472,19 @@ function UpdateAvailableState({
 }
 
 function UpdateDowngradeAvailableState({
-  versionInfo,
+  appVersion,
+  systemVersion,
   onConfirmDowngrade,
   onCancelDowngrade,
 }: {
-  versionInfo: SystemVersionInfo;
-  onConfirmDowngrade: (system?: string, app?: string) => void;
+  appVersion?: string;
+  systemVersion?: string;
+  onConfirmDowngrade: () => void;
   onCancelDowngrade: () => void;
 }) {
   const confirmDowngrade = useCallback(() => {
-    onConfirmDowngrade(
-      versionInfo?.remote?.systemVersion || undefined,
-      versionInfo?.remote?.appVersion || undefined,
-    );
-  }, [versionInfo, onConfirmDowngrade]);
+    onConfirmDowngrade();
+  }, [onConfirmDowngrade]);
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
@@ -479,15 +495,15 @@ function UpdateDowngradeAvailableState({
           {m.general_update_downgrade_available_description()}
         </p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
-          {versionInfo?.systemDowngradeAvailable ? (
+          {systemVersion ? (
             <>
-              <span className="font-semibold">{m.general_update_system_type()}</span>: {versionInfo?.remote?.systemVersion}
+              <span className="font-semibold">{m.general_update_system_type()}</span>: {systemVersion}
               <br />
             </>
           ) : null}
-          {versionInfo?.appDowngradeAvailable ? (
+          {appVersion ? (
             <>
-              <span className="font-semibold">{m.general_update_application_type()}</span>: {versionInfo?.remote?.appVersion}
+              <span className="font-semibold">{m.general_update_application_type()}</span>: {appVersion}
             </>
           ) : null}
         </p>

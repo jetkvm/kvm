@@ -156,18 +156,7 @@ func (s *State) GetTargetVersion(component string) string {
 	return componentUpdate.targetVersion
 }
 
-// ToUpdateStatus converts the State to the UpdateStatus
-func (s *State) ToUpdateStatus() *UpdateStatus {
-	appUpdate, ok := s.componentUpdateStatuses["app"]
-	if !ok {
-		return nil
-	}
-
-	systemUpdate, ok := s.componentUpdateStatuses["system"]
-	if !ok {
-		return nil
-	}
-
+func toUpdateStatus(appUpdate *componentUpdateStatus, systemUpdate *componentUpdateStatus, error string) *UpdateStatus {
 	return &UpdateStatus{
 		Local: &LocalMetadata{
 			AppVersion:    appUpdate.localVersion,
@@ -185,8 +174,23 @@ func (s *State) ToUpdateStatus() *UpdateStatus {
 		SystemDowngradeAvailable: systemUpdate.downgradeAvailable,
 		AppUpdateAvailable:       appUpdate.available,
 		AppDowngradeAvailable:    appUpdate.downgradeAvailable,
-		Error:                    s.error,
+		Error:                    error,
 	}
+}
+
+// ToUpdateStatus converts the State to the UpdateStatus
+func (s *State) ToUpdateStatus() *UpdateStatus {
+	appUpdate, ok := s.componentUpdateStatuses["app"]
+	if !ok {
+		return nil
+	}
+
+	systemUpdate, ok := s.componentUpdateStatuses["system"]
+	if !ok {
+		return nil
+	}
+
+	return toUpdateStatus(&appUpdate, &systemUpdate, s.error)
 }
 
 // IsUpdatePending returns true if an update is pending

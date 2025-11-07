@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/jetkvm/kvm/internal/ota"
@@ -135,72 +134,56 @@ func rpcGetLocalVersion() (*ota.LocalMetadata, error) {
 	}, nil
 }
 
-// ComponentName represents the name of a component
-type tryUpdateComponents struct {
+type updateParams struct {
 	AppTargetVersion    string `json:"app"`
 	SystemTargetVersion string `json:"system"`
 	Components          string `json:"components,omitempty"` // components is a comma-separated list of components to update
 }
 
 func rpcTryUpdate() error {
-	return rpcTryUpdateComponents(tryUpdateComponents{
+	return rpcTryUpdateComponents(updateParams{
 		AppTargetVersion:    "",
 		SystemTargetVersion: "",
-	}, config.IncludePreRelease, false, false)
+	}, config.IncludePreRelease, false)
 }
 
-func rpcTryUpdateComponents(components tryUpdateComponents, includePreRelease bool, checkOnly bool, resetConfig bool) error {
+// rpcCheckUpdateComponents checks the update status for the given components
+func rpcCheckUpdateComponents(params updateParams, includePreRelease bool) (*ota.UpdateStatus, error) {
+	updateParams := ota.UpdateParams{
+		DeviceID:            GetDeviceID(),
+		IncludePreRelease:   includePreRelease,
+		AppTargetVersion:    params.AppTargetVersion,
+		SystemTargetVersion: params.SystemTargetVersion,
+	}
+	if params.Components != "" {
+		updateParams.Components = strings.Split(params.Components, ",")
+	}
+	info, err := otaState.GetUpdateStatus(context.Background(), updateParams)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check update: %w", err)
+	}
+	return info, nil
+}
+
+func rpcTryUpdateComponents(params updateParams, includePreRelease bool, resetConfig bool) error {
 	updateParams := ota.UpdateParams{
 		DeviceID:          GetDeviceID(),
 		IncludePreRelease: includePreRelease,
-		CheckOnly:         checkOnly,
 		ResetConfig:       resetConfig,
 	}
 
-	logger.Info().Interface("components", components).Msg("components")
-
-	currentAppTargetVersion := otaState.GetTargetVersion("app")
-	appTargetVersionChanged := currentAppTargetVersion != components.AppTargetVersion
-	updateParams.AppTargetVersion = components.AppTargetVersion
-	if err := otaState.SetTargetVersion("app", components.AppTargetVersion); err != nil {
+	updateParams.AppTargetVersion = params.AppTargetVersion
+	if err := otaState.SetTargetVersion("app", params.AppTargetVersion); err != nil {
 		return fmt.Errorf("failed to set app target version: %w", err)
 	}
 
-	currentSystemTargetVersion := otaState.GetTargetVersion("system")
-	systemTargetVersionChanged := currentSystemTargetVersion != components.SystemTargetVersion
-	updateParams.SystemTargetVersion = components.SystemTargetVersion
-	if err := otaState.SetTargetVersion("system", components.SystemTargetVersion); err != nil {
+	updateParams.SystemTargetVersion = params.SystemTargetVersion
+	if err := otaState.SetTargetVersion("system", params.SystemTargetVersion); err != nil {
 		return fmt.Errorf("failed to set system target version: %w", err)
 	}
 
-	if components.Components != "" {
-		updateParams.Components = strings.Split(components.Components, ",")
-	}
-
-	// if it's a check only update, we don't need to try to update, we just need to check if the version is available
-	// and return the error immediately then revert the previous target versions
-	if checkOnly {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		_, err := otaState.GetUpdateStatus(ctx, updateParams)
-		if err == nil {
-			return nil
-		}
-
-		// revert the previous target versions
-		if appTargetVersionChanged {
-			if err := otaState.SetTargetVersion("app", currentAppTargetVersion); err != nil {
-				return fmt.Errorf("failed to revert app target version: %w", err)
-			}
-		}
-		if systemTargetVersionChanged {
-			if err := otaState.SetTargetVersion("system", currentSystemTargetVersion); err != nil {
-				return fmt.Errorf("failed to revert system target version: %w", err)
-			}
-		}
-
-		return err
+	if params.Components != "" {
+		updateParams.Components = strings.Split(params.Components, ",")
 	}
 
 	go func() {
