@@ -220,6 +220,8 @@ type UpdateParams struct {
 	ResetConfig         bool     `json:"resetConfig"`
 }
 
+// getUpdateStatus gets the update status for the given components
+// and updates the componentUpdateStatuses map
 func (s *State) getUpdateStatus(
 	ctx context.Context,
 	params UpdateParams,
@@ -239,7 +241,7 @@ func (s *State) getUpdateStatus(
 		systemUpdate = &currentSystemUpdate
 	}
 
-	err = s.doGetUpdateStatus(ctx, params, appUpdate, systemUpdate)
+	err = s.checkUpdateStatus(ctx, params, appUpdate, systemUpdate)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -250,21 +252,20 @@ func (s *State) getUpdateStatus(
 	return appUpdate, systemUpdate, nil
 }
 
-// doGetUpdateStatus is the internal function that gets the update status
-// it WON'T change the state of the OTA state
-func (s *State) doGetUpdateStatus(
+// checkUpdateStatus checks the update status for the given components
+func (s *State) checkUpdateStatus(
 	ctx context.Context,
 	params UpdateParams,
-	appUpdate *componentUpdateStatus,
-	systemUpdate *componentUpdateStatus,
+	appUpdateStatus *componentUpdateStatus,
+	systemUpdateStatus *componentUpdateStatus,
 ) error {
 	// Get local versions
 	systemVersionLocal, appVersionLocal, err := s.getLocalVersion()
 	if err != nil {
 		return fmt.Errorf("error getting local version: %w", err)
 	}
-	appUpdate.localVersion = appVersionLocal.String()
-	systemUpdate.localVersion = systemVersionLocal.String()
+	appUpdateStatus.localVersion = appVersionLocal.String()
+	systemUpdateStatus.localVersion = systemVersionLocal.String()
 
 	// Get remote metadata
 	remoteMetadata, err := s.fetchUpdateMetadata(ctx, params)
@@ -276,13 +277,13 @@ func (s *State) doGetUpdateStatus(
 		}
 		return err
 	}
-	appUpdate.url = remoteMetadata.AppURL
-	appUpdate.hash = remoteMetadata.AppHash
-	appUpdate.version = remoteMetadata.AppVersion
+	appUpdateStatus.url = remoteMetadata.AppURL
+	appUpdateStatus.hash = remoteMetadata.AppHash
+	appUpdateStatus.version = remoteMetadata.AppVersion
 
-	systemUpdate.url = remoteMetadata.SystemURL
-	systemUpdate.hash = remoteMetadata.SystemHash
-	systemUpdate.version = remoteMetadata.SystemVersion
+	systemUpdateStatus.url = remoteMetadata.SystemURL
+	systemUpdateStatus.hash = remoteMetadata.SystemHash
+	systemUpdateStatus.version = remoteMetadata.SystemVersion
 
 	// Get remote versions
 	systemVersionRemote, err := semver.NewVersion(remoteMetadata.SystemVersion)
@@ -290,26 +291,26 @@ func (s *State) doGetUpdateStatus(
 		err = fmt.Errorf("error parsing remote system version: %w", err)
 		return err
 	}
-	systemUpdate.available = systemVersionRemote.GreaterThan(systemVersionLocal)
-	systemUpdate.downgradeAvailable = systemVersionRemote.LessThan(systemVersionLocal)
+	systemUpdateStatus.available = systemVersionRemote.GreaterThan(systemVersionLocal)
+	systemUpdateStatus.downgradeAvailable = systemVersionRemote.LessThan(systemVersionLocal)
 
 	appVersionRemote, err := semver.NewVersion(remoteMetadata.AppVersion)
 	if err != nil {
 		err = fmt.Errorf("error parsing remote app version: %w, %s", err, remoteMetadata.AppVersion)
 		return err
 	}
-	appUpdate.available = appVersionRemote.GreaterThan(appVersionLocal)
-	appUpdate.downgradeAvailable = appVersionRemote.LessThan(appVersionLocal)
+	appUpdateStatus.available = appVersionRemote.GreaterThan(appVersionLocal)
+	appUpdateStatus.downgradeAvailable = appVersionRemote.LessThan(appVersionLocal)
 
 	// Handle pre-release updates
 	isRemoteSystemPreRelease := systemVersionRemote.Prerelease() != ""
 	isRemoteAppPreRelease := appVersionRemote.Prerelease() != ""
 
 	if isRemoteSystemPreRelease && !params.IncludePreRelease {
-		systemUpdate.available = false
+		systemUpdateStatus.available = false
 	}
 	if isRemoteAppPreRelease && !params.IncludePreRelease {
-		appUpdate.available = false
+		appUpdateStatus.available = false
 	}
 
 	return nil
@@ -317,12 +318,12 @@ func (s *State) doGetUpdateStatus(
 
 // GetUpdateStatus returns the current update status (for backwards compatibility)
 func (s *State) GetUpdateStatus(ctx context.Context, params UpdateParams) (*UpdateStatus, error) {
-	appUpdate := &componentUpdateStatus{}
-	systemUpdate := &componentUpdateStatus{}
-	err := s.doGetUpdateStatus(ctx, params, appUpdate, systemUpdate)
+	appUpdateStatus := componentUpdateStatus{}
+	systemUpdateStatus := componentUpdateStatus{}
+	err := s.checkUpdateStatus(ctx, params, &appUpdateStatus, &systemUpdateStatus)
 	if err != nil {
 		return nil, fmt.Errorf("error getting update status: %w", err)
 	}
 
-	return toUpdateStatus(appUpdate, systemUpdate, ""), nil
+	return toUpdateStatus(&appUpdateStatus, &systemUpdateStatus, ""), nil
 }

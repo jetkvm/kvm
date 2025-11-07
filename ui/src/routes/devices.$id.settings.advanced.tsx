@@ -204,9 +204,8 @@ export default function SettingsAdvancedRoute() {
       setVersionUpdateLoading(true);
       versionInfo = await checkUpdateComponents({
         components: components.join(","),
-        // TODO: Rename to appTargetVersion and systemTargetVersion
-        app: appVersion,
-        system: systemVersion,
+        appTargetVersion: appVersion,
+        systemTargetVersion: systemVersion,
       }, devChannel);
       console.log("versionInfo", versionInfo);
     } catch (error: unknown) {
@@ -216,7 +215,6 @@ export default function SettingsAdvancedRoute() {
     }
 
     const pageParams = new URLSearchParams();
-    pageParams.set("downgrade", "true");
     if (components.includes("app") && versionInfo.remote?.appVersion && versionInfo.appDowngradeAvailable) {
       pageParams.set("app", versionInfo.remote?.appVersion);
     }

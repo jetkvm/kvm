@@ -246,8 +246,8 @@ export async function getLocalVersion() {
 }
 
 export interface updateParams {
-  app?: string;
-  system?: string;
+  appTargetVersion?: string;
+  systemTargetVersion?: string;
   components?: string;
 }
 

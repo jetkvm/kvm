@@ -135,8 +135,8 @@ func rpcGetLocalVersion() (*ota.LocalMetadata, error) {
 }
 
 type updateParams struct {
-	AppTargetVersion    string `json:"app"`
-	SystemTargetVersion string `json:"system"`
+	AppTargetVersion    string `json:"appTargetVersion"`
+	SystemTargetVersion string `json:"systemTargetVersion"`
 	Components          string `json:"components,omitempty"` // components is a comma-separated list of components to update
 }
 

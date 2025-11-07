@@ -11,7 +11,7 @@ import LoadingSpinner from "@components/LoadingSpinner";
 import UpdatingStatusCard, { type UpdatePart } from "@components/UpdatingStatusCard";
 import { m } from "@localizations/messages.js";
 import { sleep } from "@/utils";
-import { SystemVersionInfo } from "@/utils/jsonrpc";
+import { checkUpdateComponents, SystemVersionInfo, updateParams } from "@/utils/jsonrpc";
 
 export default function SettingsGeneralUpdateRoute() {
   const navigate = useNavigate();
@@ -38,20 +38,16 @@ export default function SettingsGeneralUpdateRoute() {
     setModalView("updating");
   }, [send, setModalView]);
 
-  const onConfirmDowngrade = useCallback(() => {
+  const onConfirmCustomUpdate = useCallback((appTargetVersion?: string, systemTargetVersion?: string) => {
     const components = [];
-    if (customSystemVersion) {
-      components.push("system");
-    }
-    if (customAppVersion) {
-      components.push("app");
-    }
+    if (appTargetVersion) components.push("system");
+    if (systemTargetVersion) components.push("app");
 
     send("tryUpdateComponents", {
       params: {
         components: components.join(","),
-        app: customAppVersion,
-        system: customSystemVersion,
+        appTargetVersion,
+        systemTargetVersion,
       },
       includePreRelease: false,
       resetConfig,
@@ -59,7 +55,7 @@ export default function SettingsGeneralUpdateRoute() {
       if ("error" in resp) return;
       setModalView("updating");
     });
-  }, [send, setModalView, customAppVersion, customSystemVersion, resetConfig]);
+  }, [send, setModalView, resetConfig]);
 
   useEffect(() => {
     if (otaState.updating) {
@@ -76,7 +72,7 @@ export default function SettingsGeneralUpdateRoute() {
   return <Dialog
     onClose={onClose}
     onConfirmUpdate={onConfirmUpdate}
-    onConfirmDowngrade={onConfirmDowngrade}
+    onConfirmCustomUpdate={onConfirmCustomUpdate}
     customAppVersion={customAppVersion}
     customSystemVersion={customSystemVersion}
   />;
@@ -85,13 +81,13 @@ export default function SettingsGeneralUpdateRoute() {
 export function Dialog({
   onClose,
   onConfirmUpdate,
-  onConfirmDowngrade,
+  onConfirmCustomUpdate: onConfirmCustomUpdateCallback,
   customAppVersion,
   customSystemVersion,
 }: Readonly<{
   onClose: () => void;
   onConfirmUpdate: () => void;
-  onConfirmDowngrade: () => void;
+  onConfirmCustomUpdate: (appVersion?: string, systemVersion?: string) => void;
   customAppVersion?: string;
   customSystemVersion?: string;
 }>) {
@@ -99,31 +95,29 @@ export function Dialog({
 
   const [versionInfo, setVersionInfo] = useState<null | SystemVersionInfo>(null);
   const { modalView, setModalView, otaState } = useUpdateStore();
-  const { send } = useJsonRpc();
+  const forceCustomUpdate = customSystemVersion !== undefined || customAppVersion !== undefined;
+  const onConfirmCustomUpdate = useCallback(() => {
+    onConfirmCustomUpdateCallback(
+      customAppVersion !== undefined ? customAppVersion : versionInfo?.remote?.appVersion,
+      customSystemVersion !== undefined ? customSystemVersion : versionInfo?.remote?.systemVersion,
+    );
+  }, [onConfirmCustomUpdateCallback, customAppVersion, customSystemVersion, versionInfo]);
 
   const onFinishedLoading = useCallback(
     (versionInfo: SystemVersionInfo) => {
       const hasUpdate =
         versionInfo?.systemUpdateAvailable || versionInfo?.appUpdateAvailable;
-      const forceCustomUpdate = customSystemVersion !== undefined || customAppVersion !== undefined;
 
       setVersionInfo(versionInfo);
 
-      if (forceCustomUpdate) {
-        setModalView("confirmCustomUpdate");
-      } else if (hasUpdate) {
+      if (hasUpdate || forceCustomUpdate) {
         setModalView("updateAvailable");
       } else {
         setModalView("upToDate");
       }
     },
-    [setModalView, customAppVersion, customSystemVersion],
+    [setModalView, forceCustomUpdate],
   );
-
-  const onCancelDowngrade = useCallback(() => {
-    send("cancelDowngrade", {});
-    onClose();
-  }, [onClose, send]);
 
   return (
     <div className="pointer-events-auto relative mx-auto text-left">
@@ -137,22 +131,20 @@ export function Dialog({
         )}
 
         {modalView === "loading" && (
-          <LoadingState onFinished={onFinishedLoading} onCancelCheck={onClose} />
+          <LoadingState
+            onFinished={onFinishedLoading}
+            onCancelCheck={onClose}
+            customAppVersion={customAppVersion}
+            customSystemVersion={customSystemVersion}
+          />
         )}
 
         {modalView === "updateAvailable" && (
           <UpdateAvailableState
-            onConfirmUpdate={onConfirmUpdate}
+            forceCustomUpdate={forceCustomUpdate}
+            onConfirm={forceCustomUpdate ? onConfirmCustomUpdate : onConfirmUpdate}
             onClose={onClose}
             versionInfo={versionInfo!}
-          />
-        )}
-        {modalView === "confirmCustomUpdate" && (
-          <ConfirmCustomUpdate
-            appVersion={customAppVersion}
-            systemVersion={customSystemVersion}
-            onConfirm={onConfirmDowngrade}
-            onCancel={onCancelDowngrade}
           />
         )}
 
@@ -179,9 +171,13 @@ export function Dialog({
 function LoadingState({
   onFinished,
   onCancelCheck,
+  customAppVersion,
+  customSystemVersion,
 }: {
   onFinished: (versionInfo: SystemVersionInfo) => void;
   onCancelCheck: () => void;
+  customAppVersion?: string;
+  customSystemVersion?: string;
 }) {
   const [progressWidth, setProgressWidth] = useState("0%");
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -190,6 +186,23 @@ function LoadingState({
   const { setModalView } = useUpdateStore();
 
   const progressBarRef = useRef<HTMLDivElement>(null);
+
+  const checkUpdate = useCallback(async () => {
+    if (!customAppVersion && !customSystemVersion) {
+      return await getVersionInfo();
+    }
+    const params : updateParams = {
+      components: "",
+      appTargetVersion: customAppVersion,
+      systemTargetVersion: customSystemVersion,
+    };
+    if (customAppVersion) params.components += ",app";
+    if (customSystemVersion) params.components += ",system";
+    params.components = params.components?.replace(/^,+/, "");
+
+    return await checkUpdateComponents(params, false);
+  }, [customAppVersion, customSystemVersion, getVersionInfo]);
+
   useEffect(() => {
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
@@ -199,8 +212,7 @@ function LoadingState({
       setProgressWidth("100%");
     }, 0);
 
-    // TODO: CHECK FOR QUERY PARAMS
-    getVersionInfo()
+    checkUpdate()
       .then(async versionInfo => {
         // Add a small delay to ensure it's not just flickering
         await sleep(600);
@@ -222,7 +234,7 @@ function LoadingState({
       clearTimeout(animationTimer);
       abortControllerRef.current?.abort();
     };
-  }, [getVersionInfo, onFinished, setModalView]);
+  }, [checkUpdate, onFinished, setModalView]);
 
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
@@ -430,11 +442,13 @@ function SystemUpToDateState({
 
 function UpdateAvailableState({
   versionInfo,
-  onConfirmUpdate,
+  forceCustomUpdate,
+  onConfirm,
   onClose,
 }: {
   versionInfo: SystemVersionInfo;
-  onConfirmUpdate: () => void;
+  forceCustomUpdate: boolean;
+  onConfirm: () => void;
   onClose: () => void;
 }) {
   return (
@@ -444,66 +458,24 @@ function UpdateAvailableState({
           {m.general_update_available_title()}
         </p>
         <p className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-          {m.general_update_available_description()}
+          {forceCustomUpdate ? m.general_update_downgrade_available_description() : m.general_update_available_description()}
         </p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
-          {versionInfo?.systemUpdateAvailable ? (
+          {(forceCustomUpdate ? versionInfo?.systemDowngradeAvailable : versionInfo?.systemUpdateAvailable) ? (
             <>
-              <span className="font-semibold">{m.general_update_system_type()}</span>: {versionInfo?.remote?.systemVersion}
+              <span className="font-semibold">{m.general_update_system_type()}</span>: {versionInfo?.local?.systemVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.systemVersion}
               <br />
             </>
           ) : null}
-          {versionInfo?.appUpdateAvailable ? (
+          {(forceCustomUpdate ? versionInfo?.appDowngradeAvailable : versionInfo?.appUpdateAvailable) ? (
             <>
-              <span className="font-semibold">{m.general_update_application_type()}</span>: {versionInfo?.remote?.appVersion}
+              <span className="font-semibold">{m.general_update_application_type()}</span>: {versionInfo?.local?.appVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.appVersion}
             </>
           ) : null}
         </p>
         <div className="flex items-center justify-start gap-x-2">
-          <Button size="SM" theme="primary" text={m.general_update_now_button()} onClick={onConfirmUpdate} />
+          <Button size="SM" theme={forceCustomUpdate ? "danger" : "primary"} text={forceCustomUpdate ? m.general_update_downgrade_button() : m.general_update_now_button()} onClick={onConfirm} />
           <Button size="SM" theme="light" text={m.general_update_later_button()} onClick={onClose} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ConfirmCustomUpdate({
-  appVersion,
-  systemVersion,
-  onConfirm,
-  onCancel,
-}: {
-  appVersion?: string;
-  systemVersion?: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="flex flex-col items-start justify-start space-y-4 text-left">
-      <div className="text-left">
-        <p className="text-base font-semibold text-black dark:text-white">
-          {m.general_update_downgrade_available_title()}
-        </p>
-        <p className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-          {m.general_update_downgrade_available_description()}
-        </p>
-        <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
-          {systemVersion ? (
-            <>
-              <span className="font-semibold">{m.general_update_system_type()}</span>: {systemVersion}
-              <br />
-            </>
-          ) : null}
-          {appVersion ? (
-            <>
-              <span className="font-semibold">{m.general_update_application_type()}</span>: {appVersion}
-            </>
-          ) : null}
-        </p>
-        <div className="flex items-center justify-start gap-x-2">
-          <Button size="SM" theme="primary" text={m.general_update_downgrade_button()} onClick={onConfirm} />
-          <Button size="SM" theme="light" text={m.general_update_keep_current_button()} onClick={onCancel} />
         </div>
       </div>
     </div>
