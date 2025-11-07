@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { motion, AnimatePresence } from "framer-motion";
+import { LuInfo } from "react-icons/lu";
 
 import { Button } from "@/components/Button";
-import { GridCard } from "@components/Card";
+import Card, { GridCard } from "@components/Card";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { useVersion } from "@/hooks/useVersion";
@@ -30,19 +31,47 @@ function OverlayContent({ children }: OverlayContentProps) {
   );
 }
 
+interface TooltipProps {
+  readonly children: React.ReactNode;
+  readonly text: string;
+  readonly show: boolean;
+}
+
+function Tooltip({ children, text, show }: TooltipProps) {
+  if (!show) {
+    return <>{children}</>;
+  }
+
+
+  return (
+    <div className="group/tooltip relative">
+      {children}
+      <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 opacity-0 transition-opacity group-hover/tooltip:block group-hover/tooltip:opacity-100">
+        <Card>
+          <div className="whitespace-nowrap px-2 py-1 text-xs flex items-center gap-1 justify-center">
+            <LuInfo className="h-3 w-3 text-slate-700 dark:text-slate-300" />
+            {text}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
   const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
   const { appVersion } = useVersion();
   const { systemVersion } = useDeviceStore();
   const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
+  const [hasDownloadedLogs, setHasDownloadedLogs] = useState(false);
 
   const getReasonCopy = () => {
     switch (reason) {
       case "video":
         return {
           message:
-            "We've detected an issue with the video capture process. Your device is still running and accessible, but video streaming is temporarily unavailable. You can reboot to attempt recovery, report the issue, or downgrade to the last stable version.",
+            "We've detected an issue with the video capture process. Your device is still running and accessible, but video streaming is temporarily unavailable.",
         };
       default:
         return {
@@ -80,13 +109,14 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      notifications.success("Recovery logs downloaded successfully");
+      notifications.success("Crash logs downloaded successfully");
+      setHasDownloadedLogs(true);
 
       // Open GitHub issue
       const issueBody = `## Issue Description
-The ${reason} process encountered an error and recovery mode was activated.
+The \`${reason}\` process encountered an error and fail safe mode was activated.
 
-**Reason:** ${reason}
+**Reason:** \`${reason}\`
 **Timestamp:** ${new Date().toISOString()}
 **App Version:** ${appVersion || "Unknown"}
 **System Version:** ${systemVersion || "Unknown"}
@@ -94,6 +124,9 @@ The ${reason} process encountered an error and recovery mode was activated.
 ## Logs
 Please attach the recovery logs file that was downloaded to your computer:
 \`${filename}\`
+
+> [!NOTE]
+> Please omit any sensitive information from the logs.
 
 ## Additional Context
 [Please describe what you were doing when this occurred]`;
@@ -114,7 +147,7 @@ Please attach the recovery logs file that was downloaded to your computer:
   return (
     <AnimatePresence>
       <motion.div
-        className="aspect-video h-full w-full"
+        className="aspect-video h-full w-full isolate"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0, transition: { duration: 0 } }}
@@ -132,29 +165,40 @@ Please attach the recovery logs file that was downloaded to your computer:
                   <h2 className="text-xl font-bold">Fail safe mode activated</h2>
                   <p className="text-sm">{message}</p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    onClick={handleReportAndDownloadLogs}
-                    theme="primary"
-                    size="SM"
-                    disabled={isDownloadingLogs}
-                    LeadingIcon={GitHubIcon}
-                    text={isDownloadingLogs ? "Downloading Logs..." : "Report Issue & Download Logs"}
-                  />
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      onClick={handleReportAndDownloadLogs}
+                      theme="primary"
+                      size="SM"
+                      disabled={isDownloadingLogs}
+                      LeadingIcon={GitHubIcon}
+                      text={isDownloadingLogs ? "Downloading Logs..." : "Download Logs & Report Issue"}
+                    />
 
-                  <Button
-                    onClick={() => navigateTo("/settings/general/reboot")}
-                    theme="light"
-                    size="SM"
-                    text="Reboot Device"
-                  />
+                    <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 block" />
+                    <Tooltip text="Download logs first to unlock" show={!hasDownloadedLogs}>
+                      <Button
+                        onClick={() => navigateTo("/settings/general/reboot")}
+                        theme="light"
+                        size="SM"
+                        text="Reboot Device"
+                        disabled={!hasDownloadedLogs}
+                      />
+                    </Tooltip>
 
-                  <Button
-                    size="SM"
-                    onClick={handleDowngrade}
-                    theme="light"
-                    text="Downgrade to v0.4.8"
-                  />
+                    <Tooltip text="Download logs first to unlock" show={!hasDownloadedLogs}>
+                      <Button
+                        size="SM"
+                        onClick={handleDowngrade}
+                        theme="light"
+                        text="Downgrade to v0.4.8"
+                        disabled={!hasDownloadedLogs}
+                      />
+                    </Tooltip>
+                  </div>
+
+
                 </div>
               </div>
             </div>

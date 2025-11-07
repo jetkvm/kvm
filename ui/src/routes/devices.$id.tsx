@@ -126,7 +126,7 @@ export default function KvmIdRoute() {
 
   const params = useParams() as { id: string };
   const { sidebarView, setSidebarView, disableVideoFocusTrap } = useUiStore();
-  const [ queryParams, setQueryParams ] = useSearchParams();
+  const [queryParams, setQueryParams] = useSearchParams();
 
   const {
     peerConnection, setPeerConnection,
@@ -483,10 +483,6 @@ export default function KvmIdRoute() {
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onopen = () => {
       setRpcDataChannel(rpcDataChannel);
-
-    // setTimeout(() => {
-    //   useFailsafeModeStore.setState({ isFailsafeMode: true, reason: "video" });
-    // }, 1000);
     };
 
     const rpcHidChannel = pc.createDataChannel("hidrpc");
@@ -604,10 +600,10 @@ export default function KvmIdRoute() {
     });
   }, 10000);
 
-  const { setNetworkState} = useNetworkStateStore();
+  const { setNetworkState } = useNetworkStateStore();
   const { setHdmiState } = useVideoStore();
   const {
-    keyboardLedState,  setKeyboardLedState,
+    keyboardLedState, setKeyboardLedState,
     keysDownState, setKeysDownState, setUsbState,
   } = useHidStore();
   const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
@@ -770,7 +766,7 @@ export default function KvmIdRoute() {
     if (location.pathname !== "/other-session") navigateTo("/");
   }, [navigateTo, location.pathname]);
 
-  const { appVersion, getLocalVersion}  = useVersion();
+  const { appVersion, getLocalVersion } = useVersion();
 
   useEffect(() => {
     if (appVersion) return;
@@ -863,10 +859,9 @@ export default function KvmIdRoute() {
               className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
             >
               <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
-                {!!ConnectionStatusElement && ConnectionStatusElement}
-                {isFailsafeMode && failsafeReason && (
+                {isFailsafeMode && failsafeReason ? (
                   <FailSafeModeOverlay reason={failsafeReason} />
-                )}
+                ) : !!ConnectionStatusElement && ConnectionStatusElement}
               </div>
             </div>
             <SidebarContainer sidebarView={sidebarView} />
