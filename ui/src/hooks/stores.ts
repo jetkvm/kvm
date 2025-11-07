@@ -465,7 +465,7 @@ export interface KeysDownState {
 	keys: number[];
 }
 
-export type USBStates = 
+export type USBStates =
   | "configured"
   | "attached"
   | "not attached"
@@ -925,4 +925,17 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
       set({ loading: false });
     }
   }
+}));
+
+export interface FailsafeModeState {
+  isFailsafeMode: boolean;
+  reason: string | null; // "video", "network", etc.
+  setFailsafeMode: (enabled: boolean, reason: string | null) => void;
+}
+
+export const useFailsafeModeStore = create<FailsafeModeState>(set => ({
+  isFailsafeMode: false,
+  reason: null,
+  setFailsafeMode: (enabled: boolean, reason: string | null) =>
+    set({ isFailsafeMode: enabled, reason }),
 }));

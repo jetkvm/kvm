@@ -1,0 +1,203 @@
+import { useState } from "react";
+import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { motion, AnimatePresence } from "framer-motion";
+
+import { Button } from "@/components/Button";
+import { GridCard } from "@components/Card";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import { useVersion } from "@/hooks/useVersion";
+import { useDeviceStore } from "@/hooks/stores";
+import notifications from "@/notifications";
+
+import { GitHubIcon } from "./Icons";
+
+interface FailSafeModeOverlayProps {
+  reason: string;
+}
+
+interface OverlayContentProps {
+  readonly children: React.ReactNode;
+}
+
+function OverlayContent({ children }: OverlayContentProps) {
+  return (
+    <GridCard cardClassName="h-full pointer-events-auto outline-hidden!">
+      <div className="flex h-full w-full flex-col items-center justify-center rounded-md border border-slate-800/30 dark:border-slate-300/20">
+        {children}
+      </div>
+    </GridCard>
+  );
+}
+
+export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
+  const { send } = useJsonRpc();
+  const { navigateTo } = useDeviceUiNavigation();
+  const { appVersion } = useVersion();
+  const { systemVersion } = useDeviceStore();
+  const [showRebootConfirm, setShowRebootConfirm] = useState(false);
+  const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
+
+  const getReasonCopy = () => {
+    switch (reason) {
+      case "video":
+        return {
+          message:
+            "We've detected an issue with the video capture process. Your device is still running and accessible, but video streaming is temporarily unavailable. You can reboot to attempt recovery, report the issue, or downgrade to the last stable version.",
+        };
+      default:
+        return {
+          message:
+            "A critical process has encountered an issue. Your device is still accessible, but some functionality may be temporarily unavailable.",
+        };
+    }
+  };
+
+  const { title, message } = getReasonCopy();
+
+  const handleReboot = () => {
+    if (!showRebootConfirm) {
+      setShowRebootConfirm(true);
+      return;
+    }
+
+    send("reboot", { force: true }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(`Failed to reboot: ${resp.error.message}`);
+      }
+    });
+  };
+
+  const handleReportAndDownloadLogs = () => {
+    setIsDownloadingLogs(true);
+
+    send("getFailSafeLogs", {}, (resp: JsonRpcResponse) => {
+      setIsDownloadingLogs(false);
+
+      if ("error" in resp) {
+        notifications.error(`Failed to get recovery logs: ${resp.error.message}`);
+        return;
+      }
+
+      // Download logs
+      const logContent = resp.result as string;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `jetkvm-recovery-${reason}-${timestamp}.txt`;
+
+      const blob = new Blob([logContent], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      notifications.success("Recovery logs downloaded successfully");
+
+      // Open GitHub issue
+      const issueBody = `## Issue Description
+The ${reason} process encountered an error and recovery mode was activated.
+
+**Reason:** ${reason}
+**Timestamp:** ${new Date().toISOString()}
+**App Version:** ${appVersion || "Unknown"}
+**System Version:** ${systemVersion || "Unknown"}
+
+## Logs
+Please attach the recovery logs file that was downloaded to your computer:
+\`${filename}\`
+
+## Additional Context
+[Please describe what you were doing when this occurred]`;
+
+      const issueUrl =
+        `https://github.com/jetkvm/kvm/issues/new?` +
+        `title=${encodeURIComponent(`Recovery Mode: ${reason} process issue`)}&` +
+        `body=${encodeURIComponent(issueBody)}`;
+
+      window.open(issueUrl, "_blank");
+    });
+  };
+
+  const handleDowngrade = () => {
+    navigateTo("/settings/general/update?appVersion=0.4.8");
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="aspect-video h-full w-full"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0, transition: { duration: 0 } }}
+        transition={{
+          duration: 0.4,
+          ease: "easeInOut",
+        }}
+      >
+        <OverlayContent>
+          <div className="flex max-w-lg flex-col items-start gap-y-1">
+            <ExclamationTriangleIcon className="h-12 w-12 text-yellow-500" />
+            <div className="text-left text-sm text-slate-700 dark:text-slate-300">
+              <div className="space-y-4">
+                <div className="space-y-2 text-black dark:text-white">
+                  <h2 className="text-xl font-bold">Fail safe mode activated</h2>
+                  <p className="text-sm">{message}</p>
+                </div>
+                {showRebootConfirm ? (
+                  <div className="rounded-md bg-amber-50 p-3 dark:bg-amber-950/20">
+                    <p className="mb-3 text-sm text-amber-900 dark:text-amber-200">
+                      Rebooting will restart your device. This may resolve the issue. Continue?
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleReboot}
+                        theme="primary"
+                        size="SM"
+                        text="Confirm Reboot"
+                      />
+                      <Button
+                        onClick={() => setShowRebootConfirm(false)}
+                        theme="light"
+                        size="SM"
+                        text="Cancel"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      onClick={handleReportAndDownloadLogs}
+                      theme="primary"
+                      size="SM"
+                      disabled={isDownloadingLogs}
+                      LeadingIcon={GitHubIcon}
+                      text={isDownloadingLogs ? "Downloading Logs..." : "Report Issue & Download Logs"}
+                    />
+
+                    <Button
+                      onClick={handleReboot}
+                      theme="light"
+                      size="SM"
+                      text="Reboot Device"
+                    />
+
+                    <Button
+                      size="SM"
+                      onClick={handleDowngrade}
+                      theme="light"
+                      text="Downgrade to v0.4.8"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </OverlayContent>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+

@@ -33,6 +33,7 @@ import {
   useUpdateStore,
   useVideoStore,
   VideoState,
+  useFailsafeModeStore,
 } from "@/hooks/stores";
 import WebRTCVideo from "@components/WebRTCVideo";
 import DashboardNavbar from "@components/Header";
@@ -40,6 +41,7 @@ const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectio
 const Terminal = lazy(() => import('@components/Terminal'));
 const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
 import Modal from "@/components/Modal";
+import { FailSafeModeOverlay } from "@components/FaileSafeModeOverlay";
 import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
 import {
   ConnectionFailedOverlay,
@@ -113,6 +115,7 @@ const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
   return import.meta.env.MODE === "device" ? deviceLoader() : cloudLoader(params);
 };
 
+
 export default function KvmIdRoute() {
   const loaderResp = useLoaderData() as LocalLoaderResp | CloudLoaderResp;
   // Depending on the mode, we set the appropriate variables
@@ -125,7 +128,7 @@ export default function KvmIdRoute() {
   const { sidebarView, setSidebarView, disableVideoFocusTrap } = useUiStore();
   const [ queryParams, setQueryParams ] = useSearchParams();
 
-  const { 
+  const {
     peerConnection, setPeerConnection,
     peerConnectionState, setPeerConnectionState,
     setMediaStream,
@@ -480,6 +483,11 @@ export default function KvmIdRoute() {
     const rpcDataChannel = pc.createDataChannel("rpc");
     rpcDataChannel.onopen = () => {
       setRpcDataChannel(rpcDataChannel);
+
+
+    setTimeout(() => {
+      useFailsafeModeStore.setState({ isFailsafeMode: true, reason: "video" });
+    }, 1000);
     };
 
     const rpcHidChannel = pc.createDataChannel("hidrpc");
@@ -599,11 +607,12 @@ export default function KvmIdRoute() {
 
   const { setNetworkState} = useNetworkStateStore();
   const { setHdmiState } = useVideoStore();
-  const { 
+  const {
     keyboardLedState,  setKeyboardLedState,
     keysDownState, setKeysDownState, setUsbState,
   } = useHidStore();
   const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
+  const { setFailsafeMode } = useFailsafeModeStore();
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
@@ -665,6 +674,12 @@ export default function KvmIdRoute() {
         currentUrl.searchParams.set("updateSuccess", "true");
         window.location.href = currentUrl.toString();
       }
+    }
+
+    if (resp.method === "failsafeMode") {
+      const { enabled, reason } = resp.params as { enabled: boolean; reason: string };
+      console.debug("Setting failsafe mode", { enabled, reason });
+      setFailsafeMode(enabled, reason);
     }
   }
 
@@ -764,6 +779,8 @@ export default function KvmIdRoute() {
     getLocalVersion();
   }, [appVersion, getLocalVersion]);
 
+  const { isFailsafeMode, reason: failsafeReason } = useFailsafeModeStore();
+
   const ConnectionStatusElement = useMemo(() => {
     const hasConnectionFailed =
       connectionFailed || ["failed", "closed"].includes(peerConnectionState ?? "");
@@ -841,13 +858,16 @@ export default function KvmIdRoute() {
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
-            <WebRTCVideo />
+            {!isFailsafeMode && <WebRTCVideo />}
             <div
               style={{ animationDuration: "500ms" }}
               className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
             >
               <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
                 {!!ConnectionStatusElement && ConnectionStatusElement}
+                {isFailsafeMode && failsafeReason && (
+                  <FailSafeModeOverlay reason={failsafeReason} />
+                )}
               </div>
             </div>
             <SidebarContainer sidebarView={sidebarView} />
