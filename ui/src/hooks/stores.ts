@@ -603,6 +603,9 @@ export interface UpdateState {
 
   updateErrorMessage: string | null;
   setUpdateErrorMessage: (errorMessage: string) => void;
+
+  shouldReload: boolean;
+  setShouldReload: (reloadRequired: boolean) => void;
 }
 
 export const useUpdateStore = create<UpdateState>(set => ({
@@ -640,6 +643,9 @@ export const useUpdateStore = create<UpdateState>(set => ({
   updateErrorMessage: null,
   setUpdateErrorMessage: (errorMessage: string) =>
     set({ updateErrorMessage: errorMessage }),
+
+  shouldReload: false,
+  setShouldReload: (reloadRequired: boolean) => set({ shouldReload: reloadRequired }),
 }));
 
 export type UsbConfigModalViews = "updateUsbConfig" | "updateUsbConfigSuccess";
@@ -850,12 +856,12 @@ export interface MacrosState {
   loadMacros: () => Promise<void>;
   saveMacros: (macros: KeySequence[]) => Promise<void>;
   sendFn:
-    | ((
-        method: string,
-        params: unknown,
-        callback?: ((resp: JsonRpcResponse) => void) | undefined,
-      ) => void)
-    | null;
+  | ((
+    method: string,
+    params: unknown,
+    callback?: ((resp: JsonRpcResponse) => void) | undefined,
+  ) => void)
+  | null;
   setSendFn: (
     sendFn: (
       method: string,
