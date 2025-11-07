@@ -1,5 +1,4 @@
-import { useCallback, useMemo } from "react";
-import semver from "semver";
+import { useCallback } from "react";
 
 import { useDeviceStore } from "@/hooks/stores";
 import { JsonRpcError, RpcMethodNotFound } from "@/hooks/useJsonRpc";
@@ -69,6 +68,5 @@ export function useVersion() {
     getLocalVersion,
     appVersion,
     systemVersion,
-    isOnDevVersion,
   };
 }

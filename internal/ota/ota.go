@@ -3,6 +3,7 @@ package ota
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -23,11 +24,13 @@ func (s *State) GetReleaseAPIEndpoint() string {
 }
 
 // getUpdateURL returns the update URL for the given parameters
-func (s *State) getUpdateURL(params UpdateParams) (string, error) {
+func (s *State) getUpdateURL(params UpdateParams) (string, error, bool) {
 	updateURL, err := url.Parse(s.releaseAPIEndpoint)
 	if err != nil {
-		return "", fmt.Errorf("error parsing update metadata URL: %w", err)
+		return "", fmt.Errorf("error parsing update metadata URL: %w", err), false
 	}
+
+	isCustomVersion := false
 
 	appTargetVersion := s.GetTargetVersion("app")
 	if appTargetVersion != "" && params.AppTargetVersion == "" {
@@ -43,19 +46,21 @@ func (s *State) getUpdateURL(params UpdateParams) (string, error) {
 	query.Set("prerelease", fmt.Sprintf("%v", params.IncludePreRelease))
 	if params.AppTargetVersion != "" {
 		query.Set("appVersion", params.AppTargetVersion)
+		isCustomVersion = true
 	}
 	if params.SystemTargetVersion != "" {
 		query.Set("systemVersion", params.SystemTargetVersion)
+		isCustomVersion = true
 	}
 	updateURL.RawQuery = query.Encode()
 
-	return updateURL.String(), nil
+	return updateURL.String(), nil, isCustomVersion
 }
 
 func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*UpdateMetadata, error) {
 	metadata := &UpdateMetadata{}
 
-	url, err := s.getUpdateURL(params)
+	url, err, isCustomVersion := s.getUpdateURL(params)
 	if err != nil {
 		return nil, fmt.Errorf("error getting update URL: %w", err)
 	}
@@ -76,6 +81,10 @@ func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*
 		return nil, fmt.Errorf("error sending request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if isCustomVersion && resp.StatusCode == http.StatusNotFound {
+		return nil, ErrVersionNotFound
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
@@ -189,7 +198,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 
 		postRebootAction := &PostRebootAction{
 			HealthCheck: "/device/status",
-			RedirectUrl: redirectUrl,
+			RedirectTo:  redirectUrl,
 		}
 
 		if err := s.reboot(true, postRebootAction, 10*time.Second); err != nil {
@@ -241,7 +250,11 @@ func (s *State) getUpdateStatus(
 	// Get remote metadata
 	remoteMetadata, err := s.fetchUpdateMetadata(ctx, params)
 	if err != nil {
-		err = fmt.Errorf("error checking for updates: %w", err)
+		if err == ErrVersionNotFound || errors.Unwrap(err) == ErrVersionNotFound {
+			err = ErrVersionNotFound
+		} else {
+			err = fmt.Errorf("error checking for updates: %w", err)
+		}
 		return
 	}
 	appUpdate.url = remoteMetadata.AppURL

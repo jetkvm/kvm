@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/jetkvm/kvm/internal/ota"
@@ -158,11 +159,15 @@ func rpcTryUpdateComponents(components tryUpdateComponents, includePreRelease bo
 
 	logger.Info().Interface("components", components).Msg("components")
 
+	currentAppTargetVersion := otaState.GetTargetVersion("app")
+	appTargetVersionChanged := currentAppTargetVersion != components.AppTargetVersion
 	updateParams.AppTargetVersion = components.AppTargetVersion
 	if err := otaState.SetTargetVersion("app", components.AppTargetVersion); err != nil {
 		return fmt.Errorf("failed to set app target version: %w", err)
 	}
 
+	currentSystemTargetVersion := otaState.GetTargetVersion("system")
+	systemTargetVersionChanged := currentSystemTargetVersion != components.SystemTargetVersion
 	updateParams.SystemTargetVersion = components.SystemTargetVersion
 	if err := otaState.SetTargetVersion("system", components.SystemTargetVersion); err != nil {
 		return fmt.Errorf("failed to set system target version: %w", err)
@@ -170,6 +175,32 @@ func rpcTryUpdateComponents(components tryUpdateComponents, includePreRelease bo
 
 	if components.Components != "" {
 		updateParams.Components = strings.Split(components.Components, ",")
+	}
+
+	// if it's a check only update, we don't need to try to update, we just need to check if the version is available
+	// and return the error immediately then revert the previous target versions
+	if checkOnly {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		_, err := otaState.GetUpdateStatus(ctx, updateParams)
+		if err == nil {
+			return nil
+		}
+
+		// revert the previous target versions
+		if appTargetVersionChanged {
+			if err := otaState.SetTargetVersion("app", currentAppTargetVersion); err != nil {
+				return fmt.Errorf("failed to revert app target version: %w", err)
+			}
+		}
+		if systemTargetVersionChanged {
+			if err := otaState.SetTargetVersion("system", currentSystemTargetVersion); err != nil {
+				return fmt.Errorf("failed to revert system target version: %w", err)
+			}
+		}
+
+		return err
 	}
 
 	go func() {
