@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	envChildID         = "JETKVM_CHILD_ID"
-	errorDumpDir       = "/userdata/jetkvm/"
-	errorDumpStateFile = ".has_error_dump"
-	errorDumpTemplate  = "jetkvm-%s.log"
+	envChildID        = "JETKVM_CHILD_ID"
+	errorDumpDir      = "/userdata/jetkvm/crashdump"
+	errorDumpLastFile = "last-crash.log"
+	errorDumpTemplate = "jetkvm-%s.log"
 )
 
 func program() {
@@ -117,30 +117,47 @@ func supervise() error {
 	return nil
 }
 
-func createErrorDump(logFile *os.File) {
-	logFile.Close()
-
-	// touch the error dump state file
-	if err := os.WriteFile(filepath.Join(errorDumpDir, errorDumpStateFile), []byte{}, 0644); err != nil {
-		return
-	}
-
-	fileName := fmt.Sprintf(errorDumpTemplate, time.Now().Format("20060102150405"))
-	filePath := filepath.Join(errorDumpDir, fileName)
-	if err := os.Rename(logFile.Name(), filePath); err == nil {
-		fmt.Printf("error dump created: %s\n", filePath)
-		return
-	}
-
-	fnSrc, err := os.Open(logFile.Name())
+func isSymlinkTo(oldName, newName string) bool {
+	file, err := os.Stat(newName)
 	if err != nil {
-		return
+		return false
+	}
+	if file.Mode()&os.ModeSymlink != os.ModeSymlink {
+		return false
+	}
+	target, err := os.Readlink(newName)
+	if err != nil {
+		return false
+	}
+	return target == oldName
+}
+
+func ensureSymlink(oldName, newName string) error {
+	if isSymlinkTo(oldName, newName) {
+		return nil
+	}
+	_ = os.Remove(newName)
+	return os.Symlink(oldName, newName)
+}
+
+func renameFile(f *os.File, newName string) error {
+	_ = f.Close()
+
+	// try to rename the file first
+	if err := os.Rename(f.Name(), newName); err == nil {
+		return nil
+	}
+
+	// copy the log file to the error dump directory
+	fnSrc, err := os.Open(f.Name())
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer fnSrc.Close()
 
-	fnDst, err := os.Create(filePath)
+	fnDst, err := os.Create(newName)
 	if err != nil {
-		return
+		return fmt.Errorf("failed to create file: %w", err)
 	}
 	defer fnDst.Close()
 
@@ -148,18 +165,60 @@ func createErrorDump(logFile *os.File) {
 	for {
 		n, err := fnSrc.Read(buf)
 		if err != nil && err != io.EOF {
-			return
+			return fmt.Errorf("failed to read file: %w", err)
 		}
 		if n == 0 {
 			break
 		}
 
 		if _, err := fnDst.Write(buf[:n]); err != nil {
-			return
+			return fmt.Errorf("failed to write file: %w", err)
 		}
 	}
 
-	fmt.Printf("error dump created: %s\n", filePath)
+	return nil
+}
+
+func ensureErrorDumpDir() error {
+	// TODO: check if the directory is writable
+	f, err := os.Stat(errorDumpDir)
+	if err == nil && f.IsDir() {
+		return nil
+	}
+	if err := os.MkdirAll(errorDumpDir, 0755); err != nil {
+		return fmt.Errorf("failed to create error dump directory: %w", err)
+	}
+	return nil
+}
+
+func createErrorDump(logFile *os.File) {
+	fmt.Println()
+
+	fileName := fmt.Sprintf(
+		errorDumpTemplate,
+		time.Now().Format("20060102-150405"),
+	)
+
+	// check if the directory exists
+	if err := ensureErrorDumpDir(); err != nil {
+		fmt.Printf("failed to ensure error dump directory: %v\n", err)
+		return
+	}
+
+	filePath := filepath.Join(errorDumpDir, fileName)
+	if err := renameFile(logFile, filePath); err != nil {
+		fmt.Printf("failed to rename file: %v\n", err)
+		return
+	}
+
+	fmt.Printf("error dump copied: %s\n", filePath)
+
+	lastFilePath := filepath.Join(errorDumpDir, errorDumpLastFile)
+
+	if err := ensureSymlink(filePath, lastFilePath); err != nil {
+		fmt.Printf("failed to create symlink: %v\n", err)
+		return
+	}
 }
 
 func doSupervise() {
