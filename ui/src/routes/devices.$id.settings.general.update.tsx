@@ -40,8 +40,8 @@ export default function SettingsGeneralUpdateRoute() {
 
   const onConfirmCustomUpdate = useCallback((appTargetVersion?: string, systemTargetVersion?: string) => {
     const components = [];
-    if (appTargetVersion) components.push("system");
-    if (systemTargetVersion) components.push("app");
+    if (appTargetVersion) components.push("app");
+    if (systemTargetVersion) components.push("system");
 
     send("tryUpdateComponents", {
       params: {
@@ -97,6 +97,7 @@ export function Dialog({
   const { modalView, setModalView, otaState } = useUpdateStore();
   const forceCustomUpdate = customSystemVersion !== undefined || customAppVersion !== undefined;
   const onConfirmCustomUpdate = useCallback(() => {
+    console.debug("onConfirmCustomUpdate", customAppVersion, customSystemVersion, versionInfo);
     onConfirmCustomUpdateCallback(
       customAppVersion !== undefined ? customAppVersion : versionInfo?.remote?.appVersion,
       customSystemVersion !== undefined ? customSystemVersion : versionInfo?.remote?.systemVersion,
