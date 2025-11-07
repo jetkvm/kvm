@@ -14,7 +14,7 @@ import (
 var (
 	audioMutex         sync.Mutex
 	outputSource       audio.AudioSource
-	inputSource        audio.AudioSource
+	inputSource        atomic.Pointer[audio.AudioSource]
 	outputRelay        *audio.OutputRelay
 	inputRelay         *audio.InputRelay
 	audioInitialized   bool
@@ -63,13 +63,15 @@ func startAudio() error {
 
 	// Start input audio if not running, USB audio enabled, and input enabled
 	ensureConfigLoaded()
-	if inputSource == nil && audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
+	if inputSource.Load() == nil && audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
 		alsaPlaybackDevice := "hw:1,0" // USB speakers
 
 		// Create CGO audio source
-		inputSource = audio.NewCgoInputSource(alsaPlaybackDevice)
+		newInputSource := audio.NewCgoInputSource(alsaPlaybackDevice)
+		var audioSrc audio.AudioSource = newInputSource
+		inputSource.Store(&audioSrc)
 
-		inputRelay = audio.NewInputRelay(inputSource)
+		inputRelay = audio.NewInputRelay(newInputSource)
 		if err := inputRelay.Start(); err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to start input relay")
 		}
@@ -96,9 +98,9 @@ func stopInputLocked() {
 		inputRelay.Stop()
 		inputRelay = nil
 	}
-	if inputSource != nil {
-		inputSource.Disconnect()
-		inputSource = nil
+	if source := inputSource.Load(); source != nil {
+		(*source).Disconnect()
+		inputSource.Store(nil)
 	}
 }
 
@@ -169,8 +171,8 @@ func SetAudioOutputEnabled(enabled bool) error {
 		}
 	} else {
 		audioMutex.Lock()
+		defer audioMutex.Unlock()
 		stopOutputLocked()
-		audioMutex.Unlock()
 	}
 
 	return nil
@@ -188,8 +190,8 @@ func SetAudioInputEnabled(enabled bool) error {
 		}
 	} else {
 		audioMutex.Lock()
+		defer audioMutex.Unlock()
 		stopInputLocked()
-		audioMutex.Unlock()
 	}
 
 	return nil
@@ -238,23 +240,22 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 			continue // Drop frame but keep reading
 		}
 
-		// Get source in single mutex operation (hot path optimization)
-		audioMutex.Lock()
-		source := inputSource
-		audioMutex.Unlock()
+		// Get source atomically (hot path optimization)
+		source := inputSource.Load()
 
 		if source == nil {
 			continue // No relay, drop frame but keep reading
 		}
 
-		if !source.IsConnected() {
-			if err := source.Connect(); err != nil {
+		if !(*source).IsConnected() {
+			if err := (*source).Connect(); err != nil {
 				continue
 			}
 		}
 
-		if err := source.WriteMessage(0, opusData); err != nil {
-			source.Disconnect()
+		if err := (*source).WriteMessage(0, opusData); err != nil {
+			(*source).Disconnect()
+			audioLogger.Warn().Err(err).Str("track_id", myTrackID).Msg("failed to write audio message")
 		}
 	}
 }

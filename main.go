@@ -133,7 +133,7 @@ func Main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
 
-	logger.Info().Msg("JetKVM Shutting Down")
+	logger.Log().Msg("JetKVM Shutting Down")
 
 	stopAudio()
 
