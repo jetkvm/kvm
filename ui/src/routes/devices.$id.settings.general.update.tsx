@@ -443,7 +443,6 @@ function SystemUpToDateState({
 
 function UpdateAvailableState({
   versionInfo,
-  forceCustomUpdate,
   onConfirm,
   onClose,
 }: {
@@ -462,13 +461,13 @@ function UpdateAvailableState({
           {m.general_update_available_description()}
         </p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
-          {(forceCustomUpdate ? versionInfo?.systemDowngradeAvailable : versionInfo?.systemUpdateAvailable) ? (
+          {versionInfo?.systemUpdateAvailable ? (
             <>
               <span className="font-semibold">{m.general_update_system_type()}</span>: {versionInfo?.local?.systemVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.systemVersion}
               <br />
             </>
           ) : null}
-          {(forceCustomUpdate ? versionInfo?.appDowngradeAvailable : versionInfo?.appUpdateAvailable) ? (
+          {versionInfo?.appUpdateAvailable ? (
             <>
               <span className="font-semibold">{m.general_update_application_type()}</span>: {versionInfo?.local?.appVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.appVersion}
             </>

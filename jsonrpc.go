@@ -1155,7 +1155,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"getUpdateStatusChannel": {Func: rpcGetUpdateStatusChannel},
 	"tryUpdate":              {Func: rpcTryUpdate},
 	"tryUpdateComponents":    {Func: rpcTryUpdateComponents, Params: []string{"params", "includePreRelease", "resetConfig"}},
-	"cancelDowngrade":        {Func: rpcCancelDowngrade},
 	"getDevModeState":        {Func: rpcGetDevModeState},
 	"setDevModeState":        {Func: rpcSetDevModeState, Params: []string{"enabled"}},
 	"getSSHKeyState":         {Func: rpcGetSSHKeyState},

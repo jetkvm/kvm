@@ -28,12 +28,10 @@ type LocalMetadata struct {
 
 // UpdateStatus represents the current update status
 type UpdateStatus struct {
-	Local                    *LocalMetadata  `json:"local"`
-	Remote                   *UpdateMetadata `json:"remote"`
-	SystemUpdateAvailable    bool            `json:"systemUpdateAvailable"`
-	SystemDowngradeAvailable bool            `json:"systemDowngradeAvailable"`
-	AppUpdateAvailable       bool            `json:"appUpdateAvailable"`
-	AppDowngradeAvailable    bool            `json:"appDowngradeAvailable"`
+	Local                 *LocalMetadata  `json:"local"`
+	Remote                *UpdateMetadata `json:"remote"`
+	SystemUpdateAvailable bool            `json:"systemUpdateAvailable"`
+	AppUpdateAvailable    bool            `json:"appUpdateAvailable"`
 
 	// for backwards compatibility
 	Error string `json:"error,omitempty"`
@@ -50,7 +48,6 @@ type PostRebootAction struct {
 type componentUpdateStatus struct {
 	pending              bool
 	available            bool
-	downgradeAvailable   bool
 	version              string
 	localVersion         string
 	targetVersion        string
@@ -170,11 +167,9 @@ func toUpdateStatus(appUpdate *componentUpdateStatus, systemUpdate *componentUpd
 			SystemURL:     systemUpdate.url,
 			SystemHash:    systemUpdate.hash,
 		},
-		SystemUpdateAvailable:    systemUpdate.available,
-		SystemDowngradeAvailable: systemUpdate.downgradeAvailable,
-		AppUpdateAvailable:       appUpdate.available,
-		AppDowngradeAvailable:    appUpdate.downgradeAvailable,
-		Error:                    error,
+		SystemUpdateAvailable: systemUpdate.available,
+		AppUpdateAvailable:    appUpdate.available,
+		Error:                 error,
 	}
 }
 

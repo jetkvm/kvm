@@ -185,10 +185,10 @@ export default function SettingsAdvancedRoute() {
     setShowLoopbackWarning(false);
   }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
 
-  const handleVersionUpdateError = useCallback((error?: JsonRpcError) => {
+  const handleVersionUpdateError = useCallback((error?: JsonRpcError | string) => {
     notifications.error(
       m.advanced_error_version_update({
-        error: error?.data ?? error?.message ?? m.unknown_error()
+        error: typeof error === "string" ? error : (error?.data ?? error?.message ?? m.unknown_error())
       }),
       { duration: 1000 * 15 } // 15 seconds
     );
@@ -214,14 +214,30 @@ export default function SettingsAdvancedRoute() {
       return;
     }
 
+    console.debug("versionInfo", versionInfo, components.includes("app") && versionInfo.remote?.appVersion && versionInfo?.appUpdateAvailable, components.includes("system") && versionInfo.remote?.systemVersion && versionInfo?.systemUpdateAvailable);
+    console.debug("components", components);
+    console.debug("versionInfo.remote?.appVersion", versionInfo.remote?.appVersion);
+    console.debug("versionInfo.appUpdateAvailable", versionInfo?.appUpdateAvailable);
+    console.debug("versionInfo.remote?.systemVersion", versionInfo.remote?.systemVersion);
+    console.debug("versionInfo.systemUpdateAvailable", versionInfo?.systemUpdateAvailable);
+
+    let hasUpdate = false;
+
     const pageParams = new URLSearchParams();
-    if (components.includes("app") && versionInfo.remote?.appVersion && versionInfo.appDowngradeAvailable) {
+    if (components.includes("app") && versionInfo.remote?.appVersion && versionInfo.appUpdateAvailable) {
+      hasUpdate = true;
       pageParams.set("custom_app_version", versionInfo.remote?.appVersion);
     }
-    if (components.includes("system") && versionInfo.remote?.systemVersion && versionInfo.systemDowngradeAvailable) {
+    if (components.includes("system") && versionInfo.remote?.systemVersion && versionInfo.systemUpdateAvailable) {
+      hasUpdate = true;
       pageParams.set("custom_system_version", versionInfo.remote?.systemVersion);
     }
     pageParams.set("reset_config", resetConfig.toString());
+
+    if (!hasUpdate) {
+      handleVersionUpdateError("No update available");
+      return;
+    }
 
     // Navigate to update page
     navigateTo(`/settings/general/update?${pageParams.toString()}`);

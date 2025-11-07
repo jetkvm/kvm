@@ -15,9 +15,7 @@ export interface SystemVersionInfo {
   local: VersionInfo;
   remote?: VersionInfo;
   systemUpdateAvailable: boolean;
-  systemDowngradeAvailable: boolean;
   appUpdateAvailable: boolean;
-  appDowngradeAvailable: boolean;
   error?: string;
 }
 

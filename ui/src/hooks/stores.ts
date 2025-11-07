@@ -554,7 +554,6 @@ export type UpdateModalViews =
   | "updating"
   | "upToDate"
   | "updateAvailable"
-  | "updateDowngradeAvailable"
   | "updateCompleted"
   | "error";
 

@@ -194,13 +194,3 @@ func rpcTryUpdateComponents(params updateParams, includePreRelease bool, resetCo
 	}()
 	return nil
 }
-
-func rpcCancelDowngrade() error {
-	if err := otaState.SetTargetVersion("app", ""); err != nil {
-		return fmt.Errorf("failed to set app target version: %w", err)
-	}
-	if err := otaState.SetTargetVersion("system", ""); err != nil {
-		return fmt.Errorf("failed to set system target version: %w", err)
-	}
-	return nil
-}

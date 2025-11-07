@@ -152,12 +152,12 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		return nil
 	}
 
-	if shouldUpdateApp && (appUpdate.available || appUpdate.downgradeAvailable) {
+	if shouldUpdateApp && appUpdate.available {
 		appUpdate.pending = true
 		s.triggerComponentUpdateState("app", appUpdate)
 	}
 
-	if shouldUpdateSystem && (systemUpdate.available || systemUpdate.downgradeAvailable) {
+	if shouldUpdateSystem && systemUpdate.available {
 		systemUpdate.pending = true
 		s.triggerComponentUpdateState("system", systemUpdate)
 	}
@@ -292,7 +292,6 @@ func (s *State) checkUpdateStatus(
 		return err
 	}
 	systemUpdateStatus.available = systemVersionRemote.GreaterThan(systemVersionLocal)
-	systemUpdateStatus.downgradeAvailable = systemVersionRemote.LessThan(systemVersionLocal)
 
 	appVersionRemote, err := semver.NewVersion(remoteMetadata.AppVersion)
 	if err != nil {
@@ -300,7 +299,6 @@ func (s *State) checkUpdateStatus(
 		return err
 	}
 	appUpdateStatus.available = appVersionRemote.GreaterThan(appVersionLocal)
-	appUpdateStatus.downgradeAvailable = appVersionRemote.LessThan(appVersionLocal)
 
 	// Handle pre-release updates
 	isRemoteSystemPreRelease := systemVersionRemote.Prerelease() != ""
@@ -311,6 +309,15 @@ func (s *State) checkUpdateStatus(
 	}
 	if isRemoteAppPreRelease && !params.IncludePreRelease {
 		appUpdateStatus.available = false
+	}
+
+	// Handle custom target versions
+	if slices.Contains(params.Components, "app") && params.AppTargetVersion != "" {
+		appUpdateStatus.available = appVersionRemote.String() != appUpdateStatus.localVersion
+	}
+
+	if slices.Contains(params.Components, "system") && params.SystemTargetVersion != "" {
+		systemUpdateStatus.available = systemVersionRemote.String() != systemUpdateStatus.localVersion
 	}
 
 	return nil
