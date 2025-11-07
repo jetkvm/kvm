@@ -43,7 +43,7 @@ type UpdateStatus struct {
 // It is used to redirect the user to a specific page after a reboot
 type PostRebootAction struct {
 	HealthCheck string `json:"healthCheck"` // The health check URL to call after the reboot
-	RedirectUrl string `json:"redirectUrl"` // The URL to redirect to after the reboot
+	RedirectTo  string `json:"redirectTo"`  // The URL to redirect to after the reboot
 }
 
 // componentUpdateStatus represents the status of a component update
