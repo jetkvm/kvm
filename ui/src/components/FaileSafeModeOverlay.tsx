@@ -53,7 +53,7 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
     }
   };
 
-  const { title, message } = getReasonCopy();
+  const { message } = getReasonCopy();
 
   const handleReboot = () => {
     if (!showRebootConfirm) {
