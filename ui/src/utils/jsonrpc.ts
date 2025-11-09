@@ -24,17 +24,47 @@ export interface JsonRpcCallResponse<T = unknown> {
 let rpcCallCounter = 0;
 
 // Helper: wait for RTC data channel to be ready
+// This waits indefinitely for the channel to be ready, only aborting via the signal
+// Throws if the channel instance changed while waiting (stale connection detected)
 async function waitForRtcReady(signal: AbortSignal): Promise<RTCDataChannel> {
   const pollInterval = 100;
+  let lastSeenChannel: RTCDataChannel | null = null;
 
   while (!signal.aborted) {
     const state = useRTCStore.getState();
-    if (state.rpcDataChannel?.readyState === "open") {
-      return state.rpcDataChannel;
+    const currentChannel = state.rpcDataChannel;
+
+    // Channel instance changed (new connection replaced old one)
+    if (lastSeenChannel && currentChannel && lastSeenChannel !== currentChannel) {
+      console.debug("[waitForRtcReady] Channel instance changed, aborting wait");
+      throw new Error("RTC connection changed while waiting for readiness");
     }
+
+    // Channel was removed from store (connection closed)
+    if (lastSeenChannel && !currentChannel) {
+      console.debug("[waitForRtcReady] Channel was removed from store, aborting wait");
+      throw new Error("RTC connection was closed while waiting for readiness");
+    }
+
+    // No channel yet, keep waiting
+    if (!currentChannel) {
+      await sleep(pollInterval);
+      continue;
+    }
+
+    // Track this channel instance
+    lastSeenChannel = currentChannel;
+
+    // Channel is ready!
+    if (currentChannel.readyState === "open") {
+      return currentChannel;
+    }
+
     await sleep(pollInterval);
   }
 
+  // Signal was aborted for some reason
+  console.debug("[waitForRtcReady] Aborted via signal");
   throw new Error("RTC readiness check aborted");
 }
 
@@ -97,24 +127,25 @@ export async function callJsonRpc<T = unknown>(
   const timeout = options.attemptTimeoutMs || 5000;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), timeout);
-
     // Exponential backoff for retries that starts at 500ms up to a maximum of 10 seconds
     const backoffMs = Math.min(500 * Math.pow(2, attempt), 10000);
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     try {
-      // Wait for RTC readiness
-      const rpcDataChannel = await waitForRtcReady(abortController.signal);
+      // Wait for RTC readiness without timeout - this allows time for WebRTC to connect
+      const readyAbortController = new AbortController();
+      const rpcDataChannel = await waitForRtcReady(readyAbortController.signal);
+
+      // Now apply timeout only to the actual RPC request/response
+      const rpcAbortController = new AbortController();
+      timeoutId = setTimeout(() => rpcAbortController.abort(), timeout);
 
       // Send RPC request and wait for response
       const response = await sendRpcRequest<T>(
         rpcDataChannel,
         options,
-        abortController.signal,
+        rpcAbortController.signal,
       );
-
-      clearTimeout(timeoutId);
 
       // Retry on error if attempts remain
       if (response.error && attempt < maxAttempts - 1) {
@@ -124,8 +155,6 @@ export async function callJsonRpc<T = unknown>(
 
       return response;
     } catch (error) {
-      clearTimeout(timeoutId);
-
       // Retry on timeout/error if attempts remain
       if (attempt < maxAttempts - 1) {
         await sleep(backoffMs);
@@ -135,6 +164,10 @@ export async function callJsonRpc<T = unknown>(
       throw error instanceof Error
         ? error
         : new Error(`JSON-RPC call failed after ${timeout}ms`);
+    } finally {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
     }
   }
 

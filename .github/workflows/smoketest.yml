@@ -165,7 +165,7 @@ jobs:
         env:
           CI_HOST: ${{ vars.JETKVM_CI_HOST }}
       - name: Upload logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: device-logs
           path: |
