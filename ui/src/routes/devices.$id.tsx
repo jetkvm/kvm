@@ -620,7 +620,7 @@ export default function KvmIdRoute() {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
-            channelCount: 2,
+            channelCount: 1,
           }
         }).then((stream) => {
           microphoneRequestInProgress.current = false;
@@ -652,6 +652,13 @@ export default function KvmIdRoute() {
         audioTransceiver.sender.replaceTrack(null);
       }
     }
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      if (audioTransceiver?.sender.track) {
+        audioTransceiver.sender.track.stop();
+      }
+    };
   }, [microphoneEnabled, audioTransceiver, peerConnection, setMicrophoneEnabled]);
 
   // Cleanup effect
