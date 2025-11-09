@@ -332,6 +332,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	)
 	if err != nil {
 		scopedLogger.Warn().Err(err).Msg("Failed to create AudioTrack (non-fatal)")
+		session.AudioTrack = nil
 	} else {
 		_, err = peerConnection.AddTransceiverFromTrack(session.AudioTrack, webrtc.RTPTransceiverInit{
 			Direction: webrtc.RTPTransceiverDirectionSendrecv,
