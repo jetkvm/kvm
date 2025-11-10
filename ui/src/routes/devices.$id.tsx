@@ -672,9 +672,10 @@ export default function KvmIdRoute() {
     }
 
     if (resp.method === "failsafeMode") {
+      console.log("Setting failsafe mode", resp.params);
       const { active, reason } = resp.params as { active: boolean; reason: string };
       console.debug("Setting failsafe mode", { active, reason });
-      setFailsafeMode(active, reason);
+      // setFailsafeMode(active, reason);
     }
   }
 
@@ -853,7 +854,7 @@ export default function KvmIdRoute() {
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
-            {!isFailsafeMode && failsafeReason === "video" && <WebRTCVideo />}
+            {(isFailsafeMode && failsafeReason === "video") ? null : <WebRTCVideo />}
             <div
               style={{ animationDuration: "500ms" }}
               className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
