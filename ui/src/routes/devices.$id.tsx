@@ -33,6 +33,7 @@ import {
   useUpdateStore,
   useVideoStore,
   VideoState,
+  useFailsafeModeStore,
 } from "@/hooks/stores";
 import WebRTCVideo from "@components/WebRTCVideo";
 import DashboardNavbar from "@components/Header";
@@ -40,6 +41,7 @@ const ConnectionStatsSidebar = lazy(() => import('@/components/sidebar/connectio
 const Terminal = lazy(() => import('@components/Terminal'));
 const UpdateInProgressStatusCard = lazy(() => import("@/components/UpdateInProgressStatusCard"));
 import Modal from "@/components/Modal";
+import { FailSafeModeOverlay } from "@components/FailSafeModeOverlay";
 import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@/hooks/useJsonRpc";
 import {
   ConnectionFailedOverlay,
@@ -113,6 +115,7 @@ const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
   return import.meta.env.MODE === "device" ? deviceLoader() : cloudLoader(params);
 };
 
+
 export default function KvmIdRoute() {
   const loaderResp = useLoaderData() as LocalLoaderResp | CloudLoaderResp;
   // Depending on the mode, we set the appropriate variables
@@ -123,9 +126,9 @@ export default function KvmIdRoute() {
 
   const params = useParams() as { id: string };
   const { sidebarView, setSidebarView, disableVideoFocusTrap } = useUiStore();
-  const [ queryParams, setQueryParams ] = useSearchParams();
+  const [queryParams, setQueryParams] = useSearchParams();
 
-  const { 
+  const {
     peerConnection, setPeerConnection,
     peerConnectionState, setPeerConnectionState,
     setMediaStream,
@@ -597,13 +600,14 @@ export default function KvmIdRoute() {
     });
   }, 10000);
 
-  const { setNetworkState} = useNetworkStateStore();
+  const { setNetworkState } = useNetworkStateStore();
   const { setHdmiState } = useVideoStore();
-  const { 
-    keyboardLedState,  setKeyboardLedState,
+  const {
+    keyboardLedState, setKeyboardLedState,
     keysDownState, setKeysDownState, setUsbState,
   } = useHidStore();
   const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
+  const { setFailsafeMode } = useFailsafeModeStore();
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
@@ -665,6 +669,12 @@ export default function KvmIdRoute() {
         currentUrl.searchParams.set("updateSuccess", "true");
         window.location.href = currentUrl.toString();
       }
+    }
+
+    if (resp.method === "failsafeMode") {
+      const { active, reason } = resp.params as { active: boolean; reason: string };
+      console.debug("Setting failsafe mode", { active, reason });
+      setFailsafeMode(active, reason);
     }
   }
 
@@ -756,13 +766,15 @@ export default function KvmIdRoute() {
     if (location.pathname !== "/other-session") navigateTo("/");
   }, [navigateTo, location.pathname]);
 
-  const { appVersion, getLocalVersion}  = useVersion();
+  const { appVersion, getLocalVersion } = useVersion();
 
   useEffect(() => {
     if (appVersion) return;
 
     getLocalVersion();
   }, [appVersion, getLocalVersion]);
+
+  const { isFailsafeMode, reason: failsafeReason } = useFailsafeModeStore();
 
   const ConnectionStatusElement = useMemo(() => {
     const hasConnectionFailed =
@@ -841,13 +853,15 @@ export default function KvmIdRoute() {
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
-            <WebRTCVideo />
+            {(isFailsafeMode && failsafeReason === "video") ? null : <WebRTCVideo />}
             <div
               style={{ animationDuration: "500ms" }}
               className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
             >
               <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
-                {!!ConnectionStatusElement && ConnectionStatusElement}
+                {isFailsafeMode && failsafeReason ? (
+                  <FailSafeModeOverlay reason={failsafeReason} />
+                ) : !!ConnectionStatusElement && ConnectionStatusElement}
               </div>
             </div>
             <SidebarContainer sidebarView={sidebarView} />

@@ -19,7 +19,8 @@ import { cx } from "@/cva.config";
 import Card from "@components/Card";
 import { LinkButton } from "@components/Button";
 import { FeatureFlag } from "@components/FeatureFlag";
-import { useUiStore } from "@/hooks/stores";
+import { useUiStore, useFailsafeModeStore } from "@/hooks/stores";
+import { FailsafeModeBanner } from "@components/FailSafeModeBanner";
 
 /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
 export default function SettingsRoute() {
@@ -29,6 +30,8 @@ export default function SettingsRoute() {
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(false);
   const { width = 0 } = useResizeObserver({ ref: scrollContainerRef as React.RefObject<HTMLDivElement> });
+  const { isFailsafeMode: isFailsafeMode, reason: failsafeReason } = useFailsafeModeStore();
+  const isVideoDisabled = isFailsafeMode && failsafeReason === "video";
 
   // Handle scroll position to show/hide gradients
   const handleScroll = () => {
@@ -157,21 +160,28 @@ export default function SettingsRoute() {
                     </NavLink>
                   </div>
                 </FeatureFlag>
-                <div className="shrink-0">
+                <div className={cx("shrink-0", {
+                  "opacity-50 cursor-not-allowed": isVideoDisabled
+                })}>
                   <NavLink
                     to="video"
-                    className={({ isActive }) => (isActive ? "active" : "")}
-                  >
+                    className={({ isActive }) => cx(isActive ? "active" : "", {
+                      "pointer-events-none": isVideoDisabled
+                    })}                  >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuVideo className="h-4 w-4 shrink-0" />
                       <h1>Video</h1>
                     </div>
                   </NavLink>
                 </div>
-                <div className="shrink-0">
+                <div className={cx("shrink-0", {
+                  "opacity-50 cursor-not-allowed": isVideoDisabled
+                })}>
                   <NavLink
                     to="hardware"
-                    className={({ isActive }) => (isActive ? "active" : "")}
+                    className={({ isActive }) => cx(isActive ? "active" : "", {
+                      "pointer-events-none": isVideoDisabled
+                    })}
                   >
                     <div className="flex items-center gap-x-2 rounded-md px-2.5 py-2.5 text-sm transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 in-[.active]:bg-blue-50 in-[.active]:text-blue-700! md:in-[.active]:bg-transparent dark:in-[.active]:bg-blue-900 dark:in-[.active]:text-blue-200! dark:md:in-[.active]:bg-transparent">
                       <LuCpu className="h-4 w-4 shrink-0" />
@@ -237,8 +247,8 @@ export default function SettingsRoute() {
               </div>
             </Card>
           </div>
-          <div className="w-full md:col-span-6">
-            {/* <AutoHeight> */}
+          <div className="w-full md:col-span-6 space-y-4">
+            {isFailsafeMode && failsafeReason && <FailsafeModeBanner reason={failsafeReason} />}
             <Card className="dark:bg-slate-800">
               <div
                 className="space-y-4 px-8 py-6"

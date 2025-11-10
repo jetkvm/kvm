@@ -17,6 +17,7 @@ var (
 
 func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 	nativeInstance = native.NewNative(native.NativeOptions{
+		Disable:              failsafeModeActive,
 		SystemVersion:        systemVersion,
 		AppVersion:           appVersion,
 		DisplayRotation:      config.GetDisplayRotation(),
