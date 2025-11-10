@@ -7,7 +7,24 @@ import { PublicIP } from "@hooks/stores";
 import { m } from "@localizations/messages.js";
 import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import notifications from "@/notifications";
+import { formatters } from "@/utils";
 
+
+const TimeAgoLabel = ({ date }: { date: Date }) => {
+  const [timeAgo, setTimeAgo] = useState<string | undefined>(formatters.timeAgo(date));
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeAgo(formatters.timeAgo(date));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [date]);
+
+  return (
+    <span className="text-sm text-slate-600 dark:text-slate-400 select-none">
+      {timeAgo}
+    </span>
+  );
+};
 
 export default function PublicIPCard() {
   const { send } = useJsonRpc();
@@ -76,6 +93,7 @@ export default function PublicIPCard() {
                     <span className="text-sm font-medium">
                       {ip.ip}
                     </span>
+                    {ip.last_updated && <TimeAgoLabel date={new Date(ip.last_updated)} />}
                   </div>
                 ))}
               </div>

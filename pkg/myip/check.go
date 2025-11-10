@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,19 +53,36 @@ func (ps *PublicIPState) checkCloudflare(ctx context.Context, family int) (*Publ
 		return nil, err
 	}
 
+	values := make(map[string]string)
 	for line := range strings.SplitSeq(string(body), "\n") {
 		key, value, ok := strings.Cut(line, "=")
-		if !ok || key != "ip" {
+		if !ok {
 			continue
 		}
-
-		return &PublicIP{
-			IPAddress:   net.ParseIP(value),
-			LastUpdated: time.Now(),
-		}, nil
+		values[key] = value
 	}
 
-	return nil, fmt.Errorf("no IP address found")
+	ps.lastUpdated = time.Now()
+	if ts, ok := values["ts"]; ok {
+		if ts, err := strconv.ParseFloat(ts, 64); err == nil {
+			ps.lastUpdated = time.Unix(int64(ts), 0)
+		}
+	}
+
+	ipStr, ok := values["ip"]
+	if !ok {
+		return nil, fmt.Errorf("no IP address found")
+	}
+
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return nil, fmt.Errorf("invalid IP address: %s", ipStr)
+	}
+
+	return &PublicIP{
+		IPAddress:   ip,
+		LastUpdated: ps.lastUpdated,
+	}, nil
 }
 
 // checkAPI uses the API endpoint to get the public IP address
