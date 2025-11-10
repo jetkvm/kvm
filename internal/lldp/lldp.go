@@ -102,10 +102,10 @@ func (l *LLDP) Start() error {
 
 // StartRx starts the LLDP receiver if not already running
 func (l *LLDP) startRx() error {
-	l.mu.Lock()
+	l.mu.RLock()
 	running := l.rxRunning
 	enabled := l.enableRx
-	l.mu.Unlock()
+	l.mu.RUnlock()
 
 	if running || !enabled {
 		return nil

@@ -88,6 +88,11 @@ func (l *LLDP) setUpCapture() error {
 }
 
 func (l *LLDP) doCapture(logger *zerolog.Logger) {
+	if l.pktSourceRx == nil || l.rxCtx == nil {
+		logger.Error().Msg("packet source or RX context not initialized")
+		return
+	}
+
 	l.rxWaitGroup.Add(1)
 	defer l.rxWaitGroup.Done()
 

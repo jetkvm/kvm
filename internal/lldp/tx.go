@@ -194,7 +194,9 @@ func (l *LLDP) startTx() error {
 		cancel()
 	}
 
+	l.mu.Lock()
 	l.txCtx, l.txCancel = context.WithCancel(context.Background())
+	l.mu.Unlock()
 
 	if err := l.setUpTx(); err != nil {
 		return fmt.Errorf("failed to set up TX: %w", err)
