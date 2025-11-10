@@ -894,10 +894,19 @@ func rpcGetUsbDevices() (usbgadget.Devices, error) {
 func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 	ensureConfigLoaded()
 
-	// Stop input audio before USB reconfiguration (input uses USB)
 	audioMutex.Lock()
-	stopInputLocked()
+	inRelay := inputRelay
+	inSource := inputSource
+	inputRelay = nil
+	inputSource = nil
 	audioMutex.Unlock()
+
+	if inRelay != nil {
+		inRelay.Stop()
+	}
+	if inSource != nil {
+		inSource.Disconnect()
+	}
 
 	if err := gadget.UpdateGadgetConfig(); err != nil {
 		return fmt.Errorf("failed to write gadget config: %w", err)
