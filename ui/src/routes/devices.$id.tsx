@@ -853,7 +853,7 @@ export default function KvmIdRoute() {
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
-            {!isFailsafeMode && <WebRTCVideo />}
+            {!isFailsafeMode && failsafeReason === "video" && <WebRTCVideo />}
             <div
               style={{ animationDuration: "500ms" }}
               className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
