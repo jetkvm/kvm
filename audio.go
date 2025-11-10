@@ -66,8 +66,7 @@ func startAudio() error {
 	if inputSource.Load() == nil && audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
 		alsaPlaybackDevice := "hw:1,0" // USB speakers
 
-		// Create CGO audio source
-		source := audio.NewCgoInputSource(alsaPlaybackDevice)
+		var source audio.AudioSource = audio.NewCgoInputSource(alsaPlaybackDevice)
 		inputSource.Store(&source)
 
 		inputRelay = audio.NewInputRelay(source)
@@ -79,7 +78,6 @@ func startAudio() error {
 	return nil
 }
 
-// stopOutputAudio stops output audio (device → browser)
 func stopOutputAudio() {
 	audioMutex.Lock()
 	outRelay := outputRelay
@@ -88,7 +86,6 @@ func stopOutputAudio() {
 	outputSource = nil
 	audioMutex.Unlock()
 
-	// Disconnect outside mutex to avoid blocking during CGO calls
 	if outRelay != nil {
 		outRelay.Stop()
 	}
@@ -97,17 +94,14 @@ func stopOutputAudio() {
 	}
 }
 
-// stopInputAudio stops input audio (browser → device)
 func stopInputAudio() {
 	audioMutex.Lock()
 	inRelay := inputRelay
 	inputRelay = nil
 	audioMutex.Unlock()
 
-	// Atomically swap and disconnect outside mutex
 	inSource := inputSource.Swap(nil)
 
-	// Disconnect outside mutex to avoid blocking during CGO calls
 	if inRelay != nil {
 		inRelay.Stop()
 	}
@@ -140,18 +134,23 @@ func onWebRTCDisconnect() {
 
 func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 	audioMutex.Lock()
-	defer audioMutex.Unlock()
-
 	currentAudioTrack = audioTrack
+	oldRelay := outputRelay
+	outputRelay = nil
 
-	if outputRelay != nil {
-		outputRelay.Stop()
-		outputRelay = nil
-	}
-
+	var newRelay *audio.OutputRelay
 	if outputSource != nil {
-		outputRelay = audio.NewOutputRelay(outputSource, audioTrack)
-		if err := outputRelay.Start(); err != nil {
+		newRelay = audio.NewOutputRelay(outputSource, audioTrack)
+		outputRelay = newRelay
+	}
+	audioMutex.Unlock()
+
+	// Stop/start outside mutex to avoid blocking during CGO calls
+	if oldRelay != nil {
+		oldRelay.Stop()
+	}
+	if newRelay != nil {
+		if err := newRelay.Start(); err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to start output relay")
 		}
 	}

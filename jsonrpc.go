@@ -896,16 +896,17 @@ func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 
 	audioMutex.Lock()
 	inRelay := inputRelay
-	inSource := inputSource
 	inputRelay = nil
-	inputSource = nil
 	audioMutex.Unlock()
+
+	// Atomically swap input source
+	inSource := inputSource.Swap(nil)
 
 	if inRelay != nil {
 		inRelay.Stop()
 	}
 	if inSource != nil {
-		inSource.Disconnect()
+		(*inSource).Disconnect()
 	}
 
 	if err := gadget.UpdateGadgetConfig(); err != nil {
