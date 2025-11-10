@@ -3,12 +3,11 @@ package lldp
 import (
 	"context"
 	"fmt"
+	"net"
 	"sync"
-	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/afpacket"
-	"github.com/jellydator/ttlcache/v3"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
 )
@@ -30,7 +29,8 @@ type LLDP struct {
 	advertiseOptions *AdvertiseOptions
 	onChange         func(neighbors []Neighbor)
 
-	neighbors *ttlcache.Cache[neighborCacheKey, Neighbor]
+	neighbors   map[neighborCacheKey]Neighbor
+	neighborsMu sync.RWMutex
 
 	// State tracking
 	txRunning bool
@@ -47,6 +47,8 @@ type AdvertiseOptions struct {
 	SysName             string
 	SysDescription      string
 	PortDescription     string
+	IPv4Address         *net.IP
+	IPv6Address         *net.IP
 	SysCapabilities     []string
 	EnabledCapabilities []string
 }
@@ -76,14 +78,12 @@ func NewLLDP(opts *Options) *LLDP {
 		enableTx:         opts.EnableTx,
 		rxWaitGroup:      &sync.WaitGroup{},
 		l:                opts.Logger,
-		neighbors:        ttlcache.New(ttlcache.WithTTL[neighborCacheKey, Neighbor](1 * time.Hour)),
+		neighbors:        make(map[neighborCacheKey]Neighbor),
 		onChange:         opts.OnChange,
 	}
 }
 
 func (l *LLDP) Start() error {
-	go l.neighbors.Start()
-
 	if l.enableRx {
 		if err := l.startRx(); err != nil {
 			return fmt.Errorf("failed to start RX: %w", err)

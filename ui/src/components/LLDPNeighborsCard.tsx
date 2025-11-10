@@ -64,8 +64,10 @@ export default function LLDPNeighborsCard({
                       <LLDPDataLine label="Port Description" value={neighbor.port_description} />
                     )}
 
-                    {neighbor.management_address && (
-                      <LLDPDataLine label="Management Address" value={neighbor.management_address.address} />
+                    {neighbor.management_addresses && neighbor.management_addresses.length > 0 && (
+                      neighbor.management_addresses.map((address, index) => (
+                        <LLDPDataLine label="Management Address" value={address.address} key={index} />
+                      ))
                     )}
 
                     {neighbor.mac && (

@@ -13,26 +13,48 @@ type ManagementAddress struct {
 }
 
 type Neighbor struct {
-	Mac               string             `json:"mac"`
-	Source            string             `json:"source"`
-	ChassisID         string             `json:"chassis_id"`
-	PortID            string             `json:"port_id"`
-	PortDescription   string             `json:"port_description"`
-	SystemName        string             `json:"system_name"`
-	SystemDescription string             `json:"system_description"`
-	TTL               uint16             `json:"ttl"`
-	ManagementAddress *ManagementAddress `json:"management_address,omitempty"`
-	Capabilities      []string           `json:"capabilities"`
-	Values            map[string]string  `json:"values"`
+	Mac                 string              `json:"mac"`
+	Source              string              `json:"source"`
+	ChassisID           string              `json:"chassis_id"`
+	PortID              string              `json:"port_id"`
+	PortDescription     string              `json:"port_description"`
+	SystemName          string              `json:"system_name"`
+	SystemDescription   string              `json:"system_description"`
+	TTL                 uint16              `json:"ttl"`
+	ManagementAddresses []ManagementAddress `json:"management_addresses"`
+	Capabilities        []string            `json:"capabilities"`
+	Values              map[string]string   `json:"values"`
+	cacheTTL            time.Time
+	cacheKey            neighborCacheKey
 }
+
+const (
+	NeighborSourceLLDP uint8 = 0x1
+	NeighborSourceCDP        = 0x2
+)
+
+var (
+	NeighborSourceMap = map[uint8]string{
+		NeighborSourceLLDP: "lldp",
+		NeighborSourceCDP:  "cdp",
+	}
+)
 
 type neighborCacheKey struct {
-	mac    string
-	source string
+	Mac    string
+	Source uint8
 }
 
-func (n *Neighbor) cacheKey() neighborCacheKey {
-	return neighborCacheKey{mac: n.Mac, source: n.Source}
+func newNeighbor(mac string, source uint8) *Neighbor {
+	return &Neighbor{
+		Mac:    mac,
+		Source: NeighborSourceMap[source],
+		Values: make(map[string]string),
+		cacheKey: neighborCacheKey{
+			Mac:    mac,
+			Source: source,
+		},
+	}
 }
 
 func (l *LLDP) addNeighbor(neighbor *Neighbor, ttl time.Duration) {
@@ -42,19 +64,18 @@ func (l *LLDP) addNeighbor(neighbor *Neighbor, ttl time.Duration) {
 		Interface("neighbor", neighbor).
 		Logger()
 
-	key := neighbor.cacheKey()
+	l.neighborsMu.RLock()
 
-	currentNeighbor := l.neighbors.Get(key)
-	if currentNeighbor != nil {
-		currentSource := currentNeighbor.Value().Source
-		if currentSource == "lldp" && neighbor.Source != "lldp" {
-			logger.Info().Msg("skip updating neighbor, as LLDP has higher priority")
-			return
-		}
+	_, ok := l.neighbors[neighbor.cacheKey]
+	if ok {
+		logger.Trace().Msg("neighbor already exists, updating it")
 	}
 
 	logger.Trace().Msg("adding neighbor")
-	l.neighbors.Set(key, *neighbor, ttl)
+	neighbor.cacheTTL = time.Now().Add(ttl)
+	l.neighbors[neighbor.cacheKey] = *neighbor
+
+	l.neighborsMu.RUnlock()
 
 	l.onChange(l.GetNeighbors())
 }
@@ -66,17 +87,33 @@ func (l *LLDP) deleteNeighbor(neighbor *Neighbor) {
 		Logger()
 
 	logger.Info().Msg("deleting neighbor")
-	l.neighbors.Delete(neighbor.cacheKey())
+
+	l.neighborsMu.Lock()
+	delete(l.neighbors, neighbor.cacheKey)
+	l.neighborsMu.Unlock()
 
 	l.onChange(l.GetNeighbors())
 }
 
-func (l *LLDP) GetNeighbors() []Neighbor {
-	items := l.neighbors.Items()
-	neighbors := make([]Neighbor, 0, len(items))
+func (l *LLDP) flushNeighbors() {
+	l.neighborsMu.Lock()
+	defer l.neighborsMu.Unlock()
 
-	for _, item := range items {
-		neighbors = append(neighbors, item.Value())
+	l.neighbors = make(map[neighborCacheKey]Neighbor)
+}
+
+func (l *LLDP) GetNeighbors() []Neighbor {
+	l.neighborsMu.Lock()
+	defer l.neighborsMu.Unlock()
+
+	neighbors := make([]Neighbor, 0)
+
+	for key, neighbor := range l.neighbors {
+		if time.Now().After(neighbor.cacheTTL) {
+			delete(l.neighbors, key)
+			continue
+		}
+		neighbors = append(neighbors, neighbor)
 	}
 
 	return neighbors

@@ -801,7 +801,7 @@ export interface LLDPNeighbor {
   system_description: string;
   capabilities: string[];
   ttl: number | null;
-  management_address: LLDPManagementAddress | null;
+  management_addresses: LLDPManagementAddress[];
   values: Record<string, string>;
 }
 

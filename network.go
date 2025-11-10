@@ -3,6 +3,7 @@ package kvm
 import (
 	"context"
 	"fmt"
+	"net"
 	"reflect"
 
 	"github.com/jetkvm/kvm/internal/confparser"
@@ -119,6 +120,11 @@ func networkStateChanged(_ string, state types.InterfaceState) {
 		triggerTimeSyncOnNetworkStateChange()
 	}
 
+	// update the LLDP advertise options
+	if lldpService != nil {
+		_ = lldpService.SetAdvertiseOptions(getLLDPAdvertiseOptions(&state))
+	}
+
 	// always restart mDNS when the network state changes
 	if mDNS != nil {
 		restartMdns()
@@ -144,13 +150,29 @@ func validateNetworkConfig() {
 	}
 }
 
-func getLLDPAdvertiseOptions(nm *nmlite.NetworkManager) *lldp.AdvertiseOptions {
-	return &lldp.AdvertiseOptions{
-		SysName:             nm.Hostname(),
+func getLLDPAdvertiseOptions(state *types.InterfaceState) *lldp.AdvertiseOptions {
+	a := &lldp.AdvertiseOptions{
 		SysDescription:      toLLDPSysDescription(),
 		SysCapabilities:     []string{"other", "router", "wlanap"},
 		EnabledCapabilities: []string{"other"},
 	}
+	if state == nil {
+		return a
+	}
+
+	a.SysName = state.Hostname
+	ip4String := state.IPv4Address
+	if ip4String != "" {
+		ip4 := net.ParseIP(ip4String)
+		a.IPv4Address = &ip4
+	}
+	ip6String := state.IPv6Address
+	if ip6String != "" {
+		ip6 := net.ParseIP(ip6String)
+		a.IPv6Address = &ip6
+	}
+	networkLogger.Info().Interface("advertiseOptions", a).Msg("LLDP advertise options")
+	return a
 }
 
 func initNetwork() error {
@@ -172,7 +194,12 @@ func initNetwork() error {
 
 	networkManager = nm
 
-	advertiseOptions := getLLDPAdvertiseOptions(nm)
+	ifState, err := nm.GetInterfaceState(NetIfName)
+	if err != nil {
+		networkLogger.Warn().Err(err).Msg("failed to get interface state, LLDP will use the default options")
+	}
+
+	advertiseOptions := getLLDPAdvertiseOptions(ifState)
 	lldpService = lldp.NewLLDP(&lldp.Options{
 		InterfaceName:    NetIfName,
 		EnableRx:         nc.ShouldEnableLLDPReceive(),
@@ -200,7 +227,7 @@ func toLLDPSysDescription() string {
 	return fmt.Sprintf("JetKVM (app: %s, system: %s)", appVersion.String(), systemVersion.String())
 }
 
-func updateLLDPOptions(nc *types.NetworkConfig) {
+func updateLLDPOptions(nc *types.NetworkConfig, ifState *types.InterfaceState) {
 	if lldpService == nil {
 		return
 	}
@@ -209,7 +236,16 @@ func updateLLDPOptions(nc *types.NetworkConfig) {
 		networkLogger.Error().Err(err).Msg("failed to set LLDP RX and TX")
 	}
 
-	advertiseOptions := getLLDPAdvertiseOptions(networkManager)
+	if ifState == nil {
+		newIfState, err := networkManager.GetInterfaceState(NetIfName)
+		if err != nil {
+			networkLogger.Warn().Err(err).Msg("failed to get interface state, LLDP will use the default options")
+			return
+		}
+		ifState = newIfState
+	}
+
+	advertiseOptions := getLLDPAdvertiseOptions(ifState)
 	if err := lldpService.SetAdvertiseOptions(advertiseOptions); err != nil {
 		networkLogger.Error().Err(err).Msg("failed to set LLDP advertise options")
 	}
@@ -343,7 +379,7 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 	config.NetworkConfig = newConfig
 
 	// update the LLDP advertise options
-	updateLLDPOptions(newConfig)
+	updateLLDPOptions(newConfig, nil)
 
 	l.Debug().Msg("saving new config")
 	if err := SaveConfig(); err != nil {

@@ -17,57 +17,6 @@ var (
 	lldpEtherType = layers.EthernetTypeLinkLayerDiscovery
 )
 
-// func encodeMandatoryTLV(subType byte, id []byte) []byte {
-// 	// 1 byte: subtype
-// 	// N bytes: ID
-// 	b := make([]byte, 1+len(id))
-// 	b[0] = byte(subtype)
-// 	copy(b[1:], id)
-
-// 	return b
-// }
-
-// func (l *LLDP) createLLDPPayload() ([]byte, error) {
-// 	tlv := &layers.LinkLayerDiscoveryValue{
-// 		Type:  layers.LLDPTLVChassisID,
-
-// }
-
-func tlvStringValue(tlvType layers.LLDPTLVType, value string) layers.LinkLayerDiscoveryValue {
-	return layers.LinkLayerDiscoveryValue{
-		Type:   tlvType,
-		Value:  []byte(value),
-		Length: uint16(len(value)),
-	}
-}
-
-var (
-	capabilityMap = map[string]uint16{
-		"other":        layers.LLDPCapsOther,
-		"repeater":     layers.LLDPCapsRepeater,
-		"bridge":       layers.LLDPCapsBridge,
-		"wlanap":       layers.LLDPCapsWLANAP,
-		"router":       layers.LLDPCapsRouter,
-		"phone":        layers.LLDPCapsPhone,
-		"docsis":       layers.LLDPCapsDocSis,
-		"station_only": layers.LLDPCapsStationOnly,
-		"cvlan":        layers.LLDPCapsCVLAN,
-		"svlan":        layers.LLDPCapsSVLAN,
-		"tmpr":         layers.LLDPCapsTmpr,
-	}
-)
-
-func toLLDPCapabilitiesBytes(capabilities []string) uint16 {
-	r := uint16(0)
-	for _, capability := range capabilities {
-		mask, ok := capabilityMap[capability]
-		if ok {
-			r |= mask
-		}
-	}
-	return r
-}
-
 func (l *LLDP) toPayloadValues() []layers.LinkLayerDiscoveryValue {
 	// See also: layers.LinkLayerDiscovery.SerializeTo()
 	r := []layers.LinkLayerDiscoveryValue{}
@@ -86,6 +35,24 @@ func (l *LLDP) toPayloadValues() []layers.LinkLayerDiscoveryValue {
 
 	if opts.SysDescription != "" {
 		r = append(r, tlvStringValue(layers.LLDPTLVSysDescription, opts.SysDescription))
+	}
+
+	if opts.IPv4Address != nil {
+		r = append(r, tlvMgmtAddress(&layers.LLDPMgmtAddress{
+			Subtype:          layers.IANAAddressFamilyIPV4,
+			Address:          opts.IPv4Address.To4(),
+			InterfaceSubtype: layers.LLDPInterfaceSubtypeifIndex,
+			InterfaceNumber:  0,
+		}))
+	}
+
+	if opts.IPv6Address != nil {
+		r = append(r, tlvMgmtAddress(&layers.LLDPMgmtAddress{
+			Subtype:          layers.IANAAddressFamilyIPV6,
+			Address:          opts.IPv6Address.To16(),
+			InterfaceSubtype: layers.LLDPInterfaceSubtypeifIndex,
+			InterfaceNumber:  0,
+		}))
 	}
 
 	if len(opts.SysCapabilities) > 0 {

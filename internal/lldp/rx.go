@@ -237,11 +237,7 @@ func capabilitiesToString(capabilities layers.LLDPCapabilities) []string {
 }
 
 func (l *LLDP) handlePacketLLDP(mac string, raw *layers.LinkLayerDiscovery, info *layers.LinkLayerDiscoveryInfo) error {
-	n := &Neighbor{
-		Values: make(map[string]string),
-		Source: "lldp",
-		Mac:    mac,
-	}
+	n := newNeighbor(mac, NeighborSourceLLDP)
 
 	ttl := lldpDefaultTTL
 
@@ -263,12 +259,12 @@ func (l *LLDP) handlePacketLLDP(mac string, raw *layers.LinkLayerDiscovery, info
 			n.SystemDescription = info.SysDescription
 			n.Values["system_description"] = n.SystemDescription
 		case layers.LLDPTLVMgmtAddress:
-			n.ManagementAddress = &ManagementAddress{
-				AddressFamily:    info.MgmtAddress.Subtype.String(),
-				Address:          net.IP(info.MgmtAddress.Address).String(),
-				InterfaceSubtype: info.MgmtAddress.InterfaceSubtype.String(),
-				InterfaceNumber:  info.MgmtAddress.InterfaceNumber,
-				OID:              info.MgmtAddress.OID,
+			mgmtAddress := parseTlvMgmtAddress(v)
+			if mgmtAddress != nil {
+				n.ManagementAddresses = append(
+					n.ManagementAddresses,
+					lldpMgmtAddressToSerializable(mgmtAddress),
+				)
 			}
 		case layers.LLDPTLVSysCapabilities:
 			n.Capabilities = capabilitiesToString(info.SysCapabilities.EnabledCap)
@@ -297,11 +293,7 @@ func (l *LLDP) handlePacketLLDP(mac string, raw *layers.LinkLayerDiscovery, info
 
 func (l *LLDP) handlePacketCDP(mac string, raw *layers.CiscoDiscovery, info *layers.CiscoDiscoveryInfo) error {
 	// TODO: implement full CDP parsing
-	n := &Neighbor{
-		Values: make(map[string]string),
-		Source: "cdp",
-		Mac:    mac,
-	}
+	n := newNeighbor(mac, NeighborSourceCDP)
 
 	ttl := cdpDefaultTTL
 
@@ -315,27 +307,18 @@ func (l *LLDP) handlePacketCDP(mac string, raw *layers.CiscoDiscovery, info *lay
 		ttl = time.Duration(n.TTL) * time.Second
 	}
 
-	if len(info.MgmtAddresses) > 0 {
-		ip := info.MgmtAddresses[0]
-		ipFamily := "ipv4"
-		if ip.To4() == nil {
-			ipFamily = "ipv6"
+	for _, addr := range info.MgmtAddresses {
+		addrFamily := "ipv4"
+		if addr.To4() == nil {
+			addrFamily = "ipv6"
 		}
-
-		l.l.Info().
-			Str("ip", ip.String()).
-			Str("ip_family", ipFamily).
-			Interface("ip", ip).
-			Interface("info", info).
-			Msg("parsed IP address")
-
-		n.ManagementAddress = &ManagementAddress{
-			AddressFamily:    ipFamily,
-			Address:          ip.String(),
+		n.ManagementAddresses = append(n.ManagementAddresses, ManagementAddress{
+			AddressFamily:    addrFamily,
+			Address:          addr.String(),
 			InterfaceSubtype: "if_name",
 			InterfaceNumber:  0,
 			OID:              "",
-		}
+		})
 	}
 
 	l.addNeighbor(n, ttl)
@@ -402,7 +385,7 @@ func (l *LLDP) stopRx() error {
 	}
 
 	// clean up the neighbors table
-	l.neighbors.DeleteAll()
+	l.flushNeighbors()
 	l.onChange([]Neighbor{})
 
 	return nil
