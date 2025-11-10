@@ -16,9 +16,10 @@ import EmptyCard from "@components/EmptyCard";
 import { GridCard } from "@components/Card";
 import InputField, { InputFieldWithLabel } from "@components/InputField";
 import Ipv6NetworkCard from "@components/Ipv6NetworkCard";
-import { SelectMenuBasic } from "@/components/SelectMenuBasic";
+import LLDPNeighborsCard from "@components/LLDPNeighborsCard";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
-import { SettingsPageHeader } from "@/components/SettingsPageheader";
+import { SettingsPageHeader } from "@components/SettingsPageheader";
 import StaticIpv4Card from "@components/StaticIpv4Card";
 import StaticIpv6Card from "@components/StaticIpv6Card";
 import { useCopyToClipboard } from "@components/useCopyToClipBoard";
@@ -26,7 +27,6 @@ import { netMaskFromCidr4 } from "@/utils/ip";
 import { getNetworkSettings, getNetworkState, getLLDPNeighbors } from "@/utils/jsonrpc";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages";
-import LLDPNeighborsCard from "@components/LLDPNeighborsCard";
 
 dayjs.extend(relativeTime);
 
