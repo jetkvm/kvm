@@ -37,7 +37,8 @@ export default function LLDPNeighborsCard({
           <div className="space-y-3 pt-2">
             {neighbors.map(neighbor => {
               const displayName = neighbor.system_name || neighbor.port_description || neighbor.mac;
-              return <div className="space-y-3" key={neighbor.mac}>
+              const key = `${neighbor.mac}-${neighbor.source}`;
+              return <div className="space-y-3" key={key}>
                 <h4 className="text-sm font-semibold font-mono">{displayName}</h4>
                 <div
                   className="rounded-md rounded-l-none border border-slate-500/10 border-l-blue-700/50 bg-white p-4 pl-4 backdrop-blur-sm dark:bg-transparent"
