@@ -30,7 +30,7 @@ type Neighbor struct {
 
 const (
 	NeighborSourceLLDP uint8 = 0x1
-	NeighborSourceCDP        = 0x2
+	NeighborSourceCDP  uint8 = 0x2
 )
 
 var (

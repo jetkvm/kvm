@@ -66,7 +66,7 @@ func tlvMgmtAddress(m *layers.LLDPMgmtAddress) layers.LinkLayerDiscoveryValue {
 
 func checkLLDPTLVLen(v layers.LinkLayerDiscoveryValue, l int) (err error) {
 	if len(v.Value) < l {
-		err = fmt.Errorf("invalid TLV %v length %d (wanted mimimum %v)", v.Type, len(v.Value), l)
+		err = fmt.Errorf("invalid TLV %v length %d (wanted minimum %d)", v.Type, len(v.Value), l)
 	}
 	return
 }

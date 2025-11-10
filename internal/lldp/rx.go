@@ -360,7 +360,7 @@ func (l *LLDP) stopCapture() error {
 		// write an empty packet to the TPacketRx to interrupt the blocking read
 		// it's a shitty workaround until https://github.com/google/gopacket/pull/777 is merged,
 		// or we have a better solution, see https://github.com/google/gopacket/issues/1064
-		l.tPacketRx.WritePacketData([]byte{})
+		_ = l.tPacketRx.WritePacketData([]byte{})
 	}()
 
 	// wait for the goroutine to finish
