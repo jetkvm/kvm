@@ -16,12 +16,12 @@ import {
 } from "react-icons/lu";
 
 import { cx } from "@/cva.config";
-import { useUiStore } from "@hooks/stores";
+import { useUiStore, useFailsafeModeStore } from "@hooks/stores";
 import Card from "@components/Card";
-import { LinkButton } from "@components/Button";
-import { FeatureFlag } from "@components/FeatureFlag";
-import { m, useFailsafeModeStore } from "@localizations/messages.js";
 import { FailsafeModeBanner } from "@components/FailSafeModeBanner";
+import { FeatureFlag } from "@components/FeatureFlag";
+import { LinkButton } from "@components/Button";
+import { m } from "@localizations/messages.js";
 
 /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
 export default function SettingsRoute() {
