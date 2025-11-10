@@ -49,7 +49,7 @@ export default function SettingsGeneralUpdateRoute() {
 
     send("tryUpdateComponents", {
       params: {
-        components: components.join(","),
+        components,
         appTargetVersion,
         systemTargetVersion,
       },
@@ -196,13 +196,12 @@ function LoadingState({
       return await getVersionInfo();
     }
     const params : updateParams = {
-      components: "",
+      components: [],
       appTargetVersion: customAppVersion,
       systemTargetVersion: customSystemVersion,
     };
-    if (customAppVersion) params.components += ",app";
-    if (customSystemVersion) params.components += ",system";
-    params.components = params.components?.replace(/^,+/, "");
+    if (customAppVersion) params.components?.push("app");
+    if (customSystemVersion) params.components?.push("system");
 
     return await checkUpdateComponents(params, false);
   }, [customAppVersion, customSystemVersion, getVersionInfo]);

@@ -246,7 +246,7 @@ export async function getLocalVersion() {
 export interface updateParams {
   appTargetVersion?: string;
   systemTargetVersion?: string;
-  components?: string;
+  components?: string[];
 }
 
 export async function checkUpdateComponents(params: updateParams, includePreRelease: boolean) {

@@ -203,7 +203,7 @@ export default function SettingsAdvancedRoute() {
       // because it will be redirected to the update page later
       setVersionUpdateLoading(true);
       versionInfo = await checkUpdateComponents({
-        components: components.join(","),
+        components,
         appTargetVersion: appVersion,
         systemTargetVersion: systemVersion,
       }, devChannel);
