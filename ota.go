@@ -91,7 +91,7 @@ func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
 		updateStatus.Error = err.Error()
 	}
 
-	logger.Info().Interface("updateStatus", updateStatus).Msg("Update status")
+	otaLogger.Info().Interface("updateStatus", updateStatus).Msg("Update status")
 
 	return updateStatus, nil
 }
@@ -189,7 +189,7 @@ func rpcTryUpdateComponents(params updateParams, includePreRelease bool, resetCo
 	go func() {
 		err := otaState.TryUpdate(context.Background(), updateParams)
 		if err != nil {
-			logger.Warn().Err(err).Msg("failed to try update")
+			otaLogger.Warn().Err(err).Msg("failed to try update")
 		}
 	}()
 	return nil

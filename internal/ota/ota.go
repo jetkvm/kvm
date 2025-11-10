@@ -311,13 +311,27 @@ func (s *State) checkUpdateStatus(
 		appUpdateStatus.available = false
 	}
 
-	// Handle custom target versions
-	if slices.Contains(params.Components, "app") && params.AppTargetVersion != "" {
-		appUpdateStatus.available = appVersionRemote.String() != appUpdateStatus.localVersion
+	components := params.Components
+	// skip check if no components are specified
+	if len(components) == 0 {
+		return nil
 	}
 
-	if slices.Contains(params.Components, "system") && params.SystemTargetVersion != "" {
-		systemUpdateStatus.available = systemVersionRemote.String() != systemUpdateStatus.localVersion
+	// TODO: simplify this
+	if slices.Contains(components, "app") {
+		if params.AppTargetVersion != "" {
+			appUpdateStatus.available = appVersionRemote.String() != appVersionLocal.String()
+		}
+	} else {
+		appUpdateStatus.available = false
+	}
+
+	if slices.Contains(components, "system") {
+		if params.SystemTargetVersion != "" {
+			systemUpdateStatus.available = systemVersionRemote.String() != systemVersionLocal.String()
+		}
+	} else {
+		systemUpdateStatus.available = false
 	}
 
 	return nil

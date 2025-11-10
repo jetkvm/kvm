@@ -203,6 +203,7 @@ type Options struct {
 	HwReboot           HwRebootFunc
 	ReleaseAPIEndpoint string
 	ResetConfig        ResetConfigFunc
+	SkipConfirmSystem  bool
 }
 
 // NewState creates a new OTA state
@@ -221,7 +222,9 @@ func NewState(opts Options) *State {
 		releaseAPIEndpoint:      opts.ReleaseAPIEndpoint,
 		resetConfig:             opts.ResetConfig,
 	}
-	go s.confirmCurrentSystem()
+	if !opts.SkipConfirmSystem {
+		go s.confirmCurrentSystem()
+	}
 	return s
 }
 
