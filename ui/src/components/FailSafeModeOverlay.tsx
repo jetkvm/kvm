@@ -114,7 +114,7 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
 
       // Open GitHub issue
       const issueBody = `## Issue Description
-The \`${reason}\` process encountered an error and fail safe mode was activated.
+The \`${reason}\` process encountered an error and failsafe mode was activated.
 
 **Reason:** \`${reason}\`
 **Timestamp:** ${new Date().toISOString()}
