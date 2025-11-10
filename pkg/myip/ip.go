@@ -92,22 +92,6 @@ func (ps *PublicIPState) SetIPv4AndIPv6(ipv4, ipv6 bool) {
 	ps.ipv6 = ipv6
 }
 
-// SetIPv4 sets if we need to track IPv4 public IP addresses
-func (ps *PublicIPState) SetIPv4(ipv4 bool) {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-
-	ps.ipv4 = ipv4
-}
-
-// SetIPv6 sets if we need to track IPv6 public IP addresses
-func (ps *PublicIPState) SetIPv6(ipv6 bool) {
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
-
-	ps.ipv6 = ipv6
-}
-
 // SetCloudflareEndpoint sets the Cloudflare endpoint
 func (ps *PublicIPState) SetCloudflareEndpoint(endpoint string) {
 	ps.mu.Lock()

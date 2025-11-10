@@ -110,6 +110,13 @@ func triggerTimeSyncOnNetworkStateChange() {
 	}()
 }
 
+func setPublicIPReadyState(ipv4Ready, ipv6Ready bool) {
+	if publicIPState == nil {
+		return
+	}
+	publicIPState.SetIPv4AndIPv6(ipv4Ready, ipv6Ready)
+}
+
 func networkStateChanged(_ string, state types.InterfaceState) {
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(true, "network_state_changed")
@@ -121,15 +128,9 @@ func networkStateChanged(_ string, state types.InterfaceState) {
 	if state.Online {
 		networkLogger.Info().Msg("network state changed to online, triggering time sync")
 		triggerTimeSyncOnNetworkStateChange()
-
-		if publicIPState != nil {
-			publicIPState.SetIPv4AndIPv6(state.IPv4Ready, state.IPv6Ready)
-		}
-	} else {
-		if publicIPState != nil {
-			publicIPState.SetIPv4AndIPv6(false, false)
-		}
 	}
+
+	setPublicIPReadyState(state.IPv4Ready, state.IPv6Ready)
 
 	// always restart mDNS when the network state changes
 	if mDNS != nil {

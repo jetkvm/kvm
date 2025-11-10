@@ -21,6 +21,8 @@ export default function PublicIPCard() {
         return;
       }
       const publicIPs = resp.result as PublicIP[];
+      // sort the public IPs by IP address
+      // IPv6 addresses are sorted after IPv4 addresses
       setPublicIPs(publicIPs.sort(({ ip: aIp }, { ip: bIp }) => {
         const aIsIPv6 = aIp.includes(":");
         const bIsIPv6 = bIp.includes(":");
