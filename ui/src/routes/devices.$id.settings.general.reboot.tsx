@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
+import { useFailsafeModeStore } from "@/hooks/stores";
 
 import LoadingSpinner from "../components/LoadingSpinner";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
@@ -15,6 +16,7 @@ export default function SettingsGeneralRebootRoute() {
   const { send } = useJsonRpc();
   const [isRebooting, setIsRebooting] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
+  const { setFailsafeMode } = useFailsafeModeStore();
 
   const onConfirmUpdate = useCallback(async () => {
     setIsRebooting(true);
@@ -22,8 +24,9 @@ export default function SettingsGeneralRebootRoute() {
     send("reboot", { force: true });
 
     await new Promise(resolve => setTimeout(resolve, REBOOT_REDIRECT_DELAY_MS));
+    setFailsafeMode(false, "");
     navigateTo("/");
-  }, [navigateTo, send]);
+  }, [navigateTo, send, setFailsafeMode]);
 
   {
     /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
