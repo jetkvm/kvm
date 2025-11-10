@@ -78,41 +78,31 @@ func startAudio() error {
 	return nil
 }
 
-// stopOutputLocked stops output audio (assumes mutex is held)
-func stopOutputLocked() {
-	if outputRelay != nil {
-		outputRelay.Stop()
-		outputRelay = nil
-	}
-	if outputSource != nil {
-		outputSource.Disconnect()
-		outputSource = nil
-	}
-}
-
-// stopInputLocked stops input audio (assumes mutex is held)
-func stopInputLocked() {
-	if inputRelay != nil {
-		inputRelay.Stop()
-		inputRelay = nil
-	}
-	if inputSource != nil {
-		inputSource.Disconnect()
-		inputSource = nil
-	}
-}
-
-// stopAudioLocked stops all audio (assumes mutex is held)
-func stopAudioLocked() {
-	stopOutputLocked()
-	stopInputLocked()
-}
-
-// stopAudio stops all audio
 func stopAudio() {
 	audioMutex.Lock()
-	defer audioMutex.Unlock()
-	stopAudioLocked()
+	outRelay := outputRelay
+	outSource := outputSource
+	inRelay := inputRelay
+	inSource := inputSource
+	outputRelay = nil
+	outputSource = nil
+	inputRelay = nil
+	inputSource = nil
+	audioMutex.Unlock()
+
+	// Disconnect outside mutex to avoid blocking new sessions during CGO calls
+	if outRelay != nil {
+		outRelay.Stop()
+	}
+	if outSource != nil {
+		outSource.Disconnect()
+	}
+	if inRelay != nil {
+		inRelay.Stop()
+	}
+	if inSource != nil {
+		inSource.Disconnect()
+	}
 }
 
 func onWebRTCConnect() {
@@ -169,8 +159,18 @@ func SetAudioOutputEnabled(enabled bool) error {
 		}
 	} else {
 		audioMutex.Lock()
-		stopOutputLocked()
+		outRelay := outputRelay
+		outSource := outputSource
+		outputRelay = nil
+		outputSource = nil
 		audioMutex.Unlock()
+
+		if outRelay != nil {
+			outRelay.Stop()
+		}
+		if outSource != nil {
+			outSource.Disconnect()
+		}
 	}
 
 	return nil
@@ -188,8 +188,18 @@ func SetAudioInputEnabled(enabled bool) error {
 		}
 	} else {
 		audioMutex.Lock()
-		stopInputLocked()
+		inRelay := inputRelay
+		inSource := inputSource
+		inputRelay = nil
+		inputSource = nil
 		audioMutex.Unlock()
+
+		if inRelay != nil {
+			inRelay.Stop()
+		}
+		if inSource != nil {
+			inSource.Disconnect()
+		}
 	}
 
 	return nil
