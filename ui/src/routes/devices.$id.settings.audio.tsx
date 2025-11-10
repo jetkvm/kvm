@@ -12,19 +12,19 @@ import notifications from "../notifications";
 
 export default function SettingsAudioRoute() {
   const { send } = useJsonRpc();
-  const settings = useSettingsStore();
+  const { setAudioOutputEnabled, setAudioInputAutoEnable, audioOutputEnabled, audioInputAutoEnable  } = useSettingsStore();
 
   useEffect(() => {
     send("getAudioOutputEnabled", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
-      settings.setAudioOutputEnabled(resp.result as boolean);
+      setAudioOutputEnabled(resp.result as boolean);
     });
 
     send("getAudioInputAutoEnable", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
-      settings.setAudioInputAutoEnable(resp.result as boolean);
+      setAudioInputAutoEnable(resp.result as boolean);
     });
-  }, [send, settings]);
+  }, [send, setAudioOutputEnabled, setAudioInputAutoEnable]);
 
   const handleAudioOutputEnabledChange = (enabled: boolean) => {
     send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
@@ -35,7 +35,7 @@ export default function SettingsAudioRoute() {
         notifications.error(errorMsg);
         return;
       }
-      settings.setAudioOutputEnabled(enabled);
+      setAudioOutputEnabled(enabled);
       const successMsg = enabled ? m.audio_output_enabled() : m.audio_output_disabled();
       notifications.success(successMsg);
     });
@@ -47,7 +47,7 @@ export default function SettingsAudioRoute() {
         notifications.error(String(resp.error.data || m.unknown_error()));
         return;
       }
-      settings.setAudioInputAutoEnable(enabled);
+      setAudioInputAutoEnable(enabled);
       const successMsg = enabled
         ? m.audio_input_auto_enable_enabled()
         : m.audio_input_auto_enable_disabled();
@@ -67,7 +67,7 @@ export default function SettingsAudioRoute() {
           description={m.audio_settings_output_description()}
         >
           <Checkbox
-            checked={settings.audioOutputEnabled || false}
+            checked={audioOutputEnabled || false}
             onChange={(e) => handleAudioOutputEnabledChange(e.target.checked)}
           />
         </SettingsItem>
@@ -77,7 +77,7 @@ export default function SettingsAudioRoute() {
           description={m.audio_settings_auto_enable_microphone_description()}
         >
           <Checkbox
-            checked={settings.audioInputAutoEnable || false}
+            checked={audioInputAutoEnable || false}
             onChange={(e) => handleAudioInputAutoEnableChange(e.target.checked)}
           />
         </SettingsItem>
