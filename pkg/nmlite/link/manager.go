@@ -414,7 +414,7 @@ func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]
 
 	// add remaining expected default routes
 	for _, gateway := range expected {
-		nm.logger.Warn().Str("gateway", gateway.String()).Msg("adding default route")
+		nm.logger.Info().Str("gateway", gateway.String()).Msg("adding default route")
 
 		route := &netlink.Route{
 			Dst:       &ipv4DefaultRoute,

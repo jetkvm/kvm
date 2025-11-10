@@ -42,7 +42,7 @@ type NetworkConfig struct {
 	IPv6Mode   null.String       `json:"ipv6_mode,omitempty" one_of:"slaac,dhcpv6,slaac_and_dhcpv6,static,link_local,disabled" default:"slaac"`
 	IPv6Static *IPv6StaticConfig `json:"ipv6_static,omitempty" required_if:"IPv6Mode=static"`
 
-	LLDPMode                null.String `json:"lldp_mode,omitempty" one_of:"disabled,rx_only,tx_only,rx_and_tx,basic,all" default:"rx_and_tx"`
+	LLDPMode                null.String `json:"lldp_mode,omitempty" one_of:"disabled,enabled,rx_only,tx_only,rx_and_tx,basic,all" default:"rx_and_tx"`
 	LLDPTxTLVs              []string    `json:"lldp_tx_tlvs,omitempty" one_of:"chassis,port,system,vlan" default:"chassis,port,system,vlan"`
 	MDNSMode                null.String `json:"mdns_mode,omitempty" one_of:"disabled,auto,ipv4_only,ipv6_only" default:"auto"`
 	TimeSyncMode            null.String `json:"time_sync_mode,omitempty" one_of:"ntp_only,ntp_and_http,http_only,custom" default:"ntp_and_http"`
@@ -54,7 +54,7 @@ type NetworkConfig struct {
 }
 
 func (c *NetworkConfig) ShouldEnableLLDPTransmit() bool {
-	// backwards compatibility: `basic` mode will be `rx_only` due to privacy concerns
+	// backwards compatibility: `basic` mode will be `rx_only` due to privacy concerns, `enabled` and `all` will enable transmit
 	return c.LLDPMode.String != "rx_only" && c.LLDPMode.String != "disabled" && c.LLDPMode.String != "basic"
 }
 

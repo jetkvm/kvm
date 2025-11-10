@@ -211,6 +211,7 @@ func initNetwork() error {
 		},
 		Logger: networkLogger,
 	})
+
 	if err := lldpService.Start(); err != nil {
 		networkLogger.Error().Err(err).Msg("failed to start LLDP service")
 	}

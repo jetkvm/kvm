@@ -14,16 +14,18 @@ import (
 
 var defaultLogger = logging.GetSubsystemLogger("lldp")
 
+type RunningState struct {
+	Enabled bool
+	Running bool
+	Logger  *zerolog.Logger
+	TPacket *afpacket.TPacket
+	Ctx     context.Context
+	Cancel  context.CancelFunc
+}
+
 type LLDP struct {
 	mu sync.RWMutex
-
-	l           *zerolog.Logger
-	tPacketRx   *afpacket.TPacket
-	tPacketTx   *afpacket.TPacket
-	pktSourceRx *gopacket.PacketSource
-
-	enableRx bool
-	enableTx bool
+	l  *zerolog.Logger
 
 	interfaceName    string
 	advertiseOptions *AdvertiseOptions
@@ -32,15 +34,11 @@ type LLDP struct {
 	neighbors   map[neighborCacheKey]Neighbor
 	neighborsMu sync.RWMutex
 
-	// State tracking
-	txRunning bool
-	txCtx     context.Context
-	txCancel  context.CancelFunc
+	Tx *RunningState
+	Rx *RunningState
 
-	rxRunning   bool
+	pktSourceRx *gopacket.PacketSource
 	rxWaitGroup *sync.WaitGroup
-	rxCtx       context.Context
-	rxCancel    context.CancelFunc
 }
 
 type AdvertiseOptions struct {
@@ -74,24 +72,32 @@ func NewLLDP(opts *Options) *LLDP {
 	return &LLDP{
 		interfaceName:    opts.InterfaceName,
 		advertiseOptions: opts.AdvertiseOptions,
-		enableRx:         opts.EnableRx,
-		enableTx:         opts.EnableTx,
-		rxWaitGroup:      &sync.WaitGroup{},
-		l:                opts.Logger,
-		neighbors:        make(map[neighborCacheKey]Neighbor),
-		onChange:         opts.OnChange,
+		Rx: &RunningState{
+			Enabled: opts.EnableRx,
+		},
+		Tx: &RunningState{
+			Enabled: opts.EnableTx,
+		},
+		rxWaitGroup: &sync.WaitGroup{},
+		l:           opts.Logger,
+		neighbors:   make(map[neighborCacheKey]Neighbor),
+		onChange:    opts.OnChange,
 	}
 }
 
 func (l *LLDP) Start() error {
-	if l.enableRx {
+	l.mu.RLock()
+	rxEnabled, txEnabled := l.Rx.Enabled, l.Tx.Enabled
+	l.mu.RUnlock()
+
+	if rxEnabled {
 		if err := l.startRx(); err != nil {
 			return fmt.Errorf("failed to start RX: %w", err)
 		}
 	}
 
 	// Start TX if enabled
-	if l.enableTx {
+	if txEnabled {
 		if err := l.startTx(); err != nil {
 			return fmt.Errorf("failed to start TX: %w", err)
 		}
@@ -103,16 +109,12 @@ func (l *LLDP) Start() error {
 // StartRx starts the LLDP receiver if not already running
 func (l *LLDP) startRx() error {
 	l.mu.RLock()
-	running := l.rxRunning
-	enabled := l.enableRx
+	running := l.Rx.Running
+	enabled := l.Rx.Enabled
 	l.mu.RUnlock()
 
 	if running || !enabled {
 		return nil
-	}
-
-	if err := l.setUpCapture(); err != nil {
-		return fmt.Errorf("failed to set up capture: %w", err)
 	}
 
 	return l.startCapture()
@@ -121,7 +123,8 @@ func (l *LLDP) startRx() error {
 // SetAdvertiseOptions updates the advertise options and resends LLDP packets if TX is running
 func (l *LLDP) SetAdvertiseOptions(opts *AdvertiseOptions) error {
 	l.mu.Lock()
-	txRunning := l.txRunning
+	logger := l.l
+	txRunning := l.Tx.Running
 	l.advertiseOptions = opts
 	l.mu.Unlock()
 
@@ -130,7 +133,7 @@ func (l *LLDP) SetAdvertiseOptions(opts *AdvertiseOptions) error {
 		if err := l.sendTxPackets(); err != nil {
 			return fmt.Errorf("failed to resend LLDP packet with new options: %w", err)
 		}
-		l.l.Info().Msg("advertise options changed, resent LLDP packet")
+		logger.Info().Msg("advertise options changed, resent LLDP packet")
 	}
 
 	return nil
@@ -138,8 +141,8 @@ func (l *LLDP) SetAdvertiseOptions(opts *AdvertiseOptions) error {
 
 func (l *LLDP) SetRxAndTx(rx, tx bool) error {
 	l.mu.Lock()
-	l.enableRx = rx
-	l.enableTx = tx
+	l.Rx.Enabled = rx
+	l.Tx.Enabled = tx
 	l.mu.Unlock()
 
 	// if rx is enabled, start the RX

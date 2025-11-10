@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/guregu/null/v6"
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
@@ -252,6 +253,16 @@ func LoadConfig() {
 	// fixup old keyboard layout value
 	if loadedConfig.KeyboardLayout == "en_US" {
 		loadedConfig.KeyboardLayout = "en-US"
+	}
+
+	// fixup old lldp modes enabled and all are now rx_and_tx
+	if loadedConfig.NetworkConfig.LLDPMode.String == "enabled" || loadedConfig.NetworkConfig.LLDPMode.String == "all" {
+		loadedConfig.NetworkConfig.LLDPMode = null.StringFrom("rx_and_tx")
+	}
+
+	// fixup old lldp mode basic is now rx_only
+	if loadedConfig.NetworkConfig.LLDPMode.String == "basic" {
+		loadedConfig.NetworkConfig.LLDPMode = null.StringFrom("rx_only")
 	}
 
 	config = &loadedConfig
