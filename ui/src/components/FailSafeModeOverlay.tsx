@@ -10,8 +10,11 @@ import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { useVersion } from "@/hooks/useVersion";
 import { useDeviceStore } from "@/hooks/stores";
 import notifications from "@/notifications";
+import { DOWNGRADE_VERSION } from "@/ui.config";
 
 import { GitHubIcon } from "./Icons";
+
+
 
 interface FailSafeModeOverlayProps {
   reason: string;
@@ -86,7 +89,7 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
   const handleReportAndDownloadLogs = () => {
     setIsDownloadingLogs(true);
 
-    send("getFailSafeLogs", {}, (resp: JsonRpcResponse) => {
+    send("getFailSafeLogs", {}, async (resp: JsonRpcResponse) => {
       setIsDownloadingLogs(false);
 
       if ("error" in resp) {
@@ -105,7 +108,9 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
       a.href = url;
       a.download = filename;
       document.body.appendChild(a);
+      await new Promise(resolve => setTimeout(resolve, 1000));
       a.click();
+      await new Promise(resolve => setTimeout(resolve, 1000));
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
@@ -126,7 +131,7 @@ Please attach the recovery logs file that was downloaded to your computer:
 \`${filename}\`
 
 > [!NOTE]
-> Please omit any sensitive information from the logs.
+> Please remove any sensitive information from the logs. The reports are public and can be viewed by anyone.
 
 ## Additional Context
 [Please describe what you were doing when this occurred]`;
@@ -141,7 +146,7 @@ Please attach the recovery logs file that was downloaded to your computer:
   };
 
   const handleDowngrade = () => {
-    navigateTo("/settings/general/update?app=0.4.8");
+    navigateTo(`/settings/general/update?app=${DOWNGRADE_VERSION}`);
   };
 
   return (
@@ -192,7 +197,7 @@ Please attach the recovery logs file that was downloaded to your computer:
                         size="SM"
                         onClick={handleDowngrade}
                         theme="light"
-                        text="Downgrade to v0.4.8"
+                        text={`Downgrade to v${DOWNGRADE_VERSION}`}
                         disabled={!hasDownloadedLogs}
                       />
                     </Tooltip>
