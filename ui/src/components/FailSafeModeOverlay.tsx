@@ -182,7 +182,7 @@ Please attach the recovery logs file that was downloaded to your computer:
                     />
 
                     <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 block" />
-                    <Tooltip text="Download logs first to unlock" show={!hasDownloadedLogs}>
+                    <Tooltip text="Download logs first" show={!hasDownloadedLogs}>
                       <Button
                         onClick={() => navigateTo("/settings/general/reboot")}
                         theme="light"
@@ -192,7 +192,7 @@ Please attach the recovery logs file that was downloaded to your computer:
                       />
                     </Tooltip>
 
-                    <Tooltip text="Download logs first to unlock" show={!hasDownloadedLogs}>
+                    <Tooltip text="Download logs first" show={!hasDownloadedLogs}>
                       <Button
                         size="SM"
                         onClick={handleDowngrade}
