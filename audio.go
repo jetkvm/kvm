@@ -14,7 +14,7 @@ import (
 var (
 	audioMutex         sync.Mutex
 	outputSource       audio.AudioSource
-	inputSource        audio.AudioSource
+	inputSource        atomic.Pointer[audio.AudioSource]
 	outputRelay        *audio.OutputRelay
 	inputRelay         *audio.InputRelay
 	audioInitialized   bool
@@ -63,13 +63,14 @@ func startAudio() error {
 
 	// Start input audio if not running, USB audio enabled, and input enabled
 	ensureConfigLoaded()
-	if inputSource == nil && audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
+	if inputSource.Load() == nil && audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
 		alsaPlaybackDevice := "hw:1,0" // USB speakers
 
 		// Create CGO audio source
-		inputSource = audio.NewCgoInputSource(alsaPlaybackDevice)
+		source := audio.NewCgoInputSource(alsaPlaybackDevice)
+		inputSource.Store(&source)
 
-		inputRelay = audio.NewInputRelay(inputSource)
+		inputRelay = audio.NewInputRelay(source)
 		if err := inputRelay.Start(); err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to start input relay")
 		}
@@ -78,31 +79,46 @@ func startAudio() error {
 	return nil
 }
 
-func stopAudio() {
+// stopOutputAudio stops output audio (device → browser)
+func stopOutputAudio() {
 	audioMutex.Lock()
 	outRelay := outputRelay
 	outSource := outputSource
-	inRelay := inputRelay
-	inSource := inputSource
 	outputRelay = nil
 	outputSource = nil
-	inputRelay = nil
-	inputSource = nil
 	audioMutex.Unlock()
 
-	// Disconnect outside mutex to avoid blocking new sessions during CGO calls
+	// Disconnect outside mutex to avoid blocking during CGO calls
 	if outRelay != nil {
 		outRelay.Stop()
 	}
 	if outSource != nil {
 		outSource.Disconnect()
 	}
+}
+
+// stopInputAudio stops input audio (browser → device)
+func stopInputAudio() {
+	audioMutex.Lock()
+	inRelay := inputRelay
+	inputRelay = nil
+	audioMutex.Unlock()
+
+	// Atomically swap and disconnect outside mutex
+	inSource := inputSource.Swap(nil)
+
+	// Disconnect outside mutex to avoid blocking during CGO calls
 	if inRelay != nil {
 		inRelay.Stop()
 	}
 	if inSource != nil {
-		inSource.Disconnect()
+		(*inSource).Disconnect()
 	}
+}
+
+func stopAudio() {
+	stopOutputAudio()
+	stopInputAudio()
 }
 
 func onWebRTCConnect() {
@@ -158,19 +174,7 @@ func SetAudioOutputEnabled(enabled bool) error {
 			return startAudio()
 		}
 	} else {
-		audioMutex.Lock()
-		outRelay := outputRelay
-		outSource := outputSource
-		outputRelay = nil
-		outputSource = nil
-		audioMutex.Unlock()
-
-		if outRelay != nil {
-			outRelay.Stop()
-		}
-		if outSource != nil {
-			outSource.Disconnect()
-		}
+		stopOutputAudio()
 	}
 
 	return nil
@@ -187,19 +191,7 @@ func SetAudioInputEnabled(enabled bool) error {
 			return startAudio()
 		}
 	} else {
-		audioMutex.Lock()
-		inRelay := inputRelay
-		inSource := inputSource
-		inputRelay = nil
-		inputSource = nil
-		audioMutex.Unlock()
-
-		if inRelay != nil {
-			inRelay.Stop()
-		}
-		if inSource != nil {
-			inSource.Disconnect()
-		}
+		stopInputAudio()
 	}
 
 	return nil
@@ -248,23 +240,21 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 			continue // Drop frame but keep reading
 		}
 
-		// Get source in single mutex operation (hot path optimization)
-		audioMutex.Lock()
-		source := inputSource
-		audioMutex.Unlock()
+		// Lock-free source access (hot path optimization)
+		source := inputSource.Load()
 
 		if source == nil {
 			continue // No relay, drop frame but keep reading
 		}
 
-		if !source.IsConnected() {
-			if err := source.Connect(); err != nil {
+		if !(*source).IsConnected() {
+			if err := (*source).Connect(); err != nil {
 				continue
 			}
 		}
 
-		if err := source.WriteMessage(0, opusData); err != nil {
-			source.Disconnect()
+		if err := (*source).WriteMessage(0, opusData); err != nil {
+			(*source).Disconnect()
 		}
 	}
 }
