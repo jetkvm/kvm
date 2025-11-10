@@ -205,12 +205,14 @@ lint-go-fix: build_audio_deps
 # Run UI linting locally (mirrors GitHub workflow ui-lint.yml)
 lint-ui:
 	@echo "Running UI lint..."
-	@cd ui && npm ci && npm run lint
+	@cd ui && npm ci
+	@cd ui && npm run lint
 
 # Run UI linting with auto-fix
 lint-ui-fix:
 	@echo "Running UI lint with auto-fix..."
-	@cd ui && npm ci && npm run lint:fix
+	@cd ui && npm ci
+	@cd ui && npm run lint:fix
 
 # Legacy alias for UI linting (for backward compatibility)
 ui-lint: lint-ui
