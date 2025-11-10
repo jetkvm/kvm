@@ -101,10 +101,9 @@ export function Dialog({
   const { modalView, setModalView, otaState } = useUpdateStore();
   const forceCustomUpdate = customSystemVersion !== undefined || customAppVersion !== undefined;
   const onConfirmCustomUpdate = useCallback(() => {
-    console.debug("onConfirmCustomUpdate", customAppVersion, customSystemVersion, versionInfo);
     onConfirmCustomUpdateCallback(
-      customAppVersion !== undefined ? customAppVersion : versionInfo?.remote?.appVersion,
-      customSystemVersion !== undefined ? customSystemVersion : versionInfo?.remote?.systemVersion,
+      customAppVersion !== undefined ? versionInfo?.remote?.appVersion : undefined,
+      customSystemVersion !== undefined ? versionInfo?.remote?.systemVersion : undefined,
     );
   }, [onConfirmCustomUpdateCallback, customAppVersion, customSystemVersion, versionInfo]);
 
