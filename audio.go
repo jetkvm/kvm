@@ -253,6 +253,7 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 		}
 
 		if err := (*source).WriteMessage(0, opusData); err != nil {
+			audioLogger.Warn().Err(err).Msg("failed to write audio message")
 			(*source).Disconnect()
 		}
 	}
