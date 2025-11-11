@@ -1,5 +1,8 @@
 //go:build linux
 
+// TODO: use a generator to generate the cgo code for the native functions
+// there's too much boilerplate code to write manually
+
 package native
 
 import (
@@ -46,7 +49,17 @@ static inline void jetkvm_cgo_setup_rpc_handler() {
 */
 import "C"
 
-var cgoLock sync.Mutex
+var (
+	cgoLock     sync.Mutex
+	cgoDisabled bool
+)
+
+func setCgoDisabled(disabled bool) {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	cgoDisabled = disabled
+}
 
 //export jetkvm_go_video_state_handler
 func jetkvm_go_video_state_handler(state *C.jetkvm_video_state_t) {
@@ -91,6 +104,10 @@ func jetkvm_go_rpc_handler(method *C.cchar_t, params *C.cchar_t) {
 var eventCodeToNameMap = map[int]string{}
 
 func uiEventCodeToName(code int) string {
+	if cgoDisabled {
+		return ""
+	}
+
 	name, ok := eventCodeToNameMap[code]
 	if !ok {
 		cCode := C.int(code)
@@ -103,6 +120,10 @@ func uiEventCodeToName(code int) string {
 }
 
 func setUpNativeHandlers() {
+	if cgoDisabled {
+		return
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -114,6 +135,10 @@ func setUpNativeHandlers() {
 }
 
 func uiInit(rotation uint16) {
+	if cgoDisabled {
+		return
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -123,6 +148,10 @@ func uiInit(rotation uint16) {
 }
 
 func uiTick() {
+	if cgoDisabled {
+		return
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -130,6 +159,10 @@ func uiTick() {
 }
 
 func videoInit(factor float64) error {
+	if cgoDisabled {
+		return nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -143,6 +176,10 @@ func videoInit(factor float64) error {
 }
 
 func videoShutdown() {
+	if cgoDisabled {
+		return
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -150,6 +187,10 @@ func videoShutdown() {
 }
 
 func videoStart() {
+	if cgoDisabled {
+		return
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -157,6 +198,10 @@ func videoStart() {
 }
 
 func videoStop() {
+	if cgoDisabled {
+		return
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -164,6 +209,10 @@ func videoStop() {
 }
 
 func videoLogStatus() string {
+	if cgoDisabled {
+		return ""
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -174,6 +223,10 @@ func videoLogStatus() string {
 }
 
 func uiSetVar(name string, value string) {
+	if cgoDisabled {
+		return
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -187,6 +240,10 @@ func uiSetVar(name string, value string) {
 }
 
 func uiGetVar(name string) string {
+	if cgoDisabled {
+		return ""
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -197,6 +254,10 @@ func uiGetVar(name string) string {
 }
 
 func uiSwitchToScreen(screen string) {
+	if cgoDisabled {
+		return
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -206,6 +267,10 @@ func uiSwitchToScreen(screen string) {
 }
 
 func uiGetCurrentScreen() string {
+	if cgoDisabled {
+		return ""
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -214,6 +279,10 @@ func uiGetCurrentScreen() string {
 }
 
 func uiObjAddState(objName string, state string) (bool, error) {
+	if cgoDisabled {
+		return false, nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -226,6 +295,10 @@ func uiObjAddState(objName string, state string) (bool, error) {
 }
 
 func uiObjClearState(objName string, state string) (bool, error) {
+	if cgoDisabled {
+		return false, nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -238,6 +311,10 @@ func uiObjClearState(objName string, state string) (bool, error) {
 }
 
 func uiGetLVGLVersion() string {
+	if cgoDisabled {
+		return ""
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -246,6 +323,10 @@ func uiGetLVGLVersion() string {
 
 // TODO: use Enum instead of string but it's not a hot path and performance is not a concern now
 func uiObjAddFlag(objName string, flag string) (bool, error) {
+	if cgoDisabled {
+		return false, nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -258,6 +339,10 @@ func uiObjAddFlag(objName string, flag string) (bool, error) {
 }
 
 func uiObjClearFlag(objName string, flag string) (bool, error) {
+	if cgoDisabled {
+		return false, nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -278,6 +363,10 @@ func uiObjShow(objName string) (bool, error) {
 }
 
 func uiObjSetOpacity(objName string, opacity int) (bool, error) {
+	if cgoDisabled {
+		return false, nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -289,6 +378,10 @@ func uiObjSetOpacity(objName string, opacity int) (bool, error) {
 }
 
 func uiObjFadeIn(objName string, duration uint32) (bool, error) {
+	if cgoDisabled {
+		return false, nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -301,6 +394,10 @@ func uiObjFadeIn(objName string, duration uint32) (bool, error) {
 }
 
 func uiObjFadeOut(objName string, duration uint32) (bool, error) {
+	if cgoDisabled {
+		return false, nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -313,6 +410,10 @@ func uiObjFadeOut(objName string, duration uint32) (bool, error) {
 }
 
 func uiLabelSetText(objName string, text string) (bool, error) {
+	if cgoDisabled {
+		return false, nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -330,6 +431,10 @@ func uiLabelSetText(objName string, text string) (bool, error) {
 }
 
 func uiImgSetSrc(objName string, src string) (bool, error) {
+	if cgoDisabled {
+		return false, nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -345,6 +450,10 @@ func uiImgSetSrc(objName string, src string) (bool, error) {
 }
 
 func uiDispSetRotation(rotation uint16) (bool, error) {
+	if cgoDisabled {
+		return false, nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -357,6 +466,10 @@ func uiDispSetRotation(rotation uint16) (bool, error) {
 }
 
 func videoGetStreamQualityFactor() (float64, error) {
+	if cgoDisabled {
+		return 0, nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -365,6 +478,10 @@ func videoGetStreamQualityFactor() (float64, error) {
 }
 
 func videoSetStreamQualityFactor(factor float64) error {
+	if cgoDisabled {
+		return nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -373,6 +490,10 @@ func videoSetStreamQualityFactor(factor float64) error {
 }
 
 func videoGetEDID() (string, error) {
+	if cgoDisabled {
+		return "", nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
@@ -381,6 +502,10 @@ func videoGetEDID() (string, error) {
 }
 
 func videoSetEDID(edid string) error {
+	if cgoDisabled {
+		return nil
+	}
+
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
