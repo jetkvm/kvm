@@ -2,6 +2,7 @@ package lldp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/afpacket"
 	"github.com/google/gopacket/layers"
 	"github.com/rs/zerolog"
 )
@@ -30,21 +32,7 @@ var multicastAddrs = []string{
 	"01:00:0C:CC:CC:CC",
 }
 
-func (l *LLDP) setUpCapture() error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if l.tPacketRx != nil {
-		return nil
-	}
-
-	logger := l.l.With().Str("interface", l.interfaceName).Logger()
-	tPacketRx, err := afPacketNewTPacket(l.interfaceName)
-	if err != nil {
-		return err
-	}
-	logger.Info().Msg("created TPacketRx")
-
+func (l *LLDP) setUpPacketSourceUnderLock(tPacket *afpacket.TPacket, logger *zerolog.Logger) (*gopacket.PacketSource, error) {
 	// set up multicast addresses
 	// otherwise the kernel might discard the packets
 	// another workaround would be to enable promiscuous mode but that's too tricky
@@ -72,23 +60,31 @@ func (l *LLDP) setUpCapture() error {
 			Msg("added multicast address")
 	}
 
-	if err = tPacketRx.SetBPF(bpfFilter); err != nil {
+	if err := tPacket.SetBPF(bpfFilter); err != nil {
 		logger.Error().
 			Err(err).
 			Msg("unable to set BPF filter")
-		tPacketRx.Close()
-		return err
+		return nil, err
 	}
+
 	logger.Info().Msg("BPF filter set")
-
-	l.pktSourceRx = gopacket.NewPacketSource(tPacketRx, layers.LayerTypeEthernet)
-	l.tPacketRx = tPacketRx
-
-	return nil
+	return gopacket.NewPacketSource(tPacket, layers.LayerTypeEthernet), nil
 }
 
-func (l *LLDP) doCapture(logger *zerolog.Logger) {
-	if l.pktSourceRx == nil || l.rxCtx == nil {
+func (l *LLDP) doCapture() {
+	l.mu.Lock()
+	l.Rx.Running = true
+	ctx := l.Rx.Ctx
+	logger := l.Rx.Logger
+	l.mu.Unlock()
+
+	defer func() {
+		l.mu.Lock()
+		l.Rx.Running = false
+		l.mu.Unlock()
+	}()
+
+	if l.pktSourceRx == nil || ctx == nil {
 		logger.Error().Msg("packet source or RX context not initialized")
 		return
 	}
@@ -101,7 +97,7 @@ func (l *LLDP) doCapture(logger *zerolog.Logger) {
 	for {
 		// check if the context is done before blocking call
 		select {
-		case <-l.rxCtx.Done():
+		case <-ctx.Done():
 			logger.Info().Msg("RX context cancelled")
 			return
 		default:
@@ -109,7 +105,6 @@ func (l *LLDP) doCapture(logger *zerolog.Logger) {
 
 		logger.Trace().Msg("waiting for next packet")
 		packet, err := l.pktSourceRx.NextPacket()
-		logger.Trace().Interface("packet", packet).Err(err).Msg("got next packet")
 
 		if err != nil {
 			logger.Error().
@@ -117,15 +112,21 @@ func (l *LLDP) doCapture(logger *zerolog.Logger) {
 				Msg("error getting next packet")
 
 			// Immediately break for known unrecoverable errors
-			if err == io.EOF || err == io.ErrUnexpectedEOF ||
-				err == io.ErrNoProgress || err == io.ErrClosedPipe || err == io.ErrShortBuffer ||
-				err == syscall.EBADF ||
+			if errors.Is(err, io.EOF) ||
+				errors.Is(err, io.ErrUnexpectedEOF) ||
+				errors.Is(err, io.ErrNoProgress) ||
+				errors.Is(err, io.ErrClosedPipe) ||
+				errors.Is(err, io.ErrShortBuffer) ||
+				errors.Is(err, syscall.EBADF) ||
 				strings.Contains(err.Error(), "use of closed file") {
+				logger.Error().Msg("unrecoverable error, stopping capture")
 				return
 			}
 
 			continue
 		}
+
+		logger.Trace().Interface("packet", packet).Msg("got next packet")
 
 		if err := l.handlePacket(packet, logger); err != nil {
 			logger.Error().
@@ -136,30 +137,51 @@ func (l *LLDP) doCapture(logger *zerolog.Logger) {
 	}
 }
 
-func (l *LLDP) startCapture() error {
+func (l *LLDP) prepareCapture() (bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if l.rxRunning {
-		return nil // Already running
+	if l.Rx.Running {
+		l.l.Debug().Msg("LLDP receiver already running")
+		return false, nil // Already running
 	}
 
-	if l.tPacketRx == nil {
-		return fmt.Errorf("AFPacket not initialized")
-	}
-
-	if l.pktSourceRx == nil {
-		return fmt.Errorf("packet source not initialized")
-	}
-
-	logger := l.l.With().Str("interface", l.interfaceName).Logger()
+	logger := l.l.With().Str("interface", l.interfaceName).Str("direction", "rx").Logger()
 	logger.Info().Msg("starting capture LLDP ethernet frames")
 
-	// Create a new context for this instance
-	l.rxCtx, l.rxCancel = context.WithCancel(context.Background())
-	l.rxRunning = true
+	tPacket, err := afPacketNewTPacket(l.interfaceName)
+	if err != nil {
+		logger.Error().Err(err).Msg("could not create TPacket instance for receiving LLDP packets")
+		return false, err
+	}
 
-	go l.doCapture(&logger)
+	l.pktSourceRx, err = l.setUpPacketSourceUnderLock(tPacket, &logger)
+	if err != nil {
+		logger.Error().Err(err).Msg("could not create packet source for receiving LLDP packets")
+		tPacket.Close()
+		return false, err
+	}
+
+	runningState := &RunningState{Enabled: true, Logger: &logger}
+	runningState.Ctx, runningState.Cancel = context.WithCancel(context.Background())
+	runningState.TPacket = tPacket
+	l.Rx = runningState
+
+	logger.Debug().Msg("created packet source for receiving LLDP packets")
+	return true, nil
+}
+
+func (l *LLDP) startCapture() error {
+	// set up the logger and context (inside a lock)
+	startRunning, err := l.prepareCapture()
+
+	if err != nil {
+		return err
+	}
+
+	if startRunning {
+		go l.doCapture()
+	}
 
 	return nil
 }
@@ -182,7 +204,7 @@ func (l *LLDP) handlePacket(packet gopacket.Packet, logger *zerolog.Logger) erro
 
 	lldpRaw := packet.Layer(layers.LayerTypeLinkLayerDiscovery)
 	if lldpRaw != nil {
-		l.l.Trace().Hex("packet", packet.Data()).Msg("received LLDP frame")
+		logger.Trace().Hex("packet", packet.Data()).Msg("received LLDP frame")
 
 		lldpInfo := packet.Layer(layers.LayerTypeLinkLayerDiscoveryInfo)
 		if lldpInfo == nil {
@@ -198,7 +220,7 @@ func (l *LLDP) handlePacket(packet gopacket.Packet, logger *zerolog.Logger) erro
 
 	cdpRaw := packet.Layer(layers.LayerTypeCiscoDiscovery)
 	if cdpRaw != nil {
-		l.l.Trace().Hex("packet", packet.Data()).Msg("received CDP frame")
+		logger.Trace().Hex("packet", packet.Data()).Msg("received CDP frame")
 
 		cdpInfo := packet.Layer(layers.LayerTypeCiscoDiscoveryInfo)
 		if cdpInfo == nil {
@@ -335,32 +357,33 @@ func (l *LLDP) stopCapture() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if !l.rxRunning {
+	if !l.Rx.Running {
 		return nil // Already stopped
 	}
 
-	logger := l.l.With().Str("interface", l.interfaceName).Logger()
+	logger := l.Rx.Logger
+	rxCancel := l.Rx.Cancel
+	tPacket := l.Rx.TPacket
+
 	logger.Info().Msg("stopping LLDP receiver")
 
 	// Cancel context to signal stop
-	rxCancel := l.rxCancel
 	if rxCancel != nil {
+		l.Rx.Cancel = nil // so we don't cancel again
 		rxCancel()
-		l.rxCancel = nil
-
 		logger.Info().Msg("cancelled RX context, waiting for goroutine to finish")
 	}
 
 	// stop the TPacketRx
 	go func() {
-		if l.tPacketRx == nil {
+		if tPacket == nil {
 			return
 		}
 
 		// write an empty packet to the TPacketRx to interrupt the blocking read
 		// it's a shitty workaround until https://github.com/google/gopacket/pull/777 is merged,
 		// or we have a better solution, see https://github.com/google/gopacket/issues/1064
-		_ = l.tPacketRx.WritePacketData([]byte{})
+		_ = tPacket.WritePacketData([]byte{})
 	}()
 
 	// wait for the goroutine to finish
@@ -368,17 +391,18 @@ func (l *LLDP) stopCapture() error {
 	l.rxWaitGroup.Wait()
 	logger.Info().Dur("duration", time.Since(start)).Msg("RX goroutine finished")
 
-	l.rxRunning = false
+	l.Rx.Running = false
 
-	if l.tPacketRx != nil {
-		logger.Info().Msg("closing TPacketRx")
-		l.tPacketRx.Close()
-		l.tPacketRx = nil
-	}
-
+	// close the packet source first because it's constructed with the Rx.TPacket
 	if l.pktSourceRx != nil {
 		logger.Info().Msg("closing packet source")
 		l.pktSourceRx = nil
+	}
+
+	if tPacket != nil {
+		logger.Info().Msg("closing RX TPacket")
+		tPacket.Close()
+		l.Rx.TPacket = nil
 	}
 
 	return nil

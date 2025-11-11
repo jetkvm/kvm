@@ -835,8 +835,6 @@ export const useNetworkStateStore = create<NetworkState>((set, get) => ({
   },
 }));
 
-
-
 export interface LLDPNeighborsState {
   neighbors: LLDPNeighbor[];
   setNeighbors: (neighbors: LLDPNeighbor[]) => void;

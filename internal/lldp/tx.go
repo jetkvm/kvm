@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/rs/zerolog"
 )
 
 var (
@@ -17,13 +16,9 @@ var (
 	lldpEtherType = layers.EthernetTypeLinkLayerDiscovery
 )
 
-func (l *LLDP) toPayloadValues() []layers.LinkLayerDiscoveryValue {
+func (l *LLDP) toPayloadValues(opts *AdvertiseOptions) []layers.LinkLayerDiscoveryValue {
 	// See also: layers.LinkLayerDiscovery.SerializeTo()
 	r := []layers.LinkLayerDiscoveryValue{}
-
-	l.mu.RLock()
-	opts := l.advertiseOptions
-	l.mu.RUnlock()
 
 	if opts == nil {
 		return r
@@ -74,35 +69,31 @@ func (l *LLDP) toPayloadValues() []layers.LinkLayerDiscoveryValue {
 func (l *LLDP) setUpTx() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
 	// Check if already set up (double-check pattern to prevent duplicate setup)
-	if l.tPacketTx != nil {
+	if l.Tx.TPacket != nil {
 		return nil
 	}
 
-	logger := l.l.With().Str("interface", l.interfaceName).Logger()
-	tPacketTx, err := afPacketNewTPacket(l.interfaceName)
+	logger := l.l.With().Str("interface", l.interfaceName).Str("direction", "tx").Logger()
+	txState := &RunningState{Enabled: true, Logger: &logger}
+	txState.Ctx, txState.Cancel = context.WithCancel(context.Background())
+
+	var err error
+	txState.TPacket, err = afPacketNewTPacket(l.interfaceName)
 	if err != nil {
 		return err
 	}
+
 	logger.Info().Msg("created TPacket instance for sending LLDP packets")
-
-	l.tPacketTx = tPacketTx
-
+	l.Tx = txState
 	return nil
 }
 
-func (l *LLDP) sendTxPackets() error {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	logger := l.l.With().Str("interface", l.interfaceName).Logger()
-	iface, err := net.InterfaceByName(l.interfaceName)
+func (l *LLDP) generateTxPackets(interfaceName string, opts *AdvertiseOptions) (gopacket.SerializeBuffer, error) {
+	iface, err := net.InterfaceByName(interfaceName)
 	if err != nil {
-		return err
-	}
-
-	if l.tPacketTx == nil {
-		return fmt.Errorf("AFPacket not initialized")
+		return nil, err
 	}
 
 	// create payload
@@ -122,46 +113,76 @@ func (l *LLDP) sendTxPackets() error {
 			ID:      []byte(iface.Name),
 		},
 		TTL:    uint16(3600),
-		Values: l.toPayloadValues(),
+		Values: l.toPayloadValues(opts),
 	}
 
 	buf := gopacket.NewSerializeBuffer()
-	if err := gopacket.SerializeLayers(buf, gopacket.SerializeOptions{
+	err = gopacket.SerializeLayers(buf, gopacket.SerializeOptions{
 		FixLengths:       true,
 		ComputeChecksums: true,
-	}, &ethFrame, &lldpFrame); err != nil {
-		l.l.Error().Err(err).Msg("unable to serialize packet")
+	}, &ethFrame, &lldpFrame)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, nil
+}
+
+func (l *LLDP) sendTxPackets() error {
+	l.mu.RLock()
+	interfaceName := l.interfaceName
+	opts := l.advertiseOptions
+	logger := l.Tx.Logger
+	tPacket := l.Tx.TPacket
+	l.mu.RUnlock()
+
+	if tPacket == nil {
+		logger.Error().Msg("AFPacket not initialized for Tx")
+		return fmt.Errorf("AFPacket not initialized for Tx")
+	}
+
+	logger.Trace().Msg("generating LLDP Tx packets")
+	buf, err := l.generateTxPackets(interfaceName, opts)
+	if err != nil {
+		logger.Error().Err(err).Msg("unable to serialize packet")
 		return err
 	}
 
 	logger.Trace().Hex("packet", buf.Bytes()).Msg("sending LLDP packet")
+	start := time.Now()
 
 	// send packet
-	if err := l.tPacketTx.WritePacketData(buf.Bytes()); err != nil {
-		l.l.Error().Err(err).Msg("unable to send packet")
+	if err := tPacket.WritePacketData(buf.Bytes()); err != nil {
+		logger.Error().Err(err).Msg("unable to send packet")
 		return err
 	}
 
+	logger.Info().Dur("duration", time.Since(start)).Msg("sent LLDP packet")
 	return nil
 }
 
 const txInterval = 30 * time.Second // Standard LLDP transmission interval
 
-func (l *LLDP) doSendPeriodically(logger *zerolog.Logger, txCtx context.Context) {
+func (l *LLDP) doSendPeriodically() {
 	l.mu.Lock()
-	l.txRunning = true
+	l.Tx.Running = true
+	logger := l.Tx.Logger
+	txCtx := l.Tx.Ctx
 	l.mu.Unlock()
 
 	defer func() {
 		l.mu.Lock()
-		l.txRunning = false
+		l.Tx.Running = false
 		l.mu.Unlock()
 	}()
 
+	logger.Info().Msg("starting LLDP transmitter")
 	ticker := time.NewTicker(txInterval)
 	defer ticker.Stop()
 
 	// Send initial packet immediately
+	logger.Trace().Msg("sending initial LLDP packet")
 	if err := l.sendTxPackets(); err != nil {
 		logger.Error().Err(err).Msg("error sending initial LLDP packet")
 	}
@@ -169,6 +190,7 @@ func (l *LLDP) doSendPeriodically(logger *zerolog.Logger, txCtx context.Context)
 	for {
 		select {
 		case <-ticker.C:
+			logger.Trace().Msg("time to send periodic LLDP packet")
 			if err := l.sendTxPackets(); err != nil {
 				logger.Error().Err(err).Msg("error sending LLDP packet")
 			}
@@ -181,49 +203,44 @@ func (l *LLDP) doSendPeriodically(logger *zerolog.Logger, txCtx context.Context)
 
 func (l *LLDP) startTx() error {
 	l.mu.RLock()
-	running := l.txRunning
-	enabled := l.enableTx
-	cancel := l.txCancel
+	logger := l.l
+	running := l.Tx.Running
+	enabled := l.Tx.Enabled
+	previousCancel := l.Tx.Cancel
 	l.mu.RUnlock()
 
 	if running || !enabled {
+		logger.Trace().Bool("running", running).Bool("enabled", enabled).Msg("alrady running Tx or not enabled")
 		return nil
 	}
 
-	if cancel != nil {
-		cancel()
+	if previousCancel != nil {
+		logger.Trace().Msg("stopping previous Tx context before starting new one")
+		previousCancel()
 	}
-
-	l.mu.Lock()
-	l.txCtx, l.txCancel = context.WithCancel(context.Background())
-	l.mu.Unlock()
 
 	if err := l.setUpTx(); err != nil {
 		return fmt.Errorf("failed to set up TX: %w", err)
 	}
 
-	logger := l.l.With().Str("interface", l.interfaceName).Logger()
-	logger.Info().Msg("starting LLDP transmitter")
-
-	go l.doSendPeriodically(&logger, l.txCtx)
+	go l.doSendPeriodically()
 
 	return nil
 }
 
 func (l *LLDP) stopTx() error {
 	l.mu.Lock()
-	if !l.txRunning {
+	if !l.Tx.Running {
 		l.mu.Unlock()
 		return nil // Already stopped
 	}
 
-	logger := l.l.With().Str("interface", l.interfaceName).Logger()
-	logger.Info().Msg("stopping LLDP transmitter")
-
 	// Cancel context to signal stop
-	txCancel := l.txCancel
-	l.txRunning = false
+	txCancel := l.Tx.Cancel
+	l.Tx.Running = false
 	l.mu.Unlock()
+
+	l.Tx.Logger.Info().Msg("stopping LLDP transmitter")
 
 	// Cancel context (goroutine will handle cleanup)
 	if txCancel != nil {
