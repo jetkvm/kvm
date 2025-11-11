@@ -37,7 +37,8 @@ func getMassStorageImage() (string, error) {
 }
 
 func setMassStorageImage(imagePath string) error {
-	if err := gadget.OverrideGadgetConfig("mass_storage_lun0", "file", imagePath); err != nil {
+	err, _ := gadget.OverrideGadgetConfig("mass_storage_lun0", "file", imagePath)
+	if err != nil {
 		return fmt.Errorf("failed to set mass storage path: %w", err)
 	}
 
