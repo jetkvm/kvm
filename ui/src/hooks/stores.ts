@@ -758,6 +758,11 @@ export interface IPv6Address {
   flag_tentative?: boolean;
 }
 
+export interface PublicIP {
+  ip: string;
+  last_updated: Date;
+}
+
 export interface NetworkState {
   interface_name?: string;
   mac_address?: string;
