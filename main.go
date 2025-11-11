@@ -15,6 +15,14 @@ var appCtx context.Context
 
 func Main() {
 	logger.Log().Msg("JetKVM Starting Up")
+
+	// add recover to ensure we log out any panic
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Panic().Interface("recovered", r).Msg("Uncaught panic")
+		}
+	}()
+
 	LoadConfig()
 
 	var cancel context.CancelFunc
