@@ -22,10 +22,6 @@ import (
 	"github.com/jetkvm/kvm/resource"
 )
 
-func writeFile(path string, data string) error {
-	return os.WriteFile(path, []byte(data), 0644)
-}
-
 func getMassStorageImage() (string, error) {
 	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
 	if err != nil {
@@ -40,14 +36,14 @@ func getMassStorageImage() (string, error) {
 }
 
 func setMassStorageImage(imagePath string) error {
-	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
-	if err != nil {
-		return fmt.Errorf("failed to get mass storage path: %w", err)
+	if err, _ := gadget.OverrideGadgetConfig("mass_storage_lun0", "file", imagePath); err != nil {
+		return fmt.Errorf("failed to set mass storage path: %w", err)
 	}
 
-	if err := writeFile(path.Join(massStorageFunctionPath, "file"), imagePath); err != nil {
-		return fmt.Errorf("failed to set image path: %w", err)
+	if err := gadget.UpdateGadgetConfig(true); err != nil {
+		return fmt.Errorf("failed to update gadget config: %w", err)
 	}
+
 	return nil
 }
 
