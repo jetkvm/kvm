@@ -18,18 +18,24 @@ export default function SettingsGeneralUpdateRoute() {
   const location = useLocation();
   const { updateSuccess } = location.state || {};
 
-  const { setModalView, otaState } = useUpdateStore();
+  const { setModalView, otaState, shouldReload, setShouldReload } = useUpdateStore();
   const { send } = useJsonRpc();
 
-  const onClose = useCallback(() => {
+  const onClose = useCallback(async () => {
     navigate(".."); // back to the devices.$id.settings page
-    window.location.reload(); // force a full reload to ensure the current device/cloud UI version is loaded
-  }, [navigate]);
+
+    if (shouldReload) {
+      setShouldReload(false);
+      await sleep(1000);      // Add 1s delay between navigation and calling reload() to prevent reload from interrupting the navigation.
+      window.location.reload(); // force a full reload to ensure the current device/cloud UI version is loaded
+    }
+  }, [navigate, setShouldReload, shouldReload]);
 
   const onConfirmUpdate = useCallback(() => {
+    setShouldReload(true);
     send("tryUpdate", {});
     setModalView("updating");
-  }, [send, setModalView]);
+  }, [send, setModalView, setShouldReload]);
 
   useEffect(() => {
     if (otaState.updating) {
@@ -131,6 +137,7 @@ function LoadingState({
   const { setModalView } = useUpdateStore();
 
   const progressBarRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;

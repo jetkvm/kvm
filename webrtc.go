@@ -290,6 +290,7 @@ func newSession(config SessionConfig) (*Session, error) {
 			triggerOTAStateUpdate()
 			triggerVideoStateUpdate()
 			triggerUSBStateUpdate()
+			notifyFailsafeMode(session)
 		case "terminal":
 			handleTerminalChannel(d)
 		case "serial":
@@ -428,10 +429,12 @@ func newSession(config SessionConfig) (*Session, error) {
 }
 
 func onActiveSessionsChanged() {
+	notifyFailsafeMode(currentSession)
 	requestDisplayUpdate(true, "active_sessions_changed")
 }
 
 func onFirstSessionConnected() {
+	notifyFailsafeMode(currentSession)
 	_ = nativeInstance.VideoStart()
 	onWebRTCConnect()
 	stopVideoSleepModeTicker()

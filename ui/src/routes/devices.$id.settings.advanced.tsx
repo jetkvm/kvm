@@ -12,6 +12,7 @@ import { TextAreaWithLabel } from "@components/TextArea";
 import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
+import { sleep } from "@/utils";
 
 export default function SettingsAdvancedRoute() {
   const { send } = useJsonRpc();
@@ -311,8 +312,10 @@ export default function SettingsAdvancedRoute() {
                 size="SM"
                 theme="light"
                 text={m.advanced_reset_config_button()}
-                onClick={() => {
+                onClick={async () => {
                   handleResetConfig();
+                  // Add 2s delay between resetting the configuration and calling reload() to prevent reload from interrupting the RPC call to reset things.
+                  await sleep(2000);
                   window.location.reload();
                 }}
               />

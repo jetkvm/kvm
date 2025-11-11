@@ -27,6 +27,7 @@ func triggerVideoStateUpdate() {
 }
 
 func rpcGetVideoState() (native.VideoState, error) {
+	notifyFailsafeMode(currentSession)
 	return lastVideoState, nil
 }
 
