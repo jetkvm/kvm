@@ -4,13 +4,17 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"reflect"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/lldp"
 	"github.com/jetkvm/kvm/internal/mdns"
 	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/jetkvm/kvm/pkg/myip"
 	"github.com/jetkvm/kvm/pkg/nmlite"
+	"github.com/jetkvm/kvm/pkg/nmlite/link"
 )
 
 const (
@@ -20,6 +24,7 @@ const (
 var (
 	networkManager *nmlite.NetworkManager
 	lldpService    *lldp.LLDP
+	publicIPState  *myip.PublicIPState
 )
 
 type RpcNetworkSettings struct {
@@ -107,6 +112,13 @@ func triggerTimeSyncOnNetworkStateChange() {
 	}()
 }
 
+func setPublicIPReadyState(ipv4Ready, ipv6Ready bool) {
+	if publicIPState == nil {
+		return
+	}
+	publicIPState.SetIPv4AndIPv6(ipv4Ready, ipv6Ready)
+}
+
 func networkStateChanged(_ string, state types.InterfaceState) {
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(true, "network_state_changed")
@@ -124,6 +136,8 @@ func networkStateChanged(_ string, state types.InterfaceState) {
 	if lldpService != nil {
 		_ = lldpService.SetAdvertiseOptions(getLLDPAdvertiseOptions(&state))
 	}
+
+	setPublicIPReadyState(state.IPv4Ready, state.IPv6Ready)
 
 	// always restart mDNS when the network state changes
 	if mDNS != nil {
@@ -257,6 +271,40 @@ func updateLLDPOptions(nc *types.NetworkConfig, ifState *types.InterfaceState) {
 	if err := lldpService.SetAdvertiseOptions(advertiseOptions); err != nil {
 		networkLogger.Error().Err(err).Msg("failed to set LLDP advertise options")
 	}
+}
+
+func initPublicIPState() {
+	// the feature will be only enabled if the cloud has been adopted
+	// due to privacy reasons
+
+	// but it will be initialized anyway to avoid nil pointer dereferences
+	ps := myip.NewPublicIPState(&myip.PublicIPStateConfig{
+		Logger:             networkLogger,
+		CloudflareEndpoint: config.CloudURL,
+		APIEndpoint:        "",
+		IPv4:               false,
+		IPv6:               false,
+		HttpClientGetter: func(family int) *http.Client {
+			transport := http.DefaultTransport.(*http.Transport).Clone()
+			transport.Proxy = config.NetworkConfig.GetTransportProxyFunc()
+			transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				netType := network
+				switch family {
+				case link.AfInet:
+					netType = "tcp4"
+				case link.AfInet6:
+					netType = "tcp6"
+				}
+				return (&net.Dialer{}).DialContext(ctx, netType, addr)
+			}
+
+			return &http.Client{
+				Transport: transport,
+				Timeout:   30 * time.Second,
+			}
+		},
+	})
+	publicIPState = ps
 }
 
 func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
@@ -428,4 +476,26 @@ func rpcGetLLDPNeighbors() []lldp.Neighbor {
 		return []lldp.Neighbor{}
 	}
 	return lldpService.GetNeighbors()
+}
+
+func rpcGetPublicIPAddresses(refresh bool) ([]myip.PublicIP, error) {
+	if publicIPState == nil {
+		return nil, fmt.Errorf("public IP state not initialized")
+	}
+
+	if refresh {
+		if err := publicIPState.ForceUpdate(); err != nil {
+			return nil, err
+		}
+	}
+
+	return publicIPState.GetAddresses(), nil
+}
+
+func rpcCheckPublicIPAddresses() error {
+	if publicIPState == nil {
+		return fmt.Errorf("public IP state not initialized")
+	}
+
+	return publicIPState.ForceUpdate()
 }

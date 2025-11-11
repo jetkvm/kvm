@@ -17,6 +17,7 @@ import { GridCard } from "@components/Card";
 import InputField, { InputFieldWithLabel } from "@components/InputField";
 import Ipv6NetworkCard from "@components/Ipv6NetworkCard";
 import LLDPNeighborsCard from "@components/LLDPNeighborsCard";
+import PublicIPCard from "@components/PublicIPCard";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
@@ -476,6 +477,7 @@ export default function SettingsNetworkRoute() {
                 />
               </SettingsItem>
 
+              <PublicIPCard />
 
               <div>
                 <AutoHeight>
@@ -581,9 +583,9 @@ export default function SettingsNetworkRoute() {
                       <LLDPNeighborsCard neighbors={lldpNeighbors} />
                     </AutoHeight>}
                   </div>
-                )
+               )
               }
-
+ 
               <div className="animate-fadeInStill animation-duration-300">
                 <Button
                   size="SM"

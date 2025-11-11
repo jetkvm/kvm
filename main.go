@@ -23,6 +23,11 @@ func Main() {
 		}
 	}()
 
+	checkFailsafeReason()
+	if failsafeModeActive {
+		logger.Warn().Str("reason", failsafeModeReason).Msg("failsafe mode activated")
+	}
+
 	LoadConfig()
 
 	var cancel context.CancelFunc
@@ -58,6 +63,7 @@ func Main() {
 	// Initialize network
 	if err := initNetwork(); err != nil {
 		logger.Error().Err(err).Msg("failed to initialize network")
+		// TODO: reset config to default
 		os.Exit(1)
 	}
 
@@ -68,7 +74,6 @@ func Main() {
 	// Initialize mDNS
 	if err := initMdns(); err != nil {
 		logger.Error().Err(err).Msg("failed to initialize mDNS")
-		os.Exit(1)
 	}
 
 	initPrometheus()
@@ -134,6 +139,7 @@ func Main() {
 
 	// As websocket client already checks if the cloud token is set, we can start it here.
 	go RunWebsocketClient()
+	initPublicIPState()
 
 	initSerialPort()
 	sigs := make(chan os.Signal, 1)
