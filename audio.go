@@ -136,21 +136,37 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 	audioMutex.Lock()
 	currentAudioTrack = audioTrack
 	oldRelay := outputRelay
+	oldSource := outputSource
 	outputRelay = nil
+	outputSource = nil
+	audioMutex.Unlock()
 
-	var newRelay *audio.OutputRelay
-	if outputSource != nil {
-		newRelay = audio.NewOutputRelay(outputSource, audioTrack)
+	// Stop relay and disconnect source outside mutex to avoid blocking during CGO calls
+	if oldRelay != nil {
+		oldRelay.Stop()
+	}
+	if oldSource != nil {
+		oldSource.Disconnect()
+	}
+
+	// Create new source and relay for the new track
+	audioMutex.Lock()
+	if currentAudioTrack != nil && audioOutputEnabled.Load() {
+		alsaDevice := "hw:1,0"
+		newSource := audio.NewCgoOutputSource(alsaDevice)
+		newRelay := audio.NewOutputRelay(newSource, currentAudioTrack)
+		outputSource = newSource
 		outputRelay = newRelay
 	}
 	audioMutex.Unlock()
 
-	// Stop/start outside mutex to avoid blocking during CGO calls
-	if oldRelay != nil {
-		oldRelay.Stop()
-	}
-	if newRelay != nil {
-		if err := newRelay.Start(); err != nil {
+	// Start new relay outside mutex
+	audioMutex.Lock()
+	relayToStart := outputRelay
+	audioMutex.Unlock()
+
+	if relayToStart != nil {
+		if err := relayToStart.Start(); err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to start output relay")
 		}
 	}
