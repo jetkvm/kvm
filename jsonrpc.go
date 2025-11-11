@@ -932,6 +932,10 @@ func rpcSetCloudUrl(apiUrl string, appUrl string) error {
 		disconnectCloud(fmt.Errorf("cloud url changed from %s to %s", currentCloudURL, apiUrl))
 	}
 
+	if publicIPState != nil {
+		publicIPState.SetCloudflareEndpoint(apiUrl)
+	}
+
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
@@ -1248,4 +1252,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"setKeyboardMacros":      {Func: setKeyboardMacros, Params: []string{"params"}},
 	"getLocalLoopbackOnly":   {Func: rpcGetLocalLoopbackOnly},
 	"setLocalLoopbackOnly":   {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
+	"getPublicIPAddresses":   {Func: rpcGetPublicIPAddresses, Params: []string{"refresh"}},
+	"checkPublicIPAddresses": {Func: rpcCheckPublicIPAddresses},
 }

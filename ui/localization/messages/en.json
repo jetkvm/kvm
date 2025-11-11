@@ -897,5 +897,11 @@
     "wake_on_lan_invalid_mac": "Invalid MAC address",
     "wake_on_lan_magic_sent_success": "Magic Packet sent successfully",
     "welcome_to_jetkvm": "Welcome to JetKVM",
-    "welcome_to_jetkvm_description": "Control any computer remotely"
+    "welcome_to_jetkvm_description": "Control any computer remotely","connection_stats_remote_ip_address": "Remote IP Address",
+    "connection_stats_remote_ip_address_description": "The IP address of the remote device.",
+    "connection_stats_remote_ip_address_copy_error": "Failed to copy remote IP address",
+    "connection_stats_remote_ip_address_copy_success": "Remote IP address { ip } copied to clipboard",
+    "public_ip_card_header": "Public IP addresses",
+    "public_ip_card_refresh": "Refresh",
+    "public_ip_card_refresh_error": "Failed to refresh public IP addresses: {error}"
 }
