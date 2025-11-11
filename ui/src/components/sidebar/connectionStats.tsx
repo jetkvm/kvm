@@ -1,4 +1,6 @@
 import { useInterval } from "usehooks-ts";
+import { LuCopy } from "react-icons/lu";
+import { useState } from "react";
 
 import { m } from "@localizations/messages.js";
 import { useRTCStore, useUiStore } from "@hooks/stores";
@@ -6,6 +8,10 @@ import { createChartArray, Metric } from "@components/Metric";
 import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
 import SidebarHeader from "@components/SidebarHeader";
 import { someIterable } from "@/utils";
+import { GridCard } from "@components/Card";
+import { Button } from "@components/Button";
+import { useCopyToClipboard } from "@components/useCopyToClipBoard";
+import notifications from "@/notifications";
 
 export default function ConnectionStatsSidebar() {
   const { sidebarView, setSidebarView } = useUiStore();
@@ -20,6 +26,8 @@ export default function ConnectionStatsSidebar() {
     appendRemoteCandidateStats,
     appendDiskDataChannelStats,
   } = useRTCStore();
+
+  const [remoteIPAddress, setRemoteIPAddress] = useState<string | null>(null);
 
   useInterval(function collectWebRTCStats() {
     (async () => {
@@ -49,6 +57,7 @@ export default function ConnectionStatsSidebar() {
         } else if (report.type === "remote-candidate") {
           if (successfulRemoteCandidateId === report.id) {
             appendRemoteCandidateStats(report);
+            setRemoteIPAddress(report.address);
           }
         } else if (report.type === "data-channel" && report.label === "disk") {
           appendDiskDataChannelStats(report);
@@ -93,6 +102,8 @@ export default function ConnectionStatsSidebar() {
     return { date: d.date, metric: valueMs };
   });
 
+  const { copy } = useCopyToClipboard();
+
   return (
     <div className="grid h-full grid-rows-(--grid-headerBody) shadow-xs">
       <SidebarHeader title={m.connection_stats_sidebar()} setSidebarView={setSidebarView} />
@@ -106,6 +117,27 @@ export default function ConnectionStatsSidebar() {
                   title={m.connection_stats_connection()}
                   description={m.connection_stats_connection_description()}
                 />
+                {remoteIPAddress && (
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-slate-600 dark:text-slate-400">
+                      {m.connection_stats_remote_ip_address()}
+                    </div>
+                    <div className="flex items-center">
+                      <GridCard cardClassName="rounded-r-none">
+                        <div className="h-[34px] flex items-center text-xs select-all text-black font-mono dark:text-white px-3 ">
+                          {remoteIPAddress}
+                        </div>
+                      </GridCard>
+                      <Button className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20" size="SM" type="button" theme="light" LeadingIcon={LuCopy} onClick={async () => {
+                        if (await copy(remoteIPAddress)) {
+                          notifications.success((m.connection_stats_remote_ip_address_copy_success({ ip: remoteIPAddress })));
+                        } else {
+                          notifications.error(m.connection_stats_remote_ip_address_copy_error());
+                        }
+                      }} />
+                    </div>
+                  </div>
+                )}
                 <Metric
                   title={m.connection_stats_round_trip_time()}
                   description={m.connection_stats_round_trip_time_description()}
