@@ -54,8 +54,6 @@ type AdvertiseOptions struct {
 type Options struct {
 	InterfaceName    string
 	AdvertiseOptions *AdvertiseOptions
-	EnableRx         bool
-	EnableTx         bool
 	OnChange         func(neighbors []Neighbor)
 	Logger           *zerolog.Logger
 }
@@ -72,38 +70,13 @@ func NewLLDP(opts *Options) *LLDP {
 	return &LLDP{
 		interfaceName:    opts.InterfaceName,
 		advertiseOptions: opts.AdvertiseOptions,
-		Rx: &RunningState{
-			Enabled: opts.EnableRx,
-		},
-		Tx: &RunningState{
-			Enabled: opts.EnableTx,
-		},
-		rxWaitGroup: &sync.WaitGroup{},
-		l:           opts.Logger,
-		neighbors:   make(map[neighborCacheKey]Neighbor),
-		onChange:    opts.OnChange,
+		neighbors:        make(map[neighborCacheKey]Neighbor),
+		onChange:         opts.OnChange,
+		Rx:               &RunningState{},
+		Tx:               &RunningState{},
+		rxWaitGroup:      &sync.WaitGroup{},
+		l:                opts.Logger,
 	}
-}
-
-func (l *LLDP) Start() error {
-	l.mu.RLock()
-	rxEnabled, txEnabled := l.Rx.Enabled, l.Tx.Enabled
-	l.mu.RUnlock()
-
-	if rxEnabled {
-		if err := l.startRx(); err != nil {
-			return fmt.Errorf("failed to start RX: %w", err)
-		}
-	}
-
-	// Start TX if enabled
-	if txEnabled {
-		if err := l.startTx(); err != nil {
-			return fmt.Errorf("failed to start TX: %w", err)
-		}
-	}
-
-	return nil
 }
 
 // StartRx starts the LLDP receiver if not already running

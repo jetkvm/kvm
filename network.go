@@ -185,12 +185,20 @@ func initNetwork() error {
 
 	nm := nmlite.NewNetworkManager(context.Background(), networkLogger)
 	networkLogger.Info().Interface("networkConfig", nc).Str("hostname", nc.Hostname.String).Str("domain", nc.Domain.String).Msg("initializing network manager")
-	_ = setHostname(nm, nc.Hostname.String, nc.Domain.String)
+
+	if err := setHostname(nm, nc.Hostname.String, nc.Domain.String); err != nil {
+		networkLogger.Warn().Err(err).Msg("failed to set hostname")
+	}
+
 	nm.SetOnInterfaceStateChange(networkStateChanged)
+
 	if err := nm.AddInterface(NetIfName, nc); err != nil {
 		return fmt.Errorf("failed to add interface: %w", err)
 	}
-	_ = nm.CleanUpLegacyDHCPClients()
+
+	if err := nm.CleanUpLegacyDHCPClients(); err != nil {
+		networkLogger.Warn().Err(err).Msg("failed to clean up legacy DHCP clients")
+	}
 
 	networkManager = nm
 
@@ -202,8 +210,6 @@ func initNetwork() error {
 	advertiseOptions := getLLDPAdvertiseOptions(ifState)
 	lldpService = lldp.NewLLDP(&lldp.Options{
 		InterfaceName:    NetIfName,
-		EnableRx:         nc.ShouldEnableLLDPReceive(),
-		EnableTx:         nc.ShouldEnableLLDPTransmit(),
 		AdvertiseOptions: advertiseOptions,
 		OnChange: func(neighbors []lldp.Neighbor) {
 			// TODO: send deltas instead of the whole list
@@ -212,8 +218,9 @@ func initNetwork() error {
 		Logger: networkLogger,
 	})
 
-	if err := lldpService.Start(); err != nil {
-		networkLogger.Error().Err(err).Msg("failed to start LLDP service")
+	// this will start up the LLDP Tx and Rx as needed
+	if err := lldpService.SetRxAndTx(nc.ShouldEnableLLDPReceive(), nc.ShouldEnableLLDPTransmit()); err != nil {
+		networkLogger.Error().Err(err).Msg("failed to initialize LLDP RX and TX")
 	}
 
 	return nil
@@ -234,7 +241,7 @@ func updateLLDPOptions(nc *types.NetworkConfig, ifState *types.InterfaceState) {
 	}
 
 	if err := lldpService.SetRxAndTx(nc.ShouldEnableLLDPReceive(), nc.ShouldEnableLLDPTransmit()); err != nil {
-		networkLogger.Error().Err(err).Msg("failed to set LLDP RX and TX")
+		networkLogger.Error().Err(err).Msg("failed to update LLDP RX and TX")
 	}
 
 	if ifState == nil {
