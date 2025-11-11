@@ -17,19 +17,35 @@ import (
 
 const (
 	envChildID        = "JETKVM_CHILD_ID"
+	envSubcomponent   = "JETKVM_SUBCOMPONENT"
 	errorDumpDir      = "/userdata/jetkvm/crashdump"
 	errorDumpLastFile = "last-crash.log"
 	errorDumpTemplate = "jetkvm-%s.log"
 )
 
+var (
+	subcomponent string
+)
+
 func program() {
-	gspt.SetProcTitle(os.Args[0] + " [app]")
-	kvm.Main()
+	subcomponentOverride := os.Getenv(envSubcomponent)
+	if subcomponentOverride != "" {
+		subcomponent = subcomponentOverride
+	}
+	switch subcomponent {
+	case "native":
+		gspt.SetProcTitle(os.Args[0] + " [native]")
+		kvm.RunNativeProcess()
+	default:
+		gspt.SetProcTitle(os.Args[0] + " [app]")
+		kvm.Main()
+	}
 }
 
 func main() {
 	versionPtr := flag.Bool("version", false, "print version and exit")
 	versionJSONPtr := flag.Bool("version-json", false, "print version as json and exit")
+	flag.StringVar(&subcomponent, "subcomponent", "", "subcomponent to run")
 	flag.Parse()
 
 	if *versionPtr || *versionJSONPtr {

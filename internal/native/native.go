@@ -94,11 +94,11 @@ func NewNative(opts NativeOptions) *Native {
 	}
 }
 
-func (n *Native) Start() {
+func (n *Native) Start() error {
 	if n.disable {
 		nativeLogger.Warn().Msg("native is disabled, skipping initialization")
 		setCgoDisabled(true)
-		return
+		return nil
 	}
 
 	// set up singleton
@@ -117,9 +117,11 @@ func (n *Native) Start() {
 
 	if err := videoInit(n.defaultQualityFactor); err != nil {
 		n.l.Error().Err(err).Msg("failed to initialize video")
+		return err
 	}
 
 	close(n.ready)
+	return nil
 }
 
 // DoNotUseThisIsForCrashTestingOnly

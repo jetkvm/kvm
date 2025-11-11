@@ -11,17 +11,19 @@ import (
 )
 
 var (
-	nativeInstance *native.Native
+	nativeInstance native.NativeInterface
 	nativeCmdLock  = sync.Mutex{}
 )
 
 func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
-	nativeInstance = native.NewNative(native.NativeOptions{
+	var err error
+	nativeInstance, err = native.NewNativeProxy(native.NativeProxyOptions{
 		Disable:              failsafeModeActive,
 		SystemVersion:        systemVersion,
 		AppVersion:           appVersion,
 		DisplayRotation:      config.GetDisplayRotation(),
 		DefaultQualityFactor: config.VideoQualityFactor,
+		Logger:               nativeLogger,
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
 			triggerVideoStateUpdate()
@@ -63,8 +65,13 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 			}
 		},
 	})
+	if err != nil {
+		nativeLogger.Fatal().Err(err).Msg("failed to create native proxy")
+	}
 
-	nativeInstance.Start()
+	if err := nativeInstance.Start(); err != nil {
+		nativeLogger.Fatal().Err(err).Msg("failed to start native proxy")
+	}
 	go func() {
 		if err := nativeInstance.VideoSetEDID(config.EdidString); err != nil {
 			nativeLogger.Warn().Err(err).Msg("error setting EDID")
