@@ -1,6 +1,6 @@
-import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts";
 
-import { en_US } from "./en_US" // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
+import { en_US } from "./en_US"; // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
 
 const name = "Italiano";
 const isoCode = "it-IT";
@@ -64,11 +64,11 @@ const chars = {
   1: { key: "Digit1" },
   "!": { key: "Digit1", shift: true },
   2: { key: "Digit2" },
-  "\"": { key: "Digit2", shift: true },
+  '"': { key: "Digit2", shift: true },
   3: { key: "Digit3" },
   "£": { key: "Digit3", shift: true },
   4: { key: "Digit4" },
-  "$": { key: "Digit4", shift: true },
+  $: { key: "Digit4", shift: true },
   5: { key: "Digit5" },
   "%": { key: "Digit5", shift: true },
   6: { key: "Digit6" },
@@ -83,30 +83,30 @@ const chars = {
   "=": { key: "Digit0", shift: true },
   "'": { key: "Minus" },
   "?": { key: "Minus", shift: true },
-  "ì": { key: "Equal" },
+  ì: { key: "Equal" },
   "^": { key: "Equal", shift: true },
-  "è": { key: "BracketLeft" },
-  "é": { key: "BracketLeft", shift: true },
+  è: { key: "BracketLeft" },
+  é: { key: "BracketLeft", shift: true },
   "[": { key: "BracketLeft", altRight: true },
   "{": { key: "BracketLeft", shift: true, altRight: true },
   "+": { key: "BracketRight" },
   "*": { key: "BracketRight", shift: true },
   "]": { key: "BracketRight", altRight: true },
   "}": { key: "BracketRight", shift: true, altRight: true },
-  "ò": { key: "Semicolon" },
-  "ç": { key: "Semicolon", shift: true },
+  ò: { key: "Semicolon" },
+  ç: { key: "Semicolon", shift: true },
   "@": { key: "Semicolon", altRight: true },
-  "à": { key: "Quote" },
+  à: { key: "Quote" },
   "°": { key: "Quote", shift: true },
   "#": { key: "Quote", altRight: true },
-  "ù": { key: "Backslash" },
+  ù: { key: "Backslash" },
   "§": { key: "Backslash", shift: true },
   ",": { key: "Comma" },
   ";": { key: "Comma", shift: true },
   ".": { key: "Period" },
   ":": { key: "Period", shift: true },
   "-": { key: "Slash" },
-  "_": { key: "Slash", shift: true },
+  _: { key: "Slash", shift: true },
   "<": { key: "IntlBackslash" },
   ">": { key: "IntlBackslash", shift: true },
   " ": { key: "Space" },
@@ -122,5 +122,5 @@ export const it_IT: KeyboardLayout = {
   // TODO need to localize these maps and layouts
   keyDisplayMap: en_US.keyDisplayMap,
   modifierDisplayMap: en_US.modifierDisplayMap,
-  virtualKeyboard: en_US.virtualKeyboard
+  virtualKeyboard: en_US.virtualKeyboard,
 };

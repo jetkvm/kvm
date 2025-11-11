@@ -2,18 +2,15 @@ import { useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { Button } from "@/components/Button";
+import { Button } from "@components/Button";
 import { GridCard } from "@components/Card";
-import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
-import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
-import { useVersion } from "@/hooks/useVersion";
-import { useDeviceStore } from "@/hooks/stores";
+import { GitHubIcon } from "@components/Icons";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
+import { useVersion } from "@hooks/useVersion";
+import { useDeviceStore } from "@hooks/stores";
 import notifications from "@/notifications";
 import { DOWNGRADE_VERSION } from "@/ui.config";
-
-import { GitHubIcon } from "./Icons";
-
-
 
 interface FailSafeModeOverlayProps {
   reason: string;
@@ -122,7 +119,7 @@ Please attach the recovery logs file that was downloaded to your computer:
   return (
     <AnimatePresence>
       <motion.div
-        className="aspect-video h-full w-full isolate"
+        className="isolate aspect-video h-full w-full"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0, transition: { duration: 0 } }}
@@ -148,10 +145,13 @@ Please attach the recovery logs file that was downloaded to your computer:
                       size="SM"
                       disabled={isDownloadingLogs}
                       LeadingIcon={GitHubIcon}
-                      text={isDownloadingLogs ? "Downloading Logs..." : "Download Logs & Report Issue"}
+                      text={
+                        isDownloadingLogs ? "Downloading Logs..." : "Download Logs & Report Issue"
+                      }
                     />
 
-                    <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 block" />
+                    <div className="block h-8 w-px bg-slate-200 dark:bg-slate-700" />
+
                     <Button
                       onClick={() => navigateTo("/settings/general/reboot")}
                       theme="light"
@@ -166,8 +166,6 @@ Please attach the recovery logs file that was downloaded to your computer:
                       text={`Downgrade to v${DOWNGRADE_VERSION}`}
                     />
                   </div>
-
-
                 </div>
               </div>
             </div>
@@ -177,4 +175,3 @@ Please attach the recovery logs file that was downloaded to your computer:
     </AnimatePresence>
   );
 }
-

@@ -8,7 +8,7 @@ import Card from "@components/Card";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import FieldLabel from "@components/FieldLabel";
 import LoadingSpinner from "@components/LoadingSpinner";
-import {SelectMenuBasic} from "@components/SelectMenuBasic";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import notifications from "@/notifications";
 
 interface DCPowerState {
@@ -26,7 +26,9 @@ export function DCPowerControl() {
   const getDCPowerState = useCallback(() => {
     send("getDCPowerState", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.dc_power_control_get_state_error({ error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.dc_power_control_get_state_error({ error: resp.error.data || m.unknown_error() }),
+        );
         return;
       }
       setPowerState(resp.result as DCPowerState);
@@ -36,7 +38,12 @@ export function DCPowerControl() {
   const handlePowerToggle = (enabled: boolean) => {
     send("setDCPowerState", { enabled }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.dc_power_control_set_power_state_error({ enabled: enabled, error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.dc_power_control_set_power_state_error({
+            enabled: enabled,
+            error: resp.error.data || m.unknown_error(),
+          }),
+        );
         return;
       }
       getDCPowerState(); // Refresh state after change
@@ -46,7 +53,12 @@ export function DCPowerControl() {
     // const state = powerState?.restoreState === 0 ? 1 : powerState?.restoreState === 1 ? 2 : 0;
     send("setDCRestoreState", { state }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.dc_power_control_set_restore_state_error({ state: state, error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.dc_power_control_set_restore_state_error({
+            state: state,
+            error: resp.error.data || m.unknown_error(),
+          }),
+        );
         return;
       }
       getDCPowerState(); // Refresh state after change
@@ -96,15 +108,15 @@ export function DCPowerControl() {
             {powerState.restoreState > -1 ? (
               <div className="flex items-center">
                 <SelectMenuBasic
-                    size="SM"
-                    label={m.dc_power_control_restore_power_state()}
-                    value={powerState.restoreState}
-                    onChange={e => handleRestoreChange(parseInt(e.target.value))}
-                    options={[
-                      { value: '0', label: m.dc_power_control_power_off_state()},
-                      { value: '1', label: m.dc_power_control_power_on_state()},
-                      { value: '2', label: m.dc_power_control_restore_last_state()},
-                    ]}
+                  size="SM"
+                  label={m.dc_power_control_restore_power_state()}
+                  value={powerState.restoreState}
+                  onChange={e => handleRestoreChange(parseInt(e.target.value))}
+                  options={[
+                    { value: "0", label: m.dc_power_control_power_off_state() },
+                    { value: "1", label: m.dc_power_control_power_on_state() },
+                    { value: "2", label: m.dc_power_control_restore_last_state() },
+                  ]}
                 />
               </div>
             ) : null}
@@ -125,7 +137,7 @@ export function DCPowerControl() {
                 </p>
               </div>
               <div className="space-y-1">
-                <FieldLabel label={m.dc_power_control_power()}/>
+                <FieldLabel label={m.dc_power_control_power()} />
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
                   {powerState.power.toFixed(1)}&nbsp;{m.dc_power_control_power_unit()}
                 </p>

@@ -25,7 +25,7 @@ export default function StaticIpv4Card() {
 
   const ipv4StaticAddress = watch("ipv4_static.address");
   const hideSubnetMask = ipv4StaticAddress?.includes("/");
-  
+
   useEffect(() => {
     const parts = ipv4StaticAddress?.split("/", 2);
     if (parts?.length !== 2) return;
@@ -38,12 +38,13 @@ export default function StaticIpv4Card() {
   }, [ipv4StaticAddress, setValue]);
 
   const ipv4Validation = (value: string) => {
-    if (!validator.isIP(value, 4)) return m.network_ipv4_invalid()
+    if (!validator.isIP(value, 4)) return m.network_ipv4_invalid();
     return true;
   };
 
   const validateIsIPOrCIDR4 = (value: string) => {
-    if (!validator.isIP(value) && !validator.isIPRange(value, 4)) return m.network_ipv4_invalid_cidr();
+    if (!validator.isIP(value) && !validator.isIPRange(value, 4))
+      return m.network_ipv4_invalid_cidr();
     return true;
   };
 
@@ -55,27 +56,35 @@ export default function StaticIpv4Card() {
             {m.network_static_ipv4_header()}
           </h3>
 
-          <div className={cx("grid grid-cols-1 gap-4", hideSubnetMask ? "md:grid-cols-1" : "md:grid-cols-2")}>
+          <div
+            className={cx(
+              "grid grid-cols-1 gap-4",
+              hideSubnetMask ? "md:grid-cols-1" : "md:grid-cols-2",
+            )}
+          >
             <InputFieldWithLabel
               label={m.network_ipv4_address()}
               type="text"
               size="SM"
               placeholder="192.168.1.100"
-              {
-              ...register("ipv4_static.address", {
-                validate: (value: string | undefined) => validateIsIPOrCIDR4(value ?? "")
+              {...register("ipv4_static.address", {
+                validate: (value: string | undefined) => validateIsIPOrCIDR4(value ?? ""),
               })}
               error={formState.errors.ipv4_static?.address?.message}
             />
 
-            {!hideSubnetMask && <InputFieldWithLabel
-              label={m.network_ipv4_netmask()}
-              type="text"
-              size="SM"
-              placeholder="255.255.255.0"
-              {...register("ipv4_static.netmask", { validate: (value: string | undefined) => ipv4Validation(value ?? "") })}
-              error={formState.errors.ipv4_static?.netmask?.message}
-            />}
+            {!hideSubnetMask && (
+              <InputFieldWithLabel
+                label={m.network_ipv4_netmask()}
+                type="text"
+                size="SM"
+                placeholder="255.255.255.0"
+                {...register("ipv4_static.netmask", {
+                  validate: (value: string | undefined) => ipv4Validation(value ?? ""),
+                })}
+                error={formState.errors.ipv4_static?.netmask?.message}
+              />
+            )}
           </div>
 
           <InputFieldWithLabel
@@ -83,7 +92,9 @@ export default function StaticIpv4Card() {
             type="text"
             size="SM"
             placeholder="192.168.1.1"
-            {...register("ipv4_static.gateway", { validate: (value: string | undefined) => ipv4Validation(value ?? "") })}
+            {...register("ipv4_static.gateway", {
+              validate: (value: string | undefined) => ipv4Validation(value ?? ""),
+            })}
             error={formState.errors.ipv4_static?.gateway?.message}
           />
 
@@ -99,10 +110,9 @@ export default function StaticIpv4Card() {
                         type="text"
                         size="SM"
                         placeholder="1.1.1.1"
-                        {...register(
-                          `ipv4_static.dns.${index}`,
-                          { validate: (value: string | undefined) => ipv4Validation(value ?? "") }
-                        )}
+                        {...register(`ipv4_static.dns.${index}`, {
+                          validate: (value: string | undefined) => ipv4Validation(value ?? ""),
+                        })}
                         error={formState.errors.ipv4_static?.dns?.[index]?.message}
                       />
                     </div>

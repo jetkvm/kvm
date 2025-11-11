@@ -17,7 +17,7 @@ const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
         className={cx(
           "relative w-full",
           "invalid-within::ring-2 invalid-within::ring-red-600 invalid-within::ring-offset-2",
-          "focus-within:border-slate-300 focus-within:outline-hidden focus-within:ring-1 focus-within:ring-blue-700 dark:focus-within:border-slate-600",
+          "focus-within:border-slate-300 focus-within:ring-1 focus-within:ring-blue-700 focus-within:outline-hidden dark:focus-within:border-slate-600",
         )}
       >
         <textarea
@@ -25,7 +25,7 @@ const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
           {...props}
           id="asd"
           className={clsx(
-            "block w-full rounded-sm border-transparent bg-transparent text-black placeholder:text-slate-300 focus:ring-0 disabled:pointer-events-none disabled:select-none disabled:bg-slate-50 disabled:text-slate-300 dark:text-white dark:placeholder:text-slate-500 dark:disabled:bg-slate-800 sm:text-sm",
+            "block w-full rounded-sm border-transparent bg-transparent text-black placeholder:text-slate-300 focus:ring-0 disabled:pointer-events-none disabled:bg-slate-50 disabled:text-slate-300 disabled:select-none sm:text-sm dark:text-white dark:placeholder:text-slate-500 dark:disabled:bg-slate-800",
             props.className,
           )}
         />
@@ -41,17 +41,16 @@ type TextAreaWithLabelProps = {
   error?: string | null;
 } & React.ComponentProps<typeof TextArea>;
 
-export const TextAreaWithLabel = React.forwardRef<
-  HTMLTextAreaElement,
-  TextAreaWithLabelProps
->(function TextAreaWithLabel({ label, error, id, description, ...props }, ref) {
-  return (
-    <div className="space-y-1">
-      <FieldLabel label={label} id={id} description={description} />
-      <TextArea ref={ref} {...props} />
-      {error && <FieldError error={error} />}
-    </div>
-  );
-});
+export const TextAreaWithLabel = React.forwardRef<HTMLTextAreaElement, TextAreaWithLabelProps>(
+  function TextAreaWithLabel({ label, error, id, description, ...props }, ref) {
+    return (
+      <div className="space-y-1">
+        <FieldLabel label={label} id={id} description={description} />
+        <TextArea ref={ref} {...props} />
+        {error && <FieldError error={error} />}
+      </div>
+    );
+  },
+);
 
 export default TextArea;

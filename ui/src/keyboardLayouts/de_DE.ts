@@ -1,23 +1,23 @@
-import { KeyboardLayout, KeyCombo } from "../keyboardLayouts"
+import { KeyboardLayout, KeyCombo } from "../keyboardLayouts";
 
-import { en_US } from "./en_US" // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
+import { en_US } from "./en_US"; // for fallback of keyDisplayMap, modifierDisplayMap, and virtualKeyboard
 
 const name = "Deutsch";
 const isoCode = "de-DE";
 
-const keyAcute: KeyCombo = { key: "Equal" } // accent aigu (acute accent), mark ´ placed above the letter
-const keyHat: KeyCombo = { key: "Backquote" } // accent circonflexe (accent hat), mark ^ placed above the letter
-const keyGrave: KeyCombo = { key: "Equal", shift: true } // accent grave, mark ` placed above the letter
+const keyAcute: KeyCombo = { key: "Equal" }; // accent aigu (acute accent), mark ´ placed above the letter
+const keyHat: KeyCombo = { key: "Backquote" }; // accent circonflexe (accent hat), mark ^ placed above the letter
+const keyGrave: KeyCombo = { key: "Equal", shift: true }; // accent grave, mark ` placed above the letter
 
 const chars = {
   a: { key: "KeyA" },
-  "á": { key: "KeyA", accentKey: keyAcute },
-  "â": { key: "KeyA", accentKey: keyHat },
-  "à": { key: "KeyA", accentKey: keyGrave },
+  á: { key: "KeyA", accentKey: keyAcute },
+  â: { key: "KeyA", accentKey: keyHat },
+  à: { key: "KeyA", accentKey: keyGrave },
   A: { key: "KeyA", shift: true },
-  "Á": { key: "KeyA", shift: true, accentKey: keyAcute },
-  "Â": { key: "KeyA", shift: true, accentKey: keyHat },
-  "À": { key: "KeyA", shift: true, accentKey: keyGrave },
+  Á: { key: "KeyA", shift: true, accentKey: keyAcute },
+  Â: { key: "KeyA", shift: true, accentKey: keyHat },
+  À: { key: "KeyA", shift: true, accentKey: keyGrave },
   "☺": { key: "KeyA", altRight: true }, // white smiling face ☺
   b: { key: "KeyB" },
   B: { key: "KeyB", shift: true },
@@ -29,31 +29,31 @@ const chars = {
   D: { key: "KeyD", shift: true },
   "′": { key: "KeyD", altRight: true }, // prime, mark ′ placed above the letter
   e: { key: "KeyE" },
-  "é": { key: "KeyE", accentKey: keyAcute },
-  "ê": { key: "KeyE", accentKey: keyHat },
-  "è": { key: "KeyE", accentKey: keyGrave },
+  é: { key: "KeyE", accentKey: keyAcute },
+  ê: { key: "KeyE", accentKey: keyHat },
+  è: { key: "KeyE", accentKey: keyGrave },
   "€": { key: "KeyE", altRight: true },
   E: { key: "KeyE", shift: true },
-  "É": { key: "KeyE", shift: true, accentKey: keyAcute },
-  "Ê": { key: "KeyE", shift: true, accentKey: keyHat },
-  "È": { key: "KeyE", shift: true, accentKey: keyGrave },
+  É: { key: "KeyE", shift: true, accentKey: keyAcute },
+  Ê: { key: "KeyE", shift: true, accentKey: keyHat },
+  È: { key: "KeyE", shift: true, accentKey: keyGrave },
   f: { key: "KeyF" },
   F: { key: "KeyF", shift: true },
   "˟": { key: "KeyF", deadKey: true, altRight: true }, // modifier letter cross accent, ˟
   G: { key: "KeyG", shift: true },
   g: { key: "KeyG" },
-  "ẞ": { key: "KeyG", altRight: true }, // capital sharp S, ẞ
+  ẞ: { key: "KeyG", altRight: true }, // capital sharp S, ẞ
   h: { key: "KeyH" },
   H: { key: "KeyH", shift: true },
-  "ˍ": { key: "KeyH", deadKey: true, altRight: true }, // modifier letter low macron, ˍ
+  ˍ: { key: "KeyH", deadKey: true, altRight: true }, // modifier letter low macron, ˍ
   i: { key: "KeyI" },
-  "í": { key: "KeyI", accentKey: keyAcute },
-  "î": { key: "KeyI", accentKey: keyHat },
-  "ì": { key: "KeyI", accentKey: keyGrave },
+  í: { key: "KeyI", accentKey: keyAcute },
+  î: { key: "KeyI", accentKey: keyHat },
+  ì: { key: "KeyI", accentKey: keyGrave },
   I: { key: "KeyI", shift: true },
-  "Í": { key: "KeyI", shift: true, accentKey: keyAcute },
-  "Î": { key: "KeyI", shift: true, accentKey: keyHat },
-  "Ì": { key: "KeyI", shift: true, accentKey: keyGrave },
+  Í: { key: "KeyI", shift: true, accentKey: keyAcute },
+  Î: { key: "KeyI", shift: true, accentKey: keyHat },
+  Ì: { key: "KeyI", shift: true, accentKey: keyGrave },
   "˜": { key: "KeyI", deadKey: true, altRight: true }, // tilde accent, mark ˜ placed above the letter
   j: { key: "KeyJ" },
   J: { key: "KeyJ", shift: true },
@@ -62,25 +62,25 @@ const chars = {
   K: { key: "KeyK", shift: true },
   l: { key: "KeyL" },
   L: { key: "KeyL", shift: true },
-  "ˏ": { key: "KeyL", deadKey: true, altRight: true }, // modifier letter reversed comma, ˏ
+  ˏ: { key: "KeyL", deadKey: true, altRight: true }, // modifier letter reversed comma, ˏ
   m: { key: "KeyM" },
   M: { key: "KeyM", shift: true },
-  "µ": { key: "KeyM", altRight: true },
+  µ: { key: "KeyM", altRight: true },
   n: { key: "KeyN" },
   N: { key: "KeyN", shift: true },
   "–": { key: "KeyN", altRight: true }, // en dash, –
   o: { key: "KeyO" },
-  "ó": { key: "KeyO", accentKey: keyAcute },
-  "ô": { key: "KeyO", accentKey: keyHat },
-  "ò": { key: "KeyO", accentKey: keyGrave },
+  ó: { key: "KeyO", accentKey: keyAcute },
+  ô: { key: "KeyO", accentKey: keyHat },
+  ò: { key: "KeyO", accentKey: keyGrave },
   O: { key: "KeyO", shift: true },
-  "Ó": { key: "KeyO", shift: true, accentKey: keyAcute },
-  "Ô": { key: "KeyO", shift: true, accentKey: keyHat },
-  "Ò": { key: "KeyO", shift: true, accentKey: keyGrave },
+  Ó: { key: "KeyO", shift: true, accentKey: keyAcute },
+  Ô: { key: "KeyO", shift: true, accentKey: keyHat },
+  Ò: { key: "KeyO", shift: true, accentKey: keyGrave },
   "˚": { key: "KeyO", deadKey: true, altRight: true }, // ring above, ˚
   p: { key: "KeyP" },
   P: { key: "KeyP", shift: true },
-  "ˀ": { key: "KeyP", deadKey: true, altRight: true }, // modifier letter apostrophe, ʾ
+  ˀ: { key: "KeyP", deadKey: true, altRight: true }, // modifier letter apostrophe, ʾ
   q: { key: "KeyQ" },
   Q: { key: "KeyQ", shift: true },
   "@": { key: "KeyQ", altRight: true },
@@ -92,15 +92,15 @@ const chars = {
   "″": { key: "KeyS", altRight: true }, // double prime, mark ″ placed above the letter
   T: { key: "KeyT", shift: true },
   t: { key: "KeyT" },
-  "ˇ": { key: "KeyT", deadKey: true, altRight: true }, // caron/hacek accent, mark ˇ placed above the letter
+  ˇ: { key: "KeyT", deadKey: true, altRight: true }, // caron/hacek accent, mark ˇ placed above the letter
   u: { key: "KeyU" },
-  "ú": { key: "KeyU", accentKey: keyAcute },
-  "û": { key: "KeyU", accentKey: keyHat },
-  "ù": { key: "KeyU", accentKey: keyGrave },
+  ú: { key: "KeyU", accentKey: keyAcute },
+  û: { key: "KeyU", accentKey: keyHat },
+  ù: { key: "KeyU", accentKey: keyGrave },
   U: { key: "KeyU", shift: true },
-  "Ú": { key: "KeyU", shift: true, accentKey: keyAcute },
-  "Û": { key: "KeyU", shift: true, accentKey: keyHat },
-  "Ù": { key: "KeyU", shift: true, accentKey: keyGrave },
+  Ú: { key: "KeyU", shift: true, accentKey: keyAcute },
+  Û: { key: "KeyU", shift: true, accentKey: keyHat },
+  Ù: { key: "KeyU", shift: true, accentKey: keyGrave },
   "˘": { key: "KeyU", deadKey: true, altRight: true }, // breve accent, ˘ placed above the letter
   v: { key: "KeyV" },
   V: { key: "KeyV", shift: true },
@@ -125,7 +125,7 @@ const chars = {
   "!": { key: "Digit1", shift: true },
   "’": { key: "Digit1", altRight: true }, // single quote, mark ’ placed above the letter
   2: { key: "Digit2" },
-  "\"": { key: "Digit2", shift: true },
+  '"': { key: "Digit2", shift: true },
   "²": { key: "Digit2", altRight: true },
   "<": { key: "Digit2", altRight: true }, // non-US < and >
   3: { key: "Digit3" },
@@ -133,8 +133,8 @@ const chars = {
   "³": { key: "Digit3", altRight: true },
   ">": { key: "Digit3", altRight: true }, // non-US < and >
   4: { key: "Digit4" },
-  "$": { key: "Digit4", shift: true },
-  "—": { key: "Digit4", altRight: true }, // em dash, — 
+  $: { key: "Digit4", shift: true },
+  "—": { key: "Digit4", altRight: true }, // em dash, —
   5: { key: "Digit5" },
   "%": { key: "Digit5", shift: true },
   "¡": { key: "Digit5", altRight: true }, // inverted exclamation mark, ¡
@@ -153,25 +153,25 @@ const chars = {
   0: { key: "Digit0" },
   "=": { key: "Digit0", shift: true },
   "}": { key: "Digit0", altRight: true },
-  "ß": { key: "Minus" },
+  ß: { key: "Minus" },
   "?": { key: "Minus", shift: true },
   "\\": { key: "Minus", altRight: true },
   "´": { key: "Equal", deadKey: true }, // accent acute, mark ´ placed above the letter
-  "`": { key: "Equal", shift: true, deadKey: true },  // accent grave, mark ` placed above the letter
+  "`": { key: "Equal", shift: true, deadKey: true }, // accent grave, mark ` placed above the letter
   "˙": { key: "Equal", control: true, altRight: true, deadKey: true }, // acute accent, mark ˙ placed above the letter
-  "ü": { key: "BracketLeft" },
-  "Ü": { key: "BracketLeft", shift: true },
+  ü: { key: "BracketLeft" },
+  Ü: { key: "BracketLeft", shift: true },
   Escape: { key: "BracketLeft", control: true },
-  "ʼ": { key: "BracketLeft", altRight: true }, // modifier letter apostrophe, ʼ
+  ʼ: { key: "BracketLeft", altRight: true }, // modifier letter apostrophe, ʼ
   "+": { key: "BracketRight" },
   "*": { key: "BracketRight", shift: true },
   Control: { key: "BracketRight", control: true },
   "~": { key: "BracketRight", altRight: true },
-  "ö": { key: "Semicolon" },
-  "Ö": { key: "Semicolon", shift: true },
-  "ˌ": { key: "Semicolon", deadkey: true, altRight: true }, // modifier letter low vertical line, ˌ
-  "ä": { key: "Quote" },
-  "Ä": { key: "Quote", shift: true },
+  ö: { key: "Semicolon" },
+  Ö: { key: "Semicolon", shift: true },
+  ˌ: { key: "Semicolon", deadkey: true, altRight: true }, // modifier letter low vertical line, ˌ
+  ä: { key: "Quote" },
+  Ä: { key: "Quote", shift: true },
   "˗": { key: "Quote", deadKey: true, altRight: true }, // modifier letter minus sign, ˗
   "#": { key: "Backslash" },
   "'": { key: "Backslash", shift: true },
@@ -183,7 +183,7 @@ const chars = {
   ":": { key: "Period", shift: true },
   "·": { key: "Period", altRight: true }, // middle dot, ·
   "-": { key: "Slash" },
-  "_": { key: "Slash", shift: true },
+  _: { key: "Slash", shift: true },
   "\u00ad": { key: "Slash", altRight: true }, // soft hyphen, ­
   " ": { key: "Space" },
   "\n": { key: "Enter" },
@@ -237,7 +237,7 @@ export const keyDisplayMap: Record<string, string> = {
   "(Backslash)": "'",
 
   // Shifted Numbers
-  "(Digit2)": "\"",
+  "(Digit2)": '"',
   "(Digit3)": "§",
   "(Digit6)": "&",
   "(Digit7)": "/",
@@ -265,7 +265,7 @@ export const keyDisplayMap: Record<string, string> = {
   PrintScreen: "Druck",
   ScrollLock: "Rollen",
   "(Pause)": "Unterbr",
-}
+};
 
 export const modifierDisplayMap: Record<string, string> = {
   ShiftLeft: "Umschalt (links)",
@@ -298,25 +298,15 @@ export const virtualKeyboard = {
       "CapsLock (KeyA) (KeyS) (KeyD) (KeyF) (KeyG) (KeyH) (KeyJ) (KeyK) (KeyL) (Semicolon) (Quote) Enter",
       "ShiftLeft (KeyZ) (KeyX) (KeyC) (KeyV) (KeyB) (KeyN) (KeyM) (Comma) (Period) (Slash) ShiftRight",
       "ControlLeft MetaLeft AltLeft Space AltGr MetaRight Menu ControlRight",
-    ]
+    ],
   },
   control: {
-    default: [
-      "PrintScreen ScrollLock Pause",
-      "Insert Home PageUp",
-      "Delete End PageDown"
-    ],
-    shift: [
-      "(PrintScreen) ScrollLock (Pause)",
-      "Insert Home PageUp",
-      "Delete End PageDown"
-    ],
+    default: ["PrintScreen ScrollLock Pause", "Insert Home PageUp", "Delete End PageDown"],
+    shift: ["(PrintScreen) ScrollLock (Pause)", "Insert Home PageUp", "Delete End PageDown"],
   },
 
   arrows: {
-    default: [
-      " ArrowUp ",
-      "ArrowLeft ArrowDown ArrowRight"],
+    default: [" ArrowUp ", "ArrowLeft ArrowDown ArrowRight"],
   },
 
   numpad: {
@@ -334,8 +324,8 @@ export const virtualKeyboard = {
       "End ArrowDown PageDown NumpadEnter",
       "NumpadInsert NumpadDelete",
     ],
-  }
-}
+  },
+};
 
 export const de_DE: KeyboardLayout = {
   isoCode: isoCode,
@@ -343,5 +333,5 @@ export const de_DE: KeyboardLayout = {
   chars: chars,
   keyDisplayMap: keyDisplayMap,
   modifierDisplayMap: modifierDisplayMap,
-  virtualKeyboard: virtualKeyboard
+  virtualKeyboard: virtualKeyboard,
 };

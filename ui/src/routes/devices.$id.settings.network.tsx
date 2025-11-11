@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FieldValues, FormProvider, useForm } from "react-hook-form";
 import { LuCopy, LuEthernetPort } from "react-icons/lu";
@@ -72,7 +71,9 @@ export function LifeTimeLabel({ lifetime }: Readonly<{ lifetime: string }>) {
   return (
     <>
       <span className="text-sm font-medium">{remaining && <> {remaining}</>}</span>
-      <span className="text-xs text-slate-700 dark:text-slate-300">&nbsp;({dayjs(lifetime).format("YYYY-MM-DD HH:mm")})</span>
+      <span className="text-xs text-slate-700 dark:text-slate-300">
+        &nbsp;({dayjs(lifetime).format("YYYY-MM-DD HH:mm")})
+      </span>
     </>
   );
 }
@@ -104,10 +105,10 @@ export default function SettingsNetworkRoute() {
     try {
       console.log("Fetching network data...");
 
-      const [settings, state] = (await Promise.all([
-        getNetworkSettings(),
-        getNetworkState(),
-      ])) as [NetworkSettings, NetworkState];
+      const [settings, state] = (await Promise.all([getNetworkSettings(), getNetworkState()])) as [
+        NetworkSettings,
+        NetworkState,
+      ];
 
       setNetworkState(state);
 
@@ -138,7 +139,11 @@ export default function SettingsNetworkRoute() {
       initialSettingsRef.current = settingsWithDefaults;
       return { settings: settingsWithDefaults, state };
     } catch (err) {
-      notifications.error(m.network_settings_load_error({ error: err instanceof Error ? err.message : m.unknown_error() }));
+      notifications.error(
+        m.network_settings_load_error({
+          error: err instanceof Error ? err.message : m.unknown_error(),
+        }),
+      );
       throw err;
     }
   }, [setNetworkState, setCustomDomain]);
@@ -154,161 +159,173 @@ export default function SettingsNetworkRoute() {
     },
   });
 
-  const prepareSettings = useCallback((data: FieldValues) => {
-    return {
-      ...data,
+  const prepareSettings = useCallback(
+    (data: FieldValues) => {
+      return {
+        ...data,
 
-      // If custom domain option is selected, use the custom domain as value
-      domain: data.domain === "custom" ? customDomain : data.domain,
-    } as NetworkSettings;
-  }, [customDomain]);
+        // If custom domain option is selected, use the custom domain as value
+        domain: data.domain === "custom" ? customDomain : data.domain,
+      } as NetworkSettings;
+    },
+    [customDomain],
+  );
 
   const { register, handleSubmit, watch, formState, reset } = formMethods;
 
-  const onSubmit = useCallback(async (settings: NetworkSettings) => {
-    if (settings.ipv4_static?.address?.includes("/")) {
-      const parts = settings.ipv4_static.address.split("/");
-      const cidrNotation = Number.parseInt(parts[1]);
-      if (Number.isNaN(cidrNotation) || cidrNotation < 0 || cidrNotation > 32) {
-        return notifications.error(m.network_ipv4_invalid_cidr());
-      }
-      settings.ipv4_static.netmask = netMaskFromCidr4(cidrNotation);
-      settings.ipv4_static.address = parts[0];
-    }
-
-    send("setNetworkSettings", { settings }, async (resp) => {
-      if ("error" in resp) {
-        notifications.error(m.network_save_settings_failed({ error: resp.error.message || m.unknown_error() }));
-      } else {
-        // If the settings are saved successfully, fetch the latest network data and reset the form
-        // We do this so we get all the form state values, for stuff like is the form dirty, etc...
-
-        try {
-          const networkData = await fetchNetworkData();
-          if (!networkData) return
-
-          reset(networkData.settings);
-          notifications.success(m.network_save_settings_success());
-
-        } catch (error) {
-          console.error("Failed to fetch network data:", error);
+  const onSubmit = useCallback(
+    async (settings: NetworkSettings) => {
+      if (settings.ipv4_static?.address?.includes("/")) {
+        const parts = settings.ipv4_static.address.split("/");
+        const cidrNotation = Number.parseInt(parts[1]);
+        if (Number.isNaN(cidrNotation) || cidrNotation < 0 || cidrNotation > 32) {
+          return notifications.error(m.network_ipv4_invalid_cidr());
         }
-        notifications.success(m.network_dhcp_lease_renew_success());
+        settings.ipv4_static.netmask = netMaskFromCidr4(cidrNotation);
+        settings.ipv4_static.address = parts[0];
       }
-    });
-  }, [fetchNetworkData, reset, send]);
 
-  const onSubmitGate = useCallback(async (data: FieldValues) => {
-    const settings = prepareSettings(data);
-    const dirty = formState.dirtyFields;
+      send("setNetworkSettings", { settings }, async resp => {
+        if ("error" in resp) {
+          notifications.error(
+            m.network_save_settings_failed({ error: resp.error.message || m.unknown_error() }),
+          );
+        } else {
+          // If the settings are saved successfully, fetch the latest network data and reset the form
+          // We do this so we get all the form state values, for stuff like is the form dirty, etc...
 
-    // Build list of critical changes for display
-    const changes: { label: string; from: string; to: string }[] = [];
+          try {
+            const networkData = await fetchNetworkData();
+            if (!networkData) return;
 
-    if (dirty.dhcp_client) {
-      changes.push({
-        label: m.network_dhcp_client_title(),
-        from: initialSettingsRef.current?.dhcp_client as string,
-        to: data.dhcp_client as string,
+            reset(networkData.settings);
+            notifications.success(m.network_save_settings_success());
+          } catch (error) {
+            console.error("Failed to fetch network data:", error);
+          }
+          notifications.success(m.network_dhcp_lease_renew_success());
+        }
       });
-    }
+    },
+    [fetchNetworkData, reset, send],
+  );
 
-    if (dirty.ipv4_mode) {
-      changes.push({
-        label: m.network_ipv4_mode_title(),
-        from: initialSettingsRef.current?.ipv4_mode as string,
-        to: data.ipv4_mode as string,
-      });
-    }
+  const onSubmitGate = useCallback(
+    async (data: FieldValues) => {
+      const settings = prepareSettings(data);
+      const dirty = formState.dirtyFields;
 
-    if (dirty.ipv4_static?.address) {
-      changes.push({
-        label: m.network_ipv4_address(),
-        from: initialSettingsRef.current?.ipv4_static?.address as string,
-        to: data.ipv4_static?.address as string,
-      });
-    }
+      // Build list of critical changes for display
+      const changes: { label: string; from: string; to: string }[] = [];
 
-    if (dirty.ipv4_static?.netmask) {
-      changes.push({
-        label: m.network_ipv4_netmask(),
-        from: initialSettingsRef.current?.ipv4_static?.netmask as string,
-        to: data.ipv4_static?.netmask as string,
-      });
-    }
+      if (dirty.dhcp_client) {
+        changes.push({
+          label: m.network_dhcp_client_title(),
+          from: initialSettingsRef.current?.dhcp_client as string,
+          to: data.dhcp_client as string,
+        });
+      }
 
-    if (dirty.ipv4_static?.gateway) {
-      changes.push({
-        label: m.network_ipv4_gateway(),
-        from: initialSettingsRef.current?.ipv4_static?.gateway as string,
-        to: data.ipv4_static?.gateway as string,
-      });
-    }
+      if (dirty.ipv4_mode) {
+        changes.push({
+          label: m.network_ipv4_mode_title(),
+          from: initialSettingsRef.current?.ipv4_mode as string,
+          to: data.ipv4_mode as string,
+        });
+      }
 
-    if (dirty.ipv4_static?.dns) {
-      changes.push({
-        label: m.network_ipv4_dns(),
-        from: initialSettingsRef.current?.ipv4_static?.dns.join(", ").toString() ?? "",
-        to: data.ipv4_static?.dns.join(", ").toString() ?? "",
-      });
-    }
+      if (dirty.ipv4_static?.address) {
+        changes.push({
+          label: m.network_ipv4_address(),
+          from: initialSettingsRef.current?.ipv4_static?.address as string,
+          to: data.ipv4_static?.address as string,
+        });
+      }
 
-    if (dirty.ipv6_mode) {
-      changes.push({
-        label: m.network_ipv6_mode_title(),
-        from: initialSettingsRef.current?.ipv6_mode as string,
-        to: data.ipv6_mode as string,
-      });
-    }
+      if (dirty.ipv4_static?.netmask) {
+        changes.push({
+          label: m.network_ipv4_netmask(),
+          from: initialSettingsRef.current?.ipv4_static?.netmask as string,
+          to: data.ipv4_static?.netmask as string,
+        });
+      }
 
-    if (dirty.ipv6_static?.prefix) {
-      changes.push({
-        label: m.network_ipv6_prefix(),
-        from: initialSettingsRef.current?.ipv6_static?.prefix as string,
-        to: data.ipv6_static?.prefix as string,
-      });
-    }
+      if (dirty.ipv4_static?.gateway) {
+        changes.push({
+          label: m.network_ipv4_gateway(),
+          from: initialSettingsRef.current?.ipv4_static?.gateway as string,
+          to: data.ipv4_static?.gateway as string,
+        });
+      }
 
-    if (dirty.ipv6_static?.gateway) {
-      changes.push({
-        label: m.network_ipv6_gateway(),
-        from: initialSettingsRef.current?.ipv6_static?.gateway as string,
-        to: data.ipv6_static?.gateway as string,
-      });
-    }
+      if (dirty.ipv4_static?.dns) {
+        changes.push({
+          label: m.network_ipv4_dns(),
+          from: initialSettingsRef.current?.ipv4_static?.dns.join(", ").toString() ?? "",
+          to: data.ipv4_static?.dns.join(", ").toString() ?? "",
+        });
+      }
 
-    if (dirty.ipv6_static?.dns) {
-      changes.push({
-        label: m.network_ipv6_dns(),
-        from: initialSettingsRef.current?.ipv6_static?.dns.join(", ").toString() ?? "",
-        to: data.ipv6_static?.dns.join(", ").toString() ?? "",
-      });
-    }
+      if (dirty.ipv6_mode) {
+        changes.push({
+          label: m.network_ipv6_mode_title(),
+          from: initialSettingsRef.current?.ipv6_mode as string,
+          to: data.ipv6_mode as string,
+        });
+      }
 
-    if (dirty.hostname) {
-      changes.push({
-        label: m.network_hostname_title(),
-        from: initialSettingsRef.current?.hostname?.toString() ?? "",
-        to: data.hostname?.toString() ?? "",
-      });
-    }
+      if (dirty.ipv6_static?.prefix) {
+        changes.push({
+          label: m.network_ipv6_prefix(),
+          from: initialSettingsRef.current?.ipv6_static?.prefix as string,
+          to: data.ipv6_static?.prefix as string,
+        });
+      }
 
-    // If no critical fields are changed, save immediately
-    if (changes.length === 0) return onSubmit(settings);
+      if (dirty.ipv6_static?.gateway) {
+        changes.push({
+          label: m.network_ipv6_gateway(),
+          from: initialSettingsRef.current?.ipv6_static?.gateway as string,
+          to: data.ipv6_static?.gateway as string,
+        });
+      }
 
-    // Show confirmation dialog for critical changes
-    setStagedSettings(settings);
-    setCriticalChanges(changes);
-    setShowCriticalSettingsConfirm(true);
-  }, [prepareSettings, formState.dirtyFields, onSubmit]);
+      if (dirty.ipv6_static?.dns) {
+        changes.push({
+          label: m.network_ipv6_dns(),
+          from: initialSettingsRef.current?.ipv6_static?.dns.join(", ").toString() ?? "",
+          to: data.ipv6_static?.dns.join(", ").toString() ?? "",
+        });
+      }
 
-  const ipv4mode = watch("ipv4_mode");
-  const ipv6mode = watch("ipv6_mode");
+      if (dirty.hostname) {
+        changes.push({
+          label: m.network_hostname_title(),
+          from: initialSettingsRef.current?.hostname?.toString() ?? "",
+          to: data.hostname?.toString() ?? "",
+        });
+      }
+
+      // If no critical fields are changed, save immediately
+      if (changes.length === 0) return onSubmit(settings);
+
+      // Show confirmation dialog for critical changes
+      setStagedSettings(settings);
+      setCriticalChanges(changes);
+      setShowCriticalSettingsConfirm(true);
+    },
+    [prepareSettings, formState.dirtyFields, onSubmit],
+  );
+
+  const ipv4mode = useWatch({name: "ipv4_mode"});
+  const ipv6mode = useWatch({name: "ipv6_mode"});
 
   const onDhcpLeaseRenew = () => {
-    send("renewDHCPLease", {}, (resp) => {
+    send("renewDHCPLease", {}, resp => {
       if ("error" in resp) {
-        notifications.error(m.network_dhcp_lease_renew_failed({ error: resp.error.message || m.unknown_error() }));
+        notifications.error(
+          m.network_dhcp_lease_renew_failed({ error: resp.error.message || m.unknown_error() }),
+        );
       } else {
         notifications.success(m.network_dhcp_lease_renew_success());
       }
@@ -345,23 +362,33 @@ export default function SettingsNetworkRoute() {
               />
               <div className="flex items-center">
                 <GridCard cardClassName="rounded-r-none">
-                  <div className=" h-[34px] flex items-center text-xs select-all text-black font-mono dark:text-white px-3 ">
-                    {networkState?.mac_address} {" "}
+                  <div className="flex h-[34px] items-center px-3 font-mono text-xs text-black select-all dark:text-white">
+                    {networkState?.mac_address}{" "}
                   </div>
                 </GridCard>
-                <Button className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20" size="SM" type="button" theme="light" LeadingIcon={LuCopy} onClick={async () => {
-                  const mac = networkState?.mac_address || "";
-                  if (await copy(mac)) {
-                    notifications.success((m.network_mac_address_copy_success({ mac: mac })));
-                  } else {
-                    notifications.error(m.network_mac_address_copy_error());
-                  }
-                }} />
+                <Button
+                  className="rounded-l-none border-l-slate-800/30 dark:border-slate-300/20"
+                  size="SM"
+                  type="button"
+                  theme="light"
+                  LeadingIcon={LuCopy}
+                  onClick={async () => {
+                    const mac = networkState?.mac_address || "";
+                    if (await copy(mac)) {
+                      notifications.success(m.network_mac_address_copy_success({ mac: mac }));
+                    } else {
+                      notifications.error(m.network_mac_address_copy_error());
+                    }
+                  }}
+                />
               </div>
             </div>
 
             <div className="space-y-4">
-              <SettingsItem title={m.network_hostname_title()} description={m.network_hostname_description()}>
+              <SettingsItem
+                title={m.network_hostname_title()}
+                description={m.network_hostname_description()}
+              >
                 <InputField
                   size="SM"
                   placeholder={networkState?.hostname || "jetkvm"}
@@ -370,7 +397,10 @@ export default function SettingsNetworkRoute() {
                 />
               </SettingsItem>
 
-              <SettingsItem title={m.network_http_proxy_title()} description={m.network_http_proxy_description()}>
+              <SettingsItem
+                title={m.network_http_proxy_title()}
+                description={m.network_http_proxy_description()}
+              >
                 <InputField
                   size="SM"
                   placeholder="http://proxy.example.com:8080"
@@ -455,7 +485,10 @@ export default function SettingsNetworkRoute() {
                 />
               </SettingsItem>
 
-              <SettingsItem title={m.network_dhcp_client_title()} description={m.network_dhcp_client_description()}>
+              <SettingsItem
+                title={m.network_dhcp_client_title()}
+                description={m.network_dhcp_client_description()}
+              >
                 <SelectMenuBasic
                   size="SM"
                   options={[
@@ -466,7 +499,10 @@ export default function SettingsNetworkRoute() {
                 />
               </SettingsItem>
 
-              <SettingsItem title={m.network_ipv4_mode_title()} description={m.network_ipv4_mode_description()}>
+              <SettingsItem
+                title={m.network_ipv4_mode_title()}
+                description={m.network_ipv4_mode_description()}
+              >
                 <SelectMenuBasic
                   size="SM"
                   options={[
@@ -519,7 +555,10 @@ export default function SettingsNetworkRoute() {
                 </AutoHeight>
               </div>
 
-              <SettingsItem title={m.network_ipv6_mode_title()} description={m.network_ipv6_mode_description()}>
+              <SettingsItem
+                title={m.network_ipv6_mode_title()}
+                description={m.network_ipv6_mode_description()}
+              >
                 <SelectMenuBasic
                   size="SM"
                   options={[
@@ -559,26 +598,24 @@ export default function SettingsNetworkRoute() {
                 </AutoHeight>
               </div>
 
-              {isLLDPAvailable &&
-                (
-                  <div className="hidden space-y-4">
-                    <SettingsItem
-                      title={m.network_ll_dp_title()}
-                      description={m.network_ll_dp_description()}
-                    >
-                      <SelectMenuBasic
-                        size="SM"
-                        options={[
-                          { value: "disabled", label: m.network_ll_dp_disabled() },
-                          { value: "basic", label: m.network_ll_dp_basic() },
-                          { value: "all", label: m.network_ll_dp_all() },
-                        ]}
-                        {...register("lldp_mode")}
-                      />
-                    </SettingsItem>
-                  </div>
-                )
-              }
+              {isLLDPAvailable && (
+                <div className="hidden space-y-4">
+                  <SettingsItem
+                    title={m.network_ll_dp_title()}
+                    description={m.network_ll_dp_description()}
+                  >
+                    <SelectMenuBasic
+                      size="SM"
+                      options={[
+                        { value: "disabled", label: m.network_ll_dp_disabled() },
+                        { value: "basic", label: m.network_ll_dp_basic() },
+                        { value: "all", label: m.network_ll_dp_all() },
+                      ]}
+                      {...register("lldp_mode")}
+                    />
+                  </SettingsItem>
+                </div>
+              )}
 
               <div className="animate-fadeInStill animation-duration-300">
                 <Button
@@ -616,7 +653,7 @@ export default function SettingsNetworkRoute() {
         }}
         isConfirming={formState.isSubmitting}
         description={
-          <div className="space-y-4" >
+          <div className="space-y-4">
             <div>
               <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
                 {m.network_save_settings_confirm_description()}
@@ -629,16 +666,29 @@ export default function SettingsNetworkRoute() {
               </div>
               <div className="space-y-2.5">
                 {criticalChanges.map((c, idx) => (
-                  <div key={idx + c.label} className="flex items-center gap-x-2 gap-y-1 flex-wrap bg-slate-100/50 dark:bg-slate-800/50 border border-slate-800/10 dark:border-slate-300/20 rounded-md py-2 px-3">
+                  <div
+                    key={idx + c.label}
+                    className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-slate-800/10 bg-slate-100/50 px-3 py-2 dark:border-slate-300/20 dark:bg-slate-800/50"
+                  >
                     <span className="text-xs text-slate-600 dark:text-slate-400">{c.label}</span>
                     <div className="flex items-center gap-2.5">
-                      <code className="rounded border border-slate-800/20 bg-slate-50 px-1.5 py-1 text-xs text-black font-mono dark:border-slate-300/20 dark:bg-slate-800 dark:text-slate-100">
+                      <code className="rounded border border-slate-800/20 bg-slate-50 px-1.5 py-1 font-mono text-xs text-black dark:border-slate-300/20 dark:bg-slate-800 dark:text-slate-100">
                         {c.from || "—"}
                       </code>
-                      <svg className="size-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      <svg
+                        className="size-3.5 text-slate-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M13 7l5 5m0 0l-5 5m5-5H6"
+                        />
                       </svg>
-                      <code className="rounded border border-slate-800/20 bg-slate-50 px-1.5 py-1 text-xs text-black font-mono dark:border-slate-300/20 dark:bg-slate-800 dark:text-slate-100">
+                      <code className="rounded border border-slate-800/20 bg-slate-50 px-1.5 py-1 font-mono text-xs text-black dark:border-slate-300/20 dark:bg-slate-800 dark:text-slate-100">
                         {c.to || "—"}
                       </code>
                     </div>
@@ -660,7 +710,8 @@ export default function SettingsNetworkRoute() {
             {m.network_dhcp_lease_renew_confirm_description()}
             <br />
             <br />
-            {m.network_dhcp_lease_renew_confirm_new_a()}{" "}<strong>{m.network_dhcp_lease_renew_confirm_new_b()}</strong>.
+            {m.network_dhcp_lease_renew_confirm_new_a()}{" "}
+            <strong>{m.network_dhcp_lease_renew_confirm_new_b()}</strong>.
           </p>
         }
         onConfirm={() => {

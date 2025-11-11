@@ -5,7 +5,7 @@
 export const keys = {
   Again: 0x79,
   AlternateErase: 0x9d,
-  AltGr: 0xe6,        // aka AltRight
+  AltGr: 0xe6, // aka AltRight
   AltLeft: 0xe2,
   AltRight: 0xe6,
   Application: 0x65,
@@ -14,10 +14,10 @@ export const keys = {
   ArrowRight: 0x4f,
   ArrowUp: 0x52,
   Attention: 0x9a,
-  Backquote: 0x35,    // aka Grave
+  Backquote: 0x35, // aka Grave
   Backslash: 0x31,
   Backspace: 0x2a,
-  BracketLeft: 0x2f,  // aka LeftBrace
+  BracketLeft: 0x2f, // aka LeftBrace
   BracketRight: 0x30, // aka RightBrace
   Cancel: 0x9b,
   CapsLock: 0x39,
@@ -77,7 +77,7 @@ export const keys = {
   F24: 0x73,
   Find: 0x7e,
   Grave: 0x35,
-  HashTilde: 0x32,  // non-US # and ~
+  HashTilde: 0x32, // non-US # and ~
   Help: 0x75,
   Home: 0x4a,
   Insert: 0x49,
@@ -134,19 +134,19 @@ export const keys = {
   MetaRight: 0xe7,
   Minus: 0x2d,
   Mute: 0x7f,
-  NumLock: 0x53,  // and Clear
-  Numpad0: 0x62,  // and Insert
+  NumLock: 0x53, // and Clear
+  Numpad0: 0x62, // and Insert
   Numpad00: 0xb0,
   Numpad000: 0xb1,
-  Numpad1: 0x59,  // and End
-  Numpad2: 0x5a,  // and Down Arrow
-  Numpad3: 0x5b,  // and Page Down
-  Numpad4: 0x5c,  // and Left Arrow
+  Numpad1: 0x59, // and End
+  Numpad2: 0x5a, // and Down Arrow
+  Numpad3: 0x5b, // and Page Down
+  Numpad4: 0x5c, // and Left Arrow
   Numpad5: 0x5d,
-  Numpad6: 0x5e,  // and Right Arrow
-  Numpad7: 0x5f,  // and Home
-  Numpad8: 0x60,  // and Up Arrow
-  Numpad9: 0x61,  // and Page Up
+  Numpad6: 0x5e, // and Right Arrow
+  Numpad7: 0x5f, // and Home
+  Numpad8: 0x60, // and Up Arrow
+  Numpad9: 0x61, // and Page Up
   NumpadAdd: 0x57,
   NumpadAnd: 0xc7,
   NumpadAt: 0xce,
@@ -226,7 +226,7 @@ export const keys = {
   Slash: 0x38,
   Space: 0x2c,
   Stop: 0x78,
-  SystemRequest: 0x9a,  // aka Attention
+  SystemRequest: 0x9a, // aka Attention
   Tab: 0x2b,
   ThousandsSeparator: 0xb2,
   Tilde: 0x35,
@@ -251,7 +251,7 @@ export const deadKeys = {
   Slash: 0x02f8,
   Tilde: 0x007e,
   Umlaut: 0x00a8,
-} as Record<string, number>
+} as Record<string, number>;
 
 export const modifiers = {
   ControlLeft: 0x01,
