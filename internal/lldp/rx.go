@@ -71,10 +71,11 @@ func (l *LLDP) setUpPacketSourceUnderLock(tPacket *afpacket.TPacket, logger *zer
 	return gopacket.NewPacketSource(tPacket, layers.LayerTypeEthernet), nil
 }
 
-func (l *LLDP) doCapture(logger *zerolog.Logger) {
+func (l *LLDP) doCapture() {
 	l.mu.Lock()
 	l.Rx.Running = true
 	ctx := l.Rx.Ctx
+	logger := l.Rx.Logger
 	l.mu.Unlock()
 
 	defer func() {
@@ -179,8 +180,7 @@ func (l *LLDP) startCapture() error {
 	}
 
 	if startRunning {
-		logger := l.Rx.Logger
-		go l.doCapture(logger)
+		go l.doCapture()
 	}
 
 	return nil
