@@ -117,9 +117,7 @@ async function sendRpcRequest<T>(
 export function callJsonRpc<T>(
   options: JsonRpcCallOptions,
 ): Promise<JsonRpcCallResponse<T> & { result: T }>;
-export function callJsonRpc(
-  options: JsonRpcCallOptions,
-): Promise<JsonRpcCallResponse<unknown>>;
+export function callJsonRpc(options: JsonRpcCallOptions): Promise<JsonRpcCallResponse<unknown>>;
 export async function callJsonRpc<T = unknown>(
   options: JsonRpcCallOptions,
 ): Promise<JsonRpcCallResponse<T>> {
@@ -141,11 +139,7 @@ export async function callJsonRpc<T = unknown>(
       timeoutId = setTimeout(() => rpcAbortController.abort(), timeout);
 
       // Send RPC request and wait for response
-      const response = await sendRpcRequest<T>(
-        rpcDataChannel,
-        options,
-        rpcAbortController.signal,
-      );
+      const response = await sendRpcRequest<T>(rpcDataChannel, options, rpcAbortController.signal);
 
       // Retry on error if attempts remain
       if (response.error && attempt < maxAttempts - 1) {
@@ -161,9 +155,7 @@ export async function callJsonRpc<T = unknown>(
         continue;
       }
 
-      throw error instanceof Error
-        ? error
-        : new Error(`JSON-RPC call failed after ${timeout}ms`);
+      throw error instanceof Error ? error : new Error(`JSON-RPC call failed after ${timeout}ms`);
     } finally {
       if (timeoutId !== null) {
         clearTimeout(timeoutId);

@@ -13,8 +13,6 @@ import { DOWNGRADE_VERSION } from "@/ui.config";
 
 import { GitHubIcon } from "./Icons";
 
-
-
 interface FailSafeModeOverlayProps {
   reason: string;
 }
@@ -33,6 +31,35 @@ function OverlayContent({ children }: OverlayContentProps) {
   );
 }
 
+<<<<<<< HEAD
+=======
+interface TooltipProps {
+  readonly children: React.ReactNode;
+  readonly text: string;
+  readonly show: boolean;
+}
+
+function Tooltip({ children, text, show }: TooltipProps) {
+  if (!show) {
+    return <>{children}</>;
+  }
+
+  return (
+    <div className="group/tooltip relative">
+      {children}
+      <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 opacity-0 transition-opacity group-hover/tooltip:block group-hover/tooltip:opacity-100">
+        <Card>
+          <div className="flex items-center justify-center gap-1 px-2 py-1 text-xs whitespace-nowrap">
+            <LuInfo className="h-3 w-3 text-slate-700 dark:text-slate-300" />
+            {text}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+>>>>>>> c56eb843 (Lint fix pass with all rules enforced.)
 export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
   const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
@@ -122,7 +149,7 @@ Please attach the recovery logs file that was downloaded to your computer:
   return (
     <AnimatePresence>
       <motion.div
-        className="aspect-video h-full w-full isolate"
+        className="isolate aspect-video h-full w-full"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0, transition: { duration: 0 } }}
@@ -148,7 +175,9 @@ Please attach the recovery logs file that was downloaded to your computer:
                       size="SM"
                       disabled={isDownloadingLogs}
                       LeadingIcon={GitHubIcon}
-                      text={isDownloadingLogs ? "Downloading Logs..." : "Download Logs & Report Issue"}
+                      text={
+                        isDownloadingLogs ? "Downloading Logs..." : "Download Logs & Report Issue"
+                      }
                     />
 
                     <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 block" />
@@ -166,8 +195,6 @@ Please attach the recovery logs file that was downloaded to your computer:
                       text={`Downgrade to v${DOWNGRADE_VERSION}`}
                     />
                   </div>
-
-
                 </div>
               </div>
             </div>
@@ -177,4 +204,3 @@ Please attach the recovery logs file that was downloaded to your computer:
     </AnimatePresence>
   );
 }
-

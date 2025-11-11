@@ -1,5 +1,10 @@
 import { Form, redirect, useActionData, useLoaderData } from "react-router";
-import type { ActionFunction, ActionFunctionArgs, LoaderFunction, LoaderFunctionArgs } from "react-router";
+import type {
+  ActionFunction,
+  ActionFunctionArgs,
+  LoaderFunction,
+  LoaderFunctionArgs,
+} from "react-router";
 import { ChevronLeftIcon } from "@heroicons/react/16/solid";
 
 import { Button, LinkButton } from "@components/Button";

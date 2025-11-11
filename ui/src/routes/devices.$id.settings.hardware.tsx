@@ -26,15 +26,19 @@ export default function SettingsHardwareRoute() {
   };
 
   const handleDisplayRotationSave = () => {
-    send("setDisplayRotation", { params: { rotation: displayRotation } }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(
-          m.hardware_display_orientation_error({ error: resp.error.data || m.unknown_error() }),
-        );
-        return;
-      }
-      notifications.success(m.hardware_display_orientation_success());
-    });
+    send(
+      "setDisplayRotation",
+      { params: { rotation: displayRotation } },
+      (resp: JsonRpcResponse) => {
+        if ("error" in resp) {
+          notifications.error(
+            m.hardware_display_orientation_error({ error: resp.error.data || m.unknown_error() }),
+          );
+          return;
+        }
+        notifications.success(m.hardware_display_orientation_success());
+      },
+    );
   };
 
   const { backlightSettings, setBacklightSettings } = useSettingsStore();
@@ -82,11 +86,15 @@ export default function SettingsHardwareRoute() {
     const duration = enabled ? 90 : -1;
     send("setVideoSleepMode", { duration }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.hardware_power_saving_failed_error({ error: resp.error.data || m.unknown_error() }));
+        notifications.error(
+          m.hardware_power_saving_failed_error({ error: resp.error.data || m.unknown_error() }),
+        );
         setPowerSavingEnabled(!enabled); // Attempt to revert on error
         return;
       }
-      notifications.success(enabled ? m.hardware_power_saving_enabled() : m.hardware_power_saving_disabled());
+      notifications.success(
+        enabled ? m.hardware_power_saving_enabled() : m.hardware_power_saving_disabled(),
+      );
     });
   };
 
@@ -115,10 +123,7 @@ export default function SettingsHardwareRoute() {
 
   return (
     <div className="space-y-4">
-      <SettingsPageHeader
-        title={m.hardware_title()}
-        description={m.hardware_page_description()}
-      />
+      <SettingsPageHeader title={m.hardware_title()} description={m.hardware_page_description()} />
       <div className="space-y-4">
         <SettingsItem
           title={m.hardware_display_orientation_title()}
@@ -220,7 +225,7 @@ export default function SettingsHardwareRoute() {
           >
             <Checkbox
               checked={powerSavingEnabled}
-              onChange={(e) => handlePowerSavingChange(e.target.checked)}
+              onChange={e => handlePowerSavingChange(e.target.checked)}
             />
           </SettingsItem>
         </div>

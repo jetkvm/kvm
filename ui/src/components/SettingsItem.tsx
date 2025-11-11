@@ -19,22 +19,32 @@ const badgeTheme = {
 };
 
 export function SettingsItem(props: SettingsItemProps) {
-  const { title, description, badge, badgeTheme: badgeThemeProp = "danger", children, className, loading } = props;
+  const {
+    title,
+    description,
+    badge,
+    badgeTheme: badgeThemeProp = "danger",
+    children,
+    className,
+    loading,
+  } = props;
   const badgeThemeClass = badgeTheme[badgeThemeProp];
 
   return (
     <label
-      className={cx(
-        "flex select-none items-center justify-between gap-x-8 rounded",
-        className,
-      )}
+      className={cx("flex items-center justify-between gap-x-8 rounded select-none", className)}
     >
       <div className="space-y-0.5">
         <div className="flex items-center gap-x-2">
           <div className="flex items-center text-base font-semibold text-black dark:text-white">
             {title}
             {badge && (
-              <span className={cx("ml-2 rounded-full px-2 py-1 text-[10px] font-medium leading-none text-white", badgeThemeClass)}>
+              <span
+                className={cx(
+                  "ml-2 rounded-full px-2 py-1 text-[10px] leading-none font-medium text-white",
+                  badgeThemeClass,
+                )}
+              >
                 {badge}
               </span>
             )}

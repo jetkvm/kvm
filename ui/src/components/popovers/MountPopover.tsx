@@ -51,7 +51,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
             </Card>
           </div>
           <div className="space-y-1">
-            <h3 className="text-sm font-semibold leading-none text-black dark:text-white">
+            <h3 className="text-sm leading-none font-semibold text-black dark:text-white">
               {m.mount_no_mounted_media()}
             </h3>
             <p className="text-xs leading-none text-slate-700 dark:text-slate-300">
@@ -138,7 +138,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
               />
 
               <div
-                className="animate-fadeIn opacity-0 space-y-2"
+                className="animate-fadeIn space-y-2 opacity-0"
                 style={{
                   animationDuration: "0.7s",
                   animationDelay: "0.1s",
@@ -156,11 +156,13 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
                   </div>
                 </div>
                 {remoteVirtualMediaState ? (
-                  <div className="flex select-none items-center justify-between text-xs">
-                    <div className="select-none text-white dark:text-slate-300">
+                  <div className="flex items-center justify-between text-xs select-none">
+                    <div className="text-white select-none dark:text-slate-300">
                       <span>{m.mount_mounted_as()}</span>{" "}
                       <span className="font-semibold">
-                        {remoteVirtualMediaState.mode === "Disk" ? m.mount_mode_disk() : m.mount_mode_cdrom()}
+                        {remoteVirtualMediaState.mode === "Disk"
+                          ? m.mount_mode_disk()
+                          : m.mount_mode_cdrom()}
                       </span>
                     </div>
 
@@ -189,10 +191,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
                                 d="M4.99933 0.775635L0 5.77546H10L4.99933 0.775635Z"
                                 fill="currentColor"
                               />
-                              <path
-                                d="M10 7.49976H0V9.22453H10V7.49976Z"
-                                fill="currentColor"
-                              />
+                              <path d="M10 7.49976H0V9.22453H10V7.49976Z" fill="currentColor" />
                             </g>
                             <defs>
                               <clipPath id="clip0_3137_1186">
@@ -213,7 +212,7 @@ const MountPopopover = forwardRef<HTMLDivElement, object>((_props, ref) => {
 
         {!remoteVirtualMediaState && (
           <div
-            className="flex animate-fadeIn opacity-0 items-center justify-end space-x-2"
+            className="flex animate-fadeIn items-center justify-end space-x-2 opacity-0"
             style={{
               animationDuration: "0.7s",
               animationDelay: "0.2s",

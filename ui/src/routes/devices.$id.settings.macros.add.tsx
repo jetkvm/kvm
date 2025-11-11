@@ -29,7 +29,9 @@ export default function SettingsMacrosAddRoute() {
       navigate("../");
     } catch (error: unknown) {
       if (error instanceof Error) {
-        notifications.error(m.macros_failed_create_error({ error: error.message || m.unknown_error() }));
+        notifications.error(
+          m.macros_failed_create_error({ error: error.message || m.unknown_error() }),
+        );
       } else {
         notifications.error(m.macros_failed_create());
       }
@@ -40,10 +42,7 @@ export default function SettingsMacrosAddRoute() {
 
   return (
     <div className="space-y-4">
-      <SettingsPageHeader
-        title={m.macros_add_new()}
-        description={m.macros_add_description()}
-      />
+      <SettingsPageHeader title={m.macros_add_new()} description={m.macros_add_description()} />
       <MacroForm
         initialData={{
           name: "",

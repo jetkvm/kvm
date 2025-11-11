@@ -10,7 +10,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { getLocale } from '@localizations/runtime.js';
+import { getLocale } from "@localizations/runtime.js";
 import CustomTooltip, { CustomTooltipProps } from "@components/CustomTooltip";
 
 export default function MetricsChart({
