@@ -1252,6 +1252,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setKeyboardMacros":      {Func: setKeyboardMacros, Params: []string{"params"}},
 	"getLocalLoopbackOnly":   {Func: rpcGetLocalLoopbackOnly},
 	"setLocalLoopbackOnly":   {Func: rpcSetLocalLoopbackOnly, Params: []string{"enabled"}},
+	"getFailSafeLogs":        {Func: rpcGetFailsafeLogs},
 	"getPublicIPAddresses":   {Func: rpcGetPublicIPAddresses, Params: []string{"refresh"}},
 	"checkPublicIPAddresses": {Func: rpcCheckPublicIPAddresses},
 }

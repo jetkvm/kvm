@@ -74,7 +74,12 @@ func supervise() error {
 	// run the child binary
 	cmd := exec.Command(binPath)
 
-	cmd.Env = append(os.Environ(), []string{envChildID + "=" + kvm.GetBuiltAppVersion()}...)
+	lastFilePath := filepath.Join(errorDumpDir, errorDumpLastFile)
+
+	cmd.Env = append(os.Environ(), []string{
+		fmt.Sprintf("%s=%s", envChildID, kvm.GetBuiltAppVersion()),
+		fmt.Sprintf("JETKVM_LAST_ERROR_PATH=%s", lastFilePath),
+	}...)
 	cmd.Args = os.Args
 
 	logFile, err := os.CreateTemp("", "jetkvm-stdout.log")
