@@ -19,6 +19,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/psanford/httpreadat"
 
+	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/resource"
 )
 
@@ -40,7 +41,7 @@ func setMassStorageImage(imagePath string) error {
 		return fmt.Errorf("failed to set mass storage path: %w", err)
 	}
 
-	if err := gadget.UpdateGadgetConfig(true); err != nil {
+	if err := gadget.UpdateGadgetConfig(usbgadget.UsbResetOnDemand); err != nil {
 		return fmt.Errorf("failed to update gadget config: %w", err)
 	}
 
@@ -62,7 +63,7 @@ func setMassStorageMode(cdrom bool) error {
 		return nil
 	}
 
-	return gadget.UpdateGadgetConfig(true)
+	return gadget.UpdateGadgetConfig(usbgadget.UsbResetOnDemand)
 }
 
 func mountImage(imagePath string) error {

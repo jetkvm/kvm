@@ -24,6 +24,14 @@ type gadgetConfigItemWithKey struct {
 
 type orderedGadgetConfigItems []gadgetConfigItemWithKey
 
+type UsbResetMode uint8
+
+const (
+	UsbResetNever    UsbResetMode = 0 // never reset the usb gadget
+	UsbResetAlways   UsbResetMode = 1 // always reset the usb gadget
+	UsbResetOnDemand UsbResetMode = 2 // reset the usb gadget when needed
+)
+
 var defaultGadgetConfig = map[string]gadgetConfigItem{
 	"base": {
 		order: 0,
@@ -177,7 +185,7 @@ func (u *UsbGadget) Init() error {
 
 	u.udc = udcs[0]
 
-	err := u.configureUsbGadget(false, true)
+	err := u.configureUsbGadget(UsbResetAlways)
 	if err != nil {
 		return u.logError("unable to initialize USB stack", err)
 	}
@@ -185,13 +193,13 @@ func (u *UsbGadget) Init() error {
 	return nil
 }
 
-func (u *UsbGadget) UpdateGadgetConfig(resetUsbIfNeeded bool) error {
+func (u *UsbGadget) UpdateGadgetConfig(resetUsbMode UsbResetMode) error {
 	u.configLock.Lock()
 	defer u.configLock.Unlock()
 
 	u.loadGadgetConfig()
 
-	err := u.configureUsbGadget(true, resetUsbIfNeeded)
+	err := u.configureUsbGadget(resetUsbMode)
 	if err != nil {
 		return u.logError("unable to update gadget config", err)
 	}
@@ -199,12 +207,9 @@ func (u *UsbGadget) UpdateGadgetConfig(resetUsbIfNeeded bool) error {
 	return nil
 }
 
-func (u *UsbGadget) configureUsbGadget(resetUsb bool, resetUsbIfNeeded bool) error {
-	f := func(resetUsbBefore bool, resetUsbAfter bool) func() error {
+func (u *UsbGadget) configureUsbGadget(resetUsbMode UsbResetMode) error {
+	f := func(resetUsbAfter bool) func() error {
 		return func() error {
-			if resetUsbBefore {
-				u.tx.RebindUsb(true)
-			}
 			u.tx.MountConfigFS()
 			u.tx.CreateConfigPath()
 			u.tx.WriteGadgetConfig()
@@ -216,11 +221,21 @@ func (u *UsbGadget) configureUsbGadget(resetUsb bool, resetUsbIfNeeded bool) err
 	}
 
 	// initial attempt to configure the gadget
-	err := u.WithTransaction(f(false, resetUsb))
-	if err != nil && !resetUsbIfNeeded {
-		return err
+	err := u.WithTransaction(f(resetUsbMode == UsbResetAlways))
+	if err == nil {
+		return nil
 	}
 
 	// if the initial attempt failed, try to configure the gadget again with the resetUsb flag
-	return u.WithTransaction(f(true, resetUsb))
+	if resetUsbMode == UsbResetOnDemand {
+		u.log.Warn().Err(err).Msg("initial attempt to configure the gadget failed, resetting USB gadget then trying again")
+		// NOTES: do not use the RebindUsb method here because it will block the transaction
+		if err := u.rebindUsb(true); err != nil {
+			u.log.Warn().Err(err).Msg("failed to reset USB gadget, skipping second attempt")
+			return err
+		}
+		return u.WithTransaction(f(true))
+	}
+
+	return err
 }
