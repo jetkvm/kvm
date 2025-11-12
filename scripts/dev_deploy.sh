@@ -12,6 +12,7 @@ show_help() {
     echo
     echo "Optional:"
     echo "  -u, --user <remote_user>   Remote username (default: root)"
+    echo "      --gdb-port <port>      GDB debug port (default: 2345)"
     echo "      --run-go-tests         Run go tests"
     echo "      --run-go-tests-only    Run go tests and exit"
     echo "      --skip-ui-build        Skip frontend/UI build"
@@ -59,6 +60,7 @@ REMOTE_PATH="/userdata/jetkvm/bin"
 SKIP_UI_BUILD=false
 SKIP_UI_BUILD_RELEASE=0
 SKIP_NATIVE_BUILD=0
+GDB_DEBUG_PORT=2345
 BUILD_NATIVE_BINARY=false
 ENABLE_SYNC_TRACE=0
 RESET_USB_HID_DEVICE=false
@@ -79,6 +81,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -u|--user)
             REMOTE_USER="$2"
+            shift 2
+            ;;
+        --gdb-port)
+            GDB_DEBUG_PORT="$2"
             shift 2
             ;;
         --skip-ui-build)
@@ -148,7 +154,8 @@ fi
 check_ping "${REMOTE_HOST}"
 check_ssh "${REMOTE_USER}" "${REMOTE_HOST}"
 function sshdev() {
-    ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" $@
+    ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "$@"
+    return $?
 }
 
 # check if the current CPU architecture is x86_64
@@ -163,10 +170,17 @@ fi
 
 if [ "$BUILD_NATIVE_BINARY" = true ]; then
     msg_info "▶ Building native binary"
-    make build_native
-    sshdev "killall -9 jetkvm_app jetkvm_app_debug jetkvm_native_debug || true"
+    CMAKE_BUILD_TYPE=Debug make build_native
+    msg_info "▶ Checking if GDB is available on remote host"
+    if ! sshdev "command -v gdbserver > /dev/null 2>&1"; then
+        msg_warn "Error: gdbserver is not installed on the remote host"
+        tar -czf - -C /opt/jetkvm-native-buildkit/gdb/ . | sshdev "tar -xzf - -C /usr/bin"
+        msg_info "✓ gdbserver installed on remote host"
+    fi
+    msg_info "▶ Stopping any existing instances of jetkvm_native_debug on remote host"
+    sshdev "killall -9 jetkvm_app jetkvm_app_debug jetkvm_native_debug gdbserver || true >> /dev/null 2>&1"
     sshdev "cat > ${REMOTE_PATH}/jetkvm_native_debug" < internal/native/cgo/build/jknative-bin
-    sshdev ash << EOF
+    sshdev -t ash << EOF
 set -e
 
 # Set the library path to include the directory where librockit.so is located
@@ -177,7 +191,7 @@ killall -9 jetkvm_app jetkvm_app_debug jetkvm_native_debug || true
 sleep 5
 echo 'V' > /dev/watchdog
 chmod +x jetkvm_native_debug
-./jetkvm_native_debug
+gdbserver localhost:${GDB_DEBUG_PORT} ./jetkvm_native_debug
 EOF
     exit 0
 fi

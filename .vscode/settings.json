@@ -14,5 +14,12 @@
   "cmake.ignoreCMakeListsMissing": true,
   "C_Cpp.inlayHints.autoDeclarationTypes.enabled": true,
   "C_Cpp.inlayHints.parameterNames.enabled": true,
-  "C_Cpp.inlayHints.referenceOperator.enabled": true
+  "C_Cpp.inlayHints.referenceOperator.enabled": true,
+  "files.associations": {
+    "*.yml": "yaml",
+    "*.libsonet": "jsonnet",
+    "rk_comm_mb.h": "c"
+  },
+  "TARGET_IP": "192.168.0.199",
+  "DEBUG_PORT": "2345",
 }
