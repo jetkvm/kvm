@@ -6,8 +6,8 @@ option go_package = "github.com/jetkvm/kvm/internal/native/proto";
 
 // NativeService provides methods to interact with the native layer
 service NativeService {
-  // Init
-  rpc Init(InitRequest) returns (InitResponse);
+  // Ready check
+  rpc IsReady(IsReadyRequest) returns (IsReadyResponse);
 
   // Video methods
   rpc VideoSetSleepMode(VideoSetSleepModeRequest) returns (Empty);
@@ -52,16 +52,12 @@ service NativeService {
 // Messages
 message Empty {}
 
-message InitRequest {
-  string system_version = 1;
-  string app_version = 2;
-  uint32 display_rotation = 3;
-  double default_quality_factor = 4;
-}
+message IsReadyRequest {}
 
-message InitResponse {
-  bool success = 1;
+message IsReadyResponse {
+  bool ready = 1;
   string error = 2;
+  bool video_ready = 3;
 }
 
 message VideoState {

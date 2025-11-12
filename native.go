@@ -16,14 +16,14 @@ var (
 )
 
 func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
+	nativeLogger.Info().Msg("initializing native")
 	var err error
-	nativeInstance, err = native.NewNativeProxy(native.NativeProxyOptions{
+	nativeInstance, err = native.NewNativeProxy(native.NativeOptions{
 		Disable:              failsafeModeActive,
 		SystemVersion:        systemVersion,
 		AppVersion:           appVersion,
 		DisplayRotation:      config.GetDisplayRotation(),
 		DefaultQualityFactor: config.VideoQualityFactor,
-		Logger:               nativeLogger,
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
 			triggerVideoStateUpdate()

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -47,12 +45,14 @@ func NewGRPCServer(n *Native, logger *zerolog.Logger) *grpcServer {
 		}
 		event := &pb.Event{
 			Type: "video_state_change",
-			VideoState: &pb.VideoState{
-				Ready:          state.Ready,
-				Error:          state.Error,
-				Width:          int32(state.Width),
-				Height:         int32(state.Height),
-				FramePerSecond: state.FramePerSecond,
+			Data: &pb.Event_VideoState{
+				VideoState: &pb.VideoState{
+					Ready:          state.Ready,
+					Error:          state.Error,
+					Width:          int32(state.Width),
+					Height:         int32(state.Height),
+					FramePerSecond: state.FramePerSecond,
+				},
 			},
 		}
 		s.broadcastEvent(event)
@@ -63,8 +63,10 @@ func NewGRPCServer(n *Native, logger *zerolog.Logger) *grpcServer {
 			originalIndevEvent(event)
 		}
 		s.broadcastEvent(&pb.Event{
-			Type:       "indev_event",
-			IndevEvent: event,
+			Type: "indev_event",
+			Data: &pb.Event_IndevEvent{
+				IndevEvent: event,
+			},
 		})
 	}
 
@@ -73,8 +75,10 @@ func NewGRPCServer(n *Native, logger *zerolog.Logger) *grpcServer {
 			originalRpcEvent(event)
 		}
 		s.broadcastEvent(&pb.Event{
-			Type:     "rpc_event",
-			RpcEvent: event,
+			Type: "rpc_event",
+			Data: &pb.Event_RpcEvent{
+				RpcEvent: event,
+			},
 		})
 	}
 
@@ -84,9 +88,11 @@ func NewGRPCServer(n *Native, logger *zerolog.Logger) *grpcServer {
 		}
 		s.broadcastEvent(&pb.Event{
 			Type: "video_frame",
-			VideoFrame: &pb.VideoFrame{
-				Frame:      frame,
-				DurationNs: duration.Nanoseconds(),
+			Data: &pb.Event_VideoFrame{
+				VideoFrame: &pb.VideoFrame{
+					Frame:      frame,
+					DurationNs: duration.Nanoseconds(),
+				},
 			},
 		})
 	}
@@ -105,6 +111,10 @@ func (s *grpcServer) broadcastEvent(event *pb.Event) {
 			// Channel full, skip
 		}
 	}
+}
+
+func (s *grpcServer) IsReady(ctx context.Context, req *pb.IsReadyRequest) (*pb.IsReadyResponse, error) {
+	return &pb.IsReadyResponse{Ready: true, VideoReady: true}, nil
 }
 
 // Video methods
@@ -356,17 +366,6 @@ func (s *grpcServer) StreamEvents(req *pb.Empty, stream pb.NativeService_StreamE
 
 // StartGRPCServer starts the gRPC server on a Unix domain socket
 func StartGRPCServer(server *grpcServer, socketPath string, logger *zerolog.Logger) (*grpc.Server, net.Listener, error) {
-	// Remove socket if it exists
-	if _, err := os.Stat(socketPath); err == nil {
-		if err := os.Remove(socketPath); err != nil {
-			return nil, nil, fmt.Errorf("failed to remove existing socket: %w", err)
-		}
-	}
-
-	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(socketPath), 0755); err != nil {
-		return nil, nil, fmt.Errorf("failed to create socket directory: %w", err)
-	}
 
 	lis, err := net.Listen("unix", socketPath)
 	if err != nil {

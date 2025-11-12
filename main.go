@@ -40,8 +40,8 @@ func Main() {
 	go runWatchdog()
 	go confirmCurrentSystem()
 
-	initDisplay()
 	initNative(systemVersionLocal, appVersionLocal)
+	initDisplay()
 
 	http.DefaultClient.Timeout = 1 * time.Minute
 

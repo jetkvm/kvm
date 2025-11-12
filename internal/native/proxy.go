@@ -1,17 +1,20 @@
 package native
 
 import (
-	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/rs/zerolog"
+)
+
+const (
+	maxFrameSize = 1920 * 1080 / 2
 )
 
 // cmdWrapper wraps exec.Cmd to implement processCmd interface
@@ -43,94 +46,116 @@ func (p *processWrapper) Signal(sig interface{}) error {
 
 // NativeProxy is a proxy that communicates with a separate native process
 type NativeProxy struct {
-	client      *IPCClient
-	cmd         *exec.Cmd
-	wrapped     *cmdWrapper
+	nativeUnixSocket      string
+	videoStreamUnixSocket string
+	videoStreamListener   net.Listener
+	binaryPath            string
+
+	client      *GRPCClient
+	cmd         *cmdWrapper
 	logger      *zerolog.Logger
 	ready       chan struct{}
+	options     *NativeOptions
 	restartM    sync.Mutex
 	stopped     bool
-	opts        NativeProxyOptions
-	binaryPath  string
-	configJSON  []byte
 	processWait chan error
 }
 
-// NativeProxyOptions are options for creating a NativeProxy
-type NativeProxyOptions struct {
-	Disable              bool
-	SystemVersion        *semver.Version
-	AppVersion           *semver.Version
-	DisplayRotation      uint16
-	DefaultQualityFactor float64
-	OnVideoStateChange   func(state VideoState)
-	OnVideoFrameReceived func(frame []byte, duration time.Duration)
-	OnIndevEvent         func(event string)
-	OnRpcEvent           func(event string)
-	Logger               *zerolog.Logger
+func ensureDirectoryExists(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return os.MkdirAll(path, 0600)
+	}
+	return nil
 }
 
 // NewNativeProxy creates a new NativeProxy that spawns a separate process
-func NewNativeProxy(opts NativeProxyOptions) (*NativeProxy, error) {
-	if opts.Logger == nil {
-		opts.Logger = nativeLogger
-	}
+func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
+	nativeUnixSocket := "jetkvm-native-grpc"
+	videoStreamUnixSocket := "@jetkvm-native-video-stream"
 
 	// Get the current executable path to spawn itself
 	exePath, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get executable path: %w", err)
 	}
-	binaryPath := exePath
 
-	config := ProcessConfig{
-		Disable:              opts.Disable,
-		SystemVersion:        "",
-		AppVersion:           "",
-		DisplayRotation:      opts.DisplayRotation,
-		DefaultQualityFactor: opts.DefaultQualityFactor,
+	proxy := &NativeProxy{
+		nativeUnixSocket:      nativeUnixSocket,
+		videoStreamUnixSocket: videoStreamUnixSocket,
+		binaryPath:            exePath,
+		logger:                nativeLogger,
+		ready:                 make(chan struct{}),
+		options:               &opts,
+		processWait:           make(chan error, 1),
 	}
-	if opts.SystemVersion != nil {
-		config.SystemVersion = opts.SystemVersion.String()
-	}
-	if opts.AppVersion != nil {
-		config.AppVersion = opts.AppVersion.String()
-	}
-
-	configJSON, err := json.Marshal(config)
+	proxy.cmd, err = proxy.spawnProcess()
+	nativeLogger.Info().Msg("spawned process")
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal config: %w", err)
+		return nil, fmt.Errorf("failed to spawn process: %w", err)
 	}
 
-	cmd := exec.Command(binaryPath, string(configJSON))
+	// create unix packet
+	listener, err := net.Listen("unixpacket", videoStreamUnixSocket)
+	if err != nil {
+		nativeLogger.Warn().Err(err).Msg("failed to start server")
+		return nil, fmt.Errorf("failed to start server: %w", err)
+	}
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				nativeLogger.Warn().Err(err).Msg("failed to accept socket")
+				continue
+			}
+			nativeLogger.Info().Str("socket", conn.RemoteAddr().String()).Msg("accepted socket")
+			go proxy.handleVideoFrame(conn)
+		}
+	}()
+
+	return proxy, nil
+}
+
+func (p *NativeProxy) spawnProcess() (*cmdWrapper, error) {
+	cmd := exec.Command(
+		p.binaryPath,
+		"-subcomponent=native",
+	)
+	cmd.Stdout = os.Stdout // Forward stdout to parent
 	cmd.Stderr = os.Stderr // Forward stderr to parent
 	// Set environment variable to indicate native process mode
-	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=native", supervisor.EnvSubcomponent))
-
+	cmd.Env = append(
+		os.Environ(),
+		fmt.Sprintf("%s=native", supervisor.EnvSubcomponent),
+		fmt.Sprintf("%s=%s", "JETKVM_NATIVE_SOCKET", p.nativeUnixSocket),
+		fmt.Sprintf("%s=%s", "JETKVM_VIDEO_STREAM_SOCKET", p.videoStreamUnixSocket),
+		fmt.Sprintf("%s=%s", "JETKVM_NATIVE_SYSTEM_VERSION", p.options.SystemVersion),
+		fmt.Sprintf("%s=%s", "JETKVM_NATIVE_APP_VERSION", p.options.AppVersion),
+		fmt.Sprintf("%s=%d", "JETKVM_NATIVE_DISPLAY_ROTATION", p.options.DisplayRotation),
+		fmt.Sprintf("%s=%f", "JETKVM_NATIVE_DEFAULT_QUALITY_FACTOR", p.options.DefaultQualityFactor),
+	)
 	// Wrap cmd to implement processCmd interface
 	wrappedCmd := &cmdWrapper{Cmd: cmd}
 
-	client, err := NewIPCClient(wrappedCmd, opts.Logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create IPC client: %w", err)
+	return wrappedCmd, nil
+}
+
+func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
+	defer conn.Close()
+
+	inboundPacket := make([]byte, maxFrameSize)
+	lastFrame := time.Now()
+
+	for {
+		n, err := conn.Read(inboundPacket)
+		if err != nil {
+			nativeLogger.Warn().Err(err).Msg("failed to accept socket")
+			break
+		}
+		now := time.Now()
+		sinceLastFrame := now.Sub(lastFrame)
+		lastFrame = now
+		p.options.OnVideoFrameReceived(inboundPacket[:n], sinceLastFrame)
 	}
-
-	proxy := &NativeProxy{
-		client:      client,
-		cmd:         cmd,
-		wrapped:     wrappedCmd,
-		logger:      opts.Logger,
-		ready:       make(chan struct{}),
-		opts:        opts,
-		binaryPath:  binaryPath,
-		configJSON:  configJSON,
-		processWait: make(chan error, 1),
-	}
-
-	// Set up event handlers
-	proxy.setupEventHandlers(client)
-
-	return proxy, nil
 }
 
 // Start starts the native process
@@ -146,6 +171,15 @@ func (p *NativeProxy) Start() error {
 		return fmt.Errorf("failed to start native process: %w", err)
 	}
 
+	nativeLogger.Info().Msg("process ready")
+
+	client, err := NewGRPCClient(p.nativeUnixSocket, nativeLogger)
+	nativeLogger.Info().Str("socket_path", p.nativeUnixSocket).Msg("created client")
+	if err != nil {
+		return fmt.Errorf("failed to create IPC client: %w", err)
+	}
+	p.client = client
+
 	// Wait for ready signal from the native process
 	if err := p.client.WaitReady(); err != nil {
 		// Clean up if ready failed
@@ -153,8 +187,11 @@ func (p *NativeProxy) Start() error {
 			_ = p.cmd.Process.Kill()
 			_ = p.cmd.Wait()
 		}
-		return err
+		return fmt.Errorf("failed to wait for ready: %w", err)
 	}
+
+	// Set up event handlers
+	p.setupEventHandlers(client)
 
 	// Start monitoring process for crashes
 	go p.monitorProcess()
@@ -216,14 +253,10 @@ func (p *NativeProxy) restartProcess() error {
 		return fmt.Errorf("proxy is stopped")
 	}
 
-	// Create new command
-	cmd := exec.Command(p.binaryPath, string(p.configJSON))
-	cmd.Stderr = os.Stderr
-	// Set environment variable to indicate native process mode
-	cmd.Env = append(os.Environ(), "JETKVM_NATIVE_PROCESS=1")
-
-	// Wrap cmd to implement processCmd interface
-	wrappedCmd := &cmdWrapper{Cmd: cmd}
+	wrappedCmd, err := p.spawnProcess()
+	if err != nil {
+		return fmt.Errorf("failed to spawn process: %w", err)
+	}
 
 	// Close old client
 	if p.client != nil {
@@ -231,7 +264,7 @@ func (p *NativeProxy) restartProcess() error {
 	}
 
 	// Create new client
-	client, err := NewIPCClient(wrappedCmd, p.logger)
+	client, err := NewGRPCClient(p.nativeUnixSocket, p.logger)
 	if err != nil {
 		return fmt.Errorf("failed to create IPC client: %w", err)
 	}
@@ -240,90 +273,89 @@ func (p *NativeProxy) restartProcess() error {
 	p.setupEventHandlers(client)
 
 	// Start the process
-	if err := cmd.Start(); err != nil {
+	if err := wrappedCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start native process: %w", err)
 	}
 
 	// Wait for ready
 	if err := client.WaitReady(); err != nil {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
+		if wrappedCmd.Process != nil {
+			_ = wrappedCmd.Process.Kill()
+			_ = wrappedCmd.Wait()
 		}
 		return fmt.Errorf("timeout waiting for ready: %w", err)
 	}
 
-	p.cmd = cmd
-	p.wrapped = wrappedCmd
+	p.cmd = wrappedCmd
 	p.client = client
 
 	p.logger.Info().Msg("native process restarted successfully")
 	return nil
 }
 
-func (p *NativeProxy) setupEventHandlers(client *IPCClient) {
-	if p.opts.OnVideoStateChange != nil {
-		client.OnEvent("video_state_change", func(data interface{}) {
-			dataBytes, err := json.Marshal(data)
-			if err != nil {
-				p.logger.Warn().Err(err).Msg("failed to marshal video state event")
-				return
-			}
-			var state VideoState
-			if err := json.Unmarshal(dataBytes, &state); err != nil {
-				p.logger.Warn().Err(err).Msg("failed to unmarshal video state event")
-				return
-			}
-			p.opts.OnVideoStateChange(state)
-		})
-	}
+func (p *NativeProxy) setupEventHandlers(client *GRPCClient) {
+	// if p.opts.OnVideoStateChange != nil {
+	// 	client.OnEvent("video_state_change", func(data interface{}) {
+	// 		dataBytes, err := json.Marshal(data)
+	// 		if err != nil {
+	// 			p.logger.Warn().Err(err).Msg("failed to marshal video state event")
+	// 			return
+	// 		}
+	// 		var state VideoState
+	// 		if err := json.Unmarshal(dataBytes, &state); err != nil {
+	// 			p.logger.Warn().Err(err).Msg("failed to unmarshal video state event")
+	// 			return
+	// 		}
+	// 		p.opts.OnVideoStateChange(state)
+	// 	})
+	// }
 
-	if p.opts.OnIndevEvent != nil {
-		client.OnEvent("indev_event", func(data interface{}) {
-			if event, ok := data.(string); ok {
-				p.opts.OnIndevEvent(event)
-			}
-		})
-	}
+	// if p.opts.OnIndevEvent != nil {
+	// 	client.OnEvent("indev_event", func(data interface{}) {
+	// 		if event, ok := data.(string); ok {
+	// 			p.opts.OnIndevEvent(event)
+	// 		}
+	// 	})
+	// }
 
-	if p.opts.OnRpcEvent != nil {
-		client.OnEvent("rpc_event", func(data interface{}) {
-			if event, ok := data.(string); ok {
-				p.opts.OnRpcEvent(event)
-			}
-		})
-	}
+	// if p.opts.OnRpcEvent != nil {
+	// 	client.OnEvent("rpc_event", func(data interface{}) {
+	// 		if event, ok := data.(string); ok {
+	// 			p.opts.OnRpcEvent(event)
+	// 		}
+	// 	})
+	// }
 
-	if p.opts.OnVideoFrameReceived != nil {
-		client.OnEvent("video_frame", func(data interface{}) {
-			dataMap, ok := data.(map[string]interface{})
-			if !ok {
-				p.logger.Warn().Msg("invalid video frame event data")
-				return
-			}
+	// if p.opts.OnVideoFrameReceived != nil {
+	// 	client.OnEvent("video_frame", func(data interface{}) {
+	// 		dataMap, ok := data.(map[string]interface{})
+	// 		if !ok {
+	// 			p.logger.Warn().Msg("invalid video frame event data")
+	// 			return
+	// 		}
 
-			frameData, ok := dataMap["frame"].([]interface{})
-			if !ok {
-				p.logger.Warn().Msg("invalid frame data in event")
-				return
-			}
+	// 		frameData, ok := dataMap["frame"].([]interface{})
+	// 		if !ok {
+	// 			p.logger.Warn().Msg("invalid frame data in event")
+	// 			return
+	// 		}
 
-			frame := make([]byte, len(frameData))
-			for i, v := range frameData {
-				if b, ok := v.(float64); ok {
-					frame[i] = byte(b)
-				}
-			}
+	// 		frame := make([]byte, len(frameData))
+	// 		for i, v := range frameData {
+	// 			if b, ok := v.(float64); ok {
+	// 				frame[i] = byte(b)
+	// 			}
+	// 		}
 
-			durationNs, ok := dataMap["duration"].(float64)
-			if !ok {
-				p.logger.Warn().Msg("invalid duration in event")
-				return
-			}
+	// 		durationNs, ok := dataMap["duration"].(float64)
+	// 		if !ok {
+	// 			p.logger.Warn().Msg("invalid duration in event")
+	// 			return
+	// 		}
 
-			p.opts.OnVideoFrameReceived(frame, time.Duration(durationNs))
-		})
-	}
+	// 		p.opts.OnVideoFrameReceived(frame, time.Duration(durationNs))
+	// 	})
+	// }
 }
 
 // Stop stops the native process
@@ -347,336 +379,123 @@ func (p *NativeProxy) Stop() error {
 	return nil
 }
 
-// Implement all Native methods by forwarding to IPC
-
+// Implement all Native methods by forwarding to gRPC client
 func (p *NativeProxy) VideoSetSleepMode(enabled bool) error {
-	_, err := p.client.Call("VideoSetSleepMode", map[string]interface{}{
-		"enabled": enabled,
-	})
-	return err
+	return p.client.VideoSetSleepMode(enabled)
 }
 
 func (p *NativeProxy) VideoGetSleepMode() (bool, error) {
-	resp, err := p.client.Call("VideoGetSleepMode", nil)
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.VideoGetSleepMode()
 }
 
 func (p *NativeProxy) VideoSleepModeSupported() bool {
-	resp, err := p.client.Call("VideoSleepModeSupported", nil)
-	if err != nil {
-		return false
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false
-	}
-	return result
+	return p.client.VideoSleepModeSupported()
 }
 
 func (p *NativeProxy) VideoSetQualityFactor(factor float64) error {
-	_, err := p.client.Call("VideoSetQualityFactor", map[string]interface{}{
-		"factor": factor,
-	})
-	return err
+	return p.client.VideoSetQualityFactor(factor)
 }
 
 func (p *NativeProxy) VideoGetQualityFactor() (float64, error) {
-	resp, err := p.client.Call("VideoGetQualityFactor", nil)
-	if err != nil {
-		return 0, err
-	}
-	result, ok := resp.Result.(float64)
-	if !ok {
-		return 0, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.VideoGetQualityFactor()
 }
 
 func (p *NativeProxy) VideoSetEDID(edid string) error {
-	_, err := p.client.Call("VideoSetEDID", map[string]interface{}{
-		"edid": edid,
-	})
-	return err
+	return p.client.VideoSetEDID(edid)
 }
 
 func (p *NativeProxy) VideoGetEDID() (string, error) {
-	resp, err := p.client.Call("VideoGetEDID", nil)
-	if err != nil {
-		return "", err
-	}
-	result, ok := resp.Result.(string)
-	if !ok {
-		return "", fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.VideoGetEDID()
 }
 
 func (p *NativeProxy) VideoLogStatus() (string, error) {
-	resp, err := p.client.Call("VideoLogStatus", nil)
-	if err != nil {
-		return "", err
-	}
-	result, ok := resp.Result.(string)
-	if !ok {
-		return "", fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.VideoLogStatus()
 }
 
 func (p *NativeProxy) VideoStop() error {
-	_, err := p.client.Call("VideoStop", nil)
-	return err
+	return p.client.VideoStop()
 }
 
 func (p *NativeProxy) VideoStart() error {
-	_, err := p.client.Call("VideoStart", nil)
-	return err
+	return p.client.VideoStart()
 }
 
 func (p *NativeProxy) GetLVGLVersion() (string, error) {
-	resp, err := p.client.Call("GetLVGLVersion", nil)
-	if err != nil {
-		return "", err
-	}
-	result, ok := resp.Result.(string)
-	if !ok {
-		return "", fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.GetLVGLVersion()
 }
 
 func (p *NativeProxy) UIObjHide(objName string) (bool, error) {
-	resp, err := p.client.Call("UIObjHide", map[string]interface{}{
-		"obj_name": objName,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.UIObjHide(objName)
 }
 
 func (p *NativeProxy) UIObjShow(objName string) (bool, error) {
-	resp, err := p.client.Call("UIObjShow", map[string]interface{}{
-		"obj_name": objName,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.UIObjShow(objName)
 }
 
 func (p *NativeProxy) UISetVar(name string, value string) {
-	_, _ = p.client.Call("UISetVar", map[string]interface{}{
-		"name":  name,
-		"value": value,
-	})
+	p.client.UISetVar(name, value)
 }
 
 func (p *NativeProxy) UIGetVar(name string) string {
-	resp, err := p.client.Call("UIGetVar", map[string]interface{}{
-		"name": name,
-	})
-	if err != nil {
-		return ""
-	}
-	result, ok := resp.Result.(string)
-	if !ok {
-		return ""
-	}
-	return result
+	return p.client.UIGetVar(name)
 }
 
 func (p *NativeProxy) UIObjAddState(objName string, state string) (bool, error) {
-	resp, err := p.client.Call("UIObjAddState", map[string]interface{}{
-		"obj_name": objName,
-		"state":    state,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.UIObjAddState(objName, state)
 }
 
 func (p *NativeProxy) UIObjClearState(objName string, state string) (bool, error) {
-	resp, err := p.client.Call("UIObjClearState", map[string]interface{}{
-		"obj_name": objName,
-		"state":    state,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.UIObjClearState(objName, state)
 }
 
 func (p *NativeProxy) UIObjAddFlag(objName string, flag string) (bool, error) {
-	resp, err := p.client.Call("UIObjAddFlag", map[string]interface{}{
-		"obj_name": objName,
-		"flag":     flag,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.UIObjAddFlag(objName, flag)
 }
 
 func (p *NativeProxy) UIObjClearFlag(objName string, flag string) (bool, error) {
-	resp, err := p.client.Call("UIObjClearFlag", map[string]interface{}{
-		"obj_name": objName,
-		"flag":     flag,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.UIObjClearFlag(objName, flag)
 }
 
 func (p *NativeProxy) UIObjSetOpacity(objName string, opacity int) (bool, error) {
-	resp, err := p.client.Call("UIObjSetOpacity", map[string]interface{}{
-		"obj_name": objName,
-		"opacity":  opacity,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.UIObjSetOpacity(objName, opacity)
 }
 
 func (p *NativeProxy) UIObjFadeIn(objName string, duration uint32) (bool, error) {
-	resp, err := p.client.Call("UIObjFadeIn", map[string]interface{}{
-		"obj_name": objName,
-		"duration": duration,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.UIObjFadeIn(objName, duration)
 }
 
 func (p *NativeProxy) UIObjFadeOut(objName string, duration uint32) (bool, error) {
-	resp, err := p.client.Call("UIObjFadeOut", map[string]interface{}{
-		"obj_name": objName,
-		"duration": duration,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.UIObjFadeOut(objName, duration)
 }
 
 func (p *NativeProxy) UIObjSetLabelText(objName string, text string) (bool, error) {
-	resp, err := p.client.Call("UIObjSetLabelText", map[string]interface{}{
-		"obj_name": objName,
-		"text":     text,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.UIObjSetLabelText(objName, text)
 }
 
 func (p *NativeProxy) UIObjSetImageSrc(objName string, image string) (bool, error) {
-	resp, err := p.client.Call("UIObjSetImageSrc", map[string]interface{}{
-		"obj_name": objName,
-		"image":    image,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.UIObjSetImageSrc(objName, image)
 }
 
 func (p *NativeProxy) DisplaySetRotation(rotation uint16) (bool, error) {
-	resp, err := p.client.Call("DisplaySetRotation", map[string]interface{}{
-		"rotation": rotation,
-	})
-	if err != nil {
-		return false, err
-	}
-	result, ok := resp.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("invalid response type")
-	}
-	return result, nil
+	return p.client.DisplaySetRotation(rotation)
 }
 
 func (p *NativeProxy) UpdateLabelIfChanged(objName string, newText string) {
-	_, _ = p.client.Call("UpdateLabelIfChanged", map[string]interface{}{
-		"obj_name": objName,
-		"new_text": newText,
-	})
+	p.client.UpdateLabelIfChanged(objName, newText)
 }
 
 func (p *NativeProxy) UpdateLabelAndChangeVisibility(objName string, newText string) {
-	_, _ = p.client.Call("UpdateLabelAndChangeVisibility", map[string]interface{}{
-		"obj_name": objName,
-		"new_text": newText,
-	})
+	p.client.UpdateLabelAndChangeVisibility(objName, newText)
 }
 
 func (p *NativeProxy) SwitchToScreenIf(screenName string, shouldSwitch []string) {
-	_, _ = p.client.Call("SwitchToScreenIf", map[string]interface{}{
-		"screen_name":   screenName,
-		"should_switch": shouldSwitch,
-	})
+	p.client.SwitchToScreenIf(screenName, shouldSwitch)
 }
 
 func (p *NativeProxy) SwitchToScreenIfDifferent(screenName string) {
-	_, _ = p.client.Call("SwitchToScreenIfDifferent", map[string]interface{}{
-		"screen_name": screenName,
-	})
+	p.client.SwitchToScreenIfDifferent(screenName)
 }
 
 func (p *NativeProxy) DoNotUseThisIsForCrashTestingOnly() {
-	_, _ = p.client.Call("DoNotUseThisIsForCrashTestingOnly", nil)
+	p.client.DoNotUseThisIsForCrashTestingOnly()
 }

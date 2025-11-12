@@ -28,11 +28,11 @@ type Native struct {
 }
 
 type NativeOptions struct {
-	Disable              bool
-	SystemVersion        *semver.Version
-	AppVersion           *semver.Version
-	DisplayRotation      uint16
-	DefaultQualityFactor float64
+	Disable              bool            `env:"JETKVM_NATIVE_DISABLE"`
+	SystemVersion        *semver.Version `env:"JETKVM_NATIVE_SYSTEM_VERSION"`
+	AppVersion           *semver.Version `env:"JETKVM_NATIVE_APP_VERSION"`
+	DisplayRotation      uint16          `env:"JETKVM_NATIVE_DISPLAY_ROTATION"`
+	DefaultQualityFactor float64         `env:"JETKVM_NATIVE_DEFAULT_QUALITY_FACTOR"`
 	OnVideoStateChange   func(state VideoState)
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
 	OnIndevEvent         func(event string)
@@ -50,7 +50,7 @@ func NewNative(opts NativeOptions) *Native {
 	onVideoFrameReceived := opts.OnVideoFrameReceived
 	if onVideoFrameReceived == nil {
 		onVideoFrameReceived = func(frame []byte, duration time.Duration) {
-			nativeLogger.Info().Interface("frame", frame).Dur("duration", duration).Msg("video frame received")
+			nativeLogger.Trace().Interface("frame", frame).Dur("duration", duration).Msg("video frame received")
 		}
 	}
 
