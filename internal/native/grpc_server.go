@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
@@ -36,7 +35,6 @@ func NewGRPCServer(n *Native, logger *zerolog.Logger) *grpcServer {
 	originalVideoStateChange := n.onVideoStateChange
 	originalIndevEvent := n.onIndevEvent
 	originalRpcEvent := n.onRpcEvent
-	originalVideoFrameReceived := n.onVideoFrameReceived
 
 	// Wrap callbacks to both call original and broadcast events
 	n.onVideoStateChange = func(state VideoState) {
@@ -78,21 +76,6 @@ func NewGRPCServer(n *Native, logger *zerolog.Logger) *grpcServer {
 			Type: "rpc_event",
 			Data: &pb.Event_RpcEvent{
 				RpcEvent: event,
-			},
-		})
-	}
-
-	n.onVideoFrameReceived = func(frame []byte, duration time.Duration) {
-		if originalVideoFrameReceived != nil {
-			originalVideoFrameReceived(frame, duration)
-		}
-		s.broadcastEvent(&pb.Event{
-			Type: "video_frame",
-			Data: &pb.Event_VideoFrame{
-				VideoFrame: &pb.VideoFrame{
-					Frame:      frame,
-					DurationNs: duration.Nanoseconds(),
-				},
 			},
 		})
 	}

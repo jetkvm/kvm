@@ -40,6 +40,9 @@ type NativeOptions struct {
 }
 
 func NewNative(opts NativeOptions) *Native {
+	nativeSubLogger := nativeLogger.With().Str("scope", "native").Logger()
+	displaySubLogger := displayLogger.With().Str("scope", "native").Logger()
+
 	onVideoStateChange := opts.OnVideoStateChange
 	if onVideoStateChange == nil {
 		onVideoStateChange = func(state VideoState) {
@@ -78,8 +81,8 @@ func NewNative(opts NativeOptions) *Native {
 	return &Native{
 		disable:              opts.Disable,
 		ready:                make(chan struct{}),
-		l:                    nativeLogger,
-		lD:                   displayLogger,
+		l:                    &nativeSubLogger,
+		lD:                   &displaySubLogger,
 		systemVersion:        opts.SystemVersion,
 		appVersion:           opts.AppVersion,
 		displayRotation:      opts.DisplayRotation,

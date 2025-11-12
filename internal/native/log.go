@@ -1,14 +1,11 @@
 package native
 
 import (
-	"os"
-
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
 )
 
-var nativeL = logging.GetSubsystemLogger("native").With().Int("pid", os.Getpid()).Logger()
-var nativeLogger = &nativeL
+var nativeLogger = logging.GetSubsystemLogger("native")
 var displayLogger = logging.GetSubsystemLogger("display")
 
 type nativeLogMessage struct {

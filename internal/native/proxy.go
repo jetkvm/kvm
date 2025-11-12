@@ -162,7 +162,7 @@ func (p *NativeProxy) spawnProcess() (*cmdWrapper, error) {
 		p.binaryPath,
 		"-subcomponent=native",
 	)
-	cmd.Stdout = os.Stdout // Forward stdout to parent
+	// cmd.Stdout = os.Stdout // Forward stdout to parent
 	cmd.Stderr = os.Stderr // Forward stderr to parent
 	// Set environment variable to indicate native process mode
 	cmd.Env = append(

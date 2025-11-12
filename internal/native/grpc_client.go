@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -60,52 +61,53 @@ func NewGRPCClient(socketPath string, logger *zerolog.Logger) (*GRPCClient, erro
 }
 
 func (c *GRPCClient) startEventStream() {
-	// for {
-	// 	return
-	// 	c.closeM.Lock()
-	// 	if c.closed {
-	// 		c.closeM.Unlock()
-	// 		return
-	// 	}
-	// 	c.closeM.Unlock()
+	for {
+		c.closeM.Lock()
+		if c.closed {
+			c.closeM.Unlock()
+			return
+		}
+		c.closeM.Unlock()
 
-	// 	ctx := context.Background()
-	// 	stream, err := c.client.StreamEvents(ctx, &pb.Empty{})
-	// 	if err != nil {
-	// 		c.logger.Warn().Err(err).Msg("failed to start event stream, retrying...")
-	// 		time.Sleep(1 * time.Second)
-	// 		continue
-	// 	}
+		ctx := context.Background()
+		stream, err := c.client.StreamEvents(ctx, &pb.Empty{})
+		if err != nil {
+			c.logger.Warn().Err(err).Msg("failed to start event stream, retrying...")
+			time.Sleep(1 * time.Second)
+			continue
+		}
 
-	// 	c.eventM.Lock()
-	// 	c.eventStream = stream
-	// 	c.eventM.Unlock()
+		c.eventM.Lock()
+		c.eventStream = stream
+		c.eventM.Unlock()
 
-	// 	for {
-	// 		event, err := stream.Recv()
-	// 		if err == io.EOF {
-	// 			c.logger.Debug().Msg("event stream closed")
-	// 			break
-	// 		}
-	// 		if err != nil {
-	// 			c.logger.Warn().Err(err).Msg("event stream error")
-	// 			break
-	// 		}
+		for {
+			event, err := stream.Recv()
+			if err == io.EOF {
+				c.logger.Debug().Msg("event stream closed")
+				break
+			}
+			if err != nil {
+				c.logger.Warn().Err(err).Msg("event stream error")
+				break
+			}
 
-	// 		select {
-	// 		case c.eventCh <- event:
-	// 		default:
-	// 			c.logger.Warn().Msg("event channel full, dropping event")
-	// 		}
-	// 	}
+			c.logger.Info().Str("type", event.Type).Msg("received event")
 
-	// 	c.eventM.Lock()
-	// 	c.eventStream = nil
-	// 	c.eventM.Unlock()
+			select {
+			case c.eventCh <- event:
+			default:
+				c.logger.Warn().Msg("event channel full, dropping event")
+			}
+		}
 
-	// 	// Wait before retrying
-	// 	time.Sleep(1 * time.Second)
-	// }
+		c.eventM.Lock()
+		c.eventStream = nil
+		c.eventM.Unlock()
+
+		// Wait before retrying
+		time.Sleep(1 * time.Second)
+	}
 }
 
 func (c *GRPCClient) checkIsReady(ctx context.Context) error {
