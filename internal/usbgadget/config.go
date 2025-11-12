@@ -177,7 +177,8 @@ func (u *UsbGadget) Init() error {
 
 	u.udc = udcs[0]
 
-	err := u.configureUsbGadget(false)
+	// Use resetUsb=true to ensure driver-level rebind on initial startup - safe, but a little bit slower
+	err := u.configureUsbGadget(true)
 	if err != nil {
 		return u.logError("unable to initialize USB stack", err)
 	}
