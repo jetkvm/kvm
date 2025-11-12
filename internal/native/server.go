@@ -10,7 +10,6 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/erikdubbelboer/gspt"
-	"github.com/rs/zerolog"
 )
 
 // Native Process
@@ -19,31 +18,24 @@ import (
 
 // RunNativeProcess runs the native process mode
 func RunNativeProcess(binaryName string) {
+	logger := *nativeLogger
 	// Initialize logger
-	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
 
 	gspt.SetProcTitle(binaryName + " [native]")
 
-	// Determine socket path
-	socketPath := os.Getenv("JETKVM_NATIVE_SOCKET")
-	videoStreamSocketPath := os.Getenv("JETKVM_VIDEO_STREAM_SOCKET")
-
-	if socketPath == "" || videoStreamSocketPath == "" {
-		logger.Fatal().Str("socket_path", socketPath).Str("video_stream_socket_path", videoStreamSocketPath).Msg("socket path or video stream socket path is not set")
-	}
-
-	// connect to video stream socket
-	conn, err := net.Dial("unixpacket", videoStreamSocketPath)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to connect to video stream socket")
-	}
-	logger.Info().Str("video_stream_socket_path", videoStreamSocketPath).Msg("connected to video stream socket")
-
-	var nativeOptions NativeOptions
-	if err := env.Parse(&nativeOptions); err != nil {
+	var proxyOptions nativeProxyOptions
+	if err := env.Parse(&proxyOptions); err != nil {
 		logger.Fatal().Err(err).Msg("failed to parse native options")
 	}
 
+	// connect to video stream socket
+	conn, err := net.Dial("unixpacket", proxyOptions.VideoStreamUnixSocket)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to connect to video stream socket")
+	}
+	logger.Info().Str("video_stream_socket_path", proxyOptions.VideoStreamUnixSocket).Msg("connected to video stream socket")
+
+	nativeOptions := proxyOptions.toNativeOptions()
 	nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
 		_, err := conn.Write(frame)
 		if err != nil {
@@ -52,7 +44,7 @@ func RunNativeProcess(binaryName string) {
 	}
 
 	// Create native instance
-	nativeInstance := NewNative(nativeOptions)
+	nativeInstance := NewNative(*nativeOptions)
 
 	// Start native instance
 	if err := nativeInstance.Start(); err != nil {
@@ -64,14 +56,14 @@ func RunNativeProcess(binaryName string) {
 
 	logger.Info().Msg("starting gRPC server")
 	// Start gRPC server
-	server, lis, err := StartGRPCServer(grpcServer, fmt.Sprintf("@%v", socketPath), &logger)
+	server, lis, err := StartGRPCServer(grpcServer, fmt.Sprintf("@%v", proxyOptions.CtrlUnixSocket), &logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to start gRPC server")
 	}
 	gspt.SetProcTitle(binaryName + " [native] ready")
 
 	// Signal that we're ready by writing socket path to stdout (for parent to read)
-	fmt.Fprintf(os.Stdout, "%s\n", socketPath)
+	fmt.Fprintf(os.Stdout, "%s\n", proxyOptions.CtrlUnixSocket)
 	defer os.Stdout.Close()
 
 	// Set up signal handling

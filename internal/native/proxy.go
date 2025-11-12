@@ -9,13 +9,56 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/supervisor"
+	"github.com/Masterminds/semver/v3"
+	"github.com/jetkvm/kvm/internal/utils"
 	"github.com/rs/zerolog"
 )
 
 const (
 	maxFrameSize = 1920 * 1080 / 2
 )
+
+type nativeProxyOptions struct {
+	Disable               bool            `env:"JETKVM_NATIVE_DISABLE"`
+	SystemVersion         *semver.Version `env:"JETKVM_NATIVE_SYSTEM_VERSION"`
+	AppVersion            *semver.Version `env:"JETKVM_NATIVE_APP_VERSION"`
+	DisplayRotation       uint16          `env:"JETKVM_NATIVE_DISPLAY_ROTATION"`
+	DefaultQualityFactor  float64         `env:"JETKVM_NATIVE_DEFAULT_QUALITY_FACTOR"`
+	CtrlUnixSocket        string          `env:"JETKVM_NATIVE_CTRL_UNIX_SOCKET"`
+	VideoStreamUnixSocket string          `env:"JETKVM_NATIVE_VIDEO_STREAM_UNIX_SOCKET"`
+	BinaryPath            string          `env:"JETKVM_NATIVE_BINARY_PATH"`
+	LoggerLevel           zerolog.Level   `env:"JETKVM_NATIVE_LOGGER_LEVEL"`
+	HandshakeMessage      string          `env:"JETKVM_NATIVE_HANDSHAKE_MESSAGE"`
+
+	OnVideoFrameReceived func(frame []byte, duration time.Duration)
+	OnIndevEvent         func(event string)
+	OnRpcEvent           func(event string)
+	OnVideoStateChange   func(state VideoState)
+}
+
+func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
+	return &nativeProxyOptions{
+		Disable:              n.Disable,
+		SystemVersion:        n.SystemVersion,
+		AppVersion:           n.AppVersion,
+		DisplayRotation:      n.DisplayRotation,
+		DefaultQualityFactor: n.DefaultQualityFactor,
+		OnVideoFrameReceived: n.OnVideoFrameReceived,
+		OnIndevEvent:         n.OnIndevEvent,
+		OnRpcEvent:           n.OnRpcEvent,
+		OnVideoStateChange:   n.OnVideoStateChange,
+	}
+}
+
+func (p *nativeProxyOptions) toNativeOptions() *NativeOptions {
+	return &NativeOptions{
+		Disable:              p.Disable,
+		SystemVersion:        p.SystemVersion,
+		AppVersion:           p.AppVersion,
+		DisplayRotation:      p.DisplayRotation,
+		DefaultQualityFactor: p.DefaultQualityFactor,
+	}
+}
 
 // cmdWrapper wraps exec.Cmd to implement processCmd interface
 type cmdWrapper struct {
@@ -55,23 +98,17 @@ type NativeProxy struct {
 	cmd         *cmdWrapper
 	logger      *zerolog.Logger
 	ready       chan struct{}
-	options     *NativeOptions
+	options     *nativeProxyOptions
 	restartM    sync.Mutex
 	stopped     bool
 	processWait chan error
 }
 
-func ensureDirectoryExists(path string) error {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return os.MkdirAll(path, 0600)
-	}
-	return nil
-}
-
 // NewNativeProxy creates a new NativeProxy that spawns a separate process
 func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
-	nativeUnixSocket := "jetkvm-native-grpc"
-	videoStreamUnixSocket := "@jetkvm-native-video-stream"
+	proxyOptions := opts.toProxyOptions()
+	proxyOptions.CtrlUnixSocket = "jetkvm-native-grpc"
+	proxyOptions.VideoStreamUnixSocket = "@jetkvm-native-video-stream"
 
 	// Get the current executable path to spawn itself
 	exePath, err := os.Executable()
@@ -80,12 +117,12 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 	}
 
 	proxy := &NativeProxy{
-		nativeUnixSocket:      nativeUnixSocket,
-		videoStreamUnixSocket: videoStreamUnixSocket,
+		nativeUnixSocket:      proxyOptions.CtrlUnixSocket,
+		videoStreamUnixSocket: proxyOptions.VideoStreamUnixSocket,
 		binaryPath:            exePath,
 		logger:                nativeLogger,
 		ready:                 make(chan struct{}),
-		options:               &opts,
+		options:               proxyOptions,
 		processWait:           make(chan error, 1),
 	}
 	proxy.cmd, err = proxy.spawnProcess()
@@ -95,7 +132,7 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 	}
 
 	// create unix packet
-	listener, err := net.Listen("unixpacket", videoStreamUnixSocket)
+	listener, err := net.Listen("unixpacket", proxyOptions.VideoStreamUnixSocket)
 	if err != nil {
 		nativeLogger.Warn().Err(err).Msg("failed to start server")
 		return nil, fmt.Errorf("failed to start server: %w", err)
@@ -116,6 +153,11 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 }
 
 func (p *NativeProxy) spawnProcess() (*cmdWrapper, error) {
+	envArgs, err := utils.MarshalEnv(p.options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal environment variables: %w", err)
+	}
+
 	cmd := exec.Command(
 		p.binaryPath,
 		"-subcomponent=native",
@@ -125,13 +167,7 @@ func (p *NativeProxy) spawnProcess() (*cmdWrapper, error) {
 	// Set environment variable to indicate native process mode
 	cmd.Env = append(
 		os.Environ(),
-		fmt.Sprintf("%s=native", supervisor.EnvSubcomponent),
-		fmt.Sprintf("%s=%s", "JETKVM_NATIVE_SOCKET", p.nativeUnixSocket),
-		fmt.Sprintf("%s=%s", "JETKVM_VIDEO_STREAM_SOCKET", p.videoStreamUnixSocket),
-		fmt.Sprintf("%s=%s", "JETKVM_NATIVE_SYSTEM_VERSION", p.options.SystemVersion),
-		fmt.Sprintf("%s=%s", "JETKVM_NATIVE_APP_VERSION", p.options.AppVersion),
-		fmt.Sprintf("%s=%d", "JETKVM_NATIVE_DISPLAY_ROTATION", p.options.DisplayRotation),
-		fmt.Sprintf("%s=%f", "JETKVM_NATIVE_DEFAULT_QUALITY_FACTOR", p.options.DefaultQualityFactor),
+		envArgs...,
 	)
 	// Wrap cmd to implement processCmd interface
 	wrappedCmd := &cmdWrapper{Cmd: cmd}

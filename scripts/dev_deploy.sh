@@ -18,6 +18,7 @@ show_help() {
     echo "      --skip-native-build    Skip native build"
     echo "      --disable-docker       Disable docker build"
     echo "      --enable-sync-trace    Enable sync trace (do not use in release builds)"
+    echo "      --native-binary        Build and deploy the native binary (FOR DEBUGGING ONLY)"
     echo "  -i, --install              Build for release and install the app"
     echo "      --help                 Display this help message"
     echo
@@ -58,6 +59,7 @@ REMOTE_PATH="/userdata/jetkvm/bin"
 SKIP_UI_BUILD=false
 SKIP_UI_BUILD_RELEASE=0
 SKIP_NATIVE_BUILD=0
+BUILD_NATIVE_BINARY=false
 ENABLE_SYNC_TRACE=0
 RESET_USB_HID_DEVICE=false
 LOG_TRACE_SCOPES="${LOG_TRACE_SCOPES:-jetkvm,cloud,websocket,native,jsonrpc}"
@@ -113,6 +115,10 @@ while [[ $# -gt 0 ]]; do
             RUN_GO_TESTS=true
             shift
             ;;
+        --native-binary)
+            BUILD_NATIVE_BINARY=true
+            shift
+            ;;
         -i|--install)
             INSTALL_APP=true
             shift
@@ -141,6 +147,9 @@ fi
 # Check device connectivity before proceeding
 check_ping "${REMOTE_HOST}"
 check_ssh "${REMOTE_USER}" "${REMOTE_HOST}"
+function sshdev() {
+    ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" $@
+}
 
 # check if the current CPU architecture is x86_64
 if [ "$(uname -m)" != "x86_64" ]; then
@@ -150,6 +159,27 @@ fi
 
 if [ "$BUILD_IN_DOCKER" = true ]; then
     build_docker_image
+fi
+
+if [ "$BUILD_NATIVE_BINARY" = true ]; then
+    msg_info "▶ Building native binary"
+    make build_native
+    sshdev "killall -9 jetkvm_app jetkvm_app_debug jetkvm_native_debug || true"
+    sshdev "cat > ${REMOTE_PATH}/jetkvm_native_debug" < internal/native/cgo/build/jknative-bin
+    sshdev ash << EOF
+set -e
+
+# Set the library path to include the directory where librockit.so is located
+export LD_LIBRARY_PATH=/oem/usr/lib:\$LD_LIBRARY_PATH
+
+cd ${REMOTE_PATH}
+killall -9 jetkvm_app jetkvm_app_debug jetkvm_native_debug || true
+sleep 5
+echo 'V' > /dev/watchdog
+chmod +x jetkvm_native_debug
+./jetkvm_native_debug
+EOF
+    exit 0
 fi
 
 # Build the development version on the host
@@ -176,10 +206,10 @@ if [ "$RUN_GO_TESTS" = true ]; then
     make build_dev_test
 
     msg_info "▶ Copying device-tests.tar.gz to remote host"
-    ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "cat > /tmp/device-tests.tar.gz" < device-tests.tar.gz
+    sshdev "cat > /tmp/device-tests.tar.gz" < device-tests.tar.gz
 
     msg_info "▶ Running go tests"
-    ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" ash << 'EOF'
+    sshdev ash << 'EOF'
 set -e
 TMP_DIR=$(mktemp -d)
 cd ${TMP_DIR}
@@ -222,10 +252,10 @@ then
     ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
 
 	# Copy the binary to the remote host as if we were the OTA updater.
-	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
+	sshdev "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
 
 	# Reboot the device, the new app will be deployed by the startup process.
-	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "reboot"
+	sshdev "reboot"
 else
 	msg_info "▶ Building development binary"
 	do_make build_dev \
@@ -234,21 +264,21 @@ else
     ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
 
 	# Kill any existing instances of the application
-	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "killall jetkvm_app_debug || true"
+	sshdev "killall jetkvm_app_debug || true"
 
 	# Copy the binary to the remote host
-	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
+	sshdev "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
 
 	if [ "$RESET_USB_HID_DEVICE" = true ]; then
 	msg_info "▶ Resetting USB HID device"
 	msg_warn "The option has been deprecated and will be removed in a future version, as JetKVM will now reset USB gadget configuration when needed"
 	# Remove the old USB gadget configuration
-	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "rm -rf /sys/kernel/config/usb_gadget/jetkvm/configs/c.1/hid.usb*"
-	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" "ls /sys/class/udc > /sys/kernel/config/usb_gadget/jetkvm/UDC"
+	sshdev "rm -rf /sys/kernel/config/usb_gadget/jetkvm/configs/c.1/hid.usb*"
+	sshdev "ls /sys/class/udc > /sys/kernel/config/usb_gadget/jetkvm/UDC"
 	fi
 
 	# Deploy and run the application on the remote host
-	ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${REMOTE_USER}@${REMOTE_HOST}" ash << EOF
+	sshdev ash << EOF
 set -e
 
 # Set the library path to include the directory where librockit.so is located
