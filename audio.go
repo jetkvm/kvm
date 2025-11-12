@@ -47,17 +47,14 @@ func startAudio() error {
 		return nil
 	}
 
-	// Start output audio if not running and enabled
-	if outputSource == nil && audioOutputEnabled.Load() {
+	// Start output audio if not running, enabled, and we have a track
+	if outputSource == nil && audioOutputEnabled.Load() && currentAudioTrack != nil {
 		alsaDevice := "hw:1,0" // USB audio
 
 		outputSource = audio.NewCgoOutputSource(alsaDevice)
-
-		if currentAudioTrack != nil {
-			outputRelay = audio.NewOutputRelay(outputSource, currentAudioTrack)
-			if err := outputRelay.Start(); err != nil {
-				audioLogger.Error().Err(err).Msg("Failed to start audio output relay")
-			}
+		outputRelay = audio.NewOutputRelay(outputSource, currentAudioTrack)
+		if err := outputRelay.Start(); err != nil {
+			audioLogger.Error().Err(err).Msg("Failed to start audio output relay")
 		}
 	}
 
@@ -160,7 +157,7 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 	}
 	audioMutex.Unlock()
 
-	// Start new relay outside mutex
+	// Capture relay reference and start it outside mutex
 	audioMutex.Lock()
 	relayToStart := outputRelay
 	audioMutex.Unlock()
