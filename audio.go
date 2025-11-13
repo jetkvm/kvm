@@ -13,6 +13,8 @@ import (
 
 var (
 	audioMutex         sync.Mutex
+	setAudioTrackMutex sync.Mutex // Prevents concurrent setAudioTrack() calls
+	inputSourceMutex   sync.Mutex // Serializes WriteMessage() calls to input source
 	outputSource       audio.AudioSource
 	inputSource        atomic.Pointer[audio.AudioSource]
 	outputRelay        *audio.OutputRelay
@@ -130,6 +132,10 @@ func onWebRTCDisconnect() {
 }
 
 func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
+	// Prevent concurrent calls to avoid creating multiple relays
+	setAudioTrackMutex.Lock()
+	defer setAudioTrackMutex.Unlock()
+
 	audioMutex.Lock()
 	currentAudioTrack = audioTrack
 	oldRelay := outputRelay
@@ -146,7 +152,6 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 		oldSource.Disconnect()
 	}
 
-	// Create new source and relay for the new track
 	audioMutex.Lock()
 	if currentAudioTrack != nil && audioOutputEnabled.Load() {
 		alsaDevice := "hw:1,0"
@@ -265,9 +270,12 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 			}
 		}
 
+		// Serialize WriteMessage() to prevent concurrent session handlers from corrupting Opus decoder
+		inputSourceMutex.Lock()
 		if err := (*source).WriteMessage(0, opusData); err != nil {
 			audioLogger.Warn().Err(err).Msg("failed to write audio message")
 			(*source).Disconnect()
 		}
+		inputSourceMutex.Unlock()
 	}
 }
