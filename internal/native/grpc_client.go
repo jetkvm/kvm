@@ -131,7 +131,7 @@ func (c *GRPCClient) startEventStream() {
 		stream, err := c.client.StreamEvents(ctx, &pb.Empty{})
 		if err != nil {
 			c.logger.Warn().Err(err).Msg("failed to start event stream, retrying ...")
-			time.Sleep(1 * time.Second)
+			time.Sleep(5 * time.Second)
 			continue
 		}
 

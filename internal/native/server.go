@@ -85,6 +85,19 @@ func RunNativeProcess(binaryName string) {
 		logger.Fatal().Err(err).Msg("failed to write handshake message to stdout")
 	}
 
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGHUP)
+
+		// non-blocking receive
+		select {
+		case <-sigChan:
+			logger.Info().Msg("received SIGHUP signal, emulating crash")
+			nativeInstance.DoNotUseThisIsForCrashTestingOnly()
+		default:
+		}
+	}()
+
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)

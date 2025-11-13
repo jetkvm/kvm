@@ -61,7 +61,6 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 		maxRestartAttempts = n.MaxRestartAttempts
 	}
 	return &nativeProxyOptions{
-		Disable:              n.Disable,
 		SystemVersion:        n.SystemVersion,
 		AppVersion:           n.AppVersion,
 		DisplayRotation:      n.DisplayRotation,
@@ -78,7 +77,6 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 
 func (p *nativeProxyOptions) toNativeOptions() *NativeOptions {
 	return &NativeOptions{
-		Disable:              p.Disable,
 		SystemVersion:        p.SystemVersion,
 		AppVersion:           p.AppVersion,
 		DisplayRotation:      p.DisplayRotation,
@@ -135,7 +133,6 @@ type NativeProxy struct {
 // NewNativeProxy creates a new NativeProxy that spawns a separate process
 func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 	proxyOptions := opts.toProxyOptions()
-	proxyOptions.CtrlUnixSocket = fmt.Sprintf("jetkvm/native/grpc/%s", randomId(4))
 	proxyOptions.VideoStreamUnixSocket = fmt.Sprintf("@jetkvm/native/video-stream/%s", randomId(4))
 
 	// Get the current executable path to spawn itself
@@ -211,6 +208,12 @@ func (w *nativeProxyStdoutHandler) Write(p []byte) (n int, err error) {
 }
 
 func (p *NativeProxy) toProcessCommand() (*cmdWrapper, error) {
+	// generate a new random ID for the gRPC socket on each restart
+	// sometimes the socket is not closed properly when the process exits
+	// this is a workaround to avoid the issue
+	p.nativeUnixSocket = fmt.Sprintf("jetkvm/native/grpc/%s", randomId(4))
+	p.options.CtrlUnixSocket = p.nativeUnixSocket
+
 	envArgs, err := utils.MarshalEnv(p.options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal environment variables: %w", err)
@@ -407,7 +410,10 @@ func (p *NativeProxy) restartProcess() error {
 
 	// Close old client
 	if p.client != nil {
-		_ = p.client.Close()
+		if err := p.client.Close(); err != nil {
+			p.logger.Warn().Err(err).Msg("failed to close gRPC client")
+		}
+		p.client = nil // set to nil to avoid closing it again
 	}
 
 	p.restarts++

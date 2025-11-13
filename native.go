@@ -16,10 +16,15 @@ var (
 )
 
 func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
+	if failsafeModeActive {
+		nativeInstance = &native.EmptyNativeInterface{}
+		nativeLogger.Warn().Msg("failsafe mode active, using empty native interface")
+		return
+	}
+
 	nativeLogger.Info().Msg("initializing native proxy")
 	var err error
 	nativeInstance, err = native.NewNativeProxy(native.NativeOptions{
-		Disable:              failsafeModeActive,
 		SystemVersion:        systemVersion,
 		AppVersion:           appVersion,
 		DisplayRotation:      config.GetDisplayRotation(),

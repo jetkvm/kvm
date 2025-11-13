@@ -9,7 +9,6 @@ import (
 )
 
 type Native struct {
-	disable              bool
 	ready                chan struct{}
 	l                    *zerolog.Logger
 	lD                   *zerolog.Logger
@@ -28,7 +27,6 @@ type Native struct {
 }
 
 type NativeOptions struct {
-	Disable              bool
 	SystemVersion        *semver.Version
 	AppVersion           *semver.Version
 	DisplayRotation      uint16
@@ -81,7 +79,6 @@ func NewNative(opts NativeOptions) *Native {
 	}
 
 	return &Native{
-		disable:              opts.Disable,
 		ready:                make(chan struct{}),
 		l:                    &nativeSubLogger,
 		lD:                   &displaySubLogger,
@@ -100,12 +97,6 @@ func NewNative(opts NativeOptions) *Native {
 }
 
 func (n *Native) Start() error {
-	if n.disable {
-		nativeLogger.Warn().Msg("native is disabled, skipping initialization")
-		setCgoDisabled(true)
-		return nil
-	}
-
 	// set up singleton
 	setInstance(n)
 	setUpNativeHandlers()
