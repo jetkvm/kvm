@@ -286,10 +286,13 @@ func newSession(config SessionConfig) (*Session, error) {
 				// Enqueue to ensure ordered processing
 				session.rpcQueue <- msg
 			})
-			triggerOTAStateUpdate()
-			triggerVideoStateUpdate()
-			triggerUSBStateUpdate()
-			notifyFailsafeMode(session)
+			// Wait for channel to be open before sending initial state
+			d.OnOpen(func() {
+				triggerOTAStateUpdate()
+				triggerVideoStateUpdate()
+				triggerUSBStateUpdate()
+				notifyFailsafeMode(session)
+			})
 		case "terminal":
 			handleTerminalChannel(d)
 		case "serial":
