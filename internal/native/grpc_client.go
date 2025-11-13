@@ -90,13 +90,6 @@ func (c *GRPCClient) handleEventStream(stream pb.NativeService_StreamEventsClien
 		}
 
 		event, err := stream.Recv()
-		// enrich the logger with the event type and data, if debug mode is enabled
-		if c.logger.GetLevel() <= zerolog.DebugLevel {
-			logger = logger.With().
-				Str("type", event.Type).
-				Interface("data", event.Data).
-				Logger()
-		}
 
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -107,6 +100,13 @@ func (c *GRPCClient) handleEventStream(stream pb.NativeService_StreamEventsClien
 			break
 		}
 
+		// enrich the logger with the event type and data, if debug mode is enabled
+		if c.logger.GetLevel() <= zerolog.DebugLevel {
+			logger = logger.With().
+				Str("type", event.Type).
+				Interface("data", event.Data).
+				Logger()
+		}
 		logger.Trace().Msg("received event")
 
 		select {
