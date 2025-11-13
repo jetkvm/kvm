@@ -21,7 +21,7 @@ func RunNativeProcess(binaryName string) {
 	logger := *nativeLogger
 	// Initialize logger
 
-	gspt.SetProcTitle(binaryName + " [native]")
+	gspt.SetProcTitle("jetkvm: [native] starting")
 
 	var proxyOptions nativeProxyOptions
 	if err := env.Parse(&proxyOptions); err != nil {
@@ -45,12 +45,14 @@ func RunNativeProcess(binaryName string) {
 
 	// Create native instance
 	nativeInstance := NewNative(*nativeOptions)
+	gspt.SetProcTitle("jetkvm: [native] initializing")
 
 	// Start native instance
 	if err := nativeInstance.Start(); err != nil {
 		logger.Fatal().Err(err).Msg("failed to start native instance")
 	}
 
+	gspt.SetProcTitle("jetkvm: [native] starting gRPC server")
 	// Create gRPC server
 	grpcServer := NewGRPCServer(nativeInstance, &logger)
 
@@ -60,11 +62,14 @@ func RunNativeProcess(binaryName string) {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to start gRPC server")
 	}
-	gspt.SetProcTitle(binaryName + " [native] ready")
+	gspt.SetProcTitle("jetkvm: [native] ready")
 
-	// Signal that we're ready by writing socket path to stdout (for parent to read)
-	fmt.Fprintf(os.Stdout, "%s\n", proxyOptions.CtrlUnixSocket)
-	defer os.Stdout.Close()
+	// Signal that we're ready by writing handshake message to stdout (for parent to read)
+	// Stdout.Write is used to avoid buffering the message
+	_, err = os.Stdout.Write([]byte(proxyOptions.HandshakeMessage + "\n"))
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to write handshake message to stdout")
+	}
 
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)

@@ -29,15 +29,27 @@ type GRPCClient struct {
 	eventCh     chan *pb.Event
 	eventDone   chan struct{}
 
+	onVideoStateChange func(state VideoState)
+	onIndevEvent       func(event string)
+	onRpcEvent         func(event string)
+
 	closed bool
 	closeM sync.Mutex
 }
 
+type grpcClientOptions struct {
+	SocketPath         string
+	Logger             *zerolog.Logger
+	OnVideoStateChange func(state VideoState)
+	OnIndevEvent       func(event string)
+	OnRpcEvent         func(event string)
+}
+
 // NewGRPCClient creates a new gRPC client connected to the native service
-func NewGRPCClient(socketPath string, logger *zerolog.Logger) (*GRPCClient, error) {
+func NewGRPCClient(opts grpcClientOptions) (*GRPCClient, error) {
 	// Connect to the Unix domain socket
 	conn, err := grpc.NewClient(
-		fmt.Sprintf("unix-abstract:%v", socketPath),
+		fmt.Sprintf("unix-abstract:%v", opts.SocketPath),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
@@ -47,11 +59,14 @@ func NewGRPCClient(socketPath string, logger *zerolog.Logger) (*GRPCClient, erro
 	client := pb.NewNativeServiceClient(conn)
 
 	grpcClient := &GRPCClient{
-		conn:      conn,
-		client:    client,
-		logger:    logger,
-		eventCh:   make(chan *pb.Event, 100),
-		eventDone: make(chan struct{}),
+		conn:               conn,
+		client:             client,
+		logger:             opts.Logger,
+		eventCh:            make(chan *pb.Event, 100),
+		eventDone:          make(chan struct{}),
+		onVideoStateChange: opts.OnVideoStateChange,
+		onIndevEvent:       opts.OnIndevEvent,
+		onRpcEvent:         opts.OnRpcEvent,
 	}
 
 	// Start event stream
@@ -60,8 +75,51 @@ func NewGRPCClient(socketPath string, logger *zerolog.Logger) (*GRPCClient, erro
 	return grpcClient, nil
 }
 
+func (c *GRPCClient) setStream(stream pb.NativeService_StreamEventsClient) {
+	c.eventM.Lock()
+	defer c.eventM.Unlock()
+	c.eventStream = stream
+}
+
+func (c *GRPCClient) handleEventStream(stream pb.NativeService_StreamEventsClient) {
+	logger := *c.logger
+	for {
+		if stream == nil {
+			logger.Error().Msg("event stream is nil")
+			break
+		}
+
+		event, err := stream.Recv()
+		// enrich the logger with the event type and data, if debug mode is enabled
+		if c.logger.GetLevel() <= zerolog.DebugLevel {
+			logger = logger.With().
+				Str("type", event.Type).
+				Interface("data", event.Data).
+				Logger()
+		}
+
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				logger.Debug().Msg("event stream closed")
+			} else {
+				logger.Warn().Err(err).Msg("event stream error")
+			}
+			break
+		}
+
+		logger.Trace().Msg("received event")
+
+		select {
+		case c.eventCh <- event:
+		default:
+			logger.Warn().Msg("event channel full, dropping event")
+		}
+	}
+}
+
 func (c *GRPCClient) startEventStream() {
 	for {
+		// check if the client is closed
 		c.closeM.Lock()
 		if c.closed {
 			c.closeM.Unlock()
@@ -72,38 +130,14 @@ func (c *GRPCClient) startEventStream() {
 		ctx := context.Background()
 		stream, err := c.client.StreamEvents(ctx, &pb.Empty{})
 		if err != nil {
-			c.logger.Warn().Err(err).Msg("failed to start event stream, retrying...")
+			c.logger.Warn().Err(err).Msg("failed to start event stream, retrying ...")
 			time.Sleep(1 * time.Second)
 			continue
 		}
 
-		c.eventM.Lock()
-		c.eventStream = stream
-		c.eventM.Unlock()
-
-		for {
-			event, err := stream.Recv()
-			if err == io.EOF {
-				c.logger.Debug().Msg("event stream closed")
-				break
-			}
-			if err != nil {
-				c.logger.Warn().Err(err).Msg("event stream error")
-				break
-			}
-
-			c.logger.Info().Str("type", event.Type).Msg("received event")
-
-			select {
-			case c.eventCh <- event:
-			default:
-				c.logger.Warn().Msg("event channel full, dropping event")
-			}
-		}
-
-		c.eventM.Lock()
-		c.eventStream = nil
-		c.eventM.Unlock()
+		c.setStream(stream)
+		c.handleEventStream(stream)
+		c.setStream(nil)
 
 		// Wait before retrying
 		time.Sleep(1 * time.Second)
@@ -111,7 +145,8 @@ func (c *GRPCClient) startEventStream() {
 }
 
 func (c *GRPCClient) checkIsReady(ctx context.Context) error {
-	c.logger.Info().Msg("connection is idle, connecting...")
+	c.logger.Trace().Msg("connection is idle, connecting ...")
+
 	resp, err := c.client.IsReady(ctx, &pb.IsReadyRequest{})
 	if err != nil {
 		if errors.Is(err, status.Error(codes.Unavailable, "")) {
@@ -130,8 +165,16 @@ func (c *GRPCClient) WaitReady() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	prevState := connectivity.Idle
 	for {
 		state := c.conn.GetState()
+		c.logger.
+			With().
+			Str("state", state.String()).
+			Int("prev_state", int(prevState)).
+			Logger()
+
+		prevState = state
 		if state == connectivity.Idle || state == connectivity.Ready {
 			if err := c.checkIsReady(ctx); err != nil {
 				time.Sleep(1 * time.Second)
@@ -139,7 +182,8 @@ func (c *GRPCClient) WaitReady() error {
 			}
 		}
 
-		c.logger.Info().Str("state", state.String()).Msg("waiting for connection to be ready")
+		c.logger.Info().Msg("waiting for connection to be ready")
+
 		if state == connectivity.Ready {
 			return nil
 		}
@@ -153,47 +197,42 @@ func (c *GRPCClient) WaitReady() error {
 	}
 }
 
+func (c *GRPCClient) handleEvent(event *pb.Event) {
+	switch event.Type {
+	case "video_state_change":
+		state := event.GetVideoState()
+		if state == nil {
+			c.logger.Warn().Msg("video state event is nil")
+			return
+		}
+		c.onVideoStateChange(VideoState{
+			Ready:          state.Ready,
+			Error:          state.Error,
+			Width:          int(state.Width),
+			Height:         int(state.Height),
+			FramePerSecond: state.FramePerSecond,
+		})
+	case "indev_event":
+		c.onIndevEvent(event.GetIndevEvent())
+	case "rpc_event":
+		c.onRpcEvent(event.GetRpcEvent())
+	default:
+		c.logger.Warn().Str("type", event.Type).Msg("unknown event type")
+	}
+}
+
 // OnEvent registers an event handler
 func (c *GRPCClient) OnEvent(eventType string, handler func(data interface{})) {
-	return
-	// go func() {
-	// 	for {
-	// 		select {
-	// 		case event := <-c.eventCh:
-	// 			if event.Type == eventType {
-	// 				var data interface{}
-	// 				switch eventType {
-	// 				case "video_state_change":
-	// 					if event.VideoState != nil {
-	// 						data = VideoState{
-	// 							Ready:          event.VideoState.Ready,
-	// 							Error:          event.VideoState.Error,
-	// 							Width:          int(event.VideoState.Width),
-	// 							Height:         int(event.VideoState.Height),
-	// 							FramePerSecond: event.VideoState.FramePerSecond,
-	// 						}
-	// 					}
-	// 				case "indev_event":
-	// 					data = event.IndevEvent
-	// 				case "rpc_event":
-	// 					data = event.RpcEvent
-	// 				case "video_frame":
-	// 					if event.VideoFrame != nil {
-	// 						data = map[string]interface{}{
-	// 							"frame":    event.VideoFrame.Frame,
-	// 							"duration": time.Duration(event.VideoFrame.DurationNs),
-	// 						}
-	// 					}
-	// 				}
-	// 				if data != nil {
-	// 					handler(data)
-	// 				}
-	// 			}
-	// 		case <-c.eventDone:
-	// 			return
-	// 		}
-	// 	}
-	// }()
+	go func() {
+		for {
+			select {
+			case event := <-c.eventCh:
+				c.handleEvent(event)
+			case <-c.eventDone:
+				return
+			}
+		}
+	}()
 }
 
 // Close closes the gRPC client
@@ -209,7 +248,9 @@ func (c *GRPCClient) Close() error {
 
 	c.eventM.Lock()
 	if c.eventStream != nil {
-		c.eventStream.CloseSend()
+		if err := c.eventStream.CloseSend(); err != nil {
+			c.logger.Warn().Err(err).Msg("failed to close event stream")
+		}
 	}
 	c.eventM.Unlock()
 

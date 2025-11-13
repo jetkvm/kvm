@@ -1,10 +1,14 @@
 package native
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -36,7 +40,19 @@ type nativeProxyOptions struct {
 	OnVideoStateChange   func(state VideoState)
 }
 
+func randomId(binaryLength int) string {
+	s := make([]byte, binaryLength)
+	_, err := rand.Read(s)
+	if err != nil {
+		nativeLogger.Error().Err(err).Msg("failed to generate random ID")
+		return strings.Repeat("0", binaryLength*2) // return all zeros if error
+	}
+	return hex.EncodeToString(s)
+}
+
 func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
+	// random 16 bytes hex string
+	handshakeMessage := randomId(16)
 	return &nativeProxyOptions{
 		Disable:              n.Disable,
 		SystemVersion:        n.SystemVersion,
@@ -47,6 +63,7 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 		OnIndevEvent:         n.OnIndevEvent,
 		OnRpcEvent:           n.OnRpcEvent,
 		OnVideoStateChange:   n.OnVideoStateChange,
+		HandshakeMessage:     handshakeMessage,
 	}
 }
 
@@ -63,13 +80,14 @@ func (p *nativeProxyOptions) toNativeOptions() *NativeOptions {
 // cmdWrapper wraps exec.Cmd to implement processCmd interface
 type cmdWrapper struct {
 	*exec.Cmd
+	stdoutHandler *nativeProxyStdoutHandler
 }
 
 func (c *cmdWrapper) GetProcess() interface {
 	Kill() error
 	Signal(sig interface{}) error
 } {
-	return &processWrapper{Process: c.Cmd.Process}
+	return &processWrapper{Process: c.Process}
 }
 
 type processWrapper struct {
@@ -107,8 +125,8 @@ type NativeProxy struct {
 // NewNativeProxy creates a new NativeProxy that spawns a separate process
 func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 	proxyOptions := opts.toProxyOptions()
-	proxyOptions.CtrlUnixSocket = "jetkvm-native-grpc"
-	proxyOptions.VideoStreamUnixSocket = "@jetkvm-native-video-stream"
+	proxyOptions.CtrlUnixSocket = fmt.Sprintf("jetkvm/native/grpc/%s", randomId(4))
+	proxyOptions.VideoStreamUnixSocket = fmt.Sprintf("@jetkvm/native/video-stream/%s", randomId(4))
 
 	// Get the current executable path to spawn itself
 	exePath, err := os.Executable()
@@ -125,54 +143,95 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 		options:               proxyOptions,
 		processWait:           make(chan error, 1),
 	}
-	proxy.cmd, err = proxy.spawnProcess()
-	nativeLogger.Info().Msg("spawned process")
+	proxy.cmd, err = proxy.toProcessCommand()
 	if err != nil {
-		return nil, fmt.Errorf("failed to spawn process: %w", err)
+		return nil, fmt.Errorf("failed to create process: %w", err)
 	}
-
-	// create unix packet
-	listener, err := net.Listen("unixpacket", proxyOptions.VideoStreamUnixSocket)
-	if err != nil {
-		nativeLogger.Warn().Err(err).Msg("failed to start server")
-		return nil, fmt.Errorf("failed to start server: %w", err)
-	}
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				nativeLogger.Warn().Err(err).Msg("failed to accept socket")
-				continue
-			}
-			nativeLogger.Info().Str("socket", conn.RemoteAddr().String()).Msg("accepted socket")
-			go proxy.handleVideoFrame(conn)
-		}
-	}()
 
 	return proxy, nil
 }
 
-func (p *NativeProxy) spawnProcess() (*cmdWrapper, error) {
+func (p *NativeProxy) startVideoStreamListener() error {
+	if p.videoStreamListener != nil {
+		return nil
+	}
+
+	logger := p.logger.With().Str("socketPath", p.videoStreamUnixSocket).Logger()
+	listener, err := net.Listen("unixpacket", p.videoStreamUnixSocket)
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to start video stream listener")
+		return fmt.Errorf("failed to start video stream listener: %w", err)
+	}
+	logger.Info().Msg("video stream listener started")
+	p.videoStreamListener = listener
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				logger.Warn().Err(err).Msg("failed to accept socket")
+				continue
+			}
+
+			logger.Info().Msg("video stream socket accepted")
+			go p.handleVideoFrame(conn)
+		}
+	}()
+
+	return nil
+}
+
+type nativeProxyStdoutHandler struct {
+	mu               *sync.Mutex
+	handshakeCh      chan bool
+	handshakeMessage string
+	handshakeDone    bool
+}
+
+func (w *nativeProxyStdoutHandler) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if !w.handshakeDone && strings.Contains(string(p), w.handshakeMessage) {
+		w.handshakeDone = true
+		w.handshakeCh <- true
+	}
+
+	os.Stdout.Write(p)
+
+	return len(p), nil
+}
+
+func (p *NativeProxy) toProcessCommand() (*cmdWrapper, error) {
 	envArgs, err := utils.MarshalEnv(p.options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal environment variables: %w", err)
 	}
 
-	cmd := exec.Command(
-		p.binaryPath,
-		"-subcomponent=native",
-	)
-	// cmd.Stdout = os.Stdout // Forward stdout to parent
-	cmd.Stderr = os.Stderr // Forward stderr to parent
+	cmd := &cmdWrapper{
+		Cmd: exec.Command(
+			p.binaryPath,
+			"-subcomponent=native",
+		),
+		stdoutHandler: &nativeProxyStdoutHandler{
+			mu:               &sync.Mutex{},
+			handshakeCh:      make(chan bool),
+			handshakeMessage: p.options.HandshakeMessage,
+		},
+	}
+	cmd.Stdout = cmd.stdoutHandler
+	cmd.Stderr = os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid:   true,
+		Pdeathsig: syscall.SIGTERM,
+	}
 	// Set environment variable to indicate native process mode
 	cmd.Env = append(
 		os.Environ(),
 		envArgs...,
 	)
-	// Wrap cmd to implement processCmd interface
-	wrappedCmd := &cmdWrapper{Cmd: cmd}
 
-	return wrappedCmd, nil
+	return cmd, nil
 }
 
 func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
@@ -184,7 +243,7 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 	for {
 		n, err := conn.Read(inboundPacket)
 		if err != nil {
-			nativeLogger.Warn().Err(err).Msg("failed to accept socket")
+			p.logger.Warn().Err(err).Msg("failed to read video frame from socket")
 			break
 		}
 		now := time.Now()
@@ -194,25 +253,27 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 	}
 }
 
-// Start starts the native process
-func (p *NativeProxy) Start() error {
-	p.restartM.Lock()
-	defer p.restartM.Unlock()
-
-	if p.stopped {
-		return fmt.Errorf("proxy is stopped")
+func (p *NativeProxy) setUpGRPCClient() error {
+	// wait until handshake completed
+	select {
+	case <-p.cmd.stdoutHandler.handshakeCh:
+		p.logger.Info().Msg("handshake completed")
+	case <-time.After(10 * time.Second):
+		return fmt.Errorf("handshake not completed within 10 seconds")
 	}
 
-	if err := p.cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start native process: %w", err)
-	}
+	logger := p.logger.With().Str("socketPath", "@"+p.nativeUnixSocket).Logger()
+	client, err := NewGRPCClient(grpcClientOptions{
+		SocketPath:         p.nativeUnixSocket,
+		Logger:             &logger,
+		OnIndevEvent:       p.options.OnIndevEvent,
+		OnRpcEvent:         p.options.OnRpcEvent,
+		OnVideoStateChange: p.options.OnVideoStateChange,
+	})
 
-	nativeLogger.Info().Msg("process ready")
-
-	client, err := NewGRPCClient(p.nativeUnixSocket, nativeLogger)
-	nativeLogger.Info().Str("socket_path", p.nativeUnixSocket).Msg("created client")
+	logger.Info().Msg("created gRPC client")
 	if err != nil {
-		return fmt.Errorf("failed to create IPC client: %w", err)
+		return fmt.Errorf("failed to create gRPC client: %w", err)
 	}
 	p.client = client
 
@@ -226,11 +287,46 @@ func (p *NativeProxy) Start() error {
 		return fmt.Errorf("failed to wait for ready: %w", err)
 	}
 
-	// Set up event handlers
-	p.setupEventHandlers(client)
-
 	// Start monitoring process for crashes
 	go p.monitorProcess()
+	return nil
+}
+
+func (p *NativeProxy) start() error {
+	// lock OS thread to prevent the process from being moved to a different thread
+	// see also https://go.dev/issue/27505
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	if err := p.cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start native process: %w", err)
+	}
+
+	p.logger.Info().Int("pid", p.cmd.Process.Pid).Msg("native process started")
+
+	if err := p.setUpGRPCClient(); err != nil {
+		return fmt.Errorf("failed to set up gRPC client: %w", err)
+	}
+
+	return nil
+}
+
+// Start starts the native process
+func (p *NativeProxy) Start() error {
+	p.restartM.Lock()
+	defer p.restartM.Unlock()
+
+	if p.stopped {
+		return fmt.Errorf("proxy is stopped")
+	}
+
+	if err := p.startVideoStreamListener(); err != nil {
+		return fmt.Errorf("failed to start video stream listener: %w", err)
+	}
+
+	if err := p.start(); err != nil {
+		return fmt.Errorf("failed to start native process: %w", err)
+	}
 
 	close(p.ready)
 	return nil
@@ -289,109 +385,17 @@ func (p *NativeProxy) restartProcess() error {
 		return fmt.Errorf("proxy is stopped")
 	}
 
-	wrappedCmd, err := p.spawnProcess()
-	if err != nil {
-		return fmt.Errorf("failed to spawn process: %w", err)
-	}
-
 	// Close old client
 	if p.client != nil {
 		_ = p.client.Close()
 	}
 
-	// Create new client
-	client, err := NewGRPCClient(p.nativeUnixSocket, p.logger)
-	if err != nil {
-		return fmt.Errorf("failed to create IPC client: %w", err)
-	}
-
-	// Set up event handlers again
-	p.setupEventHandlers(client)
-
-	// Start the process
-	if err := wrappedCmd.Start(); err != nil {
+	if err := p.start(); err != nil {
 		return fmt.Errorf("failed to start native process: %w", err)
 	}
 
-	// Wait for ready
-	if err := client.WaitReady(); err != nil {
-		if wrappedCmd.Process != nil {
-			_ = wrappedCmd.Process.Kill()
-			_ = wrappedCmd.Wait()
-		}
-		return fmt.Errorf("timeout waiting for ready: %w", err)
-	}
-
-	p.cmd = wrappedCmd
-	p.client = client
-
 	p.logger.Info().Msg("native process restarted successfully")
 	return nil
-}
-
-func (p *NativeProxy) setupEventHandlers(client *GRPCClient) {
-	// if p.opts.OnVideoStateChange != nil {
-	// 	client.OnEvent("video_state_change", func(data interface{}) {
-	// 		dataBytes, err := json.Marshal(data)
-	// 		if err != nil {
-	// 			p.logger.Warn().Err(err).Msg("failed to marshal video state event")
-	// 			return
-	// 		}
-	// 		var state VideoState
-	// 		if err := json.Unmarshal(dataBytes, &state); err != nil {
-	// 			p.logger.Warn().Err(err).Msg("failed to unmarshal video state event")
-	// 			return
-	// 		}
-	// 		p.opts.OnVideoStateChange(state)
-	// 	})
-	// }
-
-	// if p.opts.OnIndevEvent != nil {
-	// 	client.OnEvent("indev_event", func(data interface{}) {
-	// 		if event, ok := data.(string); ok {
-	// 			p.opts.OnIndevEvent(event)
-	// 		}
-	// 	})
-	// }
-
-	// if p.opts.OnRpcEvent != nil {
-	// 	client.OnEvent("rpc_event", func(data interface{}) {
-	// 		if event, ok := data.(string); ok {
-	// 			p.opts.OnRpcEvent(event)
-	// 		}
-	// 	})
-	// }
-
-	// if p.opts.OnVideoFrameReceived != nil {
-	// 	client.OnEvent("video_frame", func(data interface{}) {
-	// 		dataMap, ok := data.(map[string]interface{})
-	// 		if !ok {
-	// 			p.logger.Warn().Msg("invalid video frame event data")
-	// 			return
-	// 		}
-
-	// 		frameData, ok := dataMap["frame"].([]interface{})
-	// 		if !ok {
-	// 			p.logger.Warn().Msg("invalid frame data in event")
-	// 			return
-	// 		}
-
-	// 		frame := make([]byte, len(frameData))
-	// 		for i, v := range frameData {
-	// 			if b, ok := v.(float64); ok {
-	// 				frame[i] = byte(b)
-	// 			}
-	// 		}
-
-	// 		durationNs, ok := dataMap["duration"].(float64)
-	// 		if !ok {
-	// 			p.logger.Warn().Msg("invalid duration in event")
-	// 			return
-	// 		}
-
-	// 		p.opts.OnVideoFrameReceived(frame, time.Duration(durationNs))
-	// 	})
-	// }
 }
 
 // Stop stops the native process

@@ -16,7 +16,7 @@ var (
 )
 
 func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
-	nativeLogger.Info().Msg("initializing native")
+	nativeLogger.Info().Msg("initializing native proxy")
 	var err error
 	nativeInstance, err = native.NewNativeProxy(native.NativeOptions{
 		Disable:              failsafeModeActive,

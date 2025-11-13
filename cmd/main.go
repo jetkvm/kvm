@@ -28,12 +28,18 @@ func program() {
 	}
 	switch subcomponent {
 	case "native":
-		gspt.SetProcTitle(os.Args[0] + " [native]")
 		native.RunNativeProcess(os.Args[0])
 	default:
-		gspt.SetProcTitle(os.Args[0] + " [app]")
 		kvm.Main()
 	}
+}
+
+func setProcTitle(status string) {
+	if status != "" {
+		status = " " + status
+	}
+	title := fmt.Sprintf("jetkvm: [supervisor]%s", status)
+	gspt.SetProcTitle(title)
 }
 
 func main() {
@@ -65,6 +71,8 @@ func main() {
 }
 
 func supervise() error {
+	setProcTitle("")
+
 	// check binary path
 	binPath, err := os.Executable()
 	if err != nil {
@@ -109,6 +117,8 @@ func supervise() error {
 		return fmt.Errorf("failed to start command: %w", startErr)
 	}
 
+	setProcTitle(fmt.Sprintf("started (pid=%d)", cmd.Process.Pid))
+
 	go func() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGTERM)
@@ -116,8 +126,6 @@ func supervise() error {
 		sig := <-sigChan
 		_ = cmd.Process.Signal(sig)
 	}()
-
-	gspt.SetProcTitle(os.Args[0] + " [sup]")
 
 	cmdErr := cmd.Wait()
 	if cmdErr == nil {

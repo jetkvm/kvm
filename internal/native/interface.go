@@ -34,4 +34,3 @@ type NativeInterface interface {
 	SwitchToScreenIfDifferent(screenName string)
 	DoNotUseThisIsForCrashTestingOnly()
 }
-

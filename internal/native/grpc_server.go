@@ -6,6 +6,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/erikdubbelboer/gspt"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -314,6 +315,8 @@ func (s *grpcServer) DoNotUseThisIsForCrashTestingOnly(ctx context.Context, req 
 
 // StreamEvents streams events from the native process
 func (s *grpcServer) StreamEvents(req *pb.Empty, stream pb.NativeService_StreamEventsServer) error {
+	gspt.SetProcTitle("jetkvm: [native] connected")
+
 	eventCh := make(chan *pb.Event, 100)
 
 	// Register this channel for events
@@ -349,7 +352,6 @@ func (s *grpcServer) StreamEvents(req *pb.Empty, stream pb.NativeService_StreamE
 
 // StartGRPCServer starts the gRPC server on a Unix domain socket
 func StartGRPCServer(server *grpcServer, socketPath string, logger *zerolog.Logger) (*grpc.Server, net.Listener, error) {
-
 	lis, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to listen on socket: %w", err)

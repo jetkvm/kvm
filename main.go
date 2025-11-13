@@ -2,22 +2,36 @@ package kvm
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/erikdubbelboer/gspt"
 	"github.com/gwatts/rootcerts"
 )
 
 var appCtx context.Context
+var procPrefix string = "jetkvm: [app]"
+
+func setProcTitle(status string) {
+	if status != "" {
+		status = " " + status
+	}
+	title := fmt.Sprintf("%s%s", procPrefix, status)
+	gspt.SetProcTitle(title)
+}
 
 func Main() {
+	setProcTitle("starting")
+
 	logger.Log().Msg("JetKVM Starting Up")
 
 	checkFailsafeReason()
 	if failsafeModeActive {
+		procPrefix = "jetkvm: [app+failsafe]"
 		logger.Warn().Str("reason", failsafeModeReason).Msg("failsafe mode activated")
 	}
 
@@ -40,6 +54,7 @@ func Main() {
 	go runWatchdog()
 	go confirmCurrentSystem()
 
+	setProcTitle("initNative")
 	initNative(systemVersionLocal, appVersionLocal)
 	initDisplay()
 
@@ -54,6 +69,7 @@ func Main() {
 		Msg("loaded Root CA certificates")
 
 	// Initialize network
+	setProcTitle("initNetwork")
 	if err := initNetwork(); err != nil {
 		logger.Error().Err(err).Msg("failed to initialize network")
 		// TODO: reset config to default
@@ -61,17 +77,21 @@ func Main() {
 	}
 
 	// Initialize time sync
+	setProcTitle("initTimeSync")
 	initTimeSync()
 	timeSync.Start()
 
 	// Initialize mDNS
+	setProcTitle("initMdns")
 	if err := initMdns(); err != nil {
 		logger.Error().Err(err).Msg("failed to initialize mDNS")
 	}
 
+	setProcTitle("initPrometheus")
 	initPrometheus()
 
 	// initialize usb gadget
+	setProcTitle("initUsbGadget")
 	initUsbGadget()
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
@@ -135,6 +155,9 @@ func Main() {
 	initPublicIPState()
 
 	initSerialPort()
+
+	setProcTitle("ready")
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
