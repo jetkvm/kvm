@@ -19,7 +19,8 @@ import (
 )
 
 const (
-	maxFrameSize = 1920 * 1080 / 2
+	maxFrameSize                   = 1920 * 1080 / 2
+	defaultMaxRestartAttempts uint = 5
 )
 
 type nativeProxyOptions struct {
@@ -55,6 +56,10 @@ func randomId(binaryLength int) string {
 func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 	// random 16 bytes hex string
 	handshakeMessage := randomId(16)
+	maxRestartAttempts := defaultMaxRestartAttempts
+	if n.MaxRestartAttempts > 0 {
+		maxRestartAttempts = n.MaxRestartAttempts
+	}
 	return &nativeProxyOptions{
 		Disable:              n.Disable,
 		SystemVersion:        n.SystemVersion,
@@ -67,6 +72,7 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 		OnVideoStateChange:   n.OnVideoStateChange,
 		OnNativeRestart:      n.OnNativeRestart,
 		HandshakeMessage:     handshakeMessage,
+		MaxRestartAttempts:   maxRestartAttempts,
 	}
 }
 
@@ -405,6 +411,10 @@ func (p *NativeProxy) restartProcess() error {
 	}
 
 	p.restarts++
+	if p.restarts >= p.options.MaxRestartAttempts {
+		p.logger.Fatal().Msg("max restart attempts reached, exiting")
+		return fmt.Errorf("max restart attempts reached")
+	}
 
 	if err := p.start(); err != nil {
 		return fmt.Errorf("failed to start native process: %w", err)

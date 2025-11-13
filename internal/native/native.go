@@ -33,6 +33,7 @@ type NativeOptions struct {
 	AppVersion           *semver.Version
 	DisplayRotation      uint16
 	DefaultQualityFactor float64
+	MaxRestartAttempts   uint
 	OnVideoStateChange   func(state VideoState)
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
 	OnIndevEvent         func(event string)
