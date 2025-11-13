@@ -120,11 +120,12 @@ type NativeProxy struct {
 	binaryPath            string
 
 	client      *GRPCClient
+	clientMu    sync.RWMutex
 	cmd         *cmdWrapper
 	logger      *zerolog.Logger
 	ready       chan struct{}
 	options     *nativeProxyOptions
-	restartM    sync.Mutex
+	restartMu   sync.Mutex
 	restarts    uint
 	stopped     bool
 	processWait chan error
@@ -265,6 +266,9 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 }
 
 func (p *NativeProxy) setUpGRPCClient() error {
+	p.clientMu.Lock()
+	defer p.clientMu.Unlock()
+
 	// wait until handshake completed
 	select {
 	case <-p.cmd.stdoutHandler.handshakeCh:
@@ -300,11 +304,12 @@ func (p *NativeProxy) setUpGRPCClient() error {
 
 	// Call on native restart callback if it exists and restarts are greater than 0
 	if p.options.OnNativeRestart != nil && p.restarts > 0 {
-		p.options.OnNativeRestart()
+		go p.options.OnNativeRestart()
 	}
 
 	// Start monitoring process for crashes
 	go p.monitorProcess()
+
 	return nil
 }
 
@@ -336,8 +341,8 @@ func (p *NativeProxy) start() error {
 
 // Start starts the native process
 func (p *NativeProxy) Start() error {
-	p.restartM.Lock()
-	defer p.restartM.Unlock()
+	p.restartMu.Lock()
+	defer p.restartMu.Unlock()
 
 	if p.stopped {
 		return fmt.Errorf("proxy is stopped")
@@ -358,10 +363,10 @@ func (p *NativeProxy) Start() error {
 // monitorProcess monitors the native process and restarts it if it crashes
 func (p *NativeProxy) monitorProcess() {
 	for {
-		p.restartM.Lock()
+		p.restartMu.Lock()
 		cmd := p.cmd
 		stopped := p.stopped
-		p.restartM.Unlock()
+		p.restartMu.Unlock()
 
 		if stopped {
 			return
@@ -377,12 +382,12 @@ func (p *NativeProxy) monitorProcess() {
 		default:
 		}
 
-		p.restartM.Lock()
+		p.restartMu.Lock()
 		if p.stopped {
-			p.restartM.Unlock()
+			p.restartMu.Unlock()
 			return
 		}
-		p.restartM.Unlock()
+		p.restartMu.Unlock()
 
 		p.logger.Warn().Err(err).Msg("native process exited, restarting...")
 
@@ -401,20 +406,22 @@ func (p *NativeProxy) monitorProcess() {
 
 // restartProcess restarts the native process
 func (p *NativeProxy) restartProcess() error {
-	p.restartM.Lock()
-	defer p.restartM.Unlock()
+	p.restartMu.Lock()
+	defer p.restartMu.Unlock()
 
 	if p.stopped {
 		return fmt.Errorf("proxy is stopped")
 	}
 
 	// Close old client
+	p.clientMu.Lock()
 	if p.client != nil {
 		if err := p.client.Close(); err != nil {
 			p.logger.Warn().Err(err).Msg("failed to close gRPC client")
 		}
 		p.client = nil // set to nil to avoid closing it again
 	}
+	p.clientMu.Unlock()
 
 	p.restarts++
 	if p.restarts >= p.options.MaxRestartAttempts {
@@ -432,14 +439,16 @@ func (p *NativeProxy) restartProcess() error {
 
 // Stop stops the native process
 func (p *NativeProxy) Stop() error {
-	p.restartM.Lock()
-	defer p.restartM.Unlock()
+	p.restartMu.Lock()
+	defer p.restartMu.Unlock()
 
 	p.stopped = true
 
+	p.clientMu.Lock()
 	if err := p.client.Close(); err != nil {
 		p.logger.Warn().Err(err).Msg("failed to close IPC client")
 	}
+	p.clientMu.Unlock()
 
 	if p.cmd.Process != nil {
 		if err := p.cmd.Process.Kill(); err != nil {
@@ -451,123 +460,220 @@ func (p *NativeProxy) Stop() error {
 	return nil
 }
 
+func zeroValue[V string | bool | float64]() V {
+	var v V
+	return v
+}
+
+func nativeProxyClientExec[K comparable, V string | bool | float64](p *NativeProxy, fn func(*GRPCClient) (V, error)) (V, error) {
+	p.clientMu.RLock()
+	defer p.clientMu.RUnlock()
+
+	if p.client == nil {
+		return zeroValue[V](), fmt.Errorf("gRPC client not initialized")
+	}
+
+	return fn(p.client)
+}
+
+func nativeProxyClientExecWithoutArgument(p *NativeProxy, fn func(*GRPCClient) error) error {
+	p.clientMu.RLock()
+	defer p.clientMu.RUnlock()
+
+	if p.client == nil {
+		return fmt.Errorf("gRPC client not initialized")
+	}
+
+	return fn(p.client)
+}
+
 // Implement all Native methods by forwarding to gRPC client
 func (p *NativeProxy) VideoSetSleepMode(enabled bool) error {
-	return p.client.VideoSetSleepMode(enabled)
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.VideoSetSleepMode(enabled)
+	})
 }
 
 func (p *NativeProxy) VideoGetSleepMode() (bool, error) {
-	return p.client.VideoGetSleepMode()
+	return nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.VideoGetSleepMode()
+	})
 }
 
 func (p *NativeProxy) VideoSleepModeSupported() bool {
-	return p.client.VideoSleepModeSupported()
+	result, _ := nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.VideoSleepModeSupported(), nil
+	})
+	return result
 }
 
 func (p *NativeProxy) VideoSetQualityFactor(factor float64) error {
-	return p.client.VideoSetQualityFactor(factor)
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.VideoSetQualityFactor(factor)
+	})
 }
 
 func (p *NativeProxy) VideoGetQualityFactor() (float64, error) {
-	return p.client.VideoGetQualityFactor()
+	return nativeProxyClientExec[float64](p, func(client *GRPCClient) (float64, error) {
+		return client.VideoGetQualityFactor()
+	})
 }
 
 func (p *NativeProxy) VideoSetEDID(edid string) error {
-	return p.client.VideoSetEDID(edid)
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.VideoSetEDID(edid)
+	})
 }
 
 func (p *NativeProxy) VideoGetEDID() (string, error) {
-	return p.client.VideoGetEDID()
+	return nativeProxyClientExec[string](p, func(client *GRPCClient) (string, error) {
+		return client.VideoGetEDID()
+	})
 }
 
 func (p *NativeProxy) VideoLogStatus() (string, error) {
-	return p.client.VideoLogStatus()
+	return nativeProxyClientExec[string](p, func(client *GRPCClient) (string, error) {
+		return client.VideoLogStatus()
+	})
 }
 
 func (p *NativeProxy) VideoStop() error {
-	return p.client.VideoStop()
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.VideoStop()
+	})
 }
 
 func (p *NativeProxy) VideoStart() error {
-	return p.client.VideoStart()
+	return nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		return client.VideoStart()
+	})
 }
 
 func (p *NativeProxy) GetLVGLVersion() (string, error) {
-	return p.client.GetLVGLVersion()
+	return nativeProxyClientExec[string](p, func(client *GRPCClient) (string, error) {
+		return client.GetLVGLVersion()
+	})
 }
 
 func (p *NativeProxy) UIObjHide(objName string) (bool, error) {
-	return p.client.UIObjHide(objName)
+	result, err := nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.UIObjHide(objName)
+	})
+	return result, err
 }
 
 func (p *NativeProxy) UIObjShow(objName string) (bool, error) {
-	return p.client.UIObjShow(objName)
+	result, err := nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.UIObjShow(objName)
+	})
+	return result, err
 }
 
 func (p *NativeProxy) UISetVar(name string, value string) {
-	p.client.UISetVar(name, value)
+	_ = nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		client.UISetVar(name, value)
+		return nil
+	})
 }
 
 func (p *NativeProxy) UIGetVar(name string) string {
-	return p.client.UIGetVar(name)
+	result, _ := nativeProxyClientExec[string](p, func(client *GRPCClient) (string, error) {
+		return client.UIGetVar(name), nil
+	})
+	return result
 }
 
 func (p *NativeProxy) UIObjAddState(objName string, state string) (bool, error) {
-	return p.client.UIObjAddState(objName, state)
+	return nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.UIObjAddState(objName, state)
+	})
 }
 
 func (p *NativeProxy) UIObjClearState(objName string, state string) (bool, error) {
-	return p.client.UIObjClearState(objName, state)
+	return nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.UIObjClearState(objName, state)
+	})
 }
 
 func (p *NativeProxy) UIObjAddFlag(objName string, flag string) (bool, error) {
-	return p.client.UIObjAddFlag(objName, flag)
+	return nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.UIObjAddFlag(objName, flag)
+	})
 }
 
 func (p *NativeProxy) UIObjClearFlag(objName string, flag string) (bool, error) {
-	return p.client.UIObjClearFlag(objName, flag)
-}
-
-func (p *NativeProxy) UIObjSetOpacity(objName string, opacity int) (bool, error) {
-	return p.client.UIObjSetOpacity(objName, opacity)
+	return nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.UIObjClearFlag(objName, flag)
+	})
 }
 
 func (p *NativeProxy) UIObjFadeIn(objName string, duration uint32) (bool, error) {
-	return p.client.UIObjFadeIn(objName, duration)
+	return nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.UIObjFadeIn(objName, duration)
+	})
 }
 
 func (p *NativeProxy) UIObjFadeOut(objName string, duration uint32) (bool, error) {
-	return p.client.UIObjFadeOut(objName, duration)
+	return nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.UIObjFadeOut(objName, duration)
+	})
 }
 
 func (p *NativeProxy) UIObjSetLabelText(objName string, text string) (bool, error) {
-	return p.client.UIObjSetLabelText(objName, text)
+	return nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.UIObjSetLabelText(objName, text)
+	})
 }
 
 func (p *NativeProxy) UIObjSetImageSrc(objName string, image string) (bool, error) {
-	return p.client.UIObjSetImageSrc(objName, image)
+	return nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.UIObjSetImageSrc(objName, image)
+	})
+}
+
+func (p *NativeProxy) UIObjSetOpacity(objName string, opacity int) (bool, error) {
+	return nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.UIObjSetOpacity(objName, opacity)
+	})
 }
 
 func (p *NativeProxy) DisplaySetRotation(rotation uint16) (bool, error) {
-	return p.client.DisplaySetRotation(rotation)
+	return nativeProxyClientExec[bool](p, func(client *GRPCClient) (bool, error) {
+		return client.DisplaySetRotation(rotation)
+	})
 }
 
 func (p *NativeProxy) UpdateLabelIfChanged(objName string, newText string) {
-	p.client.UpdateLabelIfChanged(objName, newText)
+	_ = nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		client.UpdateLabelIfChanged(objName, newText)
+		return nil
+	})
 }
 
 func (p *NativeProxy) UpdateLabelAndChangeVisibility(objName string, newText string) {
-	p.client.UpdateLabelAndChangeVisibility(objName, newText)
+	_ = nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		client.UpdateLabelAndChangeVisibility(objName, newText)
+		return nil
+	})
 }
 
 func (p *NativeProxy) SwitchToScreenIf(screenName string, shouldSwitch []string) {
-	p.client.SwitchToScreenIf(screenName, shouldSwitch)
+	_ = nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		client.SwitchToScreenIf(screenName, shouldSwitch)
+		return nil
+	})
 }
 
 func (p *NativeProxy) SwitchToScreenIfDifferent(screenName string) {
-	p.client.SwitchToScreenIfDifferent(screenName)
+	_ = nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		client.SwitchToScreenIfDifferent(screenName)
+		return nil
+	})
 }
 
 func (p *NativeProxy) DoNotUseThisIsForCrashTestingOnly() {
-	p.client.DoNotUseThisIsForCrashTestingOnly()
+	_ = nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		client.DoNotUseThisIsForCrashTestingOnly()
+		return nil
+	})
 }
