@@ -4,14 +4,13 @@
   "version": "2025.11.07.2130",
   "type": "module",
   "engines": {
-    "node": "22.x"
+    "node": "^22.20.0"
   },
   "scripts": {
     "dev": "./dev_device.sh",
     "dev:ssl": "USE_SSL=true ./dev_device.sh",
     "dev:cloud": "vite dev --mode=cloud-development",
     "build": "npm run build:prod",
-    "build:all": "./build-all.sh",
     "build:device": "npm run i18n:compile && tsc && vite build --mode=device --emptyOutDir",
     "build:staging": "npm run i18n:compile && tsc && vite build --mode=cloud-staging",
     "build:prod": "npm run i18n:compile && tsc && vite build --mode=cloud-production",
@@ -56,6 +55,7 @@
     "react-use-websocket": "^4.13.0",
     "react-xtermjs": "^1.0.10",
     "recharts": "^3.3.0",
+    "semver": "^7.7.3",
     "tailwind-merge": "^3.3.1",
     "tslog": "^4.10.2",
     "usehooks-ts": "^3.1.1",
