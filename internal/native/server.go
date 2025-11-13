@@ -16,24 +16,37 @@ import (
 // stdout - exchange messages with the parent process
 // stderr - logging and error messages
 
+var (
+	procPrefix    string = "jetkvm: [native]"
+	lastProcTitle string
+)
+
+func setProcTitle(status string) {
+	lastProcTitle = status
+	if status != "" {
+		status = " " + status
+	}
+	title := fmt.Sprintf("%s%s", procPrefix, status)
+	gspt.SetProcTitle(title)
+}
+
 // RunNativeProcess runs the native process mode
 func RunNativeProcess(binaryName string) {
-	logger := *nativeLogger
-	// Initialize logger
+	logger := nativeLogger.With().Int("pid", os.Getpid()).Logger()
+	setProcTitle("starting")
 
-	gspt.SetProcTitle("jetkvm: [native] starting")
-
+	// Parse native options
 	var proxyOptions nativeProxyOptions
 	if err := env.Parse(&proxyOptions); err != nil {
-		logger.Fatal().Err(err).Msg("failed to parse native options")
+		logger.Fatal().Err(err).Msg("failed to parse native proxy options")
 	}
 
-	// connect to video stream socket
+	// Connect to video stream socket
 	conn, err := net.Dial("unixpacket", proxyOptions.VideoStreamUnixSocket)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to connect to video stream socket")
 	}
-	logger.Info().Str("video_stream_socket_path", proxyOptions.VideoStreamUnixSocket).Msg("connected to video stream socket")
+	logger.Info().Str("videoStreamSocketPath", proxyOptions.VideoStreamUnixSocket).Msg("connected to video stream socket")
 
 	nativeOptions := proxyOptions.toNativeOptions()
 	nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
@@ -52,9 +65,10 @@ func RunNativeProcess(binaryName string) {
 		logger.Fatal().Err(err).Msg("failed to start native instance")
 	}
 
-	gspt.SetProcTitle("jetkvm: [native] starting gRPC server")
+	grpcLogger := logger.With().Str("socketPath", fmt.Sprintf("@%v", proxyOptions.CtrlUnixSocket)).Logger()
+	setProcTitle("starting gRPC server")
 	// Create gRPC server
-	grpcServer := NewGRPCServer(nativeInstance, &logger)
+	grpcServer := NewGRPCServer(nativeInstance, &grpcLogger)
 
 	logger.Info().Msg("starting gRPC server")
 	// Start gRPC server
@@ -62,7 +76,7 @@ func RunNativeProcess(binaryName string) {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to start gRPC server")
 	}
-	gspt.SetProcTitle("jetkvm: [native] ready")
+	setProcTitle("ready")
 
 	// Signal that we're ready by writing handshake message to stdout (for parent to read)
 	// Stdout.Write is used to avoid buffering the message
@@ -76,8 +90,10 @@ func RunNativeProcess(binaryName string) {
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
 	// Wait for signal
-	<-sigChan
-	logger.Info().Msg("received termination signal")
+	sig := <-sigChan
+	logger.Info().
+		Str("signal", sig.String()).
+		Msg("received termination signal")
 
 	// Graceful shutdown
 	server.GracefulStop()

@@ -33,11 +33,13 @@ type nativeProxyOptions struct {
 	BinaryPath            string          `env:"JETKVM_NATIVE_BINARY_PATH"`
 	LoggerLevel           zerolog.Level   `env:"JETKVM_NATIVE_LOGGER_LEVEL"`
 	HandshakeMessage      string          `env:"JETKVM_NATIVE_HANDSHAKE_MESSAGE"`
+	MaxRestartAttempts    uint
 
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
 	OnVideoStateChange   func(state VideoState)
+	OnNativeRestart      func()
 }
 
 func randomId(binaryLength int) string {
@@ -63,6 +65,7 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 		OnIndevEvent:         n.OnIndevEvent,
 		OnRpcEvent:           n.OnRpcEvent,
 		OnVideoStateChange:   n.OnVideoStateChange,
+		OnNativeRestart:      n.OnNativeRestart,
 		HandshakeMessage:     handshakeMessage,
 	}
 }
@@ -118,6 +121,7 @@ type NativeProxy struct {
 	ready       chan struct{}
 	options     *nativeProxyOptions
 	restartM    sync.Mutex
+	restarts    uint
 	stopped     bool
 	processWait chan error
 }
@@ -142,10 +146,7 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 		ready:                 make(chan struct{}),
 		options:               proxyOptions,
 		processWait:           make(chan error, 1),
-	}
-	proxy.cmd, err = proxy.toProcessCommand()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create process: %w", err)
+		restarts:              0,
 	}
 
 	return proxy, nil
@@ -195,6 +196,7 @@ func (w *nativeProxyStdoutHandler) Write(p []byte) (n int, err error) {
 	if !w.handshakeDone && strings.Contains(string(p), w.handshakeMessage) {
 		w.handshakeDone = true
 		w.handshakeCh <- true
+		return len(p), nil
 	}
 
 	os.Stdout.Write(p)
@@ -287,6 +289,11 @@ func (p *NativeProxy) setUpGRPCClient() error {
 		return fmt.Errorf("failed to wait for ready: %w", err)
 	}
 
+	// Call on native restart callback if it exists and restarts are greater than 0
+	if p.options.OnNativeRestart != nil && p.restarts > 0 {
+		p.options.OnNativeRestart()
+	}
+
 	// Start monitoring process for crashes
 	go p.monitorProcess()
 	return nil
@@ -297,6 +304,13 @@ func (p *NativeProxy) start() error {
 	// see also https://go.dev/issue/27505
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+
+	cmd, err := p.toProcessCommand()
+	if err != nil {
+		return fmt.Errorf("failed to create process: %w", err)
+	}
+
+	p.cmd = cmd
 
 	if err := p.cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start native process: %w", err)
@@ -389,6 +403,8 @@ func (p *NativeProxy) restartProcess() error {
 	if p.client != nil {
 		_ = p.client.Close()
 	}
+
+	p.restarts++
 
 	if err := p.start(); err != nil {
 		return fmt.Errorf("failed to start native process: %w", err)

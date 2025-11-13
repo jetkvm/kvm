@@ -232,6 +232,14 @@ func updateStaticContents() {
 	// nativeInstance.UpdateLabelAndChangeVisibility("boot_screen_device_id", GetDeviceID())
 }
 
+// configureDisplayOnNativeRestart is called when the native process restarts
+// it ensures the display is configured correctly after the restart
+func configureDisplayOnNativeRestart() {
+	displayLogger.Info().Msg("native restarted, configuring display")
+	updateStaticContents()
+	requestDisplayUpdate(true, "native_restart")
+}
+
 // setDisplayBrightness sets /sys/class/backlight/backlight/brightness to alter
 // the backlight brightness of the JetKVM hardware's display.
 func setDisplayBrightness(brightness int, reason string) error {

@@ -24,6 +24,9 @@ func initNative(systemVersion *semver.Version, appVersion *semver.Version) {
 		AppVersion:           appVersion,
 		DisplayRotation:      config.GetDisplayRotation(),
 		DefaultQualityFactor: config.VideoQualityFactor,
+		OnNativeRestart: func() {
+			configureDisplayOnNativeRestart()
+		},
 		OnVideoStateChange: func(state native.VideoState) {
 			lastVideoState = state
 			triggerVideoStateUpdate()

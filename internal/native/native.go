@@ -37,6 +37,7 @@ type NativeOptions struct {
 	OnVideoFrameReceived func(frame []byte, duration time.Duration)
 	OnIndevEvent         func(event string)
 	OnRpcEvent           func(event string)
+	OnNativeRestart      func()
 }
 
 func NewNative(opts NativeOptions) *Native {

@@ -6,7 +6,6 @@ import (
 	"net"
 	"sync"
 
-	"github.com/erikdubbelboer/gspt"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -160,6 +159,9 @@ func (s *grpcServer) VideoLogStatus(ctx context.Context, req *pb.Empty) (*pb.Vid
 }
 
 func (s *grpcServer) VideoStop(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
+	procPrefix = "jetkvm: [native]"
+	setProcTitle(lastProcTitle)
+
 	if err := s.native.VideoStop(); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -167,6 +169,9 @@ func (s *grpcServer) VideoStop(ctx context.Context, req *pb.Empty) (*pb.Empty, e
 }
 
 func (s *grpcServer) VideoStart(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
+	procPrefix = "jetkvm: [native+video]"
+	setProcTitle(lastProcTitle)
+
 	if err := s.native.VideoStart(); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -315,7 +320,8 @@ func (s *grpcServer) DoNotUseThisIsForCrashTestingOnly(ctx context.Context, req 
 
 // StreamEvents streams events from the native process
 func (s *grpcServer) StreamEvents(req *pb.Empty, stream pb.NativeService_StreamEventsServer) error {
-	gspt.SetProcTitle("jetkvm: [native] connected")
+	setProcTitle("connected")
+	defer setProcTitle("waiting")
 
 	eventCh := make(chan *pb.Event, 100)
 
