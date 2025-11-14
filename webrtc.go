@@ -286,9 +286,13 @@ func newSession(config SessionConfig) (*Session, error) {
 				// Enqueue to ensure ordered processing
 				session.rpcQueue <- msg
 			})
-			triggerOTAStateUpdate(nil)
-			triggerVideoStateUpdate()
-			triggerUSBStateUpdate()
+			// Wait for channel to be open before sending initial state
+			d.OnOpen(func() {
+				triggerOTAStateUpdate()
+				triggerVideoStateUpdate()
+				triggerUSBStateUpdate()
+				notifyFailsafeMode(session)
+			})
 		case "terminal":
 			handleTerminalChannel(d)
 		case "serial":
@@ -391,10 +395,12 @@ func newSession(config SessionConfig) (*Session, error) {
 }
 
 func onActiveSessionsChanged() {
+	notifyFailsafeMode(currentSession)
 	requestDisplayUpdate(true, "active_sessions_changed")
 }
 
 func onFirstSessionConnected() {
+	notifyFailsafeMode(currentSession)
 	_ = nativeInstance.VideoStart()
 	stopVideoSleepModeTicker()
 }
