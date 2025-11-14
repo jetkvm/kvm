@@ -243,10 +243,11 @@ export async function getLocalVersion() {
   return response.result;
 }
 
+export type UpdateComponent = "app" | "system";
+export type UpdateComponents = Partial<Record<UpdateComponent, string>>;
+
 export interface updateParams {
-  appTargetVersion?: string;
-  systemTargetVersion?: string;
-  components?: string[];
+  components?: UpdateComponents;
 }
 
 export async function checkUpdateComponents(params: updateParams, includePreRelease: boolean) {

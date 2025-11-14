@@ -1,13 +1,20 @@
 package ota
 
 import (
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog"
+)
+
+var (
+	availableComponents = []string{"app", "system"}
+	defaultComponents   = map[string]string{
+		"app":    "",
+		"system": "",
+	}
 )
 
 // UpdateMetadata represents the metadata of an update
@@ -48,9 +55,9 @@ type PostRebootAction struct {
 type componentUpdateStatus struct {
 	pending              bool
 	available            bool
+	availableReason      string // why the component is available or not available
 	version              string
 	localVersion         string
-	targetVersion        string
 	url                  string
 	hash                 string
 	downloadProgress     float32
@@ -59,30 +66,27 @@ type componentUpdateStatus struct {
 	verifiedAt           time.Time
 	updateProgress       float32
 	updatedAt            time.Time
-	dependsOn            []string //nolint:unused
+	dependsOn            []string
 }
 
-// RPCState represents the current OTA state for the RPC API
-type RPCState struct {
-	Updating                   bool       `json:"updating"`
-	Error                      string     `json:"error,omitempty"`
-	MetadataFetchedAt          *time.Time `json:"metadataFetchedAt,omitempty"`
-	AppUpdatePending           bool       `json:"appUpdatePending"`
-	SystemUpdatePending        bool       `json:"systemUpdatePending"`
-	AppDownloadProgress        *float32   `json:"appDownloadProgress,omitempty"` //TODO: implement for progress bar
-	AppDownloadFinishedAt      *time.Time `json:"appDownloadFinishedAt,omitempty"`
-	SystemDownloadProgress     *float32   `json:"systemDownloadProgress,omitempty"` //TODO: implement for progress bar
-	SystemDownloadFinishedAt   *time.Time `json:"systemDownloadFinishedAt,omitempty"`
-	AppVerificationProgress    *float32   `json:"appVerificationProgress,omitempty"`
-	AppVerifiedAt              *time.Time `json:"appVerifiedAt,omitempty"`
-	SystemVerificationProgress *float32   `json:"systemVerificationProgress,omitempty"`
-	SystemVerifiedAt           *time.Time `json:"systemVerifiedAt,omitempty"`
-	AppUpdateProgress          *float32   `json:"appUpdateProgress,omitempty"` //TODO: implement for progress bar
-	AppUpdatedAt               *time.Time `json:"appUpdatedAt,omitempty"`
-	SystemUpdateProgress       *float32   `json:"systemUpdateProgress,omitempty"` //TODO: port rk_ota, then implement
-	SystemUpdatedAt            *time.Time `json:"systemUpdatedAt,omitempty"`
-	SystemTargetVersion        *string    `json:"systemTargetVersion,omitempty"`
-	AppTargetVersion           *string    `json:"appTargetVersion,omitempty"`
+func (c *componentUpdateStatus) getZerologLogger(l *zerolog.Logger) *zerolog.Logger {
+	logger := l.With().
+		Bool("pending", c.pending).
+		Bool("available", c.available).
+		Str("availableReason", c.availableReason).
+		Str("version", c.version).
+		Str("localVersion", c.localVersion).
+		Str("url", c.url).
+		Str("hash", c.hash).
+		Float32("downloadProgress", c.downloadProgress).
+		Time("downloadFinishedAt", c.downloadFinishedAt).
+		Float32("verificationProgress", c.verificationProgress).
+		Time("verifiedAt", c.verifiedAt).
+		Float32("updateProgress", c.updateProgress).
+		Time("updatedAt", c.updatedAt).
+		Strs("dependsOn", c.dependsOn).
+		Logger()
+	return &logger
 }
 
 // HwRebootFunc is a function that reboots the hardware
@@ -118,39 +122,6 @@ type State struct {
 	getLocalVersion         GetLocalVersionFunc
 	onStateUpdate           OnStateUpdateFunc
 	resetConfig             ResetConfigFunc
-}
-
-// SetTargetVersion sets the target version for a component
-func (s *State) SetTargetVersion(component string, version string) error {
-	parsedVersion := version
-	if version != "" {
-		// validate if it's a valid semver string first
-		semverVersion, err := semver.NewVersion(version)
-		if err != nil {
-			return fmt.Errorf("not a valid semantic version: %w", err)
-		}
-		parsedVersion = semverVersion.String()
-	}
-
-	// check if the component exists
-	componentUpdate, ok := s.componentUpdateStatuses[component]
-	if !ok {
-		return fmt.Errorf("component %s not found", component)
-	}
-
-	componentUpdate.targetVersion = parsedVersion
-	s.componentUpdateStatuses[component] = componentUpdate
-
-	return nil
-}
-
-// GetTargetVersion returns the target version for a component
-func (s *State) GetTargetVersion(component string) string {
-	componentUpdate, ok := s.componentUpdateStatuses[component]
-	if !ok {
-		return ""
-	}
-	return componentUpdate.targetVersion
 }
 
 func toUpdateStatus(appUpdate *componentUpdateStatus, systemUpdate *componentUpdateStatus, error string) *UpdateStatus {
@@ -209,8 +180,9 @@ type Options struct {
 // NewState creates a new OTA state
 func NewState(opts Options) *State {
 	components := make(map[string]componentUpdateStatus)
-	components["app"] = componentUpdateStatus{}
-	components["system"] = componentUpdateStatus{}
+	for _, component := range availableComponents {
+		components[component] = componentUpdateStatus{}
+	}
 
 	s := &State{
 		l:                       opts.Logger,
@@ -228,50 +200,20 @@ func NewState(opts Options) *State {
 	return s
 }
 
-// ToRPCState converts the State to the RPCState
-// probably we need a generator for this ...
-func (s *State) ToRPCState() *RPCState {
-	r := &RPCState{
-		Updating:          s.updating,
-		Error:             s.error,
-		MetadataFetchedAt: &s.metadataFetchedAt,
-	}
+// appUpdateStatus.url = remoteMetadata.AppURL
+// appUpdateStatus.hash = remoteMetadata.AppHash
+// appUpdateStatus.version = remoteMetadata.AppVersion
 
-	app, ok := s.componentUpdateStatuses["app"]
-	if ok {
-		r.AppUpdatePending = app.pending
-		r.AppDownloadProgress = &app.downloadProgress
-		if !app.downloadFinishedAt.IsZero() {
-			r.AppDownloadFinishedAt = &app.downloadFinishedAt
-		}
-		r.AppVerificationProgress = &app.verificationProgress
-		if !app.verifiedAt.IsZero() {
-			r.AppVerifiedAt = &app.verifiedAt
-		}
-		r.AppUpdateProgress = &app.updateProgress
-		if !app.updatedAt.IsZero() {
-			r.AppUpdatedAt = &app.updatedAt
-		}
-		r.AppTargetVersion = &app.targetVersion
-	}
+// systemUpdateStatus.url = remoteMetadata.SystemURL
+// systemUpdateStatus.hash = remoteMetadata.SystemHash
+// systemUpdateStatus.version = remoteMetadata.SystemVersion
 
-	system, ok := s.componentUpdateStatuses["system"]
-	if ok {
-		r.SystemUpdatePending = system.pending
-		r.SystemDownloadProgress = &system.downloadProgress
-		if !system.downloadFinishedAt.IsZero() {
-			r.SystemDownloadFinishedAt = &system.downloadFinishedAt
-		}
-		r.SystemVerificationProgress = &system.verificationProgress
-		if !system.verifiedAt.IsZero() {
-			r.SystemVerifiedAt = &system.verifiedAt
-		}
-		r.SystemUpdateProgress = &system.updateProgress
-		if !system.updatedAt.IsZero() {
-			r.SystemUpdatedAt = &system.updatedAt
-		}
-		r.SystemTargetVersion = &system.targetVersion
-	}
-
-	return r
-}
+// // Get remote versions
+// systemVersionRemote, err := semver.NewVersion(remoteMetadata.SystemVersion)
+//
+//	if err != nil {
+//		err = fmt.Errorf("error parsing remote system version: %w", err)
+//		return err
+//	}
+//
+// systemUpdateStatus.available = systemVersionRemote.GreaterThan(systemVersionLocal)

@@ -22,9 +22,6 @@ func (s *State) componentUpdateError(prefix string, err error, l *zerolog.Logger
 }
 
 func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	l := s.l.With().Str("path", appUpdatePath).Logger()
 
 	if err := s.downloadFile(ctx, appUpdatePath, appUpdate.url, "app"); err != nil {

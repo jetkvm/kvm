@@ -43,10 +43,9 @@ func newOtaState() *State {
 func TestCheckUpdateComponents(t *testing.T) {
 	otaState := newOtaState()
 	updateParams := UpdateParams{
-		DeviceID:            "test",
-		IncludePreRelease:   false,
-		SystemTargetVersion: "0.2.2",
-		Components:          []string{"system"},
+		DeviceID:          "test",
+		IncludePreRelease: false,
+		Components:        map[string]string{"system": "0.2.2"},
 	}
 	info, err := otaState.GetUpdateStatus(context.Background(), updateParams)
 	t.Logf("update status: %+v", info)

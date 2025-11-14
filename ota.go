@@ -135,26 +135,21 @@ func rpcGetLocalVersion() (*ota.LocalMetadata, error) {
 }
 
 type updateParams struct {
-	AppTargetVersion    string   `json:"appTargetVersion"`
-	SystemTargetVersion string   `json:"systemTargetVersion"`
-	Components          []string `json:"components,omitempty"`
+	Components map[string]string `json:"components,omitempty"`
 }
 
 func rpcTryUpdate() error {
 	return rpcTryUpdateComponents(updateParams{
-		AppTargetVersion:    "",
-		SystemTargetVersion: "",
+		Components: make(map[string]string),
 	}, config.IncludePreRelease, false)
 }
 
 // rpcCheckUpdateComponents checks the update status for the given components
 func rpcCheckUpdateComponents(params updateParams, includePreRelease bool) (*ota.UpdateStatus, error) {
 	updateParams := ota.UpdateParams{
-		DeviceID:            GetDeviceID(),
-		IncludePreRelease:   includePreRelease,
-		AppTargetVersion:    params.AppTargetVersion,
-		SystemTargetVersion: params.SystemTargetVersion,
-		Components:          params.Components,
+		DeviceID:          GetDeviceID(),
+		IncludePreRelease: includePreRelease,
+		Components:        params.Components,
 	}
 	info, err := otaState.GetUpdateStatus(context.Background(), updateParams)
 	if err != nil {
@@ -169,16 +164,6 @@ func rpcTryUpdateComponents(params updateParams, includePreRelease bool, resetCo
 		IncludePreRelease: includePreRelease,
 		ResetConfig:       resetConfig,
 		Components:        params.Components,
-	}
-
-	updateParams.AppTargetVersion = params.AppTargetVersion
-	if err := otaState.SetTargetVersion("app", params.AppTargetVersion); err != nil {
-		return fmt.Errorf("failed to set app target version: %w", err)
-	}
-
-	updateParams.SystemTargetVersion = params.SystemTargetVersion
-	if err := otaState.SetTargetVersion("system", params.SystemTargetVersion); err != nil {
-		return fmt.Errorf("failed to set system target version: %w", err)
 	}
 
 	go func() {

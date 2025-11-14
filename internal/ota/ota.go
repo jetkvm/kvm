@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"slices"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
+	"github.com/rs/zerolog"
 )
 
 // UpdateReleaseAPIEndpoint updates the release API endpoint
@@ -32,26 +31,18 @@ func (s *State) getUpdateURL(params UpdateParams) (string, error, bool) {
 
 	isCustomVersion := false
 
-	appTargetVersion := s.GetTargetVersion("app")
-	if appTargetVersion != "" && params.AppTargetVersion == "" {
-		params.AppTargetVersion = appTargetVersion
-	}
-	systemTargetVersion := s.GetTargetVersion("system")
-	if systemTargetVersion != "" && params.SystemTargetVersion == "" {
-		params.SystemTargetVersion = systemTargetVersion
-	}
-
 	query := updateURL.Query()
 	query.Set("deviceId", params.DeviceID)
 	query.Set("prerelease", fmt.Sprintf("%v", params.IncludePreRelease))
-	if params.AppTargetVersion != "" {
-		query.Set("appVersion", params.AppTargetVersion)
+
+	// set the custom versions if they are specified
+	for component, constraint := range params.Components {
+		if constraint != "" {
+			query.Set(component+"Version", constraint)
+		}
 		isCustomVersion = true
 	}
-	if params.SystemTargetVersion != "" {
-		query.Set("systemVersion", params.SystemTargetVersion)
-		isCustomVersion = true
-	}
+
 	updateURL.RawQuery = query.Encode()
 
 	return updateURL.String(), nil, isCustomVersion
@@ -98,10 +89,6 @@ func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*
 	return metadata, nil
 }
 
-func (s *State) TryUpdate(ctx context.Context, params UpdateParams) error {
-	return s.doUpdate(ctx, params)
-}
-
 func (s *State) triggerStateUpdate() {
 	s.onStateUpdate(s.ToRPCState())
 }
@@ -111,7 +98,22 @@ func (s *State) triggerComponentUpdateState(component string, update *componentU
 	s.triggerStateUpdate()
 }
 
+// TryUpdate tries to update the given components
+// if the update is already in progress, it returns an error
+func (s *State) TryUpdate(ctx context.Context, params UpdateParams) error {
+	locked := s.mu.TryLock()
+	if !locked {
+		return fmt.Errorf("update already in progress")
+	}
+
+	return s.doUpdate(ctx, params)
+}
+
+// before calling doUpdate, the caller must have locked the mutex
+// otherwise a runtime error will occur
 func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
+	defer s.mu.Unlock()
+
 	scopedLogger := s.l.With().
 		Interface("params", params).
 		Logger()
@@ -122,10 +124,11 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	}
 
 	if len(params.Components) == 0 {
-		params.Components = []string{"app", "system"}
+		params.Components = defaultComponents
 	}
-	shouldUpdateApp := slices.Contains(params.Components, "app")
-	shouldUpdateSystem := slices.Contains(params.Components, "system")
+
+	_, shouldUpdateApp := params.Components["app"]
+	_, shouldUpdateSystem := params.Components["system"]
 
 	if !shouldUpdateApp && !shouldUpdateSystem {
 		return fmt.Errorf("no components to update")
@@ -211,13 +214,11 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 
 // UpdateParams represents the parameters for the update
 type UpdateParams struct {
-	DeviceID            string   `json:"deviceID"`
-	AppTargetVersion    string   `json:"appTargetVersion"`
-	SystemTargetVersion string   `json:"systemTargetVersion"`
-	Components          []string `json:"components,omitempty"`
-	IncludePreRelease   bool     `json:"includePreRelease"`
-	CheckOnly           bool     `json:"checkOnly"`
-	ResetConfig         bool     `json:"resetConfig"`
+	DeviceID          string            `json:"deviceID"`
+	Components        map[string]string `json:"components,omitempty"`
+	IncludePreRelease bool              `json:"includePreRelease"`
+	CheckOnly         bool              `json:"checkOnly"`
+	ResetConfig       bool              `json:"resetConfig"`
 }
 
 // getUpdateStatus gets the update status for the given components
@@ -259,7 +260,7 @@ func (s *State) checkUpdateStatus(
 	appUpdateStatus *componentUpdateStatus,
 	systemUpdateStatus *componentUpdateStatus,
 ) error {
-	// Get local versions
+	// get the local versions
 	systemVersionLocal, appVersionLocal, err := s.getLocalVersion()
 	if err != nil {
 		return fmt.Errorf("error getting local version: %w", err)
@@ -267,7 +268,12 @@ func (s *State) checkUpdateStatus(
 	appUpdateStatus.localVersion = appVersionLocal.String()
 	systemUpdateStatus.localVersion = systemVersionLocal.String()
 
-	// Get remote metadata
+	s.l.Trace().
+		Str("appVersionLocal", appVersionLocal.String()).
+		Str("systemVersionLocal", systemVersionLocal.String()).
+		Msg("checkUpdateStatus: getLocalVersion")
+
+	// fetch the remote metadata
 	remoteMetadata, err := s.fetchUpdateMetadata(ctx, params)
 	if err != nil {
 		if err == ErrVersionNotFound || errors.Unwrap(err) == ErrVersionNotFound {
@@ -277,61 +283,33 @@ func (s *State) checkUpdateStatus(
 		}
 		return err
 	}
-	appUpdateStatus.url = remoteMetadata.AppURL
-	appUpdateStatus.hash = remoteMetadata.AppHash
-	appUpdateStatus.version = remoteMetadata.AppVersion
 
-	systemUpdateStatus.url = remoteMetadata.SystemURL
-	systemUpdateStatus.hash = remoteMetadata.SystemHash
-	systemUpdateStatus.version = remoteMetadata.SystemVersion
+	s.l.Trace().
+		Interface("remoteMetadata", remoteMetadata).
+		Msg("checkUpdateStatus: fetchUpdateMetadata")
 
-	// Get remote versions
-	systemVersionRemote, err := semver.NewVersion(remoteMetadata.SystemVersion)
-	if err != nil {
-		err = fmt.Errorf("error parsing remote system version: %w", err)
-		return err
-	}
-	systemUpdateStatus.available = systemVersionRemote.GreaterThan(systemVersionLocal)
-
-	appVersionRemote, err := semver.NewVersion(remoteMetadata.AppVersion)
-	if err != nil {
-		err = fmt.Errorf("error parsing remote app version: %w, %s", err, remoteMetadata.AppVersion)
-		return err
-	}
-	appUpdateStatus.available = appVersionRemote.GreaterThan(appVersionLocal)
-
-	// Handle pre-release updates
-	isRemoteSystemPreRelease := systemVersionRemote.Prerelease() != ""
-	isRemoteAppPreRelease := appVersionRemote.Prerelease() != ""
-
-	if isRemoteSystemPreRelease && !params.IncludePreRelease {
-		systemUpdateStatus.available = false
-	}
-	if isRemoteAppPreRelease && !params.IncludePreRelease {
-		appUpdateStatus.available = false
+	// parse the remote metadata to the componentUpdateStatuses
+	if err := remoteMetadataToComponentStatus(
+		remoteMetadata,
+		"app",
+		appUpdateStatus,
+		params,
+	); err != nil {
+		return fmt.Errorf("error parsing remote app version: %w", err)
 	}
 
-	components := params.Components
-	// skip check if no components are specified
-	if len(components) == 0 {
-		return nil
+	if err := remoteMetadataToComponentStatus(
+		remoteMetadata,
+		"system",
+		systemUpdateStatus,
+		params,
+	); err != nil {
+		return fmt.Errorf("error parsing remote system version: %w", err)
 	}
 
-	// TODO: simplify this
-	if slices.Contains(components, "app") {
-		if params.AppTargetVersion != "" {
-			appUpdateStatus.available = appVersionRemote.String() != appVersionLocal.String()
-		}
-	} else {
-		appUpdateStatus.available = false
-	}
-
-	if slices.Contains(components, "system") {
-		if params.SystemTargetVersion != "" {
-			systemUpdateStatus.available = systemVersionRemote.String() != systemVersionLocal.String()
-		}
-	} else {
-		systemUpdateStatus.available = false
+	if s.l.GetLevel() <= zerolog.TraceLevel {
+		appUpdateStatus.getZerologLogger(s.l).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus [app]")
+		systemUpdateStatus.getZerologLogger(s.l).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus [system]")
 	}
 
 	return nil

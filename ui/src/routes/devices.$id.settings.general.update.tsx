@@ -11,7 +11,7 @@ import LoadingSpinner from "@components/LoadingSpinner";
 import UpdatingStatusCard, { type UpdatePart } from "@components/UpdatingStatusCard";
 import { m } from "@localizations/messages.js";
 import { sleep } from "@/utils";
-import { checkUpdateComponents, SystemVersionInfo, updateParams } from "@/utils/jsonrpc";
+import { checkUpdateComponents, SystemVersionInfo, UpdateComponents, updateParams } from "@/utils/jsonrpc";
 
 export default function SettingsGeneralUpdateRoute() {
   const navigate = useNavigate();
@@ -43,15 +43,13 @@ export default function SettingsGeneralUpdateRoute() {
   }, [send, setModalView, setShouldReload]);
 
   const onConfirmCustomUpdate = useCallback((appTargetVersion?: string, systemTargetVersion?: string) => {
-    const components = [];
-    if (appTargetVersion) components.push("app");
-    if (systemTargetVersion) components.push("system");
+    const components: UpdateComponents = {};
+    if (appTargetVersion) components.app = appTargetVersion;
+    if (systemTargetVersion) components.system = systemTargetVersion;
 
     send("tryUpdateComponents", {
       params: {
         components,
-        appTargetVersion,
-        systemTargetVersion,
       },
       includePreRelease: false,
       resetConfig,
@@ -195,13 +193,9 @@ function LoadingState({
     if (!customAppVersion && !customSystemVersion) {
       return await getVersionInfo();
     }
-    const params : updateParams = {
-      components: [],
-      appTargetVersion: customAppVersion,
-      systemTargetVersion: customSystemVersion,
-    };
-    if (customAppVersion) params.components?.push("app");
-    if (customSystemVersion) params.components?.push("system");
+    const params: updateParams = { components: {} as UpdateComponents };
+    if (customAppVersion) params.components!.app = customAppVersion;
+    if (customSystemVersion) params.components!.system = customSystemVersion;
 
     return await checkUpdateComponents(params, false);
   }, [customAppVersion, customSystemVersion, getVersionInfo]);

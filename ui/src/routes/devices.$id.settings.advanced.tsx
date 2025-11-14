@@ -17,7 +17,7 @@ import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 import { sleep } from "@/utils";
-import { checkUpdateComponents } from "@/utils/jsonrpc";
+import { checkUpdateComponents, UpdateComponents } from "@/utils/jsonrpc";
 import { SystemVersionInfo } from "@hooks/useVersion";
 
 export default function SettingsAdvancedRoute() {
@@ -196,16 +196,17 @@ export default function SettingsAdvancedRoute() {
   }, []);
 
   const handleVersionUpdate = useCallback(async () => {
-    const components = updateTarget === "both" ? ["app", "system"] : [updateTarget];
+    const components: UpdateComponents = {};
+    if (["app", "both"].includes(updateTarget)) components.app = appVersion;
+    if (["system", "both"].includes(updateTarget)) components.system = systemVersion;
     let versionInfo: SystemVersionInfo | undefined;
+
     try {
       // we do not need to set it to false if check succeeds,
       // because it will be redirected to the update page later
       setVersionUpdateLoading(true);
       versionInfo = await checkUpdateComponents({
         components,
-        appTargetVersion: appVersion,
-        systemTargetVersion: systemVersion,
       }, devChannel);
       console.log("versionInfo", versionInfo);
     } catch (error: unknown) {
@@ -214,21 +215,14 @@ export default function SettingsAdvancedRoute() {
       return;
     }
 
-    console.debug("versionInfo", versionInfo, components.includes("app") && versionInfo.remote?.appVersion && versionInfo?.appUpdateAvailable, components.includes("system") && versionInfo.remote?.systemVersion && versionInfo?.systemUpdateAvailable);
-    console.debug("components", components);
-    console.debug("versionInfo.remote?.appVersion", versionInfo.remote?.appVersion);
-    console.debug("versionInfo.appUpdateAvailable", versionInfo?.appUpdateAvailable);
-    console.debug("versionInfo.remote?.systemVersion", versionInfo.remote?.systemVersion);
-    console.debug("versionInfo.systemUpdateAvailable", versionInfo?.systemUpdateAvailable);
-
     let hasUpdate = false;
 
     const pageParams = new URLSearchParams();
-    if (components.includes("app") && versionInfo.remote?.appVersion && versionInfo.appUpdateAvailable) {
+    if (components.app && versionInfo?.remote?.appVersion && versionInfo?.appUpdateAvailable) {
       hasUpdate = true;
       pageParams.set("custom_app_version", versionInfo.remote?.appVersion);
     }
-    if (components.includes("system") && versionInfo.remote?.systemVersion && versionInfo.systemUpdateAvailable) {
+    if (components.system && versionInfo?.remote?.systemVersion && versionInfo?.systemUpdateAvailable) {
       hasUpdate = true;
       pageParams.set("custom_system_version", versionInfo.remote?.systemVersion);
     }
