@@ -13,62 +13,15 @@ import { Button } from "@components/Button";
 import { useCopyToClipboard } from "@components/useCopyToClipBoard";
 import notifications from "@/notifications";
 
-export default function ConnectionStatsSidebar() {
-  const { sidebarView, setSidebarView } = useUiStore();
-  const {
-    mediaStream,
-    peerConnection,
-    inboundRtpStats: inboundVideoRtpStats,
-    appendInboundRtpStats: appendInboundVideoRtpStats,
-    candidatePairStats: iceCandidatePairStats,
-    appendCandidatePairStats,
-    appendLocalCandidateStats,
-    appendRemoteCandidateStats,
-    appendDiskDataChannelStats,
-  } = useRTCStore();
-
-  const [remoteIPAddress, setRemoteIPAddress] = useState<string | null>(null);
-
-  useInterval(function collectWebRTCStats() {
-    (async () => {
-      if (!mediaStream) return;
-
-      const videoTrack = mediaStream.getVideoTracks()[0];
-      if (!videoTrack) return;
-
-      const stats = await peerConnection?.getStats();
-      let successfulLocalCandidateId: string | null = null;
-      let successfulRemoteCandidateId: string | null = null;
-
-      stats?.forEach(report => {
-        if (report.type === "inbound-rtp" && report.kind === "video") {
-          appendInboundVideoRtpStats(report);
-        } else if (report.type === "candidate-pair" && report.nominated) {
-          if (report.state === "succeeded") {
-            successfulLocalCandidateId = report.localCandidateId;
-            successfulRemoteCandidateId = report.remoteCandidateId;
-          }
-          appendCandidatePairStats(report);
-        } else if (report.type === "local-candidate") {
-          // We only want to append the local candidate stats that were used in nominated candidate pair
-          if (successfulLocalCandidateId === report.id) {
-            appendLocalCandidateStats(report);
-          }
-        } else if (report.type === "remote-candidate") {
-          if (successfulRemoteCandidateId === report.id) {
-            appendRemoteCandidateStats(report);
-            setRemoteIPAddress(report.address);
-          }
-        } else if (report.type === "data-channel" && report.label === "disk") {
-          appendDiskDataChannelStats(report);
-        }
-      });
-    })();
-  }, 500);
-
-  const jitterBufferDelay = createChartArray(inboundVideoRtpStats, "jitterBufferDelay");
+interface RtpStatChartsProps {
+  inboundRtpStats: Map<number, RTCInboundRtpStreamStats>;
+  showFramesPerSecond?: boolean;
+  showAudioLevel?: boolean;
+}
+function RtpStatCharts({ inboundRtpStats, showFramesPerSecond, showAudioLevel  }: RtpStatChartsProps) {
+  const jitterBufferDelay = createChartArray(inboundRtpStats, "jitterBufferDelay");
   const jitterBufferEmittedCount = createChartArray(
-    inboundVideoRtpStats,
+    inboundRtpStats,
     "jitterBufferEmittedCount",
   );
 
@@ -101,6 +54,137 @@ export default function ConnectionStatsSidebar() {
     const valueMs = Math.round((deltaDelay / deltaEmitted) * 1000);
     return { date: d.date, metric: valueMs };
   });
+
+  return (<>
+    {/* RTP Jitter */}
+    <Metric
+      title={m.connection_stats_network_stability()}
+      badge={m.connection_stats_badge_jitter()}
+      badgeTheme="light"
+      description={m.connection_stats_network_stability_description()}
+      stream={inboundRtpStats}
+      metric="jitter"
+      map={x => ({
+        date: x.date,
+        metric: x.metric != null ? Math.round(x.metric * 1000) : null,
+      })}
+      domain={[0, 10]}
+      unit={m.connection_stats_unit_milliseconds()}
+    />
+
+    {/* Playback Delay */}
+    <Metric
+      title={m.connection_stats_playback_delay()}
+      description={m.connection_stats_playback_delay_description()}
+      badge={m.connection_stats_badge_jitter_buffer_avg_delay()}
+      badgeTheme="light"
+      data={jitterBufferAvgDelayData}
+      gate={inboundRtpStats}
+      supported={
+        someIterable(
+          inboundRtpStats,
+          ([, x]) => x.jitterBufferDelay != null,
+        ) &&
+        someIterable(
+          inboundRtpStats,
+          ([, x]) => x.jitterBufferEmittedCount != null,
+        )
+      }
+      domain={[0, 30]}
+      unit={m.connection_stats_unit_milliseconds()}
+    />
+
+    {/* Packets Lost */}
+    <Metric
+      title={m.connection_stats_packets_lost()}
+      description={m.connection_stats_packets_lost_description()}
+      stream={inboundRtpStats}
+      metric="packetsLost"
+      domain={[0, 100]}
+      unit={m.connection_stats_unit_packets()}
+    />
+
+    {/* Frames Per Second */}
+    {showFramesPerSecond && <Metric
+      title={m.connection_stats_frames_per_second()}
+      description={m.connection_stats_frames_per_second_description()}
+      stream={inboundRtpStats}
+      metric="framesPerSecond"
+      domain={[0, 80]}
+      unit={m.connection_stats_unit_frames_per_second()}
+    />}
+
+    {showAudioLevel && <Metric
+      title={m.connection_stats_audio_level()}
+      description={m.connection_stats_audio_level_description()}
+      stream={inboundRtpStats}
+      metric="audioLevel"
+      domain={[0, 1]}
+      unit={m.connection_stats_unit_decibels()}
+    />}
+  </>);
+}
+
+export default function ConnectionStatsSidebar() {
+  const { sidebarView, setSidebarView } = useUiStore();
+  const {
+    mediaStream,
+    peerConnection,
+    inboundVideoRtpStats,
+    appendInboundVideoRtpStats,
+    inboundAudioRtpStats,
+    appendInboundAudioRtpStats,
+    candidatePairStats: iceCandidatePairStats,
+    appendCandidatePairStats,
+    appendLocalCandidateStats,
+    appendRemoteCandidateStats,
+    appendDiskDataChannelStats,
+  } = useRTCStore();
+
+  const [remoteIPAddress, setRemoteIPAddress] = useState<string | null>(null);
+
+  useInterval(function collectWebRTCStats() {
+    (async () => {
+      if (!mediaStream) return;
+
+      const videoTrack = mediaStream.getVideoTracks()[0];
+      if (!videoTrack) return;
+
+      const stats = await peerConnection?.getStats();
+      let successfulLocalCandidateId: string | null = null;
+      let successfulRemoteCandidateId: string | null = null;
+
+      stats?.forEach(report => {
+        if (report.type === "inbound-rtp") {
+          if (report.kind === "video") {
+            appendInboundVideoRtpStats(report);
+          } else if (report.kind === "audio") {
+            appendInboundAudioRtpStats(report);
+          }
+        } else if (report.type === "candidate-pair" && report.nominated) {
+          if (report.state === "succeeded") {
+            successfulLocalCandidateId = report.localCandidateId;
+            successfulRemoteCandidateId = report.remoteCandidateId;
+          }
+          appendCandidatePairStats(report);
+        } else if (report.type === "local-candidate") {
+          // We only want to append the local candidate stats that were used in nominated candidate pair
+          if (successfulLocalCandidateId === report.id) {
+            appendLocalCandidateStats(report);
+          }
+        } else if (report.type === "remote-candidate") {
+          if (successfulRemoteCandidateId === report.id) {
+            appendRemoteCandidateStats(report);
+            setRemoteIPAddress(report.address);
+          }
+        } else if (report.type === "data-channel" && report.label === "disk") {
+          appendDiskDataChannelStats(report);
+        }
+      });
+    })();
+  }, 500);
+
+
 
   const { copy } = useCopyToClipboard();
 
@@ -159,63 +243,16 @@ export default function ConnectionStatsSidebar() {
                   description={m.connection_stats_video_description()}
                 />
 
-                {/* RTP Jitter */}
-                <Metric
-                  title={m.connection_stats_network_stability()}
-                  badge={m.connection_stats_badge_jitter()}
-                  badgeTheme="light"
-                  description={m.connection_stats_network_stability_description()}
-                  stream={inboundVideoRtpStats}
-                  metric="jitter"
-                  map={x => ({
-                    date: x.date,
-                    metric: x.metric != null ? Math.round(x.metric * 1000) : null,
-                  })}
-                  domain={[0, 10]}
-                  unit={m.connection_stats_unit_milliseconds()}
-                />
+                <RtpStatCharts inboundRtpStats={inboundVideoRtpStats} showFramesPerSecond />
+              </div>
 
-                {/* Playback Delay */}
-                <Metric
-                  title={m.connection_stats_playback_delay()}
-                  description={m.connection_stats_playback_delay_description()}
-                  badge={m.connection_stats_badge_jitter_buffer_avg_delay()}
-                  badgeTheme="light"
-                  data={jitterBufferAvgDelayData}
-                  gate={inboundVideoRtpStats}
-                  supported={
-                    someIterable(
-                      inboundVideoRtpStats,
-                      ([, x]) => x.jitterBufferDelay != null,
-                    ) &&
-                    someIterable(
-                      inboundVideoRtpStats,
-                      ([, x]) => x.jitterBufferEmittedCount != null,
-                    )
-                  }
-                  domain={[0, 30]}
-                  unit={m.connection_stats_unit_milliseconds()}
+              {/* Audio Group */}
+              <div className="space-y-3">
+                <SettingsSectionHeader
+                  title={m.connection_stats_audio()}
+                  description={m.connection_stats_audio_description()}
                 />
-
-                {/* Packets Lost */}
-                <Metric
-                  title={m.connection_stats_packets_lost()}
-                  description={m.connection_stats_packets_lost_description()}
-                  stream={inboundVideoRtpStats}
-                  metric="packetsLost"
-                  domain={[0, 100]}
-                  unit={m.connection_stats_unit_packets()}
-                />
-
-                {/* Frames Per Second */}
-                <Metric
-                  title={m.connection_stats_frames_per_second()}
-                  description={m.connection_stats_frames_per_second_description()}
-                  stream={inboundVideoRtpStats}
-                  metric="framesPerSecond"
-                  domain={[0, 80]}
-                  unit={m.connection_stats_unit_frames_per_second()}
-                />
+                <RtpStatCharts inboundRtpStats={inboundAudioRtpStats} showAudioLevel />
               </div>
             </div>
           )}

@@ -153,8 +153,10 @@ export interface RTCState {
   isTurnServerInUse: boolean;
   setTurnServerInUse: (inUse: boolean) => void;
 
-  inboundRtpStats: Map<number, RTCInboundRtpStreamStats>;
-  appendInboundRtpStats: (stats: RTCInboundRtpStreamStats) => void;
+  inboundVideoRtpStats: Map<number, RTCInboundRtpStreamStats>;
+  appendInboundVideoRtpStats: (stats: RTCInboundRtpStreamStats) => void;
+  inboundAudioRtpStats: Map<number, RTCInboundRtpStreamStats>;
+  appendInboundAudioRtpStats: (stats: RTCInboundRtpStreamStats) => void;
   clearInboundRtpStats: () => void;
 
   candidatePairStats: Map<number, RTCIceCandidatePairStats>;
@@ -218,13 +220,19 @@ export const useRTCStore = create<RTCState>(set => ({
   isTurnServerInUse: false,
   setTurnServerInUse: inUse => set({ isTurnServerInUse: inUse }),
 
-  inboundRtpStats: new Map(),
-  appendInboundRtpStats: stats => {
+  inboundVideoRtpStats: new Map(),
+  appendInboundVideoRtpStats: stats => {
     set(prevState => ({
-      inboundRtpStats: appendStatToMap(stats, prevState.inboundRtpStats),
+      inboundVideoRtpStats: appendStatToMap(stats, prevState.inboundVideoRtpStats),
     }));
   },
-  clearInboundRtpStats: () => set({ inboundRtpStats: new Map() }),
+  inboundAudioRtpStats: new Map(),
+  appendInboundAudioRtpStats: stats => {
+    set(prevState => ({
+      inboundAudioRtpStats: appendStatToMap(stats, prevState.inboundAudioRtpStats),
+    }));
+  },
+  clearInboundRtpStats: () => set({ inboundVideoRtpStats: new Map(), inboundAudioRtpStats: new Map() }),
 
   candidatePairStats: new Map(),
   appendCandidatePairStats: stats => {
