@@ -35,7 +35,7 @@ export default function SettingsAdvancedRoute() {
   const [systemVersion, setSystemVersion] = useState<string>("");
   const [resetConfig, setResetConfig] = useState(false);
   const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
-  const [versionUpdateLoading, setVersionUpdateLoading] = useState(false);
+  const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
   const settings = useSettingsStore();
 
   useEffect(() => {
@@ -192,19 +192,19 @@ export default function SettingsAdvancedRoute() {
       }),
       { duration: 1000 * 15 } // 15 seconds
     );
-    setVersionUpdateLoading(false);
+    setCustomVersionUpdateLoading(false);
   }, []);
 
-  const handleVersionUpdate = useCallback(async () => {
+  const handleCustomVersionUpdate = useCallback(async () => {
     const components: UpdateComponents = {};
-    if (["app", "both"].includes(updateTarget)) components.app = appVersion;
-    if (["system", "both"].includes(updateTarget)) components.system = systemVersion;
+    if (["app", "both"].includes(updateTarget) && appVersion) components.app = appVersion;
+    if (["system", "both"].includes(updateTarget) && systemVersion) components.system = systemVersion;
     let versionInfo: SystemVersionInfo | undefined;
 
     try {
       // we do not need to set it to false if check succeeds,
       // because it will be redirected to the update page later
-      setVersionUpdateLoading(true);
+      setCustomVersionUpdateLoading(true);
       versionInfo = await checkUpdateComponents({
         components,
       }, devChannel);
@@ -238,7 +238,7 @@ export default function SettingsAdvancedRoute() {
   }, [
     updateTarget, appVersion, systemVersion, devChannel,
     navigateTo, resetConfig, handleVersionUpdateError,
-    setVersionUpdateLoading
+    setCustomVersionUpdateLoading
   ]);
 
   return (
@@ -404,10 +404,10 @@ export default function SettingsAdvancedRoute() {
                   (updateTarget === "system" && !systemVersion) ||
                   (updateTarget === "both" && (!appVersion || !systemVersion)) ||
                   !versionChangeAcknowledged ||
-                  versionUpdateLoading
+                  customVersionUpdateLoading
                 }
-                loading={versionUpdateLoading}
-                onClick={handleVersionUpdate}
+                loading={customVersionUpdateLoading}
+                onClick={handleCustomVersionUpdate}
               />
             </div>
           </NestedSettingsGroup>

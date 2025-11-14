@@ -37,9 +37,11 @@ func (s *State) getUpdateURL(params UpdateParams) (string, error, bool) {
 
 	// set the custom versions if they are specified
 	for component, constraint := range params.Components {
-		if constraint != "" {
-			query.Set(component+"Version", constraint)
+		if constraint == "" {
+			continue
 		}
+
+		query.Set(component+"Version", constraint)
 		isCustomVersion = true
 	}
 
