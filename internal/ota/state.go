@@ -199,21 +199,3 @@ func NewState(opts Options) *State {
 	}
 	return s
 }
-
-// appUpdateStatus.url = remoteMetadata.AppURL
-// appUpdateStatus.hash = remoteMetadata.AppHash
-// appUpdateStatus.version = remoteMetadata.AppVersion
-
-// systemUpdateStatus.url = remoteMetadata.SystemURL
-// systemUpdateStatus.hash = remoteMetadata.SystemHash
-// systemUpdateStatus.version = remoteMetadata.SystemVersion
-
-// // Get remote versions
-// systemVersionRemote, err := semver.NewVersion(remoteMetadata.SystemVersion)
-//
-//	if err != nil {
-//		err = fmt.Errorf("error parsing remote system version: %w", err)
-//		return err
-//	}
-//
-// systemUpdateStatus.available = systemVersionRemote.GreaterThan(systemVersionLocal)
