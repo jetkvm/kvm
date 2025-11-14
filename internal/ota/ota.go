@@ -137,10 +137,6 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	if !params.CheckOnly {
 		s.updating = true
 		s.triggerStateUpdate()
-		defer func() {
-			s.updating = false
-			s.triggerStateUpdate()
-		}()
 	}
 
 	appUpdate, systemUpdate, err := s.getUpdateStatus(ctx, params)
@@ -152,6 +148,8 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	s.triggerStateUpdate()
 
 	if params.CheckOnly {
+		s.updating = false
+		s.triggerStateUpdate()
 		return nil
 	}
 
