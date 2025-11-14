@@ -190,6 +190,10 @@
     "connection_stats_packets_lost_description": "Count of lost inbound video RTP packets.",
     "connection_stats_playback_delay": "Playback Delay",
     "connection_stats_playback_delay_description": "Delay added by the jitter buffer to smooth playback when frames arrive unevenly.",
+    "connection_stats_remote_ip_address": "Remote IP Address",
+    "connection_stats_remote_ip_address_copy_error": "Failed to copy remote IP address",
+    "connection_stats_remote_ip_address_copy_success": "Remote IP address { ip } copied to clipboard",
+    "connection_stats_remote_ip_address_description": "The IP address of the remote device.",
     "connection_stats_round_trip_time": "Round-Trip Time",
     "connection_stats_round_trip_time_description": "Round-trip time for the active ICE candidate pair between peers.",
     "connection_stats_sidebar": "Connection Stats",
@@ -720,6 +724,9 @@
     "peer_connection_failed": "Connection failed",
     "peer_connection_new": "Connecting",
     "previous": "Previous",
+    "public_ip_card_header": "Public IP addresses",
+    "public_ip_card_refresh": "Refresh",
+    "public_ip_card_refresh_error": "Failed to refresh public IP addresses: {error}",
     "register_device_error": "There was an error {error} registering your device.",
     "register_device_finish_button": "Finish Setup",
     "register_device_name_description": "Name your device so you can easily identify it later. You can change this name at any time.",
@@ -916,11 +923,5 @@
     "wake_on_lan_invalid_mac": "Invalid MAC address",
     "wake_on_lan_magic_sent_success": "Magic Packet sent successfully",
     "welcome_to_jetkvm": "Welcome to JetKVM",
-    "welcome_to_jetkvm_description": "Control any computer remotely","connection_stats_remote_ip_address": "Remote IP Address",
-    "connection_stats_remote_ip_address_description": "The IP address of the remote device.",
-    "connection_stats_remote_ip_address_copy_error": "Failed to copy remote IP address",
-    "connection_stats_remote_ip_address_copy_success": "Remote IP address { ip } copied to clipboard",
-    "public_ip_card_header": "Public IP addresses",
-    "public_ip_card_refresh": "Refresh",
-    "public_ip_card_refresh_error": "Failed to refresh public IP addresses: {error}"
+    "welcome_to_jetkvm_description": "Control any computer remotely"
 }
