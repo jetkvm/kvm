@@ -16,6 +16,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+const (
+	DefaultAPIURL = "https://api.jetkvm.com"
+)
+
 type WakeOnLanDevice struct {
 	Name       string `json:"name"`
 	MacAddress string `json:"macAddress"`
@@ -114,7 +118,7 @@ type Config struct {
 // GetUpdateAPIURL returns the update API URL
 func (c *Config) GetUpdateAPIURL() string {
 	if c.UpdateAPIURL == "" {
-		return "https://api.jetkvm.com"
+		return DefaultAPIURL
 	}
 	return strings.TrimSuffix(c.UpdateAPIURL, "/") + "/releases"
 }
@@ -168,8 +172,8 @@ var (
 
 func getDefaultConfig() Config {
 	return Config{
-		CloudURL:             "https://api.jetkvm.com",
-		UpdateAPIURL:         "https://api.jetkvm.com",
+		CloudURL:             DefaultAPIURL,
+		UpdateAPIURL:         DefaultAPIURL,
 		CloudAppURL:          "https://app.jetkvm.com",
 		AutoUpdateEnabled:    true, // Set a default value
 		ActiveExtension:      "",
