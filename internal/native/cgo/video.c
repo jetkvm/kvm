@@ -235,7 +235,7 @@ int video_init(float factor)
 {
     detect_sleep_mode();
 
-    if (factor < 0 || factor > 1) {
+    if (factor <= 0 || factor > 1) {
         factor = 1.0f;
     }
     quality_factor = factor;
