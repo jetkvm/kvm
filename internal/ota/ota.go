@@ -317,6 +317,12 @@ func (s *State) checkUpdateStatus(
 
 // GetUpdateStatus returns the current update status (for backwards compatibility)
 func (s *State) GetUpdateStatus(ctx context.Context, params UpdateParams) (*UpdateStatus, error) {
+	// if no components are specified, use the default components
+	// we should remove this once app router feature is released
+	if len(params.Components) == 0 {
+		params.Components = defaultComponents
+	}
+
 	appUpdateStatus := componentUpdateStatus{}
 	systemUpdateStatus := componentUpdateStatus{}
 	err := s.checkUpdateStatus(ctx, params, &appUpdateStatus, &systemUpdateStatus)

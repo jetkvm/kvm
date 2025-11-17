@@ -40,6 +40,10 @@ type UpdateStatus struct {
 	SystemUpdateAvailable bool            `json:"systemUpdateAvailable"`
 	AppUpdateAvailable    bool            `json:"appUpdateAvailable"`
 
+	// only available for debugging and won't be exported
+	SystemUpdateAvailableReason string `json:"-"`
+	AppUpdateAvailableReason    string `json:"-"`
+
 	// for backwards compatibility
 	Error string `json:"error,omitempty"`
 }
@@ -138,9 +142,11 @@ func toUpdateStatus(appUpdate *componentUpdateStatus, systemUpdate *componentUpd
 			SystemURL:     systemUpdate.url,
 			SystemHash:    systemUpdate.hash,
 		},
-		SystemUpdateAvailable: systemUpdate.available,
-		AppUpdateAvailable:    appUpdate.available,
-		Error:                 error,
+		SystemUpdateAvailable:       systemUpdate.available,
+		SystemUpdateAvailableReason: systemUpdate.availableReason,
+		AppUpdateAvailable:          appUpdate.available,
+		AppUpdateAvailableReason:    appUpdate.availableReason,
+		Error:                       error,
 	}
 }
 
