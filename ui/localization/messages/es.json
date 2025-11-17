@@ -168,8 +168,6 @@
     "audio_https_only": "Solo HTTPS",
     "audio_input_auto_enable_disabled": "Habilitación automática de micrófono desactivada",
     "audio_input_auto_enable_enabled": "Habilitación automática de micrófono activada",
-    "audio_input_disabled": "Entrada de audio desactivada",
-    "audio_input_enabled": "Entrada de audio activada",
     "audio_input_failed_disable": "Error al desactivar la entrada de audio: {error}",
     "audio_input_failed_enable": "Error al activar la entrada de audio: {error}",
     "audio_microphone_description": "Entrada de micrófono al objetivo",
