@@ -776,7 +776,13 @@ void jetkvm_audio_playback_close() {
 		return;
 	}
 
-	// Acquire mutex to prevent concurrent write operations
+	// Drop PCM stream BEFORE acquiring mutex to interrupt any blocking writes
+	// snd_pcm_drop() is thread-safe and will cause snd_pcm_writei() to return immediately
+	if (pcm_playback_handle) {
+		snd_pcm_drop(pcm_playback_handle);
+	}
+
+	// Now acquire mutex for cleanup
 	pthread_mutex_lock(&playback_mutex);
 
 	if (decoder) {
@@ -784,7 +790,6 @@ void jetkvm_audio_playback_close() {
 		decoder = NULL;
 	}
 	if (pcm_playback_handle) {
-		snd_pcm_drop(pcm_playback_handle);
 		snd_pcm_close(pcm_playback_handle);
 		pcm_playback_handle = NULL;
 	}
@@ -807,11 +812,16 @@ void jetkvm_audio_capture_close() {
 		return;
 	}
 
-	// Acquire mutex to prevent concurrent read operations
+	// Drop PCM stream BEFORE acquiring mutex to interrupt any blocking reads
+	// snd_pcm_drop() is thread-safe and will cause snd_pcm_readi() to return immediately
+	if (pcm_capture_handle) {
+		snd_pcm_drop(pcm_capture_handle);
+	}
+
+	// Now acquire mutex for cleanup
 	pthread_mutex_lock(&capture_mutex);
 
 	if (pcm_capture_handle) {
-		snd_pcm_drop(pcm_capture_handle);
 		snd_pcm_close(pcm_capture_handle);
 		pcm_capture_handle = NULL;
 	}
