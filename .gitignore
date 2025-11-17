@@ -15,3 +15,13 @@ node_modules
 #internal/native/lib
 
 ui/reports
+
+# Log files
+*.log
+app.log
+deploy.log
+
+# Development files
+.devcontainer.json
+utilities/
+core
