@@ -51,7 +51,11 @@ func startAudio() error {
 
 	// Start output audio if not running, enabled, and we have a track
 	if outputSource == nil && audioOutputEnabled.Load() && currentAudioTrack != nil {
-		alsaDevice := "hw:1,0" // USB audio
+		ensureConfigLoaded()
+		alsaDevice := "hw:1,0" // USB audio (default)
+		if config.AudioOutputSource == "hdmi" {
+			alsaDevice = "hw:0,0" // HDMI audio
+		}
 
 		outputSource = audio.NewCgoOutputSource(alsaDevice)
 		outputRelay = audio.NewOutputRelay(outputSource, currentAudioTrack)
@@ -153,7 +157,11 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 
 	audioMutex.Lock()
 	if currentAudioTrack != nil && audioOutputEnabled.Load() {
-		alsaDevice := "hw:1,0"
+		ensureConfigLoaded()
+		alsaDevice := "hw:1,0" // USB audio (default)
+		if config.AudioOutputSource == "hdmi" {
+			alsaDevice = "hw:0,0" // HDMI audio
+		}
 		newSource := audio.NewCgoOutputSource(alsaDevice)
 		newRelay := audio.NewOutputRelay(newSource, currentAudioTrack)
 		outputSource = newSource
@@ -211,6 +219,43 @@ func SetAudioInputEnabled(enabled bool) error {
 	}
 
 	return nil
+}
+
+// SetAudioOutputSource switches between HDMI and USB audio sources
+func SetAudioOutputSource(source string) error {
+	if source != "hdmi" && source != "usb" {
+		return nil
+	}
+
+	ensureConfigLoaded()
+	if config.AudioOutputSource == source {
+		return nil
+	}
+
+	config.AudioOutputSource = source
+
+	stopOutputAudio()
+
+	if audioOutputEnabled.Load() && activeConnections.Load() > 0 && currentAudioTrack != nil {
+		alsaDevice := "hw:1,0" // USB
+		if source == "hdmi" {
+			alsaDevice = "hw:0,0" // HDMI
+		}
+
+		newSource := audio.NewCgoOutputSource(alsaDevice)
+		newRelay := audio.NewOutputRelay(newSource, currentAudioTrack)
+
+		audioMutex.Lock()
+		outputSource = newSource
+		outputRelay = newRelay
+		audioMutex.Unlock()
+
+		if err := newRelay.Start(); err != nil {
+			audioLogger.Error().Err(err).Str("source", source).Msg("Failed to start audio relay with new source")
+		}
+	}
+
+	return SaveConfig()
 }
 
 // handleInputTrackForSession runs for the entire WebRTC session lifetime

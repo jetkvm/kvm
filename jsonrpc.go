@@ -232,6 +232,17 @@ func rpcSetEDID(edid string) error {
 	return nil
 }
 
+func rpcRefreshHdmiConnection() error {
+	currentEDID, err := nativeInstance.VideoGetEDID()
+	if err != nil {
+		return err
+	}
+	if currentEDID == "" {
+		currentEDID = nativeInstance.GetDefaultEDID()
+	}
+	return nativeInstance.VideoSetEDID(currentEDID)
+}
+
 func rpcGetVideoLogStatus() (string, error) {
 	return nativeInstance.VideoLogStatus()
 }
@@ -977,6 +988,18 @@ func rpcSetAudioInputEnabled(enabled bool) error {
 	return SetAudioInputEnabled(enabled)
 }
 
+func rpcGetAudioOutputSource() (string, error) {
+	ensureConfigLoaded()
+	if config.AudioOutputSource == "" {
+		return "usb", nil
+	}
+	return config.AudioOutputSource, nil
+}
+
+func rpcSetAudioOutputSource(source string) error {
+	return SetAudioOutputSource(source)
+}
+
 func rpcGetAudioInputAutoEnable() (bool, error) {
 	ensureConfigLoaded()
 	return config.AudioInputAutoEnable, nil
@@ -1314,6 +1337,9 @@ var rpcHandlers = map[string]RPCHandler{
 	"setAudioOutputEnabled":   {Func: rpcSetAudioOutputEnabled, Params: []string{"enabled"}},
 	"getAudioInputEnabled":    {Func: rpcGetAudioInputEnabled},
 	"setAudioInputEnabled":    {Func: rpcSetAudioInputEnabled, Params: []string{"enabled"}},
+	"getAudioOutputSource":    {Func: rpcGetAudioOutputSource},
+	"setAudioOutputSource":    {Func: rpcSetAudioOutputSource, Params: []string{"source"}},
+	"refreshHdmiConnection":   {Func: rpcRefreshHdmiConnection},
 	"getAudioInputAutoEnable": {Func: rpcGetAudioInputAutoEnable},
 	"setAudioInputAutoEnable": {Func: rpcSetAudioInputAutoEnable, Params: []string{"enabled"}},
 	"setCloudUrl":             {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},

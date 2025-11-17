@@ -73,6 +73,9 @@ static uint32_t sleep_milliseconds = 1;
 static uint8_t max_attempts_global = 5;
 static uint32_t max_backoff_us_global = 500000;
 
+static volatile int capture_stop_requested = 0;
+static volatile int playback_stop_requested = 0;
+
 int jetkvm_audio_capture_init();
 void jetkvm_audio_capture_close();
 int jetkvm_audio_read_encode(void *opus_buf);
@@ -399,10 +402,13 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	uint8_t recovery_attempts = 0;
 	const uint8_t max_recovery_attempts = 3;
 
-	// Prefetch for write (out) and read (pcm_buffer) - RV1106 has small L1 cache
-	SIMD_PREFETCH(out, 1, 0);  // Write, immediate use
-	SIMD_PREFETCH(pcm_buffer, 0, 0);  // Read, immediate use
-	SIMD_PREFETCH(pcm_buffer + 64, 0, 1);  // Prefetch next cache line
+	if (__builtin_expect(capture_stop_requested, 0)) {
+		return -1;
+	}
+
+	SIMD_PREFETCH(out, 1, 0);
+	SIMD_PREFETCH(pcm_buffer, 0, 0);
+	SIMD_PREFETCH(pcm_buffer + 64, 0, 1);
 
 	if (__builtin_expect(!capture_initialized || !pcm_capture_handle || !encoder || !opus_buf, 0)) {
 		TRACE_LOG("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Failed safety checks - capture_initialized=%d, pcm_capture_handle=%p, encoder=%p, opus_buf=%p\n",
@@ -411,7 +417,10 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	}
 
 retry_read:
-	// Read 960 frames (20ms) from ALSA capture device
+	if (__builtin_expect(capture_stop_requested, 0)) {
+		return -1;
+	}
+
 	pcm_rc = snd_pcm_readi(pcm_capture_handle, pcm_buffer, frame_size);
 
 	if (__builtin_expect(pcm_rc < 0, 0)) {
@@ -428,7 +437,6 @@ retry_read:
 			}
 			goto retry_read;
 		} else if (pcm_rc == -EAGAIN) {
-			// Wait for data to be available
 			snd_pcm_wait(pcm_capture_handle, sleep_milliseconds);
 			goto retry_read;
 		} else if (pcm_rc == -ESTRPIPE) {
@@ -438,6 +446,7 @@ retry_read:
 			}
 			uint8_t resume_attempts = 0;
 			while ((err = snd_pcm_resume(pcm_capture_handle)) == -EAGAIN && resume_attempts < 10) {
+				if (capture_stop_requested) return -1;
 				snd_pcm_wait(pcm_capture_handle, sleep_milliseconds);
 				resume_attempts++;
 			}
@@ -558,7 +567,10 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 	uint8_t recovery_attempts = 0;
 	const uint8_t max_recovery_attempts = 3;
 
-	// Prefetch input buffer - locality 0 for immediate use
+	if (__builtin_expect(playback_stop_requested, 0)) {
+		return -1;
+	}
+
 	SIMD_PREFETCH(in, 0, 0);
 
 	if (__builtin_expect(!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0, 0)) {
@@ -592,7 +604,10 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus decode successful - decoded %d PCM frames\n", pcm_frames);
 
 retry_write:
-	// Write decoded PCM to ALSA playback device
+	if (__builtin_expect(playback_stop_requested, 0)) {
+		return -1;
+	}
+
 	pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
 	if (__builtin_expect(pcm_rc < 0, 0)) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: ALSA write failed with error %d (%s), attempt %d/%d\n",
@@ -626,6 +641,7 @@ retry_write:
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspended, attempting resume (attempt %d)\n", recovery_attempts);
 			uint8_t resume_attempts = 0;
 			while ((err = snd_pcm_resume(pcm_playback_handle)) == -EAGAIN && resume_attempts < 10) {
+				if (playback_stop_requested) return -1;
 				snd_pcm_wait(pcm_playback_handle, sleep_milliseconds);
 				resume_attempts++;
 			}
@@ -681,15 +697,16 @@ retry_write:
 
 // CLEANUP FUNCTIONS
 
-/**
- * Close INPUT path (thread-safe with drain)
- */
 void jetkvm_audio_playback_close() {
+	playback_stop_requested = 1;
+	__sync_synchronize();
+
 	while (playback_initializing) {
 		sched_yield();
 	}
 
 	if (__sync_bool_compare_and_swap(&playback_initialized, 1, 0) == 0) {
+		playback_stop_requested = 0;
 		return;
 	}
 
@@ -698,31 +715,36 @@ void jetkvm_audio_playback_close() {
 		decoder = NULL;
 	}
 	if (pcm_playback_handle) {
-		snd_pcm_drain(pcm_playback_handle);
+		snd_pcm_drop(pcm_playback_handle);
 		snd_pcm_close(pcm_playback_handle);
 		pcm_playback_handle = NULL;
 	}
+
+	playback_stop_requested = 0;
 }
 
-/**
- * Close OUTPUT path (thread-safe with drain)
- */
 void jetkvm_audio_capture_close() {
+	capture_stop_requested = 1;
+	__sync_synchronize();
+
 	while (capture_initializing) {
 		sched_yield();
 	}
 
 	if (__sync_bool_compare_and_swap(&capture_initialized, 1, 0) == 0) {
+		capture_stop_requested = 0;
 		return;
 	}
 
+	if (pcm_capture_handle) {
+		snd_pcm_drop(pcm_capture_handle);
+		snd_pcm_close(pcm_capture_handle);
+		pcm_capture_handle = NULL;
+	}
 	if (encoder) {
 		opus_encoder_destroy(encoder);
 		encoder = NULL;
 	}
-	if (pcm_capture_handle) {
-		snd_pcm_drain(pcm_capture_handle);
-		snd_pcm_close(pcm_capture_handle);
-		pcm_capture_handle = NULL;
-	}
+
+	capture_stop_requested = 0;
 }

@@ -131,6 +131,11 @@ func (n *Native) VideoGetEDID() (string, error) {
 	return videoGetEDID()
 }
 
+// GetDefaultEDID returns the default EDID constant.
+func (n *Native) GetDefaultEDID() string {
+	return DefaultEDID
+}
+
 // VideoLogStatus gets the log status for the video stream.
 func (n *Native) VideoLogStatus() (string, error) {
 	n.videoLock.Lock()
