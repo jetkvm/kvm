@@ -109,8 +109,18 @@ func checkUSBState() {
 		return
 	}
 
+	oldState := usbState
 	usbState = newState
-	usbLogger.Info().Str("from", usbState).Str("to", newState).Msg("USB state changed")
+	usbLogger.Info().Str("from", oldState).Str("to", newState).Msg("USB state changed")
+
+	if newState == "configured" && oldState != "configured" {
+		usbLogger.Info().Msg("USB configured, reopening HID files")
+		gadget.CloseHidFiles()
+		gadget.PreOpenHidFiles()
+		if err := gadget.OpenKeyboardHidFile(); err != nil {
+			usbLogger.Error().Err(err).Msg("failed to reopen keyboard hid file")
+		}
+	}
 
 	requestDisplayUpdate(true, "usb_state_changed")
 	triggerUSBStateUpdate()
