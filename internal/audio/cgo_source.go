@@ -214,6 +214,10 @@ func (c *CgoSource) WriteMessage(msgType uint8, payload []byte) error {
 		return nil
 	}
 
+	if len(payload) > 1500 {
+		return fmt.Errorf("opus packet too large: %d bytes (max 1500)", len(payload))
+	}
+
 	rc := C.jetkvm_audio_decode_write(unsafe.Pointer(&payload[0]), C.int(len(payload)))
 	if rc < 0 {
 		return fmt.Errorf("jetkvm_audio_decode_write failed: %d", rc)
