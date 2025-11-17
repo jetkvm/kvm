@@ -2,7 +2,6 @@
  * JetKVM Audio Processing Module
  *
  * Bidirectional audio processing optimized for ARM NEON SIMD:
-* TODO: Remove USB Gadget audio once new system image release is made available
  * - OUTPUT PATH: TC358743 HDMI or USB Gadget audio → Client speakers
  *   Pipeline: ALSA hw:0,0 or hw:1,0 capture → Opus encode (128kbps, FEC enabled)
  *
@@ -56,18 +55,20 @@ static uint8_t channels = 2;
 static uint16_t frame_size = 960;  // 20ms frames at 48kHz
 
 static uint32_t opus_bitrate = 128000;
-static uint8_t opus_complexity = 5;  // Higher complexity for better quality
+static uint8_t opus_complexity = 5;
 static uint16_t max_packet_size = 1500;
 
-// Opus encoder constants (hardcoded for production)
-#define OPUS_VBR 1                      // VBR enabled
-#define OPUS_VBR_CONSTRAINT 1           // Constrained VBR (prevents bitrate starvation at low volumes)
-#define OPUS_SIGNAL_TYPE 3002           // OPUS_SIGNAL_MUSIC (better transient handling)
-#define OPUS_BANDWIDTH 1104             // OPUS_BANDWIDTH_SUPERWIDEBAND (16kHz)
-#define OPUS_DTX 1                      // DTX enabled (bandwidth optimization)
-#define OPUS_LSB_DEPTH 16               // 16-bit depth
+#define OPUS_VBR 1
+#define OPUS_VBR_CONSTRAINT 1
+#define OPUS_SIGNAL_TYPE 3002
+#define OPUS_BANDWIDTH 1104
+#define OPUS_LSB_DEPTH 16
 
-// ALSA retry configuration
+static uint8_t opus_dtx_enabled = 1;
+static uint8_t opus_fec_enabled = 1;
+static uint8_t opus_packet_loss_perc = 20;
+static uint8_t buffer_period_count = 12;
+
 static uint32_t sleep_microseconds = 1000;
 static uint32_t sleep_milliseconds = 1;
 static uint8_t max_attempts_global = 5;
@@ -86,43 +87,45 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size);
 
 void update_audio_constants(uint32_t bitrate, uint8_t complexity,
                            uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
-                           uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff);
+                           uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
+                           uint8_t dtx_enabled, uint8_t fec_enabled, uint8_t buf_periods);
 void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
-                                    uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff);
+                                    uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
+                                    uint8_t buf_periods);
 int update_opus_encoder_params(uint32_t bitrate, uint8_t complexity);
 
 
-/**
- * Sync encoder configuration from Go to C
- */
 void update_audio_constants(uint32_t bitrate, uint8_t complexity,
                            uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
-                           uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff) {
-    opus_bitrate = bitrate;
-    opus_complexity = complexity;
-    sample_rate = sr;
-    channels = ch;
-    frame_size = fs;
-    max_packet_size = max_pkt;
-    sleep_microseconds = sleep_us;
-    sleep_milliseconds = sleep_us / 1000;  // Precompute for snd_pcm_wait
-    max_attempts_global = max_attempts;
-    max_backoff_us_global = max_backoff;
+                           uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
+                           uint8_t dtx_enabled, uint8_t fec_enabled, uint8_t buf_periods) {
+    opus_bitrate = (bitrate >= 64000 && bitrate <= 256000) ? bitrate : 128000;
+    opus_complexity = (complexity <= 10) ? complexity : 5;
+    sample_rate = sr > 0 ? sr : 48000;
+    channels = (ch == 1 || ch == 2) ? ch : 2;
+    frame_size = fs > 0 ? fs : 960;
+    max_packet_size = max_pkt > 0 ? max_pkt : 1500;
+    sleep_microseconds = sleep_us > 0 ? sleep_us : 1000;
+    sleep_milliseconds = sleep_microseconds / 1000;
+    max_attempts_global = max_attempts > 0 ? max_attempts : 5;
+    max_backoff_us_global = max_backoff > 0 ? max_backoff : 500000;
+    opus_dtx_enabled = dtx_enabled ? 1 : 0;
+    opus_fec_enabled = fec_enabled ? 1 : 0;
+    buffer_period_count = (buf_periods >= 2 && buf_periods <= 24) ? buf_periods : 12;
 }
 
-/**
- * Sync decoder configuration from Go to C (no encoder-only params)
- */
 void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
-                                    uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff) {
-    sample_rate = sr;
-    channels = ch;
-    frame_size = fs;
-    max_packet_size = max_pkt;
-    sleep_microseconds = sleep_us;
-    sleep_milliseconds = sleep_us / 1000;  // Precompute for snd_pcm_wait
-    max_attempts_global = max_attempts;
-    max_backoff_us_global = max_backoff;
+                                    uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
+                                    uint8_t buf_periods) {
+    sample_rate = sr > 0 ? sr : 48000;
+    channels = (ch == 1 || ch == 2) ? ch : 2;
+    frame_size = fs > 0 ? fs : 960;
+    max_packet_size = max_pkt > 0 ? max_pkt : 1500;
+    sleep_microseconds = sleep_us > 0 ? sleep_us : 1000;
+    sleep_milliseconds = sleep_microseconds / 1000;
+    max_attempts_global = max_attempts > 0 ? max_attempts : 5;
+    max_backoff_us_global = max_backoff > 0 ? max_backoff : 500000;
+    buffer_period_count = (buf_periods >= 2 && buf_periods <= 24) ? buf_periods : 12;
 }
 
 /**
@@ -233,18 +236,17 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 
 		attempt++;
 
-		// Exponential backoff with bit shift (faster than multiplication)
 		if (err == -EBUSY || err == -EAGAIN) {
 			precise_sleep_us(backoff_us);
-			backoff_us = (backoff_us << 1 < max_backoff_us_global) ? (backoff_us << 1) : max_backoff_us_global;
+			backoff_us = (backoff_us < 50000) ? (backoff_us << 1) : 50000;
 		} else if (err == -ENODEV || err == -ENOENT) {
-			precise_sleep_us(backoff_us << 1);
-			backoff_us = (backoff_us << 1 < max_backoff_us_global) ? (backoff_us << 1) : max_backoff_us_global;
+			precise_sleep_us(backoff_us);
+			backoff_us = (backoff_us < 50000) ? (backoff_us << 1) : 50000;
 		} else if (err == -EPERM || err == -EACCES) {
 			precise_sleep_us(backoff_us >> 1);
 		} else {
 			precise_sleep_us(backoff_us);
-			backoff_us = (backoff_us << 1 < max_backoff_us_global) ? (backoff_us << 1) : max_backoff_us_global;
+			backoff_us = (backoff_us < 50000) ? (backoff_us << 1) : 50000;
 		}
 	}
 	return err;
@@ -285,13 +287,13 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 		if (err < 0) return err;
 	}
 
-	snd_pcm_uframes_t period_size = frame_size;  // Optimized: use full frame as period
+	snd_pcm_uframes_t period_size = frame_size;
 	if (period_size < 64) period_size = 64;
 
 	err = snd_pcm_hw_params_set_period_size_near(handle, params, &period_size, 0);
 	if (err < 0) return err;
 
-	snd_pcm_uframes_t buffer_size = period_size * 12;  // 12 periods = 240ms buffer for better jitter tolerance
+	snd_pcm_uframes_t buffer_size = period_size * buffer_period_count;
 	err = snd_pcm_hw_params_set_buffer_size_near(handle, params, &buffer_size);
 	if (err < 0) return err;
 
@@ -378,11 +380,11 @@ int jetkvm_audio_capture_init() {
 	opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(OPUS_VBR_CONSTRAINT));
 	opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_TYPE));
 	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(OPUS_BANDWIDTH));
-	opus_encoder_ctl(encoder, OPUS_SET_DTX(OPUS_DTX));
+	opus_encoder_ctl(encoder, OPUS_SET_DTX(opus_dtx_enabled));
 	opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(OPUS_LSB_DEPTH));
 
-	opus_encoder_ctl(encoder, OPUS_SET_INBAND_FEC(1));
-	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(20));
+	opus_encoder_ctl(encoder, OPUS_SET_INBAND_FEC(opus_fec_enabled));
+	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(opus_packet_loss_perc));
 
 	capture_initialized = 1;
 	capture_initializing = 0;

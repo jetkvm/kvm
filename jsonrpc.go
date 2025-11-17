@@ -1000,6 +1000,60 @@ func rpcSetAudioOutputSource(source string) error {
 	return SetAudioOutputSource(source)
 }
 
+type AudioConfigResponse struct {
+	Bitrate       int  `json:"bitrate"`
+	Complexity    int  `json:"complexity"`
+	DTXEnabled    bool `json:"dtx_enabled"`
+	FECEnabled    bool `json:"fec_enabled"`
+	BufferPeriods int  `json:"buffer_periods"`
+}
+
+func rpcGetAudioConfig() (AudioConfigResponse, error) {
+	ensureConfigLoaded()
+	bitrate := config.AudioBitrate
+	if bitrate < 64 || bitrate > 256 {
+		bitrate = 128
+	}
+	bufferPeriods := config.AudioBufferPeriods
+	if bufferPeriods < 2 || bufferPeriods > 24 {
+		bufferPeriods = 12
+	}
+	return AudioConfigResponse{
+		Bitrate:       bitrate,
+		Complexity:    config.AudioComplexity,
+		DTXEnabled:    config.AudioDTXEnabled,
+		FECEnabled:    config.AudioFECEnabled,
+		BufferPeriods: bufferPeriods,
+	}, nil
+}
+
+func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled bool, bufferPeriods int) error {
+	ensureConfigLoaded()
+
+	if bitrate < 64 || bitrate > 256 {
+		return fmt.Errorf("bitrate must be between 64 and 256 kbps")
+	}
+	if complexity < 0 || complexity > 10 {
+		return fmt.Errorf("complexity must be between 0 and 10")
+	}
+	if bufferPeriods < 2 || bufferPeriods > 24 {
+		return fmt.Errorf("buffer periods must be between 2 and 24")
+	}
+
+	config.AudioBitrate = bitrate
+	config.AudioComplexity = complexity
+	config.AudioDTXEnabled = dtxEnabled
+	config.AudioFECEnabled = fecEnabled
+	config.AudioBufferPeriods = bufferPeriods
+
+	return SaveConfig()
+}
+
+func rpcRestartAudioOutput() error {
+	RestartAudioOutput()
+	return nil
+}
+
 func rpcGetAudioInputAutoEnable() (bool, error) {
 	ensureConfigLoaded()
 	return config.AudioInputAutoEnable, nil
@@ -1340,6 +1394,9 @@ var rpcHandlers = map[string]RPCHandler{
 	"getAudioOutputSource":    {Func: rpcGetAudioOutputSource},
 	"setAudioOutputSource":    {Func: rpcSetAudioOutputSource, Params: []string{"source"}},
 	"refreshHdmiConnection":   {Func: rpcRefreshHdmiConnection},
+	"getAudioConfig":          {Func: rpcGetAudioConfig},
+	"setAudioConfig":          {Func: rpcSetAudioConfig, Params: []string{"bitrate", "complexity", "dtxEnabled", "fecEnabled", "bufferPeriods"}},
+	"restartAudioOutput":      {Func: rpcRestartAudioOutput},
 	"getAudioInputAutoEnable": {Func: rpcGetAudioInputAutoEnable},
 	"setAudioInputAutoEnable": {Func: rpcSetAudioInputAutoEnable, Params: []string{"enabled"}},
 	"setCloudUrl":             {Func: rpcSetCloudUrl, Params: []string{"apiUrl", "appUrl"}},
