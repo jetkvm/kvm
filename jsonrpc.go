@@ -961,13 +961,24 @@ func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 	wasAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+	currentDevices := gadget.GetGadgetDevices()
+
+	// Skip reconfiguration if devices haven't changed to avoid HID disruption
+	if currentDevices.Equals(usbDevices) {
+		logger.Debug().Msg("USB devices unchanged, skipping gadget reconfiguration")
+		config.UsbDevices = &usbDevices
+		return nil
+	}
+
 	config.UsbDevices = &usbDevices
 	gadget.SetGadgetDevices(config.UsbDevices)
+
 	return updateUsbRelatedConfig(wasAudioEnabled)
 }
 
 func rpcSetUsbDeviceState(device string, enabled bool) error {
 	wasAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+	currentDevices := gadget.GetGadgetDevices()
 
 	switch device {
 	case "absoluteMouse":
@@ -983,6 +994,13 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 	default:
 		return fmt.Errorf("invalid device: %s", device)
 	}
+
+	// Skip reconfiguration if devices haven't changed to avoid HID disruption
+	if currentDevices.Equals(*config.UsbDevices) {
+		logger.Debug().Msg("USB device state unchanged, skipping gadget reconfiguration")
+		return nil
+	}
+
 	gadget.SetGadgetDevices(config.UsbDevices)
 	return updateUsbRelatedConfig(wasAudioEnabled)
 }

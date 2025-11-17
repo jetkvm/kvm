@@ -134,6 +134,13 @@ func (u *UsbGadget) SetGadgetDevices(devices *Devices) {
 	u.enabledDevices = *devices
 }
 
+func (u *UsbGadget) GetGadgetDevices() Devices {
+	u.configLock.Lock()
+	defer u.configLock.Unlock()
+
+	return u.enabledDevices
+}
+
 // GetConfigPath returns the path to the config item.
 func (u *UsbGadget) GetConfigPath(itemKey string) (string, error) {
 	item, ok := u.configMap[itemKey]

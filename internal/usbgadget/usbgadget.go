@@ -22,6 +22,15 @@ type Devices struct {
 	Audio         bool `json:"audio"`
 }
 
+// Equals checks if two Devices structs are equal.
+func (d Devices) Equals(other Devices) bool {
+	return d.AbsoluteMouse == other.AbsoluteMouse &&
+		d.RelativeMouse == other.RelativeMouse &&
+		d.Keyboard == other.Keyboard &&
+		d.MassStorage == other.MassStorage &&
+		d.Audio == other.Audio
+}
+
 // Config is a struct that represents the customizations for a USB gadget.
 // TODO: rename to something else that won't confuse with the USB gadget configuration
 type Config struct {
