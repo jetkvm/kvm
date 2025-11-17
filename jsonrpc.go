@@ -1040,11 +1040,13 @@ func rpcSetAudioOutputSource(source string) error {
 }
 
 type AudioConfigResponse struct {
-	Bitrate       int  `json:"bitrate"`
-	Complexity    int  `json:"complexity"`
-	DTXEnabled    bool `json:"dtx_enabled"`
-	FECEnabled    bool `json:"fec_enabled"`
-	BufferPeriods int  `json:"buffer_periods"`
+	Bitrate        int  `json:"bitrate"`
+	Complexity     int  `json:"complexity"`
+	DTXEnabled     bool `json:"dtx_enabled"`
+	FECEnabled     bool `json:"fec_enabled"`
+	BufferPeriods  int  `json:"buffer_periods"`
+	SampleRate     int  `json:"sample_rate"`
+	PacketLossPerc int  `json:"packet_loss_perc"`
 }
 
 func rpcGetAudioConfig() (AudioConfigResponse, error) {
@@ -1057,16 +1059,26 @@ func rpcGetAudioConfig() (AudioConfigResponse, error) {
 	if bufferPeriods < 2 || bufferPeriods > 24 {
 		bufferPeriods = 12
 	}
+	sampleRate := config.AudioSampleRate
+	if sampleRate != 32000 && sampleRate != 44100 && sampleRate != 48000 && sampleRate != 96000 {
+		sampleRate = 48000
+	}
+	packetLossPerc := config.AudioPacketLossPerc
+	if packetLossPerc < 0 || packetLossPerc > 100 {
+		packetLossPerc = 20
+	}
 	return AudioConfigResponse{
-		Bitrate:       bitrate,
-		Complexity:    config.AudioComplexity,
-		DTXEnabled:    config.AudioDTXEnabled,
-		FECEnabled:    config.AudioFECEnabled,
-		BufferPeriods: bufferPeriods,
+		Bitrate:        bitrate,
+		Complexity:     config.AudioComplexity,
+		DTXEnabled:     config.AudioDTXEnabled,
+		FECEnabled:     config.AudioFECEnabled,
+		BufferPeriods:  bufferPeriods,
+		SampleRate:     sampleRate,
+		PacketLossPerc: packetLossPerc,
 	}, nil
 }
 
-func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled bool, bufferPeriods int) error {
+func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled bool, bufferPeriods int, sampleRate int, packetLossPerc int) error {
 	ensureConfigLoaded()
 
 	if bitrate < 64 || bitrate > 256 {
@@ -1078,12 +1090,20 @@ func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled 
 	if bufferPeriods < 2 || bufferPeriods > 24 {
 		return fmt.Errorf("buffer periods must be between 2 and 24")
 	}
+	if sampleRate != 32000 && sampleRate != 44100 && sampleRate != 48000 && sampleRate != 96000 {
+		return fmt.Errorf("sample rate must be 32000, 44100, 48000, or 96000 Hz")
+	}
+	if packetLossPerc < 0 || packetLossPerc > 100 {
+		return fmt.Errorf("packet loss percentage must be between 0 and 100")
+	}
 
 	config.AudioBitrate = bitrate
 	config.AudioComplexity = complexity
 	config.AudioDTXEnabled = dtxEnabled
 	config.AudioFECEnabled = fecEnabled
 	config.AudioBufferPeriods = bufferPeriods
+	config.AudioSampleRate = sampleRate
+	config.AudioPacketLossPerc = packetLossPerc
 
 	return SaveConfig()
 }
@@ -1434,7 +1454,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setAudioOutputSource":    {Func: rpcSetAudioOutputSource, Params: []string{"source"}},
 	"refreshHdmiConnection":   {Func: rpcRefreshHdmiConnection},
 	"getAudioConfig":          {Func: rpcGetAudioConfig},
-	"setAudioConfig":          {Func: rpcSetAudioConfig, Params: []string{"bitrate", "complexity", "dtxEnabled", "fecEnabled", "bufferPeriods"}},
+	"setAudioConfig":          {Func: rpcSetAudioConfig, Params: []string{"bitrate", "complexity", "dtxEnabled", "fecEnabled", "bufferPeriods", "sampleRate", "packetLossPerc"}},
 	"restartAudioOutput":      {Func: rpcRestartAudioOutput},
 	"getAudioInputAutoEnable": {Func: rpcGetAudioInputAutoEnable},
 	"setAudioInputAutoEnable": {Func: rpcSetAudioInputAutoEnable, Params: []string{"enabled"}},

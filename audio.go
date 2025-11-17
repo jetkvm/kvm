@@ -53,6 +53,12 @@ func getAudioConfig() audio.AudioConfig {
 	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 24 {
 		cfg.BufferPeriods = uint8(config.AudioBufferPeriods)
 	}
+	if config.AudioSampleRate == 32000 || config.AudioSampleRate == 44100 || config.AudioSampleRate == 48000 || config.AudioSampleRate == 96000 {
+		cfg.SampleRate = uint32(config.AudioSampleRate)
+	}
+	if config.AudioPacketLossPerc >= 0 && config.AudioPacketLossPerc <= 100 {
+		cfg.PacketLossPerc = uint8(config.AudioPacketLossPerc)
+	}
 	return cfg
 }
 

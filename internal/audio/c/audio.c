@@ -88,7 +88,7 @@ int jetkvm_audio_decode_write(void *opus_buf, int opus_size);
 void update_audio_constants(uint32_t bitrate, uint8_t complexity,
                            uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
                            uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
-                           uint8_t dtx_enabled, uint8_t fec_enabled, uint8_t buf_periods);
+                           uint8_t dtx_enabled, uint8_t fec_enabled, uint8_t buf_periods, uint8_t pkt_loss_perc);
 void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
                                     uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
                                     uint8_t buf_periods);
@@ -98,7 +98,7 @@ int update_opus_encoder_params(uint32_t bitrate, uint8_t complexity);
 void update_audio_constants(uint32_t bitrate, uint8_t complexity,
                            uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
                            uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
-                           uint8_t dtx_enabled, uint8_t fec_enabled, uint8_t buf_periods) {
+                           uint8_t dtx_enabled, uint8_t fec_enabled, uint8_t buf_periods, uint8_t pkt_loss_perc) {
     opus_bitrate = (bitrate >= 64000 && bitrate <= 256000) ? bitrate : 128000;
     opus_complexity = (complexity <= 10) ? complexity : 5;
     sample_rate = sr > 0 ? sr : 48000;
@@ -112,6 +112,7 @@ void update_audio_constants(uint32_t bitrate, uint8_t complexity,
     opus_dtx_enabled = dtx_enabled ? 1 : 0;
     opus_fec_enabled = fec_enabled ? 1 : 0;
     buffer_period_count = (buf_periods >= 2 && buf_periods <= 24) ? buf_periods : 12;
+    opus_packet_loss_perc = (pkt_loss_perc <= 100) ? pkt_loss_perc : 20;
 }
 
 void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,

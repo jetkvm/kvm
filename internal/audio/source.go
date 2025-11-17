@@ -5,20 +5,24 @@ const (
 )
 
 type AudioConfig struct {
-	Bitrate       uint16
-	Complexity    uint8
-	BufferPeriods uint8
-	DTXEnabled    bool
-	FECEnabled    bool
+	Bitrate        uint16
+	Complexity     uint8
+	BufferPeriods  uint8
+	DTXEnabled     bool
+	FECEnabled     bool
+	SampleRate     uint32
+	PacketLossPerc uint8
 }
 
 func DefaultAudioConfig() AudioConfig {
 	return AudioConfig{
-		Bitrate:       128,
-		Complexity:    5,
-		BufferPeriods: 12,
-		DTXEnabled:    true,
-		FECEnabled:    true,
+		Bitrate:        128,
+		Complexity:     5,
+		BufferPeriods:  12,
+		DTXEnabled:     true,
+		FECEnabled:     true,
+		SampleRate:     48000,
+		PacketLossPerc: 20,
 	}
 }
 

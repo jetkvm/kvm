@@ -91,13 +91,15 @@ func (c *CgoSource) Connect() error {
 			Bool("dtx", c.config.DTXEnabled).
 			Bool("fec", c.config.FECEnabled).
 			Uint8("buffer_periods", c.config.BufferPeriods).
+			Uint32("sample_rate", c.config.SampleRate).
+			Uint8("packet_loss_perc", c.config.PacketLossPerc).
 			Str("alsa_device", c.alsaDevice).
 			Msg("Initializing audio capture")
 
 		C.update_audio_constants(
 			C.uint(uint32(c.config.Bitrate)*1000),
 			C.uchar(c.config.Complexity),
-			C.uint(48000),
+			C.uint(c.config.SampleRate),
 			C.uchar(2),
 			C.ushort(960),
 			C.ushort(1500),
@@ -107,6 +109,7 @@ func (c *CgoSource) Connect() error {
 			dtx,
 			fec,
 			C.uchar(c.config.BufferPeriods),
+			C.uchar(c.config.PacketLossPerc),
 		)
 
 		rc := C.jetkvm_audio_capture_init()
@@ -118,7 +121,7 @@ func (c *CgoSource) Connect() error {
 		os.Setenv("ALSA_PLAYBACK_DEVICE", c.alsaDevice)
 
 		C.update_audio_decoder_constants(
-			C.uint(48000),
+			C.uint(c.config.SampleRate),
 			C.uchar(2),
 			C.ushort(960),
 			C.ushort(1500),

@@ -403,6 +403,10 @@ export interface SettingsState {
   setAudioFECEnabled: (enabled: boolean) => void;
   audioBufferPeriods: number;
   setAudioBufferPeriods: (value: number) => void;
+  audioSampleRate: number;
+  setAudioSampleRate: (value: number) => void;
+  audioPacketLossPerc: number;
+  setAudioPacketLossPerc: (value: number) => void;
 
   resetMicrophoneState: () => void;
 }
@@ -472,6 +476,10 @@ export const useSettingsStore = create(
       setAudioFECEnabled: (enabled: boolean) => set({ audioFECEnabled: enabled }),
       audioBufferPeriods: 12,
       setAudioBufferPeriods: (value: number) => set({ audioBufferPeriods: value }),
+      audioSampleRate: 48000,
+      setAudioSampleRate: (value: number) => set({ audioSampleRate: value }),
+      audioPacketLossPerc: 20,
+      setAudioPacketLossPerc: (value: number) => set({ audioPacketLossPerc: value }),
 
       resetMicrophoneState: () => set({ microphoneEnabled: false }),
     }),
