@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	ipcMaxFrameSize = 1024
+	ipcMaxFrameSize = 1500
 )
 
 type CgoSource struct {
@@ -182,6 +182,10 @@ func (c *CgoSource) ReadMessage() (uint8, []byte, error) {
 
 	if opusSize == 0 {
 		return 0, nil, nil
+	}
+
+	if int(opusSize) > len(c.opusBuf) {
+		return 0, nil, fmt.Errorf("opus packet too large: %d > %d", opusSize, len(c.opusBuf))
 	}
 
 	return ipcMsgTypeOpus, c.opusBuf[:opusSize], nil
