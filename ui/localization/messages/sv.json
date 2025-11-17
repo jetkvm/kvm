@@ -89,7 +89,7 @@
     "audio_settings_buffer_title": "Bufferperioder",
     "audio_settings_buffer_description": "ALSA bufferstorlek (högre = mer stabil, mer latens)",
     "audio_settings_sample_rate_title": "Samplingsfrekvens",
-    "audio_settings_sample_rate_description": "Ljudsamplingsfrekvens (matcha HDMI-källa för bästa kvalitet)",
+    "audio_settings_sample_rate_description": "Audio sampling frequency (automatically detected from source)",
     "audio_settings_packet_loss_title": "Paketförlustkompensation",
     "audio_settings_packet_loss_description": "FEC overhead-procent (högre = bättre återställning, mer bandbredd)",
     "audio_settings_config_updated": "Ljudkonfiguration uppdaterad",

@@ -120,12 +120,11 @@ export default function SettingsAudioRoute() {
     dtxEnabled: boolean,
     fecEnabled: boolean,
     bufferPeriods: number,
-    sampleRate: number,
     packetLossPerc: number
   ) => {
     send(
       "setAudioConfig",
-      { bitrate, complexity, dtxEnabled, fecEnabled, bufferPeriods, sampleRate, packetLossPerc },
+      { bitrate, complexity, dtxEnabled, fecEnabled, bufferPeriods, packetLossPerc },
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(String(resp.error.data || m.unknown_error()));
@@ -136,7 +135,6 @@ export default function SettingsAudioRoute() {
         setAudioDTXEnabled(dtxEnabled);
         setAudioFECEnabled(fecEnabled);
         setAudioBufferPeriods(bufferPeriods);
-        setAudioSampleRate(sampleRate);
         setAudioPacketLossPerc(packetLossPerc);
         notifications.success(m.audio_settings_config_updated());
       }
@@ -217,7 +215,6 @@ export default function SettingsAudioRoute() {
                 audioDTXEnabled,
                 audioFECEnabled,
                 audioBufferPeriods,
-                audioSampleRate,
                 audioPacketLossPerc
               )
             }
@@ -245,7 +242,6 @@ export default function SettingsAudioRoute() {
                 audioDTXEnabled,
                 audioFECEnabled,
                 audioBufferPeriods,
-                audioSampleRate,
                 audioPacketLossPerc
               )
             }
@@ -265,7 +261,6 @@ export default function SettingsAudioRoute() {
                 e.target.checked,
                 audioFECEnabled,
                 audioBufferPeriods,
-                audioSampleRate,
                 audioPacketLossPerc
               )
             }
@@ -285,7 +280,6 @@ export default function SettingsAudioRoute() {
                 audioDTXEnabled,
                 e.target.checked,
                 audioBufferPeriods,
-                audioSampleRate,
                 audioPacketLossPerc
               )
             }
@@ -313,7 +307,6 @@ export default function SettingsAudioRoute() {
                 audioDTXEnabled,
                 audioFECEnabled,
                 parseInt(e.target.value),
-                audioSampleRate,
                 audioPacketLossPerc
               )
             }
@@ -324,27 +317,16 @@ export default function SettingsAudioRoute() {
           title={m.audio_settings_sample_rate_title()}
           description={m.audio_settings_sample_rate_description()}
         >
-          <SelectMenuBasic
-            size="SM"
-            value={String(audioSampleRate)}
-            options={[
-              { value: "32000", label: "32 kHz" },
-              { value: "44100", label: "44.1 kHz" },
-              { value: "48000", label: "48 kHz (default)" },
-              { value: "96000", label: "96 kHz" },
-            ]}
-            onChange={(e) =>
-              handleAudioConfigChange(
-                audioBitrate,
-                audioComplexity,
-                audioDTXEnabled,
-                audioFECEnabled,
-                audioBufferPeriods,
-                parseInt(e.target.value),
-                audioPacketLossPerc
-              )
-            }
-          />
+          <div className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+            {audioSampleRate === 32000 && "32 kHz"}
+            {audioSampleRate === 44100 && "44.1 kHz"}
+            {audioSampleRate === 48000 && "48 kHz"}
+            {audioSampleRate === 96000 && "96 kHz"}
+            {![32000, 44100, 48000, 96000].includes(audioSampleRate) && `${audioSampleRate} Hz`}
+            <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+              (auto-detected from source)
+            </span>
+          </div>
         </SettingsItem>
 
         <SettingsItem
@@ -370,7 +352,6 @@ export default function SettingsAudioRoute() {
                 audioDTXEnabled,
                 audioFECEnabled,
                 audioBufferPeriods,
-                audioSampleRate,
                 parseInt(e.target.value)
               )
             }
