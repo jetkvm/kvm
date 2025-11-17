@@ -19,7 +19,7 @@ func initOta() {
 	otaState = ota.NewState(ota.Options{
 		Logger:             otaLogger,
 		ReleaseAPIEndpoint: config.GetUpdateAPIURL(),
-		GetHTTPClient: func() *http.Client {
+		GetHTTPClient: func() ota.HttpClient {
 			transport := http.DefaultTransport.(*http.Transport).Clone()
 			transport.Proxy = config.NetworkConfig.GetTransportProxyFunc()
 

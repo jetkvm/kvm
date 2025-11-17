@@ -1,7 +1,6 @@
 package ota
 
 import (
-	"net/http"
 	"sync"
 	"time"
 
@@ -100,7 +99,7 @@ type HwRebootFunc func(force bool, postRebootAction *PostRebootAction, delay tim
 type ResetConfigFunc func() error
 
 // GetHTTPClientFunc is a function that returns the HTTP client
-type GetHTTPClientFunc func() *http.Client
+type GetHTTPClientFunc func() HttpClient
 
 // OnStateUpdateFunc is a function that updates the state of the OTA
 type OnStateUpdateFunc func(state *RPCState)

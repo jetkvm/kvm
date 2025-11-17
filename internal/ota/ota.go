@@ -12,6 +12,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// HttpClient is the interface for the HTTP client
+type HttpClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // UpdateReleaseAPIEndpoint updates the release API endpoint
 func (s *State) UpdateReleaseAPIEndpoint(endpoint string) {
 	s.releaseAPIEndpoint = endpoint
@@ -215,7 +220,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 // UpdateParams represents the parameters for the update
 type UpdateParams struct {
 	DeviceID          string            `json:"deviceID"`
-	Components        map[string]string `json:"components,omitempty"`
+	Components        map[string]string `json:"components"`
 	IncludePreRelease bool              `json:"includePreRelease"`
 	CheckOnly         bool              `json:"checkOnly"`
 	ResetConfig       bool              `json:"resetConfig"`

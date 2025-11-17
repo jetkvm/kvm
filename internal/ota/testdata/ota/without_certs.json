@@ -1,0 +1,17 @@
+{
+    "name": "Without Certs",
+    "localMetadata": {
+        "systemVersion": "0.2.5",
+        "appVersion": "0.4.7"
+    },
+    "updateParams": {
+        "includePreRelease": false,
+        "components": {}
+    },
+    "expected": {
+        "system": false,
+        "app": false,
+        "error": "certificate signed by unknown authority"
+    }
+}
+
