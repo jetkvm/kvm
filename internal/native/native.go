@@ -105,6 +105,11 @@ func (n *Native) Start() {
 	setInstance(n)
 	setUpNativeHandlers()
 
+	// set EDID before video init so source sees audio capabilities immediately
+	if err := videoSetEDID(DefaultEDID); err != nil {
+		n.l.Warn().Err(err).Msg("failed to set default EDID before video init")
+	}
+
 	// start the native video
 	go n.handleLogChan()
 	go n.handleVideoStateChan()
