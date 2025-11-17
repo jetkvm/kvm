@@ -74,8 +74,6 @@
     "audio_https_only": "Endast HTTPS",
     "audio_settings_description": "Konfigurera ljudinmatnings- och ljudutgångsinställningar för din JetKVM-enhet",
     "audio_settings_hdmi_label": "HDMI",
-    "audio_settings_input_description": "Aktivera eller inaktivera mikrofonljud till fjärrdatorn",
-    "audio_settings_input_title": "Ljudingång",
     "audio_settings_output_description": "Aktivera eller inaktivera ljud från fjärrdatorn",
     "audio_settings_output_source_description": "Välj ljudinspelningsenhet (HDMI eller USB)",
     "audio_settings_output_source_failed": "Det gick inte att ställa in ljudutgångskälla: {error}",

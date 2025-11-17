@@ -74,8 +74,6 @@
     "audio_https_only": "Solo HTTPS",
     "audio_settings_description": "Configure los ajustes de entrada y salida de audio para su dispositivo JetKVM",
     "audio_settings_hdmi_label": "HDMI",
-    "audio_settings_input_description": "Habilitar o deshabilitar el audio del micrófono a la computadora remota",
-    "audio_settings_input_title": "Entrada de audio",
     "audio_settings_output_description": "Habilitar o deshabilitar el audio de la computadora remota",
     "audio_settings_output_source_description": "Seleccione el dispositivo de captura de audio (HDMI o USB)",
     "audio_settings_output_source_failed": "Error al configurar la fuente de salida de audio: {error}",

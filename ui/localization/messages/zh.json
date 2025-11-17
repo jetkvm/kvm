@@ -74,8 +74,6 @@
     "audio_https_only": "仅限 HTTPS",
     "audio_settings_description": "配置 JetKVM 设备的音频输入和输出设置",
     "audio_settings_hdmi_label": "HDMI",
-    "audio_settings_input_description": "启用或禁用到远程计算机的麦克风音频",
-    "audio_settings_input_title": "音频输入",
     "audio_settings_output_description": "启用或禁用来自远程计算机的音频",
     "audio_settings_output_source_description": "选择音频捕获设备（HDMI 或 USB）",
     "audio_settings_output_source_failed": "设置音频输出源失败：{error}",
