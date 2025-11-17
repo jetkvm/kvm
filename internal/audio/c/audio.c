@@ -11,7 +11,7 @@
  * Key features:
  * - ARM NEON SIMD optimization for all audio operations
  * - Opus in-band FEC for packet loss resilience
- * - S16_LE @ 48kHz stereo, 20ms frames (960 samples)
+ * - S16_LE stereo, 20ms frames, auto-adapts to source rate (32/44.1/48/96 kHz)
  */
 
 #include <alsa/asoundlib.h>
