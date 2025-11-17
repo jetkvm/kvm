@@ -109,6 +109,7 @@ type Config struct {
 	VideoQualityFactor   float64              `json:"video_quality_factor"`
 	AudioInputAutoEnable bool                 `json:"audio_input_auto_enable"`
 	AudioOutputEnabled   bool                 `json:"audio_output_enabled"`
+	AudioOutputSource    string               `json:"audio_output_source"` // "hdmi" or "usb"
 }
 
 func (c *Config) GetDisplayRotation() uint16 {
@@ -184,6 +185,7 @@ func getDefaultConfig() Config {
 		VideoQualityFactor:   1.0,
 		AudioInputAutoEnable: false,
 		AudioOutputEnabled:   true,
+		AudioOutputSource:    "usb",
 	}
 }
 
