@@ -254,12 +254,15 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 }
 
 /**
- * Configure ALSA device (S16_LE @ 48kHz stereo with optimized buffering)
+ * Configure ALSA device (S16_LE @ variable rate stereo with optimized buffering)
  * @param handle ALSA PCM handle
- * @param device_name Unused (for debugging only)
+ * @param device_name Device name for logging
+ * @param actual_rate_out Pointer to store the actual rate the device was configured to use
+ * @param actual_frame_size_out Pointer to store the actual frame size (samples per channel)
  * @return 0 on success, negative error code on failure
  */
-static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
+static int configure_alsa_device(snd_pcm_t *handle, const char *device_name,
+                                 unsigned int *actual_rate_out, uint16_t *actual_frame_size_out) {
 	snd_pcm_hw_params_t *params;
 	snd_pcm_sw_params_t *sw_params;
 	int err;
@@ -281,14 +284,30 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 	err = snd_pcm_hw_params_set_channels(handle, params, channels);
 	if (err < 0) return err;
 
-	err = snd_pcm_hw_params_set_rate(handle, params, sample_rate, 0);
-	if (err < 0) {
-		unsigned int rate = sample_rate;
-		err = snd_pcm_hw_params_set_rate_near(handle, params, &rate, 0);
-		if (err < 0) return err;
+	unsigned int requested_rate = sample_rate;
+	unsigned int actual_rate = sample_rate;
+	err = snd_pcm_hw_params_set_rate_near(handle, params, &actual_rate, 0);
+	if (err < 0) return err;
+
+	uint16_t actual_frame_size = frame_size;
+	if (actual_rate != requested_rate) {
+		fprintf(stderr, "INFO: %s: Requested sample rate %u Hz, device supports %u Hz (%.1f%% difference)\n",
+		        device_name, requested_rate, actual_rate, ((float)actual_rate - requested_rate) / requested_rate * 100.0f);
+		fprintf(stderr, "INFO: %s: Adapting to device rate %u Hz to avoid pitch/speed distortion\n", device_name, actual_rate);
+		fflush(stderr);
+
+		actual_frame_size = (actual_rate * 20) / 1000;
+		if (channels == 2) {
+			if (actual_frame_size < 480) actual_frame_size = 480;
+			if (actual_frame_size > 2880) actual_frame_size = 2880;
+		}
+
+		fprintf(stderr, "INFO: %s: Adjusted frame size to %u samples (20ms at %u Hz)\n",
+		        device_name, actual_frame_size, actual_rate);
+		fflush(stderr);
 	}
 
-	snd_pcm_uframes_t period_size = frame_size;
+	snd_pcm_uframes_t period_size = actual_frame_size;
 	if (period_size < 64) period_size = 64;
 
 	err = snd_pcm_hw_params_set_period_size_near(handle, params, &period_size, 0);
@@ -300,6 +319,14 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 
 	err = snd_pcm_hw_params(handle, params);
 	if (err < 0) return err;
+
+	unsigned int verified_rate = 0;
+	err = snd_pcm_hw_params_get_rate(params, &verified_rate, 0);
+	if (err < 0 || verified_rate != actual_rate) {
+		fprintf(stderr, "WARNING: %s: Rate verification failed - expected %u Hz, got %u Hz\n",
+		        device_name, actual_rate, verified_rate);
+		fflush(stderr);
+	}
 
 	err = snd_pcm_sw_params_current(handle, sw_params);
 	if (err < 0) return err;
@@ -313,7 +340,13 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 	err = snd_pcm_sw_params(handle, sw_params);
 	if (err < 0) return err;
 
-	return snd_pcm_prepare(handle);
+	err = snd_pcm_prepare(handle);
+	if (err < 0) return err;
+
+	if (actual_rate_out) *actual_rate_out = actual_rate;
+	if (actual_frame_size_out) *actual_frame_size_out = actual_frame_size;
+
+	return 0;
 }
 
 // AUDIO OUTPUT PATH FUNCTIONS (TC358743 HDMI Audio → Client Speakers)
@@ -355,7 +388,9 @@ int jetkvm_audio_capture_init() {
 		return -1;
 	}
 
-	err = configure_alsa_device(pcm_capture_handle, "capture");
+	unsigned int actual_rate = 0;
+	uint16_t actual_frame_size = 0;
+	err = configure_alsa_device(pcm_capture_handle, "capture", &actual_rate, &actual_frame_size);
 	if (err < 0) {
 		snd_pcm_close(pcm_capture_handle);
 		pcm_capture_handle = NULL;
@@ -363,8 +398,12 @@ int jetkvm_audio_capture_init() {
 		return -2;
 	}
 
+	fprintf(stderr, "INFO: capture: Initializing Opus encoder at %u Hz, %u channels, frame size %u\n",
+	        actual_rate, channels, actual_frame_size);
+	fflush(stderr);
+
 	int opus_err = 0;
-	encoder = opus_encoder_create(sample_rate, channels, OPUS_APPLICATION_AUDIO, &opus_err);
+	encoder = opus_encoder_create(actual_rate, channels, OPUS_APPLICATION_AUDIO, &opus_err);
 	if (!encoder || opus_err != OPUS_OK) {
 		if (pcm_capture_handle) {
 			snd_pcm_close(pcm_capture_handle);
@@ -534,7 +573,9 @@ int jetkvm_audio_playback_init() {
 		}
 	}
 
-	err = configure_alsa_device(pcm_playback_handle, "playback");
+	unsigned int actual_rate = 0;
+	uint16_t actual_frame_size = 0;
+	err = configure_alsa_device(pcm_playback_handle, "playback", &actual_rate, &actual_frame_size);
 	if (err < 0) {
 		snd_pcm_close(pcm_playback_handle);
 		pcm_playback_handle = NULL;
@@ -542,8 +583,12 @@ int jetkvm_audio_playback_init() {
 		return -1;
 	}
 
+	fprintf(stderr, "INFO: playback: Initializing Opus decoder at %u Hz, %u channels, frame size %u\n",
+	        actual_rate, channels, actual_frame_size);
+	fflush(stderr);
+
 	int opus_err = 0;
-	decoder = opus_decoder_create(sample_rate, channels, &opus_err);
+	decoder = opus_decoder_create(actual_rate, channels, &opus_err);
 	if (!decoder || opus_err != OPUS_OK) {
 		snd_pcm_close(pcm_playback_handle);
 		pcm_playback_handle = NULL;
