@@ -36,6 +36,18 @@ type RPCState struct {
 	SystemUpdatedAt            *time.Time `json:"systemUpdatedAt,omitempty"`
 }
 
+func setTimeIfNotZero(rpcVal reflect.Value, i int, status time.Time) {
+	if !status.IsZero() {
+		rpcVal.Field(i).Set(reflect.ValueOf(&status))
+	}
+}
+
+func setFloat32IfNotZero(rpcVal reflect.Value, i int, status float32) {
+	if status != 0 {
+		rpcVal.Field(i).Set(reflect.ValueOf(&status))
+	}
+}
+
 // applyComponentStatusToRPCState uses reflection to map componentUpdateStatus fields to RPCState
 func applyComponentStatusToRPCState(component string, status componentUpdateStatus, rpcState *RPCState) {
 	prefix := componentFieldMap[component]
@@ -55,17 +67,17 @@ func applyComponentStatusToRPCState(component string, status componentUpdateStat
 
 		switch rpcFieldName {
 		case "DownloadProgress":
-			rpcVal.Field(i).Set(reflect.ValueOf(&status.downloadProgress))
+			setFloat32IfNotZero(rpcVal, i, status.downloadProgress)
 		case "DownloadFinishedAt":
-			rpcVal.Field(i).Set(reflect.ValueOf(&status.downloadFinishedAt))
+			setTimeIfNotZero(rpcVal, i, status.downloadFinishedAt)
 		case "VerificationProgress":
-			rpcVal.Field(i).Set(reflect.ValueOf(&status.verificationProgress))
+			setFloat32IfNotZero(rpcVal, i, status.verificationProgress)
 		case "VerifiedAt":
-			rpcVal.Field(i).Set(reflect.ValueOf(&status.verifiedAt))
+			setTimeIfNotZero(rpcVal, i, status.verifiedAt)
 		case "UpdateProgress":
-			rpcVal.Field(i).Set(reflect.ValueOf(&status.updateProgress))
+			setFloat32IfNotZero(rpcVal, i, status.updateProgress)
 		case "UpdatedAt":
-			rpcVal.Field(i).Set(reflect.ValueOf(&status.updatedAt))
+			setTimeIfNotZero(rpcVal, i, status.updatedAt)
 		case "UpdatePending":
 			rpcVal.Field(i).SetBool(status.pending)
 		default:
