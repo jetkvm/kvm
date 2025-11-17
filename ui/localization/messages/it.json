@@ -302,6 +302,7 @@
     "general_update_up_to_date_title": "Il sistema è aggiornato",
     "general_update_updating_description": "Non spegnere il dispositivo. Questo processo potrebbe richiedere alcuni minuti.",
     "general_update_updating_title": "Aggiornamento del dispositivo",
+    "general_update_will_disable_auto_update_description": "Stai eseguendo il downgrade a una versione precedente. L'aggiornamento automatico verrà disattivato al termine dell'aggiornamento per evitare aggiornamenti accidentali.",
     "getting_remote_session_description": "Tentativo di ottenimento della descrizione della sessione remota {attempt}",
     "hardware_backlight_settings_error": "Impossibile impostare le impostazioni della retroilluminazione: {error}",
     "hardware_backlight_settings_get_error": "Impossibile ottenere le impostazioni della retroilluminazione: {error}",

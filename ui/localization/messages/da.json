@@ -302,6 +302,7 @@
     "general_update_up_to_date_title": "Systemet er opdateret",
     "general_update_updating_description": "Sluk ikke enheden. Denne proces kan tage et par minutter.",
     "general_update_updating_title": "Opdatering af din enhed",
+    "general_update_will_disable_auto_update_description": "Du nedgraderer i øjeblikket til en tidligere version. Automatisk opdatering vil blive deaktiveret, når opdateringen er fuldført, for at forhindre utilsigtede opdateringer.",
     "getting_remote_session_description": "Henter beskrivelse af fjernsessionsforsøg {attempt}",
     "hardware_backlight_settings_error": "Kunne ikke indstille baggrundsbelysningsindstillinger: {error}",
     "hardware_backlight_settings_get_error": "Kunne ikke hente indstillinger for baggrundsbelysning: {error}",

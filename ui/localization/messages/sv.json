@@ -302,6 +302,7 @@
     "general_update_up_to_date_title": "Systemet är uppdaterat",
     "general_update_updating_description": "Stäng inte av enheten. Den här processen kan ta några minuter.",
     "general_update_updating_title": "Uppdaterar din enhet",
+    "general_update_will_disable_auto_update_description": "Du nedgraderar för närvarande till en tidigare version. Automatisk uppdatering inaktiveras efter att uppdateringen är klar för att förhindra oavsiktliga uppdateringar.",
     "getting_remote_session_description": "Hämtar beskrivning av fjärrsession försök {attempt}",
     "hardware_backlight_settings_error": "Misslyckades med att ställa in bakgrundsbelysning: {error}",
     "hardware_backlight_settings_get_error": "Misslyckades med att hämta inställningar för bakgrundsbelysning: {error}",

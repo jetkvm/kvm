@@ -302,6 +302,7 @@
     "general_update_up_to_date_title": "Le système est à jour",
     "general_update_updating_description": "Veuillez ne pas éteindre votre appareil. Ce processus peut prendre quelques minutes.",
     "general_update_updating_title": "Mise à jour de votre appareil",
+    "general_update_will_disable_auto_update_description": "Vous allez revenir à une version antérieure. La mise à jour automatique sera désactivée une fois l'opération terminée afin d'éviter toute mise à jour accidentelle.",
     "getting_remote_session_description": "Obtention d'{attempt} description de session à distance",
     "hardware_backlight_settings_error": "Échec de la définition des paramètres de rétroéclairage : {error}",
     "hardware_backlight_settings_get_error": "Échec de l'obtention des paramètres de rétroéclairage : {error}",

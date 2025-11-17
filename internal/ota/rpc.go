@@ -156,6 +156,7 @@ func remoteMetadataToComponentStatus(
 		componentStatus.available = componentStatus.version != componentStatus.localVersion
 		if componentStatus.available {
 			componentStatus.availableReason = fmt.Sprintf("custom version %s is not equal to local version %s", constraint, componentStatus.localVersion)
+			componentStatus.customVersionUpdate = true
 		}
 	} else if !componentExists {
 		componentStatus.available = false

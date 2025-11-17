@@ -38,6 +38,7 @@ type UpdateStatus struct {
 	Remote                *UpdateMetadata `json:"remote"`
 	SystemUpdateAvailable bool            `json:"systemUpdateAvailable"`
 	AppUpdateAvailable    bool            `json:"appUpdateAvailable"`
+	WillDisableAutoUpdate bool            `json:"willDisableAutoUpdate"`
 
 	// only available for debugging and won't be exported
 	SystemUpdateAvailableReason string `json:"-"`
@@ -59,6 +60,7 @@ type componentUpdateStatus struct {
 	pending              bool
 	available            bool
 	availableReason      string // why the component is available or not available
+	customVersionUpdate  bool
 	version              string
 	localVersion         string
 	url                  string
@@ -98,6 +100,9 @@ type HwRebootFunc func(force bool, postRebootAction *PostRebootAction, delay tim
 // ResetConfigFunc is a function that resets the config
 type ResetConfigFunc func() error
 
+// SetAutoUpdateFunc is a function that sets the auto-update state
+type SetAutoUpdateFunc func(enabled bool) (bool, error)
+
 // GetHTTPClientFunc is a function that returns the HTTP client
 type GetHTTPClientFunc func() HttpClient
 
@@ -125,6 +130,7 @@ type State struct {
 	getLocalVersion         GetLocalVersionFunc
 	onStateUpdate           OnStateUpdateFunc
 	resetConfig             ResetConfigFunc
+	setAutoUpdate           SetAutoUpdateFunc
 }
 
 func toUpdateStatus(appUpdate *componentUpdateStatus, systemUpdate *componentUpdateStatus, error string) *UpdateStatus {
@@ -145,6 +151,7 @@ func toUpdateStatus(appUpdate *componentUpdateStatus, systemUpdate *componentUpd
 		SystemUpdateAvailableReason: systemUpdate.availableReason,
 		AppUpdateAvailable:          appUpdate.available,
 		AppUpdateAvailableReason:    appUpdate.availableReason,
+		WillDisableAutoUpdate:       appUpdate.customVersionUpdate || systemUpdate.customVersionUpdate,
 		Error:                       error,
 	}
 }
@@ -180,6 +187,7 @@ type Options struct {
 	ReleaseAPIEndpoint string
 	ResetConfig        ResetConfigFunc
 	SkipConfirmSystem  bool
+	SetAutoUpdate      SetAutoUpdateFunc
 }
 
 // NewState creates a new OTA state
@@ -198,6 +206,7 @@ func NewState(opts Options) *State {
 		componentUpdateStatuses: components,
 		releaseAPIEndpoint:      opts.ReleaseAPIEndpoint,
 		resetConfig:             opts.ResetConfig,
+		setAutoUpdate:           opts.SetAutoUpdate,
 	}
 	if !opts.SkipConfirmSystem {
 		go s.confirmCurrentSystem()

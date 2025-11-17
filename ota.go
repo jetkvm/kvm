@@ -31,6 +31,7 @@ func initOta() {
 		GetLocalVersion: GetLocalVersion,
 		HwReboot:        hwReboot,
 		ResetConfig:     rpcResetConfig,
+		SetAutoUpdate:   rpcSetAutoUpdateState,
 		OnStateUpdate: func(state *ota.RPCState) {
 			triggerOTAStateUpdate(state)
 		},
@@ -82,6 +83,7 @@ func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
 		DeviceID:          GetDeviceID(),
 		IncludePreRelease: includePreRelease,
 	})
+
 	// to ensure backwards compatibility,
 	// if there's an error, we won't return an error, but we will set the error field
 	if err != nil {
@@ -89,6 +91,11 @@ func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
 			return nil, fmt.Errorf("error checking for updates: %w", err)
 		}
 		updateStatus.Error = err.Error()
+	}
+
+	// otaState doesn't have the current auto-update state, so we need to get it from the config
+	if updateStatus.WillDisableAutoUpdate {
+		updateStatus.WillDisableAutoUpdate = config.AutoUpdateEnabled
 	}
 
 	otaLogger.Info().Interface("updateStatus", updateStatus).Msg("Update status")

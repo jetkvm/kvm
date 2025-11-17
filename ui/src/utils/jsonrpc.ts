@@ -221,6 +221,7 @@ export interface SystemVersionInfo {
   remote?: VersionInfo;
   systemUpdateAvailable: boolean;
   appUpdateAvailable: boolean;
+  willDisableAutoUpdate?: boolean;
   error?: string;
 }
 

@@ -186,6 +186,14 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	}
 
 	if s.rebootNeeded {
+		if appUpdate.customVersionUpdate || systemUpdate.customVersionUpdate {
+			scopedLogger.Info().Msg("disabling auto-update due to custom version update")
+			if _, err := s.setAutoUpdate(false); err != nil {
+				scopedLogger.Warn().Err(err).Msg("Failed to disable auto-update")
+			}
+			return nil
+		}
+
 		scopedLogger.Info().Msg("System Rebooting due to OTA update")
 
 		redirectUrl := fmt.Sprintf("/settings/general/update?version=%s", systemUpdate.version)

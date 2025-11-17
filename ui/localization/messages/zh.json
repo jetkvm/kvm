@@ -302,6 +302,7 @@
     "general_update_up_to_date_title": "系统已更新",
     "general_update_updating_description": "正在更新，请勿关闭设备。该过程可能需要数分钟。",
     "general_update_updating_title": "更新您的设备",
+    "general_update_will_disable_auto_update_description": "您目前正在降级到之前的版本。更新完成后，自动更新功能将被禁用，以防止意外更新。",
     "getting_remote_session_description": "获取远程会话描述尝试 {attempt}",
     "hardware_backlight_settings_error": "无法设置背光设置： {error}",
     "hardware_backlight_settings_get_error": "无法获取背光设置： {error}",

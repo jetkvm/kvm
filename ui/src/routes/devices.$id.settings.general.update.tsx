@@ -468,6 +468,11 @@ function UpdateAvailableState({
               <span className="font-semibold">{m.general_update_application_type()}</span>: {versionInfo?.local?.appVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.appVersion}
             </>
           ) : null}
+          {versionInfo?.willDisableAutoUpdate ? (
+            <p className="mb-4 text-sm text-red-600 dark:text-red-400">
+              {m.general_update_will_disable_auto_update_description()}
+            </p>
+          ) : null}
         </p>
         <div className="flex items-center justify-start gap-x-2">
           <Button size="SM" theme="primary" text={m.general_update_now_button()} onClick={onConfirm} />
