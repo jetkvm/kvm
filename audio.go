@@ -28,6 +28,14 @@ var (
 	audioInputEnabled  atomic.Bool
 )
 
+func getAlsaDevice(source string) string {
+	if source == "hdmi" {
+		return "hw:0,0"
+	} else {
+		return "hw:1,0"
+	}
+}
+
 func initAudio() {
 	audioLogger = logging.GetDefaultLogger().With().Str("component", "audio-manager").Logger()
 
@@ -40,7 +48,7 @@ func initAudio() {
 }
 
 func getAudioConfig() audio.AudioConfig {
-	ensureConfigLoaded()
+	// config is already loaded
 	cfg := audio.DefaultAudioConfig()
 	if config.AudioBitrate >= 64 && config.AudioBitrate <= 256 {
 		cfg.Bitrate = uint16(config.AudioBitrate)
@@ -73,11 +81,7 @@ func startAudio() error {
 
 	if outputSource == nil && audioOutputEnabled.Load() && currentAudioTrack != nil {
 		ensureConfigLoaded()
-		alsaDevice := "hw:1,0"
-		if config.AudioOutputSource == "hdmi" {
-			alsaDevice = "hw:0,0"
-		}
-
+		alsaDevice := getAlsaDevice(config.AudioOutputSource)
 		source := audio.NewCgoOutputSource(alsaDevice)
 		source.SetConfig(getAudioConfig())
 		outputSource = source
@@ -89,8 +93,7 @@ func startAudio() error {
 
 	ensureConfigLoaded()
 	if inputSource.Load() == nil && audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
-		alsaPlaybackDevice := "hw:1,0"
-
+		alsaPlaybackDevice := getAlsaDevice("usb")
 		source := audio.NewCgoInputSource(alsaPlaybackDevice)
 		source.SetConfig(getAudioConfig())
 		var audioSource audio.AudioSource = source
@@ -175,11 +178,8 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 	var newSource audio.AudioSource
 	if currentAudioTrack != nil && audioOutputEnabled.Load() {
 		ensureConfigLoaded()
-		alsaDevice := "hw:1,0"
-		if config.AudioOutputSource == "hdmi" {
-			alsaDevice = "hw:0,0"
-		}
-		newSource = audio.NewCgoOutputSource(alsaDevice)
+		alsaDevice := getAlsaDevice(config.AudioOutputSource)
+		newSource := audio.NewCgoOutputSource(alsaDevice)
 		newSource.SetConfig(getAudioConfig())
 		newRelay = audio.NewOutputRelay(newSource, currentAudioTrack)
 		outputSource = newSource
@@ -255,11 +255,7 @@ func SetAudioOutputSource(source string) error {
 	stopOutputAudio()
 
 	if audioOutputEnabled.Load() && activeConnections.Load() > 0 && currentAudioTrack != nil {
-		alsaDevice := "hw:1,0"
-		if source == "hdmi" {
-			alsaDevice = "hw:0,0"
-		}
-
+		alsaDevice := getAlsaDevice(source)
 		newSource := audio.NewCgoOutputSource(alsaDevice)
 		newSource.SetConfig(getAudioConfig())
 		newRelay := audio.NewOutputRelay(newSource, currentAudioTrack)
@@ -291,10 +287,7 @@ func RestartAudioOutput() {
 	stopOutputAudio()
 
 	ensureConfigLoaded()
-	alsaDevice := "hw:1,0"
-	if config.AudioOutputSource == "hdmi" {
-		alsaDevice = "hw:0,0"
-	}
+	alsaDevice := getAlsaDevice(config.AudioOutputSource)
 
 	newSource := audio.NewCgoOutputSource(alsaDevice)
 	newSource.SetConfig(getAudioConfig())
