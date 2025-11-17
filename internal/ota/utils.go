@@ -26,6 +26,10 @@ func syncFilesystem() error {
 }
 
 func (s *State) downloadFile(ctx context.Context, path string, url string, component string) error {
+	logger := s.l.With().Str("path", path).Str("url", url).Str("component", component).Logger()
+
+	logger.Trace().Msg("downloading file")
+
 	componentUpdate, ok := s.componentUpdateStatuses[component]
 	if !ok {
 		return fmt.Errorf("component %s not found", component)
@@ -34,6 +38,7 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 	downloadProgress := componentUpdate.downloadProgress
 
 	if _, err := os.Stat(path); err == nil {
+		logger.Trace().Msg("removing existing file")
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("error removing existing file: %w", err)
 		}
@@ -41,23 +46,27 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 
 	unverifiedPath := path + ".unverified"
 	if _, err := os.Stat(unverifiedPath); err == nil {
+		logger.Trace().Msg("removing existing unverified file")
 		if err := os.Remove(unverifiedPath); err != nil {
 			return fmt.Errorf("error removing existing unverified file: %w", err)
 		}
 	}
 
+	logger.Trace().Msg("creating unverified file")
 	file, err := os.Create(unverifiedPath)
 	if err != nil {
 		return fmt.Errorf("error creating file: %w", err)
 	}
 	defer file.Close()
 
+	logger.Trace().Msg("creating request")
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("error creating request: %w", err)
 	}
 
 	client := s.client()
+	logger.Trace().Msg("starting download")
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("error downloading file: %w", err)
@@ -100,15 +109,16 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 		}
 	}
 
+	logger.Trace().Msg("download finished")
 	file.Close()
 
+	logger.Trace().Msg("syncing filesystem")
 	if err := syncFilesystem(); err != nil {
 		return fmt.Errorf("error syncing filesystem: %w", err)
 	}
 
 	return nil
 }
-
 func (s *State) verifyFile(path string, expectedHash string, verifyProgress *float32) error {
 	l := s.l.With().Str("path", path).Logger()
 

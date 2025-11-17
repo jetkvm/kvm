@@ -11,10 +11,9 @@ const (
 	systemUpdatePath = "/userdata/jetkvm/update_system.tar"
 )
 
+// DO NOT call it directly, it's not thread safe
+// Mutex is currently held by the caller, e.g. doUpdate
 func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateStatus) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	l := s.l.With().Str("path", systemUpdatePath).Logger()
 
 	if err := s.downloadFile(ctx, systemUpdatePath, systemUpdate.url, "system"); err != nil {

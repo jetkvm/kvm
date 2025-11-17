@@ -2,25 +2,15 @@ package ota
 
 import (
 	"context"
-	"fmt"
 	"time"
-
-	"github.com/rs/zerolog"
 )
 
 const (
 	appUpdatePath = "/userdata/jetkvm/jetkvm_app.update"
 )
 
-func (s *State) componentUpdateError(prefix string, err error, l *zerolog.Logger) error {
-	if l == nil {
-		l = s.l
-	}
-	l.Error().Err(err).Msg(prefix)
-	s.error = fmt.Sprintf("%s: %v", prefix, err)
-	return err
-}
-
+// DO NOT call it directly, it's not thread safe
+// Mutex is currently held by the caller, e.g. doUpdate
 func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus) error {
 	l := s.l.With().Str("path", appUpdatePath).Logger()
 

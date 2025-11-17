@@ -171,6 +171,8 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		s.triggerComponentUpdateState("system", systemUpdate)
 	}
 
+	scopedLogger.Trace().Bool("pending", appUpdate.pending).Msg("Checking for app update")
+
 	if appUpdate.pending {
 		scopedLogger.Info().
 			Str("url", appUpdate.url).
@@ -183,6 +185,8 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	} else {
 		scopedLogger.Info().Msg("App is up to date")
 	}
+
+	scopedLogger.Trace().Bool("pending", systemUpdate.pending).Msg("Checking for system update")
 
 	if systemUpdate.pending {
 		if err := s.updateSystem(ctx, systemUpdate); err != nil {
