@@ -74,8 +74,6 @@
     "audio_https_only": "Nur HTTPS",
     "audio_settings_description": "Konfigurieren Sie Audio-Eingangs- und Ausgangseinstellungen für Ihr JetKVM-Gerät",
     "audio_settings_hdmi_label": "HDMI",
-    "audio_settings_input_description": "Mikrofonaudio zum entfernten Computer aktivieren oder deaktivieren",
-    "audio_settings_input_title": "Audioeingang",
     "audio_settings_output_description": "Audio vom entfernten Computer aktivieren oder deaktivieren",
     "audio_settings_output_source_description": "Wählen Sie das Audioaufnahmegerät (HDMI oder USB)",
     "audio_settings_output_source_failed": "Fehler beim Festlegen der Audioausgabequelle: {error}",

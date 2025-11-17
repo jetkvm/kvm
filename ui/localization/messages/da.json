@@ -74,8 +74,6 @@
     "audio_https_only": "Kun HTTPS",
     "audio_settings_description": "Konfigurer lydindgangs- og lydudgangsindstillinger for din JetKVM-enhed",
     "audio_settings_hdmi_label": "HDMI",
-    "audio_settings_input_description": "Aktiver eller deaktiver mikrofon lyd til fjerncomputeren",
-    "audio_settings_input_title": "Lydindgang",
     "audio_settings_output_description": "Aktiver eller deaktiver lyd fra fjerncomputeren",
     "audio_settings_output_source_description": "Vælg lydoptagelsesenheden (HDMI eller USB)",
     "audio_settings_output_source_failed": "Kunne ikke indstille lydudgangskilde: {error}",
