@@ -926,7 +926,8 @@ func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 		config.AudioOutputSource = "hdmi"
 		stopOutputAudio()
 		if audioOutputEnabled.Load() && activeConnections.Load() > 0 && currentAudioTrack != nil {
-			newSource := audio.NewCgoOutputSource("hw:0,0")
+			alsaDevice := getAlsaDevice("hdmi")
+			newSource := audio.NewCgoOutputSource(alsaDevice)
 			newSource.SetConfig(getAudioConfig())
 			newRelay := audio.NewOutputRelay(newSource, currentAudioTrack)
 
