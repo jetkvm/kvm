@@ -24,6 +24,7 @@
 #include <sched.h>
 #include <time.h>
 #include <signal.h>
+#include <pthread.h>
 
 // ARM NEON SIMD support (always available on JetKVM's ARM Cortex-A7)
 #include <arm_neon.h>
@@ -76,6 +77,10 @@ static uint32_t max_backoff_us_global = 500000;
 
 static volatile int capture_stop_requested = 0;
 static volatile int playback_stop_requested = 0;
+
+// Mutexes to protect concurrent access to ALSA handles during close
+static pthread_mutex_t capture_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t playback_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int jetkvm_audio_capture_init();
 void jetkvm_audio_capture_close();
@@ -452,14 +457,19 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	SIMD_PREFETCH(pcm_buffer, 0, 0);
 	SIMD_PREFETCH(pcm_buffer + 64, 0, 1);
 
+	// Acquire mutex to protect against concurrent close
+	pthread_mutex_lock(&capture_mutex);
+
 	if (__builtin_expect(!capture_initialized || !pcm_capture_handle || !encoder || !opus_buf, 0)) {
 		TRACE_LOG("[AUDIO_OUTPUT] jetkvm_audio_read_encode: Failed safety checks - capture_initialized=%d, pcm_capture_handle=%p, encoder=%p, opus_buf=%p\n",
 				capture_initialized, pcm_capture_handle, encoder, opus_buf);
+		pthread_mutex_unlock(&capture_mutex);
 		return -1;
 	}
 
 retry_read:
 	if (__builtin_expect(capture_stop_requested, 0)) {
+		pthread_mutex_unlock(&capture_mutex);
 		return -1;
 	}
 
@@ -469,13 +479,17 @@ retry_read:
 		if (pcm_rc == -EPIPE) {
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
+				pthread_mutex_unlock(&capture_mutex);
 				return -1;
 			}
 			err = snd_pcm_prepare(pcm_capture_handle);
 			if (err < 0) {
 				snd_pcm_drop(pcm_capture_handle);
 				err = snd_pcm_prepare(pcm_capture_handle);
-				if (err < 0) return -1;
+				if (err < 0) {
+					pthread_mutex_unlock(&capture_mutex);
+					return -1;
+				}
 			}
 			goto retry_read;
 		} else if (pcm_rc == -EAGAIN) {
@@ -484,20 +498,29 @@ retry_read:
 		} else if (pcm_rc == -ESTRPIPE) {
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
+				pthread_mutex_unlock(&capture_mutex);
 				return -1;
 			}
 			uint8_t resume_attempts = 0;
 			while ((err = snd_pcm_resume(pcm_capture_handle)) == -EAGAIN && resume_attempts < 10) {
-				if (capture_stop_requested) return -1;
+				if (capture_stop_requested) {
+					pthread_mutex_unlock(&capture_mutex);
+					return -1;
+				}
 				snd_pcm_wait(pcm_capture_handle, sleep_milliseconds);
 				resume_attempts++;
 			}
 			if (err < 0) {
 				err = snd_pcm_prepare(pcm_capture_handle);
-				if (err < 0) return -1;
+				if (err < 0) {
+					pthread_mutex_unlock(&capture_mutex);
+					return -1;
+				}
 			}
+			pthread_mutex_unlock(&capture_mutex);
 			return 0;
 		} else if (pcm_rc == -ENODEV) {
+			pthread_mutex_unlock(&capture_mutex);
 			return -1;
 		} else if (pcm_rc == -EIO) {
 			recovery_attempts++;
@@ -508,6 +531,7 @@ retry_read:
 					goto retry_read;
 				}
 			}
+			pthread_mutex_unlock(&capture_mutex);
 			return -1;
 		} else {
 			recovery_attempts++;
@@ -517,6 +541,7 @@ retry_read:
 				snd_pcm_wait(pcm_capture_handle, 1); // Wait 1ms for device
 				goto retry_read;
 			}
+			pthread_mutex_unlock(&capture_mutex);
 			return -1;
 		}
 	}
@@ -528,6 +553,7 @@ retry_read:
 	}
 
 	nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
+	pthread_mutex_unlock(&capture_mutex);
 	return nb_bytes;
 }
 
@@ -621,14 +647,19 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 
 	SIMD_PREFETCH(in, 0, 0);
 
+	// Acquire mutex to protect against concurrent close
+	pthread_mutex_lock(&playback_mutex);
+
 	if (__builtin_expect(!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0, 0)) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Failed safety checks - playback_initialized=%d, pcm_playback_handle=%p, decoder=%p, opus_buf=%p, opus_size=%d\n",
 				playback_initialized, pcm_playback_handle, decoder, opus_buf, opus_size);
+		pthread_mutex_unlock(&playback_mutex);
 		return -1;
 	}
 
 	if (opus_size > max_packet_size) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus packet too large - size=%d, max=%d\n", opus_size, max_packet_size);
+		pthread_mutex_unlock(&playback_mutex);
 		return -1;
 	}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Processing Opus packet - size=%d bytes\n", opus_size);
@@ -645,6 +676,7 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 1);
 		if (pcm_frames < 0) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Packet loss concealment also failed with error %d\n", pcm_frames);
+			pthread_mutex_unlock(&playback_mutex);
 			return -1;
 		}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Packet loss concealment succeeded, recovered %d frames\n", pcm_frames);
@@ -653,6 +685,7 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 
 retry_write:
 	if (__builtin_expect(playback_stop_requested, 0)) {
+		pthread_mutex_unlock(&playback_mutex);
 		return -1;
 	}
 
@@ -665,6 +698,7 @@ retry_write:
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun recovery failed after %d attempts\n", max_recovery_attempts);
+				pthread_mutex_unlock(&playback_mutex);
 				return -2;
 			}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun detected, attempting recovery (attempt %d)\n", recovery_attempts);
@@ -675,6 +709,7 @@ retry_write:
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err < 0) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: drop+prepare recovery failed (%s)\n", snd_strerror(err));
+					pthread_mutex_unlock(&playback_mutex);
 					return -2;
 				}
 			}
@@ -684,12 +719,16 @@ retry_write:
 			recovery_attempts++;
 			if (recovery_attempts > max_recovery_attempts) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspend recovery failed after %d attempts\n", max_recovery_attempts);
+				pthread_mutex_unlock(&playback_mutex);
 				return -2;
 			}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspended, attempting resume (attempt %d)\n", recovery_attempts);
 			uint8_t resume_attempts = 0;
 			while ((err = snd_pcm_resume(pcm_playback_handle)) == -EAGAIN && resume_attempts < 10) {
-				if (playback_stop_requested) return -1;
+				if (playback_stop_requested) {
+					pthread_mutex_unlock(&playback_mutex);
+					return -1;
+				}
 				snd_pcm_wait(pcm_playback_handle, sleep_milliseconds);
 				resume_attempts++;
 			}
@@ -698,13 +737,16 @@ retry_write:
 				err = snd_pcm_prepare(pcm_playback_handle);
 				if (err < 0) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Prepare fallback failed (%s)\n", snd_strerror(err));
+					pthread_mutex_unlock(&playback_mutex);
 					return -2;
 				}
 			}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspend recovery successful, skipping frame\n");
+			pthread_mutex_unlock(&playback_mutex);
 			return 0;
 		} else if (pcm_rc == -ENODEV) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device disconnected (ENODEV) - critical error\n");
+			pthread_mutex_unlock(&playback_mutex);
 			return -2;
 		} else if (pcm_rc == -EIO) {
 			recovery_attempts++;
@@ -718,6 +760,7 @@ retry_write:
 				}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error recovery failed (%s)\n", snd_strerror(err));
 			}
+			pthread_mutex_unlock(&playback_mutex);
 			return -2;
 		} else if (pcm_rc == -EAGAIN) {
 			recovery_attempts++;
@@ -727,6 +770,7 @@ retry_write:
 				goto retry_write;
 			}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device not ready recovery failed after %d attempts\n", max_recovery_attempts);
+			pthread_mutex_unlock(&playback_mutex);
 			return -2;
 		} else {
 			recovery_attempts++;
@@ -736,10 +780,12 @@ retry_write:
 				goto retry_write;
 			}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Unrecoverable error %d (%s)\n", pcm_rc, snd_strerror(pcm_rc));
+			pthread_mutex_unlock(&playback_mutex);
 			return -2;
 		}
 	}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Successfully wrote %d PCM frames to device\n", pcm_frames);
+	pthread_mutex_unlock(&playback_mutex);
 	return pcm_frames;
 }
 
@@ -758,6 +804,9 @@ void jetkvm_audio_playback_close() {
 		return;
 	}
 
+	// Acquire mutex to prevent concurrent write operations
+	pthread_mutex_lock(&playback_mutex);
+
 	if (decoder) {
 		opus_decoder_destroy(decoder);
 		decoder = NULL;
@@ -767,6 +816,8 @@ void jetkvm_audio_playback_close() {
 		snd_pcm_close(pcm_playback_handle);
 		pcm_playback_handle = NULL;
 	}
+
+	pthread_mutex_unlock(&playback_mutex);
 
 	playback_stop_requested = 0;
 }
@@ -784,6 +835,9 @@ void jetkvm_audio_capture_close() {
 		return;
 	}
 
+	// Acquire mutex to prevent concurrent read operations
+	pthread_mutex_lock(&capture_mutex);
+
 	if (pcm_capture_handle) {
 		snd_pcm_drop(pcm_capture_handle);
 		snd_pcm_close(pcm_capture_handle);
@@ -793,6 +847,8 @@ void jetkvm_audio_capture_close() {
 		opus_encoder_destroy(encoder);
 		encoder = NULL;
 	}
+
+	pthread_mutex_unlock(&capture_mutex);
 
 	capture_stop_requested = 0;
 }
