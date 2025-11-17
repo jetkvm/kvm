@@ -141,11 +141,6 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		return fmt.Errorf("no components to update")
 	}
 
-	if !params.CheckOnly {
-		s.updating = true
-		s.triggerStateUpdate()
-	}
-
 	appUpdate, systemUpdate, err := s.getUpdateStatus(ctx, params)
 	if err != nil {
 		s.updating = false
@@ -154,12 +149,6 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 
 	s.metadataFetchedAt = time.Now()
 	s.triggerStateUpdate()
-
-	if params.CheckOnly {
-		s.updating = false
-		s.triggerStateUpdate()
-		return nil
-	}
 
 	if shouldUpdateApp && appUpdate.available {
 		appUpdate.pending = true
@@ -227,7 +216,6 @@ type UpdateParams struct {
 	DeviceID          string            `json:"deviceID"`
 	Components        map[string]string `json:"components"`
 	IncludePreRelease bool              `json:"includePreRelease"`
-	CheckOnly         bool              `json:"checkOnly"`
 	ResetConfig       bool              `json:"resetConfig"`
 }
 
