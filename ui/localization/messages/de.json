@@ -89,7 +89,7 @@
     "audio_settings_buffer_title": "Pufferperioden",
     "audio_settings_buffer_description": "ALSA-Puffergröße (höher = stabiler, mehr Latenz)",
     "audio_settings_sample_rate_title": "Abtastrate",
-    "audio_settings_sample_rate_description": "Audio-Abtastfrequenz (HDMI-Quelle anpassen für beste Qualität)",
+    "audio_settings_sample_rate_description": "Audio sampling frequency (automatically detected from source)",
     "audio_settings_packet_loss_title": "Paketverlust-Kompensation",
     "audio_settings_packet_loss_description": "FEC-Overhead-Prozentsatz (höher = bessere Wiederherstellung, mehr Bandbreite)",
     "audio_settings_config_updated": "Audiokonfiguration aktualisiert",

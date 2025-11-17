@@ -1078,7 +1078,7 @@ func rpcGetAudioConfig() (AudioConfigResponse, error) {
 	}, nil
 }
 
-func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled bool, bufferPeriods int, sampleRate int, packetLossPerc int) error {
+func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled bool, bufferPeriods int, packetLossPerc int) error {
 	ensureConfigLoaded()
 
 	if bitrate < 64 || bitrate > 256 {
@@ -1090,9 +1090,6 @@ func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled 
 	if bufferPeriods < 2 || bufferPeriods > 24 {
 		return fmt.Errorf("buffer periods must be between 2 and 24")
 	}
-	if sampleRate != 32000 && sampleRate != 44100 && sampleRate != 48000 && sampleRate != 96000 {
-		return fmt.Errorf("sample rate must be 32000, 44100, 48000, or 96000 Hz")
-	}
 	if packetLossPerc < 0 || packetLossPerc > 100 {
 		return fmt.Errorf("packet loss percentage must be between 0 and 100")
 	}
@@ -1102,7 +1099,6 @@ func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled 
 	config.AudioDTXEnabled = dtxEnabled
 	config.AudioFECEnabled = fecEnabled
 	config.AudioBufferPeriods = bufferPeriods
-	config.AudioSampleRate = sampleRate
 	config.AudioPacketLossPerc = packetLossPerc
 
 	return SaveConfig()
@@ -1454,7 +1450,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"setAudioOutputSource":    {Func: rpcSetAudioOutputSource, Params: []string{"source"}},
 	"refreshHdmiConnection":   {Func: rpcRefreshHdmiConnection},
 	"getAudioConfig":          {Func: rpcGetAudioConfig},
-	"setAudioConfig":          {Func: rpcSetAudioConfig, Params: []string{"bitrate", "complexity", "dtxEnabled", "fecEnabled", "bufferPeriods", "sampleRate", "packetLossPerc"}},
+	"setAudioConfig":          {Func: rpcSetAudioConfig, Params: []string{"bitrate", "complexity", "dtxEnabled", "fecEnabled", "bufferPeriods", "packetLossPerc"}},
 	"restartAudioOutput":      {Func: rpcRestartAudioOutput},
 	"getAudioInputAutoEnable": {Func: rpcGetAudioInputAutoEnable},
 	"setAudioInputAutoEnable": {Func: rpcSetAudioInputAutoEnable, Params: []string{"enabled"}},

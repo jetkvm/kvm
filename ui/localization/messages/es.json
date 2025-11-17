@@ -89,7 +89,7 @@
     "audio_settings_buffer_title": "Períodos de Buffer",
     "audio_settings_buffer_description": "Tamaño del buffer ALSA (mayor = más estable, más latencia)",
     "audio_settings_sample_rate_title": "Tasa de Muestreo",
-    "audio_settings_sample_rate_description": "Frecuencia de muestreo de audio (coincidir con fuente HDMI para mejor calidad)",
+    "audio_settings_sample_rate_description": "Audio sampling frequency (automatically detected from source)",
     "audio_settings_packet_loss_title": "Compensación de Pérdida de Paquetes",
     "audio_settings_packet_loss_description": "Porcentaje de sobrecarga FEC (mayor = mejor recuperación, más ancho de banda)",
     "audio_settings_config_updated": "Configuración de audio actualizada",

@@ -89,7 +89,7 @@
     "audio_settings_buffer_title": "Périodes de Tampon",
     "audio_settings_buffer_description": "Taille du tampon ALSA (plus élevé = plus stable, plus de latence)",
     "audio_settings_sample_rate_title": "Fréquence d'Échantillonnage",
-    "audio_settings_sample_rate_description": "Fréquence d'échantillonnage audio (correspondre à la source HDMI pour une meilleure qualité)",
+    "audio_settings_sample_rate_description": "Audio sampling frequency (automatically detected from source)",
     "audio_settings_packet_loss_title": "Compensation de Perte de Paquets",
     "audio_settings_packet_loss_description": "Pourcentage de surcharge FEC (plus élevé = meilleure récupération, plus de bande passante)",
     "audio_settings_config_updated": "Configuration audio mise à jour",

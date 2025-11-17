@@ -89,7 +89,7 @@
     "audio_settings_buffer_title": "缓冲周期",
     "audio_settings_buffer_description": "ALSA 缓冲大小（越高 = 越稳定，延迟越高）",
     "audio_settings_sample_rate_title": "采样率",
-    "audio_settings_sample_rate_description": "音频采样频率（匹配 HDMI 源以获得最佳质量）",
+    "audio_settings_sample_rate_description": "Audio sampling frequency (automatically detected from source)",
     "audio_settings_packet_loss_title": "丢包补偿",
     "audio_settings_packet_loss_description": "FEC 开销百分比（越高 = 恢复越好，带宽越大）",
     "audio_settings_config_updated": "音频配置已更新",
