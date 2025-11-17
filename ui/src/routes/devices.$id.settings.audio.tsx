@@ -16,6 +16,8 @@ interface AudioConfigResult {
   dtx_enabled: boolean;
   fec_enabled: boolean;
   buffer_periods: number;
+  sample_rate: number;
+  packet_loss_perc: number;
 }
 
 export default function SettingsAudioRoute() {
@@ -37,6 +39,10 @@ export default function SettingsAudioRoute() {
     setAudioFECEnabled,
     audioBufferPeriods,
     setAudioBufferPeriods,
+    audioSampleRate,
+    setAudioSampleRate,
+    audioPacketLossPerc,
+    setAudioPacketLossPerc,
   } = useSettingsStore();
 
   useEffect(() => {
@@ -63,8 +69,10 @@ export default function SettingsAudioRoute() {
       setAudioDTXEnabled(config.dtx_enabled);
       setAudioFECEnabled(config.fec_enabled);
       setAudioBufferPeriods(config.buffer_periods);
+      setAudioSampleRate(config.sample_rate);
+      setAudioPacketLossPerc(config.packet_loss_perc);
     });
-  }, [send, setAudioOutputEnabled, setAudioInputAutoEnable, setAudioOutputSource, setAudioBitrate, setAudioComplexity, setAudioDTXEnabled, setAudioFECEnabled, setAudioBufferPeriods]);
+  }, [send, setAudioOutputEnabled, setAudioInputAutoEnable, setAudioOutputSource, setAudioBitrate, setAudioComplexity, setAudioDTXEnabled, setAudioFECEnabled, setAudioBufferPeriods, setAudioSampleRate, setAudioPacketLossPerc]);
 
   const handleAudioOutputEnabledChange = (enabled: boolean) => {
     send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
@@ -111,11 +119,13 @@ export default function SettingsAudioRoute() {
     complexity: number,
     dtxEnabled: boolean,
     fecEnabled: boolean,
-    bufferPeriods: number
+    bufferPeriods: number,
+    sampleRate: number,
+    packetLossPerc: number
   ) => {
     send(
       "setAudioConfig",
-      { bitrate, complexity, dtxEnabled, fecEnabled, bufferPeriods },
+      { bitrate, complexity, dtxEnabled, fecEnabled, bufferPeriods, sampleRate, packetLossPerc },
       (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(String(resp.error.data || m.unknown_error()));
@@ -126,6 +136,8 @@ export default function SettingsAudioRoute() {
         setAudioDTXEnabled(dtxEnabled);
         setAudioFECEnabled(fecEnabled);
         setAudioBufferPeriods(bufferPeriods);
+        setAudioSampleRate(sampleRate);
+        setAudioPacketLossPerc(packetLossPerc);
         notifications.success(m.audio_settings_config_updated());
       }
     );
@@ -204,7 +216,9 @@ export default function SettingsAudioRoute() {
                 audioComplexity,
                 audioDTXEnabled,
                 audioFECEnabled,
-                audioBufferPeriods
+                audioBufferPeriods,
+                audioSampleRate,
+                audioPacketLossPerc
               )
             }
           />
@@ -230,7 +244,9 @@ export default function SettingsAudioRoute() {
                 parseInt(e.target.value),
                 audioDTXEnabled,
                 audioFECEnabled,
-                audioBufferPeriods
+                audioBufferPeriods,
+                audioSampleRate,
+                audioPacketLossPerc
               )
             }
           />
@@ -248,7 +264,9 @@ export default function SettingsAudioRoute() {
                 audioComplexity,
                 e.target.checked,
                 audioFECEnabled,
-                audioBufferPeriods
+                audioBufferPeriods,
+                audioSampleRate,
+                audioPacketLossPerc
               )
             }
           />
@@ -266,7 +284,9 @@ export default function SettingsAudioRoute() {
                 audioComplexity,
                 audioDTXEnabled,
                 e.target.checked,
-                audioBufferPeriods
+                audioBufferPeriods,
+                audioSampleRate,
+                audioPacketLossPerc
               )
             }
           />
@@ -292,6 +312,65 @@ export default function SettingsAudioRoute() {
                 audioComplexity,
                 audioDTXEnabled,
                 audioFECEnabled,
+                parseInt(e.target.value),
+                audioSampleRate,
+                audioPacketLossPerc
+              )
+            }
+          />
+        </SettingsItem>
+
+        <SettingsItem
+          title={m.audio_settings_sample_rate_title()}
+          description={m.audio_settings_sample_rate_description()}
+        >
+          <SelectMenuBasic
+            size="SM"
+            value={String(audioSampleRate)}
+            options={[
+              { value: "32000", label: "32 kHz" },
+              { value: "44100", label: "44.1 kHz" },
+              { value: "48000", label: "48 kHz (default)" },
+              { value: "96000", label: "96 kHz" },
+            ]}
+            onChange={(e) =>
+              handleAudioConfigChange(
+                audioBitrate,
+                audioComplexity,
+                audioDTXEnabled,
+                audioFECEnabled,
+                audioBufferPeriods,
+                parseInt(e.target.value),
+                audioPacketLossPerc
+              )
+            }
+          />
+        </SettingsItem>
+
+        <SettingsItem
+          title={m.audio_settings_packet_loss_title()}
+          description={m.audio_settings_packet_loss_description()}
+        >
+          <SelectMenuBasic
+            size="SM"
+            value={String(audioPacketLossPerc)}
+            options={[
+              { value: "0", label: "0% (no compensation)" },
+              { value: "5", label: "5%" },
+              { value: "10", label: "10%" },
+              { value: "15", label: "15%" },
+              { value: "20", label: "20% (default)" },
+              { value: "25", label: "25%" },
+              { value: "30", label: "30%" },
+            ]}
+            onChange={(e) =>
+              handleAudioConfigChange(
+                audioBitrate,
+                audioComplexity,
+                audioDTXEnabled,
+                audioFECEnabled,
+                audioBufferPeriods,
+                audioSampleRate,
                 parseInt(e.target.value)
               )
             }
