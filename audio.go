@@ -163,15 +163,32 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 	setAudioTrackMutex.Lock()
 	defer setAudioTrackMutex.Unlock()
 
+	// Capture old resources and update state in single critical section
 	audioMutex.Lock()
 	currentAudioTrack = audioTrack
 	oldRelay := outputRelay
 	oldSource := outputSource
 	outputRelay = nil
 	outputSource = nil
+
+	// Prepare new relay if needed
+	var newRelay *audio.OutputRelay
+	var newSource audio.AudioSource
+	if currentAudioTrack != nil && audioOutputEnabled.Load() {
+		ensureConfigLoaded()
+		alsaDevice := "hw:1,0"
+		if config.AudioOutputSource == "hdmi" {
+			alsaDevice = "hw:0,0"
+		}
+		newSource = audio.NewCgoOutputSource(alsaDevice)
+		newSource.SetConfig(getAudioConfig())
+		newRelay = audio.NewOutputRelay(newSource, currentAudioTrack)
+		outputSource = newSource
+		outputRelay = newRelay
+	}
 	audioMutex.Unlock()
 
-	// Stop relay and disconnect source outside mutex to avoid blocking during CGO calls
+	// Stop old resources outside mutex to avoid blocking during CGO calls
 	if oldRelay != nil {
 		oldRelay.Stop()
 	}
@@ -179,28 +196,9 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 		oldSource.Disconnect()
 	}
 
-	audioMutex.Lock()
-	if currentAudioTrack != nil && audioOutputEnabled.Load() {
-		ensureConfigLoaded()
-		alsaDevice := "hw:1,0"
-		if config.AudioOutputSource == "hdmi" {
-			alsaDevice = "hw:0,0"
-		}
-		newSource := audio.NewCgoOutputSource(alsaDevice)
-		newSource.SetConfig(getAudioConfig())
-		newRelay := audio.NewOutputRelay(newSource, currentAudioTrack)
-		outputSource = newSource
-		outputRelay = newRelay
-	}
-	audioMutex.Unlock()
-
-	// Capture relay reference and start it outside mutex
-	audioMutex.Lock()
-	relayToStart := outputRelay
-	audioMutex.Unlock()
-
-	if relayToStart != nil {
-		if err := relayToStart.Start(); err != nil {
+	// Start new relay outside mutex
+	if newRelay != nil {
+		if err := newRelay.Start(); err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to start output relay")
 		}
 	}
