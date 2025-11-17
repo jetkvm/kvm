@@ -392,6 +392,18 @@ export interface SettingsState {
   audioInputAutoEnable: boolean;
   setAudioInputAutoEnable: (enabled: boolean) => void;
 
+  // Audio codec settings
+  audioBitrate: number;
+  setAudioBitrate: (value: number) => void;
+  audioComplexity: number;
+  setAudioComplexity: (value: number) => void;
+  audioDTXEnabled: boolean;
+  setAudioDTXEnabled: (enabled: boolean) => void;
+  audioFECEnabled: boolean;
+  setAudioFECEnabled: (enabled: boolean) => void;
+  audioBufferPeriods: number;
+  setAudioBufferPeriods: (value: number) => void;
+
   resetMicrophoneState: () => void;
 }
 
@@ -449,6 +461,17 @@ export const useSettingsStore = create(
       setMicrophoneEnabled: (enabled: boolean) => set({ microphoneEnabled: enabled }),
       audioInputAutoEnable: false,
       setAudioInputAutoEnable: (enabled: boolean) => set({ audioInputAutoEnable: enabled }),
+
+      audioBitrate: 128,
+      setAudioBitrate: (value: number) => set({ audioBitrate: value }),
+      audioComplexity: 5,
+      setAudioComplexity: (value: number) => set({ audioComplexity: value }),
+      audioDTXEnabled: true,
+      setAudioDTXEnabled: (enabled: boolean) => set({ audioDTXEnabled: enabled }),
+      audioFECEnabled: true,
+      setAudioFECEnabled: (enabled: boolean) => set({ audioFECEnabled: enabled }),
+      audioBufferPeriods: 12,
+      setAudioBufferPeriods: (value: number) => set({ audioBufferPeriods: value }),
 
       resetMicrophoneState: () => set({ microphoneEnabled: false }),
     }),

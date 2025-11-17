@@ -33,3 +33,7 @@ func (c *CgoSource) ReadMessage() (uint8, []byte, error) {
 func (c *CgoSource) WriteMessage(msgType uint8, payload []byte) error {
 	panic("audio CGO source not supported on this platform")
 }
+
+func (c *CgoSource) SetConfig(cfg AudioConfig) {
+	panic("audio CGO source not supported on this platform")
+}

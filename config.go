@@ -110,6 +110,11 @@ type Config struct {
 	AudioInputAutoEnable bool                 `json:"audio_input_auto_enable"`
 	AudioOutputEnabled   bool                 `json:"audio_output_enabled"`
 	AudioOutputSource    string               `json:"audio_output_source"` // "hdmi" or "usb"
+	AudioBitrate         int                  `json:"audio_bitrate"`       // kbps (64-256)
+	AudioComplexity      int                  `json:"audio_complexity"`    // 0-10
+	AudioDTXEnabled      bool                 `json:"audio_dtx_enabled"`
+	AudioFECEnabled      bool                 `json:"audio_fec_enabled"`
+	AudioBufferPeriods   int                  `json:"audio_buffer_periods"` // 2-24
 }
 
 func (c *Config) GetDisplayRotation() uint16 {
@@ -186,6 +191,11 @@ func getDefaultConfig() Config {
 		AudioInputAutoEnable: false,
 		AudioOutputEnabled:   true,
 		AudioOutputSource:    "usb",
+		AudioBitrate:         128,
+		AudioComplexity:      5,
+		AudioDTXEnabled:      true,
+		AudioFECEnabled:      true,
+		AudioBufferPeriods:   12,
 	}
 }
 
@@ -254,6 +264,15 @@ func LoadConfig() {
 
 	if loadedConfig.JigglerConfig == nil {
 		loadedConfig.JigglerConfig = getDefaultConfig().JigglerConfig
+	}
+
+	if loadedConfig.AudioBitrate == 0 {
+		defaults := getDefaultConfig()
+		loadedConfig.AudioBitrate = defaults.AudioBitrate
+		loadedConfig.AudioComplexity = defaults.AudioComplexity
+		loadedConfig.AudioDTXEnabled = defaults.AudioDTXEnabled
+		loadedConfig.AudioFECEnabled = defaults.AudioFECEnabled
+		loadedConfig.AudioBufferPeriods = defaults.AudioBufferPeriods
 	}
 
 	// fixup old keyboard layout value
