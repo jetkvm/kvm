@@ -113,6 +113,11 @@ func checkUSBState() {
 	usbState = newState
 	usbLogger.Info().Str("from", oldState).Str("to", newState).Msg("USB state changed")
 
+	if oldState == "configured" && newState != "configured" {
+		usbLogger.Info().Msg("USB deconfigured, closing HID files")
+		gadget.CloseHidFiles()
+	}
+
 	if newState == "configured" && oldState != "configured" {
 		usbLogger.Info().Msg("USB configured, reopening HID files")
 		gadget.CloseHidFiles()
