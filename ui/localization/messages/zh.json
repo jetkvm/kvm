@@ -168,8 +168,6 @@
     "audio_https_only": "仅限 HTTPS",
     "audio_input_auto_enable_disabled": "自动启用麦克风已禁用",
     "audio_input_auto_enable_enabled": "自动启用麦克风已启用",
-    "audio_input_disabled": "音频输入已禁用",
-    "audio_input_enabled": "音频输入已启用",
     "audio_input_failed_disable": "禁用音频输入失败：{error}",
     "audio_input_failed_enable": "启用音频输入失败：{error}",
     "audio_microphone_description": "麦克风输入到目标设备",

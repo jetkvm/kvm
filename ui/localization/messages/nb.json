@@ -168,8 +168,6 @@
     "audio_https_only": "Kun HTTPS",
     "audio_input_auto_enable_disabled": "Automatisk aktivering av mikrofon deaktivert",
     "audio_input_auto_enable_enabled": "Automatisk aktivering av mikrofon aktivert",
-    "audio_input_disabled": "Lydinngang deaktivert",
-    "audio_input_enabled": "Lydinngang aktivert",
     "audio_input_failed_disable": "Kunne ikke deaktivere lydinngang: {error}",
     "audio_input_failed_enable": "Kunne ikke aktivere lydinngang: {error}",
     "audio_microphone_description": "Mikrofoninngang til mål",
