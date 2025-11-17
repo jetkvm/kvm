@@ -148,6 +148,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 
 	appUpdate, systemUpdate, err := s.getUpdateStatus(ctx, params)
 	if err != nil {
+		s.updating = false
 		return s.componentUpdateError("Error checking for updates", err, &scopedLogger)
 	}
 
