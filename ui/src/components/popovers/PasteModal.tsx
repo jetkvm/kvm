@@ -66,7 +66,8 @@ export default function PasteModal() {
       const macroSteps: MacroStep[] = [];
 
       for (const char of text) {
-        const keyprops = selectedKeyboard.chars[char];
+        const normalizedChar = char.normalize('NFC');
+        const keyprops = selectedKeyboard.chars[normalizedChar];
         if (!keyprops) continue;
 
         const { key, shift, altRight, deadKey, accentKey } = keyprops;
@@ -164,7 +165,7 @@ export default function PasteModal() {
                           ...new Set(
                             // @ts-expect-error TS doesn't recognize Intl.Segmenter in some environments
                             [...new Intl.Segmenter().segment(value)]
-                              .map(x => x.segment)
+                              .map(x => x.segment.normalize('NFC'))
                               .filter(char => !selectedKeyboard.chars[char]),
                           ),
                         ];
