@@ -288,7 +288,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name) {
 	err = snd_pcm_hw_params_set_period_size_near(handle, params, &period_size, 0);
 	if (err < 0) return err;
 
-	snd_pcm_uframes_t buffer_size = period_size * 4;  // 4 periods = 80ms buffer for stability
+	snd_pcm_uframes_t buffer_size = period_size * 12;  // 12 periods = 240ms buffer for better jitter tolerance
 	err = snd_pcm_hw_params_set_buffer_size_near(handle, params, &buffer_size);
 	if (err < 0) return err;
 
