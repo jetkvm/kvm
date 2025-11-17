@@ -18,6 +18,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 
+	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
@@ -910,7 +911,6 @@ func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 	inputRelay = nil
 	audioMutex.Unlock()
 
-	// Atomically swap input source
 	inSource := inputSource.Swap(nil)
 
 	if inRelay != nil {
@@ -918,6 +918,27 @@ func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 	}
 	if inSource != nil {
 		(*inSource).Disconnect()
+	}
+
+	// Auto-switch to HDMI audio output when USB audio is disabled
+	audioNowEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+	if wasAudioEnabled && !audioNowEnabled && config.AudioOutputSource == "usb" {
+		config.AudioOutputSource = "hdmi"
+		stopOutputAudio()
+		if audioOutputEnabled.Load() && activeConnections.Load() > 0 && currentAudioTrack != nil {
+			newSource := audio.NewCgoOutputSource("hw:0,0")
+			newSource.SetConfig(getAudioConfig())
+			newRelay := audio.NewOutputRelay(newSource, currentAudioTrack)
+
+			audioMutex.Lock()
+			outputSource = newSource
+			outputRelay = newRelay
+			audioMutex.Unlock()
+
+			if err := newRelay.Start(); err != nil {
+				logger.Warn().Err(err).Msg("Failed to start HDMI audio after USB audio disabled")
+			}
+		}
 	}
 
 	if err := gadget.UpdateGadgetConfig(); err != nil {
