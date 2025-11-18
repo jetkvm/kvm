@@ -271,7 +271,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 			if err := s.resetConfig(); err != nil {
 				return s.componentUpdateError("Error resetting config", err, &scopedLogger)
 			}
-			redirectUrl = "/device/setup"
+			redirectUrl = "/welcome"
 		}
 
 		postRebootAction := &PostRebootAction{
