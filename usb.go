@@ -9,7 +9,6 @@ import (
 
 var gadget *usbgadget.UsbGadget
 
-// initUsbGadget initializes the USB gadget.
 // call it only after the config is loaded.
 func initUsbGadget() {
 	gadget = usbgadget.NewUsbGadget(
@@ -44,7 +43,6 @@ func initUsbGadget() {
 		}
 	})
 
-	// open the keyboard hid file to listen for keyboard events
 	if err := gadget.OpenKeyboardHidFile(); err != nil {
 		usbLogger.Error().Err(err).Msg("failed to open keyboard hid file")
 	}

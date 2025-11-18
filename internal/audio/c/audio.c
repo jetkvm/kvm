@@ -38,15 +38,12 @@
 // Compile-time trace logging - disabled for production (zero overhead)
 #define TRACE_LOG(...) ((void)0)
 
-// ALSA device handles
 static snd_pcm_t *pcm_capture_handle = NULL;  // OUTPUT: TC358743 HDMI audio → client
 static snd_pcm_t *pcm_playback_handle = NULL; // INPUT: Client microphone → device speakers
 
-// ALSA device names
 static const char *alsa_capture_device = NULL;
 static const char *alsa_playback_device = NULL;
 
-// Opus codec instances
 static OpusEncoder *encoder = NULL;
 static OpusDecoder *decoder = NULL;
 
@@ -390,7 +387,6 @@ int jetkvm_audio_capture_init() {
 		return -3;
 	}
 
-	// Configure encoder with optimized settings
 	opus_encoder_ctl(encoder, OPUS_SET_BITRATE(opus_bitrate));
 	opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(opus_complexity));
 	opus_encoder_ctl(encoder, OPUS_SET_VBR(OPUS_VBR));
