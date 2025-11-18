@@ -13,7 +13,7 @@ import (
 )
 
 type OutputRelay struct {
-	source     AudioSource
+	source     *AudioSource
 	audioTrack *webrtc.TrackLocalStaticSample
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -26,7 +26,7 @@ type OutputRelay struct {
 	framesDropped atomic.Uint32
 }
 
-func NewOutputRelay(source AudioSource, audioTrack *webrtc.TrackLocalStaticSample) *OutputRelay {
+func NewOutputRelay(source *AudioSource, audioTrack *webrtc.TrackLocalStaticSample) *OutputRelay {
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-output-relay").Logger()
 
@@ -73,19 +73,19 @@ func (r *OutputRelay) relayLoop() {
 	const reconnectDelay = 1 * time.Second
 
 	for r.running.Load() {
-		if !r.source.IsConnected() {
-			if err := r.source.Connect(); err != nil {
+		if !(*r.source).IsConnected() {
+			if err := (*r.source).Connect(); err != nil {
 				r.logger.Debug().Err(err).Msg("failed to connect, will retry")
 				time.Sleep(reconnectDelay)
 				continue
 			}
 		}
 
-		msgType, payload, err := r.source.ReadMessage()
+		msgType, payload, err := (*r.source).ReadMessage()
 		if err != nil {
 			if r.running.Load() {
 				r.logger.Warn().Err(err).Msg("read error, reconnecting")
-				r.source.Disconnect()
+				(*r.source).Disconnect()
 				time.Sleep(reconnectDelay)
 			}
 			continue
@@ -104,14 +104,14 @@ func (r *OutputRelay) relayLoop() {
 }
 
 type InputRelay struct {
-	source  AudioSource
+	source  *AudioSource
 	ctx     context.Context
 	cancel  context.CancelFunc
 	logger  zerolog.Logger
 	running atomic.Bool
 }
 
-func NewInputRelay(source AudioSource) *InputRelay {
+func NewInputRelay(source *AudioSource) *InputRelay {
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-input-relay").Logger()
 
