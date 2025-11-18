@@ -123,6 +123,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		Interface("id", request.ID).Logger()
 
 	scopedLogger.Trace().Msg("Received RPC request")
+	t := time.Now()
 
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
@@ -154,7 +155,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	scopedLogger.Trace().Interface("result", result).Msg("RPC handler returned")
+	scopedLogger.Trace().Dur("duration", time.Since(t)).Interface("result", result).Msg("RPC handler returned")
 
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",

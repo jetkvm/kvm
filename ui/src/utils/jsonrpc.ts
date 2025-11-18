@@ -232,6 +232,7 @@ export async function getUpdateStatus() {
     // It can be called on page load right after a restart, so we need to give it time to
     // establish a connection to the api server.
     maxAttempts: 6,
+    attemptTimeoutMs: 10000,
   });
 
   if (response.error) throw response.error;
@@ -252,6 +253,7 @@ export interface updateParams {
 }
 
 export async function checkUpdateComponents(params: updateParams, includePreRelease: boolean) {
+  console.log("checkUpdateComponents", JSON.stringify(params, null, 2), includePreRelease);
   const response = await callJsonRpc<SystemVersionInfo>({
     method: "checkUpdateComponents",
     params: {

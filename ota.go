@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/google/uuid"
 	"github.com/jetkvm/kvm/internal/ota"
 )
 
@@ -82,6 +83,7 @@ func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
 	updateStatus, err := otaState.GetUpdateStatus(context.Background(), ota.UpdateParams{
 		DeviceID:          GetDeviceID(),
 		IncludePreRelease: includePreRelease,
+		RequestID:         uuid.New().String(),
 	})
 
 	// to ensure backwards compatibility,

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"time"
 
@@ -58,16 +59,46 @@ func (s *State) getUpdateURL(params UpdateParams) (string, error, bool) {
 func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*UpdateMetadata, error) {
 	metadata := &UpdateMetadata{}
 
+	logger := s.l.With().Logger()
+	if params.RequestID != "" {
+		logger = logger.With().Str("requestID", params.RequestID).Logger()
+	}
+	t := time.Now()
+	traceLogger := func() *zerolog.Event {
+		return logger.Trace().Dur("duration", time.Since(t))
+	}
+
 	url, err, isCustomVersion := s.getUpdateURL(params)
+	traceLogger().Err(err).
+		Msg("fetchUpdateMetadata: getUpdateURL")
 	if err != nil {
 		return nil, fmt.Errorf("error getting update URL: %w", err)
 	}
 
-	s.l.Trace().
+	traceLogger().
 		Str("url", url).
 		Msg("fetching update metadata")
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	localCtx := ctx
+	if s.l.GetLevel() <= zerolog.TraceLevel {
+		clientTrace := &httptrace.ClientTrace{
+			GetConn: func(hostPort string) { traceLogger().Str("hostPort", hostPort).Msg("starting to create conn") },
+			DNSStart: func(info httptrace.DNSStartInfo) {
+				traceLogger().Interface("info", info).Msg("starting to look up dns")
+			},
+			DNSDone: func(info httptrace.DNSDoneInfo) { traceLogger().Interface("info", info).Msg("done looking up dns") },
+			ConnectStart: func(network, addr string) {
+				traceLogger().Str("network", network).Str("addr", addr).Msg("starting tcp connection")
+			},
+			ConnectDone: func(network, addr string, err error) {
+				traceLogger().Str("network", network).Str("addr", addr).Err(err).Msg("tcp connection created")
+			},
+			GotConn: func(info httptrace.GotConnInfo) { traceLogger().Interface("info", info).Msg("connection established") },
+		}
+		localCtx = httptrace.WithClientTrace(localCtx, clientTrace)
+	}
+
+	req, err := http.NewRequestWithContext(localCtx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
@@ -79,6 +110,10 @@ func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*
 		return nil, fmt.Errorf("error sending request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	traceLogger().
+		Int("status", resp.StatusCode).
+		Msg("fetchUpdateMetadata: response")
 
 	if isCustomVersion && resp.StatusCode == http.StatusNotFound {
 		return nil, ErrVersionNotFound
@@ -92,6 +127,9 @@ func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*
 	if err != nil {
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
+
+	traceLogger().
+		Msg("fetchUpdateMetadata: completed")
 
 	return metadata, nil
 }
@@ -225,6 +263,9 @@ type UpdateParams struct {
 	Components        map[string]string `json:"components"`
 	IncludePreRelease bool              `json:"includePreRelease"`
 	ResetConfig       bool              `json:"resetConfig"`
+	// RequestID is a unique identifier for the update request
+	// When it's set, detailed trace logs will be enabled (if the log level is Trace)
+	RequestID string
 }
 
 // getUpdateStatus gets the update status for the given components
@@ -274,9 +315,16 @@ func (s *State) checkUpdateStatus(
 	appUpdateStatus.localVersion = appVersionLocal.String()
 	systemUpdateStatus.localVersion = systemVersionLocal.String()
 
-	s.l.Trace().
+	logger := s.l.With().Logger()
+	if params.RequestID != "" {
+		logger = logger.With().Str("requestID", params.RequestID).Logger()
+	}
+	t := time.Now()
+
+	logger.Trace().
 		Str("appVersionLocal", appVersionLocal.String()).
 		Str("systemVersionLocal", systemVersionLocal.String()).
+		Dur("duration", time.Since(t)).
 		Msg("checkUpdateStatus: getLocalVersion")
 
 	// fetch the remote metadata
@@ -290,8 +338,9 @@ func (s *State) checkUpdateStatus(
 		return err
 	}
 
-	s.l.Trace().
+	logger.Trace().
 		Interface("remoteMetadata", remoteMetadata).
+		Dur("duration", time.Since(t)).
 		Msg("checkUpdateStatus: fetchUpdateMetadata")
 
 	// parse the remote metadata to the componentUpdateStatuses
@@ -314,9 +363,13 @@ func (s *State) checkUpdateStatus(
 	}
 
 	if s.l.GetLevel() <= zerolog.TraceLevel {
-		appUpdateStatus.getZerologLogger(s.l).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus [app]")
-		systemUpdateStatus.getZerologLogger(s.l).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus [system]")
+		appUpdateStatus.getZerologLogger(&logger).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus [app]")
+		systemUpdateStatus.getZerologLogger(&logger).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus [system]")
 	}
+
+	logger.Trace().
+		Dur("duration", time.Since(t)).
+		Msg("checkUpdateStatus: completed")
 
 	return nil
 }
