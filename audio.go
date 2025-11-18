@@ -4,6 +4,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/jetkvm/kvm/internal/logging"
@@ -159,7 +160,9 @@ func stopInputAudio() {
 		inRelay.Stop()
 	}
 	if inSource != nil {
+		inputSourceMutex.Lock()
 		(*inSource).Disconnect()
+		inputSourceMutex.Unlock()
 	}
 }
 
@@ -249,6 +252,8 @@ func SetAudioOutputSource(source string) error {
 	stopOutputAudio()
 	config.AudioOutputSource = source
 
+	time.Sleep(100 * time.Millisecond)
+
 	if err := startAudio(); err != nil {
 		audioLogger.Error().Err(err).Str("source", source).Msg("Failed to start audio output after source change")
 	}
@@ -323,8 +328,10 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 		}
 
 		if err := (*source).WriteMessage(0, opusData); err != nil {
-			audioLogger.Warn().Err(err).Msg("failed to write audio message")
-			(*source).Disconnect()
+			if inputSource.Load() == source {
+				audioLogger.Warn().Err(err).Msg("failed to write audio message")
+				(*source).Disconnect()
+			}
 		}
 
 		inputSourceMutex.Unlock()
