@@ -32,5 +32,4 @@ type AudioSource interface {
 	IsConnected() bool
 	Connect() error
 	Disconnect()
-	SetConfig(cfg AudioConfig)
 }

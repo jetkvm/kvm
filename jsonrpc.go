@@ -18,7 +18,6 @@ import (
 	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 
-	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
@@ -688,10 +687,12 @@ func rpcGetUsbConfig() (usbgadget.Config, error) {
 
 func rpcSetUsbConfig(usbConfig usbgadget.Config) error {
 	LoadConfig()
+	wasUsbAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+
 	config.UsbConfig = &usbConfig
 	gadget.SetGadgetConfig(config.UsbConfig)
-	wasAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
-	return updateUsbRelatedConfig(wasAudioEnabled)
+
+	return updateUsbRelatedConfig(wasUsbAudioEnabled)
 }
 
 func rpcGetWakeOnLanDevices() ([]WakeOnLanDevice, error) {
@@ -903,42 +904,23 @@ func rpcGetUsbDevices() (usbgadget.Devices, error) {
 	return *config.UsbDevices, nil
 }
 
-func updateUsbRelatedConfig(wasAudioEnabled bool) error {
+func updateUsbRelatedConfig(wasUsbAudioEnabled bool) error {
 	ensureConfigLoaded()
+	nowHasUsbAudio := config.UsbDevices != nil && config.UsbDevices.Audio
+	outputSourceIsUsb := config.AudioOutputSource == "usb"
 
-	audioMutex.Lock()
-	inRelay := inputRelay
-	inputRelay = nil
-	audioMutex.Unlock()
+	// must stop input audio before reconfiguring
+	stopInputAudio()
 
-	inSource := inputSource.Swap(nil)
-
-	if inRelay != nil {
-		inRelay.Stop()
-	}
-	if inSource != nil {
-		(*inSource).Disconnect()
-	}
-
-	// Auto-switch to HDMI audio output when USB audio is disabled
-	audioNowEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
-	if wasAudioEnabled && !audioNowEnabled && config.AudioOutputSource == "usb" {
-		config.AudioOutputSource = "hdmi"
+	// if we're currently sourcing audio from USB, stop the output audio before reconfiguring
+	if outputSourceIsUsb {
 		stopOutputAudio()
-		if audioOutputEnabled.Load() && activeConnections.Load() > 0 && currentAudioTrack != nil {
-			newSource := audio.NewCgoOutputSource("hw:0,0")
-			newSource.SetConfig(getAudioConfig())
-			newRelay := audio.NewOutputRelay(newSource, currentAudioTrack)
+	}
 
-			audioMutex.Lock()
-			outputSource = newSource
-			outputRelay = newRelay
-			audioMutex.Unlock()
-
-			if err := newRelay.Start(); err != nil {
-				logger.Warn().Err(err).Msg("Failed to start HDMI audio after USB audio disabled")
-			}
-		}
+	// Auto-switch to HDMI audio output when USB audio was selected and is now disabled
+	if wasUsbAudioEnabled && !nowHasUsbAudio && config.AudioOutputSource == "usb" {
+		logger.Info().Msg("USB audio just disabled, automatic switch audio output source to HDMI")
+		config.AudioOutputSource = "hdmi"
 	}
 
 	if err := gadget.UpdateGadgetConfig(); err != nil {
@@ -949,18 +931,15 @@ func updateUsbRelatedConfig(wasAudioEnabled bool) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	// Restart audio if USB audio is enabled with active connections
-	if activeConnections.Load() > 0 && config.UsbDevices != nil && config.UsbDevices.Audio {
-		if err := startAudio(); err != nil {
-			logger.Warn().Err(err).Msg("Failed to restart audio after USB reconfiguration")
-		}
+	if err := startAudio(); err != nil {
+		logger.Warn().Err(err).Msg("Failed to restart audio after USB reconfiguration")
 	}
 
 	return nil
 }
 
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
-	wasAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+	wasUsbAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
 	currentDevices := gadget.GetGadgetDevices()
 
 	// Skip reconfiguration if devices haven't changed to avoid HID disruption
@@ -972,11 +951,11 @@ func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 	config.UsbDevices = &usbDevices
 	gadget.SetGadgetDevices(config.UsbDevices)
 
-	return updateUsbRelatedConfig(wasAudioEnabled)
+	return updateUsbRelatedConfig(wasUsbAudioEnabled)
 }
 
 func rpcSetUsbDeviceState(device string, enabled bool) error {
-	wasAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
+	wasUsbAudioEnabled := config.UsbDevices != nil && config.UsbDevices.Audio
 	currentDevices := gadget.GetGadgetDevices()
 
 	switch device {
@@ -1001,7 +980,7 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 	}
 
 	gadget.SetGadgetDevices(config.UsbDevices)
-	return updateUsbRelatedConfig(wasAudioEnabled)
+	return updateUsbRelatedConfig(wasUsbAudioEnabled)
 }
 
 func rpcGetAudioOutputEnabled() (bool, error) {
@@ -1104,8 +1083,7 @@ func rpcSetAudioConfig(bitrate int, complexity int, dtxEnabled bool, fecEnabled 
 }
 
 func rpcRestartAudioOutput() error {
-	RestartAudioOutput()
-	return nil
+	return RestartAudioOutput()
 }
 
 func rpcGetAudioInputAutoEnable() (bool, error) {
