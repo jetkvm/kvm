@@ -18,5 +18,7 @@ func (s *State) componentUpdateError(prefix string, err error, l *zerolog.Logger
 	}
 	l.Error().Err(err).Msg(prefix)
 	s.error = fmt.Sprintf("%s: %v", prefix, err)
+	s.updating = false
+	s.triggerStateUpdate()
 	return err
 }
