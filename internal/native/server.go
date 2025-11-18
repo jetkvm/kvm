@@ -10,6 +10,7 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/erikdubbelboer/gspt"
+	"github.com/rs/zerolog"
 )
 
 // Native Process
@@ -21,6 +22,10 @@ var (
 	lastProcTitle string
 )
 
+const (
+	DebugModeFile = "/userdata/jetkvm/.native-debug-mode"
+)
+
 func setProcTitle(status string) {
 	lastProcTitle = status
 	if status != "" {
@@ -28,6 +33,21 @@ func setProcTitle(status string) {
 	}
 	title := fmt.Sprintf("%s%s", procPrefix, status)
 	gspt.SetProcTitle(title)
+}
+
+func monitorCrashSignal(logger *zerolog.Logger, nativeInstance NativeInterface) {
+	logger.Info().Msg("DEBUG mode: will crash the process on SIGHUP signal")
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGHUP)
+
+	// non-blocking receive
+	select {
+	case <-sigChan:
+		logger.Info().Msg("received SIGHUP signal, emulating crash")
+		nativeInstance.DoNotUseThisIsForCrashTestingOnly()
+	default:
+	}
 }
 
 // RunNativeProcess runs the native process mode
@@ -85,18 +105,10 @@ func RunNativeProcess(binaryName string) {
 		logger.Fatal().Err(err).Msg("failed to write handshake message to stdout")
 	}
 
-	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGHUP)
-
-		// non-blocking receive
-		select {
-		case <-sigChan:
-			logger.Info().Msg("received SIGHUP signal, emulating crash")
-			nativeInstance.DoNotUseThisIsForCrashTestingOnly()
-		default:
-		}
-	}()
+	if _, err := os.Stat(DebugModeFile); err == nil {
+		logger.Info().Msg("DEBUG mode: enabled")
+		go monitorCrashSignal(&logger, nativeInstance)
+	}
 
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
