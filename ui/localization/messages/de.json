@@ -302,7 +302,7 @@
     "general_update_up_to_date_title": "Das System ist auf dem neuesten Stand",
     "general_update_updating_description": "Bitte schalten Sie Ihr Gerät nicht aus. Dieser Vorgang kann einige Minuten dauern.",
     "general_update_updating_title": "Aktualisieren Ihres Geräts",
-    "general_update_will_disable_auto_update_description": "Sie führen derzeit ein Downgrade auf eine ältere Version durch. Die automatische Aktualisierung wird nach Abschluss des Updates deaktiviert, um versehentliche Aktualisierungen zu verhindern.",
+    "general_update_will_disable_auto_update_description": "Sie sind im Begriff, die Version Ihres Geräts manuell zu ändern. Die automatische Aktualisierung wird nach Abschluss der Aktualisierung deaktiviert, um versehentliche Updates zu verhindern.",
     "getting_remote_session_description": "Versuch, eine Beschreibung der Remote-Sitzung abzurufen {attempt}",
     "hardware_backlight_settings_error": "Fehler beim Festlegen der Hintergrundbeleuchtungseinstellungen: {error}",
     "hardware_backlight_settings_get_error": "Die Einstellungen für die Hintergrundbeleuchtung konnten nicht abgerufen werden: {error}",

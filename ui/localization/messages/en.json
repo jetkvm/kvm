@@ -302,7 +302,7 @@
     "general_update_up_to_date_title": "System is up to date",
     "general_update_updating_description": "Please don't turn off your device. This process may take a few minutes.",
     "general_update_updating_title": "Updating your device",
-    "general_update_will_disable_auto_update_description": "You're currently downgrading to a previous version. Auto-update will be disabled after the update is completed to prevent accidental updates.",
+    "general_update_will_disable_auto_update_description": "You're about to manually change your device version. Auto-update will be disabled after the update is completed to prevent accidental updates.",
     "getting_remote_session_description": "Getting remote session description attempt {attempt}",
     "hardware_backlight_settings_error": "Failed to set backlight settings: {error}",
     "hardware_backlight_settings_get_error": "Failed to get backlight settings: {error}",

@@ -302,7 +302,7 @@
     "general_update_up_to_date_title": "El sistema está actualizado",
     "general_update_updating_description": "No apagues tu dispositivo. Este proceso puede tardar unos minutos.",
     "general_update_updating_title": "Actualizar su dispositivo",
-    "general_update_will_disable_auto_update_description": "Estás instalando una versión anterior. La actualización automática se desactivará una vez finalizada la actualización para evitar actualizaciones accidentales.",
+    "general_update_will_disable_auto_update_description": "Estás a punto de cambiar manualmente la versión de tu dispositivo. La actualización automática se desactivará una vez completada la actualización para evitar actualizaciones accidentales.",
     "getting_remote_session_description": "Obtener un intento de descripción de sesión remota {attempt}",
     "hardware_backlight_settings_error": "No se pudieron configurar los ajustes de la retroiluminación: {error}",
     "hardware_backlight_settings_get_error": "No se pudieron obtener los ajustes de la retroiluminación: {error}",
