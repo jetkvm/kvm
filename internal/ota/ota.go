@@ -282,7 +282,10 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 			RedirectTo:  redirectUrl,
 		}
 
-		if err := s.reboot(true, postRebootAction, 10*time.Second); err != nil {
+		// REBOOT_REDIRECT_DELAY_MS is 5 seconds in the UI,
+		// it means that healthCheckUrl will be called after 5 seconds that we send willReboot JSONRPC event
+		// so we need to reboot it within 5 seconds to avoid it being called before the device is rebooted
+		if err := s.reboot(true, postRebootAction, 3*time.Second); err != nil {
 			return s.componentUpdateError("Error requesting reboot", err, &scopedLogger)
 		}
 	}
