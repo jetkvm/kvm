@@ -966,7 +966,6 @@ func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
 	// Skip reconfiguration if devices haven't changed to avoid HID disruption
 	if currentDevices.Equals(usbDevices) {
 		logger.Debug().Msg("USB devices unchanged, skipping gadget reconfiguration")
-		config.UsbDevices = &usbDevices
 		return nil
 	}
 
