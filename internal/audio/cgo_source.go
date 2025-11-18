@@ -122,7 +122,7 @@ func (c *CgoSource) Connect() error {
 
 		C.update_audio_decoder_constants(
 			C.uint(c.config.SampleRate),
-			C.uchar(2),
+			C.uchar(1),
 			C.ushort(960),
 			C.ushort(1500),
 			C.uint(1000),

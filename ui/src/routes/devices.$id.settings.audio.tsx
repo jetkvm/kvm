@@ -20,6 +20,13 @@ interface AudioConfigResult {
   packet_loss_perc: number;
 }
 
+// Backend default values - single source of truth
+const AUDIO_DEFAULTS = {
+  bitrate: 192,
+  complexity: 8,
+  packetLossPerc: 0,
+} as const;
+
 export default function SettingsAudioRoute() {
   const { send } = useJsonRpc();
   const {
@@ -205,7 +212,7 @@ export default function SettingsAudioRoute() {
               { value: "96", label: "96 kbps" },
               { value: "128", label: "128 kbps" },
               { value: "160", label: "160 kbps" },
-              { value: "192", label: "192 kbps" },
+              { value: "192", label: `192 kbps${192 === AUDIO_DEFAULTS.bitrate ? m.audio_settings_default_suffix() : ''}` },
               { value: "256", label: "256 kbps" },
             ]}
             onChange={(e) =>
@@ -231,9 +238,9 @@ export default function SettingsAudioRoute() {
             options={[
               { value: "0", label: "0 (fastest)" },
               { value: "2", label: "2" },
-              { value: "5", label: "5 (balanced)" },
-              { value: "8", label: "8" },
-              { value: "10", label: "10 (best)" },
+              { value: "5", label: "5" },
+              { value: "8", label: `8${8 === AUDIO_DEFAULTS.complexity ? m.audio_settings_default_suffix() : ''}` },
+              { value: "10", label: "10 (best quality)" },
             ]}
             onChange={(e) =>
               handleAudioConfigChange(
@@ -337,11 +344,11 @@ export default function SettingsAudioRoute() {
             size="SM"
             value={String(audioPacketLossPerc)}
             options={[
-              { value: "0", label: "0% (no compensation)" },
+              { value: "0", label: `0%${0 === AUDIO_DEFAULTS.packetLossPerc ? m.audio_settings_default_lan_suffix() : m.audio_settings_no_compensation_suffix()}` },
               { value: "5", label: "5%" },
               { value: "10", label: "10%" },
               { value: "15", label: "15%" },
-              { value: "20", label: "20% (default)" },
+              { value: "20", label: "20%" },
               { value: "25", label: "25%" },
               { value: "30", label: "30%" },
             ]}

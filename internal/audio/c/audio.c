@@ -47,13 +47,14 @@ static const char *alsa_playback_device = NULL;
 static OpusEncoder *encoder = NULL;
 static OpusDecoder *decoder = NULL;
 
-// Audio format (S16_LE @ 48kHz stereo)
+// Audio format (S16_LE @ 48kHz)
 static uint32_t sample_rate = 48000;
-static uint8_t channels = 2;
+static uint8_t capture_channels = 2;   // OUTPUT: HDMI stereo → client
+static uint8_t playback_channels = 1;  // INPUT: Client mono mic → device
 static uint16_t frame_size = 960;  // 20ms frames at 48kHz
 
-static uint32_t opus_bitrate = 128000;
-static uint8_t opus_complexity = 5;
+static uint32_t opus_bitrate = 192000;
+static uint8_t opus_complexity = 8;
 static uint16_t max_packet_size = 1500;
 
 #define OPUS_VBR 1
@@ -62,10 +63,10 @@ static uint16_t max_packet_size = 1500;
 #define OPUS_BANDWIDTH 1104
 #define OPUS_LSB_DEPTH 16
 
-static uint8_t opus_dtx_enabled = 1;
+static uint8_t opus_dtx_enabled = 0;
 static uint8_t opus_fec_enabled = 1;
-static uint8_t opus_packet_loss_perc = 20;
-static uint8_t buffer_period_count = 12;
+static uint8_t opus_packet_loss_perc = 0;
+static uint8_t buffer_period_count = 24;
 
 static uint32_t sleep_microseconds = 1000;
 static uint32_t sleep_milliseconds = 1;
@@ -103,7 +104,7 @@ void update_audio_constants(uint32_t bitrate, uint8_t complexity,
     opus_bitrate = (bitrate >= 64000 && bitrate <= 256000) ? bitrate : 128000;
     opus_complexity = (complexity <= 10) ? complexity : 5;
     sample_rate = sr > 0 ? sr : 48000;
-    channels = (ch == 1 || ch == 2) ? ch : 2;
+    capture_channels = (ch == 1 || ch == 2) ? ch : 2;
     frame_size = fs > 0 ? fs : 960;
     max_packet_size = max_pkt > 0 ? max_pkt : 1500;
     sleep_microseconds = sleep_us > 0 ? sleep_us : 1000;
@@ -120,7 +121,7 @@ void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16
                                     uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
                                     uint8_t buf_periods) {
     sample_rate = sr > 0 ? sr : 48000;
-    channels = (ch == 1 || ch == 2) ? ch : 2;
+    playback_channels = (ch == 1 || ch == 2) ? ch : 2;
     frame_size = fs > 0 ? fs : 960;
     max_packet_size = max_pkt > 0 ? max_pkt : 1500;
     sleep_microseconds = sleep_us > 0 ? sleep_us : 1000;
@@ -228,14 +229,15 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 }
 
 /**
- * Configure ALSA device (S16_LE @ variable rate stereo with optimized buffering)
+ * Configure ALSA device (S16_LE @ variable rate with optimized buffering)
  * @param handle ALSA PCM handle
  * @param device_name Device name for logging
+ * @param num_channels Number of channels (1=mono, 2=stereo)
  * @param actual_rate_out Pointer to store the actual rate the device was configured to use
  * @param actual_frame_size_out Pointer to store the actual frame size (samples per channel)
  * @return 0 on success, negative error code on failure
  */
-static int configure_alsa_device(snd_pcm_t *handle, const char *device_name,
+static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uint8_t num_channels,
                                  unsigned int *actual_rate_out, uint16_t *actual_frame_size_out) {
 	snd_pcm_hw_params_t *params;
 	snd_pcm_sw_params_t *sw_params;
@@ -255,7 +257,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name,
 	err = snd_pcm_hw_params_set_format(handle, params, SND_PCM_FORMAT_S16_LE);
 	if (err < 0) return err;
 
-	err = snd_pcm_hw_params_set_channels(handle, params, channels);
+	err = snd_pcm_hw_params_set_channels(handle, params, num_channels);
 	if (err < 0) return err;
 
 	unsigned int requested_rate = sample_rate;
@@ -271,7 +273,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name,
 		fflush(stderr);
 
 		actual_frame_size = (actual_rate * 20) / 1000;
-		if (channels == 2) {
+		if (num_channels == 2) {
 			if (actual_frame_size < 480) actual_frame_size = 480;
 			if (actual_frame_size > 2880) actual_frame_size = 2880;
 		}
@@ -344,13 +346,27 @@ int jetkvm_audio_capture_init() {
 		return 0;
 	}
 
-	if (encoder) {
-		opus_encoder_destroy(encoder);
-		encoder = NULL;
-	}
-	if (pcm_capture_handle) {
-		snd_pcm_close(pcm_capture_handle);
-		pcm_capture_handle = NULL;
+	if (encoder != NULL || pcm_capture_handle != NULL) {
+		capture_initialized = 0;
+		capture_stop_requested = 1;
+		__sync_synchronize();
+
+		if (pcm_capture_handle) {
+			snd_pcm_drop(pcm_capture_handle);
+		}
+
+		pthread_mutex_lock(&capture_mutex);
+
+		if (encoder) {
+			opus_encoder_destroy(encoder);
+			encoder = NULL;
+		}
+		if (pcm_capture_handle) {
+			snd_pcm_close(pcm_capture_handle);
+			pcm_capture_handle = NULL;
+		}
+
+		pthread_mutex_unlock(&capture_mutex);
 	}
 
 	err = safe_alsa_open(&pcm_capture_handle, alsa_capture_device, SND_PCM_STREAM_CAPTURE);
@@ -358,31 +374,34 @@ int jetkvm_audio_capture_init() {
 		fprintf(stderr, "Failed to open ALSA capture device %s: %s\n",
 		        alsa_capture_device, snd_strerror(err));
 		fflush(stderr);
+		capture_stop_requested = 0;
 		capture_initializing = 0;
 		return -1;
 	}
 
 	unsigned int actual_rate = 0;
 	uint16_t actual_frame_size = 0;
-	err = configure_alsa_device(pcm_capture_handle, "capture", &actual_rate, &actual_frame_size);
+	err = configure_alsa_device(pcm_capture_handle, "capture", capture_channels, &actual_rate, &actual_frame_size);
 	if (err < 0) {
 		snd_pcm_close(pcm_capture_handle);
 		pcm_capture_handle = NULL;
+		capture_stop_requested = 0;
 		capture_initializing = 0;
 		return -2;
 	}
 
 	fprintf(stderr, "INFO: capture: Initializing Opus encoder at %u Hz, %u channels, frame size %u\n",
-	        actual_rate, channels, actual_frame_size);
+	        actual_rate, capture_channels, actual_frame_size);
 	fflush(stderr);
 
 	int opus_err = 0;
-	encoder = opus_encoder_create(actual_rate, channels, OPUS_APPLICATION_AUDIO, &opus_err);
+	encoder = opus_encoder_create(actual_rate, capture_channels, OPUS_APPLICATION_AUDIO, &opus_err);
 	if (!encoder || opus_err != OPUS_OK) {
 		if (pcm_capture_handle) {
 			snd_pcm_close(pcm_capture_handle);
 			pcm_capture_handle = NULL;
 		}
+		capture_stop_requested = 0;
 		capture_initializing = 0;
 		return -3;
 	}
@@ -400,6 +419,7 @@ int jetkvm_audio_capture_init() {
 	opus_encoder_ctl(encoder, OPUS_SET_PACKET_LOSS_PERC(opus_packet_loss_perc));
 
 	capture_initialized = 1;
+	capture_stop_requested = 0;
 	capture_initializing = 0;
 	return 0;
 }
@@ -441,46 +461,69 @@ retry_read:
 		return -1;
 	}
 
-	pcm_rc = snd_pcm_readi(pcm_capture_handle, pcm_buffer, frame_size);
+	snd_pcm_t *handle = pcm_capture_handle;
+	if (!handle) {
+		pthread_mutex_unlock(&capture_mutex);
+		return -1;
+	}
+
+	pcm_rc = snd_pcm_readi(handle, pcm_buffer, frame_size);
+
+	if (handle != pcm_capture_handle) {
+		pthread_mutex_unlock(&capture_mutex);
+		return -1;
+	}
 
 	if (__builtin_expect(pcm_rc < 0, 0)) {
 		if (pcm_rc == -EPIPE) {
 			recovery_attempts++;
-			if (recovery_attempts > max_recovery_attempts) {
+			if (recovery_attempts > max_recovery_attempts || handle != pcm_capture_handle) {
 				pthread_mutex_unlock(&capture_mutex);
 				return -1;
 			}
-			err = snd_pcm_prepare(pcm_capture_handle);
+			err = snd_pcm_prepare(handle);
 			if (err < 0) {
-				snd_pcm_drop(pcm_capture_handle);
-				err = snd_pcm_prepare(pcm_capture_handle);
-				if (err < 0) {
+				if (handle != pcm_capture_handle) {
+					pthread_mutex_unlock(&capture_mutex);
+					return -1;
+				}
+				snd_pcm_drop(handle);
+				err = snd_pcm_prepare(handle);
+				if (err < 0 || handle != pcm_capture_handle) {
 					pthread_mutex_unlock(&capture_mutex);
 					return -1;
 				}
 			}
 			goto retry_read;
 		} else if (pcm_rc == -EAGAIN) {
-			snd_pcm_wait(pcm_capture_handle, sleep_milliseconds);
+			if (handle != pcm_capture_handle) {
+				pthread_mutex_unlock(&capture_mutex);
+				return -1;
+			}
+			snd_pcm_wait(handle, sleep_milliseconds);
 			goto retry_read;
 		} else if (pcm_rc == -ESTRPIPE) {
 			recovery_attempts++;
-			if (recovery_attempts > max_recovery_attempts) {
+			if (recovery_attempts > max_recovery_attempts || handle != pcm_capture_handle) {
 				pthread_mutex_unlock(&capture_mutex);
 				return -1;
 			}
 			uint8_t resume_attempts = 0;
-			while ((err = snd_pcm_resume(pcm_capture_handle)) == -EAGAIN && resume_attempts < 10) {
-				if (capture_stop_requested) {
+			while ((err = snd_pcm_resume(handle)) == -EAGAIN && resume_attempts < 10) {
+				if (capture_stop_requested || handle != pcm_capture_handle) {
 					pthread_mutex_unlock(&capture_mutex);
 					return -1;
 				}
-				snd_pcm_wait(pcm_capture_handle, sleep_milliseconds);
+				snd_pcm_wait(handle, sleep_milliseconds);
 				resume_attempts++;
 			}
 			if (err < 0) {
-				err = snd_pcm_prepare(pcm_capture_handle);
-				if (err < 0) {
+				if (handle != pcm_capture_handle) {
+					pthread_mutex_unlock(&capture_mutex);
+					return -1;
+				}
+				err = snd_pcm_prepare(handle);
+				if (err < 0 || handle != pcm_capture_handle) {
 					pthread_mutex_unlock(&capture_mutex);
 					return -1;
 				}
@@ -492,10 +535,14 @@ retry_read:
 			return -1;
 		} else if (pcm_rc == -EIO) {
 			recovery_attempts++;
-			if (recovery_attempts <= max_recovery_attempts) {
-				snd_pcm_drop(pcm_capture_handle);
-				err = snd_pcm_prepare(pcm_capture_handle);
-				if (err >= 0) {
+			if (recovery_attempts <= max_recovery_attempts && handle == pcm_capture_handle) {
+				snd_pcm_drop(handle);
+				if (handle != pcm_capture_handle) {
+					pthread_mutex_unlock(&capture_mutex);
+					return -1;
+				}
+				err = snd_pcm_prepare(handle);
+				if (err >= 0 && handle == pcm_capture_handle) {
 					goto retry_read;
 				}
 			}
@@ -505,8 +552,8 @@ retry_read:
 			recovery_attempts++;
 			if (recovery_attempts <= 1 && pcm_rc == -EINTR) {
 				goto retry_read;
-			} else if (recovery_attempts <= 1 && pcm_rc == -EBUSY) {
-				snd_pcm_wait(pcm_capture_handle, 1); // Wait 1ms for device
+			} else if (recovery_attempts <= 1 && pcm_rc == -EBUSY && handle == pcm_capture_handle) {
+				snd_pcm_wait(handle, 1); // Wait 1ms for device
 				goto retry_read;
 			}
 			pthread_mutex_unlock(&capture_mutex);
@@ -516,11 +563,23 @@ retry_read:
 
 	// Zero-pad if we got a short read
 	if (__builtin_expect(pcm_rc < frame_size, 0)) {
-		uint32_t remaining_samples = (frame_size - pcm_rc) * channels;
-		simd_clear_samples_s16(&pcm_buffer[pcm_rc * channels], remaining_samples);
+		uint32_t remaining_samples = (frame_size - pcm_rc) * capture_channels;
+		simd_clear_samples_s16(&pcm_buffer[pcm_rc * capture_channels], remaining_samples);
 	}
 
-	nb_bytes = opus_encode(encoder, pcm_buffer, frame_size, out, max_packet_size);
+	OpusEncoder *enc = encoder;
+	if (!enc || enc != encoder) {
+		pthread_mutex_unlock(&capture_mutex);
+		return -1;
+	}
+
+	nb_bytes = opus_encode(enc, pcm_buffer, frame_size, out, max_packet_size);
+
+	if (enc != encoder) {
+		pthread_mutex_unlock(&capture_mutex);
+		return -1;
+	}
+
 	pthread_mutex_unlock(&capture_mutex);
 	return nb_bytes;
 }
@@ -546,13 +605,27 @@ int jetkvm_audio_playback_init() {
 		return 0;
 	}
 
-	if (decoder) {
-		opus_decoder_destroy(decoder);
-		decoder = NULL;
-	}
-	if (pcm_playback_handle) {
-		snd_pcm_close(pcm_playback_handle);
-		pcm_playback_handle = NULL;
+	if (decoder != NULL || pcm_playback_handle != NULL) {
+		playback_initialized = 0;
+		playback_stop_requested = 1;
+		__sync_synchronize();
+
+		if (pcm_playback_handle) {
+			snd_pcm_drop(pcm_playback_handle);
+		}
+
+		pthread_mutex_lock(&playback_mutex);
+
+		if (decoder) {
+			opus_decoder_destroy(decoder);
+			decoder = NULL;
+		}
+		if (pcm_playback_handle) {
+			snd_pcm_close(pcm_playback_handle);
+			pcm_playback_handle = NULL;
+		}
+
+		pthread_mutex_unlock(&playback_mutex);
 	}
 
 	err = safe_alsa_open(&pcm_playback_handle, alsa_playback_device, SND_PCM_STREAM_PLAYBACK);
@@ -562,6 +635,7 @@ int jetkvm_audio_playback_init() {
 		fflush(stderr);
 		err = safe_alsa_open(&pcm_playback_handle, "default", SND_PCM_STREAM_PLAYBACK);
 		if (err < 0) {
+			playback_stop_requested = 0;
 			playback_initializing = 0;
 			return -1;
 		}
@@ -569,28 +643,31 @@ int jetkvm_audio_playback_init() {
 
 	unsigned int actual_rate = 0;
 	uint16_t actual_frame_size = 0;
-	err = configure_alsa_device(pcm_playback_handle, "playback", &actual_rate, &actual_frame_size);
+	err = configure_alsa_device(pcm_playback_handle, "playback", playback_channels, &actual_rate, &actual_frame_size);
 	if (err < 0) {
 		snd_pcm_close(pcm_playback_handle);
 		pcm_playback_handle = NULL;
+		playback_stop_requested = 0;
 		playback_initializing = 0;
 		return -1;
 	}
 
 	fprintf(stderr, "INFO: playback: Initializing Opus decoder at %u Hz, %u channels, frame size %u\n",
-	        actual_rate, channels, actual_frame_size);
+	        actual_rate, playback_channels, actual_frame_size);
 	fflush(stderr);
 
 	int opus_err = 0;
-	decoder = opus_decoder_create(actual_rate, channels, &opus_err);
+	decoder = opus_decoder_create(actual_rate, playback_channels, &opus_err);
 	if (!decoder || opus_err != OPUS_OK) {
 		snd_pcm_close(pcm_playback_handle);
 		pcm_playback_handle = NULL;
+		playback_stop_requested = 0;
 		playback_initializing = 0;
 		return -2;
 	}
 
 	playback_initialized = 1;
+	playback_stop_requested = 0;
 	playback_initializing = 0;
 	return 0;
 }
@@ -632,16 +709,38 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 	}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Processing Opus packet - size=%d bytes\n", opus_size);
 
+	OpusDecoder *dec = decoder;
+	if (!dec || dec != decoder) {
+		pthread_mutex_unlock(&playback_mutex);
+		return -1;
+	}
+
 	// Decode Opus packet to PCM (FEC automatically applied if embedded in packet)
 	// decode_fec=0 means normal decode (FEC data is used automatically when present)
-	pcm_frames = opus_decode(decoder, in, opus_size, pcm_buffer, frame_size, 0);
+	pcm_frames = opus_decode(dec, in, opus_size, pcm_buffer, frame_size, 0);
+
+	if (dec != decoder) {
+		pthread_mutex_unlock(&playback_mutex);
+		return -1;
+	}
 
 	if (__builtin_expect(pcm_frames < 0, 0)) {
 		// Decode failed - attempt packet loss concealment using FEC from previous packet
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Opus decode failed with error %d, attempting packet loss concealment\n", pcm_frames);
 
+		if (!dec || dec != decoder) {
+			pthread_mutex_unlock(&playback_mutex);
+			return -1;
+		}
+
 		// decode_fec=1 means use FEC data from the NEXT packet to reconstruct THIS lost packet
-		pcm_frames = opus_decode(decoder, NULL, 0, pcm_buffer, frame_size, 1);
+		pcm_frames = opus_decode(dec, NULL, 0, pcm_buffer, frame_size, 1);
+
+		if (dec != decoder) {
+			pthread_mutex_unlock(&playback_mutex);
+			return -1;
+		}
+
 		if (pcm_frames < 0) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Packet loss concealment also failed with error %d\n", pcm_frames);
 			pthread_mutex_unlock(&playback_mutex);
@@ -657,25 +756,40 @@ retry_write:
 		return -1;
 	}
 
-	pcm_rc = snd_pcm_writei(pcm_playback_handle, pcm_buffer, pcm_frames);
+	snd_pcm_t *handle = pcm_playback_handle;
+	if (!handle) {
+		pthread_mutex_unlock(&playback_mutex);
+		return -1;
+	}
+
+	pcm_rc = snd_pcm_writei(handle, pcm_buffer, pcm_frames);
+
+	if (handle != pcm_playback_handle) {
+		pthread_mutex_unlock(&playback_mutex);
+		return -1;
+	}
 	if (__builtin_expect(pcm_rc < 0, 0)) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: ALSA write failed with error %d (%s), attempt %d/%d\n",
 				pcm_rc, snd_strerror(pcm_rc), recovery_attempts + 1, max_recovery_attempts);
 
 		if (pcm_rc == -EPIPE) {
 			recovery_attempts++;
-			if (recovery_attempts > max_recovery_attempts) {
+			if (recovery_attempts > max_recovery_attempts || handle != pcm_playback_handle) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun recovery failed after %d attempts\n", max_recovery_attempts);
 				pthread_mutex_unlock(&playback_mutex);
 				return -2;
 			}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Buffer underrun detected, attempting recovery (attempt %d)\n", recovery_attempts);
-			err = snd_pcm_prepare(pcm_playback_handle);
+			err = snd_pcm_prepare(handle);
 			if (err < 0) {
+				if (handle != pcm_playback_handle) {
+					pthread_mutex_unlock(&playback_mutex);
+					return -2;
+				}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: snd_pcm_prepare failed (%s), trying drop+prepare\n", snd_strerror(err));
-				snd_pcm_drop(pcm_playback_handle);
-				err = snd_pcm_prepare(pcm_playback_handle);
-				if (err < 0) {
+				snd_pcm_drop(handle);
+				err = snd_pcm_prepare(handle);
+				if (err < 0 || handle != pcm_playback_handle) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: drop+prepare recovery failed (%s)\n", snd_strerror(err));
 					pthread_mutex_unlock(&playback_mutex);
 					return -2;
@@ -685,25 +799,29 @@ retry_write:
 			goto retry_write;
 		} else if (pcm_rc == -ESTRPIPE) {
 			recovery_attempts++;
-			if (recovery_attempts > max_recovery_attempts) {
+			if (recovery_attempts > max_recovery_attempts || handle != pcm_playback_handle) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspend recovery failed after %d attempts\n", max_recovery_attempts);
 				pthread_mutex_unlock(&playback_mutex);
 				return -2;
 			}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device suspended, attempting resume (attempt %d)\n", recovery_attempts);
 			uint8_t resume_attempts = 0;
-			while ((err = snd_pcm_resume(pcm_playback_handle)) == -EAGAIN && resume_attempts < 10) {
-				if (playback_stop_requested) {
+			while ((err = snd_pcm_resume(handle)) == -EAGAIN && resume_attempts < 10) {
+				if (playback_stop_requested || handle != pcm_playback_handle) {
 					pthread_mutex_unlock(&playback_mutex);
 					return -1;
 				}
-				snd_pcm_wait(pcm_playback_handle, sleep_milliseconds);
+				snd_pcm_wait(handle, sleep_milliseconds);
 				resume_attempts++;
 			}
 			if (err < 0) {
+				if (handle != pcm_playback_handle) {
+					pthread_mutex_unlock(&playback_mutex);
+					return -2;
+				}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device resume failed (%s), trying prepare fallback\n", snd_strerror(err));
-				err = snd_pcm_prepare(pcm_playback_handle);
-				if (err < 0) {
+				err = snd_pcm_prepare(handle);
+				if (err < 0 || handle != pcm_playback_handle) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Prepare fallback failed (%s)\n", snd_strerror(err));
 					pthread_mutex_unlock(&playback_mutex);
 					return -2;
@@ -718,11 +836,15 @@ retry_write:
 			return -2;
 		} else if (pcm_rc == -EIO) {
 			recovery_attempts++;
-			if (recovery_attempts <= max_recovery_attempts) {
+			if (recovery_attempts <= max_recovery_attempts && handle == pcm_playback_handle) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error detected, attempting recovery\n");
-				snd_pcm_drop(pcm_playback_handle);
-				err = snd_pcm_prepare(pcm_playback_handle);
-				if (err >= 0) {
+				snd_pcm_drop(handle);
+				if (handle != pcm_playback_handle) {
+					pthread_mutex_unlock(&playback_mutex);
+					return -2;
+				}
+				err = snd_pcm_prepare(handle);
+				if (err >= 0 && handle == pcm_playback_handle) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: I/O error recovery successful, retrying write\n");
 					goto retry_write;
 				}
@@ -732,9 +854,9 @@ retry_write:
 			return -2;
 		} else if (pcm_rc == -EAGAIN) {
 			recovery_attempts++;
-			if (recovery_attempts <= max_recovery_attempts) {
+			if (recovery_attempts <= max_recovery_attempts && handle == pcm_playback_handle) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device not ready (EAGAIN), waiting and retrying\n");
-				snd_pcm_wait(pcm_playback_handle, 1);  // Wait 1ms
+				snd_pcm_wait(handle, 1);  // Wait 1ms
 				goto retry_write;
 			}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Device not ready recovery failed after %d attempts\n", max_recovery_attempts);
@@ -742,9 +864,9 @@ retry_write:
 			return -2;
 		} else {
 			recovery_attempts++;
-			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY)) {
+			if (recovery_attempts <= 1 && (pcm_rc == -EINTR || pcm_rc == -EBUSY) && handle == pcm_playback_handle) {
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Transient error %d (%s), retrying once\n", pcm_rc, snd_strerror(pcm_rc));
-				snd_pcm_wait(pcm_playback_handle, 1);  // Wait 1ms
+				snd_pcm_wait(handle, 1);  // Wait 1ms
 				goto retry_write;
 			}
 		TRACE_LOG("[AUDIO_INPUT] jetkvm_audio_decode_write: Unrecoverable error %d (%s)\n", pcm_rc, snd_strerror(pcm_rc));
@@ -772,14 +894,14 @@ void jetkvm_audio_playback_close() {
 		return;
 	}
 
-	// Drop PCM stream BEFORE acquiring mutex to interrupt any blocking writes
-	// snd_pcm_drop() is thread-safe and will cause snd_pcm_writei() to return immediately
+	struct timespec short_delay = { .tv_sec = 0, .tv_nsec = 5000000 };
+	nanosleep(&short_delay, NULL);
+
+	pthread_mutex_lock(&playback_mutex);
+
 	if (pcm_playback_handle) {
 		snd_pcm_drop(pcm_playback_handle);
 	}
-
-	// Now acquire mutex for cleanup
-	pthread_mutex_lock(&playback_mutex);
 
 	if (decoder) {
 		opus_decoder_destroy(decoder);
@@ -808,14 +930,14 @@ void jetkvm_audio_capture_close() {
 		return;
 	}
 
-	// Drop PCM stream BEFORE acquiring mutex to interrupt any blocking reads
-	// snd_pcm_drop() is thread-safe and will cause snd_pcm_readi() to return immediately
+	struct timespec short_delay = { .tv_sec = 0, .tv_nsec = 5000000 };
+	nanosleep(&short_delay, NULL);
+
+	pthread_mutex_lock(&capture_mutex);
+
 	if (pcm_capture_handle) {
 		snd_pcm_drop(pcm_capture_handle);
 	}
-
-	// Now acquire mutex for cleanup
-	pthread_mutex_lock(&capture_mutex);
 
 	if (pcm_capture_handle) {
 		snd_pcm_close(pcm_capture_handle);
