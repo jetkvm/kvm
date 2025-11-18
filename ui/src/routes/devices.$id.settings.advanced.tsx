@@ -208,7 +208,6 @@ export default function SettingsAdvancedRoute() {
       versionInfo = await checkUpdateComponents({
         components,
       }, devChannel);
-      console.log("versionInfo", versionInfo);
     } catch (error: unknown) {
       const jsonRpcError = error as JsonRpcError;
       handleVersionUpdateError(jsonRpcError);

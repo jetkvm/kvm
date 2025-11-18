@@ -262,7 +262,10 @@ export async function checkUpdateComponents(params: updateParams, includePreRele
       params,
       includePreRelease,
     },
-    maxAttempts: UPDATE_STATUS_RPC_MAX_ATTEMPTS,
+    // maxAttempts is set to 1,
+    // because it currently retry for all errors,
+    // and we don't want to retry if the error is not a network error
+    maxAttempts: 1,
     attemptTimeoutMs: UPDATE_STATUS_RPC_TIMEOUT_MS,
   });
   if (response.error) throw response.error;
