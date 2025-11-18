@@ -51,20 +51,30 @@ func getAudioConfig() audio.AudioConfig {
 	cfg := audio.DefaultAudioConfig()
 	if config.AudioBitrate >= 64 && config.AudioBitrate <= 256 {
 		cfg.Bitrate = uint16(config.AudioBitrate)
+	} else if config.AudioBitrate != 0 {
+		audioLogger.Warn().Int("bitrate", config.AudioBitrate).Uint16("default", cfg.Bitrate).Msg("Invalid audio bitrate, using default")
 	}
 	if config.AudioComplexity >= 0 && config.AudioComplexity <= 10 {
 		cfg.Complexity = uint8(config.AudioComplexity)
+	} else {
+		audioLogger.Warn().Int("complexity", config.AudioComplexity).Uint8("default", cfg.Complexity).Msg("Invalid audio complexity, using default")
 	}
 	cfg.DTXEnabled = config.AudioDTXEnabled
 	cfg.FECEnabled = config.AudioFECEnabled
 	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 24 {
 		cfg.BufferPeriods = uint8(config.AudioBufferPeriods)
+	} else if config.AudioBufferPeriods != 0 {
+		audioLogger.Warn().Int("buffer_periods", config.AudioBufferPeriods).Uint8("default", cfg.BufferPeriods).Msg("Invalid buffer periods, using default")
 	}
 	if config.AudioSampleRate == 32000 || config.AudioSampleRate == 44100 || config.AudioSampleRate == 48000 || config.AudioSampleRate == 96000 {
 		cfg.SampleRate = uint32(config.AudioSampleRate)
+	} else if config.AudioSampleRate != 0 {
+		audioLogger.Warn().Int("sample_rate", config.AudioSampleRate).Uint32("default", cfg.SampleRate).Msg("Invalid sample rate, using default")
 	}
 	if config.AudioPacketLossPerc >= 0 && config.AudioPacketLossPerc <= 100 {
 		cfg.PacketLossPerc = uint8(config.AudioPacketLossPerc)
+	} else {
+		audioLogger.Warn().Int("packet_loss_perc", config.AudioPacketLossPerc).Uint8("default", cfg.PacketLossPerc).Msg("Invalid packet loss percentage, using default")
 	}
 	return cfg
 }
@@ -307,12 +317,19 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 			continue
 		}
 
-		source := inputSource.Load()
-		if source == nil {
+		// Early check to avoid mutex acquisition if source is nil (optimization)
+		if inputSource.Load() == nil {
 			continue
 		}
 
 		inputSourceMutex.Lock()
+		// Reload source inside mutex to ensure we have the currently active source
+		// This prevents races with startInputAudioUnderMutex swapping the source
+		source := inputSource.Load()
+		if source == nil {
+			inputSourceMutex.Unlock()
+			continue
+		}
 
 		if !(*source).IsConnected() {
 			if err := (*source).Connect(); err != nil {
@@ -321,11 +338,12 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 			}
 		}
 
-		if err := (*source).WriteMessage(0, opusData); err != nil {
+		err = (*source).WriteMessage(0, opusData)
+		inputSourceMutex.Unlock()
+
+		if err != nil {
 			audioLogger.Warn().Err(err).Msg("failed to write audio message")
 			(*source).Disconnect()
 		}
-
-		inputSourceMutex.Unlock()
 	}
 }
