@@ -15,10 +15,10 @@ var (
 	audioMutex         sync.Mutex
 	setAudioTrackMutex sync.Mutex // Prevents concurrent setAudioTrack() calls
 	inputSourceMutex   sync.Mutex // Serializes Connect() and WriteMessage() calls to input source
-	outputSource       audio.AudioSource
+	outputSource       atomic.Pointer[audio.AudioSource]
 	inputSource        atomic.Pointer[audio.AudioSource]
-	outputRelay        *audio.OutputRelay
-	inputRelay         *audio.InputRelay
+	outputRelay        atomic.Pointer[audio.OutputRelay]
+	inputRelay         atomic.Pointer[audio.InputRelay]
 	audioInitialized   bool
 	activeConnections  atomic.Int32
 	audioLogger        zerolog.Logger
@@ -79,58 +79,81 @@ func startAudio() error {
 		return nil
 	}
 
-	if outputSource == nil && audioOutputEnabled.Load() && currentAudioTrack != nil {
-		ensureConfigLoaded()
-		alsaDevice := getAlsaDevice(config.AudioOutputSource)
-		source := audio.NewCgoOutputSource(alsaDevice)
-		source.SetConfig(getAudioConfig())
-		outputSource = source
-		outputRelay = audio.NewOutputRelay(outputSource, currentAudioTrack)
-		if err := outputRelay.Start(); err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to start audio output relay")
-		}
+	if activeConnections.Load() <= 0 {
+		audioLogger.Debug().Msg("No active connections, skipping audio start")
+		return nil
 	}
 
 	ensureConfigLoaded()
-	if inputSource.Load() == nil && audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
-		alsaPlaybackDevice := getAlsaDevice("usb")
-		source := audio.NewCgoInputSource(alsaPlaybackDevice)
-		source.SetConfig(getAudioConfig())
-		var audioSource audio.AudioSource = source
-		inputSource.Store(&audioSource)
 
-		inputRelay = audio.NewInputRelay(audioSource)
-		if err := inputRelay.Start(); err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to start input relay")
-		}
+	if audioOutputEnabled.Load() && currentAudioTrack != nil {
+		startOutputAudioUnderMutex(getAlsaDevice(config.AudioOutputSource))
+	}
+
+	if audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
+		startInputAudioUnderMutex(getAlsaDevice("usb"))
 	}
 
 	return nil
 }
 
+func startOutputAudioUnderMutex(alsaOutputDevice string) {
+	newSource := audio.NewCgoOutputSource(alsaOutputDevice, getAudioConfig())
+	oldSource := outputSource.Swap(&newSource)
+	newRelay := audio.NewOutputRelay(&newSource, currentAudioTrack)
+	oldRelay := outputRelay.Swap(newRelay)
+
+	if oldRelay != nil {
+		oldRelay.Stop()
+	}
+
+	if oldSource != nil {
+		(*oldSource).Disconnect()
+	}
+
+	if err := newRelay.Start(); err != nil {
+		audioLogger.Error().Err(err).Str("alsaOutputDevice", alsaOutputDevice).Msg("Failed to start audio output relay")
+	}
+}
+
+func startInputAudioUnderMutex(alsaPlaybackDevice string) {
+	newSource := audio.NewCgoInputSource(alsaPlaybackDevice, getAudioConfig())
+	oldSource := outputSource.Swap(&newSource)
+	newRelay := audio.NewInputRelay(&newSource)
+	oldRelay := inputRelay.Swap(newRelay)
+
+	if oldRelay != nil {
+		oldRelay.Stop()
+	}
+
+	if oldSource != nil {
+		(*oldSource).Disconnect()
+	}
+
+	if err := newRelay.Start(); err != nil {
+		audioLogger.Error().Err(err).Str("alsaPlaybackDevice", alsaPlaybackDevice).Msg("Failed to start input relay")
+	}
+}
+
 func stopOutputAudio() {
 	audioMutex.Lock()
-	outRelay := outputRelay
-	outSource := outputSource
-	outputRelay = nil
-	outputSource = nil
+	outRelay := outputRelay.Swap(nil)
+	outSource := outputSource.Swap(nil)
 	audioMutex.Unlock()
 
 	if outRelay != nil {
 		outRelay.Stop()
 	}
 	if outSource != nil {
-		outSource.Disconnect()
+		(*outSource).Disconnect()
 	}
 }
 
 func stopInputAudio() {
 	audioMutex.Lock()
-	inRelay := inputRelay
-	inputRelay = nil
-	audioMutex.Unlock()
-
+	inRelay := inputRelay.Swap(nil)
 	inSource := inputSource.Swap(nil)
+	audioMutex.Unlock()
 
 	if inRelay != nil {
 		inRelay.Stop()
@@ -156,7 +179,7 @@ func onWebRTCConnect() {
 
 func onWebRTCDisconnect() {
 	count := activeConnections.Add(-1)
-	if count == 0 {
+	if count <= 0 {
 		// Stop audio immediately to release HDMI audio device which shares hardware with video device
 		stopAudio()
 	}
@@ -166,39 +189,12 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 	setAudioTrackMutex.Lock()
 	defer setAudioTrackMutex.Unlock()
 
-	// Capture old resources and update state in single critical section
-	audioMutex.Lock()
+	stopOutputAudio()
+
 	currentAudioTrack = audioTrack
-	oldRelay := outputRelay
-	oldSource := outputSource
-	outputRelay = nil
-	outputSource = nil
 
-	var newRelay *audio.OutputRelay
-	var newSource audio.AudioSource
-	if currentAudioTrack != nil && audioOutputEnabled.Load() {
-		ensureConfigLoaded()
-		alsaDevice := getAlsaDevice(config.AudioOutputSource)
-		newSource := audio.NewCgoOutputSource(alsaDevice)
-		newSource.SetConfig(getAudioConfig())
-		newRelay = audio.NewOutputRelay(newSource, currentAudioTrack)
-		outputSource = newSource
-		outputRelay = newRelay
-	}
-	audioMutex.Unlock()
-
-	// Stop/start resources outside mutex to avoid blocking on CGO calls
-	if oldRelay != nil {
-		oldRelay.Stop()
-	}
-	if oldSource != nil {
-		oldSource.Disconnect()
-	}
-
-	if newRelay != nil {
-		if err := newRelay.Start(); err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to start output relay")
-		}
+	if err := startAudio(); err != nil {
+		audioLogger.Error().Err(err).Msg("Failed to start with new audio track")
 	}
 }
 
@@ -250,72 +246,44 @@ func SetAudioOutputSource(source string) error {
 		return nil
 	}
 
+	stopOutputAudio()
 	config.AudioOutputSource = source
 
-	stopOutputAudio()
-
-	if audioOutputEnabled.Load() && activeConnections.Load() > 0 && currentAudioTrack != nil {
-		alsaDevice := getAlsaDevice(source)
-		newSource := audio.NewCgoOutputSource(alsaDevice)
-		newSource.SetConfig(getAudioConfig())
-		newRelay := audio.NewOutputRelay(newSource, currentAudioTrack)
-
-		audioMutex.Lock()
-		outputSource = newSource
-		outputRelay = newRelay
-		audioMutex.Unlock()
-
-		if err := newRelay.Start(); err != nil {
-			audioLogger.Error().Err(err).Str("source", source).Msg("Failed to start audio relay with new source")
-		}
+	if err := startAudio(); err != nil {
+		audioLogger.Error().Err(err).Str("source", source).Msg("Failed to start audio output after source change")
 	}
 
 	return SaveConfig()
 }
 
-func RestartAudioOutput() {
+func RestartAudioOutput() error {
 	audioMutex.Lock()
-	hasActiveOutput := outputSource != nil && currentAudioTrack != nil && audioOutputEnabled.Load()
+	hasActiveOutput := audioOutputEnabled.Load() && currentAudioTrack != nil && outputSource.Load() != nil
 	audioMutex.Unlock()
 
 	if !hasActiveOutput {
-		return
+		return nil
 	}
 
 	audioLogger.Info().Msg("Restarting audio output")
-
 	stopOutputAudio()
-
-	ensureConfigLoaded()
-	alsaDevice := getAlsaDevice(config.AudioOutputSource)
-
-	newSource := audio.NewCgoOutputSource(alsaDevice)
-	newSource.SetConfig(getAudioConfig())
-	newRelay := audio.NewOutputRelay(newSource, currentAudioTrack)
-
-	audioMutex.Lock()
-	outputSource = newSource
-	outputRelay = newRelay
-	audioMutex.Unlock()
-
-	if err := newRelay.Start(); err != nil {
-		audioLogger.Error().Err(err).Msg("Failed to restart audio output")
-	}
+	return startAudio()
 }
 
 func handleInputTrackForSession(track *webrtc.TrackRemote) {
 	myTrackID := track.ID()
 
-	audioLogger.Debug().
+	trackLogger := audioLogger.With().
 		Str("codec", track.Codec().MimeType).
 		Str("track_id", myTrackID).
-		Msg("starting input track handler")
+		Logger()
+
+	trackLogger.Debug().Msg("starting input track handler")
 
 	for {
 		currentTrackID := currentInputTrack.Load()
 		if currentTrackID != nil && *currentTrackID != myTrackID {
-			audioLogger.Debug().
-				Str("my_track_id", myTrackID).
+			trackLogger.Debug().
 				Str("current_track_id", *currentTrackID).
 				Msg("input track handler exiting - superseded")
 			return
@@ -324,10 +292,10 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 		rtpPacket, _, err := track.ReadRTP()
 		if err != nil {
 			if err == io.EOF {
-				audioLogger.Debug().Str("track_id", myTrackID).Msg("input track ended")
+				trackLogger.Debug().Msg("input track ended")
 				return
 			}
-			audioLogger.Warn().Err(err).Str("track_id", myTrackID).Msg("failed to read RTP packet")
+			trackLogger.Warn().Err(err).Msg("failed to read RTP packet")
 			continue
 		}
 
