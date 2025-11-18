@@ -40,13 +40,15 @@ func readOtpEntropy() ([]byte, error) { //nolint:unused
 }
 
 func hwReboot(force bool, postRebootAction *ota.PostRebootAction, delay time.Duration) error {
-	logger.Info().Msgf("Reboot requested, rebooting in %d seconds...", delay)
+	logger.Info().Dur("delay", delay).Msg("reboot requested")
 
 	writeJSONRPCEvent("willReboot", postRebootAction, currentSession)
 	time.Sleep(1 * time.Second) // Wait for the JSONRPCEvent to be sent
 
 	nativeInstance.SwitchToScreenIfDifferent("rebooting_screen")
-	time.Sleep(delay - (1 * time.Second)) // wait requested extra settle time
+	if delay > 1*time.Second {
+		time.Sleep(delay - 1*time.Second) // wait requested extra settle time
+	}
 
 	args := []string{}
 	if force {
