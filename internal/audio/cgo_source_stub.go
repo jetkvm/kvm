@@ -6,11 +6,13 @@ package audio
 
 type CgoSource struct{}
 
-func NewCgoOutputSource(alsaDevice string) *CgoSource {
+var _ AudioSource = (*CgoSource)(nil)
+
+func NewCgoOutputSource(alsaDevice string, audioConfig AudioConfig) AudioSource {
 	panic("audio CGO source not supported on this platform")
 }
 
-func NewCgoInputSource(alsaDevice string) *CgoSource {
+func NewCgoInputSource(alsaDevice string, audioConfig AudioConfig) AudioSource {
 	panic("audio CGO source not supported on this platform")
 }
 
@@ -31,9 +33,5 @@ func (c *CgoSource) ReadMessage() (uint8, []byte, error) {
 }
 
 func (c *CgoSource) WriteMessage(msgType uint8, payload []byte) error {
-	panic("audio CGO source not supported on this platform")
-}
-
-func (c *CgoSource) SetConfig(cfg AudioConfig) {
 	panic("audio CGO source not supported on this platform")
 }
