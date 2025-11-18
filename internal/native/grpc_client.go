@@ -82,6 +82,10 @@ func NewGRPCClient(opts grpcClientOptions) (*GRPCClient, error) {
 	return grpcClient, nil
 }
 
+func (c *GRPCClient) getContext() context.Context {
+	return c.ctx
+}
+
 func (c *GRPCClient) handleEventStream(stream pb.NativeService_StreamEventsClient) {
 	c.eventM.Lock()
 	c.eventStream = stream
@@ -134,6 +138,14 @@ func (c *GRPCClient) startEventStream() {
 			return
 		}
 		c.closeM.Unlock()
+
+		// check if the context is done
+		select {
+		case <-c.ctx.Done():
+			c.logger.Info().Msg("event stream context done, closing")
+			return
+		default:
+		}
 
 		stream, err := c.client.StreamEvents(c.ctx, &pb.Empty{})
 		if err != nil {
