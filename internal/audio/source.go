@@ -16,13 +16,13 @@ type AudioConfig struct {
 
 func DefaultAudioConfig() AudioConfig {
 	return AudioConfig{
-		Bitrate:        128,
-		Complexity:     5,
+		Bitrate:        192,
+		Complexity:     8,
 		BufferPeriods:  12,
-		DTXEnabled:     true,
+		DTXEnabled:     false,
 		FECEnabled:     true,
 		SampleRate:     48000,
-		PacketLossPerc: 20,
+		PacketLossPerc: 0,
 	}
 }
 
