@@ -232,14 +232,14 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
  * @param stop_flag Pointer to volatile stop flag
  * @param mutex Mutex to unlock on error
  * @param pcm_rc Error code from ALSA I/O operation
- * @param recovery_attempts Pointer to recovery attempt counter
+ * @param recovery_attempts Pointer to uint8_t recovery attempt counter
  * @param sleep_ms Milliseconds to sleep during recovery
  * @param max_attempts Maximum recovery attempts allowed
  * @return 1=retry, 0=skip frame, -1=error (mutex already unlocked)
  */
 static int handle_alsa_error(snd_pcm_t *handle, snd_pcm_t **valid_handle,
                              volatile int *stop_flag, pthread_mutex_t *mutex,
-                             int pcm_rc, int *recovery_attempts,
+                             int pcm_rc, uint8_t *recovery_attempts,
                              uint32_t sleep_ms, uint8_t max_attempts) {
 	int err;
 
@@ -535,8 +535,8 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
 	int32_t pcm_rc, nb_bytes;
 	int32_t err = 0;
-	int recovery_attempts = 0;
-	const int max_recovery_attempts = 3;
+	uint8_t recovery_attempts = 0;
+	const uint8_t max_recovery_attempts = 3;
 
 	if (__builtin_expect(capture_stop_requested, 0)) {
 		return -1;
@@ -708,8 +708,8 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 	static short CACHE_ALIGN pcm_buffer[960 * 2];  // Cache-aligned
 	unsigned char * __restrict__ in = (unsigned char*)opus_buf;
 	int32_t pcm_frames, pcm_rc, err = 0;
-	int recovery_attempts = 0;
-	const int max_recovery_attempts = 3;
+	uint8_t recovery_attempts = 0;
+	const uint8_t max_recovery_attempts = 3;
 
 	if (__builtin_expect(playback_stop_requested, 0)) {
 		return -1;
