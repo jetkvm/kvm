@@ -293,9 +293,13 @@ func newSession(config SessionConfig) (*Session, error) {
 					scopedLogger.Warn().Msg("RPC message received but rpcQueue is nil")
 				}
 			})
-			triggerOTAStateUpdate()
-			triggerVideoStateUpdate()
-			triggerUSBStateUpdate()
+			// Wait for channel to be open before sending initial state
+			d.OnOpen(func() {
+				triggerOTAStateUpdate()
+				triggerVideoStateUpdate()
+				triggerUSBStateUpdate()
+				notifyFailsafeMode(session)
+			})
 		case "terminal":
 			handleTerminalChannel(d)
 		case "serial":
@@ -399,10 +403,12 @@ func newSession(config SessionConfig) (*Session, error) {
 }
 
 func onActiveSessionsChanged() {
+	notifyFailsafeMode(currentSession)
 	requestDisplayUpdate(true, "active_sessions_changed")
 }
 
 func onFirstSessionConnected() {
+	notifyFailsafeMode(currentSession)
 	_ = nativeInstance.VideoStart()
 	stopVideoSleepModeTicker()
 }

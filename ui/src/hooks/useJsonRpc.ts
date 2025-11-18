@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 
-import { useRTCStore } from "@hooks/stores";
+import { useRTCStore, useFailsafeModeStore } from "@hooks/stores";
 
 export interface JsonRpcRequest {
   jsonrpc: string;
@@ -34,12 +34,51 @@ export const RpcMethodNotFound = -32601;
 const callbackStore = new Map<number | string, (resp: JsonRpcResponse) => void>();
 let requestCounter = 0;
 
+// Map of blocked RPC methods by failsafe reason
+const blockedMethodsByReason: Record<string, string[]> = {
+  video: [
+    'setStreamQualityFactor',
+    'getEDID',
+    'setEDID',
+    'getVideoLogStatus',
+    'setDisplayRotation',
+    'getVideoSleepMode',
+    'setVideoSleepMode',
+    'getVideoState',
+  ],
+};
+
 export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
   const { rpcDataChannel } = useRTCStore();
+  const { isFailsafeMode, reason } = useFailsafeModeStore();
 
   const send = useCallback(
     async (method: string, params: unknown, callback?: (resp: JsonRpcResponse) => void) => {
       if (rpcDataChannel?.readyState !== "open") return;
+
+      // Check if method is blocked in failsafe mode
+      if (isFailsafeMode && reason) {
+        const blockedMethods = blockedMethodsByReason[reason] || [];
+        if (blockedMethods.includes(method)) {
+          console.warn(`RPC method "${method}" is blocked in failsafe mode (reason: ${reason})`);
+
+          // Call callback with error if provided
+          if (callback) {
+            const errorResponse: JsonRpcErrorResponse = {
+              jsonrpc: "2.0",
+              error: {
+                code: -32000,
+                message: "Method unavailable in failsafe mode",
+                data: `This feature is unavailable while in failsafe mode (${reason})`,
+              },
+              id: requestCounter + 1,
+            };
+            callback(errorResponse);
+          }
+          return;
+        }
+      }
+
       requestCounter++;
       const payload = { jsonrpc: "2.0", method, params, id: requestCounter };
       // Store the callback if it exists
@@ -47,7 +86,7 @@ export function useJsonRpc(onRequest?: (payload: JsonRpcRequest) => void) {
 
       rpcDataChannel.send(JSON.stringify(payload));
     },
-    [rpcDataChannel]
+    [rpcDataChannel, isFailsafeMode, reason]
   );
 
   useEffect(() => {

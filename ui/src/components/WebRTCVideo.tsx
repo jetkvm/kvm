@@ -26,6 +26,7 @@ import { m } from "@localizations/messages.js";
 export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssues: boolean }) {
   // Video and stream related refs and states
   const videoElm = useRef<HTMLVideoElement>(null);
+  const fullscreenContainerRef = useRef<HTMLDivElement>(null);
   const { mediaStream, peerConnectionState } = useRTCStore();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPointerLockActive, setIsPointerLockActive] = useState(false);
@@ -150,7 +151,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   }, [checkNavigatorPermissions, setIsKeyboardLockActive]);
 
   const releaseKeyboardLock = useCallback(async () => {
-    if (videoElm.current === null || document.fullscreenElement !== videoElm.current) return;
+    if (fullscreenContainerRef.current === null || document.fullscreenElement !== fullscreenContainerRef.current) return;
 
     if (navigator && "keyboard" in navigator) {
       try {
@@ -187,7 +188,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   }, [isPointerLockPossible]);
 
   const requestFullscreen = useCallback(async () => {
-    if (!isFullscreenEnabled || !videoElm.current) return;
+    if (!isFullscreenEnabled || !fullscreenContainerRef.current) return;
 
     // per https://wicg.github.io/keyboard-lock/#system-key-press-handler
     // If keyboard lock is activated after fullscreen is already in effect, then the user my
@@ -196,7 +197,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     await requestKeyboardLock();
     await requestPointerLock();
 
-    await videoElm.current.requestFullscreen({
+    await fullscreenContainerRef.current.requestFullscreen({
       navigationUI: "show",
     });
   }, [isFullscreenEnabled, requestKeyboardLock, requestPointerLock]);
@@ -512,7 +513,10 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                   {/* In relative mouse mode and under https, we enable the pointer lock, and to do so we need a bar to show the user to click on the video to enable mouse control */}
                   <PointerLockBar show={showPointerLockBar} />
                   <div className="relative mx-4 my-2 flex items-center justify-center overflow-hidden">
-                    <div className="relative flex h-full w-full items-center justify-center">
+                    <div
+                      ref={fullscreenContainerRef}
+                      className="relative flex h-full w-full items-center justify-center"
+                    >
                       <video
                         ref={videoElm}
                         autoPlay

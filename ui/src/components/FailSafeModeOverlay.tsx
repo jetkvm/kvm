@@ -1,0 +1,216 @@
+import { useState } from "react";
+import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { motion, AnimatePresence } from "framer-motion";
+import { LuInfo } from "react-icons/lu";
+
+import { Button } from "@/components/Button";
+import Card, { GridCard } from "@components/Card";
+import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
+import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
+import { useVersion } from "@/hooks/useVersion";
+import { useDeviceStore } from "@/hooks/stores";
+import notifications from "@/notifications";
+import { DOWNGRADE_VERSION } from "@/ui.config";
+
+import { GitHubIcon } from "./Icons";
+
+
+
+interface FailSafeModeOverlayProps {
+  reason: string;
+}
+
+interface OverlayContentProps {
+  readonly children: React.ReactNode;
+}
+
+function OverlayContent({ children }: OverlayContentProps) {
+  return (
+    <GridCard cardClassName="h-full pointer-events-auto outline-hidden!">
+      <div className="flex h-full w-full flex-col items-center justify-center rounded-md border border-slate-800/30 dark:border-slate-300/20">
+        {children}
+      </div>
+    </GridCard>
+  );
+}
+
+interface TooltipProps {
+  readonly children: React.ReactNode;
+  readonly text: string;
+  readonly show: boolean;
+}
+
+function Tooltip({ children, text, show }: TooltipProps) {
+  if (!show) {
+    return <>{children}</>;
+  }
+
+
+  return (
+    <div className="group/tooltip relative">
+      {children}
+      <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 opacity-0 transition-opacity group-hover/tooltip:block group-hover/tooltip:opacity-100">
+        <Card>
+          <div className="whitespace-nowrap px-2 py-1 text-xs flex items-center gap-1 justify-center">
+            <LuInfo className="h-3 w-3 text-slate-700 dark:text-slate-300" />
+            {text}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
+  const { send } = useJsonRpc();
+  const { navigateTo } = useDeviceUiNavigation();
+  const { appVersion } = useVersion();
+  const { systemVersion } = useDeviceStore();
+  const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
+  const [hasDownloadedLogs, setHasDownloadedLogs] = useState(false);
+
+  const getReasonCopy = () => {
+    switch (reason) {
+      case "video":
+        return {
+          message:
+            "We've detected an issue with the video capture process. Your device is still running and accessible, but video streaming is temporarily unavailable.",
+        };
+      default:
+        return {
+          message:
+            "A critical process has encountered an issue. Your device is still accessible, but some functionality may be temporarily unavailable.",
+        };
+    }
+  };
+
+  const { message } = getReasonCopy();
+
+  const handleReportAndDownloadLogs = () => {
+    setIsDownloadingLogs(true);
+
+    send("getFailSafeLogs", {}, async (resp: JsonRpcResponse) => {
+      setIsDownloadingLogs(false);
+
+      if ("error" in resp) {
+        notifications.error(`Failed to get recovery logs: ${resp.error.message}`);
+        return;
+      }
+
+      // Download logs
+      const logContent = resp.result as string;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `jetkvm-recovery-${reason}-${timestamp}.txt`;
+
+      const blob = new Blob([logContent], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      a.click();
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      notifications.success("Crash logs downloaded successfully");
+      setHasDownloadedLogs(true);
+
+      // Open GitHub issue
+      const issueBody = `## Issue Description
+The \`${reason}\` process encountered an error and failsafe mode was activated.
+
+**Reason:** \`${reason}\`
+**Timestamp:** ${new Date().toISOString()}
+**App Version:** ${appVersion || "Unknown"}
+**System Version:** ${systemVersion || "Unknown"}
+
+## Logs
+Please attach the recovery logs file that was downloaded to your computer:
+\`${filename}\`
+
+> [!NOTE]
+> Please remove any sensitive information from the logs. The reports are public and can be viewed by anyone.
+
+## Additional Context
+[Please describe what you were doing when this occurred]`;
+
+      const issueUrl =
+        `https://github.com/jetkvm/kvm/issues/new?` +
+        `title=${encodeURIComponent(`Recovery Mode: ${reason} process issue`)}&` +
+        `body=${encodeURIComponent(issueBody)}`;
+
+      window.open(issueUrl, "_blank");
+    });
+  };
+
+  const handleDowngrade = () => {
+    navigateTo(`/settings/general/update?app=${DOWNGRADE_VERSION}`);
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        className="aspect-video h-full w-full isolate"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0, transition: { duration: 0 } }}
+        transition={{
+          duration: 0.4,
+          ease: "easeInOut",
+        }}
+      >
+        <OverlayContent>
+          <div className="flex max-w-lg flex-col items-start gap-y-1">
+            <ExclamationTriangleIcon className="h-12 w-12 text-yellow-500" />
+            <div className="text-left text-sm text-slate-700 dark:text-slate-300">
+              <div className="space-y-4">
+                <div className="space-y-2 text-black dark:text-white">
+                  <h2 className="text-xl font-bold">Fail safe mode activated</h2>
+                  <p className="text-sm">{message}</p>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      onClick={handleReportAndDownloadLogs}
+                      theme="primary"
+                      size="SM"
+                      disabled={isDownloadingLogs}
+                      LeadingIcon={GitHubIcon}
+                      text={isDownloadingLogs ? "Downloading Logs..." : "Download Logs & Report Issue"}
+                    />
+
+                    <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 block" />
+                    <Tooltip text="Download logs first" show={!hasDownloadedLogs}>
+                      <Button
+                        onClick={() => navigateTo("/settings/general/reboot")}
+                        theme="light"
+                        size="SM"
+                        text="Reboot Device"
+                        disabled={!hasDownloadedLogs}
+                      />
+                    </Tooltip>
+
+                    <Tooltip text="Download logs first" show={!hasDownloadedLogs}>
+                      <Button
+                        size="SM"
+                        onClick={handleDowngrade}
+                        theme="light"
+                        text={`Downgrade to v${DOWNGRADE_VERSION}`}
+                        disabled={!hasDownloadedLogs}
+                      />
+                    </Tooltip>
+                  </div>
+
+
+                </div>
+              </div>
+            </div>
+          </div>
+        </OverlayContent>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+

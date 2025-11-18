@@ -6,6 +6,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import validator from "validator";
 
+import PublicIPCard from "@components/PublicIPCard";
 import { NetworkSettings, NetworkState, useNetworkStateStore, useRTCStore } from "@hooks/stores";
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import AutoHeight from "@components/AutoHeight";
@@ -460,6 +461,8 @@ export default function SettingsNetworkRoute() {
                 />
               </SettingsItem>
 
+              <PublicIPCard />
+
               <div>
                 <AutoHeight>
                   {formState.isLoading ? (
@@ -540,25 +543,25 @@ export default function SettingsNetworkRoute() {
                 </AutoHeight>
               </div>
 
-              { isLLDPAvailable &&
-                  (
-                    <div className="hidden space-y-4">
-                      <SettingsItem
-                        title={m.network_ll_dp_title()}
-                        description={m.network_ll_dp_description()}
-                      >
-                        <SelectMenuBasic
-                          size="SM"
-                          options={[
-                            { value: "disabled", label: m.network_ll_dp_disabled() },
-                            { value: "basic", label: m.network_ll_dp_basic() },
-                            { value: "all", label: m.network_ll_dp_all() },
-                          ]}
-                          {...register("lldp_mode")}
-                        />
-                      </SettingsItem>
-                    </div>
-                  )
+              {isLLDPAvailable &&
+                (
+                  <div className="hidden space-y-4">
+                    <SettingsItem
+                      title={m.network_ll_dp_title()}
+                      description={m.network_ll_dp_description()}
+                    >
+                      <SelectMenuBasic
+                        size="SM"
+                        options={[
+                          { value: "disabled", label: m.network_ll_dp_disabled() },
+                          { value: "basic", label: m.network_ll_dp_basic() },
+                          { value: "all", label: m.network_ll_dp_all() },
+                        ]}
+                        {...register("lldp_mode")}
+                      />
+                    </SettingsItem>
+                  </div>
+                )
               }
 
               <div className="animate-fadeInStill animation-duration-300">
