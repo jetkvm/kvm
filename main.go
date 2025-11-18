@@ -30,6 +30,13 @@ func Main() {
 
 	logger.Log().Msg("JetKVM Starting Up")
 
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Panic().Interface("error", r).Msg("Received panic")
+			panic(r) // Re-panic to crash as usual
+		}
+	}()
+
 	checkFailsafeReason()
 	if failsafeModeActive {
 		procPrefix = "jetkvm: [app+failsafe]"
@@ -170,6 +177,7 @@ func Main() {
 	<-sigs
 
 	logger.Log().Msg("JetKVM Shutting Down")
+
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")
 	//	if err != nil {
