@@ -253,6 +253,9 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		scopedLogger.Info().Msg("System is up to date")
 	}
 
+	s.updating = false
+	s.triggerStateUpdate()
+
 	if s.rebootNeeded {
 		if appUpdate.customVersionUpdate || systemUpdate.customVersionUpdate {
 			scopedLogger.Info().Msg("disabling auto-update due to custom version update")
