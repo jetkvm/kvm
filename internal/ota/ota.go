@@ -190,6 +190,9 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		return fmt.Errorf("update already in progress")
 	}
 
+	s.updating = true
+	s.triggerStateUpdate()
+
 	if len(params.Components) == 0 {
 		params.Components = defaultComponents
 	}
@@ -198,7 +201,11 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	_, shouldUpdateSystem := params.Components["system"]
 
 	if !shouldUpdateApp && !shouldUpdateSystem {
-		return fmt.Errorf("no components to update")
+		return s.componentUpdateError(
+			"Update aborted: no components were specified to update. Requested components: ",
+			fmt.Errorf("%v", params.Components),
+			&scopedLogger,
+		)
 	}
 
 	appUpdate, systemUpdate, err := s.getUpdateStatus(ctx, params)

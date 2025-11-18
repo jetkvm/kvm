@@ -47,17 +47,15 @@ export default function SettingsGeneralUpdateRoute() {
     if (appTargetVersion) components.app = appTargetVersion;
     if (systemTargetVersion) components.system = systemTargetVersion;
 
+    setShouldReload(true);
+    setModalView("updating");
+
     send("tryUpdateComponents", {
-      params: {
-        components,
-      },
+      params: { components, },
       includePreRelease: false,
       resetConfig,
-    }, (resp) => {
-      if ("error" in resp) return;
-      setModalView("updating");
     });
-  }, [send, setModalView, resetConfig]);
+  }, [resetConfig, send, setModalView, setShouldReload]);
 
   useEffect(() => {
     if (otaState.updating) {
