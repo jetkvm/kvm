@@ -84,7 +84,12 @@ func (s *State) newHTTPRequestWithTrace(ctx context.Context, method, url string,
 			},
 			TLSHandshakeStart: func() { l().Msg("[tls] handshake started") },
 			TLSHandshakeDone: func(state tls.ConnectionState, err error) {
-				l().Interface("state", state).Err(err).Msg("[tls] handshake done")
+				l().
+					Str("tlsVersion", tls.VersionName(state.Version)).
+					Str("cipherSuite", tls.CipherSuiteName(state.CipherSuite)).
+					Str("negotiatedProtocol", state.NegotiatedProtocol).
+					Str("serverName", state.ServerName).
+					Err(err).Msg("[tls] handshake done")
 			},
 		})
 	}
