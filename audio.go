@@ -118,7 +118,7 @@ func startOutputAudioUnderMutex(alsaOutputDevice string) {
 
 func startInputAudioUnderMutex(alsaPlaybackDevice string) {
 	newSource := audio.NewCgoInputSource(alsaPlaybackDevice, getAudioConfig())
-	oldSource := outputSource.Swap(&newSource)
+	oldSource := inputSource.Swap(&newSource)
 	newRelay := audio.NewInputRelay(&newSource)
 	oldRelay := inputRelay.Swap(newRelay)
 
