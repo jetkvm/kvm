@@ -225,14 +225,17 @@ export interface SystemVersionInfo {
   error?: string;
 }
 
+const UPDATE_STATUS_RPC_TIMEOUT_MS = 10000;
+const UPDATE_STATUS_RPC_MAX_ATTEMPTS = 6;
+
 export async function getUpdateStatus() {
   const response = await callJsonRpc<SystemVersionInfo>({
     method: "getUpdateStatus",
     // This function calls our api server to see if there are any updates available.
     // It can be called on page load right after a restart, so we need to give it time to
     // establish a connection to the api server.
-    maxAttempts: 6,
-    attemptTimeoutMs: 10000,
+    maxAttempts: UPDATE_STATUS_RPC_MAX_ATTEMPTS,
+    attemptTimeoutMs: UPDATE_STATUS_RPC_TIMEOUT_MS,
   });
 
   if (response.error) throw response.error;
@@ -253,13 +256,14 @@ export interface updateParams {
 }
 
 export async function checkUpdateComponents(params: updateParams, includePreRelease: boolean) {
-  console.log("checkUpdateComponents", JSON.stringify(params, null, 2), includePreRelease);
   const response = await callJsonRpc<SystemVersionInfo>({
     method: "checkUpdateComponents",
     params: {
       params,
       includePreRelease,
     },
+    maxAttempts: UPDATE_STATUS_RPC_MAX_ATTEMPTS,
+    attemptTimeoutMs: UPDATE_STATUS_RPC_TIMEOUT_MS,
   });
   if (response.error) throw response.error;
   return response.result;
