@@ -25,44 +25,45 @@ const (
 )
 
 type CgoSource struct {
-	direction   string
-	alsaDevice  string
-	initialized bool
-	connected   bool
-	mu          sync.Mutex
-	logger      zerolog.Logger
-	opusBuf     []byte
-	config      AudioConfig
+	outputDevice bool
+	alsaDevice   string
+	connected    bool
+	mu           sync.Mutex
+	logger       zerolog.Logger
+	opusBuf      []byte
+	config       AudioConfig
 }
 
-func NewCgoOutputSource(alsaDevice string) *CgoSource {
-	logger := logging.GetDefaultLogger().With().Str("component", "audio-output-cgo").Logger()
+var _ AudioSource = (*CgoSource)(nil)
+
+func NewCgoOutputSource(alsaDevice string, cfg AudioConfig) AudioSource {
+	logger := logging.GetDefaultLogger().With().
+		Str("component", "audio-output-cgo").
+		Str("alsa_device", alsaDevice).
+		Logger()
 
 	return &CgoSource{
-		direction:  "output",
-		alsaDevice: alsaDevice,
-		logger:     logger,
-		opusBuf:    make([]byte, ipcMaxFrameSize),
-		config:     DefaultAudioConfig(),
+		outputDevice: true,
+		alsaDevice:   alsaDevice,
+		logger:       logger,
+		opusBuf:      make([]byte, ipcMaxFrameSize),
+		config:       cfg,
 	}
 }
 
-func NewCgoInputSource(alsaDevice string) *CgoSource {
-	logger := logging.GetDefaultLogger().With().Str("component", "audio-input-cgo").Logger()
+func NewCgoInputSource(alsaDevice string, cfg AudioConfig) AudioSource {
+	logger := logging.GetDefaultLogger().With().
+		Str("component", "audio-input-cgo").
+		Str("alsa_device", alsaDevice).
+		Logger()
 
 	return &CgoSource{
-		direction:  "input",
-		alsaDevice: alsaDevice,
-		logger:     logger,
-		opusBuf:    make([]byte, ipcMaxFrameSize),
-		config:     DefaultAudioConfig(),
+		outputDevice: false,
+		alsaDevice:   alsaDevice,
+		logger:       logger,
+		opusBuf:      make([]byte, ipcMaxFrameSize),
+		config:       cfg,
 	}
-}
-
-func (c *CgoSource) SetConfig(cfg AudioConfig) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.config = cfg
 }
 
 func (c *CgoSource) Connect() error {
@@ -73,7 +74,7 @@ func (c *CgoSource) Connect() error {
 		return nil
 	}
 
-	if c.direction == "output" {
+	if c.outputDevice {
 		os.Setenv("ALSA_CAPTURE_DEVICE", c.alsaDevice)
 
 		dtx := C.uchar(0)
@@ -93,7 +94,6 @@ func (c *CgoSource) Connect() error {
 			Uint8("buffer_periods", c.config.BufferPeriods).
 			Uint32("sample_rate", c.config.SampleRate).
 			Uint8("packet_loss_perc", c.config.PacketLossPerc).
-			Str("alsa_device", c.alsaDevice).
 			Msg("Initializing audio capture")
 
 		C.update_audio_constants(
@@ -139,7 +139,6 @@ func (c *CgoSource) Connect() error {
 	}
 
 	c.connected = true
-	c.initialized = true
 	return nil
 }
 
@@ -151,10 +150,12 @@ func (c *CgoSource) Disconnect() {
 		return
 	}
 
-	if c.direction == "output" {
+	if c.outputDevice {
 		C.jetkvm_audio_capture_close()
+		os.Unsetenv("ALSA_CAPTURE_DEVICE")
 	} else {
 		C.jetkvm_audio_playback_close()
+		os.Unsetenv("ALSA_PLAYBACK_DEVICE")
 	}
 
 	c.connected = false
@@ -173,7 +174,7 @@ func (c *CgoSource) ReadMessage() (uint8, []byte, error) {
 		return 0, nil, fmt.Errorf("not connected")
 	}
 
-	if c.direction != "output" {
+	if !c.outputDevice {
 		c.mu.Unlock()
 		return 0, nil, fmt.Errorf("ReadMessage only supported for output direction")
 	}
@@ -203,7 +204,7 @@ func (c *CgoSource) WriteMessage(msgType uint8, payload []byte) error {
 		return fmt.Errorf("not connected")
 	}
 
-	if c.direction != "input" {
+	if c.outputDevice {
 		c.mu.Unlock()
 		return fmt.Errorf("WriteMessage only supported for input direction")
 	}
