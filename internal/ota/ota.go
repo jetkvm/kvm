@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
@@ -56,6 +57,32 @@ func (s *State) getUpdateURL(params UpdateParams) (string, error, bool) {
 	return updateURL.String(), nil, isCustomVersion
 }
 
+// newHTTPRequestWithTrace creates a new HTTP request with a trace logger
+func (s *State) newHTTPRequestWithTrace(ctx context.Context, method, url string, body io.Reader, logger func() *zerolog.Event) (*http.Request, error) {
+	localCtx := ctx
+	if s.l.GetLevel() <= zerolog.TraceLevel {
+		if logger == nil {
+			logger = func() *zerolog.Event { return s.l.Trace() }
+		}
+
+		l := func() *zerolog.Event { return logger().Str("url", url).Str("method", method) }
+		localCtx = httptrace.WithClientTrace(localCtx, &httptrace.ClientTrace{
+			GetConn:  func(hostPort string) { l().Str("hostPort", hostPort).Msg("starting to create conn") },
+			DNSStart: func(info httptrace.DNSStartInfo) { l().Interface("info", info).Msg("starting to look up dns") },
+			DNSDone:  func(info httptrace.DNSDoneInfo) { l().Interface("info", info).Msg("done looking up dns") },
+			ConnectStart: func(network, addr string) {
+				l().Str("network", network).Str("addr", addr).Msg("starting tcp connection")
+			},
+			ConnectDone: func(network, addr string, err error) {
+				l().Str("network", network).Str("addr", addr).Err(err).Msg("tcp connection created")
+			},
+			GotConn: func(info httptrace.GotConnInfo) { l().Interface("info", info).Msg("connection established") },
+		})
+	}
+
+	return http.NewRequestWithContext(localCtx, method, url, body)
+}
+
 func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*UpdateMetadata, error) {
 	metadata := &UpdateMetadata{}
 
@@ -79,26 +106,7 @@ func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*
 		Str("url", url).
 		Msg("fetching update metadata")
 
-	localCtx := ctx
-	if s.l.GetLevel() <= zerolog.TraceLevel {
-		clientTrace := &httptrace.ClientTrace{
-			GetConn: func(hostPort string) { traceLogger().Str("hostPort", hostPort).Msg("starting to create conn") },
-			DNSStart: func(info httptrace.DNSStartInfo) {
-				traceLogger().Interface("info", info).Msg("starting to look up dns")
-			},
-			DNSDone: func(info httptrace.DNSDoneInfo) { traceLogger().Interface("info", info).Msg("done looking up dns") },
-			ConnectStart: func(network, addr string) {
-				traceLogger().Str("network", network).Str("addr", addr).Msg("starting tcp connection")
-			},
-			ConnectDone: func(network, addr string, err error) {
-				traceLogger().Str("network", network).Str("addr", addr).Err(err).Msg("tcp connection created")
-			},
-			GotConn: func(info httptrace.GotConnInfo) { traceLogger().Interface("info", info).Msg("connection established") },
-		}
-		localCtx = httptrace.WithClientTrace(localCtx, clientTrace)
-	}
-
-	req, err := http.NewRequestWithContext(localCtx, "GET", url, nil)
+	req, err := s.newHTTPRequestWithTrace(ctx, "GET", url, nil, traceLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}

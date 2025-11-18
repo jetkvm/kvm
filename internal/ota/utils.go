@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"time"
+
+	"github.com/rs/zerolog"
 )
 
 func syncFilesystem() error {
@@ -27,8 +30,11 @@ func syncFilesystem() error {
 
 func (s *State) downloadFile(ctx context.Context, path string, url string, component string) error {
 	logger := s.l.With().Str("path", path).Str("url", url).Str("component", component).Logger()
-
-	logger.Trace().Msg("downloading file")
+	t := time.Now()
+	traceLogger := func() *zerolog.Event {
+		return logger.Trace().Dur("duration", time.Since(t))
+	}
+	traceLogger().Msg("downloading file")
 
 	componentUpdate, ok := s.componentUpdateStatuses[component]
 	if !ok {
@@ -38,7 +44,7 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 	downloadProgress := componentUpdate.downloadProgress
 
 	if _, err := os.Stat(path); err == nil {
-		logger.Trace().Msg("removing existing file")
+		traceLogger().Msg("removing existing file")
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("error removing existing file: %w", err)
 		}
@@ -46,27 +52,27 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 
 	unverifiedPath := path + ".unverified"
 	if _, err := os.Stat(unverifiedPath); err == nil {
-		logger.Trace().Msg("removing existing unverified file")
+		traceLogger().Msg("removing existing unverified file")
 		if err := os.Remove(unverifiedPath); err != nil {
 			return fmt.Errorf("error removing existing unverified file: %w", err)
 		}
 	}
 
-	logger.Trace().Msg("creating unverified file")
+	traceLogger().Msg("creating unverified file")
 	file, err := os.Create(unverifiedPath)
 	if err != nil {
 		return fmt.Errorf("error creating file: %w", err)
 	}
 	defer file.Close()
 
-	logger.Trace().Msg("creating request")
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	traceLogger().Msg("creating request")
+	req, err := s.newHTTPRequestWithTrace(ctx, "GET", url, nil, traceLogger)
 	if err != nil {
 		return fmt.Errorf("error creating request: %w", err)
 	}
 
 	client := s.client()
-	logger.Trace().Msg("starting download")
+	traceLogger().Msg("starting download")
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("error downloading file: %w", err)
@@ -109,10 +115,10 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 		}
 	}
 
-	logger.Trace().Msg("download finished")
+	traceLogger().Msg("download finished")
 	file.Close()
 
-	logger.Trace().Msg("syncing filesystem")
+	traceLogger().Msg("syncing filesystem")
 	if err := syncFilesystem(); err != nil {
 		return fmt.Errorf("error syncing filesystem: %w", err)
 	}
