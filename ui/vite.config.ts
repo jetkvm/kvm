@@ -39,7 +39,7 @@ export default defineConfig(({ mode, command }) => {
   return {
     plugins,
     esbuild: {
-      pure: command === "build" ? ["console.debug", "logger.debug"] : ["console.debug"],
+      pure: command === "build" ? ["console.debug"]: [],
     },
     assetsInclude: ["**/*.woff2"],
     build: {

@@ -104,22 +104,18 @@ export function doRpcHidHandshake(rpcHidChannel: RTCDataChannel, setRpcHidProtoc
     setRpcHidProtocolVersion(message.version);
 
     // clean up 
-    handshakeCompleted = true;
-    if (handshakeInterval) {
-      clearInterval(handshakeInterval);
-      handshakeInterval = null;
-    }
     const timeUsed = lastSendTime ? Date.now() - lastSendTime.getTime() : 0;
     logger.info(`Handshake completed in ${timeUsed}ms after ${attempts} attempts (Version: ${message.version} / ${HID_RPC_VERSION})`);
+    resetHandshake({ completed: true });
 
     rpcHidChannel.removeEventListener("message", onMessage);
   };
 
-  const resetHandshake = (newLastConnectedTime?: Date | undefined) => {
-    lastConnectedTime = newLastConnectedTime;
+  const resetHandshake = ({ lastConnectedTime: newLastConnectedTime, completed }: { lastConnectedTime?: Date | undefined, completed?: boolean }) => {
+    if (newLastConnectedTime) lastConnectedTime = newLastConnectedTime;
     lastSendTime = undefined;
     attempts = 0;
-    handshakeCompleted = false;
+    if (completed !== undefined) handshakeCompleted = completed;
     if (handshakeInterval) {
       clearInterval(handshakeInterval);
       handshakeInterval = null;
@@ -127,7 +123,7 @@ export function doRpcHidHandshake(rpcHidChannel: RTCDataChannel, setRpcHidProtoc
   };
 
   const onConnected = () => {
-    resetHandshake(new Date());
+    resetHandshake({ lastConnectedTime: new Date() });
     logger.info("Channel connected");
 
     sendHandshake(true);
@@ -135,14 +131,21 @@ export function doRpcHidHandshake(rpcHidChannel: RTCDataChannel, setRpcHidProtoc
   };
 
   const onClose = () => {
-    resetHandshake();
+    resetHandshake({ lastConnectedTime: undefined, completed: false });
 
     logger.info("Channel closed");
     setRpcHidProtocolVersion(null);
+
+    rpcHidChannel.removeEventListener("message", onMessage);
   };
 
   rpcHidChannel.addEventListener("open", onConnected);
   rpcHidChannel.addEventListener("close", onClose);
+
+  // handle case where channel is already open when the hook is mounted
+  if (rpcHidChannel.readyState === "open") {
+    onConnected();
+  }
 }
 
 export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
@@ -289,13 +292,15 @@ export function useHidRpc(onHidRpcMessage?: (payload: RpcMessage) => void) {
 
       if (message instanceof HandshakeMessage) return; // handshake message is handled by the doRpcHidHandshake function
 
+      // to remove it from the production build, we need to use the /* @__PURE__ */ comment here
+      // setting `esbuild.pure` doesn't work
       /* @__PURE__ */ logger.debug("Received message", message);
 
       onHidRpcMessage?.(message);
     };
 
     const errorHandler = (e: Event) => {
-      console.error(`[HIDRPC] Error on channel '${rpcHidChannel.label}': ${e}`)
+      logger.error(`Error on channel '${rpcHidChannel.label}'`, e);
     };
 
     rpcHidChannel.addEventListener("message", messageHandler);
