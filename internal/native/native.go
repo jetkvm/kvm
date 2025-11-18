@@ -1,6 +1,7 @@
 package native
 
 import (
+	"os"
 	"sync"
 	"time"
 
@@ -40,8 +41,9 @@ type NativeOptions struct {
 }
 
 func NewNative(opts NativeOptions) *Native {
-	nativeSubLogger := nativeLogger.With().Str("scope", "native").Logger()
-	displaySubLogger := displayLogger.With().Str("scope", "native").Logger()
+	pid := os.Getpid()
+	nativeSubLogger := nativeLogger.With().Int("pid", pid).Str("scope", "native").Logger()
+	displaySubLogger := displayLogger.With().Int("pid", pid).Str("scope", "native").Logger()
 
 	onVideoStateChange := opts.OnVideoStateChange
 	if onVideoStateChange == nil {

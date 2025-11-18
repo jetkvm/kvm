@@ -57,9 +57,7 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 	// random 16 bytes hex string
 	handshakeMessage := randomId(16)
 	maxRestartAttempts := defaultMaxRestartAttempts
-	// though it's unlikely to be less than 0 as it's uint, we'll add it just in case
-	// until we have a proper unit test for all things :-(
-	if n.MaxRestartAttempts <= 0 {
+	if n.MaxRestartAttempts > 0 {
 		maxRestartAttempts = n.MaxRestartAttempts
 	}
 	return &nativeProxyOptions{
@@ -396,7 +394,7 @@ func (p *NativeProxy) monitorProcess() {
 		}
 		p.restartMu.Unlock()
 
-		p.logger.Warn().Err(err).Msg("native process exited, restarting...")
+		p.logger.Warn().Err(err).Msg("native process exited, restarting ...")
 
 		// Wait a bit before restarting
 		time.Sleep(1 * time.Second)
@@ -416,6 +414,14 @@ func (p *NativeProxy) restartProcess() error {
 	p.restartMu.Lock()
 	defer p.restartMu.Unlock()
 
+	p.restarts++
+	logger := p.logger.With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts).Logger()
+
+	if p.restarts >= p.options.MaxRestartAttempts {
+		logger.Fatal().Msg("max restart attempts reached, exiting")
+		return fmt.Errorf("max restart attempts reached")
+	}
+
 	if p.stopped {
 		return fmt.Errorf("proxy is stopped")
 	}
@@ -424,19 +430,14 @@ func (p *NativeProxy) restartProcess() error {
 	p.clientMu.Lock()
 	if p.client != nil {
 		if err := p.client.Close(); err != nil {
-			p.logger.Warn().Err(err).Msg("failed to close gRPC client")
+			logger.Warn().Err(err).Msg("failed to close gRPC client")
 		}
 		p.client = nil // set to nil to avoid closing it again
 	}
 	p.clientMu.Unlock()
+	logger.Info().Msg("gRPC client closed")
 
-	p.restarts++
-	if p.restarts >= p.options.MaxRestartAttempts {
-		p.logger.Fatal().Msg("max restart attempts reached, exiting")
-		return fmt.Errorf("max restart attempts reached")
-	}
-
-	logger := p.logger.With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts).Logger()
+	logger.Info().Msg("attempting to restart native process")
 	if err := p.start(); err != nil {
 		logger.Error().Err(err).Msg("failed to start native process")
 		return fmt.Errorf("failed to start native process: %w", err)
