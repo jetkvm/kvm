@@ -436,11 +436,13 @@ func (p *NativeProxy) restartProcess() error {
 		return fmt.Errorf("max restart attempts reached")
 	}
 
+	logger := p.logger.With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts).Logger()
 	if err := p.start(); err != nil {
+		logger.Error().Err(err).Msg("failed to start native process")
 		return fmt.Errorf("failed to start native process: %w", err)
 	}
 
-	p.logger.Info().Msg("native process restarted successfully")
+	logger.Info().Msg("native process restarted successfully")
 	return nil
 }
 
