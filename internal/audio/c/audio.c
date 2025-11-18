@@ -3,7 +3,7 @@
  *
  * Bidirectional audio processing optimized for ARM NEON SIMD:
  * - OUTPUT PATH: TC358743 HDMI or USB Gadget audio → Client speakers
- *   Pipeline: ALSA hw:0,0 or hw:1,0 capture → Opus encode (128kbps, FEC enabled)
+ *   Pipeline: ALSA hw:0,0 or hw:1,0 capture → Opus encode (192kbps, FEC enabled)
  *
  * - INPUT PATH: Client microphone → Device speakers
  *   Pipeline: Opus decode (with FEC) → ALSA hw:1,0 playback
@@ -26,7 +26,7 @@
 #include <signal.h>
 #include <pthread.h>
 
-// ARM NEON SIMD support (always available on JetKVM's ARM Cortex-A7)
+// ARM NEON SIMD support (required - JetKVM hardware provides ARM Cortex-A7 with NEON)
 #include <arm_neon.h>
 
 // RV1106 (Cortex-A7) has 64-byte cache lines
@@ -60,7 +60,7 @@ static uint16_t max_packet_size = 1500;
 #define OPUS_BANDWIDTH 1104
 #define OPUS_LSB_DEPTH 16
 
-static uint8_t opus_dtx_enabled = 0;
+static uint8_t opus_dtx_enabled = 1;
 static uint8_t opus_fec_enabled = 1;
 static uint8_t opus_packet_loss_perc = 0;
 static uint8_t buffer_period_count = 24;
@@ -98,7 +98,7 @@ void update_audio_constants(uint32_t bitrate, uint8_t complexity,
                            uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
                            uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
                            uint8_t dtx_enabled, uint8_t fec_enabled, uint8_t buf_periods, uint8_t pkt_loss_perc) {
-    opus_bitrate = (bitrate >= 64000 && bitrate <= 256000) ? bitrate : 128000;
+    opus_bitrate = (bitrate >= 64000 && bitrate <= 256000) ? bitrate : 192000;
     opus_complexity = (complexity <= 10) ? complexity : 5;
     sample_rate = sr > 0 ? sr : 48000;
     capture_channels = (ch == 1 || ch == 2) ? ch : 2;
@@ -429,8 +429,9 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 // AUDIO OUTPUT PATH FUNCTIONS (TC358743 HDMI Audio → Client Speakers)
 
 /**
- * Initialize OUTPUT path (TC358743 HDMI capture → Opus encoder)
- * Opens hw:0,0 (TC358743) and creates Opus encoder with optimized settings
+ * Initialize OUTPUT path (HDMI or USB Gadget audio capture → Opus encoder)
+ * Opens ALSA capture device from ALSA_CAPTURE_DEVICE env (default: hw:1,0, set to hw:0,0 for TC358743 HDMI)
+ * and creates Opus encoder with optimized settings
  * @return 0 on success, -EBUSY if initializing, -1/-2/-3 on errors
  */
 int jetkvm_audio_capture_init() {
@@ -484,8 +485,9 @@ int jetkvm_audio_capture_init() {
 	uint16_t actual_frame_size = 0;
 	err = configure_alsa_device(pcm_capture_handle, "capture", capture_channels, &actual_rate, &actual_frame_size);
 	if (err < 0) {
-		snd_pcm_close(pcm_capture_handle);
+		snd_pcm_t *handle = pcm_capture_handle;
 		pcm_capture_handle = NULL;
+		snd_pcm_close(handle);
 		capture_stop_requested = 0;
 		capture_initializing = 0;
 		return -2;
@@ -499,8 +501,9 @@ int jetkvm_audio_capture_init() {
 	encoder = opus_encoder_create(actual_rate, capture_channels, OPUS_APPLICATION_AUDIO, &opus_err);
 	if (!encoder || opus_err != OPUS_OK) {
 		if (pcm_capture_handle) {
-			snd_pcm_close(pcm_capture_handle);
+			snd_pcm_t *handle = pcm_capture_handle;
 			pcm_capture_handle = NULL;
+			snd_pcm_close(handle);
 		}
 		capture_stop_requested = 0;
 		capture_initializing = 0;
@@ -613,7 +616,8 @@ retry_read:
 
 /**
  * Initialize INPUT path (Opus decoder → device speakers)
- * Opens hw:1,0 (USB gadget) or "default" and creates Opus decoder
+ * Opens ALSA playback device from ALSA_PLAYBACK_DEVICE env (default: hw:1,0), falls back to "default" on error
+ * and creates Opus decoder
  * @return 0 on success, -EBUSY if initializing, -1/-2 on errors
  */
 int jetkvm_audio_playback_init() {
@@ -670,8 +674,9 @@ int jetkvm_audio_playback_init() {
 	uint16_t actual_frame_size = 0;
 	err = configure_alsa_device(pcm_playback_handle, "playback", playback_channels, &actual_rate, &actual_frame_size);
 	if (err < 0) {
-		snd_pcm_close(pcm_playback_handle);
+		snd_pcm_t *handle = pcm_playback_handle;
 		pcm_playback_handle = NULL;
+		snd_pcm_close(handle);
 		playback_stop_requested = 0;
 		playback_initializing = 0;
 		return -1;
@@ -684,8 +689,9 @@ int jetkvm_audio_playback_init() {
 	int opus_err = 0;
 	decoder = opus_decoder_create(actual_rate, playback_channels, &opus_err);
 	if (!decoder || opus_err != OPUS_OK) {
-		snd_pcm_close(pcm_playback_handle);
+		snd_pcm_t *handle = pcm_playback_handle;
 		pcm_playback_handle = NULL;
+		snd_pcm_close(handle);
 		playback_stop_requested = 0;
 		playback_initializing = 0;
 		return -2;

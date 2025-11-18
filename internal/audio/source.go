@@ -19,7 +19,7 @@ func DefaultAudioConfig() AudioConfig {
 		Bitrate:        192,
 		Complexity:     8,
 		BufferPeriods:  12,
-		DTXEnabled:     false,
+		DTXEnabled:     true,
 		FECEnabled:     true,
 		SampleRate:     48000,
 		PacketLossPerc: 0,
