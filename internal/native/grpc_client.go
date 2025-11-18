@@ -75,13 +75,14 @@ func NewGRPCClient(opts grpcClientOptions) (*GRPCClient, error) {
 	return grpcClient, nil
 }
 
-func (c *GRPCClient) setStream(stream pb.NativeService_StreamEventsClient) {
-	c.eventM.Lock()
-	defer c.eventM.Unlock()
-	c.eventStream = stream
-}
-
 func (c *GRPCClient) handleEventStream(stream pb.NativeService_StreamEventsClient) {
+	c.eventM.Lock()
+	c.eventStream = stream
+	defer func() {
+		c.eventStream = nil
+		c.eventM.Unlock()
+	}()
+
 	logger := *c.logger
 	for {
 		if stream == nil {
@@ -135,9 +136,7 @@ func (c *GRPCClient) startEventStream() {
 			continue
 		}
 
-		c.setStream(stream)
 		c.handleEventStream(stream)
-		c.setStream(nil)
 
 		// Wait before retrying
 		time.Sleep(1 * time.Second)
