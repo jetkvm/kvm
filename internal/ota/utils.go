@@ -29,7 +29,11 @@ func syncFilesystem() error {
 }
 
 func (s *State) downloadFile(ctx context.Context, path string, url string, component string) error {
-	logger := s.l.With().Str("path", path).Str("url", url).Str("component", component).Logger()
+	logger := s.l.With().
+		Str("path", path).
+		Str("url", url).
+		Str("downloadComponent", component).
+		Logger()
 	t := time.Now()
 	traceLogger := func() *zerolog.Event {
 		return logger.Trace().Dur("duration", time.Since(t))
