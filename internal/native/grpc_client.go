@@ -82,10 +82,6 @@ func NewGRPCClient(opts grpcClientOptions) (*GRPCClient, error) {
 	return grpcClient, nil
 }
 
-func (c *GRPCClient) getContext() context.Context {
-	return c.ctx
-}
-
 func (c *GRPCClient) handleEventStream(stream pb.NativeService_StreamEventsClient) {
 	c.eventM.Lock()
 	c.eventStream = stream

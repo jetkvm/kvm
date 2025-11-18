@@ -1,6 +1,7 @@
 package native
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -35,23 +36,29 @@ func setProcTitle(status string) {
 	gspt.SetProcTitle(title)
 }
 
-func monitorCrashSignal(logger *zerolog.Logger, nativeInstance NativeInterface) {
+func monitorCrashSignal(ctx context.Context, logger *zerolog.Logger, nativeInstance NativeInterface) {
 	logger.Info().Msg("DEBUG mode: will crash the process on SIGHUP signal")
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGHUP)
 
-	// non-blocking receive
-	select {
-	case <-sigChan:
-		logger.Info().Msg("received SIGHUP signal, emulating crash")
-		nativeInstance.DoNotUseThisIsForCrashTestingOnly()
-	default:
+	for {
+		select {
+		case sig := <-sigChan:
+			logger.Info().Str("signal", sig.String()).Msg("received termination signal")
+			nativeInstance.DoNotUseThisIsForCrashTestingOnly()
+		case <-ctx.Done():
+			logger.Info().Msg("context done, stopping monitor process")
+			return
+		}
 	}
 }
 
 // RunNativeProcess runs the native process mode
 func RunNativeProcess(binaryName string) {
+	appCtx, appCtxCancel := context.WithCancel(context.Background())
+	defer appCtxCancel()
+
 	logger := nativeLogger.With().Int("pid", os.Getpid()).Logger()
 	setProcTitle("starting")
 
@@ -98,16 +105,16 @@ func RunNativeProcess(binaryName string) {
 	}
 	setProcTitle("ready")
 
+	if _, err := os.Stat(DebugModeFile); err == nil {
+		logger.Info().Msg("DEBUG mode: enabled")
+		go monitorCrashSignal(appCtx, &logger, nativeInstance)
+	}
+
 	// Signal that we're ready by writing handshake message to stdout (for parent to read)
 	// Stdout.Write is used to avoid buffering the message
 	_, err = os.Stdout.Write([]byte(proxyOptions.HandshakeMessage + "\n"))
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to write handshake message to stdout")
-	}
-
-	if _, err := os.Stat(DebugModeFile); err == nil {
-		logger.Info().Msg("DEBUG mode: enabled")
-		go monitorCrashSignal(&logger, nativeInstance)
 	}
 
 	// Set up signal handling
@@ -120,8 +127,10 @@ func RunNativeProcess(binaryName string) {
 		Str("signal", sig.String()).
 		Msg("received termination signal")
 
-	// Graceful shutdown
-	server.GracefulStop()
+	// Graceful shutdown might stuck forever,
+	// we will use Stop() instead to force quit the gRPC server,
+	// we can implement a graceful shutdown with a timeout in the future if needed
+	server.Stop()
 	lis.Close()
 
 	logger.Info().Msg("native process exiting")
