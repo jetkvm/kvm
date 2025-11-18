@@ -231,7 +231,6 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 			if _, err := s.setAutoUpdate(false); err != nil {
 				scopedLogger.Warn().Err(err).Msg("Failed to disable auto-update")
 			}
-			return nil
 		}
 
 		scopedLogger.Info().Msg("System Rebooting due to OTA update")
