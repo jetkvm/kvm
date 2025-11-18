@@ -535,8 +535,8 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
 	int32_t pcm_rc, nb_bytes;
 	int32_t err = 0;
-	uint8_t recovery_attempts = 0;
-	const uint8_t max_recovery_attempts = 3;
+	int recovery_attempts = 0;
+	const int max_recovery_attempts = 3;
 
 	if (__builtin_expect(capture_stop_requested, 0)) {
 		return -1;
@@ -708,8 +708,8 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 	static short CACHE_ALIGN pcm_buffer[960 * 2];  // Cache-aligned
 	unsigned char * __restrict__ in = (unsigned char*)opus_buf;
 	int32_t pcm_frames, pcm_rc, err = 0;
-	uint8_t recovery_attempts = 0;
-	const uint8_t max_recovery_attempts = 3;
+	int recovery_attempts = 0;
+	const int max_recovery_attempts = 3;
 
 	if (__builtin_expect(playback_stop_requested, 0)) {
 		return -1;
