@@ -140,9 +140,8 @@ func Main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs
 
-	logger.Info().Msg("JetKVM Shutting Down")
-
 	stopAudio()
+	logger.Log().Msg("JetKVM Shutting Down")
 
 	//if fuseServer != nil {
 	//	err := setMassStorageImage(" ")
