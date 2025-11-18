@@ -190,11 +190,13 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 
 	if shouldUpdateApp && appUpdate.available {
 		appUpdate.pending = true
+		s.updating = true
 		s.triggerComponentUpdateState("app", appUpdate)
 	}
 
 	if shouldUpdateSystem && systemUpdate.available {
 		systemUpdate.pending = true
+		s.updating = true
 		s.triggerComponentUpdateState("system", systemUpdate)
 	}
 
@@ -226,6 +228,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	if s.rebootNeeded {
 		if appUpdate.customVersionUpdate || systemUpdate.customVersionUpdate {
 			scopedLogger.Info().Msg("disabling auto-update due to custom version update")
+			// If they are explicitly updating a custom version, we assume they want to disable auto-update
 			if _, err := s.setAutoUpdate(false); err != nil {
 				scopedLogger.Warn().Err(err).Msg("Failed to disable auto-update")
 			}
@@ -254,6 +257,9 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		}
 	}
 
+	// We don't need set the updating flag to false here. Either it will;
+	// - set to false by the componentUpdateError function
+	// - device will reboot
 	return nil
 }
 
