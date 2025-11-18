@@ -57,7 +57,9 @@ func (n *NativeOptions) toProxyOptions() *nativeProxyOptions {
 	// random 16 bytes hex string
 	handshakeMessage := randomId(16)
 	maxRestartAttempts := defaultMaxRestartAttempts
-	if n.MaxRestartAttempts > 0 {
+	// though it's unlikely to be less than 0 as it's uint, we'll add it just in case
+	// until we have a proper unit test for all things :-(
+	if n.MaxRestartAttempts <= 0 {
 		maxRestartAttempts = n.MaxRestartAttempts
 	}
 	return &nativeProxyOptions{
@@ -330,7 +332,12 @@ func (p *NativeProxy) start() error {
 		return fmt.Errorf("failed to start native process: %w", err)
 	}
 
-	p.logger.Info().Int("pid", p.cmd.Process.Pid).Msg("native process started")
+	// here we'll replace the logger with a new one that includes the process ID
+	// there's no need to lock the mutex here as the side effect is acceptable
+	newLogger := p.logger.With().Int("pid", p.cmd.Process.Pid).Logger()
+	p.logger = &newLogger
+
+	p.logger.Info().Msg("native process started")
 
 	if err := p.setUpGRPCClient(); err != nil {
 		return fmt.Errorf("failed to set up gRPC client: %w", err)
