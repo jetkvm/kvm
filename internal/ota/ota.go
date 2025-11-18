@@ -2,6 +2,7 @@ package ota
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -58,6 +59,7 @@ func (s *State) getUpdateURL(params UpdateParams) (string, error, bool) {
 }
 
 // newHTTPRequestWithTrace creates a new HTTP request with a trace logger
+// TODO: use OTEL instead of doing this manually
 func (s *State) newHTTPRequestWithTrace(ctx context.Context, method, url string, body io.Reader, logger func() *zerolog.Event) (*http.Request, error) {
 	localCtx := ctx
 	if s.l.GetLevel() <= zerolog.TraceLevel {
@@ -67,16 +69,23 @@ func (s *State) newHTTPRequestWithTrace(ctx context.Context, method, url string,
 
 		l := func() *zerolog.Event { return logger().Str("url", url).Str("method", method) }
 		localCtx = httptrace.WithClientTrace(localCtx, &httptrace.ClientTrace{
-			GetConn:  func(hostPort string) { l().Str("hostPort", hostPort).Msg("starting to create conn") },
-			DNSStart: func(info httptrace.DNSStartInfo) { l().Interface("info", info).Msg("starting to look up dns") },
-			DNSDone:  func(info httptrace.DNSDoneInfo) { l().Interface("info", info).Msg("done looking up dns") },
+			GetConn:              func(hostPort string) { l().Str("hostPort", hostPort).Msg("[conn] starting to create conn") },
+			GotConn:              func(info httptrace.GotConnInfo) { l().Interface("info", info).Msg("[conn] connection established") },
+			PutIdleConn:          func(err error) { l().Err(err).Msg("[conn] connection returned to idle pool") },
+			GotFirstResponseByte: func() { l().Msg("[resp] first response byte received") },
+			Got100Continue:       func() { l().Msg("[resp] 100 continue received") },
+			DNSStart:             func(info httptrace.DNSStartInfo) { l().Interface("info", info).Msg("[dns] starting to look up dns") },
+			DNSDone:              func(info httptrace.DNSDoneInfo) { l().Interface("info", info).Msg("[dns] done looking up dns") },
 			ConnectStart: func(network, addr string) {
-				l().Str("network", network).Str("addr", addr).Msg("starting tcp connection")
+				l().Str("network", network).Str("addr", addr).Msg("[tcp] starting tcp connection")
 			},
 			ConnectDone: func(network, addr string, err error) {
-				l().Str("network", network).Str("addr", addr).Err(err).Msg("tcp connection created")
+				l().Str("network", network).Str("addr", addr).Err(err).Msg("[tcp] tcp connection created")
 			},
-			GotConn: func(info httptrace.GotConnInfo) { l().Interface("info", info).Msg("connection established") },
+			TLSHandshakeStart: func() { l().Msg("[tls] handshake started") },
+			TLSHandshakeDone: func(state tls.ConnectionState, err error) {
+				l().Interface("state", state).Err(err).Msg("[tls] handshake done")
+			},
 		})
 	}
 
