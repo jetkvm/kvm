@@ -253,9 +253,6 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		scopedLogger.Info().Msg("System is up to date")
 	}
 
-	s.updating = false
-	s.triggerStateUpdate()
-
 	if s.rebootNeeded {
 		if appUpdate.customVersionUpdate || systemUpdate.customVersionUpdate {
 			scopedLogger.Info().Msg("disabling auto-update due to custom version update")
@@ -267,7 +264,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 
 		scopedLogger.Info().Msg("System Rebooting due to OTA update")
 
-		redirectUrl := fmt.Sprintf("/settings/general/update?version=%s", systemUpdate.version)
+		redirectUrl := "/settings/general/update"
 
 		if params.ResetConfig {
 			scopedLogger.Info().Msg("Resetting config")
@@ -282,10 +279,10 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 			RedirectTo:  redirectUrl,
 		}
 
-		// REBOOT_REDIRECT_DELAY_MS is 5 seconds in the UI,
-		// it means that healthCheckUrl will be called after 5 seconds that we send willReboot JSONRPC event
-		// so we need to reboot it within 5 seconds to avoid it being called before the device is rebooted
-		if err := s.reboot(true, postRebootAction, 3*time.Second); err != nil {
+		// REBOOT_REDIRECT_DELAY_MS is 7 seconds in the UI,
+		// it means that healthCheckUrl will be called after 7 seconds that we send willReboot JSONRPC event
+		// so we need to reboot it within 7 seconds to avoid it being called before the device is rebooted
+		if err := s.reboot(true, postRebootAction, 5*time.Second); err != nil {
 			return s.componentUpdateError("Error requesting reboot", err, &scopedLogger)
 		}
 	}
