@@ -94,7 +94,7 @@ func NewNative(opts NativeOptions) *Native {
 	}
 }
 
-func (n *Native) Start() {
+func (n *Native) Start(initialEDID string) {
 	if n.disable {
 		nativeLogger.Warn().Msg("native is disabled, skipping initialization")
 		setCgoDisabled(true)
@@ -105,9 +105,8 @@ func (n *Native) Start() {
 	setInstance(n)
 	setUpNativeHandlers()
 
-	// set EDID before video init so source sees audio capabilities immediately
-	if err := videoSetEDID(DefaultEDID); err != nil {
-		n.l.Warn().Err(err).Msg("failed to set default EDID before video init")
+	if err := videoSetEDID(initialEDID); err != nil {
+		n.l.Warn().Err(err).Msg("failed to set EDID before video init")
 	}
 
 	// start the native video

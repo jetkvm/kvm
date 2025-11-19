@@ -11,13 +11,7 @@ import Fieldset from "@components/Fieldset";
 import notifications from "@/notifications";
 import { m } from "@localizations/messages.js";
 
-const defaultEdid =
-  "00ffffffffffff0010ac01000100000001230104803420782ec9a05747982712484c00000000d1c081c0a9c0b3000101010101010101083a801871382d40582c450000000000001e011d007251d01e206e28550000000000001e000000fc004a65746b564d2048444d490a20000000fd00187801ff1d000a202020202020016602032e7229097f070d07070f0707509005040302011f132220111214061507831f000068030c0010003021e2050700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000047";
-const edids = [
-  {
-    value: defaultEdid,
-    label: m.video_edid_jetkvm_default(),
-  },
+const otherEdids = [
   {
     value:
       "00FFFFFFFFFFFF00047265058A3F6101101E0104A53420783FC125A8554EA0260D5054BFEF80714F8140818081C081008B009500B300283C80A070B023403020360006442100001A000000FD00304C575716010A202020202020000000FC0042323436574C0A202020202020000000FF0054384E4545303033383532320A01F802031CF14F90020304050607011112131415161F2309070783010000011D8018711C1620582C250006442100009E011D007251D01E206E28550006442100001E8C0AD08A20E02D10103E9600064421000018C344806E70B028401720A80406442100001E00000000000000000000000000000000000000000000000000000096",
@@ -52,6 +46,8 @@ export default function SettingsVideoRoute() {
   const [customEdidValue, setCustomEdidValue] = useState<string | null>(null);
   const [edid, setEdid] = useState<string | null>(null);
   const [edidLoading, setEdidLoading] = useState(true);
+  const [defaultEdid, setDefaultEdid] = useState<string>("");
+  const [edids, setEdids] = useState<Array<{value: string, label: string}>>([]);
   const { debugMode } = useSettingsStore();
   // Video enhancement settings from store
   const {
@@ -69,28 +65,42 @@ export default function SettingsVideoRoute() {
       setStreamQuality(String(resp.result));
     });
 
-    send("getEDID", {}, (resp: JsonRpcResponse) => {
-      setEdidLoading(false);
+    send("getDefaultEDID", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(m.video_failed_get_edid({ error: resp.error.data || m.unknown_error() }));
         return;
       }
 
-      const receivedEdid = resp.result as string;
+      const fetchedDefaultEdid = resp.result as string;
+      setDefaultEdid(fetchedDefaultEdid);
 
-      const matchingEdid = edids.find(
-        x => x.value.toLowerCase() === receivedEdid.toLowerCase(),
-      );
+      const allEdids = [
+        { value: fetchedDefaultEdid, label: m.video_edid_jetkvm_default() },
+        ...otherEdids
+      ];
+      setEdids(allEdids);
 
-      if (matchingEdid) {
-        // EDID is stored in uppercase in the UI
-        setEdid(matchingEdid.value.toUpperCase());
-        // Reset custom EDID value
-        setCustomEdidValue(null);
-      } else {
-        setEdid("custom");
-        setCustomEdidValue(receivedEdid);
-      }
+      send("getEDID", {}, (resp: JsonRpcResponse) => {
+        setEdidLoading(false);
+        if ("error" in resp) {
+          notifications.error(m.video_failed_get_edid({ error: resp.error.data || m.unknown_error() }));
+          return;
+        }
+
+        const receivedEdid = resp.result as string;
+
+        const matchingEdid = allEdids.find(
+          x => x.value.toLowerCase() === receivedEdid.toLowerCase(),
+        );
+
+        if (matchingEdid) {
+          setEdid(matchingEdid.value.toUpperCase());
+          setCustomEdidValue(null);
+        } else {
+          setEdid("custom");
+          setCustomEdidValue(receivedEdid);
+        }
+      });
     });
   }, [send]);
 

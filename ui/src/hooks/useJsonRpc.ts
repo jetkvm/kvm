@@ -39,6 +39,7 @@ const blockedMethodsByReason: Record<string, string[]> = {
   video: [
     'setStreamQualityFactor',
     'getEDID',
+    'getDefaultEDID',
     'setEDID',
     'getVideoLogStatus',
     'setDisplayRotation',
