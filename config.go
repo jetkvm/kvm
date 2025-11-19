@@ -9,6 +9,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/prometheus/client_golang/prometheus"
@@ -174,6 +175,7 @@ func getDefaultConfig() Config {
 		KeyboardMacros:       []KeyboardMacro{},
 		DisplayRotation:      "270",
 		KeyboardLayout:       "en-US",
+		EdidString:           native.DefaultEDID,
 		DisplayMaxBrightness: 64,
 		DisplayDimAfterSec:   120,  // 2 minutes
 		DisplayOffAfterSec:   1800, // 30 minutes
