@@ -71,7 +71,6 @@ func getAudioConfig() audio.AudioConfig {
 		cfg.Complexity = uint8(complexity)
 	}
 
-	// Apply boolean flags directly
 	cfg.DTXEnabled = config.AudioDTXEnabled
 	cfg.FECEnabled = config.AudioFECEnabled
 
@@ -232,7 +231,6 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 	audioMutex.Lock()
 	defer audioMutex.Unlock()
 
-	// Stop output without mutex (already holding audioMutex)
 	outRelay := outputRelay.Swap(nil)
 	outSource := outputSource.Swap(nil)
 	if outRelay != nil {
@@ -244,7 +242,6 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 
 	currentAudioTrack = audioTrack
 
-	// Start audio without taking mutex again (already holding audioMutex)
 	if audioInitialized && activeConnections.Load() > 0 && audioOutputEnabled.Load() && currentAudioTrack != nil {
 		if err := startOutputAudioUnderMutex(getAlsaDevice(config.AudioOutputSource)); err != nil {
 			audioLogger.Error().Err(err).Msg("Failed to start output audio after track change")
