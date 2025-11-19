@@ -20,6 +20,8 @@ import { sleep } from "@/utils";
 import { checkUpdateComponents, UpdateComponents } from "@/utils/jsonrpc";
 import { SystemVersionInfo } from "@hooks/useVersion";
 
+import { FeatureFlag } from "../components/FeatureFlag";
+
 export default function SettingsAdvancedRoute() {
   const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
@@ -330,85 +332,87 @@ export default function SettingsAdvancedRoute() {
               </div>
             )}
 
-            <div className="space-y-4">
-              <SettingsItem
-                title={m.advanced_version_update_title()}
-                description={m.advanced_version_update_description()}
-              />
-
-              <SelectMenuBasic
-                label={m.advanced_version_update_target_label()}
-                options={[
-                  { value: "app", label: m.advanced_version_update_target_app() },
-                  { value: "system", label: m.advanced_version_update_target_system() },
-                  { value: "both", label: m.advanced_version_update_target_both() },
-                ]}
-                value={updateTarget}
-                onChange={e => setUpdateTarget(e.target.value)}
-              />
-
-              {(updateTarget === "app" || updateTarget === "both") && (
-                <InputFieldWithLabel
-                  label={m.advanced_version_update_app_label()}
-                  placeholder="0.4.9"
-                  value={appVersion}
-                  onChange={e => setAppVersion(e.target.value)}
+            <FeatureFlag minAppVersion="0.4.10" name="version-update">
+              <div className="space-y-4">
+                <SettingsItem
+                  title={m.advanced_version_update_title()}
+                  description={m.advanced_version_update_description()}
                 />
-              )}
 
-              {(updateTarget === "system" || updateTarget === "both") && (
-                <InputFieldWithLabel
-                  label={m.advanced_version_update_system_label()}
-                  placeholder="0.4.9"
-                  value={systemVersion}
-                  onChange={e => setSystemVersion(e.target.value)}
+                <SelectMenuBasic
+                  label={m.advanced_version_update_target_label()}
+                  options={[
+                    { value: "app", label: m.advanced_version_update_target_app() },
+                    { value: "system", label: m.advanced_version_update_target_system() },
+                    { value: "both", label: m.advanced_version_update_target_both() },
+                  ]}
+                  value={updateTarget}
+                  onChange={e => setUpdateTarget(e.target.value)}
                 />
-              )}
 
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                {m.advanced_version_update_helper()}{" "}
-                <a
-                  href="https://github.com/jetkvm/kvm/releases"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-blue-700 hover:underline dark:text-blue-500"
-                >
-                  {m.advanced_version_update_github_link()}
-                </a>
-              </p>
+                {(updateTarget === "app" || updateTarget === "both") && (
+                  <InputFieldWithLabel
+                    label={m.advanced_version_update_app_label()}
+                    placeholder="0.4.9"
+                    value={appVersion}
+                    onChange={e => setAppVersion(e.target.value)}
+                  />
+                )}
 
-              <div>
-                <CheckboxWithLabel
-                  label={m.advanced_version_update_reset_config_label()}
-                  description={m.advanced_version_update_reset_config_description()}
-                  checked={resetConfig}
-                  onChange={e => setResetConfig(e.target.checked)}
+                {(updateTarget === "system" || updateTarget === "both") && (
+                  <InputFieldWithLabel
+                    label={m.advanced_version_update_system_label()}
+                    placeholder="0.4.9"
+                    value={systemVersion}
+                    onChange={e => setSystemVersion(e.target.value)}
+                  />
+                )}
+
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  {m.advanced_version_update_helper()}{" "}
+                  <a
+                    href="https://github.com/jetkvm/kvm/releases"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-blue-700 hover:underline dark:text-blue-500"
+                  >
+                    {m.advanced_version_update_github_link()}
+                  </a>
+                </p>
+
+                <div>
+                  <CheckboxWithLabel
+                    label={m.advanced_version_update_reset_config_label()}
+                    description={m.advanced_version_update_reset_config_description()}
+                    checked={resetConfig}
+                    onChange={e => setResetConfig(e.target.checked)}
+                  />
+                </div>
+
+                <div>
+                  <CheckboxWithLabel
+                    label="I understand version changes may break my device and require factory reset"
+                    checked={versionChangeAcknowledged}
+                    onChange={e => setVersionChangeAcknowledged(e.target.checked)}
+                  />
+                </div>
+
+                <Button
+                  size="SM"
+                  theme="primary"
+                  text={m.advanced_version_update_button()}
+                  disabled={
+                    (updateTarget === "app" && !appVersion) ||
+                    (updateTarget === "system" && !systemVersion) ||
+                    (updateTarget === "both" && (!appVersion || !systemVersion)) ||
+                    !versionChangeAcknowledged ||
+                    customVersionUpdateLoading
+                  }
+                  loading={customVersionUpdateLoading}
+                  onClick={handleCustomVersionUpdate}
                 />
               </div>
-
-              <div>
-                <CheckboxWithLabel
-                  label="I understand version changes may break my device and require factory reset"
-                  checked={versionChangeAcknowledged}
-                  onChange={e => setVersionChangeAcknowledged(e.target.checked)}
-                />
-              </div>
-
-              <Button
-                size="SM"
-                theme="primary"
-                text={m.advanced_version_update_button()}
-                disabled={
-                  (updateTarget === "app" && !appVersion) ||
-                  (updateTarget === "system" && !systemVersion) ||
-                  (updateTarget === "both" && (!appVersion || !systemVersion)) ||
-                  !versionChangeAcknowledged ||
-                  customVersionUpdateLoading
-                }
-                loading={customVersionUpdateLoading}
-                onClick={handleCustomVersionUpdate}
-              />
-            </div>
+            </FeatureFlag>
           </NestedSettingsGroup>
         ) : null}
 
