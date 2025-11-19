@@ -1,6 +1,7 @@
 package kvm
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -39,7 +40,7 @@ func initAudio() {
 
 	ensureConfigLoaded()
 	audioOutputEnabled.Store(config.AudioOutputEnabled)
-	audioInputEnabled.Store(true)
+	audioInputEnabled.Store(config.AudioInputAutoEnable)
 
 	audioLogger.Debug().Msg("Audio subsystem initialized")
 	audioInitialized = true
@@ -48,18 +49,25 @@ func initAudio() {
 func getAudioConfig() audio.AudioConfig {
 	cfg := audio.DefaultAudioConfig()
 
+	// Helper to validate and apply numeric ranges
+	validateAndApply := func(value int, min int, max int, paramName string) (int, bool) {
+		if value >= min && value <= max {
+			return value, true
+		}
+		if value != 0 {
+			audioLogger.Warn().Int(paramName, value).Msgf("Invalid %s, using default", paramName)
+		}
+		return 0, false
+	}
+
 	// Validate and apply bitrate
-	if config.AudioBitrate >= 64 && config.AudioBitrate <= 256 {
-		cfg.Bitrate = uint16(config.AudioBitrate)
-	} else if config.AudioBitrate != 0 {
-		audioLogger.Warn().Int("bitrate", config.AudioBitrate).Uint16("default", cfg.Bitrate).Msg("Invalid audio bitrate, using default")
+	if bitrate, valid := validateAndApply(config.AudioBitrate, 64, 256, "audio bitrate"); valid {
+		cfg.Bitrate = uint16(bitrate)
 	}
 
 	// Validate and apply complexity
-	if config.AudioComplexity >= 0 && config.AudioComplexity <= 10 {
-		cfg.Complexity = uint8(config.AudioComplexity)
-	} else {
-		audioLogger.Warn().Int("complexity", config.AudioComplexity).Uint8("default", cfg.Complexity).Msg("Invalid audio complexity, using default")
+	if complexity, valid := validateAndApply(config.AudioComplexity, 0, 10, "audio complexity"); valid {
+		cfg.Complexity = uint8(complexity)
 	}
 
 	// Apply boolean flags directly
@@ -67,10 +75,8 @@ func getAudioConfig() audio.AudioConfig {
 	cfg.FECEnabled = config.AudioFECEnabled
 
 	// Validate and apply buffer periods
-	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 24 {
-		cfg.BufferPeriods = uint8(config.AudioBufferPeriods)
-	} else if config.AudioBufferPeriods != 0 {
-		audioLogger.Warn().Int("buffer_periods", config.AudioBufferPeriods).Uint8("default", cfg.BufferPeriods).Msg("Invalid buffer periods, using default")
+	if periods, valid := validateAndApply(config.AudioBufferPeriods, 2, 24, "buffer periods"); valid {
+		cfg.BufferPeriods = uint8(periods)
 	}
 
 	// Validate and apply sample rate using a map for valid rates
@@ -82,10 +88,8 @@ func getAudioConfig() audio.AudioConfig {
 	}
 
 	// Validate and apply packet loss percentage
-	if config.AudioPacketLossPerc >= 0 && config.AudioPacketLossPerc <= 100 {
-		cfg.PacketLossPerc = uint8(config.AudioPacketLossPerc)
-	} else {
-		audioLogger.Warn().Int("packet_loss_perc", config.AudioPacketLossPerc).Uint8("default", cfg.PacketLossPerc).Msg("Invalid packet loss percentage, using default")
+	if pktLoss, valid := validateAndApply(config.AudioPacketLossPerc, 0, 100, "packet loss percentage"); valid {
+		cfg.PacketLossPerc = uint8(pktLoss)
 	}
 
 	return cfg
@@ -107,91 +111,98 @@ func startAudio() error {
 
 	ensureConfigLoaded()
 
+	var outputErr, inputErr error
 	if audioOutputEnabled.Load() && currentAudioTrack != nil {
-		startOutputAudioUnderMutex(getAlsaDevice(config.AudioOutputSource))
+		outputErr = startOutputAudioUnderMutex(getAlsaDevice(config.AudioOutputSource))
 	}
 
 	if audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
-		startInputAudioUnderMutex(getAlsaDevice("usb"))
+		inputErr = startInputAudioUnderMutex(getAlsaDevice("usb"))
 	}
 
-	return nil
+	if outputErr != nil && inputErr != nil {
+		return fmt.Errorf("audio start failed - output: %w, input: %v", outputErr, inputErr)
+	}
+	if outputErr != nil {
+		return outputErr
+	}
+	return inputErr
 }
 
-func startOutputAudioUnderMutex(alsaOutputDevice string) {
-	newSource := audio.NewCgoOutputSource(alsaOutputDevice, getAudioConfig())
-	oldSource := outputSource.Swap(&newSource)
-	newRelay := audio.NewOutputRelay(&newSource, currentAudioTrack)
-	oldRelay := outputRelay.Swap(newRelay)
+func startOutputAudioUnderMutex(alsaOutputDevice string) error {
+	oldRelay := outputRelay.Swap(nil)
+	oldSource := outputSource.Swap(nil)
 
 	if oldRelay != nil {
 		oldRelay.Stop()
 	}
-
 	if oldSource != nil {
 		(*oldSource).Disconnect()
 	}
+
+	newSource := audio.NewCgoOutputSource(alsaOutputDevice, getAudioConfig())
+	newRelay := audio.NewOutputRelay(&newSource, currentAudioTrack)
 
 	if err := newRelay.Start(); err != nil {
 		audioLogger.Error().Err(err).Str("alsaOutputDevice", alsaOutputDevice).Msg("Failed to start audio output relay")
+		return err
 	}
+
+	outputSource.Swap(&newSource)
+	outputRelay.Swap(newRelay)
+	return nil
 }
 
-func startInputAudioUnderMutex(alsaPlaybackDevice string) {
-	newSource := audio.NewCgoInputSource(alsaPlaybackDevice, getAudioConfig())
-	oldSource := inputSource.Swap(&newSource)
-	newRelay := audio.NewInputRelay(&newSource)
-	oldRelay := inputRelay.Swap(newRelay)
+func startInputAudioUnderMutex(alsaPlaybackDevice string) error {
+	oldRelay := inputRelay.Swap(nil)
+	oldSource := inputSource.Swap(nil)
 
 	if oldRelay != nil {
 		oldRelay.Stop()
 	}
-
 	if oldSource != nil {
 		(*oldSource).Disconnect()
 	}
+
+	newSource := audio.NewCgoInputSource(alsaPlaybackDevice, getAudioConfig())
+	newRelay := audio.NewInputRelay(&newSource)
 
 	if err := newRelay.Start(); err != nil {
 		audioLogger.Error().Err(err).Str("alsaPlaybackDevice", alsaPlaybackDevice).Msg("Failed to start input relay")
+		return err
 	}
-}
 
-// stopAudioComponents safely stops and cleans up audio components
-func stopAudioComponents(relay *atomic.Pointer[audio.OutputRelay], source *atomic.Pointer[audio.AudioSource]) {
-	audioMutex.Lock()
-	oldRelay := relay.Swap(nil)
-	oldSource := source.Swap(nil)
-	audioMutex.Unlock()
-
-	if oldRelay != nil {
-		oldRelay.Stop()
-	}
-	if oldSource != nil {
-		(*oldSource).Disconnect()
-	}
-}
-
-// stopAudioComponentsInput safely stops and cleans up input audio components
-func stopAudioComponentsInput(relay *atomic.Pointer[audio.InputRelay], source *atomic.Pointer[audio.AudioSource]) {
-	audioMutex.Lock()
-	oldRelay := relay.Swap(nil)
-	oldSource := source.Swap(nil)
-	audioMutex.Unlock()
-
-	if oldRelay != nil {
-		oldRelay.Stop()
-	}
-	if oldSource != nil {
-		(*oldSource).Disconnect()
-	}
+	inputSource.Swap(&newSource)
+	inputRelay.Swap(newRelay)
+	return nil
 }
 
 func stopOutputAudio() {
-	stopAudioComponents(&outputRelay, &outputSource)
+	audioMutex.Lock()
+	oldRelay := outputRelay.Swap(nil)
+	oldSource := outputSource.Swap(nil)
+	audioMutex.Unlock()
+
+	if oldRelay != nil {
+		oldRelay.Stop()
+	}
+	if oldSource != nil {
+		(*oldSource).Disconnect()
+	}
 }
 
 func stopInputAudio() {
-	stopAudioComponentsInput(&inputRelay, &inputSource)
+	audioMutex.Lock()
+	oldRelay := inputRelay.Swap(nil)
+	oldSource := inputSource.Swap(nil)
+	audioMutex.Unlock()
+
+	if oldRelay != nil {
+		oldRelay.Stop()
+	}
+	if oldSource != nil {
+		(*oldSource).Disconnect()
+	}
 }
 
 func stopAudio() {
@@ -234,13 +245,16 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 
 	// Start audio without taking mutex again (already holding audioMutex)
 	if audioInitialized && activeConnections.Load() > 0 && audioOutputEnabled.Load() && currentAudioTrack != nil {
-		startOutputAudioUnderMutex(getAlsaDevice(config.AudioOutputSource))
+		if err := startOutputAudioUnderMutex(getAlsaDevice(config.AudioOutputSource)); err != nil {
+			audioLogger.Error().Err(err).Msg("Failed to start output audio after track change")
+		}
 	}
 }
 
 func setPendingInputTrack(track *webrtc.TrackRemote) {
-	trackID := track.ID()
-	currentInputTrack.Store(&trackID)
+	trackID := new(string)
+	*trackID = track.ID()
+	currentInputTrack.Store(trackID)
 	go handleInputTrackForSession(track)
 }
 
@@ -268,6 +282,15 @@ func SetAudioInputEnabled(enabled bool) error {
 	return nil
 }
 
+// SetAudioOutputSource switches between HDMI (hw:0,0) and USB (hw:1,0) audio capture.
+//
+// The function returns immediately after updating and persisting the config change,
+// while the actual audio device switch happens asynchronously in the background:
+// - Config save is synchronous to ensure the change persists even if the process crashes
+// - Audio restart is async to avoid blocking the RPC caller during ALSA reconfiguration
+//
+// Note: The HDMI audio device (hw:0,0) can take 30-60 seconds to initialize due to
+// TC358743 hardware characteristics. Callers receive success before audio actually switches.
 func SetAudioOutputSource(source string) error {
 	if source != "hdmi" && source != "usb" {
 		return nil
@@ -280,16 +303,17 @@ func SetAudioOutputSource(source string) error {
 
 	config.AudioOutputSource = source
 
+	// Save config synchronously before starting async audio operations
+	if err := SaveConfig(); err != nil {
+		audioLogger.Error().Err(err).Msg("Failed to save config after audio source change")
+		return err
+	}
+
+	// Handle audio restart asynchronously
 	go func() {
 		stopOutputAudio()
 		if err := startAudio(); err != nil {
 			audioLogger.Error().Err(err).Str("source", source).Msg("Failed to start audio output after source change")
-		}
-	}()
-
-	go func() {
-		if err := SaveConfig(); err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to save config after audio source change")
 		}
 	}()
 
@@ -371,6 +395,11 @@ func processInputPacket(opusData []byte) error {
 	// Reload source inside mutex to ensure we have the currently active source
 	source := inputSource.Load()
 	if source == nil {
+		return nil
+	}
+
+	// Defensive null check - ensure dereferenced pointer is valid
+	if *source == nil {
 		return nil
 	}
 
