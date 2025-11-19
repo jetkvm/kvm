@@ -278,14 +278,22 @@ func SetAudioOutputSource(source string) error {
 		return nil
 	}
 
-	stopOutputAudio()
 	config.AudioOutputSource = source
 
-	if err := startAudio(); err != nil {
-		audioLogger.Error().Err(err).Str("source", source).Msg("Failed to start audio output after source change")
-	}
+	go func() {
+		stopOutputAudio()
+		if err := startAudio(); err != nil {
+			audioLogger.Error().Err(err).Str("source", source).Msg("Failed to start audio output after source change")
+		}
+	}()
 
-	return SaveConfig()
+	go func() {
+		if err := SaveConfig(); err != nil {
+			audioLogger.Error().Err(err).Msg("Failed to save config after audio source change")
+		}
+	}()
+
+	return nil
 }
 
 func RestartAudioOutput() error {
