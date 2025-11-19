@@ -19,6 +19,15 @@ export default function AudioPopover() {
   const [micLoading, setMicLoading] = useState(false);
   const isHttps = isSecureContext();
 
+  // Helper function to handle RPC errors consistently
+  const handleRpcError = (resp: JsonRpcResponse, errorMsg?: string): boolean => {
+    if ("error" in resp) {
+      notifications.error(errorMsg || String(resp.error.data || m.unknown_error()));
+      return true;
+    }
+    return false;
+  };
+
   useEffect(() => {
     send("getAudioOutputEnabled", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
@@ -46,12 +55,13 @@ export default function AudioPopover() {
         const errorMsg = enabled
           ? m.audio_output_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
           : m.audio_output_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
-        notifications.error(errorMsg);
-      } else {
-        setAudioOutputEnabled(enabled);
-        const successMsg = enabled ? m.audio_output_enabled() : m.audio_output_disabled();
-        notifications.success(successMsg);
+        handleRpcError(resp, errorMsg);
+        return;
       }
+
+      setAudioOutputEnabled(enabled);
+      const successMsg = enabled ? m.audio_output_enabled() : m.audio_output_disabled();
+      notifications.success(successMsg);
     });
   }, [send]);
 
@@ -63,10 +73,11 @@ export default function AudioPopover() {
         const errorMsg = enabled
           ? m.audio_input_failed_enable({ error: String(resp.error.data || m.unknown_error()) })
           : m.audio_input_failed_disable({ error: String(resp.error.data || m.unknown_error()) });
-        notifications.error(errorMsg);
-      } else {
-        setMicrophoneEnabled(enabled);
+        handleRpcError(resp, errorMsg);
+        return;
       }
+
+      setMicrophoneEnabled(enabled);
     });
   }, [send, setMicrophoneEnabled]);
 
