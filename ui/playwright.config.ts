@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const width = 1728, height = 996;
+
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -31,7 +33,12 @@ export default defineConfig({
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on',
-    video: 'on',
+    video: {
+      mode: 'on',
+      size: {
+        width, height,
+      }
+    }
   },
 
   /* Configure projects for major browsers */
@@ -39,7 +46,13 @@ export default defineConfig({
     {
       name: 'chromium',
       // Headless must be disabled otherwise WebRTC will not work properly
-      use: { ...devices['Desktop Chrome'], headless: false },
+      use: {
+        ...devices['Desktop Chrome'],
+        headless: false,
+        viewport: {
+          width, height,
+        }
+      }
     },
 
     // {

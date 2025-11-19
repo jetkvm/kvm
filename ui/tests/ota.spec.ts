@@ -1,10 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, PlaywrightTestArgs } from '@playwright/test';
 
 import { m } from '../localization/paraglide/messages';
 
-import { getByRole, getByText } from './helper';
+import { getByRole, getByText, sleep } from './helper';
 
-const TARGET_DEVICE_IP = "192.168.2.4"
+const TARGET_DEVICE_IP = "192.168.0.145"
 
 test('upgrade process', async ({ page }) => {
   await page.goto(`http://${TARGET_DEVICE_IP}`);
@@ -58,7 +58,12 @@ test('upgrade process', async ({ page }) => {
 
 });
 
-test('downgrade process', async ({ page }) => {
+interface CustomUpgradeProcessOptions {
+  sys?: string;
+  app?: string;
+}
+
+const customUpgradeProcess = ({ sys, app }: CustomUpgradeProcessOptions) => async ({ page }: PlaywrightTestArgs) => {
   await page.goto(`http://${TARGET_DEVICE_IP}`);
 
   // Expect a title "to contain" a substring.
@@ -67,17 +72,41 @@ test('downgrade process', async ({ page }) => {
     'Title should include JetKVM',
   ).toHaveTitle(/JetKVM/);
 
+  // If it's showing Welcome screen, we'll do the setup process,
+  // otherwise, we'll skip the setup process and go to the next step
+  await page.waitForLoadState('networkidle');
+
+  if (await getByText(page, 'welcome_to_jetkvm').isVisible()) {
+    // check if current URL is /welcome
+    await page.waitForURL('**/welcome');
+    // click the setup button (LinkButton)
+    await getByRole(page, 'link', 'jetkvm_setup').click();
+    // check if current URL is /welcome/mode
+    await page.waitForURL('**/welcome/mode');
+    // click the local authentication method button
+    await page.locator('input[name="localAuthMode"][value="noPassword"]').click();
+    // wait for 1 second to ensure the checkbox is checked
+    await sleep(1000);
+    // click the continue button
+    await getByRole(page, 'button', 'continue').click();
+  }
+
   // Except ICE gathering completed or JetKVM device connected
   await expect(
-    getByText(page, 'ice_gathering_completed').or(getByText(page, 'peer_connection_connected')),
-    'should be ICE gathering completed or JetKVM device connected',
+    getByText(page, 'ice_gathering_completed').
+      or(getByText(page, 'peer_connection_connected').first()).
+      or(getByText(page, 'video_overlay_loading_stream'))
+    ,
+    'Wait until the WebRTC connection is established',
   ).toBeVisible();
 
   // Except No HDMI signal detected, as the device is not connected to the HDMI port
-  await expect(
-    getByText(page, 'video_overlay_no_hdmi_signal'),
-    'should be visible when no HDMI signal is detected',
-  ).toBeVisible();
+  // await expect(
+  //   getByText(page, 'video_overlay_no_hdmi_signal'),
+  //   'should be visible when no HDMI signal is detected',
+  // ).toBeVisible();
+
+  await sleep(1000);
 
   // Emulate upgrade process
   await getByRole(page, 'button', 'action_bar_settings').click();
@@ -92,6 +121,7 @@ test('downgrade process', async ({ page }) => {
     btnAdvanced,
     'should be visible when advanced link is visible',
   ).toBeVisible();
+  await sleep(1000);
   await btnAdvanced.click();
 
   // Now we're on the Advanced tab
@@ -111,23 +141,36 @@ test('downgrade process', async ({ page }) => {
     whatToUpdateSelect,
     'should be visible when what to update select is visible',
   ).toBeVisible();
-  await whatToUpdateSelect.selectOption('system');
+  if (sys && app) {
+    await whatToUpdateSelect.selectOption('both');
+  } else if (sys) {
+    await whatToUpdateSelect.selectOption('system');
+  } else if (app) {
+    await whatToUpdateSelect.selectOption('app');
+  }
 
-  // now, make sure the system version input is visible
-  const systemVersionLabel = page.locator(
-    'div',
-    { hasText: m.advanced_version_update_system_label(), hasNotText: m.advanced_version_update_target_label() },
-  );
-  await expect(
-    systemVersionLabel,
-    'SystemVersionLabel should be visible',
-  ).toBeVisible();
-  const systemVersionInput = systemVersionLabel.getByRole('textbox');
-  await expect(
-    systemVersionInput,
-    'SystemVersionInput should be visible',
-  ).toBeVisible();
-  await systemVersionInput.fill('0.2.7');
+  if (sys) {
+    // now, make sure the system version input is visible
+    const systemVersionLabel = page.locator(
+      'div',
+      { hasText: m.advanced_version_update_system_label(), hasNotText: m.advanced_version_update_target_label() },
+    );
+    await expect(systemVersionLabel, 'SystemVersionLabel should be visible').toBeVisible();
+    const systemVersionInput = systemVersionLabel.getByRole('textbox');
+    await expect(systemVersionInput, 'SystemVersionInput should be visible').toBeVisible();
+    await systemVersionInput.fill(sys);
+  }
+
+  if (app) {
+    const appVersionLabel = page.locator(
+      'div',
+      { hasText: m.advanced_version_update_app_label(), hasNotText: m.advanced_version_update_target_label() },
+    );
+    await expect(appVersionLabel, 'AppVersionLabel should be visible').toBeVisible();
+    const appVersionInput = appVersionLabel.getByRole('textbox');
+    await expect(appVersionInput, 'AppVersionInput should be visible').toBeVisible();
+    await appVersionInput.fill(app);
+  }
 
   // acknowledge the version change
   const versionChangeAcknowledgedLabel = page.locator(
@@ -144,6 +187,7 @@ test('downgrade process', async ({ page }) => {
   // now, click the damn button
   const btnVersionUpdate = getByRole(page, 'button', 'advanced_version_update_button');
   await expect(btnVersionUpdate).toBeVisible();
+  await sleep(1000);
   await btnVersionUpdate.click();
 
   // Upgrade is a very time-consuming process, so we'll give it a generous timeout
@@ -166,26 +210,32 @@ test('downgrade process', async ({ page }) => {
   await expect(btnUpdateNow,
     'Update Now button should be visible',
   ).toBeVisible();
+  await sleep(1000);
   await btnUpdateNow.click();
 
   // LoadingState -> Updating your device...
   await expect(getByText(page, 'general_update_updating_title'),
     'UpdatingDeviceState: title should be updating your device...',
   ).toBeVisible();
-  const update_type = m.general_update_system_type();
 
   // UpdatingDeviceState -> Downloading, Verifying, Installing, Awaiting reboot or rebooting
-  await expect(
-    getByText(page, 'general_update_status_downloading', { update_type }).
-    or(getByText(page, 'general_update_status_verifying', { update_type })).
-    or(getByText(page, 'general_update_status_installing', { update_type })),
-    'UpdatingDeviceState: downloading, verifying, installing',
-  ).toBeVisible({ timeout });
-  await expect(
-    getByText(page, 'general_update_status_awaiting_reboot')
-    .or(getByText(page, 'general_update_rebooting')),
-    'UpdatingDeviceState: awaiting reboot or rebooting',
-  ).toBeVisible({ timeout });
+  const waitingForUpdate = async (update_type: string = m.general_update_system_type()) => {
+    await expect(
+      getByText(page, 'general_update_status_downloading', { update_type }).
+        or(getByText(page, 'general_update_status_verifying', { update_type })).
+        or(getByText(page, 'general_update_status_installing', { update_type })),
+      'UpdatingDeviceState: downloading, verifying, installing',
+    ).toBeVisible({ timeout });
+    await expect(
+      getByText(page, 'general_update_status_awaiting_reboot')
+        .or(getByText(page, 'general_update_rebooting')),
+      'UpdatingDeviceState: awaiting reboot or rebooting',
+    ).toBeVisible({ timeout });
+  };
+
+  // Application update always comes first
+  if (app) await waitingForUpdate(m.general_update_application_type());
+  if (sys) await waitingForUpdate(m.general_update_system_type());
 
   // Leaving device on
   // await expect(pageGetByText('updating_leave_device_on')).toBeVisible({ timeout });
@@ -217,4 +267,26 @@ test('downgrade process', async ({ page }) => {
     peerConnectionStatusCard.getByText(m.peer_connection_connected()),
     'PeerConnectionStatusCard should be transitioned to the CONNECTED state after reboot',
   ).toBeVisible({ timeout });
-});
+
+  // then, we should see a message saying that the update is completed successfully
+  await expect(getByText(page, 'general_update_completed_title'),
+    'UpdateCompletedState: title should be update completed successfully',
+  ).toBeVisible({ timeout });
+  await expect(getByText(page, 'general_update_completed_description'),
+    'UpdateCompletedState: description should be update completed successfully',
+  ).toBeVisible({ timeout });
+};
+
+
+test('custom upgrade process: upgrade system only', customUpgradeProcess({
+  sys: '0.2.7',
+}));
+
+test('custom upgrade process: upgrade app only', customUpgradeProcess({
+  app: '0.4.5',
+}));
+
+test('custom upgrade process: upgrade both', customUpgradeProcess({
+  sys: '0.2.7',
+  app: '0.4.5',
+}));

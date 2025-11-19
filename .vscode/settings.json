@@ -19,5 +19,8 @@
       ],
       "url": "./internal/ota/testdata/ota.schema.json"
     }
+  ],
+  "i18n-ally.localesPaths": [
+    "ui/localization/messages"
   ]
 }

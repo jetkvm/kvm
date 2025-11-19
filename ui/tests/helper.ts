@@ -17,3 +17,4 @@ export const getByRole = (page: Page, role: Parameters<typeof page.getByRole>[0]
   page.getByRole(role, { name: translate(i18nKey) })
 );
 
+export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
