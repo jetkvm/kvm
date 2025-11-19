@@ -11,6 +11,7 @@ import (
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/mdns"
 	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/jetkvm/kvm/internal/ota"
 	"github.com/jetkvm/kvm/pkg/myip"
 	"github.com/jetkvm/kvm/pkg/nmlite"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
@@ -225,7 +226,7 @@ func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
 	return nm.SetHostname(hostname, domain)
 }
 
-func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (rebootRequired bool, postRebootAction *PostRebootAction) {
+func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (rebootRequired bool, postRebootAction *ota.PostRebootAction) {
 	oldDhcpClient := oldConfig.DHCPClient.String
 
 	l := networkLogger.With().
@@ -249,7 +250,7 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 		l.Info().Msg("IPv4 mode changed with udhcpc, reboot required")
 
 		if newIPv4Mode == "static" && oldIPv4Mode != "static" {
-			postRebootAction = &PostRebootAction{
+			postRebootAction = &ota.PostRebootAction{
 				HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
 				RedirectTo:  fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
 			}
@@ -266,7 +267,7 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 		// Handle IP change for redirect (only if both are not nil and IP changed)
 		if newConfig.IPv4Static != nil && oldConfig.IPv4Static != nil &&
 			newConfig.IPv4Static.Address.String != oldConfig.IPv4Static.Address.String {
-			postRebootAction = &PostRebootAction{
+			postRebootAction = &ota.PostRebootAction{
 				HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
 				RedirectTo:  fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
 			}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import { UpdateState, useUpdateStore } from "@hooks/stores";
@@ -11,15 +11,20 @@ import LoadingSpinner from "@components/LoadingSpinner";
 import UpdatingStatusCard, { type UpdatePart } from "@components/UpdatingStatusCard";
 import { m } from "@localizations/messages.js";
 import { sleep } from "@/utils";
-import { SystemVersionInfo } from "@/utils/jsonrpc";
+import { checkUpdateComponents, SystemVersionInfo, UpdateComponents, updateParams } from "@/utils/jsonrpc";
 
 export default function SettingsGeneralUpdateRoute() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { updateSuccess } = location.state || {};
 
   const { setModalView, otaState, shouldReload, setShouldReload } = useUpdateStore();
   const { send } = useJsonRpc();
+
+  const customAppVersion = useMemo(() => searchParams.get("custom_app_version") || undefined, [searchParams]);
+  const customSystemVersion = useMemo(() => searchParams.get("custom_system_version") || undefined, [searchParams]);
+  const resetConfig = useMemo(() => searchParams.get("reset_config") === "true", [searchParams]);
 
   const onClose = useCallback(async () => {
     navigate(".."); // back to the devices.$id.settings page
@@ -37,6 +42,21 @@ export default function SettingsGeneralUpdateRoute() {
     setModalView("updating");
   }, [send, setModalView, setShouldReload]);
 
+  const onConfirmCustomUpdate = useCallback((appTargetVersion?: string, systemTargetVersion?: string) => {
+    const components: UpdateComponents = {};
+    if (appTargetVersion) components.app = appTargetVersion;
+    if (systemTargetVersion) components.system = systemTargetVersion;
+
+    setShouldReload(true);
+    setModalView("updating");
+
+    send("tryUpdateComponents", {
+      params: { components, },
+      includePreRelease: false,
+      resetConfig,
+    });
+  }, [resetConfig, send, setModalView, setShouldReload]);
+
   useEffect(() => {
     if (otaState.updating) {
       setModalView("updating");
@@ -49,20 +69,39 @@ export default function SettingsGeneralUpdateRoute() {
     }
   }, [otaState.error, otaState.updating, setModalView, updateSuccess]);
 
-  return <Dialog onClose={onClose} onConfirmUpdate={onConfirmUpdate} />;
+  return <Dialog
+    onClose={onClose}
+    onConfirmUpdate={onConfirmUpdate}
+    onConfirmCustomUpdate={onConfirmCustomUpdate}
+    customAppVersion={customAppVersion}
+    customSystemVersion={customSystemVersion}
+  />;
 }
 
 export function Dialog({
   onClose,
   onConfirmUpdate,
+  onConfirmCustomUpdate: onConfirmCustomUpdateCallback,
+  customAppVersion,
+  customSystemVersion,
 }: Readonly<{
   onClose: () => void;
   onConfirmUpdate: () => void;
+  onConfirmCustomUpdate: (appVersion?: string, systemVersion?: string) => void;
+  customAppVersion?: string;
+  customSystemVersion?: string;
 }>) {
   const { navigateTo } = useDeviceUiNavigation();
 
   const [versionInfo, setVersionInfo] = useState<null | SystemVersionInfo>(null);
   const { modalView, setModalView, otaState } = useUpdateStore();
+  const forceCustomUpdate = customSystemVersion !== undefined || customAppVersion !== undefined;
+  const onConfirmCustomUpdate = useCallback(() => {
+    onConfirmCustomUpdateCallback(
+      customAppVersion !== undefined ? versionInfo?.remote?.appVersion : undefined,
+      customSystemVersion !== undefined ? versionInfo?.remote?.systemVersion : undefined,
+    );
+  }, [onConfirmCustomUpdateCallback, customAppVersion, customSystemVersion, versionInfo]);
 
   const onFinishedLoading = useCallback(
     (versionInfo: SystemVersionInfo) => {
@@ -71,13 +110,13 @@ export function Dialog({
 
       setVersionInfo(versionInfo);
 
-      if (hasUpdate) {
+      if (hasUpdate || forceCustomUpdate) {
         setModalView("updateAvailable");
       } else {
         setModalView("upToDate");
       }
     },
-    [setModalView],
+    [setModalView, forceCustomUpdate],
   );
 
   return (
@@ -92,12 +131,18 @@ export function Dialog({
         )}
 
         {modalView === "loading" && (
-          <LoadingState onFinished={onFinishedLoading} onCancelCheck={onClose} />
+          <LoadingState
+            onFinished={onFinishedLoading}
+            onCancelCheck={onClose}
+            customAppVersion={customAppVersion}
+            customSystemVersion={customSystemVersion}
+          />
         )}
 
         {modalView === "updateAvailable" && (
           <UpdateAvailableState
-            onConfirmUpdate={onConfirmUpdate}
+            forceCustomUpdate={forceCustomUpdate}
+            onConfirm={forceCustomUpdate ? onConfirmCustomUpdate : onConfirmUpdate}
             onClose={onClose}
             versionInfo={versionInfo!}
           />
@@ -126,9 +171,13 @@ export function Dialog({
 function LoadingState({
   onFinished,
   onCancelCheck,
+  customAppVersion,
+  customSystemVersion,
 }: {
   onFinished: (versionInfo: SystemVersionInfo) => void;
   onCancelCheck: () => void;
+  customAppVersion?: string;
+  customSystemVersion?: string;
 }) {
   const [progressWidth, setProgressWidth] = useState("0%");
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -137,6 +186,17 @@ function LoadingState({
   const { setModalView } = useUpdateStore();
 
   const progressBarRef = useRef<HTMLDivElement>(null);
+
+  const checkUpdate = useCallback(async () => {
+    if (!customAppVersion && !customSystemVersion) {
+      return await getVersionInfo();
+    }
+    const params: updateParams = { components: {} as UpdateComponents };
+    if (customAppVersion) params.components!.app = customAppVersion;
+    if (customSystemVersion) params.components!.system = customSystemVersion;
+
+    return await checkUpdateComponents(params, false);
+  }, [customAppVersion, customSystemVersion, getVersionInfo]);
 
   useEffect(() => {
     abortControllerRef.current = new AbortController();
@@ -147,7 +207,7 @@ function LoadingState({
       setProgressWidth("100%");
     }, 0);
 
-    getVersionInfo()
+    checkUpdate()
       .then(async versionInfo => {
         // Add a small delay to ensure it's not just flickering
         await sleep(600);
@@ -169,7 +229,7 @@ function LoadingState({
       clearTimeout(animationTimer);
       abortControllerRef.current?.abort();
     };
-  }, [getVersionInfo, onFinished, setModalView]);
+  }, [checkUpdate, onFinished, setModalView]);
 
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
@@ -377,11 +437,12 @@ function SystemUpToDateState({
 
 function UpdateAvailableState({
   versionInfo,
-  onConfirmUpdate,
+  onConfirm,
   onClose,
 }: {
   versionInfo: SystemVersionInfo;
-  onConfirmUpdate: () => void;
+  forceCustomUpdate: boolean;
+  onConfirm: () => void;
   onClose: () => void;
 }) {
   return (
@@ -396,18 +457,23 @@ function UpdateAvailableState({
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
           {versionInfo?.systemUpdateAvailable ? (
             <>
-              <span className="font-semibold">{m.general_update_system_type()}</span>: {versionInfo?.remote?.systemVersion}
+              <span className="font-semibold">{m.general_update_system_type()}</span>: {versionInfo?.local?.systemVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.systemVersion}
               <br />
             </>
           ) : null}
           {versionInfo?.appUpdateAvailable ? (
             <>
-              <span className="font-semibold">{m.general_update_application_type()}</span>: {versionInfo?.remote?.appVersion}
+              <span className="font-semibold">{m.general_update_application_type()}</span>: {versionInfo?.local?.appVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.appVersion}
             </>
+          ) : null}
+          {versionInfo?.willDisableAutoUpdate ? (
+            <p className="mb-4 text-sm text-red-600 dark:text-red-400">
+              {m.general_update_will_disable_auto_update_description()}
+            </p>
           ) : null}
         </p>
         <div className="flex items-center justify-start gap-x-2">
-          <Button size="SM" theme="primary" text={m.general_update_now_button()} onClick={onConfirmUpdate} />
+          <Button size="SM" theme="primary" text={m.general_update_now_button()} onClick={onConfirm} />
           <Button size="SM" theme="light" text={m.general_update_later_button()} onClick={onClose} />
         </div>
       </div>

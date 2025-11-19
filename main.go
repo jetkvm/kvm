@@ -11,6 +11,7 @@ import (
 
 	"github.com/erikdubbelboer/gspt"
 	"github.com/gwatts/rootcerts"
+	"github.com/jetkvm/kvm/internal/ota"
 )
 
 var appCtx context.Context
@@ -67,6 +68,13 @@ func Main() {
 	logger.Info().
 		Int("ca_certs_loaded", len(rootcerts.Certs())).
 		Msg("loaded Root CA certificates")
+
+	initOta()
+
+	initNative(systemVersionLocal, appVersionLocal)
+	initDisplay()
+
+	http.DefaultClient.Timeout = 1 * time.Minute
 
 	// Initialize network
 	setProcTitle("initNetwork")
@@ -132,7 +140,10 @@ func Main() {
 			}
 
 			includePreRelease := config.IncludePreRelease
-			err = TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
+			err = otaState.TryUpdate(context.Background(), ota.UpdateParams{
+				DeviceID:          GetDeviceID(),
+				IncludePreRelease: includePreRelease,
+			})
 			if err != nil {
 				logger.Warn().Err(err).Msg("failed to auto update")
 			}

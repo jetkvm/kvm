@@ -123,6 +123,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		Interface("id", request.ID).Logger()
 
 	scopedLogger.Trace().Msg("Received RPC request")
+	t := time.Now()
 
 	handler, ok := rpcHandlers[request.Method]
 	if !ok {
@@ -154,7 +155,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	scopedLogger.Trace().Interface("result", result).Msg("RPC handler returned")
+	scopedLogger.Trace().Dur("duration", time.Since(t)).Interface("result", result).Msg("RPC handler returned")
 
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
@@ -234,55 +235,6 @@ func rpcSetEDID(edid string) error {
 
 func rpcGetVideoLogStatus() (string, error) {
 	return nativeInstance.VideoLogStatus()
-}
-
-func rpcGetDevChannelState() (bool, error) {
-	return config.IncludePreRelease, nil
-}
-
-func rpcSetDevChannelState(enabled bool) error {
-	config.IncludePreRelease = enabled
-	if err := SaveConfig(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
-	}
-	return nil
-}
-
-func rpcGetUpdateStatus() (*UpdateStatus, error) {
-	includePreRelease := config.IncludePreRelease
-	updateStatus, err := GetUpdateStatus(context.Background(), GetDeviceID(), includePreRelease)
-	// to ensure backwards compatibility,
-	// if there's an error, we won't return an error, but we will set the error field
-	if err != nil {
-		if updateStatus == nil {
-			return nil, fmt.Errorf("error checking for updates: %w", err)
-		}
-		updateStatus.Error = err.Error()
-	}
-
-	return updateStatus, nil
-}
-
-func rpcGetLocalVersion() (*LocalMetadata, error) {
-	systemVersion, appVersion, err := GetLocalVersion()
-	if err != nil {
-		return nil, fmt.Errorf("error getting local version: %w", err)
-	}
-	return &LocalMetadata{
-		AppVersion:    appVersion.String(),
-		SystemVersion: systemVersion.String(),
-	}, nil
-}
-
-func rpcTryUpdate() error {
-	includePreRelease := config.IncludePreRelease
-	go func() {
-		err := TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
-		if err != nil {
-			logger.Warn().Err(err).Msg("failed to try update")
-		}
-	}()
-	return nil
 }
 
 func rpcSetDisplayRotation(params DisplayRotationSettings) error {
@@ -654,7 +606,7 @@ func rpcGetMassStorageMode() (string, error) {
 }
 
 func rpcIsUpdatePending() (bool, error) {
-	return IsUpdatePending(), nil
+	return otaState.IsUpdatePending(), nil
 }
 
 func rpcGetUsbEmulationState() (bool, error) {
@@ -1204,7 +1156,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"setDevChannelState":     {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":        {Func: rpcGetLocalVersion},
 	"getUpdateStatus":        {Func: rpcGetUpdateStatus},
+	"checkUpdateComponents":  {Func: rpcCheckUpdateComponents, Params: []string{"params", "includePreRelease"}},
+	"getUpdateStatusChannel": {Func: rpcGetUpdateStatusChannel},
 	"tryUpdate":              {Func: rpcTryUpdate},
+	"tryUpdateComponents":    {Func: rpcTryUpdateComponents, Params: []string{"params", "includePreRelease", "resetConfig"}},
 	"getDevModeState":        {Func: rpcGetDevModeState},
 	"setDevModeState":        {Func: rpcSetDevModeState, Params: []string{"enabled"}},
 	"getSSHKeyState":         {Func: rpcGetSSHKeyState},

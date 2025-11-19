@@ -11,7 +11,7 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 
 // Time to wait after initiating reboot before redirecting to home
-const REBOOT_REDIRECT_DELAY_MS = 5000;
+const REBOOT_REDIRECT_DELAY_MS = 7000;
 
 export default function SettingsGeneralRebootRoute() {
   const navigate = useNavigate();
@@ -19,7 +19,7 @@ export default function SettingsGeneralRebootRoute() {
   const [isRebooting, setIsRebooting] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
   const { setFailsafeMode } = useFailsafeModeStore();
-  
+
   const onClose = useCallback(async () => {
     navigate(".."); // back to the devices.$id.settings page
     // Add 1s delay between navigation and calling reload() to prevent reload from interrupting the navigation.
