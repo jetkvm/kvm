@@ -199,7 +199,7 @@ ssh root@192.168.1.100 ps aux | grep jetkvm
 
 ### View live logs
 
-The file 
+The file `/var/log/jetkvm*` contains the JetKVM logs. You can view live logs with:
 
 ```bash
 ssh root@192.168.1.100
