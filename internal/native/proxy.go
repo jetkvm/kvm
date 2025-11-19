@@ -680,6 +680,13 @@ func (p *NativeProxy) SwitchToScreenIfDifferent(screenName string) {
 	})
 }
 
+func (p *NativeProxy) ChangeVisibility(objName string, show bool) {
+	_ = nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
+		client.ChangeVisibility(objName, show)
+		return nil
+	})
+}
+
 func (p *NativeProxy) DoNotUseThisIsForCrashTestingOnly() {
 	_ = nativeProxyClientExecWithoutArgument(p, func(client *GRPCClient) error {
 		client.DoNotUseThisIsForCrashTestingOnly()

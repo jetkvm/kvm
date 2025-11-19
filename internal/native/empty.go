@@ -108,4 +108,6 @@ func (e *EmptyNativeInterface) SwitchToScreenIf(screenName string, shouldSwitch 
 
 func (e *EmptyNativeInterface) SwitchToScreenIfDifferent(screenName string) {}
 
+func (e *EmptyNativeInterface) ChangeVisibility(objName string, show bool) {}
+
 func (e *EmptyNativeInterface) DoNotUseThisIsForCrashTestingOnly() {}

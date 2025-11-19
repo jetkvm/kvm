@@ -218,6 +218,11 @@ func (s *grpcServer) SwitchToScreenIfDifferent(ctx context.Context, req *pb.Swit
 	return &pb.Empty{}, nil
 }
 
+func (s *grpcServer) ChangeVisibility(ctx context.Context, req *pb.ChangeVisibilityRequest) (*pb.Empty, error) {
+	s.native.ChangeVisibility(req.ObjName, req.Show)
+	return &pb.Empty{}, nil
+}
+
 func (s *grpcServer) DoNotUseThisIsForCrashTestingOnly(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
 	s.native.DoNotUseThisIsForCrashTestingOnly()
 	return &pb.Empty{}, nil
