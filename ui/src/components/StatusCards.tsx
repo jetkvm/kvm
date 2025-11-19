@@ -26,7 +26,7 @@ export default function StatusCard({
       ) : null}
 
       <div className="space-y-1">
-        <div className="text-xs font-semibold leading-none transition text-ellipsis">
+        <div className="text-xs font-semibold leading-none transition text-ellipsis" role="status">
           {title}
         </div>
         <div className="text-xs leading-none">

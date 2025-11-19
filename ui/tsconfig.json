@@ -54,7 +54,8 @@
     }
   },
   "include": [
-    "src"
+    "src",
+    "tests/**/*.ts"
   ],
   "references": [
     {

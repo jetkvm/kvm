@@ -15,3 +15,10 @@ node_modules
 #internal/native/lib
 
 ui/reports
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
