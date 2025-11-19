@@ -53,7 +53,6 @@ func Main() {
 		Msg("starting JetKVM")
 
 	go runWatchdog()
-	go confirmCurrentSystem()
 
 	setProcTitle("initNative")
 	initNative(systemVersionLocal, appVersionLocal)
