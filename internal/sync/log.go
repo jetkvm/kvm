@@ -165,7 +165,7 @@ func logTryRLockResult(t trackable, l bool) {
 	logLockTrack(ptr).Trace().Msg("locked mutex for reading")
 }
 
-// You can all this function at any time to log any dangled locks currently tracked
+// You can call this function at any time to log any dangled locks currently tracked
 // it's not an error for there to be open locks, but this can help identify any
 // potential issues if called judiciously
 func LogDangledLocks() {
