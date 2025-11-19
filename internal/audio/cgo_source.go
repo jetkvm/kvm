@@ -75,71 +75,79 @@ func (c *CgoSource) Connect() error {
 	}
 
 	if c.outputDevice {
-		os.Setenv("ALSA_CAPTURE_DEVICE", c.alsaDevice)
+		return c.connectOutput()
+	}
+	return c.connectInput()
+}
 
-		dtx := C.uchar(0)
-		if c.config.DTXEnabled {
-			dtx = C.uchar(1)
-		}
-		fec := C.uchar(0)
-		if c.config.FECEnabled {
-			fec = C.uchar(1)
-		}
+func (c *CgoSource) connectOutput() error {
+	os.Setenv("ALSA_CAPTURE_DEVICE", c.alsaDevice)
 
-		c.logger.Debug().
-			Uint16("bitrate_kbps", c.config.Bitrate).
-			Uint8("complexity", c.config.Complexity).
-			Bool("dtx", c.config.DTXEnabled).
-			Bool("fec", c.config.FECEnabled).
-			Uint8("buffer_periods", c.config.BufferPeriods).
-			Uint32("sample_rate", c.config.SampleRate).
-			Uint8("packet_loss_perc", c.config.PacketLossPerc).
-			Msg("Initializing audio capture")
+	c.logger.Debug().
+		Uint16("bitrate_kbps", c.config.Bitrate).
+		Uint8("complexity", c.config.Complexity).
+		Bool("dtx", c.config.DTXEnabled).
+		Bool("fec", c.config.FECEnabled).
+		Uint8("buffer_periods", c.config.BufferPeriods).
+		Uint32("sample_rate", c.config.SampleRate).
+		Uint8("packet_loss_perc", c.config.PacketLossPerc).
+		Msg("Initializing audio capture")
 
-		C.update_audio_constants(
-			C.uint(uint32(c.config.Bitrate)*1000),
-			C.uchar(c.config.Complexity),
-			C.uint(c.config.SampleRate),
-			C.uchar(2),
-			C.ushort(960),
-			C.ushort(1500),
-			C.uint(1000),
-			C.uchar(5),
-			C.uint(500000),
-			dtx,
-			fec,
-			C.uchar(c.config.BufferPeriods),
-			C.uchar(c.config.PacketLossPerc),
-		)
+	C.update_audio_constants(
+		C.uint(uint32(c.config.Bitrate)*1000),
+		C.uchar(c.config.Complexity),
+		C.uint(c.config.SampleRate),
+		C.uchar(2),     // capture_channels
+		C.ushort(960),  // frame_size
+		C.ushort(1500), // max_packet_size
+		C.uint(1000),   // sleep_us
+		C.uchar(5),     // max_attempts
+		C.uint(500000), // max_backoff
+		boolToUchar(c.config.DTXEnabled),
+		boolToUchar(c.config.FECEnabled),
+		C.uchar(c.config.BufferPeriods),
+		C.uchar(c.config.PacketLossPerc),
+	)
 
-		rc := C.jetkvm_audio_capture_init()
-		if rc != 0 {
-			c.logger.Error().Int("rc", int(rc)).Msg("Failed to initialize audio capture")
-			return fmt.Errorf("jetkvm_audio_capture_init failed: %d", rc)
-		}
-	} else {
-		os.Setenv("ALSA_PLAYBACK_DEVICE", c.alsaDevice)
-
-		C.update_audio_decoder_constants(
-			C.uint(c.config.SampleRate),
-			C.uchar(1),
-			C.ushort(960),
-			C.ushort(1500),
-			C.uint(1000),
-			C.uchar(5),
-			C.uint(500000),
-			C.uchar(c.config.BufferPeriods),
-		)
-
-		rc := C.jetkvm_audio_playback_init()
-		if rc != 0 {
-			c.logger.Error().Int("rc", int(rc)).Msg("Failed to initialize audio playback")
-			return fmt.Errorf("jetkvm_audio_playback_init failed: %d", rc)
-		}
+	rc := C.jetkvm_audio_capture_init()
+	if rc != 0 {
+		c.logger.Error().Int("rc", int(rc)).Msg("Failed to initialize audio capture")
+		return fmt.Errorf("jetkvm_audio_capture_init failed: %d", rc)
 	}
 
 	c.connected = true
 	return nil
+}
+
+func (c *CgoSource) connectInput() error {
+	os.Setenv("ALSA_PLAYBACK_DEVICE", c.alsaDevice)
+
+	C.update_audio_decoder_constants(
+		C.uint(c.config.SampleRate),
+		C.uchar(1),     // playback_channels
+		C.ushort(960),  // frame_size
+		C.ushort(1500), // max_packet_size
+		C.uint(1000),   // sleep_us
+		C.uchar(5),     // max_attempts
+		C.uint(500000), // max_backoff
+		C.uchar(c.config.BufferPeriods),
+	)
+
+	rc := C.jetkvm_audio_playback_init()
+	if rc != 0 {
+		c.logger.Error().Int("rc", int(rc)).Msg("Failed to initialize audio playback")
+		return fmt.Errorf("jetkvm_audio_playback_init failed: %d", rc)
+	}
+
+	c.connected = true
+	return nil
+}
+
+func boolToUchar(b bool) C.uchar {
+	if b {
+		return C.uchar(1)
+	}
+	return C.uchar(0)
 }
 
 func (c *CgoSource) Disconnect() {
