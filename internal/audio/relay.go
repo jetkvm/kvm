@@ -70,26 +70,48 @@ func (r *OutputRelay) Stop() {
 func (r *OutputRelay) relayLoop() {
 	defer close(r.stopped)
 
-	const reconnectDelay = 1 * time.Second
+	const initialDelay = 1 * time.Second
+	const maxDelay = 30 * time.Second
+	const maxRetries = 10
+
+	retryDelay := initialDelay
+	consecutiveFailures := 0
 
 	for r.running.Load() {
 		if !(*r.source).IsConnected() {
 			if err := (*r.source).Connect(); err != nil {
-				r.logger.Debug().Err(err).Msg("failed to connect, will retry")
-				time.Sleep(reconnectDelay)
+				consecutiveFailures++
+				if consecutiveFailures >= maxRetries {
+					r.logger.Error().Int("failures", consecutiveFailures).Msg("Max connection retries exceeded, stopping relay")
+					return
+				}
+				r.logger.Debug().Err(err).Int("failures", consecutiveFailures).Dur("retry_delay", retryDelay).Msg("failed to connect, will retry")
+				time.Sleep(retryDelay)
+				retryDelay = min(retryDelay*2, maxDelay)
 				continue
 			}
+			consecutiveFailures = 0
+			retryDelay = initialDelay
 		}
 
 		msgType, payload, err := (*r.source).ReadMessage()
 		if err != nil {
 			if r.running.Load() {
-				r.logger.Warn().Err(err).Msg("read error, reconnecting")
+				consecutiveFailures++
+				if consecutiveFailures >= maxRetries {
+					r.logger.Error().Int("failures", consecutiveFailures).Msg("Max read retries exceeded, stopping relay")
+					return
+				}
+				r.logger.Warn().Err(err).Int("failures", consecutiveFailures).Msg("read error, reconnecting")
 				(*r.source).Disconnect()
-				time.Sleep(reconnectDelay)
+				time.Sleep(retryDelay)
+				retryDelay = min(retryDelay*2, maxDelay)
 			}
 			continue
 		}
+
+		consecutiveFailures = 0
+		retryDelay = initialDelay
 
 		if msgType == ipcMsgTypeOpus && len(payload) > 0 {
 			r.sample.Data = payload

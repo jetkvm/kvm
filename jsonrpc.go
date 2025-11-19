@@ -229,7 +229,10 @@ func rpcSetEDID(edid string) error {
 	}
 
 	config.EdidString = edid
-	_ = SaveConfig()
+	if err := SaveConfig(); err != nil {
+		logger.Error().Err(err).Msg("Failed to save config after EDID change")
+		return err
+	}
 	return nil
 }
 

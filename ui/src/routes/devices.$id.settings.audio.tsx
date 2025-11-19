@@ -20,15 +20,26 @@ interface AudioConfigResult {
   packet_loss_perc: number;
 }
 
-// Backend default values - single source of truth
+// UI display defaults - used to mark default options in dropdown menus
+// Note: These should match backend defaults in config.go, but are fetched dynamically from API
 const AUDIO_DEFAULTS = {
   bitrate: 192,
   complexity: 8,
-  packetLossPerc: 0,
+  packetLossPerc: 20,  // Backend default is 20, not 0
 } as const;
 
 export default function SettingsAudioRoute() {
   const { send } = useJsonRpc();
+
+  // Helper function to handle RPC errors consistently
+  const handleRpcError = (resp: JsonRpcResponse, defaultMsg?: string) => {
+    if ("error" in resp) {
+      notifications.error(String(resp.error.data || defaultMsg || m.unknown_error()));
+      return true;
+    }
+    return false;
+  };
+
   const {
     setAudioOutputEnabled,
     setAudioInputAutoEnable,
@@ -92,6 +103,7 @@ export default function SettingsAudioRoute() {
         notifications.error(errorMsg);
         return;
       }
+
       setAudioOutputEnabled(enabled);
       const successMsg = enabled ? m.audio_output_enabled() : m.audio_output_disabled();
       notifications.success(successMsg);
@@ -101,9 +113,13 @@ export default function SettingsAudioRoute() {
   const handleAudioOutputSourceChange = (source: string) => {
     send("setAudioOutputSource", { source }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(m.audio_settings_output_source_failed({ error: String(resp.error.data || m.unknown_error()) }));
+        const errorMsg = m.audio_settings_output_source_failed({
+          error: String(resp.error.data || m.unknown_error())
+        });
+        notifications.error(errorMsg);
         return;
       }
+
       setAudioOutputSource(source);
       notifications.success(m.audio_settings_output_source_success());
     });
@@ -111,10 +127,8 @@ export default function SettingsAudioRoute() {
 
   const handleAudioInputAutoEnableChange = (enabled: boolean) => {
     send("setAudioInputAutoEnable", { enabled }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(String(resp.error.data || m.unknown_error()));
-        return;
-      }
+      if (handleRpcError(resp)) return;
+
       setAudioInputAutoEnable(enabled);
       const successMsg = enabled
         ? m.audio_input_auto_enable_enabled()
@@ -123,39 +137,36 @@ export default function SettingsAudioRoute() {
     });
   };
 
-  const handleAudioConfigChange = (
-    bitrate: number,
-    complexity: number,
-    dtxEnabled: boolean,
-    fecEnabled: boolean,
-    bufferPeriods: number,
-    packetLossPerc: number
-  ) => {
-    send(
-      "setAudioConfig",
-      { bitrate, complexity, dtxEnabled, fecEnabled, bufferPeriods, packetLossPerc },
-      (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          notifications.error(String(resp.error.data || m.unknown_error()));
-          return;
-        }
-        setAudioBitrate(bitrate);
-        setAudioComplexity(complexity);
-        setAudioDTXEnabled(dtxEnabled);
-        setAudioFECEnabled(fecEnabled);
-        setAudioBufferPeriods(bufferPeriods);
-        setAudioPacketLossPerc(packetLossPerc);
-        notifications.success(m.audio_settings_config_updated());
-      }
-    );
+  // Create a configuration object from current state
+  const getCurrentConfig = () => ({
+    bitrate: audioBitrate,
+    complexity: audioComplexity,
+    dtxEnabled: audioDTXEnabled,
+    fecEnabled: audioFECEnabled,
+    bufferPeriods: audioBufferPeriods,
+    packetLossPerc: audioPacketLossPerc,
+  });
+
+  const handleAudioConfigChange = (updates: Partial<typeof getCurrentConfig>) => {
+    const config = { ...getCurrentConfig(), ...updates };
+
+    send("setAudioConfig", config, (resp: JsonRpcResponse) => {
+      if (handleRpcError(resp)) return;
+
+      // Update all state values from the config
+      setAudioBitrate(config.bitrate);
+      setAudioComplexity(config.complexity);
+      setAudioDTXEnabled(config.dtxEnabled);
+      setAudioFECEnabled(config.fecEnabled);
+      setAudioBufferPeriods(config.bufferPeriods);
+      setAudioPacketLossPerc(config.packetLossPerc);
+      notifications.success(m.audio_settings_config_updated());
+    });
   };
 
   const handleRestartAudio = () => {
     send("restartAudioOutput", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(String(resp.error.data || m.unknown_error()));
-        return;
-      }
+      if (handleRpcError(resp)) return;
       notifications.success(m.audio_settings_applied());
     });
   };
@@ -217,16 +228,7 @@ export default function SettingsAudioRoute() {
               { value: "192", label: `192 kbps${192 === AUDIO_DEFAULTS.bitrate ? m.audio_settings_default_suffix() : ''}` },
               { value: "256", label: "256 kbps" },
             ]}
-            onChange={(e) =>
-              handleAudioConfigChange(
-                parseInt(e.target.value),
-                audioComplexity,
-                audioDTXEnabled,
-                audioFECEnabled,
-                audioBufferPeriods,
-                audioPacketLossPerc
-              )
-            }
+            onChange={(e) => handleAudioConfigChange({ bitrate: parseInt(e.target.value) })}
           />
         </SettingsItem>
 
@@ -244,16 +246,7 @@ export default function SettingsAudioRoute() {
               { value: "8", label: `8${8 === AUDIO_DEFAULTS.complexity ? m.audio_settings_default_suffix() : ''}` },
               { value: "10", label: "10 (best quality)" },
             ]}
-            onChange={(e) =>
-              handleAudioConfigChange(
-                audioBitrate,
-                parseInt(e.target.value),
-                audioDTXEnabled,
-                audioFECEnabled,
-                audioBufferPeriods,
-                audioPacketLossPerc
-              )
-            }
+            onChange={(e) => handleAudioConfigChange({ complexity: parseInt(e.target.value) })}
           />
         </SettingsItem>
 
@@ -263,16 +256,7 @@ export default function SettingsAudioRoute() {
         >
           <Checkbox
             checked={audioDTXEnabled}
-            onChange={(e) =>
-              handleAudioConfigChange(
-                audioBitrate,
-                audioComplexity,
-                e.target.checked,
-                audioFECEnabled,
-                audioBufferPeriods,
-                audioPacketLossPerc
-              )
-            }
+            onChange={(e) => handleAudioConfigChange({ dtxEnabled: e.target.checked })}
           />
         </SettingsItem>
 
@@ -282,16 +266,7 @@ export default function SettingsAudioRoute() {
         >
           <Checkbox
             checked={audioFECEnabled}
-            onChange={(e) =>
-              handleAudioConfigChange(
-                audioBitrate,
-                audioComplexity,
-                audioDTXEnabled,
-                e.target.checked,
-                audioBufferPeriods,
-                audioPacketLossPerc
-              )
-            }
+            onChange={(e) => handleAudioConfigChange({ fecEnabled: e.target.checked })}
           />
         </SettingsItem>
 
@@ -309,16 +284,7 @@ export default function SettingsAudioRoute() {
               { value: "16", label: "16 (320ms)" },
               { value: "24", label: "24 (480ms)" },
             ]}
-            onChange={(e) =>
-              handleAudioConfigChange(
-                audioBitrate,
-                audioComplexity,
-                audioDTXEnabled,
-                audioFECEnabled,
-                parseInt(e.target.value),
-                audioPacketLossPerc
-              )
-            }
+            onChange={(e) => handleAudioConfigChange({ bufferPeriods: parseInt(e.target.value) })}
           />
         </SettingsItem>
 
@@ -327,11 +293,15 @@ export default function SettingsAudioRoute() {
           description={m.audio_settings_sample_rate_description()}
         >
           <div className="text-sm text-gray-700 dark:text-gray-300 font-medium">
-            {audioSampleRate === 32000 && "32 kHz"}
-            {audioSampleRate === 44100 && "44.1 kHz"}
-            {audioSampleRate === 48000 && "48 kHz"}
-            {audioSampleRate === 96000 && "96 kHz"}
-            {![32000, 44100, 48000, 96000].includes(audioSampleRate) && `${audioSampleRate} Hz`}
+            {(() => {
+              const rateMap: Record<number, string> = {
+                32000: "32 kHz",
+                44100: "44.1 kHz",
+                48000: "48 kHz",
+                96000: "96 kHz"
+              };
+              return rateMap[audioSampleRate] || `${audioSampleRate} Hz`;
+            })()}
             <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
               (auto-detected from source)
             </span>
@@ -346,24 +316,15 @@ export default function SettingsAudioRoute() {
             size="SM"
             value={String(audioPacketLossPerc)}
             options={[
-              { value: "0", label: `0%${0 === AUDIO_DEFAULTS.packetLossPerc ? m.audio_settings_default_lan_suffix() : m.audio_settings_no_compensation_suffix()}` },
+              { value: "0", label: `0%${m.audio_settings_no_compensation_suffix()}` },
               { value: "5", label: "5%" },
               { value: "10", label: "10%" },
               { value: "15", label: "15%" },
-              { value: "20", label: "20%" },
+              { value: "20", label: `20%${20 === AUDIO_DEFAULTS.packetLossPerc ? m.audio_settings_default_suffix() : ''}` },
               { value: "25", label: "25%" },
               { value: "30", label: "30%" },
             ]}
-            onChange={(e) =>
-              handleAudioConfigChange(
-                audioBitrate,
-                audioComplexity,
-                audioDTXEnabled,
-                audioFECEnabled,
-                audioBufferPeriods,
-                parseInt(e.target.value)
-              )
-            }
+            onChange={(e) => handleAudioConfigChange({ packetLossPerc: parseInt(e.target.value) })}
           />
         </SettingsItem>
 
