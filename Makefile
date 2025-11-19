@@ -12,6 +12,10 @@ BUILDKIT_FLAVOR := arm-rockchip830-linux-uclibcgnueabihf
 BUILDKIT_PATH ?= /opt/jetkvm-native-buildkit
 SKIP_NATIVE_IF_EXISTS ?= 0
 SKIP_UI_BUILD ?= 0
+ENABLE_SYNC_TRACE ?= 0
+
+CMAKE_BUILD_TYPE ?= Release
+
 GO_BUILD_ARGS := -tags netgo,timetzdata,nomsgpack
 GO_RELEASE_BUILD_ARGS := -trimpath $(GO_BUILD_ARGS)
 GO_LDFLAGS := \
@@ -46,6 +50,7 @@ build_native:
 		echo "Building native..."; \
 			CC="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-gcc" \
 			LD="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-ld" \
+			CMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) \
 			./scripts/build_cgo.sh; \
 	fi
 

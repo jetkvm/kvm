@@ -10,8 +10,13 @@
     ]
   },
   "git.ignoreLimitWarning": true,
-  "cmake.sourceDirectory": "/workspaces/kvm-static-ip/internal/native/cgo",
+  "cmake.sourceDirectory": "${workspaceFolder}/internal/native/cgo",
   "cmake.ignoreCMakeListsMissing": true,
+  "C_Cpp.inlayHints.autoDeclarationTypes.enabled": true,
+  "C_Cpp.inlayHints.parameterNames.enabled": true,
+  "C_Cpp.inlayHints.referenceOperator.enabled": true,
+  "TARGET_IP": "192.168.0.199",
+  "DEBUG_PORT": "2345",
   "json.schemas": [
     {
       "fileMatch": [

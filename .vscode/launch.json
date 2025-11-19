@@ -1,0 +1,28 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "GDB Debug - Native (binary)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "internal/native/cgo/build/jknative-bin",
+            "args": [],
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb-multiarch",
+            "miDebuggerServerAddress": "${config:TARGET_IP}:${config:DEBUG_PORT}",
+            "targetArchitecture": "arm",
+            "preLaunchTask": "deploy",
+            "setupCommands": [
+                {
+                    "description": "Pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "externalConsole": true
+        }
+    ]
+}

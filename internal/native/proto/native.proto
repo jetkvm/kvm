@@ -1,0 +1,258 @@
+syntax = "proto3";
+
+package native;
+
+option go_package = "github.com/jetkvm/kvm/internal/native/proto";
+
+// NativeService provides methods to interact with the native layer
+service NativeService {
+  // Ready check
+  rpc IsReady(IsReadyRequest) returns (IsReadyResponse);
+
+  // Video methods
+  rpc VideoSetSleepMode(VideoSetSleepModeRequest) returns (Empty);
+  rpc VideoGetSleepMode(Empty) returns (VideoGetSleepModeResponse);
+  rpc VideoSleepModeSupported(Empty) returns (VideoSleepModeSupportedResponse);
+  rpc VideoSetQualityFactor(VideoSetQualityFactorRequest) returns (Empty);
+  rpc VideoGetQualityFactor(Empty) returns (VideoGetQualityFactorResponse);
+  rpc VideoSetEDID(VideoSetEDIDRequest) returns (Empty);
+  rpc VideoGetEDID(Empty) returns (VideoGetEDIDResponse);
+  rpc VideoLogStatus(Empty) returns (VideoLogStatusResponse);
+  rpc VideoStop(Empty) returns (Empty);
+  rpc VideoStart(Empty) returns (Empty);
+
+  // UI methods
+  rpc GetLVGLVersion(Empty) returns (GetLVGLVersionResponse);
+  rpc UIObjHide(UIObjHideRequest) returns (UIObjHideResponse);
+  rpc UIObjShow(UIObjShowRequest) returns (UIObjShowResponse);
+  rpc UISetVar(UISetVarRequest) returns (Empty);
+  rpc UIGetVar(UIGetVarRequest) returns (UIGetVarResponse);
+  rpc UIObjAddState(UIObjAddStateRequest) returns (UIObjAddStateResponse);
+  rpc UIObjClearState(UIObjClearStateRequest) returns (UIObjClearStateResponse);
+  rpc UIObjAddFlag(UIObjAddFlagRequest) returns (UIObjAddFlagResponse);
+  rpc UIObjClearFlag(UIObjClearFlagRequest) returns (UIObjClearFlagResponse);
+  rpc UIObjSetOpacity(UIObjSetOpacityRequest) returns (UIObjSetOpacityResponse);
+  rpc UIObjFadeIn(UIObjFadeInRequest) returns (UIObjFadeInResponse);
+  rpc UIObjFadeOut(UIObjFadeOutRequest) returns (UIObjFadeOutResponse);
+  rpc UIObjSetLabelText(UIObjSetLabelTextRequest) returns (UIObjSetLabelTextResponse);
+  rpc UIObjSetImageSrc(UIObjSetImageSrcRequest) returns (UIObjSetImageSrcResponse);
+  rpc DisplaySetRotation(DisplaySetRotationRequest) returns (DisplaySetRotationResponse);
+  rpc UpdateLabelIfChanged(UpdateLabelIfChangedRequest) returns (Empty);
+  rpc UpdateLabelAndChangeVisibility(UpdateLabelAndChangeVisibilityRequest) returns (Empty);
+  rpc SwitchToScreenIf(SwitchToScreenIfRequest) returns (Empty);
+  rpc SwitchToScreenIfDifferent(SwitchToScreenIfDifferentRequest) returns (Empty);
+
+  // Testing
+  rpc DoNotUseThisIsForCrashTestingOnly(Empty) returns (Empty);
+
+  // Events stream
+  rpc StreamEvents(Empty) returns (stream Event);
+}
+
+// Messages
+message Empty {}
+
+message IsReadyRequest {}
+
+message IsReadyResponse {
+  bool ready = 1;
+  string error = 2;
+  bool video_ready = 3;
+}
+
+message VideoState {
+  bool ready = 1;
+  string error = 2;
+  int32 width = 3;
+  int32 height = 4;
+  double frame_per_second = 5;
+}
+
+message VideoSetSleepModeRequest {
+  bool enabled = 1;
+}
+
+message VideoGetSleepModeResponse {
+  bool enabled = 1;
+}
+
+message VideoSleepModeSupportedResponse {
+  bool supported = 1;
+}
+
+message VideoSetQualityFactorRequest {
+  double factor = 1;
+}
+
+message VideoGetQualityFactorResponse {
+  double factor = 1;
+}
+
+message VideoSetEDIDRequest {
+  string edid = 1;
+}
+
+message VideoGetEDIDResponse {
+  string edid = 1;
+}
+
+message VideoLogStatusResponse {
+  string status = 1;
+}
+
+message GetLVGLVersionResponse {
+  string version = 1;
+}
+
+message UIObjHideRequest {
+  string obj_name = 1;
+}
+
+message UIObjHideResponse {
+  bool success = 1;
+}
+
+message UIObjShowRequest {
+  string obj_name = 1;
+}
+
+message UIObjShowResponse {
+  bool success = 1;
+}
+
+message UISetVarRequest {
+  string name = 1;
+  string value = 2;
+}
+
+message UIGetVarRequest {
+  string name = 1;
+}
+
+message UIGetVarResponse {
+  string value = 1;
+}
+
+message UIObjAddStateRequest {
+  string obj_name = 1;
+  string state = 2;
+}
+
+message UIObjAddStateResponse {
+  bool success = 1;
+}
+
+message UIObjClearStateRequest {
+  string obj_name = 1;
+  string state = 2;
+}
+
+message UIObjClearStateResponse {
+  bool success = 1;
+}
+
+message UIObjAddFlagRequest {
+  string obj_name = 1;
+  string flag = 2;
+}
+
+message UIObjAddFlagResponse {
+  bool success = 1;
+}
+
+message UIObjClearFlagRequest {
+  string obj_name = 1;
+  string flag = 2;
+}
+
+message UIObjClearFlagResponse {
+  bool success = 1;
+}
+
+message UIObjSetOpacityRequest {
+  string obj_name = 1;
+  int32 opacity = 2;
+}
+
+message UIObjSetOpacityResponse {
+  bool success = 1;
+}
+
+message UIObjFadeInRequest {
+  string obj_name = 1;
+  uint32 duration = 2;
+}
+
+message UIObjFadeInResponse {
+  bool success = 1;
+}
+
+message UIObjFadeOutRequest {
+  string obj_name = 1;
+  uint32 duration = 2;
+}
+
+message UIObjFadeOutResponse {
+  bool success = 1;
+}
+
+message UIObjSetLabelTextRequest {
+  string obj_name = 1;
+  string text = 2;
+}
+
+message UIObjSetLabelTextResponse {
+  bool success = 1;
+}
+
+message UIObjSetImageSrcRequest {
+  string obj_name = 1;
+  string image = 2;
+}
+
+message UIObjSetImageSrcResponse {
+  bool success = 1;
+}
+
+message DisplaySetRotationRequest {
+  uint32 rotation = 1;
+}
+
+message DisplaySetRotationResponse {
+  bool success = 1;
+}
+
+message UpdateLabelIfChangedRequest {
+  string obj_name = 1;
+  string new_text = 2;
+}
+
+message UpdateLabelAndChangeVisibilityRequest {
+  string obj_name = 1;
+  string new_text = 2;
+}
+
+message SwitchToScreenIfRequest {
+  string screen_name = 1;
+  repeated string should_switch = 2;
+}
+
+message SwitchToScreenIfDifferentRequest {
+  string screen_name = 1;
+}
+
+message Event {
+  string type = 1;
+  oneof data {
+    VideoState video_state = 2;
+    string indev_event = 3;
+    string rpc_event = 4;
+    VideoFrame video_frame = 5;
+  }
+}
+
+message VideoFrame {
+  bytes frame = 1;
+  int64 duration_ns = 2;
+}
+
