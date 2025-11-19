@@ -3,7 +3,7 @@ BUILDDATE := $(shell date -u +%FT%T%z)
 BUILDTS   := $(shell date -u +%s)
 REVISION  := $(shell git rev-parse HEAD)
 VERSION_DEV := 0.5.0-dev$(shell date +%Y%m%d%H%M)
-VERSION := 0.4.9
+VERSION := 0.4.10
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
