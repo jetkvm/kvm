@@ -1,3 +1,5 @@
+import { KeySequence } from "@hooks/stores";
+
 export const formatters = {
   date: (date: Date, options?: Intl.DateTimeFormatOptions) =>
     new Intl.DateTimeFormat("en-US", {
@@ -37,6 +39,7 @@ export const formatters = {
       ...(options || {}),
     });
 
+    // Note, do not translate the unit names in DIVISIONS, as they must match Intl.RelativeTimeFormatUnit
     const DIVISIONS: {
       amount: number;
       name: Intl.RelativeTimeFormatUnit;
@@ -242,4 +245,23 @@ export function isAndroid() {
 export function isChromeOS() {
   /* ChromeOS sets navigator.platform to Linux :/ */
   return !!navigator.userAgent.match(" CrOS ");
+}
+
+export function normalizeSortOrders(macros: KeySequence[]): KeySequence[] {
+  return macros.map((macro, index) => ({
+    ...macro,
+    sortOrder: index + 1,
+  }));
+}
+
+export function deleteCookie(name: string, domain?: string, path = "/") {
+  const domainPart = domain ? `; domain=${domain}` : "";
+  // max-age=0 removes the cookie immediately in modern browsers
+  document.cookie = `${name}=; path=${path}; max-age=0${domainPart}`;
+  // fallback: set an expires in the past for older agents
+  document.cookie = `${name}=; path=${path}; expires=Thu, 01 Jan 1970 00:00:00 GMT${domainPart}`;
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }

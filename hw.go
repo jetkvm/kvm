@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"os/exec"
+
 	"github.com/jetkvm/kvm/internal/ota"
 )
 
@@ -30,14 +32,6 @@ func extractSerialNumber() (string, error) {
 	return matches[1], nil
 }
 
-<<<<<<< HEAD
-func readOtpEntropy() ([]byte, error) { //nolint:unused
-	content, err := os.ReadFile("/sys/bus/nvmem/devices/rockchip-otp0/nvmem")
-	if err != nil {
-		return nil, err
-	}
-	return content[0x17:0x1C], nil
-=======
 func hwReboot(force bool, postRebootAction *ota.PostRebootAction, delay time.Duration) error {
 	logger.Info().Dur("delayMs", delay).Msg("reboot requested")
 
@@ -69,7 +63,6 @@ func hwReboot(force bool, postRebootAction *ota.PostRebootAction, delay time.Dur
 	}()
 
 	return nil
->>>>>>> 752fb55 (refactor: OTA (#912))
 }
 
 var deviceID string

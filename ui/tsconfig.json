@@ -22,6 +22,7 @@
     /* Import Aliases */
     "paths": {
       "@components/*": ["./src/components/*"],
+      "@hooks/*": ["./src/hooks/*"],
       "@routes/*": ["./src/routes/*"],
       "@assets/*": ["./src/assets/*"],
       "@/*": ["./src/*"]
