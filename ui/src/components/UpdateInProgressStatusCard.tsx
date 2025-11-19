@@ -1,10 +1,9 @@
+import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
+
+import { Button } from "@components/Button";
+import { GridCard } from "@components/Card";
+import LoadingSpinner from "@components/LoadingSpinner";
 import { cx } from "@/cva.config";
-
-import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
-
-import { Button } from "./Button";
-import { GridCard } from "./Card";
-import LoadingSpinner from "./LoadingSpinner";
 
 export default function UpdateInProgressStatusCard() {
   const { navigateTo } = useDeviceUiNavigation();
@@ -22,7 +21,7 @@ export default function UpdateInProgressStatusCard() {
               <div className="text-sm leading-none">
                 <div className="flex items-center gap-x-1">
                   <span className={cx("transition")}>
-                    Please don{"'"}t turn off your device...
+                    Please don&apos;t turn off your device…
                   </span>
                 </div>
               </div>

@@ -24,5 +24,6 @@
       ],
       "url": "./internal/ota/testdata/ota.schema.json"
     }
-  ]
+  ],
+  "typescript.tsdk": "./ui/node_modules/typescript/lib"
 }

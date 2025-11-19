@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-
 import { useSettingsStore } from "@hooks/stores";
 import { JsonRpcError, JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
+import { SystemVersionInfo } from "@hooks/useVersion";
+
 import { Button } from "@components/Button";
 import Checkbox, { CheckboxWithLabel } from "@components/Checkbox";
 import { ConfirmDialog } from "@components/ConfirmDialog";
@@ -15,10 +16,8 @@ import { InputFieldWithLabel } from "@components/InputField";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { isOnDevice } from "@/main";
 import notifications from "@/notifications";
-import { m } from "@localizations/messages.js";
 import { sleep } from "@/utils";
 import { checkUpdateComponents, UpdateComponents } from "@/utils/jsonrpc";
-import { SystemVersionInfo } from "@hooks/useVersion";
 
 import { FeatureFlag } from "../components/FeatureFlag";
 
@@ -79,8 +78,11 @@ export default function SettingsAdvancedRoute() {
     (enabled: boolean) => {
       send("setUsbEmulationState", { enabled: enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
+          const errorMsg = resp.error.data || "Unknown error";
           notifications.error(
-            `Failed to ${enabled ? "enable" : "disable"} USB emulation: ${resp.error.data || "Unknown error"}`,
+            enabled
+              ? `Failed to enable USB emulation: ${errorMsg}`
+              : `Failed to disable USB emulation: ${errorMsg}`
           );
           return;
         }
@@ -95,7 +97,7 @@ export default function SettingsAdvancedRoute() {
     send("resetConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to reset configuration: ${resp.error.data || "Unknown error"}`,
+          `Failed to reset configuration: ${resp.error.data || "Unknown error"}`
         );
         return;
       }
@@ -107,7 +109,7 @@ export default function SettingsAdvancedRoute() {
     send("setSSHKeyState", { sshKey }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
         notifications.error(
-          `Failed to update SSH key: ${resp.error.data || "Unknown error"}`,
+          `Failed to update SSH key: ${resp.error.data || "Unknown error"}`
         );
         return;
       }
@@ -120,7 +122,7 @@ export default function SettingsAdvancedRoute() {
       send("setDevModeState", { enabled: developerMode }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to set dev mode: ${resp.error.data || "Unknown error"}`,
+            `Failed to set dev mode: ${resp.error.data || "Unknown error"}`
           );
           return;
         }
@@ -135,7 +137,7 @@ export default function SettingsAdvancedRoute() {
       send("setDevChannelState", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
           notifications.error(
-            `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
+            `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`
           );
           return;
         }
@@ -149,20 +151,19 @@ export default function SettingsAdvancedRoute() {
     (enabled: boolean) => {
       send("setLocalLoopbackOnly", { enabled }, (resp: JsonRpcResponse) => {
         if ("error" in resp) {
+          const errorMsg = resp.error.data || "Unknown error";
           notifications.error(
-            `Failed to ${enabled ? "enable" : "disable"} loopback-only mode: ${resp.error.data || "Unknown error"}`,
+            enabled
+              ? `Failed to enable loopback-only mode: ${errorMsg}`
+              : `Failed to disable loopback-only mode: ${errorMsg}`
           );
           return;
         }
         setLocalLoopbackOnly(enabled);
         if (enabled) {
-          notifications.success(
-            "Loopback-only mode enabled. Restart your device to apply.",
-          );
+          notifications.success("Loopback-only mode enabled. Restart your device to apply.");
         } else {
-          notifications.success(
-            "Loopback-only mode disabled. Restart your device to apply.",
-          );
+          notifications.success("Loopback-only mode disabled. Restart your device to apply.");
         }
       });
     },
@@ -188,10 +189,9 @@ export default function SettingsAdvancedRoute() {
   }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
 
   const handleVersionUpdateError = useCallback((error?: JsonRpcError | string) => {
+    const errorMessage = typeof error === "string" ? error : (error?.data ?? error?.message ?? "Unknown error");
     notifications.error(
-      m.advanced_error_version_update({
-        error: typeof error === "string" ? error : (error?.data ?? error?.message ?? m.unknown_error())
-      }),
+      `Failed to initiate version update: ${errorMessage}`,
       { duration: 1000 * 15 } // 15 seconds
     );
     setCustomVersionUpdateLoading(false);
@@ -289,17 +289,17 @@ export default function SettingsAdvancedRoute() {
                 <div className="space-y-3">
                   <div className="space-y-2">
                     <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                      {m.advanced_developer_mode_enabled_title()}
+                      Developer Mode Enabled
                     </h3>
                     <div>
                       <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
-                        <li>{m.advanced_developer_mode_warning_security()}</li>
-                        <li>{m.advanced_developer_mode_warning_risks()}</li>
+                        <li>Security is weakened while active</li>
+                        <li>Only use if you understand the risks</li>
                       </ul>
                     </div>
                   </div>
                   <div className="text-xs text-slate-700 dark:text-slate-300">
-                    {m.advanced_developer_mode_warning_advanced()}
+                    For advanced users only. Not for production use.
                   </div>
                 </div>
               </div>
@@ -308,24 +308,24 @@ export default function SettingsAdvancedRoute() {
             {isOnDevice && (
               <div className="space-y-4">
                 <SettingsItem
-                  title={m.advanced_ssh_access_title()}
-                  description={m.advanced_ssh_access_description()}
+                  title="SSH Access"
+                  description="Add your SSH public key to enable secure remote access to the device"
                 />
                 <TextAreaWithLabel
-                  label={m.advanced_ssh_public_key_label()}
+                  label="SSH Public Key"
                   value={sshKey || ""}
                   rows={3}
                   onChange={e => setSSHKey(e.target.value)}
-                  placeholder={m.advanced_ssh_public_key_placeholder()}
+                  placeholder="Enter your SSH public key"
                 />
                 <p className="text-xs text-slate-600 dark:text-slate-400">
-                  {m.advanced_ssh_default_user()}<strong>root</strong>.
+                  The default SSH user is<strong>root</strong>.
                 </p>
                 <div className="flex items-center gap-x-2">
                   <Button
                     size="SM"
                     theme="primary"
-                    text={m.advanced_update_ssh_key_button()}
+                    text="Update SSH Key"
                     onClick={handleUpdateSSHKey}
                   />
                 </div>
@@ -335,16 +335,16 @@ export default function SettingsAdvancedRoute() {
             <FeatureFlag minAppVersion="0.4.10" name="version-update">
               <div className="space-y-4">
                 <SettingsItem
-                  title={m.advanced_version_update_title()}
-                  description={m.advanced_version_update_description()}
+                  title="Update to Specific Version"
+                  description="Install a specific version from GitHub releases"
                 />
 
                 <SelectMenuBasic
-                  label={m.advanced_version_update_target_label()}
+                  label="What to update"
                   options={[
-                    { value: "app", label: m.advanced_version_update_target_app() },
-                    { value: "system", label: m.advanced_version_update_target_system() },
-                    { value: "both", label: m.advanced_version_update_target_both() },
+                    { value: "app", label: "App only" },
+                    { value: "system", label: "System only" },
+                    { value: "both", label: "Both App and System" },
                   ]}
                   value={updateTarget}
                   onChange={e => setUpdateTarget(e.target.value)}
@@ -352,7 +352,7 @@ export default function SettingsAdvancedRoute() {
 
                 {(updateTarget === "app" || updateTarget === "both") && (
                   <InputFieldWithLabel
-                    label={m.advanced_version_update_app_label()}
+                    label="App Version"
                     placeholder="0.4.9"
                     value={appVersion}
                     onChange={e => setAppVersion(e.target.value)}
@@ -361,7 +361,7 @@ export default function SettingsAdvancedRoute() {
 
                 {(updateTarget === "system" || updateTarget === "both") && (
                   <InputFieldWithLabel
-                    label={m.advanced_version_update_system_label()}
+                    label="System Version"
                     placeholder="0.4.9"
                     value={systemVersion}
                     onChange={e => setSystemVersion(e.target.value)}
@@ -369,21 +369,21 @@ export default function SettingsAdvancedRoute() {
                 )}
 
                 <p className="text-xs text-slate-600 dark:text-slate-400">
-                  {m.advanced_version_update_helper()}{" "}
+                  Find available versions on the{" "}
                   <a
                     href="https://github.com/jetkvm/kvm/releases"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-medium text-blue-700 hover:underline dark:text-blue-500"
                   >
-                    {m.advanced_version_update_github_link()}
+                    JetKVM releases page
                   </a>
                 </p>
 
                 <div>
                   <CheckboxWithLabel
-                    label={m.advanced_version_update_reset_config_label()}
-                    description={m.advanced_version_update_reset_config_description()}
+                    label="Reset configuration"
+                    description="Reset configuration after the update"
                     checked={resetConfig}
                     onChange={e => setResetConfig(e.target.checked)}
                   />
@@ -400,7 +400,7 @@ export default function SettingsAdvancedRoute() {
                 <Button
                   size="SM"
                   theme="primary"
-                  text={m.advanced_version_update_button()}
+                  text="Update to Version"
                   disabled={
                     (updateTarget === "app" && !appVersion) ||
                     (updateTarget === "system" && !systemVersion) ||
@@ -417,8 +417,8 @@ export default function SettingsAdvancedRoute() {
         ) : null}
 
         <SettingsItem
-          title={m.advanced_loopback_only_title()}
-          description={m.advanced_loopback_only_description()}
+          title="Loopback-Only Mode"
+          description="Restrict web interface access to localhost only (127.0.0.1)"
         >
           <Checkbox
             checked={localLoopbackOnly}
@@ -464,8 +464,10 @@ export default function SettingsAdvancedRoute() {
                 size="SM"
                 theme="light"
                 text="Reset Config"
-                onClick={() => {
+                onClick={async () => {
                   handleResetConfig();
+                  // Add 2s delay between resetting the configuration and calling reload() to prevent reload from interrupting the RPC call to reset things.
+                  await sleep(2000);
                   window.location.reload();
                 }}
               />

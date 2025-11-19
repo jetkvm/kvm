@@ -1,502 +1,237 @@
-import { useCallback, useEffect, useState } from "react";
-import { useSettingsStore } from "@hooks/stores";
-import { JsonRpcError, JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
-import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
-import { SystemVersionInfo } from "@hooks/useVersion";
+import { useEffect, useState } from "react";
+import { BacklightSettings, useSettingsStore } from "@hooks/stores";
+import { JsonRpcResponse, useJsonRpc } from "@hooks/useJsonRpc";
 
-import { Button } from "@components/Button";
-import Checkbox, { CheckboxWithLabel } from "@components/Checkbox";
-import { ConfirmDialog } from "@components/ConfirmDialog";
-import { GridCard } from "@components/Card";
+import { Checkbox } from "@components/Checkbox";
+import { FeatureFlag } from "@components/FeatureFlag";
+import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
+import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
 import { NestedSettingsGroup } from "@components/NestedSettingsGroup";
-import { TextAreaWithLabel } from "@components/TextArea";
-import { InputFieldWithLabel } from "@components/InputField";
-import { SelectMenuBasic } from "@components/SelectMenuBasic";
-import { isOnDevice } from "@/main";
+import { UsbDeviceSetting } from "@components/UsbDeviceSetting";
+import { UsbInfoSetting } from "@components/UsbInfoSetting";
 import notifications from "@/notifications";
-import { sleep } from "@/utils";
-import { checkUpdateComponents, UpdateComponents } from "@/utils/jsonrpc";
 
-
-import { FeatureFlag } from "../components/FeatureFlag";
-
-export default function SettingsAdvancedRoute() {
+export default function SettingsHardwareRoute() {
   const { send } = useJsonRpc();
-  const { navigateTo } = useDeviceUiNavigation();
-
-  const [sshKey, setSSHKey] = useState<string>("");
-  const { setDeveloperMode } = useSettingsStore();
-  const [devChannel, setDevChannel] = useState(false);
-  const [usbEmulationEnabled, setUsbEmulationEnabled] = useState(false);
-  const [showLoopbackWarning, setShowLoopbackWarning] = useState(false);
-  const [localLoopbackOnly, setLocalLoopbackOnly] = useState(false);
-  const [updateTarget, setUpdateTarget] = useState<string>("app");
-  const [appVersion, setAppVersion] = useState<string>("");
-  const [systemVersion, setSystemVersion] = useState<string>("");
-  const [resetConfig, setResetConfig] = useState(false);
-  const [versionChangeAcknowledged, setVersionChangeAcknowledged] = useState(false);
-  const [customVersionUpdateLoading, setCustomVersionUpdateLoading] = useState(false);
   const settings = useSettingsStore();
+  const { displayRotation, setDisplayRotation } = useSettingsStore();
+  const [powerSavingEnabled, setPowerSavingEnabled] = useState(false);
+
+  const handleDisplayRotationChange = (rotation: string) => {
+    setDisplayRotation(rotation);
+    handleDisplayRotationSave();
+  };
+
+  const handleDisplayRotationSave = () => {
+    send("setDisplayRotation", { params: { rotation: displayRotation } }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to set display orientation: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      notifications.success("Display orientation updated successfully");
+    });
+  };
+
+  const { backlightSettings, setBacklightSettings } = useSettingsStore();
+
+  const handleBacklightSettingsChange = (settings: BacklightSettings) => {
+    // If the user has set the display to dim after it turns off, set the dim_after
+    // value to never.
+    if (settings.dim_after > settings.off_after && settings.off_after != 0) {
+      settings.dim_after = 0;
+    }
+
+    setBacklightSettings(settings);
+    handleBacklightSettingsSave(settings);
+  };
+
+  const handleBacklightSettingsSave = (backlightSettings: BacklightSettings) => {
+    send("setBacklightSettings", { params: backlightSettings }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(
+          `Failed to set backlight settings: ${resp.error.data || "Unknown error"}`,
+        );
+        return;
+      }
+      notifications.success("Backlight settings updated successfully");
+    });
+  };
+
+  const handleBacklightMaxBrightnessChange = (max_brightness: number) => {
+    const settings = { ...backlightSettings, max_brightness };
+    handleBacklightSettingsChange(settings);
+  };
+
+  const handleBacklightDimAfterChange = (dim_after: number) => {
+    const settings = { ...backlightSettings, dim_after };
+    handleBacklightSettingsChange(settings);
+  };
+
+  const handleBacklightOffAfterChange = (off_after: number) => {
+    const settings = { ...backlightSettings, off_after };
+    handleBacklightSettingsChange(settings);
+  };
+
+  const handlePowerSavingChange = (enabled: boolean) => {
+    setPowerSavingEnabled(enabled);
+    const duration = enabled ? 90 : -1;
+    send("setVideoSleepMode", { duration }, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        notifications.error(`Failed to set power saving mode: ${resp.error.data || "Unknown error"}`);
+        setPowerSavingEnabled(!enabled); // Attempt to revert on error
+        return;
+      }
+      notifications.success(enabled ? 'Power saving mode enabled' : 'Power saving mode disabled');
+    });
+  };
 
   useEffect(() => {
-    send("getDevModeState", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      const result = resp.result as { enabled: boolean };
-      setDeveloperMode(result.enabled);
-    });
-
-    send("getSSHKeyState", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      setSSHKey(resp.result as string);
-    });
-
-    send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      setUsbEmulationEnabled(resp.result as boolean);
-    });
-
-    send("getDevChannelState", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      setDevChannel(resp.result as boolean);
-    });
-
-    send("getLocalLoopbackOnly", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      setLocalLoopbackOnly(resp.result as boolean);
-    });
-  }, [send, setDeveloperMode]);
-
-  const getUsbEmulationState = useCallback(() => {
-    send("getUsbEmulationState", {}, (resp: JsonRpcResponse) => {
-      if ("error" in resp) return;
-      setUsbEmulationEnabled(resp.result as boolean);
-    });
-  }, [send]);
-
-  const handleUsbEmulationToggle = useCallback(
-    (enabled: boolean) => {
-      send("setUsbEmulationState", { enabled: enabled }, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          notifications.error(
-            `Failed to ${enabled ? "enable" : "disable"} USB emulation: ${resp.error.data || "Unknown error"}`,
-          );
-          return;
-        }
-        setUsbEmulationEnabled(enabled);
-        getUsbEmulationState();
-      });
-    },
-    [getUsbEmulationState, send],
-  );
-
-  const handleResetConfig = useCallback(() => {
-    send("resetConfig", {}, (resp: JsonRpcResponse) => {
+    send("getBacklightSettings", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
-        notifications.error(
-          `Failed to reset configuration: ${resp.error.data || "Unknown error"}`,
+        return notifications.error(
+          `Failed to get backlight settings: ${resp.error.data || "Unknown error"}`,
         );
+      }
+      const result = resp.result as BacklightSettings;
+      setBacklightSettings(result);
+    });
+  }, [send, setBacklightSettings]);
+
+  useEffect(() => {
+    send("getVideoSleepMode", {}, (resp: JsonRpcResponse) => {
+      if ("error" in resp) {
+        console.error("Failed to get power saving mode:", resp.error);
         return;
       }
-      notifications.success("Configuration reset to default successfully");
+      const result = resp.result as { enabled: boolean; duration: number };
+      setPowerSavingEnabled(result.duration >= 0);
     });
   }, [send]);
-
-  const handleUpdateSSHKey = useCallback(() => {
-    send("setSSHKeyState", { sshKey }, (resp: JsonRpcResponse) => {
-      if ("error" in resp) {
-        notifications.error(
-          `Failed to update SSH key: ${resp.error.data || "Unknown error"}`,
-        );
-        return;
-      }
-      notifications.success("SSH key updated successfully");
-    });
-  }, [send, sshKey]);
-
-  const handleDevModeChange = useCallback(
-    (developerMode: boolean) => {
-      send("setDevModeState", { enabled: developerMode }, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          notifications.error(
-            `Failed to set dev mode: ${resp.error.data || "Unknown error"}`,
-          );
-          return;
-        }
-        setDeveloperMode(developerMode);
-      });
-    },
-    [send, setDeveloperMode],
-  );
-
-  const handleDevChannelChange = useCallback(
-    (enabled: boolean) => {
-      send("setDevChannelState", { enabled }, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          notifications.error(
-            `Failed to set dev channel state: ${resp.error.data || "Unknown error"}`,
-          );
-          return;
-        }
-        setDevChannel(enabled);
-      });
-    },
-    [send, setDevChannel],
-  );
-
-  const applyLoopbackOnlyMode = useCallback(
-    (enabled: boolean) => {
-      send("setLocalLoopbackOnly", { enabled }, (resp: JsonRpcResponse) => {
-        if ("error" in resp) {
-          notifications.error(
-            `Failed to ${enabled ? "enable" : "disable"} loopback-only mode: ${resp.error.data || "Unknown error"}`,
-          );
-          return;
-        }
-        setLocalLoopbackOnly(enabled);
-        if (enabled) {
-          notifications.success(
-            "Loopback-only mode enabled. Restart your device to apply.",
-          );
-        } else {
-          notifications.success(
-            "Loopback-only mode disabled. Restart your device to apply.",
-          );
-        }
-      });
-    },
-    [send, setLocalLoopbackOnly],
-  );
-
-  const handleLoopbackOnlyModeChange = useCallback(
-    (enabled: boolean) => {
-      // If trying to enable loopback-only mode, show warning first
-      if (enabled) {
-        setShowLoopbackWarning(true);
-      } else {
-        // If disabling, just proceed
-        applyLoopbackOnlyMode(false);
-      }
-    },
-    [applyLoopbackOnlyMode, setShowLoopbackWarning],
-  );
-
-  const confirmLoopbackModeEnable = useCallback(() => {
-    applyLoopbackOnlyMode(true);
-    setShowLoopbackWarning(false);
-  }, [applyLoopbackOnlyMode, setShowLoopbackWarning]);
-
-  const handleVersionUpdateError = useCallback((error?: JsonRpcError | string) => {
-    notifications.error(
-      m.advanced_error_version_update({
-        error: typeof error === "string" ? error : (error?.data ?? error?.message ?? m.unknown_error())
-      }),
-      { duration: 1000 * 15 } // 15 seconds
-    );
-    setCustomVersionUpdateLoading(false);
-  }, []);
-
-  const handleCustomVersionUpdate = useCallback(async () => {
-    const components: UpdateComponents = {};
-    if (["app", "both"].includes(updateTarget) && appVersion) components.app = appVersion;
-    if (["system", "both"].includes(updateTarget) && systemVersion) components.system = systemVersion;
-    let versionInfo: SystemVersionInfo | undefined;
-
-    try {
-      // we do not need to set it to false if check succeeds,
-      // because it will be redirected to the update page later
-      setCustomVersionUpdateLoading(true);
-      versionInfo = await checkUpdateComponents({
-        components,
-      }, devChannel);
-    } catch (error: unknown) {
-      const jsonRpcError = error as JsonRpcError;
-      handleVersionUpdateError(jsonRpcError);
-      return;
-    }
-
-    let hasUpdate = false;
-
-    const pageParams = new URLSearchParams();
-    if (components.app && versionInfo?.remote?.appVersion && versionInfo?.appUpdateAvailable) {
-      hasUpdate = true;
-      pageParams.set("custom_app_version", versionInfo.remote?.appVersion);
-    }
-    if (components.system && versionInfo?.remote?.systemVersion && versionInfo?.systemUpdateAvailable) {
-      hasUpdate = true;
-      pageParams.set("custom_system_version", versionInfo.remote?.systemVersion);
-    }
-    pageParams.set("reset_config", resetConfig.toString());
-
-    if (!hasUpdate) {
-      handleVersionUpdateError("No update available");
-      return;
-    }
-
-    // Navigate to update page
-    navigateTo(`/settings/general/update?${pageParams.toString()}`);
-  }, [
-    updateTarget, appVersion, systemVersion, devChannel,
-    navigateTo, resetConfig, handleVersionUpdateError,
-    setCustomVersionUpdateLoading
-  ]);
 
   return (
     <div className="space-y-4">
       <SettingsPageHeader
-        title="Advanced"
-        description="Access additional settings for troubleshooting and customization"
+        title="Hardware"
+        description={"Configure display settings and hardware options for your JetKVM device"}
       />
-
       <div className="space-y-4">
         <SettingsItem
-          title="Dev Channel Updates"
-          description="Receive early updates from the development channel"
+          title="Display Orientation"
+          description="Set the orientation of the display"
         >
-          <Checkbox
-            checked={devChannel}
+          <SelectMenuBasic
+            size="SM"
+            label=""
+            value={settings.displayRotation.toString()}
+            options={[
+              { value: "270", label: "Normal" },
+              { value: "90", label: "Inverted" },
+            ]}
             onChange={e => {
-              handleDevChannelChange(e.target.checked);
+              handleDisplayRotationChange(e.target.value);
             }}
           />
         </SettingsItem>
         <SettingsItem
-          title="Developer Mode"
-          description="Enable advanced features for developers"
+          title="Display Brightness"
+          description="Set the brightness of the display"
         >
-          <Checkbox
-            checked={settings.developerMode}
-            onChange={e => handleDevModeChange(e.target.checked)}
-          />
-        </SettingsItem>
-        {settings.developerMode ? (
-          <NestedSettingsGroup>
-            <GridCard>
-              <div className="flex items-start gap-x-4 p-4 select-none">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className="mt-1 h-8 w-8 shrink-0 text-amber-600 dark:text-amber-500"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                      {m.advanced_developer_mode_enabled_title()}
-                    </h3>
-                    <div>
-                      <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
-                        <li>{m.advanced_developer_mode_warning_security()}</li>
-                        <li>{m.advanced_developer_mode_warning_risks()}</li>
-                      </ul>
-                    </div>
-                  </div>
-                  <div className="text-xs text-slate-700 dark:text-slate-300">
-                    {m.advanced_developer_mode_warning_advanced()}
-                  </div>
-                </div>
-              </div>
-            </GridCard>
-
-            {isOnDevice && (
-              <div className="space-y-4">
-                <SettingsItem
-                  title={m.advanced_ssh_access_title()}
-                  description={m.advanced_ssh_access_description()}
-                />
-                <TextAreaWithLabel
-                  label={m.advanced_ssh_public_key_label()}
-                  value={sshKey || ""}
-                  rows={3}
-                  onChange={e => setSSHKey(e.target.value)}
-                  placeholder={m.advanced_ssh_public_key_placeholder()}
-                />
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  {m.advanced_ssh_default_user()}<strong>root</strong>.
-                </p>
-                <div className="flex items-center gap-x-2">
-                  <Button
-                    size="SM"
-                    theme="primary"
-                    text={m.advanced_update_ssh_key_button()}
-                    onClick={handleUpdateSSHKey}
-                  />
-                </div>
-              </div>
-            )}
-
-            <FeatureFlag minAppVersion="0.4.10" name="version-update">
-              <div className="space-y-4">
-                <SettingsItem
-                  title={m.advanced_version_update_title()}
-                  description={m.advanced_version_update_description()}
-                />
-
-                <SelectMenuBasic
-                  label={m.advanced_version_update_target_label()}
-                  options={[
-                    { value: "app", label: m.advanced_version_update_target_app() },
-                    { value: "system", label: m.advanced_version_update_target_system() },
-                    { value: "both", label: m.advanced_version_update_target_both() },
-                  ]}
-                  value={updateTarget}
-                  onChange={e => setUpdateTarget(e.target.value)}
-                />
-
-                {(updateTarget === "app" || updateTarget === "both") && (
-                  <InputFieldWithLabel
-                    label={m.advanced_version_update_app_label()}
-                    placeholder="0.4.9"
-                    value={appVersion}
-                    onChange={e => setAppVersion(e.target.value)}
-                  />
-                )}
-
-                {(updateTarget === "system" || updateTarget === "both") && (
-                  <InputFieldWithLabel
-                    label={m.advanced_version_update_system_label()}
-                    placeholder="0.4.9"
-                    value={systemVersion}
-                    onChange={e => setSystemVersion(e.target.value)}
-                  />
-                )}
-
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  {m.advanced_version_update_helper()}{" "}
-                  <a
-                    href="https://github.com/jetkvm/kvm/releases"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-medium text-blue-700 hover:underline dark:text-blue-500"
-                  >
-                    {m.advanced_version_update_github_link()}
-                  </a>
-                </p>
-
-                <div>
-                  <CheckboxWithLabel
-                    label={m.advanced_version_update_reset_config_label()}
-                    description={m.advanced_version_update_reset_config_description()}
-                    checked={resetConfig}
-                    onChange={e => setResetConfig(e.target.checked)}
-                  />
-                </div>
-
-                <div>
-                  <CheckboxWithLabel
-                    label="I understand version changes may break my device and require factory reset"
-                    checked={versionChangeAcknowledged}
-                    onChange={e => setVersionChangeAcknowledged(e.target.checked)}
-                  />
-                </div>
-
-                <Button
-                  size="SM"
-                  theme="primary"
-                  text={m.advanced_version_update_button()}
-                  disabled={
-                    (updateTarget === "app" && !appVersion) ||
-                    (updateTarget === "system" && !systemVersion) ||
-                    (updateTarget === "both" && (!appVersion || !systemVersion)) ||
-                    !versionChangeAcknowledged ||
-                    customVersionUpdateLoading
-                  }
-                  loading={customVersionUpdateLoading}
-                  onClick={handleCustomVersionUpdate}
-                />
-              </div>
-            </FeatureFlag>
-          </NestedSettingsGroup>
-        ) : null}
-
-        <SettingsItem
-          title={m.advanced_loopback_only_title()}
-          description={m.advanced_loopback_only_description()}
-        >
-          <Checkbox
-            checked={localLoopbackOnly}
-            onChange={e => handleLoopbackOnlyModeChange(e.target.checked)}
-          />
-        </SettingsItem>
-
-
-
-        <SettingsItem
-          title="Troubleshooting Mode"
-          description="Diagnostic tools and additional controls for troubleshooting and development purposes"
-        >
-          <Checkbox
-            defaultChecked={settings.debugMode}
+          <SelectMenuBasic
+            size="SM"
+            label=""
+            value={backlightSettings.max_brightness.toString()}
+            options={[
+              { value: "0", label: "Off" },
+              { value: "10", label: "Low" },
+              { value: "35", label: "Medium" },
+              { value: "64", label: "High" },
+            ]}
             onChange={e => {
-              settings.setDebugMode(e.target.checked);
+              handleBacklightMaxBrightnessChange(Number.parseInt(e.target.value));
             }}
           />
         </SettingsItem>
-
-        {settings.debugMode && (
+        {backlightSettings.max_brightness != 0 && (
           <NestedSettingsGroup>
             <SettingsItem
-              title="USB Emulation"
-              description="Control the USB emulation state"
+              title="Dim Display After"
+              description="Set how long to wait before dimming the display"
             >
-              <Button
+              <SelectMenuBasic
                 size="SM"
-                theme="light"
-                text={
-                  usbEmulationEnabled ? "Disable USB Emulation" : "Enable USB Emulation"
-                }
-                onClick={() => handleUsbEmulationToggle(!usbEmulationEnabled)}
+                label=""
+                value={backlightSettings.dim_after.toString()}
+                options={[
+                  { value: "0", label: "Never" },
+                  { value: "60", label: "1 minute" },
+                  { value: "300", label: "5 minutes" },
+                  { value: "600", label: "10 minutes" },
+                  { value: "1800", label: "30 minutes" },
+                  { value: "3600", label: "1 hour" },
+                ]}
+                onChange={e => {
+                  handleBacklightDimAfterChange(Number.parseInt(e.target.value));
+                }}
               />
             </SettingsItem>
-
             <SettingsItem
-              title="Reset Configuration"
-              description="Reset configuration to default. This will log you out."
+              title="Turn Off Display After"
+              description="Period of inactivity before display automatically turns off"
             >
-              <Button
+              <SelectMenuBasic
                 size="SM"
-                theme="light"
-                text="Reset Config"
-                onClick={() => {
-                  handleResetConfig();
-                  window.location.reload();
+                label=""
+                value={backlightSettings.off_after.toString()}
+                options={[
+                  { value: "0", label: "Never" },
+                  { value: "300", label: "5 minutes" },
+                  { value: "600", label: "10 minutes" },
+                  { value: "1800", label: "30 minutes" },
+                  { value: "3600", label: "1 hour" },
+                ]}
+                onChange={e => {
+                  handleBacklightOffAfterChange(Number.parseInt(e.target.value));
                 }}
               />
             </SettingsItem>
           </NestedSettingsGroup>
         )}
+        <p className="text-xs text-slate-600 dark:text-slate-400">
+          The display will wake up when the connection state changes, or when touched.
+        </p>
       </div>
 
-      <ConfirmDialog
-        open={showLoopbackWarning}
-        onClose={() => {
-          setShowLoopbackWarning(false);
-        }}
-        title="Enable Loopback-Only Mode?"
-        description={
-          <>
-            <p>
-              WARNING: This will restrict web interface access to localhost (127.0.0.1)
-              only.
-            </p>
-            <p>Before enabling this feature, make sure you have either:</p>
-            <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700 dark:text-slate-300">
-              <li>SSH access configured and tested</li>
-              <li>Cloud access enabled and working</li>
-            </ul>
-          </>
-        }
-        variant="warning"
-        confirmText="I Understand, Enable Anyway"
-        onConfirm={confirmLoopbackModeEnable}
-      />
+      <FeatureFlag minAppVersion="0.4.9">
+        <div className="space-y-4">
+          <div className="h-px w-full bg-slate-800/10 dark:bg-slate-300/20" />
+          <SettingsSectionHeader
+            title="Power Saving"
+            description="Reduce power consumption when not in use"
+          />
+          <SettingsItem
+            badge="Experimental"
+            title="HDMI Sleep Mode"
+            description="Reduce power consumption when the HDMI port is not in use"
+          >
+            <Checkbox
+              checked={powerSavingEnabled}
+              onChange={(e) => handlePowerSavingChange(e.target.checked)}
+            />
+          </SettingsItem>
+        </div>
+      </FeatureFlag>
+
+      <FeatureFlag minAppVersion="0.3.8">
+        <UsbDeviceSetting />
+      </FeatureFlag>
+
+      <FeatureFlag minAppVersion="0.3.8">
+        <UsbInfoSetting />
+      </FeatureFlag>
     </div>
   );
 }

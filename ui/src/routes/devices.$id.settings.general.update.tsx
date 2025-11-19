@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
-
 import { useJsonRpc } from "@hooks/useJsonRpc";
 import { UpdateState, useUpdateStore } from "@hooks/stores";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
 import { useVersion } from "@hooks/useVersion";
+import UpdatingStatusCard, { type UpdatePart } from "@components/UpdatingStatusCard";
+
 import { Button } from "@components/Button";
 import Card from "@components/Card";
 import LoadingSpinner from "@components/LoadingSpinner";
-import UpdatingStatusCard, { type UpdatePart } from "@components/UpdatingStatusCard";
-import { m } from "@localizations/messages.js";
 import { sleep } from "@/utils";
 import { checkUpdateComponents, SystemVersionInfo, UpdateComponents, updateParams } from "@/utils/jsonrpc";
 
@@ -236,10 +235,10 @@ function LoadingState({
       <div className="space-y-4">
         <div className="space-y-0">
           <p className="text-base font-semibold text-black dark:text-white">
-            Checking for updates...
+            Checking for updates…
           </p>
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            We{"'"}re ensuring your device has the latest features and improvements.
+            We&apos;re ensuring your device has the latest features and improvements.
           </p>
         </div>
         <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-300">
@@ -302,17 +301,18 @@ function UpdatingDeviceState({
       const verifiedAt = otaState[`${type}VerifiedAt`];
       const updatedAt = otaState[`${type}UpdatedAt`];
 
+      const update_type = () => (type === "system" ? "System" : "App");
 
       if (!otaState.metadataFetchedAt) {
-        return "Fetching update information...";
+        return "Fetching update information…";
       } else if (!downloadFinishedAt) {
-        return `Downloading ${type} update...`;
+        return `Downloading ${update_type()} update…`;
       } else if (!verifiedAt) {
-        return `Verifying ${type} update...`;
+        return `Verifying ${update_type()} update…`;
       } else if (!updatedAt) {
-        return `Installing ${type} update...`;
+        return `Installing ${update_type()} update…`;
       } else {
-        return `Awaiting reboot`;
+        return "Awaiting reboot";
       }
     };
 
@@ -352,7 +352,6 @@ function UpdatingDeviceState({
     };
   }, [otaState]);
 
-
   return (
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="w-full max-w-sm space-y-4">
@@ -361,7 +360,7 @@ function UpdatingDeviceState({
             Updating your device
           </p>
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            Please don{"'"}t turn off your device. This process may take a few minutes.
+            Please don&apos;t turn off your device. This process may take a few minutes.
           </p>
         </div>
         <Card className="space-y-4 p-4">
@@ -370,7 +369,7 @@ function UpdatingDeviceState({
               <LoadingSpinner className="h-6 w-6 text-blue-700 dark:text-blue-500" />
               <div className="flex justify-between text-sm text-slate-600 dark:text-slate-300">
                 <span className="font-medium text-black dark:text-white">
-                  Rebooting to complete the update...
+                  Rebooting to complete the update…
                 </span>
               </div>
             </div>
@@ -449,27 +448,26 @@ function UpdateAvailableState({
     <div className="flex flex-col items-start justify-start space-y-4 text-left">
       <div className="text-left">
         <p className="text-base font-semibold text-black dark:text-white">
-          Update Available
+          Update available
         </p>
         <p className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-          A new update is available to enhance system performance and improve
-          compatibility. We recommend updating to ensure everything runs smoothly.
+          A new update is available to enhance system performance and improve compatibility. We recommend updating to ensure everything runs smoothly.
         </p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
           {versionInfo?.systemUpdateAvailable ? (
             <>
-              <span className="font-semibold">Linux System Update</span>: {versionInfo?.local?.systemVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.systemVersion}
+              <span className="font-semibold">System</span>: {versionInfo?.local?.systemVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.systemVersion}
               <br />
             </>
           ) : null}
           {versionInfo?.appUpdateAvailable ? (
             <>
-              <span className="font-semibold">App Update</span>: {versionInfo?.local?.appVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.appVersion}
+              <span className="font-semibold">App</span>: {versionInfo?.local?.appVersion} <span className="text-slate-600 dark:text-slate-300">→</span> {versionInfo?.remote?.appVersion}
             </>
           ) : null}
           {versionInfo?.willDisableAutoUpdate ? (
             <p className="mb-4 text-sm text-red-600 dark:text-red-400">
-              You{"'"}re about to manually change your device version. Auto-update will be disabled after the update is completed to prevent accidental updates.
+              You&apos;re about to manually change your device version. Auto-update will be disabled after the update is completed to prevent accidental updates.
             </p>
           ) : null}
         </p>
@@ -490,8 +488,7 @@ function UpdateCompletedState({ onClose }: { onClose: () => void }) {
           Update Completed Successfully
         </p>
         <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
-          Your device has been successfully updated to the latest version. Enjoy the new
-          features and improvements!
+          Your device has been successfully updated to the latest version. Enjoy the new features and improvements!
         </p>
         <div className="flex items-center justify-start">
           <Button size="SM" theme="primary" text="Back" onClick={onClose} />

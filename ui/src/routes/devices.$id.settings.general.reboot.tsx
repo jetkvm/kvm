@@ -1,7 +1,7 @@
-import { useNavigate } from "react-router";
 import { useCallback, useState } from "react";
+import { useNavigate } from "react-router";
+import { useJsonRpc } from "@hooks/useJsonRpc";
 
-import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
 import { useFailsafeModeStore } from "@/hooks/stores";
 import { sleep } from "@/utils";
@@ -29,29 +29,25 @@ export default function SettingsGeneralRebootRoute() {
 
   const onConfirmUpdate = useCallback(async () => {
     setIsRebooting(true);
-    // This is where we send the RPC to the golang binary
-    send("reboot", { force: true });
+    send("reboot", {  force: true });
 
     await new Promise(resolve => setTimeout(resolve, REBOOT_REDIRECT_DELAY_MS));
     setFailsafeMode(false, "");
     navigateTo("/");
   }, [navigateTo, send, setFailsafeMode]);
 
-  {
-    /* TODO: Migrate to using URLs instead of the global state. To simplify the refactoring, we'll keep the global state for now. */
-  }
-  return <Dialog isRebooting={isRebooting} onClose={() => navigate("..")} onConfirmUpdate={onConfirmUpdate} />;
+  return <Dialog isRebooting={isRebooting} onClose={onClose} onConfirmUpdate={onConfirmUpdate} />;
 }
 
 export function Dialog({
   isRebooting,
   onClose,
   onConfirmUpdate,
-}: {
+}: Readonly<{
   isRebooting: boolean;
   onClose: () => void;
   onConfirmUpdate: () => void;
-}) {
+}>) {
 
   return (
     <div className="pointer-events-auto relative mx-auto text-left">
