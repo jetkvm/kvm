@@ -19,6 +19,7 @@ import (
 	"go.bug.st/serial"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
+	"github.com/jetkvm/kvm/internal/native"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
@@ -208,15 +209,16 @@ func rpcSetAutoUpdateState(enabled bool) (bool, error) {
 }
 
 func rpcGetEDID() (string, error) {
-	resp, err := nativeInstance.VideoGetEDID()
-	if err != nil {
-		return "", err
-	}
-	return resp, nil
+	return config.EdidString, nil
+}
+
+func rpcGetDefaultEDID() (string, error) {
+	return native.DefaultEDID, nil
 }
 
 func rpcSetEDID(edid string) error {
 	if edid == "" {
+		edid = native.DefaultEDID
 		logger.Info().Msg("Restoring EDID to default")
 	} else {
 		logger.Info().Str("edid", edid).Msg("Setting EDID")
@@ -226,7 +228,6 @@ func rpcSetEDID(edid string) error {
 		return err
 	}
 
-	// Save EDID to config, allowing it to be restored on reboot.
 	config.EdidString = edid
 	_ = SaveConfig()
 	return nil
@@ -1370,6 +1371,7 @@ var rpcHandlers = map[string]RPCHandler{
 	"getAutoUpdateState":      {Func: rpcGetAutoUpdateState},
 	"setAutoUpdateState":      {Func: rpcSetAutoUpdateState, Params: []string{"enabled"}},
 	"getEDID":                 {Func: rpcGetEDID},
+	"getDefaultEDID":          {Func: rpcGetDefaultEDID},
 	"setEDID":                 {Func: rpcSetEDID, Params: []string{"edid"}},
 	"getVideoLogStatus":       {Func: rpcGetVideoLogStatus},
 	"getVideoSleepMode":       {Func: rpcGetVideoSleepMode},
