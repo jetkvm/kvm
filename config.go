@@ -141,8 +141,8 @@ func (c *Config) SetDisplayRotation(rotation string) error {
 
 const configPath = "/userdata/kvm_config.json"
 
-// it's a temporary solution to avoid sharing the same pointer
-// we should migrate to a proper config solution in the future
+// Default configuration structs used to create independent copies in getDefaultConfig().
+// These are package-level variables to avoid repeated allocations.
 var (
 	defaultJigglerConfig = JigglerConfig{
 		InactivityLimitSeconds: 60,
