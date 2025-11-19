@@ -499,7 +499,7 @@ type RPCHandler struct {
 	Params []string
 }
 
-// call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
+// call the handler but recover from a panic to ensure our RPC goroutine doesn't collapse on malformed calls
 func callRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[string]any) (result any, err error) {
 	// Use defer to recover from a panic
 	defer func() {
