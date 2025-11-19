@@ -113,6 +113,7 @@ type Config struct {
 	DefaultLogLevel      string               `json:"default_log_level"`
 	VideoSleepAfterSec   int                  `json:"video_sleep_after_sec"`
 	VideoQualityFactor   float64              `json:"video_quality_factor"`
+	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 }
 
 // GetUpdateAPIURL returns the update API URL

@@ -208,6 +208,12 @@ rm /userdata/kvm_config.json
 systemctl restart jetkvm
 ```
 
+### Debug native code with gdbserver
+
+Change the `TARGET_IP` in `.vscode/settings.json` to your JetKVM device IP, then set breakpoints in your native code and start the `Debug Native` configuration in VSCode.
+
+The code and GDB server will be deployed automatically.
+
 ---
 
 ## Testing Your Changes
