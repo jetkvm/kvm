@@ -103,12 +103,12 @@ export function doRpcHidHandshake(rpcHidChannel: RTCDataChannel, setRpcHidProtoc
 
     setRpcHidProtocolVersion(message.version);
 
-    // clean up 
     const timeUsed = lastSendTime ? Date.now() - lastSendTime.getTime() : 0;
     logger.info(`Handshake completed in ${timeUsed}ms after ${attempts} attempts (Version: ${message.version} / ${HID_RPC_VERSION})`);
-    resetHandshake({ completed: true });
 
+    // clean up 
     rpcHidChannel.removeEventListener("message", onMessage);
+    resetHandshake({ completed: true });
   };
 
   const resetHandshake = ({ lastConnectedTime: newLastConnectedTime, completed }: { lastConnectedTime?: Date | undefined, completed?: boolean }) => {
