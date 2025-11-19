@@ -8,18 +8,17 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/sync"
+
+	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"github.com/coreos/go-oidc/v3/oidc"
-
-	"github.com/coder/websocket"
-	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 )
 

@@ -6,10 +6,11 @@ import (
 	"context"
 	"os"
 	"path"
-	"sync"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/sync"
+
 	"github.com/rs/zerolog"
 )
 

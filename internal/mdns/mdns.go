@@ -5,9 +5,10 @@ import (
 	"net"
 	"reflect"
 	"strings"
-	"sync"
 
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/sync"
+
 	pion_mdns "github.com/pion/mdns/v2"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/ipv4"

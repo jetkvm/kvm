@@ -2,12 +2,13 @@ package kvm
 
 import (
 	"os"
-	"sync"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/jetkvm/kvm/internal/diagnostics"
 	"github.com/jetkvm/kvm/internal/native"
+	"github.com/jetkvm/kvm/internal/sync"
+
+	"github.com/Masterminds/semver/v3"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
 
