@@ -47,7 +47,7 @@ static OpusDecoder *decoder = NULL;
 
 // Audio format (S16_LE @ 48kHz)
 static uint32_t sample_rate = 48000;
-static uint8_t capture_channels = 2;   // OUTPUT: HDMI/USB stereo → client (configurable via update_audio_constants)
+static uint8_t capture_channels = 2;   // OUTPUT: Audio source (HDMI or USB) → client (always stereo for current hardware)
 static uint8_t playback_channels = 1;  // INPUT: Client mono mic → device (always mono for USB audio gadget)
 static uint16_t frame_size = 960;  // 20ms frames at 48kHz
 
@@ -64,7 +64,7 @@ static uint16_t max_packet_size = 1500;
 
 static uint8_t opus_dtx_enabled = 1;
 static uint8_t opus_fec_enabled = 1;
-static uint8_t opus_packet_loss_perc = 0;
+static uint8_t opus_packet_loss_perc = 20;  // Default packet loss compensation percentage
 static uint8_t buffer_period_count = 24;
 
 static uint32_t sleep_microseconds = 1000;
@@ -246,11 +246,11 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
  * @param max_attempts Maximum recovery attempts allowed
  * @return Three possible outcomes:
  *   1  = Retry operation (error was recovered, mutex still held by caller)
- *   0  = Skip this frame and continue (mutex still held, caller must unlock)
+ *   0  = Skip this frame and continue (mutex ALREADY UNLOCKED by this function)
  *  -1  = Fatal error, abort operation (mutex ALREADY UNLOCKED by this function)
  *
- * CRITICAL: On return value -1, the mutex has already been unlocked. The caller
- * must NOT unlock again or proceed with further I/O operations.
+ * CRITICAL: On return values 0 and -1, the mutex has already been unlocked.
+ * Only return value 1 requires the caller to maintain mutex ownership.
  */
 static int handle_alsa_error(snd_pcm_t *handle, snd_pcm_t **valid_handle,
                              atomic_int *stop_flag, pthread_mutex_t *mutex,

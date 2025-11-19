@@ -49,7 +49,8 @@ func initAudio() {
 func getAudioConfig() audio.AudioConfig {
 	cfg := audio.DefaultAudioConfig()
 
-	// Helper to validate and apply numeric ranges
+	// Helper to validate numeric ranges and return sanitized values
+	// Returns (value, true) if valid, (0, false) if invalid
 	validateAndApply := func(value int, min int, max int, paramName string) (int, bool) {
 		if value >= min && value <= max {
 			return value, true
