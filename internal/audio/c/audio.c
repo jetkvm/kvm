@@ -27,7 +27,7 @@
 #include <pthread.h>
 #include <stdatomic.h>
 
-// ARM NEON SIMD support (required - JetKVM hardware provides ARM Cortex-A7 with NEON)
+// ARM NEON SIMD optimizations (Cortex-A7 accelerates buffer operations, with scalar fallback)
 #include <arm_neon.h>
 
 // RV1106 (Cortex-A7) has 64-byte cache lines
@@ -47,7 +47,7 @@ static OpusDecoder *decoder = NULL;
 
 // Audio format (S16_LE @ 48kHz)
 static uint32_t sample_rate = 48000;
-static uint8_t capture_channels = 2;   // OUTPUT: Audio source (HDMI or USB) → client (always stereo for current hardware)
+static uint8_t capture_channels = 2;   // OUTPUT: Audio source (HDMI or USB) → client (stereo by default)
 static uint8_t playback_channels = 1;  // INPUT: Client mono mic → device (always mono for USB audio gadget)
 static uint16_t frame_size = 960;  // 20ms frames at 48kHz
 
