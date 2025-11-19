@@ -1030,30 +1030,15 @@ type AudioConfigResponse struct {
 
 func rpcGetAudioConfig() (AudioConfigResponse, error) {
 	ensureConfigLoaded()
-	bitrate := config.AudioBitrate
-	if bitrate < 64 || bitrate > 256 {
-		bitrate = 128
-	}
-	bufferPeriods := config.AudioBufferPeriods
-	if bufferPeriods < 2 || bufferPeriods > 24 {
-		bufferPeriods = 12
-	}
-	sampleRate := config.AudioSampleRate
-	if sampleRate != 32000 && sampleRate != 44100 && sampleRate != 48000 && sampleRate != 96000 {
-		sampleRate = 48000
-	}
-	packetLossPerc := config.AudioPacketLossPerc
-	if packetLossPerc < 0 || packetLossPerc > 100 {
-		packetLossPerc = 20
-	}
+	cfg := getAudioConfig()
 	return AudioConfigResponse{
-		Bitrate:        bitrate,
-		Complexity:     config.AudioComplexity,
-		DTXEnabled:     config.AudioDTXEnabled,
-		FECEnabled:     config.AudioFECEnabled,
-		BufferPeriods:  bufferPeriods,
-		SampleRate:     sampleRate,
-		PacketLossPerc: packetLossPerc,
+		Bitrate:        int(cfg.Bitrate),
+		Complexity:     int(cfg.Complexity),
+		DTXEnabled:     cfg.DTXEnabled,
+		FECEnabled:     cfg.FECEnabled,
+		BufferPeriods:  int(cfg.BufferPeriods),
+		SampleRate:     int(cfg.SampleRate),
+		PacketLossPerc: int(cfg.PacketLossPerc),
 	}, nil
 }
 

@@ -47,7 +47,7 @@ export default function SettingsVideoRoute() {
   const [edid, setEdid] = useState<string | null>(null);
   const [edidLoading, setEdidLoading] = useState(true);
   const [defaultEdid, setDefaultEdid] = useState<string>("");
-  const [edids, setEdids] = useState<Array<{value: string, label: string}>>([]);
+  const [edids, setEdids] = useState<{value: string, label: string}[]>([]);
   const { debugMode } = useSettingsStore();
   // Video enhancement settings from store
   const {

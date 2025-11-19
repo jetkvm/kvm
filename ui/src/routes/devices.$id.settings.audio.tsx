@@ -53,6 +53,7 @@ export default function SettingsAudioRoute() {
   } = useSettingsStore();
 
   useEffect(() => {
+    // Load boolean settings
     send("getAudioOutputEnabled", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setAudioOutputEnabled(resp.result as boolean);
@@ -68,6 +69,7 @@ export default function SettingsAudioRoute() {
       setAudioOutputSource(resp.result as string);
     });
 
+    // Load complex audio configuration
     send("getAudioConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const config = resp.result as AudioConfigResult;

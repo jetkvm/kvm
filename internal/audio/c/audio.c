@@ -209,17 +209,15 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 
 		attempt++;
 
-		if (err == -EBUSY || err == -EAGAIN) {
-			precise_sleep_us(backoff_us);
-			backoff_us = (backoff_us < 50000) ? (backoff_us << 1) : 50000;
-		} else if (err == -ENODEV || err == -ENOENT) {
-			precise_sleep_us(backoff_us);
-			backoff_us = (backoff_us < 50000) ? (backoff_us << 1) : 50000;
-		} else if (err == -EPERM || err == -EACCES) {
-			precise_sleep_us(backoff_us >> 1);
+		// Apply different sleep strategies based on error type
+		if (err == -EPERM || err == -EACCES) {
+			precise_sleep_us(backoff_us >> 1);  // Shorter wait for permission errors
 		} else {
 			precise_sleep_us(backoff_us);
-			backoff_us = (backoff_us < 50000) ? (backoff_us << 1) : 50000;
+			// Exponential backoff for all retry-worthy errors
+			if (err == -EBUSY || err == -EAGAIN || err == -ENODEV || err == -ENOENT) {
+				backoff_us = (backoff_us < 50000) ? (backoff_us << 1) : 50000;
+			}
 		}
 	}
 	return err;

@@ -13,7 +13,6 @@ import (
 
 var (
 	audioMutex         sync.Mutex
-	setAudioTrackMutex sync.Mutex // Prevents concurrent setAudioTrack() calls
 	inputSourceMutex   sync.Mutex // Serializes Connect() and WriteMessage() calls to input source
 	outputSource       atomic.Pointer[audio.AudioSource]
 	inputSource        atomic.Pointer[audio.AudioSource]
@@ -31,9 +30,8 @@ var (
 func getAlsaDevice(source string) string {
 	if source == "hdmi" {
 		return "hw:0,0"
-	} else {
-		return "hw:1,0"
 	}
+	return "hw:1,0"
 }
 
 func initAudio() {
@@ -49,33 +47,47 @@ func initAudio() {
 
 func getAudioConfig() audio.AudioConfig {
 	cfg := audio.DefaultAudioConfig()
+
+	// Validate and apply bitrate
 	if config.AudioBitrate >= 64 && config.AudioBitrate <= 256 {
 		cfg.Bitrate = uint16(config.AudioBitrate)
 	} else if config.AudioBitrate != 0 {
 		audioLogger.Warn().Int("bitrate", config.AudioBitrate).Uint16("default", cfg.Bitrate).Msg("Invalid audio bitrate, using default")
 	}
+
+	// Validate and apply complexity
 	if config.AudioComplexity >= 0 && config.AudioComplexity <= 10 {
 		cfg.Complexity = uint8(config.AudioComplexity)
 	} else {
 		audioLogger.Warn().Int("complexity", config.AudioComplexity).Uint8("default", cfg.Complexity).Msg("Invalid audio complexity, using default")
 	}
+
+	// Apply boolean flags directly
 	cfg.DTXEnabled = config.AudioDTXEnabled
 	cfg.FECEnabled = config.AudioFECEnabled
+
+	// Validate and apply buffer periods
 	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 24 {
 		cfg.BufferPeriods = uint8(config.AudioBufferPeriods)
 	} else if config.AudioBufferPeriods != 0 {
 		audioLogger.Warn().Int("buffer_periods", config.AudioBufferPeriods).Uint8("default", cfg.BufferPeriods).Msg("Invalid buffer periods, using default")
 	}
-	if config.AudioSampleRate == 32000 || config.AudioSampleRate == 44100 || config.AudioSampleRate == 48000 || config.AudioSampleRate == 96000 {
+
+	// Validate and apply sample rate using a map for valid rates
+	validRates := map[int]bool{32000: true, 44100: true, 48000: true, 96000: true}
+	if validRates[config.AudioSampleRate] {
 		cfg.SampleRate = uint32(config.AudioSampleRate)
 	} else if config.AudioSampleRate != 0 {
 		audioLogger.Warn().Int("sample_rate", config.AudioSampleRate).Uint32("default", cfg.SampleRate).Msg("Invalid sample rate, using default")
 	}
+
+	// Validate and apply packet loss percentage
 	if config.AudioPacketLossPerc >= 0 && config.AudioPacketLossPerc <= 100 {
 		cfg.PacketLossPerc = uint8(config.AudioPacketLossPerc)
 	} else {
 		audioLogger.Warn().Int("packet_loss_perc", config.AudioPacketLossPerc).Uint8("default", cfg.PacketLossPerc).Msg("Invalid packet loss percentage, using default")
 	}
+
 	return cfg
 }
 
@@ -144,32 +156,42 @@ func startInputAudioUnderMutex(alsaPlaybackDevice string) {
 	}
 }
 
-func stopOutputAudio() {
+// stopAudioComponents safely stops and cleans up audio components
+func stopAudioComponents(relay *atomic.Pointer[audio.OutputRelay], source *atomic.Pointer[audio.AudioSource]) {
 	audioMutex.Lock()
-	outRelay := outputRelay.Swap(nil)
-	outSource := outputSource.Swap(nil)
+	oldRelay := relay.Swap(nil)
+	oldSource := source.Swap(nil)
 	audioMutex.Unlock()
 
-	if outRelay != nil {
-		outRelay.Stop()
+	if oldRelay != nil {
+		oldRelay.Stop()
 	}
-	if outSource != nil {
-		(*outSource).Disconnect()
+	if oldSource != nil {
+		(*oldSource).Disconnect()
 	}
 }
 
-func stopInputAudio() {
+// stopAudioComponentsInput safely stops and cleans up input audio components
+func stopAudioComponentsInput(relay *atomic.Pointer[audio.InputRelay], source *atomic.Pointer[audio.AudioSource]) {
 	audioMutex.Lock()
-	inRelay := inputRelay.Swap(nil)
-	inSource := inputSource.Swap(nil)
+	oldRelay := relay.Swap(nil)
+	oldSource := source.Swap(nil)
 	audioMutex.Unlock()
 
-	if inRelay != nil {
-		inRelay.Stop()
+	if oldRelay != nil {
+		oldRelay.Stop()
 	}
-	if inSource != nil {
-		(*inSource).Disconnect()
+	if oldSource != nil {
+		(*oldSource).Disconnect()
 	}
+}
+
+func stopOutputAudio() {
+	stopAudioComponents(&outputRelay, &outputSource)
+}
+
+func stopInputAudio() {
+	stopAudioComponentsInput(&inputRelay, &inputSource)
 }
 
 func stopAudio() {
@@ -195,15 +217,24 @@ func onWebRTCDisconnect() {
 }
 
 func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
-	setAudioTrackMutex.Lock()
-	defer setAudioTrackMutex.Unlock()
+	audioMutex.Lock()
+	defer audioMutex.Unlock()
 
-	stopOutputAudio()
+	// Stop output without mutex (already holding audioMutex)
+	outRelay := outputRelay.Swap(nil)
+	outSource := outputSource.Swap(nil)
+	if outRelay != nil {
+		outRelay.Stop()
+	}
+	if outSource != nil {
+		(*outSource).Disconnect()
+	}
 
 	currentAudioTrack = audioTrack
 
-	if err := startAudio(); err != nil {
-		audioLogger.Error().Err(err).Msg("Failed to start with new audio track")
+	// Start audio without taking mutex again (already holding audioMutex)
+	if audioInitialized && activeConnections.Load() > 0 && audioOutputEnabled.Load() && currentAudioTrack != nil {
+		startOutputAudioUnderMutex(getAlsaDevice(config.AudioOutputSource))
 	}
 }
 
@@ -218,14 +249,10 @@ func SetAudioOutputEnabled(enabled bool) error {
 		return nil
 	}
 
-	if enabled {
-		if activeConnections.Load() > 0 {
-			return startAudio()
-		}
-	} else {
-		stopOutputAudio()
+	if enabled && activeConnections.Load() > 0 {
+		return startAudio()
 	}
-
+	stopOutputAudio()
 	return nil
 }
 
@@ -234,14 +261,10 @@ func SetAudioInputEnabled(enabled bool) error {
 		return nil
 	}
 
-	if enabled {
-		if activeConnections.Load() > 0 {
-			return startAudio()
-		}
-	} else {
-		stopInputAudio()
+	if enabled && activeConnections.Load() > 0 {
+		return startAudio()
 	}
-
+	stopInputAudio()
 	return nil
 }
 
@@ -290,6 +313,7 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 	trackLogger.Debug().Msg("starting input track handler")
 
 	for {
+		// Check if we've been superseded by another track
 		currentTrackID := currentInputTrack.Load()
 		if currentTrackID != nil && *currentTrackID != myTrackID {
 			trackLogger.Debug().
@@ -298,6 +322,7 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 			return
 		}
 
+		// Read RTP packet
 		rtpPacket, _, err := track.ReadRTP()
 		if err != nil {
 			if err == io.EOF {
@@ -308,42 +333,51 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 			continue
 		}
 
-		opusData := rtpPacket.Payload
-		if len(opusData) == 0 {
+		// Skip empty payloads
+		if len(rtpPacket.Payload) == 0 {
 			continue
 		}
 
+		// Skip if input is disabled
 		if !audioInputEnabled.Load() {
 			continue
 		}
 
-		// Early check to avoid mutex acquisition if source is nil (optimization)
-		if inputSource.Load() == nil {
-			continue
-		}
-
-		inputSourceMutex.Lock()
-		// Reload source inside mutex to ensure we have the currently active source
-		// This prevents races with startInputAudioUnderMutex swapping the source
-		source := inputSource.Load()
-		if source == nil {
-			inputSourceMutex.Unlock()
-			continue
-		}
-
-		if !(*source).IsConnected() {
-			if err := (*source).Connect(); err != nil {
-				inputSourceMutex.Unlock()
-				continue
-			}
-		}
-
-		err = (*source).WriteMessage(0, opusData)
-		inputSourceMutex.Unlock()
-
-		if err != nil {
-			audioLogger.Warn().Err(err).Msg("failed to write audio message")
-			(*source).Disconnect()
+		// Process the audio packet
+		if err := processInputPacket(rtpPacket.Payload); err != nil {
+			trackLogger.Warn().Err(err).Msg("failed to process audio packet")
 		}
 	}
+}
+
+// processInputPacket handles writing audio data to the input source
+func processInputPacket(opusData []byte) error {
+	// Early check to avoid mutex acquisition if source is nil
+	if inputSource.Load() == nil {
+		return nil
+	}
+
+	inputSourceMutex.Lock()
+	defer inputSourceMutex.Unlock()
+
+	// Reload source inside mutex to ensure we have the currently active source
+	source := inputSource.Load()
+	if source == nil {
+		return nil
+	}
+
+	// Ensure source is connected
+	if !(*source).IsConnected() {
+		if err := (*source).Connect(); err != nil {
+			return err
+		}
+	}
+
+	// Write the message
+	if err := (*source).WriteMessage(0, opusData); err != nil {
+		(*source).Disconnect()
+		return err
+	}
+
+	return nil
 }
