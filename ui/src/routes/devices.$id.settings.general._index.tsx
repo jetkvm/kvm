@@ -17,7 +17,6 @@ export default function SettingsGeneralRoute() {
   const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
   const [autoUpdate, setAutoUpdate] = useState(true);
-
   const currentVersions = useDeviceStore(state => {
     const { appVersion, systemVersion } = state;
     if (!appVersion || !systemVersion) return null;
@@ -48,10 +47,10 @@ export default function SettingsGeneralRoute() {
   const localeOptions = useMemo(() => {
     return ["", ...locales]
       .map((code) => {
-          const [localizedName, nativeName] = map_locale_code_to_name(currentLocale, code);
-          // don't repeat the name if it's the same in both locales (or blank)
-          const label = nativeName && nativeName !== localizedName ? `${localizedName} - ${nativeName}` : localizedName;
-          return { value: code, label: label }
+        const [localizedName, nativeName] = map_locale_code_to_name(currentLocale, code);
+        // don't repeat the name if it's the same in both locales (or blank)
+        const label = nativeName && nativeName !== localizedName ? `${localizedName} - ${nativeName}` : localizedName;
+        return { value: code, label: label }
       });
   }, [currentLocale]);
 
@@ -108,7 +107,7 @@ export default function SettingsGeneralRoute() {
                 </>
               }
             />
-            <div>
+            <div className="flex items-center justify-start gap-x-2">
               <Button
                 size="SM"
                 theme="light"

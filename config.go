@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/jetkvm/kvm/internal/confparser"
@@ -13,6 +14,10 @@ import (
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+const (
+	DefaultAPIURL = "https://api.jetkvm.com"
 )
 
 type WakeOnLanDevice struct {
@@ -80,6 +85,7 @@ func (m *KeyboardMacro) Validate() error {
 
 type Config struct {
 	CloudURL             string               `json:"cloud_url"`
+	UpdateAPIURL         string               `json:"update_api_url"`
 	CloudAppURL          string               `json:"cloud_app_url"`
 	CloudToken           string               `json:"cloud_token"`
 	GoogleIdentity       string               `json:"google_identity"`
@@ -109,6 +115,15 @@ type Config struct {
 	VideoQualityFactor   float64              `json:"video_quality_factor"`
 }
 
+// GetUpdateAPIURL returns the update API URL
+func (c *Config) GetUpdateAPIURL() string {
+	if c.UpdateAPIURL == "" {
+		return DefaultAPIURL
+	}
+	return strings.TrimSuffix(c.UpdateAPIURL, "/") + "/releases"
+}
+
+// GetDisplayRotation returns the display rotation
 func (c *Config) GetDisplayRotation() uint16 {
 	rotationInt, err := strconv.ParseUint(c.DisplayRotation, 10, 16)
 	if err != nil {
@@ -118,6 +133,7 @@ func (c *Config) GetDisplayRotation() uint16 {
 	return uint16(rotationInt)
 }
 
+// SetDisplayRotation sets the display rotation
 func (c *Config) SetDisplayRotation(rotation string) error {
 	_, err := strconv.ParseUint(rotation, 10, 16)
 	if err != nil {
@@ -156,7 +172,8 @@ var (
 
 func getDefaultConfig() Config {
 	return Config{
-		CloudURL:             "https://api.jetkvm.com",
+		CloudURL:             DefaultAPIURL,
+		UpdateAPIURL:         DefaultAPIURL,
 		CloudAppURL:          "https://app.jetkvm.com",
 		AutoUpdateEnabled:    true, // Set a default value
 		ActiveExtension:      "",

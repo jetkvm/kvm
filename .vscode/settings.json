@@ -11,5 +11,13 @@
   },
   "git.ignoreLimitWarning": true,
   "cmake.sourceDirectory": "/workspaces/kvm-static-ip/internal/native/cgo",
-  "cmake.ignoreCMakeListsMissing": true
+  "cmake.ignoreCMakeListsMissing": true,
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "/internal/ota/testdata/ota/*.json"
+      ],
+      "url": "./internal/ota/testdata/ota.schema.json"
+    }
+  ]
 }
