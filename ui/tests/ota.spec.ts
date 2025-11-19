@@ -149,12 +149,12 @@ const doStandardUpdate = async (page: Page) => {
     app: '',
   }
 
-  const systemUpdateAvailable = updateAvailableContainer.locator('.text-sm', { hasText: m.general_update_system_type()+":" }).first();
+  const systemUpdateAvailable = updateAvailableContainer.locator('.text-sm', { hasText: m.general_update_system_type() + ":" }).first();
   if (await systemUpdateAvailable.isVisible()) {
     versionInfo.sys = await systemUpdateAvailable.textContent() ?? '';
   }
 
-  const appUpdateAvailable = updateAvailableContainer.locator('.text-sm', { hasText: m.general_update_application_type()+":" }).first();
+  const appUpdateAvailable = updateAvailableContainer.locator('.text-sm', { hasText: m.general_update_application_type() + ":" }).first();
   if (await appUpdateAvailable.isVisible()) {
     versionInfo.app = await appUpdateAvailable.textContent() ?? '';
   }
@@ -194,20 +194,17 @@ const runUpdateTest = ({ sys, app }: CustomUpgradeProcessOptions) => async ({ pa
   }
 
   // Except ICE gathering completed or JetKVM device connected
+  // await expect(
+  //   getByText(page, 'ice_gathering_completed').
+  //     or(getByText(page, 'video_overlay_loading_stream')).
+  //     or(getByText(page, 'video_overlay_no_hdmi_signal'))
+  //   ,
+  //   'Wait until the WebRTC connection is established',
+  // ).toBeVisible();
   await expect(
-    getByText(page, 'ice_gathering_completed').
-      or(getByText(page, 'peer_connection_connected').first()).
-      or(getByText(page, 'video_overlay_loading_stream'))
-    ,
+    getByText(page, 'video_overlay_no_hdmi_signal'),
     'Wait until the WebRTC connection is established',
   ).toBeVisible();
-
-  // Except No HDMI signal detected, as the device is not connected to the HDMI port
-  // await expect(
-  //   getByText(page, 'video_overlay_no_hdmi_signal'),
-  //   'should be visible when no HDMI signal is detected',
-  // ).toBeVisible();
-
 
   await sleep();
 
@@ -250,9 +247,7 @@ const runUpdateTest = ({ sys, app }: CustomUpgradeProcessOptions) => async ({ pa
     await expect(
       getByText(page, 'general_update_status_awaiting_reboot')
         .or(getByText(page, 'general_update_rebooting'))
-        // older version uses "..." instead of "…" for the ellipsis
-        .or(page.getByText('Rebooting to complete the update')),
-      'UpdatingDeviceState: awaiting reboot or rebooting',
+      , 'UpdatingDeviceState: awaiting reboot or rebooting',
     ).toBeVisible({ timeout });
   };
 
@@ -265,7 +260,8 @@ const runUpdateTest = ({ sys, app }: CustomUpgradeProcessOptions) => async ({ pa
 
   // Rebooting or different IP message
   await expect(
-    getByText(page, 'video_overlay_reboot_device_is_rebooting')
+    getByText(page, 'general_update_rebooting')
+      .or(getByText(page, 'video_overlay_reboot_unable_to_reconnect'))
       .or(getByText(page, 'video_overlay_reboot_different_ip_message'))
     , 'VideoOverlay should show either reboot device is rebooting or different ip message'
   ).toBeVisible({ timeout });
@@ -307,7 +303,7 @@ test('custom upgrade process: upgrade system only', runUpdateTest({
 }));
 
 test('custom upgrade process: upgrade app only', runUpdateTest({
-  app: '0.4.5',
+  app: '0.4.8',
 }));
 
 test('custom upgrade process: upgrade both', runUpdateTest({
