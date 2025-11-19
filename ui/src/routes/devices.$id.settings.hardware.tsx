@@ -189,7 +189,7 @@ export default function SettingsHardwareRoute() {
                 }}
               />
             </SettingsItem>
-          </>
+          </NestedSettingsGroup>
         )}
         <p className="text-xs text-slate-600 dark:text-slate-400">
           The display will wake up when the connection state changes, or when touched.

@@ -7,6 +7,7 @@ import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { useSettingsStore } from "@/hooks/stores";
 import { SelectMenuBasic } from "@components/SelectMenuBasic";
+import { NestedSettingsGroup } from "@components/NestedSettingsGroup";
 import Fieldset from "@components/Fieldset";
 import notifications from "@/notifications";
 
@@ -180,7 +181,7 @@ export default function SettingsVideoRoute() {
               description="Adjust color settings to make the video output more vibrant and colorful"
             />
 
-            <div className="space-y-4 pl-4">
+            <NestedSettingsGroup>
               <SettingsItem
                 title="Saturation"
                 description={`Color saturation (${videoSaturation.toFixed(1)}x)`}
@@ -238,7 +239,7 @@ export default function SettingsVideoRoute() {
                   }}
                 />
               </div>
-            </div>
+            </NestedSettingsGroup>
             <Fieldset disabled={edidLoading} className="space-y-2">
               <SettingsItem
                 title="EDID"

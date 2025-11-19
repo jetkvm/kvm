@@ -278,7 +278,7 @@ export default function SettingsAccessIndexRoute() {
                       onClick={handleCustomTlsUpdate}
                     />
                   </div>
-                </div>
+                </NestedSettingsGroup>
               )}
 
               <SettingsItem
@@ -352,7 +352,7 @@ export default function SettingsAccessIndexRoute() {
               </SettingsItem>
 
               {selectedProvider === "custom" && (
-                <div className="mt-4 space-y-4">
+                <NestedSettingsGroup className="mt-4">
                   <div className="flex items-end gap-x-2">
                     <InputFieldWithLabel
                       size="SM"
@@ -371,7 +371,7 @@ export default function SettingsAccessIndexRoute() {
                       placeholder="https://app.example.com"
                     />
                   </div>
-                </div>
+                </NestedSettingsGroup>
               )}
             </>
           )}

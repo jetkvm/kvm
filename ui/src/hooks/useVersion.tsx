@@ -17,6 +17,19 @@ export interface SystemVersionInfo {
   error?: string;
 }
 
+export interface VersionInfo {
+  appVersion: string;
+  systemVersion: string;
+}
+
+export interface SystemVersionInfo {
+  local: VersionInfo;
+  remote?: VersionInfo;
+  systemUpdateAvailable: boolean;
+  appUpdateAvailable: boolean;
+  error?: string;
+}
+
 export function useVersion() {
   const {
     appVersion,

@@ -16,7 +16,6 @@ export default function SettingsGeneralRoute() {
   const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
   const [autoUpdate, setAutoUpdate] = useState(true);
-
   const currentVersions = useDeviceStore(state => {
     const { appVersion, systemVersion } = state;
     if (!appVersion || !systemVersion) return null;
@@ -70,7 +69,7 @@ export default function SettingsGeneralRoute() {
                 )
               }
             />
-            <div>
+            <div className="flex items-center justify-start gap-x-2">
               <Button
                 size="SM"
                 theme="light"

@@ -4,12 +4,13 @@ import { useCallback, useState } from "react";
 import { useJsonRpc } from "@/hooks/useJsonRpc";
 import { Button } from "@components/Button";
 import { useFailsafeModeStore } from "@/hooks/stores";
+import { sleep } from "@/utils";
 
 import LoadingSpinner from "../components/LoadingSpinner";
 import { useDeviceUiNavigation } from "../hooks/useAppNavigation";
 
 // Time to wait after initiating reboot before redirecting to home
-const REBOOT_REDIRECT_DELAY_MS = 5000;
+const REBOOT_REDIRECT_DELAY_MS = 7000;
 
 export default function SettingsGeneralRebootRoute() {
   const navigate = useNavigate();
@@ -17,6 +18,14 @@ export default function SettingsGeneralRebootRoute() {
   const [isRebooting, setIsRebooting] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
   const { setFailsafeMode } = useFailsafeModeStore();
+
+  const onClose = useCallback(async () => {
+    navigate(".."); // back to the devices.$id.settings page
+    // Add 1s delay between navigation and calling reload() to prevent reload from interrupting the navigation.
+    await sleep(1000);
+    window.location.reload(); // force a full reload to ensure the current device/cloud UI version is loaded
+  }, [navigate]);
+
 
   const onConfirmUpdate = useCallback(async () => {
     setIsRebooting(true);
