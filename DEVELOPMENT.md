@@ -112,12 +112,16 @@ tail -f /var/log/jetkvm.log
 │   │   ├── cgo/              # C files for the native library (HDMI, Touchscreen, etc.)
 │   │   └── eez/              # EEZ Studio Project files (for Touchscreen)
 │   ├── network/              # Network implementation
+│   ├── sync/                 # Synchronization primatives with automatic logging (if synctrace enabled)
 │   ├── timesync/             # Time sync/NTP implementation
 │   ├── tzdata/               # Timezone data and generation
 │   ├── udhcpc/               # DHCP implementation
 │   ├── usbgadget/            # USB gadget
 │   ├── utils/                # SSH handling
 │   └── websecure/            # TLS certificate management
+├── pkg/                      # External packages that have customizations
+│   ├── myip/                 # Get public IP information
+│   └── nmlite/               # Network link manager
 ├── resource/                 # netboot iso and other resources
 ├── scripts/                  # Bash shell scripts for building and deploying
 └── static/                   #  (react client build output)
@@ -162,7 +166,7 @@ tail -f /var/log/jetkvm.log
 
 ```bash
 cd ui
-npm install
+npm ci
 ./dev_device.sh <YOUR_DEVICE_IP>
 ```
 
@@ -195,9 +199,11 @@ ssh root@192.168.1.100 ps aux | grep jetkvm
 
 ### View live logs
 
+The file 
+
 ```bash
 ssh root@192.168.1.100
-tail -f /var/log/jetkvm.log
+tail -f /var/log/jetkvm*
 ```
 
 ### Reset everything (if stuck)
@@ -326,6 +332,28 @@ Or if you want to manually create the symlink use:
    cd internal/native/cgo
    del ui
    mklink /d ui ..\eez\src\ui
+```
+
+### Build is unstable even before you changed anything
+
+Make sure you clean up your _node_ modules and do an `npm ci` (**not** `npm i`) to ensure that you get the exact packages required by _package-lock.json_. This is especially important when switching branches!
+
+```bash
+cd ui && rm -rf node_modules/ && npm ci && cd ..
+```
+
+If you are working on upgrades to the UI packages use this command to wipe the slate clean and get a new valid _package-lock.json_:
+
+```bash
+cd ui && rm -rf node_modules/ package-lock.json && npm i && cd ..
+```
+
+### Device panics or becomes unresponsive
+
+You can also run the device-side _go_ code under a debug session to view the logs as the device is booting up and being used. To do this use the following command in your development command-line (where the IP is the JetKVM device's IP on your network) to see a very detailed `synctrace` of all mutex activity:
+
+```bash
+./dev_deploy.sh -r <IP> --enable-sync-trace
 ```
 
 ---
