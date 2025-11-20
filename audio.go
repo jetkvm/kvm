@@ -339,7 +339,12 @@ func RestartAudioOutput() error {
 
 	audioLogger.Info().Msg("Restarting audio output")
 	stopOutputAudio()
-	return startAudio()
+	go func() {
+		if err := startAudio(); err != nil {
+			audioLogger.Error().Err(err).Msg("Failed to restart audio output")
+		}
+	}()
+	return nil
 }
 
 func handleInputTrackForSession(track *webrtc.TrackRemote) {
