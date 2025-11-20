@@ -262,7 +262,12 @@ func SetAudioOutputEnabled(enabled bool) error {
 	}
 
 	if enabled && activeConnections.Load() > 0 {
-		return startAudio()
+		go func() {
+			if err := startAudio(); err != nil {
+				audioLogger.Error().Err(err).Msg("Failed to start output audio after enable")
+			}
+		}()
+		return nil
 	}
 	stopOutputAudio()
 	return nil
@@ -274,7 +279,12 @@ func SetAudioInputEnabled(enabled bool) error {
 	}
 
 	if enabled && activeConnections.Load() > 0 {
-		return startAudio()
+		go func() {
+			if err := startAudio(); err != nil {
+				audioLogger.Error().Err(err).Msg("Failed to start input audio after enable")
+			}
+		}()
+		return nil
 	}
 	stopInputAudio()
 	return nil
