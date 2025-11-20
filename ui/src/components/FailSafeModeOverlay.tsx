@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { motion, AnimatePresence } from "framer-motion";
-import { LuInfo } from "react-icons/lu";
 
 import { Button } from "@/components/Button";
-import Card, { GridCard } from "@components/Card";
+import { GridCard } from "@components/Card";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { useVersion } from "@/hooks/useVersion";
