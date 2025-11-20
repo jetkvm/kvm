@@ -284,6 +284,11 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 		l.Info().Msg("IPv6 mode changed with udhcpc, reboot required")
 	}
 
+	if newConfig.Hostname.String != oldConfig.Hostname.String {
+		rebootRequired = true
+		l.Info().Msg("Hostname changed, reboot required")
+	}
+
 	return rebootRequired, postRebootAction
 }
 
