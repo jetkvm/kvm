@@ -290,6 +290,7 @@ func LoadConfig() {
 		loadedConfig.JigglerConfig = getDefaultConfig().JigglerConfig
 	}
 
+	// Apply audio defaults for new configs
 	if loadedConfig.AudioBitrate == 0 {
 		defaults := getDefaultConfig()
 		loadedConfig.AudioBitrate = defaults.AudioBitrate
@@ -297,13 +298,8 @@ func LoadConfig() {
 		loadedConfig.AudioDTXEnabled = defaults.AudioDTXEnabled
 		loadedConfig.AudioFECEnabled = defaults.AudioFECEnabled
 		loadedConfig.AudioBufferPeriods = defaults.AudioBufferPeriods
-	}
-
-	if loadedConfig.AudioSampleRate == 0 {
-		loadedConfig.AudioSampleRate = getDefaultConfig().AudioSampleRate
-	}
-	if loadedConfig.AudioPacketLossPerc == 0 {
-		loadedConfig.AudioPacketLossPerc = getDefaultConfig().AudioPacketLossPerc
+		loadedConfig.AudioSampleRate = defaults.AudioSampleRate
+		loadedConfig.AudioPacketLossPerc = defaults.AudioPacketLossPerc
 	}
 
 	// fixup old keyboard layout value

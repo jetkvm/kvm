@@ -49,48 +49,46 @@ func initAudio() {
 func getAudioConfig() audio.AudioConfig {
 	cfg := audio.DefaultAudioConfig()
 
-	// Helper to validate numeric ranges and return sanitized values
-	// Returns (value, true) if valid, (0, false) if invalid
-	validateAndApply := func(value int, min int, max int, paramName string) (int, bool) {
-		if value >= min && value <= max {
-			return value, true
-		}
-		if value != 0 {
-			audioLogger.Warn().Int(paramName, value).Msgf("Invalid %s, using default", paramName)
-		}
-		return 0, false
+	// Apply bitrate (64-256 kbps)
+	if config.AudioBitrate >= 64 && config.AudioBitrate <= 256 {
+		cfg.Bitrate = uint16(config.AudioBitrate)
+	} else if config.AudioBitrate != 0 {
+		audioLogger.Warn().Int("bitrate", config.AudioBitrate).Msg("Invalid audio bitrate, using default")
 	}
 
-	// Validate and apply bitrate
-	if bitrate, valid := validateAndApply(config.AudioBitrate, 64, 256, "audio bitrate"); valid {
-		cfg.Bitrate = uint16(bitrate)
+	// Apply complexity (0-10)
+	if config.AudioComplexity >= 0 && config.AudioComplexity <= 10 {
+		cfg.Complexity = uint8(config.AudioComplexity)
+	} else if config.AudioComplexity != 0 {
+		audioLogger.Warn().Int("complexity", config.AudioComplexity).Msg("Invalid audio complexity, using default")
 	}
 
-	// Validate and apply complexity
-	if complexity, valid := validateAndApply(config.AudioComplexity, 0, 10, "audio complexity"); valid {
-		cfg.Complexity = uint8(complexity)
+	// Apply buffer periods (2-24)
+	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 24 {
+		cfg.BufferPeriods = uint8(config.AudioBufferPeriods)
+	} else if config.AudioBufferPeriods != 0 {
+		audioLogger.Warn().Int("buffer_periods", config.AudioBufferPeriods).Msg("Invalid buffer periods, using default")
+	}
+
+	// Apply sample rate (Opus supports: 8k, 12k, 16k, 24k, 48k)
+	switch config.AudioSampleRate {
+	case 8000, 12000, 16000, 24000, 48000:
+		cfg.SampleRate = uint32(config.AudioSampleRate)
+	default:
+		if config.AudioSampleRate != 0 {
+			audioLogger.Warn().Int("sample_rate", config.AudioSampleRate).Msg("Invalid sample rate, using default")
+		}
+	}
+
+	// Apply packet loss percentage (0-100)
+	if config.AudioPacketLossPerc >= 0 && config.AudioPacketLossPerc <= 100 {
+		cfg.PacketLossPerc = uint8(config.AudioPacketLossPerc)
+	} else if config.AudioPacketLossPerc != 0 {
+		audioLogger.Warn().Int("packet_loss_perc", config.AudioPacketLossPerc).Msg("Invalid packet loss percentage, using default")
 	}
 
 	cfg.DTXEnabled = config.AudioDTXEnabled
 	cfg.FECEnabled = config.AudioFECEnabled
-
-	// Validate and apply buffer periods
-	if periods, valid := validateAndApply(config.AudioBufferPeriods, 2, 24, "buffer periods"); valid {
-		cfg.BufferPeriods = uint8(periods)
-	}
-
-	// Opus-compatible rates only: 8k, 12k, 16k, 24k, 48k
-	validRates := map[int]bool{8000: true, 12000: true, 16000: true, 24000: true, 48000: true}
-	if validRates[config.AudioSampleRate] {
-		cfg.SampleRate = uint32(config.AudioSampleRate)
-	} else if config.AudioSampleRate != 0 {
-		audioLogger.Warn().Int("sample_rate", config.AudioSampleRate).Uint32("default", cfg.SampleRate).Msg("Invalid sample rate, using default")
-	}
-
-	// Validate and apply packet loss percentage
-	if pktLoss, valid := validateAndApply(config.AudioPacketLossPerc, 0, 100, "packet loss percentage"); valid {
-		cfg.PacketLossPerc = uint8(pktLoss)
-	}
 
 	return cfg
 }
@@ -120,13 +118,17 @@ func startAudio() error {
 		inputErr = startInputAudioUnderMutex(getAlsaDevice("usb"))
 	}
 
-	if outputErr != nil && inputErr != nil {
-		return fmt.Errorf("audio start failed - output: %w, input: %v", outputErr, inputErr)
+	// Simplified error handling - both errors are worth reporting
+	if outputErr != nil || inputErr != nil {
+		if outputErr != nil && inputErr != nil {
+			return fmt.Errorf("audio start failed - output: %w, input: %v", outputErr, inputErr)
+		}
+		if outputErr != nil {
+			return outputErr
+		}
+		return inputErr
 	}
-	if outputErr != nil {
-		return outputErr
-	}
-	return inputErr
+	return nil
 }
 
 func startOutputAudioUnderMutex(alsaOutputDevice string) error {
@@ -250,9 +252,8 @@ func setAudioTrack(audioTrack *webrtc.TrackLocalStaticSample) {
 }
 
 func setPendingInputTrack(track *webrtc.TrackRemote) {
-	trackID := new(string)
-	*trackID = track.ID()
-	currentInputTrack.Store(trackID)
+	trackID := track.ID()
+	currentInputTrack.Store(&trackID)
 	go handleInputTrackForSession(track)
 }
 
@@ -397,22 +398,11 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 
 // processInputPacket handles writing audio data to the input source
 func processInputPacket(opusData []byte) error {
-	// Early check to avoid mutex acquisition if source is nil
-	if inputSource.Load() == nil {
-		return nil
-	}
-
 	inputSourceMutex.Lock()
 	defer inputSourceMutex.Unlock()
 
-	// Reload source inside mutex to ensure we have the currently active source
 	source := inputSource.Load()
-	if source == nil {
-		return nil
-	}
-
-	// Defensive null check - ensure dereferenced pointer is valid
-	if *source == nil {
+	if source == nil || *source == nil {
 		return nil
 	}
 
