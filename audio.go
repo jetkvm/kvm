@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	audioMutex         sync.Mutex
-	inputSourceMutex   sync.Mutex // Serializes Connect() and WriteMessage() calls to input source
-	outputSource       atomic.Pointer[audio.AudioSource]
-	inputSource        atomic.Pointer[audio.AudioSource]
+	audioMutex       sync.Mutex
+	inputSourceMutex sync.Mutex // Prevents concurrent WebRTC packets from racing during lazy connect + write
+	outputSource     atomic.Pointer[audio.AudioSource]
+	inputSource      atomic.Pointer[audio.AudioSource]
 	outputRelay        atomic.Pointer[audio.OutputRelay]
 	inputRelay         atomic.Pointer[audio.InputRelay]
 	audioInitialized   bool
@@ -302,7 +302,7 @@ func SetAudioInputEnabled(enabled bool) error {
 // TC358743 hardware characteristics. Callers receive success before audio actually switches.
 func SetAudioOutputSource(source string) error {
 	if source != "hdmi" && source != "usb" {
-		return nil
+		return fmt.Errorf("invalid audio source: %s (must be 'hdmi' or 'usb')", source)
 	}
 
 	ensureConfigLoaded()
