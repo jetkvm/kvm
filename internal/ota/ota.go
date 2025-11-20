@@ -228,6 +228,12 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		s.triggerComponentUpdateState("system", systemUpdate)
 	}
 
+	if !appUpdate.pending && !systemUpdate.pending {
+		scopedLogger.Info().Msg("No updates available")
+		s.updating = false
+		return nil
+	}
+
 	scopedLogger.Trace().Bool("pending", appUpdate.pending).Msg("Checking for app update")
 
 	if appUpdate.pending {
