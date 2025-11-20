@@ -5,13 +5,22 @@ interface SettingsItemProps {
   readonly title: string;
   readonly description: string | React.ReactNode;
   readonly badge?: string;
+  readonly badgeTheme?: keyof typeof badgeTheme;
   readonly className?: string;
   readonly loading?: boolean;
   readonly children?: React.ReactNode;
 }
 
+const badgeTheme = {
+  info: "bg-blue-500 text-white",
+  success: "bg-green-500 text-white",
+  warning: "bg-yellow-500 text-white",
+  danger: "bg-red-500 text-white",
+};
+
 export function SettingsItem(props: SettingsItemProps) {
-  const { title, description, badge, children, className, loading } = props;
+  const { title, description, badge, badgeTheme: badgeThemeProp = "danger", children, className, loading } = props;
+  const badgeThemeClass = badgeTheme[badgeThemeProp];
 
   return (
     <label
@@ -25,7 +34,7 @@ export function SettingsItem(props: SettingsItemProps) {
           <div className="flex items-center text-base font-semibold text-black dark:text-white">
             {title}
             {badge && (
-              <span className="ml-2 rounded-full bg-red-500 px-2 py-1 text-[10px] font-medium leading-none text-white dark:border dark:border-red-700 dark:bg-red-800 dark:text-red-50">
+              <span className={cx("ml-2 rounded-full px-2 py-1 text-[10px] font-medium leading-none text-white", badgeThemeClass)}>
                 {badge}
               </span>
             )}
