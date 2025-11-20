@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { motion, AnimatePresence } from "framer-motion";
-import { LuInfo } from "react-icons/lu";
 
 import { Button } from "@/components/Button";
-import Card, { GridCard } from "@components/Card";
+import { GridCard } from "@components/Card";
 import { JsonRpcResponse, useJsonRpc } from "@/hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@/hooks/useAppNavigation";
 import { useVersion } from "@/hooks/useVersion";
@@ -34,40 +33,12 @@ function OverlayContent({ children }: OverlayContentProps) {
   );
 }
 
-interface TooltipProps {
-  readonly children: React.ReactNode;
-  readonly text: string;
-  readonly show: boolean;
-}
-
-function Tooltip({ children, text, show }: TooltipProps) {
-  if (!show) {
-    return <>{children}</>;
-  }
-
-
-  return (
-    <div className="group/tooltip relative">
-      {children}
-      <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 opacity-0 transition-opacity group-hover/tooltip:block group-hover/tooltip:opacity-100">
-        <Card>
-          <div className="whitespace-nowrap px-2 py-1 text-xs flex items-center gap-1 justify-center">
-            <LuInfo className="h-3 w-3 text-slate-700 dark:text-slate-300" />
-            {text}
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
   const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
   const { appVersion } = useVersion();
   const { systemVersion } = useDeviceStore();
   const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
-  const [hasDownloadedLogs, setHasDownloadedLogs] = useState(false);
 
   const getReasonCopy = () => {
     switch (reason) {
@@ -115,7 +86,6 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
       URL.revokeObjectURL(url);
 
       notifications.success("Crash logs downloaded successfully");
-      setHasDownloadedLogs(true);
 
       // Open GitHub issue
       const issueBody = `## Issue Description
@@ -182,25 +152,19 @@ Please attach the recovery logs file that was downloaded to your computer:
                     />
 
                     <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 block" />
-                    <Tooltip text="Download logs first" show={!hasDownloadedLogs}>
-                      <Button
-                        onClick={() => navigateTo("/settings/general/reboot")}
-                        theme="light"
-                        size="SM"
-                        text="Reboot Device"
-                        disabled={!hasDownloadedLogs}
-                      />
-                    </Tooltip>
+                    <Button
+                      onClick={() => navigateTo("/settings/general/reboot")}
+                      theme="light"
+                      size="SM"
+                      text="Reboot Device"
+                    />
 
-                    <Tooltip text="Download logs first" show={!hasDownloadedLogs}>
-                      <Button
-                        size="SM"
-                        onClick={handleDowngrade}
-                        theme="light"
-                        text={`Downgrade to v${DOWNGRADE_VERSION}`}
-                        disabled={!hasDownloadedLogs}
-                      />
-                    </Tooltip>
+                    <Button
+                      size="SM"
+                      onClick={handleDowngrade}
+                      theme="light"
+                      text={`Downgrade to v${DOWNGRADE_VERSION}`}
+                    />
                   </div>
 
 
