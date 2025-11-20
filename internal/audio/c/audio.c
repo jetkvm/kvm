@@ -75,12 +75,11 @@ static uint32_t max_backoff_us_global = 500000;
 static atomic_int capture_stop_requested = 0;
 static atomic_int playback_stop_requested = 0;
 
-// Mutexes to protect concurrent access to ALSA handles during close
+// Mutexes to protect concurrent access to ALSA handles and codecs
 // These prevent race conditions when jetkvm_audio_*_close() is called while
 // jetkvm_audio_read_encode() or jetkvm_audio_decode_write() are executing.
-// The hot path functions acquire these mutexes briefly to validate handle
-// pointers, then release before slow ALSA/Opus operations to avoid holding
-// locks during I/O. Handle comparison checks detect races after operations.
+// The mutexes are held during ALSA I/O and codec operations to ensure
+// handles remain valid throughout the operation.
 static pthread_mutex_t capture_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t playback_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -606,7 +605,7 @@ retry_read:
 
 /**
  * Initialize INPUT path (Opus decoder → device speakers)
- * Opens ALSA playback device from ALSA_PLAYBACK_DEVICE env (default: hw:1,0), falls back to "default" on error
+ * Opens ALSA playback device from ALSA_PLAYBACK_DEVICE env (default: hw:1,0)
  * and creates Opus decoder
  * @return 0 on success, -EBUSY if initializing, -1/-2 on errors
  */
@@ -652,12 +651,9 @@ int jetkvm_audio_playback_init() {
 		fprintf(stderr, "Failed to open ALSA playback device %s: %s\n",
 		        alsa_playback_device, snd_strerror(err));
 		fflush(stderr);
-		err = safe_alsa_open(&pcm_playback_handle, "default", SND_PCM_STREAM_PLAYBACK);
-		if (err < 0) {
-			atomic_store(&playback_stop_requested, 0);
-			playback_initializing = 0;
-			return -1;
-		}
+		atomic_store(&playback_stop_requested, 0);
+		playback_initializing = 0;
+		return -1;
 	}
 
 	unsigned int actual_rate = 0;
