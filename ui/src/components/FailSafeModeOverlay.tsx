@@ -34,33 +34,6 @@ function OverlayContent({ children }: OverlayContentProps) {
   );
 }
 
-interface TooltipProps {
-  readonly children: React.ReactNode;
-  readonly text: string;
-  readonly show: boolean;
-}
-
-function Tooltip({ children, text, show }: TooltipProps) {
-  if (!show) {
-    return <>{children}</>;
-  }
-
-
-  return (
-    <div className="group/tooltip relative">
-      {children}
-      <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 opacity-0 transition-opacity group-hover/tooltip:block group-hover/tooltip:opacity-100">
-        <Card>
-          <div className="whitespace-nowrap px-2 py-1 text-xs flex items-center gap-1 justify-center">
-            <LuInfo className="h-3 w-3 text-slate-700 dark:text-slate-300" />
-            {text}
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
   const { send } = useJsonRpc();
   const { navigateTo } = useDeviceUiNavigation();
