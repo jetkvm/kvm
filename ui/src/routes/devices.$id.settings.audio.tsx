@@ -20,18 +20,15 @@ interface AudioConfigResult {
   packet_loss_perc: number;
 }
 
-// UI display defaults - used to mark default options in dropdown menus
-// Note: These should match backend defaults in config.go, but are fetched dynamically from API
 const AUDIO_DEFAULTS = {
   bitrate: 192,
   complexity: 8,
-  packetLossPerc: 20,  // Backend default is 20, not 0
+  packetLossPerc: 20,
 } as const;
 
 export default function SettingsAudioRoute() {
   const { send } = useJsonRpc();
 
-  // Helper function to handle RPC errors consistently
   const handleRpcError = (resp: JsonRpcResponse, defaultMsg?: string) => {
     if ("error" in resp) {
       notifications.error(String(resp.error.data || defaultMsg || m.unknown_error()));
@@ -64,7 +61,6 @@ export default function SettingsAudioRoute() {
   } = useSettingsStore();
 
   useEffect(() => {
-    // Load boolean settings
     send("getAudioOutputEnabled", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       setAudioOutputEnabled(resp.result as boolean);
@@ -80,7 +76,6 @@ export default function SettingsAudioRoute() {
       setAudioOutputSource(resp.result as string);
     });
 
-    // Load complex audio configuration
     send("getAudioConfig", {}, (resp: JsonRpcResponse) => {
       if ("error" in resp) return;
       const config = resp.result as AudioConfigResult;
@@ -137,7 +132,6 @@ export default function SettingsAudioRoute() {
     });
   };
 
-  // Create a configuration object from current state
   const getCurrentConfig = () => ({
     bitrate: audioBitrate,
     complexity: audioComplexity,
