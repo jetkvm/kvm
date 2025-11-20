@@ -47,6 +47,10 @@ BIN_DIR := $(shell pwd)/bin
 
 TEST_DIRS := $(shell find . -name "*_test.go" -type f -exec dirname {} \; | sort -u)
 
+# Build ALSA and Opus static libs for ARM in /opt/jetkvm-audio-libs
+build_audio_deps:
+	bash .devcontainer/install_audio_deps.sh
+
 build_native:
 	@if [ "$(SKIP_NATIVE_IF_EXISTS)" = "1" ] && [ -f "internal/native/cgo/lib/libjknative.a" ]; then \
 		echo "libjknative.a already exists, skipping native build..."; \
@@ -137,3 +141,31 @@ release:
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sha256
+# Run golangci-lint locally with the same configuration as CI
+lint-go: build_audio_deps
+	@echo "Running golangci-lint..."
+	@mkdir -p static && touch static/.gitkeep
+	golangci-lint run --verbose
+
+# Run both Go and UI linting with auto-fix
+lint-fix: lint-go-fix lint-ui-fix
+	@echo "All linting with auto-fix completed successfully!"
+
+# Run golangci-lint with auto-fix
+lint-go-fix: build_audio_deps
+	@echo "Running golangci-lint with auto-fix..."
+	@mkdir -p static && touch static/.gitkeep
+	golangci-lint run --fix --verbose
+
+# Run UI linting locally (mirrors GitHub workflow ui-lint.yml)
+lint-ui:
+	@echo "Running UI lint..."
+	@cd ui && npm ci && npm run lint
+
+# Run UI linting with auto-fix
+lint-ui-fix:
+	@echo "Running UI lint with auto-fix..."
+	@cd ui && npm ci && npm run lint:fix
+
+# Legacy alias for UI linting (for backward compatibility)
+ui-lint: lint-ui
