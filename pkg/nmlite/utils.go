@@ -42,17 +42,19 @@ func sortAndCompareStringSlices(a, b []string) bool {
 	return true
 }
 
+func sortIPv6AddressSlicesStable(a []types.IPv6Address) {
+	sort.SliceStable(a, func(i, j int) bool {
+		return a[i].Address.String() < a[j].Address.String()
+	})
+}
+
 func sortAndCompareIPv6AddressSlices(a, b []types.IPv6Address) bool {
 	if len(a) != len(b) {
 		return false
 	}
 
-	sort.SliceStable(a, func(i, j int) bool {
-		return a[i].Address.String() < b[j].Address.String()
-	})
-	sort.SliceStable(b, func(i, j int) bool {
-		return b[i].Address.String() < a[j].Address.String()
-	})
+	sortIPv6AddressSlicesStable(a)
+	sortIPv6AddressSlicesStable(b)
 
 	for i := range a {
 		if a[i].Address.String() != b[i].Address.String() {

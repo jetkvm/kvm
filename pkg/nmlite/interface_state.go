@@ -16,7 +16,10 @@ func (im *InterfaceManager) updateInterfaceState() error {
 		return fmt.Errorf("failed to get interface: %w", err)
 	}
 
-	var stateChanged bool
+	var (
+		stateChanged bool
+		changeReason string
+	)
 
 	attrs := nl.Attrs()
 
@@ -29,6 +32,7 @@ func (im *InterfaceManager) updateInterfaceState() error {
 	if im.state.Up != isUp {
 		im.state.Up = isUp
 		stateChanged = true
+		changeReason = "oper state changed"
 	}
 
 	// Check if the interface is online
@@ -36,12 +40,14 @@ func (im *InterfaceManager) updateInterfaceState() error {
 	if im.state.Online != isOnline {
 		im.state.Online = isOnline
 		stateChanged = true
+		changeReason = "online state changed"
 	}
 
 	// Check if the MAC address has changed
 	if im.state.MACAddress != attrs.HardwareAddr.String() {
 		im.state.MACAddress = attrs.HardwareAddr.String()
 		stateChanged = true
+		changeReason = "MAC address changed"
 	}
 
 	// Update IP addresses
@@ -49,6 +55,7 @@ func (im *InterfaceManager) updateInterfaceState() error {
 		im.logger.Error().Err(err).Msg("failed to update IP addresses")
 	} else if ipChanged {
 		stateChanged = true
+		changeReason = "IP addresses changed"
 	}
 
 	im.state.LastUpdated = time.Now()
@@ -56,7 +63,10 @@ func (im *InterfaceManager) updateInterfaceState() error {
 
 	// Notify callback if state changed
 	if stateChanged && im.onStateChange != nil {
-		im.logger.Debug().Interface("state", im.state).Msg("notifying state change")
+		im.logger.Debug().
+			Str("changeReason", changeReason).
+			Interface("state", im.state).
+			Msg("notifying state change")
 		im.onStateChange(*im.state)
 	}
 
@@ -80,6 +90,7 @@ func (im *InterfaceManager) updateInterfaceStateAddresses(nl *link.Link) (bool, 
 		ipv6Gateway          string
 		ipv4Ready, ipv6Ready = false, false
 		stateChanged         = false
+		stateChangeReason    string
 	)
 
 	routes, _ := mgr.ListDefaultRoutes(link.AfInet6)
@@ -123,40 +134,55 @@ func (im *InterfaceManager) updateInterfaceStateAddresses(nl *link.Link) (bool, 
 	if !sortAndCompareStringSlices(im.state.IPv4Addresses, ipv4Addresses) {
 		im.state.IPv4Addresses = ipv4Addresses
 		stateChanged = true
+		stateChangeReason = "IPv4 addresses changed"
 	}
 
 	if !sortAndCompareIPv6AddressSlices(im.state.IPv6Addresses, ipv6Addresses) {
 		im.state.IPv6Addresses = ipv6Addresses
 		stateChanged = true
+		stateChangeReason = "IPv6 addresses changed"
 	}
 
 	if im.state.IPv4Address != ipv4Addr {
 		im.state.IPv4Address = ipv4Addr
 		stateChanged = true
+		stateChangeReason = "IPv4 address changed"
 	}
 
 	if im.state.IPv6Address != ipv6Addr {
 		im.state.IPv6Address = ipv6Addr
 		stateChanged = true
+		stateChangeReason = "IPv6 address changed"
 	}
 	if im.state.IPv6LinkLocal != ipv6LinkLocal {
 		im.state.IPv6LinkLocal = ipv6LinkLocal
 		stateChanged = true
+		stateChangeReason = "IPv6 link local address changed"
 	}
 
 	if im.state.IPv6Gateway != ipv6Gateway {
 		im.state.IPv6Gateway = ipv6Gateway
 		stateChanged = true
+		stateChangeReason = "IPv6 gateway changed"
 	}
 
 	if im.state.IPv4Ready != ipv4Ready {
 		im.state.IPv4Ready = ipv4Ready
 		stateChanged = true
+		stateChangeReason = "IPv4 ready state changed"
 	}
 
 	if im.state.IPv6Ready != ipv6Ready {
 		im.state.IPv6Ready = ipv6Ready
 		stateChanged = true
+		stateChangeReason = "IPv6 ready state changed"
+	}
+
+	if stateChanged {
+		im.logger.Trace().
+			Str("changeReason", stateChangeReason).
+			Interface("state", im.state).
+			Msg("interface state changed")
 	}
 
 	return stateChanged, nil
