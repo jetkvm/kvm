@@ -4,14 +4,11 @@
 set -e
 
 # Sudo wrapper function
-SUDO_PATH=$(which sudo 2>/dev/null || echo "")
 function use_sudo() {
-  if [ "$UID" -eq 0 ]; then
+  if [ "$UID" -eq 0 ] || [ -z "$(which sudo 2>/dev/null)" ]; then
     "$@"
-  elif [ -n "$SUDO_PATH" ]; then
-    ${SUDO_PATH} -E "$@"
   else
-    "$@"
+    sudo -E "$@"
   fi
 }
 

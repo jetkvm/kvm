@@ -866,30 +866,30 @@ func rpcGetUsbDevices() (usbgadget.Devices, error) {
 func updateUsbRelatedConfig(wasUsbAudioEnabled bool) error {
 	ensureConfigLoaded()
 	nowHasUsbAudio := config.UsbDevices != nil && config.UsbDevices.Audio
-	outputSourceIsUsb := config.AudioOutputSource == "usb"
 
-	// must stop input audio before reconfiguring
+	// Stop audio before reconfiguring USB gadget
 	stopInputAudio()
-
-	// if we're currently sourcing audio from USB, stop the output audio before reconfiguring
-	if outputSourceIsUsb {
+	if config.AudioOutputSource == "usb" {
 		stopOutputAudio()
 	}
 
-	// Auto-switch to HDMI audio output when USB audio was selected and is now disabled
+	// Auto-switch to HDMI when USB audio disabled
 	if wasUsbAudioEnabled && !nowHasUsbAudio && config.AudioOutputSource == "usb" {
-		logger.Info().Msg("USB audio just disabled, automatic switch audio output source to HDMI")
+		logger.Info().Msg("USB audio disabled, switching output to HDMI")
 		config.AudioOutputSource = "hdmi"
 	}
 
+	// Update USB gadget configuration
 	if err := gadget.UpdateGadgetConfig(); err != nil {
-		return fmt.Errorf("failed to write gadget config: %w", err)
+		return fmt.Errorf("failed to update gadget config: %w", err)
 	}
 
+	// Save configuration
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
+	// Restart audio if needed
 	if err := startAudio(); err != nil {
 		logger.Warn().Err(err).Msg("Failed to restart audio after USB reconfiguration")
 	}

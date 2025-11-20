@@ -70,54 +70,54 @@ func (r *OutputRelay) Stop() {
 func (r *OutputRelay) relayLoop() {
 	defer close(r.stopped)
 
-	const initialDelay = 1 * time.Second
-	const maxDelay = 30 * time.Second
 	const maxRetries = 10
-
-	retryDelay := initialDelay
+	retryDelay := 1 * time.Second
 	consecutiveFailures := 0
 
 	for r.running.Load() {
+		// Connect if not connected
 		if !(*r.source).IsConnected() {
 			if err := (*r.source).Connect(); err != nil {
-				consecutiveFailures++
-				if consecutiveFailures >= maxRetries {
-					r.logger.Error().Int("failures", consecutiveFailures).Msg("Max connection retries exceeded, stopping relay")
+				if consecutiveFailures++; consecutiveFailures >= maxRetries {
+					r.logger.Error().Int("failures", consecutiveFailures).Msg("Max retries exceeded, stopping relay")
 					return
 				}
-				r.logger.Debug().Err(err).Int("failures", consecutiveFailures).Dur("retry_delay", retryDelay).Msg("failed to connect, will retry")
+				r.logger.Debug().Err(err).Int("failures", consecutiveFailures).Msg("Connection failed, retrying")
 				time.Sleep(retryDelay)
-				retryDelay = min(retryDelay*2, maxDelay)
+				retryDelay = min(retryDelay*2, 30*time.Second)
 				continue
 			}
 			consecutiveFailures = 0
-			retryDelay = initialDelay
+			retryDelay = 1 * time.Second
 		}
 
+		// Read message from source
 		msgType, payload, err := (*r.source).ReadMessage()
 		if err != nil {
-			if r.running.Load() {
-				consecutiveFailures++
-				if consecutiveFailures >= maxRetries {
-					r.logger.Error().Int("failures", consecutiveFailures).Msg("Max read retries exceeded, stopping relay")
-					return
-				}
-				r.logger.Warn().Err(err).Int("failures", consecutiveFailures).Msg("read error, reconnecting")
-				(*r.source).Disconnect()
-				time.Sleep(retryDelay)
-				retryDelay = min(retryDelay*2, maxDelay)
+			if !r.running.Load() {
+				break
 			}
+			if consecutiveFailures++; consecutiveFailures >= maxRetries {
+				r.logger.Error().Int("failures", consecutiveFailures).Msg("Max read retries exceeded, stopping relay")
+				return
+			}
+			r.logger.Warn().Err(err).Int("failures", consecutiveFailures).Msg("Read error, reconnecting")
+			(*r.source).Disconnect()
+			time.Sleep(retryDelay)
+			retryDelay = min(retryDelay*2, 30*time.Second)
 			continue
 		}
 
+		// Reset retry state on success
 		consecutiveFailures = 0
-		retryDelay = initialDelay
+		retryDelay = 1 * time.Second
 
+		// Write audio sample to WebRTC
 		if msgType == ipcMsgTypeOpus && len(payload) > 0 {
 			r.sample.Data = payload
 			if err := r.audioTrack.WriteSample(r.sample); err != nil {
 				r.framesDropped.Add(1)
-				r.logger.Warn().Err(err).Msg("failed to write sample to WebRTC")
+				r.logger.Warn().Err(err).Msg("Failed to write sample to WebRTC")
 			} else {
 				r.framesRelayed.Add(1)
 			}
