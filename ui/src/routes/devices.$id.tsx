@@ -615,7 +615,7 @@ export default function KvmIdRoute() {
     });
   }, 10000);
 
-  const { setNetworkState  } = useNetworkStateStore();
+  const { setNetworkState } = useNetworkStateStore();
   const { setHdmiState } = useVideoStore();
   const {
     keyboardLedState, setKeyboardLedState,
@@ -815,6 +815,10 @@ export default function KvmIdRoute() {
       return <RebootingOverlay show={true} postRebootAction={rebootState.postRebootAction} />;
     }
 
+    if (isFailsafeMode && failsafeReason) {
+      return <FailSafeModeOverlay reason={failsafeReason} />;
+    }
+
     const hasConnectionFailed =
       connectionFailed || ["failed", "closed"].includes(peerConnectionState ?? "");
 
@@ -839,7 +843,7 @@ export default function KvmIdRoute() {
     }
 
     return null;
-  }, [location.pathname, rebootState?.isRebooting, rebootState?.postRebootAction, connectionFailed, peerConnectionState, peerConnection, setupPeerConnection, loadingMessage]);
+  }, [location.pathname, rebootState?.isRebooting, rebootState?.postRebootAction, isFailsafeMode, failsafeReason, connectionFailed, peerConnectionState, peerConnection, setupPeerConnection, loadingMessage]);
 
   return (
     <FeatureFlagProvider appVersion={appVersion}>
@@ -887,9 +891,7 @@ export default function KvmIdRoute() {
               className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"
             >
               <div className="relative h-full max-h-[720px] w-full max-w-[1280px] rounded-md">
-                {isFailsafeMode && failsafeReason ? (
-                  <FailSafeModeOverlay reason={failsafeReason} />
-                ) : !!ConnectionStatusElement && ConnectionStatusElement}
+                {!!ConnectionStatusElement && ConnectionStatusElement}
               </div>
             </div>
             <SidebarContainer sidebarView={sidebarView} />
