@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	audioMutex       sync.Mutex
-	inputSourceMutex sync.Mutex // Prevents concurrent WebRTC packets from racing during lazy connect + write
-	outputSource     atomic.Pointer[audio.AudioSource]
-	inputSource      atomic.Pointer[audio.AudioSource]
+	audioMutex         sync.Mutex
+	inputSourceMutex   sync.Mutex // Prevents concurrent WebRTC packets from racing during lazy connect + write
+	outputSource       atomic.Pointer[audio.AudioSource]
+	inputSource        atomic.Pointer[audio.AudioSource]
 	outputRelay        atomic.Pointer[audio.OutputRelay]
 	inputRelay         atomic.Pointer[audio.InputRelay]
 	audioInitialized   bool
@@ -257,6 +257,9 @@ func setPendingInputTrack(track *webrtc.TrackRemote) {
 	go handleInputTrackForSession(track)
 }
 
+// SetAudioOutputEnabled enables or disables audio output capture.
+// Returns immediately; when enabling, audio starts asynchronously to prevent UI blocking.
+// Check logs for async operation status.
 func SetAudioOutputEnabled(enabled bool) error {
 	if audioOutputEnabled.Swap(enabled) == enabled {
 		return nil
@@ -274,6 +277,9 @@ func SetAudioOutputEnabled(enabled bool) error {
 	return nil
 }
 
+// SetAudioInputEnabled enables or disables audio input playback.
+// Returns immediately; when enabling, audio starts asynchronously to prevent UI blocking.
+// Check logs for async operation status.
 func SetAudioInputEnabled(enabled bool) error {
 	if audioInputEnabled.Swap(enabled) == enabled {
 		return nil
@@ -329,6 +335,9 @@ func SetAudioOutputSource(source string) error {
 	return nil
 }
 
+// RestartAudioOutput stops and restarts the audio output capture.
+// Returns immediately; restart happens asynchronously to prevent UI blocking.
+// Check logs for async operation status.
 func RestartAudioOutput() error {
 	audioMutex.Lock()
 	hasActiveOutput := audioOutputEnabled.Load() && currentAudioTrack != nil && outputSource.Load() != nil

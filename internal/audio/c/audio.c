@@ -11,7 +11,8 @@
  * Key features:
  * - ARM NEON SIMD optimization for all audio operations
  * - Opus in-band FEC for packet loss resilience
- * - S16_LE stereo, 20ms frames at 48kHz (ALSA resamples non-48kHz sources)
+ * - S16_LE stereo, 20ms frames (sample rate configurable: 8k/12k/16k/24k/48kHz)
+ * - ALSA rate plugin resamples hardware output to match requested Opus-compatible rate
  */
 
 #include <alsa/asoundlib.h>
@@ -75,11 +76,11 @@ static uint32_t max_backoff_us_global = 500000;
 static atomic_int capture_stop_requested = 0;
 static atomic_int playback_stop_requested = 0;
 
-// Mutexes to protect concurrent access to ALSA handles and codecs
+// Mutexes to protect concurrent access to ALSA handles and codecs throughout their lifecycle
 // These prevent race conditions when jetkvm_audio_*_close() is called while
 // jetkvm_audio_read_encode() or jetkvm_audio_decode_write() are executing.
-// The mutexes are held during ALSA I/O and codec operations to ensure
-// handles remain valid throughout the operation.
+// The mutexes protect initialization, cleanup, ALSA I/O, codec operations, and handle validation
+// to ensure handles remain valid from acquisition through release.
 static pthread_mutex_t capture_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t playback_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -606,7 +607,7 @@ retry_read:
 /**
  * Initialize INPUT path (Opus decoder → device speakers)
  * Opens ALSA playback device from ALSA_PLAYBACK_DEVICE env (default: hw:1,0)
- * and creates Opus decoder
+ * and creates Opus decoder. Returns immediately on device open failure (no fallback).
  * @return 0 on success, -EBUSY if initializing, -1/-2 on errors
  */
 int jetkvm_audio_playback_init() {
