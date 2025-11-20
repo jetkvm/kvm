@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/jetkvm/kvm/internal/supervisor"
 	"github.com/jetkvm/kvm/internal/utils"
 	"github.com/rs/zerolog"
 )
@@ -422,7 +423,7 @@ func (p *NativeProxy) restartProcess() error {
 	logger := p.logger.With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts).Logger()
 
 	if p.restarts >= p.options.MaxRestartAttempts {
-		logger.Fatal().Msg("max restart attempts reached, exiting")
+		logger.Fatal().Msgf("max restart attempts reached, exiting: %s", supervisor.FailsafeReasonVideoMaxRestartAttemptsReached)
 		return fmt.Errorf("max restart attempts reached")
 	}
 
