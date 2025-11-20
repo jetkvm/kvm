@@ -204,58 +204,47 @@ func (u *UsbGadget) Close() error {
 func (u *UsbGadget) CloseHidFiles() {
 	u.log.Debug().Msg("closing HID files")
 
-	// Close keyboard HID file
-	if u.keyboardHidFile != nil {
-		if err := u.keyboardHidFile.Close(); err != nil {
-			u.log.Debug().Err(err).Msg("failed to close keyboard HID file")
+	closeFile := func(file **os.File, name string) {
+		if *file != nil {
+			if err := (*file).Close(); err != nil {
+				u.log.Debug().Err(err).Msgf("failed to close %s HID file", name)
+			}
+			*file = nil
 		}
-		u.keyboardHidFile = nil
 	}
 
-	// Close absolute mouse HID file
-	if u.absMouseHidFile != nil {
-		if err := u.absMouseHidFile.Close(); err != nil {
-			u.log.Debug().Err(err).Msg("failed to close absolute mouse HID file")
-		}
-		u.absMouseHidFile = nil
-	}
-
-	// Close relative mouse HID file
-	if u.relMouseHidFile != nil {
-		if err := u.relMouseHidFile.Close(); err != nil {
-			u.log.Debug().Err(err).Msg("failed to close relative mouse HID file")
-		}
-		u.relMouseHidFile = nil
-	}
+	closeFile(&u.keyboardHidFile, "keyboard")
+	closeFile(&u.absMouseHidFile, "absolute mouse")
+	closeFile(&u.relMouseHidFile, "relative mouse")
 }
 
 // PreOpenHidFiles opens all HID files to reduce input latency
 func (u *UsbGadget) PreOpenHidFiles() {
-	// Add a small delay to allow USB gadget reconfiguration to complete
-	// This prevents "no such device or address" errors when trying to open HID files
+	// Small delay for USB gadget reconfiguration to complete
 	time.Sleep(100 * time.Millisecond)
+
+	openHidFile := func(file **os.File, path string, name string) {
+		if *file == nil {
+			f, err := os.OpenFile(path, os.O_RDWR, 0666)
+			if err != nil {
+				u.log.Debug().Err(err).Msgf("failed to pre-open %s HID file", name)
+			} else {
+				*file = f
+			}
+		}
+	}
 
 	if u.enabledDevices.Keyboard {
 		if err := u.openKeyboardHidFile(); err != nil {
 			u.log.Debug().Err(err).Msg("failed to pre-open keyboard HID file")
 		}
 	}
+
 	if u.enabledDevices.AbsoluteMouse {
-		if u.absMouseHidFile == nil {
-			var err error
-			u.absMouseHidFile, err = os.OpenFile("/dev/hidg1", os.O_RDWR, 0666)
-			if err != nil {
-				u.log.Debug().Err(err).Msg("failed to pre-open absolute mouse HID file")
-			}
-		}
+		openHidFile(&u.absMouseHidFile, "/dev/hidg1", "absolute mouse")
 	}
+
 	if u.enabledDevices.RelativeMouse {
-		if u.relMouseHidFile == nil {
-			var err error
-			u.relMouseHidFile, err = os.OpenFile("/dev/hidg2", os.O_RDWR, 0666)
-			if err != nil {
-				u.log.Debug().Err(err).Msg("failed to pre-open relative mouse HID file")
-			}
-		}
+		openHidFile(&u.relMouseHidFile, "/dev/hidg2", "relative mouse")
 	}
 }
