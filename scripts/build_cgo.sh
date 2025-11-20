@@ -4,6 +4,8 @@ set -e
 SCRIPT_PATH=$(realpath "$(dirname $(realpath "${BASH_SOURCE[0]}"))")
 source ${SCRIPT_PATH}/build_utils.sh
 
+CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-Release}
+
 CGO_PATH=$(realpath "${SCRIPT_PATH}/../internal/native/cgo")
 BUILD_DIR=${CGO_PATH}/build
 
@@ -31,7 +33,7 @@ VERBOSE=1 cmake -B "${BUILD_DIR}" \
     -DCONFIG_LV_BUILD_EXAMPLES=OFF \
     -DCONFIG_LV_BUILD_DEMOS=OFF \
     -DSKIP_GLIBC_NAMES=ON \
-    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
     -DCMAKE_INSTALL_PREFIX="${TMP_DIR}"
 
 msg_info "▶ Copying built library and header files"

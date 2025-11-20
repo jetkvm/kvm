@@ -278,6 +278,14 @@ export default function SettingsNetworkRoute() {
       });
     }
 
+    if (dirty.hostname) {
+      changes.push({
+        label: m.network_hostname_title(),
+        from: initialSettingsRef.current?.hostname?.toString() ?? "",
+        to: data.hostname?.toString() ?? "",
+      });
+    }
+
     // If no critical fields are changed, save immediately
     if (changes.length === 0) return onSubmit(settings);
 
