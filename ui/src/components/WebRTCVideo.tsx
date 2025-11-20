@@ -529,7 +529,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
                         controlsList="nofullscreen"
                         style={videoStyle}
                         className={cx(
-                          "max-h-full min-h-[384px] max-w-full min-w-[512px] bg-black/50 object-contain transition-all duration-1000",
+                          "max-h-full max-w-full sm:min-h-[384px] sm:min-w-[512px] bg-black/50 object-contain transition-all duration-1000",
                           {
                             "cursor-none": settings.isCursorHidden,
                             "!opacity-0":
