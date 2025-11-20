@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jetkvm/kvm/internal/ota"
 )
 
 func extractSerialNumber() (string, error) {
@@ -29,22 +31,16 @@ func extractSerialNumber() (string, error) {
 	return matches[1], nil
 }
 
-func readOtpEntropy() ([]byte, error) { //nolint:unused
-	content, err := os.ReadFile("/sys/bus/nvmem/devices/rockchip-otp0/nvmem")
-	if err != nil {
-		return nil, err
-	}
-	return content[0x17:0x1C], nil
-}
-
-func hwReboot(force bool, postRebootAction *PostRebootAction, delay time.Duration) error {
-	logger.Info().Msgf("Reboot requested, rebooting in %d seconds...", delay)
+func hwReboot(force bool, postRebootAction *ota.PostRebootAction, delay time.Duration) error {
+	logger.Info().Dur("delayMs", delay).Msg("reboot requested")
 
 	writeJSONRPCEvent("willReboot", postRebootAction, currentSession)
 	time.Sleep(1 * time.Second) // Wait for the JSONRPCEvent to be sent
 
 	nativeInstance.SwitchToScreenIfDifferent("rebooting_screen")
-	time.Sleep(delay - (1 * time.Second)) // wait requested extra settle time
+	if delay > 1*time.Second {
+		time.Sleep(delay - 1*time.Second) // wait requested extra settle time
+	}
 
 	args := []string{}
 	if force {

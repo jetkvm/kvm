@@ -8,6 +8,7 @@ import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
+import { NestedSettingsGroup } from "@components/NestedSettingsGroup";
 import { UsbDeviceSetting } from "@components/UsbDeviceSetting";
 import { UsbInfoSetting } from "@components/UsbInfoSetting";
 import notifications from "@/notifications";
@@ -156,7 +157,7 @@ export default function SettingsHardwareRoute() {
           />
         </SettingsItem>
         {backlightSettings.max_brightness != 0 && (
-          <>
+          <NestedSettingsGroup>
             <SettingsItem
               title={m.hardware_dim_display_after_title()}
               description={m.hardware_dim_display_after_description()}
@@ -198,7 +199,7 @@ export default function SettingsHardwareRoute() {
                 }}
               />
             </SettingsItem>
-          </>
+          </NestedSettingsGroup>
         )}
         <p className="text-xs text-slate-600 dark:text-slate-400">
           {m.hardware_display_wake_up_note()}

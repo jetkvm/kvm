@@ -221,8 +221,12 @@ export interface SystemVersionInfo {
   remote?: VersionInfo;
   systemUpdateAvailable: boolean;
   appUpdateAvailable: boolean;
+  willDisableAutoUpdate?: boolean;
   error?: string;
 }
+
+const UPDATE_STATUS_RPC_TIMEOUT_MS = 10000;
+const UPDATE_STATUS_RPC_MAX_ATTEMPTS = 6;
 
 export async function getUpdateStatus() {
   const response = await callJsonRpc<SystemVersionInfo>({
@@ -230,7 +234,8 @@ export async function getUpdateStatus() {
     // This function calls our api server to see if there are any updates available.
     // It can be called on page load right after a restart, so we need to give it time to
     // establish a connection to the api server.
-    maxAttempts: 6,
+    maxAttempts: UPDATE_STATUS_RPC_MAX_ATTEMPTS,
+    attemptTimeoutMs: UPDATE_STATUS_RPC_TIMEOUT_MS,
   });
 
   if (response.error) throw response.error;
@@ -239,6 +244,30 @@ export async function getUpdateStatus() {
 
 export async function getLocalVersion() {
   const response = await callJsonRpc<VersionInfo>({ method: "getLocalVersion" });
+  if (response.error) throw response.error;
+  return response.result;
+}
+
+export type UpdateComponent = "app" | "system";
+export type UpdateComponents = Partial<Record<UpdateComponent, string>>;
+
+export interface updateParams {
+  components?: UpdateComponents;
+}
+
+export async function checkUpdateComponents(params: updateParams, includePreRelease: boolean) {
+  const response = await callJsonRpc<SystemVersionInfo>({
+    method: "checkUpdateComponents",
+    params: {
+      params,
+      includePreRelease,
+    },
+    // maxAttempts is set to 1,
+    // because it currently retry for all errors,
+    // and we don't want to retry if the error is not a network error
+    maxAttempts: 1,
+    attemptTimeoutMs: UPDATE_STATUS_RPC_TIMEOUT_MS,
+  });
   if (response.error) throw response.error;
   return response.result;
 }
