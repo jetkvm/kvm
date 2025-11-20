@@ -83,6 +83,8 @@ func (c *CgoSource) Connect() error {
 func (c *CgoSource) connectOutput() error {
 	os.Setenv("ALSA_CAPTURE_DEVICE", c.alsaDevice)
 
+	frameSize := uint16(c.config.SampleRate * 20 / 1000)
+
 	c.logger.Debug().
 		Uint16("bitrate_kbps", c.config.Bitrate).
 		Uint8("complexity", c.config.Complexity).
@@ -90,6 +92,7 @@ func (c *CgoSource) connectOutput() error {
 		Bool("fec", c.config.FECEnabled).
 		Uint8("buffer_periods", c.config.BufferPeriods).
 		Uint32("sample_rate", c.config.SampleRate).
+		Uint16("frame_size", frameSize).
 		Uint8("packet_loss_perc", c.config.PacketLossPerc).
 		Msg("Initializing audio capture")
 
@@ -97,12 +100,12 @@ func (c *CgoSource) connectOutput() error {
 		C.uint(uint32(c.config.Bitrate)*1000),
 		C.uchar(c.config.Complexity),
 		C.uint(c.config.SampleRate),
-		C.uchar(2),     // capture_channels
-		C.ushort(960),  // frame_size
-		C.ushort(1500), // max_packet_size
-		C.uint(1000),   // sleep_us
-		C.uchar(5),     // max_attempts
-		C.uint(500000), // max_backoff
+		C.uchar(2),
+		C.ushort(frameSize),
+		C.ushort(1500),
+		C.uint(1000),
+		C.uchar(5),
+		C.uint(500000),
 		boolToUchar(c.config.DTXEnabled),
 		boolToUchar(c.config.FECEnabled),
 		C.uchar(c.config.BufferPeriods),
@@ -122,14 +125,16 @@ func (c *CgoSource) connectOutput() error {
 func (c *CgoSource) connectInput() error {
 	os.Setenv("ALSA_PLAYBACK_DEVICE", c.alsaDevice)
 
+	frameSize := uint16(c.config.SampleRate * 20 / 1000)
+
 	C.update_audio_decoder_constants(
 		C.uint(c.config.SampleRate),
-		C.uchar(1),     // playback_channels
-		C.ushort(960),  // frame_size
-		C.ushort(1500), // max_packet_size
-		C.uint(1000),   // sleep_us
-		C.uchar(5),     // max_attempts
-		C.uint(500000), // max_backoff
+		C.uchar(1),
+		C.ushort(frameSize),
+		C.ushort(1500),
+		C.uint(1000),
+		C.uchar(5),
+		C.uint(500000),
 		C.uchar(c.config.BufferPeriods),
 	)
 
