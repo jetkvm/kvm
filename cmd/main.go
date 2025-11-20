@@ -101,14 +101,21 @@ func supervise() error {
 	cmd.Args = os.Args
 
 	logFile, err := os.CreateTemp("", "jetkvm-stdout.log")
-	defer func() {
-		// we don't care about the errors here
-		_ = logFile.Close()
-		_ = os.Remove(logFile.Name())
-	}()
 	if err != nil {
 		return fmt.Errorf("failed to create log file: %w", err)
 	}
+
+	logFileName := logFile.Name()
+	defer func() {
+		// Close file if it's still open (safe to call even if already closed)
+		if logFile != nil {
+			_ = logFile.Close()
+		}
+		// Only remove if file still exists at original location (wasn't renamed)
+		if _, err := os.Stat(logFileName); err == nil {
+			_ = os.Remove(logFileName)
+		}
+	}()
 
 	// Use io.MultiWriter to write to both the original streams and our buffers
 	cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
@@ -133,6 +140,8 @@ func supervise() error {
 	}
 
 	if exiterr, ok := cmdErr.(*exec.ExitError); ok {
+		// createErrorDump will close and rename the file if successful
+		// Note: os.Exit bypasses defer, but file is already handled by createErrorDump
 		createErrorDump(logFile)
 		os.Exit(exiterr.ExitCode())
 	}
