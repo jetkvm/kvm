@@ -400,20 +400,26 @@ void *run_video_stream(void *arg)
         }
 
         open_attempts++;
+        log_info("==== OUTER LOOP ITERATION %d/%d (streaming_flag=%d, detected_signal=%d) ====",
+                 open_attempts, MAX_OPEN_ATTEMPTS, streaming_flag, detected_signal);
+
         if (open_attempts > MAX_OPEN_ATTEMPTS) {
-            log_error("Tried to open video device %d times without success. "
-                     "Exiting to trigger supervisor restart.", MAX_OPEN_ATTEMPTS);
+            log_error("VIDEO RESTART LOOP DETECTED! Opened device %d times with no success. "
+                     "Exiting native process to trigger supervisor restart and eventual failsafe.",
+                     MAX_OPEN_ATTEMPTS);
             exit(1);
         }
 
         int video_dev_fd = open(VIDEO_DEV, O_RDWR);
         if (video_dev_fd < 0)
         {
-            log_error("failed to open video capture device %s: %s", VIDEO_DEV, strerror(errno));
+            log_error("failed to open video capture device %s: %s (attempt %d)",
+                     VIDEO_DEV, strerror(errno), open_attempts);
             usleep(1000000);
             continue;
         }
-        log_info("opened video capture device %s", VIDEO_DEV);
+        log_info("opened video capture device %s (fd=%d, attempt=%d)",
+                 VIDEO_DEV, video_dev_fd, open_attempts);
 
         uint32_t width = detected_width;
         uint32_t height = detected_height;
@@ -521,23 +527,37 @@ void *run_video_stream(void *arg)
             close(video_dev_fd);
             return (void *)errno;
         }
+        log_info("VIDIOC_STREAMON successful (attempt=%d)", open_attempts);
+
+        // Check hardware status after starting stream
+        struct v4l2_control ctrl;
+        memset(&ctrl, 0, sizeof(ctrl));
+        ctrl.id = V4L2_CID_DV_RX_POWER_PRESENT;
+        if (ioctl(video_dev_fd, VIDIOC_G_CTRL, &ctrl) == 0) {
+            log_info("Hardware status: DV_RX_POWER_PRESENT=%d", ctrl.value);
+        }
 
         struct v4l2_plane tmp_plane;
 
         // Set VENC parameters
+        log_info("Calling venc_start (attempt=%d)...", open_attempts);
         int32_t bitrate = calculate_bitrate(quality_factor, width, height);
         RK_S32 ret = venc_start(bitrate, bitrate * 2, width, height);
         if (ret != RK_SUCCESS)
         {
-            log_error("Set VENC parameters failed with %#x", ret);
+            log_error("venc_start FAILED with %#x (attempt=%d)", ret, open_attempts);
             goto cleanup;
         }
+        log_info("venc_start successful (attempt=%d)", open_attempts);
 
         fd_set fds;
         struct timeval tv;
         int r;
         uint32_t num = 0;
         VIDEO_FRAME_INFO_S stFrame;
+
+        log_info("Entering frame capture loop (attempt=%d, fd=%d, detected_signal=%d, detected_width=%d, detected_height=%d)",
+                 open_attempts, video_dev_fd, detected_signal, detected_width, detected_height);
 
         while (streaming_flag)
         {
@@ -549,8 +569,32 @@ void *run_video_stream(void *arg)
             r = select(video_dev_fd + 1, &fds, NULL, NULL, &tv);
             if (r == 0)
             {
-                log_info("select timeout (num_frames=%u, open_attempts=%d/%d)",
-                         num, open_attempts, MAX_OPEN_ATTEMPTS);
+                log_info("SELECT TIMEOUT! (num_frames=%u, open_attempts=%d/%d, detected_signal=%d)",
+                         num, open_attempts, MAX_OPEN_ATTEMPTS, detected_signal);
+
+                // Diagnose WHY we timed out - check hardware state
+                struct v4l2_control diag_ctrl;
+                memset(&diag_ctrl, 0, sizeof(diag_ctrl));
+                diag_ctrl.id = V4L2_CID_DV_RX_POWER_PRESENT;
+                if (ioctl(video_dev_fd, VIDIOC_G_CTRL, &diag_ctrl) == 0) {
+                    log_info("At timeout: DV_RX_POWER_PRESENT=%d (signal present?)", diag_ctrl.value);
+                } else {
+                    log_info("At timeout: Cannot query DV_RX_POWER_PRESENT: %s", strerror(errno));
+                }
+
+                // Check if buffers are still queued
+                struct v4l2_buffer check_buf;
+                memset(&check_buf, 0, sizeof(check_buf));
+                check_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+                check_buf.memory = V4L2_MEMORY_DMABUF;
+                check_buf.index = 0;
+                struct v4l2_plane check_plane;
+                check_buf.m.planes = &check_plane;
+                check_buf.length = 1;
+                if (ioctl(video_dev_fd, VIDIOC_QUERYBUF, &check_buf) == 0) {
+                    log_info("At timeout: buffer 0 flags=0x%x (queued?)", check_buf.flags);
+                }
+
                 break;
             }
             if (r == -1)
@@ -570,8 +614,13 @@ void *run_video_stream(void *arg)
             buf.length = 1;
             if (ioctl(video_dev_fd, VIDIOC_DQBUF, &buf) < 0)
             {
-                log_error("VIDIOC_DQBUF failed: %s", strerror(errno));
+                log_error("VIDIOC_DQBUF failed: %s (attempt=%d, num_frames=%u)",
+                         strerror(errno), open_attempts, num);
                 break;
+            }
+
+            if (num == 0) {
+                log_info("FIRST FRAME SUCCESS! Video capture working (attempt=%d)", open_attempts);
             }
             log_trace("got frame, bytesused = %d", tmp_plane.bytesused);
             memset(&stFrame, 0, sizeof(VIDEO_FRAME_INFO_S));
@@ -613,7 +662,8 @@ void *run_video_stream(void *arg)
                 log_error("failure VIDIOC_QBUF: %s", strerror(errno));
         }
     cleanup:
-        log_info("cleaning up video capture device %s", VIDEO_DEV);
+        log_info("cleaning up video capture device %s (attempt=%d, will loop back)",
+                 VIDEO_DEV, open_attempts);
         if (ioctl(video_dev_fd, VIDIOC_STREAMOFF, &type) < 0)
         {
             log_error("VIDIOC_STREAMOFF failed: %s", strerror(errno));
@@ -641,11 +691,13 @@ void *run_video_stream(void *arg)
             }
         }
 
-        log_info("closing video capture device %s", VIDEO_DEV);
+        log_info("closing video capture device %s (attempt=%d completed)", VIDEO_DEV, open_attempts);
         close(video_dev_fd);
+        log_info("==== OUTER LOOP END: going back to start (streaming_flag=%d) ====", streaming_flag);
     }
 
-    log_info("video stream thread exiting");
+    log_info("video stream thread exiting (total_attempts=%d, streaming_flag=%d)",
+             open_attempts, streaming_flag);
 
     streaming_stopped = true;
 
