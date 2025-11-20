@@ -70,9 +70,6 @@ func Main() {
 
 	initOta()
 
-	initNative(systemVersionLocal, appVersionLocal)
-	initDisplay()
-
 	http.DefaultClient.Timeout = 1 * time.Minute
 
 	// Initialize network
