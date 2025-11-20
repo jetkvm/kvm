@@ -387,12 +387,23 @@ void *run_video_stream(void *arg)
 
     streaming_stopped = false;
 
+    // Prevent infinite loop: count how many times we've tried to open device in this thread
+    int open_attempts = 0;
+    const int MAX_OPEN_ATTEMPTS = 20;
+
     while (streaming_flag)
     {
         if (detected_signal == false)
         {
             usleep(10000); // Reduced to 10ms for better responsiveness to streaming_flag changes
             continue;
+        }
+
+        open_attempts++;
+        if (open_attempts > MAX_OPEN_ATTEMPTS) {
+            log_error("Tried to open video device %d times without success. "
+                     "Exiting to trigger supervisor restart.", MAX_OPEN_ATTEMPTS);
+            exit(1);
         }
 
         int video_dev_fd = open(VIDEO_DEV, O_RDWR);
@@ -538,7 +549,8 @@ void *run_video_stream(void *arg)
             r = select(video_dev_fd + 1, &fds, NULL, NULL, &tv);
             if (r == 0)
             {
-                log_info("select timeout");
+                log_info("select timeout (num_frames=%u, open_attempts=%d/%d)",
+                         num, open_attempts, MAX_OPEN_ATTEMPTS);
                 break;
             }
             if (r == -1)
@@ -547,7 +559,8 @@ void *run_video_stream(void *arg)
                 {
                     continue;
                 }
-                log_error("select in video streaming");
+                log_error("select error in video streaming: %s (open_attempts=%d/%d)",
+                         strerror(errno), open_attempts, MAX_OPEN_ATTEMPTS);
                 break;
             }
             memset(&buf, 0, sizeof(buf));
