@@ -697,7 +697,14 @@ export default function KvmIdRoute() {
     if (resp.method === "willReboot") {
       const postRebootAction = resp.params as unknown as PostRebootAction;
       console.debug("Setting reboot state", postRebootAction);
-      setRebootState({ isRebooting: true, postRebootAction });
+
+      setRebootState({
+        isRebooting: true,
+        postRebootAction: {
+          healthCheck: postRebootAction?.healthCheck || `${window.location.origin}/device/status`,
+          redirectTo: postRebootAction?.redirectTo || window.location.href,
+        }
+      });
       navigateTo("/");
     }
 
