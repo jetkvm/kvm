@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/jetkvm/kvm/internal/supervisor"
 )
 
 const (
@@ -77,10 +79,16 @@ func checkFailsafeReason() {
 		_ = os.Remove(lastCrashPath)
 
 		// TODO: read the goroutine stack trace and check which goroutine is panicking
-		if strings.Contains(failsafeCrashLog, "runtime.cgocall") {
-			failsafeModeActive = true
+		failsafeModeActive = true
+		if strings.Contains(failsafeCrashLog, supervisor.FailsafeReasonVideoMaxRestartAttemptsReached) {
 			failsafeModeReason = "video"
 			return
+		}
+		if strings.Contains(failsafeCrashLog, "runtime.cgocall") {
+			failsafeModeReason = "video"
+			return
+		} else {
+			failsafeModeReason = "unknown"
 		}
 	})
 }

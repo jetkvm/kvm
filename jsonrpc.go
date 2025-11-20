@@ -242,62 +242,14 @@ func rpcRefreshHdmiConnection() error {
 		return err
 	}
 	if currentEDID == "" {
-		currentEDID = nativeInstance.GetDefaultEDID()
+		// Use the default EDID from the native package
+		currentEDID = native.DefaultEDID
 	}
 	return nativeInstance.VideoSetEDID(currentEDID)
 }
 
 func rpcGetVideoLogStatus() (string, error) {
 	return nativeInstance.VideoLogStatus()
-}
-
-func rpcGetDevChannelState() (bool, error) {
-	return config.IncludePreRelease, nil
-}
-
-func rpcSetDevChannelState(enabled bool) error {
-	config.IncludePreRelease = enabled
-	if err := SaveConfig(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
-	}
-	return nil
-}
-
-func rpcGetUpdateStatus() (*UpdateStatus, error) {
-	includePreRelease := config.IncludePreRelease
-	updateStatus, err := GetUpdateStatus(context.Background(), GetDeviceID(), includePreRelease)
-	// to ensure backwards compatibility,
-	// if there's an error, we won't return an error, but we will set the error field
-	if err != nil {
-		if updateStatus == nil {
-			return nil, fmt.Errorf("error checking for updates: %w", err)
-		}
-		updateStatus.Error = err.Error()
-	}
-
-	return updateStatus, nil
-}
-
-func rpcGetLocalVersion() (*LocalMetadata, error) {
-	systemVersion, appVersion, err := GetLocalVersion()
-	if err != nil {
-		return nil, fmt.Errorf("error getting local version: %w", err)
-	}
-	return &LocalMetadata{
-		AppVersion:    appVersion.String(),
-		SystemVersion: systemVersion.String(),
-	}, nil
-}
-
-func rpcTryUpdate() error {
-	includePreRelease := config.IncludePreRelease
-	go func() {
-		err := TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
-		if err != nil {
-			logger.Warn().Err(err).Msg("failed to try update")
-		}
-	}()
-	return nil
 }
 
 func rpcSetDisplayRotation(params DisplayRotationSettings) error {
@@ -669,7 +621,10 @@ func rpcGetMassStorageMode() (string, error) {
 }
 
 func rpcIsUpdatePending() (bool, error) {
-	return IsUpdatePending(), nil
+	if otaState == nil {
+		return false, nil
+	}
+	return otaState.IsUpdatePending(), nil
 }
 
 func rpcGetUsbEmulationState() (bool, error) {
@@ -1368,7 +1323,10 @@ var rpcHandlers = map[string]RPCHandler{
 	"setDevChannelState":      {Func: rpcSetDevChannelState, Params: []string{"enabled"}},
 	"getLocalVersion":         {Func: rpcGetLocalVersion},
 	"getUpdateStatus":         {Func: rpcGetUpdateStatus},
+	"getUpdateStatusChannel":  {Func: rpcGetUpdateStatusChannel, Params: []string{"channel"}},
+	"checkUpdateComponents":   {Func: rpcCheckUpdateComponents, Params: []string{"params", "includePreRelease"}},
 	"tryUpdate":               {Func: rpcTryUpdate},
+	"tryUpdateComponents":     {Func: rpcTryUpdateComponents, Params: []string{"params", "includePreRelease", "resetConfig"}},
 	"getDevModeState":         {Func: rpcGetDevModeState},
 	"setDevModeState":         {Func: rpcSetDevModeState, Params: []string{"enabled"}},
 	"getSSHKeyState":          {Func: rpcGetSSHKeyState},

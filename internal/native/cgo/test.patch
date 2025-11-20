@@ -1,0 +1,210 @@
+diff --git a/internal/native/cgo/video.c b/internal/native/cgo/video.c
+index 2a4a034..760621a 100644
+--- a/internal/native/cgo/video.c
++++ b/internal/native/cgo/video.c
+@@ -354,6 +354,10 @@ bool detected_signal = false, streaming_flag = false, streaming_stopped = true;
+ pthread_t *streaming_thread = NULL;
+ pthread_mutex_t streaming_mutex = PTHREAD_MUTEX_INITIALIZER;
+ 
++// Diagnostic tracking for validation
++static uint64_t last_close_time = 0;
++static int consecutive_failures = 0;
++
+ bool get_streaming_flag()
+ {
+     log_info("getting streaming flag");
+@@ -395,6 +399,12 @@ void *run_video_stream(void *arg)
+             continue;
+         }
+ 
++        // Log attempt to open with timing info
++        RK_U64 time_since_close = last_close_time > 0 ? (get_us() - last_close_time) : 0;
++        log_info("[DIAG] Attempting to open %s (time_since_last_close=%llu us)",
++                 VIDEO_DEV, time_since_close);
++
++        RK_U64 open_start_time = get_us();
+         int video_dev_fd = open(VIDEO_DEV, O_RDWR);
+         if (video_dev_fd < 0)
+         {
+@@ -402,7 +412,9 @@ void *run_video_stream(void *arg)
+             usleep(1000000);
+             continue;
+         }
+-        log_info("opened video capture device %s", VIDEO_DEV);
++        RK_U64 open_end_time = get_us();
++        log_info("[DIAG] opened video capture device %s in %llu us",
++                 VIDEO_DEV, open_end_time - open_start_time);
+ 
+         uint32_t width = detected_width;
+         uint32_t height = detected_height;
+@@ -414,14 +426,45 @@ void *run_video_stream(void *arg)
+         fmt.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_YUYV;
+         fmt.fmt.pix_mp.field = V4L2_FIELD_ANY;
+ 
++        // Probe device state before attempting format set
++        struct v4l2_format query_fmt;
++        memset(&query_fmt, 0, sizeof(query_fmt));
++        query_fmt.type = type;
++        int query_ret = ioctl(video_dev_fd, VIDIOC_G_FMT, &query_fmt);
++        log_info("[DIAG] VIDIOC_G_FMT probe: ret=%d, errno=%d (%s)",
++                 query_ret, query_ret < 0 ? errno : 0,
++                 query_ret < 0 ? strerror(errno) : "OK");
++
++        RK_U64 set_fmt_start_time = get_us();
++        log_info("[DIAG] Attempting VIDIOC_S_FMT: %ux%u, time_since_open=%llu us",
++                 width, height, set_fmt_start_time - open_end_time);
++
+         if (ioctl(video_dev_fd, VIDIOC_S_FMT, &fmt) < 0)
+         {
+-            log_error("Set format fail: %s", strerror(errno));
++            RK_U64 failure_time = get_us();
++            int saved_errno = errno;
++            consecutive_failures++;
++
++            log_error("[DIAG] Set format fail: errno=%d (%s)", saved_errno, strerror(saved_errno));
++            log_error("[DIAG] Failure context: consecutive_failures=%d, time_since_open=%llu us, "
++                     "time_since_last_close=%llu us, resolution=%ux%u, streaming_flag=%d",
++                     consecutive_failures,
++                     failure_time - open_end_time,
++                     last_close_time > 0 ? (open_start_time - last_close_time) : 0,
++                     width, height,
++                     streaming_flag);
++
+             usleep(100000); // Sleep for 100 milliseconds
+             close(video_dev_fd);
++            last_close_time = get_us();
++            log_info("[DIAG] Closed device after format failure at %llu us", last_close_time);
+             continue;
+         }
+ 
++        // Success - reset failure counter
++        log_info("[DIAG] VIDIOC_S_FMT succeeded (previous consecutive failures: %d)", consecutive_failures);
++        consecutive_failures = 0;
++
+         struct v4l2_buffer buf;
+ 
+         struct v4l2_requestbuffers req;
+@@ -601,9 +644,46 @@ void *run_video_stream(void *arg)
+         }
+     cleanup:
+         log_info("cleaning up video capture device %s", VIDEO_DEV);
+-        if (ioctl(video_dev_fd, VIDIOC_STREAMOFF, &type) < 0)
++
++        RK_U64 streamoff_start = get_us();
++        log_info("[DIAG] Attempting VIDIOC_STREAMOFF");
++
++        int streamoff_ret = ioctl(video_dev_fd, VIDIOC_STREAMOFF, &type);
++        RK_U64 streamoff_end = get_us();
++
++        if (streamoff_ret < 0)
++        {
++            log_error("[DIAG] VIDIOC_STREAMOFF failed: errno=%d (%s), duration=%llu us",
++                     errno, strerror(errno), streamoff_end - streamoff_start);
++        }
++        else
++        {
++            log_info("[DIAG] VIDIOC_STREAMOFF succeeded in %llu us",
++                    streamoff_end - streamoff_start);
++        }
++
++        // VALIDATION TEST: Explicitly free V4L2 buffer queue
++        struct v4l2_requestbuffers req_free;
++        memset(&req_free, 0, sizeof(req_free));
++        req_free.count = 0;  // Tell driver to free all buffers
++        req_free.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
++        req_free.memory = V4L2_MEMORY_DMABUF;
++
++        RK_U64 reqbufs_start = get_us();
++        log_info("[DIAG] VALIDATION: Calling VIDIOC_REQBUFS(count=0) to free buffer queue");
++
++        int reqbufs_ret = ioctl(video_dev_fd, VIDIOC_REQBUFS, &req_free);
++        RK_U64 reqbufs_end = get_us();
++
++        if (reqbufs_ret < 0)
++        {
++            log_error("[DIAG] VALIDATION: REQBUFS(0) FAILED - errno=%d (%s), duration=%llu us",
++                     errno, strerror(errno), reqbufs_end - reqbufs_start);
++        }
++        else
+         {
+-            log_error("VIDIOC_STREAMOFF failed: %s", strerror(errno));
++            log_info("[DIAG] VALIDATION: REQBUFS(0) SUCCEEDED - freed buffers in %llu us",
++                    reqbufs_end - reqbufs_start);
+         }
+ 
+         venc_stop();
+@@ -617,9 +697,13 @@ void *run_video_stream(void *arg)
+         }
+ 
+         log_info("closing video capture device %s", VIDEO_DEV);
++        RK_U64 close_start = get_us();
+         close(video_dev_fd);
++        last_close_time = get_us();
++        log_info("[DIAG] Device closed, took %llu us, timestamp=%llu",
++                last_close_time - close_start, last_close_time);
+     }
+-    
++
+     log_info("video stream thread exiting");
+ 
+     streaming_stopped = true;
+@@ -648,7 +732,7 @@ void video_shutdown()
+         RK_MPI_MB_DestroyPool(memPool);
+     }
+     log_info("Destroyed memory pool");
+-    
++
+     pthread_mutex_destroy(&streaming_mutex);
+     log_info("Destroyed streaming mutex");
+ }
+@@ -665,14 +749,14 @@ void video_start_streaming()
+         log_warn("video streaming already started");
+         return;
+     }
+-    
++
+     pthread_t *new_thread = malloc(sizeof(pthread_t));
+     if (new_thread == NULL)
+     {
+         log_error("Failed to allocate memory for streaming thread");
+         return;
+     }
+-    
++
+     set_streaming_flag(true);
+     int result = pthread_create(new_thread, NULL, run_video_stream, NULL);
+     if (result != 0)
+@@ -682,7 +766,7 @@ void video_start_streaming()
+         free(new_thread);
+         return;
+     }
+-    
++
+     // Only set streaming_thread after successful creation
+     streaming_thread = new_thread;
+ }
+@@ -693,7 +777,7 @@ void video_stop_streaming()
+         log_info("video streaming already stopped");
+         return;
+     }
+-    
++
+     log_info("stopping video streaming");
+     set_streaming_flag(false);
+ 
+@@ -711,7 +795,7 @@ void video_stop_streaming()
+     free(streaming_thread);
+     streaming_thread = NULL;
+ 
+-    log_info("video streaming stopped");    
++    log_info("video streaming stopped");
+ }
+ 
+ void video_restart_streaming()
+@@ -818,4 +902,4 @@ void video_set_quality_factor(float factor)
+ 
+ float video_get_quality_factor() {
+     return quality_factor;
+-}
+\ No newline at end of file
++}

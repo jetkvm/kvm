@@ -30,7 +30,7 @@ type MDNSListenOptions struct {
 
 // NetworkConfig represents the complete network configuration for an interface
 type NetworkConfig struct {
-	DHCPClient null.String `json:"dhcp_client,omitempty" one_of:"jetdhcpc,udhcpc" default:"jetdhcpc"`
+	DHCPClient null.String `json:"dhcp_client,omitempty" one_of:"jetdhcpc,udhcpc" default:"udhcpc"`
 
 	Hostname  null.String `json:"hostname,omitempty" validate_type:"hostname"`
 	HTTPProxy null.String `json:"http_proxy,omitempty" validate_type:"proxy"`

@@ -1,0 +1,34 @@
+{
+    "name": "Upgrade System & App (components given)",
+    "remoteMetadata": [
+        {
+            "params": {
+                "prerelease": "false"
+            },
+            "code": 200,
+            "data": {
+                "appVersion": "0.4.7",
+                "appUrl": "https://update.jetkvm.com/app/0.4.7/jetkvm_app",
+                "appHash": "714f33432f17035e38d238bf376e98f3073e6cc2845d269ff617503d12d92bdd",
+                "systemVersion": "0.2.5",
+                "systemUrl": "https://update.jetkvm.com/system/0.2.5/system.tar",
+                "systemHash": "2323463ea8652be767d94514e548f90dd61b1ebcc0fb1834d700fac5b3d88a35"
+            }
+        }
+    ],
+    "localMetadata": {
+        "systemVersion": "0.2.2",
+        "appVersion": "0.4.5"
+    },
+    "updateParams": {
+        "includePreRelease": false,
+        "components": {
+            "system": "",
+            "app": ""
+        }
+    },
+    "expected": {
+        "system": true,
+        "app": true
+    }
+}
