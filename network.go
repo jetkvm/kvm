@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"reflect"
-	"sync/atomic"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/confparser"
@@ -119,10 +118,6 @@ func setPublicIPReadyState(ipv4Ready, ipv6Ready bool) {
 	publicIPState.SetIPv4AndIPv6(ipv4Ready, ipv6Ready)
 }
 
-var (
-	isOnline = &atomic.Bool{}
-)
-
 func networkStateChanged(_ string, state types.InterfaceState) {
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(true, "network_state_changed")
@@ -131,10 +126,7 @@ func networkStateChanged(_ string, state types.InterfaceState) {
 		writeJSONRPCEvent("networkState", state.ToRpcInterfaceState(), currentSession)
 	}
 
-	previousOnline := isOnline.Load()
-	isOnline.Store(state.Online)
-
-	if state.Online && !previousOnline {
+	if state.Online {
 		networkLogger.Info().Msg("network state changed to online, triggering time sync")
 		triggerTimeSyncOnNetworkStateChange()
 	}

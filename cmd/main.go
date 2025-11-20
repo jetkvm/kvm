@@ -101,6 +101,11 @@ func supervise() error {
 	cmd.Args = os.Args
 
 	logFile, err := os.CreateTemp("", "jetkvm-stdout.log")
+	defer func() {
+		// we don't care about the errors here
+		_ = logFile.Close()
+		_ = os.Remove(logFile.Name())
+	}()
 	if err != nil {
 		return fmt.Errorf("failed to create log file: %w", err)
 	}
@@ -128,8 +133,6 @@ func supervise() error {
 	}
 
 	if exiterr, ok := cmdErr.(*exec.ExitError); ok {
-		// createErrorDump will close and rename the file if successful
-		// Note: os.Exit bypasses defer, but file is already handled by createErrorDump
 		createErrorDump(logFile)
 		os.Exit(exiterr.ExitCode())
 	}
