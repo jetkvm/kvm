@@ -68,13 +68,6 @@ func Main() {
 		Int("ca_certs_loaded", len(rootcerts.Certs())).
 		Msg("loaded Root CA certificates")
 
-	initOta()
-
-	initNative(systemVersionLocal, appVersionLocal)
-	initDisplay()
-
-	http.DefaultClient.Timeout = 1 * time.Minute
-
 	// Initialize network
 	setProcTitle("initNetwork")
 	if err := initNetwork(); err != nil {
@@ -109,12 +102,10 @@ func Main() {
 	}
 	initJiggler()
 
-	// initialize display
-	initDisplay()
-
 	// start video sleep mode timer
 	startVideoSleepModeTicker()
 
+	initOta()
 	go func() {
 		time.Sleep(15 * time.Minute)
 		for {
