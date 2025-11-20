@@ -144,6 +144,7 @@ export default function SettingsAudioRoute() {
     dtxEnabled: audioDTXEnabled,
     fecEnabled: audioFECEnabled,
     bufferPeriods: audioBufferPeriods,
+    sampleRate: audioSampleRate,
     packetLossPerc: audioPacketLossPerc,
   });
 
@@ -153,12 +154,12 @@ export default function SettingsAudioRoute() {
     send("setAudioConfig", config, (resp: JsonRpcResponse) => {
       if (handleRpcError(resp)) return;
 
-      // Update all state values from the config
       setAudioBitrate(config.bitrate);
       setAudioComplexity(config.complexity);
       setAudioDTXEnabled(config.dtxEnabled);
       setAudioFECEnabled(config.fecEnabled);
       setAudioBufferPeriods(config.bufferPeriods);
+      setAudioSampleRate(config.sampleRate);
       setAudioPacketLossPerc(config.packetLossPerc);
       notifications.success(m.audio_settings_config_updated());
     });
@@ -292,20 +293,18 @@ export default function SettingsAudioRoute() {
           title={m.audio_settings_sample_rate_title()}
           description={m.audio_settings_sample_rate_description()}
         >
-          <div className="text-sm text-gray-700 dark:text-gray-300 font-medium">
-            {(() => {
-              const rateMap: Record<number, string> = {
-                32000: "32 kHz",
-                44100: "44.1 kHz",
-                48000: "48 kHz",
-                96000: "96 kHz"
-              };
-              return rateMap[audioSampleRate] || `${audioSampleRate} Hz`;
-            })()}
-            <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-              (auto-detected from source)
-            </span>
-          </div>
+          <SelectMenuBasic
+            size="SM"
+            value={String(audioSampleRate)}
+            options={[
+              { value: "8000", label: "8 kHz" },
+              { value: "12000", label: "12 kHz" },
+              { value: "16000", label: "16 kHz" },
+              { value: "24000", label: "24 kHz" },
+              { value: "48000", label: "48 kHz (default)" },
+            ]}
+            onChange={(e) => handleAudioConfigChange({ sampleRate: parseInt(e.target.value) })}
+          />
         </SettingsItem>
 
         <SettingsItem
