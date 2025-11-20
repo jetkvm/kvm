@@ -376,21 +376,11 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 	err = snd_pcm_hw_params_set_channels(handle, params, num_channels);
 	if (err < 0) return err;
 
-	// Force exact rate for Opus compatibility (ALSA resamples if hardware differs)
+	err = snd_pcm_hw_params_set_rate_resample(handle, params, 1);
+	if (err < 0) return err;
+
 	err = snd_pcm_hw_params_set_rate(handle, params, sample_rate, 0);
-	if (err < 0) {
-		fprintf(stderr, "WARNING: %s: Failed to set %u Hz: %s, falling back to nearest\n",
-		        device_name, sample_rate, snd_strerror(err));
-		fflush(stderr);
-
-		unsigned int actual_rate = sample_rate;
-		err = snd_pcm_hw_params_set_rate_near(handle, params, &actual_rate, 0);
-		if (err < 0) return err;
-
-		fprintf(stderr, "WARNING: %s: Using %u Hz (Opus may fail if non-standard)\n",
-		        device_name, actual_rate);
-		fflush(stderr);
-	}
+	if (err < 0) return err;
 
 	uint16_t actual_frame_size = frame_size;
 
