@@ -79,6 +79,18 @@ func NewGRPCClient(opts grpcClientOptions) (*GRPCClient, error) {
 	// Start event stream
 	go grpcClient.startEventStream()
 
+	// Start event handler to process events from the channel
+	go func() {
+		for {
+			select {
+			case event := <-grpcClient.eventCh:
+				grpcClient.handleEvent(event)
+			case <-grpcClient.eventDone:
+				return
+			}
+		}
+	}()
+
 	return grpcClient, nil
 }
 
@@ -232,20 +244,6 @@ func (c *GRPCClient) handleEvent(event *pb.Event) {
 	default:
 		c.logger.Warn().Str("type", event.Type).Msg("unknown event type")
 	}
-}
-
-// OnEvent registers an event handler
-func (c *GRPCClient) OnEvent(eventType string, handler func(data interface{})) {
-	go func() {
-		for {
-			select {
-			case event := <-c.eventCh:
-				c.handleEvent(event)
-			case <-c.eventDone:
-				return
-			}
-		}
-	}()
 }
 
 // Close closes the gRPC client
