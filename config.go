@@ -122,7 +122,7 @@ type Config struct {
 	AudioDTXEnabled      bool                 `json:"audio_dtx_enabled"`
 	AudioFECEnabled      bool                 `json:"audio_fec_enabled"`
 	AudioBufferPeriods   int                  `json:"audio_buffer_periods"`   // 2-24
-	AudioSampleRate      int                  `json:"audio_sample_rate"`      // Hz (32000, 44100, 48000)
+	AudioSampleRate      int                  `json:"audio_sample_rate"`      // Hz (Opus: 8k, 12k, 16k, 24k, 48k)
 	AudioPacketLossPerc  int                  `json:"audio_packet_loss_perc"` // 0-100
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 }

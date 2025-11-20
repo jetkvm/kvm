@@ -79,8 +79,8 @@ func getAudioConfig() audio.AudioConfig {
 		cfg.BufferPeriods = uint8(periods)
 	}
 
-	// Validate and apply sample rate using a map for valid rates
-	validRates := map[int]bool{32000: true, 44100: true, 48000: true, 96000: true}
+	// Opus-compatible rates only: 8k, 12k, 16k, 24k, 48k
+	validRates := map[int]bool{8000: true, 12000: true, 16000: true, 24000: true, 48000: true}
 	if validRates[config.AudioSampleRate] {
 		cfg.SampleRate = uint32(config.AudioSampleRate)
 	} else if config.AudioSampleRate != 0 {

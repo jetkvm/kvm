@@ -11,7 +11,7 @@
  * Key features:
  * - ARM NEON SIMD optimization for all audio operations
  * - Opus in-band FEC for packet loss resilience
- * - S16_LE stereo, 20ms frames, auto-adapts to source rate (32/44.1/48/96 kHz)
+ * - S16_LE stereo, 20ms frames at 48kHz (ALSA resamples non-48kHz sources)
  */
 
 #include <alsa/asoundlib.h>
@@ -376,28 +376,23 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 	err = snd_pcm_hw_params_set_channels(handle, params, num_channels);
 	if (err < 0) return err;
 
-	unsigned int requested_rate = sample_rate;
-	unsigned int actual_rate = sample_rate;
-	err = snd_pcm_hw_params_set_rate_near(handle, params, &actual_rate, 0);
-	if (err < 0) return err;
-
-	uint16_t actual_frame_size = frame_size;
-	if (actual_rate != requested_rate) {
-		fprintf(stderr, "INFO: %s: Requested sample rate %u Hz, device supports %u Hz (%.1f%% difference)\n",
-		        device_name, requested_rate, actual_rate, ((float)actual_rate - requested_rate) / requested_rate * 100.0f);
-		fprintf(stderr, "INFO: %s: Adapting to device rate %u Hz to avoid pitch/speed distortion\n", device_name, actual_rate);
+	// Force exact rate for Opus compatibility (ALSA resamples if hardware differs)
+	err = snd_pcm_hw_params_set_rate(handle, params, sample_rate, 0);
+	if (err < 0) {
+		fprintf(stderr, "WARNING: %s: Failed to set %u Hz: %s, falling back to nearest\n",
+		        device_name, sample_rate, snd_strerror(err));
 		fflush(stderr);
 
-		actual_frame_size = (actual_rate * 20) / 1000;
-		if (num_channels == 2) {
-			if (actual_frame_size < 480) actual_frame_size = 480;
-			if (actual_frame_size > 2880) actual_frame_size = 2880;
-		}
+		unsigned int actual_rate = sample_rate;
+		err = snd_pcm_hw_params_set_rate_near(handle, params, &actual_rate, 0);
+		if (err < 0) return err;
 
-		fprintf(stderr, "INFO: %s: Adjusted frame size to %u samples (20ms at %u Hz)\n",
-		        device_name, actual_frame_size, actual_rate);
+		fprintf(stderr, "WARNING: %s: Using %u Hz (Opus may fail if non-standard)\n",
+		        device_name, actual_rate);
 		fflush(stderr);
 	}
+
+	uint16_t actual_frame_size = frame_size;
 
 	snd_pcm_uframes_t period_size = actual_frame_size;
 	if (period_size < 64) period_size = 64;
@@ -414,9 +409,9 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 
 	unsigned int verified_rate = 0;
 	err = snd_pcm_hw_params_get_rate(params, &verified_rate, 0);
-	if (err < 0 || verified_rate != actual_rate) {
+	if (err < 0 || verified_rate != sample_rate) {
 		fprintf(stderr, "WARNING: %s: Rate verification failed - expected %u Hz, got %u Hz\n",
-		        device_name, actual_rate, verified_rate);
+		        device_name, sample_rate, verified_rate);
 		fflush(stderr);
 	}
 
@@ -435,7 +430,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 	err = snd_pcm_prepare(handle);
 	if (err < 0) return err;
 
-	if (actual_rate_out) *actual_rate_out = actual_rate;
+	if (actual_rate_out) *actual_rate_out = sample_rate;
 	if (actual_frame_size_out) *actual_frame_size_out = actual_frame_size;
 
 	return 0;
