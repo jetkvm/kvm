@@ -83,7 +83,13 @@ func (c *CgoSource) Connect() error {
 func (c *CgoSource) connectOutput() error {
 	os.Setenv("ALSA_CAPTURE_DEVICE", c.alsaDevice)
 
-	frameSize := uint16(c.config.SampleRate * 20 / 1000)
+	// USB Audio Gadget (hw:1,0) only supports 48kHz
+	// For HDMI (hw:0,0), use configured sample rate
+	sampleRate := c.config.SampleRate
+	if c.alsaDevice == "hw:1,0" {
+		sampleRate = 48000
+	}
+	frameSize := uint16(sampleRate * 20 / 1000)
 
 	c.logger.Debug().
 		Uint16("bitrate_kbps", c.config.Bitrate).
@@ -91,7 +97,7 @@ func (c *CgoSource) connectOutput() error {
 		Bool("dtx", c.config.DTXEnabled).
 		Bool("fec", c.config.FECEnabled).
 		Uint8("buffer_periods", c.config.BufferPeriods).
-		Uint32("sample_rate", c.config.SampleRate).
+		Uint32("sample_rate", sampleRate).
 		Uint16("frame_size", frameSize).
 		Uint8("packet_loss_perc", c.config.PacketLossPerc).
 		Msg("Initializing audio capture")
@@ -99,7 +105,7 @@ func (c *CgoSource) connectOutput() error {
 	C.update_audio_constants(
 		C.uint(uint32(c.config.Bitrate)*1000),
 		C.uchar(c.config.Complexity),
-		C.uint(c.config.SampleRate),
+		C.uint(sampleRate),
 		C.uchar(2),
 		C.ushort(frameSize),
 		C.ushort(1500),
@@ -125,10 +131,13 @@ func (c *CgoSource) connectOutput() error {
 func (c *CgoSource) connectInput() error {
 	os.Setenv("ALSA_PLAYBACK_DEVICE", c.alsaDevice)
 
-	frameSize := uint16(c.config.SampleRate * 20 / 1000)
+	// USB Audio Gadget (hw:1,0) is hardcoded to 48kHz in usbgadget/config.go
+	// Always use 48kHz for input path regardless of UI configuration
+	const inputSampleRate = 48000
+	frameSize := uint16(inputSampleRate * 20 / 1000)
 
 	C.update_audio_decoder_constants(
-		C.uint(c.config.SampleRate),
+		C.uint(inputSampleRate),
 		C.uchar(1),
 		C.ushort(frameSize),
 		C.ushort(1500),

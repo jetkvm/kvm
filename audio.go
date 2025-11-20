@@ -49,28 +49,24 @@ func initAudio() {
 func getAudioConfig() audio.AudioConfig {
 	cfg := audio.DefaultAudioConfig()
 
-	// Apply bitrate (64-256 kbps)
 	if config.AudioBitrate >= 64 && config.AudioBitrate <= 256 {
 		cfg.Bitrate = uint16(config.AudioBitrate)
 	} else if config.AudioBitrate != 0 {
 		audioLogger.Warn().Int("bitrate", config.AudioBitrate).Msg("Invalid audio bitrate, using default")
 	}
 
-	// Apply complexity (0-10)
 	if config.AudioComplexity >= 0 && config.AudioComplexity <= 10 {
 		cfg.Complexity = uint8(config.AudioComplexity)
 	} else if config.AudioComplexity != 0 {
 		audioLogger.Warn().Int("complexity", config.AudioComplexity).Msg("Invalid audio complexity, using default")
 	}
 
-	// Apply buffer periods (2-24)
 	if config.AudioBufferPeriods >= 2 && config.AudioBufferPeriods <= 24 {
 		cfg.BufferPeriods = uint8(config.AudioBufferPeriods)
 	} else if config.AudioBufferPeriods != 0 {
 		audioLogger.Warn().Int("buffer_periods", config.AudioBufferPeriods).Msg("Invalid buffer periods, using default")
 	}
 
-	// Apply sample rate (Opus supports: 8k, 12k, 16k, 24k, 48k)
 	switch config.AudioSampleRate {
 	case 8000, 12000, 16000, 24000, 48000:
 		cfg.SampleRate = uint32(config.AudioSampleRate)
@@ -80,7 +76,6 @@ func getAudioConfig() audio.AudioConfig {
 		}
 	}
 
-	// Apply packet loss percentage (0-100)
 	if config.AudioPacketLossPerc >= 0 && config.AudioPacketLossPerc <= 100 {
 		cfg.PacketLossPerc = uint8(config.AudioPacketLossPerc)
 	} else if config.AudioPacketLossPerc != 0 {
@@ -118,7 +113,6 @@ func startAudio() error {
 		inputErr = startInputAudioUnderMutex(getAlsaDevice("usb"))
 	}
 
-	// Simplified error handling - both errors are worth reporting
 	if outputErr != nil || inputErr != nil {
 		if outputErr != nil && inputErr != nil {
 			return fmt.Errorf("audio start failed - output: %w, input: %v", outputErr, inputErr)
