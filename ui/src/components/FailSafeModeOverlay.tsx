@@ -67,7 +67,6 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
   const { appVersion } = useVersion();
   const { systemVersion } = useDeviceStore();
   const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
-  const [hasDownloadedLogs, setHasDownloadedLogs] = useState(false);
 
   const getReasonCopy = () => {
     switch (reason) {
@@ -115,7 +114,6 @@ export function FailSafeModeOverlay({ reason }: FailSafeModeOverlayProps) {
       URL.revokeObjectURL(url);
 
       notifications.success("Crash logs downloaded successfully");
-      setHasDownloadedLogs(true);
 
       // Open GitHub issue
       const issueBody = `## Issue Description
@@ -182,25 +180,19 @@ Please attach the recovery logs file that was downloaded to your computer:
                     />
 
                     <div className="h-8 w-px bg-slate-200 dark:bg-slate-700 block" />
-                    <Tooltip text="Download logs first" show={!hasDownloadedLogs}>
-                      <Button
-                        onClick={() => navigateTo("/settings/general/reboot")}
-                        theme="light"
-                        size="SM"
-                        text="Reboot Device"
-                        disabled={!hasDownloadedLogs}
-                      />
-                    </Tooltip>
+                    <Button
+                      onClick={() => navigateTo("/settings/general/reboot")}
+                      theme="light"
+                      size="SM"
+                      text="Reboot Device"
+                    />
 
-                    <Tooltip text="Download logs first" show={!hasDownloadedLogs}>
-                      <Button
-                        size="SM"
-                        onClick={handleDowngrade}
-                        theme="light"
-                        text={`Downgrade to v${DOWNGRADE_VERSION}`}
-                        disabled={!hasDownloadedLogs}
-                      />
-                    </Tooltip>
+                    <Button
+                      size="SM"
+                      onClick={handleDowngrade}
+                      theme="light"
+                      text={`Downgrade to v${DOWNGRADE_VERSION}`}
+                    />
                   </div>
 
 
