@@ -231,6 +231,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	if !appUpdate.pending && !systemUpdate.pending {
 		scopedLogger.Info().Msg("No updates available")
 		s.updating = false
+		s.triggerStateUpdate()
 		return nil
 	}
 
