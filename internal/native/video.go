@@ -29,6 +29,23 @@ func isSleepModeSupported() bool {
 
 const sleepModeWaitTimeout = 3 * time.Second
 
+func (n *Native) waitForVideoStreamingStatus(status VideoStreamingStatus) error {
+	timeout := time.After(sleepModeWaitTimeout)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if videoGetStreamingStatus() == status {
+			return nil
+		}
+		select {
+		case <-timeout:
+			return fmt.Errorf("timed out waiting for video streaming status to be %s", status.String())
+		case <-ticker.C:
+		}
+	}
+}
+
 func (n *Native) setSleepMode(enabled bool) error {
 	if !n.sleepModeSupported {
 		return nil
@@ -51,16 +68,8 @@ func (n *Native) setSleepMode(enabled bool) error {
 	}
 
 	if shouldWait {
-		start := time.Now()
-		for {
-			if n.VideoGetStreamingStatus() == VideoStreamingStatusInactive {
-				break
-			}
-			if time.Since(start) >= sleepModeWaitTimeout {
-				n.l.Warn().Msg("timed out waiting for video stream to stop")
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
+		if err := n.waitForVideoStreamingStatus(VideoStreamingStatusInactive); err != nil {
+			return err
 		}
 	}
 

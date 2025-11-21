@@ -48,6 +48,18 @@ const (
 	VideoStreamingStatusInactive VideoStreamingStatus = 0
 )
 
+func (s VideoStreamingStatus) String() string {
+	switch s {
+	case VideoStreamingStatusActive:
+		return "active"
+	case VideoStreamingStatusStopping:
+		return "stopping"
+	case VideoStreamingStatusInactive:
+		return "inactive"
+	}
+	return "unknown"
+}
+
 func NewNative(opts NativeOptions) *Native {
 	pid := os.Getpid()
 	nativeSubLogger := nativeLogger.With().Int("pid", pid).Str("scope", "native").Logger()
