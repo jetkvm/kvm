@@ -727,6 +727,13 @@ void video_stop_streaming()
     log_info("video streaming stopped");
 }
 
+uint8_t video_is_streaming() {
+    // streaming flag can be false when stopping streaming
+    if (get_streaming_flag() == true) return 1;
+    if (streaming_stopped == false) return 2;
+    return 0;
+}
+
 void video_restart_streaming()
 {
     if (get_streaming_flag() == true)

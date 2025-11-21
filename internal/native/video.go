@@ -33,11 +33,21 @@ func (n *Native) setSleepMode(enabled bool) error {
 	}
 
 	bEnabled := "0"
+	shouldStopVideo := false
 	if enabled {
 		bEnabled = "1"
+
+		isStreaming, err := n.VideoIsStreaming()
+		if isStreaming || err != nil {
+			shouldStopVideo = true
+		}
+	}
+
+	if shouldStopVideo {
 		if err := n.VideoStop(); err != nil {
 			return fmt.Errorf("video stop failed, won't enable sleep mode: %w", err)
 		}
+
 		// wait few seconds to ensure the video stream is stopped
 		time.Sleep(3 * time.Second)
 	}
@@ -164,4 +174,12 @@ func (n *Native) VideoStart() error {
 
 	videoStart()
 	return nil
+}
+
+// VideoIsStreaming checks if the video stream is active.
+func (n *Native) VideoIsStreaming() (bool, error) {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+
+	return videoIsStreaming()
 }

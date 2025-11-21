@@ -168,6 +168,15 @@ func videoStop() {
 	C.jetkvm_video_stop()
 }
 
+func videoIsStreaming() (bool, error) {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	isStreaming := C.jetkvm_is_video_streaming()
+
+	return isStreaming == 1, nil
+}
+
 func videoLogStatus() string {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()

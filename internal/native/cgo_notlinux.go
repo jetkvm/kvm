@@ -123,6 +123,11 @@ func videoSetEDID(edid string) error {
 	return nil
 }
 
+func videoIsStreaming() (bool, error) {
+	panicPlatformNotSupported()
+	return false, nil
+}
+
 func crash() {
 	panicPlatformNotSupported()
 }
