@@ -122,7 +122,6 @@ type Config struct {
 	AudioDTXEnabled      bool                 `json:"audio_dtx_enabled"`
 	AudioFECEnabled      bool                 `json:"audio_fec_enabled"`
 	AudioBufferPeriods   int                  `json:"audio_buffer_periods"`   // 2-24
-	AudioSampleRate      int                  `json:"audio_sample_rate"`      // Hz (Opus: 8k, 12k, 16k, 24k, 48k)
 	AudioPacketLossPerc  int                  `json:"audio_packet_loss_perc"` // 0-100
 	NativeMaxRestart     uint                 `json:"native_max_restart_attempts"`
 }
@@ -218,7 +217,6 @@ func getDefaultConfig() Config {
 		AudioDTXEnabled:      true,
 		AudioFECEnabled:      true,
 		AudioBufferPeriods:   12,
-		AudioSampleRate:      48000,
 		AudioPacketLossPerc:  20,
 	}
 }
@@ -298,7 +296,6 @@ func LoadConfig() {
 		loadedConfig.AudioDTXEnabled = defaults.AudioDTXEnabled
 		loadedConfig.AudioFECEnabled = defaults.AudioFECEnabled
 		loadedConfig.AudioBufferPeriods = defaults.AudioBufferPeriods
-		loadedConfig.AudioSampleRate = defaults.AudioSampleRate
 		loadedConfig.AudioPacketLossPerc = defaults.AudioPacketLossPerc
 	}
 

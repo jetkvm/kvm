@@ -30,9 +30,9 @@ var (
 
 func getAlsaDevice(source string) string {
 	if source == "hdmi" {
-		return "plughw:0,0"
+		return "hw:0,0"  // TC358743 HDMI audio
 	}
-	return "plughw:1,0"
+	return "hw:1,0"  // USB Audio Gadget
 }
 
 func initAudio() {
@@ -67,15 +67,6 @@ func getAudioConfig() audio.AudioConfig {
 		audioLogger.Warn().Int("buffer_periods", config.AudioBufferPeriods).Msg("Invalid buffer periods, using default")
 	}
 
-	switch config.AudioSampleRate {
-	case 8000, 12000, 16000, 24000, 48000:
-		cfg.SampleRate = uint32(config.AudioSampleRate)
-	default:
-		if config.AudioSampleRate != 0 {
-			audioLogger.Warn().Int("sample_rate", config.AudioSampleRate).Msg("Invalid sample rate, using default")
-		}
-	}
-
 	if config.AudioPacketLossPerc >= 0 && config.AudioPacketLossPerc <= 100 {
 		cfg.PacketLossPerc = uint8(config.AudioPacketLossPerc)
 	} else if config.AudioPacketLossPerc != 0 {
@@ -105,22 +96,29 @@ func startAudio() error {
 	ensureConfigLoaded()
 
 	var outputErr, inputErr error
+
+	// Start output audio if enabled and track is available
 	if audioOutputEnabled.Load() && currentAudioTrack != nil {
 		outputErr = startOutputAudioUnderMutex(getAlsaDevice(config.AudioOutputSource))
 	}
 
+	// Start input audio if enabled and USB audio device is configured
 	if audioInputEnabled.Load() && config.UsbDevices != nil && config.UsbDevices.Audio {
 		inputErr = startInputAudioUnderMutex(getAlsaDevice("usb"))
 	}
 
-	if outputErr != nil || inputErr != nil {
-		if outputErr != nil && inputErr != nil {
-			return fmt.Errorf("audio start failed - output: %w, input: %v", outputErr, inputErr)
+	// Return combined errors if any
+	if outputErr != nil && inputErr != nil {
+		return fmt.Errorf("audio start failed - output: %w, input: %v", outputErr, inputErr)
+	}
+	return firstError(outputErr, inputErr)
+}
+
+func firstError(errs ...error) error {
+	for _, err := range errs {
+		if err != nil {
+			return err
 		}
-		if outputErr != nil {
-			return outputErr
-		}
-		return inputErr
 	}
 	return nil
 }
@@ -291,15 +289,8 @@ func SetAudioInputEnabled(enabled bool) error {
 	return nil
 }
 
-// SetAudioOutputSource switches between HDMI (hw:0,0) and USB (hw:1,0) audio capture.
-//
-// The function returns immediately after updating and persisting the config change,
-// while the actual audio device switch happens asynchronously in the background:
-// - Config save is synchronous to ensure the change persists even if the process crashes
-// - Audio restart is async to avoid blocking the RPC caller during ALSA reconfiguration
-//
-// Note: The HDMI audio device (hw:0,0) can take 30-60 seconds to initialize due to
-// TC358743 hardware characteristics. Callers receive success before audio actually switches.
+// SetAudioOutputSource switches between HDMI and USB audio capture.
+// Config is saved synchronously, audio restarts asynchronously.
 func SetAudioOutputSource(source string) error {
 	if source != "hdmi" && source != "usb" {
 		return fmt.Errorf("invalid audio source: %s (must be 'hdmi' or 'usb')", source)
@@ -399,7 +390,6 @@ func handleInputTrackForSession(track *webrtc.TrackRemote) {
 	}
 }
 
-// processInputPacket handles writing audio data to the input source
 func processInputPacket(opusData []byte) error {
 	inputSourceMutex.Lock()
 	defer inputSourceMutex.Unlock()
@@ -409,14 +399,14 @@ func processInputPacket(opusData []byte) error {
 		return nil
 	}
 
-	// Ensure source is connected
+	// Lazy connect on first use
 	if !(*source).IsConnected() {
 		if err := (*source).Connect(); err != nil {
 			return err
 		}
 	}
 
-	// Write the message
+	// Write opus data, disconnect on error
 	if err := (*source).WriteMessage(0, opusData); err != nil {
 		(*source).Disconnect()
 		return err

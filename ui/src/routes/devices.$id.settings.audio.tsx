@@ -16,7 +16,6 @@ interface AudioConfigResult {
   dtx_enabled: boolean;
   fec_enabled: boolean;
   buffer_periods: number;
-  sample_rate: number;
   packet_loss_perc: number;
 }
 
@@ -54,8 +53,6 @@ export default function SettingsAudioRoute() {
     setAudioFECEnabled,
     audioBufferPeriods,
     setAudioBufferPeriods,
-    audioSampleRate,
-    setAudioSampleRate,
     audioPacketLossPerc,
     setAudioPacketLossPerc,
   } = useSettingsStore();
@@ -84,10 +81,9 @@ export default function SettingsAudioRoute() {
       setAudioDTXEnabled(config.dtx_enabled);
       setAudioFECEnabled(config.fec_enabled);
       setAudioBufferPeriods(config.buffer_periods);
-      setAudioSampleRate(config.sample_rate);
       setAudioPacketLossPerc(config.packet_loss_perc);
     });
-  }, [send, setAudioOutputEnabled, setAudioInputAutoEnable, setAudioOutputSource, setAudioBitrate, setAudioComplexity, setAudioDTXEnabled, setAudioFECEnabled, setAudioBufferPeriods, setAudioSampleRate, setAudioPacketLossPerc]);
+  }, [send, setAudioOutputEnabled, setAudioInputAutoEnable, setAudioOutputSource, setAudioBitrate, setAudioComplexity, setAudioDTXEnabled, setAudioFECEnabled, setAudioBufferPeriods, setAudioPacketLossPerc]);
 
   const handleAudioOutputEnabledChange = (enabled: boolean) => {
     send("setAudioOutputEnabled", { enabled }, (resp: JsonRpcResponse) => {
@@ -138,11 +134,10 @@ export default function SettingsAudioRoute() {
     dtxEnabled: audioDTXEnabled,
     fecEnabled: audioFECEnabled,
     bufferPeriods: audioBufferPeriods,
-    sampleRate: audioSampleRate,
     packetLossPerc: audioPacketLossPerc,
   });
 
-  const handleAudioConfigChange = (updates: Partial<typeof getCurrentConfig>) => {
+  const handleAudioConfigChange = (updates: Partial<ReturnType<typeof getCurrentConfig>>) => {
     const config = { ...getCurrentConfig(), ...updates };
 
     send("setAudioConfig", config, (resp: JsonRpcResponse) => {
@@ -153,7 +148,6 @@ export default function SettingsAudioRoute() {
       setAudioDTXEnabled(config.dtxEnabled);
       setAudioFECEnabled(config.fecEnabled);
       setAudioBufferPeriods(config.bufferPeriods);
-      setAudioSampleRate(config.sampleRate);
       setAudioPacketLossPerc(config.packetLossPerc);
       notifications.success(m.audio_settings_config_updated());
     });
@@ -280,24 +274,6 @@ export default function SettingsAudioRoute() {
               { value: "24", label: "24 (480ms)" },
             ]}
             onChange={(e) => handleAudioConfigChange({ bufferPeriods: parseInt(e.target.value) })}
-          />
-        </SettingsItem>
-
-        <SettingsItem
-          title={m.audio_settings_sample_rate_title()}
-          description={m.audio_settings_sample_rate_description()}
-        >
-          <SelectMenuBasic
-            size="SM"
-            value={String(audioSampleRate)}
-            options={[
-              { value: "8000", label: "8 kHz" },
-              { value: "12000", label: "12 kHz" },
-              { value: "16000", label: "16 kHz" },
-              { value: "24000", label: "24 kHz" },
-              { value: "48000", label: "48 kHz (default)" },
-            ]}
-            onChange={(e) => handleAudioConfigChange({ sampleRate: parseInt(e.target.value) })}
           />
         </SettingsItem>
 

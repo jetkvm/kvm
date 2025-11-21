@@ -3,8 +3,8 @@
 package audio
 
 /*
-#cgo CFLAGS: -O3 -ffast-math -I/opt/jetkvm-audio-libs/alsa-lib-1.2.14/include -I/opt/jetkvm-audio-libs/opus-1.5.2/include
-#cgo LDFLAGS: /opt/jetkvm-audio-libs/alsa-lib-1.2.14/src/.libs/libasound.a /opt/jetkvm-audio-libs/opus-1.5.2/.libs/libopus.a -lm -ldl -lpthread
+#cgo CFLAGS: -O3 -ffast-math -I/opt/jetkvm-audio-libs/alsa-lib-1.2.14/include -I/opt/jetkvm-audio-libs/opus-1.5.2/include -I/opt/jetkvm-audio-libs/speexdsp-1.2.1/include
+#cgo LDFLAGS: /opt/jetkvm-audio-libs/alsa-lib-1.2.14/src/.libs/libasound.a /opt/jetkvm-audio-libs/opus-1.5.2/.libs/libopus.a /opt/jetkvm-audio-libs/speexdsp-1.2.1/libspeexdsp/.libs/libspeexdsp.a -lm -ldl -lpthread
 
 #include <stdlib.h>
 #include "c/audio.c"
@@ -83,16 +83,10 @@ func (c *CgoSource) Connect() error {
 func (c *CgoSource) connectOutput() error {
 	os.Setenv("ALSA_CAPTURE_DEVICE", c.alsaDevice)
 
-	// Using plughw: enables ALSA rate conversion plugin
-	// USB Gadget hardware is fixed at 48kHz (configfs hardcoded), so keep it at 48kHz
-	// HDMI can use configured rate - plughw resamples from hardware rate to Opus rate
-	sampleRate := c.config.SampleRate
-	if c.alsaDevice == "plughw:1,0" {
-		sampleRate = 48000
-	} else if sampleRate == 0 {
-		sampleRate = 48000
-	}
-	frameSize := uint16(sampleRate * 20 / 1000)
+	// Opus uses fixed 48kHz sample rate (RFC 7587)
+	// SpeexDSP handles any hardware rate conversion
+	const sampleRate = 48000
+	const frameSize = 960 // 20ms at 48kHz
 
 	c.logger.Debug().
 		Uint16("bitrate_kbps", c.config.Bitrate).
@@ -101,7 +95,7 @@ func (c *CgoSource) connectOutput() error {
 		Bool("fec", c.config.FECEnabled).
 		Uint8("buffer_periods", c.config.BufferPeriods).
 		Uint32("sample_rate", sampleRate).
-		Uint16("frame_size", frameSize).
+		Uint16("frame_size", uint16(frameSize)).
 		Uint8("packet_loss_perc", c.config.PacketLossPerc).
 		Msg("Initializing audio capture")
 
@@ -134,15 +128,14 @@ func (c *CgoSource) connectOutput() error {
 func (c *CgoSource) connectInput() error {
 	os.Setenv("ALSA_PLAYBACK_DEVICE", c.alsaDevice)
 
-	// USB Audio Gadget (hw:1,0) is hardcoded to 48kHz in usbgadget/config.go
-	// Always use 48kHz for input path regardless of UI configuration
+	// USB Audio Gadget uses fixed 48kHz sample rate
 	const inputSampleRate = 48000
-	frameSize := uint16(inputSampleRate * 20 / 1000)
+	const frameSize = 960 // 20ms at 48kHz
 
 	C.update_audio_decoder_constants(
 		C.uint(inputSampleRate),
-		C.uchar(1),
-		C.ushort(frameSize),
+		C.uchar(1), // Mono for USB audio gadget
+		C.ushort(uint16(frameSize)),
 		C.ushort(1500),
 		C.uint(1000),
 		C.uchar(5),
