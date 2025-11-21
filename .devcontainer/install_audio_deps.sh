@@ -38,7 +38,7 @@ cd "$AUDIO_LIBS_DIR"
 [ -d speexdsp-${SPEEXDSP_VERSION} ] || tar xf speexdsp-${SPEEXDSP_VERSION}.tar.gz
 
 # ARM Cortex-A7 optimization flags with NEON support
-OPTIM_CFLAGS="-O2 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard"
+OPTIM_CFLAGS="-O2 -mfpu=neon -mtune=cortex-a7 -mfloat-abi=hard -DNDEBUG"
 
 export CC="${CROSS_PREFIX}-gcc"
 export CFLAGS="$OPTIM_CFLAGS"
