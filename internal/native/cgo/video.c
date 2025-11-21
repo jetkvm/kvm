@@ -662,8 +662,8 @@ void *run_video_stream(void *arg)
                 log_error("failure VIDIOC_QBUF: %s", strerror(errno));
         }
     cleanup:
-        log_info("cleaning up video capture device %s (attempt=%d, will loop back)",
-                 VIDEO_DEV, open_attempts);
+        log_info("cleaning up video capture device %s (attempt=%d, num_frames=%u)",
+                 VIDEO_DEV, open_attempts, num);
         if (ioctl(video_dev_fd, VIDIOC_STREAMOFF, &type) < 0)
         {
             log_error("VIDIOC_STREAMOFF failed: %s", strerror(errno));
@@ -693,6 +693,18 @@ void *run_video_stream(void *arg)
 
         log_info("closing video capture device %s (attempt=%d completed)", VIDEO_DEV, open_attempts);
         close(video_dev_fd);
+
+        // If we successfully captured frames, reset the attempt counter
+        if (num > 30) {
+            log_info("Successfully captured %u frames, resetting attempt counter", num);
+            open_attempts = 0;
+        }
+        // If we got 0 frames 3 times in a row, clear the stale signal flag
+        else if (num == 0 && open_attempts >= 3) {
+            log_warn("3 consecutive zero-frame timeouts - clearing stale detected_signal");
+            detected_signal = false;
+        }
+
         log_info("==== OUTER LOOP END: going back to start (streaming_flag=%d) ====", streaming_flag);
     }
 
@@ -736,11 +748,15 @@ void video_start_streaming()
     if (streaming_thread != NULL)
     {
         if (streaming_stopped == true) {
-            log_error("video streaming already stopped but streaming_thread is not NULL");
-            assert(streaming_stopped == true);
+            log_info("cleaning up stopped thread before starting new one");
+            pthread_join(*streaming_thread, NULL);
+            free(streaming_thread);
+            streaming_thread = NULL;
+            // Fall through to start new thread
+        } else {
+            log_warn("video streaming already started");
+            return;
         }
-        log_warn("video streaming already started");
-        return;
     }
 
     pthread_t *new_thread = malloc(sizeof(pthread_t));
