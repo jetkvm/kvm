@@ -58,7 +58,7 @@ func updateProcessTitle(state *VideoState) {
 	if state == nil {
 		procPrefix = "jetkvm: [native]"
 	} else {
-		status := "active"
+		var status string
 		if state.Streaming == VideoStreamingStatusInactive {
 			status = "inactive"
 		} else if !state.Ready {
