@@ -729,11 +729,13 @@ bool wait_for_streaming_stopped()
     int attempts = 0;
     while (attempts < 30) {
         if (get_streaming_stopped() == true) {
+            log_info("video streaming stopped after %d attempts", attempts);
             return true;
         }
         usleep(100000); // 100ms
         attempts++;
     }
+    log_error("video streaming did not stop after 3s");
     return false;
 }
 
@@ -748,9 +750,7 @@ void video_stop_streaming()
     set_streaming_flag(false);
 
     log_info("waiting for video streaming thread to exit");
-    if (!wait_for_streaming_stopped()) {
-        log_error("video streaming thread did not exit after 30s");
-    }
+    wait_for_streaming_stopped();
 
     pthread_join(*streaming_thread, NULL);
     free(streaming_thread);
@@ -763,7 +763,7 @@ uint8_t video_get_streaming_status() {
     // streaming flag can be false when stopping streaming
     if (get_streaming_flag() == true) return 1;
     // streaming_stopped isn't protected by a mutex, but we won't care about race conditions here
-    if (streaming_stopped == false) return 2;
+    if (get_streaming_stopped() == false) return 2;
     return 0;
 }
 
@@ -781,7 +781,6 @@ void video_restart_streaming()
     }
 
     if (!wait_for_streaming_stopped()) {
-        log_error("video streaming did not stop after 30s");
         return ;
     }
     
@@ -855,7 +854,7 @@ void *run_detect_format(void *arg)
 
             if (should_restart) {
                 log_info("restarting video streaming due to format change");
-                video_restart_streaming(false);
+                video_restart_streaming();
             }
         }
 
