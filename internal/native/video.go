@@ -15,11 +15,12 @@ var extraLockTimeout = 5 * time.Second
 
 // VideoState is the state of the video stream.
 type VideoState struct {
-	Ready          bool    `json:"ready"`
-	Error          string  `json:"error,omitempty"` //no_signal, no_lock, out_of_range
-	Width          int     `json:"width"`
-	Height         int     `json:"height"`
-	FramePerSecond float64 `json:"fps"`
+	Ready          bool                 `json:"ready"`
+	Streaming      VideoStreamingStatus `json:"streaming"`
+	Error          string               `json:"error,omitempty"` //no_signal, no_lock, out_of_range
+	Width          int                  `json:"width"`
+	Height         int                  `json:"height"`
+	FramePerSecond float64              `json:"fps"`
 }
 
 func isSleepModeSupported() bool {
@@ -27,15 +28,53 @@ func isSleepModeSupported() bool {
 	return err == nil
 }
 
+const sleepModeWaitTimeout = 3 * time.Second
+
+func (n *Native) waitForVideoStreamingStatus(status VideoStreamingStatus) error {
+	timeout := time.After(sleepModeWaitTimeout)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if videoGetStreamingStatus() == status {
+			return nil
+		}
+		select {
+		case <-timeout:
+			return fmt.Errorf("timed out waiting for video streaming status to be %s", status.String())
+		case <-ticker.C:
+		}
+	}
+}
+
+// before calling this function, make sure to lock n.videoLock
 func (n *Native) setSleepMode(enabled bool) error {
 	if !n.sleepModeSupported {
 		return nil
 	}
 
 	bEnabled := "0"
+	shouldWait := false
 	if enabled {
 		bEnabled = "1"
+
+		switch videoGetStreamingStatus() {
+		case VideoStreamingStatusActive:
+			n.l.Info().Msg("stopping video stream to enable sleep mode")
+			videoStop()
+			shouldWait = true
+		case VideoStreamingStatusStopping:
+			n.l.Info().Msg("video stream is stopping, will enable sleep mode in a few seconds")
+			shouldWait = true
+		}
 	}
+
+	if shouldWait {
+		if err := n.waitForVideoStreamingStatus(VideoStreamingStatusInactive); err != nil {
+			return err
+		}
+	}
+
 	return os.WriteFile(sleepModeFile, []byte(bEnabled), 0644)
 }
 
@@ -158,4 +197,12 @@ func (n *Native) VideoStart() error {
 
 	videoStart()
 	return nil
+}
+
+// VideoGetStreamingStatus gets the streaming status of the video.
+func (n *Native) VideoGetStreamingStatus() VideoStreamingStatus {
+	n.videoLock.Lock()
+	defer n.videoLock.Unlock()
+
+	return videoGetStreamingStatus()
 }
