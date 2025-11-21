@@ -30,9 +30,9 @@ var (
 
 func getAlsaDevice(source string) string {
 	if source == "hdmi" {
-		return "hw:0,0"
+		return "plughw:0,0"
 	}
-	return "hw:1,0"
+	return "plughw:1,0"
 }
 
 func initAudio() {

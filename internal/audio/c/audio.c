@@ -3,16 +3,16 @@
  *
  * Bidirectional audio processing optimized for ARM NEON SIMD:
  * - OUTPUT PATH: TC358743 HDMI or USB Gadget audio → Client speakers
- *   Pipeline: ALSA hw:0,0 or hw:1,0 capture → Opus encode (192kbps, FEC enabled)
+ *   Pipeline: ALSA plughw:0,0 or plughw:1,0 capture → Opus encode (192kbps, FEC enabled)
  *
  * - INPUT PATH: Client microphone → Device speakers
- *   Pipeline: Opus decode (with FEC) → ALSA hw:1,0 playback
+ *   Pipeline: Opus decode (with FEC) → ALSA plughw:1,0 playback
  *
  * Key features:
  * - ARM NEON SIMD optimization for all audio operations
  * - Opus in-band FEC for packet loss resilience
  * - S16_LE stereo, 20ms frames (sample rate configurable: 8k/12k/16k/24k/48kHz)
- * - ALSA rate plugin resamples hardware output to match requested Opus-compatible rate
+ * - ALSA plughw layer provides automatic rate conversion from hardware to Opus rate
  */
 
 #include <alsa/asoundlib.h>
@@ -140,19 +140,19 @@ void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16
  * Must be called before jetkvm_audio_capture_init or jetkvm_audio_playback_init
  *
  * Device mapping (set via ALSA_CAPTURE_DEVICE/ALSA_PLAYBACK_DEVICE):
- *   hw:0,0 = TC358743 HDMI audio input (for OUTPUT path capture)
- *   hw:1,0 = USB Audio Gadget (for OUTPUT path capture or INPUT path playback)
+ *   plughw:0,0 = TC358743 HDMI audio with rate conversion (for OUTPUT path capture)
+ *   plughw:1,0 = USB Audio Gadget with rate conversion (for OUTPUT path capture or INPUT path playback)
  */
 static void init_alsa_devices_from_env(void) {
     // Always read from environment to support device switching
     alsa_capture_device = getenv("ALSA_CAPTURE_DEVICE");
     if (alsa_capture_device == NULL || alsa_capture_device[0] == '\0') {
-        alsa_capture_device = "hw:1,0"; // Default: USB gadget audio for capture
+        alsa_capture_device = "plughw:1,0"; // Default: USB gadget audio for capture with rate conversion
     }
 
     alsa_playback_device = getenv("ALSA_PLAYBACK_DEVICE");
     if (alsa_playback_device == NULL || alsa_playback_device[0] == '\0') {
-        alsa_playback_device = "hw:1,0"; // Default: USB gadget audio for playback
+        alsa_playback_device = "plughw:1,0"; // Default: USB gadget audio for playback with rate conversion
     }
 }
 
@@ -430,7 +430,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 
 /**
  * Initialize OUTPUT path (HDMI or USB Gadget audio capture → Opus encoder)
- * Opens ALSA capture device from ALSA_CAPTURE_DEVICE env (default: hw:1,0, set to hw:0,0 for TC358743 HDMI)
+ * Opens ALSA capture device from ALSA_CAPTURE_DEVICE env (default: plughw:1,0, set to plughw:0,0 for HDMI)
  * and creates Opus encoder with optimized settings
  * @return 0 on success, -EBUSY if initializing, -1/-2/-3 on errors
  */
@@ -606,7 +606,7 @@ retry_read:
 
 /**
  * Initialize INPUT path (Opus decoder → device speakers)
- * Opens ALSA playback device from ALSA_PLAYBACK_DEVICE env (default: hw:1,0)
+ * Opens ALSA playback device from ALSA_PLAYBACK_DEVICE env (default: plughw:1,0)
  * and creates Opus decoder. Returns immediately on device open failure (no fallback).
  * @return 0 on success, -EBUSY if initializing, -1/-2 on errors
  */
