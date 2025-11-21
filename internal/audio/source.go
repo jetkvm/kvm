@@ -10,7 +10,6 @@ type AudioConfig struct {
 	BufferPeriods  uint8
 	DTXEnabled     bool
 	FECEnabled     bool
-	SampleRate     uint32
 	PacketLossPerc uint8
 }
 
@@ -21,7 +20,6 @@ func DefaultAudioConfig() AudioConfig {
 		BufferPeriods:  12,
 		DTXEnabled:     true,
 		FECEnabled:     true,
-		SampleRate:     48000,
 		PacketLossPerc: 0,
 	}
 }
