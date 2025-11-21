@@ -206,6 +206,61 @@ static inline void simd_clear_samples_s16(short * __restrict__ buffer, uint32_t 
     }
 }
 
+/**
+ * Soft-clip audio samples to prevent digital clipping distortion
+ * Uses smooth saturation curve for transients that exceed ±30720 (~0.94 of max)
+ * Processes 8 samples per iteration using ARM NEON
+ */
+static inline void simd_soft_clip_s16(short * __restrict__ buffer, uint32_t samples) {
+	const int16_t threshold = 30720;  // 0.9375 * 32768
+	const int16x8_t thresh_pos = vdupq_n_s16(threshold);
+	const int16x8_t thresh_neg = vdupq_n_s16(-threshold);
+	const int16x8_t max_val = vdupq_n_s16(32767);
+	const int16x8_t min_val = vdupq_n_s16(-32768);
+
+	uint32_t i = 0;
+	uint32_t simd_samples = samples & ~7U;
+
+	for (; i < simd_samples; i += 8) {
+		int16x8_t samples_vec = vld1q_s16(&buffer[i]);
+
+		// Detect samples exceeding positive threshold
+		uint16x8_t exceeds_pos = vcgtq_s16(samples_vec, thresh_pos);
+		// Detect samples below negative threshold
+		uint16x8_t exceeds_neg = vcltq_s16(samples_vec, thresh_neg);
+
+		// Apply soft saturation to samples exceeding thresholds
+		// For positive: scale down to range [threshold, max_val]
+		// For negative: scale up to range [min_val, -threshold]
+		int16x8_t clipped = samples_vec;
+		clipped = vbslq_s16(exceeds_pos,
+		                    vaddq_s16(thresh_pos, vshrq_n_s16(vsubq_s16(samples_vec, thresh_pos), 2)),
+		                    clipped);
+		clipped = vbslq_s16(exceeds_neg,
+		                    vaddq_s16(thresh_neg, vshrq_n_s16(vsubq_s16(samples_vec, thresh_neg), 2)),
+		                    clipped);
+
+		// Clamp to int16 range
+		clipped = vminq_s16(vmaxq_s16(clipped, min_val), max_val);
+
+		vst1q_s16(&buffer[i], clipped);
+	}
+
+	// Scalar: remaining samples
+	for (; i < samples; i++) {
+		int32_t sample = buffer[i];
+		if (sample > threshold) {
+			sample = threshold + ((sample - threshold) >> 2);
+		} else if (sample < -threshold) {
+			sample = -threshold + ((sample + threshold) >> 2);
+		}
+		// Clamp to int16 range
+		if (sample > 32767) sample = 32767;
+		if (sample < -32768) sample = -32768;
+		buffer[i] = (short)sample;
+	}
+}
+
 // INITIALIZATION STATE TRACKING
 
 static volatile sig_atomic_t capture_initializing = 0;
@@ -754,6 +809,9 @@ retry_read:
 		pthread_mutex_unlock(&capture_mutex);
 		return -1;
 	}
+
+	// Apply soft-clipping to prevent digital clipping distortion on sharp transients
+	simd_soft_clip_s16(pcm_to_encode, opus_frame_size * capture_channels);
 
 	nb_bytes = opus_encode(enc, pcm_to_encode, opus_frame_size, out, max_packet_size);
 
