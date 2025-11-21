@@ -44,6 +44,7 @@ static snd_pcm_t *pcm_playback_handle = NULL; // INPUT: Client microphone → de
 
 static const char *alsa_capture_device = NULL;
 static const char *alsa_playback_device = NULL;
+static bool capture_channels_swapped = false;  // True if hardware reports R,L instead of L,R
 
 static OpusEncoder *encoder = NULL;
 static OpusDecoder *decoder = NULL;
@@ -466,8 +467,26 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 	err = snd_pcm_prepare(handle);
 	if (err < 0) return err;
 
+	if (num_channels == 2) {
+		snd_pcm_chmap_t *chmap = snd_pcm_get_chmap(handle);
+		if (chmap != NULL) {
+			if (chmap->channels == 2) {
+				bool is_swapped = (chmap->pos[0] == SND_CHMAP_FR && chmap->pos[1] == SND_CHMAP_FL);
+				if (is_swapped) {
+					fprintf(stderr, "INFO: %s: Hardware reports swapped channel map (R,L instead of L,R)\n",
+					        device_name);
+					fflush(stderr);
+				}
+				if (actual_frame_size_out && is_swapped) {
+					*actual_frame_size_out |= 0x8000;
+				}
+			}
+			free(chmap);
+		}
+	}
+
 	if (actual_rate_out) *actual_rate_out = verified_rate;
-	if (actual_frame_size_out) *actual_frame_size_out = hw_frame_size;
+	if (actual_frame_size_out) *actual_frame_size_out &= 0x7FFF;
 
 	return 0;
 }
@@ -527,8 +546,8 @@ int jetkvm_audio_capture_init() {
 	}
 
 	unsigned int actual_rate = 0;
-	uint16_t actual_frame_size = 0;
-	err = configure_alsa_device(pcm_capture_handle, "capture", capture_channels, &actual_rate, &actual_frame_size);
+	uint16_t actual_frame_size_with_flag = 0;
+	err = configure_alsa_device(pcm_capture_handle, "capture", capture_channels, &actual_rate, &actual_frame_size_with_flag);
 	if (err < 0) {
 		snd_pcm_t *handle = pcm_capture_handle;
 		pcm_capture_handle = NULL;
@@ -538,11 +557,9 @@ int jetkvm_audio_capture_init() {
 		return -2;
 	}
 
-	// Store hardware-negotiated values
+	capture_channels_swapped = (actual_frame_size_with_flag & 0x8000) != 0;
 	hardware_sample_rate = actual_rate;
-	hardware_frame_size = actual_frame_size;
-
-	// Validate hardware frame size
+	hardware_frame_size = actual_frame_size_with_flag & 0x7FFF;
 	if (hardware_frame_size > 3840) {
 		fprintf(stderr, "ERROR: capture: Hardware frame size %u exceeds buffer capacity 3840\n",
 		        hardware_frame_size);
@@ -706,7 +723,13 @@ retry_read:
 		simd_clear_samples_s16(&pcm_hw_buffer[pcm_rc * capture_channels], remaining_samples);
 	}
 
-	// Resample to 48kHz if needed
+	if (capture_channels_swapped && capture_channels == 2) {
+		for (uint32_t i = 0; i < hardware_frame_size; i++) {
+			short temp = pcm_hw_buffer[i * 2];
+			pcm_hw_buffer[i * 2] = pcm_hw_buffer[i * 2 + 1];
+			pcm_hw_buffer[i * 2 + 1] = temp;
+		}
+	}
 	short *pcm_to_encode;
 	if (capture_resampler) {
 		spx_uint32_t in_len = hardware_frame_size;
