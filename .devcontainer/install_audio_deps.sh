@@ -48,7 +48,7 @@ if [ ! -f .built ]; then
   # Use minimal ALSA configuration to avoid FD_SETSIZE issues in devcontainer
   CFLAGS="$OPTIM_CFLAGS" ./configure --host $BUILDKIT_FLAVOR \
     --enable-static=yes --enable-shared=no \
-    --with-pcm-plugins=rate,linear \
+    --with-pcm-plugins=plug,rate,linear,copy \
     --disable-seq --disable-rawmidi --disable-ucm \
     --disable-python --disable-old-symbols \
     --disable-topology --disable-hwdep --disable-mixer \
