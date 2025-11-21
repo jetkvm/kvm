@@ -48,10 +48,10 @@ export CXXFLAGS="$OPTIM_CFLAGS"
 cd alsa-lib-${ALSA_VERSION}
 if [ ! -f .built ]; then
   chown -R $(whoami):$(whoami) .
-  # Minimal ALSA configuration for audio capture/playback
+  # Minimal ALSA configuration for direct hw: device access with SpeexDSP resampling
   CFLAGS="$OPTIM_CFLAGS" ./configure --host $BUILDKIT_FLAVOR \
     --enable-static=yes --enable-shared=no \
-    --with-pcm-plugins=plug,rate,linear,copy \
+    --with-pcm-plugins=linear,copy \
     --disable-seq --disable-rawmidi --disable-ucm \
     --disable-python --disable-old-symbols \
     --disable-topology --disable-hwdep --disable-mixer \
