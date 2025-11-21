@@ -349,7 +349,10 @@ static void *venc_read_stream(void *arg)
 }
 
 uint32_t detected_width, detected_height;
-bool detected_signal = false, streaming_flag = false, streaming_stopped = true;
+bool detected_signal = false, streaming_flag = false;
+
+bool streaming_stopped = true;
+pthread_mutex_t streaming_stopped_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_t *streaming_thread = NULL;
 pthread_mutex_t streaming_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -370,7 +373,26 @@ void set_streaming_flag(bool flag)
     pthread_mutex_lock(&streaming_mutex);
     streaming_flag = flag;
     pthread_mutex_unlock(&streaming_mutex);
+
+    video_send_format_report();
 }
+
+void set_streaming_stopped(bool stopped)
+{
+    pthread_mutex_lock(&streaming_stopped_mutex);
+    streaming_stopped = stopped;
+    pthread_mutex_unlock(&streaming_stopped_mutex);
+
+    video_send_format_report();
+}
+
+bool get_streaming_stopped()
+{
+    pthread_mutex_lock(&streaming_stopped_mutex);
+    bool stopped = streaming_stopped;
+    pthread_mutex_unlock(&streaming_stopped_mutex);
+    return stopped;
+} 
 
 void write_buffer_to_file(const uint8_t *buffer, size_t length, const char *filename)
 {
@@ -385,8 +407,7 @@ void *run_video_stream(void *arg)
 
     log_info("running video stream");
 
-    streaming_stopped = false;
-
+    set_streaming_stopped(false);
     while (streaming_flag)
     {
         if (detected_signal == false)
@@ -528,6 +549,8 @@ void *run_video_stream(void *arg)
         uint32_t num = 0;
         VIDEO_FRAME_INFO_S stFrame;
 
+
+
         while (streaming_flag)
         {
             FD_ZERO(&fds);
@@ -539,6 +562,7 @@ void *run_video_stream(void *arg)
             if (r == 0)
             {
                 log_info("select timeout");
+                ensure_sleep_mode_disabled();
                 break;
             }
             if (r == -1)
@@ -634,7 +658,7 @@ void *run_video_stream(void *arg)
 
     log_info("video stream thread exiting");
 
-    streaming_stopped = true;
+    set_streaming_stopped(true);
 
     return NULL;
 }
@@ -670,9 +694,10 @@ void video_start_streaming()
     log_info("starting video streaming");
     if (streaming_thread != NULL)
     {
-        if (streaming_stopped == true) {
+        bool stopped = get_streaming_stopped();
+        if (stopped == true) {
             log_error("video streaming already stopped but streaming_thread is not NULL");
-            assert(streaming_stopped == true);
+            assert(stopped == true);
         }
         log_warn("video streaming already started");
         return;
@@ -699,6 +724,21 @@ void video_start_streaming()
     streaming_thread = new_thread;
 }
 
+bool wait_for_streaming_stopped()
+{
+    int attempts = 0;
+    while (attempts < 30) {
+        if (get_streaming_stopped() == true) {
+            log_info("video streaming stopped after %d attempts", attempts);
+            return true;
+        }
+        usleep(100000); // 100ms
+        attempts++;
+    }
+    log_error("video streaming did not stop after 3s");
+    return false;
+}
+
 void video_stop_streaming()
 {
     if (streaming_thread == NULL) {
@@ -710,14 +750,7 @@ void video_stop_streaming()
     set_streaming_flag(false);
 
     log_info("waiting for video streaming thread to exit");
-    int attempts = 0;
-    while (!streaming_stopped && attempts < 30) {
-        usleep(100000); // 100ms
-        attempts++;
-    }
-    if (!streaming_stopped) {
-        log_error("video streaming thread did not exit after 30s");
-    }
+    wait_for_streaming_stopped();
 
     pthread_join(*streaming_thread, NULL);
     free(streaming_thread);
@@ -726,13 +759,30 @@ void video_stop_streaming()
     log_info("video streaming stopped");
 }
 
+uint8_t video_get_streaming_status() {
+    // streaming flag can be false when stopping streaming
+    if (get_streaming_flag() == true) return 1;
+    if (get_streaming_stopped() == false) return 2;
+    return 0;
+}
+
 void video_restart_streaming()
 {
-    if (get_streaming_flag() == true)
+    uint8_t streaming_status = video_get_streaming_status();
+    if (streaming_status == 0)
     {
-        log_info("restarting video streaming");
+        log_info("will not restart video streaming because it's stopped");
+        return;
+    } 
+
+    if (streaming_status == 2) {
         video_stop_streaming();
     }
+
+    if (!wait_for_streaming_stopped()) {
+        return;
+    }
+    
     video_start_streaming();
 }
 

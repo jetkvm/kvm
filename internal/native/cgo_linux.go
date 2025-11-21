@@ -57,6 +57,7 @@ var (
 func jetkvm_go_video_state_handler(state *C.jetkvm_video_state_t) {
 	videoState := VideoState{
 		Ready:          bool(state.ready),
+		Streaming:      VideoStreamingStatus(state.streaming),
 		Error:          C.GoString(state.error),
 		Width:          int(state.width),
 		Height:         int(state.height),
@@ -166,6 +167,15 @@ func videoStop() {
 	defer cgoLock.Unlock()
 
 	C.jetkvm_video_stop()
+}
+
+func videoGetStreamingStatus() VideoStreamingStatus {
+	cgoLock.Lock()
+	defer cgoLock.Unlock()
+
+	isStreaming := C.jetkvm_video_get_streaming_status()
+
+	return VideoStreamingStatus(isStreaming)
 }
 
 func videoLogStatus() string {
