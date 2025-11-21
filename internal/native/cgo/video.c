@@ -700,6 +700,16 @@ void video_start_streaming()
     streaming_thread = new_thread;
 }
 
+bool wait_for_streaming_stopped()
+{
+    int attempts = 0;
+    while (!streaming_stopped && attempts < 30) {
+        usleep(100000); // 100ms
+        attempts++;
+    }
+    return streaming_stopped;
+}
+
 void video_stop_streaming()
 {
     if (streaming_thread == NULL) {
@@ -711,12 +721,7 @@ void video_stop_streaming()
     set_streaming_flag(false);
 
     log_info("waiting for video streaming thread to exit");
-    int attempts = 0;
-    while (!streaming_stopped && attempts < 30) {
-        usleep(100000); // 100ms
-        attempts++;
-    }
-    if (!streaming_stopped) {
+    if (!wait_for_streaming_stopped()) {
         log_error("video streaming thread did not exit after 30s");
     }
 
@@ -737,11 +742,22 @@ uint8_t video_get_streaming_status() {
 
 void video_restart_streaming()
 {
-    if (get_streaming_flag() == true)
+    uint8_t streaming_status = video_get_streaming_status();
+    if (streaming_status == 0)
     {
-        log_info("restarting video streaming");
+        log_info("will not restart video streaming because it's stopped");
+        return;
+    } 
+
+    if (streaming_status == 2) {
         video_stop_streaming();
     }
+
+    if (!wait_for_streaming_stopped()) {
+        log_error("video streaming did not stop after 30s");
+        return ;
+    }
+    
     video_start_streaming();
 }
 
@@ -812,7 +828,7 @@ void *run_detect_format(void *arg)
 
             if (should_restart) {
                 log_info("restarting video streaming due to format change");
-                video_restart_streaming();
+                video_restart_streaming(false);
             }
         }
 
