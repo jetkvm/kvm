@@ -605,7 +605,9 @@ int jetkvm_audio_capture_init() {
 	if (err < 0) {
 		snd_pcm_t *handle = pcm_capture_handle;
 		pcm_capture_handle = NULL;
-		snd_pcm_close(handle);
+		if (handle) {
+			snd_pcm_close(handle);
+		}
 		atomic_store(&capture_stop_requested, 0);
 		capture_initializing = 0;
 		return -2;
@@ -620,7 +622,9 @@ int jetkvm_audio_capture_init() {
 		fflush(stderr);
 		snd_pcm_t *handle = pcm_capture_handle;
 		pcm_capture_handle = NULL;
-		snd_pcm_close(handle);
+		if (handle) {
+			snd_pcm_close(handle);
+		}
 		atomic_store(&capture_stop_requested, 0);
 		capture_initializing = 0;
 		return -4;
@@ -644,7 +648,9 @@ int jetkvm_audio_capture_init() {
 			fflush(stderr);
 			snd_pcm_t *handle = pcm_capture_handle;
 			pcm_capture_handle = NULL;
-			snd_pcm_close(handle);
+			if (handle) {
+				snd_pcm_close(handle);
+			}
 			atomic_store(&capture_stop_requested, 0);
 			capture_initializing = 0;
 			return -3;
@@ -671,7 +677,9 @@ int jetkvm_audio_capture_init() {
 		if (pcm_capture_handle) {
 			snd_pcm_t *handle = pcm_capture_handle;
 			pcm_capture_handle = NULL;
-			snd_pcm_close(handle);
+			if (handle) {
+				snd_pcm_close(handle);
+			}
 		}
 		atomic_store(&capture_stop_requested, 0);
 		capture_initializing = 0;
@@ -888,7 +896,9 @@ int jetkvm_audio_playback_init() {
 	if (err < 0) {
 		snd_pcm_t *handle = pcm_playback_handle;
 		pcm_playback_handle = NULL;
-		snd_pcm_close(handle);
+		if (handle) {
+			snd_pcm_close(handle);
+		}
 		atomic_store(&playback_stop_requested, 0);
 		playback_initializing = 0;
 		return -1;
@@ -903,7 +913,9 @@ int jetkvm_audio_playback_init() {
 	if (!decoder || opus_err != OPUS_OK) {
 		snd_pcm_t *handle = pcm_playback_handle;
 		pcm_playback_handle = NULL;
-		snd_pcm_close(handle);
+		if (handle) {
+			snd_pcm_close(handle);
+		}
 		atomic_store(&playback_stop_requested, 0);
 		playback_initializing = 0;
 		return -2;
