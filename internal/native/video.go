@@ -15,11 +15,12 @@ var extraLockTimeout = 5 * time.Second
 
 // VideoState is the state of the video stream.
 type VideoState struct {
-	Ready          bool    `json:"ready"`
-	Error          string  `json:"error,omitempty"` //no_signal, no_lock, out_of_range
-	Width          int     `json:"width"`
-	Height         int     `json:"height"`
-	FramePerSecond float64 `json:"fps"`
+	Ready          bool                 `json:"ready"`
+	Streaming      VideoStreamingStatus `json:"streaming"`
+	Error          string               `json:"error,omitempty"` //no_signal, no_lock, out_of_range
+	Width          int                  `json:"width"`
+	Height         int                  `json:"height"`
+	FramePerSecond float64              `json:"fps"`
 }
 
 func isSleepModeSupported() bool {

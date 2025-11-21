@@ -654,6 +654,8 @@ void *run_video_stream(void *arg)
 
     set_streaming_stopped(true);
 
+    video_send_format_report();
+
     return NULL;
 }
 
@@ -716,6 +718,8 @@ void video_start_streaming()
 
     // Only set streaming_thread after successful creation
     streaming_thread = new_thread;
+
+    video_send_format_report();
 }
 
 bool wait_for_streaming_stopped()
@@ -751,6 +755,8 @@ void video_stop_streaming()
     streaming_thread = NULL;
 
     log_info("video streaming stopped");
+
+    video_send_format_report();
 }
 
 uint8_t video_get_streaming_status() {

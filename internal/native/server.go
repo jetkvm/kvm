@@ -54,6 +54,23 @@ func monitorCrashSignal(ctx context.Context, logger *zerolog.Logger, nativeInsta
 	}
 }
 
+func updateProcessTitle(state *VideoState) {
+	if state == nil {
+		procPrefix = "jetkvm: [native]"
+	} else {
+		status := "active"
+		if !state.Ready {
+			status = "starting"
+		} else if state.Error != "" {
+			status = state.Error
+		} else {
+			status = fmt.Sprintf("%s,%dx%d,%.1ffps", state.Streaming.String(), state.Width, state.Height, state.FramePerSecond)
+		}
+		procPrefix = fmt.Sprintf("jetkvm: [native+video{%s}]", status)
+	}
+	setProcTitle(lastProcTitle)
+}
+
 // RunNativeProcess runs the native process mode
 func RunNativeProcess(binaryName string) {
 	appCtx, appCtxCancel := context.WithCancel(context.Background())
@@ -81,6 +98,9 @@ func RunNativeProcess(binaryName string) {
 		if err != nil {
 			logger.Fatal().Err(err).Msg("failed to write frame to video stream socket")
 		}
+	}
+	nativeOptions.OnVideoStateChange = func(state VideoState) {
+		updateProcessTitle(&state)
 	}
 
 	// Create native instance

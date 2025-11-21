@@ -8,6 +8,7 @@
 typedef struct
 {
     bool ready;
+    uint8_t streaming;
     const char *error;
     u_int16_t width;
     u_int16_t height;
@@ -65,6 +66,7 @@ char *jetkvm_video_log_status();
 jetkvm_video_state_t *jetkvm_video_get_status();
 
 void video_report_format(bool ready, const char *error, u_int16_t width, u_int16_t height, double frame_per_second);
+void video_send_format_report();
 int video_send_frame(const uint8_t *frame, ssize_t len);
 
 
