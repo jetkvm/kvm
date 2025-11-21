@@ -34,7 +34,7 @@ void video_stop_streaming();
 /**
  * @brief Get the streaming status of the video
  *
- * @return VideoStreamingStatus 1 if the video streaming is active, 2 if the video streaming is stopping, 0 otherwise
+ * @return uint8_t 1 if the video streaming is active, 2 if the video streaming is stopping, 0 otherwise
  */
 uint8_t video_get_streaming_status();
 

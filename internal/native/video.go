@@ -35,21 +35,32 @@ func (n *Native) setSleepMode(enabled bool) error {
 	}
 
 	bEnabled := "0"
+	shouldWait := false
 	if enabled {
 		bEnabled = "1"
 
-		switch n.VideoGetStreamingStatus() {
+		switch videoGetStreamingStatus() {
 		case VideoStreamingStatusActive:
 			n.l.Info().Msg("stopping video stream to enable sleep mode")
-			if err := n.VideoStop(); err != nil {
-				return fmt.Errorf("video stop failed, won't enable sleep mode: %w", err)
-			}
-			// wait a few seconds to ensure the video stream is stopped
-			time.Sleep(sleepModeWaitTimeout)
+			videoStop()
+			shouldWait = true
 		case VideoStreamingStatusStopping:
 			n.l.Info().Msg("video stream is stopping, will enable sleep mode in a few seconds")
-			// wait a few seconds to ensure the video stream is stopped
-			time.Sleep(sleepModeWaitTimeout)
+			shouldWait = true
+		}
+	}
+
+	if shouldWait {
+		start := time.Now()
+		for {
+			if n.VideoGetStreamingStatus() == VideoStreamingStatusInactive {
+				break
+			}
+			if time.Since(start) >= sleepModeWaitTimeout {
+				n.l.Warn().Msg("timed out waiting for video stream to stop")
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 

@@ -386,6 +386,7 @@ func newSession(config SessionConfig) (*Session, error) {
 				isConnected = false
 				onActiveSessionsChanged()
 				if decrActiveSessions() == 0 {
+					scopedLogger.Info().Msg("last session disconnected, stopping video stream")
 					onLastSessionDisconnected()
 				}
 			}
