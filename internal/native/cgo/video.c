@@ -349,7 +349,10 @@ static void *venc_read_stream(void *arg)
 }
 
 uint32_t detected_width, detected_height;
-bool detected_signal = false, streaming_flag = false, streaming_stopped = true;
+bool detected_signal = false, streaming_flag = false;
+
+bool streaming_stopped = true;
+pthread_mutex_t streaming_stopped_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_t *streaming_thread = NULL;
 pthread_mutex_t streaming_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -372,6 +375,21 @@ void set_streaming_flag(bool flag)
     pthread_mutex_unlock(&streaming_mutex);
 }
 
+void set_streaming_stopped(bool stopped)
+{
+    pthread_mutex_lock(&streaming_stopped_mutex);
+    streaming_stopped = stopped;
+    pthread_mutex_unlock(&streaming_stopped_mutex);
+}
+
+bool get_streaming_stopped()
+{
+    pthread_mutex_lock(&streaming_stopped_mutex);
+    bool stopped = streaming_stopped;
+    pthread_mutex_unlock(&streaming_stopped_mutex);
+    return stopped;
+} 
+
 void write_buffer_to_file(const uint8_t *buffer, size_t length, const char *filename)
 {
     FILE *file = fopen(filename, "wb");
@@ -385,8 +403,7 @@ void *run_video_stream(void *arg)
 
     log_info("running video stream");
 
-    streaming_stopped = false;
-
+    set_streaming_stopped(false);
     while (streaming_flag)
     {
         if (detected_signal == false)
@@ -635,7 +652,7 @@ void *run_video_stream(void *arg)
 
     log_info("video stream thread exiting");
 
-    streaming_stopped = true;
+    set_streaming_stopped(true);
 
     return NULL;
 }
@@ -671,9 +688,10 @@ void video_start_streaming()
     log_info("starting video streaming");
     if (streaming_thread != NULL)
     {
-        if (streaming_stopped == true) {
+        bool stopped = get_streaming_stopped();
+        if (stopped == true) {
             log_error("video streaming already stopped but streaming_thread is not NULL");
-            assert(streaming_stopped == true);
+            assert(stopped == true);
         }
         log_warn("video streaming already started");
         return;
@@ -703,11 +721,14 @@ void video_start_streaming()
 bool wait_for_streaming_stopped()
 {
     int attempts = 0;
-    while (!streaming_stopped && attempts < 30) {
+    while (attempts < 30) {
+        if (get_streaming_stopped() == true) {
+            return true;
+        }
         usleep(100000); // 100ms
         attempts++;
     }
-    return streaming_stopped;
+    return false;
 }
 
 void video_stop_streaming()
