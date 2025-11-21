@@ -2,12 +2,47 @@ package nmlite
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
 	"github.com/vishvananda/netlink"
 )
+
+type IfStateChangeReason uint
+
+const (
+	IfStateOperStateChanged   IfStateChangeReason = 1
+	IfStateOnlineStateChanged IfStateChangeReason = 2
+	IfStateMACAddressChanged  IfStateChangeReason = 3
+	IfStateIPAddressesChanged IfStateChangeReason = 4
+)
+
+type IfStateChangeReasons []IfStateChangeReason
+
+func (r IfStateChangeReason) String() string {
+	switch r {
+	case IfStateOperStateChanged:
+		return "oper state changed"
+	case IfStateOnlineStateChanged:
+		return "online state changed"
+	case IfStateMACAddressChanged:
+		return "MAC address changed"
+	case IfStateIPAddressesChanged:
+		return "IP addresses changed"
+	default:
+		return fmt.Sprintf("unknown change reason %d", r)
+	}
+}
+
+func (rs IfStateChangeReasons) String() string {
+	reasons := []string{}
+	for _, r := range rs {
+		reasons = append(reasons, r.String())
+	}
+	return strings.Join(reasons, ", ")
+}
 
 // updateInterfaceState updates the current interface state
 func (im *InterfaceManager) updateInterfaceState() error {
@@ -17,8 +52,8 @@ func (im *InterfaceManager) updateInterfaceState() error {
 	}
 
 	var (
-		stateChanged bool
-		changeReason string
+		stateChanged  bool
+		changeReasons IfStateChangeReasons
 	)
 
 	attrs := nl.Attrs()
@@ -32,7 +67,7 @@ func (im *InterfaceManager) updateInterfaceState() error {
 	if im.state.Up != isUp {
 		im.state.Up = isUp
 		stateChanged = true
-		changeReason = "oper state changed"
+		changeReasons = append(changeReasons, IfStateOperStateChanged)
 	}
 
 	// Check if the interface is online
@@ -40,14 +75,14 @@ func (im *InterfaceManager) updateInterfaceState() error {
 	if im.state.Online != isOnline {
 		im.state.Online = isOnline
 		stateChanged = true
-		changeReason = "online state changed"
+		changeReasons = append(changeReasons, IfStateOnlineStateChanged)
 	}
 
 	// Check if the MAC address has changed
 	if im.state.MACAddress != attrs.HardwareAddr.String() {
 		im.state.MACAddress = attrs.HardwareAddr.String()
 		stateChanged = true
-		changeReason = "MAC address changed"
+		changeReasons = append(changeReasons, IfStateMACAddressChanged)
 	}
 
 	// Update IP addresses
@@ -55,7 +90,7 @@ func (im *InterfaceManager) updateInterfaceState() error {
 		im.logger.Error().Err(err).Msg("failed to update IP addresses")
 	} else if ipChanged {
 		stateChanged = true
-		changeReason = "IP addresses changed"
+		changeReasons = append(changeReasons, IfStateIPAddressesChanged)
 	}
 
 	im.state.LastUpdated = time.Now()
@@ -64,7 +99,7 @@ func (im *InterfaceManager) updateInterfaceState() error {
 	// Notify callback if state changed
 	if stateChanged && im.onStateChange != nil {
 		im.logger.Debug().
-			Str("changeReason", changeReason).
+			Stringer("changeReasons", changeReasons).
 			Interface("state", im.state).
 			Msg("notifying state change")
 		im.onStateChange(*im.state)
