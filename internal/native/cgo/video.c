@@ -727,9 +727,10 @@ void video_stop_streaming()
     log_info("video streaming stopped");
 }
 
-uint8_t video_is_streaming() {
+uint8_t video_get_streaming_status() {
     // streaming flag can be false when stopping streaming
     if (get_streaming_flag() == true) return 1;
+    // streaming_stopped isn't protected by a mutex, but we won't care about race conditions here
     if (streaming_stopped == false) return 2;
     return 0;
 }

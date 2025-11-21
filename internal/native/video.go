@@ -27,29 +27,30 @@ func isSleepModeSupported() bool {
 	return err == nil
 }
 
+const sleepModeWaitTimeout = 3 * time.Second
+
 func (n *Native) setSleepMode(enabled bool) error {
 	if !n.sleepModeSupported {
 		return nil
 	}
 
 	bEnabled := "0"
-	shouldStopVideo := false
 	if enabled {
 		bEnabled = "1"
 
-		isStreaming, err := n.VideoIsStreaming()
-		if isStreaming || err != nil {
-			shouldStopVideo = true
+		switch n.VideoGetStreamingStatus() {
+		case VideoStreamingStatusActive:
+			n.l.Info().Msg("stopping video stream to enable sleep mode")
+			if err := n.VideoStop(); err != nil {
+				return fmt.Errorf("video stop failed, won't enable sleep mode: %w", err)
+			}
+			// wait a few seconds to ensure the video stream is stopped
+			time.Sleep(sleepModeWaitTimeout)
+		case VideoStreamingStatusStopping:
+			n.l.Info().Msg("video stream is stopping, will enable sleep mode in a few seconds")
+			// wait a few seconds to ensure the video stream is stopped
+			time.Sleep(sleepModeWaitTimeout)
 		}
-	}
-
-	if shouldStopVideo {
-		if err := n.VideoStop(); err != nil {
-			return fmt.Errorf("video stop failed, won't enable sleep mode: %w", err)
-		}
-
-		// wait few seconds to ensure the video stream is stopped
-		time.Sleep(3 * time.Second)
 	}
 
 	return os.WriteFile(sleepModeFile, []byte(bEnabled), 0644)
@@ -176,10 +177,10 @@ func (n *Native) VideoStart() error {
 	return nil
 }
 
-// VideoIsStreaming checks if the video stream is active.
-func (n *Native) VideoIsStreaming() (bool, error) {
+// VideoGetStreamingStatus gets the streaming status of the video.
+func (n *Native) VideoGetStreamingStatus() VideoStreamingStatus {
 	n.videoLock.Lock()
 	defer n.videoLock.Unlock()
 
-	return videoIsStreaming()
+	return videoGetStreamingStatus()
 }

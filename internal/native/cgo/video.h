@@ -32,11 +32,11 @@ void video_start_streaming();
 void video_stop_streaming();
 
 /**
- * @brief Check if the video streaming is active
+ * @brief Get the streaming status of the video
  *
- * @return uint8_t 1 if the video streaming is active, 2 if the video streaming is stopping, 0 otherwise
+ * @return VideoStreamingStatus 1 if the video streaming is active, 2 if the video streaming is stopping, 0 otherwise
  */
-uint8_t video_is_streaming();
+uint8_t video_get_streaming_status();
 
 /**
  * @brief Set the quality factor of the video

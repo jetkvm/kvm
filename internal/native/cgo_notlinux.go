@@ -123,9 +123,9 @@ func videoSetEDID(edid string) error {
 	return nil
 }
 
-func videoIsStreaming() (bool, error) {
+func videoGetStreamingStatus() VideoStreamingStatus {
 	panicPlatformNotSupported()
-	return false, nil
+	return VideoStreamingStatusInactive
 }
 
 func crash() {

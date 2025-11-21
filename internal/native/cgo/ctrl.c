@@ -367,8 +367,8 @@ void jetkvm_video_stop() {
     video_stop_streaming();
 }
 
-uint8_t jetkvm_is_video_streaming() {
-    return video_is_streaming();
+uint8_t jetkvm_video_get_streaming_status() {
+    return video_get_streaming_status();
 }
 
 int jetkvm_video_set_quality_factor(float quality_factor) {

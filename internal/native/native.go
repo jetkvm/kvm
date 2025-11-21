@@ -40,6 +40,14 @@ type NativeOptions struct {
 	OnNativeRestart      func()
 }
 
+type VideoStreamingStatus uint8
+
+const (
+	VideoStreamingStatusActive   VideoStreamingStatus = 1
+	VideoStreamingStatusStopping VideoStreamingStatus = 2 // video is stopping, but not yet stopped
+	VideoStreamingStatusInactive VideoStreamingStatus = 0
+)
+
 func NewNative(opts NativeOptions) *Native {
 	pid := os.Getpid()
 	nativeSubLogger := nativeLogger.With().Int("pid", pid).Str("scope", "native").Logger()
