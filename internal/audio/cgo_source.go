@@ -83,10 +83,13 @@ func (c *CgoSource) Connect() error {
 func (c *CgoSource) connectOutput() error {
 	os.Setenv("ALSA_CAPTURE_DEVICE", c.alsaDevice)
 
-	// USB Audio Gadget (hw:1,0) only supports 48kHz
-	// For HDMI (hw:0,0), use configured sample rate
+	// Using plughw: enables ALSA rate conversion plugin
+	// USB Gadget hardware is fixed at 48kHz (configfs hardcoded), so keep it at 48kHz
+	// HDMI can use configured rate - plughw resamples from hardware rate to Opus rate
 	sampleRate := c.config.SampleRate
-	if c.alsaDevice == "hw:1,0" {
+	if c.alsaDevice == "plughw:1,0" {
+		sampleRate = 48000
+	} else if sampleRate == 0 {
 		sampleRate = 48000
 	}
 	frameSize := uint16(sampleRate * 20 / 1000)
