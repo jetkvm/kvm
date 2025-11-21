@@ -373,6 +373,8 @@ void set_streaming_flag(bool flag)
     pthread_mutex_lock(&streaming_mutex);
     streaming_flag = flag;
     pthread_mutex_unlock(&streaming_mutex);
+
+    video_send_format_report();
 }
 
 void set_streaming_stopped(bool stopped)
@@ -380,6 +382,8 @@ void set_streaming_stopped(bool stopped)
     pthread_mutex_lock(&streaming_stopped_mutex);
     streaming_stopped = stopped;
     pthread_mutex_unlock(&streaming_stopped_mutex);
+
+    video_send_format_report();
 }
 
 bool get_streaming_stopped()
@@ -545,6 +549,8 @@ void *run_video_stream(void *arg)
         uint32_t num = 0;
         VIDEO_FRAME_INFO_S stFrame;
 
+
+
         while (streaming_flag)
         {
             FD_ZERO(&fds);
@@ -654,8 +660,6 @@ void *run_video_stream(void *arg)
 
     set_streaming_stopped(true);
 
-    video_send_format_report();
-
     return NULL;
 }
 
@@ -718,8 +722,6 @@ void video_start_streaming()
 
     // Only set streaming_thread after successful creation
     streaming_thread = new_thread;
-
-    video_send_format_report();
 }
 
 bool wait_for_streaming_stopped()
@@ -755,8 +757,6 @@ void video_stop_streaming()
     streaming_thread = NULL;
 
     log_info("video streaming stopped");
-
-    video_send_format_report();
 }
 
 uint8_t video_get_streaming_status() {
