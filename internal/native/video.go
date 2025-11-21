@@ -47,6 +47,7 @@ func (n *Native) waitForVideoStreamingStatus(status VideoStreamingStatus) error 
 	}
 }
 
+// before calling this function, make sure to lock n.videoLock
 func (n *Native) setSleepMode(enabled bool) error {
 	if !n.sleepModeSupported {
 		return nil
