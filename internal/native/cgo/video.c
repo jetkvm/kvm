@@ -539,6 +539,7 @@ void *run_video_stream(void *arg)
             if (r == 0)
             {
                 log_info("select timeout");
+                ensure_sleep_mode_disabled();
                 break;
             }
             if (r == -1)

@@ -35,7 +35,13 @@ func (n *Native) setSleepMode(enabled bool) error {
 	bEnabled := "0"
 	if enabled {
 		bEnabled = "1"
+		if err := n.VideoStop(); err != nil {
+			return fmt.Errorf("video stop failed, won't enable sleep mode: %w", err)
+		}
+		// wait few seconds to ensure the video stream is stopped
+		time.Sleep(3 * time.Second)
 	}
+
 	return os.WriteFile(sleepModeFile, []byte(bEnabled), 0644)
 }
 
