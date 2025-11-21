@@ -30,9 +30,9 @@ var (
 
 func getAlsaDevice(source string) string {
 	if source == "hdmi" {
-		return "hw:0,0"  // TC358743 HDMI audio
+		return "hw:0,0" // TC358743 HDMI audio
 	}
-	return "hw:1,0"  // USB Audio Gadget
+	return "hw:1,0" // USB Audio Gadget
 }
 
 func initAudio() {

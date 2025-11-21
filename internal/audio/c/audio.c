@@ -673,10 +673,16 @@ retry_read:
 
 	snd_pcm_t *handle = pcm_capture_handle;
 
-	// Read from hardware at hardware sample rate
+	// Release mutex before blocking I/O to allow clean shutdown
+	pthread_mutex_unlock(&capture_mutex);
+
+	// Read from hardware at hardware sample rate (blocking call, no mutex held)
 	pcm_rc = snd_pcm_readi(handle, pcm_hw_buffer, hardware_frame_size);
 
-	if (handle != pcm_capture_handle) {
+	// Reacquire mutex and verify device wasn't closed during read
+	pthread_mutex_lock(&capture_mutex);
+
+	if (handle != pcm_capture_handle || atomic_load(&capture_stop_requested)) {
 		pthread_mutex_unlock(&capture_mutex);
 		return -1;
 	}
@@ -884,9 +890,17 @@ retry_write:
 	}
 
 	snd_pcm_t *handle = pcm_playback_handle;
+
+	// Release mutex before blocking I/O to allow clean shutdown
+	pthread_mutex_unlock(&playback_mutex);
+
+	// Write to hardware (blocking call, no mutex held)
 	pcm_rc = snd_pcm_writei(handle, pcm_buffer, pcm_frames);
 
-	if (handle != pcm_playback_handle) {
+	// Reacquire mutex and verify device wasn't closed during write
+	pthread_mutex_lock(&playback_mutex);
+
+	if (handle != pcm_playback_handle || atomic_load(&playback_stop_requested)) {
 		pthread_mutex_unlock(&playback_mutex);
 		return -1;
 	}
