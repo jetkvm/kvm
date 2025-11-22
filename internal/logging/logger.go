@@ -12,19 +12,16 @@ import (
 )
 
 type Logger struct {
-	l               *zerolog.Logger
-	scopeLoggers    map[string]*zerolog.Logger
-	scopeLevels     map[string]zerolog.Level
-	scopeLevelMutex sync.Mutex
+	defaultLogger *zerolog.Logger
+
+	loggerMutex  sync.Mutex
+	scopeLevels  map[string]zerolog.Level
+	scopeLoggers map[string]*zerolog.Logger
 
 	defaultLogLevelFromEnv    zerolog.Level
 	defaultLogLevelFromConfig zerolog.Level
 	defaultLogLevel           zerolog.Level
 }
-
-const (
-	defaultLogLevel = zerolog.ErrorLevel
-)
 
 type logOutput struct {
 	mu *sync.Mutex
@@ -65,7 +62,6 @@ var (
 
 	zerologLevels = map[string]zerolog.Level{
 		"DISABLE": zerolog.Disabled,
-		"NOLEVEL": zerolog.NoLevel,
 		"PANIC":   zerolog.PanicLevel,
 		"FATAL":   zerolog.FatalLevel,
 		"ERROR":   zerolog.ErrorLevel,
@@ -73,125 +69,137 @@ var (
 		"INFO":    zerolog.InfoLevel,
 		"DEBUG":   zerolog.DebugLevel,
 		"TRACE":   zerolog.TraceLevel,
+		"UNSET":   -2,
 	}
 )
 
 func NewLogger(zerologLogger zerolog.Logger) *Logger {
 	return &Logger{
-		l:                         &zerologLogger,
-		scopeLoggers:              make(map[string]*zerolog.Logger),
+		defaultLogger:             &zerologLogger,
+		loggerMutex:               sync.Mutex{},
 		scopeLevels:               make(map[string]zerolog.Level),
-		scopeLevelMutex:           sync.Mutex{},
+		scopeLoggers:              make(map[string]*zerolog.Logger),
 		defaultLogLevelFromEnv:    -2,
 		defaultLogLevelFromConfig: -2,
-		defaultLogLevel:           defaultLogLevel,
+		defaultLogLevel:           zerolog.ErrorLevel,
 	}
 }
 
-func (l *Logger) updateLogLevel() {
-	l.scopeLevelMutex.Lock()
-	defer l.scopeLevelMutex.Unlock()
+func (l *Logger) updateLogLevels(newConfigLevel zerolog.Level) {
+	loggingContext := l.defaultLogger.With().Interface("newConfigLevel", newConfigLevel)
+	logger := loggingContext.Logger()
 
+	l.defaultLogLevelFromConfig = newConfigLevel
 	l.scopeLevels = make(map[string]zerolog.Level)
 
-	finalDefaultLogLevel := l.defaultLogLevel
+	for name, envLevel := range zerologLevels {
+		env := strings.ToLower(os.Getenv(fmt.Sprintf("JETKVM_LOG_%s", name)))
 
-	for name, level := range zerologLevels {
-		env := os.Getenv(fmt.Sprintf("JETKVM_LOG_%s", name))
+		if env != "" {
+			loggingContext := l.defaultLogger.With().Str("name", name).Str("env", env).Interface("envLevel", envLevel)
+			logger := loggingContext.Logger()
 
-		if env == "" {
-			env = os.Getenv(fmt.Sprintf("PION_LOG_%s", name))
-		}
-
-		if env == "" {
-			env = os.Getenv(fmt.Sprintf("PIONS_LOG_%s", name))
-		}
-
-		if env == "" {
-			continue
-		}
-
-		if strings.ToLower(env) == "all" {
-			l.defaultLogLevelFromEnv = level
-
-			if finalDefaultLogLevel > level {
-				finalDefaultLogLevel = level
+			if env == "all" {
+				logger.Info().Msg("setting log level for ALL scopes from environment")
+				l.defaultLogLevelFromEnv = envLevel
+			} else {
+				// if not "all", parse as comma-separated list of scopes
+				scopes := strings.SplitSeq(env, ",")
+				for scope := range scopes {
+					logger.Info().Msgf("setting log level for scope %s from environment", scope)
+					l.scopeLevels[scope] = envLevel
+				}
 			}
-
-			continue
-		}
-
-		scopes := strings.SplitSeq(strings.ToLower(env), ",")
-		for scope := range scopes {
-			l.scopeLevels[scope] = level
 		}
 	}
 
-	l.defaultLogLevel = finalDefaultLogLevel
+	l.defaultLogLevel = zerolog.ErrorLevel
+	logger.Info().Msgf("default log level starts at %v", l.defaultLogLevelFromEnv)
+
+	if l.defaultLogLevel > l.defaultLogLevelFromEnv {
+		logger.Info().Msgf("default log level from env %v", l.defaultLogLevelFromEnv)
+		l.defaultLogLevel = l.defaultLogLevelFromEnv
+	}
+
+	if l.defaultLogLevel > l.defaultLogLevelFromConfig {
+		logger.Info().Msgf("default log level from config %v", l.defaultLogLevelFromConfig)
+		l.defaultLogLevel = l.defaultLogLevelFromConfig
+	}
+
+	logger.Info().Msgf("default log level %v", l.defaultLogLevel)
 }
 
 func (l *Logger) getScopeLoggerLevel(scope string) zerolog.Level {
-	if l.scopeLevels == nil {
-		l.updateLogLevel()
-	}
-
-	var scopeLevel zerolog.Level
-	if l.defaultLogLevelFromConfig != -2 {
-		scopeLevel = l.defaultLogLevelFromConfig
-	}
-	if l.defaultLogLevelFromEnv != -2 {
-		scopeLevel = l.defaultLogLevelFromEnv
+	if level, ok := l.scopeLevels[scope]; ok {
+		return level
 	}
 
 	// if the scope is not in the map, use the default level from the root logger
-	if level, ok := l.scopeLevels[scope]; ok {
-		scopeLevel = level
+	if l.defaultLogLevelFromConfig != -2 {
+		return l.defaultLogLevelFromConfig
 	}
 
-	return scopeLevel
+	if l.defaultLogLevelFromEnv != -2 {
+		return l.defaultLogLevelFromEnv
+	}
+
+	return l.defaultLogLevel
 }
 
-func (l *Logger) newScopeLogger(scope string) zerolog.Logger {
-	scopeLevel := l.getScopeLoggerLevel(scope)
-	logger := l.l.Level(scopeLevel).With().Str("component", scope).Logger()
+func (l *Logger) getLogger(scope string) *zerolog.Logger {
+	var ok bool
+	var logger *zerolog.Logger
+	if logger, ok = l.scopeLoggers[scope]; !ok || logger == nil {
+		l.loggerMutex.Lock()
+		defer l.loggerMutex.Unlock()
+
+		if logger, ok = l.scopeLoggers[scope]; !ok || logger == nil {
+			scopeLevel := l.getScopeLoggerLevel(scope)
+			newLogger := l.defaultLogger.Level(scopeLevel).With().Str("component", scope).Logger()
+			l.scopeLoggers[scope] = &newLogger
+			logger = &newLogger
+		}
+	}
 
 	return logger
 }
 
-func (l *Logger) getLogger(scope string) *zerolog.Logger {
-	logger, ok := l.scopeLoggers[scope]
-	if !ok || logger == nil {
-		scopeLogger := l.newScopeLogger(scope)
-		l.scopeLoggers[scope] = &scopeLogger
-	}
+func (l *Logger) UpdateConfigLogLevel(logLevelConfig string) {
+	var newConfigLevel zerolog.Level
 
-	return l.scopeLoggers[scope]
-}
+	logLevelConfig = strings.ToUpper(logLevelConfig)
+	loggingContext := l.defaultLogger.With().Str("logLevelConfig", logLevelConfig)
+	logger := loggingContext.Logger()
 
-func (l *Logger) UpdateLogLevel(configDefaultLogLevel string) {
-	needUpdate := false
-
-	if configDefaultLogLevel != "" {
-		if logLevel, ok := zerologLevels[configDefaultLogLevel]; ok {
-			l.defaultLogLevelFromConfig = logLevel
+	if logLevelConfig != "" {
+		if logLevel, ok := zerologLevels[logLevelConfig]; ok {
+			logger.Debug().Msgf("setting config log level to %v", logLevel)
+			newConfigLevel = logLevel
 		} else {
-			l.l.Warn().Str("logLevel", configDefaultLogLevel).Msg("invalid defaultLogLevel from config, using ERROR")
+			logger.Warn().Msg("invalid log level from config")
+			return
 		}
-
-		if l.defaultLogLevelFromConfig != l.defaultLogLevel {
-			needUpdate = true
-		}
+	} else {
+		newConfigLevel = -2
 	}
 
-	l.updateLogLevel()
+	l.loggerMutex.Lock()
+	defer l.loggerMutex.Unlock()
 
-	if needUpdate {
-		for scope, logger := range l.scopeLoggers {
-			currentLevel := logger.GetLevel()
-			targetLevel := l.getScopeLoggerLevel(scope)
-			if currentLevel != targetLevel {
-				*logger = l.newScopeLogger(scope)
-			}
+	l.updateLogLevels(newConfigLevel)
+
+	for scope, logger := range l.scopeLoggers {
+		currentLevel := logger.GetLevel()
+		targetLevel := l.getScopeLoggerLevel(scope)
+
+		if currentLevel != targetLevel {
+			debugLogger := loggingContext.Stringer("currentLevel", currentLevel).Stringer("targetLevel", targetLevel).Logger()
+			debugLogger.Info().Msgf("updating log level for scope %s", scope)
+
+			// update the chosen level by replacing the logger
+			// with a new one at the target level
+			newLogger := logger.Level(targetLevel).With().Logger()
+			l.scopeLoggers[scope] = &newLogger
 		}
 	}
 }

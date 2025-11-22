@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -39,37 +40,24 @@ type Session struct {
 	keysDownStateQueue chan usbgadget.KeysDownState
 }
 
-var (
-	actionSessions      int = 0
-	activeSessionsMutex     = &sync.Mutex{}
-)
+var activeSessions atomic.Int32
 
-func incrActiveSessions() int {
-	activeSessionsMutex.Lock()
-	defer activeSessionsMutex.Unlock()
-
-	actionSessions++
-	return actionSessions
+func incrActiveSessions() int32 {
+	return activeSessions.Add(1)
 }
 
-func decrActiveSessions() int {
-	activeSessionsMutex.Lock()
-	defer activeSessionsMutex.Unlock()
-
-	actionSessions--
-	return actionSessions
+func decrActiveSessions() int32 {
+	return activeSessions.Add(-1)
 }
 
-func getActiveSessions() int {
-	activeSessionsMutex.Lock()
-	defer activeSessionsMutex.Unlock()
-
-	return actionSessions
+func getActiveSessions() int32 {
+	return activeSessions.Load()
 }
 
 func (s *Session) resetKeepAliveTime() {
 	s.keepAliveJitterLock.Lock()
 	defer s.keepAliveJitterLock.Unlock()
+
 	s.lastKeepAliveArrivalTime = time.Time{} // Reset keep-alive timing tracking
 	s.lastTimerResetTime = time.Time{}       // Reset auto-release timer tracking
 }
@@ -132,7 +120,7 @@ func (s *Session) initQueues() {
 	}
 }
 
-func (s *Session) handleQueues(index int) {
+func (s *Session) handleQueue(index int) {
 	for msg := range s.hidQueue[index] {
 		onHidMessage(msg, s)
 	}
@@ -160,7 +148,7 @@ func (s *Session) enqueueKeysDownState(state usbgadget.KeysDownState) {
 	select {
 	case s.keysDownStateQueue <- state:
 	default:
-		hidRPCLogger.Warn().Msg("dropping keys down state update; queue full")
+		logging.GetSubsystemLogger("hidrpc").Warn().Msg("dropping keys down state update; queue full")
 	}
 }
 
@@ -168,24 +156,25 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 	return func(msg webrtc.DataChannelMessage) {
 		l := scopedLogger.With().
 			Str("channel", channel).
-			Int("length", len(msg.Data)).
 			Logger()
-		// only log data if the log level is debug or lower
-		if scopedLogger.GetLevel() > zerolog.DebugLevel {
-			l = l.With().Str("data", string(msg.Data)).Logger()
-		}
 
 		if msg.IsString {
 			l.Warn().Msg("received string data in HID RPC message handler")
 			return
 		}
 
-		if len(msg.Data) < 1 {
+		dataLength := len(msg.Data)
+		l = l.With().Int("length", dataLength).Logger()
+
+		// only log data if the log level is debug or lower
+		if scopedLogger.GetLevel() <= zerolog.DebugLevel {
+			l = l.With().Bytes("data", msg.Data).Logger()
+		}
+
+		if dataLength < 1 {
 			l.Warn().Msg("received empty data in HID RPC message handler")
 			return
 		}
-
-		l.Trace().Msg("received data in HID RPC message handler")
 
 		// Enqueue to ensure ordered processing
 		queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
@@ -200,6 +189,7 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 				DataChannelMessage: msg,
 				channel:            channel,
 			}
+			l.Trace().Msg("queued HID RPC message")
 		} else {
 			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue is nil")
 			return
@@ -218,7 +208,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		l := config.Logger.With().Str("component", "webrtc").Logger()
 		scopedLogger = &l
 	} else {
-		scopedLogger = webrtcLogger
+		scopedLogger = logging.GetSubsystemLogger("webrtc")
 	}
 
 	if config.IsCloud {
@@ -259,8 +249,11 @@ func newSession(config SessionConfig) (*Session, error) {
 	}()
 
 	for i := 0; i < len(session.hidQueue); i++ {
-		go session.handleQueues(i)
+		go session.handleQueue(i)
 	}
+
+	l := config.Logger.With().Interface("session", session).Logger()
+	scopedLogger = &l
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		defer func() {

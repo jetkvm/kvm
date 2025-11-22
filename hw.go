@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/ota"
 )
 
@@ -32,6 +33,7 @@ func extractSerialNumber() (string, error) {
 }
 
 func hwReboot(force bool, postRebootAction *ota.PostRebootAction, delay time.Duration) error {
+	logger := logging.GetSubsystemLogger("hw")
 	logger.Info().Dur("delayMs", delay).Msg("reboot requested")
 
 	writeJSONRPCEvent("willReboot", postRebootAction, currentSession)
@@ -71,7 +73,7 @@ func GetDeviceID() string {
 	deviceIDOnce.Do(func() {
 		serial, err := extractSerialNumber()
 		if err != nil {
-			logger.Warn().Msg("unknown serial number, the program likely not running on RV1106")
+			logging.GetSubsystemLogger("hw").Warn().Msg("unknown serial number, the program likely not running on RV1106")
 			deviceID = "unknown_device_id"
 		} else {
 			deviceID = serial
@@ -90,6 +92,8 @@ func GetDefaultHostname() string {
 }
 
 func runWatchdog() {
+	watchdogLogger := logging.GetSubsystemLogger("watchdog")
+
 	file, err := os.OpenFile("/dev/watchdog", os.O_WRONLY, 0)
 	if err != nil {
 		watchdogLogger.Warn().Err(err).Msg("unable to open /dev/watchdog, skipping watchdog reset")

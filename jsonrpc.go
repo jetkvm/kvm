@@ -19,6 +19,7 @@ import (
 	"go.bug.st/serial"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
@@ -56,12 +57,12 @@ type BacklightSettings struct {
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
-		jsonRpcLogger.Warn().Err(err).Msg("Error marshalling JSONRPC response")
+		logging.GetSubsystemLogger("native").Warn().Err(err).Msg("Error marshalling JSONRPC response")
 		return
 	}
 	err = session.RPCChannel.SendText(string(responseBytes))
 	if err != nil {
-		jsonRpcLogger.Warn().Err(err).Msg("Error sending JSONRPC response")
+		logging.GetSubsystemLogger("native").Warn().Err(err).Msg("Error sending JSONRPC response")
 		return
 	}
 }
@@ -74,16 +75,17 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 	}
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
-		jsonRpcLogger.Warn().Err(err).Msg("Error marshalling JSONRPC event")
+		logging.GetSubsystemLogger("native").Warn().Err(err).Msg("Error marshalling JSONRPC event")
 		return
 	}
 	if session == nil || session.RPCChannel == nil {
-		jsonRpcLogger.Info().Msg("RPC channel not available")
+		logging.GetSubsystemLogger("native").Info().Msg("RPC channel not available")
 		return
 	}
 
 	requestString := string(requestBytes)
-	scopedLogger := jsonRpcLogger.With().
+	scopedLogger := logging.GetSubsystemLogger("native").
+		With().
 		Str("data", requestString).
 		Logger()
 
@@ -100,7 +102,8 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
 	if err != nil {
-		jsonRpcLogger.Warn().
+		logging.GetSubsystemLogger("native").
+			Warn().
 			Str("data", string(message.Data)).
 			Err(err).
 			Msg("Error unmarshalling JSONRPC request")
@@ -117,7 +120,8 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	scopedLogger := jsonRpcLogger.With().
+	scopedLogger := logging.GetSubsystemLogger("jsonrpc").
+		With().
 		Str("method", request.Method).
 		Interface("params", request.Params).
 		Interface("id", request.ID).Logger()
@@ -174,7 +178,7 @@ func rpcGetDeviceID() (string, error) {
 }
 
 func rpcReboot(force bool) error {
-	logger.Info().Msg("Got reboot request via RPC")
+	logging.GetSubsystemLogger("jsonrpc").Info().Msg("Got reboot request via RPC")
 	return hwReboot(force, nil, 0)
 }
 
@@ -183,7 +187,7 @@ func rpcGetStreamQualityFactor() (float64, error) {
 }
 
 func rpcSetStreamQualityFactor(factor float64) error {
-	logger.Info().Float64("factor", factor).Msg("Setting stream quality factor")
+	logging.GetSubsystemLogger("jsonrpc").Info().Float64("factor", factor).Msg("Setting stream quality factor")
 	err := nativeInstance.VideoSetQualityFactor(factor)
 	if err != nil {
 		return err
@@ -218,9 +222,9 @@ func rpcGetEDID() (string, error) {
 
 func rpcSetEDID(edid string) error {
 	if edid == "" {
-		logger.Info().Msg("Restoring EDID to default")
+		logging.GetSubsystemLogger("jsonrpc").Info().Msg("Restoring EDID to default")
 	} else {
-		logger.Info().Str("edid", edid).Msg("Setting EDID")
+		logging.GetSubsystemLogger("jsonrpc").Info().Str("edid", edid).Msg("Setting EDID")
 	}
 	err := nativeInstance.VideoSetEDID(edid)
 	if err != nil {
@@ -290,7 +294,7 @@ func rpcSetBacklightSettings(params BacklightSettings) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	logger.Info().Int("max_brightness", config.DisplayMaxBrightness).Int("dim_after", config.DisplayDimAfterSec).Int("off_after", config.DisplayOffAfterSec).Msg("rpc: display: settings applied")
+	logging.GetSubsystemLogger("jsonrpc").Info().Int("max_brightness", config.DisplayMaxBrightness).Int("dim_after", config.DisplayDimAfterSec).Int("off_after", config.DisplayOffAfterSec).Msg("rpc: display: settings applied")
 
 	// If the device started up with auto-dim and/or auto-off set to zero, the display init
 	// method will not have started the tickers. So in case that has changed, attempt to start the tickers now.
@@ -351,7 +355,7 @@ func rpcSetDevModeState(enabled bool) error {
 				return fmt.Errorf("failed to create devmode file: %w", err)
 			}
 		} else {
-			logger.Debug().Msg("dev mode already enabled")
+			logging.GetSubsystemLogger("jsonrpc").Debug().Msg("dev mode already enabled")
 			return nil
 		}
 	} else {
@@ -360,7 +364,7 @@ func rpcSetDevModeState(enabled bool) error {
 				return fmt.Errorf("failed to remove devmode file: %w", err)
 			}
 		} else if os.IsNotExist(err) {
-			logger.Debug().Msg("dev mode already disabled")
+			logging.GetSubsystemLogger("jsonrpc").Debug().Msg("dev mode already disabled")
 			return nil
 		} else {
 			return fmt.Errorf("error checking dev mode file: %w", err)
@@ -370,7 +374,7 @@ func rpcSetDevModeState(enabled bool) error {
 	cmd := exec.Command("dropbear.sh")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Warn().Err(err).Bytes("output", output).Msg("Failed to start/stop SSH")
+		logging.GetSubsystemLogger("jsonrpc").Warn().Err(err).Bytes("output", output).Msg("Failed to start/stop SSH")
 		return fmt.Errorf("failed to start/stop SSH, you may need to reboot for changes to take effect")
 	}
 
@@ -567,6 +571,7 @@ func asError(value reflect.Value) (bool, error) {
 }
 
 func rpcSetMassStorageMode(mode string) (string, error) {
+	logger := logging.GetSubsystemLogger("jsonrpc")
 	logger.Info().Str("mode", mode).Msg("Setting mass storage mode")
 	var cdrom bool
 	switch mode {
@@ -656,8 +661,17 @@ func rpcResetConfig() error {
 		return fmt.Errorf("failed to reset config: %w", err)
 	}
 
-	logger.Info().Msg("Configuration reset to default")
+	logging.GetSubsystemLogger("jsonrpc").Info().Msg("Configuration reset to default")
 	return nil
+}
+
+func rpcGetLogLevel() string {
+	return config.DefaultLogLevel
+}
+
+func rpcSetLogLevel(level string) error {
+	config.DefaultLogLevel = level
+	return SaveConfig()
 }
 
 type DCPowerState struct {
@@ -673,7 +687,7 @@ func rpcGetDCPowerState() (DCPowerState, error) {
 }
 
 func rpcSetDCPowerState(enabled bool) error {
-	logger.Info().Bool("enabled", enabled).Msg("Setting DC power state")
+	logging.GetSubsystemLogger("jsonrpc").Info().Bool("enabled", enabled).Msg("Setting DC power state")
 	err := setDCPowerState(enabled)
 	if err != nil {
 		return fmt.Errorf("failed to set DC power state: %w", err)
@@ -682,7 +696,7 @@ func rpcSetDCPowerState(enabled bool) error {
 }
 
 func rpcSetDCRestoreState(state int) error {
-	logger.Info().Int("state", state).Msg("Setting DC restore state")
+	logging.GetSubsystemLogger("jsonrpc").Info().Int("state", state).Msg("Setting DC restore state")
 	err := setDCRestoreState(state)
 	if err != nil {
 		return fmt.Errorf("failed to set DC restore state: %w", err)
@@ -718,6 +732,7 @@ func rpcSetActiveExtension(extensionId string) error {
 }
 
 func rpcSetATXPowerAction(action string) error {
+	logger := logging.GetSubsystemLogger("jsonrpc")
 	logger.Debug().Str("action", action).Msg("Executing ATX power action")
 	switch action {
 	case "power-short":
@@ -1031,7 +1046,7 @@ func cancelKeyboardMacro() {
 
 	if keyboardMacroCancel != nil {
 		keyboardMacroCancel()
-		logger.Info().Msg("canceled keyboard macro")
+		logging.GetSubsystemLogger("jsonrpc").Info().Msg("canceled keyboard macro")
 		keyboardMacroCancel = nil
 	}
 }
@@ -1081,6 +1096,7 @@ func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 }
 
 func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
+	logger := logging.GetSubsystemLogger("jsonrpc")
 	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
 
 	for i, step := range macro {
@@ -1210,4 +1226,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"getFailSafeLogs":        {Func: rpcGetFailsafeLogs},
 	"getPublicIPAddresses":   {Func: rpcGetPublicIPAddresses, Params: []string{"refresh"}},
 	"checkPublicIPAddresses": {Func: rpcCheckPublicIPAddresses},
+	"getLogLevel":            {Func: rpcGetLogLevel},
+	"setLogLevel":            {Func: rpcSetLogLevel, Params: []string{"level"}},
 }

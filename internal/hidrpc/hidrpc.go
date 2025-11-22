@@ -6,24 +6,6 @@ import (
 	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
-// MessageType is the type of the HID RPC message
-type MessageType byte
-
-const (
-	TypeHandshake                 MessageType = 0x01
-	TypeKeyboardReport            MessageType = 0x02
-	TypePointerReport             MessageType = 0x03
-	TypeWheelReport               MessageType = 0x04
-	TypeKeypressReport            MessageType = 0x05
-	TypeKeypressKeepAliveReport   MessageType = 0x09
-	TypeMouseReport               MessageType = 0x06
-	TypeKeyboardMacroReport       MessageType = 0x07
-	TypeCancelKeyboardMacroReport MessageType = 0x08
-	TypeKeyboardLedState          MessageType = 0x32
-	TypeKeydownState              MessageType = 0x33
-	TypeKeyboardMacroState        MessageType = 0x34
-)
-
 const (
 	Version byte = 0x01 // Version of the HID RPC protocol
 )

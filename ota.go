@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/google/uuid"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/ota"
 )
 
@@ -18,7 +20,6 @@ var otaState *ota.State
 
 func initOta() {
 	otaState = ota.NewState(ota.Options{
-		Logger:             otaLogger,
 		ReleaseAPIEndpoint: config.GetUpdateAPIURL(),
 		GetHTTPClient: func() ota.HttpClient {
 			transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -50,6 +51,8 @@ func triggerOTAStateUpdate(state *ota.RPCState) {
 		if state == nil {
 			state = otaState.ToRPCState()
 		}
+		logging.GetSubsystemLogger("ota").Trace().Interface("state", state).Msg("Reporting OTA state")
+
 		writeJSONRPCEvent("otaState", state, currentSession)
 	}()
 }
@@ -100,7 +103,7 @@ func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
 		updateStatus.WillDisableAutoUpdate = config.AutoUpdateEnabled
 	}
 
-	otaLogger.Info().Interface("updateStatus", updateStatus).Msg("Update status")
+	logging.GetSubsystemLogger("ota").Info().Interface("updateStatus", updateStatus).Msg("Update status")
 
 	return updateStatus, nil
 }
@@ -178,8 +181,53 @@ func rpcTryUpdateComponents(params updateParams, includePreRelease bool, resetCo
 	go func() {
 		err := otaState.TryUpdate(context.Background(), updateParams)
 		if err != nil {
-			otaLogger.Warn().Err(err).Msg("failed to try update")
+			logging.GetSubsystemLogger("ota").Warn().Err(err).Msg("failed to try update")
 		}
 	}()
 	return nil
+}
+
+func RunAutoUpdateCheck() {
+	// initially wait for 15 minutes before starting auto-update checks
+	// to avoid interfering with initial setup processesand to ensure
+	// the system is stable before checking for updates
+	ticker := time.NewTicker(15 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-appCtx.Done():
+			return
+		case <-ticker.C:
+			autoUpdateLogger := logging.GetSubsystemLogger("ota")
+			autoUpdateLogger.Info().Bool("auto_update_enabled", config.AutoUpdateEnabled).Msg("auto-update check")
+
+			if !config.AutoUpdateEnabled {
+				autoUpdateLogger.Debug().Msg("auto-update disabled")
+				ticker.Reset(5 * time.Minute) // we'll check if auto-updates are enabled in five minutes
+				continue
+			}
+
+			if currentSession != nil {
+				autoUpdateLogger.Debug().Msg("skipping update since a session is active")
+				ticker.Reset(1 * time.Minute)
+				continue
+			}
+
+			if isTimeSyncNeeded() || !timeSync.IsSyncSuccess() {
+				autoUpdateLogger.Debug().Msg("system time is not synced, will retry in 30 seconds")
+				ticker.Reset(30 * time.Second)
+				continue
+			}
+
+			if err := otaState.TryUpdate(context.Background(), ota.UpdateParams{
+				DeviceID:          GetDeviceID(),
+				IncludePreRelease: config.IncludePreRelease,
+			}); err != nil {
+				autoUpdateLogger.Warn().Err(err).Msg("failed to auto update")
+			}
+
+			ticker.Reset(1 * time.Hour)
+		}
+	}
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/psanford/httpreadat"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/resource"
 )
 
@@ -41,13 +42,15 @@ func getMassStorageImage() (string, error) {
 
 func setMassStorageImage(imagePath string) error {
 	massStorageFunctionPath, err := gadget.GetPath("mass_storage_lun0")
+
 	if err != nil {
-		return fmt.Errorf("failed to get mass storage path: %w", err)
+		return fmt.Errorf("failed to get mass storage path error: %w", err)
 	}
 
 	if err := writeFile(path.Join(massStorageFunctionPath, "file"), imagePath); err != nil {
-		return fmt.Errorf("failed to set image path: %w", err)
+		return fmt.Errorf("failed to set image path %s error: %w", imagePath, err)
 	}
+
 	return nil
 }
 
@@ -57,7 +60,7 @@ func setMassStorageMode(cdrom bool) error {
 		mode = "1"
 	}
 
-	err, changed := gadget.OverrideGadgetConfig("mass_storage_lun0", "cdrom", mode)
+	changed, err := gadget.OverrideGadgetConfig("mass_storage_lun0", "cdrom", mode)
 	if err != nil {
 		return fmt.Errorf("failed to set cdrom mode: %w", err)
 	}
@@ -70,18 +73,14 @@ func setMassStorageMode(cdrom bool) error {
 }
 
 func mountImage(imagePath string) error {
-	err := setMassStorageImage("")
-	if err != nil {
+	if err := setMassStorageImage(""); err != nil {
 		return fmt.Errorf("remove mass storage image error: %w", err)
 	}
-	err = setMassStorageImage(imagePath)
-	if err != nil {
-		return fmt.Errorf("set mass storage image error: %w", err)
+
+	if err := setMassStorageImage(imagePath); err != nil {
+		return fmt.Errorf("set mass storage image path %s error: %w", imagePath, err)
 	}
-	err = setMassStorageImage(imagePath)
-	if err != nil {
-		return fmt.Errorf("set Mass Storage Image Error: %w", err)
-	}
+
 	return nil
 }
 
@@ -98,7 +97,7 @@ func initImagesFolder() error {
 }
 
 func rpcMountBuiltInImage(filename string) error {
-	logger.Info().Str("filename", filename).Msg("Mount Built-In Image")
+	logging.GetSubsystemLogger("mount").Info().Str("filename", filename).Msg("Mount Built-In Image")
 	if err := initImagesFolder(); err != nil {
 		return err
 	}
@@ -186,22 +185,30 @@ var virtualMediaStateMutex sync.RWMutex
 func rpcGetVirtualMediaState() (*VirtualMediaState, error) {
 	virtualMediaStateMutex.RLock()
 	defer virtualMediaStateMutex.RUnlock()
+
 	return currentVirtualMediaState, nil
 }
 
 func rpcUnmountImage() error {
 	virtualMediaStateMutex.Lock()
 	defer virtualMediaStateMutex.Unlock()
-	err := setMassStorageImage("\n")
-	if err != nil {
-		logger.Warn().Err(err).Msg("Remove Mass Storage Image Error")
-	}
-	//TODO: check if we still need it
-	time.Sleep(500 * time.Millisecond)
+
+	logger := logging.GetSubsystemLogger("mount")
+	logger.Info().Msg("Unmounting virtual media image")
+
 	if nbdDevice != nil {
+		logger.Trace().Msg("Stopping nbd device")
 		nbdDevice.Close()
 		nbdDevice = nil
 	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	err := setMassStorageImage("")
+	if err != nil {
+		logger.Warn().Err(err).Msg("Remove Mass Storage Image Error")
+	}
+
 	currentVirtualMediaState = nil
 	return nil
 }
@@ -238,7 +245,7 @@ func getInitialVirtualMediaState() (*VirtualMediaState, error) {
 	default:
 		initialState.Filename = filepath.Base(diskPath)
 		// get size from file
-		logger.Info().Str("diskPath", diskPath).Msg("getting file size")
+		logging.GetSubsystemLogger("mount").Info().Str("diskPath", diskPath).Msg("getting file size")
 		info, err := os.Stat(diskPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get file info: %w", err)
@@ -258,23 +265,32 @@ func setInitialVirtualMediaState() error {
 	}
 	currentVirtualMediaState = initialState
 
-	logger.Info().Interface("initial_virtual_media_state", initialState).Msg("initial virtual media state set")
+	logging.GetSubsystemLogger("mount").Info().Interface("initial_virtual_media_state", initialState).Msg("initial virtual media state set")
 	return nil
 }
 
 func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
+	if err := configureHttpStorageDevice(url, mode); err != nil {
+		return fmt.Errorf("failed to mount with http: %w", err)
+	}
+	return initializeNBDDevice()
+}
+
+func configureHttpStorageDevice(url string, mode VirtualMediaMode) error {
 	virtualMediaStateMutex.Lock()
+	defer virtualMediaStateMutex.Unlock()
+
 	if currentVirtualMediaState != nil {
-		virtualMediaStateMutex.Unlock()
 		return fmt.Errorf("another virtual media is already mounted")
 	}
+
 	httpRangeReader = httpreadat.New(url)
 	n, err := httpRangeReader.Size()
 	if err != nil {
-		virtualMediaStateMutex.Unlock()
 		return fmt.Errorf("failed to use http url: %w", err)
 	}
-	logger.Info().Str("url", url).Int64("size", n).Msg("using remote url")
+
+	logging.GetSubsystemLogger("mount").Info().Str("url", url).Bool("cdrom", mode == CDROM).Int64("size", n).Msg("using remote url")
 
 	if err := setMassStorageMode(mode == CDROM); err != nil {
 		return fmt.Errorf("failed to set mass storage mode: %w", err)
@@ -286,22 +302,28 @@ func rpcMountWithHTTP(url string, mode VirtualMediaMode) error {
 		URL:    url,
 		Size:   n,
 	}
-	virtualMediaStateMutex.Unlock()
 
+	return nil
+}
+
+func initializeNBDDevice() error {
+	logger := logging.GetSubsystemLogger("nbd")
 	logger.Debug().Msg("Starting nbd device")
+
 	nbdDevice = NewNBDDevice()
-	err = nbdDevice.Start()
-	if err != nil {
+	if err := nbdDevice.Start(); err != nil {
 		logger.Warn().Err(err).Msg("failed to start nbd device")
 		return err
 	}
+
 	logger.Debug().Msg("nbd device started")
 	//TODO: replace by polling on block device having right size
 	time.Sleep(1 * time.Second)
-	err = setMassStorageImage("/dev/nbd0")
-	if err != nil {
+
+	if err := setMassStorageImage("/dev/nbd0"); err != nil {
 		return err
 	}
+
 	logger.Info().Msg("usb mass storage mounted")
 	return nil
 }
@@ -314,6 +336,7 @@ func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
 
 	virtualMediaStateMutex.Lock()
 	defer virtualMediaStateMutex.Unlock()
+
 	if currentVirtualMediaState != nil {
 		return fmt.Errorf("another virtual media is already mounted")
 	}
@@ -321,16 +344,15 @@ func rpcMountWithStorage(filename string, mode VirtualMediaMode) error {
 	fullPath := filepath.Join(imagesFolder, filename)
 	fileInfo, err := os.Stat(fullPath)
 	if err != nil {
-		return fmt.Errorf("failed to get file info: %w", err)
+		return err
 	}
 
 	if err := setMassStorageMode(mode == CDROM); err != nil {
-		return fmt.Errorf("failed to set mass storage mode: %w", err)
+		return err
 	}
 
-	err = setMassStorageImage(fullPath)
-	if err != nil {
-		return fmt.Errorf("failed to set mass storage image: %w", err)
+	if err := setMassStorageImage(fullPath); err != nil {
+		return err
 	}
 	currentVirtualMediaState = &VirtualMediaState{
 		Source:   Storage,
@@ -350,7 +372,7 @@ func rpcGetStorageSpace() (*StorageSpace, error) {
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(imagesFolder, &stat)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get storage stats: %v", err)
+		return nil, fmt.Errorf("failed to get storage stats: %w", err)
 	}
 
 	totalSpace := stat.Blocks * uint64(stat.Bsize)
@@ -376,7 +398,7 @@ type StorageFiles struct {
 func rpcListStorageFiles() (*StorageFiles, error) {
 	files, err := os.ReadDir(imagesFolder)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read directory: %v", err)
+		return nil, fmt.Errorf("failed to read directory: %w", err)
 	}
 
 	storageFiles := make([]StorageFile, 0)
@@ -387,7 +409,7 @@ func rpcListStorageFiles() (*StorageFiles, error) {
 
 		info, err := file.Info()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get file info: %v", err)
+			return nil, fmt.Errorf("failed to get file info: %w", err)
 		}
 
 		storageFiles = append(storageFiles, StorageFile{
@@ -426,7 +448,7 @@ func rpcDeleteStorageFile(filename string) error {
 
 	err = os.Remove(fullPath)
 	if err != nil {
-		return fmt.Errorf("failed to delete file: %v", err)
+		return fmt.Errorf("failed to delete file: %w", err)
 	}
 
 	return nil
@@ -490,6 +512,8 @@ type UploadProgress struct {
 }
 
 func handleUploadChannel(d *webrtc.DataChannel) {
+	logger := logging.GetSubsystemLogger("upload")
+
 	defer d.Close()
 	uploadId := d.Label()
 	pendingUploadsMutex.Lock()
@@ -557,6 +581,8 @@ func handleUploadChannel(d *webrtc.DataChannel) {
 }
 
 func handleUploadHttp(c *gin.Context) {
+	logger := logging.GetSubsystemLogger("upload")
+
 	uploadId := c.Query("uploadId")
 	pendingUploadsMutex.Lock()
 	pendingUpload, ok := pendingUploads[uploadId]

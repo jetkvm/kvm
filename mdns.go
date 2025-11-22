@@ -15,7 +15,6 @@ func initMdns() error {
 	}
 
 	m, err := mdns.NewMDNS(&mdns.MDNSOptions{
-		Logger:        logger,
 		LocalNames:    options.LocalNames,
 		ListenOptions: options.ListenOptions,
 	})
@@ -25,6 +24,5 @@ func initMdns() error {
 
 	// do not start the server yet, as we need to wait for the network state to be set
 	mDNS = m
-
 	return nil
 }

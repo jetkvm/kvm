@@ -9,7 +9,6 @@ import (
 
 	"github.com/jetkvm/kvm/internal/logging"
 	pion_mdns "github.com/pion/mdns/v2"
-	"github.com/rs/zerolog"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
@@ -17,7 +16,6 @@ import (
 type MDNS struct {
 	conn *pion_mdns.Conn
 	lock sync.Mutex
-	l    *zerolog.Logger
 
 	localNames    []string
 	listenOptions *MDNSListenOptions
@@ -29,7 +27,6 @@ type MDNSListenOptions struct {
 }
 
 type MDNSOptions struct {
-	Logger        *zerolog.Logger
 	LocalNames    []string
 	ListenOptions *MDNSListenOptions
 }
@@ -40,10 +37,6 @@ const (
 )
 
 func NewMDNS(opts *MDNSOptions) (*MDNS, error) {
-	if opts.Logger == nil {
-		opts.Logger = logging.GetDefaultLogger()
-	}
-
 	if opts.ListenOptions == nil {
 		opts.ListenOptions = &MDNSListenOptions{
 			IPv4: true,
@@ -52,7 +45,6 @@ func NewMDNS(opts *MDNSOptions) (*MDNS, error) {
 	}
 
 	return &MDNS{
-		l:             opts.Logger,
 		lock:          sync.Mutex{},
 		localNames:    opts.LocalNames,
 		listenOptions: opts.ListenOptions,
@@ -75,8 +67,10 @@ func (m *MDNS) start(allowRestart bool) error {
 		return fmt.Errorf("listen options not set")
 	}
 
+	context := m.getLoggingContext()
+
 	if !m.listenOptions.IPv4 && !m.listenOptions.IPv6 {
-		m.l.Info().Msg("mDNS server disabled")
+		logging.LogInfo(context, "mDNS server disabled")
 		return nil
 	}
 
@@ -116,12 +110,6 @@ func (m *MDNS) start(allowRestart bool) error {
 		p6 = ipv6.NewPacketConn(l6)
 	}
 
-	scopeLogger := m.l.With().
-		Interface("local_names", m.localNames).
-		Bool("ipv4", m.listenOptions.IPv4).
-		Bool("ipv6", m.listenOptions.IPv6).
-		Logger()
-
 	newLocalNames := make([]string, len(m.localNames))
 	for i, name := range m.localNames {
 		newLocalNames[i] = strings.TrimRight(strings.ToLower(name), ".")
@@ -135,13 +123,14 @@ func (m *MDNS) start(allowRestart bool) error {
 		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
 	})
 
+	context = context.Interface("pion_mdns", mDNSConn)
+
 	if err != nil {
-		scopeLogger.Warn().Err(err).Msg("failed to start mDNS server")
-		return err
+		return logging.LogError(context, err, "failed to start mDNS server")
 	}
 
 	m.conn = mDNSConn
-	scopeLogger.Info().Msg("mDNS server started")
+	logging.LogInfo(context, "mDNS server started")
 
 	return nil
 }

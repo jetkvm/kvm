@@ -14,10 +14,10 @@ const (
 // DO NOT call it directly, it's not thread safe
 // Mutex is currently held by the caller, e.g. doUpdate
 func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateStatus) error {
-	l := s.l.With().Str("path", systemUpdatePath).Logger()
+	scopedLogger := s.logger.With().Str("path", systemUpdatePath).Logger()
 
 	if err := s.downloadFile(ctx, systemUpdatePath, systemUpdate.url, "system"); err != nil {
-		return s.componentUpdateError("Error downloading system update", err, &l)
+		return s.componentUpdateError("Error downloading system update", err, &scopedLogger)
 	}
 
 	downloadFinished := time.Now()
@@ -30,7 +30,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 		systemUpdate.hash,
 		&systemUpdate.verificationProgress,
 	); err != nil {
-		return s.componentUpdateError("Error verifying system update hash", err, &l)
+		return s.componentUpdateError("Error verifying system update hash", err, &scopedLogger)
 	}
 	verifyFinished := time.Now()
 	systemUpdate.verifiedAt = verifyFinished
@@ -38,17 +38,15 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	systemUpdate.updatedAt = verifyFinished
 	systemUpdate.updateProgress = 1
 	s.triggerComponentUpdateState("system", systemUpdate)
+	scopedLogger.Info().Msg("System update downloaded")
 
-	l.Info().Msg("System update downloaded")
-
-	l.Info().Msg("Starting rk_ota command")
-
+	scopedLogger.Info().Msg("Starting rk_ota command")
 	cmd := exec.Command("rk_ota", "--misc=update", "--tar_path=/userdata/jetkvm/update_system.tar", "--save_dir=/userdata/jetkvm/ota_save", "--partition=all")
 	var b bytes.Buffer
 	cmd.Stdout = &b
 	cmd.Stderr = &b
 	if err := cmd.Start(); err != nil {
-		return s.componentUpdateError("Error starting rk_ota command", err, &l)
+		return s.componentUpdateError("Error starting rk_ota command", err, &scopedLogger)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -76,7 +74,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 
 	err := cmd.Wait()
 	cancel()
-	rkLogger := s.l.With().
+	rkLogger := scopedLogger.With().
 		Str("output", b.String()).
 		Int("exitCode", cmd.ProcessState.ExitCode()).Logger()
 	if err != nil {
@@ -95,7 +93,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 func (s *State) confirmCurrentSystem() {
 	output, err := exec.Command("rk_ota", "--misc=now").CombinedOutput()
 	if err != nil {
-		s.l.Warn().Str("output", string(output)).Msg("failed to set current partition in A/B setup")
+		s.logger.Warn().Str("output", string(output)).Msg("failed to set current partition in A/B setup")
 	}
-	s.l.Trace().Str("output", string(output)).Msg("current partition in A/B setup set")
+	s.logger.Trace().Str("output", string(output)).Msg("current partition in A/B setup set")
 }

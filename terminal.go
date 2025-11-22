@@ -8,6 +8,7 @@ import (
 	"os/exec"
 
 	"github.com/creack/pty"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -17,7 +18,8 @@ type TerminalSize struct {
 }
 
 func handleTerminalChannel(d *webrtc.DataChannel) {
-	scopedLogger := terminalLogger.With().
+	scopedLogger := logging.GetSubsystemLogger("terminal").
+		With().
 		Uint16("data_channel_id", *d.ID()).Logger()
 
 	var ptmx *os.File

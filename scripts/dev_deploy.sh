@@ -266,9 +266,11 @@ then
     ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
 
 	# Copy the binary to the remote host as if we were the OTA updater.
+    msg_info "▶ Copying the application update to the remote host"
 	sshdev "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
 
 	# Reboot the device, the new app will be deployed by the startup process.
+    msg_info "▶ Rebooting the remote host"
 	sshdev "reboot"
 else
 	msg_info "▶ Building development binary"
@@ -277,27 +279,9 @@ else
     SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} \
     ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
 
-	# Kill any existing instances of the application
-	sshdev "killall jetkvm_app_debug || true"
-
-	# Copy the binary to the remote host
-	sshdev "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
-
-	if [ "$RESET_USB_HID_DEVICE" = true ]; then
-	msg_info "▶ Resetting USB HID device"
-	msg_warn "The option has been deprecated and will be removed in a future version, as JetKVM will now reset USB gadget configuration when needed"
-	# Remove the old USB gadget configuration
-	sshdev "rm -rf /sys/kernel/config/usb_gadget/jetkvm/configs/c.1/hid.usb*"
-	sshdev "ls /sys/class/udc > /sys/kernel/config/usb_gadget/jetkvm/UDC"
-	fi
-
-	# Deploy and run the application on the remote host
-	sshdev ash << EOF
-set -e
-
-# Set the library path to include the directory where librockit.so is located
-export LD_LIBRARY_PATH=/oem/usr/lib:\$LD_LIBRARY_PATH
-
+	# Kill any existing instances of the application on the remote host
+    msg_info "▶ Killing any running instances of the application on the remote host"
+    sshdev ash << EOF
 # Kill any existing instances of the application
 killall jetkvm_app || true
 killall jetkvm_app_debug || true
@@ -312,6 +296,18 @@ while [ \$i -le 10 ]; do
     sleep 1
     i=\$((i + 1))
 done
+EOF
+
+    # Copy the binary to the remote host
+    msg_info "▶ Copying the application to the remote host"
+	sshdev "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
+
+	# Deploy and run the application on the remote host
+    msg_info "▶ Starting the application on the remote host"
+    logs=$(printenv | grep '^JETKVM_LOG' | sed "s/=/='/; s/$/'/")
+	sshdev ${logs} ash << EOF
+# Set the library path to include the directory where librockit.so is located
+export LD_LIBRARY_PATH=/oem/usr/lib:\$LD_LIBRARY_PATH
 
 # Navigate to the directory where the binary will be stored
 cd "${REMOTE_PATH}"
@@ -320,7 +316,7 @@ cd "${REMOTE_PATH}"
 chmod +x jetkvm_app_debug
 
 # Run the application in the background
-PION_LOG_TRACE=${LOG_TRACE_SCOPES} ./jetkvm_app_debug | tee -a /tmp/jetkvm_app_debug.log
+./jetkvm_app_debug | tee -a /tmp/jetkvm_app_debug.log
 EOF
 fi
 

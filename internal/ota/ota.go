@@ -62,9 +62,9 @@ func (s *State) getUpdateURL(params UpdateParams) (string, error, bool) {
 // TODO: use OTEL instead of doing this manually
 func (s *State) newHTTPRequestWithTrace(ctx context.Context, method, url string, body io.Reader, logger func() *zerolog.Event) (*http.Request, error) {
 	localCtx := ctx
-	if s.l.GetLevel() <= zerolog.TraceLevel {
+	if s.logger.GetLevel() <= zerolog.TraceLevel {
 		if logger == nil {
-			logger = func() *zerolog.Event { return s.l.Trace() }
+			logger = func() *zerolog.Event { return s.logger.Trace() }
 		}
 
 		l := func() *zerolog.Event { return logger().Str("url", url).Str("method", method) }
@@ -100,7 +100,7 @@ func (s *State) newHTTPRequestWithTrace(ctx context.Context, method, url string,
 func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*UpdateMetadata, error) {
 	metadata := &UpdateMetadata{}
 
-	logger := s.l.With().Logger()
+	logger := s.logger.With().Logger()
 	if params.RequestID != "" {
 		logger = logger.With().Str("requestID", params.RequestID).Logger()
 	}
@@ -181,7 +181,7 @@ func (s *State) TryUpdate(ctx context.Context, params UpdateParams) error {
 func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	defer s.mu.Unlock()
 
-	scopedLogger := s.l.With().
+	scopedLogger := s.logger.With().
 		Interface("params", params).
 		Logger()
 
@@ -358,7 +358,7 @@ func (s *State) checkUpdateStatus(
 	appUpdateStatus.localVersion = appVersionLocal.String()
 	systemUpdateStatus.localVersion = systemVersionLocal.String()
 
-	logger := s.l.With().Logger()
+	logger := s.logger.With().Logger()
 	if params.RequestID != "" {
 		logger = logger.With().Str("requestID", params.RequestID).Logger()
 	}
@@ -405,7 +405,7 @@ func (s *State) checkUpdateStatus(
 		return fmt.Errorf("error parsing remote system version: %w", err)
 	}
 
-	if s.l.GetLevel() <= zerolog.TraceLevel {
+	if s.logger.GetLevel() <= zerolog.TraceLevel {
 		appUpdateStatus.getZerologLogger(&logger).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus [app]")
 		systemUpdateStatus.getZerologLogger(&logger).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus [system]")
 	}
