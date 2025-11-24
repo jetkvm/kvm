@@ -814,7 +814,6 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	static uint16_t sample_rate_check_counter = 0;
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
 	int32_t pcm_rc, nb_bytes;
-	int32_t err = 0;
 	uint8_t recovery_attempts = 0;
 	const uint8_t max_recovery_attempts = 3;
 
@@ -907,7 +906,7 @@ retry_read:
 	}
 
 	OpusEncoder *enc = encoder;
-	if (!enc || enc != encoder) {
+	if (!enc) {
 		pthread_mutex_unlock(&capture_mutex);
 		return -1;
 	}
@@ -1021,7 +1020,7 @@ int jetkvm_audio_playback_init() {
 __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf, int32_t opus_size) {
 	static short CACHE_ALIGN pcm_buffer[960 * 2];  // Cache-aligned
 	unsigned char * __restrict__ in = (unsigned char*)opus_buf;
-	int32_t pcm_frames, pcm_rc, err = 0;
+	int32_t pcm_frames, pcm_rc;
 	uint8_t recovery_attempts = 0;
 	const uint8_t max_recovery_attempts = 3;
 
@@ -1044,7 +1043,7 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 	}
 
 	OpusDecoder *dec = decoder;
-	if (!dec || dec != decoder) {
+	if (!dec) {
 		pthread_mutex_unlock(&playback_mutex);
 		return -1;
 	}
