@@ -196,6 +196,11 @@ EOF
     exit 0
 fi
 
+# Always clear Go build caches to prevent stale CGO builds
+msg_info "▶ Clearing Go build caches"
+go clean -cache -modcache -testcache -fuzzcache
+msg_info "✓ Build caches cleared"
+
 # Build the development version on the host
 # When using `make build_release`, the frontend will be built regardless of the `SKIP_UI_BUILD` flag
 # check if static/index.html exists
