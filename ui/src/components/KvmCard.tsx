@@ -53,7 +53,7 @@ export default function KvmCard({
   id: string;
   online: boolean;
   lastSeen: Date | null;
-  appVersion: string;
+  appVersion?: string;
 }) {
   /**
    * Constructs the URL for connecting to this KVM device's interface.
@@ -66,9 +66,10 @@ export default function KvmCard({
     const BACKWARDS_COMPATIBLE_VERSION = "0.5.0";
 
     // Use device version if valid and >= 0.5.0, otherwise fall back to backwards-compatible version
-    const shouldUseDeviceVersion =
-      semver.valid(appVersion) && semver.gte(appVersion, BACKWARDS_COMPATIBLE_VERSION);
-    const version = shouldUseDeviceVersion ? appVersion : BACKWARDS_COMPATIBLE_VERSION;
+    let version = BACKWARDS_COMPATIBLE_VERSION;
+    if (appVersion && semver.valid(appVersion) && semver.gte(appVersion, BACKWARDS_COMPATIBLE_VERSION)) {
+      version = appVersion;
+    }
 
     return new URL(`/v/${version}/devices/${id}`, window.location.origin).toString();
   }, [appVersion, id]);
