@@ -70,9 +70,6 @@ func (s *grpcServer) VideoLogStatus(ctx context.Context, req *pb.Empty) (*pb.Vid
 }
 
 func (s *grpcServer) VideoStop(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
-	procPrefix = "jetkvm: [native]"
-	setProcTitle(lastProcTitle)
-
 	if err := s.native.VideoStop(); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -80,9 +77,6 @@ func (s *grpcServer) VideoStop(ctx context.Context, req *pb.Empty) (*pb.Empty, e
 }
 
 func (s *grpcServer) VideoStart(ctx context.Context, req *pb.Empty) (*pb.Empty, error) {
-	procPrefix = "jetkvm: [native+video]"
-	setProcTitle(lastProcTitle)
-
 	if err := s.native.VideoStart(); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
