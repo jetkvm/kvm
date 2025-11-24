@@ -86,7 +86,7 @@ func (c *CgoSource) connectOutput() error {
 	// Opus uses fixed 48kHz sample rate (RFC 7587)
 	// SpeexDSP handles any hardware rate conversion
 	const sampleRate = 48000
-	const frameSize = 960 // 20ms at 48kHz
+	const frameSize = uint16(sampleRate * 20 / 1000) // 20ms frames
 
 	c.logger.Debug().
 		Uint16("bitrate_kbps", c.config.Bitrate).
@@ -130,7 +130,7 @@ func (c *CgoSource) connectInput() error {
 
 	// USB Audio Gadget uses fixed 48kHz sample rate
 	const inputSampleRate = 48000
-	const frameSize = 960 // 20ms at 48kHz
+	const frameSize = uint16(inputSampleRate * 20 / 1000) // 20ms frames
 
 	C.update_audio_decoder_constants(
 		C.uint(inputSampleRate),

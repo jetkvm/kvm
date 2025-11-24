@@ -52,12 +52,22 @@ static OpusDecoder *decoder = NULL;
 static SpeexResamplerState *capture_resampler = NULL;
 
 // Audio format - Opus always uses 48kHz for WebRTC (RFC 7587)
-static const uint32_t opus_sample_rate = 48000;  // Fixed: Opus RTP clock rate
+static const uint32_t opus_sample_rate = 48000;  // Opus RTP clock rate required to be 48kHz
 static uint32_t hardware_sample_rate = 48000;    // Hardware-negotiated rate
 static uint8_t capture_channels = 2;   // OUTPUT: Audio source (HDMI or USB) → client (stereo by default)
 static uint8_t playback_channels = 1;  // INPUT: Client mono mic → device (always mono for USB audio gadget)
 static const uint16_t opus_frame_size = 960;  // 20ms frames at 48kHz (fixed)
 static uint16_t hardware_frame_size = 960;     // 20ms frames at hardware rate
+
+// Maximum hardware frame size: 192kHz @ 20ms = 3840 samples/channel
+// This is the upper bound for hardware buffer allocation (highest sample rate we support)
+#define MAX_HARDWARE_FRAME_SIZE 3840
+
+// Audio initialization error codes
+#define ERR_ALSA_OPEN_FAILED      -1
+#define ERR_ALSA_CONFIG_FAILED    -2
+#define ERR_RESAMPLER_INIT_FAILED -3
+#define ERR_CODEC_INIT_FAILED     -4
 
 static uint32_t opus_bitrate = 192000;
 static uint8_t opus_complexity = 8;
@@ -112,27 +122,16 @@ void update_audio_constants(uint32_t bitrate, uint8_t complexity,
                            uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
                            uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
                            uint8_t dtx_enabled, uint8_t fec_enabled, uint8_t buf_periods, uint8_t pkt_loss_perc) {
-    // Validate and set bitrate (64-256 kbps range)
     opus_bitrate = (bitrate >= 64000 && bitrate <= 256000) ? bitrate : 192000;
-
-    // Set complexity (0-10 range)
     opus_complexity = (complexity <= 10) ? complexity : 5;
-
-    // Set channel count (mono or stereo)
     capture_channels = (ch == 1 || ch == 2) ? ch : 2;
-
-    // Set packet and timing parameters
     max_packet_size = max_pkt > 0 ? max_pkt : 1500;
     sleep_microseconds = sleep_us > 0 ? sleep_us : 1000;
     sleep_milliseconds = sleep_microseconds / 1000;
     max_attempts_global = max_attempts > 0 ? max_attempts : 5;
     max_backoff_us_global = max_backoff > 0 ? max_backoff : 500000;
-
-    // Set codec features
     opus_dtx_enabled = dtx_enabled ? 1 : 0;
     opus_fec_enabled = fec_enabled ? 1 : 0;
-
-    // Set buffer configuration
     buffer_period_count = (buf_periods >= 2 && buf_periods <= 24) ? buf_periods : 12;
     opus_packet_loss_perc = (pkt_loss_perc <= 100) ? pkt_loss_perc : 20;
 
@@ -142,17 +141,12 @@ void update_audio_constants(uint32_t bitrate, uint8_t complexity,
 void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
                                     uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
                                     uint8_t buf_periods) {
-    // Set playback channels (mono or stereo)
     playback_channels = (ch == 1 || ch == 2) ? ch : 2;
-
-    // Set packet and timing parameters
     max_packet_size = max_pkt > 0 ? max_pkt : 1500;
     sleep_microseconds = sleep_us > 0 ? sleep_us : 1000;
     sleep_milliseconds = sleep_microseconds / 1000;
     max_attempts_global = max_attempts > 0 ? max_attempts : 5;
     max_backoff_us_global = max_backoff > 0 ? max_backoff : 500000;
-
-    // Set buffer configuration
     buffer_period_count = (buf_periods >= 2 && buf_periods <= 24) ? buf_periods : 12;
 
     // Note: sr and fs parameters ignored - always 48kHz with 960 samples
@@ -167,15 +161,14 @@ void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16
  *   hw:1,0 = USB Audio Gadget (direct hardware access, SpeexDSP resampling)
  */
 static void init_alsa_devices_from_env(void) {
-    // Always read from environment to support device switching
     alsa_capture_device = getenv("ALSA_CAPTURE_DEVICE");
     if (alsa_capture_device == NULL || alsa_capture_device[0] == '\0') {
-        alsa_capture_device = "hw:1,0"; // Default: USB gadget audio for capture
+        alsa_capture_device = "hw:1,0";
     }
 
     alsa_playback_device = getenv("ALSA_PLAYBACK_DEVICE");
     if (alsa_playback_device == NULL || alsa_playback_device[0] == '\0') {
-        alsa_playback_device = "hw:1,0"; // Default: USB gadget audio for playback
+        alsa_playback_device = "hw:1,0";
     }
 }
 
@@ -205,59 +198,6 @@ static inline void simd_clear_samples_s16(short * __restrict__ buffer, uint32_t 
     for (; i < samples; i++) {
         buffer[i] = 0;
     }
-}
-
-/**
- * Soft-clip audio samples to prevent digital clipping distortion
- * Samples within ±30720 (0.9375 or 15/16 of max) pass through unchanged
- * Samples exceeding threshold are compressed 4:1 (excess reduced by 75%)
- * Processes 8 samples per iteration using ARM NEON
- */
-static inline int simd_soft_clip_s16(int16_t * __restrict__ buffer, uint32_t samples) {
-	if (__builtin_expect(buffer == NULL || samples == 0, 0)) {
-		return 0;
-	}
-
-	if (__builtin_expect(samples > 7680, 0)) {
-		fprintf(stderr, "ERROR: simd_soft_clip_s16: sample count %u exceeds maximum\n", samples);
-		fflush(stderr);
-		return -1;
-	}
-
-	const int16_t threshold = 30720;
-	const int16x8_t thresh_pos = vdupq_n_s16(threshold);
-	const int16x8_t thresh_neg = vdupq_n_s16(-threshold);
-
-	uint32_t i = 0;
-	uint32_t simd_samples = samples & ~7U;
-
-	for (; i < simd_samples; i += 8) {
-		int16x8_t samples_vec = vld1q_s16(&buffer[i]);
-		uint16x8_t exceeds_pos = vcgtq_s16(samples_vec, thresh_pos);
-		uint16x8_t exceeds_neg = vcltq_s16(samples_vec, thresh_neg);
-
-		int16x8_t clipped = samples_vec;
-		clipped = vbslq_s16(exceeds_pos,
-		                    vqaddq_s16(thresh_pos, vshrq_n_s16(vqsubq_s16(samples_vec, thresh_pos), 2)),
-		                    clipped);
-		clipped = vbslq_s16(exceeds_neg,
-		                    vqaddq_s16(thresh_neg, vshrq_n_s16(vqsubq_s16(samples_vec, thresh_neg), 2)),
-		                    clipped);
-
-		vst1q_s16(&buffer[i], clipped);
-	}
-
-	for (; i < samples; i++) {
-		int32_t sample = buffer[i];
-		if (sample > threshold) {
-			sample = threshold + ((sample - threshold) >> 2);
-		} else if (sample < -threshold) {
-			sample = -threshold + ((sample + threshold) >> 2);
-		}
-		buffer[i] = (int16_t)sample;
-	}
-
-	return 0;
 }
 
 // INITIALIZATION STATE TRACKING
@@ -435,8 +375,6 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 	snd_pcm_sw_params_t *sw_params;
 	int err;
 
-	if (!handle) return -1;
-
 	snd_pcm_hw_params_alloca(&params);
 	snd_pcm_sw_params_alloca(&sw_params);
 
@@ -493,18 +431,13 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 	err = snd_pcm_hw_params(handle, params);
 	if (err < 0) return err;
 
-	unsigned int verified_rate = 0;
-	err = snd_pcm_hw_params_get_rate(params, &verified_rate, 0);
-	if (err < 0) {
-		fprintf(stderr, "ERROR: %s: Failed to get rate: %s\n",
-		        device_name, snd_strerror(err));
-		fflush(stderr);
-		return err;
-	}
+	unsigned int negotiated_rate = 0;
+	err = snd_pcm_hw_params_get_rate(params, &negotiated_rate, 0);
+	if (err < 0) return err;
 
-	fprintf(stderr, "INFO: %s: Hardware negotiated %u Hz (Opus uses %u Hz with SpeexDSP resampling)\n",
-	        device_name, verified_rate, opus_sample_rate);
-	fflush(stderr);
+	fprintf(stdout, "INFO: %s: Hardware negotiated %u Hz (Opus uses %u Hz with SpeexDSP resampling)\n",
+	        device_name, negotiated_rate, opus_sample_rate);
+	fflush(stdout);
 
 	err = snd_pcm_sw_params_current(handle, sw_params);
 	if (err < 0) return err;
@@ -527,9 +460,9 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 			if (chmap->channels == 2) {
 				bool is_swapped = (chmap->pos[0] == SND_CHMAP_FR && chmap->pos[1] == SND_CHMAP_FL);
 				if (is_swapped) {
-					fprintf(stderr, "INFO: %s: Hardware reports swapped channel map (R,L instead of L,R)\n",
+					fprintf(stdout, "INFO: %s: Hardware reports swapped channel map (R,L instead of L,R)\n",
 					        device_name);
-					fflush(stderr);
+					fflush(stdout);
 				}
 				if (actual_frame_size_out && is_swapped) {
 					*actual_frame_size_out |= 0x8000;
@@ -539,8 +472,12 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 		}
 	}
 
-	if (actual_rate_out) *actual_rate_out = verified_rate;
-	if (actual_frame_size_out) *actual_frame_size_out &= 0x7FFF;
+	if (actual_rate_out) *actual_rate_out = negotiated_rate;
+	if (actual_frame_size_out) {
+		// Calculate actual frame size based on negotiated rate (20ms frames)
+		uint16_t actual_hw_frame_size = negotiated_rate / 50;
+		*actual_frame_size_out = (*actual_frame_size_out & 0x8000) | actual_hw_frame_size;
+	}
 
 	return 0;
 }
@@ -551,7 +488,9 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
  * Initialize OUTPUT path (HDMI or USB Gadget audio capture → Opus encoder)
  * Opens ALSA capture device from ALSA_CAPTURE_DEVICE env (default: hw:1,0, set to hw:0,0 for HDMI)
  * and creates Opus encoder with optimized settings
- * @return 0 on success, -EBUSY if initializing, -1/-2/-3/-4 on errors
+ * @return 0 on success, -EBUSY if initializing, or:
+ *         ERR_ALSA_OPEN_FAILED (-1), ERR_ALSA_CONFIG_FAILED (-2),
+ *         ERR_RESAMPLER_INIT_FAILED (-3), ERR_CODEC_INIT_FAILED (-4)
  */
 int jetkvm_audio_capture_init() {
 	int err;
@@ -587,6 +526,8 @@ int jetkvm_audio_capture_init() {
 		}
 
 		pthread_mutex_unlock(&capture_mutex);
+
+		atomic_store(&capture_stop_requested, 0);
 	}
 
 	err = safe_alsa_open(&pcm_capture_handle, alsa_capture_device, SND_PCM_STREAM_CAPTURE);
@@ -596,7 +537,7 @@ int jetkvm_audio_capture_init() {
 		fflush(stderr);
 		atomic_store(&capture_stop_requested, 0);
 		capture_initializing = 0;
-		return -1;
+		return ERR_ALSA_OPEN_FAILED;
 	}
 
 	unsigned int actual_rate = 0;
@@ -610,15 +551,15 @@ int jetkvm_audio_capture_init() {
 		}
 		atomic_store(&capture_stop_requested, 0);
 		capture_initializing = 0;
-		return -2;
+		return ERR_ALSA_CONFIG_FAILED;
 	}
 
 	capture_channels_swapped = (actual_frame_size_with_flag & 0x8000) != 0;
 	hardware_sample_rate = actual_rate;
 	hardware_frame_size = actual_frame_size_with_flag & 0x7FFF;
-	if (hardware_frame_size > 3840) {
-		fprintf(stderr, "ERROR: capture: Hardware frame size %u exceeds buffer capacity 3840\n",
-		        hardware_frame_size);
+	if (hardware_frame_size > MAX_HARDWARE_FRAME_SIZE) {
+		fprintf(stderr, "ERROR: capture: Hardware frame size %u exceeds buffer capacity %u\n",
+		        hardware_frame_size, MAX_HARDWARE_FRAME_SIZE);
 		fflush(stderr);
 		snd_pcm_t *handle = pcm_capture_handle;
 		pcm_capture_handle = NULL;
@@ -627,7 +568,7 @@ int jetkvm_audio_capture_init() {
 		}
 		atomic_store(&capture_stop_requested, 0);
 		capture_initializing = 0;
-		return -4;
+		return ERR_CODEC_INIT_FAILED;
 	}
 
 	// Clean up any existing resampler before creating new one (prevents memory leak on re-init)
@@ -653,19 +594,15 @@ int jetkvm_audio_capture_init() {
 			}
 			atomic_store(&capture_stop_requested, 0);
 			capture_initializing = 0;
-			return -3;
+			return ERR_RESAMPLER_INIT_FAILED;
 		}
-		fprintf(stderr, "INFO: capture: SpeexDSP resampler initialized (%u Hz → %u Hz)\n",
-		        hardware_sample_rate, opus_sample_rate);
-		fflush(stderr);
-	} else {
-		fprintf(stderr, "INFO: capture: No resampling needed (hardware = Opus = %u Hz)\n", opus_sample_rate);
-		fflush(stderr);
 	}
 
-	fprintf(stderr, "INFO: capture: Initializing Opus encoder at %u Hz, %u channels, frame size %u\n",
-	        opus_sample_rate, capture_channels, opus_frame_size);
-	fflush(stderr);
+	fprintf(stdout, "INFO: capture: Initializing Opus encoder %sat (%u Hz → %u Hz), %u channels, frame size %u\n",
+	        hardware_sample_rate == opus_sample_rate ? "" : "SpeexDSP resampled ",
+	        hardware_sample_rate, opus_sample_rate,
+	        capture_channels, opus_frame_size);
+	fflush(stdout);
 
 	int opus_err = 0;
 	encoder = opus_encoder_create(opus_sample_rate, capture_channels, OPUS_APPLICATION_AUDIO, &opus_err);
@@ -683,7 +620,7 @@ int jetkvm_audio_capture_init() {
 		}
 		atomic_store(&capture_stop_requested, 0);
 		capture_initializing = 0;
-		return -4;
+		return ERR_CODEC_INIT_FAILED;
 	}
 
 	#define OPUS_CTL_WARN(call, desc) do { \
@@ -720,7 +657,7 @@ int jetkvm_audio_capture_init() {
  */
 __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) {
 	// Two buffers: hardware buffer + resampled buffer (at 48kHz)
-	static short CACHE_ALIGN pcm_hw_buffer[3840 * 2];    // Max 192kHz @ 20ms * 2 channels
+	static short CACHE_ALIGN pcm_hw_buffer[MAX_HARDWARE_FRAME_SIZE * 2];    // Max hardware rate * stereo
 	static short CACHE_ALIGN pcm_opus_buffer[960 * 2];   // 48kHz @ 20ms * 2 channels
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
 	int32_t pcm_rc, nb_bytes;
@@ -736,7 +673,6 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	SIMD_PREFETCH(pcm_hw_buffer, 0, 0);
 	SIMD_PREFETCH(pcm_hw_buffer + 64, 0, 1);
 
-	// Acquire mutex to protect against concurrent close
 	pthread_mutex_lock(&capture_mutex);
 
 	if (__builtin_expect(!capture_initialized || !pcm_capture_handle || !encoder || !opus_buf, 0)) {
@@ -752,13 +688,8 @@ retry_read:
 
 	snd_pcm_t *handle = pcm_capture_handle;
 
-	// Release mutex before blocking I/O to allow clean shutdown
 	pthread_mutex_unlock(&capture_mutex);
-
-	// Read from hardware at hardware sample rate (blocking call, no mutex held)
 	pcm_rc = snd_pcm_readi(handle, pcm_hw_buffer, hardware_frame_size);
-
-	// Reacquire mutex and verify device wasn't closed during read
 	pthread_mutex_lock(&capture_mutex);
 
 	if (handle != pcm_capture_handle || atomic_load(&capture_stop_requested)) {
@@ -779,7 +710,6 @@ retry_read:
 		}
 	}
 
-	// Zero-pad if we got a short read
 	if (__builtin_expect(pcm_rc < hardware_frame_size, 0)) {
 		uint32_t remaining_samples = (hardware_frame_size - pcm_rc) * capture_channels;
 		simd_clear_samples_s16(&pcm_hw_buffer[pcm_rc * capture_channels], remaining_samples);
@@ -792,6 +722,7 @@ retry_read:
 			pcm_hw_buffer[i * 2 + 1] = temp;
 		}
 	}
+
 	short *pcm_to_encode;
 	if (capture_resampler) {
 		spx_uint32_t in_len = hardware_frame_size;
@@ -817,13 +748,6 @@ retry_read:
 		return -1;
 	}
 
-	if (simd_soft_clip_s16(pcm_to_encode, opus_frame_size * capture_channels) < 0) {
-		fprintf(stderr, "ERROR: capture: Soft-clipping failed\n");
-		fflush(stderr);
-		pthread_mutex_unlock(&capture_mutex);
-		return -1;
-	}
-
 	nb_bytes = opus_encode(enc, pcm_to_encode, opus_frame_size, out, max_packet_size);
 
 	if (__builtin_expect(nb_bytes < 0, 0)) {
@@ -841,7 +765,8 @@ retry_read:
  * Initialize INPUT path (Opus decoder → device speakers)
  * Opens ALSA playback device from ALSA_PLAYBACK_DEVICE env (default: hw:1,0)
  * and creates Opus decoder. Returns immediately on device open failure (no fallback).
- * @return 0 on success, -EBUSY if initializing, -1/-2 on errors
+ * @return 0 on success, -EBUSY if initializing, or:
+ *         ERR_ALSA_OPEN_FAILED (-1), ERR_ALSA_CONFIG_FAILED (-2), ERR_CODEC_INIT_FAILED (-4)
  */
 int jetkvm_audio_playback_init() {
 	int err;
@@ -878,6 +803,8 @@ int jetkvm_audio_playback_init() {
 		}
 
 		pthread_mutex_unlock(&playback_mutex);
+
+		atomic_store(&playback_stop_requested, 0);
 	}
 
 	err = safe_alsa_open(&pcm_playback_handle, alsa_playback_device, SND_PCM_STREAM_PLAYBACK);
@@ -887,7 +814,7 @@ int jetkvm_audio_playback_init() {
 		fflush(stderr);
 		atomic_store(&playback_stop_requested, 0);
 		playback_initializing = 0;
-		return -1;
+		return ERR_ALSA_OPEN_FAILED;
 	}
 
 	unsigned int actual_rate = 0;
@@ -901,12 +828,12 @@ int jetkvm_audio_playback_init() {
 		}
 		atomic_store(&playback_stop_requested, 0);
 		playback_initializing = 0;
-		return -1;
+		return ERR_ALSA_CONFIG_FAILED;
 	}
 
-	fprintf(stderr, "INFO: playback: Initializing Opus decoder at %u Hz, %u channels, frame size %u\n",
+	fprintf(stdout, "INFO: playback: Initializing Opus decoder at %u Hz, %u channels, frame size %u\n",
 	        actual_rate, playback_channels, actual_frame_size);
-	fflush(stderr);
+	fflush(stdout);
 
 	int opus_err = 0;
 	decoder = opus_decoder_create(actual_rate, playback_channels, &opus_err);
@@ -918,7 +845,7 @@ int jetkvm_audio_playback_init() {
 		}
 		atomic_store(&playback_stop_requested, 0);
 		playback_initializing = 0;
-		return -2;
+		return ERR_CODEC_INIT_FAILED;
 	}
 
 	playback_initialized = 1;
@@ -947,7 +874,6 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 
 	SIMD_PREFETCH(in, 0, 0);
 
-	// Acquire mutex to protect against concurrent close
 	pthread_mutex_lock(&playback_mutex);
 
 	if (__builtin_expect(!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0, 0)) {
@@ -966,8 +892,6 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 		return -1;
 	}
 
-	// Decode Opus packet to PCM (FEC automatically applied if embedded in packet)
-	// decode_fec=0 means normal decode (FEC data is used automatically when present)
 	pcm_frames = opus_decode(dec, in, opus_size, pcm_buffer, opus_frame_size, 0);
 
 	if (__builtin_expect(pcm_frames < 0, 0)) {
@@ -987,13 +911,8 @@ retry_write:
 
 	snd_pcm_t *handle = pcm_playback_handle;
 
-	// Release mutex before blocking I/O to allow clean shutdown
 	pthread_mutex_unlock(&playback_mutex);
-
-	// Write to hardware (blocking call, no mutex held)
 	pcm_rc = snd_pcm_writei(handle, pcm_buffer, pcm_frames);
-
-	// Reacquire mutex and verify device wasn't closed during write
 	pthread_mutex_lock(&playback_mutex);
 
 	if (handle != pcm_playback_handle || atomic_load(&playback_stop_requested)) {
