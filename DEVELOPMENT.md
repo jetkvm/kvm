@@ -31,6 +31,21 @@ If you're using Windows, we strongly recommend using **WSL (Windows Subsystem fo
 
 This ensures compatibility with shell scripts and build tools used in the project.
 
+#### Using DevPod
+
+**For Apple Silicon (M1/M2/M3/M4) Mac users:** You must set the Docker platform to `linux/amd64` before starting the DevPod container, as the JetKVM build system requires x86_64 architecture:
+
+```bash
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
+devpod up . --id kvm --provider docker --devcontainer-path .devcontainer/docker/devcontainer.json
+```
+
+After the container starts, you'll need to manually install build dependencies:
+
+```bash
+bash .devcontainer/install-deps.sh
+```
+
 ### Project Setup
 
 1. **Clone the repository:**
