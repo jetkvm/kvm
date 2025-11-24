@@ -63,9 +63,9 @@ export default function KvmCard({
    * their actual version. Unparseable versions fall back to 0.4.91 for safety.
    */
   const kvmUrl = useMemo(() => {
-    const BACKWARDS_COMPATIBLE_VERSION = "0.4.91";
+    const BACKWARDS_COMPATIBLE_VERSION = "0.5.0";
 
-    // Use device version if valid and >= 0.4.91, otherwise fall back to backwards-compatible version
+    // Use device version if valid and >= 0.5.0, otherwise fall back to backwards-compatible version
     const shouldUseDeviceVersion =
       semver.valid(appVersion) && semver.gte(appVersion, BACKWARDS_COMPATIBLE_VERSION);
     const version = shouldUseDeviceVersion ? appVersion : BACKWARDS_COMPATIBLE_VERSION;
