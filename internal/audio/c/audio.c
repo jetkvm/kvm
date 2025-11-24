@@ -60,9 +60,11 @@ static OpusEncoder *encoder = NULL;
 static OpusDecoder *decoder = NULL;
 static SpeexResamplerState *capture_resampler = NULL;
 
-// Audio format - Opus always uses 48kHz for WebRTC (RFC 7587)
-static const uint32_t opus_sample_rate = 48000;  // Opus RTP clock rate required to be 48kHz
-static uint32_t hardware_sample_rate = 48000;    // Hardware-negotiated rate
+// Audio format - RFC 7587 requires Opus RTP clock rate (not sample rate) to be 48kHz
+// The Opus codec itself supports multiple sample rates (8/12/16/24/48 kHz), but the
+// RTP timestamp clock must always increment at 48kHz for WebRTC compatibility
+static const uint32_t opus_sample_rate = 48000;  // RFC 7587: Opus RTP timestamp clock rate (not codec sample rate)
+static uint32_t hardware_sample_rate = 48000;    // Hardware-negotiated rate (can be 44.1k, 48k, 96k, etc.)
 static uint8_t capture_channels = 2;   // OUTPUT: Audio source (HDMI or USB) → client (stereo by default)
 static uint8_t playback_channels = 1;  // INPUT: Client mono mic → device (always mono for USB audio gadget)
 static const uint16_t opus_frame_size = 960;  // 20ms frames at 48kHz (fixed)
@@ -144,7 +146,8 @@ void update_audio_constants(uint32_t bitrate, uint8_t complexity,
     buffer_period_count = (buf_periods >= 2 && buf_periods <= 24) ? buf_periods : 12;
     opus_packet_loss_perc = (pkt_loss_perc <= 100) ? pkt_loss_perc : 20;
 
-    // Note: sr and fs parameters ignored - Opus always uses 48kHz with 960 samples
+    // Note: sr and fs parameters ignored - RFC 7587 requires fixed 48kHz RTP clock rate
+    //       Hardware sample rate conversion is handled by SpeexDSP resampler
 }
 
 void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
@@ -158,7 +161,8 @@ void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16
     max_backoff_us_global = max_backoff > 0 ? max_backoff : 500000;
     buffer_period_count = (buf_periods >= 2 && buf_periods <= 24) ? buf_periods : 12;
 
-    // Note: sr and fs parameters ignored - always 48kHz with 960 samples
+    // Note: sr and fs parameters ignored - decoder always operates at 48kHz (RFC 7587)
+    //       Playback device configured at 48kHz, no resampling needed for output
 }
 
 /**
@@ -310,7 +314,16 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 	while (attempt < max_attempts_global) {
 		err = snd_pcm_open(handle, device, stream, SND_PCM_NONBLOCK);
 		if (err >= 0) {
-			snd_pcm_nonblock(*handle, 0);
+			// Validate that we can switch to blocking mode
+			err = snd_pcm_nonblock(*handle, 0);
+			if (err < 0) {
+				fprintf(stderr, "ERROR: Failed to set blocking mode on %s: %s\n",
+				        device, snd_strerror(err));
+				fflush(stderr);
+				snd_pcm_close(*handle);
+				*handle = NULL;
+				return err;
+			}
 			return 0;
 		}
 
@@ -556,7 +569,15 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 	if (num_channels == 2 && channels_swapped_out) {
 		snd_pcm_chmap_t *chmap = snd_pcm_get_chmap(handle);
 		if (chmap != NULL) {
-			if (chmap->channels == 2) {
+			if (chmap->channels != 2) {
+				fprintf(stderr, "WARN: %s: Expected 2 channels but channel map has %u\n",
+				        device_name, chmap->channels);
+				fflush(stderr);
+			} else if (chmap->pos[0] == SND_CHMAP_UNKNOWN || chmap->pos[1] == SND_CHMAP_UNKNOWN) {
+				fprintf(stderr, "WARN: %s: Channel map positions are unknown, cannot detect swap\n",
+				        device_name);
+				fflush(stderr);
+			} else {
 				bool is_swapped = (chmap->pos[0] == SND_CHMAP_FR && chmap->pos[1] == SND_CHMAP_FL);
 				if (is_swapped) {
 					fprintf(stdout, "INFO: %s: Hardware reports swapped channel map (R,L instead of L,R)\n",
@@ -1000,6 +1021,11 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 	uint8_t recovery_attempts = 0;
 	const uint8_t max_recovery_attempts = 3;
 
+	// Validate inputs before acquiring mutex to reduce lock contention
+	if (__builtin_expect(!opus_buf || opus_size <= 0 || opus_size > max_packet_size, 0)) {
+		return -1;
+	}
+
 	if (__builtin_expect(atomic_load(&playback_stop_requested), 0)) {
 		return -1;
 	}
@@ -1008,12 +1034,7 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 
 	pthread_mutex_lock(&playback_mutex);
 
-	if (__builtin_expect(!playback_initialized || !pcm_playback_handle || !decoder || !opus_buf || opus_size <= 0, 0)) {
-		pthread_mutex_unlock(&playback_mutex);
-		return -1;
-	}
-
-	if (opus_size > max_packet_size) {
+	if (__builtin_expect(!playback_initialized || !pcm_playback_handle || !decoder, 0)) {
 		pthread_mutex_unlock(&playback_mutex);
 		return -1;
 	}
@@ -1027,11 +1048,25 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 	pcm_frames = opus_decode(dec, in, opus_size, pcm_buffer, opus_frame_size, 0);
 
 	if (__builtin_expect(pcm_frames < 0, 0)) {
+		// Initial decode failed, try Forward Error Correction from previous packets
+		fprintf(stderr, "WARN: playback: Opus decode failed (%d), attempting FEC recovery\n", pcm_frames);
+		fflush(stderr);
+
 		pcm_frames = opus_decode(dec, NULL, 0, pcm_buffer, opus_frame_size, 1);
 
 		if (pcm_frames < 0) {
+			fprintf(stderr, "ERROR: playback: FEC recovery also failed (%d), dropping frame\n", pcm_frames);
+			fflush(stderr);
 			pthread_mutex_unlock(&playback_mutex);
 			return -1;
+		}
+
+		if (pcm_frames > 0) {
+			fprintf(stdout, "INFO: playback: FEC recovered %d frames\n", pcm_frames);
+			fflush(stdout);
+		} else {
+			fprintf(stderr, "WARN: playback: FEC returned 0 frames (silence)\n");
+			fflush(stderr);
 		}
 	}
 
