@@ -41,7 +41,7 @@
     "react-simple-keyboard": "^3.7.112",
     "react-xtermjs": "^1.0.9",
     "recharts": "^2.15.1",
-    "semver": "^7.7.1",
+    "semver": "^7.7.3",
     "tailwind-merge": "^2.5.5",
     "usehooks-ts": "^3.1.1",
     "validator": "^13.12.0",

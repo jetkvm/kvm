@@ -12,7 +12,13 @@ import { ArrowRightIcon } from "@heroicons/react/16/solid";
 import { CLOUD_API } from "@/ui.config";
 
 interface LoaderData {
-  devices: { id: string; name: string; online: boolean; lastSeen: string }[];
+  devices: {
+    id: string;
+    name: string;
+    online: boolean;
+    lastSeen: string;
+    version: string;
+  }[];
   user: User;
 }
 
