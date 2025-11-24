@@ -12,7 +12,13 @@ import { checkAuth } from "@/main";
 import { CLOUD_API } from "@/ui.config";
 
 interface LoaderData {
-  devices: { id: string; name: string; online: boolean; lastSeen: string }[];
+  devices: {
+    id: string;
+    name: string;
+    online: boolean;
+    lastSeen: string;
+    version: string;
+  }[];
   user: User;
 }
 
