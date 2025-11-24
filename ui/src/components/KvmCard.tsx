@@ -2,6 +2,8 @@ import { MdConnectWithoutContact } from "react-icons/md";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { Link } from "react-router-dom";
 import { LuEllipsisVertical } from "react-icons/lu";
+import semver from "semver";
+import { useMemo } from "react";
 
 import Card from "@components/Card";
 import { Button, LinkButton } from "@components/Button";
@@ -44,12 +46,33 @@ export default function KvmCard({
   id,
   online,
   lastSeen,
+  appVersion,
 }: {
   title: string;
   id: string;
   online: boolean;
   lastSeen: Date | null;
+  appVersion: string;
 }) {
+  /**
+   * Constructs the URL for connecting to this KVM device's interface.
+   *
+   * Version 0.4.91 is the last backwards-compatible UI that works with older devices.
+   * Devices on v0.4.91 or below are served that version, while newer devices get
+   * their actual version. Unparseable versions fall back to 0.4.91 for safety.
+   */
+  const kvmUrl = useMemo(() => {
+    const BACKWARDS_COMPATIBLE_VERSION = "0.4.91";
+
+    // Use device version if valid and >= 0.4.91, otherwise fall back to backwards-compatible version
+    const shouldUseDeviceVersion =
+      semver.valid(appVersion) && semver.gte(appVersion, BACKWARDS_COMPATIBLE_VERSION);
+    const version = shouldUseDeviceVersion ? appVersion : BACKWARDS_COMPATIBLE_VERSION;
+
+    return new URL(`/v/${version}/devices/${id}`, window.location.origin).toString();
+  }, [appVersion, id]);
+
+
   return (
     <Card>
       <div className="px-5 py-5 space-y-3">
@@ -88,7 +111,9 @@ export default function KvmCard({
                 text="Connect to KVM"
                 LeadingIcon={MdConnectWithoutContact}
                 textAlign="center"
-                to={`/devices/${id}`}
+                reloadDocument
+                target="_self"
+                to={kvmUrl}
               />
             ) : (
               <Button
