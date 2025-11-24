@@ -1,9 +1,8 @@
 import React from "react";
-import { FetcherWithComponents, Link, LinkProps, useNavigation } from "react-router-dom";
-
 import ExtLink from "@/components/ExtLink";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { cva, cx } from "@/cva.config";
+import { FetcherWithComponents, Link, LinkProps, useNavigation } from "react-router-dom";
 
 const sizes = {
   XS: "h-[28px] px-2 text-xs",
@@ -102,7 +101,7 @@ const iconVariants = cva({
   },
 });
 
-interface ButtonContentPropsType {
+type ButtonContentPropsType = {
   text?: string | React.ReactNode;
   LeadingIcon?: React.FC<{ className: string | undefined }> | null;
   TrailingIcon?: React.FC<{ className: string | undefined }> | null;
@@ -112,7 +111,7 @@ interface ButtonContentPropsType {
   size: keyof typeof sizes;
   theme: keyof typeof themes;
   loading?: boolean;
-}
+};
 
 function ButtonContent(props: ButtonContentPropsType) {
   const { text, LeadingIcon, TrailingIcon, fullWidth, className, textAlign, loading } =
@@ -211,7 +210,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
 
 Button.displayName = "Button";
 
-type LinkPropsType = Pick<LinkProps, "to"> &
+type LinkPropsType = Pick<LinkProps, "to" | "target" | "reloadDocument"> &
   React.ComponentProps<typeof ButtonContent> & { disabled?: boolean };
 export const LinkButton = ({ to, ...props }: LinkPropsType) => {
   const classes = cx(
@@ -224,13 +223,13 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
 
   if (to.toString().startsWith("http")) {
     return (
-      <ExtLink href={to.toString()} className={classes}>
+      <ExtLink href={to.toString()} className={classes} target={props.target}>
         <ButtonContent {...props} />
       </ExtLink>
     );
   } else {
     return (
-      <Link to={to} className={classes}>
+      <Link to={to} className={classes} target={props.target} reloadDocument={props.reloadDocument}>
         <ButtonContent {...props} />
       </Link>
     );

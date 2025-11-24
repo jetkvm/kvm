@@ -304,7 +304,8 @@ if (isOnDevice) {
         },
       ],
     },
-  ]);
+  // We only need to do this for the cloud deployment, because the device doesn't need to be versioned
+  ], { basename: import.meta.env.BASE_URL });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
