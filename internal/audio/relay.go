@@ -71,8 +71,10 @@ func (r *OutputRelay) relayLoop() {
 	defer close(r.stopped)
 
 	const maxRetries = 10
+	const maxConsecutiveWriteFailures = 50 // Allow some WebRTC write failures before reconnecting
 	retryDelay := 1 * time.Second
 	consecutiveFailures := 0
+	consecutiveWriteFailures := 0
 
 	for r.running.Load() {
 		// Connect if not connected
@@ -108,7 +110,7 @@ func (r *OutputRelay) relayLoop() {
 			continue
 		}
 
-		// Reset retry state on success
+		// Reset retry state on successful read
 		consecutiveFailures = 0
 		retryDelay = 1 * time.Second
 
@@ -117,9 +119,28 @@ func (r *OutputRelay) relayLoop() {
 			r.sample.Data = payload
 			if err := r.audioTrack.WriteSample(r.sample); err != nil {
 				r.framesDropped.Add(1)
-				r.logger.Warn().Err(err).Msg("Failed to write sample to WebRTC")
+				consecutiveWriteFailures++
+
+				// Log warning on first failure and every 10th failure
+				if consecutiveWriteFailures == 1 || consecutiveWriteFailures%10 == 0 {
+					r.logger.Warn().
+						Err(err).
+						Int("consecutive_failures", consecutiveWriteFailures).
+						Msg("Failed to write sample to WebRTC")
+				}
+
+				// If too many consecutive write failures, reconnect source
+				if consecutiveWriteFailures >= maxConsecutiveWriteFailures {
+					r.logger.Error().
+						Int("failures", consecutiveWriteFailures).
+						Msg("Too many consecutive WebRTC write failures, reconnecting source")
+					(*r.source).Disconnect()
+					consecutiveWriteFailures = 0
+					consecutiveFailures = 0
+				}
 			} else {
 				r.framesRelayed.Add(1)
+				consecutiveWriteFailures = 0 // Reset on successful write
 			}
 		}
 	}
