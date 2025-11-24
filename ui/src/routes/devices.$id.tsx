@@ -55,6 +55,7 @@ import {
 import { FeatureFlagProvider } from "@providers/FeatureFlagProvider";
 import { m } from "@localizations/messages.js";
 import { isSecureContext } from "@/utils";
+import { doRpcHidHandshake } from "@hooks/useHidRpc";
 
 export type AuthMode = "password" | "noPassword" | null;
 
@@ -132,6 +133,7 @@ export default function KvmIdRoute() {
     setRpcHidChannel,
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
+    setRpcHidProtocolVersion,
   } = useRTCStore();
 
   const location = useLocation();
@@ -555,6 +557,7 @@ export default function KvmIdRoute() {
     rpcHidChannel.onopen = () => {
       setRpcHidChannel(rpcHidChannel);
     };
+    doRpcHidHandshake(rpcHidChannel, setRpcHidProtocolVersion);
 
     const rpcHidUnreliableChannel = pc.createDataChannel("hidrpc-unreliable-ordered", {
       ordered: true,
@@ -591,6 +594,7 @@ export default function KvmIdRoute() {
     setRpcHidChannel,
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
+    setRpcHidProtocolVersion,
     setTransceiver,
     setAudioTransceiver,
     audioInputAutoEnable,
