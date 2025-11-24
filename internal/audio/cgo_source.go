@@ -187,18 +187,20 @@ func (c *CgoSource) IsConnected() bool {
 
 func (c *CgoSource) ReadMessage() (uint8, []byte, error) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if !c.connected {
-		c.mu.Unlock()
 		return 0, nil, fmt.Errorf("not connected")
 	}
 
 	if !c.outputDevice {
-		c.mu.Unlock()
 		return 0, nil, fmt.Errorf("ReadMessage only supported for output direction")
 	}
-	c.mu.Unlock()
 
-	// Call C function without holding mutex to avoid deadlock - C layer has its own locking
+	// Hold mutex during C call to prevent race condition with Disconnect().
+	// Lock order is consistent (c.mu -> capture_mutex) in all code paths,
+	// so this cannot deadlock. The C layer's capture_mutex protects ALSA/codec
+	// state, while c.mu protects the connection lifecycle.
 	opusSize := C.jetkvm_audio_read_encode(unsafe.Pointer(&c.opusBuf[0]))
 	if opusSize < 0 {
 		return 0, nil, fmt.Errorf("jetkvm_audio_read_encode failed: %d", opusSize)
@@ -217,16 +219,15 @@ func (c *CgoSource) ReadMessage() (uint8, []byte, error) {
 
 func (c *CgoSource) WriteMessage(msgType uint8, payload []byte) error {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if !c.connected {
-		c.mu.Unlock()
 		return fmt.Errorf("not connected")
 	}
 
 	if c.outputDevice {
-		c.mu.Unlock()
 		return fmt.Errorf("WriteMessage only supported for input direction")
 	}
-	c.mu.Unlock()
 
 	if msgType != ipcMsgTypeOpus {
 		return nil
@@ -240,7 +241,8 @@ func (c *CgoSource) WriteMessage(msgType uint8, payload []byte) error {
 		return fmt.Errorf("opus packet too large: %d bytes (max 1500)", len(payload))
 	}
 
-	// Call C function without holding mutex to avoid deadlock - C layer has its own locking
+	// Hold mutex during C call to prevent race condition with Disconnect().
+	// Lock order is consistent (c.mu -> playback_mutex) in all code paths.
 	rc := C.jetkvm_audio_decode_write(unsafe.Pointer(&payload[0]), C.int(len(payload)))
 	if rc < 0 {
 		return fmt.Errorf("jetkvm_audio_decode_write failed: %d", rc)
