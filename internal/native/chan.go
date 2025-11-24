@@ -28,6 +28,7 @@ func (n *Native) handleVideoFrameChan() {
 func (n *Native) handleVideoStateChan() {
 	for {
 		state := <-videoStateChan
+
 		n.onVideoStateChange(state)
 	}
 }
