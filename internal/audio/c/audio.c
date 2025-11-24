@@ -267,23 +267,34 @@ static unsigned int get_hdmi_audio_sample_rate(void) {
 	close(fd);
 
 	unsigned int detected_rate = (unsigned int)ext_ctrl.value;
+	static unsigned int last_logged_rate = 0; // Track last logged rate to suppress duplicate messages
 
 	if (detected_rate == 0) {
-		fprintf(stdout, "INFO: TC358743 reports 0 Hz (no HDMI signal or audio not detected yet)\n");
-		fprintf(stdout, "      Will use 48kHz default and resample if needed when signal detected\n");
-		fflush(stdout);
-		return 0;  // No signal or rate not detected - this is expected during hotplug
+		if (last_logged_rate != 0) {
+			fprintf(stdout, "INFO: TC358743 reports 0 Hz (no HDMI signal or audio not detected yet)\n");
+			fprintf(stdout, "      Will use 48kHz default and resample if needed when signal detected\n");
+			fflush(stdout);
+			last_logged_rate = 0;
+		}
+		return 0;
 	}
 
-	// Validate detected rate is reasonable
+	// Validate detected rate is reasonable (log warning only on rate changes)
 	if (detected_rate < 8000 || detected_rate > 192000) {
-		fprintf(stderr, "WARNING: TC358743 reported unusual sample rate: %u Hz (expected 32k-192k)\n", detected_rate);
-		fprintf(stderr, "         Using detected rate anyway, but audio may not work correctly\n");
-		fflush(stderr);
+		if (detected_rate != last_logged_rate) {
+			fprintf(stderr, "WARNING: TC358743 reported unusual sample rate: %u Hz (expected 32k-192k)\n", detected_rate);
+			fprintf(stderr, "         Using detected rate anyway, but audio may not work correctly\n");
+			fflush(stderr);
+			last_logged_rate = detected_rate;
+		}
 	}
 
-	fprintf(stdout, "INFO: TC358743 detected HDMI audio sample rate: %u Hz\n", detected_rate);
-	fflush(stdout);
+	// Log rate changes and update tracking state to suppress duplicate logging
+	if (detected_rate != last_logged_rate) {
+		fprintf(stdout, "INFO: TC358743 detected HDMI audio sample rate: %u Hz\n", detected_rate);
+		fflush(stdout);
+		last_logged_rate = detected_rate;
+	}
 
 	return detected_rate;
 }
@@ -800,6 +811,7 @@ __attribute__((hot)) int jetkvm_audio_read_encode(void * __restrict__ opus_buf) 
 	// Two buffers: hardware buffer + resampled buffer (at 48kHz)
 	static short CACHE_ALIGN pcm_hw_buffer[MAX_HARDWARE_FRAME_SIZE * 2];    // Max hardware rate * stereo
 	static short CACHE_ALIGN pcm_opus_buffer[960 * 2];   // 48kHz @ 20ms * 2 channels
+	static uint16_t sample_rate_check_counter = 0;
 	unsigned char * __restrict__ out = (unsigned char*)opus_buf;
 	int32_t pcm_rc, nb_bytes;
 	int32_t err = 0;
@@ -849,6 +861,20 @@ retry_read:
 			// Fatal error or skip frame (err_result == -1 or 0)
 			pthread_mutex_unlock(&capture_mutex);
 			return (err_result == 0) ? 0 : -1;
+		}
+	}
+
+	// Periodic sample rate change detection (every 50 frames = ~1 second)
+	if (__builtin_expect(++sample_rate_check_counter >= 50, 0)) {
+		sample_rate_check_counter = 0;
+		unsigned int current_rate = get_hdmi_audio_sample_rate();
+		if (current_rate != 0 && current_rate != hardware_sample_rate) {
+			fprintf(stderr, "ERROR: capture: HDMI sample rate changed from %u to %u Hz\n",
+			        hardware_sample_rate, current_rate);
+			fprintf(stderr, "       Triggering reconnection for automatic reconfiguration\n");
+			fflush(stderr);
+			pthread_mutex_unlock(&capture_mutex);
+			return -1;
 		}
 	}
 
