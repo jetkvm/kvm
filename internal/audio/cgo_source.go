@@ -83,8 +83,6 @@ func (c *CgoSource) Connect() error {
 func (c *CgoSource) connectOutput() error {
 	os.Setenv("ALSA_CAPTURE_DEVICE", c.alsaDevice)
 
-	// Opus uses fixed 48kHz sample rate (RFC 7587)
-	// SpeexDSP handles any hardware rate conversion
 	const sampleRate = 48000
 	const frameSize = uint16(sampleRate * 20 / 1000) // 20ms frames
 
