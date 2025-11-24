@@ -308,6 +308,29 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 }
 
 /**
+ * Swap stereo channels (L<->R) using ARM NEON SIMD
+ * Processes 4 frames (8 samples) at a time for optimal performance
+ * @param buffer Interleaved stereo buffer (L,R,L,R,...)
+ * @param num_frames Number of stereo frames to swap
+ */
+static inline void swap_stereo_channels(int16_t *buffer, uint16_t num_frames) {
+	uint16_t i;
+	// Process in chunks of 4 frames (8 samples, 128 bits)
+	for (i = 0; i + 3 < num_frames; i += 4) {
+		int16x8_t vec = vld1q_s16(&buffer[i * 2]);
+		int16x8_t swapped = vrev32q_s16(vec);
+		vst1q_s16(&buffer[i * 2], swapped);
+	}
+
+	// Handle remaining frames with scalar code
+	for (; i < num_frames; i++) {
+		int16_t temp = buffer[i * 2];
+		buffer[i * 2] = buffer[i * 2 + 1];
+		buffer[i * 2 + 1] = temp;
+	}
+}
+
+/**
  * Handle ALSA I/O errors with recovery attempts
  * @param handle Pointer to PCM handle to use for recovery operations
  * @param valid_handle Pointer to the valid handle to check against (for race detection)
@@ -425,10 +448,12 @@ static int handle_alsa_error(snd_pcm_t *handle, snd_pcm_t **valid_handle,
  * @param preferred_rate Preferred sample rate (0 = use default 48kHz)
  * @param actual_rate_out Pointer to store the actual hardware-negotiated rate
  * @param actual_frame_size_out Pointer to store the actual frame size at hardware rate
+ * @param channels_swapped_out Pointer to store whether channels are swapped (NULL to ignore)
  * @return 0 on success, negative error code on failure
  */
 static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uint8_t num_channels,
-                                 unsigned int preferred_rate, unsigned int *actual_rate_out, uint16_t *actual_frame_size_out) {
+                                 unsigned int preferred_rate, unsigned int *actual_rate_out, uint16_t *actual_frame_size_out,
+                                 bool *channels_swapped_out) {
 	snd_pcm_hw_params_t *params;
 	snd_pcm_sw_params_t *sw_params;
 	int err;
@@ -512,7 +537,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 	err = snd_pcm_prepare(handle);
 	if (err < 0) return err;
 
-	if (num_channels == 2) {
+	if (num_channels == 2 && channels_swapped_out) {
 		snd_pcm_chmap_t *chmap = snd_pcm_get_chmap(handle);
 		if (chmap != NULL) {
 			if (chmap->channels == 2) {
@@ -522,9 +547,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 					        device_name);
 					fflush(stdout);
 				}
-				if (actual_frame_size_out && is_swapped) {
-					*actual_frame_size_out |= 0x8000;
-				}
+				*channels_swapped_out = is_swapped;
 			}
 			free(chmap);
 		}
@@ -533,8 +556,7 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 	if (actual_rate_out) *actual_rate_out = negotiated_rate;
 	if (actual_frame_size_out) {
 		// Calculate actual frame size based on negotiated rate (20ms frames)
-		uint16_t actual_hw_frame_size = negotiated_rate / 50;
-		*actual_frame_size_out = (*actual_frame_size_out & 0x8000) | actual_hw_frame_size;
+		*actual_frame_size_out = negotiated_rate / 50;
 	}
 
 	return 0;
@@ -609,8 +631,9 @@ int jetkvm_audio_capture_init() {
 	fflush(stdout);
 
 	unsigned int actual_rate = 0;
-	uint16_t actual_frame_size_with_flag = 0;
-	err = configure_alsa_device(pcm_capture_handle, "capture", capture_channels, preferred_rate, &actual_rate, &actual_frame_size_with_flag);
+	uint16_t actual_frame_size = 0;
+	bool channels_swapped = false;
+	err = configure_alsa_device(pcm_capture_handle, "capture", capture_channels, preferred_rate, &actual_rate, &actual_frame_size, &channels_swapped);
 	if (err < 0) {
 		snd_pcm_t *handle = pcm_capture_handle;
 		pcm_capture_handle = NULL;
@@ -622,9 +645,9 @@ int jetkvm_audio_capture_init() {
 		return ERR_ALSA_CONFIG_FAILED;
 	}
 
-	capture_channels_swapped = (actual_frame_size_with_flag & 0x8000) != 0;
+	capture_channels_swapped = channels_swapped;
 	hardware_sample_rate = actual_rate;
-	hardware_frame_size = actual_frame_size_with_flag & 0x7FFF;
+	hardware_frame_size = actual_frame_size;
 	if (hardware_frame_size > MAX_HARDWARE_FRAME_SIZE) {
 		fprintf(stderr, "ERROR: capture: Hardware frame size %u exceeds buffer capacity %u\n",
 		        hardware_frame_size, MAX_HARDWARE_FRAME_SIZE);
@@ -783,12 +806,8 @@ retry_read:
 		simd_clear_samples_s16(&pcm_hw_buffer[pcm_rc * capture_channels], remaining_samples);
 	}
 
-	if (capture_channels_swapped && capture_channels == 2) {
-		for (uint32_t i = 0; i < hardware_frame_size; i++) {
-			short temp = pcm_hw_buffer[i * 2];
-			pcm_hw_buffer[i * 2] = pcm_hw_buffer[i * 2 + 1];
-			pcm_hw_buffer[i * 2 + 1] = temp;
-		}
+	if (capture_channels_swapped) {
+		swap_stereo_channels(pcm_hw_buffer, hardware_frame_size);
 	}
 
 	short *pcm_to_encode;
@@ -887,7 +906,7 @@ int jetkvm_audio_playback_init() {
 
 	unsigned int actual_rate = 0;
 	uint16_t actual_frame_size = 0;
-	err = configure_alsa_device(pcm_playback_handle, "playback", playback_channels, 0, &actual_rate, &actual_frame_size);
+	err = configure_alsa_device(pcm_playback_handle, "playback", playback_channels, 0, &actual_rate, &actual_frame_size, NULL);
 	if (err < 0) {
 		snd_pcm_t *handle = pcm_playback_handle;
 		pcm_playback_handle = NULL;
