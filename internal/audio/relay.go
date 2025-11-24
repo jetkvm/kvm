@@ -77,7 +77,6 @@ func (r *OutputRelay) relayLoop() {
 	consecutiveWriteFailures := 0
 
 	for r.running.Load() {
-		// Connect if not connected
 		if !(*r.source).IsConnected() {
 			if err := (*r.source).Connect(); err != nil {
 				if consecutiveFailures++; consecutiveFailures >= maxRetries {
@@ -93,7 +92,6 @@ func (r *OutputRelay) relayLoop() {
 			retryDelay = 1 * time.Second
 		}
 
-		// Read message from source
 		msgType, payload, err := (*r.source).ReadMessage()
 		if err != nil {
 			if !r.running.Load() {
@@ -110,11 +108,9 @@ func (r *OutputRelay) relayLoop() {
 			continue
 		}
 
-		// Reset retry state on successful read
 		consecutiveFailures = 0
 		retryDelay = 1 * time.Second
 
-		// Write audio sample to WebRTC
 		if msgType == ipcMsgTypeOpus && len(payload) > 0 {
 			r.sample.Data = payload
 			if err := r.audioTrack.WriteSample(r.sample); err != nil {
@@ -129,7 +125,6 @@ func (r *OutputRelay) relayLoop() {
 						Msg("Failed to write sample to WebRTC")
 				}
 
-				// If too many consecutive write failures, reconnect source
 				if consecutiveWriteFailures >= maxConsecutiveWriteFailures {
 					r.logger.Error().
 						Int("failures", consecutiveWriteFailures).
@@ -140,7 +135,7 @@ func (r *OutputRelay) relayLoop() {
 				}
 			} else {
 				r.framesRelayed.Add(1)
-				consecutiveWriteFailures = 0 // Reset on successful write
+				consecutiveWriteFailures = 0
 			}
 		}
 	}
