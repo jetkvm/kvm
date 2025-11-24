@@ -5,6 +5,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/audio"
 	"github.com/jetkvm/kvm/internal/logging"
@@ -249,8 +250,7 @@ func setPendingInputTrack(track *webrtc.TrackRemote) {
 	go handleInputTrackForSession(track)
 }
 
-// SetAudioOutputEnabled enables or disables audio output capture.
-// When enabling, blocks up to 5 seconds waiting for audio to start.
+// SetAudioOutputEnabled blocks up to 5 seconds when enabling.
 // Returns error if audio fails to start within timeout.
 func SetAudioOutputEnabled(enabled bool) error {
 	if audioOutputEnabled.Swap(enabled) == enabled {
@@ -282,8 +282,7 @@ func SetAudioOutputEnabled(enabled bool) error {
 	return nil
 }
 
-// SetAudioInputEnabled enables or disables audio input playback.
-// When enabling, blocks up to 5 seconds waiting for audio to start.
+// SetAudioInputEnabled blocks up to 5 seconds when enabling.
 // Returns error if audio fails to start within timeout.
 func SetAudioInputEnabled(enabled bool) error {
 	if audioInputEnabled.Swap(enabled) == enabled {
