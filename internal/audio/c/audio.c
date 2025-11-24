@@ -30,9 +30,18 @@
 #include <signal.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <linux/videodev2.h>
 
 // ARM NEON SIMD optimizations (Cortex-A7 accelerates buffer operations, with scalar fallback)
 #include <arm_neon.h>
+
+// TC358743 V4L2 control IDs for audio
+#ifndef V4L2_CID_USER_TC35874X_BASE
+#define V4L2_CID_USER_TC35874X_BASE (V4L2_CID_USER_BASE + 0x10a0)
+#endif
+#define TC35874X_CID_AUDIO_SAMPLING_RATE (V4L2_CID_USER_TC35874X_BASE + 0)
 
 // RV1106 (Cortex-A7) has 64-byte cache lines
 #define CACHE_LINE_SIZE 64
@@ -210,6 +219,54 @@ static volatile sig_atomic_t playback_initialized = 0;
 // ALSA UTILITY FUNCTIONS
 
 /**
+ * Query TC358743 HDMI receiver for detected audio sample rate
+ * Reads the hardware-detected sample rate from V4L2 control
+ * @return detected sample rate (44100, 48000, etc.) or 0 if detection fails
+ */
+static unsigned int get_hdmi_audio_sample_rate(void) {
+	// TC358743 is a V4L2 subdevice at /dev/v4l-subdev2
+	int fd = open("/dev/v4l-subdev2", O_RDWR);
+	if (fd < 0) {
+		fprintf(stderr, "WARNING: Could not open /dev/v4l-subdev2 to query HDMI audio sample rate: %s\n", strerror(errno));
+		fflush(stderr);
+		return 0;
+	}
+
+	// Use extended controls API for custom V4L2 controls
+	struct v4l2_ext_control ext_ctrl = {0};
+	ext_ctrl.id = TC35874X_CID_AUDIO_SAMPLING_RATE;
+
+	struct v4l2_ext_controls ext_ctrls = {0};
+	ext_ctrls.ctrl_class = V4L2_CTRL_CLASS_USER;
+	ext_ctrls.count = 1;
+	ext_ctrls.controls = &ext_ctrl;
+
+	if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &ext_ctrls) == -1) {
+		fprintf(stderr, "WARNING: Could not query TC358743 audio sample rate control: %s (errno=%d)\n", strerror(errno), errno);
+		fflush(stderr);
+		close(fd);
+		return 0;
+	}
+
+	close(fd);
+
+	unsigned int detected_rate = (unsigned int)ext_ctrl.value;
+	fprintf(stdout, "DEBUG: TC358743 control read returned: %u Hz (error_idx=%u)\n", detected_rate, ext_ctrls.error_idx);
+	fflush(stdout);
+
+	if (detected_rate == 0) {
+		fprintf(stdout, "INFO: TC358743 reports 0 Hz (no signal or rate not detected yet)\n");
+		fflush(stdout);
+		return 0;  // No signal or rate not detected
+	}
+
+	fprintf(stdout, "INFO: TC358743 detected HDMI audio sample rate: %u Hz\n", detected_rate);
+	fflush(stdout);
+
+	return detected_rate;
+}
+
+/**
  * Open ALSA device with exponential backoff retry
  * @return 0 on success, negative error code on failure
  */
@@ -365,12 +422,13 @@ static int handle_alsa_error(snd_pcm_t *handle, snd_pcm_t **valid_handle,
  * @param handle ALSA PCM handle
  * @param device_name Device name for logging
  * @param num_channels Number of channels (1=mono, 2=stereo)
+ * @param preferred_rate Preferred sample rate (0 = use default 48kHz)
  * @param actual_rate_out Pointer to store the actual hardware-negotiated rate
  * @param actual_frame_size_out Pointer to store the actual frame size at hardware rate
  * @return 0 on success, negative error code on failure
  */
 static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uint8_t num_channels,
-                                 unsigned int *actual_rate_out, uint16_t *actual_frame_size_out) {
+                                 unsigned int preferred_rate, unsigned int *actual_rate_out, uint16_t *actual_frame_size_out) {
 	snd_pcm_hw_params_t *params;
 	snd_pcm_sw_params_t *sw_params;
 	int err;
@@ -410,8 +468,8 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 		return err;
 	}
 
-	// Try to set 48kHz first (preferred), then let hardware negotiate
-	unsigned int requested_rate = opus_sample_rate;
+	// Use preferred rate if specified, otherwise default to 48kHz
+	unsigned int requested_rate = (preferred_rate > 0) ? preferred_rate : opus_sample_rate;
 	err = snd_pcm_hw_params_set_rate_near(handle, params, &requested_rate, 0);
 	if (err < 0) return err;
 
@@ -540,9 +598,19 @@ int jetkvm_audio_capture_init() {
 		return ERR_ALSA_OPEN_FAILED;
 	}
 
+	// Query TC358743 for detected HDMI audio sample rate
+	unsigned int preferred_rate = get_hdmi_audio_sample_rate();
+	if (preferred_rate > 0) {
+		fprintf(stdout, "INFO: Using TC358743 detected sample rate: %u Hz\n", preferred_rate);
+	} else {
+		fprintf(stdout, "INFO: TC358743 sample rate not detected, using default 48kHz\n");
+		preferred_rate = 0;  // Will default to 48kHz
+	}
+	fflush(stdout);
+
 	unsigned int actual_rate = 0;
 	uint16_t actual_frame_size_with_flag = 0;
-	err = configure_alsa_device(pcm_capture_handle, "capture", capture_channels, &actual_rate, &actual_frame_size_with_flag);
+	err = configure_alsa_device(pcm_capture_handle, "capture", capture_channels, preferred_rate, &actual_rate, &actual_frame_size_with_flag);
 	if (err < 0) {
 		snd_pcm_t *handle = pcm_capture_handle;
 		pcm_capture_handle = NULL;
@@ -819,7 +887,7 @@ int jetkvm_audio_playback_init() {
 
 	unsigned int actual_rate = 0;
 	uint16_t actual_frame_size = 0;
-	err = configure_alsa_device(pcm_playback_handle, "playback", playback_channels, &actual_rate, &actual_frame_size);
+	err = configure_alsa_device(pcm_playback_handle, "playback", playback_channels, 0, &actual_rate, &actual_frame_size);
 	if (err < 0) {
 		snd_pcm_t *handle = pcm_playback_handle;
 		pcm_playback_handle = NULL;
