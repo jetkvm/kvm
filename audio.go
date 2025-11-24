@@ -250,40 +250,66 @@ func setPendingInputTrack(track *webrtc.TrackRemote) {
 }
 
 // SetAudioOutputEnabled enables or disables audio output capture.
-// Returns immediately; when enabling, audio starts asynchronously to prevent UI blocking.
-// Check logs for async operation status.
+// When enabling, blocks up to 5 seconds waiting for audio to start.
+// Returns error if audio fails to start within timeout.
 func SetAudioOutputEnabled(enabled bool) error {
 	if audioOutputEnabled.Swap(enabled) == enabled {
 		return nil
 	}
 
 	if enabled && activeConnections.Load() > 0 {
+		// Start audio synchronously with timeout to provide immediate feedback
+		done := make(chan error, 1)
 		go func() {
-			if err := startAudio(); err != nil {
-				audioLogger.Error().Err(err).Msg("Failed to start output audio after enable")
-			}
+			done <- startAudio()
 		}()
-		return nil
+
+		select {
+		case err := <-done:
+			if err != nil {
+				audioLogger.Error().Err(err).Msg("Failed to start output audio after enable")
+				audioOutputEnabled.Store(false) // Revert state on failure
+				return fmt.Errorf("failed to start audio output: %w", err)
+			}
+			return nil
+		case <-time.After(5 * time.Second):
+			audioLogger.Error().Msg("Audio output start timed out after 5 seconds")
+			audioOutputEnabled.Store(false) // Revert state on timeout
+			return fmt.Errorf("audio output start timed out after 5 seconds")
+		}
 	}
 	stopOutputAudio()
 	return nil
 }
 
 // SetAudioInputEnabled enables or disables audio input playback.
-// Returns immediately; when enabling, audio starts asynchronously to prevent UI blocking.
-// Check logs for async operation status.
+// When enabling, blocks up to 5 seconds waiting for audio to start.
+// Returns error if audio fails to start within timeout.
 func SetAudioInputEnabled(enabled bool) error {
 	if audioInputEnabled.Swap(enabled) == enabled {
 		return nil
 	}
 
 	if enabled && activeConnections.Load() > 0 {
+		// Start audio synchronously with timeout to provide immediate feedback
+		done := make(chan error, 1)
 		go func() {
-			if err := startAudio(); err != nil {
-				audioLogger.Error().Err(err).Msg("Failed to start input audio after enable")
-			}
+			done <- startAudio()
 		}()
-		return nil
+
+		select {
+		case err := <-done:
+			if err != nil {
+				audioLogger.Error().Err(err).Msg("Failed to start input audio after enable")
+				audioInputEnabled.Store(false) // Revert state on failure
+				return fmt.Errorf("failed to start audio input: %w", err)
+			}
+			return nil
+		case <-time.After(5 * time.Second):
+			audioLogger.Error().Msg("Audio input start timed out after 5 seconds")
+			audioInputEnabled.Store(false) // Revert state on timeout
+			return fmt.Errorf("audio input start timed out after 5 seconds")
+		}
 	}
 	stopInputAudio()
 	return nil
@@ -309,20 +335,31 @@ func SetAudioOutputSource(source string) error {
 		return err
 	}
 
-	// Handle audio restart asynchronously
+	// Stop audio immediately (synchronous to release hardware)
+	stopOutputAudio()
+
+	// Restart audio with timeout
+	done := make(chan error, 1)
 	go func() {
-		stopOutputAudio()
-		if err := startAudio(); err != nil {
-			audioLogger.Error().Err(err).Str("source", source).Msg("Failed to start audio output after source change")
-		}
+		done <- startAudio()
 	}()
 
-	return nil
+	select {
+	case err := <-done:
+		if err != nil {
+			audioLogger.Error().Err(err).Str("source", source).Msg("Failed to start audio after source change")
+			return fmt.Errorf("failed to start audio after source change: %w", err)
+		}
+		return nil
+	case <-time.After(5 * time.Second):
+		audioLogger.Error().Str("source", source).Msg("Audio restart timed out after source change")
+		return fmt.Errorf("audio restart timed out after 5 seconds")
+	}
 }
 
 // RestartAudioOutput stops and restarts the audio output capture.
-// Returns immediately; restart happens asynchronously to prevent UI blocking.
-// Check logs for async operation status.
+// Blocks up to 5 seconds waiting for audio to restart.
+// Returns error if restart fails or times out.
 func RestartAudioOutput() error {
 	audioMutex.Lock()
 	hasActiveOutput := audioOutputEnabled.Load() && currentAudioTrack != nil && outputSource.Load() != nil
@@ -334,12 +371,24 @@ func RestartAudioOutput() error {
 
 	audioLogger.Info().Msg("Restarting audio output")
 	stopOutputAudio()
+
+	// Restart with timeout
+	done := make(chan error, 1)
 	go func() {
-		if err := startAudio(); err != nil {
-			audioLogger.Error().Err(err).Msg("Failed to restart audio output")
-		}
+		done <- startAudio()
 	}()
-	return nil
+
+	select {
+	case err := <-done:
+		if err != nil {
+			audioLogger.Error().Err(err).Msg("Failed to restart audio output")
+			return fmt.Errorf("failed to restart audio output: %w", err)
+		}
+		return nil
+	case <-time.After(5 * time.Second):
+		audioLogger.Error().Msg("Audio output restart timed out")
+		return fmt.Errorf("audio output restart timed out after 5 seconds")
+	}
 }
 
 func handleInputTrackForSession(track *webrtc.TrackRemote) {
