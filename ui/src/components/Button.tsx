@@ -211,7 +211,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
 
 Button.displayName = "Button";
 
-type LinkPropsType = Pick<LinkProps, "to"> &
+type LinkPropsType = Pick<LinkProps, "to" | "target" | "reloadDocument"> &
   React.ComponentProps<typeof ButtonContent> & { disabled?: boolean };
 export const LinkButton = ({ to, ...props }: LinkPropsType) => {
   const classes = cx(
@@ -224,13 +224,13 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
 
   if (to.toString().startsWith("http")) {
     return (
-      <ExtLink href={to.toString()} className={classes}>
+      <ExtLink href={to.toString()} className={classes} target={props.target}>
         <ButtonContent {...props} />
       </ExtLink>
     );
   } else {
     return (
-      <Link to={to} className={classes}>
+      <Link to={to} className={classes} target={props.target} reloadDocument={props.reloadDocument}>
         <ButtonContent {...props} />
       </Link>
     );
