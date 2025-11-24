@@ -769,20 +769,19 @@ uint8_t video_get_streaming_status() {
 void video_restart_streaming()
 {
     uint8_t streaming_status = video_get_streaming_status();
-    if (streaming_status == 0)
-    {
-        log_info("will not restart video streaming because it's stopped");
-        return;
-    } 
 
-    if (streaming_status == 2) {
+    if (streaming_status == 0 && !detected_signal) {
+        return;
+    }
+
+    if (streaming_status != 0) {
         video_stop_streaming();
     }
 
     if (!wait_for_streaming_stopped()) {
         return;
     }
-    
+
     video_start_streaming();
 }
 
