@@ -55,6 +55,7 @@ static snd_pcm_t *pcm_playback_handle = NULL; // INPUT: Client microphone → de
 static const char *alsa_capture_device = NULL;
 static const char *alsa_playback_device = NULL;
 static bool capture_channels_swapped = false;
+static bool capture_is_hdmi = false;
 
 static OpusEncoder *encoder = NULL;
 static OpusDecoder *decoder = NULL;
@@ -654,15 +655,12 @@ int jetkvm_audio_capture_init() {
 		return ERR_ALSA_OPEN_FAILED;
 	}
 
-	// Query TC358743 for detected HDMI audio sample rate
-	unsigned int preferred_rate = get_hdmi_audio_sample_rate();
-	if (preferred_rate > 0) {
-		fprintf(stdout, "INFO: Using TC358743 detected sample rate: %u Hz\n", preferred_rate);
-	} else {
-		fprintf(stdout, "INFO: TC358743 sample rate not detected, using default 48kHz\n");
-		preferred_rate = 0;  // Will default to 48kHz
+	capture_is_hdmi = (alsa_capture_device != NULL && strstr(alsa_capture_device, "hw:0") != NULL);
+
+	unsigned int preferred_rate = 0;
+	if (capture_is_hdmi) {
+		preferred_rate = get_hdmi_audio_sample_rate();
 	}
-	fflush(stdout);
 
 	unsigned int actual_rate = 0;
 	uint16_t actual_frame_size = 0;
@@ -859,8 +857,7 @@ retry_read:
 		}
 	}
 
-	// Periodic sample rate change detection (every 50 frames = ~1 second)
-	if (__builtin_expect(++sample_rate_check_counter >= 50, 0)) {
+	if (capture_is_hdmi && __builtin_expect(++sample_rate_check_counter >= 50, 0)) {
 		sample_rate_check_counter = 0;
 		unsigned int current_rate = get_hdmi_audio_sample_rate();
 		if (current_rate != 0 && current_rate != hardware_sample_rate) {
