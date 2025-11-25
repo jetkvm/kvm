@@ -20,7 +20,7 @@ func DefaultAudioConfig() AudioConfig {
 		BufferPeriods:  12,
 		DTXEnabled:     true,
 		FECEnabled:     true,
-		PacketLossPerc: 0,
+		PacketLossPerc: 20,
 	}
 }
 
