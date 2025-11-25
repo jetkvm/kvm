@@ -914,6 +914,7 @@
     "wake_on_lan_add_device_save_device": "Salva dispositivo",
     "wake_on_lan_description": "Invia un Magic Packet per riattivare un dispositivo remoto.",
     "wake_on_lan_device_list_add_new_device": "Aggiungi nuovo dispositivo",
+    "wake_on_lan_device_list_confirm_delete_message": "Sei sicuro di voler eliminare questo dispositivo? {name}",
     "wake_on_lan_device_list_delete_device": "Elimina dispositivo",
     "wake_on_lan_device_list_wake": "Veglia",
     "wake_on_lan_empty_add_device_to_start": "Aggiungi un dispositivo per iniziare a utilizzare Wake-on-LAN",
