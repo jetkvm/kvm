@@ -119,16 +119,16 @@ void jetkvm_audio_playback_close();
 int jetkvm_audio_decode_write(void *opus_buf, int opus_size);
 
 void update_audio_constants(uint32_t bitrate, uint8_t complexity,
-                           uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
+                           uint8_t ch, uint16_t max_pkt,
                            uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
                            uint8_t dtx_enabled, uint8_t fec_enabled, uint8_t buf_periods, uint8_t pkt_loss_perc);
-void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
+void update_audio_decoder_constants(uint8_t ch, uint16_t max_pkt,
                                     uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
                                     uint8_t buf_periods);
 
 
 void update_audio_constants(uint32_t bitrate, uint8_t complexity,
-                           uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
+                           uint8_t ch, uint16_t max_pkt,
                            uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
                            uint8_t dtx_enabled, uint8_t fec_enabled, uint8_t buf_periods, uint8_t pkt_loss_perc) {
     opus_bitrate = (bitrate >= 64000 && bitrate <= 256000) ? bitrate : 192000;
@@ -143,12 +143,9 @@ void update_audio_constants(uint32_t bitrate, uint8_t complexity,
     opus_fec_enabled = fec_enabled ? 1 : 0;
     buffer_period_count = (buf_periods >= 2 && buf_periods <= 24) ? buf_periods : 12;
     opus_packet_loss_perc = (pkt_loss_perc <= 100) ? pkt_loss_perc : 20;
-
-    // Note: sr and fs parameters ignored - RFC 7587 requires fixed 48kHz RTP clock rate
-    //       Hardware sample rate conversion is handled by SpeexDSP resampler
 }
 
-void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16_t max_pkt,
+void update_audio_decoder_constants(uint8_t ch, uint16_t max_pkt,
                                     uint32_t sleep_us, uint8_t max_attempts, uint32_t max_backoff,
                                     uint8_t buf_periods) {
     playback_channels = (ch == 1 || ch == 2) ? ch : 2;
@@ -158,9 +155,6 @@ void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16
     max_attempts_global = max_attempts > 0 ? max_attempts : 5;
     max_backoff_us_global = max_backoff > 0 ? max_backoff : 500000;
     buffer_period_count = (buf_periods >= 2 && buf_periods <= 24) ? buf_periods : 12;
-
-    // Note: sr and fs parameters ignored - decoder uses hardware-negotiated rate
-    //       USB Audio Gadget typically negotiates 48kHz, matching Opus RTP clock (RFC 7587)
 }
 
 /**
