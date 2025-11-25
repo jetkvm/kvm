@@ -15,7 +15,6 @@ import (
 type OutputRelay struct {
 	source     *AudioSource
 	audioTrack *webrtc.TrackLocalStaticSample
-	ctx        context.Context
 	cancel     context.CancelFunc
 	logger     zerolog.Logger
 	running    atomic.Bool
@@ -27,13 +26,12 @@ type OutputRelay struct {
 }
 
 func NewOutputRelay(source *AudioSource, audioTrack *webrtc.TrackLocalStaticSample) *OutputRelay {
-	ctx, cancel := context.WithCancel(context.Background())
+	_, cancel := context.WithCancel(context.Background())
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-output-relay").Logger()
 
 	return &OutputRelay{
 		source:     source,
 		audioTrack: audioTrack,
-		ctx:        ctx,
 		cancel:     cancel,
 		logger:     logger,
 		stopped:    make(chan struct{}),
