@@ -159,8 +159,8 @@ void update_audio_decoder_constants(uint32_t sr, uint8_t ch, uint16_t fs, uint16
     max_backoff_us_global = max_backoff > 0 ? max_backoff : 500000;
     buffer_period_count = (buf_periods >= 2 && buf_periods <= 24) ? buf_periods : 12;
 
-    // Note: sr and fs parameters ignored - decoder always operates at 48kHz (RFC 7587)
-    //       Playback device configured at 48kHz, no resampling needed for output
+    // Note: sr and fs parameters ignored - decoder uses hardware-negotiated rate
+    //       USB Audio Gadget typically negotiates 48kHz, matching Opus RTP clock (RFC 7587)
 }
 
 /**
