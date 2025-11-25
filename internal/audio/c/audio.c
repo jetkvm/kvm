@@ -88,7 +88,7 @@ static uint16_t max_packet_size = 1500;
 #define OPUS_VBR 1                    // Variable bitrate mode enabled
 #define OPUS_VBR_CONSTRAINT 1         // Constrained VBR maintains bitrate ceiling
 #define OPUS_SIGNAL_TYPE 3002         // OPUS_SIGNAL_MUSIC (optimized for music/audio content)
-#define OPUS_BANDWIDTH 1104           // OPUS_BANDWIDTH_FULLBAND (0-20kHz frequency range)
+#define OPUS_BANDWIDTH 1105           // OPUS_BANDWIDTH_FULLBAND (0-20kHz frequency range)
 #define OPUS_LSB_DEPTH 16             // 16-bit PCM sample depth (S16_LE format)
 
 static uint8_t opus_dtx_enabled = 1;
@@ -1068,9 +1068,14 @@ __attribute__((hot)) int jetkvm_audio_decode_write(void * __restrict__ opus_buf,
 			fprintf(stdout, "INFO: playback: FEC recovered %d frames\n", pcm_frames);
 			fflush(stdout);
 		} else {
-			fprintf(stderr, "WARN: playback: FEC returned 0 frames (silence)\n");
-			fflush(stderr);
+			pthread_mutex_unlock(&playback_mutex);
+			return 0;  // FEC returned no frames, nothing to write
 		}
+	}
+
+	if (__builtin_expect(pcm_frames <= 0, 0)) {
+		pthread_mutex_unlock(&playback_mutex);
+		return 0;  // Nothing to write
 	}
 
 retry_write:
