@@ -160,7 +160,7 @@ func startInputAudioUnderMutex(alsaPlaybackDevice string) error {
 	}
 
 	newSource := audio.NewCgoInputSource(alsaPlaybackDevice, getAudioConfig())
-	newRelay := audio.NewInputRelay(&newSource)
+	newRelay := audio.NewInputRelay()
 
 	if err := newRelay.Start(); err != nil {
 		audioLogger.Error().Err(err).Str("alsaPlaybackDevice", alsaPlaybackDevice).Msg("Failed to start input relay")
@@ -275,6 +275,7 @@ func SetAudioOutputEnabled(enabled bool) error {
 		case <-time.After(5 * time.Second):
 			audioLogger.Error().Msg("Audio output start timed out after 5 seconds")
 			audioOutputEnabled.Store(false) // Revert state on timeout
+			go stopOutputAudio()            // Clean up any partial initialization asynchronously
 			return fmt.Errorf("audio output start timed out after 5 seconds")
 		}
 	}
@@ -307,6 +308,7 @@ func SetAudioInputEnabled(enabled bool) error {
 		case <-time.After(5 * time.Second):
 			audioLogger.Error().Msg("Audio input start timed out after 5 seconds")
 			audioInputEnabled.Store(false) // Revert state on timeout
+			go stopInputAudio()            // Clean up any partial initialization asynchronously
 			return fmt.Errorf("audio input start timed out after 5 seconds")
 		}
 	}

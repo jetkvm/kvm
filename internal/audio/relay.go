@@ -142,21 +142,14 @@ func (r *OutputRelay) relayLoop() {
 }
 
 type InputRelay struct {
-	source  *AudioSource
-	ctx     context.Context
-	cancel  context.CancelFunc
 	logger  zerolog.Logger
 	running atomic.Bool
 }
 
-func NewInputRelay(source *AudioSource) *InputRelay {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewInputRelay() *InputRelay {
 	logger := logging.GetDefaultLogger().With().Str("component", "audio-input-relay").Logger()
 
 	return &InputRelay{
-		source: source,
-		ctx:    ctx,
-		cancel: cancel,
 		logger: logger,
 	}
 }
@@ -175,6 +168,5 @@ func (r *InputRelay) Stop() {
 		return
 	}
 
-	r.cancel()
 	r.logger.Debug().Msg("input relay stopped")
 }
