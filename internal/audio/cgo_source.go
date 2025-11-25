@@ -216,7 +216,11 @@ func (c *CgoSource) ReadMessage() (uint8, []byte, error) {
 		return 0, nil, fmt.Errorf("opus packet too large: %d > %d", opusSize, len(c.opusBuf))
 	}
 
-	return ipcMsgTypeOpus, c.opusBuf[:opusSize], nil
+	// Return a copy to prevent buffer aliasing - the caller may hold this slice
+	// while the next ReadMessage overwrites the internal buffer
+	result := make([]byte, opusSize)
+	copy(result, c.opusBuf[:opusSize])
+	return ipcMsgTypeOpus, result, nil
 }
 
 func (c *CgoSource) WriteMessage(msgType uint8, payload []byte) error {
