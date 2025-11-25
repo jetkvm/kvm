@@ -102,9 +102,7 @@ func (c *CgoSource) connectOutput() error {
 	C.update_audio_constants(
 		C.uint(uint32(c.config.Bitrate)*1000),
 		C.uchar(c.config.Complexity),
-		C.uint(sampleRate),
 		C.uchar(2),
-		C.ushort(frameSize),
 		C.ushort(1500),
 		C.uint(1000),
 		C.uchar(5),
@@ -130,14 +128,8 @@ func (c *CgoSource) connectInput() error {
 		c.logger.Warn().Err(err).Str("device", c.alsaDevice).Msg("Failed to set ALSA_PLAYBACK_DEVICE")
 	}
 
-	// USB Audio Gadget uses fixed 48kHz sample rate
-	const inputSampleRate = 48000
-	const frameSize = uint16(inputSampleRate * 20 / 1000) // 20ms frames
-
 	C.update_audio_decoder_constants(
-		C.uint(inputSampleRate),
 		C.uchar(1), // Mono for USB audio gadget
-		C.ushort(uint16(frameSize)),
 		C.ushort(1500),
 		C.uint(1000),
 		C.uchar(5),
