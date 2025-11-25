@@ -589,11 +589,8 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 		}
 	}
 
-	if (actual_rate_out) *actual_rate_out = negotiated_rate;
-	if (actual_frame_size_out) {
-		// Calculate actual frame size based on negotiated rate (20ms frames)
-		*actual_frame_size_out = negotiated_rate / 50;
-	}
+	*actual_rate_out = negotiated_rate;
+	*actual_frame_size_out = negotiated_rate / 50;  // 20ms frames
 
 	return 0;
 }
