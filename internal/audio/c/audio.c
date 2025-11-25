@@ -588,6 +588,10 @@ static int configure_alsa_device(snd_pcm_t *handle, const char *device_name, uin
 				*channels_swapped_out = is_swapped;
 			}
 			free(chmap);
+		} else {
+			fprintf(stdout, "INFO: %s: Channel map not available, assuming standard L/R order\n",
+			        device_name);
+			fflush(stdout);
 		}
 	}
 
@@ -627,6 +631,7 @@ int jetkvm_audio_capture_init() {
 	if (encoder != NULL || pcm_capture_handle != NULL) {
 		capture_initialized = 0;
 		atomic_store(&capture_stop_requested, 1);
+		__sync_synchronize();
 
 		if (pcm_capture_handle) {
 			snd_pcm_drop(pcm_capture_handle);
