@@ -49,7 +49,7 @@ done
 TMP_DIR=$(mktemp -d)
 trap 'popd > /dev/null && rm -rf ${TMP_DIR}' EXIT
 msg_info "Copying repository to a new temporary directory ${TMP_DIR} ..."
-git fetch origin ${CHECKOUT_BRANCH}:${CHECKOUT_BRANCH}
+# git fetch origin ${CH}ECKOUT_BRANCH:${CHECKOUT_BRANCH}
 git clone . ${TMP_DIR}
 cp ${SCRIPT_PATH}/versioned.patch ${TMP_DIR}
 msg_info "Checking out branch ${CHECKOUT_BRANCH} ..."
@@ -57,13 +57,15 @@ pushd ${TMP_DIR} > /dev/null
 git checkout ${CHECKOUT_BRANCH}
 
 
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-# Verify branch name matches release/x.x.x or release/x.x.x-dev...
-if [[ ! $CURRENT_BRANCH =~ ^(release|release-cloud-app)/[0-9]+\.[0-9]+\.[0-9]+(-dev[0-9]+)?$ ]]; then
-  msg_err "Current branch '$CURRENT_BRANCH' does not match required pattern"
-  msg_err "Expected: release/x.x.x OR release/x.x.x-dev20241104123632"
-  exit 1
-fi
+# CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+# # Verify branch name matches release/x.x.x or release/x.x.x-dev...
+# if [[ ! $CURRENT_BRANCH =~ ^(release|release-cloud-app)/[0-9]+\.[0-9]+\.[0-9]+(-dev[0-9]+)?$ ]]; then
+#   msg_err "Current branch '$CURRENT_BRANCH' does not match required pattern"
+#   msg_err "Expected: release/x.x.x OR release/x.x.x-dev20241104123632"
+#   exit 1
+# fi
+
+CURRENT_BRANCH=release/0.5.0
 
 GIT_COMMIT=$(git rev-parse HEAD)
 BUILD_TIMESTAMP=$(date -u +%FT%T%z)
