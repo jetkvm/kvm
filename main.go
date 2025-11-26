@@ -58,6 +58,10 @@ func Main() {
 	initNative(systemVersionLocal, appVersionLocal)
 	initDisplay()
 
+	// initialize usb gadget
+	setProcTitle("initUsbGadget")
+	initUsbGadget()
+
 	http.DefaultClient.Timeout = 1 * time.Minute
 
 	err = rootcerts.UpdateDefaultTransport()
@@ -93,10 +97,6 @@ func Main() {
 
 	setProcTitle("initPrometheus")
 	initPrometheus()
-
-	// initialize usb gadget
-	setProcTitle("initUsbGadget")
-	initUsbGadget()
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
 	}
