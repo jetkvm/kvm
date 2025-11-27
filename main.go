@@ -54,13 +54,13 @@ func Main() {
 
 	go runWatchdog()
 
-	setProcTitle("initNative")
-	initNative(systemVersionLocal, appVersionLocal)
-	initDisplay()
-
 	// initialize usb gadget
 	setProcTitle("initUsbGadget")
 	initUsbGadget()
+
+	setProcTitle("initNative")
+	initNative(systemVersionLocal, appVersionLocal)
+	initDisplay()
 
 	http.DefaultClient.Timeout = 1 * time.Minute
 
