@@ -81,7 +81,7 @@ if [ "$SET_AS_DEFAULT" = true ]; then
   # Build for root dist
   msg_info "Building for root dist..."
   npm ci
-  npm run build:prod
+  VITE_CLOUD_ENABLE_VERSIONED_UI=1 npm run build:prod
 fi
 
 # Build for versioned dist/v/VERSION
