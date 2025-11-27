@@ -582,10 +582,6 @@ function DeviceFileView({
     });
   }, [send, setOnStorageFiles, setStorageSpace]);
 
-  useEffect(() => {
-    syncStorage();
-  }, [syncStorage]);
-
   interface StorageFiles {
     files: {
       filename: string;
