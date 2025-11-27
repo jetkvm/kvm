@@ -83,6 +83,22 @@ func setupRouter() *gin.Engine {
 		}),
 	))
 
+	// Redirect to HTTPS if TLS mode is enabled
+	r.Use(func(c *gin.Context) {
+		if config.TLSMode != "" && c.Request.TLS == nil {
+			c.Request.URL.Scheme = "https"
+
+			if c.Request.URL.Host == "" {
+				c.Request.URL.Host = c.Request.Host
+			}
+
+			c.Redirect(http.StatusPermanentRedirect, c.Request.URL.String())
+			c.Abort()
+		}
+
+		c.Next()
+	})
+
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to get rooted static files subdirectory")
