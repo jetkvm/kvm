@@ -7,20 +7,20 @@ source ${SCRIPT_PATH}/build_utils.sh
 function show_help() {
   echo "Usage: $0 [options]"
   echo "Options:"
-  echo "  -b, --branch <branch>    Checkout branch"
+  echo "  -t, --tag <tag>          Checkout tag"
   echo "      --set-as-default     Set as default"
   echo "      --skip-confirmation  Skip confirmation"
   echo "  --help                   Show help"
 }
 
 # Parse command line arguments
-CHECKOUT_BRANCH=
+CHECKOUT_TAG=
 SET_AS_DEFAULT=false
 SKIP_CONFIRMATION=false
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -b|--branch)
-      CHECKOUT_BRANCH="$2"
+    -t|--tag)
+      CHECKOUT_TAG=$2
       shift 2
     ;;
     --set-as-default)
@@ -44,32 +44,29 @@ while [[ $# -gt 0 ]]; do
 done
 
 
-# Checkout current branch in a new temporary directory
+# Checkout current tag in a new temporary directory
 # only popd when exiting the script
 TMP_DIR=$(mktemp -d)
 trap 'popd > /dev/null && rm -rf ${TMP_DIR}' EXIT
 msg_info "Copying repository to a new temporary directory ${TMP_DIR} ..."
-# git fetch origin ${CH}ECKOUT_BRANCH:${CHECKOUT_BRANCH}
+# git fetch origin ${CHECKOUT_TAG}:${CHECKOUT_TAG}
 git clone . ${TMP_DIR}
-cp ${SCRIPT_PATH}/versioned.patch ${TMP_DIR}
-msg_info "Checking out branch ${CHECKOUT_BRANCH} ..."
+msg_info "Checking out tag ${CHECKOUT_TAG} ..."
 pushd ${TMP_DIR} > /dev/null
-git checkout ${CHECKOUT_BRANCH}
+git checkout ${CHECKOUT_TAG}
 
-
-# CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+CURRENT_TAG=$(git describe --tags)
 # # Verify branch name matches release/x.x.x or release/x.x.x-dev...
-# if [[ ! $CURRENT_BRANCH =~ ^(release|release-cloud-app)/[0-9]+\.[0-9]+\.[0-9]+(-dev[0-9]+)?$ ]]; then
-#   msg_err "Current branch '$CURRENT_BRANCH' does not match required pattern"
-#   msg_err "Expected: release/x.x.x OR release/x.x.x-dev20241104123632"
-#   exit 1
-# fi
+if [[ ! $CURRENT_TAG =~ ^(release|release-cloud-app)/[0-9]+\.[0-9]+\.[0-9]+(-dev[0-9]+)?$  ]]; then
+  msg_err "Current tag '$CURRENT_TAG' does not match required pattern"
+  msg_err "Expected: release/x.x.x OR release/x.x.x-dev20241104123632"
+  exit 1
+fi
 
-CURRENT_BRANCH=release/0.5.0
 
 GIT_COMMIT=$(git rev-parse HEAD)
 BUILD_TIMESTAMP=$(date -u +%FT%T%z)
-VERSION=${CURRENT_BRANCH#release/}
+VERSION=${CURRENT_TAG#release/}
 VERSION=${VERSION#release-cloud-app/}
 if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-dev[0-9]+)?$ ]]; then
   msg_err "Version '$VERSION' does not match required pattern"
@@ -90,7 +87,7 @@ fi
 # Build for versioned dist/v/VERSION
 msg_info "Building for dist/v/${VERSION}..."
 npm ci
-npm run build:prod -- --base=/v/${VERSION}/ --outDir dist/v/${VERSION}
+VITE_CLOUD_ENABLE_VERSIONED_UI=1 npm run build:prod -- --base=/v/${VERSION}/ --outDir dist/v/${VERSION}
 
 # Ask for confirmation
 if [ "$SKIP_CONFIRMATION" = false ]; then
