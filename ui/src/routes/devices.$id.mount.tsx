@@ -590,7 +590,7 @@ function DeviceFileView({
     files: {
       filename: string;
       size: number;
-      createdAt: Date;
+      createdAt: string;
     }[];
   }
 
