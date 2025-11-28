@@ -147,10 +147,9 @@ func (rcm *ResolvConfManager) update() error {
 
 type configMap map[string][]string
 
-func mergeConfig(nameservers *configMap, searchList *configMap, domains *configMap, config *types.InterfaceResolvConfMap) {
+func mergeConfig(nameservers *configMap, searchList *configMap, config *types.InterfaceResolvConfMap) {
 	localNameservers := *nameservers
 	localSearchList := *searchList
-	localDomains := *domains
 
 	for ifname, iface := range *config {
 		comment := ifname
@@ -173,18 +172,10 @@ func mergeConfig(nameservers *configMap, searchList *configMap, domains *configM
 			}
 			localSearchList[search] = append(localSearchList[search], comment)
 		}
-
-		if iface.Domain != "" {
-			if _, ok := localDomains[iface.Domain]; !ok {
-				localDomains[iface.Domain] = []string{}
-			}
-			localDomains[iface.Domain] = append(localDomains[iface.Domain], comment)
-		}
 	}
 
 	*nameservers = localNameservers
 	*searchList = localSearchList
-	*domains = localDomains
 }
 
 // generateResolvConf generates resolv.conf content
@@ -197,15 +188,13 @@ func (rcm *ResolvConfManager) generateResolvConf(conf *types.ResolvConf) ([]byte
 	// merge the nameservers and searchList
 	nameservers := configMap{}
 	searchList := configMap{}
-	domains := configMap{}
 
-	mergeConfig(&nameservers, &searchList, &domains, &conf.ConfigIPv4)
-	mergeConfig(&nameservers, &searchList, &domains, &conf.ConfigIPv6)
+	mergeConfig(&nameservers, &searchList, &conf.ConfigIPv4)
+	mergeConfig(&nameservers, &searchList, &conf.ConfigIPv6)
 
 	rcm.logger.Info().
 		Interface("nameservers", nameservers).
 		Interface("searchList", searchList).
-		Interface("domains", domains).
 		Msg("merged config")
 
 	flattenedSearchList := []string{}
@@ -215,6 +204,7 @@ func (rcm *ResolvConfManager) generateResolvConf(conf *types.ResolvConf) ([]byte
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, map[string]any{
+		"domain":      rcm.getDomain(),
 		"nameservers": nameservers,
 		"searchList":  flattenedSearchList,
 	}); err != nil {
