@@ -77,6 +77,8 @@ export function LifeTimeLabel({ lifetime }: Readonly<{ lifetime: string }>) {
   );
 }
 
+const NonCustomDomainOptions = ["dhcp", "local"];
+
 export default function SettingsNetworkRoute() {
   const { send } = useJsonRpc();
 
@@ -128,13 +130,18 @@ export default function SettingsNetworkRoute() {
         },
       };
 
+      if (!NonCustomDomainOptions.includes(settingsWithDefaults.domain)) {
+        setCustomDomain(settingsWithDefaults.domain);
+        settingsWithDefaults.domain = "custom";
+      }
+
       initialSettingsRef.current = settingsWithDefaults;
       return { settings: settingsWithDefaults, state };
     } catch (err) {
       notifications.error(m.network_settings_load_error({ error: err instanceof Error ? err.message : m.unknown_error() }));
       throw err;
     }
-  }, [setNetworkState]);
+  }, [setNetworkState, setCustomDomain]);
 
   const formMethods = useForm<NetworkSettings>({
     mode: "onBlur",
@@ -406,6 +413,7 @@ export default function SettingsNetworkRoute() {
                       type="text"
                       label={m.network_custom_domain()}
                       placeholder="home.example.com"
+                      value={customDomain}
                       onChange={e => {
                         setCustomDomain(e.target.value);
                       }}
