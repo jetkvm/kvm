@@ -54,6 +54,10 @@ func Main() {
 
 	go runWatchdog()
 
+	// initialize usb gadget
+	setProcTitle("initUsbGadget")
+	initUsbGadget()
+
 	setProcTitle("initNative")
 	initNative(systemVersionLocal, appVersionLocal)
 	initDisplay()
@@ -96,10 +100,6 @@ func Main() {
 
 	setProcTitle("initPrometheus")
 	initPrometheus()
-
-	// initialize usb gadget
-	setProcTitle("initUsbGadget")
-	initUsbGadget()
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
 	}
