@@ -211,8 +211,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonPropsType>(
 
 Button.displayName = "Button";
 
-type LinkPropsType = Pick<LinkProps, "to"> &
-  React.ComponentProps<typeof ButtonContent> & { disabled?: boolean, reloadDocument?: boolean };
+type LinkPropsType = Pick<LinkProps, "to" | "target" | "reloadDocument"> &
+  React.ComponentProps<typeof ButtonContent> & { disabled?: boolean };
 export const LinkButton = ({ to, ...props }: LinkPropsType) => {
   const classes = cx(
     "group outline-hidden",
@@ -224,7 +224,7 @@ export const LinkButton = ({ to, ...props }: LinkPropsType) => {
 
   if (to.toString().startsWith("http")) {
     return (
-      <ExtLink href={to.toString()} className={classes}>
+      <ExtLink href={to.toString()} className={classes} target={props.target}>
         <ButtonContent {...props} />
       </ExtLink>
     );
