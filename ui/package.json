@@ -55,6 +55,7 @@
     "react-use-websocket": "^4.13.0",
     "react-xtermjs": "^1.0.10",
     "recharts": "^3.3.0",
+    "semver": "^7.7.3",
     "tailwind-merge": "^3.3.1",
     "tslog": "^4.10.2",
     "usehooks-ts": "^3.1.1",

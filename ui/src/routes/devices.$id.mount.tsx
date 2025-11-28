@@ -503,6 +503,12 @@ function UrlView({
   );
 }
 
+export interface StorageFile {
+  name: string;
+  size: string;
+  createdAt: Date;
+}
+
 function DeviceFileView({
   onMountStorageFile,
   mountInProgress,
@@ -514,13 +520,7 @@ function DeviceFileView({
   onBack: () => void;
   onNewImageClick: (incompleteFileName?: string) => void;
 }) {
-  const [onStorageFiles, setOnStorageFiles] = useState<
-    {
-      name: string;
-      size: string;
-      createdAt: string;
-    }[]
-  >([]);
+  const [onStorageFiles, setOnStorageFiles] = useState<StorageFile[]>([]);
 
   const [selected, setSelected] = useState<string | null>(null);
   const [usbMode, setUsbMode] = useState<RemoteVirtualMediaState["mode"]>("CDROM");
@@ -565,7 +565,7 @@ function DeviceFileView({
       const formattedFiles = files.map(file => ({
         name: file.filename,
         size: formatters.bytes(file.size),
-        createdAt: formatters.date(new Date(file?.createdAt)),
+        createdAt: new Date(file?.createdAt),
       }));
 
       setOnStorageFiles(formattedFiles);
@@ -582,10 +582,6 @@ function DeviceFileView({
     });
   }, [send, setOnStorageFiles, setStorageSpace]);
 
-  useEffect(() => {
-    syncStorage();
-  }, [syncStorage]);
-
   interface StorageFiles {
     files: {
       filename: string;
@@ -598,7 +594,7 @@ function DeviceFileView({
     syncStorage();
   }, [syncStorage]);
 
-  function handleDeleteFile(file: { name: string; size: string; createdAt: string }) {
+  function handleDeleteFile(file: StorageFile) {
     console.log("Deleting file:", file);
     send("deleteStorageFile", { filename: file.name }, (resp: JsonRpcResponse) => {
       if ("error" in resp) {
@@ -610,7 +606,7 @@ function DeviceFileView({
     });
   }
 
-  function handleOnSelectFile(file: { name: string; size: string; createdAt: string }) {
+  function handleOnSelectFile(file: StorageFile) {
     setSelected(file.name);
     if (file.name.endsWith(".iso")) {
       setUsbMode("CDROM");
@@ -1292,7 +1288,7 @@ function PreUploadedImageItem({
 }: {
   name: string;
   size: string;
-  uploadedAt: string;
+  uploadedAt: Date;
   isSelected: boolean;
   isIncomplete: boolean;
   onSelect: () => void;
