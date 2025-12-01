@@ -262,7 +262,7 @@ func (fc *FileChange) getActualState(loggingContext *zerolog.Context) error {
 		// get the content of the file
 		content, err := os.ReadFile(fc.Path)
 		if err != nil {
-			logging.LogWarnE(context, err, "failed to read file")
+			_ = logging.LogWarnE(context, err, "failed to read file")
 			return fmt.Errorf("failed to read file")
 		}
 		fc.ActualContent = content
@@ -327,8 +327,6 @@ func (fc *FileChange) getFileChangeResolvedAction(loggingContext *zerolog.Contex
 			if compareFileContent(fc.ActualContent, fc.ExpectedContent, looserMatch) {
 				return FileChangeResolvedActionDoNothing
 			}
-			// TODO: move this to somewhere else
-			// this is a workaround for the fact that the file is not updated if it has no content
 			if baseName == "file" &&
 				bytes.Equal(fc.ActualContent, []byte{}) &&
 				bytes.Equal(fc.ExpectedContent, []byte{0x0a}) {

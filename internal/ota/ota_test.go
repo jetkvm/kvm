@@ -11,14 +11,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/gwatts/rootcerts"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -173,15 +171,8 @@ func newOtaState(d *testData, t *testing.T) *State {
 		return systemVersion, appVersion, nil
 	}
 
-	traceLevel := zerolog.InfoLevel
-
-	if os.Getenv("TEST_LOG_TRACE") == "1" {
-		traceLevel = zerolog.TraceLevel
-	}
-	logger := zerolog.New(os.Stdout).Level(traceLevel)
 	otaState := NewState(Options{
 		SkipConfirmSystem:  true,
-		Logger:             &logger,
 		ReleaseAPIEndpoint: releaseAPIEndpoint,
 		GetHTTPClient: func() HttpClient {
 			if d.RemoteMetadata != nil {

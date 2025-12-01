@@ -40,7 +40,7 @@ func rebindUsb(udc string, ignoreUnbindError bool) error {
 }
 
 func (u *UsbGadget) rebindUsb(ignoreUnbindError bool) error {
-	logging.LogInfo(u.getLoggingContext().Str("udc", u.udc), "rebinding USB gadget to UDC")
+	logging.LogInfo(u.getUsbGadgetLoggingContext().Str("udc", u.udc), "rebinding USB gadget to UDC")
 	return rebindUsb(u.udc, ignoreUnbindError)
 }
 
@@ -60,7 +60,7 @@ func (u *UsbGadget) GetUsbState() (state string) {
 		if os.IsNotExist(err) {
 			return "not attached"
 		} else {
-			_ = logging.LogWarnE(u.getLoggingContext(), err, "failed to read usb state")
+			_ = logging.LogWarnE(u.getUsbGadgetLoggingContext(), err, "failed to read usb state")
 		}
 		return "unknown"
 	}

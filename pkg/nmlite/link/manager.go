@@ -406,7 +406,7 @@ func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]
 
 	// remove remaining default routes
 	for _, defaultRoute := range toRemove {
-		nm.logger.Warn().Str("gateway", defaultRoute.Gw.String()).Msg("removing default route")
+		nm.logger.Info().Str("gateway", defaultRoute.Gw.String()).Msg("removing default route")
 		if err := nm.RouteDel(defaultRoute); err != nil {
 			nm.logger.Warn().Err(err).Msg("failed to remove default route")
 		}
@@ -414,7 +414,7 @@ func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]
 
 	// add remaining expected default routes
 	for _, gateway := range expected {
-		nm.logger.Warn().Str("gateway", gateway.String()).Msg("adding default route")
+		nm.logger.Info().Str("gateway", gateway.String()).Msg("adding default route")
 
 		route := &netlink.Route{
 			Dst:       &ipv4DefaultRoute,

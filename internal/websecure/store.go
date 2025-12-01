@@ -14,27 +14,18 @@ import (
 type CertStore struct {
 	certificates map[string]*tls.Certificate
 	certLock     *sync.Mutex
-
-	storePath string
-
-	log *zerolog.Logger
+	storePath    string
 }
 
-func NewCertStore(storePath string, log *zerolog.Logger) *CertStore {
-	if log == nil {
-		log = &defaultLogger
-	}
-
+func NewCertStore(storePath string) *CertStore {
 	return &CertStore{
 		certificates: make(map[string]*tls.Certificate),
 		certLock:     &sync.Mutex{},
-
-		storePath: storePath,
-		log:       log,
+		storePath:    storePath,
 	}
 }
 
-func (s *CertStore) ensureStorePath() error {
+func (s *CertStore) ensureStorePath(logger *zerolog.Logger) error {
 	// check if directory exists
 	stat, err := os.Stat(s.storePath)
 	if err == nil {
@@ -46,7 +37,7 @@ func (s *CertStore) ensureStorePath() error {
 	}
 
 	if os.IsNotExist(err) {
-		s.log.Trace().Str("path", s.storePath).Msg("TLS store directory does not exist, creating directory")
+		logger.Trace().Str("path", s.storePath).Msg("TLS store directory does not exist, creating directory")
 		err = os.MkdirAll(s.storePath, 0755)
 		if err != nil {
 			return fmt.Errorf("failed to create TLS store path: %w", err)
@@ -57,16 +48,18 @@ func (s *CertStore) ensureStorePath() error {
 	return fmt.Errorf("failed to check TLS store path: %w", err)
 }
 
-func (s *CertStore) LoadCertificates() {
-	err := s.ensureStorePath()
+func (s *CertStore) LoadCertificates(logger *zerolog.Logger) {
+	scopedLogger := logger.With().Str("storePath", s.storePath).Logger()
+
+	err := s.ensureStorePath(&scopedLogger)
 	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to ensure store path")
+		scopedLogger.Error().Err(err).Msg("Failed to ensure store path")
 		return
 	}
 
 	files, err := os.ReadDir(s.storePath)
 	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to read TLS directory")
+		scopedLogger.Error().Err(err).Msg("Failed to read TLS directory")
 		return
 	}
 
@@ -76,30 +69,33 @@ func (s *CertStore) LoadCertificates() {
 		}
 
 		if strings.HasSuffix(file.Name(), ".crt") {
-			s.loadCertificate(strings.TrimSuffix(file.Name(), ".crt"))
+			hostname := strings.TrimSuffix(file.Name(), ".crt")
+			s.loadCertificate(hostname, &scopedLogger)
 		}
 	}
 }
 
-func (s *CertStore) loadCertificate(hostname string) {
+func (s *CertStore) loadCertificate(hostname string, logger *zerolog.Logger) {
 	s.certLock.Lock()
 	defer s.certLock.Unlock()
+
+	scopedLogger := logger.With().Str("hostname", hostname).Logger()
 
 	keyFile := path.Join(s.storePath, hostname+".key")
 	crtFile := path.Join(s.storePath, hostname+".crt")
 
 	cert, err := tls.LoadX509KeyPair(crtFile, keyFile)
 	if err != nil {
-		s.log.Error().Err(err).Str("hostname", hostname).Msg("Failed to load certificate")
+		scopedLogger.Error().Err(err).Msg("Failed to load certificate")
 		return
 	}
 
 	s.certificates[hostname] = &cert
 
 	if hostname == selfSignerCAMagicName {
-		s.log.Info().Msg("loaded CA certificate")
+		scopedLogger.Info().Msg("loaded CA certificate")
 	} else {
-		s.log.Info().Str("hostname", hostname).Msg("loaded certificate")
+		scopedLogger.Info().Msg("loaded certificate")
 	}
 }
 
@@ -116,7 +112,9 @@ func (s *CertStore) GetCertificate(hostname string) *tls.Certificate {
 // returns are:
 // - error: if the certificate is invalid or if there's any error during saving the certificate
 // - error: if there's any warning or error during saving the certificate
-func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key string, ignoreWarning bool) (error, error) {
+func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key string, ignoreWarning bool, logger *zerolog.Logger) (error, error) {
+	scopedLogger := logger.With().Str("hostname", hostname).Str("cert", cert).Logger() // don't log the key for security reasons
+
 	tlsCert, err := tls.X509KeyPair([]byte(cert), []byte(key))
 	if err != nil {
 		return fmt.Errorf("failed to parse certificate: %w", err), nil
@@ -127,7 +125,7 @@ func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key
 		// add recover to avoid panic
 		defer func() {
 			if r := recover(); r != nil {
-				s.log.Error().Interface("recovered", r).Msg("Failed to verify hostname")
+				scopedLogger.Error().Interface("recovered", r).Msg("Failed to verify hostname")
 			}
 		}()
 
@@ -135,7 +133,7 @@ func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key
 			if !ignoreWarning {
 				return nil, fmt.Errorf("certificate does not match hostname: %w", err)
 			}
-			s.log.Warn().Err(err).Msg("certificate does not match hostname")
+			scopedLogger.Warn().Err(err).Msg("certificate does not match hostname")
 		}
 	}
 
@@ -143,22 +141,22 @@ func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key
 	s.certificates[hostname] = &tlsCert
 	s.certLock.Unlock()
 
-	s.saveCertificate(hostname)
+	s.saveCertificate(hostname, &scopedLogger)
 
 	return nil, nil
 }
 
-func (s *CertStore) saveCertificate(hostname string) {
+func (s *CertStore) saveCertificate(hostname string, logger *zerolog.Logger) {
 	// check if certificate already exists
 	tlsCert := s.certificates[hostname]
 	if tlsCert == nil {
-		s.log.Error().Str("hostname", hostname).Msg("Certificate for hostname does not exist, skipping saving certificate")
+		logger.Error().Msg("Certificate for hostname does not exist, skipping saving certificate")
 		return
 	}
 
-	err := s.ensureStorePath()
+	err := s.ensureStorePath(logger)
 	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to ensure store path")
+		logger.Error().Err(err).Msg("Failed to ensure store path")
 		return
 	}
 
@@ -166,14 +164,14 @@ func (s *CertStore) saveCertificate(hostname string) {
 	crtFile := path.Join(s.storePath, hostname+".crt")
 
 	if err := keyToFile(tlsCert, keyFile); err != nil {
-		s.log.Error().Err(err).Msg("Failed to save key file")
+		logger.Error().Err(err).Msg("Failed to save key file")
 		return
 	}
 
 	if err := certToFile(tlsCert, crtFile); err != nil {
-		s.log.Error().Err(err).Msg("Failed to save certificate")
+		logger.Error().Err(err).Msg("Failed to save certificate")
 		return
 	}
 
-	s.log.Info().Str("hostname", hostname).Msg("Saved certificate")
+	logger.Info().Msg("Saved certificate")
 }

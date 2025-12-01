@@ -128,7 +128,7 @@ func (c *Config) GetUpdateAPIURL() string {
 func (c *Config) GetDisplayRotation() uint16 {
 	rotationInt, err := strconv.ParseUint(c.DisplayRotation, 10, 16)
 	if err != nil {
-		logger.Warn().Err(err).Msg("invalid display rotation, using default")
+		logging.GetSubsystemLogger("config").Warn().Err(err).Msg("invalid display rotation, using default")
 		return 270
 	}
 	return uint16(rotationInt)
@@ -138,7 +138,7 @@ func (c *Config) GetDisplayRotation() uint16 {
 func (c *Config) SetDisplayRotation(rotation string) error {
 	_, err := strconv.ParseUint(rotation, 10, 16)
 	if err != nil {
-		logger.Warn().Err(err).Msg("invalid display rotation, using default")
+		logging.GetSubsystemLogger("config").Warn().Err(err).Msg("invalid display rotation, using default")
 		return err
 	}
 	c.DisplayRotation = rotation
@@ -224,6 +224,8 @@ func LoadConfig() {
 	configLock.Lock()
 	defer configLock.Unlock()
 
+	logger := logging.GetSubsystemLogger("config")
+
 	if config != nil {
 		logger.Debug().Msg("config already loaded, skipping")
 		return
@@ -272,9 +274,8 @@ func LoadConfig() {
 		loadedConfig.KeyboardLayout = "en-US"
 	}
 
+	logging.UpdateConfigLogLevel(loadedConfig.DefaultLogLevel)
 	config = &loadedConfig
-
-	logging.UpdateConfigLogLevel(config.DefaultLogLevel)
 
 	configSuccess.Set(1.0)
 	configSuccessTime.SetToCurrentTime()
@@ -294,6 +295,7 @@ func saveConfig(path string) error {
 	configLock.Lock()
 	defer configLock.Unlock()
 
+	logger := logging.GetSubsystemLogger("config")
 	logger.Trace().Str("path", path).Msg("Saving config")
 
 	// fixup old keyboard layout value

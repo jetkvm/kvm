@@ -44,14 +44,21 @@ func hexToOctal(hex string) (string, error) {
 	return octal, nil
 }
 
+func compareIgnoreTrailingLF(shorter []byte, longer []byte) bool {
+	shorterLen := len(shorter)
+	longerLen := len(longer)
+	return shorterLen+1 == longerLen &&
+		bytes.Equal(longer[:shorterLen], shorter) &&
+		longer[shorterLen] == 0x0a
+}
+
 func compareFileContent(oldContent []byte, newContent []byte, looserMatch bool) bool {
 	if len(oldContent) == len(newContent) && bytes.Equal(oldContent, newContent) {
 		return true
 	}
 
-	if len(oldContent) == len(newContent)+1 &&
-		bytes.Equal(oldContent[:len(newContent)], newContent) &&
-		oldContent[len(newContent)] == 10 {
+	// allow for a trailing newline difference if the one did have one and the other does NOT
+	if compareIgnoreTrailingLF(oldContent, newContent) || compareIgnoreTrailingLF(newContent, oldContent) {
 		return true
 	}
 
@@ -97,14 +104,15 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 		return n, nil
 	}
 
-	context := u.getLoggingContext().Str("file", fileName).Bytes("data", data)
+	context := u.getUsbGadgetLoggingContext().Str("file", fileName).Bytes("data", data)
 	_ = logging.LogTraceE(context, err, "write failed")
 
 	if errors.Is(err, os.ErrDeadlineExceeded) {
-		u.logWithSuppression(context, "writeWithTimeout_"+fileName, 10, err, "write timed out")
-		// we've exceeded the suppression interval, so return an error so we can close and re-open the file
-		// TODO return 0, err
-		err = nil
+		if exceeded := u.logWithSuppression(context, "writeWithTimeout_"+fileName, 100, err, "write timed out"); exceeded {
+			// we've exceeded the suppression interval, so return an error so we can close and re-open the file
+			return 0, err
+		}
+		return 0, nil
 	}
 
 	return n, err

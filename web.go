@@ -77,6 +77,7 @@ func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 	r := gin.Default()
+	ginLogger := logging.GetSubsystemLogger("gin")
 	r.Use(gin_logger.SetLogger(
 		gin_logger.WithLogger(func(*gin.Context, zerolog.Logger) zerolog.Logger {
 			return *ginLogger
@@ -85,7 +86,7 @@ func setupRouter() *gin.Engine {
 
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to get rooted static files subdirectory")
+		logging.GetSubsystemLogger("web").Fatal().Err(err).Msg("failed to get rooted static files subdirectory")
 	}
 	staticFileServer := http.StripPrefix("/static", statigz.FileServer(
 		staticFS.(fs.ReadDirFS),
@@ -233,7 +234,7 @@ func handleWebRTCSession(c *gin.Context) {
 	}
 
 	// Cancel any ongoing keyboard macro when session changes
-	cancelKeyboardMacro()
+	_ = cancelKeyboardMacro()
 
 	currentSession = session
 	c.JSON(http.StatusOK, gin.H{"sd": sd})
@@ -249,7 +250,8 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 	source := c.ClientIP()
 	connectionID := uuid.New().String()
 
-	scopedLogger := websocketLogger.With().
+	scopedLogger := logging.GetSubsystemLogger("websocket").
+		With().
 		Str("component", "websocket").
 		Str("source", source).
 		Str("sourceType", "local").
@@ -372,7 +374,7 @@ func handleWebRTCSignalWsMessages(
 				if err == nil {
 					continue
 				}
-				cloudLogger.Info().Err(err).Msg("disconnecting from cloud due to")
+				logging.GetSubsystemLogger("cloud").Info().Err(err).Msg("disconnecting from cloud due to")
 				cancelRun()
 			}
 		}()
@@ -591,7 +593,7 @@ func RunWebServer() {
 		}
 	}
 
-	logger.Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
+	logging.GetSubsystemLogger("web").Info().Str("bindAddress", bindAddress).Bool("loopbackOnly", config.LocalLoopbackOnly).Msg("Starting web server")
 	if err := r.Run(bindAddress); err != nil {
 		panic(err)
 	}
@@ -814,7 +816,7 @@ func handleSendWOLMagicPacket(c *gin.Context) {
 	inputMacAddr := c.Param("mac-addr")
 	macAddr, err := net.ParseMAC(inputMacAddr)
 	if err != nil {
-		logger.Warn().Err(err).Str("inputMacAddr", inputMacAddr).Msg("Invalid MAC address provided")
+		logging.GetSubsystemLogger("wol").Warn().Err(err).Str("inputMacAddr", inputMacAddr).Msg("Invalid MAC address provided")
 		c.String(http.StatusBadRequest, "Invalid mac address provided")
 		return
 	}
@@ -822,7 +824,7 @@ func handleSendWOLMagicPacket(c *gin.Context) {
 	macAddrString := macAddr.String()
 	err = rpcSendWOLMagicPacket(macAddrString)
 	if err != nil {
-		logger.Warn().Err(err).Str("macAddrString", macAddrString).Msg("Failed to send WOL magic packet")
+		logging.GetSubsystemLogger("wol").Warn().Err(err).Str("macAddrString", macAddrString).Msg("Failed to send WOL magic packet")
 		c.String(http.StatusInternalServerError, "Failed to send WOL to %s: %v", macAddrString, err)
 		return
 	}

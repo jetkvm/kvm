@@ -82,7 +82,7 @@ func (enabledDevices *Devices) isGadgetConfigItemEnabled(itemKey string) bool {
 
 func (u *UsbGadget) loadGadgetConfig() {
 	if u.customConfig.isEmpty {
-		logging.LogTrace(u.getLoggingContext(), "using default gadget config")
+		logging.LogTrace(u.getUsbGadgetLoggingContext(), "using default gadget config")
 		return
 	}
 
@@ -133,7 +133,7 @@ func (u *UsbGadget) OverrideGadgetConfig(itemKey string, itemAttr string, value 
 	u.configLock.Lock()
 	defer u.configLock.Unlock()
 
-	context := u.getLoggingContext().Str("itemKey", itemKey).Str("itemAttr", itemAttr).Str("value", value)
+	context := u.getUsbGadgetLoggingContext().Str("itemKey", itemKey).Str("itemAttr", itemAttr).Str("value", value)
 
 	// get it as a pointer
 	_, ok := u.configMap[itemKey]
@@ -143,6 +143,7 @@ func (u *UsbGadget) OverrideGadgetConfig(itemKey string, itemAttr string, value 
 	}
 
 	if u.configMap[itemKey].attrs[itemAttr] == value {
+		logging.LogTrace(context, "unchanged gadget config")
 		return false, nil
 	}
 
@@ -168,14 +169,14 @@ func (u *UsbGadget) Init() error {
 
 	udcs := getUdcs()
 	if len(udcs) < 1 {
-		return logging.LogWarnE(u.getLoggingContext(), nil, "no udc found, skipping USB stack init")
+		return logging.LogWarnE(u.getUsbGadgetLoggingContext(), nil, "no udc found, skipping USB stack init")
 	}
 
 	u.udc = udcs[0]
 
 	err := u.configureUsbGadget(false)
 	if err != nil {
-		logging.LogError(u.getLoggingContext(), err, "unable to initialize USB stack")
+		_ = logging.LogError(u.getUsbGadgetLoggingContext(), err, "unable to initialize USB stack")
 		if u.strictMode {
 			return err
 		}
@@ -192,7 +193,7 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 
 	err := u.configureUsbGadget(true)
 	if err != nil {
-		logging.LogError(u.getLoggingContext(), err, "unable to update gadget config")
+		_ = logging.LogError(u.getUsbGadgetLoggingContext(), err, "unable to update gadget config")
 		if u.strictMode {
 			return err
 		}

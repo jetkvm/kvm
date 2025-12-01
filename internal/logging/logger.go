@@ -74,6 +74,7 @@ var (
 		"INFO":    zerolog.InfoLevel,
 		"DEBUG":   zerolog.DebugLevel,
 		"TRACE":   zerolog.TraceLevel,
+		"UNSET":   unset,
 	}
 )
 

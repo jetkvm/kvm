@@ -281,13 +281,7 @@ else
 
 	# Kill any existing instances of the application on the remote host
     msg_info "▶ Killing any running instances of the application on the remote host"
-
-	sshdev ash << EOF
-set -e
-
-# Set the library path to include the directory where librockit.so is located
-export LD_LIBRARY_PATH=/oem/usr/lib:\$LD_LIBRARY_PATH
-
+    sshdev ash << EOF
 # Kill any existing instances of the application
 killall jetkvm_app || true
 killall jetkvm_app_debug || true

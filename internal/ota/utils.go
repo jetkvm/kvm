@@ -29,7 +29,7 @@ func syncFilesystem() error {
 }
 
 func (s *State) downloadFile(ctx context.Context, path string, url string, component string) error {
-	logger := s.l.With().
+	logger := s.logger.With().
 		Str("path", path).
 		Str("url", url).
 		Str("downloadComponent", component).
@@ -130,7 +130,7 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 	return nil
 }
 func (s *State) verifyFile(path string, expectedHash string, verifyProgress *float32) error {
-	l := s.l.With().Str("path", path).Logger()
+	l := s.logger.With().Str("path", path).Logger()
 
 	unverifiedPath := path + ".unverified"
 	fileToHash, err := os.Open(unverifiedPath)

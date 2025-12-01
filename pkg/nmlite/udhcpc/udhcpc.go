@@ -40,13 +40,7 @@ type DHCPClientOptions struct {
 	OnLeaseChange func(lease *types.DHCPLease)
 }
 
-var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
-
 func NewDHCPClient(options *DHCPClientOptions) *DHCPClient {
-	if options.Logger == nil {
-		options.Logger = &defaultLogger
-	}
-
 	l := options.Logger.With().Str("interface", options.InterfaceName).Logger()
 	return &DHCPClient{
 		InterfaceName: options.InterfaceName,

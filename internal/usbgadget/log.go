@@ -5,15 +5,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func (u *UsbGadget) getLoggingContext() zerolog.Context {
+func (u *UsbGadget) getUsbGadgetLoggingContext() zerolog.Context {
 	context := logging.GetSubsystemLogger("usbgadget").
-		With().
-		Str("gadget", u.name)
-	return context
-}
-
-func (u *UsbGadget) getHidMouseLoggingContext() zerolog.Context {
-	context := logging.GetSubsystemLogger("hid-mouse").
 		With().
 		Str("gadget", u.name)
 	return context

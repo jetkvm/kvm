@@ -12,10 +12,10 @@ const (
 // DO NOT call it directly, it's not thread safe
 // Mutex is currently held by the caller, e.g. doUpdate
 func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus) error {
-	l := s.l.With().Str("path", appUpdatePath).Logger()
+	scopedLogger := s.logger.With().Str("path", appUpdatePath).Logger()
 
 	if err := s.downloadFile(ctx, appUpdatePath, appUpdate.url, "app"); err != nil {
-		return s.componentUpdateError("Error downloading app update", err, &l)
+		return s.componentUpdateError("Error downloading app update", err, &scopedLogger)
 	}
 
 	downloadFinished := time.Now()
@@ -28,7 +28,7 @@ func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus)
 		appUpdate.hash,
 		&appUpdate.verificationProgress,
 	); err != nil {
-		return s.componentUpdateError("Error verifying app update hash", err, &l)
+		return s.componentUpdateError("Error verifying app update hash", err, &scopedLogger)
 	}
 	verifyFinished := time.Now()
 	appUpdate.verifiedAt = verifyFinished
@@ -37,7 +37,7 @@ func (s *State) updateApp(ctx context.Context, appUpdate *componentUpdateStatus)
 	appUpdate.updateProgress = 1
 	s.triggerComponentUpdateState("app", appUpdate)
 
-	l.Info().Msg("App update downloaded")
+	scopedLogger.Info().Msg("App update downloaded")
 
 	s.rebootNeeded = true
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/confparser"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/mdns"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/internal/ota"
@@ -84,7 +85,7 @@ func restartMdns() {
 	}
 
 	if err := mDNS.SetOptions(options); err != nil {
-		networkLogger.Error().Err(err).Msg("failed to restart mDNS")
+		logging.GetSubsystemLogger("network").Error().Err(err).Msg("failed to restart mDNS")
 	}
 }
 
@@ -92,6 +93,7 @@ func triggerTimeSyncOnNetworkStateChange() {
 	if timeSync == nil {
 		return
 	}
+	networkLogger := logging.GetSubsystemLogger("network")
 
 	// set the NTP servers from the network manager
 	if networkManager != nil {
@@ -127,7 +129,7 @@ func networkStateChanged(_ string, state types.InterfaceState) {
 	}
 
 	if state.Online {
-		networkLogger.Info().Msg("network state changed to online, triggering time sync")
+		logging.GetSubsystemLogger("network").Info().Msg("network state changed to online, triggering time sync")
 		triggerTimeSyncOnNetworkStateChange()
 	}
 
@@ -145,6 +147,7 @@ func validateNetworkConfig() {
 		return
 	}
 
+	networkLogger := logging.GetSubsystemLogger("network")
 	networkLogger.Error().Err(err).Msg("failed to validate config, reverting to default config")
 	if err := SaveBackupConfig(); err != nil {
 		networkLogger.Error().Err(err).Msg("failed to save backup config")
@@ -166,6 +169,7 @@ func initNetwork() error {
 
 	nc := config.NetworkConfig
 
+	networkLogger := logging.GetSubsystemLogger("network")
 	nm := nmlite.NewNetworkManager(context.Background(), networkLogger)
 	networkLogger.Info().Interface("networkConfig", nc).Str("hostname", nc.Hostname.String).Str("domain", nc.Domain.String).Msg("initializing network manager")
 	_ = setHostname(nm, nc.Hostname.String, nc.Domain.String)
@@ -186,7 +190,7 @@ func initPublicIPState() {
 
 	// but it will be initialized anyway to avoid nil pointer dereferences
 	ps := myip.NewPublicIPState(&myip.PublicIPStateConfig{
-		Logger:             networkLogger,
+		Logger:             nil,
 		CloudflareEndpoint: config.CloudURL,
 		APIEndpoint:        "",
 		IPv4:               false,
@@ -229,7 +233,7 @@ func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
 func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (rebootRequired bool, postRebootAction *ota.PostRebootAction) {
 	oldDhcpClient := oldConfig.DHCPClient.String
 
-	l := networkLogger.With().
+	l := logging.GetSubsystemLogger("network").With().
 		Interface("old", oldConfig).
 		Interface("new", newConfig).
 		Logger()
@@ -304,7 +308,8 @@ func rpcGetNetworkSettings() *RpcNetworkSettings {
 func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, error) {
 	netConfig := settings.ToNetworkConfig()
 
-	l := networkLogger.With().
+	l := logging.GetSubsystemLogger("network").
+		With().
 		Str("interface", NetIfName).
 		Interface("newConfig", netConfig).
 		Logger()

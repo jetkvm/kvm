@@ -30,7 +30,7 @@ func (u *UsbGadget) WithTransaction(fn func(u2 *UsbGadget, tx *UsbGadgetTransact
 	u.txLock.Lock()
 	defer u.txLock.Unlock()
 
-	loggingContext := u.getLoggingContext().Str("udc", u.udc)
+	loggingContext := u.getUsbGadgetLoggingContext().Str("udc", u.udc)
 	logging.LogInfo(loggingContext, "starting USB gadget transaction")
 
 	tx := u.newUsbGadgetTransaction(&loggingContext)

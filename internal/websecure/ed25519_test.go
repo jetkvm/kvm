@@ -3,6 +3,8 @@ package websecure
 import (
 	"os"
 	"testing"
+
+	"github.com/rs/zerolog"
 )
 
 var (
@@ -25,17 +27,17 @@ MC4CAQAwBQYDK2VwBCIEIKV08xUsLRHBfMXqZwxVRzIbViOp8G7aQGjPvoRFjujB
 )
 
 func TestMain(m *testing.M) {
+	logger := zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
 	tlsStorePath, err := os.MkdirTemp("", "jktls.*")
 	if err != nil {
-		defaultLogger.Fatal().Err(err).Msg("failed to create temp directory")
+		logger.Fatal().Err(err).Msg("failed to create temp directory")
 	}
 
-	certStore = NewCertStore(tlsStorePath, nil)
-	certStore.LoadCertificates()
+	certStore = NewCertStore(tlsStorePath)
+	certStore.LoadCertificates(&logger)
 
 	certSigner = NewSelfSigner(
 		certStore,
-		nil,
 		"ci.jetkvm.com",
 		"JetKVM",
 		"JetKVM",
@@ -48,7 +50,8 @@ func TestMain(m *testing.M) {
 }
 
 func TestSaveEd25519Certificate(t *testing.T) {
-	err, _ := certStore.ValidateAndSaveCertificate("ed25519-test.jetkvm.com", fixtureEd25519Certificate, fixtureEd25519PrivateKey, true)
+	logger := zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
+	err, _ := certStore.ValidateAndSaveCertificate("ed25519-test.jetkvm.com", fixtureEd25519Certificate, fixtureEd25519PrivateKey, true, &logger)
 	if err != nil {
 		t.Fatalf("failed to save certificate: %v", err)
 	}

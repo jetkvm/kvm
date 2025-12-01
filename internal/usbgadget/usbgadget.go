@@ -11,6 +11,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/utils"
+
 	"github.com/rs/zerolog"
 )
 
@@ -30,9 +31,8 @@ type Config struct {
 	SerialNumber string `json:"serial_number"`
 	Manufacturer string `json:"manufacturer"`
 	Product      string `json:"product"`
-
-	isEmpty    bool
-	strictMode bool // when it's enabled, all warnings will be converted to errors
+	isEmpty      bool
+	strictMode   bool // when it's enabled, all warnings will be converted to errors
 }
 
 var defaultUsbGadgetDevices = Devices{
@@ -83,7 +83,7 @@ type UsbGadget struct {
 
 	enabledDevices Devices
 
-	strictMode bool // only intended for testing for now
+	strictMode bool // only intended for testing
 
 	absMouseAccumulatedWheelY float64
 
@@ -137,15 +137,14 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		enabledDevices:       *enabledDevices,
 		lastUserInput:        time.Now(),
 
-		strictMode: config.strictMode,
-
+		strictMode:            config.strictMode,
 		logSuppressionCounter: make(map[string]int),
 
 		absMouseAccumulatedWheelY: 0,
 	}
+
 	if err := g.Init(); err != nil {
-		_ = logging.LogError(g.getLoggingContext(), err, "failed to init USB gadget")
-		return nil
+		_ = logging.LogError(g.getUsbGadgetLoggingContext(), err, "failed to init USB gadget")
 	}
 
 	return g
@@ -168,6 +167,12 @@ func (u *UsbGadget) Close() error {
 	}
 	u.kbdAutoReleaseTimers = make(map[byte]*time.Timer)
 	u.kbdAutoReleaseLock.Unlock()
+
+	// Cancel keyboard state context
+	if u.keyboardStateCancel != nil {
+		u.keyboardStateCancel()
+		u.keyboardStateCancel = nil
+	}
 
 	// Close HID files
 	if u.keyboardHidFile != nil {

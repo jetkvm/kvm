@@ -7,6 +7,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/go-co-op/gocron/v2"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/tzdata"
 )
 
@@ -42,7 +43,7 @@ func rpcGetJigglerConfig() (JigglerConfig, error) {
 }
 
 func rpcSetJigglerConfig(jigglerConfig JigglerConfig) error {
-	logger.Info().Msgf("jigglerConfig: %v, %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab, jigglerConfig.Timezone)
+	logging.GetSubsystemLogger("jiggler").Info().Msgf("jigglerConfig: %v, %v, %v, %v", jigglerConfig.InactivityLimitSeconds, jigglerConfig.JitterPercentage, jigglerConfig.ScheduleCronTab, jigglerConfig.Timezone)
 	config.JigglerConfig = &jigglerConfig
 	err := removeExistingCrobJobs(scheduler)
 	if err != nil {
@@ -73,7 +74,7 @@ func initJiggler() {
 	ensureConfigLoaded()
 	err := runJigglerCronTab()
 	if err != nil {
-		logger.Error().Msgf("Error scheduling jiggler crontab: %v", err)
+		logging.GetSubsystemLogger("jiggler").Error().Msgf("Error scheduling jiggler crontab: %v", err)
 		return
 	}
 }
@@ -85,7 +86,7 @@ func runJigglerCronTab() error {
 	if config.JigglerConfig.Timezone != "" && config.JigglerConfig.Timezone != "UTC" {
 		// Validate timezone before applying
 		if _, err := time.LoadLocation(config.JigglerConfig.Timezone); err != nil {
-			logger.Warn().Msgf("Invalid timezone '%s', falling back to UTC: %v", config.JigglerConfig.Timezone, err)
+			logging.GetSubsystemLogger("jiggler").Warn().Msgf("Invalid timezone '%s', falling back to UTC: %v", config.JigglerConfig.Timezone, err)
 			// Don't add TZ prefix, let it run in UTC
 		} else {
 			cronTab = fmt.Sprintf("TZ=%s %s", config.JigglerConfig.Timezone, cronTab)
@@ -114,7 +115,7 @@ func runJigglerCronTab() error {
 	s.Start()
 	delta, err := calculateJobDelta(s)
 	jobDelta = delta
-	logger.Info().Msgf("Time between jiggler runs: %v", jobDelta)
+	logging.GetSubsystemLogger("jiggler").Info().Msgf("Time between jiggler runs: %v", jobDelta)
 	if err != nil {
 		return err
 	}
@@ -129,17 +130,17 @@ func runJiggler() {
 		}
 		inactivitySeconds := config.JigglerConfig.InactivityLimitSeconds
 		timeSinceLastInput := time.Since(gadget.GetLastUserInputTime())
-		logger.Debug().Msgf("Time since last user input %v", timeSinceLastInput)
+		logging.GetSubsystemLogger("jiggler").Debug().Msgf("Time since last user input %v", timeSinceLastInput)
 		if timeSinceLastInput > time.Duration(inactivitySeconds)*time.Second {
-			logger.Debug().Msg("Jiggling mouse...")
+			logging.GetSubsystemLogger("jiggler").Debug().Msg("Jiggling mouse...")
 			//TODO: change to rel mouse
 			err := rpcAbsMouseReport(1, 1, 0)
 			if err != nil {
-				logger.Warn().Msgf("Failed to jiggle mouse: %v", err)
+				logging.GetSubsystemLogger("jiggler").Warn().Msgf("Failed to jiggle mouse: %v", err)
 			}
 			err = rpcAbsMouseReport(0, 0, 0)
 			if err != nil {
-				logger.Warn().Msgf("Failed to reset mouse position: %v", err)
+				logging.GetSubsystemLogger("jiggler").Warn().Msgf("Failed to reset mouse position: %v", err)
 			}
 		}
 	}

@@ -65,12 +65,10 @@ func (u *UsbGadget) relMouseWriteHidFile(data []byte) error {
 
 	_, err := u.writeWithTimeout(u.relMouseHidFile, data)
 	if err != nil {
-		u.logWithSuppression(u.getHidMouseLoggingContext().Str("file", u.relMouseHidFile.Name()), "relMouseWriteHidFile", 10, err, "failed to write to hidg2")
 		u.relMouseHidFile.Close()
 		u.relMouseHidFile = nil
 		return err
 	}
-	u.resetLogSuppressionCounter("relMouseWriteHidFile")
 	return nil
 }
 
@@ -84,10 +82,7 @@ func (u *UsbGadget) RelMouseReport(mx int8, my int8, buttons uint8) error {
 		byte(my), // Y
 		0,        // Wheel
 	})
-	if err != nil {
-		return err
-	}
 
 	u.resetUserInputTime()
-	return nil
+	return err
 }

@@ -1,11 +1,14 @@
 package kvm
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 	"sync"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/supervisor"
 )
 
@@ -53,10 +56,10 @@ func checkFailsafeReason() {
 		}
 
 		// check if the last crash log file exists
-		l := failsafeLogger.With().Str("path", lastCrashPath).Logger()
+		l := logging.GetSubsystemLogger("failsafe").With().Str("path", lastCrashPath).Logger()
 		fi, err := os.Lstat(lastCrashPath)
 		if err != nil {
-			if !os.IsNotExist(err) {
+			if !errors.Is(err, fs.ErrNotExist) {
 				l.Warn().Err(err).Msg("failed to stat last crash log")
 			}
 			return
@@ -98,7 +101,7 @@ func notifyFailsafeMode(session *Session) {
 		return
 	}
 
-	jsonRpcLogger.Info().Str("reason", failsafeModeReason).Msg("sending failsafe mode notification")
+	logging.GetSubsystemLogger("failsafe").Info().Str("reason", failsafeModeReason).Msg("sending failsafe mode notification")
 
 	writeJSONRPCEvent("failsafeMode", FailsafeModeNotification{
 		Active: true,

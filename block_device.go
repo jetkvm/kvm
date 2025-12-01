@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pojntfx/go-nbd/pkg/server"
 	"github.com/rs/zerolog"
 )
@@ -16,6 +17,8 @@ type remoteImageBackend struct {
 
 func (r remoteImageBackend) ReadAt(p []byte, off int64) (n int, err error) {
 	virtualMediaStateMutex.RLock()
+
+	logger := logging.GetSubsystemLogger("nbd")
 	logger.Debug().Interface("currentVirtualMediaState", currentVirtualMediaState).Msg("currentVirtualMediaState")
 	logger.Debug().Int64("read size", int64(len(p))).Int64("off", off).Msg("read size and off")
 	if currentVirtualMediaState == nil {
@@ -81,7 +84,8 @@ func (d *NBDDevice) Start() error {
 	}
 
 	if d.l == nil {
-		scopedLogger := nbdLogger.With().
+		scopedLogger := logging.GetSubsystemLogger("nbd").
+			With().
 			Str("socket_path", nbdSocketPath).
 			Str("device_path", nbdDevicePath).
 			Logger()

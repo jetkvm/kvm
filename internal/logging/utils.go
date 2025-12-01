@@ -2,17 +2,10 @@ package logging
 
 import (
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/rs/zerolog"
 )
-
-var defaultLogger = zerolog.New(os.Stdout).Level(zerolog.InfoLevel)
-
-func GetDefaultLogger() *zerolog.Logger {
-	return &defaultLogger
-}
 
 func ErrorfL(logger *zerolog.Logger, format string, err error, args ...any) error {
 	logger.Error().Err(err).Msgf(format, args...)
@@ -58,7 +51,7 @@ func LogDebug(context zerolog.Context, msg string, args ...any) {
 	logger.Debug().Msgf(msg, args...)
 }
 
-func LogErrorDebug(context zerolog.Context, err error, msg string, args ...any) error {
+func LogDebugE(context zerolog.Context, err error, msg string, args ...any) error {
 	logger := AddOptionalError(context, err).Logger()
 	logger.Debug().Msgf(msg, args...)
 	return err
@@ -101,14 +94,18 @@ func LogAlways(context zerolog.Context, msg string, args ...any) {
 func LogFatal(context zerolog.Context, err error, msg string, args ...any) error {
 	context, err = AddRequiredError(context, err, msg, args...)
 	logger := context.Logger()
-	logger.Fatal().AnErr("err", err).Msgf(msg, args...)
+	// IMPORTANT: Use WithLevel(zerolog.FatalLevel) here instead of Fatal()
+	// to avoid the logger calling os.Exit(1).
+	logger.WithLevel(zerolog.FatalLevel).AnErr("err", err).Msgf(msg, args...)
 	return err
 }
 
 func LogPanic(context zerolog.Context, err error, msg string, args ...any) error {
 	context, err = AddRequiredError(context, err, msg, args...)
 	logger := context.Logger()
-	logger.Panic().AnErr("err", err).Msgf(msg, args...)
+	// IMPORTANT: Use WithLevel(zerolog.PanicLevel) here instead of Panic()
+	// to avoid the logger calling panic().
+	logger.WithLevel(zerolog.PanicLevel).AnErr("err", err).Msgf(msg, args...)
 	return err
 }
 

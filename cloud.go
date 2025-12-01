@@ -13,6 +13,7 @@ import (
 
 	"github.com/coder/websocket/wsjson"
 	"github.com/google/uuid"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -284,6 +285,7 @@ func disconnectCloud(reason error) {
 	cloudDisconnectLock.Lock()
 	defer cloudDisconnectLock.Unlock()
 
+	cloudLogger := logging.GetSubsystemLogger("cloud")
 	if cloudDisconnectChan == nil {
 		cloudLogger.Trace().Msg("cloud disconnect channel is not set, no need to disconnect")
 		return
@@ -323,7 +325,7 @@ func runWebsocketClient() error {
 	header.Set("Authorization", "Bearer "+config.CloudToken)
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
 
-	l := websocketLogger.With().
+	l := logging.GetSubsystemLogger("websocket").With().
 		Str("source", wsURL.Host).
 		Str("sourceType", "cloud").
 		Logger()
@@ -366,6 +368,8 @@ func runWebsocketClient() error {
 		Logger()
 	scopedLogger = &lWithConnectionId
 
+	cloudLogger := logging.GetSubsystemLogger("cloud")
+
 	// if the context is canceled, we don't want to return an error
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -397,7 +401,7 @@ func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessi
 		_ = wsjson.Write(context.Background(), c, gin.H{
 			"error": fmt.Sprintf("failed to initialize OIDC provider: %v", err),
 		})
-		cloudLogger.Warn().Err(err).Msg("failed to initialize OIDC provider")
+		logging.GetSubsystemLogger("cloud").Warn().Err(err).Msg("failed to initialize OIDC provider")
 		return err
 	}
 
@@ -474,11 +478,10 @@ func handleSessionRequest(
 		}()
 	}
 
-	cloudLogger.Info().Interface("session", session).Msg("new session accepted")
-	cloudLogger.Trace().Interface("session", session).Msg("new session accepted")
+	logging.GetSubsystemLogger("cloud").Info().Interface("session", session).Msg("new session accepted")
 
 	// Cancel any ongoing keyboard macro when session changes
-	cancelKeyboardMacro()
+	_ = cancelKeyboardMacro()
 
 	currentSession = session
 	_ = wsjson.Write(context.Background(), c, gin.H{"type": "answer", "data": sd})
@@ -495,21 +498,21 @@ func RunWebsocketClient() {
 
 		// If the network is not up, well, we can't connect to the cloud.
 		if !networkManager.IsOnline() {
-			cloudLogger.Warn().Msg("waiting for network to be online, will retry in 3 seconds")
+			logging.GetSubsystemLogger("cloud").Warn().Msg("waiting for network to be online, will retry in 3 seconds")
 			time.Sleep(3 * time.Second)
 			continue
 		}
 
 		// If the system time is not synchronized, the API request will fail anyway because the TLS handshake will fail.
 		if isTimeSyncNeeded() && !timeSync.IsSyncSuccess() {
-			cloudLogger.Warn().Msg("system time is not synced, will retry in 3 seconds")
+			logging.GetSubsystemLogger("cloud").Warn().Msg("system time is not synced, will retry in 3 seconds")
 			time.Sleep(3 * time.Second)
 			continue
 		}
 
 		err := runWebsocketClient()
 		if err != nil {
-			cloudLogger.Warn().Err(err).Msg("websocket client error")
+			logging.GetSubsystemLogger("cloud").Warn().Err(err).Msg("websocket client error")
 			metricCloudConnectionStatus.Set(0)
 			metricCloudConnectionFailureCount.Inc()
 			time.Sleep(5 * time.Second)
@@ -561,7 +564,7 @@ func rpcDeregisterDevice() error {
 			return fmt.Errorf("failed to save configuration after deregistering: %w", err)
 		}
 
-		cloudLogger.Info().Msg("device deregistered, disconnecting from cloud")
+		logging.GetSubsystemLogger("cloud").Info().Msg("device deregistered, disconnecting from cloud")
 		disconnectCloud(fmt.Errorf("device deregistered"))
 
 		setCloudConnectionState(CloudConnectionStateNotConfigured)

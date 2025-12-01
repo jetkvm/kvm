@@ -135,7 +135,7 @@ func (c *ChangeSetResolver) applyChanges(loggingContext *zerolog.Context) error 
 		err := c.changeset.applyChange(change, &context)
 		if err != nil {
 			if change.IgnoreErrors {
-				logging.LogWarnE(context, err, "ignoring error")
+				_ = logging.LogWarnE(context, err, "ignoring error")
 			} else {
 				return err
 			}

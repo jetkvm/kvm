@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/prometheus/common/version"
 )
 
@@ -75,7 +76,7 @@ func updateDisplay() {
 		nativeInstance.UpdateLabelIfChanged("hdmi_status_label", "Disconnected")
 		_, _ = nativeInstance.UIObjClearState("hdmi_status_label", "LV_STATE_CHECKED")
 	}
-	nativeInstance.UpdateLabelIfChanged("cloud_status_label", fmt.Sprintf("%d active", actionSessions))
+	nativeInstance.UpdateLabelIfChanged("cloud_status_label", fmt.Sprintf("%d active", getActiveSessions()))
 
 	if networkManager != nil && networkManager.IsUp() {
 		nativeInstance.UISetVar("main_screen", "home_screen")
@@ -185,14 +186,14 @@ func requestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 	defer displayUpdateLock.Unlock()
 
 	if !displayInited {
-		displayLogger.Info().Msg("display not inited, skipping updates")
+		logging.GetSubsystemLogger("display").Info().Msg("display not inited, skipping updates")
 		return
 	}
 	go func() {
 		if shouldWakeDisplay {
 			wakeDisplay(false, reason)
 		}
-		displayLogger.Debug().Msg("display updating")
+		logging.GetSubsystemLogger("display").Debug().Msg("display updating")
 		// TODO: only run once regardless how many pending updates
 		updateDisplay()
 	}()
@@ -240,7 +241,7 @@ func updateStaticContents() {
 // configureDisplayOnNativeRestart is called when the native process restarts
 // it ensures the display is configured correctly after the restart
 func configureDisplayOnNativeRestart() {
-	displayLogger.Info().Msg("native restarted, configuring display")
+	logging.GetSubsystemLogger("display").Info().Msg("native restarted, configuring display")
 	updateStaticContents()
 	requestDisplayUpdate(true, "native_restart")
 }
@@ -266,7 +267,7 @@ func setDisplayBrightness(brightness int, reason string) error {
 		return err
 	}
 
-	displayLogger.Info().Int("brightness", brightness).Str("reason", reason).Msg("set brightness")
+	logging.GetSubsystemLogger("display").Info().Int("brightness", brightness).Str("reason", reason).Msg("set brightness")
 	return nil
 }
 
@@ -275,7 +276,7 @@ func setDisplayBrightness(brightness int, reason string) error {
 func tick_displayDim() {
 	err := setDisplayBrightness(config.DisplayMaxBrightness/2, "tick_display_dim")
 	if err != nil {
-		displayLogger.Warn().Err(err).Msg("failed to dim display")
+		logging.GetSubsystemLogger("display").Warn().Err(err).Msg("failed to dim display")
 	}
 
 	dimTicker.Stop()
@@ -288,7 +289,7 @@ func tick_displayDim() {
 func tick_displayOff() {
 	err := setDisplayBrightness(0, "tick_display_off")
 	if err != nil {
-		displayLogger.Warn().Err(err).Msg("failed to turn off display")
+		logging.GetSubsystemLogger("display").Warn().Err(err).Msg("failed to turn off display")
 	}
 
 	offTicker.Stop()
@@ -315,7 +316,7 @@ func wakeDisplay(force bool, reason string) {
 
 	err := setDisplayBrightness(config.DisplayMaxBrightness, reason)
 	if err != nil {
-		displayLogger.Warn().Err(err).Msg("failed to wake display")
+		logging.GetSubsystemLogger("display").Warn().Err(err).Msg("failed to wake display")
 	}
 
 	if config.DisplayDimAfterSec != 0 && dimTicker != nil {
@@ -348,6 +349,8 @@ func startBacklightTickers() {
 		offTicker.Stop()
 	}
 
+	displayLogger := logging.GetSubsystemLogger("display")
+
 	if config.DisplayDimAfterSec != 0 {
 		displayLogger.Info().Msg("dim_ticker has started")
 		dimTicker = time.NewTicker(time.Duration(config.DisplayDimAfterSec) * time.Second)
@@ -373,6 +376,7 @@ func startBacklightTickers() {
 
 func initDisplay() {
 	go func() {
+		displayLogger := logging.GetSubsystemLogger("display")
 		displayLogger.Info().Msg("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
 		updateStaticContents()

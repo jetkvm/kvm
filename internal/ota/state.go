@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
 )
 
@@ -118,7 +119,7 @@ type GetLocalVersionFunc func() (systemVersion *semver.Version, appVersion *semv
 // State represents the current OTA state for the UI
 type State struct {
 	releaseAPIEndpoint      string
-	l                       *zerolog.Logger
+	logger                  *zerolog.Logger
 	mu                      sync.Mutex
 	updating                bool
 	error                   string
@@ -178,7 +179,6 @@ func (s *State) IsUpdatePending() bool {
 
 // Options represents the options for the OTA state
 type Options struct {
-	Logger             *zerolog.Logger
 	GetHTTPClient      GetHTTPClientFunc
 	GetLocalVersion    GetLocalVersionFunc
 	OnStateUpdate      OnStateUpdateFunc
@@ -198,7 +198,7 @@ func NewState(opts Options) *State {
 	}
 
 	s := &State{
-		l:                       opts.Logger,
+		logger:                  logging.GetSubsystemLogger("ota"),
 		client:                  opts.GetHTTPClient,
 		reboot:                  opts.HwReboot,
 		onStateUpdate:           opts.OnStateUpdate,

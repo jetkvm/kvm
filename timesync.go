@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/timesync"
 )
 
@@ -13,6 +14,8 @@ var (
 )
 
 func isTimeSyncNeeded() bool {
+	timesyncLogger := logging.GetSubsystemLogger("timesync")
+
 	if builtTimestamp == "" {
 		timesyncLogger.Warn().Msg("built timestamp is not set, time sync is needed")
 		return true
@@ -41,7 +44,7 @@ func isTimeSyncNeeded() bool {
 
 func initTimeSync() {
 	timeSync = timesync.NewTimeSync(&timesync.TimeSyncOptions{
-		Logger:        timesyncLogger,
+		Logger:        logging.GetSubsystemLogger("timesync"),
 		NetworkConfig: config.NetworkConfig,
 		PreCheckIPv4: func() (bool, error) {
 			if !networkManager.IPv4Ready() {

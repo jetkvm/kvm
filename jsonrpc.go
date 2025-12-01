@@ -19,6 +19,7 @@ import (
 	"go.bug.st/serial"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 	"github.com/jetkvm/kvm/internal/utils"
 )
@@ -56,17 +57,23 @@ type BacklightSettings struct {
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
-		jsonRpcLogger.Warn().Err(err).Msg("Error marshalling JSONRPC response")
+		logging.GetSubsystemLogger("jsonrpc").Error().Err(err).Msg("Error marshalling JSONRPC response")
 		return
 	}
 	err = session.RPCChannel.SendText(string(responseBytes))
 	if err != nil {
-		jsonRpcLogger.Warn().Err(err).Msg("Error sending JSONRPC response")
+		logging.GetSubsystemLogger("jsonrpc").Warn().Err(err).Msg("Error sending JSONRPC response")
 		return
 	}
 }
 
 func writeJSONRPCEvent(event string, params any, session *Session) {
+	scopedLogger := logging.GetSubsystemLogger("jsonrpc").
+		With().
+		Str("event", event).
+		Interface("params", params).
+		Logger()
+
 	request := JSONRPCEvent{
 		JSONRPC: "2.0",
 		Method:  event,
@@ -74,18 +81,16 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 	}
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
-		jsonRpcLogger.Warn().Err(err).Msg("Error marshalling JSONRPC event")
+		scopedLogger.Warn().Err(err).Msg("Error marshalling JSONRPC event")
 		return
 	}
 	if session == nil || session.RPCChannel == nil {
-		jsonRpcLogger.Info().Msg("RPC channel not available")
+		scopedLogger.Info().Msg("RPC channel not available")
 		return
 	}
 
 	requestString := string(requestBytes)
-	scopedLogger := jsonRpcLogger.With().
-		Str("data", requestString).
-		Logger()
+	scopedLogger = scopedLogger.With().Str("data", requestString).Logger()
 
 	scopedLogger.Trace().Msg("sending JSONRPC event")
 
@@ -100,7 +105,8 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
 	if err != nil {
-		jsonRpcLogger.Warn().
+		logging.GetSubsystemLogger("jsonrpc").
+			Warn().
 			Str("data", string(message.Data)).
 			Err(err).
 			Msg("Error unmarshalling JSONRPC request")
@@ -117,7 +123,8 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	scopedLogger := jsonRpcLogger.With().
+	scopedLogger := logging.GetSubsystemLogger("jsonrpc").
+		With().
 		Str("method", request.Method).
 		Interface("params", request.Params).
 		Interface("id", request.ID).Logger()
@@ -174,7 +181,7 @@ func rpcGetDeviceID() (string, error) {
 }
 
 func rpcReboot(force bool) error {
-	logger.Info().Msg("Got reboot request via RPC")
+	logging.GetSubsystemLogger("jsonrpc").Debug().Bool("force", force).Msg("Got reboot request via RPC")
 	return hwReboot(force, nil, 0)
 }
 
@@ -183,7 +190,7 @@ func rpcGetStreamQualityFactor() (float64, error) {
 }
 
 func rpcSetStreamQualityFactor(factor float64) error {
-	logger.Info().Float64("factor", factor).Msg("Setting stream quality factor")
+	logging.GetSubsystemLogger("jsonrpc").Debug().Float64("factor", factor).Msg("Setting stream quality factor")
 	err := nativeInstance.VideoSetQualityFactor(factor)
 	if err != nil {
 		return err
@@ -201,6 +208,7 @@ func rpcGetAutoUpdateState() (bool, error) {
 }
 
 func rpcSetAutoUpdateState(enabled bool) (bool, error) {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Bool("enabled", enabled).Msg("setting auto-update state")
 	config.AutoUpdateEnabled = enabled
 	if err := SaveConfig(); err != nil {
 		return config.AutoUpdateEnabled, fmt.Errorf("failed to save config: %w", err)
@@ -218,9 +226,9 @@ func rpcGetEDID() (string, error) {
 
 func rpcSetEDID(edid string) error {
 	if edid == "" {
-		logger.Info().Msg("Restoring EDID to default")
+		logging.GetSubsystemLogger("jsonrpc").Debug().Msg("Restoring EDID to default")
 	} else {
-		logger.Info().Str("edid", edid).Msg("Setting EDID")
+		logging.GetSubsystemLogger("jsonrpc").Debug().Str("edid", edid).Msg("Setting EDID")
 	}
 	err := nativeInstance.VideoSetEDID(edid)
 	if err != nil {
@@ -238,18 +246,18 @@ func rpcGetVideoLogStatus() (string, error) {
 }
 
 func rpcSetDisplayRotation(params DisplayRotationSettings) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Interface("params", params).Msg("setting display rotation")
+
 	currentRotation := config.DisplayRotation
 	if currentRotation == params.Rotation {
 		return nil
 	}
 
-	err := config.SetDisplayRotation(params.Rotation)
-	if err != nil {
+	if err := config.SetDisplayRotation(params.Rotation); err != nil {
 		return err
 	}
 
-	_, err = nativeInstance.DisplaySetRotation(config.GetDisplayRotation())
-	if err != nil {
+	if _, err := nativeInstance.DisplaySetRotation(config.GetDisplayRotation()); err != nil {
 		return err
 	}
 
@@ -257,7 +265,7 @@ func rpcSetDisplayRotation(params DisplayRotationSettings) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	return err
+	return nil
 }
 
 func rpcGetDisplayRotation() (*DisplayRotationSettings, error) {
@@ -267,30 +275,30 @@ func rpcGetDisplayRotation() (*DisplayRotationSettings, error) {
 }
 
 func rpcSetBacklightSettings(params BacklightSettings) error {
-	blConfig := params
+	logging.GetSubsystemLogger("jsonrpc").Debug().Interface("params", params).Msg("setting backlight settings")
 
 	// NOTE: by default, the frontend limits the brightness to 64, as that's what the device originally shipped with.
-	if blConfig.MaxBrightness > 255 || blConfig.MaxBrightness < 0 {
+	if params.MaxBrightness > 255 || params.MaxBrightness < 0 {
 		return fmt.Errorf("maxBrightness must be between 0 and 255")
 	}
 
-	if blConfig.DimAfter < 0 {
+	if params.DimAfter < 0 {
 		return fmt.Errorf("dimAfter must be a positive integer")
 	}
 
-	if blConfig.OffAfter < 0 {
+	if params.OffAfter < 0 {
 		return fmt.Errorf("offAfter must be a positive integer")
 	}
 
-	config.DisplayMaxBrightness = blConfig.MaxBrightness
-	config.DisplayDimAfterSec = blConfig.DimAfter
-	config.DisplayOffAfterSec = blConfig.OffAfter
+	config.DisplayMaxBrightness = params.MaxBrightness
+	config.DisplayDimAfterSec = params.DimAfter
+	config.DisplayOffAfterSec = params.OffAfter
 
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	logger.Info().Int("max_brightness", config.DisplayMaxBrightness).Int("dim_after", config.DisplayDimAfterSec).Int("off_after", config.DisplayOffAfterSec).Msg("rpc: display: settings applied")
+	logging.GetSubsystemLogger("jsonrpc").Info().Int("max_brightness", config.DisplayMaxBrightness).Int("dim_after", config.DisplayDimAfterSec).Int("off_after", config.DisplayOffAfterSec).Msg("rpc: display: settings applied")
 
 	// If the device started up with auto-dim and/or auto-off set to zero, the display init
 	// method will not have started the tickers. So in case that has changed, attempt to start the tickers now.
@@ -327,23 +335,20 @@ type SSHKeyState struct {
 }
 
 func rpcGetDevModeState() (DevModeState, error) {
-	devModeEnabled := false
-	if _, err := os.Stat(devModeFile); err != nil {
-		if !os.IsNotExist(err) {
-			return DevModeState{}, fmt.Errorf("error checking dev mode file: %w", err)
-		}
+	if _, err := os.Stat(devModeFile); err != nil && !os.IsNotExist(err) {
+		return DevModeState{}, fmt.Errorf("error checking dev mode file: %w", err)
 	} else {
-		devModeEnabled = true
+		return DevModeState{
+			Enabled: err == nil,
+		}, nil
 	}
-
-	return DevModeState{
-		Enabled: devModeEnabled,
-	}, nil
 }
 
 func rpcSetDevModeState(enabled bool) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Bool("enabled", enabled).Msg("setting dev mode state")
+
 	if enabled {
-		if _, err := os.Stat(devModeFile); os.IsNotExist(err) {
+		if _, err := os.Stat(devModeFile); err != nil && os.IsNotExist(err) {
 			if err := os.MkdirAll(filepath.Dir(devModeFile), 0755); err != nil {
 				return fmt.Errorf("failed to create directory for devmode file: %w", err)
 			}
@@ -351,7 +356,7 @@ func rpcSetDevModeState(enabled bool) error {
 				return fmt.Errorf("failed to create devmode file: %w", err)
 			}
 		} else {
-			logger.Debug().Msg("dev mode already enabled")
+			logging.GetSubsystemLogger("jsonrpc").Debug().Msg("dev mode already enabled")
 			return nil
 		}
 	} else {
@@ -360,7 +365,7 @@ func rpcSetDevModeState(enabled bool) error {
 				return fmt.Errorf("failed to remove devmode file: %w", err)
 			}
 		} else if os.IsNotExist(err) {
-			logger.Debug().Msg("dev mode already disabled")
+			logging.GetSubsystemLogger("jsonrpc").Debug().Msg("dev mode already disabled")
 			return nil
 		} else {
 			return fmt.Errorf("error checking dev mode file: %w", err)
@@ -370,7 +375,7 @@ func rpcSetDevModeState(enabled bool) error {
 	cmd := exec.Command("dropbear.sh")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Warn().Err(err).Bytes("output", output).Msg("Failed to start/stop SSH")
+		logging.GetSubsystemLogger("jsonrpc").Warn().Err(err).Bytes("output", output).Msg("Failed to start/stop SSH")
 		return fmt.Errorf("failed to start/stop SSH, you may need to reboot for changes to take effect")
 	}
 
@@ -379,15 +384,16 @@ func rpcSetDevModeState(enabled bool) error {
 
 func rpcGetSSHKeyState() (string, error) {
 	keyData, err := os.ReadFile(sshKeyFile)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return "", fmt.Errorf("error reading SSH key file: %w", err)
-		}
+	if err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("error reading SSH key file: %w", err)
 	}
 	return string(keyData), nil
 }
 
 func rpcSetSSHKeyState(sshKey string) error {
+	// Log the action but avoid logging the actual key for security reasons
+	logging.GetSubsystemLogger("jsonrpc").Debug().Msg("setting SSH key")
+
 	if sshKey == "" {
 		// Remove SSH key file if empty string is provided
 		if err := os.Remove(sshKeyFile); err != nil && !os.IsNotExist(err) {
@@ -419,6 +425,8 @@ func rpcGetTLSState() TLSState {
 }
 
 func rpcSetTLSState(state TLSState) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Interface("state", state).Msg("setting TLS state")
+
 	err := setTLSState(state)
 	if err != nil {
 		return fmt.Errorf("failed to set TLS state: %w", err)
@@ -467,9 +475,7 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 	paramNames := handler.Params // Get the parameter names from the RPCHandler
 
 	if len(paramNames) != numParams {
-		err := fmt.Errorf("mismatch between handler parameters (%d) and defined parameter names (%d)", numParams, len(paramNames))
-		logger.Error().Strs("paramNames", paramNames).Err(err).Msg("Cannot call RPC handler")
-		return nil, err
+		return nil, fmt.Errorf("mismatch between handler parameters (%d) and defined parameter names (%d)", numParams, len(paramNames))
 	}
 
 	args := make([]reflect.Value, numParams)
@@ -479,9 +485,7 @@ func riskyCallRPCHandler(logger zerolog.Logger, handler RPCHandler, params map[s
 		paramName := paramNames[i]
 		paramValue, ok := params[paramName]
 		if !ok {
-			err := fmt.Errorf("missing parameter: %s", paramName)
-			logger.Error().Err(err).Msg("Cannot marshal arguments for RPC handler")
-			return nil, err
+			return nil, fmt.Errorf("missing parameter: %s", paramName)
 		}
 
 		convertedValue := reflect.ValueOf(paramValue)
@@ -567,7 +571,8 @@ func asError(value reflect.Value) (bool, error) {
 }
 
 func rpcSetMassStorageMode(mode string) (string, error) {
-	logger.Info().Str("mode", mode).Msg("Setting mass storage mode")
+	logger := logging.GetSubsystemLogger("jsonrpc")
+	logger.Debug().Str("mode", mode).Msg("Setting mass storage mode")
 	var cdrom bool
 	switch mode {
 	case "cdrom":
@@ -614,6 +619,7 @@ func rpcGetUsbEmulationState() (bool, error) {
 }
 
 func rpcSetUsbEmulationState(enabled bool) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Bool("enabled", enabled).Msg("setting USB emulation state")
 	if enabled {
 		return gadget.BindUDC()
 	} else {
@@ -627,6 +633,8 @@ func rpcGetUsbConfig() (usbgadget.Config, error) {
 }
 
 func rpcSetUsbConfig(usbConfig usbgadget.Config) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Interface("usbConfig", usbConfig).Msg("setting USB emulation state")
+
 	LoadConfig()
 	config.UsbConfig = &usbConfig
 	gadget.SetGadgetConfig(config.UsbConfig)
@@ -650,14 +658,27 @@ func rpcSetWakeOnLanDevices(params SetWakeOnLanDevicesParams) error {
 }
 
 func rpcResetConfig() error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Msg("resetting configuration to default")
+
 	defaultConfig := getDefaultConfig()
 	config = &defaultConfig
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to reset config: %w", err)
 	}
 
-	logger.Info().Msg("Configuration reset to default")
+	logging.GetSubsystemLogger("jsonrpc").Info().Msg("Configuration reset to default")
 	return nil
+}
+
+func rpcGetLogLevel() string {
+	return config.DefaultLogLevel
+}
+
+func rpcSetLogLevel(level string) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Str("level", level).Msg("setting log level")
+
+	config.DefaultLogLevel = level
+	return SaveConfig()
 }
 
 type DCPowerState struct {
@@ -673,7 +694,7 @@ func rpcGetDCPowerState() (DCPowerState, error) {
 }
 
 func rpcSetDCPowerState(enabled bool) error {
-	logger.Info().Bool("enabled", enabled).Msg("Setting DC power state")
+	logging.GetSubsystemLogger("jsonrpc").Debug().Bool("enabled", enabled).Msg("setting DC power state")
 	err := setDCPowerState(enabled)
 	if err != nil {
 		return fmt.Errorf("failed to set DC power state: %w", err)
@@ -682,7 +703,7 @@ func rpcSetDCPowerState(enabled bool) error {
 }
 
 func rpcSetDCRestoreState(state int) error {
-	logger.Info().Int("state", state).Msg("Setting DC restore state")
+	logging.GetSubsystemLogger("jsonrpc").Debug().Int("state", state).Msg("setting DC restore state")
 	err := setDCRestoreState(state)
 	if err != nil {
 		return fmt.Errorf("failed to set DC restore state: %w", err)
@@ -695,6 +716,7 @@ func rpcGetActiveExtension() (string, error) {
 }
 
 func rpcSetActiveExtension(extensionId string) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Str("extensionId", extensionId).Msg("setting active extension")
 	if config.ActiveExtension == extensionId {
 		return nil
 	}
@@ -718,6 +740,7 @@ func rpcSetActiveExtension(extensionId string) error {
 }
 
 func rpcSetATXPowerAction(action string) error {
+	logger := logging.GetSubsystemLogger("jsonrpc")
 	logger.Debug().Str("action", action).Msg("Executing ATX power action")
 	switch action {
 	case "power-short":
@@ -790,6 +813,7 @@ func rpcGetSerialSettings() (SerialSettings, error) {
 var serialPortMode = defaultMode
 
 func rpcSetSerialSettings(settings SerialSettings) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Interface("settings", settings).Msg("setting serial settings")
 	baudRate, err := strconv.Atoi(settings.BaudRate)
 	if err != nil {
 		return fmt.Errorf("invalid baud rate: %v", err)
@@ -833,7 +857,9 @@ func rpcSetSerialSettings(settings SerialSettings) error {
 		Parity:   parity,
 	}
 
-	_ = port.SetMode(serialPortMode)
+	if err := port.SetMode(serialPortMode); err != nil {
+		logging.GetSubsystemLogger("jsonrpc").Error().Err(err).Interface("serialPortMode", serialPortMode).Msg("setting port mode")
+	}
 
 	return nil
 }
@@ -853,12 +879,14 @@ func updateUsbRelatedConfig() error {
 }
 
 func rpcSetUsbDevices(usbDevices usbgadget.Devices) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Interface("usbDevices", usbDevices).Msg("setting USB devices")
 	config.UsbDevices = &usbDevices
 	gadget.SetGadgetDevices(config.UsbDevices)
 	return updateUsbRelatedConfig()
 }
 
 func rpcSetUsbDeviceState(device string, enabled bool) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Str("device", device).Bool("enabled", enabled).Msg("setting USB device state")
 	switch device {
 	case "absoluteMouse":
 		config.UsbDevices.AbsoluteMouse = enabled
@@ -876,6 +904,8 @@ func rpcSetUsbDeviceState(device string, enabled bool) error {
 }
 
 func rpcSetCloudUrl(apiUrl string, appUrl string) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Str("apiUrl", apiUrl).Str("appUrl", appUrl).Msg("setting cloud urls")
+
 	currentCloudURL := config.CloudURL
 	config.CloudURL = apiUrl
 	config.CloudAppURL = appUrl
@@ -900,6 +930,8 @@ func rpcGetKeyboardLayout() (string, error) {
 }
 
 func rpcSetKeyboardLayout(layout string) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Str("layout", layout).Msg("setting keyboard layout")
+
 	config.KeyboardLayout = layout
 	if err := SaveConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
@@ -919,6 +951,7 @@ type KeyboardMacrosParams struct {
 }
 
 func setKeyboardMacros(params KeyboardMacrosParams) (any, error) {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Interface("params", params).Msg("setting keyboard macros")
 	if params.Macros == nil {
 		return nil, fmt.Errorf("missing or invalid macros parameter")
 	}
@@ -1005,6 +1038,7 @@ func rpcGetLocalLoopbackOnly() (bool, error) {
 }
 
 func rpcSetLocalLoopbackOnly(enabled bool) error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Bool("enabled", enabled).Msg("setting local loopback only mode")
 	// Check if the setting is actually changing
 	if config.LocalLoopbackOnly == enabled {
 		return nil
@@ -1025,15 +1059,16 @@ var (
 )
 
 // cancelKeyboardMacro cancels any ongoing keyboard macro execution
-func cancelKeyboardMacro() {
+func cancelKeyboardMacro() error {
 	keyboardMacroLock.Lock()
 	defer keyboardMacroLock.Unlock()
 
 	if keyboardMacroCancel != nil {
 		keyboardMacroCancel()
-		logger.Info().Msg("canceled keyboard macro")
 		keyboardMacroCancel = nil
+		logging.GetSubsystemLogger("jsonrpc").Info().Msg("cancelled keyboard macro")
 	}
+	return nil
 }
 
 func setKeyboardMacroCancel(cancel context.CancelFunc) {
@@ -1044,7 +1079,8 @@ func setKeyboardMacroCancel(cancel context.CancelFunc) {
 }
 
 func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
-	cancelKeyboardMacro()
+	logging.GetSubsystemLogger("jsonrpc").Debug().Msg("executing keyboard macro")
+	_ = cancelKeyboardMacro()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	setKeyboardMacroCancel(cancel)
@@ -1055,23 +1091,23 @@ func rpcExecuteKeyboardMacro(macro []hidrpc.KeyboardMacroStep) error {
 	}
 
 	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
+		go currentSession.reportHidRPCKeyboardMacroState(s)
 	}
 
 	err := rpcDoExecuteKeyboardMacro(ctx, macro)
-
 	setKeyboardMacroCancel(nil)
 
 	s.State = false
 	if currentSession != nil {
-		currentSession.reportHidRPCKeyboardMacroState(s)
+		go currentSession.reportHidRPCKeyboardMacroState(s)
 	}
 
 	return err
 }
 
-func rpcCancelKeyboardMacro() {
-	cancelKeyboardMacro()
+func rpcCancelKeyboardMacro() error {
+	logging.GetSubsystemLogger("jsonrpc").Debug().Msg("cancelling keyboard macro")
+	return cancelKeyboardMacro()
 }
 
 var keyboardClearStateKeys = make([]byte, hidrpc.HidKeyBufferSize)
@@ -1081,6 +1117,7 @@ func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 }
 
 func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
+	logger := logging.GetSubsystemLogger("jsonrpc")
 	logger.Debug().Interface("macro", macro).Msg("Executing keyboard macro")
 
 	for i, step := range macro {
@@ -1210,4 +1247,6 @@ var rpcHandlers = map[string]RPCHandler{
 	"getFailSafeLogs":        {Func: rpcGetFailsafeLogs},
 	"getPublicIPAddresses":   {Func: rpcGetPublicIPAddresses, Params: []string{"refresh"}},
 	"checkPublicIPAddresses": {Func: rpcCheckPublicIPAddresses},
+	"getLogLevel":            {Func: rpcGetLogLevel},
+	"setLogLevel":            {Func: rpcSetLogLevel, Params: []string{"level"}},
 }

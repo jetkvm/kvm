@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/rs/zerolog"
 )
 
@@ -62,7 +63,7 @@ func (s VideoStreamingStatus) String() string {
 
 func NewNative(opts NativeOptions) *Native {
 	pid := os.Getpid()
-	nativeSubLogger := nativeLogger.With().Int("pid", pid).Str("scope", "native").Logger()
+	nativeSubLogger := logging.GetSubsystemLogger("native").With().Int("pid", pid).Str("scope", "native").Logger()
 	displaySubLogger := displayLogger.With().Int("pid", pid).Str("scope", "native").Logger()
 
 	onVideoStateChange := opts.OnVideoStateChange
