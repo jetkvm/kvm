@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/utils"
 	"github.com/rs/zerolog"
 )
 
@@ -42,8 +43,13 @@ var defaultUsbGadgetDevices = Devices{
 }
 
 type KeysDownState struct {
-	Modifier byte      `json:"modifier"`
-	Keys     ByteSlice `json:"keys"`
+	Modifier byte            `json:"modifier"`
+	Keys     utils.ByteSlice `json:"keys"`
+}
+
+func (k KeysDownState) MarshalZerologObject(e *zerolog.Event) {
+	e.Uint8("modifier", k.Modifier)
+	e.Object("keys", k.Keys)
 }
 
 // UsbGadget is a struct that represents a USB gadget.
