@@ -31,8 +31,8 @@ type Config struct {
 	Manufacturer string `json:"manufacturer"`
 	Product      string `json:"product"`
 
-	strictMode bool // when it's enabled, all warnings will be converted to errors
 	isEmpty    bool
+	strictMode bool // when it's enabled, all warnings will be converted to errors
 }
 
 var defaultUsbGadgetDevices = Devices{
@@ -154,7 +154,7 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		absMouseAccumulatedWheelY: 0,
 	}
 	if err := g.Init(); err != nil {
-		logger.Error().Err(err).Msg("failed to init USB gadget")
+		_ = logging.LogError(g.getLoggingContext(), err, "failed to init USB gadget")
 		return nil
 	}
 
@@ -166,6 +166,7 @@ func (u *UsbGadget) Close() error {
 	// Cancel keyboard state context
 	if u.keyboardStateCancel != nil {
 		u.keyboardStateCancel()
+		u.keyboardStateCancel = nil
 	}
 
 	// Stop auto-release timer
