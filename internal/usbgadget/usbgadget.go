@@ -89,14 +89,11 @@ type UsbGadget struct {
 
 	lastUserInput time.Time
 
-	tx     *UsbGadgetTransaction
 	txLock sync.Mutex
 
 	onKeyboardStateChange *func(state KeyboardState)
 	onKeysDownChange      *func(state KeysDownState)
 	onKeepAliveReset      *func()
-
-	log *zerolog.Logger
 
 	logSuppressionCounter map[string]int
 	logSuppressionLock    sync.Mutex
@@ -105,18 +102,12 @@ type UsbGadget struct {
 const configFSPath = "/sys/kernel/config"
 const gadgetPath = "/sys/kernel/config/usb_gadget"
 
-var defaultLogger = logging.GetSubsystemLogger("usbgadget")
-
 // NewUsbGadget creates a new UsbGadget.
-func NewUsbGadget(name string, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
-	return newUsbGadget(name, defaultGadgetConfig, enabledDevices, config, logger)
+func NewUsbGadget(name string, enabledDevices *Devices, config *Config) *UsbGadget {
+	return newUsbGadget(name, defaultGadgetConfig, enabledDevices, config)
 }
 
-func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDevices *Devices, config *Config, logger *zerolog.Logger) *UsbGadget {
-	if logger == nil {
-		logger = defaultLogger
-	}
-
+func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDevices *Devices, config *Config) *UsbGadget {
 	if enabledDevices == nil {
 		enabledDevices = &defaultUsbGadgetDevices
 	}
@@ -145,7 +136,6 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 		kbdAutoReleaseTimers: make(map[byte]*time.Timer),
 		enabledDevices:       *enabledDevices,
 		lastUserInput:        time.Now(),
-		log:                  logger,
 
 		strictMode: config.strictMode,
 

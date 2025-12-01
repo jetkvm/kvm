@@ -57,7 +57,7 @@ func setMassStorageMode(cdrom bool) error {
 		mode = "1"
 	}
 
-	err, changed := gadget.OverrideGadgetConfig("mass_storage_lun0", "cdrom", mode)
+	changed, err := gadget.OverrideGadgetConfig("mass_storage_lun0", "cdrom", mode)
 	if err != nil {
 		return fmt.Errorf("failed to set cdrom mode: %w", err)
 	}

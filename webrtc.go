@@ -69,9 +69,9 @@ func getActiveSessions() int {
 
 func (s *Session) resetKeepAliveTime() {
 	s.keepAliveJitterLock.Lock()
-	defer s.keepAliveJitterLock.Unlock()
 	s.lastKeepAliveArrivalTime = time.Time{} // Reset keep-alive timing tracking
 	s.lastTimerResetTime = time.Time{}       // Reset auto-release timer tracking
+	s.keepAliveJitterLock.Unlock()
 }
 
 type hidQueueMessage struct {

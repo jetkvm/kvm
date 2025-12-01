@@ -48,8 +48,8 @@ func (c pionLogger) Errorf(format string, args ...any) {
 type pionLoggerFactory struct{}
 
 func (c pionLoggerFactory) NewLogger(subsystem string) logging.LeveledLogger {
-	logger := rootLogger.getLogger(subsystem).With().
-		Str("scope", "pion").
+	logger := GetSubsystemLogger("pion").
+		With().
 		Str("component", subsystem).
 		Logger()
 

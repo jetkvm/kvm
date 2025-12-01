@@ -93,17 +93,22 @@ func LogError(context zerolog.Context, err error, msg string, args ...any) error
 	return err
 }
 
+func LogAlways(context zerolog.Context, msg string, args ...any) {
+	logger := context.Logger()
+	logger.Log().Msgf(msg, args...)
+}
+
 func LogFatal(context zerolog.Context, err error, msg string, args ...any) error {
 	context, err = AddRequiredError(context, err, msg, args...)
 	logger := context.Logger()
-	logger.Fatal().Msgf(msg, args...)
+	logger.Fatal().AnErr("err", err).Msgf(msg, args...)
 	return err
 }
 
 func LogPanic(context zerolog.Context, err error, msg string, args ...any) error {
 	context, err = AddRequiredError(context, err, msg, args...)
 	logger := context.Logger()
-	logger.Panic().Msgf(msg, args...)
+	logger.Panic().AnErr("err", err).Msgf(msg, args...)
 	return err
 }
 

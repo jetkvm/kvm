@@ -26,6 +26,13 @@ func (u *UsbGadget) getHidKeyboardLoggingContext() zerolog.Context {
 	return context
 }
 
+func (u *UsbGadget) getHidKeyboardAutoReleaseLoggingContext() zerolog.Context {
+	context := logging.GetSubsystemLogger("hid-keyboard-auto-release").
+		With().
+		Str("gadget", u.name)
+	return context
+}
+
 func (u *UsbGadget) logWithSuppression(context zerolog.Context, counterName string, every int, err error, msg string, args ...any) bool {
 	u.logSuppressionLock.Lock()
 	counter, ok := u.logSuppressionCounter[counterName] // returns 0, false if not found
