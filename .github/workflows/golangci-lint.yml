@@ -31,7 +31,7 @@ jobs:
         run: |
           mkdir -p static && touch static/.gitkeep
       - name: Lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           args: --verbose
           version: v2.1
