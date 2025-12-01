@@ -121,7 +121,7 @@ func (u *UsbGadget) updateKeyboardState(state byte) {
 
 	if state&^ValidKeyboardLedMasks != 0 {
 		u.log.Warn().Uint8("state", state).Msg("ignoring invalid bits")
-		return
+		state &= ValidKeyboardLedMasks
 	}
 
 	if u.keyboardState == state {
