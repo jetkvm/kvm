@@ -1,0 +1,30 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "deploy",
+            "isBackground": true,
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "dev_deploy.sh",
+                "-r",
+                "${config:TARGET_IP}",
+                "--gdb-port",
+                "${config:DEBUG_PORT}",
+                "--native-binary",
+                "--disable-docker"
+            ],
+            "problemMatcher": {
+                "base": "$gcc",
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "${config:BINARY}",
+                    "endsPattern": "Listening on port [0-9]{4}"
+                }
+            }
+        },
+    ]
+}

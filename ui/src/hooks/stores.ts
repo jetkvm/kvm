@@ -603,6 +603,9 @@ export interface UpdateState {
 
   updateErrorMessage: string | null;
   setUpdateErrorMessage: (errorMessage: string) => void;
+
+  shouldReload: boolean;
+  setShouldReload: (reloadRequired: boolean) => void;
 }
 
 export const useUpdateStore = create<UpdateState>(set => ({
@@ -640,6 +643,9 @@ export const useUpdateStore = create<UpdateState>(set => ({
   updateErrorMessage: null,
   setUpdateErrorMessage: (errorMessage: string) =>
     set({ updateErrorMessage: errorMessage }),
+
+  shouldReload: false,
+  setShouldReload: (reloadRequired: boolean) => set({ shouldReload: reloadRequired }),
 }));
 
 export type UsbConfigModalViews = "updateUsbConfig" | "updateUsbConfigSuccess";
@@ -764,6 +770,11 @@ export interface IPv6Address {
   flag_tentative?: boolean;
 }
 
+export interface PublicIP {
+  ip: string;
+  last_updated: Date;
+}
+
 export interface NetworkState {
   interface_name?: string;
   mac_address?: string;
@@ -862,12 +873,12 @@ export interface MacrosState {
   loadMacros: () => Promise<void>;
   saveMacros: (macros: KeySequence[]) => Promise<void>;
   sendFn:
-    | ((
-        method: string,
-        params: unknown,
-        callback?: ((resp: JsonRpcResponse) => void) | undefined,
-      ) => void)
-    | null;
+  | ((
+    method: string,
+    params: unknown,
+    callback?: ((resp: JsonRpcResponse) => void) | undefined,
+  ) => void)
+  | null;
   setSendFn: (
     sendFn: (
       method: string,
@@ -1008,4 +1019,16 @@ export const useMacrosStore = create<MacrosState>((set, get) => ({
       set({ loading: false });
     }
   },
+}));
+
+export interface FailsafeModeState {
+  isFailsafeMode: boolean;
+  reason: string; // "video", "network", etc.
+  setFailsafeMode: (active: boolean, reason: string) => void;
+}
+
+export const useFailsafeModeStore = create<FailsafeModeState>(set => ({
+  isFailsafeMode: false,
+  reason: "",
+  setFailsafeMode: (active, reason) => set({ isFailsafeMode: active, reason }),
 }));

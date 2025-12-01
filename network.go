@@ -3,12 +3,18 @@ package kvm
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"reflect"
+	"time"
 
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/mdns"
 	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/jetkvm/kvm/internal/ota"
+	"github.com/jetkvm/kvm/pkg/myip"
 	"github.com/jetkvm/kvm/pkg/nmlite"
+	"github.com/jetkvm/kvm/pkg/nmlite/link"
 )
 
 const (
@@ -17,6 +23,7 @@ const (
 
 var (
 	networkManager *nmlite.NetworkManager
+	publicIPState  *myip.PublicIPState
 )
 
 type RpcNetworkSettings struct {
@@ -104,6 +111,13 @@ func triggerTimeSyncOnNetworkStateChange() {
 	}()
 }
 
+func setPublicIPReadyState(ipv4Ready, ipv6Ready bool) {
+	if publicIPState == nil {
+		return
+	}
+	publicIPState.SetIPv4AndIPv6(ipv4Ready, ipv6Ready)
+}
+
 func networkStateChanged(_ string, state types.InterfaceState) {
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(true, "network_state_changed")
@@ -116,6 +130,8 @@ func networkStateChanged(_ string, state types.InterfaceState) {
 		networkLogger.Info().Msg("network state changed to online, triggering time sync")
 		triggerTimeSyncOnNetworkStateChange()
 	}
+
+	setPublicIPReadyState(state.IPv4Ready, state.IPv6Ready)
 
 	// always restart mDNS when the network state changes
 	if mDNS != nil {
@@ -164,6 +180,40 @@ func initNetwork() error {
 	return nil
 }
 
+func initPublicIPState() {
+	// the feature will be only enabled if the cloud has been adopted
+	// due to privacy reasons
+
+	// but it will be initialized anyway to avoid nil pointer dereferences
+	ps := myip.NewPublicIPState(&myip.PublicIPStateConfig{
+		Logger:             networkLogger,
+		CloudflareEndpoint: config.CloudURL,
+		APIEndpoint:        "",
+		IPv4:               false,
+		IPv6:               false,
+		HttpClientGetter: func(family int) *http.Client {
+			transport := http.DefaultTransport.(*http.Transport).Clone()
+			transport.Proxy = config.NetworkConfig.GetTransportProxyFunc()
+			transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+				netType := network
+				switch family {
+				case link.AfInet:
+					netType = "tcp4"
+				case link.AfInet6:
+					netType = "tcp6"
+				}
+				return (&net.Dialer{}).DialContext(ctx, netType, addr)
+			}
+
+			return &http.Client{
+				Transport: transport,
+				Timeout:   30 * time.Second,
+			}
+		},
+	})
+	publicIPState = ps
+}
+
 func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
 	if nm == nil {
 		return nil
@@ -176,7 +226,7 @@ func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
 	return nm.SetHostname(hostname, domain)
 }
 
-func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (rebootRequired bool, postRebootAction *PostRebootAction) {
+func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (rebootRequired bool, postRebootAction *ota.PostRebootAction) {
 	oldDhcpClient := oldConfig.DHCPClient.String
 
 	l := networkLogger.With().
@@ -200,7 +250,7 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 		l.Info().Msg("IPv4 mode changed with udhcpc, reboot required")
 
 		if newIPv4Mode == "static" && oldIPv4Mode != "static" {
-			postRebootAction = &PostRebootAction{
+			postRebootAction = &ota.PostRebootAction{
 				HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
 				RedirectTo:  fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
 			}
@@ -217,7 +267,7 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 		// Handle IP change for redirect (only if both are not nil and IP changed)
 		if newConfig.IPv4Static != nil && oldConfig.IPv4Static != nil &&
 			newConfig.IPv4Static.Address.String != oldConfig.IPv4Static.Address.String {
-			postRebootAction = &PostRebootAction{
+			postRebootAction = &ota.PostRebootAction{
 				HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
 				RedirectTo:  fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
 			}
@@ -232,6 +282,11 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 	if newConfig.IPv6Mode.String != oldConfig.IPv6Mode.String && oldDhcpClient == "udhcpc" {
 		rebootRequired = true
 		l.Info().Msg("IPv6 mode changed with udhcpc, reboot required")
+	}
+
+	if newConfig.Hostname.String != oldConfig.Hostname.String {
+		rebootRequired = true
+		l.Info().Msg("Hostname changed, reboot required")
 	}
 
 	return rebootRequired, postRebootAction
@@ -311,4 +366,26 @@ func rpcToggleDHCPClient() error {
 	}
 
 	return rpcReboot(true)
+}
+
+func rpcGetPublicIPAddresses(refresh bool) ([]myip.PublicIP, error) {
+	if publicIPState == nil {
+		return nil, fmt.Errorf("public IP state not initialized")
+	}
+
+	if refresh {
+		if err := publicIPState.ForceUpdate(); err != nil {
+			return nil, err
+		}
+	}
+
+	return publicIPState.GetAddresses(), nil
+}
+
+func rpcCheckPublicIPAddresses() error {
+	if publicIPState == nil {
+		return fmt.Errorf("public IP state not initialized")
+	}
+
+	return publicIPState.ForceUpdate()
 }

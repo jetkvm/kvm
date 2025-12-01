@@ -11,6 +11,7 @@ import { SelectMenuBasic } from "@components/SelectMenuBasic";
 import { SettingsItem } from "@components/SettingsItem";
 import { SettingsPageHeader } from "@components/SettingsPageheader";
 import { SettingsSectionHeader } from "@components/SettingsSectionHeader";
+import { NestedSettingsGroup } from "@components/NestedSettingsGroup";
 import { TextAreaWithLabel } from "@components/TextArea";
 import api from "@/api";
 import notifications from "@/notifications";
@@ -237,39 +238,30 @@ export default function SettingsAccessIndexRoute() {
               </SettingsItem>
 
               {tlsMode === "custom" && (
-                <div className="mt-4 space-y-4">
-                  <div className="space-y-4">
-                    <SettingsItem
-                      title={m.access_tls_certificate_title()}
-                      description={m.access_tls_certificate_description()}
-                    />
-                    <div className="space-y-4">
-                      <TextAreaWithLabel
-                        label={m.access_certificate_label()}
-                        rows={3}
-                        placeholder={
-                          "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
-                        }
-                        value={tlsCert}
-                        onChange={e => handleTlsCertChange(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="space-y-4">
-                        <TextAreaWithLabel
-                          label={m.access_private_key_label()}
-                          description={m.access_private_key_description()}
-                          rows={3}
-                          placeholder={
-                            "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
-                          }
-                          value={tlsKey}
-                          onChange={e => handleTlsKeyChange(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
+                <NestedSettingsGroup className="mt-4">
+                  <SettingsItem
+                    title={m.access_tls_certificate_title()}
+                    description={m.access_tls_certificate_description()}
+                  />
+                  <TextAreaWithLabel
+                    label={m.access_certificate_label()}
+                    rows={3}
+                    placeholder={
+                      "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+                    }
+                    value={tlsCert}
+                    onChange={e => handleTlsCertChange(e.target.value)}
+                  />
+                  <TextAreaWithLabel
+                    label={m.access_private_key_label()}
+                    description={m.access_private_key_description()}
+                    rows={3}
+                    placeholder={
+                      "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+                    }
+                    value={tlsKey}
+                    onChange={e => handleTlsKeyChange(e.target.value)}
+                  />
                   <div className="flex items-center gap-x-2">
                     <Button
                       size="SM"
@@ -278,7 +270,7 @@ export default function SettingsAccessIndexRoute() {
                       onClick={handleCustomTlsUpdate}
                     />
                   </div>
-                </div>
+                </NestedSettingsGroup>
               )}
 
               <SettingsItem
@@ -352,7 +344,7 @@ export default function SettingsAccessIndexRoute() {
               </SettingsItem>
 
               {selectedProvider === "custom" && (
-                <div className="mt-4 space-y-4">
+                <NestedSettingsGroup className="mt-4">
                   <div className="flex items-end gap-x-2">
                     <InputFieldWithLabel
                       size="SM"
@@ -371,7 +363,7 @@ export default function SettingsAccessIndexRoute() {
                       placeholder="https://app.example.com"
                     />
                   </div>
-                </div>
+                </NestedSettingsGroup>
               )}
             </>
           )}

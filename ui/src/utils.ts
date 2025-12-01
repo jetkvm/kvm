@@ -1,10 +1,12 @@
 import { KeySequence } from "@hooks/stores";
-import { getLocale , locales } from "@localizations/runtime.js";
+import { getLocale, locales } from "@localizations/runtime.js";
 import { m } from "@localizations/messages.js";
+
+const isInvalidDate = (date: Date) => date instanceof Date && isNaN(date.getTime());
 
 export const formatters = {
   date: (date: Date, options?: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat(getLocale() || "en-US", {
+    isInvalidDate(date) ? "Invalid Date" : new Intl.DateTimeFormat(getLocale() || "en-US", {
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -46,14 +48,14 @@ export const formatters = {
       amount: number;
       name: Intl.RelativeTimeFormatUnit;
     }[] = [
-      { amount: 60, name: "seconds" },
-      { amount: 60, name: "minutes" },
-      { amount: 24, name: "hours" },
-      { amount: 7, name: "days" },
-      { amount: 4.34524, name: "weeks" },
-      { amount: 12, name: "months" },
-      { amount: Number.POSITIVE_INFINITY, name: "years" },
-    ];
+        { amount: 60, name: "seconds" },
+        { amount: 60, name: "minutes" },
+        { amount: 24, name: "hours" },
+        { amount: 7, name: "days" },
+        { amount: 4.34524, name: "weeks" },
+        { amount: 12, name: "months" },
+        { amount: Number.POSITIVE_INFINITY, name: "years" },
+      ];
 
     let duration = (date.valueOf() - new Date().valueOf()) / 1000;
 

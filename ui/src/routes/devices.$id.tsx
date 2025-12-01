@@ -33,6 +33,7 @@ import {
   useUpdateStore,
   useVideoStore,
   VideoState,
+  useFailsafeModeStore,
 } from "@hooks/stores";
 import { JsonRpcRequest, JsonRpcResponse, RpcMethodNotFound, useJsonRpc } from "@hooks/useJsonRpc";
 import { useDeviceUiNavigation } from "@hooks/useAppNavigation";
@@ -43,6 +44,7 @@ const ConnectionStatsSidebar = lazy(() => import('@components/sidebar/connection
 const Terminal = lazy(() => import('@components/Terminal'));
 const UpdateInProgressStatusCard = lazy(() => import("@components/UpdateInProgressStatusCard"));
 import Modal from "@components/Modal";
+import { FailSafeModeOverlay } from "@components/FailSafeModeOverlay";
 import {
   ConnectionFailedOverlay,
   LoadingConnectionOverlay,
@@ -51,6 +53,7 @@ import {
 } from "@components/VideoOverlay";
 import { FeatureFlagProvider } from "@providers/FeatureFlagProvider";
 import { m } from "@localizations/messages.js";
+import { doRpcHidHandshake } from "@hooks/useHidRpc";
 
 export type AuthMode = "password" | "noPassword" | null;
 
@@ -101,6 +104,7 @@ const loader: LoaderFunction = ({ params }: LoaderFunctionArgs) => {
   return isOnDevice ? deviceLoader() : cloudLoader(params);
 };
 
+
 export default function KvmIdRoute() {
   const loaderResp = useLoaderData();
   // Depending on the mode, we set the appropriate variables
@@ -124,6 +128,7 @@ export default function KvmIdRoute() {
     setRpcHidChannel,
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
+    setRpcHidProtocolVersion,
   } = useRTCStore();
 
   const location = useLocation();
@@ -495,6 +500,7 @@ export default function KvmIdRoute() {
     rpcHidChannel.onopen = () => {
       setRpcHidChannel(rpcHidChannel);
     };
+    doRpcHidHandshake(rpcHidChannel, setRpcHidProtocolVersion);
 
     const rpcHidUnreliableChannel = pc.createDataChannel("hidrpc-unreliable-ordered", {
       ordered: true,
@@ -531,6 +537,7 @@ export default function KvmIdRoute() {
     setRpcHidChannel,
     setRpcHidUnreliableNonOrderedChannel,
     setRpcHidUnreliableChannel,
+    setRpcHidProtocolVersion,
     setTransceiver,
   ]);
 
@@ -619,7 +626,8 @@ export default function KvmIdRoute() {
     keysDownState, setKeysDownState,
     setUsbState,
   } = useHidStore();
-  const { setHidRpcDisabled } = useRTCStore();
+  const setHidRpcDisabled = useRTCStore(state => state.setHidRpcDisabled);
+  const { setFailsafeMode } = useFailsafeModeStore();
 
   const [hasUpdated, setHasUpdated] = useState(false);
   const { navigateTo } = useDeviceUiNavigation();
@@ -693,8 +701,21 @@ export default function KvmIdRoute() {
     if (resp.method === "willReboot") {
       const postRebootAction = resp.params as unknown as PostRebootAction;
       console.debug("Setting reboot state", postRebootAction);
-      setRebootState({ isRebooting: true, postRebootAction });
+
+      setRebootState({
+        isRebooting: true,
+        postRebootAction: {
+          healthCheck: postRebootAction?.healthCheck || `${window.location.origin}/device/status`,
+          redirectTo: postRebootAction?.redirectTo || window.location.href,
+        }
+      });
       navigateTo("/");
+    }
+
+    if (resp.method === "failsafeMode") {
+      const { active, reason } = resp.params as { active: boolean; reason: string };
+      console.debug("Setting failsafe mode", { active, reason });
+      setFailsafeMode(active, reason);
     }
   }
 
@@ -794,6 +815,8 @@ export default function KvmIdRoute() {
     getLocalVersion();
   }, [appVersion, getLocalVersion]);
 
+  const { isFailsafeMode, reason: failsafeReason } = useFailsafeModeStore();
+
   const ConnectionStatusElement = useMemo(() => {
     const isOtherSession = location.pathname.includes("other-session");
     if (isOtherSession) return null;
@@ -801,6 +824,10 @@ export default function KvmIdRoute() {
     // Rebooting takes priority over connection status
     if (rebootState?.isRebooting) {
       return <RebootingOverlay show={true} postRebootAction={rebootState.postRebootAction} />;
+    }
+
+    if (isFailsafeMode && failsafeReason) {
+      return <FailSafeModeOverlay reason={failsafeReason} />;
     }
 
     const hasConnectionFailed =
@@ -827,7 +854,7 @@ export default function KvmIdRoute() {
     }
 
     return null;
-  }, [location.pathname, rebootState?.isRebooting, rebootState?.postRebootAction, connectionFailed, peerConnectionState, peerConnection, setupPeerConnection, loadingMessage]);
+  }, [location.pathname, rebootState?.isRebooting, rebootState?.postRebootAction, isFailsafeMode, failsafeReason, connectionFailed, peerConnectionState, peerConnection, setupPeerConnection, loadingMessage]);
 
   return (
     <FeatureFlagProvider appVersion={appVersion}>
@@ -869,7 +896,7 @@ export default function KvmIdRoute() {
           />
 
           <div className="relative flex h-full w-full overflow-hidden">
-            <WebRTCVideo hasConnectionIssues={!!ConnectionStatusElement} />
+            {(isFailsafeMode && failsafeReason === "video") ? null : <WebRTCVideo hasConnectionIssues={!!ConnectionStatusElement} />}
             <div
               style={{ animationDuration: "500ms" }}
               className="animate-slideUpFade pointer-events-none absolute inset-0 flex items-center justify-center p-4"

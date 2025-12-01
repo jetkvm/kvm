@@ -59,11 +59,19 @@ const char *jetkvm_ui_event_code_to_name(int code) {
 
 void video_report_format(bool ready, const char *error, u_int16_t width, u_int16_t height, double frame_per_second)
 {
+    state.streaming = video_get_streaming_status();
     state.ready = ready;
     state.error = error;
     state.width = width;
     state.height = height;
     state.frame_per_second = frame_per_second;
+    if (video_state_handler != NULL) {
+        (*video_state_handler)(&state);
+    }
+}
+
+void video_send_format_report() {
+    state.streaming = video_get_streaming_status();
     if (video_state_handler != NULL) {
         (*video_state_handler)(&state);
     }
@@ -365,6 +373,10 @@ void jetkvm_video_start() {
 
 void jetkvm_video_stop() {
     video_stop_streaming();
+}
+
+uint8_t jetkvm_video_get_streaming_status() {
+    return video_get_streaming_status();
 }
 
 int jetkvm_video_set_quality_factor(float quality_factor) {

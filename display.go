@@ -39,6 +39,16 @@ func switchToMainScreen() {
 	}
 }
 
+func updateDisplayUsbState() {
+	if usbState == "configured" {
+		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Connected")
+		_, _ = nativeInstance.UIObjAddState("usb_status_label", "LV_STATE_CHECKED")
+	} else {
+		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Disconnected")
+		_, _ = nativeInstance.UIObjClearState("usb_status_label", "LV_STATE_CHECKED")
+	}
+}
+
 func updateDisplay() {
 	if networkManager != nil {
 		nativeInstance.UpdateLabelIfChanged("home_info_ipv4_addr", networkManager.IPv4String())
@@ -56,13 +66,8 @@ func updateDisplay() {
 		nativeInstance.UpdateLabelIfChanged("dhcp_client_change_label", "Change to JetKVM")
 	}
 
-	if usbState == "configured" {
-		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Connected")
-		_, _ = nativeInstance.UIObjAddState("usb_status_label", "LV_STATE_CHECKED")
-	} else {
-		nativeInstance.UpdateLabelIfChanged("usb_status_label", "Disconnected")
-		_, _ = nativeInstance.UIObjClearState("usb_status_label", "LV_STATE_CHECKED")
-	}
+	updateDisplayUsbState()
+
 	if lastVideoState.Ready {
 		nativeInstance.UpdateLabelIfChanged("hdmi_status_label", "Connected")
 		_, _ = nativeInstance.UIObjAddState("hdmi_status_label", "LV_STATE_CHECKED")
@@ -232,6 +237,14 @@ func updateStaticContents() {
 	// nativeInstance.UpdateLabelAndChangeVisibility("boot_screen_device_id", GetDeviceID())
 }
 
+// configureDisplayOnNativeRestart is called when the native process restarts
+// it ensures the display is configured correctly after the restart
+func configureDisplayOnNativeRestart() {
+	displayLogger.Info().Msg("native restarted, configuring display")
+	updateStaticContents()
+	requestDisplayUpdate(true, "native_restart")
+}
+
 // setDisplayBrightness sets /sys/class/backlight/backlight/brightness to alter
 // the backlight brightness of the JetKVM hardware's display.
 func setDisplayBrightness(brightness int, reason string) error {
@@ -363,6 +376,7 @@ func initDisplay() {
 		displayLogger.Info().Msg("setting initial display contents")
 		time.Sleep(500 * time.Millisecond)
 		updateStaticContents()
+		updateDisplayUsbState()
 		displayInited = true
 		displayLogger.Info().Msg("display inited")
 		startBacklightTickers()

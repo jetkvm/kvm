@@ -33,13 +33,13 @@ export default defineConfig(({ mode, command }) => {
     outdir: "./localization/paraglide",
     outputStructure: 'message-modules',
     cookieName: 'JETKVM_LOCALE',
-    strategy: ['cookie', 'preferredLanguage', 'baseLocale'],
+    strategy: ['cookie', 'baseLocale'],
   }))
 
   return {
     plugins,
     esbuild: {
-      pure: ["console.debug"],
+      pure: command === "build" ? ["console.debug"]: [],
     },
     assetsInclude: ["**/*.woff2"],
     build: {

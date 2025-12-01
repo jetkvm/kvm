@@ -4,13 +4,14 @@ import {
   createBrowserRouter,
   isRouteErrorResponse,
   redirect,
+  type RouteObject,
   RouterProvider,
   useRouteError,
 } from "react-router";
 import "./index.css";
 import { ExclamationTriangleIcon } from "@heroicons/react/16/solid";
 
-import { CLOUD_API, DEVICE_API } from "@/ui.config";
+import { CLOUD_API, CLOUD_ENABLE_VERSIONED_UI, DEVICE_API } from "@/ui.config";
 import api from "@/api";
 import Root from "@/root";
 import { m } from "@localizations/messages.js";
@@ -89,7 +90,111 @@ export async function checkAuth() {
   return isOnDevice ? checkDeviceAuth() : checkCloudAuth();
 }
 
-let router;
+let router: ReturnType<typeof createBrowserRouter>;
+
+const getDeviceRoute = (r: Omit<RouteObject, "children" | "index">): RouteObject => ({
+  element: <DeviceRoute />,
+  loader: DeviceRoute.loader,
+  ...r,
+  children: [
+    {
+      path: "other-session",
+      element: <OtherSessionRoute />,
+    },
+    {
+      path: "mount",
+      element: <MountRoute />,
+    },
+    {
+      path: "settings",
+      element: <SettingsRoute />,
+      children: [
+        {
+          index: true,
+          loader: SettingsIndexRoute.loader,
+        },
+        {
+          path: "general",
+          children: [
+            {
+              index: true,
+              element: <SettingsGeneralIndexRoute />,
+            },
+            // was previously only present on device routes
+            {
+              path: "reboot",
+              element: <SettingsGeneralRebootRoute />,
+            },
+            {
+              path: "update",
+              element: <SettingsGeneralUpdateRoute />,
+            },
+          ],
+        },
+        {
+          path: "mouse",
+          element: <SettingsMouseRoute />,
+        },
+        {
+          path: "keyboard",
+          element: <SettingsKeyboardRoute />,
+        },
+        {
+          path: "advanced",
+          element: <SettingsAdvancedRoute />,
+        },
+        {
+          path: "hardware",
+          element: <SettingsHardwareRoute />,
+        },
+        {
+          path: "network",
+          element: <SettingsNetworkRoute />,
+        },
+        {
+          path: "access",
+          children: [
+            {
+              index: true,
+              element: <SettingsAccessIndexRoute />,
+              loader: SettingsAccessIndexRoute.loader,
+            },
+            {
+              path: "local-auth",
+              element: <SecurityAccessLocalAuthRoute />,
+            },
+          ],
+        },
+        {
+          path: "video",
+          element: <SettingsVideoRoute />,
+        },
+        {
+          path: "appearance",
+          element: <SettingsAppearanceRoute />,
+        },
+        {
+          path: "macros",
+          children: [
+            {
+              index: true,
+              element: <SettingsMacrosRoute />,
+            },
+            {
+              path: "add",
+              element: <SettingsMacrosAddRoute />,
+            },
+            {
+              path: ":macroId/edit",
+              element: <SettingsMacrosEditRoute />,
+            },
+          ],
+        },
+      ],
+    },
+  ],
+});
+
 if (isOnDevice) {
   router = createBrowserRouter([
     {
@@ -113,109 +218,11 @@ if (isOnDevice) {
       action: LoginLocalRoute.action,
       loader: LoginLocalRoute.loader,
     },
-    {
+    getDeviceRoute({
       path: "/",
       errorElement: <ErrorBoundary />,
-      element: <DeviceRoute />,
       HydrateFallback: () => <div className="p-4">{m.loading()}</div>,
-      loader: DeviceRoute.loader,
-      children: [
-        {
-          path: "other-session",
-          element: <OtherSessionRoute />,
-        },
-        {
-          path: "mount",
-          element: <MountRoute />,
-        },
-        {
-          path: "settings",
-          element: <SettingsRoute />,
-          children: [
-            {
-              index: true,
-              loader: SettingsIndexRoute.loader,
-            },
-            {
-              path: "general",
-              children: [
-                {
-                  index: true,
-                  element: <SettingsGeneralIndexRoute />,
-                },
-                {
-                  path: "reboot",
-                  element: <SettingsGeneralRebootRoute />,
-                },
-                {
-                  path: "update",
-                  element: <SettingsGeneralUpdateRoute />,
-                },
-              ],
-            },
-            {
-              path: "mouse",
-              element: <SettingsMouseRoute />,
-            },
-            {
-              path: "keyboard",
-              element: <SettingsKeyboardRoute />,
-            },
-            {
-              path: "advanced",
-              element: <SettingsAdvancedRoute />,
-            },
-            {
-              path: "hardware",
-              element: <SettingsHardwareRoute />,
-            },
-            {
-              path: "network",
-              element: <SettingsNetworkRoute />,
-            },
-            {
-              path: "access",
-              children: [
-                {
-                  index: true,
-                  element: <SettingsAccessIndexRoute />,
-                  loader: SettingsAccessIndexRoute.loader,
-                },
-                {
-                  path: "local-auth",
-                  element: <SecurityAccessLocalAuthRoute />,
-                },
-              ],
-            },
-            {
-              path: "video",
-              element: <SettingsVideoRoute />,
-            },
-            {
-              path: "appearance",
-              element: <SettingsAppearanceRoute />,
-            },
-            {
-              path: "macros",
-              children: [
-                {
-                  index: true,
-                  element: <SettingsMacrosRoute />,
-                },
-                {
-                  path: "add",
-                  element: <SettingsMacrosAddRoute />,
-                },
-                {
-                  path: ":macroId/edit",
-                  element: <SettingsMacrosEditRoute />,
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    },
+    }),
     {
       path: "/adopt",
       element: <AdoptRoute />,
@@ -224,7 +231,7 @@ if (isOnDevice) {
     },
   ]);
 } else {
-  router = createBrowserRouter([
+  const routeObjects: RouteObject[] = [
     {
       errorElement: <ErrorBoundary />,
       children: [
@@ -241,7 +248,6 @@ if (isOnDevice) {
                 return redirect(`/devices`);
               },
             },
-
             {
               path: "devices/:id/setup",
               element: <SetupRoute />,
@@ -252,103 +258,9 @@ if (isOnDevice) {
               path: "devices/already-adopted",
               element: <DevicesAlreadyAdopted />,
             },
-            {
+            getDeviceRoute({
               path: "devices/:id",
-              element: <DeviceRoute />,
-              loader: DeviceRoute.loader,
-              children: [
-                {
-                  path: "other-session",
-                  element: <OtherSessionRoute />,
-                },
-                {
-                  path: "mount",
-                  element: <MountRoute />,
-                },
-                {
-                  path: "settings",
-                  element: <SettingsRoute />,
-                  children: [
-                    {
-                      index: true,
-                      loader: SettingsIndexRoute.loader,
-                    },
-                    {
-                      path: "general",
-                      children: [
-                        {
-                          index: true,
-                          element: <SettingsGeneralIndexRoute />,
-                        },
-                        {
-                          path: "update",
-                          element: <SettingsGeneralUpdateRoute />,
-                        },
-                      ],
-                    },
-                    {
-                      path: "mouse",
-                      element: <SettingsMouseRoute />,
-                    },
-                    {
-                      path: "keyboard",
-                      element: <SettingsKeyboardRoute />,
-                    },
-                    {
-                      path: "advanced",
-                      element: <SettingsAdvancedRoute />,
-                    },
-                    {
-                      path: "hardware",
-                      element: <SettingsHardwareRoute />,
-                    },
-                    {
-                      path: "network",
-                      element: <SettingsNetworkRoute />,
-                    },
-                    {
-                      path: "access",
-                      children: [
-                        {
-                          index: true,
-                          element: <SettingsAccessIndexRoute />,
-                          loader: SettingsAccessIndexRoute.loader,
-                        },
-                        {
-                          path: "local-auth",
-                          element: <SecurityAccessLocalAuthRoute />,
-                        },
-                      ],
-                    },
-                    {
-                      path: "video",
-                      element: <SettingsVideoRoute />,
-                    },
-                    {
-                      path: "appearance",
-                      element: <SettingsAppearanceRoute />,
-                    },
-                    {
-                      path: "macros",
-                      children: [
-                        {
-                          index: true,
-                          element: <SettingsMacrosRoute />,
-                        },
-                        {
-                          path: "add",
-                          element: <SettingsMacrosAddRoute />,
-                        },
-                        {
-                          path: ":macroId/edit",
-                          element: <SettingsMacrosEditRoute />,
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
+            }),
             {
               path: "devices/:id/deregister",
               element: <DevicesIdDeregister />,
@@ -370,7 +282,20 @@ if (isOnDevice) {
         },
       ],
     },
-  ]);
+  ];
+
+  // if versioned UI is not enabled, we need to add a route that redirects to the non-versioned route
+  if (!CLOUD_ENABLE_VERSIONED_UI) {
+    routeObjects.unshift({
+      path: "v/:version/*",
+      element: <Root />,
+      loader: async ({ params }) => {
+        throw redirect(`/${params['*']}`);
+      },
+    });
+  }
+
+  router = createBrowserRouter(routeObjects, { basename: import.meta.env.BASE_URL });
 }
 
 document.addEventListener("DOMContentLoaded", () => {

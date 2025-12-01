@@ -2,19 +2,40 @@ package kvm
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/erikdubbelboer/gspt"
 	"github.com/gwatts/rootcerts"
+	"github.com/jetkvm/kvm/internal/ota"
 )
 
 var appCtx context.Context
+var procPrefix string = "jetkvm: [app]"
+
+func setProcTitle(status string) {
+	if status != "" {
+		status = " " + status
+	}
+	title := fmt.Sprintf("%s%s", procPrefix, status)
+	gspt.SetProcTitle(title)
+}
 
 func Main() {
+	setProcTitle("starting")
+
 	logger.Log().Msg("JetKVM Starting Up")
+
+	checkFailsafeReason()
+	if failsafeModeActive {
+		procPrefix = "jetkvm: [app+failsafe]"
+		logger.Warn().Str("reason", failsafeModeReason).Msg("failsafe mode activated")
+	}
+
 	LoadConfig()
 
 	var cancel context.CancelFunc
@@ -32,10 +53,14 @@ func Main() {
 		Msg("starting JetKVM")
 
 	go runWatchdog()
-	go confirmCurrentSystem()
 
-	initDisplay()
+	// initialize usb gadget
+	setProcTitle("initUsbGadget")
+	initUsbGadget()
+
+	setProcTitle("initNative")
 	initNative(systemVersionLocal, appVersionLocal)
+	initDisplay()
 
 	http.DefaultClient.Timeout = 1 * time.Minute
 
@@ -47,26 +72,31 @@ func Main() {
 		Int("ca_certs_loaded", len(rootcerts.Certs())).
 		Msg("loaded Root CA certificates")
 
+	initOta()
+
+	http.DefaultClient.Timeout = 1 * time.Minute
+
 	// Initialize network
+	setProcTitle("initNetwork")
 	if err := initNetwork(); err != nil {
 		logger.Error().Err(err).Msg("failed to initialize network")
+		// TODO: reset config to default
 		os.Exit(1)
 	}
 
 	// Initialize time sync
+	setProcTitle("initTimeSync")
 	initTimeSync()
 	timeSync.Start()
 
 	// Initialize mDNS
+	setProcTitle("initMdns")
 	if err := initMdns(); err != nil {
 		logger.Error().Err(err).Msg("failed to initialize mDNS")
-		os.Exit(1)
 	}
 
+	setProcTitle("initPrometheus")
 	initPrometheus()
-
-	// initialize usb gadget
-	initUsbGadget()
 	if err := setInitialVirtualMediaState(); err != nil {
 		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
 	}
@@ -106,7 +136,10 @@ func Main() {
 			}
 
 			includePreRelease := config.IncludePreRelease
-			err = TryUpdate(context.Background(), GetDeviceID(), includePreRelease)
+			err = otaState.TryUpdate(context.Background(), ota.UpdateParams{
+				DeviceID:          GetDeviceID(),
+				IncludePreRelease: includePreRelease,
+			})
 			if err != nil {
 				logger.Warn().Err(err).Msg("failed to auto update")
 			}
@@ -126,8 +159,12 @@ func Main() {
 
 	// As websocket client already checks if the cloud token is set, we can start it here.
 	go RunWebsocketClient()
+	initPublicIPState()
 
 	initSerialPort()
+
+	setProcTitle("ready")
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	<-sigs

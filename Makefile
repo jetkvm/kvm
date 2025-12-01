@@ -2,8 +2,8 @@ BRANCH    := $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE := $(shell date -u +%FT%T%z)
 BUILDTS   := $(shell date -u +%s)
 REVISION  := $(shell git rev-parse HEAD)
-VERSION_DEV := 0.4.9-dev$(shell date +%Y%m%d%H%M)
-VERSION := 0.4.8
+VERSION_DEV := 0.5.0-dev$(shell date +%Y%m%d%H%M)
+VERSION := 0.4.9
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
@@ -13,6 +13,8 @@ BUILDKIT_PATH ?= /opt/jetkvm-native-buildkit
 SKIP_NATIVE_IF_EXISTS ?= 0
 SKIP_UI_BUILD ?= 0
 ENABLE_SYNC_TRACE ?= 0
+
+CMAKE_BUILD_TYPE ?= Release
 
 GO_BUILD_ARGS := -tags netgo,timetzdata,nomsgpack
 ifeq ($(ENABLE_SYNC_TRACE), 1)
@@ -52,6 +54,7 @@ build_native:
 		echo "Building native..."; \
 			CC="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-gcc" \
 			LD="$(BUILDKIT_PATH)/bin/$(BUILDKIT_FLAVOR)-ld" \
+			CMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) \
 			./scripts/build_cgo.sh; \
 	fi
 

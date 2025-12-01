@@ -1,4 +1,5 @@
 import { LuPlus, LuSend, LuTrash2 } from "react-icons/lu";
+import { useState } from "react";
 
 import { m } from "@localizations/messages.js";
 import { Button } from "@components/Button";
@@ -27,6 +28,23 @@ export default function DeviceList({
   onCancelWakeOnLanModal,
   setShowAddForm,
 }: DeviceListProps) {
+  const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
+
+  const handleDelete = (index: number) => {
+    setDeleteIndex(index);
+  };
+
+  const confirmDelete = () => {
+    if (deleteIndex !== null) {
+      onDeleteDevice(deleteIndex);
+      setDeleteIndex(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setDeleteIndex(null);
+  };
+
   return (
     <div className="space-y-4">
       <Card className="animate-fadeIn opacity-0">
@@ -55,7 +73,7 @@ export default function DeviceList({
                   size="XS"
                   theme="danger"
                   LeadingIcon={LuTrash2}
-                  onClick={() => onDeleteDevice(index)}
+                  onClick={() => handleDelete(index)}
                   aria-label={m.wake_on_lan_device_list_delete_device()}
                 />
               </div>
@@ -63,6 +81,22 @@ export default function DeviceList({
           ))}
         </div>
       </Card>
+      {deleteIndex !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <Card className="p-6 w-full max-w-xs animate-fadeIn">
+            <h3 className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">
+              {m.wake_on_lan_device_list_delete_device()}
+            </h3>
+            <p className="text-sm mb-4 text-slate-700 dark:text-slate-300">
+                {m.wake_on_lan_device_list_confirm_delete_message({ name: storedDevices[deleteIndex]?.name || "" })}
+            </p>
+            <div className="flex justify-end space-x-2">
+              <Button size="SM" theme="blank" text={m.cancel()} onClick={cancelDelete} />
+              <Button size="SM" theme="danger" text={m.delete()} onClick={confirmDelete} />
+            </div>
+          </Card>
+        </div>
+      )}
       <div
         className="flex animate-fadeIn opacity-0 items-center justify-end space-x-2"
         style={{
