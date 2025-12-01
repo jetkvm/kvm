@@ -274,7 +274,7 @@ func LoadConfig() {
 
 	config = &loadedConfig
 
-	logging.GetRootLogger().UpdateLogLevel(config.DefaultLogLevel)
+	logging.UpdateConfigLogLevel(config.DefaultLogLevel)
 
 	configSuccess.Set(1.0)
 	configSuccessTime.SetToCurrentTime()

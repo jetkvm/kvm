@@ -3,7 +3,8 @@ package logging
 import "github.com/rs/zerolog"
 
 var (
-	rootZerologLogger = zerolog.New(defaultLogOutput).With().
+	rootZerologLogger = zerolog.New(defaultLogOutput).
+				With().
 				Str("scope", "jetkvm").
 				Timestamp().
 				Stack().
@@ -11,8 +12,8 @@ var (
 	rootLogger = NewLogger(rootZerologLogger)
 )
 
-func GetRootLogger() *Logger {
-	return rootLogger
+func UpdateConfigLogLevel(logLevel string) {
+	rootLogger.UpdateConfigLogLevel(logLevel)
 }
 
 func GetSubsystemLogger(subsystem string) *zerolog.Logger {

@@ -8,10 +8,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/rs/zerolog"
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
 func joinPath(basePath string, paths []string) string {
@@ -46,7 +45,7 @@ func hexToOctal(hex string) (string, error) {
 }
 
 func compareFileContent(oldContent []byte, newContent []byte, looserMatch bool) bool {
-	if bytes.Equal(oldContent, newContent) {
+	if len(oldContent) == len(newContent) && bytes.Equal(oldContent, newContent) {
 		return true
 	}
 
@@ -86,67 +85,27 @@ func compareFileContent(oldContent []byte, newContent []byte, looserMatch bool) 
 }
 
 func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err error) {
+	fileName := file.Name()
+
 	if err := file.SetWriteDeadline(time.Now().Add(hidWriteTimeout)); err != nil {
 		return -1, err
 	}
 
 	n, err = file.Write(data)
 	if err == nil {
-		return
+		u.resetLogSuppressionCounter("writeWithTimeout_" + fileName)
+		return n, nil
 	}
 
-	u.log.Trace().
-		Str("file", file.Name()).
-		Bytes("data", data).
-		Err(err).
-		Msg("write failed")
+	context := u.getLoggingContext().Str("file", fileName).Bytes("data", data)
+	_ = logging.LogTraceE(context, err, "write failed")
 
 	if errors.Is(err, os.ErrDeadlineExceeded) {
-		u.logWithSuppression(
-			fmt.Sprintf("writeWithTimeout_%s", file.Name()),
-			1000,
-			u.log,
-			err,
-			"write timed out: %s",
-			file.Name(),
-		)
+		u.logWithSuppression(context, "writeWithTimeout_"+fileName, 10, err, "write timed out")
+		// we've exceeded the suppression interval, so return an error so we can close and re-open the file
+		// TODO return 0, err
 		err = nil
 	}
 
-	return
-}
-
-func (u *UsbGadget) logWithSuppression(counterName string, every int, logger *zerolog.Logger, err error, msg string, args ...any) {
-	u.logSuppressionLock.Lock()
-	defer u.logSuppressionLock.Unlock()
-
-	if _, ok := u.logSuppressionCounter[counterName]; !ok {
-		u.logSuppressionCounter[counterName] = 0
-	} else {
-		u.logSuppressionCounter[counterName]++
-	}
-
-	l := logger.With().Int("counter", u.logSuppressionCounter[counterName]).Logger()
-
-	if u.logSuppressionCounter[counterName]%every == 0 {
-		if err != nil {
-			l.Error().Err(err).Msgf(msg, args...)
-		} else {
-			l.Error().Msgf(msg, args...)
-		}
-	}
-}
-
-func (u *UsbGadget) resetLogSuppressionCounter(counterName string) {
-	u.logSuppressionLock.Lock()
-	defer u.logSuppressionLock.Unlock()
-
-	if _, ok := u.logSuppressionCounter[counterName]; !ok {
-		u.logSuppressionCounter[counterName] = 0
-	}
-}
-
-func unlockWithLog(lock *sync.Mutex, logger *zerolog.Logger, msg string, args ...any) {
-	logger.Trace().Msgf(msg, args...)
-	lock.Unlock()
+	return n, err
 }
