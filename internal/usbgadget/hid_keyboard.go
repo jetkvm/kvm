@@ -153,6 +153,17 @@ func (u *UsbGadget) GetKeysDownState() KeysDownState {
 	return u.keysDownState
 }
 
+func (u *UsbGadget) ResetRollover() {
+	u.keyboardStateLock.Lock()
+	defer u.keyboardStateLock.Unlock()
+
+	if u.keysDownState.Keys[0] == hidErrorRollOver {
+		for i := range u.keysDownState.Keys {
+			u.keysDownState.Keys[i] = 0
+		}
+	}
+		}
+
 func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 	u.onKeysDownChange = &f
 }
@@ -379,6 +390,7 @@ func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 	}
 
 	u.UpdateKeysDown(modifier, keys)
+	defer u.ResetRollover()
 	return err
 }
 
