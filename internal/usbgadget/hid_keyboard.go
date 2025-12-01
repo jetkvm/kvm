@@ -93,6 +93,10 @@ type KeyboardState struct {
 	raw        byte
 }
 
+func (s KeyboardState) MarshalZerologObject(e *zerolog.Event) {
+	e.Hex("State", []byte{s.raw})
+}
+
 // Byte returns the raw byte representation of the keyboard state.
 func (k *KeyboardState) Byte() byte {
 	return k.raw
