@@ -128,7 +128,6 @@ func handleHidRPCKeypressKeepAlive(session *Session) error {
 		return nil
 	}
 
-	validTick := true
 	timerExtension := baseExtension
 
 	if !session.lastKeepAliveArrivalTime.IsZero() {
@@ -147,14 +146,11 @@ func handleHidRPCKeypressKeepAlive(session *Session) error {
 				// This is likely a retransmit stall or ordering delay.
 				// We reject the tick entirely and DO NOT extend,
 				// so the auto-release still fires on time.
-				validTick = false
+				return nil
 			}
 		}
 	}
 
-	if !validTick {
-		return nil
-	}
 	// Only valid ticks update our state and extend the timer.
 	session.lastKeepAliveArrivalTime = now
 	session.lastTimerResetTime = now
