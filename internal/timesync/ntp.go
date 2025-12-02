@@ -45,20 +45,20 @@ func (t *TimeSync) filterNTPServers(ntpServers []string) ([]string, error) {
 
 	hasIPv4, err := t.preCheckIPv4()
 	if err != nil {
-		t.l.Error().Err(err).Msg("failed to check IPv4")
+		t.loggingContext.Error().Err(err).Msg("failed to check IPv4")
 		return nil, err
 	}
 
 	hasIPv6, err := t.preCheckIPv6()
 	if err != nil {
-		t.l.Error().Err(err).Msg("failed to check IPv6")
+		t.loggingContext.Error().Err(err).Msg("failed to check IPv6")
 		return nil, err
 	}
 
 	filteredServers := []string{}
 	for _, server := range ntpServers {
 		ip := net.ParseIP(server)
-		t.l.Trace().Str("server", server).Interface("ip", ip).Msg("checking NTP server")
+		t.loggingContext.Trace().Str("server", server).Interface("ip", ip).Msg("checking NTP server")
 		if ip == nil {
 			continue
 		}
@@ -76,12 +76,12 @@ func (t *TimeSync) filterNTPServers(ntpServers []string) ([]string, error) {
 func (t *TimeSync) queryNetworkTime(ntpServers []string) (now *time.Time, offset *time.Duration) {
 	ntpServers, err := t.filterNTPServers(ntpServers)
 	if err != nil {
-		t.l.Error().Err(err).Msg("failed to filter NTP servers")
+		t.loggingContext.Error().Err(err).Msg("failed to filter NTP servers")
 		return nil, nil
 	}
 
 	chunkSize := int(t.networkConfig.TimeSyncParallel.ValueOr(4))
-	t.l.Info().Strs("servers", ntpServers).Int("chunkSize", chunkSize).Msg("querying NTP servers")
+	t.loggingContext.Info().Strs("servers", ntpServers).Int("chunkSize", chunkSize).Msg("querying NTP servers")
 
 	// shuffle the ntp servers to avoid always querying the same servers
 	rand.Shuffle(len(ntpServers), func(i, j int) { ntpServers[i], ntpServers[j] = ntpServers[j], ntpServers[i] })
@@ -107,12 +107,11 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 
 	_, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	loggingContext := t.loggingContext.With().Int("servers_count", len(servers)).Int("timeout_ms", int(timeout.Milliseconds()))
 
 	for _, server := range servers {
 		go func(server string) {
-			scopedLogger := t.l.With().
-				Str("server", server).
-				Logger()
+			loopContext := loggingContext.With().Str("server", server)
 
 			// increase request count
 			metricNtpTotalRequestCount.Inc()
@@ -121,7 +120,7 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 			// query the server
 			now, response, err := queryNtpServer(server, timeout)
 			if err != nil {
-				scopedLogger.Warn().
+				loopContext.Warn().
 					Str("error", err.Error()).
 					Msg("failed to query NTP server")
 				results <- nil
@@ -129,7 +128,7 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 			}
 
 			if response.IsKissOfDeath() {
-				scopedLogger.Warn().
+				loopContext.Warn().
 					Str("kiss_code", response.KissCode).
 					Msg("ignoring NTP server kiss of death")
 				results <- nil
@@ -160,7 +159,7 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 			metricNtpTotalSuccessCount.Inc()
 			metricNtpSuccessCount.WithLabelValues(server).Inc()
 
-			scopedLogger.Info().
+			loopContext.Info().
 				Str("time", now.Format(time.RFC3339)).
 				Str("reference", response.ReferenceString()).
 				Float64("rtt", rtt).

@@ -9,9 +9,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
+
 	"github.com/erikdubbelboer/gspt"
 	"github.com/gwatts/rootcerts"
-	"github.com/jetkvm/kvm/internal/logging"
 )
 
 var appCtx context.Context

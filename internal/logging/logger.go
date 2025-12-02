@@ -91,8 +91,11 @@ func NewLogger(zerologLogger zerolog.Logger) *Logger {
 }
 
 func (l *Logger) updateLogLevels(newConfigLevel zerolog.Level) {
-	loggingContext := l.defaultLogger.With().Interface("newConfigLevel", newConfigLevel)
-	logger := loggingContext.Logger()
+	logger := l.defaultLogger.
+		Level(zerolog.InfoLevel).
+		With().
+		Interface("newConfigLevel", newConfigLevel).
+		Logger()
 
 	l.defaultLogLevelFromConfig = newConfigLevel
 	l.scopeLevels = make(map[string]zerolog.Level)
@@ -102,17 +105,20 @@ func (l *Logger) updateLogLevels(newConfigLevel zerolog.Level) {
 
 		if env != "" {
 			env = strings.ToLower(env)
-			loggingContext = l.defaultLogger.With().Str("name", name).Str("env", env).Interface("envLevel", envLevel)
-			logger = loggingContext.Logger()
+			loopLogger := logger.With().
+				Str("name", name).
+				Str("env", env).
+				Interface("envLevel", envLevel).
+				Logger()
 
 			if env == "all" {
-				logger.Info().Msg("setting log level for ALL scopes from environment")
+				loopLogger.Info().Msg("setting log level for ALL scopes from environment")
 				l.defaultLogLevelFromEnv = envLevel
 			} else {
 				// if not "all", parse as comma-separated list of scopes
 				scopes := strings.SplitSeq(env, ",")
 				for scope := range scopes {
-					logger.Info().Msgf("setting log level for scope %s from environment", scope)
+					loopLogger.Info().Msgf("setting log level for scope %s from environment", scope)
 					l.scopeLevels[scope] = envLevel
 				}
 			}
@@ -120,7 +126,7 @@ func (l *Logger) updateLogLevels(newConfigLevel zerolog.Level) {
 	}
 
 	l.defaultLogLevel = defaultLogLevel
-	logger.Info().Msgf("default log level starts at %v", l.defaultLogLevelFromEnv)
+	logger.Info().Msgf("default log level starts at %v", l.defaultLogLevel)
 
 	if l.defaultLogLevel > l.defaultLogLevelFromEnv {
 		logger.Info().Msgf("default log level from env %v", l.defaultLogLevelFromEnv)
@@ -187,7 +193,7 @@ func (l *Logger) UpdateConfigLogLevel(configDefaultLogLevel string) {
 			return
 		}
 	} else {
-		newConfigLevel = -2
+		newConfigLevel = unset
 	}
 
 	l.loggerMutex.Lock()

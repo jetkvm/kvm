@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/utils"
 
 	"github.com/rs/zerolog"
@@ -144,7 +143,7 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 	}
 
 	if err := g.Init(); err != nil {
-		_ = logging.LogError(g.getUsbGadgetLoggingContext(), err, "failed to init USB gadget")
+		g.getUsbGadgetLoggingContext().Err(err).Error().Msg("failed to init USB gadget")
 	}
 
 	return g

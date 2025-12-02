@@ -11,7 +11,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/rs/zerolog"
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
 func syncFilesystem() error {
@@ -29,16 +29,15 @@ func syncFilesystem() error {
 }
 
 func (s *State) downloadFile(ctx context.Context, path string, url string, component string) error {
-	logger := s.logger.With().
+	loggingContext := s.loggingContext.
 		Str("path", path).
 		Str("url", url).
-		Str("downloadComponent", component).
-		Logger()
+		Str("downloadComponent", component)
 	t := time.Now()
-	traceLogger := func() *zerolog.Event {
-		return logger.Trace().Dur("duration", time.Since(t))
+	traceLogger := func() *logging.Context {
+		return loggingContext.Dur("duration", time.Since(t))
 	}
-	traceLogger().Msg("downloading file")
+	traceLogger().Trace().Msg("downloading file")
 
 	componentUpdate, ok := s.componentUpdateStatuses[component]
 	if !ok {
@@ -48,7 +47,7 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 	downloadProgress := componentUpdate.downloadProgress
 
 	if _, err := os.Stat(path); err == nil {
-		traceLogger().Msg("removing existing file")
+		traceLogger().Trace().Msg("removing existing file")
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("error removing existing file: %w", err)
 		}
@@ -56,27 +55,27 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 
 	unverifiedPath := path + ".unverified"
 	if _, err := os.Stat(unverifiedPath); err == nil {
-		traceLogger().Msg("removing existing unverified file")
+		traceLogger().Trace().Msg("removing existing unverified file")
 		if err := os.Remove(unverifiedPath); err != nil {
 			return fmt.Errorf("error removing existing unverified file: %w", err)
 		}
 	}
 
-	traceLogger().Msg("creating unverified file")
+	traceLogger().Trace().Msg("creating unverified file")
 	file, err := os.Create(unverifiedPath)
 	if err != nil {
 		return fmt.Errorf("error creating file: %w", err)
 	}
 	defer file.Close()
 
-	traceLogger().Msg("creating request")
+	traceLogger().Trace().Msg("creating request")
 	req, err := s.newHTTPRequestWithTrace(ctx, "GET", url, nil, traceLogger)
 	if err != nil {
 		return fmt.Errorf("error creating request: %w", err)
 	}
 
 	client := s.client()
-	traceLogger().Msg("starting download")
+	traceLogger().Trace().Msg("starting download")
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("error downloading file: %w", err)
@@ -119,19 +118,18 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 		}
 	}
 
-	traceLogger().Msg("download finished")
+	traceLogger().Trace().Msg("download finished")
 	file.Close()
 
-	traceLogger().Msg("syncing filesystem")
+	traceLogger().Trace().Msg("syncing filesystem")
 	if err := syncFilesystem(); err != nil {
 		return fmt.Errorf("error syncing filesystem: %w", err)
 	}
 
 	return nil
 }
-func (s *State) verifyFile(path string, expectedHash string, verifyProgress *float32) error {
-	l := s.logger.With().Str("path", path).Logger()
 
+func (s *State) verifyFile(path string, expectedHash string, verifyProgress *float32) error {
 	unverifiedPath := path + ".unverified"
 	fileToHash, err := os.Open(unverifiedPath)
 	if err != nil {
@@ -175,7 +173,7 @@ func (s *State) verifyFile(path string, expectedHash string, verifyProgress *flo
 	}
 
 	hashSum := hash.Sum(nil)
-	l.Info().Str("hash", hex.EncodeToString(hashSum)).Msg("SHA256 hash of")
+	s.loggingContext.Str("path", path).Str("hash", hex.EncodeToString(hashSum)).Info().Msg("SHA256 hash of")
 
 	if hex.EncodeToString(hashSum) != expectedHash {
 		return fmt.Errorf("hash mismatch: %x != %s", hashSum, expectedHash)

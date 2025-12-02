@@ -8,7 +8,6 @@ import (
 	"reflect"
 
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/rs/zerolog"
 )
 
 type symlink struct {
@@ -24,7 +23,7 @@ func compareSymlinks(expected []symlink, actual []symlink) bool {
 	return reflect.DeepEqual(expected, actual)
 }
 
-func checkIfSymlinksInOrder(fc *FileChange, loggingContext *zerolog.Context) (FileState, error) {
+func checkIfSymlinksInOrder(fc *FileChange, loggingContext *logging.Context) (FileState, error) {
 	context := loggingContext.Str("path", fc.Path)
 
 	if len(fc.ParamSymlinks) == 0 {
@@ -37,7 +36,7 @@ func checkIfSymlinksInOrder(fc *FileChange, loggingContext *zerolog.Context) (Fi
 		if os.IsNotExist(err) {
 			return FileStateAbsent, nil
 		} else {
-			_ = logging.LogWarnE(context, err, "failed to stat file")
+			context.Err(err).Warn().Msg("failed to stat file")
 			return FileStateUnknown, fmt.Errorf("failed to stat file")
 		}
 	}
@@ -83,38 +82,40 @@ func checkIfSymlinksInOrder(fc *FileChange, loggingContext *zerolog.Context) (Fi
 		return FileStateSymlinkInOrderConfigFS, nil
 	}
 
-	logging.LogTrace(context.Interface("expected", fc.ParamSymlinks).Interface("actual", symlinks), "symlinks are not in order")
+	context.Interface("expected", fc.ParamSymlinks).Interface("actual", symlinks).Trace().Msg("symlinks are not in order")
 
 	return FileStateSymlinkNotInOrderConfigFS, nil
 }
 
-func recreateSymlinks(fc *FileChange, loggingContext *zerolog.Context) error {
+func recreateSymlinks(fc *FileChange, context *logging.Context) error {
 	// remove all symlinks
 	files, err := os.ReadDir(fc.Path)
 	if err != nil {
 		return fmt.Errorf("failed to read directory")
 	}
 
-	context := loggingContext.Str("path", fc.Path)
-	logging.LogInfo(context, "recreate symlinks")
+	context = context.Str("path", fc.Path)
+	context.Info().Msg("recreate symlinks")
 
 	for _, file := range files {
 		if file.Type()&os.ModeSymlink != os.ModeSymlink {
 			continue
 		}
 
-		logging.LogInfo(context.Str("name", file.Name()), "remove symlink")
+		context.Str("name", file.Name()).Info().Msg("remove symlink")
 		err := os.Remove(path.Join(fc.Path, file.Name()))
 		if err != nil {
 			return fmt.Errorf("failed to remove symlink")
 		}
 	}
 
-	logging.LogInfo(context.Interface("param-symlinks", fc.ParamSymlinks), "create symlinks")
+	context = context.Interface("param-symlinks", fc.ParamSymlinks)
+	context.Debug().Msg("create symlinks")
 
 	// create the symlinks
 	for _, symlink := range fc.ParamSymlinks {
-		logging.LogInfo(context.Str("name", symlink.Path).Str("target", symlink.Target), "create symlink")
+		eachContext := context.Str("name", symlink.Path).Str("target", symlink.Target)
+		eachContext.Debug().Msg("create symlink")
 
 		path := symlink.Path
 		if !filepath.IsAbs(path) {
@@ -123,7 +124,7 @@ func recreateSymlinks(fc *FileChange, loggingContext *zerolog.Context) error {
 
 		err := os.Symlink(symlink.Target, path)
 		if err != nil {
-			_ = logging.LogWarnE(context, err, "failed to create symlink")
+			eachContext.Err(err).Warn().Msg("failed to create symlink")
 			return fmt.Errorf("failed to create symlink")
 		}
 	}

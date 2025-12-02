@@ -13,6 +13,10 @@ type Once struct {
 
 // Do calls the function f if and only if Do has not been called before for this instance of Once.
 func (o *Once) Do(f func()) {
-	logTrace("Doing once")
-	o.mu.Do(f)
+	g := func() {
+		logTrace("Doing once")
+		f()
+		logTrace("Once done")
+	}
+	o.mu.Do(g)
 }

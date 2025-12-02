@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -27,8 +27,8 @@ var (
 type PreCheckFunc func() (bool, error)
 
 type TimeSync struct {
-	syncLock *sync.Mutex
-	l        *zerolog.Logger
+	syncLock       *sync.Mutex
+	loggingContext *logging.Context
 
 	networkConfig    *types.NetworkConfig
 	dhcpNtpAddresses []string
@@ -46,11 +46,11 @@ type TimeSync struct {
 }
 
 type TimeSyncOptions struct {
-	PreCheckFunc  PreCheckFunc
-	PreCheckIPv4  PreCheckFunc
-	PreCheckIPv6  PreCheckFunc
-	Logger        *zerolog.Logger
-	NetworkConfig *types.NetworkConfig
+	PreCheckFunc   PreCheckFunc
+	PreCheckIPv4   PreCheckFunc
+	PreCheckIPv6   PreCheckFunc
+	LoggingContext *logging.Context
+	NetworkConfig  *types.NetworkConfig
 }
 
 type SyncMode struct {
@@ -62,16 +62,17 @@ type SyncMode struct {
 }
 
 func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
+	loggingContext := opts.LoggingContext.With()
 	rtcDevice, err := getRtcDevicePath()
 	if err != nil {
-		opts.Logger.Error().Err(err).Msg("failed to get RTC device path")
+		loggingContext.Error().Err(err).Msg("failed to get RTC device path")
 	} else {
-		opts.Logger.Info().Str("path", rtcDevice).Msg("RTC device found")
+		loggingContext.Info().Str("path", rtcDevice).Msg("RTC device found")
 	}
 
 	t := &TimeSync{
 		syncLock:         &sync.Mutex{},
-		l:                opts.Logger,
+		loggingContext:   loggingContext,
 		dhcpNtpAddresses: []string{},
 		rtcDevicePath:    rtcDevice,
 		rtcLock:          &sync.Mutex{},
@@ -84,7 +85,7 @@ func NewTimeSync(opts *TimeSyncOptions) *TimeSync {
 
 	if t.rtcDevicePath != "" {
 		rtcTime, _ := t.readRtcTime()
-		t.l.Info().Interface("rtc_time", rtcTime).Msg("read RTC time")
+		loggingContext.Info().Interface("rtc_time", rtcTime).Msg("read RTC time")
 	}
 
 	return t
@@ -122,7 +123,7 @@ func (t *TimeSync) getSyncMode() SyncMode {
 		}
 	}
 
-	t.l.Debug().
+	t.loggingContext.Debug().
 		Strs("Ordering", syncMode.Ordering).
 		Bool("Ntp", syncMode.Ntp).
 		Bool("Http", syncMode.Http).
@@ -135,22 +136,20 @@ func (t *TimeSync) getSyncMode() SyncMode {
 func (t *TimeSync) timeSyncLoop() {
 	metricTimeSyncStatus.Set(0)
 
-	// use a timer here instead of sleep
-
 	for range t.timer.C {
 		if ok, err := t.preCheckFunc(); !ok {
 			if err != nil {
-				t.l.Error().Err(err).Msg("pre-check failed")
+				t.loggingContext.Error().Err(err).Msg("pre-check failed")
 			}
 			t.timer.Reset(timeSyncWaitNetChkInt)
 			continue
 		}
 
-		t.l.Info().Msg("syncing system time")
+		t.loggingContext.Info().Msg("syncing system time")
 		start := time.Now()
 		err := t.sync()
 		if err != nil {
-			t.l.Error().Str("error", err.Error()).Msg("failed to sync system time")
+			t.loggingContext.Error().Str("error", err.Error()).Msg("failed to sync system time")
 
 			// retry after a delay
 			timeSyncRetryInterval += timeSyncRetryStep
@@ -165,7 +164,7 @@ func (t *TimeSync) timeSyncLoop() {
 		isInitialSync := !t.syncSuccess
 		t.syncSuccess = true
 
-		t.l.Info().Str("now", time.Now().Format(time.RFC3339)).
+		t.loggingContext.Info().Str("now", time.Now().Format(time.RFC3339)).
 			Str("time_taken", time.Since(start).String()).
 			Bool("is_initial_sync", isInitialSync).
 			Msg("time sync successful")
@@ -183,20 +182,20 @@ func (t *TimeSync) sync() error {
 	var (
 		now    *time.Time
 		offset *time.Duration
-		log    zerolog.Logger
 	)
 
 	metricTimeSyncCount.Inc()
 
 	syncMode := t.getSyncMode()
+	loggingContext := t.loggingContext.With().Interface("sync_mode", syncMode)
 
 Orders:
 	for _, mode := range syncMode.Ordering {
-		log = t.l.With().Str("mode", mode).Logger()
+		loopContext := loggingContext.With().Str("mode", mode)
 		switch mode {
 		case "ntp_user_provided":
 			if syncMode.Ntp {
-				log.Info().Msg("using NTP custom servers")
+				loopContext.Info().Msg("using NTP custom servers")
 				now, offset = t.queryNetworkTime(t.networkConfig.TimeSyncNTPServers)
 				if now != nil {
 					break Orders
@@ -204,7 +203,7 @@ Orders:
 			}
 		case "ntp_dhcp":
 			if syncMode.Ntp {
-				log.Info().Msg("using NTP servers from DHCP")
+				loopContext.Info().Msg("using NTP servers from DHCP")
 				now, offset = t.queryNetworkTime(t.dhcpNtpAddresses)
 				if now != nil {
 					break Orders
@@ -212,10 +211,10 @@ Orders:
 			}
 		case "ntp":
 			if syncMode.Ntp && syncMode.NtpUseFallback {
-				log.Info().Msg("using NTP fallback IPs")
+				loopContext.Info().Msg("using NTP fallback IPs")
 				now, offset = t.queryNetworkTime(DefaultNTPServerIPs)
 				if now == nil {
-					log.Info().Msg("using NTP fallback hostnames")
+					loopContext.Info().Msg("using NTP fallback hostnames")
 					now, offset = t.queryNetworkTime(DefaultNTPServerHostnames)
 				}
 				if now != nil {
@@ -224,7 +223,7 @@ Orders:
 			}
 		case "http_user_provided":
 			if syncMode.Http {
-				log.Info().Msg("using HTTP custom URLs")
+				loopContext.Info().Msg("using HTTP custom URLs")
 				now = t.queryAllHttpTime(t.networkConfig.TimeSyncHTTPUrls)
 				if now != nil {
 					break Orders
@@ -232,14 +231,14 @@ Orders:
 			}
 		case "http":
 			if syncMode.Http && syncMode.HttpUseFallback {
-				log.Info().Msg("using HTTP fallback")
+				loopContext.Info().Msg("using HTTP fallback")
 				now = t.queryAllHttpTime(defaultHTTPUrls)
 				if now != nil {
 					break Orders
 				}
 			}
 		default:
-			log.Warn().Msg("unknown time sync mode, skipping")
+			loopContext.Warn().Msg("unknown time sync mode, skipping")
 		}
 	}
 
@@ -252,7 +251,7 @@ Orders:
 		now = &newNow
 	}
 
-	log.Info().Time("now", *now).Msg("time obtained")
+	loggingContext.Info().Time("now", *now).Msg("time obtained")
 
 	err := t.setSystemTime(*now)
 	if err != nil {
@@ -267,7 +266,7 @@ Orders:
 // Sync triggers a manual time sync
 func (t *TimeSync) Sync() error {
 	if !t.syncLock.TryLock() {
-		t.l.Warn().Msg("sync already in progress, skipping")
+		t.loggingContext.With().Warn().Msg("sync already in progress, skipping")
 		return nil
 	}
 	t.syncLock.Unlock()

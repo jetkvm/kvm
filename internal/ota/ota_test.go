@@ -17,6 +17,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/gwatts/rootcerts"
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -194,14 +195,15 @@ func newOtaState(d *testData, t *testing.T) *State {
 		ResetConfig:      func() error { return nil },
 		OnStateUpdate:    func(state *RPCState) {},
 		OnProgressUpdate: func(progress float32) {},
-	})
+	}, GetOtaLoggingContext())
 	return otaState
 }
 
 func testUsingJson(t *testing.T, filename string) {
 	td := loadTestData(t, filename)
 	otaState := newOtaState(td, t)
-	info, err := otaState.GetUpdateStatus(context.Background(), td.ToUpdateParams())
+	loggingContext := logging.NewContext(logging.GetSubsystemLogger("ota"))
+	info, err := otaState.GetUpdateStatus(context.Background(), td.ToUpdateParams(), loggingContext)
 	if err != nil {
 		if td.Expected.Error != "" {
 			assert.ErrorContains(t, err, td.Expected.Error)

@@ -9,7 +9,7 @@ import (
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
-	"github.com/rs/zerolog"
+	"github.com/jetkvm/kvm/internal/utils"
 )
 
 func handleHidRPCMessage(message hidrpc.Message, session *Session) error {
@@ -69,30 +69,30 @@ func handlePointerReport(message hidrpc.Message) error {
 	return rpcAbsMouseReport(pointerReport.X, pointerReport.Y, pointerReport.Button)
 }
 
-func onHidMessage(msg hidQueueMessage, session *Session) {
+func onHidMessage(msg hidQueueMessage, session *Session, queueContext *logging.Context) {
+	logger := queueContext.With().Str("channel", msg.channel)
 	data := msg.Data
 
-	scopedLogger := logging.GetSubsystemLogger("hidrpc").
-		With().
-		Str("channel", msg.channel).
-		Bytes("data", data).
-		Logger()
-	scopedLogger.Debug().Msg("HID RPC message received")
+	if logger.IsDebugLevel() {
+		logger = logger.Object("data", utils.ByteSlice(data))
+	}
+
+	logger.Debug().Msg("HID RPC message received")
 
 	if len(data) < 1 {
-		scopedLogger.Warn().Int("length", len(data)).Msg("received empty data in HID RPC message handler")
+		logger.Int("length", len(data)).Warn().Msg("received empty data in HID RPC message handler")
 		return
 	}
 
 	var message hidrpc.Message
 
 	if err := hidrpc.Unmarshal(data, &message); err != nil {
-		scopedLogger.Warn().Err(err).Msg("failed to unmarshal HID RPC message")
+		logger.Err(err).Warn().Msg("failed to unmarshal HID RPC message")
 		return
 	}
 
-	if scopedLogger.GetLevel() <= zerolog.DebugLevel {
-		scopedLogger = scopedLogger.With().Str("descr", message.String()).Logger()
+	if logger.IsDebugLevel() {
+		logger = logger.Str("message", message.String())
 	}
 
 	t := time.Now()
@@ -103,11 +103,11 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 	}()
 	select {
 	case <-time.After(1 * time.Second):
-		scopedLogger.Warn().Msg("HID RPC message timed out")
+		logger.Warn().Msg("HID RPC message took too long")
 	case err := <-r:
-		scopedLogger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")
+		logger.Debug().Dur("duration", time.Since(t)).Msg("HID RPC message handled")
 		if err != nil {
-			scopedLogger.Warn().Err(err.(error)).Msg("failed to handle HID RPC message")
+			logger.Warn().Err(err.(error)).Msg("failed to handle HID RPC message")
 		}
 	}
 }
@@ -117,12 +117,10 @@ func onHidMessage(msg hidQueueMessage, session *Session) {
 // macOS default: 15 * 15 = 225ms https://discussions.apple.com/thread/1316947?sortBy=rank
 // Linux default: 250ms https://man.archlinux.org/man/kbdrate.8.en
 // Windows default: 1s `HKEY_CURRENT_USER\Control Panel\Accessibility\Keyboard Response\AutoRepeatDelay`
-
 const expectedRate = 50 * time.Millisecond       // expected keepalive interval
 const maxLateness = 50 * time.Millisecond        // max jitter we'll tolerate OR jitter budget
 const baseExtension = expectedRate + maxLateness // 100ms extension on perfect tick
-
-const maxStaleness = 225 * time.Millisecond // discard ancient packets outright
+const maxStaleness = 225 * time.Millisecond      // discard ancient packets outright
 
 func handleHidRPCKeypressKeepAlive(session *Session) error {
 	session.keepAliveJitterLock.Lock()
@@ -172,19 +170,23 @@ func handleHidRPCKeypressKeepAlive(session *Session) error {
 }
 
 func handleHidRPCKeyboardInput(message hidrpc.Message) error {
-	context := logging.GetSubsystemLogger("hidrpc").With().Interface("message", message)
+	logger := hidrpc.GetHidRpcLoggingContext().
+		With().
+		Interface("message", message)
 
 	switch message.Type() {
 	case hidrpc.TypeKeypressReport:
 		keypressReport, err := message.KeypressReport()
 		if err != nil {
-			return logging.LogWarnE(context, err, "failed to get keypress report")
+			logger.Warn().Err(err).Msg("failed to get keypress report")
+			return err
 		}
 		return rpcKeypressReport(keypressReport.Key, keypressReport.Press)
 	case hidrpc.TypeKeyboardReport:
 		keyboardReport, err := message.KeyboardReport()
 		if err != nil {
-			return logging.LogWarnE(context, err, "failed to get keyboard report")
+			logger.Warn().Err(err).Msg("failed to get keyboard report")
+			return err
 		}
 		return rpcKeyboardReport(keyboardReport.Modifier, keyboardReport.Keys)
 	}
@@ -193,7 +195,10 @@ func handleHidRPCKeyboardInput(message hidrpc.Message) error {
 }
 
 func reportHidRPC(params any, session *Session) {
-	logger := logging.GetSubsystemLogger("hidrpc")
+	logger := hidrpc.GetHidRpcLoggingContext().
+		With().
+		Interface("params", params).
+		Interface("session", session)
 
 	if session == nil {
 		logger.Warn().Msg("session is nil, skipping reportHidRPC")
@@ -224,15 +229,16 @@ func reportHidRPC(params any, session *Session) {
 		err = fmt.Errorf("unknown HID RPC message type: %T", params)
 	}
 
+	logger = logger.Bytes("message", message)
+
 	if err != nil || message == nil {
 		logger.Warn().Err(err).Msg("failed to marshal HID RPC message")
 		return
 	}
 
 	// fire and forget...
+	logger.Debug().Msg("sending HID RPC report")
 	go func() {
-		logger.Debug().Bytes("message", message).Msg("executing keyboard macro")
-
 		if err := session.HidChannel.Send(message); err != nil {
 			if errors.Is(err, io.ErrClosedPipe) {
 				logger.Debug().Err(err).Msg("HID RPC channel closed, skipping reportHidRPC")

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/google/uuid"
+
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/ota"
 )
@@ -19,28 +20,32 @@ var builtAppVersion = "0.1.0+dev"
 var otaState *ota.State
 
 func initOta() {
-	otaState = ota.NewState(ota.Options{
-		ReleaseAPIEndpoint: config.GetUpdateAPIURL(),
-		GetHTTPClient: func() ota.HttpClient {
-			transport := http.DefaultTransport.(*http.Transport).Clone()
-			transport.Proxy = config.NetworkConfig.GetTransportProxyFunc()
+	loggingContext := ota.GetOtaLoggingContext()
+	otaState = ota.NewState(
+		ota.Options{
+			ReleaseAPIEndpoint: config.GetUpdateAPIURL(),
+			GetHTTPClient: func() ota.HttpClient {
+				transport := http.DefaultTransport.(*http.Transport).Clone()
+				transport.Proxy = config.NetworkConfig.GetTransportProxyFunc()
 
-			client := &http.Client{
-				Transport: transport,
-			}
-			return client
+				client := &http.Client{
+					Transport: transport,
+				}
+				return client
+			},
+			GetLocalVersion: GetLocalVersion,
+			HwReboot:        hwReboot,
+			ResetConfig:     rpcResetConfig,
+			SetAutoUpdate:   rpcSetAutoUpdateState,
+			OnStateUpdate: func(state *ota.RPCState) {
+				triggerOTAStateUpdate(state)
+			},
+			OnProgressUpdate: func(progress float32) {
+				writeJSONRPCEvent("otaProgress", progress, currentSession)
+			},
 		},
-		GetLocalVersion: GetLocalVersion,
-		HwReboot:        hwReboot,
-		ResetConfig:     rpcResetConfig,
-		SetAutoUpdate:   rpcSetAutoUpdateState,
-		OnStateUpdate: func(state *ota.RPCState) {
-			triggerOTAStateUpdate(state)
-		},
-		OnProgressUpdate: func(progress float32) {
-			writeJSONRPCEvent("otaProgress", progress, currentSession)
-		},
-	})
+		loggingContext,
+	)
 }
 
 func triggerOTAStateUpdate(state *ota.RPCState) {
@@ -51,7 +56,7 @@ func triggerOTAStateUpdate(state *ota.RPCState) {
 		if state == nil {
 			state = otaState.ToRPCState()
 		}
-		logging.GetSubsystemLogger("ota").Trace().Interface("state", state).Msg("Reporting OTA state")
+		ota.GetOtaLoggingContext().Interface("state", state).Trace().Msg("Reporting OTA state")
 
 		writeJSONRPCEvent("otaState", state, currentSession)
 	}()
@@ -83,11 +88,15 @@ func GetLocalVersion() (systemVersion *semver.Version, appVersion *semver.Versio
 }
 
 func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
-	updateStatus, err := otaState.GetUpdateStatus(context.Background(), ota.UpdateParams{
-		DeviceID:          GetDeviceID(),
-		IncludePreRelease: includePreRelease,
-		RequestID:         uuid.New().String(),
-	})
+	loggingContext := ota.GetOtaLoggingContext()
+	updateStatus, err := otaState.GetUpdateStatus(
+		context.Background(),
+		ota.UpdateParams{
+			DeviceID:          GetDeviceID(),
+			IncludePreRelease: includePreRelease,
+			RequestID:         uuid.New().String(),
+		},
+		loggingContext)
 
 	// to ensure backwards compatibility,
 	// if there's an error, we won't return an error, but we will set the error field
@@ -103,7 +112,7 @@ func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
 		updateStatus.WillDisableAutoUpdate = config.AutoUpdateEnabled
 	}
 
-	logging.GetSubsystemLogger("ota").Info().Interface("updateStatus", updateStatus).Msg("Update status")
+	loggingContext.Interface("updateStatus", updateStatus).Info().Msg("Update status")
 
 	return updateStatus, nil
 }
@@ -163,7 +172,8 @@ func rpcCheckUpdateComponents(params updateParams, includePreRelease bool) (*ota
 		IncludePreRelease: includePreRelease,
 		Components:        params.Components,
 	}
-	info, err := otaState.GetUpdateStatus(context.Background(), updateParams)
+	loggingContext := ota.GetOtaLoggingContext()
+	info, err := otaState.GetUpdateStatus(context.Background(), updateParams, loggingContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check update: %w", err)
 	}

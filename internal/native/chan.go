@@ -36,11 +36,10 @@ func (n *Native) handleVideoStateChan() {
 func (n *Native) handleLogChan() {
 	for {
 		entry := <-logChan
-		l := n.l.With().
+		l := n.nativeContext.
 			Str("file", entry.File).
 			Str("func", entry.FuncName).
-			Int("line", entry.Line).
-			Logger()
+			Int("line", entry.Line)
 
 		switch entry.Level {
 		case zerolog.DebugLevel:

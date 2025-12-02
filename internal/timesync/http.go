@@ -22,7 +22,7 @@ var defaultHTTPUrls = []string{
 
 func (t *TimeSync) queryAllHttpTime(httpUrls []string) (now *time.Time) {
 	chunkSize := int(t.networkConfig.TimeSyncParallel.ValueOr(4))
-	t.l.Info().Strs("httpUrls", httpUrls).Int("chunkSize", chunkSize).Msg("querying HTTP URLs")
+	t.loggingContext.Info().Strs("httpUrls", httpUrls).Int("chunkSize", chunkSize).Msg("querying HTTP URLs")
 
 	// shuffle the http urls to avoid always querying the same servers
 	rand.Shuffle(len(httpUrls), func(i, j int) { httpUrls[i], httpUrls[j] = httpUrls[j], httpUrls[i] })
@@ -43,13 +43,12 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	loggingContext := t.loggingContext.With().Int("urls_count", len(urls)).Int("timeout_ms", int(timeout.Milliseconds()))
 
 	for _, url := range urls {
-		go func(url string) {
-			scopedLogger := t.l.With().
-				Str("http_url", url).
-				Logger()
+		loopContext := loggingContext.With().Str("http_url", url)
 
+		go func(url string) {
 			metricHttpRequestCount.WithLabelValues(url).Inc()
 			metricHttpTotalRequestCount.Inc()
 
@@ -85,7 +84,7 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 				if requestId == "" {
 					requestId = response.Header.Get("Cf-Ray")
 				}
-				scopedLogger.Info().
+				loopContext.Info().
 					Str("time", now.Format(time.RFC3339)).
 					Int("status", status).
 					Str("request_id", requestId).
@@ -99,7 +98,7 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 				metricHttpTotalCancelCount.Inc()
 				results <- nil
 			} else {
-				scopedLogger.Warn().
+				loopContext.Warn().
 					Str("error", err.Error()).
 					Int("status", status).
 					Msg("failed to query HTTP server")

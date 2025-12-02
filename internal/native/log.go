@@ -6,7 +6,14 @@ import (
 )
 
 var nativeLogger = logging.GetSubsystemLogger("native")
-var displayLogger = logging.GetSubsystemLogger("display")
+
+func GetNativeLoggingContext() *logging.Context {
+	return logging.NewContext(logging.GetSubsystemLogger("native"))
+}
+
+func GetDisplayLoggingContext() *logging.Context {
+	return logging.NewContext(logging.GetSubsystemLogger("display"))
+}
 
 type nativeLogMessage struct {
 	Level    zerolog.Level

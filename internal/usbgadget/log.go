@@ -2,31 +2,24 @@ package usbgadget
 
 import (
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/rs/zerolog"
 )
 
-func (u *UsbGadget) getUsbGadgetLoggingContext() zerolog.Context {
-	context := logging.GetSubsystemLogger("usbgadget").
-		With().
+func (u *UsbGadget) getUsbGadgetLoggingContext() *logging.Context {
+	return logging.NewContext(logging.GetSubsystemLogger("usbgadget")).
 		Str("gadget", u.name)
-	return context
 }
 
-func (u *UsbGadget) getHidKeyboardLoggingContext() zerolog.Context {
-	context := logging.GetSubsystemLogger("hid-keyboard").
-		With().
+func (u *UsbGadget) getHidKeyboardLoggingContext() *logging.Context {
+	return logging.NewContext(logging.GetSubsystemLogger("hid-keyboard")).
 		Str("gadget", u.name)
-	return context
 }
 
-func (u *UsbGadget) getHidKeyboardAutoReleaseLoggingContext() zerolog.Context {
-	context := logging.GetSubsystemLogger("hid-keyboard-auto-release").
-		With().
+func (u *UsbGadget) getHidKeyboardAutoReleaseLoggingContext() *logging.Context {
+	return logging.NewContext(logging.GetSubsystemLogger("hid-keyboard-auto-release")).
 		Str("gadget", u.name)
-	return context
 }
 
-func (u *UsbGadget) logWithSuppression(context zerolog.Context, counterName string, every int, err error, msg string, args ...any) bool {
+func (u *UsbGadget) logWithSuppression(context *logging.Context, counterName string, every int, err error, msg string, args ...interface{}) bool {
 	u.logSuppressionLock.Lock()
 	counter, ok := u.logSuppressionCounter[counterName] // returns 0, false if not found
 	counter++
@@ -35,7 +28,7 @@ func (u *UsbGadget) logWithSuppression(context zerolog.Context, counterName stri
 
 	// log if it's the first time, and then every N times thereafter
 	if !ok || counter%every == 0 {
-		_ = logging.LogError(context.Str("counterName", counterName).Int("counter", counter), err, msg, args...)
+		context.Str("counterName", counterName).Int("counter", counter).Err(err).Error().Msgf(msg, args...)
 		return ok // return whether we've just exceeded the every interval
 	}
 	return false

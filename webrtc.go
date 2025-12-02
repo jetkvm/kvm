@@ -10,14 +10,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/coder/websocket"
-	"github.com/coder/websocket/wsjson"
-	"github.com/gin-gonic/gin"
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
+
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
+	"github.com/gin-gonic/gin"
 	"github.com/pion/webrtc/v4"
-	"github.com/rs/zerolog"
 )
 
 type Session struct {
@@ -71,7 +71,6 @@ type SessionConfig struct {
 	LocalIP    string
 	IsCloud    bool
 	ws         *websocket.Conn
-	Logger     *zerolog.Logger
 }
 
 func (s *Session) ExchangeOffer(offerStr string) (string, error) {
@@ -119,9 +118,10 @@ func (s *Session) initQueues() {
 	}
 }
 
-func (s *Session) handleQueue(index int) {
+func (s *Session) handleQueue(index int, loggingContext *logging.Context) {
+	queueContext := loggingContext.With().Int("index", index)
 	for msg := range s.hidQueue[index] {
-		onHidMessage(msg, s)
+		onHidMessage(msg, s, queueContext)
 	}
 }
 
@@ -151,34 +151,36 @@ func (s *Session) enqueueKeysDownState(state usbgadget.KeysDownState) {
 	}
 }
 
-func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, channel string) func(msg webrtc.DataChannelMessage) {
+func getOnHidMessageHandler(session *Session, loggingContext *logging.Context, channel string) func(msg webrtc.DataChannelMessage) {
+	channelContext := loggingContext.With().Interface("session", session).Str("channel", channel)
+
 	return func(msg webrtc.DataChannelMessage) {
-		l := scopedLogger.With().
-			Str("channel", channel).
-			Logger()
+		msgContext := channelContext.With().Interface("msg", msg)
 
 		if msg.IsString {
-			l.Warn().Msg("received string data in HID RPC message handler")
+			msgContext.Warn().Msg("received string data in HID RPC message handler")
 			return
 		}
 
 		dataLength := len(msg.Data)
-		l = l.With().Int("length", dataLength).Logger()
+		msgContext = msgContext.Int("length", dataLength)
 
 		// only log data if the log level is debug or lower
-		if scopedLogger.GetLevel() <= zerolog.DebugLevel {
-			l = l.With().Bytes("data", msg.Data).Logger()
+		if msgContext.IsDebugLevel() {
+			msgContext = msgContext.Bytes("data", msg.Data)
 		}
 
 		if dataLength < 1 {
-			l.Warn().Msg("received empty data in HID RPC message handler")
+			msgContext.Warn().Msg("received empty data in HID RPC message handler")
 			return
 		}
 
 		// Enqueue to ensure ordered processing
 		queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
+		msgContext = msgContext.Int("queueIndex", queueIndex)
+
 		if queueIndex >= len(session.hidQueue) || queueIndex < 0 {
-			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue index not found")
+			msgContext.Warn().Msg("received data in HID RPC message handler, but queue index not found")
 			queueIndex = 3
 		}
 
@@ -188,9 +190,9 @@ func getOnHidMessageHandler(session *Session, scopedLogger *zerolog.Logger, chan
 				DataChannelMessage: msg,
 				channel:            channel,
 			}
-			l.Trace().Msg("queued HID RPC message")
+			msgContext.Trace().Msg("queued HID RPC message")
 		} else {
-			l.Warn().Int("queueIndex", queueIndex).Msg("received data in HID RPC message handler, but queue is nil")
+			msgContext.Warn().Msg("received data in HID RPC message handler, but queue is nil")
 			return
 		}
 	}
@@ -202,27 +204,21 @@ func newSession(config SessionConfig) (*Session, error) {
 	}
 	iceServer := webrtc.ICEServer{}
 
-	var scopedLogger *zerolog.Logger
-	if config.Logger != nil {
-		l := config.Logger.With().Str("component", "webrtc").Logger()
-		scopedLogger = &l
-	} else {
-		scopedLogger = logging.GetSubsystemLogger("webrtc")
-	}
+	sessionContext := logging.NewContext(logging.GetSubsystemLogger("webrtc"))
 
 	if config.IsCloud {
 		if config.ICEServers == nil {
-			scopedLogger.Info().Msg("ICE Servers not provided by cloud")
+			sessionContext.Info().Msg("ICE Servers not provided by cloud")
 		} else {
 			iceServer.URLs = config.ICEServers
-			scopedLogger.Info().Interface("iceServers", iceServer.URLs).Msg("Using ICE Servers provided by cloud")
+			sessionContext.Info().Interface("iceServers", iceServer.URLs).Msg("Using ICE Servers provided by cloud")
 		}
 
 		if config.LocalIP == "" || net.ParseIP(config.LocalIP) == nil {
-			scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set NAT1To1IPs")
+			sessionContext.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set NAT1To1IPs")
 		} else {
 			webrtcSettingEngine.SetNAT1To1IPs([]string{config.LocalIP}, webrtc.ICECandidateTypeSrflx)
-			scopedLogger.Info().Str("localIP", config.LocalIP).Msg("Setting NAT1To1IPs")
+			sessionContext.Info().Str("localIP", config.LocalIP).Msg("Setting NAT1To1IPs")
 		}
 	}
 
@@ -231,7 +227,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		ICEServers: []webrtc.ICEServer{iceServer},
 	})
 	if err != nil {
-		scopedLogger.Warn().Err(err).Msg("Failed to create PeerConnection")
+		sessionContext.Warn().Err(err).Msg("Failed to create PeerConnection")
 		return nil, err
 	}
 
@@ -248,30 +244,27 @@ func newSession(config SessionConfig) (*Session, error) {
 	}()
 
 	for i := 0; i < len(session.hidQueue); i++ {
-		go session.handleQueue(i)
+		go session.handleQueue(i, sessionContext)
 	}
-
-	l := config.Logger.With().Interface("session", session).Logger()
-	scopedLogger = &l
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		defer func() {
 			if r := recover(); r != nil {
-				scopedLogger.Error().Interface("error", r).Msg("Recovered from panic in DataChannel handler")
+				sessionContext.Error().Interface("recovered", r).Msg("Recovered from panic in DataChannel handler")
 			}
 		}()
 
-		scopedLogger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
+		sessionContext.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
 
 		switch d.Label() {
 		case "hidrpc":
 			session.HidChannel = d
-			d.OnMessage(getOnHidMessageHandler(session, scopedLogger, "hidrpc"))
+			d.OnMessage(getOnHidMessageHandler(session, sessionContext, "hidrpc"))
 		// we won't send anything over the unreliable channels
 		case "hidrpc-unreliable-ordered":
-			d.OnMessage(getOnHidMessageHandler(session, scopedLogger, "hidrpc-unreliable-ordered"))
+			d.OnMessage(getOnHidMessageHandler(session, sessionContext, "hidrpc-unreliable-ordered"))
 		case "hidrpc-unreliable-nonordered":
-			d.OnMessage(getOnHidMessageHandler(session, scopedLogger, "hidrpc-unreliable-nonordered"))
+			d.OnMessage(getOnHidMessageHandler(session, sessionContext, "hidrpc-unreliable-nonordered"))
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
@@ -298,13 +291,13 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	session.VideoTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "kvm")
 	if err != nil {
-		scopedLogger.Warn().Err(err).Msg("Failed to create VideoTrack")
+		sessionContext.Warn().Err(err).Msg("Failed to create VideoTrack")
 		return nil, err
 	}
 
 	rtpSender, err := peerConnection.AddTrack(session.VideoTrack)
 	if err != nil {
-		scopedLogger.Warn().Err(err).Msg("Failed to add VideoTrack to PeerConnection")
+		sessionContext.Warn().Err(err).Msg("Failed to add VideoTrack to PeerConnection")
 		return nil, err
 	}
 
@@ -322,17 +315,17 @@ func newSession(config SessionConfig) (*Session, error) {
 	var isConnected bool
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		scopedLogger.Info().Interface("candidate", candidate).Msg("WebRTC peerConnection has a new ICE candidate")
+		sessionContext.Info().Interface("candidate", candidate).Msg("WebRTC peerConnection has a new ICE candidate")
 		if candidate != nil {
 			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
 			if err != nil {
-				scopedLogger.Warn().Err(err).Msg("failed to write new-ice-candidate to WebRTC signaling channel")
+				sessionContext.Warn().Err(err).Msg("failed to write new-ice-candidate to WebRTC signaling channel")
 			}
 		}
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		scopedLogger.Info().Str("connectionState", connectionState.String()).Msg("ICE Connection State has changed")
+		sessionContext.Info().Str("connectionState", connectionState.String()).Msg("ICE Connection State has changed")
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			if !isConnected {
 				isConnected = true
@@ -344,11 +337,11 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 		//state changes on closing browser tab disconnected->failed, we need to manually close it
 		if connectionState == webrtc.ICEConnectionStateFailed {
-			scopedLogger.Debug().Msg("ICE Connection State is failed, closing peerConnection")
+			sessionContext.Debug().Msg("ICE Connection State is failed, closing peerConnection")
 			_ = peerConnection.Close()
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
-			scopedLogger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
+			sessionContext.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
 			if session == currentSession {
 				// Cancel any ongoing keyboard report multi when session closes
 				_ = cancelKeyboardMacro()
@@ -371,14 +364,14 @@ func newSession(config SessionConfig) (*Session, error) {
 
 			if session.shouldUmountVirtualMedia {
 				if err := rpcUnmountImage(); err != nil {
-					scopedLogger.Warn().Err(err).Msg("unmount image failed on connection close")
+					sessionContext.Warn().Err(err).Msg("unmount image failed on connection close")
 				}
 			}
 			if isConnected {
 				isConnected = false
 				onActiveSessionsChanged()
 				if decrActiveSessions() == 0 {
-					scopedLogger.Info().Msg("last session disconnected, stopping video stream")
+					sessionContext.Info().Msg("last session disconnected, stopping video stream")
 					onLastSessionDisconnected()
 				}
 			}

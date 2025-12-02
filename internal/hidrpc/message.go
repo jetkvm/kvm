@@ -31,9 +31,22 @@ type Message struct {
 	d []byte
 }
 
+func (m *Message) MarshalZerologObject(e *zerolog.Event) {
+	e.Uint8("type", uint8(m.t))
+	e.Bytes("payload", m.d)
+}
+
 // Marshal marshals the message to a byte array.
 func (m *Message) Marshal() ([]byte, error) {
-	return Marshal(m)
+	if m.t == 0 {
+		return nil, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	data := make([]byte, len(m.d)+1)
+	data[0] = byte(m.t)
+	copy(data[1:], m.d)
+
+	return data, nil
 }
 
 func (m *Message) Type() MessageType {
@@ -85,7 +98,7 @@ type KeypressReport struct {
 	Press bool
 }
 
-func (k KeypressReport) MarshalZerologObject(e *zerolog.Event) {
+func (k *KeypressReport) MarshalZerologObject(e *zerolog.Event) {
 	e.Hex("Modifier", []byte{k.Key})
 	e.Bool("Press", k.Press)
 }
@@ -108,7 +121,7 @@ type KeyboardReport struct {
 	Keys     []byte // 6 bytes: HidKeyBufferSize
 }
 
-func (k KeyboardReport) MarshalZerologObject(e *zerolog.Event) {
+func (k *KeyboardReport) MarshalZerologObject(e *zerolog.Event) {
 	e.Hex("Modifier", []byte{k.Modifier})
 	e.Hex("Keys", k.Keys)
 }
@@ -132,7 +145,7 @@ type KeyboardMacroStep struct {
 	Delay    uint16 // 2 bytes
 }
 
-func (s KeyboardMacroStep) MarshalZerologObject(e *zerolog.Event) {
+func (s *KeyboardMacroStep) MarshalZerologObject(e *zerolog.Event) {
 	e.Hex("Modifier", []byte{s.Modifier})
 	e.Hex("Keys", s.Keys)
 	e.Uint16("Delay", s.Delay)

@@ -7,20 +7,19 @@ import (
 	"sort"
 
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/rs/zerolog"
 )
 
 // no os package should occur in this file
 
 type UsbGadgetTransaction struct {
 	c                     *ChangeSet
-	loggingContext        *zerolog.Context
+	loggingContext        *logging.Context
 	reorderSymlinkChanges *RequestedFileChange
 }
 
-func (u *UsbGadget) newUsbGadgetTransaction(loggingContext *zerolog.Context) *UsbGadgetTransaction {
+func (u *UsbGadget) newUsbGadgetTransaction(context *logging.Context) *UsbGadgetTransaction {
 	tx := &UsbGadgetTransaction{
-		loggingContext: loggingContext,
+		loggingContext: context,
 		c:              &ChangeSet{},
 	}
 	return tx
@@ -30,17 +29,19 @@ func (u *UsbGadget) WithTransaction(fn func(u2 *UsbGadget, tx *UsbGadgetTransact
 	u.txLock.Lock()
 	defer u.txLock.Unlock()
 
-	loggingContext := u.getUsbGadgetLoggingContext().Str("udc", u.udc)
-	logging.LogInfo(loggingContext, "starting USB gadget transaction")
+	context := u.getUsbGadgetLoggingContext().Str("udc", u.udc)
+	context.Info().Msg("starting USB gadget transaction")
 
-	tx := u.newUsbGadgetTransaction(&loggingContext)
+	tx := u.newUsbGadgetTransaction(context)
 
 	if err := fn(u, tx); err != nil {
-		return logging.LogError(loggingContext, err, "transaction failed")
+		context.Err(err).Error().Msg("transaction failed")
+		return err
 	}
 
 	err := tx.Commit()
-	return logging.LogTraceE(loggingContext, err, "committed transaction")
+	context.Err(err).Trace().Msg("committed transaction")
+	return err
 }
 
 func (tx *UsbGadgetTransaction) addFileChange(component string, change RequestedFileChange) string {
@@ -76,9 +77,10 @@ func (tx *UsbGadgetTransaction) Commit() error {
 
 	err := tx.c.Apply(tx.loggingContext)
 	if err != nil {
-		return logging.LogError(*tx.loggingContext, err, "failed to update usbgadget configuration")
+		tx.loggingContext.Err(err).Error().Msg("failed to update usbgadget configuration")
+		return err
 	}
-	logging.LogInfo(*tx.loggingContext, "usbgadget configuration updated")
+	tx.loggingContext.Info().Msg("usbgadget configuration updated")
 	return nil
 }
 
@@ -254,7 +256,7 @@ func (tx *UsbGadgetTransaction) writeGadgetAttrs(basePath string, attrs gadgetAt
 }
 
 func (tx *UsbGadgetTransaction) addReorderSymlinkChange(configC1Path string, path string, target string, deps []string) {
-	logging.LogTrace(tx.loggingContext.Str("path", path).Str("target", target), "add reorder symlink change")
+	tx.loggingContext.Str("path", path).Str("target", target).Trace().Msg("add reorder symlink change")
 
 	if tx.reorderSymlinkChanges == nil {
 		tx.reorderSymlinkChanges = &RequestedFileChange{

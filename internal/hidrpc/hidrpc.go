@@ -39,19 +39,6 @@ func Unmarshal(data []byte, message *Message) error {
 	return nil
 }
 
-// Marshal marshals the HID RPC message to the data.
-func Marshal(message *Message) ([]byte, error) {
-	if message.t == 0 {
-		return nil, fmt.Errorf("invalid message type: %d", message.t)
-	}
-
-	data := make([]byte, len(message.d)+1)
-	data[0] = byte(message.t)
-	copy(data[1:], message.d)
-
-	return data, nil
-}
-
 // NewHandshakeMessage creates a new handshake message.
 func NewHandshakeMessage() *Message {
 	return &Message{

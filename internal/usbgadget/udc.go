@@ -5,8 +5,6 @@ import (
 	"os"
 	"path"
 	"strings"
-
-	"github.com/jetkvm/kvm/internal/logging"
 )
 
 func getUdcs() []string {
@@ -40,7 +38,7 @@ func rebindUsb(udc string, ignoreUnbindError bool) error {
 }
 
 func (u *UsbGadget) rebindUsb(ignoreUnbindError bool) error {
-	logging.LogInfo(u.getUsbGadgetLoggingContext().Str("udc", u.udc), "rebinding USB gadget to UDC")
+	u.getUsbGadgetLoggingContext().Str("udc", u.udc).Info().Msg("rebinding USB gadget to UDC")
 	return rebindUsb(u.udc, ignoreUnbindError)
 }
 
@@ -60,7 +58,7 @@ func (u *UsbGadget) GetUsbState() (state string) {
 		if os.IsNotExist(err) {
 			return "not attached"
 		} else {
-			_ = logging.LogWarnE(u.getUsbGadgetLoggingContext(), err, "failed to read usb state")
+			u.getUsbGadgetLoggingContext().Err(err).Warn().Msg("failed to read usb state")
 		}
 		return "unknown"
 	}

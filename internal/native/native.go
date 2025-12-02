@@ -7,13 +7,10 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/rs/zerolog"
 )
 
 type Native struct {
 	ready                chan struct{}
-	l                    *zerolog.Logger
-	lD                   *zerolog.Logger
 	systemVersion        *semver.Version
 	appVersion           *semver.Version
 	displayRotation      uint16
@@ -61,36 +58,38 @@ func (s VideoStreamingStatus) String() string {
 	return "unknown"
 }
 
-func NewNative(opts NativeOptions) *Native {
+func getNativeLoggingContext() *logging.Context {
 	pid := os.Getpid()
-	nativeSubLogger := logging.GetSubsystemLogger("native").With().Int("pid", pid).Str("scope", "native").Logger()
-	displaySubLogger := displayLogger.With().Int("pid", pid).Str("scope", "native").Logger()
+	return GetDisplayLoggingContext().With().Str("scope", "native").Int("pid", pid)
+}
+
+func NewNative(opts NativeOptions) *Native {
 
 	onVideoStateChange := opts.OnVideoStateChange
 	if onVideoStateChange == nil {
 		onVideoStateChange = func(state VideoState) {
-			nativeLogger.Info().Interface("state", state).Msg("video state changed")
+			getNativeLoggingContext().Info().Interface("state", state).Msg("video state changed")
 		}
 	}
 
 	onVideoFrameReceived := opts.OnVideoFrameReceived
 	if onVideoFrameReceived == nil {
 		onVideoFrameReceived = func(frame []byte, duration time.Duration) {
-			nativeLogger.Trace().Interface("frame", frame).Dur("duration", duration).Msg("video frame received")
+			getNativeLoggingContext().Trace().Int("frame_size", len(frame)).Dur("duration", duration).Msg("video frame received")
 		}
 	}
 
 	onIndevEvent := opts.OnIndevEvent
 	if onIndevEvent == nil {
 		onIndevEvent = func(event string) {
-			nativeLogger.Info().Str("event", event).Msg("indev event")
+			getNativeLoggingContext().Info().Str("event", event).Msg("indev event")
 		}
 	}
 
 	onRpcEvent := opts.OnRpcEvent
 	if onRpcEvent == nil {
 		onRpcEvent = func(event string) {
-			nativeLogger.Info().Str("event", event).Msg("rpc event")
+			getNativeLoggingContext().Info().Str("event", event).Msg("rpc event")
 		}
 	}
 
@@ -103,8 +102,6 @@ func NewNative(opts NativeOptions) *Native {
 
 	return &Native{
 		ready:                make(chan struct{}),
-		l:                    &nativeSubLogger,
-		lD:                   &displaySubLogger,
 		systemVersion:        opts.SystemVersion,
 		appVersion:           opts.AppVersion,
 		displayRotation:      opts.DisplayRotation,
@@ -135,7 +132,7 @@ func (n *Native) Start() error {
 	go n.tickUI()
 
 	if err := videoInit(n.defaultQualityFactor); err != nil {
-		n.l.Error().Err(err).Msg("failed to initialize video")
+		getNativeLoggingContext().Error().Err(err).Msg("failed to initialize video")
 		return err
 	}
 
@@ -148,7 +145,7 @@ func (n *Native) Start() error {
 func (n *Native) DoNotUseThisIsForCrashTestingOnly() {
 	defer func() {
 		if r := recover(); r != nil {
-			n.l.Error().Msg("recovered from crash")
+			getNativeLoggingContext().Error().Interface("recovered", r).Msg("recovered from crash")
 		}
 	}()
 

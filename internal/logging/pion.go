@@ -9,7 +9,6 @@ type pionLogger struct {
 	logger *zerolog.Logger
 }
 
-// Print all messages except trace.
 func (c pionLogger) Trace(msg string) {
 	c.logger.Trace().Msg(msg)
 }
@@ -23,18 +22,21 @@ func (c pionLogger) Debug(msg string) {
 func (c pionLogger) Debugf(format string, args ...any) {
 	c.logger.Debug().Msgf(format, args...)
 }
+
 func (c pionLogger) Info(msg string) {
 	c.logger.Info().Msg(msg)
 }
 func (c pionLogger) Infof(format string, args ...any) {
 	c.logger.Info().Msgf(format, args...)
 }
+
 func (c pionLogger) Warn(msg string) {
 	c.logger.Warn().Msg(msg)
 }
 func (c pionLogger) Warnf(format string, args ...any) {
 	c.logger.Warn().Msgf(format, args...)
 }
+
 func (c pionLogger) Error(msg string) {
 	c.logger.Error().Msg(msg)
 }

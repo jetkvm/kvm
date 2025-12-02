@@ -10,49 +10,41 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/rs/zerolog"
 )
 
-var defaultLogger = logging.GetSubsystemLogger("synctrace")
+func GetSynctraceLoggingContext() *logging.Context {
+	return logging.NewContext(logging.GetSubsystemLogger("synctrace"))
+}
 
 func logTrace(msg string) {
-	if defaultLogger.GetLevel() > zerolog.TraceLevel {
+	if !GetSynctraceLoggingContext().IsTraceLevel() {
 		return
 	}
 
 	logTrack(3).Trace().Msg(msg)
 }
 
-func logTrack(callerSkip int) *zerolog.Logger {
-	l := *defaultLogger
-	if l.GetLevel() > zerolog.TraceLevel {
-		return &l
+func logTrack(callerSkip int) *logging.Context {
+	loggingContext := GetSynctraceLoggingContext()
+	if !loggingContext.IsTraceLevel() {
+		return loggingContext
 	}
 
 	pc, file, no, ok := runtime.Caller(callerSkip)
 	if ok {
-		l = l.With().
-			Str("file", file).
-			Int("line", no).
-			Logger()
+		loggingContext = loggingContext.Str("file", file).Int("line", no)
 
 		details := runtime.FuncForPC(pc)
 		if details != nil {
-			l = l.With().
-				Str("func", details.Name()).
-				Logger()
+			loggingContext = loggingContext.Str("func", details.Name())
 		}
 	}
 
-	return &l
+	return loggingContext
 }
 
-func logLockTrack(i string) *zerolog.Logger {
-	l := logTrack(4).
-		With().
-		Str("index", i).
-		Logger()
-	return &l
+func logLockTrack(i string) *logging.Context {
+	return logTrack(4).Str("index", i)
 }
 
 var (

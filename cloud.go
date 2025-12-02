@@ -325,7 +325,8 @@ func runWebsocketClient() error {
 	header.Set("Authorization", "Bearer "+config.CloudToken)
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
 
-	l := logging.GetSubsystemLogger("websocket").With().
+	l := logging.GetSubsystemLogger("websocket").
+		With().
 		Str("source", wsURL.Host).
 		Str("sourceType", "cloud").
 		Logger()
@@ -457,7 +458,6 @@ func handleSessionRequest(
 		IsCloud:    isCloudConnection,
 		LocalIP:    req.IP,
 		ICEServers: req.ICEServers,
-		Logger:     scopedLogger,
 	})
 	if err != nil {
 		_ = wsjson.Write(context.Background(), c, gin.H{"error": err})

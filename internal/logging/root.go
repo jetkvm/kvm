@@ -3,13 +3,12 @@ package logging
 import "github.com/rs/zerolog"
 
 var (
-	rootZerologLogger = zerolog.New(defaultLogOutput).
-				With().
-				Str("scope", "jetkvm").
-				Timestamp().
-				Stack().
-				Logger()
-	rootLogger = NewLogger(rootZerologLogger)
+	rootLogger = NewLogger(
+		zerolog.New(defaultLogOutput).
+			With().
+			Str("scope", "jetkvm").
+			Timestamp().
+			Logger())
 )
 
 func UpdateConfigLogLevel(logLevel string) {

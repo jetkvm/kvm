@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/jetkvm/kvm/internal/logging"
 )
 
 func joinPath(basePath string, paths []string) string {
@@ -105,7 +103,7 @@ func (u *UsbGadget) writeWithTimeout(file *os.File, data []byte) (n int, err err
 	}
 
 	context := u.getUsbGadgetLoggingContext().Str("file", fileName).Bytes("data", data)
-	_ = logging.LogTraceE(context, err, "write failed")
+	context.Err(err).Trace().Msg("write failed")
 
 	if errors.Is(err, os.ErrDeadlineExceeded) {
 		if exceeded := u.logWithSuppression(context, "writeWithTimeout_"+fileName, 100, err, "write timed out"); exceeded {

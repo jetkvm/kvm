@@ -44,8 +44,8 @@ func isTimeSyncNeeded() bool {
 
 func initTimeSync() {
 	timeSync = timesync.NewTimeSync(&timesync.TimeSyncOptions{
-		Logger:        logging.GetSubsystemLogger("timesync"),
-		NetworkConfig: config.NetworkConfig,
+		LoggingContext: timesync.GetTimesyncLoggingContext(),
+		NetworkConfig:  config.NetworkConfig,
 		PreCheckIPv4: func() (bool, error) {
 			if !networkManager.IPv4Ready() {
 				return false, nil

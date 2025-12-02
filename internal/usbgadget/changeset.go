@@ -10,7 +10,6 @@ import (
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/prometheus/procfs"
-	"github.com/rs/zerolog"
 	"github.com/sourcegraph/tf-dag/dag"
 )
 
@@ -196,15 +195,15 @@ func (fc *FileChange) checkIfDirIsMountPoint() error {
 }
 
 // GetActualState returns the actual state of the file at the given path.
-func (fc *FileChange) getActualState(loggingContext *zerolog.Context) error {
-	context := loggingContext.Str("path", fc.Path)
+func (fc *FileChange) getActualState(context *logging.Context) error {
+	context = context.Str("path", fc.Path)
 
 	fi, err := os.Lstat(fc.Path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			fc.ActualState = FileStateAbsent
 		} else {
-			_ = logging.LogWarnE(context, err, "failed to stat file")
+			context.Err(err).Warn().Msg("failed to stat file")
 			fc.ActualState = FileStateUnknown
 		}
 		return nil
@@ -216,7 +215,7 @@ func (fc *FileChange) getActualState(loggingContext *zerolog.Context) error {
 		// get the target of the symlink
 		target, err := os.Readlink(fc.Path)
 		if err != nil {
-			_ = logging.LogWarnE(context, err, "failed to read symlink")
+			context.Err(err).Warn().Msg("failed to read symlink")
 			return fmt.Errorf("failed to read symlink")
 		}
 		// check if the target is a relative path
@@ -224,7 +223,7 @@ func (fc *FileChange) getActualState(loggingContext *zerolog.Context) error {
 			// make it absolute
 			target, err = filepath.Abs(filepath.Join(filepath.Dir(fc.Path), target))
 			if err != nil {
-				_ = logging.LogWarnE(context, err, "failed to make symlink target absolute")
+				context.Err(err).Warn().Msg("failed to make symlink target absolute")
 				return fmt.Errorf("failed to make symlink target absolute")
 			}
 		}
@@ -239,12 +238,14 @@ func (fc *FileChange) getActualState(loggingContext *zerolog.Context) error {
 		case FileStateMountedConfigFS:
 			err := fc.checkIfDirIsMountPoint()
 			if err != nil {
-				return logging.LogWarnE(context, err, "failed to check if dir is mount point")
+				context.Err(err).Warn().Msg("failed to check if dir is mount point")
+				return err
 			}
 		case FileStateSymlinkInOrderConfigFS:
-			state, err := checkIfSymlinksInOrder(fc, &context)
+			state, err := checkIfSymlinksInOrder(fc, context)
 			if err != nil {
-				return logging.LogWarnE(context, err, "failed to check if symlinks are in order")
+				context.Err(err).Warn().Msg("failed to check if symlinks are in order")
+				return err
 			}
 			fc.ActualState = state
 		}
@@ -252,7 +253,7 @@ func (fc *FileChange) getActualState(loggingContext *zerolog.Context) error {
 	}
 
 	if fi.Mode()&os.ModeDevice == os.ModeDevice {
-		logging.LogInfo(context, "file is a device")
+		context.Info().Msg("file is a device")
 		return nil
 	}
 
@@ -262,14 +263,14 @@ func (fc *FileChange) getActualState(loggingContext *zerolog.Context) error {
 		// get the content of the file
 		content, err := os.ReadFile(fc.Path)
 		if err != nil {
-			_ = logging.LogWarnE(context, err, "failed to read file")
+			context.Err(err).Warn().Msg("failed to read file")
 			return fmt.Errorf("failed to read file")
 		}
 		fc.ActualContent = content
 		return nil
 	}
 
-	logging.LogWarn(context.Interface("file_info", fi.Mode()).Bool("is_dir", fi.IsDir()), "unknown file type")
+	context.Interface("file_info", fi.Mode()).Bool("is_dir", fi.IsDir()).Warn().Msg("unknown file type")
 	return fmt.Errorf("unknown file type")
 }
 
@@ -279,16 +280,16 @@ func (fc *FileChange) ResetActionResolution() {
 	fc.changed = ChangeStateUnknown
 }
 
-func (fc *FileChange) Action(loggingContext *zerolog.Context) FileChangeResolvedAction {
+func (fc *FileChange) Action(context *logging.Context) FileChangeResolvedAction {
 	if !fc.checked {
-		fc.action = fc.getFileChangeResolvedAction(loggingContext)
+		fc.action = fc.getFileChangeResolvedAction(context)
 		fc.checked = true
 	}
 
 	return fc.action
 }
 
-func (fc *FileChange) getFileChangeResolvedAction(loggingContext *zerolog.Context) FileChangeResolvedAction {
+func (fc *FileChange) getFileChangeResolvedAction(context *logging.Context) FileChangeResolvedAction {
 	// some actions are not needed to be checked
 	switch fc.ExpectedState {
 	case FileStateFileWrite:
@@ -297,10 +298,10 @@ func (fc *FileChange) getFileChangeResolvedAction(loggingContext *zerolog.Contex
 		return FileChangeResolvedActionTouch
 	}
 
-	context := loggingContext.Interface("expected_state", FileStateString[fc.ExpectedState])
+	context = context.Interface("expected_state", FileStateString[fc.ExpectedState])
 
 	// get the actual state of the file
-	err := fc.getActualState(&context)
+	err := fc.getActualState(context)
 	if err != nil {
 		return FileChangeResolvedActionDoNothing
 	}
@@ -361,7 +362,7 @@ func (fc *FileChange) getFileChangeResolvedAction(loggingContext *zerolog.Contex
 		}
 		return FileChangeResolvedActionMountConfigFS
 	default:
-		logging.LogWarn(context, "unknown expected state")
+		context.Warn().Msg("unknown expected state")
 		return FileChangeResolvedActionDoNothing
 	}
 }
@@ -384,17 +385,17 @@ func (c *ChangeSet) AddFileChange(component string, path string, expectedState F
 	})
 }
 
-func (c *ChangeSet) ApplyChanges(loggingContext *zerolog.Context) error {
+func (c *ChangeSet) ApplyChanges(context *logging.Context) error {
 	r := ChangeSetResolver{
 		changeset: c,
 		g:         &dag.AcyclicGraph{},
 	}
 
-	return r.Apply(loggingContext)
+	return r.Apply(context)
 }
 
-func (c *ChangeSet) applyChange(change *FileChange, loggingContext *zerolog.Context) error {
-	action := change.Action(loggingContext)
+func (c *ChangeSet) applyChange(change *FileChange, context *logging.Context) error {
+	action := change.Action(context)
 
 	switch action {
 	case FileChangeResolvedActionWriteFile:
@@ -411,7 +412,7 @@ func (c *ChangeSet) applyChange(change *FileChange, loggingContext *zerolog.Cont
 		}
 		return os.Symlink(string(change.ExpectedContent), change.Path)
 	case FileChangeResolvedActionReorderSymlinks:
-		return recreateSymlinks(change, loggingContext)
+		return recreateSymlinks(change, context)
 	case FileChangeResolvedActionCreateDirectory:
 		return os.MkdirAll(change.Path, 0755)
 	case FileChangeResolvedActionRemove:
@@ -429,6 +430,6 @@ func (c *ChangeSet) applyChange(change *FileChange, loggingContext *zerolog.Cont
 	}
 }
 
-func (c *ChangeSet) Apply(loggingContext *zerolog.Context) error {
-	return c.ApplyChanges(loggingContext)
+func (c *ChangeSet) Apply(context *logging.Context) error {
+	return c.ApplyChanges(context)
 }

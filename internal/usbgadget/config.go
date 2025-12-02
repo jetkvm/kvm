@@ -3,8 +3,6 @@ package usbgadget
 import (
 	"fmt"
 	"os/exec"
-
-	"github.com/jetkvm/kvm/internal/logging"
 )
 
 type gadgetConfigItem struct {
@@ -82,7 +80,7 @@ func (enabledDevices *Devices) isGadgetConfigItemEnabled(itemKey string) bool {
 
 func (u *UsbGadget) loadGadgetConfig() {
 	if u.customConfig.isEmpty {
-		logging.LogTrace(u.getUsbGadgetLoggingContext(), "using default gadget config")
+		u.getUsbGadgetLoggingContext().Trace().Msg("using default gadget config")
 		return
 	}
 
@@ -139,16 +137,17 @@ func (u *UsbGadget) OverrideGadgetConfig(itemKey string, itemAttr string, value 
 	_, ok := u.configMap[itemKey]
 	if !ok {
 		err := fmt.Errorf("not found %s", itemKey)
-		return false, logging.LogError(context, err, "overriding gadget config")
+		context.Err(err).Error().Msg("overriding gadget config")
+		return false, err
 	}
 
 	if u.configMap[itemKey].attrs[itemAttr] == value {
-		logging.LogTrace(context, "unchanged gadget config")
+		context.Trace().Msg("unchanged gadget config")
 		return false, nil
 	}
 
 	u.configMap[itemKey].attrs[itemAttr] = value
-	logging.LogInfo(context, "overriding gadget config")
+	context.Info().Msg("overriding gadget config")
 
 	return true, nil
 }
@@ -169,14 +168,15 @@ func (u *UsbGadget) Init() error {
 
 	udcs := getUdcs()
 	if len(udcs) < 1 {
-		return logging.LogWarnE(u.getUsbGadgetLoggingContext(), nil, "no udc found, skipping USB stack init")
+		u.getUsbGadgetLoggingContext().Warn().Msg("no udc found, skipping USB stack init")
+		return nil
 	}
 
 	u.udc = udcs[0]
 
 	err := u.configureUsbGadget(false)
 	if err != nil {
-		_ = logging.LogError(u.getUsbGadgetLoggingContext(), err, "unable to initialize USB stack")
+		u.getUsbGadgetLoggingContext().Err(err).Error().Msg("unable to initialize USB stack")
 		if u.strictMode {
 			return err
 		}
@@ -193,7 +193,7 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 
 	err := u.configureUsbGadget(true)
 	if err != nil {
-		_ = logging.LogError(u.getUsbGadgetLoggingContext(), err, "unable to update gadget config")
+		u.getUsbGadgetLoggingContext().Err(err).Error().Msg("unable to update gadget config")
 		if u.strictMode {
 			return err
 		}
