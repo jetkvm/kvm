@@ -108,9 +108,9 @@ function useCommandHistory(max = 300) {
 }
 
 function Portal({ children }: { children: React.ReactNode }) {
-    const [mounted, setMounted] = useState(false);
-    useEffect(() => setMounted(true), []);
-    if (!mounted) return null;
+    if (typeof document === "undefined") {
+        return null;
+    }
     return createPortal(children, document.body);
 }
 
@@ -199,8 +199,6 @@ export function CommandInput({
 
     const results = useMemo(() => search(revQuery), [revQuery, search]);
 
-    useEffect(() => { setSel(0); }, [results]);
-
     const cmdInputRef = React.useRef<HTMLInputElement>(null);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -265,7 +263,10 @@ export function CommandInput({
                             size="MD"
                             autoFocus
                             value={revQuery}
-                            onChange={(e) => setRevQuery(e.target.value)}
+                            onChange={(e) => {
+                                setRevQuery(e.target.value);
+                                setSel(0); // reset selection whenever the query changes
+                            }}
                             onKeyDown={(e) => {
                                 if (e.key === "ArrowDown") {
                                     e.preventDefault();
@@ -274,17 +275,9 @@ export function CommandInput({
                                     e.preventDefault();
                                     setSel((i) => (i - 1 + results.length) % Math.max(1, results.length));
                                 } else if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    const pick = results[sel]?.value ?? results[0]?.value;
-                                    if (pick) {
-                                        setCmd(pick);
-                                        setRevOpen(false);
-                                        requestAnimationFrame(() => cmdInputRef.current?.focus());
-                                    }
+                                    // ...
                                 } else if (e.key === "Escape") {
-                                    e.preventDefault();
-                                    setRevOpen(false);
-                                    requestAnimationFrame(() => cmdInputRef.current?.focus());
+                                    // ...
                                 }
                             }}
                             placeholder="Type to filter history…"
