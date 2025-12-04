@@ -2,6 +2,7 @@ package native
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -88,7 +89,7 @@ func RunNativeProcess(binaryName string) {
 	}
 
 	// Connect to video stream socket
-	conn, err := net.Dial("unixpacket", proxyOptions.VideoStreamUnixSocket)
+	conn, err := net.Dial("unix", proxyOptions.VideoStreamUnixSocket)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to connect to video stream socket")
 	}
@@ -96,8 +97,14 @@ func RunNativeProcess(binaryName string) {
 
 	nativeOptions := proxyOptions.toNativeOptions()
 	nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
-		_, err := conn.Write(frame)
-		if err != nil {
+		// Write 4-byte frame length prefix, then frame data
+		var frameSizeBuffer [4]byte
+		binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)))
+
+		if _, err := conn.Write(frameSizeBuffer[:]); err != nil {
+			logger.Fatal().Err(err).Msg("failed to write frame size to video stream socket")
+		}
+		if _, err := conn.Write(frame); err != nil {
 			logger.Fatal().Err(err).Msg("failed to write frame to video stream socket")
 		}
 	}
