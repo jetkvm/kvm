@@ -392,7 +392,7 @@ bool get_streaming_stopped()
     bool stopped = streaming_stopped;
     pthread_mutex_unlock(&streaming_stopped_mutex);
     return stopped;
-} 
+}
 
 void write_buffer_to_file(const uint8_t *buffer, size_t length, const char *filename)
 {
@@ -773,16 +773,16 @@ void video_restart_streaming()
     {
         log_info("will not restart video streaming because it's stopped");
         return;
-    } 
+    }
 
-    if (streaming_status == 2) {
+    if (streaming_status == 1 || streaming_status == 2) {
         video_stop_streaming();
     }
 
     if (!wait_for_streaming_stopped()) {
         return;
     }
-    
+
     video_start_streaming();
 }
 
