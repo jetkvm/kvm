@@ -100,7 +100,7 @@ func RunNativeProcess(binaryName string) {
 		// Write 4-byte frame length prefix, then frame data
 		frameSizeBuffer := make([]byte, 4)
 		binary.LittleEndian.PutUint32(frameSizeBuffer, uint32(len(frame)))
-		
+
 		if _, err := conn.Write(frameSizeBuffer); err != nil {
 			logger.Fatal().Err(err).Msg("failed to write frame size to video stream socket")
 		}
