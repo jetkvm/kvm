@@ -21,7 +21,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
-	"github.com/rs/zerolog"
 )
 
 type CloudRegisterRequest struct {
@@ -325,19 +324,13 @@ func runWebsocketClient() error {
 	header.Set("Authorization", "Bearer "+config.CloudToken)
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
 
-	l := logging.GetSubsystemLogger("websocket").
-		With().
-		Str("source", wsURL.Host).
-		Str("sourceType", "cloud").
-		Logger()
-
-	scopedLogger := &l
+	logger := logging.GetSubsystemLogger("websocket").Str("source", wsURL.Host).Str("sourceType", "cloud")
 
 	defer cancelDial()
 	c, resp, err := websocket.Dial(dialCtx, wsURL.String(), &websocket.DialOptions{
 		HTTPHeader: header,
 		OnPingReceived: func(ctx context.Context, payload []byte) bool {
-			scopedLogger.Debug().Bytes("payload", payload).Int("length", len(payload)).Msg("ping frame received")
+			logger.Debug().Bytes("payload", payload).Int("length", len(payload)).Msg("ping frame received")
 
 			metricConnectionTotalPingReceivedCount.WithLabelValues("cloud", wsURL.Host).Inc()
 			metricConnectionLastPingReceivedTimestamp.WithLabelValues("cloud", wsURL.Host).SetToCurrentTime()
@@ -359,15 +352,12 @@ func runWebsocketClient() error {
 
 	if connectionId == "" {
 		connectionId = uuid.New().String()
-		scopedLogger.Warn().
+		logger.Warn().
 			Str("connectionId", connectionId).
 			Msg("no connection id received from the server, generating a new one")
 	}
 
-	lWithConnectionId := scopedLogger.With().
-		Str("connectionID", connectionId).
-		Logger()
-	scopedLogger = &lWithConnectionId
+	logger = logger.With().Str("connectionID", connectionId)
 
 	cloudLogger := logging.GetSubsystemLogger("cloud")
 
@@ -391,7 +381,7 @@ func runWebsocketClient() error {
 	wsResetMetrics(true, "cloud", wsURL.Host)
 
 	// we don't have a source for the cloud connection
-	return handleWebRTCSignalWsMessages(c, true, wsURL.Host, connectionId, scopedLogger)
+	return handleWebRTCSignalWsMessages(c, true, wsURL.Host, connectionId)
 }
 
 func authenticateSession(ctx context.Context, c *websocket.Conn, req WebRTCSessionRequest) error {
@@ -431,7 +421,6 @@ func handleSessionRequest(
 	req WebRTCSessionRequest,
 	isCloudConnection bool,
 	source string,
-	scopedLogger *zerolog.Logger,
 ) error {
 	var sourceType string
 	if isCloudConnection {

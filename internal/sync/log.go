@@ -12,12 +12,12 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 )
 
-func GetSynctraceLoggingContext() *logging.Context {
-	return logging.NewContext(logging.GetSubsystemLogger("synctrace"))
+func getLogger() *logging.Context {
+	return logging.GetSubsystemLogger("synctrace"))
 }
 
 func logTrace(msg string) {
-	if !GetSynctraceLoggingContext().IsTraceLevel() {
+	if !getLogger().IsTraceLevel() {
 		return
 	}
 
@@ -25,9 +25,9 @@ func logTrace(msg string) {
 }
 
 func logTrack(callerSkip int) *logging.Context {
-	loggingContext := GetSynctraceLoggingContext()
-	if !loggingContext.IsTraceLevel() {
-		return loggingContext
+	logger := getLogger()
+	if !logger.IsTraceLevel() {
+		return logger
 	}
 
 	pc, file, no, ok := runtime.Caller(callerSkip)

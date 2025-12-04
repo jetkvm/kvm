@@ -54,7 +54,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 		return tlsCert
 	}
 
-	logger := logging.GetSubsystemLogger("web-selfsign").With().Str("hostname", hostname).Logger()
+	logger := logging.GetSubsystemLogger("web-selfsign").With().Str("hostname", hostname)
 
 	// check if hostname is the CA magic name
 	var ca *tls.Certificate
@@ -157,7 +157,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 	}
 
 	s.store.certificates[hostname] = tlsCert
-	s.store.saveCertificate(hostname, &logger)
+	s.store.saveCertificate(hostname, logger)
 
 	return tlsCert
 }

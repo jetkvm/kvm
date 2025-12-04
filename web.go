@@ -77,10 +77,9 @@ func setupRouter() *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
 	r := gin.Default()
-	ginLogger := logging.GetSubsystemLogger("gin")
 	r.Use(gin_logger.SetLogger(
 		gin_logger.WithLogger(func(*gin.Context, zerolog.Logger) zerolog.Logger {
-			return *ginLogger
+			return *logging.GetSubsystemLogger("gin").Logger()
 		}),
 	))
 
@@ -287,7 +286,7 @@ func handleLocalWebRTCSignal(c *gin.Context) {
 		return
 	}
 
-	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID, &scopedLogger)
+	err = handleWebRTCSignalWsMessages(wsCon, false, source, connectionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -299,7 +298,6 @@ func handleWebRTCSignalWsMessages(
 	isCloudConnection bool,
 	source string,
 	connectionID string,
-	scopedLogger *zerolog.Logger,
 ) error {
 	runCtx, cancelRun := context.WithCancel(context.Background())
 	defer func() {
@@ -317,13 +315,14 @@ func handleWebRTCSignalWsMessages(
 		sourceType = "local"
 	}
 
-	l := scopedLogger.With().
-		Str("source", source).
-		Str("sourceType", sourceType).
-		Str("connectionID", connectionID).
-		Logger()
+	getLogger := func() *logging.Context {
+		return logging.GetSubsystemLogger("websocket").
+			Str("source", source).
+			Str("sourceType", sourceType).
+			Str("connectionID", connectionID)
+	}
 
-	l.Info().Msg("new websocket connection established")
+	getLogger().Info().Msg("new websocket connection established")
 
 	go func() {
 		for {
@@ -331,9 +330,9 @@ func handleWebRTCSignalWsMessages(
 
 			if ctxErr := runCtx.Err(); ctxErr != nil {
 				if !errors.Is(ctxErr, context.Canceled) {
-					l.Warn().Str("error", ctxErr.Error()).Msg("websocket connection closed")
+					getLogger().Warn().Err(ctxErr).Msg("websocket connection closed")
 				} else {
-					l.Trace().Str("error", ctxErr.Error()).Msg("websocket connection closed as the context was canceled")
+					getLogger().Trace().Err(ctxErr).Msg("websocket connection closed as the context was canceled")
 				}
 				return
 			}
@@ -344,10 +343,10 @@ func handleWebRTCSignalWsMessages(
 				metricConnectionPingDuration.WithLabelValues(sourceType, source).Observe(v)
 			}))
 
-			l.Trace().Msg("sending ping frame")
+			getLogger().Trace().Msg("sending ping frame")
 			err := wsCon.Ping(runCtx)
 			if err != nil {
-				l.Warn().Str("error", err.Error()).Msg("websocket ping error")
+				getLogger().Warn().Err(err).Msg("websocket ping error")
 				cancelRun()
 				return
 			}
@@ -358,7 +357,7 @@ func handleWebRTCSignalWsMessages(
 			metricConnectionTotalPingSentCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastPingTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
 
-			l.Trace().Str("duration", duration.String()).Msg("received pong frame")
+			getLogger().Trace().Dur("duration", duration).Msg("received pong frame")
 		}
 	}()
 
@@ -374,7 +373,7 @@ func handleWebRTCSignalWsMessages(
 				if err == nil {
 					continue
 				}
-				logging.GetSubsystemLogger("cloud").Info().Err(err).Msg("disconnecting from cloud due to")
+				getLogger().Info().Err(err).Msg("disconnecting from cloud due to")
 				cancelRun()
 			}
 		}()
@@ -383,7 +382,7 @@ func handleWebRTCSignalWsMessages(
 	for {
 		typ, msg, err := wsCon.Read(runCtx)
 		if err != nil {
-			l.Warn().Str("error", err.Error()).Msg("websocket read error")
+			getLogger().Warn().Err(err).Msg("websocket read error")
 			return err
 		}
 		if typ != websocket.MessageText {
@@ -397,70 +396,69 @@ func handleWebRTCSignalWsMessages(
 		}
 
 		if bytes.Equal(msg, pingMessage) {
-			l.Info().Str("message", string(msg)).Msg("ping message received")
+			getLogger().Info().Str("message", string(msg)).Msg("ping message received")
 			err = wsCon.Write(context.Background(), websocket.MessageText, pongMessage)
 			if err != nil {
-				l.Warn().Str("error", err.Error()).Msg("unable to write pong message")
+				getLogger().Warn().Err(err).Msg("unable to write pong message")
 				return err
 			}
 
 			metricConnectionTotalPingReceivedCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastPingReceivedTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
-
 			continue
 		}
 
 		err = json.Unmarshal(msg, &message)
 		if err != nil {
-			l.Warn().Str("error", err.Error()).Msg("unable to parse ws message")
+			getLogger().Warn().Err(err).Msg("unable to parse ws message")
 			continue
 		}
 
 		if message.Type == "offer" {
-			l.Info().Msg("new session request received")
+			getLogger().Info().Msg("new session request received")
 			var req WebRTCSessionRequest
 			err = json.Unmarshal(message.Data, &req)
 			if err != nil {
-				l.Warn().Str("error", err.Error()).Msg("unable to parse session request data")
+				getLogger().Warn().Err(err).Msg("unable to parse session request data")
 				continue
 			}
 
 			if req.OidcGoogle != "" {
-				l.Info().Str("oidcGoogle", req.OidcGoogle).Msg("new session request with OIDC Google")
+				getLogger().Info().Str("oidcGoogle", req.OidcGoogle).Msg("new session request with OIDC Google")
 			}
 
 			metricConnectionSessionRequestCount.WithLabelValues(sourceType, source).Inc()
 			metricConnectionLastSessionRequestTimestamp.WithLabelValues(sourceType, source).SetToCurrentTime()
-			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source, &l)
+			err = handleSessionRequest(runCtx, wsCon, req, isCloudConnection, source)
 			if err != nil {
-				l.Warn().Str("error", err.Error()).Msg("error starting new session")
+				getLogger().Warn().Err(err).Msg("error starting new session")
 				continue
 			}
 		} else if message.Type == "new-ice-candidate" {
-			l.Info().Str("data", string(message.Data)).Msg("The client sent us a new ICE candidate")
+			getLogger().Info().Str("data", string(message.Data)).Msg("The client sent us a new ICE candidate")
 			var candidate webrtc.ICECandidateInit
 
 			// Attempt to unmarshal as a ICECandidateInit
 			if err := json.Unmarshal(message.Data, &candidate); err != nil {
-				l.Warn().Str("error", err.Error()).Msg("unable to parse incoming ICE candidate data")
+				getLogger().Warn().Err(err).Msg("unable to parse incoming ICE candidate data")
 				continue
 			}
 
 			if candidate.Candidate == "" {
-				l.Warn().Msg("empty incoming ICE candidate, skipping")
+				getLogger().Warn().Msg("empty incoming ICE candidate, skipping")
 				continue
 			}
 
-			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("unmarshalled incoming ICE candidate")
+			getLogger().Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("unmarshalled incoming ICE candidate")
 
 			if currentSession == nil {
-				l.Warn().Msg("no current session, skipping incoming ICE candidate")
+				getLogger().Warn().Msg("no current session, skipping incoming ICE candidate")
 				continue
 			}
 
-			l.Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("adding incoming ICE candidate to current session")
+			getLogger().Info().Str("data", fmt.Sprintf("%v", candidate)).Msg("adding incoming ICE candidate to current session")
 			if err = currentSession.peerConnection.AddICECandidate(candidate); err != nil {
-				l.Warn().Str("error", err.Error()).Msg("failed to add incoming ICE candidate to our peer connection")
+				getLogger().Warn().Err(err).Msg("failed to add incoming ICE candidate to our peer connection")
 			}
 		}
 	}

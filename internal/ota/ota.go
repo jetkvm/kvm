@@ -62,7 +62,7 @@ func (s *State) getUpdateURL(params UpdateParams) (string, error, bool) {
 // TODO: use OTEL instead of doing this manually
 func (s *State) newHTTPRequestWithTrace(ctx context.Context, method, url string, body io.Reader, logger func() *logging.Context) (*http.Request, error) {
 	localCtx := ctx
-	if s.loggingContext.IsTraceLevel() {
+	if GetOtaLoggingContext().IsTraceLevel() {
 		l := func() *logging.Context { return logger().Str("url", url).Str("method", method) }
 		localCtx = httptrace.WithClientTrace(localCtx, &httptrace.ClientTrace{
 			GetConn: func(hostPort string) {
@@ -112,10 +112,10 @@ func (s *State) newHTTPRequestWithTrace(ctx context.Context, method, url string,
 func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*UpdateMetadata, error) {
 	metadata := &UpdateMetadata{}
 
-	loggingContext := s.loggingContext.Interface("params", params)
+	logger := GetOtaLoggingContext().Interface("params", params)
 	t := time.Now()
 	traceLogger := func() *logging.Context {
-		return loggingContext.Dur("duration", time.Since(t))
+		return logger.Dur("duration", time.Since(t))
 	}
 
 	url, err, isCustomVersion := s.getUpdateURL(params)
@@ -125,7 +125,6 @@ func (s *State) fetchUpdateMetadata(ctx context.Context, params UpdateParams) (*
 	}
 
 	traceLogger().Str("url", url).Bool("custom_version", isCustomVersion).Trace().Msg("fetching update metadata")
-
 	req, err := s.newHTTPRequestWithTrace(ctx, "GET", url, nil, traceLogger)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
@@ -182,8 +181,8 @@ func (s *State) TryUpdate(ctx context.Context, params UpdateParams) error {
 // before calling doUpdate, the caller must have locked the mutex
 // otherwise a runtime error will occur
 func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
-	loggingContext := s.loggingContext.Interface("params", params)
-	loggingContext.Info().Msg("checking for updates")
+	logger := GetOtaLoggingContext().Interface("params", params)
+	logger.Info().Msg("checking for updates")
 
 	if s.updating {
 		return fmt.Errorf("update already in progress")
@@ -203,13 +202,13 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		return s.componentUpdateError(
 			"Update aborted: no components were specified to update. Requested components: ",
 			fmt.Errorf("%v", params.Components),
-			loggingContext,
+			logger,
 		)
 	}
 
-	appUpdate, systemUpdate, err := s.getUpdateStatus(ctx, params, loggingContext)
+	appUpdate, systemUpdate, err := s.getUpdateStatus(ctx, params, logger)
 	if err != nil {
-		return s.componentUpdateError("Error checking for updates", err, loggingContext)
+		return s.componentUpdateError("Error checking for updates", err, logger)
 	}
 
 	s.metadataFetchedAt = time.Now()
@@ -228,60 +227,60 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 	}
 
 	if !appUpdate.pending && !systemUpdate.pending {
-		loggingContext.Info().Msg("No updates available")
+		logger.Info().Msg("No updates available")
 		s.updating = false
 		s.triggerStateUpdate()
 		return nil
 	}
 
-	loggingContext.Bool("pending", appUpdate.pending).Trace().Msg("Checking for app update")
+	logger.Trace().Bool("pending", appUpdate.pending).Msg("Checking for app update")
 
 	if appUpdate.pending {
-		loggingContext = loggingContext.
+		logger = logger.
 			Str("component", "app").
 			Str("url", appUpdate.url).
 			Str("hash", appUpdate.hash)
 
-		loggingContext.Info().Msg("App update available")
+		logger.Info().Msg("App update available")
 
 		if err := s.updateApp(ctx, appUpdate); err != nil {
-			return s.componentUpdateError("Error updating app", err, loggingContext)
+			return s.componentUpdateError("Error updating app", err, logger)
 		}
 	} else {
-		loggingContext.Info().Msg("App is up to date")
+		logger.Info().Msg("App is up to date")
 	}
 
-	loggingContext.Bool("pending", systemUpdate.pending).Trace().Msg("Checking for system update")
+	logger.Trace().Bool("pending", systemUpdate.pending).Msg("Checking for system update")
 
 	if systemUpdate.pending {
-		loggingContext = loggingContext.
+		logger = logger.
 			Str("component", "system").
 			Str("url", systemUpdate.url).
 			Str("hash", systemUpdate.hash)
 
 		if err := s.updateSystem(ctx, systemUpdate); err != nil {
-			return s.componentUpdateError("Error updating system", err, loggingContext)
+			return s.componentUpdateError("Error updating system", err, logger)
 		}
 	} else {
-		loggingContext.Info().Msg("System is up to date")
+		logger.Info().Msg("System is up to date")
 	}
 
 	if s.rebootNeeded {
 		if appUpdate.customVersionUpdate || systemUpdate.customVersionUpdate {
-			loggingContext.Info().Msg("disabling auto-update due to custom version update")
+			logger.Info().Msg("disabling auto-update due to custom version update")
 			// If they are explicitly updating a custom version, we assume they want to disable auto-update
 			if _, err := s.setAutoUpdate(false); err != nil {
-				loggingContext.Err(err).Warn().Msg("Failed to disable auto-update")
+				logger.Warn().Err(err).Msg("Failed to disable auto-update")
 			}
 		}
 
-		loggingContext.Info().Msg("System Rebooting due to OTA update")
+		logger.Info().Msg("System Rebooting due to OTA update")
 		redirectUrl := "/settings/general/update"
 
 		if params.ResetConfig {
-			loggingContext.Warn().Msg("Resetting config")
+			logger.Warn().Msg("Resetting config")
 			if err := s.resetConfig(); err != nil {
-				return s.componentUpdateError("Error resetting config", err, loggingContext)
+				return s.componentUpdateError("Error resetting config", err, logger)
 			}
 			redirectUrl = "/welcome"
 		}
@@ -295,7 +294,7 @@ func (s *State) doUpdate(ctx context.Context, params UpdateParams) error {
 		// it means that healthCheckUrl will be called after 7 seconds that we send willReboot JSONRPC event
 		// so we need to reboot it within 7 seconds to avoid it being called before the device is rebooted
 		if err := s.reboot(true, postRebootAction, 5*time.Second); err != nil {
-			return s.componentUpdateError("Error requesting reboot", err, loggingContext)
+			return s.componentUpdateError("Error requesting reboot", err, logger)
 		}
 	}
 
@@ -355,7 +354,7 @@ func (s *State) checkUpdateStatus(
 	params UpdateParams,
 	appUpdateStatus *componentUpdateStatus,
 	systemUpdateStatus *componentUpdateStatus,
-	loggingContext *logging.Context,
+	logger *logging.Context,
 ) error {
 	// get the local versions
 	t := time.Now()
@@ -366,11 +365,11 @@ func (s *State) checkUpdateStatus(
 	appUpdateStatus.localVersion = appVersionLocal.String()
 	systemUpdateStatus.localVersion = systemVersionLocal.String()
 
-	loggingContext.
+	logger.Trace().
 		Stringer("appVersionLocal", appVersionLocal).
 		Stringer("systemVersionLocal", systemVersionLocal).
 		Dur("duration", time.Since(t)).
-		Trace().Msg("checkUpdateStatus: getLocalVersion")
+		Msg("checkUpdateStatus: getLocalVersion")
 
 	// fetch the remote metadata
 	remoteMetadata, err := s.fetchUpdateMetadata(ctx, params)
@@ -383,10 +382,10 @@ func (s *State) checkUpdateStatus(
 		return err
 	}
 
-	loggingContext.
+	logger.Trace().
 		Interface("remoteMetadata", remoteMetadata).
 		Dur("duration", time.Since(t)).
-		Trace().Msg("checkUpdateStatus: fetchUpdateMetadata")
+		Msg("checkUpdateStatus: fetchUpdateMetadata")
 
 	// parse the remote metadata to the componentUpdateStatuses
 	if err := remoteMetadataToComponentStatus(
@@ -397,7 +396,7 @@ func (s *State) checkUpdateStatus(
 	); err != nil {
 		return fmt.Errorf("error parsing remote app version: %w", err)
 	}
-	loggingContext.Str("component", "app").Interface("componentUpdateStatus", appUpdateStatus).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus")
+	logger.Trace().Str("component", "app").Interface("componentUpdateStatus", appUpdateStatus).Msg("checkUpdateStatus: remoteMetadataToComponentStatus")
 
 	if err := remoteMetadataToComponentStatus(
 		remoteMetadata,
@@ -407,11 +406,11 @@ func (s *State) checkUpdateStatus(
 	); err != nil {
 		return fmt.Errorf("error parsing remote system version: %w", err)
 	}
-	loggingContext.Str("component", "system").Interface("componentUpdateStatus", systemUpdateStatus).Trace().Msg("checkUpdateStatus: remoteMetadataToComponentStatus")
+	logger.Trace().Str("component", "system").Interface("componentUpdateStatus", systemUpdateStatus).Msg("checkUpdateStatus: remoteMetadataToComponentStatus")
 
-	loggingContext.
+	logger.Trace().
 		Dur("duration", time.Since(t)).
-		Trace().Msg("checkUpdateStatus: completed")
+		Msg("checkUpdateStatus: completed")
 
 	return nil
 }

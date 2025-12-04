@@ -5,5 +5,5 @@ import (
 )
 
 func GetHidRpcLoggingContext() *logging.Context {
-	return logging.NewContext(logging.GetSubsystemLogger("hidrpc"))
+	return logging.GetSubsystemLogger("hidrpc")
 }

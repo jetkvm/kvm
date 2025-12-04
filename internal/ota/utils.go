@@ -28,14 +28,15 @@ func syncFilesystem() error {
 	return nil
 }
 
-func (s *State) downloadFile(ctx context.Context, path string, url string, component string) error {
-	loggingContext := s.loggingContext.
+func (s *State) downloadFile(ctx context.Context, path string, url string, component string, logger *logging.Context) error {
+	logger = logger.
+		With().
 		Str("path", path).
 		Str("url", url).
 		Str("downloadComponent", component)
 	t := time.Now()
 	traceLogger := func() *logging.Context {
-		return loggingContext.Dur("duration", time.Since(t))
+		return logger.Dur("duration", time.Since(t))
 	}
 	traceLogger().Trace().Msg("downloading file")
 
@@ -129,7 +130,7 @@ func (s *State) downloadFile(ctx context.Context, path string, url string, compo
 	return nil
 }
 
-func (s *State) verifyFile(path string, expectedHash string, verifyProgress *float32) error {
+func (s *State) verifyFile(path string, expectedHash string, verifyProgress *float32, logger *logging.Context) error {
 	unverifiedPath := path + ".unverified"
 	fileToHash, err := os.Open(unverifiedPath)
 	if err != nil {
@@ -173,7 +174,7 @@ func (s *State) verifyFile(path string, expectedHash string, verifyProgress *flo
 	}
 
 	hashSum := hash.Sum(nil)
-	s.loggingContext.Str("path", path).Str("hash", hex.EncodeToString(hashSum)).Info().Msg("SHA256 hash of")
+	logger.Info().Str("path", path).Str("hash", hex.EncodeToString(hashSum)).Msg("SHA256 hash of")
 
 	if hex.EncodeToString(hashSum) != expectedHash {
 		return fmt.Errorf("hash mismatch: %x != %s", hashSum, expectedHash)

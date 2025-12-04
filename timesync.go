@@ -4,7 +4,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/timesync"
 )
 
@@ -14,16 +13,16 @@ var (
 )
 
 func isTimeSyncNeeded() bool {
-	timesyncLogger := logging.GetSubsystemLogger("timesync")
+	logger := timesync.GetTimesyncLogger()
 
 	if builtTimestamp == "" {
-		timesyncLogger.Warn().Msg("built timestamp is not set, time sync is needed")
+		logger.Warn().Msg("built timestamp is not set, time sync is needed")
 		return true
 	}
 
 	ts, err := strconv.Atoi(builtTimestamp)
 	if err != nil {
-		timesyncLogger.Warn().Str("error", err.Error()).Msg("failed to parse built timestamp")
+		logger.Warn().Str("error", err.Error()).Msg("failed to parse built timestamp")
 		return true
 	}
 
@@ -32,7 +31,7 @@ func isTimeSyncNeeded() bool {
 	now := time.Now()
 
 	if now.Sub(builtTime) < 0 {
-		timesyncLogger.Warn().
+		logger.Warn().
 			Str("built_time", builtTime.Format(time.RFC3339)).
 			Str("now", now.Format(time.RFC3339)).
 			Msg("system time is behind the built time, time sync is needed")
@@ -44,8 +43,7 @@ func isTimeSyncNeeded() bool {
 
 func initTimeSync() {
 	timeSync = timesync.NewTimeSync(&timesync.TimeSyncOptions{
-		LoggingContext: timesync.GetTimesyncLoggingContext(),
-		NetworkConfig:  config.NetworkConfig,
+		NetworkConfig: config.NetworkConfig,
 		PreCheckIPv4: func() (bool, error) {
 			if !networkManager.IPv4Ready() {
 				return false, nil

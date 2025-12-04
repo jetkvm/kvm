@@ -5,5 +5,5 @@ import (
 )
 
 func GetOtaLoggingContext() *logging.Context {
-	return logging.NewContext(logging.GetSubsystemLogger("ota"))
+	return logging.GetSubsystemLogger("ota")
 }

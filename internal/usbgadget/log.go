@@ -5,17 +5,17 @@ import (
 )
 
 func (u *UsbGadget) getUsbGadgetLoggingContext() *logging.Context {
-	return logging.NewContext(logging.GetSubsystemLogger("usbgadget")).
+	return logging.GetSubsystemLogger("usbgadget").
 		Str("gadget", u.name)
 }
 
 func (u *UsbGadget) getHidKeyboardLoggingContext() *logging.Context {
-	return logging.NewContext(logging.GetSubsystemLogger("hid-keyboard")).
+	return logging.GetSubsystemLogger("hid-keyboard").
 		Str("gadget", u.name)
 }
 
 func (u *UsbGadget) getHidKeyboardAutoReleaseLoggingContext() *logging.Context {
-	return logging.NewContext(logging.GetSubsystemLogger("hid-keyboard-auto-release")).
+	return logging.GetSubsystemLogger("hid-keyboard-auto-release").
 		Str("gadget", u.name)
 }
 

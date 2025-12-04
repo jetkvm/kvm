@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/jetkvm/kvm/internal/logging"
 )
 
 var (
@@ -98,7 +97,6 @@ type GetLocalVersionFunc func() (systemVersion *semver.Version, appVersion *semv
 type State struct {
 	releaseAPIEndpoint      string
 	mu                      sync.Mutex
-	loggingContext          *logging.Context
 	updating                bool
 	error                   string
 	metadataFetchedAt       time.Time
@@ -169,14 +167,13 @@ type Options struct {
 }
 
 // NewState creates a new OTA state
-func NewState(opts Options, loggingContext *logging.Context) *State {
+func NewState(opts Options) *State {
 	components := make(map[string]componentUpdateStatus)
 	for _, component := range availableComponents {
 		components[component] = componentUpdateStatus{}
 	}
 
 	s := &State{
-		loggingContext:          loggingContext,
 		client:                  opts.GetHTTPClient,
 		reboot:                  opts.HwReboot,
 		onStateUpdate:           opts.OnStateUpdate,

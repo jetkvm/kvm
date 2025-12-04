@@ -4,31 +4,29 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
-	"github.com/rs/zerolog"
 )
 
 // StaticConfigManager manages static network configuration
 type StaticConfigManager struct {
 	ifaceName string
-	logger    *zerolog.Logger
 }
 
 // NewStaticConfigManager creates a new static configuration manager
-func NewStaticConfigManager(ifaceName string, logger *zerolog.Logger) (*StaticConfigManager, error) {
+func NewStaticConfigManager(ifaceName string) (*StaticConfigManager, error) {
 	if ifaceName == "" {
 		return nil, fmt.Errorf("interface name cannot be empty")
 	}
 
-	if logger == nil {
-		return nil, fmt.Errorf("logger cannot be nil")
-	}
-
 	return &StaticConfigManager{
 		ifaceName: ifaceName,
-		logger:    logger,
 	}, nil
+}
+
+func (scm *StaticConfigManager) getLogger() *logging.Context {
+	return logging.GetSubsystemLogger("interface").Str("interface", scm.ifaceName)
 }
 
 // ToIPv4Static applies static IPv4 configuration
@@ -42,7 +40,6 @@ func (scm *StaticConfigManager) ToIPv4Static(config *types.IPv4StaticConfig) (*t
 	if err != nil {
 		return nil, err
 	}
-	scm.logger.Info().Str("ipNet", ipNet.String()).Interface("ipc", config).Msg("parsed IPv4 address and netmask")
 
 	// Parse gateway
 	gateway := net.ParseIP(config.Gateway.String)
@@ -119,7 +116,7 @@ func (scm *StaticConfigManager) ToIPv6Static(config *types.IPv6StaticConfig) (*t
 
 // DisableIPv4 disables IPv4 on the interface
 func (scm *StaticConfigManager) DisableIPv4() error {
-	scm.logger.Info().Msg("disabling IPv4")
+	scm.getLogger().Info().Msg("disabling IPv4")
 
 	netlinkMgr := getNetlinkManager()
 	iface, err := netlinkMgr.GetLinkByName(scm.ifaceName)
@@ -134,30 +131,30 @@ func (scm *StaticConfigManager) DisableIPv4() error {
 
 	// Remove default route
 	if err := scm.removeIPv4DefaultRoute(); err != nil {
-		scm.logger.Warn().Err(err).Msg("failed to remove IPv4 default route")
+		scm.getLogger().Warn().Err(err).Msg("failed to remove IPv4 default route")
 	}
 
-	scm.logger.Info().Msg("IPv4 disabled")
+	scm.getLogger().Info().Msg("IPv4 disabled")
 	return nil
 }
 
 // DisableIPv6 disables IPv6 on the interface
 func (scm *StaticConfigManager) DisableIPv6() error {
-	scm.logger.Info().Msg("disabling IPv6")
+	scm.getLogger().Info().Msg("disabling IPv6")
 	netlinkMgr := getNetlinkManager()
 	return netlinkMgr.DisableIPv6(scm.ifaceName)
 }
 
 // EnableIPv6SLAAC enables IPv6 SLAAC
 func (scm *StaticConfigManager) EnableIPv6SLAAC() error {
-	scm.logger.Info().Msg("enabling IPv6 SLAAC")
+	scm.getLogger().Info().Msg("enabling IPv6 SLAAC")
 	netlinkMgr := getNetlinkManager()
 	return netlinkMgr.EnableIPv6SLAAC(scm.ifaceName)
 }
 
 // EnableIPv6LinkLocal enables IPv6 link-local only
 func (scm *StaticConfigManager) EnableIPv6LinkLocal() error {
-	scm.logger.Info().Msg("enabling IPv6 link-local only")
+	scm.getLogger().Info().Msg("enabling IPv6 link-local only")
 
 	netlinkMgr := getNetlinkManager()
 	if err := netlinkMgr.EnableIPv6LinkLocal(scm.ifaceName); err != nil {

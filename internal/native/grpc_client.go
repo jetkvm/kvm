@@ -8,7 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rs/zerolog"
+	"github.com/jetkvm/kvm/internal/logging"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
@@ -25,7 +26,6 @@ type GRPCClient struct {
 
 	conn   *grpc.ClientConn
 	client pb.NativeServiceClient
-	logger *zerolog.Logger
 
 	eventStream pb.NativeService_StreamEventsClient
 	eventM      sync.RWMutex
@@ -42,10 +42,13 @@ type GRPCClient struct {
 
 type grpcClientOptions struct {
 	SocketPath         string
-	Logger             *zerolog.Logger
 	OnVideoStateChange func(state VideoState)
 	OnIndevEvent       func(event string)
 	OnRpcEvent         func(event string)
+}
+
+func (client *GRPCClient) getLogger() *logging.Context {
+	return getClientLogger().With().Str("target", client.conn.Target()).Bool("closed", client.closed)
 }
 
 // NewGRPCClient creates a new gRPC client connected to the native service
@@ -68,7 +71,6 @@ func NewGRPCClient(opts grpcClientOptions) (*GRPCClient, error) {
 		cancel:             cancel,
 		conn:               conn,
 		client:             client,
-		logger:             opts.Logger,
 		eventCh:            make(chan *pb.Event, 100),
 		eventDone:          make(chan struct{}),
 		onVideoStateChange: opts.OnVideoStateChange,
@@ -103,7 +105,7 @@ func (c *GRPCClient) handleEventStream(stream pb.NativeService_StreamEventsClien
 	}()
 
 	for {
-		logger := c.logger.With().Interface("stream", stream).Logger()
+		logger := c.getLogger().With().Interface("stream", stream)
 		if stream == nil {
 			logger.Error().Msg("event stream is nil")
 			break
@@ -121,11 +123,11 @@ func (c *GRPCClient) handleEventStream(stream pb.NativeService_StreamEventsClien
 		}
 
 		// enrich the logger with the event type and data, if debug mode is enabled
-		if c.logger.GetLevel() <= zerolog.DebugLevel {
-			logger = logger.With().
+		if logger.IsDebugLevel() {
+			logger = logger.
+				With().
 				Str("type", event.Type).
-				Interface("data", event.Data).
-				Logger()
+				Interface("data", event.Data)
 		}
 		logger.Trace().Msg("received event")
 
@@ -150,14 +152,14 @@ func (c *GRPCClient) startEventStream() {
 		// check if the context is done
 		select {
 		case <-c.ctx.Done():
-			c.logger.Info().Msg("event stream context done, closing")
+			c.getLogger().Info().Msg("event stream context done, closing")
 			return
 		default:
 		}
 
 		stream, err := c.client.StreamEvents(c.ctx, &pb.Empty{})
 		if err != nil {
-			c.logger.Warn().Err(err).Msg("failed to start event stream, retrying ...")
+			c.getLogger().Warn().Err(err).Msg("failed to start event stream, retrying ...")
 			time.Sleep(5 * time.Second)
 			continue
 		}
@@ -170,7 +172,7 @@ func (c *GRPCClient) startEventStream() {
 }
 
 func (c *GRPCClient) checkIsReady(ctx context.Context) error {
-	c.logger.Trace().Msg("connection is idle, connecting ...")
+	c.getLogger().Trace().Msg("connection is idle, connecting ...")
 
 	resp, err := c.client.IsReady(ctx, &pb.IsReadyRequest{})
 	if err != nil {
@@ -193,11 +195,7 @@ func (c *GRPCClient) WaitReady() error {
 	prevState := connectivity.Idle
 	for {
 		state := c.conn.GetState()
-		c.logger.
-			With().
-			Str("state", state.String()).
-			Int("prev_state", int(prevState)).
-			Logger()
+		logger := c.getLogger().With().Str("state", state.String()).Int("prev_state", int(prevState))
 
 		prevState = state
 		if state == connectivity.Idle || state == connectivity.Ready {
@@ -207,7 +205,7 @@ func (c *GRPCClient) WaitReady() error {
 			}
 		}
 
-		c.logger.Info().Msg("waiting for connection to be ready")
+		logger.Info().Msg("waiting for connection to be ready")
 
 		if state == connectivity.Ready {
 			return nil
@@ -223,11 +221,13 @@ func (c *GRPCClient) WaitReady() error {
 }
 
 func (c *GRPCClient) handleEvent(event *pb.Event) {
+	logger := c.getLogger().With().Str("event_type", event.Type)
+
 	switch event.Type {
 	case "video_state_change":
 		state := event.GetVideoState()
 		if state == nil {
-			c.logger.Warn().Msg("video state event is nil")
+			logger.Warn().Msg("video state event is nil")
 			return
 		}
 		c.onVideoStateChange(VideoState{
@@ -242,7 +242,7 @@ func (c *GRPCClient) handleEvent(event *pb.Event) {
 	case "rpc_event":
 		c.onRpcEvent(event.GetRpcEvent())
 	default:
-		c.logger.Warn().Str("type", event.Type).Msg("unknown event type")
+		logger.Warn().Str("type", event.Type).Msg("unknown event type")
 	}
 }
 
@@ -263,7 +263,7 @@ func (c *GRPCClient) Close() error {
 	c.eventM.Lock()
 	if c.eventStream != nil {
 		if err := c.eventStream.CloseSend(); err != nil {
-			c.logger.Warn().Err(err).Msg("failed to close event stream")
+			c.getLogger().Warn().Err(err).Msg("failed to close event stream")
 		}
 	}
 	c.eventM.Unlock()

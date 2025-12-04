@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/rs/zerolog"
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
 func readFileNoStat(filename string) ([]byte, error) {
@@ -39,7 +39,7 @@ func toCmdline(path string) ([]string, error) {
 }
 
 // KillUdhcpC kills all udhcpc processes
-func KillUdhcpC(l *zerolog.Logger) error {
+func KillUdhcpC(logger *logging.Context) error {
 	// read procfs for udhcpc processes
 	// we do not use procfs.AllProcs() because we want to avoid the overhead of reading the entire procfs
 	processes, err := os.ReadDir("/proc")
@@ -79,11 +79,11 @@ func KillUdhcpC(l *zerolog.Logger) error {
 	}
 
 	if len(matchedPids) == 0 {
-		l.Info().Msg("no udhcpc processes found")
+		logger.Info().Msg("no udhcpc processes found")
 		return nil
 	}
 
-	l.Info().Ints("pids", matchedPids).Msg("found udhcpc processes, terminating")
+	logger.Info().Ints("pids", matchedPids).Msg("found udhcpc processes, terminating")
 
 	for _, pid := range matchedPids {
 		err := syscall.Kill(pid, syscall.SIGTERM)
@@ -91,12 +91,12 @@ func KillUdhcpC(l *zerolog.Logger) error {
 			return err
 		}
 
-		l.Info().Int("pid", pid).Msg("terminated udhcpc process")
+		logger.Info().Int("pid", pid).Msg("terminated udhcpc process")
 	}
 
 	return nil
 }
 
 func (c *Client) killUdhcpc() error {
-	return KillUdhcpC(c.l)
+	return KillUdhcpC(c.getLogger())
 }

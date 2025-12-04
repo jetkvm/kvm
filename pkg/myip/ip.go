@@ -18,10 +18,23 @@ type PublicIP struct {
 	LastUpdated time.Time `json:"last_updated"`
 }
 
+func (pi PublicIP) MarshalZerologObject(e *zerolog.Event) {
+	e.IPAddr("address", pi.IPAddress)
+	e.Time("updated", pi.LastUpdated)
+}
+
+type PublicIPs []PublicIP
+
+func (ips PublicIPs) MarshalZerologArray(a *zerolog.Array) {
+	for _, ip := range ips {
+		a.Object(ip)
+	}
+}
+
 type HttpClientGetter func(family int) *http.Client
 
 type PublicIPState struct {
-	addresses   []PublicIP
+	addresses   PublicIPs
 	lastUpdated time.Time
 
 	cloudflareEndpoint string // cdn-cgi/trace domain
@@ -29,12 +42,18 @@ type PublicIPState struct {
 	ipv4               bool
 	ipv6               bool
 	httpClient         HttpClientGetter
-	logger             *zerolog.Logger
 
 	timer  *time.Timer
 	ctx    context.Context
 	cancel context.CancelFunc
 	mu     sync.Mutex
+}
+
+func (ps *PublicIPState) MarshalZerologObject(e *zerolog.Event) {
+	e.Array("addresses", ps.addresses)
+	e.Time("lastUpdated", ps.lastUpdated)
+	e.Bool("ipv4", ps.ipv4)
+	e.Bool("ipv6", ps.ipv6)
 }
 
 type PublicIPStateConfig struct {
@@ -43,7 +62,6 @@ type PublicIPStateConfig struct {
 	IPv4               bool
 	IPv6               bool
 	HttpClientGetter   HttpClientGetter
-	Logger             *zerolog.Logger
 }
 
 func stripURLPath(s string) string {
@@ -61,10 +79,6 @@ func stripURLPath(s string) string {
 
 // NewPublicIPState creates a new PublicIPState
 func NewPublicIPState(config *PublicIPStateConfig) *PublicIPState {
-	if config.Logger == nil {
-		config.Logger = logging.GetSubsystemLogger("publicip")
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	ps := &PublicIPState{
 		addresses:          make([]PublicIP, 0),
@@ -76,7 +90,6 @@ func NewPublicIPState(config *PublicIPStateConfig) *PublicIPState {
 		httpClient:         config.HttpClientGetter,
 		ctx:                ctx,
 		cancel:             cancel,
-		logger:             config.Logger,
 	}
 	// Start the timer automatically
 	ps.Start()
@@ -155,7 +168,11 @@ func (ps *PublicIPState) Stop() {
 
 // ForceUpdate forces an update of the public IP addresses
 func (ps *PublicIPState) ForceUpdate() error {
-	return ps.checkIPs(context.Background(), true, true)
+	return ps.checkIPs(context.Background())
+}
+
+func (ps *PublicIPState) getLogger() *logging.Context {
+	return logging.GetSubsystemLogger("publicip").Object("ps", ps)
 }
 
 // timerLoop runs the periodic IP check loop
@@ -166,14 +183,12 @@ func (ps *PublicIPState) timerLoop(ctx context.Context) {
 	// Store timer reference for Stop() to access
 	ps.mu.Lock()
 	ps.timer = timer
-	checkIPv4 := ps.ipv4
-	checkIPv6 := ps.ipv6
 	ps.mu.Unlock()
 
 	// Perform initial check immediately
 	checkIPs := func() {
-		if err := ps.checkIPs(ctx, checkIPv4, checkIPv6); err != nil {
-			ps.logger.Error().Err(err).Msg("failed to check public IP addresses")
+		if err := ps.checkIPs(ctx); err != nil {
+			ps.getLogger().Error().Err(err).Msg("failed to check public IP addresses")
 		}
 	}
 

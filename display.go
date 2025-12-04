@@ -193,7 +193,6 @@ func requestDisplayUpdate(shouldWakeDisplay bool, reason string) {
 		if shouldWakeDisplay {
 			wakeDisplay(false, reason)
 		}
-		logging.GetSubsystemLogger("display").Debug().Msg("display updating")
 		// TODO: only run once regardless how many pending updates
 		updateDisplay()
 	}()

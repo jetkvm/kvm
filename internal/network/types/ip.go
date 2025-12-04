@@ -5,6 +5,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/vishvananda/netlink"
 )
 
@@ -16,6 +17,15 @@ type IPAddress struct {
 	MTU       int
 	Secondary bool
 	Permanent bool
+}
+
+func (ip IPAddress) MarshalZerologObject(e *zerolog.Event) {
+	e.Int("family", ip.Family)
+	e.IPPrefix("address", ip.Address)
+	e.IPAddr("gateway", ip.Gateway)
+	e.Int("mtu", int(ip.MTU))
+	e.Bool("secondary", ip.Secondary)
+	e.Bool("permanent", ip.Permanent)
 }
 
 func (a *IPAddress) String() string {

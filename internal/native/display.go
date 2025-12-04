@@ -99,18 +99,21 @@ func (n *Native) DisplaySetRotation(rotation uint16) (bool, error) {
 
 // UpdateLabelIfChanged updates the label if the text has changed
 func (n *Native) UpdateLabelIfChanged(objName string, newText string) {
-	l := n.displayContext.Trace().Str("obj", objName).Str("text", newText)
+	logger := GetDisplayLogger().
+		With().
+		Str("obj", objName).
+		Str("text", newText)
 
 	changed, err := n.UIObjSetLabelText(objName, newText)
 	if err != nil {
-		n.displayContext.Warn().Str("obj", objName).Str("text", newText).Err(err).Msg("failed to update label")
+		logger.Warn().Err(err).Msg("failed to update label")
 		return
 	}
 
 	if changed {
-		l.Msg("label changed")
+		logger.Trace().Msg("label changed")
 	} else {
-		l.Msg("label not changed")
+		logger.Trace().Msg("label not changed")
 	}
 }
 
@@ -134,11 +137,18 @@ func (n *Native) SwitchToScreenIf(screenName string, shouldSwitch []string) {
 	if currentScreen == screenName {
 		return
 	}
+
+	logger := GetDisplayLogger().
+		With().
+		Str("from", currentScreen).
+		Str("to", screenName).
+		Strs("from_screens", shouldSwitch)
+
 	if len(shouldSwitch) > 0 && !slices.Contains(shouldSwitch, currentScreen) {
-		n.displayContext.Trace().Str("from", currentScreen).Str("to", screenName).Msg("skipping screen switch")
+		logger.Trace().Msg("skipping screen switch")
 		return
 	}
-	n.displayContext.Info().Str("from", currentScreen).Str("to", screenName).Msg("switching screen")
+	logger.Info().Msg("switching screen")
 	uiSwitchToScreen(screenName)
 }
 

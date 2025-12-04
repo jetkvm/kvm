@@ -4,55 +4,53 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
-	"github.com/rs/zerolog"
+	"github.com/jetkvm/kvm/internal/logging"
 )
 
 type dhcpLogger struct {
 	// Printfer is used for actual output of the logger
 	nclient4.Printfer
-
-	l *zerolog.Logger
+	logger *logging.Context
 }
 
 // Printf prints a log message as-is via predefined Printfer
 func (s dhcpLogger) Printf(format string, v ...interface{}) {
-	s.l.Info().Msgf(format, v...)
+	s.logger.Info().Msgf(format, v...)
 }
 
 // PrintMessage prints a DHCP message in the short format via predefined Printfer
 func (s dhcpLogger) PrintMessage(prefix string, message *dhcpv4.DHCPv4) {
-	s.l.Info().Msgf("%s: %s", prefix, message.String())
+	s.logger.Info().Msgf("%s: %s", prefix, message.String())
 }
 
-func summaryStructured(d *dhcpv4.DHCPv4, l *zerolog.Logger) *zerolog.Logger {
-	logger := l.With().
-		Str("opCode", d.OpCode.String()).
-		Str("hwType", d.HWType.String()).
+func summaryStructured(d *dhcpv4.DHCPv4, logger *logging.Context) *logging.Context {
+	logger = logger.With().
+		Stack().Stringer("opCode", d.OpCode).
+		Stringer("hwType", d.HWType).
 		Int("hopCount", int(d.HopCount)).
-		Str("transactionID", d.TransactionID.String()).
+		Stringer("transactionID", d.TransactionID).
 		Int("numSeconds", int(d.NumSeconds)).
 		Str("flagsString", d.FlagsToString()).
 		Int("flags", int(d.Flags)).
-		Str("clientIP", d.ClientIPAddr.String()).
-		Str("yourIP", d.YourIPAddr.String()).
-		Str("serverIP", d.ServerIPAddr.String()).
-		Str("gatewayIP", d.GatewayIPAddr.String()).
-		Str("clientMAC", d.ClientHWAddr.String()).
+		IPAddr("clientIP", d.ClientIPAddr).
+		IPAddr("yourIP", d.YourIPAddr).
+		IPAddr("serverIP", d.ServerIPAddr).
+		IPAddr("gatewayIP", d.GatewayIPAddr).
+		MACAddr("clientMAC", d.ClientHWAddr).
 		Str("serverHostname", d.ServerHostName).
 		Str("bootFileName", d.BootFileName).
-		Str("options", d.Options.Summary(nil)).
-		Logger()
-	return &logger
+		Str("options", d.Options.Summary(nil))
+	return logger
 }
 
 func (c *Client) getDHCP4Logger(ifname string) nclient4.ClientOpt {
-	logger := c.l.With().
+	logger := c.getLogger().
+		With().
 		Str("interface", ifname).
-		Str("source", "dhcp4").
-		Logger()
+		Str("source", "dhcp4")
 
 	return nclient4.WithLogger(dhcpLogger{
-		l: &logger,
+		logger: logger,
 	})
 }
 

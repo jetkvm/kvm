@@ -67,11 +67,9 @@ func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 }
 
 func writeJSONRPCEvent(event string, params any, session *Session) {
-	scopedLogger := logging.GetSubsystemLogger("jsonrpc").
-		With().
+	logger := logging.GetSubsystemLogger("jsonrpc").
 		Str("event", event).
-		Interface("params", params).
-		Logger()
+		Interface("params", params)
 
 	request := JSONRPCEvent{
 		JSONRPC: "2.0",
@@ -80,32 +78,32 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 	}
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
-		scopedLogger.Warn().Err(err).Msg("Error marshalling JSONRPC event")
+		logger.Warn().Err(err).Msg("Error marshalling JSONRPC event")
 		return
 	}
 	if session == nil || session.RPCChannel == nil {
-		scopedLogger.Info().Msg("RPC channel not available")
+		logger.Info().Msg("RPC channel not available")
 		return
 	}
 
 	requestString := string(requestBytes)
-	scopedLogger = scopedLogger.With().Str("data", requestString).Logger()
+	logger = logger.With().Str("data", requestString)
 
-	scopedLogger.Trace().Msg("sending JSONRPC event")
+	logger.Trace().Msg("sending JSONRPC event")
 
 	err = session.RPCChannel.SendText(requestString)
 	if err != nil {
-		scopedLogger.Warn().Err(err).Msg("error sending JSONRPC event")
+		logger.Warn().Err(err).Msg("error sending JSONRPC event")
 		return
 	}
 }
 
 func getJsonRPCLogger() *logging.Context {
-	return logging.NewContext(logging.GetSubsystemLogger("jsonrpc"))
+	return logging.GetSubsystemLogger("jsonrpc")
 }
 
 func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
-	logger := getJsonRPCLogger().With().Int("length", len(message.Data))
+	logger := getJsonRPCLogger().Int("length", len(message.Data))
 
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)

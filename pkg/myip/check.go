@@ -2,6 +2,7 @@ package myip
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -92,11 +93,11 @@ func (ps *PublicIPState) checkAPI(_ context.Context, _ int) (*PublicIP, error) {
 
 // checkIPs checks both IPv4 and IPv6 public IP addresses in parallel
 // and updates the IPAddresses slice with the results
-func (ps *PublicIPState) checkIPs(ctx context.Context, checkIPv4, checkIPv6 bool) error {
+func (ps *PublicIPState) checkIPs(ctx context.Context) error {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var ips []PublicIP
-	var errors []error
+	var errs []error
 
 	checkFamily := func(family int, familyName string) {
 		wg.Add(1)
@@ -104,23 +105,22 @@ func (ps *PublicIPState) checkIPs(ctx context.Context, checkIPv4, checkIPv6 bool
 			defer wg.Done()
 
 			ip, err := ps.checkIPForFamily(ctx, f)
+
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
-				errors = append(errors, fmt.Errorf("%s check failed: %w", name, err))
-				return
-			}
-			if ip != nil {
+				errs = append(errs, fmt.Errorf("%s check failed: %w", name, err))
+			} else if ip != nil {
 				ips = append(ips, *ip)
 			}
 		}(family, familyName)
 	}
 
-	if checkIPv4 {
+	if ps.ipv4 {
 		checkFamily(link.AfInet, "IPv4")
 	}
 
-	if checkIPv6 {
+	if ps.ipv6 {
 		checkFamily(link.AfInet6, "IPv6")
 	}
 
@@ -134,11 +134,7 @@ func (ps *PublicIPState) checkIPs(ctx context.Context, checkIPv4, checkIPv6 bool
 		ps.lastUpdated = time.Now()
 	}
 
-	if len(errors) > 0 && len(ips) == 0 {
-		return errors[0]
-	}
-
-	return nil
+	return errors.Join(errs...) // returns nil if errs is empty otherwise combines errors
 }
 
 func (ps *PublicIPState) checkIPForFamily(ctx context.Context, family int) (*PublicIP, error) {

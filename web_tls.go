@@ -11,7 +11,6 @@ import (
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/websecure"
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -35,9 +34,9 @@ type TLSState struct {
 	PrivateKey  string `json:"privateKey"`
 }
 
-func initCertStore(websecureLogger *zerolog.Logger) {
+func initCertStore(logger *logging.Context) {
 	certStore = websecure.NewCertStore(tlsStorePath)
-	certStore.LoadCertificates(websecureLogger)
+	certStore.LoadCertificates(logger)
 
 	certSigner = websecure.NewSelfSigner(
 		certStore,
@@ -206,11 +205,11 @@ func startWebSecureServer() {
 
 func RunWebSecureServer() {
 	for range startTLS {
-		websecureLogger := logging.GetSubsystemLogger("web-secure")
-		websecureLogger.Info().Msg("Starting websecure server, as we have received a start signal")
+		logger := logging.GetSubsystemLogger("web-secure")
+		logger.Info().Msg("Starting websecure server, as we have received a start signal")
 
 		if certStore == nil {
-			initCertStore(websecureLogger)
+			initCertStore(logger)
 		}
 		go runWebSecureServer()
 	}

@@ -28,7 +28,7 @@ var (
 
 // SendWOLMagicPacket sends a Wake-on-LAN magic packet to the specified MAC address
 func rpcSendWOLMagicPacket(macAddress string) error {
-	logger := logging.NewContext(logging.GetSubsystemLogger("wol")).With().Str("mac", macAddress)
+	logger := logging.GetSubsystemLogger("wol").Str("mac", macAddress)
 
 	// Parse the MAC address
 	mac, err := net.ParseMAC(macAddress)

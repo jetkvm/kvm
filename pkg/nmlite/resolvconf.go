@@ -7,10 +7,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -39,24 +39,17 @@ var (
 
 // ResolvConfManager manages the resolv.conf file
 type ResolvConfManager struct {
-	logger *zerolog.Logger
-	mu     sync.Mutex
-	conf   *types.ResolvConf
+	mu   sync.Mutex
+	conf *types.ResolvConf
 
 	hostname string
 	domain   string
 }
 
 // NewResolvConfManager creates a new resolv.conf manager
-func NewResolvConfManager(logger *zerolog.Logger) *ResolvConfManager {
-	if logger == nil {
-		// Create a no-op logger if none provided
-		logger = &zerolog.Logger{}
-	}
-
+func NewResolvConfManager() *ResolvConfManager {
 	return &ResolvConfManager{
-		logger: logger,
-		mu:     sync.Mutex{},
+		mu: sync.Mutex{},
 		conf: &types.ResolvConf{
 			ConfigIPv4: make(map[string]types.InterfaceResolvConf),
 			ConfigIPv6: make(map[string]types.InterfaceResolvConf),
@@ -107,12 +100,17 @@ func (rcm *ResolvConfManager) Reconcile() error {
 	return rcm.update()
 }
 
+func (rcm *ResolvConfManager) getLogger() *logging.Context {
+	return logging.GetSubsystemLogger("nmlite").Str("component", "resolvconf")
+}
+
 // Update updates the resolv.conf file
 func (rcm *ResolvConfManager) update() error {
 	rcm.mu.Lock()
 	defer rcm.mu.Unlock()
 
-	rcm.logger.Debug().Msg("updating resolv.conf")
+	logger := rcm.getLogger()
+	logger.Debug().Msg("updating resolv.conf")
 
 	// Generate resolv.conf content
 	content, err := rcm.generateResolvConf(rcm.conf)
@@ -124,11 +122,11 @@ func (rcm *ResolvConfManager) update() error {
 	if _, err := os.Stat(resolvConfPath); err == nil {
 		existingContent, err := os.ReadFile(resolvConfPath)
 		if err != nil {
-			rcm.logger.Warn().Err(err).Msg("failed to read existing resolv.conf")
+			logger.Warn().Err(err).Msg("failed to read existing resolv.conf")
 		}
 
 		if bytes.Equal(existingContent, content) {
-			rcm.logger.Debug().Msg("resolv.conf is the same, skipping write")
+			logger.Debug().Msg("resolv.conf is the same, skipping write")
 			return nil
 		}
 	}
@@ -138,10 +136,7 @@ func (rcm *ResolvConfManager) update() error {
 		return fmt.Errorf("failed to write resolv.conf: %w", err)
 	}
 
-	rcm.logger.Info().
-		Interface("config", rcm.conf).
-		Msg("resolv.conf updated successfully")
-
+	logger.Info().Interface("config", rcm.conf).Msg("resolv.conf updated successfully")
 	return nil
 }
 

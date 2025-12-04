@@ -90,7 +90,7 @@ func (t *TimeSync) setRtcTime(tu time.Time) error {
 		return fmt.Errorf("failed to read RTC time: %w", err)
 	}
 
-	t.loggingContext.Info().
+	GetTimesyncLogger().Info().
 		Time("rtc_time", tu).
 		Dur("offset", tu.Sub(currentRtcTime)).
 		Msg("set rtc time")

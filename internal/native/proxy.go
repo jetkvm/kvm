@@ -49,7 +49,7 @@ func randomId(binaryLength int) string {
 	s := make([]byte, binaryLength)
 	_, err := rand.Read(s)
 	if err != nil {
-		nativeLogger.Error().Err(err).Msg("failed to generate random ID")
+		GetNativeLogger().Error().Err(err).Msg("failed to generate random ID")
 		return strings.Repeat("0", binaryLength*2) // return all zeros if error
 	}
 	return hex.EncodeToString(s)
@@ -131,7 +131,6 @@ type NativeProxy struct {
 	cmd   *cmdWrapper
 	cmdMu sync.Mutex // mutex for the cmd
 
-	logger   *zerolog.Logger
 	options  *nativeProxyOptions
 	restarts uint
 	stopped  bool
@@ -152,7 +151,6 @@ func NewNativeProxy(opts NativeOptions) (*NativeProxy, error) {
 		nativeUnixSocket:      proxyOptions.CtrlUnixSocket,
 		videoStreamUnixSocket: proxyOptions.VideoStreamUnixSocket,
 		binaryPath:            exePath,
-		logger:                nativeLogger,
 		options:               proxyOptions,
 		restarts:              0,
 	}
@@ -165,7 +163,7 @@ func (p *NativeProxy) startVideoStreamListener() error {
 		return nil
 	}
 
-	logger := p.logger.With().Str("socketPath", p.videoStreamUnixSocket).Logger()
+	logger := GetDisplayLogger().With().Str("socketPath", p.videoStreamUnixSocket)
 	listener, err := net.Listen("unixpacket", p.videoStreamUnixSocket)
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to start video stream listener")
@@ -259,7 +257,7 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 	for {
 		n, err := conn.Read(inboundPacket)
 		if err != nil {
-			p.logger.Warn().Err(err).Msg("failed to read video frame from socket")
+			GetDisplayLogger().Warn().Err(err).Msg("failed to read video frame from socket")
 			break
 		}
 		now := time.Now()
@@ -274,24 +272,22 @@ func (p *NativeProxy) setUpGRPCClient() error {
 	// wait until handshake completed
 	select {
 	case <-p.cmd.stdoutHandler.handshakeCh:
-		p.logger.Info().Msg("handshake completed")
+		GetNativeLogger().Info().Msg("handshake completed")
 	case <-time.After(10 * time.Second):
 		return fmt.Errorf("handshake not completed within 10 seconds")
 	}
 
-	logger := p.logger.With().Str("socketPath", "@"+p.nativeUnixSocket).Logger()
 	client, err := NewGRPCClient(grpcClientOptions{
 		SocketPath:         p.nativeUnixSocket,
-		Logger:             &logger,
 		OnIndevEvent:       p.options.OnIndevEvent,
 		OnRpcEvent:         p.options.OnRpcEvent,
 		OnVideoStateChange: p.options.OnVideoStateChange,
 	})
 
-	logger.Info().Msg("created gRPC client")
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC client: %w", err)
 	}
+	GetNativeLogger().With().Str("socketPath", "@"+p.nativeUnixSocket).Info().Msg("created gRPC client")
 	p.client = client
 
 	// Wait for ready signal from the native process
@@ -332,12 +328,7 @@ func (p *NativeProxy) doStart() error {
 		return fmt.Errorf("failed to start native process: %w", err)
 	}
 
-	// here we'll replace the logger with a new one that includes the process ID
-	// there's no need to lock the mutex here as the side effect is acceptable
-	newLogger := p.logger.With().Int("pid", p.cmd.Process.Pid).Logger()
-	p.logger = &newLogger
-
-	p.logger.Info().Msg("native process started")
+	GetNativeLogger().With().Int("pid", p.cmd.Process.Pid).Info().Msg("native process started")
 
 	if err := p.setUpGRPCClient(); err != nil {
 		return fmt.Errorf("failed to set up gRPC client: %w", err)
@@ -379,7 +370,7 @@ func (p *NativeProxy) monitorProcess() {
 
 		select {
 		case <-p.ctx.Done():
-			p.logger.Trace().Msg("context done, stopping monitor process [before wait]")
+			GetNativeLogger().Trace().Msg("context done, stopping monitor process [before wait]")
 			return
 		default:
 		}
@@ -397,19 +388,20 @@ func (p *NativeProxy) monitorProcess() {
 
 		select {
 		case <-p.ctx.Done():
-			p.logger.Trace().Msg("context done, stopping monitor process [after wait]")
+			GetNativeLogger().Trace().Msg("context done, stopping monitor process [after wait]")
 			return
 		default:
 		}
 
-		p.logger.Warn().Err(err).Msg("native process exited, restarting ...")
+		logger := GetNativeLogger()
+		logger.Warn().Err(err).Msg("native process exited, restarting ...")
 
 		// Wait a bit before restarting
 		time.Sleep(1 * time.Second)
 
 		// Restart the process
 		if err := p.restartProcess(); err != nil {
-			p.logger.Error().Err(err).Msg("failed to restart native process")
+			logger.Error().Err(err).Msg("failed to restart native process")
 			// Wait longer before retrying
 			time.Sleep(5 * time.Second)
 			continue
@@ -420,7 +412,7 @@ func (p *NativeProxy) monitorProcess() {
 // restartProcess restarts the native process
 func (p *NativeProxy) restartProcess() error {
 	p.restarts++
-	logger := p.logger.With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts).Logger()
+	logger := GetNativeLogger().With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts)
 
 	if p.restarts >= p.options.MaxRestartAttempts {
 		logger.Fatal().Msgf("max restart attempts reached, exiting: %s", supervisor.FailsafeReasonVideoMaxRestartAttemptsReached)

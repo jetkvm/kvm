@@ -87,7 +87,7 @@ func (im *InterfaceManager) updateInterfaceState() error {
 
 	// Update IP addresses
 	if ipChanged, err := im.updateInterfaceStateAddresses(nl); err != nil {
-		im.logger.Error().Err(err).Msg("failed to update IP addresses")
+		im.getLogger().Error().Err(err).Msg("failed to update IP addresses")
 	} else if ipChanged {
 		stateChanged = true
 		changeReasons = append(changeReasons, IfStateIPAddressesChanged)
@@ -98,9 +98,8 @@ func (im *InterfaceManager) updateInterfaceState() error {
 
 	// Notify callback if state changed
 	if stateChanged && im.onStateChange != nil {
-		im.logger.Debug().
+		im.getLogger().Debug().
 			Stringer("changeReasons", changeReasons).
-			Interface("state", im.state).
 			Msg("notifying state change")
 		im.onStateChange(*im.state)
 	}
@@ -214,9 +213,8 @@ func (im *InterfaceManager) updateInterfaceStateAddresses(nl *link.Link) (bool, 
 	}
 
 	if stateChanged {
-		im.logger.Trace().
+		im.getLogger().Trace().
 			Str("changeReason", stateChangeReason).
-			Interface("state", im.state).
 			Msg("interface state changed")
 	}
 

@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/rs/zerolog"
 )
 
 //go:embed sse.html
@@ -24,15 +23,13 @@ type sseClientChan chan string
 
 var (
 	sseServer *sseEvent
-	sseLogger *zerolog.Logger
 )
 
 func init() {
 	sseServer = newSseServer()
-	sseLogger = GetSubsystemLogger("sse")
 }
 
-// Initialize event and Start procnteessing requests
+// Initialize event and Start proceessing requests
 func newSseServer() (event *sseEvent) {
 	event = &sseEvent{
 		Message:       make(chan string),
@@ -54,7 +51,8 @@ func (stream *sseEvent) listen() {
 		// Add new available client
 		case client := <-stream.NewClients:
 			stream.TotalClients[client] = true
-			sseLogger.Info().
+			GetSubsystemLogger("sse").
+				Info().
 				Int("total_clients", len(stream.TotalClients)).
 				Msg("new client connected")
 
@@ -62,7 +60,10 @@ func (stream *sseEvent) listen() {
 		case client := <-stream.ClosedClients:
 			delete(stream.TotalClients, client)
 			close(client)
-			sseLogger.Info().Int("total_clients", len(stream.TotalClients)).Msg("client disconnected")
+			GetSubsystemLogger("sse").
+				Info().
+				Int("total_clients", len(stream.TotalClients)).
+				Msg("client disconnected")
 
 		// Broadcast message to client
 		case eventMsg := <-stream.Message:

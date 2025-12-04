@@ -5,6 +5,7 @@ import (
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
+	"github.com/jetkvm/kvm/pkg/nmlite/link"
 	"github.com/vishvananda/netlink"
 )
 
@@ -14,7 +15,7 @@ func (c *Client) requestLease4(ifname string) (*Lease, error) {
 		return nil, err
 	}
 
-	l := c.l.With().Str("interface", ifname).Logger()
+	logger := c.getLogger().Str("interface", ifname).Int("family", link.AfInet)
 
 	mods := []nclient4.ClientOpt{
 		nclient4.WithTimeout(c.cfg.Timeout),
@@ -57,16 +58,16 @@ func (c *Client) requestLease4(ifname string) (*Lease, error) {
 		reqmods = append(reqmods, dhcpv4.WithOption(dhcpv4.OptHostName(c.cfg.Hostname)))
 	}
 
-	l.Info().Msg("attempting to get DHCPv4 lease")
+	logger.Info().Msg("attempting to get DHCPv4 lease")
 	var (
 		lease  *nclient4.Lease
 		reqErr error
 	)
 	if c.currentLease4 != nil {
-		l.Info().Msg("current lease is not nil, renewing")
+		logger.Info().Msg("current lease is not nil, renewing")
 		lease, reqErr = client.Renew(c.ctx, c.currentLease4.p4, reqmods...)
 	} else {
-		l.Info().Msg("current lease is nil, requesting new lease")
+		logger.Info().Msg("current lease is nil, requesting new lease")
 		lease, reqErr = client.Request(c.ctx, reqmods...)
 	}
 
@@ -78,8 +79,8 @@ func (c *Client) requestLease4(ifname string) (*Lease, error) {
 		return nil, fmt.Errorf("failed to acquire DHCPv4 lease")
 	}
 
-	summaryStructured(lease.ACK, &l).Info().Msgf("DHCPv4 lease acquired: %s", lease.ACK.String())
-	l.Trace().Interface("options", lease.ACK.Options.String()).Msg("DHCPv4 lease options")
+	summaryStructured(lease.ACK, logger).Info().Msgf("DHCPv4 lease acquired: %s", lease.ACK.String())
+	logger.Trace().Interface("options", lease.ACK.Options.String()).Msg("DHCPv4 lease options")
 
 	return fromNclient4Lease(lease, ifname), nil
 }

@@ -8,13 +8,13 @@ import (
 
 	"time"
 
+	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/jetkvm/kvm/internal/network/types"
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -89,7 +89,6 @@ type Client struct {
 
 	ifaces []string
 	cfg    Config
-	l      *zerolog.Logger
 
 	ctx context.Context
 
@@ -116,7 +115,7 @@ var (
 )
 
 // NewClient creates a new DHCP client for the given interface.
-func NewClient(ctx context.Context, ifaces []string, c *Config, l *zerolog.Logger) (*Client, error) {
+func NewClient(ctx context.Context, ifaces []string, c *Config) (*Client, error) {
 	timer4 := time.NewTimer(defaultTimerDuration)
 	timer6 := time.NewTimer(defaultTimerDuration)
 
@@ -137,7 +136,6 @@ func NewClient(ctx context.Context, ifaces []string, c *Config, l *zerolog.Logge
 		ctx:      ctx,
 		ifaces:   ifaces,
 		cfg:      cfg,
-		l:        l,
 		stateDir: "/run/jetkvm-dhcp",
 
 		currentLease4: nil,
@@ -154,14 +152,14 @@ func NewClient(ctx context.Context, ifaces []string, c *Config, l *zerolog.Logge
 	}, nil
 }
 
-func resetTimer(t *time.Timer, attempt int, l *zerolog.Logger) {
+func (c *Client) resetTimer(t *time.Timer, attempt int) {
 	// Exponential backoff: 1s, 2s, 4s, 8s, max 8s
 	backoffAttempt := attempt
 	if backoffAttempt > 3 {
 		backoffAttempt = 3
 	}
 	delay := time.Duration(1<<backoffAttempt) * time.Second
-	l.Debug().Dur("delay", delay).Int("attempt", attempt).Msg("will retry later")
+	c.getLogger().Debug().Dur("delay", delay).Int("attempt", attempt).Msg("will retry later")
 	t.Reset(delay)
 }
 
@@ -173,15 +171,23 @@ func getRenewalTime(lease *Lease) time.Duration {
 	return lease.RenewalTime
 }
 
+func (c *Client) getLogger() *logging.Context {
+	return logging.GetSubsystemLogger("dhcp").
+		Strs("interfaces", c.ifaces).
+		Bool("ipv4Enabled", c.cfg.IPv4).
+		Bool("ipv6Enabled", c.cfg.IPv6)
+}
+
 func (c *Client) requestLoop(t *time.Timer, family int, ifname string) {
-	l := c.l.With().Str("interface", ifname).Int("family", family).Logger()
+
 	attempt := 0
 	for range t.C {
-		l.Info().Int("attempt", attempt).Msg("requesting lease")
+		logger := c.getLogger().Str("interface", ifname).Int("family", family)
+		logger.Info().Int("attempt", attempt).Msg("requesting lease")
 
 		if _, err := c.ensureInterfaceUp(ifname); err != nil {
-			l.Error().Err(err).Int("attempt", attempt).Msg("failed to ensure interface up")
-			resetTimer(t, attempt, c.l)
+			logger.Error().Err(err).Int("attempt", attempt).Msg("failed to ensure interface up")
+			c.resetTimer(t, attempt)
 			attempt++
 			continue
 		}
@@ -197,8 +203,8 @@ func (c *Client) requestLoop(t *time.Timer, family int, ifname string) {
 			lease, err = c.requestLease6(ifname)
 		}
 		if err != nil {
-			l.Error().Err(err).Int("attempt", attempt).Msg("failed to request lease")
-			resetTimer(t, attempt, c.l)
+			logger.Error().Err(err).Int("attempt", attempt).Msg("failed to request lease")
+			c.resetTimer(t, attempt)
 			attempt++
 			continue
 		}
@@ -209,7 +215,7 @@ func (c *Client) requestLoop(t *time.Timer, family int, ifname string) {
 
 		nextRenewal := getRenewalTime(lease)
 
-		l.Info().
+		logger.Info().
 			Dur("nextRenewal", nextRenewal).
 			Dur("leaseTime", lease.LeaseTime).
 			Dur("rebindingTime", lease.RebindingTime).
@@ -355,7 +361,7 @@ func (c *Client) SetIPv6(ipv6 bool) {
 
 func (c *Client) Start() error {
 	if err := c.killUdhcpc(); err != nil {
-		c.l.Warn().Err(err).Msg("failed to kill udhcpc processes, continuing anyway")
+		c.getLogger().Warn().Err(err).Msg("failed to kill udhcpc processes, continuing anyway")
 	}
 
 	for _, iface := range c.ifaces {
@@ -394,16 +400,17 @@ func (c *Client) apply() {
 
 	// deduplicate searchList
 	searchList = slices.Compact(searchList)
+	logger := c.getLogger()
 
 	if c.cfg.UpdateResolvConf == nil {
-		c.l.Warn().Msg("no UpdateResolvConf function set, skipping resolv.conf update")
+		logger.Warn().Msg("no UpdateResolvConf function set, skipping resolv.conf update")
 		return
 	}
 
-	c.l.Info().
+	logger.Info().
 		Str("interface", iface).
-		Interface("nameservers", nameservers).
-		Interface("searchList", searchList).
+		Interface("nameservers", nameservers). // TODO once zerolog supports []net.IP
+		Strs("searchList", searchList).
 		Str("domain", domain).
 		Msg("updating resolv.conf")
 
@@ -414,6 +421,6 @@ func (c *Client) apply() {
 	}
 
 	if err := c.cfg.UpdateResolvConf(nameserverStrings); err != nil {
-		c.l.Error().Err(err).Msg("failed to update resolv.conf")
+		logger.Error().Err(err).Msg("failed to update resolv.conf")
 	}
 }

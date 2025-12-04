@@ -2,11 +2,10 @@ package logging
 
 import (
 	"github.com/pion/logging"
-	"github.com/rs/zerolog"
 )
 
 type pionLogger struct {
-	logger *zerolog.Logger
+	logger *Context
 }
 
 func (c pionLogger) Trace(msg string) {
@@ -52,10 +51,9 @@ type pionLoggerFactory struct{}
 func (c pionLoggerFactory) NewLogger(subsystem string) logging.LeveledLogger {
 	logger := GetSubsystemLogger("pion").
 		With().
-		Str("component", subsystem).
-		Logger()
+		Str("component", subsystem)
 
-	return pionLogger{logger: &logger}
+	return pionLogger{logger: logger}
 }
 
 var defaultLoggerFactory = &pionLoggerFactory{}

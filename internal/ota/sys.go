@@ -14,14 +14,14 @@ const (
 // DO NOT call it directly, it's not thread safe
 // Mutex is currently held by the caller, e.g. doUpdate
 func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateStatus) error {
-	loggingContext := s.loggingContext.Str("component", "system").Str("path", systemUpdatePath)
+	logger := GetOtaLoggingContext().Str("component", "system").Str("path", systemUpdatePath)
 
 	downloadStarted := time.Now()
-	if err := s.downloadFile(ctx, systemUpdatePath, systemUpdate.url, "system"); err != nil {
-		return s.componentUpdateError("Error downloading system update", err, loggingContext)
+	if err := s.downloadFile(ctx, systemUpdatePath, systemUpdate.url, "system", logger); err != nil {
+		return s.componentUpdateError("Error downloading system update", err, logger)
 	}
 	downloadFinished := time.Now()
-	loggingContext.Dur("download_time", downloadFinished.Sub(downloadStarted)).Info().Msg("update downloaded")
+	logger.Dur("download_time", downloadFinished.Sub(downloadStarted)).Info().Msg("update downloaded")
 
 	systemUpdate.downloadFinishedAt = downloadFinished
 	systemUpdate.downloadProgress = 1
@@ -33,11 +33,12 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 		systemUpdatePath,
 		systemUpdate.hash,
 		&systemUpdate.verificationProgress,
+		logger,
 	); err != nil {
-		return s.componentUpdateError("Error verifying system update hash", err, loggingContext)
+		return s.componentUpdateError("Error verifying system update hash", err, logger)
 	}
 	verifyFinished := time.Now()
-	loggingContext.Dur("verification_time", verifyFinished.Sub(verifyStarted)).Info().Msg("update verified")
+	logger.Dur("verification_time", verifyFinished.Sub(verifyStarted)).Info().Msg("update verified")
 
 	systemUpdate.verifiedAt = verifyFinished
 	systemUpdate.verificationProgress = 1
@@ -45,7 +46,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	systemUpdate.updateProgress = 0.5
 	s.triggerComponentUpdateState("system", systemUpdate)
 
-	loggingContext.Info().Msg("Starting rk_ota command")
+	logger.Info().Msg("Starting rk_ota command")
 
 	upgradeStarted := time.Now()
 	cmd := exec.Command("rk_ota", "--misc=update", "--tar_path=/userdata/jetkvm/update_system.tar", "--save_dir=/userdata/jetkvm/ota_save", "--partition=all")
@@ -53,7 +54,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	cmd.Stdout = &b
 	cmd.Stderr = &b
 	if err := cmd.Start(); err != nil {
-		return s.componentUpdateError("Error starting rk_ota command", err, loggingContext)
+		return s.componentUpdateError("Error starting rk_ota command", err, logger)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -84,13 +85,13 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	cancel()
 
 	upgradeFinished := time.Now()
-	loggingContext.Dur("upgrade_time", upgradeFinished.Sub(upgradeStarted)).Info().Msg("upgrade completed")
+	logger.Dur("upgrade_time", upgradeFinished.Sub(upgradeStarted)).Info().Msg("upgrade completed")
 
-	loggingContext = loggingContext.Str("output", b.String()).Int("exitCode", cmd.ProcessState.ExitCode())
+	logger = logger.Str("output", b.String()).Int("exitCode", cmd.ProcessState.ExitCode())
 	if err != nil {
-		return s.componentUpdateError("Error executing rk_ota command", err, loggingContext)
+		return s.componentUpdateError("Error executing rk_ota command", err, logger)
 	}
-	loggingContext.Info().Msg("rk_ota success")
+	logger.Info().Msg("rk_ota success")
 
 	s.rebootNeeded = true
 	systemUpdate.updateProgress = 1
@@ -101,9 +102,10 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 }
 
 func (s *State) confirmCurrentSystem() {
+	logger := GetOtaLoggingContext().Str("action", "confirmCurrentSystem")
 	output, err := exec.Command("rk_ota", "--misc=now").CombinedOutput()
 	if err != nil {
-		s.loggingContext.Str("output", string(output)).Err(err).Warn().Msg("failed to set current partition in A/B setup")
+		logger.Warn().Str("output", string(output)).Err(err).Msg("failed to set current partition in A/B setup")
 	}
-	s.loggingContext.Str("output", string(output)).Trace().Msg("current partition in A/B setup set")
+	logger.Trace().Str("output", string(output)).Msg("current partition in A/B setup set")
 }

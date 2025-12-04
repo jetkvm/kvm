@@ -6,13 +6,14 @@ import (
 
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
-	"github.com/rs/zerolog"
+	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/pkg/nmlite/link"
 	"github.com/vishvananda/netlink"
 )
 
 // isIPv6LinkReady returns true if the interface has a link-local address
 // which is not tentative.
-func isIPv6LinkReady(l netlink.Link, logger *zerolog.Logger) (bool, error) {
+func isIPv6LinkReady(l netlink.Link) (bool, error) {
 	addrs, err := netlink.AddrList(l, 10) // AF_INET6
 	if err != nil {
 		return false, err
@@ -20,7 +21,7 @@ func isIPv6LinkReady(l netlink.Link, logger *zerolog.Logger) (bool, error) {
 	for _, addr := range addrs {
 		if addr.IP.IsLinkLocalUnicast() && (addr.Flags&0x40 == 0) { // IFA_F_TENTATIVE
 			if addr.Flags&0x80 != 0 { // IFA_F_DADFAILED
-				logger.Warn().Str("address", addr.IP.String()).Msg("DADFAILED for address, continuing anyhow")
+				logging.GetSubsystemLogger("jetdhcpc").Warn().IPAddr("address", addr.IP).Msg("DADFAILED for address, continuing anyhow")
 			}
 			return true, nil
 		}
@@ -30,7 +31,7 @@ func isIPv6LinkReady(l netlink.Link, logger *zerolog.Logger) (bool, error) {
 
 // isIPv6RouteReady returns true if serverAddr is reachable.
 func isIPv6RouteReady(serverAddr net.IP) waitForCondition {
-	return func(l netlink.Link, logger *zerolog.Logger) (bool, error) {
+	return func(l netlink.Link) (bool, error) {
 		if serverAddr.IsMulticast() {
 			return true, nil
 		}
@@ -56,7 +57,7 @@ func isIPv6RouteReady(serverAddr net.IP) waitForCondition {
 }
 
 func (c *Client) requestLease6(ifname string) (*Lease, error) {
-	l := c.l.With().Str("interface", ifname).Logger()
+	logger := c.getLogger().Str("interface", ifname).Int("family", link.AfInet6)
 
 	iface, err := netlink.LinkByName(ifname)
 	if err != nil {
@@ -124,12 +125,12 @@ func (c *Client) requestLease6(ifname string) (*Lease, error) {
 		},
 		c.cfg.Modifiers6...)
 
-	l.Info().Msg("attempting to get DHCPv6 lease")
+	logger.Info().Msg("attempting to get DHCPv6 lease")
 	p, err := client.RapidSolicit(c.ctx, reqmods...)
 	if err != nil {
 		return nil, err
 	}
 
-	l.Info().Msgf("DHCPv6 lease acquired: %s", p.Summary())
+	logger.Info().Msgf("DHCPv6 lease acquired: %s", p.Summary())
 	return fromNclient6Lease(p, ifname), nil
 }

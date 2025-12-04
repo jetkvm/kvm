@@ -75,7 +75,6 @@ func jetkvm_go_log_handler(level C.int, filename *C.cchar_t, funcname *C.cchar_t
 		FuncName: C.GoString(funcname),
 		Line:     int(line),
 	}
-
 	logChan <- logMessage
 }
 
@@ -143,7 +142,7 @@ func videoInit(factor float64) error {
 
 	ret := C.jetkvm_video_init(factorC)
 	if ret != 0 {
-		return fmt.Errorf("failed to initialize video: %d", ret)
+		return fmt.Errorf("failed to initialize video with factor %f: %d", factor, ret)
 	}
 	return nil
 }
@@ -194,7 +193,6 @@ func uiSetVar(name string, value string) {
 
 	nameCStr := C.CString(name)
 	defer C.free(unsafe.Pointer(nameCStr))
-
 	valueCStr := C.CString(value)
 	defer C.free(unsafe.Pointer(valueCStr))
 
@@ -217,6 +215,7 @@ func uiSwitchToScreen(screen string) {
 
 	screenCStr := C.CString(screen)
 	defer C.free(unsafe.Pointer(screenCStr))
+
 	C.jetkvm_ui_load_screen(screenCStr)
 }
 
@@ -236,6 +235,7 @@ func uiObjAddState(objName string, state string) (bool, error) {
 	defer C.free(unsafe.Pointer(objNameCStr))
 	stateCStr := C.CString(state)
 	defer C.free(unsafe.Pointer(stateCStr))
+
 	C.jetkvm_ui_add_state(objNameCStr, stateCStr)
 	return true, nil
 }
@@ -248,6 +248,7 @@ func uiObjClearState(objName string, state string) (bool, error) {
 	defer C.free(unsafe.Pointer(objNameCStr))
 	stateCStr := C.CString(state)
 	defer C.free(unsafe.Pointer(stateCStr))
+
 	C.jetkvm_ui_clear_state(objNameCStr, stateCStr)
 	return true, nil
 }
@@ -268,8 +269,12 @@ func uiObjAddFlag(objName string, flag string) (bool, error) {
 	defer C.free(unsafe.Pointer(objNameCStr))
 	flagCStr := C.CString(flag)
 	defer C.free(unsafe.Pointer(flagCStr))
-	C.jetkvm_ui_add_flag(objNameCStr, flagCStr)
-	return true, nil
+
+	ret := C.jetkvm_ui_add_flag(objNameCStr, flagCStr)
+	if ret < 0 {
+		return false, fmt.Errorf("failed to add flag %s on %s: %d", flag, objName, ret)
+	}
+	return ret == 0, nil
 }
 
 func uiObjClearFlag(objName string, flag string) (bool, error) {
@@ -280,8 +285,12 @@ func uiObjClearFlag(objName string, flag string) (bool, error) {
 	defer C.free(unsafe.Pointer(objNameCStr))
 	flagCStr := C.CString(flag)
 	defer C.free(unsafe.Pointer(flagCStr))
-	C.jetkvm_ui_clear_flag(objNameCStr, flagCStr)
-	return true, nil
+
+	ret := C.jetkvm_ui_clear_flag(objNameCStr, flagCStr)
+	if ret < 0 {
+		return false, fmt.Errorf("failed to clear flag %s on %s: %d", flag, objName, ret)
+	}
+	return ret == 0, nil
 }
 
 func uiObjHide(objName string) (bool, error) {
@@ -311,7 +320,6 @@ func uiObjFadeIn(objName string, duration uint32) (bool, error) {
 	defer C.free(unsafe.Pointer(objNameCStr))
 
 	C.jetkvm_ui_fade_in(objNameCStr, C.u_int32_t(duration))
-
 	return true, nil
 }
 
@@ -323,7 +331,6 @@ func uiObjFadeOut(objName string, duration uint32) (bool, error) {
 	defer C.free(unsafe.Pointer(objNameCStr))
 
 	C.jetkvm_ui_fade_out(objNameCStr, C.u_int32_t(duration))
-
 	return true, nil
 }
 
@@ -333,13 +340,12 @@ func uiLabelSetText(objName string, text string) (bool, error) {
 
 	objNameCStr := C.CString(objName)
 	defer C.free(unsafe.Pointer(objNameCStr))
-
 	textCStr := C.CString(text)
 	defer C.free(unsafe.Pointer(textCStr))
 
 	ret := C.jetkvm_ui_set_text(objNameCStr, textCStr)
 	if ret < 0 {
-		return false, fmt.Errorf("failed to set text: %d", ret)
+		return false, fmt.Errorf("failed to set %s text to %s: %d", objName, text, ret)
 	}
 	return ret == 0, nil
 }
@@ -350,20 +356,16 @@ func uiImgSetSrc(objName string, src string) (bool, error) {
 
 	objNameCStr := C.CString(objName)
 	defer C.free(unsafe.Pointer(objNameCStr))
-
 	srcCStr := C.CString(src)
 	defer C.free(unsafe.Pointer(srcCStr))
 
 	C.jetkvm_ui_set_image(objNameCStr, srcCStr)
-
 	return true, nil
 }
 
 func uiDispSetRotation(rotation uint16) (bool, error) {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
-
-	nativeLogger.Info().Uint16("rotation", rotation).Msg("setting rotation")
 
 	cRotation := C.u_int16_t(rotation)
 
@@ -383,7 +385,10 @@ func videoSetStreamQualityFactor(factor float64) error {
 	cgoLock.Lock()
 	defer cgoLock.Unlock()
 
-	C.jetkvm_video_set_quality_factor(C.float(factor))
+	ret := C.jetkvm_video_set_quality_factor(C.float(factor))
+	if ret < 0 {
+		return fmt.Errorf("failed to set video quality factor to %f: %d", factor, ret)
+	}
 	return nil
 }
 
@@ -401,7 +406,11 @@ func videoSetEDID(edid string) error {
 
 	edidCStr := C.CString(edid)
 	defer C.free(unsafe.Pointer(edidCStr))
-	C.jetkvm_video_set_edid(edidCStr)
+
+	ret := C.jetkvm_video_set_edid(edidCStr)
+	if ret < 0 {
+		return fmt.Errorf("failed to set EDID to %s: %d", edid, ret)
+	}
 	return nil
 }
 

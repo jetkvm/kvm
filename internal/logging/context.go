@@ -9,20 +9,22 @@ import (
 )
 
 type Context struct {
-	zl zerolog.Context
+	zc *zerolog.Context
 }
 
 func NewContext(logger *zerolog.Logger) *Context {
-	return &Context{zl: logger.With()}
+	zc := logger.With()
+	return &Context{&zc}
 }
 
-func (c *Context) Logger() *zerolog.Logger {
-	logger := c.zl.Logger()
+func (context *Context) Logger() *zerolog.Logger {
+	logger := context.zc.Logger()
 	return &logger
 }
 
 func (context *Context) With() *Context {
-	return &Context{zl: context.zl.Logger().With()}
+	zc := context.Logger().With()
+	return &Context{&zc}
 }
 
 func (context *Context) Log() *zerolog.Event {
@@ -62,218 +64,272 @@ func (context *Context) Panic() *zerolog.Event {
 }
 
 func (c *Context) IsDebugLevel() bool {
-	return c.zl.Logger().GetLevel() <= zerolog.DebugLevel
+	return c.zc.Logger().GetLevel() <= zerolog.DebugLevel
 }
 
 func (c *Context) IsTraceLevel() bool {
-	return c.zl.Logger().GetLevel() <= zerolog.TraceLevel
+	return c.zc.Logger().GetLevel() <= zerolog.TraceLevel
 }
 
 func (c *Context) AnErr(key string, err error) *Context {
-	return &Context{zl: c.zl.AnErr(key, err)}
+	nc := c.zc.AnErr(key, err)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Any(key string, i interface{}) *Context {
-	return &Context{zl: c.zl.Any(key, i)}
+	nc := c.zc.Any(key, i)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Array(key string, arr zerolog.LogArrayMarshaler) *Context {
-	return &Context{zl: c.zl.Array(key, arr)}
+	nc := c.zc.Array(key, arr)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Bool(key string, val bool) *Context {
-	return &Context{zl: c.zl.Bool(key, val)}
+	nc := c.zc.Bool(key, val)
+	return &Context{zc: &nc}
 }
 func (c *Context) Bools(key string, b []bool) *Context {
-	return &Context{zl: c.zl.Bools(key, b)}
+	nc := c.zc.Bools(key, b)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Byte(key string, val byte) *Context {
-	return &Context{zl: c.zl.Bytes(key, []byte{val})}
+	nc := c.zc.Bytes(key, []byte{val})
+	return &Context{zc: &nc}
 }
 func (c *Context) Bytes(key string, val []byte) *Context {
-	return &Context{zl: c.zl.Bytes(key, val)}
+	nc := c.zc.Bytes(key, val)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Caller() *Context {
-	c.zl.CallerWithSkipFrameCount(1)
-	return c
+	nc := c.zc.CallerWithSkipFrameCount(1)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) CallerWithSkipFrameCount(skipFrameCount int) *Context {
-	c.zl.CallerWithSkipFrameCount(skipFrameCount + 1)
-	return c
+	nc := c.zc.CallerWithSkipFrameCount(skipFrameCount + 1)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Dict(key string, dict *zerolog.Event) *Context {
-	return &Context{zl: c.zl.Dict(key, dict)}
+	nc := c.zc.Dict(key, dict)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Dur(key string, d time.Duration) *Context {
-	return &Context{zl: c.zl.Dur(key, d)}
+	nc := c.zc.Dur(key, d)
+	return &Context{zc: &nc}
 }
 func (c *Context) Durs(key string, d []time.Duration) *Context {
-	return &Context{zl: c.zl.Durs(key, d)}
+	nc := c.zc.Durs(key, d)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) EmbedObject(o zerolog.LogObjectMarshaler) *Context {
-	return &Context{zl: c.zl.EmbedObject(o)}
+	nc := c.zc.EmbedObject(o)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Err(err error) *Context {
-	return &Context{zl: c.zl.Err(err)}
+	nc := c.zc.Err(err)
+	return &Context{zc: &nc}
 }
 func (c *Context) Errs(key string, err []error) *Context {
-	return &Context{zl: c.zl.Errs(key, err)}
+	nc := c.zc.Errs(key, err)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Fields(fields []interface{}) *Context {
-	return &Context{zl: c.zl.Fields(fields)}
+	nc := c.zc.Fields(fields)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Float32(key string, f float32) *Context {
-	return &Context{zl: c.zl.Float32(key, f)}
+	nc := c.zc.Float32(key, f)
+	return &Context{zc: &nc}
 }
 func (c *Context) Floats32(key string, f []float32) *Context {
-	return &Context{zl: c.zl.Floats32(key, f)}
+	nc := c.zc.Floats32(key, f)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Float64(key string, f float64) *Context {
-	return &Context{zl: c.zl.Float64(key, f)}
+	nc := c.zc.Float64(key, f)
+	return &Context{zc: &nc}
 }
 func (c *Context) Floats64(key string, f []float64) *Context {
-	return &Context{zl: c.zl.Floats64(key, f)}
+	nc := c.zc.Floats64(key, f)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Hex(key string, val []byte) *Context {
-	return &Context{zl: c.zl.Hex(key, val)}
+	nc := c.zc.Hex(key, val)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Int(key string, val int) *Context {
-	return &Context{zl: c.zl.Int(key, val)}
+	nc := c.zc.Int(key, val)
+	return &Context{zc: &nc}
 }
 func (c *Context) Ints(key string, i []int) *Context {
-	return &Context{zl: c.zl.Ints(key, i)}
+	nc := c.zc.Ints(key, i)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Int8(key string, i int8) *Context {
-	return &Context{zl: c.zl.Int8(key, i)}
+	nc := c.zc.Int8(key, i)
+	return &Context{zc: &nc}
 }
 func (c *Context) Ints8(key string, i []int8) *Context {
-	return &Context{zl: c.zl.Ints8(key, i)}
+	nc := c.zc.Ints8(key, i)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Int16(key string, i int16) *Context {
-	return &Context{zl: c.zl.Int16(key, i)}
+	nc := c.zc.Int16(key, i)
+	return &Context{zc: &nc}
 }
 func (c *Context) Ints16(key string, i []int16) *Context {
-	return &Context{zl: c.zl.Ints16(key, i)}
+	nc := c.zc.Ints16(key, i)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Int32(key string, i int32) *Context {
-	return &Context{zl: c.zl.Int32(key, i)}
+	nc := c.zc.Int32(key, i)
+	return &Context{zc: &nc}
 }
 func (c *Context) Ints32(key string, i []int32) *Context {
-	return &Context{zl: c.zl.Ints32(key, i)}
+	nc := c.zc.Ints32(key, i)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Int64(key string, i int64) *Context {
-	return &Context{zl: c.zl.Int64(key, i)}
+	nc := c.zc.Int64(key, i)
+	return &Context{zc: &nc}
 }
 func (c *Context) Ints64(key string, i []int64) *Context {
-	return &Context{zl: c.zl.Ints64(key, i)}
+	nc := c.zc.Ints64(key, i)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Interface(key string, val any) *Context {
-	return &Context{zl: c.zl.Interface(key, val)}
+	nc := c.zc.Interface(key, val)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) IPAddr(key string, ip net.IP) *Context {
-	return &Context{zl: c.zl.IPAddr(key, ip)}
+	nc := c.zc.IPAddr(key, ip)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) IPPrefix(key string, pfx net.IPNet) *Context {
-	return &Context{zl: c.zl.IPPrefix(key, pfx)}
+	nc := c.zc.IPPrefix(key, pfx)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) MACAddr(key string, ha net.HardwareAddr) *Context {
-	return &Context{zl: c.zl.MACAddr(key, ha)}
+	nc := c.zc.MACAddr(key, ha)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Object(key string, obj zerolog.LogObjectMarshaler) *Context {
-	return &Context{zl: c.zl.Object(key, obj)}
+	nc := c.zc.Object(key, obj)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) RawJSON(key string, b []byte) *Context {
-	return &Context{zl: c.zl.RawJSON(key, b)}
+	nc := c.zc.RawJSON(key, b)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Reset() *Context {
-	return &Context{zl: c.zl.Reset()}
+	nc := c.zc.Reset()
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Stack() *Context {
-	return &Context{zl: c.zl.Stack()}
+	nc := c.zc.Stack()
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Str(key string, val string) *Context {
-	return &Context{zl: c.zl.Str(key, val)}
+	nc := c.zc.Str(key, val)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Stringer(key string, val fmt.Stringer) *Context {
-	return &Context{zl: c.zl.Stringer(key, val)}
+	nc := c.zc.Stringer(key, val)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Strs(key string, vals []string) *Context {
-	return &Context{zl: c.zl.Strs(key, vals)}
+	nc := c.zc.Strs(key, vals)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Time(key string, t time.Time) *Context {
-	return &Context{zl: c.zl.Time(key, t)}
+	nc := c.zc.Time(key, t)
+	return &Context{zc: &nc}
 }
 func (c *Context) Times(key string, t []time.Time) *Context {
-	return &Context{zl: c.zl.Times(key, t)}
+	nc := c.zc.Times(key, t)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Timestamp() *Context {
-	return &Context{zl: c.zl.Timestamp()}
+	nc := c.zc.Timestamp()
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Type(key string, val interface{}) *Context {
-	return &Context{zl: c.zl.Type(key, val)}
+	nc := c.zc.Type(key, val)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Uint(key string, i uint) *Context {
-	return &Context{zl: c.zl.Uint(key, i)}
+	nc := c.zc.Uint(key, i)
+	return &Context{zc: &nc}
 }
 func (c *Context) Uints(key string, i []uint) *Context {
-	return &Context{zl: c.zl.Uints(key, i)}
+	nc := c.zc.Uints(key, i)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Uint8(key string, i uint8) *Context {
-	return &Context{zl: c.zl.Uint8(key, i)}
+	nc := c.zc.Uint8(key, i)
+	return &Context{zc: &nc}
 }
 func (c *Context) Uints8(key string, i []uint8) *Context {
-	return &Context{zl: c.zl.Uints8(key, i)}
+	nc := c.zc.Uints8(key, i)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Uint16(key string, i uint16) *Context {
-	return &Context{zl: c.zl.Uint16(key, i)}
+	nc := c.zc.Uint16(key, i)
+	return &Context{zc: &nc}
 }
 func (c *Context) Uints16(key string, i []uint16) *Context {
-	return &Context{zl: c.zl.Uints16(key, i)}
+	nc := c.zc.Uints16(key, i)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Uint32(key string, i uint32) *Context {
-	return &Context{zl: c.zl.Uint32(key, i)}
+	nc := c.zc.Uint32(key, i)
+	return &Context{zc: &nc}
 }
 func (c *Context) Uints32(key string, i []uint32) *Context {
-	return &Context{zl: c.zl.Uints32(key, i)}
+	nc := c.zc.Uints32(key, i)
+	return &Context{zc: &nc}
 }
 
 func (c *Context) Uint64(key string, i uint64) *Context {
-	return &Context{zl: c.zl.Uint64(key, i)}
+	nc := c.zc.Uint64(key, i)
+	return &Context{zc: &nc}
 }
 func (c *Context) Uints64(key string, i []uint64) *Context {
-	return &Context{zl: c.zl.Uints64(key, i)}
+	nc := c.zc.Uints64(key, i)
+	return &Context{zc: &nc}
 }

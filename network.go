@@ -93,7 +93,7 @@ func triggerTimeSyncOnNetworkStateChange() {
 	if timeSync == nil {
 		return
 	}
-	networkLogger := logging.GetSubsystemLogger("network")
+	logger := logging.GetSubsystemLogger("network")
 
 	// set the NTP servers from the network manager
 	if networkManager != nil {
@@ -101,14 +101,14 @@ func triggerTimeSyncOnNetworkStateChange() {
 		for i, server := range networkManager.NTPServers() {
 			ntpServers[i] = server.String()
 		}
-		networkLogger.Info().Strs("ntpServers", ntpServers).Msg("setting NTP servers from network manager")
+		logger.Info().Strs("ntpServers", ntpServers).Msg("setting NTP servers from network manager")
 		timeSync.SetDhcpNtpAddresses(ntpServers)
 	}
 
 	// sync time
 	go func() {
 		if err := timeSync.Sync(); err != nil {
-			networkLogger.Error().Err(err).Msg("failed to sync time after network state change")
+			logger.Error().Err(err).Msg("failed to sync time after network state change")
 		}
 	}()
 }
@@ -147,17 +147,18 @@ func validateNetworkConfig() {
 		return
 	}
 
-	networkLogger := logging.GetSubsystemLogger("network")
-	networkLogger.Error().Err(err).Msg("failed to validate config, reverting to default config")
+	logger := logging.GetSubsystemLogger("network")
+	logger.Error().Err(err).Msg("failed to validate config, reverting to default config")
+
 	if err := SaveBackupConfig(); err != nil {
-		networkLogger.Error().Err(err).Msg("failed to save backup config")
+		logger.Error().Err(err).Msg("failed to save backup config")
 	}
 
 	// do not use a pointer to the default config
 	// it has been already changed during LoadConfig
 	config.NetworkConfig = &(types.NetworkConfig{})
 	if err := SaveConfig(); err != nil {
-		networkLogger.Error().Err(err).Msg("failed to save config")
+		logger.Error().Err(err).Msg("failed to save config")
 	}
 }
 
@@ -169,10 +170,13 @@ func initNetwork() error {
 
 	nc := config.NetworkConfig
 
-	networkLogger := logging.GetSubsystemLogger("network")
-	nm := nmlite.NewNetworkManager(context.Background(), networkLogger)
-	networkLogger.Info().Interface("networkConfig", nc).Str("hostname", nc.Hostname.String).Str("domain", nc.Domain.String).Msg("initializing network manager")
-	_ = setHostname(nm, nc.Hostname.String, nc.Domain.String)
+	logger := logging.GetSubsystemLogger("network").Str("hostname", nc.Hostname.String).Str("domain", nc.Domain.String)
+	logger.Info().Interface("networkConfig", nc).Msg("initializing network manager")
+	nm := nmlite.NewNetworkManager(context.Background())
+
+	if err := setHostname(nm, nc.Hostname.String, nc.Domain.String); err != nil {
+		logger.Error().Err(err).Msg("failed to set hostname")
+	}
 	nm.SetOnInterfaceStateChange(networkStateChanged)
 	if err := nm.AddInterface(NetIfName, nc); err != nil {
 		return fmt.Errorf("failed to add interface: %w", err)
@@ -180,7 +184,6 @@ func initNetwork() error {
 	_ = nm.CleanUpLegacyDHCPClients()
 
 	networkManager = nm
-
 	return nil
 }
 
@@ -190,7 +193,6 @@ func initPublicIPState() {
 
 	// but it will be initialized anyway to avoid nil pointer dereferences
 	ps := myip.NewPublicIPState(&myip.PublicIPStateConfig{
-		Logger:             nil,
 		CloudflareEndpoint: config.CloudURL,
 		APIEndpoint:        "",
 		IPv4:               false,
@@ -233,15 +235,14 @@ func setHostname(nm *nmlite.NetworkManager, hostname, domain string) error {
 func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (rebootRequired bool, postRebootAction *ota.PostRebootAction) {
 	oldDhcpClient := oldConfig.DHCPClient.String
 
-	l := logging.GetSubsystemLogger("network").With().
+	logger := logging.GetSubsystemLogger("network").
 		Interface("old", oldConfig).
-		Interface("new", newConfig).
-		Logger()
+		Interface("new", newConfig)
 
 	// DHCP client change always requires reboot
 	if newConfig.DHCPClient.String != oldDhcpClient {
 		rebootRequired = true
-		l.Info().Msg("DHCP client changed, reboot required")
+		logger.Info().Msg("DHCP client changed, reboot required")
 		return rebootRequired, postRebootAction
 	}
 
@@ -251,14 +252,14 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 	// IPv4 mode change requires reboot
 	if newIPv4Mode != oldIPv4Mode {
 		rebootRequired = true
-		l.Info().Msg("IPv4 mode changed with udhcpc, reboot required")
+		logger.Info().Msg("IPv4 mode changed with udhcpc, reboot required")
 
 		if newIPv4Mode == "static" && oldIPv4Mode != "static" {
 			postRebootAction = &ota.PostRebootAction{
 				HealthCheck: fmt.Sprintf("//%s/device/status", newConfig.IPv4Static.Address.String),
 				RedirectTo:  fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
 			}
-			l.Info().Interface("postRebootAction", postRebootAction).Msg("IPv4 mode changed to static, reboot required")
+			logger.Info().Interface("postRebootAction", postRebootAction).Msg("IPv4 mode changed to static, reboot required")
 		}
 
 		return rebootRequired, postRebootAction
@@ -276,7 +277,7 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 				RedirectTo:  fmt.Sprintf("//%s", newConfig.IPv4Static.Address.String),
 			}
 
-			l.Info().Interface("postRebootAction", postRebootAction).Msg("IPv4 static config changed, reboot required")
+			logger.Info().Interface("postRebootAction", postRebootAction).Msg("IPv4 static config changed, reboot required")
 		}
 
 		return rebootRequired, postRebootAction
@@ -285,12 +286,12 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 	// IPv6 mode change requires reboot when using udhcpc
 	if newConfig.IPv6Mode.String != oldConfig.IPv6Mode.String && oldDhcpClient == "udhcpc" {
 		rebootRequired = true
-		l.Info().Msg("IPv6 mode changed with udhcpc, reboot required")
+		logger.Info().Msg("IPv6 mode changed with udhcpc, reboot required")
 	}
 
 	if newConfig.Hostname.String != oldConfig.Hostname.String {
 		rebootRequired = true
-		l.Info().Msg("Hostname changed, reboot required")
+		logger.Info().Msg("Hostname changed, reboot required")
 	}
 
 	return rebootRequired, postRebootAction
@@ -308,20 +309,20 @@ func rpcGetNetworkSettings() *RpcNetworkSettings {
 func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, error) {
 	netConfig := settings.ToNetworkConfig()
 
-	l := logging.GetSubsystemLogger("network").
+	logger := logging.GetSubsystemLogger("network").
 		With().
 		Str("interface", NetIfName).
 		Interface("newConfig", netConfig).
 		Logger()
 
-	l.Debug().Msg("setting new config")
+	logger.Debug().Msg("setting new config")
 
 	// Check if reboot is needed
 	rebootRequired, postRebootAction := shouldRebootForNetworkChange(config.NetworkConfig, netConfig)
 
 	// If reboot required, send willReboot event before applying network config
 	if rebootRequired {
-		l.Info().Msg("Sending willReboot event before applying network config")
+		logger.Info().Msg("Sending willReboot event before applying network config")
 		writeJSONRPCEvent("willReboot", postRebootAction, currentSession)
 	}
 
@@ -331,7 +332,7 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 	if s != nil {
 		return nil, s
 	}
-	l.Debug().Msg("new config applied")
+	logger.Debug().Msg("new config applied")
 
 	newConfig, err := networkManager.GetInterfaceConfig(NetIfName)
 	if err != nil {
@@ -339,13 +340,13 @@ func rpcSetNetworkSettings(settings RpcNetworkSettings) (*RpcNetworkSettings, er
 	}
 	config.NetworkConfig = newConfig
 
-	l.Debug().Msg("saving new config")
+	logger.Debug().Msg("saving new config")
 	if err := SaveConfig(); err != nil {
 		return nil, err
 	}
 
 	if rebootRequired {
-		l.Info().Msg("Rebooting due to network changes")
+		logger.Info().Msg("Rebooting due to network changes")
 		if err := hwReboot(true, postRebootAction, 0); err != nil {
 			return nil, err
 		}

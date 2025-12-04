@@ -204,21 +204,21 @@ func newSession(config SessionConfig) (*Session, error) {
 	}
 	iceServer := webrtc.ICEServer{}
 
-	sessionContext := logging.NewContext(logging.GetSubsystemLogger("webrtc"))
+	logger := logging.GetSubsystemLogger("webrtc")
 
 	if config.IsCloud {
 		if config.ICEServers == nil {
-			sessionContext.Info().Msg("ICE Servers not provided by cloud")
+			logger.Info().Msg("ICE Servers not provided by cloud")
 		} else {
 			iceServer.URLs = config.ICEServers
-			sessionContext.Info().Interface("iceServers", iceServer.URLs).Msg("Using ICE Servers provided by cloud")
+			logger.Info().Interface("iceServers", iceServer.URLs).Msg("Using ICE Servers provided by cloud")
 		}
 
 		if config.LocalIP == "" || net.ParseIP(config.LocalIP) == nil {
-			sessionContext.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set NAT1To1IPs")
+			logger.Info().Str("localIP", config.LocalIP).Msg("Local IP address not provided or invalid, won't set NAT1To1IPs")
 		} else {
 			webrtcSettingEngine.SetNAT1To1IPs([]string{config.LocalIP}, webrtc.ICECandidateTypeSrflx)
-			sessionContext.Info().Str("localIP", config.LocalIP).Msg("Setting NAT1To1IPs")
+			logger.Info().Str("localIP", config.LocalIP).Msg("Setting NAT1To1IPs")
 		}
 	}
 
@@ -227,7 +227,7 @@ func newSession(config SessionConfig) (*Session, error) {
 		ICEServers: []webrtc.ICEServer{iceServer},
 	})
 	if err != nil {
-		sessionContext.Warn().Err(err).Msg("Failed to create PeerConnection")
+		logger.Warn().Err(err).Msg("Failed to create PeerConnection")
 		return nil, err
 	}
 
@@ -244,27 +244,27 @@ func newSession(config SessionConfig) (*Session, error) {
 	}()
 
 	for i := 0; i < len(session.hidQueue); i++ {
-		go session.handleQueue(i, sessionContext)
+		go session.handleQueue(i, logger)
 	}
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		defer func() {
 			if r := recover(); r != nil {
-				sessionContext.Error().Interface("recovered", r).Msg("Recovered from panic in DataChannel handler")
+				logger.Error().Interface("recovered", r).Msg("Recovered from panic in DataChannel handler")
 			}
 		}()
 
-		sessionContext.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
+		logger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
 
 		switch d.Label() {
 		case "hidrpc":
 			session.HidChannel = d
-			d.OnMessage(getOnHidMessageHandler(session, sessionContext, "hidrpc"))
+			d.OnMessage(getOnHidMessageHandler(session, logger, "hidrpc"))
 		// we won't send anything over the unreliable channels
 		case "hidrpc-unreliable-ordered":
-			d.OnMessage(getOnHidMessageHandler(session, sessionContext, "hidrpc-unreliable-ordered"))
+			d.OnMessage(getOnHidMessageHandler(session, logger, "hidrpc-unreliable-ordered"))
 		case "hidrpc-unreliable-nonordered":
-			d.OnMessage(getOnHidMessageHandler(session, sessionContext, "hidrpc-unreliable-nonordered"))
+			d.OnMessage(getOnHidMessageHandler(session, logger, "hidrpc-unreliable-nonordered"))
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
@@ -291,13 +291,13 @@ func newSession(config SessionConfig) (*Session, error) {
 
 	session.VideoTrack, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeH264}, "video", "kvm")
 	if err != nil {
-		sessionContext.Warn().Err(err).Msg("Failed to create VideoTrack")
+		logger.Warn().Err(err).Msg("Failed to create VideoTrack")
 		return nil, err
 	}
 
 	rtpSender, err := peerConnection.AddTrack(session.VideoTrack)
 	if err != nil {
-		sessionContext.Warn().Err(err).Msg("Failed to add VideoTrack to PeerConnection")
+		logger.Warn().Err(err).Msg("Failed to add VideoTrack to PeerConnection")
 		return nil, err
 	}
 
@@ -315,17 +315,17 @@ func newSession(config SessionConfig) (*Session, error) {
 	var isConnected bool
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		sessionContext.Info().Interface("candidate", candidate).Msg("WebRTC peerConnection has a new ICE candidate")
+		logger.Info().Interface("candidate", candidate).Msg("WebRTC peerConnection has a new ICE candidate")
 		if candidate != nil {
 			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
 			if err != nil {
-				sessionContext.Warn().Err(err).Msg("failed to write new-ice-candidate to WebRTC signaling channel")
+				logger.Warn().Err(err).Msg("failed to write new-ice-candidate to WebRTC signaling channel")
 			}
 		}
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		sessionContext.Info().Str("connectionState", connectionState.String()).Msg("ICE Connection State has changed")
+		logger.Info().Str("connectionState", connectionState.String()).Msg("ICE Connection State has changed")
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			if !isConnected {
 				isConnected = true
@@ -337,11 +337,11 @@ func newSession(config SessionConfig) (*Session, error) {
 		}
 		//state changes on closing browser tab disconnected->failed, we need to manually close it
 		if connectionState == webrtc.ICEConnectionStateFailed {
-			sessionContext.Debug().Msg("ICE Connection State is failed, closing peerConnection")
+			logger.Debug().Msg("ICE Connection State is failed, closing peerConnection")
 			_ = peerConnection.Close()
 		}
 		if connectionState == webrtc.ICEConnectionStateClosed {
-			sessionContext.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
+			logger.Debug().Msg("ICE Connection State is closed, unmounting virtual media")
 			if session == currentSession {
 				// Cancel any ongoing keyboard report multi when session closes
 				_ = cancelKeyboardMacro()
@@ -364,14 +364,14 @@ func newSession(config SessionConfig) (*Session, error) {
 
 			if session.shouldUmountVirtualMedia {
 				if err := rpcUnmountImage(); err != nil {
-					sessionContext.Warn().Err(err).Msg("unmount image failed on connection close")
+					logger.Warn().Err(err).Msg("unmount image failed on connection close")
 				}
 			}
 			if isConnected {
 				isConnected = false
 				onActiveSessionsChanged()
 				if decrActiveSessions() == 0 {
-					sessionContext.Info().Msg("last session disconnected, stopping video stream")
+					logger.Info().Msg("last session disconnected, stopping video stream")
 					onLastSessionDisconnected()
 				}
 			}

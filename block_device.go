@@ -9,7 +9,6 @@ import (
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pojntfx/go-nbd/pkg/server"
-	"github.com/rs/zerolog"
 )
 
 type remoteImageBackend struct {
@@ -63,12 +62,16 @@ type NBDDevice struct {
 	serverConn net.Conn
 	clientConn net.Conn
 	dev        *os.File
-
-	l *zerolog.Logger
 }
 
 func NewNBDDevice() *NBDDevice {
 	return &NBDDevice{}
+}
+
+func (d *NBDDevice) getLogger() *logging.Context {
+	return logging.GetSubsystemLogger("nbd").
+		Str("socket_path", nbdSocketPath).
+		Str("device_path", nbdDevicePath)
 }
 
 func (d *NBDDevice) Start() error {
@@ -83,19 +86,10 @@ func (d *NBDDevice) Start() error {
 		return err
 	}
 
-	if d.l == nil {
-		scopedLogger := logging.GetSubsystemLogger("nbd").
-			With().
-			Str("socket_path", nbdSocketPath).
-			Str("device_path", nbdDevicePath).
-			Logger()
-		d.l = &scopedLogger
-	}
-
 	// Remove the socket file if it already exists
 	if _, err := os.Stat(nbdSocketPath); err == nil {
 		if err := os.Remove(nbdSocketPath); err != nil {
-			d.l.Error().Err(err).Msg("failed to remove existing socket file")
+			d.getLogger().Error().Err(err).Msg("failed to remove existing socket file")
 			os.Exit(1)
 		}
 	}
@@ -137,5 +131,5 @@ func (d *NBDDevice) runServerConn() {
 			SupportsMultiConn:  false,
 		})
 
-	d.l.Info().Err(err).Msg("nbd server exited")
+	d.getLogger().Info().Err(err).Msg("nbd server exited")
 }

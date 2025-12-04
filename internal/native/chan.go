@@ -36,7 +36,8 @@ func (n *Native) handleVideoStateChan() {
 func (n *Native) handleLogChan() {
 	for {
 		entry := <-logChan
-		l := n.nativeContext.
+		l := GetNativeLogger().
+			With().
 			Str("file", entry.File).
 			Str("func", entry.FuncName).
 			Int("line", entry.Line)

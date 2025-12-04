@@ -12,8 +12,8 @@ var (
 	ErrVersionNotFound = errors.New("specified version not found")
 )
 
-func (s *State) componentUpdateError(prefix string, err error, loggingContext *logging.Context) error {
-	loggingContext.Err(err).Error().Msg(prefix)
+func (s *State) componentUpdateError(prefix string, err error, logger *logging.Context) error {
+	logger.Err(err).Error().Msg(prefix)
 	s.error = fmt.Sprintf("%s: %v", prefix, err)
 	s.updating = false
 	s.triggerStateUpdate()

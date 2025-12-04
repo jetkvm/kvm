@@ -20,7 +20,6 @@ var builtAppVersion = "0.1.0+dev"
 var otaState *ota.State
 
 func initOta() {
-	loggingContext := ota.GetOtaLoggingContext()
 	otaState = ota.NewState(
 		ota.Options{
 			ReleaseAPIEndpoint: config.GetUpdateAPIURL(),
@@ -44,7 +43,6 @@ func initOta() {
 				writeJSONRPCEvent("otaProgress", progress, currentSession)
 			},
 		},
-		loggingContext,
 	)
 }
 
