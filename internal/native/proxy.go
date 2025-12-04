@@ -256,12 +256,12 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 	defer conn.Close()
 
 	inboundPacket := make([]byte, maxFrameSize)
-	frameSizeBuffer := make([]byte, 4)
+	var frameSizeBuffer [4]byte
 	lastFrame := time.Now()
 
 	for {
 		// Read 4-byte frame length prefix
-		_, err := io.ReadFull(conn, frameSizeBuffer)
+		_, err := io.ReadFull(conn, frameSizeBuffer[:])
 		if err != nil {
 			if err != io.EOF {
 				p.logger.Warn().Err(err).Msg("failed to read frame size from socket")
@@ -269,10 +269,10 @@ func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
 			break
 		}
 
-		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer)
-		if frameSize > maxFrameSize {
+		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer[:])
+		if frameSize == 0 || frameSize > maxFrameSize {
 			p.logger.Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
-				Msg("received frame size exceeds maximum, rejecting")
+				Msg("received invalid frame size")
 			break
 		}
 
