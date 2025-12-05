@@ -232,7 +232,7 @@ bump-version:
 			exit 1; \
 		fi; \
 		sed -i 's/^VERSION := .*/VERSION := '"$$next_ver"'/' Makefile && \
-		# git add Makefile && \
-		# git commit -m "Bump version to $$next_ver" && \
-		# git push && \
+		git add Makefile && \
+		git commit -m "Bump version to $$next_ver" && \
+		git push && \
 		echo "✓ Bumped to $$next_ver"
