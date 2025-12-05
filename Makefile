@@ -67,6 +67,10 @@ build_native:
 			./scripts/build_cgo.sh; \
 	fi
 
+# NOTE: VERSION_DEV must be explicitly passed to nested make invocations.
+# VERSION_DEV contains $(shell date ...) which gets re-evaluated when a new make
+# process starts. Without passing it explicitly, a minute boundary crossed during
+# the build would cause version mismatch between what's displayed and what's built.
 build_dev:
 	@if [ ! -d "$(BUILDKIT_PATH)" ]; then \
 		echo "Toolchain not found, running build_dev in Docker..."; \
@@ -74,7 +78,7 @@ build_dev:
 		docker run --rm -v "$$(pwd):/build" \
 			$(DOCKER_BUILD_TAG) make _build_dev_inner VERSION_DEV=$(VERSION_DEV); \
 	else \
-		$(MAKE) _build_dev_inner; \
+		$(MAKE) _build_dev_inner VERSION_DEV=$(VERSION_DEV); \
 	fi
 
 _build_dev_inner: build_native
@@ -174,6 +178,9 @@ dev_release: git_check_dev
 	gh release create release/$(VERSION_DEV) bin/jetkvm_app bin/jetkvm_app.sha256 --prerelease --generate-notes
 	@echo "✓ Released: release/$(VERSION_DEV)"
 
+# NOTE: VERSION is passed explicitly for consistency with build_dev (see comment above).
+# While VERSION is static, passing it explicitly ensures the pattern is consistent
+# and prevents issues if VERSION ever becomes dynamic.
 build_release:
 	@if [ ! -d "$(BUILDKIT_PATH)" ]; then \
 		echo "Toolchain not found, running build_release in Docker..."; \
@@ -181,7 +188,7 @@ build_release:
 		docker run --rm -v "$$(pwd):/build" \
 			$(DOCKER_BUILD_TAG) make _build_release_inner VERSION=$(VERSION); \
 	else \
-		$(MAKE) _build_release_inner; \
+		$(MAKE) _build_release_inner VERSION=$(VERSION); \
 	fi
 
 _build_release_inner: build_native

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-SCRIPT_PATH=$(realpath "$(dirname $(realpath "${BASH_SOURCE[0]}")")")
+SCRIPT_PATH=$(realpath "$(dirname $(realpath "${BASH_SOURCE[0]}"))")
 source ${SCRIPT_PATH}/build_utils.sh
 
 VERSION=
