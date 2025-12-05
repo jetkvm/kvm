@@ -3,7 +3,8 @@ set -e
 
 DEVICE_IP="$1"
 BINARY_PATH="$2"
-ACTION="$3"  # "deploy" or "restore"
+ACTION="$3"      # "deploy", "restore", or "test"
+VERSION="$4"     # required for "test" action
 
 REMOTE_USER="root"
 REMOTE_BIN_PATH="/userdata/jetkvm/bin"
@@ -27,9 +28,37 @@ case "$ACTION" in
     echo "Rebooting device..."
     ssh_cmd "reboot" || true
     ;;
+  test)
+    # Full interactive test flow
+    [ -z "$VERSION" ] && { echo "Error: VERSION required for test action"; exit 1; }
+
+    echo ""
+    echo "Deploying $VERSION to $DEVICE_IP..."
+    "$0" "$DEVICE_IP" "$BINARY_PATH" deploy
+
+    echo ""
+    echo "═══════════════════════════════════════════════════════"
+    echo "  Device is rebooting. Please verify:"
+    echo "═══════════════════════════════════════════════════════"
+    echo "  Expected version: $VERSION"
+    echo "  Settings page:    http://$DEVICE_IP/settings/general"
+    echo ""
+    echo "  Check that the version shown in the UI matches above."
+    echo "═══════════════════════════════════════════════════════"
+    echo ""
+    read -p "Does the version match and binary work correctly? [y/n] " works
+
+    echo "Restoring device to previous binary..."
+    "$0" "$DEVICE_IP" "$BINARY_PATH" restore
+
+    if [ "$works" != "y" ]; then
+      echo "Test failed."
+      exit 1
+    fi
+    echo "Test passed."
+    ;;
   *)
-    echo "Usage: $0 <device_ip> <binary_path> <deploy|restore>"
+    echo "Usage: $0 <device_ip> <binary_path> <deploy|restore|test> [version]"
     exit 1
     ;;
 esac
-
