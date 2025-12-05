@@ -4,7 +4,7 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 )
 
-func (m *MDNS) getMdnsLoggingContext() *logging.Context {
+func (m *MDNS) getMdnsLogger() *logging.Context {
 	return logging.GetSubsystemLogger("mdns").
 		Strs("local_names", m.localNames).
 		Bool("ipv4", m.listenOptions.IPv4).

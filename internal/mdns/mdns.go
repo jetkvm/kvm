@@ -67,7 +67,7 @@ func (m *MDNS) start(allowRestart bool) error {
 		return fmt.Errorf("listen options not set")
 	}
 
-	context := m.getMdnsLoggingContext()
+	context := m.getMdnsLogger()
 
 	if !m.listenOptions.IPv4 && !m.listenOptions.IPv6 {
 		context.Info().Msg("mDNS server disabled")
@@ -120,7 +120,7 @@ func (m *MDNS) start(allowRestart bool) error {
 
 	mDNSConn, err := pion_mdns.Server(p4, p6, &pion_mdns.Config{
 		LocalNames:    newLocalNames,
-		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
+		LoggerFactory: logging.GetPionLoggerFactory("mdns"),
 	})
 
 	context = context.Interface("mDNSConn", mDNSConn).Err(err)

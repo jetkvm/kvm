@@ -102,8 +102,8 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 func (im *InterfaceManager) getLogger() *logging.Context {
 	logger := logging.GetSubsystemLogger("interface").Str("interface", im.ifaceName)
 
-	if logger.IsDebugLevel() {
-		logger = logger.Interface("state", im.state).Interface("linkState", im.linkState)
+	if logger.IsTraceLevel() {
+		logger = logger.Interface("state", im.state)
 	}
 
 	return logger

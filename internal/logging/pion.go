@@ -5,59 +5,57 @@ import (
 )
 
 type pionLogger struct {
-	logger *Context
+	logger func() *Context
 }
 
 func (c pionLogger) Trace(msg string) {
-	c.logger.Trace().Msg(msg)
+	c.logger().Trace().Msg(msg)
 }
 func (c pionLogger) Tracef(format string, args ...any) {
-	c.logger.Trace().Msgf(format, args...)
+	c.logger().Trace().Msgf(format, args...)
 }
 
 func (c pionLogger) Debug(msg string) {
-	c.logger.Debug().Msg(msg)
+	c.logger().Debug().Msg(msg)
 }
 func (c pionLogger) Debugf(format string, args ...any) {
-	c.logger.Debug().Msgf(format, args...)
+	c.logger().Debug().Msgf(format, args...)
 }
 
 func (c pionLogger) Info(msg string) {
-	c.logger.Info().Msg(msg)
+	c.logger().Info().Msg(msg)
 }
 func (c pionLogger) Infof(format string, args ...any) {
-	c.logger.Info().Msgf(format, args...)
+	c.logger().Info().Msgf(format, args...)
 }
 
 func (c pionLogger) Warn(msg string) {
-	c.logger.Warn().Msg(msg)
+	c.logger().Warn().Msg(msg)
 }
 func (c pionLogger) Warnf(format string, args ...any) {
-	c.logger.Warn().Msgf(format, args...)
+	c.logger().Warn().Msgf(format, args...)
 }
 
 func (c pionLogger) Error(msg string) {
-	c.logger.Error().Msg(msg)
+	c.logger().Error().Msg(msg)
 }
 func (c pionLogger) Errorf(format string, args ...any) {
-	c.logger.Error().Msgf(format, args...)
+	c.logger().Error().Msgf(format, args...)
 }
 
 // customLoggerFactory satisfies the interface logging.LoggerFactory
 // This allows us to create different loggers per subsystem. So we can
 // add custom behavior.
-type pionLoggerFactory struct{}
-
-func (c pionLoggerFactory) NewLogger(subsystem string) logging.LeveledLogger {
-	logger := GetSubsystemLogger("pion").
-		With().
-		Str("component", subsystem)
-
-	return pionLogger{logger: logger}
+type pionLoggerFactory struct {
+	subsystem string
 }
 
-var defaultLoggerFactory = &pionLoggerFactory{}
+func (c pionLoggerFactory) NewLogger(component string) logging.LeveledLogger {
+	return pionLogger{logger: func() *Context {
+		return GetSubsystemLogger(c.subsystem).Str("component", component)
+	}}
+}
 
-func GetPionDefaultLoggerFactory() logging.LoggerFactory {
-	return defaultLoggerFactory
+func GetPionLoggerFactory(subsystem string) logging.LoggerFactory {
+	return &pionLoggerFactory{subsystem: subsystem}
 }

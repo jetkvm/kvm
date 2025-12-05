@@ -200,7 +200,7 @@ func getOnHidMessageHandler(session *Session, loggingContext *logging.Context, c
 
 func newSession(config SessionConfig) (*Session, error) {
 	webrtcSettingEngine := webrtc.SettingEngine{
-		LoggerFactory: logging.GetPionDefaultLoggerFactory(),
+		LoggerFactory: logging.GetPionLoggerFactory("webrtc"),
 	}
 	iceServer := webrtc.ICEServer{}
 
