@@ -2,6 +2,7 @@ package native
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -101,7 +102,7 @@ func RunNativeProcess(binaryName string) {
 		logger = logger.With().Interface("proxyOptions", proxyOptions).Str("socketPath", socketPath)
 
 		// Connect to video stream socket
-		conn, err := net.Dial("unixpacket", proxyOptions.VideoStreamUnixSocket)
+		conn, err := net.Dial("unix", proxyOptions.VideoStreamUnixSocket)
 		if err != nil {
 			logger.Fatal().Err(err).Msg("failed to connect to video stream socket")
 			return
@@ -112,10 +113,17 @@ func RunNativeProcess(binaryName string) {
 
 		nativeOptions := proxyOptions.toNativeOptions()
 		nativeOptions.OnVideoFrameReceived = func(frame []byte, duration time.Duration) {
-			_, err := conn.Write(frame)
-			if err != nil {
+			// Write 4-byte frame length prefix, then frame data
+			var frameSizeBuffer [4]byte
+			binary.LittleEndian.PutUint32(frameSizeBuffer[:], uint32(len(frame)))
+
+			if _, err := conn.Write(frameSizeBuffer[:]); err != nil {
+				logger.Fatal().Err(err).Msg("failed to write frame size to video stream socket")
+				return
+			}
+			if _, err := conn.Write(frame); err != nil {
 				logger.Fatal().Err(err).Msg("failed to write frame to video stream socket")
-				// TODO should this crash the process?
+				return
 			}
 		}
 		nativeOptions.OnVideoStateChange = func(state VideoState) {
@@ -142,6 +150,7 @@ func RunNativeProcess(binaryName string) {
 			logger.Fatal().Err(err).Msg("failed to start gRPC server")
 			return
 		}
+
 		defer lis.Close()   // close listener after
 		defer server.Stop() // forceful server stop
 

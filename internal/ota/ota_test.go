@@ -202,7 +202,7 @@ func newOtaState(d *testData, t *testing.T) *State {
 func testUsingJson(t *testing.T, filename string) {
 	td := loadTestData(t, filename)
 	otaState := newOtaState(td, t)
-	loggingContext := logging.GetSubsystemLogger("ota"))
+	loggingContext := logging.GetSubsystemLogger("ota")
 	info, err := otaState.GetUpdateStatus(context.Background(), td.ToUpdateParams(), loggingContext)
 	if err != nil {
 		if td.Expected.Error != "" {

@@ -3,8 +3,10 @@ package native
 import (
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -164,7 +166,7 @@ func (p *NativeProxy) startVideoStreamListener() error {
 	}
 
 	logger := GetDisplayLogger().With().Str("socketPath", p.videoStreamUnixSocket)
-	listener, err := net.Listen("unixpacket", p.videoStreamUnixSocket)
+	listener, err := net.Listen("unix", p.videoStreamUnixSocket)
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to start video stream listener")
 		return fmt.Errorf("failed to start video stream listener: %w", err)
@@ -181,7 +183,7 @@ func (p *NativeProxy) startVideoStreamListener() error {
 			}
 
 			logger.Info().Msg("video stream socket accepted")
-			go p.handleVideoFrame(conn)
+			go p.handleVideoFrames(conn)
 		}
 	}()
 
@@ -248,22 +250,41 @@ func (p *NativeProxy) toProcessCommand() (*cmdWrapper, error) {
 	return cmd, nil
 }
 
-func (p *NativeProxy) handleVideoFrame(conn net.Conn) {
+func (p *NativeProxy) handleVideoFrames(conn net.Conn) {
 	defer conn.Close()
 
 	inboundPacket := make([]byte, maxFrameSize)
+	var frameSizeBuffer [4]byte
 	lastFrame := time.Now()
 
 	for {
-		n, err := conn.Read(inboundPacket)
+		// Read 4-byte frame length prefix
+		_, err := io.ReadFull(conn, frameSizeBuffer[:])
+		if err != nil {
+			if err != io.EOF {
+				GetDisplayLogger().Warn().Err(err).Msg("failed to read frame size from socket")
+			}
+			break
+		}
+
+		frameSize := binary.LittleEndian.Uint32(frameSizeBuffer[:])
+		if frameSize == 0 || frameSize > maxFrameSize {
+			GetDisplayLogger().Error().Uint32("frameSize", frameSize).Uint32("maxFrameSize", maxFrameSize).
+				Msg("received invalid frame size")
+			break
+		}
+
+		// Read the actual frame data
+		_, err = io.ReadFull(conn, inboundPacket[:frameSize])
 		if err != nil {
 			GetDisplayLogger().Warn().Err(err).Msg("failed to read video frame from socket")
 			break
 		}
+
 		now := time.Now()
 		sinceLastFrame := now.Sub(lastFrame)
 		lastFrame = now
-		p.options.OnVideoFrameReceived(inboundPacket[:n], sinceLastFrame)
+		p.options.OnVideoFrameReceived(inboundPacket[:frameSize], sinceLastFrame)
 	}
 }
 
