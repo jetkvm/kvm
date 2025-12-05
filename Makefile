@@ -159,6 +159,22 @@ dev_release: git_check_dev
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	$(MAKE) check frontend build_dev
+	@read -p "Test on device before release? [y/N] " test_confirm; \
+	if [ "$$test_confirm" = "y" ]; then \
+		read -p "Device IP: " device_ip; \
+		./scripts/test_release_on_device.sh "$$device_ip" bin/jetkvm_app deploy; \
+		echo ""; \
+		echo "Device is rebooting. Please test the new binary."; \
+		echo ""; \
+		read -p "Does the binary work correctly? [y/n] " works; \
+		echo "Restoring device to previous binary..."; \
+		./scripts/test_release_on_device.sh "$$device_ip" bin/jetkvm_app restore; \
+		if [ "$$works" != "y" ]; then \
+			echo "Release aborted."; \
+			exit 1; \
+		fi; \
+		echo "Test passed. Proceeding with release..."; \
+	fi
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
@@ -209,6 +225,22 @@ release: git_check_dev
 	@echo "═══════════════════════════════════════════════════════"
 	@read -p "Proceed with PRODUCTION release? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
 	$(MAKE) check frontend build_release
+	@read -p "Test on device before release? [y/N] " test_confirm; \
+	if [ "$$test_confirm" = "y" ]; then \
+		read -p "Device IP: " device_ip; \
+		./scripts/test_release_on_device.sh "$$device_ip" bin/jetkvm_app deploy; \
+		echo ""; \
+		echo "Device is rebooting. Please test the new binary."; \
+		echo ""; \
+		read -p "Does the binary work correctly? [y/n] " works; \
+		echo "Restoring device to previous binary..."; \
+		./scripts/test_release_on_device.sh "$$device_ip" bin/jetkvm_app restore; \
+		if [ "$$works" != "y" ]; then \
+			echo "Release aborted."; \
+			exit 1; \
+		fi; \
+		echo "Test passed. Proceeding with release..."; \
+	fi
 	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/jetkvm_app
