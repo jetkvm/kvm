@@ -142,6 +142,8 @@ git_check_dev:
 	@if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/dev)" ]; then \
 		echo "Error: Local dev is not up-to-date with origin/dev"; exit 1; \
 	fi
+	@command -v gh >/dev/null 2>&1 || { echo "Error: gh CLI not installed"; exit 1; }
+	@gh auth status >/dev/null 2>&1 || { echo "Error: gh CLI not authenticated. Run 'gh auth login'"; exit 1; }
 
 dev_release: git_check_dev check frontend build_dev
 	@echo "Uploading release... $(VERSION_DEV)"
@@ -150,7 +152,8 @@ dev_release: git_check_dev check frontend build_dev
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256
 	@git tag $(VERSION_DEV)
 	@git push origin $(VERSION_DEV)
-	@echo "Tagged and pushed: $(VERSION_DEV)"
+	gh release create $(VERSION_DEV) bin/jetkvm_app bin/jetkvm_app.sha256 --prerelease --generate-notes
+	@echo "Released: $(VERSION_DEV)"
 
 build_release: frontend
 	@if [ ! -d "$(BUILDKIT_PATH)" ]; then \
