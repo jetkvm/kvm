@@ -188,6 +188,14 @@ release: git_check_dev
 	@if rclone lsf r2://jetkvm-update/app/$(VERSION)/ 2>/dev/null | grep -q "jetkvm_app"; then \
 		echo "Error: Version $(VERSION) already exists in R2"; exit 1; \
 	fi
+	@latest_dev=$$(curl -s "https://api.jetkvm.com/releases?deviceId=123&prerelease=true" | jq -r '.appVersion // ""'); \
+		if ! echo "$$latest_dev" | grep -q "^$(VERSION)-dev"; then \
+			echo ""; \
+			echo "⚠️  Warning: No dev release found for $(VERSION)"; \
+			echo "   Latest pre-release: $$latest_dev"; \
+			echo ""; \
+			read -p "Release production without prior dev release? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1; \
+		fi
 	@echo "═══════════════════════════════════════════════════════"
 	@echo "  PRODUCTION Release"
 	@echo "═══════════════════════════════════════════════════════"
