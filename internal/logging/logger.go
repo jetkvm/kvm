@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -12,10 +13,10 @@ import (
 )
 
 type Logger struct {
-	defaultLogger *zerolog.Logger
-	scopeLoggers  map[string]*zerolog.Logger
-	scopeLevels   map[string]zerolog.Level
-	loggerMutex   sync.Mutex
+	baseLogger   *zerolog.Logger
+	scopeLoggers map[string]*zerolog.Logger
+	scopeLevels  map[string]zerolog.Level
+	loggerMutex  sync.Mutex
 
 	defaultLogLevelFromEnv    zerolog.Level
 	defaultLogLevelFromConfig zerolog.Level
@@ -46,14 +47,16 @@ func (w *logOutput) Write(p []byte) (n int, err error) {
 }
 
 var (
+	excludedFields             = []string{"scope", "component", "subcomponent"}
+	partsOrder                 = []string{"time", "level", "scope", "component", "subcomponent", "message"}
 	consoleLogOutput io.Writer = zerolog.ConsoleWriter{
 		Out:           os.Stdout,
 		TimeFormat:    time.RFC3339,
-		PartsOrder:    []string{"time", "level", "scope", "component", "message"},
-		FieldsExclude: []string{"scope", "component"},
+		PartsOrder:    partsOrder,
+		FieldsExclude: excludedFields,
 		FormatPartValueByName: func(value any, name string) string {
 			val := fmt.Sprintf("%s", value)
-			if name == "component" {
+			if slices.Contains(excludedFields, name) {
 				if value == nil {
 					return "-"
 				}
@@ -80,7 +83,7 @@ var (
 
 func NewLogger(zerologLogger zerolog.Logger) *Logger {
 	return &Logger{
-		defaultLogger:             &zerologLogger,
+		baseLogger:                &zerologLogger,
 		scopeLoggers:              make(map[string]*zerolog.Logger),
 		scopeLevels:               make(map[string]zerolog.Level),
 		loggerMutex:               sync.Mutex{},
@@ -91,11 +94,8 @@ func NewLogger(zerologLogger zerolog.Logger) *Logger {
 }
 
 func (l *Logger) updateLogLevels(newConfigLevel zerolog.Level) {
-	logger := l.defaultLogger.
-		Level(zerolog.InfoLevel).
-		With().
-		Interface("newConfigLevel", newConfigLevel).
-		Logger()
+	logger := l.baseLogger.Level(zerolog.InfoLevel).With().Logger()
+	logger.Info().Msgf("updating log levels with new config level: %v", newConfigLevel)
 
 	l.defaultLogLevelFromConfig = newConfigLevel
 	l.scopeLevels = make(map[string]zerolog.Level)
@@ -108,7 +108,7 @@ func (l *Logger) updateLogLevels(newConfigLevel zerolog.Level) {
 			loopLogger := logger.With().
 				Str("name", name).
 				Str("env", env).
-				Interface("envLevel", envLevel).
+				Stringer("envLevel", envLevel).
 				Logger()
 
 			if env == "all" {
@@ -119,7 +119,12 @@ func (l *Logger) updateLogLevels(newConfigLevel zerolog.Level) {
 				scopes := strings.SplitSeq(env, ",")
 				for scope := range scopes {
 					loopLogger.Info().Msgf("setting log level for scope %s from environment", scope)
-					l.scopeLevels[scope] = envLevel
+
+					if envLevel == unset {
+						delete(l.scopeLevels, scope)
+					} else {
+						l.scopeLevels[scope] = envLevel
+					}
 				}
 			}
 		}
@@ -172,7 +177,7 @@ func (l *Logger) getLogger(scope string) *zerolog.Logger {
 	}
 
 	scopeLevel := l.getScopeLoggerLevel(scope)
-	logger := l.defaultLogger.Level(scopeLevel).With().Str("component", scope).Logger()
+	logger := l.baseLogger.Level(scopeLevel).With().Str("component", scope).Logger()
 	l.scopeLoggers[scope] = &logger
 	return &logger
 }
@@ -181,7 +186,7 @@ func (l *Logger) UpdateConfigLogLevel(configDefaultLogLevel string) {
 	var newConfigLevel zerolog.Level
 
 	configDefaultLogLevel = strings.ToUpper(configDefaultLogLevel)
-	loggingContext := l.defaultLogger.With().Str("configDefaultLogLevel", configDefaultLogLevel)
+	loggingContext := l.baseLogger.With().Str("configDefaultLogLevel", configDefaultLogLevel)
 	logger := loggingContext.Logger()
 
 	if configDefaultLogLevel != "" {
