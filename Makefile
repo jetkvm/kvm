@@ -150,10 +150,10 @@ dev_release: git_check_dev check frontend build_dev
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256
-	@git tag $(VERSION_DEV)
-	@git push origin $(VERSION_DEV)
-	gh release create $(VERSION_DEV) bin/jetkvm_app bin/jetkvm_app.sha256 --prerelease --generate-notes
-	@echo "Released: $(VERSION_DEV)"
+	@git tag release/$(VERSION_DEV)
+	@git push origin release/$(VERSION_DEV)
+	gh release create release/$(VERSION_DEV) bin/jetkvm_app bin/jetkvm_app.sha256 --prerelease --generate-notes
+	@echo "Released: release/$(VERSION_DEV)"
 
 build_release: frontend
 	@if [ ! -d "$(BUILDKIT_PATH)" ]; then \
