@@ -2,8 +2,8 @@ BRANCH    := $(shell git rev-parse --abbrev-ref HEAD)
 BUILDDATE := $(shell date -u +%FT%T%z)
 BUILDTS   := $(shell date -u +%s)
 REVISION  := $(shell git rev-parse HEAD)
-VERSION_DEV := 0.5.0-dev$(shell date -u +%Y%m%d%H%M)
-VERSION := 0.4.9
+VERSION := 0.5.0
+VERSION_DEV := $(VERSION)-dev$(shell date -u +%Y%m%d%H%M)
 
 PROMETHEUS_TAG := github.com/prometheus/common/version
 KVM_PKG_NAME := github.com/jetkvm/kvm
@@ -145,15 +145,27 @@ git_check_dev:
 	@command -v gh >/dev/null 2>&1 || { echo "Error: gh CLI not installed"; exit 1; }
 	@gh auth status >/dev/null 2>&1 || { echo "Error: gh CLI not authenticated. Run 'gh auth login'"; exit 1; }
 
-dev_release: git_check_dev check frontend build_dev
-	@echo "Uploading release... $(VERSION_DEV)"
+dev_release: git_check_dev
+	@echo "═══════════════════════════════════════════════════════"
+	@echo "  DEV Release"
+	@echo "═══════════════════════════════════════════════════════"
+	@echo "  Version: $(VERSION_DEV)"
+	@echo "  Tag:     release/$(VERSION_DEV)"
+	@echo "  Branch:  $$(git rev-parse --abbrev-ref HEAD)"
+	@echo "  Commit:  $$(git rev-parse --short HEAD)"
+	@echo "  Time:    $$(date -u +%FT%T%z)"
+	@echo "═══════════════════════════════════════════════════════"
+	@read -p "Proceed? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
+	$(MAKE) check frontend build_dev
+	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256
+	./scripts/deploy_cloud_app.sh -v $(VERSION_DEV) --skip-confirmation
 	@git tag release/$(VERSION_DEV)
 	@git push origin release/$(VERSION_DEV)
 	gh release create release/$(VERSION_DEV) bin/jetkvm_app bin/jetkvm_app.sha256 --prerelease --generate-notes
-	@echo "Released: release/$(VERSION_DEV)"
+	@echo "✓ Released: release/$(VERSION_DEV)"
 
 build_release: frontend
 	@if [ ! -d "$(BUILDKIT_PATH)" ]; then \
@@ -172,11 +184,45 @@ _build_release_inner: build_native
 		$(GO_RELEASE_BUILD_ARGS) \
 		-o bin/jetkvm_app cmd/main.go
 
-release: check
-	@if rclone lsf r2://jetkvm-update/app/$(VERSION)/ | grep -q "jetkvm_app"; then \
-		echo "Error: Version $(VERSION) already exists. Please update the VERSION variable."; \
-		exit 1; \
+release: git_check_dev
+	@if rclone lsf r2://jetkvm-update/app/$(VERSION)/ 2>/dev/null | grep -q "jetkvm_app"; then \
+		echo "Error: Version $(VERSION) already exists in R2"; exit 1; \
 	fi
-	make build_release
-	@echo "Uploading release..."
+	@echo "═══════════════════════════════════════════════════════"
+	@echo "  PRODUCTION Release"
+	@echo "═══════════════════════════════════════════════════════"
+	@echo "  Version: $(VERSION)"
+	@echo "  Tag:     release/$(VERSION)"
+	@echo "  Branch:  $$(git rev-parse --abbrev-ref HEAD)"
+	@echo "  Commit:  $$(git rev-parse --short HEAD)"
+	@echo "  Time:    $$(date -u +%FT%T%z)"
+	@echo "═══════════════════════════════════════════════════════"
+	@read -p "Proceed with PRODUCTION release? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1
+	$(MAKE) check frontend build_release
+	@echo "Uploading device app to R2..."
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
+	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION)/jetkvm_app
+	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION)/jetkvm_app.sha256
+	./scripts/deploy_cloud_app.sh -v $(VERSION) --set-as-default --skip-confirmation
+	@git tag release/$(VERSION)
+	@git push origin release/$(VERSION)
+	gh release create release/$(VERSION) bin/jetkvm_app bin/jetkvm_app.sha256 --generate-notes
+	@echo ""
+	@echo "✓ Released: release/$(VERSION)"
+	@echo ""
+	@echo "Next: Run 'make bump-version' to prepare for next release cycle"
+
+bump-version:
+	@next_default=$$(echo $(VERSION) | awk -F. '{print $$1"."$$2"."$$3+1}'); \
+		echo "Current version: $(VERSION)"; \
+		read -p "Next version [$$next_default]: " next_ver; \
+		next_ver=$${next_ver:-$$next_default}; \
+		if ! echo "$$next_ver" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$$'; then \
+			echo "Error: Invalid version '$$next_ver'. Must be semver format (e.g., 1.2.3)"; \
+			exit 1; \
+		fi; \
+		sed -i 's/^VERSION := .*/VERSION := '"$$next_ver"'/' Makefile && \
+		# git add Makefile && \
+		# git commit -m "Bump version to $$next_ver" && \
+		# git push && \
+		echo "✓ Bumped to $$next_ver"
