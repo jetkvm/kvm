@@ -169,7 +169,7 @@ dev_release: git_check_dev
 	gh release create release/$(VERSION_DEV) bin/jetkvm_app bin/jetkvm_app.sha256 --prerelease --generate-notes
 	@echo "✓ Released: release/$(VERSION_DEV)"
 
-build_release: frontend
+build_release:
 	@if [ ! -d "$(BUILDKIT_PATH)" ]; then \
 		echo "Toolchain not found, running build_release in Docker..."; \
 		rm -rf internal/native/cgo/build; \
