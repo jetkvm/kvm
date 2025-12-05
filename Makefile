@@ -72,15 +72,17 @@ build_dev:
 		echo "Toolchain not found, running build_dev in Docker..."; \
 		rm -rf internal/native/cgo/build; \
 		docker run --rm -v "$$(pwd):/build" \
-			$(DOCKER_BUILD_TAG) make build_dev VERSION_DEV=$(VERSION_DEV); \
+			$(DOCKER_BUILD_TAG) make _build_dev_inner VERSION_DEV=$(VERSION_DEV); \
 	else \
-		$(MAKE) build_native; \
-		echo "Building..."; \
-		$(GO_CMD) build \
-			-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
-			$(GO_RELEASE_BUILD_ARGS) \
-			-o $(BIN_DIR)/jetkvm_app -v cmd/main.go; \
+		$(MAKE) _build_dev_inner; \
 	fi
+
+_build_dev_inner: build_native
+	@echo "Building..."
+	$(GO_CMD) build \
+		-ldflags="$(GO_LDFLAGS) -X $(KVM_PKG_NAME).builtAppVersion=$(VERSION_DEV)" \
+		$(GO_RELEASE_BUILD_ARGS) \
+		-o $(BIN_DIR)/jetkvm_app -v cmd/main.go
 
 build_test2json:
 	$(GO_CMD) build -o $(BIN_DIR)/test2json cmd/test2json
