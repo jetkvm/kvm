@@ -131,11 +131,26 @@ frontend:
 			\) -exec sh -c 'gzip -9 -kfv {}' \; ;\
 	fi
 
-dev_release: frontend build_dev
+git_check_dev:
+	@if [ "$$(git rev-parse --abbrev-ref HEAD)" != "dev" ]; then \
+		echo "Error: Must be on 'dev' branch"; exit 1; \
+	fi
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "Error: Working tree is dirty. Commit or stash changes."; exit 1; \
+	fi
+	@git fetch origin dev
+	@if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/dev)" ]; then \
+		echo "Error: Local dev is not up-to-date with origin/dev"; exit 1; \
+	fi
+
+dev_release: git_check_dev check frontend build_dev
 	@echo "Uploading release... $(VERSION_DEV)"
 	@shasum -a 256 bin/jetkvm_app | cut -d ' ' -f 1 > bin/jetkvm_app.sha256
 	rclone copyto bin/jetkvm_app r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app
 	rclone copyto bin/jetkvm_app.sha256 r2://jetkvm-update/app/$(VERSION_DEV)/jetkvm_app.sha256
+	@git tag $(VERSION_DEV)
+	@git push origin $(VERSION_DEV)
+	@echo "Tagged and pushed: $(VERSION_DEV)"
 
 build_release: frontend
 	@if [ ! -d "$(BUILDKIT_PATH)" ]; then \
