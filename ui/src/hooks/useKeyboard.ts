@@ -287,13 +287,11 @@ export default function useKeyboard() {
     async (steps: MacroSteps) => {
       const macro: KeyboardMacroStep[] = [];
 
-      for (const [_, step] of steps.entries()) {
-        const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
-        const modifierMask: number = (step.modifiers || [])
-
-          .map(mod => modifiers[mod])
-
-          .reduce((acc, val) => acc + val, 0);
+    for (const [_, step] of steps.entries()) {
+      const keyValues = (step.keys || []).map(key => keys[key]).filter(Boolean);
+      const modifierMask: number = (step.modifiers || [])
+        .map(mod => modifiers[mod])
+        .reduce((acc, val) => acc + val, 0);
 
         // If the step has keys and/or modifiers, press them and hold for the delay
         if (keyValues.length > 0 || modifierMask > 0) {
@@ -302,10 +300,9 @@ export default function useKeyboard() {
         }
       }
 
-      sendKeyboardMacroEventHidRpc(macro);
-    },
-    [sendKeyboardMacroEventHidRpc],
-  );
+    sendKeyboardMacroEventHidRpc(macro);
+  }, [sendKeyboardMacroEventHidRpc]);
+
 
   const executeMacroClientSide = useCallback(
     async (steps: MacroSteps) => {

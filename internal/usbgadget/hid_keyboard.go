@@ -28,44 +28,55 @@ var keyboardConfig = gadgetConfigItem{
 
 // Source: https://www.kernel.org/doc/Documentation/usb/gadget_hid.txt
 var keyboardReportDesc = []byte{
-	0x05, 0x01, /* USAGE_PAGE (Generic Desktop)	          */
-	0x09, 0x06, /* USAGE (Keyboard)                       */
-	0xa1, 0x01, /* COLLECTION (Application)               */
-	0x05, 0x07, /*   USAGE_PAGE (Keyboard)                */
-	0x19, 0xe0, /*   USAGE_MINIMUM (Keyboard LeftControl) */
-	0x29, 0xe7, /*   USAGE_MAXIMUM (Keyboard Right GUI)   */
-	0x15, 0x00, /*   LOGICAL_MINIMUM (0)                  */
-	0x25, 0x01, /*   LOGICAL_MAXIMUM (1)                  */
-	0x75, 0x01, /*   REPORT_SIZE (1)                      */
-	0x95, 0x08, /*   REPORT_COUNT (8)                     */
-	0x81, 0x02, /*   INPUT (Data,Var,Abs)                 */
-	0x95, 0x01, /*   REPORT_COUNT (1)                     */
-	0x75, 0x08, /*   REPORT_SIZE (8)                      */
-	0x81, 0x03, /*   INPUT (Cnst,Var,Abs)                 */
-	0x95, 0x05, /*   REPORT_COUNT (5)                     */
-	0x75, 0x01, /*   REPORT_SIZE (1)                      */
+	/* boot mode descriptor */
+	0x05, 0x01, /* USAGE_PAGE-global (Generic Desktop)              */
+	0x09, 0x06, /* USAGE-local (Keyboard)                           */
+	0xA1, 0x01, /* COLLECTION-main (Application)                    */
 
-	0x05, 0x08, /*   USAGE_PAGE (LEDs)                    */
-	0x19, 0x01, /*   USAGE_MINIMUM (Num Lock)             */
-	0x29, 0x05, /*   USAGE_MAXIMUM (Kana)                 */
-	0x91, 0x02, /*   OUTPUT (Data,Var,Abs)                */
-	0x95, 0x01, /*   REPORT_COUNT (1)                     */
-	0x75, 0x03, /*   REPORT_SIZE (3)                      */
-	0x91, 0x03, /*   OUTPUT (Cnst,Var,Abs)                */
-	0x95, 0x06, /*   REPORT_COUNT (6)                     */
-	0x75, 0x08, /*   REPORT_SIZE (8)                      */
-	0x15, 0x00, /*   LOGICAL_MINIMUM (0)                  */
-	0x25, 0x65, /*   LOGICAL_MAXIMUM (101)                */
-	0x05, 0x07, /*   USAGE_PAGE (Keyboard)                */
-	0x19, 0x00, /*   USAGE_MINIMUM (Reserved)             */
-	0x29, 0x65, /*   USAGE_MAXIMUM (Keyboard Application) */
-	0x81, 0x00, /*   INPUT (Data,Ary,Abs)                 */
-	0xc0, /* END_COLLECTION                         */
+	/* 8 modifier bits */
+	0x05, 0x07, /*   USAGE_PAGE-global (Keyboard)                    */
+	0x19, 0xe0, /*   USAGE_MINIMUM-local 0xE0 (Keyboard LeftControl) */
+	0x29, 0xe7, /*   USAGE_MAXIMUM-local 0xE7 (Keyboard Right GUI)   */
+	0x15, 0x00, /*   LOGICAL_MINIMUM-global (0) Modifier bit off)    */
+	0x25, 0x01, /*   LOGICAL_MAXIMUM-global (1) Modifier bit on)     */
+	0x75, 0x01, /*   REPORT_SIZE-global (1) one bit per modifier     */
+	0x95, 0x08, /*   REPORT_COUNT-global (8) 8 total bits            */
+	0x81, 0x02, /*   INPUT-main (Data,Var,Abs) Modifier bits 0-7     */
+
+	/* 8 bits of padding */
+	0x95, 0x01, /*   REPORT_COUNT-global (1) one field               */
+	0x75, 0x08, /*   REPORT_SIZE-global (8)                          */
+	0x81, 0x03, /*   INPUT-main (Cnst,Var,Abs) reserved byte         */
+
+	/* 6 key codes for the 104 key keyboard */
+	0x95, 0x06, /*   REPORT_COUNT-global (6) keycodes                */
+	0x75, 0x08, /*   REPORT_SIZE-global (8) bits each (a byte)       */
+	0x15, 0x00, /*   LOGICAL_MINIMUM-global (0)                      */
+	0x25, 0xDF, /*   LOGICAL_MAXIMUM-global 0xDF (104-key HID codes) */
+	0x05, 0x07, /*   USAGE_PAGE-global (Keyboard)                    */
+	0x19, 0x00, /*   USAGE_MINIMUM-local (Reserved/0) no key         */
+	0x29, 0xE7, /*   USAGE_MAXIMUM-local (Keyboard Right GUI)        */
+	0x81, 0x00, /*   INPUT-main (Data,Ary,Abs) array of keycodes     */
+
+	/* LED report 5 bits for Num Lock through Kana */
+	0x95, 0x05, /*   REPORT_COUNT-global (5) 5 LED bits             */
+	0x75, 0x01, /*   REPORT_SIZE-global (1) each 1 bit              */
+	0x05, 0x08, /*   USAGE_PAGE-global (LEDs)                       */
+	0x19, 0x01, /*   USAGE_MINIMUM-local (Num Lock)                 */
+	0x29, 0x05, /*   USAGE_MAXIMUM-local (Kana)                     */
+	0x91, 0x02, /*   OUTPUT-main (Data,Var,Abs) bits 0-4            */
+
+	/* 3 bits of padding for the rest of the byte */
+	0x95, 0x01, /*   REPORT_COUNT-global (1) one field              */
+	0x75, 0x03, /*   REPORT_SIZE-global (3) of three bits           */
+	0x91, 0x03, /*   OUTPUT-main (Cnst,Var,Abs) bit 7 pad           */
+
+	0xC0, /* END_COLLECTION */
 }
 
 const (
 	hidReadBufferSize = 8
-	hidKeyBufferSize  = 6
+	HidKeyBufferSize  = 6
 	hidErrorRollOver  = 0x01
 	// https://www.usb.org/sites/default/files/documents/hid1_11.pdf
 	// https://www.usb.org/sites/default/files/hut1_2.pdf
@@ -74,9 +85,7 @@ const (
 	KeyboardLedMaskScrollLock = 1 << 2
 	KeyboardLedMaskCompose    = 1 << 3
 	KeyboardLedMaskKana       = 1 << 4
-	// power on/off LED is 5
-	KeyboardLedMaskShift  = 1 << 6
-	ValidKeyboardLedMasks = KeyboardLedMaskNumLock | KeyboardLedMaskCapsLock | KeyboardLedMaskScrollLock | KeyboardLedMaskCompose | KeyboardLedMaskKana | KeyboardLedMaskShift
+	ValidKeyboardLedMasks     = KeyboardLedMaskNumLock | KeyboardLedMaskCapsLock | KeyboardLedMaskScrollLock | KeyboardLedMaskCompose | KeyboardLedMaskKana
 )
 
 // Synchronization between LED states and CAPS LOCK, NUM LOCK, SCROLL LOCK,
@@ -89,7 +98,6 @@ type KeyboardState struct {
 	ScrollLock bool `json:"scroll_lock"`
 	Compose    bool `json:"compose"`
 	Kana       bool `json:"kana"`
-	Shift      bool `json:"shift"` // This is not part of the main USB HID spec
 	raw        byte
 }
 
@@ -106,7 +114,6 @@ func getKeyboardState(b byte) KeyboardState {
 		ScrollLock: b&KeyboardLedMaskScrollLock != 0,
 		Compose:    b&KeyboardLedMaskCompose != 0,
 		Kana:       b&KeyboardLedMaskKana != 0,
-		Shift:      b&KeyboardLedMaskShift != 0,
 		raw:        b,
 	}
 }
@@ -153,6 +160,21 @@ func (u *UsbGadget) SetOnKeysDownChange(f func(state KeysDownState)) {
 	u.onKeysDownChange = &f
 }
 
+var suspendedKeyDownMessages bool = false
+var suspendedKeyDownMessagesLock sync.Mutex
+
+func (u *UsbGadget) SuspendKeyDownMessages() {
+	suspendedKeyDownMessagesLock.Lock()
+	suspendedKeyDownMessages = true
+	suspendedKeyDownMessagesLock.Unlock()
+}
+
+func (u *UsbGadget) ResumeSuspendKeyDownMessages() {
+	suspendedKeyDownMessagesLock.Lock()
+	suspendedKeyDownMessages = false
+	suspendedKeyDownMessagesLock.Unlock()
+}
+
 func (u *UsbGadget) SetOnKeepAliveReset(f func()) {
 	u.onKeepAliveReset = &f
 }
@@ -169,9 +191,9 @@ func (u *UsbGadget) scheduleAutoRelease(key byte) {
 	}
 
 	// TODO: make this configurable
-	// We currently hardcode the duration to 100ms
+	// We currently hardcode the duration to the default of 100ms
 	// However, it should be the same as the duration of the keep-alive reset called baseExtension.
-	u.kbdAutoReleaseTimers[key] = time.AfterFunc(100*time.Millisecond, func() {
+	u.kbdAutoReleaseTimers[key] = time.AfterFunc(DefaultAutoReleaseDuration, func() {
 		u.performAutoRelease(key)
 	})
 }
@@ -263,12 +285,13 @@ func (u *UsbGadget) listenKeyboardEvents() {
 					time.Sleep(time.Second)
 					continue
 				}
-				// reset the counter
+				// reset the suppression counter
 				u.resetLogSuppressionCounter("keyboardHidFileNil")
 
 				n, err := u.keyboardHidFile.Read(buf)
 				if err != nil {
 					u.logWithSuppression("keyboardHidFileRead", 100, &l, err, "failed to read")
+					time.Sleep(100 * time.Millisecond) // Small backoff on read errors to avoid tight looping
 					continue
 				}
 				u.resetLogSuppressionCounter("keyboardHidFileRead")
@@ -314,11 +337,12 @@ var keyboardWriteHidFileLock sync.Mutex
 func (u *UsbGadget) keyboardWriteHidFile(modifier byte, keys []byte) error {
 	keyboardWriteHidFileLock.Lock()
 	defer keyboardWriteHidFileLock.Unlock()
+
 	if err := u.openKeyboardHidFile(); err != nil {
 		return err
 	}
 
-	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:hidKeyBufferSize]...))
+	_, err := u.writeWithTimeout(u.keyboardHidFile, append([]byte{modifier, 0x00}, keys[:HidKeyBufferSize]...))
 	if err != nil {
 		u.logWithSuppression("keyboardWriteHidFile", 100, u.log, err, "failed to write to hidg0")
 		u.keyboardHidFile.Close()
@@ -353,7 +377,7 @@ func (u *UsbGadget) UpdateKeysDown(modifier byte, keys []byte) KeysDownState {
 	u.keysDownState = state
 	u.keyboardStateLock.Unlock()
 
-	if u.onKeysDownChange != nil {
+	if u.onKeysDownChange != nil && !suspendedKeyDownMessages {
 		(*u.onKeysDownChange)(state) // this enques to the outgoing hidrpc queue via usb.go → currentSession.enqueueKeysDownState(...)
 	}
 	return state
@@ -362,11 +386,11 @@ func (u *UsbGadget) UpdateKeysDown(modifier byte, keys []byte) KeysDownState {
 func (u *UsbGadget) KeyboardReport(modifier byte, keys []byte) error {
 	defer u.resetUserInputTime()
 
-	if len(keys) > hidKeyBufferSize {
-		keys = keys[:hidKeyBufferSize]
+	if len(keys) > HidKeyBufferSize {
+		keys = keys[:HidKeyBufferSize]
 	}
-	if len(keys) < hidKeyBufferSize {
-		keys = append(keys, make([]byte, hidKeyBufferSize-len(keys))...)
+	if len(keys) < HidKeyBufferSize {
+		keys = append(keys, make([]byte, HidKeyBufferSize-len(keys))...)
 	}
 
 	err := u.keyboardWriteHidFile(modifier, keys)
@@ -449,7 +473,7 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 		// handle other keys that are not modifier keys by placing or removing them
 		// from the key buffer since the buffer tracks currently pressed keys
 		overrun := true
-		for i := range hidKeyBufferSize {
+		for i := range HidKeyBufferSize {
 			// If we find the key in the buffer the buffer, we either remove it (if press is false)
 			// or do nothing (if down is true) because the buffer tracks currently pressed keys
 			// and if we find a zero byte, we can place the key there (if press is true)
@@ -460,7 +484,7 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 					// we are releasing the key, remove it from the buffer
 					if keys[i] != 0 {
 						copy(keys[i:], keys[i+1:])
-						keys[hidKeyBufferSize-1] = 0 // Clear the last byte
+						keys[HidKeyBufferSize-1] = 0 // Clear the last byte
 					}
 				}
 				overrun = false // We found a slot for the key
@@ -484,6 +508,10 @@ func (u *UsbGadget) keypressReport(key byte, press bool) (KeysDownState, error) 
 	}
 
 	err := u.keyboardWriteHidFile(modifier, keys)
+	if err != nil {
+		u.log.Warn().Uint8("modifier", modifier).Uints8("keys", keys).Msg("Could not write keyboard report to hidg0")
+	}
+
 	return u.UpdateKeysDown(modifier, keys), err
 }
 

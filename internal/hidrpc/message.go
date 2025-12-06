@@ -3,6 +3,9 @@ package hidrpc
 import (
 	"encoding/binary"
 	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
 // Message ..
@@ -23,6 +26,9 @@ func (m *Message) Type() MessageType {
 func (m *Message) String() string {
 	switch m.t {
 	case TypeHandshake:
+		if len(m.d) != 0 {
+			return fmt.Sprintf("Handshake{Malformed: %v}", m.d)
+		}
 		return "Handshake"
 	case TypeKeypressReport:
 		if len(m.d) < 2 {
@@ -45,12 +51,45 @@ func (m *Message) String() string {
 		}
 		return fmt.Sprintf("MouseReport{DX: %d, DY: %d, Button: %d}", m.d[0], m.d[1], m.d[2])
 	case TypeKeypressKeepAliveReport:
+		if len(m.d) != 0 {
+			return fmt.Sprintf("KeypressKeepAliveReport{Malformed: %v}", m.d)
+		}
 		return "KeypressKeepAliveReport"
+	case TypeWheelReport:
+		if len(m.d) < 3 {
+			return fmt.Sprintf("WheelReport{Malformed: %v}", m.d)
+		}
+		return fmt.Sprintf("WheelReport{Vertical: %d, Horizontal: %d}", int8(m.d[0]), int8(m.d[1]))
 	case TypeKeyboardMacroReport:
 		if len(m.d) < 5 {
 			return fmt.Sprintf("KeyboardMacroReport{Malformed: %v}", m.d)
 		}
 		return fmt.Sprintf("KeyboardMacroReport{IsPaste: %v, Length: %d}", m.d[0] == uint8(1), binary.BigEndian.Uint32(m.d[1:5]))
+	case TypeCancelKeyboardMacroReport:
+		if len(m.d) != 0 {
+			return fmt.Sprintf("CancelKeyboardMacroReport{Malformed: %v}", m.d)
+		}
+		return "CancelKeyboardMacroReport"
+	case TypeKeyboardMacroTokenState:
+		if len(m.d) != 16 {
+			return fmt.Sprintf("KeyboardMacroTokenState{Malformed: %v}", m.d)
+		}
+		return fmt.Sprintf("KeyboardMacroTokenState{Token: %s}", uuid.Must(uuid.FromBytes(m.d)).String())
+	case TypeKeyboardLedState:
+		if len(m.d) < 1 {
+			return fmt.Sprintf("KeyboardLedState{Malformed: %v}", m.d)
+		}
+		return fmt.Sprintf("KeyboardLedState{State: %d}", m.d[0])
+	case TypeKeydownState:
+		if len(m.d) < 1 {
+			return fmt.Sprintf("KeydownState{Malformed: %v}", m.d)
+		}
+		return fmt.Sprintf("KeydownState{State: %d}", m.d[0])
+	case TypeKeyboardMacroState:
+		if len(m.d) < 2 {
+			return fmt.Sprintf("KeyboardMacroState{Malformed: %v}", m.d)
+		}
+		return fmt.Sprintf("KeyboardMacroState{State: %v, IsPaste: %v}", m.d[0] == uint8(1), m.d[1] == uint8(1))
 	default:
 		return fmt.Sprintf("Unknown{Type: %d, Data: %v}", m.t, m.d)
 	}
@@ -67,7 +106,9 @@ func (m *Message) KeypressReport() (KeypressReport, error) {
 	if m.t != TypeKeypressReport {
 		return KeypressReport{}, fmt.Errorf("invalid message type: %d", m.t)
 	}
-
+	if len(m.d) < 2 {
+		return KeypressReport{}, fmt.Errorf("invalid message data length: %d", len(m.d))
+	}
 	return KeypressReport{
 		Key:   m.d[0],
 		Press: m.d[1] == uint8(1),
@@ -95,17 +136,15 @@ func (m *Message) KeyboardReport() (KeyboardReport, error) {
 // Macro ..
 type KeyboardMacroStep struct {
 	Modifier byte   // 1 byte
-	Keys     []byte // 6 bytes: hidKeyBufferSize
+	Keys     []byte // 6 bytes: usbgadget.HidKeyBufferSize
 	Delay    uint16 // 2 bytes
 }
+
 type KeyboardMacroReport struct {
 	IsPaste   bool
 	StepCount uint32
 	Steps     []KeyboardMacroStep
 }
-
-// HidKeyBufferSize is the size of the keys buffer in the keyboard report.
-const HidKeyBufferSize = 6
 
 // KeyboardMacroReport returns the keyboard macro report from the message.
 func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
@@ -131,7 +170,7 @@ func (m *Message) KeyboardMacroReport() (KeyboardMacroReport, error) {
 			Delay:    binary.BigEndian.Uint16(m.d[offset+7 : offset+9]),
 		})
 
-		offset += 1 + HidKeyBufferSize + 2
+		offset += 1 + usbgadget.HidKeyBufferSize + 2
 	}
 
 	return KeyboardMacroReport{
@@ -204,4 +243,30 @@ func (m *Message) KeyboardMacroState() (KeyboardMacroState, error) {
 		State:   m.d[0] == uint8(1),
 		IsPaste: m.d[1] == uint8(1),
 	}, nil
+}
+
+type KeyboardMacroTokenState struct {
+	Token uuid.UUID
+}
+
+// KeyboardMacroTokenState returns the keyboard macro token UUID from the message.
+func (m *Message) KeyboardMacroTokenState() (KeyboardMacroTokenState, error) {
+	if m.t != TypeKeyboardMacroTokenState {
+		return KeyboardMacroTokenState{}, fmt.Errorf("invalid message type: %d", m.t)
+	}
+
+	if len(m.d) == 0 {
+		return KeyboardMacroTokenState{Token: uuid.Nil}, nil
+	}
+
+	if len(m.d) != 16 {
+		return KeyboardMacroTokenState{}, fmt.Errorf("invalid UUID length: %d", len(m.d))
+	}
+
+	token, err := uuid.FromBytes(m.d)
+	if err != nil {
+		return KeyboardMacroTokenState{}, fmt.Errorf("invalid UUID: %v", err)
+	}
+
+	return KeyboardMacroTokenState{Token: token}, nil
 }

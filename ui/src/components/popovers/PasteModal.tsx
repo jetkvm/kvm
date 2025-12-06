@@ -19,6 +19,8 @@ import { TextAreaWithLabel } from "@components/TextArea";
 // uint32 max value / 4
 const pasteMaxLength = 1073741824;
 const defaultDelay = 20;
+const minimumDelay = 5;
+const maximumDelay = 65534;
 
 export default function PasteModal() {
   const TextAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -31,7 +33,7 @@ export default function PasteModal() {
   const [invalidChars, setInvalidChars] = useState<string[]>([]);
   const [delayValue, setDelayValue] = useState(defaultDelay);
   const delay = useMemo(() => {
-    if (delayValue < 0 || delayValue > 65534) {
+    if (delayValue < minimumDelay || delayValue > maximumDelay) {
       return defaultDelay;
     }
     return delayValue;
@@ -52,10 +54,12 @@ export default function PasteModal() {
   }, [send, setKeyboardLayout]);
 
   const onCancelPasteMode = useCallback(() => {
-    cancelExecuteMacro();
+    if (isPasteInProgress) {
+      cancelExecuteMacro();
+    }
     setDisableVideoFocusTrap(false);
     setInvalidChars([]);
-  }, [setDisableVideoFocusTrap, cancelExecuteMacro]);
+  }, [isPasteInProgress, setDisableVideoFocusTrap, cancelExecuteMacro]);
 
   const onConfirmPaste = useCallback(async () => {
     if (!TextAreaRef.current || !selectedKeyboard) return;
@@ -190,18 +194,18 @@ export default function PasteModal() {
                     type="number"
                     label={m.paste_modal_delay_between_keys()}
                     placeholder={m.paste_modal_delay_between_keys()}
-                    min={50}
-                    max={65534}
+                    min={minimumDelay}
+                    max={maximumDelay}
                     value={delayValue}
                     onChange={e => {
                       setDelayValue(parseInt(e.target.value, 10));
                     }}
                   />
-                  {delayValue < 50 || delayValue > 65534 && (
+                  {(delayValue < minimumDelay || delayValue > maximumDelay) && (
                     <div className="mt-2 flex items-center gap-x-2">
                       <ExclamationCircleIcon className="h-4 w-4 text-red-500 dark:text-red-400" />
                       <span className="text-xs text-red-500 dark:text-red-400">
-                        {m.paste_modal_delay_out_of_range({ min: 50, max: 65534 })}
+                        {m.paste_modal_delay_out_of_range({ min: minimumDelay, max: maximumDelay })}
                       </span>
                     </div>
                   )}
@@ -225,7 +229,7 @@ export default function PasteModal() {
           <Button
             size="SM"
             theme="blank"
-            text={m.cancel()}
+            text={isPasteInProgress ? m.cancel() : m.close()}
             onClick={() => {
               onCancelPasteMode();
               close();

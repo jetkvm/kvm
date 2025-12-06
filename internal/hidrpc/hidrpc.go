@@ -2,7 +2,9 @@ package hidrpc
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jetkvm/kvm/internal/usbgadget"
 )
 
@@ -22,26 +24,34 @@ const (
 	TypeKeyboardLedState          MessageType = 0x32
 	TypeKeydownState              MessageType = 0x33
 	TypeKeyboardMacroState        MessageType = 0x34
+	TypeKeyboardMacroTokenState   MessageType = 0x35
 )
 
+type QueueIndex int
+
 const (
-	Version byte = 0x01 // Version of the HID RPC protocol
+	Version        byte = 0x01 // Version of the HID RPC protocol
+	HandshakeQueue int  = 0    // Queue index for handshake messages
+	KeyboardQueue  int  = 1    // Queue index for keyboard messages
+	MouseQueue     int  = 2    // Queue index for mouse messages
+	MacroQueue     int  = 3    // Queue index for macro messages
+	OtherQueue     int  = 4    // Queue index for other messages
 )
 
 // GetQueueIndex returns the index of the queue to which the message should be enqueued.
-func GetQueueIndex(messageType MessageType) int {
+func GetQueueIndex(messageType MessageType) (int, time.Duration) {
 	switch messageType {
 	case TypeHandshake:
-		return 0
-	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardMacroReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroState:
-		return 1
+		return HandshakeQueue, 1 * time.Second
+	case TypeKeyboardReport, TypeKeypressReport, TypeKeyboardLedState, TypeKeydownState, TypeKeyboardMacroState:
+		return KeyboardQueue, 1 * time.Second
 	case TypePointerReport, TypeMouseReport, TypeWheelReport:
-		return 2
-	// we don't want to block the queue for this message
-	case TypeCancelKeyboardMacroReport:
-		return 3
+		return MouseQueue, 1 * time.Second
+	// we don't want to block the queue for these messages
+	case TypeKeyboardMacroReport, TypeCancelKeyboardMacroReport, TypeKeyboardMacroTokenState:
+		return MacroQueue, 60 * time.Second
 	default:
-		return 3
+		return OtherQueue, 5 * time.Second
 	}
 }
 
@@ -118,6 +128,16 @@ func NewKeyboardMacroStateMessage(state bool, isPaste bool) *Message {
 
 	return &Message{
 		t: TypeKeyboardMacroState,
+		d: data,
+	}
+}
+
+// NewKeyboardMacroTokenMessage creates a new keyboard macro token message.
+func NewKeyboardMacroTokenMessage(token uuid.UUID) *Message {
+	data, _ := token.MarshalBinary()
+
+	return &Message{
+		t: TypeKeyboardMacroTokenState,
 		d: data,
 	}
 }
