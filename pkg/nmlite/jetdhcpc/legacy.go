@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 )
 
 func readFileNoStat(filename string) ([]byte, error) {
@@ -39,7 +39,7 @@ func toCmdline(path string) ([]string, error) {
 }
 
 // KillUdhcpC kills all udhcpc processes
-func KillUdhcpC(logger *logging.Context) error {
+func KillUdhcpC(logger *zerolog.Logger) error {
 	// read procfs for udhcpc processes
 	// we do not use procfs.AllProcs() because we want to avoid the overhead of reading the entire procfs
 	processes, err := os.ReadDir("/proc")

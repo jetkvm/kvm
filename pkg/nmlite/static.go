@@ -7,6 +7,7 @@ import (
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
+	"github.com/rs/zerolog"
 )
 
 // StaticConfigManager manages static network configuration
@@ -25,8 +26,12 @@ func NewStaticConfigManager(ifaceName string) (*StaticConfigManager, error) {
 	}, nil
 }
 
-func (scm *StaticConfigManager) getLogger() *logging.Context {
-	return logging.GetSubsystemLogger("interface").Str("interface", scm.ifaceName)
+func (scm *StaticConfigManager) getLogger() *zerolog.Logger {
+	logging := logging.GetSubsystemLogger("nmlite").
+		With().
+		Str("interface", scm.ifaceName).
+		Logger()
+	return &logging
 }
 
 // ToIPv4Static applies static IPv4 configuration

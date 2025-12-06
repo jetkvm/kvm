@@ -44,10 +44,10 @@ func (t *TimeSync) queryMultipleHttp(urls []string, timeout time.Duration) (now 
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	logger := GetTimesyncLogger().Int("urls_count", len(urls)).Int("timeout_ms", int(timeout.Milliseconds()))
+	logger := GetTimesyncLogger().With().Int("urls_count", len(urls)).Dur("timeout", timeout).Logger()
 
 	for _, url := range urls {
-		loopLogger := logger.Str("http_url", url)
+		loopLogger := logger.With().Str("http_url", url).Logger()
 
 		go func(url string) {
 			metricHttpRequestCount.WithLabelValues(url).Inc()

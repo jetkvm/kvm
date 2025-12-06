@@ -2,10 +2,11 @@ package logging
 
 import (
 	"github.com/pion/logging"
+	"github.com/rs/zerolog"
 )
 
 type pionLogger struct {
-	logger func() *Context
+	logger func() *zerolog.Logger
 }
 
 func (c pionLogger) Trace(msg string) {
@@ -47,15 +48,16 @@ func (c pionLogger) Errorf(format string, args ...any) {
 // This allows us to create different loggers per subsystem. So we can
 // add custom behavior.
 type pionLoggerFactory struct {
-	subsystem string
+	subcomponent string
 }
 
-func (c pionLoggerFactory) NewLogger(component string) logging.LeveledLogger {
-	return pionLogger{logger: func() *Context {
-		return GetSubsystemLogger(c.subsystem).Str("component", component)
+func (c pionLoggerFactory) NewLogger(subcomponent string) logging.LeveledLogger {
+	return pionLogger{logger: func() *zerolog.Logger {
+		logger := GetSubsystemLogger("pion").With().Str("subcomponent", subcomponent).Logger()
+		return &logger
 	}}
 }
 
-func GetPionLoggerFactory(subsystem string) logging.LoggerFactory {
-	return &pionLoggerFactory{subsystem: subsystem}
+func GetPionLoggerFactory(subcomponent string) logging.LoggerFactory {
+	return &pionLoggerFactory{subcomponent: subcomponent}
 }

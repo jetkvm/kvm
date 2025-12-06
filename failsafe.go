@@ -103,7 +103,7 @@ func notifyFailsafeMode(session *Session) {
 
 	logging.GetSubsystemLogger("failsafe").Info().Str("reason", failsafeModeReason).Msg("sending failsafe mode notification")
 
-	writeJSONRPCEvent("failsafeMode", FailsafeModeNotification{
+	go writeJSONRPCEvent("failsafeMode", FailsafeModeNotification{
 		Active: true,
 		Reason: failsafeModeReason,
 	}, session)

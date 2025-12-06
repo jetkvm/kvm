@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/pion/webrtc/v4"
+	"github.com/rs/zerolog"
 	"go.bug.st/serial"
 
 	"github.com/jetkvm/kvm/internal/hidrpc"
@@ -56,20 +57,18 @@ type BacklightSettings struct {
 func writeJSONRPCResponse(response JSONRPCResponse, session *Session) {
 	responseBytes, err := json.Marshal(response)
 	if err != nil {
-		logging.GetSubsystemLogger("jsonrpc").Error().Err(err).Msg("Error marshalling JSONRPC response")
+		getJsonRPCLogger().Error().Err(err).Msg("Error marshalling JSONRPC response")
 		return
 	}
 	err = session.RPCChannel.SendText(string(responseBytes))
 	if err != nil {
-		logging.GetSubsystemLogger("jsonrpc").Warn().Err(err).Msg("Error sending JSONRPC response")
+		getJsonRPCLogger().Warn().Err(err).Msg("Error sending JSONRPC response")
 		return
 	}
 }
 
 func writeJSONRPCEvent(event string, params any, session *Session) {
-	logger := logging.GetSubsystemLogger("jsonrpc").
-		Str("event", event).
-		Interface("params", params)
+	logger := getJsonRPCLogger().With().Str("event", event).Interface("params", params).Logger()
 
 	request := JSONRPCEvent{
 		JSONRPC: "2.0",
@@ -86,24 +85,25 @@ func writeJSONRPCEvent(event string, params any, session *Session) {
 		return
 	}
 
-	requestString := string(requestBytes)
-	logger = logger.With().Str("data", requestString)
+	if logging.IsTraceLevel(&logger) {
+		logger = logger.With().Object("requestBytes", utils.ByteSlice(requestBytes)).Logger()
+	}
 
 	logger.Trace().Msg("sending JSONRPC event")
 
-	err = session.RPCChannel.SendText(requestString)
+	err = session.RPCChannel.SendText(string(requestBytes))
 	if err != nil {
 		logger.Warn().Err(err).Msg("error sending JSONRPC event")
 		return
 	}
 }
 
-func getJsonRPCLogger() *logging.Context {
+func getJsonRPCLogger() *zerolog.Logger {
 	return logging.GetSubsystemLogger("jsonrpc")
 }
 
 func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
-	logger := getJsonRPCLogger().Int("length", len(message.Data))
+	logger := getJsonRPCLogger().With().Int("length", len(message.Data)).Logger()
 
 	var request JSONRPCRequest
 	err := json.Unmarshal(message.Data, &request)
@@ -130,7 +130,8 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		With().
 		Str("method", request.Method).
 		Interface("params", request.Params).
-		Interface("id", request.ID)
+		Interface("id", request.ID).
+		Logger()
 
 	logger.Trace().Msg("Received RPC request")
 	t := time.Now()
@@ -149,7 +150,7 @@ func onRPCMessage(message webrtc.DataChannelMessage, session *Session) {
 		return
 	}
 
-	result, err := callRPCHandler(logger, handler, request.Params)
+	result, err := callRPCHandler(&logger, handler, request.Params)
 	if err != nil {
 		logger.Error().Err(err).Msg("Error calling RPC handler")
 		errorResponse := JSONRPCResponse{
@@ -278,7 +279,7 @@ func rpcGetDisplayRotation() (*DisplayRotationSettings, error) {
 }
 
 func rpcSetBacklightSettings(params BacklightSettings) error {
-	logger := getJsonRPCLogger().With().Interface("params", params)
+	logger := getJsonRPCLogger().With().Interface("params", params).Logger()
 	logger.Debug().Msg("setting backlight settings")
 
 	// NOTE: by default, the frontend limits the brightness to 64, as that's what the device originally shipped with.
@@ -349,7 +350,7 @@ func rpcGetDevModeState() (DevModeState, error) {
 }
 
 func rpcSetDevModeState(enabled bool) error {
-	logger := getJsonRPCLogger().With().Bool("enabled", enabled)
+	logger := getJsonRPCLogger().With().Bool("enabled", enabled).Logger()
 	logger.Debug().Msg("setting dev mode state")
 
 	if enabled {
@@ -381,7 +382,7 @@ func rpcSetDevModeState(enabled bool) error {
 	cmd := exec.Command("dropbear.sh")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Warn().Err(err).Bytes("output", output).Msg("Failed to start/stop SSH")
+		logger.Warn().Err(err).Object("output", utils.ByteSlice(output)).Msg("Failed to start/stop SSH")
 		return fmt.Errorf("failed to start/stop SSH, you may need to reboot for changes to take effect")
 	}
 
@@ -452,7 +453,7 @@ type RPCHandler struct {
 }
 
 // call the handler but recover from a panic to ensure our RPC thread doesn't collapse on malformed calls
-func callRPCHandler(logger *logging.Context, handler RPCHandler, params map[string]any) (result any, err error) {
+func callRPCHandler(logger *zerolog.Logger, handler RPCHandler, params map[string]any) (result any, err error) {
 	// Use defer to recover from a panic
 	defer func() {
 		if r := recover(); r != nil {
@@ -471,7 +472,7 @@ func callRPCHandler(logger *logging.Context, handler RPCHandler, params map[stri
 	return result, err // do not combine these two lines into one, as it breaks the above defer function's setting of err
 }
 
-func riskyCallRPCHandler(logger *logging.Context, handler RPCHandler, params map[string]any) (any, error) {
+func riskyCallRPCHandler(logger *zerolog.Logger, handler RPCHandler, params map[string]any) (any, error) {
 	handlerValue := reflect.ValueOf(handler.Func)
 	handlerType := handlerValue.Type()
 
@@ -579,7 +580,7 @@ func asError(value reflect.Value) (bool, error) {
 }
 
 func rpcSetMassStorageMode(mode string) (string, error) {
-	logger := getJsonRPCLogger().With().Str("mode", mode)
+	logger := getJsonRPCLogger().With().Str("mode", mode).Logger()
 	logger.Debug().Msg("Setting mass storage mode")
 	var cdrom bool
 	switch mode {
@@ -748,7 +749,7 @@ func rpcSetActiveExtension(extensionId string) error {
 }
 
 func rpcSetATXPowerAction(action string) error {
-	logger := getJsonRPCLogger().With().Str("action", action)
+	logger := getJsonRPCLogger().With().Str("action", action).Logger()
 	logger.Debug().Msg("Executing ATX power action")
 	switch action {
 	case "power-short":
@@ -821,7 +822,7 @@ func rpcGetSerialSettings() (SerialSettings, error) {
 var serialPortMode = defaultMode
 
 func rpcSetSerialSettings(settings SerialSettings) error {
-	logger := getJsonRPCLogger().With().Interface("settings", settings)
+	logger := getJsonRPCLogger().With().Interface("settings", settings).Logger()
 	logger.Debug().Msg("setting serial settings")
 	baudRate, err := strconv.Atoi(settings.BaudRate)
 	if err != nil {
@@ -1126,7 +1127,7 @@ func isClearKeyStep(step hidrpc.KeyboardMacroStep) bool {
 }
 
 func rpcDoExecuteKeyboardMacro(ctx context.Context, macro []hidrpc.KeyboardMacroStep) error {
-	logger := getJsonRPCLogger().With().Interface("macro", macro)
+	logger := getJsonRPCLogger().With().Interface("macro", macro).Logger()
 	logger.Debug().Msg("Executing keyboard macro")
 
 	for i, step := range macro {

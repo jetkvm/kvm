@@ -2,8 +2,9 @@ package timesync
 
 import (
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 )
 
-func GetTimesyncLogger() *logging.Context {
+func GetTimesyncLogger() *zerolog.Logger {
 	return logging.GetSubsystemLogger("timesync")
 }

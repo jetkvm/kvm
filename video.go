@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/native"
 )
 
@@ -24,7 +23,7 @@ func triggerVideoStateUpdate() {
 		writeJSONRPCEvent("videoInputState", lastVideoState, currentSession)
 	}()
 
-	logging.GetSubsystemLogger("native").Info().Interface("state", lastVideoState).Msg("video state updated")
+	native.GetDisplayLogger().Info().Interface("state", lastVideoState).Msg("video state updated")
 }
 
 func rpcGetVideoState() (native.VideoState, error) {
@@ -63,7 +62,7 @@ func rpcSetVideoSleepMode(duration int) error {
 }
 
 func stopVideoSleepModeTicker() {
-	nativeLogger := logging.GetSubsystemLogger("native")
+	nativeLogger := native.GetDisplayLogger()
 	nativeLogger.Trace().Msg("stopping HDMI sleep mode ticker")
 
 	if videoSleepModeCancel != nil {
@@ -103,7 +102,7 @@ func doVideoSleepModeTicker(ctx context.Context, duration time.Duration) {
 	timer := time.NewTimer(duration)
 	defer timer.Stop()
 
-	nativeLogger := logging.GetSubsystemLogger("native")
+	nativeLogger := native.GetDisplayLogger()
 	nativeLogger.Trace().Msg("HDMI sleep mode ticker started")
 
 	for {

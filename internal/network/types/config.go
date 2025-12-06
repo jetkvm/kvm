@@ -89,6 +89,6 @@ func (c *NetworkConfig) GetTransportProxyFunc() func(*http.Request) (*url.URL, e
 // NetworkConfig interface for backward compatibility
 type NetworkConfigInterface interface {
 	InterfaceName() string
-	IPv4Addresses() []IPAddress
-	IPv6Addresses() []IPAddress
+	IPv4Addresses() IPAddresses
+	IPv6Addresses() IPAddresses
 }

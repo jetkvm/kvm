@@ -93,7 +93,7 @@ func triggerTimeSyncOnNetworkStateChange() {
 	if timeSync == nil {
 		return
 	}
-	logger := logging.GetSubsystemLogger("network")
+	logger := logging.GetSubsystemLogger("network").With().Str("subcomponent", "timesync").Logger()
 
 	// set the NTP servers from the network manager
 	if networkManager != nil {
@@ -101,7 +101,8 @@ func triggerTimeSyncOnNetworkStateChange() {
 		for i, server := range networkManager.NTPServers() {
 			ntpServers[i] = server.String()
 		}
-		logger.Info().Strs("ntpServers", ntpServers).Msg("setting NTP servers from network manager")
+		logger = logger.With().Interface("ntpServers", networkManager.NTPServers()).Logger() //TODO IPAddrs
+		logger.Info().Msg("setting NTP servers from network manager")
 		timeSync.SetDhcpNtpAddresses(ntpServers)
 	}
 
@@ -120,16 +121,18 @@ func setPublicIPReadyState(ipv4Ready, ipv6Ready bool) {
 	publicIPState.SetIPv4AndIPv6(ipv4Ready, ipv6Ready)
 }
 
-func networkStateChanged(_ string, state types.InterfaceState) {
+func networkStateChanged(iface string, state types.InterfaceState) {
+	logger := logging.GetSubsystemLogger("network").With().Str("interface", iface).Logger()
+
 	// do not block the main thread
 	go waitCtrlAndRequestDisplayUpdate(true, "network_state_changed")
 
 	if currentSession != nil {
-		writeJSONRPCEvent("networkState", state.ToRpcInterfaceState(), currentSession)
+		go writeJSONRPCEvent("networkState", state.ToRpcInterfaceState(), currentSession)
 	}
 
 	if state.Online {
-		logging.GetSubsystemLogger("network").Info().Msg("network state changed to online, triggering time sync")
+		logger.Info().Msg("network state changed to online, triggering time sync")
 		triggerTimeSyncOnNetworkStateChange()
 	}
 
@@ -170,7 +173,11 @@ func initNetwork() error {
 
 	nc := config.NetworkConfig
 
-	logger := logging.GetSubsystemLogger("network").Str("hostname", nc.Hostname.String).Str("domain", nc.Domain.String)
+	logger := logging.GetSubsystemLogger("network").
+		With().
+		Str("hostname", nc.Hostname.String).
+		Str("domain", nc.Domain.String).
+		Logger()
 	logger.Info().Interface("networkConfig", nc).Msg("initializing network manager")
 	nm := nmlite.NewNetworkManager(context.Background())
 
@@ -236,8 +243,10 @@ func shouldRebootForNetworkChange(oldConfig, newConfig *types.NetworkConfig) (re
 	oldDhcpClient := oldConfig.DHCPClient.String
 
 	logger := logging.GetSubsystemLogger("network").
+		With().
 		Interface("old", oldConfig).
-		Interface("new", newConfig)
+		Interface("new", newConfig).
+		Logger()
 
 	// DHCP client change always requires reboot
 	if newConfig.DHCPClient.String != oldDhcpClient {

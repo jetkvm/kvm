@@ -11,6 +11,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/websecure"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -34,7 +35,11 @@ type TLSState struct {
 	PrivateKey  string `json:"privateKey"`
 }
 
-func initCertStore(logger *logging.Context) {
+func initCertStore(logger *zerolog.Logger) {
+	if certStore != nil {
+		logger.Warn().Msg("TLS store already initialized, it should not be initialized again")
+		return
+	}
 	certStore = websecure.NewCertStore(tlsStorePath)
 	certStore.LoadCertificates(logger)
 

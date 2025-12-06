@@ -9,12 +9,20 @@ import (
 
 var pid = os.Getpid()
 
-func GetNativeLogger() *logging.Context {
-	return logging.GetSubsystemLogger("native").Int("pid", pid)
+func GetNativeLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("native").
+		With().
+		Int("pid", pid).
+		Logger()
+	return &logger
 }
 
-func GetDisplayLogger() *logging.Context {
-	return logging.GetSubsystemLogger("display").Int("pid", pid)
+func GetDisplayLogger() *zerolog.Logger {
+	logging := logging.GetSubsystemLogger("display").
+		With().
+		Int("pid", pid).
+		Logger()
+	return &logging
 }
 
 type nativeLogMessage struct {

@@ -92,7 +92,7 @@ func GetDefaultHostname() string {
 }
 
 func runWatchdog() {
-	watchdogLogger := logging.GetSubsystemLogger("watchdog")
+	watchdogLogger := logging.GetSubsystemLogger("hw").With().Str("subcomponent", "watchdog").Logger()
 
 	file, err := os.OpenFile("/dev/watchdog", os.O_WRONLY, 0)
 	if err != nil {

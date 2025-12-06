@@ -8,8 +8,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/jetkvm/kvm/internal/logging"
 	pb "github.com/jetkvm/kvm/internal/native/proto"
+	"github.com/rs/zerolog"
 )
 
 // grpcServer wraps the Native instance and implements the gRPC service
@@ -83,11 +83,14 @@ func NewGRPCServer(n *Native, socketPath string) *grpcServer {
 	return s
 }
 
-func (s *grpcServer) getLogger() *logging.Context {
-	return getServerLogger().With().Str("socketPath", s.socketPath)
+func (s *grpcServer) getLogger() *zerolog.Logger {
+	logger := getServerLogger().
+		With().
+		Str("socketPath", s.socketPath).
+		Logger()
+	return &logger
 }
 
-// broadcastEvent sends an event to all connected clients
 func (s *grpcServer) broadcastEvent(event *pb.Event) {
 	s.eventStreamChan <- event
 }

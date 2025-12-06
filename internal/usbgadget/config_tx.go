@@ -7,20 +7,17 @@ import (
 	"sort"
 
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 )
-
-// no os package should occur in this file
 
 type UsbGadgetTransaction struct {
 	c                     *ChangeSet
-	loggingContext        *logging.Context
 	reorderSymlinkChanges *RequestedFileChange
 }
 
-func (u *UsbGadget) newUsbGadgetTransaction(context *logging.Context) *UsbGadgetTransaction {
+func (u *UsbGadget) newUsbGadgetTransaction() *UsbGadgetTransaction {
 	tx := &UsbGadgetTransaction{
-		loggingContext: context,
-		c:              &ChangeSet{},
+		c: &ChangeSet{},
 	}
 	return tx
 }
@@ -29,24 +26,49 @@ func (u *UsbGadget) WithTransaction(fn func(u2 *UsbGadget, tx *UsbGadgetTransact
 	u.txLock.Lock()
 	defer u.txLock.Unlock()
 
-	context := u.getUsbGadgetLoggingContext().Str("udc", u.udc)
-	context.Info().Msg("starting USB gadget transaction")
+	logger := u.getUsbGadgetLogger().With().Str("udc", u.udc).Logger()
+	logger.Info().Msg("starting USB gadget transaction")
 
-	tx := u.newUsbGadgetTransaction(context)
+	tx := u.newUsbGadgetTransaction()
 
 	if err := fn(u, tx); err != nil {
-		context.Err(err).Error().Msg("transaction failed")
+		logger.Error().Err(err).Msg("transaction failed")
 		return err
 	}
 
 	err := tx.Commit()
-	context.Err(err).Trace().Msg("committed transaction")
+	logger.Trace().Err(err).Msg("committed transaction")
+
 	return err
+}
+
+func (u *UsbGadget) getOrderedConfigItems() orderedGadgetConfigItems {
+	items := make([]gadgetConfigItemWithKey, 0)
+	for key, item := range u.configMap {
+		items = append(items, gadgetConfigItemWithKey{key, item})
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].item.order < items[j].item.order
+	})
+
+	return items
+}
+
+func (tx *UsbGadgetTransaction) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("usbgadget").
+		With().
+		Str("subcomponent", "transaction").
+		Logger()
+	return &logger
 }
 
 func (tx *UsbGadgetTransaction) addFileChange(component string, change RequestedFileChange) string {
 	change.Component = component
 	tx.c.AddFileChangeStruct(change)
+
+	logger := tx.getLogger()
+	logger.Trace().Interface("change", change).Msg("add change")
 
 	key := change.Key
 	if key == "" {
@@ -75,26 +97,14 @@ func (tx *UsbGadgetTransaction) removeFile(component string, path string, descri
 func (tx *UsbGadgetTransaction) Commit() error {
 	tx.addFileChange("gadget-finalize", *tx.reorderSymlinkChanges)
 
-	err := tx.c.Apply(tx.loggingContext)
+	logger := tx.getLogger()
+	err := tx.c.Apply(logger)
 	if err != nil {
-		tx.loggingContext.Err(err).Error().Msg("failed to update usbgadget configuration")
+		logger.Error().Err(err).Msg("failed to update usbgadget configuration")
 		return err
 	}
-	tx.loggingContext.Info().Msg("usbgadget configuration updated")
+	logger.Info().Msg("usbgadget configuration updated")
 	return nil
-}
-
-func (u *UsbGadget) getOrderedConfigItems() orderedGadgetConfigItems {
-	items := make([]gadgetConfigItemWithKey, 0)
-	for key, item := range u.configMap {
-		items = append(items, gadgetConfigItemWithKey{key, item})
-	}
-
-	sort.SliceStable(items, func(i, j int) bool {
-		return items[i].item.order < items[j].item.order
-	})
-
-	return items
 }
 
 func (tx *UsbGadgetTransaction) MountConfigFS() {
@@ -256,16 +266,18 @@ func (tx *UsbGadgetTransaction) writeGadgetAttrs(basePath string, attrs gadgetAt
 }
 
 func (tx *UsbGadgetTransaction) addReorderSymlinkChange(configC1Path string, path string, target string, deps []string) {
-	tx.loggingContext.Str("path", path).Str("target", target).Trace().Msg("add reorder symlink change")
+	logger := tx.getLogger()
+	logger.Trace().Str("configC1Path", configC1Path).Str("path", path).Str("target", target).Msg("add reorder symlink change")
 
 	if tx.reorderSymlinkChanges == nil {
 		tx.reorderSymlinkChanges = &RequestedFileChange{
-			Component:     "gadget-finalize",
-			Key:           "reorder-symlinks",
-			Path:          configC1Path,
-			ExpectedState: FileStateSymlinkInOrderConfigFS,
-			Description:   "order symlinks",
-			ParamSymlinks: []symlink{},
+			Component:       "gadget-finalize",
+			Key:             "reorder-symlinks",
+			Path:            configC1Path,
+			ExpectedState:   FileStateSymlinkInOrderConfigFS,
+			ExpectedContent: []byte(target),
+			Description:     "order symlinks",
+			ParamSymlinks:   []symlink{},
 		}
 	}
 

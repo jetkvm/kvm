@@ -42,13 +42,13 @@ func (c *ChangeSetResolver) toOrderedChanges() error {
 	return nil
 }
 
-func (c *ChangeSetResolver) doResolveChanges(initial bool, context *logging.Context) error {
+func (c *ChangeSetResolver) doResolveChanges(initial bool, logger *zerolog.Logger) error {
 	resolvedChanges := make([]*FileChange, 0)
 
 	for _, key := range c.orderedChanges {
 		change := c.changesMap[key.(string)]
 		if change == nil {
-			context.Str("key", key.(string)).Error().Msg("fileChange not found")
+			logger.Error().Str("key", key.(string)).Msg("fileChange not found")
 			continue
 		}
 
@@ -56,7 +56,7 @@ func (c *ChangeSetResolver) doResolveChanges(initial bool, context *logging.Cont
 			change.ResetActionResolution()
 		}
 
-		resolvedAction := change.Action(context)
+		resolvedAction := change.Action(logger)
 
 		resolvedChanges = append(resolvedChanges, change)
 		// no need to check the triggers if there's no change
@@ -88,7 +88,7 @@ func (c *ChangeSetResolver) doResolveChanges(initial bool, context *logging.Cont
 	return nil
 }
 
-func (c *ChangeSetResolver) resolveChanges(initial bool, context *logging.Context) error {
+func (c *ChangeSetResolver) resolveChanges(initial bool, logger *zerolog.Logger) error {
 	// get the ordered changes
 	err := c.toOrderedChanges()
 	if err != nil {
@@ -96,14 +96,14 @@ func (c *ChangeSetResolver) resolveChanges(initial bool, context *logging.Contex
 	}
 
 	// resolve the changes
-	err = c.doResolveChanges(initial, context)
+	err = c.doResolveChanges(initial, logger)
 	if err != nil {
 		return err
 	}
 
-	if context.Logger().GetLevel() <= zerolog.TraceLevel {
+	if logging.IsTraceLevel(logger) {
 		for _, change := range c.resolvedChanges {
-			context.Stringer("change", change).Trace().Msg("resolved change")
+			logger.Trace().Stringer("change", change).Msg("resolved change")
 		}
 	}
 
@@ -111,18 +111,17 @@ func (c *ChangeSetResolver) resolveChanges(initial bool, context *logging.Contex
 		return nil
 	}
 
-	return c.resolveChanges(false, context)
+	return c.resolveChanges(false, logger)
 }
 
-func (c *ChangeSetResolver) applyChanges(context *logging.Context) error {
+func (c *ChangeSetResolver) applyChanges(l *zerolog.Logger) error {
 	for _, change := range c.resolvedChanges {
 		change.ResetActionResolution()
 
-		action := change.Action(context)
+		action := change.Action(l)
 		actionStr := FileChangeResolvedActionString[action]
 
-		context = context.Str("action", actionStr).Stringer("change", change)
-		logger := context.Logger()
+		logger := l.With().Str("action", actionStr).Stringer("change", change).Logger()
 		var event *zerolog.Event
 		if action == FileChangeResolvedActionDoNothing {
 			event = logger.Trace()
@@ -132,10 +131,10 @@ func (c *ChangeSetResolver) applyChanges(context *logging.Context) error {
 
 		event.Msg("applying change")
 
-		err := c.changeset.applyChange(change, context)
+		err := c.changeset.applyChange(change, &logger)
 		if err != nil {
 			if change.IgnoreErrors {
-				context.Err(err).Warn().Msg("ignoring error")
+				logger.Warn().Err(err).Msg("ignoring error")
 			} else {
 				return err
 			}
@@ -145,7 +144,7 @@ func (c *ChangeSetResolver) applyChanges(context *logging.Context) error {
 	return nil
 }
 
-func (c *ChangeSetResolver) GetChanges(context *logging.Context) ([]*FileChange, error) {
+func (c *ChangeSetResolver) GetChanges(logger *zerolog.Logger) ([]*FileChange, error) {
 	localChanges := c.changeset.Changes
 	changesMap := make(map[string]*FileChange)
 	conditionalChangesMap := make(map[string]*FileChange)
@@ -181,7 +180,7 @@ func (c *ChangeSetResolver) GetChanges(context *logging.Context) ([]*FileChange,
 	c.changesMap = changesMap
 	c.conditionalChangesMap = conditionalChangesMap
 
-	err := c.resolveChanges(true, context)
+	err := c.resolveChanges(true, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -189,10 +188,10 @@ func (c *ChangeSetResolver) GetChanges(context *logging.Context) ([]*FileChange,
 	return c.resolvedChanges, nil
 }
 
-func (c *ChangeSetResolver) Apply(context *logging.Context) error {
-	if _, err := c.GetChanges(context); err != nil {
+func (c *ChangeSetResolver) Apply(logger *zerolog.Logger) error {
+	if _, err := c.GetChanges(logger); err != nil {
 		return err
 	}
 
-	return c.applyChanges(context)
+	return c.applyChanges(logger)
 }

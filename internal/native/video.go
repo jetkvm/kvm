@@ -53,7 +53,7 @@ func (n *Native) setSleepMode(enabled bool) error {
 		return nil
 	}
 
-	logger := GetDisplayLogger().With().Bool("enabled", enabled)
+	logger := GetDisplayLogger().With().Bool("enabled", enabled).Logger()
 
 	bEnabled := "0"
 	shouldWait := false

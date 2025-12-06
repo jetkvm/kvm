@@ -13,6 +13,8 @@ import (
 	"github.com/jetkvm/kvm/internal/hidrpc"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/usbgadget"
+	"github.com/jetkvm/kvm/internal/utils"
+	"github.com/rs/zerolog"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -107,21 +109,96 @@ func (s *Session) ExchangeOffer(offerStr string) (string, error) {
 	return base64.StdEncoding.EncodeToString(localDescription), nil
 }
 
+func (s *Session) startupSession() {
+	s.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
+	s.initQueues()
+	s.initKeysDownStateQueue()
+
+	go func() {
+		for msg := range s.rpcQueue {
+			// TODO: only use goroutine if the task is asynchronous
+			go onRPCMessage(msg, s)
+		}
+	}()
+
+	for i := 0; i < len(s.hidQueue); i++ {
+		go s.handleQueue(i)
+	}
+}
+
 func (s *Session) initQueues() {
 	s.hidQueueLock.Lock()
 	defer s.hidQueueLock.Unlock()
 
-	s.hidQueue = make([]chan hidQueueMessage, 0)
-	for i := 0; i < 4; i++ {
+	s.hidQueue = make([]chan hidQueueMessage, hidrpc.MaximumQueues)
+	for i := 0; i < hidrpc.MaximumQueues; i++ {
 		q := make(chan hidQueueMessage, 256)
-		s.hidQueue = append(s.hidQueue, q)
+		s.hidQueue[i] = q
 	}
 }
 
-func (s *Session) handleQueue(index int, loggingContext *logging.Context) {
-	queueContext := loggingContext.With().Int("index", index)
+func (s *Session) shutdownSession() {
+	// Stop RPC processor
+	if s.rpcQueue != nil {
+		close(s.rpcQueue)
+		s.rpcQueue = nil
+	}
+
+	// Stop HID RPC processors
+	if s.hidQueue != nil {
+		for i := 0; i < len(s.hidQueue); i++ {
+			if s.hidQueue[i] != nil {
+				close(s.hidQueue[i])
+				s.hidQueue[i] = nil
+			}
+		}
+		s.hidQueue = nil
+	}
+
+	if s.keysDownStateQueue != nil {
+		close(s.keysDownStateQueue)
+		s.keysDownStateQueue = nil
+	}
+
+	if s.shouldUmountVirtualMedia {
+		if err := rpcUnmountImage(); err != nil {
+			logging.GetSubsystemLogger("mount").Warn().Err(err).Msg("unmount image failed on connection close")
+		}
+	}
+
+	if s.ControlChannel != nil {
+		s.ControlChannel.Close()
+		s.ControlChannel = nil
+	}
+
+	if s.RPCChannel != nil {
+		s.RPCChannel.Close()
+		s.RPCChannel = nil
+	}
+
+	if s.HidChannel != nil {
+		s.HidChannel.Close()
+		s.HidChannel = nil
+	}
+
+	s.hidRPCAvailable = false
+
+	// TODO what about the other channels?
+
+	if s.VideoTrack != nil {
+		// there's no Close() on this, just set to nil
+		s.VideoTrack = nil
+	}
+
+	if s.peerConnection != nil {
+		s.peerConnection.Close()
+		s.peerConnection = nil
+	}
+}
+
+func (s *Session) handleQueue(index int) {
 	for msg := range s.hidQueue[index] {
-		onHidMessage(msg, s, queueContext)
+		onHidMessage(msg, s, index)
 	}
 }
 
@@ -147,40 +224,38 @@ func (s *Session) enqueueKeysDownState(state usbgadget.KeysDownState) {
 	select {
 	case s.keysDownStateQueue <- state:
 	default:
-		logging.GetSubsystemLogger("hidrpc").Warn().Msg("dropping keys down state update; queue full")
+		logging.GetSubsystemLogger("webrtc").Error().Msg("dropping keys down state update; queue full")
 	}
 }
 
-func getOnHidMessageHandler(session *Session, loggingContext *logging.Context, channel string) func(msg webrtc.DataChannelMessage) {
-	channelContext := loggingContext.With().Interface("session", session).Str("channel", channel)
-
+func getOnHidMessageHandler(session *Session, l *zerolog.Logger, channel string) func(msg webrtc.DataChannelMessage) {
 	return func(msg webrtc.DataChannelMessage) {
-		msgContext := channelContext.With().Interface("msg", msg)
+		logger := l.With().Interface("session", session).Str("channel", channel).Interface("msg", msg).Logger()
 
 		if msg.IsString {
-			msgContext.Warn().Msg("received string data in HID RPC message handler")
+			logger.Warn().Msg("received string data in HID RPC message handler")
 			return
 		}
 
 		dataLength := len(msg.Data)
-		msgContext = msgContext.Int("length", dataLength)
+		logger = logger.With().Int("length", dataLength).Logger()
 
 		// only log data if the log level is debug or lower
-		if msgContext.IsDebugLevel() {
-			msgContext = msgContext.Bytes("data", msg.Data)
+		if logging.IsDebugLevel(&logger) {
+			logger = logger.With().Object("data", utils.ByteSlice(msg.Data)).Logger()
 		}
 
 		if dataLength < 1 {
-			msgContext.Warn().Msg("received empty data in HID RPC message handler")
+			logger.Warn().Msg("received empty data in HID RPC message handler")
 			return
 		}
 
 		// Enqueue to ensure ordered processing
 		queueIndex := hidrpc.GetQueueIndex(hidrpc.MessageType(msg.Data[0]))
-		msgContext = msgContext.Int("queueIndex", queueIndex)
+		logger = logger.With().Int("queueIndex", queueIndex).Logger()
 
 		if queueIndex >= len(session.hidQueue) || queueIndex < 0 {
-			msgContext.Warn().Msg("received data in HID RPC message handler, but queue index not found")
+			logger.Warn().Msg("received data in HID RPC message handler, but queue index not found")
 			queueIndex = 3
 		}
 
@@ -190,9 +265,9 @@ func getOnHidMessageHandler(session *Session, loggingContext *logging.Context, c
 				DataChannelMessage: msg,
 				channel:            channel,
 			}
-			msgContext.Trace().Msg("queued HID RPC message")
+			logger.Trace().Msg("queued HID RPC message")
 		} else {
-			msgContext.Warn().Msg("received data in HID RPC message handler, but queue is nil")
+			logger.Warn().Msg("received data in HID RPC message handler, but queue is nil")
 			return
 		}
 	}
@@ -211,7 +286,7 @@ func newSession(config SessionConfig) (*Session, error) {
 			logger.Info().Msg("ICE Servers not provided by cloud")
 		} else {
 			iceServer.URLs = config.ICEServers
-			logger.Info().Interface("iceServers", iceServer.URLs).Msg("Using ICE Servers provided by cloud")
+			logger.Info().Strs("iceServers", iceServer.URLs).Msg("Using ICE Servers provided by cloud")
 		}
 
 		if config.LocalIP == "" || net.ParseIP(config.LocalIP) == nil {
@@ -232,20 +307,7 @@ func newSession(config SessionConfig) (*Session, error) {
 	}
 
 	session := &Session{peerConnection: peerConnection}
-	session.rpcQueue = make(chan webrtc.DataChannelMessage, 256)
-	session.initQueues()
-	session.initKeysDownStateQueue()
-
-	go func() {
-		for msg := range session.rpcQueue {
-			// TODO: only use goroutine if the task is asynchronous
-			go onRPCMessage(msg, session)
-		}
-	}()
-
-	for i := 0; i < len(session.hidQueue); i++ {
-		go session.handleQueue(i, logger)
-	}
+	session.startupSession()
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		defer func() {
@@ -254,17 +316,18 @@ func newSession(config SessionConfig) (*Session, error) {
 			}
 		}()
 
-		logger.Info().Str("label", d.Label()).Uint16("id", *d.ID()).Msg("New DataChannel")
+		logger := logging.GetSubsystemLogger("webrtc").With().Str("label", d.Label()).Uint16("id", *d.ID()).Logger()
+		logger.Info().Msg("New DataChannel")
 
 		switch d.Label() {
 		case "hidrpc":
 			session.HidChannel = d
-			d.OnMessage(getOnHidMessageHandler(session, logger, "hidrpc"))
+			d.OnMessage(getOnHidMessageHandler(session, &logger, "hidrpc"))
 		// we won't send anything over the unreliable channels
 		case "hidrpc-unreliable-ordered":
-			d.OnMessage(getOnHidMessageHandler(session, logger, "hidrpc-unreliable-ordered"))
+			d.OnMessage(getOnHidMessageHandler(session, &logger, "hidrpc-unreliable-ordered"))
 		case "hidrpc-unreliable-nonordered":
-			d.OnMessage(getOnHidMessageHandler(session, logger, "hidrpc-unreliable-nonordered"))
+			d.OnMessage(getOnHidMessageHandler(session, &logger, "hidrpc-unreliable-nonordered"))
 		case "rpc":
 			session.RPCChannel = d
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
@@ -315,7 +378,8 @@ func newSession(config SessionConfig) (*Session, error) {
 	var isConnected bool
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		logger.Info().Interface("candidate", candidate).Msg("WebRTC peerConnection has a new ICE candidate")
+		logger := logging.GetSubsystemLogger("webrtc").With().Interface("candidate", candidate).Logger()
+		logger.Info().Msg("WebRTC peerConnection has a new ICE candidate")
 		if candidate != nil {
 			err := wsjson.Write(context.Background(), config.ws, gin.H{"type": "new-ice-candidate", "data": candidate.ToJSON()})
 			if err != nil {
@@ -325,12 +389,14 @@ func newSession(config SessionConfig) (*Session, error) {
 	})
 
 	peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-		logger.Info().Str("connectionState", connectionState.String()).Msg("ICE Connection State has changed")
+		logger := logging.GetSubsystemLogger("webrtc").With().Stringer("connectionState", connectionState).Logger()
+		logger.Info().Msg("ICE Connection State has changed")
 		if connectionState == webrtc.ICEConnectionStateConnected {
 			if !isConnected {
 				isConnected = true
 				onActiveSessionsChanged()
 				if incrActiveSessions() == 1 {
+					logger.Info().Msg("first session connected, starting video stream")
 					onFirstSessionConnected()
 				}
 			}
@@ -347,26 +413,9 @@ func newSession(config SessionConfig) (*Session, error) {
 				_ = cancelKeyboardMacro()
 				currentSession = nil
 			}
-			// Stop RPC processor
-			if session.rpcQueue != nil {
-				close(session.rpcQueue)
-				session.rpcQueue = nil
-			}
 
-			// Stop HID RPC processor
-			for i := 0; i < len(session.hidQueue); i++ {
-				close(session.hidQueue[i])
-				session.hidQueue[i] = nil
-			}
+			session.shutdownSession()
 
-			close(session.keysDownStateQueue)
-			session.keysDownStateQueue = nil
-
-			if session.shouldUmountVirtualMedia {
-				if err := rpcUnmountImage(); err != nil {
-					logger.Warn().Err(err).Msg("unmount image failed on connection close")
-				}
-			}
 			if isConnected {
 				isConnected = false
 				onActiveSessionsChanged()

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/rs/zerolog"
 
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/vishvananda/netlink"
@@ -64,8 +65,9 @@ func (nm *NetlinkManager) AddStateChangeCallback(ifname string, callback StateCh
 	nm.stateChangeCallbacks[ifname] = append(nm.stateChangeCallbacks[ifname], callback)
 }
 
-func (nm *NetlinkManager) getLogger() *logging.Context {
-	return logging.GetSubsystemLogger("network")
+func (nm *NetlinkManager) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("nmlite").With().Str("subcomponent", "manager").Logger()
+	return &logger
 }
 
 // Interface operations
@@ -93,7 +95,7 @@ func (nm *NetlinkManager) runCallbacks(update netlink.LinkUpdate) {
 
 	ifname := update.Link.Attrs().Name
 	callbacks, ok := nm.stateChangeCallbacks[ifname]
-	logger := nm.getLogger().Str("interface", ifname)
+	logger := nm.getLogger().With().Str("interface", ifname).Logger()
 	if !ok {
 		logger.Trace().Msg("no state change callbacks for interface")
 		return
@@ -155,7 +157,7 @@ func (nm *NetlinkManager) EnsureInterfaceUpWithTimeout(ctx context.Context, ifac
 	start := time.Now()
 
 	for {
-		logger := nm.getLogger().Str("interface", ifname)
+		logger := nm.getLogger().With().Str("interface", ifname).Logger()
 
 		var (
 			link *Link
@@ -168,7 +170,12 @@ func (nm *NetlinkManager) EnsureInterfaceUpWithTimeout(ctx context.Context, ifac
 		}
 
 		state := link.Attrs().OperState
-		logger = logger.Int("attempt", attempt).Dur("duration", time.Since(start)).Stringer("state", state)
+		logger = logger.
+			With().
+			Int("attempt", attempt).
+			Dur("duration", time.Since(start)).
+			Stringer("state", state).
+			Logger()
 
 		if state == netlink.OperUp || state == netlink.OperUnknown {
 			if attempt > 0 {
@@ -191,7 +198,7 @@ func (nm *NetlinkManager) EnsureInterfaceUpWithTimeout(ctx context.Context, ifac
 
 		// check the state again
 		state = link.Attrs().OperState
-		logger = logger.Stringer("new_state", state)
+		logger = logger.With().Stringer("new_state", state).Logger()
 
 		if state == netlink.OperUp {
 			logger.Info().Msg("interface is up")
@@ -435,7 +442,6 @@ func (nm *NetlinkManager) reconcileDefaultRoute(link *Link, expected map[string]
 	}
 
 	logger.Info().Int("added", added).Int("removed", len(toRemove)).Msg("default routes reconciled")
-
 	return nil
 }
 
@@ -449,7 +455,7 @@ func (nm *NetlinkManager) ReconcileLink(link *Link, expected []types.IPAddress, 
 
 	ifname := link.Attrs().Name
 	linkIndex := link.Attrs().Index
-	logger := nm.getLogger().Str("interface", ifname).Int("index", linkIndex)
+	logger := nm.getLogger().With().Str("interface", ifname).Int("index", linkIndex).Logger()
 
 	mtu := link.Attrs().MTU
 	expectedMTU := mtu

@@ -6,6 +6,7 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
+
 	"github.com/vishvananda/netlink"
 )
 
@@ -15,7 +16,7 @@ func (c *Client) requestLease4(ifname string) (*Lease, error) {
 		return nil, err
 	}
 
-	logger := c.getLogger().Str("interface", ifname).Int("family", link.AfInet)
+	logger := c.getLogger().With().Str("interface", ifname).Int("family", link.AfInet).Logger()
 
 	mods := []nclient4.ClientOpt{
 		nclient4.WithTimeout(c.cfg.Timeout),
@@ -79,8 +80,9 @@ func (c *Client) requestLease4(ifname string) (*Lease, error) {
 		return nil, fmt.Errorf("failed to acquire DHCPv4 lease")
 	}
 
-	summaryStructured(lease.ACK, logger).Info().Msgf("DHCPv4 lease acquired: %s", lease.ACK.String())
-	logger.Trace().Interface("options", lease.ACK.Options.String()).Msg("DHCPv4 lease options")
+	logger = *summaryStructured(lease.ACK, &logger)
+	logger.Info().Msgf("DHCPv4 lease acquired: %s", lease.ACK.String())
+	logger.Trace().Stringer("ack_options", lease.ACK.Options).Msg("DHCPv4 lease options")
 
 	return fromNclient4Lease(lease, ifname), nil
 }

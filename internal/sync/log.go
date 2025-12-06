@@ -10,40 +10,39 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 )
 
-func getLogger() *logging.Context {
-	return logging.GetSubsystemLogger("synctrace"))
+func getLogger() *zerolog.Logger {
+	return logging.GetSubsystemLogger("synctrace")
 }
 
-func logTrace(msg string) {
-	if !getLogger().IsTraceLevel() {
-		return
-	}
-
-	logTrack(3).Trace().Msg(msg)
-}
-
-func logTrack(callerSkip int) *logging.Context {
+func logTrack(callerSkip int) *zerolog.Event {
 	logger := getLogger()
-	if !logger.IsTraceLevel() {
-		return logger
+	if !logging.IsTraceLevel(logger) {
+		return logger.Trace()
 	}
+
+	traceEvent := logger.Trace()
 
 	pc, file, no, ok := runtime.Caller(callerSkip)
 	if ok {
-		loggingContext = loggingContext.Str("file", file).Int("line", no)
+		traceEvent = traceEvent.Str("file", file).Int("line", no)
 
 		details := runtime.FuncForPC(pc)
 		if details != nil {
-			loggingContext = loggingContext.Str("func", details.Name())
+			traceEvent = traceEvent.Str("func", details.Name())
 		}
 	}
 
-	return loggingContext
+	return traceEvent
 }
 
-func logLockTrack(i string) *logging.Context {
+func logTrace(msg string) {
+	logTrack(3).Msg(msg)
+}
+
+func logLockTrace(i string) *zerolog.Event {
 	return logTrack(4).Str("index", i)
 }
 
@@ -91,18 +90,18 @@ func increaseUnlockCount(i string) {
 func logLock(t trackable) {
 	i := getIndex(t)
 	increaseLockCount(i)
-	logLockTrack(i).Trace().Msg("locking mutex")
+	logLockTrace(i).Msg("locking mutex")
 }
 
 func logUnlock(t trackable) {
 	i := getIndex(t)
 	increaseUnlockCount(i)
-	logLockTrack(i).Trace().Msg("unlocking mutex")
+	logLockTrace(i).Msg("unlocking mutex")
 }
 
 func logTryLock(t trackable) {
 	i := getIndex(t)
-	logLockTrack(i).Trace().Msg("trying to lock mutex")
+	logLockTrace(i).Msg("trying to lock mutex")
 }
 
 func logTryLockResult(t trackable, l bool) {
@@ -111,24 +110,24 @@ func logTryLockResult(t trackable, l bool) {
 	}
 	i := getIndex(t)
 	increaseLockCount(i)
-	logLockTrack(i).Trace().Msg("locked mutex")
+	logLockTrace(i).Msg("locked mutex")
 }
 
 func logRLock(t trackable) {
 	i := getIndex(t)
 	increaseLockCount(i)
-	logLockTrack(i).Trace().Msg("locking mutex for reading")
+	logLockTrace(i).Msg("locking mutex for reading")
 }
 
 func logRUnlock(t trackable) {
 	i := getIndex(t)
 	increaseUnlockCount(i)
-	logLockTrack(i).Trace().Msg("unlocking mutex for reading")
+	logLockTrace(i).Msg("unlocking mutex for reading")
 }
 
 func logTryRLock(t trackable) {
 	i := getIndex(t)
-	logLockTrack(i).Trace().Msg("trying to lock mutex for reading")
+	logLockTrace(i).Msg("trying to lock mutex for reading")
 }
 
 func logTryRLockResult(t trackable, l bool) {
@@ -137,5 +136,5 @@ func logTryRLockResult(t trackable, l bool) {
 	}
 	i := getIndex(t)
 	increaseLockCount(i)
-	logLockTrack(i).Trace().Msg("locked mutex for reading")
+	logLockTrace(i).Msg("locked mutex for reading")
 }

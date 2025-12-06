@@ -63,7 +63,7 @@ func (t *TimeSync) filterNTPServers(ntpServers []string) ([]string, error) {
 			logger.Trace().Str("server", server).Msg("server didn't parse as IP, skipping")
 			continue
 		}
-		logger.Trace().Interface("ip", ip).Msg("going to check NTP server")
+		logger.Trace().Str("server", server).IPAddr("ip", ip).Msg("going to check NTP server")
 
 		if hasIPv4 && ip.To4() != nil {
 			filteredServers = append(filteredServers, server)
@@ -116,7 +116,7 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 
 	for _, server := range servers {
 		go func(server string) {
-			loopLogger := logger.With().Str("server", server)
+			loopLogger := logger.With().Str("server", server).Logger()
 
 			// increase request count
 			metricNtpTotalRequestCount.Inc()
@@ -131,6 +131,7 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 			}
 
 			if response.IsKissOfDeath() {
+				// TODO back-signal to avoid querying this server if DENY or RSTR, deprioritize if RATE
 				loopLogger.Warn().Str("kiss_code", response.KissCode).Msg("ignoring NTP server kiss of death")
 				results <- nil
 				return
@@ -161,7 +162,7 @@ func (t *TimeSync) queryMultipleNTP(servers []string, timeout time.Duration) (no
 			metricNtpSuccessCount.WithLabelValues(server).Inc()
 
 			loopLogger.Info().
-				Time("time", *now).
+				Time("now", *now).
 				Str("reference", response.ReferenceString()).
 				Float64("rtt", rtt).
 				Dur("clockOffset", response.ClockOffset).

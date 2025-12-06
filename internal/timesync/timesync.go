@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/network/types"
 )
 
@@ -45,11 +44,10 @@ type TimeSync struct {
 }
 
 type TimeSyncOptions struct {
-	PreCheckFunc   PreCheckFunc
-	PreCheckIPv4   PreCheckFunc
-	PreCheckIPv6   PreCheckFunc
-	LoggingContext *logging.Context
-	NetworkConfig  *types.NetworkConfig
+	PreCheckFunc  PreCheckFunc
+	PreCheckIPv4  PreCheckFunc
+	PreCheckIPv6  PreCheckFunc
+	NetworkConfig *types.NetworkConfig
 }
 
 type SyncMode struct {
@@ -94,7 +92,6 @@ func (t *TimeSync) SetDhcpNtpAddresses(addresses []string) {
 }
 
 func (t *TimeSync) getSyncMode() SyncMode {
-	logger := GetTimesyncLogger()
 	syncMode := SyncMode{
 		Ntp:             true,
 		Http:            true,
@@ -122,16 +119,9 @@ func (t *TimeSync) getSyncMode() SyncMode {
 		}
 	}
 
-	logger.Debug().
-		Strs("Ordering", syncMode.Ordering).
-		Bool("Ntp", syncMode.Ntp).
-		Bool("Http", syncMode.Http).
-		Bool("NtpUseFallback", syncMode.NtpUseFallback).
-		Bool("HttpUseFallback", syncMode.HttpUseFallback).
-		Msg("sync mode")
-
 	return syncMode
 }
+
 func (t *TimeSync) timeSyncLoop() {
 	metricTimeSyncStatus.Set(0)
 
@@ -149,7 +139,7 @@ func (t *TimeSync) timeSyncLoop() {
 		start := time.Now()
 		err := t.sync()
 		if err != nil {
-			logger.Error().Str("error", err.Error()).Msg("failed to sync system time")
+			logger.Error().Err(err).Msg("failed to sync system time")
 
 			// retry after a delay
 			timeSyncRetryInterval += timeSyncRetryStep
@@ -164,8 +154,9 @@ func (t *TimeSync) timeSyncLoop() {
 		isInitialSync := !t.syncSuccess
 		t.syncSuccess = true
 
-		logger.Info().Str("now", time.Now().Format(time.RFC3339)).
-			Str("time_taken", time.Since(start).String()).
+		logger.Info().
+			Time("now", time.Now()).
+			Dur("time_taken", time.Since(start)).
 			Bool("is_initial_sync", isInitialSync).
 			Msg("time sync successful")
 
@@ -187,11 +178,11 @@ func (t *TimeSync) sync() error {
 	metricTimeSyncCount.Inc()
 
 	syncMode := t.getSyncMode()
-	logger := GetTimesyncLogger().With().Interface("sync_mode", syncMode)
+	logger := GetTimesyncLogger().With().Interface("sync_mode", syncMode).Logger()
 
 Orders:
 	for _, mode := range syncMode.Ordering {
-		loopLogger := logger.With().Str("mode", mode)
+		loopLogger := logger.With().Str("mode", mode).Logger()
 		switch mode {
 		case "ntp_user_provided":
 			if syncMode.Ntp {
@@ -247,6 +238,7 @@ Orders:
 	}
 
 	if offset != nil {
+		logger = logger.With().Dur("offset", *offset).Logger()
 		newNow := time.Now().Add(*offset)
 		now = &newNow
 	}
@@ -287,7 +279,7 @@ func (t *TimeSync) setSystemTime(now time.Time) error {
 	nowStr := now.Format("2006-01-02 15:04:05")
 	output, err := exec.Command("date", "-s", nowStr).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to run date -s: %w, %s", err, string(output))
+		return fmt.Errorf("failed to run date -s %s: %w, %s", nowStr, err, string(output))
 	}
 
 	if t.rtcDevicePath != "" {

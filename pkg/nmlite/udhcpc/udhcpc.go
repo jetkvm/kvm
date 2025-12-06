@@ -11,6 +11,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/rs/zerolog"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/jetkvm/kvm/internal/network/types"
@@ -47,11 +48,15 @@ func NewDHCPClient(options *DHCPClientOptions) *DHCPClient {
 	}
 }
 
-func (c *DHCPClient) getLogger() *logging.Context {
-	return logging.GetSubsystemLogger("udhcpc").
+func (c *DHCPClient) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("nmlite").
+		With().
+		Str("subcomponent", "udhcpc").
 		Str("interface", c.InterfaceName).
 		Str("pidFile", c.pidFile).
-		Str("leaseFile", c.leaseFile)
+		Str("leaseFile", c.leaseFile).
+		Logger()
+	return &logger
 }
 
 func (c *DHCPClient) getWatchPaths() []string {

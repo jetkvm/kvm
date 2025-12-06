@@ -14,6 +14,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 	"github.com/google/uuid"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -324,13 +325,13 @@ func runWebsocketClient() error {
 	header.Set("Authorization", "Bearer "+config.CloudToken)
 	dialCtx, cancelDial := context.WithTimeout(context.Background(), CloudWebSocketConnectTimeout)
 
-	logger := logging.GetSubsystemLogger("websocket").Str("source", wsURL.Host).Str("sourceType", "cloud")
+	logger := logging.GetSubsystemLogger("cloud").With().Str("subcomponent", "websocket").Str("source", wsURL.Host).Str("sourceType", "cloud").Logger()
 
 	defer cancelDial()
 	c, resp, err := websocket.Dial(dialCtx, wsURL.String(), &websocket.DialOptions{
 		HTTPHeader: header,
 		OnPingReceived: func(ctx context.Context, payload []byte) bool {
-			logger.Debug().Bytes("payload", payload).Int("length", len(payload)).Msg("ping frame received")
+			logger.Debug().Object("data", utils.ByteSlice(payload)).Int("length", len(payload)).Msg("ping frame received")
 
 			metricConnectionTotalPingReceivedCount.WithLabelValues("cloud", wsURL.Host).Inc()
 			metricConnectionLastPingReceivedTimestamp.WithLabelValues("cloud", wsURL.Host).SetToCurrentTime()
@@ -357,8 +358,7 @@ func runWebsocketClient() error {
 			Msg("no connection id received from the server, generating a new one")
 	}
 
-	logger = logger.With().Str("connectionID", connectionId)
-
+	logger = logger.With().Str("connectionID", connectionId).Logger()
 	cloudLogger := logging.GetSubsystemLogger("cloud")
 
 	// if the context is canceled, we don't want to return an error

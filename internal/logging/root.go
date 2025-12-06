@@ -1,8 +1,6 @@
 package logging
 
-import (
-	"github.com/rs/zerolog"
-)
+import "github.com/rs/zerolog"
 
 var (
 	rootLogger = NewLogger(
@@ -17,6 +15,6 @@ func UpdateConfigLogLevel(logLevel string) {
 	rootLogger.UpdateConfigLogLevel(logLevel)
 }
 
-func GetSubsystemLogger(subsystem string) *Context {
-	return NewContext(rootLogger.getLogger(subsystem))
+func GetSubsystemLogger(subsystem string) *zerolog.Logger {
+	return rootLogger.getLogger(subsystem)
 }

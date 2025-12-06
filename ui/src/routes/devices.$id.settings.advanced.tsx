@@ -249,10 +249,9 @@ export default function SettingsAdvancedRoute() {
       // we do not need to set it to false if check succeeds,
       // because it will be redirected to the update page later
       setCustomVersionUpdateLoading(true);
-      versionInfo = await checkUpdateComponents(
-        {
-          components,
-        },
+      versionInfo = await checkUpdateComponents({
+        components,
+      },
         devChannel,
       );
     } catch (error: unknown) {

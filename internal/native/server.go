@@ -12,7 +12,7 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/erikdubbelboer/gspt"
-	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 )
 
 // Native Process
@@ -37,17 +37,17 @@ func setProcTitle(status string) {
 	gspt.SetProcTitle(title)
 }
 
-func getClientLogger() *logging.Context {
-	return GetNativeLogger().With().Str("component", "grpc-client").Int("pid", pid)
-}
-
-func getServerLogger() *logging.Context {
-	return GetNativeLogger().With().Str("component", "grpc-server").Int("pid", pid)
+func getServerLogger() *zerolog.Logger {
+	logger := GetNativeLogger().
+		With().
+		Str("subcomponent", "grpc-server").
+		Int("pid", pid).
+		Logger()
+	return &logger
 }
 
 func monitorCrashSignal(ctx context.Context, nativeInstance NativeInterface) {
 	getServerLogger().Info().Msg("DEBUG mode: will crash the process on SIGHUP signal")
-
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGHUP)
 
@@ -87,11 +87,12 @@ func RunNativeProcess(binaryName string) {
 	appCtx, appCtxCancel := context.WithCancel(context.Background())
 	defer appCtxCancel()
 
-	setProcTitle("starting")
-	logger := getServerLogger()
-
 	// for defer clean-up scoping... this is NOT a goroutine
 	func() {
+		setProcTitle("starting")
+		logger := getServerLogger().With().Str("binaryName", binaryName).Logger()
+		logger.Info().Msg("native process starting")
+
 		// Parse native options
 		var proxyOptions nativeProxyOptions
 		if err := env.Parse(&proxyOptions); err != nil {
@@ -99,7 +100,7 @@ func RunNativeProcess(binaryName string) {
 			return
 		}
 		socketPath := fmt.Sprintf("@%v", proxyOptions.CtrlUnixSocket)
-		logger = logger.With().Interface("proxyOptions", proxyOptions).Str("socketPath", socketPath)
+		logger = logger.With().Interface("proxyOptions", proxyOptions).Str("socketPath", socketPath).Logger()
 
 		// Connect to video stream socket
 		conn, err := net.Dial("unix", proxyOptions.VideoStreamUnixSocket)
@@ -108,7 +109,7 @@ func RunNativeProcess(binaryName string) {
 			return
 		}
 		defer conn.Close()
-		logger = logger.With().Interface("local", conn.LocalAddr()).Interface("remote", conn.RemoteAddr())
+		logger = logger.With().Interface("local", conn.LocalAddr()).Interface("remote", conn.RemoteAddr()).Logger()
 		logger.Info().Msg("connected to video stream socket")
 
 		nativeOptions := proxyOptions.toNativeOptions()
@@ -146,6 +147,7 @@ func RunNativeProcess(binaryName string) {
 		// Create and Start gRPC server
 		grpcServer := NewGRPCServer(nativeInstance, socketPath)
 		server, lis, err := grpcServer.Start()
+
 		if err != nil {
 			logger.Fatal().Err(err).Msg("failed to start gRPC server")
 			return
@@ -154,11 +156,12 @@ func RunNativeProcess(binaryName string) {
 		defer lis.Close()   // close listener after
 		defer server.Stop() // forceful server stop
 
-		logger = logger.With().Interface("listener", lis)
+		logger = logger.With().Interface("listener", lis).Logger()
 
 		setProcTitle("ready")
 
 		if _, err := os.Stat(DebugModeFile); err == nil {
+			logger.Info().Msg("DEBUG mode: enabled")
 			go monitorCrashSignal(appCtx, nativeInstance)
 		}
 
@@ -192,7 +195,6 @@ func RunNativeProcess(binaryName string) {
 
 		// Wait for shutdown or timeout (and then the defer will force stop)
 		<-shutdownCtx.Done()
+		logger.Info().Msg("native process exiting")
 	}()
-
-	logger.Info().Msg("native process exiting")
 }

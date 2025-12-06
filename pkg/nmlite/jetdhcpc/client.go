@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/internal/sync"
+
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv6"
-	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -171,18 +173,20 @@ func getRenewalTime(lease *Lease) time.Duration {
 	return lease.RenewalTime
 }
 
-func (c *Client) getLogger() *logging.Context {
-	return logging.GetSubsystemLogger("dhcp").
+func (c *Client) getLogger() *zerolog.Logger {
+	logging := logging.GetSubsystemLogger("dhcp").
+		With().
 		Strs("interfaces", c.ifaces).
 		Bool("ipv4Enabled", c.cfg.IPv4).
-		Bool("ipv6Enabled", c.cfg.IPv6)
+		Bool("ipv6Enabled", c.cfg.IPv6).
+		Logger()
+	return &logging
 }
 
 func (c *Client) requestLoop(t *time.Timer, family int, ifname string) {
-
 	attempt := 0
 	for range t.C {
-		logger := c.getLogger().Str("interface", ifname).Int("family", family)
+		logger := c.getLogger().With().Str("interface", ifname).Int("family", family).Logger()
 		logger.Info().Int("attempt", attempt).Msg("requesting lease")
 
 		if _, err := c.ensureInterfaceUp(ifname); err != nil {

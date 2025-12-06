@@ -8,9 +8,10 @@ import (
 	"fmt"
 
 	"github.com/jetkvm/kvm/internal/logging"
-	"github.com/jetkvm/kvm/internal/sync"
-
 	"github.com/jetkvm/kvm/internal/network/types"
+	"github.com/jetkvm/kvm/internal/sync"
+	"github.com/rs/zerolog"
+
 	"github.com/jetkvm/kvm/pkg/nmlite/jetdhcpc"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
 )
@@ -45,8 +46,9 @@ func NewNetworkManager(ctx context.Context) *NetworkManager {
 	}
 }
 
-func (nm *NetworkManager) getLogger() *logging.Context {
-	return logging.GetSubsystemLogger("nmlite")
+func (nm *NetworkManager) getLogger() *zerolog.Logger {
+	logging := logging.GetSubsystemLogger("nmlite").With().Int("interface_count", len(nm.interfaces)).Logger()
+	return &logging
 }
 
 // SetHostname sets the hostname and domain for the network manager

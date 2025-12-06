@@ -261,16 +261,16 @@ if [ "$INSTALL_APP" = true ]
 then
 	msg_info "▶ Building release binary"
 	do_make build_release \
-    SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} \
-    SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} \
-    ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
+		SKIP_NATIVE_IF_EXISTS=${SKIP_NATIVE_BUILD} \
+		SKIP_UI_BUILD=${SKIP_UI_BUILD_RELEASE} \
+		ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
 
 	# Copy the binary to the remote host as if we were the OTA updater.
-    msg_info "▶ Copying the application update to the remote host"
+	msg_info "▶ Copying the application update to the remote host"
 	sshdev "cat > /userdata/jetkvm/jetkvm_app.update" < bin/jetkvm_app
 
 	# Reboot the device, the new app will be deployed by the startup process.
-    msg_info "▶ Rebooting the remote host"
+	msg_info "▶ Rebooting the remote host"
 	sshdev "reboot"
 else
 	msg_info "▶ Building development binary"
@@ -280,8 +280,8 @@ else
     ENABLE_SYNC_TRACE=${ENABLE_SYNC_TRACE}
 
 	# Kill any existing instances of the application on the remote host
-    msg_info "▶ Killing any running instances of the application on the remote host"
-    sshdev ash << EOF
+	msg_info "▶ Killing any running instances of the application on the remote host"
+	sshdev ash << EOF
 # Kill any existing instances of the application
 killall jetkvm_app || true
 killall jetkvm_app_debug || true
@@ -298,14 +298,14 @@ while [ \$i -le 10 ]; do
 done
 EOF
 
-    # Copy the binary to the remote host
-    msg_info "▶ Copying the application to the remote host"
-    sshdev "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
+	# Copy the binary to the remote host
+	msg_info "▶ Copying the application to the remote host"
+	sshdev "cat > ${REMOTE_PATH}/jetkvm_app_debug" < bin/jetkvm_app
 
-    # Deploy and run the application on the remote host
-    msg_info "▶ Starting the application on the remote host"
-    logs=$(printenv | grep '^JETKVM_LOG' | sed "s/=/='/; s/$/'/")
-    sshdev ${logs} ash << EOF
+	# Deploy and run the application on the remote host
+	msg_info "▶ Starting the application on the remote host"
+	logs=$(printenv | grep '^JETKVM_LOG' | sed "s/=/='/; s/$/'/")
+	sshdev ${logs} ash << EOF
 # Set the library path to include the directory where librockit.so is located
 export LD_LIBRARY_PATH=/oem/usr/lib:\$LD_LIBRARY_PATH
 

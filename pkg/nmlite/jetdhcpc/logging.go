@@ -5,12 +5,13 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
 	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 )
 
 type dhcpLogger struct {
 	// Printfer is used for actual output of the logger
 	nclient4.Printfer
-	logger *logging.Context
+	logger *zerolog.Logger
 }
 
 // Printf prints a log message as-is via predefined Printfer
@@ -23,9 +24,14 @@ func (s dhcpLogger) PrintMessage(prefix string, message *dhcpv4.DHCPv4) {
 	s.logger.Info().Msgf("%s: %s", prefix, message.String())
 }
 
-func summaryStructured(d *dhcpv4.DHCPv4, logger *logging.Context) *logging.Context {
-	logger = logger.With().
-		Stack().Stringer("opCode", d.OpCode).
+func summaryStructured(d *dhcpv4.DHCPv4, l *zerolog.Logger) *zerolog.Logger {
+	if !logging.IsTraceLevel(l) {
+		return l
+	}
+
+	logger := l.
+		With().
+		Stringer("opCode", d.OpCode).
 		Stringer("hwType", d.HWType).
 		Int("hopCount", int(d.HopCount)).
 		Stringer("transactionID", d.TransactionID).
@@ -39,18 +45,20 @@ func summaryStructured(d *dhcpv4.DHCPv4, logger *logging.Context) *logging.Conte
 		MACAddr("clientMAC", d.ClientHWAddr).
 		Str("serverHostname", d.ServerHostName).
 		Str("bootFileName", d.BootFileName).
-		Str("options", d.Options.Summary(nil))
-	return logger
+		Str("options", d.Options.Summary(nil)).
+		Logger()
+	return &logger
 }
 
 func (c *Client) getDHCP4Logger(ifname string) nclient4.ClientOpt {
 	logger := c.getLogger().
 		With().
 		Str("interface", ifname).
-		Str("source", "dhcp4")
+		Str("source", "dhcp4").
+		Logger()
 
 	return nclient4.WithLogger(dhcpLogger{
-		logger: logger,
+		logger: &logger,
 	})
 }
 

@@ -13,8 +13,11 @@ import (
 
 	"github.com/jetkvm/kvm/internal/confparser"
 	"github.com/jetkvm/kvm/internal/network/types"
+
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
+
 	"github.com/mdlayher/ndp"
+	"github.com/rs/zerolog"
 	"github.com/vishvananda/netlink"
 )
 
@@ -99,14 +102,17 @@ func NewInterfaceManager(ctx context.Context, ifaceName string, config *types.Ne
 	return im, nil
 }
 
-func (im *InterfaceManager) getLogger() *logging.Context {
-	logger := logging.GetSubsystemLogger("interface").Str("interface", im.ifaceName)
+func (im *InterfaceManager) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("nmlite").With().Str("interface", im.ifaceName).Logger()
 
-	if logger.IsTraceLevel() {
-		logger = logger.Interface("state", im.state)
+	if logging.IsTraceLevel(&logger) {
+		logger = logger.
+			With().
+			Object("state", im.state).
+			Logger()
 	}
 
-	return logger
+	return &logger
 }
 
 // Start starts managing the interface
@@ -414,8 +420,6 @@ func (im *InterfaceManager) SetOnResolvConfChange(callback ResolvConfChangeCallb
 
 // applyConfiguration applies the current configuration to the interface
 func (im *InterfaceManager) applyConfiguration() error {
-	im.getLogger().Info().Msg("applying configuration")
-
 	// Apply IPv4 configuration
 	if err := im.applyIPv4Config(); err != nil {
 		return fmt.Errorf("failed to apply IPv4 config: %w", err)
@@ -796,6 +800,7 @@ func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
 		NameServers: lease.DNS,
 		SearchList:  lease.SearchList,
 		Source:      "dhcp",
+		Domain:      lease.Domain,
 	}); err != nil {
 		logger.Warn().Err(err).Msg("failed to update resolv.conf")
 	}

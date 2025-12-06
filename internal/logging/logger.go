@@ -94,7 +94,7 @@ func NewLogger(zerologLogger zerolog.Logger) *Logger {
 }
 
 func (l *Logger) updateLogLevels(newConfigLevel zerolog.Level) {
-	logger := l.baseLogger.Level(zerolog.InfoLevel).With().Logger()
+	logger := l.baseLogger.Level(zerolog.InfoLevel)
 	logger.Info().Msgf("updating log levels with new config level: %v", newConfigLevel)
 
 	l.defaultLogLevelFromConfig = newConfigLevel
@@ -216,7 +216,7 @@ func (l *Logger) UpdateConfigLogLevel(configDefaultLogLevel string) {
 
 			// update the chosen level by replacing the logger
 			// with a new one at the target level
-			newLogger := logger.Level(targetLevel).With().Logger()
+			newLogger := logger.Level(targetLevel)
 			l.scopeLoggers[scope] = &newLogger
 		}
 	}

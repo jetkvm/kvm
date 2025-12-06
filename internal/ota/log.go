@@ -2,8 +2,9 @@ package ota
 
 import (
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 )
 
-func GetOtaLoggingContext() *logging.Context {
+func GetOtaLogger() *zerolog.Logger {
 	return logging.GetSubsystemLogger("ota")
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/pkg/nmlite/jetdhcpc"
 	"github.com/jetkvm/kvm/pkg/nmlite/udhcpc"
+	"github.com/rs/zerolog"
 )
 
 // DHCPClient wraps the dhclient package for use in the network manager
@@ -71,12 +72,15 @@ func (dc *DHCPClient) initClient() (types.DHCPClient, error) {
 	}
 }
 
-func (dc *DHCPClient) getLogger() *logging.Context {
-	return logging.GetSubsystemLogger("dhcp").
+func (dc *DHCPClient) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("dhcp").
+		With().
 		Str("interface", dc.ifaceName).
 		Str("clientType", dc.clientType).
 		Bool("ipv4Enabled", dc.ipv4Enabled).
-		Bool("ipv6Enabled", dc.ipv6Enabled)
+		Bool("ipv6Enabled", dc.ipv6Enabled).
+		Logger()
+	return &logger
 }
 
 func (dc *DHCPClient) initJetDHCPC() (types.DHCPClient, error) {

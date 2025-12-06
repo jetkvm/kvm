@@ -80,7 +80,7 @@ func (enabledDevices *Devices) isGadgetConfigItemEnabled(itemKey string) bool {
 
 func (u *UsbGadget) loadGadgetConfig() {
 	if u.customConfig.isEmpty {
-		u.getUsbGadgetLoggingContext().Trace().Msg("using default gadget config")
+		u.getUsbGadgetLogger().Trace().Msg("using default gadget config")
 		return
 	}
 
@@ -131,23 +131,28 @@ func (u *UsbGadget) OverrideGadgetConfig(itemKey string, itemAttr string, value 
 	u.configLock.Lock()
 	defer u.configLock.Unlock()
 
-	context := u.getUsbGadgetLoggingContext().Str("itemKey", itemKey).Str("itemAttr", itemAttr).Str("value", value)
+	logger := u.getUsbGadgetLogger().
+		With().
+		Str("itemKey", itemKey).
+		Str("itemAttr", itemAttr).
+		Str("value", value).
+		Logger()
 
 	// get it as a pointer
 	_, ok := u.configMap[itemKey]
 	if !ok {
-		err := fmt.Errorf("not found %s", itemKey)
-		context.Err(err).Error().Msg("overriding gadget config")
+		err := fmt.Errorf("config not found %s", itemKey)
+		logger.Error().Err(err).Msg("overriding gadget config")
 		return false, err
 	}
 
 	if u.configMap[itemKey].attrs[itemAttr] == value {
-		context.Trace().Msg("unchanged gadget config")
+		logger.Trace().Msg("unchanged gadget config")
 		return false, nil
 	}
 
 	u.configMap[itemKey].attrs[itemAttr] = value
-	context.Info().Msg("overriding gadget config")
+	logger.Info().Msg("overriding gadget config")
 
 	return true, nil
 }
@@ -168,18 +173,14 @@ func (u *UsbGadget) Init() error {
 
 	udcs := getUdcs()
 	if len(udcs) < 1 {
-		u.getUsbGadgetLoggingContext().Warn().Msg("no udc found, skipping USB stack init")
-		return nil
+		return u.logWarn("no udc found, skipping USB stack init", nil)
 	}
 
 	u.udc = udcs[0]
 
 	err := u.configureUsbGadget(false)
 	if err != nil {
-		u.getUsbGadgetLoggingContext().Err(err).Error().Msg("unable to initialize USB stack")
-		if u.strictMode {
-			return err
-		}
+		return u.logError("no udc found, skipping USB stack init", err)
 	}
 
 	return nil
@@ -193,10 +194,7 @@ func (u *UsbGadget) UpdateGadgetConfig() error {
 
 	err := u.configureUsbGadget(true)
 	if err != nil {
-		u.getUsbGadgetLoggingContext().Err(err).Error().Msg("unable to update gadget config")
-		if u.strictMode {
-			return err
-		}
+		return u.logError("unable to update gadget config", err)
 	}
 
 	return nil

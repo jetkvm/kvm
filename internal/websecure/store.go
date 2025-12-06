@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 )
 
 type CertStore struct {
@@ -25,7 +25,7 @@ func NewCertStore(storePath string) *CertStore {
 	}
 }
 
-func (s *CertStore) ensureStorePath(logger *logging.Context) error {
+func (s *CertStore) ensureStorePath(logger *zerolog.Logger) error {
 	// check if directory exists
 	stat, err := os.Stat(s.storePath)
 	if err == nil {
@@ -48,10 +48,10 @@ func (s *CertStore) ensureStorePath(logger *logging.Context) error {
 	return fmt.Errorf("failed to check TLS store path: %w", err)
 }
 
-func (s *CertStore) LoadCertificates(logger *logging.Context) {
-	logger = logger.Str("storePath", s.storePath)
+func (s *CertStore) LoadCertificates(l *zerolog.Logger) {
+	logger := l.With().Str("storePath", s.storePath).Logger()
 
-	err := s.ensureStorePath(logger)
+	err := s.ensureStorePath(&logger)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to ensure store path")
 		return
@@ -70,16 +70,16 @@ func (s *CertStore) LoadCertificates(logger *logging.Context) {
 
 		if strings.HasSuffix(file.Name(), ".crt") {
 			hostname := strings.TrimSuffix(file.Name(), ".crt")
-			s.loadCertificate(hostname, logger)
+			s.loadCertificate(hostname, &logger)
 		}
 	}
 }
 
-func (s *CertStore) loadCertificate(hostname string, logger *logging.Context) {
+func (s *CertStore) loadCertificate(hostname string, l *zerolog.Logger) {
 	s.certLock.Lock()
 	defer s.certLock.Unlock()
 
-	logger = logger.With().Str("hostname", hostname)
+	logger := l.With().Str("hostname", hostname).Logger()
 
 	keyFile := path.Join(s.storePath, hostname+".key")
 	crtFile := path.Join(s.storePath, hostname+".crt")
@@ -112,8 +112,8 @@ func (s *CertStore) GetCertificate(hostname string) *tls.Certificate {
 // returns are:
 // - error: if the certificate is invalid or if there's any error during saving the certificate
 // - error: if there's any warning or error during saving the certificate
-func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key string, ignoreWarning bool, logger *logging.Context) (error, error) {
-	logger = logger.With().Str("hostname", hostname).Str("cert", cert) // don't log the key for security reasons
+func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key string, ignoreWarning bool, l *zerolog.Logger) (error, error) {
+	logger := l.With().Str("hostname", hostname).Str("cert", cert).Logger() // don't log the key for security reasons
 
 	tlsCert, err := tls.X509KeyPair([]byte(cert), []byte(key))
 	if err != nil {
@@ -141,12 +141,12 @@ func (s *CertStore) ValidateAndSaveCertificate(hostname string, cert string, key
 	s.certificates[hostname] = &tlsCert
 	s.certLock.Unlock()
 
-	s.saveCertificate(hostname, logger)
+	s.saveCertificate(hostname, &logger)
 
 	return nil, nil
 }
 
-func (s *CertStore) saveCertificate(hostname string, logger *logging.Context) {
+func (s *CertStore) saveCertificate(hostname string, logger *zerolog.Logger) {
 	// check if certificate already exists
 	tlsCert := s.certificates[hostname]
 	if tlsCert == nil {

@@ -171,8 +171,12 @@ func (ps *PublicIPState) ForceUpdate() error {
 	return ps.checkIPs(context.Background())
 }
 
-func (ps *PublicIPState) getLogger() *logging.Context {
-	return logging.GetSubsystemLogger("publicip").Object("ps", ps)
+func (ps *PublicIPState) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("myip").
+		With().
+		Object("ps", ps).
+		Logger()
+	return &logger
 }
 
 // timerLoop runs the periodic IP check loop

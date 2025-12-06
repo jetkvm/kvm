@@ -28,7 +28,6 @@ func (n *Native) handleVideoFrameChan() {
 func (n *Native) handleVideoStateChan() {
 	for {
 		state := <-videoStateChan
-
 		n.onVideoStateChange(state)
 	}
 }
@@ -40,7 +39,8 @@ func (n *Native) handleLogChan() {
 			With().
 			Str("file", entry.File).
 			Str("func", entry.FuncName).
-			Int("line", entry.Line)
+			Int("line", entry.Line).
+			Logger()
 
 		switch entry.Level {
 		case zerolog.DebugLevel:

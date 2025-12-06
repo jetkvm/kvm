@@ -143,7 +143,7 @@ func newUsbGadget(name string, configMap map[string]gadgetConfigItem, enabledDev
 	}
 
 	if err := g.Init(); err != nil {
-		g.getUsbGadgetLoggingContext().Err(err).Error().Msg("failed to init USB gadget")
+		g.getUsbGadgetLogger().Error().Err(err).Msg("failed to init USB gadget")
 	}
 
 	return g

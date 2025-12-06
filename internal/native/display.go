@@ -102,7 +102,8 @@ func (n *Native) UpdateLabelIfChanged(objName string, newText string) {
 	logger := GetDisplayLogger().
 		With().
 		Str("obj", objName).
-		Str("text", newText)
+		Str("text", newText).
+		Logger()
 
 	changed, err := n.UIObjSetLabelText(objName, newText)
 	if err != nil {
@@ -142,7 +143,8 @@ func (n *Native) SwitchToScreenIf(screenName string, shouldSwitch []string) {
 		With().
 		Str("from", currentScreen).
 		Str("to", screenName).
-		Strs("from_screens", shouldSwitch)
+		Strs("from_screens", shouldSwitch).
+		Logger()
 
 	if len(shouldSwitch) > 0 && !slices.Contains(shouldSwitch, currentScreen) {
 		logger.Trace().Msg("skipping screen switch")

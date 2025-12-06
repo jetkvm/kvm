@@ -14,14 +14,17 @@ const (
 // DO NOT call it directly, it's not thread safe
 // Mutex is currently held by the caller, e.g. doUpdate
 func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateStatus) error {
-	logger := GetOtaLoggingContext().Str("component", "system").Str("path", systemUpdatePath)
+	logger := GetOtaLogger().
+		With().
+		Str("subcomponent", "system").Str("path", systemUpdatePath).
+		Logger()
 
 	downloadStarted := time.Now()
-	if err := s.downloadFile(ctx, systemUpdatePath, systemUpdate.url, "system", logger); err != nil {
-		return s.componentUpdateError("Error downloading system update", err, logger)
+	if err := s.downloadFile(ctx, systemUpdatePath, systemUpdate.url, "system", &logger); err != nil {
+		return s.componentUpdateError("Error downloading system update", err, &logger)
 	}
 	downloadFinished := time.Now()
-	logger.Dur("download_time", downloadFinished.Sub(downloadStarted)).Info().Msg("update downloaded")
+	logger.Info().Dur("download_time", downloadFinished.Sub(downloadStarted)).Msg("update downloaded")
 
 	systemUpdate.downloadFinishedAt = downloadFinished
 	systemUpdate.downloadProgress = 1
@@ -33,12 +36,12 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 		systemUpdatePath,
 		systemUpdate.hash,
 		&systemUpdate.verificationProgress,
-		logger,
+		&logger,
 	); err != nil {
-		return s.componentUpdateError("Error verifying system update hash", err, logger)
+		return s.componentUpdateError("Error verifying system update hash", err, &logger)
 	}
 	verifyFinished := time.Now()
-	logger.Dur("verification_time", verifyFinished.Sub(verifyStarted)).Info().Msg("update verified")
+	logger.Info().Dur("verification_time", verifyFinished.Sub(verifyStarted)).Msg("update verified")
 
 	systemUpdate.verifiedAt = verifyFinished
 	systemUpdate.verificationProgress = 1
@@ -54,7 +57,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	cmd.Stdout = &b
 	cmd.Stderr = &b
 	if err := cmd.Start(); err != nil {
-		return s.componentUpdateError("Error starting rk_ota command", err, logger)
+		return s.componentUpdateError("Error starting rk_ota command", err, &logger)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -85,11 +88,15 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 	cancel()
 
 	upgradeFinished := time.Now()
-	logger.Dur("upgrade_time", upgradeFinished.Sub(upgradeStarted)).Info().Msg("upgrade completed")
+	logger.Info().Dur("upgrade_time", upgradeFinished.Sub(upgradeStarted)).Msg("upgrade completed")
 
-	logger = logger.Str("output", b.String()).Int("exitCode", cmd.ProcessState.ExitCode())
+	logger = logger.
+		With().
+		Str("output", b.String()).
+		Int("exitCode", cmd.ProcessState.ExitCode()).
+		Logger()
 	if err != nil {
-		return s.componentUpdateError("Error executing rk_ota command", err, logger)
+		return s.componentUpdateError("Error executing rk_ota command", err, &logger)
 	}
 	logger.Info().Msg("rk_ota success")
 
@@ -102,7 +109,7 @@ func (s *State) updateSystem(ctx context.Context, systemUpdate *componentUpdateS
 }
 
 func (s *State) confirmCurrentSystem() {
-	logger := GetOtaLoggingContext().Str("action", "confirmCurrentSystem")
+	logger := GetOtaLogger().With().Str("action", "confirmCurrentSystem").Logger()
 	output, err := exec.Command("rk_ota", "--misc=now").CombinedOutput()
 	if err != nil {
 		logger.Warn().Str("output", string(output)).Err(err).Msg("failed to set current partition in A/B setup")

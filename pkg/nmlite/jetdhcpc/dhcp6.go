@@ -4,10 +4,11 @@ import (
 	"net"
 	"time"
 
-	"github.com/insomniacslk/dhcp/dhcpv6"
-	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
+
+	"github.com/insomniacslk/dhcp/dhcpv6"
+	"github.com/insomniacslk/dhcp/dhcpv6/nclient6"
 	"github.com/vishvananda/netlink"
 )
 
@@ -57,7 +58,7 @@ func isIPv6RouteReady(serverAddr net.IP) waitForCondition {
 }
 
 func (c *Client) requestLease6(ifname string) (*Lease, error) {
-	logger := c.getLogger().Str("interface", ifname).Int("family", link.AfInet6)
+	logger := c.getLogger().With().Str("interface", ifname).Int("family", link.AfInet6).Logger()
 
 	iface, err := netlink.LinkByName(ifname)
 	if err != nil {

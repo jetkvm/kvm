@@ -28,13 +28,13 @@ func setProcTitle(status string) {
 
 func Main() {
 	setProcTitle("starting")
-	mainLogger := logging.GetSubsystemLogger("jetkvm-main")
-	mainLogger.Log().Msg("JetKVM Starting Up")
+	logger := logging.GetSubsystemLogger("jetkvm-main")
+	logger.Log().Msg("JetKVM Starting Up")
 
 	checkFailsafeReason()
 	if failsafeModeActive {
 		procPrefix = "jetkvm: [app+failsafe]"
-		logging.GetSubsystemLogger("failsafe").Warn().Str("reason", failsafeModeReason).Msg("failsafe mode activated")
+		logger.Warn().Str("subcomponent", "failsafe").Str("reason", failsafeModeReason).Msg("failsafe mode activated")
 	}
 
 	LoadConfig()
@@ -45,10 +45,10 @@ func Main() {
 
 	systemVersionLocal, appVersionLocal, err := GetLocalVersion()
 	if err != nil {
-		mainLogger.Warn().Err(err).Msg("failed to get local version")
+		logger.Warn().Err(err).Msg("failed to get local version")
 	}
 
-	mainLogger.Info().
+	logger.Info().
 		Interface("system_version", systemVersionLocal).
 		Interface("app_version", appVersionLocal).
 		Msg("starting JetKVM")
@@ -67,9 +67,9 @@ func Main() {
 
 	err = rootcerts.UpdateDefaultTransport()
 	if err != nil {
-		mainLogger.Warn().Err(err).Msg("failed to load Root CA certificates")
+		logger.Warn().Err(err).Msg("failed to load Root CA certificates")
 	}
-	mainLogger.Info().
+	logger.Info().
 		Int("ca_certs_loaded", len(rootcerts.Certs())).
 		Msg("loaded Root CA certificates")
 
@@ -80,7 +80,7 @@ func Main() {
 	// Initialize network
 	setProcTitle("initNetwork")
 	if err := initNetwork(); err != nil {
-		mainLogger.Error().Err(err).Msg("failed to initialize network")
+		logger.Error().Err(err).Msg("failed to initialize network")
 		// TODO: reset config to default
 		os.Exit(1)
 	}
@@ -93,17 +93,17 @@ func Main() {
 	// Initialize mDNS
 	setProcTitle("initMdns")
 	if err := initMdns(); err != nil {
-		mainLogger.Error().Err(err).Msg("failed to initialize mDNS")
+		logger.Error().Err(err).Msg("failed to initialize mDNS")
 	}
 
 	setProcTitle("initPrometheus")
 	initPrometheus()
 	if err := setInitialVirtualMediaState(); err != nil {
-		mainLogger.Warn().Err(err).Msg("failed to set initial virtual media state")
+		logger.Warn().Err(err).Msg("failed to set initial virtual media state")
 	}
 
 	if err := initImagesFolder(); err != nil {
-		mainLogger.Warn().Err(err).Msg("failed to init images folder")
+		logger.Warn().Err(err).Msg("failed to init images folder")
 	}
 
 	initJiggler()
@@ -127,7 +127,7 @@ func Main() {
 	initSerialPort()
 
 	setProcTitle("ready")
-	mainLogger.Log().Msg("JetKVM ready")
+	logger.Log().Msg("JetKVM ready")
 
 	go RunAutoUpdateCheck()
 
@@ -136,11 +136,11 @@ func Main() {
 	<-sigs
 
 	if err := rpcUnmountImage(); err != nil {
-		mainLogger.Warn().Err(err).Msg("failed to eject virtual media on shutdown")
+		logger.Warn().Err(err).Msg("failed to eject virtual media on shutdown")
 	}
 
 	gadget.Close()
 
-	mainLogger.Log().Msg("JetKVM Shutting Down")
+	logger.Log().Msg("JetKVM Shutting Down")
 	// os.Exit(0)
 }

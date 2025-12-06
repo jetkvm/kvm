@@ -11,6 +11,7 @@ import (
 	"github.com/jetkvm/kvm/internal/network/types"
 	"github.com/jetkvm/kvm/internal/sync"
 	"github.com/jetkvm/kvm/pkg/nmlite/link"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -100,8 +101,12 @@ func (rcm *ResolvConfManager) Reconcile() error {
 	return rcm.update()
 }
 
-func (rcm *ResolvConfManager) getLogger() *logging.Context {
-	return logging.GetSubsystemLogger("nmlite").Str("component", "resolvconf")
+func (rcm *ResolvConfManager) getLogger() *zerolog.Logger {
+	logging := logging.GetSubsystemLogger("nmlite").
+		With().
+		Str("subcomponent", "resolvconf").
+		Logger()
+	return &logging
 }
 
 // Update updates the resolv.conf file
@@ -194,6 +199,7 @@ func (rcm *ResolvConfManager) generateResolvConf(conf *types.ResolvConf) ([]byte
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, map[string]any{
+		"domain":      rcm.getDomain(),
 		"nameservers": nameservers,
 		"searchList":  flattenedSearchList,
 	}); err != nil {

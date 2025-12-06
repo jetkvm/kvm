@@ -11,7 +11,6 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/google/uuid"
 
-	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/jetkvm/kvm/internal/ota"
 )
 
@@ -54,7 +53,7 @@ func triggerOTAStateUpdate(state *ota.RPCState) {
 		if state == nil {
 			state = otaState.ToRPCState()
 		}
-		ota.GetOtaLoggingContext().Interface("state", state).Trace().Msg("Reporting OTA state")
+		ota.GetOtaLogger().Trace().Interface("state", state).Msg("Reporting OTA state")
 
 		writeJSONRPCEvent("otaState", state, currentSession)
 	}()
@@ -86,15 +85,13 @@ func GetLocalVersion() (systemVersion *semver.Version, appVersion *semver.Versio
 }
 
 func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
-	loggingContext := ota.GetOtaLoggingContext()
 	updateStatus, err := otaState.GetUpdateStatus(
 		context.Background(),
 		ota.UpdateParams{
 			DeviceID:          GetDeviceID(),
 			IncludePreRelease: includePreRelease,
 			RequestID:         uuid.New().String(),
-		},
-		loggingContext)
+		})
 
 	// to ensure backwards compatibility,
 	// if there's an error, we won't return an error, but we will set the error field
@@ -110,7 +107,7 @@ func getUpdateStatus(includePreRelease bool) (*ota.UpdateStatus, error) {
 		updateStatus.WillDisableAutoUpdate = config.AutoUpdateEnabled
 	}
 
-	loggingContext.Interface("updateStatus", updateStatus).Info().Msg("Update status")
+	ota.GetOtaLogger().Info().Interface("updateStatus", updateStatus).Msg("Update status")
 
 	return updateStatus, nil
 }
@@ -170,8 +167,8 @@ func rpcCheckUpdateComponents(params updateParams, includePreRelease bool) (*ota
 		IncludePreRelease: includePreRelease,
 		Components:        params.Components,
 	}
-	loggingContext := ota.GetOtaLoggingContext()
-	info, err := otaState.GetUpdateStatus(context.Background(), updateParams, loggingContext)
+
+	info, err := otaState.GetUpdateStatus(context.Background(), updateParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check update: %w", err)
 	}
@@ -189,7 +186,7 @@ func rpcTryUpdateComponents(params updateParams, includePreRelease bool, resetCo
 	go func() {
 		err := otaState.TryUpdate(context.Background(), updateParams)
 		if err != nil {
-			logging.GetSubsystemLogger("ota").Warn().Err(err).Msg("failed to try update")
+			ota.GetOtaLogger().Warn().Err(err).Msg("failed to try update")
 		}
 	}()
 	return nil
@@ -207,23 +204,23 @@ func RunAutoUpdateCheck() {
 		case <-appCtx.Done():
 			return
 		case <-ticker.C:
-			autoUpdateLogger := logging.GetSubsystemLogger("ota")
-			autoUpdateLogger.Info().Bool("auto_update_enabled", config.AutoUpdateEnabled).Msg("auto-update check")
+			logger := ota.GetOtaLogger()
+			logger.Info().Bool("auto_update_enabled", config.AutoUpdateEnabled).Msg("auto-update check")
 
 			if !config.AutoUpdateEnabled {
-				autoUpdateLogger.Debug().Msg("auto-update disabled")
+				logger.Info().Msg("auto-update disabled, waiting 5 minutes")
 				ticker.Reset(5 * time.Minute) // we'll check if auto-updates are enabled in five minutes
 				continue
 			}
 
 			if currentSession != nil {
-				autoUpdateLogger.Debug().Msg("skipping update since a session is active")
+				logger.Info().Msg("skipping update since a session is active for one minute")
 				ticker.Reset(1 * time.Minute)
 				continue
 			}
 
 			if isTimeSyncNeeded() || !timeSync.IsSyncSuccess() {
-				autoUpdateLogger.Debug().Msg("system time is not synced, will retry in 30 seconds")
+				logger.Info().Msg("system time is not synced, will retry in 30 seconds")
 				ticker.Reset(30 * time.Second)
 				continue
 			}
@@ -232,7 +229,7 @@ func RunAutoUpdateCheck() {
 				DeviceID:          GetDeviceID(),
 				IncludePreRelease: config.IncludePreRelease,
 			}); err != nil {
-				autoUpdateLogger.Warn().Err(err).Msg("failed to auto update")
+				logger.Warn().Err(err).Msg("failed to auto update")
 			}
 
 			ticker.Reset(1 * time.Hour)

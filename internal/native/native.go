@@ -90,7 +90,7 @@ func NewNative(opts NativeOptions) *Native {
 
 	if n.onRpcEvent == nil {
 		n.onRpcEvent = func(event string) {
-			GetDisplayLogger().Info().Str("event", event).Msg("rpc event")
+			GetNativeLogger().Info().Str("event", event).Msg("rpc event")
 		}
 	}
 

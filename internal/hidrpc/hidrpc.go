@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	Version byte = 0x01 // Version of the HID RPC protocol
+	Version       byte = 0x01 // Version of the HID RPC protocol
+	MaximumQueues int  = 4    // Maximum number of HID RPC queues
 )
 
 // GetQueueIndex returns the index of the queue to which the message should be enqueued.

@@ -185,7 +185,6 @@ var virtualMediaStateMutex sync.RWMutex
 func rpcGetVirtualMediaState() (*VirtualMediaState, error) {
 	virtualMediaStateMutex.RLock()
 	defer virtualMediaStateMutex.RUnlock()
-
 	return currentVirtualMediaState, nil
 }
 
@@ -317,6 +316,7 @@ func initializeNBDDevice() error {
 	}
 
 	logger.Debug().Msg("nbd device started")
+
 	//TODO: replace by polling on block device having right size
 	time.Sleep(1 * time.Second)
 

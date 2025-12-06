@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
+
 	"golang.org/x/net/idna"
 )
 
@@ -54,7 +55,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 		return tlsCert
 	}
 
-	logger := logging.GetSubsystemLogger("web-selfsign").With().Str("hostname", hostname)
+	logger := logging.GetSubsystemLogger("web-selfsign").With().Str("hostname", hostname).Logger()
 
 	// check if hostname is the CA magic name
 	var ca *tls.Certificate
@@ -157,7 +158,7 @@ func (s *SelfSigner) createSelfSignedCert(hostname string) *tls.Certificate {
 	}
 
 	s.store.certificates[hostname] = tlsCert
-	s.store.saveCertificate(hostname, logger)
+	s.store.saveCertificate(hostname, &logger)
 
 	return tlsCert
 }
@@ -178,7 +179,7 @@ func (s *SelfSigner) GetCertificate(info *tls.ClientHelloInfo) (*tls.Certificate
 	// convert hostname to punycode
 	h, err := idna.Lookup.ToASCII(hostname)
 	if err != nil {
-		logger.Warn().Str("hostname", hostname).Err(err).Stringer("remote_addr", info.Conn.RemoteAddr()).Msg("Hostname is not valid")
+		logger.Warn().Err(err).Stringer("remote_addr", info.Conn.RemoteAddr()).Msg("Hostname is not valid")
 		hostname = s.DefaultDomain
 	} else {
 		hostname = h

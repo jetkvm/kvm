@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jetkvm/kvm/internal/logging"
+	"github.com/rs/zerolog"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -47,8 +48,13 @@ type grpcClientOptions struct {
 	OnRpcEvent         func(event string)
 }
 
-func (client *GRPCClient) getLogger() *logging.Context {
-	return getClientLogger().With().Str("target", client.conn.Target()).Bool("closed", client.closed)
+func (client *GRPCClient) getLogger() *zerolog.Logger {
+	logger := getClientLogger().
+		With().
+		Str("target", client.conn.Target()).
+		Bool("closed", client.closed).
+		Logger()
+	return &logger
 }
 
 // NewGRPCClient creates a new gRPC client connected to the native service
@@ -105,7 +111,7 @@ func (c *GRPCClient) handleEventStream(stream pb.NativeService_StreamEventsClien
 	}()
 
 	for {
-		logger := c.getLogger().With().Interface("stream", stream)
+		logger := c.getLogger().With().Interface("stream", stream).Logger()
 		if stream == nil {
 			logger.Error().Msg("event stream is nil")
 			break
@@ -123,11 +129,11 @@ func (c *GRPCClient) handleEventStream(stream pb.NativeService_StreamEventsClien
 		}
 
 		// enrich the logger with the event type and data, if debug mode is enabled
-		if logger.IsDebugLevel() {
-			logger = logger.
-				With().
+		if logging.IsDebugLevel(&logger) {
+			logger = logger.With().
 				Str("type", event.Type).
-				Interface("data", event.Data)
+				Interface("data", event.Data).
+				Logger()
 		}
 		logger.Trace().Msg("received event")
 
@@ -195,7 +201,11 @@ func (c *GRPCClient) WaitReady() error {
 	prevState := connectivity.Idle
 	for {
 		state := c.conn.GetState()
-		logger := c.getLogger().With().Str("state", state.String()).Int("prev_state", int(prevState))
+		logger := c.getLogger().
+			With().
+			Str("state", state.String()).
+			Int("prev_state", int(prevState)).
+			Logger()
 
 		prevState = state
 		if state == connectivity.Idle || state == connectivity.Ready {
@@ -221,7 +231,7 @@ func (c *GRPCClient) WaitReady() error {
 }
 
 func (c *GRPCClient) handleEvent(event *pb.Event) {
-	logger := c.getLogger().With().Str("event_type", event.Type)
+	logger := c.getLogger().With().Str("event_type", event.Type).Logger()
 
 	switch event.Type {
 	case "video_state_change":

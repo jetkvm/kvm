@@ -28,13 +28,13 @@ var (
 
 // SendWOLMagicPacket sends a Wake-on-LAN magic packet to the specified MAC address
 func rpcSendWOLMagicPacket(macAddress string) error {
-	logger := logging.GetSubsystemLogger("wol").Str("mac", macAddress)
+	logger := logging.GetSubsystemLogger("wol").With().Str("mac", macAddress).Logger()
 
 	// Parse the MAC address
 	mac, err := net.ParseMAC(macAddress)
 	if err != nil {
 		wolErrors.Inc()
-		return logger.ErrorfL("invalid MAC address", err)
+		return logging.ErrorfL(&logger, "invalid MAC address", err)
 	}
 
 	// Create the magic packet
@@ -44,7 +44,7 @@ func rpcSendWOLMagicPacket(macAddress string) error {
 	conn, err := net.Dial("udp", "255.255.255.255:9")
 	if err != nil {
 		wolErrors.Inc()
-		return logger.ErrorfL("failed to establish UDP connection", err)
+		return logging.ErrorfL(&logger, "failed to establish UDP connection", err)
 	}
 	defer conn.Close()
 
@@ -52,10 +52,10 @@ func rpcSendWOLMagicPacket(macAddress string) error {
 	_, err = conn.Write(packet)
 	if err != nil {
 		wolErrors.Inc()
-		return logger.ErrorfL("failed to send WOL packet", err)
+		return logging.ErrorfL(&logger, "failed to send WOL packet", err)
 	}
 
-	logger.Info().Str("mac", macAddress).Msg("WOL packet sent")
+	logger.Info().MACAddr("mac", mac).Msg("WOL packet sent")
 	wolPackets.Inc()
 
 	return nil

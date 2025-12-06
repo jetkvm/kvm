@@ -47,11 +47,20 @@ type nativeProxyOptions struct {
 	OnNativeRestart      func()
 }
 
+func getClientLogger() *zerolog.Logger {
+	logger := GetNativeLogger().
+		With().
+		Str("subcomponent", "grpc-client").
+		Int("pid", pid).
+		Logger()
+	return &logger
+}
+
 func randomId(binaryLength int) string {
 	s := make([]byte, binaryLength)
 	_, err := rand.Read(s)
 	if err != nil {
-		GetNativeLogger().Error().Err(err).Msg("failed to generate random ID")
+		getClientLogger().Error().Err(err).Msg("failed to generate random ID")
 		return strings.Repeat("0", binaryLength*2) // return all zeros if error
 	}
 	return hex.EncodeToString(s)
@@ -165,7 +174,7 @@ func (p *NativeProxy) startVideoStreamListener() error {
 		return nil
 	}
 
-	logger := GetDisplayLogger().With().Str("socketPath", p.videoStreamUnixSocket)
+	logger := GetDisplayLogger().With().Str("socketPath", p.videoStreamUnixSocket).Logger()
 	listener, err := net.Listen("unix", p.videoStreamUnixSocket)
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to start video stream listener")
@@ -293,7 +302,7 @@ func (p *NativeProxy) setUpGRPCClient() error {
 	// wait until handshake completed
 	select {
 	case <-p.cmd.stdoutHandler.handshakeCh:
-		GetNativeLogger().Info().Msg("handshake completed")
+		getClientLogger().Info().Msg("grpc handshake completed")
 	case <-time.After(10 * time.Second):
 		return fmt.Errorf("handshake not completed within 10 seconds")
 	}
@@ -308,7 +317,7 @@ func (p *NativeProxy) setUpGRPCClient() error {
 	if err != nil {
 		return fmt.Errorf("failed to create gRPC client: %w", err)
 	}
-	GetNativeLogger().With().Str("socketPath", "@"+p.nativeUnixSocket).Info().Msg("created gRPC client")
+	getClientLogger().Info().Str("socketPath", "@"+p.nativeUnixSocket).Msg("created gRPC client")
 	p.client = client
 
 	// Wait for ready signal from the native process
@@ -349,7 +358,7 @@ func (p *NativeProxy) doStart() error {
 		return fmt.Errorf("failed to start native process: %w", err)
 	}
 
-	GetNativeLogger().With().Int("pid", p.cmd.Process.Pid).Info().Msg("native process started")
+	getClientLogger().Info().Int("pid", p.cmd.Process.Pid).Msg("native process started")
 
 	if err := p.setUpGRPCClient(); err != nil {
 		return fmt.Errorf("failed to set up gRPC client: %w", err)
@@ -391,7 +400,7 @@ func (p *NativeProxy) monitorProcess() {
 
 		select {
 		case <-p.ctx.Done():
-			GetNativeLogger().Trace().Msg("context done, stopping monitor process [before wait]")
+			getClientLogger().Trace().Msg("context done, stopping monitor process [before wait]")
 			return
 		default:
 		}
@@ -409,12 +418,12 @@ func (p *NativeProxy) monitorProcess() {
 
 		select {
 		case <-p.ctx.Done():
-			GetNativeLogger().Trace().Msg("context done, stopping monitor process [after wait]")
+			getClientLogger().Trace().Msg("context done, stopping monitor process [after wait]")
 			return
 		default:
 		}
 
-		logger := GetNativeLogger()
+		logger := getClientLogger()
 		logger.Warn().Err(err).Msg("native process exited, restarting ...")
 
 		// Wait a bit before restarting
@@ -433,7 +442,7 @@ func (p *NativeProxy) monitorProcess() {
 // restartProcess restarts the native process
 func (p *NativeProxy) restartProcess() error {
 	p.restarts++
-	logger := GetNativeLogger().With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts)
+	logger := getClientLogger().With().Uint("attempt", p.restarts).Uint("maxAttempts", p.options.MaxRestartAttempts).Logger()
 
 	if p.restarts >= p.options.MaxRestartAttempts {
 		logger.Fatal().Msgf("max restart attempts reached, exiting: %s", supervisor.FailsafeReasonVideoMaxRestartAttemptsReached)

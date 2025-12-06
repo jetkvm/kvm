@@ -10,6 +10,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pion/webrtc/v4"
+	"github.com/rs/zerolog"
 )
 
 type TerminalSize struct {
@@ -17,11 +18,12 @@ type TerminalSize struct {
 	Cols int `json:"cols"`
 }
 
-func handleTerminalChannel(d *webrtc.DataChannel) {
-	scopedLogger := logging.GetSubsystemLogger("terminal").
-		With().
-		Uint16("data_channel_id", *d.ID()).Logger()
+func getTerminalLogger(d *webrtc.DataChannel) *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("terminal").With().Uint16("data_channel_id", *d.ID()).Logger()
+	return &logger
+}
 
+func handleTerminalChannel(d *webrtc.DataChannel) {
 	var ptmx *os.File
 	var cmd *exec.Cmd
 	d.OnOpen(func() {
@@ -29,7 +31,7 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 		var err error
 		ptmx, err = pty.Start(cmd)
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Failed to start pty")
+			getTerminalLogger(d).Warn().Err(err).Msg("Failed to start pty")
 			d.Close()
 			return
 		}
@@ -40,13 +42,13 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 				n, err := ptmx.Read(buf)
 				if err != nil {
 					if err != io.EOF {
-						scopedLogger.Warn().Err(err).Msg("Failed to read from pty")
+						getTerminalLogger(d).Warn().Err(err).Msg("Failed to read from pty")
 					}
 					break
 				}
 				err = d.Send(buf[:n])
 				if err != nil {
-					scopedLogger.Warn().Err(err).Msg("Failed to send pty output")
+					getTerminalLogger(d).Warn().Err(err).Msg("Failed to send pty output")
 					break
 				}
 			}
@@ -69,16 +71,16 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 						Cols: uint16(size.Cols),
 					})
 					if err == nil {
-						scopedLogger.Info().Int("rows", size.Rows).Int("cols", size.Cols).Msg("Set terminal size")
+						getTerminalLogger(d).Info().Int("rows", size.Rows).Int("cols", size.Cols).Msg("Set terminal size")
 						return
 					}
 				}
-				scopedLogger.Warn().Err(err).Msg("Failed to parse terminal size")
+				getTerminalLogger(d).Warn().Err(err).Msg("Failed to parse terminal size")
 			}
 		}
 		_, err := ptmx.Write(msg.Data)
 		if err != nil {
-			scopedLogger.Warn().Err(err).Msg("Failed to write to pty")
+			getTerminalLogger(d).Warn().Err(err).Msg("Failed to write to pty")
 		}
 	})
 
@@ -89,10 +91,10 @@ func handleTerminalChannel(d *webrtc.DataChannel) {
 		if cmd != nil && cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
-		scopedLogger.Info().Msg("Terminal channel closed")
+		getTerminalLogger(d).Info().Msg("Terminal channel closed")
 	})
 
 	d.OnError(func(err error) {
-		scopedLogger.Warn().Err(err).Msg("Terminal channel error")
+		getTerminalLogger(d).Warn().Err(err).Msg("Terminal channel error")
 	})
 }

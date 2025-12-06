@@ -3,6 +3,8 @@ package types
 import (
 	"net"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 // DHCPClient is the interface for a DHCP client.
@@ -34,15 +36,15 @@ type DHCPLease struct {
 	BootPServerName   string        `env:"sname" json:"bootp_server_name,omitempty"`   // The bootp server name option
 	BootPFile         string        `env:"boot_file" json:"bootp_file,omitempty"`      // The bootp boot file option
 	Timezone          string        `env:"timezone" json:"timezone,omitempty"`         // Offset in seconds from UTC
-	Routers           []net.IP      `env:"router" json:"routers,omitempty"`            // A list of routers
-	DNS               []net.IP      `env:"dns" json:"dns_servers,omitempty"`           // A list of DNS servers
-	NTPServers        []net.IP      `env:"ntpsrv" json:"ntp_servers,omitempty"`        // A list of NTP servers
-	LPRServers        []net.IP      `env:"lprsvr" json:"lpr_servers,omitempty"`        // A list of LPR servers
-	TimeServers       []net.IP      `env:"timesvr" json:"_time_servers,omitempty"`     // A list of time servers (obsolete)
-	IEN116NameServers []net.IP      `env:"namesvr" json:"_name_servers,omitempty"`     // A list of IEN 116 name servers (obsolete)
-	LogServers        []net.IP      `env:"logsvr" json:"_log_servers,omitempty"`       // A list of MIT-LCS UDP log servers (obsolete)
-	CookieServers     []net.IP      `env:"cookiesvr" json:"_cookie_servers,omitempty"` // A list of RFC 865 cookie servers (obsolete)
-	WINSServers       []net.IP      `env:"wins" json:"_wins_servers,omitempty"`        // A list of WINS servers
+	Routers           IPs           `env:"router" json:"routers,omitempty"`            // A list of routers
+	DNS               IPs           `env:"dns" json:"dns_servers,omitempty"`           // A list of DNS servers
+	NTPServers        IPs           `env:"ntpsrv" json:"ntp_servers,omitempty"`        // A list of NTP servers
+	LPRServers        IPs           `env:"lprsvr" json:"lpr_servers,omitempty"`        // A list of LPR servers
+	TimeServers       IPs           `env:"timesvr" json:"_time_servers,omitempty"`     // A list of time servers (obsolete)
+	IEN116NameServers IPs           `env:"namesvr" json:"_name_servers,omitempty"`     // A list of IEN 116 name servers (obsolete)
+	LogServers        IPs           `env:"logsvr" json:"_log_servers,omitempty"`       // A list of MIT-LCS UDP log servers (obsolete)
+	CookieServers     IPs           `env:"cookiesvr" json:"_cookie_servers,omitempty"` // A list of RFC 865 cookie servers (obsolete)
+	WINSServers       IPs           `env:"wins" json:"_wins_servers,omitempty"`        // A list of WINS servers
 	SwapServer        net.IP        `env:"swapsvr" json:"_swap_server,omitempty"`      // The IP address of the client's swap server
 	BootSize          int           `env:"bootsize" json:"bootsize,omitempty"`         // The length in 512 octect blocks of the bootfile
 	RootPath          string        `env:"rootpath" json:"root_path,omitempty"`        // The path name of the client's root disk
@@ -62,6 +64,49 @@ type DHCPLease struct {
 	DHCPClient    string `json:"dhcp_client,omitempty"`    // The DHCP client that obtained the lease
 }
 
+func (d DHCPLease) MarshalZerologObject(e *zerolog.Event) {
+	e.IPAddr("ip_address", d.IPAddress)
+	e.IPAddr("Netmask", d.Netmask)
+	e.IPAddr("broadcast", d.Broadcast)
+	e.Int("ttl", d.TTL)
+	e.Int("mtu", d.MTU)
+	e.Str("hostname", d.HostName)
+	e.Str("domain", d.Domain)
+	e.Strs("search_list", d.SearchList)
+	e.IPAddr("bootp_next_server", d.BootPNextServer)
+	e.Str("bootp_server_name", d.BootPServerName)
+	e.Str("bootp_file", d.BootPFile)
+	e.Str("timezone", d.Timezone)
+	//TODO IPAddrs
+	e.Array("routers", d.Routers)
+	e.Array("dns_servers", d.DNS)
+	e.Array("ntp_servers", d.NTPServers)
+	e.Array("lpr_servers", d.LPRServers)
+	e.Array("time_servers", d.TimeServers)
+	e.Array("name_servers", d.IEN116NameServers)
+	e.Array("log_servers", d.LogServers)
+	e.Array("cookie_servers", d.CookieServers)
+	e.Array("wins_servers", d.WINSServers)
+	e.IPAddr("swap_servers", d.SwapServer)
+	e.Int("bootsize", d.BootSize)
+	e.Str("root_path", d.RootPath)
+	e.Dur("lease", d.LeaseTime)
+	e.Dur("renewal", d.RenewalTime)
+	e.Dur("rebinding", d.RebindingTime)
+	e.Str("dhcp_type", d.DHCPType)
+	e.Str("server_id", d.ServerID)
+	e.Str("reason", d.Message)
+	e.Str("tftp", d.TFTPServerName)
+	e.Str("bootfile", d.BootFileName)
+	e.Dur("uptime", d.Uptime)
+	e.Str("class_identifier", d.ClassIdentifier)
+	if d.LeaseExpiry != nil {
+		e.Time("lease_expiry", *d.LeaseExpiry)
+	}
+	e.Str("interface_name", d.InterfaceName)
+	e.Str("dhcp_client", d.DHCPClient)
+}
+
 // IsIPv6 returns true if the DHCP lease is for an IPv6 address
 func (d *DHCPLease) IsIPv6() bool {
 	return d.IPAddress.To4() == nil
@@ -69,9 +114,12 @@ func (d *DHCPLease) IsIPv6() bool {
 
 // IPMask returns the IP mask for the DHCP lease
 func (d *DHCPLease) IPMask() net.IPMask {
-	if d.IsIPv6() {
-		// TODO: not implemented
+	if d.Netmask == nil {
 		return nil
+	}
+
+	if d.IsIPv6() {
+		return net.IPMask(d.Netmask.To16())
 	}
 
 	mask := net.ParseIP(d.Netmask.String())
@@ -80,8 +128,7 @@ func (d *DHCPLease) IPMask() net.IPMask {
 
 // IPNet returns the IP net for the DHCP lease
 func (d *DHCPLease) IPNet() *net.IPNet {
-	if d.IsIPv6() {
-		// TODO: not implemented
+	if d.IPAddress == nil || d.Netmask == nil {
 		return nil
 	}
 

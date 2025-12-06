@@ -9,6 +9,7 @@ import (
 
 	"github.com/jetkvm/kvm/internal/logging"
 	"github.com/pojntfx/go-nbd/pkg/server"
+	"github.com/rs/zerolog"
 )
 
 type remoteImageBackend struct {
@@ -68,10 +69,13 @@ func NewNBDDevice() *NBDDevice {
 	return &NBDDevice{}
 }
 
-func (d *NBDDevice) getLogger() *logging.Context {
-	return logging.GetSubsystemLogger("nbd").
+func (d *NBDDevice) getLogger() *zerolog.Logger {
+	logger := logging.GetSubsystemLogger("nbd").
+		With().
 		Str("socket_path", nbdSocketPath).
-		Str("device_path", nbdDevicePath)
+		Str("device_path", nbdDevicePath).
+		Logger()
+	return &logger
 }
 
 func (d *NBDDevice) Start() error {
