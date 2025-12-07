@@ -392,7 +392,7 @@ bool get_streaming_stopped()
     bool stopped = streaming_stopped;
     pthread_mutex_unlock(&streaming_stopped_mutex);
     return stopped;
-} 
+}
 
 void write_buffer_to_file(const uint8_t *buffer, size_t length, const char *filename)
 {
@@ -769,12 +769,16 @@ uint8_t video_get_streaming_status() {
 void video_restart_streaming()
 {
     uint8_t streaming_status = video_get_streaming_status();
+    // 0 = stopped, 1 = running, 2 = stopping
 
+    // If stopped and no signal detected, don't restart
+    // But if signal is present, allow restart even when stopped (needed for audio sync)
     if (streaming_status == 0 && !detected_signal) {
+        log_info("will not restart video streaming because it's stopped and no signal detected");
         return;
     }
 
-    if (streaming_status != 0) {
+    if (streaming_status == 1 || streaming_status == 2) {
         video_stop_streaming();
     }
 
