@@ -60,6 +60,15 @@ lint:
 
 check: lint test
 
+# Comprehensive lint with auto-fix (Go + UI)
+lint-fix: build_audio_deps
+	@echo "Running golangci-lint with auto-fix..."
+	@mkdir -p static && touch static/.gitkeep
+	golangci-lint run --fix --verbose
+	@echo "Running UI lint with auto-fix..."
+	@cd ui && npm ci && npm run lint:fix
+	@echo "All linting completed!"
+
 build_native:
 	@if [ "$(SKIP_NATIVE_IF_EXISTS)" = "1" ] && [ -f "internal/native/cgo/lib/libjknative.a" ]; then \
 		echo "libjknative.a already exists, skipping native build..."; \
@@ -258,31 +267,3 @@ bump-version:
 		git push && \
 		echo "✓ Bumped to $$next_ver"
 
-# Run golangci-lint locally with the same configuration as CI
-lint-go: build_audio_deps
-	@echo "Running golangci-lint..."
-	@mkdir -p static && touch static/.gitkeep
-	golangci-lint run --verbose
-
-# Run both Go and UI linting with auto-fix
-lint-fix: lint-go-fix lint-ui-fix
-	@echo "All linting with auto-fix completed successfully!"
-
-# Run golangci-lint with auto-fix
-lint-go-fix: build_audio_deps
-	@echo "Running golangci-lint with auto-fix..."
-	@mkdir -p static && touch static/.gitkeep
-	golangci-lint run --fix --verbose
-
-# Run UI linting locally (mirrors GitHub workflow ui-lint.yml)
-lint-ui:
-	@echo "Running UI lint..."
-	@cd ui && npm ci && npm run lint
-
-# Run UI linting with auto-fix
-lint-ui-fix:
-	@echo "Running UI lint with auto-fix..."
-	@cd ui && npm ci && npm run lint:fix
-
-# Legacy alias for UI linting (for backward compatibility)
-ui-lint: lint-ui
