@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useResizeObserver } from "usehooks-ts";
 
 import { cx } from "@/cva.config";
+import { isWindows } from "@/utils";
 import useKeyboard from "@hooks/useKeyboard";
 import useMouse from "@hooks/useMouse";
 import {
@@ -73,6 +74,12 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     },
     [setVideoClientSize, setVideoSize]
   );
+
+  // AltGr Fix for Windows Clients
+  const altGrSyntheticThresholdMs = 3;
+  const isWindowsClient = useMemo(() => isWindows(), []);
+  const lastKeyDownRef = useRef<{ hidKey: number; time: number } | null>(null);
+  const altGrLoopRef = useRef(false);
 
   useResizeObserver({
     ref: videoElm as React.RefObject<HTMLElement>,
@@ -261,13 +268,41 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
   const keyDownHandler = useCallback(
     (e: KeyboardEvent) => {
       e.preventDefault();
-      if (e.repeat) return;
       const code = getAdjustedKeyCode(e);
       const hidKey = keys[code];
 
       if (hidKey === undefined) {
         console.warn(`Key down not mapped: ${code}`);
         return;
+      }
+
+      // Detect Windows synthetic AltGr (CtrlLeft then AltRight within ~3ms) and cancel the synthetic Ctrl
+      if (isWindowsClient) {
+        // Buffer ControlLeft briefly; if no AltRight follows within the threshold, treat it as a real ControlLeft press.
+        if (hidKey === keys.ControlLeft) {
+          const controlLeftDownTime = e.timeStamp;
+          lastKeyDownRef.current = { hidKey, time: controlLeftDownTime };
+          setTimeout(() => {
+            if (
+              lastKeyDownRef.current?.hidKey === keys.ControlLeft &&
+              lastKeyDownRef.current.time === controlLeftDownTime
+            ) {
+              lastKeyDownRef.current = null;
+              handleKeyPress(keys.ControlLeft, true);
+            }
+          }, altGrSyntheticThresholdMs);
+          return;
+        }
+
+        // If AltRight arrives shortly after ControlLeft, treat the pair as AltGr and cancel the pending ControlLeft.
+        if (
+          hidKey === keys.AltRight &&
+          lastKeyDownRef.current?.hidKey === keys.ControlLeft &&
+          e.timeStamp - lastKeyDownRef.current.time <= altGrSyntheticThresholdMs
+        ) {
+          altGrLoopRef.current = true;
+          lastKeyDownRef.current = null;
+        }
       }
 
       // When pressing the meta key + another key, the key will never trigger a keyup
@@ -293,7 +328,7 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
         }, 100);
       }
     },
-    [handleKeyPress, isKeyboardLockActive],
+    [handleKeyPress, isKeyboardLockActive, isWindowsClient],
   );
 
   const keyUpHandler = useCallback(
@@ -307,10 +342,27 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
         return;
       }
 
+      // On Windows, handle ControlLeft specially to preserve FIFO semantics with AltGr buffering.
+      if (isWindowsClient && hidKey === keys.ControlLeft) {
+
+        // Synthetic AltGr ControlLeft: never sent a down, swallow the release as well.
+        if (altGrLoopRef.current) {
+          altGrLoopRef.current = false;
+          return;
+        }
+
+        // Very fast real Ctrl tap: flush the pending down before the up.
+        if (lastKeyDownRef.current?.hidKey === keys.ControlLeft) {
+          handleKeyPress(keys.ControlLeft, true);
+        }
+
+        lastKeyDownRef.current = null;
+      }
+
       console.debug(`Key up: ${hidKey}`);
       handleKeyPress(hidKey, false);
     },
-    [handleKeyPress],
+    [handleKeyPress, isWindowsClient],
   );
 
   const videoKeyUpHandler = useCallback((e: KeyboardEvent) => {
