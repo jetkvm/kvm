@@ -33,12 +33,12 @@ npm ci
 
 # Build versioned app
 msg_info "Building cloud app /v/${VERSION}/..."
-npm run build:prod -- --base=/v/${VERSION}/ --outDir dist/v/${VERSION}
+VITE_CLOUD_ENABLE_VERSIONED_UI=true npm run build:prod -- --base=/v/${VERSION}/ --outDir dist/v/${VERSION}
 
 # Build root app if --set-as-default
 if [ "$SET_AS_DEFAULT" = true ]; then
   msg_info "Building root cloud app..."
-  npm run build:prod -- --outDir dist/root
+  VITE_CLOUD_ENABLE_VERSIONED_UI=true npm run build:prod -- --outDir dist/root
 fi
 
 # Confirmation
