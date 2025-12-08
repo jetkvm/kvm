@@ -244,6 +244,17 @@ export default function WebRTCVideo({ hasConnectionIssues }: { hasConnectionIssu
     } else if (code == "Backquote" && ["§", "±"].includes(key)) {
       code = "IntlBackslash";
     }
+    // For Japanese 106/109
+    else if (code === "IntlYen") {
+      code = "Yen";
+    } else if (code === "IntlRo") {
+        code = "KeyRO";
+    } else if (code === "Convert") {
+        code = "Henkan";
+    } else if (code === "NonConvert") {
+        code = "Muhenkan";
+    }
+
     return code;
   }
 
