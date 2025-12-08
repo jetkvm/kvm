@@ -340,6 +340,74 @@ static int safe_alsa_open(snd_pcm_t **handle, const char *device, snd_pcm_stream
 }
 
 /**
+ * Filter TC358743 I2S glitches (isolated spikes during silence from clock-stop)
+ *
+ * The TC358743 HDMI receiver generates spurious spikes when I2S clocks stop/start
+ * during silent periods. These manifest as:
+ *   - Full glitches: ±32767 (0x7FFF / 0x8000)
+ *   - Half glitches: ±16383 (0x3FFF / 0xC000)
+ *
+ * Detection: Sample with |value| > 8000 AND both neighbors have |value| < 4000
+ * Correction: Replace with linear interpolation of neighbors
+ *
+ * SIMD fast-path: Processes 16 samples/iteration, skips chunks without extreme
+ * values. Zero overhead for clean audio (common case).
+ */
+static inline void filter_hdmi_glitches(int16_t * __restrict__ buf, uint32_t n) {
+	const int16x8_t thresh_pos = vdupq_n_s16(8000);
+	const int16x8_t thresh_neg = vdupq_n_s16(-8000);
+	uint32_t i = 0;
+
+	for (; i + 15 < n; i += 16) {
+		int16x8_t v0 = vld1q_s16(&buf[i]);
+		int16x8_t v1 = vld1q_s16(&buf[i + 8]);
+
+		// Check if any sample exceeds threshold (SIMD parallel comparison)
+		uint16x8_t ext0 = vorrq_u16(vcgtq_s16(v0, thresh_pos), vcltq_s16(v0, thresh_neg));
+		uint16x8_t ext1 = vorrq_u16(vcgtq_s16(v1, thresh_pos), vcltq_s16(v1, thresh_neg));
+		uint16x8_t combined = vorrq_u16(ext0, ext1);
+
+		// Fast-path: skip chunk if no extreme values (common case)
+		uint64x2_t ext64 = vreinterpretq_u64_u16(combined);
+		if ((vgetq_lane_u64(ext64, 0) | vgetq_lane_u64(ext64, 1)) == 0)
+			continue;
+
+		// Slow path: fix glitches in this 16-sample chunk
+		for (uint32_t j = 0; j < 16; j++) {
+			int16_t s = buf[i + j];
+			// Single unsigned range check: |s| <= 8000 iff (s + 8000) in [0, 16000)
+			if ((uint16_t)(s + 8000) < 16000U)
+				continue;
+
+			uint32_t idx = i + j;
+			int16_t prev = (idx > 0) ? buf[idx - 1] : 0;
+			int16_t next = (idx + 1 < n) ? buf[idx + 1] : 0;
+
+			// Branchless abs using bitwise AND for both conditions
+			int16_t abs_prev = (prev >= 0) ? prev : -prev;
+			int16_t abs_next = (next >= 0) ? next : -next;
+			if ((abs_prev < 4000) & (abs_next < 4000))
+				buf[idx] = (int16_t)((prev + next) >> 1);
+		}
+	}
+
+	// Scalar tail: remaining samples
+	for (; i < n; i++) {
+		int16_t s = buf[i];
+		if ((uint16_t)(s + 8000) < 16000U)
+			continue;
+
+		int16_t prev = (i > 0) ? buf[i - 1] : 0;
+		int16_t next = (i + 1 < n) ? buf[i + 1] : 0;
+
+		int16_t abs_prev = (prev >= 0) ? prev : -prev;
+		int16_t abs_next = (next >= 0) ? next : -next;
+		if ((abs_prev < 4000) & (abs_next < 4000))
+			buf[i] = (int16_t)((prev + next) >> 1);
+	}
+}
+
+/**
  * Swap stereo channels (L<->R) using ARM NEON SIMD
  * Processes 4 frames (8 samples) at a time for optimal performance
  * @param buffer Interleaved stereo buffer (L,R,L,R,...)
@@ -877,6 +945,12 @@ retry_read:
 
 	if (capture_channels_swapped) {
 		swap_stereo_channels(pcm_hw_buffer, hardware_frame_size);
+	}
+
+	// Filter TC358743 I2S clock-stop glitches (only for HDMI capture)
+	// Zero overhead for clean audio: SIMD fast-path skips chunks without max values
+	if (capture_is_hdmi) {
+		filter_hdmi_glitches(pcm_hw_buffer, hardware_frame_size * capture_channels);
 	}
 
 	short *pcm_to_encode;
