@@ -4,7 +4,6 @@ import { ArrowPathIcon, ArrowRightIcon } from "@heroicons/react/16/solid";
 import { motion, AnimatePresence } from "framer-motion";
 import { LuPlay } from "react-icons/lu";
 import { BsMouseFill } from "react-icons/bs";
-import semver from "semver";
 
 import { m } from "@localizations/messages.js";
 import { Button, LinkButton } from "@components/Button";
@@ -14,9 +13,8 @@ import { useRTCStore, PostRebootAction } from "@/hooks/stores";
 import LogoBlue from "@/assets/logo-blue.svg";
 import LogoWhite from "@/assets/logo-white.svg";
 import { isOnDevice } from "@/main";
-import { sleep } from "@/utils";
+import { sleep, buildCloudUrl } from "@/utils";
 import { getLocalVersion } from "@/utils/jsonrpc";
-import { CLOUD_BACKWARDS_COMPATIBLE_VERSION, CLOUD_ENABLE_VERSIONED_UI } from "@/ui.config";
 
 
 interface OverlayContentProps {
@@ -404,22 +402,6 @@ interface RebootingOverlayProps {
   readonly deviceId?: string; // Required for cloud mode to build versioned URLs
 }
 
-/**
- * Builds the redirect URL for cloud mode with versioned paths.
- * Uses the device's app version to construct /v/{version}/devices/{id}{path}
- */
-function buildCloudRedirectUrl(deviceId: string, appVersion: string, path: string): string {
-  let uri = `/devices/${deviceId}${path}`;
-  if (CLOUD_ENABLE_VERSIONED_UI) {
-    const version =
-      semver.valid(appVersion) && semver.gte(appVersion, CLOUD_BACKWARDS_COMPATIBLE_VERSION)
-        ? appVersion
-        : CLOUD_BACKWARDS_COMPATIBLE_VERSION;
-    uri = `/v/${version}${uri}`;
-  }
-  return new URL(uri, window.location.origin).href;
-}
-
 export function RebootingOverlay({ show, postRebootAction, deviceId }: RebootingOverlayProps) {
   const { peerConnectionState } = useRTCStore();
   const [hasSeenDisconnect, setHasSeenDisconnect] = useState(
@@ -522,7 +504,7 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
         const { appVersion } = await getLocalVersion();
         if (cancelled) return;
 
-        const targetUrl = buildCloudRedirectUrl(deviceId, appVersion, postRebootAction.redirectTo);
+        const targetUrl = buildCloudUrl(deviceId, appVersion, postRebootAction.redirectTo);
         await redirectTo(targetUrl);
       } catch (err) {
         console.debug("Cloud reconnect check failed:", err);
