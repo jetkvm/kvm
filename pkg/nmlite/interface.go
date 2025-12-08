@@ -787,6 +787,7 @@ func (im *InterfaceManager) updateStateFromDHCPLease(lease *types.DHCPLease) {
 		NameServers: lease.DNS,
 		SearchList:  lease.SearchList,
 		Source:      "dhcp",
+		Domain:      lease.Domain,
 	}); err != nil {
 		im.logger.Warn().Err(err).Msg("failed to update resolv.conf")
 	}
