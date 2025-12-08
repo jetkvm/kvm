@@ -233,7 +233,12 @@ release: git_check_dev
 	./scripts/deploy_cloud_app.sh -v $(VERSION) --set-as-default --skip-confirmation
 	@git tag release/$(VERSION)
 	@git push origin release/$(VERSION)
-	gh release create release/$(VERSION) bin/jetkvm_app bin/jetkvm_app.sha256 --generate-notes
+	prev_prod=$$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName'); \
+	gh release create release/$(VERSION) bin/jetkvm_app bin/jetkvm_app.sha256 \
+		--title "$(VERSION)" \
+		--generate-notes \
+		--notes-start-tag "$$prev_prod" \
+		--draft
 	@echo ""
 	@echo "✓ Released: release/$(VERSION)"
 	@echo ""
