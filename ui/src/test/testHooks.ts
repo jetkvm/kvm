@@ -27,6 +27,9 @@ export interface KvmTestHooks {
 
   /** Check if HID RPC channel is ready */
   isHidRpcReady: () => boolean;
+
+  /** Check if video stream is active */
+  isVideoStreamActive: () => boolean;
 }
 
 /** Internal handler storage type */
@@ -36,6 +39,8 @@ interface TestHooksInternal {
   getKeysDownState?: () => KeysDownState;
   getPeerConnectionState?: () => RTCPeerConnectionState | null;
   getRpcHidProtocolVersion?: () => number | null;
+  getMediaStream?: () => MediaStream | null;
+  getHdmiState?: () => string;
 }
 
 declare global {
@@ -84,6 +89,16 @@ export function initTestHooks(): void {
       const version = window.__kvmTestHooksInternal?.getRpcHidProtocolVersion?.();
       return version !== null && version !== undefined;
     },
+
+    isVideoStreamActive: () => {
+      const hdmiState = window.__kvmTestHooksInternal?.getHdmiState?.();
+      if (hdmiState !== "ready") return false;
+
+      const stream = window.__kvmTestHooksInternal?.getMediaStream?.();
+      if (!stream) return false;
+      const videoTracks = stream.getVideoTracks();
+      return videoTracks.length > 0 && videoTracks[0].readyState === "live";
+    },
   };
 
   console.log("[E2E] Test hooks initialized");
@@ -99,6 +114,8 @@ export function registerTestHandlers(handlers: {
   getKeysDownState: () => KeysDownState;
   getPeerConnectionState: () => RTCPeerConnectionState | null;
   getRpcHidProtocolVersion: () => number | null;
+  getMediaStream: () => MediaStream | null;
+  getHdmiState: () => string;
 }): void {
   if (window.__kvmTestHooksInternal) {
     Object.assign(window.__kvmTestHooksInternal, handlers);

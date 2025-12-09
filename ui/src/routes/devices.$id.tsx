@@ -642,6 +642,8 @@ export default function KvmIdRoute() {
       getKeysDownState: () => useHidStore.getState().keysDownState,
       getPeerConnectionState: () => useRTCStore.getState().peerConnectionState,
       getRpcHidProtocolVersion: () => useRTCStore.getState().rpcHidProtocolVersion,
+      getMediaStream: () => useRTCStore.getState().mediaStream,
+      getHdmiState: () => useVideoStore.getState().hdmiState,
     });
     return cleanupTestHooks;
   }, [handleKeyPress]);

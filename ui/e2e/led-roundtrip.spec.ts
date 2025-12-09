@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 
 import {
   waitForWebRTCReady,
+  waitForVideoStream,
   getLedState,
   tapKey,
   waitForLedState,
@@ -44,4 +45,16 @@ test.describe("LED Round-Trip Tests", () => {
       expect((await getLedState(page))![led]).toBe(initialValue);
     });
   }
+
+  test("video stream is active", async ({ page }) => {
+    // Send a few SPACE keys to wake display if screensaver/sleep is active
+    for (let i = 0; i < 3; i++) {
+      await tapKey(page, HID_KEY.SPACE);
+      await page.waitForTimeout(200);
+    }
+
+    await waitForVideoStream(page);
+    const isActive = await page.evaluate(() => window.__kvmTestHooks?.isVideoStreamActive());
+    expect(isActive).toBe(true);
+  });
 });

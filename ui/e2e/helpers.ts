@@ -1,11 +1,12 @@
 import { Page, expect } from "@playwright/test";
 
 /**
- * USB HID Key Codes for LED-related keys
+ * USB HID Key Codes
  */
 export const HID_KEY = {
+  SPACE: 0x2c,     // 44
   CAPS_LOCK: 0x39, // 57
-  NUM_LOCK: 0x53, // 83
+  NUM_LOCK: 0x53,  // 83
 } as const;
 
 /**
@@ -46,6 +47,25 @@ export async function waitForWebRTCReady(page: Page, timeout = 30000): Promise<v
       },
       {
         message: "Waiting for WebRTC connection and HID RPC to be ready",
+        timeout,
+        intervals: [500, 1000, 2000],
+      },
+    )
+    .toBe(true);
+}
+
+/**
+ * Wait for video stream to be active.
+ *
+ * @param page - Playwright page object
+ * @param timeout - Maximum time to wait in milliseconds (default: 30000)
+ */
+export async function waitForVideoStream(page: Page, timeout = 30000): Promise<void> {
+  await expect
+    .poll(
+      async () => page.evaluate(() => window.__kvmTestHooks?.isVideoStreamActive()),
+      {
+        message: "Waiting for video stream to be active",
         timeout,
         intervals: [500, 1000, 2000],
       },
@@ -137,6 +157,7 @@ declare global {
       sendKeypress: (key: number, press: boolean) => void;
       isWebRTCConnected: () => boolean;
       isHidRpcReady: () => boolean;
+      isVideoStreamActive: () => boolean;
     };
   }
 }
