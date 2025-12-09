@@ -29,17 +29,20 @@ export interface KvmTestHooks {
   isHidRpcReady: () => boolean;
 }
 
+/** Internal handler storage type */
+interface TestHooksInternal {
+  handleKeyPress?: (key: number, press: boolean) => void;
+  getKeyboardLedState?: () => KeyboardLedState;
+  getKeysDownState?: () => KeysDownState;
+  getPeerConnectionState?: () => RTCPeerConnectionState | null;
+  getRpcHidProtocolVersion?: () => number | null;
+}
+
 declare global {
   interface Window {
     __E2E_TEST__?: boolean;
     __kvmTestHooks?: KvmTestHooks;
-    __kvmTestHooksInternal?: {
-      handleKeyPress?: (key: number, press: boolean) => void;
-      getKeyboardLedState?: () => KeyboardLedState;
-      getKeysDownState?: () => KeysDownState;
-      getPeerConnectionState?: () => RTCPeerConnectionState | null;
-      getRpcHidProtocolVersion?: () => number | null;
-    };
+    __kvmTestHooksInternal?: TestHooksInternal;
   }
 }
 
@@ -87,42 +90,18 @@ export function initTestHooks(): void {
 }
 
 /**
- * Register the keyboard handler from useKeyboard hook.
+ * Register all test handlers at once.
  * Call this from the device route component.
  */
-export function registerKeyboardHandler(
-  handleKeyPress: (key: number, press: boolean) => void,
-): void {
+export function registerTestHandlers(handlers: {
+  handleKeyPress: (key: number, press: boolean) => void;
+  getKeyboardLedState: () => KeyboardLedState;
+  getKeysDownState: () => KeysDownState;
+  getPeerConnectionState: () => RTCPeerConnectionState | null;
+  getRpcHidProtocolVersion: () => number | null;
+}): void {
   if (window.__kvmTestHooksInternal) {
-    window.__kvmTestHooksInternal.handleKeyPress = handleKeyPress;
-  }
-}
-
-/**
- * Register store getters for LED and keys state.
- * Call this from the device route component.
- */
-export function registerHidStoreGetters(
-  getKeyboardLedState: () => KeyboardLedState,
-  getKeysDownState: () => KeysDownState,
-): void {
-  if (window.__kvmTestHooksInternal) {
-    window.__kvmTestHooksInternal.getKeyboardLedState = getKeyboardLedState;
-    window.__kvmTestHooksInternal.getKeysDownState = getKeysDownState;
-  }
-}
-
-/**
- * Register RTC store getters for connection state.
- * Call this from the device route component.
- */
-export function registerRTCStoreGetters(
-  getPeerConnectionState: () => RTCPeerConnectionState | null,
-  getRpcHidProtocolVersion: () => number | null,
-): void {
-  if (window.__kvmTestHooksInternal) {
-    window.__kvmTestHooksInternal.getPeerConnectionState = getPeerConnectionState;
-    window.__kvmTestHooksInternal.getRpcHidProtocolVersion = getRpcHidProtocolVersion;
+    Object.assign(window.__kvmTestHooksInternal, handlers);
   }
 }
 
@@ -130,11 +109,5 @@ export function registerRTCStoreGetters(
  * Cleanup test hooks when component unmounts.
  */
 export function cleanupTestHooks(): void {
-  if (window.__kvmTestHooksInternal) {
-    window.__kvmTestHooksInternal.handleKeyPress = undefined;
-    window.__kvmTestHooksInternal.getKeyboardLedState = undefined;
-    window.__kvmTestHooksInternal.getKeysDownState = undefined;
-    window.__kvmTestHooksInternal.getPeerConnectionState = undefined;
-    window.__kvmTestHooksInternal.getRpcHidProtocolVersion = undefined;
-  }
+  window.__kvmTestHooksInternal = {};
 }
