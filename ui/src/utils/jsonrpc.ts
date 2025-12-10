@@ -243,8 +243,8 @@ export async function getUpdateStatus() {
 }
 
 export async function getLocalVersion(
-  options: Pick<JsonRpcCallOptions, "attemptTimeoutMs">,
-) {
+  options?: Partial<JsonRpcCallOptions>,
+): Promise<VersionInfo> {
   const response = await callJsonRpc<VersionInfo>({
     method: "getLocalVersion",
     ...options,
