@@ -718,15 +718,13 @@ export default function KvmIdRoute() {
     }
 
     if (resp.method === "willReboot") {
-      const postRebootAction = resp.params as unknown as PostRebootAction;
-      console.debug("Setting reboot state", postRebootAction);
-
+      const action = resp.params as PostRebootAction | undefined;
       setRebootState({
         isRebooting: true,
         postRebootAction: {
-          healthCheck: postRebootAction?.healthCheck || `${window.location.origin}/device/status`,
-          redirectTo: postRebootAction?.redirectTo || window.location.href,
-        }
+          healthCheck: action?.healthCheck || "/device/status",
+          redirectTo: action?.redirectTo || "/",
+        },
       });
       navigateTo("/");
     }
@@ -842,7 +840,7 @@ export default function KvmIdRoute() {
 
     // Rebooting takes priority over connection status
     if (rebootState?.isRebooting) {
-      return <RebootingOverlay show={true} postRebootAction={rebootState.postRebootAction} />;
+      return <RebootingOverlay show={true} postRebootAction={rebootState.postRebootAction} deviceId={params.id} />;
     }
 
     if (isFailsafeMode && failsafeReason) {
@@ -873,7 +871,7 @@ export default function KvmIdRoute() {
     }
 
     return null;
-  }, [location.pathname, rebootState?.isRebooting, rebootState?.postRebootAction, isFailsafeMode, failsafeReason, connectionFailed, peerConnectionState, peerConnection, setupPeerConnection, loadingMessage]);
+  }, [location.pathname, rebootState?.isRebooting, rebootState?.postRebootAction, params.id, isFailsafeMode, failsafeReason, connectionFailed, peerConnectionState, peerConnection, setupPeerConnection, loadingMessage]);
 
   return (
     <FeatureFlagProvider appVersion={appVersion}>
