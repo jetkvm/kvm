@@ -431,6 +431,7 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
 
   // Redirect helper - navigates and forces reload
   const redirectTo = useCallback(async (url: string) => {
+    console.log("Redirecting to", url);
     window.location.href = url;
     await sleep(1000);
     window.location.reload();
@@ -491,7 +492,8 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
 
   // Cloud mode: wait for WebRTC reconnection via RPC, then redirect with versioned URL
   useEffect(() => {
-    if (isOnDevice || !postRebootAction || !deviceId || !show || !hasSeenDisconnect) return;
+    if (isOnDevice) return;
+    if (!postRebootAction || !deviceId || !show || !hasSeenDisconnect) return;
 
     let cancelled = false;
 
@@ -500,10 +502,13 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
       isCheckingRef.current = true;
 
       try {
-        // getLocalVersion internally waits for RTC channel to be ready
-        const { appVersion } = await getLocalVersion();
+        const { appVersion } = await getLocalVersion({
+          attemptTimeoutMs: 2000,
+        });
+
         if (cancelled) return;
 
+        clearInterval(intervalId);
         const targetUrl = buildCloudUrl(deviceId, appVersion, postRebootAction.redirectTo);
         await redirectTo(targetUrl);
       } catch (err) {
@@ -512,10 +517,12 @@ export function RebootingOverlay({ show, postRebootAction, deviceId }: Rebooting
       }
     };
 
+    const intervalId = setInterval(waitForReconnectAndRedirect, 3000);
     waitForReconnectAndRedirect();
 
     return () => {
       cancelled = true;
+      clearInterval(intervalId);
       isCheckingRef.current = false;
     };
   }, [show, postRebootAction, deviceId, hasSeenDisconnect, redirectTo]);

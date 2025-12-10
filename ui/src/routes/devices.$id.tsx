@@ -703,8 +703,8 @@ export default function KvmIdRoute() {
       setRebootState({
         isRebooting: true,
         postRebootAction: {
-          healthCheck: action?.healthCheck ?? "/device/status",
-          redirectTo: action?.redirectTo ?? "/",
+          healthCheck: action?.healthCheck || "/device/status",
+          redirectTo: action?.redirectTo || "/",
         },
       });
       navigateTo("/");
